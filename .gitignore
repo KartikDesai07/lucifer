@@ -47,3 +47,6 @@ next-env.d.ts
 
 # project-local scratch & planning brain-dump (kept out of the product repo)
 /self-tasks/
+
+/.claude/
+/.claude-memory/
