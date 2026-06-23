@@ -1,6 +1,10 @@
 import NodeCache from "node-cache";
 
-const cache = new NodeCache({ stdTTL: 30, checkperiod: 30 });
+// checkperiod: 0 disables node-cache's background sweep timer — pointless on
+// short-lived Cloudflare Worker isolates (a module-scope setInterval running
+// outside any request context) and unnecessary because get() still expires
+// keys lazily against stdTTL on read. Avoids global async I/O on the isolate.
+const cache = new NodeCache({ stdTTL: 30, checkperiod: 0 });
 
 // IMPORTANT: this cache is IN-PROCESS (per serverless isolate). cache.del() on a
 // write only clears the writer's instance, so on a multi-instance host other

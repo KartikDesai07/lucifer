@@ -11,7 +11,14 @@
   // node:dns (incl. SRV) landed on Workers, which is what lets Mongoose open a raw
   // TCP/TLS connection to MongoDB Atlas over a mongodb+srv:// URI.
   "compatibility_date": "2025-03-20",
-  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  // enable_nodejs_http_modules: lets node:http/node:https client requests work, which the
+  // Cloudinary SDK uses for cloudinary.uploader.destroy() (image delete). Auto-enabled at
+  // compat dates >= 2025-08-15; we set it explicitly to keep the 2025-03-20 date stable.
+  "compatibility_flags": [
+    "nodejs_compat",
+    "global_fetch_strictly_public",
+    "enable_nodejs_http_modules"
+  ],
 
   "assets": {
     "directory": ".open-next/assets",

@@ -22,12 +22,11 @@ client's URL is the free `*.workers.dev` address (and the `*.vercel.app` backup)
 |------|-------|-------|
 | `MONGODB_URI` | secret | `mongodb+srv://…` — SRV works on Workers (compat date ≥ 2025-03-20). |
 | `NEXTAUTH_SECRET` | secret | `openssl rand -base64 33`. (`AUTH_SECRET` also works — Auth.js v5 reads either.) |
-| `NEXTAUTH_URL` | var | The deployed URL, e.g. `https://lucifer-cafe.<acct>.workers.dev`. Optional — `trustHost:true` is set in `auth.config.ts` — but recommended once the URL is known. |
+| `NEXTAUTH_URL` | (leave unset) | Not needed on Workers — `trustHost:true` (auth.config.ts) + host inference handle callbacks. Only set it for a custom domain, to the exact https origin (a stale `localhost` value would break login). |
 | `CLOUDINARY_CLOUD_NAME` | secret | |
 | `CLOUDINARY_API_KEY` | secret | |
 | `CLOUDINARY_API_SECRET` | secret | |
-| `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` | build-time | Inlined into the client bundle at build from `.env.local` / build env. |
-| `NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET` | build-time | `lucifer_cafe_products`. |
+| `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` | **build var** | Inlined into the client bundle at **build**. Must be present when the build runs (locally: `.env.local`; CF Git CI: add under **Build variables**, not only runtime Vars). If missing at build, every product image silently breaks. |
 
 `NEXT_PUBLIC_*` are baked in at **build** time. When you run `npm run deploy` locally they
 come from `.env.local`. On Cloudflare's Git CI, set them as **build** environment variables.

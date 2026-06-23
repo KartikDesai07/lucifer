@@ -32,6 +32,12 @@ const nextConfig: NextConfig = {
   },
   images: {
     // Cloudinary-hosted product images (CLAUDE.md §13) — store public_id, build URL at render time.
+    // `unoptimized`: we already request sized/optimized Cloudinary URLs (w_/h_/c_fill via
+    // lib/images.ts), so Next's own optimizer is redundant — and on Cloudflare Workers (OpenNext)
+    // the default /_next/image optimizer 500s without a paid Cloudflare Images binding. Serving the
+    // Cloudinary URL directly avoids that binding/quota and loses nothing. remotePatterns is still
+    // required (OpenNext allow-list) even when unoptimized.
+    unoptimized: true,
     remotePatterns: [{ protocol: "https", hostname: "res.cloudinary.com" }],
   },
   async headers() {
