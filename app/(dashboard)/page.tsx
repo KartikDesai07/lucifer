@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   IndianRupee,
@@ -68,8 +68,24 @@ export default function DashboardPage() {
   );
   const tables = useTables();
   const reservations = useReservations({ date: today });
+  // Running tabs that occupy tables — date-independent and tiny (≤ #tables), so
+  // the floor panel can resolve an occupied tile even for a cross-day tab or one
+  // beyond today's 50-order page (which `todayOrders` alone would miss).
+  const openTabs = useOrders(
+    { payment: "Unpaid" },
+    { refetchInterval: LIVE_REFRESH_MS },
+  );
 
   const [detail, setDetail] = useState<Order | null>(null);
+
+  // Order lookup for the live floor: today's orders + every open tab, so an
+  // occupied table's `currentOrderId` always resolves (open tabs win on overlap).
+  const floorOrders = useMemo(() => {
+    const byId = new Map<string, Order>();
+    for (const o of todayOrders.data ?? []) byId.set(o.orderId, o);
+    for (const o of openTabs.data ?? []) byId.set(o.orderId, o);
+    return [...byId.values()];
+  }, [todayOrders.data, openTabs.data]);
 
   const s = summary.data;
   const paymentSlices = s
@@ -165,7 +181,7 @@ export default function DashboardPage() {
 
       <LiveFloorPanel
         tables={tableList}
-        orders={todayOrders.data ?? []}
+        orders={floorOrders}
         loading={tables.isLoading}
         isError={tables.isError}
         onSelectOrder={setDetail}

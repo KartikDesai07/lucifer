@@ -18,7 +18,7 @@ import type { Order, Table } from "@/types";
 
 interface LiveFloorPanelProps {
   tables: Table[];
-  orders: Order[]; // today's orders — used to open an occupied table's order
+  orders: Order[]; // today's orders + open tabs — to open an occupied table's order
   loading?: boolean;
   isError?: boolean;
   onSelectOrder: (order: Order) => void;

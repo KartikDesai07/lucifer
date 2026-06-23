@@ -101,6 +101,10 @@ export function usePosTab(receiver: string) {
   const applyTabUpdate = (order: Order) => {
     setResumedOrder(order);
     hydrate(order.items.map((it, i) => cartItemFromOrderItem(it, i)));
+    // Mirror the server's (re-clamped) discount so the live cart footer total
+    // stays in sync with the stored tab total after a fire (matches enterResume).
+    setDiscountRaw(order.discount);
+    setDiscountUnit("₹");
     setLastOrder(order);
     setKotRoundItems(order.items.filter((it) => it.kotRound === order.kotRounds));
     setKotRoundLabel(`Round ${order.kotRounds}`);

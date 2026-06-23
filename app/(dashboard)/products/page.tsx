@@ -180,7 +180,9 @@ export default function ProductsPage() {
           onToggleAvailable={(id, available) =>
             setAvailability.mutate({ id, available })
           }
-          restorePending={restoreProduct.isPending}
+          pendingRestoreId={
+            restoreProduct.isPending ? restoreProduct.variables : undefined
+          }
           pendingAvailabilityId={
             setAvailability.isPending ? setAvailability.variables?.id : undefined
           }

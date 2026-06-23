@@ -25,7 +25,9 @@ interface ProductsTableProps {
   onArchive: (product: Product) => void;
   onRestore: (id: string) => void;
   onToggleAvailable: (id: string, available: boolean) => void;
-  restorePending?: boolean;
+  // Product id whose restore is in flight — disables just that row's Restore
+  // button (not every row) to prevent a double-fire (Pattern A, CLAUDE.md §9).
+  pendingRestoreId?: string;
   // Product id whose availability toggle is in flight (disables just that row's
   // Switch to prevent a double-fire — Pattern A, CLAUDE.md §9).
   pendingAvailabilityId?: string;
@@ -41,7 +43,7 @@ export function ProductsTable({
   onArchive,
   onRestore,
   onToggleAvailable,
-  restorePending,
+  pendingRestoreId,
   pendingAvailabilityId,
 }: ProductsTableProps) {
   return (
@@ -122,7 +124,7 @@ export function ProductsTable({
                         variant="ghost"
                         size="sm"
                         onClick={() => onRestore(product._id)}
-                        disabled={restorePending}
+                        disabled={pendingRestoreId === product._id}
                       >
                         <ArchiveRestore className="mr-1.5 h-4 w-4" /> Restore
                       </Button>
