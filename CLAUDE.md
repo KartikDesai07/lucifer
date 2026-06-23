@@ -20,11 +20,11 @@
 
 | Layer | Technology | Why |
 |-------|-----------|-----|
-| Frontend + API | **Next.js 15 App Router** | Single deploy on Vercel, RSC, API Routes |
-| Database | **MongoDB Atlas M0** | Free forever, 512MB, Mongoose ODM |
+| Frontend + API | **Next.js 15 App Router** | RSC, API Routes, single codebase |
+| Database | **MongoDB Atlas M0** | Free forever, Mongoose ODM |
 | Auth | **NextAuth.js v5 (Auth.js)** | JWT + Credentials, role-based, App Router native |
-| Image Storage | **Cloudinary** | Free tier: 25GB storage, transformations |
-| Hosting | **Vercel Hobby Plan** | Free, edge network, Next.js native |
+| Image Storage | **Cloudinary** | Free: 25 credits/month (1 credit = 1,000 transforms OR 1GB storage OR 1GB bandwidth) |
+| Hosting | **Cloudflare Workers + Pages** | Free, commercial use OK, no cold starts, current project infra |
 | Validation | **Zod** | Shared schemas across client + server |
 | Server State | **TanStack Query v5** | Caching, optimistic updates, invalidation |
 | UI Components | **shadcn/ui + Tailwind CSS 4** | Keep existing components |
@@ -33,23 +33,36 @@
 | Charts | **recharts** | Keep existing |
 | Forms | **react-hook-form + zod resolver** | Keep existing |
 
+**Why Cloudflare Workers (not Vercel):**
+- Vercel Hobby plan **explicitly prohibits commercial use** — a restaurant POS is commercial
+- Cloudflare Workers free tier: 100k requests/day, commercial use explicitly allowed
+- This project already deploys on Cloudflare Workers (`wrangler.jsonc` exists)
+- No cold starts (V8 isolates, ~0ms startup — critical for POS responsiveness)
+- `nodejs_compat` flag enables TCP sockets → Mongoose / MongoDB driver works
+
 **Why Next.js over React+Express:**
-- Vercel is built for Next.js — serverless functions work natively
-- No CORS complexity — API routes in same origin
+- Single codebase — API routes co-located with UI
+- No CORS complexity (same origin)
 - RSC reduces client JS bundle
 - Auth.js v5 is designed for App Router
-- Single `vercel deploy` for everything
+- Deploys to Cloudflare Workers via `@cloudflare/next-on-pages`
 
 ---
 
 ## 3. Free Tier Constraints (Hard Limits)
 
-### Vercel Hobby Plan
-- Bandwidth: 100GB/month
-- Serverless function timeout: 10 seconds (important — no long-running operations)
-- Invocations: Unlimited on hobby (as of 2025)
-- Edge functions: Available
-- **Rule:** All API routes must complete in under 8 seconds. No file processing in API routes.
+### ⚠️ Vercel Hobby — DO NOT USE FOR THIS PROJECT
+Vercel Hobby plan is **prohibited for commercial use** (verified 3-0, Vercel fair use guidelines).
+A restaurant POS is commercial. Use Cloudflare Workers instead.
+
+### Cloudflare Workers (Free Plan)
+- Requests: 100,000/day free (single cafe needs ~5,000–15,000/day max)
+- CPU time: 10ms per request (enough for all API routes)
+- Memory: 128MB per request
+- Commercial use: **explicitly allowed**
+- Cold starts: ~0ms (V8 isolates, not containers)
+- **Rule:** Add `nodejs_compat` to `wrangler.jsonc` compatibility_flags for Mongoose TCP support
+- **Rule:** All API routes must complete in under 8 seconds. No batch/blocking operations.
 
 ### MongoDB Atlas M0
 - Storage: 512MB total
@@ -588,32 +601,47 @@ Paste this to start the next session.
 - Always use `lean()` on Mongoose queries (plain JS, not documents)
 - Select only needed fields: `.select('name price category')`
 - Paginate list endpoints: default 50 items max
-- All API routes must complete in under 8 seconds (Vercel hobby timeout)
+- All API routes must complete in under 8 seconds (Cloudflare Worker CPU limit is 10ms but wall-clock is generous)
 
 ---
 
-## 18. Deployment Rules (Vercel)
+## 18. Deployment Rules (Cloudflare Workers)
 
-### Environment Variables (Set in Vercel Dashboard)
+### `wrangler.jsonc` must include
+```jsonc
+{
+  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_date": "2025-01-01"
+}
+```
+`nodejs_compat` enables TCP sockets → Mongoose works.
+
+### Environment Variables (Set via `wrangler secret put` or Dashboard)
 ```
 MONGODB_URI           = mongodb+srv://...
-NEXTAUTH_SECRET       = (random 32-char string)
-NEXTAUTH_URL          = https://your-app.vercel.app
+AUTH_SECRET           = (random 32-char string — Auth.js v5 uses AUTH_SECRET)
+AUTH_URL              = https://your-app.pages.dev
 CLOUDINARY_CLOUD_NAME = ...
 CLOUDINARY_API_KEY    = ...
 CLOUDINARY_API_SECRET = ...
-NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME = ... (public — needed for upload widget)
+NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME = ...
 NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET = lucifer_cafe_products
 ```
 
 ### Deployment Checklist
 - [ ] `npm run build` passes with 0 TypeScript errors
 - [ ] `npm run lint` passes with 0 errors
-- [ ] All env vars set in Vercel dashboard
-- [ ] MongoDB Atlas IP whitelist: `0.0.0.0/0` (Vercel uses dynamic IPs)
-- [ ] NextAuth `NEXTAUTH_URL` set to production URL
+- [ ] `wrangler.jsonc` has `nodejs_compat` in compatibility_flags
+- [ ] All secrets set via `wrangler secret put` or CF dashboard
+- [ ] MongoDB Atlas IP whitelist: `0.0.0.0/0` (Cloudflare uses dynamic IPs)
 - [ ] Cloudinary unsigned upload preset configured
 - [ ] Admin account seeded in MongoDB before first login
+
+### Deploy Command
+```bash
+npx wrangler pages deploy .vercel/output/static --project-name lucifer-cafe
+# OR use @cloudflare/next-on-pages adapter — see phase-09-deploy.md
+```
 
 ---
 

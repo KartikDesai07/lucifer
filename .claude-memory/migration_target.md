@@ -1,6 +1,6 @@
 ---
 name: migration-target
-description: Final target architecture — Next.js 15 App Router + MongoDB Atlas + Cloudinary + Vercel (all free)
+description: Final target architecture — Next.js 15 App Router + MongoDB Atlas + Cloudinary + Cloudflare Workers (all free, commercial OK)
 metadata:
   type: project
 ---
@@ -10,24 +10,30 @@ metadata:
 ## Tech Stack Decision
 
 **Previous plan:** React (Vite) + Express + MongoDB  
-**Final decision:** Next.js 15 App Router + MongoDB Atlas + Cloudinary + Vercel
+**Final decision:** Next.js 15 App Router + MongoDB Atlas + Cloudinary + **Cloudflare Workers**
 
-**Why the change:**
-- Vercel is the hosting choice — Next.js is Vercel-native (same company)
-- No CORS, no separate server deployment, single `vercel deploy`
-- Auth.js v5 is designed for Next.js App Router
-- API Routes (Route Handlers) replace Express — same patterns, serverless-native
+**Why Cloudflare Workers (not Vercel):**
+- Vercel Hobby plan **explicitly prohibits commercial use** — a restaurant POS is commercial (3-0 confirmed)
+- Cloudflare Workers free tier: 100k req/day, commercial use explicitly allowed
+- Project already deploys on CF Workers (`wrangler.jsonc` exists in repo)
+- No cold starts (V8 isolates) — critical for POS responsiveness
+- `nodejs_compat` flag enables TCP → Mongoose works normally
+
+**Why Next.js:**
+- Single codebase (API Routes + UI), no CORS
+- Auth.js v5 designed for Next.js App Router
 - User confirmed: "Next me bhi build kar sakte ho"
+- Deploys to CF Workers via `@cloudflare/next-on-pages`
 
 ## Final Stack
 
 | Layer | Technology | Free Tier |
 |-------|-----------|-----------|
 | Framework | Next.js 15 App Router | ✅ |
-| Hosting | Vercel Hobby Plan | ✅ |
+| Hosting | **Cloudflare Workers + Pages** | ✅ — 100k req/day, commercial OK |
 | Database | MongoDB Atlas M0 | ✅ |
-| Auth | NextAuth.js v5 (Auth.js) | ✅ |
-| Images | Cloudinary (unsigned upload) | ✅ |
+| Auth | NextAuth.js v5 / Auth.js v5 | ✅ |
+| Images | Cloudinary (signed upload via API route) | ✅ — 25 credits/month |
 | Cache (backend) | node-cache (in-process) | ✅ |
 | Cache (frontend) | TanStack Query v5 | ✅ |
 | Validation | Zod (schemas in /schemas/) | ✅ |
@@ -37,10 +43,12 @@ metadata:
 
 ## Key Constraints
 
-- Vercel serverless timeout: 10s — all API routes must complete in < 8s
+- Cloudflare Workers: add `nodejs_compat` to `wrangler.jsonc` for Mongoose TCP support
 - MongoDB M0: global connection cache required (lib/db.ts global mongoose)
-- Cloudinary: 25 credits/month — use `q_auto,f_auto` to minimize transformations
-- No Redis — node-cache (in-process) sufficient for single Vercel instance
+- MongoDB M0: 500-connection ceiling, 100 ops/sec throttle — maxPoolSize: 10
+- Cloudinary: 25 credits/month (1 credit = 1,000 transformations OR 1GB storage OR 1GB bandwidth) — use `q_auto,f_auto`
+- No Redis — node-cache (in-process) sufficient for single CF Worker instance
+- Auth.js v5: RBAC is developer's responsibility — no built-in role system; verify patterns against current authjs.dev docs
 
 ## Features to Build
 

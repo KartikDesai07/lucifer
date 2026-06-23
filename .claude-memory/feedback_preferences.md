@@ -41,3 +41,18 @@ metadata:
 **Why:** User confirmed: "only one restaurant ke liye hai".
 
 **How to apply:** No `restaurantId` fields, no tenant isolation, no org-level abstractions.
+
+## Smoothness > defensive friction (Login rate limiting SKIPPED)
+**Rule:** Do NOT implement login/auth rate limiting. Decided 2026-06-21 (Phase 8, Step 8.1).
+This intentionally overrides CLAUDE.md §8's rate-limiting mandate and the Phase 8 checkpoint.
+
+**Why:** Internal single-cafe POS — only 1 admin + N staff log in, no public sign-up, so
+brute-force risk is low. User's hard priority is a *very smooth* panel during service:
+"rate limit skip karo ... customer aaye and panel me rate limit issue aaye wo bilkul nahi
+chalega" — a limiter that locks out real staff mid-rush is worse than the risk it prevents.
+
+**How to apply:** Never add a login limiter (in-memory or otherwise). More broadly, prefer
+the smooth-for-staff path over defensive friction unless the user asks. If revisited, the
+only viable store is a Mongo-backed counter inside `authorize()` (host-agnostic) — NOT an
+in-memory Map (per-isolate false security on Workers/serverless) and NOT middleware (its
+matcher excludes /api).
