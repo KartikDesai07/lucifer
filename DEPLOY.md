@@ -22,7 +22,7 @@ client's URL is the free `*.workers.dev` address (and the `*.vercel.app` backup)
 |------|-------|-------|
 | `MONGODB_URI` | secret | `mongodb+srv://…` — SRV works on Workers (compat date ≥ 2025-03-20). |
 | `NEXTAUTH_SECRET` | secret | `openssl rand -base64 33`. (`AUTH_SECRET` also works — Auth.js v5 reads either.) |
-| `NEXTAUTH_URL` | (leave unset) | Not needed on Workers — `trustHost:true` (auth.config.ts) + host inference handle callbacks. Only set it for a custom domain, to the exact https origin (a stale `localhost` value would break login). |
+| `NEXTAUTH_URL` / `AUTH_URL` | **`.env.production.local`** | Set to the deployed origin (e.g. `https://lucifer-cafe.<acct>.workers.dev`). Next.js **inlines** this into the EDGE middleware at *build* time, so it must be the real URL for the production build — NOT a runtime Worker secret, and NOT left as `.env.local`'s localhost (that bakes a redirect-to-localhost into the deployed site). `.env.production.local` overrides `.env.local` during `next build` only, so local dev still uses localhost. |
 | `CLOUDINARY_CLOUD_NAME` | secret | |
 | `CLOUDINARY_API_KEY` | secret | |
 | `CLOUDINARY_API_SECRET` | secret | |
@@ -37,6 +37,15 @@ come from `.env.local`. On Cloudflare's Git CI, set them as **build** environmen
 
 The config lives in `wrangler.jsonc` + `open-next.config.ts`. `compatibility_date` is
 `2025-03-20` with `nodejs_compat` — that's what lets Mongoose open a TCP/TLS connection to Atlas.
+
+> **Before the first build, create `.env.production.local`** (gitignored) with the deployed
+> origin, so the right URL is baked into the edge middleware (otherwise the deployed site
+> redirects everyone to `localhost`):
+> ```
+> NEXTAUTH_URL=https://lucifer-cafe.<account>.workers.dev
+> AUTH_URL=https://lucifer-cafe.<account>.workers.dev
+> ```
+> On Cloudflare Git CI (Option A) instead, set these two as **Build variables**.
 
 ### Option A — Cloudflare Git CI (recommended)
 
