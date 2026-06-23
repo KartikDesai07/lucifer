@@ -1,12 +1,8 @@
 import type { NextConfig } from "next";
 
-// NOTE: We intentionally do NOT call initOpenNextCloudflareForDev() here.
-// This app uses no Cloudflare bindings (KV/D1/R2/DO) — it reads process.env
-// and opens a Mongoose TCP connection, both of which OpenNext provides at
-// runtime on Workers. The dev hook only proxies CF bindings into `next dev`,
-// and on Windows it boots the workerd runtime at config-load and crashes the
-// build (OpenNext is not fully Windows-compatible). Omitting it keeps `next
-// build` / `next dev` clean; the production build runs on Cloudflare's Linux CI.
+// Hosted on a Node.js runtime (Vercel) where Mongoose's connection cache works
+// reliably. Cloudflare Workers was dropped: its per-request I/O isolation makes a
+// cached MongoDB socket unusable across requests (intermittent 500s) — see DEPLOY.md.
 
 // Security response headers (CLAUDE.md §8, Step 8.2). Deliberately omits a strict
 // Content-Security-Policy for now — a wrong CSP white-screens the panel, which is
@@ -24,6 +20,9 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Keep Mongoose a runtime dependency rather than bundling it into the serverless
+  // function output (recommended for Mongoose on Vercel/Node).
+  serverExternalPackages: ["mongoose"],
   experimental: {
     // Rewrite heavy barrel imports to per-module paths so unused exports are
     // tree-shaken from the client bundle (CLAUDE.md §17). lucide-react is
@@ -33,10 +32,8 @@ const nextConfig: NextConfig = {
   images: {
     // Cloudinary-hosted product images (CLAUDE.md §13) — store public_id, build URL at render time.
     // `unoptimized`: we already request sized/optimized Cloudinary URLs (w_/h_/c_fill via
-    // lib/images.ts), so Next's own optimizer is redundant — and on Cloudflare Workers (OpenNext)
-    // the default /_next/image optimizer 500s without a paid Cloudflare Images binding. Serving the
-    // Cloudinary URL directly avoids that binding/quota and loses nothing. remotePatterns is still
-    // required (OpenNext allow-list) even when unoptimized.
+    // lib/images.ts), so Next's own optimizer is redundant; serving the Cloudinary URL directly is
+    // simplest and loses nothing. remotePatterns still allow-lists the host.
     unoptimized: true,
     remotePatterns: [{ protocol: "https", hostname: "res.cloudinary.com" }],
   },

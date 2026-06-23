@@ -13,7 +13,11 @@ interface MongooseCache {
 }
 
 // Cache the connection on the Node global so it survives hot reloads in dev and
-// is reused across serverless invocations (Atlas M0 has a hard connection cap).
+// is reused across serverless invocations. This is the standard, reliable pattern
+// on a Node.js runtime (Vercel functions, a Node server, etc.) where a warm
+// instance legitimately reuses one connection across requests — unlike Cloudflare
+// Workers, whose per-request I/O isolation makes a cached socket unusable across
+// requests (that mismatch is why the app is hosted on a Node runtime).
 declare global {
   var _mongoose: MongooseCache | undefined;
 }
@@ -37,12 +41,9 @@ export async function connectDB() {
   if (!cached.promise) {
     cached.promise = mongoose.connect(MONGODB_URI, {
       bufferCommands: false,
-      // Bound per-isolate connections so many warm serverless instances stay
+      // Bound per-instance connections so many warm serverless instances stay
       // under Atlas M0's hard 500-connection cap (CLAUDE.md §3, migration_target).
-      // Kept small because each Cloudflare Worker isolate holds its own pool —
-      // 5 leaves room for the few parallel queries we issue (e.g. the summary
-      // route's Promise.all) without risking the M0 cap under isolate fan-out.
-      maxPoolSize: 5,
+      maxPoolSize: 10,
       minPoolSize: 0,
       maxIdleTimeMS: 270_000,
       serverSelectionTimeoutMS: 5_000,
