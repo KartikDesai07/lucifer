@@ -1,10 +1,15 @@
 import mongoose from "mongoose";
 
-// Global query hardening (defense-in-depth, CLAUDE.md §8). Applied once at module
-// load: sanitizeFilter strips `$`/dotted operators smuggled into filter VALUES,
-// strictQuery drops unknown keys — so any present/future filter built from request
-// input can't become NoSQL operator injection.
-mongoose.set("sanitizeFilter", true);
+// Query hardening: strictQuery drops unknown filter keys.
+//
+// We deliberately do NOT enable `sanitizeFilter` globally. It wraps any filter
+// value that is an object containing `$` keys in `$eq`, which BREAKS the legitimate
+// operator queries the app relies on — date ranges (`createdAt: { $gte, $lte }`),
+// `$in` (order phone search), `$regex` (name/mobile search) — by trying to cast the
+// operator object to the field's type (the "Cast to date failed" on the summary /
+// orders?date / reports endpoints). Injection is prevented instead by Zod-validating
+// every request input down to primitives (never a raw object that could carry an
+// operator) plus escapeRegex() on search terms.
 mongoose.set("strictQuery", true);
 
 interface MongooseCache {
