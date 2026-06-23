@@ -48,5 +48,7 @@ next-env.d.ts
 # project-local scratch & planning brain-dump (kept out of the product repo)
 /self-tasks/
 
+# claude code / ai tooling & internal docs — keep out of the product repo
 /.claude/
 /.claude-memory/
+/CLAUDE.md
