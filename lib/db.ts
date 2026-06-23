@@ -39,7 +39,10 @@ export async function connectDB() {
       bufferCommands: false,
       // Bound per-isolate connections so many warm serverless instances stay
       // under Atlas M0's hard 500-connection cap (CLAUDE.md §3, migration_target).
-      maxPoolSize: 10,
+      // Kept small because each Cloudflare Worker isolate holds its own pool —
+      // 5 leaves room for the few parallel queries we issue (e.g. the summary
+      // route's Promise.all) without risking the M0 cap under isolate fan-out.
+      maxPoolSize: 5,
       minPoolSize: 0,
       maxIdleTimeMS: 270_000,
       serverSelectionTimeoutMS: 5_000,

@@ -1,5 +1,13 @@
 import type { NextConfig } from "next";
 
+// NOTE: We intentionally do NOT call initOpenNextCloudflareForDev() here.
+// This app uses no Cloudflare bindings (KV/D1/R2/DO) — it reads process.env
+// and opens a Mongoose TCP connection, both of which OpenNext provides at
+// runtime on Workers. The dev hook only proxies CF bindings into `next dev`,
+// and on Windows it boots the workerd runtime at config-load and crashes the
+// build (OpenNext is not fully Windows-compatible). Omitting it keeps `next
+// build` / `next dev` clean; the production build runs on Cloudflare's Linux CI.
+
 // Security response headers (CLAUDE.md §8, Step 8.2). Deliberately omits a strict
 // Content-Security-Policy for now — a wrong CSP white-screens the panel, which is
 // the exact failure we're trying to avoid; CSP with nonces is a tracked follow-up.
