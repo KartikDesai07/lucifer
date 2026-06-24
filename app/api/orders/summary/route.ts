@@ -2,7 +2,7 @@ import { connectDB } from "@/lib/db";
 import { Order } from "@/models/Order";
 import { Customer } from "@/models/Customer";
 import cache, { TTL } from "@/lib/cache";
-import { success, failure, requireAuth } from "@/lib/api-helpers";
+import { success, requireAuth, serverError } from "@/lib/api-helpers";
 import { dayRange, orderSummaryCacheKey, cafeHourOf } from "@/lib/utils";
 import type { HourlyStat } from "@/types";
 
@@ -129,7 +129,7 @@ export async function GET() {
 
     cache.set(key, summary, TTL.SUMMARY);
     return success(summary);
-  } catch {
-    return failure("Failed to build order summary");
+  } catch (error) {
+    return serverError("Failed to build order summary", error);
   }
 }

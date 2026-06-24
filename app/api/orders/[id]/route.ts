@@ -5,10 +5,10 @@ import { Table } from "@/models/Table";
 import cache from "@/lib/cache";
 import {
   success,
-  failure,
   notFound,
   validateBody,
   requireAuth,
+  serverError,
 } from "@/lib/api-helpers";
 import { orderSummaryCacheKey } from "@/lib/utils";
 import { reconcileLedger } from "@/lib/order";
@@ -31,8 +31,8 @@ export async function GET(_req: Request, { params }: Params) {
     const order = await Order.findById(id).lean();
     if (!order) return notFound("Order not found");
     return success(order);
-  } catch {
-    return failure("Failed to fetch order");
+  } catch (error) {
+    return serverError("Failed to fetch order", error);
   }
 }
 
@@ -91,8 +91,8 @@ export async function PUT(req: Request, { params }: Params) {
     cache.del(orderSummaryCacheKey(new Date(old.createdAt)));
     cache.del(orderSummaryCacheKey(new Date(updated.createdAt)));
     return success(updated);
-  } catch {
-    return failure("Failed to update order");
+  } catch (error) {
+    return serverError("Failed to update order", error);
   }
 }
 
@@ -132,7 +132,7 @@ export async function DELETE(_req: Request, { params }: Params) {
 
     cache.del(orderSummaryCacheKey(new Date(order.createdAt)));
     return success({ deleted: true });
-  } catch {
-    return failure("Failed to delete order");
+  } catch (error) {
+    return serverError("Failed to delete order", error);
   }
 }

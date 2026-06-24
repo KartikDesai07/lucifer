@@ -1,7 +1,7 @@
 import { connectDB } from "@/lib/db";
 import { Order } from "@/models/Order";
 import { Customer } from "@/models/Customer";
-import { success, failure, requireAdmin, validationError } from "@/lib/api-helpers";
+import { success, requireAdmin, validationError, serverError } from "@/lib/api-helpers";
 import { dayRange } from "@/lib/utils";
 import { CAFE_TIMEZONE } from "@/lib/constants";
 import { reportRangeSchema } from "@/schemas";
@@ -146,7 +146,7 @@ export async function GET(req: Request) {
     };
 
     return success(report);
-  } catch {
-    return failure("Failed to build report");
+  } catch (error) {
+    return serverError("Failed to build report", error);
   }
 }

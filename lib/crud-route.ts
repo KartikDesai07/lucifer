@@ -15,6 +15,7 @@ import {
   requireAuth,
   requireAdmin,
   isDuplicateKeyError,
+  serverError,
 } from "@/lib/api-helpers";
 
 // Generic CRUD route handlers for the entities whose API is pure boilerplate
@@ -110,8 +111,8 @@ export function createCollectionRoute<TDoc, TCreate extends ZodTypeAny>(
       const docs = await config.model.find(query).sort(config.sort).lean();
       if (!filtered) cache.set(config.cacheKey, docs, config.ttl);
       return success(docs);
-    } catch {
-      return failure(`Failed to fetch ${config.entity.plural}`);
+    } catch (error) {
+      return serverError(`Failed to fetch ${config.entity.plural}`, error);
     }
   }
 
@@ -131,7 +132,7 @@ export function createCollectionRoute<TDoc, TCreate extends ZodTypeAny>(
       if (config.onDuplicate && isDuplicateKeyError(e)) {
         return failure(config.onDuplicate, 400);
       }
-      return failure(`Failed to create ${config.entity.singular}`);
+      return serverError(`Failed to create ${config.entity.singular}`, e);
     }
   }
 
@@ -167,8 +168,8 @@ export function createItemRoute<TDoc, TUpdate extends ZodTypeAny>(
       const doc = await config.model.findById(id).lean();
       if (!doc) return notFound(notFoundMsg);
       return success(doc);
-    } catch {
-      return failure(`Failed to fetch ${config.entity.singular}`);
+    } catch (error) {
+      return serverError(`Failed to fetch ${config.entity.singular}`, error);
     }
   }
 
@@ -193,8 +194,8 @@ export function createItemRoute<TDoc, TUpdate extends ZodTypeAny>(
       if (!doc) return notFound(notFoundMsg);
       cache.del(config.cacheKey);
       return success(doc);
-    } catch {
-      return failure(`Failed to update ${config.entity.singular}`);
+    } catch (error) {
+      return serverError(`Failed to update ${config.entity.singular}`, error);
     }
   }
 
@@ -217,8 +218,8 @@ export function createItemRoute<TDoc, TUpdate extends ZodTypeAny>(
       if (!doc) return notFound(notFoundMsg);
       cache.del(config.cacheKey);
       return success({ deleted: true });
-    } catch {
-      return failure(`Failed to delete ${config.entity.singular}`);
+    } catch (error) {
+      return serverError(`Failed to delete ${config.entity.singular}`, error);
     }
   }
 

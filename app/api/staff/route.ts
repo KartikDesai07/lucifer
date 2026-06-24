@@ -9,6 +9,7 @@ import {
   validateBody,
   requireAdmin,
   isDuplicateKeyError,
+  serverError,
 } from "@/lib/api-helpers";
 import { createStaffSchema } from "@/schemas";
 import { BCRYPT_ROUNDS } from "@/lib/constants";
@@ -30,8 +31,8 @@ export async function GET() {
     const staff = await Staff.find().select("-password").sort({ name: 1 }).lean();
     cache.set(CACHE_KEY, staff, TTL.STAFF);
     return success(staff);
-  } catch {
-    return failure("Failed to fetch staff");
+  } catch (error) {
+    return serverError("Failed to fetch staff", error);
   }
 }
 
@@ -54,6 +55,6 @@ export async function POST(req: Request) {
     return created(safe);
   } catch (e) {
     if (isDuplicateKeyError(e)) return failure("Username already taken", 400);
-    return failure("Failed to create staff");
+    return serverError("Failed to create staff", e);
   }
 }

@@ -6,9 +6,9 @@ import { Product, type IProduct } from "@/models/Product";
 import { Category, type ICategory } from "@/models/Category";
 import {
   success,
-  failure,
   validateBody,
   requireAuth,
+  serverError,
 } from "@/lib/api-helpers";
 import {
   importProductsSchema,
@@ -212,7 +212,7 @@ export async function POST(req: Request) {
       newCategories,
     };
     return success(result);
-  } catch {
-    return failure("Failed to import products");
+  } catch (error) {
+    return serverError("Failed to import products", error);
   }
 }

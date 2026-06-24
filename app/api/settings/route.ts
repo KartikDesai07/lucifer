@@ -3,10 +3,10 @@ import { Settings } from "@/models/Settings";
 import { getSettings, invalidateSettingsCache } from "@/lib/settings";
 import {
   success,
-  failure,
   validateBody,
   requireAuth,
   requireAdmin,
+  serverError,
 } from "@/lib/api-helpers";
 import { updateSettingsSchema } from "@/schemas";
 
@@ -22,8 +22,8 @@ export async function GET() {
     await connectDB();
     const settings = await getSettings();
     return success(settings);
-  } catch {
-    return failure("Failed to fetch settings");
+  } catch (error) {
+    return serverError("Failed to fetch settings", error);
   }
 }
 
@@ -46,7 +46,7 @@ export async function PUT(req: Request) {
 
     invalidateSettingsCache();
     return success(settings);
-  } catch {
-    return failure("Failed to update settings");
+  } catch (error) {
+    return serverError("Failed to update settings", error);
   }
 }

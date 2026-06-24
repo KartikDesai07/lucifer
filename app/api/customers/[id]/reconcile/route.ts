@@ -3,7 +3,7 @@ import { connectDB } from "@/lib/db";
 import { Order } from "@/models/Order";
 import { Customer } from "@/models/Customer";
 import cache from "@/lib/cache";
-import { success, failure, notFound, requireAdmin } from "@/lib/api-helpers";
+import { success, notFound, requireAdmin, serverError } from "@/lib/api-helpers";
 import { orderSummaryCacheKey } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +53,7 @@ export async function POST(_req: Request, { params }: Params) {
     // Rebuilding the ledger can change total dues — refresh the dashboard KPI.
     cache.del(orderSummaryCacheKey());
     return success(updated);
-  } catch {
-    return failure("Failed to reconcile customer");
+  } catch (error) {
+    return serverError("Failed to reconcile customer", error);
   }
 }

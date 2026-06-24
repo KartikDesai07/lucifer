@@ -3,10 +3,10 @@ import { Table } from "@/models/Table";
 import cache from "@/lib/cache";
 import {
   success,
-  failure,
   notFound,
   validateBody,
   requireAuth,
+  serverError,
 } from "@/lib/api-helpers";
 import { updateTableSchema } from "@/schemas";
 
@@ -44,7 +44,7 @@ export async function PUT(req: Request, { params }: Params) {
 
     cache.del(CACHE_KEY);
     return success(table);
-  } catch {
-    return failure("Failed to update table");
+  } catch (error) {
+    return serverError("Failed to update table", error);
   }
 }

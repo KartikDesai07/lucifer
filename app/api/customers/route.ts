@@ -8,6 +8,7 @@ import {
   validateBody,
   requireAuth,
   isDuplicateKeyError,
+  serverError,
 } from "@/lib/api-helpers";
 import { createCustomerSchema } from "@/schemas";
 import { escapeRegex } from "@/lib/utils";
@@ -45,8 +46,8 @@ export async function GET(req: Request) {
     const customers = await Customer.find().sort({ name: 1 }).lean();
     cache.set(CACHE_KEY, customers, TTL.CUSTOMERS);
     return success(customers);
-  } catch {
-    return failure("Failed to fetch customers");
+  } catch (error) {
+    return serverError("Failed to fetch customers", error);
   }
 }
 
@@ -67,6 +68,6 @@ export async function POST(req: Request) {
     if (isDuplicateKeyError(e)) {
       return failure("A customer with this mobile already exists", 400);
     }
-    return failure("Failed to create customer");
+    return serverError("Failed to create customer", e);
   }
 }

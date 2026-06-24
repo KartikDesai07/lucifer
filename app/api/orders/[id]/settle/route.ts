@@ -10,6 +10,7 @@ import {
   notFound,
   validateBody,
   requireAuth,
+  serverError,
 } from "@/lib/api-helpers";
 import { orderSummaryCacheKey } from "@/lib/utils";
 import { derivePayment, reconcileLedger, validCustomer } from "@/lib/order";
@@ -116,7 +117,7 @@ export async function POST(req: Request, { params }: Params) {
     cache.del(orderSummaryCacheKey());
     cache.del(orderSummaryCacheKey(new Date(updated.createdAt)));
     return success(updated);
-  } catch {
-    return failure("Failed to settle order");
+  } catch (error) {
+    return serverError("Failed to settle order", error);
   }
 }

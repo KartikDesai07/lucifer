@@ -6,6 +6,7 @@ import {
   failure,
   validateBody,
   requireAuth,
+  serverError,
 } from "@/lib/api-helpers";
 import { changePasswordSchema } from "@/schemas";
 import { BCRYPT_ROUNDS } from "@/lib/constants";
@@ -37,7 +38,7 @@ export async function POST(req: Request) {
     await staff.save();
 
     return success({ updated: true });
-  } catch {
-    return failure("Failed to change password");
+  } catch (error) {
+    return serverError("Failed to change password", error);
   }
 }

@@ -9,6 +9,7 @@ import {
   validateBody,
   requireAuth,
   isDuplicateKeyError,
+  serverError,
 } from "@/lib/api-helpers";
 import { updateCustomerSchema } from "@/schemas";
 
@@ -31,8 +32,8 @@ export async function GET(_req: Request, { params }: Params) {
     const customer = await Customer.findById(id).lean();
     if (!customer) return notFound("Customer not found");
     return success(customer);
-  } catch {
-    return failure("Failed to fetch customer");
+  } catch (error) {
+    return serverError("Failed to fetch customer", error);
   }
 }
 
@@ -60,7 +61,7 @@ export async function PUT(req: Request, { params }: Params) {
     if (isDuplicateKeyError(e)) {
       return failure("A customer with this mobile already exists", 400);
     }
-    return failure("Failed to update customer");
+    return serverError("Failed to update customer", e);
   }
 }
 
@@ -83,7 +84,7 @@ export async function DELETE(_req: Request, { params }: Params) {
     await Customer.findByIdAndDelete(id);
     cache.del(CACHE_KEY);
     return success({ deleted: true });
-  } catch {
-    return failure("Failed to delete customer");
+  } catch (error) {
+    return serverError("Failed to delete customer", error);
   }
 }

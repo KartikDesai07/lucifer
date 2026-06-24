@@ -10,6 +10,7 @@ import {
   validateBody,
   requireAdmin,
   isDuplicateKeyError,
+  serverError,
 } from "@/lib/api-helpers";
 import { updateStaffSchema } from "@/schemas";
 
@@ -65,8 +66,8 @@ export async function GET(_req: Request, { params }: Params) {
     const staff = await Staff.findById(id).select("-password").lean();
     if (!staff) return notFound("Staff not found");
     return success(staff);
-  } catch {
-    return failure("Failed to fetch staff");
+  } catch (error) {
+    return serverError("Failed to fetch staff", error);
   }
 }
 
@@ -106,7 +107,7 @@ export async function PUT(req: Request, { params }: Params) {
     return success(staff);
   } catch (e) {
     if (isDuplicateKeyError(e)) return failure("Username already taken", 400);
-    return failure("Failed to update staff");
+    return serverError("Failed to update staff", e);
   }
 }
 
@@ -138,7 +139,7 @@ export async function DELETE(_req: Request, { params }: Params) {
     if (!staff) return notFound("Staff not found");
     cache.del(CACHE_KEY);
     return success({ deleted: true });
-  } catch {
-    return failure("Failed to delete staff");
+  } catch (error) {
+    return serverError("Failed to delete staff", error);
   }
 }

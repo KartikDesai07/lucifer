@@ -42,9 +42,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# cloudflare / opennext build output + wrangler local state
-/.open-next/
-/.wrangler/
+# vercel build output / local project link
+.vercel
 
 # project-local scratch & planning brain-dump (kept out of the product repo)
 /self-tasks/

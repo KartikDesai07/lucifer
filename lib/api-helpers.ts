@@ -17,6 +17,13 @@ export function failure(message: string, status = 500) {
   return NextResponse.json({ success: false, error: message }, { status });
 }
 
+// Logs an unexpected server error so it surfaces in the host's function logs,
+// then returns the standard failure response. Use in route catch blocks.
+export function serverError(message: string, error: unknown, status = 500) {
+  console.error(`[API] ${message}:`, error);
+  return failure(message, status);
+}
+
 export function notFound(message = "Not found") {
   return failure(message, 404);
 }

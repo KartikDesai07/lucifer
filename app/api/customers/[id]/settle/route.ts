@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import { connectDB } from "@/lib/db";
 import { Customer } from "@/models/Customer";
 import cache from "@/lib/cache";
-import { success, failure, notFound, requireAdmin } from "@/lib/api-helpers";
+import { success, notFound, requireAdmin, serverError } from "@/lib/api-helpers";
 import { orderSummaryCacheKey } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +32,7 @@ export async function POST(_req: Request, { params }: Params) {
     // The dashboard's Outstanding Dues KPI reads the live ledger via the summary.
     cache.del(orderSummaryCacheKey());
     return success(updated);
-  } catch {
-    return failure("Failed to settle dues");
+  } catch (error) {
+    return serverError("Failed to settle dues", error);
   }
 }

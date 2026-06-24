@@ -1,5 +1,5 @@
 import cloudinary, { CLOUDINARY_FOLDER } from "@/lib/cloudinary";
-import { success, failure, requireAuth } from "@/lib/api-helpers";
+import { success, failure, requireAuth, serverError } from "@/lib/api-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +29,8 @@ export async function POST() {
       apiKey,
       folder: CLOUDINARY_FOLDER,
     });
-  } catch {
-    return failure("Failed to sign upload");
+  } catch (error) {
+    return serverError("Failed to sign upload", error);
   }
 }
 
@@ -60,7 +60,7 @@ export async function DELETE(req: Request) {
   try {
     const result = await cloudinary.uploader.destroy(publicId);
     return success(result);
-  } catch {
-    return failure("Failed to delete image");
+  } catch (error) {
+    return serverError("Failed to delete image", error);
   }
 }

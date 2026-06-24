@@ -1,139 +1,102 @@
 # Deploy — Lucifer Cafe POS
 
-**Primary:** Cloudflare Workers (free, commercial-OK, global edge) via the OpenNext adapter.
-**Backup:** Vercel free (see the ⚠️ note before using it for live traffic).
-**Database:** MongoDB Atlas M0 (one shared cluster — the same DB backs both hosts).
+**Host:** Vercel (free Hobby tier) — Next.js 15 on Vercel's Node.js runtime.
+**Database:** MongoDB Atlas M0 (free).
+**Images:** Cloudinary (signed uploads via `/api/upload`).
 
-Both deploys serve the same app from one codebase. There is **no custom domain**, so the
-client's URL is the free `*.workers.dev` address (and the `*.vercel.app` backup).
+**Live:** https://lucifer-liard.vercel.app
+
+> **Why Vercel, not Cloudflare Workers?** Workers' per-request I/O isolation makes a
+> cached MongoDB socket unusable across requests (intermittent 500s — see the
+> migration notes). Vercel runs the app on real Node.js, where Mongoose's global
+> connection cache (`lib/db.ts`) works reliably. No app code is Cloudflare-specific.
+>
+> ⚠️ **Commercial-use note:** Vercel's free **Hobby** plan is officially for
+> non-commercial use; a paying restaurant POS is commercial. For a single small cafe
+> the practical risk is low (Vercel warns before acting), but if it ever grows or
+> Vercel flags it, upgrade to **Pro ($20/mo)** or move to a ~$5/mo always-on host
+> (Railway/Fly/VPS — all run this app unchanged).
 
 ---
 
 ## 0. One-time prerequisites
 
-- **MongoDB Atlas** → Network Access → add `0.0.0.0/0` (Cloudflare and Vercel both use
-  dynamic egress IPs, so the whole range must be allowed).
-- **Cloudinary** → unsigned upload preset `lucifer_cafe_products` exists.
-- Accounts: a free **Cloudflare** account, and (for the backup) a free **Vercel** account.
+- **MongoDB Atlas** → Network Access → add `0.0.0.0/0` (Vercel uses dynamic egress IPs).
+- **Cloudinary** account with the API key/secret + cloud name.
+- A free **Vercel** account.
 
 ## Environment variables
 
-| Name | Where | Notes |
-|------|-------|-------|
-| `MONGODB_URI` | secret | `mongodb+srv://…` — SRV works on Workers (compat date ≥ 2025-03-20). |
-| `NEXTAUTH_SECRET` | secret | `openssl rand -base64 33`. (`AUTH_SECRET` also works — Auth.js v5 reads either.) |
-| `NEXTAUTH_URL` / `AUTH_URL` | **`.env.production.local`** | Set to the deployed origin (e.g. `https://lucifer-cafe.<acct>.workers.dev`). Next.js **inlines** this into the EDGE middleware at *build* time, so it must be the real URL for the production build — NOT a runtime Worker secret, and NOT left as `.env.local`'s localhost (that bakes a redirect-to-localhost into the deployed site). `.env.production.local` overrides `.env.local` during `next build` only, so local dev still uses localhost. |
-| `CLOUDINARY_CLOUD_NAME` | secret | |
-| `CLOUDINARY_API_KEY` | secret | |
-| `CLOUDINARY_API_SECRET` | secret | |
-| `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` | **build var** | Inlined into the client bundle at **build**. Must be present when the build runs (locally: `.env.local`; CF Git CI: add under **Build variables**, not only runtime Vars). If missing at build, every product image silently breaks. |
+Set these in the **Vercel Project → Settings → Environment Variables** (or via the
+CLI, below). All except the public one are secrets.
 
-`NEXT_PUBLIC_*` are baked in at **build** time. When you run `npm run deploy` locally they
-come from `.env.local`. On Cloudflare's Git CI, set them as **build** environment variables.
+| Name | Notes |
+|------|-------|
+| `MONGODB_URI` | `mongodb+srv://…` Atlas connection string. |
+| `NEXTAUTH_SECRET` | `openssl rand -base64 33`. (`AUTH_SECRET` also works.) |
+| `CLOUDINARY_CLOUD_NAME` | server-side (signing/delete). |
+| `CLOUDINARY_API_KEY` | |
+| `CLOUDINARY_API_SECRET` | |
+| `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` | inlined into the client bundle at build; needed to render product images. |
+
+`NEXTAUTH_URL` / `AUTH_URL` are **not needed** — Auth.js v5 auto-detects the Vercel
+deployment URL, and `trustHost: true` is set in `auth.config.ts`.
 
 ---
 
-## 1. Cloudflare Workers (primary)
-
-The config lives in `wrangler.jsonc` + `open-next.config.ts`. `compatibility_date` is
-`2025-03-20` with `nodejs_compat` — that's what lets Mongoose open a TCP/TLS connection to Atlas.
-
-> **Before the first build, create `.env.production.local`** (gitignored) with the deployed
-> origin, so the right URL is baked into the edge middleware (otherwise the deployed site
-> redirects everyone to `localhost`):
-> ```
-> NEXTAUTH_URL=https://lucifer-cafe.<account>.workers.dev
-> AUTH_URL=https://lucifer-cafe.<account>.workers.dev
-> ```
-> On Cloudflare Git CI (Option A) instead, set these two as **Build variables**.
-
-### Option A — Cloudflare Git CI (recommended)
-
-OpenNext's local build/preview is **not fully supported on native Windows** (the local
-`preview:cf` boots `workerd`, which crashes on Windows). Building on Cloudflare's Linux CI
-avoids this entirely and gives push-to-deploy.
-
-1. Push the repo to GitHub (private is fine).
-2. Cloudflare dashboard → **Workers & Pages → Create → Workers → Import a repository**.
-3. Build command: `npx opennextjs-cloudflare build` · Deploy command: `npx opennextjs-cloudflare deploy`.
-4. Add the env vars/secrets above in the project settings (mark secrets as encrypted; add the
-   `NEXT_PUBLIC_*` as build variables).
-5. Deploy. URL: `https://lucifer-cafe.<account>.workers.dev`.
-
-### Option B — local CLI deploy
-
-The OpenNext **build** works on Windows (validated — produces `.open-next/worker.js`); only the
-local *preview* doesn't. Deploy uploads the built worker, so this works from Windows:
+## 1. Deploy via the Vercel CLI (what this project uses)
 
 ```bash
-npx wrangler login                 # opens browser OAuth (your Cloudflare account)
-npx wrangler secret put MONGODB_URI
-npx wrangler secret put NEXTAUTH_SECRET
-npx wrangler secret put CLOUDINARY_CLOUD_NAME
-npx wrangler secret put CLOUDINARY_API_KEY
-npx wrangler secret put CLOUDINARY_API_SECRET
-npm run deploy                     # = opennextjs-cloudflare build && … deploy
+npx vercel login            # browser auth (your Vercel account)
+npx vercel link --yes       # create + link the project (Next.js auto-detected)
+
+# set the 6 env vars (one-time) — e.g. pipe each value:
+printf '%s' "<value>" | npx vercel env add MONGODB_URI production
+# …repeat for NEXTAUTH_SECRET, CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY,
+#   CLOUDINARY_API_SECRET, NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
+
+npm run deploy              # = vercel --prod  (builds remotely + promotes to prod)
 ```
 
-### Seed the admin on production (one-time)
+The CLI uploads the source (respecting `.gitignore`, so `.env.local` is **not**
+uploaded) and builds on Vercel. Subsequent deploys: just `npm run deploy`.
+
+### Alternative — GitHub auto-deploy
+
+Push the repo to a GitHub repo, then **vercel.com → Add New → Project → Import** it.
+Set the env vars in the dashboard. Every push to the main branch then auto-deploys.
+
+### Seed the admin (one-time, only if a fresh DB)
+
+If `MONGODB_URI` points at a DB that already has your admin/data, skip this. For a
+brand-new DB:
 
 ```bash
-# point a local shell at the PROD MongoDB, then seed:
-MONGODB_URI="mongodb+srv://…prod…" SEED_ADMIN_PASSWORD="<strong>" npm run seed:admin
-MONGODB_URI="mongodb+srv://…prod…" npm run seed:tables
+MONGODB_URI="mongodb+srv://…" SEED_ADMIN_PASSWORD="<strong>" npm run seed:admin
+MONGODB_URI="mongodb+srv://…" npm run seed:tables
 ```
 
 ---
 
-## 2. Vercel (backup)
+## 2. Post-deploy smoke test
 
-> ⚠️ **Read this first.** Vercel's **free (Hobby) plan prohibits commercial use** — and that
-> explicitly includes any site that requests/processes payment. A restaurant POS is commercial,
-> so running it on Vercel free (including as a live backup) is against Vercel's Fair Use terms
-> and could be suspended. The compliant alternatives are **Vercel Pro ($20/mo)** or a **~$5/mo
-> VPS**. This backup is set up per the owner's explicit decision; use it at your own risk.
->
-> Note also: this backup shares the **same Atlas database** as Cloudflare, so it does not protect
-> against a database outage — only against Cloudflare itself being unreachable. Failover is
-> **manual** (point staff at the Vercel URL); automatic one-URL failover needs Cloudflare's paid
-> Load Balancing.
-
-The repo is Vercel-ready with no code changes (Node runtime, edge-safe middleware, env fallback).
-
-1. Push the repo to GitHub.
-2. Vercel → **Add New → Project → Import** the repo. Framework auto-detects as Next.js.
-3. Add the env vars above in **Project Settings → Environment Variables**
-   (`NEXT_PUBLIC_*` for all environments; secrets as needed). `NEXTAUTH_URL` is auto-detected
-   on Vercel — leave it unset unless you add a custom domain.
-4. Deploy. URL: `https://<project>.vercel.app`.
-
-If a Mongoose bundling warning appears in the Vercel build, add
-`serverExternalPackages: ['mongoose']` to `next.config.ts` (Vercel-only; it is **not** needed
-for — and was deliberately left out to avoid disturbing — the validated Cloudflare build).
-
----
-
-## 3. Failover runbook (manual)
-
-- **Primary:** `https://lucifer-cafe.<account>.workers.dev`
-- **Backup:** `https://<project>.vercel.app`
-- Both read/write the **same** MongoDB Atlas database, so data is identical and consistent.
-- **If Cloudflare is unreachable:** have staff open the Vercel URL instead. No data migration
-  needed — same DB. Switch back when Cloudflare recovers.
-- **If MongoDB is unreachable:** *both* URLs are down. This is the real single point of failure;
-  Atlas M0 is internally a 3-node replica set with auto-failover, so this should be rare.
-
-## 4. Backups
-
-- Atlas M0 has **no automated backups**. Export weekly: Atlas UI → Collections → Export, or
-  `mongodump --uri "$MONGODB_URI"`.
-- Keep `.env.local` and the seeded admin password somewhere safe (not in git).
-
-## 5. Post-deploy smoke test
-
-- [ ] Login page loads · admin can log in
-- [ ] Dashboard loads (KPIs + live floor)
-- [ ] Add a product with image (Cloudinary upload works)
+- [ ] Open the URL → login page loads
+- [ ] `GET /api/health` → `{ "status": "ok", "db": "connected" }`
+- [ ] Log in as admin
+- [ ] Dashboard KPIs + live floor populate (exercises the summary/aggregate)
+- [ ] Add a product with an image (Cloudinary upload works)
 - [ ] POS: open a tab → fire KOT → settle; receipt prints
-- [ ] Reports load with today's data
-- [ ] No console errors; HTTPS enforced (automatic on both hosts)
+- [ ] Orders page date filter + search work
+- [ ] Reports load with data
+
+## 3. Backups
+
+Atlas M0 has **no automatic backups**. Export weekly: Atlas UI → Collections →
+Export, or `mongodump --uri "$MONGODB_URI"`. Keep `.env.local` + the admin password
+somewhere safe (not in git).
+
+## 4. Going further (optional)
+
+- **Custom domain:** Vercel → Project → Domains → add your domain.
+- **Always-on / no cold starts:** Vercel Pro, or a ~$5/mo Railway/Fly/VPS (Mongoose
+  works the same on all — `lib/db.ts` is host-agnostic).

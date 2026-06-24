@@ -10,6 +10,7 @@ import {
   validateBody,
   requireAuth,
   isDuplicateKeyError,
+  serverError,
 } from "@/lib/api-helpers";
 import { updateCategorySchema } from "@/schemas";
 import { UNCATEGORIZED } from "@/lib/constants";
@@ -54,7 +55,7 @@ export async function PUT(req: Request, { params }: Params) {
     return success(existing.toObject());
   } catch (e) {
     if (isDuplicateKeyError(e)) return failure("Category already exists", 400);
-    return failure("Failed to update category");
+    return serverError("Failed to update category", e);
   }
 }
 
@@ -81,7 +82,7 @@ export async function DELETE(_req: Request, { params }: Params) {
     cache.del("categories");
     cache.del("products");
     return success({ deleted: true });
-  } catch {
-    return failure("Failed to delete category");
+  } catch (error) {
+    return serverError("Failed to delete category", error);
   }
 }

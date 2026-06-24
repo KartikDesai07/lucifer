@@ -12,6 +12,7 @@ import {
   validateBody,
   requireAuth,
   isDuplicateKeyError,
+  serverError,
 } from "@/lib/api-helpers";
 import {
   generateOrderId,
@@ -79,8 +80,8 @@ export async function GET(req: Request) {
       .limit(limit)
       .lean();
     return success(orders);
-  } catch {
-    return failure("Failed to fetch orders");
+  } catch (error) {
+    return serverError("Failed to fetch orders", error);
   }
 }
 
@@ -195,7 +196,7 @@ export async function POST(req: Request) {
 
     cache.del(orderSummaryCacheKey());
     return created(order);
-  } catch {
-    return failure("Failed to create order");
+  } catch (error) {
+    return serverError("Failed to create order", error);
   }
 }

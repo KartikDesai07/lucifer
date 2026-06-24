@@ -4,10 +4,10 @@ import { connectDB } from "@/lib/db";
 import { Staff } from "@/models/Staff";
 import {
   success,
-  failure,
   notFound,
   validateBody,
   requireAdmin,
+  serverError,
 } from "@/lib/api-helpers";
 import { resetPasswordSchema } from "@/schemas";
 import { BCRYPT_ROUNDS } from "@/lib/constants";
@@ -37,7 +37,7 @@ export async function POST(req: Request, { params }: Params) {
       .lean();
     if (!staff) return notFound("Staff not found");
     return success({ updated: true });
-  } catch {
-    return failure("Failed to reset password");
+  } catch (error) {
+    return serverError("Failed to reset password", error);
   }
 }

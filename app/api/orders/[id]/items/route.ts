@@ -8,6 +8,7 @@ import {
   notFound,
   validateBody,
   requireAuth,
+  serverError,
 } from "@/lib/api-helpers";
 import { orderSummaryCacheKey } from "@/lib/utils";
 import { getSettings, gstConfigOf } from "@/lib/settings";
@@ -81,7 +82,7 @@ export async function POST(req: Request, { params }: Params) {
     // In-progress KPI value (Σ pending totals) grew — refresh today's summary.
     cache.del(orderSummaryCacheKey());
     return success(updated);
-  } catch {
-    return failure("Failed to add items");
+  } catch (error) {
+    return serverError("Failed to add items", error);
   }
 }
