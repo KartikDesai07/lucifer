@@ -29,8 +29,21 @@ approximate.
 Nothing in §1 can start until all of these exist.
 
 - [ ] **Accounts under the client's own email** — Atlas (one free M0, region
-      `AP_SOUTH_1`), Vercel (Hobby), Cloudflare R2 bucket (public read + a CORS
-      rule allowing `PUT` + content-type from the app origin).
+      `AP_SOUTH_1`) and Vercel (Hobby). Both are required.
+- [ ] **An image store — OPTIONAL, and fine to defer.** Either a Cloudflare R2
+      bucket (public read + a CORS rule allowing `PUT` + content-type from the
+      app origin; note R2 asks for card details even on the free tier) or
+      `IMAGE_STORE=cloudinary` with a Cloudinary account.
+      **Shipping with neither is supported and degrades cleanly** — verified in
+      code: `r2Config()` returns null rather than throwing, `POST /api/upload`
+      answers a plain "Image uploads are not configured", and
+      `productImageUrl()` returns null so every surface just renders no image.
+      The whole POS — orders, KOT, dues, receipts, reports, end-of-day — works.
+      What the cafe loses until a store is configured: **product photos and the
+      Settings logo**. The receipt simply prints without a logo, and never
+      invents a brand in its place.
+      Adding a store later needs a **redeploy**, because the public base URL is
+      a `NEXT_PUBLIC_*` value baked in at build time.
 - [ ] **A host, decided.** The app resolves *which cafe it is serving* from the
       request host, so the host and two env vars have to agree. Two supported
       shapes:
@@ -66,17 +79,16 @@ Nothing in §1 can start until all of these exist.
 ## §1 Deploy the app (DEPLOYER)
 
 - [ ] Vercel project created with **Root Directory = `apps/cafe`**.
-- [ ] Environment variables set in Vercel (Production):
-      `MONGODB_URI`, `NEXTAUTH_SECRET`, `TENANT_ID`, `ROOT_DOMAIN`, and the
-      image store — either the `R2_*` set plus
+- [ ] Environment variables set in Vercel (Production). **Required four:**
+      `MONGODB_URI`, `NEXTAUTH_SECRET`, `TENANT_ID`, `ROOT_DOMAIN`. Exact list
+      and meanings: `apps/cafe/DEPLOY.md`.
+- [ ] Image store env — **only if §0 chose one**: either the `R2_*` set plus
       `NEXT_PUBLIC_R2_PUBLIC_BASE_URL`, or `IMAGE_STORE=cloudinary` plus the
-      `CLOUDINARY_*` set. Exact list and meanings: `apps/cafe/DEPLOY.md`.
-      A missing image-store variable does not break the app — uploads return
-      "Image uploads are not configured" and photos silently fail to render, so
-      confirm it now rather than during §8. And note `NEXT_PUBLIC_*` values are
-      baked into the build: adding or changing one *after* a deploy needs
-      another `npm run deploy`. Editing it in the dashboard and hard-refreshing
-      changes nothing, and photos keep failing.
+      `CLOUDINARY_*` set. Deliberately omitting both is a supported shape (see
+      §0) — uploads answer "Image uploads are not configured" and no image
+      renders; nothing else is affected. Remember `NEXT_PUBLIC_*` is baked in at
+      build time, so adding a store later needs another `npm run deploy` — a
+      dashboard edit plus a hard refresh changes nothing and photos keep failing.
 - [ ] Profile added to `deploy.profiles.json` (`app`, `orgId`, `projectId`,
       `tokenEnv`); `npm run deploy -- --list` shows it.
 - [ ] **Root Directory = `apps/cafe`** (Vercel Project → Settings → Build and
