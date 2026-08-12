@@ -14,6 +14,7 @@ node_modules/
 
 # testing
 coverage/
+test-output.txt
 
 # next.js (per-app build output: apps/*/.next)
 .next/

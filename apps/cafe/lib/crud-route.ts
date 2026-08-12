@@ -131,6 +131,13 @@ export function createCollectionRoute<TDoc, TCreate extends ZodTypeAny>(
       await connectDB();
       const invalid = await config.validate?.(parsed.data as z.infer<TCreate>);
       if (invalid) return failure(invalid, 400);
+      // Await the unique-index build before the first insert — connectDB()'s
+      // autoIndex createIndexes() is not awaited, so on a cold cluster two
+      // concurrent inserts can both land before the index exists; the deferred
+      // build then fails silently and PERMANENTLY, voiding this collection's
+      // duplicate-name guard for its whole life. .init() is memoized per
+      // process, so warm invocations pay nothing (mirrors due-payment.ts).
+      await config.model.init();
       const doc = await config.model.create(parsed.data as z.infer<TCreate>);
       cache.del(config.cacheKey);
       return created(doc);

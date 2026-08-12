@@ -518,3 +518,29 @@ test("PIN: the runbook and DEPLOY.md both require Root Directory = apps/cafe, th
     "DEPLOY.md is cited as the deploy authority — it must carry the same requirement",
   );
 });
+
+test("PIN: apps/cafe/package.json defines NO deploy script of its own — npm resolves the NEAREST package.json, so a second `deploy` key here would silently shadow the guarded root scripts/deploy.mjs (and running from apps/cafe alone can't work: @pos/shared is workspace-only and would 404 against the public registry)", () => {
+  assert.ok(
+    !("deploy" in CAFE_PKG.scripts),
+    "apps/cafe/package.json must not define a \"deploy\" script — `npm run deploy` from inside apps/cafe would bypass the root's cwd:ROOT guard entirely",
+  );
+});
+
+test("PIN: a bare `npm run deploy` cannot fall back to the local .vercel link once profiles exist — the target must be named, or one cafe's deploy lands on another's project", () => {
+  const src = readFileSync(path.join(REPO_ROOT, "scripts/deploy.mjs"), "utf8");
+  // The empty-profile fallback is legitimate ONLY for a fresh clone with a link
+  // and no profiles file. Gating it on "no profiles configured" is what makes an
+  // ambiguous bare deploy impossible; without the gate, a missing "default"
+  // silently resolved to {} and deployed to whatever the link pointed at.
+  assert.match(
+    src,
+    /profileName === "default" && configuredNames\.length === 0/,
+    "the {} fallback must be gated on there being NO configured profiles",
+  );
+  assert.ok(
+    !/profileName === "default" \? \{\} : null/.test(src),
+    "the ungated `profileName === \"default\" ? {} : null` fallback must not come back — it is how a bare deploy silently used the local .vercel link",
+  );
+  // And the refusal has to tell the operator what the valid targets are.
+  assert.match(src, /Configured: \$\{configuredNames\.join\(", "\)/);
+});

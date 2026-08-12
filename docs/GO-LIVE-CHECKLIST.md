@@ -48,23 +48,30 @@ Nothing in §1 can start until all of these exist.
       request host, so the host and two env vars have to agree. Two supported
       shapes:
       - **(A) Vercel's own free domain** — no purchase needed. Set
-        `ROOT_DOMAIN=vercel.app` and `TENANT_ID=<your-project-slug>`, and the
-        production URL `https://<project-slug>.vercel.app` resolves. Verified by
-        probe: with `ROOT_DOMAIN` unset a bare `*.vercel.app` host **404s**; with
-        it set to `vercel.app` the project slug becomes the tenant id.
-        Trade-offs to accept: the URL carries Vercel branding, the client cannot
-        be moved to their own domain later without a new `ROOT_DOMAIN` + a
-        redeploy, and **Vercel's per-deployment preview URLs
-        (`proj-hash-team.vercel.app`) will 404** because their subdomain does not
-        equal `TENANT_ID` — see §1.
+        `ROOT_DOMAIN=vercel.app` and `TENANT_ID=` **the first label of the
+        production domain Vercel actually assigned**, then deploy. Confirmed live
+        on 2026-08-12: `/api/health` answered
+        `{"ok":false,"db":"down","tenant":"lucifer007"}` on
+        `lucifer007.vercel.app`, and with `ROOT_DOMAIN` unset a bare
+        `*.vercel.app` host 404s instead.
+        ⚠️ **Do NOT assume that label equals the project name.** If the name is
+        already taken Vercel appends a suffix — this platform's own v1 project is
+        named `lucifer` but serves `lucifer-liard.vercel.app`. Read the real
+        domain from Vercel → Project → **Domains** and copy its first label
+        verbatim; a mismatch 404s **every** page, including `/login`, with
+        nothing in the logs to explain it.
+        Trade-offs to accept: the URL carries Vercel branding, moving the client
+        to their own domain later needs a new `ROOT_DOMAIN` + a redeploy, and
+        **Vercel's per-deployment preview URLs (`proj-hash-team.vercel.app`) will
+        404** because their subdomain does not equal `TENANT_ID` — see §1.
       - **(B) A real domain** — `<client-slug>.<root-domain>` with
         `ROOT_DOMAIN=<root-domain>`, `TENANT_ID=<client-slug>`, and a DNS CNAME.
         Better for handover and for moving the cafe between hosts.
 - [ ] **The slug is not a reserved one.** `www`, `app`, `api`, `admin` and `hub`
       never resolve to a cafe — they are platform names, and a deployment on one
       of them answers 404 with nothing in the logs to explain it. On shape (A)
-      the **Vercel project name IS the slug**, so check this before creating the
-      project.
+      the slug comes from the assigned **domain label** (above), so check the
+      domain Vercel gave you — not just the name you typed.
 - [ ] **Client details, in writing**: cafe name; tagline (or an explicit
       "none"); address; contact phone; GST on/off + rate + inclusive/exclusive
       + GSTIN; FSSAI number; logo file; menu (CSV or a price list).
@@ -80,8 +87,27 @@ Nothing in §1 can start until all of these exist.
 
 - [ ] Vercel project created with **Root Directory = `apps/cafe`**.
 - [ ] Environment variables set in Vercel (Production). **Required four:**
-      `MONGODB_URI`, `NEXTAUTH_SECRET`, `TENANT_ID`, `ROOT_DOMAIN`. Exact list
-      and meanings: `apps/cafe/DEPLOY.md`.
+      `MONGODB_URI`, `NEXTAUTH_SECRET`, `TENANT_ID`, `ROOT_DOMAIN`, plus
+      `HEALTH_STATS_TOKEN` (any random 32-byte value — unset, `/api/health?stats=1`
+      hands cluster gauges to anyone who asks). Exact list and meanings:
+      `apps/cafe/DEPLOY.md`. **`NEXTAUTH_URL` / `AUTH_URL` must NOT be set** —
+      Auth.js v5 runs with `trustHost`, and setting either rewrites every
+      request's origin and breaks login.
+- [ ] **`MONGODB_URI` includes the database name.** A path-less SRV silently
+      connects to a database called `test` — probe-verified: `mongodb://host`,
+      `mongodb://host/` and `mongodb://host/?retryWrites=true` all resolve to
+      `test`, while `mongodb://host/pos` resolves to `pos`. So the URI must end
+      `…mongodb.net/<dbname>?…`, and the value in Vercel and the one you seed
+      with must be **byte-identical** — otherwise you seed one database and the
+      app serves another, and the cafe sees an empty menu it just imported.
+- [ ] **ANY env var change only affects NEW deployments.** After editing a value
+      in the dashboard, re-run `npm run deploy -- --profile <client>` before
+      re-testing. This is not limited to `NEXT_PUBLIC_*`; a dashboard edit plus a
+      hard refresh changes nothing on its own.
+- [ ] **Functions run in Mumbai**, not Vercel's default Virginia. `apps/cafe/vercel.json`
+      pins `"regions": ["bom1"]` so every deploy gets it — confirm in the build
+      output/Project → Functions. Left at the default, each POS action pays
+      several Virginia↔Mumbai round trips to the Atlas cluster.
 - [ ] Image store env — **only if §0 chose one**: either the `R2_*` set plus
       `NEXT_PUBLIC_R2_PUBLIC_BASE_URL`, or `IMAGE_STORE=cloudinary` plus the
       `CLOUDINARY_*` set. Deliberately omitting both is a supported shape (see
@@ -110,10 +136,11 @@ Nothing in §1 can start until all of these exist.
 - [ ] `npm run deploy -- --profile <client>` succeeds. (The deploy script never
       touches git — committing and pushing stay manual, by design.)
 - [ ] Host wired to match §0's choice:
-      - **Shape (A), Vercel's domain:** nothing to add — just confirm
-        `ROOT_DOMAIN=vercel.app` and `TENANT_ID` is *exactly* the project slug in
-        `https://<project-slug>.vercel.app`. A mismatch 404s **every** page with
-        nothing in the logs.
+      - **Shape (A), Vercel's domain:** confirm `ROOT_DOMAIN=vercel.app` and that
+        `TENANT_ID` is *byte-for-byte* the first label of the domain under
+        Vercel → Project → **Domains** (not the project name — see §0). Verify by
+        curling `/api/health`: the response's `tenant` field must equal your
+        `TENANT_ID`. A mismatch 404s every page.
       - **Shape (B), real domain:** add it in Vercel, DNS `CNAME <client-slug>` →
         Vercel, and `ROOT_DOMAIN` = the apex actually used.
 - [ ] On shape (A), know that **the preview URL from the rehearsal above will
@@ -147,6 +174,10 @@ duration of this step.
 
       Creates username `admin` (override with `SEED_ADMIN_USERNAME`).
       Re-running is safe: it skips if an admin already exists.
+      ⚠️ **"Admin already exists" on a brand-new cluster means you seeded the
+      WRONG database** — most likely a stale `MONGODB_URI` still pointing at
+      another cafe. Stop and confirm the URI (including its `/<dbname>` path) is
+      the client's before ticking this.
 - [ ] `npm run seed:tables` → eight starter tables `T-1 … T-8`, 4 seats each.
       **Empty-floor bootstrap only** — once any table exists it does nothing, so
       it can never resurrect tables the cafe later deleted.
@@ -299,6 +330,14 @@ Two routes: type it in, or import a CSV. For more than ~30 items, import.
         is a *hard* delete — that person's visit and spend history is gone, and
         only last night's dump brings it back. Treat the customer list as
         records, not housekeeping.
+      - **Discount a bill by any amount, including to zero** — no cap, no reason
+        recorded, no name attached, and no discount line of its own in Reports or
+        the closing slip. If the drawer is short, a comped bill is the first
+        thing to suspect and the hardest to see.
+      - **Delete a category**, which silently re-tags every product in it to
+        "Uncategorized" and cannot be undone.
+      - **Permanently delete a reservation or an event**, with no record of who
+        did it.
       - Void a fired item (reason required, kitchen gets a VOID slip), receive a
         customer's dues payment, and print the end-of-day slip.
       - **Cancelling a whole order is admin-only**, as is resetting someone
@@ -360,6 +399,10 @@ Tick a box only after **looking at the paper**.
 - [ ] **A slow logo stalls the print.** A broken logo URL prints the slip
       without it, but a *hanging* request holds the job. If prints hang, clear
       the logo in Settings and retest to confirm the cause.
+- [ ] **Tell the cashier the retry rule, out loud:** if Pay Now shows an error or
+      seems stuck, **check the Orders page for that sale before ringing it
+      again**. A write that actually landed but lost its reply will become a
+      second order if re-rung — there is no duplicate-request protection yet.
 
 ---
 
@@ -452,6 +495,12 @@ and no point-in-time restore.** What follows is the entire safety net.
       one day of orders, and restoring is a manual operator job.
 - [ ] Diary note: GitHub disables scheduled workflows after roughly 60 days
       without repo activity. A missing nightly run is a signal, not a hiccup.
+- [ ] **Turn on Vercel usage alerts** (Account/Team → Settings → Notifications →
+      Usage) and check the project's **Usage** tab weekly for the first month.
+      The dashboard holds several always-on 30-second polls, and a free plan's
+      compute allowance can be exhausted mid-month — if that happens the site can
+      stop serving until the allowance resets, and upgrading is the only quick
+      remedy. Better to see it coming than to hear it from the cafe.
 
 ---
 

@@ -106,7 +106,7 @@ export default function DashboardPage() {
   const availableTables = tableList.filter(
     (t) => t.status === "Available",
   ).length;
-  const totalTables = tableList.length || 8;
+  const totalTables = tableList.length;
 
   return (
     <div className="space-y-6">

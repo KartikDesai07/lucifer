@@ -29,6 +29,9 @@ const productHooks = createCrudHooks<
   rootKey: PRODUCT_KEYS.all,
   staleTime: STALE_TIMES.PRODUCTS,
   gcTime: GC_TIMES.DEFAULT,
+  // A POS tab left open all day never re-fetches products otherwise — a price
+  // change or an "86" made on another device would never reach that terminal.
+  refetchInterval: STALE_TIMES.PRODUCTS,
   // Archived list nests under the root key so invalidating PRODUCT_KEYS.all
   // (any mutation) refreshes both the active and archived views.
   listKey: (f) =>

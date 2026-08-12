@@ -9,7 +9,6 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test lib/tenant.test.ts models/order.ledger.test.ts models/daily-rollup.ledger.test.ts models/Counter.test.ts lib/ttl-guard.test.ts lib/cluster-registry.test.ts lib/cluster-router.test.ts lib/order-create.test.ts lib/order-read.test.ts lib/customer-rollup.test.ts lib/report-merge.test.ts lib/report-fanout.test.ts lib/rollup-recompute.test.ts lib/ledger-scale.test.ts lib/provisioners/atlas.test.ts lib/heartbeat.test.ts lib/images.test.ts lib/r2.test.ts lib/table-admin.test.ts lib/table-constants-pin.test.ts lib/settle-money.test.ts lib/order-void.test.ts lib/order-line-key.test.ts lib/order-integrity.test.ts lib/due-payment.test.ts lib/settings-branding.test.ts lib/order-list-query.test.ts lib/summary-date.test.ts lib/report-csv.test.ts lib/print-paths.test.ts lib/go-live-runbook.test.ts",
-    "deploy": "vercel --prod",
     "itest:f2": "node --env-file=.env.local --import tsx scripts/f2-integration/run.ts",
     "seed:admin": "node --env-file=.env.local --import tsx scripts/seed-admin.ts",
     "seed:tables": "node --env-file=.env.local --import tsx scripts/seed-tables.ts",

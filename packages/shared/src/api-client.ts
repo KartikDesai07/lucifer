@@ -2,6 +2,11 @@
 // `{ success, data }` (or `{ success: false, error }`); these unwrap `.data` and
 // throw on failure so TanStack Query's error path handles it uniformly.
 
+// A network blip mid-request must fail visibly, not hang the caller forever
+// (e.g. a cashier staring at a spinner mid-settle with no idea whether the
+// sale landed). Both read and write paths abort after this ceiling.
+const REQUEST_TIMEOUT_MS = 15 * 1000;
+
 type ApiEnvelope<T> =
   | { success: true; data: T }
   | { success: false; error: string; details?: Record<string, string[]> };
@@ -15,7 +20,9 @@ async function unwrap<T>(res: Response): Promise<T> {
 }
 
 export function apiGet<T>(url: string): Promise<T> {
-  return fetch(url).then((res) => unwrap<T>(res));
+  return fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }).then((res) =>
+    unwrap<T>(res),
+  );
 }
 
 // PUT is this app's update verb almost everywhere; PATCH exists for the few seams
@@ -30,5 +37,6 @@ export function apiSend<T>(
     method,
     headers: { "Content-Type": "application/json" },
     body: payload === undefined ? undefined : JSON.stringify(payload),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   }).then((res) => unwrap<T>(res));
 }

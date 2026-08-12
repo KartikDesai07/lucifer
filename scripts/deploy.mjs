@@ -79,9 +79,21 @@ if (list) {
   process.exit(0);
 }
 
-const profile = profiles[profileName] ?? (profileName === "default" ? {} : null);
+// The empty-profile fallback exists for a fresh clone that has a `.vercel` link
+// and no profiles file at all. It must NOT apply once profiles ARE configured:
+// otherwise a bare `npm run deploy` (profileName "default") silently falls back
+// to whatever the local link points at — which is how a deploy meant for one
+// cafe can land on another. With profiles present, the target must be explicit.
+const configuredNames = Object.keys(profiles);
+const profile =
+  profiles[profileName] ??
+  (profileName === "default" && configuredNames.length === 0 ? {} : null);
 if (!profile) {
-  fail(`profile "${profileName}" not found in deploy.profiles.json (try --list)`);
+  fail(
+    `profile "${profileName}" not found in deploy.profiles.json.\n` +
+      `Configured: ${configuredNames.join(", ") || "(none)"}\n` +
+      `Every client deploy must name its target: npm run deploy -- --profile <name>`,
+  );
 }
 
 // ── resolve target ───────────────────────────────────────────────────────────

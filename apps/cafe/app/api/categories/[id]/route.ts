@@ -9,6 +9,7 @@ import {
   notFound,
   validateBody,
   requireAuth,
+  requireAdmin,
   isDuplicateKeyError,
   serverError,
 } from "@/lib/api-helpers";
@@ -61,7 +62,7 @@ export async function PUT(req: Request, { params }: Params) {
 
 // DELETE /api/categories/[id] — delete + reassign orphaned products, clear caches
 export async function DELETE(_req: Request, { params }: Params) {
-  const authed = await requireAuth();
+  const authed = await requireAdmin();
   if ("error" in authed) return authed.error;
 
   const { id } = await params;

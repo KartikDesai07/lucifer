@@ -47,7 +47,8 @@ CLI, below). All except the public one are secrets.
 
 | Name | Notes |
 |------|-------|
-| `MONGODB_URI` | `mongodb+srv://…` Atlas connection string. |
+| `MONGODB_URI` | `mongodb+srv://…` Atlas connection string. **Must include the database path** (`…mongodb.net/pos?…`) — a path-less SRV silently connects to a database named `test`, so the app and the seeder can end up in different databases. |
+| `HEALTH_STATS_TOKEN` | any random 32-byte value. Unset, `/api/health?stats=1` returns cluster gauges to anonymous callers. |
 | `NEXTAUTH_SECRET` | `openssl rand -base64 33`. (`AUTH_SECRET` also works.) |
 | `ROOT_DOMAIN` | **required for any real deployment** — the apex the cafe's host sits under, so `<slug>.<ROOT_DOMAIN>` resolves. Unset, only `localhost`, `*.localhost` and `<sub>---<branch>.vercel.app` previews resolve, and every other host — including a bare `*.vercel.app` — is 404'd in `middleware.ts`. **To ship on Vercel's own free domain, set it to `vercel.app`** (probe-verified): then `<project-slug>.vercel.app` resolves with the project slug as the tenant id, while Vercel's per-deployment preview URLs still 404 (their subdomain ≠ `TENANT_ID`). |
 | `TENANT_ID` | the cafe's slug. When set, the middleware 404s any host whose subdomain doesn't match it, so a misrouted domain can never serve the wrong cafe; it also stamps the heartbeat. Leave unset only for local dev. |
@@ -63,8 +64,10 @@ CLI, below). All except the public one are secrets.
 | `CLOUDINARY_API_SECRET` | 〃 |
 | `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` | only if any Cloudinary images exist; inlined at build to render them. |
 
-`NEXTAUTH_URL` / `AUTH_URL` are **not needed** — Auth.js v5 auto-detects the Vercel
-deployment URL, and `trustHost: true` is set in `auth.config.ts`.
+`NEXTAUTH_URL` / `AUTH_URL` must be **ABSENT** — not merely "not needed". Auth.js v5
+auto-detects the deployment URL and `trustHost: true` is set in `auth.config.ts`; if
+either variable IS set, next-auth rewrites every request's origin to that value and
+**login breaks everywhere**. Do not copy them in from a local `.env`.
 
 ---
 
@@ -81,20 +84,30 @@ npx vercel link --yes       # create + link the project (Next.js auto-detected)
 
 # set the env vars (one-time) — e.g. pipe each value:
 printf '%s' "<value>" | npx vercel env add MONGODB_URI production
-# …repeat for NEXTAUTH_SECRET, R2_ACCOUNT_ID, R2_ACCESS_KEY_ID,
-#   R2_SECRET_ACCESS_KEY, R2_BUCKET, NEXT_PUBLIC_R2_PUBLIC_BASE_URL
-#   (+ the CLOUDINARY_* trio and IMAGE_STORE=cloudinary if staying on Cloudinary)
+# …repeat for NEXTAUTH_SECRET, TENANT_ID, ROOT_DOMAIN, HEALTH_STATS_TOKEN
+#   image store (optional): R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY,
+#   R2_BUCKET, NEXT_PUBLIC_R2_PUBLIC_BASE_URL — or IMAGE_STORE=cloudinary plus all
+#   FOUR of CLOUDINARY_CLOUD_NAME / _API_KEY / _API_SECRET and
+#   NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME (the public one is REQUIRED to render them)
 
-npm run deploy              # = vercel --prod  (builds remotely + promotes to prod)
+npm run deploy -- --profile <client>     # from the REPO ROOT, never from apps/cafe
 ```
 
-The CLI uploads the source (respecting `.gitignore`, so `.env.local` is **not**
-uploaded) and builds on Vercel. Subsequent deploys: just `npm run deploy`.
+**Every deploy command runs from the repo root**, and always with an explicit
+`--profile`. `scripts/deploy.mjs` uploads the whole workspace (the app alone cannot
+resolve the `@pos/shared` workspace package) and the project's Root Directory setting
+selects what to build. A bare `npm run deploy` with no profile is refused on purpose,
+so a client deploy can never land on the wrong project. `.gitignore` is respected, so
+`.env.local` is never uploaded.
 
-### Alternative — GitHub auto-deploy
+### Do NOT use GitHub auto-deploy for a client
 
-Push the repo to a GitHub repo, then **vercel.com → Add New → Project → Import** it.
-Set the env vars in the dashboard. Every push to the main branch then auto-deploys.
+Client deploys are **CLI-only**, deliberately. Git integration means every push to
+the tracked branch ships to a live cafe — on 2026-08-12 a branch push auto-triggered
+a build on the v1 project and only its stale Root Directory stopped it from becoming
+a production deploy of untested code. It is also impractical here: the repo lives on
+a personal GitHub account, so a client's own Vercel account cannot import it without
+being granted access to that account's repo.
 
 ### Seed the admin (one-time, only if a fresh DB)
 

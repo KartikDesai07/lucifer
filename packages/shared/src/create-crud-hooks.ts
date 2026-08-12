@@ -25,6 +25,10 @@ export interface CrudHooksConfig<F> {
   rootKey: QueryKey; // broad query key, e.g. ["products"] — the invalidation root
   staleTime: number;
   gcTime?: number;
+  // Optional background poll for the list query — e.g. a POS tab left open all
+  // day needs to pick up a price change or an out-of-stock flip made on another
+  // device. Omitted callers keep today's behaviour (no polling).
+  refetchInterval?: number;
   messages: CrudMessages;
   // List query key for a given filter set. Defaults to `rootKey` (filterless).
   listKey?: (filters: F) => QueryKey;
@@ -63,6 +67,7 @@ export function createCrudHooks<T, CreateInput, UpdateInput, F = Record<string, 
       queryFn: () => apiGet<T[]>(`${config.path}${buildQuery(filters)}`),
       staleTime: config.staleTime,
       gcTime: config.gcTime,
+      refetchInterval: config.refetchInterval,
     });
   }
 
