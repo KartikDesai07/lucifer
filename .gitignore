@@ -1,8 +1,10 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Monorepo root .gitignore — patterns are non-anchored so they apply to every
+# workspace (apps/*, packages/*), not just the repo root.
 
 # dependencies
-/node_modules
-/.pnp
+node_modules/
+.pnp
 .pnp.*
 .yarn/*
 !.yarn/patches
@@ -11,14 +13,14 @@
 !.yarn/versions
 
 # testing
-/coverage
+coverage/
 
-# next.js
-/.next/
-/out/
+# next.js (per-app build output: apps/*/.next)
+.next/
+out/
 
 # production
-/build
+build/
 
 # misc
 .DS_Store
@@ -30,13 +32,13 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files — keep secrets out of git, but commit the example
+# env files — keep secrets out of git, but commit the example (any workspace)
 .env
 .env.*
 !.env.example
 
-# vercel
-.vercel
+# cloudflare worker local state (workers/failover)
+.wrangler/
 
 # typescript
 *.tsbuildinfo
@@ -45,6 +47,9 @@ next-env.d.ts
 # vercel build output / local project link
 .vercel
 
+# deploy profiles (per-account targets; may hold tokens) — commit only the example
+/deploy.profiles.json
+
 # project-local scratch & planning brain-dump (kept out of the product repo)
 /self-tasks/
 
@@ -52,3 +57,7 @@ next-env.d.ts
 /.claude/
 /.claude-memory/
 /CLAUDE.md
+
+# internal build narrative — LOCAL ONLY (owner rule 2026-08-09); opened directly
+# in a browser, never published or pushed
+/docs/progress-tracker.html

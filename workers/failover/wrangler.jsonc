@@ -1,0 +1,27 @@
+{
+  // Failover controller Worker (F1.7). CONTROLLER-ONLY (health-poll + origin swap),
+  // never a per-request proxy. F3's provisioner fills the KV id + sets secrets.
+  "name": "pos-failover",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-01-01",
+
+  // Poll ~every minute (effective ~45-60s). The ONLY #26-legal always-on periodic
+  // trigger in the system (no cafe Vercel cron). P13-PUSH rides this cron too.
+  "triggers": { "crons": ["*/1 * * * *"] },
+
+  // Per-tenant failover state (key = TENANT SLUG → JSON TenantFailoverState —
+  // the F3.7 ingest resolves the forwarded `tenant` by Tenant.slug).
+  // F3 creates the namespace and replaces the placeholder id.
+  "kv_namespaces": [
+    { "binding": "FAILOVER_STATE", "id": "REPLACE_IN_F3" }
+  ]
+
+  // Secrets (F3, via `wrangler secret put`):
+  //   CF_API_TOKEN      — scoped to EDIT the proxied DNS record only.
+  //   HUB_INGEST_SECRET — HMAC key for the F3.7 heartbeat forward (= the Hub's
+  //                       HUB_INGEST_SECRET env; see apps/hub/.env.example).
+  // Optional vars:
+  //   HUB_NOTIFY_URL — ping the Hub panel on a swap (best-effort).
+  //   HUB_INGEST_URL — the Hub's /api/ingest/heartbeat (F3.7 forward target;
+  //                    unset = forwarding off, failover polling unaffected).
+}

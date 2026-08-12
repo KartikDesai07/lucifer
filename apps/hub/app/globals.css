@@ -1,0 +1,263 @@
+:root {
+  color-scheme: light dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  color: #1a1a1a;
+  background: #fafafa;
+}
+
+.hub-shell {
+  max-width: 42rem;
+  margin: 4rem auto;
+  padding: 0 1.5rem;
+}
+
+.hub-shell h1 {
+  font-size: 1.5rem;
+  margin: 0 0 0.5rem;
+}
+
+.hub-shell p {
+  color: #555;
+  margin: 0.25rem 0;
+}
+
+.hub-shell code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+
+/* F3.4 owner login (email + TOTP code). Minimal, self-contained — the Hub has
+   no Tailwind. */
+.hub-login {
+  max-width: 22rem;
+  margin: 6rem auto;
+  padding: 0 1.5rem;
+}
+
+.hub-login h1 {
+  font-size: 1.25rem;
+  margin: 0 0 1.25rem;
+}
+
+.hub-login label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0.75rem 0 0.25rem;
+}
+
+.hub-login input {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 0.4rem;
+  background: #fff;
+  color: #1a1a1a;
+}
+
+.hub-login button {
+  width: 100%;
+  margin-top: 1.25rem;
+  padding: 0.6rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  background: #1a1a1a;
+  border: 0;
+  border-radius: 0.4rem;
+  cursor: pointer;
+}
+
+.hub-login button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.hub-login .hub-error {
+  margin-top: 1rem;
+  padding: 0.6rem 0.7rem;
+  font-size: 0.85rem;
+  color: #7f1d1d;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 0.4rem;
+}
+
+/* F3.8 federation task queue panel (TasksPanel.tsx / TaskRow.tsx). Minimal,
+   self-contained — no component library, following .hub-login's conventions. */
+.hub-tasks {
+  max-width: 48rem;
+  margin: 2rem auto 0;
+  padding: 0 1.5rem;
+}
+
+.hub-tasks h2 {
+  font-size: 1.15rem;
+  margin: 0 0 0.75rem;
+}
+
+.hub-tasks h3 {
+  font-size: 0.95rem;
+  margin: 1.25rem 0 0.5rem;
+}
+
+.hub-tasks-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.hub-tasks-toolbar button {
+  padding: 0.4rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #fff;
+  background: #1a1a1a;
+  border: 0;
+  border-radius: 0.4rem;
+  cursor: pointer;
+}
+
+.hub-tasks-toolbar button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.hub-tasks-muted {
+  color: #777;
+  font-size: 0.85rem;
+}
+
+.hub-tasks-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.hub-tasks-row {
+  border: 1px solid #e2e2e2;
+  border-radius: 0.5rem;
+  padding: 0.85rem 1rem;
+  background: #fff;
+}
+
+.hub-tasks-row-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.hub-tasks-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+.hub-tasks-status {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.hub-tasks-slug {
+  font-weight: 600;
+}
+
+.hub-tasks-reason {
+  margin: 0.2rem 0;
+}
+
+.hub-tasks-meta {
+  font-size: 0.78rem;
+  color: #666;
+  margin: 0.2rem 0;
+}
+
+.hub-tasks-lasterror {
+  font-size: 0.75rem;
+  color: #7f1d1d;
+  margin: 0.2rem 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.hub-tasks-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.hub-tasks-actions button {
+  padding: 0.35rem 0.8rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: 0.4rem;
+  border: 1px solid #ccc;
+  background: #fff;
+  cursor: pointer;
+}
+
+.hub-tasks-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.hub-tasks-actions button.hub-tasks-danger {
+  border-color: #fecaca;
+  color: #7f1d1d;
+}
+
+.hub-tasks-stepup {
+  margin-top: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.hub-tasks-stepup input {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.9rem;
+  border: 1px solid #ccc;
+  border-radius: 0.4rem;
+  width: 8rem;
+}
+
+.hub-tasks .hub-error {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.8rem;
+  color: #7f1d1d;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 0.4rem;
+}

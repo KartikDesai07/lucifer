@@ -1,0 +1,13 @@
+{
+  "name": "pos-db-hygiene-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "F2.9 DB hygiene CI scripts (keep-alive ping + backup manifest). Deliberately OUTSIDE the npm workspaces so the GitHub workflows install ONE small package (the mongodb driver) instead of the whole monorepo.",
+  "scripts": {
+    "test": "node --test lib.test.mjs"
+  },
+  "dependencies": {
+    "mongodb": "^6.10.0"
+  }
+}
