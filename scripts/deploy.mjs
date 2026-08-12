@@ -9,6 +9,9 @@
 // Profiles live in deploy.profiles.json (repo root, GITIGNORED — may hold tokens).
 // Copy deploy.profiles.example.json to start. Each profile targets one Vercel
 // project in one account:
+// The deploy always runs from the REPO ROOT (npm workspaces — see the cwd note
+// further down); `app` names the workspace, and the Vercel project's own
+// "Root Directory" setting must match it.
 //   {
 //     "default": {
 //       "app": "apps/cafe",            // which workspace to deploy
@@ -91,10 +94,14 @@ if (profile.projectId) env.VERCEL_PROJECT_ID = profile.projectId;
 
 // Refuse to guess: with no explicit project target AND no local link, `--yes`
 // would silently CREATE a brand-new Vercel project — never what we want.
-const hasLink = existsSync(path.join(appDir, ".vercel", "project.json"));
+// The link is looked for at the REPO ROOT because that is where we deploy from
+// (see the cwd note below); a legacy per-app link still counts.
+const hasLink =
+  existsSync(path.join(ROOT, ".vercel", "project.json")) ||
+  existsSync(path.join(appDir, ".vercel", "project.json"));
 if (!env.VERCEL_PROJECT_ID && !hasLink) {
   fail(
-    `no deploy target: profile "${profileName}" has no orgId/projectId and ${profile.app ?? "apps/cafe"} has no .vercel link.\n` +
+    `no deploy target: profile "${profileName}" has no orgId/projectId and neither the repo root nor ${profile.app ?? "apps/cafe"} has a .vercel link.\n` +
       `Fix: put the project's orgId + projectId into deploy.profiles.json (see deploy.profiles.example.json).`,
   );
 }
@@ -110,13 +117,28 @@ if (!preview) vercelArgs.push("--prod");
 if (profile.scope) vercelArgs.push("--scope", profile.scope);
 if (token) vercelArgs.push("--token", token);
 
+const appRel = path.relative(ROOT, appDir).split(path.sep).join("/");
+
 console.log(
-  `deploy: ${preview ? "PREVIEW" : "PRODUCTION"} · profile "${profileName}" · ${path.relative(ROOT, appDir)}` +
+  `deploy: ${preview ? "PREVIEW" : "PRODUCTION"} · profile "${profileName}" · ${appRel}` +
     (env.VERCEL_PROJECT_ID ? ` · project ${env.VERCEL_PROJECT_ID}` : " · (local .vercel link)"),
 );
+console.log(
+  `deploy: uploading from the repo ROOT — the Vercel project's Root Directory must be set to "${appRel}".`,
+);
 
+// ── why cwd is the REPO ROOT, not the app directory ──────────────────────────
+// This is an npm-workspaces monorepo and apps/cafe depends on `@pos/shared: "*"`,
+// which exists ONLY as a workspace sibling (raw TS, no registry package, no build
+// step). Deploying with cwd=apps/cafe uploads that folder alone, so the install
+// resolves @pos/shared against the public registry and the build fails — proven
+// on 2026-08-12 by a git-integration Preview build of the monorepo failing on a
+// project whose Root Directory still pointed at the repo root.
+// Deploying from the root uploads the whole workspace (root lockfile included);
+// the PROJECT's "Root Directory" setting is what selects the app to build, and
+// next.config's transpilePackages compiles the shared TS source.
 const res = spawnSync("npx", vercelArgs, {
-  cwd: appDir,
+  cwd: ROOT,
   env,
   stdio: "inherit",
   shell: process.platform === "win32",

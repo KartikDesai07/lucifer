@@ -483,3 +483,38 @@ test("PIN: seed-tables.ts bails out the moment any table exists — re-seeding c
     "seed-tables.ts must return early when tables already exist — otherwise re-running it could resurrect a cafe's deleted starter tables",
   );
 });
+
+test("PIN: deploy.mjs deploys from the REPO ROOT, never from the app directory — apps/cafe alone cannot install @pos/shared (workspace-only, never published), which is what failed a real Vercel build on 2026-08-12", () => {
+  const src = readFileSync(path.join(REPO_ROOT, "scripts/deploy.mjs"), "utf8");
+  const spawnIdx = src.indexOf("spawnSync(");
+  assert.ok(spawnIdx >= 0, "deploy.mjs must spawn the Vercel CLI");
+  const call = src.slice(spawnIdx);
+  assert.match(
+    call,
+    /cwd:\s*ROOT\b/,
+    "the Vercel CLI must run with cwd: ROOT so the whole npm workspace is uploaded and @pos/shared resolves",
+  );
+  assert.ok(
+    !/cwd:\s*appDir\b/.test(call),
+    "cwd must NOT be appDir — uploading apps/cafe alone makes the install resolve @pos/shared against the public registry, where it does not exist",
+  );
+  // The Root Directory requirement has to reach the operator, since the upload
+  // is now the whole repo and only that project setting selects the app.
+  assert.match(
+    src,
+    /Root Directory must be set to/,
+    "deploy.mjs must tell the operator the Vercel project's Root Directory has to match the app",
+  );
+});
+
+test("PIN: the runbook and DEPLOY.md both require Root Directory = apps/cafe, the setting whose absence fails the build", () => {
+  assert.ok(
+    norm(doc).includes("Root Directory = `apps/cafe`"),
+    "GO-LIVE-CHECKLIST must state the Root Directory setting explicitly",
+  );
+  const deployDoc = readFileSync(path.join(REPO_ROOT, "apps/cafe/DEPLOY.md"), "utf8");
+  assert.ok(
+    norm(deployDoc).includes("Root Directory = `apps/cafe`"),
+    "DEPLOY.md is cited as the deploy authority — it must carry the same requirement",
+  );
+});

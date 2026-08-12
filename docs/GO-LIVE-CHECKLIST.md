@@ -79,16 +79,22 @@ Nothing in §1 can start until all of these exist.
       changes nothing, and photos keep failing.
 - [ ] Profile added to `deploy.profiles.json` (`app`, `orgId`, `projectId`,
       `tokenEnv`); `npm run deploy -- --list` shows it.
+- [ ] **Root Directory = `apps/cafe`** (Vercel Project → Settings → Build and
+      Deployment). Not optional, and the single most likely thing to get wrong:
+      this is an npm-workspaces monorepo where `apps/cafe` depends on
+      `@pos/shared` as a **workspace sibling** — raw TypeScript, never published
+      to a registry — so the deploy uploads the whole repo and lets the install
+      resolve it, while this setting selects which app to build. A project left
+      pointing at the repo root **fails the build outright**: proven 2026-08-12,
+      when a branch push auto-triggered a Vercel build against a root-configured
+      project and it failed.
 - [ ] **Rehearse with a preview first:**
-      `npm run deploy -- --profile <client> --preview` succeeds *and* the
-      preview URL actually builds. This is the first deploy of the monorepo
-      shape, and two halves of it have never been exercised together: the Vercel
-      project's Root Directory is `apps/cafe`, while `npm run deploy` runs the
-      Vercel CLI *from* `apps/cafe`. If that combination double-nests the path,
-      or if `@pos/shared` fails to resolve because `packages/` was never
-      uploaded, it fails here instead of on the client's production URL. If it
-      does fail that way, **stop and raise it with the owner** — the fix belongs
-      in `scripts/deploy.mjs` (deploy from the repo root), not in this runbook.
+      `npm run deploy -- --profile <client> --preview` succeeds *and* its build
+      log is clean. `npm run deploy` runs the Vercel CLI from the **repo root**
+      by design (`scripts/deploy.mjs` — deploying from inside `apps/cafe` cannot
+      work, the install would look for `@pos/shared` on the public registry). If
+      the build fails complaining about `@pos/shared`, the Root Directory above
+      is wrong.
 - [ ] `npm run deploy -- --profile <client>` succeeds. (The deploy script never
       touches git — committing and pushing stay manual, by design.)
 - [ ] Host wired to match §0's choice:
