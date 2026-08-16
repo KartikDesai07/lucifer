@@ -18,10 +18,25 @@ export interface CartProps {
   discount: number; // computed flat amount (for display)
   gstAmount?: number; // > 0 only when exclusive GST is enabled
   gstRate?: number;
+  // The amount payable, taken from usePosTotals — NOT recomputed here. This
+  // panel used to derive its own `subtotal - discount + gstAmount`, which is
+  // how the table charge came to be printed as a row and then left out of the
+  // very total beneath it. One figure, computed once, shown everywhere.
+  total: number;
   discountRaw: number;
   discountUnit: DiscountUnit;
   onDiscountRawChange: (value: number) => void;
   onDiscountUnitChange: (unit: DiscountUnit) => void;
+  // The selected table's extra charge for this bill. `chargeLabel` is the
+  // cafe's own name for it — the product never supplies a default, so an
+  // unnamed charge simply does not render. `onChargeChange` writes the
+  // operator's deliberate override (0 = waived); `onChargeReset` puts the bill
+  // back on whatever it is entitled to.
+  charge: number;
+  chargeLabel: string;
+  entitledCharge: number;
+  onChargeChange: (value: number) => void;
+  onChargeReset: () => void;
   onUpdateQty: (lineId: string, qty: number) => void;
   onRemove: (lineId: string) => void;
   onClear: () => void;
@@ -53,10 +68,16 @@ export function Cart({
   discount,
   gstAmount = 0,
   gstRate,
+  total,
   discountRaw,
   discountUnit,
   onDiscountRawChange,
   onDiscountUnitChange,
+  charge,
+  chargeLabel,
+  entitledCharge,
+  onChargeChange,
+  onChargeReset,
   onUpdateQty,
   onRemove,
   onClear,
@@ -72,7 +93,6 @@ export function Cart({
   isBusy,
   className,
 }: CartProps) {
-  const total = Math.max(0, subtotal - discount) + gstAmount;
   const resuming = !!resumedOrderId;
   const fired = items.filter((it) => it.kotRound > 0);
   const fresh = items.filter((it) => it.kotRound === 0);
@@ -208,6 +228,68 @@ export function Cart({
             <span>{gstRate ? `GST @${gstRate}%` : "GST"}</span>
             <span>+{inr(gstAmount)}</span>
           </div>
+        )}
+
+        {/* The selected table's charge. Sits BELOW the GST line because that is
+            where it lands in the arithmetic — it is added after tax, not taxed.
+            Rendered only when the table actually names a charge, so the
+            overwhelming majority of bills never see this row at all. */}
+        {chargeLabel !== "" && (entitledCharge > 0 || charge > 0) && (
+          <>
+            <div className="flex items-center justify-between gap-2 text-sm">
+              <span
+                className="min-w-0 flex-1 truncate text-muted-foreground"
+                title={chargeLabel}
+              >
+                {chargeLabel}
+              </span>
+              <div className="flex items-center gap-1">
+                <Input
+                  type="number"
+                  min={0}
+                  value={charge === 0 ? "" : charge}
+                  onChange={(e) =>
+                    onChargeChange(Math.max(0, Number(e.target.value) || 0))
+                  }
+                  placeholder="0"
+                  className="h-8 w-20 text-right"
+                  aria-label={`${chargeLabel} amount`}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  onClick={() => onChargeChange(0)}
+                  disabled={charge === 0}
+                  title={`Waive ${chargeLabel}`}
+                  aria-label={`Waive ${chargeLabel}`}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Says out loud that this bill no longer matches the table's own
+                setting, and offers the way back — otherwise a waiver made on
+                the previous customer silently rides onto the next one. */}
+            {charge !== entitledCharge && (
+              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span>
+                  {charge === 0
+                    ? `${chargeLabel} waived`
+                    : `${chargeLabel} changed from ${inr(entitledCharge)}`}
+                </span>
+                <button
+                  type="button"
+                  onClick={onChargeReset}
+                  className="shrink-0 underline underline-offset-2 hover:text-foreground"
+                >
+                  Undo
+                </button>
+              </div>
+            )}
+          </>
         )}
 
         <div className="flex items-center justify-between border-t pt-2 text-base font-bold">

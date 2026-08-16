@@ -6,6 +6,7 @@ import cache from "@/lib/cache";
 import { success, notFound, requireAdmin, serverError } from "@/lib/api-helpers";
 import { orderSummaryCacheKey } from "@/lib/utils";
 import { duesPaidTotal } from "@/lib/due-payment";
+import { maskCustomer } from "@/lib/customer-privacy";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,7 @@ type Params = { params: Promise<{ id: string }> };
 export async function POST(_req: Request, { params }: Params) {
   const admin = await requireAdmin();
   if ("error" in admin) return admin.error;
+  const role = admin.session.user.role;
 
   const { id } = await params;
   if (!mongoose.isValidObjectId(id)) return notFound("Customer not found");
@@ -82,11 +84,14 @@ export async function POST(_req: Request, { params }: Params) {
       },
       { new: true },
     ).lean();
+    if (!updated) return notFound("Customer not found");
 
     cache.del("customers");
     // Rebuilding the ledger can change total dues — refresh the dashboard KPI.
     cache.del(orderSummaryCacheKey());
-    return success(updated);
+    // This route is requireAdmin so masking is a no-op today — applied anyway
+    // as deliberate uniformity, so a future guard change can't silently leak.
+    return success(maskCustomer(updated, role));
   } catch (error) {
     return serverError("Failed to reconcile customer", error);
   }

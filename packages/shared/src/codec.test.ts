@@ -225,6 +225,110 @@ test("encodeOrderForWrite gates split legs on Split payment (#8 omit-empty)", ()
   assert.equal(split.splitOnline, 12000);
 });
 
+// ── Table charge (owner decision 2026-08-16) ─────────────────────────────────
+// Amount and label travel together or not at all — the amount is the gate. A
+// stored label with no amount would print a named line worth nothing; an
+// amount with no label would print a bare figure the customer cannot question.
+
+test("encodeOrderForWrite: chargeAmount 50 + a label are stored as 5000 paise + the label", () => {
+  const stored = encodeOrderForWrite({
+    customerName: "Walk-in",
+    items: [{ name: "Coffee", price: 120, qty: 1 }],
+    subtotal: 120,
+    total: 170,
+    paidAmount: 170,
+    payment: "Cash",
+    receiver: "Rahul",
+    chargeAmount: 50,
+    chargeLabel: "Rooftop charge",
+  });
+  assert.equal(stored.chargeAmount, 5000);
+  assert.equal(stored.chargeLabel, "Rooftop charge");
+});
+
+test("encodeOrderForWrite: chargeAmount 0 or absent omits BOTH fields (omit-empty)", () => {
+  const withZero = encodeOrderForWrite({
+    customerName: "Walk-in",
+    items: [{ name: "Coffee", price: 120, qty: 1 }],
+    subtotal: 120,
+    total: 120,
+    paidAmount: 120,
+    payment: "Cash",
+    receiver: "Rahul",
+    chargeAmount: 0,
+    chargeLabel: "Rooftop charge",
+  });
+  assert.ok(!("chargeAmount" in withZero), "chargeAmount: 0 must not be stored");
+  assert.ok(!("chargeLabel" in withZero), "a 0 charge must take its label with it");
+
+  const absent = encodeOrderForWrite({
+    customerName: "Walk-in",
+    items: [{ name: "Coffee", price: 120, qty: 1 }],
+    subtotal: 120,
+    total: 120,
+    paidAmount: 120,
+    payment: "Cash",
+    receiver: "Rahul",
+  });
+  assert.ok(!("chargeAmount" in absent));
+  assert.ok(!("chargeLabel" in absent));
+});
+
+test("encodeOrderForWrite: a label with NO amount stores NEITHER field — the amount gates the label", () => {
+  const stored = encodeOrderForWrite({
+    customerName: "Walk-in",
+    items: [{ name: "Coffee", price: 120, qty: 1 }],
+    subtotal: 120,
+    total: 120,
+    paidAmount: 120,
+    payment: "Cash",
+    receiver: "Rahul",
+    chargeLabel: "Rooftop charge", // no chargeAmount supplied at all
+  });
+  assert.ok(!("chargeAmount" in stored));
+  assert.ok(
+    !("chargeLabel" in stored),
+    "a label alone must never land in storage — an amount-less label is not a charge",
+  );
+});
+
+test("decodeOrder: chargeAmount decodes paise -> rupees, alongside chargeLabel", () => {
+  const d = decodeOrder({
+    ...MINIMAL,
+    chargeAmount: 5000,
+    chargeLabel: "Rooftop charge",
+  });
+  assert.equal(d.chargeAmount, 50);
+  assert.equal(d.chargeLabel, "Rooftop charge");
+});
+
+test("decodeOrder: chargeAmount and chargeLabel both ABSENT in storage stay undefined on the DTO", () => {
+  const d = decodeOrder(MINIMAL);
+  assert.equal(d.chargeAmount, undefined);
+  assert.equal(d.chargeLabel, undefined);
+});
+
+test("encode∘decode round-trips the table charge, preserving both amount and label", () => {
+  const roundTripped = decodeOrder({
+    ...(encodeOrderForWrite({
+      customerName: "Walk-in",
+      items: [{ name: "Coffee", price: 120, qty: 1 }],
+      subtotal: 120,
+      total: 170,
+      paidAmount: 170,
+      payment: "Cash",
+      receiver: "Rahul",
+      chargeAmount: 50,
+      chargeLabel: "Rooftop charge",
+    }) as StoredOrder),
+    _id: "ORD-A-20260629-002",
+    status: "Completed",
+    v: 1,
+  });
+  assert.equal(roundTripped.chargeAmount, 50);
+  assert.equal(roundTripped.chargeLabel, "Rooftop charge");
+});
+
 test("encode∘decode is stable on money", () => {
   const roundTripped = decodeOrder({
     ...(encodeOrderForWrite({

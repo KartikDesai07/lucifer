@@ -166,9 +166,14 @@ export interface SettleMoneyInput {
     discount: number;
     gstRate?: number;
     gstMode?: GstMode;
+    chargeAmount?: number;
   };
   payment: PaymentMode;
   discount?: number;
+  // Settle-time waiver/adjustment of the table charge. Undefined means "leave
+  // the tab's charge alone" — NOT "no charge" — so a settle path that knows
+  // nothing about charges cannot drop one off a bill.
+  chargeAmount?: number;
   paidAmount?: number;
   splitCash?: number;
   splitOnline?: number;
@@ -187,16 +192,21 @@ export type SettleMoney =
   | { error: string };
 
 export function resolveSettleMoney(input: SettleMoneyInput): SettleMoney {
-  // No settle-time discount supplied — preserve today's behavior byte-for-byte:
-  // no recompute, charge exactly the stored total (the Orders-page settle path).
+  // Neither a settle-time discount NOR a charge change supplied — preserve
+  // today's behavior byte-for-byte: no recompute, charge exactly the stored
+  // total (the Orders-page settle path). When either IS supplied the bill is
+  // re-priced from the order's own items, and the field that was NOT supplied
+  // is carried over from the stored order rather than reset — re-pricing to
+  // apply a discount must not also wipe the table charge, and vice versa.
   const totals =
-    input.discount === undefined
+    input.discount === undefined && input.chargeAmount === undefined
       ? null
-      : computeOrderTotals(
-          input.order.items,
-          input.discount,
-          gstConfigFromOrder(input.order, input.liveGst),
-        );
+      : computeOrderTotals({
+          items: input.order.items,
+          discount: input.discount ?? input.order.discount,
+          charge: input.chargeAmount ?? input.order.chargeAmount ?? 0,
+          cfg: gstConfigFromOrder(input.order, input.liveGst),
+        });
   const total = totals ? totals.total : input.order.total;
 
   const pay = derivePayment(

@@ -16,6 +16,8 @@ import { orderSummaryCacheKey } from "@/lib/utils";
 import { resolveSettleMoney, reconcileLedger, validCustomer } from "@/lib/order";
 import { voidGuardFilter } from "@/lib/order-void";
 import { getSettings, gstConfigOf } from "@/lib/settings";
+import { printConfigOf, printedSlipNumber } from "@/lib/print";
+import { nextSlipSequence } from "@/models/Counter";
 import { settleOrderSchema } from "@/schemas";
 
 export const dynamic = "force-dynamic";
@@ -57,6 +59,11 @@ export async function POST(req: Request, { params }: Params) {
       order: old,
       payment: data.payment,
       discount: data.discount,
+      // Omitted = leave the tab's snapshotted table charge alone. Only the POS
+      // settle path, where the operator can actually see and waive the charge,
+      // ever sends this; the Orders-page settle never does, so it can never
+      // silently drop a charge off a bill it was not showing.
+      chargeAmount: data.chargeAmount,
       paidAmount: data.paidAmount,
       splitCash: data.splitCash,
       splitOnline: data.splitOnline,
@@ -113,25 +120,56 @@ export async function POST(req: Request, { params }: Params) {
       }
     }
 
-    const update: Record<string, unknown> = {
+    // Built as an explicit $set (rather than bare paths Mongoose would wrap for
+    // us) because a waived charge also needs a $unset alongside it, and mixing
+    // bare paths with an operator in one update document is exactly the kind of
+    // driver-semantics coin-flip this codebase does not gamble on.
+    // The bill is being ISSUED right now, so this is where its number comes
+    // from. Only if the tab has none yet — a re-settle attempt must never
+    // renumber a bill the customer is already holding. An open tab that ran all
+    // evening therefore takes the number of the moment it was paid, not the
+    // moment it was opened, and a tab that gets cancelled instead never
+    // consumes one, so the day's bill series has no gaps.
+    const printCfg = printConfigOf(await getSettings());
+    const billNumber =
+      printCfg.bill.showNumber && old.billNumber === undefined
+        ? printedSlipNumber(await nextSlipSequence("bill"), printCfg.bill.numberStart)
+        : undefined;
+
+    const set: Record<string, unknown> = {
       payment: data.payment,
       paidAmount: money.paidAmount,
       status: "Completed",
+      ...(billNumber !== undefined ? { billNumber } : {}),
     };
+    const unset: Record<string, ""> = {};
     if (money.totals) {
-      update.subtotal = money.totals.subtotal;
-      update.discount = money.totals.discount;
-      update.gstAmount = money.totals.gstAmount;
-      update.total = money.totals.total;
+      set.subtotal = money.totals.subtotal;
+      set.discount = money.totals.discount;
+      set.gstAmount = money.totals.gstAmount;
+      set.total = money.totals.total;
+      // A waived charge must UNSET both fields, not write a 0: the receipt keys
+      // its charge line off the amount being PRESENT, so a stored 0 with the
+      // label still beside it would print a named ₹0 line on the customer's
+      // slip. The label is never rewritten here — only the table's own config
+      // names a charge, and settling is not the moment to rename one.
+      if (money.totals.charge > 0) {
+        set.chargeAmount = money.totals.charge;
+      } else {
+        unset.chargeAmount = "";
+        unset.chargeLabel = "";
+      }
     }
     if (data.payment === "Split") {
-      update.splitCash = money.splitCash;
-      update.splitOnline = money.splitOnline;
+      set.splitCash = money.splitCash;
+      set.splitOnline = money.splitOnline;
     }
     if (attachId && attachName) {
-      update.customerId = attachId;
-      update.customerName = attachName;
+      set.customerId = attachId;
+      set.customerName = attachName;
     }
+    const update: Record<string, unknown> = { $set: set };
+    if (Object.keys(unset).length > 0) update.$unset = unset;
 
     // Conditional on still-Pending AND the total we priced against being
     // unchanged — that's the total we READ (old.total), not the total we WRITE

@@ -13,6 +13,8 @@ import {
 import { orderSummaryCacheKey } from "@/lib/utils";
 import { getSettings, gstConfigOf } from "@/lib/settings";
 import { computeOrderTotals, gstConfigFromOrder } from "@/lib/receipt";
+import { printConfigOf, printedSlipNumber } from "@/lib/print";
+import { nextSlipSequence } from "@/models/Counter";
 import { voidGuardFilter } from "@/lib/order-void";
 import { addItemsSchema } from "@/schemas";
 
@@ -55,8 +57,19 @@ export async function POST(req: Request, { params }: Params) {
     // Recompute from the tab's GST snapshot, not live settings. An updated
     // discount may ride along (server re-clamps it to the new subtotal).
     const discount = parsed.data.discount ?? old.discount;
-    const gstCfg = gstConfigFromOrder(old, gstConfigOf(await getSettings()));
-    const totals = computeOrderTotals(fullItems, discount, gstCfg);
+    const settings = await getSettings();
+    const gstCfg = gstConfigFromOrder(old, gstConfigOf(settings));
+    // The tab's table charge is carried forward untouched unless the operator
+    // deliberately changed it — omitted means unchanged, exactly like discount.
+    // Adding a round is never an occasion to RE-READ the table: the charge was
+    // snapshotted when the tab opened, and an admin editing the table mid-
+    // service must not re-price a bill the kitchen is already cooking.
+    const totals = computeOrderTotals({
+      items: fullItems,
+      discount,
+      charge: parsed.data.chargeAmount ?? old.chargeAmount ?? 0,
+      cfg: gstCfg,
+    });
 
     // Guarded on still-open, the round we read, AND the void trail's length, so this
     // read-modify-write can't silently clobber a concurrent add (the loser 409s and
@@ -73,20 +86,55 @@ export async function POST(req: Request, { params }: Params) {
       kotRounds: old.kotRounds ?? 0,
       ...voidGuardFilter(old.voids?.length ?? 0),
     };
-    const updated = await Order.findOneAndUpdate(
-      filter,
-      {
-        $set: {
-          items: fullItems,
-          subtotal: totals.subtotal,
-          discount: totals.discount,
-          gstAmount: totals.gstAmount,
-          total: totals.total,
-          kotRounds: round,
-        },
+    // A waived charge is REMOVED, not stored as 0: the receipt keys its charge
+    // line off the amount being present, so a 0 left beside the label would
+    // print a named zero-rupee line on the customer's slip (same rule as the
+    // settle route).
+    // Every fired round is its own kitchen ticket, so every round draws its own
+    // number. Written at kotNumbers[round - 1] so a REPRINT of round 2 shows the
+    // ticket the kitchen is already holding rather than issuing a second number
+    // for food that was ordered once. Allocated before the guarded write: if
+    // that write loses its CAS race the number is spent, which costs a gap in
+    // the series — strictly better than two rounds sharing one ticket number.
+    const printCfg = printConfigOf(settings);
+    const ticket = printCfg.kot.showNumber
+      ? printedSlipNumber(await nextSlipSequence("kot"), printCfg.kot.numberStart)
+      : undefined;
+    // Built POSITIONALLY, not appended. The slip is read back by index
+    // (use-pos-print: kotNumbers[kotRounds - 1]), and a tab can carry a SHORT
+    // array — every tab already open when numbering ships has none at all, and
+    // any round fired while the toggle was off adds no entry. Appending would
+    // then file this round's ticket under an earlier round's index: the slip
+    // would print no number at all while the series still spent one, and the
+    // stored array would claim a number for a round that was never numbered.
+    // 0 is a safe "this round was never numbered" sentinel — printedSlipNumber
+    // floors at PRINT_NUMBER_START_MIN (1), so 0 is not a printable number.
+    const kotNumbers =
+      ticket === undefined
+        ? undefined
+        : Array.from({ length: round }, (_, i) =>
+            i === round - 1 ? ticket : (old.kotNumbers?.[i] ?? 0),
+          );
+
+    const update: Record<string, unknown> = {
+      $set: {
+        items: fullItems,
+        subtotal: totals.subtotal,
+        discount: totals.discount,
+        gstAmount: totals.gstAmount,
+        total: totals.total,
+        kotRounds: round,
+        ...(totals.charge > 0 ? { chargeAmount: totals.charge } : {}),
+        ...(kotNumbers ? { kotNumbers } : {}),
       },
-      { new: true, runValidators: true },
-    ).lean();
+    };
+    if (totals.charge <= 0) {
+      update.$unset = { chargeAmount: "", chargeLabel: "" };
+    }
+    const updated = await Order.findOneAndUpdate(filter, update, {
+      new: true,
+      runValidators: true,
+    }).lean();
     if (!updated) {
       return failure("Tab changed or already settled — reopen it and try again", 409);
     }

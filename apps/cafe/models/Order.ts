@@ -36,6 +36,7 @@ export interface IOrderVoid {
   reason: string;
   voidedBy: string; // staff name from the session
   at: Date;
+  kotNumber?: number; // this void slip's own kitchen-ticket number
 }
 
 export interface IOrder extends Document {
@@ -48,6 +49,8 @@ export interface IOrder extends Document {
   gstAmount?: number; // GST added on top when settings.gstMode === "exclusive"
   gstRate?: number; // GST rate snapshot at order time (0 if GST was off then)
   gstMode?: GstMode; // GST mode snapshot at order time
+  chargeAmount?: number; // the table's extra charge as sold (untaxed, inside total)
+  chargeLabel?: string; // what that charge printed as, snapshot at order time
   total: number;
   paidAmount: number;
   payment: PaymentMode;
@@ -58,6 +61,14 @@ export interface IOrder extends Document {
   tableNo?: string; // optional T-1 to T-8
   notes?: string; // order-level notes
   kotRounds: number; // count of KOT rounds fired (running order); 0 for one-shot orders
+  // Printed slip numbers, already resolved against the cafe's configured daily
+  // start — what the paper actually said. `kotNumbers[n-1]` belongs to round n,
+  // so a reprint reproduces the ticket the kitchen is holding instead of
+  // issuing a second number for the same food. `billNumber` is allocated when
+  // the bill is ISSUED (payment taken), so a cancelled or still-open tab never
+  // burns one and the day's bill series has no gaps.
+  kotNumbers?: number[];
+  billNumber?: number;
   voids?: IOrderVoid[]; // absent until the first void ($push creates it)
   cancelReason?: string; // set together, only by POST /api/orders/[id]/cancel
   cancelledBy?: string;
@@ -78,6 +89,10 @@ const orderVoidSchema = new Schema<IOrderVoid>(
     reason: { type: String, required: true },
     voidedBy: { type: String, required: true },
     at: { type: Date, required: true },
+    // The number printed on this void's own kitchen slip, drawn from the same
+    // daily ticket series. Absent when the cafe does not number its tickets, or
+    // numbers them but chooses not to number voids.
+    kotNumber: { type: Number },
   },
   { _id: false }, // embedded — no _id needed
 );
@@ -109,6 +124,12 @@ const orderSchema = new Schema<IOrder>(
     // stay correct even after the cafe later changes its GST rate/mode.
     gstRate: { type: Number },
     gstMode: { type: String, enum: [...GST_MODES] },
+    // Table-charge snapshot — the extra charge folded into `total` and the name
+    // it was sold under, frozen at sale time so editing the table later cannot
+    // rewrite a printed bill. No defaults: a bill with no charge carries
+    // neither field (omit-empty), and the amount is what gates the label.
+    chargeAmount: { type: Number },
+    chargeLabel: { type: String },
     total: { type: Number, required: true },
     paidAmount: { type: Number, required: true },
     payment: { type: String, enum: [...PAYMENT_MODES], required: true },
@@ -119,6 +140,11 @@ const orderSchema = new Schema<IOrder>(
     tableNo: { type: String },
     notes: { type: String },
     kotRounds: { type: Number, default: 0 },
+    // No defaults: a cafe with slip numbering switched off stores neither
+    // field, and `default: []` on every order would be pure waste on a 512MB M0
+    // (same reasoning as `voids` below).
+    kotNumbers: { type: [Number], default: undefined },
+    billNumber: { type: Number },
     // No `default: []` — the overwhelming majority of orders never get a void, and
     // an empty array on every row is pure waste on a 512MB M0. `$push` creates it.
     voids: { type: [orderVoidSchema], default: undefined },

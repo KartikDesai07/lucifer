@@ -54,6 +54,12 @@ next-env.d.ts
 # project-local scratch & planning brain-dump (kept out of the product repo)
 /self-tasks/
 
+# per-client onboarding notes — these hold LIVE credentials (Atlas connection
+# strings with the client's own DB user/password). This repo is public, so a
+# single `git add -A` would publish them. Never commit; the hub vault is the
+# only sanctioned credential store.
+/clients/
+
 # claude code / ai tooling & internal docs — keep out of the product repo
 /.claude/
 /.claude-memory/

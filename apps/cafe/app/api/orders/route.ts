@@ -3,7 +3,8 @@ import { connectDB } from "@/lib/db";
 import { Order } from "@/models/Order";
 import { Customer } from "@/models/Customer";
 import { Table } from "@/models/Table";
-import { nextOrderSequence, bumpOrderSequenceTo } from "@/models/Counter";
+import { nextOrderSequence, bumpOrderSequenceTo, nextSlipSequence } from "@/models/Counter";
+import { printConfigOf, printedSlipNumber } from "@/lib/print";
 import cache from "@/lib/cache";
 import {
   success,
@@ -25,7 +26,7 @@ import { computeOrderTotals } from "@/lib/receipt";
 import { derivePayment, ledgerContribution } from "@/lib/order";
 import { parseListCursor, applyCursor } from "@/lib/order-query";
 import { createOrderSchema } from "@/schemas";
-import { checkTableExists } from "@/lib/table-admin";
+import { resolveTableCharge } from "@/lib/table-admin";
 
 export const dynamic = "force-dynamic";
 
@@ -113,15 +114,30 @@ export async function POST(req: Request) {
   try {
     await connectDB();
 
-    const unknownTable = await checkTableExists(data.tableNo);
-    if (unknownTable) return failure(unknownTable, 400);
+    // Resolves the table's configured extra charge AND doubles as the existence
+    // check, so this is still one query rather than two.
+    const table = await resolveTableCharge(data.tableNo);
+    if ("error" in table) return failure(table.error, 400);
 
     // Money is server-authoritative — recompute from the items + the cafe's GST
     // config; never persist the client's subtotal/gst/total verbatim. paidAmount
     // may assert what was actually COLLECTED (derivePayment clamps it to the total).
     const settings = await getSettings();
     const gstCfg = gstConfigOf(settings);
-    const totals = computeOrderTotals(data.items, data.discount, gstCfg);
+    // An OMITTED chargeAmount means "whatever this table charges" — safe to omit
+    // because the server just re-derived it, and safer than echoing: the POS
+    // caches tables for 30s, so an echo could re-apply a charge an admin has
+    // already lowered. A NUMBER is the operator deliberately waiving or
+    // adjusting it for this bill (0 = waived). Either way it is bounded, and a
+    // table with no configured charge yields nothing at all.
+    const charge =
+      table.charge.amount > 0 ? (data.chargeAmount ?? table.charge.amount) : 0;
+    const totals = computeOrderTotals({
+      items: data.items,
+      discount: data.discount,
+      charge,
+      cfg: gstCfg,
+    });
     const pay = derivePayment(
       data.payment,
       totals.total,
@@ -130,6 +146,21 @@ export async function POST(req: Request) {
       data.paidAmount,
     );
     if ("error" in pay) return failure(pay.error, 400);
+
+    // Slip numbers come from their OWN daily counters, separate from the order
+    // sequence: one tab issues several kitchen tickets but exactly one bill, so
+    // the three series cannot share a counter. Each allocation is a single
+    // atomic $inc, so two tills ringing up at the same instant can never be
+    // handed the same number. Allocated once here and reused by the
+    // duplicate-key retry below — a retry must not consume a second number.
+    const printCfg = printConfigOf(settings);
+    const issuesBill = printCfg.bill.showNumber && data.status === "Completed";
+    const kotNumber = printCfg.kot.showNumber
+      ? printedSlipNumber(await nextSlipSequence("kot"), printCfg.kot.numberStart)
+      : 0;
+    const billNumber = issuesBill
+      ? printedSlipNumber(await nextSlipSequence("bill"), printCfg.bill.numberStart)
+      : 0;
 
     const customerId =
       data.customerId && mongoose.isValidObjectId(data.customerId)
@@ -166,7 +197,21 @@ export async function POST(req: Request) {
       // the tax actually charged even after a later rate/mode change.
       gstRate: gstCfg.gstEnabled ? gstCfg.gstRate : 0,
       gstMode: gstCfg.gstMode,
+      // Snapshot the charge AND the name it sold under. The label comes from the
+      // table, never from the request — the operator controls whether the charge
+      // applies, not what the customer is told it was. Both omitted when the
+      // charge is 0 so a waived charge leaves no trace on the bill.
+      chargeAmount: totals.charge > 0 ? totals.charge : undefined,
+      chargeLabel: totals.charge > 0 ? table.charge.label : undefined,
       total: totals.total,
+      // Printed slip numbers, resolved against the cafe's configured daily
+      // start and STORED — a reprint reproduces the paper, it never recomputes
+      // it. The opening items are round 1, hence the single-element array.
+      // A bill number is issued only when a BILL is: an order created as an
+      // open tab ("Pending") gets none, so a tab that runs all evening — or is
+      // cancelled — never burns a number out of the day's bill series.
+      kotNumbers: printCfg.kot.showNumber ? [kotNumber] : undefined,
+      billNumber: issuesBill ? billNumber : undefined,
       paidAmount: pay.paidAmount,
       payment: data.payment,
       splitCash: pay.splitCash,

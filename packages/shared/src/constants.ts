@@ -23,6 +23,22 @@ export const TABLE_NO_MESSAGE =
 export const TABLE_CAPACITY_MIN = 1;
 export const TABLE_CAPACITY_MAX = 99;
 
+// A per-table extra charge (cover / AC / rooftop / service …). Two fields, not
+// one: the AMOUNT is what lands on the bill, and the LABEL is what the customer
+// reads on the slip. The label is operator text with no product-supplied
+// default on purpose — cafes call this different things, and a hardcoded
+// "Additional charge" would print on someone's receipt as a lie.
+// Whole rupees, bounded: this rides onto EVERY bill of that table until an
+// admin changes it, so a fat-fingered entry is expensive.
+export const TABLE_CHARGE_MAX = 10000;
+export const TABLE_CHARGE_LABEL_MAX_LEN = 24;
+// Display-only text — it is printed on an 80mm slip and never used as a URL
+// segment (unlike tableNo), so the charset is permissive. It bars only control
+// characters, which would corrupt the thermal print stream.
+export const TABLE_CHARGE_LABEL_PATTERN = /^[\x20-\x7E\u00A0-\uFFFF]+$/;
+export const TABLE_CHARGE_LABEL_MESSAGE =
+  'Name the charge as it should print, e.g. "Rooftop charge"';
+
 // "Unpaid" is the held/open-tab state: a running order fired to the kitchen but
 // not yet settled (status Pending, paidAmount 0). It is NOT a way a bill gets
 // paid — settlement always picks a real mode from SETTLEMENT_PAY_MODES below.
@@ -46,6 +62,16 @@ export type SettlementPayMode = (typeof SETTLEMENT_PAY_MODES)[number];
 // (the Zod input schema + the UI tiles + the fold) is narrowed here.
 export const DUES_RECEIPT_MODES = ["Cash", "Online"] as const;
 export type DuesReceiptMode = (typeof DUES_RECEIPT_MODES)[number];
+
+// Rows the admin per-customer dues-history read returns at most (newest
+// first). Bounded like CUSTOMER_SEARCH_LIMIT — a customer with a long payment
+// history must not hand back an unbounded list on a 512MB M0.
+export const DUE_PAYMENT_HISTORY_LIMIT = 100;
+
+// A soft-deleted DuePayment keeps the row but must say WHY it was un-recorded
+// (the governing reason a delete exists at all) — bounded below like
+// ORDER_REASON_MIN_LEN so a one-character note can't satisfy "required".
+export const DUE_PAYMENT_DELETE_NOTE_MIN_LEN = 3;
 
 // Subset of PAYMENT_MODES valid for event advance payments (no Due/Split).
 export const EVENT_PAY_MODES = ["Cash", "Online", "Credit"] as const;
@@ -85,6 +111,19 @@ export type EventStatus = (typeof EVENT_STATUSES)[number];
 export const CUSTOMER_NOTES = ["Regular", "VIP"] as const;
 export type CustomerNote = (typeof CUSTOMER_NOTES)[number];
 
+// How much of a customer's mobile number anyone below admin may see. The
+// remaining characters are replaced 1:1 with MOBILE_MASK_CHAR, so a masked
+// number keeps the original LENGTH — which is what lets it still satisfy the
+// 10-character minimum the customer schema enforces (see maskMobile).
+export const MOBILE_VISIBLE_PREFIX = 5;
+export const MOBILE_MASK_CHAR = "*";
+
+// Rows the customer search returns at most. Shared by the API's `.limit()` and
+// the customers page, which warns when a result set hits it: staff searching a
+// masked number see rows that all LOOK alike, so a silently truncated list
+// reads as "this customer is not registered" and ends in a duplicate record.
+export const CUSTOMER_SEARCH_LIMIT = 50;
+
 export const TABLE_STATUSES = ["Available", "Occupied", "Reserved"] as const;
 export type TableStatus = (typeof TABLE_STATUSES)[number];
 
@@ -106,6 +145,36 @@ export const GST_RATES = [0, 5, 12, 18, 28] as const;
 // FSSAI license number (Indian food-safety registration), shown on the
 // receipt when set. Bounded to a plausible license-number length.
 export const SETTINGS_FSSAI_MAX_LEN = 20;
+
+// ── Print customization (bill + kitchen ticket) ──────────────────────────────
+// Two printed surfaces, each independently configurable: what appears on it,
+// how wide the paper is, and how large the type runs. Kept as FLAT settings
+// fields rather than nested objects because PUT /api/settings applies a partial
+// $set — a nested object would replace its whole subdocument, so saving one
+// toggle would silently reset every other toggle beside it.
+
+// Thermal paper the slip is laid out for. 80mm is the common counter printer;
+// 58mm is the narrow handheld/portable one. This drives BOTH the on-screen
+// width of the print source and the @page size handed to the browser, so the
+// two can never disagree about how much room there is.
+export const PAPER_WIDTHS = ["58mm", "80mm"] as const;
+export type PaperWidth = (typeof PAPER_WIDTHS)[number];
+
+// Base type size for a slip. Inner elements size themselves relative to this
+// (em), so one setting scales the whole slip instead of only its body text.
+export const PRINT_FONT_SIZES = ["small", "normal", "large"] as const;
+export type PrintFontSize = (typeof PRINT_FONT_SIZES)[number];
+
+export const PRINT_LOGO_SIZES = ["small", "medium", "large"] as const;
+export type PrintLogoSize = (typeof PRINT_LOGO_SIZES)[number];
+
+// Daily-resetting slip numbers (bill and kitchen ticket each get their own
+// series). The cafe chooses where each morning starts — some carry a number
+// forward from a previous book, some restart at 1 every day. The stored counter
+// always counts 1,2,3…; the PRINTED number is `start + count - 1`, so changing
+// the start tomorrow never rewrites a slip already handed to a customer.
+export const PRINT_NUMBER_START_MIN = 1;
+export const PRINT_NUMBER_START_MAX = 999999;
 
 // Fallback category assigned to products whose category is deleted, so menu
 // items never become orphaned with a dangling category name.

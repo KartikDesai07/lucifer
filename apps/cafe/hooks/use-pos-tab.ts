@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import type { SettlementPayMode } from "@/lib/constants";
+import { tableChargeOf } from "@/lib/receipt";
+import { useTables } from "@/hooks/use-tables";
 import { useCart, cartItemFromOrderItem, cartItemToInput, nextCartFromServerItems } from "@/hooks/use-cart";
 import { usePosTotals } from "@/hooks/use-pos-totals";
 import { usePosModalTotals } from "@/hooks/use-pos-modal-totals";
@@ -46,6 +48,14 @@ export function usePosTab(receiver: string) {
   // Cart's `resuming` gate (a resumed tab's add-round payload carries none).
   const [notes, setNotes] = useState("");
 
+  // `undefined` = the operator has not touched the charge, so whatever the bill
+  // is entitled to (the table's config for a new sale, the tab's snapshot for a
+  // resumed one) stands. A NUMBER is a deliberate waiver/adjustment for this
+  // bill only — 0 means waived. The distinction is the whole point: omitting it
+  // from the payload lets the server re-derive the charge from the table, which
+  // stays right even when this client's 30s-cached table list is stale.
+  const [chargeOverride, setChargeOverride] = useState<number | undefined>();
+
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentIntent, setPaymentIntent] = useState<PaymentIntent>("pay");
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
@@ -56,10 +66,34 @@ export function usePosTab(receiver: string) {
   // Free-the-table prompt after a brand-new Pay-Now sale — same reason.
   const freeTable = useFreeTablePrompt();
 
+  // The charge this bill is entitled to before any waiver: a resumed tab keeps
+  // the charge it was OPENED with (a snapshot — re-reading the table mid-service
+  // would let an admin edit re-price a bill the kitchen already served), while a
+  // new sale takes it from the table currently selected.
+  const tables = useTables();
+  const entitledCharge = useMemo(() => {
+    if (resumedOrder) return resumedOrder.chargeAmount ?? 0;
+    const selected = table
+      ? tables.data?.find((t) => t.tableNo === table)
+      : undefined;
+    return tableChargeOf(selected).amount;
+  }, [resumedOrder, table, tables.data]);
+
+  const chargeLabel = useMemo(() => {
+    if (resumedOrder) return resumedOrder.chargeLabel ?? "";
+    const selected = table
+      ? tables.data?.find((t) => t.tableNo === table)
+      : undefined;
+    return tableChargeOf(selected).label;
+  }, [resumedOrder, table, tables.data]);
+
+  const charge = chargeOverride ?? entitledCharge;
+
   const { discount, gstAmount, gstRate, total } = usePosTotals({
     subtotal,
     discountRaw,
     discountUnit,
+    charge,
     settings: settings.data,
   });
 
@@ -72,8 +106,17 @@ export function usePosTab(receiver: string) {
     setCustomer(undefined);
     setDiscountRaw(0);
     setDiscountUnit("₹");
+    setChargeOverride(undefined);
     setResumedOrder(null);
     setNotes("");
+  };
+
+  // Picking a different table means a different charge, so a waiver made
+  // against the previous one is dropped rather than silently carried across to
+  // a table the operator never waived anything for.
+  const selectTable = (next: string | undefined) => {
+    setTable(next);
+    setChargeOverride(undefined);
   };
 
   const buildCreatePayload = (
@@ -85,6 +128,11 @@ export function usePosTab(receiver: string) {
     subtotal,
     discount,
     gstAmount,
+    // Sent ONLY when the operator actually touched it. Omitted, the server
+    // applies the table's own current charge — which is more trustworthy than
+    // anything this client could echo, since the tables list here is cached for
+    // 30s and could re-apply a charge an admin has already lowered.
+    chargeAmount: chargeOverride,
     total,
     paidAmount: 0,
     payment: "Unpaid",
@@ -98,14 +146,24 @@ export function usePosTab(receiver: string) {
   // `kot: false` skips the print signal (void ticket = void slip, not a remake
   // order); `keepUnfired: true` re-syncs after a void without dropping unsent lines
   // it never touched — the fire path must leave it false, see nextCartFromServerItems.
-  const applyTabUpdate = (order: Order, opts: { kot?: boolean; keepUnfired?: boolean } = {}) => {
-    const { kot = true, keepUnfired = false } = opts;
+  const applyTabUpdate = (
+    order: Order,
+    opts: { kot?: boolean; keepUnfired?: boolean; chargeSent?: boolean } = {},
+  ) => {
+    const { kot = true, keepUnfired = false, chargeSent = false } = opts;
     setResumedOrder(order);
     hydrate(nextCartFromServerItems(order.items, cart, keepUnfired));
     // Mirror the server's (re-clamped) discount so the live cart footer total
     // stays in sync with the stored tab total after a fire (matches enterResume).
     setDiscountRaw(order.discount);
     setDiscountUnit("₹");
+    // Drop the local waiver ONLY when the request that produced `order` actually
+    // carried it — then the server has answered, `order` holds the charge it
+    // stored, and `entitledCharge` reads straight off it. The void path carries
+    // no charge (voidItemSchema is intent-only), so clearing there would throw
+    // away a waiver the operator has already promised the guest and quietly
+    // bill it back at settle.
+    if (chargeSent) setChargeOverride(undefined);
     if (kot) print.queueKotRound(order);
   };
 
@@ -116,10 +174,12 @@ export function usePosTab(receiver: string) {
       const order = resumedOrder
         ? await addItems.mutateAsync({
             id: resumedOrder._id,
-            data: { items: newItems, discount },
+            data: { items: newItems, discount, chargeAmount: chargeOverride },
           })
         : await createOrder.mutateAsync(buildCreatePayload({}));
-      applyTabUpdate(order);
+      // Both branches carry chargeAmount, so the waiver is now durable on the
+      // order itself rather than surviving only in this browser's state.
+      applyTabUpdate(order, { chargeSent: true });
     } catch {
       /* hook toasts; nothing local mutated, staff can retry */
     }
@@ -147,6 +207,9 @@ export function usePosTab(receiver: string) {
             // The operator can change the discount on a resumed tab right up to
             // settlement; the server re-clamps + recomputes the total from it.
             discount,
+            // Same rule as the create payload: only when they touched it.
+            // Omitted leaves the tab's snapshotted charge exactly as it is.
+            chargeAmount: chargeOverride,
             paidAmount: collectedAmount(result),
             // Only meaningful alongside a defined paidAmount above — lets the
             // route detect a stale modalTotals snapshot (CR1.2 regression).
@@ -201,6 +264,8 @@ export function usePosTab(receiver: string) {
     );
     setDiscountRaw(order.discount);
     setDiscountUnit("₹");
+    // The tab's own snapshot governs from here — not the table's current config.
+    setChargeOverride(undefined);
     hydrate(order.items.map((it, i) => cartItemFromOrderItem(it, i)));
   };
 
@@ -230,6 +295,9 @@ export function usePosTab(receiver: string) {
   const modalTotals = usePosModalTotals({
     resumedOrder,
     discount,
+    chargeOverride,
+    charge,
+    chargeLabel,
     settings: settings.data,
     paymentIntent,
     subtotal,
@@ -246,7 +314,7 @@ export function usePosTab(receiver: string) {
     subtotal,
     newCount,
     table,
-    setTable,
+    setTable: selectTable,
     customer,
     setCustomer,
     discountRaw,
@@ -254,6 +322,12 @@ export function usePosTab(receiver: string) {
     discountUnit,
     setDiscountUnit,
     discount,
+    // The table charge for this bill: what is being charged, what it prints as,
+    // and the seam for the operator to waive or adjust it.
+    charge,
+    chargeLabel,
+    entitledCharge,
+    setChargeOverride,
     gstAmount,
     gstRate,
     total,

@@ -14,12 +14,42 @@ import type {
   Order,
 } from "@/types";
 import type { DuePaymentInput } from "@/schemas";
+import type { DuesReceiptMode } from "@/lib/constants";
 
 export const CUSTOMER_KEYS = {
   all: ["customers"] as const,
   search: (q: string) => ["customers", "search", q] as const,
   orders: (id: string) => ["customers", id, "orders"] as const,
+  payments: (id: string) => ["customers", id, "payments"] as const,
 };
+
+// One row of a customer's due-payment history (admin edit + soft delete,
+// CR1.4 follow-up). `mode` is a plain string, not DuesReceiptMode — legacy
+// rows recorded before G7 narrowed the enum may still hold other values, and
+// the row must render them rather than crash on an unrecognised PAY_STYLES key.
+export interface DuePaymentRow {
+  _id: string;
+  customerId: string;
+  amount: number; // rupees — render with inr(), never inrPaise()
+  mode: string;
+  note?: string;
+  receivedBy: string;
+  createdAt: string;
+  deletedAt?: string;
+  deletedBy?: string;
+  deleteNote?: string;
+  edits?: { at: string; by: string; amount: number; mode: string; note?: string }[];
+}
+
+export interface EditDuePaymentInput {
+  amount: number;
+  mode: DuesReceiptMode;
+  note?: string;
+}
+
+export interface DeleteDuePaymentInput {
+  note: string; // required — the reason a soft-delete must carry
+}
 
 // Standard list + create/update/delete. The bespoke search / order-history /
 // settle hooks below live outside the factory.
@@ -49,6 +79,11 @@ export const useCreateCustomer = customerHooks.useCreate;
 export const useUpdateCustomer = customerHooks.useUpdate;
 export const useDeleteCustomer = customerHooks.useRemove;
 
+// Below this the search never fires. Exported because a caller that does not
+// know the floor renders a confident "no matches" for a query the server was
+// never asked about.
+export const CUSTOMER_SEARCH_MIN_CHARS = 2;
+
 // Search customers by name or mobile. Only fires at 2+ chars to avoid hammering
 // the (uncached) search endpoint on every keystroke; debounce the input upstream.
 export function useCustomerSearch(query: string) {
@@ -57,7 +92,7 @@ export function useCustomerSearch(query: string) {
     queryKey: CUSTOMER_KEYS.search(q),
     queryFn: () =>
       apiGet<Customer[]>(`/api/customers?search=${encodeURIComponent(q)}`),
-    enabled: q.length >= 2,
+    enabled: q.length >= CUSTOMER_SEARCH_MIN_CHARS,
     staleTime: STALE_TIMES.CUSTOMER_SEARCH,
   });
 }
@@ -90,6 +125,82 @@ export function useReceiveDuePayment() {
       // Both are prefix matches: ORDER_KEYS.all covers ORDER_KEYS.summary (the
       // dashboard) and REPORT_KEYS.all covers REPORT_KEYS.range(...) (reports)
       // — the dues figures on both are now stale.
+      qc.invalidateQueries({ queryKey: ORDER_KEYS.all });
+      qc.invalidateQueries({ queryKey: REPORT_KEYS.all });
+    },
+  });
+}
+
+// A customer's due-payment history, newest first — drives the Payments tab
+// of CustomerHistoryDialog. Only fetched while that tab is mounted (enabled).
+export function useCustomerPayments(customerId: string | null) {
+  return useQuery({
+    queryKey: CUSTOMER_KEYS.payments(customerId ?? ""),
+    queryFn: () =>
+      apiGet<DuePaymentRow[]>(`/api/customers/${customerId}/payments`),
+    enabled: !!customerId,
+    staleTime: STALE_TIMES.LIVE,
+  });
+}
+
+// Admin-only correction of a past due payment. Powers DuePaymentEditDialog.
+export function useEditDuePayment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      customerId,
+      paymentId,
+      data,
+    }: {
+      customerId: string;
+      paymentId: string;
+      data: EditDuePaymentInput;
+    }) =>
+      apiSend<{ payment: DuePaymentRow; customer: Customer }>(
+        `/api/customers/${customerId}/payments/${paymentId}`,
+        "PATCH",
+        data,
+      ),
+    onSuccess: () => toast.success("Payment updated"),
+    onError: (err: Error) =>
+      toast.error(err.message || "Could not update the payment"),
+    onSettled: (_data, _err, vars) => {
+      // The edited amount moves the customer's balance, the dashboard drawer
+      // tally, AND any report range that covers this payment's date — same
+      // fan-out as useReceiveDuePayment, plus the payments list itself.
+      qc.invalidateQueries({ queryKey: CUSTOMER_KEYS.all });
+      qc.invalidateQueries({ queryKey: CUSTOMER_KEYS.payments(vars.customerId) });
+      qc.invalidateQueries({ queryKey: ORDER_KEYS.all });
+      qc.invalidateQueries({ queryKey: REPORT_KEYS.all });
+    },
+  });
+}
+
+// Admin-only soft delete of a past due payment — adds the amount back to the
+// customer's outstanding due. Powers DuePaymentDeleteDialog.
+export function useDeleteDuePayment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      customerId,
+      paymentId,
+      data,
+    }: {
+      customerId: string;
+      paymentId: string;
+      data: DeleteDuePaymentInput;
+    }) =>
+      apiSend<{ payment: DuePaymentRow; customer: Customer }>(
+        `/api/customers/${customerId}/payments/${paymentId}`,
+        "DELETE",
+        data,
+      ),
+    onSuccess: () => toast.success("Payment deleted"),
+    onError: (err: Error) =>
+      toast.error(err.message || "Could not delete the payment"),
+    onSettled: (_data, _err, vars) => {
+      qc.invalidateQueries({ queryKey: CUSTOMER_KEYS.all });
+      qc.invalidateQueries({ queryKey: CUSTOMER_KEYS.payments(vars.customerId) });
       qc.invalidateQueries({ queryKey: ORDER_KEYS.all });
       qc.invalidateQueries({ queryKey: REPORT_KEYS.all });
     },

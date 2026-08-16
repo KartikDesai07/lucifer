@@ -33,7 +33,12 @@ export type {
 // `export type * from "@pos/shared/types"` shim also picks these up.
 export type { DuePayment, DuesCollected } from "./types-analytics";
 
-import type { GstMode } from "./constants";
+import type {
+  GstMode,
+  PaperWidth,
+  PrintFontSize,
+  PrintLogoSize,
+} from "./constants";
 import type { ImportRowStatus } from "./product-import";
 import type { DuesCollected } from "./types-analytics";
 
@@ -94,6 +99,12 @@ export interface Table {
   status: TableStatus;
   currentOrderId?: string;
   capacity: number;
+  // Extra charge this table adds to a bill, in whole rupees, with the name it
+  // prints under. Absent or 0 = the table adds nothing. The POS reads both off
+  // the selected table and SNAPSHOTS them onto the order, so editing the table
+  // later never rewrites a bill that was already printed.
+  chargeAmount?: number;
+  chargeLabel?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -126,6 +137,10 @@ export interface OrderVoid {
   reason: string;
   voidedBy: string; // staff name from the session, never client-supplied
   at: string;
+  // This void slip's own number, from the same daily kitchen-ticket series as
+  // the round tickets — a void slip is paper the kitchen has to reconcile too.
+  // Absent when the cafe does not number tickets, or excludes voids from it.
+  kotNumber?: number;
 }
 
 export interface Order {
@@ -139,6 +154,12 @@ export interface Order {
   gstAmount?: number; // GST added on top (exclusive mode); 0/absent otherwise
   gstRate?: number; // GST rate snapshot at order time (0 if GST was off then)
   gstMode?: GstMode; // GST mode snapshot at order time
+  // The table's extra charge as it was sold, and the name it printed under —
+  // snapshotted at sale time so editing the table later cannot rewrite an
+  // already-printed bill. Folded into `total` and NOT part of the taxable base,
+  // so anything reasoning about tax has to lift it out first (lib/receipt).
+  chargeAmount?: number;
+  chargeLabel?: string;
   total: number;
   paidAmount: number;
   payment: PaymentMode;
@@ -149,6 +170,12 @@ export interface Order {
   tableNo?: string;
   notes?: string;
   kotRounds: number; // count of KOT rounds fired (running order); 0 for legacy
+  // What the printed slips actually said. `kotNumbers[n-1]` is round n's ticket
+  // number; `billNumber` is issued when payment is taken. Both already carry
+  // the cafe's configured daily start, so they are reprinted verbatim and never
+  // recomputed. Absent when the cafe prints no numbers.
+  kotNumbers?: number[];
+  billNumber?: number;
   // Absent until the first void / the cancel — an order that never had either
   // carries none of these fields (nothing to show, nothing stored).
   voids?: OrderVoid[];
@@ -222,9 +249,41 @@ export interface Settings {
   gstNumber: string;
   gstRate: number;
   gstMode: GstMode;
-  kotShowPrices: boolean;
   logo: string;
   fssai: string;
+
+  // Print customization. Every one of these carries the same hazard as
+  // logo/fssai above and then some: they are NEW, so every Settings document
+  // written before this feature has none of them, and a lean read returns
+  // undefined rather than the model default. Read them through
+  // `printConfigOf()` (apps/cafe/lib/print.ts) — never off the raw object, or
+  // an existing cafe's receipt silently loses its logo and address the moment
+  // this ships.
+  billShowNumber?: boolean;
+  billNumberStart?: number;
+  billShowLogo?: boolean;
+  billLogoSize?: PrintLogoSize;
+  billShowAddress?: boolean;
+  billShowMobile?: boolean;
+  billShowGstNumber?: boolean;
+  billShowFssai?: boolean;
+  billPaperWidth?: PaperWidth;
+  billFontSize?: PrintFontSize;
+
+  kotShowPrices?: boolean;
+  kotShowTotal?: boolean;
+  kotShowNumber?: boolean;
+  kotNumberStart?: number;
+  kotNumberVoidSlips?: boolean;
+  kotShowLogo?: boolean;
+  kotShowRestaurantName?: boolean;
+  kotShowTable?: boolean;
+  kotShowStaff?: boolean;
+  kotShowTime?: boolean;
+  kotShowNotes?: boolean;
+  kotPaperWidth?: PaperWidth;
+  kotFontSize?: PrintFontSize;
+
   createdAt: string;
   updatedAt: string;
 }

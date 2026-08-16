@@ -80,6 +80,43 @@ export async function nextOrderSequence(
   return doc?.seq ?? 1;
 }
 
+// ── Printed-slip series ──────────────────────────────────────────────────────
+// The kitchen ticket and the customer bill each carry their own daily number,
+// independent of the order sequence above: a tab that runs four rounds issues
+// four kitchen tickets but exactly one bill, so the three series cannot share a
+// counter. Distinct key PREFIXES on the same collection keep them apart, and
+// each still resets at the IST midnight boundary for free.
+//
+// The stored counter always counts 1, 2, 3…; the cafe's chosen starting number
+// is applied ONCE, when the slip is issued (lib/print.printedSlipNumber), and
+// the resolved figure is what gets persisted on the order. Deliberately not
+// re-derived at print time: an admin who raises tomorrow's start would
+// otherwise renumber every slip already in a customer's hand the next time one
+// was reprinted.
+export const SLIP_SERIES = ["kot", "bill"] as const;
+export type SlipSeries = (typeof SLIP_SERIES)[number];
+
+function slipCounterKey(series: SlipSeries, date: Date): string {
+  return `${series}-${cafeDateString(date).replace(/-/g, "")}`;
+}
+
+// Same single atomic $inc as the order sequence — no read-then-write, so two
+// tills firing a round in the same instant can never be handed one number.
+export async function nextSlipSequence(
+  series: SlipSeries,
+  conn?: Connection | null,
+  date: Date = new Date(),
+): Promise<number> {
+  const doc = await resolveCounter(conn)
+    .findOneAndUpdate(
+      { _id: slipCounterKey(series, date) },
+      { $inc: { seq: 1 } },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    )
+    .lean();
+  return doc?.seq ?? 1;
+}
+
 // Recovery path only: raise the day's counter to at least `floor`, then allocate
 // the next sequence. Used once if a brand-new counter collides with orders that
 // predate it (legacy data / the previous find-max scheme).

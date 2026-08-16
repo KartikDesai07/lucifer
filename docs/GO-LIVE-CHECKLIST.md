@@ -251,6 +251,22 @@ tables before service.
       `Café 1` and Devanagari names are rejected (thermal printers cannot render
       those glyphs either). `Patio 1`, `AC-2`, `T-11` are all fine.
 - [ ] Seats 1–99 (4 by default).
+- [ ] **Extra charge (optional)** — an amount this table adds to every bill
+      (cover / AC / rooftop / service). Leave blank for none; most tables should
+      be blank. 0–10000, whole rupees.
+- [ ] **Charge name** — required as soon as the amount is above 0, and printed
+      on the customer's bill **exactly as typed**. There is no default: an
+      amount saved without a name **will not be charged at all**, and the Tables
+      page shows "Charge needs a name before it will apply" until it is fixed.
+- [ ] Tell them where the charge lands: **after GST, and outside the discount.**
+      A percentage discount comes off the food only, and the charge itself is
+      not taxed. Bill order on the slip is Subtotal → Discount → GST → *charge*
+      → TOTAL.
+- [ ] Tell them staff can **waive or change it per bill** from the cart (the row
+      with the charge's name; **×** waives it, **Undo** restores it). The bill
+      keeps whatever it was rung up with.
+- [ ] Tell them: **changing a table's charge never re-prices an open tab or a
+      past bill** — a bill keeps the charge, and the name, it was opened with.
 - [ ] Delete the starter tables they do not want — **after** adding their own.
       `seed:tables` will not bring them back.
 - [ ] Tell them: **a table cannot be renamed or deleted while it is occupied,
@@ -330,6 +346,10 @@ Two routes: type it in, or import a CSV. For more than ~30 items, import.
         is a *hard* delete — that person's visit and spend history is gone, and
         only last night's dump brings it back. Treat the customer list as
         records, not housekeeping.
+      - **See only a masked mobile number** — everywhere a customer's number
+        appears (the customers list, the POS customer picker, the customer edit
+        form) staff see just the first few digits, e.g. `9876543210` shows as
+        `98765*****`. The full number is admin-only.
       - **Discount a bill by any amount, including to zero** — no cap, no reason
         recorded, no name attached, and no discount line of its own in Reports or
         the closing slip. If the drawer is short, a comped bill is the first
@@ -341,7 +361,11 @@ Two routes: type it in, or import a CSV. For more than ~30 items, import.
       - Void a fired item (reason required, kitchen gets a VOID slip), receive a
         customer's dues payment, and print the end-of-day slip.
       - **Cancelling a whole order is admin-only**, as is resetting someone
-        else's password.
+        else's password, and **changing an existing customer's mobile
+        number**. Staff can still add a NEW customer with a real number, and
+        can still edit that customer's name and type — but the mobile field on
+        an existing customer shows read-only with the hint "Only an admin can
+        see or change the full number."
 - [ ] Password resets: admin resets any other account from the Staff row; each
       person can change their own from the sidebar account menu.
 - [ ] Leavers get **deactivated**, not deleted, so their history keeps its name.
@@ -565,6 +589,10 @@ the test fails — fix the code or this file, never just this file.
 | Table name pattern | `^[A-Za-z0-9][A-Za-z0-9 _-]*$` | `TABLE_NO_PATTERN` |
 | Table name max length | 24 | `TABLE_NO_MAX_LEN` |
 | Seats range | 1–99 | `TABLE_CAPACITY_MIN` / `TABLE_CAPACITY_MAX` |
+| Table extra charge max | 10000 | `TABLE_CHARGE_MAX` |
+| Charge name max length | 24 | `TABLE_CHARGE_LABEL_MAX_LEN` |
+| Charge is taxed | no — added after GST | `computeOrderTotals` |
+| Unnamed charge | not charged at all | `tableChargeOf` |
 | Starter tables | `T-1 … T-8` (8) | `TABLE_NUMBERS` |
 | Starter table capacity | 4 | `apps/cafe/scripts/seed-tables.ts` |
 | Busy-table message | Free the table before renaming or removing it | `TABLE_BUSY_ERROR` |
@@ -573,6 +601,7 @@ the test fails — fix the code or this file, never just this file.
 | Staff password minimum | 8 | `createStaffSchema` |
 | Username minimum | 3 | `createStaffSchema` |
 | Mobile minimum | 10 | `createStaffSchema` |
+| Customer mobile mask (staff, non-admin) | first 5 chars shown, rest `*` — `9876543210` → `98765*****` | `MOBILE_VISIBLE_PREFIX` / `MOBILE_MASK_CHAR` |
 | Admin-only screens | `/staff`, `/reports`, `/settings` | `ADMIN_ROUTES` |
 | Slugs that never resolve to a cafe | www, app, api, admin, hub | `RESERVED_SUBDOMAINS` |
 | Dues receipt modes | Cash, Online | `DUES_RECEIPT_MODES` |

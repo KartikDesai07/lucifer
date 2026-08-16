@@ -6,6 +6,7 @@ import {
   ORDER_REASON_MIN_LEN,
   ORDER_REASON_MAX_LEN,
   ORDER_NOTES_MAX_LEN,
+  TABLE_CHARGE_LABEL_MAX_LEN,
 } from "../constants";
 import { tableNoSchema } from "./table.schema";
 
@@ -29,6 +30,12 @@ const orderObject = z.object({
   subtotal: z.number().min(0),
   discount: z.number().min(0).default(0), // amount (not percentage)
   gstAmount: z.number().min(0).optional(), // GST added on top (exclusive mode)
+  // The table's extra charge as the operator left it for THIS bill — they may
+  // waive or adjust it at the counter, so this is intent, like `discount`, and
+  // the server re-clamps it. The label rides along to be snapshotted with it;
+  // it is the table's name for the charge, not something the client invents.
+  chargeAmount: z.number().min(0).optional(),
+  chargeLabel: z.string().trim().max(TABLE_CHARGE_LABEL_MAX_LEN).optional(),
   total: z.number().min(0),
   // Omitted means "pay in full against the server's own recomputed total" — this
   // MUST stay optional or the client cannot express full payment without
@@ -107,6 +114,12 @@ export const addItemsSchema = z
   .object({
     items: z.array(orderItemSchema).min(1, "Add at least one item"),
     discount: z.number().min(0).optional(),
+    // A charge waiver made while the tab is running has to travel with the
+    // round that follows it, or it lives only in one browser's state: the
+    // operator waives, fires the round, and the server — which never heard
+    // about it — carries the original charge forward and bills it at settle.
+    // Same omit-means-unchanged rule as `discount` above.
+    chargeAmount: z.number().min(0).optional(),
   })
   .strict();
 
@@ -124,6 +137,11 @@ export const settleOrderSchema = z
     splitOnline: z.number().min(0).optional(),
     customerId: z.string().optional(),
     discount: z.number().min(0).optional(), // flat rupees; server re-clamps + recomputes
+    // Settle-time waiver/adjustment of the table charge. Omit to keep whatever
+    // the tab was opened with — the same omit=unchanged discipline as
+    // `discount`, so an Orders-page settle that knows nothing about charges
+    // cannot silently drop one off a bill the kitchen already served.
+    chargeAmount: z.number().min(0).optional(),
     paidAmount: z.number().min(0).optional(), // amount actually collected now; omit = pay in full
     // The total the operator actually SAW when they asserted a deliberate
     // partial `paidAmount`. Only meaningful alongside a defined `paidAmount` —

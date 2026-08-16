@@ -1,4 +1,9 @@
 import { Table } from "@/models/Table";
+import {
+  NO_TABLE_CHARGE,
+  tableChargeOf,
+  type TableChargeConfig,
+} from "@/lib/receipt";
 
 // A table's name is what everything else points at: an open tab's receipt and
 // KOT show it, a reservation books it by it, and — because Order lives on the
@@ -61,4 +66,25 @@ export async function checkTableExists(tableNo?: string): Promise<string | null>
   if (!tableNo) return null;
   const exists = await Table.exists({ tableNo });
   return exists ? null : unknownTableMessage(tableNo);
+}
+
+// The extra charge a table is configured to add, read SERVER-SIDE at pricing
+// time from the stored document — never echoed back from the request. The
+// naming rule lives in `tableChargeOf` so the POS applies exactly the same one;
+// what this adds is that the CLIENT CANNOT INVENT a charge: a table with
+// nothing configured yields 0 whatever the request body says, so an operator
+// may waive or adjust the table's charge but never conjure one onto a table
+// that has none.
+//
+// Doubles as the existence check (same single query), so a caller that needs
+// both does not pay for two round trips.
+export async function resolveTableCharge(
+  tableNo?: string,
+): Promise<{ error: string } | { charge: TableChargeConfig }> {
+  if (!tableNo) return { charge: NO_TABLE_CHARGE };
+  const doc = await Table.findOne({ tableNo })
+    .select("chargeAmount chargeLabel")
+    .lean();
+  if (!doc) return { error: unknownTableMessage(tableNo) };
+  return { charge: tableChargeOf(doc) };
 }

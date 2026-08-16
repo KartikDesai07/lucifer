@@ -10,14 +10,21 @@ import {
   TABLE_NO_MAX_LEN,
   TABLE_CAPACITY_MIN,
   TABLE_CAPACITY_MAX,
+  TABLE_CHARGE_MAX,
+  TABLE_CHARGE_LABEL_MAX_LEN,
   TABLE_NUMBERS,
   ADMIN_ROUTES,
   DUES_RECEIPT_MODES,
   GST_RATES,
   IMAGE_MAX_DIMENSION_PX,
   MAX_IMAGE_BYTES,
+  MOBILE_VISIBLE_PREFIX,
+  MOBILE_MASK_CHAR,
 } from "@/lib/constants";
+import { maskMobile } from "@pos/shared/utils";
 import { TABLE_BUSY_ERROR } from "@/lib/table-admin";
+import { computeOrderTotals, tableChargeOf } from "@/lib/receipt";
+import { printSettingsFields } from "@/lib/print";
 import { IMPORT_COLUMNS, MODIFIER_SEPARATOR, MAX_IMPORT_ROWS } from "@/lib/product-import";
 import { RECEIPT_PAGE_STYLE } from "./print";
 import { RESERVED_SUBDOMAINS } from "@/lib/platform";
@@ -152,6 +159,41 @@ test("PIN §A: TABLE_NO_MAX_LEN (24) matches the doc's table-name-max-length row
 test("PIN §A: TABLE_CAPACITY_MIN/MAX match the doc's seats-range row", () => {
   const nums = [...factRow("Seats range").matchAll(/\d+/g)].map((m) => Number(m[0]));
   assert.deepEqual(nums, [TABLE_CAPACITY_MIN, TABLE_CAPACITY_MAX]);
+});
+
+test("PIN §A: TABLE_CHARGE_MAX matches the doc's table-extra-charge-max row", () => {
+  assert.equal(Number(factRow("Table extra charge max")), TABLE_CHARGE_MAX);
+});
+
+test("PIN §A: TABLE_CHARGE_LABEL_MAX_LEN matches the doc's charge-name-max-length row", () => {
+  assert.equal(Number(factRow("Charge name max length")), TABLE_CHARGE_LABEL_MAX_LEN);
+});
+
+// The runbook tells the operator the charge is NOT taxed. That is a claim about
+// arithmetic, so it is pinned against the arithmetic: GST must come out
+// identical whether or not a charge is present, and the total must differ by
+// exactly the charge. A future "simplification" that folded the charge into the
+// taxable base would silently make the doc — and the cafe's tax position —
+// wrong, and this is what would catch it.
+test("PIN §A: the doc's 'charge is not taxed' row matches computeOrderTotals — GST is identical with and without a charge", () => {
+  assert.match(factRow("Charge is taxed"), /\bno\b/i);
+
+  const items = [{ price: 1000, qty: 1 }];
+  const cfg = { gstEnabled: true, gstRate: 5, gstMode: "exclusive" as const };
+  const without = computeOrderTotals({ items, discount: 0, charge: 0, cfg });
+  const withCharge = computeOrderTotals({ items, discount: 0, charge: 50, cfg });
+
+  assert.equal(withCharge.gstAmount, without.gstAmount, "the charge must not enter the taxable base");
+  assert.equal(withCharge.total - without.total, 50, "the charge must land on the total untouched by tax");
+});
+
+// Likewise the "unnamed charge is not charged at all" row — the rule the Tables
+// page warns about and the order route enforces.
+test("PIN §A: the doc's unnamed-charge row matches tableChargeOf — an amount with no name yields nothing", () => {
+  assert.match(factRow("Unnamed charge"), /not charged/i);
+  assert.equal(tableChargeOf({ chargeAmount: 50 }).amount, 0);
+  assert.equal(tableChargeOf({ chargeAmount: 50, chargeLabel: "   " }).amount, 0);
+  assert.equal(tableChargeOf({ chargeAmount: 50, chargeLabel: "Rooftop charge" }).amount, 50);
 });
 
 test("PIN §A: TABLE_NUMBERS is exactly 8 tables spanning T-1..T-8, matching the doc's starter-tables row", () => {
@@ -380,6 +422,24 @@ test("PIN §A behaviour: createStaffSchema — mobile minimum is 10 (9 rejected,
   );
 });
 
+test("PIN §A: MOBILE_VISIBLE_PREFIX/MOBILE_MASK_CHAR match the doc's customer-mobile-mask row, and the doc's masked example is exactly what maskMobile produces (not a string hardcoded on both sides)", () => {
+  const cell = factRow("Customer mobile mask (staff, non-admin)");
+
+  const prefixMatch = cell.match(/first (\d+) chars/);
+  assert.ok(prefixMatch, "the row must state the visible-prefix count as 'first N chars'");
+  assert.equal(Number(prefixMatch![1]), MOBILE_VISIBLE_PREFIX);
+
+  const tokens = backtickTokens(cell);
+  const [maskChar, input, expectedMasked] = tokens;
+  assert.equal(maskChar, MOBILE_MASK_CHAR, "the row's mask character must match MOBILE_MASK_CHAR");
+  assert.ok(input && expectedMasked, "the row must carry a backtick-quoted example number and its masked result");
+  assert.equal(
+    expectedMasked,
+    maskMobile(input),
+    "the doc's masked example must equal maskMobile's REAL output for that input — a drifted MOBILE_VISIBLE_PREFIX would make the doc show staff a wrong amount of the number",
+  );
+});
+
 const BASE_SETTINGS = {
   restaurantName: "Cafe",
   tagline: "",
@@ -391,9 +451,12 @@ const BASE_SETTINGS = {
   gstNumber: "",
   gstRate: 5,
   gstMode: "inclusive" as const,
-  kotShowPrices: false,
   logo: "",
   fssai: "",
+  // settingsSchema requires every print-customization field. Sourced from the
+  // resolver the receipts themselves read through, so this fixture states no
+  // default of its own and cannot drift from the app's.
+  ...printSettingsFields(),
 };
 
 const SETTINGS_MAX_LENGTHS: Array<[keyof typeof BASE_SETTINGS, number]> = [

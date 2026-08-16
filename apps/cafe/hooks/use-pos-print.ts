@@ -14,6 +14,10 @@ export function usePosPrint() {
   const [lastOrder, setLastOrder] = useState<Order | null>(null);
   const [kotRoundItems, setKotRoundItems] = useState<OrderItem[] | null>(null);
   const [kotRoundLabel, setKotRoundLabel] = useState<string | undefined>();
+  // The number printed on the slip about to go out. Read off the ORDER (the
+  // server allocated and stored it), never derived here — the same round
+  // reprinted must show the ticket the kitchen is already holding.
+  const [kotRoundNumber, setKotRoundNumber] = useState<number | undefined>();
   // "void" swaps KOTReceipt's header for the cancellation banner; must never
   // survive past the slip it was queued for (see the two resets below).
   const [kotVariant, setKotVariant] = useState<KotVariant>("kot");
@@ -35,6 +39,12 @@ export function usePosPrint() {
     setLastOrder(order);
     setKotRoundItems(order.items.filter((it) => it.kotRound === order.kotRounds));
     setKotRoundLabel(`Round ${order.kotRounds}`);
+    // Round n's ticket number lives at kotNumbers[n-1]. Absent — or the 0 the
+    // route stores for a round fired while numbering was off — means this round
+    // was never numbered, and the slip simply carries no number line. Guarding
+    // on > 0 keeps that sentinel off the paper as "#0".
+    const ticket = order.kotNumbers?.[order.kotRounds - 1];
+    setKotRoundNumber(ticket !== undefined && ticket > 0 ? ticket : undefined);
     // A real round must never inherit a void banner queued by an earlier print.
     setKotVariant("kot");
     setVoidReason(undefined);
@@ -64,6 +74,10 @@ export function usePosPrint() {
       },
     ]);
     setKotRoundLabel(`Round ${entry.kotRound}`);
+    // A void slip carries its OWN ticket number, not the number of the round
+    // that made the dish — it is a separate piece of paper the kitchen has to
+    // reconcile. Absent when the cafe excludes voids from the series.
+    setKotRoundNumber(entry.kotNumber);
     setKotVariant("void");
     setVoidReason(entry.reason);
     setVoidedBy(entry.voidedBy);
@@ -75,6 +89,11 @@ export function usePosPrint() {
   const reprintKot = useCallback(() => {
     setKotRoundItems(null);
     setKotRoundLabel(undefined);
+    // Deliberately unnumbered: this slip lists EVERY item on the tab, so it
+    // matches no single ticket the kitchen was ever handed. Stamping it with a
+    // round's number would put that number on two different pieces of paper
+    // listing different food.
+    setKotRoundNumber(undefined);
     // A plain reprint must never inherit a void banner queued earlier.
     setKotVariant("kot");
     setVoidReason(undefined);
@@ -92,6 +111,7 @@ export function usePosPrint() {
     setLastOrder,
     kotRoundItems,
     kotRoundLabel,
+    kotRoundNumber,
     kotVariant,
     voidReason,
     voidedBy,

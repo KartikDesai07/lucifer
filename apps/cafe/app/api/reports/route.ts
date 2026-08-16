@@ -3,6 +3,7 @@ import { Order } from "@/models/Order";
 import { Customer } from "@/models/Customer";
 import { DuePayment } from "@/models/DuePayment";
 import { success, requireAdmin, validationError, serverError } from "@/lib/api-helpers";
+import { ACTIVE_DUE_PAYMENT } from "@/lib/due-payment";
 import { dayRange } from "@/lib/utils";
 import { CAFE_TIMEZONE } from "@/lib/constants";
 import { reportRangeSchema } from "@/schemas";
@@ -124,8 +125,12 @@ export async function GET(req: Request) {
         // rather than dayRange()'s "today" window. A separate total from
         // totalCollected below, never merged into it (same reasoning as
         // orders/summary's `collected` vs `duesCollected`).
+        // A second $match stage (not merged into the first) so the pinned
+        // date-range shape above stays byte-for-byte intact — ACTIVE_DUE_PAYMENT
+        // excludes soft-deleted rows, which must not keep tallying the report.
         DuePayment.aggregate<DuesCollectedTotal>([
           { $match: { createdAt: { $gte: start, $lte: end } } },
+          { $match: ACTIVE_DUE_PAYMENT },
           { $group: { _id: null, total: { $sum: "$amount" } } },
         ]),
       ]);

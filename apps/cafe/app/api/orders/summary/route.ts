@@ -5,7 +5,7 @@ import { DuePayment } from "@/models/DuePayment";
 import cache, { TTL } from "@/lib/cache";
 import { success, failure, requireAuth, serverError } from "@/lib/api-helpers";
 import { cafeDateString, dayRange, orderSummaryCacheKey, cafeHourOf } from "@/lib/utils";
-import { foldDuesCollected, type DuesCollectedRow } from "@/lib/due-payment";
+import { foldDuesCollected, ACTIVE_DUE_PAYMENT, type DuesCollectedRow } from "@/lib/due-payment";
 import { parseSummaryDateParam } from "@/lib/summary-date";
 import type { HourlyStat } from "@/types";
 
@@ -67,8 +67,10 @@ export async function GET(req: Request) {
       // One row per payment, NOT grouped by mode: foldDuesCollected's `count`
       // is `rows.length`, so pre-summing per mode here would undercount it
       // (one row per distinct mode used, instead of per payment taken).
+      // ACTIVE_DUE_PAYMENT excludes soft-deleted rows — a deleted receipt must
+      // not keep tallying the drawer.
       DuePayment.aggregate<DuesCollectedRow>([
-        { $match: { createdAt: { $gte: start, $lte: end } } },
+        { $match: { createdAt: { $gte: start, $lte: end }, ...ACTIVE_DUE_PAYMENT } },
         { $project: { _id: 0, mode: 1, amount: 1 } },
       ]),
     ]);

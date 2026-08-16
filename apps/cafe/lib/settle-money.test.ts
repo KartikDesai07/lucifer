@@ -260,6 +260,68 @@ test("settleOrderSchema accepts the optional total echo and still rejects an unk
   assert.equal(bogus.success, false, "unrelated unknown keys must still be rejected");
 });
 
+// ── Table charge at settle (owner decision 2026-08-16) ───────────────────────
+// resolveSettleMoney's `chargeAmount` option mirrors `discount`: undefined means
+// "leave the tab's stored charge alone", never "no charge" — so a settle path
+// that only knows about discounts can't silently wipe a table's charge off the
+// bill, and a settle path that only knows about charges can't reset a stored
+// discount back to zero.
+
+test("chargeAmount AND discount both omitted at settle: no recompute at all, the stored total (including its charge) is charged unchanged", () => {
+  const result = resolveSettleMoney({
+    order: tab(995, { items: [{ price: 900, qty: 1 }], chargeAmount: 50 }),
+    payment: "Cash",
+    liveGst: GST_OFF,
+  });
+  assert.ok(!("error" in result));
+  if ("error" in result) return;
+  assert.equal(result.totals, null, "neither discount nor chargeAmount supplied -> no recompute");
+  assert.equal(result.total, 995, "the stored total, charge included, is charged exactly as stored");
+});
+
+test("REGRESSION: a tab with a stored chargeAmount settled with ONLY a settle-time discount still carries the charge — re-pricing for a discount must not wipe it", () => {
+  const result = resolveSettleMoney({
+    order: tab(500, { chargeAmount: 50 }), // items: [{price:500,qty:1}], stored discount 0
+    payment: "Cash",
+    discount: 100, // settle-time discount, no chargeAmount supplied
+    liveGst: GST_OFF,
+  });
+  assert.ok(!("error" in result));
+  if ("error" in result) return;
+  assert.ok(result.totals, "a discount was supplied so totals must be recomputed");
+  assert.equal(result.totals?.charge, 50, "the stored table charge must survive a discount-only settle");
+  assert.equal(result.total, 450, "base 400 (500-100 discount) + gst 0 + the carried-forward 50 charge");
+});
+
+test("chargeAmount: 0 supplied at settle waives the charge — total drops by exactly the old charge and totals.charge is 0", () => {
+  const result = resolveSettleMoney({
+    order: tab(550, { items: [{ price: 500, qty: 1 }], chargeAmount: 50 }),
+    payment: "Cash",
+    chargeAmount: 0, // explicit waiver, no settle-time discount
+    liveGst: GST_OFF,
+  });
+  assert.ok(!("error" in result));
+  if ("error" in result) return;
+  assert.ok(result.totals, "chargeAmount was supplied so totals must be recomputed");
+  assert.equal(result.totals?.charge, 0, "an explicit 0 must waive the charge, not fall back to the stored 50");
+  assert.equal(result.total, 500, "550 (stored total) - 50 (waived charge) = 500");
+});
+
+test("chargeAmount supplied with NO settle-time discount: recompute happens, and the tab's stored discount is PRESERVED, not reset to 0", () => {
+  const result = resolveSettleMoney({
+    order: tab(600, { items: [{ price: 500, qty: 1 }], discount: 50, chargeAmount: 50 }),
+    payment: "Cash",
+    chargeAmount: 80, // settle-time adjustment of the charge, no discount supplied
+    liveGst: GST_OFF,
+  });
+  assert.ok(!("error" in result));
+  if ("error" in result) return;
+  assert.ok(result.totals, "chargeAmount was supplied so totals must be recomputed");
+  assert.equal(result.totals?.discount, 50, "a charge-only settle must not reset the tab's stored discount to 0");
+  assert.equal(result.totals?.charge, 80, "the settle-time charge adjustment must apply");
+  assert.equal(result.total, 530, "base 450 (500-50 discount) + gst 0 + the adjusted 80 charge");
+});
+
 // ── Wiring pin — the rule above is only worth anything if every caller uses it ─
 // The CR1.2 review found a FULL payment being misread as a partial one whenever
 // the client's total disagreed with the server's (stale GST settings, or a tab

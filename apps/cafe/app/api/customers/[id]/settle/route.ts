@@ -1,6 +1,7 @@
 import { success, failure, validateBody, requireAdmin, serverError } from "@/lib/api-helpers";
 import { receiveDuePayment } from "@/lib/due-payment";
 import { duePaymentSchema } from "@/schemas";
+import { maskCustomer } from "@/lib/customer-privacy";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,7 @@ type Params = { params: Promise<{ id: string }> };
 export async function POST(req: Request, { params }: Params) {
   const admin = await requireAdmin();
   if ("error" in admin) return admin.error;
+  const role = admin.session.user.role;
 
   const { id } = await params;
 
@@ -33,7 +35,9 @@ export async function POST(req: Request, { params }: Params) {
       receivedBy: admin.session.user?.name ?? "",
     });
     if (!result.ok) return failure(result.error, result.status);
-    return success(result.customer);
+    // This route is requireAdmin so masking is a no-op today — applied anyway
+    // as deliberate uniformity, so a future guard change can't silently leak.
+    return success(maskCustomer(result.customer, role));
   } catch (error) {
     return serverError("Failed to settle dues", error);
   }

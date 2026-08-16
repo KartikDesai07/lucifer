@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { DUES_RECEIPT_MODES, ORDER_REASON_MAX_LEN } from "../constants";
+import {
+  DUES_RECEIPT_MODES,
+  ORDER_REASON_MAX_LEN,
+  DUE_PAYMENT_DELETE_NOTE_MIN_LEN,
+} from "../constants";
 
 // POST /api/customers/[id]/payments (+ settle, which delegates to the same
 // core) — the cashier records money actually taken against a customer's
@@ -24,3 +28,36 @@ export const duePaymentSchema = z
   .strict();
 
 export type DuePaymentInput = z.infer<typeof duePaymentSchema>;
+
+// PATCH /api/customers/[id]/payments/[paymentId] — admin: correct a mis-keyed
+// dues receipt (wrong amount/mode/typo'd note). `amount` is REQUIRED here —
+// unlike the create path's optional "pay in full" — an edit always asserts a
+// figure; there is no natural "in full" default for a correction. Narrowed to
+// DUES_RECEIPT_MODES like the create schema, never the wide stored enum.
+export const editDuePaymentSchema = z
+  .object({
+    amount: z.number().int().positive(),
+    mode: z.enum(DUES_RECEIPT_MODES),
+    note: z.string().trim().max(ORDER_REASON_MAX_LEN).optional(),
+  })
+  .strict();
+
+// DELETE /api/customers/[id]/payments/[paymentId] — admin: soft-delete a
+// wrongly-recorded receipt. `note` is REQUIRED (unlike the edit path's
+// optional one) — the whole point of a delete is recording WHY money was
+// un-recorded.
+export const deleteDuePaymentSchema = z
+  .object({
+    note: z
+      .string()
+      .trim()
+      .min(
+        DUE_PAYMENT_DELETE_NOTE_MIN_LEN,
+        `Give a reason (at least ${DUE_PAYMENT_DELETE_NOTE_MIN_LEN} characters)`,
+      )
+      .max(ORDER_REASON_MAX_LEN, `Keep the reason under ${ORDER_REASON_MAX_LEN} characters`),
+  })
+  .strict();
+
+export type EditDuePaymentInput = z.infer<typeof editDuePaymentSchema>;
+export type DeleteDuePaymentInput = z.infer<typeof deleteDuePaymentSchema>;

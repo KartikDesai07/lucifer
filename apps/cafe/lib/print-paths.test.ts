@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-import { RECEIPT_PAGE_STYLE } from "./print";
+import { RECEIPT_PAGE_STYLE, receiptPageStyle } from "./print";
 
 // CR1.6 — the four on-device paper paths the go-live checklist's §7 device leg
 // checks by hand (customer receipt w/ logo, KOT, VOID slip, end-of-day slip).
@@ -54,6 +54,7 @@ const ORDER_RECEIPT = "apps/cafe/components/pos/OrderReceipt.tsx";
 const KOT_RECEIPT = "apps/cafe/components/pos/KOTReceipt.tsx";
 const ORDER_DETAIL_SHEET = "apps/cafe/components/orders/OrderDetailSheet.tsx";
 const END_OF_DAY_BUTTON = "apps/cafe/components/reports/EndOfDayButton.tsx";
+const END_OF_DAY_SUMMARY = "apps/cafe/components/reports/EndOfDaySummary.tsx";
 
 // ── 1. Pay Now must fire the kitchen ticket too (CR1.2(a)) ──────────────────
 
@@ -170,16 +171,72 @@ test("PIN: RECEIPT_PAGE_STYLE carries the 80mm/4mm page setup, and every print t
   assert.match(RECEIPT_PAGE_STYLE, /size: 80mm auto/);
   assert.match(RECEIPT_PAGE_STYLE, /margin: 4mm/);
 
-  const posSrc = readSrc(POS_PAGE);
-  const posMatches = posSrc.match(/pageStyle:\s*RECEIPT_PAGE_STYLE/g) ?? [];
-  assert.equal(posMatches.length, 2, "pos/page.tsx must pass RECEIPT_PAGE_STYLE to both the receipt AND the KOT print hooks");
+  // The POS now chooses its page size from Settings, because a cafe may run a
+  // different paper width on the bill roll than on the kitchen printer. The
+  // dynamic builder must still produce EXACTLY the old setup at 80mm — that
+  // equality is what makes the switch safe for every cafe that never touches
+  // the setting — and must actually change the size at 58mm, or the option is
+  // a lie and the browser silently scales the slip.
+  assert.equal(
+    receiptPageStyle("80mm"),
+    RECEIPT_PAGE_STYLE,
+    "receiptPageStyle('80mm') must reproduce the long-standing page setup byte for byte",
+  );
+  assert.match(receiptPageStyle("58mm"), /size: 58mm auto/);
+  assert.match(receiptPageStyle("58mm"), /margin: 4mm/);
 
+  // Both POS jobs must take their page setup from the RESOLVED config, and
+  // from their own surface's width — a copy-paste that pointed the KOT job at
+  // `bill.paperWidth` would print kitchen tickets on the wrong roll.
+  const posSrc = readSrc(POS_PAGE);
+  const posMatches = posSrc.match(/pageStyle:\s*receiptPageStyle\(/g) ?? [];
+  assert.equal(posMatches.length, 2, "pos/page.tsx must build a page style for both the receipt AND the KOT print hooks");
+  assert.match(
+    posSrc,
+    /pageStyle:\s*receiptPageStyle\(printCfg\.bill\.paperWidth\)/,
+    "the receipt job must use the BILL paper width",
+  );
+  assert.match(
+    posSrc,
+    /pageStyle:\s*receiptPageStyle\(printCfg\.kot\.paperWidth\)/,
+    "the KOT job must use the KITCHEN TICKET paper width, not the bill's",
+  );
+  assert.match(
+    posSrc,
+    /printConfigOf\(/,
+    "the widths must come from printConfigOf — reading settings.billPaperWidth raw returns undefined on any cafe whose Settings document predates the field",
+  );
+
+  // The REPRINT path renders the very same receipt components, which size
+  // themselves from Settings — so it must declare the same paper the POS does.
+  // A fixed 80mm page here would shrink-to-fit a 58mm cafe's duplicate bill
+  // while its original slip printed correctly.
   const orderDetailSrc = readSrc(ORDER_DETAIL_SHEET);
-  const orderDetailMatches = orderDetailSrc.match(/pageStyle:\s*RECEIPT_PAGE_STYLE/g) ?? [];
+  const orderDetailMatches = orderDetailSrc.match(/pageStyle:\s*receiptPageStyle\(/g) ?? [];
   assert.equal(
     orderDetailMatches.length,
     2,
-    "OrderDetailSheet.tsx must pass RECEIPT_PAGE_STYLE to both its receipt AND KOT print hooks",
+    "OrderDetailSheet.tsx must build a page style for both its receipt AND KOT print hooks",
+  );
+  assert.match(
+    orderDetailSrc,
+    /pageStyle:\s*receiptPageStyle\(printCfg\.bill\.paperWidth\)/,
+    "the reprinted bill must use the BILL paper width",
+  );
+  assert.match(
+    orderDetailSrc,
+    /pageStyle:\s*receiptPageStyle\(printCfg\.kot\.paperWidth\)/,
+    "the reprinted KOT must use the KITCHEN TICKET paper width",
+  );
+
+  // The end-of-day slip is the ONE surface that legitimately stays fixed: it
+  // renders its own component with a hardcoded w-[300px] (EndOfDaySummary), not
+  // the settings-driven receipt, so its page must stay 80mm.
+  const eodSummarySrc = readSrc(END_OF_DAY_SUMMARY);
+  assert.match(
+    eodSummarySrc,
+    /w-\[300px\]/,
+    "EndOfDaySummary must keep its fixed 300px width, or EndOfDayButton's fixed 80mm page setup stops matching it",
   );
 
   const eodSrc = readSrc(END_OF_DAY_BUTTON);

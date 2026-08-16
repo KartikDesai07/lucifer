@@ -32,6 +32,11 @@ interface PaymentModalProps {
   discount: number;
   gstAmount?: number; // > 0 only when exclusive GST is enabled
   gstRate?: number;
+  // The table's charge folded into `total`, under the cafe's own name for it.
+  // Without this row the summary would not add up at the exact moment money
+  // changes hands — subtotal − discount + GST would fall short of the total.
+  charge?: number;
+  chargeLabel?: string;
   total: number;
   itemCount: number;
   customer: Customer | undefined;
@@ -63,6 +68,8 @@ export function PaymentModal({
   discount,
   gstAmount = 0,
   gstRate,
+  charge = 0,
+  chargeLabel,
   total,
   itemCount,
   customer,
@@ -139,6 +146,9 @@ export function PaymentModal({
               label={gstRate ? `GST @${gstRate}%` : "GST"}
               value={`+${inr(gstAmount)}`}
             />
+          )}
+          {charge > 0 && (
+            <Row label={chargeLabel || "Table charge"} value={`+${inr(charge)}`} />
           )}
           <div className="flex items-center justify-between border-t pt-1 text-base font-bold">
             <span>Total</span>

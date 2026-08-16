@@ -1,40 +1,40 @@
 "use client";
 
-import { Controller, useForm } from "react-hook-form";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import type { FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { settingsSchema, type SettingsInput } from "@/schemas";
-import { GST_MODES, GST_RATES } from "@/lib/constants";
 import { useUpdateSettings } from "@/hooks/use-settings";
+import { printConfigOf } from "@/lib/print";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { ImageUpload } from "@/components/shared/ImageUpload";
-import { Field, ToggleRow } from "@/components/settings/SettingsFields";
+import { GeneralSettingsFields } from "@/components/settings/GeneralSettingsFields";
+import { PrintSettingsFields } from "@/components/settings/PrintSettingsFields";
 import type { Settings } from "@/types";
 
 interface SettingsFormProps {
   settings: Settings;
 }
 
+type SettingsTab = "general" | "print";
+
 export function SettingsForm({ settings }: SettingsFormProps) {
   const updateSettings = useUpdateSettings();
+  const [tab, setTab] = useState<SettingsTab>("general");
+
+  // The 23 print fields are REQUIRED by settingsSchema, but a Settings
+  // document written before this feature has none of them — getSettings()
+  // reads with `.lean()`, so Mongoose's schema defaults never apply, and the
+  // fetched object genuinely lacks those keys. Seeding defaultValues straight
+  // off `settings` would hand zodResolver `undefined` for every one of them,
+  // which fails validation and silently blocks Save. printConfigOf() is the
+  // one sanctioned place that resolves "absent means the documented default"
+  // (see apps/cafe/lib/print.ts) — reused here instead of a second copy of
+  // those defaults.
+  const printConfig = printConfigOf(settings);
 
   const {
     register,
@@ -56,206 +56,107 @@ export function SettingsForm({ settings }: SettingsFormProps) {
       gstNumber: settings.gstNumber,
       gstRate: settings.gstRate,
       gstMode: settings.gstMode,
-      kotShowPrices: settings.kotShowPrices,
       logo: settings.logo ?? "",
       fssai: settings.fssai ?? "",
+
+      billShowNumber: printConfig.bill.showNumber,
+      billNumberStart: printConfig.bill.numberStart,
+      billShowLogo: printConfig.bill.showLogo,
+      billLogoSize: printConfig.bill.logoSize,
+      billShowAddress: printConfig.bill.showAddress,
+      billShowMobile: printConfig.bill.showMobile,
+      billShowGstNumber: printConfig.bill.showGstNumber,
+      billShowFssai: printConfig.bill.showFssai,
+      billPaperWidth: printConfig.bill.paperWidth,
+      billFontSize: printConfig.bill.fontSize,
+
+      kotShowPrices: printConfig.kot.showPrices,
+      kotShowTotal: printConfig.kot.showTotal,
+      kotShowNumber: printConfig.kot.showNumber,
+      kotNumberStart: printConfig.kot.numberStart,
+      kotNumberVoidSlips: printConfig.kot.numberVoidSlips,
+      kotShowLogo: printConfig.kot.showLogo,
+      kotShowRestaurantName: printConfig.kot.showRestaurantName,
+      kotShowTable: printConfig.kot.showTable,
+      kotShowStaff: printConfig.kot.showStaff,
+      kotShowTime: printConfig.kot.showTime,
+      kotShowNotes: printConfig.kot.showNotes,
+      kotPaperWidth: printConfig.kot.paperWidth,
+      kotFontSize: printConfig.kot.fontSize,
     },
   });
-
-  const gstEnabled = watch("gstEnabled");
 
   const onSubmit = (values: SettingsInput) => {
     updateSettings.mutate(values);
   };
 
+  // react-hook-form skips onSubmit on an invalid form and just calls
+  // `.focus()` on the first errored field — a no-op on a `display:none`
+  // panel (inactive tab) and impossible on a field a collapsed reveal has
+  // unmounted. Without this, Save silently does nothing. Every print field
+  // is named `bill*`/`kot*`; everything else lives on the General tab.
+  const onInvalid = (formErrors: FieldErrors<SettingsInput>) => {
+    const [firstField] = Object.keys(formErrors) as Array<keyof SettingsInput>;
+    if (!firstField) return;
+    setTab(firstField.startsWith("bill") || firstField.startsWith("kot") ? "print" : "general");
+    const message = formErrors[firstField]?.message;
+    toast.error(typeof message === "string" && message ? message : "Check the highlighted field before saving");
+  };
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-6">
-      {/* Restaurant identity */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Restaurant details</CardTitle>
-          <CardDescription>
-            Shown at the top of every printed receipt.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Field label="Logo">
-            <Controller
-              control={control}
-              name="logo"
-              render={({ field }) => (
-                <ImageUpload
-                  value={field.value}
-                  onChange={field.onChange}
-                  alt="Logo"
-                />
-              )}
-            />
-          </Field>
-          <Field label="Restaurant name" error={errors.restaurantName?.message}>
-            <Input autoFocus {...register("restaurantName")} />
-          </Field>
-          <Field label="Tagline" error={errors.tagline?.message}>
-            <Input {...register("tagline")} />
-          </Field>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Contact mobile" error={errors.mobile?.message}>
-              <Input inputMode="tel" {...register("mobile")} />
-            </Field>
-            <Field label="Address" error={errors.address?.message}>
-              <Input {...register("address")} />
-            </Field>
-          </div>
-        </CardContent>
-      </Card>
+    <form onSubmit={handleSubmit(onSubmit, onInvalid)} noValidate className="space-y-6">
+      {/* No shadcn Tabs primitive exists in this repo (components/ui/** is
+          hook-blocked), so this is a plain segmented control over the
+          existing Button, wired for a11y by hand. */}
+      <div role="tablist" aria-label="Settings sections" className="inline-flex gap-1 rounded-lg border p-1">
+        <Button
+          type="button"
+          role="tab"
+          aria-selected={tab === "general"}
+          variant={tab === "general" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setTab("general")}
+        >
+          General
+        </Button>
+        <Button
+          type="button"
+          role="tab"
+          aria-selected={tab === "print"}
+          variant={tab === "print" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setTab("print")}
+        >
+          Print customization
+        </Button>
+      </div>
 
-      {/* Receipt text */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Receipt text</CardTitle>
-          <CardDescription>
-            Optional header note and the closing line on the bill.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Field
-            label="Header note"
-            error={errors.receiptHeader?.message}
-            hint="e.g. GST included · Dine-in"
-          >
-            <Input {...register("receiptHeader")} />
-          </Field>
-          <Field label="Footer message" error={errors.receiptFooter?.message}>
-            <Textarea rows={2} {...register("receiptFooter")} />
-          </Field>
-        </CardContent>
-      </Card>
+      {/* Both tab panels stay MOUNTED at all times — only the inactive one is
+          hidden with the `hidden` class, never unmounted. This is ONE
+          react-hook-form instance with ONE submit covering every field on
+          both tabs; unmounting a panel would drop its fields' registered
+          values (react-hook-form's default un-registration behavior), which
+          would silently reset that tab's settings back to their defaults on
+          every save. */}
+      <div className={tab === "general" ? "space-y-6" : "hidden"}>
+        <GeneralSettingsFields
+          control={control}
+          register={register}
+          setValue={setValue}
+          watch={watch}
+          errors={errors}
+        />
+      </div>
 
-      {/* GST */}
-      <Card>
-        <CardHeader>
-          <CardTitle>GST / Tax</CardTitle>
-          <CardDescription>
-            Configure how tax appears on the bill.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Controller
-            control={control}
-            name="gstEnabled"
-            render={({ field }) => (
-              <ToggleRow
-                label="Show GST on bills"
-                description="Adds a tax breakdown to printed receipts."
-                checked={field.value}
-                onChange={field.onChange}
-              />
-            )}
-          />
-
-          {gstEnabled && (
-            <div className="space-y-4 rounded-lg border p-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label>GST mode</Label>
-                  <Controller
-                    control={control}
-                    name="gstMode"
-                    render={({ field }) => (
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {GST_MODES.map((m) => (
-                            <SelectItem key={m} value={m}>
-                              {m === "inclusive"
-                                ? "Inclusive (in price)"
-                                : "Exclusive (added on top)"}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    {watch("gstMode") === "inclusive"
-                      ? "Prices already include GST; the bill shows the tax portion."
-                      : "GST is added on top, increasing the amount charged."}
-                  </p>
-                </div>
-
-                <Field label="GST rate (%)" error={errors.gstRate?.message}>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step="0.5"
-                    {...register("gstRate", { valueAsNumber: true })}
-                  />
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {GST_RATES.map((r) => (
-                      <button
-                        key={r}
-                        type="button"
-                        onClick={() =>
-                          setValue("gstRate", r, { shouldDirty: true })
-                        }
-                        className="rounded-md border px-2 py-0.5 text-xs hover:bg-muted"
-                      >
-                        {r}%
-                      </button>
-                    ))}
-                  </div>
-                </Field>
-              </div>
-
-              <Field
-                label="GST number"
-                error={errors.gstNumber?.message}
-                hint="Printed on the receipt when set."
-              >
-                <Input
-                  placeholder="22AAAAA0000A1Z5"
-                  {...register("gstNumber")}
-                />
-              </Field>
-            </div>
-          )}
-
-          <Field
-            label="FSSAI number"
-            error={errors.fssai?.message}
-            hint="Printed on the receipt when set."
-          >
-            <Input {...register("fssai")} />
-          </Field>
-        </CardContent>
-      </Card>
-
-      {/* KOT */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Kitchen ticket (KOT)</CardTitle>
-          <CardDescription>
-            Options for the kitchen order ticket printed from the POS.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Controller
-            control={control}
-            name="kotShowPrices"
-            render={({ field }) => (
-              <ToggleRow
-                label="Show prices on KOT"
-                description="Off by default — kitchens usually don't need prices."
-                checked={field.value}
-                onChange={field.onChange}
-              />
-            )}
-          />
-        </CardContent>
-      </Card>
+      <div className={tab === "print" ? "space-y-6" : "hidden"}>
+        <PrintSettingsFields
+          control={control}
+          register={register}
+          setValue={setValue}
+          watch={watch}
+          errors={errors}
+        />
+      </div>
 
       <div className="flex items-center justify-end gap-3">
         <Button

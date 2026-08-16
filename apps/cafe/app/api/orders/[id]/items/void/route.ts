@@ -14,6 +14,8 @@ import { orderSummaryCacheKey } from "@/lib/utils";
 import { getSettings, gstConfigOf } from "@/lib/settings";
 import { gstConfigFromOrder } from "@/lib/receipt";
 import { resolveItemVoid, voidGuardFilter } from "@/lib/order-void";
+import { printConfigOf, printedSlipNumber } from "@/lib/print";
+import { nextSlipSequence } from "@/models/Counter";
 import { voidItemSchema } from "@/schemas";
 
 export const dynamic = "force-dynamic";
@@ -42,6 +44,7 @@ export async function POST(req: Request, { params }: Params) {
     if (old.status !== "Pending" || old.payment !== "Unpaid") {
       return failure("Can only void items on an open tab", 409);
     }
+    const settings = await getSettings();
 
     // Recompute against the tab's own GST SNAPSHOT, not live settings — same
     // discipline as /items: a mid-tab GST change must never retroactively
@@ -57,9 +60,21 @@ export async function POST(req: Request, { params }: Params) {
         at: new Date(),
       },
       discount: old.discount,
-      gstCfg: gstConfigFromOrder(old, gstConfigOf(await getSettings())),
+      // The tab's snapshotted table charge rides through a void unchanged.
+      charge: old.chargeAmount ?? 0,
+      gstCfg: gstConfigFromOrder(old, gstConfigOf(settings)),
     });
     if ("error" in resolved) return failure(resolved.error, resolved.status);
+
+    // A void slip is a kitchen ticket too — it is printed, carried to the pass
+    // and acted on — so when the cafe numbers its tickets this one draws from
+    // the SAME daily series. Without a number of its own a void slip is the one
+    // piece of paper the kitchen cannot reconcile against anything.
+    const printCfg = printConfigOf(settings);
+    const voidTicket =
+      printCfg.kot.showNumber && printCfg.kot.numberVoidSlips
+        ? printedSlipNumber(await nextSlipSequence("kot"), printCfg.kot.numberStart)
+        : undefined;
 
     // Guarded on still-open, the round we read (a void never bumps kotRounds — it
     // isn't a new round), and voidGuardFilter (see there for why the trail's own
@@ -86,7 +101,11 @@ export async function POST(req: Request, { params }: Params) {
           gstAmount: resolved.totals.gstAmount,
           total: resolved.totals.total,
         },
-        $push: { voids: resolved.entry },
+        $push: {
+          voids: voidTicket === undefined
+            ? resolved.entry
+            : { ...resolved.entry, kotNumber: voidTicket },
+        },
       },
       { new: true, runValidators: true },
     ).lean();

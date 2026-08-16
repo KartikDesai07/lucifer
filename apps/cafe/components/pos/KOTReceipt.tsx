@@ -1,10 +1,23 @@
 "use client";
 
 import type { Ref } from "react";
+import Image from "next/image";
 
 import { CAFE_TIMEZONE } from "@/lib/constants";
 import { inr } from "@/lib/utils";
+import {
+  printConfigOf,
+  PAPER_WIDTH_CLASS,
+  PRINT_FONT_CLASS,
+  PRINT_LOGO_CLASS,
+} from "@/lib/print";
+import { productImageUrl } from "@/lib/images";
 import type { Order, OrderItem, Settings } from "@/types";
+
+// A kitchen ticket never needs a large logo — pinned to next/image's intrinsic
+// size for the "small" PRINT_LOGO_CLASS box.
+const KOT_LOGO_WIDTH_PX = 80;
+const KOT_LOGO_HEIGHT_PX = 36;
 
 function fmtTime(value: string | Date): string {
   return new Date(value).toLocaleTimeString("en-IN", {
@@ -22,6 +35,13 @@ interface KOTReceiptProps {
   // kitchen only sees the newly-added items.
   roundItems?: OrderItem[];
   roundLabel?: string;
+  // The ticket number for THIS slip — this round's kotNumbers entry for a plain
+  // ticket, or the void entry's own kotNumber for a void slip. Already resolved
+  // server-side (against the cafe's configured daily start), so this is printed
+  // verbatim and never recomputed here. Left off the slip entirely when absent
+  // (an older order minted before numbering shipped, or a cafe that numbers
+  // rounds but not voids).
+  roundNumber?: number;
   // "void" swaps the header for an unmistakable cancellation banner (CR1.3) —
   // defaults to "kot" so every existing call site prints exactly as before.
   variant?: "kot" | "void";
@@ -36,58 +56,97 @@ interface KOTReceiptProps {
 }
 
 // Kitchen Order Ticket — a stripped-down ticket for the kitchen: large item +
-// qty text, modifiers and instructions, NO prices by default (toggle via
-// Settings.kotShowPrices). 80mm width, rendered off-screen like the receipt.
+// qty text, modifiers and instructions, prices/logo/etc. gated by Settings
+// (printConfigOf(settings).kot). Rendered off-screen like the receipt; paper
+// width and font size come from the same resolved config.
 export function KOTReceipt({
   order,
   settings,
   roundItems,
   roundLabel,
+  roundNumber,
   variant = "kot",
   reason,
   voidedBy,
   voidedAt,
   ref,
 }: KOTReceiptProps) {
-  const showPrices = settings?.kotShowPrices ?? false;
+  const cfg = printConfigOf(settings).kot;
   const items = roundItems ?? order?.items ?? [];
   const isVoid = variant === "void";
   // Both-or-neither: a slip naming only one of who/when is worse than naming
   // the tab's opener/open-time, so an incomplete pair falls back to those.
   const voidMeta = isVoid && voidedBy && voidedAt ? { by: voidedBy, at: voidedAt } : null;
+  const logoUrl = productImageUrl(settings?.logo, undefined, { fit: true });
+  const restaurantName = settings?.restaurantName?.trim();
+  // The round's own total — this slip only lists one round's items, so it is
+  // never the bill total. Only meaningful alongside per-line prices.
+  const roundTotal = items.reduce((sum, it) => sum + it.price * it.qty, 0);
 
   return (
-    <div ref={ref} className="w-[300px] bg-white p-3 font-mono text-[14px] text-black">
+    <div
+      ref={ref}
+      className={`${PAPER_WIDTH_CLASS[cfg.paperWidth]} ${PRINT_FONT_CLASS[cfg.fontSize]} bg-white p-3 font-mono text-black`}
+    >
       {order && (
         <>
+          {cfg.showLogo && logoUrl && (
+            <div className="text-center">
+              <Image
+                src={logoUrl}
+                alt="Logo"
+                width={KOT_LOGO_WIDTH_PX}
+                height={KOT_LOGO_HEIGHT_PX}
+                loading="eager"
+                unoptimized
+                className={`${PRINT_LOGO_CLASS.small} mx-auto object-contain`}
+              />
+            </div>
+          )}
+          {cfg.showRestaurantName && restaurantName && (
+            <div className="text-center text-[1.29em] font-bold tracking-wide">
+              {restaurantName}
+            </div>
+          )}
+
           {isVoid ? (
             // Loud on purpose (thermal printers are monochrome — no red ink to
             // rely on): a cook glancing at a slip mid-rush must never mistake a
             // void for a fresh ticket and fire it.
             <>
-              <div className="text-center text-lg font-bold tracking-widest">
+              <div className="text-center text-[1.29em] font-bold tracking-widest">
                 *** VOID ***
               </div>
-              <div className="text-center text-[13px] font-semibold">
+              <div className="text-center text-[0.93em] font-semibold">
                 CANCELLED ITEMS — DO NOT MAKE
               </div>
             </>
           ) : (
-            <div className="text-center text-lg font-bold tracking-widest">
+            <div className="text-center text-[1.29em] font-bold tracking-widest">
               KITCHEN ORDER
             </div>
           )}
+          {/* The number a cook calls out — large, directly under the title. */}
+          {cfg.showNumber && roundNumber !== undefined && (
+            <div className="text-center text-[1.6em] font-bold">#{roundNumber}</div>
+          )}
           {roundLabel && (
-            <div className="text-center text-[13px] font-semibold">{roundLabel}</div>
+            <div className="text-center text-[0.93em] font-semibold">{roundLabel}</div>
           )}
 
           <Divider />
 
-          <div className="space-y-0.5 text-[13px]">
+          <div className="space-y-0.5 text-[0.93em]">
             <Line label="Order" value={order.orderId} />
-            <Line label="Table" value={order.tableNo ?? "Walk-In"} />
-            <Line label="Time" value={fmtTime(voidMeta?.at ?? order.createdAt)} />
-            <Line label="Staff" value={voidMeta?.by ?? order.receiver} />
+            {cfg.showTable && (
+              <Line label="Table" value={order.tableNo ?? "Walk-In"} />
+            )}
+            {cfg.showTime && (
+              <Line label="Time" value={fmtTime(voidMeta?.at ?? order.createdAt)} />
+            )}
+            {cfg.showStaff && (
+              <Line label="Staff" value={voidMeta?.by ?? order.receiver} />
+            )}
             {isVoid && reason && (
               <div className="pt-0.5 font-semibold">Reason: {reason}</div>
             )}
@@ -102,13 +161,13 @@ export function KOTReceipt({
                   <span>
                     {item.qty} × {item.name}
                   </span>
-                  {showPrices && <span>{inr(item.price * item.qty)}</span>}
+                  {cfg.showPrices && <span>{inr(item.price * item.qty)}</span>}
                 </div>
                 {item.modifiers.length > 0 && (
-                  <div className="pl-4 text-[12px]">+ {item.modifiers.join(", ")}</div>
+                  <div className="pl-4 text-[0.86em]">+ {item.modifiers.join(", ")}</div>
                 )}
                 {item.instructions && (
-                  <div className="pl-4 text-[12px] font-semibold italic">
+                  <div className="pl-4 text-[0.86em] font-semibold italic">
                     ▸ {item.instructions}
                   </div>
                 )}
@@ -116,18 +175,25 @@ export function KOTReceipt({
             ))}
           </div>
 
-          {order.notes && (
+          {cfg.showNotes && order.notes && (
             <>
               <Divider />
-              <div className="text-[12px] font-semibold">Note: {order.notes}</div>
+              <div className="text-[0.86em] font-semibold">Note: {order.notes}</div>
             </>
           )}
 
           <Divider />
 
-          <div className="text-center text-[12px]">
+          <div className="text-center text-[0.86em]">
             {items.reduce((n, it) => n + it.qty, 0)} item(s){isVoid ? " VOIDED" : ""}
           </div>
+          {/* This round's total — never the bill total, so it is labelled
+              distinctly. Meaningless with no line amounts, so gated on prices too. */}
+          {cfg.showTotal && cfg.showPrices && (
+            <div className="text-center text-[0.86em] font-semibold">
+              Round total: {inr(roundTotal)}
+            </div>
+          )}
         </>
       )}
     </div>

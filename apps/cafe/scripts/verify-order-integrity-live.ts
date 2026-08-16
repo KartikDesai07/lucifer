@@ -36,6 +36,9 @@ import { type OrderStatus, type PaymentMode, type GstMode } from "@/lib/constant
 import { computeOrderTotals, gstConfigFromOrder, type GstConfig } from "@/lib/receipt";
 import { ledgerContribution, reconcileLedger, resolveSettleMoney } from "@/lib/order";
 import { resolveItemVoid, voidGuardFilter, type ItemVoidRequest } from "@/lib/order-void";
+import { resolveTableCharge } from "@/lib/table-admin";
+import { printConfigOf, printedSlipNumber } from "@/lib/print";
+import { nextSlipSequence } from "@/models/Counter";
 
 const SCRATCH_PREFIX = "pos_scratch_";
 const DEFAULT_URI = `mongodb://127.0.0.1:27017/${SCRATCH_PREFIX}order_integrity`;
@@ -88,7 +91,8 @@ function buildOrder(opts: BuildOrderOptions) {
   const gstMode: GstMode = opts.gstMode ?? "exclusive";
   const gstRate = opts.gstRate ?? 0;
   const gstCfg: GstConfig = { gstEnabled: gstRate > 0, gstRate, gstMode };
-  const totals = computeOrderTotals(opts.items, discount, gstCfg);
+  // No table-charge fixture option on these seeded orders — charge-free tabs.
+  const totals = computeOrderTotals({ items: opts.items, discount, charge: 0, cfg: gstCfg });
   return {
     orderId: opts.orderId,
     customerId: opts.customerId,
@@ -115,7 +119,9 @@ type LeanOrder = Pick<
   | "discount"
   | "gstRate"
   | "gstMode"
+  | "chargeAmount"
   | "kotRounds"
+  | "kotNumbers"
   | "voids"
   | "total"
   | "status"
@@ -146,6 +152,8 @@ function buildVoidWrite(
     items: old.items,
     request,
     discount: old.discount,
+    // The tab's snapshotted table charge rides through a void unchanged.
+    charge: old.chargeAmount ?? 0,
     gstCfg,
   });
   if ("error" in resolution) return { ok: false as const, resolution };
@@ -170,6 +178,25 @@ function buildVoidWrite(
   return { ok: true as const, resolution, filter, update };
 }
 
+// Defect 1 fix, mirrored exactly: app/api/orders/[id]/items/route.ts builds
+// kotNumbers POSITIONALLY at index round-1, never by appending. Every round
+// below the one just numbered that was never itself numbered — either because
+// numbering was off when it fired, or the tab predates the field entirely —
+// is padded with 0 (a safe sentinel: printedSlipNumber floors at
+// PRINT_NUMBER_START_MIN, so 0 is never a printable number). Appending instead
+// files THIS round's ticket under an earlier round's array index the moment
+// any tab carries a SHORT kotNumbers array — the confirmed bug leg17 exists to
+// catch, and this is the ONE place both the route and this script build the
+// array, so they cannot drift apart again.
+function buildKotNumbers(
+  oldKotNumbers: number[] | undefined,
+  round: number,
+  ticket: number | undefined,
+): number[] | undefined {
+  if (ticket === undefined) return undefined;
+  return Array.from({ length: round }, (_, i) => (i === round - 1 ? ticket : (oldKotNumbers?.[i] ?? 0)));
+}
+
 // Pure: builds the exact filter/update app/api/orders/[id]/items/route.ts sends
 // when firing a new KOT round, so leg9 and the route cannot drift apart. Mirrors
 // the route's own read-modify-write: stamp the new items with the next round,
@@ -182,13 +209,23 @@ function buildItemsWrite(
   newItems: readonly IOrderItem[],
   discountOverride: number | undefined,
   liveGst: GstConfig,
+  // Defect 2 fix: omitted means "unchanged" (carry the tab's snapshotted
+  // charge forward), exactly like `discountOverride` above — pass an explicit
+  // number (0 = waived) to mirror what a round-fire payload now carries.
+  chargeOverride?: number,
+  // Defect 1 fix: the kot ticket THIS round issues, if numbering is on
+  // (mirrors the route's `printCfg.kot.showNumber ? printedSlipNumber(...) :
+  // undefined`) — omitted means numbering is off, so kotNumbers is untouched.
+  kotTicket?: number,
 ) {
   const round = (old.kotRounds ?? 0) + 1;
   const stamped = newItems.map((it) => ({ ...it, kotRound: round }));
   const fullItems = [...old.items, ...stamped];
   const discount = discountOverride ?? old.discount;
   const gstCfg = gstConfigFromOrder(old, liveGst);
-  const totals = computeOrderTotals(fullItems, discount, gstCfg);
+  const charge = chargeOverride ?? old.chargeAmount ?? 0;
+  const totals = computeOrderTotals({ items: fullItems, discount, charge, cfg: gstCfg });
+  const kotNumbers = buildKotNumbers(old.kotNumbers, round, kotTicket);
 
   const filter = {
     _id: old._id,
@@ -197,7 +234,10 @@ function buildItemsWrite(
     kotRounds: old.kotRounds ?? 0,
     ...voidGuardFilter(old.voids?.length ?? 0),
   };
-  const update = {
+  // Mirrors app/api/orders/[id]/items/route.ts exactly: a waived charge (0) is
+  // UNSET, never left stored as a 0 sitting beside its old label — the receipt
+  // keys its charge line off the amount being PRESENT.
+  const update: Record<string, unknown> = {
     $set: {
       items: fullItems,
       subtotal: totals.subtotal,
@@ -205,8 +245,13 @@ function buildItemsWrite(
       gstAmount: totals.gstAmount,
       total: totals.total,
       kotRounds: round,
+      ...(totals.charge > 0 ? { chargeAmount: totals.charge } : {}),
+      ...(kotNumbers ? { kotNumbers } : {}),
     },
   };
+  if (totals.charge <= 0) {
+    update.$unset = { chargeAmount: "", chargeLabel: "" };
+  }
   return { filter, update, totals, fullItems };
 }
 
@@ -220,6 +265,9 @@ function buildSettleWrite(
   settleInput: {
     payment: PaymentMode;
     discount?: number;
+    // Settle-time waiver/adjustment of the table charge — mirrors resolveSettleMoney's
+    // own option: undefined leaves the tab's stored charge alone.
+    chargeAmount?: number;
     paidAmount?: number;
     splitCash?: number;
     splitOnline?: number;
@@ -230,6 +278,7 @@ function buildSettleWrite(
     order: old,
     payment: settleInput.payment,
     discount: settleInput.discount,
+    chargeAmount: settleInput.chargeAmount,
     paidAmount: settleInput.paidAmount,
     splitCash: settleInput.splitCash,
     splitOnline: settleInput.splitOnline,
@@ -237,17 +286,28 @@ function buildSettleWrite(
   });
   if ("error" in money) return { ok: false as const, money };
 
-  const update: Record<string, unknown> = {
+  const set: Record<string, unknown> = {
     payment: settleInput.payment,
     paidAmount: money.paidAmount,
     status: "Completed",
   };
+  const unset: Record<string, ""> = {};
   if (money.totals) {
-    update.subtotal = money.totals.subtotal;
-    update.discount = money.totals.discount;
-    update.gstAmount = money.totals.gstAmount;
-    update.total = money.totals.total;
+    set.subtotal = money.totals.subtotal;
+    set.discount = money.totals.discount;
+    set.gstAmount = money.totals.gstAmount;
+    set.total = money.totals.total;
+    // Mirrors app/api/orders/[id]/settle/route.ts exactly: a waived charge (0)
+    // must be UNSET, never stored as a 0 sitting beside its old label.
+    if (money.totals.charge > 0) {
+      set.chargeAmount = money.totals.charge;
+    } else {
+      unset.chargeAmount = "";
+      unset.chargeLabel = "";
+    }
   }
+  const update: Record<string, unknown> = { $set: set };
+  if (Object.keys(unset).length > 0) update.$unset = unset;
   const filter = {
     _id: old._id,
     status: "Pending",
@@ -532,7 +592,12 @@ async function leg4(): Promise<void> {
   check("the voided line's qty dropped by exactly the voided amount (3 → 2)", teaLine?.qty === 2);
 
   const gstCfg = gstConfigFromOrder(old, LIVE_GST_FALLBACK);
-  const oracle = computeOrderTotals(result.items, old.discount, gstCfg);
+  const oracle = computeOrderTotals({
+    items: result.items,
+    discount: old.discount,
+    charge: old.chargeAmount ?? 0,
+    cfg: gstCfg,
+  });
   check(
     "persisted subtotal/gstAmount/total match computeOrderTotals over what remains, using the TAB's GST snapshot",
     result.subtotal === oracle.subtotal && result.gstAmount === oracle.gstAmount && result.total === oracle.total,
@@ -586,7 +651,12 @@ async function leg5(): Promise<void> {
   );
 
   const gstCfg = gstConfigFromOrder(old, LIVE_GST_FALLBACK);
-  const oracle = computeOrderTotals(result.items, old.discount, gstCfg);
+  const oracle = computeOrderTotals({
+    items: result.items,
+    discount: old.discount,
+    charge: old.chargeAmount ?? 0,
+    cfg: gstCfg,
+  });
   check(
     "money is recomputed over what remains",
     result.subtotal === oracle.subtotal && result.gstAmount === oracle.gstAmount && result.total === oracle.total,
@@ -622,6 +692,8 @@ async function leg6(): Promise<void> {
     items: before!.items,
     request,
     discount: before!.discount,
+    // The tab's snapshotted table charge rides through a void unchanged.
+    charge: before!.chargeAmount ?? 0,
     gstCfg,
   });
   check(
@@ -1041,6 +1113,529 @@ async function leg13(): Promise<void> {
   );
 }
 
+async function leg14(): Promise<void> {
+  console.log(
+    "\nLeg 14 — a table's extra charge rides an order end-to-end: create snapshots it, a KOT round and a void both carry it forward, and a chargeAmount:0 settle UNSETS both fields\n",
+  );
+
+  await Table.create({
+    tableNo: "T-CHARGE",
+    capacity: 4,
+    status: "Available",
+    chargeAmount: 50,
+    chargeLabel: "Rooftop charge",
+  });
+
+  const resolved = await resolveTableCharge("T-CHARGE");
+  if ("error" in resolved) throw new Error("leg14: resolveTableCharge failed against the seeded table");
+  check(
+    "resolveTableCharge reads the table's configured amount + label",
+    resolved.charge.amount === 50 && resolved.charge.label === "Rooftop charge",
+  );
+
+  const gstCfg: GstConfig = { gstEnabled: false, gstRate: 0, gstMode: "exclusive" };
+  const openingItems = [line("p-main", "Main Course", 300, 1, 1)];
+  // Mirrors app/api/orders/route.ts's own create doc: chargeAmount/chargeLabel
+  // are snapshotted from the table ONLY when the resolved charge is > 0, and the
+  // label always comes from the table, never the request.
+  const openingTotals = computeOrderTotals({
+    items: openingItems,
+    discount: 0,
+    charge: resolved.charge.amount,
+    cfg: gstCfg,
+  });
+  const order = await Order.create({
+    orderId: "ORD-LEG14-001",
+    customerName: "Walk-in",
+    items: openingItems,
+    subtotal: openingTotals.subtotal,
+    discount: openingTotals.discount,
+    gstAmount: openingTotals.gstAmount,
+    gstRate: 0,
+    gstMode: "exclusive",
+    chargeAmount: openingTotals.charge > 0 ? openingTotals.charge : undefined,
+    chargeLabel: openingTotals.charge > 0 ? resolved.charge.label : undefined,
+    total: openingTotals.total,
+    paidAmount: 0,
+    payment: "Unpaid",
+    status: "Pending",
+    receiver: "Verifier",
+    tableNo: "T-CHARGE",
+    kotRounds: 1,
+  });
+  check("an order created on a charged table stores chargeAmount", order.chargeAmount === 50);
+  check("an order created on a charged table stores chargeLabel", order.chargeLabel === "Rooftop charge");
+  check("the opening total includes the charge on top of the items (300 + 50 = 350)", order.total === 350);
+
+  // Add a KOT round — the charge must ride forward untouched (buildItemsWrite
+  // carries `old.chargeAmount ?? 0` through unchanged, mirroring the real route),
+  // and the total must grow by EXACTLY the new item's price.
+  const afterCreate = await Order.findById(order._id).lean<LeanOrder>();
+  if (!afterCreate) throw new Error("leg14: seed order missing after create");
+  const newItem = line("p-side", "Side Dish", 80, 1, 0); // kotRound stamped by buildItemsWrite
+  const roundWrite = buildItemsWrite(afterCreate, [newItem], undefined, gstCfg);
+  const afterRound = await Order.findOneAndUpdate(roundWrite.filter, roundWrite.update, {
+    new: true,
+    runValidators: true,
+  }).lean();
+  check("adding a KOT round succeeds", afterRound !== null);
+  check(
+    "the charge survives a new KOT round unchanged",
+    afterRound?.chargeAmount === 50 && afterRound?.chargeLabel === "Rooftop charge",
+  );
+  check("the total grows by exactly the new item's price (350 + 80 = 430)", afterRound?.total === 430);
+
+  // Void the ORIGINAL line entirely — the charge must still ride forward
+  // (buildVoidWrite carries `old.chargeAmount ?? 0` through too).
+  const beforeVoid = await Order.findById(order._id).lean<LeanOrder>();
+  if (!beforeVoid) throw new Error("leg14: seed order missing before void");
+  const voidRequest: ItemVoidRequest = {
+    index: 0,
+    lineKey: orderLineKey(beforeVoid.items[0]),
+    qty: 1,
+    reason: "Guest changed mind",
+    voidedBy: "Verifier",
+    at: new Date(),
+  };
+  const { result: afterVoid } = await attemptVoid(order._id, voidRequest, gstCfg);
+  check("the void of the Main Course line lands", afterVoid !== null);
+  check(
+    "the charge survives voiding an unrelated line",
+    afterVoid?.chargeAmount === 50 && afterVoid?.chargeLabel === "Rooftop charge",
+  );
+  check(
+    "the total after voiding Main Course (300) is just Side Dish (80) plus the charge (50) = 130",
+    afterVoid?.total === 130,
+  );
+
+  // Settle with chargeAmount: 0 — must UNSET both fields (never store 0/"") and
+  // drop the total by exactly the waived charge.
+  const beforeSettle = await Order.findById(order._id).lean<LeanOrder>();
+  if (!beforeSettle) throw new Error("leg14: seed order missing before settle");
+  const chargeBeforeSettle = beforeSettle.chargeAmount ?? 0;
+  const settleWrite = buildSettleWrite(beforeSettle, { payment: "Cash", chargeAmount: 0 }, gstCfg);
+  if (!settleWrite.ok) throw new Error("leg14: settle should resolve cleanly (no error path)");
+  const settled = await Order.findOneAndUpdate(settleWrite.filter, settleWrite.update, {
+    new: true,
+    runValidators: true,
+  }).lean();
+  check("the chargeAmount:0 settle lands", settled !== null);
+  check(
+    "chargeAmount is ABSENT from the settled document ($unset), not stored as 0",
+    !!settled && !("chargeAmount" in settled),
+  );
+  check(
+    'chargeLabel is ABSENT from the settled document ($unset), not stored as ""',
+    !!settled && !("chargeLabel" in settled),
+  );
+  check(
+    `the total drops by exactly the waived charge (${beforeSettle.total} - ${chargeBeforeSettle} = ${beforeSettle.total - chargeBeforeSettle})`,
+    settled?.total === beforeSettle.total - chargeBeforeSettle,
+  );
+  check("settling still freezes the tab to Completed", settled?.status === "Completed");
+}
+
+async function leg15(): Promise<void> {
+  console.log(
+    "\nLeg 15 — Defect 2: a chargeAmount:0 round-fire on a resumed tab UNSETS the charge end-to-end (not carried forward), and an omitted chargeAmount round-fire leaves it fully intact\n",
+  );
+
+  const gstCfg: GstConfig = { gstEnabled: false, gstRate: 0, gstMode: "exclusive" };
+
+  // ── a) open a tab on a charged table — both fields stored ──────────────────
+  await Table.create({
+    tableNo: "T-CHARGE-WAIVE",
+    capacity: 4,
+    status: "Available",
+    chargeAmount: 50,
+    chargeLabel: "Rooftop charge",
+  });
+  const resolvedWaive = await resolveTableCharge("T-CHARGE-WAIVE");
+  if ("error" in resolvedWaive) {
+    throw new Error("leg15: resolveTableCharge failed against the seeded waive table");
+  }
+
+  const openingItems = [line("p-main", "Main Course", 300, 1, 1)];
+  const openingTotals = computeOrderTotals({
+    items: openingItems,
+    discount: 0,
+    charge: resolvedWaive.charge.amount,
+    cfg: gstCfg,
+  });
+  const orderWaive = await Order.create({
+    orderId: "ORD-LEG15-WAIVE-001",
+    customerName: "Walk-in",
+    items: openingItems,
+    subtotal: openingTotals.subtotal,
+    discount: openingTotals.discount,
+    gstAmount: openingTotals.gstAmount,
+    gstRate: 0,
+    gstMode: "exclusive",
+    chargeAmount: openingTotals.charge > 0 ? openingTotals.charge : undefined,
+    chargeLabel: openingTotals.charge > 0 ? resolvedWaive.charge.label : undefined,
+    total: openingTotals.total,
+    paidAmount: 0,
+    payment: "Unpaid",
+    status: "Pending",
+    receiver: "Verifier",
+    tableNo: "T-CHARGE-WAIVE",
+    kotRounds: 1,
+  });
+  check(
+    "a) the tab opens on the charged table with BOTH chargeAmount and chargeLabel stored",
+    orderWaive.chargeAmount === 50 && orderWaive.chargeLabel === "Rooftop charge",
+  );
+
+  // ── b) a KOT round is fired WITH chargeAmount: 0 (the waiver) ──────────────
+  const beforeWaiveRound = await Order.findById(orderWaive._id).lean<LeanOrder>();
+  if (!beforeWaiveRound) throw new Error("leg15: waive-scenario order missing before round-fire");
+  const waiveNewItem = line("p-side", "Side Dish", 80, 1, 0); // kotRound stamped by buildItemsWrite
+  // THE CONFIRMED BUG: before the fix, addItemsSchema had no field to carry a
+  // waiver at all, so this round-fire could only ever carry old.chargeAmount
+  // forward. buildItemsWrite's chargeOverride param mirrors the route's now-
+  // accepted `parsed.data.chargeAmount` exactly.
+  const waiveRoundWrite = buildItemsWrite(beforeWaiveRound, [waiveNewItem], undefined, gstCfg, 0);
+  const afterWaiveRound = await Order.findOneAndUpdate(waiveRoundWrite.filter, waiveRoundWrite.update, {
+    new: true,
+    runValidators: true,
+  }).lean();
+  check("b) the chargeAmount:0 round-fire lands", afterWaiveRound !== null);
+
+  // ── c) chargeAmount and chargeLabel are ABSENT afterward ($unset fired) ────
+  check(
+    "c) chargeAmount is ABSENT from the document after the waiver round-fire — not stored as 0",
+    !!afterWaiveRound && !("chargeAmount" in afterWaiveRound),
+  );
+  check(
+    'c) chargeLabel is ABSENT from the document after the waiver round-fire — not stored as ""',
+    !!afterWaiveRound && !("chargeLabel" in afterWaiveRound),
+  );
+
+  // ── d) the new total is subtotal+gst of the FULL item set with NO charge ───
+  const oracleWaive = computeOrderTotals({
+    items: waiveRoundWrite.fullItems,
+    discount: beforeWaiveRound.discount,
+    charge: 0,
+    cfg: gstCfg,
+  });
+  check(
+    "d) oracle charge is 0 and the persisted total matches subtotal+gst of the full item set with no charge added (300 + 80 = 380)",
+    oracleWaive.charge === 0 && afterWaiveRound?.total === oracleWaive.total && oracleWaive.total === 380,
+  );
+
+  // ── e) control: chargeAmount OMITTED leaves the original charge intact ─────
+  await Table.create({
+    tableNo: "T-CHARGE-KEEP",
+    capacity: 4,
+    status: "Available",
+    chargeAmount: 50,
+    chargeLabel: "Rooftop charge",
+  });
+  const resolvedKeep = await resolveTableCharge("T-CHARGE-KEEP");
+  if ("error" in resolvedKeep) {
+    throw new Error("leg15: resolveTableCharge failed against the seeded keep table");
+  }
+  const openingItemsKeep = [line("p-main2", "Main Course", 300, 1, 1)];
+  const openingTotalsKeep = computeOrderTotals({
+    items: openingItemsKeep,
+    discount: 0,
+    charge: resolvedKeep.charge.amount,
+    cfg: gstCfg,
+  });
+  const orderKeep = await Order.create({
+    orderId: "ORD-LEG15-KEEP-001",
+    customerName: "Walk-in",
+    items: openingItemsKeep,
+    subtotal: openingTotalsKeep.subtotal,
+    discount: openingTotalsKeep.discount,
+    gstAmount: openingTotalsKeep.gstAmount,
+    gstRate: 0,
+    gstMode: "exclusive",
+    chargeAmount: openingTotalsKeep.charge > 0 ? openingTotalsKeep.charge : undefined,
+    chargeLabel: openingTotalsKeep.charge > 0 ? resolvedKeep.charge.label : undefined,
+    total: openingTotalsKeep.total,
+    paidAmount: 0,
+    payment: "Unpaid",
+    status: "Pending",
+    receiver: "Verifier",
+    tableNo: "T-CHARGE-KEEP",
+    kotRounds: 1,
+  });
+  check(
+    "e) the control tab opens on the charged table with the charge stored",
+    orderKeep.chargeAmount === 50 && orderKeep.chargeLabel === "Rooftop charge",
+  );
+
+  const beforeKeepRound = await Order.findById(orderKeep._id).lean<LeanOrder>();
+  if (!beforeKeepRound) throw new Error("leg15: control order missing before round-fire");
+  const keepNewItem = line("p-side2", "Side Dish", 80, 1, 0);
+  // No chargeOverride passed — omit-means-unchanged, the control for (b)-(d).
+  const keepRoundWrite = buildItemsWrite(beforeKeepRound, [keepNewItem], undefined, gstCfg);
+  const afterKeepRound = await Order.findOneAndUpdate(keepRoundWrite.filter, keepRoundWrite.update, {
+    new: true,
+    runValidators: true,
+  }).lean();
+  check("e) the omitted-chargeAmount round-fire lands", afterKeepRound !== null);
+  check(
+    "e) omitting chargeAmount on the round-fire leaves the original charge FULLY intact (still present, unchanged)",
+    afterKeepRound?.chargeAmount === 50 && afterKeepRound?.chargeLabel === "Rooftop charge",
+  );
+  check(
+    "e) the control's total includes items PLUS the untouched charge (300 + 80 + 50 = 430)",
+    afterKeepRound?.total === 430,
+  );
+}
+
+async function leg16(): Promise<void> {
+  console.log(
+    "\nLeg 16 — CR1.7 slip numbering end-to-end: no bill number on an open tab, kot series advances per round, settle assigns the day's bill number, kot/bill series are independent, and re-settling never renumbers\n",
+  );
+
+  // No Settings document exists for this leg — exactly the "cafe with a
+  // pre-feature Settings document" case CR1.7 has to survive. printConfigOf's
+  // own default resolution (documented defaults) is what the routes fall back
+  // to via getSettings()'s .lean() read, so resolving against `undefined`
+  // here is the faithful equivalent without needing a seeded Settings doc.
+  const printCfg = printConfigOf(undefined);
+  check(
+    "sanity: the resolved defaults issue both kot and bill numbers, starting at 1",
+    printCfg.kot.showNumber === true &&
+      printCfg.bill.showNumber === true &&
+      printCfg.kot.numberStart === 1 &&
+      printCfg.bill.numberStart === 1,
+  );
+
+  // a) create an order as an OPEN TAB ("Pending") — mirrors POST /api/orders:
+  // kotNumbers gets the round-1 ticket number; billNumber is never allocated
+  // for a Pending create (issuesBill is false), so it must be genuinely ABSENT
+  // from the stored document, not merely falsy.
+  const kotNumber1 = printedSlipNumber(await nextSlipSequence("kot"), printCfg.kot.numberStart);
+  const order = await Order.create({
+    orderId: "ORD-LEG16-001",
+    customerName: "Walk-in",
+    items: [line("p-tea", "Tea", 100, 2, 1)],
+    subtotal: 200,
+    discount: 0,
+    gstAmount: 0,
+    gstRate: 0,
+    gstMode: "exclusive",
+    total: 200,
+    kotNumbers: [kotNumber1],
+    paidAmount: 0,
+    payment: "Unpaid",
+    status: "Pending",
+    receiver: "Verifier",
+    kotRounds: 1,
+  });
+
+  const afterCreate = await Order.findById(order._id).lean();
+  check(
+    "a) the open tab stores kotNumbers: [N] for its opening round",
+    JSON.stringify(afterCreate?.kotNumbers) === JSON.stringify([kotNumber1]),
+  );
+  check(
+    "a) the open tab has NO billNumber at all (absent, not 0/undefined-as-a-value) — an unpaid tab must never burn a bill number",
+    !!afterCreate && !("billNumber" in afterCreate),
+  );
+
+  // b) fire round 2 — a SECOND kot number, the next in the series, written
+  // POSITIONALLY via buildKotNumbers (mirrors app/api/orders/[id]/items/
+  // route.ts exactly — see that function's own comment for why this is NOT a
+  // plain array append).
+  const kotNumber2 = printedSlipNumber(await nextSlipSequence("kot"), printCfg.kot.numberStart);
+  const afterRound2 = await Order.findOneAndUpdate(
+    { _id: order._id, status: "Pending", payment: "Unpaid", kotRounds: 1 },
+    { $set: { kotRounds: 2, kotNumbers: buildKotNumbers(afterCreate?.kotNumbers, 2, kotNumber2) } },
+    { new: true },
+  ).lean();
+  check("b) the round-2 write matches and applies", afterRound2 !== null);
+  check(
+    "b) kotNumbers[1] is the NEXT number in the series (kotNumbers[0] + 1)",
+    afterRound2?.kotNumbers?.[1] === (afterRound2?.kotNumbers?.[0] ?? -1) + 1,
+  );
+  check("b) kotNumbers.length is now 2 — one entry per fired round", afterRound2?.kotNumbers?.length === 2);
+
+  // c) settle — assigns a billNumber, and it is the day's configured START:
+  // this is the day's first bill, so no other order has consumed the bill
+  // series before it (mirrors settle/route.ts's own condition:
+  // printCfg.bill.showNumber && old.billNumber === undefined).
+  const billNumber1 = printedSlipNumber(await nextSlipSequence("bill"), printCfg.bill.numberStart);
+  check(
+    "c) the day's FIRST bill gets exactly the configured start number",
+    billNumber1 === printCfg.bill.numberStart,
+  );
+  const settled = await Order.findOneAndUpdate(
+    { _id: order._id, status: "Pending" },
+    { $set: { status: "Completed", payment: "Cash", paidAmount: 200, billNumber: billNumber1 } },
+    { new: true },
+  ).lean();
+  check("c) settling assigns billNumber and completes the tab", settled?.billNumber === billNumber1 && settled?.status === "Completed");
+
+  // d) the kot and bill series are INDEPENDENT — this tab issued TWO kitchen
+  // tickets but exactly one bill; the bill number reflects only the bill
+  // series's own count, unaffected by how many kot tickets were fired.
+  check(
+    "d) the bill number is unaffected by how many kitchen tickets this tab issued (2 kot tickets, still bill #1)",
+    settled?.billNumber === printCfg.bill.numberStart && settled?.kotNumbers?.length === 2,
+  );
+
+  // e) re-settling (a second settle attempt) must NOT renumber an order that
+  // already has a billNumber — mirrors settle/route.ts's exact guard
+  // condition, computed against the ALREADY-SETTLED document.
+  const reSettleBillNumber =
+    printCfg.bill.showNumber && settled?.billNumber === undefined
+      ? printedSlipNumber(await nextSlipSequence("bill"), printCfg.bill.numberStart)
+      : undefined;
+  check(
+    "e) the re-settle guard computes NO new bill number for an order that already carries one",
+    reSettleBillNumber === undefined,
+  );
+  const reSettled = await Order.findOneAndUpdate(
+    { _id: order._id },
+    {
+      $set: {
+        paidAmount: 200,
+        ...(reSettleBillNumber !== undefined ? { billNumber: reSettleBillNumber } : {}),
+      },
+    },
+    { new: true },
+  ).lean();
+  check(
+    "e) the order's billNumber is byte-identical after the re-settle attempt — never renumbered",
+    reSettled?.billNumber === billNumber1,
+  );
+
+  // Control: a SECOND order settled the same cafe-day gets the NEXT bill
+  // number — proves (c)'s "day's first bill" claim is the series actually
+  // advancing, not a coincidence of an empty scratch database.
+  const billNumber2 = printedSlipNumber(await nextSlipSequence("bill"), printCfg.bill.numberStart);
+  const order2 = await Order.create({
+    orderId: "ORD-LEG16-002",
+    customerName: "Walk-in",
+    items: [line("p-coffee", "Coffee", 150, 1, 1)],
+    subtotal: 150,
+    discount: 0,
+    gstAmount: 0,
+    gstRate: 0,
+    gstMode: "exclusive",
+    total: 150,
+    paidAmount: 150,
+    payment: "Cash",
+    status: "Completed",
+    receiver: "Verifier",
+    kotRounds: 1,
+    billNumber: billNumber2,
+  });
+  check(
+    "control: the same day's SECOND settled order gets the NEXT bill number, not a repeat of the first (series genuinely advances)",
+    order2.billNumber === billNumber1 + 1,
+  );
+}
+
+async function leg17(): Promise<void> {
+  console.log(
+    "\nLeg 17 — Defect 1 (THE confirmed bug): kotNumbers is built POSITIONALLY, not appended — a SHORT array (every tab already open when numbering shipped) must not misfile a round's ticket under an earlier round's index\n",
+  );
+
+  const gstCfg: GstConfig = { gstEnabled: false, gstRate: 0, gstMode: "exclusive" };
+  const printCfg = printConfigOf(undefined);
+
+  // a) SHIP-DAY SHAPE — a tab already open when numbering shipped: kotRounds:
+  // 1, and NO kotNumbers array at all (never written, not even an empty one —
+  // exactly what every tab open at ship time looks like).
+  const shipDayOrder = await Order.create(
+    buildOrder({
+      orderId: "ORD-LEG17-SHIPDAY-001",
+      items: [line("p-tea", "Tea", 100, 2, 1)],
+      payment: "Unpaid",
+      status: "Pending",
+      kotRounds: 1,
+    }),
+  );
+  const beforeShipDay = await Order.findById(shipDayOrder._id).lean<LeanOrder>();
+  check(
+    "a) the ship-day tab genuinely has NO kotNumbers field at all (absent, not [])",
+    !!beforeShipDay && !("kotNumbers" in beforeShipDay),
+  );
+
+  const shipDayTicket = printedSlipNumber(await nextSlipSequence("kot"), printCfg.kot.numberStart);
+  const shipDayNewItem = line("p-toast", "Toast", 60, 1, 0); // kotRound stamped by buildItemsWrite
+  const shipDayWrite = buildItemsWrite(
+    beforeShipDay!,
+    [shipDayNewItem],
+    undefined,
+    gstCfg,
+    undefined,
+    shipDayTicket,
+  );
+  const afterShipDay = await Order.findOneAndUpdate(shipDayWrite.filter, shipDayWrite.update, {
+    new: true,
+    runValidators: true,
+  }).lean();
+  check("a) the ship-day round-fire lands", afterShipDay !== null);
+  check(
+    "a) kotNumbers.length === kotRounds (2) — one entry per fired round, including the never-numbered round 1",
+    afterShipDay?.kotNumbers?.length === afterShipDay?.kotRounds && afterShipDay?.kotRounds === 2,
+  );
+  check(
+    "a) kotNumbers[kotRounds - 1] is the ticket just issued for THIS round",
+    afterShipDay?.kotNumbers?.[(afterShipDay?.kotRounds ?? 0) - 1] === shipDayTicket,
+  );
+  check(
+    "a) kotNumbers[0] is 0 — round 1 fired before numbering existed, correctly recorded as never numbered (an append would instead have filed shipDayTicket at index 0, the confirmed bug)",
+    afterShipDay?.kotNumbers?.[0] === 0,
+  );
+
+  // b) ALIGNED case — a tab whose kotNumbers array already matches kotRounds
+  // (the ordinary, already-numbered case) must keep working exactly as before.
+  const alignedTicket1 = printedSlipNumber(await nextSlipSequence("kot"), printCfg.kot.numberStart);
+  const alignedOrder = await Order.create({
+    ...buildOrder({
+      orderId: "ORD-LEG17-ALIGNED-001",
+      items: [line("p-tea", "Tea", 100, 2, 1)],
+      payment: "Unpaid",
+      status: "Pending",
+      kotRounds: 1,
+    }),
+    kotNumbers: [alignedTicket1],
+  });
+  const beforeAligned = await Order.findById(alignedOrder._id).lean<LeanOrder>();
+  const alignedTicket2 = printedSlipNumber(await nextSlipSequence("kot"), printCfg.kot.numberStart);
+  const alignedNewItem = line("p-water", "Water", 20, 1, 0);
+  const alignedWrite = buildItemsWrite(
+    beforeAligned!,
+    [alignedNewItem],
+    undefined,
+    gstCfg,
+    undefined,
+    alignedTicket2,
+  );
+  const afterAligned = await Order.findOneAndUpdate(alignedWrite.filter, alignedWrite.update, {
+    new: true,
+    runValidators: true,
+  }).lean();
+  check("b) the aligned-tab round-fire lands", afterAligned !== null);
+  check(
+    "b) kotNumbers.length === kotRounds (2)",
+    afterAligned?.kotNumbers?.length === afterAligned?.kotRounds && afterAligned?.kotRounds === 2,
+  );
+  check(
+    "b) the last entry is the freshly issued ticket, and round 1's original ticket is preserved untouched",
+    afterAligned?.kotNumbers?.[1] === alignedTicket2 && afterAligned?.kotNumbers?.[0] === alignedTicket1,
+  );
+
+  // c) INVARIANT — every numbered tab this leg touched carries EXACTLY one
+  // kotNumbers entry per fired round, no more, no fewer.
+  const numberedTabs = await Order.find({
+    orderId: { $in: ["ORD-LEG17-SHIPDAY-001", "ORD-LEG17-ALIGNED-001"] },
+    kotNumbers: { $exists: true },
+  }).lean();
+  check(
+    "c) invariant: kotNumbers.length === kotRounds on every numbered tab in this leg",
+    numberedTabs.length === 2 && numberedTabs.every((o) => (o.kotNumbers?.length ?? -1) === o.kotRounds),
+  );
+}
+
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
   const dbName = new URL(uri.replace("mongodb://", "http://")).pathname.slice(1);
@@ -1071,6 +1666,10 @@ async function main(): Promise<void> {
     await leg11();
     await leg12();
     await leg13();
+    await leg14();
+    await leg15();
+    await leg16();
+    await leg17();
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();

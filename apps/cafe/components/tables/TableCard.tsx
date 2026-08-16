@@ -1,6 +1,15 @@
-import { Check, Clock, Pencil, Trash2, Utensils } from "lucide-react";
+import {
+  Check,
+  Clock,
+  IndianRupee,
+  Pencil,
+  TriangleAlert,
+  Trash2,
+  Utensils,
+} from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { cn, inr } from "@/lib/utils";
+import { tableChargeOf } from "@/lib/receipt";
 import type { TableStatus } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import type { Table } from "@/types";
@@ -34,6 +43,10 @@ export function TableCard({
   onDelete,
 }: TableCardProps) {
   const style = STATUS_STYLES[table.status];
+  const charge = tableChargeOf(table);
+  // Configured an amount but never named it — the POS and the order route both
+  // treat that as no charge, so this table is silently free.
+  const unnamedCharge = (table.chargeAmount ?? 0) > 0 && charge.amount === 0;
 
   return (
     <div
@@ -60,6 +73,28 @@ export function TableCard({
           <span>Seats {table.capacity}</span>
         )}
       </div>
+
+      {/* What this table adds to every bill. Shown under the cafe's own name for
+          it, so the floor plan answers "why is this table dearer" at a glance. */}
+      {charge.amount > 0 && (
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <IndianRupee className="h-3 w-3 shrink-0" />
+          <span className="truncate" title={charge.label}>
+            {charge.label}
+          </span>
+          <span className="ml-auto shrink-0 font-medium">{inr(charge.amount)}</span>
+        </span>
+      )}
+
+      {/* An amount with no name is not chargeable (lib/receipt.tableChargeOf) —
+          say so here rather than letting an admin believe a charge is live
+          while every bill quietly comes out without it. */}
+      {unnamedCharge && (
+        <span className="flex items-start gap-1.5 text-xs text-destructive">
+          <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />
+          <span>Charge needs a name before it will apply</span>
+        </span>
+      )}
 
       <div className="flex flex-wrap gap-1.5">
         {table.status !== "Available" && (

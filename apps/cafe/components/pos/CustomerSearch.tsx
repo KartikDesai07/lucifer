@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 import { User, Search, Check, Loader2, UserPlus } from "lucide-react";
 
-import { useCustomerSearch, useCreateCustomer } from "@/hooks/use-customers";
+import {
+  useCustomerSearch,
+  useCreateCustomer,
+  CUSTOMER_SEARCH_MIN_CHARS,
+} from "@/hooks/use-customers";
 import { inr } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +39,17 @@ export function CustomerSearch({ value, onChange }: CustomerSearchProps) {
     return () => clearTimeout(id);
   }, [term]);
 
-  const { data: results, isFetching } = useCustomerSearch(debounced);
+  const { data: results, isFetching, isPaused, isError } =
+    useCustomerSearch(debounced);
+  // Rows must answer what is ON SCREEN. Until the debounce catches up, the
+  // previous query's rows are still in hand — and once numbers are masked every
+  // row reads the same "98765*****", so a stale row is invisible to the person
+  // tapping it. That tap attaches the WRONG customer to the bill and puts any
+  // Due on their ledger, which no later reconcile can undo (the order carries
+  // the wrong customerId). Compared trimmed, matching the query key.
+  const settled = debounced.trim() === term.trim();
+  const rows = settled ? (results ?? []) : [];
+  const searching = term.trim().length > 0 && (!settled || isFetching);
 
   const select = (customer: Customer | undefined) => {
     onChange(customer);
@@ -77,19 +91,34 @@ export function CustomerSearch({ value, onChange }: CustomerSearchProps) {
             </div>
 
             <div className="max-h-64 space-y-1 overflow-y-auto">
-              {isFetching && (
+              {searching && (
                 <div className="flex items-center gap-2 p-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" /> Searching…
                 </div>
               )}
-              {!isFetching &&
-                debounced.length >= 2 &&
-                (results?.length ?? 0) === 0 && (
+              {/* Offline and failed both mean "we did not find out", never "no
+                  such customer". That wrong answer ends with a duplicate record
+                  taking the bill while the real customer's dues are orphaned. */}
+              {!searching && isPaused && (
+                <p className="p-2 text-sm text-destructive">
+                  Offline — could not check the customer list.
+                </p>
+              )}
+              {!searching && !isPaused && isError && (
+                <p className="p-2 text-sm text-destructive">
+                  Search failed. Try again.
+                </p>
+              )}
+              {!searching &&
+                !isPaused &&
+                !isError &&
+                debounced.trim().length >= CUSTOMER_SEARCH_MIN_CHARS &&
+                rows.length === 0 && (
                   <p className="p-2 text-sm text-muted-foreground">
                     No matches. Add a new customer below.
                   </p>
                 )}
-              {results?.map((c) => (
+              {rows.map((c) => (
                 <button
                   key={c._id}
                   type="button"

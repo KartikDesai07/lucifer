@@ -15,6 +15,28 @@ import {
 // logic BOTH dues-collecting routes call: POST /api/customers/[id]/payments
 // (staff) and the settle route (admin, pay-in-full only), which delegates to
 // the same core. No auth gate lives here — the two callers guard differently.
+// Also home to the admin edit/soft-delete trio (lib/due-payment-admin.ts,
+// re-exported at the bottom — split out purely for the file-size cap).
+
+// ACTIVE_DUE_PAYMENT — the ONLY definition of "this payment counts". Every
+// sum of DuePayment amounts must include it: a deleted row that still
+// counted would silently change a customer's balance on the next
+// reconcile/recompute run, resurrecting money editDuePayment/
+// softDeleteDuePayment already adjusted totalDue for.
+export const ACTIVE_DUE_PAYMENT = { deletedAt: { $exists: false } } as const;
+
+// `customerId` is stored as a plain STRING (mirroring Order.customerId), but it
+// arrives as a URL path segment, and ObjectId hex is case-insensitive: Mongo
+// casts "507F…" and "507f…" to the same _id, while the two strings are NOT
+// equal. Writing the raw segment would decrement the right customer's balance
+// and then file the row under an id no read ever matches — invisible in their
+// history, missing from duesPaidTotal (so the next reconcile hands the due
+// straight back), yet still counted in the day's drawer tally, which matches on
+// createdAt alone. Canonicalise through ObjectId so every write and every read
+// agrees on one spelling.
+export function canonicalCustomerId(id: string): string {
+  return new mongoose.Types.ObjectId(id).toString();
+}
 
 // ── resolveDueAmount — PURE, no DB ───────────────────────────────────────────
 // Decides how much of a customer's outstanding balance a payment actually
@@ -48,7 +70,15 @@ export function resolveDueAmount(input: {
 export async function duesPaidTotal(customerId: string): Promise<number> {
   await connectDB();
   const [row] = await DuePayment.aggregate<{ _id: null; total: number }>([
-    { $match: { customerId } },
+    {
+      $match: {
+        // Both spellings, so a row written before canonicalCustomerId existed
+        // (or by any other writer of this collection) still counts toward the
+        // balance the re-derivers compute.
+        customerId: { $in: [customerId, canonicalCustomerId(customerId)] },
+        ...ACTIVE_DUE_PAYMENT,
+      },
+    },
     { $group: { _id: null, total: { $sum: "$amount" } } },
   ]);
   return row?.total ?? 0;
@@ -111,7 +141,10 @@ function replayMismatch(
   input: { customerId: string; amount?: number; mode: SettlementPayMode },
 ): boolean {
   return (
-    existing.customerId !== input.customerId ||
+    // Canonicalised on both sides — see canonicalCustomerId. Comparing the raw
+    // path segment would read a legitimate replay as a foreign row purely
+    // because the URL spelled the same id in different case.
+    existing.customerId !== canonicalCustomerId(input.customerId) ||
     (input.amount !== undefined && existing.amount !== input.amount) ||
     existing.mode !== input.mode
   );
@@ -156,6 +189,19 @@ export async function receiveDuePayment(input: ReceiveDuePaymentInput) {
         ok: false as const,
         status: 409,
         error: "A different payment was already recorded for this attempt — reopen and check",
+      };
+    }
+    // The matched row may since have been SOFT-DELETED by an admin, which put
+    // its amount back on the customer's balance. Echoing it as a success would
+    // tell the cashier "Payment recorded" while nothing was collected and the
+    // due still stands — cash in the drawer with no record of it. The unique
+    // clientRef means this attempt can never be recorded under the same ref, so
+    // the only honest answer is to send them back to a fresh dialog.
+    if (already.deletedAt) {
+      return {
+        ok: false as const,
+        status: 409,
+        error: "That payment was deleted by an admin — reopen and record it again",
       };
     }
     const current = await Customer.findById(input.customerId).lean();
@@ -218,6 +264,15 @@ export async function receiveDuePayment(input: ReceiveDuePaymentInput) {
           error: "A different payment was already recorded for this attempt — reopen and check",
         };
       }
+      // Same soft-delete guard as the step-2 short-circuit: a row an admin has
+      // since reversed must never be echoed back as a successful collection.
+      if (raced.deletedAt) {
+        return {
+          ok: false as const,
+          status: 409,
+          error: "That payment was deleted by an admin — reopen and record it again",
+        };
+      }
       const current = await Customer.findById(input.customerId).lean();
       if (current) {
         // G4: same guard as the step-2 short-circuit above.
@@ -255,7 +310,8 @@ export async function receiveDuePayment(input: ReceiveDuePaymentInput) {
   try {
     const payment = await DuePayment.create({
       _id: paymentId,
-      customerId: input.customerId,
+      // Canonical, never the raw path segment — see canonicalCustomerId.
+      customerId: canonicalCustomerId(input.customerId),
       amount: resolved,
       mode: input.mode,
       note: input.note,
@@ -297,3 +353,15 @@ export async function receiveDuePayment(input: ReceiveDuePaymentInput) {
     return { ok: false as const, status: 500, error: "Failed to record the payment" };
   }
 }
+
+// listDuePayments / editDuePayment / softDeleteDuePayment live in
+// `lib/due-payment-admin.ts` (this file was already at the file-size cap
+// before those three landed — same split as customer-rollup.ts ->
+// customer-recompute.ts). Re-exported so `@/lib/due-payment` keeps resolving.
+export {
+  listDuePayments,
+  editDuePayment,
+  softDeleteDuePayment,
+  type EditDuePaymentInput,
+  type SoftDeleteDuePaymentInput,
+} from "./due-payment-admin";

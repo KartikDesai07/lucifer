@@ -14,6 +14,7 @@ import {
   ORDER_NOTES_MAX_LEN,
 } from "@pos/shared/constants";
 import { settingsSchema as settingsMongooseSchema } from "@/models/Settings";
+import { printSettingsFields } from "@/lib/print";
 
 // CR1.5 Slice 0 — foundation contracts for cafe branding (logo/FSSAI on
 // Settings) and two stale-view guards (order notes bound, table pointer
@@ -23,6 +24,15 @@ import { settingsSchema as settingsMongooseSchema } from "@/models/Settings";
 function defaultOf(schema: mongoose.Schema, field: string): unknown {
   return (schema.path(field) as unknown as { defaultValue?: unknown }).defaultValue;
 }
+
+// settingsSchema requires every print field (deliberately — once an admin saves,
+// each toggle is written explicitly and "absent means default" stops being a
+// question for that cafe). Rather than restate 23 literals here, the fixture is
+// built from the SAME resolver the receipts read through, so it can never drift
+// from the app's own defaults — and a new print setting added to the schema
+// without a matching default in printConfigOf fails this file rather than
+// surfacing as a form that quietly refuses to save.
+const PRINT_DEFAULTS = printSettingsFields();
 
 // ── settings.schema.ts: logo / fssai ─────────────────────────────────────────
 
@@ -38,7 +48,7 @@ test("settingsSchema accepts logo/fssai within their length limits", () => {
     gstNumber: "",
     gstRate: 5,
     gstMode: "inclusive" as const,
-    kotShowPrices: false,
+    ...PRINT_DEFAULTS,
   };
   const r = settingsSchema.safeParse({
     ...base,

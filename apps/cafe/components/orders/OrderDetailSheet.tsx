@@ -7,7 +7,7 @@ import { Printer, ChefHat, MessageCircle, HandCoins } from "lucide-react";
 
 import { PAY_STYLES, type SettlementPayMode } from "@/lib/constants";
 import { inr, formatDate, cn } from "@/lib/utils";
-import { RECEIPT_PAGE_STYLE } from "@/lib/print";
+import { printConfigOf, receiptPageStyle } from "@/lib/print";
 import { useSettings } from "@/hooks/use-settings";
 import { useSettleOrder } from "@/hooks/use-orders";
 import { Button } from "@/components/ui/button";
@@ -74,18 +74,25 @@ export function OrderDetailSheet({
   const [settleCustomer, setSettleCustomer] = useState<Customer | undefined>();
   useEffect(() => setSettleCustomer(undefined), [order?._id]);
 
+  // A reprint has to declare the SAME paper the slip is laid out for. The
+  // receipt and KOT components below resolve their own width from Settings, so
+  // a fixed 80mm page here would make a 58mm cafe's duplicate bill shrink-to-fit
+  // (or clip the amount column) while its original POS slip printed correctly —
+  // the exact mismatch lib/print.ts warns about.
+  const printCfg = printConfigOf(settings.data);
+
   const receiptRef = useRef<HTMLDivElement>(null);
   const print = useReactToPrint({
     contentRef: receiptRef,
     documentTitle: order?.orderId ?? "receipt",
-    pageStyle: RECEIPT_PAGE_STYLE,
+    pageStyle: receiptPageStyle(printCfg.bill.paperWidth),
   });
 
   const kotRef = useRef<HTMLDivElement>(null);
   const printKot = useReactToPrint({
     contentRef: kotRef,
     documentTitle: order ? `KOT-${order.orderId}` : "kot",
-    pageStyle: RECEIPT_PAGE_STYLE,
+    pageStyle: receiptPageStyle(printCfg.kot.paperWidth),
   });
 
   const due = order ? order.total - order.paidAmount : 0;
@@ -209,6 +216,16 @@ export function OrderDetailSheet({
               {order.discount > 0 && (
                 <Row label="Discount" value={`−${inr(order.discount)}`} />
               )}
+              {/* Under the cafe's own name for it, from the order's snapshot —
+                  so a bill settled here reads the same as the slip that was
+                  printed for the customer, even if the table has since changed
+                  what it charges. */}
+              {order.chargeAmount !== undefined && order.chargeAmount > 0 && (
+                <Row
+                  label={order.chargeLabel ?? "Table charge"}
+                  value={`+${inr(order.chargeAmount)}`}
+                />
+              )}
               <div className="flex justify-between text-base font-bold">
                 <span>Total</span>
                 <span>{inr(order.total)}</span>
@@ -281,6 +298,8 @@ export function OrderDetailSheet({
           discount={order.discount}
           gstAmount={order.gstAmount ?? 0}
           gstRate={order.gstRate}
+          charge={order.chargeAmount ?? 0}
+          chargeLabel={order.chargeLabel}
           total={order.total}
           itemCount={order.items.reduce((n, it) => n + it.qty, 0)}
           customer={

@@ -4,15 +4,25 @@ import type { Ref } from "react";
 import Image from "next/image";
 
 import { CAFE_TIMEZONE } from "@/lib/constants";
+import type { PrintLogoSize } from "@/lib/constants";
 import { inr } from "@/lib/utils";
 import { receiptGst, type GstConfig } from "@/lib/receipt";
 import { productImageUrl } from "@/lib/images";
+import {
+  printConfigOf,
+  PAPER_WIDTH_CLASS,
+  PRINT_FONT_CLASS,
+  PRINT_LOGO_CLASS,
+} from "@/lib/print";
 import type { Order, Settings } from "@/types";
 
-// 80mm thermal header logo — kept small so it never crowds the name/address
-// block above the fold.
-const LOGO_WIDTH_PX = 120;
-const LOGO_HEIGHT_PX = 56;
+// next/image's intrinsic width/height per PRINT_LOGO_CLASS box — the CSS class
+// sets the displayed size, these just give the tag an aspect-ratio hint.
+const LOGO_DIMENSIONS_PX: Record<PrintLogoSize, { width: number; height: number }> = {
+  small: { width: 80, height: 36 },
+  medium: { width: 120, height: 56 },
+  large: { width: 170, height: 80 },
+};
 
 function fmtDateTime(value: string | Date): string {
   return new Date(value).toLocaleString("en-IN", {
@@ -31,12 +41,14 @@ interface OrderReceiptProps {
   ref?: Ref<HTMLDivElement>;
 }
 
-// 80mm thermal receipt (~300px), monospace, black-only. Rendered off-screen and
-// cloned by react-to-print at print time, so it never affects the page layout.
-// All restaurant/GST/footer text comes from Settings (Phase 7); a receipt must
-// never print a fallback brand, so the name/footer lines are omitted entirely
-// when Settings hasn't set them (CR1.5).
+// 80mm thermal receipt, monospace, black-only. Rendered off-screen and cloned
+// by react-to-print at print time, so it never affects the page layout. Paper
+// width, font size, logo, and every optional header line are gated by Settings
+// (printConfigOf(settings).bill); a receipt must never print a fallback brand,
+// so the name/footer lines are omitted entirely when Settings hasn't set them
+// (CR1.5).
 export function OrderReceipt({ order, settings, ref }: OrderReceiptProps) {
+  const cfg = printConfigOf(settings).bill;
   const name = settings?.restaurantName?.trim();
   const tagline = settings?.tagline?.trim();
   const address = settings?.address?.trim();
@@ -46,6 +58,7 @@ export function OrderReceipt({ order, settings, ref }: OrderReceiptProps) {
   const gstNumber = settings?.gstNumber?.trim();
   const fssai = settings?.fssai?.trim();
   const logoUrl = productImageUrl(settings?.logo, undefined, { fit: true });
+  const logoDim = LOGO_DIMENSIONS_PX[cfg.logoSize];
 
   const gstCfg: GstConfig = {
     gstEnabled: settings?.gstEnabled ?? false,
@@ -57,36 +70,52 @@ export function OrderReceipt({ order, settings, ref }: OrderReceiptProps) {
   const isCancelled = order?.status === "Cancelled";
 
   return (
-    <div ref={ref} className="w-[300px] bg-white p-3 font-mono text-[12px] text-black">
+    <div
+      ref={ref}
+      className={`${PAPER_WIDTH_CLASS[cfg.paperWidth]} ${PRINT_FONT_CLASS[cfg.fontSize]} bg-white p-3 font-mono text-black`}
+    >
       {order && (
         <>
           <div className="text-center">
-            {logoUrl && (
+            {cfg.showLogo && logoUrl && (
               <Image
                 src={logoUrl}
                 alt="Logo"
-                width={LOGO_WIDTH_PX}
-                height={LOGO_HEIGHT_PX}
+                width={logoDim.width}
+                height={logoDim.height}
                 loading="eager"
                 unoptimized
-                className="mx-auto object-contain"
+                className={`${PRINT_LOGO_CLASS[cfg.logoSize]} mx-auto object-contain`}
               />
             )}
             {name && (
-              <div className="text-base font-bold tracking-wide">{name}</div>
+              <div className="text-[1.33em] font-bold tracking-wide">{name}</div>
             )}
-            {tagline && <div className="text-[10px]">{tagline}</div>}
-            {address && <div className="text-[10px]">{address}</div>}
-            {mobile && <div className="text-[10px]">Ph: {mobile}</div>}
+            {tagline && <div className="text-[0.83em]">{tagline}</div>}
+            {cfg.showAddress && (
+              <>{address && <div className="text-[0.83em]">{address}</div>}</>
+            )}
+            {cfg.showMobile && (
+              <>{mobile && <div className="text-[0.83em]">Ph: {mobile}</div>}</>
+            )}
             {/* Show GSTIN only when this order actually carried GST (snapshot-
                 aware via `gst`), so the header can't drift from the tax body
-                after the cafe later toggles GST on/off. */}
-            {gst?.show && gstNumber && (
-              <div className="text-[10px]">GSTIN: {gstNumber}</div>
+                after the cafe later toggles GST on/off. showGstNumber is an
+                ADDITIONAL gate on top of that, never a replacement for it. */}
+            {cfg.showGstNumber && (
+              <>
+                {gst?.show && gstNumber && (
+                  <div className="text-[0.83em]">GSTIN: {gstNumber}</div>
+                )}
+              </>
             )}
-            {/* FSSAI is a food-license number, not tax — unconditional on GST. */}
-            {fssai && <div className="text-[10px]">FSSAI: {fssai}</div>}
-            {header && <div className="mt-1 text-[10px]">{header}</div>}
+            {/* FSSAI is a food-license number, not tax — unconditional on GST.
+                Kept at a literal 10px (not em-scaled like its neighbours) —
+                lib/print-paths.test.ts pins this exact line's className. */}
+            {cfg.showFssai && (
+              <>{fssai && <div className="text-[10px]">FSSAI: {fssai}</div>}</>
+            )}
+            {header && <div className="mt-1 text-[0.83em]">{header}</div>}
           </div>
 
           <Divider />
@@ -96,10 +125,10 @@ export function OrderReceipt({ order, settings, ref }: OrderReceiptProps) {
               for a live receipt if handed to a guest or filed as one. */}
           {isCancelled && (
             <>
-              <div className="text-center text-lg font-bold tracking-widest">
+              <div className="text-center text-[1.5em] font-bold tracking-widest">
                 *** CANCELLED ***
               </div>
-              <div className="text-center text-[13px] font-semibold">
+              <div className="text-center text-[1.08em] font-semibold">
                 VOID — NOT A VALID RECEIPT
               </div>
               <Divider />
@@ -107,13 +136,23 @@ export function OrderReceipt({ order, settings, ref }: OrderReceiptProps) {
           )}
 
           <div className="space-y-0.5">
+            {/* Prominent — this is the number a guest reads back at the counter.
+                Rendered only when the order actually HAS one: an order that
+                hasn't been paid yet carries no bill number, and a blank label
+                is worse than printing nothing. */}
+            {cfg.showNumber && order.billNumber !== undefined && (
+              <div className="flex justify-between gap-2 font-bold">
+                <span>Bill No.</span>
+                <span className="text-right">{order.billNumber}</span>
+              </div>
+            )}
             <Line label="Order" value={order.orderId} />
             <Line label="Date" value={fmtDateTime(order.createdAt)} />
             <Line label="Table" value={order.tableNo ?? "Walk-In"} />
             <Line label="Customer" value={order.customerName} />
             <Line label="Staff" value={order.receiver} />
             {isCancelled && order.cancelReason && (
-              <div className="pt-0.5 text-[10px] font-semibold">
+              <div className="pt-0.5 text-[0.83em] font-semibold">
                 Reason: {order.cancelReason}
               </div>
             )}
@@ -132,10 +171,10 @@ export function OrderReceipt({ order, settings, ref }: OrderReceiptProps) {
                   <span>{inr(item.price * item.qty)}</span>
                 </div>
                 {item.modifiers.length > 0 && (
-                  <div className="pl-2 text-[10px]">+ {item.modifiers.join(", ")}</div>
+                  <div className="pl-2 text-[0.83em]">+ {item.modifiers.join(", ")}</div>
                 )}
                 {item.instructions && (
-                  <div className="pl-2 text-[10px] italic">{item.instructions}</div>
+                  <div className="pl-2 text-[0.83em] italic">{item.instructions}</div>
                 )}
               </div>
             ))}
@@ -152,15 +191,26 @@ export function OrderReceipt({ order, settings, ref }: OrderReceiptProps) {
             {gst?.show && !gst.inclusive && (
               <Line label={`GST @${gst.rate}%`} value={`+${inr(gst.gstAmount)}`} />
             )}
+            {/* The table's charge, printed under the cafe's OWN name for it and
+                after the tax line, because it is added on top of the taxed bill
+                rather than taxed with it. Keyed on the amount being present:
+                a waived charge leaves no line, and the label is never printed
+                without a figure beside it. */}
+            {order.chargeAmount !== undefined && order.chargeAmount > 0 && (
+              <Line
+                label={order.chargeLabel ?? "Table charge"}
+                value={`+${inr(order.chargeAmount)}`}
+              />
+            )}
 
-            <div className="flex justify-between text-sm font-bold">
+            <div className="flex justify-between text-[1.17em] font-bold">
               <span>TOTAL</span>
               <span>{inr(order.total)}</span>
             </div>
 
             {/* Inclusive GST is already in the total — shown as a breakdown note. */}
             {gst?.show && gst.inclusive && (
-              <div className="pl-2 text-[10px]">
+              <div className="pl-2 text-[0.83em]">
                 incl. GST @{gst.rate}%: {inr(gst.gstAmount)} (taxable{" "}
                 {inr(gst.taxable)})
               </div>
@@ -170,7 +220,7 @@ export function OrderReceipt({ order, settings, ref }: OrderReceiptProps) {
                 the books no longer count — printing "Paid"/"Due" here would
                 assert a live receivable that the cancel already reversed. */}
             {isCancelled ? (
-              <div className="pt-1 text-center text-[11px] font-semibold">
+              <div className="pt-1 text-center text-[0.92em] font-semibold">
                 VOID — no payment due
               </div>
             ) : (
@@ -192,10 +242,10 @@ export function OrderReceipt({ order, settings, ref }: OrderReceiptProps) {
 
           <Divider />
 
-          {footer && <div className="text-center text-[11px]">{footer}</div>}
+          {footer && <div className="text-center text-[0.92em]">{footer}</div>}
           {/* Actual print time (this branch only renders client-side, after an
               order is selected — so new Date() is hydration-safe here). */}
-          <div className="mt-1 text-center text-[9px]">
+          <div className="mt-1 text-center text-[0.75em]">
             Printed {fmtDateTime(new Date())}
           </div>
         </>

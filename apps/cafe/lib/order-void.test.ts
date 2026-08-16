@@ -68,6 +68,7 @@ test("full void (qty === line.qty) splices the line out and leaves the other lin
     items,
     request: request({ index: 1, lineKey: orderLineKey(lineB), qty: 1 }), // voids ALL of lineB
     discount: 0,
+    charge: 0,
     gstCfg: GST_OFF,
   });
 
@@ -85,6 +86,7 @@ test("qty-reduce (qty < line.qty) leaves the line in place with qty reduced by e
     items,
     request: request({ index: 0, lineKey: orderLineKey(target), qty: 2 }), // void 2 off a qty-3 line
     discount: 0,
+    charge: 0,
     gstCfg: GST_OFF,
   });
 
@@ -115,6 +117,7 @@ test("totals are recomputed from the remaining lines only, using the passed (tab
     items,
     request: request({ index: 0, lineKey: orderLineKey(items[0]), qty: 1 }),
     discount: 20,
+    charge: 0,
     gstCfg: GST_EXCLUSIVE_10PC,
   });
 
@@ -136,6 +139,7 @@ test("an order-level discount that now EXCEEDS the reduced subtotal is re-clampe
     items,
     request: request({ index: 0, lineKey: orderLineKey(items[0]), qty: 1 }), // full void of the 300 line
     discount: 100, // fit comfortably under the ORIGINAL 350 subtotal
+    charge: 0,
     gstCfg: GST_EXCLUSIVE_10PC,
   });
 
@@ -156,6 +160,7 @@ test("inclusive GST config: recompute adds no on-top tax (already priced in), ma
     items,
     request: request({ index: 1, lineKey: orderLineKey(items[1]), qty: 1 }), // reduce Water 2 -> 1
     discount: 0,
+    charge: 0,
     gstCfg: GST_INCLUSIVE_5PC,
   });
   assert.ok("totals" in result, "must not error");
@@ -182,6 +187,7 @@ test("the returned entry snapshots the VOIDED qty (not what remains) plus name/p
       at: AT,
     }),
     discount: 0,
+    charge: 0,
     gstCfg: GST_OFF,
   });
 
@@ -213,6 +219,7 @@ test("the entry snapshot carries instructions/modifiers off the VOIDED line when
     items: [target, other],
     request: request({ index: 0, lineKey: orderLineKey(target), qty: 1 }),
     discount: 0,
+    charge: 0,
     gstCfg: GST_OFF,
   });
 
@@ -230,6 +237,7 @@ test("the entry OMITS instructions/modifiers when the voided line carried none â
     items: [target, other],
     request: request({ index: 0, lineKey: orderLineKey(target), qty: 1 }),
     discount: 0,
+    charge: 0,
     gstCfg: GST_OFF,
   });
 
@@ -247,6 +255,7 @@ test("index out of range -> 409 (a stale view of the tab, not a bad request), no
     items,
     request: request({ index: 5, lineKey: orderLineKey(items[0]) }),
     discount: 0,
+    charge: 0,
     gstCfg: GST_OFF,
   });
   assert.ok("error" in result, "an out-of-range index must error");
@@ -263,6 +272,7 @@ test("lineKey mismatch at that index -> 409 (another device changed the tab), no
     // lineKey describes a line that isn't at index 0 at all.
     request: request({ index: 0, lineKey: orderLineKey(line({ productId: "p9" })) }),
     discount: 0,
+    charge: 0,
     gstCfg: GST_OFF,
   });
   assert.ok("error" in result, "a lineKey that doesn't match the line at that index must error");
@@ -289,6 +299,7 @@ test("WRONG-LINE regression: a stale index pointing at the OTHER same-product li
     items,
     request: request({ index: 0, lineKey: orderLineKey(lineB), qty: 1 }),
     discount: 0,
+    charge: 0,
     gstCfg: GST_OFF,
   });
   assert.ok("error" in staleResult, "index/lineKey disagree â€” must reject, not silently void whatever sits at the index");
@@ -302,6 +313,7 @@ test("WRONG-LINE regression: a stale index pointing at the OTHER same-product li
     items,
     request: request({ index: 1, lineKey: orderLineKey(lineB), qty: 1 }),
     discount: 0,
+    charge: 0,
     gstCfg: GST_OFF,
   });
   assert.ok("nextItems" in correctResult, "the correct index+lineKey pair must succeed");
@@ -316,6 +328,7 @@ test("a line with kotRound 0 (never fired to the kitchen) is not voidable -> 400
     items,
     request: request({ index: 0, lineKey: orderLineKey(target) }),
     discount: 0,
+    charge: 0,
     gstCfg: GST_OFF,
   });
   assert.ok("error" in result, "an unfired line has no kitchen ticket to cancel");
@@ -332,6 +345,7 @@ test("qty greater than the line's remaining qty -> 400, no nextItems returned", 
     items,
     request: request({ index: 0, lineKey: orderLineKey(target), qty: 3 }), // more than the line has
     discount: 0,
+    charge: 0,
     gstCfg: GST_OFF,
   });
   assert.ok("error" in result, "cannot void more than what's on the line");
@@ -348,6 +362,7 @@ test("voiding the only remaining line -> 400 (that's a cancellation, not a void)
     items,
     request: request({ index: 0, lineKey: orderLineKey(target), qty: 1 }), // full void, and it's the ONLY line
     discount: 0,
+    charge: 0,
     gstCfg: GST_OFF,
   });
   assert.ok("error" in result, "emptying the tab this way must be rejected");

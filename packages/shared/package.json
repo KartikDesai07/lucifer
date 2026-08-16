@@ -11,7 +11,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test src/codec.test.ts src/ttl-guard.test.ts src/schemas/table.schema.test.ts src/product-import.test.ts"
+    "test": "node --import tsx --test src/codec.test.ts src/ttl-guard.test.ts src/schemas/table.schema.test.ts src/schemas/order.schema.test.ts src/schemas/settings.schema.test.ts src/schemas/due-payment.schema.test.ts src/product-import.test.ts src/utils.test.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",

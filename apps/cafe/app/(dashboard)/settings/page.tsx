@@ -21,7 +21,8 @@ function SettingsContent() {
       <div>
         <h2 className="text-xl font-bold tracking-tight">Settings</h2>
         <p className="text-sm text-muted-foreground">
-          Restaurant details, receipt text, and GST — used on printed bills.
+          Restaurant details, receipt text, GST, and print customization —
+          used on printed bills and kitchen tickets.
         </p>
       </div>
 

@@ -3,7 +3,8 @@ import { type Connection, type Model } from "mongoose";
 import { ledgerForWrite } from "@/lib/cluster-router";
 import { getConn } from "@/lib/cluster-registry";
 import { customerRollupEnqueuer } from "@/lib/customer-rollup";
-import { nextOrderSequence } from "@/models/Counter";
+import { nextOrderSequence, nextSlipSequence, type SlipSeries } from "@/models/Counter";
+import { printedSlipNumber } from "@/lib/print";
 import { getOrderModel, buildOrderId, type IOrder } from "@/models/order.ledger";
 import { cafeDateString } from "@/lib/utils";
 
@@ -61,11 +62,17 @@ export function setCustomerRollupEnqueuer(fn: CustomerRollupEnqueuer | null): vo
 interface CreateDeps {
   now: () => Date;
   nextOrderSequence: (conn: Connection, date: Date) => Promise<number>;
+  nextSlipSequence: (
+    series: SlipSeries,
+    conn: Connection,
+    date: Date,
+  ) => Promise<number>;
   getOrderModel: (conn: Connection) => Model<IOrder>;
 }
 const realDeps: CreateDeps = {
   now: () => new Date(),
   nextOrderSequence: (conn, date) => nextOrderSequence(conn, date),
+  nextSlipSequence: (series, conn, date) => nextSlipSequence(series, conn, date),
   getOrderModel,
 };
 let deps: CreateDeps = realDeps;
@@ -83,7 +90,23 @@ export function __setOrderCreateDepsForTests(
  * create itself fails (e.g. a duplicate `_id` on an F4 idemKey replay) — the route
  * handles those. A rollup-enqueue failure NEVER fails the committed create.
  */
-export async function createOrder(input: NewOrderInput): Promise<IOrder> {
+// Which printed slips this create should allocate a number for. The cafe's
+// configured starting numbers live in Settings on CORE, which the ROUTE has
+// already read; the counters live on the LEDGER, which only this function can
+// reach. So the decision comes in and the allocation happens here.
+//
+// Omitting a series means "do not number it": the cafe has slip numbering
+// switched off, or — for `bill` — this order is an open tab and no bill has
+// been issued yet, so it must not burn a number out of the day's series.
+export interface SlipNumbering {
+  kot?: { start: number };
+  bill?: { start: number };
+}
+
+export async function createOrder(
+  input: NewOrderInput,
+  slips: SlipNumbering = {},
+): Promise<IOrder> {
   // Resolve the active write-ledger ONCE: the tag stamped into the orderId and the
   // connection the order + counter are written to MUST be the same ledger. A second
   // `ledgerForWrite()` could disagree across a 30s-TTL roll-forward (#18).
@@ -101,10 +124,36 @@ export async function createOrder(input: NewOrderInput): Promise<IOrder> {
   const seq = await deps.nextOrderSequence(conn, now);
   const orderId = buildOrderId(ledger.tag, yyyymmdd, seq);
 
+  // Printed-slip numbers, on the SAME connection and the SAME `now` as the order
+  // sequence above — so a create straddling IST midnight files all three series
+  // under one cafe-day. Each is a separate atomic $inc; the cafe's configured
+  // start is folded in HERE and the resolved figure is what gets stored, so a
+  // reprint always reproduces the paper the customer was handed.
+  // The opening items are round 1, hence a single-element array.
+  const kotNumbers = slips.kot
+    ? [
+        printedSlipNumber(
+          await deps.nextSlipSequence("kot", conn, now),
+          slips.kot.start,
+        ),
+      ]
+    : undefined;
+  const billNumber = slips.bill
+    ? printedSlipNumber(
+        await deps.nextSlipSequence("bill", conn, now),
+        slips.bill.start,
+      )
+    : undefined;
+
   // Atomic create on exactly ONE cluster (the active ledger). orderId IS the `_id`
   // (#5); the model defaults `v` (#10) and `status`.
   const OrderModel = deps.getOrderModel(conn);
-  const created = await OrderModel.create({ ...input, _id: orderId });
+  const created = await OrderModel.create({
+    ...input,
+    _id: orderId,
+    ...(kotNumbers ? { kotNumbers } : {}),
+    ...(billNumber !== undefined ? { billNumber } : {}),
+  });
   const order = created.toObject() as IOrder;
 
   // Best-effort, idempotent CRM projection on CORE (§2.6). Fire-and-forget: the

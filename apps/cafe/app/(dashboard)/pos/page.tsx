@@ -27,7 +27,7 @@ import { OpenTabsButton } from "@/components/pos/OpenTabsButton";
 import { OrderReceipt } from "@/components/pos/OrderReceipt";
 import { KOTReceipt } from "@/components/pos/KOTReceipt";
 import { PosPrompts } from "@/components/pos/PosPrompts";
-import { RECEIPT_PAGE_STYLE } from "@/lib/print";
+import { printConfigOf, receiptPageStyle } from "@/lib/print";
 import type { Product } from "@/types";
 
 // POS modals are interaction-gated — load their chunks lazily so they stay out
@@ -81,11 +81,17 @@ export default function PosPage() {
     clearPrintKot,
   } = pos;
 
+  // The two print jobs can legitimately use different paper widths (a cafe
+  // may run a wider bill roll than its kitchen printer), so each job's page
+  // setup is derived from its OWN resolved config rather than one shared
+  // constant.
+  const printCfg = printConfigOf(pos.settings.data);
+
   const receiptRef = useRef<HTMLDivElement>(null);
   const print = useReactToPrint({
     contentRef: receiptRef,
     documentTitle: pos.lastOrder?.orderId ?? "receipt",
-    pageStyle: RECEIPT_PAGE_STYLE,
+    pageStyle: receiptPageStyle(printCfg.bill.paperWidth),
   });
 
   // kotPrinting keeps this effect from re-firing while a job is in flight, and the
@@ -97,7 +103,7 @@ export default function PosPage() {
   const printKot = useReactToPrint({
     contentRef: kotRef,
     documentTitle: pos.lastOrder ? `KOT-${pos.lastOrder.orderId}` : "kot",
-    pageStyle: RECEIPT_PAGE_STYLE,
+    pageStyle: receiptPageStyle(printCfg.kot.paperWidth),
     onAfterPrint: () => {
       kotPrinting.current = false;
       clearPrintKot();
@@ -143,10 +149,20 @@ export default function PosPage() {
     discount: pos.discount,
     gstAmount: pos.gstAmount,
     gstRate: pos.gstRate,
+    // Required, so the cart footer, the mobile sticky bar and the payment modal
+    // are the SAME number by construction — they cannot drift again.
+    total: pos.total,
     discountRaw: pos.discountRaw,
     discountUnit: pos.discountUnit,
     onDiscountRawChange: pos.setDiscountRaw,
     onDiscountUnitChange: pos.setDiscountUnit,
+    charge: pos.charge,
+    chargeLabel: pos.chargeLabel,
+    entitledCharge: pos.entitledCharge,
+    onChargeChange: pos.setChargeOverride,
+    // undefined = "untouched", which puts the bill back on the table's own
+    // charge (or the tab's snapshot) rather than pinning it to a number.
+    onChargeReset: () => pos.setChargeOverride(undefined),
     onUpdateQty: pos.updateQty,
     onRemove: pos.removeFromCart,
     onClear: pos.clearCart,
@@ -191,7 +207,7 @@ export default function PosPage() {
       <div className="grid min-h-0 flex-1 gap-3 md:grid-cols-[1fr_22rem]">
         <div className="flex min-h-0 gap-3">
           {categories.isLoading ? (
-            <Skeleton className="h-full w-28 md:w-40" />
+            <Skeleton className="h-full w-28 shrink-0 md:w-44" />
           ) : (
             <CategorySidebar
               categories={categories.data ?? []}
@@ -284,6 +300,10 @@ export default function PosPage() {
           settings={pos.settings.data}
           roundItems={pos.kotRoundItems ?? undefined}
           roundLabel={pos.kotRoundLabel}
+          // The ticket number the server allocated for THIS slip — round n's
+          // own number, or a void slip's. Undefined on a full reprint, which
+          // matches no single ticket the kitchen was handed.
+          roundNumber={pos.kotRoundNumber}
           variant={pos.kotVariant}
           reason={pos.voidReason}
           voidedBy={pos.voidedBy}

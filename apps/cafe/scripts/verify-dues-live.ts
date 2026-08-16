@@ -21,12 +21,34 @@
  * (console output is intentional — this is an ops CLI script, not app code.)
  */
 import mongoose from "mongoose";
+import type { Collection as MongoCollection } from "mongodb";
 import { randomUUID } from "node:crypto";
 import { connectDB } from "@/lib/db";
 import { Customer } from "@/models/Customer";
 import { DuePayment } from "@/models/DuePayment";
 import { Order } from "@/models/Order";
-import { receiveDuePayment, duesPaidTotal } from "@/lib/due-payment";
+import {
+  receiveDuePayment,
+  duesPaidTotal,
+  editDuePayment,
+  softDeleteDuePayment,
+  listDuePayments,
+  ACTIVE_DUE_PAYMENT,
+} from "@/lib/due-payment";
+// The admin edit/soft-delete extension's "recomputeCustomer agrees" legs call
+// the REAL F2/v2 balance authority — a from-scratch fan-out over the LEDGER
+// Order shape (ObjectId customerId, Int32 paise), which is a DIFFERENT schema
+// from the v1 Order model imported above (String customerId, rupee Number)
+// that the rest of this file (and the live reconcile route) uses. `core()` +
+// `ledgerModel()` dial through cluster-router exactly like production code —
+// with no clusterRegistry doc ever written in this scratch DB, the router's
+// documented single-cluster bootstrap makes CORE double as the one ledger on
+// this SAME scratch URI (see cluster-router.ts's bootstrapRegistry), so both
+// Order shapes end up in the same physical "orders" collection and both
+// authorities can be exercised for real against the one scratch database.
+import { recomputeCustomer } from "@/lib/customer-recompute";
+import { core, ledgerModel } from "@/lib/cluster-router";
+import { disconnectAll } from "@/lib/cluster-registry";
 import type { PaymentMode, OrderStatus } from "@/lib/constants";
 
 const SCRATCH_PREFIX = "pos_scratch_";
@@ -539,6 +561,599 @@ async function legG4OmittedAmountReplay(): Promise<void> {
   check("G4: the refused replay leaves totalDue untouched (900)", (after?.totalDue ?? -1) === 900);
 }
 
+// ── admin edit/soft-delete extension (this task) ────────────────────────────
+// A CUSTOMER_ID-INDEPENDENT date window, chosen far outside "now" so that the
+// per-leg createdAt values every OTHER leg in this file writes (all clustered
+// within seconds of real time) can never fall inside it. The aggregation-
+// exclusion leg (§12) stamps its own rows onto this window so its assertion
+// is about THOSE rows only, not "whatever else this run happened to write".
+const AGGREGATION_EXCLUSION_TEST_DATE = new Date("2020-01-01T00:00:00.000Z");
+
+let ledgerOrderSeq = 0;
+// A minimal, real LEDGER Order fixture (order.ledger.ts's schema — ObjectId
+// customerId, Int32 paise) — the shape customer-recompute.ts's fan-out reads,
+// as opposed to buildScratchOrder's v1 shape above (String customerId, rupee
+// Number) that the reconcile route reads. Rupee inputs are converted to paise
+// here so callers keep thinking in the same rupee units as the rest of this file.
+function buildLedgerOrderDoc(opts: {
+  customerId: string;
+  totalRupees: number;
+  paidRupees: number;
+  payment: PaymentMode;
+  status: OrderStatus;
+}) {
+  ledgerOrderSeq += 1;
+  return {
+    _id: `ORD-A-20260101-${String(ledgerOrderSeq).padStart(3, "0")}`,
+    customerId: new mongoose.Types.ObjectId(opts.customerId),
+    customerName: "Scratch Ledger Customer",
+    items: [
+      {
+        productId: new mongoose.Types.ObjectId(),
+        name: "Scratch Ledger Item",
+        price: opts.totalRupees * 100,
+        qty: 1,
+      },
+    ],
+    subtotal: opts.totalRupees * 100,
+    total: opts.totalRupees * 100,
+    paidAmount: opts.paidRupees * 100,
+    payment: opts.payment,
+    status: opts.status,
+    receiver: VERIFIER_NAME,
+  };
+}
+
+// A customer whose `dueRupees` is backed by BOTH a v1 Order (so the reconcile
+// route's own aggregate independently re-derives the same due) AND a ledger
+// Order (so the REAL recomputeCustomer authority independently re-derives it
+// too) — the two parallel fixtures a "does the authority agree" assertion
+// needs, given the v1/ledger schema split explained at the top of this file.
+async function makeCustomerWithDueFixtures(dueRupees: number): Promise<string> {
+  const customerId = await makeCustomer(dueRupees);
+  await Order.create(
+    buildScratchOrder({
+      orderId: `SCRATCH-ADMIN-FIXTURE-V1-${customerId}`,
+      customerId,
+      payment: "Cash",
+      total: dueRupees,
+      paidAmount: 0,
+      status: "Completed",
+    }),
+  );
+  const LedgerOrder = await ledgerModel(core(), "Order");
+  const ledgerOrder = await LedgerOrder.create(
+    buildLedgerOrderDoc({ customerId, totalRupees: dueRupees, paidRupees: 0, payment: "Cash", status: "Completed" }),
+  );
+  // FINDING (not part of the feature under test): the v1 Order model's
+  // `orderId` field is REQUIRED + UNIQUE (models/Order.ts:116) on this SAME
+  // physical "orders" collection, but the ledger schema (order.ledger.ts)
+  // never sets it — a non-sparse unique index tolerates only ONE implicit
+  // null across the whole collection, so a SECOND ledger order created
+  // anywhere in this file (this helper runs more than once) 11000s on that
+  // shared v1 index. Patched here via a raw (non-Mongoose, so the ledger
+  // schema's strict mode can't strip it) updateOne — a real dual-write
+  // collision the v1→v2 Order cutover will have to solve for real, reported
+  // separately rather than worked around silently.
+  // Mongoose's driver-level `.collection` typing forces `_id: ObjectId`
+  // regardless of the ledger schema's own `_id: String` override — cast to
+  // the raw driver shape for this one deliberately-untyped patch.
+  const rawOrders = LedgerOrder.collection as unknown as MongoCollection<{ _id: string; orderId?: string }>;
+  await rawOrders.updateOne(
+    { _id: ledgerOrder._id },
+    { $set: { orderId: `SCRATCH-ADMIN-LEDGER-${ledgerOrder._id}` } },
+  );
+  return customerId;
+}
+
+// Runs the REAL recomputeCustomer authority (lib/customer-recompute.ts) and
+// reads back the totalDue it `$set` on the (shared, same-collection) Customer
+// doc — this IS the applied result, not a re-derivation of it.
+async function recomputeAuthorityTotalDue(customerId: string): Promise<number> {
+  const result = await recomputeCustomer(customerId);
+  if (!result.applied) {
+    throw new Error(
+      `[admin-dues] the REAL recomputeCustomer authority refused to apply (reason: ${result.reason}) — cannot prove the resurrection guard`,
+    );
+  }
+  const after = await Customer.findById(customerId).select("totalDue").lean();
+  return after?.totalDue ?? -1;
+}
+
+// Mirrors app/api/orders/summary/route.ts's DuePayment.aggregate EXACTLY
+// (createdAt range + ACTIVE_DUE_PAYMENT, projected to {mode, amount}).
+async function runOrdersSummaryDuesAggregate(
+  start: Date,
+  end: Date,
+): Promise<Array<{ mode: string; amount: number }>> {
+  return DuePayment.aggregate<{ mode: string; amount: number }>([
+    { $match: { createdAt: { $gte: start, $lte: end }, ...ACTIVE_DUE_PAYMENT } },
+    { $project: { _id: 0, mode: 1, amount: 1 } },
+  ]);
+}
+
+// Mirrors app/api/reports/route.ts's DuePayment.aggregate EXACTLY (a SEPARATE
+// $match stage for ACTIVE_DUE_PAYMENT, kept apart from the date-range $match
+// exactly as the route does — see that route's own comment on why).
+async function runReportsDuesAggregate(start: Date, end: Date): Promise<number> {
+  const [row] = await DuePayment.aggregate<{ total: number }>([
+    { $match: { createdAt: { $gte: start, $lte: end } } },
+    { $match: ACTIVE_DUE_PAYMENT },
+    { $group: { _id: null, total: { $sum: "$amount" } } },
+  ]);
+  return row?.total ?? 0;
+}
+
+// ── admin §1 — soft delete restores the pre-payment balance exactly ────────
+async function legAdminSoftDeleteRestore(): Promise<void> {
+  const customerId = await makeCustomer(500);
+  const payment = await receiveDuePayment({
+    customerId,
+    amount: 200,
+    mode: "Cash",
+    clientRef: randomUUID(),
+    receivedBy: VERIFIER_NAME,
+  });
+  check("admin §1 setup: the payment collects 200, leaving totalDue at 300", payment.ok && payment.customer.totalDue === 300);
+  if (!payment.ok) return;
+
+  const paymentId = String(payment.payment._id);
+  const del = await softDeleteDuePayment({
+    customerId,
+    paymentId,
+    note: "mis-keyed receipt",
+    deletedBy: VERIFIER_NAME,
+  });
+  check(
+    "admin §1: soft-delete restores totalDue to EXACTLY the pre-payment value (500)",
+    del.ok && del.customer.totalDue === 500,
+  );
+
+  const rows = await listDuePayments(customerId);
+  const row = rows.find((r) => String(r._id) === paymentId);
+  check(
+    "admin §1: listDuePayments still returns the deleted row with deletedAt/deletedBy/deleteNote populated",
+    row !== undefined &&
+      row.deletedAt instanceof Date &&
+      row.deletedBy === VERIFIER_NAME &&
+      row.deleteNote === "mis-keyed receipt",
+  );
+}
+
+// ── admin §2 (THE CRITICAL ONE) — reconcile/recompute must not resurrect ───
+async function legAdminResurrectionGuard(): Promise<void> {
+  const customerId = await makeCustomerWithDueFixtures(500);
+  const payment = await receiveDuePayment({
+    customerId,
+    mode: "Cash",
+    clientRef: randomUUID(),
+    receivedBy: VERIFIER_NAME,
+  });
+  check("admin §2 setup: paying the due in full clears totalDue to 0", payment.ok && payment.customer.totalDue === 0);
+  if (!payment.ok) return;
+
+  const del = await softDeleteDuePayment({
+    customerId,
+    paymentId: String(payment.payment._id),
+    note: "collected from the wrong customer",
+    deletedBy: VERIFIER_NAME,
+  });
+  check("admin §2 setup: the soft-delete restores totalDue to 500", del.ok && del.customer.totalDue === 500);
+
+  const reconciled = await runReconcileAggregate(customerId);
+  check(
+    "admin §2 RESURRECTION GUARD: the LIVE reconcile route's own aggregate still shows 500 due after the delete — " +
+      "if ACTIVE_DUE_PAYMENT were missing from duesPaidTotal, the deleted payment would still count as collected and wrongly zero this out",
+    reconciled === 500,
+  );
+
+  const recomputed = await recomputeAuthorityTotalDue(customerId);
+  check(
+    "admin §2 RESURRECTION GUARD: the REAL recomputeCustomer authority independently agrees — 500 due, " +
+      "not silently re-suppressed by a deleted payment that still counted",
+    recomputed === 500,
+  );
+}
+
+// ── admin §3 — double-delete is refused; the balance restores ONCE ─────────
+async function legAdminDoubleDelete(): Promise<void> {
+  const customerId = await makeCustomer(400);
+  const payment = await receiveDuePayment({
+    customerId,
+    amount: 150,
+    mode: "Cash",
+    clientRef: randomUUID(),
+    receivedBy: VERIFIER_NAME,
+  });
+  check("admin §3 setup: the payment collects 150, leaving totalDue at 250", payment.ok && payment.customer.totalDue === 250);
+  if (!payment.ok) return;
+
+  const paymentId = String(payment.payment._id);
+  const first = await softDeleteDuePayment({ customerId, paymentId, note: "dup", deletedBy: VERIFIER_NAME });
+  check("admin §3: the first delete succeeds and restores totalDue to 400", first.ok && first.customer.totalDue === 400);
+
+  const second = await softDeleteDuePayment({ customerId, paymentId, note: "dup again", deletedBy: VERIFIER_NAME });
+  check("admin §3: the SECOND delete on an already-deleted row is refused with 409", !second.ok && second.status === 409);
+
+  const after = await Customer.findById(customerId).select("totalDue").lean();
+  check(
+    "admin §3: totalDue was restored ONCE, not twice (400, not 550)",
+    (after?.totalDue ?? -1) === 400,
+  );
+}
+
+// ── admin §4 — deleting one of several payments reverses only that one ─────
+async function legAdminDeletePartial(): Promise<void> {
+  const customerId = await makeCustomer(600);
+  const p1 = await receiveDuePayment({
+    customerId,
+    amount: 100,
+    mode: "Cash",
+    clientRef: randomUUID(),
+    receivedBy: VERIFIER_NAME,
+  });
+  const p2 = await receiveDuePayment({
+    customerId,
+    amount: 150,
+    mode: "Online",
+    clientRef: randomUUID(),
+    receivedBy: VERIFIER_NAME,
+  });
+  check(
+    "admin §4 setup: two payments (100 + 150) leave totalDue at 350",
+    p1.ok && p2.ok && p2.customer.totalDue === 350,
+  );
+  if (!p1.ok || !p2.ok) return;
+
+  const del = await softDeleteDuePayment({
+    customerId,
+    paymentId: String(p1.payment._id),
+    note: "wrong mode recorded",
+    deletedBy: VERIFIER_NAME,
+  });
+  check(
+    "admin §4: deleting the FIRST payment restores only its 100, leaving totalDue at 450",
+    del.ok && del.customer.totalDue === 450,
+  );
+
+  const paidTotal = await duesPaidTotal(customerId);
+  check(
+    "admin §4: duesPaidTotal still counts the OTHER (non-deleted) payment's 150, not the deleted one's 100",
+    paidTotal === 150,
+  );
+}
+
+// ── admin §5 — deletedAt is genuinely ABSENT on a never-deleted row ────────
+async function legAdminDeletedFieldAbsence(): Promise<void> {
+  const customerId = await makeCustomer(300);
+  const deletedPayment = await receiveDuePayment({
+    customerId,
+    amount: 100,
+    mode: "Cash",
+    clientRef: randomUUID(),
+    receivedBy: VERIFIER_NAME,
+  });
+  const keptPayment = await receiveDuePayment({
+    customerId,
+    amount: 50,
+    mode: "Cash",
+    clientRef: randomUUID(),
+    receivedBy: VERIFIER_NAME,
+  });
+  check("admin §5 setup: both payments recorded", deletedPayment.ok && keptPayment.ok);
+  if (!deletedPayment.ok || !keptPayment.ok) return;
+
+  await softDeleteDuePayment({
+    customerId,
+    paymentId: String(deletedPayment.payment._id),
+    note: "test",
+    deletedBy: VERIFIER_NAME,
+  });
+
+  const deletedRow = await DuePayment.findById(deletedPayment.payment._id).lean();
+  check("admin §5: a deleted row genuinely HAS deletedAt", deletedRow !== null && deletedRow.deletedAt instanceof Date);
+
+  const neverDeletedRow = await DuePayment.findById(keptPayment.payment._id).lean();
+  check(
+    "admin §5: a never-deleted row has NO deletedAt KEY at all (no stray null default)",
+    neverDeletedRow !== null && !Object.prototype.hasOwnProperty.call(neverDeletedRow, "deletedAt"),
+  );
+
+  const matchedByExists = await DuePayment.countDocuments({
+    _id: keptPayment.payment._id,
+    ...ACTIVE_DUE_PAYMENT,
+  });
+  check(
+    "admin §5: ACTIVE_DUE_PAYMENT's {$exists:false} really matches the never-deleted row",
+    matchedByExists === 1,
+  );
+  const excludedByExists = await DuePayment.countDocuments({
+    _id: deletedPayment.payment._id,
+    ...ACTIVE_DUE_PAYMENT,
+  });
+  check(
+    "admin §5: ACTIVE_DUE_PAYMENT's {$exists:false} correctly EXCLUDES the deleted row",
+    excludedByExists === 0,
+  );
+}
+
+// ── admin §6 — editing amount down/up moves totalDue by exactly the diff ───
+async function legAdminEditUpDown(): Promise<void> {
+  const customerId = await makeCustomerWithDueFixtures(500);
+  const payment = await receiveDuePayment({
+    customerId,
+    amount: 200,
+    mode: "Cash",
+    clientRef: randomUUID(),
+    receivedBy: VERIFIER_NAME,
+  });
+  check("admin §6 setup: the payment collects 200, leaving totalDue at 300", payment.ok && payment.customer.totalDue === 300);
+  if (!payment.ok) return;
+
+  const paymentId = String(payment.payment._id);
+  const down = await editDuePayment({ customerId, paymentId, amount: 120, mode: "Cash", editedBy: VERIFIER_NAME });
+  check(
+    "admin §6: editing the amount DOWN (200→120) raises totalDue by exactly the 80 difference (300→380)",
+    down.ok && down.customer.totalDue === 380,
+  );
+  if (down.ok) {
+    check("admin §6: recomputeCustomer agrees after the DOWN edit (380)", (await recomputeAuthorityTotalDue(customerId)) === 380);
+    check("admin §6: the reconcile aggregate agrees after the DOWN edit (380)", (await runReconcileAggregate(customerId)) === 380);
+  }
+
+  const up = await editDuePayment({ customerId, paymentId, amount: 300, mode: "Cash", editedBy: VERIFIER_NAME });
+  check(
+    "admin §6: editing the amount UP (120→300) lowers totalDue by exactly the 180 difference (380→200)",
+    up.ok && up.customer.totalDue === 200,
+  );
+  if (up.ok) {
+    check("admin §6: recomputeCustomer agrees after the UP edit (200)", (await recomputeAuthorityTotalDue(customerId)) === 200);
+    check("admin §6: the reconcile aggregate agrees after the UP edit (200)", (await runReconcileAggregate(customerId)) === 200);
+  }
+}
+
+// ── admin §7 — an edit above the ceiling is refused; nothing changes ───────
+async function legAdminEditCeiling(): Promise<void> {
+  const customerId = await makeCustomer(200);
+  const payment = await receiveDuePayment({
+    customerId,
+    amount: 100,
+    mode: "Cash",
+    clientRef: randomUUID(),
+    receivedBy: VERIFIER_NAME,
+  });
+  check("admin §7 setup: the payment collects 100, leaving totalDue at 100", payment.ok && payment.customer.totalDue === 100);
+  if (!payment.ok) return;
+
+  const paymentId = String(payment.payment._id);
+  // ceiling = row.amount (100) + totalDue (100) = 200; 201 exceeds it.
+  const result = await editDuePayment({ customerId, paymentId, amount: 201, mode: "Cash", editedBy: VERIFIER_NAME });
+  check("admin §7: an edit above the ceiling (row.amount + totalDue = 200) is refused with 400", !result.ok && result.status === 400);
+
+  const row = await DuePayment.findById(paymentId).lean();
+  check("admin §7: a refused ceiling edit leaves the row's amount untouched (100)", row?.amount === 100);
+  const after = await Customer.findById(customerId).select("totalDue").lean();
+  check("admin §7: a refused ceiling edit leaves totalDue untouched (100)", (after?.totalDue ?? -1) === 100);
+}
+
+// ── admin §8 — editing a soft-deleted row is refused; nothing changes ──────
+async function legAdminEditOnDeletedRow(): Promise<void> {
+  const customerId = await makeCustomer(300);
+  const payment = await receiveDuePayment({
+    customerId,
+    amount: 100,
+    mode: "Cash",
+    clientRef: randomUUID(),
+    receivedBy: VERIFIER_NAME,
+  });
+  check("admin §8 setup: the payment collects 100, leaving totalDue at 200", payment.ok && payment.customer.totalDue === 200);
+  if (!payment.ok) return;
+
+  const paymentId = String(payment.payment._id);
+  const del = await softDeleteDuePayment({ customerId, paymentId, note: "test", deletedBy: VERIFIER_NAME });
+  check("admin §8 setup: the delete restores totalDue to 300", del.ok && del.customer.totalDue === 300);
+
+  const edit = await editDuePayment({ customerId, paymentId, amount: 50, mode: "Cash", editedBy: VERIFIER_NAME });
+  check("admin §8: editing a soft-deleted row is refused with 409", !edit.ok && edit.status === 409);
+
+  const row = await DuePayment.findById(paymentId).lean();
+  check("admin §8: a refused edit on a deleted row leaves its amount untouched (100)", row?.amount === 100);
+  const after = await Customer.findById(customerId).select("totalDue").lean();
+  check("admin §8: a refused edit on a deleted row leaves totalDue untouched (300)", (after?.totalDue ?? -1) === 300);
+}
+
+// ── admin §9 — the edits trail records PREVIOUS amount/mode, order kept ────
+async function legAdminEditsTrail(): Promise<void> {
+  const customerId = await makeCustomer(500);
+  const payment = await receiveDuePayment({
+    customerId,
+    amount: 200,
+    mode: "Cash",
+    clientRef: randomUUID(),
+    receivedBy: VERIFIER_NAME,
+  });
+  check("admin §9 setup: the payment collects 200", payment.ok);
+  if (!payment.ok) return;
+
+  const paymentId = String(payment.payment._id);
+  const first = await editDuePayment({ customerId, paymentId, amount: 150, mode: "Online", editedBy: VERIFIER_NAME });
+  check("admin §9: the first edit succeeds", first.ok);
+
+  const afterFirst = await DuePayment.findById(paymentId).lean();
+  check(
+    "admin §9: the edits trail records the PREVIOUS amount/mode (200/Cash) after the first edit",
+    Array.isArray(afterFirst?.edits) &&
+      afterFirst.edits.length === 1 &&
+      afterFirst.edits[0].amount === 200 &&
+      afterFirst.edits[0].mode === "Cash",
+  );
+
+  const second = await editDuePayment({ customerId, paymentId, amount: 100, mode: "Cash", editedBy: VERIFIER_NAME });
+  check("admin §9: the second edit succeeds", second.ok);
+
+  const afterSecond = await DuePayment.findById(paymentId).lean();
+  check(
+    "admin §9: a second edit APPENDS a second entry, order preserved (200/Cash then 150/Online)",
+    Array.isArray(afterSecond?.edits) &&
+      afterSecond.edits.length === 2 &&
+      afterSecond.edits[0].amount === 200 &&
+      afterSecond.edits[0].mode === "Cash" &&
+      afterSecond.edits[1].amount === 150 &&
+      afterSecond.edits[1].mode === "Online",
+  );
+}
+
+// ── admin §10 — concurrent edits on the SAME row: exactly one wins ─────────
+async function legAdminEditConcurrentSameRow(): Promise<void> {
+  const customerId = await makeCustomer(500);
+  const payment = await receiveDuePayment({
+    customerId,
+    amount: 200,
+    mode: "Cash",
+    clientRef: randomUUID(),
+    receivedBy: VERIFIER_NAME,
+  });
+  check("admin §10 setup: the payment collects 200, leaving totalDue at 300", payment.ok && payment.customer.totalDue === 300);
+  if (!payment.ok) return;
+
+  const paymentId = String(payment.payment._id);
+  const [r1, r2] = await Promise.all([
+    editDuePayment({ customerId, paymentId, amount: 150, mode: "Cash", editedBy: VERIFIER_NAME }),
+    editDuePayment({ customerId, paymentId, amount: 100, mode: "Cash", editedBy: VERIFIER_NAME }),
+  ]);
+  const results = [r1, r2];
+  const winners = results.filter((r) => r.ok);
+  const losers = results.filter((r) => !r.ok);
+  check("admin §10 CONCURRENT same-row edit: exactly ONE edit wins the row CAS", winners.length === 1);
+  check(
+    "admin §10 CONCURRENT same-row edit: the other is refused with 409 (the row-CAS guard, not a race)",
+    losers.length === 1 && !losers[0].ok && losers[0].status === 409,
+  );
+
+  const winner = winners[0];
+  if (winner?.ok) {
+    const after = await Customer.findById(customerId).select("totalDue").lean();
+    check(
+      "admin §10 CONCURRENT same-row edit: totalDue matches the WINNER's own reported result exactly",
+      (after?.totalDue ?? -1) === winner.customer.totalDue,
+    );
+    const row = await DuePayment.findById(paymentId).lean();
+    const expectedTotalDue = 300 + (200 - (row?.amount ?? -1));
+    check(
+      "admin §10 CONCURRENT same-row edit: the final row amount and totalDue are mutually consistent",
+      (after?.totalDue ?? -1) === expectedTotalDue,
+    );
+  }
+}
+
+// ── admin §11 — concurrency on the balance guard: a raising edit racing a
+// dues collection over the SAME headroom must never drive totalDue negative,
+// and the loser must 409 rather than silently corrupt the balance ──────────
+async function legAdminEditConcurrentBalanceGuard(): Promise<void> {
+  const customerId = await makeCustomer(150);
+  const payment = await receiveDuePayment({
+    customerId,
+    amount: 50,
+    mode: "Cash",
+    clientRef: randomUUID(),
+    receivedBy: VERIFIER_NAME,
+  });
+  check("admin §11 setup: the payment collects 50, leaving totalDue at 100", payment.ok && payment.customer.totalDue === 100);
+  if (!payment.ok) return;
+
+  const paymentId = String(payment.payment._id);
+  // The edit raises the row by 100 (50→150) — needs ALL the remaining 100
+  // headroom. The collection consumes 60 of that SAME headroom. Whichever
+  // commits first should win; the other must 409, never both landing.
+  const [editResult, collectResult] = await Promise.all([
+    editDuePayment({ customerId, paymentId, amount: 150, mode: "Cash", editedBy: VERIFIER_NAME }),
+    receiveDuePayment({ customerId, amount: 60, mode: "Online", clientRef: randomUUID(), receivedBy: VERIFIER_NAME }),
+  ]);
+
+  const after = await Customer.findById(customerId).select("totalDue").lean();
+  check("admin §11 CONCURRENT balance guard: totalDue NEVER goes negative", (after?.totalDue ?? -1) >= 0);
+
+  const winnerCount = (editResult.ok ? 1 : 0) + (collectResult.ok ? 1 : 0);
+  check("admin §11 CONCURRENT balance guard: exactly one of the raising edit / dues collection wins", winnerCount === 1);
+
+  if (winnerCount === 1) {
+    const loserStatus = editResult.ok ? (collectResult.ok ? undefined : collectResult.status) : editResult.status;
+    check(
+      "admin §11 CONCURRENT balance guard: the loser is refused with 409, never silently corrupting the balance",
+      loserStatus === 409,
+    );
+    if (editResult.ok) {
+      check(
+        "admin §11 CONCURRENT balance guard: the edit won — totalDue lands at exactly 0 (100 headroom fully consumed)",
+        (after?.totalDue ?? -1) === 0,
+      );
+    } else {
+      check(
+        "admin §11 CONCURRENT balance guard: the collection won — totalDue lands at exactly 40 (100 - 60), the edit's raise was refused",
+        (after?.totalDue ?? -1) === 40,
+      );
+    }
+  }
+}
+
+// ── admin §12 — a soft-deleted payment is excluded from the day/report
+// money aggregations (orders/summary + reports routes) ─────────────────────
+async function legAdminAggregationExclusion(): Promise<void> {
+  const customerId = await makeCustomer(500);
+  const kept = await receiveDuePayment({
+    customerId,
+    amount: 100,
+    mode: "Cash",
+    clientRef: randomUUID(),
+    receivedBy: VERIFIER_NAME,
+  });
+  const deleted = await receiveDuePayment({
+    customerId,
+    amount: 75,
+    mode: "Online",
+    clientRef: randomUUID(),
+    receivedBy: VERIFIER_NAME,
+  });
+  check("admin §12 setup: both payments recorded", kept.ok && deleted.ok);
+  if (!kept.ok || !deleted.ok) return;
+
+  await softDeleteDuePayment({
+    customerId,
+    paymentId: String(deleted.payment._id),
+    note: "wrong customer",
+    deletedBy: VERIFIER_NAME,
+  });
+
+  // Isolate these two rows onto a synthetic, far-past createdAt window so this
+  // leg's totals cannot be contaminated by every OTHER leg's payments, which
+  // all land within seconds of real "now" — a GLOBAL (not customer-scoped)
+  // aggregation, exactly like the two live routes it mirrors. A plain
+  // Mongoose `updateMany` will NOT do this: with `timestamps:true`, Mongoose
+  // silently strips a user-supplied `createdAt` from a query-level $set (it
+  // only ever manages `updatedAt` on updates) — confirmed live (a first
+  // attempt through the Model left `createdAt` at its real creation time).
+  // The raw driver bypasses that stripping.
+  await DuePayment.collection.updateMany(
+    { _id: { $in: [kept.payment._id, deleted.payment._id] } },
+    { $set: { createdAt: AGGREGATION_EXCLUSION_TEST_DATE } },
+  );
+  const windowStart = new Date(AGGREGATION_EXCLUSION_TEST_DATE.getTime() - 1000);
+  const windowEnd = new Date(AGGREGATION_EXCLUSION_TEST_DATE.getTime() + 1000);
+
+  const summaryRows = await runOrdersSummaryDuesAggregate(windowStart, windowEnd);
+  const summaryTotal = summaryRows.reduce((s, r) => s + r.amount, 0);
+  check(
+    "admin §12: orders/summary's dues aggregate excludes the soft-deleted 75 payment — total is exactly the kept 100",
+    summaryTotal === 100 && !summaryRows.some((r) => r.amount === 75),
+  );
+
+  const reportsTotal = await runReportsDuesAggregate(windowStart, windowEnd);
+  check(
+    "admin §12: reports' dues aggregate excludes the soft-deleted 75 payment — total is exactly the kept 100",
+    reportsTotal === 100,
+  );
+}
+
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
   const dbName = new URL(uri.replace("mongodb://", "http://")).pathname.slice(1);
@@ -546,6 +1161,20 @@ async function main(): Promise<void> {
     throw new Error(
       `Refusing to run against "${dbName}" — the live leg only touches a database named ${SCRATCH_PREFIX}*.`,
     );
+  }
+
+  // The admin edit/soft-delete legs' recomputeCustomer calls dial
+  // cluster-router's core(), which reads CORE_MONGODB_URI ?? MONGODB_URI —
+  // guard that override exactly like the primary URI above, so nothing this
+  // script does can reach a database outside this scratch prefix.
+  const coreUriOverride = process.env.CORE_MONGODB_URI;
+  if (coreUriOverride) {
+    const coreDbName = new URL(coreUriOverride.replace("mongodb://", "http://")).pathname.slice(1);
+    if (!coreDbName.startsWith(SCRATCH_PREFIX)) {
+      throw new Error(
+        `Refusing to run — CORE_MONGODB_URI is set to a database named "${coreDbName}", not a ${SCRATCH_PREFIX}* scratch database.`,
+      );
+    }
   }
 
   process.env.MONGODB_URI = uri;
@@ -597,6 +1226,20 @@ async function main(): Promise<void> {
       duplicateCode = (e as { code?: number }).code ?? 0;
     }
     check("the clientRef unique index really raises a duplicate-key error", duplicateCode === DUPLICATE_KEY_CODE);
+
+    console.log("\nadmin edit + soft-delete extension (this task)\n");
+    await legAdminSoftDeleteRestore();
+    await legAdminResurrectionGuard();
+    await legAdminDoubleDelete();
+    await legAdminDeletePartial();
+    await legAdminDeletedFieldAbsence();
+    await legAdminEditUpDown();
+    await legAdminEditCeiling();
+    await legAdminEditOnDeletedRow();
+    await legAdminEditsTrail();
+    await legAdminEditConcurrentSameRow();
+    await legAdminEditConcurrentBalanceGuard();
+    await legAdminAggregationExclusion();
   } finally {
     await Promise.all([
       Customer.collection.drop().catch(() => undefined),
@@ -604,6 +1247,10 @@ async function main(): Promise<void> {
       Order.collection.drop().catch(() => undefined),
     ]);
     await mongoose.disconnect();
+    // Closes the SEPARATE cluster-registry pool the admin legs' core()/
+    // ledgerModel() calls opened (see this file's top-of-file comment) — a
+    // second, independent connection to the SAME scratch database.
+    await disconnectAll();
   }
 
   console.log(`\n${passed} passed, ${failed} failed\n`);

@@ -8,7 +8,7 @@ import {
 } from "./table.schema";
 import { createOrderSchema, updateOrderSchema } from "./order.schema";
 import { createReservationSchema } from "./reservation.schema";
-import { TABLE_NO_MAX_LEN } from "../constants";
+import { TABLE_NO_MAX_LEN, TABLE_CHARGE_MAX, TABLE_CHARGE_LABEL_MAX_LEN } from "../constants";
 
 // CR1.1 — tables are DATA, not a compile-time enum. These pin the shape contract
 // that replaced z.enum(TABLE_NUMBERS): a tableNo is any short, URL-safe label, and
@@ -153,4 +153,108 @@ test("reservations share the tableNo contract instead of taking any string", () 
   assert.equal(createReservationSchema.safeParse({ ...base, tableNo: "Patio 1" }).success, true);
   assert.equal(createReservationSchema.safeParse({ ...base, tableNo: "A/B" }).success, false);
   assert.equal(createReservationSchema.safeParse(base).success, true);
+});
+
+// ── Per-table extra charge (owner decision 2026-08-16) ───────────────────────
+// A charge that costs money must say what it is, in the SAME payload that sets
+// it — requireLabelWithCharge anchors its issue to `chargeLabel` so the form
+// can show the error on the right field instead of a bare "Validation failed".
+
+test("createTableSchema: chargeAmount with no chargeLabel fails, and the issue is anchored to the chargeLabel field", () => {
+  const r = createTableSchema.safeParse({ tableNo: "T-1", chargeAmount: 50 });
+  assert.equal(r.success, false, "an amount with no name for it must be rejected");
+  if (r.success) return;
+  assert.deepEqual(
+    r.error.issues[0].path,
+    ["chargeLabel"],
+    "the issue must anchor to chargeLabel, not land as a root/form-level error the operator can't see",
+  );
+});
+
+test("createTableSchema: chargeAmount 0 with no chargeLabel passes — a zero charge needs no name", () => {
+  assert.equal(createTableSchema.safeParse({ tableNo: "T-1", chargeAmount: 0 }).success, true);
+});
+
+test("createTableSchema: an amount + a label together pass", () => {
+  assert.equal(
+    createTableSchema.safeParse({ tableNo: "T-1", chargeAmount: 50, chargeLabel: "Rooftop charge" }).success,
+    true,
+  );
+});
+
+test("createTableSchema: chargeAmount above TABLE_CHARGE_MAX, negative, or fractional all fail", () => {
+  for (const chargeAmount of [TABLE_CHARGE_MAX + 1, -1, 49.5]) {
+    assert.equal(
+      createTableSchema.safeParse({ tableNo: "T-1", chargeAmount, chargeLabel: "Rooftop charge" }).success,
+      false,
+      `chargeAmount ${chargeAmount} must be rejected`,
+    );
+  }
+  // The ceiling itself is fine — only ABOVE it fails.
+  assert.equal(
+    createTableSchema.safeParse({ tableNo: "T-1", chargeAmount: TABLE_CHARGE_MAX, chargeLabel: "Rooftop charge" })
+      .success,
+    true,
+  );
+});
+
+test("createTableSchema: a chargeLabel longer than TABLE_CHARGE_LABEL_MAX_LEN fails", () => {
+  assert.equal(
+    createTableSchema.safeParse({
+      tableNo: "T-1",
+      chargeAmount: 50,
+      chargeLabel: "x".repeat(TABLE_CHARGE_LABEL_MAX_LEN + 1),
+    }).success,
+    false,
+  );
+  assert.equal(
+    createTableSchema.safeParse({
+      tableNo: "T-1",
+      chargeAmount: 50,
+      chargeLabel: "x".repeat(TABLE_CHARGE_LABEL_MAX_LEN),
+    }).success,
+    true,
+  );
+});
+
+test("createTableSchema: a chargeLabel containing a control character fails — it would corrupt the thermal print stream", () => {
+  assert.equal(
+    createTableSchema.safeParse({
+      tableNo: "T-1",
+      chargeAmount: 50,
+      chargeLabel: `Rooftop${String.fromCharCode(1)}charge`,
+    }).success,
+    false,
+  );
+});
+
+test("createTableSchema: a chargeLabel with &, %, (, ), or a rupee sign PASSES — it is display text, not a URL segment, so the charset is deliberately permissive", () => {
+  for (const chargeLabel of [
+    "Rooftop & AC charge",
+    "Service charge (10%)",
+    "₹ cover charge", // rupee sign
+  ]) {
+    assert.equal(
+      createTableSchema.safeParse({ tableNo: "T-1", chargeAmount: 50, chargeLabel }).success,
+      true,
+      `${JSON.stringify(chargeLabel)} should be accepted`,
+    );
+  }
+});
+
+test("patchTableSchema: chargeLabel '' is accepted — that is how a charge is CLEARED — but createTableSchema rejects '' outright", () => {
+  assert.equal(patchTableSchema.safeParse({ chargeLabel: "" }).success, true);
+  assert.equal(
+    createTableSchema.safeParse({ tableNo: "T-1", chargeLabel: "" }).success,
+    false,
+    "create has no stored charge to clear — an empty label at create time is meaningless input",
+  );
+});
+
+test("patchTableSchema: a patch with ONLY charge fields satisfies the 'provide something' refinement", () => {
+  assert.equal(
+    patchTableSchema.safeParse({ chargeAmount: 50, chargeLabel: "Rooftop charge" }).success,
+    true,
+  );
+  assert.equal(patchTableSchema.safeParse({ chargeAmount: 0 }).success, true);
 });

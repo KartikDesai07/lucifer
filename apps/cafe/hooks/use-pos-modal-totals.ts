@@ -7,6 +7,14 @@ import type { Order, Settings } from "@/types";
 interface PosModalTotalsInput {
   resumedOrder: Order | null;
   discount: number;
+  // The operator's deliberate override, if any. `undefined` = untouched, so the
+  // tab's snapshotted charge stands — matching what the settle route does with
+  // an omitted chargeAmount.
+  chargeOverride: number | undefined;
+  // The resolved charge + its name, used verbatim on the "pay" branch the same
+  // way the other live-cart figures are.
+  charge: number;
+  chargeLabel: string;
   settings: Settings | undefined;
   paymentIntent: "pay" | "settle";
   // Live-cart totals, used verbatim on the "pay" (non-resumed) branch.
@@ -22,6 +30,8 @@ export interface PosModalTotals {
   discount: number;
   gstAmount: number;
   gstRate?: number;
+  charge: number;
+  chargeLabel: string;
   total: number;
   itemCount: number;
   confirmLabel: string;
@@ -35,6 +45,9 @@ export interface PosModalTotals {
 export function usePosModalTotals({
   resumedOrder,
   discount,
+  chargeOverride,
+  charge,
+  chargeLabel,
   settings,
   paymentIntent,
   subtotal,
@@ -46,13 +59,16 @@ export function usePosModalTotals({
   const settleTotals = useMemo(
     () =>
       resumedOrder
-        ? computeOrderTotals(
-            resumedOrder.items,
+        ? computeOrderTotals({
+            items: resumedOrder.items,
             discount,
-            gstConfigFromOrder(resumedOrder, gstConfigOfSettings(settings)),
-          )
+            // The tab's own snapshotted charge, so the modal shows exactly the
+            // figure the server will re-derive when it settles.
+            charge: chargeOverride ?? resumedOrder.chargeAmount ?? 0,
+            cfg: gstConfigFromOrder(resumedOrder, gstConfigOfSettings(settings)),
+          })
         : null,
-    [resumedOrder, discount, settings],
+    [resumedOrder, discount, chargeOverride, settings],
   );
 
   const settling = paymentIntent === "settle" && resumedOrder && settleTotals;
@@ -62,6 +78,10 @@ export function usePosModalTotals({
         discount: settleTotals.discount,
         gstAmount: settleTotals.gstAmount,
         gstRate: resumedOrder.gstRate ?? gstRate,
+        charge: settleTotals.charge,
+        // The tab's own snapshotted name — the table may have been renamed or
+        // re-priced since this tab opened, and the bill keeps what it sold.
+        chargeLabel: resumedOrder.chargeLabel ?? chargeLabel,
         total: settleTotals.total,
         itemCount: resumedOrder.items.reduce((n, it) => n + it.qty, 0),
         confirmLabel: "Settle",
@@ -71,6 +91,8 @@ export function usePosModalTotals({
         discount,
         gstAmount,
         gstRate,
+        charge,
+        chargeLabel,
         total,
         itemCount: count,
         confirmLabel: "Place Order",

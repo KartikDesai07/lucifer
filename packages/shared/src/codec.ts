@@ -82,6 +82,11 @@ export interface StoredOrder {
   gstAmount?: number; // paise
   gstRate?: number; // whole percent
   gstMode?: GstMode;
+  // The table's extra charge as it was at sale time (paise) and the name it was
+  // sold under. Snapshotted, never re-read from the Table: the table's config
+  // can change tomorrow, a printed bill cannot.
+  chargeAmount?: number; // paise
+  chargeLabel?: string;
   payment: PaymentMode;
   status: OrderStatus;
   splitCash?: number; // paise
@@ -90,6 +95,10 @@ export interface StoredOrder {
   tableNo?: string;
   notes?: string;
   kotRounds?: number;
+  // Printed slip numbers — plain counts, NOT money, so they never touch the
+  // paise codec. Absent when the cafe prints no numbers.
+  kotNumbers?: number[];
+  billNumber?: number;
   settledAt?: Date | string;
   frozen?: boolean;
   idemKey?: string;
@@ -120,6 +129,8 @@ export interface DecodedOrder {
   gstAmount?: number; // rupees
   gstRate?: number; // whole percent
   gstMode?: GstMode;
+  chargeAmount?: number; // rupees — absent when the bill carried no table charge
+  chargeLabel?: string;
   payment: PaymentMode;
   status: OrderStatus;
   splitCash?: number; // rupees
@@ -128,6 +139,8 @@ export interface DecodedOrder {
   tableNo?: string;
   notes?: string;
   kotRounds: number;
+  kotNumbers?: number[]; // printed ticket numbers, one per fired round
+  billNumber?: number; // printed bill number, allocated when payment is taken
   settledAt?: string; // ISO
   frozen: boolean;
   source?: string;
@@ -191,10 +204,18 @@ function decodeOrderV1(stored: StoredOrder, v: number): DecodedOrder {
   if (stored.gstAmount !== undefined) decoded.gstAmount = paiseToRupees(stored.gstAmount);
   if (stored.gstRate !== undefined) decoded.gstRate = stored.gstRate;
   if (stored.gstMode !== undefined) decoded.gstMode = stored.gstMode;
+  if (stored.chargeAmount !== undefined) {
+    decoded.chargeAmount = paiseToRupees(stored.chargeAmount);
+  }
+  if (stored.chargeLabel !== undefined) decoded.chargeLabel = stored.chargeLabel;
   if (stored.splitCash !== undefined) decoded.splitCash = paiseToRupees(stored.splitCash);
   if (stored.splitOnline !== undefined) decoded.splitOnline = paiseToRupees(stored.splitOnline);
   if (stored.tableNo !== undefined) decoded.tableNo = stored.tableNo;
   if (stored.notes !== undefined) decoded.notes = stored.notes;
+  // Counts, not money — copied straight across. The array is cloned so a
+  // decoded DTO can never alias (and mutate) the lean document behind it.
+  if (stored.kotNumbers !== undefined) decoded.kotNumbers = [...stored.kotNumbers];
+  if (stored.billNumber !== undefined) decoded.billNumber = stored.billNumber;
   if (stored.source !== undefined) decoded.source = stored.source;
   if (stored.externalRef !== undefined) decoded.externalRef = stored.externalRef;
   if (stored.settledAt !== undefined) {
@@ -235,6 +256,8 @@ export interface EncodeOrderInput {
   gstAmount?: number; // rupees
   gstRate?: number; // whole percent
   gstMode?: GstMode;
+  chargeAmount?: number; // rupees
+  chargeLabel?: string;
   payment: PaymentMode;
   splitCash?: number; // rupees
   splitOnline?: number; // rupees
@@ -280,6 +303,14 @@ export function encodeOrderForWrite(
   if (input.gstAmount) out.gstAmount = rupeesToPaise(input.gstAmount);
   if (input.gstRate) out.gstRate = input.gstRate;
   if (input.gstMode) out.gstMode = input.gstMode;
+  // Amount and label travel together or not at all. A stored label with no
+  // amount would print a named line worth nothing; an amount with no label
+  // would print a bare figure the customer cannot question. The amount is the
+  // gate, so a charge the operator removed (0) takes its name with it.
+  if (input.chargeAmount) {
+    out.chargeAmount = rupeesToPaise(input.chargeAmount);
+    if (input.chargeLabel) out.chargeLabel = input.chargeLabel;
+  }
   // Splits are meaningful ONLY for a Split payment: store BOTH legs (even a 0 leg,
   // e.g. an all-online split) for faithful reconstruction, and omit both otherwise
   // so a stray `splitCash:0` on a Cash order can't leak (#8 — `minimize` does NOT

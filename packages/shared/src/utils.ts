@@ -1,6 +1,10 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { CAFE_UTC_OFFSET_MINUTES } from "./constants";
+import {
+  CAFE_UTC_OFFSET_MINUTES,
+  MOBILE_MASK_CHAR,
+  MOBILE_VISIBLE_PREFIX,
+} from "./constants";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -9,6 +13,32 @@ export function cn(...inputs: ClassValue[]) {
 // Escape user input before interpolating it into a RegExp (search-by-name/mobile).
 export function escapeRegex(input: string): string {
   return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// A customer's mobile as anyone below admin may see it: the first
+// MOBILE_VISIBLE_PREFIX characters, every remaining character replaced by
+// MOBILE_MASK_CHAR — "9876543210" → "98765*****".
+//
+// Fail-closed on anything at or under the prefix length: a value that short is
+// masked ENTIRELY rather than handed over in full.
+//
+// Length is preserved on purpose. A masked number still passes the 10-character
+// minimum in customer.schema.ts, so the edit form can hold one in a read-only
+// field without the resolver rejecting a value the operator cannot even edit.
+// Note the limit of that guarantee: the minimum is enforced by the ZOD schema
+// on API writes, NOT by models/Customer.ts (which sets no minlength). A record
+// written around the API with a shorter number masks to all-stars, and a staff
+// member then cannot submit that customer's edit form at all — an admin has to
+// make the change. Tightening the Mongoose model would reject those rows on
+// every save, so the dead end is left visible rather than papered over.
+export function maskMobile(mobile: string): string {
+  if (mobile.length <= MOBILE_VISIBLE_PREFIX) {
+    return MOBILE_MASK_CHAR.repeat(mobile.length);
+  }
+  return (
+    mobile.slice(0, MOBILE_VISIBLE_PREFIX) +
+    MOBILE_MASK_CHAR.repeat(mobile.length - MOBILE_VISIBLE_PREFIX)
+  );
 }
 
 export function inr(amount: number): string {

@@ -47,6 +47,7 @@ export interface ItemVoidInput<T extends VoidableLine> {
   items: readonly T[];
   request: ItemVoidRequest;
   discount: number; // the tab's current order-level discount (re-clamped on recompute)
+  charge: number; // the tab's snapshotted table charge — carried, never re-derived
   gstCfg: GstConfig; // the TAB's snapshot config, from gstConfigFromOrder
 }
 
@@ -121,8 +122,14 @@ export function resolveItemVoid<T extends VoidableLine>(
     nextItems,
     // Recompute from what REMAINS using the tab's own GST snapshot; computeOrderTotals
     // re-clamps the order-level discount to the smaller subtotal, so a discount that
-    // now exceeds the bill can't drive the total negative.
-    totals: computeOrderTotals(nextItems, input.discount, input.gstCfg),
+    // now exceeds the bill can't drive the total negative. The table charge rides
+    // through unchanged — voiding a dish does not un-seat the customer.
+    totals: computeOrderTotals({
+      items: nextItems,
+      discount: input.discount,
+      charge: input.charge,
+      cfg: input.gstCfg,
+    }),
     // Snapshot what left the bill — readable forever, even though `line` itself is
     // now reduced or gone. `qty` is the quantity VOIDED, not what remains. The
     // preparation fields ride along (omitted when empty, per the omit-empty storage

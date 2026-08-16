@@ -5,12 +5,31 @@ import {
   requireAuth,
   serverError,
 } from "@/lib/api-helpers";
-import { receiveDuePayment } from "@/lib/due-payment";
+import { receiveDuePayment, listDuePayments } from "@/lib/due-payment";
 import { duePaymentSchema } from "@/schemas";
+import { maskCustomer } from "@/lib/customer-privacy";
 
 export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ id: string }> };
+
+// GET /api/customers/[id]/payments — this customer's dues-payment history,
+// newest first, INCLUDING soft-deleted rows (the UI shows them struck
+// through). Staff-accessible like the POST below — the owner's decision: the
+// cashier who can record a payment can also see what was recorded.
+export async function GET(_req: Request, { params }: Params) {
+  const authed = await requireAuth();
+  if ("error" in authed) return authed.error;
+
+  const { id } = await params;
+
+  try {
+    const payments = await listDuePayments(id);
+    return success(payments);
+  } catch (error) {
+    return serverError("Failed to fetch payment history", error);
+  }
+}
 
 // POST /api/customers/[id]/payments — staff: record money actually taken
 // against a customer's outstanding balance (CR1.4). Staff-accessible, not
@@ -23,6 +42,7 @@ type Params = { params: Promise<{ id: string }> };
 export async function POST(req: Request, { params }: Params) {
   const authed = await requireAuth();
   if ("error" in authed) return authed.error;
+  const role = authed.session.user.role;
 
   const { id } = await params;
 
@@ -39,7 +59,9 @@ export async function POST(req: Request, { params }: Params) {
       receivedBy: authed.session.user?.name ?? "",
     });
     if (!result.ok) return failure(result.error, result.status);
-    return success(result.customer);
+    // receiveDuePayment's customer is already a lean plain object (see
+    // lib/due-payment.ts) — no .toObject() needed before masking.
+    return success(maskCustomer(result.customer, role));
   } catch (error) {
     return serverError("Failed to record the payment", error);
   }

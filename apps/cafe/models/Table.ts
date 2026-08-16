@@ -6,6 +6,12 @@ export interface ITable extends Document {
   status: TableStatus;
   currentOrderId?: string; // orderId of active order
   capacity: number;
+  // Extra charge this table adds to a bill (whole rupees) and the name it
+  // prints under. Admin config, not occupancy — the order lifecycle never
+  // writes these. Rupees, not paise: this is a CORE registry collection like
+  // Product.price, not the paise-encoded Order ledger.
+  chargeAmount?: number;
+  chargeLabel?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -19,6 +25,10 @@ export const tableSchema = new Schema<ITable>(
     status: { type: String, enum: [...TABLE_STATUSES], default: "Available" },
     currentOrderId: { type: String },
     capacity: { type: Number, default: 4 },
+    // No `default: 0` — an absent charge stays absent (omit-empty), so the
+    // overwhelming majority of tables carry neither field at all.
+    chargeAmount: { type: Number, min: 0 },
+    chargeLabel: { type: String, trim: true },
   },
   { timestamps: true },
 );
