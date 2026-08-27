@@ -152,6 +152,13 @@ export function usePosTab(receiver: string) {
   ) => {
     const { kot = true, keepUnfired = false, chargeSent = false } = opts;
     setResumedOrder(order);
+    // Follow the server's table onto the header — a move lands here too, and
+    // without this the POS keeps showing the table the tab was opened at.
+    // The RAW setter, deliberately not `selectTable`: that one clears
+    // chargeOverride, which would silently re-bill a waiver the operator
+    // already promised (a move never touches money, so nothing here should
+    // touch the charge either).
+    setTable(order.tableNo);
     hydrate(nextCartFromServerItems(order.items, cart, keepUnfired));
     // Mirror the server's (re-clamped) discount so the live cart footer total
     // stays in sync with the stored tab total after a fire (matches enterResume).

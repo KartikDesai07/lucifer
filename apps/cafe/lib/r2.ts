@@ -148,8 +148,13 @@ export async function presignProductImagePut(
   cfg: R2Config,
   opts: { datetime?: string; randomHex?: string } = {},
 ): Promise<ProductImagePutGrant> {
+  // Own-property check before the lookup: IMAGE_CONTENT_TYPES is a plain object
+  // literal, so a contentType of "constructor" or "toString" resolves to an
+  // inherited function — truthy, and it would land in the object key.
+  if (!Object.hasOwn(IMAGE_CONTENT_TYPES, contentType)) {
+    throw new Error(`Unsupported image content type: ${contentType}`);
+  }
   const ext = IMAGE_CONTENT_TYPES[contentType];
-  if (!ext) throw new Error(`Unsupported image content type: ${contentType}`);
   if (!Number.isInteger(size) || size <= 0 || size > MAX_IMAGE_BYTES) {
     throw new Error(`Image size out of range: ${size}`);
   }

@@ -27,6 +27,12 @@ interface CustomerSearchProps {
   onChange: (customer: Customer | undefined) => void;
 }
 
+// Separators a cafe actually types around a phone number ("+91 98765-43210").
+// Stripped before the digits check below — this is a shape guess for the "New"
+// hand-off, not a validity check (AddCustomerForm's own `valid` gate is that).
+const PHONE_SEPARATOR_PATTERN = /[+\s-]/g;
+const DIGITS_ONLY_PATTERN = /^\d+$/;
+
 export function CustomerSearch({ value, onChange }: CustomerSearchProps) {
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState("");
@@ -59,6 +65,13 @@ export function CustomerSearch({ value, onChange }: CustomerSearchProps) {
     setAdding(false);
   };
 
+  // The operator already typed SOMETHING before hitting "New" — a phone-shaped
+  // term seeds the mobile field (and puts focus on name, the field still
+  // blank), anything else seeds name (and puts focus on mobile). Re-typing the
+  // number is where a wrong digit lands on the wrong customer's ledger.
+  const strippedTerm = term.trim().replace(PHONE_SEPARATOR_PATTERN, "");
+  const termIsPhoneLike = strippedTerm.length > 0 && DIGITS_ONLY_PATTERN.test(strippedTerm);
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -76,7 +89,12 @@ export function CustomerSearch({ value, onChange }: CustomerSearchProps) {
         </DialogHeader>
 
         {adding ? (
-          <AddCustomerForm onCancel={() => setAdding(false)} onCreated={select} />
+          <AddCustomerForm
+            onCancel={() => setAdding(false)}
+            onCreated={select}
+            initialName={termIsPhoneLike ? undefined : term.trim()}
+            initialMobile={termIsPhoneLike ? strippedTerm : undefined}
+          />
         ) : (
           <div className="space-y-3">
             <div className="relative">
@@ -169,13 +187,20 @@ export function CustomerSearch({ value, onChange }: CustomerSearchProps) {
 function AddCustomerForm({
   onCancel,
   onCreated,
+  initialName,
+  initialMobile,
 }: {
   onCancel: () => void;
   onCreated: (customer: Customer) => void;
+  initialName?: string;
+  initialMobile?: string;
 }) {
-  const [name, setName] = useState("");
-  const [mobile, setMobile] = useState("");
+  const [name, setName] = useState(initialName ?? "");
+  const [mobile, setMobile] = useState(initialMobile ?? "");
   const createCustomer = useCreateCustomer();
+  // Focus goes to whichever field the search term did NOT already fill —
+  // that is the one the operator still has to type.
+  const focusMobile = !!initialName;
 
   const submit = async () => {
     const created = await createCustomer.mutateAsync({
@@ -196,7 +221,7 @@ function AddCustomerForm({
           id="new-customer-name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          autoFocus
+          autoFocus={!focusMobile}
         />
       </div>
       <div className="space-y-1.5">
@@ -207,6 +232,7 @@ function AddCustomerForm({
           onChange={(e) => setMobile(e.target.value)}
           inputMode="numeric"
           placeholder="10-digit number"
+          autoFocus={focusMobile}
         />
       </div>
       <div className="flex gap-2">

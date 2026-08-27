@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { editDuePaymentSchema, deleteDuePaymentSchema } from "@/schemas";
+import { stripComments } from "@/lib/source-pin-utils";
 
 // Admin edit + soft-delete of a customer dues receipt (extends CR1.4's
 // receiveDuePayment core — lib/due-payment.ts / due-payment.test.ts). This
@@ -20,8 +21,6 @@ import { editDuePaymentSchema, deleteDuePaymentSchema } from "@/schemas";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel), "utf8");
-const stripComments = (src: string) =>
-  src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
 // Scans forward from an opening `(` at `openIdx`, counting paren depth, and
 // returns the index of its MATCHING closing `)` — same technique as

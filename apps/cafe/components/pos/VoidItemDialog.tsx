@@ -9,6 +9,7 @@ import { isLastLine } from "@/lib/order-void";
 import { orderLineKey } from "@pos/shared/utils";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { orderItemLabel } from "@pos/shared/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
@@ -118,7 +119,11 @@ export function VoidItemDialog({
                 >
                   <span className="flex items-center gap-2">
                     <RadioGroupItem value={String(index)} />
-                    {item.name} × {item.qty}
+                    {/* orderItemLabel, not item.name: two sizes of one dish are
+                        two different prices, and a row that omits the size makes
+                        the operator pick blind — the wrong money then comes off
+                        the bill and the kitchen stops making the wrong cover. */}
+                    {orderItemLabel(item)} × {item.qty}
                   </span>
                   <span className="text-muted-foreground">{inr(item.price * item.qty)}</span>
                 </label>

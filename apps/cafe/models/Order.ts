@@ -14,6 +14,11 @@ export interface IOrderItem {
   name: string; // denormalized product name snapshot
   price: number;
   qty: number;
+  // The variation this line was SOLD as, snapshotted by name — `price` above
+  // is already that variation's price. Absent for an item sold one way only,
+  // so a pre-variations order is unchanged. Every renderer goes through
+  // orderItemLabel() so the cart, the bill, and the KOT can never disagree.
+  variation?: string;
   modifiers: string[];
   instructions: string;
   kotRound: number; // KOT round this line was fired in (0 = not yet sent / legacy)
@@ -33,6 +38,9 @@ export interface IOrderVoid {
   // prepared differently. Omitted when the line carried none.
   instructions?: string;
   modifiers?: string[];
+  // Same reason as `instructions` — on a tab holding a Small and a Large of
+  // the same dish, the void slip has to say WHICH size to stop making.
+  variation?: string;
   reason: string;
   voidedBy: string; // staff name from the session
   at: Date;
@@ -73,6 +81,26 @@ export interface IOrder extends Document {
   cancelReason?: string; // set together, only by POST /api/orders/[id]/cancel
   cancelledBy?: string;
   cancelledAt?: Date;
+  // D5 — self-order provenance marker. SELF_ORDER_SOURCE ("qr", @pos/shared)
+  // is the only value written today; a staff-entered order carries no `source`
+  // at all (omit-empty), so this field alone answers "did a diner place this".
+  source?: string;
+  // CR2.2 — the OrderRequest id(s) this Order was accepted FROM. `default:
+  // undefined` (not `[]`) is load-bearing, not stylistic: a unique+sparse
+  // multikey index does NOT exclude documents whose field is an EMPTY array
+  // — an empty array still indexes as a null entry, so a second Order with
+  // `sourceRequestIds: []` would collide with the first on that same null.
+  // The field must therefore be entirely ABSENT unless it carries at least
+  // one real id.
+  //
+  // This is the DB-level double-accept fence (reciprocal-CAS-guards
+  // discipline): the unique multikey index below rejects any second Order
+  // that carries an already-applied request id, and the accept bridge's
+  // add-round CAS additionally guards `{ sourceRequestIds: { $ne: requestId
+  // } }` on the WRITE side. Any future writer of Order.items or
+  // sourceRequestIds must preserve BOTH halves of this fence, or a request
+  // can be double-accepted into two Orders.
+  sourceRequestIds?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -86,6 +114,7 @@ const orderVoidSchema = new Schema<IOrderVoid>(
     kotRound: { type: Number, required: true },
     instructions: { type: String },
     modifiers: { type: [String], default: undefined },
+    variation: { type: String },
     reason: { type: String, required: true },
     voidedBy: { type: String, required: true },
     at: { type: Date, required: true },
@@ -103,6 +132,10 @@ const orderItemSchema = new Schema<IOrderItem>(
     name: { type: String, required: true },
     price: { type: Number, required: true },
     qty: { type: Number, required: true, min: 1 },
+    // No default: an item sold one way only carries no key at all (mirrors
+    // `instructions`/`modifiers` above in spirit, but this one is genuinely
+    // absent — not even an empty string — for every pre-variations order).
+    variation: { type: String },
     modifiers: { type: [String], default: [] },
     instructions: { type: String, default: "" },
     kotRound: { type: Number, default: 0 },
@@ -151,6 +184,9 @@ const orderSchema = new Schema<IOrder>(
     cancelReason: { type: String },
     cancelledBy: { type: String },
     cancelledAt: { type: Date },
+    source: { type: String },
+    // See the IOrder comment above — `default: undefined`, NEVER `[]`.
+    sourceRequestIds: { type: [String], default: undefined },
   },
   { timestamps: true },
 );
@@ -159,6 +195,7 @@ orderSchema.index({ createdAt: -1 });
 orderSchema.index({ status: 1 });
 orderSchema.index({ tableNo: 1 });
 orderSchema.index({ customerId: 1 });
+orderSchema.index({ sourceRequestIds: 1 }, { unique: true, sparse: true });
 
 // Reuse the compiled model across hot reloads / serverless invocations.
 export const Order: Model<IOrder> =

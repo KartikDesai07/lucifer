@@ -9,5 +9,6 @@ export * from "./reservation.schema";
 export * from "./event.schema";
 export * from "./table.schema";
 export * from "./settings.schema";
+export * from "./public-order.schema";
 export * from "./report.schema";
 export * from "./due-payment.schema";

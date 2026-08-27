@@ -1,6 +1,9 @@
 import { connectDB } from "@/lib/db";
 import { Settings } from "@/models/Settings";
 import { getSettings, invalidateSettingsCache } from "@/lib/settings";
+import cache from "@/lib/cache";
+import { PUBLIC_MENU_CACHE_KEY } from "@/lib/public-menu";
+import { invalidateTelegramConfigCache } from "@/lib/telegram/config";
 import {
   success,
   validateBody,
@@ -45,6 +48,15 @@ export async function PUT(req: Request) {
     }).lean();
 
     invalidateSettingsCache();
+    // CR2.2 fix round — restaurantName/allowTableChange/gst all ride the
+    // public menu payload (lib/public-menu.ts), so a settings save must
+    // invalidate that cache too, not just its own. Residual client/edge
+    // staleness is bounded by the menu route's own max-age=30/swr=60 (≤90s
+    // worst case) — accepted, re-checked on the CR2.5 device leg.
+    cache.del(PUBLIC_MENU_CACHE_KEY);
+    // telegramPaused rides this PUT; getTelegramConfig() resolves it into a
+    // separately-cached object, so this PUT must invalidate that cache too.
+    invalidateTelegramConfigCache();
     return success(settings);
   } catch (error) {
     return serverError("Failed to update settings", error);

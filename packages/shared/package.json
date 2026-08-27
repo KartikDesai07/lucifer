@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "Shared spine (Zod schemas, constants, utils, API envelope, CRUD hook factory, the storage⇄presentation codec landed in F2c) reused by the cafe runtime and the owner Hub — single source of truth, no duplication (build-rule #31, CODE 3).",
+  "description": "Shared spine (Zod schemas, constants, utils, API envelope, CRUD hook factory, the storage\u21c4presentation codec landed in F2c) reused by the cafe runtime and the owner Hub \u2014 single source of truth, no duplication (build-rule #31, CODE 3).",
   "exports": {
     ".": "./src/index.ts",
     "./schemas": "./src/schemas/index.ts",
@@ -11,7 +11,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test src/codec.test.ts src/ttl-guard.test.ts src/schemas/table.schema.test.ts src/schemas/order.schema.test.ts src/schemas/settings.schema.test.ts src/schemas/due-payment.schema.test.ts src/product-import.test.ts src/utils.test.ts"
+    "test": "node --import tsx --test src/codec.test.ts src/ttl-guard.test.ts src/schemas/table.schema.test.ts src/schemas/order.schema.test.ts src/schemas/settings.schema.test.ts src/schemas/due-payment.schema.test.ts src/schemas/product.schema.test.ts src/schemas/public-order.schema.test.ts src/product-import.test.ts src/utils.test.ts src/public.test.ts src/self-order-alert.test.ts src/telegram-alert.test.ts src/appearance-contrast.test.ts src/appearance.test.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",

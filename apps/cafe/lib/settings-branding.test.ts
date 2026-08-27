@@ -48,6 +48,10 @@ test("settingsSchema accepts logo/fssai within their length limits", () => {
     gstNumber: "",
     gstRate: 5,
     gstMode: "inclusive" as const,
+    productLogo: "",
+    selfOrderMode: "approve" as const,
+    allowTableChange: true,
+    showPastOrdersToDiner: true,
     ...PRINT_DEFAULTS,
   };
   const r = settingsSchema.safeParse({
@@ -72,6 +76,7 @@ test("settingsSchema rejects a logo ref over IMAGE_REF_MAX_LEN", () => {
     gstMode: "inclusive",
     kotShowPrices: false,
     logo: "x".repeat(IMAGE_REF_MAX_LEN + 1),
+    productLogo: "",
     fssai: "",
   });
   assert.equal(r.success, false);
@@ -91,6 +96,7 @@ test("settingsSchema rejects an fssai number over SETTINGS_FSSAI_MAX_LEN", () =>
     gstMode: "inclusive",
     kotShowPrices: false,
     logo: "",
+    productLogo: "",
     fssai: "x".repeat(SETTINGS_FSSAI_MAX_LEN + 1),
   });
   assert.equal(r.success, false);
@@ -113,6 +119,22 @@ test("Settings model: logo/fssai paths exist and default to empty string", () =>
   assert.ok(settingsMongooseSchema.path("fssai"), "fssai path must exist");
   assert.equal(defaultOf(settingsMongooseSchema, "logo"), "");
   assert.equal(defaultOf(settingsMongooseSchema, "fssai"), "");
+});
+
+test("Settings model: productLogo path exists and defaults to empty string", () => {
+  assert.ok(settingsMongooseSchema.path("productLogo"), "productLogo path must exist");
+  assert.equal(defaultOf(settingsMongooseSchema, "productLogo"), "");
+});
+
+// ── models/Settings.ts: appearance (CR2.4) — nested subdoc, omit-empty ──────
+// Same discipline as promoCodes/telegram*: an existing Settings document
+// predates this field entirely, so its default must be `undefined` (never an
+// auto-materialized empty object) or a lean, pre-CR2.4 document would start
+// reporting a stored appearance it never actually saved.
+
+test("Settings model: appearance path exists and defaults to undefined", () => {
+  assert.ok(settingsMongooseSchema.path("appearance"), "appearance path must exist");
+  assert.equal(defaultOf(settingsMongooseSchema, "appearance"), undefined);
 });
 
 // ── order.schema.ts: notes bound ─────────────────────────────────────────────

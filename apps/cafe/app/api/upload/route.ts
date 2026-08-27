@@ -27,7 +27,11 @@ export const dynamic = "force-dynamic";
 const uploadGrantSchema = z.object({
   contentType: z
     .string()
-    .refine((t) => t in IMAGE_CONTENT_TYPES, "Unsupported image type"),
+    // `Object.hasOwn`, not `in`: IMAGE_CONTENT_TYPES is a plain object literal, so
+    // `"constructor" in IMAGE_CONTENT_TYPES` is true and the lookup in
+    // presignProductImagePut then yields the Object function as the file
+    // extension. Verified by probe.
+    .refine((t) => Object.hasOwn(IMAGE_CONTENT_TYPES, t), "Unsupported image type"),
   size: z.number().int().positive().max(MAX_IMAGE_BYTES),
 });
 
@@ -107,6 +111,16 @@ export async function DELETE(req: Request) {
   if (!parsed) return failure("ref is required", 400);
 
   try {
+    // A branding logo lives in this cafe's own DB, keyed by its slot, and the
+    // settings form owns the ref that points at it. Deleting the bytes from here
+    // would strand that ref — the receipt would render a broken image with no
+    // way to tell from Settings that anything was wrong. Clearing the field in
+    // Settings is the supported way to remove a logo; the next upload upserts
+    // the slot in place, so nothing is ever orphaned.
+    if (parsed.store === "local") {
+      return failure("Remove a logo from Settings, not from here", 400);
+    }
+
     if (parsed.store === "r2") {
       const cfg = r2Config();
       if (!cfg) return failure("Image uploads are not configured", 500);

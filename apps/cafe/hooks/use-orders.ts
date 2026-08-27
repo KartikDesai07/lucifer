@@ -14,6 +14,7 @@ import { STALE_TIMES, GC_TIMES, REFETCH_INTERVALS } from "@/lib/query";
 import { nextOrderCursor } from "@/lib/order-query";
 import { TABLE_KEYS } from "@/hooks/use-tables";
 import { CUSTOMER_KEYS } from "@/hooks/use-customers";
+import { PRODUCT_KEYS } from "@/hooks/use-products";
 import type {
   Order,
   OrderSummary,
@@ -196,6 +197,13 @@ export function useCreateOrder() {
     onError: (err: Error, _vars, ctx) => {
       ctx?.snapshot?.forEach(([key, data]) => qc.setQueryData(key, data));
       toast.error(err.message || "Order failed — please try again");
+      // A rejected order write can mean the menu moved under this terminal: the
+      // product list is cached for 5 minutes, so a size the admin renamed or
+      // removed is still on screen and every retry fails the same way until that
+      // cache expires. Refetching products here makes the retry able to succeed
+      // NOW, which is the difference between a 5-second correction and a till
+      // stuck mid-rush.
+      qc.invalidateQueries({ queryKey: PRODUCT_KEYS.all });
     },
     onSettled: () => {
       // Reconcile after the write, even on rollback (design skill #5).
@@ -239,8 +247,16 @@ export function useAddOrderItems() {
     mutationFn: ({ id, data }: { id: string; data: AddItemsInput }) =>
       apiSend<Order>(`/api/orders/${id}/items`, "POST", data),
     onSuccess: () => toast.success("Sent to kitchen"),
-    onError: (err: Error) =>
-      toast.error(err.message || "Could not send to kitchen"),
+    onError: (err: Error) => {
+      toast.error(err.message || "Could not send to kitchen");
+      // A rejected order write can mean the menu moved under this terminal: the
+      // product list is cached for 5 minutes, so a size the admin renamed or
+      // removed is still on screen and every retry fails the same way until that
+      // cache expires. Refetching products here makes the retry able to succeed
+      // NOW, which is the difference between a 5-second correction and a till
+      // stuck mid-rush.
+      qc.invalidateQueries({ queryKey: PRODUCT_KEYS.all });
+    },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ORDER_KEYS.all });
       qc.invalidateQueries({ queryKey: TABLE_KEYS.all });
@@ -265,6 +281,24 @@ export function useSettleOrder() {
       qc.invalidateQueries({ queryKey: ORDER_KEYS.all });
       qc.invalidateQueries({ queryKey: TABLE_KEYS.all });
       qc.invalidateQueries({ queryKey: CUSTOMER_KEYS.all });
+    },
+  });
+}
+
+// Move a live tab to another table. Invalidates orders + tables only: no money
+// and no customer ledger moves, so CUSTOMER_KEYS is deliberately not touched
+// (unlike every other order mutation here).
+export function useMoveOrderTable() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationKey: ORDER_KEYS.mutation,
+    mutationFn: ({ id, tableNo }: { id: string; tableNo: string }) =>
+      apiSend<Order>(`/api/orders/${id}/table`, "POST", { tableNo }),
+    onError: (err: Error) => toast.error(err.message || "Could not move the table"),
+    // No success toast — the caller shows the outcome and prints a slip.
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ORDER_KEYS.all });
+      qc.invalidateQueries({ queryKey: TABLE_KEYS.all });
     },
   });
 }

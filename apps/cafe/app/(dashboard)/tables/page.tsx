@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { LayoutGrid, Plus } from "lucide-react";
+import Link from "next/link";
+import { ArrowUpDown, LayoutGrid, Plus, QrCode } from "lucide-react";
 
 import { useTables, useUpdateTable, useDeleteTable } from "@/hooks/use-tables";
 import { useAuth } from "@/hooks/use-auth";
@@ -12,6 +13,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { TableCard } from "@/components/tables/TableCard";
 import { TableFormSheet } from "@/components/tables/TableFormSheet";
+import { TableArrangeList } from "@/components/tables/TableArrangeList";
 import type { Table } from "@/types";
 
 // Placeholder tiles shown while the floor plan loads. A cafe's real table count
@@ -27,6 +29,10 @@ export default function TablesPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Table | null>(null);
   const [deleting, setDeleting] = useState<Table | null>(null);
+  // Admin-only: swaps the card grid for the up/down arrangement list (the
+  // Categories screen's interaction — owner ask). Off by default so staff
+  // (who never see the toggle at all) and admins land on the familiar grid.
+  const [arranging, setArranging] = useState(false);
 
   const setStatus = (table: Table, status: TableStatus) =>
     updateTable.mutate({ tableNo: table.tableNo, data: { status } });
@@ -58,14 +64,34 @@ export default function TablesPage() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Tables</h2>
           <p className="text-sm text-muted-foreground">
-            Live table status. Updates automatically every 30 seconds.
+            {arranging
+              ? "Arrange the floor plan — this is the same order the POS table picker shows, so put the busiest tables first."
+              : "Live table status. Updates automatically every 30 seconds."}
           </p>
         </div>
-        {isAdmin && (
-          <Button onClick={openAdd}>
-            <Plus className="mr-2 h-4 w-4" /> Add table
-          </Button>
-        )}
+        <div className="flex gap-2">
+          {/* The ONLY route to /tables/qr — without this link the QR sheet is
+              unreachable and a pre-CR2 table can never get a token minted
+              (adversarial-review finding; a source pin asserts this href). */}
+          {isAdmin && (
+            <Button variant="outline" asChild>
+              <Link href="/tables/qr">
+                <QrCode className="mr-2 h-4 w-4" /> QR codes
+              </Link>
+            </Button>
+          )}
+          {isAdmin && (
+            <Button variant="outline" onClick={() => setArranging((a) => !a)}>
+              <ArrowUpDown className="mr-2 h-4 w-4" />
+              {arranging ? "Done" : "Arrange"}
+            </Button>
+          )}
+          {isAdmin && (
+            <Button onClick={openAdd}>
+              <Plus className="mr-2 h-4 w-4" /> Add table
+            </Button>
+          )}
+        </div>
       </div>
 
       {tables.isLoading ? (
@@ -95,6 +121,10 @@ export default function TablesPage() {
             ) : undefined
           }
         />
+      ) : arranging && isAdmin ? (
+        // Arrange mode replaces the grid outright — editing/deleting stays on
+        // the cards, so this list is read-only besides the two arrows.
+        <TableArrangeList tables={tables.data ?? []} />
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {(tables.data ?? []).map((table) => (

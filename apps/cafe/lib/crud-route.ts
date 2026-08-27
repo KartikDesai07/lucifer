@@ -159,6 +159,35 @@ interface ItemRouteConfig<TDoc, TUpdate extends ZodTypeAny> {
   entity: EntityLabels;
   guard?: Guard; // default "auth"
   softDelete?: boolean; // set isActive:false instead of removing the document
+  // Fields whose value may arrive as an explicit `null` meaning "clear this".
+  // A plain update object cannot express that: Mongoose only $sets the keys
+  // that are present, and a null left in place would STORE null rather than
+  // remove the field — breaking the omit-empty discipline these documents rely
+  // on. Naming a field here turns its null into a real $unset. An ABSENT key is
+  // untouched either way, which is what keeps a partial PUT partial.
+  nullClearsFields?: readonly string[];
+}
+
+// Turns a validated partial payload into an explicit update document, moving any
+// field listed in `nullClearsFields` that arrived as `null` into $unset so it goes
+// back to ABSENT. $set/$unset are spelled out rather than relying on the implicit
+// $set, because the two cannot be mixed with bare keys in one object.
+export function buildUpdate<TDoc>(
+  data: unknown,
+  nullClearsFields: readonly string[] = [],
+): UpdateQuery<TDoc> {
+  const fields = { ...(data as Record<string, unknown>) };
+  const unset: Record<string, ""> = {};
+  for (const field of nullClearsFields) {
+    if (Object.hasOwn(fields, field) && fields[field] === null) {
+      unset[field] = "";
+      delete fields[field];
+    }
+  }
+  const update: Record<string, unknown> = {};
+  if (Object.keys(fields).length > 0) update.$set = fields;
+  if (Object.keys(unset).length > 0) update.$unset = unset;
+  return update as UpdateQuery<TDoc>;
 }
 
 export function createItemRoute<TDoc, TUpdate extends ZodTypeAny>(
@@ -199,7 +228,7 @@ export function createItemRoute<TDoc, TUpdate extends ZodTypeAny>(
     try {
       await connectDB();
       const doc = await config.model
-        .findByIdAndUpdate(id, parsed.data as UpdateQuery<TDoc>, {
+        .findByIdAndUpdate(id, buildUpdate(parsed.data, config.nullClearsFields), {
           new: true,
           runValidators: true,
         })

@@ -24,6 +24,7 @@ export interface VoidableLine {
   kotRound?: number;
   instructions?: string;
   modifiers?: string[];
+  variation?: string;
 }
 
 export interface ItemVoidRequest {
@@ -133,7 +134,9 @@ export function resolveItemVoid<T extends VoidableLine>(
     // Snapshot what left the bill — readable forever, even though `line` itself is
     // now reduced or gone. `qty` is the quantity VOIDED, not what remains. The
     // preparation fields ride along (omitted when empty, per the omit-empty storage
-    // discipline) because the kitchen's slip has to identify WHICH cover to stop.
+    // discipline) because the kitchen's slip has to identify WHICH cover to stop —
+    // `variation` joins them for the same reason: a tab holding a Small and a Large
+    // of the same dish needs the void slip to say WHICH size to stop making.
     entry: {
       productId: line.productId,
       name: line.name,
@@ -142,6 +145,7 @@ export function resolveItemVoid<T extends VoidableLine>(
       kotRound: line.kotRound ?? 0,
       ...(line.instructions ? { instructions: line.instructions } : {}),
       ...(line.modifiers?.length ? { modifiers: [...line.modifiers] } : {}),
+      ...(line.variation ? { variation: line.variation } : {}),
       reason: request.reason,
       voidedBy: request.voidedBy,
       at: request.at,

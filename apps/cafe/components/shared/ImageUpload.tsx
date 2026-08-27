@@ -7,8 +7,11 @@ import { toast } from "sonner";
 
 import { apiSend } from "@/lib/api-client";
 import {
+  BRANDING_SLOT_MAX_BYTES,
+  BRANDING_SLOT_MAX_DIMENSION_PX,
   IMAGE_MAX_DIMENSION_PX,
   MAX_IMAGE_BYTES,
+  type BrandingSlot,
 } from "@/lib/constants";
 import { productImageUrl } from "@/lib/images";
 import { cn } from "@/lib/utils";
@@ -19,7 +22,24 @@ interface ImageUploadProps {
   onChange: (ref: string) => void;
   disabled?: boolean;
   alt?: string;
+  // When set, this instance uploads a BRANDING asset (PUT /api/branding/<slot>,
+  // stored in the cafe's own database) instead of a product-image grant. The two
+  // paths otherwise share downscale/preview plumbing.
+  slot?: BrandingSlot;
+  // Preview box shape — "wide" is for the Appearance hero banner (S5,
+  // slot="heroImage"), which a square crop would misrepresent. Two COMPLETE
+  // static class strings below, never built by interpolating a ratio in.
+  // Default "square" is today's look, unchanged for every existing call site.
+  aspect?: "square" | "wide";
 }
+
+const PREVIEW_BOX_CLASSNAMES: Record<"square" | "wide", string> = {
+  square: "relative grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-lg border border-dashed bg-muted/40",
+  wide: "relative grid h-20 w-36 shrink-0 place-items-center overflow-hidden rounded-lg border border-dashed bg-muted/40",
+};
+
+// next/image `sizes` must match the box's rendered width, per aspect.
+const PREVIEW_SIZES: Record<"square" | "wide", string> = { square: "80px", wide: "144px" };
 
 // Shape returned by POST /api/upload — the direct-upload grant for whichever
 // store the runtime targets (the client just follows the `store` tag).
@@ -49,8 +69,9 @@ const WEBP_QUALITY = 0.82;
 // stored pre-sized (F2 §3.7 "pre-sized variants at upload"). webp where the
 // browser can encode it; per the canvas spec, an unsupported type falls back to
 // png — both are allowlisted server-side. Animated GIFs flatten to one frame
-// (fine for menu thumbnails).
-async function prepareImage(file: File): Promise<Blob> {
+// (fine for menu thumbnails). `maxDimensionPx` is per-slot for branding assets
+// (BRANDING_SLOT_MAX_DIMENSION_PX) and IMAGE_MAX_DIMENSION_PX for products.
+async function prepareImage(file: File, maxDimensionPx: number): Promise<Blob> {
   let bitmap: ImageBitmap;
   try {
     bitmap = await createImageBitmap(file);
@@ -58,10 +79,7 @@ async function prepareImage(file: File): Promise<Blob> {
     throw new Error("Unsupported or corrupted image file");
   }
   try {
-    const scale = Math.min(
-      1,
-      IMAGE_MAX_DIMENSION_PX / Math.max(bitmap.width, bitmap.height),
-    );
+    const scale = Math.min(1, maxDimensionPx / Math.max(bitmap.width, bitmap.height));
     const width = Math.max(1, Math.round(bitmap.width * scale));
     const height = Math.max(1, Math.round(bitmap.height * scale));
     const canvas = document.createElement("canvas");
@@ -122,6 +140,33 @@ async function uploadPrepared(blob: Blob): Promise<string> {
   return json.public_id;
 }
 
+// Branding transport: raw bytes straight to /api/branding/<slot> (no JSON body,
+// no presigned grant — the asset lives in the cafe's own database). apiSend
+// can't be reused here since it always JSON-encodes the payload.
+async function uploadBranding(slot: BrandingSlot, blob: Blob): Promise<string> {
+  const res = await fetch(`/api/branding/${slot}`, {
+    method: "PUT",
+    headers: { "Content-Type": blob.type },
+    body: blob,
+  });
+  const json = (await res.json().catch(() => null)) as
+    | { success: true; data: { ref: string } }
+    | { success: false; error: string }
+    | null;
+  const ref = json?.success ? json.data.ref : undefined;
+  if (!res.ok || !ref) {
+    throw new Error((json && !json.success ? json.error : undefined) ?? "Upload failed");
+  }
+  return ref;
+}
+
+// Over-cap/success copy noun (A16) — mirrors the route's own SLOT_LABELS.
+const SLOT_LABELS: Record<BrandingSlot, string> = {
+  logo: "Logo",
+  productLogo: "Logo",
+  heroImage: "Hero image",
+};
+
 // Direct browser → store upload using a server-issued grant, so no image bytes
 // pass through our API (CLAUDE.md §13). Stores the opaque ref only.
 export function ImageUpload({
@@ -129,12 +174,17 @@ export function ImageUpload({
   onChange,
   disabled,
   alt = "Image",
+  slot,
+  aspect = "square",
 }: ImageUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
 
-  const storedUrl = productImageUrl(value, 300);
+  // A logo is wide, and the current square c_fill/object-cover preview would
+  // show the admin a CROPPED image while the bill prints it letterboxed — so
+  // the preview must match what gets printed, hence `fit: true` + object-contain.
+  const storedUrl = productImageUrl(value, 300, slot ? { fit: true } : undefined);
   const shownUrl = preview ?? storedUrl;
 
   const handleFile = async (file: File) => {
@@ -151,17 +201,29 @@ export function ImageUpload({
     setPreview(localPreview);
     setUploading(true);
     try {
-      const blob = await prepareImage(file);
-      if (blob.size > MAX_IMAGE_BYTES) {
-        throw new Error("Image is too large after resizing");
+      const maxDimensionPx =
+        slot && Object.hasOwn(BRANDING_SLOT_MAX_DIMENSION_PX, slot)
+          ? BRANDING_SLOT_MAX_DIMENSION_PX[slot]
+          : IMAGE_MAX_DIMENSION_PX;
+      const blob = await prepareImage(file, maxDimensionPx);
+      const maxBytes =
+        slot && Object.hasOwn(BRANDING_SLOT_MAX_BYTES, slot)
+          ? BRANDING_SLOT_MAX_BYTES[slot]
+          : MAX_IMAGE_BYTES;
+      if (blob.size > maxBytes) {
+        throw new Error(
+          slot
+            ? `${SLOT_LABELS[slot]} must be under ${Math.floor(maxBytes / 1024)}KB after resizing`
+            : "Image is too large after resizing",
+        );
       }
-      const ref = await uploadPrepared(blob);
+      const ref = slot ? await uploadBranding(slot, blob) : await uploadPrepared(blob);
       onChange(ref);
       // Hand display back to the stored ref — the local object URL is revoked
       // below, and rendering the real store URL here surfaces a misconfigured
       // public base at upload time instead of on the next page load.
       setPreview(null);
-      toast.success("Image uploaded");
+      toast.success(slot ? `${SLOT_LABELS[slot]} uploaded` : "Image uploaded");
     } catch (err) {
       setPreview(null);
       toast.error(err instanceof Error ? err.message : "Upload failed");
@@ -179,19 +241,14 @@ export function ImageUpload({
 
   return (
     <div className="flex items-center gap-3">
-      <div
-        className={cn(
-          "relative grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-lg border border-dashed bg-muted/40",
-          uploading && "opacity-70",
-        )}
-      >
+      <div className={cn(PREVIEW_BOX_CLASSNAMES[aspect], uploading && "opacity-70")}>
         {shownUrl ? (
           <Image
             src={shownUrl}
             alt={alt}
             fill
-            sizes="80px"
-            className="object-cover"
+            sizes={PREVIEW_SIZES[aspect]}
+            className={slot ? "object-contain" : "object-cover"}
             // Local object-URL previews can't go through the image optimizer;
             // stored image URLs (allowlisted hosts) are optimized normally.
             unoptimized={Boolean(preview)}
@@ -224,7 +281,7 @@ export function ImageUpload({
           disabled={disabled || uploading}
           onClick={() => inputRef.current?.click()}
         >
-          {value ? "Change image" : "Upload image"}
+          {`${value ? "Change" : "Upload"} ${slot ? SLOT_LABELS[slot].toLowerCase() : "image"}`}
         </Button>
         {value && !uploading && (
           <Button

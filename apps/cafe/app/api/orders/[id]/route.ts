@@ -15,7 +15,8 @@ import {
 import { orderSummaryCacheKey } from "@/lib/utils";
 import { reconcileLedger } from "@/lib/order";
 import { updateOrderSchema } from "@/schemas";
-import { checkTableExists } from "@/lib/table-admin";
+import { FREE_TABLE_FILTER, unknownTableMessage } from "@/lib/table-admin";
+import { tableUnavailableReason } from "@/lib/order-table-move";
 
 export const dynamic = "force-dynamic";
 
@@ -66,9 +67,18 @@ export async function PUT(req: Request, { params }: Params) {
     // the table an order already carries must keep working even if that table
     // was since removed — otherwise a deleted table would freeze every past
     // order that ever sat at it, blocking edits unrelated to seating.
-    if (parsed.data.tableNo !== undefined && parsed.data.tableNo !== old.tableNo) {
-      const unknownTable = await checkTableExists(parsed.data.tableNo);
-      if (unknownTable) return failure(unknownTable, 400);
+    const changingTable =
+      parsed.data.tableNo !== undefined && parsed.data.tableNo !== old.tableNo;
+    if (changingTable && parsed.data.tableNo) {
+      // ONE read answers both existence and availability — checkTableExists
+      // alone let this PUT re-occupy a table another live order already holds,
+      // silently stealing it and orphaning that order from the Live Floor Panel.
+      const dest = await Table.findOne({ tableNo: parsed.data.tableNo })
+        .select("status currentOrderId")
+        .lean();
+      if (!dest) return failure(unknownTableMessage(parsed.data.tableNo), 400);
+      const reason = tableUnavailableReason(dest, old.orderId);
+      if (reason) return failure(reason, 409);
     }
 
     // Conditional on the status we READ, so the freeze above is enforced at the
@@ -77,7 +87,17 @@ export async function PUT(req: Request, { params }: Params) {
     // reversal of the same order (contribution(Cancelled) − contribution(Completed)),
     // which clampLedger would then quietly floor at zero — an under-counted customer
     // ledger with nothing in the logs (arbiter live-probe, CR1.3 review).
-    const updated = await Order.findOneAndUpdate({ _id: id, status: old.status }, parsed.data, {
+    const filter = {
+      _id: id,
+      status: old.status,
+      // Guard the field we are about to overwrite: without this, a table MOVE
+      // (POST /api/orders/[id]/table) landing between our read and this write
+      // is silently reversed — its claim on the new table stays, but this PUT
+      // overwrites tableNo back to the old value, leaving the new table
+      // Occupied by nobody (project lesson: reciprocal-cas-guards).
+      ...(changingTable ? { tableNo: old.tableNo ?? { $in: [null, ""] } } : {}),
+    };
+    const updated = await Order.findOneAndUpdate(filter, parsed.data, {
       new: true,
       runValidators: true,
     }).lean();
@@ -105,8 +125,14 @@ export async function PUT(req: Request, { params }: Params) {
         );
       }
       if (updated.tableNo) {
+        // Conditional on the table still being free: the check above already
+        // rejected an unavailable table at read time, but a second claim
+        // landing in the gap before this write must not be forced through — a
+        // miss here just leaves the table alone (the stolen-table bug this
+        // guards against), and the operator sees the conflict on their next
+        // read rather than silently displacing another live order.
         await Table.findOneAndUpdate(
-          { tableNo: updated.tableNo },
+          { tableNo: updated.tableNo, ...FREE_TABLE_FILTER },
           { status: "Occupied", currentOrderId: updated.orderId },
         );
       }
@@ -153,10 +179,17 @@ export async function DELETE(_req: Request, { params }: Params) {
       cache.del(orderSummaryCacheKey());
     }
 
-    // Free the table only if it still points to this order.
-    if (order.tableNo) {
+    // Free the table only if it still points to this order — and read the table
+    // off `deleted` (the document as it was AT REMOVAL), not off the earlier
+    // `order` snapshot. A table move landing between the two reads makes those
+    // two values different tables: freeing the snapshot's table is a harmless
+    // no-op (the move already freed it) while the table the order actually
+    // occupied stays Occupied forever, pointing at an order that no longer
+    // exists. Every other writer in this file already derives this from the
+    // post-write document.
+    if (deleted.tableNo) {
       await Table.findOneAndUpdate(
-        { tableNo: order.tableNo, currentOrderId: order.orderId },
+        { tableNo: deleted.tableNo, currentOrderId: deleted.orderId },
         { status: "Available", currentOrderId: "" },
       );
       cache.del("tables");

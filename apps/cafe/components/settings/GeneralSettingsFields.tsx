@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/card";
 import { ImageUpload } from "@/components/shared/ImageUpload";
 import { Field, ToggleRow } from "@/components/settings/SettingsFields";
+import { SelfOrderCard } from "@/components/settings/SelfOrderCard";
 
 interface GeneralSettingsFieldsProps {
   control: Control<SettingsInput>;
@@ -62,12 +63,16 @@ export function GeneralSettingsFields({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Field label="Logo">
+          <Field
+            label="Restaurant logo"
+            hint="Printed on bills and kitchen tickets, and shown in the sidebar."
+          >
             <Controller
               control={control}
               name="logo"
               render={({ field }) => (
                 <ImageUpload
+                  slot="logo"
                   value={field.value}
                   onChange={field.onChange}
                   alt="Logo"
@@ -89,6 +94,36 @@ export function GeneralSettingsFields({
               <Input {...register("address")} />
             </Field>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* App branding — the PRODUCT's mark (tab icon, login screen), distinct
+          from the restaurant's own logo above. Never printed on a bill. */}
+      <Card>
+        <CardHeader>
+          <CardTitle>App branding</CardTitle>
+          <CardDescription>
+            How this POS identifies itself. Not printed on customer bills.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Field
+            label="Product logo"
+            hint="Shown in the browser tab and on the login screen. A square image works best."
+          >
+            <Controller
+              control={control}
+              name="productLogo"
+              render={({ field }) => (
+                <ImageUpload
+                  slot="productLogo"
+                  value={field.value}
+                  onChange={field.onChange}
+                  alt="Product logo"
+                />
+              )}
+            />
+          </Field>
         </CardContent>
       </Card>
 
@@ -215,6 +250,8 @@ export function GeneralSettingsFields({
           </Field>
         </CardContent>
       </Card>
+
+      <SelfOrderCard control={control} />
     </>
   );
 }

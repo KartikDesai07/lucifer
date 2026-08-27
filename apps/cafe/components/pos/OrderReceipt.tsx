@@ -3,6 +3,7 @@
 import type { Ref } from "react";
 import Image from "next/image";
 
+import { orderItemLabel } from "@pos/shared/utils";
 import { CAFE_TIMEZONE } from "@/lib/constants";
 import type { PrintLogoSize } from "@/lib/constants";
 import { inr } from "@/lib/utils";
@@ -165,7 +166,7 @@ export function OrderReceipt({ order, settings, ref }: OrderReceiptProps) {
               <div key={`${item.productId}-${i}`}>
                 <div className="flex justify-between">
                   <span className="pr-2">
-                    {item.name}
+                    {orderItemLabel(item)}
                     {item.qty > 1 ? ` x${item.qty}` : ""}
                   </span>
                   <span>{inr(item.price * item.qty)}</span>

@@ -7,6 +7,9 @@ import {
   ORDER_REASON_MAX_LEN,
   ORDER_NOTES_MAX_LEN,
   TABLE_CHARGE_LABEL_MAX_LEN,
+  VARIATION_NAME_MAX_LEN,
+  VARIATION_NAME_MESSAGE,
+  VARIATION_NAME_PATTERN,
 } from "../constants";
 import { tableNoSchema } from "./table.schema";
 
@@ -15,6 +18,16 @@ export const orderItemSchema = z.object({
   name: z.string().min(1),
   price: z.number().min(0),
   qty: z.number().int().min(1),
+  // The variation this line is sold as (a name the PRODUCT actually carries —
+  // the route verifies that against the product document, so a client cannot
+  // print a size onto a bill that the menu does not offer). Optional: an item
+  // sold one way carries none, which is every order placed before variations.
+  variation: z
+    .string()
+    .trim()
+    .max(VARIATION_NAME_MAX_LEN)
+    .regex(VARIATION_NAME_PATTERN, VARIATION_NAME_MESSAGE)
+    .optional(),
   modifiers: z.array(z.string()).default([]),
   instructions: z.string().optional().default(""),
 });
@@ -183,6 +196,13 @@ export const voidItemSchema = z
   })
   .strict();
 
+// POST /api/orders/[id]/table — move a live tab to another table (the guests got
+// up and sat somewhere else). Intent only: the destination table's NAME. There is
+// deliberately NO money field — the order's table-charge snapshot is frozen at
+// sale time and a move never re-prices it; the POS cart's charge seam is the one
+// place an operator may change what a running tab is charged.
+export const moveOrderTableSchema = z.object({ tableNo: tableNoSchema }).strict();
+
 export type OrderItemInput = z.infer<typeof orderItemSchema>;
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 export type UpdateOrderInput = z.infer<typeof updateOrderSchema>;
@@ -190,3 +210,4 @@ export type AddItemsInput = z.infer<typeof addItemsSchema>;
 export type SettleOrderInput = z.infer<typeof settleOrderSchema>;
 export type CancelOrderInput = z.infer<typeof cancelOrderSchema>;
 export type VoidItemInput = z.infer<typeof voidItemSchema>;
+export type MoveOrderTableInput = z.infer<typeof moveOrderTableSchema>;

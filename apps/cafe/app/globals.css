@@ -60,6 +60,16 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  /* CR2.4 S3 — the public-surface Appearance tokens. Only under /m (:root
+     emission, app/m/layout.tsx) and the S5 admin preview (inline vars) do
+     --pub-body-font/--pub-display-font/--pub-gap/--pub-pad actually resolve
+     to a value; everywhere else these utilities are simply unused. NEVER
+     touch --font-sans above — it inlines var(--font-geist-sans), so
+     redefining it here would be a no-op wrapper (the trap this file avoids). */
+  --font-pub-body: var(--pub-body-font);
+  --font-pub-display: var(--pub-display-font);
+  --spacing-pub-gap: var(--pub-gap);
+  --spacing-pub-pad: var(--pub-pad);
 }
 
 :root {

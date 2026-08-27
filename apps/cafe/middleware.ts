@@ -1,6 +1,6 @@
 import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
-import authConfig from "@/auth.config";
+import authConfig, { isPublicPath } from "@/auth.config";
 import { resolveTenantFromHost } from "@/lib/tenant";
 import { ADMIN_ROUTES } from "@/lib/constants";
 
@@ -37,6 +37,15 @@ export default auth(async (req) => {
   // ── 2) Auth guard (verbatim policy from v1 auth.config authorized()) ──────────
   const isLoggedIn = !!req.auth?.user;
   const { pathname } = nextUrl;
+
+  // Public QR menu (CR2.1): skip the auth bounce entirely. Tenant resolution
+  // above has ALREADY run — an unknown host already returned 404 before this
+  // line — so a public menu for a nonexistent tenant still never renders.
+  // isPublicPath() is imported from auth.config.ts (MIRRORS its authorized()
+  // callback verbatim); a source pin asserts both files reference it.
+  if (isPublicPath(pathname)) {
+    return proceed;
+  }
 
   // Public auth page: send already-signed-in users to the dashboard.
   if (pathname.startsWith("/login")) {

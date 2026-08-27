@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addItemsSchema } from "./order.schema";
+import { addItemsSchema, moveOrderTableSchema } from "./order.schema";
 
 // ── Defect 2 regression (owner decision 2026-08-16) ──────────────────────────
 // "A charge waived on a resumed tab was silently discarded when the next KOT
@@ -61,4 +61,44 @@ test("addItemsSchema: chargeAmount is genuinely optional — omitting it parses 
 
 test("addItemsSchema still requires at least one item and rejects an empty cart", () => {
   assert.equal(addItemsSchema.safeParse({ items: [] }).success, false);
+});
+
+// ── moveOrderTableSchema (POST /api/orders/[id]/table) ───────────────────────
+// Moving a tab to another table is SEATING, not billing. The payload carries the
+// destination name and nothing else: the order's table-charge snapshot is frozen
+// at sale time, so if any money field were accepted here a move could re-price a
+// bill the kitchen already served. `.strict()` is the whole guarantee — these
+// pins fail the moment someone widens this payload.
+
+test("moveOrderTableSchema accepts a destination table name and trims it", () => {
+  const r = moveOrderTableSchema.safeParse({ tableNo: "  Rooftop 2  " });
+  assert.equal(r.success, true);
+  assert.equal(r.success && r.data.tableNo, "Rooftop 2");
+});
+
+test("moveOrderTableSchema requires a destination — a move to nowhere is not a move", () => {
+  assert.equal(moveOrderTableSchema.safeParse({}).success, false);
+  assert.equal(moveOrderTableSchema.safeParse({ tableNo: "" }).success, false);
+  assert.equal(moveOrderTableSchema.safeParse({ tableNo: "   " }).success, false);
+});
+
+test("moveOrderTableSchema refuses to carry money — no charge/discount/total can ride along with a seating change", () => {
+  for (const extra of [
+    { chargeAmount: 0 },
+    { chargeAmount: 100 },
+    { chargeLabel: "Garden" },
+    { discount: 50 },
+    { total: 999 },
+    { paidAmount: 999 },
+  ]) {
+    assert.equal(
+      moveOrderTableSchema.safeParse({ tableNo: "T-1", ...extra }).success,
+      false,
+      `${JSON.stringify(extra)} must be rejected — a move never re-prices the bill`,
+    );
+  }
+});
+
+test("moveOrderTableSchema holds the destination to the tableNo charset (it becomes a stored join key)", () => {
+  assert.equal(moveOrderTableSchema.safeParse({ tableNo: "bad/name" }).success, false);
 });

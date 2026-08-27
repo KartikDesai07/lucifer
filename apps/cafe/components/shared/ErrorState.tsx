@@ -35,7 +35,7 @@ export function ErrorState({
       <p className="text-sm font-medium">{title}</p>
       <p className="max-w-xs text-sm text-muted-foreground">{description}</p>
       {onRetry && (
-        <Button variant="outline" size="sm" className="mt-2" onClick={onRetry}>
+        <Button type="button" variant="outline" size="sm" className="mt-2" onClick={onRetry}>
           {retryLabel}
         </Button>
       )}

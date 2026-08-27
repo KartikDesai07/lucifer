@@ -23,6 +23,27 @@ export const TABLE_NO_MESSAGE =
 export const TABLE_CAPACITY_MIN = 1;
 export const TABLE_CAPACITY_MAX = 99;
 
+// Upper bound on ONE floor-plan arrangement request (PATCH /api/tables). The
+// plan itself is operator data with no global cap (CR1.1), but a reorder payload
+// names EVERY table at once, so the body needs a bound — and a cafe arranging
+// more than this by hand is not the case this screen serves.
+export const TABLE_REORDER_MAX = 200;
+
+// A menu item sold in named sizes/portions, each with its OWN price (Small /
+// Medium / Large, Half / Full). The name lands on the customer's bill AND on the
+// kitchen ticket, so the charset bars control characters (they corrupt a thermal
+// print stream) but is otherwise permissive — unlike a table name, a variation
+// name is never a URL segment. The count is capped because the whole set is
+// embedded in the product document and re-sent on every menu load.
+export const MAX_VARIATIONS = 20;
+export const VARIATION_NAME_MAX_LEN = 24;
+export const VARIATION_NAME_PATTERN = /^[\x20-\x7E\u00A0-\uFFFF]+$/;
+export const VARIATION_NAME_MESSAGE =
+  'Name the variation as it should print, e.g. "Large"';
+// A variation IS the price the item sells at, so it carries a price ceiling of
+// its own rather than borrowing the table-charge one.
+export const VARIATION_PRICE_MAX = 100000;
+
 // A per-table extra charge (cover / AC / rooftop / service …). Two fields, not
 // one: the AMOUNT is what lands on the bill, and the LABEL is what the customer
 // reads on the slip. The label is operator text with no product-supplied
@@ -231,6 +252,83 @@ export const IMAGE_UPLOAD_TTL_SECONDS = 300;
 // transform tier), so images are stored pre-sized: 600px covers the largest
 // render (300px at 2× DPR).
 export const IMAGE_MAX_DIMENSION_PX = 600;
+
+// ── Branding assets (logos + hero image, stored in the cafe's OWN database) ──
+// These must work on a deployment with NO asset-plane config at all (no R2
+// bucket, no Cloudinary account): a cafe that cannot show its logo on a bill
+// is not shippable, and the browser tab must not fall back to the framework's
+// default icon. So branding bytes live in the cafe's Mongo as a `BrandingAsset`
+// doc per slot — separate from `Settings` on purpose, because GET /api/settings
+// is fetched by every screen for every signed-in user and must stay small.
+//
+// CR2.4 adds `heroImage` (the Appearance hero banner, referenced from
+// Settings.appearance.heroImage — S4/S5) alongside the two logos. Product
+// images keep following IMAGE_STORE (r2/cloudinary) — a whole MENU of images
+// is a different storage-budget question from these three slots (owner
+// decision 2026-08-17), and nothing here changes that path.
+export const BRANDING_SLOTS = ["logo", "productLogo", "heroImage"] as const;
+export type BrandingSlot = (typeof BRANDING_SLOTS)[number];
+
+// Client-side downscale bound for the Appearance hero banner (longest edge) —
+// the same discipline as IMAGE_MAX_DIMENSION_PX, but a hero banner is shown
+// full-width above the menu (never a ~80px tile), so it earns a taller cap.
+export const HERO_MAX_DIMENSION_PX = 1200;
+
+// Per-slot downscale bound, keyed the same way the upload UI resolves it
+// (Object.hasOwn — CR2.4 S4). The two logos keep today's product-image
+// dimension; heroImage gets its own, larger one above.
+export const BRANDING_SLOT_MAX_DIMENSION_PX: Record<BrandingSlot, number> = {
+  logo: IMAGE_MAX_DIMENSION_PX,
+  productLogo: IMAGE_MAX_DIMENSION_PX,
+  heroImage: HERO_MAX_DIMENSION_PX,
+};
+
+// Hard cap per branding asset, keyed the same way (A16). The client downscales
+// to BRANDING_SLOT_MAX_DIMENSION_PX[slot] and re-encodes to webp first, which
+// puts a real logo at ~20-60KB and a hero banner somewhat more; this ceiling
+// only has to stop a pathological upload from sitting in a 512MB M0 forever.
+// See MAX_BRANDING_BYTES below for the worst-case storage math across all
+// three slots.
+export const BRANDING_SLOT_MAX_BYTES: Record<BrandingSlot, number> = {
+  logo: 512 * 1024,
+  productLogo: 512 * 1024,
+  heroImage: 1024 * 1024,
+};
+
+// Kept for the two logo slots' existing call sites (S4 narrows these to read
+// BRANDING_SLOT_MAX_BYTES[slot] instead) — same value as
+// BRANDING_SLOT_MAX_BYTES.logo/.productLogo above, restated as its own named
+// constant so neither slot's cap is a bare literal at the call site.
+//
+// Worst-case storage math (A16, CR2.4, post-review count-bound amendment):
+// 3 slots × at most (2 kept + BRANDING_PRUNE_MAX_PENDING pending) documents
+// per slot × each doc's own BRANDING_SLOT_MAX_BYTES cap × 1.33 (base64
+// storage overhead) ≈ (512KB + 512KB + 1024KB) × 5 × 1.33 ≈ ~13.3MB worst
+// case on a 512MB M0 — comfortably inside budget even at every slot's
+// ceiling simultaneously.
+export const MAX_BRANDING_BYTES = 512 * 1024; // 512KB
+
+// Grace window a branding-asset prune must respect (A14, CR2.4): a fresh
+// upload's document must survive even if the request that will SAVE its ref
+// hasn't landed yet, because putBrandingAsset reads the "active" ref UNCACHED
+// but a concurrent Settings PUT could still be mid-flight against the up-to-
+// 45s-stale TTL.SETTINGS cache elsewhere. ~15 minutes comfortably outlasts any
+// realistic gap between "upload" and "Save" in the Appearance tab.
+export const BRANDING_PRUNE_GRACE_MS = 15 * 60 * 1000;
+
+// Hard per-slot ceiling on documents NOT in the keep-list, independent of age
+// (post-review fix — the grace window above only collects OLD orphans, so a
+// burst of same-slot uploads inside that window, e.g. auditioning several
+// hero images before ever saving, previously grew a slot's document count
+// without bound). putBrandingAsset keeps the newest this-many non-kept
+// documents regardless of age (headroom for uploads plausibly mid-save) and
+// collects anything beyond that on every put.
+export const BRANDING_PRUNE_MAX_PENDING = 3;
+
+// Hex chars of the content hash carried in a branding ref and served as the
+// ETag. Long enough that two successive versions of one slot cannot collide (a
+// collision would leave a browser holding an immutable URL for stale bytes).
+export const BRANDING_VERSION_LEN = 12;
 
 export const PAY_STYLES: Record<string, { color: string; bg: string; label: string }> = {
   Cash: { color: "text-yellow-600", bg: "bg-yellow-50", label: "Cash" },

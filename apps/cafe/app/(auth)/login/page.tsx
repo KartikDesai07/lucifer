@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { signIn } from "next-auth/react";
+import Image from "next/image";
 import { Loader2, UtensilsCrossed } from "lucide-react";
 
 import { loginSchema, type LoginInput } from "@/schemas/staff.schema";
 import { APP_NAME } from "@/lib/constants";
+import { brandingUrl } from "@/lib/images";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -23,6 +25,14 @@ import { Label } from "@/components/ui/label";
 export default function LoginPage() {
   const router = useRouter();
   const [authError, setAuthError] = useState<string | null>(null);
+  // The login screen has no session, so it cannot fetch Settings for the
+  // product logo ref — /api/branding/[slot] is public precisely so this
+  // unauthenticated page can still render an image.
+  const productLogoSrc = brandingUrl("productLogo");
+  // The login screen is the one surface an operator cannot navigate away
+  // from a broken image on, and this route can legitimately fail (e.g. the
+  // database is down) — fall back to the generic icon tile if it does.
+  const [iconFailed, setIconFailed] = useState(false);
 
   const {
     register,
@@ -51,9 +61,23 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="space-y-1 text-center">
-          <div className="mx-auto mb-2 grid h-12 w-12 place-items-center rounded-xl bg-primary text-primary-foreground">
-            <UtensilsCrossed className="h-6 w-6" />
-          </div>
+          {iconFailed ? (
+            <div className="mx-auto mb-2 grid h-12 w-12 place-items-center rounded-xl bg-primary text-primary-foreground">
+              <UtensilsCrossed className="h-6 w-6" />
+            </div>
+          ) : (
+            // No bg-primary tile here — a transparent PNG shouldn't sit on a
+            // coloured square the way the fallback glyph does.
+            <Image
+              src={productLogoSrc}
+              alt={APP_NAME}
+              width={48}
+              height={48}
+              unoptimized
+              className="mx-auto mb-2 h-12 w-12 rounded-xl object-contain"
+              onError={() => setIconFailed(true)}
+            />
+          )}
           <CardTitle className="text-xl">{APP_NAME}</CardTitle>
           <CardDescription>Sign in to the POS dashboard</CardDescription>
         </CardHeader>

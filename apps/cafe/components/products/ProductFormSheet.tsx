@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
@@ -21,6 +21,9 @@ import { ImageUpload } from "@/components/shared/ImageUpload";
 import { FormSheet } from "@/components/shared/FormSheet";
 import { FormField } from "@/components/shared/FormField";
 import { ModifierInput } from "@/components/products/ModifierInput";
+import { VariationInput } from "@/components/products/VariationInput";
+import { PublicVisibleField } from "@/components/products/PublicVisibleField";
+import { variationsErrorMessage } from "@/lib/variation-errors";
 import type { Category, Product } from "@/types";
 
 interface ProductFormSheetProps {
@@ -38,6 +41,10 @@ const emptyValues: ProductFormValues = {
   name: "",
   category: "",
   price: 0,
+  // Absent (never []) — the schema is omit-empty, so a plain item stores no
+  // `variations` key at all. The "Has variations" switch is what turns this
+  // into a seeded one-row array.
+  variations: undefined,
   discount: 0,
   available: true,
   image: "",
@@ -74,15 +81,23 @@ export function ProductFormSheet({
             name: product.name,
             category: product.category,
             price: product.price,
+            variations: product.variations,
             discount: product.discount,
             // Legacy products (pre-`available`) read as available.
             available: product.available !== false,
             image: product.image,
             modifiers: product.modifiers,
+            publicVisible: product.publicVisible,
           }
         : emptyValues,
     );
   }, [open, product, reset]);
+
+  // Drives the "Has variations" switch and the base-price hint below — read
+  // separately from the Controller that owns the field so the hint (which sits
+  // next to Price, above the toggle in the form) doesn't need its own Controller.
+  const variations = useWatch({ control, name: "variations" });
+  const hasVariations = Array.isArray(variations);
 
   // The product's own category may have been deleted/renamed to Uncategorized —
   // keep it selectable so editing never silently drops it.
@@ -105,10 +120,20 @@ export function ProductFormSheet({
             name: values.name,
             category: values.category,
             price: values.price,
+            // `null`, never undefined, when the switch is OFF: JSON.stringify drops
+            // an undefined key, so an absent one reads as "leave the stored sizes
+            // alone" and the toggle would do nothing at all. null is the explicit
+            // "no longer sold by size" the PUT route turns into an $unset.
+            variations: values.variations ?? null,
             discount: values.discount,
             available: values.available,
             image: values.image,
             modifiers: values.modifiers,
+            // Same null sentinel as variations above: the switch reads ON as
+            // `undefined` (omit-empty), which JSON.stringify would drop — so a
+            // product once saved OFF could never be shown again. null is the
+            // explicit "back to absent" the PUT route $unsets.
+            publicVisible: values.publicVisible ?? null,
           },
         });
       } else {
@@ -178,6 +203,12 @@ export function ProductFormSheet({
             aria-invalid={!!errors.price}
             {...register("price", { valueAsNumber: true })}
           />
+          {hasVariations && (
+            <p className="text-xs text-muted-foreground">
+              Variations set the price — this is only the base/reference
+              price.
+            </p>
+          )}
         </FormField>
         <FormField label="Discount %" error={errors.discount?.message}>
           <Input
@@ -201,6 +232,47 @@ export function ProductFormSheet({
 
       <Controller
         control={control}
+        name="variations"
+        render={({ field }) => (
+          <>
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div>
+                <p className="text-sm font-medium">Has variations</p>
+                <p className="text-xs text-muted-foreground">
+                  Sell this item in named sizes (Small/Medium/Large…), each at
+                  its own price.
+                </p>
+              </div>
+              <Switch
+                aria-label="Has variations"
+                checked={Array.isArray(field.value)}
+                onCheckedChange={(checked) =>
+                  // Off → undefined, NOT [] — the schema is omit-empty. On →
+                  // seed one empty row so the operator has somewhere to type.
+                  field.onChange(checked ? [{ name: "", price: 0 }] : undefined)
+                }
+              />
+            </div>
+            {Array.isArray(field.value) && (
+              <FormField
+                label="Variations"
+                // Not just `.message`: a blank row and the duplicate-name refine
+                // both land as ROW errors, so reading only the list-level message
+                // left Save doing nothing with nothing on screen.
+                error={variationsErrorMessage(errors.variations)}
+              >
+                <VariationInput
+                  value={field.value}
+                  onChange={field.onChange}
+                />
+              </FormField>
+            )}
+          </>
+        )}
+      />
+
+      <Controller
+        control={control}
         name="available"
         render={({ field }) => (
           <div className="flex items-center justify-between rounded-lg border p-3">
@@ -218,6 +290,12 @@ export function ProductFormSheet({
             />
           </div>
         )}
+      />
+
+      <Controller
+        control={control}
+        name="publicVisible"
+        render={({ field }) => <PublicVisibleField value={field.value} onChange={field.onChange} />}
       />
     </FormSheet>
   );

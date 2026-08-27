@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useReactToPrint } from "react-to-print";
-import { Printer, ChefHat, MessageCircle, HandCoins } from "lucide-react";
+import { Printer, ChefHat, MessageCircle, HandCoins, Replace } from "lucide-react";
 
+import { orderItemLabel } from "@pos/shared/utils";
 import { PAY_STYLES, type SettlementPayMode } from "@/lib/constants";
 import { inr, formatDate, cn } from "@/lib/utils";
 import { printConfigOf, receiptPageStyle } from "@/lib/print";
@@ -24,6 +25,7 @@ import {
 import { OrderReceipt } from "@/components/pos/OrderReceipt";
 import { KOTReceipt } from "@/components/pos/KOTReceipt";
 import { OrderVoidTrail } from "@/components/orders/OrderVoidTrail";
+import { MoveTableDialog } from "@/components/orders/MoveTableDialog";
 import type { PaymentResult } from "@/components/pos/PaymentModal";
 import { collectedAmount } from "@/lib/payment-result";
 import type { Customer, Order } from "@/types";
@@ -56,8 +58,10 @@ function whatsAppLink(
 interface OrderDetailSheetProps {
   order: Order | null;
   onOpenChange: (open: boolean) => void;
-  // Called with the freshly-settled order so the parent can refresh its snapshot
-  // (keeping the sheet open showing the now-Completed order, Print available).
+  // Called with a fresher version of this order after ANY action taken inside the
+  // sheet that changes it — a settle (keeping the sheet open on the now-Completed
+  // order, Print available) or a table move — so the parent can refresh the
+  // snapshot it is passing back in. Named for the settle that came first.
   onSettled?: (order: Order) => void;
 }
 
@@ -69,6 +73,7 @@ export function OrderDetailSheet({
   const settings = useSettings();
   const settleOrder = useSettleOrder();
   const [settleOpen, setSettleOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
   // Only relevant for a Due/Credit (or partial) settle on an order that has no
   // customer yet — reset whenever the sheet switches to viewing a new order.
   const [settleCustomer, setSettleCustomer] = useState<Customer | undefined>();
@@ -190,7 +195,7 @@ export function OrderDetailSheet({
                 <div key={`${item.productId}-${i}`} className="flex justify-between">
                   <div className="min-w-0">
                     <span className="font-medium">
-                      {item.name}
+                      {orderItemLabel(item)}
                       {item.qty > 1 ? ` ×${item.qty}` : ""}
                     </span>
                     {item.modifiers.length > 0 && (
@@ -270,6 +275,14 @@ export function OrderDetailSheet({
               </a>
             </Button>
           </div>
+          {/* Same live-tab gate as Settle & Pay, plus a table to move FROM —
+              a walk-in order has nothing to move. Owner decision: all staff,
+              no admin gate (matches Settle, not Cancel). */}
+          {isOpenTab && !!order.tableNo && (
+            <Button variant="outline" onClick={() => setMoveOpen(true)}>
+              <Replace className="mr-2 h-4 w-4" /> Move table
+            </Button>
+          )}
           {isOpenTab && (
             <Button onClick={() => setSettleOpen(true)}>
               <HandCoins className="mr-2 h-4 w-4" /> Settle &amp; Pay
@@ -315,6 +328,19 @@ export function OrderDetailSheet({
           onSelectCustomer={order.customerId ? undefined : setSettleCustomer}
         />
       )}
+
+      {/* The moved order MUST go back to the parent. Without it this sheet keeps
+          rendering its pre-move snapshot, and its own KOT button would then print
+          a kitchen ticket naming the table the guests just LEFT — the opposite of
+          what the move slip was for. `onSettled` is this sheet's generic "here is
+          a fresher order, take it" channel (both call sites pass their setState
+          straight in); the name is historical, it is not settle-specific. */}
+      <MoveTableDialog
+        order={order}
+        open={moveOpen}
+        onOpenChange={setMoveOpen}
+        onMoved={(moved) => onSettled?.(moved)}
+      />
     </Sheet>
   );
 }

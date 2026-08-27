@@ -3,6 +3,7 @@
 import type { Ref } from "react";
 import Image from "next/image";
 
+import { orderItemLabel } from "@pos/shared/utils";
 import { CAFE_TIMEZONE } from "@/lib/constants";
 import { inr } from "@/lib/utils";
 import {
@@ -42,9 +43,11 @@ interface KOTReceiptProps {
   // (an older order minted before numbering shipped, or a cafe that numbers
   // rounds but not voids).
   roundNumber?: number;
-  // "void" swaps the header for an unmistakable cancellation banner (CR1.3) —
-  // defaults to "kot" so every existing call site prints exactly as before.
-  variant?: "kot" | "void";
+  // "void" swaps the header for an unmistakable cancellation banner (CR1.3);
+  // "moved" swaps it for a "food already ordered" banner and suppresses the
+  // item list entirely — both default to "kot" so every existing call site
+  // prints exactly as before.
+  variant?: "kot" | "void" | "moved";
   reason?: string; // shown only in the "void" variant
   // Who voided the line and when — on a void slip the kitchen needs to know who
   // told them to stop and at what moment, not the tab's opener/open-time
@@ -52,6 +55,13 @@ interface KOTReceiptProps {
   // unaffected by these being set or not.
   voidedBy?: string;
   voidedAt?: string | Date;
+  // The table the food was ordered FROM — the only way the kitchen can match
+  // this slip to the ticket they're already holding on the pass. movedBy/
+  // movedAt mirror voidedBy/voidedAt: the move's own mover and moment, not the
+  // tab's opener/open-time. Ignored outside variant === "moved".
+  movedFrom?: string;
+  movedBy?: string;
+  movedAt?: string | Date;
   ref?: Ref<HTMLDivElement>;
 }
 
@@ -69,14 +79,20 @@ export function KOTReceipt({
   reason,
   voidedBy,
   voidedAt,
+  movedFrom,
+  movedBy,
+  movedAt,
   ref,
 }: KOTReceiptProps) {
   const cfg = printConfigOf(settings).kot;
   const items = roundItems ?? order?.items ?? [];
   const isVoid = variant === "void";
+  const isMoved = variant === "moved";
   // Both-or-neither: a slip naming only one of who/when is worse than naming
   // the tab's opener/open-time, so an incomplete pair falls back to those.
   const voidMeta = isVoid && voidedBy && voidedAt ? { by: voidedBy, at: voidedAt } : null;
+  // Same both-or-neither rule as voidMeta, for the moved variant.
+  const movedMeta = isMoved && movedBy && movedAt ? { by: movedBy, at: movedAt } : null;
   const logoUrl = productImageUrl(settings?.logo, undefined, { fit: true });
   const restaurantName = settings?.restaurantName?.trim();
   // The round's own total — this slip only lists one round's items, so it is
@@ -109,7 +125,19 @@ export function KOTReceipt({
             </div>
           )}
 
-          {isVoid ? (
+          {isMoved ? (
+            // Loud on purpose, same reasoning as the VOID banner: a cook must
+            // never mistake a moved-table slip for a fresh ticket and fire it —
+            // the food behind it is already cooking (or cooked).
+            <>
+              <div className="text-center text-[1.29em] font-bold tracking-widest">
+                *** TABLE MOVED ***
+              </div>
+              <div className="text-center text-[0.93em] font-semibold">
+                FOOD ALREADY ORDERED — DO NOT MAKE AGAIN
+              </div>
+            </>
+          ) : isVoid ? (
             // Loud on purpose (thermal printers are monochrome — no red ink to
             // rely on): a cook glancing at a slip mid-rush must never mistake a
             // void for a fresh ticket and fire it.
@@ -126,8 +154,9 @@ export function KOTReceipt({
               KITCHEN ORDER
             </div>
           )}
-          {/* The number a cook calls out — large, directly under the title. */}
-          {cfg.showNumber && roundNumber !== undefined && (
+          {/* The number a cook calls out — large, directly under the title.
+              A moved slip consumes no ticket number: it is not a round. */}
+          {!isMoved && cfg.showNumber && roundNumber !== undefined && (
             <div className="text-center text-[1.6em] font-bold">#{roundNumber}</div>
           )}
           {roundLabel && (
@@ -139,13 +168,22 @@ export function KOTReceipt({
           <div className="space-y-0.5 text-[0.93em]">
             <Line label="Order" value={order.orderId} />
             {cfg.showTable && (
-              <Line label="Table" value={order.tableNo ?? "Walk-In"} />
+              // A moved slip names FROM → TO so a cook can match it to the
+              // ticket they're already holding under the old table's name.
+              <Line
+                label="Table"
+                value={
+                  movedFrom
+                    ? `${movedFrom} → ${order.tableNo ?? "Walk-In"}`
+                    : order.tableNo ?? "Walk-In"
+                }
+              />
             )}
             {cfg.showTime && (
-              <Line label="Time" value={fmtTime(voidMeta?.at ?? order.createdAt)} />
+              <Line label="Time" value={fmtTime(movedMeta?.at ?? voidMeta?.at ?? order.createdAt)} />
             )}
             {cfg.showStaff && (
-              <Line label="Staff" value={voidMeta?.by ?? order.receiver} />
+              <Line label="Staff" value={movedMeta?.by ?? voidMeta?.by ?? order.receiver} />
             )}
             {isVoid && reason && (
               <div className="pt-0.5 font-semibold">Reason: {reason}</div>
@@ -154,26 +192,32 @@ export function KOTReceipt({
 
           <Divider />
 
-          <div className="space-y-2">
-            {items.map((item, i) => (
-              <div key={`${item.productId}-${i}`}>
-                <div className="flex justify-between font-bold">
-                  <span>
-                    {item.qty} × {item.name}
-                  </span>
-                  {cfg.showPrices && <span>{inr(item.price * item.qty)}</span>}
-                </div>
-                {item.modifiers.length > 0 && (
-                  <div className="pl-4 text-[0.86em]">+ {item.modifiers.join(", ")}</div>
-                )}
-                {item.instructions && (
-                  <div className="pl-4 text-[0.86em] font-semibold italic">
-                    ▸ {item.instructions}
+          {/* A moved slip lists no dishes: a list of items on a kitchen slip
+              is an instruction to cook them, and this food is already made. */}
+          {!isMoved && (
+            <div className="space-y-2">
+              {items.map((item, i) => (
+                <div key={`${item.productId}-${i}`}>
+                  <div className="flex justify-between font-bold">
+                    <span>
+                      {/* The variation rides on THIS bold line, not a sub-line —
+                          a cook scanning a rail must not have to hunt for the size. */}
+                      {item.qty} × {orderItemLabel(item)}
+                    </span>
+                    {cfg.showPrices && <span>{inr(item.price * item.qty)}</span>}
                   </div>
-                )}
-              </div>
-            ))}
-          </div>
+                  {item.modifiers.length > 0 && (
+                    <div className="pl-4 text-[0.86em]">+ {item.modifiers.join(", ")}</div>
+                  )}
+                  {item.instructions && (
+                    <div className="pl-4 text-[0.86em] font-semibold italic">
+                      ▸ {item.instructions}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           {cfg.showNotes && order.notes && (
             <>
@@ -184,12 +228,15 @@ export function KOTReceipt({
 
           <Divider />
 
-          <div className="text-center text-[0.86em]">
-            {items.reduce((n, it) => n + it.qty, 0)} item(s){isVoid ? " VOIDED" : ""}
-          </div>
+          {!isMoved && (
+            <div className="text-center text-[0.86em]">
+              {items.reduce((n, it) => n + it.qty, 0)} item(s){isVoid ? " VOIDED" : ""}
+            </div>
+          )}
           {/* This round's total — never the bill total, so it is labelled
-              distinctly. Meaningless with no line amounts, so gated on prices too. */}
-          {cfg.showTotal && cfg.showPrices && (
+              distinctly. Meaningless with no line amounts, so gated on prices too;
+              meaningless on a moved slip, which lists no items at all. */}
+          {!isMoved && cfg.showTotal && cfg.showPrices && (
             <div className="text-center text-[0.86em] font-semibold">
               Round total: {inr(roundTotal)}
             </div>

@@ -4,6 +4,8 @@ import { getSettings } from "@/lib/settings";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Header } from "@/components/layout/Header";
+import { PosPulseProvider } from "@/components/layout/PosPulseProvider";
+import { RequestAlertBar } from "@/components/orders/RequestAlertBar";
 
 // Tab title mirrors the cafe's own branding once Settings is configured,
 // falling back to the generic product name (never a hardcoded cafe name).
@@ -24,11 +26,14 @@ export default function DashboardLayout({
 }) {
   return (
     <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
-        <Header />
-        <main className="flex-1 p-4 md:p-6">{children}</main>
-      </SidebarInset>
+      <PosPulseProvider>
+        <AppSidebar />
+        <SidebarInset>
+          <Header />
+          <RequestAlertBar />
+          <main className="flex-1 p-4 md:p-6">{children}</main>
+        </SidebarInset>
+      </PosPulseProvider>
     </SidebarProvider>
   );
 }

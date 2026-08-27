@@ -74,6 +74,34 @@ export function usePatchTable() {
   });
 }
 
+// Persist a hand arrangement of the floor plan. Sends the whole ordered list
+// (see the route) and seeds the cache from the response, so the arrange
+// screen never briefly renders the pre-swap order.
+export function useReorderTables() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (tableNos: string[]) =>
+      apiSend<Table[]>("/api/tables", "PATCH", { tableNos }),
+    onSuccess: (tables) => qc.setQueryData(TABLE_KEYS.all, tables),
+    onError: (err: Error) => toast.error(err.message || "Could not save the order"),
+    onSettled: () => qc.invalidateQueries({ queryKey: TABLE_KEYS.all }),
+  });
+}
+
+// Mint (or re-mint) a table's public QR token (CR2 admin config seam).
+// Re-minting invalidates whatever sticker was already printed for that table
+// — the confirmation dialog calling this must say so.
+export function useMintTableToken() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (tableNo: string) =>
+      apiSend<Table>(`/api/tables/${encodeURIComponent(tableNo)}/token`, "POST"),
+    onSuccess: () => toast.success("QR token generated"),
+    onError: (err: Error) => toast.error(err.message || "Could not generate a token"),
+    onSettled: () => qc.invalidateQueries({ queryKey: TABLE_KEYS.all }),
+  });
+}
+
 // Remove a table from the floor plan (admin config seam).
 export function useDeleteTable() {
   const qc = useQueryClient();

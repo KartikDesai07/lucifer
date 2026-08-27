@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withBotId } from "botid/next/config";
 
 // Hosted on a Node.js runtime (Vercel) where Mongoose's connection cache works
 // reliably. Cloudflare Workers was dropped: its per-request I/O isolation makes a
@@ -32,6 +33,34 @@ const r2PublicHost = (() => {
   }
 })();
 
+// Content-Security-Policy for the public diner surface ONLY (§6 item 9): /m and
+// /m/*, the unauthenticated QR-ordering pages. The admin panel is deliberately
+// excluded from any CSP — see the comment on securityHeaders above, a wrong
+// CSP white-screens the panel, which the public surface (small, purpose-built
+// pages) doesn't carry the same risk for. BotID's client script and the
+// requests it makes are proxied same-origin by the rewrites withBotId installs
+// below, so `'self'` is expected to cover it; the docs are silent on CSP
+// specifics, so this is empirically re-verified post-deploy and again on a
+// real phone by the CR2.5 device leg.
+const publicSurfaceCsp = [
+  "default-src 'self'",
+  `script-src 'self' 'unsafe-inline'${
+    process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""
+  }`, // 'unsafe-eval' is Next dev/HMR only — production must never carry it
+  "style-src 'self' 'unsafe-inline'",
+  `img-src 'self' data: blob: https://res.cloudinary.com${
+    r2PublicHost ? ` https://${r2PublicHost}` : ""
+  }`,
+  "font-src 'self' data:",
+  "connect-src 'self'", // BotID traffic is same-origin via its rewrites
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "object-src 'none'",
+].join("; ");
+
+const publicSurfaceHeaders = [{ key: "Content-Security-Policy", value: publicSurfaceCsp }];
+
 const nextConfig: NextConfig = {
   // The shared workspace package ships raw TypeScript (single source of truth for
   // the reused spine — schemas, constants, utils, API envelope, hook factory).
@@ -60,8 +89,24 @@ const nextConfig: NextConfig = {
     ],
   },
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      // Public diner surface only — see publicSurfaceCsp's comment above.
+      { source: "/m", headers: publicSurfaceHeaders },
+      { source: "/m/:path*", headers: publicSurfaceHeaders },
+    ];
+  },
+  // Browsers probe /favicon.ico at the origin root on their own, regardless of
+  // any <link rel="icon"> in the document head (MDN). app/favicon.ico (the
+  // static create-next-app default) is deleted, so without this rewrite that
+  // probe 404s; route both paths to the same branding bytes so the product
+  // logo is the single answer either way.
+  async rewrites() {
+    return [{ source: "/favicon.ico", destination: "/api/branding/productLogo" }];
   },
 };
 
-export default nextConfig;
+// Vercel BotID: wraps the config with the rewrites its client script needs to
+// call same-origin (see instrumentation-client.ts for the protected-route
+// list). Must wrap the final exported config, not an intermediate object.
+export default withBotId(nextConfig);

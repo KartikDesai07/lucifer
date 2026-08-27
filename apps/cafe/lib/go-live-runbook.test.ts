@@ -18,8 +18,11 @@ import {
   GST_RATES,
   IMAGE_MAX_DIMENSION_PX,
   MAX_IMAGE_BYTES,
+  MAX_BRANDING_BYTES,
   MOBILE_VISIBLE_PREFIX,
   MOBILE_MASK_CHAR,
+  HERO_MAX_DIMENSION_PX,
+  BRANDING_SLOT_MAX_BYTES,
 } from "@/lib/constants";
 import { maskMobile } from "@pos/shared/utils";
 import { TABLE_BUSY_ERROR } from "@/lib/table-admin";
@@ -28,6 +31,30 @@ import { printSettingsFields } from "@/lib/print";
 import { IMPORT_COLUMNS, MODIFIER_SEPARATOR, MAX_IMPORT_ROWS } from "@/lib/product-import";
 import { RECEIPT_PAGE_STYLE } from "./print";
 import { RESERVED_SUBDOMAINS } from "@/lib/platform";
+import { readDevicePrefs } from "@/lib/pos-device-prefs";
+import { SELF_ORDER_ALERT_LIMITATION } from "@pos/shared/self-order-alert";
+import {
+  TELEGRAM_SECRET_HEADER,
+  TELEGRAM_ALLOWED_UPDATES,
+  TELEGRAM_INVITE_TTL_MS,
+} from "@pos/shared/telegram-alert";
+import { PRESET_IDS } from "@pos/shared/appearance";
+import {
+  PUBLIC_MENU_PATH,
+  PUBLIC_TOKEN_LENGTH,
+  PUBLIC_CODE_LENGTH,
+  PUBLIC_ORDER_MAX_ITEMS,
+  PUBLIC_ORDER_MAX_QTY,
+  PUBLIC_ORDER_RATE_MAX,
+  PUBLIC_ORDER_RATE_MAX_PARCEL,
+  PUBLIC_ORDER_RATE_WINDOW_MS,
+  SELF_ORDER_MODES,
+} from "@pos/shared/public";
+// PUBLIC_REQUEST_PENDING_TTL_MS lives in this cafe-app file, NOT
+// @pos/shared/public — the phase plan's scout read named the wrong module;
+// verified against source (order-request-intake.ts:28) before importing.
+import { PUBLIC_REQUEST_PENDING_TTL_MS } from "@/lib/order-request-intake";
+import { SOLD_OUT_ERROR } from "@/lib/public-pricing";
 
 // Doc<->source parity for docs/GO-LIVE-CHECKLIST.md §A "Pinned facts" — an
 // operator following a stale runbook does the wrong thing on a client's live
@@ -258,6 +285,15 @@ test("PIN §A: IMAGE_MAX_DIMENSION_PX (600) and MAX_IMAGE_BYTES (2 MB) match the
   assert.equal(Number(mbMatch![1]), MAX_IMAGE_BYTES / (1024 * 1024));
 });
 
+test("PIN §A: MAX_BRANDING_BYTES (512 KB) matches the doc's branding-size-cap row — the logos are a SEPARATE cap from product-photo uploads and must not silently restate a hardcoded 512", () => {
+  assert.equal(MAX_BRANDING_BYTES, 512 * 1024);
+
+  const cell = factRow("Branding (logo) size cap");
+  const kbMatch = cell.match(/(\d+)\s*KB/);
+  assert.ok(kbMatch, "the row must state a KB size cap");
+  assert.equal(Number(kbMatch![1]), MAX_BRANDING_BYTES / 1024);
+});
+
 test("PIN §A: RECEIPT_PAGE_STYLE appears verbatim in the doc's print-page-setup row", () => {
   const cell = backtickTokens(factRow("Print page setup"))[0];
   assert.ok(cell, "the print-page-setup row must carry a backtick-quoted value");
@@ -268,11 +304,233 @@ test("PIN §A: RECEIPT_PAGE_STYLE appears verbatim in the doc's print-page-setup
   );
 });
 
+// ── §A row parity: CR2.4 Appearance/themes ──────────────────────────────────
+
+test("PIN §A: HERO_MAX_DIMENSION_PX (1200) matches the doc's hero-image-longest-edge row — an operator sizing a banner off a stale number would upload art that gets downscaled on the next save anyway", () => {
+  assert.equal(HERO_MAX_DIMENSION_PX, 1200);
+  assert.equal(Number(factRow("Hero image longest edge")), HERO_MAX_DIMENSION_PX);
+});
+
+test("PIN §A: PRESET_IDS has exactly 6 members, matching the doc's appearance-presets row", () => {
+  assert.equal(PRESET_IDS.length, 6);
+  assert.equal(Number(factRow("Appearance presets")), PRESET_IDS.length);
+});
+
+test("PIN §A: BRANDING_SLOT_MAX_BYTES.heroImage (1MB) matches the doc's hero-image-byte-cap row — a SEPARATE, larger cap than the two logos (MAX_BRANDING_BYTES, 512KB), pinned so the two never silently collapse to one shared literal", () => {
+  assert.equal(BRANDING_SLOT_MAX_BYTES.heroImage, 1024 * 1024);
+  const cell = factRow("Hero image byte cap");
+  const mbMatch = cell.match(/(\d+)\s*MB/);
+  assert.ok(mbMatch, "the row must state a MB size cap");
+  assert.equal(Number(mbMatch![1]) * 1024 * 1024, BRANDING_SLOT_MAX_BYTES.heroImage);
+});
+
+// The §A rows above pin the SOURCE-OF-TRUTH facts against source, but an
+// operator sizing a client's banner reads the §3 Settings-fields table (its
+// "Hero image" row), not §A — that row's "1200 px longest edge · 1 MB" cell
+// is free prose neither §A pin above ever examines, so the two constants
+// above could each be bumped (updating §A, keeping the suite green) while
+// this §3 row silently kept quoting the old numbers.
+test('PIN §3: the Settings-fields table\'s "Hero image" row states the SAME two numbers as the §A hero-image rows (HERO_MAX_DIMENSION_PX / BRANDING_SLOT_MAX_BYTES.heroImage) — the row an operator actually reads while sizing a banner', () => {
+  const cell = factRow("Hero image");
+  const pxMatch = cell.match(/(\d+)\s*px longest edge/);
+  assert.ok(pxMatch, 'the §3 "Hero image" row must state "<N> px longest edge"');
+  assert.equal(Number(pxMatch![1]), HERO_MAX_DIMENSION_PX);
+
+  const mbMatch = cell.match(/(\d+)\s*MB/);
+  assert.ok(mbMatch, 'the §3 "Hero image" row must state a MB size cap');
+  assert.equal(Number(mbMatch![1]) * 1024 * 1024, BRANDING_SLOT_MAX_BYTES.heroImage);
+});
+
+// ── §A row parity: CR2.5 QR self-ordering ───────────────────────────────────
+// docs/GO-LIVE-CHECKLIST.md §23.6 Risk 1: factRow() finds the FIRST matching
+// first cell in the WHOLE doc (§3 and §A share one namespace) — every label
+// below was scanned for a doc-wide collision before being written.
+
+test("PIN §A: PUBLIC_MENU_PATH/publicMenuPath match the doc's Public-menu-URLs row", () => {
+  assert.equal(PUBLIC_MENU_PATH, "/m");
+  const tokens = backtickTokens(factRow("Public menu URLs"));
+  assert.equal(tokens[0], PUBLIC_MENU_PATH, "the doc's bare-menu URL must equal PUBLIC_MENU_PATH");
+  assert.equal(tokens[1], `${PUBLIC_MENU_PATH}/<token>`, "the doc's per-table URL must equal PUBLIC_MENU_PATH + '/<token>'");
+});
+
+test("PIN §A: PUBLIC_TOKEN_LENGTH (14) matches the doc's table-QR-token-length row", () => {
+  assert.equal(PUBLIC_TOKEN_LENGTH, 14);
+  assert.equal(Number(factRow("Table QR token length")), PUBLIC_TOKEN_LENGTH);
+});
+
+test("PIN §A: PUBLIC_CODE_LENGTH (10) matches the doc's diner-order-code-length row", () => {
+  assert.equal(PUBLIC_CODE_LENGTH, 10);
+  assert.equal(Number(factRow("Diner order code length")), PUBLIC_CODE_LENGTH);
+});
+
+test("PIN §A: PUBLIC_ORDER_MAX_ITEMS/PUBLIC_ORDER_MAX_QTY match the doc's diner-order-caps row", () => {
+  assert.equal(PUBLIC_ORDER_MAX_ITEMS, 30);
+  assert.equal(PUBLIC_ORDER_MAX_QTY, 20);
+  const cell = factRow("Diner order caps");
+  const nums = [...cell.matchAll(/\d+/g)].map((m) => Number(m[0]));
+  assert.deepEqual(
+    nums,
+    [PUBLIC_ORDER_MAX_ITEMS, PUBLIC_ORDER_MAX_QTY],
+    "the doc's caps row must list max lines then max qty, matching PUBLIC_ORDER_MAX_ITEMS/PUBLIC_ORDER_MAX_QTY in that order",
+  );
+});
+
+test("PIN §A: PUBLIC_ORDER_RATE_MAX/_MAX_PARCEL/_WINDOW_MS match the doc's diner-submit-rate-limit row", () => {
+  assert.equal(PUBLIC_ORDER_RATE_MAX, 8);
+  assert.equal(PUBLIC_ORDER_RATE_MAX_PARCEL, 20);
+  assert.equal(PUBLIC_ORDER_RATE_WINDOW_MS, 10 * 60 * 1000);
+  const cell = factRow("Diner submit rate limit");
+  const nums = [...cell.matchAll(/\d+/g)].map((m) => Number(m[0]));
+  assert.deepEqual(
+    nums,
+    [PUBLIC_ORDER_RATE_MAX, PUBLIC_ORDER_RATE_MAX_PARCEL, PUBLIC_ORDER_RATE_WINDOW_MS / (60 * 1000)],
+    "the doc's rate-limit row must list per-table max, parcel max, then the window in minutes",
+  );
+});
+
+test("PIN §A: PUBLIC_REQUEST_PENDING_TTL_MS (12h) matches the doc's pending-request-expiry row", () => {
+  assert.equal(PUBLIC_REQUEST_PENDING_TTL_MS, 12 * 60 * 60 * 1000);
+  const cell = factRow("Pending request expiry");
+  const hoursMatch = cell.match(/(\d+)\s*hours?/);
+  assert.ok(hoursMatch, "the row must state the expiry in hours");
+  assert.equal(Number(hoursMatch![1]) * 60 * 60 * 1000, PUBLIC_REQUEST_PENDING_TTL_MS);
+});
+
+test('PIN §A: SOLD_OUT_ERROR("<item>") matches the doc\'s sold-out-message row EXACTLY', () => {
+  const cell = backtickTokens(factRow("Sold-out message"))[0];
+  assert.equal(
+    cell,
+    SOLD_OUT_ERROR("<item>"),
+    "the doc's sold-out-message row must equal SOLD_OUT_ERROR('<item>') exactly, not a paraphrase",
+  );
+});
+
+// Poll cadence is source-pinned by regex, NOT imported — promoting three
+// client-only constants into @pos/shared just for one doc row is not worth
+// it (accepted trade-off, phase-CR2-public-ordering.md §23.6 Risk 3): a
+// refactor that moves/renames these constants fails only this pin.
+test("PIN §A: PublicOrderStatus.tsx's poll cadence (5s for 60s, then 30s) matches the doc's diner-status-poll row", () => {
+  const src = readFileSync(
+    path.join(REPO_ROOT, "apps/cafe/components/public/PublicOrderStatus.tsx"),
+    "utf8",
+  );
+  assert.match(src, /POLL_FAST_MS = 5_000/, "PublicOrderStatus.tsx's fast-poll interval must still be 5s");
+  assert.match(src, /POLL_FAST_WINDOW_MS = 60_000/, "PublicOrderStatus.tsx's fast-poll window must still be 60s");
+  assert.match(src, /POLL_SLOW_MS = 30_000/, "PublicOrderStatus.tsx's slow-poll interval must still be 30s");
+
+  const cell = factRow("Diner status poll");
+  const nums = [...cell.matchAll(/\d+/g)].map((m) => Number(m[0]));
+  assert.deepEqual(
+    nums,
+    [5, 60, 30],
+    "the doc's poll-cadence row must state fast interval, fast window, then slow interval in seconds",
+  );
+});
+
+test("PIN §3: the Self-order-mode row lists the real SELF_ORDER_MODES enum values", () => {
+  assert.deepEqual([...SELF_ORDER_MODES], ["approve", "auto"]);
+  const cell = factRow("Self-order mode");
+  const docModes = cell.split("/").map((s) => s.trim());
+  assert.deepEqual(
+    docModes,
+    [...SELF_ORDER_MODES],
+    "the doc's Self-order-mode row must list the SAME values, in the SAME order, as SELF_ORDER_MODES",
+  );
+});
+
+test("PIN: §7's new 'QR self-ordering — the diner device leg' sub-section names the QR sheet, the cafe-WiFi phone leg, and both colour schemes", () => {
+  const heading = "### QR self-ordering — the diner device leg";
+  const start = doc.indexOf(heading);
+  assert.ok(start >= 0, "docs/GO-LIVE-CHECKLIST.md must carry the §7 QR self-ordering device-leg sub-section");
+  const nextHeadingMatch = doc.slice(start + heading.length).match(/\n(#{1,3}\s|---)/);
+  const end = nextHeadingMatch ? start + heading.length + nextHeadingMatch.index! : doc.length;
+  const section = norm(doc.slice(start, end));
+
+  assert.match(section, /QR sheet/i, "the device-leg sub-section must name the QR sheet");
+  assert.match(section, /cafe.{0,5}WiFi/i, "the device-leg sub-section must name the cafe-WiFi phone leg");
+  assert.match(section, /\blight\b/i, "the device-leg sub-section must name the light colour scheme");
+  assert.match(section, /\bdark\b/i, "the device-leg sub-section must name the dark colour scheme");
+});
+
 // ── §A row parity: seed commands ─────────────────────────────────────────────
 
 const CAFE_PKG = JSON.parse(
   readFileSync(path.join(REPO_ROOT, "apps/cafe/package.json"), "utf8"),
 ) as { scripts: Record<string, string> };
+
+// ── §A row parity: CR2.3 §20 self-order alerts / auto-print ────────────────
+
+test("PIN §A: auto-print self-orders defaults OFF, matching readDevicePrefs()'s REAL default (window is undefined in this test env, so the function's own no-window branch returns the actual DEFAULT_DEVICE_PREFS object, not a mock) — a device must be opted in before it fires tickets on its own", () => {
+  const defaults = readDevicePrefs();
+  assert.equal(defaults.autoPrintSelfOrders, false, "readDevicePrefs()'s real default must be autoPrintSelfOrders:false");
+  assert.equal(defaults.alertSound, true, "readDevicePrefs()'s real default must be alertSound:true");
+  assert.match(factRow("Auto-print self-orders default"), /off/i, "the doc's stated default must match the real default proven above");
+});
+
+test("PIN §A: the go-live doc quotes SELF_ORDER_ALERT_LIMITATION verbatim in its self-order alerts device step — the runbook must not paraphrase the app's own wording, or an operator reading it could describe a DIFFERENT limitation than the one staff actually see in the panel", () => {
+  assert.ok(doc.includes(SELF_ORDER_ALERT_LIMITATION), "GO-LIVE-CHECKLIST.md must quote SELF_ORDER_ALERT_LIMITATION's exact string");
+  const cell = backtickTokens(factRow("Self-order alert limitation"))[0];
+  assert.equal(cell, SELF_ORDER_ALERT_LIMITATION, "the §A row's value must equal the real constant, not a hand-typed copy");
+});
+
+// ── §A row parity: CR2.3b Telegram integration ─────────────────────────────
+
+test("PIN §A: TELEGRAM_SECRET_HEADER matches the doc's Telegram-webhook-secret-header row — an operator debugging a 401 on the webhook needs the REAL header name Telegram sends, not a guess", () => {
+  assert.equal(TELEGRAM_SECRET_HEADER, "X-Telegram-Bot-Api-Secret-Token");
+  const cell = backtickTokens(factRow("Telegram webhook secret header"))[0];
+  assert.equal(cell, TELEGRAM_SECRET_HEADER, "the doc's header-name row must equal the real TELEGRAM_SECRET_HEADER constant");
+});
+
+test("PIN §A: TELEGRAM_ALLOWED_UPDATES matches the doc's Telegram-allowed-updates row — setWebhook is called with this exact list, so a drift here would mislead an operator diagnosing a webhook that silently ignores everything but /start", () => {
+  assert.deepEqual([...TELEGRAM_ALLOWED_UPDATES], ["message"]);
+  const cell = backtickTokens(factRow("Telegram allowed updates"))[0];
+  assert.equal(cell, TELEGRAM_ALLOWED_UPDATES[0], "the doc's allowed-updates row must equal the real TELEGRAM_ALLOWED_UPDATES constant");
+});
+
+test("PIN §A: TELEGRAM_INVITE_TTL_MS (24h) matches the doc's invite-link-TTL row — an operator telling a staff member their deep link is 'about to expire' must quote the REAL window", () => {
+  assert.equal(TELEGRAM_INVITE_TTL_MS, 24 * 60 * 60 * 1000);
+  const cell = factRow("Telegram invite link TTL");
+  const hoursMatch = cell.match(/(\d+)\s*hours?/);
+  assert.ok(hoursMatch, "the row must state the TTL in hours");
+  assert.equal(Number(hoursMatch![1]) * 60 * 60 * 1000, TELEGRAM_INVITE_TTL_MS);
+});
+
+test("PIN §A: the doc's Telegram-webhook-path row names the route file that actually exists on disk, and that file's own source registers itself as the webhook (not a typo'd sibling path)", () => {
+  const cell = backtickTokens(factRow("Telegram webhook path"))[0];
+  assert.equal(cell, "/api/telegram/webhook", "the doc's webhook-path row must be exactly /api/telegram/webhook");
+  const routeSrc = readFileSync(
+    path.join(REPO_ROOT, "apps/cafe/app/api/telegram/webhook/route.ts"),
+    "utf8",
+  );
+  assert.match(
+    routeSrc,
+    /export async function POST\(/,
+    "app/api/telegram/webhook/route.ts must exist and export a POST handler — the doc's Source symbol column must name a route that is actually there",
+  );
+});
+
+test("PIN: the doc's Telegram procedures block states token rotation (BotFather /token → re-paste → re-validate), AUTH_SECRET rotation recovery (re-paste, connections kept), and the live-site-only rule — all three are the operator's actual recovery paths, not paraphrased", () => {
+  const normalized = norm(doc);
+  assert.ok(
+    normalized.includes("Telegram procedures"),
+    "the doc must carry a 'Telegram procedures' section",
+  );
+  assert.match(normalized, /BotFather.*\/token/, "the doc must name BotFather's /token command for rotating the bot token");
+  assert.ok(
+    normalized.includes("Re-paste your bot token"),
+    "the doc must quote the card's exact 'Re-paste your bot token' state, matching what AUTH_SECRET/NEXTAUTH_SECRET rotation actually shows",
+  );
+  assert.match(
+    normalized,
+    /stays connected|chat list/i,
+    "the doc must state that reconnecting the bot after a secret rotation keeps every already-connected chat",
+  );
+  assert.match(
+    normalized,
+    /never a preview URL/i,
+    "the doc must warn that Telegram setup has to run from the live deployed site, never a preview URL",
+  );
+});
 
 test("PIN §A: seed:admin and seed:tables both exist in apps/cafe/package.json's scripts, matching the doc's seed-commands row", () => {
   const docCmds = backtickTokens(factRow("Seed commands"));
@@ -452,7 +710,11 @@ const BASE_SETTINGS = {
   gstRate: 5,
   gstMode: "inclusive" as const,
   logo: "",
+  productLogo: "",
   fssai: "",
+  selfOrderMode: "approve" as const,
+  allowTableChange: true,
+  showPastOrdersToDiner: true,
   // settingsSchema requires every print-customization field. Sourced from the
   // resolver the receipts themselves read through, so this fixture states no
   // default of its own and cannot drift from the app's.

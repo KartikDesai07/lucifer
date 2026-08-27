@@ -48,7 +48,12 @@ function matchingBraceEnd(src: string, openIdx: number): number {
 
 const USE_POS_TAB = "apps/cafe/hooks/use-pos-tab.ts";
 const USE_POS_PRINT = "apps/cafe/hooks/use-pos-print.ts";
+// CR2.3 S0 split — both useReactToPrint jobs, the guard ref, and the two
+// chaining effects moved out of pos/page.tsx (and the hand-copied KOT-only
+// half out of requests/page.tsx) into this one shared hook.
+const USE_KOT_PRINT_BRIDGE = "apps/cafe/hooks/use-kot-print-bridge.ts";
 const POS_PAGE = "apps/cafe/app/(dashboard)/pos/page.tsx";
+const REQUESTS_PAGE = "apps/cafe/app/(dashboard)/requests/page.tsx";
 const PRINT_LIB = "apps/cafe/lib/print.ts";
 const ORDER_RECEIPT = "apps/cafe/components/pos/OrderReceipt.tsx";
 const KOT_RECEIPT = "apps/cafe/components/pos/KOTReceipt.tsx";
@@ -115,9 +120,14 @@ test("PIN: usePosPrint is the single owner of both print signals — it defines 
 });
 
 // ── 3. Two print jobs must never fire in one tick (CR1.2) ───────────────────
+// CR2.3 S0: this discipline moved out of pos/page.tsx into the shared
+// useKotPrintBridge hook (requests/page.tsx's hand-copied KOT-only half
+// collapsed onto the same hook) — pinned here on its new home, plus a
+// reachability check that both pages actually call it (CR2.1's dead-hook
+// lesson: a hook can typecheck and export cleanly with zero real callers).
 
-test("PIN: pos/page.tsx sequences KOT then receipt via a guard ref — onAfterPrint only clears the flag (never fires the receipt itself), and the receipt effect waits for the KOT flag to clear", () => {
-  const src = readSrc(POS_PAGE);
+test("PIN: useKotPrintBridge sequences KOT then receipt via a guard ref — onAfterPrint only clears the flag (never fires the receipt itself), and the receipt effect waits for the KOT flag to clear; both pos/page.tsx and requests/page.tsx reach it", () => {
+  const src = readSrc(USE_KOT_PRINT_BRIDGE);
 
   assert.match(
     src,
@@ -163,6 +173,23 @@ test("PIN: pos/page.tsx sequences KOT then receipt via a guard ref — onAfterPr
     /if \(shouldPrintKot && lastOrder && !kotPrinting\.current\) \{/,
     "the KOT effect must be gated on the guard ref, or a re-render re-fires the same print job",
   );
+
+  // Reachability: the hook must have real callers, not just typecheck cleanly.
+  const posSrc = readSrc(POS_PAGE);
+  assert.match(
+    posSrc,
+    /import \{ useKotPrintBridge \} from "@\/hooks\/use-kot-print-bridge";/,
+    "pos/page.tsx must import useKotPrintBridge",
+  );
+  assert.match(posSrc, /useKotPrintBridge\(\{/, "pos/page.tsx must actually call useKotPrintBridge");
+
+  const requestsSrc = readSrc(REQUESTS_PAGE);
+  assert.match(
+    requestsSrc,
+    /import \{ useKotPrintBridge \} from "@\/hooks\/use-kot-print-bridge";/,
+    "requests/page.tsx must import useKotPrintBridge",
+  );
+  assert.match(requestsSrc, /useKotPrintBridge\(\{/, "requests/page.tsx must actually call useKotPrintBridge");
 });
 
 // ── 4. Every print surface uses the one shared 80mm page setup ─────────────
@@ -187,24 +214,39 @@ test("PIN: RECEIPT_PAGE_STYLE carries the 80mm/4mm page setup, and every print t
 
   // Both POS jobs must take their page setup from the RESOLVED config, and
   // from their own surface's width — a copy-paste that pointed the KOT job at
-  // `bill.paperWidth` would print kitchen tickets on the wrong roll.
-  const posSrc = readSrc(POS_PAGE);
-  const posMatches = posSrc.match(/pageStyle:\s*receiptPageStyle\(/g) ?? [];
-  assert.equal(posMatches.length, 2, "pos/page.tsx must build a page style for both the receipt AND the KOT print hooks");
+  // `bill.paperWidth` would print kitchen tickets on the wrong roll. The two
+  // useReactToPrint calls themselves now live in useKotPrintBridge (CR2.3 S0
+  // split); pos/page.tsx only resolves printCfg and hands the right width to
+  // the right hook parameter.
+  const bridgeSrc = readSrc(USE_KOT_PRINT_BRIDGE);
+  const bridgeMatches = bridgeSrc.match(/pageStyle:\s*receiptPageStyle\(/g) ?? [];
+  assert.equal(bridgeMatches.length, 2, "useKotPrintBridge must build a page style for both the receipt AND the KOT print hooks");
   assert.match(
-    posSrc,
-    /pageStyle:\s*receiptPageStyle\(printCfg\.bill\.paperWidth\)/,
-    "the receipt job must use the BILL paper width",
+    bridgeSrc,
+    /pageStyle:\s*receiptPageStyle\(receipt\?\.billPaperWidth \?\? kotPaperWidth\)/,
+    "the receipt job must use the caller's BILL paper width — the kotPaperWidth fallback is only ever reached by a KOT-only caller, which never flips shouldPrintReceipt to actually invoke this job",
   );
   assert.match(
-    posSrc,
-    /pageStyle:\s*receiptPageStyle\(printCfg\.kot\.paperWidth\)/,
+    bridgeSrc,
+    /pageStyle:\s*receiptPageStyle\(kotPaperWidth\)/,
     "the KOT job must use the KITCHEN TICKET paper width, not the bill's",
   );
+
+  const posSrc = readSrc(POS_PAGE);
   assert.match(
     posSrc,
     /printConfigOf\(/,
     "the widths must come from printConfigOf — reading settings.billPaperWidth raw returns undefined on any cafe whose Settings document predates the field",
+  );
+  assert.match(
+    posSrc,
+    /kotPaperWidth:\s*printCfg\.kot\.paperWidth/,
+    "pos/page.tsx must wire the KOT job's width from printCfg.kot.paperWidth",
+  );
+  assert.match(
+    posSrc,
+    /billPaperWidth:\s*printCfg\.bill\.paperWidth/,
+    "pos/page.tsx must wire the receipt job's width from printCfg.bill.paperWidth",
   );
 
   // The REPRINT path renders the very same receipt components, which size
@@ -373,8 +415,13 @@ test("PIN: KOTReceipt's void variant prints *** VOID *** / CANCELLED ITEMS — D
     /const voidMeta = isVoid && voidedBy && voidedAt \? \{ by: voidedBy, at: voidedAt \} : null;/,
     "a slip naming only ONE of who/when must fall back to the tab's opener/open-time, not print a half-identified attribution",
   );
-  assert.match(src, /fmtTime\(voidMeta\?\.at \?\? order\.createdAt\)/);
-  assert.match(src, /voidMeta\?\.by \?\? order\.receiver/);
+  // The "moved" variant (table transfer) added a second attribution ahead of the
+  // void one. movedMeta is null on a void slip and voidMeta is null on a moved
+  // slip, so ONE chain serves both — but only in this order: putting order.* or
+  // the wrong meta first would make a void slip print the tab's open time instead
+  // of the moment the cook was told to stop. The order is the assertion.
+  assert.match(src, /fmtTime\(movedMeta\?\.at \?\? voidMeta\?\.at \?\? order\.createdAt\)/);
+  assert.match(src, /movedMeta\?\.by \?\? voidMeta\?\.by \?\? order\.receiver/);
   assert.match(src, /item\.modifiers\.length > 0/, "a void slip must still show the voided line's modifiers");
   assert.match(src, /item\.instructions &&/, "a void slip must still show the voided line's instructions");
 });
@@ -409,15 +456,31 @@ test("PIN: queueKotRound filters items to the CURRENT round and labels the ticke
   assert.ok(kotRoundStart >= 0 && kotRoundStart < voidStart, "queueKotRound must exist before queueVoidSlip");
   const kotRoundBody = src.slice(kotRoundStart, voidStart);
 
+  // CR2.3 §20 — queueKotRound gained an optional `round` param (defaulting to
+  // order.kotRounds) so the diner self-order auto-print path can pin the
+  // printed slip to the round it actually claimed, even if a staff round
+  // fired inside the same ≤20s pulse window bumped order.kotRounds past it.
+  // The default keeps every EXISTING 1-arg call site's behavior identical
+  // (round === order.kotRounds when omitted) — this pin locks that default in.
   assert.match(
     kotRoundBody,
-    /setKotRoundItems\(order\.items\.filter\(\(it\) => it\.kotRound === order\.kotRounds\)\)/,
-    "queueKotRound must filter items down to the CURRENT round — without this filter, firing round 2 reprints round 1's items too and the kitchen makes them again (§7 path 2: 'round 2 prints only the new items')",
+    /const queueKotRound = useCallback\(\(order: Order, round: number = order\.kotRounds\)/,
+    "queueKotRound must accept an optional round param defaulting to order.kotRounds",
   );
   assert.match(
     kotRoundBody,
-    /setKotRoundLabel\(`Round \$\{order\.kotRounds\}`\)/,
-    "queueKotRound must label the ticket with the current round number",
+    /setKotRoundItems\(order\.items\.filter\(\(it\) => it\.kotRound === round\)\)/,
+    "queueKotRound must filter items down to the round it was called with — without this filter, firing round 2 reprints round 1's items too and the kitchen makes them again (§7 path 2: 'round 2 prints only the new items')",
+  );
+  assert.match(
+    kotRoundBody,
+    /setKotRoundLabel\(`Round \$\{round\}`\)/,
+    "queueKotRound must label the ticket with the round it was called with",
+  );
+  assert.match(
+    kotRoundBody,
+    /order\.kotNumbers\?\.\[round - 1\]/,
+    "queueKotRound must read the ticket number for the round it was called with, not always the order's latest round",
   );
 
   const resetAssertions = [

@@ -91,12 +91,36 @@ export function ProductsTable({
                       {product.discount}% off
                     </Badge>
                   )}
+                  {/* publicVisible === false only — absent/true means it's on
+                      the public QR menu (CR2.1), so no marker for the common
+                      case. */}
+                  {product.publicVisible === false && (
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      Hidden
+                    </span>
+                  )}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {product.category}
                 </TableCell>
                 <TableCell className="text-right">
-                  {inr(product.price)}
+                  {product.variations?.length ? (
+                    // Variations OVERRIDE price for ordering, so the single
+                    // base figure would mislead here — show the range the
+                    // item can actually sell for instead.
+                    <div>
+                      <p>
+                        {inr(Math.min(...product.variations.map((v) => v.price)))}
+                        {" – "}
+                        {inr(Math.max(...product.variations.map((v) => v.price)))}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {product.variations.length} sizes
+                      </p>
+                    </div>
+                  ) : (
+                    inr(product.price)
+                  )}
                 </TableCell>
                 <TableCell className="text-right">
                   {archived ? (

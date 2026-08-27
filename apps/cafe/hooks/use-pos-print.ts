@@ -35,15 +35,22 @@ export function usePosPrint() {
   // a fresh fire (applyTabUpdate) and after a counter sale (confirmPayment's
   // Pay Now branch), since POST /api/orders stamps every opening line with
   // kotRound: 1 too, making a counter sale a real KOT round server-side.
-  const queueKotRound = useCallback((order: Order) => {
+  // `round` defaults to the order's OWN latest round, so every existing
+  // 1-arg call site is unchanged. CR2.3 §20 — the diner self-order auto-print
+  // path is the one caller that passes it explicitly: a staff round fired
+  // inside the ≤20s pulse window can bump order.kotRounds past the accepted
+  // self-order's own round, and without pinning to the round the auto-print
+  // handler actually claimed, the printed slip would show the STAFF's round
+  // while the diner's round never prints.
+  const queueKotRound = useCallback((order: Order, round: number = order.kotRounds) => {
     setLastOrder(order);
-    setKotRoundItems(order.items.filter((it) => it.kotRound === order.kotRounds));
-    setKotRoundLabel(`Round ${order.kotRounds}`);
+    setKotRoundItems(order.items.filter((it) => it.kotRound === round));
+    setKotRoundLabel(`Round ${round}`);
     // Round n's ticket number lives at kotNumbers[n-1]. Absent — or the 0 the
     // route stores for a round fired while numbering was off — means this round
     // was never numbered, and the slip simply carries no number line. Guarding
     // on > 0 keeps that sentinel off the paper as "#0".
-    const ticket = order.kotNumbers?.[order.kotRounds - 1];
+    const ticket = order.kotNumbers?.[round - 1];
     setKotRoundNumber(ticket !== undefined && ticket > 0 ? ticket : undefined);
     // A real round must never inherit a void banner queued by an earlier print.
     setKotVariant("kot");
@@ -66,6 +73,11 @@ export function usePosPrint() {
       {
         productId: entry.productId,
         name: entry.name,
+        // The size that was voided. Without it the slip reads "Sp. Coco" on a tab
+        // holding both a Small and a Large, and the cook has to guess which cover
+        // to stop — the same "name the exact cover" rule the modifiers/instructions
+        // below already exist for (CR1.3).
+        variation: entry.variation,
         price: entry.price,
         qty: entry.qty,
         modifiers: entry.modifiers ?? [],

@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   ShoppingCart,
+  Inbox,
   Coffee,
   Users,
   CalendarClock,
@@ -25,9 +26,10 @@ import {
 
 import { useAuth } from "@/hooks/use-auth";
 import { useSettings } from "@/hooks/use-settings";
-import { productImageUrl } from "@/lib/images";
+import { brandingUrl, productImageUrl } from "@/lib/images";
 import { APP_NAME } from "@/lib/constants";
 import { ChangePasswordDialog } from "@/components/shared/ChangePasswordDialog";
+import { RequestCountBadge } from "@/components/orders/RequestCountBadge";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -61,6 +63,7 @@ type NavItem = {
 const items: NavItem[] = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "New Order", url: "/pos", icon: ShoppingCart },
+  { title: "Order Requests", url: "/requests", icon: Inbox },
   { title: "Orders", url: "/orders", icon: Receipt },
   { title: "Menu", url: "/products", icon: Coffee },
   { title: "Categories", url: "/categories", icon: Tags },
@@ -85,6 +88,17 @@ export function AppSidebar() {
   const settings = useSettings();
   const brandName = settings.data?.restaurantName?.trim() || APP_NAME;
   const logoUrl = productImageUrl(settings.data?.logo, undefined, { fit: true });
+  // A cafe that hasn't uploaded its own mark yet should see the PRODUCT's mark
+  // rather than a generic glyph — restaurant logo takes priority, then the saved
+  // product logo, then the unversioned branding URL, which the route answers with
+  // the product's built-in mark. Same chain the login screen renders, so the two
+  // never disagree about what an unbranded cafe looks like.
+  const productLogoUrl = productImageUrl(settings.data?.productLogo, undefined, { fit: true });
+  const displayLogoUrl = logoUrl ?? productLogoUrl ?? brandingUrl("productLogo");
+  // The glyph is now only reached if that image FAILS to load (route 500, offline
+  // first paint) — a 32px broken-image box in the chrome of every screen is worse
+  // than a generic icon.
+  const [logoFailed, setLogoFailed] = useState(false);
 
   const visibleItems = items.filter((item) => !item.adminOnly || isAdmin);
   const initial = (user?.name ?? "?").charAt(0).toUpperCase();
@@ -93,14 +107,15 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader className="px-3 py-4">
         <div className="flex items-center gap-2">
-          {logoUrl ? (
+          {!logoFailed ? (
             <Image
-              src={logoUrl}
+              src={displayLogoUrl}
               alt="Logo"
               width={32}
               height={32}
               unoptimized
               className="h-8 w-8 rounded-lg object-contain"
+              onError={() => setLogoFailed(true)}
             />
           ) : (
             <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-primary-foreground">
@@ -133,6 +148,7 @@ export function AppSidebar() {
                       {!collapsed && <span>{item.title}</span>}
                     </Link>
                   </SidebarMenuButton>
+                  {item.url === "/requests" && <RequestCountBadge />}
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>

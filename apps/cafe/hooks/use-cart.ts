@@ -1,30 +1,49 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { effectiveUnitPrice } from "@pos/shared/public";
 import type { OrderItem, OrderItemInput, Product } from "@/types";
 
 export interface CartItem {
-  lineId: string; // stable key: product + modifiers + instructions (+ index for fired lines)
+  lineId: string; // stable key: product + modifiers + instructions + variation (+ index for fired lines)
   productId: string;
   name: string;
   price: number; // effective unit price after the product's % discount
   qty: number;
+  // The variation this line is sold as (Small/Large…), snapshotted by name —
+  // `price` above is already that variation's price. Absent for a product
+  // sold one way only.
+  variation?: string;
   modifiers: string[];
   instructions: string;
   kotRound: number; // 0 = new/unfired (editable); >=1 = already fired (locked)
 }
 
 // Unit price after applying the product-level percentage discount, rounded to
-// whole rupees (the cafe bills in whole INR — see inr() formatting).
+// whole rupees (the cafe bills in whole INR — see inr() formatting). Delegates
+// to @pos/shared/public's effectiveUnitPrice — the SAME formula the public
+// order route prices a diner's cart with server-side (CR2.2) — so the two
+// surfaces can never drift apart on how a discount is applied.
 export function effectivePrice(product: Pick<Product, "price" | "discount">): number {
-  const off = (product.price * (product.discount ?? 0)) / 100;
-  return Math.max(0, Math.round(product.price - off));
+  return effectiveUnitPrice(product.price, product.discount ?? 0);
 }
 
-// Two cart lines merge only when product + modifiers + instructions all match,
-// so "Pizza (extra cheese)" stays separate from a plain "Pizza".
-function lineKey(productId: string, modifiers: string[], instructions: string) {
-  return [productId, [...modifiers].sort().join(","), instructions.trim()].join("|");
+// Two cart lines merge only when product + modifiers + instructions + variation
+// all match, so "Pizza (extra cheese)" stays separate from a plain "Pizza" and a
+// Small stays separate from a Large of the same item. Existing arg order kept;
+// variation is appended last so every existing call site only needs one new arg.
+function lineKey(
+  productId: string,
+  modifiers: string[],
+  instructions: string,
+  variation?: string,
+) {
+  return [
+    productId,
+    [...modifiers].sort().join(","),
+    instructions.trim(),
+    variation ?? "",
+  ].join("|");
 }
 
 // Seed a cart line from an order item when resuming an open tab. Already-fired
@@ -42,11 +61,12 @@ function lineKey(productId: string, modifiers: string[], instructions: string) {
 // nextCartFromServerItems below mix the two kinds of lines in one array.
 export function cartItemFromOrderItem(it: OrderItem, index: number): CartItem {
   return {
-    lineId: `#${index}:${lineKey(it.productId, it.modifiers, it.instructions)}`,
+    lineId: `#${index}:${lineKey(it.productId, it.modifiers, it.instructions, it.variation)}`,
     productId: it.productId,
     name: it.name,
     price: it.price,
     qty: it.qty,
+    variation: it.variation,
     modifiers: it.modifiers,
     instructions: it.instructions,
     kotRound: it.kotRound,
@@ -61,6 +81,7 @@ export function cartItemToInput(ci: CartItem): OrderItemInput {
     name: ci.name,
     price: ci.price,
     qty: ci.qty,
+    variation: ci.variation,
     modifiers: ci.modifiers,
     instructions: ci.instructions,
   };
@@ -96,7 +117,7 @@ export interface UseCart {
   newCount: number; // qty across unfired (kotRound 0) lines
   addToCart: (
     product: Product,
-    opts?: { modifiers?: string[]; instructions?: string; qty?: number },
+    opts?: { modifiers?: string[]; instructions?: string; qty?: number; variation?: string },
   ) => void;
   updateQty: (lineId: string, qty: number) => void;
   removeFromCart: (lineId: string) => void;
@@ -111,7 +132,20 @@ export function useCart(): UseCart {
     const modifiers = opts.modifiers ?? [];
     const instructions = opts.instructions ?? "";
     const addQty = opts.qty ?? 1;
-    const key = lineKey(product._id, modifiers, instructions);
+    const variation = opts.variation;
+    const key = lineKey(product._id, modifiers, instructions, variation);
+
+    // The chosen variation's OWN price bills the line once variations exist —
+    // the product's `price` is only the base/reference figure then. Fall back
+    // to the product's price when the name doesn't match anything on the
+    // product: ModifierModal can only ever offer a name the product actually
+    // has, so this only guards a future caller passing a stale/bad name.
+    const chosenVariation = variation
+      ? product.variations?.find((v) => v.name === variation)
+      : undefined;
+    const price = chosenVariation
+      ? effectivePrice({ price: chosenVariation.price, discount: product.discount })
+      : effectivePrice(product);
 
     setCart((prev) => {
       // Only fold into an UNFIRED matching line — a fired line is locked, so a new
@@ -130,8 +164,9 @@ export function useCart(): UseCart {
           lineId: key,
           productId: product._id,
           name: product.name,
-          price: effectivePrice(product),
+          price,
           qty: addQty,
+          variation,
           modifiers,
           instructions,
           kotRound: 0,

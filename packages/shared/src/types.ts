@@ -41,6 +41,7 @@ import type {
 } from "./constants";
 import type { ImportRowStatus } from "./product-import";
 import type { DuesCollected } from "./types-analytics";
+import type { PromoCodeConfig, SelfOrderMode } from "./public";
 
 import type {
   PaymentMode,
@@ -59,16 +60,34 @@ import type {
 // wire): ObjectId -> string, Date -> ISO string. These are what hooks/components
 // consume. Server code uses the Mongoose `I*` model interfaces instead.
 
+// One named size/portion of a menu item and the price it sells at. The set lives
+// embedded on the product; a variation is not a product of its own (no image, no
+// stock flag, no modifier set) — it only re-prices the item it belongs to.
+export interface ProductVariation {
+  name: string;
+  price: number;
+}
+
 export interface Product {
   _id: string;
   name: string;
   category: string; // denormalized category name
   price: number;
+  // The named sizes this item sells in, each with its own price. ABSENT (never
+  // `[]`) when the item is sold one way only — and when present it OVERRIDES
+  // `price` for ordering: the POS makes the operator pick one, and the picked
+  // price is what the line bills at. `price` stays the base/reference figure.
+  variations?: ProductVariation[];
   discount: number; // percentage 0-100
   available: boolean; // in-stock / "86" toggle — disabled in POS when false
   image: string; // opaque image ref — "r2:<key>" or a legacy Cloudinary public_id ("" if none)
   modifiers: string[];
   isActive: boolean; // false = archived (soft-deleted)
+  // Whether this item appears on the PUBLIC QR menu. ABSENT means visible — so a
+  // cafe that never touches this sees its whole menu published, and only an
+  // explicit `false` hides an item. Hiding is public-only: the item stays fully
+  // orderable by staff in the POS (that is what `available` is for).
+  publicVisible?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -99,6 +118,16 @@ export interface Table {
   status: TableStatus;
   currentOrderId?: string;
   capacity: number;
+  // This table's opaque PUBLIC token — what its QR sticker encodes. Absent until
+  // the table is given a public URL. Never the tableNo: see @pos/shared/public
+  // for why an operator-chosen, guessable label must not be a public identifier.
+  publicToken?: string;
+  // Where this table sits in the list the cafe arranged by hand (Tables screen →
+  // Arrange), so the tables it runs busiest can be pinned to the top of both that
+  // screen and the POS picker. Lower = earlier. ABSENT on any table that predates
+  // arranging — Mongo sorts a missing field before every value, so an
+  // un-arranged floor plan keeps plain name order with no backfill.
+  displayOrder?: number;
   // Extra charge this table adds to a bill, in whole rupees, with the name it
   // prints under. Absent or 0 = the table adds nothing. The POS reads both off
   // the selected table and SNAPSHOTS them onto the order, so editing the table
@@ -114,6 +143,11 @@ export interface OrderItem {
   name: string;
   price: number;
   qty: number;
+  // The variation this line was SOLD as, snapshotted by name — `price` above is
+  // already that variation's price. Absent for an item sold one way only, so a
+  // pre-variations order is unchanged. Everything that displays a line renders it
+  // through `orderItemLabel` so the cart, the bill and the KOT cannot disagree.
+  variation?: string;
   modifiers: string[];
   instructions: string;
   kotRound: number; // KOT round this line was fired in (0 = not yet sent / legacy)
@@ -134,6 +168,9 @@ export interface OrderVoid {
   // differently. Absent when the line carried none (omit-empty).
   instructions?: string;
   modifiers?: string[];
+  // Same reason as `instructions`: on a tab holding a Small and a Large of the
+  // same dish, the slip has to name WHICH one to stop making.
+  variation?: string;
   reason: string;
   voidedBy: string; // staff name from the session, never client-supplied
   at: string;
@@ -249,8 +286,20 @@ export interface Settings {
   gstNumber: string;
   gstRate: number;
   gstMode: GstMode;
+  // CR2.2c — codes a diner can type on the QR ordering screen. Optional:
+  // an existing Settings doc (and every fixture) predates it.
+  promoCodes?: PromoCodeConfig[];
   logo: string;
   fssai: string;
+
+  // The PRODUCT's mark (browser tab, login screen) — the restaurant's own mark
+  // is `logo` above. Optional on purpose, and it is the same hazard the print
+  // block below documents: this field is NEW, so every Settings document written
+  // before it has none, and `getSettings()` reads via `.lean()` (model defaults
+  // are a document feature, not applied to a lean read). Read it as
+  // `settings?.productLogo` and let lib/images.ts return null for the absent
+  // case — never assume a string is there.
+  productLogo?: string;
 
   // Print customization. Every one of these carries the same hazard as
   // logo/fssai above and then some: they are NEW, so every Settings document
@@ -283,6 +332,16 @@ export interface Settings {
   kotShowNotes?: boolean;
   kotPaperWidth?: PaperWidth;
   kotFontSize?: PrintFontSize;
+
+  // Self-order (QR) — CR2. Same lean-read hazard as the print block above:
+  // these are NEW, so a pre-CR2 Settings document has none of them. Read as
+  // `settings?.field ?? default`, never assume presence.
+  selfOrderMode?: SelfOrderMode;
+  allowTableChange?: boolean;
+  showPastOrdersToDiner?: boolean;
+
+  // CR2.3b — Telegram kill switch (§21.6): sends stop, connections stay.
+  telegramPaused?: boolean;
 
   createdAt: string;
   updatedAt: string;

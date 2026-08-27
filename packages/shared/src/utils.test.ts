@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { maskMobile } from "./utils";
+import { maskMobile, orderItemLabel, orderLineKey } from "./utils";
 import { MOBILE_MASK_CHAR, MOBILE_VISIBLE_PREFIX } from "./constants";
 import { createCustomerSchema } from "./schemas/customer.schema";
 
@@ -70,4 +70,55 @@ test("maskMobile: no digit beyond the prefix survives anywhere in the output", (
     assert.ok(!masked.slice(MOBILE_VISIBLE_PREFIX).includes(digit), `digit "${digit}" from beyond the prefix leaked into the masked output`);
   }
   assert.equal(masked.slice(MOBILE_VISIBLE_PREFIX), MOBILE_MASK_CHAR.repeat(hiddenDigits.length));
+});
+
+
+// -- orderLineKey + orderItemLabel: variations are part of a line's IDENTITY ----
+// A Small and a Large of the same dish, same round, same qty are NOT
+// interchangeable: a void echo must not be able to take the wrong one off a tab,
+// and the two must not fold into one cart line. The variation is appended to the
+// key ONLY when the line has one, so a key for an item sold one way stays
+// byte-identical to the pre-variations format and a tab opened before this
+// shipped keeps matching its own echoes across the deploy.
+
+// The key's own separators, referenced by code point: they are ASCII record/unit
+// separators, and a literal one in source would be invisible to a reader.
+const LINE_SEP = String.fromCharCode(30);
+const MOD_SEP = String.fromCharCode(31);
+
+test("orderLineKey: a no-variation line keeps the EXACT pre-variations format (a tab opened before the deploy must keep matching its void echoes)", () => {
+  const key = orderLineKey({
+    productId: "p1",
+    kotRound: 2,
+    qty: 3,
+    instructions: "less sugar",
+    modifiers: ["b", "a"],
+  });
+  // productId, round, qty, instructions, sorted modifiers -- and nothing more.
+  assert.equal(key, ["p1", "2", "3", "less sugar", "a" + MOD_SEP + "b"].join(LINE_SEP));
+});
+
+test("orderLineKey: an absent variation and an EMPTY-STRING variation produce the same key (an empty value must not append a trailing separator)", () => {
+  const base = { productId: "p1", qty: 1, kotRound: 1 };
+  assert.equal(orderLineKey(base), orderLineKey({ ...base, variation: "" }));
+});
+
+test("orderLineKey: a line WITH a variation is a different line from the same line without one", () => {
+  const base = { productId: "p1", qty: 1, kotRound: 1 };
+  assert.notEqual(orderLineKey(base), orderLineKey({ ...base, variation: "Large" }));
+});
+
+test("orderLineKey: two sizes of the same dish are DIFFERENT lines -- this is what stops a void taking the wrong one", () => {
+  const base = { productId: "p1", qty: 1, kotRound: 1 };
+  assert.notEqual(
+    orderLineKey({ ...base, variation: "Small" }),
+    orderLineKey({ ...base, variation: "Large" }),
+  );
+});
+
+test("orderItemLabel: renders the variation in parentheses, and the bare name without one", () => {
+  assert.equal(orderItemLabel({ name: "Cold Coffee", variation: "Large" }), "Cold Coffee (Large)");
+  assert.equal(orderItemLabel({ name: "Cold Coffee" }), "Cold Coffee");
+  // An empty variation means "sold one way", not an empty pair of brackets on a bill.
+  assert.equal(orderItemLabel({ name: "Cold Coffee", variation: "" }), "Cold Coffee");
 });

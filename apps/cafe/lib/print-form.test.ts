@@ -6,6 +6,7 @@ import path from "node:path";
 
 import { PRINT_NUMBER_START_MIN } from "@pos/shared/constants";
 import { blankToMinStart } from "@/components/settings/print-form-utils";
+import { stripComments } from "@/lib/source-pin-utils";
 
 // Defect 4 (Settings save was a silent no-op) + Defect 5 (a cleared "starts
 // at" box saved PRINT_NUMBER_START_MIN while still showing blank) — CR1.7
@@ -19,10 +20,6 @@ import { blankToMinStart } from "@/components/settings/print-form-utils";
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel), "utf8");
 
-function stripComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-}
-
 const SETTINGS_FORM = "apps/cafe/components/settings/SettingsForm.tsx";
 const BILL_PRINT_CARD = "apps/cafe/components/settings/BillPrintCard.tsx";
 const KOT_PRINT_CARD = "apps/cafe/components/settings/KotPrintCard.tsx";
@@ -33,18 +30,14 @@ test("blankToMinStart: a blank string coerces to PRINT_NUMBER_START_MIN", () => 
   assert.equal(blankToMinStart(""), PRINT_NUMBER_START_MIN);
 });
 
-// NOT ONE OF THE 5 CONFIRMED DEFECTS — a gap this suite discovered while
-// writing the coercion helper's unit tests, kept RED and reported rather than
-// adjusted to match the current behavior (house rule: never pin an oracle
-// against unverified behavior, never weaken an assertion to get green).
-// `Number("   ")` is `0` in JS, not `NaN` — it IS finite, so
-// `Number.isFinite(n)` is true and blankToMinStart returns that `0` unchanged
-// instead of flooring it, unlike the `""`/null/undefined branch above. `0`
-// then fails settingsSchema's `min: PRINT_NUMBER_START_MIN` on submit (a
-// visible validation error), so it is not a silent-corruption bug like
-// Defect 5 — but it is NOT the documented "blank → PRINT_NUMBER_START_MIN"
-// contract either. Confirmed live via a direct call below, not assumed.
-test("blankToMinStart: whitespace-only input — CONFIRMED GAP, not floored to PRINT_NUMBER_START_MIN like true blank is (Number(whitespace) is 0, which is finite, so it passes straight through)", () => {
+// `Number("   ")` is `0` in JS, not `NaN` — if blankToMinStart checked
+// `raw === ""` before trimming, that `0` would sail straight past the
+// isFinite guard and store a schema-rejecting `0` instead of the documented
+// floor. print-form-utils.ts's blankToMinStart avoids exactly this by
+// trimming FIRST (`v.trim()`), so a whitespace-only value hits the same
+// `raw === ""` branch a true blank does. Confirmed live via a direct call
+// below, not assumed.
+test("blankToMinStart: whitespace-only input IS floored to PRINT_NUMBER_START_MIN — trim happens before the blank check", () => {
   assert.equal(blankToMinStart("   "), PRINT_NUMBER_START_MIN);
 });
 
@@ -78,36 +71,80 @@ test("PIN: SettingsForm.tsx passes onInvalid as handleSubmit's second argument, 
   );
 });
 
-test("PIN: SettingsForm.tsx's onInvalid switches to the tab owning the first errored field, for both bill* and kot* fields", () => {
+test("PIN: SettingsForm.tsx's onInvalid switches to the tab owning the first errored field, for appearance*, bill*/kot* AND telegram* fields", () => {
   const src = stripComments(readSrc(SETTINGS_FORM));
   const fnStart = src.indexOf("const onInvalid");
   assert.ok(fnStart >= 0, "onInvalid must be defined");
   const fnEnd = src.indexOf("return (", fnStart);
   assert.ok(fnEnd > fnStart, "onInvalid must be defined before the component's return");
   const body = src.slice(fnStart, fnEnd);
+  // CR2.4 S5 — appearance is a NESTED subdoc, so a failed superRefine reports
+  // one top-level "appearance" key (never "appearance.presetId"); the branch
+  // is checked first in source, ahead of bill*/kot*/telegram*.
+  assert.match(
+    body,
+    /firstField\.startsWith\("appearance"\)/,
+    "onInvalid must route to the appearance tab for the appearance field",
+  );
+  const appearanceIdx = body.indexOf('firstField.startsWith("appearance")');
+  const billKotIdx = body.indexOf('firstField.startsWith("bill")');
+  assert.ok(
+    appearanceIdx >= 0 && billKotIdx > appearanceIdx,
+    "the appearance branch must be checked BEFORE the bill*/kot* branch",
+  );
   assert.match(
     body,
     /firstField\.startsWith\("bill"\) \|\| firstField\.startsWith\("kot"\)/,
-    "onInvalid must route to the print tab for any bill*/kot* field, and to general otherwise — every print field is named that way by convention",
+    "onInvalid must route to the print tab for any bill*/kot* field — every print field is named that way by convention",
+  );
+  // CR2.3b §21 S7 — the Telegram tab ("Integrations") joined general/print;
+  // every Telegram field is named telegram* and must route there, without
+  // weakening the bill*/kot* pin above.
+  assert.match(
+    body,
+    /firstField\.startsWith\("telegram"\)/,
+    "onInvalid must route to the integrations tab for any telegram* field",
+  );
+  assert.match(
+    body,
+    /"integrations"/,
+    "the telegram* branch must land on the integrations tab, not print or general",
   );
   assert.match(body, /setTab\(/, "onInvalid must actually switch tabs, not just report the error");
 });
 
-test("PIN: SettingsForm.tsx keeps BOTH tab panels mounted (hidden via a class), never conditionally rendered — unmounting drops react-hook-form's registered values", () => {
+test("PIN: SettingsForm.tsx keeps ALL FOUR tab panels mounted (hidden via a class), never conditionally rendered — unmounting drops react-hook-form's registered values", () => {
   const src = stripComments(readSrc(SETTINGS_FORM));
   assert.match(
     src,
     /className=\{tab === "general" \? "space-y-6" : "hidden"\}/,
     "the general panel must stay mounted, hidden via a class when inactive",
   );
+  // CR2.4 S5 — the 4th (Appearance) panel joins general/print/integrations,
+  // held to the exact same always-mounted discipline.
+  assert.match(
+    src,
+    /className=\{tab === "appearance" \? "space-y-6" : "hidden"\}/,
+    "the appearance panel must stay mounted, hidden via a class when inactive",
+  );
   assert.match(
     src,
     /className=\{tab === "print" \? "space-y-6" : "hidden"\}/,
     "the print panel must stay mounted, hidden via a class when inactive",
   );
+  // CR2.3b §21 S7 — the third (Integrations) panel is held to the exact same
+  // discipline as the original two: mounted always, hidden via class.
+  assert.match(
+    src,
+    /className=\{tab === "integrations" \? "space-y-6" : "hidden"\}/,
+    "the integrations panel must stay mounted, hidden via a class when inactive",
+  );
   assert.ok(
-    !/\{tab === "general" && /.test(src) && !/\{tab === "print" && /.test(src),
-    "neither panel may be gated behind a conditional-render (&&) — that unmounts the inactive panel and react-hook-form drops its registered field values, silently resetting that tab's settings on the next save",
+    !/\{tab === "general" && /.test(src) &&
+      !/\{tab === "appearance" && /.test(src) &&
+      !/\{tab === "print" && /.test(src) &&
+      !/\{tab === "integrations" && /.test(src),
+    "no panel may be gated behind a conditional-render (&&) — that unmounts the inactive panel and react-hook-form drops its registered field values, silently resetting that tab's settings on the next save",
   );
 });
 

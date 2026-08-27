@@ -395,11 +395,21 @@ test("PIN: app/api/orders/[id]/settle/route.ts guards its conditional update on 
 
 test("PIN: PUT app/api/orders/[id]/route.ts writes conditionally on the status it READ (findOneAndUpdate keyed on old.status), never an unconditional findByIdAndUpdate", () => {
   const src = readSource("apps/cafe/app/api/orders/[id]/route.ts");
+  // The CAS terms live in a hoisted `filter` object since the table-move work
+  // added a second, conditional term (tableNo) to it — so this pin asserts the
+  // object still opens with the status CAS AND that the write is the one that
+  // uses it. Splitting it that way keeps a dead `filter` const from passing while
+  // the actual write goes out unconditional.
   assert.match(
     src,
-    /Order\.findOneAndUpdate\(\s*{\s*_id:\s*id,\s*status:\s*old\.status\s*}/,
+    /const\s+filter\s*=\s*{\s*_id:\s*id,\s*status:\s*old\.status,/,
     "a cancel landing between PUT's read and write must make this filter miss — an unconditional write would let PUT's " +
       "own edit re-open a just-cancelled order and let reconcileLedger double-reverse it (arbiter live-probe, CR1.3 review)",
+  );
+  assert.match(
+    src,
+    /Order\.findOneAndUpdate\(\s*filter\s*,/,
+    "the status-guarded filter must be the filter the write actually sends",
   );
   assert.ok(
     !src.includes("Order.findByIdAndUpdate("),

@@ -11,6 +11,7 @@ import {
   type GstConfig,
 } from "./receipt";
 import { TABLE_CHARGE_MAX } from "@/lib/constants";
+import { stripComments } from "@/lib/source-pin-utils";
 
 // Per-table extra charge (owner decision, 2026-08-16): subtotal → discount
 // (clamped to subtotal) → base → GST on base (exclusive only) → +charge →
@@ -214,8 +215,6 @@ const readSrc = (rel: string) => readFileSync(path.join(HERE, "..", rel), "utf8"
 // These pins forbid a FORMULA, so they must look at code and not at prose —
 // the comment explaining why the formula is gone would otherwise trip the pin
 // that removed it. (This bit us once already on a banned-string pin.)
-const stripComments = (src: string) =>
-  src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
 test("PIN: Cart.tsx never re-derives the bill total — it takes `total` as a required prop", () => {
   const raw = readSrc("components/pos/Cart.tsx");
@@ -280,12 +279,26 @@ test("PIN: the void path does NOT claim to have sent a charge — voidItemSchema
 });
 
 test("PIN: the POS page hands the cart the same total as the mobile bar and the payment modal", () => {
-  const src = stripComments(readSrc("app/(dashboard)/pos/page.tsx"));
-
+  // CR2.3 S2 split cartProps construction into lib/pos-cart-props.ts to keep
+  // the page under the line cap — the invariant moved with it, so this pin
+  // anchors BOTH halves: the wiring itself, and the page actually using it.
+  const builder = stripComments(readSrc("lib/pos-cart-props.ts"));
   assert.match(
-    src,
+    builder,
     /total:\s*pos\.total,/,
     "cartProps must carry `total: pos.total`. Both the desktop column and the mobile sheet spread this one object, so passing it here is what makes the cart footer, the sticky bar and the payment modal the same number by construction.",
+  );
+
+  const page = stripComments(readSrc("app/(dashboard)/pos/page.tsx"));
+  assert.match(
+    page,
+    /import\s*\{\s*buildCartProps\s*\}\s*from\s*"@\/lib\/pos-cart-props"/,
+    "pos/page.tsx must import buildCartProps from lib/pos-cart-props — the one place the cart's money figures are assembled.",
+  );
+  assert.match(
+    page,
+    /const\s+cartProps\s*=\s*buildCartProps\(pos\b/,
+    "pos/page.tsx must build cartProps via buildCartProps(pos, ...) so the desktop column and the mobile sheet spread the SAME object derived from the SAME pos state — reachability, not just existence.",
   );
 });
 

@@ -41,4 +41,5 @@ export const REFETCH_INTERVALS = {
   // which stays the 2min focus/mount freshness window.
   SUMMARY: 30 * 1000,
   TABLES: STALE_TIMES.TABLES, // floor occupancy poll
+  POS_PULSE: 20 * 1000, // CR2.3 staff-attention pulse (open requests + self-orders)
 } as const;

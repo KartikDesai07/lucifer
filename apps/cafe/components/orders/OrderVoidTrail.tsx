@@ -1,5 +1,6 @@
 "use client";
 
+import { orderItemLabel } from "@pos/shared/utils";
 import { inr, formatDate } from "@/lib/utils";
 import type { OrderVoid } from "@/types";
 
@@ -22,7 +23,7 @@ export function OrderVoidTrail({ voids }: OrderVoidTrailProps) {
           <div key={i} className="text-xs">
             <div className="flex justify-between">
               <span className="font-medium">
-                {v.qty} × {v.name}
+                {v.qty} × {orderItemLabel(v)}
                 {v.kotRound > 0 && ` · round ${v.kotRound}`}
               </span>
               <span>{inr(v.price * v.qty)}</span>

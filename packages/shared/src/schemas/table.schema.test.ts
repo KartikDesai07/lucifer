@@ -5,10 +5,16 @@ import {
   createTableSchema,
   patchTableSchema,
   updateTableSchema,
+  reorderTablesSchema,
 } from "./table.schema";
 import { createOrderSchema, updateOrderSchema } from "./order.schema";
 import { createReservationSchema } from "./reservation.schema";
-import { TABLE_NO_MAX_LEN, TABLE_CHARGE_MAX, TABLE_CHARGE_LABEL_MAX_LEN } from "../constants";
+import {
+  TABLE_NO_MAX_LEN,
+  TABLE_CHARGE_MAX,
+  TABLE_CHARGE_LABEL_MAX_LEN,
+  TABLE_REORDER_MAX,
+} from "../constants";
 
 // CR1.1 — tables are DATA, not a compile-time enum. These pin the shape contract
 // that replaced z.enum(TABLE_NUMBERS): a tableNo is any short, URL-safe label, and
@@ -257,4 +263,51 @@ test("patchTableSchema: a patch with ONLY charge fields satisfies the 'provide s
     true,
   );
   assert.equal(patchTableSchema.safeParse({ chargeAmount: 0 }).success, true);
+});
+
+// ── reorderTablesSchema (PATCH /api/tables — the hand arrangement) ───────────
+// The arrangement is expressed as NAMES ONLY, with the position taken from the
+// index. These pin that a client cannot smuggle a position in, cannot send a
+// list that would collide two tables onto one position, and cannot send an empty
+// list (which reaches the driver as an illegal bulkWrite, not a no-op).
+
+test("reorderTablesSchema accepts an ordered list of the cafe's own table names", () => {
+  const r = reorderTablesSchema.safeParse({ tableNos: ["Patio 1", "T-2", "Rooftop_3"] });
+  assert.equal(r.success, true);
+  assert.deepEqual(r.success && r.data.tableNos, ["Patio 1", "T-2", "Rooftop_3"]);
+});
+
+test("reorderTablesSchema rejects an EMPTY list — min(1) is what keeps an illegal empty bulkWrite off the route", () => {
+  assert.equal(reorderTablesSchema.safeParse({ tableNos: [] }).success, false);
+});
+
+test("reorderTablesSchema rejects the same table twice — two tables cannot share one position", () => {
+  const r = reorderTablesSchema.safeParse({ tableNos: ["T-1", "T-2", "T-1"] });
+  assert.equal(r.success, false);
+  // Anchored to a field, or validateBody would surface it as a bare "Validation failed".
+  assert.deepEqual(
+    r.success ? [] : (r.error.flatten().fieldErrors.tableNos ?? []),
+    ["The same table appears twice"],
+  );
+});
+
+test("reorderTablesSchema bounds the list at TABLE_REORDER_MAX", () => {
+  const names = Array.from({ length: TABLE_REORDER_MAX }, (_, i) => `T-${i + 1}`);
+  assert.equal(reorderTablesSchema.safeParse({ tableNos: names }).success, true);
+  assert.equal(
+    reorderTablesSchema.safeParse({ tableNos: [...names, "T-OVER"] }).success,
+    false,
+  );
+});
+
+test("reorderTablesSchema holds every name to the tableNo charset — an arrangement cannot introduce a name a table could not have", () => {
+  assert.equal(reorderTablesSchema.safeParse({ tableNos: ["T-1", "bad/name"] }).success, false);
+  assert.equal(reorderTablesSchema.safeParse({ tableNos: ["T-1", ""] }).success, false);
+});
+
+test("reorderTablesSchema is strict — a position cannot be smuggled in alongside the names", () => {
+  assert.equal(
+    reorderTablesSchema.safeParse({ tableNos: ["T-1"], displayOrder: 5 }).success,
+    false,
+  );
 });

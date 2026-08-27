@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { connectDB } from "@/lib/db";
 import { Order } from "@/models/Order";
 import { Customer } from "@/models/Customer";
+import { Product } from "@/models/Product";
 import { Table } from "@/models/Table";
 import { nextOrderSequence, bumpOrderSequenceTo, nextSlipSequence } from "@/models/Counter";
 import { printConfigOf, printedSlipNumber } from "@/lib/print";
@@ -27,6 +28,7 @@ import { derivePayment, ledgerContribution } from "@/lib/order";
 import { parseListCursor, applyCursor } from "@/lib/order-query";
 import { createOrderSchema } from "@/schemas";
 import { resolveTableCharge } from "@/lib/table-admin";
+import { checkItemVariations } from "@/lib/variations";
 
 export const dynamic = "force-dynamic";
 
@@ -113,6 +115,24 @@ export async function POST(req: Request) {
 
   try {
     await connectDB();
+
+    // A product sold by size must never reach the kitchen as a bare name, and a
+    // variation the product does not have must never be printed as if it did.
+    // One indexed query, and only when the payload could possibly be affected —
+    // checked BEFORE any pricing/write below, so a bad payload costs nothing.
+    const productIds = data.items
+      .map((it) => it.productId)
+      .filter(mongoose.isValidObjectId);
+    if (productIds.length) {
+      const products = await Product.find({ _id: { $in: productIds } })
+        .select("name variations")
+        .lean();
+      const bad = checkItemVariations(
+        products.map((p) => ({ _id: String(p._id), name: p.name, variations: p.variations })),
+        data.items,
+      );
+      if (bad) return failure(bad, 400);
+    }
 
     // Resolves the table's configured extra charge AND doubles as the existence
     // check, so this is still one query rather than two.

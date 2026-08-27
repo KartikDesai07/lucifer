@@ -1,9 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import dynamic from "next/dynamic";
-import { useReactToPrint } from "react-to-print";
-import { ChefHat } from "lucide-react";
 
 import { useAuth } from "@/hooks/use-auth";
 import { useProducts } from "@/hooks/use-products";
@@ -12,7 +10,8 @@ import { useTables } from "@/hooks/use-tables";
 import { useOrders } from "@/hooks/use-orders";
 import { usePosTab } from "@/hooks/use-pos-tab";
 import { useItemVoid } from "@/hooks/use-item-void";
-import { Button } from "@/components/ui/button";
+import { useKotPrintBridge } from "@/hooks/use-kot-print-bridge";
+import { useSelfOrderAutoPrint } from "@/hooks/use-self-order-auto-print";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   CategorySidebar,
@@ -21,13 +20,11 @@ import {
 import { ProductGrid, GridSkeleton } from "@/components/pos/ProductGrid";
 import { Cart } from "@/components/pos/Cart";
 import { MobileCartBar } from "@/components/pos/MobileCartBar";
-import { TableSelector } from "@/components/pos/TableSelector";
-import { CustomerSearch } from "@/components/pos/CustomerSearch";
-import { OpenTabsButton } from "@/components/pos/OpenTabsButton";
-import { OrderReceipt } from "@/components/pos/OrderReceipt";
-import { KOTReceipt } from "@/components/pos/KOTReceipt";
+import { PosHeader } from "@/components/pos/PosHeader";
+import { PrintSources } from "@/components/pos/PrintSources";
 import { PosPrompts } from "@/components/pos/PosPrompts";
-import { printConfigOf, receiptPageStyle } from "@/lib/print";
+import { printConfigOf } from "@/lib/print";
+import { buildCartProps } from "@/lib/pos-cart-props";
 import type { Product } from "@/types";
 
 // POS modals are interaction-gated — load their chunks lazily so they stay out
@@ -42,6 +39,10 @@ const PaymentModal = dynamic(
 );
 const VoidItemDialog = dynamic(
   () => import("@/components/pos/VoidItemDialog").then((m) => m.VoidItemDialog),
+  { ssr: false },
+);
+const MoveTableDialog = dynamic(
+  () => import("@/components/orders/MoveTableDialog").then((m) => m.MoveTableDialog),
   { ssr: false },
 );
 
@@ -71,6 +72,7 @@ export default function PosPage() {
   const [modifierProduct, setModifierProduct] = useState<Product | null>(null);
   const [modifierOpen, setModifierOpen] = useState(false);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
+  const [moveTableOpen, setMoveTableOpen] = useState(false);
 
   // Print only after the receipt/KOT DOM reflects the freshly-placed order.
   const {
@@ -87,47 +89,37 @@ export default function PosPage() {
   // constant.
   const printCfg = printConfigOf(pos.settings.data);
 
-  const receiptRef = useRef<HTMLDivElement>(null);
-  const print = useReactToPrint({
-    contentRef: receiptRef,
-    documentTitle: pos.lastOrder?.orderId ?? "receipt",
-    pageStyle: receiptPageStyle(printCfg.bill.paperWidth),
-  });
-
-  // kotPrinting keeps this effect from re-firing while a job is in flight, and the
-  // receipt effect below waits for shouldPrintKot to clear. Both exist because
-  // react-to-print reuses ONE iframe — see the print-chain note in lib/print.ts for
-  // why two jobs in a single tick silently kill one of them (CR1.2).
-  const kotPrinting = useRef(false);
-  const kotRef = useRef<HTMLDivElement>(null);
-  const printKot = useReactToPrint({
-    contentRef: kotRef,
-    documentTitle: pos.lastOrder ? `KOT-${pos.lastOrder.orderId}` : "kot",
-    pageStyle: receiptPageStyle(printCfg.kot.paperWidth),
-    onAfterPrint: () => {
-      kotPrinting.current = false;
-      clearPrintKot();
+  // Both useReactToPrint jobs, the guard ref, and the chaining effects live in
+  // this shared hook now — see its own file for why (CR1.2's fixed-id-iframe
+  // note carries over unchanged).
+  const { receiptRef, kotRef, printBusy } = useKotPrintBridge({
+    lastOrder,
+    shouldPrintKot,
+    clearPrintKot,
+    kotPaperWidth: printCfg.kot.paperWidth,
+    receipt: {
+      shouldPrintReceipt,
+      clearPrintReceipt,
+      billPaperWidth: printCfg.bill.paperWidth,
     },
   });
 
-  // Kitchen ticket first, one print job at a time: the receipt effect below
-  // waits for shouldPrintKot to clear before it fires.
-  useEffect(() => {
-    if (shouldPrintReceipt && lastOrder && !shouldPrintKot) {
-      print();
-      clearPrintReceipt();
-    }
-  }, [shouldPrintReceipt, lastOrder, shouldPrintKot, clearPrintReceipt, print]);
-
-  useEffect(() => {
-    if (shouldPrintKot && lastOrder && !kotPrinting.current) {
-      kotPrinting.current = true;
-      printKot();
-    }
-  }, [shouldPrintKot, lastOrder, printKot]);
+  // CR2.3 §20 — registers this page's KOT print bridge with PosPulseProvider
+  // and auto-prints an opted-in device's self-orders; busy on ANY print job
+  // queued or physically in flight (printBusy — the bridge tracks the receipt
+  // through onAfterPrint, review C3: an auto KOT landing mid-receipt would
+  // swap lastOrder under the customer's receipt) or an in-flight order write.
+  useSelfOrderAutoPrint({
+    enabled: true,
+    busy: printBusy || pos.isBusy,
+    queueKotRound: pos.queueKotRound,
+  });
 
   const handleProductClick = (product: Product) => {
-    if (product.modifiers.length > 0) {
+    // A variation item must never add straight to the cart — there is no
+    // meaningful default size, so the modal's required chooser is the only
+    // way to pick the price that gets billed.
+    if (product.modifiers.length > 0 || (product.variations?.length ?? 0) > 0) {
       setModifierProduct(product);
       setModifierOpen(true);
     } else {
@@ -143,66 +135,24 @@ export default function PosPage() {
     setModifierOpen(true);
   };
 
-  const cartProps = {
-    items: pos.cart,
-    subtotal: pos.subtotal,
-    discount: pos.discount,
-    gstAmount: pos.gstAmount,
-    gstRate: pos.gstRate,
-    // Required, so the cart footer, the mobile sticky bar and the payment modal
-    // are the SAME number by construction — they cannot drift again.
-    total: pos.total,
-    discountRaw: pos.discountRaw,
-    discountUnit: pos.discountUnit,
-    onDiscountRawChange: pos.setDiscountRaw,
-    onDiscountUnitChange: pos.setDiscountUnit,
-    charge: pos.charge,
-    chargeLabel: pos.chargeLabel,
-    entitledCharge: pos.entitledCharge,
-    onChargeChange: pos.setChargeOverride,
-    // undefined = "untouched", which puts the bill back on the table's own
-    // charge (or the tab's snapshot) rather than pinning it to a number.
-    onChargeReset: () => pos.setChargeOverride(undefined),
-    onUpdateQty: pos.updateQty,
-    onRemove: pos.removeFromCart,
-    onClear: pos.clearCart,
-    notes: pos.notes,
-    onNotesChange: pos.setNotes,
-    onSendToKitchen: pos.sendToKitchen,
-    onPayNow: pos.payNow,
-    onSettle: pos.settle,
-    onCloseTab: pos.requestCloseTab,
-    onVoidItem: () => itemVoid.setOpen(true),
-    resumedOrderId: pos.resumedOrder?.orderId,
-    nextRound: (pos.resumedOrder?.kotRounds ?? 0) + 1,
-    isBusy: pos.isBusy,
-  };
+  const cartProps = buildCartProps(pos, () => itemVoid.setOpen(true));
 
   return (
     <div className="flex h-[calc(100dvh-7rem)] min-h-[30rem] flex-col gap-3 pb-16 md:pb-0">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-xl font-bold tracking-tight">POS Terminal</h2>
-        <div className="flex flex-wrap items-center gap-2">
-          {pos.lastOrder && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={pos.reprintKot}
-              title={`Print kitchen ticket for ${pos.lastOrder.orderId}`}
-            >
-              <ChefHat className="mr-2 h-4 w-4" /> KOT
-            </Button>
-          )}
-          <OpenTabsButton tabs={openTabs.data ?? []} onResume={pos.requestResume} />
-          <TableSelector
-            tables={tables.data}
-            value={pos.table}
-            onChange={pos.setTable}
-            disabled={!!pos.resumedOrder}
-          />
-          <CustomerSearch value={pos.customer} onChange={pos.setCustomer} />
-        </div>
-      </div>
+      <PosHeader
+        lastOrder={pos.lastOrder}
+        onReprintKot={pos.reprintKot}
+        openTabs={openTabs.data ?? []}
+        onResumeTab={pos.requestResume}
+        resumedOrder={pos.resumedOrder}
+        isBusy={pos.isBusy}
+        onMoveTable={() => setMoveTableOpen(true)}
+        tables={tables.data}
+        table={pos.table}
+        onTableChange={pos.setTable}
+        customer={pos.customer}
+        onCustomerChange={pos.setCustomer}
+      />
 
       <div className="grid min-h-0 flex-1 gap-3 md:grid-cols-[1fr_22rem]">
         <div className="flex min-h-0 gap-3">
@@ -289,28 +239,33 @@ export default function PosPage() {
         onConfirm={itemVoid.confirm}
       />
 
-      {/* Off-screen print sources — cloned by react-to-print. */}
-      <div
-        className="pointer-events-none absolute left-[-9999px] top-0"
-        aria-hidden
-      >
-        <OrderReceipt order={pos.lastOrder} settings={pos.settings.data} ref={receiptRef} />
-        <KOTReceipt
-          order={pos.lastOrder}
-          settings={pos.settings.data}
-          roundItems={pos.kotRoundItems ?? undefined}
-          roundLabel={pos.kotRoundLabel}
-          // The ticket number the server allocated for THIS slip — round n's
-          // own number, or a void slip's. Undefined on a full reprint, which
-          // matches no single ticket the kitchen was handed.
-          roundNumber={pos.kotRoundNumber}
-          variant={pos.kotVariant}
-          reason={pos.voidReason}
-          voidedBy={pos.voidedBy}
-          voidedAt={pos.voidedAt}
-          ref={kotRef}
-        />
-      </div>
+      <MoveTableDialog
+        order={pos.resumedOrder}
+        open={moveTableOpen}
+        onOpenChange={setMoveTableOpen}
+        // `kot:false` — the move's own slip IS the kitchen's paper; a round
+        // ticket here would tell them to cook again. `keepUnfired:true` —
+        // unsent cart lines are still owed and must survive the re-sync. No
+        // `chargeSent` — the move never carries a charge, so a waiver the
+        // operator already promised must not be cleared by this re-sync.
+        onMoved={(order) =>
+          pos.applyTabUpdate(order, { kot: false, keepUnfired: true })
+        }
+      />
+
+      <PrintSources
+        order={pos.lastOrder}
+        settings={pos.settings.data}
+        kotRef={kotRef}
+        kotRoundItems={pos.kotRoundItems}
+        kotRoundLabel={pos.kotRoundLabel}
+        kotRoundNumber={pos.kotRoundNumber}
+        kotVariant={pos.kotVariant}
+        voidReason={pos.voidReason}
+        voidedBy={pos.voidedBy}
+        voidedAt={pos.voidedAt}
+        receiptRef={receiptRef}
+      />
     </div>
   );
 }

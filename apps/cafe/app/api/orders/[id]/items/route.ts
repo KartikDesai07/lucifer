@@ -1,6 +1,7 @@
 import mongoose, { type FilterQuery } from "mongoose";
 import { connectDB } from "@/lib/db";
 import { Order, type IOrder } from "@/models/Order";
+import { Product } from "@/models/Product";
 import cache from "@/lib/cache";
 import {
   success,
@@ -17,6 +18,7 @@ import { printConfigOf, printedSlipNumber } from "@/lib/print";
 import { nextSlipSequence } from "@/models/Counter";
 import { voidGuardFilter } from "@/lib/order-void";
 import { addItemsSchema } from "@/schemas";
+import { checkItemVariations } from "@/lib/variations";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +46,25 @@ export async function POST(req: Request, { params }: Params) {
 
   try {
     await connectDB();
+
+    // A product sold by size must never reach the kitchen as a bare name, and a
+    // variation the product does not have must never be printed as if it did.
+    // One indexed query, and only when the payload could possibly be affected —
+    // checked BEFORE the CAS write below, so a bad round never touches the tab.
+    const productIds = parsed.data.items
+      .map((it) => it.productId)
+      .filter(mongoose.isValidObjectId);
+    if (productIds.length) {
+      const products = await Product.find({ _id: { $in: productIds } })
+        .select("name variations")
+        .lean();
+      const bad = checkItemVariations(
+        products.map((p) => ({ _id: String(p._id), name: p.name, variations: p.variations })),
+        parsed.data.items,
+      );
+      if (bad) return failure(bad, 400);
+    }
+
     const old = await Order.findById(id).lean();
     if (!old) return notFound("Order not found");
     if (old.status !== "Pending" || old.payment !== "Unpaid") {

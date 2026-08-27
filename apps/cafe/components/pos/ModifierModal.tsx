@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Minus, Plus } from "lucide-react";
 
 import { effectivePrice } from "@/hooks/use-cart";
-import { inr } from "@/lib/utils";
+import { inr, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -23,6 +23,9 @@ export interface AddToCartOpts {
   modifiers: string[];
   instructions: string;
   qty: number;
+  // The variation name the operator picked, required (below) whenever the
+  // product carries any — absent for a product sold one way only.
+  variation?: string;
 }
 
 interface ModifierModalProps {
@@ -44,6 +47,11 @@ export function ModifierModal({
   const [selected, setSelected] = useState<string[]>([]);
   const [instructions, setInstructions] = useState("");
   const [qty, setQty] = useState(1);
+  // Undefined = nothing picked yet. A variation item has no meaningful
+  // default (Small vs Large) — seeding this with variations[0] would let the
+  // confirm button fire right away and silently bill the cheapest size, so it
+  // starts empty and confirm stays disabled below until the operator taps one.
+  const [variation, setVariation] = useState<string | undefined>(undefined);
 
   // Reset the form each time a new product is opened.
   useEffect(() => {
@@ -51,12 +59,25 @@ export function ModifierModal({
       setSelected([]);
       setInstructions("");
       setQty(1);
+      setVariation(undefined);
     }
   }, [open, product?._id]);
 
   if (!product) return null;
 
-  const unit = effectivePrice(product);
+  const hasVariations = (product.variations?.length ?? 0) > 0;
+  const chosenVariation = variation
+    ? product.variations?.find((v) => v.name === variation)
+    : undefined;
+  // Before a size is picked there is no unit price to show — falling back to
+  // the base `price` here would look exactly like the silent default this
+  // modal must not offer, so it stays `null` until a variation is chosen.
+  const unit = chosenVariation
+    ? effectivePrice({ price: chosenVariation.price, discount: product.discount })
+    : hasVariations
+      ? null
+      : effectivePrice(product);
+  const confirmDisabled = hasVariations && !variation;
 
   const toggle = (modifier: string, checked: boolean) => {
     setSelected((prev) =>
@@ -65,7 +86,12 @@ export function ModifierModal({
   };
 
   const confirm = () => {
-    onConfirm(product, { modifiers: selected, instructions: instructions.trim(), qty });
+    onConfirm(product, {
+      modifiers: selected,
+      instructions: instructions.trim(),
+      qty,
+      variation,
+    });
     onOpenChange(false);
   };
 
@@ -75,11 +101,46 @@ export function ModifierModal({
         <DialogHeader>
           <DialogTitle>{product.name}</DialogTitle>
           <DialogDescription>
-            {inr(unit)} each — choose add-ons and quantity.
+            {unit === null
+              ? "Pick a variation to continue."
+              : `${inr(unit)} each — choose add-ons and quantity.`}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
+          {hasVariations && (
+            <div className="space-y-2">
+              <Label>Variation (required)</Label>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {product.variations!.map((v) => {
+                  const active = v.name === variation;
+                  const price = effectivePrice({
+                    price: v.price,
+                    discount: product.discount,
+                  });
+                  return (
+                    <button
+                      key={v.name}
+                      type="button"
+                      onClick={() => setVariation(v.name)}
+                      className={cn(
+                        "rounded-md border py-2 text-sm font-semibold transition-colors",
+                        active
+                          ? "border-primary bg-accent ring-2 ring-primary ring-offset-1"
+                          : "hover:border-primary hover:bg-accent",
+                      )}
+                    >
+                      {v.name}
+                      <span className="block text-xs font-normal text-muted-foreground">
+                        {inr(price)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {product.modifiers.length > 0 && (
             <div className="space-y-2">
               <Label>Add-ons</Label>
@@ -138,8 +199,12 @@ export function ModifierModal({
         </div>
 
         <DialogFooter>
-          <Button onClick={confirm} className="w-full sm:w-auto">
-            Add {qty} — {inr(unit * qty)}
+          <Button
+            onClick={confirm}
+            disabled={confirmDisabled}
+            className="w-full sm:w-auto"
+          >
+            {unit === null ? "Pick a variation" : `Add ${qty} — ${inr(unit * qty)}`}
           </Button>
         </DialogFooter>
       </DialogContent>

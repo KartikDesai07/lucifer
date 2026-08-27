@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { Minus, Plus, Trash2 } from "lucide-react";
 
+import { orderItemLabel } from "@pos/shared/utils";
 import { inr, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type { CartItem } from "@/hooks/use-cart";
@@ -44,7 +45,7 @@ export function CartLine({
     <li className={cn("rounded-md p-2", locked ? "opacity-70" : "hover:bg-muted/50")}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{item.name}</p>
+          <p className="truncate text-sm font-medium">{orderItemLabel(item)}</p>
           {item.modifiers.length > 0 && (
             <p className="truncate text-xs text-muted-foreground">
               {item.modifiers.join(", ")}
@@ -92,7 +93,7 @@ export function CartLine({
             size="icon"
             className="h-7 w-7 text-muted-foreground hover:text-destructive"
             onClick={() => onRemove?.(item.lineId)}
-            aria-label={`Remove ${item.name}`}
+            aria-label={`Remove ${orderItemLabel(item)}`}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>

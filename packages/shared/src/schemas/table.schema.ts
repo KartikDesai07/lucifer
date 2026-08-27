@@ -10,6 +10,7 @@ import {
   TABLE_CHARGE_LABEL_MAX_LEN,
   TABLE_CHARGE_LABEL_MESSAGE,
   TABLE_CHARGE_LABEL_PATTERN,
+  TABLE_REORDER_MAX,
 } from "../constants";
 
 // The shape of a table's identity, shared by every schema that carries a tableNo
@@ -120,6 +121,28 @@ export const updateTableSchema = z.object({
   expectedCurrentOrderId: z.string().max(40).optional(),
 });
 
+// PATCH /api/tables (admin) — the floor plan's hand arrangement. The WHOLE
+// ordered list is sent rather than a pair of swapped positions: a full list
+// cannot leave two tables sharing a position or half-apply a swap, and it costs
+// one round trip instead of two (the Categories screen's two-PUT swap can do
+// both). Names only — a position is derived from the index, never accepted, so a
+// client cannot invent a sparse or colliding arrangement.
+export const reorderTablesSchema = z
+  .object({
+    tableNos: z
+      .array(tableNoSchema)
+      .min(1, "Send the tables to arrange")
+      .max(TABLE_REORDER_MAX, `At most ${TABLE_REORDER_MAX} tables`),
+  })
+  .strict()
+  // Anchored to a field on purpose: validateBody surfaces only `fieldErrors`, so
+  // a path-less refinement would reach the operator as a bare "Validation failed".
+  .refine((d) => new Set(d.tableNos).size === d.tableNos.length, {
+    path: ["tableNos"],
+    message: "The same table appears twice",
+  });
+
 export type CreateTableInput = z.infer<typeof createTableSchema>;
 export type PatchTableInput = z.infer<typeof patchTableSchema>;
 export type UpdateTableInput = z.infer<typeof updateTableSchema>;
+export type ReorderTablesInput = z.infer<typeof reorderTablesSchema>;

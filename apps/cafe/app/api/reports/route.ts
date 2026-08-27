@@ -88,7 +88,19 @@ export async function GET(req: Request) {
           { $unwind: "$items" },
           {
             $group: {
-              _id: "$items.name",
+              // Grouped by the name AS SOLD, so two sizes of one dish are two
+              // rows. Grouping on the bare name merged "Sp. Coco (Small)" and
+              // "Sp. Coco (Large)" into one line whose qty was real but whose
+              // revenue belonged to two different prices — unreadable for the
+              // one question this table exists to answer, which size sells.
+              // Matches orderItemLabel's format exactly (@pos/shared/utils).
+              _id: {
+                $cond: [
+                  { $gt: [{ $strLenCP: { $ifNull: ["$items.variation", ""] } }, 0] },
+                  { $concat: ["$items.name", " (", "$items.variation", ")"] },
+                  "$items.name",
+                ],
+              },
               qty: { $sum: "$items.qty" },
               revenue: {
                 $sum: { $multiply: ["$items.price", "$items.qty"] },

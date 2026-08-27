@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
+import { stripComments } from "@/lib/source-pin-utils";
+
 // Eleven defects were just fixed in the customer due-payment history UI
 // (DuePaymentHistory / DuePaymentEditDialog / DuePaymentDeleteDialog /
 // CustomerHistoryDialog's Orders tab) and nothing pinned any of them — a
@@ -26,8 +28,6 @@ const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel),
 // These pins forbid/require CODE shapes, so they must look at code and not at
 // prose — a comment explaining the rule would otherwise trip the very pin
 // meant to enforce it. (This bit this repo once already on a banned-string pin.)
-const stripComments = (src: string) =>
-  src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
 const DUE_PAYMENT_HISTORY = "apps/cafe/components/customers/DuePaymentHistory.tsx";
 const DUE_PAYMENT_EDIT_DIALOG = "apps/cafe/components/customers/DuePaymentEditDialog.tsx";

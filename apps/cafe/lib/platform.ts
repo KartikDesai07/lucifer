@@ -9,6 +9,9 @@ export type HostingTier = "A" | "B";
 export const HOSTING_TIER: HostingTier =
   process.env.HOSTING_TIER === "A" ? "A" : "B";
 
+// Stores an UPLOAD can be directed at (env-selected, below). Deliberately does
+// NOT include "local": product images are a whole menu's worth of bytes and
+// stay on the asset plane, so `IMAGE_STORE=local` must not typecheck.
 export type ImageStore = "r2" | "cloudinary";
 
 // The image store NEW uploads target (F2.11 retargeted the asset plane to the

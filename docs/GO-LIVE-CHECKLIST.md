@@ -39,11 +39,15 @@ Nothing in §1 can start until all of these exist.
       answers a plain "Image uploads are not configured", and
       `productImageUrl()` returns null so every surface just renders no image.
       The whole POS — orders, KOT, dues, receipts, reports, end-of-day — works.
-      What the cafe loses until a store is configured: **product photos and the
-      Settings logo**. The receipt simply prints without a logo, and never
-      invents a brand in its place.
+      What the cafe loses until a store is configured: **product photos only**.
+      Both logos — the restaurant's mark (bills, kitchen tickets, sidebar) and
+      the product's mark (browser tab, login screen) — are stored in the
+      cafe's **own database** and need no R2/Cloudinary account at all; a cafe
+      with no image store configured still prints a logo on every receipt.
       Adding a store later needs a **redeploy**, because the public base URL is
-      a `NEXT_PUBLIC_*` value baked in at build time.
+      a `NEXT_PUBLIC_*` value baked in at build time — this does **not** apply
+      to the logos, since the branding route is same-origin and needs no
+      `NEXT_PUBLIC_*` value.
 - [ ] **A host, decided.** The app resolves *which cafe it is serving* from the
       request host, so the host and two env vars have to agree. Two supported
       shapes:
@@ -151,6 +155,11 @@ Nothing in §1 can start until all of these exist.
 - [ ] Atlas Network Access allows `0.0.0.0/0` (Vercel has no static egress IPs).
 - [ ] R2 bucket CORS allows `PUT` + content-type from
       `https://<client-slug>.<root-domain>`.
+- [ ] **The 3 free Vercel WAF custom rules for the public QR-ordering surface**
+      created — Project → **Security** → **WAF** → Custom rules — blocking
+      obvious abuse patterns against `/m` and `/api/public/*` (the public menu
+      and diner order endpoints). Hobby gets 3 custom rules + 3 IP blocks;
+      native rate limiting is Pro.
 - [ ] `GET /api/health` returns HTTP 200 with `ok: true` and `db: "up"`. A 503
       carrying `db: "down"` means the app is running but cannot reach the
       cluster — check the Atlas allowlist and `MONGODB_URI` before continuing.
@@ -212,13 +221,21 @@ to a placeholder brand on paper.
 | Address | 200 | receipt header block |
 | Header note | 200 | receipt, above the items (e.g. `GST included · Dine-in`) |
 | Footer message | 120 | receipt, last line |
-| Logo | — | receipt header + sidebar |
+| Restaurant logo | — | bills, kitchen tickets, sidebar |
+| Product logo | — | browser tab, login screen |
 | Show GST on bills | — | enables the tax block |
 | GST number | 20 | receipt, **only on bills that carried GST** |
 | GST rate (%) | 0–100 (quick picks 0/5/12/18/28) | tax maths |
 | GST mode | inclusive / exclusive | how the total is composed |
 | FSSAI number | 20 | receipt, under GSTIN — **independent of the GST toggle** |
 | Show prices on KOT | off by default | kitchen ticket |
+| Appearance preset | 6 choices | sets the public (QR) menu's colors, both light and dark |
+| Font pair | 6 choices | sets the public menu's typography |
+| Hero image | 1200 px longest edge · 1 MB | banner shown at the top of the public menu |
+| Self-order mode | approve / auto | how a diner's QR order reaches the kitchen |
+| Let diners pick a table | on / off | whether the shared menu link lets a diner pick or change their table |
+| Show past orders to diners | reserved — no diner screen exists yet | — |
+| Promo codes | ≤20 codes, uppercase, percent or flat, whole rupees | discount a diner can type in at checkout |
 
 - [ ] Restaurant name set (this is the only required field).
 - [ ] **Tagline and Footer message are intentionally EMPTY until the cafe sets
@@ -230,11 +247,20 @@ to a placeholder brand on paper.
       Get this right before the first real bill — changing it later does not
       rewrite bills already printed (each order keeps its own tax snapshot).
 - [ ] FSSAI number entered if they have one (standard on Indian cafe bills).
-- [ ] **Logo uploaded.** Pick a wide, high-contrast image; it prints monochrome
-      at roughly 120×56 px on an 80 mm roll. The browser downscales to ≤600 px
-      and re-encodes before upload; source files above ~20 MB are refused and
-      the result must land under ~2 MB. Replacing a logo later leaves the old
-      file behind in storage — harmless.
+- [ ] **Restaurant logo uploaded.** This is the mark printed on bills and
+      kitchen tickets, and shown in the sidebar. Pick a wide, high-contrast
+      image — it prints monochrome at roughly 120×56 px on an 80 mm roll.
+- [ ] **Product logo uploaded — or deliberately left blank.** This is the mark
+      shown in the browser tab and on the login screen, not on any receipt.
+      Leaving it empty is fine: the app then serves its own built-in mark, so
+      the tab never shows a framework default.
+- [ ] **Both logos**, whichever is uploaded: PNG, JPEG and WebP only. The
+      browser downscales to `IMAGE_MAX_DIMENSION_PX` (600 px, longest edge) and
+      re-encodes before upload; a logo must land under `MAX_BRANDING_BYTES`
+      (512 KB) after that resize.
+- [ ] Both logos are stored in the cafe's **own database** — no Cloudflare R2 or
+      Cloudinary account is needed for either one. Menu-item photos still need
+      one of those configured (§0).
 - [ ] Saved, then verified **on paper** in §7 — a logo that looks fine on screen
       can print as a grey smear.
 
@@ -274,6 +300,56 @@ tables before service.
       before renaming or removing it". Free it from the Tables page first.
 - [ ] Tell them: **renaming a table never rewrites past bills.** Old bills keep
       the old name, permanently and by design.
+
+### Arranging the floor plan (admin only)
+
+- [ ] **Arrange** (top right of `Tables`) turns the tile grid into a list with
+      up/down arrows — the same interaction as the `Categories` screen. **Done**
+      switches back.
+- [ ] Tell them what it is FOR: this order is also the order tables appear in
+      **the POS table picker**, so the tables they run busiest belong at the top
+      and staff stop hunting for them mid-rush.
+- [ ] Each arrow tap saves immediately (no Save button). If a save fails the row
+      snaps back and a toast says so — nothing is left half-arranged.
+- [ ] A table added later lands at the **end** of the arrangement, never at the
+      top. Un-arranged floor plans stay in plain name order, so this is safe to
+      never touch. Note that plain name order is alphabetical, so `T-10` sorts
+      before `T-2` — arranging is how a cafe fixes that.
+- [ ] Arranging is admin-only, and it never touches occupancy: a table's status,
+      its open tab, and its charge are all untouched by moving it up or down.
+
+### Moving a live tab to another table (ANY staff)
+
+- [ ] Tell them where it is: `POS` → resume the tab → the table button in the
+      header becomes **Move table**. Also on `Orders` → open the order →
+      **Move table**. Only for a tab that is still open and already has a table.
+- [ ] Only **free** tables can be picked. A table already running a bill, or
+      reserved, is refused with the reason — the app never silently moves one
+      tab onto another's table.
+- [ ] The kitchen gets a **TABLE MOVED** slip naming the old → new table. It
+      deliberately lists **no items**, so nobody cooks the order twice. Tell them
+      to hand it over rather than shout across the pass.
+- [ ] **A move never changes the bill.** If the tab was opened with a table
+      charge it keeps that charge and that name; if the new table has a charge,
+      moving does **not** add it. Changing what a bill is charged is still only
+      the cart's charge row (§4 above).
+- [ ] A walk-in tab (no table) cannot be moved — the button is greyed. Seating a
+      walk-in tab is not supported in v1.
+
+### QR codes for the tables (admin only, `Tables` → `QR codes`)
+
+- [ ] `Tables` → **QR codes** → **Print** — one A4 sheet, rendered in an
+      isolated print iframe so no admin sidebar or header ever reaches the
+      paper. A table with no QR minted yet shows **Generate QR** instead of a
+      code; tap it once, then print.
+- [ ] Cut along the grid: **one sticker per table**, stuck on that table only.
+- [ ] Tell them: any extra or unrecognised code stuck on a table is
+      suspicious — a fraudulent sticker pasted over the real one is a
+      documented real-world attack, and software cannot catch it.
+- [ ] **Regenerating a table's token instantly kills the printed sticker.**
+      The old code stops resolving the moment a new one is minted — print and
+      stick the replacement before removing the old one, or that table goes
+      unscannable in between.
 
 ---
 
@@ -320,6 +396,38 @@ Two routes: type it in, or import a CSV. For more than ~30 items, import.
       file path**. Add photos from the product form (`Add product` / edit).
 - [ ] Spot-check in the POS: a product with modifiers, a discounted product, and
       an archived one.
+
+### Items sold in sizes (variations)
+
+- [ ] Where: the product form's **Has variations** switch. Each row is a *name*
+      the operator picks at order time plus that size's **own price** (Small 109
+      / Large 149). Up to 20 rows; two rows cannot share a name.
+- [ ] Tell them the base **Price** field stops being what a guest pays once
+      variations are on — the picked size's price is what bills. Keep it as the
+      reference/default figure.
+- [ ] Tell them what the POS then does: the menu tile shows a **price range**,
+      and tapping it **forces** a size choice — there is no default, so nobody
+      can accidentally sell a Large at the Small price. **Add** stays disabled
+      until a size is tapped.
+- [ ] Two sizes of one dish are **separate cart lines** at their own prices.
+- [ ] The size prints on the **KOT**, the **customer bill**, the **VOID slip**,
+      and shows in the cart, the order sheet and the void trail — everywhere the
+      dish name appears.
+- [ ] Reports: **Top Products** lists each size as its own row, so they can see
+      which size actually sells.
+- [ ] Turning **Has variations** OFF removes the sizes and puts the item back on
+      its single base price. Say it out loud: this does **not** rewrite any past
+      bill or any open tab — those keep the size and the price they were rung up
+      with.
+- [ ] The **CSV import cannot express variations** (there is no column for it).
+      A re-import of an item that has sizes leaves its sizes untouched — it will
+      not wipe them, and it cannot add them either. Sizes are set in the form
+      only.
+- [ ] If an admin renames or removes a size while a till is open, that till may
+      still show the old one for up to 5 minutes. The order is then **rejected
+      with a clear message** rather than billed wrong, and the menu refreshes
+      immediately so the retry works. Tell them that message is expected, not a
+      fault.
 
 ---
 
@@ -406,6 +514,74 @@ Tick a box only after **looking at the paper**.
 
 - [ ] Sign-off recorded: date, device, Chrome + Firefox versions, printer model,
       who witnessed it.
+
+### Self-order alerts and auto-print (CR2.3, per device)
+
+Diners can self-order from the QR menu; the counter is alerted to a new
+request, and an accepted self-order's kitchen ticket can print without a
+tap — but both only work on a device that keeps one particular screen open.
+
+- [ ] On the printer/counter device, keep the **POS** screen or the **Order
+      requests** screen open. `Alerts and auto-print only work while this
+      panel is open on this device — keep this screen open at the counter.`
+- [ ] On `Order requests`, under **This device's alerts**: switch **Auto-print
+      self-orders** ON for this device — it defaults to **OFF**, so a device
+      must be opted in before it starts firing tickets on its own.
+- [ ] After opening the screen, tap it once anywhere — that click is the
+      gesture that unlocks the alert sound (the browser blocks audio until a
+      real click/keypress); without it the ping stays silent even with
+      **Alert sound** ON.
+
+### QR self-ordering — the diner device leg
+
+Run this on the **live deployed site**, with a **cheap Android phone on the
+cafe WiFi**, and the **counter device logged in**. Folds in the §20 a–f
+counter-device checks, §21 Telegram acceptance, and the §22.6 browser legs —
+one list, run once.
+
+- [ ] **Print the QR sheet** (`Tables` → **QR codes** → **Print**) — one
+      sheet, no admin sidebar on the paper, each cell whole across page
+      breaks; stick **one** code per table.
+- [ ] **Scan a table sticker with the phone** → the menu opens with that
+      table's name and its charge line, no login.
+- [ ] **Search** "cha" → results narrow; clear → full menu returns; a
+      category tab and search work together.
+- [ ] **Sold-out mid-session**: mark an item out of stock from admin → within
+      ≤90s the tile stays visible, greyed, badged, and untappable; a line
+      already in the cart drops with a notice; a *pending* order holding it
+      now shows the "remove that item to save the rest of your order" copy on
+      Save.
+- [ ] **Order end-to-end**: ≤4 taps to submit → a short code → the status
+      timeline Sent ✓ → Confirming… → Being prepared, advancing when staff
+      accept.
+- [ ] **Edit** the pending order (qty down, a note, a promo code), then Save;
+      then try to edit it again after staff have opened it → the locked
+      copy, not a stuck spinner.
+- [ ] **On the printer/counter device** (§7's alerts/auto-print, above): (a)
+      a diner submit pings within ≤20s; (b) badge, bar and tab title change
+      with the tab hidden; (c) auto mode with the device toggle ON prints the
+      KOT **once**, even with a second tab open; (d) cancelling the print
+      dialog still allows a reprint; (e) toggle OFF still lets the bar's
+      Print button work; (f) with the toggle off and no request pending, the
+      bar stays invisible.
+- [ ] **Telegram acceptance** (needs a real bot): BotFather → `/newbot` →
+      paste the token into **Settings → Integrations** on the **live site,
+      never a preview** → connect a phone via the invite link → place a QR
+      order → the connected phone pings.
+- [ ] **Browser/theme legs**: dark-mode emulation AND a real dark-mode phone —
+      the cart Drawer and a variation Sheet both paint the preset's **dark**
+      tokens and the chosen font pair, matching the **light** rendering seen
+      earlier; only the selected pair's `.woff2` downloads; saving Appearance
+      reflects on `/m` within ≤45s or one reload; picking a hero image
+      **without** Save leaves `/m` unchanged; dragging the accent picker
+      shows no jank.
+- [ ] **Staleness / edge re-check**: after a Settings save, time how long
+      `/m` keeps serving the old GST/table-change setting — confirm ≤90s, and
+      that a submitted order's **server** quote is always live regardless.
+      Note whether Vercel's CDN caches `/api/public/menu` at all — this rests
+      on `max-age` with no `s-maxage`, and is not proven either way.
+- [ ] Record: date, phone model, Android/Chrome version, WiFi network, who
+      witnessed it.
 
 ### Hazards to check for, and what to tell the client
 
@@ -571,6 +747,16 @@ Not bugs. Say them before the client discovers them mid-service.
   individual items instead.
 - Orders are stored in the current money format; a future platform update
   migrates them. No action for the client.
+- **A QR order is a request, not a placed order, until staff accept it.**
+  Nothing reaches the kitchen or the ledger before that tap. Separately: the
+  counter POS can still sell an item marked out of stock — that is a
+  deliberate staff override, not a bug.
+- **Clearing the phone's browser loses that device's order history.** There
+  is no diner login on the public menu — a diner's own device is the only
+  record of what they ordered.
+- **Self-order alerts and auto-print only work on a device with a POS or
+  Order requests tab open.** Nothing pings or prints on a device with neither
+  screen open.
 
 ---
 
@@ -608,5 +794,51 @@ the test fails — fix the code or this file, never just this file.
 | GST rate quick picks | 0, 5, 12, 18, 28 | `GST_RATES` |
 | Settings max lengths | name 60 · tagline 80 · mobile 20 · address 200 · header 200 · footer 120 · GSTIN 20 · FSSAI 20 | `settingsSchema` |
 | Image downscale / size cap | 600 px · 2 MB | `IMAGE_MAX_DIMENSION_PX` / `MAX_IMAGE_BYTES` |
+| Branding (logo) size cap | 512 KB | `MAX_BRANDING_BYTES` |
 | Print page setup | `@page { size: 80mm auto; margin: 4mm; } @media print { body { margin: 0; } }` | `RECEIPT_PAGE_STYLE` |
 | Seed commands | `seed:admin`, `seed:tables` | `apps/cafe/package.json` |
+| Auto-print self-orders default | OFF | `readDevicePrefs()` (`lib/pos-device-prefs.ts`) |
+| Self-order alert limitation | `Alerts and auto-print only work while this panel is open on this device — keep this screen open at the counter.` | `SELF_ORDER_ALERT_LIMITATION` |
+| Telegram webhook secret header | `X-Telegram-Bot-Api-Secret-Token` | `TELEGRAM_SECRET_HEADER` |
+| Telegram allowed updates | `message` | `TELEGRAM_ALLOWED_UPDATES` |
+| Telegram invite link TTL | 24 hours | `TELEGRAM_INVITE_TTL_MS` |
+| Telegram webhook path | `/api/telegram/webhook` | `app/api/telegram/webhook/route.ts` |
+| Hero image longest edge | 1200 | `HERO_MAX_DIMENSION_PX` |
+| Appearance presets | 6 | `PRESET_IDS` |
+| Hero image byte cap | 1MB | `BRANDING_SLOT_MAX_BYTES.heroImage` |
+| Public menu URLs | `/m` · `/m/<token>` | `PUBLIC_MENU_PATH` |
+| Table QR token length | 14 | `PUBLIC_TOKEN_LENGTH` |
+| Diner order code length | 10 | `PUBLIC_CODE_LENGTH` |
+| Diner order caps | 30 lines · qty 20 | `PUBLIC_ORDER_MAX_ITEMS` / `PUBLIC_ORDER_MAX_QTY` |
+| Diner submit rate limit | 8 per table · 20 parcel · per 10 min | `PUBLIC_ORDER_RATE_MAX` / `PUBLIC_ORDER_RATE_MAX_PARCEL` / `PUBLIC_ORDER_RATE_WINDOW_MS` |
+| Pending request expiry | 12 hours | `PUBLIC_REQUEST_PENDING_TTL_MS` |
+| Sold-out message | `"<item>" is sold out` | `SOLD_OUT_ERROR` |
+| Diner status poll | 5s for 60s, then 30s | `PublicOrderStatus.tsx` |
+
+---
+
+## Telegram procedures (CR2.3b)
+
+Settings → Integrations → Telegram alerts. Optional; the in-panel tray and
+bell alerts work regardless of whether this is ever set up.
+
+- **Rotating the bot token.** In Telegram, message **@BotFather** →
+  `/token` → pick the bot → copy the new token it hands back. In the panel,
+  paste that new token into the same "Connect a bot" field and save again —
+  this re-validates it, mints a fresh webhook secret, and re-registers the
+  webhook. The OLD token stops working the moment BotFather issues the new
+  one, so do this back-to-back, not "at some point later."
+- **`AUTH_SECRET` / `NEXTAUTH_SECRET` rotation.** The stored bot token and
+  webhook secret are encrypted at rest under a key derived from that env var.
+  Rotating it (a redeploy with a new secret) makes the stored credentials
+  unreadable — the card shows **"Re-paste your bot token"** instead of the
+  connected state. Nothing is lost: paste the same BotFather token back in
+  and save. Every chat that was already connected (staff who tapped the
+  invite link) stays connected — reconnecting the bot does not clear the chat
+  list.
+- **Always run Telegram setup from the LIVE deployed site, never a preview
+  URL.** The webhook URL is derived from the request that clicked "Connect,"
+  so setting it up from a Vercel preview deployment (`proj-hash-team.vercel.app`)
+  registers a webhook that stops working the moment that preview is torn
+  down. Connect, Repair, and Disconnect must all be run from the production
+  domain.

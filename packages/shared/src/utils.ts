@@ -123,14 +123,30 @@ export function orderLineKey(item: {
   kotRound?: number;
   instructions?: string;
   modifiers?: string[];
+  variation?: string;
 }): string {
-  return [
+  const base = [
     item.productId,
     item.kotRound ?? 0,
     item.qty,
     item.instructions ?? "",
     [...(item.modifiers ?? [])].sort().join(MODIFIER_SEP),
-  ].join(LINE_KEY_SEP);
+  ];
+  // The variation is part of a line's identity — a Small and a Large of the same
+  // dish, same round, same qty are NOT interchangeable, and a void must not be
+  // able to take the wrong one off the tab. Appended ONLY when the line has one,
+  // so every key for an item sold one way stays byte-identical to the pre-
+  // variations format: a tab opened before this shipped keeps matching its own
+  // void echoes across the deploy instead of 409ing on the first void.
+  return (item.variation ? [...base, item.variation] : base).join(LINE_KEY_SEP);
+}
+
+// The one place a line's display name is built: the product name, plus the
+// variation it was sold as when it has one. Used by the cart, both receipts, the
+// void slip and the order sheet — a second hand-written `${name} (${variation})`
+// anywhere is how the bill and the kitchen ticket start disagreeing.
+export function orderItemLabel(item: { name: string; variation?: string }): string {
+  return item.variation ? `${item.name} (${item.variation})` : item.name;
 }
 
 const CAFE_OFFSET_MS = CAFE_UTC_OFFSET_MINUTES * 60 * 1000;

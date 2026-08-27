@@ -150,6 +150,17 @@ function ProductCard({
   const price = effectivePrice(product);
   const hasDiscount = product.discount > 0;
   const hasOptions = product.modifiers.length > 0;
+  // A variation item bills at whichever size the operator picks in the modal,
+  // never at this tile's base `price` — showing the min–max range up front
+  // (same figures the modal offers) keeps the number here from surprising
+  // anyone once the line lands in the cart.
+  const variationPrices = product.variations?.map((v) =>
+    effectivePrice({ price: v.price, discount: product.discount }),
+  );
+  const priceRange =
+    variationPrices && variationPrices.length > 0
+      ? { min: Math.min(...variationPrices), max: Math.max(...variationPrices) }
+      : null;
 
   return (
     <button
@@ -204,11 +215,19 @@ function ProductCard({
       </span>
 
       <span className="flex w-full items-center gap-1.5">
-        <span className="text-base font-bold tabular-nums">{inr(price)}</span>
-        {hasDiscount && (
-          <span className="text-xs tabular-nums text-muted-foreground line-through">
-            {inr(product.price)}
+        {priceRange ? (
+          <span className="text-base font-bold tabular-nums">
+            {inr(priceRange.min)} – {inr(priceRange.max)}
           </span>
+        ) : (
+          <>
+            <span className="text-base font-bold tabular-nums">{inr(price)}</span>
+            {hasDiscount && (
+              <span className="text-xs tabular-nums text-muted-foreground line-through">
+                {inr(product.price)}
+              </span>
+            )}
+          </>
         )}
         <span className="ml-auto flex shrink-0 items-center gap-1">
           {outOfStock ? (

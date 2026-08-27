@@ -4,6 +4,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
+import { stripComments } from "@/lib/source-pin-utils";
+
 // A review found that customer-privacy.test.ts pins the HELPER functions
 // (maskCustomer/maskCustomers/stripMobileForRole/canSeeFullMobile — masking,
 // non-mutation) but nothing pins that the ROUTES and COMPONENTS actually CALL
@@ -24,8 +26,6 @@ const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel),
 // These pins forbid/require CODE shapes, so they must look at code and not at
 // prose — a comment explaining the rule would otherwise trip the very pin
 // meant to enforce it. (This bit this repo once already on a banned-string pin.)
-const stripComments = (src: string) =>
-  src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
 // Scans forward from an opening `(` at `openIdx`, counting paren depth, and
 // returns the index of its MATCHING closing `)`. A naive `indexOf(")")` from

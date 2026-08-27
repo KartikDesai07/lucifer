@@ -29,6 +29,29 @@ export async function getSettings(): Promise<ISettings> {
   return doc;
 }
 
+// Read-ONLY twin of getSettings(), for render paths that must not write.
+//
+// getSettings() upserts, and a `$setOnInsert`-only upsert is NOT a no-op: with
+// `timestamps: true` Mongoose adds its own `updatedAt` to the update, so every
+// call mutates the document. Verified by probe — three consecutive calls
+// returned three different `updatedAt` values. That is harmless from a route a
+// signed-in user hit, but the root layout's metadata renders on `/login`, which
+// is PUBLIC: calling getSettings() there would let anonymous traffic drive one
+// write per cache window against a 512MB M0 that has no backups.
+//
+// Returns null when the cafe has no Settings document yet (a freshly provisioned
+// cluster) — callers on a render path must degrade, never create it. Shares the
+// cache key with getSettings() so a settings save invalidates both.
+export async function readSettings(): Promise<ISettings | null> {
+  const hit = cache.get<ISettings>(SETTINGS_CACHE_KEY);
+  if (hit) return hit;
+
+  await connectDB();
+  const doc = (await Settings.findOne().lean()) as ISettings | null;
+  if (doc) cache.set(SETTINGS_CACHE_KEY, doc, TTL.SETTINGS);
+  return doc;
+}
+
 // Just the GST fields the bill math needs. A real ISettings doc always has
 // these populated (schema defaults, never undefined), so this delegates to
 // the client-safe twin (`lib/receipt.gstConfigOfSettings`) — its `??`
