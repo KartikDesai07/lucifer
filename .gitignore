@@ -69,6 +69,14 @@ next-env.d.ts
 # in a browser, never published or pushed
 /docs/progress-tracker.html
 
+# owner-side working files — never part of the product repo
+# changes/ = client screenshots / change requests (owner rule 2026-08-28)
+/changes/
+# stray local artefacts: a saved HTML dump and Windows-mangled test-output
+# dumps (a scratchpad path flattened into a filename) — junk, never commit
+/cjs_followed.js
+*scratchpad*-tests.txt
+
 # NOTE: `vercel link` appends `.vercel` and `.env*` here on every run. Both are
 # already covered above (`.vercel`, and `.env` + `.env.*` with the deliberate
 # `!.env.example` negation) — and a trailing `.env*` would sit AFTER that
