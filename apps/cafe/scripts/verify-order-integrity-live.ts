@@ -28,6 +28,10 @@
  */
 import mongoose from "mongoose";
 import { orderLineKey } from "@pos/shared/utils";
+// CB-5B S15 — the ONE shared amount-gates-kind predicate. This leg's four
+// money-write oracles mirror the four production writers, so they must gate
+// on the same predicate the routes do, not on hand-written copies.
+import { shouldStoreDiscountKind } from "@pos/shared/reward-redemption";
 import { connectDB } from "@/lib/db";
 import { Order, type IOrder } from "@/models/Order";
 import { Customer } from "@/models/Customer";
@@ -138,21 +142,33 @@ interface BuildOrderOptions {
 // Pure: mirrors app/api/orders/route.ts's create-time money resolution exactly —
 // `computeOrderTotals` re-derives the discount when `discountKind === "gst"`
 // (the supplied `discount` is IGNORED in that case), and the stored kind is
-// gated on the re-derived amount being > 0 (a preset that nets ₹0 on a tiny
-// bill stores no kind at all). Split from buildOrder so the CB-2.8 legs can
-// inspect the oracle `totals` directly rather than re-deriving them a second
-// time from the seeded document.
+// gated through the SHARED `shouldStoreDiscountKind` predicate (a "gst" preset
+// that nets ₹0 on a tiny bill stores no kind at all; a "reward" kind stores
+// even at ₹0). Split from buildOrder so the CB-2.8 legs can inspect the oracle
+// `totals` directly rather than re-deriving them a second time from the seeded
+// document.
+//
+// CB-5B S15 — this gate used to be a hand-written
+// `totals.discount > 0 && discountKind === "gst"` copy. Because
+// `DiscountKind` is "gst" | "reward", that copy was typed to accept "reward"
+// but resolved it to `undefined`, so this ORACLE disagreed with the route it
+// claims to mirror for every zero-amount reward (an item reward always, a
+// flat reward on a ₹0 subtotal, a percent reward rounding to 0). A leg whose
+// oracle enforces a rule production abandoned certifies the wrong behaviour,
+// so the kind term now routes through the one shared predicate. The stored
+// kind is the RESOLVED kind, never the "gst" literal.
 function resolveOrderCreateTotals(
   items: FixtureItem[],
   discount: number,
   discountKind: DiscountKind | null | undefined,
   cfg: GstConfig,
 ) {
+  const resolvedKind = discountKind ?? undefined;
   const totals = computeOrderTotals({
-    items, discount, discountKind: discountKind ?? undefined, charge: 0, cfg,
+    items, discount, discountKind: resolvedKind, charge: 0, cfg,
   });
   const storedKind: DiscountKind | undefined =
-    totals.discount > 0 && discountKind === "gst" ? "gst" : undefined;
+    shouldStoreDiscountKind(totals.discount, resolvedKind) ? resolvedKind : undefined;
   return { totals, storedKind };
 }
 
@@ -245,11 +261,17 @@ function buildVoidWrite(
     ...voidGuardFilter(expectedVoids),
   };
   // A void never changes intent, so the stored kind rides through unchanged —
-  // EXCEPT when the re-derived discount lands at 0, where it must go (amount
-  // gates the kind), mirroring app/api/orders/[id]/items/void/route.ts's exact
-  // condition. $set never carries discountKind here (a void does not (re-)set
-  // it, only clears it), so this stays exclusive with the $set above by
-  // construction — the same exclusivity the items/settle writers keep explicit.
+  // EXCEPT when the re-derived discount lands at 0 AND the shared predicate
+  // also says no, mirroring app/api/orders/[id]/items/void/route.ts's exact
+  // three-term condition. $set never carries discountKind here (a void does
+  // not (re-)set it, only clears it), so this stays exclusive with the $set
+  // above by construction — the same exclusivity the items/settle writers
+  // keep explicit.
+  //
+  // CB-5B S15 — the `discount === 0` term is BYTE-IDENTICAL to before; only
+  // the predicate term was added, exactly as the route's own widening did. A
+  // void must NOT strip a reward's stamps-spent provenance just because the
+  // re-derived amount reads 0.
   const update: Record<string, unknown> = {
     $set: {
       items: resolution.nextItems,
@@ -260,7 +282,11 @@ function buildVoidWrite(
     },
     $push: { voids: resolution.entry },
   };
-  if (old.discountKind !== undefined && resolution.totals.discount === 0) {
+  if (
+    old.discountKind !== undefined &&
+    resolution.totals.discount === 0 &&
+    !shouldStoreDiscountKind(resolution.totals.discount, old.discountKind)
+  ) {
     update.$unset = { discountKind: "" };
   }
   return { ok: true as const, resolution, filter, update };
@@ -307,8 +333,10 @@ function buildItemsWrite(
   kotTicket?: number,
   // CB-2.8: mirrors app/api/orders/[id]/items/route.ts's own body field
   // exactly — undefined (the default) = leave the tab's stored kind alone,
-  // null = the operator cleared the preset, "gst" = (re-)apply it. Defaulted
-  // to undefined so every existing round-fire leg above stays byte-identical.
+  // null = the operator cleared the preset, a DiscountKind = (re-)apply it.
+  // Defaulted to undefined so every existing round-fire leg above stays
+  // byte-identical. CB-5B S15 — the type is the full DiscountKind
+  // ("gst" | "reward"), not the "gst" literal this comment once named.
   discountKindBody?: DiscountKind | null,
 ) {
   const round = (old.kotRounds ?? 0) + 1;
@@ -321,8 +349,13 @@ function buildItemsWrite(
   const totals = computeOrderTotals({
     items: fullItems, discount, discountKind, charge, cfg: gstCfg,
   });
-  // Amount gates the kind, mirrors the route's own `storeKind` exactly.
-  const storeKind = totals.discount > 0 && discountKind === "gst";
+  // CB-5B S15 — mirrors the route's own `storeKind` exactly, which routes
+  // through the SHARED `shouldStoreDiscountKind` predicate: amount gates the
+  // kind for "gst", but a "reward" kind stores even at ₹0. Was a hand-written
+  // `totals.discount > 0 && discountKind === "gst"` copy, which resolved a
+  // carried-forward reward kind to "no kind" and $unset it on every added
+  // round — the add-round path is exactly where a tab's reward must survive.
+  const storeKind = shouldStoreDiscountKind(totals.discount, discountKind);
   const kotNumbers = buildKotNumbers(old.kotNumbers, round, kotTicket);
 
   const filter = {
@@ -346,7 +379,10 @@ function buildItemsWrite(
       total: totals.total,
       kotRounds: round,
       ...(totals.charge > 0 ? { chargeAmount: totals.charge } : {}),
-      ...(storeKind ? { discountKind: "gst" } : {}),
+      // The RESOLVED kind, never the "gst" literal — mirrors the route's own
+      // `...(storeKind ? { discountKind } : {})` (CB-5B S15). Storing the
+      // literal would rewrite a carried-forward reward tab's kind to "gst".
+      ...(storeKind ? { discountKind } : {}),
       ...(kotNumbers ? { kotNumbers } : {}),
     },
   };
@@ -372,8 +408,11 @@ function buildSettleWrite(
     discount?: number;
     // CB-2.8: mirrors settle/route.ts's own body field exactly — undefined
     // (the default) = leave the tab's stored kind alone, null = the operator
-    // cleared the preset, "gst" = (re-)apply it. Defaulted to undefined so
-    // every existing settle leg above stays byte-identical.
+    // cleared the preset, a DiscountKind = (re-)apply it. Defaulted to
+    // undefined so every existing settle leg above stays byte-identical.
+    // CB-5B S15 — the type is the full DiscountKind ("gst" | "reward"), not
+    // the "gst" literal this comment once named: a reward claimed at settle
+    // arrives here, and the store gate below now handles it.
     discountKind?: DiscountKind | null;
     // Settle-time waiver/adjustment of the table charge — mirrors resolveSettleMoney's
     // own option: undefined leaves the tab's stored charge alone.
@@ -416,11 +455,15 @@ function buildSettleWrite(
       unset.chargeAmount = "";
       unset.chargeLabel = "";
     }
-    // Amount gates the kind, exclusive with the $set above — mirrors the
-    // route's exact branch (Mongo rejects a path in both operators of one
-    // update).
-    if (money.totals.discount > 0 && money.discountKind === "gst") {
-      set.discountKind = "gst";
+    // CB-5B S15 — the SHARED amount-gates-kind predicate, exclusive with the
+    // $set above, mirroring app/api/orders/[id]/settle/route.ts's exact
+    // branch (Mongo rejects a path in both operators of one update). Was a
+    // hand-written `discount > 0 && kind === "gst"` copy that stored the
+    // "gst" LITERAL, so a reward claimed at settle both failed the gate and
+    // would have been mislabelled if it passed. The stored value is the
+    // RESOLVED kind.
+    if (shouldStoreDiscountKind(money.totals.discount, money.discountKind)) {
+      set.discountKind = money.discountKind;
     } else {
       unset.discountKind = "";
     }

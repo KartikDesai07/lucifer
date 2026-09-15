@@ -7,6 +7,7 @@
 import { Types } from "mongoose";
 import { mintPublicCode } from "@/lib/public-token";
 import { computeOrderTotals, type OrderTotals } from "@/lib/receipt";
+import { shouldStoreDiscountKind } from "@pos/shared/reward-redemption";
 import { derivePayment } from "@/lib/order";
 import type {
   PlanContext,
@@ -143,7 +144,16 @@ export function assembleOrder(
     items,
     subtotal: totals.subtotal,
     discount: totals.discount,
-    ...(totals.discount > 0 && discountKind ? { discountKind } : {}),
+    // CB-5B S15 — the ONE shared amount-gates-kind predicate, not a
+    // hand-written `totals.discount > 0 && discountKind` copy. Behaviour here
+    // is IDENTICAL either way: `pickDiscount` narrows this seed's kind to
+    // "gst" | undefined, so the predicate's one named exception ("reward"
+    // stores even at ₹0) is structurally unreachable in the demo dataset —
+    // this seed deliberately plants no reward-bearing orders. Adopted anyway
+    // so the seed reads the SAME rule production enforces: if a future seed
+    // ever plants a reward tab, it inherits the right gate instead of
+    // silently dropping the kind (and the stamps-spent provenance with it).
+    ...(shouldStoreDiscountKind(totals.discount, discountKind) ? { discountKind } : {}),
     gstAmount: totals.gstAmount,
     gstRate: ctx.gst.gstEnabled ? ctx.gst.gstRate : 0,
     gstMode: ctx.gst.gstMode,
