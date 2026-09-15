@@ -14,6 +14,7 @@ import {
   PUBLIC_ORDER_MAX_QTY,
   PUBLIC_ORDER_MODIFIER_MAX_LEN,
 } from "../public";
+import { LOYALTY_MILESTONE_AT_MIN, LOYALTY_MILESTONE_AT_MAX } from "../loyalty-rules";
 
 // The shape of a public (diner-facing, unauthenticated) order request — phase
 // CR2. Pure and client-safe like public.ts: the diner's menu page bundles this
@@ -71,6 +72,25 @@ export const createPublicOrderRequestSchema = z
     // Shape-only here (max length = PROMO_CODE_PATTERN's own 16) — the route
     // resolves it against live Settings via resolvePromoDiscount, never here.
     promoCode: z.string().trim().min(1).max(16).optional(),
+    // CB-5B S8 (owner decision D4) — a diner-originated reward claim, as
+    // INTENT ONLY: the stamp COST of the rung being redeemed, an identifier
+    // into the OWNER-configured loyalty ladder, never an amount and never a
+    // dish. Exactly the same MONEY FENCE the staff path states
+    // (order.schema.ts's own `rewardAt`): a client that could send a reward
+    // VALUE could grant itself an unfunded discount, so the server resolves
+    // value/kind/dish from Settings and spends the stamps off the diner's own
+    // Customer row (lib/reward-claim.ts) at ACCEPT time.
+    //
+    // Shape-only here, bounded by the ladder's own limits so a nonsense value
+    // is rejected at the edge rather than scanned for. Whether this diner is
+    // signed in, owns those stamps, or is also sending a promo code are all
+    // decided by the route against live state — never by this schema.
+    requestedRewardAt: z
+      .number()
+      .int()
+      .min(LOYALTY_MILESTONE_AT_MIN)
+      .max(LOYALTY_MILESTONE_AT_MAX)
+      .optional(),
     name: z.string().trim().min(1).max(PUBLIC_NAME_MAX_LEN),
     mobile: z
       .string()

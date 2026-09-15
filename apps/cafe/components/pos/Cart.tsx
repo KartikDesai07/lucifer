@@ -1,6 +1,6 @@
 "use client";
 
-import { ShoppingCart, ChefHat, Ban, X } from "lucide-react";
+import { ShoppingCart, ChefHat, Ban, X, ChevronLeft } from "lucide-react";
 
 import { inr, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -8,9 +8,16 @@ import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { CartLine, CartSection } from "@/components/pos/CartLine";
 import { CartNotes } from "@/components/pos/CartNotes";
+import { CartReward } from "@/components/pos/CartReward";
+import { CartPromo } from "@/components/pos/CartPromo";
+import { POS_CART_CTA_CLASS, POS_CART_GST_BUTTON_CLASS, POS_CART_LIST_CLASS } from "@/lib/pos-layout";
+import { GST_DISCOUNT_LABEL } from "@/lib/constants";
 import type { CartItem } from "@/hooks/use-cart";
+import type { RungOffer } from "@/lib/reward-rungs";
 
-export type DiscountUnit = "₹" | "%";
+// "GST" = the GST-equivalent preset; the amount is DERIVED (usePosTotals, and
+// authoritatively the server), never typed.
+export type DiscountUnit = "₹" | "%" | "GST";
 
 export interface CartProps {
   items: CartItem[];
@@ -27,6 +34,7 @@ export interface CartProps {
   discountUnit: DiscountUnit;
   onDiscountRawChange: (value: number) => void;
   onDiscountUnitChange: (unit: DiscountUnit) => void;
+  canGstDiscount?: boolean; // the cafe charges GST, so the preset has something to discount — the button is hidden otherwise
   // The selected table's extra charge for this bill. `chargeLabel` is the
   // cafe's own name for it — the product never supplies a default, so an
   // unnamed charge simply does not render. `onChargeChange` writes the
@@ -44,6 +52,28 @@ export interface CartProps {
   // below), since a resumed tab's add-round payload carries no notes field.
   notes: string;
   onNotesChange: (value: string) => void;
+  // CB-5B S9 — the loyalty reward picker (D9.3: appears once a customer is
+  // selected). All optional/defaulted so a caller that predates this slice
+  // (or the mobile-sheet mount, before it is wired) still mounts safely with
+  // the panel simply rendering nothing.
+  customerSelected?: boolean;
+  rewardLoading?: boolean;
+  stamps?: number;
+  rewardOffers?: RungOffer[];
+  selectedRewardAt?: number | null;
+  // The resumed tab already carries a reward: the picker shows it, read-only.
+  rewardLocked?: boolean;
+  onSelectReward?: (at: number | null) => void;
+  // A2/D6: true while a manual ₹/%/GST discount is active — mutually
+  // exclusive with a reward claim (both sides fence this; see CartReward).
+  manualDiscountActive?: boolean;
+  // CB-5D part 2 — the COUNTER's promo-code intent (see CartPromo). All
+  // optional/defaulted for the same reason as the reward props above: a
+  // caller that predates this slice still mounts safely with the control
+  // simply rendering nothing.
+  promoCode?: string | null;
+  onApplyPromo?: (code: string) => void;
+  onRemovePromo?: () => void;
   // Actions — which render depends on tab state (see below).
   onSendToKitchen?: () => void; // fire new items (creates a tab or adds a round)
   onPayNow?: () => void; // immediate full payment (new order only)
@@ -55,6 +85,9 @@ export interface CartProps {
   nextRound?: number; // round number the next fire will create
   isBusy?: boolean; // disable actions while a mutation is in flight
   className?: string;
+  // Rendered only by the mobile sheet — a way back to the menu that does not
+  // fight the header's own Clear/Close controls.
+  onBack?: () => void;
 }
 
 // Cart panel: line items with qty steppers, an amount-or-% discount field, and
@@ -73,6 +106,7 @@ export function Cart({
   discountUnit,
   onDiscountRawChange,
   onDiscountUnitChange,
+  canGstDiscount,
   charge,
   chargeLabel,
   entitledCharge,
@@ -83,6 +117,17 @@ export function Cart({
   onClear,
   notes,
   onNotesChange,
+  customerSelected = false,
+  rewardLoading = false,
+  stamps,
+  rewardOffers = [],
+  selectedRewardAt = null,
+  rewardLocked = false,
+  onSelectReward,
+  manualDiscountActive = false,
+  promoCode = null,
+  onApplyPromo,
+  onRemovePromo,
   onSendToKitchen,
   onPayNow,
   onSettle,
@@ -92,23 +137,46 @@ export function Cart({
   nextRound,
   isBusy,
   className,
+  onBack,
 }: CartProps) {
   const resuming = !!resumedOrderId;
+  const gstActive = discountUnit === "GST";
   const fired = items.filter((it) => it.kotRound > 0);
   const fresh = items.filter((it) => it.kotRound === 0);
   const hasNew = fresh.length > 0;
 
   return (
-    <div className={cn("flex h-full flex-col rounded-lg border bg-card", className)}>
+    // The panel itself scrolls (both mounts): when the column or sheet is
+    // shorter than header + list floor + notes + footer, the footer's inputs
+    // and CTAs are reached by scrolling instead of overflowing the card edge.
+    <div
+      className={cn(
+        "flex h-full flex-col overflow-y-auto overscroll-contain rounded-lg border bg-card",
+        className,
+      )}
+    >
       <div className="flex items-center justify-between border-b px-4 py-3">
-        <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold">
-          <ShoppingCart className="h-4 w-4 shrink-0" />
-          {resuming ? (
-            <span className="truncate">Tab {resumedOrderId}</span>
-          ) : (
-            "Cart"
+        <div className="flex min-w-0 items-center gap-1">
+          {onBack && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              onClick={onBack}
+              aria-label="Back to menu"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
           )}
-        </h2>
+          <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold">
+            <ShoppingCart className="h-4 w-4 shrink-0" />
+            {resuming ? (
+              <span className="truncate">Tab {resumedOrderId}</span>
+            ) : (
+              "Cart"
+            )}
+          </h2>
+        </div>
         {resuming ? (
           <Button variant="ghost" size="sm" onClick={onCloseTab} disabled={isBusy}>
             <X className="mr-1 h-3.5 w-3.5" /> Close
@@ -122,7 +190,10 @@ export function Cart({
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+      {/* min-h (in the constant) keeps the list visible when the panel itself
+          scrolls — a short sheet (landscape phone, keyboard up) or a short
+          desktop window (1280×640 laptops at 150% scaling). */}
+      <div className={POS_CART_LIST_CLASS}>
         {items.length === 0 ? (
           <EmptyState
             className="h-full border-0"
@@ -181,13 +252,42 @@ export function Cart({
           <span>{inr(subtotal)}</span>
         </div>
 
+        {/* Owner decision, binding: the reward panel sits directly above
+            Discount so the two money decisions (reward vs. manual discount,
+            mutually exclusive — see CartReward) read as one group. */}
+        <CartReward
+          customerSelected={customerSelected}
+          loading={rewardLoading}
+          stamps={stamps}
+          offers={rewardOffers}
+          selectedAt={selectedRewardAt}
+          locked={rewardLocked}
+          onSelect={onSelectReward ?? (() => {})}
+          manualDiscountActive={manualDiscountActive}
+          disabled={items.length === 0 || isBusy}
+        />
+
+        {/* CB-5D part 2 — sits in the same money group as CartReward just
+            above it (owner decision, binding: see that comment). COURTESY
+            exclusion only: hidden while a reward is selected (rewardActive),
+            same idea as manualDiscountActive above — the server is the
+            actual fence. */}
+        <CartPromo
+          code={promoCode}
+          onApply={onApplyPromo ?? (() => {})}
+          onRemove={onRemovePromo ?? (() => {})}
+          rewardActive={selectedRewardAt !== null}
+          disabled={items.length === 0 || isBusy}
+        />
+
         <div className="flex items-center justify-between gap-2 text-sm">
           <span className="text-muted-foreground">Discount</span>
           <div className="flex items-center gap-1">
             <Input
               type="number"
               min={0}
-              value={discountRaw === 0 ? "" : discountRaw}
+              readOnly={gstActive}
+              value={gstActive ? discount : discountRaw === 0 ? "" : discountRaw}
               onChange={(e) =>
                 onDiscountRawChange(Math.max(0, Number(e.target.value) || 0))
               }
@@ -216,9 +316,24 @@ export function Cart({
           </div>
         </div>
 
+        {/* One tap discounts the GST component so the customer pays the pre-tax
+            figure; derived in usePosTotals and re-derived server-side — this panel only shows it. */}
+        {canGstDiscount && (
+          <Button
+            type="button"
+            variant={gstActive ? "default" : "outline"}
+            className={POS_CART_GST_BUTTON_CLASS}
+            aria-pressed={gstActive}
+            disabled={items.length === 0}
+            onClick={() => onDiscountUnitChange(gstActive ? "₹" : "GST")}
+          >
+            {GST_DISCOUNT_LABEL}
+          </Button>
+        )}
+
         {discount > 0 && (
           <div className="flex items-center justify-between text-sm text-destructive">
-            <span>Discount applied</span>
+            <span>{gstActive ? "GST Discount applied" : "Discount applied"}</span>
             <span>−{inr(discount)}</span>
           </div>
         )}
@@ -333,14 +448,14 @@ function CartActions({
     return (
       <div className="space-y-2">
         {hasNew && (
-          <Button className="w-full" size="lg" disabled={disabled} onClick={onSendToKitchen}>
+          <Button className={POS_CART_CTA_CLASS} size="lg" disabled={disabled} onClick={onSendToKitchen}>
             <ChefHat className="mr-2 h-4 w-4" /> Send round {nextRound}
           </Button>
         )}
         {/* Settle is blocked while there are unsent items — otherwise they'd be
             dropped from both the bill and the kitchen. Send the round first. */}
         <Button
-          className="w-full"
+          className={POS_CART_CTA_CLASS}
           size="lg"
           variant={hasNew ? "outline" : "default"}
           disabled={disabled || hasNew}
@@ -356,13 +471,20 @@ function CartActions({
       </div>
     );
   }
+  // D9.6: the two peer actions for a brand-new sale sit side by side (neither
+  // dominates the other the way Send-round/Settle do in the resuming branch
+  // above) so both are reachable without scrolling past one another.
+  // POS_CART_CTA_CLASS carries `w-full` (pos-layout-paths.test.ts pins the
+  // literal className={POS_CART_CTA_CLASS} on every CTA, so it cannot be
+  // combined with an extra class here) — `grid-cols-2` on the wrapper makes
+  // each Button's own `w-full` fill its column instead of the whole row.
   return (
-    <div className="space-y-2">
-      <Button className="w-full" size="lg" disabled={disabled} onClick={onSendToKitchen}>
+    <div className="grid grid-cols-2 gap-2">
+      <Button className={POS_CART_CTA_CLASS} size="lg" disabled={disabled} onClick={onSendToKitchen}>
         <ChefHat className="mr-2 h-4 w-4" /> Send to Kitchen
       </Button>
       <Button
-        className="w-full"
+        className={POS_CART_CTA_CLASS}
         size="lg"
         variant="outline"
         disabled={disabled}

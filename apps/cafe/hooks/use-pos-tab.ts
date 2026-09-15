@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import type { SettlementPayMode } from "@/lib/constants";
+import type { SettlementPayMode, DiscountKind } from "@/lib/constants";
 import { tableChargeOf } from "@/lib/receipt";
 import { useTables } from "@/hooks/use-tables";
 import { useCart, cartItemFromOrderItem, cartItemToInput, nextCartFromServerItems } from "@/hooks/use-cart";
@@ -12,6 +12,7 @@ import { usePosPrint } from "@/hooks/use-pos-print";
 import { useFreeTablePrompt } from "@/hooks/use-free-table-prompt";
 import { useSettings } from "@/hooks/use-settings";
 import { useCreateOrder, useAddOrderItems, useSettleOrder } from "@/hooks/use-orders";
+import { useRewardSelection } from "@/hooks/use-customer-rewards";
 import type { DiscountUnit } from "@/components/pos/Cart";
 import type { PaymentResult } from "@/components/pos/PaymentModal";
 import { collectedAmount } from "@/lib/payment-result";
@@ -43,10 +44,20 @@ export function usePosTab(receiver: string) {
   const [customer, setCustomer] = useState<Customer | undefined>();
   const [discountRaw, setDiscountRaw] = useState(0);
   const [discountUnit, setDiscountUnit] = useState<DiscountUnit>("₹");
+  // CB-5B S9 — the reward INTENT this session is choosing (stamp cost only,
+  // never an amount). Stays null while a resumed tab already carries a
+  // granted reward — see use-customer-rewards.ts's `existingRewardAt`.
+  const [rewardAt, setRewardAt] = useState<number | null>(null);
   const [resumedOrder, setResumedOrder] = useState<Order | null>(null);
   // Order-level note for a brand-new sale only — see buildCreatePayload and
   // Cart's `resuming` gate (a resumed tab's add-round payload carries none).
   const [notes, setNotes] = useState("");
+  // CB-5D part 2 — the COUNTER's promo-code INTENT this session is choosing
+  // (a code string only, never an amount — the server resolves it). Cleared
+  // on the exact same lifecycle as rewardAt/notes below (resetOrder/
+  // enterResume) so a stale code never silently rides onto the next
+  // customer's bill.
+  const [promoCode, setPromoCode] = useState<string | null>(null);
 
   // `undefined` = the operator has not touched the charge, so whatever the bill
   // is entitled to (the table's config for a new sale, the tab's snapshot for a
@@ -89,16 +100,47 @@ export function usePosTab(receiver: string) {
 
   const charge = chargeOverride ?? entitledCharge;
 
-  const { discount, gstAmount, gstRate, total } = usePosTotals({
+  // PRE-REWARD pricing, exactly like the server's own `plainTotals`
+  // (app/api/orders/route.ts) and the add-round route's `billTotal`: a rung's
+  // per-milestone `minBill` is gated against what the customer is spending
+  // BEFORE the reward, so a reward may never fund its own gate. This pass is
+  // also the only one that exists while nothing is selected.
+  const plain = usePosTotals({
     subtotal,
     discountRaw,
     discountUnit,
     charge,
     settings: settings.data,
   });
+  const discountKind: DiscountKind | undefined =
+    discountUnit === "GST" ? "gst" : undefined;
+
+  const reward = useRewardSelection(
+    customer, plain.total, resumedOrder, rewardAt, setRewardAt,
+    discountRaw, discountUnit, setDiscountRaw, setDiscountUnit,
+  );
+
+  // The figures every surface actually shows. Re-priced with the SELECTED rung
+  // so the cart footer, the mobile bar and the payment modal preview the same
+  // bill the server will store — before S9 wired a reward in, these were the
+  // same object, and the reward-blind version silently collected the
+  // undiscounted amount against a discounted order.
+  const { discount, gstAmount, gstRate, gstEnabled, total } = usePosTotals({
+    subtotal,
+    discountRaw,
+    discountUnit,
+    charge,
+    settings: settings.data,
+    reward: reward.selectedReward,
+  });
 
   const isBusy =
     createOrder.isPending || addItems.isPending || settleOrder.isPending;
+
+  // Work that a browser tab/window close would silently discard: a half-built
+  // round (unsent items) or a resumed open tab mid-edit. Drives useUnsavedGuard
+  // on the POS page (owner report 2026-09-06).
+  const dirty = newCount > 0 || resumedOrder !== null;
 
   const resetOrder = () => {
     clearCart();
@@ -106,9 +148,11 @@ export function usePosTab(receiver: string) {
     setCustomer(undefined);
     setDiscountRaw(0);
     setDiscountUnit("₹");
+    setRewardAt(null);
     setChargeOverride(undefined);
     setResumedOrder(null);
     setNotes("");
+    setPromoCode(null);
   };
 
   // Picking a different table means a different charge, so a waiver made
@@ -127,7 +171,15 @@ export function usePosTab(receiver: string) {
     items: cart.filter((ci) => ci.kotRound === 0).map(cartItemToInput),
     subtotal,
     discount,
+    // null = explicit clear; when "gst" the server ignores the number and re-derives.
+    discountKind: discountKind ?? null,
     gstAmount,
+    // CB-5B S9 — INTENT ONLY; `undefined` (omit) not `null` (not nullable).
+    rewardAt: reward.pendingRewardAt,
+    // CB-5D part 2 — INTENT ONLY, same omit-not-null rule as rewardAt above;
+    // the schema field is `.optional()`, not nullable, and the server only
+    // accepts this on CREATE (never add-round/settle — out of scope there).
+    promoCode: promoCode ?? undefined,
     // Sent ONLY when the operator actually touched it. Omitted, the server
     // applies the table's own current charge — which is more trustworthy than
     // anything this client could echo, since the tables list here is cached for
@@ -163,7 +215,8 @@ export function usePosTab(receiver: string) {
     // Mirror the server's (re-clamped) discount so the live cart footer total
     // stays in sync with the stored tab total after a fire (matches enterResume).
     setDiscountRaw(order.discount);
-    setDiscountUnit("₹");
+    // Restore the kind from the server's order — else every round-trip silently drops the preset (charge-waiver bug's class).
+    setDiscountUnit(order.discountKind === "gst" ? "GST" : "₹");
     // Drop the local waiver ONLY when the request that produced `order` actually
     // carried it — then the server has answered, `order` holds the charge it
     // stored, and `entitledCharge` reads straight off it. The void path carries
@@ -181,7 +234,20 @@ export function usePosTab(receiver: string) {
       const order = resumedOrder
         ? await addItems.mutateAsync({
             id: resumedOrder._id,
-            data: { items: newItems, discount, chargeAmount: chargeOverride },
+            // CB-5B S9 — the reward claim rides the add-round too, not just a
+            // brand-new sale: an OPEN TAB is exactly when the counter applies
+            // one. INTENT ONLY (`pendingRewardAt` is the chosen rung's `at`,
+            // never an amount), and it is already `undefined` for a tab that
+            // carries a reward, so the route's 409 is a backstop rather than
+            // the gate. `undefined` omits the key over JSON, which is what the
+            // optional schema field expects — never `null`.
+            data: {
+              items: newItems,
+              discount,
+              discountKind: discountKind ?? null,
+              chargeAmount: chargeOverride,
+              rewardAt: reward.pendingRewardAt,
+            },
           })
         : await createOrder.mutateAsync(buildCreatePayload({}));
       // Both branches carry chargeAmount, so the waiver is now durable on the
@@ -214,6 +280,7 @@ export function usePosTab(receiver: string) {
             // The operator can change the discount on a resumed tab right up to
             // settlement; the server re-clamps + recomputes the total from it.
             discount,
+            discountKind: discountKind ?? null,
             // Same rule as the create payload: only when they touched it.
             // Omitted leaves the tab's snapshotted charge exactly as it is.
             chargeAmount: chargeOverride,
@@ -223,7 +290,7 @@ export function usePosTab(receiver: string) {
             total: modalTotals.total,
           },
         });
-        print.setLastOrder(updated);
+        print.queueReceipt(updated);
       } else {
         const order = await createOrder.mutateAsync(
           buildCreatePayload({
@@ -243,6 +310,7 @@ export function usePosTab(receiver: string) {
         // so the kitchen actually gets it (the settle branch above fires
         // nothing new, so it must NOT print a KOT).
         print.queueKotRound(order);
+        print.queueReceipt(order);
         // POST /api/orders occupies the table on EVERY create, so a brand-new
         // Pay-Now sale against a table would otherwise leave it Occupied
         // forever — offer to free it now, before resetOrder() below clears
@@ -252,7 +320,6 @@ export function usePosTab(receiver: string) {
         }
       }
       setPaymentOpen(false);
-      print.setShouldPrintReceipt(true);
       resetOrder();
     } catch {
       /* hook rolled back + toasted; leave the modal open */
@@ -270,9 +337,17 @@ export function usePosTab(receiver: string) {
         : undefined,
     );
     setDiscountRaw(order.discount);
-    setDiscountUnit("₹");
+    setDiscountUnit(order.discountKind === "gst" ? "GST" : "₹");
+    // A stale in-progress pick — the resumed tab's own reward (if any)
+    // surfaces via `existingRewardAt` (resumedOrder.rewardAt), not this.
+    setRewardAt(null);
     // The tab's own snapshot governs from here — not the table's current config.
     setChargeOverride(undefined);
+    // CB-5D part 2 — a resumed tab never carries this session's own promo
+    // pick (the server only accepts promoCode on CREATE, never add-round/
+    // settle), so a code typed for a different customer must not silently
+    // ride onto whatever tab gets resumed next.
+    setPromoCode(null);
     hydrate(order.items.map((it, i) => cartItemFromOrderItem(it, i)));
   };
 
@@ -302,6 +377,7 @@ export function usePosTab(receiver: string) {
   const modalTotals = usePosModalTotals({
     resumedOrder,
     discount,
+    discountKind,
     chargeOverride,
     charge,
     chargeLabel,
@@ -320,15 +396,19 @@ export function usePosTab(receiver: string) {
     count,
     subtotal,
     newCount,
+    dirty,
     table,
     setTable: selectTable,
     customer,
     setCustomer,
     discountRaw,
-    setDiscountRaw,
+    setDiscountRaw: reward.onManualDiscountRaw,
     discountUnit,
-    setDiscountUnit,
+    setDiscountUnit: reward.onManualDiscountUnit,
     discount,
+    // CB-5B S9 — the reward picker's surface for Cart/CartReward. Spread, not
+    // hand-mirrored — same rationale as ...print/...freeTable below.
+    ...reward,
     // The table charge for this bill: what is being charged, what it prints as,
     // and the seam for the operator to waive or adjust it.
     charge,
@@ -337,9 +417,13 @@ export function usePosTab(receiver: string) {
     setChargeOverride,
     gstAmount,
     gstRate,
+    gstEnabled,
     total,
     notes,
     setNotes,
+    // CB-5D part 2 — the promo-code control's surface for Cart/CartPromo.
+    promoCode,
+    setPromoCode,
     addToCart,
     updateQty,
     removeFromCart,

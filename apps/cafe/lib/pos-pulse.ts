@@ -8,14 +8,22 @@ import {
   type PosPulseData,
   type PulseSelfOrder,
 } from "@pos/shared/self-order-alert";
+import { readPrintHostState } from "@/lib/print-host";
+import { readPrintJobFeeds } from "@/lib/print-queue-feeds";
 
-// CR2.3 D9/§20 — the two DB reads behind GET /api/order-requests/pulse (a
-// 20s hot path polled from every open dashboard tab) plus the claim primitive
-// behind POST /api/order-requests/[id]/kot-claim. Split from the route so a
-// later live-leg slice can drive both directly without an HTTP round trip.
-// `readPosPulse` is READ-ONLY by design: no Order lookup, no
-// pruneOrderRequests — the tray GET and the public POST already prune, and a
-// poll this frequent must never itself become a write.
+// CR2.3 D9/§20, amended by the print-host plan (§B4) — SIX bounded index
+// reads behind GET /api/order-requests/pulse (a 20s hot path polled from
+// every open dashboard tab): the two OrderRequest queries below, PLUS the
+// PrintHost singleton read and the D1 drain / D2 stale-band / D3 resolved-
+// readback print-job feeds (homed in lib/print-host.ts / lib/print-queue-feeds.ts,
+// not here, so this file keeps zero numeric limits and one responsibility).
+// Also split out: the claim primitive behind POST
+// /api/order-requests/[id]/kot-claim. Split from the route so a later
+// live-leg slice can drive both directly without an HTTP round trip.
+// `readPosPulse` is READ-ONLY by design: no pruneOrderRequests, no
+// prunePrintJobs/prunePrintJobsThrottled — the tray GET and the public POST
+// already prune OrderRequest, and the print-jobs/print-host routes already
+// prune PrintJob; a poll this frequent must never itself become a write.
 
 /** ISO string of the latest `updatedAt` across `rows`, or `null` when empty. */
 function maxUpdatedAtIso(rows: { updatedAt: Date }[]): string | null {
@@ -55,10 +63,16 @@ function toPulseSelfOrder(row: SelfOrderRow): PulseSelfOrder | null {
 
 /**
  * The full staff-attention poll payload (packages/shared/src/self-order-alert.ts's
- * `PosPulseData`). Exactly TWO bounded queries, both riding an existing index
- * — no write, no Order read. Caller (the pulse route) must `connectDB()` first.
+ * `PosPulseData`). SIX bounded reads total (two OrderRequest queries here,
+ * plus the PrintHost singleton and the D1/D2/D3 print-job feeds pulled in
+ * from lib/print-host.ts/lib/print-queue-feeds.ts) — no write, no Order read.
+ * Caller (the pulse route) must `connectDB()` first.
  */
 export async function readPosPulse(): Promise<PosPulseData> {
+  // ONE server clock read for the whole pulse — reused below for the
+  // self-order window math and passed down to the print-host reads.
+  const nowMs = Date.now();
+
   // Query A — open (actionable) requests, rides {status:1,createdAt:-1}.
   const openRows = await OrderRequest.find({ status: { $in: ["pending", "accepting"] } })
     .select("_id createdAt updatedAt")
@@ -82,7 +96,7 @@ export async function readPosPulse(): Promise<PosPulseData> {
     actor: SELF_ORDER_RECEIVER,
     acceptedKotRound: { $exists: true },
     kotPrintedAt: { $exists: false },
-    createdAt: { $gte: new Date(Date.now() - PULSE_SELF_ORDER_WINDOW_MS) },
+    createdAt: { $gte: new Date(nowMs - PULSE_SELF_ORDER_WINDOW_MS) },
   })
     .select("_id acceptedOrderId acceptedKotRound acceptedAt kotPrintedAt")
     .sort({ acceptedAt: -1 })
@@ -95,6 +109,27 @@ export async function readPosPulse(): Promise<PosPulseData> {
     if (mapped) selfOrders.push(mapped);
   }
 
+  // (C) the PrintHost singleton + (D1/D2/D3) the print-job drain/stale/
+  // resolved feeds — print-host plan §B4. Both reads are homed in their own
+  // libs (lib/print-host.ts, lib/print-queue-feeds.ts); this file stays read-only.
+  //
+  // FAIL-SOFT, unlike the two OrderRequest reads above: a PrintJob read
+  // failure (index build, post-deploy model registration, one slow read)
+  // must not 500 this whole 20s hot path — every open dashboard tab would
+  // freeze on the last-good TanStack `data`, so `selfOrders` would freeze
+  // too and no new QR self-order would ever auto-print again, silently
+  // (a stale-but-successful pulse renders identically to a fresh one). Only
+  // this try/catch is fail-soft; a real OrderRequest outage above must still
+  // surface as a 500.
+  let printHost: PosPulseData["printHost"];
+  let feeds: Awaited<ReturnType<typeof readPrintJobFeeds>>;
+  try {
+    [printHost, feeds] = await Promise.all([readPrintHostState(nowMs), readPrintJobFeeds(nowMs)]);
+  } catch {
+    printHost = null;
+    feeds = { printJobs: [], printJobsTruncated: false, stalePrintJobs: [], stalePrintJobsTruncated: false, resolvedPrintJobs: [], resolvedPrintJobsTruncated: false };
+  }
+
   return {
     openCount: openRows.length,
     openTruncated: openRows.length === PULSE_OPEN_SCAN_LIMIT,
@@ -105,6 +140,8 @@ export async function readPosPulse(): Promise<PosPulseData> {
     // Same length===limit proxy as openTruncated: "at least this many" — the
     // bar tells staff older unprinted tickets exist beyond what is shown.
     selfOrdersTruncated: selfRows.length === PULSE_SELF_ORDER_LIMIT,
+    printHost,
+    ...feeds,
   };
 }
 

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -20,9 +20,12 @@ import { stripComments } from "@/lib/source-pin-utils";
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel), "utf8");
 
-const SETTINGS_FORM = "apps/cafe/components/settings/SettingsForm.tsx";
+const USE_SETTINGS_SECTION_FORM = "apps/cafe/hooks/use-settings-section-form.ts";
+const SETTINGS_SECTIONS_TEST = "apps/cafe/lib/settings-sections.test.ts";
 const BILL_PRINT_CARD = "apps/cafe/components/settings/BillPrintCard.tsx";
 const KOT_PRINT_CARD = "apps/cafe/components/settings/KotPrintCard.tsx";
+const SETTINGS_COMPONENTS_DIR = "apps/cafe/components/settings";
+const SETTINGS_APP_DIR = "apps/cafe/app/(dashboard)/settings";
 
 // ── A — blankToMinStart: a real unit test of the coercion helper itself ─────
 
@@ -56,13 +59,20 @@ test("blankToMinStart: a non-numeric, non-blank string still floors to the minim
 });
 
 // ── B — Defect 4: Save must never be a silent no-op ─────────────────────────
+// CB-UI1 S6 re-point: the single 4-tab SettingsForm.tsx (and its tab router)
+// is retired — one react-hook-form instance now lives per section ROUTE
+// (use-settings-section-form.ts), so "switch to the tab owning the error"
+// becomes "name the section owning the error" (sectionForField) plus a
+// setFocus on THIS page's own field. Never weakened: the replacement below
+// still proves the operator gets feedback, is told WHERE to go for an
+// out-of-section error, and that no panel is ever conditionally unmounted.
 
-test("PIN: SettingsForm.tsx passes onInvalid as handleSubmit's second argument, and onInvalid raises a toast", () => {
-  const src = stripComments(readSrc(SETTINGS_FORM));
+test("PIN: use-settings-section-form.ts calls handleSubmit(onValid, onInvalid) and onInvalid raises a toast — Save must never be a silent no-op on any section route", () => {
+  const src = stripComments(readSrc(USE_SETTINGS_SECTION_FORM));
   assert.match(
     src,
-    /handleSubmit\(onSubmit,\s*onInvalid\)/,
-    "handleSubmit must be called with an onInvalid second argument — without it, an error on a hidden tab or an unmounted reveal produces NO feedback at all and the page becomes unsavable",
+    /handleSubmit\(onValid,\s*onInvalid\)/,
+    "handleSubmit must be called with an onInvalid second argument — without it, an error on this section's own hidden/unmounted field, or on a field belonging to a DIFFERENT section, produces NO feedback at all and the page becomes unsavable",
   );
   assert.match(
     src,
@@ -71,81 +81,111 @@ test("PIN: SettingsForm.tsx passes onInvalid as handleSubmit's second argument, 
   );
 });
 
-test("PIN: SettingsForm.tsx's onInvalid switches to the tab owning the first errored field, for appearance*, bill*/kot* AND telegram* fields", () => {
-  const src = stripComments(readSrc(SETTINGS_FORM));
+test("PIN: use-settings-section-form.ts's onInvalid resolves the errored field's OWNING SECTION via sectionForField, focuses it in-page when it belongs to THIS section, and otherwise names the other section rather than failing silently — the retired tab-switch router's replacement, one level more general (any of the 7 sections, not just appearance/bill/kot/telegram)", () => {
+  const src = stripComments(readSrc(USE_SETTINGS_SECTION_FORM));
   const fnStart = src.indexOf("const onInvalid");
   assert.ok(fnStart >= 0, "onInvalid must be defined");
-  const fnEnd = src.indexOf("return (", fnStart);
-  assert.ok(fnEnd > fnStart, "onInvalid must be defined before the component's return");
+  const fnEnd = src.indexOf("const submit", fnStart);
+  assert.ok(fnEnd > fnStart, "onInvalid must be defined before the hook builds `submit`");
   const body = src.slice(fnStart, fnEnd);
-  // CR2.4 S5 — appearance is a NESTED subdoc, so a failed superRefine reports
-  // one top-level "appearance" key (never "appearance.presetId"); the branch
-  // is checked first in source, ahead of bill*/kot*/telegram*.
+
   assert.match(
     body,
-    /firstField\.startsWith\("appearance"\)/,
-    "onInvalid must route to the appearance tab for the appearance field",
-  );
-  const appearanceIdx = body.indexOf('firstField.startsWith("appearance")');
-  const billKotIdx = body.indexOf('firstField.startsWith("bill")');
-  assert.ok(
-    appearanceIdx >= 0 && billKotIdx > appearanceIdx,
-    "the appearance branch must be checked BEFORE the bill*/kot* branch",
+    /const owner = sectionForField\(rootKey as keyof SettingsInput\);/,
+    "onInvalid must resolve the first errored field's owning section via sectionForField — a hardcoded tab-name router (appearance*/bill*/kot*/telegram* prefixes) cannot express a NEW section without a matching new prefix rule",
   );
   assert.match(
     body,
-    /firstField\.startsWith\("bill"\) \|\| firstField\.startsWith\("kot"\)/,
-    "onInvalid must route to the print tab for any bill*/kot* field — every print field is named that way by convention",
-  );
-  // CR2.3b §21 S7 — the Telegram tab ("Integrations") joined general/print;
-  // every Telegram field is named telegram* and must route there, without
-  // weakening the bill*/kot* pin above.
-  assert.match(
-    body,
-    /firstField\.startsWith\("telegram"\)/,
-    "onInvalid must route to the integrations tab for any telegram* field",
+    /owner\.slug === section\.slug/,
+    "onInvalid must compare the errored field's owning section against THIS page's own section — an error on a field belonging to a different section cannot be fixed from here",
   );
   assert.match(
     body,
-    /"integrations"/,
-    "the telegram* branch must land on the integrations tab, not print or general",
+    /const leaf = firstErrorLeaf\(formErrors\);/,
+    "onInvalid must walk to the first error LEAF (lib/form-errors.ts) - a nested appearance/promoCodes error reports under its container key with no message and no registered input, so the top-level key alone yields a generic toast and a no-op focus",
   );
-  assert.match(body, /setTab\(/, "onInvalid must actually switch tabs, not just report the error");
+  assert.match(
+    body,
+    /setFocus\(leaf\.path as Path<SettingsInput>\)/,
+    "an in-section error must focus the offending LEAF field (its dotted path is the registered name) - same intent as the retired router, one level deeper",
+  );
+  assert.match(
+    body,
+    /toast\.error\(leaf\.message \|\| "Check the highlighted field before saving"\)/,
+    "the in-section toast must carry the leaf's own message, with the generic line only as the fallback",
+  );
+  assert.match(
+    readSrc("apps/cafe/lib/form-errors.test.ts"),
+    /appearance\.accentOverride/,
+    "lib/form-errors.test.ts must pin the nested-object leaf case the hook relies on",
+  );
+  // Mutation this catches: silently swallowing an out-of-section error
+  // instead of naming where to go — the operator would see nothing at all
+  // for a legacy-invalid field elsewhere on the document.
+  assert.match(
+    body,
+    /toast\.error\(`Fix "\$\{owner\?\.title \?\? "another section"\}" first`\)/,
+    'the cross-section branch must toast `Fix "<other section title>" first` — never fail silently for an error this page cannot fix',
+  );
+
+  // The partition-parity guarantee this replacement leans on (every
+  // settingsSchema field belongs to exactly one SETTINGS_SECTIONS entry) is
+  // itself pinned, not assumed here — sectionForField cannot resolve a
+  // field for onInvalid to route unless every field is covered.
+  const parityTestSrc = readSrc(SETTINGS_SECTIONS_TEST);
+  assert.match(
+    parityTestSrc,
+    /Object\.keys\(settingsSchema\.shape\)/,
+    "lib/settings-sections.test.ts must pin the partition-parity assertion (union of every section's fields === Object.keys(settingsSchema.shape)) — onInvalid's sectionForField lookup is meaningless without it",
+  );
 });
 
-test("PIN: SettingsForm.tsx keeps ALL FOUR tab panels mounted (hidden via a class), never conditionally rendered — unmounting drops react-hook-form's registered values", () => {
-  const src = stripComments(readSrc(SETTINGS_FORM));
-  assert.match(
-    src,
-    /className=\{tab === "general" \? "space-y-6" : "hidden"\}/,
-    "the general panel must stay mounted, hidden via a class when inactive",
+test('PIN: no file under components/settings/ or app/(dashboard)/settings/ contains role="tablist"/role="tab" belonging to the retired SettingsForm tab router (excepting the pre-existing, unrelated AppearancePreview/AppearanceSegmentedField colour-scheme widget) — "keep every panel mounted, hidden via a class" is now obsolete BY CONSTRUCTION: one react-hook-form instance per route means there is no sibling panel to keep mounted at all', () => {
+  // Needle built by concatenation (testing.md grep-gate rule).
+  const roleAttr = "role" + "=";
+  const tablistValue = '"' + "tablist" + '"';
+  const tabValue = '"' + "tab" + '"';
+
+  const KNOWN_SEGMENTED_CONTROL_FILES = new Set([
+    `${SETTINGS_COMPONENTS_DIR}/AppearancePreview.tsx`,
+    `${SETTINGS_COMPONENTS_DIR}/AppearanceSegmentedField.tsx`,
+  ]);
+
+  const SKIP_DIRS = new Set(["node_modules", ".next"]);
+  function walk(dirAbs: string, out: string[]): void {
+    for (const entry of readdirSync(dirAbs)) {
+      if (SKIP_DIRS.has(entry)) continue;
+      const abs = path.join(dirAbs, entry);
+      const stat = statSync(abs);
+      if (stat.isDirectory()) walk(abs, out);
+      else if (/\.tsx?$/.test(entry)) out.push(abs);
+    }
+  }
+
+  const files: string[] = [];
+  walk(path.join(REPO_ROOT, SETTINGS_COMPONENTS_DIR), files);
+  walk(path.join(REPO_ROOT, SETTINGS_APP_DIR), files);
+  assert.ok(files.length > 5, "the walk must find a substantial number of files, or it found the wrong directory");
+
+  const offenders = files
+    .map((abs) => path.relative(REPO_ROOT, abs).split(path.sep).join("/"))
+    .filter((rel) => !KNOWN_SEGMENTED_CONTROL_FILES.has(rel))
+    .filter((rel) => {
+      const src = stripComments(readFileSync(path.join(REPO_ROOT, rel), "utf8"));
+      return new RegExp(`${roleAttr}${tablistValue}|${roleAttr}${tabValue}`).test(src);
+    });
+
+  assert.deepEqual(
+    offenders,
+    [],
+    `no file under components/settings/ or app/(dashboard)/settings/ (outside the known segmented-control exception) may declare role="tablist"/role="tab" — found: ${JSON.stringify(offenders)}`,
   );
-  // CR2.4 S5 — the 4th (Appearance) panel joins general/print/integrations,
-  // held to the exact same always-mounted discipline.
-  assert.match(
-    src,
-    /className=\{tab === "appearance" \? "space-y-6" : "hidden"\}/,
-    "the appearance panel must stay mounted, hidden via a class when inactive",
-  );
-  assert.match(
-    src,
-    /className=\{tab === "print" \? "space-y-6" : "hidden"\}/,
-    "the print panel must stay mounted, hidden via a class when inactive",
-  );
-  // CR2.3b §21 S7 — the third (Integrations) panel is held to the exact same
-  // discipline as the original two: mounted always, hidden via class.
-  assert.match(
-    src,
-    /className=\{tab === "integrations" \? "space-y-6" : "hidden"\}/,
-    "the integrations panel must stay mounted, hidden via a class when inactive",
-  );
-  assert.ok(
-    !/\{tab === "general" && /.test(src) &&
-      !/\{tab === "appearance" && /.test(src) &&
-      !/\{tab === "print" && /.test(src) &&
-      !/\{tab === "integrations" && /.test(src),
-    "no panel may be gated behind a conditional-render (&&) — that unmounts the inactive panel and react-hook-form drops its registered field values, silently resetting that tab's settings on the next save",
-  );
+
+  // Positive landmark (vision guard, testing.md): settings/page.tsx must
+  // reference SETTINGS_SECTIONS, proving the scan read real, non-empty
+  // source rather than passing vacuously on a blinded/empty file list.
+  const hubSrc = readSrc(`${SETTINGS_APP_DIR}/page.tsx`);
+  assert.match(hubSrc, /SETTINGS_SECTIONS/, "positive landmark: settings/page.tsx must reference SETTINGS_SECTIONS");
 });
 
 // ── C — Defect 4 (second half): turning a number toggle off resets its start ─

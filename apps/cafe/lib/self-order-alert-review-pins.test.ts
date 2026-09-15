@@ -37,6 +37,7 @@ const PULSE_LIB = "apps/cafe/lib/pos-pulse.ts";
 const PROVIDER = "apps/cafe/components/layout/PosPulseProvider.tsx";
 const ALERT_BAR = "apps/cafe/components/orders/RequestAlertBar.tsx";
 const POS_PAGE = "apps/cafe/app/(dashboard)/pos/page.tsx";
+const SELF_ORDER_AUTO_PRINT = "apps/cafe/components/pos/SelfOrderAutoPrint.tsx";
 const REQUESTS_PAGE = "apps/cafe/app/(dashboard)/requests/page.tsx";
 const SHARED_CONTRACT = "packages/shared/src/self-order-alert.ts";
 
@@ -129,7 +130,13 @@ test("C3: the bridge tracks the receipt through onAfterPrint and both pages gate
   // no consumer would leave C3 open (dead-wiring lesson).
   const pos = stripComments(readSrc(POS_PAGE));
   assert.match(pos, /const \{ receiptRef, kotRef, printBusy \} = useKotPrintBridge\(/, "pos page must take printBusy");
-  assert.match(pos, /busy:\s*printBusy \|\| pos\.isBusy/, "pos page must gate auto-print on printBusy");
+  assert.match(pos, /busy=\{printBusy \|\| pos\.isBusy\}/, "pos page must gate auto-print on printBusy (a JSX prop since CB-1d.3b — the hook runs in the SelfOrderAutoPrint child)");
+  const selfOrderAutoPrint = stripComments(readSrc(SELF_ORDER_AUTO_PRINT));
+  assert.match(
+    selfOrderAutoPrint,
+    /useSelfOrderAutoPrint\(\{ enabled: true, busy, queueKotRound \}\)/,
+    "the child must hand busy straight to the hook — a gate that stops at the prop is not a gate",
+  );
   const requests = stripComments(readSrc(REQUESTS_PAGE));
   assert.match(requests, /const \{ kotRef, printBusy \} = useKotPrintBridge\(/, "requests page must take printBusy");
   assert.match(requests, /busy:\s*printBusy \|\| acceptingId !== null/, "requests page must gate auto-print on printBusy");

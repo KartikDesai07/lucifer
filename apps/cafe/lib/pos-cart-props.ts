@@ -22,6 +22,7 @@ export function buildCartProps(pos: Pos, onVoidItem: () => void): CartProps {
     discountUnit: pos.discountUnit,
     onDiscountRawChange: pos.setDiscountRaw,
     onDiscountUnitChange: pos.setDiscountUnit,
+    canGstDiscount: pos.gstEnabled,
     charge: pos.charge,
     chargeLabel: pos.chargeLabel,
     entitledCharge: pos.entitledCharge,
@@ -34,6 +35,20 @@ export function buildCartProps(pos: Pos, onVoidItem: () => void): CartProps {
     onClear: pos.clearCart,
     notes: pos.notes,
     onNotesChange: pos.setNotes,
+    // CB-5B S9 — the loyalty reward picker. `customerSelected` gates the
+    // whole panel (D9.3); the rest is usePosTab's `...reward` spread as-is.
+    customerSelected: !!pos.customer,
+    rewardLoading: pos.rewardLoading,
+    stamps: pos.stamps,
+    rewardOffers: pos.rewardOffers,
+    selectedRewardAt: pos.selectedRewardAt,
+    rewardLocked: pos.rewardLocked,
+    onSelectReward: pos.onSelectReward,
+    manualDiscountActive: pos.manualDiscountActive,
+    // CB-5D part 2 — the promo-code control (see CartPromo/use-pos-tab.ts).
+    promoCode: pos.promoCode,
+    onApplyPromo: pos.setPromoCode,
+    onRemovePromo: () => pos.setPromoCode(null),
     onSendToKitchen: pos.sendToKitchen,
     onPayNow: pos.payNow,
     onSettle: pos.settle,

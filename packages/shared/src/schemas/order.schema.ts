@@ -10,11 +10,15 @@ import {
   VARIATION_NAME_MAX_LEN,
   VARIATION_NAME_MESSAGE,
   VARIATION_NAME_PATTERN,
+  DISCOUNT_KINDS,
 } from "../constants";
+import { LOYALTY_MILESTONE_AT_MIN, LOYALTY_MILESTONE_AT_MAX } from "../loyalty-rules";
+import { PROMO_CODE_PATTERN } from "../public-promo";
 import { tableNoSchema } from "./table.schema";
+import { objectIdString } from "./object-id.schema";
 
 export const orderItemSchema = z.object({
-  productId: z.string().min(1),
+  productId: objectIdString,
   name: z.string().min(1),
   price: z.number().min(0),
   qty: z.number().int().min(1),
@@ -30,6 +34,12 @@ export const orderItemSchema = z.object({
     .optional(),
   modifiers: z.array(z.string()).default([]),
   instructions: z.string().optional().default(""),
+  // MONEY FENCE (CB-5B S11/D5 reversal): deliberately NO `reward` key here.
+  // A client may never declare a line free — only the server sets
+  // `OrderItem.reward` (S12's item-line builder), after resolving a claimed
+  // milestone against the diner's own stamp balance. If this schema ever
+  // gains a `reward` field, a client payload could mark any line as a free
+  // reward and have it silently excluded from the bill total.
 });
 
 // Base shape. Money fields (subtotal/gstAmount/total/paidAmount) are accepted but
@@ -38,10 +48,40 @@ export const orderItemSchema = z.object({
 // shared client type keeps compiling and the POS can show a live preview.
 const orderObject = z.object({
   customerName: z.string().trim().min(1, "Customer name is required"),
-  customerId: z.string().optional(),
+  customerId: objectIdString.optional(),
   items: z.array(orderItemSchema).min(1, "Cart cannot be empty"),
   subtotal: z.number().min(0),
   discount: z.number().min(0).default(0), // amount (not percentage)
+  // `null` = clear the kind, absent = leave it unchanged, "gst" = set — the
+  // explicit-null sentinel because `undefined` cannot clear a field over JSON.
+  discountKind: z.enum(DISCOUNT_KINDS).nullable().optional(),
+  // CB-5B S4/S5 — the reward claim, as INTENT ONLY: the stamp COST of the rung
+  // the diner is redeeming, which is an identifier into the OWNER-configured
+  // ladder, never an amount. The server resolves the value/kind/dish from
+  // Settings and spends the stamps off the customer's own row
+  // (lib/reward-claim.ts). This is the same MONEY FENCE the item schema above
+  // states: a client that could send a reward AMOUNT could grant itself an
+  // unfunded discount. Bounded by the ladder's own limits so a nonsense value
+  // is rejected at the edge rather than scanned for.
+  rewardAt: z
+    .number()
+    .int()
+    .min(LOYALTY_MILESTONE_AT_MIN)
+    .max(LOYALTY_MILESTONE_AT_MAX)
+    .optional(),
+  // CB-5D part 2 — the COUNTER's promo code, INTENT ONLY, exactly like
+  // `rewardAt` above: the staff type a code, never an amount. The server
+  // re-resolves it against the cafe's own promo list and computes the
+  // discount itself (lib/order-request-accept-promo.ts's resolveAcceptPromo),
+  // so a client that lies about the value cannot grant an unfunded discount.
+  // Normalised here (trim+uppercase) so the route compares one spelling, the
+  // same transform the milestone's own promoCode field uses.
+  promoCode: z
+    .string()
+    .trim()
+    .transform((v) => v.toUpperCase())
+    .refine((v) => PROMO_CODE_PATTERN.test(v), "Use 3-16 letters or numbers")
+    .optional(),
   gstAmount: z.number().min(0).optional(), // GST added on top (exclusive mode)
   // The table's extra charge as the operator left it for THIS bill — they may
   // waive or adjust it at the counter, so this is intent, like `discount`, and
@@ -127,6 +167,21 @@ export const addItemsSchema = z
   .object({
     items: z.array(orderItemSchema).min(1, "Add at least one item"),
     discount: z.number().min(0).optional(),
+    discountKind: z.enum(DISCOUNT_KINDS).nullable().optional(),
+    // CB-5B S4/S5 — the reward claim, as INTENT ONLY: the stamp COST of the rung
+    // the diner is redeeming, which is an identifier into the OWNER-configured
+    // ladder, never an amount. The server resolves the value/kind/dish from
+    // Settings and spends the stamps off the customer's own row
+    // (lib/reward-claim.ts). This is the same MONEY FENCE the item schema above
+    // states: a client that could send a reward AMOUNT could grant itself an
+    // unfunded discount. Bounded by the ladder's own limits so a nonsense value
+    // is rejected at the edge rather than scanned for.
+    rewardAt: z
+      .number()
+      .int()
+      .min(LOYALTY_MILESTONE_AT_MIN)
+      .max(LOYALTY_MILESTONE_AT_MAX)
+      .optional(),
     // A charge waiver made while the tab is running has to travel with the
     // round that follows it, or it lives only in one browser's state: the
     // operator waives, fires the round, and the server — which never heard
@@ -148,8 +203,23 @@ export const settleOrderSchema = z
     payment: z.enum(SETTLEMENT_PAY_MODES),
     splitCash: z.number().min(0).optional(),
     splitOnline: z.number().min(0).optional(),
-    customerId: z.string().optional(),
+    customerId: objectIdString.optional(),
     discount: z.number().min(0).optional(), // flat rupees; server re-clamps + recomputes
+    discountKind: z.enum(DISCOUNT_KINDS).nullable().optional(),
+    // CB-5B S4/S5 — the reward claim, as INTENT ONLY: the stamp COST of the rung
+    // the diner is redeeming, which is an identifier into the OWNER-configured
+    // ladder, never an amount. The server resolves the value/kind/dish from
+    // Settings and spends the stamps off the customer's own row
+    // (lib/reward-claim.ts). This is the same MONEY FENCE the item schema above
+    // states: a client that could send a reward AMOUNT could grant itself an
+    // unfunded discount. Bounded by the ladder's own limits so a nonsense value
+    // is rejected at the edge rather than scanned for.
+    rewardAt: z
+      .number()
+      .int()
+      .min(LOYALTY_MILESTONE_AT_MIN)
+      .max(LOYALTY_MILESTONE_AT_MAX)
+      .optional(),
     // Settle-time waiver/adjustment of the table charge. Omit to keep whatever
     // the tab was opened with — the same omit=unchanged discipline as
     // `discount`, so an Orders-page settle that knows nothing about charges

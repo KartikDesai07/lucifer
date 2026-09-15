@@ -1,16 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  Plus,
-  Pencil,
-  Trash2,
-  Search,
-  Users,
-  History,
-  Wallet,
-  Loader2,
-} from "lucide-react";
+import { Plus, Search } from "lucide-react";
 
 import {
   useCustomers,
@@ -20,28 +11,19 @@ import {
 } from "@/hooks/use-customers";
 import { useAuth } from "@/hooks/use-auth";
 import { CUSTOMER_SEARCH_LIMIT } from "@/lib/constants";
-import { inr } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { EmptyState } from "@/components/shared/EmptyState";
+import { PageHeader } from "@/components/shared/PageHeader";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { CustomerFormSheet } from "@/components/customers/CustomerFormSheet";
 import { CustomerHistoryDialog } from "@/components/customers/CustomerHistoryDialog";
 import { ReceivePaymentDialog } from "@/components/customers/ReceivePaymentDialog";
+import { CustomerRowCard } from "@/components/customers/CustomerRowCard";
+import { CustomerTable } from "@/components/customers/CustomerTable";
+import { CustomerListStatus } from "@/components/customers/CustomerListStatus";
 import type { Customer } from "@/types";
 
 const SEARCH_DEBOUNCE_MS = 300;
-const LIST_SKELETON_ROWS = 6;
 
 // Union by _id. Local rows set the ORDER — they are already name-sorted and are
 // what the operator is looking at, so an arriving remote row never reshuffles
@@ -147,109 +129,21 @@ export default function CustomersPage() {
   };
 
   const hasCustomers = (customers.data?.length ?? 0) > 0;
-
-  // One ordered decision for what the panel says, so a newly-reachable state
-  // cannot fall through into a wrong one. `null` means "render the table".
-  const statusPanel = (() => {
-    // Having rows to show beats every status: a search that worked must not be
-    // hidden behind a list that is still loading or failed to refresh.
-    if (filtered.length > 0) return null;
-    if (customers.isLoading) {
-      return (
-        <div className="space-y-2 rounded-lg border p-4">
-          {Array.from({ length: LIST_SKELETON_ROWS }).map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
-          ))}
-        </div>
-      );
-    }
-    // A parked (offline) query reports isLoading AND isError false with no data,
-    // so without this the page tells a cafe with a full customer book that it
-    // has "No customers yet" and offers to add one.
-    if (customers.isPaused && !hasCustomers) {
-      return (
-        <p className="text-sm text-muted-foreground">
-          You appear to be offline. Customers will load when the connection is
-          back.
-        </p>
-      );
-    }
-    // isLoadingError, not isError: a failed REFRESH while cached rows are still
-    // in hand must not throw away a list the operator can keep working from.
-    if (customers.isLoadingError) {
-      return (
-        <p className="text-sm text-destructive">
-          Failed to load customers. Refresh to retry.
-        </p>
-      );
-    }
-    if (!hasCustomers && !query) {
-      return (
-        <EmptyState
-          icon={<Users className="h-8 w-8" />}
-          title="No customers yet"
-          description="Customers are added here or automatically from the POS."
-          action={
-            <Button onClick={openAdd} className="mt-2">
-              <Plus className="mr-2 h-4 w-4" /> Add customer
-            </Button>
-          }
-        />
-      );
-    }
-    if (belowSearchFloor) {
-      return (
-        <p className="text-sm text-muted-foreground">
-          Keep typing — search starts at {CUSTOMER_SEARCH_MIN_CHARS} characters.
-        </p>
-      );
-    }
-    if (searching) {
-      return (
-        <div className="flex items-center gap-2 rounded-lg border p-4 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" /> Searching…
-        </div>
-      );
-    }
-    // Offline and a failed request are both "we did not find out", never "this
-    // customer does not exist" — that answer is what sends an operator off to
-    // create a duplicate, or to write off a due that is genuinely owed.
-    if (searchOffline) {
-      return (
-        <p className="text-sm text-destructive">
-          You appear to be offline, so this could not be checked against the
-          customer list.
-        </p>
-      );
-    }
-    if (remote.isError) {
-      return (
-        <p className="text-sm text-destructive">
-          Search failed. Check the connection and try again.
-        </p>
-      );
-    }
-    return (
-      <EmptyState
-        title="No matches"
-        description="No customer matches your search."
-      />
-    );
-  })();
+  const hasRows = filtered.length > 0;
+  const offlineUnloaded = customers.isPaused && !hasCustomers;
+  const noCustomers = !hasCustomers && !query;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Customers</h2>
-          <p className="text-sm text-muted-foreground">
-            Track visits, spending, and outstanding dues.
-          </p>
-        </div>
-        <Button onClick={openAdd}>
-          <Plus className="mr-2 h-4 w-4" /> Add customer
-        </Button>
-      </div>
+      <PageHeader
+        title="Customers"
+        description="Track visits, spending, and outstanding dues."
+        actions={
+          <Button onClick={openAdd}>
+            <Plus className="mr-2 h-4 w-4" /> Add customer
+          </Button>
+        }
+      />
 
       <div className="relative">
         <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -261,102 +155,54 @@ export default function CustomersPage() {
         />
       </div>
 
-      {statusPanel ?? (
-        <div className="rounded-lg border">
+      <CustomerListStatus
+        hasRows={hasRows}
+        loading={customers.isLoading}
+        offlineUnloaded={offlineUnloaded}
+        refreshFailed={customers.isLoadingError}
+        noCustomers={noCustomers}
+        belowSearchFloor={belowSearchFloor}
+        searching={searching}
+        searchOffline={searchOffline}
+        searchFailed={remote.isError}
+        onAdd={openAdd}
+      />
+      {hasRows && (
+        <>
           {truncated && (
             // Without this, a capped list of look-alike masked numbers reads as
             // a complete answer.
-            <p className="border-b bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
+            <p className="rounded-lg border bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
               Showing the first {CUSTOMER_SEARCH_LIMIT} matches. Type more of the
               name or number to narrow it down.
             </p>
           )}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Mobile</TableHead>
-                <TableHead className="text-right">Visits</TableHead>
-                <TableHead className="text-right">Spend</TableHead>
-                <TableHead className="text-right">Due</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead className="w-28 text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((customer) => (
-                <TableRow key={customer._id}>
-                  <TableCell className="font-medium">{customer.name}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {customer.mobile}
-                  </TableCell>
-                  <TableCell className="text-right">{customer.visits}</TableCell>
-                  <TableCell className="text-right">
-                    {inr(customer.totalSpend)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {customer.totalDue > 0 ? (
-                      <Badge variant="destructive">
-                        {inr(customer.totalDue)}
-                      </Badge>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={customer.notes === "VIP" ? "default" : "secondary"}
-                    >
-                      {customer.notes}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      {customer.totalDue > 0 && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setReceiving(customer)}
-                          aria-label="Receive payment"
-                        >
-                          <Wallet className="h-4 w-4 text-green-600" />
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setHistory(customer)}
-                        aria-label="Order history"
-                      >
-                        <History className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => openEdit(customer)}
-                        aria-label="Edit customer"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      {/* Admin only — the route enforces it too (403). Showing
-                          it to staff would offer an action that always fails. */}
-                      {isAdmin && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setDeleting(customer)}
-                          aria-label="Delete customer"
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+
+          <div className="hidden md:block">
+            <CustomerTable
+              customers={filtered}
+              isAdmin={isAdmin}
+              onReceivePayment={setReceiving}
+              onHistory={setHistory}
+              onEdit={openEdit}
+              onDelete={setDeleting}
+            />
+          </div>
+
+          <div className="space-y-2 md:hidden">
+            {filtered.map((customer) => (
+              <CustomerRowCard
+                key={customer._id}
+                customer={customer}
+                isAdmin={isAdmin}
+                onReceivePayment={setReceiving}
+                onHistory={setHistory}
+                onEdit={openEdit}
+                onDelete={setDeleting}
+              />
+            ))}
+          </div>
+        </>
       )}
 
       <CustomerFormSheet

@@ -254,10 +254,16 @@ test("voidItemSchema accepts index 0 (the first line is a valid target, not fals
 
 // ── createOrderSchema — a born-cancelled order is impossible ─────────────────
 
+// CB-DL-2: orderItemSchema.productId is now objectIdString (24 lower-case hex)
+// -- a short placeholder like "p1" now fails to parse, which would have masked
+// EVERY orderBase()-driven assertion below behind a productId shape error
+// instead of the status/paidAmount behaviour each test actually pins.
+const FIXTURE_PRODUCT_ID = "a".repeat(24);
+
 function orderBase(over: Record<string, unknown> = {}) {
   return {
     customerName: "Walk-In",
-    items: [{ productId: "p1", name: "Tea", price: 20, qty: 1, modifiers: [] }],
+    items: [{ productId: FIXTURE_PRODUCT_ID, name: "Tea", price: 20, qty: 1, modifiers: [] }],
     subtotal: 20,
     total: 20,
     payment: "Cash" as const,

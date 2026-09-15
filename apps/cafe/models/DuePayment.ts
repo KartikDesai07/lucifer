@@ -1,4 +1,4 @@
-import mongoose, { Schema, type Document, type Model } from "mongoose";
+import mongoose, { Schema, Types, type Document, type Model } from "mongoose";
 import { SETTLEMENT_PAY_MODES, type SettlementPayMode } from "@/lib/constants";
 
 // FINANCIAL RECORD (CR1.4, extended for admin edit/soft-delete): one payment
@@ -20,7 +20,7 @@ import { SETTLEMENT_PAY_MODES, type SettlementPayMode } from "@/lib/constants";
 // P5/P12 absorb it into the federation later; keep every row (never removed,
 // even when soft-deleted) so that migration has a clean history to replay.
 export interface IDuePayment extends Document {
-  customerId: string; // string id — mirrors Order.customerId's storage
+  customerId: Types.ObjectId; // flips WITH Order.customerId — see the schema comment below
   amount: number; // rupees, whole-number (see money note above)
   mode: SettlementPayMode;
   note?: string;
@@ -73,11 +73,12 @@ const duePaymentEditSchema = new Schema<IDuePaymentEdit>(
 
 export const duePaymentSchema = new Schema<IDuePayment>(
   {
-    // customerId is a plain indexed String, matching how Order.customerId is
-    // stored and queried — the aggregations built on top of this collection
-    // (duesPaidTotal, the day-summary fold) must match documents written by
-    // the order lifecycle's own customerId convention.
-    customerId: { type: String, required: true, index: true },
+    // customerId flips to ObjectId WITH Order.customerId (CB-DL-2 D-B item 9):
+    // the dues aggregations (duesPaidTotal, the day-summary fold, reconcile)
+    // join this collection against Orders/Customers, and a raw aggregate
+    // `$match` needs equal BSON types on both sides — a String here against
+    // an ObjectId there would silently match zero rows.
+    customerId: { type: Schema.Types.ObjectId, required: true, index: true },
     amount: { type: Number, required: true },
     // WIDE on purpose (G7): this collection is append-only history, so
     // narrowing this stored enum to the DUES_RECEIPT_MODES receipt surface

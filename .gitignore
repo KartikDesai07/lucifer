@@ -77,8 +77,28 @@ next-env.d.ts
 /cjs_followed.js
 *scratchpad*-tests.txt
 
+# link-migration census reports (may name live DBs) — owner-run, never committed
+migrate-links-report-*.json
+
+# link-migration --backup auto archive: a FULL mongodump of the live database
+# (customer names, mobiles, order and dues history) — owner-run, never
+# committed. The default write location is the OS temp directory, outside the
+# repo; this pattern is defence-in-depth in case one ever lands here anyway.
+migrate-links-backup-*.archive.gz
+
 # NOTE: `vercel link` appends `.vercel` and `.env*` here on every run. Both are
 # already covered above (`.vercel`, and `.env` + `.env.*` with the deliberate
 # `!.env.example` negation) — and a trailing `.env*` would sit AFTER that
 # negation and re-ignore the committed example files. Delete the duplicates if
 # the CLI adds them again.
+
+# desktop shell (apps/desktop, outside the npm workspace): the local NSIS
+# installer output is hand-copied to the counter PC, never committed or uploaded
+/apps/desktop/dist/
+
+# Stray local artifacts (crash dumps + files created with a mangled absolute
+# temp path by an earlier tool call). Never project content.
+*.stackdump
+**/# Files created with a MANGLED absolute temp path by an earlier tool call
+# (the drive colon became U+FF1A, so the whole path became one filename).
+*AppDataLocalTempclaude*

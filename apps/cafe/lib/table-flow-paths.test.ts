@@ -60,6 +60,9 @@ const POS_PAGE = "apps/cafe/app/(dashboard)/pos/page.tsx";
 // CR2.3 S0 split — the header action row (including the Move-table button)
 // moved out of pos/page.tsx into its own component.
 const POS_HEADER = "apps/cafe/components/pos/PosHeader.tsx";
+// CB-DL-1 S1 — the tables GET's query/sort now lives in the shared master
+// spec this file reads for the arrangement-sort pin below.
+const MASTERS_LIB = "apps/cafe/lib/masters.ts";
 
 // ── 1. the move route is all-staff, not admin-gated ─────────────────────────
 
@@ -283,10 +286,28 @@ test("PIN: GET /api/tables sorts by displayOrder then tableNo, PATCH requires re
   // Mutation this catches: sorting only by tableNo (or dropping displayOrder
   // from the sort entirely) — the operator's hand arrangement (Tables screen
   // → Arrange) would then never actually change what order tables appear in.
+  //
+  // CB-DL-1 S1 MOVED the sort literal: GET's query is now described once, in
+  // TABLE_LIST (lib/masters.ts), so GET /api/bootstrap serves the tables part
+  // from the identical query this route does. The intent is unchanged and is
+  // pinned in two halves rather than weakened: (a) GET must serve the list
+  // through listTables() — the spec's own list function, not a re-spelled
+  // query — and (b) the spec it reads must still carry the displayOrder,
+  // tableNo sort. Dropping displayOrder in either place still reddens.
   assert.match(
     getBody,
-    /\.sort\(\{ displayOrder: 1, tableNo: 1 \}\)/,
-    "GET must sort by displayOrder then tableNo — the hand arrangement wins, name is only the tie-break",
+    /return success\(await listTables\(\)\)/,
+    "GET must serve the floor plan through listTables() — the TABLE_LIST spec is the one description of that query",
+  );
+  const mastersSrc = stripComments(readSrc(MASTERS_LIB));
+  const tableSpecIdx = mastersSrc.indexOf("export const TABLE_LIST");
+  assert.ok(tableSpecIdx >= 0, "lib/masters.ts must declare export const TABLE_LIST");
+  const tableSpecOpen = mastersSrc.indexOf("{", tableSpecIdx);
+  const tableSpec = mastersSrc.slice(tableSpecOpen, matchingBraceEnd(mastersSrc, tableSpecOpen) + 1);
+  assert.match(
+    tableSpec,
+    /sort: \{ displayOrder: 1, tableNo: 1 \}/,
+    "TABLE_LIST must sort by displayOrder then tableNo — the hand arrangement wins, name is only the tie-break",
   );
 
   // Mutation this catches: swapping requireAdmin for requireAuth on PATCH —

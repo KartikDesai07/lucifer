@@ -1,18 +1,18 @@
-import { Category } from "@/models/Category";
-import { TTL } from "@/lib/cache";
 import { createCollectionRoute } from "@/lib/crud-route";
+import { CATEGORY_LIST, listSpecConfig } from "@/lib/masters";
 import { createCategorySchema } from "@/schemas";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/categories — list all (cached 5min)
+// GET /api/categories — list all (cached, TTL.CATEGORIES)
 // POST /api/categories — create (clears cache)
+//
+// The list itself is described once, in CATEGORY_LIST (lib/masters.ts), which
+// GET /api/bootstrap serves the categories part from too — `listSpecConfig`
+// spreads its model/cacheKey/ttl/sort/filter in so the two cannot disagree.
 export const { GET, POST } = createCollectionRoute({
-  model: Category,
-  cacheKey: "categories",
-  ttl: TTL.CATEGORIES,
+  ...listSpecConfig(CATEGORY_LIST),
   createSchema: createCategorySchema,
   entity: { singular: "category", plural: "categories" },
-  sort: { order: 1, name: 1 },
   onDuplicate: "Category already exists",
 });

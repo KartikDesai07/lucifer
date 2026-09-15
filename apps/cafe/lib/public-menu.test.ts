@@ -10,6 +10,7 @@ import {
   type PublicCategorySource,
   type PublicTableSource,
 } from "./public-menu";
+import { UNCATEGORIZED } from "@pos/shared/constants";
 
 // CR2.1 — the public QR-menu's shaping functions and the Mongo filter that
 // decides what a diner may ever see. `toPublicMenuItem`/`toPublicTable` ARE
@@ -52,10 +53,18 @@ test("PUBLIC_PRODUCT_FILTER's publicVisible term, read as the $ne operator it de
 
 // ── toPublicMenuItem: exact key set + the leak test ─────────────────────────
 
+// CB-DL-2 T2: PublicProductSource now carries categoryId (unknown, resolved by
+// a caller-supplied resolver), never a category NAME — the resolver is what
+// public/menu/route.ts builds server-side from the loaded categories list.
+const CATEGORY_ID = "64f0000000000000000000c1";
+
+const CATEGORY_NAME_OF = (id: unknown): string =>
+  id === CATEGORY_ID ? "Beverages" : UNCATEGORIZED;
+
 const BASE_PRODUCT: PublicProductSource = {
   _id: "64f000000000000000000001",
   name: "Filter Coffee",
-  category: "Beverages",
+  categoryId: CATEGORY_ID,
   price: 40,
   discount: 10,
   available: true,
@@ -77,10 +86,13 @@ const EXPECTED_ITEM_KEYS_NO_VARIATIONS = [
 const EXPECTED_ITEM_KEYS_WITH_VARIATIONS = [...EXPECTED_ITEM_KEYS_NO_VARIATIONS, "variations"].sort();
 
 test("toPublicMenuItem: with variations present, the EXACT key set includes `variations` and nothing else", () => {
-  const item = toPublicMenuItem({
-    ...BASE_PRODUCT,
-    variations: [{ name: "Small", price: 30 }, { name: "Large", price: 50 }],
-  });
+  const item = toPublicMenuItem(
+    {
+      ...BASE_PRODUCT,
+      variations: [{ name: "Small", price: 30 }, { name: "Large", price: 50 }],
+    },
+    CATEGORY_NAME_OF,
+  );
   // Mutation this catches: spreading the source product (or adding a field to
   // the built object literal) — either would ride an unreviewed field
   // straight onto a diner's phone. Object.keys().sort() catches an EXTRA key
@@ -90,11 +102,11 @@ test("toPublicMenuItem: with variations present, the EXACT key set includes `var
 });
 
 test("toPublicMenuItem: with no variations (absent, or an explicit empty array), the `variations` key is ABSENT — not present-as-empty", () => {
-  const withoutKey = toPublicMenuItem(BASE_PRODUCT);
+  const withoutKey = toPublicMenuItem(BASE_PRODUCT, CATEGORY_NAME_OF);
   assert.deepEqual(Object.keys(withoutKey).sort(), EXPECTED_ITEM_KEYS_NO_VARIATIONS);
   assert.equal(Object.hasOwn(withoutKey, "variations"), false, "an item with no variations field must carry no variations key");
 
-  const withEmptyArray = toPublicMenuItem({ ...BASE_PRODUCT, variations: [] });
+  const withEmptyArray = toPublicMenuItem({ ...BASE_PRODUCT, variations: [] }, CATEGORY_NAME_OF);
   // Mutation this catches: `if (product.variations)` alone (without the
   // `.length > 0` guard) — an explicit [] from a lean() read would then ride
   // onto the wire as a present-but-empty key, which the diner page would have
@@ -113,7 +125,7 @@ test("toPublicMenuItem: a source object carrying admin-only fields (isActive, pu
     cost: 15,
   } as PublicProductSource & Record<string, unknown>;
 
-  const item = toPublicMenuItem(withExtras);
+  const item = toPublicMenuItem(withExtras, CATEGORY_NAME_OF);
   const keys = Object.keys(item);
   // Mutation this catches: this is the whole THREAT MODEL comment in
   // public-menu.ts made executable — any widening of toPublicMenuItem to
@@ -124,6 +136,34 @@ test("toPublicMenuItem: a source object carrying admin-only fields (isActive, pu
   }
   assert.deepEqual(keys.sort(), EXPECTED_ITEM_KEYS_NO_VARIATIONS);
   assert.equal(item.id, String(BASE_PRODUCT._id), "the _id is still surfaced, but only as the stringified `id` field");
+});
+
+// CB-DL-2 T2: the categoryId hex must never ride onto the wire under ANY key
+// — only the resolved NAME may. Positive landmark (category resolves to the
+// real name) pairs with the negative (no output value equals the raw id) so
+// the negative pin can never pass vacuously (e.g. via a resolver that always
+// throws, or a category field silently dropped).
+test("toPublicMenuItem: resolves categoryId to the diner-visible NAME via the resolver, and the raw categoryId hex leaks through NO output value", () => {
+  const item = toPublicMenuItem(BASE_PRODUCT, CATEGORY_NAME_OF);
+
+  // Positive landmark: the resolver actually ran and produced the real name.
+  assert.equal(item.category, "Beverages", "category must be resolved via categoryNameOf, not left as the raw id");
+
+  // Negative: no value anywhere in the output object equals the categoryId
+  // hex — the id itself must never ride along under any key.
+  const values = Object.values(item as unknown as Record<string, unknown>);
+  assert.ok(
+    !values.includes(CATEGORY_ID),
+    "toPublicMenuItem's output must not carry the raw categoryId hex under ANY key",
+  );
+});
+
+test("toPublicMenuItem: an unknown/unmatched categoryId resolves to UNCATEGORIZED, not a blank or the raw id", () => {
+  const item = toPublicMenuItem(
+    { ...BASE_PRODUCT, categoryId: "64f0000000000000000000ff" },
+    CATEGORY_NAME_OF,
+  );
+  assert.equal(item.category, UNCATEGORIZED, "an id the resolver does not recognise must fall back to UNCATEGORIZED");
 });
 
 // ── toPublicCategory: exact key set ─────────────────────────────────────────

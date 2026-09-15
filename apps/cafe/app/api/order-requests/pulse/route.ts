@@ -13,8 +13,16 @@ export const dynamic = "force-dynamic";
 // under /api/order-requests), READ-ONLY (no write, no pruneOrderRequests —
 // see lib/pos-pulse.ts's own comment), and never cached (live state, exactly
 // like /api/order-requests and /api/orders). Being a hot path is exactly why
-// it must stay two bounded index-backed queries and nothing else — this
-// route must never grow a third query or a write.
+// it must stay bounded index-backed queries and nothing else — this route
+// must never grow a write.
+//
+// AMENDMENT (print-host plan §B4, explicit, not a silent override): the
+// pulse now serves SIX bounded index-backed reads (2 OrderRequest + PrintHost
+// + the D1/D2/D3 print-job feeds), not two — the alternative was a second
+// 20s poll from every open tab for host/queue state, strictly worse for the
+// free tier. The invariant that survives unchanged, and is still pinned, is
+// that this route performs NO WRITE (no pruneOrderRequests, no
+// prunePrintJobs/prunePrintJobsThrottled) and stays no-store.
 export async function GET() {
   const authed = await requireAuth();
   if ("error" in authed) return authed.error;

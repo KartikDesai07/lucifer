@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/use-auth";
 import type { TableStatus } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/shared/PageHeader";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { TableCard } from "@/components/tables/TableCard";
@@ -60,39 +61,39 @@ export default function TablesPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Tables</h2>
-          <p className="text-sm text-muted-foreground">
-            {arranging
-              ? "Arrange the floor plan — this is the same order the POS table picker shows, so put the busiest tables first."
-              : "Live table status. Updates automatically every 30 seconds."}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {/* The ONLY route to /tables/qr — without this link the QR sheet is
-              unreachable and a pre-CR2 table can never get a token minted
-              (adversarial-review finding; a source pin asserts this href). */}
-          {isAdmin && (
-            <Button variant="outline" asChild>
-              <Link href="/tables/qr">
-                <QrCode className="mr-2 h-4 w-4" /> QR codes
-              </Link>
-            </Button>
-          )}
-          {isAdmin && (
-            <Button variant="outline" onClick={() => setArranging((a) => !a)}>
-              <ArrowUpDown className="mr-2 h-4 w-4" />
-              {arranging ? "Done" : "Arrange"}
-            </Button>
-          )}
-          {isAdmin && (
-            <Button onClick={openAdd}>
-              <Plus className="mr-2 h-4 w-4" /> Add table
-            </Button>
-          )}
-        </div>
-      </div>
+      <PageHeader
+        title="Tables"
+        description={
+          arranging
+            ? "Arrange the floor plan — this is the same order the POS table picker shows, so put the busiest tables first."
+            : "Live table status. Updates automatically every 30 seconds."
+        }
+        actions={
+          <div className="flex gap-2">
+            {/* The ONLY route to /tables/qr — without this link the QR sheet is
+                unreachable and a pre-CR2 table can never get a token minted
+                (adversarial-review finding; a source pin asserts this href). */}
+            {isAdmin && (
+              <Button variant="outline" asChild>
+                <Link href="/tables/qr">
+                  <QrCode className="mr-2 h-4 w-4" /> QR codes
+                </Link>
+              </Button>
+            )}
+            {isAdmin && (
+              <Button variant="outline" onClick={() => setArranging((a) => !a)}>
+                <ArrowUpDown className="mr-2 h-4 w-4" />
+                {arranging ? "Done" : "Arrange"}
+              </Button>
+            )}
+            {isAdmin && (
+              <Button onClick={openAdd}>
+                <Plus className="mr-2 h-4 w-4" /> Add table
+              </Button>
+            )}
+          </div>
+        }
+      />
 
       {tables.isLoading ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">

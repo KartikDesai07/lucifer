@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1080">
+<title>POS Software — poster 1 (Midnight)</title>
+<!--
+  POSTER 1 · "Midnight" — the features overview · 1080 × 1350 (4:5, Instagram / WhatsApp feed)
+  Edit the JSON block below (brand, headline, features, pricing, contact) and re-render:
+      bash marketing/tools/render.sh poster-1-midnight
+  Output: marketing/out/poster-1-midnight.png (2160 × 2700, 2x)
+  Everything is local: no external images, fonts fall back to system fonts when offline.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Manrope:wght@500;600;700;800&display=swap">
+<script type="application/json" id="poster-data">
+{
+  "brand": "POS Software",
+  "by": "by sandbee",
+  "segments": "Cafés · Restaurants · Cloud kitchens",
+  "eyebrow": "Stop renting your billing software",
+  "headline": ["Pay once.", "Use it for life."],
+  "subhead": "No yearly renewal, no monthly fee — and your data stays in your hands. Bills, KOTs, tables, QR ordering, WhatsApp updates and reports on any phone, tablet or PC.",
+  "features": [
+    { "icon": "receipt", "title": "Fast GST billing", "text": "Cash, UPI or card. GST inclusive or exclusive, discounts and promo codes." },
+    { "icon": "printer", "title": "Kitchen tickets print themselves", "text": "Every KOT and bill prints silently on the counter PC — no dialogs." },
+    { "icon": "qr", "title": "QR self-ordering", "text": "Diners scan the table QR and order from their phone — approve it, or auto-send to the kitchen." },
+    { "icon": "chat", "title": "WhatsApp & Telegram updates", "text": "Bill on WhatsApp the moment it’s paid, order status and offers — through wa.sandbee.in." },
+    { "icon": "tables", "title": "Tables, tabs and udhaar", "text": "Floor plan, round-by-round orders, move a tab, dues tracked by phone number." },
+    { "icon": "chart", "title": "Reports and end of day", "text": "Sales, payment split, top items, dues collected — one tap, one slip." }
+  ],
+  "chips": ["Any ₹10k Android tablet", "Your logo on bills", "Sizes and add-ons", "Staff roles and PINs", "Reservations and events"],
+  "pricing": {
+    "label": "Pay once · Use it for life",
+    "price": "₹25,000",
+    "priceNote": "one-time setup",
+    "lines": ["₹0 yearly renewal — ever*", "₹5,000 WhatsApp credit included", "Your data in your own accounts"]
+  },
+  "cta": {
+    "button": "Book a free demo",
+    "whatsapp": "+91 XXXXX XXXXX",
+    "site": "pos.sandbee.in",
+    "footnote": "*No software renewal, ever. Hosting runs on the café’s own free-tier accounts; a small fee may apply as you grow. 3 months of free support included."
+  },
+  "receipt": {
+    "cafe": "SUNRISE CAFÉ",
+    "meta": "Bill #1042 · Table 4 · 7:42 PM",
+    "items": [["Cappuccino", "2", "240.00"], ["Veg Club Sandwich", "1", "180.00"], ["Peri-Peri Fries", "1", "120.00"]],
+    "subtotal": "540.00",
+    "gst": "27.00",
+    "total": "₹567.00",
+    "paid": "Paid · UPI"
+  },
+  "kot": {
+    "title": "KITCHEN ORDER",
+    "meta": "Table 4 · Round 1 · 7:31 PM",
+    "items": [["2", "Cappuccino", "less sugar"], ["1", "Veg Club Sandwich", "no onion"], ["1", "Peri-Peri Fries", ""]]
+  }
+}
+</script>
+<style>
+  :root {
+    --w: 1080px; --h: 1350px;
+    --bg: #0d1411; --bg2: #111c17; --card: #17231d; --card2: #1c2a23; --line: #24352c;
+    --ink: #f4f1ea; --muted: #a9b5ad; --dim: #7d8a82;
+    --mint: #3ddc97; --mint-deep: #1f9f6c; --amber: #f6c453; --paper: #fffdf7; --paper-ink: #1c1c1a;
+    --display: "Fraunces", Georgia, "Times New Roman", serif;
+    --body: "Manrope", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: var(--w); height: var(--h); background: var(--bg); overflow: hidden; }
+  body { font-family: var(--body); color: var(--ink); -webkit-font-smoothing: antialiased; }
+
+  .poster {
+    position: relative; width: var(--w); height: var(--h); overflow: hidden; padding: 60px 64px 44px; display: flex; flex-direction: column;
+    background:
+      radial-gradient(900px 620px at 88% -8%, rgba(61,220,151,.20), transparent 60%),
+      radial-gradient(700px 520px at -10% 40%, rgba(246,196,83,.10), transparent 60%),
+      linear-gradient(180deg, var(--bg2) 0%, var(--bg) 55%, #0b110e 100%);
+  }
+  .grid-tex {
+    position: absolute; inset: 0; pointer-events: none; opacity: .35;
+    background-image:
+      linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: linear-gradient(180deg, rgba(0,0,0,.9), transparent 70%);
+    -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,.9), transparent 70%);
+  }
+
+  /* header */
+  .top { position: relative; display: flex; align-items: center; justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 16px; }
+  .mark { width: 60px; height: 60px; border-radius: 18px; background: linear-gradient(145deg, var(--mint), var(--mint-deep)); display: grid; place-items: center; box-shadow: 0 10px 30px rgba(61,220,151,.28); }
+  .mark { position: relative; overflow: hidden; background: #0b3d2a; }
+  .mark img { position: absolute; left: 50%; top: 50%; width: 165%; height: 165%; transform: translate(-50%, -50%); display: block; }
+  .brand-name { font-size: 30px; font-weight: 800; letter-spacing: -.02em; line-height: 1; }
+  .brand-by { margin-top: 6px; font-size: 15px; color: var(--muted); font-weight: 600; letter-spacing: .02em; }
+  .pill { padding: 12px 18px; border: 1px solid var(--line); border-radius: 999px; font-size: 15px; font-weight: 700; color: var(--muted); background: rgba(255,255,255,.02); }
+
+  /* hero */
+  .hero { position: relative; margin-top: 56px; display: grid; grid-template-columns: 540px 1fr; gap: 28px; min-height: 380px; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--mint); }
+  .eyebrow::before { content: ""; width: 26px; height: 2px; background: var(--mint); border-radius: 2px; }
+  h1 { font-family: var(--display); font-weight: 700; font-size: 78px; line-height: .98; letter-spacing: -.025em; margin-top: 22px; font-variation-settings: "opsz" 144; }
+  h1 .accent { color: var(--amber); font-style: italic; font-weight: 600; }
+  .sub { margin-top: 26px; font-size: 22px; line-height: 1.45; color: var(--muted); font-weight: 500; max-width: 540px; }
+
+  /* mock slips */
+  .slips { position: relative; height: 400px; }
+  .paper {
+    position: absolute; background: var(--paper); color: var(--paper-ink); font-family: var(--mono); font-size: 13px; line-height: 1.35;
+    padding: 18px 18px 26px; box-shadow: 0 30px 60px rgba(0,0,0,.55), 0 2px 0 rgba(255,255,255,.4) inset;
+    border-radius: 4px 4px 0 0;
+  }
+  .paper::after { content: ""; position: absolute; left: 0; right: 0; bottom: -10px; height: 10px; background: linear-gradient(-45deg, transparent 7px, var(--paper) 7px) 0 0 / 14px 14px, linear-gradient(45deg, transparent 7px, var(--paper) 7px) 7px 0 / 14px 14px; background-repeat: repeat-x; }
+  .kot { width: 240px; left: 10px; top: 0; transform: rotate(-6deg); background: #fff8e6; }
+  .receipt { width: 280px; right: 0; top: 108px; transform: rotate(3deg); }
+  .p-title { font-family: var(--body); font-weight: 800; font-size: 15px; letter-spacing: .06em; text-align: center; }
+  .p-meta { text-align: center; color: #5a5a55; font-size: 11.5px; margin-top: 4px; }
+  .p-rule { border-top: 1.5px dashed #b9b6ab; margin: 10px 0; }
+  .p-row { display: flex; justify-content: space-between; gap: 8px; }
+  .p-row .n { flex: 1; } .p-row .q { width: 24px; color: #5a5a55; } .p-row .a { width: 64px; text-align: right; }
+  .p-note { color: #8a5a00; font-size: 11.5px; padding-left: 26px; }
+  .p-total { display: flex; justify-content: space-between; font-family: var(--body); font-weight: 800; font-size: 17px; margin-top: 4px; }
+  .p-paid { margin-top: 8px; text-align: left; font-family: var(--body); font-weight: 700; font-size: 12px; color: var(--mint-deep); letter-spacing: .08em; }
+  .p-kot-row { display: flex; gap: 10px; font-size: 14px; font-weight: 700; }
+  .p-kot-row .q { width: 22px; }
+  .stamp { position: absolute; right: 12px; bottom: 12px; transform: rotate(-12deg); border: 3px solid var(--mint-deep); color: var(--mint-deep); font-family: var(--body); font-weight: 800; font-size: 13px; letter-spacing: .12em; padding: 4px 10px; border-radius: 6px; opacity: .85; }
+
+  /* features */
+  .features { position: relative; margin-top: 40px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .tile { display: flex; gap: 16px; align-items: flex-start; padding: 18px 20px; border-radius: 20px; background: linear-gradient(180deg, var(--card2), var(--card)); border: 1px solid var(--line); min-height: 100px; }
+  .ico { flex: none; width: 48px; height: 48px; border-radius: 14px; background: rgba(61,220,151,.12); border: 1px solid rgba(61,220,151,.25); display: grid; place-items: center; }
+  .ico svg { width: 26px; height: 26px; stroke: var(--mint); fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+  .tile h3 { font-size: 21px; font-weight: 800; letter-spacing: -.01em; line-height: 1.15; }
+  .tile p { margin-top: 6px; font-size: 16px; line-height: 1.38; color: var(--muted); font-weight: 500; }
+
+  .chips { position: relative; margin-top: 16px; display: flex; flex-wrap: nowrap; gap: 10px; }
+  .chip { white-space: nowrap; font-size: 14px; font-weight: 700; color: var(--ink); padding: 9px 14px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.03); display: inline-flex; align-items: center; gap: 8px; }
+  .chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); }
+
+  /* bottom band */
+  .band { position: relative; margin-top: auto; padding-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .price { padding: 24px 26px; border-radius: 22px; background: linear-gradient(135deg, rgba(61,220,151,.16), rgba(61,220,151,.05)); border: 1px solid rgba(61,220,151,.35); }
+  .price .lbl { font-size: 14px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--mint); }
+  .price .amt { display: flex; align-items: baseline; gap: 12px; margin-top: 8px; }
+  .price .amt b { font-family: var(--display); font-size: 54px; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
+  .price .amt span { font-size: 17px; color: var(--muted); font-weight: 700; }
+  .price ul { list-style: none; margin-top: 14px; display: grid; gap: 7px; }
+  .price li { font-size: 16.5px; font-weight: 600; color: var(--ink); display: flex; gap: 10px; align-items: center; }
+  .price li::before { content: "✓"; flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--mint); color: #0d1411; font-size: 13px; font-weight: 900; display: grid; place-items: center; }
+  .cta { padding: 24px 26px; border-radius: 22px; background: var(--ink); color: #0f1713; display: flex; flex-direction: column; justify-content: space-between; }
+  .cta .btn { display: inline-flex; align-items: center; justify-content: center; gap: 12px; padding: 18px 26px; border-radius: 16px; background: #0f1713; color: var(--ink); font-size: 22px; font-weight: 800; letter-spacing: -.01em; }
+  .cta .btn svg { width: 24px; height: 24px; }
+  .cta .contact { margin-top: 18px; display: grid; gap: 8px; }
+  .cta .row { display: flex; align-items: center; gap: 12px; font-size: 20px; font-weight: 800; color: #0f1713; }
+  .cta .row svg { width: 24px; height: 24px; flex: none; }
+  .cta .row small { display: block; font-size: 12px; font-weight: 700; color: #4b5a51; letter-spacing: .08em; text-transform: uppercase; }
+  .foot { position: absolute; left: 64px; right: 64px; bottom: 16px; font-size: 11.5px; color: var(--dim); font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="poster">
+  <div class="grid-tex"></div>
+
+  <header class="top">
+    <div class="brand">
+      <div class="mark" aria-hidden="true"><img src="assets/sandbee-logo.png" alt=""></div>
+      <div>
+        <div class="brand-name" data-k="brand"></div>
+        <div class="brand-by" data-k="by"></div>
+      </div>
+    </div>
+    <div class="pill" data-k="segments"></div>
+  </header>
+
+  <section class="hero">
+    <div>
+      <div class="eyebrow" data-k="eyebrow"></div>
+      <h1 id="headline"></h1>
+      <p class="sub" data-k="subhead"></p>
+    </div>
+    <div class="slips" aria-hidden="true">
+      <div class="paper kot">
+        <div class="p-title" id="kot-title"></div>
+        <div class="p-meta" id="kot-meta"></div>
+        <div class="p-rule"></div>
+        <div id="kot-items"></div>
+      </div>
+      <div class="paper receipt">
+        <div class="p-title" id="rc-cafe"></div>
+        <div class="p-meta" id="rc-meta"></div>
+        <div class="p-rule"></div>
+        <div id="rc-items"></div>
+        <div class="p-rule"></div>
+        <div class="p-row"><span class="n">Subtotal</span><span class="a" id="rc-sub"></span></div>
+        <div class="p-row"><span class="n">GST 5%</span><span class="a" id="rc-gst"></span></div>
+        <div class="p-total"><span>TOTAL</span><span id="rc-total"></span></div>
+        <div class="p-paid" id="rc-paid"></div>
+        <div class="stamp">PRINTED</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="features" id="features"></section>
+  <div class="chips" id="chips"></div>
+
+  <section class="band">
+    <div class="price">
+      <div class="lbl" id="pr-label"></div>
+      <div class="amt"><b id="pr-price"></b><span id="pr-note"></span></div>
+      <ul id="pr-lines"></ul>
+    </div>
+    <div class="cta">
+      <div class="btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v11H8l-4 4z"/><path d="M8 8h8M8 11.5h5"/></svg>
+        <span id="cta-btn"></span>
+      </div>
+      <div class="contact">
+        <div class="row">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-13.4 7.8L3 21l1.3-4.4A9 9 0 1 1 21 12z"/><path d="M9 10.5c.5 2 2 3.5 4 4l1.5-1.2 2 .9c-.4 1.6-1.8 2.3-3.3 1.8a8 8 0 0 1-5.7-5.7c-.5-1.5.2-2.9 1.8-3.3l.9 2z"/></svg>
+          <div><small>WhatsApp</small><div id="cta-wa"></div></div>
+        </div>
+        <div class="row">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+          <div><small>Website</small><div id="cta-site"></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <div class="foot" id="foot"></div>
+</div>
+
+<script>
+(function () {
+  var data = JSON.parse(document.getElementById("poster-data").textContent);
+  var ICONS = {
+    receipt: '<path d="M6 3h12v18l-2-1.5L14 21l-2-1.5L10 21l-2-1.5L6 21z"/><path d="M9 8h6M9 12h6M9 16h4"/>',
+    printer: '<path d="M7 8V3h10v5"/><rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 14h10v7H7z"/><path d="M17 11.5h.01"/>',
+    qr: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM20 14h1v1h-1M17 20h4M20 17v1M14 20h1"/>',
+    tables: '<rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/>',
+    wallet: '<path d="M3 7a2 2 0 0 1 2-2h13v4"/><rect x="3" y="7" width="18" height="12" rx="2"/><path d="M16 13h2"/>',
+    chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    chat: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.1A8 8 0 1 1 21 12z"/><path d="M8.5 11h7M8.5 14h4"/>'
+  };
+  function text(id, v) { var el = document.getElementById(id) || document.querySelector('[data-k="' + id + '"]'); if (el) el.textContent = v; }
+  function el(tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt !== undefined) e.textContent = txt; return e; }
+
+  ["brand", "by", "segments", "eyebrow", "subhead"].forEach(function (k) { text(k, data[k]); });
+  var h1 = document.getElementById("headline");
+  data.headline.forEach(function (line, i) {
+    if (i) h1.appendChild(document.createElement("br"));
+    var span = document.createElement("span");
+    if (i === data.headline.length - 1) span.className = "accent";
+    span.textContent = line; h1.appendChild(span);
+  });
+
+  var feats = document.getElementById("features");
+  data.features.forEach(function (f) {
+    var tile = el("div", "tile");
+    var ico = el("div", "ico"); ico.innerHTML = '<svg viewBox="0 0 24 24">' + (ICONS[f.icon] || ICONS.receipt) + "</svg>";
+    var body = el("div"); body.appendChild(el("h3", null, f.title)); body.appendChild(el("p", null, f.text));
+    tile.appendChild(ico); tile.appendChild(body); feats.appendChild(tile);
+  });
+  var chips = document.getElementById("chips");
+  data.chips.forEach(function (c) { chips.appendChild(el("span", "chip", c)); });
+
+  text("pr-label", data.pricing.label); text("pr-price", data.pricing.price); text("pr-note", data.pricing.priceNote);
+  var lines = document.getElementById("pr-lines");
+  data.pricing.lines.forEach(function (l) { lines.appendChild(el("li", null, l)); });
+  text("cta-btn", data.cta.button); text("cta-wa", data.cta.whatsapp); text("cta-site", data.cta.site); text("foot", data.cta.footnote);
+
+  text("rc-cafe", data.receipt.cafe); text("rc-meta", data.receipt.meta);
+  var rc = document.getElementById("rc-items");
+  data.receipt.items.forEach(function (it) {
+    var row = el("div", "p-row"); row.appendChild(el("span", "q", it[1] + "x")); row.appendChild(el("span", "n", it[0])); row.appendChild(el("span", "a", it[2])); rc.appendChild(row);
+  });
+  text("rc-sub", data.receipt.subtotal); text("rc-gst", data.receipt.gst); text("rc-total", data.receipt.total); text("rc-paid", data.receipt.paid);
+  text("kot-title", data.kot.title); text("kot-meta", data.kot.meta);
+  var kot = document.getElementById("kot-items");
+  data.kot.items.forEach(function (it) {
+    var row = el("div", "p-kot-row"); row.appendChild(el("span", "q", it[0])); row.appendChild(el("span", "n", it[1])); kot.appendChild(row);
+    if (it[2]) kot.appendChild(el("div", "p-note", "- " + it[2]));
+  });
+
+  var FONT_WAIT_MS = 4000;
+  var fontsReady = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+  var timeout = new Promise(function (r) { setTimeout(r, FONT_WAIT_MS); });
+  Promise.race([fontsReady, timeout]).then(function () {
+    requestAnimationFrame(function () { requestAnimationFrame(function () { document.documentElement.dataset.ready = "1"; }); });
+  });
+})();
+</script>
+</body>
+</html>

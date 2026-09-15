@@ -11,6 +11,8 @@
 // the same predicates run identically wherever the provider mounts.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { PrintHostState, PrintJobFeedRow, PrintJobResolvedRow } from "./print-job";
+
 /** Server-side scan bound when counting/paging OPEN self-order requests — a
  *  cap, not a page size, so a stuck queue can never turn the poll into an
  *  unbounded collection scan on the free-tier cluster. */
@@ -22,8 +24,9 @@ export const PULSE_OPEN_SCAN_LIMIT = 50;
  *  leave the OLDEST unprinted tickets invisible to both the alert bar and the
  *  auto-printer exactly when the printer device had been offline — the one
  *  scenario the queue exists for. Printing a shown row frees its slot, so a
- *  deep backlog drains oldest-visible-first across successive ticks. */
-export const PULSE_SELF_ORDER_LIMIT = 5;
+ *  deep backlog drains oldest-visible-first across successive ticks.
+ *  5 -> 10 (owner Q16, print-host plan §B4). */
+export const PULSE_SELF_ORDER_LIMIT = 10;
 
 /** A self-order stays eligible to appear in the accepted list for this long
  *  after acceptance. */
@@ -73,6 +76,26 @@ export interface PosPulseData {
   openRev: string | null;
   selfOrders: PulseSelfOrder[];
   selfOrdersTruncated: boolean;
+  // Print-host plan (§B4) — 6 fields (C/D1/D2/D3). REQUIRED: PH-3's
+  // `readPosPulse` now serves all six on every response. The only
+  // constructors of this shape are `readPosPulse` and the test factory.
+  // `printHost` stays a REQUIRED field, but its VALUE is nullable: `null`
+  // means "this tick could not read print-host state" (the two print reads
+  // failed — index build, post-deploy model registration, one slow read),
+  // which consumers must treat exactly like an UNRESOLVED pulse per
+  // MERGED-19 — attempt the enqueue and let the server's own answer decide —
+  // never as "no host configured", which would wrongly trigger a local print
+  // while a live host is draining.
+  printHost: PrintHostState | null;
+  printJobs: PrintJobFeedRow[];
+  printJobsTruncated: boolean;
+  stalePrintJobs: PrintJobFeedRow[];
+  stalePrintJobsTruncated: boolean;
+  resolvedPrintJobs: PrintJobResolvedRow[];
+  // PH-8 (§B7 "or any feed truncated ⇒ waiting/unknown"): D3's own
+  // length===limit proxy, so the band can tell "this id is in no feed because
+  // the read was cut at PRINT_JOB_RESOLVED_LIMIT" from "genuinely gone".
+  resolvedPrintJobsTruncated: boolean;
 }
 
 /** What changed between two consecutive polls, for the provider to act on. */
@@ -161,10 +184,14 @@ export function pulseArrival(prev: PosPulseData | null, next: PosPulseData): Pul
  * ticket order — first accepted, first printed), or `null` when none qualify.
  * Pure: the per-device "auto-print enabled" gate is the caller's concern, not
  * this function's. A malformed `acceptedAt` is skipped rather than throwing.
+ * `maxAgeMs` defaults to `AUTO_PRINT_MAX_AGE_MS` (the legacy per-device path);
+ * the print-host drain passes `PRINT_HOST_MAX_AGE_MS` (30 min) instead
+ * (print-host plan §B4) — existing 2-arg callers are unaffected.
  */
 export function autoPrintCandidate(
   selfOrders: PulseSelfOrder[],
   nowMs: number,
+  maxAgeMs: number = AUTO_PRINT_MAX_AGE_MS,
 ): PulseSelfOrder | null {
   let oldest: PulseSelfOrder | null = null;
   let oldestMs = Infinity;
@@ -173,7 +200,7 @@ export function autoPrintCandidate(
     if (row.printed) continue;
     const acceptedMs = parseMsOrNull(row.acceptedAt);
     if (acceptedMs === null) continue;
-    if (nowMs - acceptedMs > AUTO_PRINT_MAX_AGE_MS) continue;
+    if (nowMs - acceptedMs > maxAgeMs) continue;
     if (acceptedMs < oldestMs) {
       oldestMs = acceptedMs;
       oldest = row;

@@ -119,7 +119,7 @@ test("patch and update seams stay disjoint", () => {
 
 const sampleOrder = {
   customerName: "Walk-in",
-  items: [{ productId: "p1", name: "Chai", price: 20, qty: 1 }],
+  items: [{ productId: "64b7f0c2a1d2e3f4a5b6c7d8", name: "Chai", price: 20, qty: 1 }],
   subtotal: 20,
   total: 20,
   paidAmount: 20,

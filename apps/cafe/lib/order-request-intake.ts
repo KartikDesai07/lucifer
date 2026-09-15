@@ -2,7 +2,7 @@ import { sanitizePublicText } from "@pos/shared/public";
 import type { CreatePublicOrderRequestInput } from "@pos/shared/schemas/public-order.schema";
 import type { PricedLine } from "@/lib/public-pricing";
 import type { ISettings } from "@/models/Settings";
-import { OrderRequest, type IOrderRequestItem, type OrderRequestTargetKind } from "@/models/OrderRequest";
+import { OrderRequest, type OrderRequestItemInput, type OrderRequestTargetKind } from "@/models/OrderRequest";
 import { Order } from "@/models/Order";
 import { computeOrderTotals, gstConfigOfSettings, tableChargeOf, NO_TABLE_CHARGE } from "@/lib/receipt";
 
@@ -158,7 +158,7 @@ export interface IntakeTable {
 export interface OrderRequestDraft {
   targetKind: OrderRequestTargetKind;
   tableNo?: string;
-  items: IOrderRequestItem[];
+  items: OrderRequestItemInput[];
   quotedSubtotal: number;
   quotedCharge: number;
   quotedChargeLabel?: string;
@@ -168,6 +168,12 @@ export interface OrderRequestDraft {
   name: string;
   quotedDiscount?: number;
   promoCode?: string;
+  // CB-5B S8 — the diner's reward INTENT, carried onto the stored request so
+  // the accept bridge can claim it later. Never an amount: it does not enter
+  // quoteRequestTotals and cannot move quotedTotal. A quote that changed
+  // because of a reward would be a quote the server could not re-verify at
+  // accept time, when the stamps are actually spent.
+  requestedRewardAt?: number;
 }
 
 // The money core, shared VERBATIM by create (buildRequestDoc below) and edit
@@ -188,15 +194,18 @@ export function quoteRequestTotals(
   chargeApplies: boolean,
   discount = 0, // a diner never TYPES an amount — this is a resolved promo discount, or 0
 ): {
-  items: IOrderRequestItem[];
+  items: OrderRequestItemInput[];
   quotedSubtotal: number;
   quotedCharge: number;
   quotedChargeLabel?: string;
   quotedTotal: number;
   quotedDiscount: number;
 } {
-  const items: IOrderRequestItem[] = lines.map((line) => {
-    const item: IOrderRequestItem = {
+  const items: OrderRequestItemInput[] = lines.map((line) => {
+    const item: OrderRequestItemInput = {
+      // line.productId is already validated 24-hex by priceRequestItems; the
+      // model casts it to the stored ObjectId on write (CB-DL-2) — this pure
+      // builder never constructs BSON ids itself.
       productId: line.productId,
       name: line.name,
       price: line.price,
@@ -224,12 +233,13 @@ export function quoteRequestTotals(
   const totals = computeOrderTotals({
     items: lines,
     discount, // 0 unless a promo code resolved — see resolvePromoDiscount (@pos/shared/public)
+    discountKind: undefined,
     charge: charge.amount,
     cfg: gstConfigOfSettings(settings ?? undefined),
   });
 
   const result: {
-    items: IOrderRequestItem[];
+    items: OrderRequestItemInput[];
     quotedSubtotal: number;
     quotedCharge: number;
     quotedChargeLabel?: string;
@@ -274,6 +284,11 @@ export function buildRequestDoc(
   chargeApplies: boolean,
   discount = 0, // resolvePromoDiscount's own result, or 0 — never a diner-sent amount
   promoCode?: string, // the NORMALIZED code that resolved, only when one applied
+  // CB-5B S8 — the diner's reward INTENT, already validated by the caller as
+  // belonging to a signed-in diner who can afford it. Passed separately from
+  // `input` for the same reason promoCode is: the route decides whether the
+  // claim survives live state, this builder only records the decision.
+  requestedRewardAt?: number,
 ): OrderRequestDraft {
   const quote = quoteRequestTotals(lines, table, settings, chargeApplies, discount);
 
@@ -298,5 +313,9 @@ export function buildRequestDoc(
   // keys are independent, not one gated on the other).
   if (quote.quotedDiscount > 0) doc.quotedDiscount = quote.quotedDiscount;
   if (promoCode) doc.promoCode = promoCode;
+  // Omit-empty, same discipline as the promo pair. Undefined means the diner
+  // claimed nothing; a stored value means they asked, not that they were
+  // granted — the accept re-resolves and can still refuse.
+  if (requestedRewardAt !== undefined) doc.requestedRewardAt = requestedRewardAt;
   return doc;
 }

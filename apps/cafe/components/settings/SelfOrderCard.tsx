@@ -26,8 +26,18 @@ interface SelfOrderCardProps {
   control: Control<SettingsInput>;
 }
 
+// EXHAUSTIVE by construction: a Record keyed on the mode union, not a ternary.
+// CB-4 added a third value ("menu"), and the ternary this replaced would have
+// compiled unchanged while labelling it "Sends straight to the kitchen" — the
+// exact opposite of what it does. A future fourth value now fails tsc here.
+const SELF_ORDER_MODE_LABELS: Record<(typeof SELF_ORDER_MODES)[number], string> = {
+  approve: "Staff approves each order (recommended)",
+  auto: "Sends straight to the kitchen",
+  menu: "Menu only — no ordering",
+};
+
 function selfOrderModeLabel(mode: (typeof SELF_ORDER_MODES)[number]): string {
-  return mode === "approve" ? "Staff approves each order (recommended)" : "Sends straight to the kitchen";
+  return SELF_ORDER_MODE_LABELS[mode];
 }
 
 // QR self-ordering — CR2.2. Mirrors the GST card's Controller/Select idiom in
@@ -66,8 +76,10 @@ export function SelfOrderCard({ control }: SelfOrderCardProps) {
             )}
           />
           <p className="text-xs text-muted-foreground">
-            &quot;Staff approves&quot; holds the order as a pending request until a staff member accepts it. &quot;Auto&quot;
-            sends it straight to the kitchen, the same as an order rung up at the counter.
+            &quot;Staff approves&quot; holds the order as a pending request until a staff member accepts it. &quot;Sends
+            straight to the kitchen&quot; is the same as an order rung up at the counter. &quot;Menu only&quot; lets
+            diners browse the menu and prices but not place an order — use it if you only want to replace your paper
+            menu.
           </p>
         </div>
 
@@ -90,7 +102,7 @@ export function SelfOrderCard({ control }: SelfOrderCardProps) {
           render={({ field }) => (
             <ToggleRow
               label="Show past orders to diners"
-              description="Diners can see their past orders on this device. (takes effect when the diner history page ships)"
+              description="Diners can see their earlier orders at this table. Takes effect when the diner order history screen is available."
               checked={field.value}
               onChange={field.onChange}
             />

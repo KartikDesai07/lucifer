@@ -36,7 +36,7 @@ export const PUBLIC_PRODUCT_FILTER: FilterQuery<IProduct> = {
 export interface PublicProductSource {
   _id: unknown; // stringified via String(); never assumed to already be a string
   name: string;
-  category: string;
+  categoryId: unknown; // resolved to a name via `categoryNameOf` below, never emitted as-is
   price: number;
   variations?: ProductVariation[];
   discount: number;
@@ -65,12 +65,16 @@ export interface PublicMenuItem {
 // Builds a brand-new object naming only the allowed keys — never a spread of
 // the input — so an extra field on the source (a stray `cost`, `isActive`,
 // `publicVisible`, `_id` bookkeeping, timestamps) cannot ride along even if a
-// future `.select()` widens by mistake.
-export function toPublicMenuItem(product: PublicProductSource): PublicMenuItem {
+// future `.select()` widens by mistake. `categoryNameOf` resolves the stored
+// categoryId to a name; the id itself never enters the output.
+export function toPublicMenuItem(
+  product: PublicProductSource,
+  categoryNameOf: (id: unknown) => string,
+): PublicMenuItem {
   const item: PublicMenuItem = {
     id: String(product._id),
     name: product.name,
-    category: product.category,
+    category: categoryNameOf(product.categoryId),
     price: product.price,
     discount: product.discount,
     available: product.available,

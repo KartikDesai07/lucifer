@@ -60,6 +60,23 @@ const KOT_RECEIPT = "apps/cafe/components/pos/KOTReceipt.tsx";
 const ORDER_DETAIL_SHEET = "apps/cafe/components/orders/OrderDetailSheet.tsx";
 const END_OF_DAY_BUTTON = "apps/cafe/components/reports/EndOfDayButton.tsx";
 const END_OF_DAY_SUMMARY = "apps/cafe/components/reports/EndOfDaySummary.tsx";
+// PH-10 A4 — the repo-wide pageStyle distribution (measured this session):
+// MoveTableDialog.tsx 1 (:107), OrderDetailSheet.tsx 2, EndOfDayButton.tsx 1
+// (RECEIPT_PAGE_STYLE), use-kot-print-bridge.ts 2, use-print-host-bridge.ts 3
+// (two receiptPageStyle( + one RECEIPT_PAGE_STYLE at :117), PrintHostProvider
+// 0, PrintHostCard 0 — total 9. No grand-total assert below: each file is
+// read and counted separately, so a shifted total can't hide behind a sum.
+//
+// CB-D1 (desktop-shell.test.ts / desktop-shell-paths.test.ts own the new
+// pins): 9 of these 10 useReactToPrint call sites now ALSO wrap their options
+// through slipPrintOptions(...) (lib/desktop-shell.ts) so a counter PC running
+// the Windows desktop shell prints silently instead of opening the browser's
+// print dialog — same-line wrap, net zero lines per site, so the counts above
+// are UNCHANGED. tables/qr/page.tsx (the A4 QR sheet) is deliberately NOT
+// wrapped and keeps the plain browser dialog.
+const MOVE_TABLE_DIALOG = "apps/cafe/components/orders/MoveTableDialog.tsx";
+const PRINT_HOST_PROVIDER = "apps/cafe/components/layout/PrintHostProvider.tsx";
+const PRINT_HOST_CARD = "apps/cafe/components/print/PrintHostCard.tsx";
 
 // ── 1. Pay Now must fire the kitchen ticket too (CR1.2(a)) ──────────────────
 
@@ -284,9 +301,53 @@ test("PIN: RECEIPT_PAGE_STYLE carries the 80mm/4mm page setup, and every print t
   const eodSrc = readSrc(END_OF_DAY_BUTTON);
   const eodMatches = eodSrc.match(/pageStyle:\s*RECEIPT_PAGE_STYLE/g) ?? [];
   assert.equal(eodMatches.length, 1, "EndOfDayButton.tsx must pass RECEIPT_PAGE_STYLE to its print hook");
+
+  // PH-10 A4 — MoveTableDialog's own reprinted KOT (table-transfer slip) must
+  // build its page style the same way every other print surface does.
+  const moveTableSrc = readSrc(MOVE_TABLE_DIALOG);
+  const moveTableMatches = moveTableSrc.match(/pageStyle:\s*receiptPageStyle\(/g) ?? [];
+  assert.equal(
+    moveTableMatches.length,
+    1,
+    "MoveTableDialog.tsx must build exactly one page style for its moved-slip print hook (measured at :107)",
+  );
+
+  // PH-10 A4 — PrintHostProvider only WIRES the bridge hook (usePrintHostBridge,
+  // positive landmark) into context; it must never build its own page style —
+  // that stays the bridge hook's job (use-print-host-bridge.ts, pinned above
+  // via its 3 hits), or a duplicated page-setup could drift from the hook's.
+  const providerSrc = readSrc(PRINT_HOST_PROVIDER);
+  assert.match(
+    providerSrc,
+    /import \{ usePrintHostBridge, type HostPrintCurrent \} from "@\/hooks\/use-print-host-bridge";/,
+    "PrintHostProvider.tsx must import usePrintHostBridge from the bridge hook (positive landmark for the pageStyle-absence pin below)",
+  );
+  assert.ok(
+    !/pageStyle:\s*receiptPageStyle\(/.test(providerSrc) && !/pageStyle:\s*RECEIPT_PAGE_STYLE/.test(providerSrc),
+    "PrintHostProvider.tsx must build zero page styles of its own — it only wires usePrintHostBridge's already-built print jobs into context",
+  );
+
+  // PH-10 A4 — PrintHostCard triggers a manual test print via the bridge's own
+  // queueTestSlip() (positive landmark), so it too must never build a page
+  // style locally.
+  const cardSrc = readSrc(PRINT_HOST_CARD);
+  assert.match(
+    cardSrc,
+    /queueTestSlip\(\)/,
+    "PrintHostCard.tsx must call the bridge's queueTestSlip() (positive landmark for the pageStyle-absence pin below)",
+  );
+  assert.ok(
+    !/pageStyle:\s*receiptPageStyle\(/.test(cardSrc) && !/pageStyle:\s*RECEIPT_PAGE_STYLE/.test(cardSrc),
+    "PrintHostCard.tsx must build zero page styles of its own — the test slip's page setup is the bridge hook's job",
+  );
 });
 
 // ── 5. The mobile-UA hazard must stay documented ────────────────────────────
+// PH-10 A5 — discharged: the isMobileUserAgent GATING (not this comment) is
+// pinned by print-host-card-paths.test.ts:150-192 (PrintHostCard has ZERO
+// references, concatenated needle) + :196-207 + :220-230 (PrinterSetupWizard
+// is the actual caller) and printer-setup-paths.test.ts:70-85. No new
+// assertion here — this test only pins the comment below staying in place.
 
 test("PIN: lib/print.ts still names the fixed 500ms onAfterPrint timer on MOBILE user-agents — delete this comment and the go-live checklist's tablet warning becomes unverifiable", () => {
   const src = readSrc(PRINT_LIB);
@@ -519,7 +580,10 @@ test("PIN: EndOfDayButton references no session/role source at all — the cashi
     /const ready =\s*!!summary\.data && !!settings\.data && \(!isToday \|\| openTabs\.isSuccess\);/,
     "ready must require the open-tabs query to have succeeded for TODAY specifically, so the slip never prints a false 'all tabs settled'",
   );
-  assert.match(src, /disabled=\{!ready\}/, "the print button must be disabled until ready");
+  // PH-8 (print-host plan, PH-6 review MUST): the same button is ALSO disabled
+  // while this instance's routed enqueue is in flight — `!ready` stays the
+  // first disjunct, so "disabled until ready" is unchanged.
+  assert.match(src, /disabled=\{!ready \|\| enqueuePending\}/, "the print button must be disabled until ready (and while a routed enqueue is in flight, PH-8)");
   assert.match(src, /<Input\s+type="date"/, "a date picker must exist so a past day's slip can be reprinted");
   assert.match(src, /onChange=\{\(e\) => setDate\(e\.target\.value\)\}/);
 });

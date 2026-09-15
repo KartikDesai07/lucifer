@@ -51,8 +51,8 @@ const BRANDING_ROUTE = "apps/cafe/app/api/branding/[slot]/route.ts";
 const ROOT_LAYOUT = "apps/cafe/app/layout.tsx";
 const FAVICON_FILE = "apps/cafe/app/favicon.ico";
 const NEXT_CONFIG = "apps/cafe/next.config.ts";
-const SETTINGS_FORM = "apps/cafe/components/settings/SettingsForm.tsx";
-const GENERAL_SETTINGS_FIELDS = "apps/cafe/components/settings/GeneralSettingsFields.tsx";
+const SETTINGS_FORM_DEFAULTS = "apps/cafe/lib/settings-form-defaults.ts";
+const BUSINESS_DETAILS_FIELDS = "apps/cafe/components/settings/BusinessDetailsFields.tsx";
 const IMAGE_UPLOAD = "apps/cafe/components/shared/ImageUpload.tsx";
 const APP_SIDEBAR = "apps/cafe/components/layout/AppSidebar.tsx";
 const LOGIN_PAGE = "apps/cafe/app/(auth)/login/page.tsx";
@@ -79,7 +79,7 @@ test("PIN: GET /api/branding/[slot] carries no auth guard (public — the login 
   // every unauthenticated screen, forever.
   assert.ok(
     !/\brequireAuth\s*\(/.test(getBody) && !/\brequireAdmin\s*\(/.test(getBody),
-    "GET's body must not call requireAuth or requireAdmin — it is the one route besides /api/health that must stay open with no session",
+    "GET's body must not call requireAuth or requireAdmin — like /api/health and /api/manifest (CB-1d.2) it must stay open with no session",
   );
 
   const adminCallIdx = putBody.indexOf("const admin = await requireAdmin();");
@@ -357,32 +357,36 @@ test("PIN: next.config.ts rewrites /favicon.ico to /api/branding/productLogo —
   );
 });
 
-// ── 7. SettingsForm's defaultValues includes productLogo ───────────────────
+// ── 7. settingsFormDefaults' return body includes productLogo ──────────────
 
-test("PIN: SettingsForm's defaultValues includes productLogo — settingsSchema requires it on every submit, and zodResolver validates the FULL object", () => {
-  const src = stripComments(readSrc(SETTINGS_FORM));
-  const defaultsIdx = src.indexOf("defaultValues: {");
-  assert.ok(defaultsIdx >= 0, "useForm must be seeded with defaultValues");
-  const braceOpenIdx = src.indexOf("{", defaultsIdx);
+test("PIN: settingsFormDefaults' return body includes productLogo — settingsSchema requires it on every submit, and every section form's zodResolver validates the FULL object (CB-UI1 S6: re-pointed off the retired SettingsForm.tsx to the shared defaults builder every section page now seeds from)", () => {
+  const src = stripComments(readSrc(SETTINGS_FORM_DEFAULTS));
+  const fnStart = src.indexOf("export function settingsFormDefaults");
+  assert.ok(fnStart >= 0, "settingsFormDefaults must be exported");
+  const returnIdx = src.indexOf("return {", fnStart);
+  assert.ok(returnIdx >= 0, "settingsFormDefaults must return an object literal");
+  const braceOpenIdx = src.indexOf("{", returnIdx);
   const braceCloseIdx = matchingBraceEnd(src, braceOpenIdx);
   const defaultsBody = src.slice(braceOpenIdx + 1, braceCloseIdx);
 
-  // Mutation this catches: dropping the productLogo line from defaultValues —
-  // a Settings document written before this field existed has no key for it,
-  // so zodResolver would see `undefined` for a REQUIRED field and silently
-  // block Save with no field visibly wrong (productLogo has no UI validation
-  // message of its own on this path).
+  // Mutation this catches: dropping the productLogo line from the return
+  // body — a Settings document written before this field existed has no key
+  // for it, so zodResolver would see `undefined` for a REQUIRED field and
+  // silently block Save with no field visibly wrong (productLogo has no UI
+  // validation message of its own on this path). Same regex as before the
+  // re-point — only the anchor (function return body, not a component's
+  // inline useForm call) changed.
   assert.match(
     defaultsBody,
     /productLogo:\s*settings\.productLogo\s*\?\?\s*""\s*,/,
-    "defaultValues must seed productLogo from settings.productLogo, falling back to an empty string — omitting it fails the whole form's Save on a doc written before this field existed",
+    "settingsFormDefaults' return body must seed productLogo from settings.productLogo, falling back to an empty string — omitting it fails every section's Save on a doc written before this field existed",
   );
 });
 
-// ── 8. GeneralSettingsFields wires both slots to their matching Controller ──
+// ── 8. BusinessDetailsFields wires both slots to their matching Controller ──
 
-test("PIN: GeneralSettingsFields renders ImageUpload for BOTH slot=\"logo\" and slot=\"productLogo\", each bound to the matching Controller name= — a swapped or missing binding would let the two logos overwrite each other", () => {
-  const src = stripComments(readSrc(GENERAL_SETTINGS_FIELDS));
+test("PIN: BusinessDetailsFields renders ImageUpload for BOTH slot=\"logo\" and slot=\"productLogo\", each bound to the matching Controller name= — a swapped or missing binding would let the two logos overwrite each other (CB-UI1 S6: re-pointed off the retired GeneralSettingsFields.tsx — both slots' Controllers landed in the SAME file, so the swapped-slot assertion below is unchanged)", () => {
+  const src = stripComments(readSrc(BUSINESS_DETAILS_FIELDS));
 
   const logoNameIdx = src.indexOf('name="logo"');
   const productLogoNameIdx = src.indexOf('name="productLogo"');
@@ -697,11 +701,13 @@ test('PIN: middleware.ts\'s matcher excludes /api via a negative lookahead — G
   // negative lookahead — /api routes would then be routed through the auth
   // guard first, and the login page's tab icon plus the browser's bare
   // /favicon.ico probe (both session-free) would be redirected to /login
-  // instead of getting image bytes.
+  // instead of getting image bytes. The `icons/` exclusion (CB-1d.2 install
+  // icons) is part of the same lookahead — dropping it would 307 the
+  // cookie-less PWA-install icon fetch instead of serving bytes.
   assert.match(
     src,
-    /matcher:\s*\[\s*"\/\(\(\?!api\|_next\/static\|_next\/image\|favicon\.ico\)\.\*\)"\s*\]/,
-    'middleware.ts\'s matcher must be `["/((?!api|_next/static|_next/image|favicon.ico).*)"]`',
+    /matcher:\s*\[\s*"\/\(\(\?!api\|_next\/static\|_next\/image\|favicon\.ico\|icons\/\)\.\*\)"\s*\]/,
+    'middleware.ts\'s matcher must be `["/((?!api|_next/static|_next/image|favicon.ico|icons/).*)"]`',
   );
 });
 

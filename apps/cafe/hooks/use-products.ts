@@ -19,6 +19,14 @@ export interface ProductFilters {
 
 // Active products, sorted by category then name. Pattern A (UI-based via
 // isPending) for management mutations (CLAUDE.md §9).
+//
+// Master data (CB-DL-1): the products list is seeded once per page load from
+// GET /api/bootstrap (MasterDataProvider) and served from the tab's own copy
+// afterwards. The 5-min background poll this hook used to run is gone — it was
+// exactly the recurring query the owner rule removes; a price change or an "86"
+// made on another device reaches this terminal on its next page refresh (and
+// immediately in the tab that made the change, which still invalidates
+// PRODUCT_KEYS.all).
 const productHooks = createCrudHooks<
   Product,
   CreateProductInput,
@@ -27,11 +35,8 @@ const productHooks = createCrudHooks<
 >({
   path: "/api/products",
   rootKey: PRODUCT_KEYS.all,
-  staleTime: STALE_TIMES.PRODUCTS,
-  gcTime: GC_TIMES.DEFAULT,
-  // A POS tab left open all day never re-fetches products otherwise — a price
-  // change or an "86" made on another device would never reach that terminal.
-  refetchInterval: STALE_TIMES.PRODUCTS,
+  staleTime: STALE_TIMES.MASTERS,
+  gcTime: GC_TIMES.MASTERS,
   // Archived list nests under the root key so invalidating PRODUCT_KEYS.all
   // (any mutation) refreshes both the active and archived views.
   listKey: (f) =>

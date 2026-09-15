@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose, { Types } from "mongoose";
 import { connectDB } from "@/lib/db";
 import { Order } from "@/models/Order";
 import { Customer } from "@/models/Customer";
@@ -51,8 +51,12 @@ export async function POST(_req: Request, { params }: Params) {
         expr,
       ],
     });
+    // A raw aggregate `$match` does NOT auto-cast like a model query filter —
+    // matching the string `id` against stored ObjectId customerIds would hit
+    // ZERO documents and silently zero out visits/totalSpend/totalDue below.
+    // `id` is already isValidObjectId-gated above.
     const [agg] = await Order.aggregate([
-      { $match: { customerId: id, status: { $ne: "Cancelled" } } },
+      { $match: { customerId: new Types.ObjectId(id), status: { $ne: "Cancelled" } } },
       {
         $group: {
           _id: null,

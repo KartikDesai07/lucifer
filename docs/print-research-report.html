@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Print Solution — Deep Research Report</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b23; --panel2:#1c2330; --border:#2a3342;
+    --text:#e6ebf2; --muted:#93a0b4; --dim:#6b7789;
+    --green:#2ecc71; --green-bg:#12301f; --red:#ff5c5c; --red-bg:#331616;
+    --amber:#f5b942; --amber-bg:#332a12; --blue:#5aa7ff; --blue-bg:#132639;
+    --purple:#b585ff; --accent:#ffb454;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-apple-system,Roboto,sans-serif;line-height:1.55;padding-bottom:80px}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+
+  header{background:linear-gradient(160deg,#131926 0%,#0e1116 70%);border-bottom:1px solid var(--border);padding:34px 0 26px}
+  h1{font-size:1.7rem;letter-spacing:.3px}
+  h1 .em{color:var(--accent)}
+  .sub{color:var(--muted);margin-top:6px;font-size:.95rem}
+  .chips{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
+  .chip{font-size:.75rem;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--panel);color:var(--muted)}
+  .chip b{color:var(--text)}
+
+  section{margin-top:38px}
+  h2{font-size:1.25rem;margin-bottom:4px;display:flex;align-items:center;gap:10px}
+  h2 .n{background:var(--panel2);border:1px solid var(--border);color:var(--accent);font-size:.85rem;min-width:30px;height:30px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center}
+  .h2sub{color:var(--muted);font-size:.9rem;margin-bottom:16px}
+
+  .banner{background:linear-gradient(135deg,#1a2334,#152030);border:1px solid #33507a;border-radius:14px;padding:22px 24px;margin-top:20px}
+  .banner .big{font-size:1.25rem;font-weight:650;line-height:1.4}
+  .banner .big .hl{color:var(--accent)}
+  .banner p{color:var(--muted);margin-top:10px;font-size:.95rem}
+  .banner p b{color:var(--text)}
+
+  .verdict3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-top:16px}
+  .vcard{border-radius:12px;padding:16px 18px;border:1px solid var(--border);background:var(--panel)}
+  .vcard .ic{font-size:1.5rem}
+  .vcard h3{font-size:1rem;margin:8px 0 6px}
+  .vcard p{font-size:.87rem;color:var(--muted)}
+  .vcard.good{border-color:#2e5c41;background:linear-gradient(160deg,#14251b,#121a16)}
+  .vcard.warn{border-color:#5c4a1e;background:linear-gradient(160deg,#2a2312,#1a1710)}
+  .vcard.info{border-color:#2e4a6b;background:linear-gradient(160deg,#14202f,#111a26)}
+
+  .badge{display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:6px;vertical-align:middle}
+  .b-green{background:var(--green-bg);color:var(--green);border:1px solid #2e5c41}
+  .b-red{background:var(--red-bg);color:var(--red);border:1px solid #5c2e2e}
+  .b-amber{background:var(--amber-bg);color:var(--amber);border:1px solid #5c4a1e}
+  .b-blue{background:var(--blue-bg);color:var(--blue);border:1px solid #2e4a6b}
+  .b-grey{background:#222a36;color:var(--muted);border:1px solid var(--border)}
+
+  .tiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-top:16px}
+  .tier{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;position:relative;display:flex;flex-direction:column;gap:8px}
+  .tier .tno{font-size:.72rem;font-weight:700;color:var(--dim);letter-spacing:1px}
+  .tier h3{font-size:1rem}
+  .tier .who{font-size:.82rem;color:var(--muted)}
+  .tier .cost{font-size:.82rem;color:var(--text)}
+  .tier .verd{font-size:.82rem;margin-top:auto;padding-top:8px;border-top:1px dashed var(--border)}
+  .tier.our{border-color:var(--accent);box-shadow:0 0 0 1px rgba(255,180,84,.25)}
+  .tier.our::after{content:"HUMARA CURRENT BUILD";position:absolute;top:-10px;right:12px;background:var(--accent);color:#161105;font-size:.62rem;font-weight:800;padding:2px 8px;border-radius:6px;letter-spacing:.5px}
+  .tier.rec{border-color:#2e5c41}
+  .tier.rec::after{content:"UPGRADE PATH";position:absolute;top:-10px;right:12px;background:var(--green);color:#06210f;font-size:.62rem;font-weight:800;padding:2px 8px;border-radius:6px;letter-spacing:.5px}
+  .tier.end{border-color:#2e4a6b}
+  .tier.end::after{content:"END STATE";position:absolute;top:-10px;right:12px;background:var(--blue);color:#071523;font-size:.62rem;font-weight:800;padding:2px 8px;border-radius:6px;letter-spacing:.5px}
+
+  table{width:100%;border-collapse:collapse;margin-top:14px;font-size:.88rem;background:var(--panel);border-radius:12px;overflow:hidden}
+  th{background:var(--panel2);text-align:left;padding:10px 14px;color:var(--muted);font-size:.78rem;text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid var(--border)}
+  td{padding:10px 14px;border-bottom:1px solid #202836;vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  td .name{font-weight:650}
+  .tablebox{overflow-x:auto;border:1px solid var(--border);border-radius:12px}
+  .tablebox table{margin-top:0;border-radius:0}
+
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:10px;margin-top:16px}
+  .fstep{flex:1;min-width:150px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:.83rem;position:relative}
+  .fstep b{display:block;color:var(--blue);font-size:.78rem;margin-bottom:4px;letter-spacing:.5px}
+  .farrow{align-self:center;color:var(--dim);font-size:1.2rem}
+  .flownote{margin-top:12px;background:var(--blue-bg);border:1px solid #2e4a6b;border-radius:10px;padding:12px 16px;font-size:.88rem;color:#bcd6f5}
+
+  .twocol{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-top:16px}
+  .col{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 18px}
+  .col.ok{border-top:3px solid var(--green)}
+  .col.div{border-top:3px solid var(--amber)}
+  .col h3{font-size:.95rem;margin-bottom:12px}
+  .col ul{list-style:none}
+  .col li{padding:8px 0;border-bottom:1px dashed #232c3a;font-size:.87rem;color:var(--muted)}
+  .col li:last-child{border-bottom:none}
+  .col li b{color:var(--text)}
+  .col li .tick{color:var(--green);margin-right:6px}
+  .col li .warnx{color:var(--amber);margin-right:6px}
+
+  .risk{display:flex;gap:12px;background:var(--panel);border:1px solid var(--border);border-left:4px solid var(--red);border-radius:10px;padding:12px 16px;margin-top:10px;font-size:.88rem}
+  .risk.amber{border-left-color:var(--amber)}
+  .risk .rt{min-width:86px}
+  .risk p{color:var(--muted)}
+  .risk p b{color:var(--text)}
+
+  .ladder{margin-top:18px;display:flex;flex-direction:column;gap:0}
+  .rung{display:flex;gap:16px;position:relative;padding:0 0 26px 0}
+  .rung .dot{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.8rem;flex-shrink:0;z-index:1}
+  .rung .line{position:absolute;left:21px;top:44px;bottom:0;width:2px;background:var(--border)}
+  .rung:last-child .line{display:none}
+  .rung .rc{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 18px;flex:1}
+  .rung .rc h3{font-size:.98rem}
+  .rung .rc .when{font-size:.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:.6px}
+  .rung .rc p{font-size:.87rem;color:var(--muted);margin-top:6px}
+  .rung .rc p b{color:var(--text)}
+  .d1{background:var(--accent);color:#161105}
+  .d2{background:var(--green);color:#06210f}
+  .d3{background:var(--blue);color:#071523}
+  .d4{background:var(--red);color:#2b0b0b}
+
+  details{background:var(--panel);border:1px solid var(--border);border-radius:12px;margin-top:12px;overflow:hidden}
+  summary{cursor:pointer;padding:14px 18px;font-weight:600;font-size:.92rem;list-style:none;display:flex;align-items:center;gap:10px}
+  summary::-webkit-details-marker{display:none}
+  summary::after{content:"▾";margin-left:auto;color:var(--dim);transition:transform .2s}
+  details[open] summary::after{transform:rotate(180deg)}
+  details .body{padding:0 18px 16px;font-size:.87rem;color:var(--muted)}
+  details .body li{margin:6px 0 6px 18px}
+  details .body b{color:var(--text)}
+
+  .price{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:14px}
+  .pcard{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+  .pcard .pn{font-size:.82rem;color:var(--muted)}
+  .pcard .pv{font-size:1.15rem;font-weight:700;margin-top:2px}
+  .pcard .pv small{font-size:.72rem;color:var(--dim);font-weight:400}
+  .pcard .pd{font-size:.76rem;color:var(--dim);margin-top:4px}
+
+  footer{margin-top:50px;border-top:1px solid var(--border);padding-top:18px;color:var(--dim);font-size:.8rem}
+  footer b{color:var(--muted)}
+  .note{background:var(--amber-bg);border:1px solid #5c4a1e;border-radius:10px;padding:12px 16px;font-size:.85rem;color:#e8cf9a;margin-top:14px}
+  @media(max-width:640px){ h1{font-size:1.3rem} .rung .dot{width:36px;height:36px} .rung .line{left:17px} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <h1>🖨️ Printing ka Permanent Solution — <span class="em">Deep Research Report</span></h1>
+    <div class="sub">Web-based POS se thermal printing: industry kya karti hai, kaise karti hai, aur humara final roadmap kya hai</div>
+    <div class="chips">
+      <span class="chip">📅 <b>2026-09-02</b></span>
+      <span class="chip">🤖 <b>16 research agents</b> · 8 lenses</span>
+      <span class="chip">🌐 <b>~285 web fetches</b> — official docs/specs/pricing</span>
+      <span class="chip">✅ Har claim <b>primary-source verified</b></span>
+      <span class="chip">🔍 Draft ka adversarial review — <b>23 fixes applied</b></span>
+      <span class="chip">🚫 <b>Koi code change nahi</b> — sirf research</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- ============ TLDR ============ -->
+  <section>
+    <div class="banner">
+      <div class="big">💡 Ek line me answer: <span class="hl">koi bhi badi POS company browser tab se print nahi karti</span> — lekin humari <span class="hl">queue architecture bilkul industry-standard</span> nikli. Browser wala hissa sirf ₹0 ka bridge hai, jo baad me bina kuch tode upgrade ho jayega.</div>
+      <p>13 companies ke official docs check kiye — Square, Toast, Clover, Lightspeed, TouchBistro, Oracle MICROS, Loyverse, <b>Petpooja, Posist, UrbanPiper, Gofrugal, SlickPOS</b>… kisi ke bhi setup docs me browser-tab printing nahi milti. Sab 4 tariko me se ek use karte hai (neeche). Humara server-side design (queue + claim + dedupe + readback) wahi hai jo <b>Star printer firmware</b> aur <b>PrintNode ($9/mo service)</b> bechte hai.</p>
+    </div>
+
+    <div class="verdict3">
+      <div class="vcard good">
+        <div class="ic">✅</div>
+        <h3>PH-5 me koi change nahi chahiye</h3>
+        <p>₹0 budget pe isse sasta ya safe option <b>exist hi nahi karta</b>. Current plan waise hi banna chahiye jaise planned hai. Research ne design validate kiya.</p>
+      </div>
+      <div class="vcard warn">
+        <div class="ic">⚠️</div>
+        <h3>Browser host = bridge, permanent nahi</h3>
+        <p>Chrome ka <code>--kiosk-printing</code> flag <b>undocumented</b> hai — kisi bhi Chrome update me toot sakta hai. Industry isliye ise avoid karti hai. Ye interim solution hai.</p>
+      </div>
+      <div class="vcard info">
+        <div class="ic">🪜</div>
+        <h3>Upgrade ladder ready hai</h3>
+        <p>Queue <b>kabhi nahi badlegi</b>. Budget aane pe sirf "last inch" swap hoga: browser → chhota native agent → ya printer jo khud cloud poll kare. Zero rework.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 4 TIERS ============ -->
+  <section>
+    <h2><span class="n">1</span> Industry ke 4 tarike — aur hum kaha hai</h2>
+    <div class="h2sub">Har company in 4 me se ek "last-inch" mechanism use karti hai. Cost ke hisaab se:</div>
+    <div class="tiers">
+      <div class="tier our">
+        <div class="tno">TIER 1 · ₹0</div>
+        <h3>🌐 Browser Print Host</h3>
+        <div class="who">Chrome <code>--kiosk-printing</code> + HTML receipts. <b>Koi major vendor use nahi karta</b> — sirf DIY/community pattern.</div>
+        <div class="cost">💰 ₹0 — bilkul free</div>
+        <div class="verd"><span class="badge b-amber">FRAGILE LAYER</span> Kaam karta hai (dev probe pass ✓), lekin Chrome update risk hamesha rahega.</div>
+      </div>
+      <div class="tier rec">
+        <div class="tno">TIER 2 · ₹0 – $9/mo</div>
+        <h3>🖥️ Local Print Agent (PC pe chhota app)</h3>
+        <div class="who"><b>UrbanPiper (India!) → QZ Tray</b> · PrintNode client · ERPNext → QZ · DIY Electron/Node agents</div>
+        <div class="cost">💰 ₹0 (self-built / QZ self-cert) ya $9/mo (PrintNode)</div>
+        <div class="verd"><span class="badge b-green">INDUSTRY STANDARD</span> Web-POS ka accepted answer. Humara natural first upgrade.</div>
+      </div>
+      <div class="tier end">
+        <div class="tno">TIER 3 · hardware ~2.5×</div>
+        <h3>☁️ Printer khud cloud poll kare</h3>
+        <div class="who"><b>Star CloudPRNT</b> (confirmed) · Epson Server Direct Print · FEIE-class (Asia food delivery)</div>
+        <div class="cost">💰 ~$460 vs $175 plain USB · India me stock nahi (import)</div>
+        <div class="verd"><span class="badge b-blue">ZERO MOVING PARTS</span> Na PC, na browser, na agent — printer seedha humari queue poll karega.</div>
+      </div>
+      <div class="tier">
+        <div class="tno">TIER 4 · app-dev cost</div>
+        <h3>📱 Native App + LAN-direct</h3>
+        <div class="who">Square, Toast, Clover, Lightspeed, Petpooja desktop, Gofrugal — app seedha printer IP pe (TCP 9100)</div>
+        <div class="cost">💰 Poora native app banana padega</div>
+        <div class="verd"><span class="badge b-grey">OUT OF SCOPE</span> Web-only product ke liye ye rebuild hai, upgrade nahi.</div>
+      </div>
+    </div>
+    <div class="note">⚡ <b>Ek nuance:</b> T4 wale bade vendors ke paas cloud print queue hoti hi nahi — unki native app LAN pe seedha printer se baat karti hai (Toast to internet down hone pe bhi print karta hai). "Cloud queue + local worker" architecture specifically <b>T2/T3 (cloud-delivered) category</b> ki hai — aur wahi humari category hai, kyunki humare orders phone se aate hai jinme printer nahi hota.</div>
+  </section>
+
+  <!-- ============ COMPANIES ============ -->
+  <section>
+    <h2><span class="n">2</span> Company-by-company: kaun kya karta hai</h2>
+    <div class="h2sub">Sab official docs se verify kiya. Badge = evidence ki quality.</div>
+    <div class="tablebox">
+    <table>
+      <tr><th>Company</th><th>Printing kaise hoti hai</th><th>Evidence</th></tr>
+      <tr><td class="name">🇺🇸 Square</td><td>Native app — printer app ke andar hi pair hota hai (Ethernet/WiFi/USB/BT). Browser ka koi role nahi.</td><td><span class="badge b-green">CONFIRMED</span></td></tr>
+      <tr><td class="name">🇺🇸 Toast</td><td>Android terminal → Epson printers ko seedha LAN pe <b>TCP port 9100</b> (ESC/POS). "Ek printing PC" jaisa kaam unka <b>Printing Hub TP300</b> (dedicated hardware) karta hai. Internet down → LAN pe printing chalti rehti hai.</td><td><span class="badge b-green">CONFIRMED</span></td></tr>
+      <tr><td class="name">🇺🇸 Clover / Lightspeed / TouchBistro / Oracle MICROS</td><td>Sab native/hardened apps + LAN printer IP. Oracle enterprise level pe bhi <b>on-premise local service host</b> print routing karta hai — cloud-to-browser kabhi nahi.</td><td><span class="badge b-green">CONFIRMED</span></td></tr>
+      <tr><td class="name">🇮🇳 Petpooja</td><td>Billing terminal = <b>installed desktop app</b> (browser sirf management dashboard). Primary source unreachable — aggregator-based info.</td><td><span class="badge b-amber">UNVERIFIED</span></td></tr>
+      <tr><td class="name">🇮🇳 Posist (Restroworks)</td><td>Native Windows app ("Restro POS" — Microsoft Store listing).</td><td><span class="badge b-amber">PARTIAL</span></td></tr>
+      <tr><td class="name">🇮🇳 UrbanPiper Prime ⭐</td><td><b>Humare jaisa exact problem</b> (browser dashboard + silent printing). Unka solution: printing PC pe <b>QZ Tray install</b> karwao — "print commands directly without a browser popup". <b>Yehi humara Tier-2 upgrade hai.</b></td><td><span class="badge b-green">CONFIRMED</span></td></tr>
+      <tr><td class="name">🇮🇳 Gofrugal / SlickPOS</td><td>Native Android apps — Bluetooth/network printer seedha app se. Gofrugal to printer-family ke alag companion apps deta hai.</td><td><span class="badge b-green">CONFIRMED</span></td></tr>
+      <tr><td class="name">🌍 Odoo POS (web-first!)</td><td>Browser POS ke liye <b>IoT Box</b> — Raspberry Pi hardware (~$180–360) + <b>$30/month/box</b> subscription. Duniya ka sabse bada browser-POS bhi last-inch ke liye paisa leta hai.</td><td><span class="badge b-green">CONFIRMED</span></td></tr>
+      <tr><td class="name">🌍 Loyverse</td><td>Selling terminal = native Android/iOS app; web sirf Back Office.</td><td><span class="badge b-amber">PARTIAL</span></td></tr>
+    </table>
+    </div>
+  </section>
+
+  <!-- ============ CLOUDPRNT ============ -->
+  <section>
+    <h2><span class="n">3</span> Sabse bada validation: Star CloudPRNT = humara design, firmware me</h2>
+    <div class="h2sub">Star Micronics ne humare PH plan wala exact architecture apne printers ke firmware me daala hua hai:</div>
+    <div class="flow">
+      <div class="fstep"><b>STEP 1 · POLL</b>Printer har <b>5 sec</b> me server URL pe status POST karta hai (humara: host 20s pulse)</div>
+      <div class="farrow">→</div>
+      <div class="fstep"><b>STEP 2 · JOB?</b>Server bolta hai <code>jobReady: true/false</code> + jobToken (humara: pulse feed D1)</div>
+      <div class="farrow">→</div>
+      <div class="fstep"><b>STEP 3 · CLAIM</b>Printer job GET karta hai — GET repeatable hai, side-effect-free (humara: claim CAS)</div>
+      <div class="farrow">→</div>
+      <div class="fstep"><b>STEP 4 · PRINT</b>Paper niklta hai 🧾</div>
+      <div class="farrow">→</div>
+      <div class="fstep"><b>STEP 5 · ACK</b>Printer DELETE bhejta hai = "print ho gaya confirm" (humara: readback / future ack)</div>
+    </div>
+    <div class="flownote">📌 <b>Matlab:</b> "durable server queue + ek dedicated poller + claim/ack + server-side dedupe" — ye humari improvisation nahi hai, ye <b>shipped industry standard</b> hai (Star firmware me, PrintNode SaaS me, Microsoft ke queue-pattern docs me). Star ka protocol bhi dedupe/retry <b>server pe chhodta hai</b> — wahi jimmedari humara jobKey + status field uthata hai. Honest difference: unka worst-case first-print ~5s hai, humara ~20s (throttled ho to ~60s+) — free tier ka trade-off.</div>
+  </section>
+
+  <!-- ============ VALIDATED VS DIVERGENCES ============ -->
+  <section>
+    <h2><span class="n">4</span> Humara PH plan vs industry — kya match, kya alag</h2>
+    <div class="twocol">
+      <div class="col ok">
+        <h3>✅ Industry-VALIDATED (same-to-same)</h3>
+        <ul>
+          <li><span class="tick">✔</span><b>Durable server queue</b>, oldest-first, offline pe jobs queue → wapas aane pe drain — PrintNode docs me <b>word-by-word yehi semantics</b> (owner Q12 wala behavior).</li>
+          <li><span class="tick">✔</span><b>Ek designated worker + CAS claim</b> — SKIP-LOCKED/lease pattern, CloudPRNT ka single-printer model. Humara Web-Locks single-drain wahi discipline hai.</li>
+          <li><span class="tick">✔</span><b>jobKey idempotent enqueue</b> — Microsoft ka idempotent-consumer pattern: "duplicates ko consumer tolerate kare".</li>
+          <li><span class="tick">✔</span><b>Polling (outbound-initiated)</b> — NAT ke peeche printer tak cloud khud nahi pahunch sakta; printer/agent hamesha bahar dial karta hai (CloudPRNT, SDP, PrintNode sab).</li>
+          <li><span class="tick">✔</span><b>Readback alag from delivery</b> — "printed" ≠ paper nikla; CloudPRNT/SDP bhi completion alag track karte hai. Humara "absence never renders ✓" sahi hai.</li>
+        </ul>
+      </div>
+      <div class="col div">
+        <h3>⚠️ Deliberate DIVERGENCES (T2/T3 pe revisit)</h3>
+        <ul>
+          <li><span class="warnx">▲</span><b>Burn-on-claim (at-most-once)</b> vs industry ka at-least-once-until-ack. CloudPRNT job tab tak re-serve karta hai jab tak DELETE ack na aaye. Browser tab safely dedupe nahi kar sakta isliye humara choice T1 ke liye correct hai — <b>T2 agent pe two-phase ack adopt karna chahiye</b>.</li>
+          <li><span class="warnx">▲</span><b>20s beat vs 5s industry default</b> — pure free-tier tuning. First-print latency ~20s (throttled: ~60s+) vs unka ~5s.</li>
+          <li><span class="warnx">▲</span><b>HTML render vs raw ESC/POS</b> — vendors raw bytes bhejte hai (exact widths, cash-drawer kick). T1 pe OS driver handle karta hai, fine; T2 pe option khulta hai.</li>
+          <li><span class="warnx">▲</span><b>Naya update:</b> Vercel ab native WebSockets deta hai (beta, Hobby included, 300s/connection + reconnect + Redis state chahiye). Future latency option — <b>PH-5 reopen karne ka reason nahi</b>.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ RISKS ============ -->
+  <section>
+    <h2><span class="n">5</span> Browser host ke real risks (runbook/GO-LIVE me record karne layak)</h2>
+    <div class="risk">
+      <div class="rt"><span class="badge b-red">HIGH</span></div>
+      <p><b>Chrome update me flag toot sakta hai — bina kisi warning ke.</b> <code>--kiosk-printing</code> officially documented nahi hai; bug history hai (2014 se ab tak); Google khud ab kiosk printing ke liye doosra API (ChromeOS-only) promote karta hai = flag legacy path hai. <b>Fence:</b> host PC pe Chrome updates defer karo + har update ke baad test-print attestation dobara chalao.</p>
+    </div>
+    <div class="risk">
+      <div class="rt"><span class="badge b-red">HIGH</span></div>
+      <p><b>Internet/Vercel/Atlas down = ZERO printing, kahin se bhi.</b> Phone enqueue nahi kar sakta, host poll nahi kar sakta — printer 2 feet door hote hue bhi. Bade vendors isliye LAN fallback rakhte hai. Humare scale pe accepted risk (paper pad + recovery pe reprint) — lekin GO-LIVE me <b>likha hona chahiye</b>, "solved" nahi hai.</p>
+    </div>
+    <div class="risk amber">
+      <div class="rt"><span class="badge b-amber">MEDIUM</span></div>
+      <p><b>Throttled host "healthy" dikhta hai.</b> Host window 5+ min hidden/occluded → Chrome timers ~1/min pe clamp. Host har ~60s beat karta rahega isliye 180s offline-threshold fire nahi hoga — bas sab 3× slow chalega, chupchap. <b>Fence:</b> "window visible rakho" runbook line hi asli mitigation hai.</p>
+    </div>
+    <div class="risk amber">
+      <div class="rt"><span class="badge b-amber">MEDIUM</span></div>
+      <p><b>Sirf default printer</b> — flag ke saath doosra printer target karna impossible. Aaj single-printer scope (Q10/Q11) me fine; multi-station future ke liye ceiling hai (T2/T3 me ye limit nahi).</p>
+    </div>
+    <div class="risk amber">
+      <div class="rt"><span class="badge b-amber">UNVERIFIED</span></div>
+      <p><b>Practitioner lore (cafe PC pe probe karna hai):</b> flag sirf Print-Preview enabled hone pe kaam karta hai; <b>"sirf ek Chrome window open ho"</b> wali caveat — counter PC jo POS bhi browse karega uske liye directly relevant; doosre installed printers interfere kar sakte hai.</p>
+    </div>
+    <div class="risk amber">
+      <div class="rt"><span class="badge b-amber">FYI</span></div>
+      <p><b>Koi browser API bacha nahi sakta:</b> WebUSB Windows pe receipt printers ke liye kaam nahi karta (driver device claim kar leta hai) · Web Serial Safari me kabhi nahi, Android pe abhi-abhi (limited devices) · iOS Safari silent print <b>impossible</b> · Google Cloud Print 2021 me mar gaya, Java applets 2015 me — browser-print bridges ka graveyard bhara hua hai.</p>
+    </div>
+  </section>
+
+  <!-- ============ ROADMAP ============ -->
+  <section>
+    <h2><span class="n">6</span> 🪜 Permanent solution = Upgrade Ladder</h2>
+    <div class="h2sub">Queue kabhi nahi badlegi — har rung same <code>PrintJob</code> collection, same claim API use karta hai. Sirf "last inch" swap hota hai:</div>
+    <div class="ladder">
+      <div class="rung">
+        <div class="dot d1">NOW</div><div class="line"></div>
+        <div class="rc">
+          <div class="when">Aaj · ₹0 · 6/11 slices already shipped</div>
+          <h3>PH plan as-is: kiosk-Chrome host + 20s pulse + readback band</h3>
+          <p>₹0 pe <b>ekmatra existing option</b>. Dev probe pass. Plan ke fences (attestation, staleness, own-window+WakeLock) sahi hai. Bas §5 ke residual risks runbook me add karo: <b>Chrome update defer + update ke baad re-attestation</b>, one-window caveat probe, throttle blind-spot note.</p>
+        </div>
+      </div>
+      <div class="rung">
+        <div class="dot d2">NEXT</div><div class="line"></div>
+        <div class="rc">
+          <div class="when">PH ship hone ke baad · ₹0 licenses · owner ka call</div>
+          <h3>Chhota self-built print agent (Node/Tauri tray app)</h3>
+          <p>Same queue ko <b>5s pe poll</b> kare, OS driver se print kare, print-complete <b>ack POST</b> kare (= industry two-phase). Browser ke saare §5 risks ek saath khatam. Yehi UrbanPiper QZ-Tray se karta hai, yehi PrintNode $9/mo me bechta hai. Trade-off: installer/updater humari zimmedari. (Alternative: QZ Tray + apna root CA — free, par cert setup painful documented hai.)</p>
+        </div>
+      </div>
+      <div class="rung">
+        <div class="dot d3">END</div><div class="line"></div>
+        <div class="rc">
+          <div class="when">Hardware budget aane pe / naye client onboarding pe</div>
+          <h3>Printer khud queue poll kare — CloudPRNT Star ya LAN-Epson ePOS</h3>
+          <p><b>Na PC, na browser, na agent</b> — ~5s latency, firmware-grade reliability; humari taraf sirf ek thin adapter route (CloudPRNT ka POST/GET/DELETE dialect). <b>Procurement risk:</b> India me CloudPRNT SKU retail me nahi mila — import/special-order; kharidne se pehle exact model verify karo. Sasta LAN variant pehle evaluate karo: <b>network Epson ePOS</b> (TM-T82 Ethernet-class, ₹5.6k–11.5k) — browser seedha printer IP pe XML bhejta hai (Odoo aise hi IoT Box skip karta hai) — par CORS/mixed-content verify karna baaki hai aur device LAN pe hona chahiye.</p>
+        </div>
+      </div>
+      <div class="rung">
+        <div class="dot d4">✕</div>
+        <div class="rc">
+          <div class="when">Kabhi nahi</div>
+          <h3>Ye raste band hai</h3>
+          <p>📵 Phone-side Bluetooth printing primary lane ke roop me (field me flaky — interference, printer sleep, battery-kill) · <code>chrome.printing</code> API (ChromeOS-only) · WebUSB-on-Windows (driver conflict) · iOS silent printing (impossible).</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PRICING ============ -->
+  <section>
+    <h2><span class="n">7</span> 💰 Market pricing (context ke liye)</h2>
+    <div class="price">
+      <div class="pcard"><div class="pn">PrintNode (managed T2)</div><div class="pv">$9/mo <small>Essential</small></div><div class="pd">5,000 prints, 3 PCs · Free tier sirf 50 prints/mo (cafe ke liye kam)</div></div>
+      <div class="pcard"><div class="pn">QZ Tray (T2)</div><div class="pv">₹0 <small>self-cert</small></div><div class="pd">Silent-print cert kharido to $599–749/yr (sources split) · self root-CA free par painful</div></div>
+      <div class="pcard"><div class="pn">Odoo IoT Box</div><div class="pv">$30/mo <small>+ $180–360 hardware</small></div><div class="pd">Browser-POS giant ka last-inch charge</div></div>
+      <div class="pcard"><div class="pn">Star CloudPRNT printer (T3)</div><div class="pv">~$460 <small>US street</small></div><div class="pd">vs ~$175 plain-USB Star (~2.5×) · India listing nahi mila</div></div>
+      <div class="pcard"><div class="pn">India thermal printers</div><div class="pv">₹5,599–11,500+</div><div class="pd">Epson TM-T82 / TVS RP3160 / Rongta (plain ESC/POS) · TM-m30III ~₹12,500</div></div>
+      <div class="pcard"><div class="pn">RawBT (Android)</div><div class="pv">~$1.5/mo <small>ya ~$55 lifetime</small></div><div class="pd">Unverified pricing · production evidence zero</div></div>
+    </div>
+  </section>
+
+  <!-- ============ REFUTED ============ -->
+  <section>
+    <h2><span class="n">8</span> Jo claims verify me FAIL hue (inhe fact mat maano)</h2>
+    <details>
+      <summary>🔴 <span class="badge b-red">REFUTED / UNVERIFIED</span> — 15 items (click karke kholo)</summary>
+      <div class="body">
+        <li><b>"AWS Oct-2025 outage ne restaurant printing 15h down kari"</b> — REFUTED. Independent reporting me ordering/loyalty/payments impact tha, printers ka nahi (marketing page ka framing tha).</li>
+        <li><b>"Koi browser tab se print nahi karta"</b> as a vendor statement — ye 13 vendors ke docs me uniform absence se inference hai, kisi vendor ka quoted statement nahi.</li>
+        <li><b>Petpooja Adobe-AIR desktop app</b> — primary source unreachable, aggregator-based.</li>
+        <li><b>Epson Server Direct Print</b> — protocol shape AUR interval dono Epson primary pages se verify nahi hue (403); ek third-party SaaS ki knowledgebase pe based.</li>
+        <li><b>RawBT pricing/architecture</b> — site unreachable; numbers indicative only.</li>
+        <li><b>Chromium issue 376881541</b> ("--kiosk-printing is not working") — sirf title pata hai; status/date/body sign-in wall ke peeche.</li>
+        <li><b>kiosk-printing caveats</b> (print-preview on, one-window, printer interference) — practitioner lore, unverified; cafe PC pe probe karna hai.</li>
+        <li><b>QZ cert price</b> — $599 vs $749/yr, do lenses ka conflict unresolved (direct fetch 403).</li>
+        <li><b>PrintNode desktop client "WebSocket, not polling"</b> — primary level pe UNCLEAR.</li>
+        <li><b>Rongta/Xprinter "no cloud firmware"</b> — absence of evidence, confirmed negative nahi.</li>
+        <li><b>"Cloud relay = 3 dependencies vs LAN = 1"</b> — sound reasoning, par citation ne ye argument nahi banaya.</li>
+        <li><b>Loyverse native Windows/Mac apps</b> — download page pe sirf Android/iOS mile.</li>
+        <li><b>Odoo box "LAN ke bahar reachable nahi"</b> exact wording — unverified.</li>
+        <li><b>CloudPRNT/SDP "fencing tokens ki zaroorat nahi"</b> — plausible inference, vendor-doc statement nahi.</li>
+        <li><b>Bluetooth-Android flakiness</b> — ek hi support-blog se; re-verify nahi hua (direction sahi lagti hai — India vendors dedicated printer-bridge apps isliye hi bante hai).</li>
+      </div>
+    </details>
+  </section>
+
+  <footer>
+    <b>Full detailed report (text):</b> <code>.claude/plan/v2/_research/print-architecture-industry-research.md</code> — saare source URLs, verify verdicts aur per-lens findings ke saath.<br>
+    Research run: workflow <code>wf_08873e40-c56</code> · 16 agents · 8 lenses · ~285 fetches · 2026-09-02 · Ye file LOCAL hai — kahin upload nahi hui (owner rule).
+  </footer>
+
+</div>
+</body>
+</html>

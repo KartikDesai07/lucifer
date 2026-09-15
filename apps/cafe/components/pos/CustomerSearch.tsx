@@ -8,7 +8,8 @@ import {
   useCreateCustomer,
   CUSTOMER_SEARCH_MIN_CHARS,
 } from "@/hooks/use-customers";
-import { inr } from "@/lib/utils";
+import { cn, inr } from "@/lib/utils";
+import { POS_HEADER_CHIP_ICON_CLASS } from "@/lib/pos-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,6 +26,8 @@ import type { Customer } from "@/types";
 interface CustomerSearchProps {
   value: Customer | undefined;
   onChange: (customer: Customer | undefined) => void;
+  // Applied to the trigger button only — the header sizes it per breakpoint.
+  className?: string;
 }
 
 // Separators a cafe actually types around a phone number ("+91 98765-43210").
@@ -33,7 +36,7 @@ interface CustomerSearchProps {
 const PHONE_SEPARATOR_PATTERN = /[+\s-]/g;
 const DIGITS_ONLY_PATTERN = /^\d+$/;
 
-export function CustomerSearch({ value, onChange }: CustomerSearchProps) {
+export function CustomerSearch({ value, onChange, className }: CustomerSearchProps) {
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -75,9 +78,18 @@ export function CustomerSearch({ value, onChange }: CustomerSearchProps) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="max-w-[12rem] gap-2">
-          <User className="h-4 w-4" />
-          <span className="truncate">{value ? value.name : "Walk-In"}</span>
+        {/* Empty state reads "Customer", not "Walk-In": the table chip beside
+            it already says Walk-In for "no table", and below xl neither chip
+            has its icon to tell them apart. title = the untruncated name. */}
+        <Button
+          variant="outline"
+          size="sm"
+          className={cn("gap-2 xl:max-w-[12rem]", className)}
+          aria-label={value ? `Customer: ${value.name}` : "Select customer"}
+          title={value ? value.name : "Select customer"}
+        >
+          <User className={POS_HEADER_CHIP_ICON_CLASS} />
+          <span className="min-w-0 truncate">{value ? value.name : "Customer"}</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">

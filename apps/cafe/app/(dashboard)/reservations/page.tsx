@@ -30,10 +30,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { PageHeader } from "@/components/shared/PageHeader";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ReservationFormSheet } from "@/components/reservations/ReservationFormSheet";
+import { ReservationRowCard } from "@/components/reservations/ReservationRowCard";
 import type { Reservation } from "@/types";
 
 const ALL = "all";
@@ -88,17 +90,15 @@ export default function ReservationsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Reservations</h2>
-          <p className="text-sm text-muted-foreground">
-            Manage table bookings and seating.
-          </p>
-        </div>
-        <Button onClick={openAdd}>
-          <Plus className="mr-2 h-4 w-4" /> New reservation
-        </Button>
-      </div>
+      <PageHeader
+        title="Reservations"
+        description="Manage table bookings and seating."
+        actions={
+          <Button onClick={openAdd}>
+            <Plus className="mr-2 h-4 w-4" /> New reservation
+          </Button>
+        }
+      />
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <Select value={status} onValueChange={setStatusFilter}>
@@ -151,106 +151,123 @@ export default function ReservationsPage() {
           }
         />
       ) : (
-        <div className="rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>When</TableHead>
-                <TableHead>Guest</TableHead>
-                <TableHead className="text-right">Guests</TableHead>
-                <TableHead>Table</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-44 text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {list.map((r) => (
-                <TableRow key={r._id}>
-                  <TableCell>
-                    <div className="font-medium">{formatDate(r.date)}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {formatTime(r.time)}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="font-medium">{r.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {r.mobile}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right">{r.guests}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {r.tableNo ?? "—"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant="outline"
-                      className={cn(STATUS_VARIANTS[r.status])}
-                    >
-                      {r.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      {r.status === "Booked" && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          disabled={busy}
-                          onClick={() => setStatus(r, "Seated")}
-                          aria-label="Seat guest"
-                          title="Seat"
-                        >
-                          <ChefHat className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {r.status === "Seated" && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          disabled={busy}
-                          onClick={() => setStatus(r, "Completed")}
-                          aria-label="Complete reservation"
-                          title="Complete"
-                        >
-                          <Check className="h-4 w-4 text-green-600" />
-                        </Button>
-                      )}
-                      {(r.status === "Booked" || r.status === "Seated") && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          disabled={busy}
-                          onClick={() => setStatus(r, "Cancelled")}
-                          aria-label="Cancel reservation"
-                          title="Cancel"
-                        >
-                          <X className="h-4 w-4 text-destructive" />
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => openEdit(r)}
-                        aria-label="Edit reservation"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setDeleting(r)}
-                        aria-label="Delete reservation"
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
+        <>
+          <div className="hidden rounded-lg border md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>When</TableHead>
+                  <TableHead>Guest</TableHead>
+                  <TableHead className="text-right">Guests</TableHead>
+                  <TableHead>Table</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-44 text-right">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                {list.map((r) => (
+                  <TableRow key={r._id}>
+                    <TableCell>
+                      <div className="font-medium">{formatDate(r.date)}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {formatTime(r.time)}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="font-medium">{r.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {r.mobile}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">{r.guests}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {r.tableNo ?? "—"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={cn(STATUS_VARIANTS[r.status])}
+                      >
+                        {r.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        {r.status === "Booked" && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            disabled={busy}
+                            onClick={() => setStatus(r, "Seated")}
+                            aria-label="Seat guest"
+                            title="Seat"
+                          >
+                            <ChefHat className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {r.status === "Seated" && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            disabled={busy}
+                            onClick={() => setStatus(r, "Completed")}
+                            aria-label="Complete reservation"
+                            title="Complete"
+                          >
+                            <Check className="h-4 w-4 text-green-600" />
+                          </Button>
+                        )}
+                        {(r.status === "Booked" || r.status === "Seated") && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            disabled={busy}
+                            onClick={() => setStatus(r, "Cancelled")}
+                            aria-label="Cancel reservation"
+                            title="Cancel"
+                          >
+                            <X className="h-4 w-4 text-destructive" />
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openEdit(r)}
+                          aria-label="Edit reservation"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDeleting(r)}
+                          aria-label="Delete reservation"
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="space-y-2 md:hidden">
+            {list.map((r) => (
+              <ReservationRowCard
+                key={r._id}
+                reservation={r}
+                busy={busy}
+                onSeat={(row) => setStatus(row, "Seated")}
+                onComplete={(row) => setStatus(row, "Completed")}
+                onCancel={(row) => setStatus(row, "Cancelled")}
+                onEdit={openEdit}
+                onDelete={setDeleting}
+              />
+            ))}
+          </div>
+        </>
       )}
 
       <ReservationFormSheet

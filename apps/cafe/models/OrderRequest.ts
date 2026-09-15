@@ -1,4 +1,4 @@
-import mongoose, { Schema, type Document, type Model } from "mongoose";
+import mongoose, { Schema, Types, type Document, type Model } from "mongoose";
 
 // CR2.2 — a diner's self-order (QR) BEFORE it becomes a real Order. Staff
 // review the tray and either accept it (minting an Order that carries this
@@ -14,7 +14,7 @@ import mongoose, { Schema, type Document, type Model } from "mongoose";
 // (minus `kotRound`, which only exists once an item has been fired to the
 // kitchen; a request has no KOT rounds yet).
 export interface IOrderRequestItem {
-  productId: string;
+  productId: Types.ObjectId;
   name: string; // denormalized product name snapshot
   price: number;
   qty: number;
@@ -22,6 +22,13 @@ export interface IOrderRequestItem {
   modifiers: string[];
   instructions: string;
 }
+
+// CB-DL-2: the shape a WRITER hands to OrderRequest.create()/updateOne —
+// the product id is still the validated 24-hex string here; Mongoose casts
+// it to the stored ObjectId on write. Pure builders (lib/order-request-intake)
+// must never construct BSON ids themselves (a bad id would throw instead of
+// failing validation).
+export type OrderRequestItemInput = Omit<IOrderRequestItem, "productId"> & { productId: string };
 
 export const ORDER_REQUEST_STATUSES = [
   "pending",
@@ -61,6 +68,17 @@ export interface IOrderRequest extends Document {
   // matched, never the diner's raw typed text.
   promoCode?: string;
   quotedDiscount?: number;
+  // CB-5B S8 (owner decision D4) — the diner's own reward claim, as INTENT:
+  // the stamp COST of the rung they picked, an identifier into the
+  // owner-configured ladder. Omit-empty, exactly like promoCode above.
+  //
+  // NO STAMPS ARE SPENT WHILE THIS SITS HERE. A request is pre-money — it may
+  // be rejected, expire, or drift — so the claim is made at ACCEPT time
+  // (lib/order-request-accept*.ts), against the diner's Customer row, keyed on
+  // the orderId that actually lands. A rejected request must cost no stamps.
+  // Stored as the diner's REQUEST, never as a grant: the accept re-resolves
+  // the rung from live Settings and can still refuse it.
+  requestedRewardAt?: number;
   // `mobile` must NEVER appear in any public (unauthenticated) response —
   // lib/customer-privacy.ts owns masking on staff-facing surfaces; this field
   // exists so staff can reach a diner, not so a diner can be looked up by
@@ -89,7 +107,7 @@ export interface IOrderRequest extends Document {
 
 const orderRequestItemSchema = new Schema<IOrderRequestItem>(
   {
-    productId: { type: String, required: true },
+    productId: { type: Schema.Types.ObjectId, required: true },
     name: { type: String, required: true },
     price: { type: Number, required: true },
     qty: { type: Number, required: true, min: 1 },
@@ -122,6 +140,10 @@ export const orderRequestSchema = new Schema<IOrderRequest>(
     // Promo codes — CR2.2c. No defaults — omit-empty, mirrors quotedChargeLabel.
     promoCode: { type: String },
     quotedDiscount: { type: Number },
+    // CB-5B S8 — no default, omit-empty, mirroring the promo pair above. A
+    // top-level path (not nested), so `strict: true` has no subschema to drop
+    // it through.
+    requestedRewardAt: { type: Number },
     mobile: { type: String, required: true },
     name: { type: String, required: true },
     acceptedOrderId: { type: String },

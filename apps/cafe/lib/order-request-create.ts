@@ -8,6 +8,8 @@ import {
   canonicalPromoMobile,
   SELF_ORDER_RECEIVER,
 } from "@pos/shared/public";
+import { mintedPromoCodes } from "@pos/shared/loyalty-rules";
+import { assignedRewardRefusal } from "@/lib/assigned-reward-gate";
 import type { CreatePublicOrderRequestInput } from "@pos/shared/schemas/public-order.schema";
 import { connectDB } from "@/lib/db";
 import { Table } from "@/models/Table";
@@ -25,6 +27,7 @@ import {
   type IntakeTable,
 } from "@/lib/order-request-intake";
 import { acceptOrderRequest } from "@/lib/order-request-accept";
+import { resolveRequestReward } from "@/lib/order-request-reward";
 
 // Sibling of app/api/public/order-request/route.ts (CR2.2d split) — split out
 // purely to keep the route file under the ~300-line budget while POST's full
@@ -41,6 +44,11 @@ export const BAD_REQUEST_MESSAGE = "We couldn't read that order — please try a
 export const TABLE_NOT_FOUND_MESSAGE = "Table not found";
 export const RATE_LIMITED_MESSAGE = "Too many orders from this table right now";
 export const ORDER_REQUEST_FAILED_MESSAGE = "Could not place your order";
+// CB-4 — the cafe has switched its QR surface to menu-only. Phrased as the
+// cafe's own choice, not an error the diner can retry or work around, and it
+// names the counter so the diner knows what to do instead.
+export const SELF_ORDER_DISABLED_MESSAGE =
+  "This menu is for browsing only — please order at the counter.";
 
 // Resolves `data.promoCode` (if any) against LIVE Settings + the priced
 // SUBTOTAL (never a diner-sent amount — client money must encode INTENT).
@@ -68,8 +76,22 @@ export async function resolveRequestPromo(
   // is passed true there by the caller).
   if (!chargeApplies) return { error: PROMO_SESSION_OPEN };
   const probe = quoteRequestTotals(lines, table, settings, chargeApplies);
-  const resolved = resolvePromoDiscount(settings?.promoCodes, data.promoCode, probe.quotedSubtotal);
+  // CB-5D part 2 FINAL — a milestone-minted code is single-use regardless of
+  // its Settings row's own tick (owner: "code sirf usi customer ka, ek baar").
+  const resolved = resolvePromoDiscount(
+    settings?.promoCodes,
+    data.promoCode,
+    probe.quotedSubtotal,
+    mintedPromoCodes(settings?.loyaltyRules?.milestones),
+  );
   if ("error" in resolved) return { error: resolved.error };
+  // CB-5D part 2 DEFECT FIX — an ASSIGNED code's expiry, single-homed in
+  // lib/assigned-reward-gate.ts. An ordinary Settings code (never assigned to
+  // anyone) is untouched by this — only a code matching a customer's own
+  // `rewards` row can ever be refused here. Checked AFTER resolvePromoDiscount
+  // so an invalid/inactive code still says so, never "expired".
+  const expired = await assignedRewardRefusal(resolved.code, data.mobile, Date.now());
+  if (expired) return { error: expired };
   // SPEC P4 — quote-time COURTESY check: the fence itself is
   // models/PromoRedemption.ts's unique {code,mobile} index, claimed only at
   // accept time (lib/order-request-accept-promo.ts) — this only spares a
@@ -160,7 +182,17 @@ export async function buildHoneypotResponse(
     // 2026-08-20). Signalled to the caller, which returns the same 422.
     const promo = await resolveRequestPromo(data, priced.lines, table, settings, chargeApplies);
     if ("error" in promo) return { promoError: promo.error };
-    const doc = buildRequestDoc(data, priced.lines, table, settings, chargeApplies, promo.discount, promo.code);
+    // CB-5B S8 — reward parity, for the SAME reason as the promo line above: a
+    // rejected reward claim answers 422 on the real path, so answering 201
+    // here would be a one-probe honeypot tell. Signalled through the same
+    // channel the caller already turns back into a 422.
+    const rewardQuote = quoteRequestTotals(priced.lines, table, settings, chargeApplies, promo.discount);
+    const reward = await resolveRequestReward(data, settings, rewardQuote.quotedTotal);
+    if ("error" in reward) return { promoError: reward.error };
+    const doc = buildRequestDoc(
+      data, priced.lines, table, settings, chargeApplies, promo.discount, promo.code,
+      reward.requestedRewardAt,
+    );
     return {
       shortCode: mintPublicCode(),
       status: "pending",

@@ -2,11 +2,15 @@
 
 import { useMemo } from "react";
 import { computeOrderTotals, gstConfigFromOrder, gstConfigOfSettings } from "@/lib/receipt";
+import type { DiscountKind } from "@/lib/constants";
 import type { Order, Settings } from "@/types";
 
 interface PosModalTotalsInput {
   resumedOrder: Order | null;
   discount: number;
+  // The operator's CURRENT intent (from the unit) — the settle branch re-derives
+  // against the tab's snapshot exactly as the settle route will.
+  discountKind: DiscountKind | undefined;
   // The operator's deliberate override, if any. `undefined` = untouched, so the
   // tab's snapshotted charge stands — matching what the settle route does with
   // an omitted chargeAmount.
@@ -28,6 +32,7 @@ interface PosModalTotalsInput {
 export interface PosModalTotals {
   subtotal: number;
   discount: number;
+  discountKind?: DiscountKind;
   gstAmount: number;
   gstRate?: number;
   charge: number;
@@ -45,6 +50,7 @@ export interface PosModalTotals {
 export function usePosModalTotals({
   resumedOrder,
   discount,
+  discountKind,
   chargeOverride,
   charge,
   chargeLabel,
@@ -62,13 +68,14 @@ export function usePosModalTotals({
         ? computeOrderTotals({
             items: resumedOrder.items,
             discount,
+            discountKind,
             // The tab's own snapshotted charge, so the modal shows exactly the
             // figure the server will re-derive when it settles.
             charge: chargeOverride ?? resumedOrder.chargeAmount ?? 0,
             cfg: gstConfigFromOrder(resumedOrder, gstConfigOfSettings(settings)),
           })
         : null,
-    [resumedOrder, discount, chargeOverride, settings],
+    [resumedOrder, discount, discountKind, chargeOverride, settings],
   );
 
   const settling = paymentIntent === "settle" && resumedOrder && settleTotals;
@@ -76,6 +83,7 @@ export function usePosModalTotals({
     ? {
         subtotal: settleTotals.subtotal,
         discount: settleTotals.discount,
+        discountKind,
         gstAmount: settleTotals.gstAmount,
         gstRate: resumedOrder.gstRate ?? gstRate,
         charge: settleTotals.charge,
@@ -89,6 +97,7 @@ export function usePosModalTotals({
     : {
         subtotal,
         discount,
+        discountKind,
         gstAmount,
         gstRate,
         charge,

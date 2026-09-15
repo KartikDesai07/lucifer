@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { Loader2, AlertCircle } from "lucide-react";
 
-import { SETTLEMENT_PAY_MODES, PAY_STYLES, type PaymentMode } from "@/lib/constants";
+import { SETTLEMENT_PAY_MODES, PAY_STYLES, type PaymentMode, type DiscountKind } from "@/lib/constants";
+import { discountLineLabel } from "@pos/shared/utils";
 import { inr, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,7 @@ interface PaymentModalProps {
   onOpenChange: (open: boolean) => void;
   subtotal: number;
   discount: number;
+  discountKind?: DiscountKind;
   gstAmount?: number; // > 0 only when exclusive GST is enabled
   gstRate?: number;
   // The table's charge folded into `total`, under the cafe's own name for it.
@@ -66,6 +68,7 @@ export function PaymentModal({
   onOpenChange,
   subtotal,
   discount,
+  discountKind,
   gstAmount = 0,
   gstRate,
   charge = 0,
@@ -139,7 +142,7 @@ export function PaymentModal({
         <div className="space-y-1 rounded-lg border p-3 text-sm">
           <Row label="Subtotal" value={inr(subtotal)} />
           {discount > 0 && (
-            <Row label="Discount" value={`−${inr(discount)}`} muted />
+            <Row label={discountLineLabel(discountKind)} value={`−${inr(discount)}`} muted />
           )}
           {gstAmount > 0 && (
             <Row

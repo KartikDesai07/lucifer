@@ -96,7 +96,7 @@ function buildScratchOrder(opts: {
     customerName: "Scratch Customer",
     items: [
       {
-        productId: "p1",
+        productId: "00000000000000000000aaa1",
         name: "Scratch Item",
         price: opts.total,
         qty: 1,
@@ -132,7 +132,7 @@ async function runReconcileAggregate(customerId: string): Promise<number> {
     ],
   });
   const [agg] = await Order.aggregate<{ totalDue: number }>([
-    { $match: { customerId, status: { $ne: "Cancelled" } } },
+    { $match: { customerId: new mongoose.Types.ObjectId(customerId), status: { $ne: "Cancelled" } } }, // CB-DL-2: orders.customerId is an ObjectId; a raw $match on a string matches nothing (mirrors the route)
     {
       $group: {
         _id: null,
@@ -604,26 +604,36 @@ function buildLedgerOrderDoc(opts: {
   };
 }
 
-// A customer whose `dueRupees` is backed by BOTH a v1 Order (so the reconcile
-// route's own aggregate independently re-derives the same due) AND a ledger
-// Order (so the REAL recomputeCustomer authority independently re-derives it
-// too) — the two parallel fixtures a "does the authority agree" assertion
-// needs, given the v1/ledger schema split explained at the top of this file.
-async function makeCustomerWithDueFixtures(dueRupees: number): Promise<string> {
-  const customerId = await makeCustomer(dueRupees);
+// TWO customers, one per authority: `v1` is backed by a v1 Order (the lane the
+// reconcile route's own aggregate reads) and `ledger` by a ledger Order (the
+// lane the REAL recomputeCustomer authority fans out over). They used to share
+// ONE customer: both schemas write the same physical `orders` collection, and
+// the old String-vs-ObjectId customerId split kept each aggregate blind to the
+// other lane's row by accident. CB-DL-2 stores the v1 customerId as an
+// ObjectId too, so a shared customer would make the v1 aggregate sum the
+// ledger order's PAISE and the ledger recompute sum the v1 order's RUPEES —
+// a fixture artefact (live routes write only the v1 shape), fenced here by
+// giving each lane its own customer.
+interface DueFixtureCustomers {
+  v1: string;
+  ledger: string;
+}
+async function makeCustomerWithDueFixtures(dueRupees: number): Promise<DueFixtureCustomers> {
+  const v1 = await makeCustomer(dueRupees);
   await Order.create(
     buildScratchOrder({
-      orderId: `SCRATCH-ADMIN-FIXTURE-V1-${customerId}`,
-      customerId,
+      orderId: `SCRATCH-ADMIN-FIXTURE-V1-${v1}`,
+      customerId: v1,
       payment: "Cash",
       total: dueRupees,
       paidAmount: 0,
       status: "Completed",
     }),
   );
+  const ledger = await makeCustomer(dueRupees);
   const LedgerOrder = await ledgerModel(core(), "Order");
   const ledgerOrder = await LedgerOrder.create(
-    buildLedgerOrderDoc({ customerId, totalRupees: dueRupees, paidRupees: 0, payment: "Cash", status: "Completed" }),
+    buildLedgerOrderDoc({ customerId: ledger, totalRupees: dueRupees, paidRupees: 0, payment: "Cash", status: "Completed" }),
   );
   // FINDING (not part of the feature under test): the v1 Order model's
   // `orderId` field is REQUIRED + UNIQUE (models/Order.ts:116) on this SAME
@@ -643,7 +653,7 @@ async function makeCustomerWithDueFixtures(dueRupees: number): Promise<string> {
     { _id: ledgerOrder._id },
     { $set: { orderId: `SCRATCH-ADMIN-LEDGER-${ledgerOrder._id}` } },
   );
-  return customerId;
+  return { v1, ledger };
 }
 
 // Runs the REAL recomputeCustomer authority (lib/customer-recompute.ts) and
@@ -722,32 +732,40 @@ async function legAdminSoftDeleteRestore(): Promise<void> {
 
 // ── admin §2 (THE CRITICAL ONE) — reconcile/recompute must not resurrect ───
 async function legAdminResurrectionGuard(): Promise<void> {
-  const customerId = await makeCustomerWithDueFixtures(500);
-  const payment = await receiveDuePayment({
-    customerId,
-    mode: "Cash",
-    clientRef: randomUUID(),
-    receivedBy: VERIFIER_NAME,
-  });
-  check("admin §2 setup: paying the due in full clears totalDue to 0", payment.ok && payment.customer.totalDue === 0);
-  if (!payment.ok) return;
+  const fx = await makeCustomerWithDueFixtures(500);
+  // The same pay-in-full → soft-delete flow runs on BOTH lanes; each authority
+  // is then asked about the lane it actually reads (see makeCustomerWithDueFixtures).
+  const lanes = [
+    { label: "v1 lane", customerId: fx.v1 },
+    { label: "ledger lane", customerId: fx.ledger },
+  ];
+  for (const lane of lanes) {
+    const payment = await receiveDuePayment({
+      customerId: lane.customerId,
+      mode: "Cash",
+      clientRef: randomUUID(),
+      receivedBy: VERIFIER_NAME,
+    });
+    check(`admin §2 setup (${lane.label}): paying the due in full clears totalDue to 0`, payment.ok && payment.customer.totalDue === 0);
+    if (!payment.ok) return;
 
-  const del = await softDeleteDuePayment({
-    customerId,
-    paymentId: String(payment.payment._id),
-    note: "collected from the wrong customer",
-    deletedBy: VERIFIER_NAME,
-  });
-  check("admin §2 setup: the soft-delete restores totalDue to 500", del.ok && del.customer.totalDue === 500);
+    const del = await softDeleteDuePayment({
+      customerId: lane.customerId,
+      paymentId: String(payment.payment._id),
+      note: "collected from the wrong customer",
+      deletedBy: VERIFIER_NAME,
+    });
+    check(`admin §2 setup (${lane.label}): the soft-delete restores totalDue to 500`, del.ok && del.customer.totalDue === 500);
+  }
 
-  const reconciled = await runReconcileAggregate(customerId);
+  const reconciled = await runReconcileAggregate(fx.v1);
   check(
     "admin §2 RESURRECTION GUARD: the LIVE reconcile route's own aggregate still shows 500 due after the delete — " +
       "if ACTIVE_DUE_PAYMENT were missing from duesPaidTotal, the deleted payment would still count as collected and wrongly zero this out",
     reconciled === 500,
   );
 
-  const recomputed = await recomputeAuthorityTotalDue(customerId);
+  const recomputed = await recomputeAuthorityTotalDue(fx.ledger);
   check(
     "admin §2 RESURRECTION GUARD: the REAL recomputeCustomer authority independently agrees — 500 due, " +
       "not silently re-suppressed by a deleted payment that still counted",
@@ -879,36 +897,44 @@ async function legAdminDeletedFieldAbsence(): Promise<void> {
 
 // ── admin §6 — editing amount down/up moves totalDue by exactly the diff ───
 async function legAdminEditUpDown(): Promise<void> {
-  const customerId = await makeCustomerWithDueFixtures(500);
-  const payment = await receiveDuePayment({
-    customerId,
-    amount: 200,
-    mode: "Cash",
-    clientRef: randomUUID(),
-    receivedBy: VERIFIER_NAME,
-  });
-  check("admin §6 setup: the payment collects 200, leaving totalDue at 300", payment.ok && payment.customer.totalDue === 300);
-  if (!payment.ok) return;
+  const fx = await makeCustomerWithDueFixtures(500);
+  // The identical receive → edit-down → edit-up flow runs on BOTH lanes, and
+  // after every edit each authority is asked about its own lane (see
+  // makeCustomerWithDueFixtures for why the lanes are separate customers).
+  const lanes: Array<{ label: string; customerId: string; authority: string; agrees: (c: string) => Promise<number> }> = [
+    { label: "v1 lane", customerId: fx.v1, authority: "the reconcile aggregate", agrees: runReconcileAggregate },
+    { label: "ledger lane", customerId: fx.ledger, authority: "recomputeCustomer", agrees: recomputeAuthorityTotalDue },
+  ];
+  for (const lane of lanes) {
+    const { customerId } = lane;
+    const payment = await receiveDuePayment({
+      customerId,
+      amount: 200,
+      mode: "Cash",
+      clientRef: randomUUID(),
+      receivedBy: VERIFIER_NAME,
+    });
+    check(`admin §6 setup (${lane.label}): the payment collects 200, leaving totalDue at 300`, payment.ok && payment.customer.totalDue === 300);
+    if (!payment.ok) return;
 
-  const paymentId = String(payment.payment._id);
-  const down = await editDuePayment({ customerId, paymentId, amount: 120, mode: "Cash", editedBy: VERIFIER_NAME });
-  check(
-    "admin §6: editing the amount DOWN (200→120) raises totalDue by exactly the 80 difference (300→380)",
-    down.ok && down.customer.totalDue === 380,
-  );
-  if (down.ok) {
-    check("admin §6: recomputeCustomer agrees after the DOWN edit (380)", (await recomputeAuthorityTotalDue(customerId)) === 380);
-    check("admin §6: the reconcile aggregate agrees after the DOWN edit (380)", (await runReconcileAggregate(customerId)) === 380);
-  }
+    const paymentId = String(payment.payment._id);
+    const down = await editDuePayment({ customerId, paymentId, amount: 120, mode: "Cash", editedBy: VERIFIER_NAME });
+    check(
+      `admin §6 (${lane.label}): editing the amount DOWN (200→120) raises totalDue by exactly the 80 difference (300→380)`,
+      down.ok && down.customer.totalDue === 380,
+    );
+    if (down.ok) {
+      check(`admin §6: ${lane.authority} agrees after the DOWN edit (380)`, (await lane.agrees(customerId)) === 380);
+    }
 
-  const up = await editDuePayment({ customerId, paymentId, amount: 300, mode: "Cash", editedBy: VERIFIER_NAME });
-  check(
-    "admin §6: editing the amount UP (120→300) lowers totalDue by exactly the 180 difference (380→200)",
-    up.ok && up.customer.totalDue === 200,
-  );
-  if (up.ok) {
-    check("admin §6: recomputeCustomer agrees after the UP edit (200)", (await recomputeAuthorityTotalDue(customerId)) === 200);
-    check("admin §6: the reconcile aggregate agrees after the UP edit (200)", (await runReconcileAggregate(customerId)) === 200);
+    const up = await editDuePayment({ customerId, paymentId, amount: 300, mode: "Cash", editedBy: VERIFIER_NAME });
+    check(
+      `admin §6 (${lane.label}): editing the amount UP (120→300) lowers totalDue by exactly the 180 difference (380→200)`,
+      up.ok && up.customer.totalDue === 200,
+    );
+    if (up.ok) {
+      check(`admin §6: ${lane.authority} agrees after the UP edit (200)`, (await lane.agrees(customerId)) === 200);
+    }
   }
 }
 

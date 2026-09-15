@@ -1,12 +1,14 @@
 import mongoose from "mongoose";
 import { Customer } from "@/models/Customer";
-import { type PaymentMode, type GstMode, type OrderStatus } from "@/lib/constants";
+import { type PaymentMode, type GstMode, type OrderStatus, type DiscountKind } from "@/lib/constants";
 import {
   type GstConfig,
   type OrderTotals,
   computeOrderTotals,
   gstConfigFromOrder,
+  resolveDiscountKind,
 } from "@/lib/receipt";
+import type { RedeemedReward } from "@pos/shared/reward-redemption";
 
 // Server-only order-domain helpers: payment derivation, the customer-ledger
 // contribution model, ledger reconciliation, and settle-time money resolution.
@@ -83,8 +85,8 @@ export function ledgerContribution(order: {
   };
 }
 
-export const validCustomer = (id?: string) =>
-  id && mongoose.isValidObjectId(id) ? id : null;
+export const validCustomer = (id?: string | mongoose.Types.ObjectId) =>
+  id && mongoose.isValidObjectId(id) ? String(id) : null;
 
 // Floor ledger counters at 0 so a reconciliation delta (edit/delete/settle/retry)
 // can never leave a customer with negative dues/spend/visits that persist forever.
@@ -101,7 +103,7 @@ export async function clampLedger(customerId: string) {
 }
 
 type LedgerOrder = {
-  customerId?: string;
+  customerId?: string | mongoose.Types.ObjectId;
   payment: PaymentMode;
   total: number;
   paidAmount: number;
@@ -161,15 +163,24 @@ export async function reconcileLedger(
 
 export interface SettleMoneyInput {
   order: {
-    items: ReadonlyArray<{ price: number; qty: number }>;
+    // `reward?: boolean` per line — CB-5B: a reward line must ride through to
+    // computeOrderTotals with its flag intact, or the subtotal reducer there
+    // has no way to skip it (the untotalled/untaxed mechanism, lib/receipt.ts).
+    items: ReadonlyArray<{ price: number; qty: number; reward?: boolean }>;
     total: number;
     discount: number;
+    discountKind?: DiscountKind;
     gstRate?: number;
     gstMode?: GstMode;
     chargeAmount?: number;
   };
   payment: PaymentMode;
   discount?: number;
+  // undefined = leave the tab's kind alone (the Orders-page settle path never
+  // sends it); null = the operator switched back to a manual discount; "gst" =
+  // the preset — then `discount` is ignored and re-derived from the tab's own
+  // items + GST snapshot. Mirrors `chargeAmount`'s treatment above.
+  discountKind?: DiscountKind | null;
   // Settle-time waiver/adjustment of the table charge. Undefined means "leave
   // the tab's charge alone" — NOT "no charge" — so a settle path that knows
   // nothing about charges cannot drop one off a bill.
@@ -178,6 +189,11 @@ export interface SettleMoneyInput {
   splitCash?: number;
   splitOnline?: number;
   liveGst: GstConfig;
+  // CB-5B S5 — the milestone claimed AT settle time (a non-item reward only;
+  // D9 refuses an item reward here). Passed straight through to
+  // computeOrderTotals, same as `charge`/`discountKind` above: the route
+  // resolves the claim (it needs the DB), this function stays pure.
+  reward?: RedeemedReward;
 }
 
 export type SettleMoney =
@@ -188,24 +204,39 @@ export type SettleMoney =
       splitOnline?: number;
       totals: OrderTotals | null;
       leavesDue: boolean;
+      discountKind: DiscountKind | undefined;
     }
   | { error: string };
 
 export function resolveSettleMoney(input: SettleMoneyInput): SettleMoney {
-  // Neither a settle-time discount NOR a charge change supplied — preserve
-  // today's behavior byte-for-byte: no recompute, charge exactly the stored
-  // total (the Orders-page settle path). When either IS supplied the bill is
-  // re-priced from the order's own items, and the field that was NOT supplied
-  // is carried over from the stored order rather than reset — re-pricing to
-  // apply a discount must not also wipe the table charge, and vice versa.
+  // Neither a settle-time discount, charge change, discount-kind change, NOR
+  // a reward claim supplied — preserve today's behavior byte-for-byte: no
+  // recompute, charge exactly the stored total (the Orders-page settle
+  // path). When any IS supplied the bill is re-priced from the order's own
+  // items, and the fields that were NOT supplied are carried over from the
+  // stored order rather than reset — re-pricing to apply a discount must not
+  // also wipe the table charge, and vice versa.
+  //
+  // PIN WIDENED (CB-5B S5): `input.reward !== undefined` was added to this
+  // condition — a reward claim MUST trigger the same recompute a discount or
+  // charge change does, or a redeemed settle would charge the stored
+  // (undiscounted) total while silently dropping the reward on the floor.
+  // The source pin in lib/gst-discount.test.ts asserting this branch's three
+  // original terms must widen to include this fourth one.
+  const effectiveKind = resolveDiscountKind(input.discountKind, input.order.discountKind);
   const totals =
-    input.discount === undefined && input.chargeAmount === undefined
+    input.discount === undefined &&
+    input.chargeAmount === undefined &&
+    input.discountKind === undefined &&
+    input.reward === undefined
       ? null
       : computeOrderTotals({
           items: input.order.items,
           discount: input.discount ?? input.order.discount,
+          discountKind: effectiveKind,
           charge: input.chargeAmount ?? input.order.chargeAmount ?? 0,
           cfg: gstConfigFromOrder(input.order, input.liveGst),
+          reward: input.reward,
         });
   const total = totals ? totals.total : input.order.total;
 
@@ -232,5 +263,6 @@ export function resolveSettleMoney(input: SettleMoneyInput): SettleMoney {
     splitOnline: pay.splitOnline,
     totals,
     leavesDue,
+    discountKind: effectiveKind,
   };
 }

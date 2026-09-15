@@ -13,9 +13,17 @@ export const CATEGORY_KEYS = {
   all: ["categories"] as const,
 };
 
-// Categories sorted by display order then name (near-static). Deleting a
-// category reassigns its products to "Uncategorized" server-side, so the delete
-// also refreshes the products list (CLAUDE.md §9 — invalidate on write).
+// Categories sorted by display order then name (near-static). A category can
+// only be deleted once it has no products (the route's 409 guard, CB-DL-2),
+// so a successful delete can never itself change which category a product
+// belongs to — but a stale cached products list could still show a card for
+// the category id that was just removed, so the delete still invalidates the
+// products list too (extraInvalidate below), just to fix the display rather
+// than to follow a server-side cascade that no longer exists.
+//
+// Master data (CB-DL-1): seeded once per page load from GET /api/bootstrap
+// (MasterDataProvider) and served from the tab's own copy afterwards, so the
+// freshness window is the blob's 24h; a page refresh re-fetches the bootstrap.
 const categoryHooks = createCrudHooks<
   Category,
   CreateCategoryInput,
@@ -23,8 +31,8 @@ const categoryHooks = createCrudHooks<
 >({
   path: "/api/categories",
   rootKey: CATEGORY_KEYS.all,
-  staleTime: STALE_TIMES.CATEGORIES,
-  gcTime: GC_TIMES.DEFAULT,
+  staleTime: STALE_TIMES.MASTERS,
+  gcTime: GC_TIMES.MASTERS,
   messages: {
     created: "Category added",
     updated: "Category updated",

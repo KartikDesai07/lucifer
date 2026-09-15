@@ -106,6 +106,11 @@ export function LiveFloorPanel({
                       <span>Seats {table.capacity}</span>
                     )}
                   </div>
+                  {table.status !== "Occupied" && (
+                    <div className="mt-0.5 text-xs font-medium text-muted-foreground">
+                      {table.status}
+                    </div>
+                  )}
                 </>
               );
 

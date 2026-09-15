@@ -55,7 +55,12 @@ export default async function RootLayout({
 
   return (
     <html lang="en" className={fontVariables}>
-      <body className="font-sans antialiased min-h-screen bg-background text-foreground">
+      {/* min-h-screen = 100vh = the LARGEST mobile viewport (URL bar retracted),
+          which made the document scroll by the toolbar height on staff devices.
+          Where `dvh` exists the floor becomes the VISIBLE viewport instead; on
+          desktop dvh === vh so nothing changes. /login, /m, print and
+          global-error carry their own min-height and are unaffected. */}
+      <body className="font-sans antialiased min-h-screen supports-[height:1dvh]:min-h-dvh bg-background text-foreground">
         <SessionProvider session={session}>
           <Providers>{children}</Providers>
           <Toaster richColors position="top-right" />

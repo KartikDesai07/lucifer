@@ -10,7 +10,8 @@ import {
   useRestoreProduct,
   useSetProductAvailability,
 } from "@/hooks/use-products";
-import { useCategories } from "@/hooks/use-categories";
+import { useCategoryMap } from "@/hooks/use-category-map";
+import { categoryNameOf } from "@/lib/category-map";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PageHeader } from "@/components/shared/PageHeader";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ProductFormSheet } from "@/components/products/ProductFormSheet";
@@ -45,7 +47,7 @@ export default function ProductsPage() {
   const isArchived = view === "archived";
 
   const products = useProducts(isArchived ? { archived: true } : {});
-  const categories = useCategories();
+  const { map: categoryMap, categories } = useCategoryMap();
   const archiveProduct = useArchiveProduct();
   const restoreProduct = useRestoreProduct();
   const setAvailability = useSetProductAvailability();
@@ -59,12 +61,22 @@ export default function ProductsPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return (products.data ?? []).filter((p) => {
-      const inCategory = category === ALL || p.category === category;
-      const matches = q === "" || p.name.toLowerCase().includes(q);
-      return inCategory && matches;
-    });
-  }, [products.data, search, category]);
+    // Server-side product query now sorts by { name: 1 } only, so the
+    // category-grouped look survives here via an explicit sort on the
+    // joined category name, then product name.
+    return (products.data ?? [])
+      .filter((p) => {
+        const inCategory = category === ALL || p.categoryId === category;
+        const matches = q === "" || p.name.toLowerCase().includes(q);
+        return inCategory && matches;
+      })
+      .sort((a, b) => {
+        const catCompare = categoryNameOf(categoryMap, a.categoryId).localeCompare(
+          categoryNameOf(categoryMap, b.categoryId),
+        );
+        return catCompare !== 0 ? catCompare : a.name.localeCompare(b.name);
+      });
+  }, [products.data, search, category, categoryMap]);
 
   const openAdd = () => {
     setEditing(null);
@@ -89,22 +101,20 @@ export default function ProductsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Menu</h2>
-          <p className="text-sm text-muted-foreground">
-            Manage products served at the cafe.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setImportOpen(true)}>
-            <Upload className="mr-2 h-4 w-4" /> Import
-          </Button>
-          <Button onClick={openAdd}>
-            <Plus className="mr-2 h-4 w-4" /> Add product
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Menu"
+        description="Manage products served at the cafe."
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" /> Import
+            </Button>
+            <Button onClick={openAdd}>
+              <Plus className="mr-2 h-4 w-4" /> Add product
+            </Button>
+          </div>
+        }
+      />
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="relative flex-1">
@@ -122,8 +132,8 @@ export default function ProductsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL}>All categories</SelectItem>
-            {(categories.data ?? []).map((c) => (
-              <SelectItem key={c._id} value={c.name}>
+            {categories.map((c) => (
+              <SelectItem key={c._id} value={c._id}>
                 {c.name}
               </SelectItem>
             ))}
@@ -174,6 +184,7 @@ export default function ProductsPage() {
         <ProductsTable
           products={filtered}
           archived={isArchived}
+          categoryMap={categoryMap}
           onEdit={openEdit}
           onArchive={setArchiving}
           onRestore={(id) => restoreProduct.mutate(id)}
@@ -193,7 +204,7 @@ export default function ProductsPage() {
         open={formOpen}
         onOpenChange={setFormOpen}
         product={editing}
-        categories={categories.data ?? []}
+        categories={categories}
       />
 
       <ImportProductsDialog open={importOpen} onOpenChange={setImportOpen} />

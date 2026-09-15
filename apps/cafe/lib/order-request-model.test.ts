@@ -6,6 +6,16 @@ import { Order } from "../models/Order";
 import { promoRedemptionSchema, PromoRedemption } from "../models/PromoRedemption";
 import { assertSchemaTtlAllowed } from "./ttl-guard";
 
+// CB-DL-2: OrderRequest items[].productId and PromoRedemption.requestId are
+// now Schema.Types.ObjectId paths -- a non-hex placeholder like "p1" no longer
+// casts. Mongoose silently DROPS an uncastable path from a subdoc at
+// construction (it does not throw), so the old "p1" fixtures below were
+// quietly losing their productId with none of these tests noticing (no test
+// here asserts on items[0].productId). Fixed literals restore a real,
+// castable fixture value without changing any test's asserted intent.
+const FIXTURE_PRODUCT_ID = "a".repeat(24);
+const FIXTURE_REQUEST_ID = "b".repeat(24);
+
 // models/Order.ts does not export its schema separately (the v1 default-bound
 // model, unchanged by this slice's instructions) — the compiled `Order` model
 // exposes the same Schema instance via `.schema`, so the index/path
@@ -39,7 +49,7 @@ test("OrderRequest: status enum rejects an unknown value", () => {
     shortCode: "ABCDEFGHJK",
     status: "not-a-real-status",
     targetKind: "parcel",
-    items: [{ productId: "p1", name: "Tea", price: 20, qty: 1, modifiers: [], instructions: "" }],
+    items: [{ productId: FIXTURE_PRODUCT_ID, name: "Tea", price: 20, qty: 1, modifiers: [], instructions: "" }],
     quotedSubtotal: 20,
     quotedCharge: 0,
     quotedTotal: 20,
@@ -64,7 +74,7 @@ test("Order: sourceRequestIds has NO default — a minimal doc leaves it undefin
   const doc = new Order({
     orderId: "ORD-20260819-001",
     customerName: "Walk-in",
-    items: [{ productId: "p1", name: "Tea", price: 20, qty: 1, modifiers: [], instructions: "" }],
+    items: [{ productId: FIXTURE_PRODUCT_ID, name: "Tea", price: 20, qty: 1, modifiers: [], instructions: "" }],
     subtotal: 20,
     total: 20,
     paidAmount: 20,
@@ -87,7 +97,7 @@ test("OrderRequest: optional resolution fields are absent on a minimal valid doc
     shortCode: "ABCDEFGHJK",
     targetKind: "table",
     tableNo: "T-1",
-    items: [{ productId: "p1", name: "Tea", price: 20, qty: 1, modifiers: [], instructions: "" }],
+    items: [{ productId: FIXTURE_PRODUCT_ID, name: "Tea", price: 20, qty: 1, modifiers: [], instructions: "" }],
     quotedSubtotal: 20,
     quotedCharge: 0,
     quotedTotal: 20,
@@ -105,7 +115,7 @@ test("OrderRequest: targetKind enum rejects an unknown value", () => {
   const doc = new OrderRequest({
     shortCode: "ABCDEFGHJK",
     targetKind: "delivery",
-    items: [{ productId: "p1", name: "Tea", price: 20, qty: 1, modifiers: [], instructions: "" }],
+    items: [{ productId: FIXTURE_PRODUCT_ID, name: "Tea", price: 20, qty: 1, modifiers: [], instructions: "" }],
     quotedSubtotal: 20,
     quotedCharge: 0,
     quotedTotal: 20,
@@ -137,17 +147,40 @@ test("PromoRedemption: no TTL anywhere on the schema — a redemption is durable
 });
 
 test("PromoRedemption: code/mobile/requestId are required; orderId is absent on a minimal doc (omit-empty)", () => {
-  const doc = new PromoRedemption({ code: "SAVE10", mobile: "9999999999", requestId: "req-1" });
+  const doc = new PromoRedemption({ code: "SAVE10", mobile: "9999999999", requestId: FIXTURE_REQUEST_ID });
   const err = doc.validateSync();
   assert.equal(err, undefined, "a minimal doc must validate cleanly");
   assert.equal(doc.orderId, undefined);
 });
 
-test("PromoRedemption: a doc missing code/mobile/requestId fails validation on those exact paths", () => {
+test("PromoRedemption: a doc missing code/mobile fails validation on those exact paths -- and requestId is NOT among them (the counter claims with no request)", () => {
   const doc = new PromoRedemption({});
   const err = doc.validateSync();
   assert.ok(err, "expected a validation error");
   assert.ok(err?.errors.code, "expected the error to cover code");
   assert.ok(err?.errors.mobile, "expected the error to cover mobile");
-  assert.ok(err?.errors.requestId, "expected the error to cover requestId");
+  // CB-5D part 2 — requestId stopped being required when the COUNTER gained
+  // promo support: a counter order is born from no OrderRequest, so requiring
+  // it would have made every counter claim throw. The fence never depended on
+  // it (the unique {code,mobile} index is the fence); the two required paths
+  // above are exactly the two halves of that key.
+  assert.equal(err?.errors.requestId, undefined, "requestId must NOT be required -- a counter claim carries claimOrderId instead");
+});
+
+// BEHAVIOUR, not a source pin: the counter's own claim shape must actually
+// validate against the real schema. A source pin on the model file would pass
+// even if Mongoose still rejected this document.
+test("PromoRedemption: a COUNTER-shaped doc (claimOrderId, no requestId) validates, and omits requestId", () => {
+  const doc = new PromoRedemption({ code: "SAVE10", mobile: "9999999999", claimOrderId: "ORD-20260915-0007" });
+  const err = doc.validateSync();
+  assert.equal(err, undefined, "a counter claim must validate with no requestId at all");
+  assert.equal(doc.requestId, undefined, "omit-empty: a counter row stores no requestId key");
+  assert.equal(doc.claimOrderId, "ORD-20260915-0007");
+});
+
+test("PromoRedemption: a DINER-shaped doc (requestId, no claimOrderId) still validates, and omits claimOrderId", () => {
+  const doc = new PromoRedemption({ code: "SAVE10", mobile: "9999999999", requestId: FIXTURE_REQUEST_ID });
+  const err = doc.validateSync();
+  assert.equal(err, undefined, "the diner claim shape must be unchanged");
+  assert.equal(doc.claimOrderId, undefined, "omit-empty: a diner row stores no claimOrderId key");
 });

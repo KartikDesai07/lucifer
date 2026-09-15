@@ -142,6 +142,7 @@ test("PARITY: publicCartTotals (shared, diner-display) matches computeOrderTotal
           const real = computeOrderTotals({
             items: [{ price: subtotal, qty: 1 }],
             discount: 0,
+            discountKind: undefined,
             charge,
             cfg,
           });

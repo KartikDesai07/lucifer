@@ -77,7 +77,7 @@ function buildOrder(opts: {
     orderId: opts.orderId,
     customerName: "Walk-In",
     items: [
-      { productId: "p1", name: "Tea", price, qty: 1, modifiers: [], instructions: "", kotRound: 1 },
+      { productId: "00000000000000000000aaa1", name: "Tea", price, qty: 1, modifiers: [], instructions: "", kotRound: 1 },
     ],
     subtotal: price,
     discount: 0,

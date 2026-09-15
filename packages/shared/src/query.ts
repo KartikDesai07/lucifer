@@ -24,6 +24,13 @@ export const STALE_TIMES = {
   SUMMARY: 2 * 60 * 1000, // 2min — dashboard daily summary
   REPORTS: 60 * 1000, // 1min — reviewed, not live; same range often re-opened
   LIVE: 0, // never cache — orders / customer order history
+  // Master data (settings/categories/products/staff) — CB-DL-1, owner rule:
+  // masters are fetched ONCE per page load by GET /api/bootstrap and read from
+  // the tab's own copy afterwards; only a page refresh re-fetches them, so no
+  // background query may be spent on them. 24h = the blob's max age
+  // (MASTERS_BLOB_MAX_AGE_MS), so the tab's copy and the in-memory copy expire
+  // on the same clock.
+  MASTERS: 24 * 60 * 60 * 1000,
 } as const;
 
 // Garbage-collection windows (how long unused query data is kept in memory).
@@ -31,6 +38,12 @@ export const GC_TIMES = {
   DEFAULT: 10 * 60 * 1000, // 10min — matches the global QueryClient default
   ORDERS: 5 * 60 * 1000, // 5min — orders churn faster
   SETTINGS: 30 * 60 * 1000, // 30min — rarely refetched
+  // Master data (CB-DL-1): the same 24h figure as STALE_TIMES.MASTERS and the
+  // blob's MASTERS_BLOB_MAX_AGE_MS. A shorter window would evict the bootstrap's
+  // seeded parts while a staff tab is parked on one screen, and the next screen
+  // would then have to re-fetch each master route — exactly the extra queries
+  // the "fetch once per page load" rule removes.
+  MASTERS: 24 * 60 * 60 * 1000,
 } as const;
 
 // Auto-refetch cadences for the few live-polling queries (CLAUDE.md §9).

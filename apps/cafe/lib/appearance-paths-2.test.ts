@@ -37,6 +37,9 @@ const M_PAGE = "apps/cafe/app/m/page.tsx";
 const M_TOKEN_PAGE = "apps/cafe/app/m/[token]/page.tsx";
 const PUBLIC_APPEARANCE = "apps/cafe/lib/public-appearance.ts";
 const PUBLIC_ORDER_FLOW = "apps/cafe/components/public/PublicOrderFlow.tsx";
+// CB-4 — the 3-tab diner shell, now the /m pages' direct child; it wraps
+// PublicOrderFlow (the Menu tab) rather than replacing it.
+const PUBLIC_DINER_SHELL = "apps/cafe/components/public/PublicDinerShell.tsx";
 const PUBLIC_MENU = "apps/cafe/components/public/PublicMenu.tsx";
 const PUBLIC_MENU_HEADER = "apps/cafe/components/public/PublicMenuHeader.tsx";
 const APPEARANCE_PREVIEW = "apps/cafe/components/settings/AppearancePreview.tsx";
@@ -104,7 +107,13 @@ test("PIN (A1): the chrome={heroImage, logoPlacement} prop actually flows app/m/
     pageSrc,
     /const chrome = \{ heroImage: appearance\.heroImage, logoPlacement: appearance\.logoPlacement \};/,
   );
-  assert.match(pageSrc, /<PublicOrderFlow chrome=\{chrome\} \/>/, "app/m/page.tsx must pass chrome into PublicOrderFlow");
+  // CB-4 inserted PublicDinerShell between the page and PublicOrderFlow (the
+  // 3-tab diner shell wraps the menu rather than editing it). The chain is one
+  // hop longer, so this pin now proves the WHOLE hop — page -> shell, and
+  // shell -> PublicOrderFlow below — rather than being relaxed to "chrome
+  // appears somewhere".
+  assert.match(pageSrc, /<PublicDinerShell\b/, "app/m/page.tsx must render PublicDinerShell");
+  assert.match(pageSrc, /chrome=\{chrome\}/, "app/m/page.tsx must pass chrome into PublicDinerShell");
 
   const tokenPageSrc = stripComments(readSrc(M_TOKEN_PAGE));
   assert.match(tokenPageSrc, /import \{ readPublicAppearance \} from "@\/lib\/public-appearance";/);
@@ -112,10 +121,27 @@ test("PIN (A1): the chrome={heroImage, logoPlacement} prop actually flows app/m/
     tokenPageSrc,
     /const chrome = \{ heroImage: appearance\.heroImage, logoPlacement: appearance\.logoPlacement \};/,
   );
+  assert.match(tokenPageSrc, /<PublicDinerShell\b/, "app/m/[token]/page.tsx must render PublicDinerShell");
   assert.match(
     tokenPageSrc,
+    /token=\{token\}/,
+    "app/m/[token]/page.tsx must pass token into PublicDinerShell",
+  );
+  assert.match(
+    tokenPageSrc,
+    /chrome=\{chrome\}/,
+    "app/m/[token]/page.tsx must pass chrome into PublicDinerShell",
+  );
+
+  // The hop CB-4 added: the shell must forward BOTH props on to
+  // PublicOrderFlow, or the chain above would be satisfied by a shell that
+  // accepts chrome and drops it — exactly the dead branch this pin exists to
+  // catch.
+  const shellSrc = stripComments(readSrc(PUBLIC_DINER_SHELL));
+  assert.match(
+    shellSrc,
     /<PublicOrderFlow token=\{token\} chrome=\{chrome\} \/>/,
-    "app/m/[token]/page.tsx must pass BOTH token and chrome into PublicOrderFlow",
+    "PublicDinerShell must forward BOTH token and chrome into PublicOrderFlow",
   );
 
   const flowSrc = stripComments(readSrc(PUBLIC_ORDER_FLOW));

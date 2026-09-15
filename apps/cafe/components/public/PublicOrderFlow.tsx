@@ -14,6 +14,7 @@ import { PublicMenu } from "@/components/public/PublicMenu";
 import { PublicFlowChrome } from "@/components/public/PublicFlowChrome";
 import { PublicItemSheet, type PublicAddToCartOpts } from "@/components/public/PublicItemSheet";
 import { PublicCart } from "@/components/public/PublicCart";
+import type { AssignedRewardOffer } from "@/components/public/PublicPromoField";
 import type { PublicMenuProduct } from "@/components/public/PublicMenuItem";
 import type { TablePick } from "@/components/public/TableChooser";
 import {
@@ -43,12 +44,15 @@ interface PublicOrderFlowProps {
   // CR2.4 (A1) — hero image/logo placement, server-read by the /m pages and
   // forwarded to PublicMenu → PublicMenuHeader unchanged.
   chrome: { heroImage: string; logoPlacement: LogoPlacement };
+  // CB-5D part 2 — pass-through only: the shell owns the diner/me payload,
+  // this flow just hands the assigned codes to the cart's promo field.
+  rewards?: AssignedRewardOffer[];
 }
 
 // Owns the diner's cart (persisted through public-cart-store), the resolved
 // table charge, and the /m name-based table pick — the one parent PublicMenu,
 // PublicItemSheet and PublicCart all report up to. SLICE 8.
-export function PublicOrderFlow({ token, chrome }: PublicOrderFlowProps) {
+export function PublicOrderFlow({ token, chrome, rewards }: PublicOrderFlowProps) {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [pickedTable, setPickedTable] = useState<TablePick | null>(null);
@@ -243,6 +247,7 @@ export function PublicOrderFlow({ token, chrome }: PublicOrderFlowProps) {
         gst={gst}
         onSubmitted={handleSubmitted}
         suggestions={suggestions}
+        rewards={rewards}
         onAddSuggestion={handleAddSuggestion}
       />
     </>

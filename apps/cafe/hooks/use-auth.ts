@@ -3,6 +3,7 @@
 import { useSession, signOut } from "next-auth/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { clearMastersBlob } from "@/lib/masters-blob";
 
 /**
  * Client-side access to the current session + role helpers.
@@ -16,16 +17,19 @@ export function useAuth() {
   // The POS runs on ONE shared tablet: a manager signs out and a waiter signs
   // in on the same browser minutes later. Two things follow.
   //
-  // 1. Drop every cached query first. Query keys carry no user or role, and the
-  //    customer list is cached for minutes, so whatever the admin fetched —
-  //    including real mobile numbers — would otherwise be served to the next
+  // 1. Drop this tab's stored master copy AND every cached query first. Neither
+  //    carries a user or role: the customer list is cached for minutes and the
+  //    master blob holds the admin's staff list, so whatever the admin fetched
+  //    — including real mobile numbers — would otherwise be served to the next
   //    person from cache with no network call at all.
   // 2. signOut() can REJECT (its internal fetch is unguarded), and when it does
   //    it never reaches its own redirect: the session cookie is never cleared
   //    and the screen does not change. Left unhandled, the manager walks away
   //    believing they logged out while an admin session stays live for the rest
-  //    of its 8-hour life. Say so instead of failing silently.
+  //    of its 30-day rolling life (SESSION_MAX_AGE_SECONDS). Say so instead of
+  //    failing silently.
   const logout = async () => {
+    clearMastersBlob();
     queryClient.clear();
     try {
       await signOut({ callbackUrl: "/login" });

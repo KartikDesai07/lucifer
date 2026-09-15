@@ -9,8 +9,9 @@ import { useKotPrintBridge } from "@/hooks/use-kot-print-bridge";
 import { useSelfOrderAutoPrint } from "@/hooks/use-self-order-auto-print";
 import { useSettings } from "@/hooks/use-settings";
 import { printConfigOf } from "@/lib/print";
+import { PageHeader } from "@/components/shared/PageHeader";
 import { RequestsBoard } from "@/components/orders/RequestsBoard";
-import { DeviceAlertSettings } from "@/components/orders/DeviceAlertSettings";
+import { DeviceAlertSettingsDialog } from "@/components/orders/DeviceAlertSettingsDialog";
 import { PrintSources } from "@/components/pos/PrintSources";
 import { Button } from "@/components/ui/button";
 import type { Order } from "@/types";
@@ -68,25 +69,28 @@ export default function RequestsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight">Order requests</h2>
-          <p className="text-sm text-muted-foreground">
-            Accept a request to fire it to the kitchen, or reject it with a reason.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => requests.refetch()}
-          disabled={requests.isFetching}
-        >
-          <RefreshCw className={requests.isFetching ? "mr-2 h-4 w-4 animate-spin" : "mr-2 h-4 w-4"} />
-          Refresh
-        </Button>
-      </div>
+      <PageHeader
+        className="flex-wrap"
+        title="Order requests"
+        description="Accept a request to fire it to the kitchen, or reject it with a reason."
+        actions={
+          <div className="flex items-center gap-2">
+            <DeviceAlertSettingsDialog />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => requests.refetch()}
+              disabled={requests.isFetching}
+            >
+              <RefreshCw className={requests.isFetching ? "mr-2 h-4 w-4 animate-spin" : "mr-2 h-4 w-4"} />
+              Refresh
+            </Button>
+          </div>
+        }
+      />
 
-      <DeviceAlertSettings />
+      {/* PH-10b (owner): the per-device toggles live behind the Device
+          settings button; the Print host card moved to /settings/printing. */}
 
       <RequestsBoard
         requests={requests.data ?? []}

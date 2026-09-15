@@ -209,8 +209,36 @@ export function printedSlipNumber(sequence: number, start: number): number {
 // receipt goes out on the NEXT effect flush — safely after the library's teardown.
 //
 // Verified on desktop Chrome/Firefox ONLY. On MOBILE user-agents (a tablet POS —
-// /Android|webOS|iPhone|iPad|iPod|BlackBerry|Windows Phone/i) 3.3.0 fires
+// `MOBILE_UA_RE` below, exported as `isMobileUserAgent`) 3.3.0 fires
 // onAfterPrint on a fixed 500ms timer after invoking print() rather than at job
 // completion, so the two jobs can overlap there instead of being sequenced.
 // Tablets/phones are therefore NOT a supported counter device (CR1.6 decision —
 // docs/GO-LIVE-CHECKLIST.md §7); desktop Chrome/Firefox is the verified path.
+//
+// The Windows desktop shell (apps/desktop, CB-D1) JOINS this chain, it does
+// not sidestep it: `slipPrintOptions` (lib/desktop-shell.ts) supplies
+// react-to-print's custom `print` option, and the library still force-removes
+// any existing `#printWindow`, creates and appends the single iframe, clones
+// the slip into it, waits for its styles/images, and only then calls the
+// override instead of `contentWindow.print()`; on resolve it runs
+// `onAfterPrint` and removes the iframe exactly as before. So the one-job-per-
+// tick rule above applies UNCHANGED on the desktop path. The override hands the
+// built iframe document's HTML to the shell's silent-print IPC call and
+// resolves when that call settles (bounded by DESKTOP_PRINT_TIMEOUT_MS). Only
+// two things differ: the `documentTitle` swap and the MOBILE 500ms timer live
+// in the default `contentWindow.print()` branch and never run on this path.
+
+// The regex the note above names, as a real gate (print-host plan §B7, PH-7).
+// A mobile UA can never be the print HOST — that 500ms timer makes both the
+// attestation timing and the bridge's sequencing invalid there — so this gates
+// DESIGNATION only (the setup wizard's device check). It must NEVER gate the
+// Clear-host control, which has to work from any phone when the host PC is
+// dead (design review MERGED-17). Pure: `ua` defaults to the browser's own
+// agent string and to "" on the server, where nothing is mobile.
+const MOBILE_UA_RE = /Android|webOS|iPhone|iPad|iPod|BlackBerry|Windows Phone/i;
+
+export function isMobileUserAgent(
+  ua: string = typeof navigator === "undefined" ? "" : navigator.userAgent,
+): boolean {
+  return MOBILE_UA_RE.test(ua);
+}

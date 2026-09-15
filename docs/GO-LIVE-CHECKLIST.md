@@ -51,6 +51,10 @@ Nothing in §1 can start until all of these exist.
 - [ ] **A host, decided.** The app resolves *which cafe it is serving* from the
       request host, so the host and two env vars have to agree. Two supported
       shapes:
+      The owner console now defaults every new cafe to shape (B), on the ONE
+      apex domain recorded in `clients/_platform.json` (console: ⚙ Platform) —
+      shape (A) still works and is what an existing cafe keeps until its web
+      address is set.
       - **(A) Vercel's own free domain** — no purchase needed. Set
         `ROOT_DOMAIN=vercel.app` and `TENANT_ID=` **the first label of the
         production domain Vercel actually assigned**, then deploy. Confirmed live
@@ -88,6 +92,14 @@ Nothing in §1 can start until all of these exist.
 ---
 
 ## §1 Deploy the app (DEPLOYER)
+
+> **The one-command path.** `npm run go-live -- <client>` (or double-click
+> `go-live.cmd`) does every box below except the WAF rules and the R2 CORS rule,
+> and also runs the §2 seed — from a single `clients/<client>.json` you fill in
+> once (`scripts/go-live/client.example.json` is the template, `demo.example.json`
+> a ready demo café). It reads the assigned domain so `TENANT_ID` can never
+> disagree with the host, and ends with the `/api/health` check. Details:
+> `apps/cafe/DEPLOY.md` §1. Tick the boxes below by reading its summary.
 
 - [ ] Vercel project created with **Root Directory = `apps/cafe`**.
 - [ ] Environment variables set in Vercel (Production). **Required four:**
@@ -232,7 +244,7 @@ to a placeholder brand on paper.
 | Appearance preset | 6 choices | sets the public (QR) menu's colors, both light and dark |
 | Font pair | 6 choices | sets the public menu's typography |
 | Hero image | 1200 px longest edge · 1 MB | banner shown at the top of the public menu |
-| Self-order mode | approve / auto | how a diner's QR order reaches the kitchen |
+| Self-order mode | approve / auto / menu | how a diner's QR order reaches the kitchen ("menu" = browsing only, ordering off) |
 | Let diners pick a table | on / off | whether the shared menu link lets a diner pick or change their table |
 | Show past orders to diners | reserved — no diner screen exists yet | — |
 | Promo codes | ≤20 codes, uppercase, percent or flat, whole rupees | discount a diner can type in at checkout |
@@ -462,21 +474,29 @@ Two routes: type it in, or import a CSV. For more than ~30 items, import.
         recorded, no name attached, and no discount line of its own in Reports or
         the closing slip. If the drawer is short, a comped bill is the first
         thing to suspect and the hardest to see.
-      - **Delete a category**, which silently re-tags every product in it to
-        "Uncategorized" and cannot be undone.
       - **Permanently delete a reservation or an event**, with no record of who
         did it.
       - Void a fired item (reason required, kitchen gets a VOID slip), receive a
         customer's dues payment, and print the end-of-day slip.
       - **Cancelling a whole order is admin-only**, as is resetting someone
-        else's password, and **changing an existing customer's mobile
-        number**. Staff can still add a NEW customer with a real number, and
-        can still edit that customer's name and type — but the mobile field on
-        an existing customer shows read-only with the hint "Only an admin can
-        see or change the full number."
+        else's password, **deleting a category**, and **changing an existing
+        customer's mobile number**. Staff can still add a NEW customer with a
+        real number, and can still edit that customer's name and type — but
+        the mobile field on an existing customer shows read-only with the
+        hint "Only an admin can see or change the full number."
+      - **A category can only be deleted once it has no products** — move its
+        products to another category first. There is no cascade any more: a
+        category with products still linked to it is refused with a count,
+        never silently re-tagged.
 - [ ] Password resets: admin resets any other account from the Staff row; each
       person can change their own from the sidebar account menu.
 - [ ] Leavers get **deactivated**, not deleted, so their history keeps its name.
+- [ ] Staff stay signed in for 30 days of use on a device; on a shared device
+      use Log out when handing it over.
+- [ ] A password reset does not sign out devices that are already signed in.
+      To cut off a lost or stolen device, deactivate that staff account (it
+      is signed out within about a minute), then reactivate it after the
+      reset.
 
 ---
 
@@ -495,11 +515,84 @@ thermal printer**, from the **actual counter device**, in **both browsers**.
       way today — every rule on the slip is a CSS border, so it prints
       regardless; leave it on so a future shaded block isn't dropped), thermal
       printer set as **default**.
-- [ ] Optional, removes the dialog on every sale: launch Chrome with
-      `--kiosk-printing` (silent print to the default printer). If you enable
-      it, **re-run the whole matrix below** — kiosk mode changes when the print
-      job is considered finished.
 - [ ] Logged in on the counter device as a real staff account.
+
+### Desktop app on the counter PC (preferred)
+
+The counter PC can run the POS as a Windows app instead of a browser tab. It
+prints slips silently — no dialog on every sale — and keeps printing while
+another program is in front.
+
+- [ ] Copy `POS-Software-Setup-<version>.exe` to the counter PC by hand (USB or
+      the local network). It is never downloaded from anywhere.
+- [ ] Run it. Windows SmartScreen says the publisher is unknown: **More info →
+      Run anyway**, once. Installs for this Windows user only, no admin rights.
+- [ ] First run asks for the **Server address** — type the app's address (for
+      example `https://your-pos.example.com`) and choose **Use this address**.
+- [ ] Log in once as a real staff account. The sign-in lasts 30 days and renews
+      with use, so the PC stays signed in.
+- [ ] **Settings → Printer setup** → the **Print host** card → designate this PC,
+      then **Test print**. The card must confirm silent printing is on. If it
+      does not, the thermal printer is probably not the Windows default —
+      set it and test again.
+- [ ] Silent printing uses the printer's **Windows defaults**, not a browser
+      dialog: in Windows → Printers → the thermal printer → **Printing
+      preferences**, set the roll size (**80 mm**, or 58 mm for narrow paper)
+      and margins to none. The browser print-dialog settings above do not
+      apply to the desktop app.
+- [ ] In Windows → **Printers & scanners**, turn OFF **"Let Windows manage my
+      default printer"** and set the thermal printer as the default. Otherwise
+      Windows quietly makes the last-used printer the default (for example a
+      PDF printer) and the desktop app would print there instead.
+- [ ] If a slip cannot be printed (printer off, paper out, wrong printer), a
+      Windows **notification** from the app says why even while its window is
+      hidden, and the slip stays on the Orders page to print again. For
+      support, the app's log is `%APPDATA%\POS Software by sandbee\pos-desktop.log`.
+- [ ] A slip is never sent to the printer blank. From installer **1.0.1** the
+      app checks that the slip has actually drawn text before printing; if it
+      has not, the notification says **"That slip had nothing to print."** or
+      **"The slip did not finish drawing. Print it again."** — reprint it from
+      Orders. Each successful print is logged with its text length and the
+      printer it went to, so a blank sheet can be traced in the log.
+- [ ] Closing the window keeps the app running in the tray, still printing.
+      The tray icon has **Open POS** and **Quit**.
+- [ ] After the first successful load the app starts hidden with Windows.
+      **Help → Start with Windows** turns that off and on.
+- [ ] **Help → Change server address…** if the address ever changes.
+- [ ] Uninstall from Windows **Settings → Apps → POS Software by sandbee** (this
+      also removes the app's start-with-Windows entry).
+- [ ] Set the PC's power plan to never sleep, as below.
+
+**If the desktop app cannot be installed** (an older Windows, a locked-down PC),
+use the browser instead: launch Chrome with `--kiosk-printing` (silent print to
+the default printer) — the **POS Printer** shortcut in
+**Settings → Printer setup** creates exactly that. If you use the kiosk shortcut,
+**re-run the whole paper matrix below** — kiosk mode changes when a print job
+is considered finished.
+
+### Installing the POS on the counter device
+
+- [ ] Log in on the counter device, open `/pos` (the New Order screen) —
+      install FROM this screen; the installed app opens on `/pos` every time.
+- [ ] Chrome / Edge (Android and desktop): browser menu (⋮) → "Install app"
+      (older builds: "Add to Home screen") → confirm. No service worker is
+      required (Chrome 108+ on Android, 112+ on desktop). Result: the POS
+      opens in its own window with no address bar; the icon is the generic
+      product mark; the app's name is the cafe's name from Settings.
+- [ ] Samsung Internet: menu → "Add page to" → "Home screen" (reported
+      behaviour, not verified here).
+- [ ] iOS Safari: Share → "Add to Home Screen". Keep-awake may not work in an
+      installed app before iOS 18.4 — keep the screen timeout long on that
+      device.
+- [ ] Screen stays awake only while the POS window is visible and in the
+      foreground; switching apps releases it and it re-acquires when you come
+      back. It prevents display sleep only — the power button still locks the
+      device.
+- [ ] Renaming the cafe in Settings changes the name shown on the NEXT
+      install; an already-installed icon may keep the old label until it is
+      reinstalled.
+- [ ] Sign-off: installed from /pos, opens without an address bar, screen
+      still on after a quiet 5 minutes.
 
 ### The matrix — four paper paths × two browsers
 
@@ -515,22 +608,41 @@ Tick a box only after **looking at the paper**.
 - [ ] Sign-off recorded: date, device, Chrome + Firefox versions, printer model,
       who witnessed it.
 
-### Self-order alerts and auto-print (CR2.3, per device)
+### Self-order alerts and auto-print (CR2.3 + print host, per device)
 
 Diners can self-order from the QR menu; the counter is alerted to a new
 request, and an accepted self-order's kitchen ticket can print without a
-tap — but both only work on a device that keeps one particular screen open.
+tap. How it prints depends on whether a print host is set
+(**Settings → Printer setup** → the **Print host** card).
 
-- [ ] On the printer/counter device, keep the **POS** screen or the **Order
-      requests** screen open. `Alerts and auto-print only work while this
-      panel is open on this device — keep this screen open at the counter.`
-- [ ] On `Order requests`, under **This device's alerts**: switch **Auto-print
-      self-orders** ON for this device — it defaults to **OFF**, so a device
-      must be opted in before it starts firing tickets on its own.
+- [ ] **With a print host set**: the host PC prints every slip — KOTs,
+      bills, void/moved slips, end of day — from ANY dashboard screen it has
+      open, and every other device routes its prints to it (its band reads
+      `Printing is routed to <label>; slips print at the counter, not on
+      this device.` with the host's label filled in). Non-host devices
+      never auto-print; the **Auto-print self-orders** switch is disabled
+      on the host itself because the host prints self-orders anyway.
+      Designate and run the test print from inside the POS Printer window —
+      it has its own browser profile, and the profile you designate is the
+      one that prints.
+- [ ] **Without a print host**: on the printer/counter device, keep the
+      **POS** screen or the **Order requests** screen open. `Alerts and
+      auto-print only work while this panel is open on this device — keep
+      this screen open at the counter.`
+- [ ] Without a host, on `Order requests` → **Device settings** (the button
+      beside Refresh): switch **Auto-print self-orders** ON for this
+      device — it defaults to **OFF**, so a device must be opted in before
+      it starts firing tickets on its own.
 - [ ] After opening the screen, tap it once anywhere — that click is the
       gesture that unlocks the alert sound (the browser blocks audio until a
       real click/keypress); without it the ping stays silent even with
       **Alert sound** ON.
+- [ ] The counter PC checks for new print jobs every 3 seconds for an hour
+      after the last print activity and every 15 seconds when idle (at most
+      14,400 quick checks a day), so a bill sent from a phone prints within a
+      few seconds while the counter is busy; if the counter is a browser tab
+      and that tab is hidden it falls back to the 20-second refresh. The
+      desktop app keeps the 3-second cadence in the tray.
 
 ### QR self-ordering — the diner device leg
 
@@ -564,8 +676,13 @@ one list, run once.
       dialog still allows a reprint; (e) toggle OFF still lets the bar's
       Print button work; (f) with the toggle off and no request pending, the
       bar stays invisible.
+- [ ] **With a print host set** (PH-5..PH-9): the self-order KOT prints at
+      the host from whichever dashboard screen the host has open; on a
+      non-host device the Print button greys out on the tap and a status
+      chip beside it in the alert band reads `Waiting for <label>` then
+      `Sent to <label> ✓` — nothing prints locally.
 - [ ] **Telegram acceptance** (needs a real bot): BotFather → `/newbot` →
-      paste the token into **Settings → Integrations** on the **live site,
+      paste the token into **Settings → Notifications** on the **live site,
       never a preview** → connect a phone via the invite link → place a QR
       order → the connected phone pings.
 - [ ] **Browser/theme legs**: dark-mode emulation AND a real dark-mode phone —
@@ -701,6 +818,166 @@ and no point-in-time restore.** What follows is the entire safety net.
       compute allowance can be exhausted mid-month — if that happens the site can
       stop serving until the allowance resets, and upgrading is the only quick
       remedy. Better to see it coming than to hear it from the cafe.
+- [ ] Once a month glance at Vercel → Usage → Function Invocations; if it
+      trends above 80% of the free 1,000,000, tell the developer (the counter
+      PC's quick-check cap can be lowered in one constant).
+
+### DL rehearsal: master-data bootstrap + link migration dry run
+
+DL-1 shipped one `GET /api/bootstrap` call that feeds every screen's master
+data (settings, categories, products, tables; staff too, but only for an
+admin) at login and on a page refresh, keeping a copy on the device (the
+browser's local storage) for up to 24 hours so the next launch paints at
+once. The staff list is never stored on the device — it stays in memory for
+that tab only. The stored copy is cleared on sign-out and whenever the sign-in
+page opens, so the next person on a shared device starts fresh; a launch with
+a copy older than a day simply fetches again. No database shape changed in
+DL-1.
+
+A separate, owner-run script looks at how every collection links to another
+one:
+
+```
+npm run migrate:links -- --dry-run --uri "<mongodb uri>"
+```
+
+This is read-only and safe to run against the live database. It prints a
+one-screen summary and writes a report file named
+`migrate-links-report-<db>-<timestamp>.json` in the folder you ran it from.
+The database URI itself is never printed, on screen or in the report.
+
+The report tells you: which links in each collection are still plain text
+versus already a proper database id; orphans (a link pointing at a parent
+that no longer exists); product category names that have no matching
+Category record; category names that differ only by case or spacing (for
+example "Coffee" and "coffee" counted as two); receiver names on old orders
+matched against today's staff list — one clear match, several possible
+matches, or no match at all; and tables whose current order points at a bill
+that is closed or missing.
+
+**`--apply` runs the real pipeline** — it writes to the database. It needs
+two gates: `--backup <archive>` must name a mongodump archive file under 60
+minutes old (or `--backup auto`, which runs mongodump for you when it is
+installed), and `--confirm <dbName>` must repeat the database name from the
+URI. Three more flags control what it does:
+
+- `--create-missing-categories` — a product category name with no matching
+  Category record gets one created for it (added after the existing
+  categories in display order) instead of being skipped and listed.
+- `--reset default|<comma list>` — empties the named transactional
+  collections after the category back-fill. The DEFAULT list is `orders,
+  duepayments, orderrequests, promoredemptions, printjobs, counters,
+  customers`. **The owner confirms this exact list before DL-3** — resetting
+  `customers` also removes their dues history, and resetting `orders` also
+  frees every table (clears its current order and marks it Available).
+  Without `--reset`, no transactional collection is touched.
+- `--drop-legacy-category` — removes the old `category` text field and its
+  index, but only once every product carries a proper category id; otherwise
+  it refuses and changes nothing.
+
+`--backup auto` writes its archive to the **OS temp directory (outside the
+repo)**, never the folder you ran the command from, and prints the full path
+it chose. That archive is a **FULL copy of the live database** — customer
+names, mobile numbers, order and dues history — so treat it exactly like the
+nightly backup it resembles: **move it to secure storage off this dev box
+before the deploy step**, and never leave it sitting in temp past the
+rehearsal or live run it was taken for.
+
+MongoDB Database Tools (mongodump and mongorestore) must be installed on the
+machine that runs the rehearsal; this repo's dev machine has only mongod. To
+satisfy that: download the portable Database Tools build for your OS and put
+its `bin` folder on `PATH` — `--backup auto` resolves a bare `mongodump` from
+`PATH`, and refuses with a clear message if it cannot find one.
+
+Before any rehearsal, take a fresh backup with the same command this repo's
+nightly job uses:
+
+```
+mongodump --uri="$URI" --gzip --archive="$FILE" --readPreference=secondaryPreferred --quiet
+```
+
+**Rehearsal (safe, scratch-only):** restore the owner's live dump into a
+local `pos_scratch_` database —
+
+```
+mongorestore --gzip --archive=<file> --nsFrom="pos.*" --nsTo="pos_scratch_migrate.*"
+```
+
+— then run the same pipeline the live runbook uses, against that scratch
+database only:
+
+```
+npm run migrate:links -- --uri "mongodb://127.0.0.1:27017/pos_scratch_migrate" --apply --backup <file> --confirm pos_scratch_migrate --reset default --create-missing-categories
+```
+
+Expect exit code 0 and `categoryIdMissing 0` in the report. `npm run
+verify:migrate:live` rehearses the same pipeline end-to-end against a
+synthetic (not the owner's) fixture, and stands in a plain file for
+`--backup` — that stand-in is rehearsal-only; on the live database
+`--backup` must always be a real `mongodump --gzip --archive` file.
+
+**Live runbook (DL-3, closed-shop window):** step 2 is flag-identical to the
+rehearsal command above (same `--create-missing-categories`) — a rehearsal
+that exits 0 predicts the live run only when the two commands actually match.
+
+1. Close the shop to new orders, then take a fresh mongodump (the exact
+   command above).
+2. `npm run migrate:links -- --uri "<live uri>" --apply --backup <file> --confirm pos --reset default --create-missing-categories`
+   - **If this exits non-zero: STOP — do not deploy.** Read the report,
+     resolve the category names it names (create them by hand or fix the
+     spelling on the product), then re-run the same command. See the exit-code
+     notes below for what may already have changed before you retry.
+3. Deploy the DL-2 build within minutes of step 2 — the new build is the one
+   that reads `categoryId` instead of `category`.
+4. Post-deploy, run `--dry-run` again and confirm the report shows 0
+   `categoryIdMissing` and 0 remaining string-shaped refs.
+5. Once the new build is confirmed live, run
+   `npm run migrate:links -- --uri "<live uri>" --apply --backup <fresh file> --confirm pos --drop-legacy-category`
+   to remove the old `category` field for good.
+6. **Live rollback:** if the run cannot be recovered by re-running (see the
+   exit-1 note below), restore the step-1 mongodump back into the LIVE
+   database — `mongorestore --uri="<live uri>" --gzip --archive=<step-1 file>
+   --drop` — before doing anything else. Every other mongorestore in this
+   document targets a scratch database; this is the one that goes back into
+   production.
+
+**Every step here is idempotent.** If a run is interrupted for any reason —
+a dropped connection, a killed terminal, a crashed machine — take a fresh
+mongodump and re-run the identical command. Products that already carry an
+ObjectId `categoryId` are skipped, not re-processed, and an already-empty
+reset collection deletes nothing extra. Re-running is always the first thing
+to try.
+
+**Exit codes:** `0` = clean (dry run finished, or apply ran and the post-apply
+census is clean). `1` = refused-or-failed: most `1`s are refused BEFORE
+anything changed (a bad flag, a stale or missing backup, a `--confirm`
+mismatch, a connection failure), each read-only. A **`--reset` refusal** is
+also safe: the screen says "`--reset` was refused … nothing was deleted" and
+a report IS written — **do NOT restore**; fix the named category names (or
+add `--create-missing-categories`) and run step 2 again. The unsafe exit `1`
+is a run that **failed part-way through** after `--apply` started: the
+back-fill and/or `--reset` may already have run and NO report is written.
+**If exit 1 shows no report and no "refused" line, restore the mongodump
+from step 1 before re-running or deploying** — re-running on a partly reset
+database reports clean without restoring what `--reset` deleted. `3` =
+apply ran but the result is not fully clean — this covers every case the
+post-apply census can flag: some category names were still skipped (no
+matching Category doc, or a name collision), an orphaned or otherwise
+unresolved link remains, a requested `--drop-legacy-category` was refused
+because a product still lacks an ObjectId `categoryId`, a `--reset`
+collection still holds documents afterwards (the signal that a write landed
+during the closed-shop window), a collection still carries String-shaped
+link values, or `orders.sourceRequestIds` still holds entries that are not
+ObjectIds (the double-accept fence cannot match those, so the same request
+could be accepted twice) — the report names exactly what is left;
+re-run with `--create-missing-categories` or resolve the named collisions by
+hand, then apply again.
+
+`scripts/verify-migrate-links-live.ts` (`npm run verify:migrate:live`) is the
+rehearsal leg above, automated end-to-end.
+
+These facts are pinned by their own heading-scoped test and are
+intentionally not duplicated into the §A table below.
 
 ---
 
@@ -708,8 +985,7 @@ and no point-in-time restore.** What follows is the entire safety net.
 
 - [ ] URL, admin username, and confirmation the password was changed by them.
 - [ ] The five-minute guide: **Settings → Staff → Menu (form or CSV)**.
-- [ ] Printer configuration written down (which browser, which paper size,
-      whether kiosk printing is on) — a fresh Windows profile loses it.
+- [ ] Printer configuration written down: **which of the two — the desktop app or the kiosk browser shortcut** — plus which browser, which paper size, and whether kiosk printing is on. A fresh Windows profile loses it.
 - [ ] Support boundary agreed, and what to send when something breaks:
       screenshot, order id, and the time.
 - [ ] Accepted platform realities stated plainly: hosting is on a free
@@ -754,9 +1030,11 @@ Not bugs. Say them before the client discovers them mid-service.
 - **Clearing the phone's browser loses that device's order history.** There
   is no diner login on the public menu — a diner's own device is the only
   record of what they ordered.
-- **Self-order alerts and auto-print only work on a device with a POS or
-  Order requests tab open.** Nothing pings or prints on a device with neither
-  screen open.
+- **Printing follows the print host.** With a print host set, the host PC
+  prints from ANY dashboard screen it has open and no other device
+  auto-prints or prints locally. Without a host, self-order alerts and
+  auto-print only work on a device with a POS or Order requests tab open —
+  nothing pings or prints on a device with neither screen open.
 
 ---
 
@@ -813,13 +1091,28 @@ the test fails — fix the code or this file, never just this file.
 | Diner submit rate limit | 8 per table · 20 parcel · per 10 min | `PUBLIC_ORDER_RATE_MAX` / `PUBLIC_ORDER_RATE_MAX_PARCEL` / `PUBLIC_ORDER_RATE_WINDOW_MS` |
 | Pending request expiry | 12 hours | `PUBLIC_REQUEST_PENDING_TTL_MS` |
 | Sold-out message | `"<item>" is sold out` | `SOLD_OUT_ERROR` |
-| Diner status poll | 5s for 60s, then 30s | `PublicOrderStatus.tsx` |
+| Diner status poll | manual refresh, 30s cooldown · 20 reads per 600s window, server-enforced | `PUBLIC_STATUS_REFRESH_COOLDOWN_MS` / `PUBLIC_STATUS_READ_MAX` |
+| POS install manifest | `/api/manifest` | `MANIFEST_PATH` |
+| Installed app opens at | `/pos` | `MANIFEST_START_URL` |
+| Installed display mode | `standalone` | `MANIFEST_DISPLAY` |
+| Print host job max age | 30 minutes | `PRINT_HOST_MAX_AGE_MS` |
+| Print host offline threshold | 180 seconds (3 missed ~60 s throttled beats) | `PRINT_HOST_OFFLINE_MS` |
+| Print-job drain feed cap (per pulse) | 10 | `PRINT_JOB_PULSE_LIMIT` |
+| Print-job stale-band feed cap | 20 | `PRINT_JOB_STALE_LIMIT` |
+| Queued print job retention | 12 hours | `PRINT_JOB_QUEUED_RETENTION_MS` |
+| Kiosk shortcut flag | `--kiosk-printing` | `KIOSK_PRINTING_FLAG` |
+| Desktop app installer | `POS-Software-Setup-${version}.exe` | `apps/desktop/package.json` (`build.nsis.artifactName`) |
+| Print host silent-off warning | `The print host is not printing silently — a dialog will appear at the host PC for every job.` | `PRINT_HOST_SILENT_OFF_WARNING` |
+| Print host active note | `Printing is routed to <label>; slips print at the counter, not on this device.` | `PRINT_HOST_ACTIVE_NOTE` |
+| Staff session lifetime | 30 days, rolling with use | `SESSION_MAX_AGE_SECONDS` |
+| Print-job wake poll (counter PC) | every 3 seconds while busy, every 15 seconds when idle | `PRINT_WAKE_FAST_MS` / `PRINT_WAKE_SLOW_MS` |
+| Print-job wake poll daily cap (per counter PC) | 14,400 quick checks per cafe-day, then every 15 seconds until the next day | `PRINT_WAKE_DAILY_CAP` |
 
 ---
 
 ## Telegram procedures (CR2.3b)
 
-Settings → Integrations → Telegram alerts. Optional; the in-panel tray and
+Settings → Notifications → Telegram alerts. Optional; the in-panel tray and
 bell alerts work regardless of whether this is ever set up.
 
 - **Rotating the bot token.** In Telegram, message **@BotFather** →

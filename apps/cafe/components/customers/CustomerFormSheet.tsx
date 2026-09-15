@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { FormSheet } from "@/components/shared/FormSheet";
 import { FormField } from "@/components/shared/FormField";
+import { DinerPinResetRow } from "@/components/customers/DinerPinResetRow";
 import type { Customer } from "@/types";
 
 // Only the human-editable fields — visits/totalSpend/totalDue are derived from
@@ -167,6 +168,10 @@ export function CustomerFormSheet({
           )}
         />
       </FormField>
+
+      {/* CB-4 — only on an EXISTING customer: a PIN belongs to an account that
+          already exists, and there is nothing to reset while creating one. */}
+      {isEdit && customer && <DinerPinResetRow customerId={customer._id} />}
     </FormSheet>
   );
 }

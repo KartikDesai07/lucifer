@@ -1,4 +1,5 @@
-import { TABLE_CHARGE_MAX, type GstMode } from "@/lib/constants";
+import { TABLE_CHARGE_MAX, type GstMode, type DiscountKind } from "@/lib/constants";
+import type { RedeemedReward } from "@pos/shared/reward-redemption";
 
 // GST configuration as held in Settings — the only fields the calculations need.
 export interface GstConfig {
@@ -29,6 +30,55 @@ export function computeExclusiveGst(base: number, cfg: GstConfig): number {
     return 0;
   }
   return Math.round((base * cfg.gstRate) / 100);
+}
+
+const PERCENT = 100;
+
+// The "GST Discount" preset (C1): the discount that makes the customer pay the
+// pre-tax figure, while GST is still computed on the reduced base. Inclusive
+// mode: the discount IS the GST component of the subtotal. Exclusive mode: the
+// smallest integer discount whose re-taxed total is <= the pre-tax figure —
+// never above it; a ±₹1 shortfall is unavoidable (S=1000 @18% has no integer
+// discount that lands exactly on 1000). Deliberately re-uses the shipped
+// `computeExclusiveGst` so this can never drift from the pipeline. Rounds the
+// subtotal itself because `use-cart` does not and `computeOrderTotals` does.
+export function gstEquivalentDiscount(subtotal: number, cfg: GstConfig): number {
+  if (!cfg.gstEnabled || cfg.gstRate <= 0 || subtotal <= 0) return 0;
+  const s = Math.max(0, Math.round(subtotal));
+  const r = cfg.gstRate;
+  if (cfg.gstMode === "inclusive") return s - Math.round(s / (1 + r / PERCENT));
+  const seed = Math.round((s * r) / (PERCENT + r));
+  const clamp = (d: number) => Math.min(Math.max(0, d), s);
+  const candidates = [...new Set([clamp(seed - 1), clamp(seed), clamp(seed + 1)])].sort((a, b) => a - b);
+  for (const d of candidates) {
+    const base = s - d;
+    if (base + computeExclusiveGst(base, cfg) <= s) return d;
+  }
+  return clamp(seed);
+}
+
+// Resolves the discount kind a re-pricing writer should use from what the client
+// SENT and what the order STORES: `undefined` (key absent) = leave the stored
+// kind alone, `null` = the operator cleared the preset (a manual discount now
+// applies), "gst" = the preset. The explicit-null sentinel exists because
+// `undefined` cannot clear a field over JSON (JSON.stringify drops the key).
+export function resolveDiscountKind(
+  supplied: DiscountKind | null | undefined,
+  stored: DiscountKind | undefined,
+): DiscountKind | undefined {
+  if (supplied === undefined) return stored;
+  // CB-5B — a stored "reward" is SERVER-OWNED and STICKY against a client
+  // null. `null` means "the operator cleared the preset", which is a thing an
+  // operator may do to a GST preset they applied; it is NOT a thing a client
+  // may do to a redemption, because the diner's stamps are ALREADY SPENT and
+  // no client request can un-spend them. Without this, a request carrying
+  // `discountKind: null` plus a manual `discount` would swap a stamp-funded
+  // reward for an arbitrary operator-chosen figure — the reward's money value
+  // reinstated (or inflated) with no stamp check at all, while the order's own
+  // reward snapshot still claimed the redemption. A reward is removed only by
+  // cancelling the order (S6), which RETURNS the stamps as it goes.
+  if (stored === "reward" && supplied === null) return stored;
+  return supplied ?? undefined;
 }
 
 // ── Table charge ─────────────────────────────────────────────────────────────
@@ -70,8 +120,15 @@ export interface OrderTotals {
 }
 
 export interface OrderTotalsInput {
-  items: ReadonlyArray<{ price: number; qty: number }>;
+  // `reward` marks a line given as a loyalty reward: priced, but worth 0 on the
+  // bill (see the reducer below). Optional so every existing caller compiles
+  // unchanged — an ordinary sold line simply omits it.
+  items: ReadonlyArray<{ price: number; qty: number; reward?: boolean }>;
   discount: number;
+  // Required-and-nullable, same reason as `charge` below: every re-pricing
+  // writer has to state out loud whether the discount is the GST preset (then
+  // `discount` is IGNORED and re-derived here) or a manual figure.
+  discountKind: DiscountKind | undefined;
   // The table's extra charge, in rupees. REQUIRED, and an options object rather
   // than a fourth positional argument, both for the same reason: every writer
   // that re-prices a bill (create, add-a-round, settle) has to state out loud
@@ -81,18 +138,74 @@ export interface OrderTotalsInput {
   // about a new field. Here the type checker is the guard.
   charge: number;
   cfg: GstConfig;
+  // CB-5B — the milestone a diner claimed, when `discountKind === "reward"`.
+  // OPTIONAL, deliberately, where `discountKind`/`charge` above are required:
+  // a reward can only ever ride on the handful of writers that resolve one, and
+  // making it required would force ~20 call sites that can never carry a reward
+  // to type `reward: undefined`. The cost is real — the type checker is NOT the
+  // guard here, unlike `charge` — so the guard is that the omission fails
+  // CLOSED: `rewardDiscountAmount` returns 0 for a missing reward, so a writer
+  // that forgets it charges the customer FULL price (a visible, correctable
+  // mistake) instead of granting an unfunded discount (money quietly lost).
+  // Pinned both ways in gst-discount.test.ts.
+  reward?: RedeemedReward;
+}
+
+// CB-5B — the money a claimed milestone is worth on THIS subtotal. The reward
+// twin of `gstEquivalentDiscount` above, and the reason `discountKind` is an
+// enum rather than a free label: for BOTH presets the server re-derives the
+// amount and the client's number is ignored.
+//
+// `item` rewards derive 0 DELIBERATELY, and this branch IS reached on every
+// item reward in production (D5 was REVERSED 2026-09-13: `kind:"item"` is now
+// a normal, redeemable rung — REWARD_REDEEMABLE_KINDS includes it). Returning
+// 0 is the DESIGNED answer, not a fallback for an unreachable case: the free
+// dish is given as its own line on the bill at full price (S12's
+// priced-but-untotalled `OrderItem.reward` line), not as rupees off the
+// total, so this function's job for an item reward is to contribute NOTHING
+// to the discount — the money benefit lives entirely in the subtotal reducer
+// skipping that one line, not here.
+export function rewardDiscountAmount(
+  subtotal: number,
+  reward: RedeemedReward | undefined,
+): number {
+  if (!reward || subtotal <= 0) return 0;
+  const s = Math.max(0, Math.round(subtotal));
+  if (reward.kind === "percent") {
+    const pct = Math.min(Math.max(0, reward.value), PERCENT);
+    return Math.round((s * pct) / PERCENT);
+  }
+  if (reward.kind === "flat") return Math.max(0, Math.round(reward.value));
+  return 0;
 }
 
 export function computeOrderTotals({
   items,
   discount,
+  discountKind,
   charge,
   cfg,
+  reward,
 }: OrderTotalsInput): OrderTotals {
+  // A reward line carries its dish's REAL price (so the bill shows the customer
+  // what they got and what it was worth) but contributes NOTHING to the money.
+  // This one skip is the whole mechanism: `base` below is derived from this
+  // subtotal and the GST from that base, so "not totalled" and "not taxed" both
+  // follow from here — there is no second place for the two to drift apart.
   const subtotal = Math.round(
-    items.reduce((sum, i) => sum + i.price * i.qty, 0),
+    items.reduce((sum, i) => sum + (i.reward ? 0 : i.price * i.qty), 0),
   );
-  const clampedDiscount = Math.min(Math.max(0, Math.round(discount)), subtotal);
+  // Both presets are SERVER-DERIVED; only a manual discount uses the supplied
+  // figure. A new kind added to DISCOUNT_KINDS without a branch here would fall
+  // through to `discount` and silently trust the client's number — which is why
+  // a source pin asserts every kind is named above the fallback.
+  const rawDiscount =
+    discountKind === "gst"
+      ? gstEquivalentDiscount(subtotal, cfg)
+      : discountKind === "reward"
+        ? rewardDiscountAmount(subtotal, reward)
+        : discount;
+  const clampedDiscount = Math.min(Math.max(0, Math.round(rawDiscount)), subtotal);
   const base = subtotal - clampedDiscount;
   const gstAmount = computeExclusiveGst(base, cfg);
   // The charge rides on TOP of the taxed bill and is not part of the taxable

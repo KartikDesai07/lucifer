@@ -17,6 +17,13 @@ export interface CartItem {
   modifiers: string[];
   instructions: string;
   kotRound: number; // 0 = new/unfired (editable); >=1 = already fired (locked)
+  // CB-5B — this line was GIVEN as a loyalty reward: it keeps its REAL `price`
+  // above (the customer sees what the dish was worth) but its money is excluded
+  // from the bill. `subtotal` below is the cart-side twin of lib/receipt.ts's
+  // reducer, so the flag has to survive the hydrate that rebuilds a reopened
+  // tab's cart from stored order items — without it the counter reads a total
+  // the server will never charge, and staff collects the reward's price in cash.
+  reward?: true;
 }
 
 // Unit price after applying the product-level percentage discount, rounded to
@@ -70,6 +77,10 @@ export function cartItemFromOrderItem(it: OrderItem, index: number): CartItem {
     modifiers: it.modifiers,
     instructions: it.instructions,
     kotRound: it.kotRound,
+    // Omit-empty, like every other optional line field here: an ordinary line
+    // must carry no extra key. Dropping it here was the whole bug — a reopened
+    // tab's reward line came back priced like a sold one.
+    ...(it.reward ? { reward: true as const } : {}),
   };
 }
 
@@ -197,7 +208,12 @@ export function useCart(): UseCart {
   const hydrate = useCallback<UseCart["hydrate"]>((items) => setCart(items), []);
 
   const subtotal = useMemo(
-    () => cart.reduce((sum, ci) => sum + ci.price * ci.qty, 0),
+    // The cart-side twin of lib/receipt.ts:196's reducer — a reward line is
+    // priced but NOT totalled, so "untotalled" (and, downstream, untaxed) falls
+    // out of this single skip exactly as it does on the server. The two MUST
+    // agree: this number is what the counter shows and what the payment modal
+    // gates on, while the server re-derives the real one.
+    () => cart.reduce((sum, ci) => sum + (ci.reward ? 0 : ci.price * ci.qty), 0),
     [cart],
   );
   const count = useMemo(

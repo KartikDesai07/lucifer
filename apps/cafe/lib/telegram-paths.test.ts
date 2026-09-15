@@ -52,7 +52,8 @@ const SETTINGS_MODEL = "apps/cafe/models/Settings.ts";
 const TELEGRAM_CONFIG = "apps/cafe/lib/telegram/config.ts";
 const WEBHOOK_CORE = "apps/cafe/lib/telegram/webhook-core.ts";
 const SHARED_SETTINGS_SCHEMA = "packages/shared/src/schemas/settings.schema.ts";
-const SETTINGS_FORM = "apps/cafe/components/settings/SettingsForm.tsx";
+const SETTINGS_SECTIONS_LIB = "apps/cafe/lib/settings-sections.ts";
+const NOTIFICATIONS_PAGE = "apps/cafe/app/(dashboard)/settings/notifications/page.tsx";
 const ORDER_REQUEST_CREATE_ROUTE = "apps/cafe/app/api/public/order-request/route.ts";
 const ORDER_REQUEST_EDIT_ROUTE = "apps/cafe/app/api/public/order-request/[shortCode]/route.ts";
 
@@ -111,7 +112,7 @@ test("PIN W2: instrumentation-client.ts's BotID protect list never names the Tel
 
 // ── W3 — the frozen unauthenticated-route inventory ─────────────────────────
 
-test("PIN W3: the app's full unauthenticated-route inventory (guard = requireAuth/requireAdmin/auth( OR imports createCollectionRoute/createItemRoute from @/lib/crud-route) is EXACTLY the frozen nine — a route not on this list is a pre-existing hole to REPORT, never to silently freeze", () => {
+test("PIN W3: the app's full unauthenticated-route inventory (guard = requireAuth/requireAdmin/auth( OR imports createCollectionRoute/createItemRoute from @/lib/crud-route) is EXACTLY the frozen fourteen — a route not on this list is a pre-existing hole to REPORT, never to silently freeze", () => {
   const apiDirAbs = path.join(REPO_ROOT, "apps/cafe/app/api");
   const routeFiles: string[] = [];
   walk(apiDirAbs, /^route\.ts$/, routeFiles);
@@ -134,9 +135,43 @@ test("PIN W3: the app's full unauthenticated-route inventory (guard = requireAut
     .map(relPath)
     .sort();
 
-  const FROZEN_NINE = [
+  const FROZEN_UNAUTH_ROUTES = [
     "apps/cafe/app/api/auth/[...nextauth]/route.ts",
     "apps/cafe/app/api/health/route.ts",
+    // CB-1d.2 (2026-09-04), REVIEWED — not silently frozen: the web-app
+    // manifest. Browsers fetch it WITHOUT cookies at install time (Next sets
+    // crossOrigin=use-credentials on that link only for preview deploys), so
+    // it can never carry a session; it is read-only (readSettings, never the
+    // upserting getSettings) and exposes only the cafe's display name, which
+    // /login already shows to anyone. Its own pins live in
+    // lib/pos-install-paths.test.ts (readSettings-only, GET-only, no console).
+    "apps/cafe/app/api/manifest/route.ts",
+    // CB-4 (2026-09-13), REVIEWED — not silently frozen: the four diner-account
+    // routes. They are unauthenticated in the Auth.js sense BY DESIGN — a diner
+    // has no staff session and never will; that is the whole point of the
+    // feature. What guards them instead, route by route:
+    //   • login  — BotID, host gate, dinerAccountsOn feature gate, and TWO
+    //     rate-limit buckets charged BEFORE any customer read (per-mobile
+    //     tight, per-source loose). Unknown-mobile and wrong-PIN are identical
+    //     in status, body AND latency (an unconditional bcrypt.compare against
+    //     a module-level dummy hash), so it is not an enumeration oracle.
+    //   • pin    — same BotID/host/feature gates + the same per-mobile bucket,
+    //     and its claim is a CAS on `pinHash: { $exists: false }`: it can only
+    //     ever set a FIRST PIN, never overwrite a claimed account. Changing an
+    //     existing PIN is a staff action at the counter.
+    //   • me     — reads only the caller's OWN session cookie and returns only
+    //     that diner's name/mobile/stamp card. No parameter selects the
+    //     subject, so there is nothing to enumerate.
+    //   • logout — deliberately ungated beyond the cookie: it can only destroy
+    //     a session the caller already holds, and a sign-out that can fail is
+    //     worse than one anyone may call.
+    // Every one of the four is no-store + nosniff (noStoreDiner) because these
+    // payloads name ONE diner and a cached copy on shared cafe WiFi would be a
+    // cross-diner leak. Their own pins live in lib/diner-paths.test.ts.
+    "apps/cafe/app/api/public/diner/login/route.ts",
+    "apps/cafe/app/api/public/diner/logout/route.ts",
+    "apps/cafe/app/api/public/diner/me/route.ts",
+    "apps/cafe/app/api/public/diner/pin/route.ts",
     "apps/cafe/app/api/public/menu/route.ts",
     "apps/cafe/app/api/public/order-request/[shortCode]/cancel/route.ts",
     "apps/cafe/app/api/public/order-request/[shortCode]/route.ts",
@@ -152,9 +187,9 @@ test("PIN W3: the app's full unauthenticated-route inventory (guard = requireAut
   // frozen list to match whatever exists today.
   assert.deepEqual(
     unguarded,
-    FROZEN_NINE,
-    `unauthenticated route set changed. Extra/missing paths vs the frozen nine: ${JSON.stringify(
-      { extra: unguarded.filter((p) => !FROZEN_NINE.includes(p)), missing: FROZEN_NINE.filter((p) => !unguarded.includes(p)) },
+    FROZEN_UNAUTH_ROUTES,
+    `unauthenticated route set changed. Extra/missing paths vs the frozen list: ${JSON.stringify(
+      { extra: unguarded.filter((p) => !FROZEN_UNAUTH_ROUTES.includes(p)), missing: FROZEN_UNAUTH_ROUTES.filter((p) => !unguarded.includes(p)) },
     )} — if this is a NEW unauthenticated route, STOP and report it as a hole; do not just add it to this list`,
   );
 });
@@ -269,30 +304,54 @@ test("PIN W7: every catch block under app/api/telegram/** is written bindingless
   assert.ok(catchBlockCount > 0, "the admin telegram routes must contain at least one catch block for this pin to mean anything");
 });
 
-// ── W8 — the Settings form's third tab ──────────────────────────────────────
+// ── W8 — Telegram's own settings section ────────────────────────────────────
+// CB-UI1 S6 re-point: the four-tab SettingsForm union is gone (one form per
+// route now), so "telegram* fields route to the integrations tab" becomes a
+// STRONGER, constant-backed claim: telegramPaused is a real SETTINGS_SECTIONS
+// entry's field, and sectionForField resolves it to that same section —
+// never re-derived by a hand-rolled string-prefix router.
 
-test("PIN W8: SettingsForm.tsx carries the four-tab union type (CR2.4 added \"appearance\") and routes telegram*-prefixed field errors to the integrations tab", () => {
-  const src = stripComments(readSrc(SETTINGS_FORM));
+test('PIN W8: "notifications" is a real SETTINGS_SECTIONS entry whose fields include telegramPaused, and sectionForField("telegramPaused").slug === "notifications" — the retired four-tab union/prefix-router is replaced by a constant-backed lookup, not a weaker claim', () => {
+  const src = stripComments(readSrc(SETTINGS_SECTIONS_LIB));
+
+  const notificationsIdx = src.indexOf('slug: "notifications"');
+  assert.ok(notificationsIdx >= 0, 'SETTINGS_SECTIONS must declare a slug: "notifications" entry');
+  const entryEnd = src.indexOf("},", notificationsIdx);
+  const entryBody = src.slice(notificationsIdx, entryEnd > 0 ? entryEnd : undefined);
+  assert.match(
+    entryBody,
+    /fields:\s*\["telegramPaused"\]/,
+    'the "notifications" section\'s fields must include telegramPaused — SettingsForm\'s retired "integrations" tab held exactly this one settingsSchema field',
+  );
+
+  // sectionForField is a real, callable lookup — pin its declared return
+  // contract (a total function over SETTINGS_SECTIONS, verified by the
+  // partition-parity test in settings-sections.test.ts), not just its
+  // presence, so a stub/dead export can't satisfy this pin.
   assert.match(
     src,
-    /type SettingsTab = "general" \| "appearance" \| "print" \| "integrations";/,
-    'SettingsForm must declare exactly the four-tab union `"general" | "appearance" | "print" | "integrations"`',
+    /export function sectionForField\(name: keyof SettingsInput\): SettingsSection \| undefined \{/,
+    "sectionForField must be declared as the real total-lookup function over SETTINGS_SECTIONS",
   );
   assert.match(
     src,
-    /firstField\.startsWith\("telegram"\)\s*\n?\s*\?\s*"integrations"/,
-    'onInvalid must route a telegram*-prefixed field error to the "integrations" tab',
+    /SETTINGS_SECTIONS\.find\(\(section\) => section\.fields\.includes\(name\)\)/,
+    "sectionForField must resolve by scanning SETTINGS_SECTIONS' own fields lists — never a second, hand-maintained telegram*-prefix router that could drift from the section table",
   );
 });
 
-test("PIN W8: IntegrationsFields is rendered as its OWN component file, imported by SettingsForm — the third tab is not inlined JSX", () => {
-  const src = stripComments(readSrc(SETTINGS_FORM));
+test("PIN W8b: IntegrationsFields is rendered as its OWN component file, imported by the notifications section page — Telegram alerts are not inlined JSX, and the page actually renders them (CB-UI1 S6: re-pointed off the retired SettingsForm.tsx)", () => {
+  const src = stripComments(readSrc(NOTIFICATIONS_PAGE));
   assert.match(
     src,
     /import \{ IntegrationsFields \} from "@\/components\/settings\/IntegrationsFields";/,
-    "SettingsForm must import IntegrationsFields from its own file",
+    "settings/notifications/page.tsx must import IntegrationsFields from its own file",
   );
-  assert.match(src, /<IntegrationsFields\s+control=\{control\}\s*\/>/, "SettingsForm must actually render <IntegrationsFields control={control} />");
+  assert.match(
+    src,
+    /<IntegrationsFields\s+control=\{control\}\s*\/>/,
+    "settings/notifications/page.tsx must actually render <IntegrationsFields control={control} />",
+  );
 });
 
 // ── W9 — the webhook never answers 429 or 5xx ───────────────────────────────

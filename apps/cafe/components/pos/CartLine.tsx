@@ -6,6 +6,7 @@ import { Minus, Plus, Trash2 } from "lucide-react";
 import { orderItemLabel } from "@pos/shared/utils";
 import { inr, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { POS_CART_STEPPER_CLASS } from "@/lib/pos-layout";
 import type { CartItem } from "@/hooks/use-cart";
 
 // A labelled group of cart lines ("Sent to kitchen" / "New items").
@@ -69,21 +70,21 @@ export function CartLine({
             <Button
               variant="outline"
               size="icon"
-              className="h-7 w-7"
+              className={cn(POS_CART_STEPPER_CLASS)}
               onClick={() => onUpdateQty?.(item.lineId, item.qty - 1)}
               aria-label="Decrease quantity"
             >
-              <Minus className="h-3 w-3" />
+              <Minus className="h-4 w-4" />
             </Button>
             <span className="w-7 text-center text-sm">{item.qty}</span>
             <Button
               variant="outline"
               size="icon"
-              className="h-7 w-7"
+              className={cn(POS_CART_STEPPER_CLASS)}
               onClick={() => onUpdateQty?.(item.lineId, item.qty + 1)}
               aria-label="Increase quantity"
             >
-              <Plus className="h-3 w-3" />
+              <Plus className="h-4 w-4" />
             </Button>
           </div>
         )}
@@ -91,11 +92,11 @@ export function CartLine({
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+            className={cn(POS_CART_STEPPER_CLASS, "text-muted-foreground hover:text-destructive")}
             onClick={() => onRemove?.(item.lineId)}
             aria-label={`Remove ${orderItemLabel(item)}`}
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <Trash2 className="h-4 w-4" />
           </Button>
         )}
       </div>

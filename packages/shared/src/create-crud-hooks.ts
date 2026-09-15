@@ -35,7 +35,7 @@ export interface CrudHooksConfig<F> {
   // Query-string builder for the list endpoint. Defaults to "" (no params).
   buildListQuery?: (filters: F) => string;
   // Extra query keys to invalidate alongside `rootKey`, per operation. Lets e.g.
-  // deleting a category also refresh the products list (denormalized names).
+  // an operation on a category also refresh the products list.
   extraInvalidate?: {
     create?: QueryKey[];
     update?: QueryKey[];

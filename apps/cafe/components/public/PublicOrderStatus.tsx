@@ -4,26 +4,30 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import {
-  DINER_CANCELLED_REASON,
   isPublicCode,
   PUBLIC_MENU_PATH,
+  PUBLIC_STATUS_REFRESH_COOLDOWN_MS,
   type PublicOrderRequestStatusData,
 } from "@pos/shared/public";
-import { inr } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { readLastMenuPath } from "@/components/public/public-cart-store";
-import { PublicMyOrdersChips, PublicStatusTimeline } from "@/components/public/PublicStatusTimeline";
+import { readLastMenuPath, readRefreshAt, writeRefreshAt } from "@/components/public/public-cart-store";
+import { PublicMyOrdersChips } from "@/components/public/PublicStatusTimeline";
 import { PublicStatusItems } from "@/components/public/PublicStatusItems";
+import {
+  MAX_DISPLAYED_COOLDOWN_MS,
+  PublicStatusActions,
+  PublicStatusHead,
+  TOO_SOON_MESSAGE,
+} from "@/components/public/PublicStatusActions";
 
-// Polls fast right after the diner submits (staff typically act within a
-// minute), then backs off to spare the M0 for an order left open on a phone
-// screen for the rest of the meal.
-const POLL_FAST_MS = 5_000;
-const POLL_FAST_WINDOW_MS = 60_000;
-const POLL_SLOW_MS = 30_000;
+// The 1s ticker driving the visible countdown while cooling — display only;
+// the SERVER is the fence (statusReadGate), this just repaints the label.
+const COOLDOWN_TICK_MS = 1_000;
 
+// A settled order can never change again — once here, the manual refresh
+// control is not even offered (nothing left to check).
 const TERMINAL_STATUSES = new Set<PublicOrderRequestStatusData["status"]>(["accepted", "rejected"]);
 
 const ORDER_NOT_FOUND_MESSAGE = "We couldn't find that order.";
@@ -35,97 +39,155 @@ interface PublicOrderStatusProps {
   code: string;
 }
 
-// The diner's post-submit poll target — GET /api/public/order-request/[code],
-// fetched with PLAIN fetch, never apiGet: apiGet collapses a 404 envelope and
-// a network throw into the SAME Error, but this screen must tell a diner "we
-// can't find that order" (terminal — stop polling) apart from "can't reach
-// the counter" (transient — keep the last known status and keep trying).
+// GET /api/public/order-request/[code], fetched with PLAIN fetch, never
+// apiGet: apiGet collapses a 404 envelope and a network throw into the SAME
+// Error, but this screen must tell a diner "we can't find that order"
+// (terminal) apart from "can't reach the counter" (transient — keep the
+// last known status on screen).
 export function PublicOrderStatus({ code }: PublicOrderStatusProps) {
   const [data, setData] = useState<PublicOrderRequestStatusData | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [offline, setOffline] = useState(false);
-  const mountedAt = useRef(Date.now());
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // When the last successful save landed — any poll ISSUED before this is a
-  // stale read of items/total and must not be applied (see poll() below).
+  const [refreshing, setRefreshing] = useState(false);
+  // Set only by a 429 — cleared on the next successful read.
+  const [tooSoon, setTooSoon] = useState(false);
+  // Epoch ms the cooldown ends, or 0 while not cooling. Seeded from
+  // readRefreshAt() below so a tab reload shows the SAME remaining countdown.
+  const [cooldownUntil, setCooldownUntil] = useState(0);
+  // Ticks once a second, only while cooling, to repaint the seconds label.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  // When the last successful save landed — any fetch ISSUED before this is a
+  // stale read of items/total and must not be applied (see fetchStatus below).
   const adoptedAt = useRef(0);
   // Confirm-then-cancel state for the diner's own "Cancel this order" button.
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   // Bumped on a successful cancel — OR a 409 from PublicStatusItems' own
-  // Save — to force the poll effect below to re-run (and so re-fetch
-  // immediately) rather than waiting for its next tick.
+  // Save — to force an immediate re-fetch rather than waiting for the diner
+  // to tap Refresh.
   const [refetchToken, setRefetchToken] = useState(0);
+
+  // Seed the cooldown from the persisted timestamp — survives a tab reload.
+  useEffect(() => {
+    const at = readRefreshAt(code);
+    if (at !== null) {
+      // Clamped — see MAX_DISPLAYED_COOLDOWN_MS for why a stored timestamp is
+      // never trusted as-is.
+      const capped = Math.min(at + PUBLIC_STATUS_REFRESH_COOLDOWN_MS, Date.now() + MAX_DISPLAYED_COOLDOWN_MS);
+      if (capped > Date.now()) setCooldownUntil(capped);
+    }
+  }, [code]);
+
+  // The 1s ticker — alive ONLY while actually cooling.
+  //
+  // The guard below runs at effect SETUP only. When the deadline passes
+  // mid-interval nothing changes `cooldownUntil`, so the effect never re-runs
+  // and its cleanup never fires — which is why the CALLBACK has to stop
+  // itself. Without that self-stop this interval kept ticking for the life of
+  // the page, re-rendering the whole status subtree (timeline, every item row,
+  // the actions block) once a second while a diner sat waiting for food: the
+  // "laggy taps on a cheap Android" class this project has already had a build
+  // rejected for (review 2026-09-13). Resetting to 0 also flips the dependency,
+  // so the effect re-runs and clears the interval for good.
+  useEffect(() => {
+    if (cooldownUntil <= Date.now()) return;
+    const id = setInterval(() => {
+      if (Date.now() >= cooldownUntil) {
+        clearInterval(id);
+        setCooldownUntil(0);
+        return;
+      }
+      setNowTick(Date.now());
+    }, COOLDOWN_TICK_MS);
+    return () => clearInterval(id);
+  }, [cooldownUntil]);
+
+  // Shared by the one mount fetch and the diner's manual Refresh tap.
+  // `persistCooldown` is true only for the manual tap — the mount fetch is
+  // not diner-initiated, so it must never arm the cooldown itself.
+  async function fetchStatus(persistCooldown: boolean): Promise<void> {
+    // Stamped BEFORE the request leaves — a fetch issued before a save
+    // committed may still land AFTER its 200 (review 2026-08-20).
+    const issuedAt = Date.now();
+    try {
+      const res = await fetch(`/api/public/order-request/${encodeURIComponent(code)}`);
+      if (res.status === 404) {
+        setNotFound(true);
+        setOffline(false);
+        return;
+      }
+      if (res.status === 429) {
+        // Server is the fence — Retry-After wins over the client's own
+        // timer; a missing/unparseable header falls back to the shared const.
+        // CLAMPED: Retry-After is seconds until the fixed WINDOW rolls, so it
+        // can be ~600 — a raw adopt would show "Refresh in 573s" and read as a
+        // frozen button. Cap the DISPLAYED wait; the server still refuses
+        // early taps, which is what actually matters (review 2026-09-13).
+        const retryAfterSec = Number(res.headers.get("Retry-After"));
+        const retryMs =
+          Number.isFinite(retryAfterSec) && retryAfterSec > 0
+            ? Math.min(retryAfterSec * 1000, MAX_DISPLAYED_COOLDOWN_MS)
+            : PUBLIC_STATUS_REFRESH_COOLDOWN_MS;
+        setCooldownUntil(Date.now() + retryMs);
+        setTooSoon(true);
+        return;
+      }
+      if (!res.ok) throw new Error("request failed");
+      const envelope = (await res.json().catch(() => null)) as {
+        success: true;
+        data: PublicOrderRequestStatusData;
+      } | null;
+      if (!envelope?.success) throw new Error("bad envelope");
+      setOffline(false);
+      setNotFound(false);
+      setTooSoon(false);
+      // A read issued before the last successful save is a stale read of
+      // items/total (see comment above) — drop the body, but a manual tap's
+      // cooldown still arms either way (the diner's own tap still counts).
+      const stale = issuedAt < adoptedAt.current;
+      if (!stale) setData(envelope.data);
+      if (persistCooldown) {
+        const at = Date.now();
+        writeRefreshAt(code, at);
+        setCooldownUntil(at + PUBLIC_STATUS_REFRESH_COOLDOWN_MS);
+      }
+    } catch {
+      // A fetch throw (or a non-404/429 non-OK response) is a connectivity
+      // blip, not proof the order is gone — keep the last known status on
+      // screen; never fall back to "not found" here.
+      setOffline(true);
+    }
+  }
 
   useEffect(() => {
     if (!isPublicCode(code)) {
       setNotFound(true);
       return;
     }
-    let cancelled = false;
-
-    function schedule() {
-      const elapsed = Date.now() - mountedAt.current;
-      const delay = elapsed < POLL_FAST_WINDOW_MS ? POLL_FAST_MS : POLL_SLOW_MS;
-      timerRef.current = setTimeout(poll, delay);
-    }
-
-    async function poll() {
-      // Stamped BEFORE the request leaves: a poll issued before a save
-      // committed may still land AFTER its 200, and applying it would revert
-      // the just-saved lines/total on screen until the next tick — up to 30s
-      // in the slow phase (review 2026-08-20).
-      const issuedAt = Date.now();
-      try {
-        const res = await fetch(`/api/public/order-request/${encodeURIComponent(code)}`);
-        if (res.status === 404) {
-          if (!cancelled) {
-            setNotFound(true);
-            setOffline(false);
-          }
-          return;
-        }
-        if (!res.ok) throw new Error("request failed");
-        const envelope = (await res.json().catch(() => null)) as {
-          success: true;
-          data: PublicOrderRequestStatusData;
-        } | null;
-        if (!envelope?.success) throw new Error("bad envelope");
-        if (cancelled) return;
-        setOffline(false);
-        setNotFound(false);
-        if (issuedAt < adoptedAt.current) {
-          // Stale read from before the last successful save — its STATUS may
-          // still be useful, but its items/total are known-outdated, so drop
-          // the body entirely and just keep the loop alive.
-          if (!TERMINAL_STATUSES.has(envelope.data.status)) schedule();
-          return;
-        }
-        setData(envelope.data);
-        if (TERMINAL_STATUSES.has(envelope.data.status)) return; // reached a terminal state — stop polling
-        schedule();
-      } catch {
-        // A fetch throw (or a non-404 non-OK response) is a connectivity
-        // blip, not proof the order is gone — keep the last known status on
-        // screen and keep trying; never fall back to "not found" here.
-        if (!cancelled) {
-          setOffline(true);
-          schedule();
-        }
-      }
-    }
-
-    poll();
-    return () => {
-      cancelled = true;
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
+    fetchStatus(false);
     // refetchToken is a deliberate re-run trigger, not a value read inside —
-    // bumping it after a successful cancel restarts this whole poll loop
-    // (clearing any pending timer first) so the new status lands immediately
-    // instead of waiting out the current backoff.
+    // bumping it after a successful cancel (or a 409 from Save) fetches the
+    // fresh status immediately. This is a ONE-SHOT fetch, not a loop: it
+    // never re-arms itself, and carries no timer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code, refetchToken]);
+
+  const cooling = cooldownUntil > nowTick;
+  const remainingSeconds = cooling ? Math.ceil((cooldownUntil - nowTick) / 1000) : 0;
+
+  // The diner's explicit "Refresh" tap. Blocked client-side while
+  // cooling/in-flight purely for UX; the real fence is the server's
+  // statusReadGate on the route itself.
+  async function handleRefresh() {
+    if (cooling || refreshing || (data && TERMINAL_STATUSES.has(data.status))) return;
+    setRefreshing(true);
+    try {
+      await fetchStatus(true);
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   // Lets PublicStatusItems' own "Save changes" adopt the PATCH response's
   // total/itemCount immediately (the summary card below reads off `data`,
@@ -189,26 +251,7 @@ export function PublicOrderStatus({ code }: PublicOrderStatusProps) {
 
   return (
     <main className="mx-auto max-w-lg space-y-4 p-4 pb-28">
-      <div>
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">Order</p>
-        <h1 className="text-2xl font-bold tabular-nums">{data.shortCode}</h1>
-      </div>
-
-      {/* rejected keeps its own red card — NO timeline (staff reason,
-          diner-cancel special case, unchanged from before the timeline). */}
-      {data.status === "rejected" ? (
-        <div className="rounded-lg border p-4">
-          <p className="text-base font-semibold text-destructive">{statusLine(data)}</p>
-          {/* The diner's OWN cancel reads back as "Cancelled by you" above —
-              repeating the raw DINER_CANCELLED_REASON sentence here would be
-              redundant at best. A staff-entered reason still shows in full. */}
-          {data.rejectedReason && data.rejectedReason !== DINER_CANCELLED_REASON && (
-            <p className="mt-1 text-sm text-muted-foreground">{data.rejectedReason}</p>
-          )}
-        </div>
-      ) : (
-        <PublicStatusTimeline status={data.status} acceptedAt={data.acceptedAt} />
-      )}
+      <PublicStatusHead data={data} />
 
       <PublicStatusItems
         shortCode={code}
@@ -221,50 +264,26 @@ export function PublicOrderStatus({ code }: PublicOrderStatusProps) {
         onForceRepoll={handleForceRepoll}
       />
 
-      {/* Order total + charge line — unchanged from before this slice. */}
-      <div className="rounded-lg border p-4 text-sm">
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">For</span>
-          <span className="font-medium">{data.parcel ? "Parcel" : (data.tableLabel ?? "—")}</span>
-        </div>
-        <div className="mt-1 flex items-center justify-between">
-          <span className="text-muted-foreground">Items</span>
-          <span className="font-medium">{data.itemCount}</span>
-        </div>
-        <div className="mt-1 flex items-center justify-between">
-          <span className="text-muted-foreground">Total</span>
-          <span className="font-medium">{inr(data.total)}</span>
-        </div>
-      </div>
-
       {offline && <p className="text-xs text-muted-foreground">{RECONNECTING_MESSAGE}</p>}
+      {tooSoon && !offline && <p className="text-xs text-muted-foreground">{TOO_SOON_MESSAGE}</p>}
 
-      {/* Cancel — only while the counter hasn't touched it yet. */}
-      {data.status === "pending" && (
-        <div className="space-y-2">
-          {cancelError && <p className="text-xs text-destructive">{cancelError}</p>}
-          <div className="flex items-center gap-3">
-            <Button
-              type="button"
-              variant={confirmingCancel ? "destructive" : "outline"}
-              size="sm"
-              disabled={cancelling}
-              onClick={handleCancel}
-            >
-              {cancelling ? "Cancelling…" : confirmingCancel ? "Really cancel?" : "Cancel this order"}
-            </Button>
-            {confirmingCancel && !cancelling && (
-              <button
-                type="button"
-                onClick={() => setConfirmingCancel(false)}
-                className="text-xs text-muted-foreground underline-offset-2 hover:underline"
-              >
-                Never mind
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Summary card + the Refresh/Cancel controls. Presentational only —
+          every piece of state below is owned HERE and handed down, so the
+          cooldown, the 429 handling and the cancel CAS stay in one file. */}
+      <PublicStatusActions
+        data={data}
+        canRefresh={!TERMINAL_STATUSES.has(data.status)}
+        refreshing={refreshing}
+        cooling={cooling}
+        remainingSeconds={remainingSeconds}
+        onRefresh={handleRefresh}
+        cancellable={data.status === "pending"}
+        confirmingCancel={confirmingCancel}
+        cancelling={cancelling}
+        cancelError={cancelError}
+        onCancel={handleCancel}
+        onDismissCancel={() => setConfirmingCancel(false)}
+      />
 
       {/* "Your orders on this visit" (§17.B point 5) — owns its own state/
           fetch; hidden entirely when empty. */}
@@ -277,13 +296,4 @@ export function PublicOrderStatus({ code }: PublicOrderStatusProps) {
       </Button>
     </main>
   );
-}
-
-// Red-card copy for a rejected request — the ONE status that keeps its own
-// text instead of the Timeline (pending/accepting/accepted all render via
-// PublicStatusTimeline now). The diner's own cancel reuses "rejected" (see
-// the cancel route's own comment); this exact reason is how the two are told
-// apart, so a diner's own cancel never reads as the scarier staff-rejected copy.
-function statusLine(data: PublicOrderRequestStatusData): string {
-  return data.rejectedReason === DINER_CANCELLED_REASON ? "Cancelled by you" : "Couldn't be taken";
 }

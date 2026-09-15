@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { isPublicToken } from "@pos/shared/public";
 import { readPublicAppearance } from "@/lib/public-appearance";
-import { PublicOrderFlow } from "@/components/public/PublicOrderFlow";
+import { readPublicDinerConfig } from "@/lib/public-diner-config";
+import { PublicDinerShell } from "@/components/public/PublicDinerShell";
 
 interface PublicMenuTokenPageProps {
   params: Promise<{ token: string }>;
@@ -21,7 +22,17 @@ export default async function PublicMenuTokenPage({
   const { token } = await params;
   if (!isPublicToken(token)) notFound();
 
-  const appearance = await readPublicAppearance();
+  // Both reads are narrow, single-purpose gateways into Settings (A13.5) —
+  // this page never touches the settings document itself.
+  const [appearance, diner] = await Promise.all([readPublicAppearance(), readPublicDinerConfig()]);
   const chrome = { heroImage: appearance.heroImage, logoPlacement: appearance.logoPlacement };
-  return <PublicOrderFlow token={token} chrome={chrome} />;
+  return (
+    <PublicDinerShell
+      token={token}
+      chrome={chrome}
+      accountsEnabled={diner.accountsEnabled}
+      loyaltyEnabled={diner.loyaltyEnabled}
+      orderingAllowed={diner.orderingAllowed}
+    />
+  );
 }

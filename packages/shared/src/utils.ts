@@ -4,7 +4,20 @@ import {
   CAFE_UTC_OFFSET_MINUTES,
   MOBILE_MASK_CHAR,
   MOBILE_VISIBLE_PREFIX,
+  GST_DISCOUNT_LABEL,
+  REWARD_DISCOUNT_LABEL,
+  DEFAULT_DISCOUNT_LABEL,
+  type DiscountKind,
 } from "./constants";
+
+// One label per known kind. `Record<DiscountKind, string>` means the type
+// checker rejects this table falling out of sync the day a THIRD kind lands —
+// unlike the old `=== "gst"` ternary, which let a new kind fall silently to
+// "Discount" with no compile error (the highest-value hazard CB-5B found).
+const DISCOUNT_LINE_LABELS: Record<DiscountKind, string> = {
+  gst: GST_DISCOUNT_LABEL,
+  reward: REWARD_DISCOUNT_LABEL,
+};
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -147,6 +160,22 @@ export function orderLineKey(item: {
 // anywhere is how the bill and the kitchen ticket start disagreeing.
 export function orderItemLabel(item: { name: string; variation?: string }): string {
   return item.variation ? `${item.name} (${item.variation})` : item.name;
+}
+
+// The one place the discount line's name is built — receipts, the payment
+// modal and the order sheet all call it. Old orders without the field, and
+// any unrecognized kind (a stray "promo", a print-job snapshot carrying a
+// plain string), read "Discount". The parameter stays widened to `string` (on
+// top of `DiscountKind`) because print-job snapshots pass a plain string, not
+// the narrowed enum — existing call sites keep compiling.
+// `Object.hasOwn` guards the lookup: a bare `DISCOUNT_LINE_LABELS[kind]` would
+// return a function for a prototype key like "toString"/"constructor"
+// (object-literal allow-lists leak prototype keys) instead of falling back.
+export function discountLineLabel(kind: DiscountKind | string | null | undefined): string {
+  if (kind && Object.hasOwn(DISCOUNT_LINE_LABELS, kind)) {
+    return DISCOUNT_LINE_LABELS[kind as DiscountKind];
+  }
+  return DEFAULT_DISCOUNT_LABEL;
 }
 
 const CAFE_OFFSET_MS = CAFE_UTC_OFFSET_MINUTES * 60 * 1000;

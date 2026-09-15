@@ -1,5 +1,6 @@
 import { readPublicAppearance } from "@/lib/public-appearance";
-import { PublicOrderFlow } from "@/components/public/PublicOrderFlow";
+import { readPublicDinerConfig } from "@/lib/public-diner-config";
+import { PublicDinerShell } from "@/components/public/PublicDinerShell";
 
 // The diner's landing URL (@pos/shared/public's PUBLIC_MENU_PATH) — no table
 // resolved yet, so PublicOrderFlow renders PublicMenu (which itself renders
@@ -10,7 +11,14 @@ import { PublicOrderFlow } from "@/components/public/PublicOrderFlow";
 // — everything else the diner sees comes from client-side fetches inside
 // PublicOrderFlow's own tree, never a Mongoose/requireAuth-gated call here.
 export default async function PublicMenuPage() {
-  const appearance = await readPublicAppearance();
+  const [appearance, diner] = await Promise.all([readPublicAppearance(), readPublicDinerConfig()]);
   const chrome = { heroImage: appearance.heroImage, logoPlacement: appearance.logoPlacement };
-  return <PublicOrderFlow chrome={chrome} />;
+  return (
+    <PublicDinerShell
+      chrome={chrome}
+      accountsEnabled={diner.accountsEnabled}
+      loyaltyEnabled={diner.loyaltyEnabled}
+      orderingAllowed={diner.orderingAllowed}
+    />
+  );
 }

@@ -4,6 +4,7 @@ import Image from "next/image";
 import { Pencil, Archive, ArchiveRestore } from "lucide-react";
 
 import { productImageUrl } from "@/lib/images";
+import { categoryNameOf } from "@/lib/category-map";
 import { inr } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,11 +17,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { Product } from "@/types";
+import type { Category, Product } from "@/types";
 
 interface ProductsTableProps {
   products: Product[];
   archived: boolean;
+  // id -> Category join map (CB-DL-2 D-A6) — resolves each row's categoryId
+  // to its display name.
+  categoryMap: Map<string, Category>;
   onEdit: (product: Product) => void;
   onArchive: (product: Product) => void;
   onRestore: (id: string) => void;
@@ -39,6 +43,7 @@ interface ProductsTableProps {
 export function ProductsTable({
   products,
   archived,
+  categoryMap,
   onEdit,
   onArchive,
   onRestore,
@@ -101,7 +106,7 @@ export function ProductsTable({
                   )}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {product.category}
+                  {categoryNameOf(categoryMap, product.categoryId)}
                 </TableCell>
                 <TableCell className="text-right">
                   {product.variations?.length ? (
@@ -144,14 +149,28 @@ export function ProductsTable({
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
                     {archived ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onRestore(product._id)}
-                        disabled={pendingRestoreId === product._id}
-                      >
-                        <ArchiveRestore className="mr-1.5 h-4 w-4" /> Restore
-                      </Button>
+                      <>
+                        {/* An archived product can still hold a categoryId
+                            that a category DELETE's 409 guard counts — Edit
+                            lets the operator re-home it to another category
+                            even though it never appears on the live menu. */}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onEdit(product)}
+                          aria-label="Edit product"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onRestore(product._id)}
+                          disabled={pendingRestoreId === product._id}
+                        >
+                          <ArchiveRestore className="mr-1.5 h-4 w-4" /> Restore
+                        </Button>
+                      </>
                     ) : (
                       <>
                         <Button

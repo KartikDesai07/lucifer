@@ -65,6 +65,9 @@ const SETTLE_ROUTE = "apps/cafe/app/api/customers/[id]/settle/route.ts";
 const RECONCILE_ROUTE = "apps/cafe/app/api/customers/[id]/reconcile/route.ts";
 const REPORTS_ROUTE = "apps/cafe/app/api/reports/route.ts";
 const CUSTOMERS_PAGE = "apps/cafe/app/(dashboard)/customers/page.tsx";
+const CUSTOMER_LIST_STATUS = "apps/cafe/components/customers/CustomerListStatus.tsx";
+const CUSTOMER_TABLE = "apps/cafe/components/customers/CustomerTable.tsx";
+const CUSTOMER_ROW_CARD = "apps/cafe/components/customers/CustomerRowCard.tsx";
 const CUSTOMER_FORM_SHEET = "apps/cafe/components/customers/CustomerFormSheet.tsx";
 const CUSTOMER_SEARCH_COMPONENT = "apps/cafe/components/pos/CustomerSearch.tsx";
 
@@ -518,23 +521,31 @@ test("PIN: CustomersPage — local mobile matching is gated on isAdmin, remote s
     "the main list must never read bare `customers.isError` — that conflates a failed background refresh (cached rows still valid) with a failed initial load",
   );
 
-  // Ordering: the remote isError branch must render before the generic
+  // The status branches (loading/offline/no-customers/searching/failed/no-
+  // matches) were extracted into CustomerListStatus.tsx (S8b, page.tsx was
+  // over the 300-line ceiling) — page.tsx now only passes primitive booleans
+  // (e.g. `searchFailed={remote.isError}`) into that component as props. The
+  // ordering/text checks below therefore read CustomerListStatus.tsx, the
+  // file that actually contains the branch order and copy.
+  const statusSrc = stripComments(readSrc(CUSTOMER_LIST_STATUS));
+
+  // Ordering: the search-failed branch must render before the generic
   // "No matches" default.
-  const remoteIsErrorIfIdx = src.indexOf("if (remote.isError)");
-  const noMatchesTitleIdx = src.indexOf('title="No matches"');
-  assert.ok(remoteIsErrorIfIdx >= 0, "a distinct error branch must exist for the remote search");
-  assert.ok(noMatchesTitleIdx > remoteIsErrorIfIdx, "the remote isError branch must be checked BEFORE the generic 'No matches' branch");
+  const searchFailedIfIdx = statusSrc.indexOf("if (searchFailed)");
+  const noMatchesTitleIdx = statusSrc.indexOf('title="No matches"');
+  assert.ok(searchFailedIfIdx >= 0, "a distinct error branch must exist for the remote search");
+  assert.ok(noMatchesTitleIdx > searchFailedIfIdx, "the search-failed branch must be checked BEFORE the generic 'No matches' branch");
 
   // Ordering alone would still pass if the failure branch were reworded to
   // say "No matches" too — pin that the two branches actually READ
   // differently, and that the failure branch never claims the customer is
   // absent. This is the mutation ordering-only pins miss entirely.
-  const remoteIsErrorBody = src.slice(remoteIsErrorIfIdx, noMatchesTitleIdx);
-  const failureTextMatch = remoteIsErrorBody.match(/<p[^>]*>([\s\S]*?)<\/p>/);
-  assert.ok(failureTextMatch, "the remote isError branch must render explanatory <p> text");
+  const searchFailedBody = statusSrc.slice(searchFailedIfIdx, noMatchesTitleIdx);
+  const failureTextMatch = searchFailedBody.match(/<p[^>]*>([\s\S]*?)<\/p>/);
+  assert.ok(failureTextMatch, "the search-failed branch must render explanatory <p> text");
   const failureText = failureTextMatch[1].replace(/\s+/g, " ").trim();
 
-  const noMatchesTail = src.slice(noMatchesTitleIdx, noMatchesTitleIdx + 200);
+  const noMatchesTail = statusSrc.slice(noMatchesTitleIdx, noMatchesTitleIdx + 200);
   const noMatchesDescMatch = noMatchesTail.match(/description="([^"]*)"/);
   assert.ok(noMatchesDescMatch, "the No-matches branch must have a description");
   const noMatchesText = noMatchesDescMatch[1];
@@ -548,38 +559,83 @@ test("PIN: CustomersPage — local mobile matching is gated on isAdmin, remote s
     !/\bmatch(es)?\b/i.test(failureText) && !/does not exist/i.test(failureText),
     `the failed-search branch's text ("${failureText}") must not claim the customer is absent — that is how an operator ends up creating a duplicate or writing off a due that is genuinely owed`,
   );
+
+  // Wiring pin: page.tsx must actually pass remote.isError through to the
+  // status component's searchFailed prop — the checks above only prove
+  // CustomerListStatus.tsx orders/words its OWN branches correctly; without
+  // this, page.tsx could hand it a constant `false` and the branch above
+  // would be dead code that never fires.
+  assert.match(
+    src,
+    /searchFailed=\{remote\.isError\}/,
+    "page.tsx must wire remote.isError into CustomerListStatus's searchFailed prop",
+  );
 });
 
-test("PIN: CustomersPage gates the delete button on isAdmin — the route already 403s a staff DELETE, but the button must not be OFFERED to an account that can't use it", () => {
-  const src = stripComments(readSrc(CUSTOMERS_PAGE));
+test("PIN: CustomerTable and CustomerRowCard both gate the delete button on isAdmin, and CustomersPage wires onDelete={setDeleting} into BOTH — the route already 403s a staff DELETE, but the button must not be OFFERED to an account that can't use it, end to end from page to component to button", () => {
+  // S8b extracted the desktop table into CustomerTable.tsx and the mobile
+  // card was already CustomerRowCard.tsx — the isAdmin-gated delete button
+  // now lives in each component, not in page.tsx. Pin each component's own
+  // gate, then pin that page.tsx actually wires onDelete into both, so the
+  // chain page -> component -> button stays pinned end to end.
 
-  // `isAdmin && (` is the JSX-guard idiom this file uses elsewhere (e.g. the
-  // "Receive payment" action a few lines above it) — it appears exactly once
-  // as a literal substring, at the delete button's guard. Locate its matching
+  // `isAdmin && (` is the JSX-guard idiom both components use elsewhere too
+  // (e.g. "Receive payment" a few lines above it) — locate its FIRST matching
   // close paren via the file's own matchingParenEnd helper (JSX inside can
   // contain nested parens, e.g. arrow-fn onClick handlers, so a naive
   // indexOf(")") would truncate early) and require the delete button's own
   // aria-label + onClick to be INSIDE that span.
-  const gateMarker = "isAdmin && (";
-  const gateIdx = src.indexOf(gateMarker);
-  assert.ok(gateIdx >= 0, "an `isAdmin && (` guard must exist in CustomersPage");
-  const openParenIdx = gateIdx + gateMarker.length - 1;
-  const closeParenIdx = matchingParenEnd(src, openParenIdx);
-  const gatedBlock = src.slice(openParenIdx, closeParenIdx + 1);
+  function assertDeleteGated(fileLabel: string, src: string, onDeleteCall: RegExp): void {
+    const gateMarker = "isAdmin && (";
+    const gateIdx = src.indexOf(gateMarker);
+    assert.ok(gateIdx >= 0, `an \`isAdmin && (\` guard must exist in ${fileLabel}`);
+    const openParenIdx = gateIdx + gateMarker.length - 1;
+    const closeParenIdx = matchingParenEnd(src, openParenIdx);
+    const gatedBlock = src.slice(openParenIdx, closeParenIdx + 1);
 
-  // Mutation this catches: deleting the `isAdmin && (` wrapper (and its
-  // matching `)}`) while leaving the Button itself untouched — the button
-  // would then render unconditionally, offering staff a delete action the
-  // route refuses with a 403.
+    // Mutation this catches: deleting the `isAdmin && (` wrapper (and its
+    // matching `)}`) while leaving the Button itself untouched — the button
+    // would then render unconditionally, offering staff a delete action the
+    // route refuses with a 403.
+    assert.match(
+      gatedBlock,
+      /aria-label="Delete customer"/,
+      `${fileLabel}: the isAdmin && ( ... ) block must contain the Delete customer button`,
+    );
+    assert.match(
+      gatedBlock,
+      onDeleteCall,
+      `${fileLabel}: the gated block must be the one whose button triggers the delete callback, not some other isAdmin-gated block`,
+    );
+  }
+
+  const tableSrc = stripComments(readSrc(CUSTOMER_TABLE));
+  assertDeleteGated(
+    "CustomerTable.tsx",
+    tableSrc,
+    /onClick=\{\(\)\s*=>\s*onDelete\(customer\)\}/,
+  );
+
+  const rowCardSrc = stripComments(readSrc(CUSTOMER_ROW_CARD));
+  assertDeleteGated(
+    "CustomerRowCard.tsx",
+    rowCardSrc,
+    /onClick=\{\(\)\s*=>\s*onDelete\(customer\)\}/,
+  );
+
+  // Chain pin: both components only refuse to RENDER staff a delete button
+  // they can use — that is worthless if page.tsx never wires its real
+  // setDeleting callback into onDelete for either one.
+  const src = stripComments(readSrc(CUSTOMERS_PAGE));
   assert.match(
-    gatedBlock,
-    /aria-label="Delete customer"/,
-    "the isAdmin && ( ... ) block must contain the Delete customer button",
+    src,
+    /<CustomerTable[\s\S]*?onDelete=\{setDeleting\}/,
+    "CustomersPage must pass onDelete={setDeleting} to <CustomerTable",
   );
   assert.match(
-    gatedBlock,
-    /onClick=\{\(\)\s*=>\s*setDeleting\(customer\)\}/,
-    "the gated block must be the one whose button triggers setDeleting(customer), not some other isAdmin-gated block",
+    src,
+    /<CustomerRowCard[\s\S]*?onDelete=\{setDeleting\}/,
+    "CustomersPage must pass onDelete={setDeleting} to <CustomerRowCard",
   );
 });
 

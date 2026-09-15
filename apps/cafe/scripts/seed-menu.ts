@@ -11,6 +11,7 @@ import mongoose from "mongoose";
 import { connectDB } from "@/lib/db";
 import { Category } from "@/models/Category";
 import { Product } from "@/models/Product";
+import { ensureCategoryId } from "./verify-shared/ensure-category";
 
 const CATEGORIES = [
   { name: "Pizza", order: 1 },
@@ -43,9 +44,12 @@ export async function seedMenu() {
   }
 
   for (const p of PRODUCTS) {
+    // Never write a category NAME onto a product — resolve to the id first.
+    const { category, ...rest } = p;
+    const categoryId = await ensureCategoryId(category);
     await Product.findOneAndUpdate(
       { name: p.name },
-      { $set: { ...p, isActive: true, image: "" } },
+      { $set: { ...rest, categoryId, isActive: true, image: "" } },
       { upsert: true },
     );
   }

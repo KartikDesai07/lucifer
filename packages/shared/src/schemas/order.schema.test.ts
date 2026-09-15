@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addItemsSchema, moveOrderTableSchema } from "./order.schema";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+import { addItemsSchema, moveOrderTableSchema, createOrderSchema, settleOrderSchema } from "./order.schema";
 
 // ── Defect 2 regression (owner decision 2026-08-16) ──────────────────────────
 // "A charge waived on a resumed tab was silently discarded when the next KOT
@@ -14,7 +17,9 @@ import { addItemsSchema, moveOrderTableSchema } from "./order.schema";
 // `.strict()` guard that used to make this payload uncarryable must keep
 // rejecting an unknown/misspelled key.
 
-const sampleItems = [{ productId: "p1", name: "Chai", price: 20, qty: 1 }];
+const SAMPLE_PRODUCT_ID = "64b7f0c2a1d2e3f4a5b6c7d8"; // 24 lower-case hex
+const SAMPLE_CUSTOMER_ID = "64b7f0c2a1d2e3f4a5b6c7d9"; // 24 lower-case hex
+const sampleItems = [{ productId: SAMPLE_PRODUCT_ID, name: "Chai", price: 20, qty: 1 }];
 
 test("addItemsSchema accepts chargeAmount: 0 — this is the waiver the reported bug could not send", () => {
   const r = addItemsSchema.safeParse({ items: sampleItems, chargeAmount: 0 });
@@ -101,4 +106,145 @@ test("moveOrderTableSchema refuses to carry money — no charge/discount/total c
 
 test("moveOrderTableSchema holds the destination to the tableNo charset (it becomes a stored join key)", () => {
   assert.equal(moveOrderTableSchema.safeParse({ tableNo: "bad/name" }).success, false);
+});
+
+// ── CB-2.7 — discountKind (C2): an enum, not a free label ───────────────────
+// "gst" accepted, null accepted (explicit clear), absent accepted (unchanged),
+// anything else — a wrong-case "GST" or a plain string like "promo" — rejected,
+// on all three payloads that carry it. .strict() must survive the new key on
+// addItemsSchema/settleOrderSchema (createOrderSchema is not .strict()).
+
+const sampleOrder = {
+  customerName: "Walk-in",
+  items: sampleItems,
+  subtotal: 20,
+  total: 20,
+  paidAmount: 20,
+  payment: "Cash",
+  receiver: "cashier",
+};
+
+test("createOrderSchema: discountKind accepts 'gst', null, and absent", () => {
+  assert.equal(createOrderSchema.safeParse({ ...sampleOrder, discountKind: "gst" }).success, true);
+  assert.equal(createOrderSchema.safeParse({ ...sampleOrder, discountKind: null }).success, true);
+  assert.equal(createOrderSchema.safeParse(sampleOrder).success, true);
+});
+
+test("createOrderSchema: discountKind rejects 'GST' (wrong case) and 'promo' (not in DISCOUNT_KINDS)", () => {
+  assert.equal(createOrderSchema.safeParse({ ...sampleOrder, discountKind: "GST" }).success, false);
+  assert.equal(createOrderSchema.safeParse({ ...sampleOrder, discountKind: "promo" }).success, false);
+});
+
+test("addItemsSchema: discountKind accepts 'gst', null, and absent", () => {
+  assert.equal(addItemsSchema.safeParse({ items: sampleItems, discountKind: "gst" }).success, true);
+  assert.equal(addItemsSchema.safeParse({ items: sampleItems, discountKind: null }).success, true);
+  assert.equal(addItemsSchema.safeParse({ items: sampleItems }).success, true);
+});
+
+test("addItemsSchema: discountKind rejects 'GST' and 'promo'", () => {
+  assert.equal(addItemsSchema.safeParse({ items: sampleItems, discountKind: "GST" }).success, false);
+  assert.equal(addItemsSchema.safeParse({ items: sampleItems, discountKind: "promo" }).success, false);
+});
+
+test("addItemsSchema: .strict() still rejects an unknown key alongside a valid discountKind", () => {
+  assert.equal(
+    addItemsSchema.safeParse({ items: sampleItems, discountKind: "gst", bogus: 1 }).success,
+    false,
+  );
+});
+
+test("settleOrderSchema: discountKind accepts 'gst', null, and absent", () => {
+  assert.equal(settleOrderSchema.safeParse({ payment: "Cash", discountKind: "gst" }).success, true);
+  assert.equal(settleOrderSchema.safeParse({ payment: "Cash", discountKind: null }).success, true);
+  assert.equal(settleOrderSchema.safeParse({ payment: "Cash" }).success, true);
+});
+
+test("settleOrderSchema: discountKind rejects 'GST' and 'promo'", () => {
+  assert.equal(settleOrderSchema.safeParse({ payment: "Cash", discountKind: "GST" }).success, false);
+  assert.equal(settleOrderSchema.safeParse({ payment: "Cash", discountKind: "promo" }).success, false);
+});
+
+test("settleOrderSchema: .strict() still rejects an unknown key alongside a valid discountKind", () => {
+  assert.equal(
+    settleOrderSchema.safeParse({ payment: "Cash", discountKind: "gst", bogus: 1 }).success,
+    false,
+  );
+});
+
+// CB-5B — DISCOUNT_KINDS widens to ["gst", "reward"]; "reward" must be
+// ACCEPTED by all three schemas that carry discountKind, same as "gst" is.
+// The existing "GST"/"promo"-rejected negative tests above are UNTOUCHED.
+test("createOrderSchema/addItemsSchema/settleOrderSchema: discountKind accepts 'reward'", () => {
+  assert.equal(createOrderSchema.safeParse({ ...sampleOrder, discountKind: "reward" }).success, true);
+  assert.equal(addItemsSchema.safeParse({ items: sampleItems, discountKind: "reward" }).success, true);
+  assert.equal(settleOrderSchema.safeParse({ payment: "Cash", discountKind: "reward" }).success, true);
+});
+
+// ── CB-DL-2 D-B 11 — productId/customerId are now real ObjectId hex strings,
+// not arbitrary non-empty strings ────────────────────────────────────────────
+
+test("createOrderSchema: a short/non-hex productId ('p1') is rejected with path ['items',0,'productId']", () => {
+  const r = createOrderSchema.safeParse({
+    ...sampleOrder,
+    items: [{ productId: "p1", name: "Chai", price: 20, qty: 1 }],
+  });
+  assert.equal(r.success, false);
+  if (!r.success) {
+    const issue = r.error.issues.find(
+      (i) => i.path[0] === "items" && i.path[1] === 0 && i.path[2] === "productId",
+    );
+    assert.ok(issue, "expected an issue at path ['items', 0, 'productId']");
+  }
+});
+
+test("createOrderSchema: a non-hex customerId ('abc') is rejected", () => {
+  const r = createOrderSchema.safeParse({ ...sampleOrder, customerId: "abc" });
+  assert.equal(r.success, false);
+  if (!r.success) {
+    assert.equal(r.error.issues.some((i) => i.path[0] === "customerId"), true);
+  }
+});
+
+test("createOrderSchema: customerId omitted still parses OK (optional)", () => {
+  const r = createOrderSchema.safeParse(sampleOrder);
+  assert.equal(r.success, true);
+});
+
+test("createOrderSchema: a valid 24-hex customerId parses through", () => {
+  const r = createOrderSchema.safeParse({ ...sampleOrder, customerId: SAMPLE_CUSTOMER_ID });
+  assert.equal(r.success, true);
+});
+
+test("settleOrderSchema: a non-hex customerId ('abc') is rejected at path ['customerId']", () => {
+  const r = settleOrderSchema.safeParse({ payment: "Cash", customerId: "abc" });
+  assert.equal(r.success, false);
+  if (!r.success) {
+    assert.equal(r.error.issues.some((i) => i.path[0] === "customerId"), true);
+  }
+});
+
+test("settleOrderSchema: a valid 24-hex customerId is accepted", () => {
+  const r = settleOrderSchema.safeParse({ payment: "Cash", customerId: SAMPLE_CUSTOMER_ID });
+  assert.equal(r.success, true);
+});
+
+test("settleOrderSchema: customerId omitted still parses OK (optional)", () => {
+  const r = settleOrderSchema.safeParse({ payment: "Cash" });
+  assert.equal(r.success, true);
+});
+
+// ── P-NEW-12 (CB-5B S11) — MONEY FENCE: orderItemSchema must NOT gain a
+// `reward` key. A client-declared `reward: true` on a line would exclude it
+// from the subtotal (lib/receipt.ts's reducer) — only the server (S12) may
+// ever set that flag. Bounded to the orderItemSchema block only, with a
+// POSITIVE landmark (`variation` IS in the shape) so this cannot pass
+// vacuously against a truncated/empty read.
+test("PIN (SOURCE): orderItemSchema has no 'reward' key — a client may never declare a line free", () => {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const src = readFileSync(path.join(here, "order.schema.ts"), "utf8");
+  const blockMatch = src.match(/export const orderItemSchema = z\.object\(\{[\s\S]*?\n\}\);/);
+  assert.ok(blockMatch, "landmark: orderItemSchema block must be found");
+  const block = blockMatch![0];
+  assert.match(block, /variation:/, "positive landmark: variation must still be a real key in this shape");
+  assert.ok(!/reward:/.test(block), "orderItemSchema must never accept a client-supplied 'reward' key — money fence");
 });

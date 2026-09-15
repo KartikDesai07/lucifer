@@ -24,6 +24,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/shared/PageHeader";
 import { SummaryCard } from "@/components/dashboard/SummaryCard";
 import { LiveFloorPanel } from "@/components/dashboard/LiveFloorPanel";
 import { RecentOrders } from "@/components/dashboard/RecentOrders";
@@ -110,28 +111,27 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
-          <p className="text-sm text-muted-foreground">
-            Today&apos;s overview for {restaurantName}.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <EndOfDayButton />
-          <p
-            className="text-sm font-medium text-muted-foreground"
-            suppressHydrationWarning
-          >
-            {new Date().toLocaleDateString("en-IN", {
-              weekday: "long",
-              day: "2-digit",
-              month: "short",
-              year: "numeric",
-            })}
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        className="flex-wrap items-end"
+        title="Dashboard"
+        description={`Today's overview for ${restaurantName}.`}
+        actions={
+          <div className="flex items-center gap-3">
+            <EndOfDayButton />
+            <p
+              className="text-sm font-medium text-muted-foreground"
+              suppressHydrationWarning
+            >
+              {new Date().toLocaleDateString("en-IN", {
+                weekday: "long",
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+              })}
+            </p>
+          </div>
+        }
+      />
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
         <SummaryCard

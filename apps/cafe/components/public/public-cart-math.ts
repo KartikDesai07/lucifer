@@ -108,3 +108,58 @@ export function computeLineCountByProduct(cart: CartLine[]): Record<string, numb
   for (const line of cart) map[line.productId] = (map[line.productId] ?? 0) + 1;
   return map;
 }
+
+// CB-4 — "Order this again". Rebuilds cart lines from a PAST order's items,
+// validated against the LIVE menu rather than trusted: a repeat is a
+// convenience, and a diner must never be able to re-add a product the cafe has
+// since removed, hidden, marked unavailable, or re-priced.
+//
+// Pure, like everything else here — the caller decides what to do with the
+// result. `skipped` is what the UI tells the diner, so a silently shorter cart
+// can never be mistaken for a faithful repeat.
+//
+// Reuses computeAddLine rather than constructing lines directly, so the item
+// cap, the per-line qty cap and the merge-by-lineKey rule are the SAME ones a
+// hand-tapped add obeys.
+export function buildRepeatCart(
+  prev: CartLine[],
+  pastItems: readonly {
+    productId: string;
+    qty: number;
+    variation?: string;
+    modifiers: string[];
+    instructions?: string;
+  }[],
+  menuItems: PublicMenuProduct[],
+): { next: CartLine[]; added: number; skipped: number } {
+  let next = prev;
+  let added = 0;
+  let skipped = 0;
+  for (const item of pastItems) {
+    const product = menuItems.find((p) => p.id === item.productId);
+    // Gone, hidden or sold out today.
+    if (!product || !product.available) {
+      skipped += 1;
+      continue;
+    }
+    // A variation that no longer exists would otherwise re-add at the base
+    // price — a silent price change on the diner's behalf.
+    if (item.variation && !product.variations?.some((v) => v.name === item.variation)) {
+      skipped += 1;
+      continue;
+    }
+    const result = computeAddLine(next, product, {
+      qty: Math.min(PUBLIC_ORDER_MAX_QTY, item.qty),
+      variation: item.variation,
+      modifiers: item.modifiers,
+      instructions: item.instructions,
+    });
+    if (result.capped) {
+      skipped += 1;
+      continue;
+    }
+    next = result.next;
+    added += 1;
+  }
+  return { next, added, skipped };
+}

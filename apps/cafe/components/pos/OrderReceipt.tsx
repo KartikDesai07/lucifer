@@ -3,7 +3,7 @@
 import type { Ref } from "react";
 import Image from "next/image";
 
-import { orderItemLabel } from "@pos/shared/utils";
+import { orderItemLabel, discountLineLabel } from "@pos/shared/utils";
 import { CAFE_TIMEZONE } from "@/lib/constants";
 import type { PrintLogoSize } from "@/lib/constants";
 import { inr } from "@/lib/utils";
@@ -169,8 +169,26 @@ export function OrderReceipt({ order, settings, ref }: OrderReceiptProps) {
                     {orderItemLabel(item)}
                     {item.qty > 1 ? ` x${item.qty}` : ""}
                   </span>
-                  <span>{inr(item.price * item.qty)}</span>
+                  {/* CB-5B — a reward line is on the bill so the customer SEES
+                      what they were given, but its money is excluded from the
+                      subtotal (lib/receipt.ts's reducer skips it). Printing its
+                      real price in the amount column would make the bill fail
+                      to add up in the customer's hands, so the amount column
+                      says FREE and the worth is shown struck through beside the
+                      name. The stored `note` is preferred over the live
+                      constant: a reprint must reproduce the paper as issued. */}
+                  {item.reward ? (
+                    <span className="whitespace-nowrap">
+                      <span className="line-through opacity-60">{inr(item.price * item.qty)}</span>{" "}
+                      FREE
+                    </span>
+                  ) : (
+                    <span>{inr(item.price * item.qty)}</span>
+                  )}
                 </div>
+                {item.reward && item.note && (
+                  <div className="pl-2 text-[0.83em] italic">{item.note}</div>
+                )}
                 {item.modifiers.length > 0 && (
                   <div className="pl-2 text-[0.83em]">+ {item.modifiers.join(", ")}</div>
                 )}
@@ -186,7 +204,7 @@ export function OrderReceipt({ order, settings, ref }: OrderReceiptProps) {
           <div className="space-y-0.5">
             <Line label="Subtotal" value={inr(order.subtotal)} />
             {order.discount > 0 && (
-              <Line label="Discount" value={`-${inr(order.discount)}`} />
+              <Line label={discountLineLabel(order.discountKind)} value={`-${inr(order.discount)}`} />
             )}
             {/* Exclusive GST is added on top of the total. */}
             {gst?.show && !gst.inclusive && (

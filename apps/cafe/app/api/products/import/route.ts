@@ -13,7 +13,7 @@ import {
 import {
   importProductsSchema,
   importProductRowSchema,
-  type CreateProductInput,
+  type ImportProductRow,
 } from "@/schemas";
 import { displayName, normalizeRow } from "@/lib/product-import";
 import type {
@@ -27,13 +27,13 @@ export const dynamic = "force-dynamic";
 // Per-row parse outcome (validation reuses createProductSchema via
 // importProductRowSchema — see schemas/product.schema.ts).
 type ParsedRow =
-  | { index: number; ok: true; data: CreateProductInput }
+  | { index: number; ok: true; data: ImportProductRow }
   | { index: number; ok: false; name: string; category: string; errors: string[] };
 
 function parseRow(raw: Record<string, unknown>, index: number): ParsedRow {
   const result = importProductRowSchema.safeParse(raw);
   if (result.success) {
-    return { index, ok: true, data: result.data as CreateProductInput };
+    return { index, ok: true, data: result.data as ImportProductRow };
   }
   // ZodEffects (preprocess) widens fieldErrors to `{}` — type it back.
   const flat = result.error.flatten() as {
@@ -159,6 +159,7 @@ export async function POST(req: Request) {
     // ── Commit ───────────────────────────────────────────────────────────────
     let created = 0;
     let updated = 0;
+    let skippedByRace = 0;
 
     if (finalEntries.length > 0) {
       if (newCategories.length > 0) {
@@ -179,13 +180,31 @@ export async function POST(req: Request) {
         cache.del("categories");
       }
 
-      const productOps: AnyBulkWriteOperation<IProduct>[] = finalEntries.map(
-        (e) => ({
+      // Re-read: the upsert above only guarantees the category docs exist, not
+      // that we already know their ids (a pre-existing name never went through
+      // it). One find resolves every name → _id for the whole batch.
+      const catNames = [...new Set(finalEntries.map((e) => e.data.category))];
+      const catDocs = await Category.find({ name: { $in: catNames } })
+        .select("name")
+        .lean();
+      const idByName = new Map(catDocs.map((c) => [c.name, c._id]));
+
+      // Defensive: an upsert race could still leave a name unresolved. Such a
+      // row is dropped from the write and counted as skipped rather than
+      // writing a product with no category.
+      let unresolved = 0;
+      const productOps: AnyBulkWriteOperation<IProduct>[] = finalEntries
+        .filter((e) => {
+          const resolved = idByName.has(e.data.category);
+          if (!resolved) unresolved += 1;
+          return resolved;
+        })
+        .map((e) => ({
           updateOne: {
             filter: { name: e.data.name },
             update: {
               $set: {
-                category: e.data.category,
+                categoryId: idByName.get(e.data.category),
                 price: e.data.price,
                 discount: e.data.discount,
                 image: e.data.image,
@@ -195,19 +214,21 @@ export async function POST(req: Request) {
             },
             upsert: true,
           },
-        }),
-      );
-      const res = await Product.bulkWrite(productOps, { ordered: false });
-      created = res.upsertedCount ?? 0;
-      updated = res.matchedCount ?? 0;
-      cache.del("products");
+        }));
+      if (productOps.length > 0) {
+        const res = await Product.bulkWrite(productOps, { ordered: false });
+        created = res.upsertedCount ?? 0;
+        updated = res.matchedCount ?? 0;
+        cache.del("products");
+      }
+      skippedByRace = unresolved;
     }
 
     const result: ImportResult = {
       dryRun: false,
       created,
       updated,
-      skipped: invalid,
+      skipped: invalid + skippedByRace,
       duplicates: duplicateIndexes.size,
       newCategories,
     };

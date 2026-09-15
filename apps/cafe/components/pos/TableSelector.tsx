@@ -4,6 +4,7 @@ import { useState } from "react";
 import { LayoutGrid, Check } from "lucide-react";
 
 import { cn, inr } from "@/lib/utils";
+import { POS_HEADER_CHIP_ICON_CLASS, POS_DIALOG_LIST_CAP_CLASS } from "@/lib/pos-layout";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,6 +33,8 @@ interface TableSelectorProps {
   disabled?: boolean;
   tabs?: Order[]; // open, unsettled tabs — lets an occupied tile name who is sitting there
   onResume?: (order: Order) => void; // jump straight to that tab instead of picking a table
+  // Applied to the trigger button only — the header sizes it per breakpoint.
+  className?: string;
 }
 
 export function TableSelector({
@@ -41,6 +44,7 @@ export function TableSelector({
   disabled,
   tabs,
   onResume,
+  className,
 }: TableSelectorProps) {
   const [open, setOpen] = useState(false);
 
@@ -57,9 +61,18 @@ export function TableSelector({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2" disabled={disabled}>
-          <LayoutGrid className="h-4 w-4" />
-          {value ? `Table ${value}` : "Walk-In"}
+        <Button
+          variant="outline"
+          size="sm"
+          className={cn("gap-2", className)}
+          disabled={disabled}
+          aria-label={value ? `Table ${value}` : "Select table (Walk-In)"}
+          // The header caps this chip's width below xl, so a long custom table
+          // name truncates — the tooltip keeps the whole name reachable.
+          title={value ? `Table ${value}` : "Walk-In — no table"}
+        >
+          <LayoutGrid className={POS_HEADER_CHIP_ICON_CLASS} />
+          <span className="min-w-0 truncate">{value ? `Table ${value}` : "Walk-In"}</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
@@ -75,7 +88,7 @@ export function TableSelector({
         {/* A cafe defines its own floor plan now (CR1.1), so this list is
             unbounded — without a scroll cap a large plan pushes the dialog past
             the viewport and clips the Walk-In escape hatch off-screen. */}
-        <div className="grid max-h-[60vh] grid-cols-4 gap-2 overflow-y-auto">
+        <div className={cn("grid grid-cols-4 gap-2 overflow-y-auto", POS_DIALOG_LIST_CAP_CLASS)}>
           {(tables ?? []).map((t) => {
             const isSelected = value === t.tableNo;
             const tab = tabs?.find((o) => o.tableNo === t.tableNo);

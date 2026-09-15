@@ -38,16 +38,26 @@ import {
   createOrFindCustomer,
   recoverOrderCreate,
   gstConfigDrifted,
-  acceptAddRoundBranch,
 } from "@/lib/order-request-accept-write";
+import { acceptAddRoundBranch } from "@/lib/order-request-accept-addround";
+import {
+  resolveAcceptReward,
+  claimAcceptReward,
+  returnAcceptReward,
+  acceptRewardSnapshot,
+  REWARD_UNFUNDED_ERROR,
+} from "@/lib/order-request-accept-reward";
+import { shouldStoreDiscountKind } from "@pos/shared/reward-redemption";
 import {
   PROMO_DRIFT_ERROR,
   PROMO_USED_ERROR,
-  resolveAcceptPromo,
+  resolveAcceptPromoFor,
   promoNoteLine,
   claimPromoRedemption,
   backfillPromoRedemptionOrderId,
+  promoIsClaimable,
 } from "@/lib/order-request-accept-promo";
+import { assignedRewardRefusal, markAssignedRewardUsed } from "@/lib/assigned-reward-gate";
 
 // CR2.2 SLICE 4 — the accept bridge (phase-CR2-public-ordering.md §0/§4): the
 // ONE place a diner's OrderRequest becomes a real Order, mirroring (not
@@ -135,7 +145,7 @@ export async function acceptOrderRequest(
   const priced = priceRequestItems(
     products,
     request.items.map((it) => ({
-      productId: it.productId,
+      productId: String(it.productId),
       variation: it.variation,
       modifiers: it.modifiers,
       instructions: it.instructions,
@@ -184,8 +194,9 @@ export async function acceptOrderRequest(
     const tabGstCfg = gstConfigFromOrder(openTab, gstCfg);
     // FIX5 — this round bills the tab's own frozen GST snapshot.
     if (gstConfigDrifted(tabGstCfg, gstCfg)) return guardedReject(requestId, ctx.actor, PRICE_DRIFT_ERROR);
-    // The rest (promo, KOT ticket, note, the applyAddRound write) is
-    // -write.ts's acceptAddRoundBranch (CR2.2d split, ~300-line budget).
+    // The rest (promo, the three-kind discount resolution, KOT ticket, note,
+    // the applyAddRound write) is -addround.ts's acceptAddRoundBranch
+    // (CB-5B S7 split, ~300-line budget).
     return acceptAddRoundBranch(request, openTab, items, tabGstCfg, printCfg, requestId, ctx);
   }
 
@@ -197,22 +208,101 @@ export async function acceptOrderRequest(
 
   // CR2.2c — promo re-resolved from LIVE Settings against the RECOMPUTED
   // subtotal, never trusting quotedDiscount as a money input.
-  const subtotalProbe = computeOrderTotals({ items, discount: 0, charge: tableResolved.charge.amount, cfg: gstCfg });
-  const promo = resolveAcceptPromo(request.promoCode, request.quotedDiscount, ctx.settings?.promoCodes, subtotalProbe.subtotal);
+  const subtotalProbe = computeOrderTotals({
+    items, discount: 0, discountKind: undefined, charge: tableResolved.charge.amount, cfg: gstCfg,
+  });
+  // CB-5D part 2 FINAL — a milestone-minted code is single-use regardless of
+  // its Settings row's own tick (owner: "code sirf usi customer ka, ek baar").
+  const promo = resolveAcceptPromoFor(
+    ctx.settings,
+    request.promoCode,
+    request.quotedDiscount,
+    subtotalProbe.subtotal,
+  );
   if ("error" in promo) return guardedReject(requestId, ctx.actor, promo.error);
+  // CB-5D part 2 DEFECT FIX — the REAL fence: accept is where money actually
+  // moves, so an assigned code's expiry must be checked here too, not only at
+  // quote time. Same single-homed gate as the create/edit paths
+  // (lib/assigned-reward-gate.ts), checked AFTER resolveAcceptPromo succeeds
+  // so a drifted/invalid code still reports drift, never "expired".
+  if (request.promoCode) {
+    const expired = await assignedRewardRefusal(request.promoCode, request.mobile, Date.now());
+    if (expired) return guardedReject(requestId, ctx.actor, expired);
+  }
 
-  const totals = computeOrderTotals({ items, discount: promo.discount, charge: tableResolved.charge.amount, cfg: gstCfg });
+  // C4 + CB-5B D4 — WHICH kinds a diner order may originate. Restated because
+  // this policy CHANGED: a comment still asserting the old blanket fence would
+  // be a trap for the next reader.
+  //
+  // The "gst" preset stays STAFF-ONLY intent, exactly as before — it is an
+  // operator decision about how to present a bill, and nothing a diner submits
+  // may pick it.
+  //
+  // A REWARD claim, by contrast, IS diner-originatable by design (CB-5B, owner
+  // decision D4). It is not a diner granting themselves money: they spend
+  // their OWN stamp balance, against rungs the OWNER configured in Settings,
+  // and every part of it is resolved and fenced server-side — the rung from
+  // live Settings, the balance from the diner's own Customer row, the spend by
+  // an atomic filtered update. The request carries ONE integer of intent
+  // (`requestedRewardAt`, the rung's stamp cost) and never an amount, a kind,
+  // or a dish. It also requires a signed-in diner session, checked at submit
+  // (lib/order-request-reward.ts) — an anonymous QR order can never claim.
+  //
+  // The stamps are spent HERE, at accept, never at request-submit: a request
+  // is pre-money, and a rejected one must cost no stamps.
+  const rewardResolution = await resolveAcceptReward(
+    request.requestedRewardAt,
+    customerId,
+    ctx.settings,
+    // Priced WITHOUT the reward — the per-milestone minBill gate is about what
+    // the customer is spending, not about what the reward is worth.
+    computeOrderTotals({
+      items, discount: promo.discount, discountKind: undefined, charge: tableResolved.charge.amount, cfg: gstCfg,
+    }).total,
+  );
+  // A claimed item reward puts its free dish on the bill at its REAL price;
+  // the subtotal reducer skips it, so the line is untotalled and untaxed (S12)
+  // while the kitchen still sees a normal dish to make.
+  const orderItems = rewardResolution?.line
+    ? [...items, { ...rewardResolution.line, productId: String(rewardResolution.line.productId) }]
+    : items;
+  const rewardKind = rewardResolution ? ("reward" as const) : undefined;
+  const totals = computeOrderTotals({
+    items: orderItems,
+    discount: promo.discount,
+    discountKind: rewardKind,
+    charge: tableResolved.charge.amount,
+    cfg: gstCfg,
+    ...(rewardResolution ? { reward: rewardResolution.reward } : {}),
+  });
   // §1 — exact match, OR the one tolerated delta (createTotalsMatchQuote's
   // own comment, core.ts): a charge-less quote accepted FIRST among
   // same-table siblings legitimately picks up the table's one-time charge.
-  if (!createTotalsMatchQuote(totals.total, totals.charge, request.quotedTotal, request.quotedCharge))
+  //
+  // CB-5B S8 — compared against the PRE-REWARD total, never `totals.total`. A
+  // reward legitimately LOWERS the bill below what the diner was quoted, and
+  // that is the entire point of it; treating that as price drift would reject
+  // every rewarded order. The drift fence keeps doing its real job, because
+  // the reward's amount is server-derived from a rung the server resolved
+  // itself — it is not a number the diner sent.
+  const quotedCheckTotals = rewardResolution
+    ? computeOrderTotals({
+        items: orderItems, discount: promo.discount, discountKind: undefined,
+        charge: tableResolved.charge.amount, cfg: gstCfg,
+      })
+    : totals;
+  if (!createTotalsMatchQuote(quotedCheckTotals.total, totals.charge, request.quotedTotal, request.quotedCharge))
     return guardedReject(requestId, ctx.actor, PRICE_DRIFT_ERROR);
 
   // SPEC P4 — once-per-customer fence, BEFORE the order write. "claimed"/
   // "replay" (this request repairing its own crashed accept) proceed;
   // "reject" means a DIFFERENT request already holds it.
-  if (promo.oncePerCustomer && promo.discount > 0 && request.promoCode) {
-    const fenceDecision = await claimPromoRedemption(request.promoCode, request.mobile, requestId);
+  // CB-5D — `promo.claimed` (presence + a real benefit), NOT `discount > 0`:
+  // an "item" promo is worth 0 RUPEES by construction (its benefit is the free
+  // LINE), so the old amount-keyed test skipped the fence entirely and a
+  // once-per-customer free-item code could be spent again and again.
+  if (promo.oncePerCustomer && promoIsClaimable(promo.discount, request.promoCode, promo.kind)) {
+    const fenceDecision = await claimPromoRedemption(request.promoCode, request.mobile, { kind: "request", id: requestId });
     if (fenceDecision === "reject") return guardedReject(requestId, ctx.actor, PROMO_USED_ERROR);
   }
 
@@ -228,10 +318,22 @@ export async function acceptOrderRequest(
   const doc = {
     customerName,
     customerId,
-    items: items.map((it) => ({ ...it, kotRound: 1 })),
+    // orderItems already carries a claimed item reward's free-dish line.
+    items: orderItems.map((it) => ({ ...it, kotRound: 1 })),
     kotRounds: 1,
     subtotal: totals.subtotal,
     discount: totals.discount,
+    // shouldStoreDiscountKind — the shared amount-gates-kind predicate with
+    // its one named exception: a "reward" kind stores even at Rs 0, because an
+    // item reward's derived amount is ALWAYS 0. Gating it on the amount would
+    // $unset the kind — and with it the provenance of stamps already spent —
+    // on exactly the orders that spent them.
+    ...(shouldStoreDiscountKind(totals.discount, rewardKind) ? { discountKind: rewardKind } : {}),
+    // The reward reprint snapshot, omit-empty (no keys at all when nothing
+    // resolved) — the years-later contract: a reward is issued at a cost, and
+    // that cost is STORED on the issued row, never re-derived from a ladder
+    // the owner may since have retuned.
+    ...acceptRewardSnapshot(rewardResolution),
     gstAmount: totals.gstAmount,
     gstRate: gstCfg.gstEnabled ? gstCfg.gstRate : 0,
     gstMode: gstCfg.gstMode,
@@ -251,20 +353,112 @@ export async function acceptOrderRequest(
 
   // Same atomic per-day counter as POST /api/orders; the day-rollover retry
   // + dup-key repair live in recoverOrderCreate (-write.ts).
+  //
+  // CLAIM ORDERING (CB-5B S8, mirroring POST /api/orders' own): the stamps are
+  // spent BEFORE the create — the claimPromoRedemption shape — so a bill can
+  // never be discounted by stamps that were not actually spent.
+  //
+  // The claim is keyed on the orderId this attempt ACTUALLY uses.
+  // recoverOrderCreate RE-NUMBERS the order on a daily-counter collision, and
+  // a claim left on the first id would sit where no order carries it: the
+  // cancel path (S6) looks the refund up BY orderId and would find nothing,
+  // and the `redeemedOrders: {$ne: orderId}` fence would stop recognising the
+  // real order, so the same diner could redeem against it twice. So the
+  // recovery is handed a re-key callback and moves the claim with the number.
   const seq = await nextOrderSequence();
+  const firstOrderId = generateOrderId(seq);
+  if (rewardResolution && !(await claimAcceptReward(rewardResolution, firstOrderId))) {
+    // The balance moved between the submit-time courtesy check and this atomic
+    // spend (another device redeemed the same stamps). A discounted bill whose
+    // stamps were never spent must never be written, so this is a rejection
+    // the staff member can act on — reject the request and let the diner
+    // re-order. Never a silent full-price order: the diner consented to a
+    // bill that had the reward on it.
+    return guardedReject(requestId, ctx.actor, REWARD_UNFUNDED_ERROR);
+  }
   let order: IOrder;
   try {
-    order = await Order.create({ ...doc, orderId: generateOrderId(seq) });
+    order = await Order.create({ ...doc, orderId: firstOrderId });
   } catch (e) {
-    const recovered = await recoverOrderCreate(e, doc, requestId, ctx.actor);
+    let recovered;
+    try {
+      recovered = await recoverOrderCreate(e, doc, requestId, ctx.actor, {
+        // Only a duplicate-key rejection ever reaches this callback
+        // (recoverOrderCreate rethrows anything else untouched). That is a
+        // SERVER RESPONSE proving nothing was written — the one DEFINITE
+        // no-write outcome never-revert-on-write-throw permits a compensating
+        // return under.
+        onRekey: async (retryOrderId: string): Promise<boolean> => {
+          if (!rewardResolution) return true;
+          await returnAcceptReward(rewardResolution, firstOrderId);
+          return claimAcceptReward(rewardResolution, retryOrderId);
+        },
+      });
+    } catch (fatal) {
+      // A throw recoverOrderCreate did not handle — it rethrows anything that
+      // is not a duplicate key, so this is the AMBIGUOUS case: the insert may
+      // have committed, or it may not.
+      //
+      // WHY THE CLAIM CANNOT SIMPLY BE LEFT (review of this slice, two HIGH
+      // findings sharing one root cause). The claim marker is keyed on the
+      // ORDER ID — the right key for the cancel path, which refunds by the
+      // landed order's id — but this bridge is deliberately RE-ENTERABLE, and
+      // nextOrderSequence burns a FRESH number on every attempt. Stamps left
+      // spent against an orderId no order carries are therefore unreachable by
+      // every recovery path there is: a resumed accept re-claims under a NEW
+      // id (spending twice for one order), and a staff reject of the stranded
+      // "accepting" row returns nothing, because reject() knows only the
+      // requestId (which is why the promo fence, being requestId-keyed, CAN be
+      // released there and this cannot). The diner would lose the stamps with
+      // no order and no bill behind them.
+      //
+      // never-revert-on-write-throw is DIRECTIONAL and permits exactly this:
+      // reverse only on a DEFINITE no-write. So the ambiguity is RESOLVED
+      // rather than assumed — findByRequestId asks the database whether any
+      // order carries this requestId (`sourceRequestIds`, the same
+      // multikey-indexed read step 3's repair lookup uses). An order found
+      // means the insert COMMITTED and the claim is correct where it is.
+      // Nothing found is the definite no-write the rule allows a compensating
+      // return under.
+      //
+      // The resolving read is itself best-effort: if IT throws too (the same
+      // outage that failed the insert), the claim STAYS. Leaving stamps spent
+      // is the safe side of an unresolvable ambiguity — returning them for an
+      // order that did land would be a silent double-spend.
+      if (rewardResolution) {
+        try {
+          const landed = await findByRequestId(requestId);
+          if (!landed) await returnAcceptReward(rewardResolution, firstOrderId);
+        } catch {
+          /* unresolvable — keep the claim rather than risk crediting a landed order */
+        }
+      }
+      throw fatal;
+    }
     if ("replayed" in recovered) return recovered;
+    if ("rewardUnfunded" in recovered) {
+      // The re-claim lost the race against the re-numbered order. Same rule as
+      // the first attempt, and the stamps for the first id are already back.
+      return guardedReject(requestId, ctx.actor, REWARD_UNFUNDED_ERROR);
+    }
     order = recovered.order;
   }
 
   // SPEC P4 — best-effort backfill of the winning order's id onto the
   // redemption claimed above (never blocking; see backfillPromoRedemptionOrderId).
-  if (promo.oncePerCustomer && promo.discount > 0 && request.promoCode) {
+  // CB-5D — `promo.claimed` (presence + a real benefit), NOT `discount > 0`:
+  // an "item" promo is worth 0 RUPEES by construction (its benefit is the free
+  // LINE), so the old amount-keyed test skipped the fence entirely and a
+  // once-per-customer free-item code could be spent again and again.
+  if (promo.oncePerCustomer && promoIsClaimable(promo.discount, request.promoCode, promo.kind)) {
     await backfillPromoRedemptionOrderId(request.promoCode, request.mobile, order.orderId);
+  }
+  // CB-5D part 2 (owner decision) — the ASSIGNED code is now SPENT, so it
+  // leaves the diner's "my rewards" list. Best-effort, beside the backfill
+  // and under the same rule: the fence claimed BEFORE the write is what
+  // stops a second spend, so a failure here costs only a stale list row.
+  if (request.promoCode) {
+    await markAssignedRewardUsed(request.promoCode, request.mobile, order.orderId, new Date());
   }
 
   // Ledger contribution — best-effort, mirrors POST /api/orders exactly.

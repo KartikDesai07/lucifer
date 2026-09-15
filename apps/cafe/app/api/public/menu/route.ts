@@ -6,6 +6,7 @@ import cache, { TTL } from "@/lib/cache";
 import { readSettings } from "@/lib/settings";
 import { serverError, success } from "@/lib/api-helpers";
 import type { PublicGstConfig } from "@pos/shared/public";
+import { UNCATEGORIZED } from "@pos/shared/constants";
 import {
   PUBLIC_MENU_CACHE_KEY,
   PUBLIC_PRODUCT_FILTER,
@@ -112,8 +113,8 @@ export async function GET() {
       // pulled off Mongo for this route, even before toPublicMenuItem projects
       // it down again.
       Product.find(PUBLIC_PRODUCT_FILTER)
-        .sort({ category: 1, name: 1 })
-        .select("name category price variations discount available image modifiers")
+        .sort({ name: 1 })
+        .select("name categoryId price variations discount available image modifiers")
         .lean(),
       // readSettings, NEVER getSettings: the getter's $setOnInsert upsert
       // writes updatedAt on every call (probed), and this route is public —
@@ -121,6 +122,14 @@ export async function GET() {
       readSettings(),
       popularProductIds(),
     ]);
+
+    // Server-side join for the diner payload only (client-side everywhere
+    // else, per CB-DL-2 D-A): resolves the stored categoryId to the name the
+    // diner sees. An id with no matching category (deleted, or a race) falls
+    // back to the same UNCATEGORIZED label the admin side uses.
+    const nameById = new Map(categories.map((c) => [String(c._id), c.name]));
+    const categoryNameOf = (id: unknown): string =>
+      nameById.get(String(id)) ?? UNCATEGORIZED;
 
     const payload: PublicMenuPayload = {
       // "" (→ the page's generic fallback) on a cafe with no Settings doc yet;
@@ -133,7 +142,7 @@ export async function GET() {
         mode: settings?.gstMode ?? "inclusive",
       },
       categories: categories.map(toPublicCategory),
-      items: products.map(toPublicMenuItem),
+      items: products.map((p) => toPublicMenuItem(p, categoryNameOf)),
       popular,
     };
     cache.set(PUBLIC_MENU_CACHE_KEY, payload, TTL.PRODUCTS);

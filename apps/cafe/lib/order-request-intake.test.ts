@@ -185,7 +185,10 @@ test("quoteRequestTotals: parity with buildRequestDoc's quote fields — WITHOUT
 
 test("quoteRequestTotals: quotedDiscount equals exactly what computeOrderTotals produces for the same discount — never a forked/re-derived figure", () => {
   const quote = quoteRequestTotals([LINE], TABLE, null, true, 25);
-  const direct = computeOrderTotals({ items: [LINE], discount: 25, charge: 20, cfg: { gstEnabled: false, gstRate: 0, gstMode: "inclusive" } });
+  const direct = computeOrderTotals({
+    items: [LINE], discount: 25, discountKind: undefined, charge: 20,
+    cfg: { gstEnabled: false, gstRate: 0, gstMode: "inclusive" },
+  });
   assert.equal(quote.quotedDiscount, direct.discount);
   assert.equal(quote.quotedTotal, direct.total);
 });

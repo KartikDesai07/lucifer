@@ -23,6 +23,9 @@ const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel),
 
 const SETTINGS_ROUTE = "apps/cafe/app/api/settings/route.ts";
 const ORDER_REQUEST_CREATE_ROUTE = "apps/cafe/app/api/public/order-request/route.ts";
+// CB-4 split — the create route's steps 1-5 (bot/host/size/parse/honeypot)
+// live here now; pins that assert on that half of the flow must read it too.
+const PUBLIC_ORDER_INTAKE_LIB = "apps/cafe/lib/public-order-intake.ts";
 const ORDER_REQUEST_EDIT_ROUTE = "apps/cafe/app/api/public/order-request/[shortCode]/route.ts";
 const TELEGRAM_CHATS_LIST = "apps/cafe/components/settings/TelegramChatsList.tsx";
 const USE_TELEGRAM_HOOK = "apps/cafe/hooks/use-telegram.ts";
@@ -74,7 +77,16 @@ test("PIN: PUT /api/settings calls invalidateTelegramConfigCache() — telegramP
 // ── W6 placement — after( fires only once the write it reports on is real ──
 
 test("PIN W6 placement: in the create route, after( fires strictly AFTER both the honeypot branch (`if (hpFilled)`) and the write it reports on (`OrderRequest.create(`); in the edit route, after( fires strictly AFTER both the honeypot branch and the CAS-miss check (`matchedCount`) — firing earlier would notify Telegram about a write that was skipped (honeypot) or never landed (lost CAS race)", () => {
-  const createSrc = stripComments(readSrc(ORDER_REQUEST_CREATE_ROUTE));
+  // CB-4 split — steps 1-5 of the create route's control flow (including the
+  // `if (hpFilled)` honeypot branch) moved to lib/public-order-intake.ts,
+  // which the route calls BEFORE step 6. Concatenated intake-then-route (the
+  // real call order) so this pin still proves the SAME guarantee it always
+  // did: the honeypot branch is reached before after( can fire. The intake
+  // returns a response on the honeypot path, so the route's after( is
+  // genuinely unreachable for a bot — a strictly stronger property than the
+  // single-file source order this originally asserted.
+  const createSrc =
+    stripComments(readSrc(PUBLIC_ORDER_INTAKE_LIB)) + "\n" + stripComments(readSrc(ORDER_REQUEST_CREATE_ROUTE));
   const createAfterIdx = createSrc.indexOf("after(");
   const createHoneypotIdx = createSrc.indexOf("if (hpFilled)");
   const createWriteIdx = createSrc.indexOf("OrderRequest.create(");
@@ -175,7 +187,7 @@ test("PIN: TelegramSetupCard renders the residual-webhook remediation copy ('web
 
 // ── type="button" discipline ────────────────────────────────────────────────
 
-test('PIN: every <Button in TelegramSetupCard.tsx carries type="button" — the card renders inside SettingsForm\'s <form>, where a button with no explicit type defaults to type="submit" and would double-fire the settings PUT', () => {
+test('PIN: every <Button in TelegramSetupCard.tsx carries type="button" — the card renders inside SettingsSectionForm\'s <form>, where a button with no explicit type defaults to type="submit" and would double-fire the settings PUT', () => {
   const src = stripComments(readSrc(TELEGRAM_SETUP_CARD));
   const opens: number[] = [];
   let idx = src.indexOf("<Button");

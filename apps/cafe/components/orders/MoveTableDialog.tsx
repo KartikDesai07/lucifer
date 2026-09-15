@@ -1,13 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useReactToPrint } from "react-to-print";
+import { toast } from "sonner";
 
 import { cn, inr } from "@/lib/utils";
+import { POS_MOVE_TABLE_LIST_CAP_CLASS } from "@/lib/pos-layout";
+import { slipPrintOptions } from "@/lib/desktop-shell";
 import { printConfigOf, receiptPageStyle } from "@/lib/print";
 import { useTables } from "@/hooks/use-tables";
 import { useSettings } from "@/hooks/use-settings";
 import { useMoveOrderTable } from "@/hooks/use-orders";
+import { useHostRouting } from "@/hooks/use-print-routing";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import {
@@ -48,6 +52,13 @@ interface MoveTableDialogProps {
   onMoved?: (order: Order, fromTableNo: string) => void;
 }
 
+// The routed lane's verdict arrives after a round trip, and the print node below
+// renders `slip` as it is THEN. `slip` is never cleared, so a second move inside
+// that window would make the first slip's fallback print the SECOND move's paper
+// — and the second's fallback print it again, leaving move #1 with nothing.
+const PRINT_MOVE_SUPERSEDED_MESSAGE =
+  "Another table move happened before that slip could print here — reprint it from Orders.";
+
 // One pending slip, captured the instant the move succeeds: the table it came
 // FROM (the order's own tableNo has already flipped to the destination by
 // then) and this terminal's wall clock — there is no server-authoritative
@@ -66,6 +77,10 @@ export function MoveTableDialog({ order, open, onOpenChange, onMoved }: MoveTabl
   const settings = useSettings();
   const moveTable = useMoveOrderTable();
   const { user } = useAuth();
+  // This dialog is the ONLY moved-slip trigger on either surface (the POS and
+  // the Orders sheet both render it), and it cannot reach usePosPrint — so the
+  // host routing for this one document is wired here (§B5 carve-out).
+  const { shouldRoute, queueMovedSlip } = useHostRouting();
 
   const [slip, setSlip] = useState<PendingSlip | null>(null);
   // Guards against printing the same slip twice — e.g. a parent re-render while
@@ -75,14 +90,23 @@ export function MoveTableDialog({ order, open, onOpenChange, onMoved }: MoveTabl
   // silently get no slip for that last move. Every move builds a fresh object,
   // so identity is unique per move while still absorbing re-renders.
   const printedSlipRef = useRef<PendingSlip | null>(null);
+  // The slip the print node is rendering RIGHT NOW, readable from a callback
+  // that runs after an await. A LAYOUT effect, not a passive one: the passive
+  // flush is a scheduler task, so a promise continuation can run between the
+  // commit that swapped the DOM and the mirror catching up — the same
+  // one-wrong-frame reasoning RequestAlertBar.tsx already uses.
+  const shownSlipRef = useRef<PendingSlip | null>(slip);
+  useLayoutEffect(() => {
+    shownSlipRef.current = slip;
+  }, [slip]);
 
   const kotRef = useRef<HTMLDivElement>(null);
-  const printSlip = useReactToPrint({
+  const printSlip = useReactToPrint(slipPrintOptions({
     contentRef: kotRef,
     documentTitle: order ? `MOVED-${order.orderId}` : "moved",
     // The kitchen's own paper width, exactly like every other KOT print.
     pageStyle: receiptPageStyle(printConfigOf(settings.data).kot.paperWidth),
-  });
+  }));
 
   useEffect(() => {
     if (!slip) return;
@@ -93,7 +117,38 @@ export function MoveTableDialog({ order, open, onOpenChange, onMoved }: MoveTabl
     // print job. react-to-print keeps one fixed-id iframe (lib/print.ts): two
     // jobs in the same tick makes the second's teardown delete the first's
     // just-appended iframe.
-    printSlip();
+    //
+    // When a print host owns printing, this slip is ENQUEUED for the counter PC
+    // and printSlip() runs only if the server answers that this device must
+    // print it after all — queueMovedSlip is the sole reader of that verdict
+    // (D-11), so exactly ONE of the two lanes ever prints: a duplicate slip at
+    // the counter is worse than a missing one (§B7). The gate is `shouldRoute`,
+    // not `hostConfigured`: on a degraded pulse tick a device that has already
+    // SEEN a host must still attempt the enqueue instead of printing here
+    // (§F/MERGED-19), and it is the very same predicate queueMovedSlip checks
+    // internally, read from this same render — the two cannot disagree. Kept as
+    // an explicit branch so the no-host lane still fires synchronously, in this
+    // tick, before the dialog closes (§F byte-identical parity).
+    if (!shouldRoute) {
+      printSlip();
+    } else {
+      void queueMovedSlip(slip.order, {
+        from: slip.from,
+        // Identical to what the off-screen KOTReceipt below renders, so the
+        // counter's paper reads the same as this device's would have.
+        movedBy: user?.name ?? "Staff",
+        movedAt: slip.at.toISOString(),
+      }).then((routed) => {
+        if (routed) return;
+        // Identity, not ids — every move builds a fresh slip object, exactly as
+        // the printed-once guard above relies on.
+        if (shownSlipRef.current === slip) {
+          printSlip();
+          return;
+        }
+        toast.error(PRINT_MOVE_SUPERSEDED_MESSAGE);
+      });
+    }
     onOpenChange(false);
     onMoved?.(slip.order, slip.from);
     // slip is the only thing this effect reacts to — printSlip/onOpenChange/
@@ -142,7 +197,7 @@ export function MoveTableDialog({ order, open, onOpenChange, onMoved }: MoveTabl
             {moneyNote}
           </div>
 
-          <div className="grid max-h-[50vh] grid-cols-3 gap-2 overflow-y-auto">
+          <div className={cn("grid grid-cols-3 gap-2 overflow-y-auto", POS_MOVE_TABLE_LIST_CAP_CLASS)}>
             {(tables.data ?? []).map((t) => {
               const isCurrent = t.tableNo === currentTableNo;
               const tappable = !isCurrent && isFree(t);
@@ -154,14 +209,14 @@ export function MoveTableDialog({ order, open, onOpenChange, onMoved }: MoveTabl
                   disabled={disabled}
                   onClick={() => handlePick(t.tableNo)}
                   className={cn(
-                    "flex flex-col items-center justify-center gap-0.5 rounded-lg border p-2 text-sm font-semibold transition",
+                    "flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg border p-2 text-sm font-semibold transition",
                     STATUS_STYLE[t.status],
                     isCurrent && "ring-2 ring-primary ring-offset-1",
                     disabled && "cursor-not-allowed opacity-50",
                   )}
                 >
-                  <span>{t.tableNo}</span>
-                  <span className="text-[10px] font-normal">
+                  <span className="max-w-full truncate px-1">{t.tableNo}</span>
+                  <span className="max-w-full truncate text-[10px] font-normal">
                     {isCurrent ? "Current" : t.status} · {t.capacity} seats
                   </span>
                 </button>

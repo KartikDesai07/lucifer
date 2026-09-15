@@ -91,7 +91,7 @@ export async function POST(req: Request, { params }: Params) {
       // any once-per-customer fence a failed accept attempt claimed for this
       // request (keyed requestId + orderId-absent; no-op otherwise), or the
       // customer's code stays consumed with no order behind it (review MED #4).
-      await releasePromoRedemption(id);
+      await releasePromoRedemption({ kind: "request", id });
       return noStore(success(toTrayRequest(updated, authed.session.user.role)));
     }
 

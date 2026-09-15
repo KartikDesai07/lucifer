@@ -27,9 +27,11 @@
 // Vercel CLI session (fine for the owner's own account).
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { acquireClientLock, LOCKS_DIR, lockMessage, releaseClientLock } from "./go-live/lock.mjs";
+import { mergeProfile } from "./go-live/lib.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PROFILES_FILE = path.join(ROOT, "deploy.profiles.json");
@@ -79,21 +81,94 @@ if (list) {
   process.exit(0);
 }
 
+// ── owner-console lock (clientsDir/recordsOwningProfile defined early: the
+// "profile missing" rebuild below needs the same owning-record lookup) ───────
+// A client record (clients/<slug>.json, gitignored) carrying `deployLock: true` is
+// a cafe the owner marked "record only" or archived — never deploy it from here
+// either. A profile belongs to a record when it IS the slug or `<slug>-<standby
+// label>`. Profiles without a matching record (the v1 targets) are unaffected.
+const clientsDir = process.env.GO_LIVE_CLIENTS_DIR ?? path.join(ROOT, "clients"); // same override index.mjs and the console honour
+/** Every record — active or archived — that owns this profile name (slug, or "<slug>-<standby label>"). */
+function recordsOwningProfile(name) {
+  const out = [];
+  for (const [dir, archived] of [[clientsDir, false], [path.join(clientsDir, "_archive"), true]]) {
+    if (!existsSync(dir)) continue;
+    for (const file of readdirSync(dir)) {
+      if (!file.endsWith(".json")) continue;
+      const slug = file.slice(0, -".json".length);
+      let record;
+      try {
+        record = JSON.parse(readFileSync(path.join(dir, file), "utf8"));
+      } catch {
+        if (slug === name) fail(`clients/${archived ? "_archive/" : ""}${file} is not valid JSON — fix it before deploying`);
+        continue;
+      }
+      const labels = Array.isArray(record.standbyHosts) ? record.standbyHosts.map((h) => h && h.label).filter(Boolean) : [];
+      if (slug === name || labels.some((l) => `${slug}-${l}` === name)) out.push({ slug, record, archived });
+    }
+  }
+  return out;
+}
+
 // The empty-profile fallback exists for a fresh clone that has a `.vercel` link
 // and no profiles file at all. It must NOT apply once profiles ARE configured:
 // otherwise a bare `npm run deploy` (profileName "default") silently falls back
 // to whatever the local link points at — which is how a deploy meant for one
 // cafe can land on another. With profiles present, the target must be explicit.
 const configuredNames = Object.keys(profiles);
-const profile =
+let profile =
   profiles[profileName] ??
   (profileName === "default" && configuredNames.length === 0 ? {} : null);
 if (!profile) {
-  fail(
-    `profile "${profileName}" not found in deploy.profiles.json.\n` +
-      `Configured: ${configuredNames.join(", ") || "(none)"}\n` +
-      `Every client deploy must name its target: npm run deploy -- --profile <name>`,
-  );
+  // The profile can be MISSING while the client is fully set up: an interrupted
+  // first run (Fresh start, or a console session that closed mid-way) can attach
+  // a domain and record a project before it ever reaches the profile write. Rather
+  // than a flat "not found", rebuild it from the client record when that record
+  // proves the project really is deployable — an ACTIVE owner only; an archived
+  // one keeps failing below like before this change (never resurrect a retired cafe).
+  const activeOwners = recordsOwningProfile(profileName).filter((o) => !o.archived);
+  const owner = activeOwners.length === 1 ? activeOwners[0] : null;
+  const slot = owner ? (owner.slug === profileName ? { vercel: owner.record.vercel, gen: owner.record.generated ?? {} } : (() => {
+    const label = profileName.slice(owner.slug.length + 1);
+    const h = (owner.record.standbyHosts ?? []).find((x) => x && x.label === label);
+    return h ? { vercel: h.vercel, gen: h.generated ?? {} } : null;
+  })()) : null;
+  if (slot && slot.gen.projectId && slot.gen.orgId && slot.vercel && slot.vercel.token && slot.gen.host) {
+    profiles = mergeProfile(profiles, profileName, { orgId: slot.gen.orgId, projectId: slot.gen.projectId, token: slot.vercel.token, teamId: slot.vercel.teamId ?? null });
+    profile = profiles[profileName];
+    writeFileSync(PROFILES_FILE, `${JSON.stringify(profiles, null, 2)}\n`, "utf8");
+    console.log(`deploy: profile "${profileName}" was missing — rebuilt from clients/${owner.slug}.json`);
+  } else if (slot && slot.gen.projectId && !slot.gen.host) {
+    fail(`client "${owner.slug}" is not fully set up yet (project exists, env/deploy never finished) — run: node scripts/go-live/index.mjs ${owner.slug}   (console: Update on Vercel)`);
+  } else {
+    fail(
+      `profile "${profileName}" not found in deploy.profiles.json.\n` +
+        `Configured: ${configuredNames.join(", ") || "(none)"}\n` +
+        `Every client deploy must name its target: npm run deploy -- --profile <name>`,
+    );
+  }
+}
+const owners = recordsOwningProfile(profileName);
+if (owners.length > 1) {
+  fail(`profile "${profileName}" is claimed by more than one client record (${owners.map((o) => (o.archived ? "_archive/" : "") + o.slug).join(", ")}) — resolve the name clash in the owner console before deploying.`);
+}
+let lockedSlug = null;
+if (owners.length === 1) {
+  const [owner] = owners;
+  if (owner.archived) fail(`"${profileName}" belongs to the ARCHIVED client "${owner.slug}" — restore it in the owner console first if this deploy is intended.`);
+  if (owner.record.deployLock === true) {
+    fail(`deploys are LOCKED for "${profileName}" (clients/${owner.slug}.json → deployLock: true).\nUntick "Lock deploys" in the owner console (Status → Safety) and Save if this deploy is intended.`);
+  }
+  // Per-client lock (scripts/go-live/lock.mjs): a go-live/preview/redeploy already
+  // running for this client — from the CLI, the console or a rollout — must block
+  // a second one from anywhere. A run that spawned THIS deploy already holds the
+  // lock itself (GO_LIVE_LOCK_HELD) and must not try to re-acquire it.
+  if (process.env.GO_LIVE_LOCK_HELD !== owner.slug) {
+    const locksDir = path.join(clientsDir, LOCKS_DIR);
+    const acquired = acquireClientLock({ existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, rmSync }, locksDir, owner.slug, { pid: process.pid, action: "redeploy", owner: "deploy" }, path.join);
+    if (!acquired.ok) fail(lockMessage(acquired.held));
+    lockedSlug = owner.slug;
+  }
 }
 
 // ── resolve target ───────────────────────────────────────────────────────────
@@ -149,10 +224,15 @@ console.log(
 // Deploying from the root uploads the whole workspace (root lockfile included);
 // the PROJECT's "Root Directory" setting is what selects the app to build, and
 // next.config's transpilePackages compiles the shared TS source.
-const res = spawnSync("npx", vercelArgs, {
-  cwd: ROOT,
-  env,
-  stdio: "inherit",
-  shell: process.platform === "win32",
-});
+let res;
+try {
+  res = spawnSync("npx", vercelArgs, {
+    cwd: ROOT,
+    env,
+    stdio: "inherit",
+    shell: process.platform === "win32",
+  });
+} finally {
+  if (lockedSlug) releaseClientLock({ existsSync, readFileSync, writeFileSync, rmSync, readdirSync, mkdirSync }, path.join(clientsDir, LOCKS_DIR), lockedSlug, process.pid, path.join);
+}
 process.exit(res.status ?? 1);

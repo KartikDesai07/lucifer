@@ -11,6 +11,7 @@ import {
   isDuplicateKeyError,
   serverError,
 } from "@/lib/api-helpers";
+import { listTables, TABLE_LIST } from "@/lib/masters";
 import { createTableSchema, reorderTablesSchema } from "@/schemas";
 import { TABLE_DUPLICATE_ERROR, unknownTableMessage } from "@/lib/table-admin";
 import { reorderOps } from "@/lib/table-order";
@@ -18,24 +19,20 @@ import { mintUniquePublicToken } from "@/lib/public-token";
 
 export const dynamic = "force-dynamic";
 
-const CACHE_KEY = "tables";
+// POST/PATCH's invalidation and PATCH's re-prime must use exactly the key the
+// shared list function caches under, so it is read off the spec here.
+const CACHE_KEY = TABLE_LIST.cacheKey;
 
 // GET /api/tables — the floor plan (dynamic, CR1.1 — not a fixed "8 tables"),
-// with live status (cached 30s).
+// with live status (cached, TTL.TABLES). The query/sort/cache-key/TTL live in
+// TABLE_LIST (lib/masters.ts), which GET /api/bootstrap serves the tables part
+// from too, so this route and the bootstrap can never drift apart.
 export async function GET() {
   const authed = await requireAuth();
   if ("error" in authed) return authed.error;
 
   try {
-    const cachedTables = cache.get(CACHE_KEY);
-    if (cachedTables) return success(cachedTables);
-
-    await connectDB();
-    // The operator's hand arrangement wins; the name is the tie-break, so
-    // tables that were never arranged (missing displayOrder) keep name order.
-    const tables = await Table.find().sort({ displayOrder: 1, tableNo: 1 }).lean();
-    cache.set(CACHE_KEY, tables, TTL.TABLES);
-    return success(tables);
+    return success(await listTables());
   } catch (error) {
     return serverError("Failed to fetch tables", error);
   }

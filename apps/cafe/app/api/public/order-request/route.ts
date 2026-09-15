@@ -1,45 +1,27 @@
 import mongoose from "mongoose";
-import { NextResponse, after } from "next/server";
-import { checkBotId } from "botid/server";
+import { after } from "next/server";
 
-import {
-  PARCEL_BUCKET_KEY,
-  PUBLIC_ORDER_BODY_MAX_BYTES,
-  PUBLIC_ORDER_RATE_MAX,
-  PUBLIC_ORDER_RATE_MAX_PARCEL,
-  type PublicOrderRequestCreatedData,
-  PROMO_ALREADY_USED,
-} from "@pos/shared/public";
-import { createPublicOrderRequestSchema } from "@pos/shared/schemas/public-order.schema";
+import { type PublicOrderRequestCreatedData, PROMO_ALREADY_USED, selfOrderingAllowed } from "@pos/shared/public";
 import { connectDB } from "@/lib/db";
 import { Table } from "@/models/Table";
 import { Product } from "@/models/Product";
 import { OrderRequest } from "@/models/OrderRequest";
 import { readSettings } from "@/lib/settings";
 import { created, failure, notFound, serverError } from "@/lib/api-helpers";
-import { resolveTenantFromHost } from "@/lib/tenant";
 import { mintUniquePublicCode } from "@/lib/public-token";
-import { hitRateLimit, peekRateLimit, pruneRateWindows, refundRateLimit } from "@/lib/public-rate-limit";
+import { hitRateLimit, pruneRateWindows, refundRateLimit } from "@/lib/public-rate-limit";
 import { PUBLIC_PRODUCT_FILTER } from "@/lib/public-menu";
 import { priceRequestItems, type PricedProductSource } from "@/lib/public-pricing";
 import {
   buildRequestDoc,
+  quoteRequestTotals,
   pruneOrderRequests,
   tableChargeAppliesNow,
   type IntakeTable,
 } from "@/lib/order-request-intake";
-import {
-  resolveRequestPromo,
-  honeypotFallback,
-  buildHoneypotResponse,
-  resolveAutoAcceptStatus,
-  BOT_DENIED_MESSAGE,
-  BODY_TOO_LARGE_MESSAGE,
-  BAD_REQUEST_MESSAGE,
-  TABLE_NOT_FOUND_MESSAGE,
-  RATE_LIMITED_MESSAGE,
-  ORDER_REQUEST_FAILED_MESSAGE,
-} from "@/lib/order-request-create";
+import { resolveRequestReward } from "@/lib/order-request-reward";
+import { resolveRequestPromo, resolveAutoAcceptStatus, TABLE_NOT_FOUND_MESSAGE, RATE_LIMITED_MESSAGE, ORDER_REQUEST_FAILED_MESSAGE, SELF_ORDER_DISABLED_MESSAGE } from "@/lib/order-request-create";
+import { intakePublicOrderRequest, noStore } from "@/lib/public-order-intake";
 import { notifyRequestEvent, telegramSummaryOfCreate } from "@/lib/telegram/notify";
 
 export const dynamic = "force-dynamic";
@@ -80,6 +62,13 @@ export const dynamic = "force-dynamic";
 //      (§6/§8) a genuine diner gets, but with every write skipped.
 //   6. connectDB + target resolution — resolve the table (or accept "parcel"
 //      with no table at all).
+//   5.5. MENU-ONLY gate (CB-4) — runs right after connectDB, BEFORE the rate
+//      limit: a cafe whose selfOrderMode is "menu" has switched ordering off
+//      entirely, and the diner UI's hidden buttons are not a fence on an
+//      unauthenticated route. Settings is read ONCE here and reused at §9, so
+//      the gate and the pricing can never straddle a settings save. Numbered
+//      5.5 rather than renumbering the rest: it gates BEFORE the metered
+//      charge, but it needs the connection §6 opens.
 //   6.5. Table-charge session check (owner field-feedback 2026-08-20) —
 //      tableChargeAppliesNow(table.tableNo), the SAME helper the sibling
 //      GET /api/public/table/[token] route quotes off of, so what a diner is
@@ -114,90 +103,34 @@ export const dynamic = "force-dynamic";
 // any uncaught failure degrades to a generic 503, never a stack trace or an
 // echoed request body.
 
-// Every response from this route is uncacheable (this is a write, and its
-// success payload names a specific diner's order) and nosniff — mirrors the
-// noStore helper in the sibling public GET routes.
-function noStore<T extends { headers: Headers }>(res: T): T {
-  res.headers.set("Cache-Control", "no-store");
-  res.headers.set("X-Content-Type-Options", "nosniff");
-  return res;
-}
-
 export async function POST(req: Request) {
   try {
-    // 1. Bot check. Always isBot:false in local dev (no client-side signal
-    // was ever collected outside a real deploy) — the production curl-403 is
-    // the deploy probe's success signal, not something reproducible here.
-    const bot = await checkBotId();
-    if (bot.isBot) return noStore(failure(BOT_DENIED_MESSAGE, 403));
-
-    // 2. Host gate — same tenant + Tier-B assertion as middleware.ts, run by
-    // hand because /api is outside the middleware's matcher.
-    const tenant = await resolveTenantFromHost(req.headers.get("host"));
-    const configuredTenant = process.env.TENANT_ID;
-    if (!tenant || (configuredTenant && tenant.tenantId !== configuredTenant)) {
-      return noStore(new NextResponse("Not found", { status: 404 }));
-    }
-
-    // 3. Body size cap — see the file-level comment for why bytes, not chars.
-    const raw = await req.text();
-    if (Buffer.byteLength(raw, "utf8") > PUBLIC_ORDER_BODY_MAX_BYTES) {
-      return noStore(failure(BODY_TOO_LARGE_MESSAGE, 413));
-    }
-
-    // 4. Parse. Neither failure below ever echoes `raw`.
-    let body: unknown;
-    try {
-      body = JSON.parse(raw);
-    } catch {
-      return noStore(failure(BAD_REQUEST_MESSAGE, 400));
-    }
-
-    // Honeypot lift — BEFORE Zod (see the file-level comment). Hazard-free:
-    // `body` here is our own freshly parsed object, never re-served to any
-    // caller. FIX-CR2.2 (non-string hp) — ANY non-empty value counts as
-    // filled, not only a string: a deliberate non-string `hp` (an object, a
-    // number, `true`) is still a bot tell, and the diner UI never sends this
-    // field at all, so "absent" and "empty string" are the only honest values.
-    const bodyObj =
-      typeof body === "object" && body !== null && !Array.isArray(body)
-        ? (body as Record<string, unknown>)
-        : undefined;
-    const hpFilled = bodyObj?.hp !== undefined && bodyObj.hp !== "";
-    if (bodyObj) delete bodyObj.hp;
-
-    // Shape-validate what's left.
-    const parsed = createPublicOrderRequestSchema.safeParse(body);
-    if (!parsed.success) return noStore(failure(BAD_REQUEST_MESSAGE, 400));
-    const data = parsed.data;
-
-    // Resolved once here (needs only `data.target`, no DB) — reused by both
-    // the honeypot peek (§5) and the real hitRateLimit charge (§7) below, so
-    // the two can never independently drift.
-    const now = Date.now();
-    const bucket = data.target.kind === "table" ? data.target.token : PARCEL_BUCKET_KEY;
-    const max = data.target.kind === "table" ? PUBLIC_ORDER_RATE_MAX : PUBLIC_ORDER_RATE_MAX_PARCEL;
-
-    // 5. Honeypot branch — see buildHoneypotResponse's own comment above.
-    // FIX-CR2.2 (metering) — peek (never increments) the bucket a real
-    // request would be charged; already at/over cap means this exact bucket
-    // is already spent, so a bot gets the zero-real-work fallback instead of
-    // buildHoneypotResponse's own Table/Product/Settings reads.
-    if (hpFilled) {
-      const peeked = await peekRateLimit(bucket, now);
-      if (peeked >= max) {
-        return noStore(created(honeypotFallback(data.target.kind === "parcel")));
-      }
-      const pretend = await buildHoneypotResponse(data);
-      // A promo the real path would 422 must 422 here too — same status, same
-      // message — or one probe tells the honeypot apart.
-      if ("promoError" in pretend) return noStore(failure(pretend.promoError, 422));
-      return noStore(created(pretend));
-    }
+    // 1-5. Bot check, host gate, body-size cap, JSON parse + honeypot lift,
+    // and the honeypot branch itself — moved to lib/public-order-intake.ts to
+    // keep this file under the ~300-line cap. See that file for the step-by-
+    // step comments; the numbered control-flow contract above still governs
+    // both files together.
+    const intake = await intakePublicOrderRequest(req);
+    if (intake.kind === "respond") return intake.response;
+    const { data, now, bucket, max } = intake;
 
     // 6. Target resolution. A table is proved by its opaque token, never a
     // guessable name; the token is never echoed in the 404.
     await connectDB();
+
+    // 5.5 (CB-4). MENU-ONLY GATE — the SERVER-side half of "menu only" mode.
+    // The diner UI hides its ordering affordances in this mode, but a hidden
+    // button is not a fence: this route is unauthenticated and public, so the
+    // refusal has to live HERE. Placed immediately after connectDB and BEFORE
+    // the rate-limit charge (§7) deliberately: readSettings is cache-backed
+    // (no DB round-trip on a warm isolate), and a cafe that has switched
+    // ordering off must not burn a diner's metered slot to be told so. Asked
+    // through `selfOrderingAllowed`, never a hand-written === "menu", so a
+    // future mode cannot silently re-open ordering here.
+    const orderingSettings = await readSettings();
+    if (!selfOrderingAllowed(orderingSettings?.selfOrderMode)) {
+      return noStore(failure(SELF_ORDER_DISABLED_MESSAGE, 403));
+    }
     let table: IntakeTable | null = null;
     if (data.target.kind === "table") {
       const found = await Table.findOne({ publicToken: data.target.token })
@@ -230,11 +163,15 @@ export async function POST(req: Request) {
     const priced = priceRequestItems(products, data.items);
     if ("error" in priced) return noStore(failure(priced.error, 422));
 
-    // 9. readSettings — NEVER getSettings (pinned in public-surface-paths.test.ts
-    // for the sibling menu route; the same discipline applies here: an
-    // anonymous write must not additionally trigger the upsert getter's
-    // per-call `updatedAt` write against a 512MB M0 with no backups).
-    const settings = await readSettings();
+    // 9. Settings — read ONCE at step 5.5 above (the menu-only gate needed it
+    // first) and reused here rather than re-read: two reads in one request
+    // could straddle a settings save and price an order against a different
+    // config than the one that let it through the gate. readSettings, NEVER
+    // getSettings (pinned in public-surface-paths.test.ts for the sibling menu
+    // route; the same discipline applies here: an anonymous write must not
+    // additionally trigger the upsert getter's per-call `updatedAt` write
+    // against a 512MB M0 with no backups).
+    const settings = orderingSettings;
 
     // 9.5. Promo code — resolved against live Settings + the priced subtotal,
     // BEFORE quoting. On {error}, the diner must be told WHICH of the three
@@ -249,7 +186,39 @@ export async function POST(req: Request) {
       return noStore(failure(promo.error, 422));
     }
 
-    const doc = buildRequestDoc(data, priced.lines, table, settings, chargeApplies, promo.discount, promo.code);
+    // 9.6. Reward claim (CB-5B S8 / owner decision D4) — the diner's OWN
+    // stamps, spent against the OWNER's configured ladder. Resolved AFTER the
+    // promo above so the mutual-exclusion refusal (A2/D6) is reached with the
+    // promo already known, and BEFORE the quote is built, because a doomed
+    // claim must not become a stored request the staff tray then has to
+    // reject by hand.
+    //
+    // NOTHING IS SPENT HERE. The stamps are claimed at ACCEPT, keyed on the
+    // orderId that actually lands — a request is pre-money, and a rejected
+    // one must cost the diner nothing.
+    //
+    // Priced against the SAME quote the diner is looking at, built through the
+    // one shared path (quoteRequestTotals) rather than a second arithmetic —
+    // the per-milestone minBill gate has to be evaluated against the bill the
+    // diner actually sees.
+    const rewardQuote = quoteRequestTotals(priced.lines, table, settings, chargeApplies, promo.discount);
+    const reward = await resolveRequestReward(data, settings, rewardQuote.quotedTotal);
+    if ("error" in reward) {
+      // Metering, per §17.E and the review MED #5 rule: a deterministic 422
+      // that WROTE NOTHING refunds the slot, EXCEPT one whose answer is a
+      // cross-customer fact worth probing (PROMO_ALREADY_USED). Every reason
+      // this gate returns is about the CALLER's own session, own balance, or
+      // own submission — a diner learns nothing about anyone else by asking —
+      // so all of them refund. A diner fixing their own order must not be
+      // rate-limited out of the cafe.
+      await refundRateLimit(bucket, now);
+      return noStore(failure(reward.error, 422));
+    }
+
+    const doc = buildRequestDoc(
+      data, priced.lines, table, settings, chargeApplies, promo.discount, promo.code,
+      reward.requestedRewardAt,
+    );
     const shortCode = await mintUniquePublicCode((code) =>
       OrderRequest.exists({ shortCode: code }).then(Boolean),
     );

@@ -26,7 +26,19 @@ export function OrderVoidTrail({ voids }: OrderVoidTrailProps) {
                 {v.qty} × {orderItemLabel(v)}
                 {v.kotRound > 0 && ` · round ${v.kotRound}`}
               </span>
-              <span>{inr(v.price * v.qty)}</span>
+              {/* CB-5B — the voided line was a comped reward dish. Same
+                  struck-through-worth + FREE treatment as the bill and the
+                  other staff surfaces (OrderReceipt/OrderDetailSheet/
+                  VoidItemDialog): its `price` is the dish's real value, but no
+                  cash is coming back off this bill, so an unmarked amount here
+                  reads as a refund that never happened. */}
+              {v.reward ? (
+                <span className="whitespace-nowrap">
+                  <span className="line-through opacity-60">{inr(v.price * v.qty)}</span> FREE
+                </span>
+              ) : (
+                <span>{inr(v.price * v.qty)}</span>
+              )}
             </div>
             <div className="text-muted-foreground">
               {v.reason} — {v.voidedBy}, {formatDate(v.at)}

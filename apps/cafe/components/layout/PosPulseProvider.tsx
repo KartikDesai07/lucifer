@@ -19,6 +19,14 @@ import { TABLE_KEYS } from "@/hooks/use-tables";
 import { readDevicePrefs } from "@/lib/pos-device-prefs";
 import { playAlertPing, isAlertSoundUnlocked, unlockAlertSound } from "@/lib/alert-sound";
 import { pulseArrival, ALERT_REPEAT_MS, type PosPulseData } from "@pos/shared/self-order-alert";
+import type { PrintJobFeedRow } from "@pos/shared/print-job";
+import { hostRoutingOf, type PrintHostRouting } from "@/lib/print-routing";
+import {
+  prunePrintReadback,
+  recordPrintReadback,
+  type PrintReadbackEntry,
+  type PrintReadbackRecord,
+} from "@/lib/print-readback";
 
 // The document.title prefix this provider stamps on ("(3) " ahead of the
 // page's own base title) — stripped back off before re-deriving `base` each
@@ -46,10 +54,78 @@ export function usePosPulseContext(): PosPulseContextValue {
   return ctx;
 }
 
+// CB-1d.3b (C1) — the print lane as its OWN context, derived ONCE here from
+// the pulse with hostRoutingOf (MERGED-19's only sanctioned derivation) and
+// provided as a plain string. React re-renders a context consumer only when
+// the provided value changes, so useHostRouting — reached from PosPage's own
+// render via usePosTab → usePosPrint → usePrintRouting — re-renders only
+// when the LANE moves (unknown → host/no-host, a designation, a degraded
+// tick), never on every payload-changing tick the way a `pulse` read did
+// (measured ~187 renders per changed tick on /pos after C2). The `null`
+// default is the crash fence: usePrintHostRouting throws outside
+// <PosPulseProvider> exactly as usePosPulseContext does. Deliberately NOT a
+// second TanStack observer: usePosPulse stays the single poller.
+const PrintHostRoutingContext = createContext<PrintHostRouting | null>(null);
+
+export function usePrintHostRouting(): PrintHostRouting {
+  const routing = useContext(PrintHostRoutingContext);
+  if (routing === null) {
+    throw new Error("usePrintHostRouting must be used inside <PosPulseProvider>");
+  }
+  return routing;
+}
+
+// PH-5 — the drain feed (§B4 D1) as its OWN narrow context, same discipline
+// as the lane above: the print-job drain subscribes to this array alone, never
+// to the wide pulse value, so it re-renders only when the feed itself changes
+// (TanStack's structural sharing keeps an unchanged array's identity across
+// ticks). The empty constant is module-level so an unresolved pulse provides
+// one stable identity, not a fresh [] per render. `null` default = the same
+// crash fence as the two accessors above.
+const EMPTY_PRINT_JOBS: PrintJobFeedRow[] = [];
+const PrintJobFeedContext = createContext<PrintJobFeedRow[] | null>(null);
+
+export function usePrintJobFeed(): PrintJobFeedRow[] {
+  const feed = useContext(PrintJobFeedContext);
+  if (feed === null) {
+    throw new Error("usePrintJobFeed must be used inside <PosPulseProvider>");
+  }
+  return feed;
+}
+
+// PH-8 (§B7, MERGED-10 / A-17) — this device's OWN outstanding print jobs, as
+// TWO narrow contexts: the recorder (a []-stable function, so useHostRouting
+// — reached from PosPage's own render — never re-renders when the set moves)
+// and the entries (read by RequestAlertBar alone, which already re-renders
+// per tick). Pruned HERE against the three feeds on every tick because this
+// provider owns all consumption of the pulse. `null` defaults = crash fence.
+type PrintReadbackRecorder = (record: PrintReadbackRecord) => void;
+const EMPTY_READBACK: PrintReadbackEntry[] = [];
+const PrintReadbackRecordContext = createContext<PrintReadbackRecorder | null>(null);
+const PrintReadbackContext = createContext<PrintReadbackEntry[] | null>(null);
+
+export function usePrintReadbackRecorder(): PrintReadbackRecorder {
+  const record = useContext(PrintReadbackRecordContext);
+  if (record === null) {
+    throw new Error("usePrintReadbackRecorder must be used inside <PosPulseProvider>");
+  }
+  return record;
+}
+
+export function usePrintReadback(): PrintReadbackEntry[] {
+  const entries = useContext(PrintReadbackContext);
+  if (entries === null) {
+    throw new Error("usePrintReadback must be used inside <PosPulseProvider>");
+  }
+  return entries;
+}
+
 // CR2.3 §20 — owns ALL consumption of the pulse: the one poll (usePosPulse),
 // the arrival diff (pulseArrival) that drives cache invalidation + the sound
 // alert, the document.title prefix, the gesture-unlock listener, and the
-// print-handler registry a bridge-owning screen (POS/requests) plugs into.
+// print-handler registry a bridge-owning screen (POS/requests) plugs into,
+// the derived print-lane context (usePrintHostRouting), and PH-8's readback
+// set (usePrintReadbackRecorder / usePrintReadback).
 export function PosPulseProvider({ children }: { children: ReactNode }) {
   const { data } = usePosPulse();
   const qc = useQueryClient();
@@ -58,7 +134,13 @@ export function PosPulseProvider({ children }: { children: ReactNode }) {
   const prevRef = useRef<PosPulseData | null>(null);
   const lastPingRef = useRef<number>(0);
   const [soundUnlocked, setSoundUnlocked] = useState(false);
-  const [printHandler, setPrintHandler] = useState<KotPrintHandler | null>(null);
+  // PH-5 — a STACK, not a single slot: the host's layout-level lane
+  // (PrintHostDrain) and a page's own lane (pos/requests) now coexist on the
+  // host PC, and a single last-wins slot lost the provider's handler the
+  // moment a page unmounted (its cleanup nulled the slot). The band gets the
+  // most recent registrant; unregistering removes only that entry.
+  const [printHandlers, setPrintHandlers] = useState<KotPrintHandler[]>([]);
+  const printHandler = printHandlers[printHandlers.length - 1] ?? null;
 
   const unlock = useCallback(() => {
     unlockAlertSound();
@@ -148,21 +230,44 @@ export function PosPulseProvider({ children }: { children: ReactNode }) {
     };
   }, [data?.openCount, pathname]);
 
+  // The readback set (PH-8). Recorded from useHostRouting.enqueue's single
+  // site with the id the SERVER answered; advanced against D1/D2/D3 on each
+  // tick. Both helpers return the SAME array when nothing changed, so React
+  // bails out of the setState — a quiet tick re-renders no readback consumer.
+  // Deliberately NOT gated on `isMutating` like the arrival diff above: this
+  // touches no query cache, so an in-flight order mutation has nothing to lose.
+  const [readback, setReadback] = useState<PrintReadbackEntry[]>(EMPTY_READBACK);
+  const recordPrintJob = useCallback((record: PrintReadbackRecord) => {
+    setReadback((current) => recordPrintReadback(current, record, Date.now()));
+  }, []);
+  useEffect(() => {
+    if (!data) return;
+    setReadback((current) => prunePrintReadback(current, data, Date.now()));
+  }, [data]);
+
   const registerKotPrintHandler = useCallback((fn: KotPrintHandler) => {
-    // React's setState always CALLS a function argument as an updater — it
-    // can never tell "store this function" apart from "here's an updater
-    // function" by type alone. Wrapping in `() => fn` is the only way to
-    // store a function value in state without React invoking it immediately.
-    setPrintHandler(() => fn);
-    return () =>
-      setPrintHandler((current: KotPrintHandler | null) => (current === fn ? null : current));
+    // Function values live inside the array, so React never mistakes one for
+    // an updater. Push on register; the cleanup removes exactly its own entry.
+    setPrintHandlers((current) => [...current, fn]);
+    return () => setPrintHandlers((current) => current.filter((h) => h !== fn));
   }, []);
 
+  const routing = hostRoutingOf(data);
+  const printJobs = data?.printJobs ?? EMPTY_PRINT_JOBS;
+
   return (
-    <PosPulseContext.Provider
-      value={{ pulse: data, soundUnlocked, unlock, printHandler, registerKotPrintHandler }}
-    >
-      {children}
-    </PosPulseContext.Provider>
+    <PrintHostRoutingContext.Provider value={routing}>
+      <PrintJobFeedContext.Provider value={printJobs}>
+        <PrintReadbackRecordContext.Provider value={recordPrintJob}>
+          <PrintReadbackContext.Provider value={readback}>
+            <PosPulseContext.Provider
+              value={{ pulse: data, soundUnlocked, unlock, printHandler, registerKotPrintHandler }}
+            >
+              {children}
+            </PosPulseContext.Provider>
+          </PrintReadbackContext.Provider>
+        </PrintReadbackRecordContext.Provider>
+      </PrintJobFeedContext.Provider>
+    </PrintHostRoutingContext.Provider>
   );
 }

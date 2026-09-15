@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { connectDB } from "@/lib/db";
 import { Staff } from "@/models/Staff";
-import cache, { TTL } from "@/lib/cache";
+import cache from "@/lib/cache";
 import {
   success,
   created,
@@ -11,26 +11,26 @@ import {
   isDuplicateKeyError,
   serverError,
 } from "@/lib/api-helpers";
+import { listStaff, STAFF_LIST } from "@/lib/masters";
 import { createStaffSchema } from "@/schemas";
 import { BCRYPT_ROUNDS } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
-const CACHE_KEY = "staff";
+// POST's invalidation must clear exactly the key the shared list function
+// caches under, so it is read off the spec rather than re-spelled here.
+const CACHE_KEY = STAFF_LIST.cacheKey;
 
-// GET /api/staff — list all staff (admin only, cached 5min, no password)
+// GET /api/staff — list all staff (admin only, cached TTL.STAFF, no password).
+// The query/sort/projection/cache-key/TTL live in STAFF_LIST (lib/masters.ts),
+// which GET /api/bootstrap serves the admin-only staff part from too, so this
+// route and the bootstrap can never drift apart.
 export async function GET() {
   const admin = await requireAdmin();
   if ("error" in admin) return admin.error;
 
   try {
-    const cachedStaff = cache.get(CACHE_KEY);
-    if (cachedStaff) return success(cachedStaff);
-
-    await connectDB();
-    const staff = await Staff.find().select("-password").sort({ name: 1 }).lean();
-    cache.set(CACHE_KEY, staff, TTL.STAFF);
-    return success(staff);
+    return success(await listStaff());
   } catch (error) {
     return serverError("Failed to fetch staff", error);
   }

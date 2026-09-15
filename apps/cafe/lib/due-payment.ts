@@ -25,15 +25,15 @@ import {
 // softDeleteDuePayment already adjusted totalDue for.
 export const ACTIVE_DUE_PAYMENT = { deletedAt: { $exists: false } } as const;
 
-// `customerId` is stored as a plain STRING (mirroring Order.customerId), but it
-// arrives as a URL path segment, and ObjectId hex is case-insensitive: Mongo
-// casts "507F…" and "507f…" to the same _id, while the two strings are NOT
-// equal. Writing the raw segment would decrement the right customer's balance
-// and then file the row under an id no read ever matches — invisible in their
+// `customerId` is stored as an ObjectId (CB-DL-2, flips WITH Order.customerId),
+// but it arrives as a URL path segment string, and ObjectId hex is
+// case-insensitive: Mongo casts "507F…" and "507f…" to the same _id, while the
+// two strings are NOT equal. Comparing the raw segment against a canonicalised
+// stored value would read a legitimate match as a mismatch — invisible in
 // history, missing from duesPaidTotal (so the next reconcile hands the due
 // straight back), yet still counted in the day's drawer tally, which matches on
-// createdAt alone. Canonicalise through ObjectId so every write and every read
-// agrees on one spelling.
+// createdAt alone. Canonicalise through ObjectId so every write and every
+// compare agrees on one spelling.
 export function canonicalCustomerId(id: string): string {
   return new mongoose.Types.ObjectId(id).toString();
 }
@@ -69,13 +69,14 @@ export function resolveDueAmount(input: {
 // cafe already collected.
 export async function duesPaidTotal(customerId: string): Promise<number> {
   await connectDB();
+  // customerId is now an ObjectId path (CB-DL-2 D-B item 10): a raw aggregate
+  // `$match` does not auto-cast, so the dual-spelling `$in` collapses to a
+  // single canonical ObjectId — both spellings cast identically, so this
+  // still matches every row regardless of which case the id was written in.
   const [row] = await DuePayment.aggregate<{ _id: null; total: number }>([
     {
       $match: {
-        // Both spellings, so a row written before canonicalCustomerId existed
-        // (or by any other writer of this collection) still counts toward the
-        // balance the re-derivers compute.
-        customerId: { $in: [customerId, canonicalCustomerId(customerId)] },
+        customerId: new mongoose.Types.ObjectId(canonicalCustomerId(customerId)),
         ...ACTIVE_DUE_PAYMENT,
       },
     },
@@ -137,14 +138,15 @@ export function foldDuesCollected(
 // customer-scoped) — checked here (not by scoping the lookup query) so a
 // foreign ref 409s loudly instead of falling through into a decrement.
 function replayMismatch(
-  existing: { customerId: string; amount: number; mode: SettlementPayMode },
+  existing: { customerId: mongoose.Types.ObjectId; amount: number; mode: SettlementPayMode },
   input: { customerId: string; amount?: number; mode: SettlementPayMode },
 ): boolean {
   return (
-    // Canonicalised on both sides — see canonicalCustomerId. Comparing the raw
-    // path segment would read a legitimate replay as a foreign row purely
-    // because the URL spelled the same id in different case.
-    existing.customerId !== canonicalCustomerId(input.customerId) ||
+    // Canonicalised on both sides — see canonicalCustomerId. `existing.customerId`
+    // is now a stored ObjectId (CB-DL-2), so it is stringified before compare;
+    // comparing the raw path segment would read a legitimate replay as a
+    // foreign row purely because the URL spelled the same id in different case.
+    String(existing.customerId) !== canonicalCustomerId(input.customerId) ||
     (input.amount !== undefined && existing.amount !== input.amount) ||
     existing.mode !== input.mode
   );
@@ -338,7 +340,9 @@ export async function receiveDuePayment(input: ReceiveDuePaymentInput) {
       // foreign clientRef collision) — our decrement was already reverted
       // above, but adopting a foreign row as success would silently leave
       // this customer's own attempt unrecorded. 409 loudly instead.
-      if (winner && winner.customerId !== input.customerId) {
+      // `winner.customerId` is a stored ObjectId (CB-DL-2) — stringified and
+      // canonicalised before compare, same as replayMismatch above.
+      if (winner && String(winner.customerId) !== canonicalCustomerId(input.customerId)) {
         return {
           ok: false as const,
           status: 409,

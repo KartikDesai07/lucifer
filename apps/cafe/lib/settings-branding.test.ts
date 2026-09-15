@@ -139,9 +139,12 @@ test("Settings model: appearance path exists and defaults to undefined", () => {
 
 // ── order.schema.ts: notes bound ─────────────────────────────────────────────
 
+// CB-DL-2: orderItemSchema.productId is objectIdString (24 lower-case hex) --
+// a short placeholder like "p1" now fails to parse for a reason unrelated to
+// what these notes-bound tests pin, which would mask the "accepts" case below.
 const sampleOrder = {
   customerName: "Walk-in",
-  items: [{ productId: "p1", name: "Chai", price: 20, qty: 1 }],
+  items: [{ productId: "a".repeat(24), name: "Chai", price: 20, qty: 1 }],
   subtotal: 20,
   total: 20,
   paidAmount: 20,

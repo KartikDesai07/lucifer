@@ -11,14 +11,18 @@ export const SETTINGS_KEYS = {
   all: ["settings"] as const,
 };
 
-// Restaurant + receipt settings (singleton, cached 10min to mirror the backend
-// TTL). Read on the POS, order detail, and settings pages.
+// Restaurant + receipt settings (singleton). Master data: seeded once per page
+// load from GET /api/bootstrap (MasterDataProvider) and read from the tab's own
+// copy afterwards, so the freshness window is the blob's 24h, not the backend
+// TTL — a save still invalidates this key in the same tab (useUpdateSettings),
+// and a page refresh re-fetches the bootstrap. Read on the POS, order detail,
+// and settings pages.
 export function useSettings() {
   return useQuery({
     queryKey: SETTINGS_KEYS.all,
     queryFn: () => apiGet<Settings>("/api/settings"),
-    staleTime: STALE_TIMES.SETTINGS,
-    gcTime: GC_TIMES.SETTINGS,
+    staleTime: STALE_TIMES.MASTERS,
+    gcTime: GC_TIMES.MASTERS,
   });
 }
 

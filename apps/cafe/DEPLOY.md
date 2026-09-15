@@ -97,8 +97,152 @@ npm run deploy -- --profile <client>     # from the REPO ROOT, never from apps/c
 `--profile`. `scripts/deploy.mjs` uploads the whole workspace (the app alone cannot
 resolve the `@pos/shared` workspace package) and the project's Root Directory setting
 selects what to build. A bare `npm run deploy` with no profile is refused on purpose,
-so a client deploy can never land on the wrong project. `.gitignore` is respected, so
-`.env.local` is never uploaded.
+so a client deploy can never land on the wrong project. **The Vercel CLI does NOT read
+`.gitignore`**: what gets uploaded is decided by the repo-root `.vercelignore` plus the
+CLI's own default exclusions (`.env.local`, `node_modules`, `.git`, `.vercel` …) — so
+every secret-bearing path (`clients/`, `deploy.profiles.json`, every `.env*`) is listed
+in `.vercelignore` too. Add there, not to `.gitignore`, when a new one appears.
+
+### One command for a new cafe: `npm run go-live -- <client>`
+
+Prefer the **owner console**: `npm run go-live:ui` (or double-click `go-live-ui.cmd`)
+opens a local page at http://127.0.0.1:4848 that edits the same client files with a
+form — cafe details, Vercel/Atlas logins and tokens, admin credentials, notes — and
+runs Dry run / Go live / Redeploy / Health with a live log. Owner-only, loopback-only,
+never part of the product.
+
+**Web address (console ⚙ Platform → `clients/_platform.json`):** every cafe is served
+at `<subdomain>.<apex>` on the ONE owner-controlled apex domain recorded there (no
+per-client "own domain" any more). The Hosting card's Web address field takes just the
+first label; the panel below it shows a status chip, the CNAME/TXT records to add at
+the DNS provider, and a **Check DNS & verify** button. Go live/Update on Vercel attaches
+and verifies the address but only **switches** TENANT_ID to it once DNS/TLS are ready
+(`state: ready`; "reachable" means the address answers as one of this cafe's own
+tenant ids, never just any site) — until then the cafe keeps serving its current host
+and the console shows **HOLD**. On a real switch the old `*.vercel.app` address (and, after
+a rename, the old `<sub>.<apex>` name) is left **redirecting** to the new one (so old printed QR codes and bookmarks keep working) and the after-switch
+checklist appears: staff sign in again, counter PC → "Change server address…", Settings →
+Telegram → Repair webhook, R2 bucket CORS → add the new origin. **More ▾ → Revert web
+address…** removes the redirects first, then goes back to the `*.vercel.app` address (the
+subdomain stays attached in Vercel until removed by hand). `--check-dns` on the CLI does
+the same DNS/verify check without deploying.
+
+**Fresh start on Vercel (Danger zone / `--fresh-start --confirm <slug> --confirm-project
+<name>`):** deletes the client's Vercel project (all its `*.vercel.app` names, the web address,
+env vars, deployments, WAF rules) and deploys fresh into the SAME account — database, images,
+logins and secrets untouched. Guards (nothing is deleted before all pass): deploy lock, typed
+slug, typed project name that must also equal what Vercel reports for the recorded id, token
+reaches the project, no rollout running. The cafe is offline from the delete until the new
+deploy finishes (≈ 3–5 min); the new project may get a suffixed `*.vercel.app` name — the web
+address is the stable URL; re-add the 3 WAF rules by hand.
+
+**Console layout:** sidebar Dashboard (KPIs + clients table + recent runs) · Clients ·
+Rollouts · Archive · Platform; a client opens as tabs (Overview · Hosting · Database & images ·
+POS setup · Contact & notes · Danger zone). Routes live in the URL hash (`#/client/<slug>/<tab>`).
+
+**One deploy at a time per client, from anywhere:** every client-changing run (console job,
+`node scripts/go-live/index.mjs <slug> …`, `deploy.mjs --profile <slug>`, a rollout target) takes
+`clients/_locks/<slug>.lock` (pid inside; a dead pid is taken over automatically). A second start
+is refused with the holder's action/pid. The top bar shows the running job or foreign lock with
+**Stop…** (kills the console's own job) and **Force stop & unlock…** (typed slug; kills the other
+process only if it is provably ours — a node process started when the lock says — then frees the
+lock once it is gone); **↻ Refresh** re-reads the record, the current job and the locks.
+
+**Interrupted first run (e.g. after Fresh start):** the deploy profile is written the moment the
+project exists, `lastRun` shows `running` from the start (so a console closed mid-run leaves
+`interrupted` visible), Redeploy stays disabled until the set-up finished (`generated.host`), and
+**Update on Vercel** continues from where it stopped — a project with no production deployment yet
+is deployed straight onto its web address (nothing serves, so there is no HOLD). `deploy.mjs`
+rebuilds a missing profile from the client record when the set-up had finished, else points to
+Update on Vercel. After the first seed the
+console marks cafe details, admin login, tables and menu as **record-only** — that data
+lives in the POS from then on (sidebar: Tables · Menu / Categories · Settings) and a
+re-seed touches only what is still EMPTY (no products yet → starter menu; no tables →
+starter tables; no admin; no settings); "Edit anyway" exists only for seeding a NEW,
+empty database. Lifecycle lives under **More ▾**: *Clone as new client* (starter setup
+only, no credentials), *Move hosting to another Vercel account* (path A = Vercel's own
+**Transfer Project**, same URL; path B = forget the recorded project and let the next
+run create a fresh one in the new account), *Reset demo database* (clients ticked
+"Demo client" only — drops the database, seeds fresh; typed slug + database-name
+guards, re-checked by `apps/cafe/scripts/reset-demo-db.ts`), and *Archive client*
+(moves the file to `clients/_archive/`, restorable; ticks `deployLock` and parks ALL of its
+deploy profiles — the primary `<slug>` and every `<slug>-<label>` — inside the record so
+neither the console nor `npm run deploy` can deploy a retired cafe; nothing on Vercel/Atlas
+changes — the dialog lists the retire steps: mongodump first, delete each Vercel project
+(primary and every standby account), terminate the Atlas cluster, revoke the tokens/user).
+`scripts/deploy.mjs` refuses a profile whose owning record (active or archived, by slug or
+`<slug>-<label>`) is archived or carries `deployLock: true`, and a profile claimed by more
+than one record. One project per client forever: the
+recorded project id is adopted before any name lookup; a recorded project the token
+cannot see stops the run unless a same-named project exists in that account (a Vercel
+transfer) — it never creates a second project behind your back. **Standby hosts**
+(Hosting → Standby hosts, or `standbyHosts[]` in the file): the same cafe deployed to
+other Vercel accounts as warm spares — same database, images and auth secret (same POS
+usernames/passwords; the session cookie is per address, so staff sign in once per host),
+each with its own token, project (`<slug>-<label>`), `*.vercel.app` URL and deploy profile
+(`npm run deploy -- --profile <slug>-<label>`); no seeding from a standby (the primary must
+have seeded first); the web address stays on the primary. `npm run go-live -- <client>
+--host <label>`. A standby label whose `<slug>-<label>` equals another client's slug is
+refused. **Deploy update to ALL clients** (More ▾, or `npm run go-live -- --deploy-all
+[--resume]`): every deployed, unlocked primary and standby is redeployed ONE AFTER ANOTHER
+(plain `deploy.mjs --profile`, env and data untouched); a failed target is recorded and the
+queue continues; the state lives in `clients/_rollout.json` after every step, so a PC that
+switches off resumes with only the unfinished/failed targets. One driver at a time: a
+`clients/_rollout.lock` (pid) stops the console and the CLI from deploying the same list
+simultaneously — the console shows a CLI-driven rollout read-only, and a lock whose process
+is gone is taken over (that is the resume). **Delete client** exists only
+for records with no history (never deployed/seeded); anything else goes Archive → retire →
+"Delete permanently" from the Archived list, always with the slug typed.
+
+Everything in this section (project, Root Directory, env vars, profile, deploy,
+health check) plus the first-run seed is one command, driven by ONE file:
+
+```bash
+cp scripts/go-live/client.example.json clients/<name>.json   # or demo.example.json
+#  fill in: vercel.token (client's Vercel → Settings → Tokens), mongodbUri (Atlas
+#  SRV ending in /pos), admin.password, cafe.name … — see the _readme in the file
+node scripts/go-live/index.mjs <name>            # or double-click go-live.cmd
+node scripts/go-live/index.mjs <name> --dry-run  # validate + show the plan only
+# `npm run go-live -- <name> …` is the same thing, but from PowerShell npm drops the
+# flags after `--` — use the node form there.
+```
+
+What it does, in order: validates the file · seeds the cafe's database (settings,
+admin, tables, starter menu — never overwriting existing data) · creates the Vercel
+project with **Root Directory = `apps/cafe`** (or adopts it if it exists) · reads the
+domain Vercel actually assigned and derives `TENANT_ID`/`ROOT_DOMAIN` from it (or
+attaches the custom `domain` you named) · mints `NEXTAUTH_SECRET`/`AUTH_SECRET` +
+`HEALTH_STATS_TOKEN` once · saves every env var on the project via the API · writes
+the `deploy.profiles.json` profile · runs `scripts/deploy.mjs --profile <name>` ·
+polls `/api/health` until `ok:true, db:"up"` with the right tenant. Re-running is safe
+and continues where it stopped. `clients/<name>.json` holds live credentials: it is
+gitignored and `.vercelignore`d — keep it out of chat, mail and screenshots. Still
+manual afterwards: the 3 WAF rules and, with R2, the bucket CORS rule (checklist §1).
+
+### Demo data
+
+For a client ticked `"demo": true`, **Danger zone → Reset & seed demo data…** (or
+`--seed-demo`) drops its database and builds a month of realistic content to show
+prospective clients: a full menu (categories, 100+ products, photos), 40
+customers with dues, ~31 days of orders (dine-in and takeaway, cash/online/split/
+due payments, a few voids and cancellations, 3 open tabs today), events,
+reservations, and QR self-order requests. Staff logins (`priya` / `rahul` /
+`amit`) share the seeded admin's password. Vercel is not touched — same
+project, same URL, same env.
+
+```bash
+node scripts/go-live/index.mjs <demo-client> --seed-demo --confirm <slug> --confirm-db <database> [--images <dir>]
+```
+
+- `--images <dir>` (or the console's "Images folder on this PC" field) points at
+  a folder of product photos on this machine; uploading them needs the R2 keys
+  set on the client file's `image` block — without R2 configured, or without
+  `--images`, the photos are skipped and the rest of the demo still builds.
+- Same three guards as **Reset demo database**: the file must say `"demo": true`,
+  the typed slug must equal it, and the typed database name must equal the one
+  the file's `mongodbUri` points at right now.
+- Re-running **drops and rebuilds from scratch** — never point this at a live
+  cafe's database.
 
 ### Do NOT use GitHub auto-deploy for a client
 

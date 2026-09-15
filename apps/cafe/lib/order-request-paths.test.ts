@@ -63,18 +63,26 @@ function mustIndexOf(src: string, needle: string, label: string): number {
 const ACCEPT_LIB = "apps/cafe/lib/order-request-accept.ts";
 const ACCEPT_CORE = "apps/cafe/lib/order-request-accept-core.ts";
 const ACCEPT_WRITE = "apps/cafe/lib/order-request-accept-write.ts";
+// CB-5B S7 split — acceptAddRoundBranch (the add-round branch's own
+// orchestration) moved out of -write.ts into this FIFTH sibling for the
+// ~300-line budget. Pins that read the add-round branch's text follow it here.
+const ACCEPT_ADDROUND = "apps/cafe/lib/order-request-accept-addround.ts";
 const ACCEPT_PROMO = "apps/cafe/lib/order-request-accept-promo.ts";
 // CR2.3 §20 mechanical split (S1b line-budget fix) — buildFallbackRequest's
 // own fifth sibling.
 const ACCEPT_FALLBACK = "apps/cafe/lib/order-request-accept-fallback.ts";
 const PUBLIC_PRICING = "apps/cafe/lib/public-pricing.ts";
 const PUBLIC_ORDER_REQUEST_ROUTE = "apps/cafe/app/api/public/order-request/route.ts";
+// CB-4 split — steps 1-5 of POST's control flow (bot/host/size/parse/honeypot)
+// moved here to keep the route under the ~300-line cap.
+const PUBLIC_ORDER_INTAKE_LIB = "apps/cafe/lib/public-order-intake.ts";
 const PUBLIC_ORDER_REQUEST_STATUS_ROUTE =
   "apps/cafe/app/api/public/order-request/[shortCode]/route.ts";
 const STAFF_ACCEPT_ROUTE = "apps/cafe/app/api/order-requests/[id]/accept/route.ts";
 const NEXT_CONFIG = "apps/cafe/next.config.ts";
 const INSTRUMENTATION_CLIENT = "apps/cafe/instrumentation-client.ts";
 const POS_PAGE = "apps/cafe/app/(dashboard)/pos/page.tsx";
+const SELF_ORDER_AUTO_PRINT = "apps/cafe/components/pos/SelfOrderAutoPrint.tsx";
 const REQUESTS_PAGE = "apps/cafe/app/(dashboard)/requests/page.tsx";
 const REQUESTS_BOARD = "apps/cafe/components/orders/RequestsBoard.tsx";
 const ORDER_REQUEST_CARD = "apps/cafe/components/orders/OrderRequestCard.tsx";
@@ -86,7 +94,14 @@ const M_PAGE = "apps/cafe/app/m/page.tsx";
 const M_TOKEN_PAGE = "apps/cafe/app/m/[token]/page.tsx";
 const M_STATUS_PAGE = "apps/cafe/app/m/o/[shortCode]/page.tsx";
 const PUBLIC_ORDER_FLOW = "apps/cafe/components/public/PublicOrderFlow.tsx";
+// CB-4 — the 3-tab diner shell now wrapping PublicOrderFlow on both /m pages.
+const PUBLIC_DINER_SHELL = "apps/cafe/components/public/PublicDinerShell.tsx";
 const PUBLIC_CART = "apps/cafe/components/public/PublicCart.tsx";
+// CB-4 split — the submit state machine (identity state, promo draft,
+// handleSubmit) moved out of PublicCart.tsx into its own hook so the
+// component stays under this repo's ~300-line budget; pins that read
+// handleSubmit's own body/behavior must follow it here.
+const PUBLIC_CART_SUBMIT = "apps/cafe/components/public/use-public-cart-submit.ts";
 const PUBLIC_ORDER_STATUS = "apps/cafe/components/public/PublicOrderStatus.tsx";
 const ORDER_REQUEST_MODEL = "apps/cafe/models/OrderRequest.ts";
 const SHARED_PUBLIC = "packages/shared/src/public.ts";
@@ -115,6 +130,12 @@ test("PIN: order-request-accept.ts + order-request-accept-core.ts + order-reques
   // currently lives in.
   const combined =
     stripComments(readSrc(ACCEPT_LIB)) +
+    "\n" +
+    // CB-5B S7 — the FIFTH sibling. The add-round branch's own helper calls
+    // (computeOrderTotals, buildKotNumbers, mergedNote, printedSlipNumber,
+    // nextSlipSequence) moved with it, so the combined text must include this
+    // file or the invariant below would silently stop being proved.
+    stripComments(readSrc(ACCEPT_ADDROUND)) +
     "\n" +
     stripComments(readSrc(ACCEPT_CORE)) +
     "\n" +
@@ -235,7 +256,13 @@ test('PIN: buildAddRoundFilter carries ALL FIVE CAS terms — status:"Pending", 
 // ── D. Public POST control order + honeypot-before-create ──────────────────
 
 test("PIN: POST /api/public/order-request runs its controls in the documented order — checkBotId, then the host gate, then body-size (.text), then JSON.parse, then the rate limit — never reordered past each other", () => {
-  const src = stripComments(readSrc(PUBLIC_ORDER_REQUEST_ROUTE));
+  // CB-4 split — steps 1-5 (bot/host/size/parse/honeypot) moved to
+  // lib/public-order-intake.ts (intakePublicOrderRequest), called from the
+  // route before step 6; combined so this pin still proves the same
+  // cross-step order regardless of which file a given check currently lives
+  // in (mirrors the ORDER_REQUEST_CREATE_LIB combine pattern below).
+  const src =
+    stripComments(readSrc(PUBLIC_ORDER_INTAKE_LIB)) + "\n" + stripComments(readSrc(PUBLIC_ORDER_REQUEST_ROUTE));
   const botIdx = mustIndexOf(src, "checkBotId(", "the BotID check");
   const hostIdx = mustIndexOf(src, "resolveTenantFromHost(", "the host gate");
   const textIdx = mustIndexOf(src, ".text(", "the body-size read (req.text())");
@@ -252,7 +279,11 @@ test("PIN: POST /api/public/order-request runs its controls in the documented or
 });
 
 test("PIN: the honeypot field is lifted off the RAW body (pre-Zod) and handled BEFORE OrderRequest.create — a bot that fills `hp` gets a pretend success, never a stored row", () => {
-  const src = stripComments(readSrc(PUBLIC_ORDER_REQUEST_ROUTE));
+  // CB-4 split — the hp lift/strip/Zod parse moved to lib/public-order-intake.ts;
+  // OrderRequest.create( stays in the route (step 9). Combined, same reason
+  // as the pin above.
+  const src =
+    stripComments(readSrc(PUBLIC_ORDER_INTAKE_LIB)) + "\n" + stripComments(readSrc(PUBLIC_ORDER_REQUEST_ROUTE));
   // The hp read happens on the raw parsed object, BEFORE the Zod schema (which
   // deliberately no longer knows the field — an over-long hp must never 400,
   // that would be a tell). `delete bodyObj.hp` keeps .strict() satisfied.
@@ -272,7 +303,13 @@ test("PIN: the honeypot field is lifted off the RAW body (pre-Zod) and handled B
 // ── E. No client-supplied table name / no IP-keyed rate limit ──────────────
 
 test("PIN: POST /api/public/order-request never reads a client-sent table NAME and never rate-limits by IP — the bucket key is the table TOKEN or the shared parcel bucket", () => {
-  const src = stripComments(readSrc(PUBLIC_ORDER_REQUEST_ROUTE));
+  // CB-4 split — the bucket/max derivation moved to lib/public-order-intake.ts
+  // alongside the honeypot branch that consumes it; the route.ts source is
+  // still scanned (and combined) so the two no-IP/no-tableNo bans keep
+  // covering BOTH files, not just the one that kept the literal bucket line.
+  const routeSrc = stripComments(readSrc(PUBLIC_ORDER_REQUEST_ROUTE));
+  const intakeSrc = stripComments(readSrc(PUBLIC_ORDER_INTAKE_LIB));
+  const src = intakeSrc + "\n" + routeSrc;
   // Mutation this catches: trusting `parsed.data.tableNo` / `body.tableNo` /
   // `raw` for the table identity instead of resolving it server-side from the
   // opaque publicToken — a client-named table lets a diner spam or read a
@@ -280,17 +317,18 @@ test("PIN: POST /api/public/order-request never reads a client-sent table NAME a
   // exists client-side for exactly this; the server must never undo it).
   assert.ok(
     !/tableNo\s*[:=]\s*(parsed|body|raw)/.test(src),
-    "the route must never read tableNo off parsed/body/raw",
+    "neither file may ever read tableNo off parsed/body/raw",
   );
   // Mutation this catches: keying the rate limit on the caller's IP — a
   // cafe's WiFi is one shared egress, so an IP-keyed limit either starves
   // every diner in the room over one table's traffic or does nothing at all
   // (file-level comment, control #7).
-  assert.ok(!/x-forwarded-for/.test(src), "the route must never read x-forwarded-for");
-  assert.ok(!/req\.ip\b/.test(src), "the route must never read req.ip");
+  assert.ok(!/x-forwarded-for/.test(src), "neither file may ever read x-forwarded-for");
+  assert.ok(!/req\.ip\b/.test(src), "neither file may ever read req.ip");
 
+  // The bucket derivation itself now lives in lib/public-order-intake.ts.
   assert.match(
-    src,
+    intakeSrc,
     /const bucket = data\.target\.kind === "table" \? data\.target\.token : PARCEL_BUCKET_KEY;/,
     "the rate-limit bucket must be the table token or PARCEL_BUCKET_KEY",
   );
@@ -587,28 +625,42 @@ test("PIN: both /m entry pages render <PublicOrderFlow, PublicOrderFlow renders 
   // these regexes still pin the SAME render + the SAME `token` prop on the
   // token page, just tolerant of the added prop rather than requiring the
   // tag to close immediately after it.
+  // CB-4 re-point (same spirit as the CR2.4 one above): PublicDinerShell now
+  // sits between the pages and PublicOrderFlow — the 3-tab diner shell wraps
+  // the menu instead of editing it. The chain is pinned END TO END below
+  // (page -> shell -> PublicOrderFlow), so it still proves real reachability
+  // rather than being loosened to "the component is imported somewhere".
   const mPageSrc = stripComments(readSrc(M_PAGE));
-  assert.match(mPageSrc, /<PublicOrderFlow\s+chrome=\{chrome\}\s*\/>/, "app/m/page.tsx must render <PublicOrderFlow chrome={chrome} />");
+  assert.match(mPageSrc, /<PublicDinerShell\b/, "app/m/page.tsx must render <PublicDinerShell");
+  assert.match(mPageSrc, /chrome=\{chrome\}/, "app/m/page.tsx must pass chrome into the shell");
 
   const mTokenPageSrc = stripComments(readSrc(M_TOKEN_PAGE));
+  assert.match(mTokenPageSrc, /<PublicDinerShell\b/, "app/m/[token]/page.tsx must render <PublicDinerShell");
+  assert.match(mTokenPageSrc, /token=\{token\}/, "app/m/[token]/page.tsx must pass token into the shell");
+
+  // The added hop: without this, a shell that accepted the props and never
+  // rendered the menu would satisfy the two asserts above.
+  const shellSrc = stripComments(readSrc(PUBLIC_DINER_SHELL));
   assert.match(
-    mTokenPageSrc,
+    shellSrc,
     /<PublicOrderFlow token=\{token\} chrome=\{chrome\}\s*\/>/,
-    "app/m/[token]/page.tsx must render <PublicOrderFlow token={token} chrome={chrome} />",
+    "PublicDinerShell must render <PublicOrderFlow token={token} chrome={chrome} />",
   );
 
   const flowSrc = stripComments(readSrc(PUBLIC_ORDER_FLOW));
   assert.match(flowSrc, /<PublicCart\b/, "PublicOrderFlow must render <PublicCart");
   assert.match(flowSrc, /<PublicItemSheet\b/, "PublicOrderFlow must render <PublicItemSheet");
 
-  const cartSrc = stripComments(readSrc(PUBLIC_CART));
+  // CB-4 split — ORDER_REQUEST_ENDPOINT/fetch/pushMyCode now live in the
+  // handleSubmit hook PublicCart consumes, not the component file itself.
+  const cartSubmitSrc = stripComments(readSrc(PUBLIC_CART_SUBMIT));
   assert.match(
-    cartSrc,
+    cartSubmitSrc,
     /ORDER_REQUEST_ENDPOINT = "\/api\/public\/order-request";/,
-    'PublicCart must target "/api/public/order-request"',
+    'usePublicCartSubmit must target "/api/public/order-request"',
   );
-  assert.match(cartSrc, /fetch\(ORDER_REQUEST_ENDPOINT/, "PublicCart must actually fetch that endpoint");
-  assert.match(cartSrc, /pushMyCode\(/, "PublicCart must call pushMyCode on a successful submit");
+  assert.match(cartSubmitSrc, /fetch\(ORDER_REQUEST_ENDPOINT/, "usePublicCartSubmit must actually fetch that endpoint");
+  assert.match(cartSubmitSrc, /pushMyCode\(/, "usePublicCartSubmit must call pushMyCode on a successful submit");
 
   const statusPageSrc = stripComments(readSrc(M_STATUS_PAGE));
   const isCodeIdx = mustIndexOf(statusPageSrc, "isPublicCode(shortCode)", "the isPublicCode shape check");
@@ -697,7 +749,9 @@ test("PIN: PublicOrderRequestCreatedData is imported by BOTH the POST route and 
   };
 
   importsType(PUBLIC_ORDER_REQUEST_ROUTE, "PublicOrderRequestCreatedData");
-  importsType(PUBLIC_CART, "PublicOrderRequestCreatedData");
+  // CB-4 split — the 201 envelope typing lives in handleSubmit, which moved
+  // into usePublicCartSubmit; PublicCart.tsx itself no longer imports this type.
+  importsType(PUBLIC_CART_SUBMIT, "PublicOrderRequestCreatedData");
   importsType(PUBLIC_ORDER_REQUEST_STATUS_ROUTE, "PublicOrderRequestStatusData");
   importsType(PUBLIC_ORDER_STATUS, "PublicOrderRequestStatusData");
 });
@@ -753,7 +807,7 @@ test('PIN: usePendingOrderRequests fetches "?status=open" (pending + accepting),
   assert.ok(!/status=pending/.test(fnBody), "usePendingOrderRequests must not fetch status=pending");
 });
 
-test("PIN: CR2.3 §20 reachability — the dashboard layout renders PosPulseProvider AND RequestAlertBar, and both pos/page.tsx and requests/page.tsx call useSelfOrderAutoPrint (CR2.1's dead-hook lesson, run again on the pulse slice)", () => {
+test("PIN: CR2.3 §20 reachability — the dashboard layout renders PosPulseProvider AND RequestAlertBar, pos/page.tsx renders SelfOrderAutoPrint → useSelfOrderAutoPrint (CB-1d.3b C1), requests/page.tsx calls it directly (CR2.1's dead-hook lesson, run again on the pulse slice)", () => {
   const layoutSrc = stripComments(readSrc(DASHBOARD_LAYOUT));
   assert.match(
     layoutSrc,
@@ -768,13 +822,90 @@ test("PIN: CR2.3 §20 reachability — the dashboard layout renders PosPulseProv
   );
   assert.match(layoutSrc, /<RequestAlertBar\s*\/>/, "the dashboard layout must render <RequestAlertBar />");
 
+  // PH-10 Slice C2 — layout cardinality (RAW source, not stripComments): the
+  // dashboard layout must render <PrintHostProvider> and <PrintHostPrintSources />
+  // EXACTLY ONCE each (MEASURED). Ordering (nested inside PosPulseProvider,
+  // PrintHostPrintSources between <main> and </SidebarInset>) is already
+  // discharged by print-host-paths.test.ts's PIN A; PrintHostCard reachability
+  // is discharged by print-host-card-paths.test.ts:42-58 — this test adds only
+  // the net-new cardinality fact, no duplicate assertions.
+  const rawLayoutSrc = readSrc(DASHBOARD_LAYOUT);
+  assert.equal(
+    (rawLayoutSrc.match(/<PrintHostProvider>/g) ?? []).length,
+    1,
+    "the dashboard layout must render exactly one <PrintHostProvider>",
+  );
+  assert.equal(
+    (rawLayoutSrc.match(/<PrintHostPrintSources\s*\/>/g) ?? []).length,
+    1,
+    "the dashboard layout must render exactly one <PrintHostPrintSources />",
+  );
+
+  // CB-DL-1 S5 — MasterDataProvider reachability + cardinality + position.
+  // The provider is what turns five per-screen master fetches into one call
+  // per page load; it is only ever reachable through this layout, so a
+  // dropped wrapper would silently restore the old fetch storm with every
+  // screen still working. Same cardinality style as the two asserts above.
+  assert.match(
+    layoutSrc,
+    /import \{ MasterDataProvider \} from "@\/components\/layout\/MasterDataProvider";/,
+    "the dashboard layout must import MasterDataProvider",
+  );
+  assert.equal(
+    (rawLayoutSrc.match(/<MasterDataProvider>/g) ?? []).length,
+    1,
+    "the dashboard layout must render exactly one <MasterDataProvider>",
+  );
+  assert.equal(
+    (rawLayoutSrc.match(/<\/MasterDataProvider>/g) ?? []).length,
+    1,
+    "the dashboard layout must close exactly one </MasterDataProvider>",
+  );
+  // Position: INSIDE PrintHostProvider (it needs the QueryClient and the
+  // session, both provided further up in app/layout.tsx, and nesting it here
+  // leaves the two cardinality asserts above matching unchanged strings) and
+  // ABOVE <SessionKeepalive /> — the seed must already have happened before
+  // any child of the shell mounts and fires its own master fetch.
+  const masterProviderIdx = rawLayoutSrc.indexOf("<MasterDataProvider>");
+  const printHostIdx = rawLayoutSrc.indexOf("<PrintHostProvider>");
+  const keepaliveIdx = rawLayoutSrc.search(/<SessionKeepalive\s*\/>/);
+  assert.ok(masterProviderIdx >= 0, "positive landmark: <MasterDataProvider> must be present to compare positions");
+  assert.ok(printHostIdx >= 0, "positive landmark: <PrintHostProvider> must be present to compare positions");
+  assert.ok(keepaliveIdx >= 0, "positive landmark: <SessionKeepalive /> must be present to compare positions");
+  assert.ok(
+    printHostIdx < masterProviderIdx,
+    `<MasterDataProvider> (index ${masterProviderIdx}) must sit INSIDE <PrintHostProvider> (index ${printHostIdx})`,
+  );
+  assert.ok(
+    masterProviderIdx < keepaliveIdx,
+    `<MasterDataProvider> (index ${masterProviderIdx}) must wrap <SessionKeepalive /> (index ${keepaliveIdx}) — the synchronous master seed must run before any shell child mounts`,
+  );
+
+  // CB-1d.3b C1 — pos/page.tsx no longer calls useSelfOrderAutoPrint directly
+  // (that subscription in PosPage's own render path was the ~187-render bug);
+  // it now renders the null-rendering <SelfOrderAutoPrint> child, which is the
+  // one that actually calls the hook.
   const posSrc = stripComments(readSrc(POS_PAGE));
   assert.match(
     posSrc,
-    /import \{ useSelfOrderAutoPrint \} from "@\/hooks\/use-self-order-auto-print";/,
-    "pos/page.tsx must import useSelfOrderAutoPrint",
+    /import \{ SelfOrderAutoPrint \} from "@\/components\/pos\/SelfOrderAutoPrint";/,
+    "pos/page.tsx must import SelfOrderAutoPrint",
   );
-  assert.match(posSrc, /useSelfOrderAutoPrint\(\{/, "pos/page.tsx must actually call useSelfOrderAutoPrint");
+  assert.match(posSrc, /<SelfOrderAutoPrint\b/, "pos/page.tsx must render <SelfOrderAutoPrint");
+  assert.match(posSrc, /busy=\{printBusy \|\| pos\.isBusy\}/, "pos/page.tsx must pass busy={printBusy || pos.isBusy} into <SelfOrderAutoPrint");
+  assert.match(posSrc, /queueKotRound=\{pos\.queueKotRound\}/, "pos/page.tsx must pass queueKotRound={pos.queueKotRound} into <SelfOrderAutoPrint");
+
+  const selfOrderAutoPrintSrc = stripComments(readSrc(SELF_ORDER_AUTO_PRINT));
+  assert.match(
+    selfOrderAutoPrintSrc,
+    /import \{ useSelfOrderAutoPrint \} from "@\/hooks\/use-self-order-auto-print";/,
+    "components/pos/SelfOrderAutoPrint.tsx must import useSelfOrderAutoPrint",
+  );
+  assert.match(
+    selfOrderAutoPrintSrc,
+    /useSelfOrderAutoPrint\(\{ enabled: true, busy, queueKotRound \}\)/,
+    "components/pos/SelfOrderAutoPrint.tsx must actually call useSelfOrderAutoPrint({ enabled: true, busy, queueKotRound })",
+  );
 
   const requestsSrc = stripComments(readSrc(REQUESTS_PAGE));
   assert.match(
@@ -787,15 +918,20 @@ test("PIN: CR2.3 §20 reachability — the dashboard layout renders PosPulseProv
     /useSelfOrderAutoPrint\(\{/,
     "requests/page.tsx must actually call useSelfOrderAutoPrint",
   );
+  // PH-10b Slice T re-point: the per-device toggles now live behind a single
+  // Device settings button (DeviceAlertSettingsDialog wraps DeviceAlertSettings
+  // — reachability through that 2-hop chain is pinned in
+  // print-host-card-paths.test.ts PIN (a)); this page itself imports the
+  // dialog wrapper, not DeviceAlertSettings directly any more.
   assert.match(
     requestsSrc,
-    /import \{ DeviceAlertSettings \} from "@\/components\/orders\/DeviceAlertSettings";/,
-    "requests/page.tsx must import DeviceAlertSettings",
+    /import \{ DeviceAlertSettingsDialog \} from "@\/components\/orders\/DeviceAlertSettingsDialog";/,
+    "requests/page.tsx must import DeviceAlertSettingsDialog",
   );
   assert.match(
     requestsSrc,
-    /<DeviceAlertSettings\s*\/>/,
-    "requests/page.tsx must render <DeviceAlertSettings />",
+    /<DeviceAlertSettingsDialog\s*\/>/,
+    "requests/page.tsx must render <DeviceAlertSettingsDialog />",
   );
 });
 
@@ -894,7 +1030,9 @@ test("PIN: PUT /api/settings invalidates the public menu cache too — restauran
 });
 
 test('PIN: the public order-request route\'s honeypot trigger accepts ANY non-empty `hp` value, not only a string ("!== undefined" source shape)', () => {
-  const src = stripComments(readSrc(PUBLIC_ORDER_REQUEST_ROUTE));
+  // CB-4 split — the honeypot lift itself now lives in lib/public-order-intake.ts
+  // (intakePublicOrderRequest, step 4/5), re-pointed here, same regex.
+  const src = stripComments(readSrc(PUBLIC_ORDER_INTAKE_LIB));
   // Mutation this catches: reverting to `typeof bodyObj?.hp === "string"`,
   // which lets a bot that sends a non-string hp (an object/number/bool) slip
   // through as an honest request instead of tripping the honeypot.
@@ -906,7 +1044,10 @@ test('PIN: the public order-request route\'s honeypot trigger accepts ANY non-em
 });
 
 test("PIN: the honeypot branch peeks the rate limit (never increments) before doing buildHoneypotResponse's own DB reads", () => {
-  const src = stripComments(readSrc(PUBLIC_ORDER_REQUEST_ROUTE));
+  // CB-4 split — the honeypot branch (peekRateLimit -> buildHoneypotResponse)
+  // now lives in lib/public-order-intake.ts (step 5), re-pointed here, same
+  // ordering assertion.
+  const src = stripComments(readSrc(PUBLIC_ORDER_INTAKE_LIB));
   const peekIdx = mustIndexOf(src, "peekRateLimit(", "the honeypot metering peek");
   const buildIdx = mustIndexOf(src, "await buildHoneypotResponse(data)", "the priced honeypot simulation");
   // Mutation this catches: doing the full Table/Product/Settings simulation
@@ -1036,12 +1177,22 @@ test("PIN: a rejected promo costs no order-request slot, and the honeypot answer
   const failIdx = post.indexOf("failure(promo.error, 422)", refundIdx);
   assert.ok(failIdx > refundIdx, "the refund must run before the 422 is returned");
   // Mutation this catches: the honeypot 201ing a code the real path 422s —
-  // one probe then tells the pretend path apart.
-  assert.match(post, /if \("promoError" in pretend\) return noStore\(failure\(pretend\.promoError, 422\)\)/, "the honeypot must mirror the promo 422");
+  // one probe then tells the pretend path apart. CB-4 split — this exact
+  // branch now lives in lib/public-order-intake.ts (the honeypot branch, step
+  // 5), re-pointed here, same regex.
+  const intake = stripComments(readSrc(PUBLIC_ORDER_INTAKE_LIB));
+  assert.match(intake, /if \("promoError" in pretend\)/, "the honeypot must check for a promoError");
+  assert.match(
+    intake,
+    /response: noStore\(failure\(pretend\.promoError, 422\)\)/,
+    "the honeypot must mirror the promo 422",
+  );
 });
 
 test("PIN: promo money is whole-rupee only — computeOrderTotals rounds the stored discount, so a fractional configured value would make every request using it fail the accept-side compare forever", () => {
-  const schema = stripComments(readSrc("packages/shared/src/schemas/settings.schema.ts"));
+  // CB-5A S1 moved the promo schemas off settings.schema.ts onto
+  // settings-print.schema.ts (the ~300-line split) — re-pointed here, same regexes.
+  const schema = stripComments(readSrc("packages/shared/src/schemas/settings-print.schema.ts"));
   assert.match(schema, /value: z\.number\(\)\.int\(/, "a promo value must be an integer");
   assert.match(schema, /minSubtotal: z\.number\(\)\.int\(/, "a promo minimum must be an integer");
 });
@@ -1058,11 +1209,11 @@ test("PIN: the diner's edit screen classifies a promo 422 by its MESSAGE, never 
   );
 });
 
-test("PIN: the promo-code feature is REACHABLE end to end — the staff editor renders inside the settings form, the diner control renders on BOTH the cart and the pending-edit screen, and the promo reaches the staff card through the tray projection (CR2.1's dead-hook lesson)", () => {
-  const settingsForm = stripComments(readSrc("apps/cafe/components/settings/SettingsForm.tsx"));
-  assert.match(settingsForm, /<PromoCodesFields/, "SettingsForm must actually render the promo editor");
+test("PIN: the promo-code feature is REACHABLE end to end — the staff editor renders on the qr-ordering settings section page, the diner control renders on BOTH the cart and the pending-edit screen, and the promo reaches the staff card through the tray projection (CR2.1's dead-hook lesson; CB-UI1 S6: re-pointed off the retired SettingsForm.tsx to the qr-ordering section page)", () => {
+  const qrOrderingPage = stripComments(readSrc("apps/cafe/app/(dashboard)/settings/qr-ordering/page.tsx"));
+  assert.match(qrOrderingPage, /<PromoCodesFields/, "settings/qr-ordering/page.tsx must actually render the promo editor");
   assert.match(
-    settingsForm,
+    qrOrderingPage,
     /from "@\/components\/settings\/PromoCodesFields"/,
     "and import it from its own module",
   );
@@ -1073,9 +1224,12 @@ test("PIN: the promo-code feature is REACHABLE end to end — the staff editor r
   assert.match(statusItems, /<PublicPromoField/, "the pending-edit screen must render it too");
   // Mutation this catches: the client computing a discount itself — money is
   // the server's answer, the client only ever sends the CODE (project lesson:
-  // client-money-must-encode-intent).
+  // client-money-must-encode-intent). CB-4 split — the promo state/submit
+  // logic this would appear alongside now lives in usePublicCartSubmit, so
+  // both files are checked.
+  const cartSubmit = stripComments(readSrc(PUBLIC_CART_SUBMIT));
   assert.ok(
-    !/quotedDiscount\s*=\s*[^;]*[*/]/.test(cart),
+    !/quotedDiscount\s*=\s*[^;]*[*/]/.test(cart) && !/quotedDiscount\s*=\s*[^;]*[*/]/.test(cartSubmit),
     "the cart must never compute a discount amount itself",
   );
 
@@ -1241,10 +1395,19 @@ test("PIN: the accept bridge re-resolves the promo from LIVE ctx.settings.promoC
   // Mutation this catches: sourcing promoCodes from the stored REQUEST instead
   // of the live Settings the accept context carries — a code deactivated
   // between quote and accept would then never be caught.
-  assert.match(
-    acceptSrc,
-    /ctx\.settings\?\.promoCodes/,
-    "order-request-accept.ts must resolve against ctx.settings?.promoCodes (LIVE settings), not the request's own stored field",
+  //
+  // CB-5D part 2 FINAL — resolveAcceptPromoFor (order-request-accept-promo.ts)
+  // now takes ctx.settings WHOLE (so it can also derive the milestone-minted
+  // code list from settings.loyaltyRules) and reads `.promoCodes` off it
+  // internally, rather than order-request-accept.ts narrowing to
+  // `.promoCodes` itself — re-pointed to the COMBINED source rather than
+  // acceptSrc alone, since splitting where a call lives must never loosen
+  // what it proves. Either shape still satisfies "resolves against LIVE
+  // settings, never the stored request field".
+  assert.ok(
+    /ctx\.settings\?\.promoCodes/.test(acceptSrc) ||
+      (/resolveAcceptPromoFor\(\s*ctx\.settings/.test(acceptSrc) && /settings\?\.promoCodes/.test(promoSrc)),
+    "the accept bridge must resolve against LIVE ctx.settings promoCodes, not the request's own stored field",
   );
   // Mutation this catches: `discount: request.quotedDiscount` (or the
   // add-round equivalent) plugged straight into computeOrderTotals — the
@@ -1281,14 +1444,28 @@ test("PIN: SPEC P4 — the promo redemption fence claim runs BEFORE the order wr
   const createIdx = mustIndexOf(acceptSrc, "Order.create(", "the order-creation call");
   assert.ok(fenceIdx < createIdx, "claimPromoRedemption must run before Order.create in order-request-accept.ts");
 
-  const writeSrc = stripComments(readSrc(ACCEPT_WRITE));
-  const fenceIdx2 = mustIndexOf(writeSrc, "claimPromoRedemption(", "the add-round branch's fence claim");
+  // CB-5B S7 RE-POINTED: the add-round branch moved to its own fifth sibling
+  // (-addround.ts). Same two needles, same ordering assertion — only the path
+  // changed. mustIndexOf keeps a missing call a loud failure, never a
+  // vacuous "-1 < -1" pass.
+  const addRoundSrc = stripComments(readSrc(ACCEPT_ADDROUND));
+  const fenceIdx2 = mustIndexOf(addRoundSrc, "claimPromoRedemption(", "the add-round branch's fence claim");
   const writeIdx = mustIndexOf(
-    writeSrc,
+    addRoundSrc,
     "applyAddRound(openTab, update, requestId, ctx.actor)",
     "the add-round write call",
   );
   assert.ok(fenceIdx2 < writeIdx, "claimPromoRedemption must run before applyAddRound's write, in the add-round branch");
+  // CB-5B A2/D6 — and the reward/promo conflict REFUSAL must precede the
+  // fence claim, so a request that is about to be rejected never claims a
+  // once-per-customer promo fence it will not use (the reject path must
+  // never claim — order-request-accept-promo.ts). Upper-bounded by the fence
+  // claim itself, so moving the refusal below it fails here.
+  const conflictIdx = mustIndexOf(addRoundSrc, "REWARD_PROMO_CONFLICT_ERROR", "the A2 reward/promo conflict refusal");
+  assert.ok(
+    conflictIdx < fenceIdx2,
+    "the reward/promo conflict refusal must run BEFORE claimPromoRedemption — a rejected request must not claim the fence",
+  );
 });
 
 test("PIN: SPEC P4 — both the create and edit routes' promo resolvers run the PromoRedemption existence courtesy check when a resolved code carries oncePerCustomer", () => {
@@ -1326,10 +1503,25 @@ test("PIN: SPEC P4 + review MED #4 — the reject path never CLAIMS the fence it
   // And the release helper itself must be scoped so it can never free a
   // redemption whose order actually landed.
   const promoLib = stripComments(readSrc("apps/cafe/lib/order-request-accept-promo.ts"));
+  // Asserted as INTENT, not as one spelling: the filter must carry BOTH a
+  // requestId term and the orderId-absent guard. The requestId side is now
+  // canonicalised (C14 follow-up) so the write and the filter derive from the
+  // same expression rather than relying on the schema's cast to reconcile two
+  // spellings — an equivalent filter, so pinning the old single-line shorthand
+  // would have failed on a strictly safer implementation.
+  const releaseIdx = promoLib.indexOf("export async function releasePromoRedemption");
+  assert.ok(releaseIdx >= 0, "positive landmark: releasePromoRedemption must exist");
+  const releaseBody = promoLib.slice(releaseIdx, releaseIdx + 600);
+  assert.match(releaseBody, /deleteOne\(/, "releasePromoRedemption must delete, not update");
   assert.match(
-    promoLib,
-    /deleteOne\(\{ requestId, orderId: \{ \$exists: false \} \}\)/,
-    "releasePromoRedemption must key on requestId + orderId-absent",
+    releaseBody,
+    /requestId(:|,)/,
+    "releasePromoRedemption must key on requestId (raw or canonicalised)",
+  );
+  assert.match(
+    releaseBody,
+    /orderId:\s*\{\s*\$exists:\s*false\s*\}/,
+    "releasePromoRedemption must keep the orderId-absent guard — without it the release could free a redemption whose order landed",
   );
 });
 
@@ -1350,15 +1542,39 @@ test("PIN: review MAJORs 2026-08-20 — the fence awaits its unique-index build 
     "the edit courtesy check must exclude THIS request's own claim (review MED #3)",
   );
 
-  // Claim only when a discount actually applied — a zero-resolving flagged
-  // code must not burn the customer's single use (review LOW #6).
+  // Claim only when a real BENEFIT applied — a zero-resolving flagged code must
+  // not burn the customer's single use (review LOW #6).
+  //
+  // CB-5D RE-POINTED, intent UNCHANGED. The needle was `promo.discount > 0`
+  // inline; PROMO_KINDS then gained "item", whose money value is 0 BY
+  // CONSTRUCTION (the benefit is the free LINE, not rupees off), so the
+  // amount-only test skipped the fence entirely and a once-per-customer
+  // free-item code could be redeemed without limit. The decision this pin
+  // records is preserved EXACTLY for every money kind: `promoIsClaimable`
+  // still requires `discount > 0` unless the kind is "item". Pinning the
+  // single-homed predicate rather than the inline expression is also what
+  // stops the three call sites drifting apart again.
+  // The decision itself, pinned where it is now single-homed: a money kind
+  // still needs a real amount before a fence is burned; only "item" — worth 0
+  // by construction — is claimable at zero.
+  const claimablePredicateSrc = stripComments(readSrc("apps/cafe/lib/order-request-accept-promo.ts"));
+  assert.match(claimablePredicateSrc, /export function promoIsClaimable/, "landmark: the predicate must still be single-homed here");
+  assert.match(
+    claimablePredicateSrc,
+    /kind === "item" \? true : discount > 0/,
+    "a money promo resolving to 0 must NOT burn the customer's single use (review LOW #6); only an item promo is claimable at 0",
+  );
+
   const acceptLib = stripComments(readSrc(ACCEPT_LIB));
-  const acceptWrite = stripComments(readSrc(ACCEPT_WRITE));
-  for (const [name, srcSide] of [["accept.ts", acceptLib], ["accept-write.ts", acceptWrite]] as const) {
+  // CB-5B S7 RE-POINTED: the add-round branch (and with it this fence gate)
+  // moved from -write.ts to -addround.ts. Same needle, same requirement —
+  // only the path changed.
+  const acceptAddRound = stripComments(readSrc(ACCEPT_ADDROUND));
+  for (const [name, srcSide] of [["accept.ts", acceptLib], ["accept-addround.ts", acceptAddRound]] as const) {
     assert.match(
       srcSide,
-      /promo\.oncePerCustomer && promo\.discount > 0/,
-      `${name}'s fence gate must require a nonzero discount`,
+      /promo\.oncePerCustomer && promoIsClaimable\(promo\.discount, request\.promoCode, promo\.kind\)/,
+      `${name}'s fence gate must run through the single-homed promoIsClaimable predicate`,
     );
   }
 

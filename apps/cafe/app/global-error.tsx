@@ -1,12 +1,15 @@
 "use client";
 
+import { useEffect } from "react";
 import { fontVariables } from "@/lib/fonts";
+import { armChunkReload, chunkReloadStore, isChunkLoadError } from "@/lib/chunk-reload";
 import "./globals.css";
 
 // Last-resort boundary: catches errors thrown in the root layout itself. It
 // REPLACES the root layout, so it must render its own <html>/<body> and re-apply
 // the font variables (else it falls back to the system font). Kept free of shared
-// UI imports so the fallback itself can't fail to render.
+// UI imports so the fallback itself can't fail to render. A missing build chunk
+// (a tab that predates a deploy — lib/chunk-reload.ts) reloads the page once.
 export default function GlobalError({
   error,
   reset,
@@ -14,6 +17,12 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const staleBuild = isChunkLoadError(error);
+  useEffect(() => {
+    if (!staleBuild) return;
+    if (armChunkReload(chunkReloadStore(), Date.now())) window.location.reload();
+  }, [staleBuild]);
+
   // Don't surface raw internal error text to users in production.
   const detail =
     process.env.NODE_ENV === "production" ? null : error.message;

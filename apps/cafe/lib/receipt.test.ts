@@ -7,6 +7,7 @@ import {
   computeOrderTotals,
   receiptGst,
   tableChargeOf,
+  resolveDiscountKind,
   NO_TABLE_CHARGE,
   type GstConfig,
 } from "./receipt";
@@ -29,6 +30,7 @@ test("computeOrderTotals: the worked example — items 1000, discount 100, GST 5
   const totals = computeOrderTotals({
     items: [{ price: 1000, qty: 1 }],
     discount: 100,
+    discountKind: undefined,
     charge: 50,
     cfg: GST_5_EXCLUSIVE,
   });
@@ -45,6 +47,7 @@ test("computeOrderTotals: the charge is OUTSIDE the discount — a 10% discount 
   const totals = computeOrderTotals({
     items: [{ price: 1000, qty: 1 }],
     discount: 100, // 10% of the 1000 subtotal
+    discountKind: undefined,
     charge: 100,
     cfg: GST_5_EXCLUSIVE,
   });
@@ -57,12 +60,14 @@ test("computeOrderTotals: the charge is OUTSIDE GST — gstAmount is identical w
   const withoutCharge = computeOrderTotals({
     items: [{ price: 1000, qty: 1 }],
     discount: 0,
+    discountKind: undefined,
     charge: 0,
     cfg: GST_10_EXCLUSIVE,
   });
   const withCharge = computeOrderTotals({
     items: [{ price: 1000, qty: 1 }],
     discount: 0,
+    discountKind: undefined,
     charge: 500,
     cfg: GST_10_EXCLUSIVE,
   });
@@ -72,18 +77,23 @@ test("computeOrderTotals: the charge is OUTSIDE GST — gstAmount is identical w
 });
 
 test("computeOrderTotals: charge is clamped — negative floors to 0, above TABLE_CHARGE_MAX ceils to TABLE_CHARGE_MAX, fractional rounds", () => {
-  const negative = computeOrderTotals({ items: [{ price: 100, qty: 1 }], discount: 0, charge: -50, cfg: GST_OFF });
+  const negative = computeOrderTotals({
+    items: [{ price: 100, qty: 1 }], discount: 0, discountKind: undefined, charge: -50, cfg: GST_OFF,
+  });
   assert.equal(negative.charge, 0, "a negative charge must floor to 0, never go negative onto the bill");
 
   const overMax = computeOrderTotals({
     items: [{ price: 100, qty: 1 }],
     discount: 0,
+    discountKind: undefined,
     charge: TABLE_CHARGE_MAX + 5000,
     cfg: GST_OFF,
   });
   assert.equal(overMax.charge, TABLE_CHARGE_MAX, "a charge above TABLE_CHARGE_MAX must clamp to the ceiling");
 
-  const fractional = computeOrderTotals({ items: [{ price: 100, qty: 1 }], discount: 0, charge: 49.6, cfg: GST_OFF });
+  const fractional = computeOrderTotals({
+    items: [{ price: 100, qty: 1 }], discount: 0, discountKind: undefined, charge: 49.6, cfg: GST_OFF,
+  });
   assert.equal(fractional.charge, 50, "a fractional charge must round to whole rupees");
 });
 
@@ -91,6 +101,7 @@ test("computeOrderTotals: charge 0 reproduces the pre-feature totals exactly —
   const totals = computeOrderTotals({
     items: [{ price: 500, qty: 2 }],
     discount: 50,
+    discountKind: undefined,
     charge: 0,
     cfg: GST_5_EXCLUSIVE,
   });
@@ -255,9 +266,51 @@ test("PIN: the POS drops a charge waiver only when the request it just made coul
     ),
     "applyTabUpdate still contains an unconditional setChargeOverride(undefined).",
   );
+  // WIDENED (CB-5B S9), never loosened: the original needle pinned the literal
+  // as a CLOSED four-key object — a `}` immediately after chargeOverride — so
+  // adding ANY fifth key tripped it. That arity was incidental to how the
+  // needle was written, never to what it protects: both defects named below
+  // are about a key being PRESENT, not about the object being exactly four
+  // keys wide. The add-round route accepts an optional, intent-only `rewardAt`
+  // (app/api/orders/[id]/items/route.ts resolves it and 409s a second claim;
+  // addItemsSchema is .strict() and lists it), so the closed needle was the
+  // only thing keeping the CLIENT half of a shipped server feature unwired —
+  // a staff reward could be claimed on a new order but never on an open tab.
+  //
+  // Scoped to sendToKitchen DELIBERATELY. The settle payload lower in this same
+  // file also carries `discountKind: discountKind ?? null` and `chargeAmount:
+  // chargeOverride`, so a file-wide needle would match THAT block and keep
+  // passing even with the add-round payload's keys deleted — strictly weaker
+  // than the pin it replaced. Proven by probe before this was written.
+  // Each key is asserted separately so a failure names the key that went
+  // missing instead of pointing at one opaque literal.
+  const kitchenPayload = src.slice(
+    src.indexOf("const sendToKitchen"),
+    src.indexOf("const payNow"),
+  );
   assert.match(
-    src,
-    /data:\s*\{\s*items:\s*newItems,\s*discount,\s*chargeAmount:\s*chargeOverride\s*\}/,
+    kitchenPayload,
+    /addItems\.mutateAsync/,
+    "landmark: sendToKitchen must still fire the add-round via addItems.mutateAsync — without this the key assertions below could pass vacuously against an empty slice.",
+  );
+  assert.match(
+    kitchenPayload,
+    /data:\s*\{[^}]*\bitems:\s*newItems\b/,
+    "The add-a-round payload must carry the unfired lines as `items: newItems`.",
+  );
+  assert.match(
+    kitchenPayload,
+    /data:\s*\{[^}]*\bdiscount,/,
+    "The add-a-round payload must carry `discount`, or an edited discount never re-clamps against the new subtotal.",
+  );
+  assert.match(
+    kitchenPayload,
+    /data:\s*\{[^}]*\bdiscountKind:\s*discountKind\s*\?\?\s*null/,
+    "The add-a-round payload must carry discountKind (null = explicit clear), or the server treats the derived GST figure as a manual discount, stores no kind, and the GST Discount toggle silently reverts to ₹ after every fired round (CB-2).",
+  );
+  assert.match(
+    kitchenPayload,
+    /data:\s*\{[^}]*\bchargeAmount:\s*chargeOverride\b/,
     "The add-a-round payload must carry chargeAmount, or a waiver made mid-tab never reaches the server and dies with this browser tab.",
   );
   assert.match(
@@ -308,6 +361,7 @@ test("the cart footer's total is exactly what usePosTotals returns: 1000 of item
   const totals = computeOrderTotals({
     items: [{ price: 1000, qty: 1 }],
     discount: 100,
+    discountKind: undefined,
     charge: 50,
     cfg: GST_5_EXCLUSIVE,
   });
@@ -318,4 +372,37 @@ test("the cart footer's total is exactly what usePosTotals returns: 1000 of item
     totals.total,
   );
   assert.equal(totals.total, 995);
+});
+
+// ── resolveDiscountKind (CB-5B fix: a stored reward is STICKY against a client null) ──
+// THE BUG: resolveDiscountKind returned `supplied ?? undefined` for ANY
+// non-undefined `supplied` — so a request sending `discountKind: null` plus a
+// manual `discount` on a tab carrying a stamp-funded "reward" would CLEAR the
+// server-owned reward kind and re-price the bill with an arbitrary
+// operator-chosen discount. The reward's value would be reinstated (or
+// INFLATED) with no stamp check, while the order's own reward snapshot still
+// claimed the redemption — and the stamps stay spent either way. THE FIX: a
+// stored "reward" is now sticky against a client `null`; it is removed only by
+// cancelling the order (S6), which returns the stamps. These are the first
+// tests for resolveDiscountKind's null semantics — no prior test asserted
+// "null always clears", so there is nothing here to widen or conflict with.
+
+test("resolveDiscountKind (CB-5B fix): stored reward + supplied null -> STAYS reward — a client null must never clear a stamp-funded redemption", () => {
+  assert.equal(resolveDiscountKind(null, "reward"), "reward");
+});
+
+test("resolveDiscountKind: stored reward + supplied undefined -> stays reward (unchanged: an absent key always leaves the stored kind alone)", () => {
+  assert.equal(resolveDiscountKind(undefined, "reward"), "reward");
+});
+
+test("resolveDiscountKind: stored reward + supplied \"gst\" -> becomes gst — an explicit DIFFERENT kind is still allowed; the fence guards only the null-clear path, not a deliberate kind switch", () => {
+  assert.equal(resolveDiscountKind("gst", "reward"), "gst");
+});
+
+test("resolveDiscountKind (regression risk of the fix): stored gst + supplied null -> CLEARED to undefined — the original operator-clears-preset behaviour must still work for a NON-reward stored kind", () => {
+  assert.equal(resolveDiscountKind(null, "gst"), undefined);
+});
+
+test("resolveDiscountKind: stored undefined + supplied null -> undefined (nothing to protect, nothing to clear)", () => {
+  assert.equal(resolveDiscountKind(null, undefined), undefined);
 });

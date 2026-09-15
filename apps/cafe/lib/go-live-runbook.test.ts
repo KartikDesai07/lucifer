@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-import { createStaffSchema, settingsSchema, createProductSchema } from "@/schemas";
+import { createStaffSchema, settingsSchema, importProductRowSchema } from "@/schemas";
 import {
   TABLE_NO_PATTERN,
   TABLE_NO_MAX_LEN,
@@ -48,6 +48,8 @@ import {
   PUBLIC_ORDER_RATE_MAX,
   PUBLIC_ORDER_RATE_MAX_PARCEL,
   PUBLIC_ORDER_RATE_WINDOW_MS,
+  PUBLIC_STATUS_REFRESH_COOLDOWN_MS,
+  PUBLIC_STATUS_READ_MAX,
   SELF_ORDER_MODES,
 } from "@pos/shared/public";
 // PUBLIC_REQUEST_PENDING_TTL_MS lives in this cafe-app file, NOT
@@ -55,6 +57,22 @@ import {
 // verified against source (order-request-intake.ts:28) before importing.
 import { PUBLIC_REQUEST_PENDING_TTL_MS } from "@/lib/order-request-intake";
 import { SOLD_OUT_ERROR } from "@/lib/public-pricing";
+import { MANIFEST_PATH, MANIFEST_START_URL, MANIFEST_DISPLAY } from "@/lib/pos-install";
+import {
+  PRINT_HOST_MAX_AGE_MS,
+  PRINT_HOST_OFFLINE_MS,
+  PRINT_JOB_PULSE_LIMIT,
+  PRINT_JOB_STALE_LIMIT,
+  PRINT_JOB_QUEUED_RETENTION_MS,
+  PRINT_HOST_SILENT_OFF_WARNING,
+  PRINT_HOST_ACTIVE_NOTE,
+  PRINT_WAKE_FAST_MS,
+  PRINT_WAKE_SLOW_MS,
+  PRINT_WAKE_ACTIVE_WINDOW_MS,
+  PRINT_WAKE_DAILY_CAP,
+} from "@pos/shared/print-job";
+import { SESSION_MAX_AGE_SECONDS, SESSION_REVALIDATE_MS } from "@pos/shared/constants";
+import { KIOSK_PRINTING_FLAG } from "@/lib/print-host-setup";
 
 // Doc<->source parity for docs/GO-LIVE-CHECKLIST.md §A "Pinned facts" — an
 // operator following a stale runbook does the wrong thing on a client's live
@@ -107,6 +125,37 @@ function factRow(fact: string): string {
   assert.fail(`could not find the §A row "${fact}" in GO-LIVE-CHECKLIST.md — it may have been renamed or removed`);
 }
 
+// Review round 1 (lost-arbiter finding): factRow() above scans the WHOLE
+// doc, and §3's Settings-fields table shares the same "label | value | ..."
+// row shape as §A's own table — a fact name reused (or a stray row added)
+// elsewhere in the doc could silently make factRow() read the WRONG row.
+// factRowIn() scopes the search to one heading's own slice of the doc (found
+// by heading text, ending at the next heading of the same or higher level, or
+// a `---` rule) — used here for the "§A Pinned facts" section specifically,
+// so a §A pin can never accidentally read a same-named row from elsewhere in
+// the document. The shared factRow() above stays untouched (~40 existing
+// pins already depend on its whole-doc behaviour); this is an ADDITIVE scoped
+// variant, not a change to the shared helper.
+function sectionSlice(heading: string): string {
+  const start = doc.indexOf(heading);
+  assert.ok(start >= 0, `could not find the heading "${heading}" in GO-LIVE-CHECKLIST.md`);
+  const nextHeadingMatch = doc.slice(start + heading.length).match(/\n(#{1,3}\s|---)/);
+  const end = nextHeadingMatch ? start + heading.length + nextHeadingMatch.index! : doc.length;
+  return doc.slice(start, end);
+}
+
+const SECTION_A_HEADING = "## §A Pinned facts";
+
+function factRowIn(sectionHeading: string, fact: string): string {
+  const slice = sectionSlice(sectionHeading);
+  for (const line of slice.split("\n")) {
+    if (!line.trim().startsWith("|")) continue;
+    const cells = splitRow(line);
+    if (cells[0] === fact) return cells[1] ?? "";
+  }
+  assert.fail(`could not find the row "${fact}" inside the "${sectionHeading}" section of GO-LIVE-CHECKLIST.md — it may have been renamed, removed, or moved outside that section`);
+}
+
 function backtickTokens(cell: string): string[] {
   return [...cell.matchAll(/`([^`]+)`/g)].map((m) => m[1]);
 }
@@ -131,28 +180,33 @@ test("PIN §A: MAX_IMPORT_ROWS is 1000, matching the doc's stated cap", () => {
   assert.equal(Number(factRow("Max import rows")), MAX_IMPORT_ROWS);
 });
 
-// createProductSchema is the single source of truth for which import columns
-// are required — exercised behaviourally (not by matching source text), since
-// "required" here means "has no .default()", which a regex over the schema
-// literal cannot distinguish from a required-but-defaulted field.
+// CB-DL-2: createProductSchema's category link is now `categoryId` (a 24-hex
+// ObjectId string), so it no longer accepts the CSV's human-typed `category`
+// NAME column directly. importProductRowSchema is the schema that actually
+// governs a raw CSV row -- it is createProductSchema with categoryId swapped
+// back out for a `category` string (see packages/shared's product.schema.ts
+// comment on importProductRowSchema) -- so it is the single source of truth
+// for which import columns are required now. Moved off createProductSchema
+// for exactly the two tests below (step CB-DL-2); the required-columns DOC
+// pin further down still targets the same three names via importProductRowSchema.
 const REQUIRED_PRODUCT_ROW = { name: "Chai", category: "Beverages", price: 20 };
 
-test("createProductSchema: name+category+price together parse, and dropping ANY ONE of them fails — none of the three carries a schema default", () => {
-  assert.equal(createProductSchema.safeParse(REQUIRED_PRODUCT_ROW).success, true);
+test("importProductRowSchema: name+category+price together parse, and dropping ANY ONE of them fails — none of the three carries a schema default", () => {
+  assert.equal(importProductRowSchema.safeParse(REQUIRED_PRODUCT_ROW).success, true);
 
   for (const field of ["name", "category", "price"] as const) {
     const rest = { ...REQUIRED_PRODUCT_ROW };
     delete (rest as Record<string, unknown>)[field];
     assert.equal(
-      createProductSchema.safeParse(rest).success,
+      importProductRowSchema.safeParse(rest).success,
       false,
       `dropping ${field} must fail — it has no schema default, so a blank CSV cell here is an ERROR row, not a ₹0/empty product`,
     );
   }
 });
 
-test("createProductSchema: discount/image/modifiers/isActive are genuinely optional — omitted, the schema's OWN defaults apply (0 / \"\" / [] / true), never a validation error", () => {
-  const parsed = createProductSchema.safeParse(REQUIRED_PRODUCT_ROW);
+test("importProductRowSchema: discount/image/modifiers/isActive are genuinely optional — omitted, the schema's OWN defaults apply (0 / \"\" / [] / true), never a validation error", () => {
+  const parsed = importProductRowSchema.safeParse(REQUIRED_PRODUCT_ROW);
   assert.equal(parsed.success, true);
   if (!parsed.success) return;
   assert.equal(parsed.data.discount, 0);
@@ -161,7 +215,7 @@ test("createProductSchema: discount/image/modifiers/isActive are genuinely optio
   assert.equal(parsed.data.isActive, true);
 });
 
-test("PIN §A: the doc states name/category/price as the required import columns, matching createProductSchema — a blank price cell must be a skipped import ERROR, not a silent ₹0", () => {
+test("PIN §A: the doc states name/category/price as the required import columns, matching importProductRowSchema — a blank price cell must be a skipped import ERROR, not a silent ₹0", () => {
   const requiredCell = factRow("Import columns that are required");
   assert.match(
     norm(requiredCell),
@@ -207,8 +261,8 @@ test("PIN §A: the doc's 'charge is not taxed' row matches computeOrderTotals �
 
   const items = [{ price: 1000, qty: 1 }];
   const cfg = { gstEnabled: true, gstRate: 5, gstMode: "exclusive" as const };
-  const without = computeOrderTotals({ items, discount: 0, charge: 0, cfg });
-  const withCharge = computeOrderTotals({ items, discount: 0, charge: 50, cfg });
+  const without = computeOrderTotals({ items, discount: 0, discountKind: undefined, charge: 0, cfg });
+  const withCharge = computeOrderTotals({ items, discount: 0, discountKind: undefined, charge: 50, cfg });
 
   assert.equal(withCharge.gstAmount, without.gstAmount, "the charge must not enter the taxable base");
   assert.equal(withCharge.total - without.total, 50, "the charge must land on the total untouched by tax");
@@ -405,30 +459,45 @@ test('PIN §A: SOLD_OUT_ERROR("<item>") matches the doc\'s sold-out-message row 
   );
 });
 
-// Poll cadence is source-pinned by regex, NOT imported — promoting three
-// client-only constants into @pos/shared just for one doc row is not worth
-// it (accepted trade-off, phase-CR2-public-ordering.md §23.6 Risk 3): a
-// refactor that moves/renames these constants fails only this pin.
-test("PIN §A: PublicOrderStatus.tsx's poll cadence (5s for 60s, then 30s) matches the doc's diner-status-poll row", () => {
+// S5: the diner's status page dropped its auto-poll for an explicit,
+// server-cooldown-gated manual refresh (statusReadGate, lib/order-request-
+// edit.ts). The two shared constants ARE imported (not regexed) — they are
+// real cross-app contract values, unlike the retired client-only poll
+// constants this test used to pin.
+test("PIN §A: the shared status-refresh cooldown/read-cap match the doc's diner-status-poll row, and PublicOrderStatus.tsx references the shared cooldown", () => {
+  assert.equal(PUBLIC_STATUS_REFRESH_COOLDOWN_MS, 30_000);
+  assert.equal(PUBLIC_STATUS_READ_MAX, 20);
+
   const src = readFileSync(
     path.join(REPO_ROOT, "apps/cafe/components/public/PublicOrderStatus.tsx"),
     "utf8",
   );
-  assert.match(src, /POLL_FAST_MS = 5_000/, "PublicOrderStatus.tsx's fast-poll interval must still be 5s");
-  assert.match(src, /POLL_FAST_WINDOW_MS = 60_000/, "PublicOrderStatus.tsx's fast-poll window must still be 60s");
-  assert.match(src, /POLL_SLOW_MS = 30_000/, "PublicOrderStatus.tsx's slow-poll interval must still be 30s");
+  assert.match(
+    src,
+    /PUBLIC_STATUS_REFRESH_COOLDOWN_MS/,
+    "PublicOrderStatus.tsx must reference the shared PUBLIC_STATUS_REFRESH_COOLDOWN_MS constant, not a local re-declared cooldown",
+  );
+  assert.match(
+    src,
+    /readRefreshAt\(/,
+    "PublicOrderStatus.tsx must persist/read the refresh timestamp through public-cart-store's readRefreshAt — this is what keeps the countdown correct across a tab reload",
+  );
 
   const cell = factRow("Diner status poll");
   const nums = [...cell.matchAll(/\d+/g)].map((m) => Number(m[0]));
   assert.deepEqual(
     nums,
-    [5, 60, 30],
-    "the doc's poll-cadence row must state fast interval, fast window, then slow interval in seconds",
+    [30, 20, 600],
+    "the doc's diner-status-poll row must state the cooldown (seconds), the read cap, and the window (seconds) the cap applies over",
   );
 });
 
 test("PIN §3: the Self-order-mode row lists the real SELF_ORDER_MODES enum values", () => {
-  assert.deepEqual([...SELF_ORDER_MODES], ["approve", "auto"]);
+  // A deliberate tripwire: widening SELF_ORDER_MODES must be a CONSCIOUS act
+  // that also updates the operator-facing runbook row below, never a silent
+  // drift. CB-4 added "menu" (browsing only, ordering gated server-side in
+  // the public order-request route) and updated the doc row with it.
+  assert.deepEqual([...SELF_ORDER_MODES], ["approve", "auto", "menu"]);
   const cell = factRow("Self-order mode");
   const docModes = cell.split("/").map((s) => s.trim());
   assert.deepEqual(
@@ -464,6 +533,7 @@ test("PIN §A: auto-print self-orders defaults OFF, matching readDevicePrefs()'s
   const defaults = readDevicePrefs();
   assert.equal(defaults.autoPrintSelfOrders, false, "readDevicePrefs()'s real default must be autoPrintSelfOrders:false");
   assert.equal(defaults.alertSound, true, "readDevicePrefs()'s real default must be alertSound:true");
+  assert.equal(defaults.printHost, false, "readDevicePrefs()'s real default must be printHost:false — a device is never silently treated as the print host");
   assert.match(factRow("Auto-print self-orders default"), /off/i, "the doc's stated default must match the real default proven above");
 });
 
@@ -630,7 +700,11 @@ test("PIN: the import route's product bulkWrite $set list never includes `availa
     !/\bavailable\b/.test(setBlock),
     "the $set block must NOT touch `available` — out-of-stock ('86') state must survive a price/menu re-import",
   );
-  for (const field of ["category", "price", "discount", "image", "modifiers", "isActive"]) {
+  // CB-DL-2: the route's $set now writes the resolved link as `categoryId`
+  // (the CSV's own `category` NAME column never reaches the $set -- it is
+  // resolved to an id first via the Category.find({ name: { $in: ... } })
+  // re-read). Moved from "category" to "categoryId".
+  for (const field of ["categoryId", "price", "discount", "image", "modifiers", "isActive"]) {
     assert.match(
       setBlock,
       new RegExp(`\\b${field}\\b`),
@@ -868,4 +942,361 @@ test("PIN: a bare `npm run deploy` cannot fall back to the local .vercel link on
   );
   // And the refusal has to tell the operator what the valid targets are.
   assert.match(src, /Configured: \$\{configuredNames\.join\(", "\)/);
+});
+
+// ── §A row parity: installable POS (CB-1d.2) ────────────────────────────────
+
+test("PIN §A: the doc's POS-install-manifest row is MANIFEST_PATH", () => {
+  assert.deepEqual(backtickTokens(factRow("POS install manifest")), [MANIFEST_PATH]);
+});
+
+test("PIN §A: the doc's Installed-app-opens-at row is MANIFEST_START_URL", () => {
+  assert.deepEqual(backtickTokens(factRow("Installed app opens at")), [MANIFEST_START_URL]);
+});
+
+test("PIN §A: the doc's Installed-display-mode row is MANIFEST_DISPLAY", () => {
+  assert.deepEqual(backtickTokens(factRow("Installed display mode")), [MANIFEST_DISPLAY]);
+});
+
+test("PIN §7: the install subsection exists and tells the operator to install from the start_url", () => {
+  const n = norm(doc);
+  assert.ok(n.includes("### Installing the POS on the counter device"));
+  assert.ok(n.includes(`\`${MANIFEST_START_URL}\``));
+
+  const heading = "### Installing the POS on the counter device";
+  const start = doc.indexOf(heading);
+  assert.ok(start >= 0, "docs/GO-LIVE-CHECKLIST.md must carry the install subsection");
+  const nextHeadingMatch = doc.slice(start + heading.length).match(/\n(### )/);
+  const end = nextHeadingMatch ? start + heading.length + nextHeadingMatch.index! : doc.length;
+  const section = norm(doc.slice(start, end));
+
+  assert.match(section, /Chrome/, "the install subsection must name the Chrome browser family");
+  assert.match(section, /iOS Safari/, "the install subsection must name the iOS Safari browser family");
+
+  // Vision-guard: the subsection must never name a device brand/model — the
+  // product is device-agnostic. Needles built by concatenation so this pin
+  // doesn't itself trip a banned-string scan.
+  const bannedNeedles = ["Sam" + "sung Galaxy", "i" + "Pad", "i" + "Phone"];
+  for (const needle of bannedNeedles) {
+    assert.ok(
+      !section.includes(needle),
+      `the install subsection must not name a device brand/model ("${needle}") — the product must stay device-agnostic`,
+    );
+  }
+});
+
+// ── §A row parity: PH-10 print host runbook facts ──────────────────────────
+// All eight constants live in packages/shared/src/print-job.ts (+
+// print-host-setup.ts:7 for the kiosk flag) — imported, not regexed, so a
+// rename/deletion fails compilation here (testing.md rule 3).
+
+test("PIN §A: PRINT_HOST_MAX_AGE_MS (30 minutes) matches the doc's print-host-job-max-age row", () => {
+  assert.equal(PRINT_HOST_MAX_AGE_MS, 30 * 60 * 1000);
+  assert.match(factRow("Print host job max age"), /30/);
+});
+
+test("PIN §A: PRINT_HOST_OFFLINE_MS (180s / 3 missed ~60s throttled beats) matches the doc's print-host-offline-threshold row", () => {
+  assert.equal(PRINT_HOST_OFFLINE_MS, 180 * 1000);
+  const cell = factRow("Print host offline threshold");
+  assert.match(cell, /180/, "the row must state the 180-second threshold");
+  assert.match(cell, /3/, "the row must state the 3-missed-beats rationale, not just the raw seconds");
+});
+
+test("PIN §A: PRINT_JOB_PULSE_LIMIT (10) matches the doc's drain-feed-cap row", () => {
+  assert.equal(PRINT_JOB_PULSE_LIMIT, 10);
+  assert.match(factRow("Print-job drain feed cap (per pulse)"), /10/);
+});
+
+test("PIN §A: PRINT_JOB_STALE_LIMIT (20) matches the doc's stale-band-feed-cap row", () => {
+  assert.equal(PRINT_JOB_STALE_LIMIT, 20);
+  assert.match(factRow("Print-job stale-band feed cap"), /20/);
+});
+
+test("PIN §A: PRINT_JOB_QUEUED_RETENTION_MS (12 hours) matches the doc's queued-print-job-retention row", () => {
+  assert.equal(PRINT_JOB_QUEUED_RETENTION_MS, 12 * 60 * 60 * 1000);
+  assert.match(factRow("Queued print job retention"), /12/);
+});
+
+test("PIN §A: KIOSK_PRINTING_FLAG matches the doc's kiosk-shortcut-flag row, and the row's value cell carries ONLY the backticked flag", () => {
+  const cell = factRow("Kiosk shortcut flag");
+  assert.equal(
+    backtickTokens(cell)[0],
+    KIOSK_PRINTING_FLAG,
+    "the doc's kiosk-shortcut-flag row must equal the real KIOSK_PRINTING_FLAG constant",
+  );
+  assert.equal(
+    cell.trim(),
+    `\`${KIOSK_PRINTING_FLAG}\``,
+    "the row's value cell must be the backticked flag ONLY, no extra prose",
+  );
+});
+
+// CB-D1 — apps/desktop is outside this workspace, so its package.json is read
+// via readFileSync + JSON.parse (never an import) exactly like every other
+// cross-app parity pin in this file (testing.md rule 3).
+test("PIN §A: the doc's Desktop app installer row equals apps/desktop/package.json's build.nsis.artifactName with ${version} substituted and \"${ext}\" resolved to \"exe\"; productName is the vendor-branded \"POS Software by sandbee\" (never a cafe name)", () => {
+  const desktopPkgPath = path.join(REPO_ROOT, "apps/desktop/package.json");
+  const pkg = JSON.parse(readFileSync(desktopPkgPath, "utf8")) as {
+    build: { nsis: { artifactName: string }; productName: string };
+  };
+
+  const expectedArtifactName = pkg.build.nsis.artifactName.replace("${ext}", "exe");
+  const cell = factRow("Desktop app installer");
+  assert.equal(
+    backtickTokens(cell)[0],
+    expectedArtifactName,
+    "the doc's Desktop app installer row must equal apps/desktop/package.json's build.nsis.artifactName with ${ext} resolved to exe",
+  );
+
+  assert.equal(
+    pkg.build.productName,
+    "POS Software by sandbee",
+    "apps/desktop/package.json's build.productName is the vendor-branded \"POS Software by sandbee\" (sandbee = the software vendor) — never a cafe name",
+  );
+});
+
+test("PIN §A: PRINT_HOST_SILENT_OFF_WARNING matches the doc's print-host-silent-off-warning row verbatim", () => {
+  assert.equal(
+    backtickTokens(factRow("Print host silent-off warning"))[0],
+    PRINT_HOST_SILENT_OFF_WARNING,
+    "the doc must quote PRINT_HOST_SILENT_OFF_WARNING exactly, not a paraphrase",
+  );
+});
+
+test("PIN §A: PRINT_HOST_ACTIVE_NOTE matches the doc's print-host-active-note row verbatim, including the literal <label> placeholder", () => {
+  assert.equal(
+    backtickTokens(factRow("Print host active note"))[0],
+    PRINT_HOST_ACTIVE_NOTE,
+    "the doc must quote PRINT_HOST_ACTIVE_NOTE exactly, keeping its literal <label> placeholder unsubstituted",
+  );
+});
+
+// ── §7/§11 prose: print host branch (PH-10) ─────────────────────────────────
+
+test("PIN §7: the self-order alerts device step quotes PRINT_HOST_ACTIVE_NOTE verbatim in its host branch, AND still quotes SELF_ORDER_ALERT_LIMITATION verbatim in its non-host branch — an operator must see BOTH, since which applies depends on whether a host is set", () => {
+  // Scoped to the §7 sub-section itself (review LOW, PH-10): a doc-wide
+  // includes() would stay green on the §A table's copy of the same literal
+  // even if the device step lost its branch — the step is what an operator
+  // actually follows, so the slice is what is pinned.
+  const heading = "### Self-order alerts and auto-print (CR2.3 + print host, per device)";
+  const start = doc.indexOf(heading);
+  assert.ok(start >= 0, "docs/GO-LIVE-CHECKLIST.md must carry the §7 self-order alerts + print host device step");
+  const nextHeadingMatch = doc.slice(start + heading.length).match(/\n(#{1,3}\s|---)/);
+  const end = nextHeadingMatch ? start + heading.length + nextHeadingMatch.index! : doc.length;
+  // norm(): the doc wraps both quotes across lines at 80 cols; the constants
+  // carry single spaces, so compare on the whitespace-collapsed slice.
+  const step = norm(doc.slice(start, end));
+  assert.ok(
+    step.includes(PRINT_HOST_ACTIVE_NOTE),
+    "the §7 device step must quote PRINT_HOST_ACTIVE_NOTE's exact string in its host branch",
+  );
+  assert.ok(
+    step.includes(SELF_ORDER_ALERT_LIMITATION),
+    "the §7 device step must still quote SELF_ORDER_ALERT_LIMITATION's exact string in its non-host branch",
+  );
+  // The two branches are ordered host-first, as the step reads top to bottom.
+  assert.ok(
+    step.indexOf(PRINT_HOST_ACTIVE_NOTE) < step.indexOf(SELF_ORDER_ALERT_LIMITATION),
+    "the §7 device step lists the with-a-host branch before the without-a-host branch",
+  );
+});
+
+test("PIN §7 PH-10b: the self-order alerts device step names BOTH the Device settings button (the /requests reachability path for the per-device toggles) and Settings → Printing (where the print-host card now lives) — an operator following the runbook must find both after the PH-10b UI move", () => {
+  const heading = "### Self-order alerts and auto-print (CR2.3 + print host, per device)";
+  const start = doc.indexOf(heading);
+  assert.ok(start >= 0, "docs/GO-LIVE-CHECKLIST.md must carry the §7 self-order alerts + print host device step");
+  const nextHeadingMatch = doc.slice(start + heading.length).match(/\n(#{1,3}\s|---)/);
+  const end = nextHeadingMatch ? start + heading.length + nextHeadingMatch.index! : doc.length;
+  const step = norm(doc.slice(start, end));
+
+  assert.match(step, /\bDevice settings\b/, "the §7 device step must name the Device settings button (beside Refresh on /requests)");
+  assert.match(step, /Settings\s*→\s*Printer setup/, "the §7 device step must name Settings → Printer setup (where the print-host card now lives)");
+});
+
+test("PIN: the runbook names the Printer setup page under Settings at EVERY occurrence (CB-UI1 renamed the sidebar label to match the page title) — a partial rename would leave an operator hunting for a 'Printing' entry that no longer exists", () => {
+  const renamed = doc.match(/Settings\s*→\s*Printer setup/g) ?? [];
+  assert.ok(renamed.length >= 3, `the runbook must say Settings → Printer setup at least 3 times (found ${renamed.length})`);
+  assert.doesNotMatch(doc, /Settings\s*→\s*Printing\b/, "no stale 'Settings → Printing' path may remain");
+  assert.doesNotMatch(doc, /Settings\s*→\s*Integrations\b/, "the Integrations tab is now the Notifications page");
+});
+
+test("PIN: §11's print-host bullet states BOTH that a configured host prints from ANY dashboard screen it has open, and that a non-host device never auto-prints without a POS/Order-requests tab open — the landmark 'Printing follows the print host' anchors the bullet itself", () => {
+  const landmark = "Printing follows the print host";
+  const start = doc.indexOf(landmark);
+  assert.ok(start >= 0, "§11 must carry the 'Printing follows the print host' bullet lead-in");
+  const nextBulletMatch = doc.slice(start).match(/\n-\s|\n---/);
+  const end = nextBulletMatch ? start + nextBulletMatch.index! : doc.length;
+  const bullet = norm(doc.slice(start, end));
+
+  assert.match(
+    bullet,
+    /host PC prints from ANY dashboard screen/,
+    "the bullet must state a configured host prints from ANY dashboard screen it has open",
+  );
+  assert.match(
+    bullet,
+    /auto-print only work on a device with a POS or Order requests tab open/,
+    "the bullet must state a non-host device never auto-prints without a POS/Order-requests tab open",
+  );
+});
+
+// ── §A row parity: CB-U1 staff session lifetime + print-job wake poll ─────
+
+test("PIN §A: SESSION_MAX_AGE_SECONDS (30 days) matches the doc's staff-session-lifetime row, which also states the session is ROLLING (not a fixed 30-day countdown from login) — scoped to the §A Pinned facts section (review round 1: factRow() alone scans the whole doc, and §3/§A share one row-label namespace)", () => {
+  assert.equal(SESSION_MAX_AGE_SECONDS, 30 * 24 * 60 * 60);
+  const cell = factRowIn(SECTION_A_HEADING, "Staff session lifetime");
+  assert.match(cell, /30 days/, "the row must state the 30-day figure with its unit word");
+  assert.match(cell, /rolling/i, "the row must state the session is rolling with use, not a fixed countdown");
+});
+
+test("PIN §A: PRINT_WAKE_FAST_MS (3s) / PRINT_WAKE_SLOW_MS (15s) match the doc's print-job-wake-poll row, scoped to the §A Pinned facts section", () => {
+  assert.equal(PRINT_WAKE_FAST_MS, 3000);
+  assert.equal(PRINT_WAKE_SLOW_MS, 15000);
+  const cell = factRowIn(SECTION_A_HEADING, "Print-job wake poll (counter PC)");
+  assert.match(cell, /\b3 seconds\b/, "the row must state the 3-second busy cadence with its unit word");
+  assert.match(cell, /\b15 seconds\b/, "the row must state the 15-second idle cadence with its unit word");
+});
+
+// New §A row (CB-U1 review round 1, F2): the daily cap is a distinct fact
+// from the FAST/SLOW cadence pinned above — it degrades the cadence to SLOW
+// for the REST of the cafe-day once spent, which an operator debugging a
+// slow-printing counter PC late in a long shift needs to know about.
+test("PIN §A: PRINT_WAKE_DAILY_CAP (14,400) matches the doc's print-job-wake-poll-daily-cap row, scoped to the §A Pinned facts section", () => {
+  assert.equal(PRINT_WAKE_DAILY_CAP, 14400);
+  const cell = factRowIn(SECTION_A_HEADING, "Print-job wake poll daily cap (per counter PC)");
+  assert.match(
+    cell,
+    new RegExp(`${PRINT_WAKE_DAILY_CAP.toLocaleString("en-US")} quick checks per cafe-day`),
+    "the row must state PRINT_WAKE_DAILY_CAP's real value, comma-formatted (14,400), as quick checks PER CAFE-DAY",
+  );
+  assert.match(cell, /every 15 seconds until the next day/, "the row must state the SLOW-cadence degrade that follows the cap being spent");
+});
+
+test("PIN §7: the self-order alerts device step's counter-PC wake-poll bullet states the 3-second busy cadence bounded to ONE HOUR after the last print activity, the 15-second idle cadence, the daily cap (14,400 quick checks), AND the 20-second fallback when the counter tab is hidden — the exact numbers, not a paraphrase, and pinned against the REAL constants (a constant change without a doc change fails here)", () => {
+  const step = norm(sectionSlice("### Self-order alerts and auto-print (CR2.3 + print host, per device)"));
+
+  assert.match(step, /checks for new print jobs every 3 seconds for an hour after the last print activity/, "the §7 device step must state the busy cadence AND its one-hour activity window in plain English");
+  assert.match(step, /every 15 seconds when idle/, "the §7 device step must state the idle cadence in plain English");
+  assert.match(step, /\(at most 14,400 quick checks a day\)/, "the §7 device step must state the daily cap, comma-formatted");
+  assert.match(step, /falls back to the 20-second refresh/, "the §7 device step must state the hidden-tab 20-second fallback");
+
+  // Pin the doc's stated numbers against the REAL constants (PRINT_WAKE_FAST_MS
+  // in seconds, PRINT_WAKE_SLOW_MS in seconds, PRINT_WAKE_ACTIVE_WINDOW_MS in
+  // hours, PRINT_WAKE_DAILY_CAP comma-formatted, REFETCH_INTERVALS.POS_PULSE
+  // already pinned at 20s elsewhere) — a constant bump must force a doc edit.
+  const busySeconds = PRINT_WAKE_FAST_MS / 1000;
+  const idleSeconds = PRINT_WAKE_SLOW_MS / 1000;
+  const activeWindowHours = PRINT_WAKE_ACTIVE_WINDOW_MS / (60 * 60 * 1000);
+  assert.equal(activeWindowHours, 1, "PRINT_WAKE_ACTIVE_WINDOW_MS must still be exactly one hour for the doc's 'an hour' wording to stay true");
+  assert.match(step, new RegExp(`every ${busySeconds} seconds for an hour after the last print activity`));
+  assert.match(step, new RegExp(`every ${idleSeconds} seconds when idle`));
+  assert.match(step, new RegExp(`at most ${PRINT_WAKE_DAILY_CAP.toLocaleString("en-US")} quick checks a day`));
+
+  // CB-D1: the same bullet must scope its 20-second hidden-tab fallback to a
+  // BROWSER TAB specifically (not the counter PC in general) and separately
+  // name that the desktop app keeps the fast cadence in the tray — an
+  // operator running the desktop app must not read this bullet as "my
+  // counter falls back to 20 seconds" when it never leaves the fast lane.
+  assert.match(
+    step,
+    /if the counter is a browser tab and that tab is hidden it falls back to the 20-second refresh/,
+    "the §7 device step must scope the 20-second fallback to a browser tab specifically, not the counter PC in general (CB-D1)",
+  );
+  assert.match(
+    step,
+    /The desktop app keeps the 3-second cadence in the tray\./,
+    "the §7 device step must state that the desktop app keeps the 3-second cadence in the tray (CB-D1)",
+  );
+});
+
+test("PIN §6: the staff-accounts section states the 30-day signed-in lifetime and tells the operator to Log out on a shared device", () => {
+  const section = norm(sectionSlice("## §6 Staff accounts (CAFE ADMIN, `Staff`, admin only)"));
+
+  const staySignedInDays = SESSION_MAX_AGE_SECONDS / (24 * 60 * 60);
+  assert.match(section, new RegExp(`signed in for ${staySignedInDays} days`), "the §6 section must state the real SESSION_MAX_AGE_SECONDS figure in days");
+  assert.match(section, /Log out when handing it over/, "the §6 section must tell the operator to Log out when handing a shared device over");
+});
+
+// New §6 bullet (CB-U1 review round 1, F2 doc/pin-only fix): the owner decided
+// CB-U1 only raises the session TTL — a password reset does NOT end an
+// already-signed-in device's session. An operator must be told the actual
+// recovery path (deactivate, wait ~1 minute, reactivate) rather than wrongly
+// assume a password change alone cuts a stolen device off immediately.
+test("PIN §6: the staff-accounts section also states that a password reset does NOT sign out already-signed-in devices, and names deactivate-then-reactivate as the recovery path for a lost/stolen device, with the ~1-minute figure matching the REAL SESSION_REVALIDATE_MS (lib/auth.ts's DB re-validation throttle, single-homed in @pos/shared/constants)", () => {
+  const section = norm(sectionSlice("## §6 Staff accounts (CAFE ADMIN, `Staff`, admin only)"));
+
+  assert.match(
+    section,
+    /A password reset does not sign out devices that are already signed in\./,
+    "the §6 section must state plainly that a password reset does not end an existing device session",
+  );
+  assert.match(
+    section,
+    /deactivate that staff account/,
+    "the §6 section must name deactivating the account as the actual cutoff mechanism for a lost/stolen device",
+  );
+  assert.match(
+    section,
+    /signed out within about a minute/,
+    "the §6 section must state the real ~1-minute figure, matching SESSION_REVALIDATE_MS (the DB re-validation throttle that locks out a deactivated account)",
+  );
+  assert.match(
+    section,
+    /reactivate it after the reset/,
+    "the §6 section must tell the operator to reactivate the account once the password reset is done",
+  );
+
+  // Pin the ~1-minute figure against the REAL constant lib/auth.ts's re-
+  // validation throttle is built from, rather than a hand-typed "about a
+  // minute" that could silently drift from the actual lockout window.
+  assert.equal(SESSION_REVALIDATE_MS, 60 * 1000, "SESSION_REVALIDATE_MS must still be exactly one minute for the §6 '~1 minute' claim to stay true");
+});
+
+// New §9 OPS sentence (CB-U1 review round 1, F2): the corrected free-tier
+// arithmetic tops out at ~80-95% of the Vercel Hobby 1,000,000-invocation
+// ceiling depending on load — an owner glancing at Usage monthly, with a
+// concrete one-constant remedy, is the compensating control for that margin.
+test("PIN §9: the Backups and keep-alive section carries the monthly Function-Invocations glance, naming Vercel → Usage → Function Invocations, the 80% trend threshold, the free ceiling as the literal 1,000,000, and the one-constant remedy (lowering the counter PC's quick-check cap)", () => {
+  const section = norm(sectionSlice("## §9 Backups and keep-alive (OWNER)"));
+
+  const FREE_HOBBY_MONTHLY_INVOCATIONS = 1_000_000;
+
+  assert.match(section, /Vercel → Usage → Function Invocations/, "the §9 section must name the exact Vercel dashboard path an owner would navigate");
+  assert.match(section, /above 80% of the free/, "the §9 section must state the 80% trend threshold that should prompt action");
+  assert.ok(
+    section.includes(FREE_HOBBY_MONTHLY_INVOCATIONS.toLocaleString("en-US")),
+    "the §9 section must state the free ceiling as the real 1,000,000 figure (comma-formatted), matching Vercel Hobby's documented monthly invocation limit",
+  );
+  assert.match(section, /tell the developer/, "the §9 section must tell the owner to escalate to the developer, not attempt the fix themselves");
+  assert.match(
+    section,
+    /quick-check cap can be lowered in one constant/,
+    "the §9 section must name the concrete one-constant remedy (PRINT_WAKE_DAILY_CAP), matching the plan's own tuning-knob note",
+  );
+});
+
+// ── §7 desktop-app sub-section: operator-facing UI strings pinned to the desktop source (CB-D1 review C14) ──
+
+test("PIN §7 desktop app: every UI string the sub-section quotes exists verbatim in the desktop shell's source, and the section names the printer-defaults rule and the log file", () => {
+  // norm(): the checklist wraps prose across indented lines, so phrases are
+  // matched on whitespace-collapsed text (memory: doc pins need norm()).
+  const section = sectionSlice("### Desktop app on the counter PC (preferred)").replace(/\s+/g, " ");
+  const menuSrc = readFileSync(path.join(REPO_ROOT, "apps/desktop/src/menu.ts"), "utf8");
+  const urlHtml = readFileSync(path.join(REPO_ROOT, "apps/desktop/assets/url-window.html"), "utf8");
+  const sharedSrc = readFileSync(path.join(REPO_ROOT, "apps/desktop/src/shared.ts"), "utf8");
+  for (const [label, src, where] of [
+    ["Open POS", menuSrc, "menu.ts"],
+    ["Quit", menuSrc, "menu.ts"],
+    ["Start with Windows", menuSrc, "menu.ts"],
+    ["Change server address…", menuSrc, "menu.ts"],
+    ["Use this address", urlHtml, "url-window.html"],
+    ["Server address", urlHtml, "url-window.html"],
+  ] as const) {
+    assert.ok(section.includes(label), `§7 desktop sub-section must quote "${label}"`);
+    assert.ok(src.includes(`"${label}"`) || src.includes(`>${label}<`), `"${label}" must exist verbatim in ${where}`);
+  }
+  assert.ok(section.includes("POS Software by sandbee") && sharedSrc.includes('PRODUCT_NAME = "POS Software by sandbee"'), "the product name in the doc must equal PRODUCT_NAME");
+  assert.ok(/Printing preferences/i.test(section) && /80 mm/.test(section), "silent printing uses the printer's Windows defaults — the section must say where to set the roll size");
+  assert.ok(section.includes("pos-desktop.log") && sharedSrc.includes('LOG_FILE_NAME = "pos-desktop.log"'), "the section must name the log file support will ask for");
+  assert.ok(/notification/i.test(section), "the section must say a failed print raises a Windows notification");
 });

@@ -3,6 +3,8 @@
 import { PUBLIC_ORDER_MAX_ITEMS } from "@pos/shared/public";
 import { inr } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { ABOVE_CART_BAR_CLASS, ABOVE_TAB_BAR_CLASS } from "@/components/public/public-shell-layout";
+import { cn } from "@/lib/utils";
 
 // CR2.4 (A20 mechanical follow-up) — extracted from PublicOrderFlow.tsx,
 // which had grown past the ~300-line file cap. Behavior-identical: same
@@ -48,12 +50,24 @@ export function PublicFlowChrome({
         </div>
       )}
       {itemCapNotice && (
-        <p className="fixed inset-x-0 bottom-16 z-40 mx-auto max-w-lg px-3 text-center text-xs text-destructive">
+        <p
+          className={cn(
+            "fixed inset-x-0 z-40 mx-auto max-w-lg px-3 text-center text-xs text-destructive",
+            ABOVE_CART_BAR_CLASS,
+          )}
+        >
           {ITEM_CAP_NOTICE}
         </p>
       )}
       {cartCount > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-background p-pub-pad animate-in slide-in-from-bottom-4 duration-300">
+        <div
+          className={cn(
+            "fixed inset-x-0 z-40 border-t bg-background p-pub-pad animate-in slide-in-from-bottom-4 duration-300",
+            // CB-4: clears the diner shell's tab bar when one is present,
+            // and resolves to a plain bottom-0 when it is not.
+            ABOVE_TAB_BAR_CLASS,
+          )}
+        >
           {/* key={cartCount}: remounts the button whenever the count changes so
               the zoom-in replays — the visible "yes, it went in" pop the field
               feedback (2026-08-20) asked for; the stepper's own morph covers

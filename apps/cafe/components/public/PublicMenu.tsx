@@ -6,29 +6,29 @@ import { Search } from "lucide-react";
 
 import { apiGet } from "@/lib/api-client";
 import { inr, cn } from "@/lib/utils";
+import { MENU_PAD_NO_CART, MENU_PAD_WITH_CART } from "@/components/public/public-shell-layout";
+import {
+  MENU_CACHE_TTL_MS,
+  readMenuCache,
+  writeMenuCache,
+} from "@/components/public/public-cart-store";
 import type { PublicGstConfig } from "@pos/shared/public";
 import type { LogoPlacement } from "@pos/shared/appearance";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
-import {
-  PublicMenuItem,
-  type PublicMenuCategoryInfo,
-  type PublicMenuProduct,
-} from "@/components/public/PublicMenuItem";
+import { type PublicMenuProduct } from "@/components/public/PublicMenuItem";
 import { PublicMenuHeader } from "@/components/public/PublicMenuHeader";
+import { PublicMenuGroups } from "@/components/public/PublicMenuGroups";
+import {
+  groupItemsByCategory,
+  isPublicMenuData,
+  type PublicMenuData,
+} from "@/components/public/public-menu-groups";
 import { TableChooser, type TablePick } from "@/components/public/TableChooser";
 import { CategoryPill } from "@/components/public/CategoryPill";
 
-interface PublicMenuData {
-  restaurantName: string;
-  // Diner-pickable-table toggle — read here, not a prop, to avoid a 2nd fetch.
-  allowTableChange: boolean;
-  // FIX1 — so the diner cart can show a tax-exclusive total matching the bill.
-  gst: PublicGstConfig;
-  categories: PublicMenuCategoryInfo[];
-  items: PublicMenuProduct[];
-}
+
 
 interface PublicTableInfo {
   tableNo: string;
@@ -90,12 +90,31 @@ export function PublicMenu({
   useEffect(() => {
     let active = true;
     setMenuError(false);
+
+    // CACHE-FIRST PAINT (CB-6A S10). The industry bar for a QR menu is under
+    // 3s or the diner gives up and calls staff, and a cold fetch on a cheap
+    // phone on cafe wifi does not reliably clear it. A cached payload younger
+    // than MENU_CACHE_TTL_MS paints IMMEDIATELY, then the live fetch below
+    // replaces it. SMOOTHNESS ONLY, never a source of truth: it is public
+    // menu data (never diner-identifying), the cart re-validates every line
+    // against the LIVE menu before anything is ordered, and a stale tile can
+    // therefore never produce a stale PRICE — only a brief flicker.
+    const cached = readMenuCache();
+    if (cached !== null && Date.now() - cached.at < MENU_CACHE_TTL_MS && isPublicMenuData(cached.payload)) {
+      setMenu(cached.payload);
+    }
+
     apiGet<PublicMenuData>("/api/public/menu")
       .then((data) => {
-        if (active) setMenu(data);
+        if (!active) return;
+        setMenu(data);
+        writeMenuCache(data);
       })
       .catch(() => {
-        if (active) setMenuError(true);
+        // Only surface the error when there is nothing on screen — a diner
+        // already reading a cached menu must not be dropped into an error
+        // state by a background refresh that failed.
+        if (active && cached === null) setMenuError(true);
       });
     return () => {
       active = false;
@@ -131,12 +150,6 @@ export function PublicMenu({
     [menu],
   );
 
-  const categoryOrder = useMemo(() => {
-    const map = new Map<string, number>();
-    sortedCategories.forEach((c) => map.set(c.name, c.order));
-    return map;
-  }, [sortedCategories]);
-
   const filteredItems = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (menu?.items ?? []).filter((item) => {
@@ -148,24 +161,10 @@ export function PublicMenu({
   }, [menu, selectedCategory, search]);
 
   // Grouped by category in `order`, only while browsing "All".
-  const groups = useMemo(() => {
-    if (selectedCategory !== ALL_CATEGORIES) {
-      return [{ name: selectedCategory, items: filteredItems }];
-    }
-    const byCategory = new Map<string, PublicMenuProduct[]>();
-    for (const item of filteredItems) {
-      const list = byCategory.get(item.category) ?? [];
-      list.push(item);
-      byCategory.set(item.category, list);
-    }
-    return [...byCategory.entries()]
-      .sort(
-        ([a], [b]) =>
-          (categoryOrder.get(a) ?? Number.POSITIVE_INFINITY) -
-          (categoryOrder.get(b) ?? Number.POSITIVE_INFINITY),
-      )
-      .map(([name, items]) => ({ name, items }));
-  }, [filteredItems, selectedCategory, categoryOrder]);
+  const groups = useMemo(
+    () => groupItemsByCategory(filteredItems, selectedCategory, sortedCategories, ALL_CATEGORIES),
+    [filteredItems, selectedCategory, sortedCategories],
+  );
 
   if (menuError) {
     return (
@@ -209,7 +208,8 @@ export function PublicMenu({
   const parcelOnly = menu.allowTableChange === false;
 
   return (
-    <main className={cn("mx-auto max-w-lg p-pub-pad", cartCount > 0 ? "pb-28" : "pb-10")}>
+    // MENU_PAD_* also clear the diner shell's tab bar when one is present.
+    <main className={cn("mx-auto max-w-lg p-pub-pad", cartCount > 0 ? MENU_PAD_WITH_CART : MENU_PAD_NO_CART)}>
       <PublicMenuHeader
         restaurantName={menu.restaurantName}
         tableLabel={tableLabel}
@@ -278,28 +278,13 @@ export function PublicMenu({
           description="Try a different category or search term."
         />
       ) : (
-        <div className="mt-4 space-y-pub-gap">
-          {groups.map((group) => (
-            <section key={group.name}>
-              {selectedCategory === ALL_CATEGORIES && (
-                <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                  {group.name}
-                </h2>
-              )}
-              <div className="space-y-pub-gap">
-                {group.items.map((item) => (
-                  <PublicMenuItem
-                    key={item.id}
-                    product={item}
-                    qty={qtyByProduct[item.id] ?? 0}
-                    onIncrement={onIncrement}
-                    onDecrement={onDecrement}
-                  />
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
+        <PublicMenuGroups
+          groups={groups}
+          showHeadings={selectedCategory === ALL_CATEGORIES}
+          qtyByProduct={qtyByProduct}
+          onIncrement={onIncrement}
+          onDecrement={onDecrement}
+        />
       )}
     </main>
   );

@@ -183,7 +183,9 @@ test("PIN: ModifierModal disables Add until a variation is picked when the produ
 test("PIN: pos/page.tsx's handleProductClick opens the modifier modal for a variation product exactly like a modifiers product — the direct add-to-cart path is only its ELSE branch", () => {
   const src = stripComments(readSrc(POS_PAGE));
 
-  const marker = "const handleProductClick = (product: Product) => {";
+  // CB-1d.3a wrapped the handler in useCallback (stable identity for the
+  // memo'd ProductCard); the marker still ends on the function's opening brace.
+  const marker = "const handleProductClick = useCallback((product: Product) => {";
   const markerStart = src.indexOf(marker);
   assert.ok(markerStart >= 0, "handleProductClick must exist with this signature");
   const braceOpen = markerStart + marker.length - 1;
@@ -204,9 +206,11 @@ test("PIN: pos/page.tsx's handleProductClick opens the modifier modal for a vari
 
   assert.match(thenBranch, /setModifierProduct\(product\);/);
   assert.match(thenBranch, /setModifierOpen\(true\);/);
-  assert.match(elseBranch, /pos\.addToCart\(product\);/);
+  // `addToCart` is destructured from `pos` once above the handler (a method call
+  // would make exhaustive-deps demand the whole per-render `pos` object).
+  assert.match(elseBranch, /\baddToCart\(product\);/);
   assert.ok(
-    !/pos\.addToCart\(/.test(thenBranch),
+    !/\baddToCart\(/.test(thenBranch),
     "the modal-open branch must NOT also add straight to the cart",
   );
 });
@@ -244,7 +248,9 @@ test("PIN: KOTReceipt's item rows render the label ONLY via orderItemLabel(item)
 
 test("PIN: OrderReceipt's item rows render the label ONLY via orderItemLabel(item) — no hand-built `${name} (${variation})` anywhere in the row", () => {
   const src = stripComments(readSrc(ORDER_RECEIPT));
-  assert.match(src, /import \{ orderItemLabel \} from "@pos\/shared\/utils";/);
+  // The import may carry sibling helpers (CB-2 added discountLineLabel); the
+  // landmark is that orderItemLabel still comes from the shared utils module.
+  assert.match(src, /import \{[^}]*orderItemLabel[^}]*\} from "@pos\/shared\/utils";/);
 
   const marker = "order.items.map((item, i) => (";
   const mapStart = src.indexOf(marker);

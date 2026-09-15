@@ -11,7 +11,6 @@ import {
   buildTemplateCsv,
 } from "./product-import";
 import {
-  createProductSchema,
   importProductRowSchema,
   importProductsSchema,
 } from "./schemas/product.schema";
@@ -19,8 +18,8 @@ import {
 // CR1.6 — the bulk CSV menu importer had ZERO coverage before this file, and a
 // brand-new client loads their entire day-1 menu through it. These pin the
 // template contract, header-alias tolerance, row coercion (the money-critical
-// half), and the bridge into `createProductSchema` — the module's own stated
-// single source of truth for validity.
+// half), and the bridge into `importProductRowSchema` — the module's own
+// stated single source of truth for validity.
 
 // ── Template / contract ──────────────────────────────────────────────────────
 
@@ -179,14 +178,17 @@ test("displayName trims the name cell for the preview, or is empty when no usabl
 // The route (app/api/products/import/route.ts:34) calls `importProductRowSchema
 // .safeParse(raw)` on the RAW parsed CSV row — never createProductSchema
 // directly. importProductRowSchema is `z.preprocess(coerceProductRow,
-// createProductSchema)`, so calling it on a raw row exercises coercion +
-// validation in exactly the shape the route does. The first case below keeps
-// ONE two-step `createProductSchema.safeParse(coerceProductRow(...))` alongside
-// the one-step call, to prove the wrapper is genuinely equivalent to doing both
-// steps by hand — that equivalence is itself a real regression to catch if
-// importProductRowSchema's preprocess ever stops calling coerceProductRow.
+// createProductSchema.omit({ categoryId: true }).extend({ category: ... }))` —
+// it keeps the CSV's human-typed category NAME column rather than an id (the
+// route resolves the name to a categoryId server-side), so it is a close
+// relative of createProductSchema, not createProductSchema itself. The first
+// case below re-applies coerceProductRow to an already-coerced row (idempotent
+// on canonical input) alongside the one-step call, to prove the wrapper is
+// genuinely equivalent to running coercion by hand — that equivalence is
+// itself a real regression to catch if importProductRowSchema's preprocess
+// ever stops calling coerceProductRow.
 
-test("a realistic full CSV row: importProductRowSchema (the route's REAL validator) parses a RAW row the same way the two-step coerce+validate does", () => {
+test("a realistic full CSV row: importProductRowSchema (the route's REAL validator) parses a RAW row the same way pre-coercing it by hand does", () => {
   const raw = {
     name: "Chai",
     category: "Beverages",
@@ -196,12 +198,12 @@ test("a realistic full CSV row: importProductRowSchema (the route's REAL validat
     modifiers: "Milk|Sugar",
     isActive: "true",
   };
-  const twoStep = createProductSchema.safeParse(coerceProductRow(raw));
+  const preCoerced = importProductRowSchema.safeParse(coerceProductRow(raw));
   const bridged = importProductRowSchema.safeParse(raw);
-  assert.equal(twoStep.success, true);
+  assert.equal(preCoerced.success, true);
   assert.equal(bridged.success, true);
-  if (twoStep.success && bridged.success) {
-    assert.deepEqual(bridged.data, twoStep.data);
+  if (preCoerced.success && bridged.success) {
+    assert.deepEqual(bridged.data, preCoerced.data);
     assert.deepEqual(bridged.data, {
       name: "Chai",
       category: "Beverages",

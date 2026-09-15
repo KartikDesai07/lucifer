@@ -1,24 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Volume2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { usePosPulseContext } from "@/components/layout/PosPulseProvider";
+import { usePosPulseContext, usePrintReadback } from "@/components/layout/PosPulseProvider";
+import { PrintHostBandSection } from "@/components/orders/PrintHostBandSection";
 import { readDevicePrefs, type PosDevicePrefs } from "@/lib/pos-device-prefs";
+import { printBandVisible, printHostNoteOf } from "@/lib/print-readback";
 import { SELF_ORDER_ALERT_LIMITATION } from "@pos/shared/self-order-alert";
+import { POS_ALERT_HEIGHT_VAR } from "@/lib/pos-layout";
 
 const REQUESTS_PATH = "/requests";
 const TRUNCATED_LABEL = "50+";
-const DEFAULT_PREFS: PosDevicePrefs = { autoPrintSelfOrders: false, alertSound: true };
+const DEFAULT_PREFS: PosDevicePrefs = { autoPrintSelfOrders: false, alertSound: true, printHost: false, printHostSeen: false };
 
 // CR2.3 §20 — the compact, always-mounted staff-attention bar: rendered once
 // in the dashboard layout, under the header, above every screen. `null` when
-// there's nothing to say (no open requests AND no unprinted self-order) —
-// this must stay slim, it sits above whatever the operator is doing.
+// there's nothing to say (no open requests, no unprinted self-order, and — PH-8
+// §B7 — no host warning / stale backlog / own outstanding job; that section
+// renders INSIDE bandRef so the published height covers it). Stays slim.
 export function RequestAlertBar() {
   const { pulse, soundUnlocked, unlock, printHandler } = usePosPulseContext();
+  const readback = usePrintReadback();
   const [prefs, setPrefs] = useState<PosDevicePrefs>(DEFAULT_PREFS);
   // Requests whose Print button was tapped and hasn't left the payload yet
   // (review C5): the claim round-trip plus one pulse tick pass before a
@@ -55,10 +60,42 @@ export function RequestAlertBar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pulse?.selfOrders]);
 
-  if (openCount === 0 && unprinted.length === 0) return null;
+  // MERGED-18: another device's in-flight job never flips this band; own work does.
+  const visible = openCount > 0 || unprinted.length > 0 || printBandVisible(pulse, readback);
+  const hostNote = printHostNoteOf(pulse, prefs.printHostSeen);
+  const bandRef = useRef<HTMLDivElement | null>(null);
+  // Publish the band's real height for the POS root (lib/pos-layout.ts
+  // POS_ALERT_HEIGHT_VAR): synchronously in a layout effect so the first frame
+  // after the band appears is already right, then through a ResizeObserver as
+  // its content wraps or gains Print buttons. This component never unmounts —
+  // it renders null when idle — so the cleanup keys off `visible`, not unmount.
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const el = bandRef.current;
+    if (!visible || !el) {
+      root.style.removeProperty(POS_ALERT_HEIGHT_VAR);
+      return;
+    }
+    const publish = () => root.style.setProperty(POS_ALERT_HEIGHT_VAR, `${el.offsetHeight}px`);
+    publish();
+    if (typeof ResizeObserver === "undefined") {
+      return () => root.style.removeProperty(POS_ALERT_HEIGHT_VAR);
+    }
+    const observer = new ResizeObserver(publish);
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty(POS_ALERT_HEIGHT_VAR);
+    };
+  }, [visible]);
+
+  if (!visible) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-3 border-b bg-amber-50 px-4 py-2 text-sm dark:bg-amber-950/40">
+    <div
+      ref={bandRef}
+      className="flex flex-wrap items-center gap-3 border-b bg-amber-50 px-4 py-2 text-sm dark:bg-amber-950/40"
+    >
       {openCount > 0 && (
         <Link href={REQUESTS_PATH} className="font-medium underline-offset-2 hover:underline">
           {pulse?.openTruncated ? TRUNCATED_LABEL : openCount} new order request
@@ -99,13 +136,15 @@ export function RequestAlertBar() {
         </div>
       )}
 
+      <PrintHostBandSection pulse={pulse} readback={readback} />
+
       {!soundUnlocked && prefs.alertSound && (
         <Button size="sm" variant="ghost" onClick={unlock}>
           <Volume2 className="mr-1" /> Enable sound
         </Button>
       )}
 
-      <p className="ml-auto text-xs text-muted-foreground">{SELF_ORDER_ALERT_LIMITATION}</p>
+      <p className="ml-auto text-xs text-muted-foreground">{hostNote ?? SELF_ORDER_ALERT_LIMITATION}</p>
     </div>
   );
 }

@@ -1,16 +1,19 @@
-import mongoose, { Schema, type Document, type Model } from "mongoose";
+import mongoose, { Schema, Types, type Document, type Model } from "mongoose";
 import {
   PAYMENT_MODES,
   ORDER_STATUSES,
   GST_MODES,
+  DISCOUNT_KINDS,
   type PaymentMode,
   type OrderStatus,
   type GstMode,
+  type DiscountKind,
 } from "@/lib/constants";
+import { LOYALTY_REWARD_KINDS, type LoyaltyRewardKind } from "@pos/shared/public-diner";
 
 // Embedded subdocument — never saved independently (parent Order owns it).
 export interface IOrderItem {
-  productId: string;
+  productId: Types.ObjectId;
   name: string; // denormalized product name snapshot
   price: number;
   qty: number;
@@ -22,13 +25,29 @@ export interface IOrderItem {
   modifiers: string[];
   instructions: string;
   kotRound: number; // KOT round this line was fired in (0 = not yet sent / legacy)
+  // CB-5B — this line was GIVEN as a loyalty reward (a free dish claimed off the
+  // stamp ladder). `price` above stays the dish's REAL price, so the bill shows
+  // the customer what they got and what it was worth, the kitchen ticket prints
+  // it like any other line, and the void trail records its true value. Exactly
+  // ONE reader treats it differently: computeOrderTotals' subtotal reducer skips
+  // it, and because the tax base is derived FROM that subtotal, untotalled and
+  // untaxed both follow from that single skip. Server-set only — `orderItemSchema`
+  // in packages/shared deliberately has no `reward` key, so a client can never
+  // declare one of its own lines free.
+  reward?: boolean;
+  // CB-5B — the marker printed beside a reward line ("Reward — free"). Stored,
+  // not re-derived at print time: a reprint years later must reproduce the
+  // paper as issued, and the live REWARD_ITEM_LINE_NOTE constant may have been
+  // reworded since. Live-probed: without the schema path below, strict:true
+  // dropped this silently on every claim while `reward` itself stored fine.
+  note?: string;
 }
 
 // Append-only void trail (CR1.3). A snapshot, not a reference: `qty` is what was
 // VOIDED off the line and `price` the unit price then, so the entry still reads
 // correctly after the line is reduced or gone from items[].
 export interface IOrderVoid {
-  productId: string;
+  productId: Types.ObjectId;
   name: string;
   price: number;
   qty: number;
@@ -41,6 +60,11 @@ export interface IOrderVoid {
   // Same reason as `instructions` — on a tab holding a Small and a Large of
   // the same dish, the void slip has to say WHICH size to stop making.
   variation?: string;
+  // CB-5B — the voided line was a loyalty reward (a free dish). Carried onto the
+  // trail so the VOID slip can say so and staff reading the trail can tell a
+  // comped dish from a sold one; `price` above stays the dish's real value, the
+  // same snapshot discipline as every other field here.
+  reward?: boolean;
   reason: string;
   voidedBy: string; // staff name from the session
   at: Date;
@@ -49,11 +73,34 @@ export interface IOrderVoid {
 
 export interface IOrder extends Document {
   orderId: string; // ORD-YYYYMMDD-NNN
-  customerId?: string;
+  customerId?: Types.ObjectId;
   customerName: string; // denormalized name snapshot
   items: IOrderItem[];
   subtotal: number;
   discount: number; // amount (not percentage) at order level
+  discountKind?: DiscountKind; // "gst" = GST-equivalent preset (server re-derives); absent = manual
+  // CB-5B — the reward reprint snapshot, present only when discountKind ===
+  // "reward". The years-later reprint contract (same reasoning as the GST
+  // snapshot below): a re-pricing writer rebuilds `reward` from THESE five
+  // fields, never from the live milestone ladder, so an owner editing the
+  // ladder mid-service cannot re-price an already-open tab. NO `default:` on
+  // any of them (the discountKind omit-empty discipline) — see the schema
+  // for why `rewardItem` also must not be `required: true`.
+  rewardAt?: number; // WHICH rung was claimed (the milestone's stamp count)
+  rewardKind?: LoyaltyRewardKind;
+  rewardValue?: number;
+  rewardItem?: string; // "" is legal (flat/percent rewards carry no item name)
+  // CB-5B D8/D11 — the free dish, as a REFERENCE plus a count. `rewardItem`
+  // above is only its display name; a re-pricing writer resolves the actual
+  // Product from THIS id, because a name breaks the moment a dish is renamed,
+  // deleted, or duplicated. Absent on flat/percent rewards and on every
+  // pre-D8 order, which is exactly how a reader tells "no dish" from "a dish".
+  rewardItemProductId?: string;
+  rewardQty?: number;
+  // stamps DEBITED — the COST this order's redemption spent. Stored, never
+  // re-derived: deriving it live from the current ladder would refund the
+  // WRONG number on cancel after the owner retunes the milestone's `at`.
+  rewardStamps?: number;
   gstAmount?: number; // GST added on top when settings.gstMode === "exclusive"
   gstRate?: number; // GST rate snapshot at order time (0 if GST was off then)
   gstMode?: GstMode; // GST mode snapshot at order time
@@ -65,7 +112,8 @@ export interface IOrder extends Document {
   splitCash?: number; // for Split payment
   splitOnline?: number; // for Split payment
   status: OrderStatus;
-  receiver: string; // staff name
+  receiver: string; // staff name — the printed NAME snapshot, kept as-is
+  staffId?: Types.ObjectId; // the staff account that rang this up (session-stamped)
   tableNo?: string; // optional T-1 to T-8
   notes?: string; // order-level notes
   kotRounds: number; // count of KOT rounds fired (running order); 0 for one-shot orders
@@ -100,14 +148,16 @@ export interface IOrder extends Document {
   // } }` on the WRITE side. Any future writer of Order.items or
   // sourceRequestIds must preserve BOTH halves of this fence, or a request
   // can be double-accepted into two Orders.
-  sourceRequestIds?: string[];
+  // CB-DL-2: stored as ObjectIds (the OrderRequest _id); every writer and CAS
+  // filter goes through the model, which casts the hex strings it is handed.
+  sourceRequestIds?: Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
 }
 
 const orderVoidSchema = new Schema<IOrderVoid>(
   {
-    productId: { type: String, required: true },
+    productId: { type: Schema.Types.ObjectId, required: true },
     name: { type: String, required: true },
     price: { type: Number, required: true },
     qty: { type: Number, required: true, min: 1 },
@@ -115,6 +165,7 @@ const orderVoidSchema = new Schema<IOrderVoid>(
     instructions: { type: String },
     modifiers: { type: [String], default: undefined },
     variation: { type: String },
+    reward: { type: Boolean },
     reason: { type: String, required: true },
     voidedBy: { type: String, required: true },
     at: { type: Date, required: true },
@@ -128,7 +179,7 @@ const orderVoidSchema = new Schema<IOrderVoid>(
 
 const orderItemSchema = new Schema<IOrderItem>(
   {
-    productId: { type: String, required: true },
+    productId: { type: Schema.Types.ObjectId, required: true },
     name: { type: String, required: true },
     price: { type: Number, required: true },
     qty: { type: Number, required: true, min: 1 },
@@ -139,6 +190,17 @@ const orderItemSchema = new Schema<IOrderItem>(
     modifiers: { type: [String], default: [] },
     instructions: { type: String, default: "" },
     kotRound: { type: Number, default: 0 },
+    // No default: an ordinary sold line carries no key at all (the omit-empty
+    // ledger discipline, same as `variation` above). Only ever true.
+    reward: { type: Boolean },
+    // The reward line's printed marker. Declared here as well as on
+    // IOrderItem — a field that exists only on the interface is silently
+    // discarded by strict:true (the CB-5B session-33 bug: 200 OK, success
+    // toast, nothing stored, whole suite green). Live-probed: without this
+    // path `note` vanished on every claim while `reward` beside it stored.
+    // Stored rather than re-derived at print time, so a reprint reproduces
+    // the paper as issued even if the constant is reworded later.
+    note: { type: String },
   },
   { _id: false }, // embedded — no _id needed
 );
@@ -147,11 +209,29 @@ const orderSchema = new Schema<IOrder>(
   {
     // unique:true creates the index — no separate index() needed for orderId.
     orderId: { type: String, required: true, unique: true },
-    customerId: { type: String },
+    customerId: { type: Schema.Types.ObjectId },
     customerName: { type: String, required: true },
     items: { type: [orderItemSchema], required: true },
     subtotal: { type: Number, required: true },
     discount: { type: Number, default: 0 },
+    discountKind: { type: String, enum: [...DISCOUNT_KINDS] },
+    // CB-5B reward snapshot — no `default:` on any path (mirrors
+    // discountKind's own omit-empty discipline immediately above). rewardItem
+    // is deliberately NOT `required: true`: Mongoose's String `required`
+    // rejects "" outright, and the PUT paths run with `runValidators: true`,
+    // but "" is a legal item name for a flat/percent reward (no dish attached).
+    rewardAt: { type: Number },
+    rewardKind: { type: String, enum: [...LOYALTY_REWARD_KINDS] },
+    rewardValue: { type: Number },
+    rewardItem: { type: String },
+    // CB-5B D8/D11 — no `default:` (same omit-empty discipline as the four
+    // above). Stored as a plain String, not an ObjectId ref: this is a
+    // reprint SNAPSHOT of what was claimed, and it must survive the product
+    // being deleted later — a ref would invite a populate() that resurrects
+    // a live price onto an already-issued reward.
+    rewardItemProductId: { type: String },
+    rewardQty: { type: Number },
+    rewardStamps: { type: Number },
     gstAmount: { type: Number, default: 0 },
     // GST config snapshot — the tax actually charged on this order, so receipts
     // stay correct even after the cafe later changes its GST rate/mode.
@@ -170,6 +250,10 @@ const orderSchema = new Schema<IOrder>(
     splitOnline: { type: Number },
     status: { type: String, enum: [...ORDER_STATUSES], default: "Pending" },
     receiver: { type: String, required: true },
+    // The staff account that rang this up — `receiver` above stays the printed
+    // NAME snapshot; this is the id link, optional and unindexed (no reader
+    // queries by it today).
+    staffId: { type: Schema.Types.ObjectId },
     tableNo: { type: String },
     notes: { type: String },
     kotRounds: { type: Number, default: 0 },
@@ -186,7 +270,7 @@ const orderSchema = new Schema<IOrder>(
     cancelledAt: { type: Date },
     source: { type: String },
     // See the IOrder comment above — `default: undefined`, NEVER `[]`.
-    sourceRequestIds: { type: [String], default: undefined },
+    sourceRequestIds: { type: [Schema.Types.ObjectId], default: undefined },
   },
   { timestamps: true },
 );

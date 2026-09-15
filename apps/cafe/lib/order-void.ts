@@ -1,5 +1,8 @@
+import { Types } from "mongoose";
 import { orderLineKey } from "@pos/shared/utils";
 import { computeOrderTotals, type GstConfig, type OrderTotals } from "@/lib/receipt";
+import type { DiscountKind } from "@/lib/constants";
+import type { RedeemedReward } from "@pos/shared/reward-redemption";
 import type { IOrderVoid } from "@/models/Order";
 
 // Item-level void on an open tab (CR1.3), as one pure function — the route stays a
@@ -17,7 +20,11 @@ import type { IOrderVoid } from "@/models/Order";
 // Mongoose doc goes in and the SAME shape comes back out in `nextItems` — the route
 // writes those rows straight back, modifiers/instructions intact.
 export interface VoidableLine {
-  productId: string;
+  // CB-DL-2: Order.items[].productId is now a stored ObjectId, but a lean
+  // Mongoose doc and a plain test fixture can both flow through here — widened
+  // to accept either, never behaviour-changing (orderLineKey/IOrderVoid still
+  // want a definite type, so callers below stringify/cast at the point of use).
+  productId: string | Types.ObjectId;
   name: string;
   price: number;
   qty: number;
@@ -25,6 +32,11 @@ export interface VoidableLine {
   instructions?: string;
   modifiers?: string[];
   variation?: string;
+  // CB-5B S14 — the voided line was a loyalty reward (a free dish claimed off
+  // the stamp ladder). `price` above still carries the dish's REAL value (same
+  // snapshot discipline as every other field here); this flag is the only way
+  // the void trail can say the line was comped rather than sold.
+  reward?: boolean;
 }
 
 export interface ItemVoidRequest {
@@ -36,18 +48,25 @@ export interface ItemVoidRequest {
   at: Date;
 }
 
-// A tab must always keep at least one line, so the LAST remaining line cannot be
-// voided — that is a cancellation, which is an admin action with its own route.
-// Exported so the dialog can disable the option up front instead of letting the
-// cashier discover it through a rejection they have no way to act on.
-export function isLastLine(items: ReadonlyArray<{ qty: number }>, index: number, qty: number) {
-  return items.length === 1 && index === 0 && qty >= (items[0]?.qty ?? 0);
-}
+// Lives in lib/order-void-rules.ts (client-safe — no mongoose). Re-exported so
+// existing server-side importers keep working; CLIENT components must import it
+// from the rules module directly, or they pull this file's `mongoose` value
+// import into the browser bundle.
+export { isLastLine } from "@/lib/order-void-rules";
 
 export interface ItemVoidInput<T extends VoidableLine> {
   items: readonly T[];
   request: ItemVoidRequest;
   discount: number; // the tab's current order-level discount (re-clamped on recompute)
+  discountKind: DiscountKind | undefined; // the tab's stored kind, carried through — a GST preset must shrink with the bill
+  // CB-5B — the reward the tab is carrying, rebuilt from its OWN stored
+  // snapshot. REQUIRED (not optional) for the same reason `charge` above is:
+  // every writer that re-prices a bill must state out loud what happens to it,
+  // and the type checker is the guard. Omitting it would be silent and costly —
+  // `discountKind` can be "reward" here, and rewardDiscountAmount fails CLOSED
+  // at 0 for a missing reward, so a void would quietly strip a discount the
+  // diner already spent stamps on while the snapshot still claimed it.
+  reward: RedeemedReward | undefined;
   charge: number; // the tab's snapshotted table charge — carried, never re-derived
   gstCfg: GstConfig; // the TAB's snapshot config, from gstConfigFromOrder
 }
@@ -87,7 +106,7 @@ export function resolveItemVoid<T extends VoidableLine>(
   // identity, not just the product — two covers of the same dish are different lines,
   // and a product-only echo let a shifted index void the wrong one. 409, not 400:
   // nothing is wrong with the request, it just no longer describes this tab.
-  if (!line || orderLineKey(line) !== request.lineKey) {
+  if (!line || orderLineKey({ ...line, productId: String(line.productId) }) !== request.lineKey) {
     return { error: "Tab changed — reopen it and try again", status: 409 };
   }
   if ((line.kotRound ?? 0) < MIN_FIRED_ROUND) {
@@ -128,6 +147,8 @@ export function resolveItemVoid<T extends VoidableLine>(
     totals: computeOrderTotals({
       items: nextItems,
       discount: input.discount,
+      discountKind: input.discountKind,
+      reward: input.reward,
       charge: input.charge,
       cfg: input.gstCfg,
     }),
@@ -138,7 +159,11 @@ export function resolveItemVoid<T extends VoidableLine>(
     // `variation` joins them for the same reason: a tab holding a Small and a Large
     // of the same dish needs the void slip to say WHICH size to stop making.
     entry: {
-      productId: line.productId,
+      // The order's OWN stored productId value, carried straight through
+      // (never re-derived) — cast to satisfy IOrderVoid's ObjectId type,
+      // since a caller's T may still carry it as a plain (already-valid) hex
+      // string; Mongoose would cast it anyway on save.
+      productId: new Types.ObjectId(String(line.productId)),
       name: line.name,
       price: line.price,
       qty: request.qty,
@@ -146,6 +171,12 @@ export function resolveItemVoid<T extends VoidableLine>(
       ...(line.instructions ? { instructions: line.instructions } : {}),
       ...(line.modifiers?.length ? { modifiers: [...line.modifiers] } : {}),
       ...(line.variation ? { variation: line.variation } : {}),
+      // "synthesized print lines need every new field" — IOrderVoid.reward was
+      // declared and schema-backed (models/Order.ts:67) but never WRITTEN, so a
+      // voided reward line could not tell the kitchen or the trail-reader what
+      // it was. Normalised to a literal `true` (never the field's own truthy
+      // value) because the stored model field is boolean, not just truthy.
+      ...(line.reward ? { reward: true } : {}),
       reason: request.reason,
       voidedBy: request.voidedBy,
       at: request.at,

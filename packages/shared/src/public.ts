@@ -187,6 +187,27 @@ export const PARCEL_BUCKET_KEY = "parcel";
 // times before Save is normal; this is not the wide multi-diner window above.
 export const PUBLIC_ORDER_EDIT_RATE_MAX = 10;
 
+// ── Status-poll refresh cooldown (S4) ───────────────────────────────────────
+// GET /api/public/order-request/[shortCode] (the diner's status poll) reuses
+// the SAME DB-backed fixed-window limiter as the two buckets above — no new
+// collection. 600_000ms / 30_000ms = 20, so PUBLIC_STATUS_READ_MAX (20 reads
+// per PUBLIC_ORDER_RATE_WINDOW_MS window) is exactly the requested 30s
+// AVERAGE rate over one window, expressed as a rate cap rather than a strict
+// inter-arrival gate. That is deliberate: a fixed window bounds RATE, not the
+// gap between any two individual reads — so a diner may burst a handful of
+// reads back-to-back (harmless: they're only reading their own order) and
+// then must wait out the rest of the window before reading again. What this
+// closes is SUSTAINED hammering of one code, not the occasional quick
+// double-tap of a refresh button.
+export const PUBLIC_STATUS_REFRESH_COOLDOWN_MS = 30_000;
+export const PUBLIC_STATUS_READ_MAX = 20; // PUBLIC_ORDER_RATE_WINDOW_MS / PUBLIC_STATUS_REFRESH_COOLDOWN_MS
+// Bucket is PER SHORTCODE (`${PUBLIC_STATUS_READ_BUCKET_PREFIX}:${shortCode}`)
+// — never per-source/IP. A diner's status page fans out one GET per tracked
+// order, so a shared bucket across codes (or one keyed on the caller) would
+// starve a diner checking several orders at once; per-code keeps every code
+// independent, exactly like the edit bucket above.
+export const PUBLIC_STATUS_READ_BUCKET_PREFIX = "read";
+
 // ── Self-order provenance & operator mode ───────────────────────────────────
 // Every order placed through this surface is stamped with these so the POS can
 // tell a diner-placed order apart from one a staff member rang up, and print
@@ -196,11 +217,27 @@ export const SELF_ORDER_RECEIVER = "Self-order";
 
 // "approve": every self-order lands as a pending request the staff must accept
 // before it reaches the kitchen. "auto": it fires straight through, the same
-// as a staff-entered order. A per-cafe Settings toggle, not a constant, because
-// a cafe with adequate floor staff wants the first and a QR-only kiosk wants
-// the second.
-export const SELF_ORDER_MODES = ["approve", "auto"] as const;
+// as a staff-entered order. "menu": the QR shows the MENU ONLY — a diner can
+// browse and see prices but cannot place an order at all (CB-4). A per-cafe
+// Settings toggle, not a constant, because a cafe with adequate floor staff
+// wants the first, a QR-only kiosk wants the second, and a cafe that only
+// wants to retire its paper menu wants the third.
+//
+// ORDER MATTERS for the "can a diner order?" question: "menu" is the ONLY
+// value that turns ordering OFF, and that is decided by `selfOrderingAllowed`
+// below — never by a hand-written `=== "menu"` at a call site, so a fourth
+// value later cannot silently re-open ordering on a surface that forgot to
+// check it.
+export const SELF_ORDER_MODES = ["approve", "auto", "menu"] as const;
 export type SelfOrderMode = (typeof SELF_ORDER_MODES)[number];
+
+// The ONE predicate every ordering path (client affordance AND the server-side
+// gate in the public order-request intake) asks. Written against the value that
+// DENIES rather than the values that allow, so an unset/legacy Settings doc
+// (absent selfOrderMode) keeps ordering ON exactly as it did before CB-4.
+export function selfOrderingAllowed(mode: SelfOrderMode | undefined): boolean {
+  return mode !== "menu";
+}
 
 // ── Public order request wire contracts (CR2.2 SLICE 8) ────────────────────
 // The exact shapes POST/GET /api/public/order-request(s) return — pinned here
@@ -222,8 +259,9 @@ export interface PublicOrderRequestCreatedData {
 // One line of a diner's request, as shown back to them on the status page
 // (CR2.2b §17.B — the diner's session view gains its own item lines). Mirrors
 // the stored IOrderRequestItem shape, but `productId` is always a STRING
-// here (the model's own field is already a string, never a raw ObjectId —
-// String(...) at the route is defensive, never a real cast).
+// here — the model's own field is an ObjectId (CB-DL-2), so the
+// String(...) cast at the route is the REAL serialisation boundary, not
+// defensive filler.
 export interface PublicStatusItem {
   productId: string;
   name: string;
@@ -247,6 +285,18 @@ export interface PublicOrderRequestStatusData {
   total: number;
   createdAt: string;
   items: PublicStatusItem[];
+  // S4 — the quoted-money fields the model already stores, added so a PAST
+  // order's status page can render a real bill breakdown (subtotal + charge,
+  // not just the total). `subtotal`/`charge` mirror quotedSubtotal/
+  // quotedCharge exactly (always present, like the model's own required
+  // fields); `chargeLabel` omit-empty, mirroring quotedChargeLabel. GST is
+  // deliberately NOT here — it is never stored (see the model's own comment);
+  // the client derives it via publicCartTotals(subtotal, charge, gst) using
+  // the gst config GET /api/public/menu already ships. Do not add a stored
+  // GST field here — that would duplicate a value this route never owned.
+  subtotal: number;
+  charge: number;
+  chargeLabel?: string;
   // The promo the request currently carries, so the edit UI can SHOW it and
   // offer Remove — without it a diner could never see or undo a code they
   // applied in an earlier round. Same three-way rule as `note` on the PATCH.

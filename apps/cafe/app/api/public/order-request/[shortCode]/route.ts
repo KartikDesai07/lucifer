@@ -3,9 +3,8 @@ import { NextResponse, after } from "next/server";
 import { checkBotId } from "botid/server";
 
 import {
-  isPublicCode, PUBLIC_ORDER_BODY_MAX_BYTES, PUBLIC_ORDER_EDIT_RATE_MAX,
+  isPublicCode, PUBLIC_ORDER_BODY_MAX_BYTES, PUBLIC_ORDER_EDIT_RATE_MAX, PROMO_ALREADY_USED,
   type PublicOrderRequestStatusData, type PublicOrderRequestUpdatedData,
-  PROMO_ALREADY_USED,
 } from "@pos/shared/public";
 import { connectDB } from "@/lib/db";
 import { OrderRequest } from "@/models/OrderRequest";
@@ -27,6 +26,7 @@ import {
   BODY_TOO_LARGE_MESSAGE, BAD_REQUEST_MESSAGE, ORDER_EDIT_FAILED_MESSAGE,
   RATE_LIMITED_MESSAGE, EDIT_TOO_OLD_MESSAGE, EDIT_TABLE_CHANGED_MESSAGE,
   EDIT_NEW_ITEM_MESSAGE, EDIT_CONFLICT_MESSAGE,
+  statusReadGate, REFRESH_AFTER_HEADER, refreshAfterSeconds,
 } from "@/lib/order-request-edit";
 import { notifyRequestEvent, telegramSummaryOfEdit } from "@/lib/telegram/notify";
 
@@ -36,13 +36,20 @@ type Params = { params: Promise<{ shortCode: string }> };
 
 // GET /api/public/order-request/[shortCode] — the diner's post-submit poll
 // target. PUBLIC on purpose: the shortCode IS the capability. No mobile, no
-// acceptedOrderId, no customerName. Item LINES are the one addition beyond
-// the summary fields (CR2.2b §17.B) — a diner may see what THEIR order holds.
+// acceptedOrderId, no customerName.
 export async function GET(_req: Request, { params }: Params) {
   const { shortCode } = await params;
 
-  // Shape-validated BEFORE any query, never echoed back.
+  // Shape-validated BEFORE any query — a malformed code must never burn a
+  // rate-limit window slot, so this runs strictly before hitRateLimit too.
   if (!isPublicCode(shortCode)) return noStore(notFound(ORDER_NOT_FOUND_MESSAGE));
+
+  // S4 — the refresh cooldown. Bucket shape and the 429 (with Retry-After)
+  // live in the sibling lib so this route stays inside the ~300-line budget;
+  // see statusReadGate for why the key is PER SHORTCODE and why that is
+  // load-bearing for the Orders tab's and the timeline's own fan-outs.
+  const limited = await statusReadGate(shortCode, Date.now(), noStore);
+  if (limited) return limited;
 
   try {
     await connectDB();
@@ -60,11 +67,14 @@ export async function GET(_req: Request, { params }: Params) {
       total: request.quotedTotal,
       createdAt: request.createdAt.toISOString(),
       items: items,
+      subtotal: request.quotedSubtotal,
+      charge: request.quotedCharge,
     };
     // The stored promo + kitchen note ride along so the edit UI can SHOW them
     // and round-trip/amend them (absent-vs-"" is meaningful on the PATCH side
-    // for both — see there). Without the promo here a diner could never see,
-    // or undo, a code applied in an earlier round.
+    // for both). chargeLabel omit-empty, mirroring quotedChargeLabel — GST is
+    // never stored (see public.ts's own comment).
+    if (request.quotedChargeLabel) data.chargeLabel = request.quotedChargeLabel;
     if (request.promoCode) data.promoCode = request.promoCode;
     if (request.quotedDiscount) data.quotedDiscount = request.quotedDiscount;
     if (request.note) data.note = request.note;
@@ -76,7 +86,11 @@ export async function GET(_req: Request, { params }: Params) {
       data.acceptedAt = request.acceptedAt.toISOString();
     }
 
-    return noStore(success(data));
+    // Names the cooldown for the diner UI's own refresh button — body shape
+    // unchanged (a body change would force a cached-blob version bump elsewhere).
+    const res = noStore(success(data));
+    res.headers.set(REFRESH_AFTER_HEADER, refreshAfterSeconds());
+    return res;
   } catch (error) {
     return noStore(serverError(ORDER_STATUS_FAILED_MESSAGE, error, 503));
   }

@@ -27,7 +27,7 @@
  */
 import mongoose from "mongoose";
 import { connectDB } from "@/lib/db";
-import { Order, type IOrder, type IOrderItem } from "@/models/Order";
+import { Order, type IOrder } from "@/models/Order";
 import { OrderRequest, type IOrderRequest, type OrderRequestStatus } from "@/models/OrderRequest";
 import { Product } from "@/models/Product";
 import { Customer } from "@/models/Customer";
@@ -64,6 +64,7 @@ import {
   type IntakeTable,
 } from "@/lib/order-request-intake";
 import { priceRequestItems, PRICE_DRIFT_ERROR, SOLD_OUT_ERROR, type PricedProductSource } from "@/lib/public-pricing";
+import { ensureCategoryId } from "./verify-shared/ensure-category";
 import { hitRateLimit, peekRateLimit, pruneRateWindows, rateWindowKey } from "@/lib/public-rate-limit";
 import { mintUniquePublicCode } from "@/lib/public-token";
 import {
@@ -99,15 +100,25 @@ function check(label: string, ok: boolean): void {
   }
 }
 
+// productId/customerId/sourceRequestIds are real ObjectIds once a document
+// has round-tripped through Mongo (models/Order.ts, models/OrderRequest.ts).
+// This file compares them against hex-string fixture ids throughout — a
+// type-only helper, no behavior change from the pre-flip string === string.
+function pid(value: unknown): string {
+  return String(value);
+}
+
 // ── shared product fixtures (seeded once in main, read by every leg) ───────
 let teaId: string;
 let coffeeId: string;
 let burgerId: string;
 
 async function seedProducts(): Promise<void> {
+  const beveragesId = await ensureCategoryId("Beverages");
+  const mainsId = await ensureCategoryId("Mains");
   const tea = await Product.create({
     name: "Tea",
-    category: "Beverages",
+    categoryId: beveragesId,
     price: 100,
     discount: 0,
     available: true,
@@ -116,7 +127,7 @@ async function seedProducts(): Promise<void> {
   });
   const coffee = await Product.create({
     name: "Coffee",
-    category: "Beverages",
+    categoryId: beveragesId,
     price: 150,
     discount: 10, // effectiveUnitPrice = round(150 - 15) = 135
     available: true,
@@ -125,7 +136,7 @@ async function seedProducts(): Promise<void> {
   });
   const burger = await Product.create({
     name: "Burger",
-    category: "Mains",
+    categoryId: mainsId,
     price: 300,
     variations: [
       { name: "Regular", price: 300 },
@@ -420,17 +431,39 @@ const PROMO_CODES_ONCE: PromoCodeConfig[] = [
   { code: "ONCE10", kind: "percent", value: 10, active: true, oncePerCustomer: true },
 ];
 
-function line(productId: string, name: string, price: number, qty: number, kotRound: number): IOrderItem {
+// Fixture-only shape: productId stays a hex STRING (Mongoose casts it on
+// Order.create) — IOrderItem now requires a real Types.ObjectId instance,
+// which a plain fixture literal is not.
+interface FixtureItem {
+  productId: string;
+  name: string;
+  price: number;
+  qty: number;
+  modifiers: string[];
+  instructions: string;
+  kotRound: number;
+}
+
+function line(productId: string, name: string, price: number, qty: number, kotRound: number): FixtureItem {
   return { productId, name, price, qty, modifiers: [], instructions: "", kotRound };
 }
 
 // A minimal, valid standalone Order — used only for the sparse-index legs
 // (6) where the money/pricing math is irrelevant to what's being proved.
-function minimalOrder(orderId: string, extra: Partial<IOrder> = {}) {
+// `items`/`sourceRequestIds` are widened to accept hex STRINGS (Mongoose
+// casts them on Order.create) alongside IOrder's own ObjectId-typed shape —
+// every fixture in this file stages request ids as strings.
+function minimalOrder(
+  orderId: string,
+  extra: Omit<Partial<IOrder>, "items" | "sourceRequestIds"> & {
+    items?: FixtureItem[];
+    sourceRequestIds?: string[];
+  } = {},
+) {
   return {
     orderId,
     customerName: "Walk-in",
-    items: [line("p-x", "Item", 100, 1, 1)],
+    items: [line("00000000000000000000aaa2", "Item", 100, 1, 1)],
     subtotal: 100,
     discount: 0,
     gstAmount: 0,
@@ -449,7 +482,7 @@ function minimalOrder(orderId: string, extra: Partial<IOrder> = {}) {
 function rawOrderRequest(overrides: Partial<IOrderRequest> & { shortCode: string }) {
   return {
     targetKind: "parcel" as const,
-    items: [{ productId: "p-x", name: "Item", price: 100, qty: 1, modifiers: [], instructions: "" }],
+    items: [{ productId: "00000000000000000000aaa2", name: "Item", price: 100, qty: 1, modifiers: [], instructions: "" }],
     quotedSubtotal: 100,
     quotedCharge: 0,
     quotedTotal: 100,
@@ -552,7 +585,7 @@ async function leg3(order1: IOrder, requestId1: string): Promise<{ requestId3: s
   check("round 2 was appended to the SAME order (same _id)", order._id.equals(order1._id));
   check("kotRounds is now 2", order.kotRounds === 2);
   check("kotNumbers has a positional entry for round 2", order.kotNumbers?.length === 2 && (order.kotNumbers?.[1] ?? 0) > 0);
-  check("the coffee line carries kotRound 2", order.items.some((it) => it.productId === coffeeId && it.kotRound === 2));
+  check("the coffee line carries kotRound 2", order.items.some((it) => pid(it.productId) === coffeeId && it.kotRound === 2));
   check(
     "totals were recomputed on the tab's stored GST snapshot (600 + 135 + 40 charge = 775)",
     order.total === 775,
@@ -562,8 +595,8 @@ async function leg3(order1: IOrder, requestId1: string): Promise<{ requestId3: s
   check(
     "sourceRequestIds now holds BOTH the create and the add-round request ids",
     (order.sourceRequestIds ?? []).length === 2 &&
-      (order.sourceRequestIds ?? []).includes(requestId1) &&
-      (order.sourceRequestIds ?? []).includes(requestId3),
+      (order.sourceRequestIds ?? []).map(pid).includes(requestId1) &&
+      (order.sourceRequestIds ?? []).map(pid).includes(requestId3),
   );
 
   return { requestId3 };
@@ -729,7 +762,7 @@ async function leg8(): Promise<void> {
   check("auto-mode accept with a KNOWN mobile succeeds", !("error" in knownResult));
   if ("error" in knownResult) throw new Error("leg8: known-mobile accept unexpectedly failed");
   const asha = await Customer.findOne({ mobile: "9990000001" }).lean();
-  check("the order attaches the EXISTING customer even in auto mode with createCustomer:false", knownResult.order.customerId === String(asha?._id));
+  check("the order attaches the EXISTING customer even in auto mode with createCustomer:false", pid(knownResult.order.customerId) === String(asha?._id));
   check("the order carries the existing customer's own name", knownResult.order.customerName === "Asha");
 }
 
@@ -1914,7 +1947,7 @@ async function leg32(): Promise<void> {
   if ("error" in acceptedA) throw new Error(`leg32: a) accept unexpectedly failed — ${acceptedA.error}`);
   const redemptionA = await PromoRedemption.findOne({ code: "ONCE10", mobile: "9990000061" }).lean();
   check("a) a redemption row exists for (ONCE10, this mobile)", redemptionA !== null);
-  check("a) the redemption's requestId is this request's own id", redemptionA?.requestId === String(requestA._id));
+  check("a) the redemption's requestId is this request's own id", pid(redemptionA?.requestId) === String(requestA._id));
   check("a) the redemption's orderId was best-effort backfilled to the winning order", redemptionA?.orderId === acceptedA.order.orderId);
 
   // ── b) the SAME mobile trying the SAME code again at CREATE is refused ──
@@ -2117,7 +2150,7 @@ async function leg33(): Promise<void> {
   // ── c) …and that guardedReject RELEASED nothing of the winner's claim,
   //       while the loser (who never claimed) left no row behind ──
   const rowsB = await PromoRedemption.find({ code: "ONCE10", mobile: "9990000072" }).lean();
-  check("c) exactly ONE redemption row stands after the race (the winner's)", rowsB.length === 1 && rowsB[0].requestId === String(reqB1._id));
+  check("c) exactly ONE redemption row stands after the race (the winner's)", rowsB.length === 1 && pid(rowsB[0].requestId) === String(reqB1._id));
 
   // ── d) reject releases a claimed-but-orderless fence: simulate a crashed
   //       accept that claimed then died before its order write ──
@@ -2130,7 +2163,7 @@ async function leg33(): Promise<void> {
     promoCodes: PROMO_CODES_ONCE,
   });
   await OrderRequest.updateOne({ _id: reqD._id }, { $set: { status: "accepting" } });
-  const claimD = await claimPromoRedemption("ONCE10", "9990000073", String(reqD._id));
+  const claimD = await claimPromoRedemption("ONCE10", "9990000073", { kind: "request", id: String(reqD._id) });
   check("d) the simulated crashed accept claimed the fence", claimD === "claimed");
   await reject(String(reqD._id), "simulated failure");
   const rowD = await PromoRedemption.findOne({ code: "ONCE10", mobile: "9990000073" }).lean();
@@ -2145,7 +2178,7 @@ async function leg33(): Promise<void> {
     promoCode: "ONCE10",
     promoCodes: PROMO_CODES_ONCE,
   });
-  const claimE = await claimPromoRedemption("ONCE10", "9990000074", String(reqE._id));
+  const claimE = await claimPromoRedemption("ONCE10", "9990000074", { kind: "request", id: String(reqE._id) });
   check("e) the request's own claim stands", claimE === "claimed");
   const editE = await applyEdit(reqE.shortCode, [{ productId: teaId, qty: 2 }], undefined, onceSettings);
   check("e) a qty-only edit of the claim-holder succeeds (own claim excluded from the courtesy check)", !("error" in editE));
@@ -2155,7 +2188,7 @@ async function leg33(): Promise<void> {
   // discount, so the claim must not run. Cheapest item is 100 ⇒ 10% = 10, so
   // stage with a 1-rupee product instead.
   const tiny = await Product.create({
-    name: "Leg33 Candy", category: "Mains", price: 5, discount: 0, available: true, modifiers: [], isActive: true,
+    name: "Leg33 Candy", categoryId: await ensureCategoryId("Mains"), price: 5, discount: 0, available: true, modifiers: [], isActive: true,
   });
   const reqF = await stageRequest({
     targetKind: "parcel",
@@ -2244,7 +2277,7 @@ async function leg34(): Promise<void> {
   const afterDrop = await OrderRequest.findOne({ shortCode: shortCodeA }).lean();
   check(
     "b) the stored row now holds only the Coffee line",
-    afterDrop?.items.length === 1 && afterDrop.items[0]?.productId === coffeeId,
+    afterDrop?.items.length === 1 && pid(afterDrop.items[0]?.productId) === coffeeId,
   );
 
   // c) accept a SEPARATE pending request that still holds the sold-out item

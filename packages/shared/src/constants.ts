@@ -163,6 +163,17 @@ export type GstMode = (typeof GST_MODES)[number];
 // Common Indian restaurant GST rates, offered as quick picks in Settings.
 export const GST_RATES = [0, 5, 12, 18, 28] as const;
 
+// CB-2/CB-5B — the two preset discounts the POS can apply: "gst", a discount
+// equal to the GST component (Sec 15(3)(a)); "reward", a diner's loyalty
+// milestone claim (CB-5B). An ENUM, not a free label — for BOTH kinds, the
+// kind drives the server's re-derivation of the amount (`lib/receipt.ts`);
+// the client's number is never trusted for either.
+export const DISCOUNT_KINDS = ["gst", "reward"] as const;
+export type DiscountKind = (typeof DISCOUNT_KINDS)[number];
+export const GST_DISCOUNT_LABEL = "GST Discount";
+export const REWARD_DISCOUNT_LABEL = "Reward";
+export const DEFAULT_DISCOUNT_LABEL = "Discount";
+
 // FSSAI license number (Indian food-safety registration), shown on the
 // receipt when set. Bounded to a plausible license-number length.
 export const SETTINGS_FSSAI_MAX_LEN = 20;
@@ -197,8 +208,10 @@ export type PrintLogoSize = (typeof PRINT_LOGO_SIZES)[number];
 export const PRINT_NUMBER_START_MIN = 1;
 export const PRINT_NUMBER_START_MAX = 999999;
 
-// Fallback category assigned to products whose category is deleted, so menu
-// items never become orphaned with a dangling category name.
+// Display-only fallback label for a product whose categoryId is missing or no
+// longer resolves to a live Category doc (see lib/category-map.ts's
+// categoryNameOf) — never written to a product; a category with products still
+// linked to it cannot be deleted (see the DELETE route's guard).
 export const UNCATEGORIZED = "Uncategorized";
 
 // The cafe operates in a single fixed timezone (India, no DST). Day boundaries
@@ -215,15 +228,35 @@ export const CAFE_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 // bcrypt cost factor for password hashing (CLAUDE.md §8).
 export const BCRYPT_ROUNDS = 12;
 
-// JWT session lifetime. A cafe shift is ~8h, so a token outlives one shift and
-// no more — a deactivated/forgotten login can't linger indefinitely (CLAUDE.md §8).
-export const SESSION_MAX_AGE_SECONDS = 8 * 60 * 60; // 8 hours
+// JWT session lifetime, ROLLING. Verified against @auth/core 0.41.2
+// (lib/actions/session.js): the JWT branch re-signs the token and re-sets the
+// cookie with a fresh `expires` on EVERY session action, and jwt.encode sets
+// exp = now + maxAge each call — `session.updateAge` is consulted ONLY in the
+// database branch and is a dead knob here, so it is deliberately NOT set.
+// Rolling = this maxAge plus anything that hits the session endpoint
+// (components/layout/SessionKeepalive.tsx's raw fetch on the cadence below,
+// window focus, middleware auth()): a device in daily use never expires; one
+// untouched for 30 days does.
+// lib/auth.ts's DB re-validation (SESSION_REVALIDATE_MS) remains what locks
+// out a deactivated account within ~a minute. apps/hub keeps its OWN 8h.
+export const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60; // 30 days
 
 // Throttle for re-checking a session's account against the DB (role/isActive).
 // The Node auth instance re-validates at most this often (per account, per
 // worker isolate — see the node-cache marker in lib/auth.ts), so a deactivated
 // or role-changed staff member is locked out within ~a minute.
 export const SESSION_REVALIDATE_MS = 60 * 1000; // 1 minute
+
+// How often components/layout/SessionKeepalive.tsx (dashboard layout, staff
+// screens only) re-hits GET /api/auth/session with a RAW same-origin fetch,
+// which is what re-rolls the cookie's expiry for a device that never navigates
+// (a POS tab left open on /pos all shift — /api is outside the middleware
+// matcher, so the 20s pulse never rolls it). NOT wired to SessionProvider's
+// `refetchInterval`: next-auth's fetchData() turns any transient failure into
+// a null client session (status "unauthenticated"), so that prop was rejected
+// (CB-U1 review). UNIT: SECONDS (the component multiplies by 1000), unlike the
+// *_MS constants above.
+export const SESSION_KEEPALIVE_SECONDS = 30 * 60; // 30 minutes
 
 // ── Product images (asset plane, F2.11) ─────────────────────────────────────
 // Hard cap on one product image upload; enforced client-side before upload AND

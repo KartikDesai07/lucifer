@@ -1,5 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+
+import { stripComments } from "@/lib/source-pin-utils";
 
 import {
   REQUEST_REJECTED_ERROR,
@@ -25,7 +30,7 @@ import {
 import { buildFallbackRequest } from "./order-request-accept-fallback";
 import type { PromoCodeConfig } from "@pos/shared/public";
 import { guardedRejectDecision, isSourceRequestIdsDuplicate, gstConfigDrifted } from "./order-request-accept-write";
-import { resolveAcceptPromo, decidePromoRedemption, PROMO_USED_ERROR } from "./order-request-accept-promo";
+import { resolveAcceptPromo, decidePromoRedemption, promoIsClaimable, PROMO_USED_ERROR } from "./order-request-accept-promo";
 import { PUBLIC_REQUEST_PENDING_TTL_MS } from "./order-request-intake";
 import { voidGuardFilter } from "./order-void";
 import type { IOrder } from "@/models/Order";
@@ -314,7 +319,7 @@ test("resolveAcceptPromo: PROMO_DRIFT_ERROR is a non-empty, staff-actionable str
 
 test("resolveAcceptPromo: the code still resolves to the SAME amount that was quoted -> success, no drift", () => {
   // SAVE10 (10%) on a 500 subtotal = 50, matching what was quoted.
-  assert.deepEqual(resolveAcceptPromo("SAVE10", 50, PROMO_CODES, 500), { discount: 50 });
+  assert.deepEqual(resolveAcceptPromo("SAVE10", 50, PROMO_CODES, 500), { discount: 50, kind: "percent" });
 });
 
 test("resolveAcceptPromo: the code no longer resolves at all (deactivated between quote and accept) -> PROMO_DRIFT_ERROR", () => {
@@ -331,7 +336,7 @@ test("resolveAcceptPromo: the code resolves to a DIFFERENT amount than quoted (s
 
 test("resolveAcceptPromo: a flat code clamped identically at both quote and accept time still matches -> no drift", () => {
   // FLAT50 on a 30 subtotal clamps to 30 at BOTH quote and accept time.
-  assert.deepEqual(resolveAcceptPromo("FLAT50", 30, PROMO_CODES, 30), { discount: 30 });
+  assert.deepEqual(resolveAcceptPromo("FLAT50", 30, PROMO_CODES, 30), { discount: 30, kind: "flat" });
 });
 
 // ── SPEC P4 — per-customer usage cap: resolveAcceptPromo propagates the flag,
@@ -342,13 +347,33 @@ const ONCE_CODES: PromoCodeConfig[] = [
 ];
 
 test("resolveAcceptPromo: a code configured oncePerCustomer:true carries that flag through on success", () => {
-  assert.deepEqual(resolveAcceptPromo("ONCE10", 50, ONCE_CODES, 500), { discount: 50, oncePerCustomer: true });
+  assert.deepEqual(resolveAcceptPromo("ONCE10", 50, ONCE_CODES, 500), { discount: 50, kind: "percent", oncePerCustomer: true });
 });
 
 test("resolveAcceptPromo: a code with no oncePerCustomer flag never carries it — omitted, not false", () => {
   const r = resolveAcceptPromo("SAVE10", 50, PROMO_CODES, 500);
-  assert.deepEqual(r, { discount: 50 });
+  assert.deepEqual(r, { discount: 50, kind: "percent" });
   assert.ok(!("oncePerCustomer" in r), "oncePerCustomer must be absent on a non-flagged code's result");
+});
+
+test("promoIsClaimable: NO code means nothing to claim — every kind, every amount", () => {
+  // A fence burned without a code is a redemption row keyed on a code that was
+  // never applied: it would consume this customer's single use of whatever
+  // code happens to share that key. Pinned as BEHAVIOUR because a source pin
+  // on the predicate's text did not catch this (measured escape).
+  assert.equal(promoIsClaimable(0, undefined, "item"), false);
+  assert.equal(promoIsClaimable(500, undefined, "flat"), false);
+  assert.equal(promoIsClaimable(0, "", "item"), false, "an empty code is not a code");
+});
+
+test("promoIsClaimable: an ITEM promo is claimable at 0, a money promo is not", () => {
+  // The CB-5D split, stated once: an item promo's benefit is the free LINE, so
+  // 0 rupees is its normal resolved value; a percent code floored to 0 on a
+  // tiny bill is worth nothing and must NOT burn the single use (review LOW #6).
+  assert.equal(promoIsClaimable(0, "FREEDISH", "item"), true);
+  assert.equal(promoIsClaimable(0, "SAVE10", "percent"), false);
+  assert.equal(promoIsClaimable(0, "FLAT50", "flat"), false);
+  assert.equal(promoIsClaimable(50, "SAVE10", "percent"), true);
 });
 
 test("PROMO_USED_ERROR is a non-empty, staff-actionable string distinct from PROMO_DRIFT_ERROR", () => {
@@ -372,4 +397,164 @@ test("decidePromoRedemption: a dup-key row from a DIFFERENT requestId -> reject 
 
 test("decidePromoRedemption: a dup-key row with no existing requestId on record (defensive) -> reject, never a false replay", () => {
   assert.equal(decidePromoRedemption(true, undefined, "req-1"), "reject");
+});
+
+// ── C14 (arbiter-confirmed) — the fence's compare must be canonical-hex on
+//    BOTH sides, or an upper-case URL replay of a genuine retry misreads as a
+//    collision ──────────────────────────────────────────────────────────────
+// `existing.requestId` is read back off a real ObjectId field (models/
+// PromoRedemption.ts), so `String(existing.requestId)` is ALWAYS canonical
+// lower-case hex. The route's own id gate (mongoose.isValidObjectId) accepts
+// BOTH cases, so the raw requestId flowing into decidePromoRedemption can
+// legitimately be upper-case. decidePromoRedemption itself does a plain `===`
+// (never re-verified here — its own signature/semantics are unchanged by this
+// fix), so the demonstration below shows why the compare side MUST be
+// canonicalised before it ever reaches decidePromoRedemption: an uppercase
+// requestId compared as-is against the canonical stored value would
+// misclassify a legitimate replay as a genuine collision.
+
+const SAME_REQUEST_ID_LOWER = "507f1f77bcf86cd799439011";
+const SAME_REQUEST_ID_UPPER = "507F1F77BCF86CD799439011";
+
+test("decidePromoRedemption: demonstrates the hazard directly -- the SAME request compared as raw upper-case against the canonical (lower-case) stored value misreads as reject, not replay", () => {
+  // This is the exact failure claimPromoRedemption's canonicalisation (below)
+  // exists to prevent: without it, this is what a genuine retry would get.
+  assert.equal(
+    decidePromoRedemption(true, SAME_REQUEST_ID_LOWER, SAME_REQUEST_ID_UPPER),
+    "reject",
+    "a raw (uncanonicalised) case mismatch between the SAME request's two spellings must misread as reject -- this is the bug C14 fixes upstream",
+  );
+});
+
+test("decidePromoRedemption: once BOTH sides are canonicalised to the same case, the SAME request (spelled in upper case at the URL) replays instead of rejecting", () => {
+  const canonicalOfUpper = SAME_REQUEST_ID_UPPER.toLowerCase();
+  assert.equal(
+    decidePromoRedemption(true, SAME_REQUEST_ID_LOWER, canonicalOfUpper),
+    "replay",
+    "once the upper-case requestId is canonicalised (mirroring claimPromoRedemption's new mongoose.Types.ObjectId(requestId).toString()), a retry of the SAME request must replay",
+  );
+});
+
+// The REAL guard: reads order-request-accept-promo.ts and asserts
+// claimPromoRedemption actually canonicalises requestId (via
+// mongoose.Types.ObjectId(...).toString(), the same idiom lib/due-payment.ts's
+// canonicalCustomerId uses) BEFORE passing it to decidePromoRedemption -- a
+// mutated/reverted call site would still pass every pure-function test above
+// while the real fence stayed broken.
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const ORDER_REQUEST_ACCEPT_PROMO_LIB = "apps/cafe/lib/order-request-accept-promo.ts";
+const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel), "utf8");
+
+// ── CB-5D part 2 REGRESSION: the counter has NO quote ──────────────────────
+// A REAL defect, found by review and reproduced before it was fixed: the
+// counter passed `undefined` as quotedDiscount, and `undefined ?? 0` made the
+// drift check compare every resolved amount against 0. A ₹50 code resolved to
+// 50, compared 50 !== 0, and was refused as "drifted" — so the only codes the
+// counter accepted were the ones worth NOTHING (a 0-value item promo), exactly
+// inverting the feature. `null` now means "there was no quote" and skips the
+// comparison; `undefined` keeps its old meaning for every quoted caller.
+const COUNTER_CODES = [
+  { code: "SAVE10", kind: "percent" as const, value: 10, active: true },
+  { code: "FLAT50", kind: "flat" as const, value: 50, active: true },
+];
+
+test("REGRESSION (CB-5D part 2): a quote-less (null) caller resolves a MONEY code at its real value — never PROMO_DRIFT_ERROR", () => {
+  const percent = resolveAcceptPromo("SAVE10", null, COUNTER_CODES, 500);
+  assert.deepEqual(percent, { discount: 50, kind: "percent" }, "the counter must get the real ₹50, not a drift refusal");
+  const flat = resolveAcceptPromo("FLAT50", null, COUNTER_CODES, 500);
+  assert.deepEqual(flat, { discount: 50, kind: "flat" }, "a flat code must resolve for a quote-less caller too");
+});
+
+test("REGRESSION (CB-5D part 2): null skips drift, but undefined still MEANS 'quoted 0' — the diner path is unchanged", () => {
+  // The distinction that IS the fix: these two arguments must not behave alike.
+  const quoteless = resolveAcceptPromo("SAVE10", null, COUNTER_CODES, 500);
+  const undefinedQuote = resolveAcceptPromo("SAVE10", undefined, COUNTER_CODES, 500);
+  assert.ok(!("error" in quoteless), "null (no quote) must resolve");
+  assert.ok("error" in undefinedQuote, "undefined must STILL drift-refuse — collapsing the two would silently drop a real fence from the diner path");
+  // And a genuinely drifted quote is still caught for a quoted caller.
+  const drifted = resolveAcceptPromo("SAVE10", 40, COUNTER_CODES, 500);
+  assert.ok("error" in drifted, "a quoted caller whose amount moved must still be refused");
+  // A matching quote still passes.
+  assert.deepEqual(resolveAcceptPromo("SAVE10", 50, COUNTER_CODES, 500), { discount: 50, kind: "percent" });
+});
+
+test("PIN: claimPromoRedemption canonicalises requestId via new mongoose.Types.ObjectId(requestId).toString() and passes THAT (not the raw parameter) to decidePromoRedemption", () => {
+  const src = stripComments(readSrc(ORDER_REQUEST_ACCEPT_PROMO_LIB));
+  const fnStart = src.indexOf("export async function claimPromoRedemption");
+  assert.ok(fnStart >= 0, "claimPromoRedemption must exist");
+  const body = src.slice(fnStart);
+
+  // CB-5D part 2 — the claimant generalised from a bare requestId to a
+  // {kind,id} union (the counter claims this same fence for an orderId), so
+  // the canonicalisation moved into the single-homed claimantKeyFor. The
+  // DECISION is unchanged and re-pinned below: an ObjectId-shaped claimant is
+  // still canonicalised (hex case), and the write and the compare must still
+  // derive from ONE expression rather than relying on the schema's cast.
+  assert.match(body.slice(0, 200), /claimant:\s*PromoClaimant/, "positive landmark: claimPromoRedemption must still take the claimant as its third parameter");
+
+  assert.match(
+    body,
+    /const\s+claimantKey\s*=\s*claimantKeyFor\(claimant\)\s*;/,
+    "claimPromoRedemption must derive its compare key through the single-homed claimantKeyFor(claimant)",
+  );
+  assert.match(
+    body,
+    /decidePromoRedemption\(\s*true,\s*existing\s*\?\s*claimantKeyOf\(existing\)\s*:\s*undefined,\s*claimantKey\s*\)/,
+    "claimPromoRedemption must compare the STORED claimant key (claimantKeyOf) against its own claimantKey — never a raw field",
+  );
+  // The canonicalisation itself, at its new single home.
+  const keyForStart = src.indexOf("export function claimantKeyFor");
+  assert.ok(keyForStart >= 0, "claimantKeyFor must exist as the one place a claim key is derived");
+  assert.match(
+    src.slice(keyForStart, keyForStart + 400),
+    /new\s+mongoose\.Types\.ObjectId\(claimant\.id\)\.toString\(\)/,
+    "claimantKeyFor must canonicalise an ObjectId-shaped (request) claimant -- mirroring lib/due-payment.ts's canonicalCustomerId idiom, since ObjectId hex is case-insensitive and a replay must not read as a collision",
+  );
+
+  // The WRITE must use the same canonical expression as the compare. The
+  // stored path is an ObjectId, so Mongoose would cast either spelling
+  // (probe-verified) -- but then the schema type is the only thing keeping the
+  // two halves in agreement, and a future String-typed path (or a raw-driver
+  // reuse of this helper) would silently split them. Deriving both from one
+  // expression is the actual guarantee.
+  // The WRITE derives from the same canonical expression as the compare.
+  assert.match(
+    body,
+    /new\s+mongoose\.Types\.ObjectId\(claimant\.id\)\.toString\(\)/,
+    "the fence CLAIM must store a canonicalised request claimant, not the raw claimant.id",
+  );
+  assert.match(
+    body,
+    /claimOrderId:\s*claimant\.id/,
+    "a counter claim must store its orderId in claimOrderId -- the counter's own claimant key, so a replay of the same order resumes rather than being refused",
+  );
+  const rawCreate = "create({ code, mobile: fenceMobile, requestId " + "})";
+  assert.equal(
+    body.includes(rawCreate),
+    false,
+    "the raw-parameter shorthand write must be gone -- the write and the compare must derive from one expression",
+  );
+});
+
+test("PIN: releasePromoRedemption canonicalises its filter too (the compensating delete must not rely on the model's cast to reconcile two spellings)", () => {
+  const src = stripComments(readSrc(ORDER_REQUEST_ACCEPT_PROMO_LIB));
+  const fnStart = src.indexOf("export async function releasePromoRedemption");
+  assert.ok(fnStart >= 0, "positive landmark: releasePromoRedemption must exist");
+  const body = src.slice(fnStart);
+  assert.match(
+    body,
+    /requestId:\s*new\s+mongoose\.Types\.ObjectId\(claimant\.id\)\.toString\(\)/,
+    "releasePromoRedemption must canonicalise an ObjectId-shaped claimant in its deleteOne filter",
+  );
+  // CB-5D part 2 — the release must target the SAME claimant field the claim
+  // wrote, or a counter release could delete a diner's fence row (and vice
+  // versa) merely because the two shared a code and a mobile.
+  assert.match(
+    body,
+    /claimOrderId:\s*claimant\.id/,
+    "releasePromoRedemption must filter a counter claim on claimOrderId, never on the shared {code,mobile} alone",
+  );
+  // Positive landmark: the orderId-absent half of the filter is load-bearing
+  // (it is what stops the release freeing a redemption whose order landed).
+  assert.match(body, /orderId:\s*\{\s*\$exists:\s*false\s*\}/, "the orderId-absent guard must survive the canonicalisation");
 });

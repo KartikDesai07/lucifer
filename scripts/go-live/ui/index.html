@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>POS go-live console</title>
+<style>
+  :root { --bg:#f4f5f7; --panel:#fff; --line:#e3e6ea; --ink:#17202a; --mute:#6b7683; --brand:#0f7b5f; --brand-ink:#fff; --warn:#b4540a; --bad:#b42318; --ok:#0f7b5f; --mono:ui-monospace,Consolas,"Cascadia Mono",monospace; }
+  * { box-sizing:border-box } html,body { margin:0; height:100% }
+  body { font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif; color:var(--ink); background:var(--bg) }
+  button, input, select, textarea { font:inherit; color:inherit }
+  .app { display:grid; grid-template-rows:56px 1fr; height:100vh }
+  .topbar { display:flex; align-items:center; gap:12px; padding:0 16px; background:var(--panel); border-bottom:1px solid var(--line) }
+  .topbar .brand { font-size:15px; font-weight:600; white-space:nowrap }
+  .topbar .brand small { color:var(--mute); font-weight:400; font-size:12px; margin-left:6px }
+  .topbar .search { width:260px; max-width:32vw }
+  .topbar .spacer { flex:1 }
+  .activity { display:flex; align-items:center; gap:8px; font-size:12.5px; background:#fdf0e3; color:var(--warn); border:1px solid #f5d6b5; border-radius:99px; padding:5px 6px 5px 12px }
+  .activity .btn { padding:3px 10px; font-size:12px }
+  .below { display:grid; grid-template-columns:220px 1fr; min-height:0 }
+  .nav { background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0 }
+  .nav nav { flex:1; overflow:auto; padding:8px }
+  .nav a { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:8px; color:var(--ink); text-decoration:none; font-size:13.5px; margin:2px 0 }
+  .nav a:hover { background:var(--bg) } .nav a.active { background:#e8f3ef; color:var(--brand); font-weight:600 }
+  .nav a .count { margin-left:auto; color:var(--mute); font-size:11.5px; background:var(--bg); border-radius:99px; padding:1px 7px }
+  .nav a.active .count { background:#fff }
+  .nav footer { padding:10px 14px; border-top:1px solid var(--line); font-size:11.5px; color:var(--mute) }
+  .nav footer div + div { margin-top:4px }
+  main { display:flex; flex-direction:column; min-height:0 }
+  .search { width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:8px; background:var(--bg) }
+  #list-body .item, .clients-table .item { width:100%; text-align:left; border:1px solid transparent; background:none; border-radius:10px; padding:9px 10px; cursor:pointer; display:block }
+  .badges { display:flex; gap:6px; margin-top:4px; flex-wrap:wrap }
+  .badge { font-size:11px; padding:1px 7px; border-radius:99px; background:#eef0f3; color:var(--mute) }
+  .badge.ok { background:#e2f3ec; color:var(--ok) } .badge.bad { background:#fbe9e7; color:var(--bad) } .badge.warn { background:#fdf0e3; color:var(--warn) }
+  .bar { display:flex; gap:8px; align-items:center; padding:10px 18px; background:var(--panel); border-bottom:1px solid var(--line); flex-wrap:wrap }
+  .bar .title { font-weight:600; font-size:16px; margin-right:auto } .bar .title small { color:var(--mute); font-weight:400; margin-left:8px }
+  .btn { border:1px solid var(--line); background:var(--panel); padding:7px 12px; border-radius:8px; cursor:pointer } .btn:hover { background:var(--bg) }
+  .btn.primary { background:var(--brand); border-color:var(--brand); color:var(--brand-ink) } .btn.primary:hover { filter:brightness(1.08) }
+  .btn.go { background:#17202a; border-color:#17202a; color:#fff }
+  .btn:disabled { opacity:.45; cursor:default }
+  .scroll { overflow:auto; padding:16px 18px 24px; flex:1 }
+  .view { display:flex; flex-direction:column; min-height:0; flex:1 }
+  .banner { padding:10px 14px; border-radius:10px; margin-bottom:14px; background:#fdf0e3; color:var(--warn); border:1px solid #f5d6b5 }
+  .banner.bad { background:#fbe9e7; color:var(--bad); border-color:#f3c2bc } .banner.ok { background:#e2f3ec; color:var(--ok); border-color:#bfe0d3 }
+  .banner ul { margin:6px 0 0 18px; padding:0 }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(400px,1fr)); gap:14px; align-items:start }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--mute); margin:0 0 10px }
+  .card p.hint { color:var(--mute); font-size:12px; margin:-4px 0 10px }
+  .row { display:grid; grid-template-columns:118px minmax(0,1fr); gap:8px; align-items:center; margin:6px 0 }
+  .row > * { min-width:0 }
+  .row label { color:var(--mute); font-size:12.5px }
+  .field { display:flex; gap:4px; align-items:center; min-width:0 }
+  .btn, .icon { white-space:nowrap; flex:0 0 auto }
+  #tables-count { flex:0 0 84px }
+  .field input, .field select, .field textarea { flex:1; min-width:0; padding:6px 8px; border:1px solid var(--line); border-radius:7px; background:#fff }
+  .field textarea { font-family:var(--mono); font-size:12.5px; min-height:70px; resize:vertical }
+  .field input[readonly] { background:var(--bg); color:var(--mute) }
+  .field input.secret { font-family:var(--mono); font-size:12.5px }
+  .icon { border:1px solid var(--line); background:#fff; border-radius:6px; width:30px; height:30px; cursor:pointer; color:var(--mute) } .icon:hover { background:var(--bg) }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:8px }
+  .help { margin:4px 0 8px 126px; font-size:12.5px; color:var(--mute); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:6px 10px }
+  .help summary { cursor:pointer; color:var(--brand); font-weight:600 } .help ol { margin:6px 0 2px 18px; padding:0 } .help li { margin:3px 0 } .help p { margin:6px 0 0 } .help code { background:#fff; border:1px solid var(--line); border-radius:4px; padding:0 4px }
+  .help .snippet { margin:4px 0 0; padding:6px 8px; background:#fff; border:1px solid var(--line); border-radius:6px; font:12px/1.4 var(--mono); white-space:pre-wrap; color:var(--ink) }
+  #img-r2 .help, #img-cl .help { margin-left:0 }
+  .status .row label { width:130px }
+  .status .row .field { flex:1 } /* the Safety checkboxes take the remaining width instead of wrapping word by word */
+  .addr { position:relative } .addr input { padding-right:96px }
+  .addr .suffix { position:absolute; right:8px; top:50%; transform:translateY(-50%); color:var(--mute); font-size:12.5px; pointer-events:none }
+  .webaddr { font-size:12.5px }
+  .webaddr .sentence { margin:2px 0 6px }
+  .webaddr table { border-collapse:collapse; width:100%; margin:6px 0 8px; font-family:var(--mono); font-size:12px }
+  .webaddr table th, .webaddr table td { border:1px solid var(--line); padding:4px 7px; text-align:left; word-break:break-all }
+  .webaddr table th { background:var(--bg); color:var(--mute); font-weight:600 }
+  .webaddr table th:nth-child(-n+2), .webaddr table td:nth-child(-n+2) { white-space:nowrap; word-break:normal }
+  .webaddr .acts { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:4px }
+  .webaddr .acts .btn { padding:4px 9px; font-size:12px }
+  #platform-pill { margin-left:6px }
+  .kv { font-family:var(--mono); font-size:12.5px; word-break:break-all }
+  .log { border-top:1px solid var(--line); background:#0f1419; color:#d7dde3; height:240px; min-height:36px; display:flex; flex-direction:column; position:relative; flex:0 0 auto }
+  .log .grip { position:absolute; top:-3px; left:0; right:0; height:7px; cursor:ns-resize } .log .grip:hover { background:rgba(143,240,200,.35) }
+  .log.collapsed pre { display:none } .log.collapsed { height:36px !important }
+  .log .btn + .btn { margin-left:6px }
+  .hintline { color:var(--mute); font-size:12px; margin-top:-3px } .hintline b { color:var(--ink); font-weight:600 }
+  .lockbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; background:#fdf0e3; color:var(--warn); border:1px solid #f5d6b5; border-radius:8px; padding:6px 10px; font-size:12.5px; margin:-2px 0 10px }
+  .lockbar .btn { padding:3px 9px; font-size:12px; margin-left:auto; background:#fff }
+  .card.locked input:disabled, .card.locked select:disabled, .card.locked textarea:disabled { background:var(--bg); color:var(--mute) }
+  input:disabled + .icon, .card.locked .icon { opacity:.7 }
+  .title .pill { font-size:11px; padding:2px 8px; border-radius:99px; background:#fdf0e3; color:var(--warn); margin-left:8px; vertical-align:middle } .title .pill.ok { background:#e2f3ec; color:var(--ok) }
+  body.busy .bar .btn.go, body.busy #b-dry, body.busy #b-redeploy, body.busy #b-more { opacity:.45; pointer-events:none }
+  .more { position:relative }
+  .menu { position:absolute; right:0; top:calc(100% + 6px); width:340px; background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:0 12px 32px rgba(20,30,40,.14); padding:6px; z-index:20 }
+  .menu button { display:block; width:100%; text-align:left; background:none; border:0; border-radius:8px; padding:9px 10px; cursor:pointer; font-weight:600 } .menu button:hover { background:var(--bg) }
+  .menu button small { display:block; font-weight:400; color:var(--mute); font-size:12px; margin-top:2px } .menu hr { border:0; border-top:1px solid var(--line); margin:6px 4px }
+  .menu button.danger { color:var(--bad) } .menu button:disabled { opacity:.5; cursor:default } .menu button:disabled:hover { background:none }
+  .archived { border-top:1px solid var(--line); padding:6px } .archived summary { cursor:pointer; color:var(--mute); font-size:12.5px; padding:6px 10px } .archived .item b { color:var(--mute) }
+  .archived .restore { margin:4px 0 0 10px; font-size:12px; padding:3px 9px }
+  dialog { border:0; border-radius:14px; padding:0; width:min(560px, 92vw); box-shadow:0 24px 60px rgba(20,30,40,.25); color:var(--ink) } dialog::backdrop { background:rgba(20,30,40,.35) }
+  dialog form { padding:18px 20px } dialog h3 { margin:0 0 10px; font-size:16px } #dlg-body { font-size:13.5px; line-height:1.5 } #dlg-body ul, #dlg-body ol { margin:6px 0 6px 18px; padding:0 } #dlg-body li { margin:3px 0 } #dlg-body p { margin:6px 0 }
+  #dlg-body .snippet { display:block; margin:6px 0; padding:6px 8px; background:var(--bg); border:1px solid var(--line); border-radius:6px; font:12px/1.4 var(--mono); white-space:pre-wrap; word-break:break-all }
+  #dlg-body .choice { display:block; padding:8px 10px; border:1px solid var(--line); border-radius:8px; margin:6px 0; cursor:pointer } #dlg-body .choice:has(input:checked) { border-color:var(--brand); background:#e8f3ef }
+  #dlg-body .warn { color:var(--bad); font-weight:600 }
+  #dlg-input-row { display:block; margin-top:10px; font-size:12.5px; color:var(--mute) } #dlg-input { display:block; width:100%; margin-top:4px; padding:7px 9px; border:1px solid var(--line); border-radius:7px; font-family:var(--mono) }
+  .dlg-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:14px } .btn.danger { background:var(--bad); border-color:var(--bad); color:#fff }
+  .subhead { display:flex; align-items:center; gap:10px; margin:14px 0 6px; padding-top:10px; border-top:1px dashed var(--line) } .subhead small { color:var(--mute); font-size:12px; flex:1 } .subhead .btn { padding:4px 9px; font-size:12px }
+  .rollout { margin-bottom:14px; border-color:#bfe0d3 } .rl-head { display:flex; align-items:center; gap:12px; flex-wrap:wrap } .rl-head h2 { margin:0 } .rl-head span { color:var(--mute); font-size:12.5px; flex:1 } .rl-actions { display:flex; gap:6px } .rl-actions .btn { padding:4px 10px; font-size:12px }
+  .rl-rows { margin-top:8px; display:grid; grid-template-columns:1fr auto auto; gap:4px 12px; font-size:12.5px; align-items:center } .rl-rows .t { font-weight:600 } .rl-rows .t small { font-weight:400; color:var(--mute); margin-left:6px } .rl-rows .e { color:var(--mute); grid-column:1 / -1; margin:-2px 0 4px 10px; font-size:12px }
+  .chip { font-size:11px; padding:1px 8px; border-radius:99px; background:#eef0f3; color:var(--mute); white-space:nowrap } .chip.ok { background:#e2f3ec; color:var(--ok) } .chip.failed, .chip.interrupted { background:#fbe9e7; color:var(--bad) } .chip.running { background:#e3ecff; color:#2450a8 } .chip.pending { background:#fdf0e3; color:var(--warn) }
+  .archived .del { margin:4px 0 0 6px; font-size:12px; padding:3px 9px; color:var(--bad) }
+  .standby { border:1px solid var(--line); border-radius:10px; padding:8px 10px 10px; margin:8px 0; background:var(--bg) }
+  .standby .head { display:flex; align-items:center; gap:8px; margin-bottom:4px } .standby .head b { font-size:13px } .standby .head .hintline { flex:1; margin:0 }
+  .standby .row { grid-template-columns:96px minmax(0,1fr); margin:4px 0 } .standby .field input { background:#fff }
+  .standby .acts { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap } .standby .acts .btn { padding:4px 9px; font-size:12px; background:#fff } .standby .acts .btn.rm { color:var(--bad); margin-left:auto }
+  .log header { display:flex; align-items:center; gap:10px; padding:6px 14px; font-size:12px; color:#9aa7b3; border-bottom:1px solid #1f2933 }
+  .log header b { color:#fff } .log header .spin { display:none; width:10px; height:10px; border:2px solid #4b5b6b; border-top-color:#8ff0c8; border-radius:50%; animation:s 1s linear infinite } .log.busy .spin { display:inline-block }
+  @keyframes s { to { transform:rotate(360deg) } }
+  .log pre { margin:0; padding:10px 14px; overflow:auto; flex:1; font:12.5px/1.5 var(--mono); white-space:pre-wrap }
+  .log .btn { background:#1f2933; border-color:#2b3846; color:#d7dde3; padding:3px 9px; font-size:12px; margin-left:auto }
+  .empty { color:var(--mute); text-align:center; margin-top:60px }
+  a { color:var(--brand) }
+  [hidden] { display:none !important }
+  /* ── SaaS shell additions (dashboard KPIs, clients table, tabs, danger zone) ── */
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:16px }
+  .kpi { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px }
+  .kpi b { display:block; font-size:24px } .kpi span { color:var(--mute); font-size:12px }
+  .table { width:100%; border-collapse:collapse; font-size:13px; background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden }
+  .table th { position:sticky; top:0; background:var(--bg); text-align:left; padding:8px 12px; font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--mute); border-bottom:1px solid var(--line) }
+  .table td { padding:8px 12px; border-bottom:1px solid var(--line); vertical-align:middle }
+  .table tbody tr:hover { background:var(--bg) } .table tbody tr.clickable { cursor:pointer }
+  .table-wrap { overflow-x:auto }
+  .tabs { display:flex; gap:2px; border-bottom:1px solid var(--line); margin-bottom:14px; flex-wrap:wrap }
+  .tab { border:0; background:none; padding:9px 14px; font-size:13px; color:var(--mute); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px }
+  .tab:hover { color:var(--ink) } .tab.active { color:var(--brand); border-bottom-color:var(--brand); font-weight:600 }
+  .panel { display:none } .panel.active { display:block }
+  .danger-row { display:flex; align-items:center; gap:14px; padding:12px 14px; border:1px solid var(--line); border-radius:10px; margin:8px 0; background:var(--panel) }
+  .danger-row p { margin:0; font-size:13px; flex:1 } .danger-row p small { display:block; color:var(--mute); font-size:12px; margin-top:2px }
+  .danger-row .btn { flex:0 0 auto }
+  .platform-facts { font-size:12.5px; color:var(--mute); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-top:12px }
+  .platform-facts p { margin:4px 0 }
+  @media (max-width:1024px) { .below { grid-template-columns:170px 1fr } .topbar .search { width:180px } }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand">POS Software · Owner console<small>local only</small></div>
+    <input id="search" class="search topbar-search" placeholder="Search clients…" autocomplete="off">
+    <div class="activity" id="activity" hidden></div>
+    <div class="spacer"></div>
+    <button id="b-platform" class="btn" title="Set the ONE apex domain every cafe's web address is a subdomain of">⚙ Platform<span id="platform-pill"></span></button>
+    <button id="rl-start" class="btn" title="Redeploy every deployed client and standby, one after another">Deploy update to all</button>
+    <button id="new" class="btn primary">+ New client</button>
+  </div>
+  <div class="below">
+    <aside class="nav">
+      <nav id="nav">
+        <a href="#/dashboard" data-route="dashboard">Dashboard</a>
+        <a href="#/clients" data-route="clients">Clients<span class="count" id="nav-clients-count"></span></a>
+        <a href="#/rollouts" data-route="rollouts">Rollouts</a>
+        <a href="#/archive" data-route="archive">Archive<span class="count" id="nav-archive-count"></span></a>
+        <a href="#/platform" data-route="platform">Platform</a>
+      </nav>
+      <footer>
+        <div>clients folder: <code>clients/</code></div>
+        <div>Nothing here leaves this machine except the deploys you click.</div>
+      </footer>
+    </aside>
+    <main id="main">
+      <!-- ═══ Dashboard ═══ -->
+      <section class="view" id="view-dashboard">
+        <div class="scroll">
+          <div class="kpis" id="kpis"></div>
+          <div class="table-wrap"><table class="table" id="dash-table">
+            <thead><tr><th>Cafe</th><th>Slug</th><th>Web address</th><th>Hosting host</th><th>Last run</th><th>Problems</th><th></th></tr></thead>
+            <tbody id="dash-table-body"></tbody>
+          </table></div>
+          <h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);margin:20px 0 10px">Recent runs</h2>
+          <div class="table-wrap"><table class="table" id="dash-recent">
+            <thead><tr><th>Cafe</th><th>Action</th><th>Status</th><th>When</th></tr></thead>
+            <tbody id="dash-recent-body"></tbody>
+          </table></div>
+        </div>
+      </section>
+      <!-- ═══ Clients (list) ═══ -->
+      <section class="view" id="view-clients">
+        <div class="scroll">
+          <div class="table-wrap"><table class="table" id="clients-table">
+            <thead><tr><th>Cafe</th><th>Slug</th><th>Web address</th><th>Hosting host</th><th>Last run</th><th>Problems</th><th></th></tr></thead>
+            <tbody id="list"></tbody>
+          </table></div>
+        </div>
+      </section>
+      <!-- ═══ Client (one record) ═══ -->
+      <section class="view" id="view-client">
+        <div class="bar" id="bar" hidden>
+          <div class="title"><span id="title"></span><small id="subtitle"></small></div>
+          <select id="switcher" title="Jump to another client"></select>
+          <button class="btn" id="b-refresh" title="Re-fetch this client's status, the running job and locks — keeps your unsaved edits">↻ Refresh</button>
+          <button class="btn" id="b-save" title="Write clients/<slug>.json (Ctrl+S)">Save</button>
+          <button class="btn" id="b-dry" title="Validate the file and show the plan — changes nothing">Dry run</button>
+          <button class="btn" id="b-redeploy" title="Deploy the current code to the same project and URL — env vars and database untouched">Redeploy</button>
+          <button class="btn go" id="b-live" title="Full run: seed the database (only what is still EMPTY) · create the Vercel project · save env vars · deploy · health check">Go live</button>
+          <button class="btn" id="b-health" title="GET /api/health on the PRIMARY host (each standby card has its own Health button)">Health</button>
+          <button class="btn" id="b-open" title="Open the live site in a new tab">Open site ↗</button>
+          <div class="more">
+            <button class="btn" id="b-more" title="Clone · deploy update to all">More ▾</button>
+            <div class="menu" id="more-menu" hidden>
+              <button type="button" data-act="clone">Clone as new client…<small>Copy the starter setup (tables, menu, GST, image store type) into a new record. No credentials are copied.</small></button>
+              <hr>
+              <button type="button" data-act="rollout">Deploy update to ALL clients…<small>Redeploy every deployed client and standby, one after another. A failure is recorded and the queue continues; a switched-off PC resumes where it stopped.</small></button>
+            </div>
+          </div>
+        </div>
+        <div class="scroll">
+          <div class="empty" id="empty">Pick a client on the left, or create one.<br><br><small>Files live in <code>clients/&lt;slug&gt;.json</code> — gitignored, never uploaded.</small></div>
+          <div id="form" hidden>
+            <div id="banner" class="banner" hidden></div>
+            <div class="tabs" id="client-tabs">
+              <button type="button" class="tab" data-tab="overview">Overview</button>
+              <button type="button" class="tab" data-tab="hosting">Hosting</button>
+              <button type="button" class="tab" data-tab="database">Database &amp; images</button>
+              <button type="button" class="tab" data-tab="pos">POS setup</button>
+              <button type="button" class="tab" data-tab="contact">Contact &amp; notes</button>
+              <button type="button" class="tab" data-tab="danger">Danger zone</button>
+            </div>
+            <div class="panel" data-panel="overview">
+              <div class="grid">
+                <section class="card status">
+                  <h2>Status</h2>
+                  <div class="row"><label>Live URL</label><div class="kv" id="s-host">—</div></div>
+                  <div class="row"><label>Web address</label><div class="kv" id="s-web">—</div></div>
+                  <div class="row"><label>Tenant</label><div class="kv" id="s-tenant">—</div></div>
+                  <div class="row"><label>Vercel project id</label><div class="kv" id="s-project">—</div></div>
+                  <div class="row"><label>Org / team id</label><div class="kv" id="s-org">—</div></div>
+                  <div class="row"><label>Auth secret</label><div class="field"><input data-path="generated.authSecret" data-secret class="secret" readonly></div></div>
+                  <div class="row"><label>Health token</label><div class="field"><input data-path="generated.healthStatsToken" data-secret class="secret" readonly></div></div>
+                  <div class="row"><label>Last run</label><div class="kv" id="s-last">never</div></div>
+                  <div class="row"><label>Health</label><div class="kv" id="s-health">—</div></div>
+                  <div class="row"><label>Redeploy</label><div class="kv" id="s-redeploy">—</div></div>
+                  <div class="row"><label>Safety</label><div class="field" style="flex-direction:column;align-items:stretch;gap:4px">
+                    <label style="display:flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" data-path="deployLock" data-type="bool" style="flex:0"> Lock deploys — record only, Go live / Redeploy disabled for this client</label>
+                    <label style="display:flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" data-path="demo" data-type="bool" style="flex:0"> Demo client — its database may be reset from here (More → Reset demo database). Never tick this on a real cafe.</label>
+                  </div></div>
+                </section>
+              </div>
+            </div>
+            <div class="panel" data-panel="hosting">
+              <div class="grid">
+                <section class="card">
+                  <h2>Hosting · Vercel</h2>
+                  <p class="hint">Token: client's Vercel → Settings → Tokens. The login below is your own record.</p>
+                  <div class="row"><label>Slug / project</label><div class="field"><input data-path="slug" readonly></div></div>
+                  <div class="row"><label>Vercel project</label><div class="field"><input data-path="vercel.project" data-type="nullable" placeholder="(same as slug)"></div></div>
+                  <div class="row"><label></label><div class="hintline" id="proj-url"></div></div>
+                  <div class="row"><label>Token *</label><div class="field"><input data-path="vercel.token" data-secret class="secret"></div></div>
+                  <details class="help"><summary>Where do I get the token?</summary>
+                    <ol>
+                      <li>Log in to the Vercel account the project should live in — the client's email, or your own for the demo (new account → free Hobby plan).</li>
+                      <li>Open <a href="https://vercel.com/account/tokens" target="_blank" rel="noopener">vercel.com/account/tokens</a> (avatar top-right → Account Settings → Tokens).</li>
+                      <li><b>Create Token</b>: name <code>pos-go-live</code> · Scope = that account/team · Expiration = <b>No Expiration</b> (otherwise redeploys stop working later).</li>
+                      <li>Copy it right away — Vercel shows it only once — paste it above, Save. This field is your permanent record.</li>
+                    </ol>
+                    <p>Token invalid or expired → go-live stops at "get user (is the token valid?)": make a new one, paste, Go live again.</p>
+                  </details>
+                  <details class="help"><summary>After go-live: the 3 WAF rules (manual, once per cafe)</summary>
+                    <p>Vercel → the project → <b>Security</b> → <b>WAF</b> → <b>Custom rules</b>: add the 3 rules that block obvious abuse of the public QR-ordering surface, paths <code>/m</code> and <code>/api/public/*</code> (Hobby allows 3 custom rules). Exact rules: <code>docs/GO-LIVE-CHECKLIST.md</code> §1. The console cannot create these — Vercel has no free API for them.</p>
+                  </details>
+                  <div class="row"><label>Team id</label><div class="field"><input data-path="vercel.teamId" data-type="nullable" placeholder="(personal account)"></div></div>
+                  <div class="row"><label>Web address *</label><div class="field addr"><input data-path="subdomain" data-type="nullable" placeholder="lucifer"><span class="suffix" id="apex-suffix">.sandbee.in</span></div></div>
+                  <div class="row"><label></label><div id="web-address" class="webaddr"></div></div>
+                  <div class="row"><label>Login email</label><div class="field"><input data-path="accounts.vercel.email" placeholder="the Vercel account's email"></div></div>
+                  <div class="row"><label>Login password</label><div class="field"><input data-path="accounts.vercel.password" data-secret class="secret"></div></div>
+                  <div class="subhead"><b>Standby hosts</b><small>The same cafe on <b>another</b> Vercel account (a different login): same database, images and POS usernames/passwords (staff sign in once per address), its own <b>name.vercel.app</b> URL. The web address stays on the primary. After a code update: Redeploy each host. After changing the Mongo URI or image store: <b>Update</b> each standby too.</small><button type="button" class="btn" id="add-standby">+ Add standby</button></div>
+                  <div id="standby-list"></div>
+                </section>
+              </div>
+            </div>
+            <div class="panel" data-panel="database">
+              <div class="grid">
+                <section class="card">
+                  <h2>Database · Atlas</h2>
+                  <p class="hint">SRV must end with the database name (…mongodb.net/pos?…). Network Access 0.0.0.0/0.</p>
+                  <div class="row"><label>Mongo URI *</label><div class="field"><input data-path="mongodbUri" data-secret class="secret"></div></div>
+                  <details class="help"><summary>Where do I get the URI?</summary>
+                    <ol>
+                      <li><a href="https://cloud.mongodb.com" target="_blank" rel="noopener">cloud.mongodb.com</a> → log in to the client's Atlas account (or yours for the demo) → <b>Create</b> a cluster → <b>M0 Free</b>, region <b>Mumbai (ap-south-1)</b>.</li>
+                      <li><b>Database Access</b> → Add New Database User → password auth, role <i>Read and write to any database</i>. Keep the password.</li>
+                      <li><b>Network Access</b> → Add IP Address → <code>0.0.0.0/0</code> (Vercel has no fixed IPs).</li>
+                      <li>Cluster → <b>Connect</b> → <b>Drivers</b> → copy the <code>mongodb+srv://…</code> string. Put the real password in and make it end with <code>/pos?retryWrites=true&amp;w=majority</code> — the <code>/pos</code> database name is required.</li>
+                    </ol>
+                  </details>
+                  <div class="row"><label>Login email</label><div class="field"><input data-path="accounts.atlas.email" placeholder="the Atlas account's email"></div></div>
+                  <div class="row"><label>Login password</label><div class="field"><input data-path="accounts.atlas.password" data-secret class="secret"></div></div>
+                </section>
+                <section class="card">
+                  <h2>Product images</h2>
+                  <div class="row"><label>Store</label><div class="field"><select id="img-store"><option value="none">none (no photos yet — everything else works)</option><option value="r2">Cloudflare R2</option><option value="cloudinary">Cloudinary</option></select></div></div>
+                  <div id="img-r2" hidden>
+                    <details class="help"><summary>Where do I get these R2 values?</summary>
+                      <ol>
+                        <li><a href="https://dash.cloudflare.com" target="_blank" rel="noopener">dash.cloudflare.com</a> → the client's account → <b>R2 Object Storage</b>. On the R2 overview copy the <b>Account ID</b> (it is also the id in the page URL <code>dash.cloudflare.com/&lt;account-id&gt;/r2</code>). Cloudflare may ask for a card to activate R2 even on the free tier.</li>
+                        <li><b>Create bucket</b> → name it e.g. <code>pos-&lt;slug&gt;</code> → that name goes into <b>Bucket</b>.</li>
+                        <li>Bucket → <b>Settings</b> → <b>Public Development URL</b> → Enable (type <code>allow</code>). The URL it shows, <code>https://pub-….r2.dev</code>, goes into <b>Public base URL</b>.</li>
+                        <li>R2 overview → Account Details → <b>Manage</b> next to <i>API Tokens</i> → <b>Create Account API token</b> → permission <b>Object Read &amp; Write</b> → scope it to this bucket → Create. Copy <b>Access Key ID</b> and <b>Secret Access Key</b> right away — the secret is shown only once.</li>
+                        <li>After the cafe is live: bucket → Settings → <b>CORS policy</b> → Add, with the cafe's live URL:
+                          <pre class="snippet">[{ "AllowedOrigins": ["https://&lt;live URL&gt;"],
+   "AllowedMethods": ["PUT"], "AllowedHeaders": ["content-type"] }]</pre></li>
+                      </ol>
+                      <p>Filled or changed the store on an already-live cafe? Press <b>Go live</b> (not Redeploy): it saves the new env vars on Vercel and redeploys. The seed step is a no-op on a cafe that already has data — settings, admin, tables and menu stay exactly as they are.</p>
+                    </details>
+                    <div class="row"><label>Account id</label><div class="field"><input data-path="image.accountId"></div></div>
+                    <div class="row"><label>Access key id</label><div class="field"><input data-path="image.accessKeyId" data-secret class="secret"></div></div>
+                    <div class="row"><label>Secret key</label><div class="field"><input data-path="image.secretAccessKey" data-secret class="secret"></div></div>
+                    <div class="row"><label>Bucket</label><div class="field"><input data-path="image.bucket"></div></div>
+                    <div class="row"><label>Public base URL</label><div class="field"><input data-path="image.publicBaseUrl" placeholder="https://pub-….r2.dev"></div></div>
+                  </div>
+                  <div id="img-cl" hidden>
+                    <details class="help"><summary>Where do I get these Cloudinary values?</summary>
+                      <ol>
+                        <li><a href="https://cloudinary.com/users/login" target="_blank" rel="noopener">cloudinary.com</a> → log in to the client's account → Dashboard: <b>Cloud name</b> is shown under <i>Product Environment</i>.</li>
+                        <li><b>Settings → API Keys</b>: copy the <b>API key</b> and reveal the <b>API secret</b> (it may ask for your password; unlike R2 it can be viewed again later).</li>
+                      </ol>
+                      <p>Filled or changed the store on an already-live cafe? Press <b>Go live</b> (not Redeploy) to save the env vars and redeploy; the cafe's data is not touched.</p>
+                    </details>
+                    <div class="row"><label>Cloud name</label><div class="field"><input data-path="image.cloudName"></div></div>
+                    <div class="row"><label>API key</label><div class="field"><input data-path="image.apiKey"></div></div>
+                    <div class="row"><label>API secret</label><div class="field"><input data-path="image.apiSecret" data-secret class="secret"></div></div>
+                  </div>
+                  <div class="row"><label>Login email</label><div class="field"><input data-path="accounts.images.email" placeholder="R2 / Cloudinary account email"></div></div>
+                  <div class="row"><label>Login password</label><div class="field"><input data-path="accounts.images.password" data-secret class="secret"></div></div>
+                </section>
+              </div>
+            </div>
+            <div class="panel" data-panel="pos">
+              <div class="grid">
+                <section class="card" data-lock="seed" data-lock-what="cafe details">
+                  <h2>Cafe</h2>
+                  <div class="lockbar" hidden></div>
+                  <div class="row"><label>Name *</label><div class="field"><input data-path="cafe.name"></div></div>
+                  <div class="row"><label>Tagline</label><div class="field"><input data-path="cafe.tagline"></div></div>
+                  <div class="row"><label>Phone</label><div class="field"><input data-path="cafe.mobile"></div></div>
+                  <div class="row"><label>Address</label><div class="field"><input data-path="cafe.address"></div></div>
+                  <div class="row"><label>Receipt footer</label><div class="field"><input data-path="cafe.receiptFooter"></div></div>
+                  <div class="row"><label>FSSAI</label><div class="field"><input data-path="cafe.fssai"></div></div>
+                  <div class="row"><label>GST</label><div class="field"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-path="cafe.gst.enabled" data-type="bool" style="flex:0"> enabled</label>
+                    <select data-path="cafe.gst.rate" data-type="number"><option>0</option><option>5</option><option>12</option><option>18</option><option>28</option></select>
+                    <select data-path="cafe.gst.mode"><option value="inclusive">inclusive</option><option value="exclusive">exclusive</option></select></div></div>
+                  <div class="row"><label>GSTIN</label><div class="field"><input data-path="cafe.gst.number"></div></div>
+                </section>
+                <section class="card" data-lock="seed" data-lock-what="admin login">
+                  <h2>POS admin</h2>
+                  <div class="lockbar" hidden></div>
+                  <p class="hint">Created on first seed. ≥8 chars, a digit, a special character. The client changes it after first login.</p>
+                  <div class="row"><label>Username *</label><div class="field"><input data-path="admin.username"></div></div>
+                  <div class="row"><label>Password *</label><div class="field"><input data-path="admin.password" data-secret class="secret"></div></div>
+                </section>
+                <section class="card" data-lock="seed" data-lock-what="tables and menu">
+                  <h2>Tables &amp; menu</h2>
+                  <div class="lockbar" hidden></div>
+                  <p class="hint">Starter data for the FIRST seed only. Afterwards the cafe manages these in the POS sidebar: <b>Tables</b> (add, rename, arrange) and <b>Menu</b> / <b>Categories</b> (or Menu → Import CSV).</p>
+                  <div class="row"><label>Tables *</label><div class="field"><select id="tables-mode"><option value="count">count (T-1 … T-n)</option><option value="names">names</option></select><input id="tables-count" type="number" min="1" max="99" style="max-width:90px"></div></div>
+                  <div class="row" id="tables-names-row" hidden><label>Table names</label><div class="field"><textarea id="tables-names" placeholder="one per line"></textarea></div></div>
+                  <div class="row"><label>Starter menu</label><div class="field" style="flex-direction:column;align-items:stretch"><textarea id="menu" style="min-height:120px" placeholder='[{ "category": "Coffee", "items": [{ "name": "Espresso", "price": 90 }] }]  — or leave empty'></textarea>
+                    <div style="display:flex;gap:6px;margin-top:6px"><button class="btn" id="menu-demo">Load demo menu</button><button class="btn" id="menu-clear">Clear</button><span id="menu-count" style="color:var(--mute);font-size:12px;align-self:center"></span></div></div></div>
+                </section>
+              </div>
+            </div>
+            <div class="panel" data-panel="contact">
+              <div class="grid">
+                <section class="card">
+                  <h2>Contact &amp; notes</h2>
+                  <div class="row"><label>Owner name</label><div class="field"><input data-path="contact.ownerName"></div></div>
+                  <div class="row"><label>Phone</label><div class="field"><input data-path="contact.phone"></div></div>
+                  <div class="row"><label>WhatsApp</label><div class="field"><input data-path="contact.whatsapp"></div></div>
+                  <div class="row"><label>Other logins</label><div class="field"><textarea data-path="accounts.other" placeholder="Cloudflare, GitHub, printer portal … anything else"></textarea></div></div>
+                  <div class="row"><label>Notes</label><div class="field"><textarea data-path="notes" placeholder="printer model, opening hours, what was promised…"></textarea></div></div>
+                </section>
+              </div>
+            </div>
+            <div class="panel" data-panel="danger">
+              <div id="danger-rows"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <!-- ═══ Rollouts ═══ -->
+      <section class="view" id="view-rollouts">
+        <div class="scroll">
+          <section class="card rollout" id="rollout" hidden>
+            <div class="rl-head"><h2>Deploy update to all clients</h2><span id="rl-summary"></span><div class="rl-actions"><button type="button" class="btn" id="rl-resume">Resume</button><button type="button" class="btn" id="rl-cancel">Cancel</button><button type="button" class="btn" id="rl-dismiss">Dismiss</button><button type="button" class="btn danger" id="rl-force" data-act="force-rollout" hidden>Force stop &amp; unlock…</button></div></div>
+            <div class="rl-rows" id="rl-rows"></div>
+          </section>
+          <div class="empty" id="rollouts-empty">No rollout running.<br><br><button type="button" class="btn primary" id="rl-start-2">Deploy update to all clients…</button></div>
+        </div>
+      </section>
+      <!-- ═══ Archive ═══ -->
+      <section class="view" id="view-archive">
+        <div class="scroll">
+          <details id="archived" class="archived" open><summary>Archived <span id="archived-count"></span></summary><div id="archived-list"></div></details>
+        </div>
+      </section>
+      <!-- ═══ Platform ═══ -->
+      <section class="view" id="view-platform">
+        <div class="scroll">
+          <div class="grid">
+            <section class="card">
+              <h2>Platform — apex domain</h2>
+              <p class="hint">The ONE domain every cafe's web address is a subdomain of, e.g. <code>lucifer.sandbee.in</code>. DNS (the nameservers) stays with your registrar — nothing here changes that.</p>
+              <div class="row"><label>Apex domain</label><div class="field"><input id="platform-apex" placeholder="sandbee.in"></div></div>
+              <div class="row"><label>DNS note</label><div class="field"><input id="platform-note" placeholder="where you go to add DNS records"></div></div>
+              <button type="button" class="btn primary" id="platform-save" style="margin-top:8px">Save</button>
+              <div class="platform-facts">
+                <p><b>Hobby plan:</b> 50 domains per project, 200 projects per account, free SSL certificates.</p>
+                <p><b>Let's Encrypt:</b> at most ~40 new cafes per week on one apex domain.</p>
+                <p><b>Wildcard domains</b> need Vercel's own nameservers — not used here; every cafe's DNS record is added one at a time.</p>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+<dialog id="dlg">
+  <form method="dialog">
+    <h3 id="dlg-title"></h3>
+    <div id="dlg-body"></div>
+    <label id="dlg-input-row" hidden><span id="dlg-input-label"></span><input id="dlg-input" autocomplete="off"></label>
+    <div class="dlg-actions"><button type="button" class="btn" id="dlg-cancel">Cancel</button><button type="button" class="btn primary" id="dlg-ok">OK</button></div>
+  </form>
+</dialog>
+<div class="log" id="log">
+  <div class="grip" id="log-grip" title="drag to resize · double-click to collapse"></div>
+  <header><span class="spin"></span><b id="log-title">Log</b><span id="log-status">idle</span><button class="btn" id="log-toggle" title="collapse / expand">▾</button><button class="btn" id="log-clear">Clear</button></header>
+  <pre id="log-body"></pre>
+</div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

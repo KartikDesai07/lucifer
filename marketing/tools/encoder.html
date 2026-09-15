@@ -1,0 +1,61 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>encoder</title>
+<script src="node_modules/mp4-muxer/build/mp4-muxer.js"></script>
+</head><body>
+<script>
+// Receives raw BGRA frames from record-video.cjs over IPC, encodes them with
+// WebCodecs (H.264 High) and muxes an MP4 in memory; writes the file on "finish".
+(function () {
+  "use strict";
+  const { ipcRenderer } = require("electron");
+  const fs = require("fs");
+  const QUEUE_LIMIT = 6;
+  const KEYFRAME_EVERY = 60;
+  const BITRATE = 9_000_000;
+  let muxer = null, encoder = null, cfg = null, failed = null;
+
+  ipcRenderer.on("configure", (_e, c) => {
+    cfg = c;
+    muxer = new Mp4Muxer.Muxer({
+      target: new Mp4Muxer.ArrayBufferTarget(),
+      video: { codec: "avc", width: c.width, height: c.height, frameRate: c.fps },
+      fastStart: "in-memory",
+    });
+    encoder = new VideoEncoder({
+      output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+      error: (e) => { failed = e.message; },
+    });
+    encoder.configure({ codec: c.codec, width: c.width, height: c.height, bitrate: BITRATE, framerate: c.fps, avc: { format: "avc" }, latencyMode: "quality" });
+    ipcRenderer.send("configured", { ok: true });
+  });
+
+  const dequeued = () => new Promise((resolve) => encoder.addEventListener("dequeue", resolve, { once: true }));
+
+  ipcRenderer.on("frame", async (_e, msg) => {
+    try {
+      if (failed) throw new Error(failed);
+      while (encoder.encodeQueueSize > QUEUE_LIMIT) await dequeued();
+      const frame = new VideoFrame(msg.data, { format: "BGRA", codedWidth: cfg.width, codedHeight: cfg.height, timestamp: msg.timestampUs, duration: msg.durationUs });
+      encoder.encode(frame, { keyFrame: msg.index % KEYFRAME_EVERY === 0 });
+      frame.close();
+      ipcRenderer.send("ack", { index: msg.index });
+    } catch (e) {
+      ipcRenderer.send("ack", { index: msg.index, error: e.message });
+    }
+  });
+
+  ipcRenderer.on("finish", async (_e, msg) => {
+    try {
+      await encoder.flush();
+      encoder.close();
+      muxer.finalize();
+      const bytes = Buffer.from(muxer.target.buffer);
+      fs.writeFileSync(msg.out, bytes);
+      ipcRenderer.send("done", { ok: true, bytes: bytes.length });
+    } catch (e) {
+      ipcRenderer.send("done", { ok: false, error: e.message });
+    }
+  });
+})();
+</script>
+</body></html>

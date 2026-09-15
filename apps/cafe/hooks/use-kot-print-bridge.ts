@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useReactToPrint } from "react-to-print";
 
 import type { PaperWidth } from "@/lib/constants";
+import { slipPrintOptions } from "@/lib/desktop-shell";
 import { receiptPageStyle } from "@/lib/print";
 import type { Order } from "@/types";
 
@@ -56,7 +57,7 @@ export function useKotPrintBridge({
   const [receiptInFlight, setReceiptInFlight] = useState(false);
 
   const receiptRef = useRef<HTMLDivElement>(null);
-  const print = useReactToPrint({
+  const print = useReactToPrint(slipPrintOptions({
     contentRef: receiptRef,
     documentTitle: lastOrder?.orderId ?? "receipt",
     // KOT-only callers never flip shouldPrintReceipt, so print() below is
@@ -64,7 +65,7 @@ export function useKotPrintBridge({
     // a second paper size actually reaching a printer.
     pageStyle: receiptPageStyle(receipt?.billPaperWidth ?? kotPaperWidth),
     onAfterPrint: () => setReceiptInFlight(false),
-  });
+  }));
 
   // kotPrinting keeps this effect from re-firing while a job is in flight, and
   // the receipt effect below waits for shouldPrintKot to clear. Both exist
@@ -73,7 +74,7 @@ export function useKotPrintBridge({
   // (CR1.2).
   const kotPrinting = useRef(false);
   const kotRef = useRef<HTMLDivElement>(null);
-  const printKot = useReactToPrint({
+  const printKot = useReactToPrint(slipPrintOptions({
     contentRef: kotRef,
     documentTitle: lastOrder ? `KOT-${lastOrder.orderId}` : "kot",
     pageStyle: receiptPageStyle(kotPaperWidth),
@@ -81,7 +82,7 @@ export function useKotPrintBridge({
       kotPrinting.current = false;
       clearPrintKot();
     },
-  });
+  }));
 
   // Kitchen ticket first, one print job at a time: the receipt effect below
   // waits for shouldPrintKot to clear before it fires.

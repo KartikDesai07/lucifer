@@ -1,29 +1,17 @@
-import { Order, type IOrder, type IOrderItem } from "@/models/Order";
+import { Order, type IOrder } from "@/models/Order";
 import type { IOrderRequest } from "@/models/OrderRequest";
 import { Customer, type ICustomer } from "@/models/Customer";
 import { isDuplicateKeyError } from "@pos/shared/api";
 import { generateOrderId, dayRange } from "@/lib/utils";
-import { bumpOrderSequenceTo, nextSlipSequence } from "@/models/Counter";
-import { computeOrderTotals, type GstConfig } from "@/lib/receipt";
-import { printedSlipNumber, type PrintConfig } from "@/lib/print";
-import { SELF_ORDER_SOURCE } from "@pos/shared/public";
+import { bumpOrderSequenceTo } from "@/models/Counter";
+import type { GstConfig } from "@/lib/receipt";
 import {
   TAB_CHANGED_ERROR,
   buildAddRoundFilter,
-  buildKotNumbers,
-  mergedNote,
   findByRequestId,
   reject,
   finalizeAccept,
 } from "@/lib/order-request-accept-core";
-import {
-  resolveAcceptPromo,
-  promoNoteLine,
-  claimPromoRedemption,
-  backfillPromoRedemptionOrderId,
-  PROMO_USED_ERROR,
-} from "@/lib/order-request-accept-promo";
-import type { AcceptContext } from "@/lib/order-request-accept";
 
 // Third sibling of lib/order-request-accept.ts / -core.ts (CR2.2 SLICE 4 +
 // arbiter-confirmed review fixes) — split out purely to stay under the
@@ -38,12 +26,12 @@ import type { AcceptContext } from "@/lib/order-request-accept";
 // this file, CR2.2d split) moved here from -core.ts purely for ITS own
 // line-budget reason — same discipline, no logic changed.
 //
-// CR2.2d split (accept.ts itself still over budget after the promo move) —
-// acceptAddRoundBranch below is the WHOLE add-round target's own
-// orchestration, moved here verbatim: it already ends by calling this
-// file's own applyAddRound, so the branch and its write land in the same
-// file. order-request-accept.ts still owns classifyTarget's decision of
-// WHICH branch to run — it only calls this one once it already knows.
+// CB-5B S7 split — acceptAddRoundBranch (the add-round target's own
+// orchestration, which CR2.2d had parked here) moved OUT to a fifth sibling,
+// lib/order-request-accept-addround.ts, purely for this file's line budget:
+// the three-kind discount logic S7 adds would not fit here. The WRITE it ends
+// in (applyAddRound) stays below, beside the other race-repair helpers, and
+// that new file imports it from here.
 
 // FIX1 — the loser-reject race. Every validation-failure/CAS-miss reject that
 // can run concurrently with ANOTHER accept attempt's own write for this SAME
@@ -73,93 +61,6 @@ export async function guardedReject(
   return guardedRejectDecision(winner != null) === "replay" && winner
     ? finalizeAccept(winner, requestId, actor, true)
     : reject(requestId, error);
-}
-
-// The add-round target's own orchestration — moved verbatim from
-// order-request-accept.ts (CR2.2d split): the promo re-resolve scoped to
-// THIS round's own items (CR2.2c), the KOT ticket, and the diner-note/
-// promo-line composition (FIX6) — ending in the applyAddRound write right
-// below. The GST-drift re-check (FIX5) against the tab's own frozen
-// snapshot stays in order-request-accept.ts, which computes `tabGstCfg`
-// BEFORE calling here (it must 409 without ever reaching this function).
-export async function acceptAddRoundBranch(
-  request: IOrderRequest,
-  openTab: Pick<IOrder, "_id" | "kotRounds" | "voids" | "items" | "discount" | "chargeAmount" | "kotNumbers" | "notes">,
-  items: Omit<IOrderItem, "kotRound">[],
-  tabGstCfg: GstConfig,
-  printCfg: PrintConfig,
-  requestId: string,
-  ctx: AcceptContext,
-): Promise<{ order: IOrder; request: IOrderRequest; replayed: boolean } | { error: string; status: 409 }> {
-  const round = (openTab.kotRounds ?? 0) + 1;
-  const fullItems = [...openTab.items, ...items.map((it) => ({ ...it, kotRound: round }))];
-
-  // CR2.2c — promo re-resolved from LIVE Settings against the RECOMPUTED
-  // subtotal of THIS ROUND's own items — never the tab's fullItems: an open
-  // tab's subtotal also carries earlier rounds the diner never quoted
-  // against (the SAME scoping the line-price drift check above uses —
-  // priced.lines vs request.items, never a whole-order total), so a
-  // percent code would otherwise "drift" on every add-round purely because
-  // the tab already has items on it. A discount:0 probe reads the subtotal
-  // without forking computeOrderTotals.
-  const subtotalProbe = computeOrderTotals({ items, discount: 0, charge: 0, cfg: tabGstCfg });
-  const promo = resolveAcceptPromo(request.promoCode, request.quotedDiscount, ctx.settings?.promoCodes, subtotalProbe.subtotal);
-  if ("error" in promo) return guardedReject(requestId, ctx.actor, promo.error);
-
-  // SPEC P4 — the once-per-customer fence, BEFORE the tab write below (same
-  // discipline as the create/parcel branch in order-request-accept.ts).
-  if (promo.oncePerCustomer && promo.discount > 0 && request.promoCode) {
-    const fenceDecision = await claimPromoRedemption(request.promoCode, request.mobile, requestId);
-    if (fenceDecision === "reject") return guardedReject(requestId, ctx.actor, PROMO_USED_ERROR);
-  }
-
-  // The tab's own (staff-applied) discount and the resolved promo COMPOSE —
-  // one write via the existing `discount: totals.discount` below, never a
-  // separate $inc (a $inc racing a concurrent staff discount edit would be
-  // a second, untracked source of truth for the same field).
-  const totals = computeOrderTotals({
-    items: fullItems,
-    discount: openTab.discount + promo.discount,
-    charge: openTab.chargeAmount ?? 0,
-    cfg: tabGstCfg,
-  });
-  const ticket = printCfg.kot.showNumber
-    ? printedSlipNumber(await nextSlipSequence("kot"), printCfg.kot.numberStart)
-    : undefined;
-  const kotNumbers = buildKotNumbers(openTab.kotNumbers, round, ticket);
-  // FIX6 — carry the diner's note (and a promo line, when a discount
-  // applied — promoNoteLine, order-request-accept-promo.ts) onto the tab,
-  // through the EXISTING mergedNote helper both times so it composes with
-  // whatever's already there. Omitted entirely (not blanked) when NEITHER changed.
-  const promoLine = promoNoteLine(request.promoCode, promo.discount);
-  const notesChanged = Boolean(request.note) || Boolean(promoLine);
-  const notes = notesChanged ? mergedNote(mergedNote(openTab.notes, request.note), promoLine) : undefined;
-  const update: Record<string, unknown> = {
-    $set: {
-      items: fullItems,
-      subtotal: totals.subtotal,
-      discount: totals.discount,
-      gstAmount: totals.gstAmount,
-      total: totals.total,
-      kotRounds: round,
-      source: SELF_ORDER_SOURCE,
-      ...(totals.charge > 0 ? { chargeAmount: totals.charge } : {}),
-      ...(kotNumbers ? { kotNumbers } : {}),
-      ...(notesChanged ? { notes } : {}),
-    },
-    $addToSet: { sourceRequestIds: requestId },
-  };
-  if (totals.charge <= 0) update.$unset = { chargeAmount: "", chargeLabel: "" };
-
-  // 7. Write + CAS-miss (guardedReject'd, FIX1) + dup-key repair live in
-  // applyAddRound (right below).
-  const result = await applyAddRound(openTab, update, requestId, ctx.actor);
-  // SPEC P4 — best-effort backfill (never blocking), same discipline as the
-  // create/parcel branch — only once the write actually landed.
-  if (!("error" in result) && promo.oncePerCustomer && request.promoCode) {
-    await backfillPromoRedemptionOrderId(request.promoCode, request.mobile, result.order.orderId);
-  }
-  return result;
 }
 
 // The add-round write itself — the CAS attempt, its TAB_CHANGED_ERROR miss
@@ -211,12 +112,31 @@ export async function createOrFindCustomer(name: string, mobile: string): Promis
 // collision means a concurrent accept already won (hand back their order),
 // anything else is the ordinary daily-counter race POST /api/orders already
 // retries once (bump the counter past today's true last order and retry).
+// CB-5B S8 — the caller's chance to MOVE anything keyed on the orderId when
+// this function re-numbers the order. Called exactly once, with the NEW id,
+// after a duplicate-key rejection has proved the first insert wrote nothing
+// and before the retry insert runs. Returns false when the re-key could not be
+// completed (the reward's stamps were taken by another device in between), and
+// the caller gets `rewardUnfunded` instead of an order.
+//
+// This exists because a stamp claim's marker is keyed on the orderId: a claim
+// left behind on the abandoned number would be unrefundable by the cancel path
+// and would stop fencing the order that actually landed.
+export interface RecoverOrderCreateHooks {
+  onRekey: (retryOrderId: string) => Promise<boolean>;
+}
+
 export async function recoverOrderCreate(
   e: unknown,
   doc: Record<string, unknown>,
   requestId: string,
   actor: string,
-): Promise<{ order: IOrder } | { order: IOrder; request: IOrderRequest; replayed: true }> {
+  hooks?: RecoverOrderCreateHooks,
+): Promise<
+  | { order: IOrder }
+  | { order: IOrder; request: IOrderRequest; replayed: true }
+  | { rewardUnfunded: true }
+> {
   if (!isDuplicateKeyError(e)) throw e;
   if (isSourceRequestIdsDuplicate(e)) {
     const winner = await findByRequestId(requestId);
@@ -230,7 +150,12 @@ export async function recoverOrderCreate(
     .lean();
   const lastSeq = last?.orderId ? parseInt(last.orderId.split("-").pop() ?? "", 10) : 0;
   const seq2 = await bumpOrderSequenceTo(Number.isFinite(lastSeq) ? lastSeq : 0);
-  const order = await Order.create({ ...doc, orderId: generateOrderId(seq2) });
+  const retryOrderId = generateOrderId(seq2);
+  // Re-key BEFORE the retry insert: the claim must already sit on the number
+  // the order is about to carry, never be moved onto it afterwards (a throw in
+  // between would then leave a landed order with no claim behind it).
+  if (hooks && !(await hooks.onRekey(retryOrderId))) return { rewardUnfunded: true };
+  const order = await Order.create({ ...doc, orderId: retryOrderId });
   return { order };
 }
 

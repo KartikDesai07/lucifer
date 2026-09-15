@@ -7,6 +7,12 @@ import {
   PROMO_INVALID,
   PROMO_SESSION_OPEN,
   PROMO_ALREADY_USED,
+  REWARD_NEEDS_SIGN_IN,
+  REWARD_NOT_ON_CARD,
+  REWARD_NOT_ENOUGH_STAMPS,
+  REWARD_BILL_TOO_SMALL,
+  REWARD_PROMO_EXCLUSIVE,
+  REWARD_ON_OPEN_TAB,
 } from "@pos/shared/public";
 import type { CreatePublicOrderRequestInput, PublicOrderTarget } from "@pos/shared/schemas/public-order.schema";
 import type { CartLine } from "@/components/public/public-cart-store";
@@ -35,6 +41,26 @@ export const MALFORMED_RESPONSE_ERROR = "Something went wrong sending your order
 // by an exact-string check. The two literal reasons (PROMO_INVALID /
 // PROMO_INACTIVE) are imported directly rather than duplicated.
 const PROMO_MIN_SUBTOTAL_PATTERN = /^Add ₹\d+ more to use this code$/;
+
+// CB-5B S8 — resolveRequestReward's diner-facing 422 copy, IMPORTED from
+// @pos/shared/public (pure, client-safe) rather than hand-copied. The server
+// gate (lib/order-request-reward.ts) imports the same constants from the same
+// place, so the string this file compares against and the string the route
+// returns cannot drift apart — which on a money path would silently stop the
+// cart reverting a rejected reward selection.
+
+// A 422 whose text is one of resolveRequestReward's own refusals — pure
+// given the message, same shape as isPromoErrorMessage.
+export function isRewardErrorMessage(message: string): boolean {
+  return (
+    message === REWARD_NEEDS_SIGN_IN ||
+    message === REWARD_NOT_ON_CARD ||
+    message === REWARD_NOT_ENOUGH_STAMPS ||
+    message === REWARD_BILL_TOO_SMALL ||
+    message === REWARD_PROMO_EXCLUSIVE ||
+    message === REWARD_ON_OPEN_TAB
+  );
+}
 
 // A 422 on this route only ever carries ONE of two shapes: a promo rejection
 // (resolveRequestPromo) or "the menu changed" (priceRequestItems) — never
@@ -76,6 +102,12 @@ export type SubmitFailure =
 // own error text. A promo rejection is surfaced on the FIELD itself,
 // verbatim, never as the generic send error — and it must not read as
 // "still applied" while the diner fixes it.
+//
+// CB-5B S8 — deliberately UNCHANGED signature/shape (a reward rejection is
+// classified separately by classifyRewardFailure below, checked by the
+// caller BEFORE this): pinned verbatim by public-diner-polish.test.ts's
+// classifySubmitFailure(422, code, message) call and exact 2-key
+// deepEqual, which a promoRejected/rewardRejected union would break.
 export function classifySubmitFailure(
   status: number,
   promoCode: string | null,
@@ -90,6 +122,23 @@ export function classifySubmitFailure(
     return { promoRejected: false, message: MENU_CHANGED_ERROR };
   }
   return { promoRejected: false, message: GENERIC_SEND_ERROR };
+}
+
+// CB-5B S8 — the reward twin of classifySubmitFailure, kept as its OWN
+// function rather than folded into that one so its pinned signature/shape
+// stays untouched (see the comment above). Only ever meaningful on a 422:
+// 403/429/other status codes are already fully handled by
+// classifySubmitFailure, so the caller checks this FIRST and falls back to
+// that for everything else. Returns null when the 422 is not a reward
+// rejection (no reward was sent, or the text doesn't match).
+export function classifyRewardFailure(
+  status: number,
+  requestedRewardAt: number | null,
+  envelopeError: string | undefined,
+): string | null {
+  if (status !== 422) return null;
+  if (requestedRewardAt === null || !envelopeError) return null;
+  return isRewardErrorMessage(envelopeError) ? envelopeError : null;
 }
 
 // A throw here is NOT proof the order failed — the WiFi could have dropped
@@ -109,12 +158,17 @@ export interface BuildOrderRequestBodyInput {
   promoCode: string | null;
   name: string;
   mobile: string;
+  // CB-5B S8 — the milestone `at` PublicRewardsTab's claim affordance
+  // selected, an INTENT ONLY (never an amount or a dish — see
+  // createPublicOrderRequestSchema's own comment). `null` when no rung is
+  // selected, mirroring promoCode's own null-means-none shape.
+  requestedRewardAt: number | null;
 }
 
 // Builds EXACTLY createPublicOrderRequestSchema's .strict() shape — items
 // carry no price/name, the server derives both from the live product.
 export function buildOrderRequestBody(input: BuildOrderRequestBodyInput): CreatePublicOrderRequestInput {
-  const { target, cart, note, promoCode, name, mobile } = input;
+  const { target, cart, note, promoCode, name, mobile, requestedRewardAt } = input;
   return {
     target,
     items: cart.map((line) => ({
@@ -126,6 +180,7 @@ export function buildOrderRequestBody(input: BuildOrderRequestBodyInput): Create
     })),
     note: note.trim().length > 0 ? note.trim() : undefined,
     promoCode: promoCode ?? undefined,
+    requestedRewardAt: requestedRewardAt ?? undefined,
     name: name.trim(),
     mobile: mobile.trim(),
   };

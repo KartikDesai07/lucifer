@@ -32,11 +32,16 @@ export async function listDuePayments(customerId: string) {
     .lean();
 }
 
-// `customerId` is a stored STRING, and ObjectId hex is case-insensitive, so the
-// same customer can be spelled two ways in a URL. Match BOTH the raw segment
-// and the canonical form: new rows are written canonically (see
+// `customerId` is a stored ObjectId, and ObjectId hex is case-insensitive, so
+// the same customer can be spelled two ways in a URL. Match BOTH the raw
+// segment and the canonical form: new rows are written canonically (see
 // canonicalCustomerId), but a row filed under a non-canonical spelling before
 // that must still surface here rather than becoming an invisible receipt.
+// The raw `$in` spelling is safe only because every caller here is a
+// Mongoose model query (find/findOne/findOneAndUpdate), which auto-casts a
+// string against an ObjectId path — a raw aggregate `$match` would need an
+// explicit `new mongoose.Types.ObjectId(...)` cast instead (see
+// lib/due-payment.ts's duesPaidTotal for that exact case).
 function customerIdFilter(customerId: string): { $in: string[] } {
   return { $in: [customerId, canonicalCustomerId(customerId)] };
 }

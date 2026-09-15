@@ -9,6 +9,7 @@ import {
   type ItemVoidRequest,
 } from "./order-void";
 import type { GstConfig } from "./receipt";
+import type { RedeemedReward } from "@pos/shared/reward-redemption";
 
 // CR1.3 — `resolveItemVoid` is the ENTIRE money/trail contract for voiding or
 // qty-reducing one already-fired line on an open tab; the route is just auth +
@@ -33,13 +34,33 @@ const AT = new Date("2026-08-09T12:00:00.000Z");
 const REASON = "Sent to wrong table";
 const VOIDED_BY = "Asha";
 
+// CB-DL-2: resolveItemVoid casts the line's productId via
+// `new Types.ObjectId(String(line.productId))`, so a short placeholder like
+// "p1" now throws a BSONError instead of returning a void/error result -- every
+// fixture below needs a real 24-char lower-case hex id. Each distinct
+// placeholder gets its own fixed literal so tests that rely on two DIFFERENT
+// products (or the same product twice) keep exactly that distinction.
+const PRODUCT_ID_1 = "1".repeat(24);
+const PRODUCT_ID_2 = "2".repeat(24);
+const PRODUCT_ID_3 = "3".repeat(24);
+const PRODUCT_ID_9 = "9".repeat(24);
+
 const GST_OFF: GstConfig = { gstEnabled: false, gstRate: 0, gstMode: "exclusive" };
 const GST_INCLUSIVE_5PC: GstConfig = { gstEnabled: true, gstRate: 5, gstMode: "inclusive" };
 const GST_EXCLUSIVE_10PC: GstConfig = { gstEnabled: true, gstRate: 10, gstMode: "exclusive" };
 
 function line(over: Partial<VoidableLine> = {}): VoidableLine {
-  return { productId: "p1", name: "Tea", price: 20, qty: 1, kotRound: 1, ...over };
+  return { productId: PRODUCT_ID_1, name: "Tea", price: 20, qty: 1, kotRound: 1, ...over };
 }
+
+// CB-DL-2: VoidableLine.productId widened to string | Types.ObjectId (app
+// code, lib/order-void.ts), but the shared orderLineKey (packages/shared's
+// utils.ts) keeps productId: string on purpose -- it is client-safe and must
+// not know about BSON types. lib/order-void.ts's own resolveItemVoid already
+// stringifies at that exact boundary (String(line.productId)) before calling
+// orderLineKey; this test-only helper does the same at every call site below
+// instead of touching either non-test file.
+const keyOf = (l: VoidableLine): string => orderLineKey({ ...l, productId: String(l.productId) });
 
 // Defaults `lineKey` to the identity of the default `line()` — every call site
 // that targets a REAL line overrides it with `orderLineKey(thatLine)` so the
@@ -47,7 +68,7 @@ function line(over: Partial<VoidableLine> = {}): VoidableLine {
 function request(over: Partial<ItemVoidRequest> = {}): ItemVoidRequest {
   return {
     index: 0,
-    lineKey: orderLineKey(line()),
+    lineKey: keyOf(line()),
     qty: 1,
     reason: REASON,
     voidedBy: VOIDED_BY,
@@ -59,15 +80,19 @@ function request(over: Partial<ItemVoidRequest> = {}): ItemVoidRequest {
 // ── Splice / reduce mechanics ────────────────────────────────────────────────
 
 test("full void (qty === line.qty) splices the line out and leaves the other lines untouched", () => {
-  const lineA = line({ productId: "p1", name: "Tea", price: 20, qty: 2, kotRound: 1 });
-  const lineB = line({ productId: "p2", name: "Coffee", price: 40, qty: 1, kotRound: 1 });
-  const lineC = line({ productId: "p3", name: "Samosa", price: 15, qty: 3, kotRound: 2 });
+  const lineA = line({ productId: PRODUCT_ID_1, name: "Tea", price: 20, qty: 2, kotRound: 1 });
+  const lineB = line({ productId: PRODUCT_ID_2, name: "Coffee", price: 40, qty: 1, kotRound: 1 });
+  const lineC = line({ productId: PRODUCT_ID_3, name: "Samosa", price: 15, qty: 3, kotRound: 2 });
   const items = [lineA, lineB, lineC];
 
   const result = resolveItemVoid({
     items,
-    request: request({ index: 1, lineKey: orderLineKey(lineB), qty: 1 }), // voids ALL of lineB
+    request: request({ index: 1, lineKey: keyOf(lineB), qty: 1 }), // voids ALL of lineB
     discount: 0,
+    discountKind: undefined,
+    // CB-5B — no reward on this fixture; stated explicitly because
+    // ItemVoidInput.reward is REQUIRED (a void must never silently strip one).
+    reward: undefined,
     charge: 0,
     gstCfg: GST_OFF,
   });
@@ -78,14 +103,18 @@ test("full void (qty === line.qty) splices the line out and leaves the other lin
 });
 
 test("qty-reduce (qty < line.qty) leaves the line in place with qty reduced by exactly the voided amount", () => {
-  const target = line({ productId: "p1", name: "Tea", price: 20, qty: 3, kotRound: 1 });
-  const other = line({ productId: "p2", name: "Coffee", price: 40, qty: 1, kotRound: 1 });
+  const target = line({ productId: PRODUCT_ID_1, name: "Tea", price: 20, qty: 3, kotRound: 1 });
+  const other = line({ productId: PRODUCT_ID_2, name: "Coffee", price: 40, qty: 1, kotRound: 1 });
   const items = [target, other];
 
   const result = resolveItemVoid({
     items,
-    request: request({ index: 0, lineKey: orderLineKey(target), qty: 2 }), // void 2 off a qty-3 line
+    request: request({ index: 0, lineKey: keyOf(target), qty: 2 }), // void 2 off a qty-3 line
     discount: 0,
+    discountKind: undefined,
+    // CB-5B — no reward on this fixture; stated explicitly because
+    // ItemVoidInput.reward is REQUIRED (a void must never silently strip one).
+    reward: undefined,
     charge: 0,
     gstCfg: GST_OFF,
   });
@@ -108,15 +137,19 @@ test("totals are recomputed from the remaining lines only, using the passed (tab
   // p1: 100x2=200, p2: 50x1=50, p3: 30x3=90 -> subtotal 340. Void p1 down by 1
   // (voids 100 off the bill) -> remaining subtotal 240.
   const items = [
-    line({ productId: "p1", name: "Biryani", price: 100, qty: 2, kotRound: 1 }),
-    line({ productId: "p2", name: "Lassi", price: 50, qty: 1, kotRound: 1 }),
-    line({ productId: "p3", name: "Naan", price: 30, qty: 3, kotRound: 1 }),
+    line({ productId: PRODUCT_ID_1, name: "Biryani", price: 100, qty: 2, kotRound: 1 }),
+    line({ productId: PRODUCT_ID_2, name: "Lassi", price: 50, qty: 1, kotRound: 1 }),
+    line({ productId: PRODUCT_ID_3, name: "Naan", price: 30, qty: 3, kotRound: 1 }),
   ];
 
   const result = resolveItemVoid({
     items,
-    request: request({ index: 0, lineKey: orderLineKey(items[0]), qty: 1 }),
+    request: request({ index: 0, lineKey: keyOf(items[0]), qty: 1 }),
     discount: 20,
+    discountKind: undefined,
+    // CB-5B — no reward on this fixture; stated explicitly because
+    // ItemVoidInput.reward is REQUIRED (a void must never silently strip one).
+    reward: undefined,
     charge: 0,
     gstCfg: GST_EXCLUSIVE_10PC,
   });
@@ -131,14 +164,18 @@ test("totals are recomputed from the remaining lines only, using the passed (tab
 
 test("an order-level discount that now EXCEEDS the reduced subtotal is re-clamped, and the total never goes negative", () => {
   const items = [
-    line({ productId: "p1", name: "Thali", price: 300, qty: 1, kotRound: 1 }),
-    line({ productId: "p2", name: "Water", price: 50, qty: 1, kotRound: 1 }),
+    line({ productId: PRODUCT_ID_1, name: "Thali", price: 300, qty: 1, kotRound: 1 }),
+    line({ productId: PRODUCT_ID_2, name: "Water", price: 50, qty: 1, kotRound: 1 }),
   ];
 
   const result = resolveItemVoid({
     items,
-    request: request({ index: 0, lineKey: orderLineKey(items[0]), qty: 1 }), // full void of the 300 line
+    request: request({ index: 0, lineKey: keyOf(items[0]), qty: 1 }), // full void of the 300 line
     discount: 100, // fit comfortably under the ORIGINAL 350 subtotal
+    discountKind: undefined,
+    // CB-5B — no reward on this fixture; stated explicitly because
+    // ItemVoidInput.reward is REQUIRED (a void must never silently strip one).
+    reward: undefined,
     charge: 0,
     gstCfg: GST_EXCLUSIVE_10PC,
   });
@@ -153,13 +190,17 @@ test("an order-level discount that now EXCEEDS the reduced subtotal is re-clampe
 
 test("inclusive GST config: recompute adds no on-top tax (already priced in), matching a live tab's snapshot", () => {
   const items = [
-    line({ productId: "p1", name: "Thali", price: 200, qty: 1, kotRound: 1 }),
-    line({ productId: "p2", name: "Water", price: 20, qty: 2, kotRound: 1 }),
+    line({ productId: PRODUCT_ID_1, name: "Thali", price: 200, qty: 1, kotRound: 1 }),
+    line({ productId: PRODUCT_ID_2, name: "Water", price: 20, qty: 2, kotRound: 1 }),
   ];
   const result = resolveItemVoid({
     items,
-    request: request({ index: 1, lineKey: orderLineKey(items[1]), qty: 1 }), // reduce Water 2 -> 1
+    request: request({ index: 1, lineKey: keyOf(items[1]), qty: 1 }), // reduce Water 2 -> 1
     discount: 0,
+    discountKind: undefined,
+    // CB-5B — no reward on this fixture; stated explicitly because
+    // ItemVoidInput.reward is REQUIRED (a void must never silently strip one).
+    reward: undefined,
     charge: 0,
     gstCfg: GST_INCLUSIVE_5PC,
   });
@@ -173,20 +214,24 @@ test("inclusive GST config: recompute adds no on-top tax (already priced in), ma
 // ── Trail entry snapshot ──────────────────────────────────────────────────────
 
 test("the returned entry snapshots the VOIDED qty (not what remains) plus name/price/kotRound/reason/voidedBy/at", () => {
-  const target = line({ productId: "p1", name: "Biryani", price: 150, qty: 3, kotRound: 2 });
-  const other = line({ productId: "p2", name: "Raita", price: 25, qty: 1, kotRound: 2 });
+  const target = line({ productId: PRODUCT_ID_1, name: "Biryani", price: 150, qty: 3, kotRound: 2 });
+  const other = line({ productId: PRODUCT_ID_2, name: "Raita", price: 25, qty: 1, kotRound: 2 });
 
   const result = resolveItemVoid({
     items: [target, other],
     request: request({
       index: 0,
-      lineKey: orderLineKey(target),
+      lineKey: keyOf(target),
       qty: 2,
       reason: REASON,
       voidedBy: VOIDED_BY,
       at: AT,
     }),
     discount: 0,
+    discountKind: undefined,
+    // CB-5B — no reward on this fixture; stated explicitly because
+    // ItemVoidInput.reward is REQUIRED (a void must never silently strip one).
+    reward: undefined,
     charge: 0,
     gstCfg: GST_OFF,
   });
@@ -194,7 +239,9 @@ test("the returned entry snapshots the VOIDED qty (not what remains) plus name/p
   assert.ok("entry" in result, "must not error");
   if (!("entry" in result)) return;
   assert.equal(result.entry.qty, 2, "entry.qty is the VOIDED amount (2), not the 1 that remains on the line");
-  assert.equal(result.entry.productId, "p1");
+  // entry.productId is cast to a real Types.ObjectId (IOrderVoid's stored
+  // shape) inside resolveItemVoid -- compare by string form, not identity.
+  assert.equal(String(result.entry.productId), PRODUCT_ID_1);
   assert.equal(result.entry.name, "Biryani", "name is snapshotted off the line, not the request");
   assert.equal(result.entry.price, 150, "unit price is snapshotted off the line");
   assert.equal(result.entry.kotRound, 2, "the round that fired the line, so the trail says which KOT it left");
@@ -205,7 +252,7 @@ test("the returned entry snapshots the VOIDED qty (not what remains) plus name/p
 
 test("the entry snapshot carries instructions/modifiers off the VOIDED line when it had them", () => {
   const target = line({
-    productId: "p1",
+    productId: PRODUCT_ID_1,
     name: "Biryani",
     price: 150,
     qty: 2,
@@ -213,12 +260,16 @@ test("the entry snapshot carries instructions/modifiers off the VOIDED line when
     instructions: "extra spicy",
     modifiers: ["no onion", "extra raita"],
   });
-  const other = line({ productId: "p2", name: "Water", price: 10, qty: 1, kotRound: 1 });
+  const other = line({ productId: PRODUCT_ID_2, name: "Water", price: 10, qty: 1, kotRound: 1 });
 
   const result = resolveItemVoid({
     items: [target, other],
-    request: request({ index: 0, lineKey: orderLineKey(target), qty: 1 }),
+    request: request({ index: 0, lineKey: keyOf(target), qty: 1 }),
     discount: 0,
+    discountKind: undefined,
+    // CB-5B — no reward on this fixture; stated explicitly because
+    // ItemVoidInput.reward is REQUIRED (a void must never silently strip one).
+    reward: undefined,
     charge: 0,
     gstCfg: GST_OFF,
   });
@@ -230,13 +281,17 @@ test("the entry snapshot carries instructions/modifiers off the VOIDED line when
 });
 
 test("the entry OMITS instructions/modifiers when the voided line carried none — omit-empty, not empty-string/empty-array", () => {
-  const target = line({ productId: "p1", name: "Tea", price: 20, qty: 2, kotRound: 1 }); // no instructions/modifiers
-  const other = line({ productId: "p2", name: "Water", price: 10, qty: 1, kotRound: 1 });
+  const target = line({ productId: PRODUCT_ID_1, name: "Tea", price: 20, qty: 2, kotRound: 1 }); // no instructions/modifiers
+  const other = line({ productId: PRODUCT_ID_2, name: "Water", price: 10, qty: 1, kotRound: 1 });
 
   const result = resolveItemVoid({
     items: [target, other],
-    request: request({ index: 0, lineKey: orderLineKey(target), qty: 1 }),
+    request: request({ index: 0, lineKey: keyOf(target), qty: 1 }),
     discount: 0,
+    discountKind: undefined,
+    // CB-5B — no reward on this fixture; stated explicitly because
+    // ItemVoidInput.reward is REQUIRED (a void must never silently strip one).
+    reward: undefined,
     charge: 0,
     gstCfg: GST_OFF,
   });
@@ -250,11 +305,15 @@ test("the entry OMITS instructions/modifiers when the voided line carried none �
 // ── Rejection paths — decided BEFORE any items/totals are touched ───────────
 
 test("index out of range -> 409 (a stale view of the tab, not a bad request), no nextItems returned", () => {
-  const items = [line({ productId: "p1" })];
+  const items = [line({ productId: PRODUCT_ID_1 })];
   const result = resolveItemVoid({
     items,
-    request: request({ index: 5, lineKey: orderLineKey(items[0]) }),
+    request: request({ index: 5, lineKey: keyOf(items[0]) }),
     discount: 0,
+    discountKind: undefined,
+    // CB-5B — no reward on this fixture; stated explicitly because
+    // ItemVoidInput.reward is REQUIRED (a void must never silently strip one).
+    reward: undefined,
     charge: 0,
     gstCfg: GST_OFF,
   });
@@ -266,12 +325,16 @@ test("index out of range -> 409 (a stale view of the tab, not a bad request), no
 });
 
 test("lineKey mismatch at that index -> 409 (another device changed the tab), no nextItems returned", () => {
-  const items = [line({ productId: "p1" }), line({ productId: "p2" })];
+  const items = [line({ productId: PRODUCT_ID_1 }), line({ productId: PRODUCT_ID_2 })];
   const result = resolveItemVoid({
     items,
     // lineKey describes a line that isn't at index 0 at all.
-    request: request({ index: 0, lineKey: orderLineKey(line({ productId: "p9" })) }),
+    request: request({ index: 0, lineKey: keyOf(line({ productId: PRODUCT_ID_9 })) }),
     discount: 0,
+    discountKind: undefined,
+    // CB-5B — no reward on this fixture; stated explicitly because
+    // ItemVoidInput.reward is REQUIRED (a void must never silently strip one).
+    reward: undefined,
     charge: 0,
     gstCfg: GST_OFF,
   });
@@ -287,8 +350,8 @@ test("lineKey mismatch at that index -> 409 (another device changed the tab), no
 // the WRONG one of those two lines must be rejected, not silently honored.
 
 test("WRONG-LINE regression: a stale index pointing at the OTHER same-product line is rejected by the lineKey comparison, not silently voided", () => {
-  const lineA = line({ productId: "p1", name: "Tea", price: 20, qty: 1, kotRound: 1, instructions: "less sugar" });
-  const lineB = line({ productId: "p1", name: "Tea", price: 20, qty: 1, kotRound: 1, instructions: "extra hot" });
+  const lineA = line({ productId: PRODUCT_ID_1, name: "Tea", price: 20, qty: 1, kotRound: 1, instructions: "less sugar" });
+  const lineB = line({ productId: PRODUCT_ID_1, name: "Tea", price: 20, qty: 1, kotRound: 1, instructions: "extra hot" });
   const items = [lineA, lineB];
 
   // The operator was looking at lineB, but the request's index is stale and now
@@ -297,8 +360,12 @@ test("WRONG-LINE regression: a stale index pointing at the OTHER same-product li
   // live-probe reproduced. The lineKey comparison must reject it instead.
   const staleResult = resolveItemVoid({
     items,
-    request: request({ index: 0, lineKey: orderLineKey(lineB), qty: 1 }),
+    request: request({ index: 0, lineKey: keyOf(lineB), qty: 1 }),
     discount: 0,
+    discountKind: undefined,
+    // CB-5B — no reward on this fixture; stated explicitly because
+    // ItemVoidInput.reward is REQUIRED (a void must never silently strip one).
+    reward: undefined,
     charge: 0,
     gstCfg: GST_OFF,
   });
@@ -311,8 +378,12 @@ test("WRONG-LINE regression: a stale index pointing at the OTHER same-product li
   // rejection above is about identity, not about some unrelated brokenness.
   const correctResult = resolveItemVoid({
     items,
-    request: request({ index: 1, lineKey: orderLineKey(lineB), qty: 1 }),
+    request: request({ index: 1, lineKey: keyOf(lineB), qty: 1 }),
     discount: 0,
+    discountKind: undefined,
+    // CB-5B — no reward on this fixture; stated explicitly because
+    // ItemVoidInput.reward is REQUIRED (a void must never silently strip one).
+    reward: undefined,
     charge: 0,
     gstCfg: GST_OFF,
   });
@@ -322,12 +393,16 @@ test("WRONG-LINE regression: a stale index pointing at the OTHER same-product li
 });
 
 test("a line with kotRound 0 (never fired to the kitchen) is not voidable -> 400, no nextItems returned", () => {
-  const target = line({ productId: "p1", kotRound: 0 });
+  const target = line({ productId: PRODUCT_ID_1, kotRound: 0 });
   const items = [target];
   const result = resolveItemVoid({
     items,
-    request: request({ index: 0, lineKey: orderLineKey(target) }),
+    request: request({ index: 0, lineKey: keyOf(target) }),
     discount: 0,
+    discountKind: undefined,
+    // CB-5B — no reward on this fixture; stated explicitly because
+    // ItemVoidInput.reward is REQUIRED (a void must never silently strip one).
+    reward: undefined,
     charge: 0,
     gstCfg: GST_OFF,
   });
@@ -339,12 +414,16 @@ test("a line with kotRound 0 (never fired to the kitchen) is not voidable -> 400
 });
 
 test("qty greater than the line's remaining qty -> 400, no nextItems returned", () => {
-  const target = line({ productId: "p1", qty: 2, kotRound: 1 });
+  const target = line({ productId: PRODUCT_ID_1, qty: 2, kotRound: 1 });
   const items = [target];
   const result = resolveItemVoid({
     items,
-    request: request({ index: 0, lineKey: orderLineKey(target), qty: 3 }), // more than the line has
+    request: request({ index: 0, lineKey: keyOf(target), qty: 3 }), // more than the line has
     discount: 0,
+    discountKind: undefined,
+    // CB-5B — this fixture carries no reward; stated explicitly because
+    // ItemVoidInput.reward is REQUIRED (a void must never silently strip one).
+    reward: undefined,
     charge: 0,
     gstCfg: GST_OFF,
   });
@@ -356,12 +435,16 @@ test("qty greater than the line's remaining qty -> 400, no nextItems returned", 
 });
 
 test("voiding the only remaining line -> 400 (that's a cancellation, not a void), names who CAN do it, no nextItems returned", () => {
-  const target = line({ productId: "p1", qty: 1, kotRound: 1 });
+  const target = line({ productId: PRODUCT_ID_1, qty: 1, kotRound: 1 });
   const items = [target];
   const result = resolveItemVoid({
     items,
-    request: request({ index: 0, lineKey: orderLineKey(target), qty: 1 }), // full void, and it's the ONLY line
+    request: request({ index: 0, lineKey: keyOf(target), qty: 1 }), // full void, and it's the ONLY line
     discount: 0,
+    discountKind: undefined,
+    // CB-5B — this fixture carries no reward; stated explicitly because
+    // ItemVoidInput.reward is REQUIRED (a void must never silently strip one).
+    reward: undefined,
     charge: 0,
     gstCfg: GST_OFF,
   });
@@ -407,4 +490,67 @@ test("voidGuardFilter(0) matches BOTH a missing `voids` field and an empty array
 test("voidGuardFilter(n) for n > 0 matches an exact trail length", () => {
   assert.deepEqual(voidGuardFilter(3), { voids: { $size: 3 } });
   assert.deepEqual(voidGuardFilter(1), { voids: { $size: 1 } });
+});
+
+// ── CB-5B regression: voiding a line must NOT silently drop a flat reward ────
+// THE BUG: discountKind carries forward on the stored order as "reward", but
+// computeOrderTotals's rewardDiscountAmount fails CLOSED to 0 when `reward` is
+// missing. A writer that recomputes totals for a "reward"-kind tab WITHOUT
+// re-threading the actual RedeemedReward silently zeroes a discount the diner
+// already spent stamps on, while the order's own snapshot still claims it.
+// resolveItemVoid is the pure, DB-free surface for the void writer's half of
+// that fix — this pins the BEHAVIOUR (the recomputed discount figure), not
+// just that a `reward` field is threaded through.
+
+const FLAT_100_REWARD: RedeemedReward = { at: 5, kind: "flat", value: 100, item: "" };
+
+test("CB-5B: voiding a line on a 'reward'-kind tab keeps the flat Rs 100 reward discount on the remaining bill", () => {
+  const lineA = line({ productId: PRODUCT_ID_1, name: "Tea", price: 150, qty: 1, kotRound: 1 });
+  const lineB = line({ productId: PRODUCT_ID_2, name: "Coffee", price: 100, qty: 1, kotRound: 1 });
+  const items = [lineA, lineB];
+
+  const result = resolveItemVoid({
+    items,
+    // Void lineB entirely — lineA (Rs 150) remains.
+    request: request({ index: 1, lineKey: keyOf(lineB), qty: 1 }),
+    discount: 0,
+    discountKind: "reward",
+    reward: FLAT_100_REWARD,
+    charge: 0,
+    gstCfg: GST_OFF,
+  });
+
+  assert.ok(!("error" in result), "a normal void of a non-last line must not error");
+  if ("error" in result) return;
+  assert.equal(
+    result.totals.discount,
+    100,
+    "the flat Rs 100 reward must still be discounted off the remaining Rs 150 bill after the void — THE BUG zeroed this",
+  );
+  assert.equal(result.totals.total, 50, "Rs 150 subtotal - Rs 100 reward = Rs 50, with GST/charge off");
+});
+
+test("CB-5B negative control: the SAME void with reward: undefined yields discount 0 — proves the assertion above is actually sensitive to the reward being threaded through", () => {
+  const lineA = line({ productId: PRODUCT_ID_1, name: "Tea", price: 150, qty: 1, kotRound: 1 });
+  const lineB = line({ productId: PRODUCT_ID_2, name: "Coffee", price: 100, qty: 1, kotRound: 1 });
+  const items = [lineA, lineB];
+
+  const result = resolveItemVoid({
+    items,
+    request: request({ index: 1, lineKey: keyOf(lineB), qty: 1 }),
+    discount: 0,
+    discountKind: "reward",
+    reward: undefined, // THE BUG shape: discountKind says "reward" but no reward object
+    charge: 0,
+    gstCfg: GST_OFF,
+  });
+
+  assert.ok(!("error" in result));
+  if ("error" in result) return;
+  assert.equal(
+    result.totals.discount,
+    0,
+    "rewardDiscountAmount fails CLOSED at 0 when reward is undefined — this is the exact defect shape the fix's fallback must prevent in the route",
+  );
+  assert.equal(result.totals.total, 150, "with no reward threaded through, the diner would be charged the FULL remaining bill");
 });

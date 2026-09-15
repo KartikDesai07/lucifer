@@ -21,7 +21,10 @@ import type {
   PaymentMode,
   OrderStatus,
   GstMode,
+  DiscountKind,
 } from "./constants";
+import type { LoyaltyRewardKind } from "./public-diner";
+import { shouldStoreDiscountKind } from "./reward-redemption";
 
 // ── Money primitives (shared by menu + order — #39) ──────────────────────────
 
@@ -79,6 +82,20 @@ export interface StoredOrder {
   total: number; // paise
   paidAmount: number; // paise
   discount?: number; // paise
+  discountKind?: DiscountKind;
+  // CB-5B reward redemption snapshot — rides alongside discountKind exactly
+  // as gstAmount/gstRate/gstMode ride alongside "gst". See :214/:321 for the
+  // gating discipline (the kind gates the snapshot, same as discount gates
+  // the kind).
+  rewardAt?: number;
+  rewardKind?: LoyaltyRewardKind;
+  rewardValue?: number;
+  rewardItem?: string;
+  // CB-5B D8/D11 — the free dish as a product REFERENCE + how many. Neither
+  // is money, so like rewardStamps they pass the paise codec untouched.
+  rewardItemProductId?: string;
+  rewardQty?: number;
+  rewardStamps?: number;
   gstAmount?: number; // paise
   gstRate?: number; // whole percent
   gstMode?: GstMode;
@@ -126,6 +143,17 @@ export interface DecodedOrder {
   total: number; // rupees
   paidAmount: number; // rupees
   discount: number; // rupees (restored to 0 when omitted)
+  discountKind?: DiscountKind;
+  // CB-5B reward snapshot — no paise conversion for at/kind/item (not money);
+  // rewardValue mirrors discount's own unit (rupees, flat/percent per rewardKind).
+  rewardAt?: number;
+  rewardKind?: LoyaltyRewardKind;
+  rewardValue?: number;
+  rewardItem?: string;
+  // CB-5B D8/D11 — a product id and a dish COUNT, same non-money treatment.
+  rewardItemProductId?: string;
+  rewardQty?: number;
+  rewardStamps?: number; // count, not money — never touches the paise codec
   gstAmount?: number; // rupees
   gstRate?: number; // whole percent
   gstMode?: GstMode;
@@ -208,6 +236,18 @@ function decodeOrderV1(stored: StoredOrder, v: number): DecodedOrder {
     decoded.chargeAmount = paiseToRupees(stored.chargeAmount);
   }
   if (stored.chargeLabel !== undefined) decoded.chargeLabel = stored.chargeLabel;
+  if (stored.discountKind !== undefined) decoded.discountKind = stored.discountKind;
+  // The reward snapshot follows the kind (present only when the store carried
+  // discountKind — which itself follows the amount, see encodeOrderForWrite's
+  // gate below), so a "reward" order round-trips its snapshot exactly like a
+  // "gst" order round-trips gstAmount/gstRate/gstMode.
+  if (stored.rewardAt !== undefined) decoded.rewardAt = stored.rewardAt;
+  if (stored.rewardKind !== undefined) decoded.rewardKind = stored.rewardKind;
+  if (stored.rewardValue !== undefined) decoded.rewardValue = stored.rewardValue;
+  if (stored.rewardItem !== undefined) decoded.rewardItem = stored.rewardItem;
+  if (stored.rewardItemProductId !== undefined) decoded.rewardItemProductId = stored.rewardItemProductId;
+  if (stored.rewardQty !== undefined) decoded.rewardQty = stored.rewardQty;
+  if (stored.rewardStamps !== undefined) decoded.rewardStamps = stored.rewardStamps;
   if (stored.splitCash !== undefined) decoded.splitCash = paiseToRupees(stored.splitCash);
   if (stored.splitOnline !== undefined) decoded.splitOnline = paiseToRupees(stored.splitOnline);
   if (stored.tableNo !== undefined) decoded.tableNo = stored.tableNo;
@@ -253,6 +293,16 @@ export interface EncodeOrderInput {
   total: number; // rupees
   paidAmount: number; // rupees
   discount?: number; // rupees
+  discountKind?: DiscountKind;
+  rewardAt?: number;
+  rewardKind?: LoyaltyRewardKind;
+  rewardValue?: number;
+  rewardItem?: string;
+  // CB-5B D8/D11 — the free dish as a product REFERENCE + how many. Neither
+  // is money, so like rewardStamps they pass the paise codec untouched.
+  rewardItemProductId?: string;
+  rewardQty?: number;
+  rewardStamps?: number;
   gstAmount?: number; // rupees
   gstRate?: number; // whole percent
   gstMode?: GstMode;
@@ -310,6 +360,30 @@ export function encodeOrderForWrite(
   if (input.chargeAmount) {
     out.chargeAmount = rupeesToPaise(input.chargeAmount);
     if (input.chargeLabel) out.chargeLabel = input.chargeLabel;
+  }
+  // The amount gates the kind exactly as `chargeAmount` gates `chargeLabel` — a
+  // kind with no amount would label a line worth nothing. EXCEPT "reward": a
+  // D5-reversal item reward's amount is 0 BY DESIGN (the benefit is a free
+  // dish line, not rupees off the total — S12), so gating it on amount would
+  // silently $unset the kind and its 5-field reprint snapshot on exactly the
+  // orders that spent stamps. `shouldStoreDiscountKind` carries that single
+  // exception; `out.discount` above keeps its OWN plain `if (input.discount)`
+  // gate, so a 0-rupee reward still stores no `discount` key, only the kind.
+  if (shouldStoreDiscountKind(input.discount ?? 0, input.discountKind)) {
+    out.discountKind = input.discountKind;
+    // The reward snapshot rides along with the KIND, not the amount directly:
+    // it is audit/reprint data for a "reward" order, so it follows whichever
+    // gate let the kind itself land in storage. A "gst" order carries no
+    // reward fields (rewardAt undefined -> all five stay omitted below).
+    if (input.discountKind === "reward") {
+      if (input.rewardAt !== undefined) out.rewardAt = input.rewardAt;
+      if (input.rewardKind !== undefined) out.rewardKind = input.rewardKind;
+      if (input.rewardValue !== undefined) out.rewardValue = input.rewardValue;
+      if (input.rewardItem !== undefined) out.rewardItem = input.rewardItem;
+      if (input.rewardItemProductId !== undefined) out.rewardItemProductId = input.rewardItemProductId;
+      if (input.rewardQty !== undefined) out.rewardQty = input.rewardQty;
+      if (input.rewardStamps !== undefined) out.rewardStamps = input.rewardStamps;
+    }
   }
   // Splits are meaningful ONLY for a Split payment: store BOTH legs (even a 0 leg,
   // e.g. an all-online split) for faithful reconstruction, and omit both otherwise

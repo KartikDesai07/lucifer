@@ -159,3 +159,34 @@
     color: var(--color-foreground);
   }
 }
+
+/* CB-1d.1 — instant-tap feel for the staff dashboard. Scoped by the
+   data-pos-touch attribute <html> carries only while the (dashboard) layout
+   is mounted (components/shared/TouchFeel.tsx publishes it; the /m diner
+   flow never does) — portaled dialogs/sheets are covered, /m is not.
+   touch-action:manipulation removes the double-tap-zoom delay; selection and
+   the long-press callout are silenced on tappable surfaces (never inputs);
+   coarse pointers get an instant compositor-only pressed state. Tailwind
+   utilities (layer utilities) override any of this per element; preflight
+   already puts -webkit-tap-highlight-color on <html>, repeated here so the
+   touch layer stands alone. `a` is deliberately absent from the selection/
+   callout list — links keep their OS affordances and link-wrapped card text
+   stays copyable (review g15). Known exception: controls carrying their own
+   opacity utility (the ui/dialog close X's opacity-70) outrank the generic
+   press-dim (g16). */
+@layer base {
+  [data-pos-touch] :where(button, a, label, summary, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [role="switch"], [role="checkbox"], [role="radio"]) {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  [data-pos-touch] :where(button, label, summary, [role="button"], [role="tab"], [role="menuitem"], [role="option"]) {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  @media (pointer: coarse) {
+    [data-pos-touch] :where(button, a, summary, [role="button"], [role="tab"], [role="menuitem"], [role="option"]):active {
+      opacity: 0.7;
+    }
+  }
+}

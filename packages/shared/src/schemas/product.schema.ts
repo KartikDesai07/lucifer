@@ -7,6 +7,7 @@ import {
   VARIATION_NAME_PATTERN,
   VARIATION_PRICE_MAX,
 } from "../constants";
+import { OBJECT_ID_HEX_PATTERN } from "./object-id.schema";
 
 // carries a price ceiling rather than a percentage.
 export const productVariationSchema = z
@@ -45,7 +46,13 @@ const variationsArraySchema = z
 
 export const createProductSchema = z.object({
   name: z.string().trim().min(1, "Product name is required"),
-  category: z.string().trim().min(1, "Category is required"),
+  // A missing key AND a non-hex value both read as "Category is required" —
+  // required_error covers the absent-key case, the regex message covers a
+  // present-but-invalid one (the id is server-serialised lower-case hex; see
+  // object-id.schema.ts).
+  categoryId: z
+    .string({ required_error: "Category is required" })
+    .regex(OBJECT_ID_HEX_PATTERN, "Category is required"),
   price: z.number().min(0, "Price cannot be negative"),
   // Optional with NO default on purpose: an item sold one way stores no key at
   // all (omit-empty), and the CSV import — which cannot express variations —
@@ -89,12 +96,18 @@ export type UpdateProductInput = z.infer<typeof updateProductSchema>;
 
 // ── Bulk CSV import ──────────────────────────────────────────────────────────
 // A raw CSV row (string cells, arbitrary headers) is coerced onto the canonical
-// product shape and then validated by the SAME `createProductSchema` above —
-// the import has no separate notion of a "valid product".
+// product shape and then validated by a variant of `createProductSchema` above
+// — the CSV keeps a human-typed category NAME column (there is no id column
+// to fill in), so this schema swaps `categoryId` back out for a `category`
+// name string; the import route resolves that name to an id server-side.
 export const importProductRowSchema = z.preprocess(
   (raw) => coerceProductRow((raw ?? {}) as Record<string, unknown>),
-  createProductSchema,
+  createProductSchema
+    .omit({ categoryId: true })
+    .extend({ category: z.string().trim().min(1, "Category is required") }),
 );
+
+export type ImportProductRow = z.infer<typeof importProductRowSchema>;
 
 // Request body for POST /api/products/import. `rows` are the raw parsed CSV
 // rows; `dryRun` returns a validation preview without writing anything.

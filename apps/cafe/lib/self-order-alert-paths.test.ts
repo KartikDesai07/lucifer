@@ -131,6 +131,13 @@ test('PIN: claimKotPrint reads the Order BEFORE the CAS, the CAS carries all fou
 });
 
 // ── d. No writer ever unsets the D9 markers ─────────────────────────────────
+//
+// PH-10 §B3: the analogous PrintJob marker, `claimedAt`, is already covered
+// by its OWN never-$unset sweep + positive `$set` landmark in
+// print-queue.test.ts:450-477 — deliberately NOT added to this file's BANNED
+// array below (that array is scoped to the OrderRequest/D9 markers this file
+// owns; adding a PrintJob field here would double-report the same drift two
+// suites already catch independently).
 
 test("PIN: no file under apps/cafe's app/lib/hooks trees ever $unsets kotPrintedAt or acceptedKotRound — the D9 marker is set once and read once; unsetting either on a later write would reopen the claim to a second racer", () => {
   const dirs = ["apps/cafe/app", "apps/cafe/lib", "apps/cafe/hooks"];
@@ -202,6 +209,52 @@ test("PIN: the exact set of apps/cafe production files that write OrderRequest (
   );
 });
 
+// ── e2. PrintJob writer allow-list (PH-10 §B4, same walk technique as e) ────
+
+test("PIN: the exact set of apps/cafe production files that write PrintJob (.create/.updateOne/.findOneAndUpdate/.deleteMany/.updateMany) matches this list — a NEW writer must be added here deliberately, with the claimedAt CAS/status-transition semantics re-audited (the reciprocal-CAS lesson applies here too: print-queue-claim.ts's claim CAS and print-queue.ts's dismiss/prune/teardown paths all guard the SAME claimedAt field)", () => {
+  const PRINT_JOB_WRITE_PATTERN = /PrintJob\.(create|updateOne|findOneAndUpdate|deleteMany|updateMany)\(/;
+  const EXPECTED_PRINT_JOB_WRITERS = ["apps/cafe/lib/print-queue-claim.ts", "apps/cafe/lib/print-queue.ts"].sort();
+
+  const files: string[] = [];
+  walk(path.join(REPO_ROOT, "apps/cafe"), files);
+
+  const actualPrintJobWriters = files
+    .filter((fileAbs) => {
+      const rel = relPath(fileAbs);
+      // Same exclusions as the OrderRequest allow-list above, PLUS
+      // apps/cafe/scripts/: a NEW live-leg script (verify-print-host-live.ts
+      // + scripts/print-host-live/*.ts, PH-10 §F) legitimately calls
+      // PrintJob.collection.updateOne/PrintJob.create to seed/backdate scratch
+      // fixtures — that is a test-fixture concern, not a production write path,
+      // exactly like scripts/ is already excluded from the OrderRequest walk.
+      if (rel.endsWith(".test.ts")) return false;
+      if (rel.startsWith("apps/cafe/scripts/")) return false;
+      const src = stripComments(readFileSync(fileAbs, "utf8"));
+      return PRINT_JOB_WRITE_PATTERN.test(src);
+    })
+    .map(relPath)
+    .sort();
+
+  assert.deepEqual(
+    actualPrintJobWriters,
+    EXPECTED_PRINT_JOB_WRITERS,
+    `the real PrintJob-writer set (${actualPrintJobWriters.join(", ")}) drifted from the pinned allow-list (${EXPECTED_PRINT_JOB_WRITERS.join(", ")}) — if this is a deliberate new writer, re-audit it against the claimedAt CAS guard before updating this list`,
+  );
+
+  // Positive landmark (non-vacuity): the DELETE-clear updateMany is
+  // textually inside print-queue.ts (dismissQueuedPrintJobsForClearedHost,
+  // invoked by app/api/print-host/route.ts's DELETE handler — the route
+  // file itself is correctly NOT a writer, it calls through the lib), and
+  // print-queue.ts's own prune sweep contributes the file's SECOND
+  // deleteMany( (queued-retention sweep + resolved-retention sweep) — a
+  // walk that returned an empty-looking allow-list would still need this
+  // count to independently prove it read the real, unblinded file.
+  const printQueueSrc = stripComments(readSrc("apps/cafe/lib/print-queue.ts"));
+  assert.match(printQueueSrc, /deleteMany\(/, "landmark: print-queue.ts must contain at least one deleteMany( call");
+  const deleteManyCount = (printQueueSrc.match(/deleteMany\(/g) ?? []).length;
+  assert.equal(deleteManyCount, 2, "print-queue.ts must contain EXACTLY 2 deleteMany( calls (prunePrintJobs's queued-retention sweep + resolved-retention sweep)");
+});
+
 // ── f. No schema default on either D9 marker ────────────────────────────────
 
 test("PIN: models/OrderRequest.ts declares acceptedKotRound and kotPrintedAt with NO `default:` — omit-empty, mirroring the resolution block's own discipline (a still-pending or not-yet-printed request must carry neither key at all)", () => {
@@ -265,10 +318,15 @@ test("PIN: alert-sound.ts calls resume() ONLY inside unlockAlertSound, construct
 
 // ── i. RequestAlertBar renders the shared limitation constant, not a copy ─
 
-test("PIN: RequestAlertBar imports SELF_ORDER_ALERT_LIMITATION from @pos/shared/self-order-alert and renders it — the exact wording lives in exactly ONE place, never duplicated as a hardcoded string", () => {
+test("PIN: RequestAlertBar imports SELF_ORDER_ALERT_LIMITATION from @pos/shared/self-order-alert and renders it as the FALLBACK of the host-aware note ({hostNote ?? SELF_ORDER_ALERT_LIMITATION}, print-host plan MERGED-22 / PH-8) — the exact wording lives in exactly ONE place, never duplicated as a hardcoded string", () => {
   const src = stripComments(readSrc(REQUEST_ALERT_BAR));
   assert.match(src, /import \{ SELF_ORDER_ALERT_LIMITATION \} from "@pos\/shared\/self-order-alert";/, "RequestAlertBar must import SELF_ORDER_ALERT_LIMITATION");
-  assert.match(src, /\{SELF_ORDER_ALERT_LIMITATION\}/, "RequestAlertBar must render {SELF_ORDER_ALERT_LIMITATION}");
+  // PH-8 (MERGED-22): with a host configured the legacy line would tell staff
+  // auto-print needs THIS panel open, so the host-aware note takes its place;
+  // the legacy constant is the `??` fallback — rendered, via the constant, on
+  // the dark-rollout (no host) state exactly as before.
+  assert.match(src, /\{hostNote \?\? SELF_ORDER_ALERT_LIMITATION\}/, "RequestAlertBar must render {hostNote ?? SELF_ORDER_ALERT_LIMITATION}");
+  assert.match(src, /const hostNote = printHostNoteOf\(pulse, prefs\.printHostSeen\);/, "hostNote must come from printHostNoteOf(pulse, prefs.printHostSeen) (lib/print-readback.ts — a degraded tick on a device that has SEEN a host keeps the host-aware line, MERGED-19)");
 
   // Mutation this catches: inlining the wording as a literal string too — a
   // future edit to the shared constant would then silently stop reaching here.

@@ -5,7 +5,7 @@ import { Minus, Plus } from "lucide-react";
 
 import { ORDER_REASON_MIN_LEN, ORDER_REASON_MAX_LEN } from "@/lib/constants";
 import { inr } from "@/lib/utils";
-import { isLastLine } from "@/lib/order-void";
+import { isLastLine } from "@/lib/order-void-rules";
 import { orderLineKey } from "@pos/shared/utils";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -125,7 +125,20 @@ export function VoidItemDialog({
                         the bill and the kitchen stops making the wrong cover. */}
                     {orderItemLabel(item)} × {item.qty}
                   </span>
-                  <span className="text-muted-foreground">{inr(item.price * item.qty)}</span>
+                  {/* CB-5B — this is the moment the operator picks WHICH line
+                      to void, and a reward line has different money
+                      consequences (its price is already excluded from the
+                      subtotal, so voiding it takes back a stamp, not cash).
+                      Same struck-through-worth + FREE treatment as the bill
+                      (OrderReceipt.tsx) so staff can tell the two apart. */}
+                  {item.reward ? (
+                    <span className="whitespace-nowrap text-muted-foreground">
+                      <span className="line-through opacity-60">{inr(item.price * item.qty)}</span>{" "}
+                      FREE
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">{inr(item.price * item.qty)}</span>
+                  )}
                 </label>
               ))}
             </RadioGroup>

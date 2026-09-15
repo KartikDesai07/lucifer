@@ -13,6 +13,7 @@ import {
 } from "@/components/public/public-submit";
 import { PROMO_SESSION_OPEN, PROMO_ALREADY_USED } from "@pos/shared/public";
 import { stripComments } from "@/lib/source-pin-utils";
+import { groupItemsByCategory } from "@/components/public/public-menu-groups";
 
 // CR2.5 S2 — §23.2: pins for the already-SHIPPED §1 diner behaviours (menu
 // search, sold-out shown-never-hidden, status timeline + poll cadence) that
@@ -162,6 +163,64 @@ test("PIN: PublicMenu.tsx's search Input carries an accessible aria-label (sourc
   );
 });
 
+test("PIN: PublicMenu.tsx still carries MENU_PAD_NO_CART (vision guard for the min-h-screen pin in pos-layout-paths.test.ts — a gutted file must not pass that pin vacuously)", () => {
+  const src = readSrc(PUBLIC_MENU_TSX);
+  assert.ok(
+    src.includes("MENU_PAD_NO_CART"),
+    "PublicMenu.tsx must still reference MENU_PAD_NO_CART — a split that dropped the <main> wrapper (and its min-h-screen) would still need SOME positive landmark to catch a gutted file, since the sibling pin only checks for the substring min-h-screen anywhere in the file",
+  );
+});
+
+// ── public-menu-groups.ts — groupItemsByCategory (pure, behavioural) ────────
+
+const ALL = "__all__";
+
+test("groupItemsByCategory: respects the configured category order, not insertion/alpha order", () => {
+  const items: PublicMenuProduct[] = [
+    product({ id: "p1", name: "Tea", category: "Beverages" }),
+    product({ id: "p2", name: "Samosa", category: "Snacks" }),
+  ];
+  const categories = [
+    { name: "Snacks", order: 1 },
+    { name: "Beverages", order: 2 },
+  ];
+  const groups = groupItemsByCategory(items, ALL, categories, ALL);
+  assert.deepEqual(
+    groups.map((g) => g.name),
+    ["Snacks", "Beverages"],
+    "groups must be ordered by each category's configured `order`, not by first-seen/alphabetical order",
+  );
+});
+
+test("groupItemsByCategory: a single selected category passes its items straight through as one group", () => {
+  const items: PublicMenuProduct[] = [product({ id: "p1", category: "Beverages" })];
+  const groups = groupItemsByCategory(items, "Beverages", [{ name: "Beverages", order: 1 }], ALL);
+  assert.deepEqual(
+    groups,
+    [{ name: "Beverages", items }],
+    "a non-ALL selectedCategory must yield exactly one group named after it, holding the (already-filtered) items untouched",
+  );
+});
+
+test("groupItemsByCategory: an item whose category is not in the configured list sorts LAST", () => {
+  const items: PublicMenuProduct[] = [
+    product({ id: "p1", name: "Mystery", category: "Discontinued" }),
+    product({ id: "p2", name: "Tea", category: "Beverages" }),
+  ];
+  const categories = [{ name: "Beverages", order: 1 }];
+  const groups = groupItemsByCategory(items, ALL, categories, ALL);
+  assert.deepEqual(
+    groups.map((g) => g.name),
+    ["Beverages", "Discontinued"],
+    "a category absent from the configured list must sort LAST (Number.POSITIVE_INFINITY), never first or silently dropped",
+  );
+});
+
+test("groupItemsByCategory: an empty item list returns []", () => {
+  const groups = groupItemsByCategory([], ALL, [{ name: "Beverages", order: 1 }], ALL);
+  assert.deepEqual(groups, [], "no items must yield no groups, not a single empty-named group");
+});
+
 // ── PublicMenuItem.tsx — sold-out gates BOTH controls, never hides the tile ─
 
 test("PIN: PublicMenuItem.tsx derives soldOut from product.available (source: PublicMenuItem.tsx:74)", () => {
@@ -254,39 +313,66 @@ test("PIN: PublicStatusTimeline.tsx carries the exact 3 step labels (source: Pub
   }
 });
 
-// ── PublicOrderStatus.tsx — poll cadence + terminal statuses ───────────────
+// ── PublicOrderStatus.tsx — manual refresh + cooldown + terminal statuses ──
+// S5: the diner's status page no longer polls at all — a single mount fetch
+// plus an explicit, server-cooldown-gated Refresh button. These pins replace
+// the old poll-cadence assertions with the new manual-refresh contract.
 
-test("PIN: PublicOrderStatus.tsx's poll cadence is FAST < SLOW with a bounded fast window (source: PublicOrderStatus.tsx:23-25)", () => {
-  const src = stripComments(readSrc(PUBLIC_ORDER_STATUS_TSX));
-  const fastMatch = src.match(/const POLL_FAST_MS = (\d[\d_]*);/);
-  const windowMatch = src.match(/const POLL_FAST_WINDOW_MS = (\d[\d_]*);/);
-  const slowMatch = src.match(/const POLL_SLOW_MS = (\d[\d_]*);/);
-  assert.ok(
-    fastMatch && windowMatch && slowMatch,
-    "PublicOrderStatus.tsx must declare POLL_FAST_MS, POLL_FAST_WINDOW_MS and POLL_SLOW_MS as top-level numeric constants (PublicOrderStatus.tsx:23-25)",
+test("PIN: PublicOrderStatus.tsx's refresh cooldown is IMPORTED from @pos/shared/public, and no timer-driven refetch loop remains (source: PublicOrderStatus.tsx)", () => {
+  const raw = readSrc(PUBLIC_ORDER_STATUS_TSX);
+  const src = stripComments(raw);
+
+  // Positive landmarks first — a gutted file must not pass the negatives
+  // below vacuously.
+  assert.match(
+    src,
+    /async function handleRefresh\(\)/,
+    "PublicOrderStatus.tsx must declare the manual handleRefresh() handler — the ONE re-fetch path a diner can trigger after mount",
   );
-  const fast = Number(fastMatch![1].replace(/_/g, ""));
-  const windowMs = Number(windowMatch![1].replace(/_/g, ""));
-  const slow = Number(slowMatch![1].replace(/_/g, ""));
-  assert.ok(
-    fast < slow,
-    `POLL_FAST_MS (${fast}) must be strictly less than POLL_SLOW_MS (${slow}) — a diner just after submit must be polled MORE often than one who has had the tab open a while`,
+  assert.match(
+    src,
+    /readRefreshAt\(code\)/,
+    "PublicOrderStatus.tsx must read the persisted refresh timestamp via readRefreshAt(code) so a reload's countdown is correct",
+  );
+
+  // The cooldown constant must be imported, never a re-declared literal.
+  assert.match(
+    src,
+    /import\s*\{[^}]*PUBLIC_STATUS_REFRESH_COOLDOWN_MS[^}]*\}\s*from\s*"@pos\/shared\/public"/,
+    "PublicOrderStatus.tsx must import PUBLIC_STATUS_REFRESH_COOLDOWN_MS from @pos/shared/public, not re-declare its own cooldown constant",
   );
   assert.ok(
-    windowMs > 0 && Number.isFinite(windowMs),
-    "POLL_FAST_WINDOW_MS must be a positive, bounded window — an unbounded fast window would poll every open diner tab at the fast rate forever, costing the M0",
+    !/\b30_000\b/.test(raw),
+    "PublicOrderStatus.tsx must not contain a bare 30_000 literal anywhere — the cooldown value must come from the shared import, never a local duplicate",
+  );
+
+  // No poll loop left: neither a setInterval driving re-fetches (whether it
+  // names the fetcher directly OR wraps it in an arrow, e.g.
+  // `setInterval(() => fetchStatus(...), ...)`), nor a setTimeout that
+  // re-invokes the fetch (the old schedule()/poll() pair). Every
+  // setInterval(...) call's own argument list is scanned for a re-fetch
+  // reference, not just its very first token.
+  for (const call of src.matchAll(/setInterval\(([\s\S]*?)\)(?=[,;)\n]|$)/g)) {
+    assert.ok(
+      !/\b(poll|runFetch|fetchStatus)\b/.test(call[1]),
+      `PublicOrderStatus.tsx must not drive its status re-fetch off a setInterval — found one whose body references a fetcher: ${call[0]}`,
+    );
+  }
+  assert.ok(
+    !/function schedule\(\)/.test(src) && !/setTimeout\(\s*poll\b/.test(src),
+    "PublicOrderStatus.tsx must not carry a schedule()/poll() timer pair that re-invokes the fetch — that was the old auto-poll loop",
   );
 });
 
-test("PIN: PublicOrderStatus.tsx's TERMINAL_STATUSES is exactly {accepted, rejected} (source: PublicOrderStatus.tsx:27)", () => {
+test("PIN: PublicOrderStatus.tsx's TERMINAL_STATUSES is exactly {accepted, rejected} — now gates whether the manual refresh control is offered at all (source: PublicOrderStatus.tsx)", () => {
   const src = stripComments(readSrc(PUBLIC_ORDER_STATUS_TSX));
   const match = src.match(/TERMINAL_STATUSES = new Set<[^>]*>\(\[([^\]]*)\]\)/);
-  assert.ok(match, "PublicOrderStatus.tsx must declare TERMINAL_STATUSES as a Set literal (PublicOrderStatus.tsx:27)");
+  assert.ok(match, "PublicOrderStatus.tsx must declare TERMINAL_STATUSES as a Set literal");
   const values = [...match![1].matchAll(/"([^"]+)"/g)].map((m) => m[1]).sort();
   assert.deepEqual(
     values,
     ["accepted", "rejected"],
-    'TERMINAL_STATUSES must contain exactly "accepted" and "rejected" — including "pending"/"accepting" would stop the poll loop before the diner ever learns the outcome, and omitting one would poll forever past a final state',
+    'TERMINAL_STATUSES must contain exactly "accepted" and "rejected" — a settled order can never change again, so these (and only these) must hide the manual refresh control; including "pending"/"accepting" would hide it before the diner ever learns the outcome, and omitting one would keep offering a dead refresh past a final state',
   );
 });
 
@@ -308,4 +394,39 @@ test("classifySubmitFailure: PROMO_SESSION_OPEN and PROMO_ALREADY_USED ride the 
       `a 422 carrying ${JSON.stringify(message)} with a promo sent must surface ON THE FIELD verbatim — public-submit.ts's documented promo-rejection contract`,
     );
   }
+});
+
+// ── The cooldown ticker must STOP (review 2026-09-13, CONFIRMED) ───────────
+// The 1s countdown ticker's effect keys on [cooldownUntil]. Nothing ever
+// resets that value when the cooldown LAPSES, so the effect never re-ran, the
+// cleanup never fired, and the interval kept ticking for the life of the
+// page — re-rendering the whole status subtree (timeline, every item row,
+// the actions block) once a second while a diner sat at the table waiting for
+// food. That is the "laggy taps on a cheap Android" class this project has
+// already had a build rejected for. The ticker must be bounded by a
+// self-stopping guard, not only by a dependency change that never comes.
+test("PIN: PublicOrderStatus.tsx's countdown ticker STOPS on its own when the cooldown lapses — it must never free-run", () => {
+  const src = stripComments(readSrc(PUBLIC_ORDER_STATUS_TSX));
+  const tickIdx = src.indexOf("setInterval(");
+  assert.ok(tickIdx >= 0, "expected the countdown ticker's setInterval");
+  assert.ok(
+    /clearInterval\(/.test(src.slice(tickIdx, tickIdx + 400)),
+    "the ticker effect must clear its interval on cleanup",
+  );
+  // The CALLBACK ITSELF is what matters. A guard clause ABOVE setInterval only
+  // runs at effect SETUP; once the deadline passes mid-interval nothing re-runs
+  // the effect, so ONLY logic inside the callback can end it.
+  //
+  // Slice just the first argument. Note the callback may be a CONCISE arrow
+  // with no braces — an earlier draft of this pin sliced to the next "}" and
+  // swallowed the cleanup's own clearInterval, which made it pass against the
+  // very bug it exists to catch. Cut at the delay argument instead.
+  const cbStart = tickIdx + "setInterval(".length;
+  const delayIdx = src.indexOf("COOLDOWN_TICK_MS", cbStart);
+  assert.ok(delayIdx > cbStart, "the ticker's delay must be the named COOLDOWN_TICK_MS constant");
+  const callback = src.slice(cbStart, delayIdx);
+  assert.ok(
+    /Date\.now\(\) >=|>=\s*deadline|cooldownUntil|stopTicker|setCooldownUntil\(0\)|clearInterval\(/.test(callback),
+    `the ticker CALLBACK must itself notice the cooldown has lapsed and stop (or reset the state its effect keys on). A callback that only does setNowTick(Date.now()) free-runs forever once the deadline passes, re-rendering the whole status subtree every second. Callback was: ${callback}`,
+  );
 });

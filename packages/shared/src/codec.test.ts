@@ -349,3 +349,351 @@ test("encode∘decode is stable on money", () => {
   assert.equal(roundTripped.total, 840);
   assert.equal(roundTripped.discount, 50);
 });
+
+// ── discountKind (CB-2, C2) — the amount gates the kind, same as chargeAmount
+// gates chargeLabel ───────────────────────────────────────────────────────────
+
+test("encodeOrderForWrite: discount:100 + discountKind:'gst' stores the kind alongside the discount", () => {
+  const stored = encodeOrderForWrite({
+    customerName: "Walk-in",
+    items: [{ name: "Coffee", price: 120, qty: 1 }],
+    subtotal: 120,
+    total: 20,
+    paidAmount: 20,
+    payment: "Cash",
+    receiver: "Rahul",
+    discount: 100,
+    discountKind: "gst",
+  });
+  assert.equal(stored.discount, 10000);
+  assert.equal(stored.discountKind, "gst");
+});
+
+test("encodeOrderForWrite: discount:0 + discountKind:'gst' OMITS the kind — the amount gates the kind", () => {
+  const stored = encodeOrderForWrite({
+    customerName: "Walk-in",
+    items: [{ name: "Coffee", price: 120, qty: 1 }],
+    subtotal: 120,
+    total: 120,
+    paidAmount: 120,
+    payment: "Cash",
+    receiver: "Rahul",
+    discount: 0,
+    discountKind: "gst",
+  });
+  assert.ok(!("discount" in stored), "discount:0 must not be stored (omit-empty)");
+  assert.ok(!("discountKind" in stored), "a 0 discount must take its kind with it, exactly like chargeAmount/chargeLabel");
+});
+
+test("encodeOrderForWrite: discountKind:'gst' with NO discount amount at all stores neither field", () => {
+  const stored = encodeOrderForWrite({
+    customerName: "Walk-in",
+    items: [{ name: "Coffee", price: 120, qty: 1 }],
+    subtotal: 120,
+    total: 120,
+    paidAmount: 120,
+    payment: "Cash",
+    receiver: "Rahul",
+    discountKind: "gst", // no discount supplied at all
+  });
+  assert.ok(!("discount" in stored));
+  assert.ok(!("discountKind" in stored), "a kind alone must never land in storage — an amount-less kind is not a discount");
+});
+
+test("decodeOrder: discountKind decodes straight across (no paise conversion — it is an enum, not money)", () => {
+  const d = decodeOrder({ ...MINIMAL, discount: 10000, discountKind: "gst" });
+  assert.equal(d.discountKind, "gst");
+});
+
+test("decodeOrder: a stored doc with discountKind ABSENT yields no discountKind key on the DTO", () => {
+  const d = decodeOrder(MINIMAL);
+  assert.ok(!("discountKind" in d), "an old order with no discountKind field must decode to no key at all, not undefined-but-present");
+});
+
+test("encode-then-decode round-trips discount:100 + discountKind:'gst', keeping the kind", () => {
+  const roundTripped = decodeOrder({
+    ...(encodeOrderForWrite({
+      customerName: "Walk-in",
+      items: [{ name: "Coffee", price: 120, qty: 1 }],
+      subtotal: 120,
+      total: 20,
+      paidAmount: 20,
+      payment: "Cash",
+      receiver: "Rahul",
+      discount: 100,
+      discountKind: "gst",
+    }) as StoredOrder),
+    _id: "ORD-A-20260629-003",
+    status: "Completed",
+    v: 1,
+  });
+  assert.equal(roundTripped.discount, 100);
+  assert.equal(roundTripped.discountKind, "gst");
+});
+
+test("encode-then-decode with discount:0 + discountKind:'gst': the kind never reaches storage, so it never reaches the decoded DTO either", () => {
+  const roundTripped = decodeOrder({
+    ...(encodeOrderForWrite({
+      customerName: "Walk-in",
+      items: [{ name: "Coffee", price: 120, qty: 1 }],
+      subtotal: 120,
+      total: 120,
+      paidAmount: 120,
+      payment: "Cash",
+      receiver: "Rahul",
+      discount: 0,
+      discountKind: "gst",
+    }) as StoredOrder),
+    _id: "ORD-A-20260629-004",
+    status: "Completed",
+    v: 1,
+  });
+  assert.equal(roundTripped.discount, 0);
+  assert.ok(!("discountKind" in roundTripped), "amount gates the kind through the FULL round-trip, not just at encode");
+});
+
+// ── CB-5B — the "reward" kind: same amount-gates-kind discipline as "gst",
+// PLUS the five reward snapshot fields ride along with the kind ────────────
+
+test("encodeOrderForWrite: discount:100 + discountKind:'reward' stores the kind AND the reward snapshot", () => {
+  const stored = encodeOrderForWrite({
+    customerName: "Walk-in",
+    items: [{ name: "Coffee", price: 120, qty: 1 }],
+    subtotal: 120,
+    total: 20,
+    paidAmount: 20,
+    payment: "Cash",
+    receiver: "Rahul",
+    discount: 100,
+    discountKind: "reward",
+    rewardAt: 8,
+    rewardKind: "flat",
+    rewardValue: 100,
+    rewardItem: "",
+    rewardStamps: 8,
+  });
+  assert.equal(stored.discount, 10000);
+  assert.equal(stored.discountKind, "reward");
+  assert.equal(stored.rewardAt, 8);
+  assert.equal(stored.rewardKind, "flat");
+  assert.equal(stored.rewardValue, 100);
+  assert.equal(stored.rewardItem, "");
+  assert.equal(stored.rewardStamps, 8);
+});
+
+// D5 REVERSAL (2026-09-13): this used to assert the reward twin of the gst
+// "amount gates the kind" pin — discount:0 dropped the kind AND the snapshot,
+// exactly like "gst". That assumption is now FALSE for "reward": an item
+// reward's amount is 0 BY DESIGN (the benefit is a free dish line, not rupees
+// off the total — S12), so `shouldStoreDiscountKind` carries a documented
+// exception that keeps "reward" storing regardless of amount. "gst" keeps the
+// OLD behaviour verbatim (see the byte-identical 'gst'-scoped pin above).
+test("encodeOrderForWrite: discount:0 + discountKind:'reward' STORES the kind and the full snapshot (D5 reversal exception)", () => {
+  const stored = encodeOrderForWrite({
+    customerName: "Walk-in",
+    items: [{ name: "Coffee", price: 120, qty: 1 }],
+    subtotal: 120,
+    total: 120,
+    paidAmount: 120,
+    payment: "Cash",
+    receiver: "Rahul",
+    discount: 0,
+    discountKind: "reward",
+    rewardAt: 8,
+    rewardKind: "item",
+    rewardValue: 0,
+    rewardItem: "Masala Chai",
+    rewardStamps: 8,
+  });
+  assert.ok(!("discount" in stored), "discount:0 is still omitted — the exception is scoped to the KIND, not the amount field");
+  assert.equal(stored.discountKind, "reward");
+  assert.equal(stored.rewardAt, 8);
+  assert.equal(stored.rewardKind, "item");
+  assert.equal(stored.rewardValue, 0);
+  assert.equal(stored.rewardItem, "Masala Chai");
+  assert.equal(stored.rewardStamps, 8);
+});
+
+// Negative twin: the D5-reversal exception is about the AMOUNT gating the
+// KIND, not about the snapshot fields gating each OTHER — an order whose
+// snapshot fields were simply never supplied still omits them individually
+// (the pre-existing per-field `if (input.rewardX !== undefined)` gates in
+// encodeOrderForWrite are untouched by this slice).
+test("encodeOrderForWrite: discountKind:'reward' with the snapshot fields omitted stores the kind but no snapshot keys", () => {
+  const stored = encodeOrderForWrite({
+    customerName: "Walk-in",
+    items: [{ name: "Coffee", price: 120, qty: 1 }],
+    subtotal: 120,
+    total: 120,
+    paidAmount: 120,
+    payment: "Cash",
+    receiver: "Rahul",
+    discount: 0,
+    discountKind: "reward",
+    // rewardAt/rewardKind/rewardValue/rewardItem/rewardStamps all omitted.
+  });
+  assert.equal(stored.discountKind, "reward", "the kind still stores — the D5 exception does not depend on the snapshot being present");
+  for (const key of ["rewardAt", "rewardKind", "rewardValue", "rewardItem", "rewardStamps"]) {
+    assert.ok(!(key in stored), `${key} must stay omitted when the caller never supplied it`);
+  }
+});
+
+test("encodeOrderForWrite: discountKind:'gst' carries NO reward fields even if the caller supplied them", () => {
+  const stored = encodeOrderForWrite({
+    customerName: "Walk-in",
+    items: [{ name: "Coffee", price: 120, qty: 1 }],
+    subtotal: 120,
+    total: 20,
+    paidAmount: 20,
+    payment: "Cash",
+    receiver: "Rahul",
+    discount: 100,
+    discountKind: "gst",
+    rewardAt: 8,
+    rewardKind: "flat",
+    rewardValue: 100,
+  });
+  assert.equal(stored.discountKind, "gst");
+  assert.ok(!("rewardAt" in stored), "the reward snapshot follows discountKind === 'reward', not any other kind");
+});
+
+test("decodeOrder: a 'reward' order decodes the kind AND the reward snapshot straight across", () => {
+  const d = decodeOrder({
+    ...MINIMAL,
+    discount: 10000,
+    discountKind: "reward",
+    rewardAt: 8,
+    rewardKind: "flat",
+    rewardValue: 100,
+    rewardItem: "",
+    rewardStamps: 8,
+  });
+  assert.equal(d.discountKind, "reward");
+  assert.equal(d.rewardAt, 8);
+  assert.equal(d.rewardKind, "flat");
+  assert.equal(d.rewardValue, 100);
+  assert.equal(d.rewardItem, "");
+  assert.equal(d.rewardStamps, 8);
+});
+
+test("decodeOrder: a stored doc with the reward fields ABSENT yields no reward keys on the DTO", () => {
+  const d = decodeOrder(MINIMAL);
+  for (const key of ["rewardAt", "rewardKind", "rewardValue", "rewardItem", "rewardStamps"]) {
+    assert.ok(!(key in d), `${key} must be absent, not undefined-but-present, on an order with no reward`);
+  }
+});
+
+test("encode-then-decode round-trips discount:100 + discountKind:'reward', keeping the kind and the snapshot", () => {
+  const roundTripped = decodeOrder({
+    ...(encodeOrderForWrite({
+      customerName: "Walk-in",
+      items: [{ name: "Coffee", price: 120, qty: 1 }],
+      subtotal: 120,
+      total: 20,
+      paidAmount: 20,
+      payment: "Cash",
+      receiver: "Rahul",
+      discount: 100,
+      discountKind: "reward",
+      rewardAt: 8,
+      rewardKind: "percent",
+      rewardValue: 10,
+      rewardItem: "",
+      rewardStamps: 8,
+    }) as StoredOrder),
+    _id: "ORD-A-20260629-005",
+    status: "Completed",
+    v: 1,
+  });
+  assert.equal(roundTripped.discount, 100);
+  assert.equal(roundTripped.discountKind, "reward");
+  assert.equal(roundTripped.rewardAt, 8);
+  assert.equal(roundTripped.rewardKind, "percent");
+  assert.equal(roundTripped.rewardValue, 10);
+  assert.equal(roundTripped.rewardStamps, 8);
+});
+
+// D5 REVERSAL (2026-09-13) — the reward twin of the gst "kind alone never
+// lands" round-trip pin does NOT hold for "reward": see the encode-side
+// rewrite above. P-NEW-14 (snapshot survives at zero through encode-decode).
+test("encode-then-decode with discount:0 + discountKind:'reward': the kind AND the snapshot SURVIVE the full round-trip (D5 reversal, P-NEW-14)", () => {
+  const roundTripped = decodeOrder({
+    ...(encodeOrderForWrite({
+      customerName: "Walk-in",
+      items: [{ name: "Coffee", price: 120, qty: 1 }],
+      subtotal: 120,
+      total: 120,
+      paidAmount: 120,
+      payment: "Cash",
+      receiver: "Rahul",
+      discount: 0,
+      discountKind: "reward",
+      rewardAt: 8,
+      rewardKind: "item",
+      rewardValue: 0,
+      rewardItem: "Masala Chai",
+      rewardStamps: 8,
+    }) as StoredOrder),
+    _id: "ORD-A-20260629-006",
+    status: "Completed",
+    v: 1,
+  });
+  assert.equal(roundTripped.discount, 0, "discount stays 0 on the DTO — the amount is genuinely 0, not $unset back to a default");
+  assert.equal(roundTripped.discountKind, "reward");
+  assert.equal(roundTripped.rewardAt, 8);
+  assert.equal(roundTripped.rewardKind, "item");
+  assert.equal(roundTripped.rewardValue, 0);
+  assert.equal(roundTripped.rewardItem, "Masala Chai");
+  assert.equal(roundTripped.rewardStamps, 8);
+});
+
+// ── CB-5B D8/D11 — the free dish's product REFERENCE + count round-trip ─────
+// The whole point of D8 is that a reprint resolves the dish from an id, not a
+// name. That only holds if the id actually survives storage, so encode AND
+// decode are pinned together — a field added to one side only is the classic
+// silent-omission bug (the reward would print with no dish behind it).
+
+test("D8/D11: rewardItemProductId + rewardQty survive encode -> decode at discount 0", () => {
+  const stored = encodeOrderForWrite({
+    customerName: "Walk-in",
+    items: [{ name: "Coffee", price: 120, qty: 1 }],
+    subtotal: 120,
+    total: 120,
+    paidAmount: 120,
+    payment: "Cash",
+    receiver: "Rahul",
+    discount: 0,
+    discountKind: "reward",
+    rewardAt: 8,
+    rewardKind: "item",
+    rewardValue: 0,
+    rewardItem: "Masala Chai",
+    rewardItemProductId: "60a1b2c3d4e5f60718293a4b",
+    rewardQty: 2,
+    rewardStamps: 8,
+  });
+  assert.equal(stored.rewardItemProductId, "60a1b2c3d4e5f60718293a4b", "the REFERENCE must reach storage");
+  assert.equal(stored.rewardQty, 2, "the dish count must reach storage");
+
+  // encodeOrderForWrite yields a Partial (Mongo assigns _id), so the round
+  // trip supplies the id the way a real read would.
+  const decoded = decodeOrder({ ...MINIMAL, ...stored });
+  assert.equal(decoded.rewardItemProductId, "60a1b2c3d4e5f60718293a4b", "and come back unchanged");
+  assert.equal(decoded.rewardQty, 2);
+});
+
+test("D8/D11: a pre-D8 stored order decodes with NEITHER field present", () => {
+  // Absence must stay absence: a reader decides "can I rebuild the dish line?"
+  // by asking whether the ref is there. A defaulted "" or 1 would lie.
+  const decoded = decodeOrder({
+    ...MINIMAL,
+    discountKind: "reward",
+    rewardAt: 8,
+    rewardKind: "item",
+    rewardValue: 0,
+    rewardItem: "Masala Chai",
+    rewardStamps: 8,
+  });
+  assert.ok(!("rewardItemProductId" in decoded), "no ref stored means no ref decoded");
+  assert.ok(!("rewardQty" in decoded), "no count stored means no count decoded");
+});

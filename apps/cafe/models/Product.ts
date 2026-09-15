@@ -1,9 +1,13 @@
-import mongoose, { Schema, type Document, type Model } from "mongoose";
+import mongoose, { Schema, Types, type Document, type Model } from "mongoose";
 import type { ProductVariation } from "@/types";
 
 export interface IProduct extends Document {
   name: string;
-  category: string; // denormalized category name
+  // Links by id only; the category NAME is not stored here. Joins are
+  // client-side (lib/category-map.ts) or, for the public diner payload,
+  // resolved server-side into a name — see lib/public-menu.ts. No `ref` /
+  // populate at runtime.
+  categoryId: Types.ObjectId;
   price: number;
   // The named sizes this item sells in, each with its own price — ABSENT
   // (never []) when the item is sold one way only. OVERRIDES `price` for
@@ -43,7 +47,7 @@ const productVariationSchema = new Schema<ProductVariation>(
 export const productSchema = new Schema<IProduct>(
   {
     name: { type: String, required: true, trim: true },
-    category: { type: String, required: true },
+    categoryId: { type: Schema.Types.ObjectId, required: true, index: true },
     price: { type: Number, required: true, min: 0 },
     // No `default:` — omit-empty (#8 elsewhere in this file's family, e.g.
     // Order.voids): an item sold one way only stores no key at all, so the
@@ -61,7 +65,6 @@ export const productSchema = new Schema<IProduct>(
   { timestamps: true },
 );
 
-productSchema.index({ category: 1 });
 productSchema.index({ name: "text" });
 
 // Reuse the compiled model across hot reloads / serverless invocations.

@@ -1,18 +1,31 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useReactToPrint } from "react-to-print";
 import { CalendarCheck } from "lucide-react";
+import { toast } from "sonner";
 
 import { useOrders, useOrderSummary } from "@/hooks/use-orders";
 import { useSettings } from "@/hooks/use-settings";
 import { effectiveSummaryDate } from "@/lib/summary-date";
 import { cafeDateString } from "@/lib/utils";
 import { CAFE_TIMEZONE } from "@/lib/constants";
+import { slipPrintOptions } from "@/lib/desktop-shell";
 import { RECEIPT_PAGE_STYLE } from "@/lib/print";
+import { eodPrintJob } from "@/lib/print-routing";
+import { useHostRouting } from "@/hooks/use-print-routing";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EndOfDaySummary } from "@/components/reports/EndOfDaySummary";
+
+// A routed print's local fallback fires only once the enqueue has answered, and
+// the off-screen summary it clones always shows whatever the CURRENT date's
+// queries hold — including a zeroed body while a freshly-picked day is still
+// loading. Unguarded, a deferred fallback would put another day's figures on
+// paper under the tapped day's title, which for a cash-reconciliation slip is
+// the worst kind of wrong. Refuse and say so instead.
+const PRINT_DAY_CHANGED_MESSAGE =
+  "The date moved on before that slip could print here — pick the day again and print.";
 
 // "End of Day" print action for the dashboard — staff-accessible (CR1.5 Slice
 // 5): the cashier who took cash during the shift needs to reconcile the
@@ -43,13 +56,20 @@ export function EndOfDayButton() {
     { enabled: isToday },
   );
   const settings = useSettings();
+  // This button fires its own print trigger straight from onClick, so it is an
+  // independent print site: without this it would keep printing on the tapping
+  // device even while a print host owns every other slip (§B5 carve-out).
+  // `enqueuePending` (PH-8 MUST): the eod payload is jobKey-less and the routed
+  // lane is silent on "queued", so an un-disabled button double-taps into two
+  // closing slips at the counter.
+  const { routePrint, enqueuePending } = useHostRouting();
 
   const ref = useRef<HTMLDivElement>(null);
-  const print = useReactToPrint({
+  const print = useReactToPrint(slipPrintOptions({
     contentRef: ref,
     documentTitle: `EOD-${effectiveDate}`,
     pageStyle: RECEIPT_PAGE_STYLE,
-  });
+  }));
 
   const dateLabel = new Date(effectiveDate).toLocaleDateString("en-IN", {
     weekday: "short",
@@ -65,6 +85,40 @@ export function EndOfDayButton() {
   const ready =
     !!summary.data && !!settings.data && (!isToday || openTabs.isSuccess);
 
+  // With a print host configured the closing slip comes out at the counter
+  // rather than on the device that tapped it. The payload carries only the day
+  // — its key and its label — because this slip is a LIVE aggregate over that
+  // day's orders and the still-open tabs, so the host recomputes every figure
+  // itself instead of trusting a snapshot taken here (§B1). routePrint enqueues
+  // in that case and calls the local trigger only when this device must print
+  // it after all; exactly one of the two ever runs.
+  // What this button would print RIGHT NOW, readable from a callback that runs
+  // after an await (the handler's own closure holds the day as it was at TAP
+  // time, which is what this is compared against).
+  // A LAYOUT effect, not a passive one: the passive flush is a scheduler task,
+  // so the enqueue's promise continuation can slip between the commit that put
+  // another day's figures in the print DOM and the mirror catching up.
+  const shownDayRef = useRef({ dateKey: effectiveDate, ready });
+  useLayoutEffect(() => {
+    shownDayRef.current = { dateKey: effectiveDate, ready };
+  }, [effectiveDate, ready]);
+
+  const printEod = () => {
+    // On the no-host lane routePrint calls this SYNCHRONOUSLY inside the click
+    // tick, where the guard is trivially true — today's local path is unchanged
+    // (§F). `ready` is re-asserted, not just trusted from the disabled button:
+    // it gates the tap, never the deferred print behind it.
+    const localPrint = () => {
+      const shown = shownDayRef.current;
+      if (shown.dateKey === effectiveDate && shown.ready) {
+        print();
+        return;
+      }
+      toast.error(PRINT_DAY_CHANGED_MESSAGE);
+    };
+    routePrint(() => eodPrintJob({ dateKey: effectiveDate, dateLabel }), localPrint);
+  };
+
   return (
     <>
       <div className="flex items-center gap-2">
@@ -79,8 +133,8 @@ export function EndOfDayButton() {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => print()}
-          disabled={!ready}
+          onClick={printEod}
+          disabled={!ready || enqueuePending}
         >
           <CalendarCheck className="mr-2 h-4 w-4" /> End of day
         </Button>

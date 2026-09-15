@@ -13,10 +13,12 @@ import {
 import { orderSummaryCacheKey } from "@/lib/utils";
 import { getSettings, gstConfigOf } from "@/lib/settings";
 import { gstConfigFromOrder } from "@/lib/receipt";
+import { rewardFromOrderSnapshot } from "@pos/shared/reward-redemption";
 import { resolveItemVoid, voidGuardFilter } from "@/lib/order-void";
 import { printConfigOf, printedSlipNumber } from "@/lib/print";
 import { nextSlipSequence } from "@/models/Counter";
 import { voidItemSchema } from "@/schemas";
+import { shouldStoreDiscountKind } from "@pos/shared/reward-redemption";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +62,10 @@ export async function POST(req: Request, { params }: Params) {
         at: new Date(),
       },
       discount: old.discount,
+      discountKind: old.discountKind,
+      // Rebuilt from the order's own stored snapshot: a void must shrink the
+      // bill without stripping a reward the diner already spent stamps on.
+      reward: rewardFromOrderSnapshot(old),
       // The tab's snapshotted table charge rides through a void unchanged.
       charge: old.chargeAmount ?? 0,
       gstCfg: gstConfigFromOrder(old, gstConfigOf(settings)),
@@ -106,6 +112,19 @@ export async function POST(req: Request, { params }: Params) {
             ? resolved.entry
             : { ...resolved.entry, kotNumber: voidTicket },
         },
+        // A void never changes intent, so the stored kind stays as-is — EXCEPT
+        // when the re-derived discount is 0, where it must go (amount gates the
+        // kind — shouldStoreDiscountKind's one named exception is "reward",
+        // whose derived amount is ALWAYS 0: a void must NOT $unset a reward
+        // snapshot just because the amount reads 0, or the stamps-spent
+        // provenance on an order that spent them would vanish). The
+        // `resolved.totals.discount === 0` term stays exactly as before —
+        // only the KIND term widened to route through the shared predicate.
+        ...(old.discountKind !== undefined &&
+        resolved.totals.discount === 0 &&
+        !shouldStoreDiscountKind(resolved.totals.discount, old.discountKind)
+          ? { $unset: { discountKind: "" } }
+          : {}),
       },
       { new: true, runValidators: true },
     ).lean();

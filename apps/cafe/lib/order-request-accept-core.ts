@@ -157,7 +157,7 @@ export async function reject(requestId: string, error: string): Promise<{ error:
   // back (keyed requestId + orderId-absent — see the helper), or a failed
   // add-round would consume the customer's once-per-customer code forever
   // with no bill behind it (review MED #4). No-op when nothing was claimed.
-  await releasePromoRedemption(requestId);
+  await releasePromoRedemption({ kind: "request", id: requestId });
   return { error, status: 409 };
 }
 

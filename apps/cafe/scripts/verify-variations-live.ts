@@ -47,6 +47,7 @@ import { orderLineKey } from "@pos/shared/utils";
 import { effectivePrice } from "@/hooks/use-cart";
 import { buildUpdate } from "@/lib/crud-route";
 import { updateProductSchema } from "@/schemas";
+import { ensureCategoryId } from "./verify-shared/ensure-category";
 
 const SCRATCH_PREFIX = "pos_scratch_";
 const DEFAULT_URI = `mongodb://127.0.0.1:27017/${SCRATCH_PREFIX}variations`;
@@ -111,9 +112,10 @@ function buildOrder(opts: {
 async function productOmitEmptyLegs(): Promise<{ sized: string; plain: string }> {
   console.log("\n── product variations: omit-empty round-trip ──────────────────");
 
+  const beveragesId = await ensureCategoryId("Beverages");
   const sized = await Product.create({
     name: "Coco",
-    category: "Beverages",
+    categoryId: beveragesId,
     price: 120, // base/reference price — variations override it for ordering
     discount: 10,
     variations: [
@@ -132,7 +134,7 @@ async function productOmitEmptyLegs(): Promise<{ sized: string; plain: string }>
       sizedDoc.variations[1]?.price === 149,
   );
 
-  const plain = await Product.create({ name: "Tea", category: "Beverages", price: 40 });
+  const plain = await Product.create({ name: "Tea", categoryId: beveragesId, price: 40 });
   const plainDoc = await Product.findById(plain._id).lean();
   check(
     "a product saved WITHOUT variations stores NO key at all (Object.hasOwn === false) — not an empty array",
@@ -171,7 +173,7 @@ async function orderAndVoidLegs(sizedProductId: string): Promise<void> {
           qty: 2,
           variation: "Large",
         },
-        { productId: "plain-line", name: "Tea", price: 40, qty: 1 },
+        { productId: "00000000000000000000aaa3", name: "Tea", price: 40, qty: 1 },
       ],
     }),
   );
@@ -189,13 +191,19 @@ async function orderAndVoidLegs(sizedProductId: string): Promise<void> {
     items: readBack!.items,
     request: {
       index: 0,
-      lineKey: orderLineKey(line),
+      // orderLineKey (shared, cross-party) takes a string productId — line's
+      // is a real ObjectId once round-tripped through Mongo (models/Order.ts).
+      lineKey: orderLineKey({ ...line, productId: String(line.productId) }),
       qty: line.qty,
       reason: "Wrong size punched in",
       voidedBy: "Verifier",
       at: new Date(),
     },
     discount: readBack!.discount,
+    discountKind: undefined,
+    // CB-5B — this fixture carries no reward; stated explicitly because
+    // ItemVoidInput.reward is REQUIRED (a void must never silently strip one).
+    reward: undefined,
     charge: 0,
     gstCfg: { gstEnabled: false, gstRate: 0, gstMode: "inclusive" },
   });
@@ -291,7 +299,7 @@ async function csvReimportGuardLeg(): Promise<void> {
 
   const named = await Product.create({
     name: "Cold Coffee",
-    category: "Beverages",
+    categoryId: await ensureCategoryId("Beverages"),
     price: 100,
     discount: 5,
     variations: [
@@ -306,9 +314,11 @@ async function csvReimportGuardLeg(): Promise<void> {
   // (packages/shared/src/schemas/product.schema.test.ts pins that at the Zod
   // layer); this leg proves the DB HALF of the claim — that omitting a field
   // from a $set genuinely leaves it alone, unlike the full-document overwrite
-  // CR1.6 found once for a different column.
+  // CR1.6 found once for a different column. `categoryId` here is the id the
+  // import route's own name->id resolve phase would have written — never a
+  // category NAME onto the product.
   const reimportRow = {
-    category: "Beverages",
+    categoryId: named.categoryId,
     price: 110, // the CSV re-import bumped the price
     discount: 5,
     image: "",
@@ -343,9 +353,10 @@ async function toggleOffLegs(): Promise<void> {
   console.log("");
   console.log("-- turning variations OFF --");
 
+  const cocoId = await ensureCategoryId("Coco");
   const product = await Product.create({
     name: "Toggle Coco",
-    category: "Coco",
+    categoryId: cocoId,
     price: 100,
     variations: [
       { name: "Regular", price: 100 },
@@ -355,7 +366,7 @@ async function toggleOffLegs(): Promise<void> {
 
   // What the browser sends with the switch OFF, through a real JSON round trip.
   const wire = JSON.parse(
-    JSON.stringify({ name: "Toggle Coco", category: "Coco", price: 120, variations: null }),
+    JSON.stringify({ name: "Toggle Coco", categoryId: String(cocoId), price: 120, variations: null }),
   );
   const parsed = updateProductSchema.safeParse(wire);
   check(
@@ -379,7 +390,7 @@ async function toggleOffLegs(): Promise<void> {
   // which is what stops a CSV re-import (no variations column) from wiping them.
   const sized = await Product.create({
     name: "Keep Coco",
-    category: "Coco",
+    categoryId: cocoId,
     price: 100,
     variations: [{ name: "Small", price: 109 }],
   });

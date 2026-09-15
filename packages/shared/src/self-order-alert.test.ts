@@ -8,7 +8,13 @@ import {
   type PulseSelfOrder,
 } from "./self-order-alert";
 
-// Helper: a minimally-valid empty pulse tick, overridable per-test.
+// Helper: a minimally-valid empty pulse tick, overridable per-test. The six
+// print-host fields are REQUIRED as of PH-3 (`readPosPulse` serves all six on
+// every response) — provided here with neutral defaults to exercise the grown
+// type: a not-yet-configured host, empty feeds. `printHost`'s unconfigured
+// shape mirrors `printHostStateOf(null, …)` in apps/cafe/lib/print-host.ts —
+// that function is the authority this fixture mirrors (offline:true for an
+// unconfigured host, FIX 7).
 function pulse(overrides: Partial<PosPulseData> = {}): PosPulseData {
   return {
     openCount: 0,
@@ -18,6 +24,20 @@ function pulse(overrides: Partial<PosPulseData> = {}): PosPulseData {
     newestOpenAt: null,
     openRev: null,
     selfOrders: [],
+    printHost: {
+      configured: false,
+      deviceId: null,
+      label: null,
+      lastSeenAt: null,
+      offline: true,
+      silentMode: false,
+    },
+    printJobs: [],
+    printJobsTruncated: false,
+    stalePrintJobs: [],
+    stalePrintJobsTruncated: false,
+    resolvedPrintJobs: [],
+    resolvedPrintJobsTruncated: false,
     ...overrides,
   };
 }
@@ -160,6 +180,19 @@ test("autoPrintCandidate: returns the OLDEST eligible unprinted row (kitchen tic
 
 test("autoPrintCandidate: null when disabled (empty list)", () => {
   assert.equal(autoPrintCandidate([], Date.now()), null);
+});
+
+test("autoPrintCandidate: an explicit 30-min maxAgeMs accepts a 20-min-old row the default 10-min window rejects", () => {
+  const acceptedAt = "2026-08-22T10:00:00.000Z";
+  const now = Date.parse(acceptedAt) + 20 * 60 * 1000;
+  const rows = [selfOrder({ requestId: "s1", printed: false, acceptedAt })];
+
+  // Default (10-min) window: too old, rejected.
+  assert.equal(autoPrintCandidate(rows, now), null);
+
+  // Print-host drain's 30-min window: still eligible.
+  const candidate = autoPrintCandidate(rows, now, 30 * 60 * 1000);
+  assert.equal(candidate?.requestId, "s1");
 });
 
 test("autoPrintCandidate: a NaN/malformed acceptedAt is skipped, not thrown on", () => {

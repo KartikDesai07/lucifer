@@ -6,6 +6,7 @@ import path from "node:path";
 import { ledgerContribution, resolveSettleMoney, type SettleMoneyInput } from "./order";
 import { settleOrderSchema, createOrderSchema } from "@/schemas";
 import { collectedAmount } from "@/lib/payment-result";
+import type { RedeemedReward } from "@pos/shared/reward-redemption";
 
 // CR1.2 — failing-repro leg for two confirmed money bugs at settle. These tests
 // are written against the FIX's surface (a `resolveSettleMoney` pure function, a
@@ -238,7 +239,7 @@ test("a stale client view (paidAmount omitted) settles in FULL against a fresher
 test("createOrderSchema parses with paidAmount omitted, and still parses when it is supplied", () => {
   const base = {
     customerName: "Walk-In",
-    items: [{ productId: "p1", name: "Tea", price: 20, qty: 1, modifiers: [] }],
+    items: [{ productId: "00000000000000000000aaa1", name: "Tea", price: 20, qty: 1, modifiers: [] }],
     subtotal: 20,
     total: 20,
     payment: "Cash" as const,
@@ -354,4 +355,141 @@ test("every PaymentModal caller sends collectedAmount(result), never the raw res
     [],
     "a caller sends the modal's raw paidAmount — a full payment there becomes a silent partial + customer due",
   );
+});
+
+// ── CB-2.7 — discountKind at settle ───────────────────────────────────────────
+// resolveSettleMoney's effective kind comes from resolveDiscountKind(supplied,
+// stored): discountKind omitted -> leave the stored kind alone; null -> clear
+// it; "gst" -> (re-)apply it. The GST_5_EXCLUSIVE config derives a 24-rupee
+// discount off a 500-rupee tab (gstEquivalentDiscount(500, 5% exclusive) = 24).
+
+const GST_5_EXCLUSIVE = { gstEnabled: true, gstRate: 5, gstMode: "exclusive" as const };
+
+test("a 'gst'-kind tab settled with discountKind AND discount both omitted: totals === null — the stored total stands, exactly like today's no-discount path", () => {
+  const result = resolveSettleMoney({
+    order: tab(500, { discountKind: "gst" }),
+    payment: "Cash",
+    liveGst: GST_5_EXCLUSIVE,
+  });
+  assert.ok(!("error" in result));
+  if ("error" in result) return;
+  assert.equal(result.totals, null, "neither discount nor discountKind supplied -> no recompute at all");
+  assert.equal(result.total, 500, "the stored total is charged exactly as today");
+});
+
+test("a 'gst'-kind tab settled with discount: 10 ONLY (discountKind omitted): totals recompute AND the effective kind is still 'gst', so the derived figure (not 10) is charged", () => {
+  const result = resolveSettleMoney({
+    order: tab(500, { discountKind: "gst" }),
+    payment: "Cash",
+    discount: 10,
+    liveGst: GST_5_EXCLUSIVE,
+  });
+  assert.ok(!("error" in result));
+  if ("error" in result) return;
+  assert.ok(result.totals, "discount was supplied so totals must recompute");
+  assert.equal(result.discountKind, "gst", "discountKind omitted from the request must leave the stored 'gst' kind in place");
+  assert.equal(
+    result.totals?.discount,
+    24,
+    "the stored 'gst' kind must win over the supplied manual discount:10 — computeOrderTotals ignores discount when discountKind is 'gst'",
+  );
+  assert.notEqual(result.totals?.discount, 10, "the supplied 10 must NOT be the figure actually charged");
+});
+
+test("a 'gst'-kind tab settled with discountKind: null AND discount: 10: the preset is cleared, discount 10 is charged, and the result's discountKind is undefined", () => {
+  const result = resolveSettleMoney({
+    order: tab(500, { discountKind: "gst" }),
+    payment: "Cash",
+    discount: 10,
+    discountKind: null,
+    liveGst: GST_5_EXCLUSIVE,
+  });
+  assert.ok(!("error" in result));
+  if ("error" in result) return;
+  assert.equal(result.discountKind, undefined, "discountKind: null must resolve to undefined on the effective kind");
+  assert.equal(result.totals?.discount, 10, "with the kind cleared, the supplied manual discount:10 must be the figure charged");
+});
+
+test("a tab with NO stored kind, settled with discountKind: 'gst': the preset applies and the derived figure is charged", () => {
+  const result = resolveSettleMoney({
+    order: tab(500), // no discountKind on the stored order
+    payment: "Cash",
+    discountKind: "gst",
+    liveGst: GST_5_EXCLUSIVE,
+  });
+  assert.ok(!("error" in result));
+  if ("error" in result) return;
+  assert.equal(result.discountKind, "gst");
+  assert.equal(result.totals?.discount, 24, "the GST-equivalent discount for a 500-rupee tab at 5% exclusive is 24");
+});
+
+// ── CB-5B regression: settling a "reward"-kind tab must not silently zero it ─
+// THE BUG: discountKind carries forward on the stored order as "reward", but
+// computeOrderTotals's rewardDiscountAmount fails CLOSED to 0 when `reward` is
+// missing. resolveSettleMoney takes `reward` as an explicit input param (it
+// does NOT derive it itself — the ROUTE resolves rewardFromOrderSnapshot(old)
+// and passes it in, per settle/route.ts); this pins the function AS IT IS:
+// fed the reward the fixed route would actually pass, does the recomputed
+// bill still discount it? And a settle-time chargeAmount/discount alone (with
+// `reward` supplied, mirroring the fixed route) must trigger the recompute
+// and still discount the reward's value, not just carry the stored total.
+
+const FLAT_100_REWARD: RedeemedReward = { at: 5, kind: "flat", value: 100, item: "" };
+const PERCENT_20_REWARD: RedeemedReward = { at: 8, kind: "percent", value: 20, item: "" };
+
+test("CB-5B: a 'reward'-kind tab settled with a settle-time chargeAmount (which triggers recompute) still discounts the flat Rs 100 reward", () => {
+  const result = resolveSettleMoney({
+    order: tab(500, { discountKind: "reward" }),
+    payment: "Cash",
+    chargeAmount: 20, // triggers the recompute branch, independent of discount/discountKind
+    reward: FLAT_100_REWARD,
+    liveGst: GST_OFF,
+  });
+  assert.ok(!("error" in result));
+  if ("error" in result) return;
+  assert.ok(result.totals, "chargeAmount was supplied so totals must be recomputed");
+  assert.equal(result.totals?.discount, 100, "the flat Rs 100 reward must still be the discount charged — THE BUG zeroed this");
+  assert.equal(result.total, 500 - 100 + 20, "total = subtotal - reward + table charge, GST off");
+});
+
+test("CB-5B: a 'reward'-kind tab settled with reward: undefined (THE BUG shape) recomputes with discount 0 — negative control proving the assertion above is sensitive to reward being threaded through", () => {
+  const result = resolveSettleMoney({
+    order: tab(500, { discountKind: "reward" }),
+    payment: "Cash",
+    chargeAmount: 20,
+    reward: undefined, // THE BUG: discountKind says "reward" but caller forgot to resolve it
+    liveGst: GST_OFF,
+  });
+  assert.ok(!("error" in result));
+  if ("error" in result) return;
+  assert.equal(result.totals?.discount, 0, "rewardDiscountAmount fails CLOSED at 0 when reward is undefined");
+  assert.equal(result.total, 500 + 20, "with the reward dropped, the diner would be charged the FULL subtotal plus the table charge");
+});
+
+test("CB-5B: a settle-time PERCENT reward (20%) is derived off the subtotal, not a flat figure", () => {
+  const result = resolveSettleMoney({
+    order: tab(500, { discountKind: "reward" }),
+    payment: "Cash",
+    discount: 0, // triggers recompute; the stored 'reward' kind still overrides this
+    reward: PERCENT_20_REWARD,
+    liveGst: GST_OFF,
+  });
+  assert.ok(!("error" in result));
+  if ("error" in result) return;
+  assert.equal(result.totals?.discount, 100, "20% of a Rs 500 subtotal is Rs 100");
+  assert.equal(result.total, 400);
+});
+
+test("CB-5B: reward alone (no discount/chargeAmount/discountKind supplied) still triggers the recompute — the PIN WIDENED branch", () => {
+  const result = resolveSettleMoney({
+    order: tab(500, { discountKind: "reward" }),
+    payment: "Cash",
+    reward: FLAT_100_REWARD,
+    liveGst: GST_OFF,
+  });
+  assert.ok(!("error" in result));
+  if ("error" in result) return;
+  assert.ok(result.totals, "reward !== undefined alone must trigger the recompute branch");
+  assert.equal(result.totals?.discount, 100);
+  assert.equal(result.total, 400);
 });

@@ -4,7 +4,8 @@
   "private": true,
   "description": "POS Software v2 — multi-client monorepo (cafe runtime + owner Hub) sharing packages/shared",
   "workspaces": [
-    "apps/*",
+    "apps/cafe",
+    "apps/hub",
     "packages/*"
   ],
   "scripts": {
@@ -14,6 +15,9 @@
     "lint": "npm run lint --workspace apps/cafe",
     "typecheck": "npm run typecheck --workspace apps/cafe",
     "test:hygiene": "node --test scripts/db-hygiene/lib.test.mjs",
-    "deploy": "node scripts/deploy.mjs"
+    "test:go-live": "node --test scripts/go-live/lib.test.mjs scripts/go-live/run.test.mjs scripts/go-live/ui.test.mjs scripts/go-live/ui-pure.test.mjs scripts/go-live/rollout.test.mjs scripts/go-live/dns-check.test.mjs scripts/go-live/lock.test.mjs scripts/go-live/deploy-lock.test.mjs scripts/go-live/deploy-profile.test.mjs",
+    "deploy": "node scripts/deploy.mjs",
+    "go-live": "node scripts/go-live/index.mjs",
+    "go-live:ui": "node scripts/go-live/ui.mjs"
   }
 }

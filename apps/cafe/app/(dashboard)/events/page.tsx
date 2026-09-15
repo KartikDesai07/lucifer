@@ -29,10 +29,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { PageHeader } from "@/components/shared/PageHeader";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EventFormSheet } from "@/components/events/EventFormSheet";
+import { EventRowCard } from "@/components/events/EventRowCard";
 import type { Event } from "@/types";
 
 const ALL = "all";
@@ -86,17 +88,15 @@ export default function EventsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Events</h2>
-          <p className="text-sm text-muted-foreground">
-            Event bookings with advance payment tracking.
-          </p>
-        </div>
-        <Button onClick={openAdd}>
-          <Plus className="mr-2 h-4 w-4" /> New event
-        </Button>
-      </div>
+      <PageHeader
+        title="Events"
+        description="Event bookings with advance payment tracking."
+        actions={
+          <Button onClick={openAdd}>
+            <Plus className="mr-2 h-4 w-4" /> New event
+          </Button>
+        }
+      />
 
       <Select value={status} onValueChange={setStatusFilter}>
         <SelectTrigger className="sm:w-44">
@@ -136,115 +136,132 @@ export default function EventsPage() {
           }
         />
       ) : (
-        <div className="rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Event</TableHead>
-                <TableHead>When</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead className="text-right">Payable</TableHead>
-                <TableHead className="text-right">Balance</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-44 text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {list.map((e) => {
-                const balance = Math.max(0, e.payable - e.advance);
-                return (
-                  <TableRow key={e._id}>
-                    <TableCell className="font-medium">{e.eventName}</TableCell>
-                    <TableCell>
-                      <div>{formatDate(e.date)}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {formatTime(e.time)}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div>{e.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {e.mobile}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">{inr(e.payable)}</TableCell>
-                    <TableCell className="text-right">
-                      {balance > 0 ? (
-                        <Badge variant="destructive">{inr(balance)}</Badge>
-                      ) : (
-                        <span className="text-green-600">Paid</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={cn(STATUS_VARIANTS[e.status])}
-                      >
-                        {e.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        {balance > 0 && e.status === "Booked" && (
+        <>
+          <div className="hidden rounded-lg border md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Event</TableHead>
+                  <TableHead>When</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead className="text-right">Payable</TableHead>
+                  <TableHead className="text-right">Balance</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-44 text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {list.map((e) => {
+                  const balance = Math.max(0, e.payable - e.advance);
+                  return (
+                    <TableRow key={e._id}>
+                      <TableCell className="font-medium">{e.eventName}</TableCell>
+                      <TableCell>
+                        <div>{formatDate(e.date)}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {formatTime(e.time)}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div>{e.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {e.mobile}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">{inr(e.payable)}</TableCell>
+                      <TableCell className="text-right">
+                        {balance > 0 ? (
+                          <Badge variant="destructive">{inr(balance)}</Badge>
+                        ) : (
+                          <span className="text-green-600">Paid</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={cn(STATUS_VARIANTS[e.status])}
+                        >
+                          {e.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          {balance > 0 && e.status === "Booked" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              disabled={busy}
+                              onClick={() => receiveBalance(e)}
+                              aria-label="Receive balance"
+                              title="Receive balance"
+                            >
+                              <Wallet className="h-4 w-4 text-green-600" />
+                            </Button>
+                          )}
+                          {e.status === "Booked" && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                disabled={busy}
+                                onClick={() => setStatus(e, "Completed")}
+                                aria-label="Complete event"
+                                title="Complete"
+                              >
+                                <Check className="h-4 w-4 text-green-600" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                disabled={busy}
+                                onClick={() => setStatus(e, "Cancelled")}
+                                aria-label="Cancel event"
+                                title="Cancel"
+                              >
+                                <X className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </>
+                          )}
                           <Button
                             variant="ghost"
                             size="icon"
-                            disabled={busy}
-                            onClick={() => receiveBalance(e)}
-                            aria-label="Receive balance"
-                            title="Receive balance"
+                            onClick={() => openEdit(e)}
+                            aria-label="Edit event"
                           >
-                            <Wallet className="h-4 w-4 text-green-600" />
+                            <Pencil className="h-4 w-4" />
                           </Button>
-                        )}
-                        {e.status === "Booked" && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              disabled={busy}
-                              onClick={() => setStatus(e, "Completed")}
-                              aria-label="Complete event"
-                              title="Complete"
-                            >
-                              <Check className="h-4 w-4 text-green-600" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              disabled={busy}
-                              onClick={() => setStatus(e, "Cancelled")}
-                              aria-label="Cancel event"
-                              title="Cancel"
-                            >
-                              <X className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => openEdit(e)}
-                          aria-label="Edit event"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setDeleting(e)}
-                          aria-label="Delete event"
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setDeleting(e)}
+                            aria-label="Delete event"
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="space-y-2 md:hidden">
+            {list.map((e) => (
+              <EventRowCard
+                key={e._id}
+                event={e}
+                busy={busy}
+                onReceiveBalance={receiveBalance}
+                onComplete={(row) => setStatus(row, "Completed")}
+                onCancel={(row) => setStatus(row, "Cancelled")}
+                onEdit={openEdit}
+                onDelete={setDeleting}
+              />
+            ))}
+          </div>
+        </>
       )}
 
       <EventFormSheet open={formOpen} onOpenChange={setFormOpen} event={editing} />

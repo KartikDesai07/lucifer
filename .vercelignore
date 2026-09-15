@@ -1,0 +1,38 @@
+apps/desktop/dist
+apps/desktop/dist/**
+
+# Local Next.js build output. The CLI builds on ITS OWN machine, so a local
+# .next is never an input — but it IS inside the repo-root upload scope
+# (scripts/deploy.mjs spawns the CLI with cwd: ROOT), and .gitignore does not
+# apply to that upload (see the note below). A `next dev` / `next build` left
+# running locally puts ~750 MB here, which alone can stall or fail a deploy.
+**/.next
+**/.next/**
+
+# link-migration census report + --backup auto archive (the archive is a FULL
+# mongodump of the live database — customer names, mobiles, order and dues
+# history). .gitignore does not cover the Vercel CLI upload path — it honours
+# .vercelignore and its own default exclusions, not .gitignore.
+migrate-links-report-*.json
+migrate-links-backup-*.archive.gz
+
+# The Vercel CLI does NOT read .gitignore (verified against vercel.com/docs
+# 2026-09-12): only this file + the CLI's own default list (.env.local,
+# node_modules, .git, .vercel …) decide what is uploaded with a deploy. So every
+# secret-bearing or owner-only path must be listed HERE as well.
+# live credentials — client go-live files and per-account deploy tokens
+/clients
+/deploy.profiles.json
+# every env file (the CLI default covers only .env.local); the examples may go
+.env
+.env.*
+!.env.example
+# owner/internal — never part of a build
+/.claude
+/.claude-memory
+/CLAUDE.md
+/self-tasks
+/changes
+/docs/progress-tracker.html
+# marketing renders (~30 MB of PNG/MP4) — not the product
+/marketing

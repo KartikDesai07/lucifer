@@ -1,7 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { maskMobile, orderItemLabel, orderLineKey } from "./utils";
-import { MOBILE_MASK_CHAR, MOBILE_VISIBLE_PREFIX } from "./constants";
+import { maskMobile, orderItemLabel, orderLineKey, discountLineLabel } from "./utils";
+import {
+  MOBILE_MASK_CHAR,
+  MOBILE_VISIBLE_PREFIX,
+  GST_DISCOUNT_LABEL,
+  REWARD_DISCOUNT_LABEL,
+  DEFAULT_DISCOUNT_LABEL,
+} from "./constants";
 import { createCustomerSchema } from "./schemas/customer.schema";
 
 // maskMobile is the one place that decides how much of a customer's mobile
@@ -121,4 +127,36 @@ test("orderItemLabel: renders the variation in parentheses, and the bare name wi
   assert.equal(orderItemLabel({ name: "Cold Coffee" }), "Cold Coffee");
   // An empty variation means "sold one way", not an empty pair of brackets on a bill.
   assert.equal(orderItemLabel({ name: "Cold Coffee", variation: "" }), "Cold Coffee");
+});
+
+// ── discountLineLabel (CB-2, C2) — an enum, not a free label ─────────────────
+// "gst" is the ONE kind that relabels the discount line; every other value —
+// undefined, "", null, or a free string like "promo" — reads as the default.
+
+test("discountLineLabel: undefined/''/null/'promo' -> DEFAULT_DISCOUNT_LABEL ('Discount')", () => {
+  assert.equal(discountLineLabel(undefined), DEFAULT_DISCOUNT_LABEL);
+  assert.equal(discountLineLabel(""), DEFAULT_DISCOUNT_LABEL);
+  assert.equal(discountLineLabel(null), DEFAULT_DISCOUNT_LABEL);
+  assert.equal(discountLineLabel("promo"), DEFAULT_DISCOUNT_LABEL);
+  assert.equal(DEFAULT_DISCOUNT_LABEL, "Discount");
+});
+
+test("discountLineLabel: 'gst' -> GST_DISCOUNT_LABEL ('GST Discount')", () => {
+  assert.equal(discountLineLabel("gst"), GST_DISCOUNT_LABEL);
+  assert.equal(GST_DISCOUNT_LABEL, "GST Discount");
+});
+
+// CB-5B — the second kind. Same enum, same lookup.
+test("discountLineLabel: 'reward' -> REWARD_DISCOUNT_LABEL ('Reward')", () => {
+  assert.equal(discountLineLabel("reward"), REWARD_DISCOUNT_LABEL);
+  assert.equal(REWARD_DISCOUNT_LABEL, "Reward");
+});
+
+// The Record-lookup rewrite (object-literal allow-lists leak prototype keys)
+// must not let a prototype property name pass as a "known" kind — the
+// Object.hasOwn guard is what stands between "constructor" and a returned
+// function reference.
+test("discountLineLabel: prototype-shaped keys ('toString'/'constructor') still fall to the default label", () => {
+  assert.equal(discountLineLabel("toString"), DEFAULT_DISCOUNT_LABEL);
+  assert.equal(discountLineLabel("constructor"), DEFAULT_DISCOUNT_LABEL);
 });

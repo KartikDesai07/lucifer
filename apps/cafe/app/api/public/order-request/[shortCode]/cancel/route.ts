@@ -59,7 +59,7 @@ export async function POST(_req: Request, { params }: Params) {
       // once-per-customer fence a failed earlier accept claimed for this
       // request (keyed requestId + orderId-absent; no-op otherwise), so
       // abandoning the order never consumes the code (review MED #4).
-      await releasePromoRedemption(String(cancelled._id));
+      await releasePromoRedemption({ kind: "request", id: String(cancelled._id) });
       return noStore(success({ status: cancelled.status }));
     }
 

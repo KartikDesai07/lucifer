@@ -18,8 +18,10 @@
 import mongoose from "mongoose";
 import { tableSchema, type ITable } from "@/models/Table";
 import { productSchema, type IProduct } from "@/models/Product";
+import { categorySchema, type ICategory } from "@/models/Category";
 import { mintPublicToken } from "@/lib/public-token";
 import { PUBLIC_PRODUCT_FILTER, toPublicMenuItem, toPublicTable } from "@/lib/public-menu";
+import { UNCATEGORIZED } from "@pos/shared/constants";
 
 const SCRATCH_PREFIX = "pos_scratch_";
 const DEFAULT_URI = `mongodb://127.0.0.1:27017/${SCRATCH_PREFIX}public_menu`;
@@ -50,13 +52,16 @@ async function main(): Promise<void> {
   const conn = await mongoose.createConnection(uri).asPromise();
   const Table = conn.model<ITable>("Table", tableSchema);
   const Product = conn.model<IProduct>("Product", productSchema);
+  const Category = conn.model<ICategory>("Category", categorySchema);
   await Table.collection.drop().catch(() => undefined);
   await Product.collection.drop().catch(() => undefined);
+  await Category.collection.drop().catch(() => undefined);
   // The unique+sparse claim is about a real INDEX, not just the schema
   // declaration — createIndexes() must run before either half of that claim
   // means anything.
   await Table.createIndexes();
   await Product.createIndexes();
+  await Category.createIndexes();
 
   console.log(`\nCR2.1 public QR-menu surface — live against ${dbName}\n`);
 
@@ -93,35 +98,51 @@ async function main(): Promise<void> {
   check("the rejected duplicate-token create never actually landed", afterDuplicateAttempt === 0);
 
   // ── 3. PUBLIC_PRODUCT_FILTER against real saved docs ────────────────────────
-  await Product.create({ name: "Filter Coffee", category: "Beverages", price: 40, isActive: true });
+  // Category docs created directly on this leg's own connection (never a
+  // product's `category` name — Product.categoryId is a required ObjectId).
+  const [beverages, bakery, snacks] = await Category.create([
+    { name: "Beverages", order: 1 },
+    { name: "Bakery", order: 2 },
+    { name: "Snacks", order: 3 },
+  ]);
+  await Product.create({ name: "Filter Coffee", categoryId: beverages._id, price: 40, isActive: true });
   await Product.create({
     name: "Cold Coffee",
-    category: "Beverages",
+    categoryId: beverages._id,
     price: 60,
     isActive: true,
     publicVisible: true,
   });
   await Product.create({
     name: "Staff-Only Combo",
-    category: "Beverages",
+    categoryId: beverages._id,
     price: 999,
     isActive: true,
     publicVisible: false,
   });
   await Product.create({
     name: "Discontinued Cake",
-    category: "Bakery",
+    categoryId: bakery._id,
     price: 80,
     isActive: false,
     publicVisible: true, // publicVisible:true must NOT override an archived item
   });
   const soldOut = await Product.create({
     name: "Sold Out Sandwich",
-    category: "Snacks",
+    categoryId: snacks._id,
     price: 50,
     isActive: true,
     available: false,
   });
+
+  // The resolver toPublicMenuItem now requires — built from this leg's own
+  // Category docs, mirroring the route's server-side name-join.
+  const nameById = new Map<string, string>([
+    [String(beverages._id), beverages.name],
+    [String(bakery._id), bakery.name],
+    [String(snacks._id), snacks.name],
+  ]);
+  const categoryNameOf = (id: unknown): string => nameById.get(String(id)) ?? UNCATEGORIZED;
 
   const visibleNames = new Set(
     (await Product.find(PUBLIC_PRODUCT_FILTER).select("name").lean()).map((p) => p.name),
@@ -149,7 +170,7 @@ async function main(): Promise<void> {
   if (!fullProductDoc) {
     check("the sold-out product must still be found for the toPublicMenuItem leak check", false);
   } else {
-    const item = toPublicMenuItem(fullProductDoc);
+    const item = toPublicMenuItem(fullProductDoc, categoryNameOf);
     const keys = Object.keys(item).sort();
     check(
       "toPublicMenuItem over a REAL unfiltered lean doc returns EXACTLY the allowed key set",
@@ -170,6 +191,10 @@ async function main(): Promise<void> {
       item.available === false,
     );
     check("the mapped id is the stringified real _id", item.id === String(soldOut._id));
+    check(
+      "the mapped category is the seeded category's NAME, resolved via categoryNameOf from the stored categoryId",
+      item.category === snacks.name,
+    );
   }
 
   // ── 6. toPublicTable fed a REAL lean Table doc — the token does not survive ─
@@ -186,6 +211,7 @@ async function main(): Promise<void> {
 
   await Table.collection.drop().catch(() => undefined);
   await Product.collection.drop().catch(() => undefined);
+  await Category.collection.drop().catch(() => undefined);
   await conn.close();
 
   console.log(`\n${passed} passed, ${failed} failed\n`);

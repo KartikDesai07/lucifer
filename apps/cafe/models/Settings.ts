@@ -1,161 +1,20 @@
-import mongoose, { Schema, type Document, type Model } from "mongoose";
+import mongoose, { Schema, type Model } from "mongoose";
 import {
   GST_MODES,
   PAPER_WIDTHS,
   PRINT_FONT_SIZES,
   PRINT_LOGO_SIZES,
   PRINT_NUMBER_START_MIN,
-  type GstMode,
-  type PaperWidth,
-  type PrintFontSize,
-  type PrintLogoSize,
 } from "@/lib/constants";
-import { SELF_ORDER_MODES, PROMO_KINDS, type SelfOrderMode, type PromoCodeConfig } from "@pos/shared/public";
-import {
-  PRESET_IDS,
-  FONT_PAIR_KEYS,
-  CORNER_RADII,
-  DENSITIES,
-  LOGO_PLACEMENTS,
-  type AppearanceInput,
-} from "@pos/shared/appearance";
+import { SELF_ORDER_MODES } from "@pos/shared/public";
+import { LOYALTY_REWARD_KINDS } from "@pos/shared/public-diner";
+import type { ISettings } from "./settings.types";
+import { promoCodeSchema, appearanceMongooseSchema, loyaltyRulesMongooseSchema } from "./settings.subschemas";
 
-// Singleton document — exactly one Settings doc exists for the cafe. Always
-// read/write via findOne()/upsert; never create more than one. Holds the
-// restaurant identity + receipt customization that the POS receipt and KOT
-// render from (Phase 7).
-export interface ISettings extends Document {
-  restaurantName: string;
-  tagline: string;
-  mobile: string;
-  address: string;
-  receiptHeader: string; // extra note shown under the name on the receipt
-  receiptFooter: string; // closing line on the receipt
-  gstEnabled: boolean;
-  gstNumber: string;
-  gstRate: number; // percentage, e.g. 5
-  gstMode: GstMode; // "inclusive" | "exclusive"
-  logo: string; // opaque image ref — the RESTAURANT's mark (bills, KOT, sidebar)
-  productLogo: string; // opaque image ref — the PRODUCT's mark (browser tab, login)
-  fssai: string; // FSSAI license number, shown on the receipt when set
-
-  // Print customization — one block per printed surface. Flat, not nested:
-  // PUT /api/settings applies a partial $set, and a nested object would be
-  // replaced wholesale, wiping every sibling toggle on each save. (Nested
-  // subdocs ARE $set-replaced WHOLE — probed, mongoose 8.24 — so nesting is
-  // only safe when the Zod layer requires every key whenever the object is
-  // present at all; `appearance` below, CR2.4 decision 22.0.7, is the
-  // sanctioned example that earns nesting on those terms.)
-  billShowNumber: boolean;
-  billNumberStart: number; // the printed number on the day's first bill
-  billShowLogo: boolean;
-  billLogoSize: PrintLogoSize;
-  billShowAddress: boolean;
-  billShowMobile: boolean;
-  billShowGstNumber: boolean;
-  billShowFssai: boolean;
-  billPaperWidth: PaperWidth;
-  billFontSize: PrintFontSize;
-
-  kotShowPrices: boolean; // per-line amount beside each dish (pre-dates the block)
-  kotShowTotal: boolean;
-  kotShowNumber: boolean;
-  kotNumberStart: number;
-  kotNumberVoidSlips: boolean; // a void slip draws from the same ticket series
-  kotShowLogo: boolean;
-  kotShowRestaurantName: boolean;
-  kotShowTable: boolean;
-  kotShowStaff: boolean;
-  kotShowTime: boolean;
-  kotShowNotes: boolean;
-  kotPaperWidth: PaperWidth;
-  kotFontSize: PrintFontSize;
-
-  // Self-order (QR) — CR2. See settingsSchema (packages/shared) for the field
-  // semantics; the defaults below are what a NEW cafe gets and what a lean
-  // read falls back to via the same `settings?.field ?? default` discipline
-  // as the print block above.
-  selfOrderMode: SelfOrderMode;
-  allowTableChange: boolean;
-  showPastOrdersToDiner: boolean;
-
-  // Promo codes — CR2.2c. OPTIONAL, no default (omit-empty): the
-  // overwhelming majority of Settings docs (and every pre-existing test
-  // fixture) predate this field, and a required addition here broke
-  // fixtures once before.
-  promoCodes?: PromoCodeConfig[];
-
-  // CR2.3b — Telegram integration (phase-CR2-public-ordering.md §21.6). Flat
-  // (never nested: PUT /api/settings applies a partial $set — nested subdocs
-  // are $set-replaced WHOLE; see `appearance` below, CR2.4, for the one case
-  // where a Zod layer requiring every key makes nesting safe). All OPTIONAL
-  // with NO default — every existing Settings doc and test fixture predates
-  // them (promoCodes precedent above). The two *Enc fields are sealed
-  // envelopes (lib/telegram/secret.ts) AND `select: false`, the Staff-
-  // password discipline: no route can echo what no query returns. Only
-  // lib/telegram/config.ts may ask for them with an explicit `+` projection.
-  telegramBotTokenEnc?: string;
-  telegramWebhookSecretEnc?: string;
-  telegramBotId?: string; // from getMe — not secret
-  telegramBotUsername?: string; // getMe.username is schema-optional upstream — may be absent
-  telegramValidatedAt?: Date;
-  telegramWebhookUrl?: string;
-  telegramWebhookSetAt?: Date;
-  telegramPaused?: boolean; // kill switch: absent/false = sends flow
-
-  // CR2.4 — Appearance (Settings 4th tab: preset/accent/font pair/radius/
-  // density/logo placement/hero image). OPTIONAL, no default (omit-empty,
-  // same precedent as promoCodes/telegram* above): every pre-CR2.4 document
-  // predates it. Read through `resolveAppearance` (@pos/shared/appearance),
-  // never off this raw field — that is the ONE function that turns an absent
-  // or partial value into the documented defaults.
-  appearance?: AppearanceInput;
-
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-// Exported as a SCHEMA for the F2 per-cluster registry (schemas-not-models, #21);
-// the default-bound `Settings` export below stays for the live v1 routes.
-// One configured promo code — embedded, never saved independently, so
-// `_id:false` (mirrors productVariationSchema/orderRequestItemSchema).
-const promoCodeSchema = new Schema<PromoCodeConfig>(
-  {
-    code: { type: String, required: true },
-    label: { type: String },
-    kind: { type: String, enum: [...PROMO_KINDS], required: true },
-    value: { type: Number, required: true },
-    minSubtotal: { type: Number },
-    active: { type: Boolean, required: true },
-    // SPEC P4 — no default (omit-empty), matching every other optional field
-    // on this embedded row.
-    oncePerCustomer: { type: Boolean },
-  },
-  { _id: false },
-);
-
-// CR2.4 — Appearance. `_id:false` (mirrors promoCodeSchema above). Closed
-// fields are `required: true`: appearanceSchema (packages/shared) already
-// requires every key whenever the object is present at all, and the WHOLE
-// subdoc is what carries `default: undefined` below — never a per-field
-// default here. accentOverride/heroImage must NOT carry `required`: "" is
-// their documented sentinel (22.0.7 — "use preset accent" / "no hero") and
-// Mongoose's String `required` rejects "" (probed: route PUTs with
-// runValidators 500'd on every default-accent save). Their presence is
-// enforced by the Zod all-keys rule, like `logo`/`productLogo` above.
-const appearanceMongooseSchema = new Schema<AppearanceInput>(
-  {
-    v: { type: Number, required: true },
-    presetId: { type: String, enum: [...PRESET_IDS], required: true },
-    accentOverride: { type: String, trim: true },
-    fontPairKey: { type: String, enum: [...FONT_PAIR_KEYS], required: true },
-    cornerRadius: { type: String, enum: [...CORNER_RADII], required: true },
-    density: { type: String, enum: [...DENSITIES], required: true },
-    logoPlacement: { type: String, enum: [...LOGO_PLACEMENTS], required: true },
-    heroImage: { type: String, trim: true },
-  },
-  { _id: false },
-);
+// CB-5A S2 — split into settings.types.ts (the ISettings interface) and
+// settings.subschemas.ts (the embedded sub-schemas), both re-exported below
+// so every existing `@/models/Settings` import keeps resolving unchanged.
+// This file keeps the top-level Mongoose schema body + the model export.
 
 export const settingsSchema = new Schema<ISettings>(
   {
@@ -224,6 +83,23 @@ export const settingsSchema = new Schema<ISettings>(
     // untouched with this key entirely absent.
     promoCodes: { type: [promoCodeSchema], default: undefined },
 
+    // Diner accounts + stamp loyalty — CB-4. FLAT (never nested: see the
+    // telegram block's own comment on partial-$set clobbering) and NO
+    // `default:` on any of them: absent means "off / use the documented
+    // constant", which is what every pre-CB-4 Settings doc and fixture
+    // already says by carrying none of these keys. The defaults a NEW cafe
+    // sees are supplied by the settings FORM (lib/settings-form-defaults.ts),
+    // never by materializing them onto every existing document here.
+    dinerAccountsEnabled: { type: Boolean },
+    loyaltyEnabled: { type: Boolean },
+    loyaltyStampsPerReward: { type: Number },
+    // RUPEES — compared against the v1 models/Order.ts total (a plain Number),
+    // NOT the Int32 paise order.ledger shape. Do not "convert" this.
+    loyaltyMinBill: { type: Number },
+    loyaltyRewardKind: { type: String, enum: [...LOYALTY_REWARD_KINDS] },
+    loyaltyRewardValue: { type: Number },
+    loyaltyRewardItem: { type: String },
+
     // CR2.3b — Telegram integration (§21.6). No `default:` on any of the 8
     // fields below — omit-empty, mirrors promoCodes above. The two *Enc
     // fields are `select: false` so no plain query (including getSettings()/
@@ -243,6 +119,12 @@ export const settingsSchema = new Schema<ISettings>(
     // above): an existing Settings doc must keep validating untouched with
     // this key entirely absent.
     appearance: { type: appearanceMongooseSchema, default: undefined },
+
+    // CB-5A — the richer milestone-ladder loyalty contract. No `default:`
+    // (omit-empty, promoCodes/appearance precedent above): an existing
+    // Settings doc must keep validating untouched with this key entirely
+    // absent.
+    loyaltyRules: { type: loyaltyRulesMongooseSchema, default: undefined },
   },
   { timestamps: true },
 );
@@ -251,3 +133,6 @@ export const settingsSchema = new Schema<ISettings>(
 export const Settings: Model<ISettings> =
   (mongoose.models.Settings as Model<ISettings>) ??
   mongoose.model<ISettings>("Settings", settingsSchema);
+
+export type { ISettings } from "./settings.types";
+export * from "./settings.subschemas";

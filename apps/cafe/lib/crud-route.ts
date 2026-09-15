@@ -6,6 +6,7 @@ import mongoose, {
 import type { ZodTypeAny, z } from "zod";
 import { connectDB } from "@/lib/db";
 import cache from "@/lib/cache";
+import { listFromSpec, type MasterListSpec } from "@/lib/masters";
 import {
   success,
   created,
@@ -82,6 +83,14 @@ interface CollectionRouteConfig<TDoc, TCreate extends ZodTypeAny> {
     query: Record<string, unknown>;
     filtered: boolean;
   };
+  // Master-list spec (lib/masters.ts) for the collections GET /api/bootstrap
+  // also serves. When present, the UNFILTERED (cached) list is produced by
+  // `listFromSpec` so this route and the bootstrap can never run different
+  // queries. The filtered branch keeps this config's own cacheKey/sort/
+  // baseFilter, which is why `listSpecConfig` derives them from the same spec.
+  // Routes without a spec (events, reservations) run the inline query below,
+  // exactly as before.
+  listSpec?: MasterListSpec<TDoc>;
   // Friendly message for a unique-index (11000) violation on create.
   onDuplicate?: string;
   // Optional cross-collection check. Runs after the Zod parse and after
@@ -106,6 +115,12 @@ export function createCollectionRoute<TDoc, TCreate extends ZodTypeAny>(
     }
 
     try {
+      // The unfiltered list is the one GET /api/bootstrap also serves, so when
+      // this route has a spec it goes through the shared list function (same
+      // cache-before-connect order, same query, same TTL).
+      if (!filtered && config.listSpec) {
+        return success(await listFromSpec(config.listSpec));
+      }
       // Check the cache BEFORE opening a DB connection — a cache hit needs no DB.
       if (!filtered) {
         const cached = cache.get(config.cacheKey);

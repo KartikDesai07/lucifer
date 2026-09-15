@@ -14,11 +14,23 @@ import {
 } from "@/lib/api-helpers";
 import { orderSummaryCacheKey } from "@/lib/utils";
 import { resolveSettleMoney, reconcileLedger, validCustomer } from "@/lib/order";
+import { computeOrderTotals, gstConfigFromOrder, resolveDiscountKind } from "@/lib/receipt";
+import { readSettings } from "@/lib/settings";
+import { grantStampForSettledOrder } from "@/lib/diner-loyalty-earn";
 import { voidGuardFilter } from "@/lib/order-void";
 import { getSettings, gstConfigOf } from "@/lib/settings";
 import { printConfigOf, printedSlipNumber } from "@/lib/print";
 import { nextSlipSequence } from "@/models/Counter";
 import { settleOrderSchema } from "@/schemas";
+import {
+  resolveRewardClaim,
+  rewardClaimMessage,
+  rewardSnapshotFields,
+  claimRewardStamps,
+  returnRewardStamps,
+} from "@/lib/reward-claim";
+import { buildRewardAssignment } from "@/lib/reward-assignment";
+import { shouldStoreDiscountKind, rewardFromOrderSnapshot } from "@pos/shared/reward-redemption";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +63,50 @@ export async function POST(req: Request, { params }: Params) {
     if (old.status === "Cancelled") return failure("Order was cancelled", 409);
     if (old.status === "Completed") return failure("Order already settled", 409);
 
+    // CB-5B S5 — a reward claimed AT SETTLE TIME. refuseItemKind: TRUE (D9,
+    // owner decision): a free DISH has to reach the kitchen while the order
+    // is being taken, never after payment — this path may only grant a
+    // flat/percent money-off. An order that already carries a reward refuses
+    // a second one outright, same one-scalar-one-kind reasoning as add-round.
+    const settings = await getSettings();
+    let claim: Extract<Awaited<ReturnType<typeof resolveRewardClaim>>, { ok: true }> | undefined;
+    if (data.rewardAt !== undefined) {
+      if (old.rewardAt !== undefined) {
+        return failure("This tab already has a reward applied", 409);
+      }
+      // billTotal for the minBill gate: the bill WITHOUT the reward — any
+      // settle-time discount/charge change rides along, mirroring what
+      // resolveSettleMoney would price without a reward.
+      const plainKind = resolveDiscountKind(data.discountKind, old.discountKind);
+      const billTotal = computeOrderTotals({
+        items: old.items,
+        discount: data.discount ?? old.discount,
+        discountKind: plainKind,
+        charge: data.chargeAmount ?? old.chargeAmount ?? 0,
+        cfg: gstConfigFromOrder(old, gstConfigOf(settings)),
+      }).total;
+      const resolved = await resolveRewardClaim({
+        settings,
+        customerId: old.customerId ? String(old.customerId) : undefined,
+        rewardAt: data.rewardAt,
+        billTotal,
+        refuseItemKind: true,
+      });
+      if (!resolved.ok) return failure(rewardClaimMessage(resolved.reason), 400);
+      claim = resolved;
+    }
+    // CB-5D part 2 — captured ONCE, alongside `claim`, and reused by the single
+    // claimRewardStamps call below. Settle claims for an already-fixed
+    // orderId (no renumber-retry), but the assignment is still built here
+    // rather than inline in the call so `assignedAt` is pinned to one Date
+    // even if a future change adds a retry path — claimRewardStamps's
+    // $addToSet treats the assignment as one whole element, and a
+    // reconstructed Date at a second call site would duplicate the reward.
+    // Same settings?.promoCodes source every other reward-minting writer uses.
+    const rewardAssignment = claim
+      ? buildRewardAssignment(claim.milestone, settings?.promoCodes, new Date())
+      : undefined;
+
     // No settle-time discount → price against the STORED total, exactly as
     // before. A supplied one recomputes from the tab's own items using the tab's
     // GST SNAPSHOT (same discipline as the items route), so a mid-tab GST change
@@ -59,6 +115,10 @@ export async function POST(req: Request, { params }: Params) {
       order: old,
       payment: data.payment,
       discount: data.discount,
+      // Only the POS settle path sends this; omitted = leave the tab's stored
+      // kind untouched. A resolved reward below OVERRIDES this — a reward and
+      // a gst preset can never both be the stored kind (one scalar, one kind).
+      discountKind: claim ? "reward" : data.discountKind,
       // Omitted = leave the tab's snapshotted table charge alone. Only the POS
       // settle path, where the operator can actually see and waive the charge,
       // ever sends this; the Orders-page settle never does, so it can never
@@ -67,7 +127,15 @@ export async function POST(req: Request, { params }: Params) {
       paidAmount: data.paidAmount,
       splitCash: data.splitCash,
       splitOnline: data.splitOnline,
-      liveGst: gstConfigOf(await getSettings()),
+      liveGst: gstConfigOf(settings),
+      // A settle-time claim, or the reward the tab has ALREADY been carrying
+      // since it was created. The fallback is load-bearing: whenever this
+      // settle re-prices at all (a settle-time discount, a charge waiver), a
+      // tab whose stored kind is "reward" would otherwise recompute with NO
+      // reward — and rewardDiscountAmount fails closed at 0, so the diner's
+      // already-spent stamps would quietly stop discounting the bill they paid
+      // for. Rebuilt from the order's OWN snapshot, never the live ladder.
+      reward: claim?.reward ?? rewardFromOrderSnapshot(old),
     });
     if ("error" in money) return failure(money.error, 400);
 
@@ -159,6 +227,15 @@ export async function POST(req: Request, { params }: Params) {
         unset.chargeAmount = "";
         unset.chargeLabel = "";
       }
+      // shouldStoreDiscountKind (the shared amount-gates-kind predicate, three-
+      // way now: gst/reward/neither) — the RESOLVED kind is stored, never the
+      // "gst" literal, so a reward claimed at settle writes discountKind:"reward".
+      // Exclusive with the $set above (Mongo rejects a path in both operators).
+      if (shouldStoreDiscountKind(money.totals.discount, money.discountKind)) {
+        set.discountKind = money.discountKind;
+      } else {
+        unset.discountKind = "";
+      }
     }
     if (data.payment === "Split") {
       set.splitCash = money.splitCash;
@@ -168,6 +245,8 @@ export async function POST(req: Request, { params }: Params) {
       set.customerId = attachId;
       set.customerName = attachName;
     }
+    // CB-5B — the reward reprint snapshot, omit-empty (no keys when no claim).
+    if (claim) Object.assign(set, rewardSnapshotFields(claim.reward, claim.cost));
     const update: Record<string, unknown> = { $set: set };
     if (Object.keys(unset).length > 0) update.$unset = unset;
 
@@ -189,17 +268,57 @@ export async function POST(req: Request, { params }: Params) {
       total: old.total,
       ...voidGuardFilter(old.voids?.length ?? 0),
     };
+
+    // CB-5B — claim the stamps BEFORE this CAS write, never after: a redeemed
+    // bill must never be marked Completed before its stamps are spent (a
+    // customer paying a discounted bill whose stamps were never debited is
+    // money lost the next time that rung is priced). Unlike the earn-side
+    // stamp grant below (fire-and-forget, swallowed), this is NOT best-effort
+    // — earn never changes the bill being settled, so a missed grant costs a
+    // counter conversation; a redemption changes the bill BEFORE money is
+    // taken, so a failed claim must fail the settle closed.
+    if (claim) {
+      const claimed = await claimRewardStamps(String(old.customerId), old.orderId, claim.cost, rewardAssignment);
+      if (!claimed) return failure("Not enough stamps for that reward", 409);
+    }
     const updated = await Order.findOneAndUpdate(filter, update, {
       new: true,
       runValidators: true,
     }).lean();
     if (!updated) {
+      // A CAS MISS is the one DEFINITE no-write outcome here (never-revert-
+      // on-write-throw: only a confirmed non-write may reverse a claim) — the
+      // settle never landed, so the stamps it would have spent must go back
+      // before reporting the same 409 this route already returns.
+      if (claim) await returnRewardStamps(String(old.customerId), old.orderId, claim.cost, rewardAssignment);
       return failure("Tab changed or already settled — reopen it and try again", 409);
     }
 
     // Apply the full ledger effect now (the open tab contributed nothing at open).
     const touched = await reconcileLedger(old, updated);
     if (touched.size) cache.del("customers");
+
+    // CB-4 — one loyalty stamp for this settled bill, at most once per order.
+    // BEST-EFFORT and deliberately swallowed: the bill is already settled and
+    // committed above, so a stamp that fails to land must never turn money
+    // that was taken into a 409/500 for the operator. A missed stamp is a
+    // counter conversation; a failed settle is a broken till. The write itself
+    // is idempotent (a filter-predicate guard on stampOrders), so a retry of
+    // this request cannot double-stamp either.
+    try {
+      const granted = await grantStampForSettledOrder(
+        await readSettings(),
+        updated.customerId ? String(updated.customerId) : null,
+        updated.orderId,
+        // RUPEES — models/Order.ts's total is a plain Number. Do NOT convert:
+        // the Int32 paise shape is models/order.ledger.ts, which this route
+        // never reads (see lib/diner-loyalty.ts's unit note).
+        updated.total,
+      );
+      if (granted.granted) cache.del("customers");
+    } catch {
+      // Swallowed on purpose — see above. No console.* in app/lib code.
+    }
 
     // Free the table only if it still points to this order.
     if (updated.tableNo) {

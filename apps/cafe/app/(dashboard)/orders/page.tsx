@@ -16,6 +16,7 @@ import { cafeDateString } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -23,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PageHeader } from "@/components/shared/PageHeader";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { OrderDetailSheet } from "@/components/orders/OrderDetailSheet";
 import { OrderTable } from "@/components/orders/OrderTable";
@@ -92,20 +94,25 @@ export default function OrdersPage() {
   const list = dedupeOrdersById(orders.data?.pages ?? []);
   const filtersActive =
     status !== ALL || tableNo !== ALL || payment !== ALL || !!date || !!phone;
+  const activeFilterCount = [
+    status !== ALL,
+    tableNo !== ALL,
+    payment !== ALL,
+    !!date,
+    !!phone,
+  ].filter(Boolean).length;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Orders</h2>
-          <p className="text-sm text-muted-foreground">
-            View, filter, and manage orders.
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => setDate(cafeDateString())}>
-          Today
-        </Button>
-      </div>
+      <PageHeader
+        title="Orders"
+        description="View, filter, and manage orders."
+        actions={
+          <Button variant="outline" size="sm" onClick={() => setDate(cafeDateString())}>
+            Today
+          </Button>
+        }
+      />
 
       <div className="relative">
         <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -118,6 +125,11 @@ export default function OrdersPage() {
           className="pl-8"
           aria-label="Search orders by customer phone"
         />
+      </div>
+
+      <div className="flex items-center gap-2">
+        <p className="text-sm font-medium">Filters</p>
+        {filtersActive && <Badge variant="secondary">{activeFilterCount} active</Badge>}
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

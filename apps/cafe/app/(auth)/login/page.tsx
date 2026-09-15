@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -8,6 +8,7 @@ import { signIn } from "next-auth/react";
 import Image from "next/image";
 import { Loader2, UtensilsCrossed } from "lucide-react";
 
+import { clearMastersBlob } from "@/lib/masters-blob";
 import { loginSchema, type LoginInput } from "@/schemas/staff.schema";
 import { APP_NAME } from "@/lib/constants";
 import { brandingUrl } from "@/lib/images";
@@ -33,6 +34,13 @@ export default function LoginPage() {
   // from a broken image on, and this route can legitimately fail (e.g. the
   // database is down) — fall back to the generic icon tile if it does.
   const [iconFailed, setIconFailed] = useState(false);
+
+  // A tab that reaches /login (expired session, or a sign-out) must not hand
+  // the previous operator's master copy — including an admin's staff list — to
+  // whoever signs in next on this shared device.
+  useEffect(() => {
+    clearMastersBlob();
+  }, []);
 
   const {
     register,

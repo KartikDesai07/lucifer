@@ -7,8 +7,22 @@ import { gstConfigOfSettings, type GstConfig } from "@/lib/receipt";
 // edit invalidates this getter too.
 export const SETTINGS_CACHE_KEY = "settings";
 
-// The cafe's singleton settings, cached. Uses one atomic upsert (no
-// read-then-create race) so the "singleton" can never split into two docs.
+// The cafe's singleton settings, cached — READ FIRST, create only when the
+// cluster genuinely has no Settings document yet.
+//
+// Why the read comes first (CB-DL-1 S0): the create branch below is a
+// `$setOnInsert`-only upsert, which is NOT a no-op on an existing document —
+// with `timestamps: true` Mongoose adds its own `updatedAt` to the update, so
+// the OLD unconditional-upsert version rewrote `updatedAt` on EVERY cache miss
+// (verified by probe — three consecutive calls returned three different
+// `updatedAt` values). That is one needless M0 write per cache window on a
+// 512MB cluster with no backups, and it made any updatedAt-derived master-data
+// version churn forever.
+//
+// The atomic-singleton property is preserved: two racers that both read `null`
+// each run one upsert on the EMPTY filter `{}`, which matches any document, so
+// the loser's upsert matches the winner's freshly inserted doc and returns it —
+// the collection can still never split into two settings documents.
 export async function getSettings(): Promise<ISettings> {
   const hit = cache.get<ISettings>(SETTINGS_CACHE_KEY);
   if (hit) return hit;
@@ -19,6 +33,12 @@ export async function getSettings(): Promise<ISettings> {
   await connectDB();
 
   // lean() returns a plain object; cast to the model interface for callers.
+  const existing = (await Settings.findOne().lean()) as ISettings | null;
+  if (existing) {
+    cache.set(SETTINGS_CACHE_KEY, existing, TTL.SETTINGS);
+    return existing;
+  }
+
   const doc = (await Settings.findOneAndUpdate(
     {},
     { $setOnInsert: {} },
@@ -31,13 +51,15 @@ export async function getSettings(): Promise<ISettings> {
 
 // Read-ONLY twin of getSettings(), for render paths that must not write.
 //
-// getSettings() upserts, and a `$setOnInsert`-only upsert is NOT a no-op: with
-// `timestamps: true` Mongoose adds its own `updatedAt` to the update, so every
-// call mutates the document. Verified by probe — three consecutive calls
-// returned three different `updatedAt` values. That is harmless from a route a
-// signed-in user hit, but the root layout's metadata renders on `/login`, which
-// is PUBLIC: calling getSettings() there would let anonymous traffic drive one
-// write per cache window against a 512MB M0 that has no backups.
+// getSettings() can still WRITE: on a cluster with no Settings document yet it
+// falls through to a `$setOnInsert` upsert, and such an upsert is not a no-op
+// even against an existing doc (with `timestamps: true` Mongoose adds its own
+// `updatedAt` — probe-verified: three consecutive calls of the old
+// always-upsert version returned three different `updatedAt` values). Creating
+// the singleton is fine from a route a signed-in user hit, but the root
+// layout's metadata renders on `/login`, which is PUBLIC: anonymous traffic
+// must never be able to drive a write against a 512MB M0 that has no backups.
+// This twin therefore never writes at all.
 //
 // Returns null when the cafe has no Settings document yet (a freshly provisioned
 // cluster) — callers on a render path must degrade, never create it. Shares the

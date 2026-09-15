@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { ClipboardList } from "lucide-react";
 
-import { inr } from "@/lib/utils";
+import { cn, inr } from "@/lib/utils";
+import { POS_DIALOG_LIST_CAP_CLASS } from "@/lib/pos-layout";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,12 +20,14 @@ import type { Order } from "@/types";
 interface OpenTabsButtonProps {
   tabs: Order[];
   onResume: (order: Order) => void;
+  // Applied to the trigger button only — the header sizes it per breakpoint.
+  className?: string;
 }
 
 // Header control listing the open (Unpaid) running orders so staff can resume
 // one — to add another round or settle it. Handles table tabs and walk-in tabs
 // alike (a tab needn't have a table).
-export function OpenTabsButton({ tabs, onResume }: OpenTabsButtonProps) {
+export function OpenTabsButton({ tabs, onResume, className }: OpenTabsButtonProps) {
   const [open, setOpen] = useState(false);
 
   const resume = (order: Order) => {
@@ -35,9 +38,20 @@ export function OpenTabsButton({ tabs, onResume }: OpenTabsButtonProps) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2">
+        {/* Below xl the one-row header has no room for a label: icon + count
+            only (the aria-label/title carry the words). */}
+        <Button
+          variant="outline"
+          size="sm"
+          className={cn("gap-2", className)}
+          aria-label={`Open tabs (${tabs.length})`}
+          title={`Open tabs (${tabs.length})`}
+        >
           <ClipboardList className="h-4 w-4" />
-          Open tabs{tabs.length > 0 ? ` (${tabs.length})` : ""}
+          <span className="hidden truncate xl:inline">
+            Open tabs{tabs.length > 0 ? ` (${tabs.length})` : ""}
+          </span>
+          <span className="tabular-nums xl:hidden">{tabs.length}</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
@@ -54,7 +68,7 @@ export function OpenTabsButton({ tabs, onResume }: OpenTabsButtonProps) {
             description="Orders you send to the kitchen appear here until settled."
           />
         ) : (
-          <ul className="max-h-[60vh] space-y-2 overflow-y-auto">
+          <ul className={cn("space-y-2 overflow-y-auto", POS_DIALOG_LIST_CAP_CLASS)}>
             {tabs.map((t) => (
               <li key={t._id}>
                 <button

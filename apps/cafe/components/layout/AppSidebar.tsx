@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -28,8 +28,10 @@ import { useAuth } from "@/hooks/use-auth";
 import { useSettings } from "@/hooks/use-settings";
 import { brandingUrl, productImageUrl } from "@/lib/images";
 import { APP_NAME } from "@/lib/constants";
+import { SETTINGS_BASE_PATH } from "@/lib/settings-sections";
 import { ChangePasswordDialog } from "@/components/shared/ChangePasswordDialog";
 import { RequestCountBadge } from "@/components/orders/RequestCountBadge";
+import { SidebarSettingsGroup } from "@/components/layout/SidebarSettingsGroup";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -77,11 +79,29 @@ const items: NavItem[] = [
 ];
 
 export function AppSidebar() {
-  const { state } = useSidebar();
+  const { state, isMobile, setOpenMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = usePathname();
   const { user, isAdmin, logout } = useAuth();
   const [pwdOpen, setPwdOpen] = useState(false);
+
+  // Closes the phone Sheet after any nav tap — shadcn/ui's sidebar primitive
+  // leaves this to the consumer (research brief, PR #8402).
+  const closeMobile = () => {
+    if (isMobile) setOpenMobile(false);
+  };
+
+  // Settings expands in place instead of navigating away: the section list
+  // is a Collapsible sub-menu under the Settings row. Open state is
+  // controlled so a manual collapse sticks while navigating between section
+  // pages; the effect only forces it open when the route ENTERS /settings
+  // from outside (deps on the boolean, never on pathname, so an in-settings
+  // collapse is not re-opened by every sub-page navigation).
+  const onSettings = pathname === SETTINGS_BASE_PATH || pathname.startsWith(`${SETTINGS_BASE_PATH}/`);
+  const [settingsOpen, setSettingsOpen] = useState(onSettings);
+  useEffect(() => {
+    if (onSettings) setSettingsOpen(true);
+  }, [onSettings]);
 
   // Brand name comes from the cafe's own Settings (Settings.restaurantName),
   // configured on the Settings page — generic fallback before it's set.
@@ -136,21 +156,40 @@ export function AppSidebar() {
           <SidebarGroupLabel>Manage</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {visibleItems.map((item) => (
-                <SidebarMenuItem key={item.url}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={pathname === item.url}
-                    tooltip={item.title}
-                  >
-                    <Link href={item.url} className="flex items-center gap-2">
-                      <item.icon className="h-4 w-4" />
-                      {!collapsed && <span>{item.title}</span>}
-                    </Link>
-                  </SidebarMenuButton>
-                  {item.url === "/requests" && <RequestCountBadge />}
-                </SidebarMenuItem>
-              ))}
+              {visibleItems.map((item) => {
+                if (item.url === "/settings") {
+                  return (
+                    <SidebarSettingsGroup
+                      key={item.url}
+                      url={item.url}
+                      title={item.title}
+                      icon={item.icon}
+                      collapsed={collapsed}
+                      pathname={pathname}
+                      onSettings={onSettings}
+                      settingsOpen={settingsOpen}
+                      onSettingsOpenChange={setSettingsOpen}
+                      onNavigate={closeMobile}
+                    />
+                  );
+                }
+
+                return (
+                  <SidebarMenuItem key={item.url}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={pathname === item.url}
+                      tooltip={item.title}
+                    >
+                      <Link href={item.url} className="flex items-center gap-2" onClick={closeMobile}>
+                        <item.icon className="h-4 w-4" />
+                        {!collapsed && <span>{item.title}</span>}
+                      </Link>
+                    </SidebarMenuButton>
+                    {item.url === "/requests" && <RequestCountBadge />}
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

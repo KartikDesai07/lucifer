@@ -2,14 +2,23 @@
 
 import { useCallback, useState } from "react";
 
+import { usePrintRouting } from "@/hooks/use-print-routing";
+import { voidLineInstructionsWithRewardMarker } from "@/lib/print-routing";
 import type { Order, OrderItem, OrderVoid } from "@/types";
 
-export type KotVariant = "kot" | "void";
+export type KotVariant = "kot" | "void" | "moved" | "test";
+/** The subset `KOTReceipt` itself renders. `"test"` is PH-5's provider-owned
+ *  test slip, which renders its OWN component through the same bridge — it
+ *  never reaches `KOTReceipt`, whose prop union is "kot"|"void"|"moved". */
+export type KotReceiptVariant = Exclude<KotVariant, "test">;
 
 // Print-signal state for the POS terminal, extracted out of usePosTab to keep
 // that file under the line budget. Owns "what to print next" — the page reacts
 // to shouldPrintReceipt / shouldPrintKot to drive react-to-print and clears the
 // flags once fired (see pos/page.tsx's print-sequencing effects).
+// PH-4: the queue functions this hook RETURNS are the routed wrappers from
+// usePrintRouting — the local `const`s below are the no-host path they fall
+// back to, and nothing outside this file calls them directly.
 export function usePosPrint() {
   const [lastOrder, setLastOrder] = useState<Order | null>(null);
   const [kotRoundItems, setKotRoundItems] = useState<OrderItem[] | null>(null);
@@ -81,8 +90,13 @@ export function usePosPrint() {
         price: entry.price,
         qty: entry.qty,
         modifiers: entry.modifiers ?? [],
-        instructions: entry.instructions ?? "",
+        instructions: voidLineInstructionsWithRewardMarker(entry.instructions ?? "", entry.reward),
         kotRound: entry.kotRound,
+        // CB-5B S14-remainder — same OMIT-EMPTY carry as print-routing.ts's
+        // voidPrintJob twin, so the LOCAL print path also knows this line was
+        // comped (KOTReceipt renders an OrderItem[], and OrderItem.reward is
+        // the same flag a fired round's line already carries).
+        ...(entry.reward ? { reward: true as const } : {}),
       },
     ]);
     setKotRoundLabel(`Round ${entry.kotRound}`);
@@ -114,9 +128,28 @@ export function usePosPrint() {
     setShouldPrintKot(true);
   }, []);
 
+  // The customer bill for a just-settled / just-paid tab. Both confirmPayment
+  // branches call this instead of hand-setting lastOrder + shouldPrintReceipt,
+  // so the routing seam has ONE bill entry point to wrap.
+  const queueReceipt = useCallback((order: Order) => {
+    setLastOrder(order);
+    setShouldPrintReceipt(true);
+  }, []);
+
   // Stable so the page's print effects only re-run when a print signal flips.
   const clearPrintReceipt = useCallback(() => setShouldPrintReceipt(false), []);
   const clearPrintKot = useCallback(() => setShouldPrintKot(false), []);
+
+  // Every queue function above is the LOCAL path. When a print host owns
+  // printing, these enqueue instead — same signatures, so no call site changes.
+  const routed = usePrintRouting({
+    // `setLastOrder` travels too: the routed lane runs NONE of the four
+    // functions above, and `lastOrder` is not a print signal — PosHeader gates
+    // the KOT reprint button on it and `reprintKot` needs it to build a
+    // payload, so a host-configured device must still record the tab.
+    local: { queueKotRound, queueVoidSlip, reprintKot, queueReceipt, setLastOrder },
+    lastOrder,
+  });
 
   return {
     lastOrder,
@@ -128,13 +161,16 @@ export function usePosPrint() {
     voidReason,
     voidedBy,
     voidedAt,
-    queueKotRound,
-    queueVoidSlip,
+    queueKotRound: routed.queueKotRound,
+    queueVoidSlip: routed.queueVoidSlip,
     shouldPrintReceipt,
     setShouldPrintReceipt,
     clearPrintReceipt,
     shouldPrintKot,
     clearPrintKot,
-    reprintKot,
+    reprintKot: routed.reprintKot,
+    queueReceipt: routed.queueReceipt,
+    queueMovedSlip: routed.queueMovedSlip,
+    hostConfigured: routed.hostConfigured,
   };
 }

@@ -267,32 +267,32 @@ test("resolvePromoDiscount: minSubtotal not met resolves to PROMO_MIN_SUBTOTAL w
 
 test("resolvePromoDiscount: minSubtotal met exactly (not short) succeeds", () => {
   const r = resolvePromoDiscount(CODES, "BIGORDER", 500);
-  assert.deepEqual(r, { discount: 100, code: "BIGORDER" });
+  assert.deepEqual(r, { discount: 100, code: "BIGORDER", kind: "flat" });
 });
 
 test("resolvePromoDiscount: percent FLOORS, never rounds up (333 @ 10% = 33, not 33.3 or 34)", () => {
   const r = resolvePromoDiscount(CODES, "SAVE10", 333);
-  assert.deepEqual(r, { discount: 33, code: "SAVE10" });
+  assert.deepEqual(r, { discount: 33, code: "SAVE10", kind: "percent" });
 });
 
 test("resolvePromoDiscount: a flat code resolves to its own value, unmodified by the subtotal", () => {
   const r = resolvePromoDiscount(CODES, "FLAT500", 900);
-  assert.deepEqual(r, { discount: 500, code: "FLAT500" });
+  assert.deepEqual(r, { discount: 500, code: "FLAT500", kind: "flat" });
 });
 
 test("resolvePromoDiscount: a flat code larger than the subtotal is CLAMPED to the subtotal — a bill can never go negative", () => {
   const r = resolvePromoDiscount(CODES, "FLAT500", 200);
-  assert.deepEqual(r, { discount: 200, code: "FLAT500" });
+  assert.deepEqual(r, { discount: 200, code: "FLAT500", kind: "flat" });
 });
 
 test("resolvePromoDiscount: a computed discount of 0 is still a SUCCESS (percent floor on a tiny subtotal)", () => {
   const r = resolvePromoDiscount(CODES, "SAVE10", 5); // floor(5 * 10 / 100) = 0
-  assert.deepEqual(r, { discount: 0, code: "SAVE10" });
+  assert.deepEqual(r, { discount: 0, code: "SAVE10", kind: "percent" });
 });
 
 test("resolvePromoDiscount: a code typed lower/mixed case still resolves — normalized before lookup", () => {
   const r = resolvePromoDiscount(CODES, "  save10  ", 100);
-  assert.deepEqual(r, { discount: 10, code: "SAVE10" });
+  assert.deepEqual(r, { discount: 10, code: "SAVE10", kind: "percent" });
 });
 
 test("resolvePromoDiscount: prototype-key code (\"CONSTRUCTOR\") resolves to PROMO_INVALID — Array.prototype.find, never a keyed object lookup", () => {
@@ -307,17 +307,49 @@ const CODES_WITH_ONCE = [...CODES, ONCE_CODE];
 
 test("resolvePromoDiscount: a code configured with oncePerCustomer:true returns oncePerCustomer:true on success", () => {
   const r = resolvePromoDiscount(CODES_WITH_ONCE, "ONCE10", 100);
-  assert.deepEqual(r, { discount: 10, code: "ONCE10", oncePerCustomer: true });
+  assert.deepEqual(r, { discount: 10, code: "ONCE10", kind: "percent", oncePerCustomer: true });
 });
 
 test("resolvePromoDiscount: a code with no oncePerCustomer flag (absent/false) omits the key entirely on success — never an explicit false", () => {
   const r = resolvePromoDiscount(CODES_WITH_ONCE, "SAVE10", 100);
-  assert.deepEqual(r, { discount: 10, code: "SAVE10" });
+  assert.deepEqual(r, { discount: 10, code: "SAVE10", kind: "percent" });
   assert.ok(!("oncePerCustomer" in r), "oncePerCustomer must be absent, not undefined or false, on a non-flagged code");
 });
 
 test("resolvePromoDiscount: oncePerCustomer:false on the config is treated the same as absent — omitted from the result", () => {
   const codes = [{ ...ONCE_CODE, oncePerCustomer: false }];
   const r = resolvePromoDiscount(codes, "ONCE10", 100);
-  assert.deepEqual(r, { discount: 10, code: "ONCE10" });
+  assert.deepEqual(r, { discount: 10, code: "ONCE10", kind: "percent" });
+});
+
+// ── CB-5D part 2 FINAL — a milestone-minted code fences regardless of the
+// Settings row's own oncePerCustomer tick (owner: "code sirf usi customer ka,
+// ek baar") ─────────────────────────────────────────────────────────────────
+
+test("resolvePromoDiscount: a code with NO oncePerCustomer tick that IS minted by a milestone resolves oncePerCustomer:true", () => {
+  const r = resolvePromoDiscount(CODES, "SAVE10", 100, ["SAVE10"]);
+  assert.deepEqual(r, { discount: 10, code: "SAVE10", kind: "percent", oncePerCustomer: true });
+});
+
+test("resolvePromoDiscount: a code with no tick and NOT minted stays unlimited — regression guard for the omit-empty default", () => {
+  const r = resolvePromoDiscount(CODES, "SAVE10", 100, ["SOME-OTHER-CODE"]);
+  assert.deepEqual(r, { discount: 10, code: "SAVE10", kind: "percent" });
+  assert.ok(!("oncePerCustomer" in r), "an unminted, untricked code must omit the key, not set it false");
+});
+
+test("resolvePromoDiscount: an explicitly ticked oncePerCustomer code is unaffected by an empty/absent minted list", () => {
+  const r1 = resolvePromoDiscount(CODES_WITH_ONCE, "ONCE10", 100, []);
+  assert.deepEqual(r1, { discount: 10, code: "ONCE10", kind: "percent", oncePerCustomer: true });
+  const r2 = resolvePromoDiscount(CODES_WITH_ONCE, "ONCE10", 100);
+  assert.deepEqual(r2, { discount: 10, code: "ONCE10", kind: "percent", oncePerCustomer: true });
+});
+
+test("resolvePromoDiscount: minted-code matching is NORMALIZED — differently-cased/spaced entries in the minted list still match", () => {
+  const r = resolvePromoDiscount(CODES, "SAVE10", 100, [" save10 "]);
+  assert.deepEqual(r, { discount: 10, code: "SAVE10", kind: "percent", oncePerCustomer: true });
+});
+
+test("resolvePromoDiscount: the minted list also accepts a ReadonlySet, not only an array", () => {
+  const r = resolvePromoDiscount(CODES, "SAVE10", 100, new Set(["SAVE10"]));
+  assert.deepEqual(r, { discount: 10, code: "SAVE10", kind: "percent", oncePerCustomer: true });
 });

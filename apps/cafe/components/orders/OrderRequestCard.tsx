@@ -45,7 +45,7 @@ interface OrderRequestCardProps {
   acceptMutate: AcceptMutate;
 }
 
-const ACCEPTING_BADGE = "resuming needed";
+const ACCEPTING_BADGE = "Needs retry";
 const PROMO_LABEL = "Promo";
 const ACCEPTING_COPY =
   "An accept was interrupted — Accept again to finish it safely, or Reject if it shouldn't be billed.";

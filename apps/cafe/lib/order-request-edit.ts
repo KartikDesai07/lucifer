@@ -11,12 +11,18 @@ import {
   normalizePromoCode,
   sanitizePublicText,
   type PublicStatusItem,
+  PUBLIC_STATUS_REFRESH_COOLDOWN_MS,
+  PUBLIC_STATUS_READ_MAX,
+  PUBLIC_STATUS_READ_BUCKET_PREFIX,
 } from "@pos/shared/public";
 import { publicOrderItemSchema } from "@pos/shared/schemas/public-order.schema";
+import { mintedPromoCodes } from "@pos/shared/loyalty-rules";
 import type { IOrderRequestItem, OrderRequestStatus } from "@/models/OrderRequest";
 import type { ISettings } from "@/models/Settings";
 import { PromoRedemption } from "@/models/PromoRedemption";
+import { assignedRewardRefusal } from "@/lib/assigned-reward-gate";
 import { failure } from "@/lib/api-helpers";
+import { hitRateLimit } from "@/lib/public-rate-limit";
 import { quoteRequestTotals, type IntakeTable } from "@/lib/order-request-intake";
 import type { PricedLine } from "@/lib/public-pricing";
 
@@ -29,8 +35,8 @@ import type { PricedLine } from "@/lib/public-pricing";
 
 // GET's stored-item -> diner-facing mapping (moved here in CR2.3b S8;
 // behavior-identical to the inline block it replaced). `productId` is always
-// a STRING here — the model's own field is already a string, never a raw
-// ObjectId — String(...) is defensive, never a real cast.
+// a STRING here — the model's own field is an ObjectId (CB-DL-2), so this
+// String(...) is the REAL serialisation boundary, not a defensive cast.
 export function toStatusItems(items: IOrderRequestItem[]): PublicStatusItem[] {
   return items.map((item) => {
     const statusItem: PublicStatusItem = {
@@ -179,8 +185,21 @@ export async function resolveEditPromo(
   const isNewCode = normalizePromoCode(requested) !== normalizePromoCode(stored.promoCode ?? "");
   if (isNewCode && !chargeApplies) return { error: PROMO_SESSION_OPEN };
   const probe = quoteRequestTotals(lines, table, settings, chargeApplies);
-  const resolved = resolvePromoDiscount(settings?.promoCodes, requested, probe.quotedSubtotal);
+  // CB-5D part 2 FINAL — a milestone-minted code is single-use regardless of
+  // its Settings row's own tick (owner: "code sirf usi customer ka, ek baar").
+  const resolved = resolvePromoDiscount(
+    settings?.promoCodes,
+    requested,
+    probe.quotedSubtotal,
+    mintedPromoCodes(settings?.loyaltyRules?.milestones),
+  );
   if ("error" in resolved) return { error: resolved.error };
+  // CB-5D part 2 DEFECT FIX — same single-homed expiry gate as the create
+  // route (lib/assigned-reward-gate.ts). Checked AFTER resolvePromoDiscount so
+  // an invalid/inactive code still says so, never "expired". The identity
+  // field is always the request's own STORED mobile — it is not editable.
+  const expired = await assignedRewardRefusal(resolved.code, stored.mobile, Date.now());
+  if (expired) return { error: expired };
   // SPEC P4 — same quote-time courtesy check as the create route (see
   // order-request-create.ts's resolveRequestPromo). The identity field is
   // always the request's own STORED value — it is not editable.
@@ -207,4 +226,42 @@ export function editStatusGuard(status: OrderRequestStatus): NextResponse | null
   if (status === "accepting" || status === "accepted") return failure(EDIT_LOCKED_ERROR, 409);
   if (status === "rejected") return failure(EDIT_CANCELLED_ERROR, 409);
   return null;
+}
+
+
+// ── The diner STATUS-READ cooldown (CB-6A S4) ───────────────────────────────
+// Lives here, not in the route, for the same reason the edit helpers above do:
+// the [shortCode] route sits at this repo's ~300-line file budget.
+//
+// Keyed PER SHORTCODE, never per-source/IP — this key shape is LOAD-BEARING.
+// PublicMyOrdersTab.tsx fans out up to 8 concurrent GETs for 8 DISTINCT codes
+// on mount, and PublicStatusTimeline.tsx fetches up to 4 more sibling codes;
+// a shared or IP-keyed bucket would starve those surfaces against their own
+// reads. Distinct codes = distinct buckets, so only hammering ONE code trips.
+export function statusReadBucket(shortCode: string): string {
+  return `${PUBLIC_STATUS_READ_BUCKET_PREFIX}:${shortCode}`;
+}
+
+// Records one status read and returns a ready 429 (carrying Retry-After) when
+// the window is spent, or `null` to proceed. Callers MUST have shape-validated
+// the code first — a malformed code must never burn a window slot.
+export async function statusReadGate(
+  shortCode: string,
+  now: number,
+  noStoreFn: (res: NextResponse) => NextResponse,
+): Promise<NextResponse | null> {
+  const decision = await hitRateLimit(statusReadBucket(shortCode), PUBLIC_STATUS_READ_MAX, now);
+  if (decision.allowed) return null;
+  const res = noStoreFn(failure(RATE_LIMITED_MESSAGE, 429));
+  res.headers.set("Retry-After", String(decision.retryAfterSec));
+  return res;
+}
+
+// The cooldown, in seconds, named on every successful status read so the diner
+// UI's refresh button can show a countdown that stays correct even after a tab
+// reload. A HEADER, deliberately: a body-shape change would force a
+// cached-blob version bump elsewhere.
+export const REFRESH_AFTER_HEADER = "X-Refresh-After";
+export function refreshAfterSeconds(): string {
+  return String(PUBLIC_STATUS_REFRESH_COOLDOWN_MS / 1000);
 }

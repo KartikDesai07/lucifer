@@ -29,11 +29,11 @@
 import mongoose from "mongoose";
 import { orderLineKey } from "@pos/shared/utils";
 import { connectDB } from "@/lib/db";
-import { Order, type IOrder, type IOrderItem } from "@/models/Order";
+import { Order, type IOrder } from "@/models/Order";
 import { Customer } from "@/models/Customer";
 import { Table } from "@/models/Table";
-import { type OrderStatus, type PaymentMode, type GstMode } from "@/lib/constants";
-import { computeOrderTotals, gstConfigFromOrder, type GstConfig } from "@/lib/receipt";
+import { type OrderStatus, type PaymentMode, type GstMode, type DiscountKind } from "@/lib/constants";
+import { computeOrderTotals, gstConfigFromOrder, resolveDiscountKind, type GstConfig } from "@/lib/receipt";
 import { ledgerContribution, reconcileLedger, resolveSettleMoney } from "@/lib/order";
 import { resolveItemVoid, voidGuardFilter, type ItemVoidRequest } from "@/lib/order-void";
 import { resolveTableCharge } from "@/lib/table-admin";
@@ -56,7 +56,53 @@ function check(label: string, ok: boolean): void {
   }
 }
 
+// productId is a real ObjectId once a line has round-tripped through Mongo
+// (models/Order.ts). This leg only ever compares/keys on its STRING form —
+// type-only helpers, no behavior change from the pre-flip String(hex) === hex.
+function pid(value: unknown): string {
+  return String(value);
+}
+
+// CB-DL-2: items[].productId is an ObjectId path now, so a readable fixture
+// key (fixtureHex("p-tea")) is minted into a deterministic 24-hex string: the key's utf8
+// hex, zero-padded. Keys under 12 bytes stay unique and round-trip through
+// pid() for the equality checks below.
+const FIXTURE_HEX_LENGTH = 24;
+function fixtureHex(key: string): string {
+  return Buffer.from(key, "utf8").toString("hex").padEnd(FIXTURE_HEX_LENGTH, "0").slice(0, FIXTURE_HEX_LENGTH);
+}
+
+// orderLineKey (shared, cross-party) still takes a string productId —
+// stringify a real DB row's ObjectId before handing it the object. Built
+// field by field, never by spreading `item`: a hydrated Mongoose subdocument
+// (Order.create's result) exposes its fields through getters that an object
+// spread drops, which silently keyed the line off undefined qty/kotRound.
+function lineKeyOf(item: { productId: unknown; qty: number; kotRound?: number; instructions?: string; modifiers?: string[]; variation?: string }): string {
+  return orderLineKey({
+    productId: pid(item.productId),
+    qty: item.qty,
+    kotRound: item.kotRound,
+    instructions: item.instructions,
+    modifiers: item.modifiers,
+    variation: item.variation,
+  });
+}
+
 // ── fixture builders ─────────────────────────────────────────────────────────
+
+// Fixture-only item shape: productId stays a hex STRING here (never
+// Types.ObjectId) — Mongoose casts it on write (Order.create/findOneAndUpdate),
+// exactly like every other hex-string fixture in this file. IOrderItem now
+// requires a real ObjectId instance, which a plain fixture literal is not.
+interface FixtureItem {
+  productId: string;
+  name: string;
+  price: number;
+  qty: number;
+  modifiers: string[];
+  instructions: string;
+  kotRound: number;
+}
 
 function line(
   productId: string,
@@ -64,23 +110,50 @@ function line(
   price: number,
   qty: number,
   kotRound: number,
-): IOrderItem {
+): FixtureItem {
   return { productId, name, price, qty, modifiers: [], instructions: "", kotRound };
 }
 
 interface BuildOrderOptions {
   orderId: string;
-  items: IOrderItem[];
+  items: FixtureItem[];
   payment: PaymentMode;
   status?: OrderStatus;
   paidAmount?: number;
   discount?: number;
+  // The kind the CLIENT sent on create (mirrors createOrderSchema's
+  // `data.discountKind`) — passed through resolveOrderCreateTotals's own
+  // amount-gates-kind logic below, exactly like app/api/orders/route.ts does.
+  // Defaults undefined so every existing leg (which never set this) stays
+  // byte-identical.
+  discountKind?: DiscountKind | null;
   gstRate?: number;
   gstMode?: GstMode;
   customerId?: string;
   customerName?: string;
   tableNo?: string;
   kotRounds?: number;
+}
+
+// Pure: mirrors app/api/orders/route.ts's create-time money resolution exactly —
+// `computeOrderTotals` re-derives the discount when `discountKind === "gst"`
+// (the supplied `discount` is IGNORED in that case), and the stored kind is
+// gated on the re-derived amount being > 0 (a preset that nets ₹0 on a tiny
+// bill stores no kind at all). Split from buildOrder so the CB-2.8 legs can
+// inspect the oracle `totals` directly rather than re-deriving them a second
+// time from the seeded document.
+function resolveOrderCreateTotals(
+  items: FixtureItem[],
+  discount: number,
+  discountKind: DiscountKind | null | undefined,
+  cfg: GstConfig,
+) {
+  const totals = computeOrderTotals({
+    items, discount, discountKind: discountKind ?? undefined, charge: 0, cfg,
+  });
+  const storedKind: DiscountKind | undefined =
+    totals.discount > 0 && discountKind === "gst" ? "gst" : undefined;
+  return { totals, storedKind };
 }
 
 // Builds a seedable order document, computing subtotal/gstAmount/total via the
@@ -92,7 +165,7 @@ function buildOrder(opts: BuildOrderOptions) {
   const gstRate = opts.gstRate ?? 0;
   const gstCfg: GstConfig = { gstEnabled: gstRate > 0, gstRate, gstMode };
   // No table-charge fixture option on these seeded orders — charge-free tabs.
-  const totals = computeOrderTotals({ items: opts.items, discount, charge: 0, cfg: gstCfg });
+  const { totals, storedKind } = resolveOrderCreateTotals(opts.items, discount, opts.discountKind, gstCfg);
   return {
     orderId: opts.orderId,
     customerId: opts.customerId,
@@ -100,6 +173,7 @@ function buildOrder(opts: BuildOrderOptions) {
     items: opts.items,
     subtotal: totals.subtotal,
     discount: totals.discount,
+    discountKind: storedKind,
     gstAmount: totals.gstAmount,
     gstRate,
     gstMode,
@@ -117,6 +191,7 @@ type LeanOrder = Pick<
   IOrder,
   | "items"
   | "discount"
+  | "discountKind"
   | "gstRate"
   | "gstMode"
   | "chargeAmount"
@@ -152,6 +227,10 @@ function buildVoidWrite(
     items: old.items,
     request,
     discount: old.discount,
+    discountKind: old.discountKind,
+    // CB-5B — this fixture carries no reward; stated explicitly because
+    // ItemVoidInput.reward is REQUIRED (a void must never silently strip one).
+    reward: undefined,
     // The tab's snapshotted table charge rides through a void unchanged.
     charge: old.chargeAmount ?? 0,
     gstCfg,
@@ -165,7 +244,13 @@ function buildVoidWrite(
     kotRounds: old.kotRounds,
     ...voidGuardFilter(expectedVoids),
   };
-  const update = {
+  // A void never changes intent, so the stored kind rides through unchanged —
+  // EXCEPT when the re-derived discount lands at 0, where it must go (amount
+  // gates the kind), mirroring app/api/orders/[id]/items/void/route.ts's exact
+  // condition. $set never carries discountKind here (a void does not (re-)set
+  // it, only clears it), so this stays exclusive with the $set above by
+  // construction — the same exclusivity the items/settle writers keep explicit.
+  const update: Record<string, unknown> = {
     $set: {
       items: resolution.nextItems,
       subtotal: resolution.totals.subtotal,
@@ -175,6 +260,9 @@ function buildVoidWrite(
     },
     $push: { voids: resolution.entry },
   };
+  if (old.discountKind !== undefined && resolution.totals.discount === 0) {
+    update.$unset = { discountKind: "" };
+  }
   return { ok: true as const, resolution, filter, update };
 }
 
@@ -206,7 +294,7 @@ function buildKotNumbers(
 // silently resurrect a line a concurrent void just removed.
 function buildItemsWrite(
   old: LeanOrder,
-  newItems: readonly IOrderItem[],
+  newItems: readonly FixtureItem[],
   discountOverride: number | undefined,
   liveGst: GstConfig,
   // Defect 2 fix: omitted means "unchanged" (carry the tab's snapshotted
@@ -217,6 +305,11 @@ function buildItemsWrite(
   // (mirrors the route's `printCfg.kot.showNumber ? printedSlipNumber(...) :
   // undefined`) — omitted means numbering is off, so kotNumbers is untouched.
   kotTicket?: number,
+  // CB-2.8: mirrors app/api/orders/[id]/items/route.ts's own body field
+  // exactly — undefined (the default) = leave the tab's stored kind alone,
+  // null = the operator cleared the preset, "gst" = (re-)apply it. Defaulted
+  // to undefined so every existing round-fire leg above stays byte-identical.
+  discountKindBody?: DiscountKind | null,
 ) {
   const round = (old.kotRounds ?? 0) + 1;
   const stamped = newItems.map((it) => ({ ...it, kotRound: round }));
@@ -224,7 +317,12 @@ function buildItemsWrite(
   const discount = discountOverride ?? old.discount;
   const gstCfg = gstConfigFromOrder(old, liveGst);
   const charge = chargeOverride ?? old.chargeAmount ?? 0;
-  const totals = computeOrderTotals({ items: fullItems, discount, charge, cfg: gstCfg });
+  const discountKind = resolveDiscountKind(discountKindBody, old.discountKind);
+  const totals = computeOrderTotals({
+    items: fullItems, discount, discountKind, charge, cfg: gstCfg,
+  });
+  // Amount gates the kind, mirrors the route's own `storeKind` exactly.
+  const storeKind = totals.discount > 0 && discountKind === "gst";
   const kotNumbers = buildKotNumbers(old.kotNumbers, round, kotTicket);
 
   const filter = {
@@ -236,7 +334,9 @@ function buildItemsWrite(
   };
   // Mirrors app/api/orders/[id]/items/route.ts exactly: a waived charge (0) is
   // UNSET, never left stored as a 0 sitting beside its old label — the receipt
-  // keys its charge line off the amount being PRESENT.
+  // keys its charge line off the amount being PRESENT. Same discipline for
+  // discountKind: $set and $unset are exclusive branches (Mongo rejects one
+  // path in both operators of one update).
   const update: Record<string, unknown> = {
     $set: {
       items: fullItems,
@@ -246,12 +346,17 @@ function buildItemsWrite(
       total: totals.total,
       kotRounds: round,
       ...(totals.charge > 0 ? { chargeAmount: totals.charge } : {}),
+      ...(storeKind ? { discountKind: "gst" } : {}),
       ...(kotNumbers ? { kotNumbers } : {}),
     },
   };
+  const unset: Record<string, ""> = {};
   if (totals.charge <= 0) {
-    update.$unset = { chargeAmount: "", chargeLabel: "" };
+    unset.chargeAmount = "";
+    unset.chargeLabel = "";
   }
+  if (!storeKind) unset.discountKind = "";
+  if (Object.keys(unset).length > 0) update.$unset = unset;
   return { filter, update, totals, fullItems };
 }
 
@@ -265,6 +370,11 @@ function buildSettleWrite(
   settleInput: {
     payment: PaymentMode;
     discount?: number;
+    // CB-2.8: mirrors settle/route.ts's own body field exactly — undefined
+    // (the default) = leave the tab's stored kind alone, null = the operator
+    // cleared the preset, "gst" = (re-)apply it. Defaulted to undefined so
+    // every existing settle leg above stays byte-identical.
+    discountKind?: DiscountKind | null;
     // Settle-time waiver/adjustment of the table charge — mirrors resolveSettleMoney's
     // own option: undefined leaves the tab's stored charge alone.
     chargeAmount?: number;
@@ -278,6 +388,7 @@ function buildSettleWrite(
     order: old,
     payment: settleInput.payment,
     discount: settleInput.discount,
+    discountKind: settleInput.discountKind,
     chargeAmount: settleInput.chargeAmount,
     paidAmount: settleInput.paidAmount,
     splitCash: settleInput.splitCash,
@@ -304,6 +415,14 @@ function buildSettleWrite(
     } else {
       unset.chargeAmount = "";
       unset.chargeLabel = "";
+    }
+    // Amount gates the kind, exclusive with the $set above — mirrors the
+    // route's exact branch (Mongo rejects a path in both operators of one
+    // update).
+    if (money.totals.discount > 0 && money.discountKind === "gst") {
+      set.discountKind = "gst";
+    } else {
+      unset.discountKind = "";
     }
   }
   const update: Record<string, unknown> = { $set: set };
@@ -351,7 +470,7 @@ async function leg1(): Promise<void> {
   const order = await Order.create(
     buildOrder({
       orderId: "ORD-LEG1-001",
-      items: [line("p-tea", "Tea", 100, 2, 1)],
+      items: [line(fixtureHex("p-tea"), "Tea", 100, 2, 1)],
       payment: "Unpaid",
       status: "Pending",
       tableNo: "T-1",
@@ -441,7 +560,7 @@ async function leg2(): Promise<void> {
   const order = await Order.create(
     buildOrder({
       orderId: "ORD-LEG2-001",
-      items: [line("p-thali", "Thali", 1000, 1, 1)],
+      items: [line(fixtureHex("p-thali"), "Thali", 1000, 1, 1)],
       payment: "Cash",
       paidAmount: 700,
       status: "Completed",
@@ -513,7 +632,7 @@ async function leg3(): Promise<void> {
   const order = await Order.create(
     buildOrder({
       orderId: "ORD-LEG3-001",
-      items: [line("p-item", "Item", 1000, 1, 1)],
+      items: [line(fixtureHex("p-item"), "Item", 1000, 1, 1)],
       payment: "Cash",
       paidAmount: 700,
       status: "Completed",
@@ -566,7 +685,7 @@ async function leg4(): Promise<void> {
   const order = await Order.create(
     buildOrder({
       orderId: "ORD-LEG4-001",
-      items: [line("p-tea", "Tea", 100, 3, 1), line("p-coffee", "Coffee", 150, 2, 2)],
+      items: [line(fixtureHex("p-tea"), "Tea", 100, 3, 1), line(fixtureHex("p-coffee"), "Coffee", 150, 2, 2)],
       payment: "Unpaid",
       status: "Pending",
       kotRounds: 2,
@@ -577,7 +696,7 @@ async function leg4(): Promise<void> {
 
   const request: ItemVoidRequest = {
     index: 0,
-    lineKey: orderLineKey(order.items[0]),
+    lineKey: lineKeyOf(order.items[0]),
     qty: 1,
     reason: "Guest changed mind",
     voidedBy: "Staff B",
@@ -588,13 +707,14 @@ async function leg4(): Promise<void> {
   check("the guarded write matches and applies", result !== null);
   if (!result || "error" in resolution) return;
 
-  const teaLine = result.items.find((it) => it.productId === "p-tea");
+  const teaLine = result.items.find((it) => pid(it.productId) === fixtureHex("p-tea"));
   check("the voided line's qty dropped by exactly the voided amount (3 → 2)", teaLine?.qty === 2);
 
   const gstCfg = gstConfigFromOrder(old, LIVE_GST_FALLBACK);
   const oracle = computeOrderTotals({
     items: result.items,
     discount: old.discount,
+    discountKind: old.discountKind,
     charge: old.chargeAmount ?? 0,
     cfg: gstCfg,
   });
@@ -607,7 +727,7 @@ async function leg4(): Promise<void> {
     "voids has exactly one entry recording the VOIDED qty (1), not the remaining qty",
     (result.voids?.length ?? 0) === 1 &&
       result.voids?.[0]?.qty === 1 &&
-      result.voids?.[0]?.productId === "p-tea",
+      pid(result.voids?.[0]?.productId) === fixtureHex("p-tea"),
   );
   check("kotRounds is unchanged by a void", result.kotRounds === 2);
 }
@@ -617,7 +737,7 @@ async function leg5(): Promise<void> {
 
   const seeded = buildOrder({
     orderId: "ORD-LEG5-001",
-    items: [line("p-tea", "Tea", 100, 3, 1), line("p-coffee", "Coffee", 150, 2, 1)],
+    items: [line(fixtureHex("p-tea"), "Tea", 100, 3, 1), line(fixtureHex("p-coffee"), "Coffee", 150, 2, 1)],
     payment: "Unpaid",
     status: "Pending",
     kotRounds: 1,
@@ -634,7 +754,7 @@ async function leg5(): Promise<void> {
 
   const request: ItemVoidRequest = {
     index: 1,
-    lineKey: orderLineKey(order.items[1]),
+    lineKey: lineKeyOf(order.items[1]),
     qty: 2,
     reason: "Wrong item fired",
     voidedBy: "Staff C",
@@ -644,16 +764,17 @@ async function leg5(): Promise<void> {
   check("resolveItemVoid accepts voiding the whole line", !("error" in resolution));
   if (!result || "error" in resolution) return;
 
-  check("the voided line is gone from items", result.items.every((it) => it.productId !== "p-coffee"));
+  check("the voided line is gone from items", result.items.every((it) => pid(it.productId) !== fixtureHex("p-coffee")));
   check(
     "the other line survives, untouched",
-    result.items.length === 1 && result.items[0].productId === "p-tea" && result.items[0].qty === 3,
+    result.items.length === 1 && pid(result.items[0].productId) === fixtureHex("p-tea") && result.items[0].qty === 3,
   );
 
   const gstCfg = gstConfigFromOrder(old, LIVE_GST_FALLBACK);
   const oracle = computeOrderTotals({
     items: result.items,
     discount: old.discount,
+    discountKind: old.discountKind,
     charge: old.chargeAmount ?? 0,
     cfg: gstCfg,
   });
@@ -671,7 +792,7 @@ async function leg6(): Promise<void> {
   const order = await Order.create(
     buildOrder({
       orderId: "ORD-LEG6-001",
-      items: [line("p-solo", "Solo Item", 100, 1, 1)],
+      items: [line(fixtureHex("p-solo"), "Solo Item", 100, 1, 1)],
       payment: "Unpaid",
       status: "Pending",
       kotRounds: 1,
@@ -681,7 +802,7 @@ async function leg6(): Promise<void> {
   const before = await Order.findById(order._id).lean();
   const request: ItemVoidRequest = {
     index: 0,
-    lineKey: orderLineKey(before!.items[0]),
+    lineKey: lineKeyOf(before!.items[0]),
     qty: 1,
     reason: "Test",
     voidedBy: "Staff D",
@@ -692,6 +813,10 @@ async function leg6(): Promise<void> {
     items: before!.items,
     request,
     discount: before!.discount,
+    discountKind: before!.discountKind,
+    // CB-5B — this fixture carries no reward; stated explicitly because
+    // ItemVoidInput.reward is REQUIRED (a void must never silently strip one).
+    reward: undefined,
     // The tab's snapshotted table charge rides through a void unchanged.
     charge: before!.chargeAmount ?? 0,
     gstCfg,
@@ -717,7 +842,7 @@ async function leg7(): Promise<void> {
   const order = await Order.create(
     buildOrder({
       orderId: "ORD-LEG7-001",
-      items: [line("p-x", "Item X", 50, 5, 1)],
+      items: [line("00000000000000000000aaa2", "Item X", 50, 5, 1)],
       payment: "Unpaid",
       status: "Pending",
       kotRounds: 1,
@@ -731,7 +856,7 @@ async function leg7(): Promise<void> {
   // would produce if two devices void the same line before either refreshes.
   const requestA: ItemVoidRequest = {
     index: 0,
-    lineKey: orderLineKey(old.items[0]),
+    lineKey: lineKeyOf(old.items[0]),
     qty: 1,
     reason: "Device A",
     voidedBy: "Staff A",
@@ -739,7 +864,7 @@ async function leg7(): Promise<void> {
   };
   const requestB: ItemVoidRequest = {
     index: 0,
-    lineKey: orderLineKey(old.items[0]),
+    lineKey: lineKeyOf(old.items[0]),
     qty: 1,
     reason: "Device B",
     voidedBy: "Staff B",
@@ -772,7 +897,7 @@ async function leg8(): Promise<void> {
   const order = await Order.create(
     buildOrder({
       orderId: "ORD-LEG8-001",
-      items: [line("p-y", "Item Y", 200, 1, 1)],
+      items: [line(fixtureHex("p-y"), "Item Y", 200, 1, 1)],
       payment: "Unpaid",
       status: "Cancelled",
       kotRounds: 1,
@@ -806,7 +931,7 @@ async function leg9(): Promise<void> {
   const order = await Order.create(
     buildOrder({
       orderId: "ORD-LEG9-001",
-      items: [line("p-tea", "Tea", 100, 3, 1), line("p-coffee", "Coffee", 150, 1, 1)],
+      items: [line(fixtureHex("p-tea"), "Tea", 100, 3, 1), line(fixtureHex("p-coffee"), "Coffee", 150, 1, 1)],
       payment: "Unpaid",
       status: "Pending",
       kotRounds: 1,
@@ -820,7 +945,7 @@ async function leg9(): Promise<void> {
   // A concurrent void commits off a FRESH read: void the whole Coffee line.
   const voidRequest: ItemVoidRequest = {
     index: 1,
-    lineKey: orderLineKey(staleSnapshot.items[1]),
+    lineKey: lineKeyOf(staleSnapshot.items[1]),
     qty: 1,
     reason: "Wrong item fired",
     voidedBy: "Staff F",
@@ -831,7 +956,7 @@ async function leg9(): Promise<void> {
 
   // The round-fire write built from the STALE snapshot (taken before the void),
   // using the SAME filter shape the route now issues (kotRounds + voidGuardFilter).
-  const newItem = line("p-water", "Water", 20, 1, 0); // kotRound is stamped by buildItemsWrite
+  const newItem = line(fixtureHex("p-water"), "Water", 20, 1, 0); // kotRound is stamped by buildItemsWrite
   const staleWrite = buildItemsWrite(staleSnapshot, [newItem], undefined, LIVE_GST_FALLBACK);
   const staleAttempt = await Order.findOneAndUpdate(staleWrite.filter, staleWrite.update, {
     new: true,
@@ -849,7 +974,7 @@ async function leg9(): Promise<void> {
       // `=== true` because the optional chain yields boolean | undefined, and
       // check() takes a strict boolean — a bare `&&` chain would type as
       // possibly-undefined and (worse) read as a pass-by-accident.
-      afterStaleAttempt?.items.every((it) => it.productId !== "p-coffee") === true &&
+      afterStaleAttempt?.items.every((it) => pid(it.productId) !== fixtureHex("p-coffee")) === true &&
       (afterStaleAttempt?.voids?.length ?? 0) === 1,
   );
   check(
@@ -882,7 +1007,7 @@ async function leg10(): Promise<void> {
   const order = await Order.create(
     buildOrder({
       orderId: "ORD-LEG10-001",
-      items: [line("p-a", "Item A", 300, 1, 1), line("p-b", "Item B", 200, 1, 1)],
+      items: [line(fixtureHex("p-a"), "Item A", 300, 1, 1), line(fixtureHex("p-b"), "Item B", 200, 1, 1)],
       payment: "Unpaid",
       status: "Pending",
       discount: 500, // subtotal 500, discount 500 -> total 0, fully comped
@@ -900,7 +1025,7 @@ async function leg10(): Promise<void> {
   // total STAYS 0 — exactly the case a bare `total: old.total` CAS cannot see.
   const voidRequest: ItemVoidRequest = {
     index: 1,
-    lineKey: orderLineKey(staleSnapshot.items[1]),
+    lineKey: lineKeyOf(staleSnapshot.items[1]),
     qty: 1,
     reason: "Comped item removed",
     voidedBy: "Staff G",
@@ -940,7 +1065,7 @@ async function leg11(): Promise<void> {
   const order = await Order.create(
     buildOrder({
       orderId: "ORD-LEG11-001",
-      items: [line("p-z", "Item Z", 100, 5, 1)],
+      items: [line(fixtureHex("p-z"), "Item Z", 100, 5, 1)],
       payment: "Unpaid",
       status: "Pending",
       kotRounds: 1,
@@ -951,7 +1076,7 @@ async function leg11(): Promise<void> {
 
   const request: ItemVoidRequest = {
     index: 0,
-    lineKey: orderLineKey(old.items[0]),
+    lineKey: lineKeyOf(old.items[0]),
     qty: 1,
     reason: "Retry test",
     voidedBy: "Staff E",
@@ -994,7 +1119,7 @@ async function leg12(): Promise<void> {
   const order = await Order.create(
     buildOrder({
       orderId: "ORD-LEG12-001",
-      items: [line("p-put", "Put Item", 100, 1, 1)],
+      items: [line(fixtureHex("p-put"), "Put Item", 100, 1, 1)],
       payment: "Unpaid",
       status: "Pending",
       customerName: "Original Name",
@@ -1056,7 +1181,7 @@ async function leg13(): Promise<void> {
   const order = await Order.create(
     buildOrder({
       orderId: "ORD-LEG13-001",
-      items: [line("p-del", "Delete Item", 1000, 1, 1)],
+      items: [line(fixtureHex("p-del"), "Delete Item", 1000, 1, 1)],
       payment: "Cash",
       paidAmount: 700,
       status: "Completed",
@@ -1134,13 +1259,14 @@ async function leg14(): Promise<void> {
   );
 
   const gstCfg: GstConfig = { gstEnabled: false, gstRate: 0, gstMode: "exclusive" };
-  const openingItems = [line("p-main", "Main Course", 300, 1, 1)];
+  const openingItems = [line(fixtureHex("p-main"), "Main Course", 300, 1, 1)];
   // Mirrors app/api/orders/route.ts's own create doc: chargeAmount/chargeLabel
   // are snapshotted from the table ONLY when the resolved charge is > 0, and the
   // label always comes from the table, never the request.
   const openingTotals = computeOrderTotals({
     items: openingItems,
     discount: 0,
+    discountKind: undefined,
     charge: resolved.charge.amount,
     cfg: gstCfg,
   });
@@ -1172,7 +1298,7 @@ async function leg14(): Promise<void> {
   // and the total must grow by EXACTLY the new item's price.
   const afterCreate = await Order.findById(order._id).lean<LeanOrder>();
   if (!afterCreate) throw new Error("leg14: seed order missing after create");
-  const newItem = line("p-side", "Side Dish", 80, 1, 0); // kotRound stamped by buildItemsWrite
+  const newItem = line(fixtureHex("p-side"), "Side Dish", 80, 1, 0); // kotRound stamped by buildItemsWrite
   const roundWrite = buildItemsWrite(afterCreate, [newItem], undefined, gstCfg);
   const afterRound = await Order.findOneAndUpdate(roundWrite.filter, roundWrite.update, {
     new: true,
@@ -1191,7 +1317,7 @@ async function leg14(): Promise<void> {
   if (!beforeVoid) throw new Error("leg14: seed order missing before void");
   const voidRequest: ItemVoidRequest = {
     index: 0,
-    lineKey: orderLineKey(beforeVoid.items[0]),
+    lineKey: lineKeyOf(beforeVoid.items[0]),
     qty: 1,
     reason: "Guest changed mind",
     voidedBy: "Verifier",
@@ -1255,10 +1381,11 @@ async function leg15(): Promise<void> {
     throw new Error("leg15: resolveTableCharge failed against the seeded waive table");
   }
 
-  const openingItems = [line("p-main", "Main Course", 300, 1, 1)];
+  const openingItems = [line(fixtureHex("p-main"), "Main Course", 300, 1, 1)];
   const openingTotals = computeOrderTotals({
     items: openingItems,
     discount: 0,
+    discountKind: undefined,
     charge: resolvedWaive.charge.amount,
     cfg: gstCfg,
   });
@@ -1289,7 +1416,7 @@ async function leg15(): Promise<void> {
   // ── b) a KOT round is fired WITH chargeAmount: 0 (the waiver) ──────────────
   const beforeWaiveRound = await Order.findById(orderWaive._id).lean<LeanOrder>();
   if (!beforeWaiveRound) throw new Error("leg15: waive-scenario order missing before round-fire");
-  const waiveNewItem = line("p-side", "Side Dish", 80, 1, 0); // kotRound stamped by buildItemsWrite
+  const waiveNewItem = line(fixtureHex("p-side"), "Side Dish", 80, 1, 0); // kotRound stamped by buildItemsWrite
   // THE CONFIRMED BUG: before the fix, addItemsSchema had no field to carry a
   // waiver at all, so this round-fire could only ever carry old.chargeAmount
   // forward. buildItemsWrite's chargeOverride param mirrors the route's now-
@@ -1315,6 +1442,7 @@ async function leg15(): Promise<void> {
   const oracleWaive = computeOrderTotals({
     items: waiveRoundWrite.fullItems,
     discount: beforeWaiveRound.discount,
+    discountKind: beforeWaiveRound.discountKind,
     charge: 0,
     cfg: gstCfg,
   });
@@ -1335,10 +1463,11 @@ async function leg15(): Promise<void> {
   if ("error" in resolvedKeep) {
     throw new Error("leg15: resolveTableCharge failed against the seeded keep table");
   }
-  const openingItemsKeep = [line("p-main2", "Main Course", 300, 1, 1)];
+  const openingItemsKeep = [line(fixtureHex("p-main2"), "Main Course", 300, 1, 1)];
   const openingTotalsKeep = computeOrderTotals({
     items: openingItemsKeep,
     discount: 0,
+    discountKind: undefined,
     charge: resolvedKeep.charge.amount,
     cfg: gstCfg,
   });
@@ -1368,7 +1497,7 @@ async function leg15(): Promise<void> {
 
   const beforeKeepRound = await Order.findById(orderKeep._id).lean<LeanOrder>();
   if (!beforeKeepRound) throw new Error("leg15: control order missing before round-fire");
-  const keepNewItem = line("p-side2", "Side Dish", 80, 1, 0);
+  const keepNewItem = line(fixtureHex("p-side2"), "Side Dish", 80, 1, 0);
   // No chargeOverride passed — omit-means-unchanged, the control for (b)-(d).
   const keepRoundWrite = buildItemsWrite(beforeKeepRound, [keepNewItem], undefined, gstCfg);
   const afterKeepRound = await Order.findOneAndUpdate(keepRoundWrite.filter, keepRoundWrite.update, {
@@ -1413,7 +1542,7 @@ async function leg16(): Promise<void> {
   const order = await Order.create({
     orderId: "ORD-LEG16-001",
     customerName: "Walk-in",
-    items: [line("p-tea", "Tea", 100, 2, 1)],
+    items: [line(fixtureHex("p-tea"), "Tea", 100, 2, 1)],
     subtotal: 200,
     discount: 0,
     gstAmount: 0,
@@ -1512,7 +1641,7 @@ async function leg16(): Promise<void> {
   const order2 = await Order.create({
     orderId: "ORD-LEG16-002",
     customerName: "Walk-in",
-    items: [line("p-coffee", "Coffee", 150, 1, 1)],
+    items: [line(fixtureHex("p-coffee"), "Coffee", 150, 1, 1)],
     subtotal: 150,
     discount: 0,
     gstAmount: 0,
@@ -1546,7 +1675,7 @@ async function leg17(): Promise<void> {
   const shipDayOrder = await Order.create(
     buildOrder({
       orderId: "ORD-LEG17-SHIPDAY-001",
-      items: [line("p-tea", "Tea", 100, 2, 1)],
+      items: [line(fixtureHex("p-tea"), "Tea", 100, 2, 1)],
       payment: "Unpaid",
       status: "Pending",
       kotRounds: 1,
@@ -1559,7 +1688,7 @@ async function leg17(): Promise<void> {
   );
 
   const shipDayTicket = printedSlipNumber(await nextSlipSequence("kot"), printCfg.kot.numberStart);
-  const shipDayNewItem = line("p-toast", "Toast", 60, 1, 0); // kotRound stamped by buildItemsWrite
+  const shipDayNewItem = line(fixtureHex("p-toast"), "Toast", 60, 1, 0); // kotRound stamped by buildItemsWrite
   const shipDayWrite = buildItemsWrite(
     beforeShipDay!,
     [shipDayNewItem],
@@ -1592,7 +1721,7 @@ async function leg17(): Promise<void> {
   const alignedOrder = await Order.create({
     ...buildOrder({
       orderId: "ORD-LEG17-ALIGNED-001",
-      items: [line("p-tea", "Tea", 100, 2, 1)],
+      items: [line(fixtureHex("p-tea"), "Tea", 100, 2, 1)],
       payment: "Unpaid",
       status: "Pending",
       kotRounds: 1,
@@ -1601,7 +1730,7 @@ async function leg17(): Promise<void> {
   });
   const beforeAligned = await Order.findById(alignedOrder._id).lean<LeanOrder>();
   const alignedTicket2 = printedSlipNumber(await nextSlipSequence("kot"), printCfg.kot.numberStart);
-  const alignedNewItem = line("p-water", "Water", 20, 1, 0);
+  const alignedNewItem = line(fixtureHex("p-water"), "Water", 20, 1, 0);
   const alignedWrite = buildItemsWrite(
     beforeAligned!,
     [alignedNewItem],
@@ -1634,6 +1763,206 @@ async function leg17(): Promise<void> {
     "c) invariant: kotNumbers.length === kotRounds on every numbered tab in this leg",
     numberedTabs.length === 2 && numberedTabs.every((o) => (o.kotNumbers?.length ?? -1) === o.kotRounds),
   );
+}
+
+async function leg18(): Promise<void> {
+  console.log(
+    "\nLeg 18 — CB-2.8 GST discount end-to-end: create/(+round)/void/settle all re-derive discountKind:\"gst\" against the tab's own snapshot; amount gates the kind; the client's number is ignored\n",
+  );
+
+  // ── a) create with discountKind:"gst" on an exclusive-GST cfg (rate 18,
+  // items summing to 1000) — the pinned never-above-the-pre-tax-figure shape
+  // (S=1000, r=18 -> discount 153, total 999) reproduces the plan's own table.
+  const gstCfgExcl18: GstConfig = { gstEnabled: true, gstRate: 18, gstMode: "exclusive" };
+  const itemsA = [line(fixtureHex("p-thali"), "Thali", 1000, 1, 1)];
+  const oracleA = computeOrderTotals({
+    items: itemsA, discount: 0, discountKind: "gst", charge: 0, cfg: gstCfgExcl18,
+  });
+  const seededA = buildOrder({
+    orderId: "ORD-LEG18-A-001",
+    items: itemsA,
+    payment: "Unpaid",
+    status: "Pending",
+    kotRounds: 1,
+    gstRate: 18,
+    gstMode: "exclusive",
+    discountKind: "gst",
+  });
+  const orderA = await Order.create(seededA);
+  check(
+    "a) create stores discount === the oracle's re-derived figure (153)",
+    orderA.discount === oracleA.discount && oracleA.discount === 153,
+  );
+  check('a) create stores discountKind === "gst"', orderA.discountKind === "gst");
+  check("a) create stores total === 999 (the pinned never-above shortfall)", orderA.total === 999);
+  check("a) create stores gstAmount === 152", orderA.gstAmount === 152);
+
+  // ── b) add a round (+500) with discountKind OMITTED from the body — the
+  // effective kind resolves to the STORED "gst" (resolveDiscountKind(undefined,
+  // "gst") === "gst"), so the discount re-derives UPWARD over ALL items (the
+  // full item set now sums to 1500) and the kind survives untouched.
+  const afterA = await Order.findById(orderA._id).lean<LeanOrder>();
+  if (!afterA) throw new Error("leg18: seed order A missing before round-fire");
+  const roundItemB = line(fixtureHex("p-extra"), "Extra Dish", 500, 1, 0); // kotRound stamped by buildItemsWrite
+  const writeB = buildItemsWrite(afterA, [roundItemB], undefined, gstCfgExcl18, undefined, undefined, undefined);
+  const resultB = await Order.findOneAndUpdate(writeB.filter, writeB.update, {
+    new: true,
+    runValidators: true,
+  }).lean();
+  check("b) the round-fire write matches and applies", resultB !== null);
+  const oracleB = computeOrderTotals({
+    items: writeB.fullItems, discount: afterA.discount, discountKind: "gst", charge: 0, cfg: gstCfgExcl18,
+  });
+  check(
+    "b) discount re-derives UPWARD to the oracle over all items (1500 @18% exclusive)",
+    resultB?.discount === oracleB.discount && oracleB.discount > oracleA.discount,
+  );
+  check('b) discountKind is still "gst" after the round-fire (kind survives, discountKindBody omitted)', resultB?.discountKind === "gst");
+
+  // ── c) void one line — the discount re-derives DOWNWARD to the oracle over
+  // the remaining items, kind still "gst" (the re-derived discount stays > 0).
+  const beforeVoidC = await Order.findById(orderA._id).lean<LeanOrder>();
+  if (!beforeVoidC) throw new Error("leg18: seed order A missing before void");
+  const voidRequestC: ItemVoidRequest = {
+    index: 1, // the round-2 Extra Dish line just added
+    lineKey: lineKeyOf(beforeVoidC.items[1]),
+    qty: 1,
+    reason: "Guest changed mind",
+    voidedBy: "Verifier",
+    at: new Date(),
+  };
+  const { old: oldC, resolution: resolutionC, result: resultC } = await attemptVoid(
+    orderA._id,
+    voidRequestC,
+    gstCfgExcl18,
+  );
+  check("c) the void resolves and lands", resultC !== null && !("error" in resolutionC));
+  if (resultC && !("error" in resolutionC)) {
+    const oracleC = computeOrderTotals({
+      items: resultC.items, discount: oldC.discount, discountKind: oldC.discountKind, charge: 0, cfg: gstCfgExcl18,
+    });
+    check(
+      "c) discount re-derives DOWNWARD to the oracle over the remaining items (back to the 1000-item bill)",
+      resultC.discount === oracleC.discount && oracleC.discount < oracleB.discount,
+    );
+    check('c) discountKind is still "gst" after the void', resultC.discountKind === "gst");
+  }
+
+  // ── d) settle with discountKind:null + a manual discount:50 — the operator
+  // cleared the preset (resolveDiscountKind(null, "gst") === undefined), so
+  // computeOrderTotals uses the SUPPLIED discount verbatim; the settle route's
+  // amount-gates-kind branch then $unsets discountKind since effectiveKind is
+  // no longer "gst". Assert the KEY is absent (`in`), not merely `=== undefined`.
+  const beforeSettleD = await Order.findById(orderA._id).lean<LeanOrder>();
+  if (!beforeSettleD) throw new Error("leg18: seed order A missing before settle");
+  let settledD: Record<string, unknown> | null = null;
+  try {
+    const writeD = buildSettleWrite(
+      beforeSettleD,
+      { payment: "Cash", discount: 50, discountKind: null },
+      gstCfgExcl18,
+    );
+    if (!writeD.ok) throw new Error(`leg18: settle D should resolve cleanly, got error: ${writeD.money.error}`);
+    settledD = await Order.findOneAndUpdate(writeD.filter, writeD.update, {
+      new: true,
+      runValidators: true,
+    }).lean();
+  } catch (writeError) {
+    // A WriteError here would mean $set and $unset both carried discountKind —
+    // fail loudly with the driver's own message rather than swallow it.
+    check(
+      `d) the settle write never throws (both $set/$unset carrying discountKind would WriteError): ${writeError instanceof Error ? writeError.message : String(writeError)}`,
+      false,
+    );
+  }
+  check("d) the settle write matches and applies", settledD !== null);
+  check("d) stored discount === 50 (the manual figure, preset cleared)", settledD?.discount === 50);
+  check(
+    'd) "discountKind" in doc === false (the KEY is absent, not merely undefined)',
+    !!settledD && !("discountKind" in settledD),
+  );
+
+  // ── e) create with discountKind:"gst" on a bill too small to yield a
+  // discount (subtotal 7 @ rate 5, exclusive -> derived 0) — amount gates the
+  // kind, so no discountKind is stored at all.
+  const gstCfgExcl5: GstConfig = { gstEnabled: true, gstRate: 5, gstMode: "exclusive" };
+  const itemsE = [line(fixtureHex("p-tiny"), "Tiny Item", 7, 1, 1)];
+  const oracleE = computeOrderTotals({
+    items: itemsE, discount: 0, discountKind: "gst", charge: 0, cfg: gstCfgExcl5,
+  });
+  check("e) sanity: the oracle itself derives 0 on this tiny bill", oracleE.discount === 0);
+  const seededE = buildOrder({
+    orderId: "ORD-LEG18-E-001",
+    items: itemsE,
+    payment: "Unpaid",
+    status: "Pending",
+    kotRounds: 1,
+    gstRate: 5,
+    gstMode: "exclusive",
+    discountKind: "gst",
+  });
+  const orderE = await Order.create(seededE);
+  check("e) stored discount === 0", orderE.discount === 0);
+  check(
+    "(vision guard) e) the tiny-bill order otherwise stores its other GST fields normally (gstRate 5, subtotal 7, total unchanged at 7 since neither discount nor gst apply at this size) — the absence below is the discountKind gate, not a broken write",
+    orderE.gstRate === 5 && orderE.subtotal === 7 && orderE.total === 7,
+  );
+  check('e) "discountKind" in doc === false', !("discountKind" in (await Order.findById(orderE._id).lean())!));
+
+  // ── f) create with a bogus discount:9999 AND discountKind:"gst" — the
+  // client's number is IGNORED; the stored figure is the derived one.
+  const itemsF = [line(fixtureHex("p-thali2"), "Thali", 1000, 1, 1)];
+  const oracleF = computeOrderTotals({
+    items: itemsF, discount: 9999, discountKind: "gst", charge: 0, cfg: gstCfgExcl18,
+  });
+  check(
+    "f) sanity: the oracle itself ignores the bogus 9999 and derives 153 regardless",
+    oracleF.discount === 153,
+  );
+  const seededF = buildOrder({
+    orderId: "ORD-LEG18-F-001",
+    items: itemsF,
+    payment: "Unpaid",
+    status: "Pending",
+    kotRounds: 1,
+    gstRate: 18,
+    gstMode: "exclusive",
+    discount: 9999,
+    discountKind: "gst",
+  });
+  const orderF = await Order.create(seededF);
+  const rereadF = await Order.findById(orderF._id).lean();
+  check(
+    "f) stored discount is the DERIVED figure (153), not the bogus client number (9999)",
+    orderF.discount === 153 && rereadF?.discount !== 9999,
+  );
+  check('f) stored discountKind === "gst"', orderF.discountKind === "gst");
+
+  // ── g) inclusive-mode cfg (rate 5, subtotal 1000) create with "gst" —
+  // stored discount === 48, total === 952, gstAmount === 0 (inclusive mode adds
+  // no GST on top; the tax is already inside what remains after the discount).
+  const gstCfgIncl5: GstConfig = { gstEnabled: true, gstRate: 5, gstMode: "inclusive" };
+  const itemsG = [line(fixtureHex("p-thali3"), "Thali", 1000, 1, 1)];
+  const oracleG = computeOrderTotals({
+    items: itemsG, discount: 0, discountKind: "gst", charge: 0, cfg: gstCfgIncl5,
+  });
+  const seededG = buildOrder({
+    orderId: "ORD-LEG18-G-001",
+    items: itemsG,
+    payment: "Unpaid",
+    status: "Pending",
+    kotRounds: 1,
+    gstRate: 5,
+    gstMode: "inclusive",
+    discountKind: "gst",
+  });
+  const orderG = await Order.create(seededG);
+  check(
+    "g) inclusive-mode stored discount === 48 (matches the oracle)",
+    orderG.discount === 48 && oracleG.discount === 48,
+  );
+  check("g) inclusive-mode stored total === 952", orderG.total === 952);
+  check("g) inclusive-mode stored gstAmount === 0", orderG.gstAmount === 0);
 }
 
 async function main(): Promise<void> {
@@ -1670,6 +1999,7 @@ async function main(): Promise<void> {
     await leg15();
     await leg16();
     await leg17();
+    await leg18();
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();

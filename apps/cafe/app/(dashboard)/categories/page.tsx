@@ -21,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { PageHeader } from "@/components/shared/PageHeader";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import type { Category } from "@/types";
@@ -95,17 +96,15 @@ export default function CategoriesPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Categories</h2>
-          <p className="text-sm text-muted-foreground">
-            Organize the menu. Order here controls the POS layout.
-          </p>
-        </div>
-        <Button onClick={openAdd}>
-          <Plus className="mr-2 h-4 w-4" /> Add category
-        </Button>
-      </div>
+      <PageHeader
+        title="Categories"
+        description="Organize the menu. Order here controls the POS layout."
+        actions={
+          <Button onClick={openAdd}>
+            <Plus className="mr-2 h-4 w-4" /> Add category
+          </Button>
+        }
+      />
 
       {categories.isLoading ? (
         <div className="space-y-2 rounded-lg border p-4">
@@ -185,7 +184,7 @@ export default function CategoriesPage() {
             </DialogTitle>
             <DialogDescription>
               {editing
-                ? "Renaming updates this category on all its products."
+                ? "Products keep their link to this category, so the new name shows everywhere."
                 : "Categories group menu items in the POS."}
             </DialogDescription>
           </DialogHeader>
@@ -227,7 +226,7 @@ export default function CategoriesPage() {
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}
         title="Delete category?"
-        description="Products in this category will be moved to “Uncategorized”, not deleted."
+        description="A category can only be deleted once it has no products. Move its products to another category first."
         confirmLabel="Delete"
         isLoading={deleteCategory.isPending}
         onConfirm={confirmDelete}

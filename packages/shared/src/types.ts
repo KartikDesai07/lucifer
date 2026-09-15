@@ -38,10 +38,12 @@ import type {
   PaperWidth,
   PrintFontSize,
   PrintLogoSize,
+  DiscountKind,
 } from "./constants";
 import type { ImportRowStatus } from "./product-import";
 import type { DuesCollected } from "./types-analytics";
 import type { PromoCodeConfig, SelfOrderMode } from "./public";
+import type { LoyaltyRewardKind } from "./public-diner";
 
 import type {
   PaymentMode,
@@ -71,7 +73,7 @@ export interface ProductVariation {
 export interface Product {
   _id: string;
   name: string;
-  category: string; // denormalized category name
+  categoryId: string; // ObjectId hex of the Category (join client-side against the categories master)
   price: number;
   // The named sizes this item sells in, each with its own price. ABSENT (never
   // `[]`) when the item is sold one way only — and when present it OVERRIDES
@@ -151,6 +153,22 @@ export interface OrderItem {
   modifiers: string[];
   instructions: string;
   kotRound: number; // KOT round this line was fired in (0 = not yet sent / legacy)
+  // D5 REVERSAL (CB-5B S11/S12) — marks this line as given as a loyalty
+  // reward: it prints at its REAL `price` everywhere (bill, KOT, void trail,
+  // reports), but is EXCLUDED from the subtotal/total/GST (lib/receipt.ts's
+  // subtotal reducer is the one place that reads this flag). Absent = a
+  // normally-sold line, which is every order before this reversal. Set ONLY
+  // by a server-side builder (S12) — see `orderItemSchema`'s deliberate
+  // absence of this key for the client-side half of that fence.
+  reward?: true;
+  // CB-5B S14 — the marker stored beside a reward line ("Reward — free",
+  // REWARD_ITEM_LINE_NOTE). Stored on the line rather than re-derived at render
+  // time, for the same reason the order's GST fields are snapshotted: a reprint
+  // years later must reproduce the paper as it was ISSUED, and the live
+  // constant may have been reworded since. models/Order.ts has carried this
+  // field since S12; it was missing HERE, which is why nothing client-side
+  // could render or forward it.
+  note?: string;
 }
 
 // One append-only entry in an order's void trail (CR1.3): a snapshot of what was
@@ -178,6 +196,10 @@ export interface OrderVoid {
   // the round tickets — a void slip is paper the kitchen has to reconcile too.
   // Absent when the cafe does not number tickets, or excludes voids from it.
   kotNumber?: number;
+  // Snapshotted from the voided line (see OrderItem.reward above) so the void
+  // trail records that the stopped dish was given as a loyalty reward, not
+  // sold at its listed price.
+  reward?: true;
 }
 
 export interface Order {
@@ -188,6 +210,15 @@ export interface Order {
   items: OrderItem[];
   subtotal: number;
   discount: number; // flat amount at order level
+  discountKind?: DiscountKind; // "gst" = the amount is the GST-equivalent preset, re-derived server-side; "reward" = a redeemed loyalty milestone (CB-5B); absent = a manual discount
+  // CB-5B reward redemption snapshot — WHICH milestone was claimed, stored so
+  // a re-tuned ladder can never re-price an already-issued redemption (mirrors
+  // the GST snapshot fields below). Present only when discountKind === "reward".
+  rewardAt?: number; // the milestone rung claimed (stamps)
+  rewardKind?: LoyaltyRewardKind;
+  rewardValue?: number;
+  rewardItem?: string; // "" legal when rewardKind is not "item"
+  rewardStamps?: number; // stamps DEBITED — the cost, stored, never re-derived
   gstAmount?: number; // GST added on top (exclusive mode); 0/absent otherwise
   gstRate?: number; // GST rate snapshot at order time (0 if GST was off then)
   gstMode?: GstMode; // GST mode snapshot at order time

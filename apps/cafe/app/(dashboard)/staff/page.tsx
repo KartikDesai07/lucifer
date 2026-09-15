@@ -17,10 +17,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { AdminGuard } from "@/components/shared/AdminGuard";
+import { PageHeader } from "@/components/shared/PageHeader";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { StaffFormSheet } from "@/components/staff/StaffFormSheet";
 import { ResetPasswordDialog } from "@/components/staff/ResetPasswordDialog";
+import { StaffRowCard } from "@/components/staff/StaffRowCard";
 import type { Staff } from "@/types";
 
 export default function StaffPage() {
@@ -68,17 +70,15 @@ function StaffManager() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Staff</h2>
-          <p className="text-sm text-muted-foreground">
-            Manage team logins and roles. Admin only.
-          </p>
-        </div>
-        <Button onClick={openAdd}>
-          <Plus className="mr-2 h-4 w-4" /> Add staff
-        </Button>
-      </div>
+      <PageHeader
+        title="Staff"
+        description="Manage team logins and roles. Admin only."
+        actions={
+          <Button onClick={openAdd}>
+            <Plus className="mr-2 h-4 w-4" /> Add staff
+          </Button>
+        }
+      />
 
       {staff.isLoading ? (
         <div className="space-y-2 rounded-lg border p-4">
@@ -102,105 +102,127 @@ function StaffManager() {
           }
         />
       ) : (
-        <div className="rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Username</TableHead>
-                <TableHead>Mobile</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-36 text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {list.map((member) => {
-                const isSelf = member._id === user?.id;
-                const protectedAccount = isSelf || member.role === "admin";
-                return (
-                  <TableRow key={member._id}>
-                    <TableCell className="font-medium">
-                      {member.name}
-                      {isSelf && (
-                        <span className="ml-1 text-xs text-muted-foreground">
-                          (you)
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {member.username}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {member.mobile}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={member.role === "admin" ? "default" : "secondary"}
-                        className="capitalize"
-                      >
-                        {member.role}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={member.isActive ? "outline" : "secondary"}>
-                        {member.isActive ? "Active" : "Inactive"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => openEdit(member)}
-                          aria-label="Edit staff"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setResetting(member)}
-                          aria-label="Reset password"
-                          title="Reset password"
-                        >
-                          <KeyRound className="h-4 w-4" />
-                        </Button>
-                        {member.isActive ? (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            disabled={protectedAccount}
-                            onClick={() => setDeactivating(member)}
-                            aria-label="Deactivate staff"
-                            title={
-                              protectedAccount
-                                ? "Admin accounts cannot be deactivated"
-                                : "Deactivate"
-                            }
-                          >
-                            <UserX className="h-4 w-4 text-destructive" />
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            disabled={updateStaff.isPending}
-                            onClick={() => reactivate(member)}
-                            aria-label="Reactivate staff"
-                            title="Reactivate"
-                          >
-                            <UserCheck className="h-4 w-4 text-green-600" />
-                          </Button>
+        <>
+          <div className="hidden rounded-lg border md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Username</TableHead>
+                  <TableHead>Mobile</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-36 text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {list.map((member) => {
+                  const isSelf = member._id === user?.id;
+                  const protectedAccount = isSelf || member.role === "admin";
+                  return (
+                    <TableRow key={member._id}>
+                      <TableCell className="font-medium">
+                        {member.name}
+                        {isSelf && (
+                          <span className="ml-1 text-xs text-muted-foreground">
+                            (you)
+                          </span>
                         )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {member.username}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {member.mobile}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={member.role === "admin" ? "default" : "secondary"}
+                          className="capitalize"
+                        >
+                          {member.role}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={member.isActive ? "outline" : "secondary"}>
+                          {member.isActive ? "Active" : "Inactive"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openEdit(member)}
+                            aria-label="Edit staff"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setResetting(member)}
+                            aria-label="Reset password"
+                            title="Reset password"
+                          >
+                            <KeyRound className="h-4 w-4" />
+                          </Button>
+                          {member.isActive ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              disabled={protectedAccount}
+                              onClick={() => setDeactivating(member)}
+                              aria-label="Deactivate staff"
+                              title={
+                                protectedAccount
+                                  ? "Admin accounts cannot be deactivated"
+                                  : "Deactivate"
+                              }
+                            >
+                              <UserX className="h-4 w-4 text-destructive" />
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              disabled={updateStaff.isPending}
+                              onClick={() => reactivate(member)}
+                              aria-label="Reactivate staff"
+                              title="Reactivate"
+                            >
+                              <UserCheck className="h-4 w-4 text-green-600" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="space-y-2 md:hidden">
+            {list.map((member) => {
+              const isSelf = member._id === user?.id;
+              const protectedAccount = isSelf || member.role === "admin";
+              return (
+                <StaffRowCard
+                  key={member._id}
+                  member={member}
+                  isSelf={isSelf}
+                  protectedAccount={protectedAccount}
+                  reactivateDisabled={updateStaff.isPending}
+                  onEdit={openEdit}
+                  onResetPassword={setResetting}
+                  onDeactivate={setDeactivating}
+                  onReactivate={reactivate}
+                />
+              );
+            })}
+          </div>
+        </>
       )}
 
       <StaffFormSheet

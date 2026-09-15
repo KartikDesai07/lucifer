@@ -9,6 +9,7 @@ import { useTables } from "@/hooks/use-tables";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/shared/PageHeader";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { QrSheet, QR_PRINT_STYLE } from "@/components/tables/QrSheet";
 
@@ -60,29 +61,27 @@ export default function TableQrPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2 print:hidden">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Table QR codes</h2>
-          <p className="text-sm text-muted-foreground">
-            One sticker per table for the public menu. Prints on A4 — cut
-            along the grid.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/tables">
-              <ArrowLeft className="mr-2 h-4 w-4" /> Back to tables
-            </Link>
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => printSheet()}
-            disabled={!hasTables}
-          >
-            <Printer className="mr-2 h-4 w-4" /> Print
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        className="print:hidden"
+        title="Table QR codes"
+        description="One sticker per table for the public menu. Prints on A4 — cut along the grid."
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/tables">
+                <ArrowLeft className="mr-2 h-4 w-4" /> Back to tables
+              </Link>
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => printSheet()}
+              disabled={!hasTables}
+            >
+              <Printer className="mr-2 h-4 w-4" /> Print
+            </Button>
+          </div>
+        }
+      />
 
       {tables.isLoading ? (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">

@@ -1,5 +1,7 @@
 "use client";
 
+import { memo } from "react";
+
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 
 interface FreeTablePromptState {
@@ -7,7 +9,7 @@ interface FreeTablePromptState {
   orderId: string;
 }
 
-interface PosPromptsProps {
+export interface PosPromptsProps {
   // Discard-unsent-items guard when leaving a resumed tab without settling.
   closeConfirmOpen: boolean;
   onCloseConfirmOpenChange: (open: boolean) => void;
@@ -27,7 +29,8 @@ interface PosPromptsProps {
 
 // The three POS confirm dialogs in one place — extracted out of pos/page.tsx
 // to keep that file under the line budget.
-export function PosPrompts({
+// Memoized (CB-1d.3c): PosModals latches its callbacks, so a closed prompt bails out.
+export const PosPrompts = memo(function PosPrompts({
   closeConfirmOpen,
   onCloseConfirmOpenChange,
   onConfirmCloseTab,
@@ -72,4 +75,4 @@ export function PosPrompts({
       />
     </>
   );
-}
+});

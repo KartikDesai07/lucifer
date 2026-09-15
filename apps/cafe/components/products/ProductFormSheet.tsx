@@ -6,7 +6,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
 import { createProductSchema, type CreateProductInput } from "@/schemas";
-import { UNCATEGORIZED } from "@/lib/constants";
 import { useCreateProduct, useUpdateProduct } from "@/hooks/use-products";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -39,7 +38,7 @@ type ProductFormValues = z.input<typeof createProductSchema>;
 
 const emptyValues: ProductFormValues = {
   name: "",
-  category: "",
+  categoryId: "",
   price: 0,
   // Absent (never []) — the schema is omit-empty, so a plain item stores no
   // `variations` key at all. The "Has variations" switch is what turns this
@@ -79,7 +78,7 @@ export function ProductFormSheet({
       product
         ? {
             name: product.name,
-            category: product.category,
+            categoryId: product.categoryId,
             price: product.price,
             variations: product.variations,
             discount: product.discount,
@@ -99,16 +98,6 @@ export function ProductFormSheet({
   const variations = useWatch({ control, name: "variations" });
   const hasVariations = Array.isArray(variations);
 
-  // The product's own category may have been deleted/renamed to Uncategorized —
-  // keep it selectable so editing never silently drops it.
-  const categoryNames = Array.from(
-    new Set([
-      ...categories.map((c) => c.name),
-      ...(product?.category ? [product.category] : []),
-      UNCATEGORIZED,
-    ]),
-  );
-
   const onSubmit = async (values: CreateProductInput) => {
     try {
       if (isEdit) {
@@ -118,7 +107,7 @@ export function ProductFormSheet({
           id: product._id,
           data: {
             name: values.name,
-            category: values.category,
+            categoryId: values.categoryId,
             price: values.price,
             // `null`, never undefined, when the switch is OFF: JSON.stringify drops
             // an undefined key, so an absent one reads as "leave the stored sizes
@@ -174,19 +163,19 @@ export function ProductFormSheet({
         <Input autoFocus aria-invalid={!!errors.name} {...register("name")} />
       </FormField>
 
-      <FormField label="Category" error={errors.category?.message}>
+      <FormField label="Category" error={errors.categoryId?.message}>
         <Controller
           control={control}
-          name="category"
+          name="categoryId"
           render={({ field }) => (
             <Select value={field.value} onValueChange={field.onChange}>
-              <SelectTrigger aria-invalid={!!errors.category}>
+              <SelectTrigger aria-invalid={!!errors.categoryId}>
                 <SelectValue placeholder="Select a category" />
               </SelectTrigger>
               <SelectContent>
-                {categoryNames.map((name) => (
-                  <SelectItem key={name} value={name}>
-                    {name}
+                {categories.map((c) => (
+                  <SelectItem key={c._id} value={c._id}>
+                    {c.name}
                   </SelectItem>
                 ))}
               </SelectContent>

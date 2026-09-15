@@ -68,5 +68,10 @@ export default auth(async (req) => {
 export const config = {
   // Guard page routes only. API routes authorize themselves; Next internals and the
   // favicon are always allowed.
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+  //
+  // CB-1d.2: install-icon PNGs under /icons are excluded too — the browser
+  // fetches them cookie-less at PWA install time (same as the manifest
+  // fetch), so a 307 to /login there would make the install prompt silently
+  // fall back to a letter tile instead of the product icon.
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|icons/).*)"],
 };

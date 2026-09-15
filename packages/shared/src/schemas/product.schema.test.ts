@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   productVariationSchema,
   createProductSchema,
+  importProductRowSchema,
 } from "./product.schema";
 import { coerceProductRow } from "../product-import";
 import {
@@ -22,7 +23,7 @@ import {
 //     below; the DB round-trip half is the live leg
 //     (scripts/verify-variations-live.ts).
 
-const BASE = { name: "Cold Coffee", category: "Beverages", price: 120 };
+const BASE = { name: "Cold Coffee", categoryId: "64b7f0c2a1d2e3f4a5b6c7d8", price: 120 };
 
 // ── productVariationSchema: name + price bounds ─────────────────────────────
 
@@ -128,12 +129,65 @@ test("coerceProductRow never produces a `variations` key, even when the raw CSV 
   );
 });
 
-test("importProductRowSchema (createProductSchema run over a coerced CSV row) parses `variations` as absent, matching a hand-authored product with no variations", () => {
-  const coerced = coerceProductRow({ name: "Tea", category: "Beverages", price: "40" });
-  const r = createProductSchema.safeParse(coerced);
+test("importProductRowSchema parses a raw CSV row with `variations` absent, matching a hand-authored product with no variations", () => {
+  const r = importProductRowSchema.safeParse({ name: "Tea", category: "Beverages", price: "40" });
   assert.equal(r.success, true);
   assert.ok(
     r.success && !("variations" in r.data),
     "a CSV-derived product must parse with variations ABSENT, exactly like the omit-empty contract for a hand-authored one",
   );
+});
+
+// ── categoryId (createProductSchema): "Category is required" on BOTH a
+// missing key and a non-hex value; importProductRowSchema keeps the NAME
+// column instead (server resolves the name to an id) ────────────────────────
+
+test("createProductSchema: a missing categoryId fails with path ['categoryId'] and message 'Category is required'", () => {
+  const { categoryId: _drop, ...withoutCategoryId } = BASE;
+  const r = createProductSchema.safeParse(withoutCategoryId);
+  assert.equal(r.success, false);
+  if (!r.success) {
+    const issue = r.error.issues.find((i) => i.path[0] === "categoryId");
+    assert.ok(issue, "expected an issue on categoryId");
+    assert.equal(issue?.message, "Category is required");
+  }
+});
+
+test("createProductSchema: an upper-case hex categoryId is rejected with message 'Category is required'", () => {
+  const r = createProductSchema.safeParse({ ...BASE, categoryId: BASE.categoryId.toUpperCase() });
+  assert.equal(r.success, false);
+  if (!r.success) {
+    const issue = r.error.issues.find((i) => i.path[0] === "categoryId");
+    assert.equal(issue?.message, "Category is required");
+  }
+});
+
+test("createProductSchema: a 23-char categoryId is rejected with message 'Category is required'", () => {
+  const r = createProductSchema.safeParse({ ...BASE, categoryId: BASE.categoryId.slice(0, 23) });
+  assert.equal(r.success, false);
+  if (!r.success) {
+    const issue = r.error.issues.find((i) => i.path[0] === "categoryId");
+    assert.equal(issue?.message, "Category is required");
+  }
+});
+
+test("createProductSchema: a valid 24-char lower-case hex categoryId parses through", () => {
+  assert.equal(createProductSchema.safeParse(BASE).success, true);
+});
+
+test("importProductRowSchema still accepts a raw CSV row with a NAME category column, and the parsed output carries `category` (the name) and no `categoryId`", () => {
+  const r = importProductRowSchema.safeParse({ name: "Tea", category: "Beverages", price: "40" });
+  assert.equal(r.success, true);
+  if (r.success) {
+    assert.equal(r.data.category, "Beverages");
+    assert.ok(!("categoryId" in r.data), "the CSV row schema must never produce a categoryId key — the route resolves the name server-side");
+  }
+});
+
+test("importProductRowSchema rejects a row with no category with path ['category']", () => {
+  const r = importProductRowSchema.safeParse({ name: "Tea", price: "40" });
+  assert.equal(r.success, false);
+  if (!r.success) {
+    assert.equal(r.error.issues.some((i) => i.path[0] === "category"), true);
+  }
 });

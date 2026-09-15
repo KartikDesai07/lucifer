@@ -31,6 +31,7 @@ import { buildRequestDoc, type IntakeTable } from "@/lib/order-request-intake";
 import { priceRequestItems, type PricedProductSource } from "@/lib/public-pricing";
 import { mintUniquePublicCode } from "@/lib/public-token";
 import { SELF_ORDER_RECEIVER } from "@pos/shared/public";
+import { ensureCategoryId } from "./verify-shared/ensure-category";
 import { PULSE_SELF_ORDER_WINDOW_MS, PULSE_OPEN_SCAN_LIMIT, PULSE_SELF_ORDER_LIMIT } from "@pos/shared/self-order-alert";
 import type { CreatePublicOrderRequestInput } from "@pos/shared/schemas/public-order.schema";
 
@@ -55,7 +56,7 @@ let teaId: string;
 async function seedProducts(): Promise<void> {
   const tea = await Product.create({
     name: "Tea",
-    category: "Beverages",
+    categoryId: await ensureCategoryId("Beverages"),
     price: 100,
     discount: 0,
     available: true,
@@ -107,7 +108,7 @@ async function stageRequest(
 function rawOrderRequest(overrides: Partial<IOrderRequest> & { shortCode: string }) {
   return {
     targetKind: "parcel" as const,
-    items: [{ productId: "p-x", name: "Item", price: 100, qty: 1, modifiers: [], instructions: "" }],
+    items: [{ productId: "00000000000000000000aaa2", name: "Item", price: 100, qty: 1, modifiers: [], instructions: "" }],
     quotedSubtotal: 100,
     quotedCharge: 0,
     quotedTotal: 100,

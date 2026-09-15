@@ -3,17 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
-  PUBLIC_NOTE_MAX_LEN,
   PUBLIC_ORDER_MAX_QTY,
   type PublicOrderRequestStatusData,
   type PublicOrderRequestUpdatedData,
   type PublicStatusItem,
 } from "@pos/shared/public";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { ABOVE_TAB_BAR_CLASS } from "@/components/public/public-shell-layout";
+import { cn } from "@/lib/utils";
 import { PublicPromoField } from "@/components/public/PublicPromoField";
-import { StatusItemRow } from "@/components/public/PublicStatusItemRow";
+import { PublicStatusItemList } from "@/components/public/PublicStatusItemList";
+import { PublicStatusNoteField } from "@/components/public/PublicStatusNoteField";
 import {
   ACCEPTED_EDIT_NOTICE,
   buildStatusPatchBody,
@@ -220,43 +220,21 @@ export function PublicStatusItems({ shortCode, items, note, promoCode, quotedDis
 
   return (
     <div className="space-y-2">
-      <div className="divide-y rounded-lg border">
-        {editable && draft.length === 0 ? (
-          <p className="p-3 text-sm text-muted-foreground">No items in this order.</p>
-        ) : (
-          (editable ? draft : items).map((line, i) => (
-            <StatusItemRow
-              key={editable ? (line as DraftLine).lineId : `${line.productId}-${i}`}
-              line={line}
-              controls={
-                editable
-                  ? {
-                      onIncrement: () => updateQty((line as DraftLine).lineId, line.qty + 1),
-                      onDecrement: () => updateQty((line as DraftLine).lineId, line.qty - 1),
-                      onRemove: () => removeLine((line as DraftLine).lineId),
-                    }
-                  : undefined
-              }
-            />
-          ))
-        )}
-      </div>
+      <PublicStatusItemList
+        editable={editable}
+        lines={editable ? draft : items}
+        onIncrement={updateQty}
+        onDecrement={updateQty}
+        onRemove={removeLine}
+      />
 
-      {editable ? (
-        <div className="space-y-1">
-          <Label htmlFor="public-status-note">Note for the kitchen (optional)</Label>
-          <Input
-            id="public-status-note"
-            className="text-base"
-            value={noteDraft}
-            // a fresh edit makes any previous save error stale
-            onChange={(e) => { setError(null); setNoteDraft(e.target.value); }}
-            maxLength={PUBLIC_NOTE_MAX_LEN}
-          />
-        </div>
-      ) : (
-        note && <p className="text-xs italic text-muted-foreground">Note: {note}</p>
-      )}
+      <PublicStatusNoteField
+        editable={editable}
+        note={note}
+        noteDraft={noteDraft}
+        // a fresh edit makes any previous save error stale
+        onChange={(value) => { setError(null); setNoteDraft(value); }}
+      />
 
       {editable && (
         <PublicPromoField
@@ -280,7 +258,7 @@ export function PublicStatusItems({ shortCode, items, note, promoCode, quotedDis
       {editable && error && <p className="text-sm text-destructive">{error}</p>}
 
       {editable && dirty && (
-        <div className="fixed inset-x-0 bottom-0 z-40 space-y-2 border-t bg-background p-3 animate-in slide-in-from-bottom-4 duration-300">
+        <div className={cn("fixed inset-x-0 z-40 space-y-2 border-t bg-background p-3 animate-in slide-in-from-bottom-4 duration-300", ABOVE_TAB_BAR_CLASS)}>
           <Button className="w-full" size="lg" disabled={saving || draft.length === 0} onClick={handleSave}>
             {saving ? "Saving…" : "Save changes"}
           </Button>

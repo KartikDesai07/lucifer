@@ -530,11 +530,11 @@ test("PIN: editDuePayment's no-op guard (amount, mode and note all unchanged) re
 });
 
 // ── C4g. Row filters go through the canonical-id helper ──────────────────────
-// `customerId` is a stored STRING and ObjectId hex is case-insensitive, so the
-// same customer can be spelled two ways across requests. A row filter that
-// matches only the raw path segment (or only the canonical form) makes a row
-// filed under the other spelling invisible to history/edit/delete — exactly
-// the G-series hazard canonicalCustomerId exists to close.
+// `customerId` is a stored ObjectId and ObjectId hex is case-insensitive, so
+// the same customer can be spelled two ways across requests. A row filter
+// that matches only the raw path segment (or only the canonical form) makes a
+// row filed under the other spelling invisible to history/edit/delete —
+// exactly the G-series hazard canonicalCustomerId exists to close.
 
 test("PIN: customerIdFilter matches both the raw id and canonicalCustomerId(id), and every DuePayment row filter in due-payment-admin.ts routes through it", () => {
   const src = stripComments(readSrc(DUE_PAYMENT_ADMIN_LIB));

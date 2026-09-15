@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AdminGuard } from "@/components/shared/AdminGuard";
+import { PageHeader } from "@/components/shared/PageHeader";
 import { SummaryCard } from "@/components/dashboard/SummaryCard";
 import { CustomerDuesTable } from "@/components/reports/CustomerDuesTable";
 import type { PaymentMode } from "@/lib/constants";
@@ -101,12 +102,10 @@ function ReportsContent() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">Reports</h2>
-        <p className="text-sm text-muted-foreground">
-          Sales, products, payments, and outstanding dues by date range.
-        </p>
-      </div>
+      <PageHeader
+        title="Reports"
+        description="Sales, products, payments, and outstanding dues by date range."
+      />
 
       <Card>
         <CardContent className="flex flex-wrap items-end gap-3 p-4">
