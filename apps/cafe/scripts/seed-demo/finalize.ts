@@ -17,6 +17,7 @@ import { computeOrderTotals, type GstConfig } from "@/lib/receipt";
 import { cafeDateString, dayRange, cafeHourOf } from "@/lib/utils";
 import type { CustomerRollup, ExtrasPlan, OrdersPlan, PlannedDuePayment, PlannedOrder } from "./types";
 import { objectIdCensus } from "./finalize-census";
+import { rewardChecksOf, rewardSettingsChecksOf } from "./finalize-reward";
 
 // Mirrors orders-plan-draft.ts's HOUR_WEIGHTS (cafe hours 11:00-22:59 IST) —
 // the earliest hour the planner ever drafts an order into.
@@ -109,6 +110,10 @@ export async function verifySeed(
   const perDaySeq = new Map<string, number[]>();
   const perDayKot = new Map<string, number[]>();
   const perDayBill = new Map<string, number[]>();
+  // CB-5B S16 — reward invariants tallied across the whole loop below, so a
+  // future regression that stops planting reward orders altogether is caught
+  // (a suite that only checks EACH reward order it finds would pass emptily).
+  let rewardOrderCount = 0;
 
   for (const order of dbOrders) {
     if (orderIds.has(order.orderId)) duplicateOrderId = true;
@@ -150,8 +155,15 @@ export async function verifySeed(
     if (order.sourceRequestIds && order.sourceRequestIds.length === 0) {
       check(false, `order ${order.orderId}: sourceRequestIds is [] (must be absent, not empty)`, lines);
     }
+
+    // CB-5B S16 — reward order invariants, split into finalize-reward.ts
+    // (this file's own ~300-line budget).
+    const rewardResult = rewardChecksOf(order, gst);
+    if (rewardResult.isRewardOrder) rewardOrderCount += 1;
+    for (const line of rewardResult.lines) check(line.pass, line.message, lines);
   }
   check(!duplicateOrderId, "orderIds are unique", lines);
+  check(rewardOrderCount >= 1, `at least one order carries discountKind "reward" (${rewardOrderCount})`, lines);
 
   for (const [dayKey, seqs] of perDaySeq) {
     const sorted = [...seqs].sort((a, b) => a - b);
@@ -273,6 +285,16 @@ export async function verifySeed(
 
   const settings = await Settings.findOne().lean();
   check(!!settings, "Settings singleton exists", lines);
+
+  // CB-5B S16 — READ BACK the loyalty ladder and the stamp data the seed
+  // wrote. Without this the whole loyalty-data.ts write path had zero live
+  // verification (reviewer-found): `seedLoyaltyRules` returns its rung from
+  // the IN-MEMORY constants, never from what landed, so a Mongoose
+  // `strict: true` drop on any loyaltyRules path would leave the reward orders
+  // pointing at a rung that does not exist in Settings — ~10 orders no staff
+  // member could ever reproduce, with verifySeed reporting zero failures.
+  // That is exactly the silent-drop class the sibling live legs exist for.
+  for (const line of await rewardSettingsChecksOf(settings, dbOrders)) check(line.pass, line.message, lines);
 
   const admin = await Staff.findOne({ role: "admin" }).lean();
   const staffCount = await Staff.countDocuments({ role: "staff" });

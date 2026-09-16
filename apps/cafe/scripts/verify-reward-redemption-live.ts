@@ -26,14 +26,28 @@ import mongoose from "mongoose";
 import { Order, type IOrder } from "@/models/Order";
 import { Customer } from "@/models/Customer";
 import { Product } from "@/models/Product";
+// CB-5B S16 legs 18/19 — the print-host queue and the Settings doc the settle
+// fence resolves against. Imported here (not inside a scenario) so tsc sees
+// the same module graph the routes do.
+import { PrintJob } from "@/models/PrintJob";
+import { PrintHost } from "@/models/PrintHost";
+import { Settings } from "@/models/Settings";
 import { computeOrderTotals, gstConfigFromOrder } from "@/lib/receipt";
 import { claimRewardStamps, returnRewardStamps, rewardSnapshotFields } from "@/lib/reward-claim";
 import { voidGuardFilter, resolveItemVoid } from "@/lib/order-void";
+import { resolveRewardClaim } from "@/lib/reward-claim";
+import { billPrintJob, kotPrintJob, voidPrintJob } from "@/lib/print-routing";
+import { enqueuePrintJob } from "@/lib/print-queue";
+import { updateSettingsSchema } from "@/schemas";
+import type { Order as ClientOrder, OrderVoid as ClientOrderVoid } from "@/types";
 import { acceptAddRoundBranch } from "@/lib/order-request-accept-addround";
 import type { IOrderRequest } from "@/models/OrderRequest";
 import type { AcceptContext } from "@/lib/order-request-accept";
 import type { ISettings } from "@/models/Settings";
 import { LOYALTY_STAMP_ORDERS_MAX } from "@pos/shared/public-diner";
+import { PRINT_HOST_KEY } from "@pos/shared/print-job";
+import { printJobPayloadSchema } from "@pos/shared/schemas/print-job.schema";
+import { LOYALTY_RULES_SCHEMA_VERSION } from "@pos/shared/loyalty-rules";
 import {
   shouldStoreDiscountKind,
   redemptionSnapshotOf,
@@ -1168,10 +1182,402 @@ async function main(): Promise<void> {
       },
     );
 
+    // ── CB-5B S16 legs 18-20 — the surfaces S13/S14 built, proven LIVE ─────
+    // Scenarios 1-17 prove the reward MONEY path against a real mongod. What
+    // no scenario above touches is what the free dish does AFTER it is stored:
+    // whether a host-routed slip can actually carry it (S14's `.strict()`
+    // blocker), whether settle refuses an item rung against real Settings
+    // (R10), and whether voiding the REWARD LINE ITSELF keeps its provenance
+    // on the trail (scenario 8 voids the ORDINARY line on a reward tab — the
+    // reward line's own void entry has never been written to a real mongod).
+
+    // ── Scenario 18 — the three-surface pin, against a real PrintJob row ───
+    // P-NEW-10 lives DB-free in print-routing.test.ts. What that suite
+    // structurally cannot see: `printOrderSnapshotItemSchema` is `.strict()`,
+    // and the payload is stored as a JSON STRING, so a key the projection
+    // drops or the schema refuses is only visible once the payload has made
+    // the full round trip — built from a doc a real mongod handed back,
+    // parsed by the REAL route schema (app/api/print-jobs/route.ts:22), and
+    // read back out of a persisted PrintJob. That is the exact shape the S14
+    // deploy blocker took: a KOT stamped "invalid-payload" and dismissed, i.e.
+    // the kitchen never told to make the free dish.
+    await scenario(
+      18,
+      "S13/S14 THREE SURFACES: a stored reward order's KOT, BILL and VOID payloads each carry the reward line THROUGH the real .strict() schema and a persisted PrintJob round-trip",
+      async () => {
+        const customerId = await freshCustomer(20);
+        const itemMs = itemMilestone(8, productId, 1);
+        const reward = redemptionSnapshotOf(itemMs);
+        const items = [
+          { productId: new mongoose.Types.ObjectId().toString(), name: "Paneer Thali", price: 260, qty: 1 },
+          { productId, name: "Masala Chai", price: 200, qty: 1, reward: true, note: REWARD_ITEM_LINE_NOTE },
+        ];
+        const totals = computeOrderTotals({
+          items, discount: 0, discountKind: "reward", charge: 0, cfg: NO_GST, reward,
+        });
+        const orderId = nextOrderId();
+        const created = await Order.create({
+          ...buildCreateDoc({
+            orderId, items, totals, discountKind: "reward",
+            reward: { reward, cost: itemMs.at }, customerId,
+          }),
+          tableNo: "T-4",
+          kotNumbers: [11],
+          billNumber: 501,
+        });
+
+        // Read the order back the way the API hands it to the client: the GET
+        // route carries NO projection (app/api/orders/route.ts:62), so the
+        // stored document IS what the print builders receive. Anything Mongoose
+        // dropped on write is therefore missing here too — which is the point.
+        const stored = (await Order.findById(created._id).lean()) as unknown as IOrder;
+        assert.equal(stored.items[1]!.reward, true, "fixture sanity: the reward flag must be STORED before any slip is built");
+        assert.equal(stored.items[1]!.note, REWARD_ITEM_LINE_NOTE, "fixture sanity: the marker note must be STORED too");
+        const clientOrder = JSON.parse(JSON.stringify(stored)) as unknown as ClientOrder;
+
+        // The void trail entry is taken from the REAL resolveItemVoid, not
+        // hand-built. This matters: order-void.ts:171-173 writes
+        // `instructions`/`modifiers` OMIT-EMPTY, and a reward line always
+        // carries `instructions: ""` + `modifiers: []` (reward-claim.ts), so a
+        // genuine reward-line void entry has NEITHER key. A hand-written
+        // fixture that set them to ""/[] would be testing a shape production
+        // never produces — and would keep passing if `voidPrintJob` ever
+        // stopped null-guarding those two fields, while every real reward void
+        // slip broke. Reviewer-found (S16); closed by driving the real builder.
+        const rewardLineForVoid = stored.items[1]!;
+        const resolvedVoid = resolveItemVoid({
+          items: stored.items,
+          request: {
+            index: 1,
+            lineKey: orderLineKey({
+              productId: String(rewardLineForVoid.productId),
+              qty: rewardLineForVoid.qty,
+              kotRound: rewardLineForVoid.kotRound,
+              instructions: rewardLineForVoid.instructions,
+              modifiers: rewardLineForVoid.modifiers,
+              variation: rewardLineForVoid.variation,
+            }),
+            qty: 1,
+            reason: "customer changed mind",
+            voidedBy: "Live Leg Staff",
+            at: new Date(),
+          },
+          discount: stored.discount,
+          discountKind: stored.discountKind,
+          reward,
+          charge: 0,
+          gstCfg: gstConfigFromOrder(stored, NO_GST),
+        });
+        assert.ok(!("error" in resolvedVoid), "fixture: voiding the reward line must resolve");
+        if ("error" in resolvedVoid) return;
+        const voidEntry = resolvedVoid.entry;
+        assert.equal(voidEntry.reward, true, "fixture sanity: the real builder must mark the entry a reward");
+        // The omit-empty shape itself, pinned — so this fixture cannot silently
+        // drift back into the hand-built ""/[] shape it replaced.
+        assert.equal(voidEntry.instructions, undefined, "a reward line's void entry omits `instructions` entirely (order-void.ts omit-empty)");
+        assert.equal(voidEntry.modifiers, undefined, "a reward line's void entry omits `modifiers` entirely (order-void.ts omit-empty)");
+        const clientVoid = JSON.parse(JSON.stringify(voidEntry)) as unknown as ClientOrderVoid;
+
+        const surfaces: Array<{ what: string; job: ReturnType<typeof billPrintJob> }> = [
+          { what: "kot", job: kotPrintJob(clientOrder, 1) },
+          { what: "bill", job: billPrintJob(clientOrder, { reprint: false }) },
+          { what: "void", job: voidPrintJob(clientOrder, clientVoid, { reprint: false }) },
+        ];
+
+        // A host is required or enqueuePrintJob short-circuits on "no-host"
+        // and nothing would be written at all (print-queue.ts:97). PrintHost.key
+        // is UNIQUE, so the row is cleared FIRST and dropped in a finally: a
+        // throw anywhere below would otherwise leak it and make the NEXT run of
+        // this scenario die on a duplicate key — a false RED that hides the
+        // real verdict (measured: this is exactly what an unrelated mutation
+        // run surfaced).
+        await PrintJob.deleteMany({});
+        await PrintHost.deleteMany({});
+        await PrintHost.create({
+          key: PRINT_HOST_KEY,
+          deviceId: "live-leg-device",
+          label: "Live Leg Host",
+          setBy: "Live Leg Staff",
+          setAt: new Date(),
+          lastSeenAt: new Date(),
+        });
+
+        try {
+        for (const { what, job } of surfaces) {
+          // (1) THE REAL GATE. app/api/print-jobs/route.ts:22 parses the body
+          // through this exact schema. `.strict()` makes an unlisted key a
+          // PARSE FAILURE, not a dropped field — the S14 blocker exactly.
+          const parsed = printJobPayloadSchema.safeParse(job.payload);
+          assert.ok(
+            parsed.success,
+            `${what}: the payload must survive the ROUTE's own .strict() parse — ${
+              !parsed.success ? JSON.stringify(parsed.error.flatten()) : ""
+            }`,
+          );
+
+          // (2) Persist and read back. The payload is stored as a JSON string,
+          // so this proves the reward key survives serialization into a real
+          // document and out again, not just an in-memory object.
+          const result = await enqueuePrintJob({
+            payload: parsed.data, label: job.label, queuedBy: "Live Leg Staff",
+          });
+          assert.equal(result.outcome, "queued", `${what}: the job must actually be queued (got ${result.outcome})`);
+          const row = await PrintJob.findById("id" in result ? result.id : "").lean();
+          assert.ok(row, `${what}: the PrintJob row must exist`);
+          const roundTripped = printJobPayloadSchema.parse(JSON.parse(row!.payload));
+
+          // (3) THE SURFACE ASSERTION — the free dish is on the slip, priced.
+          if (roundTripped.kind === "kot" || roundTripped.kind === "bill") {
+            const line = roundTripped.snapshot.items.find((i) => i.reward === true);
+            assert.ok(line, `${what}: the reward line must be present on the slip after the round trip`);
+            assert.equal(line!.price, 200, `${what}: the reward line keeps its REAL price on the slip (D5's whole point)`);
+            assert.equal(line!.note, REWARD_ITEM_LINE_NOTE, `${what}: the marker note must reach the slip`);
+            // Vision guard: the ORDINARY line is there too and carries NO
+            // reward key, so this did not pass by flagging everything.
+            const plain = roundTripped.snapshot.items.find((i) => i.name === "Paneer Thali");
+            assert.ok(plain, `${what}: the ordinary line must still be on the slip`);
+            assert.equal(plain!.reward, undefined, `${what}: an ordinary line must carry NO reward key (the omit-empty fence)`);
+          } else if (roundTripped.kind === "void") {
+            assert.equal(roundTripped.line.reward, true, "void: the voided line must be marked a reward on the slip");
+            assert.equal(roundTripped.line.price, 200, "void: the void slip records the dish's REAL value, never ₹0");
+            // KOTReceipt has no `item.reward` branch, so the marker rides the
+            // instructions STRING (print-routing.ts:142) — if that fold is
+            // lost the kitchen slip stops SAYING it was a reward even though
+            // the flag is present.
+            assert.equal(
+              roundTripped.line.instructions,
+              REWARD_ITEM_LINE_NOTE,
+              "void: the reward marker must be folded into the printed instructions line",
+            );
+            // The void payload embeds `printOrderSnapshot(order)` TOO
+            // (print-routing.ts:161), carrying the same reward/note keys
+            // through the same item sub-schema as the kot/bill slips. Asserted
+            // explicitly (reviewer-found, S16): without this the third surface
+            // only proved its synthesized `line`, and its SNAPSHOT half was
+            // covered incidentally by the safeParse gate rather than named.
+            const voidSnapLine = roundTripped.snapshot.items.find((i) => i.reward === true);
+            assert.ok(voidSnapLine, "void: the reward line must also survive in the void payload's own order snapshot");
+            assert.equal(voidSnapLine!.note, REWARD_ITEM_LINE_NOTE, "void: the snapshot's reward line keeps its marker note");
+            const voidSnapPlain = roundTripped.snapshot.items.find((i) => i.name === "Paneer Thali");
+            assert.ok(voidSnapPlain, "void: the ordinary line must be in the void payload's snapshot too");
+            assert.equal(voidSnapPlain!.reward, undefined, "void: an ordinary line carries NO reward key in the snapshot either");
+          }
+        }
+
+        // The bill total on the slip must still EXCLUDE the free dish — the
+        // slip is what the customer reads, so a regression that re-added the
+        // price would be visible here and nowhere else in this leg.
+        const billJob = printJobPayloadSchema.parse(billPrintJob(clientOrder, { reprint: false }).payload);
+        assert.equal(billJob.kind, "bill");
+        if (billJob.kind === "bill") {
+          assert.equal(billJob.snapshot.total, 260, "the printed bill total must be the ordinary line alone (260), never 460");
+          assert.equal(billJob.snapshot.subtotal, 260, "the printed subtotal must exclude the reward line's price");
+        }
+
+        } finally {
+          await PrintJob.deleteMany({});
+          await PrintHost.deleteMany({});
+        }
+      },
+    );
+
+    // ── Scenario 19 — R10: settle REFUSES an item rung, and spends nothing ─
+    // The fence that keeps the KOT honest: a free dish claimed at payment time
+    // would ask the kitchen to cook after the customer has paid and left. The
+    // DB-free suite pins the `refuseItemKind` branch; what it cannot prove is
+    // the refusal against a rung that came out of a REAL Settings document via
+    // the route's own validator, nor that the refusal leaves the stamp balance
+    // untouched (a refusal that had already debited would be silent theft).
+    await scenario(
+      19,
+      "S5/R10: settle REFUSES an item rung resolved from a REAL Settings doc and spends NO stamps, while create ACCEPTS the same rung",
+      async () => {
+        // Same rerun-safety discipline as scenario 18: Settings is a
+        // single-document collection, so a throw below would leave this
+        // fixture standing and silently steer a later scenario.
+        await Settings.deleteMany({});
+        try {
+        const parsedSettings = updateSettingsSchema.safeParse({
+          loyaltyRules: {
+            v: LOYALTY_RULES_SCHEMA_VERSION,
+            unitLabel: "stamp",
+            milestones: [
+              { at: 8, kind: "item", value: 0, item: "Masala Chai", itemProductId: productId, qty: 1 },
+              { at: 10, kind: "flat", value: 50, item: "" },
+            ],
+          },
+        });
+        assert.ok(
+          parsedSettings.success,
+          `fixture must parse: ${!parsedSettings.success ? JSON.stringify(parsedSettings.error.flatten()) : ""}`,
+        );
+        await Settings.findOneAndUpdate({}, parsedSettings.data, {
+          new: true, upsert: true, setDefaultsOnInsert: true, runValidators: true,
+        }).lean();
+        const settings = (await Settings.findOne().lean()) as unknown as ISettings;
+        assert.equal(
+          settings.loyaltyRules?.milestones?.length,
+          2,
+          "fixture sanity: both rungs must really be STORED — a dropped item rung would make the refusal below pass vacuously",
+        );
+
+        const customerId = await freshCustomer(20);
+        const before = await Customer.findById(customerId).select("stamps").lean();
+        assert.equal(before!.stamps, 20, "fixture sanity: the diner starts funded");
+
+        // THE FENCE — settle/route.ts:93 passes refuseItemKind: true.
+        const atSettle = await resolveRewardClaim({
+          settings, customerId: String(customerId), rewardAt: 8, billTotal: 500, refuseItemKind: true,
+        });
+        assert.ok(!atSettle.ok, "settle must REFUSE an item rung");
+        assert.equal(
+          !atSettle.ok ? atSettle.reason : "",
+          "item-not-at-settle",
+          "the refusal must name the item-at-settle reason, not a balance complaint",
+        );
+
+        // NOTHING was spent. resolveRewardClaim does not claim, but a
+        // regression that folded the claim into the resolver would debit a
+        // diner who was then refused — provable only against a real row.
+        const afterRefusal = await Customer.findById(customerId).select("stamps").lean();
+        assert.equal(afterRefusal!.stamps, 20, "a REFUSED settle claim must leave the stamp balance untouched");
+
+        // The money rung at the SAME settle still resolves — proves the fence
+        // is keyed on the KIND, not on settle refusing every reward.
+        const moneyAtSettle = await resolveRewardClaim({
+          settings, customerId: String(customerId), rewardAt: 10, billTotal: 500, refuseItemKind: true,
+        });
+        assert.ok(moneyAtSettle.ok, "settle must still accept a flat money rung");
+        assert.equal(moneyAtSettle.ok ? moneyAtSettle.reward.kind : "", "flat");
+
+        // And the ORDER-TAKING writers (refuseItemKind: false) accept the very
+        // rung settle just refused — the inverse arm, so this pins a fence and
+        // not a dead rung.
+        const atCreate = await resolveRewardClaim({
+          settings, customerId: String(customerId), rewardAt: 8, billTotal: 500, refuseItemKind: false,
+        });
+        assert.ok(atCreate.ok, "create/add-round must ACCEPT the item rung settle refused");
+        assert.equal(atCreate.ok ? atCreate.reward.kind : "", "item");
+        assert.equal(
+          atCreate.ok ? atCreate.reward.itemProductId : "",
+          productId,
+          "the accepted rung must carry the product reference the dish is resolved from",
+        );
+
+        } finally {
+          await Settings.deleteMany({});
+        }
+      },
+    );
+
+    // ── Scenario 20 — voiding the REWARD LINE ITSELF keeps its provenance ──
+    // Scenario 8 voids the ORDINARY line on a reward tab. The reward line's
+    // OWN void entry is a different write: `IOrderVoid.reward` is an optional
+    // Mongoose path, so a missing schema declaration drops it silently on a
+    // real mongod (the exact class of bug this whole leg exists for) and the
+    // trail then cannot tell a comped dish from a sold one.
+    await scenario(
+      20,
+      "S14: voiding the REWARD LINE stores IOrderVoid.reward on the trail, keeps the reward snapshot, and does NOT re-add the dish's price to the bill",
+      async () => {
+        const customerId = await freshCustomer(20);
+        const itemMs = itemMilestone(8, productId, 1);
+        const reward = redemptionSnapshotOf(itemMs);
+        const items = [
+          { productId: new mongoose.Types.ObjectId().toString(), name: "Paneer Thali", price: 260, qty: 1 },
+          { productId, name: "Masala Chai", price: 200, qty: 1, reward: true, note: REWARD_ITEM_LINE_NOTE },
+        ];
+        const totals = computeOrderTotals({
+          items, discount: 0, discountKind: "reward", charge: 0, cfg: NO_GST, reward,
+        });
+        assert.equal(totals.total, 260, "fixture sanity: the reward line is already untotalled before the void");
+        const created = await Order.create({
+          ...buildCreateDoc({
+            orderId: nextOrderId(), items, totals, discountKind: "reward",
+            reward: { reward, cost: itemMs.at }, customerId,
+          }),
+          payment: "Unpaid", status: "Pending", paidAmount: 0,
+        });
+        const before = (await Order.findById(created._id).lean()) as unknown as IOrder;
+        const rewardLine = before.items[1]!;
+        assert.equal(rewardLine.reward, true, "fixture sanity: the line to void really is the reward line");
+
+        const resolved = resolveItemVoid({
+          items: before.items,
+          request: {
+            index: 1,
+            lineKey: orderLineKey({
+              productId: String(rewardLine.productId),
+              qty: rewardLine.qty,
+              kotRound: rewardLine.kotRound,
+              instructions: rewardLine.instructions,
+              modifiers: rewardLine.modifiers,
+              variation: rewardLine.variation,
+            }),
+            qty: 1,
+            reason: "dish returned",
+            voidedBy: "Live Leg Staff",
+            at: new Date(),
+          },
+          discount: before.discount,
+          discountKind: before.discountKind,
+          reward,
+          charge: 0,
+          gstCfg: gstConfigFromOrder(before, NO_GST),
+        });
+        assert.ok(!("error" in resolved), "voiding the reward line must resolve");
+        if ("error" in resolved) return;
+
+        const mustUnset =
+          before.discountKind !== undefined &&
+          resolved.totals.discount === 0 &&
+          !shouldStoreDiscountKind(resolved.totals.discount, before.discountKind);
+        assert.equal(mustUnset, false, "voiding a reward line must not $unset the reward kind");
+
+        const updated = await Order.findOneAndUpdate(
+          { _id: created._id, status: "Pending", ...voidGuardFilter(0) },
+          {
+            $set: {
+              items: resolved.nextItems,
+              subtotal: resolved.totals.subtotal,
+              discount: resolved.totals.discount,
+              gstAmount: resolved.totals.gstAmount,
+              total: resolved.totals.total,
+            },
+            $push: { voids: resolved.entry },
+          },
+          { new: true, runValidators: true },
+        ).lean();
+        assert.ok(updated, "the void write must land");
+
+        // THE PIN: the trail entry carries the flag, through a real mongod.
+        assert.equal(updated!.voids?.length, 1, "exactly one trail entry must be written");
+        const entry = updated!.voids![0]!;
+        assert.equal(entry.reward, true, "IOrderVoid.reward must SURVIVE the write — a missing schema path drops it silently");
+        assert.equal(entry.price, 200, "the trail records the dish's REAL value, never ₹0 (the void-trail corruption D5 rejected)");
+        assert.equal(entry.name, "Masala Chai");
+
+        // Provenance intact, and the bill did NOT grow: removing an untotalled
+        // line must leave the total where it was. A reducer regression that
+        // stopped skipping the reward line would show up as 460 here.
+        assert.equal(updated!.discountKind, "reward", "the reward kind must survive voiding the reward line itself");
+        assert.equal(updated!.rewardAt, itemMs.at, "the reward snapshot must survive the void");
+        assert.equal(updated!.rewardItemProductId, productId, "the product reference must survive the void");
+        assert.equal(updated!.total, 260, "voiding an UNTOTALLED line must not move the total");
+        assert.equal(updated!.subtotal, 260, "and must not move the subtotal either");
+      },
+    );
+
   } finally {
     await Order.deleteMany({});
     await Customer.deleteMany({});
     await Product.deleteMany({});
+    // CB-5B S16 — the collections legs 18/19 touch. PrintHost.key is UNIQUE and
+    // Settings is single-document, so leaving either behind would poison the
+    // NEXT run of this leg rather than just this one.
+    await PrintJob.deleteMany({});
+    await PrintHost.deleteMany({});
+    await Settings.deleteMany({});
     await mongoose.disconnect();
   }
 

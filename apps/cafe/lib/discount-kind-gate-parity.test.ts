@@ -258,17 +258,36 @@ test("P-NEW-13 (SEED): the demo seed gates the stored kind through the shared pr
     "the seeded order must gate discountKind through shouldStoreDiscountKind, not a hand-written amount copy",
   );
   assertNoRawGate(src, readSrc(SEED_ASSEMBLE), SEED_ASSEMBLE);
-  // HONEST SCOPE, recorded so a later reader does not over-read this pin:
-  // `pickDiscount` narrows this seed's kind to "gst" | undefined, so the
-  // predicate's reward exception is structurally unreachable here today. The
-  // adoption is parity — the seed reads the SAME rule production enforces — so
-  // a future seed that plants a reward tab inherits the right gate instead of
-  // silently dropping the kind. This pin is therefore a DRIFT pin, not a
-  // behaviour pin, and must not be cited as proof the seed covers rewards.
+  // SCOPE, REVISITED IN S16 — this is now a BEHAVIOUR pin, not a drift pin.
+  //
+  // S15 recorded this as a DRIFT pin with a deliberate landmark: `pickDiscount`
+  // then narrowed the seeded kind to `"gst" | undefined`, so the predicate's
+  // reward exception was structurally unreachable and the adoption was parity
+  // only. That landmark was written to FAIL the moment the seed widened, so
+  // this scope note could not be left stale — and in S16 it duly did.
+  //
+  // S16 made the seed plant real reward orders (loyalty-data.ts's item rung +
+  // orders-plan-assemble.ts's REWARD_ORDER_CHANCE), so the exception genuinely
+  // FIRES here: a reward order stores `discount: 0` and the predicate stores
+  // the kind anyway.
+  //
+  // WHAT THIS PIN MAY NOT ASSERT (reviewer-found, S16): the reward branch does
+  // NOT go through `pickDiscount` — it is a separate arm of the same ternary
+  // (`isRewardOrder ? {discountKind: "reward"} : … : pickDiscount(ctx)`). So
+  // pinning `pickDiscount`'s RETURN TYPE would be inert: narrowing it back to
+  // `"gst"` deletes no reward coverage and still compiles, yet would redden a
+  // correct tree. The load-bearing facts are that the reward arm EXISTS and
+  // that it feeds the same shared gate — both pinned below, on the runtime
+  // shape rather than on a type annotation nothing depends on.
   assert.match(
     src,
-    /function pickDiscount\([\s\S]*?discountKind\?:\s*"gst"/,
-    "landmark: pickDiscount still narrows the seeded kind to \"gst\" — if this ever widens to DiscountKind, the seed gains real reward coverage and this pin's scope note must be revisited",
+    /isRewardOrder\s*\n?\s*\?\s*\{\s*discount:\s*0,\s*discountKind:\s*"reward" as const\s*\}/,
+    "the seed must actually PLANT a reward order at discount 0 — the behaviour this pin covers, not merely the ability to type one",
+  );
+  assert.match(
+    src,
+    /reward:\s*true,/,
+    "the planted reward order must carry the untotalled item line the free dish rides on",
   );
 });
 

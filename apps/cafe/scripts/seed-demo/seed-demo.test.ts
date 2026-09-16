@@ -35,6 +35,7 @@ import { planExtras } from "./extras-plan";
 import { rollupsOf } from "./finalize";
 import { computeOrderTotals } from "@/lib/receipt";
 import { derivePayment } from "@/lib/order";
+import { REWARD_ITEM_LINE_NOTE } from "@pos/shared/reward-redemption";
 import type {
   PlanContext,
   PlannedProduct,
@@ -43,6 +44,7 @@ import type {
   PlannedStaff,
   PlannedOrder,
   PlannedDuePayment,
+  PlannedRewardRung,
 } from "./types";
 
 const SEED_DIR = __dirname;
@@ -95,6 +97,15 @@ function fakeStaff(): PlannedStaff[] {
   }));
 }
 
+// CB-5B S16 — a fixed reward rung mirroring loyalty-data.ts's own shape: an
+// item reward against the first fake product, at a stamp cost distinct from
+// any other fixture number in this file.
+const REWARD_RUNG_AT = 8;
+function fakeRewardRung(products: readonly PlannedProduct[]): PlannedRewardRung {
+  const product = products[0];
+  return { at: REWARD_RUNG_AT, productId: product._id, productName: product.name, price: product.price, qty: 1 };
+}
+
 function buildCtx(opts: {
   seed: number;
   gstEnabled: boolean;
@@ -104,8 +115,9 @@ function buildCtx(opts: {
   days?: number;
 }): PlanContext {
   const now = opts.now ?? FIXED_NOW;
+  const products = fakeProducts();
   return {
-    products: fakeProducts(),
+    products,
     tables: fakeTables(8),
     customers: fakeCustomers(),
     staff: fakeStaff(),
@@ -142,6 +154,7 @@ function buildCtx(opts: {
     days: dayKeysEndingToday(now, opts.days ?? DAYS_COUNT),
     now,
     rng: createRng(opts.seed),
+    rewardRung: fakeRewardRung(products),
   };
 }
 
@@ -498,6 +511,54 @@ function runPlanOrdersChecks(label: string, gstEnabled: boolean, gstRate: number
       }
     }
   });
+
+  // CB-5B S16 — reward orders: the ONE extra item line is untotalled/untaxed,
+  // discountKind stores "reward" at ₹0, and all 7 snapshot fields are present.
+  test(`planOrders[${label}]: reward orders plant an untotalled, noted item line + full snapshot`, () => {
+    const ctx = buildCtx({ seed: 7, gstEnabled, gstRate, gstMode });
+    const plan = planOrders(ctx);
+    const rewardOrders = plan.orders.filter((o) => o.discountKind === "reward");
+    assert.ok(rewardOrders.length >= 1, "expected at least one reward order for a solid pin (seed 7, 31 days, >=600 orders)");
+
+    for (const o of rewardOrders) {
+      assert.equal(o.discount, 0, `reward order ${o.orderId}: discount must be 0`);
+      assert.ok(o.customerId, `reward order ${o.orderId}: must have a customer (stamps live on a Customer row)`);
+      assert.equal(o.status, "Completed", `reward order ${o.orderId}: only Completed orders claim a reward in this seed`);
+
+      const rewardLines = o.items.filter((l) => l.reward === true);
+      assert.equal(rewardLines.length, 1, `reward order ${o.orderId}: exactly one items[].reward===true line expected`);
+      assert.equal(rewardLines[0].note, REWARD_ITEM_LINE_NOTE, `reward order ${o.orderId}: reward line must carry the shared note constant`);
+      assert.equal(rewardLines[0].productId.toString(), ctx.rewardRung.productId.toString());
+      assert.equal(rewardLines[0].qty, ctx.rewardRung.qty);
+
+      assert.equal(o.rewardAt, ctx.rewardRung.at, `reward order ${o.orderId}: rewardAt mismatch`);
+      assert.equal(o.rewardKind, "item", `reward order ${o.orderId}: rewardKind must be "item"`);
+      assert.equal(o.rewardValue, 0, `reward order ${o.orderId}: rewardValue must be 0`);
+      assert.equal(o.rewardItem, ctx.rewardRung.productName, `reward order ${o.orderId}: rewardItem name mismatch`);
+      assert.equal(o.rewardItemProductId, ctx.rewardRung.productId.toString(), `reward order ${o.orderId}: rewardItemProductId mismatch`);
+      assert.equal(o.rewardQty, ctx.rewardRung.qty, `reward order ${o.orderId}: rewardQty mismatch`);
+      assert.equal(o.rewardStamps, ctx.rewardRung.at, `reward order ${o.orderId}: rewardStamps mismatch`);
+
+      // The stored total must EXCLUDE the reward line's price — recomputed
+      // over the SAME items with the reward line dropped entirely, matching
+      // what a plain, non-reward version of this same bill would total.
+      const withoutRewardLine = o.items.filter((l) => !l.reward);
+      const recomputedWithout = computeOrderTotals({
+        items: withoutRewardLine,
+        discount: 0,
+        discountKind: undefined,
+        charge: o.chargeAmount ?? 0,
+        cfg: { gstEnabled, gstRate: gstEnabled ? gstRate : 0, gstMode },
+      });
+      assert.equal(o.total, recomputedWithout.total, `reward order ${o.orderId}: stored total must equal the bill recomputed WITHOUT the reward line`);
+    }
+
+    // Negative pin: no order carries a reward line without discountKind === "reward".
+    for (const o of plan.orders) {
+      const hasRewardLine = o.items.some((l) => l.reward === true);
+      if (hasRewardLine) assert.equal(o.discountKind, "reward", `order ${o.orderId}: a reward item line without discountKind "reward"`);
+    }
+  });
 }
 
 runPlanOrdersChecks("gst-inclusive-5pct", true, 5, "inclusive");
@@ -633,6 +694,7 @@ const SEED_DEMO_FILES = [
   "images.ts",
   "seed-core.ts",
   "orders-write.ts",
+  "loyalty-data.ts",
   "index.ts",
 ];
 

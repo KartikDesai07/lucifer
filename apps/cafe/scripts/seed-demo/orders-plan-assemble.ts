@@ -7,7 +7,7 @@
 import { Types } from "mongoose";
 import { mintPublicCode } from "@/lib/public-token";
 import { computeOrderTotals, type OrderTotals } from "@/lib/receipt";
-import { shouldStoreDiscountKind } from "@pos/shared/reward-redemption";
+import { shouldStoreDiscountKind, REWARD_ITEM_LINE_NOTE } from "@pos/shared/reward-redemption";
 import { derivePayment } from "@/lib/order";
 import type {
   PlanContext,
@@ -17,7 +17,7 @@ import type {
   PlannedOrderRequest,
   PlannedRequestItem,
 } from "./types";
-import type { PaymentMode } from "@/lib/constants";
+import type { DiscountKind, PaymentMode } from "@/lib/constants";
 import { addMinutes } from "./rng";
 import type { DraftLine, OrderDraft } from "./orders-plan-draft";
 import { CANCEL_REASONS, SELF_ORDER_NOTES } from "./people-data";
@@ -25,6 +25,20 @@ import { CANCEL_REASONS, SELF_ORDER_NOTES } from "./people-data";
 const FLAT_DISCOUNT_CHANCE = 0.08;
 const FLAT_DISCOUNT_VALUES = [10, 20, 30, 50] as const;
 const GST_DISCOUNT_CHANCE = 0.03;
+// CB-5B S16 — the share of COMPLETED, has-a-customer orders that become
+// reward (item-claim) orders. Checked before the flat/GST draws below so a
+// reward order never also rolls one of those (an order carries exactly one
+// discountKind).
+//
+// ITEM REWARDS ONLY, DELIBERATELY: verifySeed (finalize.ts) recomputes every
+// order's total via computeOrderTotals({..discount, discountKind..}) WITHOUT
+// passing `reward` — rewardDiscountAmount then returns 0 for a missing
+// reward. An item reward's stored discount is genuinely 0 either way (the
+// free dish's value lives entirely in the untotalled bill LINE, never in
+// `discount`), so the recompute matches. A flat/percent reward would recompute
+// to 0 while the order stores a non-zero discount, and verifySeed would fail.
+// So this seed plants ITEM rewards only — never a flat/percent reward order.
+const REWARD_ORDER_CHANCE = 0.02;
 const PAYMENT_WEIGHTS: { mode: PaymentMode; weight: number }[] = [
   { mode: "Cash", weight: 45 },
   { mode: "Online", weight: 42 },
@@ -53,7 +67,7 @@ export interface ResolvedDraft {
   selfOrder: boolean;
 }
 
-function pickDiscount(ctx: PlanContext): { discount: number; discountKind?: "gst" } {
+function pickDiscount(ctx: PlanContext): { discount: number; discountKind?: DiscountKind } {
   if (ctx.gst.gstEnabled && ctx.rng.chance(GST_DISCOUNT_CHANCE)) {
     return { discount: 0, discountKind: "gst" };
   }
@@ -61,6 +75,24 @@ function pickDiscount(ctx: PlanContext): { discount: number; discountKind?: "gst
     return { discount: ctx.rng.pick(FLAT_DISCOUNT_VALUES) };
   }
   return { discount: 0 };
+}
+
+// CB-5B S16 — the 7 Order snapshot fields for a reward order, mirroring
+// rewardSnapshotFields' omit-empty shape (lib/reward-claim.ts) exactly: this
+// seed only ever plants an item rung, so rewardItemProductId/rewardQty are
+// always present here (never omitted the way a flat/percent claim would omit
+// them).
+function rewardSnapshotOf(ctx: PlanContext): Pick<PlannedOrder, "rewardAt" | "rewardKind" | "rewardValue" | "rewardItem" | "rewardItemProductId" | "rewardQty" | "rewardStamps"> {
+  const rung = ctx.rewardRung;
+  return {
+    rewardAt: rung.at,
+    rewardKind: "item",
+    rewardValue: 0,
+    rewardItem: rung.productName,
+    rewardItemProductId: rung.productId.toString(),
+    rewardQty: rung.qty,
+    rewardStamps: rung.at,
+  };
 }
 
 function pickPayment(
@@ -117,9 +149,33 @@ export function assembleOrder(
     kotRound: l.kotRound,
   }));
 
+  // CB-5B S16 — a small share of Completed, has-a-customer orders claim the
+  // seeded item rung: one extra line for the rung's dish, at its real
+  // (discount-applied) price, flagged `reward: true` so computeOrderTotals'
+  // subtotal reducer skips it — the line is priced but never totalled or
+  // taxed, exactly like a live claim (S12).
+  const isRewardOrder = r.status === "Completed" && !!r.draft.customer && ctx.rng.chance(REWARD_ORDER_CHANCE);
+  if (isRewardOrder) {
+    const rung = ctx.rewardRung;
+    items.push({
+      productId: rung.productId,
+      name: rung.productName,
+      price: rung.price,
+      qty: rung.qty,
+      modifiers: [],
+      instructions: "",
+      kotRound: 1,
+      reward: true,
+      note: REWARD_ITEM_LINE_NOTE,
+    });
+  }
+
   const charge = r.draft.chargeAmount ?? 0;
-  const { discount, discountKind } =
-    r.status === "Pending" ? { discount: 0, discountKind: undefined as "gst" | undefined } : pickDiscount(ctx);
+  const { discount, discountKind } = isRewardOrder
+    ? { discount: 0, discountKind: "reward" as const }
+    : r.status === "Pending"
+      ? { discount: 0, discountKind: undefined as DiscountKind | undefined }
+      : pickDiscount(ctx);
   const totals: OrderTotals = computeOrderTotals({ items, discount, discountKind, charge, cfg: ctx.gst });
 
   let paidAmount = 0;
@@ -144,16 +200,14 @@ export function assembleOrder(
     items,
     subtotal: totals.subtotal,
     discount: totals.discount,
-    // CB-5B S15 — the ONE shared amount-gates-kind predicate, not a
-    // hand-written `totals.discount > 0 && discountKind` copy. Behaviour here
-    // is IDENTICAL either way: `pickDiscount` narrows this seed's kind to
-    // "gst" | undefined, so the predicate's one named exception ("reward"
-    // stores even at ₹0) is structurally unreachable in the demo dataset —
-    // this seed deliberately plants no reward-bearing orders. Adopted anyway
-    // so the seed reads the SAME rule production enforces: if a future seed
-    // ever plants a reward tab, it inherits the right gate instead of
-    // silently dropping the kind (and the stamps-spent provenance with it).
+    // CB-5B S15/S16 — the ONE shared amount-gates-kind predicate, not a
+    // hand-written `totals.discount > 0 && discountKind` copy. A reward order
+    // above stores `discount: 0` deliberately (the free dish's value lives
+    // entirely in the untotalled item line), so this is the predicate's one
+    // named exception actually firing in this seed now: `shouldStoreDiscountKind`
+    // stores "reward" even at ₹0, exactly like a live claim.
     ...(shouldStoreDiscountKind(totals.discount, discountKind) ? { discountKind } : {}),
+    ...(isRewardOrder ? rewardSnapshotOf(ctx) : {}),
     gstAmount: totals.gstAmount,
     gstRate: ctx.gst.gstEnabled ? ctx.gst.gstRate : 0,
     gstMode: ctx.gst.gstMode,

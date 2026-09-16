@@ -8,6 +8,7 @@
 import { Types } from "mongoose";
 import { mintPublicCode } from "@/lib/public-token";
 import { computeOrderTotals, type GstConfig, type OrderTotals } from "@/lib/receipt";
+import type { DiscountKind } from "@/lib/constants";
 import type { PlanContext, PlannedOrderRequest, PlannedCounters, OrdersPlan } from "./types";
 import { addMinutes, dayKeyToCompact } from "./rng";
 import { composeLines, pickLineCount } from "./orders-plan-lines";
@@ -148,9 +149,9 @@ export function planOrders(ctx: PlanContext): OrdersPlan {
 // Re-check helper used by tests/smoke: recompute an order's totals from its
 // own stored items/discount/charge/gst, exactly as verifySeed will.
 export function orderTotalsOf(
-  items: ReadonlyArray<{ price: number; qty: number }>,
+  items: ReadonlyArray<{ price: number; qty: number; reward?: boolean }>,
   discount: number,
-  discountKind: "gst" | undefined,
+  discountKind: DiscountKind | undefined,
   charge: number,
   gst: GstConfig,
 ): OrderTotals {

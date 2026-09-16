@@ -37,6 +37,7 @@ import { uploadDemoImages } from "./images";
 import { seedBase, seedStaff, seedTables, seedMenu, seedCustomers, backdatedRaw } from "./seed-core";
 import { writeOrders } from "./orders-write";
 import { applyCustomerRollups, verifySeed } from "./finalize";
+import { seedLoyaltyRules, applyLoyaltyCustomerData } from "./loyalty-data";
 import type { PlannedCustomer, PlanContext, SeedDemoSummary } from "./types";
 
 const DEMO_SEED_DEFAULT = 20260913;
@@ -133,6 +134,12 @@ export async function runSeedDemo(opts: { file: string; imagesDir: string | null
 
   const products = await seedMenu(DEMO_CATEGORIES, DEMO_PRODUCTS, imageResult.refs);
 
+  // CB-5B S16 — demo loyalty rules: after the menu (the item rung needs a
+  // real productId), before planning (the planner needs the rung's cost/dish
+  // to plant reward orders against it). seed-client.ts's seedSettings() stays
+  // untouched — this write is DEMO SEEDER ONLY.
+  const rewardRung = await seedLoyaltyRules(products);
+
   const now = opts.now ?? new Date();
   const rng = createRng(opts.seed);
 
@@ -166,6 +173,7 @@ export async function runSeedDemo(opts: { file: string; imagesDir: string | null
     days,
     now,
     rng,
+    rewardRung,
   };
 
   const ordersPlan = planOrders(planContext);
@@ -184,6 +192,13 @@ export async function runSeedDemo(opts: { file: string; imagesDir: string | null
   const seededCustomers: PlannedCustomer[] = await seedCustomers(customersWithIds, firstOrderAt, rangeStart, rng);
 
   await writeOrders(ordersPlan);
+
+  // CB-5B S16 — stamps + redemption claims, after the orders are written and
+  // customers exist with their real _ids: every reward order's customer gets
+  // its rung cost debited and the orderId recorded spent; a further random
+  // share of customers gets a starting stamp balance so the loyalty screens
+  // are not empty for everyone else.
+  await applyLoyaltyCustomerData(seededCustomers, ordersPlan.orders, rewardRung, rng);
 
   const eventDocs = extrasPlan.events.map((event) => backdatedRaw(Event, event as unknown as Record<string, unknown> & { createdAt: Date; updatedAt: Date }));
   if (eventDocs.length > 0) await Event.collection.insertMany(eventDocs, { ordered: true });

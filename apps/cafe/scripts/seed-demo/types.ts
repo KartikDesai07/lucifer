@@ -12,7 +12,8 @@
 import type { Types } from "mongoose";
 import type { GstConfig } from "@/lib/receipt";
 import type { PrintConfig } from "@/lib/print";
-import type { CustomerNote, PaymentMode, OrderStatus, SettlementPayMode, EventPayMode, EventStatus, ReservationStatus, GstMode } from "@/lib/constants";
+import type { CustomerNote, PaymentMode, OrderStatus, SettlementPayMode, EventPayMode, EventStatus, ReservationStatus, GstMode, DiscountKind } from "@/lib/constants";
+import type { LoyaltyRewardKind } from "@pos/shared/public-diner";
 
 // ── Static demo content (menu-data.ts / people-data.ts) ──────────────────────
 export interface DemoVariation {
@@ -91,6 +92,19 @@ export interface PlannedStaff {
   name: string;
   weight: number;
 }
+// CB-5B S16 — the ONE item-kind rung the demo ladder plants a real dish
+// against (Settings.loyaltyRules, loyalty-data.ts). `at` is its stamp cost —
+// what a reward order both spends off the claiming customer AND stores as
+// rewardStamps/rewardAt. Threaded through PlanContext (not re-picked per
+// order) so every reward order in the plan claims the exact SAME rung the
+// Settings doc was seeded with.
+export interface PlannedRewardRung {
+  at: number;
+  productId: Types.ObjectId;
+  productName: string;
+  price: number; // the product's effective (discount-applied) unit price
+  qty: number;
+}
 export interface PlanContext {
   products: PlannedProduct[];
   tables: PlannedTable[];
@@ -101,6 +115,7 @@ export interface PlanContext {
   days: string[]; // dayKeys oldest → today (today = last), each "YYYY-MM-DD" IST
   now: Date; // the instant the seeder runs (today's orders stop here)
   rng: Rng;
+  rewardRung: PlannedRewardRung;
 }
 
 // ── Planner output: plain objects shaped EXACTLY like models/Order.ts docs ────
@@ -113,6 +128,12 @@ export interface PlannedOrderItem {
   modifiers: string[];
   instructions: string;
   kotRound: number; // 1 = opening round, 2 = a later round
+  // CB-5B S16 — this line was GIVEN as a loyalty reward (models/Order.ts's
+  // IOrderItem.reward). Omit-empty: a normal line carries neither this nor
+  // `note` below — only the ONE extra line a reward order appends carries
+  // both.
+  reward?: true;
+  note?: string;
 }
 export interface PlannedOrderVoid {
   productId: Types.ObjectId;
@@ -135,7 +156,17 @@ export interface PlannedOrder {
   items: PlannedOrderItem[];
   subtotal: number;
   discount: number;
-  discountKind?: "gst";
+  discountKind?: DiscountKind;
+  // CB-5B S16 — the reward reprint snapshot (models/Order.ts's own 7-field
+  // comment). Present only on the seed's item-reward orders; every one of
+  // these mirrors rewardSnapshotFields' omit-empty shape (lib/reward-claim.ts).
+  rewardAt?: number;
+  rewardKind?: LoyaltyRewardKind;
+  rewardValue?: number;
+  rewardItem?: string;
+  rewardItemProductId?: string;
+  rewardQty?: number;
+  rewardStamps?: number;
   gstAmount: number;
   gstRate: number; // 0 when GST is off
   gstMode: GstMode;
