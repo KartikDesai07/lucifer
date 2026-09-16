@@ -1,0 +1,10 @@
+{
+  "name": "pos-failover-worker",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Controller-only Cloudflare Worker: health-polls each tenant's /api/health and swaps the CF-proxied origin active<->standby (F1.7). NOT part of any Next build; outside the npm workspace. wrangler + @cloudflare/workers-types are added in F3.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  }
+}

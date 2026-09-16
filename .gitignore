@@ -1,8 +1,10 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Monorepo root .gitignore — patterns are non-anchored so they apply to every
+# workspace (apps/*, packages/*), not just the repo root.
 
 # dependencies
-/node_modules
-/.pnp
+node_modules/
+.pnp
 .pnp.*
 .yarn/*
 !.yarn/patches
@@ -11,14 +13,15 @@
 !.yarn/versions
 
 # testing
-/coverage
+coverage/
+test-output.txt
 
-# next.js
-/.next/
-/out/
+# next.js (per-app build output: apps/*/.next)
+.next/
+out/
 
 # production
-/build
+build/
 
 # misc
 .DS_Store
@@ -30,13 +33,13 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files — keep secrets out of git, but commit the example
+# env files — keep secrets out of git, but commit the example (any workspace)
 .env
 .env.*
 !.env.example
 
-# vercel
-.vercel
+# cloudflare worker local state (workers/failover)
+.wrangler/
 
 # typescript
 *.tsbuildinfo
@@ -45,10 +48,57 @@ next-env.d.ts
 # vercel build output / local project link
 .vercel
 
+# deploy profiles (per-account targets; may hold tokens) — commit only the example
+/deploy.profiles.json
+
 # project-local scratch & planning brain-dump (kept out of the product repo)
 /self-tasks/
+
+# per-client onboarding notes — these hold LIVE credentials (Atlas connection
+# strings with the client's own DB user/password). This repo is public, so a
+# single `git add -A` would publish them. Never commit; the hub vault is the
+# only sanctioned credential store.
+/clients/
 
 # claude code / ai tooling & internal docs — keep out of the product repo
 /.claude/
 /.claude-memory/
 /CLAUDE.md
+
+# internal build narrative — LOCAL ONLY (owner rule 2026-08-09); opened directly
+# in a browser, never published or pushed
+/docs/progress-tracker.html
+
+# owner-side working files — never part of the product repo
+# changes/ = client screenshots / change requests (owner rule 2026-08-28)
+/changes/
+# stray local artefacts: a saved HTML dump and Windows-mangled test-output
+# dumps (a scratchpad path flattened into a filename) — junk, never commit
+/cjs_followed.js
+*scratchpad*-tests.txt
+
+# link-migration census reports (may name live DBs) — owner-run, never committed
+migrate-links-report-*.json
+
+# link-migration --backup auto archive: a FULL mongodump of the live database
+# (customer names, mobiles, order and dues history) — owner-run, never
+# committed. The default write location is the OS temp directory, outside the
+# repo; this pattern is defence-in-depth in case one ever lands here anyway.
+migrate-links-backup-*.archive.gz
+
+# NOTE: `vercel link` appends `.vercel` and `.env*` here on every run. Both are
+# already covered above (`.vercel`, and `.env` + `.env.*` with the deliberate
+# `!.env.example` negation) — and a trailing `.env*` would sit AFTER that
+# negation and re-ignore the committed example files. Delete the duplicates if
+# the CLI adds them again.
+
+# desktop shell (apps/desktop, outside the npm workspace): the local NSIS
+# installer output is hand-copied to the counter PC, never committed or uploaded
+/apps/desktop/dist/
+
+# Stray local artifacts (crash dumps + files created with a mangled absolute
+# temp path by an earlier tool call). Never project content.
+*.stackdump
+**/# Files created with a MANGLED absolute temp path by an earlier tool call
+# (the drive colon became U+FF1A, so the whole path became one filename).
+*AppDataLocalTempclaude*

@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1080">
+<title>POS Software — paper poster</title>
+<!--
+  PAPER & INK POSTER · 1080 × 1350 (4:5 portrait — Instagram / WhatsApp / Facebook feed)
+  Edit the JSON block below and re-render:
+      bash marketing/tools/render.sh poster-2-paper
+  Output: marketing/out/poster-2-paper.png (2160 × 2700, 2x)
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Manrope:wght@500;600;700;800&display=swap">
+<script type="application/json" id="poster-data">
+{
+  "brand": "POS Software",
+  "by": "by sandbee",
+  "eyebrow": "Pay once · No renewals · No subscription",
+  "headline": ["Pay once.", "Yours for life."],
+  "sub": "No yearly renewal, no monthly software fee — and your data stays in your own hands. Billing, KOTs, QR ordering, WhatsApp & Telegram updates and daily reports, set up once for your café.",
+  "price": "₹25,000",
+  "priceNote": "one-time setup",
+  "priceSub": "+ ₹5,000 WhatsApp credit included",
+  "included": [
+    "GST billing, KOT auto-print, QR self-ordering",
+    "WhatsApp & Telegram updates via wa.sandbee.in",
+    "Tables, udhaar, reports & end of day",
+    "Your logo on every bill",
+    "3 months of free support",
+    "Runs on your own accounts — your data stays yours"
+  ],
+  "cta": "Book a free demo",
+  "whatsapp": "+91 XXXXX XXXXX",
+  "site": "pos.sandbee.in",
+  "footnote": "*Hosting runs on the café’s own free-tier accounts; a small fee may apply as you grow. WhatsApp credit is usable on wa.sandbee.in.",
+  "receipt": {
+    "title": "INVOICE",
+    "meta": "This offer · one-time",
+    "items": [
+      ["POS Software setup", "25,000.00"],
+      ["WhatsApp credit · wa.sandbee.in", "5,000.00 incl."],
+      ["Yearly renewal, forever", "0.00*"],
+      ["Support, 3 months", "included"]
+    ],
+    "total": "₹25,000",
+    "stamp": "PAID IN FULL / ONE-TIME"
+  }
+}
+</script>
+<style>
+  :root {
+    --w: 1080px; --h: 1350px;
+    --paper: #f6f1e7; --paper2: #efe7d8; --card: #fffdf6;
+    --ink: #0b3d2a; --ink-deep: #072a1d; --charcoal: #1f2a24; --muted: #5b6259;
+    --amber: #d99a1e; --mint: #1f9f6c; --line: #d8cdb2; --line-strong: #c7bb9c;
+    --display: "Fraunces", Georgia, "Times New Roman", serif;
+    --body: "Manrope", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: var(--w); height: var(--h); background: var(--paper); overflow: hidden; }
+  body { font-family: var(--body); color: var(--charcoal); -webkit-font-smoothing: antialiased; }
+
+  .poster {
+    position: relative; width: var(--w); height: var(--h); overflow: hidden;
+    padding: 64px 64px 56px; display: flex; flex-direction: column;
+    background:
+      radial-gradient(1.5px 1.5px at 20px 20px, rgba(11,61,42,.07) 1px, transparent 1.5px),
+      radial-gradient(1.5px 1.5px at 60px 60px, rgba(11,61,42,.05) 1px, transparent 1.5px),
+      linear-gradient(180deg, var(--paper) 0%, var(--paper2) 100%);
+    background-size: 80px 80px, 80px 80px, 100% 100%;
+  }
+
+  /* header */
+  .top { display: flex; align-items: center; justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 16px; }
+  .mark { width: 68px; height: 68px; border-radius: 18px; overflow: hidden; flex: none; background: var(--ink-deep); box-shadow: 0 8px 20px rgba(11,61,42,.18); display: grid; place-items: center; }
+  .mark img { width: 160%; height: 160%; object-fit: contain; }
+  .brand-name { font-family: var(--display); font-size: 28px; font-weight: 700; color: var(--ink); letter-spacing: -.01em; line-height: 1; }
+  .brand-by { margin-top: 6px; font-size: 14px; color: var(--muted); font-weight: 600; letter-spacing: .03em; }
+  .top-rule { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; }
+
+  /* hero */
+  .hero { margin-top: 56px; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: var(--mint); }
+  .eyebrow::before { content: ""; width: 24px; height: 2px; background: var(--mint); border-radius: 2px; }
+  h1 { font-family: var(--display); font-weight: 700; font-size: 74px; line-height: 1.04; letter-spacing: -.02em; margin-top: 20px; color: var(--ink); font-variation-settings: "opsz" 144; }
+  h1 .accent { color: var(--amber); font-style: italic; font-weight: 600; }
+  .sub { margin-top: 24px; font-size: 22px; line-height: 1.5; color: var(--charcoal); font-weight: 500; max-width: 660px; }
+
+  /* body: receipt + list side by side */
+  .content { margin-top: 46px; display: grid; grid-template-columns: 420px 1fr; gap: 36px; align-items: start; }
+
+  /* the receipt card */
+  .receipt-wrap { position: relative; }
+  .receipt { position: relative; background: var(--card); color: var(--charcoal); font-family: var(--mono);
+    padding: 32px 30px 26px; box-shadow: 0 22px 44px rgba(11,61,42,.14), 0 1px 0 rgba(255,255,255,.6) inset;
+    border-radius: 6px 6px 0 0;
+  }
+  .receipt::after { content: ""; position: absolute; left: 0; right: 0; bottom: -11px; height: 11px;
+    background: linear-gradient(-45deg, transparent 7.5px, var(--card) 7.5px) 0 0 / 15px 15px,
+                linear-gradient(45deg, transparent 7.5px, var(--card) 7.5px) 7.5px 0 / 15px 15px;
+    background-repeat: repeat-x;
+  }
+  .rc-title { font-family: var(--body); font-weight: 800; font-size: 19px; letter-spacing: .1em; text-align: center; color: var(--ink); }
+  .rc-meta { text-align: center; color: var(--muted); font-size: 13px; margin-top: 6px; letter-spacing: .02em; }
+  .rc-rule { border-top: 1.5px dashed var(--line-strong); margin: 20px 0; }
+  .rc-row { display: flex; justify-content: space-between; gap: 10px; font-size: 16px; line-height: 2.1; }
+  .rc-row .n { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rc-row.tight { font-size: 12px; }
+  .rc-row .a { text-align: right; white-space: nowrap; }
+  .rc-total { display: flex; justify-content: space-between; font-family: var(--body); font-weight: 800; font-size: 25px; margin-top: 8px; color: var(--ink); }
+  .stamp-row { display: flex; justify-content: flex-end; margin-top: 16px; }
+  .stamp { transform: rotate(-9deg); border: 3px solid var(--mint); color: var(--mint);
+    font-family: var(--body); font-weight: 800; font-size: 14px; letter-spacing: .06em; padding: 10px 15px; border-radius: 8px; text-align: center; line-height: 1.4; opacity: .92; background: rgba(31,159,108,.05);
+  }
+
+  /* included list */
+  .included { display: flex; flex-direction: column; gap: 22px; padding-top: 10px; }
+  .inc-item { display: flex; align-items: flex-start; gap: 16px; font-size: 20px; font-weight: 600; color: var(--charcoal); line-height: 1.4; }
+  .inc-item .tick { flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--mint); color: var(--card); display: grid; place-items: center; margin-top: 2px; }
+  .inc-item .tick svg { width: 16px; height: 16px; stroke: var(--card); fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* price strip */
+  .price-strip { margin-top: 52px; padding: 30px 34px; border-radius: 20px; background: rgba(31,159,108,.07); border: 1px solid rgba(31,159,108,.22); display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+  .price-strip .amt { font-family: var(--display); font-size: 60px; font-weight: 700; color: var(--ink); letter-spacing: -.02em; }
+  .price-strip .note { font-size: 18px; font-weight: 700; color: var(--muted); }
+  .price-strip .plus { font-size: 18px; font-weight: 700; color: var(--amber); }
+
+  /* CTA band */
+  .band { margin-top: auto; padding-top: 40px; display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1.5px solid var(--line); }
+  .btn { display: inline-flex; align-items: center; gap: 12px; padding: 22px 32px; border-radius: 16px; background: var(--ink); color: var(--paper); font-size: 23px; font-weight: 800; letter-spacing: -.01em; white-space: nowrap; }
+  .btn svg { width: 23px; height: 23px; stroke: var(--paper); fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .contact { display: flex; flex-direction: column; gap: 10px; text-align: right; }
+  .contact .row { display: flex; align-items: center; justify-content: flex-end; gap: 10px; font-size: 19px; font-weight: 700; color: var(--ink); }
+  .contact .row svg { width: 20px; height: 20px; stroke: var(--ink); fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  .foot { margin-top: 20px; font-size: 12.5px; line-height: 1.5; color: var(--muted); font-weight: 500; max-width: 980px; }
+</style>
+</head>
+<body>
+<div class="poster">
+  <header class="top">
+    <div class="brand">
+      <div class="mark" aria-hidden="true"><img src="assets/sandbee-logo.png" alt=""></div>
+      <div>
+        <div class="brand-name" data-k="brand"></div>
+        <div class="brand-by" data-k="by"></div>
+      </div>
+    </div>
+    <div class="top-rule">Café · Restaurant · Cloud kitchen</div>
+  </header>
+
+  <section class="hero">
+    <div class="eyebrow" data-k="eyebrow"></div>
+    <h1 id="headline"></h1>
+    <p class="sub" data-k="sub"></p>
+  </section>
+
+  <section class="content">
+    <div class="receipt-wrap">
+      <div class="receipt">
+        <div class="rc-title" id="rc-title"></div>
+        <div class="rc-meta" id="rc-meta"></div>
+        <div class="rc-rule"></div>
+        <div id="rc-items"></div>
+        <div class="rc-rule"></div>
+        <div class="rc-total"><span>TOTAL</span><span id="rc-total"></span></div>
+        <div class="stamp-row"><div class="stamp" id="rc-stamp"></div></div>
+      </div>
+    </div>
+    <div class="included" id="included"></div>
+  </section>
+
+  <div class="price-strip">
+    <span class="amt" id="pr-price"></span>
+    <span class="note" id="pr-note"></span>
+    <span class="plus" id="pr-sub"></span>
+  </div>
+
+  <section class="band">
+    <div class="btn">
+      <svg viewBox="0 0 24 24"><path d="M4 4h16v11H8l-4 4z"/><path d="M8 8h8M8 11.5h5"/></svg>
+      <span id="cta-btn"></span>
+    </div>
+    <div class="contact">
+      <div class="row">
+        <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-13.4 7.8L3 21l1.3-4.4A9 9 0 1 1 21 12z"/><path d="M9 10.5c.5 2 2 3.5 4 4l1.5-1.2 2 .9c-.4 1.6-1.8 2.3-3.3 1.8a8 8 0 0 1-5.7-5.7c-.5-1.5.2-2.9 1.8-3.3l.9 2z"/></svg>
+        <span id="cta-wa"></span>
+      </div>
+      <div class="row">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+        <span id="cta-site"></span>
+      </div>
+    </div>
+  </section>
+  <div class="foot" id="foot"></div>
+</div>
+
+<script>
+(function () {
+  var data = JSON.parse(document.getElementById("poster-data").textContent);
+  function text(id, v) { var e = document.getElementById(id) || document.querySelector('[data-k="' + id + '"]'); if (e) e.textContent = v; }
+  function el(tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt !== undefined) e.textContent = txt; return e; }
+
+  ["brand", "by", "eyebrow", "sub"].forEach(function (k) { text(k, data[k]); });
+
+  var h1 = document.getElementById("headline");
+  data.headline.forEach(function (line, i) {
+    if (i) h1.appendChild(document.createElement("br"));
+    var span = document.createElement("span");
+    if (i === data.headline.length - 1) span.className = "accent";
+    span.textContent = line; h1.appendChild(span);
+  });
+
+  text("pr-price", data.price); text("pr-note", data.priceNote); text("pr-sub", data.priceSub);
+  text("cta-btn", data.cta); text("cta-wa", data.whatsapp); text("cta-site", data.site); text("foot", data.footnote);
+
+  var inc = document.getElementById("included");
+  data.included.forEach(function (line) {
+    var item = el("div", "inc-item");
+    var tick = el("div", "tick"); tick.innerHTML = '<svg viewBox="0 0 24 24"><path d="M4 12l6 6L20 6"/></svg>';
+    var t = el("div"); t.textContent = line;
+    item.appendChild(tick); item.appendChild(t); inc.appendChild(item);
+  });
+
+  text("rc-title", data.receipt.title); text("rc-meta", data.receipt.meta);
+  var items = document.getElementById("rc-items");
+  data.receipt.items.forEach(function (it) {
+    var row = el("div", it[0].length > 24 ? "rc-row tight" : "rc-row");
+    row.appendChild(el("span", "n", it[0])); row.appendChild(el("span", "a", it[1])); items.appendChild(row);
+  });
+  text("rc-total", data.receipt.total);
+  var stamp = document.getElementById("rc-stamp");
+  data.receipt.stamp.split(" / ").forEach(function (l, i) {
+    if (i) stamp.appendChild(document.createElement("br"));
+    stamp.appendChild(document.createTextNode(l));
+  });
+
+  var FONT_WAIT_MS = 4000;
+  var fontsReady = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+  var timeout = new Promise(function (r) { setTimeout(r, FONT_WAIT_MS); });
+  Promise.race([fontsReady, timeout]).then(function () {
+    requestAnimationFrame(function () { requestAnimationFrame(function () { document.documentElement.dataset.ready = "1"; }); });
+  });
+})();
+</script>
+</body>
+</html>

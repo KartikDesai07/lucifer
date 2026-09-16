@@ -1,0 +1,8 @@
+{
+  "name": "pos-marketing-tools",
+  "private": true,
+  "description": "Local render/record helpers for marketing assets (poster PNGs, demo MP4). Not part of the npm workspace.",
+  "dependencies": {
+    "mp4-muxer": "^5.2.2"
+  }
+}

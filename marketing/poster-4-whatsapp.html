@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1080">
+<title>POS Software — WhatsApp &amp; Telegram poster</title>
+<!--
+  WHATSAPP/TELEGRAM POSTER · 1080 × 1350 (4:5 portrait — Instagram / WhatsApp feed)
+  Edit the JSON block below and re-render:
+      bash marketing/tools/render.sh poster-4-whatsapp
+  Output: marketing/out/poster-4-whatsapp.png (2160 × 2700, 2x)
+  Local only: no external images beyond assets/sandbee-logo.png; fonts fall back offline.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700&family=Manrope:wght@600;700;800&display=swap">
+<script type="application/json" id="poster-data">
+{
+  "eyebrow": "WhatsApp & Telegram updates",
+  "headline": ["Bills and updates,", "straight to their phone."],
+  "sub": "Send the bill, order status and offers on WhatsApp or Telegram — from the same POS, through wa.sandbee.in.",
+  "features": [
+    "Bill on WhatsApp the moment it’s paid",
+    "Order-ready and pickup alerts",
+    "Offers and repeat-visit nudges",
+    "₹5,000 messaging credit included with setup"
+  ],
+  "chat": {
+    "name": "Sunrise Café",
+    "sub": "online",
+    "bubbles": [
+      { "text": "Hi Riya! Your bill for Table 4 is ready — ₹567. Tap to view 🧾", "bill": true, "time": "7:42 PM" },
+      { "text": "Your order is being prepared ☕ ~8 min", "time": "7:44 PM" },
+      { "text": "Thanks for visiting! Show this message for 10% off next time 🎁", "time": "8:15 PM" }
+    ]
+  },
+  "telegramNote": "Same updates on Telegram",
+  "pills": ["WhatsApp", "Telegram"],
+  "poweredBy": "Powered by wa.sandbee.in",
+  "stats": [
+    { "n": "3", "l": "message types — bill, status, offer" },
+    { "n": "2", "l": "channels — WhatsApp and Telegram" },
+    { "n": "1", "l": "POS that sends them, automatically" }
+  ],
+  "band": {
+    "price": "₹25,000 one-time setup · ₹5,000 WhatsApp credit included",
+    "cta": "Book a free demo",
+    "whatsapp": "+91 XXXXX XXXXX",
+    "site": "pos.sandbee.in"
+  },
+  "footnote": "Messaging runs on wa.sandbee.in credits; standard WhatsApp Business rules apply."
+}
+</script>
+<style>
+  :root {
+    --w: 1080px; --h: 1350px;
+    --bg: #0f1214; --bg2: #161b1e; --card: #1a2023; --line: #262e32;
+    --ink: #f4f1ea; --muted: #a7b0ab; --dim: #7d8a86;
+    --wa: #25d366; --wa-deep: #1aa851; --tg: #229ed9; --mint: #3ddc97;
+    --display: "Fraunces", Georgia, "Times New Roman", serif;
+    --body: "Manrope", "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: var(--w); height: var(--h); background: var(--bg); overflow: hidden; }
+  body { font-family: var(--body); color: var(--ink); -webkit-font-smoothing: antialiased; }
+
+  .poster {
+    position: relative; width: var(--w); height: var(--h); overflow: hidden;
+    padding: 56px 60px 40px; display: flex; flex-direction: column;
+    background:
+      radial-gradient(760px 560px at 92% -6%, rgba(37,211,102,.20), transparent 62%),
+      radial-gradient(680px 520px at -8% 96%, rgba(34,158,217,.18), transparent 60%),
+      linear-gradient(180deg, var(--bg2) 0%, var(--bg) 55%, #0b0e10 100%);
+  }
+  .dot-tex {
+    position: absolute; inset: 0; pointer-events: none; opacity: .5;
+    background-image: radial-gradient(rgba(255,255,255,.05) 1.6px, transparent 1.6px);
+    background-size: 26px 26px; background-position: 0 0;
+    mask-image: linear-gradient(180deg, rgba(0,0,0,.85), transparent 65%);
+    -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,.85), transparent 65%);
+  }
+
+  /* header */
+  .top { position: relative; display: flex; align-items: center; justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 16px; }
+  .mark { width: 68px; height: 68px; border-radius: 18px; overflow: hidden; background: #0d1f18; flex: none; display: grid; place-items: center; box-shadow: 0 10px 26px rgba(0,0,0,.4); }
+  .mark img { width: 160%; height: 160%; object-fit: contain; }
+  .brand-name { font-size: 28px; font-weight: 800; letter-spacing: -.02em; line-height: 1; }
+  .brand-by { margin-top: 6px; font-size: 15px; color: var(--muted); font-weight: 600; letter-spacing: .02em; }
+  .pill-top { padding: 11px 18px; border: 1px solid var(--line); border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--muted); background: rgba(255,255,255,.02); }
+
+  /* hero */
+  .hero { position: relative; margin-top: 36px; display: grid; grid-template-columns: 1fr 400px; gap: 28px; align-items: start; }
+  .hero-left { display: flex; flex-direction: column; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--wa); }
+  .eyebrow::before { content: ""; width: 26px; height: 2px; background: var(--wa); border-radius: 2px; }
+  h1 { font-family: var(--display); font-weight: 700; font-size: 66px; line-height: 1.1; letter-spacing: -.02em; margin-top: 24px; font-variation-settings: "opsz" 144; }
+  .sub { margin-top: 26px; font-size: 22px; line-height: 1.55; color: var(--muted); font-weight: 600; max-width: 460px; }
+
+  .features { margin-top: 40px; display: grid; gap: 24px; }
+  .feat { display: flex; align-items: flex-start; gap: 14px; font-size: 21px; font-weight: 700; color: var(--ink); max-width: 470px; }
+  .feat .tick { flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--mint); color: #0d1411; font-size: 16px; font-weight: 900; display: grid; place-items: center; margin-top: 1px; }
+
+  /* phone mock */
+  .phone-wrap { position: relative; height: 800px; }
+  .phone {
+    position: absolute; top: 0; left: 0; width: 400px; height: 740px; border-radius: 52px;
+    background: linear-gradient(160deg, #23282b, #131617); border: 10px solid #0c0e0f;
+    box-shadow: 0 40px 80px rgba(0,0,0,.55), inset 0 0 0 2px rgba(255,255,255,.04);
+    padding: 28px 18px 24px; display: flex; flex-direction: column;
+  }
+  .phone-head { display: flex; align-items: center; gap: 12px; padding: 0 4px 18px; border-bottom: 1px solid rgba(255,255,255,.08); }
+  .phone-avatar { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(145deg, var(--wa), var(--wa-deep)); display: grid; place-items: center; flex: none; }
+  .phone-avatar svg { width: 20px; height: 20px; }
+  .phone-name { font-size: 16.5px; font-weight: 800; color: var(--ink); line-height: 1.15; }
+  .phone-status { font-size: 12.5px; font-weight: 700; color: var(--wa); margin-top: 3px; }
+
+  .chat { flex: 1; padding: 20px 4px 0; display: flex; flex-direction: column; gap: 22px; background: repeating-linear-gradient(135deg, rgba(255,255,255,.015) 0 2px, transparent 2px 26px); }
+  .msg { align-self: flex-start; max-width: 90%; }
+  .bubble { background: #23282b; color: var(--ink); font-size: 15px; font-weight: 600; line-height: 1.45; padding: 13px 15px; border-radius: 4px 16px 16px 16px; box-shadow: 0 4px 10px rgba(0,0,0,.25); }
+  .msg .time { margin-top: 6px; font-size: 11px; font-weight: 700; color: var(--dim); padding-left: 4px; }
+  .bill-card { margin-top: 10px; background: #f4f1ea; color: #16241d; border-radius: 10px; padding: 12px 14px; font-size: 12.5px; }
+  .bill-card .bc-title { font-weight: 800; letter-spacing: .04em; font-size: 11.5px; }
+  .bill-card .bc-row { display: flex; justify-content: space-between; margin-top: 6px; font-weight: 700; font-size: 13.5px; }
+  .bill-card .bc-paid { margin-top: 6px; font-weight: 800; color: var(--wa-deep); font-size: 11px; letter-spacing: .04em; }
+  .typing { align-self: flex-start; display: flex; gap: 5px; padding: 14px 16px; background: #23282b; border-radius: 4px 16px 16px 16px; box-shadow: 0 4px 10px rgba(0,0,0,.25); }
+  .typing span { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); opacity: .55; }
+  .typing span:nth-child(2) { opacity: .8; }
+
+  .float-card {
+    position: absolute; right: -14px; bottom: 46px; width: 210px; background: linear-gradient(160deg, #16333f, #101f26);
+    border: 1px solid rgba(34,158,217,.4); border-radius: 16px; padding: 14px 16px; display: flex; gap: 12px; align-items: center;
+    box-shadow: 0 20px 40px rgba(0,0,0,.5);
+  }
+  .float-card .fc-ico { flex: none; width: 36px; height: 36px; border-radius: 10px; background: rgba(34,158,217,.18); border: 1px solid rgba(34,158,217,.4); display: grid; place-items: center; }
+  .float-card .fc-ico svg { width: 18px; height: 18px; }
+  .float-card .fc-text { font-size: 13px; font-weight: 700; line-height: 1.3; color: var(--ink); }
+
+  /* stats strip */
+  .stats { position: relative; margin-top: 40px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .stat { padding: 22px 22px; border-radius: 20px; background: linear-gradient(180deg, var(--card), #161b1e); border: 1px solid var(--line); }
+  .stat .n { font-family: var(--display); font-size: 44px; font-weight: 700; color: var(--wa); line-height: 1; }
+  .stat .l { margin-top: 10px; font-size: 15.5px; font-weight: 700; color: var(--muted); line-height: 1.35; }
+
+  /* integrations row */
+  .integrations { position: relative; margin-top: 32px; padding-top: 30px; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .int-pill { display: inline-flex; align-items: center; gap: 10px; padding: 12px 20px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.03); }
+  .int-pill.wa svg { stroke: var(--wa); }
+  .int-pill.tg svg { stroke: var(--tg); }
+  .int-pill svg { width: 20px; height: 20px; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .int-pill span { font-size: 16px; font-weight: 800; color: var(--ink); }
+  .powered { font-size: 14px; font-weight: 700; color: var(--dim); }
+
+  /* bottom band */
+  .band {
+    position: relative; margin-top: auto; padding-top: 20px; display: flex; align-items: center;
+    justify-content: space-between; gap: 20px; border-top: 1px solid var(--line);
+  }
+  .band-price { font-size: 18px; font-weight: 800; color: var(--ink); max-width: 460px; line-height: 1.35; }
+  .band-right { display: flex; align-items: center; gap: 16px; }
+  .cta-btn {
+    display: inline-flex; align-items: center; gap: 10px; padding: 18px 26px; border-radius: 16px;
+    background: linear-gradient(135deg, var(--wa), var(--wa-deep)); color: #0d1411; font-size: 19px; font-weight: 800;
+    box-shadow: 0 12px 26px rgba(37,211,102,.3);
+  }
+  .cta-btn svg { width: 22px; height: 22px; }
+  .contact { display: grid; gap: 4px; }
+  .contact .row { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 800; color: var(--ink); }
+  .contact .row svg { width: 17px; height: 17px; stroke: var(--muted); flex: none; }
+
+  .foot { position: relative; margin-top: 14px; font-size: 12px; color: var(--dim); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="poster">
+  <div class="dot-tex"></div>
+
+  <header class="top">
+    <div class="brand">
+      <div class="mark" aria-hidden="true"><img src="assets/sandbee-logo.png" alt=""></div>
+      <div>
+        <div class="brand-name">POS Software</div>
+        <div class="brand-by">by sandbee</div>
+      </div>
+    </div>
+    <div class="pill-top">Cafés · Restaurants · Cloud kitchens</div>
+  </header>
+
+  <section class="hero">
+    <div class="hero-left">
+      <div class="eyebrow" data-k="eyebrow"></div>
+      <h1 id="headline"></h1>
+      <p class="sub" data-k="sub"></p>
+      <div class="features" id="features"></div>
+    </div>
+
+    <div class="phone-wrap" aria-hidden="true">
+      <div class="phone">
+        <div class="phone-head">
+          <div class="phone-avatar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#0d1411" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-5 4V6a2 2 0 0 1 2-2z"/></svg>
+          </div>
+          <div>
+            <div class="phone-name" id="chat-name"></div>
+            <div class="phone-status" id="chat-sub"></div>
+          </div>
+        </div>
+        <div class="chat" id="chat-bubbles"></div>
+      </div>
+      <div class="float-card">
+        <div class="fc-ico">
+          <svg viewBox="0 0 24 24" stroke="#229ed9"><path d="M3 12l18-8-7 18-3-7-8-3z"/></svg>
+        </div>
+        <div class="fc-text" id="telegram-note"></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="integrations">
+    <div class="int-pill wa">
+      <svg viewBox="0 0 24 24"><path d="M4 20l1.4-4.2A8 8 0 1 1 9.4 19L4 20z"/></svg>
+      <span id="pill-wa"></span>
+    </div>
+    <div class="int-pill tg">
+      <svg viewBox="0 0 24 24"><path d="M3 12l18-8-7 18-3-7-8-3z"/></svg>
+      <span id="pill-tg"></span>
+    </div>
+    <div class="powered" id="powered"></div>
+  </div>
+
+  <section class="band">
+    <div class="band-price" id="band-price"></div>
+    <div class="band-right">
+      <div class="contact">
+        <div class="row"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-13.4 7.8L3 21l1.3-4.4A9 9 0 1 1 21 12z"/></svg><span id="band-wa"></span></div>
+        <div class="row"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg><span id="band-site"></span></div>
+      </div>
+      <div class="cta-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v11H8l-4 4z"/><path d="M8 8h8M8 11.5h5"/></svg>
+        <span id="band-cta"></span>
+      </div>
+    </div>
+  </section>
+  <div class="foot" id="foot"></div>
+</div>
+
+<script>
+(function () {
+  var data = JSON.parse(document.getElementById("poster-data").textContent);
+  function text(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
+  function el(tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt !== undefined) e.textContent = txt; return e; }
+
+  text("eyebrow", data.eyebrow);
+  var h1 = document.getElementById("headline");
+  data.headline.forEach(function (line, i) {
+    if (i) h1.appendChild(document.createElement("br"));
+    h1.appendChild(document.createTextNode(line));
+  });
+  text("sub", data.sub);
+
+  var feats = document.getElementById("features");
+  data.features.forEach(function (f) {
+    var row = el("div", "feat");
+    var tick = el("div", "tick", "✓");
+    var span = el("span", null, f);
+    row.appendChild(tick); row.appendChild(span); feats.appendChild(row);
+  });
+
+  text("chat-name", data.chat.name);
+  text("chat-sub", data.chat.sub);
+  var chat = document.getElementById("chat-bubbles");
+  data.chat.bubbles.forEach(function (b) {
+    var msg = el("div", "msg");
+    var bub = el("div", "bubble", b.text);
+    if (b.bill) {
+      var card = el("div", "bill-card");
+      card.appendChild(el("div", "bc-title", "SUNRISE CAFÉ · BILL #1042"));
+      var row = el("div", "bc-row"); row.appendChild(el("span", null, "Total")); row.appendChild(el("span", null, "₹567")); card.appendChild(row);
+      card.appendChild(el("div", "bc-paid", "PAID · UPI"));
+      bub.appendChild(card);
+    }
+    msg.appendChild(bub);
+    msg.appendChild(el("div", "time", b.time));
+    chat.appendChild(msg);
+  });
+  var typing = el("div", "typing");
+  typing.appendChild(el("span")); typing.appendChild(el("span")); typing.appendChild(el("span"));
+  chat.appendChild(typing);
+  text("telegram-note", data.telegramNote);
+
+  var stats = document.getElementById("stats");
+  data.stats.forEach(function (s) {
+    var card = el("div", "stat");
+    card.appendChild(el("div", "n", s.n));
+    card.appendChild(el("div", "l", s.l));
+    stats.appendChild(card);
+  });
+
+  text("pill-wa", data.pills[0]);
+  text("pill-tg", data.pills[1]);
+  text("powered", data.poweredBy);
+
+  text("band-price", data.band.price);
+  text("band-cta", data.band.cta);
+  text("band-wa", data.band.whatsapp);
+  text("band-site", data.band.site);
+  text("foot", data.footnote);
+
+  var FONT_WAIT_MS = 4000;
+  var fontsReady = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+  var timeout = new Promise(function (r) { setTimeout(r, FONT_WAIT_MS); });
+  Promise.race([fontsReady, timeout]).then(function () {
+    requestAnimationFrame(function () { requestAnimationFrame(function () { document.documentElement.dataset.ready = "1"; }); });
+  });
+})();
+</script>
+</body>
+</html>

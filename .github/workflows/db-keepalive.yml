@@ -1,0 +1,65 @@
+# F2 Step F2.9 — DB keep-alive: ping every owned cluster (CORE + all ledgers +
+# any armed standby) so no free M0 hits the Atlas inactivity auto-pause.
+#
+# ── CADENCE — SINGLE SOURCE OF TRUTH (phase-F2 §4 F2.9) ──────────────────────
+# The cron below IS the keep-alive cadence: at most every 4 days. `*/4` on
+# day-of-month fires on the 1st, 5th, …, 29th — 4-day gaps mid-month, SHORTER
+# across month boundaries (31-day months: 3; 30-day: 2; leap Feb 29→Mar 1: 1).
+# The BINDING side of the "every 3–5 days" contract is the MAXIMUM gap (the
+# auto-pause dodge) — extra pings are harmless, and the max gap here is 4 days,
+# leaving headroom under the 5-day ceiling for GitHub cron delays. F2c/F3
+# reference THIS file; never restate a different number elsewhere.
+#
+# 21:47 UTC = 03:17 IST — the cafe is closed, and nowhere near IST midnight
+# (the F2.7 stale-TTL midnight caveat is about scaleCheck, but hygiene jobs
+# stay clear of the day boundary on principle).
+#
+# ── SUPERSEDE PLAN ───────────────────────────────────────────────────────────
+# Once F3 deploys the Cloudflare failover Worker polling /api/health?stats=1
+# per tenant, that poll's per-cluster db.stats() touch IS the keep-alive
+# (F3 §3.3 — far more frequent than 3–5 days) → DELETE this workflow then.
+# Until the Worker is live (it is an F1 skeleton today), this is the bridge —
+# and it works even when the Vercel app itself is down, since it dials the
+# clusters directly.
+#
+# ── CAVEATS (honest) ─────────────────────────────────────────────────────────
+# • GitHub disables schedules after ~60 days without repo activity, and cron
+#   fires are best-effort (can be delayed). A red/missing run is an operator
+#   signal — see scripts/db-hygiene/README.md.
+# • Secrets: CORE_MONGODB_URI (falls back to MONGODB_URI). Stored ledger URIs
+#   are read from the CORE registry doc; when the F3 vault lands, the script
+#   fails fast until its decrypt is wired (never a silent skip).
+name: db-keepalive
+
+on:
+  schedule:
+    - cron: "47 21 */4 * *"
+  workflow_dispatch:
+
+concurrency:
+  group: db-keepalive
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # One small install (the mongodb driver) — scripts/db-hygiene is outside
+      # the npm workspaces precisely so this never installs the monorepo.
+      - name: Install driver
+        run: npm install --prefix scripts/db-hygiene --omit=dev --no-audit --no-fund
+
+      - name: Ping every cluster
+        env:
+          CORE_MONGODB_URI: ${{ secrets.CORE_MONGODB_URI || secrets.MONGODB_URI }}
+        run: node scripts/db-hygiene/keepalive.mjs

@@ -1,0 +1,18 @@
+{
+  "default": {
+    "app": "apps/cafe",
+    "orgId": "team_xxxxxxxxxxxxxxxxxxxxxxxx",
+    "projectId": "prj_xxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "scope": null,
+    "tokenEnv": "VERCEL_TOKEN",
+    "token": null
+  },
+  "some-cafe-standby": {
+    "app": "apps/cafe",
+    "orgId": "team_yyyyyyyyyyyyyyyyyyyyyyyy",
+    "projectId": "prj_yyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+    "scope": null,
+    "tokenEnv": "VERCEL_TOKEN_SOMECAFE_STANDBY",
+    "token": null
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "name": "@pos/hub",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Owner-only control plane (Tenant/Chain/HubUser registry + AES-256-GCM vault + idempotent provisioner + onboarding). Its OWN free M0 registry cluster; NEVER in a cafe's request path. Reuses @pos/shared (build-rule #31, CODE 3).",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test models/Tenant.test.ts models/AuditLog.test.ts models/HubUser.test.ts models/Chain.test.ts models/Secret.test.ts models/Heartbeat.test.ts models/Task.test.ts lib/db.test.ts lib/vault.test.ts lib/vault-rotate.test.ts lib/totp.test.ts lib/ip.test.ts lib/rate-limit.test.ts lib/totp-secret.test.ts lib/panel-gate.test.ts lib/routes.gate.test.ts lib/provider-retry.test.ts lib/atlas.test.ts lib/atlas-ops.test.ts lib/vercel.test.ts lib/imagestore.test.ts lib/provisioner-plan.test.ts lib/provisioner.test.ts lib/heartbeat-hmac.test.ts lib/heartbeat-triggers.test.ts lib/heartbeat-ingest.test.ts lib/hotadd-plan.test.ts lib/hotadd.test.ts",
+    "seed:hub-user": "node --env-file=.env.local --import tsx scripts/seed-hub-user.ts",
+    "enrol:totp": "node --env-file=.env.local --import tsx scripts/enrol-totp.ts",
+    "verify:vault-live": "node --import tsx scripts/verify-vault-live.ts && node --import tsx scripts/verify-vault-rotation-live.ts",
+    "verify:panel-live": "node --import tsx scripts/verify-panel-live.ts",
+    "verify:provisioner-live": "node --import tsx scripts/verify-provisioner-live.ts",
+    "verify:heartbeat-live": "node --import tsx scripts/verify-heartbeat-live.ts",
+    "verify:hotadd-live": "node --import tsx scripts/verify-hotadd-live.ts"
+  },
+  "dependencies": {
+    "@pos/shared": "*",
+    "aws4fetch": "1.0.20",
+    "mongoose": "^8.12.0",
+    "next": "15.5.19",
+    "next-auth": "beta",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.19",
+    "tsx": "^4.22.4",
+    "typescript": "^5"
+  }
+}

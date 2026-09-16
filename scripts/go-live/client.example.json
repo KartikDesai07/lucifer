@@ -1,0 +1,34 @@
+{
+  "_readme": [
+    "Copy this file to clients/<name>.json (that folder is gitignored AND .vercelignore'd — it holds live credentials).",
+    "Fill in every value marked <...>, then run:  npm run go-live -- <name>",
+    "slug            → the Vercel project name and the client's URL label (lowercase, digits, hyphens).",
+    "vercel.token    → the client's Vercel account → Settings → Tokens → Create (any scope, no expiry).",
+    "vercel.project  → optional; a different Vercel project name than the slug.",
+    "subdomain       → the first part of the cafe's address: <subdomain>.<apex> (apex = clients/_platform.json). Add the DNS records the console shows after the first run.",
+    "mongodbUri      → the client's Atlas M0 SRV string; MUST end with the database name (…mongodb.net/pos?…). Network Access: 0.0.0.0/0.",
+    "admin.password  → at least 8 chars with a digit and a special character. Hand it to the client, they change it on first login.",
+    "tables          → REQUIRED: a count (T-1..T-n) or a list of names — the floor plan is this cafe's own data. menu → optional starter menu; the client can import a CSV later.",
+    "image           → null (no product photos yet — everything else works) or an R2 / Cloudinary block, see DEPLOY.md.",
+    "generated       → written by the tool (secrets, project id, host). Leave it alone; deleting it would rotate secrets.",
+    "standbyHosts    → optional: the SAME cafe on other Vercel accounts (same database/images/logins, own *.vercel.app URL). [{ \"label\": \"standby\", \"vercel\": { \"token\": \"<token from that account>\", \"project\": null, \"teamId\": null } }] — run with --host standby."
+  ],
+  "slug": "<cafe-slug>",
+  "vercel": { "token": "<vercel-token>", "project": null, "teamId": null },
+  "subdomain": "<cafe-slug>",
+  "mongodbUri": "mongodb+srv://<user>:<password>@<cluster>.mongodb.net/pos?retryWrites=true&w=majority",
+  "admin": { "username": "admin", "password": "<Strong-Pass-1!>" },
+  "cafe": {
+    "name": "<Cafe Name>",
+    "tagline": "",
+    "mobile": "",
+    "address": "",
+    "receiptFooter": "Thank you, visit again!",
+    "fssai": "",
+    "gst": { "enabled": false, "number": "", "rate": 5, "mode": "inclusive" }
+  },
+  "tables": 8,
+  "menu": null,
+  "image": null,
+  "standbyHosts": []
+}

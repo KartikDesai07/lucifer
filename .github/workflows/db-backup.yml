@@ -1,0 +1,164 @@
+# F2 Step F2.9 — nightly per-cluster backups: `mongodump --gzip` → encrypt
+# (openssl AES-256, passphrase secret) → Cloudflare R2 via the S3 API (any
+# S3-compatible store works — B2 etc. — the endpoint is a secret), then prune
+# past the retention window. Restore runbook: scripts/db-hygiene/README.md.
+#
+# ── STAGGER / TRANSFER-CAP MATH (phase-F2 §4 F2.9 + §6) ──────────────────────
+# The 10 GB-out / rolling-7-days cap is PER CLUSTER. Even a FULL 512 MB M0
+# dumped nightly moves < 3.6 GB/week off that one cluster — safe. The stagger
+# (scripts/db-hygiene/lib.mjs `backupSetFor`) still dumps old IMMUTABLE
+# archives only weekly (settled orders never change — re-dumping them nightly
+# is pure waste), while CORE, the active ledger, any standby, and recently-
+# retired archives (trailing writes, F2.7's non-revoking roll-forward) go
+# nightly. RPO stated honestly: last successful nightly dump (F2 §6).
+#
+# 21:30 UTC = 03:00 IST nightly — cafe closed, clear of IST midnight.
+#
+# ── SECRETS ──────────────────────────────────────────────────────────────────
+# CORE_MONGODB_URI (or MONGODB_URI) · BACKUP_PASSPHRASE · R2_ENDPOINT ·
+# R2_BUCKET · R2_ACCESS_KEY_ID · R2_SECRET_ACCESS_KEY. Optional repo VARIABLE
+# BACKUP_RETENTION_DAYS (default 14). See scripts/db-hygiene/README.md.
+#
+# GitHub cron caveats (delays; disabled after ~60 days of repo inactivity) —
+# the Hub's >36h-stale-backup alert (F3.11) is the watchdog for this workflow.
+name: db-backup
+
+on:
+  schedule:
+    - cron: "30 21 * * *"
+  workflow_dispatch:
+    inputs:
+      force_all:
+        description: "Dump ALL clusters regardless of the stagger (restore drill)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # aws-cli ≥ 2.23 sends CRC checksums R2 may reject — the documented
+      # Cloudflare interop setting:
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      CORE_MONGODB_URI: ${{ secrets.CORE_MONGODB_URI || secrets.MONGODB_URI }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required secrets
+        run: |
+          missing=()
+          [ -z "${CORE_MONGODB_URI:-}" ] && missing+=(CORE_MONGODB_URI)
+          [ -z "${BACKUP_PASSPHRASE:-}" ] && missing+=(BACKUP_PASSPHRASE)
+          [ -z "${R2_ENDPOINT:-}" ] && missing+=(R2_ENDPOINT)
+          [ -z "${R2_BUCKET:-}" ] && missing+=(R2_BUCKET)
+          [ -z "${AWS_ACCESS_KEY_ID:-}" ] && missing+=(R2_ACCESS_KEY_ID)
+          [ -z "${AWS_SECRET_ACCESS_KEY:-}" ] && missing+=(R2_SECRET_ACCESS_KEY)
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::missing repo secrets: ${missing[*]} — see scripts/db-hygiene/README.md"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install mongodb-database-tools
+        run: |
+          curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc \
+            | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-8.0.gpg
+          echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/8.0 multiverse" \
+            | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq mongodb-database-tools
+          mongodump --version
+
+      - name: Install driver
+        run: npm install --prefix scripts/db-hygiene --omit=dev --no-audit --no-fund
+
+      - name: Build tonight's manifest (stagger plan)
+        env:
+          TENANT_ID: ${{ vars.TENANT_ID }}
+          BACKUP_RETENTION_DAYS: ${{ vars.BACKUP_RETENTION_DAYS }}
+          FORCE_ALL: ${{ inputs.force_all == true && '1' || '' }}
+        run: node scripts/db-hygiene/backup-manifest.mjs backup-manifest.json
+
+      - name: Dump → encrypt → verify → upload (per cluster)
+        run: |
+          set -uo pipefail
+          # A missing/corrupt manifest must fail loudly — a silently empty
+          # while-loop would end the step green having backed up nothing.
+          jq -e '.clusters | type == "array"' backup-manifest.json > /dev/null
+          mkdir -p dumps
+          FAILED=0
+          while IFS= read -r row; do
+            export TAG=$(jq -r '.tag' <<<"$row")
+            export URI=$(jq -r '.uri' <<<"$row")
+            export FILE="dumps/$(jq -r '.file' <<<"$row")"
+            export KEY=$(jq -r '.key' <<<"$row")
+            echo "::add-mask::$URI"
+            # Per-cluster work runs in a SEPARATE `bash -ec` process: bash
+            # neutralizes `set -e` inside any same-process compound command
+            # whose exit status is being tested (`if (set -e; …)` runs every
+            # command through failures and reports the last echo's success),
+            # and GitHub's own implicit step `-e` would kill a plain-subshell
+            # + `rc=$?` capture at the first failure. A child process has a
+            # fresh errexit context — the first failure aborts it, the `if !`
+            # catches it, and the loop continues to the remaining clusters.
+            if ! bash -ec '
+              set -o pipefail
+              echo "[backup] dumping $TAG"
+              mongodump --uri="$URI" --gzip --archive="$FILE" \
+                --readPreference=secondaryPreferred --quiet
+              openssl enc -aes-256-cbc -md sha256 -pbkdf2 -iter 210000 -salt \
+                -in "$FILE" -out "$FILE.enc" -pass env:BACKUP_PASSPHRASE
+              # Restorability gate: the decrypt round-trip must byte-match the
+              # archive we just wrote (a full mongorestore drill is the manual
+              # runbook — CI proves the artifact decrypts to the exact dump).
+              openssl enc -d -aes-256-cbc -md sha256 -pbkdf2 -iter 210000 \
+                -in "$FILE.enc" -pass env:BACKUP_PASSPHRASE | cmp -s - "$FILE"
+              aws s3 cp "$FILE.enc" "s3://$R2_BUCKET/$KEY" \
+                --endpoint-url "$R2_ENDPOINT" --no-progress
+              echo "[backup] uploaded s3://$R2_BUCKET/$KEY ($(stat -c%s "$FILE.enc") bytes)"
+            '; then
+              echo "::error::backup failed for cluster $TAG"
+              FAILED=1
+            fi
+            rm -f "$FILE" "$FILE.enc"
+          done < <(jq -c '.clusters[]' backup-manifest.json)
+          exit "$FAILED"
+
+      - name: Prune past retention
+        run: |
+          set -euo pipefail
+          PREFIX=$(jq -r '.prefix' backup-manifest.json)
+          CUTOFF=$(jq -r '.pruneBeforeDate' backup-manifest.json)
+          KEYS=$(aws s3api list-objects-v2 --bucket "$R2_BUCKET" --prefix "$PREFIX/" \
+            --endpoint-url "$R2_ENDPOINT" --query 'Contents[].Key' --output text)
+          if [ -z "$KEYS" ] || [ "$KEYS" = "None" ]; then
+            echo "[prune] nothing listed"
+            exit 0
+          fi
+          for key in $KEYS; do
+            # Only touch keys matching our own <date>.archive.gz.enc shape —
+            # prune must never delete an object it didn't name itself.
+            d=$(sed -nE 's|.*/([0-9]{4}-[0-9]{2}-[0-9]{2})\.archive\.gz\.enc$|\1|p' <<<"$key")
+            if [ -n "$d" ] && [[ "$d" < "$CUTOFF" ]]; then
+              echo "[prune] deleting $key (< $CUTOFF)"
+              aws s3 rm "s3://$R2_BUCKET/$key" --endpoint-url "$R2_ENDPOINT"
+            fi
+          done

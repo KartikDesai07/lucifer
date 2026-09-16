@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>POS Software — poster 5 (Hook)</title>
+<!--
+  POSTER 5 · "Hook" — the pain-point contrast poster · 1080 × 1350 (4:5, Instagram / WhatsApp feed)
+  Edit the JSON block below and re-render:  bash marketing/tools/render.sh poster-5-hook
+  Output: marketing/out/poster-5-hook.png (2160 × 2700, 2x)
+-->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700&family=Manrope:wght@500;600;700;800&display=swap">
+<script type="application/json" id="poster-data">
+{
+  "brand": "POS Software", "by": "by sandbee",
+  "eyebrow": "A question for café owners",
+  "headline": ["Every year, your billing", "software sends you a bill."],
+  "punch": "Ours doesn’t.",
+  "colLeft": "Subscription POS", "colRight": "POS Software by sandbee",
+  "rows": [
+    ["You pay", "Every year, forever", "Once — ₹25,000"],
+    ["Your data", "On the vendor’s servers", "In your own accounts"],
+    ["When you stop paying", "You lose access", "Nothing changes"],
+    ["WhatsApp updates", "Extra plan", "Included — ₹5,000 credit"],
+    ["Price at renewal", "Can go up", "There is no renewal"],
+    ["Support", "Only while you pay", "3 months included"]
+  ],
+  "statement": "Your data is in your hands.",
+  "statementSub": "Your own database, your own accounts — export it or move it any day. Bills, KOTs, QR ordering, WhatsApp updates and reports, set up once.",
+  "cta": "Book a free demo", "whatsapp": "+91 XXXXX XXXXX", "site": "pos.sandbee.in",
+  "footnote": "*No software renewal, ever. Hosting runs on the café’s own free-tier accounts; a small fee may apply as you grow. WhatsApp credit is usable on wa.sandbee.in."
+}
+</script>
+<style>
+  :root { --bg: #0a0a0b; --bg2: #141416; --ink: #f5f3ee; --muted: #a2a49f; --dim: #6f716c; --acid: #e6ff4a; --acid-deep: #b8cf1c; --line: #262629; --bad: #ff7a6b; --green: #0b3d2a;
+    --display: "Fraunces", Georgia, serif; --body: "Manrope", "Segoe UI", system-ui, sans-serif; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1080px; height: 1350px; background: var(--bg); overflow: hidden; }
+  body { font-family: var(--body); color: var(--ink); -webkit-font-smoothing: antialiased; }
+  .poster { position: relative; width: 1080px; height: 1350px; overflow: hidden; padding: 56px 64px 40px; display: flex; flex-direction: column;
+    background: radial-gradient(800px 500px at 100% 0%, rgba(230,255,74,.14), transparent 60%), linear-gradient(180deg, var(--bg2), var(--bg) 60%); }
+  .stripes { position: absolute; inset: 0; pointer-events: none; opacity: .5;
+    background: repeating-linear-gradient(-45deg, rgba(255,255,255,.025) 0 2px, transparent 2px 26px); -webkit-mask-image: linear-gradient(180deg, #000, transparent 55%); }
+  .top { position: relative; display: flex; align-items: center; justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 16px; }
+  .mark { position: relative; width: 60px; height: 60px; border-radius: 18px; overflow: hidden; background: var(--green); box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+  .mark img { position: absolute; left: 50%; top: 50%; width: 165%; height: 165%; transform: translate(-50%, -50%); display: block; }
+  .brand-name { font-size: 30px; font-weight: 800; letter-spacing: -.02em; line-height: 1; }
+  .brand-by { margin-top: 6px; font-size: 15px; color: var(--muted); font-weight: 600; }
+  .tag { padding: 12px 18px; border-radius: 999px; border: 1px solid var(--acid); color: var(--acid); font-size: 15px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+
+  .hero { position: relative; margin-top: 52px; }
+  h1 { font-family: var(--display); font-weight: 700; font-size: 72px; line-height: 1.02; letter-spacing: -.025em; font-variation-settings: "opsz" 144; }
+  h1 span { display: block; }
+  .punch { margin-top: 16px; font-family: var(--display); font-weight: 700; font-size: 112px; line-height: 1; letter-spacing: -.03em; color: var(--acid); font-variation-settings: "opsz" 144; }
+
+  .table { position: relative; margin-top: 40px; border: 1px solid var(--line); border-radius: 24px; overflow: hidden; background: rgba(255,255,255,.02); }
+  .tr { display: grid; grid-template-columns: 240px 1fr 1fr; align-items: center; border-top: 1px solid var(--line); }
+  .tr:first-child { border-top: 0; background: rgba(255,255,255,.03); }
+  .tr > div { padding: 18px 22px; font-size: 20px; font-weight: 700; line-height: 1.25; }
+  .tr .k { color: var(--muted); font-size: 16px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+  .tr .l { color: var(--muted); display: flex; align-items: center; gap: 12px; }
+  .tr .r { color: var(--ink); display: flex; align-items: center; gap: 12px; background: rgba(230,255,74,.06); border-left: 1px solid rgba(230,255,74,.25); }
+  .th .l, .th .r { font-size: 17px; letter-spacing: .04em; text-transform: uppercase; font-weight: 800; }
+  .th .r { color: var(--acid); }
+  .ic { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 14px; font-weight: 900; }
+  .ic.x { background: rgba(255,122,107,.16); color: var(--bad); } .ic.ok { background: var(--acid); color: #0a0a0b; }
+
+  .statement { position: relative; margin-top: 28px; display: grid; grid-template-columns: 1fr 1.25fr; gap: 30px; align-items: center; padding: 32px 34px; border-radius: 24px; background: var(--acid); color: #0a0a0b; }
+  .statement h2 { font-family: var(--display); font-weight: 700; font-size: 50px; line-height: 1.02; letter-spacing: -.025em; }
+  .statement p { font-size: 19px; line-height: 1.4; font-weight: 700; color: #2a2d12; }
+
+  .cta-row { position: relative; margin-top: auto; padding-top: 18px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+  .btn { display: inline-flex; align-items: center; gap: 12px; padding: 20px 30px; border-radius: 16px; background: var(--ink); color: #0a0a0b; font-size: 24px; font-weight: 800; }
+  .btn svg { width: 24px; height: 24px; }
+  .contact { display: flex; gap: 28px; }
+  .row { display: flex; align-items: center; gap: 10px; font-size: 21px; font-weight: 800; }
+  .row svg { width: 22px; height: 22px; stroke: var(--acid); fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .row small { display: block; font-size: 12px; font-weight: 800; color: var(--dim); letter-spacing: .1em; text-transform: uppercase; }
+  .foot { position: relative; margin-top: 16px; font-size: 11.5px; color: var(--dim); font-weight: 500; line-height: 1.4; }
+</style>
+</head>
+<body>
+<div class="poster">
+  <div class="stripes"></div>
+  <header class="top">
+    <div class="brand"><div class="mark"><img src="assets/sandbee-logo.png" alt=""></div><div><div class="brand-name" data-k="brand"></div><div class="brand-by" data-k="by"></div></div></div>
+    <div class="tag" data-k="eyebrow"></div>
+  </header>
+
+  <section class="hero">
+    <h1 id="headline"></h1>
+    <div class="punch" data-k="punch"></div>
+  </section>
+
+  <section class="table" id="table"></section>
+
+  <section class="statement">
+    <h2 data-k="statement"></h2>
+    <p data-k="statementSub"></p>
+  </section>
+
+  <section class="cta-row">
+    <div class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v11H8l-4 4z"/><path d="M8 8h8M8 11.5h5"/></svg><span data-k="cta"></span></div>
+    <div class="contact">
+      <div class="row"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-13.4 7.8L3 21l1.3-4.4A9 9 0 1 1 21 12z"/></svg><div><small>WhatsApp</small><span data-k="whatsapp"></span></div></div>
+      <div class="row"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg><div><small>Website</small><span data-k="site"></span></div></div>
+    </div>
+  </section>
+  <div class="foot" data-k="footnote"></div>
+</div>
+<script>
+(function () {
+  var data = JSON.parse(document.getElementById("poster-data").textContent);
+  function el(tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt !== undefined) e.textContent = txt; return e; }
+  document.querySelectorAll("[data-k]").forEach(function (n) { n.textContent = data[n.getAttribute("data-k")]; });
+  var h1 = document.getElementById("headline");
+  data.headline.forEach(function (line) { h1.appendChild(el("span", null, line)); });
+  var table = document.getElementById("table");
+  var th = el("div", "tr th"); th.appendChild(el("div", "k", "")); th.appendChild(el("div", "l", data.colLeft)); th.appendChild(el("div", "r", data.colRight)); table.appendChild(th);
+  data.rows.forEach(function (row) {
+    var tr = el("div", "tr"); tr.appendChild(el("div", "k", row[0]));
+    var l = el("div", "l"); l.appendChild(el("span", "ic x", "✕")); l.appendChild(el("span", null, row[1])); tr.appendChild(l);
+    var r = el("div", "r"); r.appendChild(el("span", "ic ok", "✓")); r.appendChild(el("span", null, row[2])); tr.appendChild(r);
+    table.appendChild(tr);
+  });
+  var FONT_WAIT_MS = 4000;
+  var fontsReady = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+  Promise.race([fontsReady, new Promise(function (r) { setTimeout(r, FONT_WAIT_MS); })]).then(function () {
+    requestAnimationFrame(function () { requestAnimationFrame(function () { document.documentElement.dataset.ready = "1"; }); });
+  });
+})();
+</script>
+</body>
+</html>

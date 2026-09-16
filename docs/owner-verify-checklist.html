@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kya check karna hai</title>
+<!-- LOCAL-ONLY (owner rule 2026-08-09): kabhi upload/publish nahi. Browser me kholo. -->
+<style>
+  body { font-family: "Segoe UI", Arial, sans-serif; max-width: 720px; margin: 24px auto; padding: 0 16px; color: #1f2a24; background: #fafaf6; line-height: 1.5; font-size: 18px; }
+  h1 { font-size: 26px; margin: 0 0 6px; }
+  .sub { color: #5c665f; margin: 0 0 22px; font-size: 16px; }
+  section { background: #fff; border: 1px solid #e3e5dc; border-radius: 12px; padding: 14px 18px; margin: 0 0 16px; }
+  h2 { font-size: 20px; margin: 0 0 10px; }
+  label { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; border-top: 1px solid #f0f1ea; cursor: pointer; }
+  label:first-of-type { border-top: 0; }
+  input[type=checkbox] { width: 24px; height: 24px; margin-top: 2px; flex: none; }
+  .n { color: #5c665f; font-weight: 600; min-width: 34px; }
+  .fail { color: #ae3e2b; font-size: 15px; margin: 8px 0 0; }
+  code { background: #f0f1ea; padding: 1px 6px; border-radius: 6px; font-size: 16px; }
+  .reply { background: #e3f0e8; border-color: #cfe3d6; }
+  ol { padding-left: 22px; margin: 6px 0; }
+  li { margin: 6px 0; }
+</style>
+</head>
+<body>
+<h1>Kya check karna hai — 3 chhote test</h1>
+<p class="sub">Naya build live hai. Har item tick karo. Kuch galat lage to bas item ka number + "kya hua" bhej do.</p>
+
+<section>
+  <h2>1. Phone — POS → New Order</h2>
+  <label><input type="checkbox"><span class="n">1a</span> Tiles <b>do column</b> me, normal size (bade-bade box nahi).</label>
+  <label><input type="checkbox"><span class="n">1b</span> Category chips ki line <b>side me scroll</b> hoti hai; poora page side me nahi hilta.</label>
+  <label><input type="checkbox"><span class="n">1c</span> Tile tap, search typing, chip change — <b>smooth</b>, lag nahi.</label>
+  <label><input type="checkbox"><span class="n">1d</span> Kisi se ek <b>QR order</b> karwao — order aane par screen hilti/rukti nahi.</label>
+  <label><input type="checkbox"><span class="n">1e</span> Tile ke options dabao → <b>size/extra wala popup</b> pehle jaisa khulta-band hota hai.</label>
+  <label><input type="checkbox"><span class="n">1f</span> <b>Pay Now</b> dabao → payment popup pehle jaisa.</label>
+  <label><input type="checkbox"><span class="n">1g</span> Purana tab kholo → ek item <b>void</b> karo, phir <b>table move</b> karo — dono popup pehle jaise.</label>
+  <label><input type="checkbox"><span class="n">1h</span> Tab <b>close</b> karo → "pakka?" wala popup aata hai.</label>
+  <p class="fail">Koi popup galat behave kare → pehle uska fix hoga, baaki baad me.</p>
+</section>
+
+<section>
+  <h2>2. Tablet</h2>
+  <label><input type="checkbox"><span class="n">2</span> Upar wale 1a–1h tablet par bhi same check karo.</label>
+</section>
+
+<section>
+  <h2>3. Counter PC (jahan print hota hai) — bina dialog print test</h2>
+  <ol>
+    <li>Jis shortcut se POS kholte ho → right-click → <b>Properties</b> → <b>Target</b> box ke end me ek space + <code>--kiosk-printing</code> likho → OK. (Edge ho to bhi same.)<br><span class="fail">Ye step samajh na aaye to turant batao, aage mat badhna.</span></li>
+    <li>Thermal printer Windows me <b>default printer</b> set ho (Settings → Printers).</li>
+    <li>Us shortcut se POS kholo, login karo, ek <b>KOT fire</b> karo.</li>
+  </ol>
+  <label><input type="checkbox"><span class="n">3a</span> Print ka <b>dialog nahi</b> aaya, paper seedha nikla. Kitne second lage: ____</label>
+  <label><input type="checkbox"><span class="n">3b</span> Ek <b>Pay Now</b> order karo → <b>2 slips</b> nikle, pehle KOT phir bill.</label>
+  <label><input type="checkbox"><span class="n">3c</span> Requests page par is PC ke liye <b>"auto print self-orders" ON</b> karo. POS window ko kisi aur app ke peeche <b>6+ minute</b> chhod do. Phone se ek QR order karo.<br>Paper 90 sec me nikla: haan/nahi · print sahi tha: haan/nahi</label>
+  <p class="fail">Dialog aaya ya paper nahi nikla → bas batao kaunse step par.</p>
+</section>
+
+<section class="reply">
+  <h2>Reply bas aise</h2>
+  <p>Phone ✅/❌ (kaunsa number) · Tablet ✅/❌ · PC: dialog haan/nahi · ___ sec · 3c haan/nahi</p>
+</section>
+</body>
+</html>

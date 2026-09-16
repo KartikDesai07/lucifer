@@ -1,0 +1,113 @@
+{
+  "_readme": [
+    "The DEMO café — copy to clients/demo.json, fill vercel.token, mongodbUri and admin.password, then:  npm run go-live -- demo  (or use the console).",
+    "Everything below is demo content (Sunrise Café: 8 categories, 47 items with sizes and add-ons, 10 tables). Change freely; re-running never overwrites data already in the DB.",
+    "After the first seed the cafe manages tables and menu inside the POS — this list is starter data only.",
+    "subdomain → the first part of the cafe's address: <subdomain>.<apex> (apex = clients/_platform.json). Add the DNS records the console shows after the first run."
+  ],
+  "slug": "sunrise-demo",
+  "vercel": { "token": "<vercel-token>", "project": null, "teamId": null },
+  "subdomain": "sunrise-demo",
+  "mongodbUri": "mongodb+srv://<user>:<password>@<cluster>.mongodb.net/pos?retryWrites=true&w=majority",
+  "admin": { "username": "admin", "password": "<Strong-Pass-1!>" },
+  "cafe": {
+    "name": "Sunrise Café",
+    "tagline": "Fresh brews · Honest food",
+    "mobile": "+91 98765 43210",
+    "address": "12, Lake View Road, Vadodara 390001",
+    "receiptFooter": "Thank you for visiting Sunrise Café — see you tomorrow!",
+    "fssai": "",
+    "gst": { "enabled": true, "number": "", "rate": 5, "mode": "inclusive" }
+  },
+  "tables": 10,
+  "menu": [
+    {
+      "category": "Coffee",
+      "items": [
+        { "name": "Espresso", "price": 90, "variations": [{ "name": "Single", "price": 90 }, { "name": "Double", "price": 120 }] },
+        { "name": "Americano", "price": 110, "modifiers": ["Extra shot"] },
+        { "name": "Cappuccino", "price": 140, "variations": [{ "name": "Regular", "price": 140 }, { "name": "Large", "price": 170 }], "modifiers": ["Extra shot", "Oat milk", "Less sugar"] },
+        { "name": "Café Latte", "price": 150, "variations": [{ "name": "Regular", "price": 150 }, { "name": "Large", "price": 180 }], "modifiers": ["Extra shot", "Oat milk", "Vanilla syrup"] },
+        { "name": "Flat White", "price": 160 },
+        { "name": "Cold Coffee", "price": 160, "modifiers": ["Extra shot", "Less sugar", "With ice cream"] },
+        { "name": "Filter Coffee", "price": 60 }
+      ]
+    },
+    {
+      "category": "Tea & Coolers",
+      "items": [
+        { "name": "Masala Chai", "price": 40, "variations": [{ "name": "Cutting", "price": 25 }, { "name": "Full", "price": 40 }] },
+        { "name": "Ginger Lemon Tea", "price": 60 },
+        { "name": "Green Tea", "price": 70 },
+        { "name": "Iced Peach Tea", "price": 120 },
+        { "name": "Fresh Lime Soda", "price": 80, "variations": [{ "name": "Sweet", "price": 80 }, { "name": "Salted", "price": 80 }] },
+        { "name": "Virgin Mojito", "price": 140, "modifiers": ["Extra mint", "Less sugar"] }
+      ]
+    },
+    {
+      "category": "Shakes & Smoothies",
+      "items": [
+        { "name": "Oreo Shake", "price": 170 },
+        { "name": "Chocolate Shake", "price": 160, "modifiers": ["Extra chocolate", "With ice cream"] },
+        { "name": "Mango Smoothie", "price": 150 },
+        { "name": "Banana Peanut Butter Smoothie", "price": 160 },
+        { "name": "Cold Cocoa", "price": 140 }
+      ]
+    },
+    {
+      "category": "Breakfast",
+      "items": [
+        { "name": "Poha", "price": 70 },
+        { "name": "Upma", "price": 70 },
+        { "name": "Masala Omelette", "price": 110, "modifiers": ["Extra cheese", "No onion", "Extra egg"] },
+        { "name": "Aloo Paratha (2 pc)", "price": 90, "modifiers": ["Extra butter", "With curd"] },
+        { "name": "Pancakes with Maple Syrup", "price": 180, "modifiers": ["Add banana", "Add chocolate chips"] },
+        { "name": "Avocado Toast", "price": 190 }
+      ]
+    },
+    {
+      "category": "Sandwiches & Burgers",
+      "items": [
+        { "name": "Veg Grilled Sandwich", "price": 120, "modifiers": ["Extra cheese", "No onion"] },
+        { "name": "Bombay Masala Toast", "price": 110 },
+        { "name": "Paneer Tikka Sandwich", "price": 160, "modifiers": ["Extra cheese"] },
+        { "name": "Club Sandwich", "price": 180, "variations": [{ "name": "Veg", "price": 180 }, { "name": "Paneer", "price": 200 }] },
+        { "name": "Veg Burger", "price": 140, "modifiers": ["Extra patty", "Add cheese"] },
+        { "name": "Paneer Burger", "price": 170, "modifiers": ["Extra patty", "Add cheese"] }
+      ]
+    },
+    {
+      "category": "Pizza & Pasta",
+      "items": [
+        { "name": "Margherita Pizza", "price": 220, "variations": [{ "name": "Regular", "price": 220 }, { "name": "Large", "price": 340 }], "modifiers": ["Extra cheese", "Jalapeños"] },
+        { "name": "Farmhouse Pizza", "price": 280, "variations": [{ "name": "Regular", "price": 280 }, { "name": "Large", "price": 420 }], "modifiers": ["Extra cheese"] },
+        { "name": "Peri-Peri Paneer Pizza", "price": 300, "variations": [{ "name": "Regular", "price": 300 }, { "name": "Large", "price": 450 }] },
+        { "name": "White Sauce Pasta", "price": 210, "modifiers": ["Extra cheese", "Add veggies"] },
+        { "name": "Arrabbiata Pasta", "price": 200, "modifiers": ["Extra cheese"] },
+        { "name": "Mac & Cheese", "price": 190 }
+      ]
+    },
+    {
+      "category": "Snacks & Sides",
+      "items": [
+        { "name": "French Fries", "price": 110, "variations": [{ "name": "Classic", "price": 110 }, { "name": "Peri-Peri", "price": 130 }, { "name": "Cheesy", "price": 150 }] },
+        { "name": "Cheese Garlic Bread", "price": 130 },
+        { "name": "Paneer Tikka", "price": 220 },
+        { "name": "Nachos with Salsa", "price": 160, "modifiers": ["Extra cheese"] },
+        { "name": "Spring Rolls (6 pc)", "price": 150 },
+        { "name": "Samosa (2 pc)", "price": 50 }
+      ]
+    },
+    {
+      "category": "Desserts",
+      "items": [
+        { "name": "Chocolate Brownie", "price": 120, "modifiers": ["With ice cream"] },
+        { "name": "Blueberry Cheesecake", "price": 190 },
+        { "name": "Tiramisu", "price": 210 },
+        { "name": "Ice Cream Sundae", "price": 150, "variations": [{ "name": "Vanilla", "price": 150 }, { "name": "Chocolate", "price": 160 }] },
+        { "name": "Gulab Jamun (2 pc)", "price": 80 }
+      ]
+    }
+  ],
+  "image": null
+}
