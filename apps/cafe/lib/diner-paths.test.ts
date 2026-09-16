@@ -232,6 +232,58 @@ test('PIN: app/api/public/diner/pin/route.ts\'s claim is a CAS — the source co
   assert.ok(casIdx < setIdx, "pinHash: { $exists: false } must appear in the FILTER, before the $set update clause");
 });
 
+// ── 7b. pin/route.ts — the refusal must tell a NEW diner what to DO ─────────
+// OWNER-REPORTED, live 2026-09-16: a first-time diner typed a mobile the cafe
+// has never billed and got "We couldn't set a PIN for that number. Please ask
+// at the counter." — which reads as a dead end / a broken app. The REFUSAL IS
+// CORRECT (a Customer row is minted only when staff accept or settle an order,
+// and the CAS above is what stops account takeover); only the WORDING was
+// wrong. The message must name the actual next step — place/collect an order
+// at the counter first — so the commonest cause of this refusal is actionable.
+//
+// The hard constraint this pin also guards: the text must stay ONE constant
+// used at EVERY refusal branch. Different words per branch would re-open the
+// enumeration oracle the route's own header comment exists to close (a caller
+// could then tell "no such number" from "already has a PIN").
+
+test("PIN: the set-PIN refusal names the actionable next step (order at the counter first), and is ONE shared constant used at EVERY refusal branch — branch-specific wording would re-open the enumeration oracle the CAS closes", () => {
+  const src = stripComments(readSrc(DINER_PIN_ROUTE));
+
+  const declIdx = mustIndexOf(src, "const PIN_SETUP_REFUSED", "the single refusal-message constant");
+  const declEnd = src.indexOf(";", declIdx);
+  assert.ok(declEnd > declIdx, "the refusal constant must be a terminated declaration");
+  const decl = src.slice(declIdx, declEnd);
+
+  // ACTIONABILITY: the diner must be told to order at the counter, not merely
+  // to "ask". Mutation this catches: reverting to the bare "Please ask at the
+  // counter." wording that shipped.
+  assert.match(
+    decl,
+    /order/i,
+    "the refusal must mention placing an order — that is what mints the Customer row a PIN attaches to",
+  );
+  assert.match(decl, /counter/i, "the refusal must still point the diner at the counter");
+
+  // SINGLE-HOMING: every refusal path uses the constant, and no branch builds
+  // its own string. Counted rather than merely present: a NEW branch that
+  // hand-wrote its own message would drop this count.
+  const uses = src.split("PIN_SETUP_REFUSED").length - 1;
+  assert.ok(
+    uses >= 6,
+    `every refusal branch must reuse PIN_SETUP_REFUSED (declaration + >=5 uses); found ${uses} occurrences`,
+  );
+
+  // No OTHER user-facing refusal literal may be minted inside the handler —
+  // the shape/weak messages are the deliberate exceptions (they are facts
+  // about the typed PIN, not about any account) and come from @pos/shared.
+  const failureCalls = src.match(/failure\(\s*"/g) ?? [];
+  assert.equal(
+    failureCalls.length,
+    0,
+    "no refusal may be built from an inline string literal — every one must go through the shared constant or a shared message",
+  );
+});
+
 // ── 8. All four diner routes call noStoreDiner ──────────────────────────────
 
 test("PIN: every one of the four diner routes (login, pin, me, logout) calls noStoreDiner — a per-diner payload must never be cacheable, since a cached copy served to the next phone on the same cafe WiFi is a cross-diner leak", () => {

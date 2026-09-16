@@ -87,7 +87,12 @@ export function PublicDinerSignIn({ onSignedIn }: PublicDinerSignInProps) {
         <p className="text-sm text-muted-foreground">
           {mode === "signin"
             ? "Use the mobile number you give at the counter."
-            : `Choose ${DINER_PIN_LENGTH} digits you'll remember. Staff can reset it for you at the counter.`}
+            : // CB-4 / owner-reported 2026-09-16: says UP FRONT that the number
+              // must already be known to the cafe. A Customer row is minted
+              // only when staff accept or settle an order, so a brand-new
+              // number cannot hold a PIN yet — and without this line the first
+              // a diner heard of it was a refusal after typing everything in.
+              `Use the mobile number you have ordered with here before. Choose ${DINER_PIN_LENGTH} digits you'll remember — staff can reset it for you at the counter.`}
         </p>
       </div>
 

@@ -24,9 +24,21 @@ export const dynamic = "force-dynamic";
 // generic refusal. An attacker must not be able to use this route to learn
 // which mobile numbers already hold an account — that is the same enumeration
 // oracle the login route closes, and it would be pointless to close it there
-// and re-open it here.
+// and re-open it here. So this stays ONE constant across every refusal branch:
+// wording that varied per branch would hand back exactly the distinction the
+// CAS below exists to hide.
+//
+// WORDING (owner-reported, live 2026-09-16): the first text — "We couldn't set
+// a PIN for that number. Please ask at the counter." — read as a dead end to
+// the very people who hit it most. By far the commonest cause is NOT an
+// attacker and NOT an account takeover: it is a first-time diner whose
+// Customer row does not exist yet, because a row is minted only when staff
+// accept or settle an order for that mobile. Telling them to "ask at the
+// counter" gave no reason and no next step. It now names the actual one — put
+// an order through the counter first — which is true for the common case and
+// still says nothing about whether any particular number already has a PIN.
 const PIN_SETUP_REFUSED =
-  "We couldn't set a PIN for that number. Please ask at the counter.";
+  "We couldn't set a PIN for this number yet. Order once at the counter with this number, then set your PIN here — or ask our staff to help.";
 
 // POST /api/public/diner/pin — a diner sets their OWN PIN for the first time.
 //
