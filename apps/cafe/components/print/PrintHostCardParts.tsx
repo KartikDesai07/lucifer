@@ -11,6 +11,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { PrintHostState } from "@pos/shared/print-job";
 
+// REMOVED (2026-09-19 printer-setup-wizard cleanup): PrintDiagnostics, a
+// one-line wrapper around <DesktopPrinterPicker />, had no call site left
+// once the printing settings page was rebuilt around PrinterSetupCard.tsx
+// (which renders <DesktopPrinterPicker /> directly). InlineConfirm and
+// PrintHostStatus below still have real callers there and stay.
+
 export interface InlineConfirmProps {
   question: string;
   yes: string;

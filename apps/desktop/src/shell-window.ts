@@ -6,6 +6,7 @@ import {
   BOUNDS_SAVE_DEBOUNCE_MS,
   LOAD_ABORTED_CODE,
   OPEN_EXTERNAL_MIN_INTERVAL_MS,
+  APP_ICON_FILE,
   POS_PARTITION,
   PRODUCT_NAME,
   READY_TO_SHOW_FALLBACK_MS,
@@ -34,6 +35,8 @@ export function createMainWindow(deps: CreateMainWindowDeps): BrowserWindow {
   const win = new BrowserWindow({
     show: false,
     title: PRODUCT_NAME,
+    // The product logo on the window, the taskbar button and alt-tab.
+    icon: path.join(__dirname, "../assets", APP_ICON_FILE),
     minWidth: MIN_WINDOW.width,
     minHeight: MIN_WINDOW.height,
     ...bounds,

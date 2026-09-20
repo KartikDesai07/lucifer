@@ -11,7 +11,9 @@ import {
 } from "./shared";
 import { isSameOrigin, startUrl } from "./server-url";
 import { readStore, writeStore, STORE_FILE_NAME, type ShellStore, type WindowBounds } from "./store";
+import type { PrintMode } from "./shared";
 import { createLogger } from "./log";
+import { schedulePrinterCheck } from "./printer-check";
 import { installPermissionHandlers } from "./permissions";
 import { registerPrintHandler } from "./print";
 import { createMainWindow } from "./shell-window";
@@ -30,6 +32,8 @@ if (!app.requestSingleInstanceLock()) {
   let urlWindow: BrowserWindow | null = null;
   let store: ShellStore;
   let quitting = false;
+  // Cancels the one-shot startup printer check if the app quits before it runs.
+  let cancelPrinterCheck: (() => void) | null = null;
 
   void app.whenReady().then(() => {
     // M3: sets the Windows taskbar/tray identity; must match build.appId.
@@ -40,13 +44,14 @@ if (!app.requestSingleInstanceLock()) {
     const log = createLogger(logFile);
     store = readStore(storeFile);
 
-    // The single writer. deviceName is hand-edited on disk (no picker in v1),
-    // so it is re-read before every write instead of being clobbered by the
-    // startup snapshot (review C22); a failed write is logged, never thrown
-    // into a timer callback (review C15).
+    // The single writer. deviceName and printMode are written by the web
+    // app's picker (and deviceName was hand-edited on disk in v1), so both are
+    // re-read before every write instead of being clobbered by the startup
+    // snapshot (review C22); a failed write is logged, never thrown into a
+    // timer callback (review C15).
     const persist = (patch: Partial<ShellStore>): void => {
       const onDisk = readStore(storeFile);
-      store = { ...store, deviceName: onDisk.deviceName, ...patch };
+      store = { ...store, deviceName: onDisk.deviceName, printMode: onDisk.printMode, ...patch };
       try {
         writeStore(storeFile, store);
       } catch (error) {
@@ -62,6 +67,28 @@ if (!app.requestSingleInstanceLock()) {
       new Notification({ title: PRODUCT_NAME, body: message }).show();
     };
 
+    // One-shot startup printer check (owner decision 2026-09-19). It ONLY
+    // warns — it never blocks a print, never touches the stored choice, and is
+    // never wired to any screen-lock or sleep/wake signal (this app subscribes
+    // to none of them, deliberately: the counter PC locks all day, and a check
+    // on every unlock is noise). printer-check.test.ts enforces that.
+    cancelPrinterCheck = schedulePrinterCheck({
+      getDeviceName: () => store.deviceName,
+      listPrinterNames: async () => {
+        // The main window's webContents is the only printer source available;
+        // when it is not up yet there is nothing to ask, and an empty list is
+        // read as "cannot tell", never as "printer missing".
+        if (!mainWindow || mainWindow.isDestroyed()) return [];
+        const printers = await mainWindow.webContents.getPrintersAsync();
+        return printers.map((p) => p.name);
+      },
+      notify: (title, body) => {
+        if (!Notification.isSupported()) return;
+        new Notification({ title, body }).show();
+      },
+      log,
+    });
+
     installPermissionHandlers(session.fromPartition(POS_PARTITION), () => store.serverOrigin);
 
     registerPrintHandler({
@@ -69,6 +96,29 @@ if (!app.requestSingleInstanceLock()) {
         mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.id : null,
       getOrigin: () => store.serverOrigin,
       getDeviceName: () => store.deviceName,
+      // The picker's writer. `persist` re-reads deviceName from disk before
+      // every write (review C22), so it is passed explicitly here rather than
+      // being merged from the startup snapshot.
+      setDeviceName: (name: string | null) => {
+        const onDisk = readStore(storeFile);
+        store = { ...store, ...onDisk, deviceName: name };
+        try {
+          writeStore(storeFile, store);
+        } catch (error) {
+          log.error(`store write failed: ${error instanceof Error ? error.name : "unknown"}`);
+        }
+      },
+      getPrintMode: () => store.printMode,
+      // The print-method writer, same discipline as setDeviceName.
+      setPrintMode: (mode: PrintMode) => {
+        const onDisk = readStore(storeFile);
+        store = { ...store, ...onDisk, printMode: mode };
+        try {
+          writeStore(storeFile, store);
+        } catch (error) {
+          log.error(`store write failed: ${error instanceof Error ? error.name : "unknown"}`);
+        }
+      },
       log,
       onJobFailed: notifyPrintFailure,
     });
@@ -241,5 +291,8 @@ if (!app.requestSingleInstanceLock()) {
   // of hiding it, and "Open POS" simply creates a fresh one (closed → null).
   app.on("before-quit", () => {
     quitting = true;
+    // A pending startup check must not fire into a tearing-down app.
+    cancelPrinterCheck?.();
+    cancelPrinterCheck = null;
   });
 }

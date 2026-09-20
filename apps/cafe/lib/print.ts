@@ -6,18 +6,40 @@ import {
 } from "@/lib/constants";
 import type { Settings } from "@/types";
 
+// The page height is `auto`, and it MUST stay `auto`.
+//
+// A thermal roll is continuous: the printer must advance only as far as the
+// ink goes. `auto` is what delivers that — Chromium does not honour a
+// length+`auto` @page size and simply leaves the page geometry to the printer
+// driver, which for a roll device means "feed exactly what was drawn". That
+// is the behaviour every working slip has relied on since 2026-08-12.
+//
+// DO NOT replace `auto` with an explicit height. On 2026-09-17 this constant
+// was briefly set to `1200mm` on the theory that a valid two-length @page
+// would fix a blank-print report and that "a roll printer advances only as
+// far as the ink goes, so an over-tall page costs no paper". That assumption
+// was WRONG and was never verified on a real printer: an explicit height is
+// the PAGE LENGTH, so the driver fed 1.2 METRES of paper per slip and did not
+// stop when the roll was replaced. It ran a whole roll out on the counter PC.
+// The real cause of the blank printing was never the page rule at all — it
+// was the desktop shell printing to the Windows DEFAULT printer (a virtual
+// "save to file" device); see apps/desktop/src/print.ts and its printer
+// picker. Reverted here; the regression test in lib/print-page-size.test.ts
+// now pins `auto` and forbids an explicit length.
+const PAGE_HEIGHT = "auto";
+
 // Shared react-to-print page style for the 80mm thermal printer. Used by the
 // POS receipt/KOT, the order-detail receipt, and the end-of-day summary so the
 // page setup stays in one place.
 export const RECEIPT_PAGE_STYLE =
-  "@page { size: 80mm auto; margin: 4mm; } @media print { body { margin: 0; } }";
+  `@page { size: 80mm ${PAGE_HEIGHT}; margin: 4mm; } @media print { body { margin: 0; } }`;
 
 // Same page setup for a cafe that runs narrower paper. The @page size and the
 // on-screen width of the print source (PAPER_WIDTH_CLASS below) must be chosen
 // from the SAME setting, or the browser scales the slip to fit and every column
 // lands in the wrong place.
 export function receiptPageStyle(width: PaperWidth): string {
-  return `@page { size: ${width} auto; margin: 4mm; } @media print { body { margin: 0; } }`;
+  return `@page { size: ${width} ${PAGE_HEIGHT}; margin: 4mm; } @media print { body { margin: 0; } }`;
 }
 
 // Written as whole literal class names, never built by interpolation: Tailwind

@@ -2,7 +2,7 @@
 // shell is a thin remote-content wrapper.
 import path from "node:path";
 import { dialog, Menu, nativeImage, Tray } from "electron";
-import { PRODUCT_NAME } from "./shared";
+import { APP_ICON_FILE, PRODUCT_NAME } from "./shared";
 
 export interface AppMenuActions {
   openPos(): void;
@@ -76,6 +76,9 @@ export interface AboutDetails {
 export async function showAboutDialog(details: AboutDetails): Promise<void> {
   await dialog.showMessageBox({
     type: "info",
+    // The product logo, not Electron's default — this dialog is one of the
+    // few places Windows does not take the icon from the exe.
+    icon: nativeImage.createFromPath(path.join(__dirname, "../assets", APP_ICON_FILE)),
     title: `About ${PRODUCT_NAME}`,
     message: PRODUCT_NAME,
     detail:

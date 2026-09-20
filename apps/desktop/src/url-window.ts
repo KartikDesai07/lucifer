@@ -4,6 +4,7 @@
 import path from "node:path";
 import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from "electron";
 import {
+  APP_ICON_FILE,
   URL_CANCEL_CHANNEL,
   URL_CURRENT_CHANNEL,
   URL_SAVE_CHANNEL,
@@ -32,6 +33,7 @@ export function openUrlWindow(deps: OpenUrlWindowDeps): BrowserWindow {
     minimizable: false,
     maximizable: false,
     title: "Server address",
+    icon: path.join(__dirname, "../assets", APP_ICON_FILE),
     webPreferences: {
       preload: path.join(__dirname, "url-preload.js"),
       contextIsolation: true,

@@ -26,7 +26,17 @@ import {
   PRINT_HTML_MAX_CHARS,
   FONTS_READY_MAX_MS,
   PAINT_READY_MAX_MS,
+  PRINTERS_CHANNEL,
+  PRINTER_SAVE_CHANNEL,
+  PRINT_MODE_SAVE_CHANNEL,
+  PRINT_MODES,
+  DEFAULT_PRINT_MODE,
+  isNonPaperPrinter,
+  isPrintMode,
 } from "./shared";
+import { pageWidthMicronsOf, pageHeightMicronsOf } from "./print-driver";
+import { SLIP_CSS_PX_DEFAULT_58MM, SLIP_CSS_PX_DEFAULT_80MM, usableSlipCssWidth } from "./print-direct";
+import { DOTS_58MM, DOTS_80MM } from "./escpos";
 
 const SRC = path.join(__dirname); // apps/desktop/src
 const ROOT = path.join(__dirname, ".."); // apps/desktop
@@ -38,6 +48,14 @@ function read(relFromDesktopRoot: string): string {
 const shellWindowSrc = read("src/shell-window.ts");
 const mainSrc = read("src/main.ts");
 const printSrc = read("src/print.ts");
+// The 2026-09-19 split of print.ts: job runner, the two lanes, the messages,
+// and the two pure helpers the direct lane is built on.
+const jobSrc = read("src/print-job.ts");
+const driverSrc = read("src/print-driver.ts");
+const directSrc = read("src/print-direct.ts");
+const messagesSrc = read("src/print-messages.ts");
+const escposSrc = read("src/escpos.ts");
+const rawSpoolSrc = read("src/raw-spool.ts");
 const preloadSrc = read("src/preload.ts");
 const urlPreloadSrc = read("src/url-preload.ts");
 const urlWindowHtml = read("assets/url-window.html");
@@ -118,27 +136,59 @@ test("(4) print.ts: request validation order (sender id, origin, frame, payload)
   assert.match(printSrc, /PRINT_HTML_MAX_CHARS/);
 });
 
-test("(4) print.ts: offscreen job posture (partition, data URL, print options, timeout, cleanup)", () => {
-  assert.match(printSrc, /session\.fromPartition\(PRINT_PARTITION\)/);
-  assert.match(printSrc, /baseURLForDataURL/);
-  assert.match(printSrc, /encodeURIComponent/);
-  assert.match(printSrc, /silent:\s*true/);
-  assert.match(printSrc, /printBackground:\s*true/);
-  assert.match(printSrc, /PRINT_JOB_TIMEOUT_MS/);
-  assert.match(printSrc, /FONTS_READY_MAX_MS/);
-  assert.match(printSrc, /finally/);
-  assert.match(printSrc, /\.destroy\(\)/);
+// 2026-09-19: print.ts was split. print.ts keeps the IPC handlers, print-job.ts
+// owns the offscreen window + load + paint proof, print-driver.ts owns the
+// webContents.print lane, print-direct.ts owns the RAW ESC/POS lane and
+// print-messages.ts the curated sentences. Every pin below was RE-POINTED at
+// the file that now holds the code — none was loosened.
+test("(4) print-job.ts / print-driver.ts: offscreen job posture (partition, data URL, print options, timeout, cleanup)", () => {
+  assert.match(jobSrc, /session\.fromPartition\(PRINT_PARTITION\)/);
+  assert.match(jobSrc, /baseURLForDataURL/);
+  assert.match(jobSrc, /encodeURIComponent/);
+  assert.match(driverSrc, /silent:\s*true/);
+  assert.match(driverSrc, /printBackground:\s*true/);
+  // Page geometry (superseded 2026-09-19 — (P4) below owns the full rule).
+  // A silent print has no dialog, so nothing asks Windows for the paper. The
+  // first attempt asked the DRIVER (`usePrinterDefaultPageSize`), but a
+  // thermal driver such as POS80 often reports no default page size and
+  // Electron then falls back to A4 — an A4 layout handed to an 80mm roll
+  // prints blank while the print call still reports success. The width is now
+  // READ from the slip's own @page rule and passed explicitly, with the
+  // driver's default kept only as the fallback. Both must stay, as an
+  // either/or; removing either one reopens a blank-print path.
+  assert.match(driverSrc, /usePrinterDefaultPageSize:\s*true/, "the no-width fallback must remain");
+  assert.match(driverSrc, /pageSize:\s*\{/, "the known-width path must pass an explicit pageSize");
+  assert.match(jobSrc, /PRINT_JOB_TIMEOUT_MS/);
+  assert.match(jobSrc, /FONTS_READY_MAX_MS/);
+  assert.match(jobSrc, /finally/);
+  assert.match(jobSrc, /\.destroy\(\)/);
 });
 
-test("(4) vision-guard: print.ts never uses a persist: partition and never logs the HTML", () => {
-  assert.ok(!printSrc.includes('"persist:'));
-  assert.ok(!printSrc.includes("`persist:"));
-  // The log calls must carry html.length, never the html variable itself.
-  const logCalls = printSrc.match(/log\.(info|error)\(`[^`]*`\)/g) ?? [];
+test("(4) vision-guard: no print file uses a persist: partition, and none logs the HTML", () => {
+  // The whole print surface, since the split: handler, job, both lanes.
+  const laneSrc = [printSrc, jobSrc, driverSrc, directSrc].join("\n");
+  assert.ok(!laneSrc.includes('"persist:'));
+  assert.ok(!laneSrc.includes("`persist:"));
+  const logCalls = laneSrc.match(/log\.(info|error)\(`[^`]*`\)/g) ?? [];
   assert.ok(logCalls.length >= 2, "expected at least two log.info/log.error call sites");
+
+  // THE SECURITY RULE, applied to EVERY log call without exception: the slip's
+  // HTML never reaches the log file.
   for (const call of logCalls) {
-    assert.match(call, /html\.length/, `log call must reference html.length, not html: ${call}`);
     assert.ok(!/\$\{html\}/.test(call), `log call must never interpolate the raw html: ${call}`);
+  }
+
+  // The size discipline applies to the log calls that are ABOUT a print job —
+  // those must name html.length rather than the payload. Since 2026-09-17 the
+  // file also logs the operator's PRINTER CHOICE, which has no html in scope
+  // at all; requiring html.length there would be meaningless (and the blanket
+  // rule above already proves none of them can leak a slip). Scoped by the
+  // presence of "print job" in the message, which is the shape every
+  // job-related line already uses.
+  const jobLogCalls = logCalls.filter((c) => c.includes("print job"));
+  assert.ok(jobLogCalls.length >= 2, "expected at least two 'print job' log call sites");
+  for (const call of jobLogCalls) {
+    assert.match(call, /html\.length/, `a print-job log call must reference html.length, not html: ${call}`);
   }
   // Landmark: the file was really scanned.
   assert.ok(printSrc.includes("export function registerPrintHandler("));
@@ -175,7 +225,16 @@ function extractExposedKeys(source: string, bridgeKeyLiteral: string): string[] 
   let currentDepth = 0;
   let tokenStart = 0;
   const pushToken = (raw: string): void => {
-    const trimmed = raw.trim();
+    // Leading comments must be stripped before the anchored matches below.
+    // Without this a property written under a `// ...` line parsed as NOTHING
+    // and was SILENTLY DROPPED — which, in a pin whose whole job is to assert
+    // the renderer's privileged surface is a closed set, meant a new
+    // ipcRenderer-invoking method could be added behind a comment and never
+    // be seen (found 2026-09-17, when listPrinters went missing this way).
+    const trimmed = raw
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/[^\n]*$/gm, "")
+      .trim();
     if (trimmed.length === 0) return;
     // Either `key: value` or a shorthand property `key` (e.g. `{ version, printHtml: ... }`).
     const keyed = trimmed.match(/^([A-Za-z_$][A-Za-z0-9_$]*)\s*:/);
@@ -184,7 +243,13 @@ function extractExposedKeys(source: string, bridgeKeyLiteral: string): string[] 
       return;
     }
     const shorthand = trimmed.match(/^([A-Za-z_$][A-Za-z0-9_$]*)$/);
-    if (shorthand && shorthand[1] !== undefined) keys.push(shorthand[1]);
+    if (shorthand && shorthand[1] !== undefined) {
+      keys.push(shorthand[1]);
+      return;
+    }
+    // Never drop a token quietly: an unparsable member is a hole in the
+    // closed-set guarantee, so it fails the pin instead of vanishing.
+    assert.fail(`could not extract a property name from an exposed member: ${JSON.stringify(trimmed.slice(0, 120))}`);
   };
   for (let i = 0; i < objectLiteralText.length; i++) {
     const ch = objectLiteralText[i];
@@ -199,9 +264,21 @@ function extractExposedKeys(source: string, bridgeKeyLiteral: string): string[] 
   return keys;
 }
 
-test("(6) preload.ts exposes exactly ['version', 'printHtml'] on posDesktop", () => {
+test("(6) preload.ts exposes exactly ['version', 'printHtml', 'listPrinters', 'savePrinter', 'savePrintMode'] on posDesktop", () => {
+  // WIDENED 2026-09-17 and again 2026-09-19, deliberately — this stays a
+  // CLOSED set, which is the point of the pin: the renderer's whole privileged
+  // surface is these five and nothing else (never ipcRenderer, never a node
+  // builtin). savePrintMode carries one of two string literals ("direct" /
+  // "driver") that the main process validates; it returns nothing privileged.
+  //
+  // listPrinters/savePrinter exist because silent printing used to go to the
+  // WINDOWS DEFAULT printer: on the counter PC that was a virtual device (a
+  // "nul:" port that swallowed every slip, and "PORTPROMPT:" ones that pop a
+  // save-file dialog), so nothing ever reached paper and no error appeared.
+  // Both new methods are name-only — they return printer NAMES and store one;
+  // they never hand the renderer a handle, a driver object, or a file path.
   const keys = extractExposedKeys(preloadSrc, '"posDesktop"');
-  assert.deepEqual(keys.sort(), ["printHtml", "version"]);
+  assert.deepEqual(keys.sort(), ["listPrinters", "printHtml", "savePrintMode", "savePrinter", "version"]);
 });
 
 test("(6) preload.ts: exactly one require('electron'), no other require, no ipcRenderer exposure, no posDesktopSetup", () => {
@@ -217,10 +294,223 @@ test("(6) preload.ts: exactly one require('electron'), no other require, no ipcR
 });
 
 // -- (7)+(8) channel-literal parity: preload duplicated literals vs shared.ts -
-test("(7) preload.ts duplicated literals equal shared.ts (PRINT_CHANNEL, BRIDGE_KEY, VERSION_ARG_PREFIX)", () => {
+test("(7) preload.ts duplicated literals equal shared.ts (PRINT_CHANNEL, BRIDGE_KEY, VERSION_ARG_PREFIX, the picker channels)", () => {
   assert.ok(preloadSrc.includes(JSON.stringify(PRINT_CHANNEL)));
   assert.ok(preloadSrc.includes(JSON.stringify(BRIDGE_KEY)));
   assert.ok(preloadSrc.includes(JSON.stringify(VERSION_ARG_PREFIX)));
+  assert.ok(preloadSrc.includes(JSON.stringify(PRINTERS_CHANNEL)));
+  assert.ok(preloadSrc.includes(JSON.stringify(PRINTER_SAVE_CHANNEL)));
+  assert.ok(preloadSrc.includes(JSON.stringify(PRINT_MODE_SAVE_CHANNEL)));
+  // And each literal is the one its bridge method invokes.
+  assert.match(preloadSrc, /savePrintMode:[\s\S]{0,120}?ipcRenderer\.invoke\(PRINT_MODE_SAVE_CHANNEL, mode\)/);
+});
+
+// -- 2026-09-17: no slip may reach a device that writes a FILE -------------
+// Owner rule: on the counter PC a save-file window must never appear and a
+// slip must never vanish into a virtual device. Two guards, both pinned here:
+// the NAME matcher, and the handler ordering that refuses BEFORE any window
+// opens while still routing the refusal through the tray notification.
+
+test("(P3) pageWidthMicronsOf reads the slip's real roll width from its own @page rule, and refuses anything that is not a usable roll width", () => {
+  // The REAL rules apps/cafe/lib/print.ts emits (RECEIPT_PAGE_STYLE and
+  // receiptPageStyle for both configured paper widths).
+  assert.equal(
+    pageWidthMicronsOf("@page { size: 80mm auto; margin: 4mm; } @media print { body { margin: 0; } }"),
+    80_000,
+    "an 80mm roll must be passed to the printer as 80000 microns",
+  );
+  assert.equal(
+    pageWidthMicronsOf("@page { size: 58mm auto; margin: 4mm; } @media print { body { margin: 0; } }"),
+    58_000,
+    "a 58mm roll must be passed as 58000 microns",
+  );
+  assert.equal(pageWidthMicronsOf("@page { size: 3in auto; }"), 76_200, "inches must convert");
+
+  // The A4 QR sheet prints through the BROWSER dialog and carries a keyword
+  // size, not a length — it must fall through to the driver, never be forced.
+  assert.equal(pageWidthMicronsOf("@page { size: A4 portrait; margin: 10mm; }"), null);
+  assert.equal(pageWidthMicronsOf("<style>body{margin:0}</style>"), null, "no @page rule at all");
+  // Out-of-range values are refused rather than handed to a printer: Chromium
+  // rejects a tiny page, and an absurd one would compose a giant sheet.
+  assert.equal(pageWidthMicronsOf("@page { size: 5mm auto; }"), null, "too narrow");
+  assert.equal(pageWidthMicronsOf("@page { size: 5000mm auto; }"), null, "absurdly wide");
+});
+
+test("(P7) the printer margin is OFF — Chromium's default ~10mm margin is leading blank paper on a roll", () => {
+  // Owner measured ~7cm of blank before the slip on 2026-09-19. `margins`
+  // defaults to marginType "default" (Chromium's own page margin), which on a
+  // continuous roll is simply paper fed before anything prints. The slip
+  // brings its own spacing (the @page 4mm rule plus the receipt's padding).
+  assert.match(
+    driverSrc,
+    /margins:\s*\{\s*marginType:\s*"none"\s*\}/,
+    'print-driver.ts must pass margins: { marginType: "none" } — the default margin is fed as blank paper on every slip',
+  );
+  // Positive landmark so the pin is not vacuous.
+  assert.match(driverSrc, /silent:\s*true/, "the silent print call must still exist");
+});
+
+test("(P5) pageHeightMicronsOf follows the slip's CONTENT — a fixed height is the runaway-paper-feed bug wearing a different number", () => {
+  // 2026-09-17: an explicit 1200mm @page height fed 1.2 METRES per slip and
+  // ran a whole thermal roll out. MEASURED again on 2026-09-19 before this
+  // shipped: a 31.8mm slip with a "generous" 3000mm composition height still
+  // produced a 3000mm page. So the height MUST track the content.
+  const mm = (microns: number) => microns / 1000;
+
+  // 120px of content = 31.8mm; expect ~that plus the 10mm margin tail.
+  const small = pageHeightMicronsOf(120);
+  assert.ok(mm(small) > 35 && mm(small) < 50, `a 31.8mm slip must yield a ~42mm page, got ${mm(small)}mm`);
+
+  // A longer bill gets a taller page — UP TO the driver-safe ceiling. Beyond
+  // it the page stops growing and Chromium paginates instead; on a continuous
+  // roll those pages come out as one strip, which is what the operator wants.
+  // (Before 2026-09-19 this expected ~742mm for a 731.8mm slip. That is now
+  // wrong, not because the invariant changed but because a page that long is
+  // silently TRUNCATED by the printer — see the ceiling assertion below.)
+  const medium = pageHeightMicronsOf(600); // 158.8mm — still under the cap
+  assert.ok(mm(medium) > 150 && mm(medium) < 170, `a 158.8mm slip must yield a ~163mm page, got ${mm(medium)}mm`);
+  assert.ok(medium > small, "a longer slip must produce a taller page, while it fits");
+
+  const huge = pageHeightMicronsOf(2766); // 731.8mm of content
+  assert.equal(mm(huge), 280, "past the ceiling the page stops growing and the bill paginates instead");
+
+  // Hard stop, BOTH ways. MEASURED on the counter PC 2026-09-19: a 317mm page
+  // made the POS80 stop after ~225mm and the rest of a 32-item bill was lost
+  // silently. The cap keeps every page inside what a thermal driver accepts;
+  // a longer bill paginates (verified: 60 items -> 2x200mm pages, capacity
+  // 400mm vs 303mm of content, nothing dropped) instead of being truncated.
+  // The ceiling tracks the printer's configured roll media (80 x 297mm) with
+  // headroom for its unprintable lead-in. It must stay BELOW that media: a
+  // page longer than the media is what silently truncated a 32-item bill on
+  // 2026-09-19. It must also stay comfortably ABOVE a normal bill, or ordinary
+  // orders paginate for no reason (the earlier 200mm split a 20-item bill).
+  const ceilingMm = mm(pageHeightMicronsOf(999_999));
+  assert.ok(ceilingMm <= 290, `a single page must stay under the 297mm roll media, got ${ceilingMm}mm`);
+  assert.ok(ceilingMm >= 250, `the ceiling must not be so tight that ordinary bills paginate, got ${ceilingMm}mm`);
+  // And the real failing case must fit in ONE page.
+  assert.ok(
+    mm(pageHeightMicronsOf(1183)) <= ceilingMm,
+    "the owner's 32-item bill (1183px) must fit one page",
+  );
+  // And a broken/zero measurement must not produce a zero-size page.
+  for (const bad of [0, -5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    const h = pageHeightMicronsOf(bad);
+    assert.ok(h >= 25_000 && h <= 1_500_000, `a bad content height (${bad}) must clamp to a sane page, got ${h}`);
+  }
+});
+
+test("(P4) print.ts passes an explicit pageSize when the width is known, and only falls back to the driver's default when it is not — the A4-on-an-80mm-roll blank print", () => {
+  // Positive landmarks first.
+  assert.match(driverSrc, /pageWidthMicronsOf\(html\)/, "the driver lane must read the width from the slip's own document");
+  assert.match(driverSrc, /pageHeightMicronsOf\(probe\.height\)/, "the page height must come from the slip's MEASURED content, never a fixed constant");
+  assert.ok(
+    !/height:\s*\d{5,}/.test(driverSrc),
+    "a large hardcoded page height must never be passed — that is the runaway-paper-feed bug (1200mm fed 1.2m per slip)",
+  );
+
+  // The either/or: Electron REJECTS pageSize + usePrinterDefaultPageSize
+  // together, so they must never both be passed unconditionally.
+  assert.match(
+    driverSrc,
+    /pageWidthMicrons !== null[\s\S]{0,200}?pageSize:\s*\{[\s\S]{0,120}?usePrinterDefaultPageSize:\s*true/,
+    "pageSize (known width) and usePrinterDefaultPageSize (fallback) must be a single either/or spread — Electron rejects the pair",
+  );
+
+  // The width must never be hardcoded: it comes from the cafe's Settings via
+  // the @page rule, so a 58mm cafe is not forced onto 80mm.
+  assert.ok(
+    !/pageSize:\s*\{\s*width:\s*\d/.test(driverSrc),
+    "pageSize.width must be the value read from the document, never a hardcoded number",
+  );
+  // And the driver lane is the ONLY place webContents.print is ever called.
+  assert.equal((driverSrc.match(/webContents\.print\(/g) ?? []).length, 1, "exactly one webContents.print call, in the driver lane");
+  for (const [name, src] of [["print.ts", printSrc], ["print-job.ts", jobSrc], ["print-direct.ts", directSrc]] as const) {
+    assert.ok(!src.includes("webContents.print("), `${name} must not call webContents.print — the direct lane bypasses the driver entirely`);
+  }
+});
+
+test("(P1) isNonPaperPrinter matches every known file/virtual device, and no real printer", () => {
+  // The exact device names measured on a real Windows counter PC (their ports
+  // were "nul:" for OneNote and "PORTPROMPT:" for the two writers — the ones
+  // that pop a save dialog). Electron exposes no port, hence name matching.
+  for (const name of [
+    "Microsoft Print to PDF",
+    "Microsoft XPS Document Writer",
+    "OneNote (Desktop)",
+    "Fax",
+    "Send to OneNote 16",
+    "Adobe PDF",
+    "PDFCreator",
+    "MICROSOFT PRINT TO PDF",
+  ]) {
+    assert.equal(isNonPaperPrinter(name), true, `${name} must be refused — it writes a file, not paper`);
+  }
+  // Real thermal/laser devices must stay usable. "TVS RP 3230" and "EPSON
+  // TM-T82" are the common Indian counter printers.
+  for (const name of [
+    "TVS RP 3230",
+    "EPSON TM-T82 Receipt",
+    "POS-80",
+    "XP-80C",
+    "HP LaserJet Pro M1136",
+    "Everycom 80mm Series",
+  ]) {
+    assert.equal(isNonPaperPrinter(name), false, `${name} is a real printer and must remain selectable`);
+  }
+});
+
+test("(P2) print.ts refuses an unchosen or file-writing printer BEFORE opening a window, and routes both refusals through the job promise so the tray notification fires", () => {
+  // Positive landmarks first (negative-pin discipline).
+  assert.match(printSrc, /PRINT_NO_PRINTER_MESSAGE/, "the no-printer refusal constant must exist");
+  assert.match(printSrc, /PRINT_NOT_A_PRINTER_MESSAGE/, "the file-writing refusal constant must exist");
+  assert.match(printSrc, /isNonPaperPrinter\(/, "print.ts must consult the virtual-printer matcher");
+
+  // The refusal is decided before runJob is ever reached.
+  const refusalIdx = printSrc.indexOf("const refusal");
+  const runJobCallIdx = printSrc.indexOf("runJob(html, origin, deviceName");
+  assert.ok(refusalIdx > 0, "the refusal decision must exist");
+  assert.ok(runJobCallIdx > refusalIdx, "the printer must be vetted BEFORE runJob opens an offscreen window");
+
+  // The two refusal CONDITIONS must actually be live, bound to the device
+  // name. Asserting only that `const refusal` exists let a mutation that
+  // replaced the unchosen-printer test with `false` sail through (measured
+  // 2026-09-17) — the implicit-system-default bug would have come straight
+  // back. Bind each arm to the variable it must test.
+  const refusalBlock = printSrc.slice(refusalIdx, runJobCallIdx);
+  assert.match(
+    refusalBlock,
+    /chosen === null \|\| chosen\.length === 0/,
+    "the unchosen-printer arm must test the device name itself — no printer chosen must refuse, never fall back to the Windows default",
+  );
+  assert.match(
+    refusalBlock,
+    /isNonPaperPrinter\(chosen\)/,
+    "the file-writing arm must test the CHOSEN name (not a coerced/defaulted value)",
+  );
+  assert.ok(
+    !/isNonPaperPrinter\(chosen \?\? ""\)/.test(refusalBlock),
+    "coercing the name with ?? \"\" before the virtual-printer check hides the unchosen case behind a passing match",
+  );
+
+  // CRITICAL: thrown straight from the handler the refusal would bypass the
+  // catch that logs and raises the Windows notification, and the operator
+  // would see the same silence this whole fix exists to remove. It must be
+  // thrown INSIDE the queued job instead.
+  assert.match(
+    printSrc,
+    /refusal !== null\s*\?\s*queue\.then\(/,
+    "a refusal must be thrown inside the queued job promise, not straight from the handler, or onJobFailed never runs",
+  );
+
+  // No implicit fallback to the system default may return.
+  assert.ok(
+    !printSrc.includes('deviceName ?? "system default"'),
+    'print.ts must not log a "system default" printer any more — a device is always explicitly chosen',
+  );
+  assert.ok(
+    !/\.\.\.\(deviceName \? \{ deviceName \} : \{\}\)/.test(printSrc),
+    "deviceName must be passed unconditionally — the conditional spread was the implicit-default path",
+  );
 });
 
 test("(8) url-preload.ts duplicated literals equal shared.ts (URL_*_CHANNEL, SETUP_BRIDGE_KEY)", () => {
@@ -372,6 +662,13 @@ test("(11) no console.* usage in any non-test src/*.ts file", () => {
     "window-state.ts",
     "permissions.ts",
     "print.ts",
+    "print-job.ts",
+    "print-driver.ts",
+    "print-direct.ts",
+    "print-messages.ts",
+    "escpos.ts",
+    "raw-spool.ts",
+    "printer-check.ts",
     "shell-window.ts",
     "preload.ts",
     "url-preload.ts",
@@ -404,6 +701,12 @@ test("(12) no tenant/cafe name anywhere under apps/desktop source/config", () =>
     ["src/window-state.ts", read("src/window-state.ts")],
     ["src/permissions.ts", read("src/permissions.ts")],
     ["src/print.ts", read("src/print.ts")],
+    ["src/print-job.ts", jobSrc],
+    ["src/print-driver.ts", driverSrc],
+    ["src/print-direct.ts", directSrc],
+    ["src/print-messages.ts", messagesSrc],
+    ["src/escpos.ts", escposSrc],
+    ["src/raw-spool.ts", rawSpoolSrc],
     ["src/shell-window.ts", read("src/shell-window.ts")],
     ["src/preload.ts", read("src/preload.ts")],
     ["src/url-preload.ts", read("src/url-preload.ts")],
@@ -486,6 +789,35 @@ test("resources/icon.png is a PNG with width >= 256 (IHDR)", () => {
   assert.equal(width, height, "icon must be square");
 });
 
+test("(P6) the product logo is on every surface OUTSIDE the loaded web page — window, setup window, tray and About dialog", () => {
+  // Owner 2026-09-19: "bahar sab jagah muje proper mere product ka hi logo
+  // chahiye" — inside the page the cafe's own branding still wins, but every
+  // piece of app chrome must carry the product mark.
+  //
+  // assets/ (not resources/) because build.files packages only out/, assets/
+  // and package.json — an icon under resources/ would be missing in the
+  // INSTALLED app while working fine in dev.
+  const iconPath = path.join(ROOT, "assets", "app-icon.png");
+  assert.ok(existsSync(iconPath), "assets/app-icon.png must exist — resources/ is not packaged");
+  const { isPng, width, height } = readPngIhdr(iconPath);
+  assert.ok(isPng, "app-icon.png must be a real PNG");
+  assert.ok(width >= 256 && height >= 256, `app icon must be at least 256x256, got ${width}x${height}`);
+
+  const pkgFiles = (typedPkg.build.files ?? []) as string[];
+  assert.ok(
+    pkgFiles.some((f) => f.startsWith("assets/")),
+    "build.files must package assets/ or the window icon is missing from the installed app",
+  );
+
+  for (const [file, src] of [
+    ["shell-window.ts", shellWindowSrc],
+    ["url-window.ts", urlWindowSrc],
+    ["menu.ts", read("src/menu.ts")],
+  ] as const) {
+    assert.match(src, /APP_ICON_FILE/, `${file} must use the shared APP_ICON_FILE constant, never a hardcoded path`);
+  }
+});
+
 test("assets/tray.png is exactly 32x32 (IHDR)", () => {
   const { isPng, width, height } = readPngIhdr(path.join(ROOT, "assets", "tray.png"));
   assert.equal(isPng, true);
@@ -495,18 +827,21 @@ test("assets/tray.png is exactly 32x32 (IHDR)", () => {
 
 // -- Review fix round (2026-09-08): pins for the arbitrated findings ----------
 
-test("(R1) print.ts: ONE deadline for the whole job (load + fonts + print), both permission handlers denied, sanitized failure reasons, failure hook", () => {
-  assert.match(printSrc, /Promise\.race\(\[\s*loadAndPrint\(/, "the job body must be raced as a whole (C1)");
-  assert.match(printSrc, /reject\(new Error\(PRINT_TIMEOUT_MESSAGE\)\), PRINT_JOB_TIMEOUT_MS\)/, "the deadline must be PRINT_JOB_TIMEOUT_MS");
+test("(R1) print-job.ts / print.ts: ONE deadline for the whole job (load + fonts + print), both permission handlers denied, sanitized failure reasons, failure hook", () => {
+  assert.match(jobSrc, /Promise\.race\(\[\s*loadAndPrint\(/, "the job body must be raced as a whole (C1)");
+  assert.match(jobSrc, /reject\(new Error\(PRINT_TIMEOUT_MESSAGE\)\), PRINT_JOB_TIMEOUT_MS\)/, "the deadline must be PRINT_JOB_TIMEOUT_MS");
   assert.equal(PRINT_JOB_TIMEOUT_MS, 30_000, "the shell job deadline stays 30 s; the cafe seam waits 35 s so the shell's own message wins");
-  assert.ok(printSrc.includes("setPermissionRequestHandler("), "print window must deny permission requests");
-  assert.ok(printSrc.includes("setPermissionCheckHandler("), "print window must deny permission checks too (C12)");
-  assert.ok(printSrc.includes("export function sanitizeFailureReason("), "driver reasons must be sanitized before they leave the module (C8)");
-  assert.match(printSrc, /reject\(new Error\(sanitizeFailureReason\(reason\)\)\)/, "the print callback's reason must go through sanitizeFailureReason");
+  assert.ok(jobSrc.includes("setPermissionRequestHandler("), "print window must deny permission requests");
+  assert.ok(jobSrc.includes("setPermissionCheckHandler("), "print window must deny permission checks too (C12)");
+  assert.ok(messagesSrc.includes("export function sanitizeFailureReason("), "driver reasons must be sanitized before they leave the module (C8)");
+  assert.match(driverSrc, /reject\(new Error\(sanitizeFailureReason\(reason\)\)\)/, "the print callback's reason must go through sanitizeFailureReason");
   assert.ok(printSrc.includes("deps.onJobFailed(message)"), "a rejected job must be announced to main.ts (C3)");
   // Landmark for the negative below.
-  assert.ok(printSrc.includes("if (!win.isDestroyed()) win.destroy();"));
-  assert.ok(!printSrc.includes("deps.log.error(html"), "the HTML must never be logged");
+  assert.ok(jobSrc.includes("if (!win.isDestroyed()) win.destroy();"));
+  for (const [name, src] of [["print.ts", printSrc], ["print-job.ts", jobSrc], ["print-driver.ts", driverSrc], ["print-direct.ts", directSrc]] as const) {
+    assert.ok(!src.includes("log.error(html"), `${name}: the HTML must never be logged`);
+    assert.ok(!src.includes("log.info(html"), `${name}: the HTML must never be logged`);
+  }
 });
 
 test("(R2) shell-window.ts: renderer-crash recovery, retry of the FAILED url, throttled openExternal, fallback cleared on close", () => {
@@ -582,16 +917,19 @@ test("(R7) resources/installer.nsh: customUnInstall deletes BOTH auto-start regi
 // URL before anything reaches webContents.print / loadURL.
 
 test("(B1) print window backgroundThrottling: false (paint frames must not be throttled in a hidden window), and shell-window.ts still sets it too", () => {
-  assert.match(printSrc, /backgroundThrottling:\s*false/);
+  assert.match(jobSrc, /backgroundThrottling:\s*false/);
   // Positive landmark pairing the print-window posture above: the same
   // BrowserWindow config block still carries its partition.
-  assert.match(printSrc, /session\.fromPartition\(PRINT_PARTITION\)/);
+  assert.match(jobSrc, /session\.fromPartition\(PRINT_PARTITION\)/);
   assert.match(shellWindowSrc, /backgroundThrottling:\s*false/);
 });
 
 test("(B1) vision-guard: backgroundThrottling is never re-enabled anywhere under src/", () => {
   const filesToScan = [
     ["print.ts", printSrc],
+    ["print-job.ts", jobSrc],
+    ["print-driver.ts", driverSrc],
+    ["print-direct.ts", directSrc],
     ["shell-window.ts", shellWindowSrc],
     ["main.ts", mainSrc],
     ["url-window.ts", urlWindowSrc],
@@ -606,46 +944,59 @@ test("(B1) vision-guard: backgroundThrottling is never re-enabled anywhere under
   const trueCountAcrossAll = filesToScan.filter(([, s]) => s.includes("backgroundThrottling: true")).length;
   assert.equal(trueCountAcrossAll, 0);
   const falseCount =
-    (printSrc.match(/backgroundThrottling:\s*false/g) ?? []).length +
+    (jobSrc.match(/backgroundThrottling:\s*false/g) ?? []).length +
     (shellWindowSrc.match(/backgroundThrottling:\s*false/g) ?? []).length;
   assert.equal(falseCount, 2, "expected exactly the print-window and main-window occurrences");
 });
 
 test("(B2) paint proof: two requestAnimationFrame calls, a body/scrollHeight/styleSheets probe, and the ready-vs-fallback race", () => {
-  const rafCount = (printSrc.match(/requestAnimationFrame/g) ?? []).length;
+  const rafCount = (jobSrc.match(/requestAnimationFrame/g) ?? []).length;
   assert.ok(rafCount >= 2, `expected at least two requestAnimationFrame occurrences, found ${rafCount}`);
-  assert.match(printSrc, /document\.body\.innerText/);
-  assert.match(printSrc, /scrollHeight/);
-  assert.match(printSrc, /document\.styleSheets\.length/);
-  assert.match(printSrc, /Promise\.race\(\[\s*win\.webContents\.executeJavaScript\(PAINT_READY_SCRIPT\)/, "the paint probe must be raced against its own deadline");
-  assert.match(printSrc, /delay\(PAINT_READY_MAX_MS,\s*null\)/);
-  assert.match(printSrc, /win\.webContents\.executeJavaScript\(PAINT_PROBE_SCRIPT\)/, "a timed-out race must fall back to a direct probe");
+  assert.match(jobSrc, /document\.body\.innerText/);
+  assert.match(jobSrc, /scrollHeight/);
+  assert.match(jobSrc, /document\.styleSheets\.length/);
+  assert.match(jobSrc, /Promise\.race\(\[\s*win\.webContents\.executeJavaScript\(PAINT_READY_SCRIPT\)/, "the paint probe must be raced against its own deadline");
+  assert.match(jobSrc, /delay\(PAINT_READY_MAX_MS,\s*null\)/);
+  assert.match(jobSrc, /win\.webContents\.executeJavaScript\(PAINT_PROBE_SCRIPT\)/, "a timed-out race must fall back to a direct probe");
   // The fonts race is unchanged by this fence and must still be present.
-  assert.match(printSrc, /FONTS_READY_MAX_MS/);
-  assert.match(printSrc, /FONTS_READY_SCRIPT/);
+  assert.match(jobSrc, /FONTS_READY_MAX_MS/);
+  assert.match(jobSrc, /FONTS_READY_SCRIPT/);
 });
 
-test("(B2) blank-slip fence: PRINT_NOT_READY_MESSAGE and PRINT_EMPTY_MESSAGE are both thrown BEFORE webContents.print(", () => {
-  const notReadyThrowIdx = printSrc.indexOf("throw new Error(PRINT_NOT_READY_MESSAGE)");
-  const emptyThrowIdx = printSrc.indexOf("throw new Error(PRINT_EMPTY_MESSAGE)");
-  const printCallIdx = printSrc.indexOf("win.webContents.print(");
+test("(B2) blank-slip fence: PRINT_NOT_READY_MESSAGE and PRINT_EMPTY_MESSAGE are both thrown BEFORE either lane is entered, and the direct lane fences the pixels again before the spooler", () => {
+  const notReadyThrowIdx = jobSrc.indexOf("throw new Error(PRINT_NOT_READY_MESSAGE)");
+  const emptyThrowIdx = jobSrc.indexOf("throw new Error(PRINT_EMPTY_MESSAGE)");
+  const driverCallIdx = jobSrc.indexOf("printThroughDriver(win,");
+  const directCallIdx = jobSrc.indexOf("printDirect(win,");
   assert.ok(notReadyThrowIdx >= 0, "expected a PRINT_NOT_READY_MESSAGE throw site");
   assert.ok(emptyThrowIdx >= 0, "expected a PRINT_EMPTY_MESSAGE throw site");
-  assert.ok(printCallIdx >= 0, "expected a webContents.print( call site");
-  assert.ok(notReadyThrowIdx < printCallIdx, "the not-ready fence must run before printing");
-  assert.ok(emptyThrowIdx < printCallIdx, "the empty-slip fence must run before printing");
+  assert.ok(driverCallIdx >= 0, "expected the driver-lane call site");
+  assert.ok(directCallIdx >= 0, "expected the direct-lane call site");
+  for (const laneIdx of [driverCallIdx, directCallIdx]) {
+    assert.ok(notReadyThrowIdx < laneIdx, "the not-ready fence must run before either lane prints");
+    assert.ok(emptyThrowIdx < laneIdx, "the empty-slip fence must run before either lane prints");
+  }
   // The guards themselves: an invalid probe shape, then a zero-length body.
-  assert.match(printSrc, /if \(!isPaintProbe\(probe\)\) throw new Error\(PRINT_NOT_READY_MESSAGE\)/);
-  assert.match(printSrc, /if \(probe\.text === 0\) throw new Error\(PRINT_EMPTY_MESSAGE\)/);
+  assert.match(jobSrc, /if \(!isPaintProbe\(probe\)\) throw new Error\(PRINT_NOT_READY_MESSAGE\)/);
+  assert.match(jobSrc, /if \(probe\.text === 0\) throw new Error\(PRINT_EMPTY_MESSAGE\)/);
+  // The driver lane still owns the one webContents.print( call (P4 counts it).
+  assert.ok(driverSrc.includes("win.webContents.print("), "expected the webContents.print( call site in the driver lane");
+  // The direct lane fences the PIXELS: no ink (rows === 0) and too tall are
+  // both refused before a single byte reaches the Windows queue.
+  const rowsZeroIdx = directSrc.indexOf("if (raster.rows === 0) throw new Error(PRINT_EMPTY_MESSAGE)");
+  const tooTallIdx = directSrc.indexOf("if (raster.rows > RASTER_MAX_ROWS) throw new Error(PRINT_TOO_LARGE_MESSAGE)");
+  const spoolIdx = directSrc.indexOf("writeRawJob(");
+  assert.ok(rowsZeroIdx >= 0 && tooTallIdx >= 0 && spoolIdx >= 0, "expected both pixel fences and the spooler call");
+  assert.ok(rowsZeroIdx < spoolIdx && tooTallIdx < spoolIdx, "both pixel fences must run before the RAW job is written");
 });
 
 test("(B3) data-URL ceiling: DATA_URL_MAX_CHARS is checked and thrown BEFORE win.loadURL(", () => {
-  const throwIdx = printSrc.indexOf("throw new Error(PRINT_TOO_LARGE_MESSAGE)");
-  const loadUrlIdx = printSrc.indexOf("win.loadURL(");
+  const throwIdx = jobSrc.indexOf("throw new Error(PRINT_TOO_LARGE_MESSAGE)");
+  const loadUrlIdx = jobSrc.indexOf("win.loadURL(");
   assert.ok(throwIdx >= 0, "expected a PRINT_TOO_LARGE_MESSAGE throw site");
   assert.ok(loadUrlIdx >= 0, "expected a win.loadURL( call site");
   assert.ok(throwIdx < loadUrlIdx, "the size fence must run before the data URL is ever loaded");
-  assert.match(printSrc, /dataUrl\.length > DATA_URL_MAX_CHARS/);
+  assert.match(jobSrc, /dataUrl\.length > DATA_URL_MAX_CHARS/);
 });
 
 test("(B3) size/timing constants: DATA_URL_MAX_CHARS and PAINT_READY_MAX_MS stay inside their budgets", () => {
@@ -659,21 +1010,22 @@ test("(B3) size/timing constants: DATA_URL_MAX_CHARS and PAINT_READY_MAX_MS stay
   );
 });
 
-// print.ts imports "electron" so it cannot be imported here -- the three new
-// message constants are parsed straight out of the source text instead.
+// The message constants live in print-messages.ts (pure) since the 2026-09-19
+// split; they are still parsed straight out of the source text so the pin
+// reads exactly what ships.
 function extractStringConst(source: string, name: string): string {
   const re = new RegExp(`export const ${name} =\\s*"([^"]*)"\\s*;`);
   const m = source.match(re);
-  assert.ok(m, `expected to find "export const ${name} = \\"...\\";" in print.ts`);
+  assert.ok(m, `expected to find "export const ${name} = \\"...\\";" in print-messages.ts`);
   return m![1]!;
 }
 
-test("(B4) the three new print.ts messages are distinct, plain-English, period-terminated string constants", () => {
-  const empty = extractStringConst(printSrc, "PRINT_EMPTY_MESSAGE");
-  const notReady = extractStringConst(printSrc, "PRINT_NOT_READY_MESSAGE");
-  const tooLarge = extractStringConst(printSrc, "PRINT_TOO_LARGE_MESSAGE");
-  const rejected = extractStringConst(printSrc, "PRINT_REJECTED_MESSAGE");
-  const timeout = extractStringConst(printSrc, "PRINT_TIMEOUT_MESSAGE");
+test("(B4) the print messages are distinct, plain-English, period-terminated string constants", () => {
+  const empty = extractStringConst(messagesSrc, "PRINT_EMPTY_MESSAGE");
+  const notReady = extractStringConst(messagesSrc, "PRINT_NOT_READY_MESSAGE");
+  const tooLarge = extractStringConst(messagesSrc, "PRINT_TOO_LARGE_MESSAGE");
+  const rejected = extractStringConst(messagesSrc, "PRINT_REJECTED_MESSAGE");
+  const timeout = extractStringConst(messagesSrc, "PRINT_TIMEOUT_MESSAGE");
 
   assert.equal(empty, "That slip had nothing to print.");
   assert.equal(notReady, "The slip did not finish drawing. Print it again.");
@@ -697,31 +1049,44 @@ test("(B5) logging: the success line names probe.text/probe.sheets/probe.height/
   // log.info(`...`) call closed on the same line, so it misses the
   // multi-line `deps.log.info(\n  \`...\`,\n)` success-log call added here.
   // Walk every `log.(info|error)(` call site and pull out its first
-  // backtick-delimited argument regardless of line breaks.
-  const callSites = printSrc.match(/\blog\.(info|error)\(/g) ?? [];
+  // backtick-delimited argument regardless of line breaks — across the whole
+  // print surface (handler, job, both lanes) since the 2026-09-19 split.
+  const laneSrc = [printSrc, jobSrc, driverSrc, directSrc].join("\n");
+  const callSites = laneSrc.match(/\blog\.(info|error)\(/g) ?? [];
   assert.ok(callSites.length >= 4, `expected >= 4 log.info/log.error call sites, found ${callSites.length}`);
 
   let found = 0;
-  const templateLiterals: string[] = [];
+  const literals: string[] = [];
   const callRe = /\blog\.(info|error)\(/g;
   let m: RegExpExecArray | null;
-  while ((m = callRe.exec(printSrc)) !== null) {
-    const afterParen = printSrc.slice(m.index + m[0].length);
-    const backtickMatch = afterParen.match(/^\s*(`[^`]*`)/);
-    assert.ok(backtickMatch, `expected a template-literal argument right after ${m[0]}`);
-    templateLiterals.push(backtickMatch![1]!);
+  while ((m = callRe.exec(laneSrc)) !== null) {
+    const afterParen = laneSrc.slice(m.index + m[0].length);
+    // Since 2026-09-17 the printer-choice lines log a PLAIN string too (one
+    // has nothing to interpolate), so a bare "..." argument is accepted here
+    // alongside a template literal — both are still scanned below.
+    const argMatch = afterParen.match(/^\s*(`[^`]*`|"[^"]*")/);
+    assert.ok(argMatch, `expected a string or template-literal argument right after ${m[0]}`);
+    literals.push(argMatch![1]!);
     found++;
   }
-  assert.ok(found >= 4, `expected to parse >= 4 template-literal log arguments, parsed ${found}`);
+  assert.ok(found >= 4, `expected to parse >= 4 log arguments, parsed ${found}`);
 
-  for (const literal of templateLiterals) {
-    assert.match(literal, /html\.length/, `log call must reference html.length, not html: ${literal}`);
+  // Universal: no log line may ever carry the slip's HTML.
+  for (const literal of literals) {
     assert.ok(!/\$\{html\}/.test(literal), `log call must never interpolate the raw html: ${literal}`);
+  }
+  // Scoped: the lines ABOUT a print job must report its SIZE, not its payload.
+  // The printer-choice lines have no html in scope and are excluded by name,
+  // not by loosening the rule for everyone.
+  const jobLiterals = literals.filter((l) => l.includes("print job"));
+  assert.ok(jobLiterals.length >= 3, `expected >= 3 'print job' log lines, found ${jobLiterals.length}`);
+  for (const literal of jobLiterals) {
+    assert.match(literal, /html\.length/, `a print-job log call must reference html.length: ${literal}`);
   }
   // Landmark: the success line really is one of the parsed literals (proves
   // the multi-line walk above actually reached it, not just the two
   // single-line info() calls test (4) already covered).
-  assert.ok(templateLiterals.some((l) => l.includes("printer=${deviceName")));
+  assert.ok(literals.some((l: string) => l.includes("printer=${deviceName")));
 });
 
 test("(B6) package.json: version is >= 1.0.1 and the nsis artifactName still carries ${version}", () => {
@@ -733,4 +1098,122 @@ test("(B6) package.json: version is >= 1.0.1 and the nsis artifactName still car
     `package.json version ${version} must be >= 1.0.1`,
   );
   assert.ok(typedPkg.build.nsis.artifactName!.includes("${version}"), "artifactName must still interpolate the build version");
+});
+
+// -- 2026-09-19 the DIRECT lane: RAW ESC/POS, paper length = content --------
+// MEASURED on the counter PC: the POS80 driver ignores the page size the app
+// asks for and prints on its own fixed form (a 4cm slip on a 297mm page; a
+// 32-item bill cut short on Letter). Chromium overlays DM_PAPERWIDTH/LENGTH
+// on the driver's default DEVMODE and leaves dmPaperSize set — Microsoft's
+// contract says it "must be zero" then — so the driver's choice is undefined
+// and no Electron option changes it. The direct lane bypasses the driver:
+// offscreen window -> DevTools screenshot at (dots / slip px) scale -> 1-bit
+// raster -> GS v 0 bands -> RAW spooler job. These pins keep that chain whole.
+
+test("(D1) print-job.ts: the lane is an either/or on the stored mode, and only the direct lane's window is offscreen", () => {
+  assert.match(jobSrc, /offscreen:\s*mode === "direct"/, "the direct lane needs an offscreen window (a hidden on-screen one never paints the screenshot frame — measured)");
+  assert.match(jobSrc, /if \(mode === "driver"\) \{[\s\S]{0,200}?printThroughDriver\(win, html, probe, deviceName, log\)/, "the driver lane runs only when the mode says so");
+  assert.match(jobSrc, /const page = await printDirect\(win, html, deviceName, log\)/, "every other mode is the direct lane");
+  assert.equal((jobSrc.match(/printThroughDriver\(/g) ?? []).length, 1, "exactly one driver-lane call site");
+  assert.equal((jobSrc.match(/printDirect\(/g) ?? []).length, 1, "exactly one direct-lane call site");
+  // Both lanes receive the SAME drawn document: the dispatch happens after
+  // the paint proof, never before the load.
+  assert.ok(jobSrc.indexOf("win.loadURL(") < jobSrc.indexOf('if (mode === "driver")'));
+});
+
+test("(D2) print-direct.ts: print media + device-scale emulation, one full-slip screenshot, debugger always detached", () => {
+  assert.match(directSrc, /dbg\.attach\(CDP_PROTOCOL_VERSION\)/);
+  assert.match(directSrc, /const CDP_PROTOCOL_VERSION = "1\.3"/);
+  assert.match(directSrc, /"Emulation\.setEmulatedMedia",\s*\{\s*media:\s*CDP_MEDIA_PRINT\s*\}/, "@media print rules must apply exactly as in a browser print");
+  assert.match(directSrc, /const CDP_MEDIA_PRINT = "print"/);
+  // The scale IS the dot mapping: dots per CSS px, never a hardcoded factor.
+  assert.match(directSrc, /const deviceScaleFactor = dots \/ cssWidth/);
+  assert.match(directSrc, /"Emulation\.setDeviceMetricsOverride",\s*\{[\s\S]{0,160}?deviceScaleFactor,/);
+  assert.ok(!/deviceScaleFactor:\s*\d/.test(directSrc), "the scale must never be a literal number");
+  // One screenshot of the WHOLE slip — no banding, no capturePage.
+  assert.match(directSrc, /"Page\.captureScreenshot",\s*\{[\s\S]{0,200}?captureBeyondViewport:\s*true/);
+  assert.ok(!directSrc.includes("capturePage("), "capturePage returns DIP x OS scale (720px on a 125% display) — the protocol screenshot is the exact-dots path");
+  assert.ok(!directSrc.includes("setZoomFactor("), "zoom does not change capture dimensions (measured) — never used here");
+  // The debugger is released whatever happens.
+  const finallyIdx = directSrc.indexOf("} finally {");
+  const detachIdx = directSrc.indexOf("dbg.detach()");
+  assert.ok(finallyIdx >= 0 && detachIdx > finallyIdx, "dbg.detach() must sit in the finally block");
+  assert.match(directSrc, /if \(dbg\.isAttached\(\)\) dbg\.detach\(\)/);
+  // Landmark: the lane really ends in the spooler with the raster bytes.
+  assert.match(directSrc, /writeRawJob\(deviceName, PRINT_DOC_NAME, escposJob\(raster\)\)/);
+  assert.match(directSrc, /export const PRINT_DOC_NAME = "POS slip"/);
+  assert.match(directSrc, /dotsForPaperWidth\(pageWidthMicronsOf\(html\)\)/, "the dot width follows the slip's own @page width (80mm -> 576, 58mm -> 384)");
+  assert.match(directSrc, /rasterizeBgra\(new Uint8Array\(image\.toBitmap\(\)\), width, height, dots\)/);
+});
+
+test("(D2) print-direct.ts: a foreign screenshot error never reaches the operator — logged bounded, surfaced as the not-ready sentence", () => {
+  assert.match(directSrc, /if \(OWN_MESSAGES\.has\(reason\)\) throw error;/);
+  assert.match(directSrc, /sanitizeFailureReason\(reason\)/);
+  assert.match(directSrc, /throw new Error\(PRINT_NOT_READY_MESSAGE\);\s*\}\s*const image = nativeImage\.createFromBuffer\(png\)/);
+  // The too-tall pre-check happens BEFORE the screenshot is requested.
+  const preCheckIdx = directSrc.indexOf("> RASTER_MAX_ROWS) throw new Error(PRINT_TOO_LARGE_MESSAGE)");
+  const shotIdx = directSrc.indexOf('"Page.captureScreenshot"');
+  assert.ok(preCheckIdx >= 0 && shotIdx > preCheckIdx, "a slip that would outgrow one screenshot is refused before asking the compositor");
+});
+
+test("(D3) usableSlipCssWidth: the measured width wins when plausible; otherwise the cafe's own slip widths — parity-pinned to apps/cafe/lib/print.ts PAPER_WIDTH_CLASS", () => {
+  assert.equal(usableSlipCssWidth(300, DOTS_80MM), 300);
+  assert.equal(usableSlipCssWidth(210, DOTS_58MM), 210);
+  assert.equal(usableSlipCssWidth(299.99, DOTS_80MM), 299.99, "a sub-pixel measurement is kept as measured");
+  for (const bad of [0, 50, 5000, Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+    assert.equal(usableSlipCssWidth(bad, DOTS_80MM), SLIP_CSS_PX_DEFAULT_80MM, `implausible ${bad} on 80mm -> the cafe's 80mm width`);
+    assert.equal(usableSlipCssWidth(bad, DOTS_58MM), SLIP_CSS_PX_DEFAULT_58MM, `implausible ${bad} on 58mm -> the cafe's 58mm width`);
+  }
+  // Parity with the web app: its receipt root is `w-[300px]` on 80mm paper
+  // and `w-[210px]` on 58mm. If the cafe changes those, the fallback here
+  // must follow, or a slip with no measurable root prints at the wrong size.
+  const cafePrintSrc = readFileSync(path.join(ROOT, "..", "cafe", "lib", "print.ts"), "utf8");
+  const w80 = cafePrintSrc.match(/"80mm":\s*"w-\[(\d+)px\]"/);
+  const w58 = cafePrintSrc.match(/"58mm":\s*"w-\[(\d+)px\]"/);
+  assert.ok(w80 && w58, "the cafe's PAPER_WIDTH_CLASS must still carry both widths");
+  assert.equal(Number(w80![1]), SLIP_CSS_PX_DEFAULT_80MM);
+  assert.equal(Number(w58![1]), SLIP_CSS_PX_DEFAULT_58MM);
+});
+
+test("(D4) print.ts: the print method is stored, validated, defaulted to direct, echoed to the picker, and recorded on every job line", () => {
+  assert.match(printSrc, /ipcMain\.handle\(PRINT_MODE_SAVE_CHANNEL,/);
+  assert.match(printSrc, /if \(!isPrintMode\(mode\)\) throw new Error\(PRINT_REJECTED_MESSAGE\)/, "only the two known modes may be stored");
+  assert.match(printSrc, /const effectiveMode = \(\): PrintMode => deps\.getPrintMode\(\) \?\? DEFAULT_PRINT_MODE/);
+  assert.match(printSrc, /printMode:\s*effectiveMode\(\)/, "listPrinters must report the effective mode so the picker shows the truth");
+  assert.match(printSrc, /runJob\(html, origin, deviceName, mode, deps\.log\)/);
+  assert.match(printSrc, /mode=\$\{mode\}, page=\$\{page\}/, "the field log must say which lane printed and what page/raster it produced");
+  assert.match(printSrc, /warmDirectPrint\(deps\.log\)/, "queue access is loaded at startup so a broken install is logged before the first slip");
+  // shared.ts truth the handler leans on.
+  assert.equal(DEFAULT_PRINT_MODE, "direct", "direct is the default — the driver lane cannot follow the content on the measured POS80");
+  assert.deepEqual([...PRINT_MODES], ["direct", "driver"]);
+  for (const ok of ["direct", "driver"]) assert.equal(isPrintMode(ok), true);
+  for (const bad of ["DIRECT", "raster", "", null, undefined, 1]) assert.equal(isPrintMode(bad), false);
+});
+
+test("(D5) main.ts: the print method has a reader and a writer, and persist() re-reads it from disk like deviceName", () => {
+  assert.match(mainSrc, /getPrintMode: \(\) => store\.printMode/);
+  assert.match(mainSrc, /setPrintMode: \(mode: PrintMode\) => \{[\s\S]{0,200}?printMode: mode/);
+  assert.match(mainSrc, /deviceName: onDisk\.deviceName, printMode: onDisk\.printMode, \.\.\.patch/, "a timer-driven persist() must not clobber a mode the picker just saved");
+});
+
+test("(D6) package.json: koffi is an exact pin and its platform binary is unpacked from the asar", () => {
+  const deps = (pkg.dependencies ?? {}) as Record<string, string>;
+  assert.equal(deps.koffi, "3.3.1", "koffi must be an exact version pin (a native module; no range operators)");
+  assert.ok(!/[\^~<>]/.test(deps.koffi ?? "^"), "no range operator on koffi");
+  const build = pkg.build as Record<string, unknown>;
+  assert.deepEqual(build.asarUnpack, ["node_modules/@koromix/**"], "the prebuilt koffi.node lives in the @koromix platform package and must be a real file on disk, not an asar entry");
+  // The binary that ships for the counter PC (x64) is really installed here.
+  assert.ok(existsSync(path.join(ROOT, "node_modules", "@koromix", "koffi-win32-x64", "win32_x64", "koffi.node")), "the win32_x64 koffi binary must be installed");
+});
+
+test("(D7) purity: escpos.ts and raw-spool.ts never import electron, and koffi is loaded lazily", () => {
+  for (const [name, src] of [["escpos.ts", escposSrc], ["raw-spool.ts", rawSpoolSrc]] as const) {
+    assert.ok(!/from "electron"/.test(src) && !/require\("electron"\)/.test(src), `${name} must stay electron-free`);
+  }
+  assert.ok(!/from "node:fs"/.test(escposSrc), "escpos.ts is pure bytes in, bytes out");
+  assert.equal((rawSpoolSrc.match(/require\("koffi"\)/g) ?? []).length, 1, "koffi is required exactly once, lazily");
+  assert.ok(!/^import koffi from "koffi"/m.test(rawSpoolSrc), "no top-level value import of koffi — the unit suite must never load the native module");
+  // Landmarks.
+  assert.ok(escposSrc.includes("export function escposJob("));
+  assert.ok(rawSpoolSrc.includes("export function writeRawJob("));
 });

@@ -23,6 +23,8 @@ function countOccurrences(haystack: string, needle: string): number {
 
 const DESKTOP_SHELL = "apps/cafe/lib/desktop-shell.ts";
 const DESKTOP_SHELL_DOCUMENT = "apps/cafe/lib/desktop-shell-document.ts";
+const DESKTOP_SHELL_PRINTER = "apps/cafe/lib/desktop-shell-printer.ts";
+const DESKTOP_PRINTER_PICKER = "apps/cafe/components/print/DesktopPrinterPicker.tsx";
 const USE_PRINT_HOST_BRIDGE = "apps/cafe/hooks/use-print-host-bridge.ts";
 const USE_KOT_PRINT_BRIDGE = "apps/cafe/hooks/use-kot-print-bridge.ts";
 const ORDER_DETAIL_SHEET = "apps/cafe/components/orders/OrderDetailSheet.tsx";
@@ -258,4 +260,143 @@ test('PARITY: apps/desktop/src/preload.ts contains exposeInMainWorld("posDesktop
   assert.ok(src.includes("printHtml"), 'preload.ts must expose "printHtml"');
   assert.ok(src.includes('"pos-desktop:print-html"'), 'preload.ts must reference the "pos-desktop:print-html" channel');
   assert.ok(!src.includes('exposeInMainWorld("posDesktopSetup"'), 'preload.ts must NOT expose a "posDesktopSetup" bridge');
+});
+
+// ── F. Print-method (2026-09-19): savePrintMode is OPTIONAL, printMode too ─
+//
+// The new shell build adds a `printMode` field to listPrinters()'s resolved
+// object and an optional `savePrintMode` method — both OPTIONAL on the bridge
+// type, same rationale as listPrinters/savePrinter: an older, un-upgraded
+// shell's installer never carries them.
+
+test("desktop-shell.ts: PosDesktopBridge declares savePrintMode? as OPTIONAL (question mark on the member, never required) and listPrinters?'s resolved type carries an optional printMode? field — paired with the positive landmark that printHtml stays REQUIRED (no question mark)", () => {
+  const src = readSrc(DESKTOP_SHELL);
+
+  // Positive landmark: printHtml is still required (no trailing ?).
+  assert.match(src, /printHtml\(html: string\): Promise<void>;/, "positive landmark: printHtml must stay required (no ?)");
+
+  assert.match(
+    src,
+    /savePrintMode\?\(mode: DesktopPrintMode\): Promise<\{ printMode: DesktopPrintMode \}>;/,
+    "savePrintMode must be declared OPTIONAL (savePrintMode?(...)), never required — an older shell's bridge lacks it",
+  );
+  assert.match(
+    src,
+    /listPrinters\?\(\): Promise<\{[\s\S]*?printMode\?:\s*DesktopPrintMode[\s\S]*?\}>;/,
+    "listPrinters?'s resolved object must carry an OPTIONAL printMode? field",
+  );
+
+  assert.match(
+    src,
+    /import type \{ DesktopPrintMode \} from "@\/lib\/desktop-shell-printer";/,
+    "desktop-shell.ts must import the DesktopPrintMode type from lib/desktop-shell-printer.ts (the 150-line budget left no room to declare it here)",
+  );
+});
+
+test("desktop-shell-printer.ts: desktopPrinterApi() binds savePrintMode ONLY via a typeof bridge.savePrintMode === \"function\" check, and it is bound OUTSIDE the listPrinters/savePrinter presence check that gates the null return — paired with the positive landmark that listPrinters/savePrinter stay the REQUIRED gate for a non-null api", () => {
+  const src = readSrc(DESKTOP_SHELL_PRINTER);
+
+  // Positive landmark: listPrinters/savePrinter remain the required gate.
+  assert.match(
+    src,
+    /if \(typeof listPrinters !== "function" \|\| typeof savePrinter !== "function"\) return null;/,
+    "positive landmark: desktopPrinterApi() must still return null unless BOTH listPrinters and savePrinter are functions",
+  );
+
+  const gateAt = src.indexOf('if (typeof listPrinters !== "function"');
+  const bindAt = src.indexOf('typeof bridge.savePrintMode === "function"');
+  assert.ok(gateAt >= 0 && bindAt >= 0, "positive landmark: both markers must be present");
+  assert.ok(
+    gateAt < bindAt,
+    `expected the listPrinters/savePrinter gate(${gateAt}) BEFORE the savePrintMode feature-detect(${bindAt}) — savePrintMode must never be part of the required gate`,
+  );
+  assert.match(
+    src,
+    /if \(typeof bridge\.savePrintMode === "function"\) api\.savePrintMode = bridge\.savePrintMode\.bind\(bridge\);/,
+    'savePrintMode must be bound ONLY behind typeof bridge.savePrintMode === "function" — never called/bound unconditionally',
+  );
+
+  assert.match(
+    src,
+    /export const DESKTOP_PRINT_MODES: readonly DesktopPrintMode\[\] = \["direct", "driver"\];/,
+    "must export DESKTOP_PRINT_MODES as readonly [\"direct\", \"driver\"]",
+  );
+  assert.match(
+    src,
+    /export const DEFAULT_DESKTOP_PRINT_MODE: DesktopPrintMode = "direct";/,
+    'must export DEFAULT_DESKTOP_PRINT_MODE = "direct"',
+  );
+});
+
+// ── G. DesktopPrinterPicker.tsx: the print-method radio block ─────────────
+// Split into a sibling, DesktopPrintMethod.tsx, to keep the picker's own size
+// in check — same idiom as PrintHostCardParts.tsx. The picker only renders it
+// behind a THREE-way feature detection: printers.length > 0, savePrintMode is
+// a function, and the list actually reported a printMode.
+
+const DESKTOP_PRINT_METHOD = "apps/cafe/components/print/DesktopPrintMethod.tsx";
+
+test("PIN: DesktopPrinterPicker.tsx renders <DesktopPrintMethod behind printers.length > 0 && typeof api.savePrintMode === \"function\" && printMode !== undefined — paired with the positive landmark that the printer <select> renders unconditionally on printers.length > 0 alone (the mode block is STRICTLY narrower)", () => {
+  const pickerSrc = readSrc(DESKTOP_PRINTER_PICKER);
+
+  // Positive landmark: the existing printer select's own (looser) gate.
+  assert.match(pickerSrc, /printers\.length === 0 \? \(/, "positive landmark: the printer list's own empty-check must still be present");
+
+  assert.match(
+    pickerSrc,
+    /\{printers\.length > 0 && typeof api\.savePrintMode === "function" && printMode !== undefined && \(/,
+    "DesktopPrinterPicker.tsx must gate the print-method block on printers.length > 0 && typeof api.savePrintMode === \"function\" && printMode !== undefined",
+  );
+  assert.match(
+    pickerSrc,
+    /<DesktopPrintMethod api=\{api\} savePrintMode=\{api\.savePrintMode\} printMode=\{printMode\} \/>/,
+    "must render <DesktopPrintMethod api={api} savePrintMode={api.savePrintMode} printMode={printMode} />",
+  );
+  assert.match(
+    pickerSrc,
+    /import \{ DesktopPrintMethod \} from "@\/components\/print\/DesktopPrintMethod";/,
+    "must import { DesktopPrintMethod } from \"@/components/print/DesktopPrintMethod\"",
+  );
+});
+
+test("PIN: DesktopPrintMethod.tsx's two radio values equal DESKTOP_PRINT_MODES exactly (order and membership), and it imports DESKTOP_PRINT_MODES from @/lib/desktop-shell-printer rather than hardcoding the literals a second time", () => {
+  const src = readSrc(DESKTOP_PRINT_METHOD);
+
+  assert.match(
+    src,
+    /import\s*\{[\s\S]*?DESKTOP_PRINT_MODES[\s\S]*?\}\s*from\s*"@\/lib\/desktop-shell-printer"/,
+    "DesktopPrintMethod.tsx must import DESKTOP_PRINT_MODES from @/lib/desktop-shell-printer",
+  );
+  assert.match(
+    src,
+    /\{DESKTOP_PRINT_MODES\.map\(/,
+    "positive landmark: the radios must be generated by mapping DESKTOP_PRINT_MODES, not two hand-written literals — the only way the two stay equal by construction",
+  );
+
+  const modesSrc = readSrc(DESKTOP_SHELL_PRINTER);
+  const modesMatch = /export const DESKTOP_PRINT_MODES: readonly DesktopPrintMode\[\] = \[("[^"]+"(?:, "[^"]+")*)\];/.exec(modesSrc);
+  assert.ok(modesMatch, "desktop-shell-printer.ts must declare DESKTOP_PRINT_MODES as a literal array");
+  const modes = JSON.parse(`[${modesMatch![1]}]`) as string[];
+  assert.deepEqual(modes, ["direct", "driver"], "DESKTOP_PRINT_MODES must be exactly [\"direct\", \"driver\"], in that order");
+});
+
+test("PIN: DesktopPrintMethod.tsx carries the mandated English copy verbatim — labels and one-line descriptions for both direct and driver modes", () => {
+  const src = readSrc(DESKTOP_PRINT_METHOD);
+
+  assert.ok(src.includes("Direct to printer (recommended)"), 'must carry the label "Direct to printer (recommended)"');
+  assert.ok(
+    src.includes("The slip is sent to the printer as an image, so the paper is exactly as long as the slip."),
+    "must carry the direct-mode description verbatim",
+  );
+  assert.ok(src.includes("Through the Windows driver"), 'must carry the label "Through the Windows driver"');
+  assert.ok(
+    src.includes("Use only if direct printing gives blank or garbled paper. The driver's page size decides the paper length."),
+    "must carry the driver-mode description verbatim",
+  );
+
+  assert.ok(src.includes("Print method saved."), 'must carry the success toast "Print method saved."');
+  assert.ok(
+    src.includes("Could not save the print method — try again."),
+    'must carry the failure toast "Could not save the print method — try again."',
+  );
 });

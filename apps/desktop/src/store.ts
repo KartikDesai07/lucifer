@@ -2,6 +2,7 @@
 // (no electron imports) — safe for node:test.
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { normalizeServerUrl } from "./server-url";
+import { isPrintMode, type PrintMode } from "./shared";
 
 export interface WindowBounds {
   x: number;
@@ -15,6 +16,8 @@ export interface ShellStore {
   deviceName: string | null;
   autoStart: boolean | null;
   windowBounds: WindowBounds | null;
+  // null = never chosen; the shell then uses DEFAULT_PRINT_MODE ("direct").
+  printMode: PrintMode | null;
 }
 
 export const STORE_FILE_NAME = "pos-desktop.json";
@@ -24,6 +27,7 @@ export const DEFAULT_STORE: ShellStore = {
   deviceName: null,
   autoStart: null,
   windowBounds: null,
+  printMode: null,
 };
 
 function normalizeWindowBounds(raw: unknown): WindowBounds | null {
@@ -74,7 +78,12 @@ export function normalizeStore(raw: unknown): ShellStore {
 
   const windowBounds = Object.hasOwn(source, "windowBounds") ? normalizeWindowBounds(source.windowBounds) : null;
 
-  return { serverOrigin, deviceName, autoStart, windowBounds };
+  // Only the two known modes are kept; a typo or an older/newer value falls
+  // back to "never chosen" so the shell's default applies.
+  const printMode: PrintMode | null =
+    Object.hasOwn(source, "printMode") && isPrintMode(source.printMode) ? source.printMode : null;
+
+  return { serverOrigin, deviceName, autoStart, windowBounds, printMode };
 }
 
 export function readStore(file: string): ShellStore {
