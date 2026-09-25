@@ -109,9 +109,17 @@ test("PIN: harvested order-level accessor keys are a subset of printOrderSnapsho
   // Non-vacuity landmarks (plan item 5) — direct-accessor portion, before the
   // helper union, so a regression that zeroes out the renderer harvest (e.g.
   // stripComments over-blinding) cannot pass by starving both sides at once.
+  // CB-CHG lowered this from 19 to 18: OrderReceipt no longer reads
+  // `order.chargeAmount` DIRECTLY — it renders through
+  // `chargesFromOrder(order)`, which prefers the typed `charges[]` and falls
+  // back to the legacy scalars. The key itself did not leave the payload
+  // (`chargeAmount` is still harvested from receiptGst below, and `charges`
+  // was added to printOrderSnapshot + its schema in the same change), so this
+  // is one fewer DIRECT accessor, not one fewer carried field. The landmark is
+  // an anti-vacuity floor — the real contract is the subset assertion below.
   assert.ok(
-    directOrderKeys.size >= 19,
-    `expected >=19 direct order keys, got ${directOrderKeys.size}`,
+    directOrderKeys.size >= 18,
+    `expected >=18 direct order keys, got ${directOrderKeys.size}`,
   );
   assert.ok(orderKeys.size >= 22, `expected >=22 union order keys, got ${orderKeys.size}`);
 
@@ -167,5 +175,44 @@ test("PIN: KOTReceipt unifies roundItems into `items`/`item` — no separate rou
   assert.ok(
     !/\broundItems\.\w+/.test(kotReceiptSrc),
     "KOTReceipt.tsx must not read roundItems.<prop> directly — it goes through `items`/`item`",
+  );
+});
+
+// ── CB-CHG — the typed charge array must reach the HOST lane ────────────────
+// OrderReceipt renders charge lines from `chargesFromOrder(order)`, which
+// prefers `charges[]` over the legacy scalars. `printOrderSnapshot` is a
+// WHITELIST: a field it does not pick is simply absent from the payload, and
+// the schema is strict-shaped so an undeclared key is stripped on the way
+// through. Either omission would print a slip on the counter PC that silently
+// drops every extra-charge line while the on-screen bill showed them — the
+// customer's paper and the cafe's screen disagreeing about money. This pin
+// asserts all three sides (picker, schema, renderer) in one place.
+test("PIN (CB-CHG): `charges` survives the whole print lane — snapshot picker, schema, and renderer", () => {
+  const snapshotSrc = stripComments(
+    readFileSync(
+      path.join(process.cwd(), "..", "..", "packages", "shared", "src", "print-job.ts"),
+      "utf8",
+    ),
+  );
+  const pickerStart = snapshotSrc.indexOf("export function printOrderSnapshot(");
+  assert.ok(pickerStart >= 0, "landmark: printOrderSnapshot must exist");
+  const pickerBody = snapshotSrc.slice(pickerStart);
+  assert.match(
+    pickerBody,
+    /\bcharges\b/,
+    "printOrderSnapshot must carry `charges` — it is a whitelist, so an unpicked field never reaches the host",
+  );
+
+  assert.ok(
+    schemaOrderKeys.has("charges"),
+    "printOrderSnapshotSchema must declare `charges` or the strict shape strips it in transit",
+  );
+
+  // Positive landmark: the renderer really does read charges through the
+  // helper, so this pin is guarding a live path and not a dead one.
+  assert.match(
+    orderReceiptSrc,
+    /chargesFromOrder\(/,
+    "landmark: OrderReceipt must render charges via chargesFromOrder(order)",
   );
 });

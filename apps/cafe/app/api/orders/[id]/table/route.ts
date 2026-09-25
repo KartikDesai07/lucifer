@@ -11,7 +11,7 @@ import {
   requireAuth,
   serverError,
 } from "@/lib/api-helpers";
-import { freeTableFilter, unknownTableMessage } from "@/lib/table-admin";
+import { freeTableFilter, unknownTableMessage, resolveTableCharge } from "@/lib/table-admin";
 import {
   MOVABLE_ORDER_STATUS,
   ORDER_NOT_LIVE_ERROR,
@@ -26,6 +26,12 @@ import {
   RELEASE_UPDATE,
 } from "@/lib/order-table-move";
 import { moveOrderTableSchema } from "@/schemas";
+import { orderSummaryCacheKey } from "@/lib/utils";
+import { getSettings, gstConfigOf } from "@/lib/settings";
+import { computeOrderTotals, gstConfigFromOrder } from "@/lib/receipt";
+import { rewardFromOrderSnapshot } from "@pos/shared/reward-redemption";
+import { chargesFromOrder, withTableCharge, splitChargeTotals } from "@pos/shared/order-charges";
+import { chargeWriteFields } from "@/lib/order-charges-write";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +57,19 @@ export async function POST(req: Request, { params }: Params) {
 
   try {
     await connectDB();
-    const order = await Order.findById(id).select("orderId status tableNo").lean();
+    // CB-CHG plan §5A — widened so this route can re-price the move: the
+    // charge lanes, the items/discount/discountKind the bill is priced from,
+    // the tab's own GST snapshot (never live settings — gstConfigFromOrder),
+    // the reward snapshot (rewardFromOrderSnapshot fails CLOSED at 0, so
+    // omitting it would re-bill a reward tab at full price), and the terms
+    // the widened CAS filter (moveOrderFilter) now guards on.
+    const order = await Order.findById(id)
+      .select(
+        "orderId status tableNo charges chargeAmount chargeLabel items discount discountKind " +
+          "gstRate gstMode total kotRounds voids rewardAt rewardKind rewardValue rewardItem " +
+          "rewardItemProductId createdAt",
+      )
+      .lean();
     if (!order) return notFound("Order not found");
 
     // Gated on status ONLY — unlike /items and /settle this carries no money,
@@ -100,8 +118,50 @@ export async function POST(req: Request, { params }: Params) {
       );
     }
 
-    // Step 2: move the order under CAS (still on the table we just read, still
-    // open). Two distinct failure modes here need two different responses:
+    // CB-CHG plan §5A — the move now RE-PRICES: replace the source table's
+    // charge entry with the DESTINATION's own configured charge (withTableCharge
+    // — never touches an extra, the owner's headline invariant), leaving every
+    // staff-entered extra untouched. resolveTableCharge doubles as the
+    // destination's existence check, but the claim above already proved it
+    // exists, so only its charge config is needed here.
+    const destTable = await resolveTableCharge(to);
+    if ("error" in destTable) {
+      await Table.findOneAndUpdate(freeTableFilter(to, order.orderId), RELEASE_UPDATE);
+      cache.del("tables");
+      return failure(destTable.error, 400);
+    }
+    const charges = withTableCharge(
+      chargesFromOrder(order),
+      destTable.charge.amount > 0 ? { label: destTable.charge.label, amount: destTable.charge.amount } : null,
+    );
+    const settings = await getSettings();
+    // CB-CHG — split, never summed: the table portion keeps its shipped
+    // TABLE_CHARGE_MAX ceiling, the staff-entered extras ride on top uncapped
+    // (decision 8) — summing them first would silently cap a legitimate bill
+    // and leave `total` disagreeing with the stored charges[]/chargeAmount.
+    const { table: tableChargeTotal, extra: extraChargeTotal } = splitChargeTotals(charges);
+    const totals = computeOrderTotals({
+      items: order.items,
+      discount: order.discount,
+      // discountKind carries through UNTOUCHED — a move is not the moment an
+      // operator picks or clears a discount preset.
+      discountKind: order.discountKind,
+      charge: tableChargeTotal,
+      extraCharge: extraChargeTotal,
+      // The tab's OWN GST snapshot, never live settings — a move must not
+      // move the tax a tab was opened under.
+      cfg: gstConfigFromOrder(order, gstConfigOf(settings)),
+      // MUST be passed: rewardDiscountAmount fails CLOSED at 0, so omitting
+      // this would re-bill a reward tab at full price with the stamps the
+      // diner already spent still gone.
+      reward: rewardFromOrderSnapshot(order),
+    });
+    const chargeFields = chargeWriteFields(charges);
+
+    // Step 2: move the order AND re-price it under CAS, in ONE write (still on
+    // the table we just read, still open, still the exact money state the
+    // filter above widened to guard — see moveOrderFilter). Two distinct
+    // failure modes here need two different responses:
     //   - a THROW is NOT proof the write failed (project lesson: never revert
     //     on a write throw) — reverting the claim above could free a table
     //     the order now legitimately holds, so we leave it alone and only
@@ -113,8 +173,18 @@ export async function POST(req: Request, { params }: Params) {
     let moved;
     try {
       moved = await Order.findOneAndUpdate(
-        moveOrderFilter(id, order.tableNo),
-        { $set: { tableNo: to } },
+        moveOrderFilter(id, order.tableNo, order),
+        {
+          $set: {
+            tableNo: to,
+            subtotal: totals.subtotal,
+            discount: totals.discount,
+            gstAmount: totals.gstAmount,
+            total: totals.total,
+            ...(chargeFields.set ?? {}),
+          },
+          ...(chargeFields.unset ? { $unset: chargeFields.unset } : {}),
+        },
         { new: true, runValidators: true },
       ).lean();
     } catch (error) {
@@ -139,9 +209,11 @@ export async function POST(req: Request, { params }: Params) {
       // Swallowed deliberately — see the comment above.
     }
 
-    // Nothing in orders/summary derives from tableNo (verified), so that
-    // cache is deliberately left untouched.
     cache.del("tables");
+    // CB-CHG — a move now changes a live tab's total (the prior "nothing in
+    // orders/summary derives from tableNo" reasoning no longer holds: the
+    // MONEY changed, even though tableNo is what triggered it).
+    cache.del(orderSummaryCacheKey());
     return success(moved);
   } catch (error) {
     return serverError("Failed to move the order", error);

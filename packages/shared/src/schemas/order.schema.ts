@@ -16,6 +16,7 @@ import { LOYALTY_MILESTONE_AT_MIN, LOYALTY_MILESTONE_AT_MAX } from "../loyalty-r
 import { PROMO_CODE_PATTERN } from "../public-promo";
 import { tableNoSchema } from "./table.schema";
 import { objectIdString } from "./object-id.schema";
+import { extraChargesSchema } from "./order-charge.schema";
 
 export const orderItemSchema = z.object({
   productId: objectIdString,
@@ -89,6 +90,12 @@ const orderObject = z.object({
   // it is the table's name for the charge, not something the client invents.
   chargeAmount: z.number().min(0).optional(),
   chargeLabel: z.string().trim().max(TABLE_CHARGE_LABEL_MAX_LEN).optional(),
+  // CB-CHG — the staff-entered "extra" charges (free-text label + amount),
+  // decision 6: they save on Send/Settle, like today's charge waiver. Present
+  // = replace the whole extra set; absent = unchanged (see applyExtraCharges).
+  // No `type` key here — the client may only ever declare an extra; the
+  // server alone stamps the table entry (order-charges.ts's fence).
+  extraCharges: extraChargesSchema.optional(),
   total: z.number().min(0),
   // Omitted means "pay in full against the server's own recomputed total" — this
   // MUST stay optional or the client cannot express full payment without
@@ -188,6 +195,9 @@ export const addItemsSchema = z
     // about it — carries the original charge forward and bills it at settle.
     // Same omit-means-unchanged rule as `discount` above.
     chargeAmount: z.number().min(0).optional(),
+    // CB-CHG — see orderObject's `extraCharges` above; same present=replace/
+    // absent=unchanged rule.
+    extraCharges: extraChargesSchema.optional(),
   })
   .strict();
 
@@ -225,6 +235,10 @@ export const settleOrderSchema = z
     // `discount`, so an Orders-page settle that knows nothing about charges
     // cannot silently drop one off a bill the kitchen already served.
     chargeAmount: z.number().min(0).optional(),
+    // CB-CHG — see orderObject's `extraCharges` above; same present=replace/
+    // absent=unchanged rule. Settle is one of the three money writers extras
+    // can ride in on (decision 6).
+    extraCharges: extraChargesSchema.optional(),
     paidAmount: z.number().min(0).optional(), // amount actually collected now; omit = pay in full
     // The total the operator actually SAW when they asserted a deliberate
     // partial `paidAmount`. Only meaningful alongside a defined `paidAmount` —
@@ -268,9 +282,13 @@ export const voidItemSchema = z
 
 // POST /api/orders/[id]/table — move a live tab to another table (the guests got
 // up and sat somewhere else). Intent only: the destination table's NAME. There is
-// deliberately NO money field — the order's table-charge snapshot is frozen at
-// sale time and a move never re-prices it; the POS cart's charge seam is the one
-// place an operator may change what a running tab is charged.
+// deliberately NO money field on this payload — the server, not the client,
+// decides the new table charge: it re-reads the DESTINATION table's own
+// configured charge and re-prices the bill from that (CB-CHG plan §5A,
+// owner decision 2026-09-25 — a move now DOES re-price, replacing the prior
+// "a move never re-prices" rule this schema used to encode). A client that
+// could pass a charge/discount/total here could invent or suppress that
+// re-price; `.strict()` keeps rejecting every one of those keys.
 export const moveOrderTableSchema = z.object({ tableNo: tableNoSchema }).strict();
 
 export type OrderItemInput = z.infer<typeof orderItemSchema>;

@@ -137,6 +137,22 @@ export interface OrderTotalsInput {
   // reciprocal-guard failure CR1.3 hit when only one writer of a document knew
   // about a new field. Here the type checker is the guard.
   charge: number;
+  // CB-CHG — the STAFF-ENTERED extra charges' total (takeaway box, delivery,
+  // whatever the operator typed), in rupees. Kept SEPARATE from `charge` above
+  // rather than summed into it, because the two obey different rules:
+  // `charge` is an admin config bounded by TABLE_CHARGE_MAX (it rides onto
+  // every bill of that table until changed, so a fat-fingered entry is
+  // expensive), while this one is a per-bill operator decision the owner
+  // explicitly chose to leave UNBOUNDED (decision 8, 2026-09-25). Summing them
+  // into the clamped parameter would cap a legitimate bill AND leave the
+  // stored `total` disagreeing with the stored `charges[]`/`chargeAmount`,
+  // which chargeMirror does not clamp — the customer billed one figure while
+  // the record says another.
+  // OPTIONAL and defaulting to 0, unlike `charge`: an order with no extras is
+  // the overwhelming majority, and the omission fails SAFE (no charge added)
+  // rather than silently wiping a table charge, which is why `charge` is
+  // required and this is not. Use splitChargeTotals() to fill both.
+  extraCharge?: number;
   cfg: GstConfig;
   // CB-5B — the milestone a diner claimed, when `discountKind === "reward"`.
   // OPTIONAL, deliberately, where `discountKind`/`charge` above are required:
@@ -184,6 +200,7 @@ export function computeOrderTotals({
   discount,
   discountKind,
   charge,
+  extraCharge = 0,
   cfg,
   reward,
 }: OrderTotalsInput): OrderTotals {
@@ -212,13 +229,21 @@ export function computeOrderTotals({
   // base (owner decision, 2026-08-16) — which is why GST is computed above it,
   // not after. It is also outside the discount: a percentage off the food does
   // not quietly become a percentage off the cover charge.
+  // The TABLE charge keeps its shipped ceiling (an admin config that rides onto
+  // every bill of that table). The staff-entered extras ride on top UNCAPPED —
+  // owner decision 8, 2026-09-25: "hame hamari panel me aesi koi limitation
+  // nahi rakhni hai". Summing them before the clamp would cap a legitimate
+  // bill and leave `total` disagreeing with the stored charges[]/chargeAmount,
+  // which chargeMirror does not clamp.
   const clampedCharge = Math.min(Math.max(0, Math.round(charge)), TABLE_CHARGE_MAX);
+  const clampedExtra = Math.max(0, Math.round(extraCharge));
+  const totalCharge = clampedCharge + clampedExtra;
   return {
     subtotal,
     discount: clampedDiscount,
     gstAmount,
-    charge: clampedCharge,
-    total: base + gstAmount + clampedCharge,
+    charge: totalCharge,
+    total: base + gstAmount + totalCharge,
   };
 }
 

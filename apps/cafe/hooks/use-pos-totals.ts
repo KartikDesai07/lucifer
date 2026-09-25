@@ -9,6 +9,7 @@ import {
   type GstConfig,
 } from "@/lib/receipt";
 import type { RedeemedReward } from "@pos/shared/reward-redemption";
+import { chargesTotal, type OrderCharge } from "@pos/shared/order-charges";
 import { TABLE_CHARGE_MAX } from "@/lib/constants";
 import type { DiscountUnit } from "@/components/pos/Cart";
 import type { Settings } from "@/types";
@@ -17,7 +18,15 @@ interface PosTotalsInput {
   subtotal: number;
   discountRaw: number; // raw value the user typed (₹ amount or %)
   discountUnit: DiscountUnit;
-  charge: number; // the table's extra charge for this bill, already resolved
+  charge: number; // the table's own charge for this bill, already resolved
+  // CB-CHG — the staff-entered extras, ADDED ON TOP of the table charge.
+  // Deliberately NOT folded into `charge` above and NOT run through
+  // TABLE_CHARGE_MAX below: that clamp is the TABLE's own admin bound (a
+  // different, still-bounded config) and owner decision 8 (2026-09-25) is
+  // that an extra has no cap on amount or count. Defaults to [] so every
+  // existing caller (none of whom know about extras yet) keeps behaving
+  // exactly as before.
+  extraCharges?: OrderCharge[];
   settings: Settings | undefined; // live restaurant/GST settings
   // CB-5B S9 — the rung the counter has SELECTED, if any. A reward is the third
   // server-derived discount source alongside the GST preset, so the cart must
@@ -50,6 +59,7 @@ export function usePosTotals({
   discountRaw,
   discountUnit,
   charge,
+  extraCharges = [],
   settings,
   reward,
 }: PosTotalsInput): PosTotals {
@@ -85,12 +95,15 @@ export function usePosTotals({
   const base = Math.max(0, subtotal - discount);
   const gstAmount = computeExclusiveGst(base, gstCfg);
   const clampedCharge = Math.min(Math.max(0, Math.round(charge)), TABLE_CHARGE_MAX);
+  // The extras' sum rides on top, uncapped (decision 8) — chargesTotal never
+  // re-clamps a normalized entry, and normalizeCharges itself has no ceiling.
+  const extrasTotal = chargesTotal(extraCharges);
 
   return {
     discount,
     gstAmount,
     gstRate: gstCfg.gstRate,
     gstEnabled: gstCfg.gstEnabled && gstCfg.gstRate > 0,
-    total: base + gstAmount + clampedCharge,
+    total: base + gstAmount + clampedCharge + extrasTotal,
   };
 }

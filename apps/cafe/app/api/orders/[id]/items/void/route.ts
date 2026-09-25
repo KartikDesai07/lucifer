@@ -19,6 +19,7 @@ import { printConfigOf, printedSlipNumber } from "@/lib/print";
 import { nextSlipSequence } from "@/models/Counter";
 import { voidItemSchema } from "@/schemas";
 import { shouldStoreDiscountKind } from "@pos/shared/reward-redemption";
+import { chargesFromOrder, splitChargeTotals } from "@pos/shared/order-charges";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +52,7 @@ export async function POST(req: Request, { params }: Params) {
     // Recompute against the tab's own GST SNAPSHOT, not live settings — same
     // discipline as /items: a mid-tab GST change must never retroactively
     // reprice an open tab.
+    const voidCharges = splitChargeTotals(chargesFromOrder(old));
     const resolved = resolveItemVoid({
       items: old.items,
       request: {
@@ -66,8 +68,14 @@ export async function POST(req: Request, { params }: Params) {
       // Rebuilt from the order's own stored snapshot: a void must shrink the
       // bill without stripping a reward the diner already spent stamps on.
       reward: rewardFromOrderSnapshot(old),
-      // The tab's snapshotted table charge rides through a void unchanged.
-      charge: old.chargeAmount ?? 0,
+      // CB-CHG — derive only (plan §4): a void never touches charges, table
+      // or extra. chargesFromOrder upgrades a legacy scalar-only order to the
+      // equivalent single-entry charges[] in memory (money-neutral by
+      // construction), so this reads correctly whether `old` predates the
+      // feature or not. Split (never summed) — the table portion keeps its
+      // TABLE_CHARGE_MAX ceiling, extras ride on top uncapped.
+      charge: voidCharges.table,
+      extraCharge: voidCharges.extra,
       gstCfg: gstConfigFromOrder(old, gstConfigOf(settings)),
     });
     if ("error" in resolved) return failure(resolved.error, resolved.status);

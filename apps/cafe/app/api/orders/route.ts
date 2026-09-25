@@ -28,6 +28,8 @@ import { derivePayment, ledgerContribution } from "@/lib/order";
 import { parseListCursor, applyCursor } from "@/lib/order-query";
 import { createOrderSchema } from "@/schemas";
 import { resolveTableCharge } from "@/lib/table-admin";
+import { withTableCharge, applyExtraCharges, splitChargeTotals } from "@pos/shared/order-charges";
+import { chargeWriteFields } from "@/lib/order-charges-write";
 import { checkItemVariations } from "@/lib/variations";
 import {
   resolveRewardClaimAndLine,
@@ -172,8 +174,25 @@ export async function POST(req: Request) {
     // already lowered. A NUMBER is the operator deliberately waiving or
     // adjusting it for this bill (0 = waived). Either way it is bounded, and a
     // table with no configured charge yields nothing at all.
-    const charge =
+    const tableChargeAmount =
       table.charge.amount > 0 ? (data.chargeAmount ?? table.charge.amount) : 0;
+    // CB-CHG — charges[] is the source of truth (plan §4): the table lane via
+    // withTableCharge (fence: never touches an extra), the staff-entered
+    // extras via applyExtraCharges (fence: never touches the table entry).
+    // `data.extraCharges` absent = no extras on this new order.
+    const charges = applyExtraCharges(
+      withTableCharge(
+        [],
+        tableChargeAmount > 0 ? { label: table.charge.label, amount: tableChargeAmount } : null,
+      ),
+      data.extraCharges ?? [],
+    );
+    // CB-CHG — computeOrderTotals takes the table portion and the extras
+    // portion SEPARATELY: the table charge keeps its shipped TABLE_CHARGE_MAX
+    // ceiling, the extras ride on top uncapped (decision 8) — summing them
+    // first would silently cap a legitimate bill and disagree with the
+    // stored charges[]/chargeAmount mirror, which does not clamp.
+    const { table: charge, extra: extraCharge } = splitChargeTotals(charges);
 
     // Resolved BEFORE totals (CB-5B S4) so a reward claim can be validated
     // against the plain bill (no reward yet) and, if it resolves, folded into
@@ -192,6 +211,7 @@ export async function POST(req: Request) {
       discount: data.discount,
       discountKind: data.discountKind ?? undefined,
       charge,
+      extraCharge,
       cfg: gstCfg,
     });
 
@@ -348,6 +368,7 @@ export async function POST(req: Request) {
           discount: data.discount,
           discountKind: effectiveDiscountKind,
           charge,
+          extraCharge,
           cfg: gstCfg,
           reward: resolvedClaim.reward,
         })
@@ -361,6 +382,7 @@ export async function POST(req: Request) {
             discount: promoDiscount,
             discountKind: effectiveDiscountKind,
             charge,
+            extraCharge,
             cfg: gstCfg,
           })
         : plainTotals;
@@ -430,12 +452,11 @@ export async function POST(req: Request) {
       // the tax actually charged even after a later rate/mode change.
       gstRate: gstCfg.gstEnabled ? gstCfg.gstRate : 0,
       gstMode: gstCfg.gstMode,
-      // Snapshot the charge AND the name it sold under. The label comes from the
-      // table, never from the request — the operator controls whether the charge
-      // applies, not what the customer is told it was. Both omitted when the
-      // charge is 0 so a waived charge leaves no trace on the bill.
-      chargeAmount: totals.charge > 0 ? totals.charge : undefined,
-      chargeLabel: totals.charge > 0 ? table.charge.label : undefined,
+      // CB-CHG — charges[] is the source of truth; chargeAmount/chargeLabel
+      // become its derived mirror (chargeWriteFields), never hand-written.
+      // Both omitted (via the $unset-shaped `unset` branch, spread as nothing
+      // for a plain create doc) when there is nothing to charge.
+      ...(chargeWriteFields(charges).set ?? {}),
       total: totals.total,
       // Printed slip numbers, resolved against the cafe's configured daily
       // start and STORED — a reprint reproduces the paper, it never recomputes

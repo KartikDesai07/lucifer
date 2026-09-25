@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 
 import type { SettlementPayMode, DiscountKind } from "@/lib/constants";
 import { tableChargeOf } from "@/lib/receipt";
+import { chargesFromOrder } from "@pos/shared/order-charges";
+import type { ExtraChargeEntry } from "@/components/pos/CartExtraCharges";
 import { useTables } from "@/hooks/use-tables";
 import { useCart, cartItemFromOrderItem, cartItemToInput, nextCartFromServerItems } from "@/hooks/use-cart";
 import { usePosTotals } from "@/hooks/use-pos-totals";
@@ -67,6 +69,20 @@ export function usePosTab(receiver: string) {
   // stays right even when this client's 30s-cached table list is stale.
   const [chargeOverride, setChargeOverride] = useState<number | undefined>();
 
+  // CB-CHG (plan §5C/§5B) — the staff-entered extra charges for this bill
+  // (label + amount, no `type` key — the server stamps "extra"). Independent
+  // of chargeOverride above (that lane is the TABLE charge only —
+  // withTableCharge/applyExtraCharges never touch each other's entries).
+  // Cleared in resetOrder(); re-seeded from the server in enterResume()/
+  // applyTabUpdate() via chargesFromOrder(order).filter(type==="extra").
+  // Deliberately NOT cleared by selectTable — changing table is not an
+  // extra-charge change (only the table entry is table-scoped).
+  const [extraCharges, setExtraCharges] = useState<ExtraChargeEntry[]>([]);
+  const addExtraCharge = (entry: ExtraChargeEntry) =>
+    setExtraCharges((prev) => [...prev, entry]);
+  const removeExtraCharge = (index: number) =>
+    setExtraCharges((prev) => prev.filter((_, i) => i !== index));
+
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentIntent, setPaymentIntent] = useState<PaymentIntent>("pay");
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
@@ -100,6 +116,14 @@ export function usePosTab(receiver: string) {
 
   const charge = chargeOverride ?? entitledCharge;
 
+  // CB-CHG — usePosTotals adds this ON TOP of `charge` (the table charge),
+  // uncapped, per owner decision 8. `type` is never sent to the server; it's
+  // supplied here only because chargesTotal takes an OrderCharge[].
+  const extraChargesForTotals = useMemo(
+    () => extraCharges.map((e) => ({ type: "extra" as const, label: e.label, amount: e.amount })),
+    [extraCharges],
+  );
+
   // PRE-REWARD pricing, exactly like the server's own `plainTotals`
   // (app/api/orders/route.ts) and the add-round route's `billTotal`: a rung's
   // per-milestone `minBill` is gated against what the customer is spending
@@ -110,6 +134,7 @@ export function usePosTab(receiver: string) {
     discountRaw,
     discountUnit,
     charge,
+    extraCharges: extraChargesForTotals,
     settings: settings.data,
   });
   const discountKind: DiscountKind | undefined =
@@ -130,6 +155,7 @@ export function usePosTab(receiver: string) {
     discountRaw,
     discountUnit,
     charge,
+    extraCharges: extraChargesForTotals,
     settings: settings.data,
     reward: reward.selectedReward,
   });
@@ -153,6 +179,7 @@ export function usePosTab(receiver: string) {
     setResumedOrder(null);
     setNotes("");
     setPromoCode(null);
+    setExtraCharges([]);
   };
 
   // Picking a different table means a different charge, so a waiver made
@@ -185,6 +212,10 @@ export function usePosTab(receiver: string) {
     // anything this client could echo, since the tables list here is cached for
     // 30s and could re-apply a charge an admin has already lowered.
     chargeAmount: chargeOverride,
+    // CB-CHG — the complete new extra set (replace, not append — decision 6).
+    // Present = this bill's extras from here on; the server stamps type:"extra"
+    // and never touches the table entry (applyExtraCharges).
+    extraCharges,
     total,
     paidAmount: 0,
     payment: "Unpaid",
@@ -224,6 +255,17 @@ export function usePosTab(receiver: string) {
     // away a waiver the operator has already promised the guest and quietly
     // bill it back at settle.
     if (chargeSent) setChargeOverride(undefined);
+    // CB-CHG — re-seed the local extras from what the server actually stored,
+    // same "the server has answered" reasoning as chargeSent above but
+    // unconditional: every writer that reaches applyTabUpdate (fire, void
+    // re-sync, move) derives charges[] from the order it already has, so this
+    // is never behind on a request that didn't carry extras. `type` is never
+    // sent to the server, so it is dropped here too (matches enterResume).
+    setExtraCharges(
+      chargesFromOrder(order)
+        .filter((c) => c.type === "extra")
+        .map((c) => ({ label: c.label, amount: c.amount })),
+    );
     if (kot) print.queueKotRound(order);
   };
 
@@ -246,6 +288,8 @@ export function usePosTab(receiver: string) {
               discount,
               discountKind: discountKind ?? null,
               chargeAmount: chargeOverride,
+              // CB-CHG — the complete new extra set (replace, decision 6).
+              extraCharges,
               rewardAt: reward.pendingRewardAt,
             },
           })
@@ -284,6 +328,8 @@ export function usePosTab(receiver: string) {
             // Same rule as the create payload: only when they touched it.
             // Omitted leaves the tab's snapshotted charge exactly as it is.
             chargeAmount: chargeOverride,
+            // CB-CHG — the complete new extra set (replace, decision 6).
+            extraCharges,
             paidAmount: collectedAmount(result),
             // Only meaningful alongside a defined paidAmount above — lets the
             // route detect a stale modalTotals snapshot (CR1.2 regression).
@@ -348,6 +394,13 @@ export function usePosTab(receiver: string) {
     // settle), so a code typed for a different customer must not silently
     // ride onto whatever tab gets resumed next.
     setPromoCode(null);
+    // CB-CHG — the resumed tab's own extras (label + amount only; `type` is
+    // never sent to the server, so it is dropped here too).
+    setExtraCharges(
+      chargesFromOrder(order)
+        .filter((c) => c.type === "extra")
+        .map((c) => ({ label: c.label, amount: c.amount })),
+    );
     hydrate(order.items.map((it, i) => cartItemFromOrderItem(it, i)));
   };
 
@@ -381,6 +434,7 @@ export function usePosTab(receiver: string) {
     chargeOverride,
     charge,
     chargeLabel,
+    extraCharges,
     settings: settings.data,
     paymentIntent,
     subtotal,
@@ -415,6 +469,10 @@ export function usePosTab(receiver: string) {
     chargeLabel,
     entitledCharge,
     setChargeOverride,
+    // CB-CHG — the staff-entered extra charges' surface for Cart/CartExtraCharges.
+    extraCharges,
+    addExtraCharge,
+    removeExtraCharge,
     gstAmount,
     gstRate,
     gstEnabled,

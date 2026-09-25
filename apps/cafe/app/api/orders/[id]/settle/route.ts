@@ -31,6 +31,7 @@ import {
 } from "@/lib/reward-claim";
 import { buildRewardAssignment } from "@/lib/reward-assignment";
 import { shouldStoreDiscountKind, rewardFromOrderSnapshot } from "@pos/shared/reward-redemption";
+import { chargeWriteFields } from "@/lib/order-charges-write";
 
 export const dynamic = "force-dynamic";
 
@@ -124,6 +125,9 @@ export async function POST(req: Request, { params }: Params) {
       // ever sends this; the Orders-page settle never does, so it can never
       // silently drop a charge off a bill it was not showing.
       chargeAmount: data.chargeAmount,
+      // CB-CHG (decision 6) — extras save on Send/Settle, like today's charge
+      // waiver. Present = replace the whole extra set; absent = unchanged.
+      extraCharges: data.extraCharges,
       paidAmount: data.paidAmount,
       splitCash: data.splitCash,
       splitOnline: data.splitOnline,
@@ -216,17 +220,15 @@ export async function POST(req: Request, { params }: Params) {
       set.discount = money.totals.discount;
       set.gstAmount = money.totals.gstAmount;
       set.total = money.totals.total;
-      // A waived charge must UNSET both fields, not write a 0: the receipt keys
-      // its charge line off the amount being PRESENT, so a stored 0 with the
-      // label still beside it would print a named ₹0 line on the customer's
-      // slip. The label is never rewritten here — only the table's own config
-      // names a charge, and settling is not the moment to rename one.
-      if (money.totals.charge > 0) {
-        set.chargeAmount = money.totals.charge;
-      } else {
-        unset.chargeAmount = "";
-        unset.chargeLabel = "";
-      }
+      // CB-CHG — the ONE helper every charge writer uses (plan §4): charges[]
+      // is the source of truth, chargeAmount/chargeLabel its derived mirror.
+      // $unset (never a stored 0) when nothing is left to charge — the
+      // receipt keys its charge line off the amount being PRESENT, so a
+      // stored 0 with the label still beside it would print a named ₹0 line
+      // on the customer's slip.
+      const chargeFields = chargeWriteFields(money.charges);
+      Object.assign(set, chargeFields.set ?? {});
+      Object.assign(unset, chargeFields.unset ?? {});
       // shouldStoreDiscountKind (the shared amount-gates-kind predicate, three-
       // way now: gst/reward/neither) — the RESOLVED kind is stored, never the
       // "gst" literal, so a reward claimed at settle writes discountKind:"reward".

@@ -237,7 +237,7 @@ export type PrintOrderSnapshot = z.infer<typeof printOrderSnapshotSchema>;
 export function printOrderSnapshot(order: Order): PrintOrderSnapshot {
   const {
     _id, orderId, customerName, subtotal, discount, discountKind, gstAmount, gstRate, gstMode,
-    chargeAmount, chargeLabel, total, paidAmount, payment, splitCash, splitOnline,
+    chargeAmount, chargeLabel, charges, total, paidAmount, payment, splitCash, splitOnline,
     status, receiver, tableNo, billNumber, kotRounds, kotNumbers, cancelReason,
     createdAt, notes,
   } = order;
@@ -246,6 +246,14 @@ export function printOrderSnapshot(order: Order): PrintOrderSnapshot {
     chargeAmount, chargeLabel, total, paidAmount, payment, splitCash, splitOnline,
     status, receiver, tableNo, billNumber, kotRounds, kotNumbers, cancelReason,
     createdAt, notes,
+    // CB-CHG — the typed charge array rides along so a HOST-printed slip shows
+    // the same charge lines as a locally-printed one. OrderReceipt renders from
+    // chargesFromOrder(order), which prefers charges[] over the legacy scalars,
+    // so without this key the counter PC would silently drop every extra charge
+    // line off the paper while the on-screen bill showed them. Omit-empty: an
+    // order with no array carries no key, and chargesFromOrder falls back to
+    // the scalars exactly as it does for a pre-CB-CHG order.
+    ...(charges && charges.length > 0 ? { charges } : {}),
     items: order.items.map((item) => {
       const { productId, name, price, qty, variation, modifiers, instructions, kotRound } = item;
       // CB-5B S14 — `reward`/`note` ride along so a host-printed slip is the

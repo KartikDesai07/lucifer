@@ -453,7 +453,13 @@ test("PIN: lib/order-request-accept-addround.ts keeps the gst arm (keepGstKind v
   );
   assert.match(
     src,
-    /discountKind:\s*"gst",\s*charge:\s*openTab\.chargeAmount\s*\?\?\s*0,\s*cfg:\s*tabGstCfg,/,
+    /discountKind:\s*"gst",\s*\n\s*charge:\s*openTabTableCharge,\s*extraCharge:\s*openTabExtraCharge,\s*cfg:\s*tabGstCfg,/,
+    // CB-CHG widened `charge` from the scalar openTab.chargeAmount ?? 0 to the
+    // SPLIT openTabTableCharge/openTabExtraCharge (splitChargeTotals over the
+    // tab's own charges[]) — computeOrderTotals needs the table portion (still
+    // TABLE_CHARGE_MAX-clamped) and the extras portion (uncapped, decision 8)
+    // separately. The tab's charges[] still carries through unchanged, never
+    // re-derived, same discipline as before.
     "order-request-accept-addround.ts must probe a second computeOrderTotals call with discountKind: 'gst' (the gstPart probe)",
   );
   const setNeedle = "$set" + ":";

@@ -98,9 +98,12 @@ test("PIN: the destination claim (claimTableFilter) happens strictly BEFORE the 
   const src = stripComments(readSrc(ORDER_TABLE_ROUTE));
 
   const claimIdx = src.indexOf("claimTableFilter(to)");
-  const moveIdx = src.indexOf("moveOrderFilter(id, order.tableNo)");
+  // CB-CHG plan §5A widened moveOrderFilter's call to also pass the order
+  // itself (the money-state terms: total/kotRounds/voidGuardFilter) — the
+  // needle widens to match, same ordering pin.
+  const moveIdx = src.indexOf("moveOrderFilter(id, order.tableNo, order)");
   assert.ok(claimIdx >= 0, "claimTableFilter(to) must be called to claim the destination table");
-  assert.ok(moveIdx >= 0, "moveOrderFilter(id, order.tableNo) must be called to CAS the order write");
+  assert.ok(moveIdx >= 0, "moveOrderFilter(id, order.tableNo, order) must be called to CAS the order write");
 
   // Mutation this catches: reordering the two writes (or freeing the source
   // first) — claiming the destination first means a throw anywhere after it

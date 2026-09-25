@@ -30,6 +30,11 @@ export function buildCartProps(pos: Pos, onVoidItem: () => void): CartProps {
     // undefined = "untouched", which puts the bill back on the table's own
     // charge (or the tab's snapshot) rather than pinning it to a number.
     onChargeReset: () => pos.setChargeOverride(undefined),
+    // CB-CHG — the staff-entered extra charges (independent of the table
+    // charge above).
+    extraCharges: pos.extraCharges,
+    onAddExtraCharge: pos.addExtraCharge,
+    onRemoveExtraCharge: pos.removeExtraCharge,
     onUpdateQty: pos.updateQty,
     onRemove: pos.removeFromCart,
     onClear: pos.clearCart,

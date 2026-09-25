@@ -9,6 +9,14 @@ import {
   resolveDiscountKind,
 } from "@/lib/receipt";
 import type { RedeemedReward } from "@pos/shared/reward-redemption";
+import {
+  chargesFromOrder,
+  splitChargeTotals,
+  withTableCharge,
+  applyExtraCharges,
+  DEFAULT_TABLE_CHARGE_LABEL,
+  type OrderCharge,
+} from "@pos/shared/order-charges";
 
 // Server-only order-domain helpers: payment derivation, the customer-ledger
 // contribution model, ledger reconciliation, and settle-time money resolution.
@@ -173,6 +181,10 @@ export interface SettleMoneyInput {
     gstRate?: number;
     gstMode?: GstMode;
     chargeAmount?: number;
+    // CB-CHG — the typed charge lines, source of truth when present;
+    // chargesFromOrder derives the legacy equivalent when absent (upgrade in
+    // place, money-neutral by construction).
+    charges?: OrderCharge[];
   };
   payment: PaymentMode;
   discount?: number;
@@ -181,10 +193,13 @@ export interface SettleMoneyInput {
   // the preset — then `discount` is ignored and re-derived from the tab's own
   // items + GST snapshot. Mirrors `chargeAmount`'s treatment above.
   discountKind?: DiscountKind | null;
-  // Settle-time waiver/adjustment of the table charge. Undefined means "leave
-  // the tab's charge alone" — NOT "no charge" — so a settle path that knows
-  // nothing about charges cannot drop one off a bill.
+  // Settle-time waiver/adjustment of the TABLE entry's amount only. Undefined
+  // means "leave the tab's table charge alone" — NOT "no charge" — so a
+  // settle path that knows nothing about charges cannot drop one off a bill.
   chargeAmount?: number;
+  // CB-CHG — the staff-entered extra set (decision 6: extras save on Send/
+  // Settle). Present = replace the whole extra set; absent = unchanged.
+  extraCharges?: readonly { label: string; amount: number }[];
   paidAmount?: number;
   splitCash?: number;
   splitOnline?: number;
@@ -205,39 +220,74 @@ export type SettleMoney =
       totals: OrderTotals | null;
       leavesDue: boolean;
       discountKind: DiscountKind | undefined;
+      // CB-CHG — the charges[] this settle prices from, always resolved (even
+      // on the no-recompute path) so the route can write it via
+      // chargeWriteFields without re-deriving it a second time.
+      charges: OrderCharge[];
     }
   | { error: string };
 
 export function resolveSettleMoney(input: SettleMoneyInput): SettleMoney {
-  // Neither a settle-time discount, charge change, discount-kind change, NOR
-  // a reward claim supplied — preserve today's behavior byte-for-byte: no
-  // recompute, charge exactly the stored total (the Orders-page settle
-  // path). When any IS supplied the bill is re-priced from the order's own
-  // items, and the fields that were NOT supplied are carried over from the
-  // stored order rather than reset — re-pricing to apply a discount must not
-  // also wipe the table charge, and vice versa.
+  // Neither a settle-time discount, charge change, discount-kind change, a
+  // reward claim, NOR an extra-charges change supplied — preserve today's
+  // behavior byte-for-byte: no recompute, charge exactly the stored total
+  // (the Orders-page settle path). When any IS supplied the bill is
+  // re-priced from the order's own items, and the fields that were NOT
+  // supplied are carried over from the stored order rather than reset —
+  // re-pricing to apply a discount must not also wipe the table charge, and
+  // vice versa.
   //
   // PIN WIDENED (CB-5B S5): `input.reward !== undefined` was added to this
   // condition — a reward claim MUST trigger the same recompute a discount or
   // charge change does, or a redeemed settle would charge the stored
   // (undiscounted) total while silently dropping the reward on the floor.
-  // The source pin in lib/gst-discount.test.ts asserting this branch's three
-  // original terms must widen to include this fourth one.
+  // WIDENED AGAIN (CB-CHG, same precedent): `input.extraCharges !== undefined`
+  // — a settle that only ADDS an extra charge (no discount/chargeAmount/kind/
+  // reward change) must still re-price, or the new extra would be accepted by
+  // the schema but never reach the bill.
+  // The source pin in lib/gst-discount.test.ts asserting this branch's
+  // original terms must widen to include each new one.
   const effectiveKind = resolveDiscountKind(input.discountKind, input.order.discountKind);
-  const totals =
+  const noRecompute =
     input.discount === undefined &&
     input.chargeAmount === undefined &&
     input.discountKind === undefined &&
-    input.reward === undefined
-      ? null
-      : computeOrderTotals({
-          items: input.order.items,
-          discount: input.discount ?? input.order.discount,
-          discountKind: effectiveKind,
-          charge: input.chargeAmount ?? input.order.chargeAmount ?? 0,
-          cfg: gstConfigFromOrder(input.order, input.liveGst),
-          reward: input.reward,
-        });
+    input.reward === undefined &&
+    input.extraCharges === undefined;
+  // CB-CHG — charges[] resolved on EITHER path: chargesFromOrder upgrades a
+  // legacy scalar-only order in memory (money-neutral by construction), and
+  // the two lanes (table via chargeAmount, extra via extraCharges) apply
+  // through their own fences so neither can clobber the other's entries.
+  const baseCharges = chargesFromOrder(input.order);
+  const tableEntry = baseCharges.find((c) => c.type === "table");
+  const tableChargeAmount = input.chargeAmount ?? tableEntry?.amount ?? 0;
+  const charges = noRecompute
+    ? baseCharges
+    : applyExtraCharges(
+        withTableCharge(
+          baseCharges,
+          tableChargeAmount > 0
+            ? { label: tableEntry?.label ?? DEFAULT_TABLE_CHARGE_LABEL, amount: tableChargeAmount }
+            : null,
+        ),
+        input.extraCharges ?? baseCharges.filter((c) => c.type === "extra"),
+      );
+  // CB-CHG — split, never summed: the table portion keeps its shipped
+  // TABLE_CHARGE_MAX ceiling, the staff-entered extras ride on top uncapped
+  // (decision 8) — summing them first would silently cap a legitimate bill
+  // and leave `total` disagreeing with the stored charges[]/chargeAmount.
+  const { table: tableChargeTotal, extra: extraChargeTotal } = splitChargeTotals(charges);
+  const totals = noRecompute
+    ? null
+    : computeOrderTotals({
+        items: input.order.items,
+        discount: input.discount ?? input.order.discount,
+        discountKind: effectiveKind,
+        charge: tableChargeTotal,
+        extraCharge: extraChargeTotal,
+        cfg: gstConfigFromOrder(input.order, input.liveGst),
+        reward: input.reward,
+      });
   const total = totals ? totals.total : input.order.total;
 
   const pay = derivePayment(
@@ -264,5 +314,6 @@ export function resolveSettleMoney(input: SettleMoneyInput): SettleMoney {
     totals,
     leavesDue,
     discountKind: effectiveKind,
+    charges,
   };
 }

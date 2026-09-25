@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { PAYMENT_MODES, ORDER_STATUSES, GST_MODES, DISCOUNT_KINDS } from "../constants";
+import { ORDER_CHARGE_TYPES } from "../order-charges";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Print-host plan, PH-1 — the payload contract. `printOrderSnapshotSchema`
@@ -60,6 +61,22 @@ export const printOrderSnapshotSchema = z.object({
   gstMode: z.enum(GST_MODES).optional(),
   chargeAmount: z.number().optional(),
   chargeLabel: z.string().optional(),
+  // CB-CHG — the typed charge array. REQUIRED here even though the field is
+  // optional on the order: this schema is .strict()-shaped, so a key the
+  // schema does not declare is STRIPPED, and the host would print a slip
+  // missing every extra-charge line while the counter's own screen showed
+  // them. Carries `type` (unlike the client-facing input schema, which omits
+  // it as a money fence) because this payload is SERVER-BUILT, and the host
+  // renderer needs the provenance to order table-before-extras.
+  charges: z
+    .array(
+      z.object({
+        type: z.enum(ORDER_CHARGE_TYPES),
+        label: z.string(),
+        amount: z.number(),
+      }),
+    )
+    .optional(),
   total: z.number(),
   paidAmount: z.number(),
   payment: z.enum(PAYMENT_MODES),

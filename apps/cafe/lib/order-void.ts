@@ -67,7 +67,17 @@ export interface ItemVoidInput<T extends VoidableLine> {
   // at 0 for a missing reward, so a void would quietly strip a discount the
   // diner already spent stamps on while the snapshot still claimed it.
   reward: RedeemedReward | undefined;
-  charge: number; // the tab's snapshotted table charge — carried, never re-derived
+  charge: number; // the tab's snapshotted TABLE charge only — carried, never re-derived
+  // CB-CHG — the tab's snapshotted EXTRA charges' total, carried through
+  // unchanged (a void never touches charges, table or extra). Kept SEPARATE
+  // from `charge` above for the same reason computeOrderTotals splits them:
+  // the table charge stays clamped at TABLE_CHARGE_MAX, extras ride on top
+  // uncapped (decision 8) — summing them first would risk silently capping a
+  // legitimate bill. OPTIONAL (unlike `charge`), defaulting to 0: every caller
+  // that predates extras has none to carry, and the omission fails SAFE
+  // (no extra added) rather than forcing an unrelated-widening edit onto
+  // every existing call site.
+  extraCharge?: number;
   gstCfg: GstConfig; // the TAB's snapshot config, from gstConfigFromOrder
 }
 
@@ -150,6 +160,7 @@ export function resolveItemVoid<T extends VoidableLine>(
       discountKind: input.discountKind,
       reward: input.reward,
       charge: input.charge,
+      extraCharge: input.extraCharge,
       cfg: input.gstCfg,
     }),
     // Snapshot what left the bill — readable forever, even though `line` itself is

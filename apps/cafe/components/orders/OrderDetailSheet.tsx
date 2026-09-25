@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import { orderItemLabel, discountLineLabel } from "@pos/shared/utils";
 import { REWARD_ITEM_LINE_NOTE } from "@pos/shared/reward-redemption";
+import { chargesFromOrder } from "@pos/shared/order-charges";
 import { PAY_STYLES, type SettlementPayMode } from "@/lib/constants";
 import { inr, formatDate, cn } from "@/lib/utils";
 import { slipPrintOptions } from "@/lib/desktop-shell";
@@ -332,16 +333,14 @@ export function OrderDetailSheet({
               {order.discount > 0 && (
                 <Row label={discountLineLabel(order.discountKind)} value={`−${inr(order.discount)}`} />
               )}
-              {/* Under the cafe's own name for it, from the order's snapshot —
-                  so a bill settled here reads the same as the slip that was
-                  printed for the customer, even if the table has since changed
-                  what it charges. */}
-              {order.chargeAmount !== undefined && order.chargeAmount > 0 && (
-                <Row
-                  label={order.chargeLabel ?? "Table charge"}
-                  value={`+${inr(order.chargeAmount)}`}
-                />
-              )}
+              {/* CB-CHG — every charge line (table + staff-entered extras),
+                  from the order's own snapshot, so this sheet reads the same
+                  as the slip that was printed for the customer, even if the
+                  table has since changed what it charges. A legacy order
+                  derives to exactly the one line the old conditional showed. */}
+              {chargesFromOrder(order).map((c, i) => (
+                <Row key={`${c.label}-${i}`} label={c.label} value={`+${inr(c.amount)}`} />
+              ))}
               <div className="flex justify-between text-base font-bold">
                 <span>Total</span>
                 <span>{inr(order.total)}</span>
@@ -432,6 +431,7 @@ export function OrderDetailSheet({
           gstRate={order.gstRate}
           charge={order.chargeAmount ?? 0}
           chargeLabel={order.chargeLabel}
+          charges={chargesFromOrder(order)}
           total={order.total}
           itemCount={order.items.reduce((n, it) => n + it.qty, 0)}
           customer={

@@ -10,6 +10,8 @@ import {
   rewardFromOrderSnapshot,
   type RedeemedReward,
 } from "@pos/shared/reward-redemption";
+import { chargesFromOrder, splitChargeTotals } from "@pos/shared/order-charges";
+import { chargeWriteFields } from "@/lib/order-charges-write";
 import { buildKotFiredAt, buildKotNumbers, mergedNote } from "@/lib/order-request-accept-core";
 import {
   resolveAcceptPromoFor,
@@ -109,6 +111,7 @@ export async function acceptAddRoundBranch(
     | "discount"
     | "discountKind"
     | "chargeAmount"
+    | "charges"
     | "kotNumbers"
     | "kotFiredAt"
     | "createdAt"
@@ -128,6 +131,13 @@ export async function acceptAddRoundBranch(
 ): Promise<{ order: IOrder; request: IOrderRequest; replayed: boolean } | { error: string; status: 409 }> {
   const round = (openTab.kotRounds ?? 0) + 1;
   const fullItems = [...openTab.items, ...items.map((it) => ({ ...it, kotRound: round }))];
+  // CB-CHG — a QR round carries the tab's charges through UNCHANGED (never
+  // originates/drops one — that is staff-only); chargesFromOrder upgrades a
+  // legacy scalar-only tab in memory, money-neutral by construction. Split
+  // (never summed) for computeOrderTotals: the table portion keeps its
+  // shipped TABLE_CHARGE_MAX ceiling, extras ride on top uncapped (decision 8).
+  const openTabCharges = chargesFromOrder(openTab);
+  const { table: openTabTableCharge, extra: openTabExtraCharge } = splitChargeTotals(openTabCharges);
 
   // CR2.2c — promo re-resolved from LIVE Settings against the RECOMPUTED
   // subtotal of THIS ROUND's own items — never the tab's fullItems: an open
@@ -186,7 +196,8 @@ export async function acceptAddRoundBranch(
   const gstPart =
     openTab.discountKind === "gst" && promo.discount > 0
       ? computeOrderTotals({
-          items: fullItems, discount: 0, discountKind: "gst", charge: openTab.chargeAmount ?? 0, cfg: tabGstCfg,
+          items: fullItems, discount: 0, discountKind: "gst",
+          charge: openTabTableCharge, extraCharge: openTabExtraCharge, cfg: tabGstCfg,
         }).discount
       : undefined;
 
@@ -215,7 +226,8 @@ export async function acceptAddRoundBranch(
           ? gstPart + promo.discount
           : openTab.discount + promo.discount,
     discountKind: resolvedKind,
-    charge: openTab.chargeAmount ?? 0,
+    charge: openTabTableCharge,
+    extraCharge: openTabExtraCharge,
     cfg: tabGstCfg,
     ...(rewardForTotals ? { reward: rewardForTotals } : {}),
   });
@@ -234,6 +246,9 @@ export async function acceptAddRoundBranch(
   const promoLine = promoNoteLine(request.promoCode, promo.discount);
   const notesChanged = Boolean(request.note) || Boolean(promoLine);
   const notes = notesChanged ? mergedNote(mergedNote(openTab.notes, request.note), promoLine) : undefined;
+  // CB-CHG — openTabCharges written back UNCHANGED, through the ONE shared
+  // writer helper so the mirror can never drift, same as every other writer.
+  const chargeFields = chargeWriteFields(openTabCharges);
   const update: Record<string, unknown> = {
     $set: {
       items: fullItems,
@@ -244,14 +259,13 @@ export async function acceptAddRoundBranch(
       kotRounds: round,
       kotFiredAt,
       source: SELF_ORDER_SOURCE,
-      ...(totals.charge > 0 ? { chargeAmount: totals.charge } : {}),
+      ...(chargeFields.set ?? {}),
       ...(kotNumbers ? { kotNumbers } : {}),
       ...(notesChanged ? { notes } : {}),
     },
     $addToSet: { sourceRequestIds: requestId },
   };
-  const unset: Record<string, ""> = {};
-  if (totals.charge <= 0) Object.assign(unset, { chargeAmount: "", chargeLabel: "" });
+  const unset: Record<string, ""> = { ...(chargeFields.unset ?? {}) };
   // The kind is never $set here (the tab's stored value survives UNWRITTEN
   // when it is kept) — this only decides whether to REMOVE it. The shared
   // amount-gates-kind predicate is what makes a "reward" tab survive:

@@ -45,6 +45,7 @@ import type { DuesCollected } from "./types-analytics";
 import type { PromoCodeConfig, SelfOrderMode } from "./public";
 import type { LoyaltyRewardKind } from "./public-diner";
 import type { DinerBannerInput } from "./schemas/settings-diner.schema";
+import type { OrderCharge } from "./order-charges";
 
 import type {
   PaymentMode,
@@ -223,10 +224,18 @@ export interface Order {
   gstAmount?: number; // GST added on top (exclusive mode); 0/absent otherwise
   gstRate?: number; // GST rate snapshot at order time (0 if GST was off then)
   gstMode?: GstMode; // GST mode snapshot at order time
-  // The table's extra charge as it was sold, and the name it printed under —
-  // snapshotted at sale time so editing the table later cannot rewrite an
-  // already-printed bill. Folded into `total` and NOT part of the taxable base,
-  // so anything reasoning about tax has to lift it out first (lib/receipt).
+  // CB-CHG — the typed charge lines (table + staff-entered extras). Source of
+  // truth for a new order; folded into `total` and NOT part of the taxable
+  // base, so anything reasoning about tax has to lift it out first
+  // (lib/receipt). Absent on an order with no charge (omit-empty).
+  charges?: OrderCharge[];
+  // The DERIVED MIRROR of `charges` above (chargeAmount = Σ charges[].amount;
+  // chargeLabel = the table entry's label if present, else the first entry's)
+  // on any order that carries `charges` — kept so every shipped reader
+  // (receipt, detail sheet, print-job snapshot, D10 $group) keeps working
+  // byte-identically with zero edits. On a pre-CB-CHG order (no `charges`),
+  // these two are the SOLE storage — snapshotted at sale time so editing the
+  // table later cannot rewrite an already-printed bill.
   chargeAmount?: number;
   chargeLabel?: string;
   total: number;

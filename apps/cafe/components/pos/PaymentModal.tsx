@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CustomerSearch } from "@/components/pos/CustomerSearch";
+import type { OrderCharge } from "@pos/shared/order-charges";
 import type { Customer } from "@/types";
 import type { PaymentResult } from "@/lib/payment-result";
 
@@ -37,8 +38,13 @@ interface PaymentModalProps {
   // The table's charge folded into `total`, under the cafe's own name for it.
   // Without this row the summary would not add up at the exact moment money
   // changes hands — subtotal − discount + GST would fall short of the total.
+  // Fallback only — see `charges` below, which itemises when present.
   charge?: number;
   chargeLabel?: string;
+  // CB-CHG — every charge line (table + staff-entered extras), rendered one
+  // row each. Empty (a legacy tab with neither, or none yet) falls back to
+  // the single charge/chargeLabel pair above.
+  charges?: OrderCharge[];
   total: number;
   itemCount: number;
   customer: Customer | undefined;
@@ -73,6 +79,7 @@ export function PaymentModal({
   gstRate,
   charge = 0,
   chargeLabel,
+  charges = [],
   total,
   itemCount,
   customer,
@@ -150,9 +157,13 @@ export function PaymentModal({
               value={`+${inr(gstAmount)}`}
             />
           )}
-          {charge > 0 && (
-            <Row label={chargeLabel || "Table charge"} value={`+${inr(charge)}`} />
-          )}
+          {charges.length > 0
+            ? charges.map((c, i) => (
+                <Row key={`${c.label}-${i}`} label={c.label} value={`+${inr(c.amount)}`} />
+              ))
+            : charge > 0 && (
+                <Row label={chargeLabel || "Table charge"} value={`+${inr(charge)}`} />
+              )}
           <div className="flex items-center justify-between border-t pt-1 text-base font-bold">
             <span>Total</span>
             <span>{inr(total)}</span>

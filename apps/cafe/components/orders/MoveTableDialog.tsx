@@ -8,6 +8,7 @@ import { cn, inr } from "@/lib/utils";
 import { POS_MOVE_TABLE_LIST_CAP_CLASS } from "@/lib/pos-layout";
 import { slipPrintOptions } from "@/lib/desktop-shell";
 import { printConfigOf, receiptPageStyle } from "@/lib/print";
+import { moveChargePreview } from "@/lib/move-charge-preview";
 import { useTables } from "@/hooks/use-tables";
 import { useSettings } from "@/hooks/use-settings";
 import { useMoveOrderTable } from "@/hooks/use-orders";
@@ -158,22 +159,44 @@ export function MoveTableDialog({ order, open, onOpenChange, onMoved }: MoveTabl
   }, [slip]);
 
   const currentTableNo = order?.tableNo;
-  // Always visible regardless of which table gets tapped — the one thing an
-  // operator can get wrong is assuming a move re-prices the bill. Covers both
-  // directions: the order's own snapshot charge survives untouched, and a
-  // destination table's charge is never picked up just by moving onto it.
-  const moneyNote =
-    order && order.chargeAmount
-      ? `Moving keeps the bill's ${order.chargeLabel ?? "table charge"} of ${inr(order.chargeAmount)} — it is not re-priced. Change it from the POS cart if the bill needs to change.`
-      : "This order carries no table charge. If the table you move to has one, moving here will NOT add it to this bill — that only happens from the POS cart.";
 
-  const handlePick = async (tableNo: string) => {
-    if (!order || !currentTableNo) return;
+  // Owner decision 1/2 (plan §0, 2026-09-25): a move now auto-adds/removes
+  // the DESTINATION table's charge ("purana hatao, naye table ka lagao"), but
+  // staff sees the money delta and confirms first ("auto badlo, par staff ko
+  // dikhao pehle") — replacing the old always-on note, which stated the
+  // OPPOSITE rule (a move used to never re-price). Tapping a table no longer
+  // fires the mutation directly: it sets a pending selection, and THIS panel
+  // (rendered inside the same DialogContent, not a nested Dialog) is the only
+  // gate in front of the mutateAsync call below.
+  const [pendingTable, setPendingTable] = useState<Table | null>(null);
+  // Closing the dialog (Cancel, Escape, outside click) or switching to a
+  // different order must not leave a stale confirm panel armed for whatever
+  // opens next.
+  useEffect(() => {
+    if (!open) setPendingTable(null);
+  }, [open]);
+  useEffect(() => setPendingTable(null), [order?._id]);
+
+  // PREVIEW ONLY, from data this dialog already has (useTables() returns full
+  // Table[] with no .select() — verified against GET /api/tables), so no new
+  // fetch. The server re-reads the destination table authoritatively at move
+  // time (the 30s tables cache here can be stale), so this is never more than
+  // a preview of what the confirm is about to do. The rule itself lives in
+  // lib/move-charge-preview.ts, pure and pinned, and reuses the same shared
+  // helpers the server-side writer uses so the two cannot disagree.
+  const preview = moveChargePreview(order, pendingTable);
+
+  const handlePick = (table: Table) => setPendingTable(table);
+  const cancelPending = () => setPendingTable(null);
+
+  const confirmMove = async () => {
+    if (!order || !currentTableNo || !pendingTable) return;
     try {
-      const updated = await moveTable.mutateAsync({ id: order._id, tableNo });
+      const updated = await moveTable.mutateAsync({ id: order._id, tableNo: pendingTable.tableNo });
       setSlip({ order: updated, from: currentTableNo, at: new Date() });
+      setPendingTable(null);
     } catch {
-      // hook toasts on error; dialog stays open to retry
+      // hook toasts on error; dialog stays open (still on the confirm panel) to retry
     }
   };
 
@@ -193,44 +216,71 @@ export function MoveTableDialog({ order, open, onOpenChange, onMoved }: MoveTabl
             </DialogDescription>
           </DialogHeader>
 
-          <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
-            {moneyNote}
-          </div>
-
-          <div className={cn("grid grid-cols-3 gap-2 overflow-y-auto", POS_MOVE_TABLE_LIST_CAP_CLASS)}>
-            {(tables.data ?? []).map((t) => {
-              const isCurrent = t.tableNo === currentTableNo;
-              const tappable = !isCurrent && isFree(t);
-              const disabled = !tappable || moveTable.isPending;
-              return (
-                <button
-                  key={t._id}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => handlePick(t.tableNo)}
-                  className={cn(
-                    "flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg border p-2 text-sm font-semibold transition",
-                    STATUS_STYLE[t.status],
-                    isCurrent && "ring-2 ring-primary ring-offset-1",
-                    disabled && "cursor-not-allowed opacity-50",
-                  )}
+          {pendingTable ? (
+            // The confirm step (plan §5B) — inside the SAME DialogContent, not
+            // a nested Dialog. This is the only gate in front of
+            // moveTable.mutateAsync (source-pinned: lib/charge-ui-paths.test.ts).
+            <div className="space-y-3">
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+                <p>{preview.note}</p>
+                <p className="mt-1 font-semibold">New total: {inr(preview.total)}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  className="min-h-11"
+                  disabled={moveTable.isPending}
+                  onClick={cancelPending}
                 >
-                  <span className="max-w-full truncate px-1">{t.tableNo}</span>
-                  <span className="max-w-full truncate text-[10px] font-normal">
-                    {isCurrent ? "Current" : t.status} · {t.capacity} seats
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+                  Cancel
+                </Button>
+                <Button
+                  className="min-h-11"
+                  disabled={moveTable.isPending}
+                  onClick={confirmMove}
+                >
+                  Move table
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className={cn("grid grid-cols-3 gap-2 overflow-y-auto", POS_MOVE_TABLE_LIST_CAP_CLASS)}>
+                {(tables.data ?? []).map((t) => {
+                  const isCurrent = t.tableNo === currentTableNo;
+                  const tappable = !isCurrent && isFree(t);
+                  const disabled = !tappable || moveTable.isPending;
+                  return (
+                    <button
+                      key={t._id}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => handlePick(t)}
+                      className={cn(
+                        "flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg border p-2 text-sm font-semibold transition",
+                        STATUS_STYLE[t.status],
+                        isCurrent && "ring-2 ring-primary ring-offset-1",
+                        disabled && "cursor-not-allowed opacity-50",
+                      )}
+                    >
+                      <span className="max-w-full truncate px-1">{t.tableNo}</span>
+                      <span className="max-w-full truncate text-[10px] font-normal">
+                        {isCurrent ? "Current" : t.status} · {t.capacity} seats
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
 
-          <Button
-            variant="outline"
-            disabled={moveTable.isPending}
-            onClick={() => onOpenChange(false)}
-          >
-            Cancel
-          </Button>
+              <Button
+                variant="outline"
+                disabled={moveTable.isPending}
+                onClick={() => onOpenChange(false)}
+              >
+                Cancel
+              </Button>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 

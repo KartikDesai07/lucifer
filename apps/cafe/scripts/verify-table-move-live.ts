@@ -11,16 +11,25 @@
  *    order CAS matches nothing once the tab closed or already moved;
  *  - that the rollback frees only OUR OWN claim, and the source release cannot
  *    free a table another order has since taken (the double-free class);
- *  - that a move does NOT touch the bill — the table-charge snapshot and total
- *    come out byte-identical;
  *  - that the guarded re-occupy refuses to steal an occupied table, and that the
  *    UNGUARDED filter PUT /api/orders/[id] used to send really did steal it.
  *
+ * REWRITTEN (CB-CHG, 2026-09-25) — a move now RE-PRICES (owner decision
+ * reversal: "purana hatao, naye table ka lagao"). The OLD assertion here
+ * ("moving onto a table with a DIFFERENT charge leaves the bill byte-
+ * identical") encoded exactly the rule the owner has now reversed, so it is
+ * DELETED, not extended, and replaced with plan §7's 8 legs (uncharged→
+ * charged, charged→uncharged, replace-not-stack, the extra-survives-a-move
+ * headline invariant, a legacy scalar-only order, a reward tab, the CAS
+ * widening, and double-charge safety on a retry).
+ *
  * SCOPE — reproduces the exact filter/update documents the routes issue, using
  * the REAL `reorderOps`, `claimTableFilter`, `moveOrderFilter`, `occupyUpdate`,
- * `RELEASE_UPDATE`, `tableUnavailableReason`, `FREE_TABLE_FILTER` and
- * `freeTableFilter` helpers plus the REAL `Order`/`Table` models. It does NOT
- * stand up the HTTP routes (no auth, no session, no Zod) — those are pinned by
+ * `RELEASE_UPDATE`, `tableUnavailableReason`, `FREE_TABLE_FILTER`,
+ * `freeTableFilter`, `withTableCharge`, `chargesFromOrder`, `chargeWriteFields`,
+ * `computeOrderTotals`, `gstConfigFromOrder` and `rewardFromOrderSnapshot`
+ * helpers plus the REAL `Order`/`Table` models. It does NOT stand up the HTTP
+ * routes (no auth, no session, no Zod) — those are pinned by
  * lib/table-flow-paths.test.ts reading the routes' actual source.
  *
  *   npm run verify:table-move:live
@@ -33,9 +42,9 @@
  */
 import mongoose from "mongoose";
 import { connectDB } from "@/lib/db";
-import { Order } from "@/models/Order";
+import { Order, type IOrder } from "@/models/Order";
 import { Table } from "@/models/Table";
-import { FREE_TABLE_FILTER, freeTableFilter } from "@/lib/table-admin";
+import { FREE_TABLE_FILTER, freeTableFilter, resolveTableCharge } from "@/lib/table-admin";
 import { reorderOps } from "@/lib/table-order";
 import {
   claimTableFilter,
@@ -46,6 +55,17 @@ import {
   TABLE_TAKEN_ERROR,
   TABLE_RESERVED_ERROR,
 } from "@/lib/order-table-move";
+import { computeOrderTotals, gstConfigFromOrder, type GstConfig } from "@/lib/receipt";
+import { getSettings, gstConfigOf } from "@/lib/settings";
+import { rewardFromOrderSnapshot } from "@pos/shared/reward-redemption";
+import {
+  chargesFromOrder,
+  withTableCharge,
+  chargesTotal,
+  splitChargeTotals,
+  type OrderCharge,
+} from "@pos/shared/order-charges";
+import { chargeWriteFields } from "@/lib/order-charges-write";
 
 const SCRATCH_PREFIX = "pos_scratch_";
 const DEFAULT_URI = `mongodb://127.0.0.1:27017/${SCRATCH_PREFIX}table_move`;
@@ -64,33 +84,83 @@ function check(label: string, ok: boolean): void {
 }
 
 // Seating carries no money, so these fixtures deliberately hold a trivial bill —
-// except the charge legs below, which set the snapshot fields explicitly.
+// except the charge/reward legs below, which set the snapshot fields explicitly.
+// `charges` builds the CB-CHG typed array + its mirror (the money the route's
+// re-price must reproduce and then change); `chargeAmount`/`chargeLabel` alone
+// (no `charges`) builds a LEGACY scalar-only order — leg 5's fixture shape.
 function buildOrder(opts: {
   orderId: string;
   tableNo?: string;
   status?: "Pending" | "Completed" | "Cancelled";
+  charges?: OrderCharge[];
   chargeAmount?: number;
   chargeLabel?: string;
+  rewardAt?: number;
+  rewardKind?: "flat" | "percent" | "item";
+  rewardValue?: number;
+  rewardItem?: string;
+  discountKind?: "reward";
 }) {
   const price = 100;
+  const chargeAmount = opts.charges ? chargesTotal(opts.charges) : opts.chargeAmount;
+  // CB-CHG — split, never summed: computeOrderTotals needs the table portion
+  // (TABLE_CHARGE_MAX-clamped) and the extras portion (uncapped, decision 8)
+  // separately. A legacy scalar-only fixture (no `charges`) has no extra by
+  // definition, so its whole chargeAmount is the table portion.
+  const { table: fixtureTableCharge, extra: fixtureExtraCharge } = opts.charges
+    ? splitChargeTotals(opts.charges)
+    : { table: opts.chargeAmount ?? 0, extra: 0 };
+  const reward =
+    opts.rewardAt !== undefined
+      ? rewardFromOrderSnapshot({
+          rewardAt: opts.rewardAt,
+          rewardKind: opts.rewardKind,
+          rewardValue: opts.rewardValue,
+          rewardItem: opts.rewardItem,
+        })
+      : undefined;
+  const cfg: GstConfig = { gstEnabled: false, gstRate: 0, gstMode: "exclusive" };
+  const totals = computeOrderTotals({
+    items: [{ price, qty: 1, reward: false }],
+    discount: 0,
+    discountKind: opts.discountKind,
+    charge: fixtureTableCharge,
+    extraCharge: fixtureExtraCharge,
+    cfg,
+    reward,
+  });
   return {
     orderId: opts.orderId,
     customerName: "Walk-In",
     items: [
       { productId: "00000000000000000000aaa1", name: "Tea", price, qty: 1, modifiers: [], instructions: "", kotRound: 1 },
     ],
-    subtotal: price,
-    discount: 0,
-    gstAmount: 0,
-    chargeAmount: opts.chargeAmount,
-    chargeLabel: opts.chargeLabel,
-    total: price + (opts.chargeAmount ?? 0),
+    subtotal: totals.subtotal,
+    discount: totals.discount,
+    discountKind: opts.discountKind,
+    gstAmount: totals.gstAmount,
+    gstRate: 0,
+    gstMode: "exclusive" as const,
+    ...(opts.charges ? { charges: opts.charges } : {}),
+    chargeAmount: opts.charges ? (chargeAmount! > 0 ? chargeAmount : undefined) : opts.chargeAmount,
+    chargeLabel: opts.charges
+      ? (chargeAmount! > 0 ? opts.charges!.find((c) => c.type === "table")?.label ?? opts.charges![0]?.label : undefined)
+      : opts.chargeLabel,
+    total: totals.total,
     paidAmount: 0,
     payment: "Unpaid" as const,
     status: opts.status ?? ("Pending" as const),
     receiver: "Verifier",
     tableNo: opts.tableNo,
     kotRounds: 1,
+    ...(opts.rewardAt !== undefined
+      ? {
+          rewardAt: opts.rewardAt,
+          rewardKind: opts.rewardKind,
+          rewardValue: opts.rewardValue,
+          rewardItem: opts.rewardItem ?? "",
+        }
+      : {}),
   };
 }
 
@@ -207,7 +277,7 @@ async function moveLegs(): Promise<void> {
   );
 
   const moved = await Order.findOneAndUpdate(
-    moveOrderFilter(String(ord1._id), "T-A"),
+    moveOrderFilter(String(ord1._id), "T-A", ord1),
     { $set: { tableNo: "T-B" } },
     { new: true },
   ).lean();
@@ -224,7 +294,7 @@ async function moveLegs(): Promise<void> {
   // ── the order CAS ──────────────────────────────────────────────────────────
   check(
     "the CAS matches nothing when the tab is no longer on the table we read (a second terminal already moved it)",
-    (await Order.findOneAndUpdate(moveOrderFilter(String(ord1._id), "T-A"), {
+    (await Order.findOneAndUpdate(moveOrderFilter(String(ord1._id), "T-A", ord1), {
       $set: { tableNo: "T-D" },
     })) === null,
   );
@@ -232,7 +302,7 @@ async function moveLegs(): Promise<void> {
   const closed = await Order.create(buildOrder({ orderId: "ORD-2", tableNo: "T-D", status: "Completed" }));
   check(
     "the CAS matches nothing once the tab is Completed — a settled bill can never be re-seated",
-    (await Order.findOneAndUpdate(moveOrderFilter(String(closed._id), "T-D"), {
+    (await Order.findOneAndUpdate(moveOrderFilter(String(closed._id), "T-D", closed), {
       $set: { tableNo: "T-B" },
     })) === null,
   );
@@ -245,7 +315,7 @@ async function moveLegs(): Promise<void> {
   await Table.findOneAndUpdate(claimTableFilter("T-Q"), occupyUpdate("ORD-4"));
   // A deliberately stale source makes the order CAS miss, which is exactly the
   // branch that must undo its own claim.
-  const missed = await Order.findOneAndUpdate(moveOrderFilter(String(ord4._id), "T-STALE"), {
+  const missed = await Order.findOneAndUpdate(moveOrderFilter(String(ord4._id), "T-STALE", ord4), {
     $set: { tableNo: "T-Q" },
   });
   const rolledBack = await Table.findOneAndUpdate(freeTableFilter("T-Q", "ORD-4"), RELEASE_UPDATE, {
@@ -272,25 +342,220 @@ async function moveLegs(): Promise<void> {
     notOurs === null && zAfter?.status === "Occupied" && zAfter?.currentOrderId === "ORD-9",
   );
 
-  // ── money must not move ───────────────────────────────────────────────────
-  await Table.create({ tableNo: "T-S", capacity: 2, status: "Occupied", currentOrderId: "ORD-7" });
-  await Table.create({ tableNo: "T-T", capacity: 2, chargeAmount: 100, chargeLabel: "Garden" });
-  const priced = await Order.create(
-    buildOrder({ orderId: "ORD-7", tableNo: "T-S", chargeAmount: 50, chargeLabel: "Balcony" }),
-  );
-  await Table.findOneAndUpdate(claimTableFilter("T-T"), occupyUpdate("ORD-7"));
-  const repriced = await Order.findOneAndUpdate(
-    moveOrderFilter(String(priced._id), "T-S"),
-    { $set: { tableNo: "T-T" } },
-    { new: true },
-  ).lean();
+  // ── CB-CHG plan §7 — a move now RE-PRICES ─────────────────────────────────
+  // Replicates app/api/orders/[id]/table/route.ts's exact re-price steps
+  // (resolveTableCharge → withTableCharge → computeOrderTotals →
+  // chargeWriteFields → moveOrderFilter/$set in ONE findOneAndUpdate) against
+  // a REAL document, which the DB-free unit tests cannot.
+  const liveGst = gstConfigOf(await getSettings());
+  async function doMove(order: IOrder, to: string) {
+    const destCharge = await resolveTableCharge(to);
+    if ("error" in destCharge) throw new Error(destCharge.error);
+    const charges = withTableCharge(
+      chargesFromOrder(order),
+      destCharge.charge.amount > 0 ? { label: destCharge.charge.label, amount: destCharge.charge.amount } : null,
+    );
+    // CB-CHG — split, never summed (see the route's own comment for why).
+    const { table: moveTableCharge, extra: moveExtraCharge } = splitChargeTotals(charges);
+    const totals = computeOrderTotals({
+      items: order.items,
+      discount: order.discount,
+      discountKind: order.discountKind,
+      charge: moveTableCharge,
+      extraCharge: moveExtraCharge,
+      cfg: gstConfigFromOrder(order, liveGst),
+      reward: rewardFromOrderSnapshot(order),
+    });
+    const chargeFields = chargeWriteFields(charges);
+    return Order.findOneAndUpdate(
+      moveOrderFilter(String(order._id), order.tableNo!, order),
+      {
+        $set: {
+          tableNo: to,
+          subtotal: totals.subtotal,
+          discount: totals.discount,
+          gstAmount: totals.gstAmount,
+          total: totals.total,
+          ...(chargeFields.set ?? {}),
+        },
+        ...(chargeFields.unset ? { $unset: chargeFields.unset } : {}),
+      },
+      { new: true },
+    ).lean();
+  }
+
+  // Leg 1 — uncharged → charged: total +50, one table entry, mirror correct.
+  await Table.create({ tableNo: "M1-FROM", capacity: 2, status: "Occupied", currentOrderId: "ORD-M1" });
+  await Table.create({ tableNo: "M1-TO", capacity: 2, chargeAmount: 50, chargeLabel: "Rooftop" });
+  const m1 = await Order.create(buildOrder({ orderId: "ORD-M1", tableNo: "M1-FROM" }));
+  await Table.findOneAndUpdate(claimTableFilter("M1-TO"), occupyUpdate("ORD-M1"));
+  const m1Moved = await doMove(m1, "M1-TO");
   check(
-    "moving onto a table with a DIFFERENT charge leaves the bill byte-identical — the snapshot is frozen and only the POS cart may re-price it",
-    repriced?.tableNo === "T-T" &&
-      repriced?.chargeAmount === 50 &&
-      repriced?.chargeLabel === "Balcony" &&
-      repriced?.total === 150 &&
-      repriced?.subtotal === 100,
+    "leg 1 — uncharged→charged: total +50, one table entry, mirror correct",
+    m1Moved?.total === m1.total + 50 &&
+      m1Moved?.chargeAmount === 50 &&
+      m1Moved?.chargeLabel === "Rooftop" &&
+      JSON.stringify(m1Moved?.charges) === JSON.stringify([{ type: "table", label: "Rooftop", amount: 50 }]),
+  );
+
+  // Leg 2 — charged → uncharged: total -50, all three fields ABSENT via
+  // $unset, never 0 (a named ₹0 line must never print).
+  await Table.create({ tableNo: "M2-FROM", capacity: 2, chargeAmount: 50, chargeLabel: "Rooftop" });
+  await Table.create({ tableNo: "M2-TO", capacity: 2, status: "Occupied", currentOrderId: "ORD-M2" });
+  const m2 = await Order.create(
+    buildOrder({
+      orderId: "ORD-M2",
+      tableNo: "M2-FROM",
+      charges: [{ type: "table", label: "Rooftop", amount: 50 }],
+    }),
+  );
+  await Table.updateOne({ tableNo: "M2-TO" }, { status: "Available", currentOrderId: "" });
+  await Table.findOneAndUpdate(claimTableFilter("M2-TO"), occupyUpdate("ORD-M2"));
+  const m2Moved = await doMove(m2, "M2-TO");
+  check(
+    "leg 2 — charged→uncharged: total -50, charges/chargeAmount/chargeLabel all ABSENT ($unset, not 0)",
+    m2Moved?.total === m2.total - 50 &&
+      !("charges" in (m2Moved ?? {})) &&
+      !("chargeAmount" in (m2Moved ?? {})) &&
+      !("chargeLabel" in (m2Moved ?? {})),
+  );
+
+  // Leg 3 — ₹50 → ₹100 replace-not-stack: exactly ONE table entry.
+  await Table.create({ tableNo: "M3-FROM", capacity: 2, chargeAmount: 50, chargeLabel: "Old" });
+  await Table.create({ tableNo: "M3-TO", capacity: 2, chargeAmount: 100, chargeLabel: "New", status: "Occupied", currentOrderId: "ORD-M3" });
+  const m3 = await Order.create(
+    buildOrder({ orderId: "ORD-M3", tableNo: "M3-FROM", charges: [{ type: "table", label: "Old", amount: 50 }] }),
+  );
+  await Table.updateOne({ tableNo: "M3-TO" }, { status: "Available", currentOrderId: "" });
+  await Table.findOneAndUpdate(claimTableFilter("M3-TO"), occupyUpdate("ORD-M3"));
+  const m3Moved = await doMove(m3, "M3-TO");
+  check(
+    "leg 3 — ₹50→₹100 replace-not-stack: exactly ONE table entry, the new amount/label",
+    m3Moved?.charges?.length === 1 &&
+      m3Moved?.charges?.[0]?.type === "table" &&
+      m3Moved?.charges?.[0]?.amount === 100 &&
+      m3Moved?.charges?.[0]?.label === "New" &&
+      m3Moved?.total === m3.total + 50,
+  );
+
+  // Leg 4 — THE HEADLINE INVARIANT: [table 50, extra 30] moved to an
+  // uncharged table keeps [extra 30] — a move must never destroy a takeaway
+  // charge.
+  await Table.create({ tableNo: "M4-FROM", capacity: 2, chargeAmount: 50, chargeLabel: "Old" });
+  await Table.create({ tableNo: "M4-TO", capacity: 2, status: "Occupied", currentOrderId: "ORD-M4" });
+  const m4 = await Order.create(
+    buildOrder({
+      orderId: "ORD-M4",
+      tableNo: "M4-FROM",
+      charges: [
+        { type: "table", label: "Old", amount: 50 },
+        { type: "extra", label: "Takeaway", amount: 30 },
+      ],
+    }),
+  );
+  await Table.updateOne({ tableNo: "M4-TO" }, { status: "Available", currentOrderId: "" });
+  await Table.findOneAndUpdate(claimTableFilter("M4-TO"), occupyUpdate("ORD-M4"));
+  const m4Moved = await doMove(m4, "M4-TO");
+  check(
+    "leg 4 — [table 50, extra 30] moved to an UNCHARGED table keeps [extra 30] (the owner's headline invariant)",
+    JSON.stringify(m4Moved?.charges) === JSON.stringify([{ type: "extra", label: "Takeaway", amount: 30 }]) &&
+      m4Moved?.chargeAmount === 30 &&
+      m4Moved?.chargeLabel === "Takeaway" &&
+      m4Moved?.total === m4.total - 50,
+  );
+
+  // Leg 5 — a LEGACY order (scalars only, no `charges`) moved: correct
+  // result, subtotal+gstAmount unchanged (derive-on-read upgrades in place,
+  // no migration).
+  await Table.create({ tableNo: "M5-FROM", capacity: 2, chargeAmount: 40, chargeLabel: "Legacy" });
+  await Table.create({ tableNo: "M5-TO", capacity: 2, chargeAmount: 90, chargeLabel: "Fresh", status: "Occupied", currentOrderId: "ORD-M5" });
+  const m5 = await Order.create(
+    buildOrder({ orderId: "ORD-M5", tableNo: "M5-FROM", chargeAmount: 40, chargeLabel: "Legacy" }),
+  );
+  check("leg 5 fixture is genuinely legacy (no `charges` key)", !("charges" in m5.toObject()));
+  await Table.updateOne({ tableNo: "M5-TO" }, { status: "Available", currentOrderId: "" });
+  await Table.findOneAndUpdate(claimTableFilter("M5-TO"), occupyUpdate("ORD-M5"));
+  const m5Moved = await doMove(m5, "M5-TO");
+  check(
+    "leg 5 — a LEGACY scalar-only order moved: charge replaced correctly, subtotal+gstAmount unchanged",
+    m5Moved?.chargeAmount === 90 &&
+      m5Moved?.chargeLabel === "Fresh" &&
+      m5Moved?.subtotal === m5.subtotal &&
+      m5Moved?.gstAmount === m5.gstAmount &&
+      m5Moved?.total === m5.total + 50,
+  );
+
+  // Leg 6 — a REWARD tab moved keeps its reward discount (the fail-closed
+  // trap: rewardDiscountAmount returns 0 for a MISSING reward, so omitting
+  // rewardFromOrderSnapshot would re-bill this tab at full price).
+  await Table.create({ tableNo: "M6-FROM", capacity: 2 });
+  await Table.create({ tableNo: "M6-TO", capacity: 2, chargeAmount: 20, chargeLabel: "Garden", status: "Occupied", currentOrderId: "ORD-M6" });
+  const m6 = await Order.create(
+    buildOrder({
+      orderId: "ORD-M6",
+      tableNo: "M6-FROM",
+      discountKind: "reward",
+      rewardAt: 5,
+      rewardKind: "flat",
+      rewardValue: 40,
+    }),
+  );
+  check("leg 6 fixture really carries a reward discount before the move", m6.discount === 40);
+  await Table.updateOne({ tableNo: "M6-TO" }, { status: "Available", currentOrderId: "" });
+  await Table.findOneAndUpdate(claimTableFilter("M6-TO"), occupyUpdate("ORD-M6"));
+  const m6Moved = await doMove(m6, "M6-TO");
+  check(
+    "leg 6 — a REWARD tab moved keeps its reward discount (not re-billed at full price)",
+    m6Moved?.discountKind === "reward" &&
+      m6Moved?.discount === 40 &&
+      m6Moved?.rewardAt === 5 &&
+      m6Moved?.total === m6.subtotal - 40 + 20,
+  );
+
+  // Leg 7 — CAS: a concurrent add-round between read and write makes the
+  // move 409 (findOneAndUpdate returns null) and the destination claim must
+  // be released, exactly like the pre-existing stale-source leg above. The
+  // new `total`/`kotRounds` terms in moveOrderFilter are what make this miss.
+  await Table.create({ tableNo: "M7-FROM", capacity: 2, status: "Occupied", currentOrderId: "ORD-M7" });
+  await Table.create({ tableNo: "M7-TO", capacity: 2 });
+  const m7 = await Order.create(buildOrder({ orderId: "ORD-M7", tableNo: "M7-FROM" }));
+  await Table.findOneAndUpdate(claimTableFilter("M7-TO"), occupyUpdate("ORD-M7"));
+  // …a concurrent add-round lands in the gap, bumping total AND kotRounds…
+  await Order.updateOne({ _id: m7._id }, { $set: { total: m7.total + 500, kotRounds: 2 } });
+  const m7Missed = await Order.findOneAndUpdate(
+    moveOrderFilter(String(m7._id), "M7-FROM", m7), // guards on the STALE total/kotRounds we read
+    { $set: { tableNo: "M7-TO" } },
+  );
+  const m7Released = await Table.findOneAndUpdate(freeTableFilter("M7-TO", "ORD-M7"), RELEASE_UPDATE, {
+    new: true,
+  }).lean();
+  const m7After = await Order.findById(m7._id).select("tableNo kotRounds").lean();
+  check(
+    "leg 7 — a concurrent add-round between read and write makes the move CAS miss (409), releases the claim, and the new round survives on the bill",
+    m7Missed === null &&
+      m7Released?.status === "Available" &&
+      m7After?.tableNo === "M7-FROM" &&
+      m7After?.kotRounds === 2,
+  );
+
+  // Leg 8 — a retried landed move does not double-charge: once the first
+  // attempt's write lands (total already reflects the new charge), a retry
+  // that guards on the OLD total/tableNo genuinely misses — it can never
+  // re-apply the same charge a second time.
+  await Table.create({ tableNo: "M8-FROM", capacity: 2 });
+  await Table.create({ tableNo: "M8-TO", capacity: 2, chargeAmount: 70, chargeLabel: "Patio", status: "Occupied", currentOrderId: "ORD-M8" });
+  const m8 = await Order.create(buildOrder({ orderId: "ORD-M8", tableNo: "M8-FROM" }));
+  await Table.updateOne({ tableNo: "M8-TO" }, { status: "Available", currentOrderId: "" });
+  await Table.findOneAndUpdate(claimTableFilter("M8-TO"), occupyUpdate("ORD-M8"));
+  const m8First = await doMove(m8, "M8-TO");
+  // …the client retries with its ORIGINAL (now-stale) snapshot of the order…
+  const m8Retry = await Order.findOneAndUpdate(
+    moveOrderFilter(String(m8._id), "M8-FROM", m8), // still the OLD total/tableNo
+    { $set: { tableNo: "M8-TO", total: (m8First?.total ?? 0) + 70 } }, // would double-charge if it matched
+  );
+  check(
+    "leg 8 — a retry whose filter still names the OLD total/tableNo genuinely misses once the first attempt landed — no double-charge",
+    m8First?.total === m8.total + 70 && m8Retry === null,
   );
 
   // ── tableUnavailableReason against real documents ─────────────────────────
@@ -328,7 +593,7 @@ async function moveLegs(): Promise<void> {
   }
   const retryMoved = alreadyOurs
     ? await Order.findOneAndUpdate(
-        moveOrderFilter(String(stranded._id), "R-OLD"),
+        moveOrderFilter(String(stranded._id), "R-OLD", stranded),
         { $set: { tableNo: "R-NEW" } },
         { new: true },
       ).lean()
@@ -359,7 +624,7 @@ async function moveLegs(): Promise<void> {
 
   // …the move completes in the gap…
   await Table.findOneAndUpdate(claimTableFilter("D-NEW"), occupyUpdate("ORD-D"));
-  await Order.findOneAndUpdate(moveOrderFilter(String(doomed._id), "D-OLD"), {
+  await Order.findOneAndUpdate(moveOrderFilter(String(doomed._id), "D-OLD", doomed), {
     $set: { tableNo: "D-NEW" },
   });
   await Table.findOneAndUpdate(freeTableFilter("D-OLD", "ORD-D"), RELEASE_UPDATE);

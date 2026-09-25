@@ -1,4 +1,5 @@
 import { FREE_TABLE_FILTER, isTableFree, type TableOccupancy } from "@/lib/table-admin";
+import { voidGuardFilter } from "@/lib/order-void";
 
 // POST /api/orders/[id]/table — move a LIVE tab to another table, as one pure
 // decision layer (the route stays a thin orchestrator), exactly like
@@ -38,12 +39,30 @@ export function tableUnavailableReason(
   return isTableFree(table) ? null : TABLE_TAKEN_ERROR;
 }
 
-// The order's own CAS: asserts BOTH that the tab is still open AND that it is
-// still on the table we read it from, so a settle/cancel or a second
-// terminal's move landing in between makes this write a no-match — never a
-// silent overwrite of whichever change got there first.
-export function moveOrderFilter(id: string, fromTableNo: string): Record<string, unknown> {
-  return { _id: id, status: MOVABLE_ORDER_STATUS, tableNo: fromTableNo };
+// The order's own CAS: asserts the tab is still open, still on the table we
+// read it from, AND still the exact money state we priced the move's re-charge
+// from — a move is now a read-modify-write on MONEY (CB-CHG plan §5A), not a
+// bare tableNo swap, so the filter gains the terms the other money writers
+// already use, reused rather than re-rolled: `total` (settle's term),
+// `kotRounds` (add-round's term), and `voidGuardFilter` (the void's term,
+// keyed on the trail's own length). This NARROWS the allowed-state set the
+// old {_id, status, tableNo} filter matched, so it re-opens no existing race —
+// it only makes MORE concurrent edits (a round fired, a void, a settle) make
+// this write miss and 409, instead of silently clobbering one with a stale
+// re-price.
+export function moveOrderFilter(
+  id: string,
+  fromTableNo: string,
+  order: { total: number; kotRounds?: number; voids?: unknown[] },
+): Record<string, unknown> {
+  return {
+    _id: id,
+    status: MOVABLE_ORDER_STATUS,
+    tableNo: fromTableNo,
+    total: order.total,
+    kotRounds: order.kotRounds ?? 0,
+    ...voidGuardFilter(order.voids?.length ?? 0),
+  };
 }
 
 // The destination's CAS: only claim a table that is genuinely free right now.

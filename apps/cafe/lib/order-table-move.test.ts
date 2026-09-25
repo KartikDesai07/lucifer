@@ -19,11 +19,25 @@ import {
 // assert.deepEqual on the WHOLE object — that's what a typo in a key or a
 // wrong literal (e.g. "" vs undefined) breaks.
 
-test("moveOrderFilter: CAS on both the order's status AND its current table", () => {
-  assert.deepEqual(moveOrderFilter("ORD-1", "T-1"), {
+test("moveOrderFilter: CAS on the order's status, its current table, AND the money-state terms the other writers use (total/kotRounds/voidGuardFilter)", () => {
+  assert.deepEqual(moveOrderFilter("ORD-1", "T-1", { total: 150, kotRounds: 2, voids: [{}] }), {
     _id: "ORD-1",
     status: MOVABLE_ORDER_STATUS,
     tableNo: "T-1",
+    total: 150,
+    kotRounds: 2,
+    voids: { $size: 1 },
+  });
+});
+
+test("moveOrderFilter: kotRounds/voids default to 0/none when the order carries neither (a fresh one-shot order)", () => {
+  assert.deepEqual(moveOrderFilter("ORD-1", "T-1", { total: 100 }), {
+    _id: "ORD-1",
+    status: MOVABLE_ORDER_STATUS,
+    tableNo: "T-1",
+    total: 100,
+    kotRounds: 0,
+    $or: [{ voids: { $exists: false } }, { voids: { $size: 0 } }],
   });
 });
 

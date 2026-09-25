@@ -4,6 +4,7 @@ import type { Ref } from "react";
 import Image from "next/image";
 
 import { orderItemLabel, discountLineLabel } from "@pos/shared/utils";
+import { chargesFromOrder } from "@pos/shared/order-charges";
 import { CAFE_TIMEZONE } from "@/lib/constants";
 import type { PrintLogoSize } from "@/lib/constants";
 import { inr } from "@/lib/utils";
@@ -210,17 +211,15 @@ export function OrderReceipt({ order, settings, ref }: OrderReceiptProps) {
             {gst?.show && !gst.inclusive && (
               <Line label={`GST @${gst.rate}%`} value={`+${inr(gst.gstAmount)}`} />
             )}
-            {/* The table's charge, printed under the cafe's OWN name for it and
-                after the tax line, because it is added on top of the taxed bill
-                rather than taxed with it. Keyed on the amount being present:
-                a waived charge leaves no line, and the label is never printed
-                without a figure beside it. */}
-            {order.chargeAmount !== undefined && order.chargeAmount > 0 && (
-              <Line
-                label={order.chargeLabel ?? "Table charge"}
-                value={`+${inr(order.chargeAmount)}`}
-              />
-            )}
+            {/* CB-CHG — every charge line (table + staff-entered extras), each
+                printed under its own name, after the tax line, because they
+                are added on top of the taxed bill rather than taxed with it.
+                A legacy order (no `charges[]`, only the scalars) derives to
+                exactly the ONE line the old conditional printed, under the
+                same "Table charge" fallback — a reprint is byte-identical. */}
+            {chargesFromOrder(order).map((c, i) => (
+              <Line key={`${c.label}-${i}`} label={c.label} value={`+${inr(c.amount)}`} />
+            ))}
 
             <div className="flex justify-between text-[1.17em] font-bold">
               <span>TOTAL</span>

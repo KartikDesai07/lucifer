@@ -10,6 +10,7 @@ import { CartLine, CartSection } from "@/components/pos/CartLine";
 import { CartNotes } from "@/components/pos/CartNotes";
 import { CartReward } from "@/components/pos/CartReward";
 import { CartPromo } from "@/components/pos/CartPromo";
+import { CartExtraCharges, type ExtraChargeEntry } from "@/components/pos/CartExtraCharges";
 import { POS_CART_CTA_CLASS, POS_CART_GST_BUTTON_CLASS, POS_CART_LIST_CLASS } from "@/lib/pos-layout";
 import { GST_DISCOUNT_LABEL } from "@/lib/constants";
 import type { CartItem } from "@/hooks/use-cart";
@@ -45,6 +46,12 @@ export interface CartProps {
   entitledCharge: number;
   onChargeChange: (value: number) => void;
   onChargeReset: () => void;
+  // CB-CHG (plan §5C) — the staff-entered extra charges for this bill (e.g. a
+  // takeaway's packing fee). Independent of the table charge above: a
+  // walk-in with no table can still carry one. See CartExtraCharges.
+  extraCharges: ExtraChargeEntry[];
+  onAddExtraCharge: (entry: ExtraChargeEntry) => void;
+  onRemoveExtraCharge: (index: number) => void;
   onUpdateQty: (lineId: string, qty: number) => void;
   onRemove: (lineId: string) => void;
   onClear: () => void;
@@ -112,6 +119,9 @@ export function Cart({
   entitledCharge,
   onChargeChange,
   onChargeReset,
+  extraCharges,
+  onAddExtraCharge,
+  onRemoveExtraCharge,
   onUpdateQty,
   onRemove,
   onClear,
@@ -406,6 +416,18 @@ export function Cart({
             )}
           </>
         )}
+
+        {/* CB-CHG (plan §5C) — the staff-entered extra charges, always shown
+            (unlike the table charge above): a takeaway bill has no table but
+            can still carry one. Lands after the table charge and above Total
+            because that is where it lands in the arithmetic too (after GST,
+            outside the discount — usePosTotals/computeOrderTotals). */}
+        <CartExtraCharges
+          extras={extraCharges}
+          onAdd={onAddExtraCharge}
+          onRemove={onRemoveExtraCharge}
+          disabled={isBusy}
+        />
 
         <div className="flex items-center justify-between border-t pt-2 text-base font-bold">
           <span>Total</span>

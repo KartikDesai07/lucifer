@@ -20,6 +20,14 @@ import { voidGuardFilter } from "@/lib/order-void";
 import { addItemsSchema } from "@/schemas";
 import { checkItemVariations } from "@/lib/variations";
 import {
+  chargesFromOrder,
+  applyExtraCharges,
+  withTableCharge,
+  splitChargeTotals,
+  DEFAULT_TABLE_CHARGE_LABEL,
+} from "@pos/shared/order-charges";
+import { chargeWriteFields } from "@/lib/order-charges-write";
+import {
   resolveRewardClaimAndLine,
   rewardSnapshotFields,
   claimRewardStamps,
@@ -95,12 +103,33 @@ export async function POST(req: Request, { params }: Params) {
     let discountKind = resolveDiscountKind(parsed.data.discountKind, old.discountKind);
     const settings = await getSettings();
     const gstCfg = gstConfigFromOrder(old, gstConfigOf(settings));
-    // The tab's table charge is carried forward untouched unless the operator
-    // deliberately changed it — omitted means unchanged, exactly like discount.
-    // Adding a round is never an occasion to RE-READ the table: the charge was
-    // snapshotted when the tab opened, and an admin editing the table mid-
-    // service must not re-price a bill the kitchen is already cooking.
-    const chargeForTab = parsed.data.chargeAmount ?? old.chargeAmount ?? 0;
+    // CB-CHG — charges[] is the source of truth (plan §4), upgraded in place
+    // from the tab's legacy scalars if it predates this feature. The table
+    // lane is carried forward untouched unless the operator deliberately
+    // changed it (chargeAmount body override) — omitted means unchanged,
+    // exactly like discount. Adding a round is never an occasion to RE-READ
+    // the table: the charge was snapshotted when the tab opened, and an admin
+    // editing the table mid-service must not re-price a bill the kitchen is
+    // already cooking. The override now targets the TABLE ENTRY'S AMOUNT
+    // ONLY (0 = waive the table charge) — extras are their own list, carried
+    // through untouched by withTableCharge and replaced wholesale (present =
+    // the complete new set) by applyExtraCharges when the body sends one.
+    const oldCharges = chargesFromOrder(old);
+    const oldTableCharge = oldCharges.find((c) => c.type === "table");
+    const tableChargeAmount = parsed.data.chargeAmount ?? oldTableCharge?.amount ?? 0;
+    const charges = applyExtraCharges(
+      withTableCharge(
+        oldCharges,
+        tableChargeAmount > 0
+          ? { label: oldTableCharge?.label ?? DEFAULT_TABLE_CHARGE_LABEL, amount: tableChargeAmount }
+          : null,
+      ),
+      parsed.data.extraCharges ?? oldCharges.filter((c) => c.type === "extra"),
+    );
+    // CB-CHG — computeOrderTotals takes the table portion and the extras
+    // portion SEPARATELY (the table charge keeps its shipped TABLE_CHARGE_MAX
+    // ceiling; extras ride on top uncapped — decision 8).
+    const { table: chargeForTab, extra: extraChargeForTab } = splitChargeTotals(charges);
 
     // CB-5B S4 — a reward claim on an add-round. Resolved against the OPEN
     // TAB's own customer (never a body customer: the tab's identity is
@@ -128,6 +157,7 @@ export async function POST(req: Request, { params }: Params) {
         discount,
         discountKind,
         charge: chargeForTab,
+        extraCharge: extraChargeForTab,
         cfg: gstCfg,
       }).total;
       const resolved = await resolveRewardClaimAndLine(
@@ -167,6 +197,7 @@ export async function POST(req: Request, { params }: Params) {
       discount,
       discountKind,
       charge: chargeForTab,
+      extraCharge: extraChargeForTab,
       cfg: gstCfg,
       reward: rewardForTotals,
     });
@@ -231,6 +262,9 @@ export async function POST(req: Request, { params }: Params) {
       i === round - 1 ? firedAt : (old.kotFiredAt?.[i] ?? old.createdAt),
     );
 
+    // CB-CHG — the ONE helper every charge writer uses (plan §4), so this
+    // route can never hand-write the mirror or pick the wrong $set/$unset arm.
+    const chargeFields = chargeWriteFields(charges);
     const update: Record<string, unknown> = {
       $set: {
         items: fullItems,
@@ -240,7 +274,7 @@ export async function POST(req: Request, { params }: Params) {
         total: totals.total,
         kotRounds: round,
         kotFiredAt,
-        ...(totals.charge > 0 ? { chargeAmount: totals.charge } : {}),
+        ...(chargeFields.set ?? {}),
         // storeKind now covers "gst" AND "reward" (shouldStoreDiscountKind) —
         // the RESOLVED kind is stored, never the "gst" literal, so a reward
         // claim on this round writes discountKind:"reward" and its snapshot.
@@ -249,11 +283,7 @@ export async function POST(req: Request, { params }: Params) {
         ...(resolvedClaim ? rewardSnapshotFields(resolvedClaim.reward, resolvedClaim.cost) : {}),
       },
     };
-    const unset: Record<string, ""> = {};
-    if (totals.charge <= 0) {
-      unset.chargeAmount = "";
-      unset.chargeLabel = "";
-    }
+    const unset: Record<string, ""> = { ...(chargeFields.unset ?? {}) };
     // A kind the operator cleared (null), or a preset that re-derives to ₹0,
     // must be REMOVED, not left beside a manual figure — the receipt labels
     // the line off this field. $unset on an absent field is a no-op, so

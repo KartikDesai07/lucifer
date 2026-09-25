@@ -10,6 +10,7 @@ import {
   type DiscountKind,
 } from "@/lib/constants";
 import { LOYALTY_REWARD_KINDS, type LoyaltyRewardKind } from "@pos/shared/public-diner";
+import { ORDER_CHARGE_TYPES, type OrderCharge } from "@pos/shared/order-charges";
 
 // Embedded subdocument — never saved independently (parent Order owns it).
 export interface IOrderItem {
@@ -104,6 +105,15 @@ export interface IOrder extends Document {
   gstAmount?: number; // GST added on top when settings.gstMode === "exclusive"
   gstRate?: number; // GST rate snapshot at order time (0 if GST was off then)
   gstMode?: GstMode; // GST mode snapshot at order time
+  // CB-CHG — the typed charge lines (table + staff-entered extras), source of
+  // truth for a new order. `chargeAmount`/`chargeLabel` below become the
+  // DERIVED MIRROR once this is present (still written by the same writers,
+  // in the same $set, so every legacy reader keeps working byte-identically).
+  // MUST be declared as its own schema path below — this repo has twice been
+  // bitten by strict:true silently dropping an interface-only field (the
+  // reward `note` and `rewardItem` incidents), so the path is explicit even
+  // though it duplicates this line.
+  charges?: OrderCharge[];
   chargeAmount?: number; // the table's extra charge as sold (untaxed, inside total)
   chargeLabel?: string; // what that charge printed as, snapshot at order time
   total: number;
@@ -184,6 +194,20 @@ const orderVoidSchema = new Schema<IOrderVoid>(
   { _id: false }, // embedded — no _id needed
 );
 
+// CB-CHG — embedded, no _id (same idiom as orderVoidSchema/orderItemSchema).
+// `required: true` on every path: normalizeCharges (the shared invariant
+// gate) never lets a blank-label or non-positive-amount entry through, so a
+// stored entry that reaches here is already valid — required guards against
+// a future writer bypassing that gate, not against these particular values.
+const orderChargeSchema = new Schema<OrderCharge>(
+  {
+    type: { type: String, enum: [...ORDER_CHARGE_TYPES], required: true },
+    label: { type: String, required: true },
+    amount: { type: Number, required: true, min: 1 },
+  },
+  { _id: false },
+);
+
 const orderItemSchema = new Schema<IOrderItem>(
   {
     productId: { type: Schema.Types.ObjectId, required: true },
@@ -244,6 +268,13 @@ const orderSchema = new Schema<IOrder>(
     // stay correct even after the cafe later changes its GST rate/mode.
     gstRate: { type: Number },
     gstMode: { type: String, enum: [...GST_MODES] },
+    // CB-CHG — the typed charge lines. `default: undefined`, NOT `[]`: a bill
+    // with no charge carries no key at all (omit-empty, same discipline as
+    // `voids`/`kotNumbers` below) — declared explicitly as its own path
+    // because strict:true has twice silently dropped an interface-only field
+    // here (the reward `note` and `rewardItem` incidents both hit this exact
+    // model).
+    charges: { type: [orderChargeSchema], default: undefined },
     // Table-charge snapshot — the extra charge folded into `total` and the name
     // it was sold under, frozen at sale time so editing the table later cannot
     // rewrite a printed bill. No defaults: a bill with no charge carries
