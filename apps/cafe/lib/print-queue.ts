@@ -12,6 +12,7 @@ import {
 import type { PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 import { PrintHost } from "@/models/PrintHost";
 import { PrintJob } from "@/models/PrintJob";
+import { publishCafeEvent } from "@/lib/realtime-publish";
 
 // Print-host plan (.claude/plan/v2/print-host-plan.md §B1/§B3/§B4) — the
 // PrintJob queue: enqueue, dismiss, and the lazy prune sweep (the §B4 feed
@@ -128,6 +129,10 @@ export async function enqueuePrintJob(input: {
     // freshly queued — it already printed (or was dismissed), so the caller
     // must not fall back to a local print believing nothing happened yet.
     if (existing.status !== "queued") return { outcome: "already-resolved", id: String(existing._id) };
+    // The row was already queued by a racing writer — still nudge, since the
+    // host may not have been told about it yet (a lost nudge would otherwise
+    // wait out the full safety-net tick).
+    publishCafeEvent("print-job");
     return { outcome: "queued", id: String(existing._id), duplicate: true };
   }
 
@@ -174,9 +179,16 @@ export async function enqueuePrintJob(input: {
       return { outcome: "no-host" };
     }
   } catch {
+    publishCafeEvent("print-job");
     return { outcome: "queued", id: createdId, duplicate: false };
   }
 
+  // Socket slice 2 — a job is genuinely waiting for the host. This nudge is what
+  // lets the host poll at PRINT_WAKE_SOCKET_MS instead of PRINT_WAKE_FAST_MS.
+  // It is FIRE-AND-FORGET past the response and can never fail this enqueue:
+  // the job is already committed, and the poll still finds it if the nudge is
+  // lost. Correctness stays with print-queue-claim.ts's CAS, never with this.
+  publishCafeEvent("print-job");
   return { outcome: "queued", id: createdId, duplicate: false };
 }
 

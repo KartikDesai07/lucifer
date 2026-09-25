@@ -8,6 +8,7 @@ import {
   PRINT_WAKE_DAILY_CAP,
   PRINT_WAKE_FAST_MS,
   PRINT_WAKE_SLOW_MS,
+  PRINT_WAKE_SOCKET_MS,
   type PrintJobFeedRow,
   type PrintWakeData,
 } from "@pos/shared/print-job";
@@ -22,6 +23,7 @@ import {
 } from "@/lib/print-wake-budget";
 import { cafeDateString } from "@/lib/utils";
 import { isDesktopShell } from "@/lib/desktop-shell";
+import { isRealtimeHealthy } from "@/lib/realtime-client";
 
 // CB-U1 — the host's adaptive wake poll (plan §B4 amendment: ONE extra poll
 // from the ONE lock-holding draining host tab, not a second 20s poll from
@@ -100,10 +102,23 @@ export function usePrintHostWake({ drains, feed }: { drains: boolean; feed: Prin
     // tray, so this is the explicit guarantee that the poll never pauses
     // there. Either way a failing route (F-D) is retried on the SLOW cadence
     // too, until a fetch succeeds again.
-    refetchInterval: () =>
-      !capSpentRef.current && !failedRef.current && Date.now() < activeUntilRef.current
-        ? PRINT_WAKE_FAST_MS
-        : PRINT_WAKE_SLOW_MS,
+    refetchInterval: () => {
+      const active =
+        !capSpentRef.current && !failedRef.current && Date.now() < activeUntilRef.current;
+      // Socket slice 2 — the 3s discovery cadence exists because nothing else
+      // told the host a job had arrived. While the realtime room is PROVEN up
+      // (a pong inside the heartbeat window, re-read here EVERY tick — never a
+      // cached boolean), the socket is that signal and this poll steps back to
+      // a 60s safety net: ~1,440 route hits/day instead of ~28,800.
+      //
+      // Deliberately still a poll, not nothing. A socket is best-effort: a
+      // dropped frame or a half-open connection must cost at most one 60s tick,
+      // never a lost print. isRealtimeHealthy() fails closed, so any doubt —
+      // flag off, mid-reconnect, missed pong, stale proof-of-life — snaps the
+      // host straight back to the cadence below, i.e. today's behaviour.
+      if (active && isRealtimeHealthy()) return PRINT_WAKE_SOCKET_MS;
+      return active ? PRINT_WAKE_FAST_MS : PRINT_WAKE_SLOW_MS;
+    },
   });
 
   // Keyed on dataUpdatedAt so this fires once per FETCH. Change-signal rule

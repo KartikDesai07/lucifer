@@ -9,6 +9,7 @@ import { usePrintHostDrain, type ClaimedPrintJobLike } from "@/hooks/use-print-h
 import { usePrintHostDrainLock } from "@/hooks/use-print-host-lock";
 import { usePrintHostWake } from "@/hooks/use-print-host-wake";
 import { usePrintHostWakeLock } from "@/hooks/use-print-host-wake-lock";
+import { usePrintRealtime } from "@/hooks/use-realtime";
 import { useSelfOrderAutoPrint } from "@/hooks/use-self-order-auto-print";
 import { hostPrintSlipOf, type HostPrintSlip } from "@/lib/print-host-slips";
 import { cafeDateString } from "@/lib/utils";
@@ -69,6 +70,13 @@ export function PrintHostDrain({
   // CB-U1 — the fast wake poll, armed by the SAME `drains` gate as the two
   // claiming lanes: only the lock-holding host tab polls (plan §B4 amendment).
   usePrintHostWake({ drains, feed });
+  // Socket slice 2 — the realtime nudge that EARNS the relaxed wake cadence
+  // above. Mounted on this one component, which is already gated to the single
+  // lock-holding host tab, so there is exactly one subscriber per device (and
+  // the connection itself is shared and refcounted in lib/realtime-client.ts).
+  // If the socket is down the wake poll notices on its own and snaps back to
+  // the 3s cadence — this hook is a pure accelerator, never a dependency.
+  usePrintRealtime();
   usePrintHostDrain({ enabled: drains, feed, busy, deviceId, tabId, claimLockRef, onClaimed, onDemoted });
 
   return null;

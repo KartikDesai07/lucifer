@@ -65,9 +65,20 @@ token and everything keeps running.
 - **One room per cafe.** Every device joins and filters by kind. Cheap because
   Cloudflare does **not** bill outgoing WebSocket messages, so broadcasting to N
   devices costs the same as addressing one.
-- **The print lane is deliberately excluded.** Its poll is *discovery only* and
-  `lib/print-queue-claim.ts`'s CAS is what guarantees correctness. A socket there
-  would make printing less reliable, not more.
+- **The print lane gets an accelerator, never a mechanism** (slice 2). Its poll
+  is *discovery only* and `lib/print-queue-claim.ts`'s CAS is what guarantees
+  correctness — that does not change. What the `print-job` nudge buys is the
+  right to relax that poll from 3s to **60s while the socket is PROVEN healthy**,
+  cutting ~13,680 Vercel requests/day per host device (a 95% cut). The host
+  re-reads `isRealtimeHealthy()` on **every** tick and snaps back to 3s the
+  instant proof-of-life goes stale, so a dropped frame or a half-open socket
+  costs at most one 60s tick — never a lost print.
+- **Health is PROVED, not assumed.** A device pings the room every 3 minutes and
+  requires a pong; any inbound frame also counts as proof. A socket can sit at
+  `readyState === OPEN` long after a NAT or proxy silently dropped it, firing no
+  close event — a missing pong is the only thing that catches that, which is why
+  the room's pong handler is load-bearing and why `isRealtimeHealthy()` fails
+  closed on every uncertain case.
 
 ## Auth
 

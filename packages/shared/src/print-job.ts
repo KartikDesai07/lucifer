@@ -278,6 +278,16 @@ export function printOrderSnapshot(order: Order): PrintOrderSnapshot {
 // hidden tabs don't fetch at all (refetchIntervalInBackground:false).
 export const PRINT_WAKE_FAST_MS = 3000;
 export const PRINT_WAKE_SLOW_MS = 15000;
+// Socket slice 2 — the cadence a host uses while the realtime room is VERIFIED
+// up. A print-job event then arrives in ~1s over the socket, so the poll stops
+// being the discovery path and becomes a pure SAFETY NET: it only has to catch
+// a job whose nudge was lost. 60s costs ~1,440 route hits/day instead of the
+// FAST cadence's ~28,800 — a 95% cut — while still bounding any missed nudge to
+// one minute. The poll is NEVER removed: `lib/print-queue-claim.ts`'s CAS is
+// what guarantees correctness, and a socket is best-effort by nature. The
+// moment the socket is not provably healthy the host falls back to FAST, i.e.
+// exactly today's shipped behaviour.
+export const PRINT_WAKE_SOCKET_MS = 60000;
 export const PRINT_WAKE_ACTIVE_WINDOW_MS = 60 * 60 * 1000;
 // Wake hits per cafe-day per device (12 h at the FAST cadence). A best-effort,
 // per-device cost guard kept in localStorage AND in memory (see

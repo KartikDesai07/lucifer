@@ -24,9 +24,13 @@ import { after } from "next/server";
 // to after() (so the request survives the response flush) and swallows after()'s
 // own synchronous throw. See the guard tests in realtime-paths.test.ts.
 //
-// The print lane is deliberately absent from CAFE_EVENT_KINDS: its poll is
-// DISCOVERY-ONLY and lib/print-queue-claim.ts's CAS is what guarantees
-// correctness. A socket there would make printing less reliable, not more.
+// The print lane DOES get a nudge ("print-job", slice 2) — but only as an
+// accelerator, never as the mechanism. Its poll is DISCOVERY-ONLY and
+// lib/print-queue-claim.ts's CAS is what guarantees correctness, so the nudge
+// merely lets the host relax that poll from 3s to 60s while the socket is
+// PROVEN healthy (use-print-host-wake.ts re-reads isRealtimeHealthy() every
+// tick). The poll is never removed and the CAS never moves: a lost print-job
+// frame costs at most one 60s tick, never a lost print.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** The kinds the room carries. MIRRORED in workers/realtime/src/index.ts
@@ -37,6 +41,11 @@ export const CAFE_EVENT_KINDS = [
   "kot-ticked", // a cook ticked a line off     → Kitchen board
   "order-changed", // created / settled / voided → POS pulse + board
   "self-order", // a QR self-order arrived      → POS pulse
+  // Socket slice 2. The print host listens for this so it can drop its
+  // discovery poll from 3s to 60s. It is a NUDGE ONLY — the poll stays as the
+  // safety net and print-queue-claim.ts's CAS stays the correctness guarantee,
+  // so a lost print-job frame costs at most one 60s tick, never a lost print.
+  "print-job",
 ] as const;
 export type CafeEventKind = (typeof CAFE_EVENT_KINDS)[number];
 

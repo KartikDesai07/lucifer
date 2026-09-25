@@ -73,7 +73,7 @@ function roomName(tenantId: string): string {
 
 /** The event kinds slice 1 carries. A device subscribes to the whole room and
  *  ignores kinds it does not care about — adding a kind needs no room change. */
-const EVENT_KINDS = ["kot-fired", "kot-ticked", "order-changed", "self-order"] as const;
+const EVENT_KINDS = ["kot-fired", "kot-ticked", "order-changed", "self-order", "print-job"] as const;
 type EventKind = (typeof EVENT_KINDS)[number];
 
 function isEventKind(value: unknown): value is EventKind {
@@ -195,6 +195,15 @@ export class CafeRoom extends DurableObject<Env> {
    * still usable without a reconnect. Anything else is ignored rather than
    * errored: an unknown frame from a stale client tab must not tear down a
    * connection a cook's wall display depends on.
+   *
+   * THIS PONG IS LOAD-BEARING (socket slice 2). The print host relaxes its
+   * discovery poll from 3s to 60s only while the socket is PROVEN alive, and
+   * this answer is that proof. A half-open socket — one the OS still reports as
+   * OPEN after a NAT or proxy silently dropped it — fires no close event, so
+   * "readyState === OPEN" proves nothing on its own; a missing pong is the only
+   * thing that catches it. Never make this conditional, and never answer a
+   * frame the client did not ask for: a device that stops getting pongs MUST
+   * fall back to polling.
    */
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     if (typeof message === "string" && message === "ping") {

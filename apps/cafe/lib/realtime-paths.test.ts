@@ -3,6 +3,21 @@
 // with workers/realtime/src/index.ts (outside the npm workspace, cannot
 // import either). Same readSrc + stripComments idiom as kitchen-paths.test.ts;
 // same Worker-parity + grep-gate idiom as apps/hub/lib/heartbeat-hmac.test.ts.
+//
+// Socket slice 2 (appended below, § 7 onward) — lib/realtime-client.ts (the
+// shared refcounted connection + isRealtimeHealthy), the print-cadence gate in
+// hooks/use-print-host-wake.ts, and lib/print-queue.ts's three publish sites.
+// realtime-client.ts is a module-level singleton: a dynamic `import(url +
+// "?case=N")` was tried first and DOES NOT give a fresh module instance under
+// this tsx/Node loader (the query string is ignored for module identity —
+// verified: two such imports returned `===` the same module object). Isolation
+// instead comes from the module's OWN public teardown: subscribeRealtime's
+// returned unsubscribe, once the last listener leaves, resets every piece of
+// singleton state (socket→null, lastSeenAt→0, timers cleared, retry→0) — see
+// realtime-client.ts's own `subscribeRealtime` doc comment. Each case below
+// subscribes, drives the fake socket, asserts, then unsubscribes in a
+// `finally` before the next case runs; a same-file leak check (case B) proves
+// this actually isolates rather than merely hoping so.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -10,6 +25,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createHmac } from "node:crypto";
 import path from "node:path";
+import { mock } from "node:test";
 
 import { stripComments } from "@/lib/source-pin-utils";
 import {
@@ -23,6 +39,14 @@ import {
   REALTIME_TS_HEADER,
   type CafeEventKind,
 } from "./realtime-publish";
+import {
+  subscribeRealtime,
+  isRealtimeHealthy,
+  REALTIME_PING_INTERVAL_MS,
+  REALTIME_PONG_TIMEOUT_MS,
+  REALTIME_HEALTH_TTL_MS,
+} from "./realtime-client";
+import { PRINT_WAKE_SOCKET_MS, PRINT_WAKE_FAST_MS } from "@pos/shared/print-job";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel), "utf8");
@@ -33,6 +57,8 @@ const WORKER_SRC = "workers/realtime/src/index.ts";
 const WRANGLER_JSONC = "workers/realtime/wrangler.jsonc";
 const KITCHEN_PAGE = "apps/cafe/app/(dashboard)/kitchen/page.tsx";
 const USE_KITCHEN = "apps/cafe/hooks/use-kitchen.ts";
+const USE_PRINT_HOST_WAKE = "apps/cafe/hooks/use-print-host-wake.ts";
+const PRINT_QUEUE = "apps/cafe/lib/print-queue.ts";
 
 const ITEMS_ROUTE = "apps/cafe/app/api/orders/[id]/items/route.ts";
 const KITCHEN_ROUTE = "apps/cafe/app/api/kitchen/route.ts";
@@ -483,4 +509,467 @@ test("grep gate: lib/realtime-publish.ts contains no console.* CALL (a secret fl
   // the new signature (broadcastCafeEvent is now async and returns Promise<void>).
   assert.match(src, /export async function broadcastCafeEvent\(/, "positive landmark: must export async function broadcastCafeEvent(");
   assert.match(src, /export function publishCafeEvent\(/, "positive landmark: must export publishCafeEvent(");
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SOCKET SLICE 2 — lib/realtime-client.ts, use-print-host-wake.ts's cadence
+// gate, print-queue.ts's publish sites, and the four-way EVENT_KINDS parity
+// (now including "print-job").
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── (7) FAKE WEBSOCKET + realtime-client.ts DRIVER ─────────────────────────
+//
+// A minimal fake matching only what realtime-client.ts actually touches:
+// `new WebSocket(url)`, `.readyState`, `.addEventListener(type, fn)`,
+// `.send(data)` (may throw), `.close()`. Real client/protocol code (the
+// module under test) runs unmodified over this fake transport — the fake
+// itself contains no realtime-client logic.
+class FakeWebSocket {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
+  static instances: FakeWebSocket[] = [];
+  static reset(): void {
+    FakeWebSocket.instances = [];
+  }
+
+  readyState = FakeWebSocket.CONNECTING;
+  readonly url: string;
+  readonly sent: unknown[] = [];
+  private readonly listeners: Record<string, Array<(arg?: unknown) => void>> = {};
+  /** When true, the next .send() call throws (simulates a dead pipe). */
+  sendThrows = false;
+
+  constructor(url: string) {
+    this.url = url;
+    FakeWebSocket.instances.push(this);
+  }
+
+  addEventListener(type: string, fn: (arg?: unknown) => void): void {
+    (this.listeners[type] ??= []).push(fn);
+  }
+
+  send(data: unknown): void {
+    if (this.sendThrows) throw new Error("send on a dead pipe");
+    this.sent.push(data);
+  }
+
+  close(): void {
+    if (this.readyState === FakeWebSocket.CLOSED) return;
+    this.readyState = FakeWebSocket.CLOSED;
+    this.dispatch("close");
+  }
+
+  /** Test-only driver: move to OPEN and fire the "open" listeners. */
+  triggerOpen(): void {
+    this.readyState = FakeWebSocket.OPEN;
+    this.dispatch("open");
+  }
+
+  /** Test-only driver: fire "message" with a JSON-encoded {kind} envelope,
+   *  or a raw string (e.g. "pong") when `raw` is passed. */
+  triggerMessage(kindOrRaw: string, opts?: { raw?: boolean }): void {
+    const data = opts?.raw ? kindOrRaw : JSON.stringify({ kind: kindOrRaw });
+    this.dispatch("message", { data });
+  }
+
+  private dispatch(type: string, arg?: unknown): void {
+    for (const fn of [...(this.listeners[type] ?? [])]) fn(arg);
+  }
+}
+
+/** Runs `body` with `globalThis.WebSocket` swapped for the fake and
+ *  `NEXT_PUBLIC_REALTIME_URL` set (or deliberately left unset), always
+ *  restoring both afterward regardless of how `body` exits. realtime-client.ts
+ *  reads `process.env.NEXT_PUBLIC_REALTIME_URL` PER CALL (not at import time),
+ *  so this env swap is honoured on every case without needing module reload. */
+async function withFakeSocket(
+  { url }: { url: string | undefined },
+  body: () => void | Promise<void>,
+): Promise<void> {
+  const savedWs = (globalThis as { WebSocket?: unknown }).WebSocket;
+  const savedUrl = process.env.NEXT_PUBLIC_REALTIME_URL;
+  FakeWebSocket.reset();
+  (globalThis as { WebSocket: unknown }).WebSocket = FakeWebSocket;
+  if (url === undefined) delete process.env.NEXT_PUBLIC_REALTIME_URL;
+  else process.env.NEXT_PUBLIC_REALTIME_URL = url;
+  try {
+    await body();
+  } finally {
+    (globalThis as { WebSocket: unknown }).WebSocket = savedWs;
+    if (savedUrl === undefined) delete process.env.NEXT_PUBLIC_REALTIME_URL;
+    else process.env.NEXT_PUBLIC_REALTIME_URL = savedUrl;
+  }
+}
+
+// ── (8) isRealtimeHealthy() FAILS CLOSED ────────────────────────────────────
+
+test("isRealtimeHealthy: URL unset => false, and subscribing constructs NO WebSocket at all", async () => {
+  await withFakeSocket({ url: undefined }, () => {
+    assert.equal(isRealtimeHealthy(), false, "no URL configured must read as unhealthy");
+    const unsub = subscribeRealtime(() => {});
+    try {
+      assert.equal(isRealtimeHealthy(), false, "still unhealthy after subscribing with no URL");
+      assert.equal(FakeWebSocket.instances.length, 0, "connect() must not construct a WebSocket when the URL is unset");
+    } finally {
+      unsub();
+    }
+  });
+});
+
+test("isRealtimeHealthy: subscribed but the socket never opened (readyState CONNECTING) => false", async () => {
+  await withFakeSocket({ url: "wss://realtime.example.com/join" }, () => {
+    const unsub = subscribeRealtime(() => {});
+    try {
+      assert.equal(FakeWebSocket.instances.length, 1, "one socket must have been constructed");
+      assert.equal(FakeWebSocket.instances[0].readyState, FakeWebSocket.CONNECTING, "the fake starts CONNECTING, never auto-opens");
+      assert.equal(isRealtimeHealthy(), false, "a socket stuck at CONNECTING must read as unhealthy");
+    } finally {
+      unsub();
+    }
+  });
+});
+
+test("isRealtimeHealthy: socket OPEN and a frame just arrived => true", async () => {
+  await withFakeSocket({ url: "wss://realtime.example.com/join" }, () => {
+    const unsub = subscribeRealtime(() => {});
+    try {
+      const ws = FakeWebSocket.instances[0];
+      ws.triggerOpen();
+      // The open handshake alone is proof of life (lastSeenAt = Date.now() on
+      // "open" — see realtime-client.ts), so this must already read healthy
+      // before any message arrives.
+      assert.equal(isRealtimeHealthy(), true, "a completed handshake is itself proof of life");
+      ws.triggerMessage("order-changed");
+      assert.equal(isRealtimeHealthy(), true, "OPEN + a fresh inbound frame must read as healthy");
+    } finally {
+      unsub();
+    }
+  });
+});
+
+test("isRealtimeHealthy: socket OPEN but proof-of-life is STALE (older than REALTIME_HEALTH_TTL_MS) => false — the half-open-socket detector", async () => {
+  await withFakeSocket({ url: "wss://realtime.example.com/join" }, () => {
+    mock.timers.enable({ apis: ["Date"] });
+    try {
+      const unsub = subscribeRealtime(() => {});
+      try {
+        const ws = FakeWebSocket.instances[0];
+        ws.triggerOpen();
+        assert.equal(isRealtimeHealthy(), true, "freshly opened must be healthy");
+        // Advance the clock past the TTL WITHOUT any inbound frame — this is
+        // exactly the half-open case: the OS still reports OPEN, but nothing
+        // has proven the pipe carries traffic for longer than the TTL allows.
+        mock.timers.tick(REALTIME_HEALTH_TTL_MS + 1);
+        assert.equal(ws.readyState, FakeWebSocket.OPEN, "readyState alone stays OPEN — the OS never learns the pipe is dead");
+        assert.equal(isRealtimeHealthy(), false, "stale proof-of-life past REALTIME_HEALTH_TTL_MS must read as unhealthy even though readyState is still OPEN");
+      } finally {
+        unsub();
+      }
+    } finally {
+      mock.timers.reset();
+    }
+  });
+});
+
+test("isRealtimeHealthy: after the socket closes => false", async () => {
+  await withFakeSocket({ url: "wss://realtime.example.com/join" }, () => {
+    const unsub = subscribeRealtime(() => {});
+    try {
+      const ws = FakeWebSocket.instances[0];
+      ws.triggerOpen();
+      assert.equal(isRealtimeHealthy(), true, "sanity: healthy before close");
+      ws.close();
+      assert.equal(isRealtimeHealthy(), false, "a closed socket must read as unhealthy");
+    } finally {
+      unsub();
+    }
+  });
+});
+
+test("isolation check: subscribe/unsubscribe cycles do not leak state between cases (health starts false and a fresh socket is opened each time)", async () => {
+  await withFakeSocket({ url: "wss://realtime.example.com/join" }, () => {
+    const unsubA = subscribeRealtime(() => {});
+    const wsA = FakeWebSocket.instances[0];
+    wsA.triggerOpen();
+    wsA.triggerMessage("order-changed");
+    assert.equal(isRealtimeHealthy(), true, "case A ends healthy");
+    unsubA();
+    assert.equal(isRealtimeHealthy(), false, "unsubscribing the last listener must reset health to false immediately");
+
+    FakeWebSocket.reset();
+    const unsubB = subscribeRealtime(() => {});
+    try {
+      assert.equal(FakeWebSocket.instances.length, 1, "re-subscribing after the last unsubscribe must open a FRESH socket, not reuse the old one");
+      assert.equal(isRealtimeHealthy(), false, "the fresh socket must start unhealthy (CONNECTING) — no leaked proof-of-life from case A");
+    } finally {
+      unsubB();
+    }
+  });
+});
+
+// ── (9) REFCOUNTING / SINGLE SOCKET ─────────────────────────────────────────
+
+test("refcounting: two subscribers share exactly ONE WebSocket", async () => {
+  await withFakeSocket({ url: "wss://realtime.example.com/join" }, () => {
+    const unsub1 = subscribeRealtime(() => {});
+    const unsub2 = subscribeRealtime(() => {});
+    try {
+      assert.equal(FakeWebSocket.instances.length, 1, "a second subscriber must NOT construct a second WebSocket");
+    } finally {
+      unsub1();
+      unsub2();
+    }
+  });
+});
+
+test("refcounting: unsubscribing one of two keeps the socket open; unsubscribing BOTH closes it", async () => {
+  await withFakeSocket({ url: "wss://realtime.example.com/join" }, () => {
+    const unsub1 = subscribeRealtime(() => {});
+    const unsub2 = subscribeRealtime(() => {});
+    const ws = FakeWebSocket.instances[0];
+    ws.triggerOpen();
+    unsub1();
+    assert.equal(ws.readyState, FakeWebSocket.OPEN, "one remaining subscriber must keep the socket open");
+    assert.equal(isRealtimeHealthy(), true, "still healthy with one subscriber left");
+    unsub2();
+    assert.equal(ws.readyState, FakeWebSocket.CLOSED, "the LAST unsubscribe must close the socket");
+    assert.equal(isRealtimeHealthy(), false, "no subscribers left => unhealthy");
+  });
+});
+
+test("refcounting: re-subscribing after the last unsubscribe opens a NEW socket (React StrictMode double-mount / remount)", async () => {
+  await withFakeSocket({ url: "wss://realtime.example.com/join" }, () => {
+    const firstUnsub = subscribeRealtime(() => {});
+    const firstSocket = FakeWebSocket.instances[0];
+    firstUnsub();
+    assert.equal(firstSocket.readyState, FakeWebSocket.CLOSED, "sanity: first socket closed on last unsubscribe");
+
+    const secondUnsub = subscribeRealtime(() => {});
+    try {
+      assert.equal(FakeWebSocket.instances.length, 2, "a remount must construct a second, independent WebSocket instance");
+      assert.notEqual(FakeWebSocket.instances[1], firstSocket, "the new socket must not be the same (closed) instance");
+    } finally {
+      secondUnsub();
+    }
+  });
+});
+
+test("refcounting: a listener that THROWS must not prevent the other listeners from receiving the same frame", async () => {
+  await withFakeSocket({ url: "wss://realtime.example.com/join" }, () => {
+    const received: string[] = [];
+    const unsub1 = subscribeRealtime(() => {
+      throw new Error("listener 1 is broken");
+    });
+    const unsub2 = subscribeRealtime((kind) => {
+      received.push(kind);
+    });
+    try {
+      const ws = FakeWebSocket.instances[0];
+      ws.triggerOpen();
+      assert.doesNotThrow(() => ws.triggerMessage("order-changed"), "a throwing listener must not escape the fan-out loop");
+      assert.deepEqual(received, ["order-changed"], "the second (well-behaved) listener must still receive the frame");
+    } finally {
+      unsub1();
+      unsub2();
+    }
+  });
+});
+
+// ── (10) PING/PONG HEALTH LOOP ───────────────────────────────────────────────
+
+test("ping/pong: on open, a ping is sent after REALTIME_PING_INTERVAL_MS", async () => {
+  await withFakeSocket({ url: "wss://realtime.example.com/join" }, () => {
+    mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"] });
+    try {
+      const unsub = subscribeRealtime(() => {});
+      try {
+        const ws = FakeWebSocket.instances[0];
+        ws.triggerOpen();
+        assert.deepEqual(ws.sent, [], "no ping before the interval elapses");
+        mock.timers.tick(REALTIME_PING_INTERVAL_MS);
+        assert.deepEqual(ws.sent, ["ping"], "exactly one ping must be sent once the interval elapses");
+      } finally {
+        unsub();
+      }
+    } finally {
+      mock.timers.reset();
+    }
+  });
+});
+
+test("ping/pong: a pong (or ANY inbound frame) clears the pending pong deadline and refreshes proof-of-life", async () => {
+  await withFakeSocket({ url: "wss://realtime.example.com/join" }, () => {
+    mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"] });
+    try {
+      const unsub = subscribeRealtime(() => {});
+      try {
+        const ws = FakeWebSocket.instances[0];
+        ws.triggerOpen();
+        mock.timers.tick(REALTIME_PING_INTERVAL_MS); // ping goes out, pong deadline arms
+        assert.deepEqual(ws.sent, ["ping"]);
+        // A raw "pong" answer (not JSON) — this is the deadline-clearing frame.
+        ws.triggerMessage("pong", { raw: true });
+        // Advance PAST what would have been the pong timeout — if the pong had
+        // NOT cleared the deadline, this tick would have torn the socket down.
+        mock.timers.tick(REALTIME_PONG_TIMEOUT_MS + 1);
+        assert.equal(ws.readyState, FakeWebSocket.OPEN, "the pong must have cleared the deadline — the socket must still be open");
+        assert.equal(isRealtimeHealthy(), true, "and therefore still healthy");
+      } finally {
+        unsub();
+      }
+    } finally {
+      mock.timers.reset();
+    }
+  });
+});
+
+test("ping/pong: NO pong within REALTIME_PONG_TIMEOUT_MS tears the socket down and isRealtimeHealthy() goes false — the half-open detector", async () => {
+  await withFakeSocket({ url: "wss://realtime.example.com/join" }, () => {
+    mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"] });
+    try {
+      const unsub = subscribeRealtime(() => {});
+      try {
+        const ws = FakeWebSocket.instances[0];
+        ws.triggerOpen();
+        mock.timers.tick(REALTIME_PING_INTERVAL_MS); // ping sent, deadline armed
+        assert.deepEqual(ws.sent, ["ping"]);
+        assert.equal(isRealtimeHealthy(), true, "still healthy immediately after the ping (open proof-of-life not yet stale)");
+        // No pong arrives. Advance past the pong timeout.
+        mock.timers.tick(REALTIME_PONG_TIMEOUT_MS + 1);
+        assert.equal(isRealtimeHealthy(), false, "a missed pong must tear the socket down and read as unhealthy — this is THE half-open-socket detector the whole design exists for");
+      } finally {
+        unsub();
+      }
+    } finally {
+      mock.timers.reset();
+    }
+  });
+});
+
+// ── (11) PRINT CADENCE GATE (source pins — the hook needs React to run) ─────
+
+test("PIN: use-print-host-wake.ts imports isRealtimeHealthy and PRINT_WAKE_SOCKET_MS", () => {
+  const src = readSrc(USE_PRINT_HOST_WAKE);
+  assert.match(src, /import\s*\{\s*isRealtimeHealthy\s*\}\s*from\s*["']@\/lib\/realtime-client["']/, "must import isRealtimeHealthy from @/lib/realtime-client");
+  assert.match(src, /PRINT_WAKE_SOCKET_MS/, "must reference PRINT_WAKE_SOCKET_MS");
+});
+
+test("PIN: refetchInterval returns PRINT_WAKE_SOCKET_MS ONLY when BOTH active AND isRealtimeHealthy() hold; otherwise FAST/SLOW exactly as before (mutation-critical shape)", () => {
+  const stripped = stripComments(readSrc(USE_PRINT_HOST_WAKE));
+  // Positive landmark: the function must actually exist as a real body, not a
+  // blinded/empty read.
+  const fnMatch = stripped.match(/refetchInterval:\s*\(\)\s*=>\s*\{[\s\S]*?\n    \},/);
+  assert.ok(fnMatch, "positive landmark: refetchInterval must be declared as an arrow function with this exact shape");
+  const body = fnMatch![0];
+
+  // The gated branch: BOTH terms present, ANDed, guarding the socket cadence.
+  assert.match(
+    body,
+    /if\s*\(\s*active\s*&&\s*isRealtimeHealthy\(\)\s*\)\s*return\s*PRINT_WAKE_SOCKET_MS;/,
+    "removing the isRealtimeHealthy() term (or the `active &&`) from this exact guard must go red — this is the mutation-critical line",
+  );
+  // The fallback: unchanged FAST/SLOW ternary, exactly as before the socket existed.
+  assert.match(
+    body,
+    /return\s+active\s*\?\s*PRINT_WAKE_FAST_MS\s*:\s*PRINT_WAKE_SLOW_MS;/,
+    "the fallback must still be the plain active ? FAST : SLOW ternary — unchanged by the socket gate",
+  );
+});
+
+test("PIN: PRINT_WAKE_SOCKET_MS is 60000 and is strictly greater than PRINT_WAKE_FAST_MS", () => {
+  assert.equal(PRINT_WAKE_SOCKET_MS, 60000, "PRINT_WAKE_SOCKET_MS must be exactly 60000ms (60s)");
+  assert.ok(PRINT_WAKE_SOCKET_MS > PRINT_WAKE_FAST_MS, "the socket-healthy cadence must be strictly SLOWER than FAST — it is a safety net, not a replacement for the discovery poll");
+});
+
+test("NEGATIVE PIN (vision-guarded): the wake hook's own FAST/SLOW poll constants were NOT deleted — PRINT_WAKE_FAST_MS and PRINT_WAKE_SLOW_MS are still referenced in the file", () => {
+  const src = readSrc(USE_PRINT_HOST_WAKE);
+  // Positive landmark first: the hook file is real content with its query wired.
+  assert.match(src, /export function usePrintHostWake\(/, "positive landmark: usePrintHostWake must still be exported");
+  assert.match(src, /PRINT_WAKE_FAST_MS/, "PRINT_WAKE_FAST_MS must still be referenced — the poll is the safety net and must never be removed");
+  assert.match(src, /PRINT_WAKE_SLOW_MS/, "PRINT_WAKE_SLOW_MS must still be referenced — the poll is the safety net and must never be removed");
+});
+
+// ── (12) EVENT-KIND PARITY, UPDATED FOR "print-job" ─────────────────────────
+
+test("parity: CAFE_EVENT_KINDS deep-equals the Worker's EVENT_KINDS array AND both contain \"print-job\" (socket slice 2)", () => {
+  const workerSrc = readSrc(WORKER_SRC);
+  const match = workerSrc.match(/const EVENT_KINDS = \[([^\]]*)\] as const;/);
+  assert.ok(match, "positive landmark: the Worker must declare `const EVENT_KINDS = [...] as const;`");
+  const kinds = Array.from(match![1].matchAll(/"([^"]+)"/g)).map((m) => m[1]);
+  assert.ok(kinds.length > 0, "the parsed EVENT_KINDS list must not be empty");
+  assert.deepEqual([...CAFE_EVENT_KINDS], kinds, "CAFE_EVENT_KINDS must match the Worker's EVENT_KINDS exactly");
+  assert.ok(kinds.includes("print-job"), "the Worker's EVENT_KINDS must include \"print-job\" (socket slice 2)");
+  assert.ok((CAFE_EVENT_KINDS as readonly string[]).includes("print-job"), "CAFE_EVENT_KINDS must include \"print-job\"");
+});
+
+test("parity: PRINT_EVENT_KINDS is a strict subset of CAFE_EVENT_KINDS, contains \"print-job\", and shares no kind with KITCHEN_EVENT_KINDS", () => {
+  const hookSrc = readSrc(USE_REALTIME);
+  const printMatch = hookSrc.match(/const PRINT_EVENT_KINDS = \[([^\]]*)\] as const;/);
+  assert.ok(printMatch, "positive landmark: use-realtime.ts must declare `const PRINT_EVENT_KINDS = [...] as const;`");
+  const printKinds = Array.from(printMatch![1].matchAll(/"([^"]+)"/g)).map((m) => m[1]);
+  assert.ok(printKinds.length > 0, "PRINT_EVENT_KINDS must not be empty");
+
+  for (const k of printKinds) {
+    assert.ok((CAFE_EVENT_KINDS as readonly string[]).includes(k), `PRINT_EVENT_KINDS entry "${k}" must be one of CAFE_EVENT_KINDS`);
+  }
+  assert.ok(printKinds.length < CAFE_EVENT_KINDS.length, "PRINT_EVENT_KINDS must be a STRICT subset, not the full set");
+  assert.ok(printKinds.includes("print-job"), "PRINT_EVENT_KINDS must contain \"print-job\"");
+
+  const kitchenMatch = hookSrc.match(/const KITCHEN_EVENT_KINDS = \[([^\]]*)\] as const;/);
+  assert.ok(kitchenMatch, "positive landmark: use-realtime.ts must declare `const KITCHEN_EVENT_KINDS = [...] as const;`");
+  const kitchenKinds = Array.from(kitchenMatch![1].matchAll(/"([^"]+)"/g)).map((m) => m[1]);
+  assert.ok(kitchenKinds.length > 0, "KITCHEN_EVENT_KINDS must not be empty");
+
+  assert.ok(!kitchenKinds.includes("print-job"), "KITCHEN_EVENT_KINDS must NOT contain \"print-job\" — the board does not care about print jobs");
+  for (const k of kitchenKinds) {
+    assert.ok(!printKinds.includes(k), `PRINT_EVENT_KINDS must NOT contain kitchen kind "${k}"`);
+  }
+});
+
+// ── (13) print-queue.ts PUBLISH SITES ────────────────────────────────────────
+
+test("PIN: print-queue.ts calls publishCafeEvent(\"print-job\") at exactly the THREE queued outcomes, and NOT on the no-host / already-resolved paths", () => {
+  const src = readSrc(PRINT_QUEUE);
+  const stripped = stripComments(src);
+
+  // Positive landmark: real content.
+  assert.match(stripped, /export async function enqueuePrintJob\(/, "positive landmark: enqueuePrintJob must be exported");
+
+  const callRe = /publishCafeEvent\(\s*"print-job"\s*\)/g;
+  const calls = stripped.match(callRe) ?? [];
+  assert.equal(calls.length, 3, `print-queue.ts must call publishCafeEvent("print-job") exactly 3 times, counted ${calls.length}`);
+
+  // (a) the jobKey-collision race re-nudge — outcome "queued" (duplicate:true).
+  const dupBlock = stripped.match(/if \(existing\.status !== "queued"\)[\s\S]*?return \{ outcome: "queued", id: String\(existing\._id\), duplicate: true \};/);
+  assert.ok(dupBlock, "positive landmark: the jobKey-collision branch must have this exact shape");
+  assert.match(dupBlock![0], /publishCafeEvent\(\s*"print-job"\s*\)/, "the jobKey-collision re-nudge must publish before returning the duplicate-queued outcome");
+
+  // (b) the re-read-failed catch — outcome "queued" (duplicate:false).
+  const catchBlock = stripped.match(/\} catch \{\s*publishCafeEvent\(\s*"print-job"\s*\);\s*return \{ outcome: "queued", id: createdId, duplicate: false \};\s*\}/);
+  assert.ok(catchBlock, "the re-read-failed catch must publish then return outcome:\"queued\" — a transient re-read failure must not suppress the nudge for a write that already committed");
+
+  // (c) the main success tail — outcome "queued" (duplicate:false), after the
+  // host-still-there re-read confirms a host is genuinely waiting.
+  const tailBlock = stripped.match(/publishCafeEvent\(\s*"print-job"\s*\);\s*return \{ outcome: "queued", id: createdId, duplicate: false \};\s*\}/);
+  assert.ok(tailBlock, "the main success tail must publish immediately before its own return outcome:\"queued\"");
+
+  // NEGATIVE, vision-guarded: neither "no-host" nor "already-resolved" return
+  // site may be preceded by a publish call on the same statement/line — those
+  // outcomes mean nothing is left waiting for the host (either no host is
+  // configured, or the job already resolved under a prior key), so a nudge
+  // there would be pointless at best.
+  const noHostReturns = [...stripped.matchAll(/return \{ outcome: "no-host" \};/g)];
+  assert.ok(noHostReturns.length > 0, "vision guard: the sweep must actually find \"no-host\" return sites — an empty match proves nothing");
+  for (const m of noHostReturns) {
+    const before = stripped.slice(Math.max(0, m.index! - 200), m.index!);
+    assert.ok(!/publishCafeEvent/.test(before.slice(-80)), "a \"no-host\" outcome must not be immediately preceded by a publishCafeEvent call");
+  }
+  const alreadyResolvedReturns = [...stripped.matchAll(/return \{ outcome: "already-resolved"[^}]*\};/g)];
+  assert.ok(alreadyResolvedReturns.length > 0, "vision guard: the sweep must actually find \"already-resolved\" return sites — an empty match proves nothing");
+  for (const m of alreadyResolvedReturns) {
+    const before = stripped.slice(Math.max(0, m.index! - 200), m.index!);
+    assert.ok(!/publishCafeEvent/.test(before.slice(-80)), "an \"already-resolved\" outcome must not be immediately preceded by a publishCafeEvent call");
+  }
 });
