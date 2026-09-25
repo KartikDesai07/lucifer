@@ -95,26 +95,30 @@ kind) was refused **and reached no device**, and a departing device did not brea
 the fan-out to the rest. The local DO materialised under
 `.wrangler/state/v3/do/pos-realtime-CafeRoom/*.sqlite` — the SQLite backend.
 
-**Still unverified — needs a real Free-plan account, which this machine has no
-credentials for:**
+**KAAM 0 ON A REAL FREE-PLAN ACCOUNT — PASSED, 11/11 (2026-09-25).** Deployed to
+the first client's own Cloudflare account and driven over the public internet:
+two devices joined `cafe:lucifer007`, an HMAC publish reached both, the
+hibernation handler answered a ping, and bad-signature / stale-ts / wrong-tenant
+were each refused **and reached no device**. The composition-inference below is
+therefore now a MEASURED fact, not an inference:
 
-1. **Free-plan entitlement for DO WebSockets.** Confirmed only *by composition*:
-   SQLite DOs are Free-eligible (quoted on the DO pricing page and the 2026-07-09
-   changelog) and DOs support WebSockets (quoted on the DO concept page) — but
-   **no single Cloudflare sentence states both together.** The code path is
-   proven; the plan entitlement is not. Deploy the throwaway room to a real Free
-   account and connect a browser before relying on this.
-2. **The Editor-vs-Admin token boundary.** Cloudflare documents *"Editor: can
-   read, update, deploy, and rename existing Workers… cannot create or delete"*
-   vs *"Admin: full control… including creating"*. So the **first** deploy — which
-   creates the Worker **and** runs the DO migration — likely needs Admin, while
-   later code-only updates fit Editor. **Whether adding a new DO class to an
-   existing Worker needs Admin is not stated in the docs.** There is also no
-   Durable-Object-specific token permission in Cloudflare's permissions reference;
-   DOs appear to deploy under the general Workers Scripts scope. **Test this with
-   a real scoped token and write the measured answer here and in DEPLOY.md before
-   the provisioner scripts it.**
-3. "100,000 requests/day" is stated without the literal words "per account".
+> **Free plan + Durable Object + hibernated WebSocket works.** No single
+> Cloudflare doc sentence states it; this deployment does.
+
+**Token scope — the measured answer (replaces the open question):**
+
+A token carrying **`Workers Scripts: Edit` + `Account Settings: Read`**, scoped to
+the one client account, **successfully created the Worker AND ran the
+`new_sqlite_classes` Durable Object migration on the first deploy.** Admin was
+NOT required. `wrangler secret put` worked with the same token. So the
+Editor/Admin worry does not apply to a token with Workers Scripts:Edit — the
+role tiers describe dashboard *member roles*, not API token scopes, and there is
+no Durable-Object-specific token permission (DOs ride the general Workers Scripts
+scope). **This is what `go-live` should ask a client to create.**
+
+**Still unverified:**
+
+1. "100,000 requests/day" is stated without the literal words "per account".
    Cloudflare bills and plans per account, so this is structurally sound, but it
    is inference, not a quote.
 
@@ -135,5 +139,6 @@ Then set the cafe's three env vars (`apps/cafe/.env.example` documents them):
 `REALTIME_PUBLISH_URL`, `REALTIME_PUBLISH_SECRET`, `NEXT_PUBLIC_REALTIME_URL`.
 Leaving them unset is the supported default — the cafe simply polls.
 
-**Deploy status: UNDEPLOYED** (owner-gated, and blocked on KAAM 0 against a real
-Free-plan account). Nothing in the cafe runtime depends on this Worker existing.
+**Deploy status: LIVE for the first cafe** (`pos-realtime-lucifer007`, in that
+client's own account, 2026-09-25). Nothing in the cafe runtime depends on this
+Worker existing — unset the three env vars and the cafe goes back to polling.
