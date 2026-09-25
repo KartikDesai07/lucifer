@@ -1,0 +1,40 @@
+# Line endings — LF everywhere, on every machine.
+#
+# WHY THIS EXISTS: this repo is developed on Windows with core.autocrlf=true,
+# which rewrites LF to CRLF in the WORKING COPY on checkout. The index stayed
+# clean LF, so nothing was ever pushed wrong — but several source pins read raw
+# file bytes and match an exact "\n" (e.g. lib/public-diner-review-pins.test.ts
+# asserting an import block's shape). Against a CRLF working copy those pins
+# fail on correct code, and a real failure can hide behind the noise.
+#
+# `text=auto eol=lf` makes git normalise to LF in the index AND check out LF,
+# regardless of each machine's core.autocrlf setting. That is what the pins,
+# the CRLF sweeps, and the Edit/Write tooling on this box all already assume.
+* text=auto eol=lf
+
+# Binary files git must never touch. Without these, `text=auto` can corrupt a
+# binary that happens to look text-ish to git's heuristic.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.avif binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.zip binary
+*.gz binary
+*.exe binary
+*.dll binary
+*.node binary
+
+# Windows-only scripts genuinely need CRLF — cmd.exe mis-parses LF-only .cmd
+# and .bat files (a trailing LF can swallow the last command).
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
