@@ -51,6 +51,14 @@ const ALLOWED_FILES = new Set([
   // S1 split — grouping logic moved out of PublicMenu.tsx verbatim; it reads
   // the same diner-shape `category` NAME field that file was already allowed to.
   "apps/cafe/components/public/public-menu-groups.ts",
+  // CB-6C — diner-shape readers of the SAME already-public `category` NAME
+  // field (the tile tint is keyed on it): the Home popular row and the cart
+  // cross-sell chips. PublicMenuOffers.tsx (the third CB-6C reader) was
+  // DELETED in CB-6D-A — its offers filter moved to public-home-data.ts's
+  // pickOfferItems, which never reads a category NAME — so it is removed
+  // from this allow-list rather than left to rot into a stale entry.
+  "apps/cafe/components/public/PublicPopularRow.tsx",
+  "apps/cafe/components/public/PublicSuggestionChips.tsx",
   "apps/cafe/components/products/ImportPreviewTable.tsx",
   "apps/cafe/components/settings/AppearancePreview.tsx",
   "apps/cafe/lib/public-menu.ts",

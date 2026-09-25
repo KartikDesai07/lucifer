@@ -130,6 +130,13 @@ export function settingsFormDefaults(settings: Settings): SettingsInput {
     // assumption the key is present.
     promoCodes: (settings as Settings & { promoCodes?: SettingsInput["promoCodes"] }).promoCodes ?? [],
 
+    // CB-6C — dinerBanners is OPTIONAL with no default (the promoCodes
+    // precedent immediately above): a pre-CB-6C Settings document carries no
+    // key at all, and the array must seed [] here so zodResolver never sees
+    // undefined for it.
+    dinerBanners:
+      (settings as Settings & { dinerBanners?: SettingsInput["dinerBanners"] }).dinerBanners ?? [],
+
     // CR2.3b — same lean-doc hazard as above: a pre-Telegram Settings
     // document carries no telegramPaused key at all.
     telegramPaused: settings.telegramPaused ?? false,

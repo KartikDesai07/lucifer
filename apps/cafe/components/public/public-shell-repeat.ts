@@ -15,35 +15,50 @@ const MENU_ENDPOINT = "/api/public/menu";
 // false, rate: 0, mode: "inclusive" } until a real fetch resolves.
 export const SHELL_DEFAULT_GST: PublicGstConfig = { enabled: false, rate: 0, mode: "inclusive" };
 
-interface PublicMenuFetchResult {
+// CB-6C — the slice of /api/public/menu the SHELL holds: `items` for
+// buildRepeatCart's re-validation and the Home popular row, `gst` for the
+// Orders tab's bill view, `restaurantName` for the Home hero / Account footer
+// (the ONE sanctioned public source of the cafe's name), `popular` (top-seller
+// ids) for the Home row. Still never the whole payload.
+export interface MenuSnapshot {
   items: PublicMenuProduct[];
   gst: PublicGstConfig;
+  restaurantName: string;
+  popular: string[];
 }
 
-// Extracted from PublicDinerShell.tsx (S12 — file budget). Narrowed to the
-// TWO fields the shell has any business holding — `items` for
-// buildRepeatCart's re-validation, `gst` for the Orders tab's bill view — not
-// the whole /api/public/menu payload.
-//
+interface MenuEnvelopeData {
+  items: PublicMenuProduct[];
+  gst: PublicGstConfig;
+  restaurantName?: unknown;
+  popular?: unknown;
+}
+
 // The route is cached (max-age=30, swr=60) AND in-process, so calling this a
-// second time (once for the repeat path, once to seed shell gst state) is
-// almost always a cache hit, never a second real load.
-async function fetchMenu(): Promise<PublicMenuFetchResult | null> {
+// second time (once for the repeat path, once to seed shell state) is almost
+// always a cache hit, never a second real load.
+async function fetchMenu(): Promise<MenuSnapshot | null> {
   try {
     const res = await fetch(MENU_ENDPOINT);
     if (!res.ok) return null;
     const envelope = (await res.json().catch(() => null)) as
-      | { success: true; data: { items: PublicMenuProduct[]; gst: PublicGstConfig } }
+      | { success: true; data: MenuEnvelopeData }
       | null;
-    return envelope?.success ? { items: envelope.data.items, gst: envelope.data.gst } : null;
+    if (!envelope?.success) return null;
+    const { items, gst, restaurantName, popular } = envelope.data;
+    return {
+      items,
+      gst,
+      restaurantName: typeof restaurantName === "string" ? restaurantName : "",
+      popular: Array.isArray(popular) ? popular.filter((id): id is string => typeof id === "string") : [],
+    };
   } catch {
     return null;
   }
 }
 
-export async function fetchMenuGst(): Promise<PublicGstConfig | null> {
-  const menu = await fetchMenu();
-  return menu?.gst ?? null;
+export async function fetchMenuSnapshot(): Promise<MenuSnapshot | null> {
+  return fetchMenu();
 }
 
 interface RepeatOrderResult {

@@ -524,6 +524,55 @@ test("PIN: the login page renders its icon via brandingUrl (not a session-gated 
   );
 });
 
+// Owner request 2026-09-23: a reveal ("eye") toggle on the login password, so
+// an operator can check what they typed on a counter keyboard.
+test("PIN: the login password field has a reveal toggle — type flips on passwordShown, the control is type=\"button\" with both aria states, and the default is HIDDEN (a shared counter PC must never start revealed)", () => {
+  const src = stripComments(readSrc(LOGIN_PAGE));
+
+  // Mutation this catches: hard-coding type="text" (or type="password"),
+  // which would either expose the password permanently or kill the toggle.
+  assert.match(
+    src,
+    /type=\{passwordShown \? "text" : "password"\}/,
+    "the password Input's type must be driven by passwordShown — text when revealed, password otherwise",
+  );
+  assert.ok(
+    !/id="password"[\s\S]{0,200}type="password"/.test(src),
+    "the password Input must not carry a hard-coded type=\"password\" — that would make the toggle dead",
+  );
+
+  // Mutation this catches: seeding the state true (or persisting it), which
+  // would hand the next operator on a SHARED counter screen a revealed field.
+  assert.match(
+    src,
+    /const \[passwordShown, setPasswordShown\] = useState\(false\);/,
+    "passwordShown must default to false — the field always starts masked, and the choice is never persisted",
+  );
+
+  // Mutation this catches: dropping type="button" — a bare <button> inside a
+  // <form> defaults to submit, so tapping the eye would fire a login attempt.
+  // The opening tag runs to the LAST `>` before the icon branch, not the
+  // first — `(shown) =>` inside the onClick contains a `>` of its own, and a
+  // lazy match would stop there and miss every aria attribute below it.
+  const toggleStart = src.indexOf("<button");
+  const toggleEnd = src.indexOf("{passwordShown ? (", toggleStart);
+  assert.ok(toggleStart !== -1 && toggleEnd > toggleStart, "the reveal control's opening tag must precede its icon branch");
+  const toggle = [src.slice(toggleStart, toggleEnd)];
+  assert.match(toggle[0], /onClick=\{\(\) => setPasswordShown/, "the reveal control must be wired to setPasswordShown (positive landmark)");
+  
+  assert.match(toggle[0], /type="button"/, "the reveal control must be type=\"button\" — otherwise it submits the login form");
+  assert.match(
+    toggle[0],
+    /aria-label=\{passwordShown \? "Hide password" : "Show password"\}/,
+    "the icon-only reveal control must carry a state-dependent aria-label — it has no visible text",
+  );
+  assert.match(toggle[0], /aria-pressed=\{passwordShown\}/, "the reveal control must expose its pressed state");
+
+  // Both icons must be reachable, or one branch renders nothing.
+  assert.match(src, /<EyeOff className="h-4 w-4"/, "the revealed state must render the EyeOff icon");
+  assert.match(src, /<Eye className="h-4 w-4"/, "the hidden state must render the Eye icon");
+});
+
 // ── 12. BrandingAsset's slot and contentType are both closed enums ─────────
 
 test("PIN: BrandingAsset's slot and contentType are both enum-constrained at the storage layer — a free-text slot would upsert a document no route's asSlot() could look back up, and a free-text contentType would let stored bytes be echoed to browsers under any Content-Type", () => {

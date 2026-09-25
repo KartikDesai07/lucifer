@@ -10,7 +10,7 @@ import {
   rewardFromOrderSnapshot,
   type RedeemedReward,
 } from "@pos/shared/reward-redemption";
-import { buildKotNumbers, mergedNote } from "@/lib/order-request-accept-core";
+import { buildKotFiredAt, buildKotNumbers, mergedNote } from "@/lib/order-request-accept-core";
 import {
   resolveAcceptPromoFor,
   promoNoteLine,
@@ -110,6 +110,8 @@ export async function acceptAddRoundBranch(
     | "discountKind"
     | "chargeAmount"
     | "kotNumbers"
+    | "kotFiredAt"
+    | "createdAt"
     | "notes"
     | "rewardAt"
     | "rewardKind"
@@ -221,6 +223,10 @@ export async function acceptAddRoundBranch(
     ? printedSlipNumber(await nextSlipSequence("kot"), printCfg.kot.numberStart)
     : undefined;
   const kotNumbers = buildKotNumbers(openTab.kotNumbers, round, ticket);
+  // P4-A — this path is the SECOND writer of kotRounds (a diner's QR round,
+  // accepted by staff). It must stamp the fire time too, or the kitchen board
+  // ages this round from the tab's open time and shows it "Late" on arrival.
+  const kotFiredAt = buildKotFiredAt(openTab.kotFiredAt, round, new Date(), openTab.createdAt);
   // FIX6 — carry the diner's note (and a promo line, when a discount
   // applied — promoNoteLine, order-request-accept-promo.ts) onto the tab,
   // through the EXISTING mergedNote helper both times so it composes with
@@ -236,6 +242,7 @@ export async function acceptAddRoundBranch(
       gstAmount: totals.gstAmount,
       total: totals.total,
       kotRounds: round,
+      kotFiredAt,
       source: SELF_ORDER_SOURCE,
       ...(totals.charge > 0 ? { chargeAmount: totals.charge } : {}),
       ...(kotNumbers ? { kotNumbers } : {}),

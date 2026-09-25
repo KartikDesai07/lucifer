@@ -99,20 +99,17 @@ export const PRINT_JOB_PRUNE_MIN_INTERVAL_MS = 5 * 60 * 1000;
 /** Band warning: host configured but attested NOT silent (a dialog appears at
  *  the host PC for every job) — a warning, not a hard stop; printing still
  *  routes there. */
-export const PRINT_HOST_SILENT_OFF_WARNING =
-  "The print host is not printing silently — a dialog will appear at the host PC for every job.";
+export const PRINT_HOST_SILENT_OFF_WARNING = "Print host shows a dialog for every slip.";
 
 /** Band warning: the configured host has missed its heartbeat past
  *  `PRINT_HOST_OFFLINE_MS` — jobs still queue and drain once it returns. */
-export const PRINT_HOST_OFFLINE_WARNING =
-  "The print host has gone offline — jobs are queuing and will print once it's back.";
+export const PRINT_HOST_OFFLINE_WARNING = "Print host offline — slips will print when it is back.";
 
 /** Host-aware limitation line (design review MERGED-22), replacing
  *  `SELF_ORDER_ALERT_LIMITATION` once a host is configured — that legacy line
  *  wrongly implies THIS panel must stay open for auto-print. `<label>` is the
  *  literal, verbatim-pinnable placeholder; `printHostActiveNote` substitutes it. */
-export const PRINT_HOST_ACTIVE_NOTE =
-  "Printing is routed to <label>; slips print at the counter, not on this device.";
+export const PRINT_HOST_ACTIVE_NOTE = "Slips print at <label>.";
 
 export function printHostActiveNote(label: string): string {
   return PRINT_HOST_ACTIVE_NOTE.replace("<label>", label);

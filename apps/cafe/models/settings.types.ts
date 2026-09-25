@@ -9,6 +9,7 @@ import { type SelfOrderMode, type PromoCodeConfig } from "@pos/shared/public";
 import { type LoyaltyRewardKind } from "@pos/shared/public-diner";
 import { type AppearanceInput } from "@pos/shared/appearance";
 import type { LoyaltyRulesInput } from "@pos/shared/schemas/settings-loyalty.schema";
+import type { DinerBannerInput } from "@pos/shared/schemas/settings-diner.schema";
 
 // CB-5A S2 — split out of models/Settings.ts (that file's own ~300-line
 // budget) so the loyaltyRules addition below doesn't breach it. Moved
@@ -79,6 +80,11 @@ export interface ISettings extends Document {
   // fixture) predate this field, and a required addition here broke
   // fixtures once before.
   promoCodes?: PromoCodeConfig[];
+
+  // CB-6C — owner-written banners on the diner Home tab. OPTIONAL, no
+  // default (promoCodes precedent above): an existing Settings doc (and
+  // every fixture) predates this field.
+  dinerBanners?: DinerBannerInput[];
 
   // Diner accounts + stamp loyalty — CB-4. Flat and all OPTIONAL with no
   // default (the promoCodes precedent above). `loyaltyMinBill` is in RUPEES:

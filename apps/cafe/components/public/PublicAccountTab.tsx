@@ -1,20 +1,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { LogOut, Monitor, Moon, Sun, User } from "lucide-react";
+import { LogOut, Monitor, Moon, Sun } from "lucide-react";
 
 import { maskMobile } from "@pos/shared/utils";
 import { DINER_THEME_ATTR, type DinerTheme } from "@pos/shared/appearance-theme-override";
 import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/shared/EmptyState";
-import { PUBLIC_TOUCH_TARGET_CLASS } from "@/components/public/public-shell-layout";
+import {
+  PUBLIC_TOUCH_TARGET_CLASS,
+  PUBLIC_TOUCH_TEXT_CLASS,
+} from "@/components/public/public-shell-layout";
 import { readTheme, writeTheme, type ThemeValue } from "@/components/public/public-cart-store";
+import { PublicDinerSignIn } from "@/components/public/PublicDinerSignIn";
+import { PublicInitialTile } from "@/components/public/PublicInitialTile";
+import { PUB_CARD_CLASS, PUB_CARD_PAD_CLASS, PUB_SECTION_TITLE_CLASS } from "@/components/public/public-ui";
 import { cn } from "@/lib/utils";
 
-// S9 — the diner Account tab: who you are (or a sign-in prompt), the device
-// theme control, and sign out. The theme control works for EVERY diner, signed
-// in or not — it is a device preference (public-cart-store's THEME key
-// survives logout), never an account setting.
+// CB-6C S7 — the diner Account tab: sign-in (now LIVES here, not on its own
+// screen), who you are once signed in, the device theme control (works for
+// EVERY diner, signed in or not — it is a device preference, public-cart-
+// store's THEME key survives logout, never an account setting), sign out,
+// and a plain footer naming the cafe.
 
 const THEME_OPTIONS: ReadonlyArray<{ value: ThemeValue; label: string; Icon: typeof Monitor }> = [
   { value: "system", label: "System", Icon: Monitor },
@@ -36,11 +42,12 @@ function applyThemeAttribute(theme: ThemeValue): void {
 
 interface PublicAccountTabProps {
   diner: { name: string; mobile: string } | null;
-  onSignIn: () => void;
+  cafeName: string;
+  onSignedIn: (diner: { name: string; mobile: string }) => void;
   onSignOut: () => void | Promise<void>;
 }
 
-export function PublicAccountTab({ diner, onSignIn, onSignOut }: PublicAccountTabProps) {
+export function PublicAccountTab({ diner, cafeName, onSignedIn, onSignOut }: PublicAccountTabProps) {
   const [theme, setTheme] = useState<ThemeValue>("system");
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -76,26 +83,20 @@ export function PublicAccountTab({ diner, onSignIn, onSignOut }: PublicAccountTa
 
   return (
     <div className="space-y-pub-gap p-pub-pad">
-      {diner === null ? (
-        <EmptyState
-          icon={<User className="h-8 w-8" aria-hidden="true" />}
-          title="Sign in to your account"
-          description="Sign in with your mobile number to see your orders and rewards."
-          action={
-            <Button className={PUBLIC_TOUCH_TARGET_CLASS} onClick={onSignIn}>
-              Sign in
-            </Button>
-          }
-        />
-      ) : (
-        <div className="rounded-lg border p-pub-pad">
-          <p className="text-sm font-medium">{diner.name}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{maskMobile(diner.mobile)}</p>
+      {diner === null && <PublicDinerSignIn onSignedIn={onSignedIn} />}
+
+      {diner !== null && (
+        <div className={cn(PUB_CARD_CLASS, PUB_CARD_PAD_CLASS, "flex items-center gap-3")}>
+          <PublicInitialTile name={diner.name} tintKey={diner.name} size={64} />
+          <div className="min-w-0">
+            <p className="font-pub-display truncate text-base font-semibold">{diner.name}</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">{maskMobile(diner.mobile)}</p>
+          </div>
         </div>
       )}
 
-      <div className="rounded-lg border p-pub-pad">
-        <p className="text-sm font-medium">Theme</p>
+      <div className={cn(PUB_CARD_CLASS, PUB_CARD_PAD_CLASS)}>
+        <p className={PUB_SECTION_TITLE_CLASS}>Theme</p>
         <p className="mt-1 text-xs text-muted-foreground">
           This only changes how this menu looks on this device.
         </p>
@@ -137,12 +138,16 @@ export function PublicAccountTab({ diner, onSignIn, onSignOut }: PublicAccountTa
             <button
               type="button"
               onClick={() => setConfirmingSignOut(false)}
-              className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+              className={cn(PUBLIC_TOUCH_TEXT_CLASS, "w-full text-center text-xs text-muted-foreground underline-offset-2 hover:underline")}
             >
               Never mind
             </button>
           )}
         </div>
+      )}
+
+      {cafeName !== "" && (
+        <p className="text-xs text-muted-foreground text-center">{cafeName}</p>
       )}
     </div>
   );

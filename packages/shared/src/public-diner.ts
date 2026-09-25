@@ -177,3 +177,39 @@ export function rewardsAvailable(stamps: number, stampsPerReward: number): numbe
   if (stampsPerReward <= 0) return 0;
   return Math.floor(stamps / stampsPerReward);
 }
+
+// ── CB-6C — owner-written banners on the diner Home tab ─────────────────────
+// Settings.dinerBanners (Zod: schemas/settings-diner.schema.ts; Mongoose:
+// apps/cafe/models/settings.subschemas.ts). Title + one line of body, at most
+// DINER_BANNER_MAX — a phone-width carousel, not a CMS. Plain text only: the
+// diner surface renders data as text nodes, never markup.
+export const DINER_BANNER_MAX = 3;
+export const DINER_BANNER_TITLE_MAX_LEN = 40;
+export const DINER_BANNER_BODY_MAX_LEN = 90;
+
+export interface PublicDinerBanner {
+  title: string;
+  body: string;
+}
+
+// The READ-side normaliser the /m server pages run the stored value through
+// (lib/public-diner-config.ts): accepts `unknown` because a lean Settings doc
+// may predate the field or carry a shape an older admin bundle wrote. Trims,
+// drops rows with no title, clamps both lengths, caps the count, and returns
+// FRESH objects — never the stored array or its rows — so a caller can never
+// mutate the cached settings document through this value.
+export function publicDinerBanners(raw: unknown): PublicDinerBanner[] {
+  if (!Array.isArray(raw)) return [];
+  const banners: PublicDinerBanner[] = [];
+  for (const entry of raw) {
+    if (banners.length === DINER_BANNER_MAX) break;
+    if (typeof entry !== "object" || entry === null) continue;
+    const { title, body } = entry as { title?: unknown; body?: unknown };
+    if (typeof title !== "string") continue;
+    const cleanTitle = title.trim().slice(0, DINER_BANNER_TITLE_MAX_LEN);
+    if (cleanTitle.length === 0) continue;
+    const cleanBody = typeof body === "string" ? body.trim().slice(0, DINER_BANNER_BODY_MAX_LEN) : "";
+    banners.push({ title: cleanTitle, body: cleanBody });
+  }
+  return banners;
+}

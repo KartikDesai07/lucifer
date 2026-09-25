@@ -124,6 +124,13 @@ export interface IOrder extends Document {
   // the bill is ISSUED (payment taken), so a cancelled or still-open tab never
   // burns one and the day's bill series has no gaps.
   kotNumbers?: number[];
+  // P4-A — positional, same idiom as kotNumbers immediately above:
+  // `kotFiredAt[n-1]` is round n's fire time, written by the SAME CAS in
+  // /items that already writes kotNumbers. Short or absent on tabs predating
+  // this field (the kitchen board falls back to createdAt for those rounds);
+  // a Date array must never carry holes, so earlier slots are backfilled from
+  // the previous value rather than left sparse.
+  kotFiredAt?: Date[];
   billNumber?: number;
   voids?: IOrderVoid[]; // absent until the first void ($push creates it)
   cancelReason?: string; // set together, only by POST /api/orders/[id]/cancel
@@ -261,6 +268,9 @@ const orderSchema = new Schema<IOrder>(
     // field, and `default: []` on every order would be pure waste on a 512MB M0
     // (same reasoning as `voids` below).
     kotNumbers: { type: [Number], default: undefined },
+    // P4-A — mirrors kotNumbers' omit-empty discipline immediately above:
+    // no default, short arrays legal, positional per KOT round.
+    kotFiredAt: { type: [Date], default: undefined },
     billNumber: { type: Number },
     // No `default: []` — the overwhelming majority of orders never get a void, and
     // an empty array on every row is pure waste on a 512MB M0. `$push` creates it.

@@ -204,6 +204,10 @@ export async function POST(req: Request, { params }: Params) {
     const ticket = printCfg.kot.showNumber
       ? printedSlipNumber(await nextSlipSequence("kot"), printCfg.kot.numberStart)
       : undefined;
+    // P4-A — this round's fire instant, stamped ONCE and reused for the whole
+    // write so kotFiredAt[round-1] below and any other reader of "now" in this
+    // request agree on the same millisecond.
+    const firedAt = new Date();
     // Built POSITIONALLY, not appended. The slip is read back by index
     // (use-pos-print: kotNumbers[kotRounds - 1]), and a tab can carry a SHORT
     // array — every tab already open when numbering ships has none at all, and
@@ -219,6 +223,13 @@ export async function POST(req: Request, { params }: Params) {
         : Array.from({ length: round }, (_, i) =>
             i === round - 1 ? ticket : (old.kotNumbers?.[i] ?? 0),
           );
+    // P4-A — same positional idiom as kotNumbers immediately above: earlier
+    // slots backfill from the tab's own prior stamp (or createdAt, for a round
+    // fired before this field existed) so the Date array never carries holes,
+    // and index round-1 gets THIS round's fire instant.
+    const kotFiredAt = Array.from({ length: round }, (_, i) =>
+      i === round - 1 ? firedAt : (old.kotFiredAt?.[i] ?? old.createdAt),
+    );
 
     const update: Record<string, unknown> = {
       $set: {
@@ -228,6 +239,7 @@ export async function POST(req: Request, { params }: Params) {
         gstAmount: totals.gstAmount,
         total: totals.total,
         kotRounds: round,
+        kotFiredAt,
         ...(totals.charge > 0 ? { chargeAmount: totals.charge } : {}),
         // storeKind now covers "gst" AND "reward" (shouldStoreDiscountKind) —
         // the RESOLVED kind is stored, never the "gst" literal, so a reward

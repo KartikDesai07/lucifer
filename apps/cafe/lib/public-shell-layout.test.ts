@@ -294,3 +294,108 @@ test("PIN: the MENU tab badges the cart, so a half-built cart stays visible from
     "the count must come from the STORE, not from reaching into PublicOrderFlow's state",
   );
 });
+
+// ── CB-6C S9 — diner panel overhaul: shell reachability + gating pins ──────
+
+test("PIN: PublicDinerShell.tsx actually RENDERS PublicHomeTab and PublicMyOrdersTab (existing) AND the Home tab renders every new S3 sub-component — a type-only import must not satisfy this", () => {
+  const shellSrc = stripComments(readSrc(SHELL));
+  mustInclude(shellSrc, "<PublicHomeTab", "the shell rendering PublicHomeTab");
+  mustInclude(shellSrc, "<PublicMyOrdersTab", "the shell rendering PublicMyOrdersTab");
+
+  const HOME_TAB = "apps/cafe/components/public/PublicHomeTab.tsx";
+  const homeSrc = stripComments(readSrc(HOME_TAB));
+  mustInclude(homeSrc, "<PublicHomeHero", "PublicHomeTab.tsx rendering PublicHomeHero");
+  mustInclude(homeSrc, "<PublicDinerBanners", "PublicHomeTab.tsx rendering PublicDinerBanners");
+  mustInclude(homeSrc, "<PublicActiveOrderCard", "PublicHomeTab.tsx rendering PublicActiveOrderCard");
+  mustInclude(homeSrc, "<PublicLoyaltyGlance", "PublicHomeTab.tsx rendering PublicLoyaltyGlance");
+  mustInclude(homeSrc, "<PublicPopularRow", "PublicHomeTab.tsx rendering PublicPopularRow");
+});
+
+// CB-6D-A's remaining new Home pins (PublicPopularRow rendered twice with the
+// two titles; PublicMenuOffers.tsx deletion) live in the NEW
+// lib/public-home-premium-pins.test.ts — this file was already at the 300
+// line budget the plan sets for new-pin placement.
+
+test("PIN: the Orders tab files render PublicOrderRow and PublicStatusTimeline (reachability, not just import)", () => {
+  const ORDERS_TAB = "apps/cafe/components/public/PublicMyOrdersTab.tsx";
+  const ordersSrc = stripComments(readSrc(ORDERS_TAB));
+  mustInclude(ordersSrc, "<PublicOrderRow", "PublicMyOrdersTab.tsx rendering PublicOrderRow");
+
+  const billViewSrc = stripComments(readSrc(ORDER_BILL_VIEW));
+  mustInclude(billViewSrc, "<PublicStatusTimeline", "PublicOrderBillView.tsx rendering PublicStatusTimeline");
+});
+
+test("PIN: PublicRewardsTab.tsx renders PublicStampCard, PublicRewardLadder and PublicRewardCodes; PublicAccountTab.tsx renders PublicDinerSignIn", () => {
+  const REWARDS_TAB = "apps/cafe/components/public/PublicRewardsTab.tsx";
+  const ACCOUNT_TAB = "apps/cafe/components/public/PublicAccountTab.tsx";
+  const rewardsSrc = stripComments(readSrc(REWARDS_TAB));
+  mustInclude(rewardsSrc, "<PublicStampCard", "PublicRewardsTab.tsx rendering PublicStampCard");
+  mustInclude(rewardsSrc, "<PublicRewardLadder", "PublicRewardsTab.tsx rendering PublicRewardLadder");
+  mustInclude(rewardsSrc, "<PublicRewardCodes", "PublicRewardsTab.tsx rendering PublicRewardCodes");
+
+  const accountSrc = stripComments(readSrc(ACCOUNT_TAB));
+  mustInclude(accountSrc, "<PublicDinerSignIn", "PublicAccountTab.tsx rendering PublicDinerSignIn");
+});
+
+// CB-6D-A owner decision 2026-09-22: the "Daily offers" strip moved OFF the
+// Menu tab and ONTO Home (phone-pass rejection: owner wanted it "daily", not
+// buried on the Menu tab). PublicMenu.tsx must no longer render OR import
+// PublicMenuOffers at all — the filter it used now lives in
+// public-home-data.ts's pickOfferItems, feeding Home's own row instead.
+test("PIN: CB-6D-A — PublicMenu.tsx keeps rendering PublicMenuSkeleton but no longer renders (or imports) PublicMenuOffers — the offers strip moved to Home", () => {
+  const MENU = "apps/cafe/components/public/PublicMenu.tsx";
+  const menuSrc = stripComments(readSrc(MENU));
+  mustInclude(menuSrc, "<PublicMenuSkeleton", "PublicMenu.tsx rendering PublicMenuSkeleton (positive landmark)");
+  assert.ok(
+    !menuSrc.includes("PublicMenuOffers"),
+    "PublicMenu.tsx must not reference PublicMenuOffers at all (import or JSX) — the offers strip moved to Home in CB-6D-A",
+  );
+});
+
+test("PIN: PublicDinerShell.tsx calls useMyOrders(, fetchMenuSnapshot(, fetchDinerMe( and postDinerLogout( — the shell's own data reach, not a sub-component's", () => {
+  const shellSrc = stripComments(readSrc(SHELL));
+  mustInclude(shellSrc, "useMyOrders(", "the shell calling useMyOrders(");
+  mustInclude(shellSrc, "fetchMenuSnapshot(", "the shell calling fetchMenuSnapshot(");
+  mustInclude(shellSrc, "fetchDinerMe(", "the shell calling fetchDinerMe(");
+  mustInclude(shellSrc, "postDinerLogout(", "the shell calling postDinerLogout(");
+});
+
+// The remaining CB-6C S9 pins (orders fan-out consolidation, banner chain,
+// dir-wide emoji walk, file budget, STATUS_CHIP_META single-home, colour-alone
+// guard) live in the NEW lib/public-diner-panel-pins.test.ts — they scan the
+// whole components/public/** + app/m/** surface rather than this shell file
+// specifically, so they get their own file per the CB-6C plan (S9).
+
+test("PIN: shell gates — useMyOrders(shellActive, ordersEpoch) where shellActive = accountsEnabled || loyaltyEnabled; the menu-snapshot effect starts with `if (!shellActive) return;`", () => {
+  const shellSrc = stripComments(readSrc(SHELL));
+  mustInclude(
+    shellSrc,
+    "const shellActive = accountsEnabled || loyaltyEnabled;",
+    "the shell deriving shellActive = accountsEnabled || loyaltyEnabled",
+  );
+  mustInclude(shellSrc, "useMyOrders(shellActive, ordersEpoch)", "the shell calling useMyOrders(shellActive, ordersEpoch)");
+  mustInclude(shellSrc, "if (!shellActive) return;", "the menu-snapshot effect bailing out with if (!shellActive) return;");
+});
+
+test("PIN: signOut() also calls setOrdersEpoch( — a logout must re-run the orders fan-out so a stale diner's codes never linger on a shared device", () => {
+  const shellSrc = stripComments(readSrc(SHELL));
+  const signOutIdx = shellSrc.indexOf("async function signOut()");
+  assert.ok(signOutIdx >= 0, "landmark: signOut() must exist in PublicDinerShell.tsx");
+  const nextFnIdx = shellSrc.indexOf("\n  function ", signOutIdx + 1);
+  const signOutBody = shellSrc.slice(signOutIdx, nextFnIdx > 0 ? nextFnIdx : undefined);
+  // Positive landmarks (existing pins) first — proves this isn't a gutted body.
+  mustInclude(signOutBody, "setStampCard(null)", "signOut() still clearing the stamp card");
+  mustInclude(signOutBody, "setRewards(undefined)", "signOut() still clearing the assigned reward codes");
+  mustInclude(signOutBody, "clearDinerData(", "signOut() still calling clearDinerData(");
+  mustInclude(signOutBody, "setOrdersEpoch(", "signOut() bumping setOrdersEpoch( so useMyOrders re-reads the cleared codes");
+});
+
+test("PIN: selectTab clears pendingOpenCode when next !== \"orders\"", () => {
+  const shellSrc = stripComments(readSrc(SHELL));
+  mustInclude(shellSrc, "function selectTab(next: DinerTab)", "the shell declaring selectTab(next: DinerTab)");
+  mustInclude(
+    shellSrc,
+    'if (next !== "orders") setPendingOpenCode(null);',
+    "selectTab clearing pendingOpenCode whenever the diner navigates away from Orders",
+  );
+});

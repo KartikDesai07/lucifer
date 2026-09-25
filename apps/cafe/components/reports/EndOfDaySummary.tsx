@@ -4,6 +4,7 @@ import type { Ref } from "react";
 
 import { CAFE_TIMEZONE, SETTLEMENT_PAY_MODES, DUES_RECEIPT_MODES } from "@/lib/constants";
 import { inr } from "@/lib/utils";
+import { MONEY_BREAKDOWN_LINES, MONEY_NET_LABEL } from "@/lib/money-breakdown";
 import type { Order, OrderSummary, Settings } from "@/types";
 
 function fmtDateTime(value: string | Date): string {
@@ -68,7 +69,14 @@ export function EndOfDaySummary({
 
       <SectionTitle>Sales (completed)</SectionTitle>
       <Line label="Orders served" value={String(summary?.totalOrders ?? 0)} />
-      <Line label="Gross sales" value={inr(summary?.totalSales ?? 0)} />
+      {MONEY_BREAKDOWN_LINES.map((line) => (
+        <Line
+          key={line.key}
+          label={line.sign ? `${line.sign} ${line.label}` : line.label}
+          value={inr(summary?.money?.[line.key] ?? 0)}
+        />
+      ))}
+      <Line label={MONEY_NET_LABEL} value={inr(summary?.totalSales ?? 0)} />
       <Line label="Collected" value={inr(summary?.collected ?? 0)} />
 
       <Divider />

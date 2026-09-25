@@ -49,8 +49,9 @@ export function PublicTabBar({ active, onSelect, tabs = DINER_TABS, cartCount = 
     // Positioning/safe-area come from TAB_BAR_CLASS — the ONE place the
     // bottom-chrome stack is defined, so this bar and the cart bar that floats
     // above it can never drift back into the same slot (see that file's header
-    // for the blocker this prevents).
-    <nav aria-label="Diner sections" className={TAB_BAR_CLASS}>
+    // for the blocker this prevents). The translucent/blur polish is layered
+    // on TOP of it here, never inlined into public-shell-layout.ts itself.
+    <nav aria-label="Diner sections" className={cn(TAB_BAR_CLASS, "bg-background/95 backdrop-blur")}>
       <ul className="mx-auto flex max-w-lg">
         {tabs.map((tab) => {
           const { label, Icon } = TAB_META[tab];

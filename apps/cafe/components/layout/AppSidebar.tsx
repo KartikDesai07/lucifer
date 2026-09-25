@@ -22,6 +22,7 @@ import {
   KeyRound,
   LogOut,
   UtensilsCrossed,
+  ChefHat,
 } from "lucide-react";
 
 import { useAuth } from "@/hooks/use-auth";
@@ -66,6 +67,7 @@ const items: NavItem[] = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "New Order", url: "/pos", icon: ShoppingCart },
   { title: "Order Requests", url: "/requests", icon: Inbox },
+  { title: "Kitchen", url: "/kitchen", icon: ChefHat },
   { title: "Orders", url: "/orders", icon: Receipt },
   { title: "Menu", url: "/products", icon: Coffee },
   { title: "Categories", url: "/categories", icon: Tags },

@@ -11,7 +11,13 @@ import {
   useSetProductAvailability,
 } from "@/hooks/use-products";
 import { useCategoryMap } from "@/hooks/use-category-map";
-import { categoryNameOf } from "@/lib/category-map";
+import {
+  DEFAULT_PRODUCT_SORT,
+  nextProductSort,
+  sortProducts,
+  type ProductSort,
+  type ProductSortKey,
+} from "@/lib/products-sort";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -58,25 +64,21 @@ export default function ProductsPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [archiving, setArchiving] = useState<Product | null>(null);
+  // CB-UI2 — column sorting. Seeded with the pre-existing shipped order
+  // (category, then name), so the page looks unchanged until a header is tapped.
+  const [sort, setSort] = useState<ProductSort>(DEFAULT_PRODUCT_SORT);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    // Server-side product query now sorts by { name: 1 } only, so the
-    // category-grouped look survives here via an explicit sort on the
-    // joined category name, then product name.
-    return (products.data ?? [])
-      .filter((p) => {
-        const inCategory = category === ALL || p.categoryId === category;
-        const matches = q === "" || p.name.toLowerCase().includes(q);
-        return inCategory && matches;
-      })
-      .sort((a, b) => {
-        const catCompare = categoryNameOf(categoryMap, a.categoryId).localeCompare(
-          categoryNameOf(categoryMap, b.categoryId),
-        );
-        return catCompare !== 0 ? catCompare : a.name.localeCompare(b.name);
-      });
-  }, [products.data, search, category, categoryMap]);
+    // Server-side product query sorts by { name: 1 } only; the visible order
+    // is owned here, by sortProducts (lib/products-sort.ts).
+    const rows = (products.data ?? []).filter((p) => {
+      const inCategory = category === ALL || p.categoryId === category;
+      const matches = q === "" || p.name.toLowerCase().includes(q);
+      return inCategory && matches;
+    });
+    return sortProducts(rows, sort, categoryMap);
+  }, [products.data, search, category, categoryMap, sort]);
 
   const openAdd = () => {
     setEditing(null);
@@ -197,6 +199,8 @@ export default function ProductsPage() {
           pendingAvailabilityId={
             setAvailability.isPending ? setAvailability.variables?.id : undefined
           }
+          sort={sort}
+          onSortChange={(key: ProductSortKey) => setSort((current) => nextProductSort(current, key))}
         />
       )}
 

@@ -7,6 +7,8 @@ import { ACTIVE_DUE_PAYMENT } from "@/lib/due-payment";
 import { dayRange } from "@/lib/utils";
 import { CAFE_TIMEZONE } from "@/lib/constants";
 import { reportRangeSchema } from "@/schemas";
+import { ITEM_REVENUE_EXPR, MONEY_BREAKDOWN_GROUP, pickMoneyBreakdown } from "@/lib/money-breakdown";
+import type { MoneyBreakdown } from "@/types";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +21,7 @@ type Totals = {
   totalOrders: number;
   totalSales: number;
   totalCollected: number;
-};
+} & MoneyBreakdown;
 type PaymentGroup = { _id: string; amount: number; count: number };
 type ProductGroup = { _id: string; qty: number; revenue: number };
 type DayGroup = { _id: string; sales: number; orders: number };
@@ -69,6 +71,7 @@ export async function GET(req: Request) {
               totalOrders: { $sum: 1 },
               totalSales: { $sum: "$total" },
               totalCollected: { $sum: "$paidAmount" },
+              ...MONEY_BREAKDOWN_GROUP,
             },
           },
         ]),
@@ -102,9 +105,9 @@ export async function GET(req: Request) {
                 ],
               },
               qty: { $sum: "$items.qty" },
-              revenue: {
-                $sum: { $multiply: ["$items.price", "$items.qty"] },
-              },
+              // A reward line was served, not sold: it counts toward qty,
+              // never revenue (D10/R8).
+              revenue: { $sum: ITEM_REVENUE_EXPR },
             },
           },
           { $sort: { revenue: -1 } },
@@ -156,6 +159,7 @@ export async function GET(req: Request) {
         totalCollected: totals?.totalCollected ?? 0,
         duesCollected: duesCollectedRows[0]?.total ?? 0,
       },
+      money: pickMoneyBreakdown(totals),
       salesByPayment: salesByPayment.map((p) => ({
         payment: p._id,
         amount: p.amount,

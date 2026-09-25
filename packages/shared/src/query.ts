@@ -55,4 +55,13 @@ export const REFETCH_INTERVALS = {
   SUMMARY: 30 * 1000,
   TABLES: STALE_TIMES.TABLES, // floor occupancy poll
   POS_PULSE: 20 * 1000, // CR2.3 staff-attention pulse (open requests + self-orders)
+  KITCHEN: 10 * 1000, // P4-A kitchen board — fired-line poll
 } as const;
+
+// A UI repaint cadence, NOT a query cadence — deliberately kept OUTSIDE
+// REFETCH_INTERVALS so nothing mistakes it for a value to pass to
+// `refetchInterval`. The kitchen freshness chip re-renders its "Ns ago" /
+// "Stale" text on this clock, fully decoupled from the 10s data poll above
+// (REFETCH_INTERVALS.KITCHEN): a wall display must not repaint text 6x/min
+// just because the underlying query happens to refetch that often.
+export const KITCHEN_FRESHNESS_TICK_MS = 30 * 1000;

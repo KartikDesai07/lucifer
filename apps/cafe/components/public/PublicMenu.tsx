@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { ReceiptText, Search } from "lucide-react";
 
 import { apiGet } from "@/lib/api-client";
 import { inr, cn } from "@/lib/utils";
@@ -15,11 +15,11 @@ import {
 import type { PublicGstConfig } from "@pos/shared/public";
 import type { LogoPlacement } from "@pos/shared/appearance";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { type PublicMenuProduct } from "@/components/public/PublicMenuItem";
 import { PublicMenuHeader } from "@/components/public/PublicMenuHeader";
 import { PublicMenuGroups } from "@/components/public/PublicMenuGroups";
+import { PublicMenuSkeleton } from "@/components/public/PublicMenuStates";
 import {
   groupItemsByCategory,
   isPublicMenuData,
@@ -187,15 +187,7 @@ export function PublicMenu({
   }
 
   if (!menu) {
-    return (
-      <main className="mx-auto max-w-lg space-y-4 p-pub-pad">
-        <Skeleton className="h-12 w-40" />
-        <Skeleton className="h-9 w-full" />
-        {Array.from({ length: 5 }).map((_, i) => (
-          <Skeleton key={i} className="h-20 w-full" />
-        ))}
-      </main>
-    );
+    return <PublicMenuSkeleton />;
   }
 
   const tableLabel = table
@@ -225,7 +217,7 @@ export function PublicMenu({
             href={orderStatusHref}
             className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
-            <span aria-hidden>🧾</span>
+            <ReceiptText className="h-3.5 w-3.5" aria-hidden="true" />
             <span>Order status →</span>
           </Link>
         </div>
@@ -242,12 +234,12 @@ export function PublicMenu({
       )}
       <div className="sticky top-0 z-10 -mx-pub-pad bg-background/95 px-pub-pad py-2 backdrop-blur">
         <div className="relative mb-2">
-          <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search the menu…"
-            className="pl-8"
+            className="h-11 rounded-full pl-10"
             aria-label="Search the menu"
           />
         </div>

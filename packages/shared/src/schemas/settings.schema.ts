@@ -18,6 +18,7 @@ import {
 } from "../public-diner";
 import { numberStartSchema, promoCodesSchema, appearanceSchema } from "./settings-print.schema";
 import { loyaltyRulesSchema, refineLoyaltyReward } from "./settings-loyalty.schema";
+import { dinerBannersSchema } from "./settings-diner.schema";
 
 // Restaurant + receipt settings (singleton) — CORE fields only. The print
 // (bill/kot) block, promo codes, and Appearance moved to
@@ -98,6 +99,11 @@ export const settingsSchema = z.object({
   // comment above.
   promoCodes: promoCodesSchema,
 
+  // ── Diner banners — CB-6C ────────────────────────────────────────────────
+  // Owner-written marketing lines shown on the diner Home tab. OPTIONAL, no
+  // `.default()` — see settings-diner.schema.ts's own comment.
+  dinerBanners: dinerBannersSchema,
+
   // ── Diner accounts + stamp loyalty — CB-4 ────────────────────────────────
   // FLAT, never a nested `loyalty: {}` subdoc: PUT /api/settings applies a
   // partial $set and nested subdocs are $set-replaced WHOLE (probed, mongoose
@@ -163,3 +169,4 @@ export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
 
 export * from "./settings-print.schema";
 export * from "./settings-loyalty.schema";
+export * from "./settings-diner.schema";

@@ -1,11 +1,12 @@
 "use client";
 
 import Image from "next/image";
-import { Pencil, Archive, ArchiveRestore } from "lucide-react";
+import { Pencil, Archive, ArchiveRestore, ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
 
 import { productImageUrl } from "@/lib/images";
 import { categoryNameOf } from "@/lib/category-map";
-import { inr } from "@/lib/utils";
+import { inr, cn } from "@/lib/utils";
+import type { ProductSort, ProductSortKey } from "@/lib/products-sort";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -35,6 +36,47 @@ interface ProductsTableProps {
   // Product id whose availability toggle is in flight (disables just that row's
   // Switch to prevent a double-fire — Pattern A, CLAUDE.md §9).
   pendingAvailabilityId?: string;
+  // CB-UI2 — the page owns the sort state; this table only renders the
+  // indicator and reports taps. Order itself is applied upstream by
+  // sortProducts (lib/products-sort.ts), never here.
+  sort: ProductSort;
+  onSortChange: (key: ProductSortKey) => void;
+}
+
+// A sortable column header: the label plus a direction caret. `aria-sort` on
+// the cell is what a screen reader announces; the caret is the sighted cue,
+// and an inactive column keeps a muted double-caret so it reads as tappable
+// rather than as a dead label.
+function SortableHead({
+  label,
+  sortKey,
+  sort,
+  onSortChange,
+  className,
+}: {
+  label: string;
+  sortKey: ProductSortKey;
+  sort: ProductSort;
+  onSortChange: (key: ProductSortKey) => void;
+  className?: string;
+}) {
+  const active = sort.key === sortKey;
+  const Icon = !active ? ChevronsUpDown : sort.dir === "asc" ? ArrowUp : ArrowDown;
+  return (
+    <TableHead className={className} aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+      <button
+        type="button"
+        onClick={() => onSortChange(sortKey)}
+        className={cn(
+          "inline-flex min-h-9 items-center gap-1 rounded-md font-medium hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+          active ? "text-foreground" : "text-muted-foreground",
+        )}
+      >
+        {label}
+        <Icon className={cn("h-3.5 w-3.5", active ? "opacity-100" : "opacity-50")} aria-hidden="true" />
+      </button>
+    </TableHead>
+  );
 }
 
 // Menu products table. In the active view each row carries an availability
@@ -50,6 +92,8 @@ export function ProductsTable({
   onToggleAvailable,
   pendingRestoreId,
   pendingAvailabilityId,
+  sort,
+  onSortChange,
 }: ProductsTableProps) {
   return (
     <div className="rounded-lg border">
@@ -57,12 +101,22 @@ export function ProductsTable({
         <TableHeader>
           <TableRow>
             <TableHead className="w-14"></TableHead>
-            <TableHead>Name</TableHead>
-            <TableHead>Category</TableHead>
-            <TableHead className="text-right">Price</TableHead>
-            <TableHead className="w-36 text-right">
-              {archived ? "Status" : "Availability"}
-            </TableHead>
+            <SortableHead label="Name" sortKey="name" sort={sort} onSortChange={onSortChange} />
+            <SortableHead label="Category" sortKey="category" sort={sort} onSortChange={onSortChange} />
+            <SortableHead label="Price" sortKey="price" sort={sort} onSortChange={onSortChange} className="text-right" />
+            {/* The archived view's column is a fixed "Archived" badge, not a
+                per-row state, so there is nothing to order it by. */}
+            {archived ? (
+              <TableHead className="w-36 text-right">Status</TableHead>
+            ) : (
+              <SortableHead
+                label="Availability"
+                sortKey="available"
+                sort={sort}
+                onSortChange={onSortChange}
+                className="w-36 text-right"
+              />
+            )}
             <TableHead className="w-24 text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>

@@ -30,6 +30,7 @@ import { LiveFloorPanel } from "@/components/dashboard/LiveFloorPanel";
 import { RecentOrders } from "@/components/dashboard/RecentOrders";
 import { TodayReservations } from "@/components/dashboard/TodayReservations";
 import { EndOfDayButton } from "@/components/reports/EndOfDayButton";
+import { MoneyBreakdownCard } from "@/components/reports/MoneyBreakdownCard";
 import { OrderDetailSheet } from "@/components/orders/OrderDetailSheet";
 import type { Order } from "@/types";
 
@@ -193,18 +194,26 @@ export default function DashboardPage() {
         onSelectOrder={setDetail}
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Sales by hour</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {summary.isLoading ? (
-            <ChartSkeleton />
-          ) : (
-            <HourlySalesChart data={s?.hourly ?? []} />
-          )}
-        </CardContent>
-      </Card>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base">Sales by hour</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {summary.isLoading ? (
+              <ChartSkeleton />
+            ) : (
+              <HourlySalesChart data={s?.hourly ?? []} />
+            )}
+          </CardContent>
+        </Card>
+        <MoneyBreakdownCard
+          money={s?.money}
+          net={s?.totalSales ?? 0}
+          loading={summary.isLoading}
+          caption="Completed orders today"
+        />
+      </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card>

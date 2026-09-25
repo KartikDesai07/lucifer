@@ -1,54 +1,49 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
 import { PrintHostStaleRows } from "@/components/orders/PrintHostStaleRows";
+import { PrintReadbackChips } from "@/components/orders/PrintHostBandSummary";
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
 import { useDismissPrintJob } from "@/hooks/use-print-host";
+import { alertDetailForPath } from "@/lib/alert-bar-scope";
 import {
   printHostLabelOf,
   printHostWarnings,
   printReadbackChips,
-  printReadbackText,
   staleBandRows,
   type PrintReadbackEntry,
-  type PrintReadbackState,
 } from "@/lib/print-readback";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
 
 // Print-host plan §B7 (PH-8) — the band's print-host section, rendered by
-// RequestAlertBar INSIDE its bandRef element so POS_ALERT_HEIGHT_VAR covers
-// it (a second banner would need a second published height). Prop-driven on
-// purpose: the pulse arrives from the bar, so this is NOT a seventh wide-pulse
-// consumer (the pos-pulse-paths INVENTORY pin scans raw text). Three parts:
-// the host warnings (offline · silent-off), the stale rows — Print + Dismiss
+// RequestAlertBar INSIDE its bandRef element so POS_ALERT_HEIGHT_VAR covers it.
+// Prop-driven: the pulse arrives from the bar, so this is NOT a seventh
+// wide-pulse consumer (the pos-pulse-paths INVENTORY pin scans raw text). Three
+// parts: host warnings (offline · silent-off), the stale rows — Print + Dismiss
 // ONLY on the host device (MERGED-06: a phone's Print would burn a kitchen
 // ticket into a printerless dialog), a read-only count elsewhere — and this
-// device's per-order readback chips (MERGED-10). The device id comes from
-// PrintHostProvider's post-mount read (F8) — no storage read of its own.
-
-const CHIP_TONE: Record<PrintReadbackState, string> = {
-  waiting: "text-muted-foreground",
-  printed: "text-green-700 dark:text-green-400",
-  cancelled: "font-medium text-destructive",
-  "cancelled-at-host": "font-medium text-destructive",
-};
+// device's readback chips (MERGED-10). Device id from PrintHostProvider's
+// post-mount read (F8). CB-UI2: renders on the DASHBOARD only.
 
 interface PrintHostBandSectionProps {
   pulse: PosPulseData | undefined;
   readback: PrintReadbackEntry[];
 }
 
+// CB-UI2 — dashboard-only; the route decides, via lib/alert-bar-scope.ts.
 export function PrintHostBandSection({ pulse, readback }: PrintHostBandSectionProps) {
+  const onDashboard = alertDetailForPath(usePathname() ?? "");
   const { isHostDevice, deviceId, printQueuedJob } = usePrintHostContext();
   const qc = useQueryClient();
   // Only the stable `.mutate` (useMutation returns a fresh object per render).
   const { mutate: dismissMutate } = useDismissPrintJob();
-  // Rows whose Print/Dismiss was tapped and that have not left the feed yet —
-  // the bar's own tappedIds precedent (review C5): the round trip plus one
-  // tick pass before the row drops out, and an un-disabled button double-taps.
+  // Rows whose Print/Dismiss was tapped and have not left the feed yet — the
+  // bar's tappedIds precedent (review C5): the round trip plus one tick pass
+  // before the row drops, and an un-disabled button double-taps.
   const [tappedIds, setTappedIds] = useState<ReadonlySet<string>>(new Set());
   const stale = pulse?.stalePrintJobs;
   useEffect(() => {
@@ -65,6 +60,11 @@ export function PrintHostBandSection({ pulse, readback }: PrintHostBandSectionPr
   const { shown, hiddenCount } = staleBandRows(stale ?? [], Date.now());
   const truncated = pulse?.stalePrintJobsTruncated === true;
   const chips = printReadbackChips(readback);
+  // CB-UI2 (owner): the print-host block renders on the DASHBOARD only — on
+  // every other screen it is noise competing with that screen's own work, and
+  // on a phone it ate half the viewport. The band's order-request and
+  // unprinted-self-order parts (RequestAlertBar) still show everywhere.
+  if (!onDashboard) return null;
   if (warnings.length === 0 && shown.length === 0 && chips.length === 0) return null;
 
   // The pulse's host binding, not just the local pref: a demoted device keeps
@@ -78,6 +78,7 @@ export function PrintHostBandSection({ pulse, readback }: PrintHostBandSectionPr
     setTappedIds((prev) => new Set(prev).add(id));
     dismissMutate(id, { onSettled: () => void qc.invalidateQueries({ queryKey: POS_PULSE_KEYS.all }) });
   };
+
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -104,11 +105,7 @@ export function PrintHostBandSection({ pulse, readback }: PrintHostBandSectionPr
         />
       )}
 
-      {chips.map((chip) => (
-        <span key={chip.key} className={CHIP_TONE[chip.state]}>
-          {chip.orderRef} {chip.kinds}: {printReadbackText(chip.state, hostLabel)}
-        </span>
-      ))}
+      <PrintReadbackChips chips={chips} hostLabel={hostLabel} />
     </div>
   );
 }

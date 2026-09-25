@@ -85,7 +85,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     slug: "qr-ordering",
     title: "QR ordering",
     description: "How orders from the QR menu reach the kitchen, and promo codes diners can use.",
-    fields: ["selfOrderMode", "allowTableChange", "showPastOrdersToDiner", "promoCodes"],
+    fields: ["selfOrderMode", "allowTableChange", "showPastOrdersToDiner", "promoCodes", "dinerBanners"],
   },
   {
     slug: "loyalty",

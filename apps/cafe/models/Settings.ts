@@ -9,7 +9,12 @@ import {
 import { SELF_ORDER_MODES } from "@pos/shared/public";
 import { LOYALTY_REWARD_KINDS } from "@pos/shared/public-diner";
 import type { ISettings } from "./settings.types";
-import { promoCodeSchema, appearanceMongooseSchema, loyaltyRulesMongooseSchema } from "./settings.subschemas";
+import {
+  promoCodeSchema,
+  appearanceMongooseSchema,
+  loyaltyRulesMongooseSchema,
+  dinerBannerMongooseSchema,
+} from "./settings.subschemas";
 
 // CB-5A S2 — split into settings.types.ts (the ISettings interface) and
 // settings.subschemas.ts (the embedded sub-schemas), both re-exported below
@@ -82,6 +87,11 @@ export const settingsSchema = new Schema<ISettings>(
     // the same discipline): an existing Settings doc must keep validating
     // untouched with this key entirely absent.
     promoCodes: { type: [promoCodeSchema], default: undefined },
+
+    // CB-6C — owner-written banners on the diner Home tab. No `default:`
+    // (omit-empty, promoCodes precedent above): an existing Settings doc
+    // must keep validating untouched with this key entirely absent.
+    dinerBanners: { type: [dinerBannerMongooseSchema], default: undefined },
 
     // Diner accounts + stamp loyalty — CB-4. FLAT (never nested: see the
     // telegram block's own comment on partial-$set clobbering) and NO

@@ -248,6 +248,7 @@ to a placeholder brand on paper.
 | Let diners pick a table | on / off | whether the shared menu link lets a diner pick or change their table |
 | Show past orders to diners | reserved — no diner screen exists yet | — |
 | Promo codes | ≤20 codes, uppercase, percent or flat, whole rupees | discount a diner can type in at checkout |
+| Announcements on the QR menu | up to 3 banners, title 40 chars + one line 90 chars | shown on the diner Home tab of the QR menu (Settings > QR ordering) |
 
 - [ ] Restaurant name set (this is the only required field).
 - [ ] **Tagline and Footer message are intentionally EMPTY until the cafe sets
@@ -631,8 +632,7 @@ tap. How it prints depends on whether a print host is set
 - [ ] **With a print host set**: the host PC prints every slip — KOTs,
       bills, void/moved slips, end of day — from ANY dashboard screen it has
       open, and every other device routes its prints to it (its band reads
-      `Printing is routed to <label>; slips print at the counter, not on
-      this device.` with the host's label filled in). Non-host devices
+      `Slips print at <label>.` with the host's label filled in). Non-host devices
       never auto-print; the **Auto-print self-orders** switch is disabled
       on the host itself because the host prints self-orders anyway.
       Designate and run the test print from inside the POS Printer window —
@@ -1114,8 +1114,8 @@ the test fails — fix the code or this file, never just this file.
 | Print-job stale-band feed cap | 20 | `PRINT_JOB_STALE_LIMIT` |
 | Queued print job retention | 12 hours | `PRINT_JOB_QUEUED_RETENTION_MS` |
 | Desktop app installer | `POS-Software-Setup-${version}.exe` | `apps/desktop/package.json` (`build.nsis.artifactName`) |
-| Print host silent-off warning | `The print host is not printing silently — a dialog will appear at the host PC for every job.` | `PRINT_HOST_SILENT_OFF_WARNING` |
-| Print host active note | `Printing is routed to <label>; slips print at the counter, not on this device.` | `PRINT_HOST_ACTIVE_NOTE` |
+| Print host silent-off warning | `Print host shows a dialog for every slip.` | `PRINT_HOST_SILENT_OFF_WARNING` |
+| Print host active note | `Slips print at <label>.` | `PRINT_HOST_ACTIVE_NOTE` |
 | Staff session lifetime | 30 days, rolling with use | `SESSION_MAX_AGE_SECONDS` |
 | Print-job wake poll (counter PC) | every 3 seconds while busy, every 15 seconds when idle | `PRINT_WAKE_FAST_MS` / `PRINT_WAKE_SLOW_MS` |
 | Print-job wake poll daily cap (per counter PC) | 14,400 quick checks per cafe-day, then every 15 seconds until the next day | `PRINT_WAKE_DAILY_CAP` |

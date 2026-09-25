@@ -30,6 +30,7 @@ import { AdminGuard } from "@/components/shared/AdminGuard";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SummaryCard } from "@/components/dashboard/SummaryCard";
 import { CustomerDuesTable } from "@/components/reports/CustomerDuesTable";
+import { MoneyBreakdownCard } from "@/components/reports/MoneyBreakdownCard";
 import type { PaymentMode } from "@/lib/constants";
 
 const ChartSkeleton = () => <Skeleton className="h-[300px] w-full" />;
@@ -216,18 +217,26 @@ function ReportsContent() {
             />
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Sales by day</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {report.isPending ? (
-                <ChartSkeleton />
-              ) : (
-                <SalesByDayChart data={data?.dayWise ?? []} />
-              )}
-            </CardContent>
-          </Card>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="text-base">Sales by day</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {report.isPending ? (
+                  <ChartSkeleton />
+                ) : (
+                  <SalesByDayChart data={data?.dayWise ?? []} />
+                )}
+              </CardContent>
+            </Card>
+            <MoneyBreakdownCard
+              money={data?.money}
+              net={totals?.totalSales ?? 0}
+              loading={report.isPending}
+              caption="Completed orders in this range"
+            />
+          </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
