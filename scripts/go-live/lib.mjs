@@ -282,6 +282,10 @@ export function secretsOf(client) {
   add(client.mongodbUri);
   if (client.vercel) add(client.vercel.token);
   for (const h of Array.isArray(client.standbyHosts) ? client.standbyHosts : []) if (h && h.vercel) add(h.vercel.token);
+  // The client's OWN Cloudflare account token (realtime Worker) + the HMAC
+  // publish secret that pairs with it — both must be scrubbed from every
+  // logged line, exactly like vercel.token above.
+  if (client.cloudflare) { add(client.cloudflare.token); add(client.cloudflare.publishSecret); }
   if (client.admin) add(client.admin.password);
   if (client.image) for (const k of ["secretAccessKey", "accessKeyId", "apiSecret", "apiKey"]) add(client.image[k]);
   if (client.accounts) for (const a of Object.values(client.accounts)) if (a && typeof a === "object") add(a.password);

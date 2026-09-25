@@ -5,6 +5,7 @@ import { ChefHat } from "lucide-react";
 import { toast } from "sonner";
 
 import { useKitchenBoard, useTickKitchenLine } from "@/hooks/use-kitchen";
+import { useKitchenRealtime } from "@/hooks/use-realtime";
 import { KITCHEN_FRESHNESS_TICK_MS } from "@pos/shared/query";
 import type { KitchenRow } from "@/lib/kitchen-board";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -22,6 +23,11 @@ const SKELETON_ROWS = 6;
 export default function KitchenPage() {
   const board = useKitchenBoard();
   const tick = useTickKitchenLine();
+  // Socket slice 1 — the board's ONE realtime connection (this page is the
+  // single mount, the same discipline PosPulseProvider documents). It only
+  // refetches the board EARLY; the 10s poll above is untouched and remains
+  // the fallback and the source of truth if the socket is off or down.
+  useKitchenRealtime();
   // The age clock is its OWN interval, deliberately decoupled from the 10s
   // data poll: a quiet board still has to age its lines, and re-deriving
   // `now` per render would leave ages frozen between polls while repainting

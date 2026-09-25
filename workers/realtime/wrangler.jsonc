@@ -1,0 +1,37 @@
+{
+  // Realtime fan-out Worker — ONE DEPLOYMENT PER CAFE, in THAT CLIENT'S OWN
+  // Cloudflare account (socket-decision-v3 §4). Contrast workers/failover,
+  // which is vendor-owned and cross-tenant. Each client's account carries its
+  // own free tier, so cafe count never accumulates against one allowance.
+  //
+  // `name` is per-client — go-live sets it to `pos-realtime-<slug>` so two
+  // cafes provisioned from the same machine never collide. The placeholder
+  // below is what an unconfigured checkout deploys as; change it per client.
+  "name": "pos-realtime",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-01-01",
+
+  // The per-cafe room. There is exactly ONE room object per deployment
+  // (id = idFromName("cafe:<TENANT_ID>")); the binding is what lets the
+  // entrypoint address it.
+  "durable_objects": {
+    "bindings": [{ "name": "CAFE_ROOM", "class_name": "CafeRoom" }]
+  },
+
+  // SQLITE backend is MANDATORY, not a preference: the Workers Free plan
+  // supports ONLY SQLite-backed Durable Objects, and a `new_classes`
+  // (legacy-kv) migration is refused on Free outright (wrangler error 10097).
+  // Since every cafe runs on its own client's Free plan, `new_sqlite_classes`
+  // is the only migration this Worker may ever use.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["CafeRoom"] }],
+
+  // TENANT_ID — the ONE cafe this deployment serves. go-live sets it to the
+  // same slug the cafe runtime's TENANT_ID carries; a publish naming any other
+  // tenant is refused with 403.
+  "vars": { "TENANT_ID": "" }
+
+  // Secrets (via `wrangler secret put`):
+  //   REALTIME_PUBLISH_SECRET — HMAC key shared with the cafe runtime's env of
+  //                             the same name. UNSET = fail-closed (every
+  //                             publish 401s and the cafe keeps polling).
+}

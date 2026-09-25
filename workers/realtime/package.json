@@ -1,0 +1,10 @@
+{
+  "name": "pos-realtime-worker",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Per-cafe Cloudflare Worker: one hibernatable Durable Object room (cafe:<TENANT_ID>) fanning HMAC-authenticated write events out to the cafe's devices. CLIENT-OWNED (one deployment per cafe, in the client's own account) — contrast the vendor-owned workers/failover. A supplement to the cafe's polls, never a replacement. NOT part of any Next build; outside the npm workspace.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  }
+}

@@ -1,4 +1,5 @@
 import mongoose, { type FilterQuery } from "mongoose";
+import { publishCafeEvent } from "@/lib/realtime-publish";
 import { connectDB } from "@/lib/db";
 import { Order, type IOrder } from "@/models/Order";
 import { Customer } from "@/models/Customer";
@@ -334,6 +335,11 @@ export async function POST(req: Request, { params }: Params) {
     // Today's KPIs change (tab leaves In-progress; collected/sales/dues move).
     cache.del(orderSummaryCacheKey());
     cache.del(orderSummaryCacheKey(new Date(updated.createdAt)));
+    // The tab changed — nudge the POS pulse and the Kitchen board ahead of
+    // their polls. publishCafeEvent defers it past the response and swallows
+    // every failure, so it can never delay or fail this write; the polls stay
+    // the fallback and the source of truth.
+    publishCafeEvent("order-changed");
     return success(updated);
   } catch (error) {
     return serverError("Failed to settle order", error);

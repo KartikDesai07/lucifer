@@ -1,4 +1,5 @@
 import mongoose, { type FilterQuery } from "mongoose";
+import { publishCafeEvent } from "@/lib/realtime-publish";
 import { connectDB } from "@/lib/db";
 import { Order, type IOrder } from "@/models/Order";
 import { Product } from "@/models/Product";
@@ -317,6 +318,11 @@ export async function POST(req: Request, { params }: Params) {
 
     // In-progress KPI value (Σ pending totals) grew — refresh today's summary.
     cache.del(orderSummaryCacheKey());
+    // A round just fired — nudge the Kitchen board ahead of its 10s poll.
+    // publishCafeEvent defers it past the response and swallows every failure
+    // (including after()'s own throw), so it can never delay or fail this
+    // write; the poll stays the fallback and the source of truth.
+    publishCafeEvent("kot-fired");
     return success(updated);
   } catch (error) {
     return serverError("Failed to add items", error);

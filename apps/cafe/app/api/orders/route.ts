@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { publishCafeEvent } from "@/lib/realtime-publish";
 import { connectDB } from "@/lib/db";
 import { Order } from "@/models/Order";
 import { Customer } from "@/models/Customer";
@@ -662,6 +663,11 @@ export async function POST(req: Request) {
     }
 
     cache.del(orderSummaryCacheKey());
+    // The tab changed — nudge the POS pulse and the Kitchen board ahead of
+    // their polls. publishCafeEvent defers it past the response and swallows
+    // every failure, so it can never delay or fail this write; the polls stay
+    // the fallback and the source of truth.
+    publishCafeEvent("order-changed");
     return created(order);
   } catch (error) {
     return serverError("Failed to create order", error);

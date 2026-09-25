@@ -87,10 +87,14 @@ test("PIN W6 placement: in the create route, after( fires strictly AFTER both th
   // single-file source order this originally asserted.
   const createSrc =
     stripComments(readSrc(PUBLIC_ORDER_INTAKE_LIB)) + "\n" + stripComments(readSrc(ORDER_REQUEST_CREATE_ROUTE));
-  const createAfterIdx = createSrc.indexOf("after(");
+  // Anchored on the TELEGRAM after(, not a bare "after(": the create route now
+  // also defers a realtime nudge (publishCafeEvent, socket slice 1), so a bare
+  // needle would measure whichever deferral happens to come first in source
+  // order and could silently start pinning the wrong one.
+  const createAfterIdx = createSrc.search(/after\(\s*\(\)\s*=>\s*notifyRequestEvent\(/);
   const createHoneypotIdx = createSrc.indexOf("if (hpFilled)");
   const createWriteIdx = createSrc.indexOf("OrderRequest.create(");
-  assert.ok(createAfterIdx >= 0, "the create route must call after(");
+  assert.ok(createAfterIdx >= 0, "the create route must call after(() => notifyRequestEvent(");
   assert.ok(createHoneypotIdx >= 0, "the create route must have an `if (hpFilled)` honeypot branch");
   assert.ok(createWriteIdx >= 0, "the create route must call OrderRequest.create(");
   assert.ok(

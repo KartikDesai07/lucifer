@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { publishCafeEvent } from "@/lib/realtime-publish";
 import { z } from "zod";
 import { connectDB } from "@/lib/db";
 import { Order } from "@/models/Order";
@@ -108,6 +109,11 @@ export async function POST(req: Request) {
       await KotTick.updateOne({ _id: orderId }, { $pull: { refs: ref } });
     }
 
+    // A line was ticked (or un-ticked) — nudge every OTHER device's board
+    // ahead of its 10s poll. publishCafeEvent defers it past the response and
+    // swallows every failure, so it can never delay or fail this write; the
+    // poll stays the fallback and the source of truth.
+    publishCafeEvent("kot-ticked");
     return success({ orderId, ref, done });
   } catch (error) {
     return serverError("Failed to update the kitchen tick", error);

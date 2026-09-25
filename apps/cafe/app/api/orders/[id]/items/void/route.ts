@@ -1,4 +1,5 @@
 import mongoose, { type FilterQuery } from "mongoose";
+import { publishCafeEvent } from "@/lib/realtime-publish";
 import { connectDB } from "@/lib/db";
 import { Order, type IOrder } from "@/models/Order";
 import cache from "@/lib/cache";
@@ -143,6 +144,11 @@ export async function POST(req: Request, { params }: Params) {
     // In-progress KPI value (Σ pending totals) shrank — orders themselves are
     // never cached.
     cache.del(orderSummaryCacheKey());
+    // A line was voided — the tab changed, so nudge the Kitchen board and the
+    // POS pulse ahead of their polls. publishCafeEvent defers it past the
+    // response and swallows every failure, so it can never delay or fail this
+    // write; the polls stay the fallback and the source of truth.
+    publishCafeEvent("order-changed");
     return success(updated);
   } catch (error) {
     return serverError("Failed to void item", error);

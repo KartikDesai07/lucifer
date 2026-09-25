@@ -268,9 +268,9 @@ test("buildEnv: the selected store's keys carry values, the other store's keys a
 });
 
 test("secretsOf + redactSecrets: every credential in a client file is scrubbed from text, URIs always", () => {
-  const c = validClient({ image: { store: "r2", accountId: "acc", accessKeyId: "AKIA-KEY-1", secretAccessKey: "s3cr3t-key-long", bucket: "b", publicBaseUrl: "https://pub.r2.dev" }, accounts: { vercel: { email: "o@x", password: "vercel-pw-99" } }, generated: { authSecret: "AUTHSECRETVALUE", healthStatsToken: "healthtoken" }, standbyHosts: [{ label: "standby", vercel: { token: "tok_standby_secret" } }] });
+  const c = validClient({ image: { store: "r2", accountId: "acc", accessKeyId: "AKIA-KEY-1", secretAccessKey: "s3cr3t-key-long", bucket: "b", publicBaseUrl: "https://pub.r2.dev" }, accounts: { vercel: { email: "o@x", password: "vercel-pw-99" } }, generated: { authSecret: "AUTHSECRETVALUE", healthStatsToken: "healthtoken" }, standbyHosts: [{ label: "standby", vercel: { token: "tok_standby_secret" } }], cloudflare: { token: "cf-token-secret-1", publishSecret: "cf-publish-secret-1" } });
   const s = secretsOf(c);
-  for (const v of ["tok_abc", "tok_standby_secret", "Strong-Pass-1!", "s3cr3t-key-long", "AKIA-KEY-1", "vercel-pw-99", "AUTHSECRETVALUE", "healthtoken", c.mongodbUri]) assert.ok(s.includes(v), v);
+  for (const v of ["tok_abc", "tok_standby_secret", "Strong-Pass-1!", "s3cr3t-key-long", "AKIA-KEY-1", "vercel-pw-99", "AUTHSECRETVALUE", "healthtoken", "cf-token-secret-1", "cf-publish-secret-1", c.mongodbUri]) assert.ok(s.includes(v), v);
   assert.ok(!s.includes("p"), "a 1-char URI password must not become a global replacement");
   assert.equal(s[0], c.mongodbUri, "longest first");
   const text = `token tok_abc failed; uri ${c.mongodbUri}; pw Strong-Pass-1!; other mongodb://root:hunter2@host/db`;

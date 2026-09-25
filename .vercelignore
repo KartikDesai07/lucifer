@@ -36,3 +36,11 @@ migrate-links-backup-*.archive.gz
 /docs/progress-tracker.html
 # marketing renders (~30 MB of PNG/MP4) — not the product
 /marketing
+
+# Local wrangler dev state for the Workers (workers/failover, workers/realtime).
+# `wrangler dev --local` writes miniflare's own SQLite here — including a
+# realtime Durable Object's room storage. It is machine-local scratch, never a
+# build input, and .gitignore does NOT apply to the Vercel CLI upload path
+# (see the note above), so it needs its own line here.
+**/.wrangler
+**/.wrangler/**

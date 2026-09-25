@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { publishCafeEvent } from "@/lib/realtime-publish";
 import { after } from "next/server";
 
 import { type PublicOrderRequestCreatedData, PROMO_ALREADY_USED, selfOrderingAllowed } from "@pos/shared/public";
@@ -261,6 +262,18 @@ export async function POST(req: Request) {
         }),
       ),
     );
+
+    // 12.6. A self-order arrived — nudge the POS pulse ahead of its 20s poll.
+    // Same after() lane as the Telegram notify above (publishCafeEvent owns the
+    // after() call and swallows its throw): never before the response, never
+    // able to fail this write. The poll stays the fallback.
+    publishCafeEvent("self-order");
+    // In AUTO mode resolveAutoAcceptStatus (§10) already accepted this request,
+    // creating a tab with kotRounds:1 — a round the kitchen must cook. The
+    // Kitchen board does not listen for "self-order" (it is a POS-pulse kind),
+    // so without this a QR ticket in auto mode would only appear on the next
+    // 10s poll. Two kinds, because two surfaces genuinely changed.
+    if (status === "accepted") publishCafeEvent("kot-fired");
 
     return noStore(created(responseData));
   } catch (error) {

@@ -32,7 +32,7 @@ test("Secret: identity + every crypto field is required", () => {
 });
 
 test("Secret: provider/classification enums match the pool-doc providers", () => {
-  assert.deepEqual([...SECRET_PROVIDERS], ["atlas", "vercel", "cloudinary", "r2"]);
+  assert.deepEqual([...SECRET_PROVIDERS], ["atlas", "vercel", "cloudinary", "r2", "cloudflare"]);
   assert.deepEqual([...SECRET_CLASSIFICATIONS], ["dbUri", "apiKey", "apiSecret", "token"]);
   const bad = new Secret({ provider: "aws", classification: "password" }).validateSync();
   assert.ok(bad?.errors.provider, "unknown provider rejected");

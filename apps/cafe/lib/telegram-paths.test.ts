@@ -248,14 +248,23 @@ test("PIN W5: a runtime parse of {telegramPaused:true, telegramBotTokenEnc:\"x\"
 
 // ── W6 — after( fires exactly twice, only on success, never awaited ────────
 
-test("PIN W6: `after(` appears in EXACTLY the two public order-request routes, and NOWHERE else under app/api — a third call site would mean an event fired outside the two documented seams", () => {
+test("PIN W6: an `after(`-wrapped TELEGRAM notify appears in EXACTLY the two public order-request routes, and NOWHERE else under app/api — a third call site would mean a Telegram event fired outside the two documented seams", () => {
   const files: string[] = [];
   walk(path.join(REPO_ROOT, "apps/cafe/app/api"), /\.tsx?$/, files);
 
+  // Counts the TELEGRAM seam specifically, not every use of `after(`. The
+  // original needle was a bare "after(" because notifyRequestEvent was the
+  // only thing this app ever deferred; the realtime nudge (socket slice 1 —
+  // lib/realtime-publish.ts) now rides the same after() lane at its own
+  // documented write sites, which lib/realtime-paths.test.ts pins separately.
+  // Narrowing the needle to the notify call keeps this pin's ACTUAL subject
+  // — a third Telegram seam still fails it — without it failing on an
+  // unrelated deferred call. Mutation-tested: adding an
+  // after(() => notifyRequestEvent(...)) to a third route turns this red.
   const hits = new Map<string, number>();
   for (const abs of files) {
     const src = stripComments(readFileSync(abs, "utf8"));
-    const count = src.split("after(").length - 1;
+    const count = (src.match(/after\(\s*\(\)\s*=>\s*notifyRequestEvent\(/g) ?? []).length;
     if (count > 0) hits.set(relPath(abs), count);
   }
 

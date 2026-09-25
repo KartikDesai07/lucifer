@@ -16,7 +16,7 @@ import mongoose, { Schema, type Document, type Model, type Types } from "mongoos
 // cannot be swapped between tenants/providers without decrypt throwing.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const SECRET_PROVIDERS = ["atlas", "vercel", "cloudinary", "r2"] as const;
+export const SECRET_PROVIDERS = ["atlas", "vercel", "cloudinary", "r2", "cloudflare"] as const;
 export type SecretProvider = (typeof SECRET_PROVIDERS)[number];
 
 // What KIND of credential the ciphertext holds (storeSecret's `classification`).

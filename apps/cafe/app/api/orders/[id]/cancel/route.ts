@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { publishCafeEvent } from "@/lib/realtime-publish";
 import { connectDB } from "@/lib/db";
 import { Order } from "@/models/Order";
 import { Table } from "@/models/Table";
@@ -171,6 +172,11 @@ export async function POST(req: Request, { params }: Params) {
     // Today's KPIs AND the order's own day, since a prior-day bill can be cancelled.
     cache.del(orderSummaryCacheKey());
     cache.del(orderSummaryCacheKey(new Date(updated.createdAt)));
+    // The tab changed — nudge the POS pulse and the Kitchen board ahead of
+    // their polls. publishCafeEvent defers it past the response and swallows
+    // every failure, so it can never delay or fail this write; the polls stay
+    // the fallback and the source of truth.
+    publishCafeEvent("order-changed");
     return success(updated);
   } catch (error) {
     return serverError("Failed to cancel order", error);
