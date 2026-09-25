@@ -13,6 +13,7 @@ import type {
   LoyaltyRulesInput,
   LoyaltyMilestoneInput,
 } from "@pos/shared/schemas/settings-loyalty.schema";
+import type { DinerBannerInput } from "@pos/shared/schemas/settings-diner.schema";
 
 // CB-5A S2 — split out of models/Settings.ts (that file's own ~300-line
 // budget). promoCodeSchema and appearanceMongooseSchema moved VERBATIM;
@@ -125,6 +126,20 @@ const loyaltyMilestoneMongooseSchema = new Schema<LoyaltyMilestoneInput>(
 // accentOverride precedent as above (Mongoose String `required` rejects "").
 // `milestones` carries `default: undefined` (the promoCodes/appearance
 // precedent) so an absent ladder never materializes an empty array.
+// CB-6C — one owner-written banner on the diner Home tab. `_id:false`
+// (promoCodeSchema precedent above). `title` is `required` (the Zod schema
+// requires a non-empty title too — an empty row is not a real banner);
+// `body` must NOT carry `required` — Mongoose String `required` rejects ""
+// (the accentOverride/heroImage precedent above) and a title-only banner's
+// body is legitimately "".
+export const dinerBannerMongooseSchema = new Schema<DinerBannerInput>(
+  {
+    title: { type: String, required: true, trim: true },
+    body: { type: String, trim: true },
+  },
+  { _id: false },
+);
+
 export const loyaltyRulesMongooseSchema = new Schema<LoyaltyRulesInput>(
   {
     v: { type: Number, required: true },

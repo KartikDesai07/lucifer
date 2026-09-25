@@ -64,8 +64,9 @@ const END_OF_DAY_SUMMARY = "apps/cafe/components/reports/EndOfDaySummary.tsx";
 // MoveTableDialog.tsx 1 (:107), OrderDetailSheet.tsx 2, EndOfDayButton.tsx 1
 // (RECEIPT_PAGE_STYLE), use-kot-print-bridge.ts 2, use-print-host-bridge.ts 3
 // (two receiptPageStyle( + one RECEIPT_PAGE_STYLE at :117), PrintHostProvider
-// 0, PrintHostCard 0 — total 9. No grand-total assert below: each file is
-// read and counted separately, so a shifted total can't hide behind a sum.
+// 0, PrinterSetupCard 0 (2026-09-19: renamed from PrintHostCard when the
+// kiosk wizard was removed) — total 9. No grand-total assert below: each file
+// is read and counted separately, so a shifted total can't hide behind a sum.
 //
 // CB-D1 (desktop-shell.test.ts / desktop-shell-paths.test.ts own the new
 // pins): 9 of these 10 useReactToPrint call sites now ALSO wrap their options
@@ -76,7 +77,7 @@ const END_OF_DAY_SUMMARY = "apps/cafe/components/reports/EndOfDaySummary.tsx";
 // wrapped and keeps the plain browser dialog.
 const MOVE_TABLE_DIALOG = "apps/cafe/components/orders/MoveTableDialog.tsx";
 const PRINT_HOST_PROVIDER = "apps/cafe/components/layout/PrintHostProvider.tsx";
-const PRINT_HOST_CARD = "apps/cafe/components/print/PrintHostCard.tsx";
+const PRINTER_SETUP_CARD = "apps/cafe/components/print/PrinterSetupCard.tsx";
 
 // ── 1. Pay Now must fire the kitchen ticket too (CR1.2(a)) ──────────────────
 
@@ -212,6 +213,10 @@ test("PIN: useKotPrintBridge sequences KOT then receipt via a guard ref — onAf
 // ── 4. Every print surface uses the one shared 80mm page setup ─────────────
 
 test("PIN: RECEIPT_PAGE_STYLE carries the 80mm/4mm page setup, and every print trigger (POS, order-detail, end-of-day) passes it", () => {
+  // The page height stays `auto` — on a continuous thermal roll that is what
+  // makes the printer feed only as far as the slip was drawn. It was briefly
+  // changed to an explicit 1200mm on 2026-09-17 and fed 1.2 METRES per slip,
+  // running the roll out; lib/print-page-size.test.ts owns that regression.
   assert.match(RECEIPT_PAGE_STYLE, /size: 80mm auto/);
   assert.match(RECEIPT_PAGE_STYLE, /margin: 4mm/);
 
@@ -327,27 +332,31 @@ test("PIN: RECEIPT_PAGE_STYLE carries the 80mm/4mm page setup, and every print t
     "PrintHostProvider.tsx must build zero page styles of its own — it only wires usePrintHostBridge's already-built print jobs into context",
   );
 
-  // PH-10 A4 — PrintHostCard triggers a manual test print via the bridge's own
-  // queueTestSlip() (positive landmark), so it too must never build a page
-  // style locally.
-  const cardSrc = readSrc(PRINT_HOST_CARD);
+  // PH-10 A4 — the test-print trigger (PrintHostCard.tsx, renamed
+  // PrinterSetupCard.tsx in the 2026-09-19 kiosk-wizard cleanup) fires a
+  // manual test print via the bridge's own queueTestSlip() (positive
+  // landmark), so it too must never build a page style locally.
+  const cardSrc = readSrc(PRINTER_SETUP_CARD);
   assert.match(
     cardSrc,
     /queueTestSlip\(\)/,
-    "PrintHostCard.tsx must call the bridge's queueTestSlip() (positive landmark for the pageStyle-absence pin below)",
+    "PrinterSetupCard.tsx must call the bridge's queueTestSlip() (positive landmark for the pageStyle-absence pin below)",
   );
   assert.ok(
     !/pageStyle:\s*receiptPageStyle\(/.test(cardSrc) && !/pageStyle:\s*RECEIPT_PAGE_STYLE/.test(cardSrc),
-    "PrintHostCard.tsx must build zero page styles of its own — the test slip's page setup is the bridge hook's job",
+    "PrinterSetupCard.tsx must build zero page styles of its own — the test slip's page setup is the bridge hook's job",
   );
 });
 
 // ── 5. The mobile-UA hazard must stay documented ────────────────────────────
-// PH-10 A5 — discharged: the isMobileUserAgent GATING (not this comment) is
-// pinned by print-host-card-paths.test.ts:150-192 (PrintHostCard has ZERO
-// references, concatenated needle) + :196-207 + :220-230 (PrinterSetupWizard
-// is the actual caller) and printer-setup-paths.test.ts:70-85. No new
-// assertion here — this test only pins the comment below staying in place.
+// PH-10 A5, updated 2026-09-19: the isMobileUserAgent GATING lived only in
+// the Chrome-kiosk PrinterSetupWizard (the mobile-vs-desktop branch of a flow
+// that downloaded a .bat), which the kiosk-wizard cleanup deleted along with
+// print-host-setup.ts. No component under components/print/ calls
+// isMobileUserAgent any more. lib/print.ts still exports the helper and the
+// comment this test pins below — kept for the go-live checklist's tablet
+// warning, which this test's own assertion is what makes that warning
+// verifiable.
 
 test("PIN: lib/print.ts still names the fixed 500ms onAfterPrint timer on MOBILE user-agents — delete this comment and the go-live checklist's tablet warning becomes unverifiable", () => {
   const src = readSrc(PRINT_LIB);

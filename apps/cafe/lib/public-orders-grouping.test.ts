@@ -9,9 +9,11 @@ import type { PublicOrderRequestStatusData } from "@pos/shared/public";
 import { stripComments } from "@/lib/source-pin-utils";
 import {
   groupOrdersByDate,
+  splitLiveOrders,
   type OrderDateGroup,
   type PastOrder,
 } from "@/components/public/public-orders-grouping";
+import { pickActiveOrders } from "@/components/public/public-home-data";
 
 // S8 — DB-free pins for the pure date-grouping module behind "My Orders".
 // Same readSrc/absence+landmark technique as public-bill-rows.test.ts.
@@ -166,9 +168,133 @@ test("PIN: PublicMyOrdersTab.tsx has a BACK control that clears openCode, and th
   const src = stripComments(readSrc(MY_ORDERS_TAB));
   assert.match(src, /setOpenCode\(null\)/, "must have a control that clears openCode back to the list");
   assert.match(src, /ChevronLeft/, "the back control must use the ChevronLeft icon");
-  assert.match(
-    src,
-    /orderingAllowed/,
-    "the file must reference the orderingAllowed prop to gate the repeat affordance",
+  assert.match(src, /orderingAllowed/, "the file must reference the orderingAllowed prop to gate the repeat affordance");
+});
+
+// ── 8. splitLiveOrders (CB-6D-B, AMENDED by F6): live keeps INPUT order now
+// (pickActiveOrders owns newest-first ordering; the old sort here was DEAD —
+// the only caller re-sorts by Date.parse); rest = settled + unresolved/null
+// rows in INPUT order; never mutates; [] -> empty.
+
+// RED now: the file still string-sorts live newest-first (opposite of the pin below).
+test("PIN (F6): splitLiveOrders keeps live in INPUT order — the newest-first sort is DELETED (pickActiveOrders owns ordering)", () => {
+  const older = order("OLDLIVE001", { status: "pending", createdAt: "2026-09-10T06:00:00.000Z" });
+  const newer = order("NEWLIVE001", { status: "accepting", createdAt: "2026-09-13T06:00:00.000Z" });
+
+  const { live, rest } = splitLiveOrders([older, newer]);
+
+  assert.deepEqual(
+    live.map((o) => o.code),
+    ["OLDLIVE001", "NEWLIVE001"],
+    "live must keep the INPUT order (older-then-newer here) — splitLiveOrders no longer re-sorts by createdAt",
   );
+  assert.deepEqual(rest, [], "both rows are active — rest must be empty");
+});
+
+// F6 composed pin: pickActiveOrders(splitLiveOrders(...).live) still lands
+// newest-first by PARSED time across mixed-form ISO strings a naive STRING
+// compare would order wrong — proves ordering moved downstream, not dropped.
+test("PIN (F6): pickActiveOrders(splitLiveOrders(orders).live) is newest-first by PARSED time, for mixed-form ISO timestamps", () => {
+  // +05:30 offset form === one minute AFTER the plain-Z fixture, despite sorting earlier as a raw string.
+  const zForm = order("ZFORM001", { status: "pending", createdAt: "2026-09-13T06:00:00.000Z" });
+  const offsetForm = order("OFFSETFORM001", { status: "accepting", createdAt: "2026-09-13T11:31:00+05:30" });
+
+  const { live } = splitLiveOrders([zForm, offsetForm]);
+  const activeOrders = pickActiveOrders(live);
+
+  assert.deepEqual(
+    activeOrders.map((a) => a.code),
+    ["OFFSETFORM001", "ZFORM001"],
+    "pickActiveOrders must sort by PARSED time — the later offset-form timestamp must come first despite sorting earlier as a raw string",
+  );
+});
+
+test("splitLiveOrders: settled (accepted/rejected) rows and unresolved (data === null) rows land in rest, in INPUT order, never dropped", () => {
+  const accepted = order("SETTLED001", { status: "accepted", createdAt: "2026-09-13T06:00:00.000Z" });
+  const rejected = order("SETTLED002", { status: "rejected", createdAt: "2026-09-13T05:00:00.000Z" });
+  const unresolved: PastOrder = { code: "PENDINGFETCH1", data: null };
+
+  const { live, rest } = splitLiveOrders([accepted, unresolved, rejected]);
+
+  assert.deepEqual(live, [], "no row is pending/accepting — live must be empty");
+  assert.deepEqual(
+    rest.map((o) => o.code),
+    ["SETTLED001", "PENDINGFETCH1", "SETTLED002"],
+    "rest must keep the INPUT order (never re-sorted), and must not drop the null-data row",
+  );
+});
+
+test("splitLiveOrders: a mix never double-counts a row between live and rest", () => {
+  const live1 = order("MIXLIVE001", { status: "pending", createdAt: "2026-09-13T06:00:00.000Z" });
+  const settled1 = order("MIXSETTLED1", { status: "accepted", createdAt: "2026-09-13T05:00:00.000Z" });
+  const unresolved: PastOrder = { code: "MIXNULL1", data: null };
+  const live2 = order("MIXLIVE002", { status: "accepting", createdAt: "2026-09-13T07:00:00.000Z" });
+
+  const { live, rest } = splitLiveOrders([live1, settled1, unresolved, live2]);
+
+  const liveCodes = live.map((o) => o.code);
+  const restCodes = rest.map((o) => o.code);
+  // F6: live keeps INPUT order now (live1 before live2), not the old
+  // newest-first string sort — this incidental ordering assertion moves with
+  // it so it stays a true post-fix oracle rather than re-pinning the bug.
+  assert.deepEqual(liveCodes, ["MIXLIVE001", "MIXLIVE002"], "live must hold exactly the two active rows, in INPUT order");
+  assert.deepEqual(restCodes, ["MIXSETTLED1", "MIXNULL1"], "rest must hold exactly the settled + unresolved rows, in input order");
+  for (const code of liveCodes) {
+    assert.ok(!restCodes.includes(code), `${code} must not appear in both live and rest`);
+  }
+});
+
+test("splitLiveOrders: never mutates the input array or its rows", () => {
+  const input: PastOrder[] = [
+    order("IMMUT001", { status: "pending", createdAt: "2026-09-13T06:00:00.000Z" }),
+    order("IMMUT002", { status: "accepted", createdAt: "2026-09-13T05:00:00.000Z" }),
+  ];
+  const inputSnapshot = input.map((o) => o.code);
+
+  splitLiveOrders(input);
+
+  assert.deepEqual(input.map((o) => o.code), inputSnapshot, "input array order must be unchanged after the call");
+  assert.equal(input.length, 2, "input array length must be unchanged");
+});
+
+test("splitLiveOrders: [] input returns { live: [], rest: [] }", () => {
+  const result = splitLiveOrders([]);
+  assert.deepEqual(result, { live: [], rest: [] });
+});
+
+// ── F8 (review fix, LOW) — partitionPending ─────────────────────────────────
+// useMyOrders seeded every row { code, data: null } before any fetch settled,
+// with skeleton gate `orders === null` only, so the FIRST frame listed every
+// order as an unresolved Link under "More orders". Fix: PastOrder gains
+// optional `pending?: true`; this NEW partitionPending() splits settled from
+// still-pending rows (input order kept). Not on the tree yet — dynamic
+// import scopes the failure to these test()s (mirrors the STATUS_CHIP_META
+// walk in public-diner-panel-pins.test.ts), so other pins here still run.
+
+test("PIN (F8): partitionPending splits pending vs settled rows, both kept in INPUT order", async () => {
+  const { partitionPending } = await import("@/components/public/public-orders-grouping");
+  const settledA = order("PARTSETTLED1", { status: "accepted" });
+  const pendingA: PastOrder = { code: "PARTPENDING1", data: null, pending: true };
+  const settledB = order("PARTSETTLED2", { status: "rejected" });
+  const pendingB: PastOrder = { code: "PARTPENDING2", data: null, pending: true };
+
+  const { settled, pendingCount } = partitionPending([settledA, pendingA, settledB, pendingB]);
+
+  assert.deepEqual(
+    settled.map((o: PastOrder) => o.code),
+    ["PARTSETTLED1", "PARTSETTLED2"],
+    "settled must hold only the non-pending rows, in INPUT order",
+  );
+  assert.equal(pendingCount, 2, "pendingCount must count exactly the rows flagged pending: true");
+});
+
+test("PIN (F8): partitionPending — a resolved row with no pending flag counts as settled, never pending; [] input returns { settled: [], pendingCount: 0 }", async () => {
+  const { partitionPending } = await import("@/components/public/public-orders-grouping");
+  const resolved = order("PARTRESOLVED1", { status: "accepted" });
+
+  const resolvedResult = partitionPending([resolved]);
+  assert.deepEqual(resolvedResult.settled.map((o: PastOrder) => o.code), ["PARTRESOLVED1"]);
+  assert.equal(resolvedResult.pendingCount, 0, "a resolved row with no pending flag must not be counted as pending");
+
+  assert.deepEqual(partitionPending([]), { settled: [], pendingCount: 0 });
 });

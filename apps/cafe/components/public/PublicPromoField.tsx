@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Check } from "lucide-react";
 
 import { cn, inr } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -48,7 +49,7 @@ interface PublicPromoFieldProps {
 // grouping, a different job from showing one date to one diner).
 const EXPIRY_DATE_FORMAT: Intl.DateTimeFormatOptions = { day: "numeric", month: "short" };
 
-function expiryLabel(expiresAtMs: number): string {
+export function expiryLabel(expiresAtMs: number): string {
   return `Valid until ${new Intl.DateTimeFormat("en-IN", EXPIRY_DATE_FORMAT).format(new Date(expiresAtMs))}`;
 }
 
@@ -96,10 +97,16 @@ export function PublicPromoField({
             discount — until then (create's pre-submit window, or an edit
             whose PATCH response carries no discount figure) this never
             fabricates a ₹ figure. */}
-        <span>
-          {savedAmount > 0
-            ? `✓ ${code} applied — you saved ${inr(savedAmount)}`
-            : `✓ ${code} will be applied at the counter`}
+        {/* lucide Check, never a glyph in the string — the diner surface is
+            icons-only (emoji/dingbats render differently on every Android
+            skin and cannot be themed; pinned dir-wide in CB-6C). */}
+        <span className="flex min-w-0 items-center gap-1.5">
+          <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+          <span className="min-w-0">
+            {savedAmount > 0
+              ? `${code} applied — you saved ${inr(savedAmount)}`
+              : `${code} will be applied at the counter`}
+          </span>
         </span>
         <button
           type="button"

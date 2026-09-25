@@ -248,6 +248,7 @@ to a placeholder brand on paper.
 | Let diners pick a table | on / off | whether the shared menu link lets a diner pick or change their table |
 | Show past orders to diners | reserved — no diner screen exists yet | — |
 | Promo codes | ≤20 codes, uppercase, percent or flat, whole rupees | discount a diner can type in at checkout |
+| Announcements on the QR menu | up to 3 banners, title 40 chars + one line 90 chars | shown on the diner Home tab of the QR menu (Settings > QR ordering) |
 
 - [ ] Restaurant name set (this is the only required field).
 - [ ] **Tagline and Footer message are intentionally EMPTY until the cafe sets
@@ -531,19 +532,32 @@ another program is in front.
       example `https://your-pos.example.com`) and choose **Use this address**.
 - [ ] Log in once as a real staff account. The sign-in lasts 30 days and renews
       with use, so the PC stays signed in.
-- [ ] **Settings → Printer setup** → the **Print host** card → designate this PC,
-      then **Test print**. The card must confirm silent printing is on. If it
-      does not, the thermal printer is probably not the Windows default —
-      set it and test again.
-- [ ] Silent printing uses the printer's **Windows defaults**, not a browser
-      dialog: in Windows → Printers → the thermal printer → **Printing
-      preferences**, set the roll size (**80 mm**, or 58 mm for narrow paper)
-      and margins to none. The browser print-dialog settings above do not
-      apply to the desktop app.
-- [ ] In Windows → **Printers & scanners**, turn OFF **"Let Windows manage my
-      default printer"** and set the thermal printer as the default. Otherwise
-      Windows quietly makes the last-used printer the default (for example a
-      PDF printer) and the desktop app would print there instead.
+- [ ] **Settings → Printer setup** → **Use this PC** (this PC becomes the print
+      host), then pick the thermal printer under **Printer for this PC**, then
+      **Test print**. The card must confirm silent printing is on. If nothing
+      comes out, no printer was picked, or a file-saving device (Microsoft
+      Print to PDF, XPS, OneNote, Fax) was — those cannot be chosen; pick the
+      real printer and test again. The Windows **default** printer no longer
+      matters: the app prints only to the printer chosen here.
+- [ ] **Print method — leave it on "Direct to printer" (the default).** From
+      installer **1.10.0** each slip goes to the printer as an image over
+      ESC/POS, straight into the Windows print queue, so the paper is exactly
+      as long as the slip and the driver's paper size no longer matters — no
+      Printing-preferences change is needed on a new PC. Every job is logged
+      with `mode=direct` and its raster size, e.g. `page=576x1321 dots (~165mm)`.
+      Why this replaced the driver: a POS80 shipped set to **Letter** on
+      2026-09-19 and the driver ignored the size the app asked for — a 32-item
+      bill printed only 23 items and silently lost the rest, and with a custom
+      80 x 297mm form a 4 cm slip still came out on a 297 mm page. No app or
+      driver setting makes that lane follow the content.
+- [ ] Switch to **"Through the Windows driver"** only if a printer prints
+      blank or garbled paper in direct mode (it does not understand ESC/POS).
+      On that lane the driver's own paper size decides the paper length, so
+      then set it in Windows → Printers → the thermal printer → **Printing
+      preferences**: roll size **80 mm** (or 58 mm for narrow paper), margins
+      none, and never a `3276mm`-long form — a 3.27 m page can feed metres of
+      blank per slip. The browser print-dialog settings above do not apply to
+      the desktop app.
 - [ ] If a slip cannot be printed (printer off, paper out, wrong printer), a
       Windows **notification** from the app says why even while its window is
       hidden, and the slip stays on the Orders page to print again. For
@@ -564,11 +578,11 @@ another program is in front.
 - [ ] Set the PC's power plan to never sleep, as below.
 
 **If the desktop app cannot be installed** (an older Windows, a locked-down PC),
-use the browser instead: launch Chrome with `--kiosk-printing` (silent print to
-the default printer) — the **POS Printer** shortcut in
-**Settings → Printer setup** creates exactly that. If you use the kiosk shortcut,
-**re-run the whole paper matrix below** — kiosk mode changes when a print job
-is considered finished.
+that counter has no silent printing: every slip opens the browser's own print
+dialog and someone has to confirm it. The self-service Chrome kiosk-shortcut
+wizard that used to be offered here was removed on 2026-09-19 — it predated the
+desktop app, it could not choose a printer, and it was the main source of
+confusion on the setup page.
 
 ### Installing the POS on the counter device
 
@@ -618,8 +632,7 @@ tap. How it prints depends on whether a print host is set
 - [ ] **With a print host set**: the host PC prints every slip — KOTs,
       bills, void/moved slips, end of day — from ANY dashboard screen it has
       open, and every other device routes its prints to it (its band reads
-      `Printing is routed to <label>; slips print at the counter, not on
-      this device.` with the host's label filled in). Non-host devices
+      `Slips print at <label>.` with the host's label filled in). Non-host devices
       never auto-print; the **Auto-print self-orders** switch is disabled
       on the host itself because the host prints self-orders anyway.
       Designate and run the test print from inside the POS Printer window —
@@ -985,7 +998,7 @@ intentionally not duplicated into the §A table below.
 
 - [ ] URL, admin username, and confirmation the password was changed by them.
 - [ ] The five-minute guide: **Settings → Staff → Menu (form or CSV)**.
-- [ ] Printer configuration written down: **which of the two — the desktop app or the kiosk browser shortcut** — plus which browser, which paper size, and whether kiosk printing is on. A fresh Windows profile loses it.
+- [ ] Printer configuration written down: **which PC is the print host, and which printer is chosen on it** (Settings → Printer setup), plus the paper size. A fresh Windows profile loses the printer choice.
 - [ ] Support boundary agreed, and what to send when something breaks:
       screenshot, order id, and the time.
 - [ ] Accepted platform realities stated plainly: hosting is on a free
@@ -1100,10 +1113,9 @@ the test fails — fix the code or this file, never just this file.
 | Print-job drain feed cap (per pulse) | 10 | `PRINT_JOB_PULSE_LIMIT` |
 | Print-job stale-band feed cap | 20 | `PRINT_JOB_STALE_LIMIT` |
 | Queued print job retention | 12 hours | `PRINT_JOB_QUEUED_RETENTION_MS` |
-| Kiosk shortcut flag | `--kiosk-printing` | `KIOSK_PRINTING_FLAG` |
 | Desktop app installer | `POS-Software-Setup-${version}.exe` | `apps/desktop/package.json` (`build.nsis.artifactName`) |
-| Print host silent-off warning | `The print host is not printing silently — a dialog will appear at the host PC for every job.` | `PRINT_HOST_SILENT_OFF_WARNING` |
-| Print host active note | `Printing is routed to <label>; slips print at the counter, not on this device.` | `PRINT_HOST_ACTIVE_NOTE` |
+| Print host silent-off warning | `Print host shows a dialog for every slip.` | `PRINT_HOST_SILENT_OFF_WARNING` |
+| Print host active note | `Slips print at <label>.` | `PRINT_HOST_ACTIVE_NOTE` |
 | Staff session lifetime | 30 days, rolling with use | `SESSION_MAX_AGE_SECONDS` |
 | Print-job wake poll (counter PC) | every 3 seconds while busy, every 15 seconds when idle | `PRINT_WAKE_FAST_MS` / `PRINT_WAKE_SLOW_MS` |
 | Print-job wake poll daily cap (per counter PC) | 14,400 quick checks per cafe-day, then every 15 seconds until the next day | `PRINT_WAKE_DAILY_CAP` |

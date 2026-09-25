@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -281,6 +281,97 @@ test("PIN: the set-PIN refusal names the actionable next step (order at the coun
     failureCalls.length,
     0,
     "no refusal may be built from an inline string literal — every one must go through the shared constant or a shared message",
+  );
+});
+
+// ── 7c. BotID protect-list PARITY — the outage this pin exists to prevent ───
+// OWNER-REPORTED, live 2026-09-17: a diner whose Customer row demonstrably
+// EXISTED still could not set a PIN. Root cause was NOT the CAS: both
+// diner/pin and diner/login call `checkBotId()` as their FIRST gate, but
+// neither path was in instrumentation-client.ts's `protect` list.
+//
+// WHY THAT IS TOTAL, NOT PARTIAL: BotID's patched fetch matches each request
+// against the protect list and, on NO match, returns the ORIGINAL fetch
+// (botid/dist/client/core) — so no challenge is ever offered and no
+// `x-is-human` header is ever sent. The server check then fails CLOSED and
+// 403s EVERY REAL HUMAN. Measured live: POSTing a deliberately malformed body
+// returned 403, not the 400 the shape gate would give — proving execution
+// halts at the bot gate before the body is even parsed.
+//
+// WHY NOTHING CAUGHT IT: checkBotId hardcodes isHuman:true whenever
+// NODE_ENV !== "production", so tsc, lint and every suite stay green with the
+// feature 100% dead. A SOURCE PARITY PIN is the only pre-production detector.
+//
+// WHY A CLOSED SET, not a containment check: the pre-existing pin in
+// order-request-paths.test.ts is route-FIRST ("does the list contain what MY
+// route needs?"), which a two-entry list satisfies forever no matter how many
+// other routes start calling checkBotId. That is exactly why it stayed green.
+// This pin inverts the direction: every CALLER must have an entry.
+
+const BOTID_SERVER_IMPORT = 'from "botid/server"';
+const BOTID_CLIENT_CONFIG = "apps/cafe/instrumentation-client.ts";
+
+// Every module that actually RUNS checkBotId, with a concrete pathname the
+// route serves ([shortCode] filled in) — the vendor matches real pathnames,
+// not route patterns. Hand-maintained ON PURPOSE: a new caller must fail here
+// and be registered deliberately rather than auto-forgiven.
+const BOTID_CALLERS: ReadonlyArray<{ module: string; sample: string; method: string }> = [
+  { module: "app/api/public/diner/login/route.ts", sample: "/api/public/diner/login", method: "POST" },
+  { module: "app/api/public/diner/pin/route.ts", sample: "/api/public/diner/pin", method: "POST" },
+  { module: "app/api/public/order-request/[shortCode]/route.ts", sample: "/api/public/order-request/ABC123", method: "PATCH" },
+  // The POST intake route itself only DELEGATES; this lib is the real caller,
+  // which is why the needle is the import and not the string "checkBotId".
+  { module: "lib/public-order-intake.ts", sample: "/api/public/order-request", method: "POST" },
+];
+
+function walkSources(dir: string, out: string[] = []): string[] {
+  for (const entry of readdirSync(dir)) {
+    const full = path.join(dir, entry);
+    if (statSync(full).isDirectory()) walkSources(full, out);
+    else if (/\.tsx?$/.test(entry) && !/\.test\.tsx?$/.test(entry)) out.push(full);
+  }
+  return out;
+}
+
+test("PIN: every module importing botid/server has a matching protect entry — an unlisted checkBotId route gets NO client challenge and 403s every real human in production", () => {
+  const cafeRoot = path.join(REPO_ROOT, "apps/cafe");
+  const callers = [...walkSources(path.join(cafeRoot, "app")), ...walkSources(path.join(cafeRoot, "lib"))]
+    .filter((file) => stripComments(readFileSync(file, "utf8")).includes(BOTID_SERVER_IMPORT))
+    .map((file) => path.relative(cafeRoot, file).split(path.sep).join("/"))
+    .sort();
+
+  // Positive landmark: a broken walk must not pass vacuously.
+  assert.ok(
+    callers.length >= BOTID_CALLERS.length,
+    `expected at least ${BOTID_CALLERS.length} botid/server importers, found ${callers.length} — the source walk is broken`,
+  );
+  assert.deepEqual(
+    callers,
+    [...BOTID_CALLERS].map((c) => c.module).sort(),
+    "a module started (or stopped) importing botid/server — add it to BOTID_CALLERS *and* give it a protect entry in instrumentation-client.ts, or it will 403 every real human in production",
+  );
+
+  const clientSrc = stripComments(readSrc(BOTID_CLIENT_CONFIG));
+  const entries = [...clientSrc.matchAll(/\{\s*path:\s*"([^"]+)",\s*method:\s*"([^"]+)"\s*\}/g)].map((m) => ({
+    path: m[1]!,
+    method: m[2]!,
+  }));
+  assert.ok(entries.length > 0, "parsed zero protect entries — this pin would pass vacuously");
+
+  // The vendor's OWN matcher, transcribed from botid/dist/client/core: the
+  // path is escaped, `*` becomes `.*`, anchored both ends; the method matches
+  // case-insensitively or the entry's method is "*".
+  const covers = (pathname: string, method: string): boolean =>
+    entries.some(
+      (e) =>
+        new RegExp(`^${e.path.replace(/[.?+^$[\]\\(){}|-]/g, "\\$&").split("*").join(".*")}$`).test(pathname) &&
+        (e.method.toLowerCase() === method.toLowerCase() || e.method === "*"),
+    );
+
+  assert.deepEqual(
+    BOTID_CALLERS.filter((c) => !covers(c.sample, c.method)).map((c) => `${c.method} ${c.sample}`),
+    [],
+    "these checkBotId routes have NO protect entry — BotID fails closed and they will 403 every real human",
   );
 });
 

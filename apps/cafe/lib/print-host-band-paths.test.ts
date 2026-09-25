@@ -57,9 +57,14 @@ test("PIN (1): RequestAlertBar.tsx imports usePosPulseContext + usePrintReadback
   const visibleLineMatch = src.match(/const visible = ([^\n]+);/);
   assert.ok(visibleLineMatch, "positive landmark: a `const visible = ...;` line must exist");
   const visibleLine = visibleLineMatch![1];
+  // CB-UI2 (owner 2026-09-23): the line may now be PREFIXED by the POS
+  // route-suppression gate (`!alertBarSuppressedForPath(pathname) && (…)`) —
+  // that gate only ever REMOVES the band, and living inside `visible` is what
+  // also drops the published height. The three positive triggers must still
+  // all be present and OR'd, so the band can never stop showing real work.
   assert.ok(
-    visibleLine.startsWith("openCount > 0 || unprinted.length > 0 ||"),
-    `the visible line must still start "openCount > 0 || unprinted.length > 0 ||", got: ${visibleLine}`,
+    /openCount > 0 \|\| unprinted\.length > 0 \|\|/.test(visibleLine),
+    `the visible line must still OR together "openCount > 0 || unprinted.length > 0 ||", got: ${visibleLine}`,
   );
   assert.match(visibleLine, /printBandVisible\(pulse, readback\)/, "the visible line must call printBandVisible(pulse, readback)");
 

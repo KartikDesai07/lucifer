@@ -154,6 +154,34 @@ export function orderLineKey(item: {
   return (item.variation ? [...base, item.variation] : base).join(LINE_KEY_SEP);
 }
 
+// A DURABLE line ref for the kitchen board (P4-A), deliberately qty-free.
+// orderLineKey() above includes `qty` by design — it is a one-write echo guard
+// for the void payload, meant to invalidate the instant a concurrent qty-reduce
+// changes the very line it names. A kitchen tick needs the OPPOSITE property:
+// a partial void that reduces or removes a DIFFERENT sibling line rewrites
+// items[], which would silently change every remaining line's orderLineKey and
+// desync any tick keyed by it. kotLineRef() therefore excludes qty so a line's
+// identity survives its own qty being reduced and any sibling being voided —
+// this is the durable ref; orderLineKey stays the single-write echo guard.
+export function kotLineRef(item: {
+  productId: string;
+  kotRound?: number;
+  instructions?: string;
+  modifiers?: string[];
+  variation?: string;
+}): string {
+  const base = [
+    item.productId,
+    item.kotRound ?? 0,
+    item.instructions ?? "",
+    [...(item.modifiers ?? [])].sort().join(MODIFIER_SEP),
+  ];
+  // Same trailing-separator discipline as orderLineKey: append the variation
+  // only when present, so a ref for a line sold one way stays unaffected by
+  // the variations feature ever having shipped.
+  return (item.variation ? [...base, item.variation] : base).join(LINE_KEY_SEP);
+}
+
 // The one place a line's display name is built: the product name, plus the
 // variation it was sold as when it has one. Used by the cart, both receipts, the
 // void slip and the order sheet — a second hand-written `${name} (${variation})`

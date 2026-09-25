@@ -6,6 +6,7 @@ import { Check } from "lucide-react";
 
 import { DINER_CANCELLED_REASON, type PublicOrderRequestStatusData } from "@pos/shared/public";
 import { readMyCodes } from "@/components/public/public-cart-store";
+import { cn } from "@/lib/utils";
 
 // Extracted from PublicOrderStatus.tsx (CR2.2b §17.B) — the 3-step "Sent →
 // Confirming → Preparing" timeline. NEVER rendered for "rejected": that
@@ -15,36 +16,60 @@ import { readMyCodes } from "@/components/public/public-cart-store";
 interface PublicStatusTimelineProps {
   status: Exclude<PublicOrderRequestStatusData["status"], "rejected">;
   acceptedAt?: string;
+  // CB-6D-B — lets PublicOrderBillView drop this into a PUB_TONAL_CARD_CLASS
+  // surface (border-0) instead of the default bordered card; the default
+  // render (no className) is unchanged for PublicOrderStatus.tsx.
+  className?: string;
 }
 
 type StepState = "done" | "active" | "future";
 
+// CB-6C — the "✓" text glyph is dropped from every label: the Check icon on
+// a "done" step already says it, and a trailing ✓ character would trip the
+// dir-wide no-emoji pin (EMOJI_PATTERN covers U+2713). The label text no
+// longer varies by state either, so the connector below can read step state
+// off ONE array without a second branch.
+const TIMELINE_STEP_LABELS = ["Order sent", "Cafe is confirming…", "Being prepared"] as const;
+
 // "accepting" (staff have opened the request but not yet confirmed) renders
 // IDENTICALLY to "pending" here — the diner sees no difference (SLICE 8 §1,
 // same rule the status GET route's own comment documents).
-export function PublicStatusTimeline({ status, acceptedAt }: PublicStatusTimelineProps) {
+export function PublicStatusTimeline({ status, acceptedAt, className }: PublicStatusTimelineProps) {
   const accepted = status === "accepted";
   const steps: { label: string; state: StepState }[] = [
-    { label: "Order sent ✓", state: "done" },
-    { label: "Cafe is confirming…", state: accepted ? "done" : "active" },
-    { label: accepted ? "Being prepared ✓" : "Being prepared", state: accepted ? "done" : "future" },
+    { label: TIMELINE_STEP_LABELS[0], state: "done" },
+    { label: TIMELINE_STEP_LABELS[1], state: accepted ? "done" : "active" },
+    { label: TIMELINE_STEP_LABELS[2], state: accepted ? "done" : "future" },
   ];
 
   return (
-    <div className="rounded-lg border p-4">
-      <ol className="space-y-3">
-        {steps.map((step) => (
-          <li key={step.label} className="flex items-center gap-3">
+    <div className={cn("rounded-lg border p-4", className)}>
+      <ol className="space-y-0">
+        {steps.map((step, index) => (
+          <li key={step.label} className="relative flex gap-3 pb-6 last:pb-0">
+            {/* The connector line between steps — a non-colour cue that this
+                is a sequence, not three unrelated rows. Drawn behind the dot,
+                filled (bg-primary) once the step it LEAVES is done, muted
+                otherwise. Omitted after the last step. */}
+            {index < steps.length - 1 && (
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "absolute left-3 top-6 h-full w-0.5 -translate-x-1/2",
+                  step.state === "done" ? "bg-primary" : "bg-muted-foreground/20",
+                )}
+              />
+            )}
             {step.state === "done" ? (
-              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
+              <span className="relative grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
                 <Check className="h-3.5 w-3.5" />
               </span>
             ) : step.state === "active" ? (
-              <span className="grid h-6 w-6 shrink-0 place-items-center">
+              <span className="relative grid h-6 w-6 shrink-0 place-items-center">
                 <span className="h-3 w-3 rounded-full bg-primary animate-pulse" />
               </span>
             ) : (
-              <span className="grid h-6 w-6 shrink-0 place-items-center">
+              <span className="relative grid h-6 w-6 shrink-0 place-items-center">
                 <span className="h-3 w-3 rounded-full border-2 border-muted-foreground/30" />
               </span>
             )}

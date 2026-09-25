@@ -33,6 +33,7 @@ export default async function PublicMenuTokenPage({
       accountsEnabled={diner.accountsEnabled}
       loyaltyEnabled={diner.loyaltyEnabled}
       orderingAllowed={diner.orderingAllowed}
+      banners={diner.banners}
     />
   );
 }

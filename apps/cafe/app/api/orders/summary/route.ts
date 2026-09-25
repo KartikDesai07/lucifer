@@ -7,6 +7,7 @@ import { success, failure, requireAuth, serverError } from "@/lib/api-helpers";
 import { cafeDateString, dayRange, orderSummaryCacheKey, cafeHourOf } from "@/lib/utils";
 import { foldDuesCollected, ACTIVE_DUE_PAYMENT, type DuesCollectedRow } from "@/lib/due-payment";
 import { parseSummaryDateParam } from "@/lib/summary-date";
+import { foldMoneyBreakdown, lineRevenue, MONEY_BREAKDOWN_SELECT } from "@/lib/money-breakdown";
 import type { HourlyStat } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -49,10 +50,14 @@ export async function GET(req: Request) {
     // dues PAYMENTS (a separate line, CR1.4 — see the `duesCollected` comment
     // below) in parallel. Projection (F2.10 audit): the aggregate below
     // touches ONLY these paths — notes/modifiers/receiver/customerName etc.
-    // never leave the DB.
+    // never leave the DB. The extra subtotal/discount/discountKind/gstAmount/
+    // chargeAmount/items.reward paths (MONEY_BREAKDOWN_SELECT) feed the D10
+    // money bifurcation fold below.
     const [orders, duesRows, duesPaymentRows] = await Promise.all([
       Order.find({ createdAt: { $gte: start, $lte: end } })
-        .select("status payment total paidAmount createdAt items.name items.qty items.price")
+        .select(
+          `status payment total paidAmount createdAt items.name items.qty items.price ${MONEY_BREAKDOWN_SELECT}`,
+        )
         .lean(),
       Customer.aggregate<DuesAgg>([
         { $match: { totalDue: { $gt: 0 } } },
@@ -88,13 +93,14 @@ export async function GET(req: Request) {
     };
 
     // Top products today by revenue — aggregated in-memory from completed orders
-    // (no extra DB round-trip), matching /api/reports.topProducts.
+    // (no extra DB round-trip), matching /api/reports.topProducts. A reward
+    // line was served, not sold: it counts toward qty, never revenue (D10/R8).
     const productTotals = new Map<string, { qty: number; revenue: number }>();
     for (const order of completed) {
       for (const item of order.items) {
         const row = productTotals.get(item.name) ?? { qty: 0, revenue: 0 };
         row.qty += item.qty;
-        row.revenue += item.price * item.qty;
+        row.revenue += lineRevenue(item);
         productTotals.set(item.name, row);
       }
     }
@@ -143,6 +149,7 @@ export async function GET(req: Request) {
       // — merging the two would double-count on a day an order is both
       // settled and its due paid (CR1.4).
       collected: completed.reduce((s, o) => s + o.paidAmount, 0),
+      money: foldMoneyBreakdown(completed),
       inProgress: {
         count: pending.length,
         value: pending.reduce((s, o) => s + o.total, 0),

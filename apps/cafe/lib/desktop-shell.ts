@@ -1,11 +1,8 @@
 import type { UseReactToPrintOptions } from "react-to-print";
 import { toast } from "sonner";
 
-import {
-  DESKTOP_PRINT_EMPTY_MESSAGE,
-  printDocumentHasText,
-  serializePrintDocument,
-} from "@/lib/desktop-shell-document";
+import { DESKTOP_PRINT_EMPTY_MESSAGE, printDocumentHasText, serializePrintDocument } from "@/lib/desktop-shell-document";
+import type { DesktopPrintMode } from "@/lib/desktop-shell-printer";
 
 // The document half (serialization, stylesheet inlining, the blank-slip fence)
 // lives in lib/desktop-shell-document.ts; re-exported so every existing import
@@ -25,6 +22,14 @@ export { serializePrintDocument, DESKTOP_PRINT_EMPTY_MESSAGE };
 export interface PosDesktopBridge {
   readonly version: string;
   printHtml(html: string): Promise<void>;
+  // The printer picker (2026-09-17) — types and the feature-detecting accessor
+  // live in lib/desktop-shell-printer.ts. OPTIONAL on purpose: the counter
+  // PC's installer is hand-copied and never auto-updates, so an older shell
+  // exposes a bridge WITHOUT these (or without printMode/savePrintMode, added
+  // later). Callers must feature-detect.
+  listPrinters?(): Promise<{ selected: string | null; printers: { name: string; displayName: string }[]; printMode?: DesktopPrintMode }>;
+  savePrinter?(name: string | null): Promise<{ selected: string | null }>;
+  savePrintMode?(mode: DesktopPrintMode): Promise<{ printMode: DesktopPrintMode }>;
 }
 
 declare global {

@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { signIn } from "next-auth/react";
 import Image from "next/image";
-import { Loader2, UtensilsCrossed } from "lucide-react";
+import { Eye, EyeOff, Loader2, UtensilsCrossed } from "lucide-react";
 
 import { clearMastersBlob } from "@/lib/masters-blob";
 import { loginSchema, type LoginInput } from "@/schemas/staff.schema";
@@ -34,6 +34,10 @@ export default function LoginPage() {
   // from a broken image on, and this route can legitimately fail (e.g. the
   // database is down) — fall back to the generic icon tile if it does.
   const [iconFailed, setIconFailed] = useState(false);
+  // Reveal-while-typing for the password. Defaults to hidden and is never
+  // persisted: a counter PC is a SHARED screen, so the next operator must
+  // always start from a masked field, whatever the last one left on.
+  const [passwordShown, setPasswordShown] = useState(false);
 
   // A tab that reaches /login (expired session, or a sign-out) must not hand
   // the previous operator's master copy — including an admin's staff list — to
@@ -106,13 +110,32 @@ export default function LoginPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                aria-invalid={!!errors.password}
-                {...register("password")}
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={passwordShown ? "text" : "password"}
+                  autoComplete="current-password"
+                  aria-invalid={!!errors.password}
+                  className="pr-10"
+                  {...register("password")}
+                />
+                {/* Inside the field's own box (pr-10 keeps the text clear of
+                    it) so the form layout is unchanged. type="button" is
+                    load-bearing: a bare <button> inside a <form> submits. */}
+                <button
+                  type="button"
+                  onClick={() => setPasswordShown((shown) => !shown)}
+                  aria-label={passwordShown ? "Hide password" : "Show password"}
+                  aria-pressed={passwordShown}
+                  className="absolute inset-y-0 right-0 grid w-10 place-items-center rounded-r-md text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  {passwordShown ? (
+                    <EyeOff className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <Eye className="h-4 w-4" aria-hidden="true" />
+                  )}
+                </button>
+              </div>
               {errors.password && (
                 <p className="text-xs text-destructive">{errors.password.message}</p>
               )}

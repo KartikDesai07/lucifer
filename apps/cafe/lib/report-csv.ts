@@ -1,8 +1,12 @@
 import type { Report } from "@/types";
 import type { ReportRange } from "@/hooks/use-reports";
+import { MONEY_BREAKDOWN_LINES, MONEY_NET_LABEL, type MoneyLine } from "@/lib/money-breakdown";
 
-// Section labels, in the fixed column-1 order the CSV is built in.
+// Section labels, in the fixed column-1 order the CSV is built in (six
+// sections: Totals, Bill breakdown, Sales by day, Sales by payment, Top
+// products, Customer dues).
 const SECTION_TOTALS = "Totals";
+const SECTION_BILL_BREAKDOWN = "Bill breakdown";
 const SECTION_SALES_BY_DAY = "Sales by day";
 const SECTION_SALES_BY_PAYMENT = "Sales by payment";
 const SECTION_TOP_PRODUCTS = "Top products";
@@ -31,6 +35,11 @@ function row(
   return { Section: section, Item: item, Qty: qty, Amount: amount, Count: count };
 }
 
+// `0 - value` rather than `-value` so a zero deduction exports as 0, never -0.
+function signedAmount(line: MoneyLine, value: number): number {
+  return line.sign === "-" ? 0 - value : value;
+}
+
 // Flattens a date-range /api/reports payload into one uniform-shape row list
 // for lib/export.ts's exportToCSV (Reports page "Download CSV").
 //
@@ -54,6 +63,18 @@ export function buildReportCsvRows(
   rows.push(row(SECTION_TOTALS, "Total sales", NA, totals.totalSales));
   rows.push(row(SECTION_TOTALS, "Total collected", NA, totals.totalCollected));
   rows.push(row(SECTION_TOTALS, "Dues collected", NA, totals.duesCollected));
+
+  // D10 — the range's completed-order money bifurcation (same rule and
+  // labels as the dashboard/reports cards and the EOD slip).
+  // The sign lives in the NUMBER, not the label: a deduction line exports
+  // negative so a spreadsheet SUM of this section lands on Net sales, and no
+  // label starts with "-" (a spreadsheet would read that as a formula).
+  for (const line of MONEY_BREAKDOWN_LINES) {
+    rows.push(
+      row(SECTION_BILL_BREAKDOWN, line.label, NA, signedAmount(line, report.money[line.key])),
+    );
+  }
+  rows.push(row(SECTION_BILL_BREAKDOWN, MONEY_NET_LABEL, NA, totals.totalSales));
 
   for (const d of report.dayWise) {
     rows.push(row(SECTION_SALES_BY_DAY, d.date, NA, d.sales, d.orders));

@@ -44,6 +44,7 @@ import type { ImportRowStatus } from "./product-import";
 import type { DuesCollected } from "./types-analytics";
 import type { PromoCodeConfig, SelfOrderMode } from "./public";
 import type { LoyaltyRewardKind } from "./public-diner";
+import type { DinerBannerInput } from "./schemas/settings-diner.schema";
 
 import type {
   PaymentMode,
@@ -243,6 +244,10 @@ export interface Order {
   // the cafe's configured daily start, so they are reprinted verbatim and never
   // recomputed. Absent when the cafe prints no numbers.
   kotNumbers?: number[];
+  // P4-A — positional, same discipline as kotNumbers: `kotFiredAt[n-1]` is
+  // round n's fire time. May be short or absent entirely on tabs predating
+  // this field (kitchen board falls back to `createdAt` for those rounds).
+  kotFiredAt?: string[];
   billNumber?: number;
   // Absent until the first void / the cancel — an order that never had either
   // carries none of these fields (nothing to show, nothing stored).
@@ -320,6 +325,10 @@ export interface Settings {
   // CR2.2c — codes a diner can type on the QR ordering screen. Optional:
   // an existing Settings doc (and every fixture) predates it.
   promoCodes?: PromoCodeConfig[];
+  // CB-6C — owner-written marketing lines shown on the diner Home tab.
+  // Optional, same promoCodes precedent: an existing Settings doc (and every
+  // fixture) predates it.
+  dinerBanners?: DinerBannerInput[];
   logo: string;
   fssai: string;
 
@@ -392,6 +401,23 @@ export interface ProductStat {
   revenue: number;
 }
 
+// D10 — where the money came from and where it went, over the same COMPLETED
+// orders the surrounding totals describe. Rupees, like every Order field it is
+// folded from (the v1 Order model). Per order: gross = subtotal + reward lines
+// (price x qty of every items[].reward line); discount = order.discount unless
+// discountKind is "reward"; reward = reward lines + (discountKind "reward" ?
+// order.discount : 0); gst = gstAmount (added on top, exclusive mode only);
+// charges = chargeAmount (the table's extra charge). Identity, pinned:
+// gross - discount - reward + gst + charges === totalSales. The rule's single
+// home is apps/cafe/lib/money-breakdown.ts (JS fold + Mongo $group twins).
+export interface MoneyBreakdown {
+  gross: number;
+  discount: number;
+  reward: number;
+  gst: number;
+  charges: number;
+}
+
 // One hour-of-day bucket (cafe-local / IST) of completed-order sales today.
 export interface HourlyStat {
   hour: number; // 0-23, cafe-local hour
@@ -413,7 +439,9 @@ export interface OrderSummary {
   // Keyed by settlement modes only — an "Unpaid" open tab is never completed, so
   // it can never appear here (would otherwise misreport held value as collected).
   paymentBreakdown: Record<SettlementPayMode, PaymentStat>;
-  topProducts: ProductStat[];
+  topProducts: ProductStat[]; // revenue excludes reward lines (served, not sold); qty counts them
+  // D10 — today's completed-order money bifurcation; net = totalSales above.
+  money: MoneyBreakdown;
   hourly: HourlyStat[]; // contiguous hour buckets (earliest→latest sale today)
   // Money taken today against a customer's PRE-EXISTING due (CR1.4) — a
   // separate line from `collected`, never merged into it: collected stays
@@ -477,8 +505,10 @@ export interface Report {
     totalCollected: number;
     duesCollected: number;
   };
+  // D10 — the range's completed-order money bifurcation; net = totals.totalSales.
+  money: MoneyBreakdown;
   salesByPayment: { payment: PaymentMode; amount: number; count: number }[];
-  topProducts: ProductStat[];
+  topProducts: ProductStat[]; // revenue excludes reward lines (served, not sold); qty counts them
   dayWise: { date: string; sales: number; orders: number }[];
   customerDues: CustomerDue[];
 }

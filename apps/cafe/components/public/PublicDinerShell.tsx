@@ -5,156 +5,141 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import type { LogoPlacement } from "@pos/shared/appearance";
-import type { PublicGstConfig, PublicStatusItem } from "@pos/shared/public";
+import type { PublicStatusItem } from "@pos/shared/public";
+import type { PublicDinerBanner } from "@pos/shared/public-diner";
 import { PublicOrderFlow } from "@/components/public/PublicOrderFlow";
 import type { AssignedRewardOffer } from "@/components/public/PublicPromoField";
+import type { PublicMenuProduct } from "@/components/public/PublicMenuItem";
 import { PublicTabBar, type DinerTab } from "@/components/public/PublicTabBar";
 import { PublicRewardsTab } from "@/components/public/PublicRewardsTab";
-import { PublicDinerSignIn } from "@/components/public/PublicDinerSignIn";
 import { PublicHomeTab } from "@/components/public/PublicHomeTab";
 import { PublicAccountTab } from "@/components/public/PublicAccountTab";
 import { PublicMyOrdersTab } from "@/components/public/PublicMyOrdersTab";
-import { pickLastOrder } from "@/components/public/public-home-data";
-import type { PastOrder } from "@/components/public/public-orders-grouping";
+import {
+  pickActiveOrder,
+  pickLastOrder,
+  pickOfferItems,
+  pickPopularItems,
+} from "@/components/public/public-home-data";
 import {
   SHELL_DEFAULT_GST,
   applyRepeatOrder,
-  fetchMenuGst,
+  fetchMenuSnapshot,
   repeatOrderCart,
+  type MenuSnapshot,
 } from "@/components/public/public-shell-repeat";
+import {
+  fetchDinerMe,
+  postDinerLogout,
+  type DinerIdentity,
+} from "@/components/public/public-diner-me";
 import { clearDinerData, readCart } from "@/components/public/public-cart-store";
 import {
   CONTENT_PAD_TABS_ONLY,
   SHELL_BOTTOM_CHROME_STYLE,
 } from "@/components/public/public-shell-layout";
+import { useMyOrders } from "@/components/public/use-my-orders";
 import type { DinerStampCard } from "@/lib/diner-loyalty";
 
-const ME_ENDPOINT = "/api/public/diner/me";
-const LOGOUT_ENDPOINT = "/api/public/diner/logout";
+// How many top sellers Home's "Popular here" row shows — a phone-width
+// scroller, never the whole list.
+const POPULAR_ROW_LIMIT = 8;
 
 // Total ITEMS (not lines) in the persisted cart — the Menu tab's badge count.
-// Read from the store, the same place PublicOrderFlow hydrates its cart from,
-// so the badge never requires reaching into that component's state.
+// Read from the STORE (the same place PublicOrderFlow hydrates from), never
+// from that component's state.
 function countCartItems(): number {
   return readCart().reduce((sum, line) => sum + line.qty, 0);
-}
-
-interface DinerIdentity {
-  name: string;
-  mobile: string;
-}
-
-interface DinerMeResponse {
-  diner: DinerIdentity | null;
-  stampCard?: DinerStampCard;
-  // CB-5D part 2 — the codes a milestone claim has assigned to this diner.
-  // Server-filtered: already-used and already-expired codes never arrive, so
-  // the shell renders whatever it is given without re-judging it (the SERVER
-  // is what enforces a deadline; this list is the display half).
-  rewards?: AssignedRewardOffer[];
 }
 
 interface PublicDinerShellProps {
   token?: string;
   chrome: { heroImage: string; logoPlacement: LogoPlacement };
-  // Server-resolved from Settings by the /m pages. When BOTH are off the shell
-  // renders nothing of its own — no tab bar, no fetch — and the diner sees
-  // exactly today's single-screen menu. That is the behaviour every existing
-  // cafe keeps until its owner opts in.
+  // Server-resolved from Settings by the /m pages. Both off → the shell
+  // renders nothing of its own (no tab bar, no fetch): today's single screen.
   accountsEnabled: boolean;
   loyaltyEnabled: boolean;
-  // Server-resolved via the SHARED selfOrderingAllowed predicate (S12) — feeds
-  // the Home tab's "Order again" affordance and the Orders tab's bill view.
+  // Server-resolved via the SHARED selfOrderingAllowed predicate (S12).
   orderingAllowed: boolean;
+  // CB-6C — owner-written Home banners, already normalised by
+  // readPublicDinerConfig (never the raw Settings field).
+  banners: readonly PublicDinerBanner[];
 }
 
-// CB-4 — the 3-tab diner shell (Menu | My Orders | Rewards).
-//
-// WRAPS PublicOrderFlow rather than reaching into it: that component owns the
-// cart, the table charge and the whole submit path, and is already at this
-// repo's file budget. The Menu tab is therefore byte-for-byte today's screen.
-//
-// Menu stays MOUNTED when another tab is shown (hidden via `hidden`, not
-// unmounted) — unmounting it would drop the in-memory cart the diner is
-// building, which is the one thing this surface must never lose.
+// CB-4 / CB-6C — the diner shell: Home · Menu · Orders · Rewards · Account.
+// WRAPS PublicOrderFlow rather than reaching into it (it owns the cart, the
+// table charge and the submit path). The Menu tab stays MOUNTED when another
+// tab is shown (`hidden`, not unmounted) so the in-memory cart survives.
 export function PublicDinerShell({
   token,
   chrome,
   accountsEnabled,
   loyaltyEnabled,
   orderingAllowed,
+  banners,
 }: PublicDinerShellProps) {
   const [tab, setTab] = useState<DinerTab>("menu");
   const [diner, setDiner] = useState<DinerIdentity | null>(null);
   const [stampCard, setStampCard] = useState<DinerStampCard | null>(null);
   const [rewards, setRewards] = useState<AssignedRewardOffer[] | undefined>(undefined);
   const [loading, setLoading] = useState(accountsEnabled);
-  // Bumped ONLY by "Order this again" — see the key={menuEpoch} note below.
+  // Bumped ONLY by a cart write from outside PublicOrderFlow ("Order again",
+  // Home's quick add) — see the key={menuEpoch} note below.
   const [menuEpoch, setMenuEpoch] = useState(0);
-  // Total items in the cart, for the Menu tab badge. Refreshed on every tab
-  // change (and after a repeat) — the cart itself lives in PublicOrderFlow.
   const [cartCount, setCartCount] = useState(0);
-  // Fed by PublicMyOrdersTab's onOrdersResolved once its mount-time fan-out
-  // settles — so Home's "Order again" card can read the same resolved list
-  // with NO fetch of its own. If the Orders tab has never been opened this
-  // stays null and the card is simply absent; that is an accepted trade-off
-  // (see the prop below), not a bug to work around with a second fetch.
-  const [resolvedOrders, setResolvedOrders] = useState<PastOrder[] | null>(null);
-  // Seeded with the SAME default shape PublicOrderFlow uses (SHELL_DEFAULT_GST
-  // — a pre-load bill must never invent tax) and refreshed from the cached
-  // /api/public/menu response (nearly always a cache hit, see
-  // public-shell-repeat.ts's own comment) once it resolves.
-  const [gst, setGst] = useState<PublicGstConfig>(SHELL_DEFAULT_GST);
+  // The slice of /api/public/menu the shell holds (gst for bills, the cafe
+  // name, popular ids + items for Home) — the cached route, one fetch.
+  const [snapshot, setSnapshot] = useState<MenuSnapshot | null>(null);
+  // Home's active-order card deep-links into the Orders tab's detail: the
+  // code parks here until that tab mounts, and clears when the diner goes
+  // anywhere else (so a later plain tap on Orders opens the list).
+  const [pendingOpenCode, setPendingOpenCode] = useState<string | null>(null);
+  // Bumped by signOut so the lifted fan-out re-reads the (now cleared) codes.
+  const [ordersEpoch, setOrdersEpoch] = useState(0);
 
+  // The both-features-off cafe must fetch NOTHING the shell adds.
+  const shellActive = accountsEnabled || loyaltyEnabled;
+  const orders = useMyOrders(shellActive, ordersEpoch);
+
+  // A failed poll (null) keeps what is on screen rather than flipping a
+  // signed-in diner to signed-out.
   const refresh = useCallback(async () => {
     if (!accountsEnabled) return;
-    try {
-      const res = await fetch(ME_ENDPOINT);
-      const envelope = (await res.json().catch(() => null)) as
-        | { success: true; data: DinerMeResponse }
-        | { success: false; error: string }
-        | null;
-      if (envelope?.success) {
-        setDiner(envelope.data.diner);
-        setStampCard(envelope.data.stampCard ?? null);
-        setRewards(envelope.data.rewards);
-      }
-    } catch {
-      // Offline or a hiccup: leave whatever is already on screen rather than
-      // flipping a signed-in diner to signed-out on one failed poll.
-    } finally {
-      setLoading(false);
+    const data = await fetchDinerMe();
+    if (data) {
+      setDiner(data.diner);
+      setStampCard(data.stampCard ?? null);
+      setRewards(data.rewards);
     }
+    setLoading(false);
   }, [accountsEnabled]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
-  // The cart survives a reload (it is persisted), so seed the badge on mount —
-  // otherwise a diner who returns to a still-full cart sees no count until
-  // they happen to switch tabs.
+  // The cart survives a reload (it is persisted), so seed the badge on mount.
   useEffect(() => {
     setCartCount(countCartItems());
   }, []);
 
-  // Seeds the bill-view gst once, from the SAME cached menu route the repeat
-  // path already hits — not a second real load (see public-shell-repeat.ts).
+  // One read of the cached menu route for everything the shell shows off it.
   useEffect(() => {
+    if (!shellActive) return;
     let cancelled = false;
-    void fetchMenuGst().then((resolved) => {
-      if (!cancelled && resolved !== null) setGst(resolved);
+    void fetchMenuSnapshot().then((resolved) => {
+      if (!cancelled && resolved !== null) setSnapshot(resolved);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [shellActive]);
 
-  // "Order this again": rebuild the cart from a past order, VALIDATED against
-  // the live menu (repeatOrderCart drops anything removed, hidden, sold out or
-  // whose variation is gone — a repeat must never re-add at a stale price),
-  // merge it onto whatever is already in the cart, persist, then remount the
-  // menu so it hydrates from the new cart and show the diner what happened.
+  // "Order this again" / Home quick add: rebuild the cart from past lines,
+  // VALIDATED against the live menu (repeatOrderCart drops anything removed,
+  // hidden, sold out or whose variation is gone — never a stale price), merge
+  // onto the current cart, persist, remount the menu so it hydrates the new
+  // cart, and tell the diner what happened.
   async function repeatOrder(items: PublicStatusItem[]) {
     const result = await repeatOrderCart(items);
     if (result === null) {
@@ -167,51 +152,45 @@ export function PublicDinerShell({
     setTab("menu");
   }
 
-  // Leaving the Menu tab must also dismiss anything the MENU had open.
-  //
-  // The cart Drawer (vaul) and the item Sheet (Radix) both PORTAL to
-  // document.body, so they are NOT inside the `hidden` wrapper below — hiding
-  // the menu leaves an open drawer floating over the Orders/Rewards tab, on
-  // top of a menu that is `display:none`. Their open state lives inside
-  // PublicOrderFlow, which this shell deliberately does not reach into (it
-  // owns the cart, and remounting it here would throw that cart away).
-  //
-  // Escape is the documented close path for BOTH libraries, so dispatching it
-  // asks each surface to close itself through its own state machine — no
-  // reaching in, no remount, and a no-op when nothing is open.
+  // Home's one-tap add rides the SAME validated path — priced from the LIVE
+  // menu by buildRepeatCart, never from the snapshot. Simple items only.
+  function quickAdd(product: PublicMenuProduct) {
+    void repeatOrder([{ productId: product.id, name: product.name, price: product.price, qty: 1, modifiers: [] }]);
+  }
+
+  // Leaving the Menu tab must also dismiss anything the MENU had open: the
+  // cart Drawer (vaul) and the item Sheet (Radix) PORTAL to document.body, so
+  // they sit outside the `hidden` wrapper below. Escape is the documented
+  // close path for both — each surface closes through its own state machine.
   function selectTab(next: DinerTab) {
     if (next !== "menu" && typeof document !== "undefined") {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     }
-    // Re-read the cart on every tab change so the Menu tab's badge is right
-    // the moment the diner walks away from the menu. Reading the STORE rather
-    // than PublicOrderFlow's state keeps this shell out of that component
-    // (it owns the cart, and reaching in would mean remounting it).
+    if (next !== "orders") setPendingOpenCode(null);
+    // Re-read the cart on every tab change so the Menu badge is right the
+    // moment the diner walks away from the menu (store, not component state).
     setCartCount(countCartItems());
     setTab(next);
   }
 
+  function openActiveOrder(code: string) {
+    setPendingOpenCode(code);
+    selectTab("orders");
+  }
+
   async function signOut() {
-    try {
-      await fetch(LOGOUT_ENDPOINT, { method: "POST" });
-    } catch {
-      // The server row may survive a failed call, but it expires on its own —
-      // and the local state below is what the diner actually sees.
-    }
+    await postDinerLogout();
     setDiner(null);
     setStampCard(null);
-    setResolvedOrders(null);
-    // CB-5D part 2 — the assigned codes go with the rest of the diner's state.
-    // Missing this leaks a REAL benefit, not just a display: the promo field
-    // renders these as tap-to-apply rows, so the next person on a shared
-    // phone (or the cafe's own tablet) could spend the previous diner's
-    // reward. The route deliberately no-stores this payload for exactly that
-    // reason; the client must not undo it on sign-out.
+    // CB-5D part 2 — the assigned codes go with the rest of the diner's state:
+    // the promo field renders them as tap-to-apply rows, so the next person on
+    // a shared phone could spend the previous diner's reward otherwise.
     setRewards(undefined);
-    // A logout clears diner-owned localStorage (identity + codes + menu path
-    // + refresh timestamps) — deliberately NOT the cart or the theme, see
-    // clearDinerData's own comment.
+    // Clears diner-owned localStorage (identity + codes + menu path + refresh
+    // timestamps) — deliberately NOT the cart or the theme.
     clearDinerData();
+    setOrdersEpoch((n) => n + 1);
+    setPendingOpenCode(null);
     setTab("menu");
   }
 
@@ -225,84 +204,93 @@ export function PublicDinerShell({
     ? ["home", "menu", "orders", "rewards", "account"]
     : ["home", "menu", "orders", "account"];
 
-  // HOME LOADING (deliberate decision, see slice brief): gate the loyalty
-  // strip on the SAME `loading` state the Rewards tab already holds, by
-  // withholding stampCard until it resolves — a signed-in diner whose card
-  // has not loaded yet sees no strip rather than a stale/undefined one.
-  const homeStampCard = loading ? null : stampCard;
-  const lastOrder = resolvedOrders ? pickLastOrder(resolvedOrders) : null;
+  const signedIn = diner !== null;
+  const activeOrder = orders ? pickActiveOrder(orders) : null;
+  const lastOrder = orders ? pickLastOrder(orders) : null;
+  const popularItems = pickPopularItems(snapshot?.items, snapshot?.popular, POPULAR_ROW_LIMIT);
+  const offerItems = pickOfferItems(snapshot?.items);
+  // Seeded with the SAME default shape PublicOrderFlow uses — a pre-load bill
+  // must never invent tax.
+  const gst = snapshot?.gst ?? SHELL_DEFAULT_GST;
+  const cafeName = snapshot?.restaurantName ?? "";
 
   return (
     // style: raises --pub-bottom-chrome for this whole subtree, which is how
-    // PublicFlowChrome's cart bar (and the status action bar) learn to float
-    // ABOVE the tab bar instead of underneath it. Without the shell the same
-    // class strings resolve to 0px, so a cafe with these features off renders
-    // exactly as it did before CB-4.
+    // the cart bar (and the status action bar) float ABOVE the tab bar.
+    // Without the shell the same class strings resolve to 0px.
     <div className={CONTENT_PAD_TABS_ONLY} style={SHELL_BOTTOM_CHROME_STYLE}>
-      {/* `hidden` rather than a conditional render — see the note above on why
-          the Menu tab must never unmount.
-
-          `key={menuEpoch}` is the ONE deliberate exception: "Order this again"
-          writes the rebuilt cart to localStorage, and PublicOrderFlow hydrates
-          from there exactly once on mount. Bumping the key remounts it so it
-          picks the new cart up, rather than reaching into that component's
-          state from out here (it owns the cart, and it is already at this
-          repo's file budget). Nothing else changes the epoch, so the normal
-          tab-switching path still never remounts the menu. */}
+      {/* `hidden`, never a conditional render — the Menu tab owns the
+          in-memory cart. `key={menuEpoch}` is the ONE deliberate remount: a
+          repeat/quick add writes the rebuilt cart to localStorage, and
+          PublicOrderFlow hydrates from there exactly once on mount. */}
       <div hidden={tab !== "menu"}>
         <PublicOrderFlow key={menuEpoch} token={token} chrome={chrome} rewards={rewards} />
       </div>
 
       {tab === "home" && (
         <PublicHomeTab
-          signedIn={diner !== null}
+          cafeName={cafeName}
+          chrome={chrome}
+          signedIn={signedIn}
           dinerName={diner?.name ?? ""}
-          stampCard={homeStampCard}
+          loyaltyEnabled={loyaltyEnabled}
+          loading={loading}
+          stampCard={stampCard}
+          banners={banners}
+          activeOrder={activeOrder}
           lastOrder={lastOrder}
+          offerItems={offerItems}
+          popularItems={popularItems}
           orderingAllowed={orderingAllowed}
           onBrowseMenu={() => selectTab("menu")}
           onRepeatLast={() => {
-            const items = resolvedOrders?.find((o) => o.code === lastOrder?.code)?.data?.items;
+            const items = orders?.find((o) => o.code === lastOrder?.code)?.data?.items;
             if (items) void repeatOrder(items);
           }}
           onOpenOrders={() => selectTab("orders")}
-          onSignIn={() => selectTab("rewards")}
+          onOpenActiveOrder={() => {
+            if (activeOrder) openActiveOrder(activeOrder.code);
+          }}
+          onOpenRewards={() => selectTab(loyaltyEnabled ? "rewards" : "account")}
+          onSignIn={() => selectTab("account")}
+          onQuickAdd={quickAdd}
         />
       )}
 
       {tab === "orders" && (
         <PublicMyOrdersTab
-          signedIn={diner !== null}
-          dinerName={diner?.name ?? ""}
-          onSignIn={() => setTab("rewards")}
-          onSignOut={signOut}
-          onRepeat={repeatOrder}
+          orders={orders}
+          initialOpenCode={pendingOpenCode}
+          signedIn={signedIn}
           orderingAllowed={orderingAllowed}
           gst={gst}
-          onOrdersResolved={setResolvedOrders}
+          onSignIn={() => selectTab("account")}
+          onBrowseMenu={() => selectTab("menu")}
+          onRepeat={repeatOrder}
         />
       )}
 
       {tab === "account" && (
-        <PublicAccountTab diner={diner} onSignIn={() => selectTab("rewards")} onSignOut={signOut} />
+        <PublicAccountTab
+          diner={diner}
+          cafeName={cafeName}
+          onSignedIn={(signedInDiner) => {
+            setDiner(signedInDiner);
+            void refresh();
+          }}
+          onSignOut={signOut}
+        />
       )}
 
-      {tab === "rewards" &&
-        (diner === null ? (
-          <PublicDinerSignIn
-            onSignedIn={(signedIn) => {
-              setDiner(signedIn);
-              void refresh();
-            }}
-          />
-        ) : (
-          <PublicRewardsTab
-            loading={loading}
-            signedIn
-            card={stampCard}
-            onSignIn={() => undefined}
-          />
-        ))}
+      {tab === "rewards" && (
+        <PublicRewardsTab
+          loading={loading}
+          signedIn={signedIn}
+          card={stampCard}
+          rewards={rewards}
+          onSignIn={() => selectTab("account")}
+        />
+      )}
 
       <PublicTabBar active={tab} onSelect={selectTab} tabs={tabs} cartCount={cartCount} />
     </div>

@@ -13,14 +13,15 @@ import {
   type ShellStore,
 } from "./store";
 
-const DEFAULT_KEYS = ["serverOrigin", "deviceName", "autoStart", "windowBounds"] as const;
+const DEFAULT_KEYS = ["serverOrigin", "deviceName", "autoStart", "windowBounds", "printMode"] as const;
 
-test("DEFAULT_STORE: all four fields are null", () => {
+test("DEFAULT_STORE: all five fields are null", () => {
   assert.deepEqual(DEFAULT_STORE, {
     serverOrigin: null,
     deviceName: null,
     autoStart: null,
     windowBounds: null,
+    printMode: null,
   });
 });
 
@@ -34,12 +35,13 @@ for (const bad of [null, undefined, 42, "x", []]) {
   });
 }
 
-test("normalizeStore: unknown keys are dropped, output keys deep-equal the four", () => {
+test("normalizeStore: unknown keys are dropped, output keys deep-equal the five", () => {
   const result = normalizeStore({
     serverOrigin: null,
     deviceName: null,
     autoStart: null,
     windowBounds: null,
+    printMode: null,
     extraJunkKey: "should not survive",
     another: { nested: true },
   });
@@ -65,9 +67,24 @@ test("normalizeStore: wrong-typed fields fall back to DEFAULT per-field (not who
     deviceName: 456,
     autoStart: "yes",
     windowBounds: "nope",
+    printMode: 7,
   });
   assert.deepEqual(result, DEFAULT_STORE);
 });
+
+// The print method (2026-09-19): only the two known lanes are stored; a typo,
+// a different case, or a value from a newer/older build reads as "never
+// chosen" so the shell's default ("direct") applies.
+for (const mode of ["direct", "driver"]) {
+  test(`normalizeStore: printMode ${JSON.stringify(mode)} survives`, () => {
+    assert.equal(normalizeStore({ printMode: mode }).printMode, mode);
+  });
+}
+for (const bad of ["DIRECT", "raster", "", " direct", true, 1]) {
+  test(`normalizeStore: printMode ${JSON.stringify(bad)} -> null`, () => {
+    assert.equal(normalizeStore({ printMode: bad }).printMode, null);
+  });
+}
 
 test("normalizeStore: serverOrigin is re-validated -- http remote host -> null", () => {
   const result = normalizeStore({ serverOrigin: "http://my-pos.example.com" });
@@ -145,6 +162,7 @@ test("readStore/writeStore round trip via a tmp dir", async (t) => {
       deviceName: "Kitchen Printer",
       autoStart: true,
       windowBounds: { x: 10, y: 20, width: 800, height: 600 },
+      printMode: "driver",
     };
     writeStore(file, store);
     const readBack = readStore(file);

@@ -826,9 +826,10 @@ test("PIN: CR2.3 §20 reachability — the dashboard layout renders PosPulseProv
   // dashboard layout must render <PrintHostProvider> and <PrintHostPrintSources />
   // EXACTLY ONCE each (MEASURED). Ordering (nested inside PosPulseProvider,
   // PrintHostPrintSources between <main> and </SidebarInset>) is already
-  // discharged by print-host-paths.test.ts's PIN A; PrintHostCard reachability
-  // is discharged by print-host-card-paths.test.ts:42-58 — this test adds only
-  // the net-new cardinality fact, no duplicate assertions.
+  // discharged by print-host-paths.test.ts's PIN A; PrinterSetupCard's own
+  // reachability (renamed from PrintHostCard in the 2026-09-19 kiosk-wizard
+  // cleanup) is discharged by print-host-card-paths.test.ts — this test adds
+  // only the net-new cardinality fact, no duplicate assertions.
   const rawLayoutSrc = readSrc(DASHBOARD_LAYOUT);
   assert.equal(
     (rawLayoutSrc.match(/<PrintHostProvider>/g) ?? []).length,

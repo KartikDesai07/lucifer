@@ -1,5 +1,6 @@
 import { cafeDateString } from "@pos/shared/utils";
 import type { PublicOrderRequestStatusData } from "@pos/shared/public";
+import { isActiveOrderStatus } from "@/components/public/PublicStatusChip";
 
 // S8 — pure date-grouping for the diner's "My Orders" list. NO React import:
 // PublicMyOrdersTab calls this once per render off its own `orders` state.
@@ -14,6 +15,11 @@ import type { PublicOrderRequestStatusData } from "@pos/shared/public";
 export interface PastOrder {
   code: string;
   data: PublicOrderRequestStatusData | null;
+  // F8 (CB-6D-B review fix, LOW) — true while this row's fetch is still in
+  // flight (seeded by use-my-orders.ts, cleared once that row's fetch
+  // settles by any outcome). Absent/undefined means settled — either
+  // resolved with data, or a resolve that failed and is not going to retry.
+  pending?: true;
 }
 
 export interface OrderDateGroup {
@@ -87,4 +93,54 @@ export function groupOrdersByDate(orders: PastOrder[], now: Date): OrderDateGrou
   }
 
   return groups;
+}
+
+// CB-6D-B — splits the diner's order list into the "Live now" rows (still
+// pending/accepting, drawn as PublicActiveOrderCard) and everything else
+// (settled AND unresolved), which stays in the day-grouped list below. Pure,
+// never mutates `orders`.
+//
+// F6 (CB-6D-B review fix, LOW) — `live` used to be string-sorted newest-first
+// here, but its only caller (pickActiveOrders, via Date.parse) re-sorts it
+// anyway — two ordering rules for one list, and the string sort was the dead
+// one (it also mis-orders mixed-form ISO timestamps, e.g. a "+05:30" offset
+// form against a "Z" form). `live` now keeps INPUT order; pickActiveOrders
+// owns newest-first.
+export function splitLiveOrders(orders: readonly PastOrder[]): { live: PastOrder[]; rest: PastOrder[] } {
+  const live: PastOrder[] = [];
+  const rest: PastOrder[] = [];
+
+  for (const order of orders) {
+    if (order.data !== null && isActiveOrderStatus(order.data.status)) {
+      live.push(order);
+    } else {
+      rest.push(order);
+    }
+  }
+
+  return { live, rest };
+}
+
+// F8 (CB-6D-B review fix, LOW) — the first painted frame seeded every order
+// row `{ code, data: null }` before any fetch settled, and the tab's only
+// skeleton gate was `orders === null`, so that first frame briefly listed
+// EVERY order as an unresolved Link under "More orders" (visible now that
+// "Live now" makes the re-shuffle obvious). Splits `orders` into the settled
+// rows (grouped as normal) and a count of still-pending rows (rendered as
+// trailing skeleton placeholders instead). Pure, input order preserved.
+export function partitionPending(
+  orders: readonly PastOrder[],
+): { settled: PastOrder[]; pendingCount: number } {
+  const settled: PastOrder[] = [];
+  let pendingCount = 0;
+
+  for (const order of orders) {
+    if (order.pending) {
+      pendingCount++;
+    } else {
+      settled.push(order);
+    }
+  }
+
+  return { settled, pendingCount };
 }

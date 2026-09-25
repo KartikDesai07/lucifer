@@ -300,9 +300,8 @@ test("PIN: use-public-suggestions.ts skips products with available === false (so
 test("PIN: PublicStatusTimeline.tsx carries the exact 3 step labels (source: PublicStatusTimeline.tsx:28-30)", () => {
   const src = stripComments(readSrc(PUBLIC_STATUS_TIMELINE_TSX));
   const labels = [
-    "Order sent ✓",
+    "Order sent",
     "Cafe is confirming…",
-    "Being prepared ✓",
     "Being prepared",
   ];
   for (const label of labels) {
@@ -311,6 +310,10 @@ test("PIN: PublicStatusTimeline.tsx carries the exact 3 step labels (source: Pub
       `PublicStatusTimeline.tsx must contain the step-label literal ${JSON.stringify(label)} — a copy change here silently breaks the owner's "very very easy" 3-step promise (PublicStatusTimeline.tsx:28-30)`,
     );
   }
+  // CB-6C: the "✓" text glyph must be GONE from every label — the Check icon
+  // on a "done" step already conveys it, and the dir-wide no-emoji pin bans
+  // U+2713. A regression here would silently reintroduce a banned glyph.
+  assert.ok(!src.includes("✓"), 'PublicStatusTimeline.tsx must not contain the "✓" glyph in any step label — the Check icon already conveys done');
 });
 
 // ── PublicOrderStatus.tsx — manual refresh + cooldown + terminal statuses ──

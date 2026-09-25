@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { KeyRound } from "lucide-react";
 
 import { PUBLIC_MOBILE_PATTERN } from "@pos/shared/public";
 import { DINER_PIN_LENGTH, isValidDinerPin } from "@pos/shared/public-diner";
@@ -11,6 +12,7 @@ import {
   PUBLIC_TOUCH_TARGET_CLASS,
   PUBLIC_TOUCH_TEXT_CLASS,
 } from "@/components/public/public-shell-layout";
+import { PUB_TINT_CLASS } from "@/components/public/public-ui";
 import { cn } from "@/lib/utils";
 
 // CB-4 — the diner's sign-in / first-PIN form. Two fields, no OTP, no email,
@@ -80,8 +82,11 @@ export function PublicDinerSignIn({ onSignedIn }: PublicDinerSignInProps) {
 
   return (
     <div className="space-y-pub-gap p-pub-pad">
-      <div className="space-y-1">
-        <h2 className="text-lg font-medium">
+      <div className="flex flex-col items-center gap-2 text-center">
+        <span className={cn(PUB_TINT_CLASS, "grid h-12 w-12 shrink-0 place-items-center rounded-full")}>
+          <KeyRound className="h-5 w-5" aria-hidden="true" />
+        </span>
+        <h2 className="font-pub-display text-lg font-semibold">
           {mode === "signin" ? "Sign in" : "Set your PIN"}
         </h2>
         <p className="text-sm text-muted-foreground">
@@ -105,6 +110,7 @@ export function PublicDinerSignIn({ onSignedIn }: PublicDinerSignInProps) {
           type="tel"
           inputMode="numeric"
           autoComplete="tel"
+          className="h-12 text-lg"
           value={mobile}
           onChange={(e) => setMobile(e.target.value)}
         />
@@ -113,7 +119,7 @@ export function PublicDinerSignIn({ onSignedIn }: PublicDinerSignInProps) {
       {mode === "create" && (
         <div className="space-y-1.5">
           <Label htmlFor="diner-name">Your name</Label>
-          <Input id="diner-name" value={name} onChange={(e) => setName(e.target.value)} />
+          <Input id="diner-name" className="h-12 text-lg" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
       )}
 
@@ -125,6 +131,7 @@ export function PublicDinerSignIn({ onSignedIn }: PublicDinerSignInProps) {
           inputMode="numeric"
           autoComplete={mode === "signin" ? "current-password" : "new-password"}
           maxLength={DINER_PIN_LENGTH}
+          className="h-12 text-center text-lg tracking-[0.5em]"
           value={pin}
           // Digits only, enforced as you type: the server rejects anything
           // else anyway, so silently dropping a stray character is kinder than

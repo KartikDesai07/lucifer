@@ -1,16 +1,17 @@
-// Print-standardization plan (.claude/plan/v2/print-standardization-plan.md
-// §B2, slice A2) — the self-service printer setup wizard's page shell. No
-// hooks of its own, so this stays a server component (mirrors the sibling
-// settings/page.tsx idiom otherwise: AdminGuard-wrapped, h2 + one-line intro).
-// PH-10b (D3): the Print host card now lives here too, ABOVE the wizard —
-// moved off /requests so the per-device toggles get the whole screen there.
+// The printing settings page. Rebuilt simple on 2026-09-19 (owner: the page
+// "pura kharab hai", remove the unused and the extra, keep one clear view).
+//
+// It used to carry a five-step wizard for downloading a .bat that launched
+// Chrome in kiosk-printing mode — the workaround from before the Windows
+// desktop app existed. That is gone; PrinterSetupCard is now the whole page:
+// name this PC as the print host, pick its printer, test print, and remove the
+// host if the PC is down. Server component: no hooks of its own.
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
 import { AdminGuard } from "@/components/shared/AdminGuard";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { PrintHostCard } from "@/components/print/PrintHostCard";
-import { PrinterSetupWizard } from "@/components/print/PrinterSetupWizard";
+import { PrinterSetupCard } from "@/components/print/PrinterSetupCard";
 import { SETTINGS_BASE_PATH } from "@/lib/settings-sections";
 
 export default function PrinterSetupPage() {
@@ -27,13 +28,10 @@ export default function PrinterSetupPage() {
           </Link>
           <PageHeader
             title="Printer setup"
-            description={
-              'Make this PC the print host and turn on silent printing with the "POS Printer" shortcut — set up once, used on every order.'
-            }
+            description="Choose the PC that prints, pick its printer, and print a test slip."
           />
         </div>
-        <PrintHostCard />
-        <PrinterSetupWizard />
+        <PrinterSetupCard />
       </div>
     </AdminGuard>
   );

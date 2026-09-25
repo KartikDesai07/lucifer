@@ -1,12 +1,12 @@
 "use client";
 
-import Image from "next/image";
 import { Plus } from "lucide-react";
 
 import { effectiveUnitPrice } from "@pos/shared/public";
-import { inr } from "@/lib/utils";
-import { productImageUrl } from "@/lib/images";
+import { inr, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { PublicInitialTile } from "@/components/public/PublicInitialTile";
+import { PUB_CARD_CLASS } from "@/components/public/public-ui";
 import type { PublicMenuProduct } from "@/components/public/PublicMenuItem";
 
 // S4 — "Goes well with your order" cross-sell strip inside the cart drawer
@@ -16,19 +16,15 @@ import type { PublicMenuProduct } from "@/components/public/PublicMenuItem";
 // this component only renders. Baymard: relevance over padding — an empty
 // list renders NOTHING, never an empty shell.
 
-// Card art, CSS px — small enough that 3+ chips fit a phone-width scroller.
-const SUGGESTION_PHOTO_PX = 48;
+// Card art size — the smallest tile on the diner surface: a cross-sell chip
+// earns less visual weight than a menu tile (80) or an offer tile (64).
+const SUGGESTION_TILE_SIZE = 48;
 
 function PublicSuggestionChip({ item, onAdd }: { item: PublicMenuProduct; onAdd: (item: PublicMenuProduct) => void }) {
-  const url = productImageUrl(item.image, SUGGESTION_PHOTO_PX * 2);
   const price = effectiveUnitPrice(item.price, item.discount);
   return (
-    <div className="flex w-40 shrink-0 items-center gap-2 rounded-lg border bg-card p-2 shadow-sm">
-      {url ? (
-        <Image src={url} alt="" width={SUGGESTION_PHOTO_PX} height={SUGGESTION_PHOTO_PX} loading="lazy" className="h-10 w-10 shrink-0 rounded-md object-cover" />
-      ) : (
-        <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-muted text-sm font-semibold text-muted-foreground">{item.name.charAt(0).toUpperCase()}</span>
-      )}
+    <div className={cn(PUB_CARD_CLASS, "flex w-40 shrink-0 items-center gap-2 p-2")}>
+      <PublicInitialTile name={item.name} tintKey={item.category} imageRef={item.image} size={SUGGESTION_TILE_SIZE} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-xs font-medium leading-tight">{item.name}</p>
         <p className="text-xs font-semibold tabular-nums">{inr(price)}</p>

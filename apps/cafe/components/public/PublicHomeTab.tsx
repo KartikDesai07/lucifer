@@ -1,141 +1,131 @@
 "use client";
 
-import { ClipboardList, LogIn, ReceiptText, Stamp, UtensilsCrossed } from "lucide-react";
+import { ChevronRight, ClipboardList, ReceiptText } from "lucide-react";
 
-import type { PublicOrderRequestStatusData } from "@pos/shared/public";
-import { inr } from "@/lib/utils";
+import { inr, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { PUBLIC_TOUCH_TARGET_CLASS } from "@/components/public/public-shell-layout";
+import { PUB_HOME_STACK_CLASS, PUB_ROW_BUTTON_CLASS, PUB_TINT_CLASS, PUB_TONAL_CARD_CLASS } from "@/components/public/public-ui";
+import { PublicStatusChip } from "@/components/public/PublicStatusChip";
+import { PublicHomeHero } from "@/components/public/PublicHomeHero";
+import { PublicDinerBanners } from "@/components/public/PublicDinerBanners";
+import { PublicActiveOrderCard } from "@/components/public/PublicActiveOrderCard";
+import { PublicLoyaltyGlance } from "@/components/public/PublicLoyaltyGlance";
+import { PublicPopularRow } from "@/components/public/PublicPopularRow";
+import type { HomeActiveOrder, HomeLastOrder } from "@/components/public/public-home-data";
+import type { PublicMenuProduct } from "@/components/public/PublicMenuItem";
 import type { DinerStampCard } from "@/lib/diner-loyalty";
-import type { HomeLastOrder } from "@/components/public/public-home-data";
+import type { PublicDinerBanner } from "@pos/shared/public-diner";
+import type { LogoPlacement } from "@pos/shared/appearance";
 
-// S7 — the diner Home tab: an app-feel landing surface for the TAB (never the
-// QR-scan screen — Menu stays the landing tab; see the owner decision in the
-// slice brief). Presentational only, like PublicRewardsTab: the shell already
-// holds `{diner, stampCard}` from GET /api/public/diner/me and passes it down
-// as props — this component fetches nothing.
+// CB-6D-A — the diner Home tab, redesigned Starbucks/premium-cafe style (the
+// owner's own direction: calm, lots of whitespace, the stamp card as the
+// hero) for the TAB (never the QR-scan screen — Menu stays the landing tab).
+// Presentational only, like the other tabs: the shell resolves every prop
+// here (menu snapshot, accounts fetch, the lifted orders fan-out) and this
+// file renders from them alone — it never calls fetch(.
 //
-// The loyalty section here is a SUMMARY, not a re-render of the Rewards tab:
-// it reuses DinerStampCard's already-derived toNextReward/rewardsReady/
-// unitLabel fields rather than re-deriving any stamp math, and it deliberately
-// does not draw the ladder detail that tab owns.
-
-// EXHAUSTIVE by construction — a new request status fails tsc here rather
-// than rendering a raw enum value onto the Home card. Plain English, matching
-// the words PublicMyOrdersTab already shows for the same states.
-const LAST_ORDER_STATUS_WORDS: Record<PublicOrderRequestStatusData["status"], string> = {
-  pending: "Waiting for the counter",
-  accepting: "Being prepared",
-  accepted: "Accepted",
-  rejected: "This one was cancelled",
-};
+// Sections render in a fixed order — header, stamp card, live order,
+// announcements, daily offers, popular here, order again, your orders — each
+// one skipping itself when it has nothing to show, so a brand-new cafe with
+// no orders, no rewards and no banners still gets a clean, uncluttered Home
+// rather than a wall of empty sections.
 
 interface PublicHomeTabProps {
+  cafeName: string;
+  chrome: { heroImage: string; logoPlacement: LogoPlacement };
   signedIn: boolean;
   dinerName: string;
+  loyaltyEnabled: boolean;
+  loading: boolean;
   stampCard: DinerStampCard | null;
+  banners: readonly PublicDinerBanner[];
+  activeOrder: HomeActiveOrder | null;
   lastOrder: HomeLastOrder | null;
+  offerItems: PublicMenuProduct[];
+  popularItems: PublicMenuProduct[];
   orderingAllowed: boolean;
   onBrowseMenu: () => void;
   onRepeatLast: () => void;
   onOpenOrders: () => void;
+  onOpenActiveOrder: () => void;
+  onOpenRewards: () => void;
   onSignIn: () => void;
-}
-
-function unitWord(count: number, unitLabel: string): string {
-  return count === 1 ? unitLabel : `${unitLabel}s`;
+  onQuickAdd: (product: PublicMenuProduct) => void;
 }
 
 export function PublicHomeTab({
+  cafeName,
+  chrome,
   signedIn,
   dinerName,
+  loyaltyEnabled,
+  loading,
   stampCard,
+  banners,
+  activeOrder,
   lastOrder,
+  offerItems,
+  popularItems,
   orderingAllowed,
   onBrowseMenu,
   onRepeatLast,
   onOpenOrders,
+  onOpenActiveOrder,
+  onOpenRewards,
   onSignIn,
+  onQuickAdd,
 }: PublicHomeTabProps) {
-  const greeting = signedIn && dinerName.length > 0 ? `Hi, ${dinerName}` : "Welcome";
+  const showOrderAgain = orderingAllowed && lastOrder && lastOrder.code !== activeOrder?.code;
 
   return (
-    <div className="space-y-pub-gap p-pub-pad">
-      <div>
-        <h1 className="text-xl font-semibold">{greeting}</h1>
-        <p className="text-sm text-muted-foreground">What would you like to do today?</p>
-      </div>
+    <div className={PUB_HOME_STACK_CLASS}>
+      <PublicHomeHero cafeName={cafeName} chrome={chrome} signedIn={signedIn} dinerName={dinerName} />
 
-      <Button
-        className={`w-full justify-start gap-pub-gap ${PUBLIC_TOUCH_TARGET_CLASS}`}
-        onClick={onBrowseMenu}
-      >
-        <UtensilsCrossed className="h-5 w-5 shrink-0" aria-hidden="true" />
-        Browse the menu
-      </Button>
-
-      {/* Menu-only cafes must show no ordering affordance at all — not a
-          disabled card, HIDDEN entirely. */}
-      {orderingAllowed && lastOrder && (
-        <button
-          type="button"
-          onClick={onRepeatLast}
-          className={`flex w-full items-center justify-between gap-pub-gap rounded-lg border p-pub-pad text-left ${PUBLIC_TOUCH_TARGET_CLASS}`}
-        >
-          <span className="flex items-center gap-pub-gap">
-            <ReceiptText className="h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
-            <span className="min-w-0">
-              <span className="block text-sm font-medium">Order again</span>
-              <span className="block text-xs text-muted-foreground">
-                {lastOrder.itemCount} {lastOrder.itemCount === 1 ? "item" : "items"} · {inr(lastOrder.total)}
-              </span>
-              {/* What actually HAPPENED to that order. A rejected one still
-                  makes a fine reorder — the kitchen may simply have been
-                  closed — but the diner must be told, not quietly invited to
-                  repeat an order the cafe refused (review 2026-09-13). */}
-              <span className="block text-xs text-muted-foreground">
-                {LAST_ORDER_STATUS_WORDS[lastOrder.status]}
-              </span>
-            </span>
-          </span>
-        </button>
+      {loyaltyEnabled && (
+        <PublicLoyaltyGlance
+          signedIn={signedIn}
+          loading={loading}
+          stampCard={stampCard}
+          onSignIn={onSignIn}
+          onOpenRewards={onOpenRewards}
+        />
       )}
 
-      {stampCard && (
-        <div className="rounded-lg border p-pub-pad">
-          <div className="flex items-center gap-pub-gap">
-            <Stamp className="h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
-            <p className="text-sm font-medium">Your rewards</p>
+      {activeOrder && <PublicActiveOrderCard order={activeOrder} onOpen={onOpenActiveOrder} />}
+
+      <PublicDinerBanners banners={banners} />
+
+      <PublicPopularRow title="Daily offers" items={offerItems} onQuickAdd={onQuickAdd} onBrowseMenu={onBrowseMenu} />
+
+      <PublicPopularRow title="Popular here" items={popularItems} onQuickAdd={onQuickAdd} onBrowseMenu={onBrowseMenu} />
+
+      {showOrderAgain && (
+        <div className={cn(PUB_TONAL_CARD_CLASS, "flex items-center gap-4 p-5")}>
+          <span className={cn(PUB_TINT_CLASS, "grid h-10 w-10 shrink-0 place-items-center rounded-full")}>
+            <ReceiptText className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-base font-medium">Order again</p>
+            <p className="mt-0.5 flex items-center gap-2 text-sm text-muted-foreground">
+              {lastOrder.itemCount} {lastOrder.itemCount === 1 ? "item" : "items"} · {inr(lastOrder.total)}
+              <PublicStatusChip status={lastOrder.status} />
+            </p>
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {stampCard.rewardsReady > 0
-              ? stampCard.rewardsReady > 1
-                ? `You have ${stampCard.rewardsReady} rewards ready to claim`
-                : "You have a reward ready to claim"
-              : stampCard.toNextReward === 1
-                ? `One more ${stampCard.unitLabel} and your next reward is ready`
-                : `${stampCard.toNextReward} more ${unitWord(stampCard.toNextReward, stampCard.unitLabel)} to your next reward`}
-          </p>
+          <Button variant="outline" className="h-11 shrink-0 rounded-full" onClick={onRepeatLast}>
+            Repeat
+          </Button>
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={onOpenOrders}
-        className={`flex w-full items-center gap-pub-gap rounded-lg border p-pub-pad text-left ${PUBLIC_TOUCH_TARGET_CLASS}`}
-      >
-        <ClipboardList className="h-5 w-5 shrink-0" aria-hidden="true" />
-        <span className="text-sm font-medium">Your orders</span>
-      </button>
-
-      {!signedIn && (
+      {!activeOrder && (
         <button
           type="button"
-          onClick={onSignIn}
-          className={`flex w-full items-center justify-center gap-pub-gap rounded-lg border border-dashed p-pub-pad ${PUBLIC_TOUCH_TARGET_CLASS}`}
+          onClick={onOpenOrders}
+          className={cn(PUB_ROW_BUTTON_CLASS, "min-h-11 px-1")}
         >
-          <LogIn className="h-5 w-5 shrink-0" aria-hidden="true" />
-          <span className="text-sm font-medium">Sign in to save your orders and collect rewards</span>
+          <ClipboardList className="h-5 w-5 shrink-0" aria-hidden="true" />
+          <span className="flex-1 text-sm font-medium">See all your orders</span>
+          <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
         </button>
       )}
     </div>

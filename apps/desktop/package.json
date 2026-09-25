@@ -1,7 +1,7 @@
 {
   "name": "pos-desktop",
   "productName": "POS Software by sandbee",
-  "version": "1.0.1",
+  "version": "1.10.0",
   "author": "sandbee",
   "private": true,
   "description": "Windows desktop shell for the counter PC: loads the cafe's POS web app from one saved address, stays in the tray, starts with Windows, and prints slips silently. Outside the npm workspace (own node_modules); built locally with electron-builder, the installer is hand-copied, never uploaded.",
@@ -10,7 +10,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
-    "test": "node --import tsx --test src/server-url.test.ts src/store.test.ts src/window-state.test.ts src/desktop-paths.test.ts",
+    "test": "node --import tsx --test src/server-url.test.ts src/store.test.ts src/window-state.test.ts src/escpos.test.ts src/raw-spool.test.ts src/printer-check.test.ts src/desktop-paths.test.ts",
     "start": "npm run build && electron .",
     "dist": "npm run build && electron-builder --win nsis --publish never"
   },
@@ -20,6 +20,7 @@
     "directories": { "buildResources": "resources", "output": "dist" },
     "files": ["out/**/*", "assets/**/*", "package.json"],
     "asar": true,
+    "asarUnpack": ["node_modules/@koromix/**"],
     "electronLanguages": ["en-US"],
     "compression": "maximum",
     "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "resources/icon.png" },
@@ -31,6 +32,9 @@
       "shortcutName": "POS Software by sandbee",
       "include": "resources/installer.nsh"
     }
+  },
+  "dependencies": {
+    "koffi": "3.3.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

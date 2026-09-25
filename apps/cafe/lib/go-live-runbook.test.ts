@@ -72,7 +72,6 @@ import {
   PRINT_WAKE_DAILY_CAP,
 } from "@pos/shared/print-job";
 import { SESSION_MAX_AGE_SECONDS, SESSION_REVALIDATE_MS } from "@pos/shared/constants";
-import { KIOSK_PRINTING_FLAG } from "@/lib/print-host-setup";
 
 // Doc<->source parity for docs/GO-LIVE-CHECKLIST.md §A "Pinned facts" — an
 // operator following a stale runbook does the wrong thing on a client's live
@@ -1017,19 +1016,10 @@ test("PIN §A: PRINT_JOB_QUEUED_RETENTION_MS (12 hours) matches the doc's queued
   assert.match(factRow("Queued print job retention"), /12/);
 });
 
-test("PIN §A: KIOSK_PRINTING_FLAG matches the doc's kiosk-shortcut-flag row, and the row's value cell carries ONLY the backticked flag", () => {
-  const cell = factRow("Kiosk shortcut flag");
-  assert.equal(
-    backtickTokens(cell)[0],
-    KIOSK_PRINTING_FLAG,
-    "the doc's kiosk-shortcut-flag row must equal the real KIOSK_PRINTING_FLAG constant",
-  );
-  assert.equal(
-    cell.trim(),
-    `\`${KIOSK_PRINTING_FLAG}\``,
-    "the row's value cell must be the backticked flag ONLY, no extra prose",
-  );
-});
+// REMOVED (2026-09-19 printer-setup-wizard cleanup): the kiosk .bat generator
+// (lib/print-host-setup.ts, KIOSK_PRINTING_FLAG) was deleted along with the
+// Chrome-kiosk wizard it served — the desktop app replaced that workaround —
+// so this doc/code parity pin has nothing left to compare against.
 
 // CB-D1 — apps/desktop is outside this workspace, so its package.json is read
 // via readFileSync + JSON.parse (never an import) exactly like every other

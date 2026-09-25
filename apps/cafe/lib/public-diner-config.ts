@@ -1,4 +1,5 @@
 import { selfOrderingAllowed } from "@pos/shared/public";
+import { publicDinerBanners, type PublicDinerBanner } from "@pos/shared/public-diner";
 import { readSettings } from "@/lib/settings";
 
 // CB-4 — the ONE function the /m pages call to learn which diner features this
@@ -15,6 +16,7 @@ export interface PublicDinerConfig {
   accountsEnabled: boolean;
   loyaltyEnabled: boolean;
   orderingAllowed: boolean;
+  banners: readonly PublicDinerBanner[];
 }
 
 // Both OFF is the safe answer for every failure mode, and for every cafe that
@@ -31,6 +33,7 @@ const DINER_FEATURES_OFF: PublicDinerConfig = {
   accountsEnabled: false,
   loyaltyEnabled: false,
   orderingAllowed: true,
+  banners: [],
 };
 
 export async function readPublicDinerConfig(): Promise<PublicDinerConfig> {
@@ -46,6 +49,12 @@ export async function readPublicDinerConfig(): Promise<PublicDinerConfig> {
       // function's own comment on why it is written against the value that
       // DENIES rather than the values that allow.
       orderingAllowed: selfOrderingAllowed(settings?.selfOrderMode),
+      // publicDinerBanners is the READ-side normaliser (trims, drops
+      // titleless rows, clamps lengths, caps the count, returns FRESH
+      // objects) — never a raw pass-through of the stored array, and NEVER
+      // spread `settings` itself (this surface must have a single, narrow
+      // reach into Settings — see this file's own top comment).
+      banners: publicDinerBanners(settings?.dinerBanners),
     };
   } catch {
     // A DB hiccup must never 500 the diner's menu — the same discipline as

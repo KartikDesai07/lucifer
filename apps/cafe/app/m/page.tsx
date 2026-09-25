@@ -19,6 +19,7 @@ export default async function PublicMenuPage() {
       accountsEnabled={diner.accountsEnabled}
       loyaltyEnabled={diner.loyaltyEnabled}
       orderingAllowed={diner.orderingAllowed}
+      banners={diner.banners}
     />
   );
 }

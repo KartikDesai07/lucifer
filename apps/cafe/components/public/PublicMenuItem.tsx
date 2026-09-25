@@ -1,10 +1,10 @@
-import Image from "next/image";
 import { Minus, Plus } from "lucide-react";
 import { effectiveUnitPrice } from "@pos/shared/public";
-import { productImageUrl } from "@/lib/images";
 import { inr, cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PublicInitialTile } from "@/components/public/PublicInitialTile";
+import { PUB_TINT_CLASS } from "@/components/public/public-ui";
 
 // Wire shape returned by GET /api/public/menu — a hand-typed mirror of
 // lib/public-menu.ts's PublicMenuItem, kept LOCAL rather than imported. That
@@ -35,10 +35,6 @@ export interface PublicMenuCategoryInfo {
   name: string;
   order: number;
 }
-
-// Card art, CSS px — bigger than the POS grid's 40px tile: this is the
-// primary visual on a diner's phone, not a dense staff counter screen.
-const PHOTO_PX = 64;
 
 // Delegates to @pos/shared/public's effectiveUnitPrice — the same formula
 // hooks/use-cart.ts's effectivePrice() now delegates to, and the one the
@@ -72,7 +68,6 @@ const CONTROL_FOOTPRINT = "ml-auto h-11 w-28";
 // not see items vanish) and never tappable.
 export function PublicMenuItem({ product, qty, onIncrement, onDecrement }: PublicMenuItemProps) {
   const soldOut = !product.available;
-  const url = productImageUrl(product.image, PHOTO_PX * 2);
   const variationPrices = product.variations?.map((v) =>
     effectivePublicPrice(v.price, product.discount),
   );
@@ -90,23 +85,13 @@ export function PublicMenuItem({ product, qty, onIncrement, onDecrement }: Publi
         soldOut && "opacity-60",
       )}
     >
-      {url ? (
-        <Image
-          src={url}
-          alt=""
-          width={PHOTO_PX}
-          height={PHOTO_PX}
-          loading="lazy"
-          className="h-16 w-16 shrink-0 rounded-md object-cover"
-        />
-      ) : (
-        <span
-          aria-hidden
-          className="grid h-16 w-16 shrink-0 place-items-center rounded-md bg-muted text-xl font-semibold text-muted-foreground"
-        >
-          {product.name.charAt(0).toUpperCase()}
-        </span>
-      )}
+      <PublicInitialTile
+        name={product.name}
+        tintKey={product.category}
+        imageRef={product.image}
+        size={80}
+        muted={soldOut}
+      />
 
       <div className="flex min-w-0 flex-1 flex-col justify-between gap-1">
         <div>
@@ -131,9 +116,14 @@ export function PublicMenuItem({ product, qty, onIncrement, onDecrement }: Publi
             <>
               <span className="text-base font-bold tabular-nums">{inr(price)}</span>
               {hasDiscount && (
-                <span className="text-xs tabular-nums text-muted-foreground line-through">
-                  {inr(product.price)}
-                </span>
+                <>
+                  <span className="text-xs tabular-nums text-muted-foreground line-through">
+                    {inr(product.price)}
+                  </span>
+                  <span className={cn(PUB_TINT_CLASS, "rounded-full px-1.5 py-0.5 text-[10px] font-medium")}>
+                    {product.discount}% off
+                  </span>
+                </>
               )}
             </>
           )}
@@ -145,8 +135,7 @@ export function PublicMenuItem({ product, qty, onIncrement, onDecrement }: Publi
           {!soldOut && qty === 0 && onIncrement && (
             <Button
               type="button"
-              variant="outline"
-              className={cn(CONTROL_FOOTPRINT, "gap-1 active:scale-95")}
+              className={cn(CONTROL_FOOTPRINT, "gap-1 bg-primary text-primary-foreground hover:bg-primary/90 active:scale-95")}
               onClick={() => onIncrement(product)}
               aria-label={`Add ${product.name}`}
             >
@@ -158,14 +147,14 @@ export function PublicMenuItem({ product, qty, onIncrement, onDecrement }: Publi
             <div
               className={cn(
                 CONTROL_FOOTPRINT,
-                "flex items-center justify-between rounded-md border px-1",
+                "flex items-center justify-between rounded-md border border-primary bg-primary/10",
               )}
             >
               <button
                 type="button"
                 onClick={() => onDecrement(product.id)}
                 aria-label={`Decrease ${product.name} quantity`}
-                className="grid h-9 w-9 place-items-center rounded active:scale-95"
+                className="grid h-11 w-11 place-items-center rounded active:scale-95"
               >
                 <Minus className="h-4 w-4" />
               </button>
@@ -175,7 +164,7 @@ export function PublicMenuItem({ product, qty, onIncrement, onDecrement }: Publi
                   600ms "Added" flash. */}
               <span
                 key={qty}
-                className="text-sm font-semibold tabular-nums animate-in zoom-in-95 duration-300"
+                className="w-5 text-center text-sm font-semibold tabular-nums animate-in zoom-in-95 duration-300"
               >
                 {qty}
               </span>
@@ -183,7 +172,7 @@ export function PublicMenuItem({ product, qty, onIncrement, onDecrement }: Publi
                 type="button"
                 onClick={() => onIncrement(product)}
                 aria-label={`Increase ${product.name} quantity`}
-                className="grid h-9 w-9 place-items-center rounded active:scale-95"
+                className="grid h-11 w-11 place-items-center rounded active:scale-95"
               >
                 <Plus className="h-4 w-4" />
               </button>

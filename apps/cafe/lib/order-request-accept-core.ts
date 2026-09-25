@@ -140,6 +140,20 @@ export function buildKotNumbers(
   );
 }
 
+// P4-A — the kotFiredAt twin of buildKotNumbers, homed beside it so the two
+// positional arrays cannot drift. EVERY writer that bumps `kotRounds` must
+// call it: advancing the round without a fire time makes the kitchen board age
+// that round from the tab's OPEN time ("90m late" the instant it fires), and
+// the next writer backfills from `createdAt` — a fabricated stamp that renders
+// as precise, since firedAtApprox is `stamped === undefined`. Unconditional,
+// unlike kotNumbers: a fire time always exists, a ticket number only when the
+// cafe numbers its slips.
+export function buildKotFiredAt(
+  old: Date[] | undefined, round: number, firedAt: Date, createdAt: Date,
+): Date[] {
+  return Array.from({ length: round }, (_, i) => (i === round - 1 ? firedAt : (old?.[i] ?? createdAt)));
+}
+
 // ── Small async CAS/lookup primitives (thin — no branch decisions) ─────────
 
 export async function findByRequestId(requestId: string): Promise<IOrder | null> {

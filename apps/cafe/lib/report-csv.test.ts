@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { buildReportCsvRows, type ReportCsvRow } from "./report-csv";
+import { MONEY_BREAKDOWN_LINES, MONEY_NET_LABEL } from "./money-breakdown";
 import type { Report } from "@/types";
 import type { ReportRange } from "@/hooks/use-reports";
 
@@ -25,6 +26,7 @@ function baseReport(overrides: Partial<Report> = {}): Report {
       { payment: "Cash", amount: 15000, count: 8 },
       { payment: "Online", amount: 9000, count: 4 },
     ],
+    money: { gross: 26000, discount: 1200, reward: 800, gst: 0, charges: 0 },
     topProducts: [{ name: "Cold Coffee", qty: 10, revenue: 3000 }],
     dayWise: [{ date: "2026-08-01", sales: 24000, orders: 12 }],
     customerDues: [{ _id: "c1", name: "Asha", mobile: "9000000001", totalDue: 500 }],
@@ -47,10 +49,64 @@ test("each non-empty section contributes rows labeled with its own Section", () 
   const bySection = (s: string) => rows.filter((r) => r.Section === s);
 
   assert.equal(bySection("Totals").length, 4, "one row per totals KPI");
+  assert.equal(bySection("Bill breakdown").length, 6, "the 5 D10 money lines + Net sales");
   assert.equal(bySection("Sales by day").length, 1);
   assert.equal(bySection("Sales by payment").length, 2);
   assert.equal(bySection("Top products").length, 1);
   assert.equal(bySection("Customer dues").length, 1);
+});
+
+test("Bill breakdown: Item column order is the 5 MONEY_BREAKDOWN_LINES labels then MONEY_NET_LABEL", () => {
+  const rows = buildReportCsvRows(baseReport(), RANGE);
+  const billRows = rows.filter((r) => r.Section === "Bill breakdown");
+  assert.equal(billRows.length, 6);
+  const expectedOrder = [...MONEY_BREAKDOWN_LINES.map((l) => l.label), MONEY_NET_LABEL];
+  assert.deepEqual(
+    billRows.map((r) => r.Item),
+    expectedOrder,
+  );
+});
+
+test("Bill breakdown: the net row's Amount equals totals.totalSales", () => {
+  const rows = buildReportCsvRows(baseReport(), RANGE);
+  const netRow = rows.find((r) => r.Section === "Bill breakdown" && r.Item === MONEY_NET_LABEL);
+  assert.ok(netRow, "the net sales row must exist");
+  assert.equal(netRow?.Amount, 24000);
+});
+
+// Review C4: the sign lives in the NUMBER, not the label - a spreadsheet
+// reader can SUM the section and land on Net sales, and no label starts with
+// "-" (which a spreadsheet would read as a formula).
+test("Bill breakdown: each non-net row's Amount is the fixture's money[key], NEGATED for a deduction line", () => {
+  const money = { gross: 26000, discount: 1200, reward: 800, gst: 0, charges: 0 };
+  const rows = buildReportCsvRows(baseReport({ money }), RANGE);
+  const billRows = rows.filter((r) => r.Section === "Bill breakdown");
+  for (const line of MONEY_BREAKDOWN_LINES) {
+    const r = billRows.find((row) => row.Item === line.label);
+    assert.ok(r, `row for "${line.label}" must exist`);
+    const expected = line.sign === "-" ? -money[line.key] : money[line.key];
+    assert.equal(r?.Amount, expected, `"${line.label}" Amount must be ${expected}`);
+  }
+});
+
+test("Bill breakdown: the five signed Amounts sum to the net row's Amount (gross - discount - reward + gst + charges = net)", () => {
+  const rows = buildReportCsvRows(baseReport(), RANGE);
+  const billRows = rows.filter((r) => r.Section === "Bill breakdown");
+  const sum = billRows
+    .filter((r) => r.Item !== MONEY_NET_LABEL)
+    .reduce((s, r) => s + Number(r.Amount), 0);
+  const netRow = billRows.find((r) => r.Item === MONEY_NET_LABEL);
+  assert.equal(sum, 24000, "26000 - 1200 - 800 + 0 + 0");
+  assert.equal(netRow?.Amount, sum);
+});
+
+test("Bill breakdown: a zero deduction exports as 0, never -0", () => {
+  const money = { gross: 500, discount: 0, reward: 0, gst: 0, charges: 0 };
+  const rows = buildReportCsvRows(baseReport({ money }), RANGE);
+  const discountLabel = MONEY_BREAKDOWN_LINES.find((l) => l.key === "discount")?.label;
+  const discountRow = rows.find((r) => r.Section === "Bill breakdown" && r.Item === discountLabel);
+  assert.ok(discountRow, "discount row must exist");
+  assert.ok(Object.is(discountRow?.Amount, 0), "Amount must be +0 (Object.is), not -0");
 });
 
 test("an empty section (no customer dues) contributes zero rows for it, not empty-placeholder rows", () => {
@@ -62,13 +118,13 @@ test("an empty section (no customer dues) contributes zero rows for it, not empt
   );
 });
 
-test("all four report sub-collections empty leaves only the Totals rows", () => {
+test("all four report sub-collections empty leaves only the Totals + Bill breakdown rows (Bill breakdown is unconditional, D10)", () => {
   const rows = buildReportCsvRows(
     baseReport({ salesByPayment: [], topProducts: [], dayWise: [], customerDues: [] }),
     RANGE,
   );
-  assert.equal(rows.length, 4);
-  assert.ok(rows.every((r) => r.Section === "Totals"));
+  assert.equal(rows.length, 10, "4 Totals rows + 6 Bill breakdown rows (5 money lines + Net sales)");
+  assert.ok(rows.every((r) => r.Section === "Totals" || r.Section === "Bill breakdown"));
 });
 
 test("a value with a comma and a double-quote survives into the row untouched — lib/export.ts's escapeField (private, not exported) does the RFC 4180 escaping on the way out", () => {

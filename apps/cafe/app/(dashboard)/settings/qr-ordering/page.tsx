@@ -4,6 +4,7 @@ import { SettingsSectionPage } from "@/components/settings/SettingsSectionPage";
 import { SettingsSectionForm } from "@/components/settings/SettingsSectionForm";
 import { SelfOrderCard } from "@/components/settings/SelfOrderCard";
 import { PromoCodesFields } from "@/components/settings/PromoCodesFields";
+import { DinerBannersFields } from "@/components/settings/DinerBannersFields";
 
 export default function QrOrderingSettingsPage() {
   return (
@@ -14,6 +15,7 @@ export default function QrOrderingSettingsPage() {
             <>
               <SelfOrderCard control={control} />
               <PromoCodesFields control={control} register={register} errors={errors} />
+              <DinerBannersFields control={control} register={register} errors={errors} />
             </>
           )}
         </SettingsSectionForm>

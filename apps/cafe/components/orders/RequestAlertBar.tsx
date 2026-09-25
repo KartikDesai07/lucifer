@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Volume2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { usePosPulseContext, usePrintReadback } from "@/components/layout/PosPul
 import { PrintHostBandSection } from "@/components/orders/PrintHostBandSection";
 import { readDevicePrefs, type PosDevicePrefs } from "@/lib/pos-device-prefs";
 import { printBandVisible, printHostNoteOf } from "@/lib/print-readback";
+import { alertBarSuppressedForPath, alertDetailForPath } from "@/lib/alert-bar-scope";
 import { SELF_ORDER_ALERT_LIMITATION } from "@pos/shared/self-order-alert";
 import { POS_ALERT_HEIGHT_VAR } from "@/lib/pos-layout";
 
@@ -16,25 +18,22 @@ const REQUESTS_PATH = "/requests";
 const TRUNCATED_LABEL = "50+";
 const DEFAULT_PREFS: PosDevicePrefs = { autoPrintSelfOrders: false, alertSound: true, printHost: false, printHostSeen: false };
 
-// CR2.3 §20 — the compact, always-mounted staff-attention bar: rendered once
-// in the dashboard layout, under the header, above every screen. `null` when
-// there's nothing to say (no open requests, no unprinted self-order, and — PH-8
-// §B7 — no host warning / stale backlog / own outstanding job; that section
-// renders INSIDE bandRef so the published height covers it). Stays slim.
+// CR2.3 §20 — the compact, always-mounted staff-attention bar: rendered once in
+// the dashboard layout, under the header, above every screen. `null` when there
+// is nothing to say (no open requests, no unprinted self-order, and — PH-8 §B7 —
+// no host warning / stale backlog / own outstanding job; that section renders
+// INSIDE bandRef so the published height covers it). CB-UI2 scoping (the
+// print-host block, the routing note, and POS): lib/alert-bar-scope.ts.
 export function RequestAlertBar() {
   const { pulse, soundUnlocked, unlock, printHandler } = usePosPulseContext();
   const readback = usePrintReadback();
   const [prefs, setPrefs] = useState<PosDevicePrefs>(DEFAULT_PREFS);
   // Requests whose Print button was tapped and hasn't left the payload yet
-  // (review C5): the claim round-trip plus one pulse tick pass before a
-  // printed row drops out, and an un-disabled button double-taps into a
-  // misleading "already printed" race.
+  // (review C5): a round-trip plus one tick pass before a printed row drops.
   const [tappedIds, setTappedIds] = useState<ReadonlySet<string>>(new Set());
 
-  // Re-read the device pref on mount and again whenever the pulse's own
-  // shape changes meaningfully — self-corrects within one tick (~20s) if a
-  // toggle on /requests (DeviceAlertSettings) changed it while this bar
-  // stayed mounted across the route change.
+  // Re-read the device pref on mount and on a pulse shape change — self-
+  // corrects within one tick (~20s) after a /requests toggle.
   useEffect(() => {
     setPrefs(readDevicePrefs());
   }, [pulse?.openRev, pulse?.selfOrders.length]);
@@ -42,9 +41,8 @@ export function RequestAlertBar() {
   const openCount = pulse?.openCount ?? 0;
   const unprinted = pulse?.selfOrders.filter((row) => !row.printed) ?? [];
 
-  // A printed/expired row leaves the payload on the next tick — dropping its
-  // id re-enables nothing (the button is gone) and keeps the set from
-  // growing across a whole shift.
+  // A printed/expired row leaves the payload on the next tick — dropping its id
+  // re-enables nothing (the button is gone) and bounds the set across a shift.
   useEffect(() => {
     setTappedIds((prev) => {
       const live = new Set(unprinted.map((row) => row.requestId));
@@ -60,15 +58,17 @@ export function RequestAlertBar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pulse?.selfOrders]);
 
-  // MERGED-18: another device's in-flight job never flips this band; own work does.
-  const visible = openCount > 0 || unprinted.length > 0 || printBandVisible(pulse, readback);
+  const pathname = usePathname() ?? "";
+  const onDashboard = alertDetailForPath(pathname);
+  // MERGED-18: another device's in-flight job never flips this band; own work
+  // does. CB-UI2: POS shows NO band — folding that into `visible` also drops
+  // the published height, so the terminal reclaims the space.
+  const visible = !alertBarSuppressedForPath(pathname) && (openCount > 0 || unprinted.length > 0 || printBandVisible(pulse, readback));
   const hostNote = printHostNoteOf(pulse, prefs.printHostSeen);
   const bandRef = useRef<HTMLDivElement | null>(null);
-  // Publish the band's real height for the POS root (lib/pos-layout.ts
-  // POS_ALERT_HEIGHT_VAR): synchronously in a layout effect so the first frame
-  // after the band appears is already right, then through a ResizeObserver as
-  // its content wraps or gains Print buttons. This component never unmounts —
-  // it renders null when idle — so the cleanup keys off `visible`, not unmount.
+  // Publish the band's height for the POS root (POS_ALERT_HEIGHT_VAR) in a
+  // layout effect so the first frame is right, then via ResizeObserver as the
+  // content wraps. Never unmounts, so cleanup keys off `visible`.
   useLayoutEffect(() => {
     const root = document.documentElement;
     const el = bandRef.current;
@@ -144,7 +144,7 @@ export function RequestAlertBar() {
         </Button>
       )}
 
-      <p className="ml-auto text-xs text-muted-foreground">{hostNote ?? SELF_ORDER_ALERT_LIMITATION}</p>
+      {onDashboard && <p className="ml-auto text-xs text-muted-foreground">{hostNote ?? SELF_ORDER_ALERT_LIMITATION}</p>}
     </div>
   );
 }

@@ -143,12 +143,13 @@ test("INVENTORY: usePosPulseContext( call sites are exactly the six deliberate c
     "components/orders/DeviceAlertSettings.tsx",
     "components/orders/RequestAlertBar.tsx",
     "components/orders/RequestCountBadge.tsx",
-    // PH-7 (2026-09-06), re-pointed PH-10b: the print-host card on
-    // /settings/printing (PH-10b) — never under the POS screen — needs the
-    // host's label/offline/silentMode, which live only on pulse.printHost
-    // (the derived lane string cannot carry them). A deliberate sixth
-    // consumer; the inventory below stays SIX files (D7).
-    "components/print/PrintHostCard.tsx",
+    // PH-7 (2026-09-06), re-pointed PH-10b, re-pointed again 2026-09-19 (the
+    // kiosk-wizard cleanup folded PrintHostCard.tsx into PrinterSetupCard.tsx,
+    // the whole /settings/printing page now): still never under the POS
+    // screen, still needs the host's label/offline/silentMode, which live
+    // only on pulse.printHost (the derived lane string cannot carry them). A
+    // deliberate sixth consumer; the inventory below stays SIX files (D7).
+    "components/print/PrinterSetupCard.tsx",
     "hooks/use-self-order-auto-print.ts",
   ].sort();
 
