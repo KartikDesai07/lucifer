@@ -37,9 +37,15 @@ export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ id: string }> };
 
-// POST /api/orders/[id]/table — move a live tab to another table. All staff
-// (requireAuth, not requireAdmin) — moving a guest is a serving task, same
-// authorization level as Settle, not the admin-gated Cancel.
+// POST /api/orders/[id]/table — set (or clear) a live tab's table. ONE route,
+// three verbs, because all three share this route's CAS and its re-pricing:
+//   ASSIGN  {tableNo:"T3"} on a tab with NO table — the walk-in/parcel guest who
+//           then sat down. Claims the table, adds that table's charge.
+//   MOVE    {tableNo:"T3"} on a tab already seated — the original behaviour.
+//   UNSEAT  {tableNo:null}  — the guest left the table (took it away, or moved to
+//           the counter). Frees the table, drops that table's charge.
+// All staff (requireAuth, not requireAdmin) — seating a guest is a serving task,
+// same authorization level as Settle, not the admin-gated Cancel.
 //
 // Order (LEDGER) and Table (CORE) live on different clusters, so a transaction
 // across the two writes below is FORBIDDEN. The order of operations is the
@@ -78,8 +84,11 @@ export async function POST(req: Request, { params }: Params) {
     if (order.status !== MOVABLE_ORDER_STATUS) {
       return failure(ORDER_NOT_LIVE_ERROR, 409);
     }
-    if (!order.tableNo) return failure(ORDER_NO_TABLE_ERROR, 400);
-    if (order.tableNo === to) return failure(SAME_TABLE_ERROR, 400);
+    // An UNSEAT needs something to remove; an ASSIGN does not. This is the one
+    // guard that changed when ASSIGN landed: a tab with no table used to be
+    // refused outright, which is exactly what left a seated walk-in unfixable.
+    if (to === null && !order.tableNo) return failure(ORDER_NO_TABLE_ERROR, 400);
+    if (to !== null && order.tableNo === to) return failure(SAME_TABLE_ERROR, 400);
 
     // Step 1: claim the DESTINATION first, conditional on it being free right
     // now. Nothing has been written yet if this misses — that is exactly why
@@ -87,11 +96,12 @@ export async function POST(req: Request, { params }: Params) {
     // tab holding no table at all, and an unguarded claim (what PUT used to
     // do) steals a table from another live tab and hides that tab from the
     // Live Floor Panel.
-    const claimed = await Table.findOneAndUpdate(
-      claimTableFilter(to),
-      occupyUpdate(order.orderId),
-    );
-    if (!claimed) {
+    // An UNSEAT claims nothing — there is no destination to take. It skips
+    // straight to the order write; step 3 then frees the table it left.
+    const claimed = to === null
+      ? null
+      : await Table.findOneAndUpdate(claimTableFilter(to), occupyUpdate(order.orderId));
+    if (to !== null && !claimed) {
       const dest = await Table.findOne({ tableNo: to })
         .select("status currentOrderId")
         .lean();
@@ -124,16 +134,24 @@ export async function POST(req: Request, { params }: Params) {
     // staff-entered extra untouched. resolveTableCharge doubles as the
     // destination's existence check, but the claim above already proved it
     // exists, so only its charge config is needed here.
-    const destTable = await resolveTableCharge(to);
-    if ("error" in destTable) {
-      await Table.findOneAndUpdate(freeTableFilter(to, order.orderId), RELEASE_UPDATE);
-      cache.del("tables");
-      return failure(destTable.error, 400);
+    // An UNSEAT has no destination to price, so it resolves to no table charge
+    // at all — withTableCharge(null) then DROPS the old table's entry while
+    // leaving every staff-entered extra untouched, which is the owner's
+    // headline invariant for charges either way.
+    let tableCharge: { label: string; amount: number } | null = null;
+    if (to !== null) {
+      const destTable = await resolveTableCharge(to);
+      if ("error" in destTable) {
+        await Table.findOneAndUpdate(freeTableFilter(to, order.orderId), RELEASE_UPDATE);
+        cache.del("tables");
+        return failure(destTable.error, 400);
+      }
+      tableCharge =
+        destTable.charge.amount > 0
+          ? { label: destTable.charge.label, amount: destTable.charge.amount }
+          : null;
     }
-    const charges = withTableCharge(
-      chargesFromOrder(order),
-      destTable.charge.amount > 0 ? { label: destTable.charge.label, amount: destTable.charge.amount } : null,
-    );
+    const charges = withTableCharge(chargesFromOrder(order), tableCharge);
     const settings = await getSettings();
     // CB-CHG — split, never summed: the table portion keeps its shipped
     // TABLE_CHARGE_MAX ceiling, the staff-entered extras ride on top uncapped
@@ -176,14 +194,20 @@ export async function POST(req: Request, { params }: Params) {
         moveOrderFilter(id, order.tableNo, order),
         {
           $set: {
-            tableNo: to,
+            // UNSEAT writes NOTHING here — tableNo is $unset below instead, so
+            // the doc keeps this repo's omit-empty discipline and the absent
+            // field stays the single representation of "no table" that
+            // moveOrderFilter's own `$in: [null, ""]` term matches.
+            ...(to !== null ? { tableNo: to } : {}),
             subtotal: totals.subtotal,
             discount: totals.discount,
             gstAmount: totals.gstAmount,
             total: totals.total,
             ...(chargeFields.set ?? {}),
           },
-          ...(chargeFields.unset ? { $unset: chargeFields.unset } : {}),
+          ...(chargeFields.unset || to === null
+            ? { $unset: { ...(chargeFields.unset ?? {}), ...(to === null ? { tableNo: "" } : {}) } }
+            : {}),
         },
         { new: true, runValidators: true },
       ).lean();
@@ -192,7 +216,11 @@ export async function POST(req: Request, { params }: Params) {
       return serverError("Failed to move the order", error);
     }
     if (!moved) {
-      await Table.findOneAndUpdate(freeTableFilter(to, order.orderId), RELEASE_UPDATE);
+      // Release only what we claimed. An UNSEAT claimed nothing, so there is
+      // nothing to give back — and calling this with a null table would throw.
+      if (to !== null) {
+        await Table.findOneAndUpdate(freeTableFilter(to, order.orderId), RELEASE_UPDATE);
+      }
       cache.del("tables");
       return failure(ORDER_STALE_ERROR, 409);
     }
@@ -204,7 +232,11 @@ export async function POST(req: Request, { params }: Params) {
     // no-match here is normal and fine — another order may have already
     // re-claimed it.
     try {
-      await Table.findOneAndUpdate(freeTableFilter(order.tableNo, order.orderId), RELEASE_UPDATE);
+      // An ASSIGN had no table to begin with, so there is nothing to free here
+      // (and freeTableFilter needs a real table name). MOVE and UNSEAT both do.
+      if (order.tableNo) {
+        await Table.findOneAndUpdate(freeTableFilter(order.tableNo, order.orderId), RELEASE_UPDATE);
+      }
     } catch {
       // Swallowed deliberately — see the comment above.
     }

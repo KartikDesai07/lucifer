@@ -15,8 +15,7 @@ import {
 import { orderSummaryCacheKey } from "@/lib/utils";
 import { reconcileLedger } from "@/lib/order";
 import { updateOrderSchema } from "@/schemas";
-import { FREE_TABLE_FILTER, unknownTableMessage } from "@/lib/table-admin";
-import { tableUnavailableReason } from "@/lib/order-table-move";
+import { TABLE_CHANGE_WRONG_ROUTE_ERROR } from "@/lib/order-table-move";
 
 export const dynamic = "force-dynamic";
 
@@ -69,17 +68,14 @@ export async function PUT(req: Request, { params }: Params) {
     // order that ever sat at it, blocking edits unrelated to seating.
     const changingTable =
       parsed.data.tableNo !== undefined && parsed.data.tableNo !== old.tableNo;
-    if (changingTable && parsed.data.tableNo) {
-      // ONE read answers both existence and availability — checkTableExists
-      // alone let this PUT re-occupy a table another live order already holds,
-      // silently stealing it and orphaning that order from the Live Floor Panel.
-      const dest = await Table.findOne({ tableNo: parsed.data.tableNo })
-        .select("status currentOrderId")
-        .lean();
-      if (!dest) return failure(unknownTableMessage(parsed.data.tableNo), 400);
-      const reason = tableUnavailableReason(dest, old.orderId);
-      if (reason) return failure(reason, 409);
-    }
+    // A table change must go through POST /api/orders/[id]/table, which is the
+    // ONLY writer that re-prices the tab. This route does not: seating a tab on
+    // a charged table through here would give the guest the table without
+    // billing its charge, and unseating would leave a charge for a table the
+    // tab no longer occupies — the bill would disagree with the floor plan.
+    // The seam stays (a staff tool may still PUT a name/note), it just refuses
+    // the one field it cannot price. No shipped UI sends tableNo here.
+    if (changingTable) return failure(TABLE_CHANGE_WRONG_ROUTE_ERROR, 400);
 
     // Conditional on the status we READ, so the freeze above is enforced at the
     // WRITE and not merely checked beforehand: a cancel landing between that read
@@ -116,28 +112,10 @@ export async function PUT(req: Request, { params }: Params) {
       cache.del(orderSummaryCacheKey());
     }
 
-    // Reconcile table occupancy if the order's table changed.
-    if (old.tableNo !== updated.tableNo) {
-      if (old.tableNo) {
-        await Table.findOneAndUpdate(
-          { tableNo: old.tableNo, currentOrderId: old.orderId },
-          { status: "Available", currentOrderId: "" },
-        );
-      }
-      if (updated.tableNo) {
-        // Conditional on the table still being free: the check above already
-        // rejected an unavailable table at read time, but a second claim
-        // landing in the gap before this write must not be forced through — a
-        // miss here just leaves the table alone (the stolen-table bug this
-        // guards against), and the operator sees the conflict on their next
-        // read rather than silently displacing another live order.
-        await Table.findOneAndUpdate(
-          { tableNo: updated.tableNo, ...FREE_TABLE_FILTER },
-          { status: "Occupied", currentOrderId: updated.orderId },
-        );
-      }
-      cache.del("tables");
-    }
+    // No table reconcile here by design: this route refuses a table change
+    // outright (see the guard above), so `tableNo` cannot differ. Seating,
+    // moving and unseating — and the occupancy writes they imply — all live in
+    // POST /api/orders/[id]/table, which is also the only writer that re-prices.
 
     cache.del(orderSummaryCacheKey(new Date(old.createdAt)));
     cache.del(orderSummaryCacheKey(new Date(updated.createdAt)));

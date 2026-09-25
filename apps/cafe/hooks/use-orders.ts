@@ -285,14 +285,17 @@ export function useSettleOrder() {
   });
 }
 
-// Move a live tab to another table. Invalidates orders + tables only: no money
-// and no customer ledger moves, so CUSTOMER_KEYS is deliberately not touched
-// (unlike every other order mutation here).
+// Move a live tab to another table — or, with tableNo: null, unseat it from
+// whichever table it currently holds. Invalidates orders + tables only: no
+// money and no customer ledger moves, so CUSTOMER_KEYS is deliberately not
+// touched (unlike every other order mutation here). TABLE_KEYS is required
+// here (not optional cleanup): assign/move/unseat all change table occupancy,
+// so the floor plan must refetch after every one of the three verbs.
 export function useMoveOrderTable() {
   const qc = useQueryClient();
   return useMutation({
     mutationKey: ORDER_KEYS.mutation,
-    mutationFn: ({ id, tableNo }: { id: string; tableNo: string }) =>
+    mutationFn: ({ id, tableNo }: { id: string; tableNo: string | null }) =>
       apiSend<Order>(`/api/orders/${id}/table`, "POST", { tableNo }),
     onError: (err: Error) => toast.error(err.message || "Could not move the table"),
     // No success toast — the caller shows the outcome and prints a slip.

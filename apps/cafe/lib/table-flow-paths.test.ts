@@ -157,48 +157,52 @@ test("PIN: the order write's throw path never releases the destination claim, wh
 
 // ── 4. PUT's re-occupy is conditional on FREE_TABLE_FILTER; CAS guards tableNo ──
 
-test("PIN: PUT /api/orders/[id]'s re-occupy filter includes FREE_TABLE_FILTER (the stolen-table bug must not come back), and its CAS filter carries a tableNo term when the table is changing", () => {
+test("PIN: PUT /api/orders/[id] REFUSES a table change outright — it is not a table writer, so the stolen-table and unpriced-seat bugs are structurally impossible there", () => {
   const src = stripComments(readSrc(ORDER_ROUTE));
 
-  // Mutation this catches: dropping `...FREE_TABLE_FILTER` from the re-occupy
-  // write — an unconditional occupy would silently steal a table another
-  // live order already holds, orphaning that order from the Live Floor Panel.
+  // This pin REPLACES an earlier one that required PUT to reconcile table
+  // occupancy safely (FREE_TABLE_FILTER on the re-occupy, a tableNo term in the
+  // CAS). That pin guarded a real bug — an unconditional occupy stole a table
+  // from another live tab. It is retired because PUT no longer changes tables
+  // AT ALL, which is strictly stronger than doing it carefully: a write that
+  // cannot happen cannot race.
   //
-  // Anchored to the CALL, and to the reconciliation block it lives in: a
-  // file-wide match for the filter literal would still pass if that literal
-  // survived somewhere unused (a leftover const, a comment-free dead branch)
-  // while the write itself went out with a bare `{ tableNo: updated.tableNo }`.
-  const reconcileIdx = src.indexOf("if (old.tableNo !== updated.tableNo)");
-  assert.ok(reconcileIdx >= 0, "PUT must reconcile table occupancy on a table change");
-  const reconcileOpen = src.indexOf("{", reconcileIdx);
-  const reconcileBody = src.slice(reconcileOpen, matchingBraceEnd(src, reconcileOpen) + 1);
+  // The reason it had to stop: POST /api/orders/[id]/table is the only writer
+  // that RE-PRICES the tab for its table charge. Seating a tab through PUT gave
+  // the guest a charged table without billing the charge, and unseating left a
+  // charge for a table the tab no longer occupied — the bill disagreed with the
+  // floor plan either way.
   assert.match(
-    reconcileBody,
-    /Table\.findOneAndUpdate\(\s*\{ tableNo: updated\.tableNo, \.\.\.FREE_TABLE_FILTER \}/,
-    "the re-occupy write itself must be conditional on FREE_TABLE_FILTER",
+    src,
+    /if\s*\(changingTable\)\s*return failure\(TABLE_CHANGE_WRONG_ROUTE_ERROR, 400\);/,
+    "PUT must refuse a table change with TABLE_CHANGE_WRONG_ROUTE_ERROR",
+  );
+
+  // Vision guard: prove the needles below CAN match table-writing shapes, so a
+  // green pin means "absent", never "needle is blind".
+  const OCCUPY = /Table\.findOneAndUpdate\(\s*\{\s*tableNo:/;
+  assert.ok(
+    OCCUPY.test('Table.findOneAndUpdate({ tableNo: updated.tableNo, ...FREE_TABLE_FILTER }'),
+    "needle must match a real occupy write",
+  );
+
+  // Mutation this catches: re-introducing ANY table occupancy write into PUT —
+  // which would silently re-open both bugs above, since nothing in this route
+  // re-prices.
+  const putIdx = src.indexOf("export async function PUT(");
+  const deleteIdx = src.indexOf("export async function DELETE(");
+  assert.ok(putIdx >= 0, "the route must still export PUT");
+  assert.ok(deleteIdx > putIdx, "DELETE must follow PUT (this slice reads only PUT's body)");
+  const putBody = src.slice(putIdx, deleteIdx);
+  assert.ok(
+    !OCCUPY.test(putBody),
+    "PUT must contain no table occupancy write — seating/moving/unseating belongs to POST /api/orders/[id]/table, the only writer that re-prices",
   );
   assert.ok(
-    !/Table\.findOneAndUpdate\(\s*\{\s*tableNo: updated\.tableNo\s*\}/.test(reconcileBody),
-    "no unguarded occupy of the destination may exist in the reconciliation block",
-  );
-
-  const filterIdx = src.indexOf("const filter = {");
-  assert.ok(filterIdx >= 0, "PUT must build its own update filter object");
-  const braceOpen = src.indexOf("{", filterIdx);
-  const braceClose = matchingBraceEnd(src, braceOpen);
-  const filterBody = src.slice(braceOpen + 1, braceClose);
-
-  // Mutation this catches: dropping the tableNo term from the CAS filter — a
-  // table MOVE (POST .../table) landing between PUT's read and its write
-  // would then be silently reversed here, leaving the new table Occupied by
-  // nobody (project lesson: reciprocal-cas-guards).
-  assert.match(
-    filterBody,
-    /tableNo:\s*old\.tableNo\s*\?\?\s*\{\s*\$in:\s*\[null,\s*""\]\s*\}/,
-    "PUT's CAS filter must carry a tableNo term guarding the field it is about to overwrite",
+    !putBody.includes("old.tableNo !== updated.tableNo"),
+    "PUT must not reconcile table occupancy any more — it cannot change tableNo",
   );
 });
-
 // ── 5. KOTReceipt's "moved" variant suppresses items ─────────────────────────
 
 test('PIN: KOTReceipt\'s "moved" variant shows the TABLE MOVED banner and gates the item list, item count and round-total blocks behind !isMoved — a list of dishes on a kitchen slip is an instruction to cook them', () => {
@@ -395,7 +399,11 @@ test("PIN: models/Table.ts's displayOrder schema field has no `default:` — an 
 
 test("PIN: a destination the order ALREADY holds is not a conflict — the move's no-match branch 409s only when the table belongs to someone else, and re-asserts its own claim otherwise (a stranded retry could never complete)", () => {
   const src = stripComments(readSrc(ORDER_TABLE_ROUTE));
-  const noMatchIdx = src.indexOf("if (!claimed)");
+  // Anchored on the claim-failure branch, whose CONDITION widened when UNSEAT
+  // landed (`to !== null && !claimed` — an unseat claims nothing, so it has no
+  // destination that can fail). The branch BODY, which is what this pin is
+  // actually about, is unchanged.
+  const noMatchIdx = src.search(/if \((?:to !== null && )?!claimed\)/);
   assert.ok(noMatchIdx >= 0, "the route must handle a failed destination claim");
   const open = src.indexOf("{", noMatchIdx);
   const body = src.slice(open, matchingBraceEnd(src, open) + 1);
@@ -470,10 +478,20 @@ test("PIN: the POS Move-table button is blocked while an order write is in fligh
   // check that pos/page.tsx actually feeds the header the LIVE order-write
   // state rather than a stray literal (CR2.1's dead-hook lesson).
   const src = stripComments(readSrc(POS_HEADER));
+  // The `isBusy` term is this pin's SUBJECT (the print race in the title) and
+  // must never be dropped. The `!resumedOrder.tableNo` term that used to sit
+  // beside it is GONE ON PURPOSE: a tab with no table can now be ASSIGNED one
+  // (the walk-in guest who then sat down), so gating the trigger on already
+  // having a table is exactly the bug that made a seated walk-in unfixable.
+  // Keeping it here would have pinned that bug in place.
   assert.match(
     src,
-    /disabled=\{!resumedOrder\.tableNo \|\| isBusy\}/,
-    "the Move-table trigger must be gated on both a table to move from AND no in-flight order write",
+    /disabled=\{isBusy\}/,
+    "the table trigger must still be gated on no in-flight order write (the react-to-print iframe race)",
+  );
+  assert.ok(
+    !/disabled=\{[^}]*!resumedOrder\.tableNo/.test(src),
+    "the trigger must NOT be gated on already having a table — that blocks the assign case",
   );
 
   const posSrc = stripComments(readSrc(POS_PAGE));

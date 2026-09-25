@@ -70,7 +70,7 @@ export interface PosModalsProps extends PosPromptsProps {
   // MoveTableDialog
   moveTableOpen: boolean;
   onMoveTableOpenChange: (open: boolean) => void;
-  onMoved: (order: Order, fromTableNo: string) => void;
+  onMoved: (order: Order, fromTableNo: string | undefined) => void;
   resumedOrder: Order | null;
 }
 

@@ -289,7 +289,18 @@ export const voidItemSchema = z
 // "a move never re-prices" rule this schema used to encode). A client that
 // could pass a charge/discount/total here could invent or suppress that
 // re-price; `.strict()` keeps rejecting every one of those keys.
-export const moveOrderTableSchema = z.object({ tableNo: tableNoSchema }).strict();
+// `tableNo: null` is the UNSEAT verb (the customer left the table — took the
+// food away, or moved to the counter): it frees the table on the floor plan and
+// drops that table's charge from the bill. It must be an EXPLICIT null, never an
+// omitted key: JSON drops `undefined`, so an omitted field could not tell
+// "remove the table" apart from "I sent nothing" (auto-memory: undefined cannot
+// CLEAR a field over JSON). A string seats the tab — on a tab that has no table
+// yet (a walk-in the guest then sat down at) that is an ASSIGN, and on one that
+// already has a table it is the original MOVE. All three share this route
+// because they share its CAS and its re-pricing.
+export const moveOrderTableSchema = z
+  .object({ tableNo: tableNoSchema.nullable() })
+  .strict();
 
 export type OrderItemInput = z.infer<typeof orderItemSchema>;
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;

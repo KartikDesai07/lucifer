@@ -371,7 +371,7 @@ export function OrderDetailSheet({
             Move table joins them, 3 otherwise) and Settle & Pay keeps a full
             row of its own, so the primary action is never squeezed. */}
         <SheetFooter className="flex-col gap-2 px-4 sm:flex-col sm:justify-start sm:space-x-0">
-          <div className={cn("grid gap-2", isOpenTab && !!order.tableNo ? "grid-cols-2" : "grid-cols-3")}>
+          <div className={cn("grid gap-2", isOpenTab ? "grid-cols-2" : "grid-cols-3")}>
             <Button variant="outline" onClick={printBill} disabled={enqueuePending}>
               <Printer className="mr-2 h-4 w-4" /> Print
             </Button>
@@ -391,12 +391,14 @@ export function OrderDetailSheet({
                 <MessageCircle className="mr-2 h-4 w-4" /> Share
               </a>
             </Button>
-            {/* Same live-tab gate as Settle & Pay, plus a table to move FROM —
-                a walk-in order has nothing to move. Owner decision: all staff,
-                no admin gate (matches Settle, not Cancel). */}
-            {isOpenTab && !!order.tableNo && (
+            {/* Same live-tab gate as Settle & Pay. A walk-in open tab still
+                gets this entry point — MoveTableDialog now serves ASSIGN
+                (claim a table) for a tab with none, same as it serves MOVE
+                for a seated one. Owner decision: all staff, no admin gate
+                (matches Settle, not Cancel). */}
+            {isOpenTab && (
               <Button variant="outline" onClick={() => setMoveOpen(true)}>
-                <Replace className="mr-2 h-4 w-4" /> Move table
+                <Replace className="mr-2 h-4 w-4" /> {order.tableNo ? "Move table" : "Assign table"}
               </Button>
             )}
           </div>

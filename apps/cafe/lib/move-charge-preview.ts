@@ -29,8 +29,13 @@ export interface MoveChargePreview {
   from: OrderCharge | undefined;
   /** The table-charge entry it would carry after the move. */
   to: OrderCharge | undefined;
-  /** One plain-English sentence naming the money change for the operator. */
-  note: string;
+  /**
+   * One plain-English sentence naming the money change for the operator, or
+   * null when there is nothing to say — a destination (or unseat) with no
+   * table charge configured either side. Callers must not show a ₹0 line in
+   * that case; they show nothing instead.
+   */
+  note: string | null;
 }
 
 type PreviewOrder =
@@ -41,12 +46,13 @@ type PreviewTable = { chargeAmount?: number; chargeLabel?: string } | null | und
 
 export function moveChargePreview(order: PreviewOrder, destination: PreviewTable): MoveChargePreview {
   const currentCharges = chargesFromOrder(order);
-  // tableChargeOf(null) -> NO_TABLE_CHARGE ({amount:0, label:""}), and
-  // withTableCharge's normalizeCharges pass drops a zero-amount/blank-label
-  // entry anyway — so no separate null-check is needed for "no destination".
-  const nextCharges = destination
-    ? withTableCharge(currentCharges, tableChargeOf(destination))
-    : currentCharges;
+  // Always run through withTableCharge, including destination === null/
+  // undefined — that is the UNSEAT preview (assign/move's opposite: leaving a
+  // table rather than claiming one), and tableChargeOf(null) -> NO_TABLE_CHARGE
+  // ({amount:0, label:""}) is exactly the "drop the table entry" input
+  // withTableCharge/normalizeCharges already handle: a zero-amount/blank-label
+  // entry never survives the normalize pass. No separate branch needed.
+  const nextCharges = withTableCharge(currentCharges, tableChargeOf(destination));
 
   const from = currentCharges.find((c) => c.type === "table");
   const to = nextCharges.find((c) => c.type === "table");
@@ -56,13 +62,17 @@ export function moveChargePreview(order: PreviewOrder, destination: PreviewTable
   return { total, from, to, note: chargeChangeNote(from, to) };
 }
 
-/** The operator-facing sentence. Plain English, no Hinglish, no emoji. */
+/**
+ * The operator-facing sentence. Plain English, no Hinglish, no emoji. Null
+ * when neither side carries a table charge — a ₹0 line would be noise, not
+ * information, so the caller shows nothing at all instead.
+ */
 export function chargeChangeNote(
   from: OrderCharge | undefined,
   to: OrderCharge | undefined,
-): string {
-  if (!from && to) return `This table adds ${to.label} of ${inr(to.amount)} to the bill.`;
-  if (from && !to) return `Moving here removes the ${from.label} of ${inr(from.amount)} from the bill.`;
+): string | null {
+  if (!from && to) return `Adds the ${to.label} of ${inr(to.amount)} to the bill.`;
+  if (from && !to) return `Removes the ${from.label} of ${inr(from.amount)} from the bill.`;
   if (from && to) return `The charge stays the same: ${to.label}, ${inr(to.amount)}.`;
-  return "No charge change.";
+  return null;
 }

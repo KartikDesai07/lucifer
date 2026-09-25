@@ -63,7 +63,7 @@ export interface PrintRoutingHost {
    *  site is a once-per-move effect that already cannot share a tick. */
   queueMovedSlip: (
     order: Order,
-    meta: { from: string; movedBy: string; movedAt: string },
+    meta: { from?: string; movedBy: string; movedAt: string },
   ) => Promise<boolean>;
 }
 
@@ -213,7 +213,7 @@ export function useHostRouting(): PrintRoutingHost {
   );
 
   const queueMovedSlip = useCallback(
-    async (order: Order, meta: { from: string; movedBy: string; movedAt: string }) => {
+    async (order: Order, meta: { from?: string; movedBy: string; movedAt: string }) => {
       if (!shouldRoute) return false;
       // Built INSIDE the try for the same reason routePrint does it: a deploy-
       // skew order whose snapshot this builder cannot read would otherwise

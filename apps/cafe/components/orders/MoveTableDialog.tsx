@@ -48,9 +48,10 @@ interface MoveTableDialogProps {
   order: Order | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  // Called with the moved order and the table it came FROM, after the slip has
-  // been sent to the printer, so a caller holding tab state can re-sync.
-  onMoved?: (order: Order, fromTableNo: string) => void;
+  // Called with the moved/assigned/unseated order and the table it came FROM
+  // (undefined on an assign — there was none), after the slip has been sent to
+  // the printer, so a caller holding tab state can re-sync.
+  onMoved?: (order: Order, fromTableNo: string | undefined) => void;
 }
 
 // The routed lane's verdict arrives after a round trip, and the print node below
@@ -67,7 +68,10 @@ const PRINT_MOVE_SUPERSEDED_MESSAGE =
 // the kitchen right now.
 interface PendingSlip {
   order: Order;
-  from: string;
+  // Absent for an ASSIGN — a tab with no table has nowhere to name as the
+  // slip's "from". KOTReceipt already treats an absent movedFrom as "just
+  // show the destination" (see its movedFrom prop).
+  from: string | undefined;
   at: Date;
 }
 
@@ -130,6 +134,13 @@ export function MoveTableDialog({ order, open, onOpenChange, onMoved }: MoveTabl
     // internally, read from this same render — the two cannot disagree. Kept as
     // an explicit branch so the no-host lane still fires synchronously, in this
     // tick, before the dialog closes (§F byte-identical parity).
+    //
+    // ASSIGN builds a slip with no `from` (a walk-in tab had no table to name),
+    // and that routes exactly like the other two: `from` is optional all the
+    // way down (movedPayloadSchema, queueMovedSlip), and KOTReceipt already
+    // renders an absent movedFrom as just the destination. Routing must NOT
+    // depend on which verb produced the slip — a cafe with a print host expects
+    // every table slip at the counter printer, not just two of the three.
     if (!shouldRoute) {
       printSlip();
     } else {
@@ -159,42 +170,62 @@ export function MoveTableDialog({ order, open, onOpenChange, onMoved }: MoveTabl
   }, [slip]);
 
   const currentTableNo = order?.tableNo;
+  // The three verbs the route accepts share this one dialog: no table means
+  // only ASSIGN is possible; a seated tab can MOVE or UNSEAT.
+  const isAssign = !currentTableNo;
 
   // Owner decision 1/2 (plan §0, 2026-09-25): a move now auto-adds/removes
-  // the DESTINATION table's charge ("purana hatao, naye table ka lagao"), but
-  // staff sees the money delta and confirms first ("auto badlo, par staff ko
-  // dikhao pehle") — replacing the old always-on note, which stated the
-  // OPPOSITE rule (a move used to never re-price). Tapping a table no longer
-  // fires the mutation directly: it sets a pending selection, and THIS panel
-  // (rendered inside the same DialogContent, not a nested Dialog) is the only
-  // gate in front of the mutateAsync call below.
+  // the DESTINATION table's charge, but staff sees the money delta and
+  // confirms first. Tapping a table no longer fires the mutation directly: it
+  // sets a pending selection, and THIS panel (rendered inside the same
+  // DialogContent, not a nested Dialog) is the only gate in front of the
+  // mutateAsync call below. `unseatPending` is the same gate for the third
+  // verb — the two are mutually exclusive by construction (see JSX below).
   const [pendingTable, setPendingTable] = useState<Table | null>(null);
+  const [unseatPending, setUnseatPending] = useState(false);
   // Closing the dialog (Cancel, Escape, outside click) or switching to a
   // different order must not leave a stale confirm panel armed for whatever
   // opens next.
   useEffect(() => {
-    if (!open) setPendingTable(null);
+    if (!open) {
+      setPendingTable(null);
+      setUnseatPending(false);
+    }
   }, [open]);
-  useEffect(() => setPendingTable(null), [order?._id]);
+  useEffect(() => {
+    setPendingTable(null);
+    setUnseatPending(false);
+  }, [order?._id]);
 
-  // PREVIEW ONLY, from data this dialog already has (useTables() returns full
-  // Table[] with no .select() — verified against GET /api/tables), so no new
-  // fetch. The server re-reads the destination table authoritatively at move
-  // time (the 30s tables cache here can be stale), so this is never more than
-  // a preview of what the confirm is about to do. The rule itself lives in
-  // lib/move-charge-preview.ts, pure and pinned, and reuses the same shared
-  // helpers the server-side writer uses so the two cannot disagree.
-  const preview = moveChargePreview(order, pendingTable);
+  // PREVIEW ONLY (useTables() already has full Table[] in hand, no new
+  // fetch) — the server re-reads the destination authoritatively at move
+  // time, so this is never more than a preview. lib/move-charge-preview.ts
+  // reuses the same shared helpers the server-side writer uses so the two
+  // cannot disagree. unseatPending previews against `null`, the same
+  // "no destination" input the shared helper treats as "drop the charge".
+  const preview = moveChargePreview(order, unseatPending ? null : pendingTable);
 
+  // Exact shape pinned (lib/charge-ui-paths.test.ts PIN 1): a pure selection,
+  // no mutation. Structurally unreachable while unseatPending is armed — the
+  // grid it feeds only renders when neither confirm panel is showing.
   const handlePick = (table: Table) => setPendingTable(table);
-  const cancelPending = () => setPendingTable(null);
+  const armUnseat = () => setUnseatPending(true);
+  const cancelPending = () => {
+    setPendingTable(null);
+    setUnseatPending(false);
+  };
+
+  const confirmLabel = unseatPending ? "Remove from table" : isAssign ? "Assign table" : "Move table";
 
   const confirmMove = async () => {
-    if (!order || !currentTableNo || !pendingTable) return;
+    if (!order) return;
+    const nextTableNo = unseatPending ? null : pendingTable?.tableNo;
+    if (nextTableNo === undefined) return;
     try {
-      const updated = await moveTable.mutateAsync({ id: order._id, tableNo: pendingTable.tableNo });
+      const updated = await moveTable.mutateAsync({ id: order._id, tableNo: nextTableNo });
       setSlip({ order: updated, from: currentTableNo, at: new Date() });
       setPendingTable(null);
+      setUnseatPending(false);
     } catch {
       // hook toasts on error; dialog stays open (still on the confirm panel) to retry
     }
@@ -205,25 +236,33 @@ export function MoveTableDialog({ order, open, onOpenChange, onMoved }: MoveTabl
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Move table</DialogTitle>
+            <DialogTitle>{isAssign ? "Assign a table" : "Move table"}</DialogTitle>
             <DialogDescription>
-              Currently on{" "}
-              <span className="font-medium text-foreground">
-                {currentTableNo ?? "Walk-In"}
-              </span>
-              . Pick a free table to move this tab to — the kitchen gets a
-              slip so they can match it to the ticket they&apos;re holding.
+              {isAssign ? (
+                "Pick a free table to seat this tab at — the kitchen gets a slip so they can match it to the ticket they're holding."
+              ) : (
+                <>
+                  Currently on{" "}
+                  <span className="font-medium text-foreground">{currentTableNo}</span>
+                  . Pick a free table to move this tab to — the kitchen gets a
+                  slip so they can match it to the ticket they&apos;re holding.
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
 
-          {pendingTable ? (
+          {pendingTable || unseatPending ? (
             // The confirm step (plan §5B) — inside the SAME DialogContent, not
-            // a nested Dialog. This is the only gate in front of
-            // moveTable.mutateAsync (source-pinned: lib/charge-ui-paths.test.ts).
+            // a nested Dialog. Only gate in front of moveTable.mutateAsync
+            // (source-pinned: lib/charge-ui-paths.test.ts). Shared by all
+            // three verbs — preview/confirmLabel already resolve to whichever
+            // is armed; the two are mutually exclusive by construction.
             <div className="space-y-3">
               <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-                <p>{preview.note}</p>
-                <p className="mt-1 font-semibold">New total: {inr(preview.total)}</p>
+                {preview.note && <p>{preview.note}</p>}
+                <p className={preview.note ? "mt-1 font-semibold" : "font-semibold"}>
+                  New total: {inr(preview.total)}
+                </p>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <Button
@@ -239,7 +278,7 @@ export function MoveTableDialog({ order, open, onOpenChange, onMoved }: MoveTabl
                   disabled={moveTable.isPending}
                   onClick={confirmMove}
                 >
-                  Move table
+                  {confirmLabel}
                 </Button>
               </div>
             </div>
@@ -271,6 +310,21 @@ export function MoveTableDialog({ order, open, onOpenChange, onMoved }: MoveTabl
                   );
                 })}
               </div>
+
+              {/* Its own row, never a grid tile — a tile-shaped control here
+                  could be mis-tapped while scanning tables. Still gated by the
+                  same confirm panel above before anything fires. */}
+              {!isAssign && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="min-h-11 w-full justify-center text-sm font-medium text-destructive hover:text-destructive"
+                  disabled={moveTable.isPending}
+                  onClick={armUnseat}
+                >
+                  Remove from table
+                </Button>
+              )}
 
               <Button
                 variant="outline"

@@ -9,12 +9,19 @@ import { voidGuardFilter } from "@/lib/order-void";
 
 export const ORDER_NOT_LIVE_ERROR =
   "Only an open tab can be moved — this order is already closed";
+// Kept for the UNSEAT verb only: a tab with no table has nothing to give up.
+// Seating one is now supported (see NO_TABLE), so this is no longer a reason to
+// refuse an ASSIGN.
 export const ORDER_NO_TABLE_ERROR =
-  "This order has no table to move — it is a walk-in";
+  "This tab has no table — there is nothing to remove";
 export const SAME_TABLE_ERROR = "The order is already on that table";
 export const TABLE_TAKEN_ERROR = "That table is already running a bill — pick a free one";
 export const TABLE_RESERVED_ERROR = "That table is reserved — free it first or pick another";
 export const ORDER_STALE_ERROR = "Order changed — reload and try again";
+// PUT /api/orders/[id] refuses a table change and points here: this route is
+// the only writer that re-prices the tab for it.
+export const TABLE_CHANGE_WRONG_ROUTE_ERROR =
+  "Use the table action on the tab to seat or move it — that is what re-prices the bill";
 
 // The only order status a move ever touches. A move carries no money, so —
 // unlike /items and /settle — gating on `payment` too would only manufacture
@@ -52,13 +59,20 @@ export function tableUnavailableReason(
 // re-price.
 export function moveOrderFilter(
   id: string,
-  fromTableNo: string,
+  fromTableNo: string | undefined,
   order: { total: number; kotRounds?: number; voids?: unknown[] },
 ): Record<string, unknown> {
   return {
     _id: id,
     status: MOVABLE_ORDER_STATUS,
-    tableNo: fromTableNo,
+    // A tab with NO table is a first-class state (a walk-in that is about to be
+    // seated), and `tableNo: undefined` would drop the term entirely — turning
+    // the CAS into "any table", so a racing seat/move would be silently
+    // clobbered. Match the ABSENT field explicitly instead. Mongoose stores
+    // nothing for an unset tableNo (omit-empty, models/Order.ts), but a doc
+    // written before that discipline can carry "", so both are the same state
+    // here (auto-memory: $unset, not null, to reopen an $exists CAS).
+    tableNo: fromTableNo ?? { $in: [null, ""] },
     total: order.total,
     kotRounds: order.kotRounds ?? 0,
     ...voidGuardFilter(order.voids?.length ?? 0),

@@ -87,6 +87,32 @@ test("moveOrderTableSchema requires a destination — a move to nowhere is not a
   assert.equal(moveOrderTableSchema.safeParse({ tableNo: "   " }).success, false);
 });
 
+// ── CB-CHG — the UNSEAT verb: tableNo:null must be a DISTINCT, ACCEPTED value,
+// never conflated with an omitted key. JSON drops `undefined`, so an omitted
+// key is the client saying nothing at all — it must keep failing (pinned
+// above) precisely so it can never be misread as "remove the table". Only an
+// EXPLICIT null may express that intent (auto-memory: undefined cannot CLEAR
+// a field over JSON).
+
+test("moveOrderTableSchema accepts an explicit tableNo:null — the UNSEAT verb (frees the table)", () => {
+  const r = moveOrderTableSchema.safeParse({ tableNo: null });
+  assert.equal(r.success, true);
+  assert.equal(r.success && r.data.tableNo, null);
+});
+
+test("moveOrderTableSchema still accepts a valid destination string — ASSIGN/MOVE unaffected by adding .nullable()", () => {
+  const r = moveOrderTableSchema.safeParse({ tableNo: "T-3" });
+  assert.equal(r.success, true);
+  assert.equal(r.success && r.data.tableNo, "T-3");
+});
+
+test("moveOrderTableSchema: an OMITTED key is still rejected even now that null is valid — omitted must never be readable as unseat", () => {
+  const omitted = moveOrderTableSchema.safeParse({});
+  const explicitNull = moveOrderTableSchema.safeParse({ tableNo: null });
+  assert.equal(omitted.success, false, "an omitted tableNo key must be rejected");
+  assert.equal(explicitNull.success, true, "an explicit null must be accepted");
+});
+
 test("moveOrderTableSchema refuses to carry money — no charge/discount/total can ride along with a seating change", () => {
   for (const extra of [
     { chargeAmount: 0 },

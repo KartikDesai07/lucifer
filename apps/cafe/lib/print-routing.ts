@@ -205,26 +205,32 @@ export function billPrintJob(order: Order, opts: { reprint: boolean }): PrintJob
   };
 }
 
-/** The table-move slip. `meta.from` is the table the food was ordered FROM —
- *  the order's own `tableNo` is already the destination. Same required
- *  `opts.reprint` reasoning as `billPrintJob`. */
+/** The table slip, for all three verbs. `meta.from` is the table the food was
+ *  ordered FROM — the order's own `tableNo` is already the destination. It is
+ *  OPTIONAL because an ASSIGN seats a tab that never had a table, so there is
+ *  no origin to name; the label then reads as a plain destination rather than
+ *  an arrow from nowhere. Same required `opts.reprint` reasoning as
+ *  `billPrintJob`. */
 export function movedPrintJob(
   order: Order,
-  meta: { from: string; movedBy: string; movedAt: string },
+  meta: { from?: string; movedBy: string; movedAt: string },
   opts: { reprint: boolean },
 ): PrintJobRequest {
   const prefix = opts.reprint ? MOVED_REPRINT_LABEL : MOVED_LABEL;
   const to = order.tableNo ?? order.orderId;
+  const route = meta.from ? `${meta.from}${MOVED_ARROW}${to}` : to;
   return {
     payload: {
       kind: "moved",
       snapshot: printOrderSnapshot(order),
-      from: meta.from,
+      // Omitted, never null/"": the schema field is optional and this repo's
+      // omit-empty discipline keeps an absent origin absent from the payload.
+      ...(meta.from ? { from: meta.from } : {}),
       movedBy: meta.movedBy,
       movedAt: meta.movedAt,
       ...(opts.reprint ? { reprint: true as const } : {}),
     },
-    label: printJobLabel(`${prefix} ${meta.from}${MOVED_ARROW}${to}${LABEL_SEPARATOR}${order.orderId}`, order.orderId),
+    label: printJobLabel(`${prefix} ${route}${LABEL_SEPARATOR}${order.orderId}`, order.orderId),
   };
 }
 

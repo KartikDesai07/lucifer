@@ -666,6 +666,214 @@ async function moveLegs(): Promise<void> {
   );
 }
 
+// ── CB-CHG's two NEW verbs — ASSIGN (seat a walk-in) and UNSEAT (leave the
+// table), plus the single most important guard behind ASSIGN: that the
+// widened moveOrderFilter's absent-field CAS actually matches a document
+// whose tableNo key is genuinely MISSING, which a DB-free unit test cannot
+// prove (it never round-trips through Mongoose's own storage/cast layer).
+async function assignUnseatLegs(): Promise<void> {
+  console.log("\n── ASSIGN + UNSEAT (the two new verbs) ─────────────────────────");
+
+  const liveGst = gstConfigOf(await getSettings());
+
+  // Shared re-price step, replicating the route's exact sequence for a
+  // destination that may be null (UNSEAT) as well as a real table name
+  // (ASSIGN). `fromTableNo` is passed straight through to moveOrderFilter so
+  // the CAS matches exactly what the route would build from `order.tableNo`.
+  // Same idiom as moveLegs()'s doMove() above: takes a hydrated IOrder
+  // document (from Order.create/Order.findById, never a bare .lean() spread).
+  async function doAssignOrUnseat(order: IOrder, fromTableNo: string | undefined, to: string | null) {
+    const tableCharge =
+      to === null
+        ? null
+        : await (async () => {
+            const destCharge = await resolveTableCharge(to);
+            if ("error" in destCharge) throw new Error(destCharge.error);
+            return destCharge.charge.amount > 0
+              ? { label: destCharge.charge.label, amount: destCharge.charge.amount }
+              : null;
+          })();
+    const charges = withTableCharge(chargesFromOrder(order), tableCharge);
+    const { table: moveTableCharge, extra: moveExtraCharge } = splitChargeTotals(charges);
+    const totals = computeOrderTotals({
+      items: order.items,
+      discount: order.discount,
+      discountKind: order.discountKind,
+      charge: moveTableCharge,
+      extraCharge: moveExtraCharge,
+      cfg: gstConfigFromOrder(order, liveGst),
+      reward: rewardFromOrderSnapshot(order),
+    });
+    const chargeFields = chargeWriteFields(charges);
+    return Order.findOneAndUpdate(
+      moveOrderFilter(String(order._id), fromTableNo, order),
+      {
+        $set: {
+          ...(to !== null ? { tableNo: to } : {}),
+          subtotal: totals.subtotal,
+          discount: totals.discount,
+          gstAmount: totals.gstAmount,
+          total: totals.total,
+          ...(chargeFields.set ?? {}),
+        },
+        ...(chargeFields.unset || to === null
+          ? { $unset: { ...(chargeFields.unset ?? {}), ...(to === null ? { tableNo: "" } : {}) } }
+          : {}),
+      },
+      { new: true, runValidators: true },
+    ).lean();
+  }
+
+  // ── Leg A1 — ASSIGN: a walk-in tab with NO tableNo field at all seats onto
+  // a charged table: the charge lands, the total rises by exactly that
+  // amount, and the Table doc points at the order. ────────────────────────
+  await Table.create({ tableNo: "A1-TO", capacity: 2, chargeAmount: 60, chargeLabel: "Balcony" });
+  const a1 = await Order.create(buildOrder({ orderId: "ORD-A1" })); // no tableNo key at all
+  check("leg A1 fixture is genuinely tableless (no tableNo key on the stored doc)", !("tableNo" in a1.toObject()));
+
+  const a1Claimed = await Table.findOneAndUpdate(claimTableFilter("A1-TO"), occupyUpdate("ORD-A1"), {
+    new: true,
+  }).lean();
+  check("leg A1 — claim succeeds against a free table", a1Claimed?.status === "Occupied" && a1Claimed?.currentOrderId === "ORD-A1");
+
+  const a1Moved = await doAssignOrUnseat(a1, undefined, "A1-TO");
+  check(
+    "leg A1 — ASSIGN: tableNo lands, the table's charge is now in charges[]/chargeAmount, and total rose by exactly that amount",
+    a1Moved?.tableNo === "A1-TO" &&
+      a1Moved?.chargeAmount === 60 &&
+      a1Moved?.chargeLabel === "Balcony" &&
+      JSON.stringify(a1Moved?.charges) === JSON.stringify([{ type: "table", label: "Balcony", amount: 60 }]) &&
+      a1Moved?.total === a1.total + 60,
+  );
+  const a1Table = await Table.findOne({ tableNo: "A1-TO" }).lean();
+  check(
+    "leg A1 — the Table doc is Occupied and points at the assigned order",
+    a1Table?.status === "Occupied" && a1Table?.currentOrderId === "ORD-A1",
+  );
+
+  // ── Leg A2 — THE CRITICAL ONE: the absent-field CAS really matches a doc
+  // whose tableNo is ABSENT, and really REFUSES a doc that carries a real
+  // tableNo (the racing-seat guard must still hold). ─────────────────────
+  const bare = await Order.create(buildOrder({ orderId: "ORD-A2" })); // no tableNo key
+  check("leg A2 fixture is genuinely tableless", !("tableNo" in bare.toObject()));
+
+  const matchedAbsent = await Order.findOneAndUpdate(
+    moveOrderFilter(String(bare._id), undefined, bare),
+    { $set: { total: bare.total } }, // a no-op write; only the MATCH matters here
+    { new: true },
+  );
+  check(
+    "leg A2 — moveOrderFilter(id, undefined, order) MATCHES a doc whose tableNo field is genuinely ABSENT (not \"\" and not null) — if this misses, every ASSIGN 409s and the feature is dead",
+    matchedAbsent !== null,
+  );
+
+  const seated = await Order.create(buildOrder({ orderId: "ORD-A2B", tableNo: "A2-SEATED" }));
+  const refusedSeated = await Order.findOneAndUpdate(
+    moveOrderFilter(String(seated._id), undefined, seated), // deliberately the ASSIGN filter against a SEATED doc
+    { $set: { total: seated.total } },
+  );
+  check(
+    "leg A2 — the SAME absent-field filter does NOT match a doc that carries a real tableNo (the CAS must still refuse a racing seat)",
+    refusedSeated === null,
+  );
+
+  // A legacy doc written before the omit-empty discipline landed can carry a
+  // literal "" rather than an absent key (the comment on moveOrderFilter says
+  // so explicitly). This is the half of the `$in: [null, ""]` term that a
+  // bare `tableNo: undefined` filter — which the MongoDB driver happens to
+  // treat as "match an ABSENT/null field" — would silently miss: an
+  // undefined-valued filter key does NOT match a stored empty string. Proves
+  // the explicit `""` arm is load-bearing, not redundant with the absent case.
+  const legacyBlank = await Order.create(buildOrder({ orderId: "ORD-A2C" }));
+  await Order.updateOne({ _id: legacyBlank._id }, { $set: { tableNo: "" } }); // bypass omit-empty on purpose
+  const legacyBlankRead = await Order.findById(legacyBlank._id);
+  if (!legacyBlankRead) throw new Error("leg A2: legacy-blank fixture vanished");
+  check('leg A2 legacy fixture genuinely stores tableNo:"" (not absent)', legacyBlankRead.toObject().tableNo === "");
+  const matchedLegacyBlank = await Order.findOneAndUpdate(
+    moveOrderFilter(String(legacyBlankRead._id), undefined, legacyBlankRead),
+    { $set: { total: legacyBlankRead.total } },
+  );
+  check(
+    'leg A2 — the absent-field CAS ALSO matches a legacy doc whose tableNo is a literal "" (the other half of $in: [null, ""] — a bare undefined filter value would miss this one)',
+    matchedLegacyBlank !== null,
+  );
+
+  // ── Leg U1 — UNSEAT: frees the table, drops the table charge (via $unset,
+  // never null/""), and leaves any staff-entered extra untouched. ─────────
+  await Table.create({ tableNo: "U1-FROM", capacity: 4, status: "Occupied", currentOrderId: "ORD-U1", chargeAmount: 45, chargeLabel: "Patio" });
+  const u1 = await Order.create(
+    buildOrder({
+      orderId: "ORD-U1",
+      tableNo: "U1-FROM",
+      charges: [
+        { type: "table", label: "Patio", amount: 45 },
+        { type: "extra", label: "Takeaway box", amount: 15 },
+      ],
+    }),
+  );
+  const u1Unseated = await doAssignOrUnseat(u1, "U1-FROM", null);
+  check(
+    "leg U1 — UNSEAT: total dropped by exactly the table charge, and the extra survived untouched",
+    u1Unseated?.total === u1.total - 45 &&
+      JSON.stringify(u1Unseated?.charges) === JSON.stringify([{ type: "extra", label: "Takeaway box", amount: 15 }]) &&
+      u1Unseated?.chargeAmount === 15 &&
+      u1Unseated?.chargeLabel === "Takeaway box",
+  );
+
+  // A raw collection read (not the Mongoose-cast .lean() result above) proves
+  // the field is truly ABSENT from the stored BSON, not merely falsy.
+  const u1Raw = await mongoose.connection.collection("orders").findOne({ orderId: "ORD-U1" });
+  check(
+    "leg U1 — the RAW stored document has NO tableNo key at all ($unset, never null/\"\") — \"tableNo\" in doc === false",
+    u1Raw !== null && "tableNo" in u1Raw === false,
+  );
+
+  await Table.findOneAndUpdate(freeTableFilter("U1-FROM", "ORD-U1"), RELEASE_UPDATE);
+  const u1Table = await Table.findOne({ tableNo: "U1-FROM" }).lean();
+  check(
+    "leg U1 — the Table doc is back to Available with currentOrderId cleared",
+    u1Table?.status === "Available" && u1Table?.currentOrderId === "",
+  );
+
+  // ── Leg U2 — round trip: UNSEAT then re-ASSIGN to the SAME table must
+  // leave the money exactly where it started (proves the split/replace path
+  // has no drift over two writes). ────────────────────────────────────────
+  await Table.create({ tableNo: "U2-TABLE", capacity: 4, status: "Occupied", currentOrderId: "ORD-U2", chargeAmount: 35, chargeLabel: "Rooftop" });
+  const u2 = await Order.create(
+    buildOrder({ orderId: "ORD-U2", tableNo: "U2-TABLE", charges: [{ type: "table", label: "Rooftop", amount: 35 }] }),
+  );
+  const originalTotal = u2.total;
+
+  const u2Unseated = await doAssignOrUnseat(u2, "U2-TABLE", null);
+  await Table.findOneAndUpdate(freeTableFilter("U2-TABLE", "ORD-U2"), RELEASE_UPDATE);
+  check("leg U2 — after unseat, total dropped by the table charge", u2Unseated?.total === originalTotal - 35);
+
+  const u2ReClaimed = await Table.findOneAndUpdate(claimTableFilter("U2-TABLE"), occupyUpdate("ORD-U2"), {
+    new: true,
+  }).lean();
+  check("leg U2 — the freed table can be re-claimed", u2ReClaimed?.status === "Occupied");
+
+  // Re-read fresh, exactly like the route always does before pricing a
+  // write — never hand-merge a partial update result into a stale in-memory
+  // document. A hydrated document (not .lean()) to match doAssignOrUnseat's
+  // IOrder parameter, same as every other call site in this file.
+  const u2AfterUnseat = await Order.findById(u2._id);
+  if (!u2AfterUnseat) throw new Error("leg U2: order vanished after unseat");
+  check("leg U2 fixture re-read is genuinely tableless before the re-assign", !("tableNo" in u2AfterUnseat.toObject()));
+
+  const u2ReAssigned = await doAssignOrUnseat(
+    u2AfterUnseat,
+    undefined, // the doc is now tableless again, exactly like a fresh ASSIGN
+    "U2-TABLE",
+  );
+  check(
+    "leg U2 — the round trip (unseat then re-assign to the SAME table) leaves the total exactly where it started",
+    u2ReAssigned?.total === originalTotal &&
+      u2ReAssigned?.chargeAmount === 35 &&
+      u2ReAssigned?.chargeLabel === "Rooftop",
+  );
+}
+
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
   const dbName = new URL(uri.replace("mongodb://", "http://")).pathname.slice(1);
@@ -684,6 +892,7 @@ async function main(): Promise<void> {
 
   await arrangementLegs();
   await moveLegs();
+  await assignUnseatLegs();
 
   await mongoose.connection.dropDatabase();
   await mongoose.connection.close();

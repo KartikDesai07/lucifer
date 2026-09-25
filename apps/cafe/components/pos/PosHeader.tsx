@@ -85,21 +85,18 @@ export const PosHeader = memo(function PosHeader({
             variant="outline"
             size="sm"
             className={cn(POS_HEADER_CONTROL_CLASS, POS_HEADER_CHIP_FIXED_CLASS, "gap-2")}
-            // A walk-in tab has nothing to move FROM, and the route rejects it
-            // (ORDER_NO_TABLE_ERROR) — offering the tap would only produce a
-            // toast. Disabled rather than hidden so the header does not jump as
-            // tabs are resumed; seating a walk-in tab is a separate decision
-            // (its bill carries no table charge and none can be added later).
-            // Also blocked while any order write is in flight: firing a round
-            // queues a KOT print, and react-to-print keeps ONE fixed-id iframe
-            // (lib/print.ts), so a move slip starting alongside that ticket can
-            // delete the other job's iframe and one of the two never reaches the
-            // kitchen.
-            disabled={!resumedOrder.tableNo || isBusy}
+            // A walk-in tab can now be SEATED here (the route added the ASSIGN
+            // verb — a tab with no table is no longer a reason to refuse), so
+            // this control stays enabled either way. Still blocked while any
+            // order write is in flight: firing a round queues a KOT print, and
+            // react-to-print keeps ONE fixed-id iframe (lib/print.ts), so a
+            // move/assign slip starting alongside that ticket can delete the
+            // other job's iframe and one of the two never reaches the kitchen.
+            disabled={isBusy}
             title={
               resumedOrder.tableNo
                 ? `Move ${resumedOrder.orderId} to another table`
-                : "This tab has no table to move"
+                : `Assign a table to ${resumedOrder.orderId}`
             }
             onClick={onMoveTable}
           >

@@ -159,11 +159,18 @@ const voidPayloadSchema = z
 
 // Client-only fields `MoveTableDialog.tsx` carries: the table moved FROM, who
 // moved it, and when (the order's own tableNo is already the destination).
+//
+// `from` is OPTIONAL because this slip now covers three verbs, and one of them
+// has no origin table: ASSIGN seats a walk-in that never had one. KOTReceipt
+// already renders an absent movedFrom as just the destination (its `movedFrom
+// ? "A → B" : B` branch), so the slip reads correctly either way — without this
+// the host lane could not carry an assign slip at all and it would have had to
+// fall back to a local print, silently bypassing the counter printer.
 const movedPayloadSchema = z
   .object({
     kind: z.literal("moved"),
     snapshot: printOrderSnapshotSchema,
-    from: z.string(),
+    from: z.string().optional(),
     movedBy: z.string(),
     movedAt: z.string(),
     // See billPayloadSchema's `reprint` comment — same staff-requested-
