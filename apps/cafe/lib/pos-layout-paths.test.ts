@@ -95,9 +95,21 @@ test("PIN: pos/page.tsx renders both category presentations off one category sta
   assert.match(src, /qtyByProduct=\{qtyByProduct\}/, "pos/page.tsx must pass qtyByProduct={qtyByProduct} to ProductGrid");
 });
 
-test("PIN: the mobile cart sheet auto-closes once the cart drains — otherwise the fixed bar is a dead end over an empty sheet", () => {
+test("PIN: the mobile cart sheet auto-closes once the cart is TRULY empty — otherwise the fixed bar is a dead end over an empty sheet", () => {
   const src = stripComments(readSrc(POS_PAGE));
-  assert.match(src, /pos\.cart\.length === 0\)\s*setMobileCartOpen\(false\)/, "must close the mobile cart sheet when pos.cart.length reaches 0");
+  // The original rule was `pos.cart.length === 0` alone. D9.8c narrowed it:
+  // Clear is clearCart (items only), so a promo/reward/discount/extra charge
+  // outlives the items, and MobileCartBar now deliberately stays openable for
+  // that case. Closing on item-count alone would slam the sheet shut on the
+  // only screen where a phone operator can remove the adjustment — trading
+  // one dead end for a worse one (money silently riding to the next sale).
+  // The dead-end guard itself is unchanged and still pinned, below.
+  assert.match(
+    src,
+    /pos\.cart\.length === 0 && !pendingAdjustment\)\s*setMobileCartOpen\(false\)/,
+    "must close the mobile cart sheet when the cart drains AND no adjustment survives",
+  );
+  assert.match(src, /setMobileCartOpen\(false\)/, "landmark: the auto-close must still exist");
 });
 
 test("PIN: pos/page.tsx never reintroduces the retired md two-pane grid or the old fixed chrome numbers", () => {
@@ -1034,19 +1046,31 @@ test("PIN: D9.8 — CartMoreMenu's trigger summarises what it is hiding, so an a
   // present somewhere in the file: `promoCode` (say) appears in the props,
   // the destructure and the CartPromo call, so a whole-file `includes` passed
   // even with the push deleted (caught by mutation-testing this pin).
-  const pushLines = cartSrc
-    .split("\n")
-    .filter((l) => l.includes("activeAdjustments.push"));
-  assert.ok(pushLines.length >= 4, `expected at least 4 activeAdjustments.push lines, got ${pushLines.length}`);
+  // Each condition is matched against the whole activeAdjustments BLOCK
+  // (from the declaration to the return), not the single push line: D9.8c
+  // moved the discount test onto its own `if (...) { push }` so it could also
+  // fire on an entered-but-underived figure. Scoping to the block keeps the
+  // pin honest — `promoCode` alone appears all over the file, so a whole-file
+  // includes() would pass with the push deleted (that escape was caught by
+  // mutation-testing this pin).
+  const blockStart = cartSrc.indexOf("const activeAdjustments");
+  assert.ok(blockStart > 0, "landmark: Cart.tsx must declare activeAdjustments");
+  const blockEnd = cartSrc.indexOf("const moreMenu", blockStart);
+  assert.ok(blockEnd > blockStart, "landmark: moreMenu must follow the activeAdjustments block");
+  const block = cartSrc.slice(blockStart, blockEnd);
+  assert.ok(
+    (block.match(/activeAdjustments\.push/g) ?? []).length >= 4,
+    "expected at least 4 activeAdjustments.push calls",
+  );
   for (const [needle, what] of [
-    ["discount > 0", "a manual/GST/reward discount"],
+    ["discountRaw > 0", "a manual discount figure the operator entered"],
     ["promoCode", "an applied promo code"],
     ["selectedRewardAt !== null", "a selected reward"],
     ["extraCharges.length > 0", "a staff-entered extra charge"],
   ] as const) {
     assert.ok(
-      pushLines.some((l) => l.includes(needle)),
-      `activeAdjustments must account for ${what} — no activeAdjustments.push line tests \`${needle}\``,
+      block.includes(needle),
+      `activeAdjustments must account for ${what} — the block does not test \`${needle}\``,
     );
   }
 
@@ -1125,16 +1149,121 @@ test("PIN: D9.8b — the more-actions trigger is the three-dot glyph ALONE (no '
   );
 });
 
-test("PIN: D9.8b — CartNotes renders its trailing slot on the COLLAPSED row", () => {
+test("PIN: D9.8b — CartNotes renders its trailing slot in BOTH branches, so the money controls never vanish when a note is opened", () => {
   const src = stripComments(readSrc("apps/cafe/components/pos/CartNotes.tsx"));
   assert.match(src, /trailing\?:\s*ReactNode/, "CartNotes must declare an optional trailing?: ReactNode");
   const collapsedAt = src.indexOf("if (!expanded)");
-  const expandedReturnAt = src.indexOf("return (", src.indexOf("}", collapsedAt));
   assert.ok(collapsedAt >= 0, "landmark: CartNotes must keep its collapsed branch");
-  const slotAt = src.indexOf("{trailing}");
-  assert.ok(slotAt > collapsedAt, "CartNotes must render {trailing} inside the collapsed branch");
+
+  // Originally the slot rendered ONLY on the collapsed row, which made the
+  // three-dot trigger — and with it discount, promo, reward and extra charges
+  // — disappear the moment an operator opened the note box. Both branches now
+  // carry it.
+  const slots = src.match(/\{trailing\}/g) ?? [];
+  assert.equal(
+    slots.length,
+    2,
+    `CartNotes must render {trailing} in BOTH the collapsed and expanded branches, found ${slots.length}`,
+  );
+  const first = src.indexOf("{trailing}");
+  const second = src.indexOf("{trailing}", first + 1);
+  assert.ok(first > collapsedAt, "the first {trailing} must sit inside the collapsed branch");
+  assert.ok(second > first, "landmark: the second {trailing} must follow the first");
+  // The expanded branch keeps its own Done control alongside the slot.
+  assert.match(src, /onClick=\{\(\)\s*=>\s*setExpanded\(false\)\}/, "landmark: the expanded box must keep its Done control");
+});
+
+test("PIN: D9.8c — the More menu is NEVER gated on an empty cart: Clear keeps the adjustments, so removing them must stay reachable", () => {
+  const src = stripComments(readSrc(CART_TSX));
+  const trigger = src.match(/<CartMoreMenu[^>]*>/);
+  assert.ok(trigger, "landmark: Cart.tsx must render <CartMoreMenu ...>");
+  assert.match(trigger![0], /disabled=\{isBusy\}/, "CartMoreMenu must be disabled ONLY on isBusy");
   assert.ok(
-    expandedReturnAt < 0 || slotAt < expandedReturnAt,
-    "the trailing slot belongs to the COLLAPSED row — the expanded box carries its own Done control",
+    !/items\.length\s*===\s*0/.test(trigger![0]),
+    "CartMoreMenu must NOT be gated on items.length === 0 — onClear is clearCart (items only), so a discount/promo/reward/extra charge survives Clear; gating the trigger stranded it: invisible, unreachable, and silently re-applied to the next sale",
+  );
+
+  // The dot must report a discount the operator ENTERED even when the derived
+  // amount is 0 (usePosTotals returns 0 while subtotal is 0) — otherwise a
+  // discount that survived Clear reports nothing anywhere at all.
+  assert.match(
+    src,
+    /discountRaw\s*>\s*0/,
+    "activeAdjustments must key the discount on the entered figure (discountRaw), not only the derived `discount`",
+  );
+  assert.match(src, /activeAdjustments\.push/, "landmark: activeAdjustments must still be built");
+});
+
+test("PIN: D9.8d — an applied PROMO and a selected REWARD render OUTSIDE the More menu: neither moves Subtotal/Total on this screen, so hiding them made a discounted bill look identical to an undiscounted one", () => {
+  const src = stripComments(readSrc(CART_TSX));
+  const close = src.indexOf("</CartMoreMenu>");
+  assert.ok(close > 0, "landmark: Cart.tsx must close </CartMoreMenu>");
+  const after = src.slice(close);
+  assert.match(
+    after,
+    /<CartAppliedRows[\s/>]/,
+    "CartAppliedRows must render AFTER the menu closes — a promo/reward the customer is getting is never hidden behind a tap",
+  );
+
+  // It must be fed the real state, not a placeholder.
+  const call = after.match(/<CartAppliedRows[\s\S]*?\/>/);
+  assert.ok(call, "landmark: the CartAppliedRows call must be readable");
+  assert.match(call![0], /promoCode=\{promoCode\}/, "must receive the live promoCode");
+  assert.match(call![0], /selectedReward=\{/, "must receive the selected reward offer");
+  assert.match(call![0], /rewardLocked=\{rewardLocked\}/, "must receive rewardLocked");
+
+  const rowsSrc = stripComments(readSrc("apps/cafe/components/pos/CartAppliedRows.tsx"));
+  assert.match(rowsSrc, /Promo \{promoCode\} applied/, "the promo row must name the code in literal text, never colour alone");
+  assert.match(rowsSrc, /rungWorthLabel\(selectedReward\.rung\)/, "the reward row must name what the reward is worth");
+  assert.ok(
+    /if \(!promoCode && !selectedReward\) return null;/.test(rowsSrc),
+    "CartAppliedRows must render nothing when neither is applied — an ordinary sale pays no footer height",
+  );
+  // A granted reward on a resumed tab cannot be revoked here, so it must not
+  // offer a control that would silently do nothing.
+  assert.match(rowsSrc, /\{!rewardLocked && \(/, "a LOCKED reward must render without a remove control");
+});
+
+test("PIN: D9.8c — on mobile, a surviving adjustment keeps the cart bar OPENABLE (and the sheet from auto-closing), or it is unreachable there", () => {
+  const barSrc = stripComments(readSrc(MOBILE_CART_BAR));
+  assert.match(
+    barSrc,
+    /const isEmpty =\s*cartProps\.items\.length === 0 && !hasPendingAdjustment\(cartProps\)/,
+    "the bar counts as empty ONLY when there are no items AND no surviving adjustment — Clear keeps the adjustment, and the sheet is the only place to remove it on a phone",
+  );
+  assert.match(barSrc, /Adjustment still applied/, "the bar must say WHY it is live on an item-less cart");
+
+  // ONE predicate, shared: the bar and the page's auto-close must agree, or
+  // one of them strands the adjustment the other is trying to keep reachable.
+  const propsSrc = stripComments(readSrc("apps/cafe/lib/pos-cart-props.ts"));
+  assert.match(propsSrc, /export function hasPendingAdjustment/, "pos-cart-props.ts must own the shared predicate");
+  // Scoped to the RETURNED EXPRESSION, not the whole file: the function's own
+  // Pick<> type signature names every field too, so a whole-file includes()
+  // stayed green with the promo arm gutted to `false ||` (caught by mutating
+  // it). The needles below must be live conditions, not type annotations.
+  const bodyAt = propsSrc.indexOf("export function hasPendingAdjustment");
+  const returnAt = propsSrc.indexOf("return (", bodyAt);
+  assert.ok(returnAt > bodyAt, "landmark: hasPendingAdjustment must return an expression");
+  const body = propsSrc.slice(returnAt);
+  for (const needle of [
+    "input.promoCode",
+    "input.selectedRewardAt",
+    "input.discountRaw",
+    'input.discountUnit === "GST"',
+    "input.extraCharges.length",
+  ]) {
+    assert.ok(body.includes(needle), `hasPendingAdjustment's condition must test ${needle}`);
+  }
+
+  const pageSrc = stripComments(readSrc(POS_PAGE));
+  assert.match(
+    pageSrc,
+    /hasPendingAdjustment\(pos\)/,
+    "the POS page must use the SAME shared predicate, not its own copy",
+  );
+  assert.match(
+    pageSrc,
+    /pos\.cart\.length === 0 && !pendingAdjustment/,
+    "the POS page must not force-close the mobile sheet while an adjustment survives",
   );
 });

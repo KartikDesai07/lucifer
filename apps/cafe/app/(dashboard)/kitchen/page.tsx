@@ -86,7 +86,9 @@ export default function KitchenPage() {
     if (readyInFlight.has(card.orderId)) return;
     setReadyInFlight((current) => new Set(current).add(card.orderId));
     ready.mutate(
-      { orderId: card.orderId, ready: true },
+      // seenFiredAt: what this card actually showed. See MarkOrderReadyInput —
+      // it stops the stamp burying a round fired since the last refresh.
+      { orderId: card.orderId, ready: true, seenFiredAt: card.newestFiredAt },
       {
         onSettled: () =>
           setReadyInFlight((current) => {

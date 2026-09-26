@@ -16,6 +16,7 @@ import {
   type ExtraChargeEntry,
 } from "@/components/pos/CartExtraCharges";
 import { CartMoreMenu } from "@/components/pos/CartMoreMenu";
+import { CartAppliedRows } from "@/components/pos/CartAppliedRows";
 import { POS_CART_CTA_CLASS, POS_CART_GST_BUTTON_CLASS, POS_CART_LIST_CLASS } from "@/lib/pos-layout";
 import { GST_DISCOUNT_LABEL } from "@/lib/constants";
 import type { CartItem } from "@/hooks/use-cart";
@@ -170,7 +171,15 @@ export function Cart({
   // also keeps a full always-visible row below (the "…applied" lines, the
   // charge rows and Total) — this is the second notice, not the only one.
   const activeAdjustments: string[] = [];
-  if (discount > 0) activeAdjustments.push(gstActive ? "GST discount" : "Discount");
+  // Keyed on the operator's INTENT (discountRaw / the GST preset), not on the
+  // derived `discount`: usePosTotals returns 0 whenever subtotal is 0, so a
+  // discount that survived Clear would otherwise report nothing at all — no
+  // dot here AND no "Discount applied" row below — while still being set and
+  // ready to re-apply to the next sale. The derived amount still drives the
+  // footer row; this is the flag that says "a figure is entered".
+  if (discount > 0 || discountRaw > 0 || gstActive) {
+    activeAdjustments.push(gstActive ? "GST discount" : "Discount");
+  }
   if (promoCode) activeAdjustments.push("Promo");
   if (selectedRewardAt !== null) activeAdjustments.push("Reward");
   if (extraCharges.length > 0) activeAdjustments.push("Extra charge");
@@ -188,8 +197,19 @@ export function Cart({
   //
   // Built here rather than inline because it now has two possible mount points
   // (the note row, or its own row while resuming) and must not be duplicated.
+  // D9.8c — the MENU itself is gated only on isBusy, never on an empty cart.
+  // `onClear` is clearCart (setCart([]) — items only), so a discount, promo,
+  // reward or extra charge SURVIVES Clear. Gating the trigger on
+  // items.length === 0 stranded them: the adjustment was still set, the
+  // operator could not open the menu to remove it, and adding the next item
+  // silently re-applied it to a different sale. (A surviving discount is
+  // doubly invisible there — usePosTotals returns 0 while subtotal is 0, so
+  // its "Discount applied" row does not render either.) The individual
+  // controls keep their own empty-cart gates, so SETTING a new adjustment on
+  // an empty cart is still refused; only SEEING and REMOVING one stays
+  // reachable.
   const moreMenu = (
-    <CartMoreMenu activeLabels={activeAdjustments} disabled={items.length === 0 || isBusy}>
+    <CartMoreMenu activeLabels={activeAdjustments} disabled={isBusy}>
       {/* Owner decision, binding (kept): the reward panel sits directly above
           Discount so the two money decisions (reward vs. manual discount,
           mutually exclusive — see CartReward) read as one group. That
@@ -401,6 +421,22 @@ export function Cart({
             <span>−{inr(discount)}</span>
           </div>
         )}
+
+        {/* D9.8d — the applied PROMO and the selected REWARD, kept out of the
+            More menu for the same reason as the extra-charge rows: what the
+            customer is getting must never sit behind a tap. These two need it
+            most, because neither moves Subtotal or Total on this screen (a
+            promo is resolved server-side and usePosTotals has no promo arm; an
+            item reward derives a 0 discount by design), so without these rows a
+            discounted bill is visually identical to an undiscounted one. */}
+        <CartAppliedRows
+          promoCode={promoCode}
+          onRemovePromo={onRemovePromo ?? (() => {})}
+          selectedReward={rewardOffers.find((o) => o.rung.at === selectedRewardAt)}
+          rewardLocked={rewardLocked}
+          onClearReward={() => onSelectReward?.(null)}
+          disabled={isBusy}
+        />
 
         {gstAmount > 0 && (
           <div className="flex items-center justify-between text-sm text-muted-foreground">

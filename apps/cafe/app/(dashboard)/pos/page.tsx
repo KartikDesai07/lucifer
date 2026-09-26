@@ -28,7 +28,7 @@ import { PosModals } from "@/components/pos/PosModals";
 import { SelfOrderAutoPrint } from "@/components/pos/SelfOrderAutoPrint";
 import { printConfigOf } from "@/lib/print";
 import { cn } from "@/lib/utils";
-import { buildCartProps } from "@/lib/pos-cart-props";
+import { buildCartProps, hasPendingAdjustment } from "@/lib/pos-cart-props";
 import {
   POS_ROOT_CLASS,
   POS_INSET_CLASS,
@@ -83,12 +83,12 @@ export default function PosPage() {
     return m;
   }, [pos.cart]);
 
-  // An open sheet over an empty cart is a dead end — the fixed bar cannot
-  // re-open it while empty, so close it the moment the cart drains (Pay Now,
-  // Clear, or closing the resumed tab all funnel through pos.cart).
+  // An open sheet over a TRULY empty cart is a dead end — but "empty" means no
+  // items AND no surviving adjustment (see hasPendingAdjustment).
+  const pendingAdjustment = hasPendingAdjustment(pos);
   useEffect(() => {
-    if (pos.cart.length === 0) setMobileCartOpen(false);
-  }, [pos.cart.length]);
+    if (pos.cart.length === 0 && !pendingAdjustment) setMobileCartOpen(false);
+  }, [pos.cart.length, pendingAdjustment]);
 
   // Print only after the receipt/KOT DOM reflects the freshly-placed order.
   const {

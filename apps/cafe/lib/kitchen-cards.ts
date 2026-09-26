@@ -52,6 +52,14 @@ export interface KitchenOrderCard {
    *  this crosses the wire (KitchenRow.firedAt's comment has the full reason). */
   cardFiredAt: string;
   cardFiredAtApprox: boolean;
+  /** P4-C — the NEWEST fire instant on this card, i.e. the most recent round
+   *  the cook could actually SEE when they looked at it. Distinct from
+   *  cardFiredAt, which is the OLDEST unfinished line (the FIFO/age key) and
+   *  would be far too early to use as a readiness bound. Sent with a Ready tap
+   *  so the server stamps readyAt at what was seen rather than at `now`; a
+   *  round fired since then stays newer than the stamp and the card returns.
+   *  ISO string for the same wire reason as cardFiredAt. */
+  newestFiredAt: string;
 }
 
 export interface BuildKitchenCardsInput {
@@ -175,6 +183,13 @@ export function buildKitchenCards({
       allDone: doneCount === lines.length,
       cardFiredAt: fired.at,
       cardFiredAtApprox: fired.approx,
+      // The newest line on the card — what the cook could see. ISO-8601 UTC
+      // fixed width, so localeCompare IS the chronological compare (the same
+      // justification cardFiredAtOf relies on).
+      newestFiredAt: lines.reduce(
+        (newest, line) => (line.firedAt.localeCompare(newest) > 0 ? line.firedAt : newest),
+        lines[0].firedAt,
+      ),
     });
   }
 

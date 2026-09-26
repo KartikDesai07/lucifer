@@ -63,7 +63,7 @@ export function CartNotes({ value, onChange, trailing }: CartNotesProps) {
   return (
     <div className="space-y-1.5 border-t p-3">
       <div className="flex items-center justify-between gap-2">
-        <Label htmlFor={notesId} className="text-xs text-muted-foreground">
+        <Label htmlFor={notesId} className="min-w-0 flex-1 text-xs text-muted-foreground">
           Order note
         </Label>
         {/* The way back. Without it the box can only ever be opened, so the
@@ -79,6 +79,12 @@ export function CartNotes({ value, onChange, trailing }: CartNotesProps) {
         >
           Done
         </Button>
+        {/* The trigger rides BOTH branches. Rendering it only on the collapsed
+            row made the money controls vanish the moment a note was opened —
+            an operator adding a note AND a discount had to guess that "Done"
+            was the way back to them. It is the same element either way, so
+            the menu never moves out from under a finger mid-sale. */}
+        {trailing}
       </div>
       <Textarea
         id={notesId}

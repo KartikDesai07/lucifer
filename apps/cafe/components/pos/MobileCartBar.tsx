@@ -10,6 +10,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Cart, type CartProps } from "@/components/pos/Cart";
+import { hasPendingAdjustment } from "@/lib/pos-cart-props";
 import {
   POS_MOBILE_ONLY_CLASS,
   POS_MOBILE_BAR_CLASS,
@@ -44,7 +45,13 @@ export function MobileCartBar({
   count,
   total,
 }: MobileCartBarProps) {
-  const isEmpty = cartProps.items.length === 0;
+  // D9.8c — an adjustment SURVIVES Clear (onClear is clearCart, items only),
+  // so "no items" does not mean "nothing to see". If a promo, reward, discount
+  // or extra charge is still set, the bar must stay openable: otherwise the
+  // sheet is the only place those controls live, the operator cannot reach
+  // them, and the adjustment silently rides onto the next customer's sale.
+  // Shared predicate — pos/page.tsx's auto-close must agree with this exactly.
+  const isEmpty = cartProps.items.length === 0 && !hasPendingAdjustment(cartProps);
   return (
     // One element carries both the breakpoint gate and the sticky bar styling:
     // a sticky child inside a same-sized wrapper would have nowhere to move.
@@ -67,7 +74,12 @@ export function MobileCartBar({
               className={cn(POS_MOBILE_BAR_BUTTON_CLASS, "animate-in zoom-in-95 duration-300")}
             >
               <span>
-                {count} item{count === 1 ? "" : "s"} · {inr(total)}
+                {/* An empty cart that is still open means an adjustment
+                    survived Clear — say so, rather than "0 items · ₹0", which
+                    reads like a bug and gives the operator no reason to look. */}
+                {count === 0
+                  ? "Adjustment still applied"
+                  : `${count} item${count === 1 ? "" : "s"} · ${inr(total)}`}
               </span>
               <span>View cart →</span>
             </Button>

@@ -513,6 +513,7 @@ const cardFor = (over: Partial<KitchenOrderCard>): KitchenOrderCard => ({
   allDone: false,
   cardFiredAt: "2026-09-26T10:00:00.000Z",
   cardFiredAtApprox: false,
+  newestFiredAt: "2026-09-26T10:00:00.000Z",
   ...over,
 });
 
@@ -543,4 +544,59 @@ test("R5: a zero-line card cannot produce a negative or '0 lines' message", () =
   assert.equal(readyToastMessage(cardFor({ doneCount: 0, totalCount: 0 })), "T-3 marked ready");
   // Defensive: doneCount > totalCount must not yield "-1 lines not ticked".
   assert.equal(readyToastMessage(cardFor({ doneCount: 5, totalCount: 3 })), "T-3 marked ready");
+});
+
+// ── P4-C: newestFiredAt — the readiness bound sent with a Ready tap ──────────
+
+test("N1: newestFiredAt is the NEWEST line's instant, while cardFiredAt stays the OLDEST unfinished one", () => {
+  const r1 = new Date("2026-09-23T08:00:00.000Z");
+  const r2 = new Date("2026-09-23T11:00:00.000Z");
+  const target = order({
+    _id: "3".repeat(24),
+    orderId: "ORD-TWO-ROUNDS",
+    items: [firedItem({ kotRound: 1, instructions: "r1" }), firedItem({ kotRound: 2, instructions: "r2" })],
+    kotFiredAt: [r1, r2],
+  });
+
+  const cards = buildKitchenCards({ orders: [target], ticksByOrder: {} });
+  assert.equal(cards.length, 1);
+  // The two must NOT be the same field: cardFiredAt drives FIFO/age (oldest),
+  // newestFiredAt bounds readiness (newest). Using cardFiredAt as the bound
+  // would stamp far too early and resurrect a legitimately cleared card.
+  assert.equal(cards[0].cardFiredAt, r1.toISOString(), "cardFiredAt = oldest unfinished line");
+  assert.equal(cards[0].newestFiredAt, r2.toISOString(), "newestFiredAt = newest line on the card");
+  assert.notEqual(cards[0].cardFiredAt, cards[0].newestFiredAt);
+});
+
+test("N2: a single-round card has newestFiredAt === cardFiredAt", () => {
+  const only = new Date("2026-09-23T09:30:00.000Z");
+  const cards = buildKitchenCards({
+    orders: [order({ _id: "4".repeat(24), kotFiredAt: [only] })],
+    ticksByOrder: {},
+  });
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].newestFiredAt, only.toISOString());
+  assert.equal(cards[0].cardFiredAt, only.toISOString());
+});
+
+test("N3: newestFiredAt still reports the newest round when every line is ticked (the all-done Ready case)", () => {
+  const r1 = new Date("2026-09-23T08:00:00.000Z");
+  const r2 = new Date("2026-09-23T11:00:00.000Z");
+  const target = order({
+    _id: "5".repeat(24),
+    orderId: "ORD-ALLDONE",
+    items: [firedItem({ kotRound: 1, instructions: "a" }), firedItem({ kotRound: 2, instructions: "b" })],
+    kotFiredAt: [r1, r2],
+  });
+  const rows = buildKitchenRows({ orders: [target], ticksByOrder: {} });
+  const cards = buildKitchenCards({
+    orders: [target],
+    ticksByOrder: { [String(target._id)]: rows.map((r) => r.ref) },
+  });
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].allDone, true);
+  // The bound must not collapse to the all-done cardFiredAt fallback (r1):
+  // stamping r1 would leave round 2 "newer" forever and the card could never
+  // be cleared at all.
+  assert.equal(cards[0].newestFiredAt, r2.toISOString());
 });

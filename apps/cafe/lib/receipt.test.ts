@@ -343,9 +343,17 @@ test("PIN: the POS page hands the cart the same total as the mobile bar and the 
   );
 
   const page = stripComments(readSrc("app/(dashboard)/pos/page.tsx"));
+  // Matches the import BLOCK, not a single-name destructuring: D9.8c added
+  // hasPendingAdjustment to the same line (one shared "is anything applied"
+  // predicate, so the More menu, the mobile bar and the sheet's auto-close
+  // cannot drift). The subject of this pin is that the money figures come from
+  // ONE assembler — proven by the buildCartProps(pos, ...) call below — not by
+  // how many names the import happens to list.
+  const propsImport = page.match(/import\s*\{([^}]*)\}\s*from\s*"@\/lib\/pos-cart-props"/);
+  assert.ok(propsImport, 'pos/page.tsx must import from "@/lib/pos-cart-props"');
   assert.match(
-    page,
-    /import\s*\{\s*buildCartProps\s*\}\s*from\s*"@\/lib\/pos-cart-props"/,
+    propsImport![1],
+    /(^|[\s,])buildCartProps([\s,]|$)/,
     "pos/page.tsx must import buildCartProps from lib/pos-cart-props — the one place the cart's money figures are assembled.",
   );
   assert.match(

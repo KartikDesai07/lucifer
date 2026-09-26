@@ -293,3 +293,28 @@ test("PIN (22b): readyToastMessage distinguishes a finished card from one cleare
   assert.match(pageSrc, /readyToastMessage\(card\)/, "the kitchen page's ready toast must use readyToastMessage(card)");
   assert.match(pageSrc, /label:\s*"Undo"/, "the ready toast must still offer Undo — clearing the wrong card must stay recoverable");
 });
+
+test("PIN (23): P4-C — the ready write stamps the instant the cook SAW, clamped to now, so a round fired since the last refresh is never buried", () => {
+  const routeSrc = stripComments(readSrc("apps/cafe/app/api/kitchen/route.ts"));
+
+  assert.match(routeSrc, /seenFiredAt:\s*z\.string\(\)\.datetime\(\)\.optional\(\)/,
+    "the ready body must accept an optional ISO seenFiredAt");
+  // The stamp must come from seenFiredAt, never unconditionally from `now`.
+  assert.match(routeSrc, /Math\.min\(seen\.getTime\(\),\s*nowMs\)/,
+    "the stamp must be clamped to now — a fast client clock must not park readyAt in the future and suppress rounds that have not happened");
+  assert.match(routeSrc, /readyAt:\s*new Date\(stampMs\)/,
+    "the ready write must use the derived stampMs, not a bare new Date()");
+  assert.ok(
+    !/readyAt:\s*new Date\(\)\s*\}/.test(routeSrc),
+    "the ready write must NOT stamp a bare new Date() — that buries any round fired in the refresh gap",
+  );
+  // $unset survives (the un-ready path is unchanged).
+  assert.match(routeSrc, /\$unset:\s*\{\s*readyAt:\s*""\s*\}/, "landmark: un-ready must still $unset, never null");
+
+  // The client must actually SEND it, keyed on the card's newest instant.
+  const pageSrc = stripComments(readSrc(KITCHEN_PAGE));
+  assert.match(pageSrc, /seenFiredAt:\s*card\.newestFiredAt/,
+    "the Ready tap must send card.newestFiredAt — cardFiredAt is the OLDEST unfinished line and would stamp far too early");
+  const cardsSrc = stripComments(readSrc("apps/cafe/lib/kitchen-cards.ts"));
+  assert.match(cardsSrc, /newestFiredAt:/, "buildKitchenCards must publish newestFiredAt on every card");
+});

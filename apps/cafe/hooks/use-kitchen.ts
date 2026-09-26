@@ -107,6 +107,12 @@ export function useTickKitchenLine() {
 interface MarkOrderReadyInput {
   orderId: string;
   ready: boolean;
+  /** P4-C — the card's own cardFiredAt: the newest fire instant the cook could
+   *  actually SEE when they tapped. The server stamps readyAt at this instant
+   *  instead of `now`, so a round fired in the gap between the board's last
+   *  refresh and the tap stays newer than the stamp and the card returns
+   *  instead of being silently buried. Omitted on un-ready (nothing to bound). */
+  seenFiredAt?: string;
 }
 
 // P4-B — clear a finished order's card off the board (or put it back). This is

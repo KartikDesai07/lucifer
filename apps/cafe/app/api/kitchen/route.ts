@@ -40,6 +40,16 @@ const tickBodySchema = z.discriminatedUnion("action", [
     action: z.literal("ready"),
     orderId: z.string(),
     ready: z.boolean(),
+    // P4-C — the newest fire instant the cook could actually SEE on the card
+    // they tapped (the card's own cardFiredAt, ISO). The stamp is written at
+    // THIS instant rather than at `now`, so a round fired between the board's
+    // last refresh and the tap stays NEWER than the stamp and the card comes
+    // straight back. Without it, Ready silently buries a round nobody cooked:
+    // isHiddenByReady compares readyAt >= newest kotFiredAt, and a `now` stamp
+    // always wins that comparison. Optional so an older client (or a board
+    // rendered before this shipped) still works — it then falls back to `now`,
+    // which is exactly the previous behaviour, never worse.
+    seenFiredAt: z.string().datetime().optional(),
   }),
 ]);
 
@@ -127,10 +137,24 @@ export async function POST(req: Request) {
       // clear a card whose last open line the POS just voided. A UI disable is
       // never a fence, and this is the one place where the permissive answer is
       // the correct one — the alternative strands a card on the wall forever.
+      // P4-C — stamp the instant the cook could SEE, not the instant the
+      // request landed. isHiddenByReady hides an order while
+      // readyAt >= newest kotFiredAt, so a `now` stamp also buries any round
+      // fired in the gap between the board's last refresh and the tap — food
+      // nobody cooked, with nothing on any screen reporting it. Stamping the
+      // card's own newest fire instant keeps that newer round strictly later
+      // than the stamp, so the card returns on the next read.
+      // Clamped to now: a client clock running fast (or a hand-made body) must
+      // not be able to park a stamp in the future and suppress rounds that have
+      // not happened yet. Falls back to now when absent — the old behaviour.
+      const seen = body.seenFiredAt ? new Date(body.seenFiredAt) : null;
+      const nowMs = Date.now();
+      const stampMs =
+        seen && Number.isFinite(seen.getTime()) ? Math.min(seen.getTime(), nowMs) : nowMs;
       // $unset, never null: the board reads readiness as field PRESENCE.
       await KotTick.updateOne(
         { _id: orderId },
-        body.ready ? { $set: { readyAt: new Date() } } : { $unset: { readyAt: "" } },
+        body.ready ? { $set: { readyAt: new Date(stampMs) } } : { $unset: { readyAt: "" } },
         { upsert: true },
       );
     } else if (body.done) {

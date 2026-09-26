@@ -64,3 +64,29 @@ export function buildCartProps(pos: Pos, onVoidItem: () => void): CartProps {
     isBusy: pos.isBusy,
   };
 }
+
+/**
+ * Does this sale still carry a money adjustment, even with an empty cart?
+ *
+ * D9.8c — `onClear` is `clearCart` (setCart([]) — items ONLY), not
+ * `resetOrder`, so a discount, promo, reward or extra charge SURVIVES the
+ * Clear button. "No items" therefore does not mean "nothing applied", and
+ * three separate places have to agree on that or the adjustment is stranded:
+ * the More menu must stay openable, the mobile bar must stay tappable, and
+ * the mobile sheet must not auto-close. One predicate so they cannot drift.
+ *
+ * Keyed on the operator's INTENT (`discountRaw`, the GST preset) rather than
+ * the derived `discount`, which usePosTotals returns as 0 whenever subtotal is
+ * 0 — a surviving discount would otherwise report nothing at all.
+ */
+export function hasPendingAdjustment(
+  input: Pick<CartProps, "promoCode" | "selectedRewardAt" | "discountRaw" | "discountUnit" | "extraCharges">,
+): boolean {
+  return (
+    !!input.promoCode ||
+    input.selectedRewardAt != null ||
+    input.discountRaw > 0 ||
+    input.discountUnit === "GST" ||
+    input.extraCharges.length > 0
+  );
+}
