@@ -16,6 +16,12 @@ import mongoose, { Schema, type Document, type Model } from "mongoose";
 export interface IKotTick extends Document<string> {
   _id: string;
   refs: string[];
+  // P4-B — when a cook tapped "Ready" and cleared the card from the board. It
+  // is a DROP MARKER, not an audit record: a repeat tap simply re-stamps it.
+  // Compared against the order's newest kotFiredAt rather than read as a
+  // boolean, so a round fired AFTER the tap brings the card back instead of
+  // being hidden forever (lib/kitchen-cards.ts — the lost-ticket rule).
+  readyAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -24,6 +30,9 @@ const kotTickSchema = new Schema<IKotTick>(
   {
     _id: { type: String, required: true },
     refs: { type: [String], default: [] },
+    // No default and no index: absent means "not cleared", and the board reads
+    // it per-order off docs it already fetched by _id.
+    readyAt: { type: Date },
   },
   { timestamps: true },
 );

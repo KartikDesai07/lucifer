@@ -111,6 +111,10 @@ const orderObject = z.object({
   // Shape only. The route checks the table EXISTS against the live collection —
   // a cafe's floor plan is data, not a compile-time enum (CR1.1).
   tableNo: tableNoSchema.optional(),
+  // P4-B — takeaway. The kitchen board shows it as its own channel, because
+  // packing is a different action from plating and "no table" cannot say it
+  // (a dine-in walk-in has no table either). Omit-empty: absent = dine-in.
+  parcel: z.boolean().optional(),
   notes: z.string().trim().max(ORDER_NOTES_MAX_LEN).optional(),
 });
 

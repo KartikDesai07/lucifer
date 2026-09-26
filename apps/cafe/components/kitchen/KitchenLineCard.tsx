@@ -36,7 +36,7 @@ export function KitchenLineCard({ row, now, onToggle, pending }: KitchenLineCard
     <div className="flex items-start gap-3 rounded-lg border p-3">
       <div className="grid min-h-11 min-w-11 shrink-0 place-items-center">
         <Checkbox
-          checked={false}
+          checked={row.done}
           disabled={pending}
           onCheckedChange={(checked) => onToggle(row, checked === true)}
           aria-label={`Mark ${row.name} done`}
@@ -44,8 +44,14 @@ export function KitchenLineCard({ row, now, onToggle, pending }: KitchenLineCard
       </div>
 
       <div className="min-w-0 flex-1 space-y-1">
-        <div className="font-bold">
-          {row.qty} × {row.name}
+        <div
+          className={cn(
+            "text-base font-bold sm:text-lg xl:text-xl",
+            row.done && "text-muted-foreground line-through",
+          )}
+        >
+          <span className="text-lg font-black tabular-nums xl:text-2xl">{row.qty}</span> ×{" "}
+          {row.name}
           {row.variation ? ` (${row.variation})` : ""}
         </div>
 
@@ -58,13 +64,11 @@ export function KitchenLineCard({ row, now, onToggle, pending }: KitchenLineCard
         )}
 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          {/* Rounds genuinely differ within a card, so this stays per-line. The
+              order number and table label are now the CARD's job — repeating
+              them on every line would just echo the same string. */}
           <span>Round {row.round}</span>
-          {/* The order number always shows: ticket numbering is optional per
-              cafe, so `#{ticketNumber}` alone can leave a row with no way
-              back to the paper slip the kitchen is holding. */}
-          <span>{row.orderNo}</span>
           {row.ticketNumber !== undefined && <span>#{row.ticketNumber}</span>}
-          <span>{row.tableLabel}</span>
 
           {row.selfOrder && (
             <span className="flex items-center gap-1 text-blue-600">

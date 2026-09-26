@@ -38,6 +38,10 @@ export interface KitchenOrderInput {
   kotNumbers?: number[];
   kotFiredAt?: Date[];
   tableNo?: string;
+  // P4-B — a takeaway order. A cook PACKS it instead of plating it, so the
+  // board must say so outright; a missing tableNo cannot carry that meaning,
+  // since a dine-in walk-in has no table either.
+  parcel?: boolean;
   source?: string;
   createdAt: Date;
 }
@@ -71,6 +75,10 @@ export interface KitchenRow {
   // exactly this reason; renderers wrap with `new Date(...)` at the use site.
   firedAt: string;
   firedAtApprox: boolean;
+  // P4-B — ticked lines now STAY on the board (they used to be dropped here),
+  // so a card can show "2/5 done" and keep its Ready button. The card, not the
+  // line, is what leaves — see lib/kitchen-cards.ts.
+  done: boolean;
 }
 
 export interface KitchenAgeBand {
@@ -114,6 +122,9 @@ export function kitchenAgeBand(firedAt: string, now: Date): KitchenAgeBand {
 
 interface BuildKitchenRowsInput {
   orders: KitchenOrderInput[];
+  /** Apply KITCHEN_ROW_LIMIT. See the parameter's comment — the card view opts
+   *  out so a card can never carry a truncated, wrong `totalCount`. */
+  capRows?: boolean;
   ticksByOrder: Record<string, string[]>; // orderId -> done refs
   // Kept on the input (callers pass a server clock) even though the builder
   // itself needs no clock: ageing is derived at RENDER from the row's
@@ -128,7 +139,16 @@ interface BuildKitchenRowsInput {
 // with the summed qty, because those rows are interchangeable by construction
 // (utils.ts's own orderLineKey comment says so) and a cook must see "3 x
 // Masala Chai", not three separate un-ticked rows for the same dish.
-export function buildKitchenRows({ orders, ticksByOrder }: BuildKitchenRowsInput): KitchenRow[] {
+export function buildKitchenRows({
+  orders,
+  ticksByOrder,
+  // P4-B — the CARD view passes false. A flat list can be cut anywhere without
+  // lying, but cutting a card's lines mid-order would leave that card showing
+  // "2/3 done" for an order that actually fired more food than the card admits.
+  // The card builder bounds itself by CARDS instead, which can never split an
+  // order. Defaults true so the shipped line-list behaviour is unchanged.
+  capRows = true,
+}: BuildKitchenRowsInput): KitchenRow[] {
   const rows: KitchenRow[] = [];
 
   for (const order of orders) {
@@ -148,7 +168,11 @@ export function buildKitchenRows({ orders, ticksByOrder }: BuildKitchenRowsInput
         modifiers: item.modifiers,
         variation: item.variation,
       });
-      if (doneRefs.has(ref)) continue; // already ticked off the board
+      // P4-B — NOT dropped any more. `done` is a property of the REF, so the
+      // collapse below (which sums qty onto the first row for that ref) carries
+      // the right flag by construction: every item sharing a ref shares its
+      // tick state.
+      const done = doneRefs.has(ref);
 
       const existing = byRef.get(ref);
       if (existing) {
@@ -176,6 +200,7 @@ export function buildKitchenRows({ orders, ticksByOrder }: BuildKitchenRowsInput
         selfOrder: order.source === SELF_ORDER_SOURCE,
         firedAt: firedAt.toISOString(),
         firedAtApprox: stamped === undefined,
+        done,
       });
     }
 
@@ -195,5 +220,5 @@ export function buildKitchenRows({ orders, ticksByOrder }: BuildKitchenRowsInput
     return a.ref.localeCompare(b.ref);
   });
 
-  return rows.slice(0, KITCHEN_ROW_LIMIT);
+  return capRows ? rows.slice(0, KITCHEN_ROW_LIMIT) : rows;
 }

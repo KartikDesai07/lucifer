@@ -55,17 +55,30 @@ test("pin4: two identical rows (same product+round+mods+variation) collapse into
   const rows = buildKitchenRows({ orders: [ord], ticksByOrder: {}, now: NOW });
   assert.equal(rows.length, 1, "identical lines must collapse into one row");
   assert.equal(rows[0].qty, 3, "qty must be the SUM (2 + 1)");
+  assert.equal(rows[0].done, false, "the collapsed row must read done === false — neither collapsed item was ticked");
 });
 
 // ── Pin 5 — partial-void survival (the headline invariant) ──────────────────
 
-test("pin5: ticking line A survives a partial void that reduces a DIFFERENT sibling line B", () => {
+// P4-B — ticked lines now STAY on the board (`done` is a property of the
+// row, not a drop signal; the CARD, not the line, is what leaves — see
+// lib/kitchen-cards.ts). This pin used to prove "the tick survived" by
+// ABSENCE: the ticked row vanished from the board and rows.length === 1
+// stood for "A dropped, B present". That drop semantics is gone, so the old
+// assertion would now fail for the RIGHT reason (rowsAfter.length is 2, not
+// 1) — re-scoped here to the STRONGER form: line A must be PRESENT with
+// done === true, sibling line B must be present with done === false and its
+// qty reduced exactly as before, refs on both lines byte-identical to their
+// pre-void values, and the total row count is 2 (nothing silently added or
+// dropped).
+test("pin5: ticking line A survives a partial void that reduces a DIFFERENT sibling line B — A present+done, B present+reduced+un-done", () => {
   // Two fired lines on one order: A (Tea) and B (Coffee), both round 1.
   const lineA: VoidableLine = { productId: PRODUCT_A, name: "Tea", price: 20, qty: 2, kotRound: 1 };
   const lineB: VoidableLine = { productId: PRODUCT_B, name: "Coffee", price: 40, qty: 3, kotRound: 1 };
   const items = [lineA, lineB];
 
   const refA = kotLineRef({ productId: PRODUCT_A, kotRound: 1 });
+  const refB = kotLineRef({ productId: PRODUCT_B, kotRound: 1 });
 
   // Board BEFORE the void: tick A off (a cook already made it).
   const orderBefore = order({ items: items.map((it) => firedItem({ ...it })) });
@@ -110,14 +123,18 @@ test("pin5: ticking line A survives a partial void that reduces a DIFFERENT sibl
     now: NOW,
   });
 
-  assert.ok(!rowsAfter.some((r) => r.ref === refA), "ticked line A must be ABSENT — the tick survived the void");
-  // Un-ticked is proven by PRESENCE on the board: buildKitchenRows drops any
-  // ref found in ticksByOrder (doneRefs), and refB was never in that set —
-  // its appearance here IS the un-ticked assertion.
-  const reducedB = rowsAfter.find((r) => r.ref === kotLineRef({ productId: PRODUCT_B, kotRound: 1 }));
-  assert.ok(reducedB, "the reduced line B must still be present and un-ticked");
+  assert.equal(rowsAfter.length, 2, "exactly two rows: both lines stay on the board");
+
+  const tickedA = rowsAfter.find((r) => r.ref === refA);
+  assert.ok(tickedA, "line A must still be PRESENT — a tick no longer removes the row");
+  assert.equal(tickedA?.done, true, "line A must read done === true");
+  assert.equal(tickedA?.ref, refA, "line A's ref must be byte-identical to its pre-void ref — the tick survived because the ref did not shift");
+
+  const reducedB = rowsAfter.find((r) => r.ref === refB);
+  assert.ok(reducedB, "the reduced line B must still be present");
+  assert.equal(reducedB?.done, false, "line B must read done === false — it was never ticked");
   assert.equal(reducedB?.qty, 1, "line B's qty must reflect the reduce (3 - 2 = 1)");
-  assert.equal(rowsAfter.length, 1, "exactly one row: A dropped (ticked), B present (reduced, un-ticked)");
+  assert.equal(reducedB?.ref, refB, "line B's ref must be byte-identical — the ref is qty-free, so its own reduction does not move it");
 });
 
 // ── Pin 6 — unfired lines never appear ───────────────────────────────────────

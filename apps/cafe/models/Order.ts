@@ -125,6 +125,10 @@ export interface IOrder extends Document {
   receiver: string; // staff name — the printed NAME snapshot, kept as-is
   staffId?: Types.ObjectId; // the staff account that rang this up (session-stamped)
   tableNo?: string; // optional T-1 to T-8
+  // P4-B — takeaway. Omit-empty: absent means dine-in, so no existing order
+  // changes meaning. Distinct from "has no table": a dine-in walk-in also has
+  // no tableNo, and the kitchen must be able to tell those two apart.
+  parcel?: boolean;
   notes?: string; // order-level notes
   kotRounds: number; // count of KOT rounds fired (running order); 0 for one-shot orders
   // Printed slip numbers, already resolved against the cafe's configured daily
@@ -293,6 +297,7 @@ const orderSchema = new Schema<IOrder>(
     // queries by it today).
     staffId: { type: Schema.Types.ObjectId },
     tableNo: { type: String },
+    parcel: { type: Boolean },
     notes: { type: String },
     kotRounds: { type: Number, default: 0 },
     // No defaults: a cafe with slip numbering switched off stores neither

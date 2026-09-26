@@ -14,7 +14,7 @@ import { computeOrderTotals, gstConfigFromOrder, gstConfigOfSettings } from "@/l
 import { derivePayment, ledgerContribution } from "@/lib/order";
 import { resolveTableCharge } from "@/lib/table-admin";
 import { priceRequestItems, PRICE_DRIFT_ERROR, type PricedProductSource } from "@/lib/public-pricing";
-import { SELF_ORDER_SOURCE } from "@pos/shared/public";
+import { PARCEL_SELECTION, SELF_ORDER_SOURCE } from "@pos/shared/public";
 import {
   REQUEST_REJECTED_ERROR,
   REQUEST_GONE_ERROR,
@@ -347,6 +347,11 @@ export async function acceptOrderRequest(
     status: "Pending" as const,
     receiver: ctx.actor,
     tableNo,
+    // P4-B — carry the diner's own choice through to the Order. The request
+    // knew it was a parcel (targetKind); the Order did not, so the kitchen
+    // showed a genuine takeaway as "Walk-In" and a cook could plate food that
+    // needed packing. Omit-empty: only ever written as true.
+    ...(request.targetKind === PARCEL_SELECTION ? { parcel: true } : {}),
     source: SELF_ORDER_SOURCE,
     sourceRequestIds: [requestId],
   };

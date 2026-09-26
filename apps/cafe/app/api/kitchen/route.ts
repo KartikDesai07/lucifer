@@ -11,7 +11,8 @@ import {
   requireAuth,
   serverError,
 } from "@/lib/api-helpers";
-import { buildKitchenRows, type KitchenOrderInput } from "@/lib/kitchen-board";
+import type { KitchenOrderInput } from "@/lib/kitchen-board";
+import { buildKitchenCards } from "@/lib/kitchen-cards";
 
 export const dynamic = "force-dynamic";
 
@@ -24,11 +25,23 @@ const OPEN_TAB_LIMIT = 100;
 // kitchen-board row. `ref` is a kotLineRef() string (qty-free line identity,
 // see lib/kitchen-board.ts), never re-derived server-side: the board already
 // computed it, and the route only needs to record it.
-const tickBodySchema = z.object({
-  orderId: z.string(),
-  ref: z.string().min(1).max(400),
-  done: z.boolean(),
-});
+const tickBodySchema = z.discriminatedUnion("action", [
+  // Tick (or un-tick) ONE collapsed board row.
+  z.object({
+    action: z.literal("tick"),
+    orderId: z.string(),
+    ref: z.string().min(1).max(400),
+    done: z.boolean(),
+  }),
+  // P4-B — clear a whole order's card from the board (or put it back).
+  // `action` is REQUIRED with no default on purpose: a defaulted discriminator
+  // would let a malformed body silently become a tick.
+  z.object({
+    action: z.literal("ready"),
+    orderId: z.string(),
+    ready: z.boolean(),
+  }),
+]);
 
 // GET /api/kitchen — the live kitchen board. requireAuth() (NOT requireAdmin):
 // the kitchen is staffed by non-admins, and nothing here reads or writes
@@ -52,20 +65,22 @@ export async function GET() {
       .lean();
 
     const ids = orders.map((order) => String(order._id));
-    const ticks = await KotTick.find({ _id: { $in: ids } }).select("refs").lean();
+    const ticks = await KotTick.find({ _id: { $in: ids } }).select("refs readyAt").lean();
     const ticksByOrder: Record<string, string[]> = {};
+    const readyAtByOrder: Record<string, Date | undefined> = {};
     for (const tick of ticks) {
       ticksByOrder[tick._id] = tick.refs;
+      if (tick.readyAt) readyAtByOrder[tick._id] = tick.readyAt;
     }
 
     const now = new Date();
-    const rows = buildKitchenRows({
+    const cards = buildKitchenCards({
       orders: orders as KitchenOrderInput[],
       ticksByOrder,
-      now,
+      readyAtByOrder,
     });
 
-    return success({ rows, tabCount: orders.length, generatedAt: now.toISOString() });
+    return success({ cards, tabCount: orders.length, generatedAt: now.toISOString() });
   } catch (error) {
     return serverError("Failed to load the kitchen board", error);
   }
@@ -82,13 +97,14 @@ export async function POST(req: Request) {
   const parsed = await validateBody(req, tickBodySchema);
   if ("error" in parsed) return parsed.error;
 
-  const { orderId, ref, done } = parsed.data;
+  const body = parsed.data;
+  const { orderId } = body;
   if (!mongoose.isValidObjectId(orderId)) return notFound("Order not found");
 
   try {
     await connectDB();
 
-    // Both verbs are gated on the tab still being OPEN. That is deliberate for
+    // EVERY verb is gated on the tab still being OPEN. That is deliberate for
     // the un-tick too: a settled tab never returns to the board, so its refs
     // are inert, and an ungated $pull would let a stale client keep mutating a
     // closed tab's record. The only cost is the message below — an Undo tapped
@@ -97,24 +113,42 @@ export async function POST(req: Request) {
     const open = await Order.exists({ _id: orderId, status: "Pending", payment: "Unpaid" });
     if (!open) {
       return notFound(
-        done
-          ? "Tab not found or already settled"
-          : "That tab was settled — the line stays marked done",
+        body.action === "ready"
+          ? "That tab was settled — its card is already off the board"
+          : body.done
+            ? "Tab not found or already settled"
+            : "That tab was settled — the line stays marked done",
       );
     }
 
-    if (done) {
-      await KotTick.updateOne({ _id: orderId }, { $addToSet: { refs: ref } }, { upsert: true });
+    if (body.action === "ready") {
+      // NOT fenced on every line being ticked. The UI disables the button until
+      // then, but that is a nudge, not a rule: a cook must still be able to
+      // clear a card whose last open line the POS just voided. A UI disable is
+      // never a fence, and this is the one place where the permissive answer is
+      // the correct one — the alternative strands a card on the wall forever.
+      // $unset, never null: the board reads readiness as field PRESENCE.
+      await KotTick.updateOne(
+        { _id: orderId },
+        body.ready ? { $set: { readyAt: new Date() } } : { $unset: { readyAt: "" } },
+        { upsert: true },
+      );
+    } else if (body.done) {
+      await KotTick.updateOne({ _id: orderId }, { $addToSet: { refs: body.ref } }, { upsert: true });
     } else {
-      await KotTick.updateOne({ _id: orderId }, { $pull: { refs: ref } });
+      await KotTick.updateOne({ _id: orderId }, { $pull: { refs: body.ref } });
     }
 
-    // A line was ticked (or un-ticked) — nudge every OTHER device's board
-    // ahead of its 10s poll. publishCafeEvent defers it past the response and
-    // swallows every failure, so it can never delay or fail this write; the
-    // poll stays the fallback and the source of truth.
+    // The board changed — nudge every OTHER device ahead of its 10s poll.
+    // publishCafeEvent defers it past the response and swallows every failure,
+    // so it can never delay or fail this write; the poll stays the fallback and
+    // the source of truth.
     publishCafeEvent("kot-ticked");
-    return success({ orderId, ref, done });
+    return success(
+      body.action === "ready"
+        ? { orderId, ready: body.ready }
+        : { orderId, ref: body.ref, done: body.done },
+    );
   } catch (error) {
     return serverError("Failed to update the kitchen tick", error);
   }

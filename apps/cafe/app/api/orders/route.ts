@@ -475,6 +475,9 @@ export async function POST(req: Request) {
       receiver: authed.session.user?.name ?? data.receiver, // trust the session, not the client
       staffId: authed.session.user.id,
       tableNo: data.tableNo,
+      // Omit-empty: only ever stored when true, so no existing order's
+      // meaning changes and a dine-in tab carries no field at all.
+      ...(data.parcel ? { parcel: true } : {}),
       // CB-5D part 2 — the promo's staff-actionable line composes onto the
       // operator's own note rather than replacing it, through the SAME
       // mergedNote helper the diner accept path uses. The Order model stores

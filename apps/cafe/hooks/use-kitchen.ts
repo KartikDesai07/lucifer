@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { apiGet, apiSend } from "@/lib/api-client";
 import { STALE_TIMES, REFETCH_INTERVALS } from "@/lib/query";
 import { ORDER_KEYS } from "@/hooks/use-orders";
-import type { KitchenRow } from "@/lib/kitchen-board";
+import type { KitchenOrderCard } from "@/lib/kitchen-cards";
 
 // P4-A — the kitchen board's data hooks. The board query gates its own poll
 // (and focus-refetch) on an in-flight ORDER mutation, same idiom as
@@ -20,10 +20,13 @@ import type { KitchenRow } from "@/lib/kitchen-board";
 export const KITCHEN_KEYS = {
   all: ["kitchen"] as const,
   mutation: ["kitchen", "tick"] as const,
+  // P4-B — its own key so clearing a card never pauses the board's poll, the
+  // same reasoning the tick key already documents.
+  ready: ["kitchen", "ready"] as const,
 };
 
 interface KitchenBoardData {
-  rows: KitchenRow[];
+  cards: KitchenOrderCard[];
   tabCount: number;
   generatedAt: string;
 }
@@ -60,15 +63,27 @@ export function useTickKitchenLine() {
   return useMutation({
     mutationKey: KITCHEN_KEYS.mutation,
     mutationFn: (input: TickKitchenLineInput) =>
-      apiSend<TickKitchenLineInput>("/api/kitchen", "POST", input),
+      apiSend<TickKitchenLineInput & { action: "tick" }>("/api/kitchen", "POST", {
+        action: "tick",
+        ...input,
+      }),
     onMutate: async ({ orderId, ref, done }) => {
       await qc.cancelQueries({ queryKey: KITCHEN_KEYS.all });
       const previous = qc.getQueryData<KitchenBoardData>(KITCHEN_KEYS.all);
-      if (previous && done) {
-        // Marking done: drop the row from the board immediately.
+      if (previous) {
+        // P4-B — the line STAYS and flips; the card is what leaves, and only on
+        // an explicit Ready. Both directions are optimistic now, so an un-tick
+        // shows immediately instead of waiting for the next refetch.
         qc.setQueryData<KitchenBoardData>(KITCHEN_KEYS.all, {
           ...previous,
-          rows: previous.rows.filter((row) => !(row.orderId === orderId && row.ref === ref)),
+          cards: previous.cards.map((card) => {
+            if (card.orderId !== orderId) return card;
+            const lines = card.lines.map((line) =>
+              line.ref === ref ? { ...line, done } : line,
+            );
+            const doneCount = lines.filter((line) => line.done).length;
+            return { ...card, lines, doneCount, allDone: doneCount === lines.length };
+          }),
         });
       }
       return { previous };
@@ -86,5 +101,47 @@ export function useTickKitchenLine() {
     },
     // No onSuccess toast on purpose — a success toast per cooked line is
     // noise on a wall display that a cook glances at all shift.
+  });
+}
+
+interface MarkOrderReadyInput {
+  orderId: string;
+  ready: boolean;
+}
+
+// P4-B — clear a finished order's card off the board (or put it back). This is
+// the ONE action that removes a card: ticking every line only flips `allDone`,
+// which is what surfaces the button. Optimistic, with the same explicit
+// snapshot-and-restore discipline the tick uses — an invalidate-only rollback
+// would let a racing background refetch re-adopt the failed write's state.
+export function useMarkOrderReady() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationKey: KITCHEN_KEYS.ready,
+    mutationFn: (input: MarkOrderReadyInput) =>
+      apiSend<MarkOrderReadyInput & { action: "ready" }>("/api/kitchen", "POST", {
+        action: "ready",
+        ...input,
+      }),
+    onMutate: async ({ orderId, ready }) => {
+      await qc.cancelQueries({ queryKey: KITCHEN_KEYS.all });
+      const previous = qc.getQueryData<KitchenBoardData>(KITCHEN_KEYS.all);
+      if (previous && ready) {
+        qc.setQueryData<KitchenBoardData>(KITCHEN_KEYS.all, {
+          ...previous,
+          cards: previous.cards.filter((card) => card.orderId !== orderId),
+        });
+      }
+      return { previous };
+    },
+    onError: (err: Error, _input, context) => {
+      if (context?.previous) {
+        qc.setQueryData(KITCHEN_KEYS.all, context.previous);
+      }
+      toast.error(err.message || "Could not clear that order");
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: KITCHEN_KEYS.all });
+    },
   });
 }
