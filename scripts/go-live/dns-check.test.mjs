@@ -141,6 +141,11 @@ test("probeHealth: resolves through the authoritative CNAME chain (never the OS 
   assert.equal(opts.servername, "lucifer.sandbee.in");
   assert.equal(typeof opts.lookup, "function");
   await new Promise((resolve) => opts.lookup("lucifer.sandbee.in", {}, (err, address, family) => { assert.equal(err, null); assert.equal(address, "76.76.21.21"); assert.equal(family, 4); resolve(); }));
+  // Node 20+ (`autoSelectFamily`) calls the lookup with `{ all: true }` and expects an
+  // ARRAY of { address, family } — a bare string there read as "Invalid IP address:
+  // undefined" and made every address "https not ready" (2026-09-26, live demo).
+  await new Promise((resolve) => opts.lookup("lucifer.sandbee.in", { all: true }, (err, addresses) => { assert.equal(err, null); assert.deepEqual(addresses, [{ address: "76.76.21.21", family: 4 }]); resolve(); }));
+  assert.equal(opts.autoSelectFamily, false, "family auto-selection is pinned off so the resolved IP is the one that connects");
 });
 
 test("probeHealth: a timeout or connection failure never throws — { status: null, error }", async () => {

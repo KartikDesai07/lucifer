@@ -216,11 +216,14 @@ function printWebAddressCheck(r, slug) {
     return;
   }
   console.log(`  ${r.host} · ${r.state}`);
-  if (!r.live) {
+  if (r.live) {
+    console.log("  This address is live and serving.");
+  } else if (r.state === "ready") {
+    // DNS + https are fine; only TENANT_ID has not been switched to it yet.
+    console.log(`  DNS and https are ready — run go-live for "${slug}" (console: Update on Vercel) to switch the cafe to this address.`);
+  } else {
     printRecordsTable(r.records);
     console.log(`\n  Next step: add these records at your DNS provider, then run this check again.`);
-  } else {
-    console.log("  This address is live and serving.");
   }
   console.log("");
 }

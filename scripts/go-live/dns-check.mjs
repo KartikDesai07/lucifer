@@ -114,7 +114,14 @@ export function createDnsCheck({ dns = nodeDns.promises, Resolver = nodeDns.prom
         hostname: host,
         path: HEALTH_PATH,
         servername: host,
-        lookup: (_h, _o, cb) => cb(null, ips[0], 4),
+        // Node 20+ connects with `autoSelectFamily` on by default, and that path
+        // calls the custom lookup with `{ all: true }` expecting an ARRAY of
+        // `{ address, family }` — a bare string there surfaced as "Invalid IP
+        // address: undefined" and made EVERY address read "https not ready"
+        // (pending-cert) even while the site served fine. Answer both shapes
+        // and pin the family selection off, so the pinned IP is what connects.
+        lookup: (_h, options, cb) => (options && options.all ? cb(null, [{ address: ips[0], family: 4 }]) : cb(null, ips[0], 4)),
+        autoSelectFamily: false,
         headers: { accept: "application/json" },
         timeout: timeoutMs,
       }, (res) => {

@@ -4,6 +4,7 @@
 // fallback, the custom-domain shape and the secret-preserving re-run.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -714,6 +715,41 @@ test("web address scenario 9 (repeat/expand of the existing standby pin): a stan
   assert.equal(env.find((e) => e.key === "ROOT_DOMAIN").value, "vercel.app", "the standby serves on its own *.vercel.app, never the platform apex");
 });
 
+// ── Live-incident regressions: the Node 22 autoSelectFamily bug made EVERY
+// address read "https not ready"/pending-cert while the site served fine
+// (dns-check.mjs's probeHealth fix is pinned in dns-check.test.mjs). These two
+// pins are the OTHER half: web-address.mjs's `switchedHere` rule, exercised
+// through checkWebAddress exactly like scenario 8 above (dynamic import,
+// direct call against the fakeWorld's deps — never a shortcut past the real
+// function). ------------------------------------------------------------
+test("web address scenario 10: a record ALREADY switched to a.sandbee.in (generated.host/tenantId = a.sandbee.in/a, webAddress.live false) whose probe answers 200 tenant \"a\" with Vercel verified+configured -> checkWebAddress returns state \"ready\" AND live true, and the saved file carries live true", async () => {
+  const { checkWebAddress } = await import("./web-address.mjs");
+  const c = client({ subdomain: "a" });
+  c.generated = { projectId: "prj_123", orgId: "team_owner", host: "a.sandbee.in", tenantId: "a", rootDomain: "sandbee.in", authSecret: "A", healthStatsToken: "H", seededAt: "2026-09-12T00:00:00.000Z", webAddress: { host: "a.sandbee.in", live: false, state: "pending-cert" } };
+  const switchedDns = { checkRecords: async () => ({ cname: { found: "abc.vercel-dns-017.com", ok: true }, txt: { found: [], ok: null } }), probeHealth: async () => ({ status: 200, body: { ok: true, db: "up", tenant: "a" }, error: null }) };
+  const w = fakeWorld({ projectExists: true, files: { [CLIENT_PATH]: JSON.stringify(c), [PLATFORM_PATH]: platformFile() }, dnsCheck: switchedDns });
+  const r = await checkWebAddress({ clientPath: CLIENT_PATH }, w.deps);
+  assert.equal(r.state, "ready");
+  assert.equal(r.live, true, "already on this exact host, tenant proven live -> live true");
+  const saved = w.readClient();
+  assert.equal(saved.generated.webAddress.live, true, "the saved file must persist live:true, not just the return value");
+  assert.equal(saved.generated.webAddress.state, "ready");
+});
+
+test("web address scenario 11: the record still on the *.vercel.app shape (generated.host = a-cafe.vercel.app, tenantId \"a-cafe\") whose probe answers tenant \"a\" (a MISMATCH from the current *.vercel.app label) -> state \"ready\", live FALSE (HELD — a run must switch it)", async () => {
+  const { checkWebAddress } = await import("./web-address.mjs");
+  const c = client({ subdomain: "a" });
+  c.generated = { projectId: "prj_123", orgId: "team_owner", host: "a-cafe.vercel.app", tenantId: "a-cafe", rootDomain: "vercel.app", authSecret: "A", healthStatsToken: "H", seededAt: "2026-09-12T00:00:00.000Z" };
+  const mismatchDns = { checkRecords: async () => ({ cname: { found: "abc.vercel-dns-017.com", ok: true }, txt: { found: [], ok: null } }), probeHealth: async () => ({ status: 200, body: { ok: true, db: "up", tenant: "a" }, error: null }) };
+  const w = fakeWorld({ projectExists: true, files: { [CLIENT_PATH]: JSON.stringify(c), [PLATFORM_PATH]: platformFile() }, dnsCheck: mismatchDns });
+  const r = await checkWebAddress({ clientPath: CLIENT_PATH }, w.deps);
+  assert.equal(r.state, "ready", "DNS/https/verification are all fine — the address itself is ready");
+  assert.equal(r.live, false, "the record is STILL on the *.vercel.app shape (generated.host !== web.host) — switchedHere must not fire, so live stays false until a run switches it");
+  const saved = w.readClient();
+  assert.equal(saved.generated.webAddress.live, false);
+  assert.equal(saved.generated.host, "a-cafe.vercel.app", "the recorded host is untouched — checkWebAddress never switches TENANT_ID itself, only a run does");
+});
+
 test("--preview passes through to deploy.mjs and skips the health check", async () => {
   const w = fakeWorld({ files: { [CLIENT_PATH]: JSON.stringify(client()) } });
   const s = await runGoLive(opts({ preview: true }), w.deps);
@@ -1333,4 +1369,23 @@ test("R2: a switch-off run (cloudflare block removed, a prior realtime record ex
   assert.ok(saved.generated.previousRealtime, "the saved client file must carry generated.previousRealtime instead");
   assert.equal(saved.generated.previousRealtime.workerName, "pos-realtime-sunrise-demo");
   assert.equal("publishSecret" in saved.generated.previousRealtime, false, "the switched-off Worker's secret must not persist under previousRealtime on disk");
+});
+
+test("R3 (index.mjs source pin): printWebAddressCheck's three branches exist in order — live / ready-not-live / records-table — read straight from source with existence asserts before the order comparison", () => {
+  const indexSrc = readFileSync(fileURLToPath(new URL("./index.mjs", import.meta.url)), "utf8");
+  const fnStart = indexSrc.indexOf("function printWebAddressCheck(");
+  assert.ok(fnStart > 0, "positive landmark: printWebAddressCheck must exist in index.mjs");
+  const fnEnd = indexSrc.indexOf("\n}\n", fnStart);
+  const src = indexSrc.slice(fnStart, fnEnd);
+
+  const liveIdx = src.indexOf("live and serving");
+  const readyNotLiveIdx = src.indexOf('r.state === "ready"');
+  const recordsIdx = src.indexOf("printRecordsTable(r.records)");
+  assert.ok(liveIdx >= 0, 'the "live and serving" branch must exist');
+  assert.ok(readyNotLiveIdx >= 0, 'the ready-but-not-live branch (checking r.state === "ready") must exist');
+  assert.ok(recordsIdx >= 0, "the records-table fallback branch must exist");
+  assert.ok(liveIdx < readyNotLiveIdx, "the live branch must be checked BEFORE the ready-not-live branch (an address that is both ready and live must print as live, not as 'DNS and https are ready')");
+  assert.ok(readyNotLiveIdx < recordsIdx, "the ready-not-live branch must be checked BEFORE the records-table fallback (a ready-but-unswitched address must never fall through to 'add these records')");
+  // Positive landmark on the exact wording of the ready-not-live message (naming go-live/Update on Vercel), so this isn't just matching the state check in isolation.
+  assert.match(src, /run go-live[\s\S]*?Update on Vercel[\s\S]*?switch the cafe to this address/);
 });

@@ -208,7 +208,13 @@ export async function checkWebAddress({ clientPath }, deps) {
   const web = await ensureWebAddress(deps, api, project, target, platform, { knownTenants: [target.tenantId, slot.gen.tenantId] });
 
   const existing = slot.gen.webAddress;
-  slot.gen = { ...slot.gen, webAddress: { ...existing, ...web, live: Boolean(existing && existing.live && existing.host === web.host), checkedAt: new Date(deps.now ? deps.now() : Date.now()).toISOString() } };
+  // `live` = the cafe is switched to this address AND it answers as this cafe. A
+  // run earns it through its health check; this check earns it too when the
+  // record already points TENANT_ID/host at this very address and the https
+  // probe answered as that tenant — proven, not assumed (a still-HELD address
+  // whose tenant is not switched yet stays "ready", never "live").
+  const switchedHere = web.state === "ready" && slot.gen.host === web.host && typeof web.probeTenant === "string" && web.probeTenant === slot.gen.tenantId;
+  slot.gen = { ...slot.gen, webAddress: { ...existing, ...web, live: Boolean((existing && existing.live && existing.host === web.host) || switchedHere), checkedAt: new Date(deps.now ? deps.now() : Date.now()).toISOString() } };
   saveClient(deps, clientPath, migrated, slot);
 
   return { ...web, live: slot.gen.webAddress.live, records: web.records };
