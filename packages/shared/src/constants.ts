@@ -5,6 +5,13 @@
 // (it lives only in each tenant's Settings).
 export const APP_NAME = "POS Software";
 
+// The SOFTWARE VENDOR's mark (owner decision 2026-09-26: a small "Powered by"
+// line on staff screens). This is the vendor, never a cafe — it is the same
+// brand the desktop shell carries ("POS Software by sandbee",
+// apps/desktop/src/shared.ts). A cafe's own name still comes only from its
+// Settings; nothing here may be used as one.
+export const VENDOR_PRODUCT_NAME = "Sandbee POS";
+
 // SEED DEFAULT ONLY (CR1.1). Tables are dynamic — a cafe defines its own via the
 // admin Tables page, and `tableNo` is validated against the live Table collection,
 // never against this list. This array exists solely so `seed:tables` can bootstrap

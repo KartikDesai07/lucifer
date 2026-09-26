@@ -70,6 +70,97 @@
   --font-pub-display: var(--pub-display-font);
   --spacing-pub-gap: var(--pub-gap);
   --spacing-pub-pad: var(--pub-pad);
+  /* 2026-09-26 — the "Paper & Ink" brand system: the new staff-UI base,
+     adopted screen by screen starting with /login. ADDITIVE ONLY: every name
+     below is new, so no existing screen changes until it opts in. The fonts
+     resolve only inside an element carrying lib/brand-fonts.ts's variables
+     (AuthShell's root today); elsewhere these utilities are simply unused —
+     the same scoping the --pub-* tokens above use. */
+  --font-brand-sans: var(--font-brand-schibsted);
+  --font-brand-display: var(--font-brand-fraunces);
+  --color-brand-paper: var(--brand-paper);
+  --color-brand-slip: var(--brand-slip);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-ink-hover: var(--brand-ink-hover);
+  --color-brand-muted: var(--brand-muted);
+  --color-brand-rule: var(--brand-rule);
+  --color-brand-field: var(--brand-field);
+  --color-brand-accent: var(--brand-accent);
+  --color-brand-danger: var(--brand-danger);
+  /* Brand motion. Always applied through `motion-safe:` so a device with
+     "reduce motion" on gets a still screen — every animation here is
+     decoration or feedback, never the only way something is communicated. */
+  --animate-brand-rise: brand-rise 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-brand-fade: brand-fade 400ms ease-out both;
+  --animate-brand-shake: brand-shake 360ms ease-in-out;
+  --animate-brand-sweep: brand-sweep 22s ease-in-out infinite alternate;
+}
+
+/* A card settling into place on load. */
+@keyframes brand-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes brand-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+/* One short "no" — used on a failed sign-in's error box. */
+@keyframes brand-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20%,
+  60% {
+    transform: translateX(-4px);
+  }
+  40%,
+  80% {
+    transform: translateX(4px);
+  }
+}
+/* The backdrop's soft light drifting across the dot grid (BrandBackdrop). */
+@keyframes brand-sweep {
+  from {
+    -webkit-mask-position: 15% 20%;
+    mask-position: 15% 20%;
+  }
+  to {
+    -webkit-mask-position: 85% 80%;
+    mask-position: 85% 80%;
+  }
+}
+
+/* Paper & Ink values. Every text pairing is WCAG-AA measured (relative-
+   luminance formula, 2026-09-26): ink on slip 16.9:1, slip on ink button
+   16.9:1 (hover 12.7:1), muted on slip 5.7:1 / on paper 5.2:1, danger on slip
+   6.5:1. Field borders are 3.6:1 on the slip (WCAG 1.4.11 needs 3:1 for a
+   control's edge); --brand-rule is DECORATIVE only (dividers), never a field.
+   The action colour is INK, deliberately not green: green already means
+   "Completed" in the status vocabulary, and a button must never read as a
+   status. --brand-accent (terracotta) is for focus rings and small marks
+   ONLY — never a status, never a fill behind text. */
+:root {
+  --brand-paper: #f6f2ea;
+  --brand-slip: #fffdf8;
+  --brand-ink: #1d1b18;
+  --brand-ink-hover: #35312b;
+  --brand-muted: #6b645b;
+  --brand-rule: #dcd4c6;
+  --brand-field: #8c8478;
+  --brand-accent: #c4471f;
+  --brand-danger: #b42318;
 }
 
 :root {
