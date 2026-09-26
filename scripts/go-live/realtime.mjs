@@ -38,9 +38,18 @@ const PUBLISH_HTTP_OK = 200;
 const PUBLISH_HTTP_BAD_REQUEST = 400;
 const PUBLISH_HTTP_UNAUTHORIZED = 401;
 const PUBLISH_HTTP_FORBIDDEN = 403;
-/** Answers that will not change by waiting — the Worker has judged the
- *  request itself, so the probe stops instead of burning the retry budget. */
-const PUBLISH_DEFINITIVE_STATUSES = [PUBLISH_HTTP_OK, PUBLISH_HTTP_BAD_REQUEST, PUBLISH_HTTP_UNAUTHORIZED, PUBLISH_HTTP_FORBIDDEN];
+/** Answers that will not change by waiting — 200, or a 400 (the Worker judged
+ *  the envelope itself). 401/403 are NOT definitive right after a deploy or a
+ *  `secret put`: Cloudflare rolls the new Worker version / secret out over a
+ *  few seconds and the OLD version answers 401 meanwhile (seen live on the
+ *  first provisioning run: "Uploaded secret" then an immediate 401). So those
+ *  are retried for the whole publish budget before they count. */
+const PUBLISH_DEFINITIVE_STATUSES = [PUBLISH_HTTP_OK, PUBLISH_HTTP_BAD_REQUEST];
+/** The /publish probe's own budget (30s) — longer than the /join probe's,
+ *  because it also has to outlast secret/version propagation. Must stay well
+ *  inside the Worker's ±300s timestamp window (pinned in realtime.test.mjs). */
+export const PUBLISH_PROBE_ATTEMPTS = 10;
+export const PUBLISH_PROBE_INTERVAL_MS = 3_000;
 /** `pos-realtime-<slug>` — throws when the result breaks the Worker name rule
  *  wrangler itself enforces (lowercase/digits/hyphens, no leading/trailing
  *  hyphen, <= 63 chars). */
@@ -104,12 +113,13 @@ export function signedPublishRequest(secret, tenantId, nowMs) {
 }
 
 /** POST one signed `print-job` nudge and return the HTTP status reached (or
- *  null on a network failure) — retried up to PROBE_ATTEMPTS times, same
- *  interval as the /join probe. A nudge with no listeners is a safe no-op. */
+ *  null on a network failure) — retried up to PUBLISH_PROBE_ATTEMPTS times
+ *  (401/403 included, see PUBLISH_DEFINITIVE_STATUSES). A nudge with no
+ *  listeners is a safe no-op. */
 async function probePublish(deps, url, secret, tenantId) {
   const { body, headers } = signedPublishRequest(secret, tenantId, deps.now ? deps.now() : Date.now());
   let status = null;
-  for (let attempt = 1; attempt <= PROBE_ATTEMPTS; attempt += 1) {
+  for (let attempt = 1; attempt <= PUBLISH_PROBE_ATTEMPTS; attempt += 1) {
     try {
       const res = await deps.fetch(`${url}/publish`, { method: "POST", headers, body });
       status = res.status;
@@ -117,7 +127,7 @@ async function probePublish(deps, url, secret, tenantId) {
     } catch {
       status = null;
     }
-    if (attempt < PROBE_ATTEMPTS) await deps.sleep(PROBE_INTERVAL_MS);
+    if (attempt < PUBLISH_PROBE_ATTEMPTS) await deps.sleep(PUBLISH_PROBE_INTERVAL_MS);
   }
   return status;
 }

@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { createCloudflareApi, resolveAccountId, resolveSubdomain, sourceHashOf, SUBDOMAIN_CANDIDATE_ATTEMPTS, wranglerCommand } from "./cloudflare-api.mjs";
 import { GoLiveError } from "./core.mjs";
 import {
-  ensureRealtime, JOIN_PROBE_STATUS, parseWorkerUrl, PROBE_ATTEMPTS, PROBE_INTERVAL_MS, PUBLISH_SECRET_BYTES, REALTIME_ENV_KEYS, REALTIME_SIG_HEADER, REALTIME_TS_HEADER,
+  ensureRealtime, JOIN_PROBE_STATUS, parseWorkerUrl, PROBE_ATTEMPTS, PROBE_INTERVAL_MS, PUBLISH_PROBE_ATTEMPTS, PUBLISH_PROBE_INTERVAL_MS, PUBLISH_SECRET_BYTES, REALTIME_ENV_KEYS, REALTIME_SIG_HEADER, REALTIME_TS_HEADER,
   realtimeEnvOf, realtimeOffEnv, signedPublishRequest, validateCloudflare, WORKER_NAME_MAX_LEN, workerNameOf,
 } from "./realtime.mjs";
 
@@ -514,21 +514,21 @@ test("ensureRealtime: the /join probe never answers 426 -> GoLiveError step \"re
 });
 
 // ── (b) probePublish (exercised via ensureRealtime's end-to-end publish probe) ──
-test("the /publish probe stops retrying on a DEFINITIVE status: exactly 1 fetch call when the first answer is 403 (a fresh deploy — needsDeploy is true, so the 403 self-heal branch does not fire; it surfaces as the 'refuses tenant' error)", async () => {
+test("a 403 from /publish is retried for the WHOLE publish budget (a freshly deployed version can still be rolling out), then surfaces as the 'refuses tenant' error (fresh deploy — needsDeploy is true, so the 403 self-heal branch does not fire)", async () => {
   const { deps, calls } = fakeRealtimeDeps({ cfRoutes: CF_ROUTES_ONE_ACCOUNT, publishStatuses: [403] });
   await assert.rejects(ensureRealtime(deps, baseCtx()), (e) => e instanceof GoLiveError && e.step === "realtime" && /refuses tenant/.test(e.message));
   const publishCalls = calls.filter((c) => c.kind === "publish");
-  assert.equal(publishCalls.length, 1, "403 is definitive — the probe must not retry it");
+  assert.equal(publishCalls.length, PUBLISH_PROBE_ATTEMPTS, "403 is retried up to the full publish budget before it counts (secret/version propagation)");
 });
 
-test("the /publish probe keeps retrying on 503 up to PROBE_ATTEMPTS, then fails with GoLiveError", async () => {
-  const { deps, calls } = fakeRealtimeDeps({ cfRoutes: CF_ROUTES_ONE_ACCOUNT, publishStatuses: Array(PROBE_ATTEMPTS).fill(503) });
+test("the /publish probe keeps retrying on 503 up to PUBLISH_PROBE_ATTEMPTS, then fails with GoLiveError", async () => {
+  const { deps, calls } = fakeRealtimeDeps({ cfRoutes: CF_ROUTES_ONE_ACCOUNT, publishStatuses: Array(PUBLISH_PROBE_ATTEMPTS).fill(503) });
   await assert.rejects(ensureRealtime(deps, baseCtx()), (e) => e instanceof GoLiveError && e.step === "realtime" && /not accepting nudges yet/.test(e.message));
   const publishCalls = calls.filter((c) => c.kind === "publish");
-  assert.equal(publishCalls.length, PROBE_ATTEMPTS, "503 is retried up to the full attempt budget");
+  assert.equal(publishCalls.length, PUBLISH_PROBE_ATTEMPTS, "503 is retried up to the full publish budget");
 });
 
-test("the /publish probe keeps retrying on a network error (fetch throws) up to PROBE_ATTEMPTS", async () => {
+test("the /publish probe keeps retrying on a network error (fetch throws) up to PUBLISH_PROBE_ATTEMPTS", async () => {
   const { deps: base, calls } = fakeRealtimeDeps({ cfRoutes: CF_ROUTES_ONE_ACCOUNT });
   let attempts = 0;
   const deps = { ...base, fetch: async (url, init) => {
@@ -537,7 +537,7 @@ test("the /publish probe keeps retrying on a network error (fetch throws) up to 
     return base.fetch(url, init);
   } };
   await assert.rejects(ensureRealtime(deps, baseCtx()), (e) => e instanceof GoLiveError && e.step === "realtime" && /not accepting nudges yet/.test(e.message));
-  assert.equal(attempts, PROBE_ATTEMPTS, "a thrown/network error is retried up to the full attempt budget, same as 503");
+  assert.equal(attempts, PUBLISH_PROBE_ATTEMPTS, "a thrown/network error is retried up to the full publish budget, same as 503");
 });
 
 // ── (c) 400 from /publish -> GoLiveError whose message mentions the envelope, not credentials ──
@@ -559,7 +559,7 @@ test("403 on a run that already had an up-to-date Worker (no deploy needed) trig
   await ensureRealtime(deps1, ctx1);
   const prior = ctx1.slot.gen.realtime;
 
-  const { deps: deps2, calls: calls2 } = fakeRealtimeDeps({ cfRoutes: CF_ROUTES_ONE_ACCOUNT, publishStatuses: [403, 200] });
+  const { deps: deps2, calls: calls2 } = fakeRealtimeDeps({ cfRoutes: CF_ROUTES_ONE_ACCOUNT, publishStatuses: [...Array(PUBLISH_PROBE_ATTEMPTS).fill(403), 200] });
   const ctx2 = baseCtx({ slot: { isPrimary: true, gen: { realtime: prior } } }); // same hash/tenant/url -> needsDeploy would be false
   const r2 = await ensureRealtime(deps2, ctx2);
   assert.equal(r2.state, "on", "the self-heal redeploy + re-probe succeeds");
@@ -567,7 +567,7 @@ test("403 on a run that already had an up-to-date Worker (no deploy needed) trig
   const deploySpawns = calls2.filter((c) => c.kind === "spawn" && c.args.includes("deploy"));
   assert.equal(deploySpawns.length, 1, "exactly one redeploy is triggered by the 403 self-heal");
   const publishCalls = calls2.filter((c) => c.kind === "publish");
-  assert.deepEqual(publishCalls.map((c) => c.status), [403, 200], "403 then the re-probe's 200");
+  assert.deepEqual(publishCalls.map((c) => c.status), [...Array(PUBLISH_PROBE_ATTEMPTS).fill(403), 200], "a full budget of 403s (propagation grace), then the re-probe's 200");
 });
 
 test("403 twice (the self-heal redeploy does not fix it) -> GoLiveError, and the redeploy still happened exactly once", async () => {
@@ -576,7 +576,7 @@ test("403 twice (the self-heal redeploy does not fix it) -> GoLiveError, and the
   await ensureRealtime(deps1, ctx1);
   const prior = ctx1.slot.gen.realtime;
 
-  const { deps: deps2, calls: calls2 } = fakeRealtimeDeps({ cfRoutes: CF_ROUTES_ONE_ACCOUNT, publishStatuses: [403, 403] });
+  const { deps: deps2, calls: calls2 } = fakeRealtimeDeps({ cfRoutes: CF_ROUTES_ONE_ACCOUNT, publishStatuses: [403] });
   const ctx2 = baseCtx({ slot: { isPrimary: true, gen: { realtime: prior } } });
   await assert.rejects(ensureRealtime(deps2, ctx2), (e) => e instanceof GoLiveError && e.step === "realtime" && /refuses tenant/.test(e.message));
   const deploySpawns = calls2.filter((c) => c.kind === "spawn" && c.args.includes("deploy"));
@@ -589,7 +589,7 @@ test("401 on a run that did not put the secret triggers exactly one re-put, then
   await ensureRealtime(deps1, ctx1);
   const prior = ctx1.slot.gen.realtime; // publishSecret === prior.publishSecret -> needsSecret would be false on the re-run
 
-  const { deps: deps2, calls: calls2 } = fakeRealtimeDeps({ cfRoutes: CF_ROUTES_ONE_ACCOUNT, publishStatuses: [401, 200] });
+  const { deps: deps2, calls: calls2 } = fakeRealtimeDeps({ cfRoutes: CF_ROUTES_ONE_ACCOUNT, publishStatuses: [...Array(PUBLISH_PROBE_ATTEMPTS).fill(401), 200] });
   const ctx2 = baseCtx({ slot: { isPrimary: true, gen: { realtime: prior } } });
   const r2 = await ensureRealtime(deps2, ctx2);
   assert.equal(r2.state, "on");
@@ -598,7 +598,7 @@ test("401 on a run that did not put the secret triggers exactly one re-put, then
   const deploySpawns = calls2.filter((c) => c.kind === "spawn" && c.args.includes("deploy"));
   assert.equal(deploySpawns.length, 0, "a 401 self-heal never redeploys the Worker, only re-puts the secret");
   const publishCalls = calls2.filter((c) => c.kind === "publish");
-  assert.deepEqual(publishCalls.map((c) => c.status), [401, 200]);
+  assert.deepEqual(publishCalls.map((c) => c.status), [...Array(PUBLISH_PROBE_ATTEMPTS).fill(401), 200], "a full budget of 401s (secret propagation grace), then the re-probe's 200");
 });
 
 test("401 twice -> GoLiveError naming the secret mismatch", async () => {
@@ -607,7 +607,7 @@ test("401 twice -> GoLiveError naming the secret mismatch", async () => {
   await ensureRealtime(deps1, ctx1);
   const prior = ctx1.slot.gen.realtime;
 
-  const { deps: deps2, calls: calls2 } = fakeRealtimeDeps({ cfRoutes: CF_ROUTES_ONE_ACCOUNT, publishStatuses: [401, 401] });
+  const { deps: deps2, calls: calls2 } = fakeRealtimeDeps({ cfRoutes: CF_ROUTES_ONE_ACCOUNT, publishStatuses: [401] });
   const ctx2 = baseCtx({ slot: { isPrimary: true, gen: { realtime: prior } } });
   await assert.rejects(ensureRealtime(deps2, ctx2), (e) => e instanceof GoLiveError && e.step === "realtime" && /secret does not match/.test(e.message));
   const secretSpawns = calls2.filter((c) => c.kind === "spawn" && c.args.includes("secret"));
@@ -622,7 +622,7 @@ test("vision guard: the token never appears in ANY logged line, thrown message o
   // definitive and abort, not self-heal), then force the self-heal path on a second run.
   await ensureRealtime(deps, ctx);
   const prior = ctx.slot.gen.realtime;
-  const { deps: deps2, calls: calls2 } = fakeRealtimeDeps({ cfRoutes: CF_ROUTES_ONE_ACCOUNT, publishStatuses: [403, 200] });
+  const { deps: deps2, calls: calls2 } = fakeRealtimeDeps({ cfRoutes: CF_ROUTES_ONE_ACCOUNT, publishStatuses: [...Array(PUBLISH_PROBE_ATTEMPTS).fill(403), 200] });
   const ctx2 = baseCtx({ slot: { isPrimary: true, gen: { realtime: prior } } });
   await ensureRealtime(deps2, ctx2);
 
@@ -719,7 +719,8 @@ test("R5: the Worker source's PUBLISH_SIG_HEADER/PUBLISH_TS_HEADER equal REALTIM
   assert.equal(tsMatch[1], REALTIME_TS_HEADER);
   const toleranceS = Number(toleranceMatch[1]);
   assert.equal(toleranceS, 300);
-  assert.ok(PROBE_ATTEMPTS * PROBE_INTERVAL_MS < toleranceS * 1000, `the full /publish retry budget (${PROBE_ATTEMPTS * PROBE_INTERVAL_MS}ms) must stay inside the Worker's +/-300s replay window (${toleranceS * 1000}ms), or a late retry's timestamp would be refused as stale`);
+  assert.ok(PROBE_ATTEMPTS * PROBE_INTERVAL_MS < toleranceS * 1000, `the /join retry budget (${PROBE_ATTEMPTS * PROBE_INTERVAL_MS}ms) must stay inside the Worker's +/-300s replay window (${toleranceS * 1000}ms)`);
+  assert.ok(PUBLISH_PROBE_ATTEMPTS * PUBLISH_PROBE_INTERVAL_MS < toleranceS * 1000, `the full /publish retry budget (${PUBLISH_PROBE_ATTEMPTS * PUBLISH_PROBE_INTERVAL_MS}ms) must stay inside the Worker's +/-300s replay window (${toleranceS * 1000}ms), or a late retry's timestamp would be refused as stale`);
   const maxBytes = Number(maxBytesMatch[1]);
   const { body } = signedPublishRequest("a".repeat(32), "sunrise-demo-x7k2", NOW_MS);
   assert.ok(body.length < maxBytes, `the probe's own envelope (${body.length} bytes) must fit under the Worker's MAX_PUBLISH_BYTES (${maxBytes})`);
