@@ -43,17 +43,17 @@ export function KitchenOrderCard({
   const ageText = `${card.cardFiredAtApprox ? "~" : ""}${ageMinutes}m`;
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border p-4">
+    <div className="flex flex-col gap-2 rounded-lg border p-3">
       {/* HEADER — destination is the biggest thing on the card: a cook needs
           to know WHERE before WHAT. Parcel and table are mutually exclusive,
           never colour alone. */}
       {card.parcel ? (
-        <div className="flex items-center gap-2 text-2xl font-black text-orange-600 xl:text-3xl">
-          <PackageCheck className="h-7 w-7 shrink-0" />
+        <div className="flex items-center gap-1.5 text-lg font-black text-orange-600 xl:text-xl">
+          <PackageCheck className="h-5 w-5 shrink-0" />
           PARCEL
         </div>
       ) : (
-        <div className="text-2xl font-black xl:text-3xl">{card.tableLabel}</div>
+        <div className="text-lg font-black xl:text-xl">{card.tableLabel}</div>
       )}
 
       {/* Secondary header row */}
@@ -83,7 +83,7 @@ export function KitchenOrderCard({
       </div>
 
       {/* BODY */}
-      <div className="space-y-2">
+      <div className="divide-y rounded-md border">
         {card.lines.map((line) => (
           <KitchenLineCard
             key={line.id}
@@ -96,7 +96,7 @@ export function KitchenOrderCard({
       </div>
 
       {/* PROGRESS — literal text, never a bare colour bar */}
-      <div className="text-sm font-medium">
+      <div className="text-xs text-muted-foreground">
         {card.doneCount}/{card.totalCount} done
       </div>
 
@@ -111,7 +111,7 @@ export function KitchenOrderCard({
           appears at the end is easy to miss on a wall. */}
       <Button
         type="button"
-        className="min-h-12 w-full text-base font-semibold"
+        className="min-h-11 w-full text-sm font-semibold"
         disabled={!card.allDone || readyInFlight}
         onClick={() => onReady(card)}
       >

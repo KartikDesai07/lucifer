@@ -32,9 +32,12 @@ export function KitchenLineCard({ row, now, onToggle, pending }: KitchenLineCard
   );
   const ageText = `${row.firedAtApprox ? "~" : ""}${ageMinutes}m`;
 
+  // No border of its own: the CARD draws one box and divides the lines inside
+  // it. A bordered row inside a bordered card was double chrome and made every
+  // line read like a separate order.
   return (
-    <div className="flex items-start gap-3 rounded-lg border p-3">
-      <div className="grid min-h-11 min-w-11 shrink-0 place-items-center">
+    <div className="flex items-start gap-2 p-2">
+      <div className="grid min-h-10 min-w-10 shrink-0 place-items-center">
         <Checkbox
           checked={row.done}
           disabled={pending}
@@ -46,13 +49,16 @@ export function KitchenLineCard({ row, now, onToggle, pending }: KitchenLineCard
       <div className="min-w-0 flex-1 space-y-1">
         <div
           className={cn(
-            "text-base font-bold sm:text-lg xl:text-xl",
+            "text-sm font-semibold sm:text-base",
             row.done && "text-muted-foreground line-through",
           )}
         >
-          <span className="text-lg font-black tabular-nums xl:text-2xl">{row.qty}</span> ×{" "}
-          {row.name}
-          {row.variation ? ` (${row.variation})` : ""}
+          {/* `row.name` ALREADY carries the variation — buildKitchenRows builds it
+              with orderItemLabel(), which appends "(Large)" itself. Appending
+              row.variation here too printed it twice ("Café Latte (Large)
+              (Large)"). The field stays on the row for callers that need the
+              parts separately; this renderer must not re-add it. */}
+          <span className="font-black tabular-nums">{row.qty}</span> × {row.name}
         </div>
 
         {row.modifiers.length > 0 && (

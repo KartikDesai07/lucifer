@@ -223,3 +223,31 @@ test("PIN (22): both kotRounds writers stamp kotFiredAt in the same $set", () =>
     );
   }
 });
+
+// ── P4-B — the variation must be printed exactly ONCE ───────────────────────
+
+test("PIN: KitchenLineCard must NOT re-append row.variation — buildKitchenRows already folds it into row.name via orderItemLabel(), and rendering both printed \"Cafe Latte (Large) (Large)\" on the board", () => {
+  const lineSrc = stripComments(readSrc(KITCHEN_CARD));
+  const boardSrc = stripComments(readSrc(KITCHEN_BOARD_LIB));
+
+  // Positive landmark FIRST: the builder really is the thing that owns the
+  // composed label, so a green negative below means "absent", not "blind".
+  assert.ok(
+    boardSrc.includes("name: orderItemLabel(item)"),
+    "buildKitchenRows must build `name` with orderItemLabel(), which is what appends the variation",
+  );
+  assert.ok(lineSrc.includes("{row.name}"), "the line must still render row.name");
+
+  // Vision guard: prove the needle CAN match the forbidden shape.
+  const RE_APPEND = /\{row\.variation \? ` \(\$\{row\.variation\}\)` : ""\}/;
+  assert.ok(
+    RE_APPEND.test('{row.variation ? ` (${row.variation})` : ""}'),
+    "needle must match the re-append shape it forbids",
+  );
+
+  // The mutation this catches: re-adding the variation next to row.name.
+  assert.ok(
+    !RE_APPEND.test(lineSrc),
+    "KitchenLineCard must not append row.variation beside row.name — that prints it twice",
+  );
+});
