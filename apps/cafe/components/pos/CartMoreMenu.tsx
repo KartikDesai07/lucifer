@@ -50,14 +50,20 @@ export function CartMoreMenu({ children, activeLabels, disabled }: CartMoreMenuP
         <Button
           type="button"
           variant="ghost"
+          size="icon"
+          // D9.8b (owner decision 2026-09-26): the trigger is the three-dot
+          // glyph ALONE — no "More" label. It rides at the end of the note
+          // row, where a word would read as a second note action.
+          //
           // A control that is hiding an APPLIED adjustment must never look
-          // idle: the same rule CartNotes follows for a collapsed note
-          // (D9.7 — "a note that already has text always shows its preview,
-          // so it can never be silently forgotten"). A hidden discount is
-          // money, so the stakes here are strictly higher than a note's:
-          // without this the operator could hand over a discounted bill with
-          // nothing on screen saying so.
-          className={cn(POS_CART_MORE_BUTTON_CLASS, hasActive && "text-foreground")}
+          // idle, though: the same rule CartNotes follows for a collapsed
+          // note (D9.7 — "a note that already has text always shows its
+          // preview, so it can never be silently forgotten"). A hidden
+          // discount is money, so the stakes are strictly higher than a
+          // note's. With the label gone, that notice is carried by a DOT on
+          // the glyph plus the full aria-label — and, unchanged, by the
+          // always-visible "…applied" rows and Total in the footer below.
+          className={cn(POS_CART_MORE_BUTTON_CLASS, "relative")}
           disabled={disabled}
           aria-label={
             hasActive
@@ -65,18 +71,29 @@ export function CartMoreMenu({ children, activeLabels, disabled }: CartMoreMenuP
               : "More options — discount, promo code, reward, extra charge"
           }
         >
-          <MoreHorizontal className="h-4 w-4 shrink-0" aria-hidden="true" />
-          <span className="min-w-0 truncate">
-            {hasActive ? activeLabels.join(" · ") : "More"}
-          </span>
+          <MoreHorizontal className="h-5 w-5 shrink-0" aria-hidden="true" />
+          {hasActive && (
+            // Never colour alone (cafe.md UI rule): the dot pairs with the
+            // aria-label above and with the literal "…applied" text rows in
+            // the footer, so the state is legible without seeing the colour.
+            <span
+              className="absolute right-1 top-1 h-2 w-2 rounded-full bg-primary ring-2 ring-background"
+              aria-hidden="true"
+            />
+          )}
         </Button>
       </PopoverTrigger>
 
-      {/* align="end" so the panel hangs off the footer's right edge and stays
-          inside the 22rem desktop column instead of overhanging the product
-          grid. collisionPadding keeps it clear of the viewport edges on a
-          phone, where it opens above the sticky bar. */}
+      {/* side="top": the trigger sits just above Subtotal/Total/CTAs, so a
+          downward panel covers the bill's own figures and both action buttons
+          (seen in a real 1920 render). Opening upward puts it over the line
+          list instead, which is the one region the operator is not reading
+          while adjusting money. Radix still flips it down if there is genuinely
+          no room above. align="end" keeps it off the footer's right edge and
+          inside the 22rem column instead of overhanging the product grid;
+          collisionPadding keeps it clear of the viewport edges on a phone. */}
       <PopoverContent
+        side="top"
         align="end"
         collisionPadding={12}
         className={POS_CART_MORE_PANEL_CLASS}

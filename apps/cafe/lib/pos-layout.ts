@@ -196,16 +196,21 @@ export const POS_CART_SHEET_PANEL_CLASS =
 // a drag that runs out of list must chain to the panel so the CTAs come up.
 export const POS_CART_LIST_CLASS = "min-h-48 flex-1 overflow-y-auto p-2";
 
-// D9.8 (owner decision 2026-09-26) — the cart footer's "More" control and the
+// D9.8 (owner decision 2026-09-26) — the cart's more-actions control and the
 // panel it opens. The occasional money controls (reward, promo, discount, the
 // GST preset, extra charges) moved off the always-visible footer stack and
 // behind this one button; components/pos/CartMoreMenu.tsx carries the full why.
-// 44px tall on touch, compacting to 32px only on an xl+ FINE pointer — the
-// POS_HEADER_CONTROL_CLASS idiom (keying the SHRINK on a fine pointer is
-// cascade-proof where a coarse re-floor would depend on emission order,
-// CB-1d.1 V1), so glass never gets a smaller target than touch.
+//
+// D9.8b (owner decision 2026-09-26): the three-dot glyph ALONE, no "More"
+// label, sitting at the END of the collapsed note row — so the menu costs the
+// footer no row of its own. Hence a SQUARE 44px target rather than the earlier
+// full-width bar: 44px is the comfort floor these screens are built to, and it
+// compacts to 32px only on an xl+ FINE pointer (the POS_HEADER_CONTROL_CLASS
+// idiom — keying the SHRINK on a fine pointer is cascade-proof where a coarse
+// re-floor would depend on emission order, CB-1d.1 V1), so glass never gets a
+// smaller target than touch.
 export const POS_CART_MORE_BUTTON_CLASS =
-  "flex h-11 w-full items-center justify-start gap-1.5 px-2 text-sm font-medium text-muted-foreground xl:pointer-fine:h-8 touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
+  "flex h-11 w-11 shrink-0 items-center justify-center text-muted-foreground xl:pointer-fine:h-8 xl:pointer-fine:w-8 touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
 // The panel the More button opens. Width is capped to the viewport so it can
 // never overhang a phone screen, and the height cap + scroll keeps its
 // contents reachable when the reward ladder is long or the on-screen keyboard

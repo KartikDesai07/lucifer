@@ -175,6 +175,111 @@ export function Cart({
   if (selectedRewardAt !== null) activeAdjustments.push("Reward");
   if (extraCharges.length > 0) activeAdjustments.push("Extra charge");
 
+  // D9.8/D9.8b — the OCCASIONAL money controls (reward, promo, discount, the
+  // GST preset, extra charges) live behind the three-dot trigger instead of
+  // stacking unconditionally under every sale. The ordinary sale — no
+  // discount, no promo, no reward, no extra charge — now pays nothing for
+  // them, which is what gives the line list its height back on both the 22rem
+  // desktop column and the phone sheet. Every APPLIED adjustment still reports
+  // itself in places that are never hidden: the dot on the trigger, and the
+  // "…applied" rows, charge rows and Total in the footer below. Nothing about
+  // the money moved — CartReward/CartPromo/CartExtraCharges keep their own
+  // state, validation and mutual exclusions, and this panel computes nothing.
+  //
+  // Built here rather than inline because it now has two possible mount points
+  // (the note row, or its own row while resuming) and must not be duplicated.
+  const moreMenu = (
+    <CartMoreMenu activeLabels={activeAdjustments} disabled={items.length === 0 || isBusy}>
+      {/* Owner decision, binding (kept): the reward panel sits directly above
+          Discount so the two money decisions (reward vs. manual discount,
+          mutually exclusive — see CartReward) read as one group. That
+          ordering is preserved inside the menu. */}
+      <CartReward
+        customerSelected={customerSelected}
+        loading={rewardLoading}
+        stamps={stamps}
+        offers={rewardOffers}
+        selectedAt={selectedRewardAt}
+        locked={rewardLocked}
+        onSelect={onSelectReward ?? (() => {})}
+        manualDiscountActive={manualDiscountActive}
+        disabled={items.length === 0 || isBusy}
+      />
+
+      {/* CB-5D part 2 — sits in the same money group as CartReward just above
+          it (owner decision, binding: see that comment). COURTESY exclusion
+          only: hidden while a reward is selected (rewardActive), same idea as
+          manualDiscountActive above — the server is the actual fence. */}
+      <CartPromo
+        code={promoCode}
+        onApply={onApplyPromo ?? (() => {})}
+        onRemove={onRemovePromo ?? (() => {})}
+        rewardActive={selectedRewardAt !== null}
+        disabled={items.length === 0 || isBusy}
+      />
+
+      <div className="flex items-center justify-between gap-2 text-sm">
+        <span className="text-muted-foreground">Discount</span>
+        <div className="flex items-center gap-1">
+          <Input
+            type="number"
+            min={0}
+            readOnly={gstActive}
+            value={gstActive ? discount : discountRaw === 0 ? "" : discountRaw}
+            onChange={(e) => onDiscountRawChange(Math.max(0, Number(e.target.value) || 0))}
+            placeholder="0"
+            disabled={items.length === 0}
+            className="h-8 w-20 text-right"
+            aria-label="Discount value"
+          />
+          <div className="flex overflow-hidden rounded-md border">
+            {(["₹", "%"] as DiscountUnit[]).map((u) => (
+              <button
+                key={u}
+                type="button"
+                onClick={() => onDiscountUnitChange(u)}
+                className={cn(
+                  "px-2 text-xs",
+                  discountUnit === u ? "bg-primary text-primary-foreground" : "bg-background",
+                )}
+              >
+                {u}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* One tap discounts the GST component so the customer pays the pre-tax
+          figure; derived in usePosTotals and re-derived server-side — this
+          panel only shows it. */}
+      {canGstDiscount && (
+        <Button
+          type="button"
+          variant={gstActive ? "default" : "outline"}
+          className={POS_CART_GST_BUTTON_CLASS}
+          aria-pressed={gstActive}
+          disabled={items.length === 0}
+          onClick={() => onDiscountUnitChange(gstActive ? "₹" : "GST")}
+        >
+          {GST_DISCOUNT_LABEL}
+        </Button>
+      )}
+
+      {/* CB-CHG (plan §5C) — the staff-entered extra charges. A takeaway bill
+          has no table but can still carry one, so unlike the table charge this
+          is always offered. Its APPLIED rows stay OUTSIDE the menu (see
+          CartExtraChargeRows below): what a customer is being charged is
+          never hidden behind a tap. */}
+      <CartExtraCharges
+        extras={extraCharges}
+        onAdd={onAddExtraCharge}
+        onRemove={onRemoveExtraCharge}
+        disabled={isBusy}
+      />
+    </CartMoreMenu>
+  );
+
   return (
     // The panel itself scrolls (both mounts): when the column or sheet is
     // shorter than header + list floor + notes + footer, the footer's inputs
@@ -274,119 +379,21 @@ export function Cart({
         )}
       </div>
 
-      {!resuming && <CartNotes value={notes} onChange={onNotesChange} />}
+      {/* D9.8b (owner decision 2026-09-26): the three-dot trigger rides at the
+          END of the note row, so the occasional controls cost the footer no
+          row of their own. While RESUMING there is no note row to ride (the
+          add-round payload carries no notes field), so the menu renders on its
+          own line below instead — it must never become unreachable. */}
+      {!resuming && (
+        <CartNotes value={notes} onChange={onNotesChange} trailing={moreMenu} />
+      )}
+      {resuming && <div className="flex justify-end border-t p-3">{moreMenu}</div>}
 
       <div className="space-y-2 border-t p-4">
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">Subtotal</span>
           <span>{inr(subtotal)}</span>
         </div>
-
-        {/* D9.8 (owner decision 2026-09-26) — the OCCASIONAL money controls
-            (reward, promo, discount, the GST preset, extra charges) live
-            behind one More button instead of stacking unconditionally under
-            every sale. The ordinary sale — no discount, no promo, no reward,
-            no extra charge — now pays nothing for them, which is what gives
-            the line list its height back on both the 22rem desktop column and
-            the phone sheet. Every APPLIED adjustment still reports itself in
-            two places that are never hidden: the trigger's own summary, and
-            the always-visible "…applied" rows below. Nothing about the money
-            itself moved — CartReward/CartPromo/CartExtraCharges keep their own
-            state, validation and mutual exclusions exactly as before, and this
-            panel still computes nothing. */}
-        <CartMoreMenu activeLabels={activeAdjustments} disabled={items.length === 0 || isBusy}>
-          {/* Owner decision, binding (kept): the reward panel sits directly
-              above Discount so the two money decisions (reward vs. manual
-              discount, mutually exclusive — see CartReward) read as one
-              group. That ordering is preserved inside the menu. */}
-          <CartReward
-            customerSelected={customerSelected}
-            loading={rewardLoading}
-            stamps={stamps}
-            offers={rewardOffers}
-            selectedAt={selectedRewardAt}
-            locked={rewardLocked}
-            onSelect={onSelectReward ?? (() => {})}
-            manualDiscountActive={manualDiscountActive}
-            disabled={items.length === 0 || isBusy}
-          />
-
-          {/* CB-5D part 2 — sits in the same money group as CartReward just
-              above it (owner decision, binding: see that comment). COURTESY
-              exclusion only: hidden while a reward is selected (rewardActive),
-              same idea as manualDiscountActive above — the server is the
-              actual fence. */}
-          <CartPromo
-            code={promoCode}
-            onApply={onApplyPromo ?? (() => {})}
-            onRemove={onRemovePromo ?? (() => {})}
-            rewardActive={selectedRewardAt !== null}
-            disabled={items.length === 0 || isBusy}
-          />
-
-          <div className="flex items-center justify-between gap-2 text-sm">
-            <span className="text-muted-foreground">Discount</span>
-            <div className="flex items-center gap-1">
-              <Input
-                type="number"
-                min={0}
-                readOnly={gstActive}
-                value={gstActive ? discount : discountRaw === 0 ? "" : discountRaw}
-                onChange={(e) =>
-                  onDiscountRawChange(Math.max(0, Number(e.target.value) || 0))
-                }
-                placeholder="0"
-                disabled={items.length === 0}
-                className="h-8 w-20 text-right"
-                aria-label="Discount value"
-              />
-              <div className="flex overflow-hidden rounded-md border">
-                {(["₹", "%"] as DiscountUnit[]).map((u) => (
-                  <button
-                    key={u}
-                    type="button"
-                    onClick={() => onDiscountUnitChange(u)}
-                    className={cn(
-                      "px-2 text-xs",
-                      discountUnit === u
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-background",
-                    )}
-                  >
-                    {u}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* One tap discounts the GST component so the customer pays the pre-tax
-              figure; derived in usePosTotals and re-derived server-side — this panel only shows it. */}
-          {canGstDiscount && (
-            <Button
-              type="button"
-              variant={gstActive ? "default" : "outline"}
-              className={POS_CART_GST_BUTTON_CLASS}
-              aria-pressed={gstActive}
-              disabled={items.length === 0}
-              onClick={() => onDiscountUnitChange(gstActive ? "₹" : "GST")}
-            >
-              {GST_DISCOUNT_LABEL}
-            </Button>
-          )}
-
-          {/* CB-CHG (plan §5C) — the staff-entered extra charges. A takeaway
-              bill has no table but can still carry one, so unlike the table
-              charge below this is always offered. Its APPLIED rows stay
-              outside the menu (see below): what a customer is being charged
-              is never hidden behind a tap. */}
-          <CartExtraCharges
-            extras={extraCharges}
-            onAdd={onAddExtraCharge}
-            onRemove={onRemoveExtraCharge}
-            disabled={isBusy}
-          />
-        </CartMoreMenu>
 
         {discount > 0 && (
           <div className="flex items-center justify-between text-sm text-destructive">

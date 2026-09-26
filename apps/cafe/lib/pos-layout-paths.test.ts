@@ -203,7 +203,11 @@ test("PIN: Cart's line-list div uses the shared scrollable-list class, not a han
 
 test("PIN: Cart's ROOT div scrolls too (both mounts) — a short 1280x640 desktop window reaches the footer by scrolling the card, not overflowing it", () => {
   const src = stripComments(readSrc(CART_TSX));
-  const rootMatch = src.match(/cn\(\s*"([^"]*)"/);
+  // Anchored on the ROOT's own cn(..., className) shape, not merely the first
+  // cn("…") in the file: D9.8b hoisted the More menu above the return, so a
+  // bare first-match now finds the discount unit toggle's cn() instead and
+  // asserts the wrong element's classes.
+  const rootMatch = src.match(/cn\(\s*"([^"]*)",\s*className,?\s*\)/);
   assert.ok(rootMatch, "Cart.tsx's root div must build its className via cn(\"...\", className)");
   assert.ok(rootMatch![1].includes("overflow-y-auto"), `Cart's root className literal must include overflow-y-auto, got "${rootMatch![1]}"`);
   assert.ok(rootMatch![1].includes("rounded-lg border bg-card"), "landmark: the root className literal must still carry rounded-lg border bg-card");
@@ -1078,5 +1082,59 @@ test("PIN: D9.8 — CartExtraCharges still exports BOTH the add-form and the app
   assert.ok(
     /if\s*\(extras\.length === 0\)\s*return null;/.test(src),
     "CartExtraChargeRows must render nothing when empty — an ordinary sale pays no footer height for it",
+  );
+});
+
+test("PIN: D9.8b — the more-actions trigger is the three-dot glyph ALONE (no 'More' label) and stays reachable while resuming", () => {
+  const menuSrc = stripComments(readSrc(CART_MORE_MENU));
+  assert.ok(menuSrc.includes("<MoreHorizontal"), "landmark: CartMoreMenu must render the MoreHorizontal glyph");
+  // Owner decision 2026-09-26: no word on the trigger. A literal "More" in
+  // the rendered label is exactly what was asked to be removed.
+  assert.ok(
+    !/>\s*\{?\s*["'`]?More["'`]?\s*\}?\s*</.test(menuSrc),
+    'CartMoreMenu must not render a literal "More" label — the trigger is the three-dot glyph alone',
+  );
+  assert.ok(
+    !menuSrc.includes('activeLabels.join(" · ")'),
+    "the label-summary text is retired with the label — the applied state now shows as a dot plus the aria-label",
+  );
+  // ...but the applied state must STILL be announced and still be visible.
+  assert.ok(
+    menuSrc.includes("activeLabels.join(\", \")"),
+    "CartMoreMenu's aria-label must still name what is applied",
+  );
+  assert.match(
+    menuSrc,
+    /hasActive\s*&&\s*\(/,
+    "CartMoreMenu must render a visible marker when an adjustment is applied",
+  );
+
+  // Both mount points: the note row (normal sale) and its own row (resuming,
+  // where CartNotes does not render at all — without this the discount, promo
+  // and extra-charge controls would be unreachable on an open tab).
+  const cartSrc = stripComments(readSrc(CART_TSX));
+  assert.match(
+    cartSrc,
+    /<CartNotes[^>]*trailing=\{moreMenu\}/,
+    "Cart.tsx must pass the menu to CartNotes as its trailing slot",
+  );
+  assert.match(
+    cartSrc,
+    /\{resuming\s*&&[^}]*\{moreMenu\}/,
+    "Cart.tsx must ALSO mount the menu while resuming — CartNotes does not render then, and the controls must not become unreachable",
+  );
+});
+
+test("PIN: D9.8b — CartNotes renders its trailing slot on the COLLAPSED row", () => {
+  const src = stripComments(readSrc("apps/cafe/components/pos/CartNotes.tsx"));
+  assert.match(src, /trailing\?:\s*ReactNode/, "CartNotes must declare an optional trailing?: ReactNode");
+  const collapsedAt = src.indexOf("if (!expanded)");
+  const expandedReturnAt = src.indexOf("return (", src.indexOf("}", collapsedAt));
+  assert.ok(collapsedAt >= 0, "landmark: CartNotes must keep its collapsed branch");
+  const slotAt = src.indexOf("{trailing}");
+  assert.ok(slotAt > collapsedAt, "CartNotes must render {trailing} inside the collapsed branch");
+  assert.ok(
+    expandedReturnAt < 0 || slotAt < expandedReturnAt,
+    "the trailing slot belongs to the COLLAPSED row — the expanded box carries its own Done control",
   );
 });
