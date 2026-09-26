@@ -956,3 +956,127 @@ test("PIN: POS_PANE_CLASS carries min-w-0 so the chip strip's min-content width 
     "the pane must be the split div's first child — it is the grid item whose min-width the chip strip was widening",
   );
 });
+
+// ---------------------------------------------------------------------------
+// D9.8 (owner decision 2026-09-26) — the cart footer's "More" menu.
+// The occasional money controls moved off the always-visible footer stack.
+// These pins guard the SAFETY property that made that move acceptable:
+// an adjustment the customer is actually paying is never concealed by it.
+// ---------------------------------------------------------------------------
+
+const CART_MORE_MENU = "apps/cafe/components/pos/CartMoreMenu.tsx";
+const CART_EXTRA_CHARGES = "apps/cafe/components/pos/CartExtraCharges.tsx";
+
+test("PIN: D9.8 — the occasional money controls render INSIDE CartMoreMenu, not in the always-visible footer stack", () => {
+  const src = stripComments(readSrc(CART_TSX));
+  const open = src.indexOf("<CartMoreMenu");
+  const close = src.indexOf("</CartMoreMenu>");
+  assert.ok(open > 0, "Cart.tsx must render <CartMoreMenu>");
+  assert.ok(close > open, "Cart.tsx must close </CartMoreMenu>");
+
+  const inside = src.slice(open, close);
+  for (const needle of ["<CartReward", "<CartPromo", "<CartExtraCharges", "POS_CART_GST_BUTTON_CLASS"]) {
+    assert.ok(
+      inside.includes(needle),
+      `${needle} must render INSIDE the More menu — putting it back in the always-visible stack is what crowded the 22rem column and the phone sheet`,
+    );
+  }
+  // The discount field is identified by its own aria-label, not by a tag.
+  assert.ok(
+    inside.includes('aria-label="Discount value"'),
+    "the discount input must render inside the More menu",
+  );
+});
+
+test("PIN: D9.8 — APPLIED money stays OUTSIDE the menu: the discount line, the extra-charge rows and Total are never hidden behind a tap", () => {
+  const src = stripComments(readSrc(CART_TSX));
+  const close = src.indexOf("</CartMoreMenu>");
+  assert.ok(close > 0, "landmark: Cart.tsx must close </CartMoreMenu>");
+  const after = src.slice(close);
+
+  // Needle is anchored on the tag BOUNDARY (`\s` or `/>`), not a bare prefix:
+  // `includes("<CartExtraChargeRows")` also matches `<CartExtraChargeRowsXX`,
+  // so a renamed-away component would have passed this pin (caught by
+  // mutation-testing it — a bare substring is not an identity check).
+  assert.match(
+    after,
+    /<CartExtraChargeRows[\s/>]/,
+    "the APPLIED extra-charge rows must render AFTER the menu closes — a charge the customer pays is never hidden behind a tap",
+  );
+  assert.ok(
+    after.includes("Discount applied"),
+    'the "Discount applied" line must render outside the menu',
+  );
+  assert.ok(
+    /<span>Total<\/span>/.test(after),
+    "Total must render outside the menu",
+  );
+  // The rows component takes no onAdd: the FORM is what moved, not the list.
+  assert.ok(
+    !/<CartExtraChargeRows[^>]*onAdd/.test(src),
+    "CartExtraChargeRows must not take onAdd — it renders applied rows only",
+  );
+});
+
+test("PIN: D9.8 — CartMoreMenu's trigger summarises what it is hiding, so an applied adjustment can never look idle", () => {
+  const cartSrc = stripComments(readSrc(CART_TSX));
+  assert.match(
+    cartSrc,
+    /<CartMoreMenu\s+activeLabels=\{activeAdjustments\}/,
+    "Cart.tsx must pass activeAdjustments to CartMoreMenu's activeLabels",
+  );
+  // Every adjustment the menu can hide must contribute to that summary. The
+  // condition is matched on the SAME line as its own push(), not merely
+  // present somewhere in the file: `promoCode` (say) appears in the props,
+  // the destructure and the CartPromo call, so a whole-file `includes` passed
+  // even with the push deleted (caught by mutation-testing this pin).
+  const pushLines = cartSrc
+    .split("\n")
+    .filter((l) => l.includes("activeAdjustments.push"));
+  assert.ok(pushLines.length >= 4, `expected at least 4 activeAdjustments.push lines, got ${pushLines.length}`);
+  for (const [needle, what] of [
+    ["discount > 0", "a manual/GST/reward discount"],
+    ["promoCode", "an applied promo code"],
+    ["selectedRewardAt !== null", "a selected reward"],
+    ["extraCharges.length > 0", "a staff-entered extra charge"],
+  ] as const) {
+    assert.ok(
+      pushLines.some((l) => l.includes(needle)),
+      `activeAdjustments must account for ${what} — no activeAdjustments.push line tests \`${needle}\``,
+    );
+  }
+
+  const menuSrc = stripComments(readSrc(CART_MORE_MENU));
+  assert.ok(
+    menuSrc.includes("activeLabels.join"),
+    "CartMoreMenu must render the active labels on its own trigger, not only in aria",
+  );
+});
+
+test("PIN: D9.8 — CartMoreMenu uses a Popover, NEVER a DropdownMenu (a DropdownMenuItem closes on click and would make the discount/promo/charge inputs unusable)", () => {
+  const src = stripComments(readSrc(CART_MORE_MENU));
+  assert.match(
+    src,
+    /from\s*"@\/components\/ui\/popover"/,
+    "CartMoreMenu must import from components/ui/popover",
+  );
+  assert.ok(src.includes("<PopoverContent"), "landmark: CartMoreMenu must render a PopoverContent");
+  assert.ok(
+    !src.includes("dropdown-menu"),
+    "CartMoreMenu must not import the dropdown-menu primitive — its items close the menu on click, which breaks typing a discount or a promo code",
+  );
+  assert.ok(
+    !src.includes("DropdownMenuItem"),
+    "CartMoreMenu must not use DropdownMenuItem — see above",
+  );
+});
+
+test("PIN: D9.8 — CartExtraCharges still exports BOTH the add-form and the applied-rows components", () => {
+  const src = stripComments(readSrc(CART_EXTRA_CHARGES));
+  assert.match(src, /export function CartExtraChargeRows/, "must export CartExtraChargeRows (applied rows)");
+  assert.match(src, /export function CartExtraCharges\b/, "must export CartExtraCharges (the add form)");
+  assert.ok(
+    /if\s*\(extras\.length === 0\)\s*return null;/.test(src),
+    "CartExtraChargeRows must render nothing when empty — an ordinary sale pays no footer height for it",
+  );
+});

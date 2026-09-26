@@ -45,6 +45,47 @@ function validationError(label: string, amountText: string): string | null {
   return null;
 }
 
+// D9.8 (2026-09-26) — the APPLIED charges, rendered on their own so they can
+// stay in the always-visible footer while the ADD form moves into the More
+// menu. What the customer is actually being charged must never sit behind a
+// tap: the same rule CartNotes set in D9.7 for a collapsed note, and money
+// raises the stakes (an operator could otherwise hand over a bill carrying a
+// packing fee with nothing on screen naming it). Renders nothing when empty,
+// so an ordinary sale still costs zero footer height.
+export function CartExtraChargeRows({
+  extras,
+  onRemove,
+  disabled,
+}: {
+  extras: ExtraChargeEntry[];
+  onRemove: (index: number) => void;
+  disabled?: boolean;
+}) {
+  if (extras.length === 0) return null;
+  return (
+    <div className="space-y-1.5">
+      {extras.map((entry, i) => (
+        <div key={`${entry.label}-${i}`} className="flex items-center justify-between gap-2 text-sm">
+          <span className="min-w-0 flex-1 truncate text-muted-foreground" title={entry.label}>
+            {entry.label} · {inr(entry.amount)}
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-11 w-11 shrink-0"
+            onClick={() => onRemove(i)}
+            disabled={disabled}
+            aria-label={"Remove " + entry.label}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function CartExtraCharges({ extras, onAdd, onRemove, disabled }: CartExtraChargesProps) {
   const [expanded, setExpanded] = useState(false);
   const [label, setLabel] = useState("");

@@ -194,7 +194,25 @@ export const POS_CART_SHEET_PANEL_CLASS =
 // mounts (Cart.tsx), so on a short desktop window the footer is reached by
 // scrolling the card rather than overflowing it. No overscroll-contain here:
 // a drag that runs out of list must chain to the panel so the CTAs come up.
-export const POS_CART_LIST_CLASS = "min-h-32 flex-1 overflow-y-auto p-2";
+export const POS_CART_LIST_CLASS = "min-h-48 flex-1 overflow-y-auto p-2";
+
+// D9.8 (owner decision 2026-09-26) — the cart footer's "More" control and the
+// panel it opens. The occasional money controls (reward, promo, discount, the
+// GST preset, extra charges) moved off the always-visible footer stack and
+// behind this one button; components/pos/CartMoreMenu.tsx carries the full why.
+// 44px tall on touch, compacting to 32px only on an xl+ FINE pointer — the
+// POS_HEADER_CONTROL_CLASS idiom (keying the SHRINK on a fine pointer is
+// cascade-proof where a coarse re-floor would depend on emission order,
+// CB-1d.1 V1), so glass never gets a smaller target than touch.
+export const POS_CART_MORE_BUTTON_CLASS =
+  "flex h-11 w-full items-center justify-start gap-1.5 px-2 text-sm font-medium text-muted-foreground xl:pointer-fine:h-8 touch-manipulation select-none pointer-coarse:active:scale-[0.97] pointer-coarse:active:opacity-80";
+// The panel the More button opens. Width is capped to the viewport so it can
+// never overhang a phone screen, and the height cap + scroll keeps its
+// contents reachable when the reward ladder is long or the on-screen keyboard
+// is up — vh base with a dvh override, the POS_DIALOG_LIST_CAP_CLASS pattern,
+// for exactly the reason given there.
+export const POS_CART_MORE_PANEL_CLASS =
+  "w-[min(20rem,calc(100vw-1.5rem))] max-h-[60vh] overflow-y-auto p-3 supports-[height:1dvh]:max-h-[60dvh]";
 
 // Instant-tap feel (CB-1d.1 L1): no double-tap-zoom delay, no long-press text
 // selection, and a compositor-only pressed state (scale/opacity — never paint)

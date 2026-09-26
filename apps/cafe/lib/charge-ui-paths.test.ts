@@ -115,22 +115,38 @@ test("PIN (4): pos-cart-props.ts wires onAddExtraCharge/onRemoveExtraCharge/extr
 
   const cartSrc = stripComments(readSrc(CART_TSX));
   assert.match(cartSrc, /<CartExtraCharges/, "Cart.tsx must render <CartExtraCharges");
-  assert.match(
-    cartSrc,
-    /import\s*\{\s*CartExtraCharges,\s*type ExtraChargeEntry\s*\}\s*from\s*"@\/components\/pos\/CartExtraCharges"/,
-    'Cart.tsx must import { CartExtraCharges, type ExtraChargeEntry } from "@/components/pos/CartExtraCharges"',
+  // D9.8 (2026-09-26): the import is now a multi-name block — Cart.tsx also
+  // pulls CartExtraChargeRows, because the ADD FORM moved into the More menu
+  // while the APPLIED rows stayed in the always-visible footer. This pin's
+  // subject is REACHABILITY (is the feature actually wired?), not the exact
+  // spelling of one import line, so it matches the block and the names in it
+  // rather than a fixed two-name sequence.
+  const extrasImport = cartSrc.match(
+    /import\s*\{([^}]*)\}\s*from\s*"@\/components\/pos\/CartExtraCharges"/,
   );
+  assert.ok(extrasImport, 'Cart.tsx must import from "@/components/pos/CartExtraCharges"');
+  const imported = extrasImport![1];
+  assert.match(imported, /(^|[\s,])CartExtraCharges([\s,]|$)/, "Cart.tsx must import CartExtraCharges (the add form)");
+  assert.match(imported, /type ExtraChargeEntry/, "Cart.tsx must import type ExtraChargeEntry");
+  // The applied rows must be rendered too — otherwise a charge the customer
+  // is paying would exist only behind the More menu's tap.
+  assert.match(cartSrc, /<CartExtraChargeRows[\s/>]/, "Cart.tsx must render <CartExtraChargeRows — the APPLIED charges stay outside the menu");
 
-  // Positive ordering landmark: the extras control renders BELOW the table
-  // charge block and ABOVE the Total row (plan §5C — where it lands in the
-  // arithmetic, after GST, before the bottom total).
+  // Positive ordering landmark: the APPLIED extra-charge rows render BELOW the
+  // table charge block and ABOVE the Total row (plan §5C — where they land in
+  // the arithmetic, after GST, before the bottom total). D9.8: this is now
+  // keyed on <CartExtraChargeRows, because the ADD FORM moved up into the More
+  // menu and its position there says nothing about the bill's arithmetic —
+  // only the rendered rows do. (A bare "<CartExtraCharges" indexOf would now
+  // find the in-menu form and silently assert the wrong element's position.)
   const tableChargeBlockAt = cartSrc.indexOf('chargeLabel !== "" && (entitledCharge > 0 || charge > 0)');
-  const extrasAt = cartSrc.indexOf("<CartExtraCharges");
+  const extraRowsAt = cartSrc.search(/<CartExtraChargeRows[\s/>]/);
   const totalRowAt = cartSrc.indexOf("<span>Total</span>");
   assert.ok(tableChargeBlockAt >= 0, "positive landmark: the table-charge conditional block must still be present");
+  assert.ok(extraRowsAt >= 0, "positive landmark: <CartExtraChargeRows must still be present");
   assert.ok(totalRowAt >= 0, "positive landmark: the Total row must still be present");
-  assert.ok(tableChargeBlockAt < extrasAt, "expected the table-charge block BEFORE <CartExtraCharges");
-  assert.ok(extrasAt < totalRowAt, "expected <CartExtraCharges BEFORE the Total row");
+  assert.ok(tableChargeBlockAt < extraRowsAt, "expected the table-charge block BEFORE <CartExtraChargeRows");
+  assert.ok(extraRowsAt < totalRowAt, "expected <CartExtraChargeRows BEFORE the Total row");
 });
 
 // ── (5) CartExtraCharges.tsx: hygiene (no console., no emoji) ──────────────

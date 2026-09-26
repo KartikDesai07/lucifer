@@ -545,7 +545,18 @@ test("PIN: exactly one cart mount is visible at any width — the desktop/mobile
 test("PIN: the cart sheet's scrollable panel and its line-list floor carry the right utility classes", () => {
   assert.match(POS_CART_SHEET_PANEL_CLASS, /(^|\s)h-full(\s|$)/, "POS_CART_SHEET_PANEL_CLASS must include h-full");
   assert.match(POS_CART_SHEET_PANEL_CLASS, /overflow-y-auto/, "POS_CART_SHEET_PANEL_CLASS must include overflow-y-auto");
-  assert.match(POS_CART_LIST_CLASS, /(^|\s)min-h-32(\s|$)/, "POS_CART_LIST_CLASS must include min-h-32");
+  // D9.8 (2026-09-26): raised 32 → 48 (8rem → 12rem). A cart LINE is a
+  // two-row block (name+price, then the 36px stepper row) ≈ 76px, so the old
+  // 128px floor could only ever show 1.68 of them — the owner's phone
+  // screenshot caught the second line clipped mid-stepper. 192px shows 2.5,
+  // so the cut always lands INSIDE a line and reads as "scroll for more"
+  // rather than as a line with its controls sheared off. Affordable now that
+  // the footer's occasional controls live behind the More menu.
+  assert.match(POS_CART_LIST_CLASS, /(^|\s)min-h-48(\s|$)/, "POS_CART_LIST_CLASS must include min-h-48");
+  assert.ok(
+    !POS_CART_LIST_CLASS.includes("min-h-32"),
+    "POS_CART_LIST_CLASS must NOT fall back to the old min-h-32 floor — it clipped the second cart line mid-stepper",
+  );
   assert.match(POS_CART_LIST_CLASS, /(^|\s)flex-1(\s|$)/, "POS_CART_LIST_CLASS must include flex-1");
   assert.ok(
     !POS_CART_LIST_CLASS.includes("overscroll-contain"),
