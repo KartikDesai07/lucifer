@@ -5,9 +5,9 @@ import type { ReactNode } from "react";
 import { useNow } from "@/hooks/use-now";
 import { brandFontVariables } from "@/lib/brand-fonts";
 import { dayPartOf, greetingFor } from "@/lib/brand-time";
-import { BrandBackdrop } from "@/components/brand/BrandBackdrop";
 import { BrandCard } from "@/components/brand/BrandCard";
 import { PointillistScene } from "@/components/brand/PointillistScene";
+import { Postmark } from "@/components/brand/Postmark";
 import { StampFrame } from "@/components/brand/StampFrame";
 import { VendorMark } from "@/components/brand/VendorMark";
 
@@ -20,9 +20,10 @@ import { VendorMark } from "@/components/brand/VendorMark";
 // form and its logo (including the logo's own failure fallback) and hands
 // them in, so this file can never be the reason sign-in breaks.
 //
-// One centred card. On large screens it splits: a perforated "stamp" holding
-// a computed pointillist painting (hills, a sun, a steaming bowl — its colours
-// follow the time of day) on the left, the form on the right. On phones the
+// One centred card on plain paper. On large screens it splits: a perforated
+// "stamp" holding a computed pointillist painting (hills, a sun, a steaming
+// bowl — its colours follow the time of day; it paints itself in on load and
+// is postmarked with today's date) on the left, the form on the right. On phones the
 // painting becomes a short strip across the top of the same card, and on a
 // short screen it steps aside entirely so the form never needs a scroll.
 
@@ -55,13 +56,10 @@ export function AuthShell({ brandName, logo, title, intro, footer, children }: A
     // signed-out screens on the full 100vh they have always had).
     <main className="min-h-screen bg-brand-paper text-brand-ink">
       {/* Font variables live on this wrapper, not <main>, so the brand faces
-          resolve for everything inside and nowhere else. `isolate` gives the
-          backdrop's -z-10 a stacking context of its own. */}
+          resolve for everything inside and nowhere else. */}
       <div
-        className={`${brandFontVariables} relative isolate flex min-h-screen flex-col overflow-hidden font-brand-sans`}
+        className={`${brandFontVariables} flex min-h-screen flex-col font-brand-sans`}
       >
-        <BrandBackdrop />
-
         <div className="flex flex-1 items-center justify-center px-4 py-5 sm:px-6 sm:py-8 lg:py-12">
           <div className="w-full max-w-md motion-safe:animate-brand-rise lg:max-w-[58rem]">
             <BrandCard className="p-3 sm:p-3">
@@ -70,16 +68,24 @@ export function AuthShell({ brandName, logo, title, intro, footer, children }: A
                     the whole left half on large ones. */}
                 <StampFrame className="h-40 [@media(max-height:700px)]:hidden lg:h-auto lg:[@media(max-height:700px)]:flex">
                   <PointillistScene dayPart={dayPart} className="absolute inset-0 bg-brand-paper" />
+                  {/* Large screens only: on the phone strip it crowds the bowl. */}
+                  {now && dayPart && (
+                    <Postmark
+                      now={now}
+                      dayPart={dayPart}
+                      className="pointer-events-none absolute left-4 top-4 hidden w-40 motion-safe:animate-brand-stamp lg:block"
+                    />
+                  )}
                 </StampFrame>
 
                 <div className="flex flex-col px-4 pb-5 pt-7 sm:px-7 lg:px-12 lg:py-10">
-                  <div className="flex items-center gap-2.5">
-                    <div className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-lg">
-                      {logo}
-                    </div>
-                    <span className="truncate font-brand-display text-lg font-medium tracking-tight">
-                      {brandName}
-                    </span>
+                  {/* The lockup: the cafe's logo at its own shape (a wide
+                      wordmark gets its width, a square mark stays square),
+                      a hairline, then the product name in the UI face. */}
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-9 max-w-[8.5rem] shrink-0 items-center">{logo}</div>
+                    <span aria-hidden="true" className="h-5 w-px shrink-0 bg-brand-rule" />
+                    <span className="truncate text-[15px] font-semibold tracking-[-0.01em]">{brandName}</span>
                   </div>
 
                   <div className="flex flex-1 flex-col justify-center">

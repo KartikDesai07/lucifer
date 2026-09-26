@@ -23,7 +23,7 @@ import {
   BRAND_LABEL_CLASS,
 } from "@/components/brand/brand-classes";
 
-// Staff sign-in. The screen's FRAME (greeting, printed-bill slip, responsive
+// Staff sign-in. The screen's FRAME (greeting, painting, logo lockup, responsive
 // layout) lives in components/auth/AuthShell and its styles in
 // components/brand; this file keeps everything that decides whether sign-in
 // works — the form, the credentials call, the shared-device wipe, the
@@ -75,10 +75,12 @@ export default function LoginPage() {
     router.refresh();
   };
 
-  // One element, handed to the shell for its logo slot. It fills the box the
-  // shell gives it; the fallback glyph takes over if the image fails. No
-  // coloured tile behind either — an icon in a filled square is the stock
-  // template look this screen is built to avoid.
+  // One element, handed to the shell for its logo slot. It takes the slot's
+  // height and its OWN width (a wide wordmark reads at its real size, not
+  // shrunk into a square); multiply lets a logo saved on a white background
+  // sit on the card's paper without a white box. The fallback glyph takes
+  // over if the image fails. No coloured tile behind either — an icon in a
+  // filled square is the stock template look this screen is built to avoid.
   const logo = iconFailed ? (
     <UtensilsCrossed className="h-6 w-6 text-brand-ink" aria-hidden="true" />
   ) : (
@@ -88,7 +90,7 @@ export default function LoginPage() {
       width={48}
       height={48}
       unoptimized
-      className="h-full w-full object-contain"
+      className="h-full w-auto max-w-full object-contain mix-blend-multiply"
       onError={() => setIconFailed(true)}
     />
   );

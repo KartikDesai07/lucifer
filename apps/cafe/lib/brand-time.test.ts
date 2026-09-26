@@ -7,6 +7,7 @@ import {
   MORNING_FROM_HOUR,
   dayPartOf,
   greetingFor,
+  postmarkFor,
 } from "./brand-time";
 
 // Local-time Dates (new Date(y, m, d, h, min)) — the helpers read getHours(),
@@ -32,4 +33,17 @@ test("greetingFor: reads as a full sentence for each part of the day", () => {
   assert.equal(greetingFor(at(9)), "Good morning.");
   assert.equal(greetingFor(at(14)), "Good afternoon.");
   assert.equal(greetingFor(at(20)), "Good evening.");
+});
+
+test("postmarkFor: today's service, weekday and date, in fixed English", () => {
+  // 26 Sep 2026 is a Saturday.
+  assert.deepEqual(postmarkFor(at(19, 30)), {
+    service: "EVENING SERVICE",
+    weekday: "SATURDAY",
+    dayMonth: "26 SEP",
+    year: "2026",
+  });
+  assert.equal(postmarkFor(at(9)).service, "MORNING SERVICE");
+  assert.equal(postmarkFor(new Date(2027, 0, 3, 14)).dayMonth, "3 JAN", "no zero padding; month from the fixed table");
+  assert.equal(postmarkFor(new Date(2027, 0, 3, 14)).weekday, "SUNDAY");
 });

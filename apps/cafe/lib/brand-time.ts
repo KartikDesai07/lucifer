@@ -25,3 +25,28 @@ export function dayPartOf(now: Date): DayPart {
 export function greetingFor(now: Date): string {
   return `Good ${dayPartOf(now)}.`;
 }
+
+const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"] as const;
+const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"] as const;
+
+export interface PostmarkText {
+  /** Round the top of the ring: "EVENING SERVICE". */
+  service: string;
+  /** Round the bottom of the ring: "SATURDAY". */
+  weekday: string;
+  /** In the middle: "26 SEP" over "2026". */
+  dayMonth: string;
+  year: string;
+}
+
+/** The words on the painting's postmark — today, in the counter's own time.
+ *  Fixed English tables, not toLocaleString, so a device set to another
+ *  language never changes the stamp. */
+export function postmarkFor(now: Date): PostmarkText {
+  return {
+    service: `${dayPartOf(now).toUpperCase()} SERVICE`,
+    weekday: WEEKDAYS[now.getDay()],
+    dayMonth: `${now.getDate()} ${MONTHS[now.getMonth()]}`,
+    year: String(now.getFullYear()),
+  };
+}

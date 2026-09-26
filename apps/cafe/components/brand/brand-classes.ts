@@ -11,9 +11,11 @@ export const BRAND_LABEL_CLASS = "text-[13px] font-medium text-brand-ink";
 
 /** 48px tall (a counter keyboard and a thumb both hit it first time), a 3.6:1
  *  field border, and a terracotta focus halo that is visible on bright glass.
- *  text-base below md keeps iOS from zooming the page on focus. */
+ *  text-base below md keeps iOS from zooming the page on focus. A browser-
+ *  filled field stays paper-coloured: the autofill blue is the browser's own
+ *  !important background, and an inset shadow is the one thing drawn over it. */
 export const BRAND_INPUT_CLASS =
-  "h-12 rounded-md border-brand-field bg-brand-slip px-3.5 text-base text-brand-ink shadow-none placeholder:text-brand-muted focus-visible:border-brand-ink focus-visible:ring-[3px] focus-visible:ring-brand-accent/25 md:text-[15px]";
+  "h-12 rounded-md border-brand-field bg-brand-slip px-3.5 text-base text-brand-ink shadow-none placeholder:text-brand-muted [&:-webkit-autofill]:shadow-[inset_0_0_0_100px_var(--color-brand-slip)] [&:-webkit-autofill]:[-webkit-text-fill-color:var(--color-brand-ink)] focus-visible:border-brand-ink focus-visible:ring-[3px] focus-visible:ring-brand-accent/25 md:text-[15px]";
 
 /** The primary action: solid ink, never green (green is the "Completed"
  *  status colour). `group` lets a trailing arrow nudge on hover; a slight

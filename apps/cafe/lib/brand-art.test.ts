@@ -1,18 +1,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { fitScene, paintBlocks, paintDots, revealAt, sceneToBox, seededRandom } from "./brand-art";
 import {
+  BOWL_BASE_V,
+  BOWL_RIM_V,
+  BOWL_U,
+  LAYER,
+  LAYER_COUNT,
   SCENE_H,
   SCENE_PALETTES,
   SCENE_W,
   STEAM_ORIGIN,
-  fitScene,
-  paintBlocks,
-  paintDots,
+  sceneAt,
   sceneColorAt,
-  sceneToBox,
-  seededRandom,
-} from "./brand-art";
+  type Layer,
+} from "./brand-scene";
 
 const PARTS = ["morning", "afternoon", "evening"] as const;
 
@@ -114,11 +117,58 @@ test("paintBlocks tiles the whole box with valid colours — no gap for a single
 });
 
 test("the phone strip shows the WHOLE bowl — rim and base both inside the box", () => {
-  // The strip is h-40 (160px) across a ~360px card; the bowl spans rim 0.765
-  // to base 0.865 of the scene height.
+  // The strip is h-40 (160px) across a ~360px card.
   const [cw, ch] = [340, 160];
-  const rim = sceneToBox(STEAM_ORIGIN.x, 0.765 * SCENE_H, cw, ch);
-  const base = sceneToBox(STEAM_ORIGIN.x, 0.865 * SCENE_H, cw, ch);
+  const rim = sceneToBox(STEAM_ORIGIN.x, BOWL_RIM_V * SCENE_H, cw, ch);
+  const base = sceneToBox(STEAM_ORIGIN.x, BOWL_BASE_V * SCENE_H, cw, ch);
   assert.ok(rim.y > 0, `rim below the top edge (${rim.y.toFixed(0)})`);
   assert.ok(base.y < ch, `base above the bottom edge (${base.y.toFixed(0)} < ${ch})`);
+});
+
+const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+const LAYERS = Array.from({ length: LAYER_COUNT }, (_, i) => i as Layer);
+
+test("the reveal paints back to front — each layer starts after the one behind it, and all of it lands by the end", () => {
+  for (const d of paintDots(240, 320, SCENE_PALETTES.afternoon)) assert.ok(d.at >= 0 && d.at < 1, `dot at ${d.at}`);
+  for (const b of paintBlocks(240, 320, SCENE_PALETTES.afternoon)) assert.ok(b.at >= 0 && b.at < 1, `block at ${b.at}`);
+  for (const layer of LAYERS.slice(1)) {
+    assert.ok(revealAt(layer, 0) > revealAt((layer - 1) as Layer, 0), `layer ${layer} starts after ${layer - 1}`);
+  }
+  assert.ok(revealAt(LAYER.bowl, 0.999999) < 1, "the front layer's last dot still lands by the end");
+  // And the painting really comes in that way: the dots that land in the
+  // back half of the reveal sit lower in the frame than the ones that open it.
+  const dots = paintDots(240, 320, SCENE_PALETTES.afternoon);
+  const early = dots.filter((d) => d.at < revealAt(LAYER.sun, 0));
+  const late = dots.filter((d) => d.at >= revealAt(LAYER.table, 0));
+  assert.ok(early.length > 100 && late.length > 100, `both ends of the reveal have dots (${early.length}, ${late.length})`);
+  assert.ok(median(late.map((d) => d.y)) > median(early.map((d) => d.y)), "sky first, foreground last");
+});
+
+test("a region's flat base fills in only once its dots are half down, so the gaps show paper first", () => {
+  const [cw, ch] = [120, 160];
+  const p = SCENE_PALETTES.morning;
+  const { scale, offsetX, offsetY } = fitScene(cw, ch);
+  for (const b of paintBlocks(cw, ch, p)) {
+    const half = b.size / 2;
+    const { layer } = sceneAt((b.x + half - offsetX) / scale, (b.y + half - offsetY) / scale, p);
+    assert.ok(b.at > revealAt(layer, 0.5), `block at (${b.x},${b.y}) fills at ${b.at}`);
+  }
+});
+
+test("the soup carries herbs, and the bowl is shaded — lighter towards the sun, never grey", () => {
+  const p = SCENE_PALETTES.afternoon;
+  const cx = BOWL_U * SCENE_W;
+  const cy = BOWL_RIM_V * SCENE_H;
+  let herbs = 0;
+  for (let x = cx - 50; x <= cx + 50; x += 0.5) {
+    for (let y = cy - 8; y <= cy + 8; y += 0.5) if (sceneColorAt(x, y, p).join() === p.herb.join()) herbs++;
+  }
+  assert.ok(herbs > 10, `herb leaves float on the soup (${herbs} samples)`);
+  const lowLeft = sceneAt(cx - 30, cy + 25, p);
+  const upRight = sceneAt(cx + 30, cy + 12, p);
+  assert.equal(lowLeft.layer, LAYER.bowl);
+  assert.equal(upRight.layer, LAYER.bowl);
+  const lum = (c: readonly number[]) => c[0] + c[1] + c[2];
+  assert.ok(lum(lowLeft.color) < lum(upRight.color), "the side away from the sun is darker");
+  assert.ok(lowLeft.color[0] > lowLeft.color[2], "the shade is warm (the table's colour), not grey");
 });
