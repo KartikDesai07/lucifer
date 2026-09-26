@@ -107,15 +107,29 @@ export function KitchenOrderCard({
         </div>
       )}
 
-      {/* FOOTER — always rendered, disabled until allDone; a button that only
-          appears at the end is easy to miss on a wall. */}
+      {/* FOOTER — ALWAYS enabled (owner decision 2026-09-26). Ticking is an
+          aid for a slow service, not a precondition: during a rush nobody has
+          time to tick each line, and a Ready button that refuses until they do
+          strands the card on the wall and makes the board a liability exactly
+          when it matters most. The server never fenced this either (see the
+          "ready" branch in app/api/kitchen/route.ts — a UI disable is not a
+          fence), so this only stops the client contradicting it.
+          A mis-tap is recoverable: handleReady raises an Undo toast. That is
+          the right trade against a confirm dialog, which would re-add the
+          friction this change exists to remove. */}
       <Button
         type="button"
         className="min-h-11 w-full text-sm font-semibold"
-        disabled={!card.allDone || readyInFlight}
+        variant={card.allDone ? "default" : "outline"}
+        disabled={readyInFlight}
         onClick={() => onReady(card)}
       >
-        {card.allDone ? "Ready — clear from board" : "Tick every line first"}
+        {/* The label still tells the truth about what is UNTICKED, so a cook
+            clearing a part-done card knows what they are skipping — the nudge
+            survives, the block does not. */}
+        {card.allDone
+          ? "Ready — clear from board"
+          : `Ready — clear ${card.totalCount - card.doneCount} unticked`}
       </Button>
     </div>
   );

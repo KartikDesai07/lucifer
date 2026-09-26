@@ -190,5 +190,22 @@ export function buildKitchenCards({
   return cards.slice(0, KITCHEN_CARD_LIMIT);
 }
 
+/**
+ * The confirmation a cook sees after tapping Ready.
+ *
+ * Owner decision 2026-09-26: Ready no longer requires every line to be ticked
+ * (during a rush nobody has time, and a button that refuses strands the card).
+ * So "cleared a finished card" and "cleared a card with lines still open" are
+ * now BOTH reachable, and only the second might be a mis-tap worth undoing —
+ * the toast has to tell them apart. Lives here, not in the page, because it is
+ * pure string-building over card data and is unit-testable as such.
+ */
+export function readyToastMessage(card: KitchenOrderCard): string {
+  const where = card.tableLabel || card.orderNo;
+  const unticked = card.totalCount - card.doneCount;
+  if (unticked <= 0) return `${where} marked ready`;
+  return `${where} marked ready — ${unticked} line${unticked === 1 ? "" : "s"} not ticked`;
+}
+
 /** Re-exported so a consumer that only renders cards needs one import. */
 export type { KitchenRow, KitchenOrderInput, Types };

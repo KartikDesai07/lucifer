@@ -8,7 +8,10 @@ import { useKitchenBoard, useTickKitchenLine, useMarkOrderReady } from "@/hooks/
 import { useKitchenRealtime } from "@/hooks/use-realtime";
 import { KITCHEN_FRESHNESS_TICK_MS } from "@pos/shared/query";
 import type { KitchenRow } from "@/lib/kitchen-board";
-import type { KitchenOrderCard as KitchenOrderCardData } from "@/lib/kitchen-cards";
+import {
+  readyToastMessage,
+  type KitchenOrderCard as KitchenOrderCardData,
+} from "@/lib/kitchen-cards";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -93,7 +96,9 @@ export default function KitchenPage() {
           }),
       },
     );
-    toast(`${card.tableLabel || card.orderNo} marked ready`, {
+    // The message distinguishes a finished card from one cleared with lines
+    // still open — see readyToastMessage for why that matters now.
+    toast(readyToastMessage(card), {
       action: {
         label: "Undo",
         onClick: () => ready.mutate({ orderId: card.orderId, ready: false }),

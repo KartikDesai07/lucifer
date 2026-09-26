@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildKitchenCards, KITCHEN_CARD_LIMIT } from "./kitchen-cards";
+import {
+  buildKitchenCards,
+  readyToastMessage,
+  KITCHEN_CARD_LIMIT,
+  type KitchenOrderCard,
+} from "./kitchen-cards";
 import {
   buildKitchenRows,
   kitchenAgeBand,
@@ -491,4 +496,51 @@ test("C8b: parcel absent on the order (undefined) defaults card.parcel to false"
   const cards = buildKitchenCards({ orders: [ord], ticksByOrder: {} });
   assert.equal(cards.length, 1);
   assert.equal(cards[0].parcel, false, "an order with no parcel field at all must default card.parcel to false, not undefined");
+});
+
+// ── readyToastMessage (owner decision 2026-09-26: Ready no longer needs ticks) ──
+
+const cardFor = (over: Partial<KitchenOrderCard>): KitchenOrderCard => ({
+  orderId: "o1",
+  orderNo: "ORD-1",
+  tableLabel: "T-3",
+  parcel: false,
+  selfOrder: false,
+  ticketNumbers: [],
+  lines: [],
+  doneCount: 0,
+  totalCount: 0,
+  allDone: false,
+  cardFiredAt: "2026-09-26T10:00:00.000Z",
+  cardFiredAtApprox: false,
+  ...over,
+});
+
+test("R1: a fully-ticked card's toast does NOT mention unticked lines", () => {
+  const msg = readyToastMessage(cardFor({ doneCount: 3, totalCount: 3, allDone: true }));
+  assert.equal(msg, "T-3 marked ready");
+  assert.ok(!/not ticked/.test(msg), "a finished card must not claim anything was skipped");
+});
+
+test("R2: a part-done card's toast names how many lines were NOT ticked", () => {
+  const msg = readyToastMessage(cardFor({ doneCount: 1, totalCount: 4 }));
+  assert.equal(msg, "T-3 marked ready — 3 lines not ticked");
+});
+
+test("R3: singular for exactly one unticked line", () => {
+  const msg = readyToastMessage(cardFor({ doneCount: 2, totalCount: 3 }));
+  assert.equal(msg, "T-3 marked ready — 1 line not ticked", "must read '1 line', never '1 lines'");
+});
+
+test("R4: falls back to the order number when there is no table label (parcel / walk-in)", () => {
+  const msg = readyToastMessage(
+    cardFor({ tableLabel: "", orderNo: "ORD-9", doneCount: 0, totalCount: 2 }),
+  );
+  assert.equal(msg, "ORD-9 marked ready — 2 lines not ticked");
+});
+
+test("R5: a zero-line card cannot produce a negative or '0 lines' message", () => {
+  assert.equal(readyToastMessage(cardFor({ doneCount: 0, totalCount: 0 })), "T-3 marked ready");
+  // Defensive: doneCount > totalCount must not yield "-1 lines not ticked".
+  assert.equal(readyToastMessage(cardFor({ doneCount: 5, totalCount: 3 })), "T-3 marked ready");
 });

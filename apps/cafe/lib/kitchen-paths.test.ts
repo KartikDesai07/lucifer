@@ -251,3 +251,45 @@ test("PIN: KitchenLineCard must NOT re-append row.variation — buildKitchenRows
     "KitchenLineCard must not append row.variation beside row.name — that prints it twice",
   );
 });
+
+// ── (22) Ready is never blocked by unticked lines (owner decision 2026-09-26) ──
+
+const KITCHEN_ORDER_CARD = "apps/cafe/components/kitchen/KitchenOrderCard.tsx";
+
+test("PIN (22): the Ready button is NOT gated on allDone — a rush leaves no time to tick, and a card that cannot be cleared strands the board", () => {
+  const src = stripComments(readSrc(KITCHEN_ORDER_CARD));
+
+  // Positive landmarks: the button and its handler must still exist, so the
+  // negatives below cannot pass by the button having been deleted.
+  assert.match(src, /onClick=\{\(\)\s*=>\s*onReady\(card\)\}/, "landmark: the Ready button must still call onReady(card)");
+  assert.match(src, /disabled=\{readyInFlight\}/, "the Ready button must be disabled ONLY while its own mutation is in flight");
+
+  // The actual rule: allDone must not appear in the disabled expression.
+  const disabledExpr = src.match(/disabled=\{([^}]*)\}/g) ?? [];
+  for (const expr of disabledExpr) {
+    assert.ok(
+      !expr.includes("allDone"),
+      `no disabled= expression on the order card may test allDone — found ${expr}. Ticking is an aid, not a precondition; the server never fenced this either (app/api/kitchen/route.ts "ready" branch).`,
+    );
+  }
+  assert.ok(
+    !src.includes("Tick every line first"),
+    'the retired "Tick every line first" label must not come back — it described a block that no longer exists',
+  );
+
+  // The nudge survives the block: a part-done card still says what is being skipped.
+  assert.match(
+    src,
+    /card\.totalCount\s*-\s*card\.doneCount/,
+    "the Ready label must still name how many lines are unticked, so a cook knows what they are skipping",
+  );
+});
+
+test("PIN (22b): readyToastMessage distinguishes a finished card from one cleared with lines still open", () => {
+  const src = stripComments(readSrc("apps/cafe/lib/kitchen-cards.ts"));
+  assert.match(src, /export function readyToastMessage/, "kitchen-cards.ts must export readyToastMessage");
+
+  const pageSrc = stripComments(readSrc(KITCHEN_PAGE));
+  assert.match(pageSrc, /readyToastMessage\(card\)/, "the kitchen page's ready toast must use readyToastMessage(card)");
+  assert.match(pageSrc, /label:\s*"Undo"/, "the ready toast must still offer Undo — clearing the wrong card must stay recoverable");
+});
