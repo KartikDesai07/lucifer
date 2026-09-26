@@ -135,6 +135,11 @@ scope). **This is what `go-live` should ask a client to create.**
 
 ## Deploying into a client's account
 
+**`go-live` does this for you** (console: Hosting → Realtime, or fill in the
+`cloudflare` block on the client file) — it provisions the Worker, mints and
+sets the secret, sets the cafe's three env vars, and redeploys the cafe. This
+section is the manual fallback, and what the console runs under the hood.
+
 ```sh
 # In the CLIENT's account: My Profile -> API Tokens -> Create.
 # See "Still unverified" #2 above before choosing the scope.
@@ -142,7 +147,7 @@ export CLOUDFLARE_API_TOKEN=<the client's token>
 
 cd workers/realtime
 # Name it per cafe so two clients never collide.
-npx wrangler deploy --name pos-realtime-<slug> --var TENANT_ID:<slug>
+npx wrangler deploy --name pos-realtime-<slug> --var TENANT_ID:<the cafe's TENANT_ID — the address's first label, NOT necessarily the slug>
 npx wrangler secret put REALTIME_PUBLISH_SECRET   # must equal the cafe's env var
 ```
 

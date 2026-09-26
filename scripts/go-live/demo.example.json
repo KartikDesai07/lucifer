@@ -3,10 +3,12 @@
     "The DEMO café — copy to clients/demo.json, fill vercel.token, mongodbUri and admin.password, then:  npm run go-live -- demo  (or use the console).",
     "Everything below is demo content (Sunrise Café: 8 categories, 47 items with sizes and add-ons, 10 tables). Change freely; re-running never overwrites data already in the DB.",
     "After the first seed the cafe manages tables and menu inside the POS — this list is starter data only.",
-    "subdomain → the first part of the cafe's address: <subdomain>.<apex> (apex = clients/_platform.json). Add the DNS records the console shows after the first run."
+    "subdomain → the first part of the cafe's address: <subdomain>.<apex> (apex = clients/_platform.json). Add the DNS records the console shows after the first run.",
+    "cloudflare → OPTIONAL (realtime nudges); null here on purpose — the demo cafe just polls. See client.example.json's cloudflare note for what filling it in does."
   ],
   "slug": "sunrise-demo",
   "vercel": { "token": "<vercel-token>", "project": null, "teamId": null },
+  "cloudflare": null,
   "subdomain": "sunrise-demo",
   "mongodbUri": "mongodb+srv://<user>:<password>@<cluster>.mongodb.net/pos?retryWrites=true&w=majority",
   "admin": { "username": "admin", "password": "<Strong-Pass-1!>" },

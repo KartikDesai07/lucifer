@@ -7,6 +7,12 @@
 //   RESERVED_SUBDOMAINS  ← apps/cafe/lib/platform.ts
 //   password rule        ← apps/cafe/scripts/seed-admin.ts
 //   GST_RATES/GST_MODES, TABLE_NO_* ← packages/shared/src/constants.ts
+//
+// validateCloudflare lives in cloudflare-validate.mjs, a LEAF module with no
+// imports — importing realtime.mjs from here would close the cycle
+// lib.mjs → realtime.mjs → core.mjs → lib.mjs (core.mjs imports this file).
+
+import { validateCloudflare } from "./cloudflare-validate.mjs";
 
 /** Subdomains the cafe runtime never resolves to a tenant (apps/cafe/lib/platform.ts). */
 export const RESERVED_SUBDOMAINS = ["www", "app", "api", "admin", "hub"];
@@ -214,6 +220,7 @@ export function validateClient(c, platform = null) {
   validateMenu(c.menu, errors);
   validateImage(c.image, errors);
   validateStandbyHosts(c.standbyHosts, errors);
+  validateCloudflare(c.cloudflare, errors);
   return errors;
 }
 
@@ -289,7 +296,12 @@ export function secretsOf(client) {
   if (client.admin) add(client.admin.password);
   if (client.image) for (const k of ["secretAccessKey", "accessKeyId", "apiSecret", "apiKey"]) add(client.image[k]);
   if (client.accounts) for (const a of Object.values(client.accounts)) if (a && typeof a === "object") add(a.password);
-  if (client.generated) { add(client.generated.authSecret); add(client.generated.healthStatsToken); }
+  if (client.generated) {
+    add(client.generated.authSecret); add(client.generated.healthStatsToken);
+    // The publish secret is usually MINTED by the run (cloudflare.publishSecret
+    // stays null) — its only copy on disk is here, so it must be scrubbed too.
+    if (client.generated.realtime) add(client.generated.realtime.publishSecret);
+  }
   // The password inside the URI on its own, too (driver errors quote it bare).
   const m = typeof client.mongodbUri === "string" ? client.mongodbUri.match(/^mongodb(?:\+srv)?:\/\/[^:/@]+:([^@]+)@/) : null;
   if (m) add(decodeURIComponent(m[1]));
@@ -331,7 +343,7 @@ const env = (key, value, type) => ({ key, value, type, target: ENV_TARGETS });
  *  buildTenantEnv), minus the vault: values come from the client file. Image
  *  vars are emitted only when a store is configured — shipping with none is a
  *  supported shape (uploads answer "not configured", everything else works). */
-export function buildEnv(client, tenant, generated) {
+export function buildEnv(client, tenant, generated, realtimeEnv = []) {
   const out = [
     env("MONGODB_URI", client.mongodbUri, ENC),
     env("CORE_MONGODB_URI", client.mongodbUri, ENC),
@@ -363,6 +375,10 @@ export function buildEnv(client, tenant, generated) {
     env("CLOUDINARY_API_SECRET", cl.apiSecret ?? "", ENC),
     env("NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME", cl.cloudName ?? "", PLAIN),
   );
+  // Realtime: `realtimeEnv` is whatever ensureRealtime returned — [] means
+  // "leave the project's REALTIME_* untouched" (not provisioned yet), the 3
+  // keys as "" mean off/standby, and the 3 real values mean on.
+  out.push(...realtimeEnv);
   return out;
 }
 
@@ -393,3 +409,5 @@ export function healthVerdict(status, body, tenantId) {
 
 /** The CNAME the owner adds for a custom-domain shape (Vercel's standard target). */
 export const VERCEL_CNAME_TARGET = "cname.vercel-dns.com";
+
+export { REALTIME_ENV_KEYS } from "./cloudflare-validate.mjs";

@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { CLONE_CLEARED, cloneTemplateOf, dbNameOf, lockStateOf, needsUriConfirm, runStateOf, subdomainFromInput, tablesFromForm, webAddressStateOf } from "./ui/pure.mjs";
+import { CLONE_CLEARED, cloneTemplateOf, dbNameOf, lockStateOf, needsUriConfirm, realtimeStateOf, runStateOf, subdomainFromInput, tablesFromForm, webAddressStateOf } from "./ui/pure.mjs";
 import { ACTIONS, commandFor } from "./ui-jobs.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -30,6 +30,43 @@ test("lockStateOf.configured: true only once a host is recorded — a project th
   assert.equal(lockStateOf({ generated: { projectId: "prj_1" } }).configured, false, "deployed, but no host: the interrupted-run case this fix round is about");
   assert.equal(lockStateOf({ generated: { projectId: "prj_1", host: "sunrise-x1.vercel.app" } }).configured, true);
   assert.equal(lockStateOf({ generated: { host: "sunrise-x1.vercel.app" } }).configured, true, "configured is host-only — it does not itself require projectId (deployed is the separate flag for that)");
+});
+
+test("realtimeStateOf: the Status card's Realtime row — off (no block, no record), pending (block, no record), on (block + record, label carries workerName/tenant/deployedAt), removing (record but block cleared)", () => {
+  assert.deepEqual(realtimeStateOf(null), { state: "off", label: "off" });
+  assert.deepEqual(realtimeStateOf({}), { state: "off", label: "off" });
+  assert.deepEqual(realtimeStateOf({ cloudflare: null }), { state: "off", label: "off" });
+
+  const pending = realtimeStateOf({ cloudflare: { token: "t" } });
+  assert.equal(pending.state, "pending");
+  assert.match(pending.label, /press Update on Vercel/);
+
+  const rt = { workerName: "pos-realtime-sunrise", tenantId: "sunrise-demo-x7k2", deployedAt: "2026-09-20T10:00:00.000Z" };
+  const on = realtimeStateOf({ cloudflare: { token: "t" }, generated: { realtime: rt } });
+  assert.equal(on.state, "on");
+  assert.match(on.label, /^on · pos-realtime-sunrise · tenant sunrise-demo-x7k2 · deployed /);
+  assert.match(on.label, new RegExp(new Date(rt.deployedAt).toLocaleDateString().replace(/[/.]/g, "\\$&")), "the label carries the deployedAt date");
+
+  const removing = realtimeStateOf({ cloudflare: null, generated: { realtime: rt } });
+  assert.equal(removing.state, "removing");
+  assert.match(removing.label, /record says on but the block was removed/);
+  assert.match(removing.label, /press Update on Vercel to switch it off/);
+});
+
+test("R2: realtimeStateOf({cloudflare:null, generated:{previousRealtime}}) -> state \"off\", label names the Worker; \"removing\" still applies while generated.realtime STILL exists (previousRealtime is only read once realtime is gone)", () => {
+  const off = realtimeStateOf({ cloudflare: null, generated: { previousRealtime: { workerName: "pos-realtime-x", url: "https://pos-realtime-x.acme.workers.dev", accountId: "a".repeat(32), tenantId: "x-demo", switchedOffAt: "2026-09-20T00:00:00.000Z" } } });
+  assert.equal(off.state, "off");
+  assert.match(off.label, /pos-realtime-x/, "the label names the Worker that is still sitting in the client's Cloudflare account");
+  // Positive landmark: a bare "off" (no previousRealtime at all) still just says "off" — the Worker-naming text is additive, not a replacement of the base case.
+  assert.equal(realtimeStateOf({ cloudflare: null }).label, "off");
+
+  // The "removing" branch (record says on, block cleared) must still win over any
+  // previousRealtime noise — realtime.mjs never sets both generated.realtime AND
+  // generated.previousRealtime at once, but the UI rule itself must not get confused
+  // if it ever did: generated.realtime existing is what matters, not previousRealtime's absence.
+  const rt = { workerName: "pos-realtime-sunrise", tenantId: "sunrise-demo-x7k2", deployedAt: "2026-09-20T10:00:00.000Z" };
+  const removingWithPrevious = realtimeStateOf({ cloudflare: null, generated: { realtime: rt, previousRealtime: { workerName: "pos-realtime-old" } } });
+  assert.equal(removingWithPrevious.state, "removing", "generated.realtime existing means 'removing', regardless of any previousRealtime also present");
 });
 
 test("runStateOf: null with no lastRun.status===running at all; \"running\" when the client IS the current job; \"interrupted\" when lastRun says running but no live job matches it", () => {
@@ -56,6 +93,22 @@ test("PIN app.js: the interrupted-run message is exactly \"interrupted (the cons
   assert.ok(appJs.includes(needle), `app.js must contain the literal string ${JSON.stringify(needle)} — not landed yet if this fails`);
   // Positive landmark: runStateOf is actually imported/used, not just a coincidental string match.
   assert.match(appJs, /runStateOf/, "positive landmark: app.js must import/use runStateOf from pure.mjs to drive this message");
+});
+
+test("R3: PIN app.js attachStream() — the dry-run plan line is captured into `dryRunPlan` BEFORE the fill()/renderStatus() branch, and `banner([], \"ok\", dryRunPlan)` is called AFTER it (order pin via indexOf, with existence asserts on both needles)", () => {
+  const attachStreamStart = appJs.indexOf("function attachStream(job, action)");
+  assert.ok(attachStreamStart > 0, "positive landmark: attachStream() must exist");
+  const attachStreamEnd = appJs.indexOf("\n  }\n", attachStreamStart);
+  const src = appJs.slice(attachStreamStart, attachStreamEnd);
+
+  const captureIdx = src.indexOf("dryRunPlan = ");
+  const fillBranchIdx = src.search(/if\s*\(!state\.dirty\)\s*fill\(\);/);
+  const bannerIdx = src.indexOf('banner([], "ok", dryRunPlan)');
+  assert.ok(captureIdx >= 0, "the dry-run plan line must be captured into a `dryRunPlan` variable — not found");
+  assert.ok(fillBranchIdx >= 0, "the fill()/renderStatus() branch must exist inside attachStream() — not found");
+  assert.ok(bannerIdx >= 0, 'the banner([], "ok", dryRunPlan) call must exist — not found');
+  assert.ok(captureIdx < fillBranchIdx, "dryRunPlan must be captured BEFORE the fill()/renderStatus() branch runs (that branch re-reads the client and can overwrite whatever banner() would show)");
+  assert.ok(fillBranchIdx < bannerIdx, "banner([], \"ok\", dryRunPlan) must be called AFTER the fill()/renderStatus() branch — otherwise fill()'s own banner(null) would immediately clear the dry-run plan line");
 });
 
 test("subdomainFromInput: a bare label, a full host or a pasted URL all resolve to the first label; empty → null; a remaining dot/bad shape/reserved name throws", () => {
@@ -152,6 +205,11 @@ test("cloneTemplateOf: keeps the starter setup, clears every identity and creden
   for (const k of ["generated", "lastRun", "deployLock", "demo", "standbyHosts"]) assert.equal(k in client, false, `${k} must not exist on a clone`);
   assert.equal("standbyHosts" in cloneTemplateOf({ ...source, standbyHosts: [{ label: "standby", vercel: { token: "tok_standby_secret" } }] }, "z").client, false, "standby tokens never travel with a clone");
   assert.equal(JSON.stringify(client).includes("tok_secret"), false); assert.equal(JSON.stringify(client).includes("Strong-Pass"), false); assert.equal(JSON.stringify(client).includes("prj_1"), false);
+  // cloudflare (realtime): always cleared to null on a clone, even when the
+  // source had a live token/publishSecret — a clone must set up its own Worker.
+  assert.equal(cloneTemplateOf({ ...source, cloudflare: { token: "cf-tok-secret", accountId: "a".repeat(32), publishSecret: "cf-publish-secret-0123" } }, "z").client.cloudflare, null);
+  assert.ok(CLONE_CLEARED.some((c) => /realtime/i.test(c) && /Cloudflare/i.test(c)), "CLONE_CLEARED names the realtime/Cloudflare field explicitly, for the banner");
+  assert.equal(JSON.stringify(cloneTemplateOf({ ...source, cloudflare: { token: "cf-tok-secret" } }, "z").client).includes("cf-tok-secret"), false, "the cloudflare token never survives a clone");
   const cl = cloneTemplateOf({ image: { store: "cloudinary", cloudName: "c", apiKey: "k", apiSecret: "s" } }, "x");
   assert.deepEqual(cl.client.image, { store: "cloudinary", cloudName: "", apiKey: "", apiSecret: "" });
   assert.equal(cloneTemplateOf({}, "y").client.image, null); assert.equal(cloneTemplateOf({}, "y").client.tables, 8);
@@ -194,6 +252,27 @@ test("PIN app.js/index.html: the own-domain field is fully gone, replaced by the
   const newPath = "data-path=" + '"subdomain"';
   assert.ok(indexHtml.includes(newPath), "positive landmark: the web-address input is bound");
   assert.ok(!indexHtml.includes(oldPath), 'index.html must not carry a data-path="domain" field any more');
+});
+
+test("PIN index.html: the Realtime (Cloudflare) block carries #rt-mode and the three cloudflare.* data-paths (token/accountId/publishSecret)", () => {
+  assert.match(indexHtml, /<select id="rt-mode">/, "#rt-mode select must exist");
+  assert.match(indexHtml, /<option value="off">/);
+  assert.match(indexHtml, /<option value="on">/);
+  for (const path of ["cloudflare.token", "cloudflare.accountId", "cloudflare.publishSecret"]) {
+    const needle = "data-path" + `="${path}"`;
+    assert.ok(indexHtml.includes(needle), `index.html must bind ${needle}`);
+  }
+  // Positive landmark: the token field is a secret input, same convention as every other credential field.
+  assert.match(indexHtml, /data-path="cloudflare\.token" data-secret/, "the Cloudflare token is masked like every other secret field");
+  assert.match(indexHtml, /id="s-realtime"/, "the Status card carries a Realtime row (#s-realtime)");
+});
+
+test("PIN app.js: fill()/collect()/showRealtime() wire #rt-mode to c.cloudflare (null when off) and renderStatus() reads realtimeStateOf(state.client).label into #s-realtime", () => {
+  assert.match(appJs, /const rtMode = c\.cloudflare \? "on" : "off";/, "fill() derives the select's value from whether c.cloudflare is set");
+  assert.match(appJs, /\$\("rt-mode"\)\.value = rtMode; showRealtime\(rtMode\);/, "fill() applies it and shows/hides the #rt-on block");
+  assert.match(appJs, /if \(\$\("rt-mode"\)\.value === "off"\) c\.cloudflare = null;/, "collect(): mode off -> cloudflare is explicitly null (never a half-filled object)");
+  assert.match(appJs, /realtimeStateOf/, "renderStatus() must import/use realtimeStateOf from pure.mjs");
+  assert.match(appJs, /\$\("s-realtime"\)\.textContent = realtimeStateOf\(state\.client\)\.label;/, "the Status row's text comes straight from realtimeStateOf's label — no separate copy of the wording in app.js");
 });
 
 test("PIN index.html: every id is unique (the console addresses everything by id; a duplicate once made the More menu swallow the Starter-menu textarea)", () => {

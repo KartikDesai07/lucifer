@@ -18,6 +18,7 @@ import {
 import { createVercelApi } from "./vercel-api.mjs";
 import { GoLiveError, HEALTH_ATTEMPTS, HEALTH_INTERVAL_MS, PROFILES_FILE, readJson, readPlatform, saveClient, slotOf, writeJson } from "./core.mjs";
 import { applyVercelAppRedirects, checkPlatformHealth, clearVercelAppRedirects, ensureWebAddress, siblingSubdomainClash } from "./web-address.mjs";
+import { ensureRealtime } from "./realtime.mjs";
 
 export { GoLiveError, HEALTH_ATTEMPTS, HEALTH_INTERVAL_MS, PROFILES_FILE, readJson, writeJson, readPlatform, slotOf, saveClient } from "./core.mjs";
 
@@ -206,7 +207,7 @@ export async function runGoLive(opts, deps) {
   if (client.deployLock === true && !opts.dryRun) throw new GoLiveError(`deploys are locked for "${slug}" (deployLock: true in the client file)`, { step: "guard", hint: "untick 'Lock deploys' in the console (Status → Safety) and Save, if this deploy is intended" });
   const dryRunHost = slot.isPrimary && client.subdomain && platform ? `${client.subdomain}.${platform.apexDomain}` : `<${projectName}[-suffix]>.vercel.app`;
   if (opts.dryRun) {
-    return { dryRun: true, slug, hostLabel: slot.label, projectName, host: dryRunHost, steps: [...(slot.isPrimary ? ["seed"] : []), "project", ...(slot.isPrimary && client.subdomain ? ["address"] : []), "env", "profile", "deploy", "health"] };
+    return { dryRun: true, slug, hostLabel: slot.label, projectName, host: dryRunHost, steps: [...(slot.isPrimary ? ["seed"] : []), "project", ...(slot.isPrimary && client.subdomain ? ["address"] : []), ...(slot.isPrimary && client.cloudflare ? ["realtime"] : []), "env", "profile", "deploy", "health"] };
   }
   // Sibling guard (primary only): another client file claiming the same subdomain
   // would mean two cafes fighting over one Vercel domain attach.
@@ -326,7 +327,14 @@ export async function runGoLive(opts, deps) {
   client.generated = mintSecrets(client.generated, deps.randomBytes);
   saveClient(deps, clientPath, client, slot);
 
-  const envs = buildEnv(client, tenant, client.generated);
+  // Realtime: provisioned before the FIRST deploy whenever the tenant is already
+  // known (so the Worker's env lands in the same deploy as everything else); when
+  // it is not (needsSecondDeploy), ensureRealtime itself sees no tenant yet and
+  // returns "untouched" — the second deploy below re-runs it once TENANT_ID is known.
+  const rt = await ensureRealtime(deps, { root, client, slot, tenant: needsSecondDeploy ? null : tenant });
+  saveClient(deps, clientPath, client, slot);
+
+  const envs = buildEnv(client, tenant, client.generated, rt.env);
   deps.log(`▶ saving ${envs.length} environment variables on the project (${envs.map((e) => e.key).join(", ")})`);
   await api.upsertEnv(project.id, envs);
 
@@ -336,11 +344,14 @@ export async function runGoLive(opts, deps) {
 
   runDeploy(deps, root, profileName, Boolean(opts.preview));
 
+  let rt2 = rt;
   if (needsSecondDeploy) {
     tenant = tenantOf({ ...client, subdomain: null }, await api.listDomains(project.id), project.name);
     if (!tenant) throw new GoLiveError("Vercel still lists no *.vercel.app domain for the project", { step: "domain", hint: "open the project in Vercel → Domains, then set TENANT_ID to that domain's first label and redeploy" });
     deps.log(`▶ host ${tenant.host} → TENANT_ID=${tenant.tenantId}; saving and deploying once more`);
-    await api.upsertEnv(project.id, buildEnv(client, tenant, client.generated).filter((e) => e.key === "TENANT_ID" || e.key === "ROOT_DOMAIN"));
+    rt2 = await ensureRealtime(deps, { root, client, slot, tenant });
+    saveClient(deps, clientPath, client, slot);
+    await api.upsertEnv(project.id, [...buildEnv(client, tenant, client.generated).filter((e) => e.key === "TENANT_ID" || e.key === "ROOT_DOMAIN"), ...rt2.env]);
     runDeploy(deps, root, profileName, Boolean(opts.preview));
   }
 
@@ -389,6 +400,7 @@ export async function runGoLive(opts, deps) {
     dns: { pending: false },
     redeploy: `npm run deploy -- --profile ${profileName}`,
     webAddress: web ? { ...web, live: tenant.shape === "platform" && Boolean(health.ok), redirects } : null,
+    realtime: { state: rt2.state, workerName: rt2.workerName, url: rt2.url, tenantId: rt2.tenantId, deployed: rt2.deployed },
     switched,
     held,
     previousHost: switched ? previousHost : null,

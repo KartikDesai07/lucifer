@@ -230,6 +230,7 @@
                   <div class="row"><label>Live URL</label><div class="kv" id="s-host">—</div></div>
                   <div class="row"><label>Web address</label><div class="kv" id="s-web">—</div></div>
                   <div class="row"><label>Tenant</label><div class="kv" id="s-tenant">—</div></div>
+                  <div class="row"><label>Realtime</label><div class="kv" id="s-realtime">—</div></div>
                   <div class="row"><label>Vercel project id</label><div class="kv" id="s-project">—</div></div>
                   <div class="row"><label>Org / team id</label><div class="kv" id="s-org">—</div></div>
                   <div class="row"><label>Auth secret</label><div class="field"><input data-path="generated.authSecret" data-secret class="secret" readonly></div></div>
@@ -267,11 +268,22 @@
                   </details>
                   <div class="row"><label>Team id</label><div class="field"><input data-path="vercel.teamId" data-type="nullable" placeholder="(personal account)"></div></div>
                   <div class="row"><label>Web address *</label><div class="field addr"><input data-path="subdomain" data-type="nullable" placeholder="lucifer"><span class="suffix" id="apex-suffix">.sandbee.in</span></div></div>
+                  <div class="row"><label></label><div class="hintline">becomes &lt;name&gt;.&lt;apex&gt; — the console shows the DNS records to add after the first run</div></div>
                   <div class="row"><label></label><div id="web-address" class="webaddr"></div></div>
                   <div class="row"><label>Login email</label><div class="field"><input data-path="accounts.vercel.email" placeholder="the Vercel account's email"></div></div>
                   <div class="row"><label>Login password</label><div class="field"><input data-path="accounts.vercel.password" data-secret class="secret"></div></div>
                   <div class="subhead"><b>Standby hosts</b><small>The same cafe on <b>another</b> Vercel account (a different login): same database, images and POS usernames/passwords (staff sign in once per address), its own <b>name.vercel.app</b> URL. The web address stays on the primary. After a code update: Redeploy each host. After changing the Mongo URI or image store: <b>Update</b> each standby too.</small><button type="button" class="btn" id="add-standby">+ Add standby</button></div>
                   <div id="standby-list"></div>
+                </section>
+                <section class="card">
+                  <h2>Realtime (Cloudflare)</h2>
+                  <p class="hint">Realtime nudges make the Kitchen board and the print host react instantly instead of polling. Create the token in the CLIENT's Cloudflare account: My Profile → API Tokens → Create Token → Custom: Workers Scripts: Edit + Account Settings: Read, limited to that one account. The run deploys the Worker pos-realtime-&lt;slug&gt; there and links it; nothing else changes.</p>
+                  <div class="row"><label>Realtime</label><div class="field"><select id="rt-mode"><option value="off">Off — the cafe polls (default)</option><option value="on">On — the client's own Cloudflare account</option></select></div></div>
+                  <div id="rt-on" hidden>
+                    <div class="row"><label>Token *</label><div class="field"><input data-path="cloudflare.token" data-secret class="secret"></div></div>
+                    <div class="row"><label>Account id</label><div class="field"><input data-path="cloudflare.accountId" data-type="nullable" placeholder="(only if the token can see several accounts)"></div></div>
+                    <div class="row"><label>Publish secret</label><div class="field"><input data-path="cloudflare.publishSecret" data-type="nullable" data-secret class="secret" placeholder="(leave empty — minted on the first run; fill only to adopt a Worker deployed by hand)"></div></div>
+                  </div>
                 </section>
               </div>
             </div>
@@ -343,6 +355,7 @@
                   <div class="row"><label>Receipt footer</label><div class="field"><input data-path="cafe.receiptFooter"></div></div>
                   <div class="row"><label>FSSAI</label><div class="field"><input data-path="cafe.fssai"></div></div>
                   <div class="row"><label>GST</label><div class="field"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-path="cafe.gst.enabled" data-type="bool" style="flex:0"> enabled</label>
+                    <label style="white-space:nowrap;color:var(--mute);font-size:12.5px">GST rate (%)</label>
                     <select data-path="cafe.gst.rate" data-type="number"><option>0</option><option>5</option><option>12</option><option>18</option><option>28</option></select>
                     <select data-path="cafe.gst.mode"><option value="inclusive">inclusive</option><option value="exclusive">exclusive</option></select></div></div>
                   <div class="row"><label>GSTIN</label><div class="field"><input data-path="cafe.gst.number"></div></div>

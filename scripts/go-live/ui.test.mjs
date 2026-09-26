@@ -85,6 +85,17 @@ test("save: bad names and slug mismatches are refused; a good save creates the f
   assert.equal(onDisk.accounts.vercel.password, "pw"); assert.equal(onDisk.notes, "hi");
 });
 
+test("PUT /api/clients/:name rejects a placeholder cloudflare.token via validateClient (same rule as vercel.token), and accepts a real one", async () => {
+  const withPlaceholder = await j("PUT", "/api/clients/sunrise", { ...filled("sunrise"), cloudflare: { token: "<cf-token>", accountId: null, publishSecret: null } });
+  assert.equal(withPlaceholder.status, 200, "the write itself still succeeds — problems are reported, not a 400");
+  assert.ok(withPlaceholder.json.data.problems.some((p) => p.startsWith("cloudflare.token") && /placeholder/.test(p)), `expected a cloudflare.token placeholder problem, got: ${JSON.stringify(withPlaceholder.json.data.problems)}`);
+  const withReal = await j("PUT", "/api/clients/sunrise", { ...filled("sunrise"), cloudflare: { token: "a-real-cloudflare-token", accountId: null, publishSecret: null } });
+  assert.equal(withReal.status, 200);
+  assert.ok(!withReal.json.data.problems.some((p) => p.startsWith("cloudflare.")), `a real token must clear every cloudflare.* problem, got: ${JSON.stringify(withReal.json.data.problems)}`);
+  // Restore the fixture to its no-cloudflare shape for every later test in this file.
+  await j("PUT", "/api/clients/sunrise", filled("sunrise"));
+});
+
 test("server-owned fields (generated, lastRun) survive a browser save that omits or fakes them", async () => {
   const file = path.join(dir, "sunrise.json");
   const c = JSON.parse(readFileSync(file, "utf8")); c.generated = { host: "sunrise-x1.vercel.app", tenantId: "sunrise-x1", projectId: "prj_1" }; writeFileSync(file, JSON.stringify(c));

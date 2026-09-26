@@ -48,6 +48,14 @@ Nothing in §1 can start until all of these exist.
       a `NEXT_PUBLIC_*` value baked in at build time — this does **not** apply
       to the logos, since the branding route is same-origin and needs no
       `NEXT_PUBLIC_*` value.
+- [ ] **A Cloudflare account + API token — OPTIONAL (realtime nudges).** Under
+      the client's own email, like Atlas and Vercel. Create the token in that
+      account: My Profile → API Tokens → Create Token → Custom, with exactly
+      `Workers Scripts: Edit` + `Account Settings: Read`, limited to that one
+      account (measured 2026-09-25: enough to create the Worker, run its
+      Durable Object migration and set its secret — Admin is not needed). Paste
+      it into the console's Hosting → Realtime block; the go-live run does the
+      rest. Skipping this is fine: the cafe polls, exactly as it always has.
 - [ ] **A host, decided.** The app resolves *which cafe it is serving* from the
       request host, so the host and two env vars have to agree. Two supported
       shapes:
@@ -94,12 +102,20 @@ Nothing in §1 can start until all of these exist.
 ## §1 Deploy the app (DEPLOYER)
 
 > **The one-command path.** `npm run go-live -- <client>` (or double-click
-> `go-live.cmd`) does every box below except the WAF rules and the R2 CORS rule,
-> and also runs the §2 seed — from a single `clients/<client>.json` you fill in
-> once (`scripts/go-live/client.example.json` is the template, `demo.example.json`
-> a ready demo café). It reads the assigned domain so `TENANT_ID` can never
-> disagree with the host, and ends with the `/api/health` check. Details:
-> `apps/cafe/DEPLOY.md` §1. Tick the boxes below by reading its summary.
+> `go-live.cmd`) does every box below except the 3 WAF rules, the R2 CORS rule
+> and Telegram (Settings → Telegram), and also runs the §2 seed — from a single
+> `clients/<client>.json` you fill in once (`scripts/go-live/client.example.json`
+> is the template, `demo.example.json` a ready demo café). It reads the assigned
+> domain so `TENANT_ID` can never disagree with the host, and ends with the
+> `/api/health` check. Details: `apps/cafe/DEPLOY.md` §1. Tick the boxes below
+> by reading its summary.
+>
+> **Realtime (optional):** filling in the `cloudflare` block (a client-issued
+> Cloudflare token; console: Hosting → Realtime) makes the same run provision a
+> Worker in the CLIENT'S OWN Cloudflare account and wire the cafe to it — the
+> Kitchen board and the print host then react within about a second of a POS
+> write instead of waiting for their poll. Leaving the block empty (the
+> default) is fully supported: the cafe just polls, exactly as it always has.
 
 - [ ] Vercel project created with **Root Directory = `apps/cafe`**.
 - [ ] Environment variables set in Vercel (Production). **Required four:**
@@ -172,6 +188,13 @@ Nothing in §1 can start until all of these exist.
       obvious abuse patterns against `/m` and `/api/public/*` (the public menu
       and diner order endpoints). Hobby gets 3 custom rules + 3 IP blocks;
       native rate limiting is Pro.
+- [ ] **Realtime (optional) — if the console's Hosting → Realtime block was
+      filled in:** the run deployed a Worker `pos-realtime-<slug>` into the
+      CLIENT'S OWN Cloudflare account and set the cafe's three `REALTIME_*` env
+      vars. Verify: open the Kitchen board on one device, fire a KOT from
+      another — the board updates within about a second instead of waiting for
+      its poll. Left empty (the default), the cafe polls exactly as before —
+      nothing to verify here.
 - [ ] `GET /api/health` returns HTTP 200 with `ok: true` and `db: "up"`. A 503
       carrying `db: "down"` means the app is running but cannot reach the
       cluster — check the Atlas allowlist and `MONGODB_URI` before continuing.

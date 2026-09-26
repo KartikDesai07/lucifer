@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   buildEnv, DEFAULT_ROOT_DOMAIN, healthVerdict, isStrongPassword, mergeProfile, migrateHosting, mintSecrets, parsePlatform, pickVercelDomain,
-  profileNameForHost, projectNameForHost, projectNameOf, redactSecrets, RESERVED_SUBDOMAINS, secretsOf, splitDomain, tableNames, tenantOf, validateClient, validatePlatform, webAddressRecords,
+  profileNameForHost, projectNameForHost, projectNameOf, redactSecrets, REALTIME_ENV_KEYS, RESERVED_SUBDOMAINS, secretsOf, splitDomain, tableNames, tenantOf, validateClient, validatePlatform, webAddressRecords,
 } from "./lib.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -171,6 +171,17 @@ test("standbyHosts: the same cafe on other Vercel accounts — label rules, a re
   assert.equal(profileNameForHost("sunrise-demo", "primary"), "sunrise-demo"); assert.equal(profileNameForHost("sunrise-demo", "standby"), "sunrise-demo-standby");
 });
 
+test("validateClient: cloudflare block variants — null/absent ok, placeholder token, bad accountId, short publishSecret, a valid full block", () => {
+  assert.deepEqual(validateClient(validClient({ cloudflare: null })), []);
+  assert.deepEqual(validateClient(validClient({ cloudflare: undefined })), []);
+  assert.deepEqual(validateClient(validClient({ cloudflare: { token: "real-cf-token-value" } })), []);
+  assert.deepEqual(validateClient(validClient({ cloudflare: { token: "real-cf-token-value", accountId: "a".repeat(32), publishSecret: "b".repeat(16) } })), []);
+  assert.ok(validateClient(validClient({ cloudflare: {} })).some((e) => /^cloudflare\.token:/.test(e)));
+  assert.ok(validateClient(validClient({ cloudflare: { token: "<cf-token>" } })).some((e) => /^cloudflare\.token:.*still holds a <placeholder>/.test(e)));
+  assert.ok(validateClient(validClient({ cloudflare: { token: "t", accountId: "not-32-hex" } })).some((e) => /^cloudflare\.accountId:/.test(e)));
+  assert.ok(validateClient(validClient({ cloudflare: { token: "t", publishSecret: "short" } })).some((e) => /^cloudflare\.publishSecret:/.test(e)));
+});
+
 test("password rule mirrors seed-admin.ts (8+ chars, a digit, a special character)", () => {
   assert.equal(isStrongPassword("Strong-Pass-1!"), true);
   assert.equal(isStrongPassword("abcdefg1"), false);
@@ -267,6 +278,36 @@ test("buildEnv: the selected store's keys carry values, the other store's keys a
   for (const k of ["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET", "NEXT_PUBLIC_R2_PUBLIC_BASE_URL"]) assert.equal(cl[k], "", k);
 });
 
+test("buildEnv: appends the 4th param (realtimeEnv) verbatim after the image-store keys; defaults to [] when omitted", () => {
+  const tenant = { tenantId: "sunrise-demo", rootDomain: "vercel.app", host: "sunrise-demo.vercel.app" };
+  const gen = { authSecret: "A", healthStatsToken: "H" };
+  const noRealtime = buildEnv(validClient(), tenant, gen);
+  assert.equal(noRealtime.length, 18, "unchanged base env count when realtimeEnv is omitted");
+  assert.ok(!noRealtime.some((e) => REALTIME_ENV_KEYS.includes(e.key)), "no REALTIME_* keys appear unless realtimeEnv supplies them");
+
+  const realtimeOn = [
+    { key: REALTIME_ENV_KEYS[0], value: "https://pos-realtime-sunrise-demo.acme.workers.dev/publish", type: "encrypted", target: ["production", "preview"] },
+    { key: REALTIME_ENV_KEYS[1], value: "sekrit", type: "encrypted", target: ["production", "preview"] },
+    { key: REALTIME_ENV_KEYS[2], value: "wss://pos-realtime-sunrise-demo.acme.workers.dev/join", type: "plain", target: ["production", "preview"] },
+  ];
+  const withRealtime = buildEnv(validClient(), tenant, gen, realtimeOn);
+  assert.equal(withRealtime.length, 21, "the 3 realtime entries are appended, nothing else changes");
+  assert.deepEqual(withRealtime.slice(-3), realtimeOn, "realtimeEnv is appended VERBATIM, in order, as the tail of the list");
+
+  const realtimeOff = REALTIME_ENV_KEYS.map((k) => ({ key: k, value: "", type: k === REALTIME_ENV_KEYS[2] ? "plain" : "encrypted", target: ["production", "preview"] }));
+  const withOff = buildEnv(validClient(), tenant, gen, realtimeOff);
+  assert.ok(withOff.slice(-3).every((e) => e.value === ""), "an off/standby realtimeEnv blanks the 3 keys the same way");
+});
+
+test("R1: secretsOf includes generated.realtime.publishSecret (a MINTED secret — cloudflare.publishSecret null/absent) and redactSecrets masks it", () => {
+  const minted = "minted-realtime-secret-9f8e7d6c5b4a3210-UNIQUE";
+  const c = validClient({ cloudflare: { token: "cf-token-x", accountId: null, publishSecret: null }, generated: { authSecret: "A", healthStatsToken: "H", realtime: { workerName: "pos-realtime-sunrise-demo", url: "https://pos-realtime-sunrise-demo.acme.workers.dev", accountId: "a".repeat(32), tenantId: "sunrise-demo-x7k2", publishSecret: minted, sourceHash: "x", deployedAt: "2026-09-20T00:00:00.000Z", verifiedAt: "2026-09-20T00:00:00.000Z" } } });
+  const s = secretsOf(c);
+  assert.ok(s.includes(minted), "the minted publish secret (no cloudflare.publishSecret override) must still be scrubbed — its only copy on disk is generated.realtime.publishSecret");
+  const out = redactSecrets(`the worker's secret is ${minted}, noted`, s);
+  assert.equal(out, "the worker's secret is •••, noted");
+});
+
 test("secretsOf + redactSecrets: every credential in a client file is scrubbed from text, URIs always", () => {
   const c = validClient({ image: { store: "r2", accountId: "acc", accessKeyId: "AKIA-KEY-1", secretAccessKey: "s3cr3t-key-long", bucket: "b", publicBaseUrl: "https://pub.r2.dev" }, accounts: { vercel: { email: "o@x", password: "vercel-pw-99" } }, generated: { authSecret: "AUTHSECRETVALUE", healthStatsToken: "healthtoken" }, standbyHosts: [{ label: "standby", vercel: { token: "tok_standby_secret" } }], cloudflare: { token: "cf-token-secret-1", publishSecret: "cf-publish-secret-1" } });
   const s = secretsOf(c);
@@ -321,4 +362,21 @@ test("the mirrored constants still match the cafe app's source", () => {
   assert.match(shared, /export const TABLE_NO_PATTERN = \/\^\[A-Za-z0-9\]\[A-Za-z0-9 _-\]\*\$\/;/);
   const seedAdmin = readFileSync(path.join(ROOT, "apps/cafe/scripts/seed-admin.ts"), "utf8");
   assert.match(seedAdmin, /password\.length >= 8 && \/\\d\/\.test\(password\) && \/\[\^A-Za-z0-9\]\/\.test\(password\)/);
+});
+
+test("R6: lib.mjs does not import realtime.mjs or core.mjs (cycle guard) — it imports cloudflare-validate.mjs, a zero-import leaf module", () => {
+  const libSrc = readFileSync(path.join(HERE, "lib.mjs"), "utf8");
+  assert.ok(!/from\s+["']\.\/realtime\.mjs["']/.test(libSrc), "lib.mjs must never import realtime.mjs — that would close the lib.mjs -> realtime.mjs -> core.mjs -> lib.mjs cycle (core.mjs imports lib.mjs)");
+  assert.ok(!/from\s+["']\.\/core\.mjs["']/.test(libSrc), "lib.mjs must never import core.mjs either, for the same cycle reason");
+  // Positive landmark: lib.mjs DOES import the leaf module instead.
+  assert.match(libSrc, /from\s+["']\.\/cloudflare-validate\.mjs["']/, "lib.mjs must import validateCloudflare/REALTIME_ENV_KEYS from cloudflare-validate.mjs");
+
+  const leafSrc = readFileSync(path.join(HERE, "cloudflare-validate.mjs"), "utf8");
+  const importLines = leafSrc.split("\n").filter((l) => /^\s*import\b/.test(l));
+  const exportFromLines = leafSrc.split("\n").filter((l) => /^\s*export\b[^;]*\bfrom\b/.test(l));
+  assert.deepEqual(importLines, [], `cloudflare-validate.mjs must have zero import statements (a true leaf module), found: ${JSON.stringify(importLines)}`);
+  assert.deepEqual(exportFromLines, [], `cloudflare-validate.mjs must have zero "export ... from" re-exports, found: ${JSON.stringify(exportFromLines)}`);
+  // Positive landmark: the file really does export real things (not an empty stub the checks above pass vacuously).
+  assert.match(leafSrc, /export function validateCloudflare/, "positive landmark: cloudflare-validate.mjs actually defines validateCloudflare");
+  assert.match(leafSrc, /export const REALTIME_ENV_KEYS/, "positive landmark: cloudflare-validate.mjs actually defines REALTIME_ENV_KEYS");
 });

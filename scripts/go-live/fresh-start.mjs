@@ -61,6 +61,7 @@ export async function runFreshStart({ root, clientPath, confirm, confirmProject 
   const domains = await api.listDomains(project.id);
   const domainNames = domains.map((d) => d.name);
   deps.log(`▶ FRESH START: deleting Vercel project ${project.name} (${project.id}) and with it ${domainNames.length} domain name(s): ${domainNames.join(", ")} — its env vars and deployments go too. Database, images and logins are NOT touched.`);
+  if (slot.gen.realtime) deps.log(`▶ the realtime Worker (${slot.gen.realtime.workerName}) lives in Cloudflare, not Vercel — it is untouched; the run below reprovisions its env on the new project`);
 
   await api.deleteProject(project.id);
 

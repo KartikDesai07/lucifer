@@ -4,7 +4,7 @@
 // last open client + log height in localStorage; restores the last job's log.
 // DOM-free decisions (locks, the Vercel-address rule, tables) live in ./pure.mjs
 // so ui-pure.test.mjs can pin them.
-import { cloneTemplateOf, dbNameOf, lockStateOf, needsUriConfirm, runStateOf, subdomainFromInput, tablesFromForm, VERCEL_APP, webAddressStateOf } from "./pure.mjs";
+import { cloneTemplateOf, dbNameOf, lockStateOf, needsUriConfirm, realtimeStateOf, runStateOf, subdomainFromInput, tablesFromForm, VERCEL_APP, webAddressStateOf } from "./pure.mjs";
 import { createWebAddress } from "./web-address.js";
 import { createShell } from "./shell.js";
 import { createActivity } from "./activity.js";
@@ -166,6 +166,8 @@ import { createActivity } from "./activity.js";
     });
     const imgStore = c.image && c.image.store ? c.image.store : "none";
     $("img-store").value = imgStore; showImage(imgStore);
+    const rtMode = c.cloudflare ? "on" : "off";
+    $("rt-mode").value = rtMode; showRealtime(rtMode);
     const tables = c.tables;
     if (Array.isArray(tables)) { $("tables-mode").value = "names"; $("tables-names").value = tables.join("\n"); $("tables-count").value = ""; }
     else { $("tables-mode").value = "count"; $("tables-count").value = typeof tables === "number" ? tables : 8; $("tables-names").value = ""; }
@@ -274,7 +276,7 @@ import { createActivity } from "./activity.js";
   function collect() {
     const c = JSON.parse(JSON.stringify(state.client || {}));
     document.querySelectorAll("[data-path]").forEach((el) => {
-      if (el.readOnly || el.dataset.path.startsWith("generated.") || el.dataset.path.startsWith("image.")) return;
+      if (el.readOnly || el.dataset.path.startsWith("generated.") || el.dataset.path.startsWith("image.") || el.dataset.path.startsWith("cloudflare.")) return;
       let v;
       if (el.type === "checkbox") v = el.checked;
       else if (el.dataset.type === "number") v = Number(el.value);
@@ -288,6 +290,15 @@ import { createActivity } from "./activity.js";
     const imgStore = $("img-store").value;
     if (imgStore === "none") c.image = null;
     else { c.image = { store: imgStore }; document.querySelectorAll(`#img-${imgStore === "r2" ? "r2" : "cl"} [data-path^="image."]`).forEach((el) => { c.image[el.dataset.path.slice("image.".length)] = el.value.trim(); }); }
+    if ($("rt-mode").value === "off") c.cloudflare = null;
+    else {
+      const cf = {};
+      document.querySelectorAll('#rt-on [data-path^="cloudflare."]').forEach((el) => {
+        const key = el.dataset.path.slice("cloudflare.".length);
+        cf[key] = el.dataset.type === "nullable" ? (el.value.trim() === "" ? null : el.value.trim()) : el.value;
+      });
+      c.cloudflare = cf;
+    }
     c.tables = tablesFromForm($("tables-mode").value, $("tables-count").value, $("tables-names").value);
     const menuText = $("menu").value.trim();
     if (!menuText) c.menu = null;
@@ -296,6 +307,7 @@ import { createActivity } from "./activity.js";
     return { client: c, notes };
   }
   function showImage(s) { $("img-r2").hidden = s !== "r2"; $("img-cl").hidden = s !== "cloudinary"; }
+  function showRealtime(mode) { $("rt-on").hidden = mode !== "on"; }
   function showTables() { const names = $("tables-mode").value === "names"; $("tables-names-row").hidden = !names; $("tables-count").hidden = names; }
   function menuCount() {
     try { const m = JSON.parse($("menu").value || "null"); $("menu-count").textContent = Array.isArray(m) ? `${m.length} categories · ${m.reduce((n, c) => n + ((c.items && c.items.length) || 0), 0)} items` : ""; }
@@ -322,6 +334,7 @@ import { createActivity } from "./activity.js";
     const ws = webAddressStateOf(state.client, state.platform);
     $("s-web").textContent = ws.host ? `${ws.host} · ${ws.state}` : `— (${ws.state})`;
     $("s-tenant").textContent = g.tenantId ? `TENANT_ID=${g.tenantId} · ROOT_DOMAIN=${g.rootDomain}` : "—";
+    $("s-realtime").textContent = realtimeStateOf(state.client).label;
     $("s-project").textContent = g.projectId || "—"; $("s-org").textContent = g.orgId || "—";
     const lr = state.client && state.client.lastRun;
     $("s-last").textContent = lr ? `${lr.action} · ${lr.status} · ${new Date(lr.at).toLocaleString()}` : "never";
@@ -338,12 +351,12 @@ import { createActivity } from "./activity.js";
     $("b-live").disabled = locked; $("b-redeploy").disabled = locked || !deployed || unfinished;
     // After the first deploy the everyday action is REDEPLOY (same project, same
     // URL). The full run stays available as "Update on Vercel" for env changes
-    // (token, Mongo URI, image store, domain) — it adopts the recorded project,
-    // never creates another one.
+    // (token, Mongo URI, image store, domain, realtime) — it adopts the recorded
+    // project, never creates another one.
     $("b-live").textContent = deployed ? "Update on Vercel" : "Go live";
     $("b-live").classList.toggle("go", !deployed); $("b-redeploy").classList.toggle("go", deployed);
     $("b-live").title = locked ? "Deploys are locked for this client (Status → Safety)"
-      : deployed ? `Full run on the EXISTING project ${g.projectId}: save env vars (token / Mongo URI / image store / domain) and redeploy. Seed is a no-op. Never creates a new project.`
+      : deployed ? `Full run on the EXISTING project ${g.projectId}: save env vars (token / Mongo URI / image store / domain / realtime) and redeploy. Seed is a no-op. Never creates a new project.`
       : "Full run: seed the database (only what is still EMPTY) · create the Vercel project · save env vars · deploy · health check";
     $("b-redeploy").title = locked ? $("b-live").title : unfinished ? UNFINISHED_TITLE : "Deploy the current code to the same project and URL — env vars and database untouched";
     // Never advertise the CLI command for a locked client (deploy.mjs refuses it too).
@@ -429,6 +442,14 @@ import { createActivity } from "./activity.js";
         const slot = job.host ? ((state.client && state.client.standbyHosts) || []).find((h) => h.label === job.host) : state.client;
         const host = slot && slot.generated && slot.generated.host;
         logStatus(`${action} · ${m.status === "ok" ? `finished ✓${host && job.name === state.name ? ` · live at https://${host}` : ""}` : "FAILED ✗ (exit " + m.exitCode + ")"}`, false);
+        // Dry run's own result never shows outside the log panel otherwise — surface
+        // its one-line plan (the CLI's own "go-live DRY RUN …" line) in the banner too.
+        // fill() below ends with banner(null), so the line is shown AFTER the refresh.
+        let dryRunPlan = null;
+        if (job.action === "dry-run" && m.status === "ok" && job.name === state.name) {
+          const lines = $("log-body").textContent.split("\n");
+          dryRunPlan = [...lines].reverse().find((l) => l.startsWith("go-live DRY RUN")) || null;
+        }
         if (job.name === state.name) {
           const fresh = await api("GET", `/api/clients/${state.name}`);
           if (state.dirty) {
@@ -439,6 +460,7 @@ import { createActivity } from "./activity.js";
             state.client = { ...state.client, generated: fresh.generated, lastRun: fresh.lastRun, standbyHosts };
           } else state.client = fresh;
           if (!state.dirty) fill(); else { renderStatus(); applyLocks(); renderStandbys(); webAddress.render(); applyActivityGate(); }
+          if (dryRunPlan) banner([], "ok", dryRunPlan);
         }
         await loadList();
       }
@@ -794,6 +816,7 @@ import { createActivity } from "./activity.js";
   $("b-health").onclick = () => health().catch((e) => ($("s-health").textContent = "✗ " + e.message));
   $("b-open").onclick = () => { const g = state.client && state.client.generated; if (g && g.host) window.open(`https://${g.host}`, "_blank", "noopener"); };
   $("img-store").onchange = () => { showImage($("img-store").value); markDirty(); };
+  $("rt-mode").onchange = () => { showRealtime($("rt-mode").value); markDirty(); };
   $("tables-mode").onchange = () => {
     showTables(); markDirty();
     // Switching to a count from a names list must not turn into "0 tables": prefill with the list's size.

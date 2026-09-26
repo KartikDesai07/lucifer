@@ -25,6 +25,28 @@ export function lockStateOf(client) {
   return { seeded: Boolean(seededAt), seededAt: seededAt || null, deployed: Boolean(g.projectId), configured: Boolean(g.host) };
 }
 
+/** The Status card's Realtime row, from the client's `cloudflare` block (the
+ *  owner's intent) and `generated.realtime` (what the last run actually
+ *  provisioned) alone — no network. Four states:
+ *  - "on": block present AND a record exists — the Worker is deployed and linked.
+ *  - "off": no block, no record — the cafe polls (the default, nothing to do).
+ *  - "pending": block present, no record yet — Realtime was just turned on but
+ *    no run has provisioned the Worker (press Update on Vercel / Go live).
+ *  - "removing": a record exists but the block was cleared — the NEXT run
+ *    switches the cafe back to polling (the Worker itself stays in the
+ *    client's Cloudflare account until removed there). */
+export function realtimeStateOf(client) {
+  const cf = client && client.cloudflare;
+  const rt = client && client.generated && client.generated.realtime;
+  const prev = client && client.generated && client.generated.previousRealtime;
+  if (cf && rt) return { state: "on", label: `on · ${rt.workerName} · tenant ${rt.tenantId} · deployed ${new Date(rt.deployedAt).toLocaleDateString()}` };
+  // A switch-off run moves the record to previousRealtime (no secret) — the row
+  // reads "off" and names the Worker that is still sitting in the client's account.
+  if (!cf && !rt) return { state: "off", label: prev ? `off · Worker ${prev.workerName} stays in the client's Cloudflare account (remove it there if unwanted)` : "off" };
+  if (cf && !rt) return { state: "pending", label: "set up, not deployed yet — press Update on Vercel" };
+  return { state: "removing", label: "record says on but the block was removed — press Update on Vercel to switch it off" };
+}
+
 /**
  * Whether a client's run is currently "running" (this client IS the job the
  * console/CLI is executing right now) or "interrupted" (its `lastRun` was left
@@ -127,7 +149,7 @@ export function needsUriConfirm({ deployed, previousUri, nextUri }) {
  *  every credential, every generated id/secret, run history, locks. The new
  *  slug is the caller's. Returns { client, cleared } (cleared = field names,
  *  for the banner). */
-export const CLONE_CLEARED = ["cafe.name", "cafe.tagline", "cafe.mobile", "cafe.address", "cafe.fssai", "cafe.gst.number", "vercel.token", "vercel.project", "vercel.teamId", "subdomain (set to the new slug)", "mongodbUri", "admin.password", "image credentials / bucket / URL", "contact", "accounts (all logins)", "notes", "generated", "lastRun", "deployLock", "demo", "standby hosts (account-specific)"];
+export const CLONE_CLEARED = ["cafe.name", "cafe.tagline", "cafe.mobile", "cafe.address", "cafe.fssai", "cafe.gst.number", "vercel.token", "vercel.project", "vercel.teamId", "subdomain (set to the new slug)", "mongodbUri", "admin.password", "image credentials / bucket / URL", "contact", "accounts (all logins)", "notes", "generated", "lastRun", "deployLock", "demo", "standby hosts (account-specific)", "realtime (Cloudflare token — set up again on the new client)"];
 export function cloneTemplateOf(source, newSlug) {
   const s = source && typeof source === "object" ? JSON.parse(JSON.stringify(source)) : {};
   const cafe = s.cafe && typeof s.cafe === "object" ? s.cafe : {};
@@ -144,6 +166,7 @@ export function cloneTemplateOf(source, newSlug) {
     tables: s.tables ?? 8,
     menu: s.menu ?? null,
     image,
+    cloudflare: null,
     contact: { ownerName: "", phone: "", whatsapp: "" },
     accounts: { vercel: { email: "", password: "" }, atlas: { email: "", password: "" }, images: { email: "", password: "" }, other: "" },
     notes: "",

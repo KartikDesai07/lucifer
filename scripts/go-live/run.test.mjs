@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { REALTIME_ENV_KEYS as REALTIME_ENV_KEYS_FOR_TEST } from "./lib.mjs";
 import { GoLiveError, runGoLive, runResetDemo, runSeedDemo } from "./run.mjs";
 
 const INDEX_MJS = fileURLToPath(new URL("./index.mjs", import.meta.url));
@@ -54,16 +55,38 @@ const PLATFORM_PATH = path.join(path.dirname(CLIENT_PATH), "_platform.json");
  *  prod deploy yet"; omit the option to leave the field OUT of the response
  *  body entirely) — the three shapes vercel-api.mjs's `hasProduction` must
  *  tell apart (true / false / null respectively). */
+// Realtime fixtures (opt-in, additive — no existing test passes these): a
+// minimal workers/realtime source tree the fake fs needs for sourceHashOf, and
+// a Cloudflare REST + /join + /publish fetch responder for ensureRealtime's
+// end-to-end flow. `cfAccounts` defaults to exactly one account (the common
+// case — no accountId needed on the record).
+const REALTIME_SRC_FILES = {
+  [path.join(ROOT, "workers", "realtime", "wrangler.jsonc")]: '{ "name": "pos-realtime" }',
+  [path.join(ROOT, "workers", "realtime", "src", "index.ts")]: "export default { fetch() {} };",
+};
+function realtimeFetch(u, method, body, { cfAccounts = [{ id: "a".repeat(32), name: "Acme" }], subdomain = "acme" } = {}) {
+  if (u.hostname === "api.cloudflare.com") {
+    if (method === "GET" && u.pathname === "/client/v4/accounts") return { status: 200, ok: true, json: async () => ({ result: cfAccounts }) };
+    if (method === "GET" && /^\/client\/v4\/accounts\/[^/]+\/workers\/subdomain$/.test(u.pathname)) return { status: 200, ok: true, json: async () => ({ result: { subdomain } }) };
+    if (method === "PUT" && /^\/client\/v4\/accounts\/[^/]+\/workers\/subdomain$/.test(u.pathname)) return { status: 200, ok: true, json: async () => ({ result: { subdomain: body.subdomain } }) };
+    return { status: 500, ok: false, json: async () => ({ errors: [{ message: "unrouted cf: " + u.pathname }] }) };
+  }
+  if (u.pathname === "/join") return { status: 426, ok: false, json: async () => ({}) };
+  if (u.pathname === "/publish") return { status: 200, ok: true, json: async () => ({ ok: true, delivered: 1 }) };
+  return null;
+}
+
 function fakeWorld({
   files, projectExists = false, domainsAfterDeploy = false, health = { status: 200, body: { ok: true, db: "up" } }, domainVerified = true, domains,
   domainConfig = { misconfigured: false, configuredBy: "CNAME", recommendedCNAME: [{ rank: 1, value: "abc.vercel-dns-017.com" }] }, domainConfigFails = false,
-  manualRedirects = {}, dnsCheck, targets,
+  manualRedirects = {}, dnsCheck, targets, cloudflare,
 } = {}) {
   const calls = [];
   // Normalized on the way in too — a fixture's initial `files` map may use either
   // a literal "/a/b" key or one built with node:path.join (backslash on Windows);
   // both must land on the SAME store entry the runtime fs functions look up.
-  const store = new Map(Object.entries(files).map(([k, v]) => [String(k).replace(/\\/g, "/"), v]));
+  const mergedFiles = cloudflare ? { ...REALTIME_SRC_FILES, ...files } : files;
+  const store = new Map(Object.entries(mergedFiles).map(([k, v]) => [String(k).replace(/\\/g, "/"), v]));
   let deployed = 0;
   const projectId = "prj_123";
   let createdName = "sunrise-demo"; // the *.vercel.app Vercel hands out follows the project NAME
@@ -87,7 +110,11 @@ function fakeWorld({
       if (!location) return { status: 200, ok: true, headers: { get: () => null }, json: async () => ({ ok: true }) };
       return { status: 308, ok: false, headers: { get: (k) => (k.toLowerCase() === "location" ? location : null) }, json: async () => null };
     }
-    calls.push({ kind: "fetch", method, path: u.pathname + u.search, body, auth: init.headers?.Authorization });
+    calls.push({ kind: "fetch", method, path: u.pathname + u.search, body, auth: init.headers?.Authorization, host: u.hostname });
+    if (cloudflare) {
+      const rt = realtimeFetch(u, method, body, typeof cloudflare === "object" ? cloudflare : {});
+      if (rt) return rt;
+    }
     if (u.hostname !== "api.vercel.com") {
       const tenant = store.has("TENANT_ID") ? store.get("TENANT_ID") : "dev";
       return json(health.status, health.body ? { ...health.body, tenant } : null);
@@ -128,6 +155,19 @@ function fakeWorld({
     if (isDeploy(args)) deployed += 1;
     return { status: 0 };
   };
+  // wrangler always runs through spawnCapture (captured stdio), never spawn —
+  // the realtime deploy/secret-put commands land here. The fake stdout echoes
+  // back whatever --name wrangler was given, so parseWorkerUrl agrees with the
+  // subdomain ensureRealtime itself resolved (a REAL wrangler would too).
+  const spawnCapture = (cmd, args, opts) => {
+    calls.push({ kind: "spawn", cmd, args, cwd: opts.cwd, env: opts.env, input: opts.input });
+    if (args.includes("deploy")) {
+      const nameIdx = args.indexOf("--name");
+      const name = nameIdx >= 0 ? args[nameIdx + 1] : "pos-realtime-worker";
+      return { status: 0, stdout: `Deployed ${name}\n  https://${name}.acme.workers.dev\n`, stderr: "" };
+    }
+    return { status: 0, stdout: "", stderr: "" };
+  };
 
   // The store is keyed by forward-slash paths only. run.mjs sometimes builds a
   // path with node:path.join (readPlatform, siblingSubdomainClash), which on
@@ -144,14 +184,16 @@ function fakeWorld({
       existsSync: (p) => store.has(norm(p)) || dirExists(p),
       readFileSync: (p) => { const key = norm(p); if (!store.has(key)) throw new Error("ENOENT " + p); return store.get(key); },
       writeFileSync: (p, data) => { const key = norm(p); store.set(key, data); calls.push({ kind: "write", path: key }); },
-      readdirSync: (dir) => {
+      readdirSync: (dir, opts) => {
         const prefix = norm(dir).endsWith("/") ? norm(dir) : `${norm(dir)}/`;
         const names = new Set();
         for (const p of store.keys()) if (typeof p === "string" && p.startsWith(prefix) && !p.slice(prefix.length).includes("/")) names.add(p.slice(prefix.length));
+        if (opts && opts.withFileTypes) return [...names].map((name) => ({ name, isDirectory: () => false }));
         return [...names];
       },
     },
     spawn,
+    spawnCapture,
     fetch,
     dnsCheck: dnsCheck ?? {
       checkRecords: async () => ({ cname: { found: null, ok: false }, txt: { found: [], ok: null } }),
@@ -1199,4 +1241,96 @@ test("CLI: --fresh-start together with --host is a usage error (exit 2) — a fr
   const res = spawnSync(process.execPath, [INDEX_MJS, "nosuch", "--fresh-start", "--confirm", "x", "--confirm-project", "y", "--host", "standby"], { encoding: "utf8" });
   assert.equal(res.status, 2, `expected exit 2, got ${res.status}; stderr:\n${res.stderr}`);
   assert.match(res.stderr, /primary hosting only/);
+});
+
+// ── Realtime (plan §5, run.mjs additions) ───────────────────────────────────
+test("dry run: the \"realtime\" step appears right before \"env\" ONLY for a primary with a cloudflare block; absent when the block is null, absent for a standby even if the primary carries a block", async () => {
+  const withBlock = fakeWorld({ files: { [CLIENT_PATH]: JSON.stringify(client({ cloudflare: { token: "cf-tok", accountId: null, publishSecret: null } })) } });
+  const dryWith = await runGoLive(opts({ dryRun: true }), withBlock.deps);
+  const realtimeIdx = dryWith.steps.indexOf("realtime");
+  const envIdx = dryWith.steps.indexOf("env");
+  assert.ok(realtimeIdx >= 0, `"realtime" must appear in the dry-run steps, got: ${dryWith.steps.join(", ")}`);
+  assert.equal(realtimeIdx, envIdx - 1, '"realtime" sits immediately before "env"');
+
+  const noBlock = fakeWorld({ files: { [CLIENT_PATH]: JSON.stringify(client()) } });
+  const dryWithout = await runGoLive(opts({ dryRun: true }), noBlock.deps);
+  assert.ok(!dryWithout.steps.includes("realtime"), "no cloudflare block -> no realtime step");
+
+  const standbyWithBlock = fakeWorld({ files: { [CLIENT_PATH]: JSON.stringify(client({ cloudflare: { token: "cf-tok" }, generated: { seededAt: "2026-09-12T00:00:00.000Z" }, standbyHosts: [{ label: "standby", vercel: { token: "tok_sb" } }] })) } });
+  const dryStandby = await runGoLive(opts({ dryRun: true, host: "standby" }), standbyWithBlock.deps);
+  assert.ok(!dryStandby.steps.includes("realtime"), "a standby never gets a realtime step, even when the primary's record carries a cloudflare block");
+});
+
+test("full run with a cloudflare block: ensureRealtime is called exactly once before upsertEnv, and the upserted env carries the 3 REALTIME_* keys with the on-values", async () => {
+  const w = fakeWorld({ cloudflare: true, files: { [CLIENT_PATH]: JSON.stringify(client({ cloudflare: { token: "cf-tok-full-run", accountId: null, publishSecret: null } })) } });
+  const s = await runGoLive(opts(), w.deps);
+
+  const relevant = w.calls.filter((c) => (c.kind === "spawn" && c.args.some((a) => String(a).includes("wrangler"))) || (c.kind === "fetch" && c.path?.startsWith("/v10/projects/prj_123/env")));
+  const firstWranglerIdx = relevant.findIndex((c) => c.kind === "spawn");
+  const envIdx = relevant.findIndex((c) => c.kind === "fetch");
+  assert.ok(firstWranglerIdx >= 0, "wrangler was actually invoked (positive landmark: ensureRealtime really ran)");
+  assert.ok(envIdx >= 0 && firstWranglerIdx < envIdx, "the realtime provisioning happens BEFORE the env upsert");
+
+  const wranglerDeploySpawns = w.calls.filter((c) => c.kind === "spawn" && c.args.includes("deploy") && c.args.some((a) => String(a).includes("wrangler")));
+  assert.equal(wranglerDeploySpawns.length, 1, "ensureRealtime's deploy runs exactly once for this single-deploy run");
+
+  const env = w.calls.find((c) => c.path?.startsWith("/v10/projects/prj_123/env")).body;
+  const byKey = Object.fromEntries(env.map((e) => [e.key, e.value]));
+  assert.match(byKey.REALTIME_PUBLISH_URL, /^https:\/\/pos-realtime-sunrise-demo\.acme\.workers\.dev\/publish$/);
+  assert.ok(typeof byKey.REALTIME_PUBLISH_SECRET === "string" && byKey.REALTIME_PUBLISH_SECRET.length > 0);
+  assert.equal(byKey.NEXT_PUBLIC_REALTIME_URL, "wss://pos-realtime-sunrise-demo.acme.workers.dev/join");
+
+  assert.equal(s.realtime.state, "on");
+  assert.equal(s.realtime.workerName, "pos-realtime-sunrise-demo");
+  assert.equal(s.realtime.deployed, true);
+  assert.match(s.realtime.url, /^https:\/\/pos-realtime-sunrise-demo\.acme\.workers\.dev$/);
+
+  const saved = w.readClient();
+  assert.ok(saved.generated.realtime, "the realtime record is saved on generated.realtime");
+  assert.equal(saved.generated.realtime.workerName, "pos-realtime-sunrise-demo");
+  assert.ok(!w.calls.some((c) => c.kind === "log" && /cf-tok-full-run/.test(c.line)), "the cloudflare token is never logged");
+});
+
+test("realtime env is NOT written when the cloudflare block is absent and no prior realtime record exists (untouched — REALTIME_* left off the project entirely)", async () => {
+  const w = fakeWorld({ files: { [CLIENT_PATH]: JSON.stringify(client()) } });
+  const s = await runGoLive(opts(), w.deps);
+  const env = w.calls.find((c) => c.path?.startsWith("/v10/projects/prj_123/env")).body;
+  assert.ok(!env.some((e) => REALTIME_ENV_KEYS_FOR_TEST.includes(e.key)), "no REALTIME_* key appears in the upserted env at all");
+  assert.equal(s.realtime.state, "untouched");
+  const saved = w.readClient();
+  assert.equal("realtime" in saved.generated, false, "no realtime record is written either");
+});
+
+test("a standby run writes the 3 REALTIME_* keys as \"\" (a standby always polls; its own TENANT_ID would 403 the primary's Worker)", async () => {
+  const primaryDone = client({ subdomain: "cafe", cloudflare: { token: "cf-tok", accountId: null, publishSecret: null }, generated: { projectId: "prj_primary", orgId: "team_owner", host: "cafe.sandbee.in", tenantId: "cafe", rootDomain: "sandbee.in", authSecret: "SHARED_AUTH", healthStatsToken: "SHARED_HS", seededAt: "2026-09-12T00:00:00.000Z", webAddress: { host: "cafe.sandbee.in", state: "live" }, realtime: { workerName: "pos-realtime-cafe", url: "https://pos-realtime-cafe.acme.workers.dev", accountId: "a".repeat(32), tenantId: "cafe", publishSecret: "primary-secret-0123456789ab", sourceHash: "x", deployedAt: "2026-09-12T00:00:00.000Z", verifiedAt: "2026-09-12T00:00:00.000Z" } }, standbyHosts: [{ label: "standby", vercel: { token: "tok_standby_account", project: null, teamId: null } }] });
+  const w = fakeWorld({ files: { [CLIENT_PATH]: JSON.stringify(primaryDone), [PLATFORM_PATH]: platformFile() } });
+  const s = await runGoLive(opts({ host: "standby" }), w.deps);
+  const env = w.calls.find((c) => c.path?.startsWith("/v10/projects/prj_123/env")).body;
+  const byKey = Object.fromEntries(env.map((e) => [e.key, e.value]));
+  for (const k of REALTIME_ENV_KEYS_FOR_TEST) assert.equal(byKey[k], "", `${k} must be written as "" for a standby`);
+  assert.equal(s.realtime.state, "standby");
+  assert.ok(!w.calls.some((c) => c.kind === "spawn" && c.args.some((a) => String(a).includes("wrangler"))), "a standby run never touches wrangler");
+});
+
+test("summary.realtime shape: { state, workerName, url, tenantId, deployed } — 'off' state when the block is removed but a prior record exists", async () => {
+  const withPrior = client({ generated: { realtime: { workerName: "pos-realtime-sunrise-demo", url: "https://pos-realtime-sunrise-demo.acme.workers.dev", accountId: "a".repeat(32), tenantId: "sunrise-demo-x7k2", publishSecret: "old-secret-0123456789ab", sourceHash: "x", deployedAt: "2026-09-12T00:00:00.000Z", verifiedAt: "2026-09-12T00:00:00.000Z" }, projectId: "prj_123", orgId: "team_owner", host: "sunrise-demo-x7k2.vercel.app", tenantId: "sunrise-demo-x7k2", rootDomain: "vercel.app", authSecret: "A", healthStatsToken: "H", seededAt: "2026-09-12T00:00:00.000Z" } });
+  const w = fakeWorld({ projectExists: true, files: { [CLIENT_PATH]: JSON.stringify(withPrior) } });
+  const s = await runGoLive(opts({ skipSeed: true }), w.deps);
+  assert.equal(s.realtime.state, "off");
+  assert.deepEqual(Object.keys(s.realtime).sort(), ["deployed", "state", "tenantId", "url", "workerName"].sort());
+  assert.equal(s.realtime.deployed, false);
+  const env = w.calls.find((c) => c.path?.startsWith("/v10/projects/prj_123/env")).body;
+  const byKey = Object.fromEntries(env.map((e) => [e.key, e.value]));
+  for (const k of REALTIME_ENV_KEYS_FOR_TEST) assert.equal(byKey[k], "", `${k} must be blanked once the cloudflare block is removed`);
+});
+
+test("R2: a switch-off run (cloudflare block removed, a prior realtime record exists) saves the client file with NO generated.realtime — moved to generated.previousRealtime instead", async () => {
+  const withPrior = client({ generated: { realtime: { workerName: "pos-realtime-sunrise-demo", url: "https://pos-realtime-sunrise-demo.acme.workers.dev", accountId: "a".repeat(32), tenantId: "sunrise-demo-x7k2", publishSecret: "old-secret-0123456789ab", sourceHash: "x", deployedAt: "2026-09-12T00:00:00.000Z", verifiedAt: "2026-09-12T00:00:00.000Z" }, projectId: "prj_123", orgId: "team_owner", host: "sunrise-demo-x7k2.vercel.app", tenantId: "sunrise-demo-x7k2", rootDomain: "vercel.app", authSecret: "A", healthStatsToken: "H", seededAt: "2026-09-12T00:00:00.000Z" } });
+  const w = fakeWorld({ projectExists: true, files: { [CLIENT_PATH]: JSON.stringify(withPrior) } });
+  await runGoLive(opts({ skipSeed: true }), w.deps);
+  const saved = w.readClient();
+  assert.equal("realtime" in saved.generated, false, "the saved client file must have NO generated.realtime once the block was switched off");
+  assert.ok(saved.generated.previousRealtime, "the saved client file must carry generated.previousRealtime instead");
+  assert.equal(saved.generated.previousRealtime.workerName, "pos-realtime-sunrise-demo");
+  assert.equal("publishSecret" in saved.generated.previousRealtime, false, "the switched-off Worker's secret must not persist under previousRealtime on disk");
 });

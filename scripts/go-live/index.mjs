@@ -108,6 +108,15 @@ const locksDir = path.join(path.dirname(clientPath), LOCKS_DIR);
 const deps = {
   fs: { existsSync, readFileSync, writeFileSync, readdirSync },
   spawn: (cmd, cmdArgs, opts) => spawnSync(cmd, cmdArgs, { ...opts, stdio: "inherit", shell: process.platform === "win32" && cmd === "npm" }),
+  // Captures output instead of streaming to the terminal — the ONLY way to parse
+  // wrangler's own printed URL / detect its exit code. Every captured line still
+  // reaches deps.log (the CLI prints it, the console redacts it with
+  // secretsOf) — this just adds a seam to read it first.
+  spawnCapture: (cmd, cmdArgs, opts) => {
+    const res = spawnSync(cmd, cmdArgs, { ...opts, stdio: ["pipe", "pipe", "pipe"], encoding: "utf8" });
+    // `error` is set (and status is null) when the process could not be started at all (ENOENT…).
+    return { status: res.status, stdout: res.stdout ?? "", stderr: res.stderr ?? "", error: res.error ?? null };
+  },
   fetch: globalThis.fetch,
   randomBytes,
   sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
@@ -150,6 +159,13 @@ function printRecordsTable(records) {
   for (const r of records) console.log(`    ${r.type.padEnd(6)} ${r.name.padEnd(8)} ${r.value}`);
 }
 
+function realtimeLine(r) {
+  if (r.state === "on") return `on — ${r.workerName} (client's Cloudflare) · ${r.url}/join`;
+  if (r.state === "off") return "off (record has no Cloudflare block)";
+  if (r.state === "standby") return "polling (standby)";
+  return "not set up — the cafe polls (Hosting → Realtime to enable)";
+}
+
 function printSummary(s) {
   if (s.dryRun) {
     console.log(`\ngo-live DRY RUN — "${s.slug}"${s.hostLabel !== "primary" ? ` (standby "${s.hostLabel}")` : ""} is valid. Plan: ${s.steps.join(" → ")}. Project "${s.projectName}", host ${s.host}.`);
@@ -166,6 +182,7 @@ function printSummary(s) {
   console.log(`  Vercel account  ${s.account}\n  Project         ${s.projectName} (${s.projectId})\n  Tenant          TENANT_ID=${s.tenantId}  ROOT_DOMAIN=${s.rootDomain}`);
   console.log(`  Env vars        ${s.envCount} saved on the project (image store: ${s.imageStore})\n  Admin login     ${s.adminUsername} / the password from the client file (${s.adminNote})`);
   console.log(`  Health          ${s.health.ok ? "ok: true · db: up" : s.health.reason}`);
+  if (s.realtime) console.log(`  Realtime        ${realtimeLine(s.realtime)}`);
   if (s.dns.pending) {
     console.log(`\n  DNS — add this record at the domain's DNS provider, then open the URL:\n    ${s.dns.record}`);
     for (const c of s.dns.challenges) console.log(`    ${c.type}  ${c.domain}  →  ${c.value}`);

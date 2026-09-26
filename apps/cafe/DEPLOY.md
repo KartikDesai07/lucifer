@@ -2,10 +2,13 @@
 
 **Host:** Vercel (free Hobby tier) — Next.js 15 on Vercel's Node.js runtime.
 **Database:** MongoDB Atlas M0 (free).
-**Images:** the cafe's own **Cloudflare R2** bucket (presigned PUTs via `/api/upload`;
-the default since F2.11). `IMAGE_STORE=cloudinary` keeps a deploy on its single
-per-cafe Cloudinary account instead — existing Cloudinary images render/delete
-fine either way (refs are store-tagged).
+**Images (optional):** the cafe's own **Cloudflare R2** bucket (presigned PUTs via
+`/api/upload`; the default since F2.11). `IMAGE_STORE=cloudinary` keeps a deploy on
+its single per-cafe Cloudinary account instead — existing Cloudinary images
+render/delete fine either way (refs are store-tagged). Shipping with **neither**
+configured is supported and degrades cleanly: uploads answer "Image uploads are
+not configured" and every surface just renders no product photo — see
+`docs/GO-LIVE-CHECKLIST.md` §0 for the full list of what still works.
 
 **Live:** `https://<client-slug>.<ROOT_DOMAIN>` — a bare `*.vercel.app` host does
 **not** work (see the `ROOT_DOMAIN` row below).
@@ -63,11 +66,53 @@ CLI, below). All except the public one are secrets.
 | `CLOUDINARY_API_KEY` | 〃 |
 | `CLOUDINARY_API_SECRET` | 〃 |
 | `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` | only if any Cloudinary images exist; inlined at build to render them. |
+| `REALTIME_PUBLISH_URL` | optional, server-only — where the cafe POSTs its signed realtime nudges. Set by go-live from the console's Realtime block; blank = the cafe polls, exactly as it does today. |
+| `REALTIME_PUBLISH_SECRET` | optional, server-only — must equal the Worker's own secret. Set by go-live from the Realtime block; blank = publishing is off (fail-closed). |
+| `NEXT_PUBLIC_REALTIME_URL` | optional, **build-time** — the public WebSocket subscribe URL; inlined into the client bundle, so any change needs a redeploy (go-live's run always follows one). Set by go-live from the Realtime block; blank = the cafe polls. |
 
 `NEXTAUTH_URL` / `AUTH_URL` must be **ABSENT** — not merely "not needed". Auth.js v5
 auto-detects the deployment URL and `trustHost: true` is set in `auth.config.ts`; if
 either variable IS set, next-auth rewrites every request's origin to that value and
 **login breaks everywhere**. Do not copy them in from a local `.env`.
+
+### Realtime Worker (optional)
+
+Filling in the console's Hosting → Realtime block (a client-issued Cloudflare
+token) makes the go-live run provision **one Cloudflare Worker per cafe**, into
+the **CLIENT'S OWN Cloudflare account** — never the vendor's — the same
+ownership model as the client's own Vercel account and Atlas M0
+(`workers/realtime/README.md` "Ownership"). What the run does:
+
+- names it `pos-realtime-<slug>` and sets its `TENANT_ID` var to the cafe's
+  actual `TENANT_ID` (the address's first label — not necessarily the slug);
+- mints a `REALTIME_PUBLISH_SECRET` (or adopts one already on the record) and
+  sets it as the Worker's secret;
+- registers the account's `*.workers.dev` subdomain if it does not have one yet;
+- probes `GET /join` and requires **426** ("expected websocket") before linking
+  it — the cheapest proof the deployed code is actually ours;
+- sets the cafe's three `REALTIME_*` env vars (table above) and redeploys the
+  cafe, since `NEXT_PUBLIC_REALTIME_URL` is build-time;
+- redeploys the Worker again on any later run only if its source, name or
+  tenant changed — otherwise it leaves an up-to-date Worker alone.
+
+**Token scope — MEASURED 2026-09-25:** a token scoped to **`Workers Scripts:
+Edit` + `Account Settings: Read`**, limited to that one client account, is
+enough to create the Worker, run its `new_sqlite_classes` Durable Object
+migration on the first deploy, and set the secret. Admin is **not** required.
+Pinned wrangler version: `4.140.0`.
+
+**Off and standby:** switching the block off on a record the run had already
+provisioned writes the three env vars **blank** — the cafe goes back to polling
+exactly as before, and the Worker itself stays in the client's Cloudflare
+account, untouched. A record that never had the block leaves any `REALTIME_*`
+values already on the project **alone** (a Worker set up by hand keeps working
+until you either fill the block in — pasting its secret into `publishSecret`
+adopts it — or clear the vars yourself). A standby host always keeps polling:
+it shares the primary's database but has its own `TENANT_ID`, so the primary's
+Worker would 403 it.
+
+**Manual fallback** (no console): `workers/realtime/README.md` § "Deploying
+into a client's account" has the by-hand `wrangler` commands.
 
 ---
 
