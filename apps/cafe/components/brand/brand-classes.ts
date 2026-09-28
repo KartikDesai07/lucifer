@@ -25,3 +25,30 @@ export const BRAND_BUTTON_CLASS =
 
 /** An inline error line under a field. */
 export const BRAND_FIELD_ERROR_CLASS = "text-xs text-brand-danger";
+
+// ── Navigation (the staff sidebar; any later nav list reuses these) ─────────
+// Passed to the stock shadcn SidebarMenuButton / SidebarMenuSubButton /
+// SidebarGroupLabel via className; tailwind-merge replaces each primitive
+// default they name. The icon-collapsed rail keeps the primitive's own
+// important 32px square, so nothing here can push an icon out of the 3rem
+// rail. The active row is a raised slip of paper with its icon in the
+// accent: the accent icon (4.8:1 on the slip), the heavier label and
+// aria-current carry the state, never the pale background alone.
+
+const NAV_ACTIVE =
+  "data-[active=true]:bg-brand-slip data-[active=true]:font-semibold data-[active=true]:text-brand-ink data-[active=true]:shadow-[0_1px_2px_rgb(29_27_24/0.08),0_0_0_1px_rgb(29_27_24/0.07)]";
+
+/** A top-level nav row: 32px on a mouse (the whole list fits a 768px-tall
+ *  laptop screen without scrolling), 44px on touch (tablet / phone). */
+export const BRAND_NAV_ITEM_CLASS =
+  "h-8 gap-3 rounded-lg px-2.5 text-[14px] font-medium text-brand-ink/80 transition-colors duration-150 hover:bg-brand-wash hover:text-brand-ink active:bg-brand-wash focus-visible:ring-brand-accent pointer-coarse:h-11 group-data-[collapsible=icon]:justify-center [&>svg]:size-[18px] [&>svg]:text-brand-muted [&:hover>svg]:text-brand-ink [&[data-active=true]>svg]:text-brand-accent " +
+  NAV_ACTIVE;
+
+/** A row inside an expanded group (Settings' sections). */
+export const BRAND_NAV_SUB_ITEM_CLASS =
+  "h-7 rounded-md px-2.5 text-[13.5px] text-brand-ink/75 transition-colors duration-150 hover:bg-brand-wash hover:text-brand-ink active:bg-brand-wash focus-visible:ring-brand-accent pointer-coarse:h-10 " +
+  NAV_ACTIVE;
+
+/** A section heading in the nav: small, sentence case, muted (5.2:1). */
+export const BRAND_NAV_LABEL_CLASS =
+  "h-6 px-2.5 text-[12px] font-medium tracking-[0.01em] text-brand-muted group-data-[collapsible=icon]:-mt-6";

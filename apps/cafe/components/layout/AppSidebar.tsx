@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Image from "next/image";
+import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -18,30 +17,22 @@ import {
   LayoutGrid,
   BarChart3,
   Settings,
-  ChevronsUpDown,
-  KeyRound,
-  LogOut,
-  UtensilsCrossed,
   ChefHat,
 } from "lucide-react";
 
 import { useAuth } from "@/hooks/use-auth";
 import { useSettings } from "@/hooks/use-settings";
+import { brandFontVariables } from "@/lib/brand-fonts";
 import { brandingUrl, productImageUrl } from "@/lib/images";
 import { APP_NAME } from "@/lib/constants";
+import { isActivePath } from "@/lib/nav-active";
 import { SETTINGS_BASE_PATH } from "@/lib/settings-sections";
-import { ChangePasswordDialog } from "@/components/shared/ChangePasswordDialog";
+import { BRAND_NAV_ITEM_CLASS, BRAND_NAV_LABEL_CLASS } from "@/components/brand/brand-classes";
+import { brandTooltip } from "@/components/brand/brand-tooltip";
 import { RequestCountBadge } from "@/components/orders/RequestCountBadge";
+import { SidebarAccount } from "@/components/layout/SidebarAccount";
+import { SidebarBrand } from "@/components/layout/SidebarBrand";
 import { SidebarSettingsGroup } from "@/components/layout/SidebarSettingsGroup";
-import { Badge } from "@/components/ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -56,6 +47,16 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
+// The staff sidebar, on the "Paper & Ink" brand system (tokens in
+// app/globals.css — the primitive's --sidebar-* values point at them — row
+// styles in components/brand/brand-classes.ts). Widths are the primitive's
+// own 16rem / 3rem, which the POS layout matrix depends on: never widen it.
+//
+// The rows are grouped the way the day runs — taking orders, then the things
+// set up behind them, then the owner's tools — each group under a short
+// sentence-case heading (Shopify's navigation guidance: group related items
+// into sections, and let a title say what the section is).
+
 type NavItem = {
   title: string;
   url: string;
@@ -63,29 +64,52 @@ type NavItem = {
   adminOnly?: boolean;
 };
 
-const items: NavItem[] = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "New Order", url: "/pos", icon: ShoppingCart },
-  { title: "Order Requests", url: "/requests", icon: Inbox },
-  { title: "Kitchen", url: "/kitchen", icon: ChefHat },
-  { title: "Orders", url: "/orders", icon: Receipt },
-  { title: "Menu", url: "/products", icon: Coffee },
-  { title: "Categories", url: "/categories", icon: Tags },
-  { title: "Customers", url: "/customers", icon: Users },
-  { title: "Tables", url: "/tables", icon: LayoutGrid },
-  { title: "Reservations", url: "/reservations", icon: CalendarClock },
-  { title: "Events", url: "/events", icon: PartyPopper },
-  { title: "Staff", url: "/staff", icon: UserCog, adminOnly: true },
-  { title: "Reports", url: "/reports", icon: BarChart3, adminOnly: true },
-  { title: "Settings", url: "/settings", icon: Settings, adminOnly: true },
+type NavSection = { label?: string; items: NavItem[] };
+
+const sections: NavSection[] = [
+  { items: [{ title: "Dashboard", url: "/", icon: LayoutDashboard }] },
+  {
+    label: "Service",
+    items: [
+      { title: "New Order", url: "/pos", icon: ShoppingCart },
+      { title: "Order Requests", url: "/requests", icon: Inbox },
+      { title: "Kitchen", url: "/kitchen", icon: ChefHat },
+      { title: "Orders", url: "/orders", icon: Receipt },
+      { title: "Reservations", url: "/reservations", icon: CalendarClock },
+    ],
+  },
+  {
+    label: "Manage",
+    items: [
+      { title: "Menu", url: "/products", icon: Coffee },
+      { title: "Categories", url: "/categories", icon: Tags },
+      { title: "Tables", url: "/tables", icon: LayoutGrid },
+      { title: "Customers", url: "/customers", icon: Users },
+      { title: "Events", url: "/events", icon: PartyPopper },
+    ],
+  },
+  {
+    label: "Admin",
+    items: [
+      { title: "Staff", url: "/staff", icon: UserCog, adminOnly: true },
+      { title: "Reports", url: "/reports", icon: BarChart3, adminOnly: true },
+      { title: "Settings", url: "/settings", icon: Settings, adminOnly: true },
+    ],
+  },
 ];
+
+/** Just longer than the Settings list's open animation (0.2s). */
+const SCROLL_AFTER_OPEN_MS = 250;
 
 export function AppSidebar() {
   const { state, isMobile, setOpenMobile } = useSidebar();
-  const collapsed = state === "collapsed";
+  // The phone sheet always shows full rows, whatever the desktop rail was
+  // last left as (the collapsed state is remembered per browser).
+  const collapsed = state === "collapsed" && !isMobile;
   const pathname = usePathname();
-  const { user, isAdmin, logout } = useAuth();
-  const [pwdOpen, setPwdOpen] = useState(false);
+  const { isAdmin } = useAuth();
+  const labelId = useId();
+  const navRef = useRef<HTMLElement>(null);
 
   // Closes the phone Sheet after any nav tap — shadcn/ui's sidebar primitive
   // leaves this to the consumer (research brief, PR #8402).
@@ -105,6 +129,15 @@ export function AppSidebar() {
     if (onSettings) setSettingsOpen(true);
   }, [onSettings]);
 
+  // Keep the lit row in view: on a short screen (or with Settings' list
+  // open) it can sit below the fold. Waits out the list's open animation.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      navRef.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest" });
+    }, SCROLL_AFTER_OPEN_MS);
+    return () => window.clearTimeout(timer);
+  }, [pathname, settingsOpen]);
+
   // Brand name comes from the cafe's own Settings (Settings.restaurantName),
   // configured on the Settings page — generic fallback before it's set.
   const settings = useSettings();
@@ -117,146 +150,80 @@ export function AppSidebar() {
   // never disagree about what an unbranded cafe looks like.
   const productLogoUrl = productImageUrl(settings.data?.productLogo, undefined, { fit: true });
   const displayLogoUrl = logoUrl ?? productLogoUrl ?? brandingUrl("productLogo");
-  // The glyph is now only reached if that image FAILS to load (route 500, offline
-  // first paint) — a 32px broken-image box in the chrome of every screen is worse
-  // than a generic icon.
-  const [logoFailed, setLogoFailed] = useState(false);
 
-  const visibleItems = items.filter((item) => !item.adminOnly || isAdmin);
-  const initial = (user?.name ?? "?").charAt(0).toUpperCase();
+  const visibleSections = sections
+    .map((section) => ({ ...section, items: section.items.filter((item) => !item.adminOnly || isAdmin) }))
+    .filter((section) => section.items.length > 0);
+
+  const renderItem = (item: NavItem) => {
+    if (item.url === "/settings") {
+      return (
+        <SidebarSettingsGroup
+          key={item.url}
+          url={item.url}
+          title={item.title}
+          icon={item.icon}
+          collapsed={collapsed}
+          pathname={pathname}
+          onSettings={onSettings}
+          settingsOpen={settingsOpen}
+          onSettingsOpenChange={setSettingsOpen}
+          onNavigate={closeMobile}
+          tooltip={brandTooltip(item.title)}
+        />
+      );
+    }
+
+    const active = isActivePath(pathname, item.url);
+    return (
+      <SidebarMenuItem key={item.url}>
+        <SidebarMenuButton asChild isActive={active} tooltip={brandTooltip(item.title)} className={BRAND_NAV_ITEM_CLASS}>
+          <Link href={item.url} aria-current={active ? "page" : undefined} onClick={closeMobile}>
+            <item.icon aria-hidden="true" />
+            {!collapsed && <span>{item.title}</span>}
+          </Link>
+        </SidebarMenuButton>
+        {item.url === "/requests" && <RequestCountBadge />}
+      </SidebarMenuItem>
+    );
+  };
 
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader className="px-3 py-4">
-        <div className="flex items-center gap-2">
-          {!logoFailed ? (
-            <Image
-              src={displayLogoUrl}
-              alt="Logo"
-              width={32}
-              height={32}
-              unoptimized
-              className="h-8 w-8 rounded-lg object-contain"
-              onError={() => setLogoFailed(true)}
-            />
-          ) : (
-            <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-primary-foreground">
-              <UtensilsCrossed className="h-4 w-4" />
-            </div>
-          )}
-          {!collapsed && (
-            <div className="leading-tight">
-              <div className="text-sm font-bold">{brandName}</div>
-              <div className="text-[10px] text-muted-foreground">POS System</div>
-            </div>
-          )}
-        </div>
-      </SidebarHeader>
+    <Sidebar collapsible="icon" className="border-sidebar-border">
+      {/* Brand fonts for everything in the sidebar — on desktop AND in the
+          phone sheet, which renders these children but not this className. */}
+      <div className={`${brandFontVariables} flex min-h-0 flex-1 flex-col font-brand-sans`}>
+        {/* h-14 lines its bottom rule up with the page header's. */}
+        <SidebarHeader className="h-14 shrink-0 justify-center border-b border-sidebar-border px-3 py-0 group-data-[collapsible=icon]:px-2">
+          <SidebarBrand key={displayLogoUrl} brandName={brandName} logoUrl={displayLogoUrl} collapsed={collapsed} />
+        </SidebarHeader>
 
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Manage</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {visibleItems.map((item) => {
-                if (item.url === "/settings") {
-                  return (
-                    <SidebarSettingsGroup
-                      key={item.url}
-                      url={item.url}
-                      title={item.title}
-                      icon={item.icon}
-                      collapsed={collapsed}
-                      pathname={pathname}
-                      onSettings={onSettings}
-                      settingsOpen={settingsOpen}
-                      onSettingsOpenChange={setSettingsOpen}
-                      onNavigate={closeMobile}
-                    />
-                  );
-                }
-
-                return (
-                  <SidebarMenuItem key={item.url}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={pathname === item.url}
-                      tooltip={item.title}
-                    >
-                      <Link href={item.url} className="flex items-center gap-2" onClick={closeMobile}>
-                        <item.icon className="h-4 w-4" />
-                        {!collapsed && <span>{item.title}</span>}
-                      </Link>
-                    </SidebarMenuButton>
-                    {item.url === "/requests" && <RequestCountBadge />}
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-
-      <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton
-                  size="lg"
-                  tooltip={user?.name ?? "Account"}
-                  className="data-[state=open]:bg-sidebar-accent"
-                >
-                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-sidebar-accent text-xs font-semibold">
-                    {initial}
-                  </div>
-                  {!collapsed && (
-                    <>
-                      <div className="grid flex-1 text-left leading-tight">
-                        <span className="truncate text-sm font-medium">
-                          {user?.name ?? "Account"}
-                        </span>
-                        <Badge
-                          variant={isAdmin ? "default" : "secondary"}
-                          className="mt-0.5 w-fit px-1.5 py-0 text-[10px]"
-                        >
-                          {isAdmin ? "Admin" : "Staff"}
-                        </Badge>
-                      </div>
-                      <ChevronsUpDown className="ml-auto h-4 w-4" />
-                    </>
+        <SidebarContent className="gap-0 py-2 [scrollbar-color:var(--brand-rule)_transparent] [scrollbar-width:thin]">
+          <nav ref={navRef} aria-label="Main">
+            {visibleSections.map((section, index) => {
+              const id = `${labelId}-${index}`;
+              return (
+                <SidebarGroup key={section.label ?? "home"} className="px-3 py-1 group-data-[collapsible=icon]:px-2">
+                  {section.label && (
+                    <SidebarGroupLabel id={id} className={BRAND_NAV_LABEL_CLASS}>
+                      {section.label}
+                    </SidebarGroupLabel>
                   )}
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                side="top"
-                align="start"
-                className="w-56"
-              >
-                <DropdownMenuLabel className="font-normal">
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium">{user?.name}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {isAdmin ? "Administrator" : "Staff member"}
-                    </span>
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => setPwdOpen(true)}>
-                  <KeyRound className="mr-2 h-4 w-4" />
-                  Change password
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => logout()}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Sign out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
+                  <SidebarGroupContent>
+                    <SidebarMenu className="gap-0.5" aria-labelledby={section.label ? id : undefined}>
+                      {section.items.map(renderItem)}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              );
+            })}
+          </nav>
+        </SidebarContent>
 
-      <ChangePasswordDialog open={pwdOpen} onOpenChange={setPwdOpen} />
+        <SidebarFooter className="shrink-0 border-t border-sidebar-border px-3 py-2 group-data-[collapsible=icon]:px-2">
+          <SidebarAccount collapsed={collapsed} />
+        </SidebarFooter>
+      </div>
     </Sidebar>
   );
 }

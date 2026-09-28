@@ -79,6 +79,7 @@
   --font-brand-sans: var(--font-brand-schibsted);
   --font-brand-display: var(--font-brand-fraunces);
   --color-brand-paper: var(--brand-paper);
+  --color-brand-wash: var(--brand-wash);
   --color-brand-slip: var(--brand-slip);
   --color-brand-ink: var(--brand-ink);
   --color-brand-ink-hover: var(--brand-ink-hover);
@@ -160,6 +161,8 @@
    ONLY — never a status, never a fill behind text. */
 :root {
   --brand-paper: #f6f2ea;
+  /* Paper one shade down: hover / pressed on a paper surface (the sidebar). */
+  --brand-wash: #ece6da;
   --brand-slip: #fffdf8;
   --brand-ink: #1d1b18;
   --brand-ink-hover: #35312b;
@@ -202,14 +205,19 @@
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.984 0.003 247.858);
-  --sidebar-foreground: oklch(0.129 0.042 264.695);
-  --sidebar-primary: oklch(0.208 0.042 265.755);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.968 0.007 247.896);
-  --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
-  --sidebar-border: oklch(0.929 0.013 255.508);
-  --sidebar-ring: oklch(0.704 0.04 256.788);
+  /* 2026-09-26: the staff sidebar is the second Paper & Ink screen. These
+     are read only by the shadcn sidebar primitive — the desktop rail AND the
+     phone sheet, which is portaled out of the sidebar's own tree, so they
+     have to be set here rather than on a wrapper. Ink on paper 15.4:1, muted
+     on paper 5.2:1 (measured with the palette above). */
+  --sidebar: var(--brand-paper);
+  --sidebar-foreground: var(--brand-ink);
+  --sidebar-primary: var(--brand-ink);
+  --sidebar-primary-foreground: var(--brand-slip);
+  --sidebar-accent: var(--brand-wash);
+  --sidebar-accent-foreground: var(--brand-ink);
+  --sidebar-border: var(--brand-rule);
+  --sidebar-ring: var(--brand-accent);
 }
 
 .dark {
