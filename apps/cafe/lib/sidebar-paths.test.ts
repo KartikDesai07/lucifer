@@ -121,3 +121,44 @@ test("PIN: the sidebar's colours come from the brand palette on :root (the phone
     assert.match(root!, new RegExp(`--${name}:\\s*var\\(--${token}\\);`), `--${name} must be var(--${token})`);
   }
 });
+
+// 2026-09-28 — slow-network fix: the busiest service screens are kept FULLY
+// prefetched so a sidebar click renders from the router cache (see
+// lib/warm-routes.ts). Pinned so a later edit can neither drop the warmth nor
+// spread it to setup/admin screens (each warm route costs a background request
+// per reuse window on every open device).
+const WARM_URLS = ["/", "/pos", "/requests", "/kitchen", "/orders", "/reservations"];
+const NEXT_CONFIG = "apps/cafe/next.config.ts";
+
+test("PIN: exactly the Dashboard and Service sections are warm — no setup or admin screen — and their links prefetch the full route", () => {
+  const src = stripComments(readSrc(APP_SIDEBAR));
+  const heads = [...src.matchAll(/\{\s*(?:label:\s*"([^"]+)",\s*)?(warm:\s*true,\s*)?items:\s*\[/g)];
+  assert.equal(heads.length, 4, "landmark: four nav sections (Dashboard, Service, Manage, Admin)");
+  const warmUrls: string[] = [];
+  heads.forEach((head, i) => {
+    if (!head[2]) return;
+    const body = src.slice(head.index!, i + 1 < heads.length ? heads[i + 1].index : undefined);
+    for (const m of body.matchAll(/\{\s*title:\s*"[^"]+",\s*url:\s*"([^"]+)"[^}]*\}/g)) {
+      assert.ok(!/adminOnly/.test(m[0]), `a warm section must never hold an admin-only row: ${m[0]}`);
+      warmUrls.push(m[1]);
+    }
+  });
+  assert.deepEqual(warmUrls, WARM_URLS, "the warm rows are the dashboard and the service screens, in sidebar order");
+
+  // The warm rows are what the hook keeps prefetched, and their own links ask
+  // for the FULL route (an automatic prefetch would only fetch the skeleton).
+  assert.match(src, /\.filter\(\(section\) => section\.warm\)\s*\.flatMap\(\(section\) => section\.items\.map\(\(item\) => item\.url\)\)/);
+  assert.match(src, /useWarmRoutes\(warmHrefs\)/);
+  assert.match(src, /renderItem\(item, section\.warm\)/);
+  assert.match(src, /prefetch=\{warm \? true : undefined\}/);
+});
+
+test("PIN: next.config lengthens only the FULL-prefetch reuse window — staleTimes carries `static` and never `dynamic`", () => {
+  const src = stripComments(readSrc(NEXT_CONFIG));
+  const block = src.match(/staleTimes:\s*\{([^}]*)\}/);
+  assert.ok(block, "next.config.ts must set experimental.staleTimes");
+  assert.match(block![1], /static:\s*PREFETCH_REUSE_SECONDS/);
+  // Mutation this catches: adding `dynamic` — every page a user VISITED would
+  // then be re-shown from cache, which for any server-data page means stale data.
+  assert.ok(!/dynamic/.test(block![1]), "staleTimes must not set `dynamic`");
+});

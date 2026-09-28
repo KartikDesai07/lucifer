@@ -61,6 +61,26 @@ const publicSurfaceCsp = [
 
 const publicSurfaceHeaders = [{ key: "Content-Security-Policy", value: publicSurfaceCsp }];
 
+// How long a FULLY prefetched staff screen may be re-used from the client
+// router cache (Next 15's default is 5 minutes). The sidebar keeps its busiest
+// service screens fully prefetched (hooks/use-warm-routes.ts) so a click on one
+// renders from memory instead of waiting for a server round trip — on a slow or
+// lossy counter network that round trip is the whole delay staff feel. Safe to
+// hold that long: every such screen is a "use client" page whose data comes from
+// its own queries, so the cached payload is only the page shell. Nothing else
+// changes — staleTimes.dynamic stays at Next 15's default of 0 (a page you
+// actually visited is never served stale), and an ordinary link's automatic prefetch only
+// ever re-uses its loading skeleton (see getPrefetchEntryCacheStatus in
+// next/dist/client/components/router-reducer/prefetch-cache-utils.js).
+// Accepted trade-off (review 2026-09-28): the cached payload also carries the
+// (dashboard) layout's metadata, so after an admin renames the cafe or swaps
+// its logo, ANOTHER device's browser-tab title / favicon can lag by up to this
+// long (the on-screen name is a live query and updates as before). After a
+// deploy, a cached entry keeps rendering the version the tab is already
+// running; the next fresh fetch carries the new build id and Next switches to
+// a full page load (fetch-server-response.js, getAppBuildId() !== response.b).
+const PREFETCH_REUSE_SECONDS = 30 * 60;
+
 const nextConfig: NextConfig = {
   // The shared workspace package ships raw TypeScript (single source of truth for
   // the reused spine — schemas, constants, utils, API envelope, hook factory).
@@ -74,6 +94,8 @@ const nextConfig: NextConfig = {
     // tree-shaken from the client bundle (CLAUDE.md §17). lucide-react is
     // already covered by Next's defaults; recharts + date-fns are the wins.
     optimizePackageImports: ["recharts", "date-fns", "lucide-react"],
+    // Only `static` — see PREFETCH_REUSE_SECONDS above.
+    staleTimes: { static: PREFETCH_REUSE_SECONDS },
   },
   images: {
     // Product images — an opaque stored ref, URL built at render time (lib/images.ts):

@@ -8,7 +8,9 @@ import {
   applyCursor,
   nextOrderCursor,
   dedupeOrdersById,
+  firstPageOnly,
 } from "./order-query";
+import { GC_TIMES } from "./query";
 
 // CR1.5 Slice 3 — orders cursor pagination. `order-query.ts` is PURE (no
 // mongoose), so this suite is DB-free start to finish.
@@ -171,4 +173,36 @@ test("PIN: the orders page uses isFetchNextPageError to distinguish a Load-more 
     "utf8",
   );
   assert.match(src, /isFetchNextPageError/);
+});
+
+// ── firstPageOnly: what the Orders page leaves cached as it closes ────────────
+// 2026-09-28 slow-network fix: the list is kept for 30 minutes so a return
+// visit paints rows at once — but only its first page, so the refetch on
+// return is ONE request, not one per page the operator had loaded.
+
+test("firstPageOnly keeps the first page and its param, drops the rest", () => {
+  const data = { pages: [["a", "b"], ["c"], ["d"]], pageParams: [undefined, "t1", "t2"] as (string | undefined)[] };
+  assert.deepEqual(firstPageOnly(data), { pages: [["a", "b"]], pageParams: [undefined] });
+});
+
+test("firstPageOnly returns the SAME object when there is nothing to cut (one page, or no data)", () => {
+  const one = { pages: [["a"]], pageParams: [undefined] };
+  assert.equal(firstPageOnly(one), one, "one page: reference-equal, so the cache is not rewritten");
+  assert.equal(firstPageOnly(undefined), undefined);
+});
+
+test("PIN: the Orders list outlives the live lists but still always refetches, and the page trims it to one page as it closes", () => {
+  const hooks = readFileSync(fileURLToPath(new URL("../hooks/use-orders.ts", import.meta.url)), "utf8");
+  const fnStart = hooks.indexOf("export function useOrdersInfinite");
+  const fnBody = hooks.slice(fnStart, hooks.indexOf("\nexport function", fnStart + 1));
+  assert.match(fnBody, /gcTime:\s*ORDERS_LIST_GC_MS/, "useOrdersInfinite keeps its list for ORDERS_LIST_GC_MS");
+  // Kept longer, never served as fresh: a return visit shows the old rows AND refetches.
+  assert.match(fnBody, /staleTime:\s*STALE_TIMES\.LIVE/, "the list must stay always-stale (refetch on every mount)");
+  const gc = hooks.match(/const ORDERS_LIST_GC_MS = (\d+) \* (\d+) \* (\d+);/);
+  assert.ok(gc, "ORDERS_LIST_GC_MS must be declared as a product of three integers");
+  assert.ok(Number(gc![1]) * Number(gc![2]) * Number(gc![3]) > GC_TIMES.ORDERS, "longer than the live lists' gcTime, or the change does nothing");
+  // The trim runs as the page unmounts, over every infinite list key.
+  assert.match(hooks, /qc\.setQueriesData<[^>]+>>\(\s*\{ queryKey: ORDER_KEYS\.infinite \},\s*\(data\) => firstPageOnly\(data\),?\s*\)/);
+  const page = readFileSync(fileURLToPath(new URL("../app/(dashboard)/orders/page.tsx", import.meta.url)), "utf8");
+  assert.match(page, /useTrimOrdersListOnLeave\(\);/, "the Orders page must call useTrimOrdersListOnLeave()");
 });

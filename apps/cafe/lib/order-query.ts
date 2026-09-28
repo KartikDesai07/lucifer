@@ -76,3 +76,20 @@ export function dedupeOrdersById<T extends { _id: string }>(pages: T[][]): T[] {
   }
   return out;
 }
+
+/**
+ * An infinite-query result cut back to its FIRST page — what the Orders page
+ * leaves in the cache as it closes. TanStack refetches EVERY kept page, one
+ * after another, when a list comes back into use, so a list someone paged
+ * through ten times would cost ten sequential requests on the next visit (on
+ * a slow counter link, seconds). The first page is all a returning operator
+ * needs to see at once; older pages load on "Load more" as before. Returns
+ * the same object when there is nothing to cut, so an unchanged cache stays
+ * reference-equal.
+ */
+export function firstPageOnly<TPage, TParam>(
+  data: { pages: TPage[]; pageParams: TParam[] } | undefined,
+): { pages: TPage[]; pageParams: TParam[] } | undefined {
+  if (!data || data.pages.length <= 1) return data;
+  return { pages: data.pages.slice(0, 1), pageParams: data.pageParams.slice(0, 1) };
+}

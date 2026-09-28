@@ -1,7 +1,10 @@
 "use client";
 
+import { useEffect } from "react";
+
 import {
   useInfiniteQuery,
+  type InfiniteData,
   useIsMutating,
   useMutation,
   useQuery,
@@ -11,7 +14,7 @@ import { toast } from "sonner";
 import { apiGet, apiSend } from "@/lib/api-client";
 import { cafeDateString } from "@/lib/utils";
 import { STALE_TIMES, GC_TIMES, REFETCH_INTERVALS } from "@/lib/query";
-import { nextOrderCursor } from "@/lib/order-query";
+import { firstPageOnly, nextOrderCursor } from "@/lib/order-query";
 import { TABLE_KEYS } from "@/hooks/use-tables";
 import { CUSTOMER_KEYS } from "@/hooks/use-customers";
 import { PRODUCT_KEYS } from "@/hooks/use-products";
@@ -113,6 +116,12 @@ export function useOrders(
 // query and the {pages,pageParams} infinite query never share a cache entry
 // shape — see the ORDER_KEYS.infinite comment above.
 const ORDERS_PAGE_SIZE = 50; // mirrors app/api/orders/route.ts's DEFAULT_LIMIT
+// How long the Orders page's list survives while nobody is looking at it — six
+// times the live lists' GC_TIMES.ORDERS. Coming back to Orders mid-service then
+// paints the last rows at once while the refetch runs (staleTime stays 0, so it
+// always refetches), instead of a skeleton for a whole round trip on a slow
+// counter link. Only the first page is kept (useTrimOrdersListOnLeave below).
+const ORDERS_LIST_GC_MS = 30 * 60 * 1000;
 
 export function useOrdersInfinite(filters: OrderFilters = {}) {
   const pageSize = filters.limit ?? ORDERS_PAGE_SIZE;
@@ -129,9 +138,28 @@ export function useOrdersInfinite(filters: OrderFilters = {}) {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage: Order[]) => nextOrderCursor(lastPage, pageSize),
     staleTime: STALE_TIMES.LIVE,
-    gcTime: GC_TIMES.ORDERS,
+    gcTime: ORDERS_LIST_GC_MS,
     refetchOnWindowFocus: !isMutating,
   });
+}
+
+// Called by the Orders page: as it closes, every cached list is cut back to its
+// first page (firstPageOnly), because TanStack refetches EVERY kept page in
+// sequence when a list is shown again — one request on return, not ten. It
+// trims the whole ORDER_KEYS.infinite prefix because the Orders page is its
+// ONLY reader (every filter combination it visited is one of its own lists); a
+// second screen that mounts useOrdersInfinite must scope this to its own keys.
+export function useTrimOrdersListOnLeave() {
+  const qc = useQueryClient();
+  useEffect(
+    () => () => {
+      qc.setQueriesData<InfiniteData<Order[], string | undefined>>(
+        { queryKey: ORDER_KEYS.infinite },
+        (data) => firstPageOnly(data),
+      );
+    },
+    [qc],
+  );
 }
 
 // Build a transient optimistic order from the create payload so the orders list

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 
 import { useAuth } from "@/hooks/use-auth";
+import { useWarmRoutes } from "@/hooks/use-warm-routes";
 import { useSettings } from "@/hooks/use-settings";
 import { brandFontVariables } from "@/lib/brand-fonts";
 import { brandingUrl, productImageUrl } from "@/lib/images";
@@ -64,12 +65,16 @@ type NavItem = {
   adminOnly?: boolean;
 };
 
-type NavSection = { label?: string; items: NavItem[] };
+/** `warm`: the service screens staff hop between all shift — kept fully
+ *  prefetched (hooks/use-warm-routes.ts) so opening one never waits for the
+ *  network. Setup and admin screens load on click as before. */
+type NavSection = { label?: string; warm?: boolean; items: NavItem[] };
 
 const sections: NavSection[] = [
-  { items: [{ title: "Dashboard", url: "/", icon: LayoutDashboard }] },
+  { warm: true, items: [{ title: "Dashboard", url: "/", icon: LayoutDashboard }] },
   {
     label: "Service",
+    warm: true,
     items: [
       { title: "New Order", url: "/pos", icon: ShoppingCart },
       { title: "Order Requests", url: "/requests", icon: Inbox },
@@ -154,8 +159,12 @@ export function AppSidebar() {
   const visibleSections = sections
     .map((section) => ({ ...section, items: section.items.filter((item) => !item.adminOnly || isAdmin) }))
     .filter((section) => section.items.length > 0);
+  const warmHrefs = visibleSections
+    .filter((section) => section.warm)
+    .flatMap((section) => section.items.map((item) => item.url));
+  useWarmRoutes(warmHrefs);
 
-  const renderItem = (item: NavItem) => {
+  const renderItem = (item: NavItem, warm = false) => {
     if (item.url === "/settings") {
       return (
         <SidebarSettingsGroup
@@ -178,7 +187,12 @@ export function AppSidebar() {
     return (
       <SidebarMenuItem key={item.url}>
         <SidebarMenuButton asChild isActive={active} tooltip={brandTooltip(item.title)} className={BRAND_NAV_ITEM_CLASS}>
-          <Link href={item.url} aria-current={active ? "page" : undefined} onClick={closeMobile}>
+          <Link
+            href={item.url}
+            prefetch={warm ? true : undefined}
+            aria-current={active ? "page" : undefined}
+            onClick={closeMobile}
+          >
             <item.icon aria-hidden="true" />
             {!collapsed && <span>{item.title}</span>}
           </Link>
@@ -211,7 +225,7 @@ export function AppSidebar() {
                   )}
                   <SidebarGroupContent>
                     <SidebarMenu className="gap-0.5" aria-labelledby={section.label ? id : undefined}>
-                      {section.items.map(renderItem)}
+                      {section.items.map((item) => renderItem(item, section.warm))}
                     </SidebarMenu>
                   </SidebarGroupContent>
                 </SidebarGroup>

@@ -5,6 +5,7 @@ import { Receipt, Search } from "lucide-react";
 
 import {
   useOrdersInfinite,
+  useTrimOrdersListOnLeave,
   useCancelOrder,
   type OrderFilters,
 } from "@/hooks/use-orders";
@@ -73,6 +74,7 @@ export default function OrdersPage() {
     phone: phone || undefined,
   };
   const orders = useOrdersInfinite(filters);
+  useTrimOrdersListOnLeave();
   const { isAdmin } = useAuth();
   const cancelOrder = useCancelOrder();
   const tables = useTables();
