@@ -19,6 +19,7 @@ import { computeOrderTotals, gstConfigFromOrder, resolveDiscountKind } from "@/l
 import { readSettings } from "@/lib/settings";
 import { grantStampForSettledOrder } from "@/lib/diner-loyalty-earn";
 import { voidGuardFilter } from "@/lib/order-void";
+import { settleRefusal } from "@/lib/settle-guard";
 import { getSettings, gstConfigOf } from "@/lib/settings";
 import { printConfigOf, printedSlipNumber } from "@/lib/print";
 import { nextSlipSequence } from "@/models/Counter";
@@ -60,10 +61,11 @@ export async function POST(req: Request, { params }: Params) {
     await connectDB();
     const old = await Order.findById(id).lean();
     if (!old) return notFound("Order not found");
-    // The Pending CAS below would 409 anyway, but with a message that sends the
-    // operator looking for a phantom concurrent edit.
-    if (old.status === "Cancelled") return failure("Order was cancelled", 409);
-    if (old.status === "Completed") return failure("Order already settled", 409);
+    // Cancelled, already settled, or not the tab the operator's bill was priced
+    // from (the expectedTotal/expectedVoids echo) — lib/settle-guard.ts, shared
+    // with the live-leg verifier so both refuse on the same rules.
+    const refusal = settleRefusal(old, data);
+    if (refusal) return failure(refusal, 409);
 
     // CB-5B S5 — a reward claimed AT SETTLE TIME. refuseItemKind: TRUE (D9,
     // owner decision): a free DISH has to reach the kitchen while the order

@@ -15,10 +15,12 @@ import { useFreeTablePrompt } from "@/hooks/use-free-table-prompt";
 import { useSettings } from "@/hooks/use-settings";
 import { useCreateOrder, useAddOrderItems, useSettleOrder } from "@/hooks/use-orders";
 import { useRewardSelection } from "@/hooks/use-customer-rewards";
+import { usePosSettleLane } from "@/hooks/use-pos-settle-lane";
+import type { SettleDraft } from "@/components/layout/PendingWritesProvider";
 import type { DiscountUnit } from "@/components/pos/Cart";
 import type { PaymentResult } from "@/components/pos/PaymentModal";
 import { collectedAmount } from "@/lib/payment-result";
-import type { Customer, Order, CreateOrderInput } from "@/types";
+import type { Customer, Order, CreateOrderInput, SettleOrderInput } from "@/types";
 
 type PaymentIntent = "pay" | "settle";
 
@@ -311,31 +313,47 @@ export function usePosTab(receiver: string) {
     setPaymentOpen(true);
   };
 
+  // ONE settle payload for both lanes (background / foreground), so a tab can
+  // never be settled with different money depending on which lane took it.
+  const settlePayload = (result: PaymentResult, tab: Order): SettleOrderInput => ({
+    payment: result.payment as SettlementPayMode,
+    splitCash: result.splitCash,
+    splitOnline: result.splitOnline,
+    customerId: customer?._id,
+    // The operator can change the discount on a resumed tab right up to
+    // settlement; the server re-clamps + recomputes the total from it.
+    discount,
+    discountKind: discountKind ?? null,
+    // Same rule as the create payload: only when they touched it.
+    // Omitted leaves the tab's snapshotted charge exactly as it is.
+    chargeAmount: chargeOverride,
+    // CB-CHG — the complete new extra set (replace, decision 6).
+    extraCharges,
+    paidAmount: collectedAmount(result),
+    // Only meaningful alongside a defined paidAmount above — lets the
+    // route detect a stale modalTotals snapshot (CR1.2 regression).
+    total: modalTotals.total,
+    // The tab this bill was priced from: the route refuses once it has moved
+    // (lib/settle-guard.ts), so a re-send can never close a bigger bill.
+    expectedTotal: tab.total,
+    expectedVoids: tab.voids?.length ?? 0,
+  });
+
   const confirmPayment = async (result: PaymentResult) => {
     try {
       if (paymentIntent === "settle" && resumedOrder) {
-        const updated = await settleOrder.mutateAsync({
-          id: resumedOrder._id,
-          data: {
-            payment: result.payment as SettlementPayMode,
-            splitCash: result.splitCash,
-            splitOnline: result.splitOnline,
-            customerId: customer?._id,
-            // The operator can change the discount on a resumed tab right up to
-            // settlement; the server re-clamps + recomputes the total from it.
-            discount,
-            discountKind: discountKind ?? null,
-            // Same rule as the create payload: only when they touched it.
-            // Omitted leaves the tab's snapshotted charge exactly as it is.
-            chargeAmount: chargeOverride,
-            // CB-CHG — the complete new extra set (replace, decision 6).
-            extraCharges,
-            paidAmount: collectedAmount(result),
-            // Only meaningful alongside a defined paidAmount above — lets the
-            // route detect a stale modalTotals snapshot (CR1.2 regression).
-            total: modalTotals.total,
-          },
-        });
+        // Background lane (a print host owns printing): the popup closes now
+        // and PendingWritesProvider finishes the settle and prints the bill —
+        // a slow counter network must not hold the next customer up.
+        if (settleLane.backgroundReady) {
+          const draft: SettleDraft = { discountRaw, discountUnit, chargeOverride, extraCharges, customer };
+          if (settleLane.enqueueSettle(resumedOrder, settlePayload(result, resumedOrder), draft)) {
+            setPaymentOpen(false);
+            resetOrder();
+          }
+          return;
+        }
+        const updated = await settleOrder.mutateAsync({ id: resumedOrder._id, data: settlePayload(result, resumedOrder) });
         print.queueReceipt(updated);
       } else {
         const order = await createOrder.mutateAsync(
@@ -402,12 +420,31 @@ export function usePosTab(receiver: string) {
         .map((c) => ({ label: c.label, amount: c.amount })),
     );
     hydrate(order.items.map((it, i) => cartItemFromOrderItem(it, i)));
+    // Opening a tab resolves its failed-settle alert, and after "Reopen tab"
+    // puts back what the operator had set (hooks/use-pos-settle-lane.ts).
+    settleLane.resumed(order);
   };
 
   // Resuming replaces the cart wholesale. If a fresh (unsent) cart is in
   // progress, confirm first so those local items aren't silently discarded
   // (mirrors the close-tab guard).
+  // "Reopen tab" after a failed background settle, and the guard that keeps a
+  // still-settling tab shut (hooks/use-pos-settle-lane.ts).
+  const settleLane = usePosSettleLane({
+    // Through requestResume, so an unsent cart still gets its confirm.
+    resume: (order) => requestResume(order),
+    activity: `${resumedOrder?._id ?? ""}|${cart.length}`,
+    applyDraft: (draft) => {
+      setDiscountRaw(draft.discountRaw);
+      setDiscountUnit(draft.discountUnit);
+      setChargeOverride(draft.chargeOverride);
+      setExtraCharges(draft.extraCharges);
+      if (draft.customer) setCustomer(draft.customer);
+    },
+  });
+
   const requestResume = (order: Order) => {
+    if (!settleLane.mayResume(order)) return;
     if (newCount > 0) setPendingResume(order);
     else enterResume(order);
   };
@@ -415,7 +452,10 @@ export function usePosTab(receiver: string) {
     if (pendingResume) enterResume(pendingResume);
     setPendingResume(null);
   };
-  const cancelResume = () => setPendingResume(null);
+  const cancelResume = () => {
+    setPendingResume(null);
+    settleLane.resumeCancelled();
+  };
 
   const requestCloseTab = () => {
     if (newCount > 0) setCloseConfirmOpen(true);

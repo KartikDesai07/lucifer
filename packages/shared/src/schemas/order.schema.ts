@@ -249,6 +249,15 @@ export const settleOrderSchema = z
     // lets the route detect a stale client view (CR1.2 regression) instead of
     // pricing a partial payment against a bill the operator never looked at.
     total: z.number().min(0).optional(),
+    // The tab the operator's bill was priced FROM — its stored total and
+    // void-trail length (the void route's `expectedVoids` discipline). Unlike
+    // `total` above these echo the server's own stored numbers, so they are
+    // checked on EVERY settle: the route refuses once the tab has moved (a new
+    // round on another device), so neither a stale view nor a background re-send
+    // can close a bigger bill as paid (apps/cafe/lib/settle-guard.ts).
+    // Omit = not checked.
+    expectedTotal: z.number().min(0).optional(),
+    expectedVoids: z.number().int().min(0).optional(),
   })
   .strict();
 

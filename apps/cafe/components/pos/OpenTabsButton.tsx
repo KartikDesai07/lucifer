@@ -15,6 +15,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { usePendingWrites } from "@/components/layout/PendingWritesProvider";
 import type { Order } from "@/types";
 
 interface OpenTabsButtonProps {
@@ -29,6 +30,9 @@ interface OpenTabsButtonProps {
 // alike (a tab needn't have a table).
 export function OpenTabsButton({ tabs, onResume, className }: OpenTabsButtonProps) {
   const [open, setOpen] = useState(false);
+  // A tab whose settle is still being sent in the background can't be
+  // resumed — shown, but shut (the resume guard in use-pos-settle-lane agrees).
+  const { isSettling } = usePendingWrites();
 
   const resume = (order: Order) => {
     onResume(order);
@@ -74,7 +78,8 @@ export function OpenTabsButton({ tabs, onResume, className }: OpenTabsButtonProp
                 <button
                   type="button"
                   onClick={() => resume(t)}
-                  className="flex w-full items-center justify-between rounded-lg border p-3 text-left transition hover:bg-muted/60"
+                  disabled={isSettling(t._id)}
+                  className="flex w-full items-center justify-between rounded-lg border p-3 text-left transition hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">
@@ -86,7 +91,7 @@ export function OpenTabsButton({ tabs, onResume, className }: OpenTabsButtonProp
                     </p>
                   </div>
                   <span className="shrink-0 text-sm font-semibold">
-                    {inr(t.total)}
+                    {isSettling(t._id) ? "Settling…" : inr(t.total)}
                   </span>
                 </button>
               </li>

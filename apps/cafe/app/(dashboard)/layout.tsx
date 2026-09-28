@@ -13,6 +13,7 @@ import { Header } from "@/components/layout/Header";
 import { MasterDataProvider } from "@/components/layout/MasterDataProvider";
 import { PosPulseProvider } from "@/components/layout/PosPulseProvider";
 import { PrintHostProvider } from "@/components/layout/PrintHostProvider";
+import { PendingWritesProvider } from "@/components/layout/PendingWritesProvider";
 import { SessionKeepalive } from "@/components/layout/SessionKeepalive";
 import { RequestAlertBar } from "@/components/orders/RequestAlertBar";
 import { PrintHostPrintSources } from "@/components/print/PrintHostPrintSources";
@@ -81,24 +82,30 @@ export default function DashboardLayout({
             sits inside SidebarInset after <main> — absolute, zero in-flow height,
             null while idle — so the height-chain matrix is untouched. */}
         <PrintHostProvider>
-          {/* CB-DL-1: one master-data call per page load. Seeds the five master
-              query keys from this tab's stored copy synchronously (before any
-              screen renders) and fetches GET /api/bootstrap once; a fresh tab
-              waits behind a placeholder so the mounted screens cannot each fire
-              their own master fetch first. */}
-          <MasterDataProvider>
-            {/* CB-U1: the session keepalive rolls the 30-day cookie for a tab
-                that never navigates — staff screens only, never /login or /m. */}
-            <SessionKeepalive />
-            <AppSidebar />
-            <SidebarInset>
-              <Header />
-              <RequestAlertBar />
-              <TouchFeel />
-              <main className="flex-1 p-4 md:p-6">{children}</main>
-              <PrintHostPrintSources />
-            </SidebarInset>
-          </MasterDataProvider>
+          {/* Background settles (owner rule 2026-09-28): the payment popup
+              closes at once and this finishes the write on whichever screen
+              the operator moves to — so it sits above every page, under
+              PosPulseProvider (its print routing reads the pulse). */}
+          <PendingWritesProvider>
+            {/* CB-DL-1: one master-data call per page load. Seeds the five master
+                query keys from this tab's stored copy synchronously (before any
+                screen renders) and fetches GET /api/bootstrap once; a fresh tab
+                waits behind a placeholder so the mounted screens cannot each fire
+                their own master fetch first. */}
+            <MasterDataProvider>
+              {/* CB-U1: the session keepalive rolls the 30-day cookie for a tab
+                  that never navigates — staff screens only, never /login or /m. */}
+              <SessionKeepalive />
+              <AppSidebar />
+              <SidebarInset>
+                <Header />
+                <RequestAlertBar />
+                <TouchFeel />
+                <main className="flex-1 p-4 md:p-6">{children}</main>
+                <PrintHostPrintSources />
+              </SidebarInset>
+            </MasterDataProvider>
+          </PendingWritesProvider>
         </PrintHostProvider>
       </PosPulseProvider>
     </SidebarProvider>

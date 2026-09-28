@@ -337,13 +337,16 @@ test("PIN (D9): use-pos-tab.ts's SETTLE payload block does NOT carry rewardAt �
   // Positive landmark: the settle call site really exists and is the thing
   // being scoped, so the absence check below cannot pass vacuously against a
   // missing/renamed block.
-  const settleCallIdx = src.indexOf("const updated = await settleOrder.mutateAsync({");
-  assert.ok(settleCallIdx >= 0, "landmark: the settle mutateAsync call site must be found");
-  // Scope to the settle call's own data block: from its opening brace to the
-  // matching close, i.e. up to (and just past) the confirmPayment `else {`
-  // that starts the create-branch that follows it.
-  const elseIdx = src.indexOf("} else {", settleCallIdx);
-  assert.ok(elseIdx > settleCallIdx, "landmark: the settle branch must be followed by the create-branch's `} else {`");
+  // 2026-09-28: the settle payload is built ONCE, by settlePayload(), for both
+  // lanes — the background settle (PendingWritesProvider) and the foreground
+  // mutation. Pin that both lanes use it, then scope the check to its body.
+  assert.match(src, /settleLane\.enqueueSettle\(resumedOrder, settlePayload\(result, resumedOrder\), draft\)/, "landmark: the background lane sends settlePayload(result, resumedOrder)");
+  assert.match(src, /settleOrder\.mutateAsync\(\{ id: resumedOrder\._id, data: settlePayload\(result, resumedOrder\) \}\)/, "landmark: the foreground lane sends settlePayload(result, resumedOrder)");
+  const settleCallIdx = src.indexOf("const settlePayload = (result: PaymentResult, tab: Order): SettleOrderInput => ({");
+  assert.ok(settleCallIdx >= 0, "landmark: the settle payload builder must be found");
+  // Scope to the builder's own object literal: up to the `});` that closes it.
+  const elseIdx = src.indexOf("\n  });", settleCallIdx);
+  assert.ok(elseIdx > settleCallIdx, "landmark: the settle payload builder must close with `});`");
   const settleSlice = src.slice(settleCallIdx, elseIdx);
   assert.match(settleSlice, /paidAmount:\s*collectedAmount\(result\),/, "landmark: the settle payload must still carry paidAmount — confirms the slice bounds the right block");
   assert.ok(

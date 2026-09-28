@@ -43,6 +43,8 @@ import { resolveItemVoid, voidGuardFilter, type ItemVoidRequest } from "@/lib/or
 import { resolveTableCharge } from "@/lib/table-admin";
 import { printConfigOf, printedSlipNumber } from "@/lib/print";
 import { nextSlipSequence } from "@/models/Counter";
+import { reconcileSettle } from "@/lib/pending-writes";
+import { TAB_CHANGED, settleRefusal } from "@/lib/settle-guard";
 
 const SCRATCH_PREFIX = "pos_scratch_";
 const DEFAULT_URI = `mongodb://127.0.0.1:27017/${SCRATCH_PREFIX}order_integrity`;
@@ -2008,6 +2010,100 @@ async function leg18(): Promise<void> {
   check("g) inclusive-mode stored gstAmount === 0", orderG.gstAmount === 0);
 }
 
+// 2026-09-28 — background settle (PendingWritesProvider). A settle whose
+// answer never reached the counter is RE-SENT; these two legs prove, against a
+// real mongod, the route's own refusal helper (lib/settle-guard.ts, run on a
+// FRESH read exactly as the route does) and its exact write shape, that a
+// re-send can never settle twice nor close a tab that grew after the money was
+// taken, and that lib/pending-writes' reconcileSettle reads the order
+// correctly in both directions.
+async function leg19(): Promise<void> {
+  console.log("\nLeg 19 — a re-sent settle after the first one already landed: no second write, and it is recognised as OURS\n");
+  const order = await Order.create(
+    buildOrder({
+      orderId: "ORD-LEG19-001",
+      items: [line(fixtureHex("p-a"), "Item A", 300, 1, 1)],
+      payment: "Unpaid",
+      status: "Pending",
+      kotRounds: 1,
+    }),
+  );
+  const snapshot = await Order.findById(order._id).lean<LeanOrder>();
+  if (!snapshot) throw new Error("leg19: seed order missing");
+  const write = buildSettleWrite(snapshot, { payment: "Cash" }, LIVE_GST_FALLBACK);
+  if (!write.ok) throw new Error("leg19: settle should resolve cleanly");
+  const first = await Order.findOneAndUpdate(write.filter, write.update, { new: true, runValidators: true }).lean();
+  check("the first settle lands (the one whose answer the counter never got)", first?.status === "Completed");
+  const updatedAtAfterFirst = String(first?.updatedAt);
+  // The re-send is a NEW request: the route re-reads the order and refuses it
+  // before pricing anything (lib/settle-guard.ts, the route's own helper).
+  const reRead = await Order.findById(order._id).lean<LeanOrder>();
+  if (!reRead) throw new Error("leg19: order vanished");
+  check(
+    "the re-sent settle is refused on the route's fresh read — 409 'Order already settled', nothing priced",
+    settleRefusal(reRead, { expectedTotal: snapshot.total, expectedVoids: snapshot.voids?.length ?? 0 }) === "Order already settled",
+  );
+  // Belt: even a write built from the old read matches nothing.
+  const replay = await Order.findOneAndUpdate(write.filter, write.update, { new: true, runValidators: true }).lean();
+  check("…and the old write itself matches NOTHING — no second write either way", replay === null);
+  const final = await Order.findById(order._id).lean();
+  check("the order was written exactly once (updatedAt unchanged by the re-send)", String(final?.updatedAt) === updatedAtAfterFirst);
+  check(
+    "reconcileSettle reads the landed order as OUR settle (adopt → one bill)",
+    final !== null && reconcileSettle({ payment: "Cash" }, final as never) === "adopt",
+  );
+  check(
+    "…and the same order as someone ELSE's when we asked for another mode (elsewhere → no bill)",
+    final !== null && reconcileSettle({ payment: "Online" }, final as never) === "elsewhere",
+  );
+}
+
+async function leg20(): Promise<void> {
+  console.log("\nLeg 20 — a re-sent settle racing another device's new round: the stale re-send lands nowhere and the tab stays open\n");
+  const order = await Order.create(
+    buildOrder({
+      orderId: "ORD-LEG20-001",
+      items: [line(fixtureHex("p-a"), "Item A", 300, 1, 1)],
+      payment: "Unpaid",
+      status: "Pending",
+      kotRounds: 1,
+    }),
+  );
+  const snapshot = await Order.findById(order._id).lean<LeanOrder>();
+  if (!snapshot) throw new Error("leg20: seed order missing");
+  // Our first attempt never reached the server; meanwhile device B fires a round.
+  const round = buildItemsWrite(snapshot, [line(fixtureHex("p-water"), "Water", 20, 1, 0)], undefined, LIVE_GST_FALLBACK);
+  const afterRound = await Order.findOneAndUpdate(round.filter, round.update, { new: true, runValidators: true }).lean();
+  check("device B's round lands and raises the total", afterRound !== null && afterRound.total > snapshot.total);
+  // Our re-send is a NEW request: the route prices it from its OWN fresh read,
+  // so the CAS alone would let it land on the bigger bill (the hole the echo
+  // closes — review 2026-09-28). Proven here, without writing it:
+  const fresh = await Order.findById(order._id).lean<LeanOrder>();
+  if (!fresh) throw new Error("leg20: order vanished");
+  const freshWrite = buildSettleWrite(fresh, { payment: "Cash" }, LIVE_GST_FALLBACK);
+  if (!freshWrite.ok) throw new Error("leg20: settle should resolve cleanly");
+  check(
+    "without the echo, a re-send priced on the route's fresh read WOULD match the tab (the bigger bill, as paid in full)",
+    (await Order.countDocuments(freshWrite.filter)) === 1,
+  );
+  // The payload names the tab the cashier priced (use-pos-tab settlePayload).
+  const seen = { expectedTotal: snapshot.total, expectedVoids: snapshot.voids?.length ?? 0 };
+  check(
+    "with it, the route refuses on the fresh read — 409 'Tab changed', nothing priced, nothing written",
+    settleRefusal(fresh, seen) === TAB_CHANGED,
+  );
+  check(
+    "…while a settle priced from the tab as it is now still goes through",
+    settleRefusal(fresh, { expectedTotal: fresh.total, expectedVoids: fresh.voids?.length ?? 0 }) === null,
+  );
+  const final = await Order.findById(order._id).lean<LeanOrder>();
+  check("the tab is still Pending with B's round on it", final?.status === "Pending" && (final?.items.length ?? 0) === 2);
+  check(
+    "reconcileSettle reads it as still OPEN — with the 409 that makes a loud 'not settled' alert, never a retry loop",
+    final !== null && reconcileSettle({ payment: "Cash" }, final as never) === "open",
+  );
+}
+
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
   const dbName = new URL(uri.replace("mongodb://", "http://")).pathname.slice(1);
@@ -2043,6 +2139,8 @@ async function main(): Promise<void> {
     await leg16();
     await leg17();
     await leg18();
+    await leg19();
+    await leg20();
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();

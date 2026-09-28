@@ -35,6 +35,7 @@ import { OrderVoidTrail } from "@/components/orders/OrderVoidTrail";
 import { MoveTableDialog } from "@/components/orders/MoveTableDialog";
 import type { PaymentResult } from "@/components/pos/PaymentModal";
 import { collectedAmount } from "@/lib/payment-result";
+import { usePendingWrites } from "@/components/layout/PendingWritesProvider";
 import type { Customer, Order } from "@/types";
 
 const PaymentModal = dynamic(
@@ -102,6 +103,11 @@ export function OrderDetailSheet({
   const { routePrint, enqueuePending } = useHostRouting();
   const [settleOpen, setSettleOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
+  // A tab the POS is settling in the background (PendingWritesProvider) is
+  // not settled or moved from here meanwhile — that would be a second payment
+  // taken for one bill on this very device.
+  const pendingWrites = usePendingWrites();
+  const settlingHere = !!order && pendingWrites.isSettling(order._id);
   // Only relevant for a Due/Credit (or partial) settle on an order that has no
   // customer yet — reset whenever the sheet switches to viewing a new order.
   const [settleCustomer, setSettleCustomer] = useState<Customer | undefined>();
@@ -216,9 +222,15 @@ export function OrderDetailSheet({
           // Only meaningful alongside a defined paidAmount above — lets the
           // route detect a stale `order` snapshot (CR1.2 regression).
           total: order.total,
+          // The tab this sheet is showing — refused once it has moved
+          // (lib/settle-guard.ts), so a bill is never closed unseen.
+          expectedTotal: order.total,
+          expectedVoids: order.voids?.length ?? 0,
         },
       });
       setSettleOpen(false);
+      // Settled here: any "not settled" alert for this tab is now answered.
+      pendingWrites.dismiss(updated._id);
       onSettled?.(updated);
     } catch {
       // hook toasts on error; leave the modal open to retry
@@ -397,14 +409,14 @@ export function OrderDetailSheet({
                 for a seated one. Owner decision: all staff, no admin gate
                 (matches Settle, not Cancel). */}
             {isOpenTab && (
-              <Button variant="outline" onClick={() => setMoveOpen(true)}>
+              <Button variant="outline" onClick={() => setMoveOpen(true)} disabled={settlingHere}>
                 <Replace className="mr-2 h-4 w-4" /> {order.tableNo ? "Move table" : "Assign table"}
               </Button>
             )}
           </div>
           {isOpenTab && (
-            <Button className="w-full" onClick={() => setSettleOpen(true)}>
-              <HandCoins className="mr-2 h-4 w-4" /> Settle &amp; Pay
+            <Button className="w-full" onClick={() => setSettleOpen(true)} disabled={settlingHere}>
+              <HandCoins className="mr-2 h-4 w-4" /> {settlingHere ? "Settling in the background…" : <>Settle &amp; Pay</>}
             </Button>
           )}
         </SheetFooter>

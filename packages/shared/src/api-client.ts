@@ -11,17 +11,50 @@ type ApiEnvelope<T> =
   | { success: true; data: T }
   | { success: false; error: string; details?: Record<string, string[]> };
 
+/** How a request failed — what a caller retrying a WRITE needs to know:
+ *  "http"    the server answered with an error (`status` says which);
+ *  "timeout" the REQUEST_TIMEOUT_MS abort fired — the server may still have
+ *            done the work;
+ *  "network" the request never got a response (offline, connection reset) —
+ *            again, the server may or may not have received it.
+ *  The message is exactly what the callers have always toasted. */
+export type ApiErrorKind = "http" | "network" | "timeout";
+
+export class ApiError extends Error {
+  readonly status: number | null;
+  readonly kind: ApiErrorKind;
+  constructor(message: string, kind: ApiErrorKind, status: number | null) {
+    super(message);
+    this.name = "ApiError";
+    this.kind = kind;
+    this.status = status;
+  }
+}
+
+const REQUEST_FAILED_MESSAGE = "Request failed";
+
 async function unwrap<T>(res: Response): Promise<T> {
   const body = (await res.json().catch(() => null)) as ApiEnvelope<T> | null;
   if (!body || !body.success) {
-    throw new Error(body && "error" in body ? body.error : "Request failed");
+    throw new ApiError(body && "error" in body ? body.error : REQUEST_FAILED_MESSAGE, "http", res.status);
   }
   return body.data;
 }
 
+/** A fetch that never answered, re-thrown as an ApiError with the same message
+ *  the browser gave (an abort from the timeout reads as a TimeoutError). */
+function transportError(e: unknown): ApiError {
+  const name = e instanceof Error ? e.name : "";
+  const message = e instanceof Error && e.message ? e.message : REQUEST_FAILED_MESSAGE;
+  return new ApiError(message, name === "TimeoutError" || name === "AbortError" ? "timeout" : "network", null);
+}
+
 export function apiGet<T>(url: string): Promise<T> {
-  return fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }).then((res) =>
-    unwrap<T>(res),
+  return fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }).then(
+    (res) => unwrap<T>(res),
+    (e: unknown) => {
+      throw transportError(e);
+    },
   );
 }
 
@@ -38,5 +71,10 @@ export function apiSend<T>(
     headers: { "Content-Type": "application/json" },
     body: payload === undefined ? undefined : JSON.stringify(payload),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  }).then((res) => unwrap<T>(res));
+  }).then(
+    (res) => unwrap<T>(res),
+    (e: unknown) => {
+      throw transportError(e);
+    },
+  );
 }
