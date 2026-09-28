@@ -111,68 +111,52 @@ test("PIN: items/route.ts returns the claimed stamps ONLY inside the if (!update
 
 // ── 4: NOT-FIRE-AND-FORGET ───────────────────────────────────────────────────
 
-test("PIN: settle/route.ts's reward claim is NOT wrapped in the earn-side's empty-catch shape — a failed claim 409s the settle instead of being swallowed", () => {
+test("PIN: settle's reward claim is NOT wrapped in the earn-side's empty-catch shape — a failed claim 409s the settle, while the earn-side grant (now lib/settle-followups.ts) stays swallowed", () => {
   const src = stripComments(readSrc("app/api/orders/[id]/settle/route.ts"));
-  // Positive landmark: the earn-side grant DOES use the fire-and-forget
-  // try/swallow shape (so this pin knows the shape it's checking for exists
-  // in this file at all, and isn't just failing to find it anywhere). Scoped
-  // to the earn-side's OWN try block — the NEAREST "try {" immediately
-  // preceding the grant call — not the outer handler-wide try that wraps the
-  // whole POST body (which would trivially "contain" everything including
-  // the claim call too, making the check vacuous).
-  const grantIdx = mustIndexOf(src, "const granted = await grantStampForSettledOrder(", "the earn-side grant call");
-  const earnTryIdx = src.lastIndexOf("try {", grantIdx);
-  assert.ok(earnTryIdx !== -1, "landmark: the earn-side grant must be wrapped in its own try {");
-  const earnCatchIdx = src.indexOf("} catch {", grantIdx);
-  assert.ok(earnCatchIdx !== -1, "landmark: the earn-side grant's try must be followed by its own swallowed catch");
-  // The claim call must fall OUTSIDE [earnTryIdx, earnCatchIdx] — proving the
-  // "nearest try" really did land on the earn-side's own small block, not the
-  // outer handler try (whose start is far earlier in the file).
-  const outerTryIdx = mustIndexOf(src, "try {", "the outer handler try block");
+  // Smooth-writes Slice B moved the earn-side grant out of the route into
+  // runSettleFollowUps (lib/settle-followups.ts), which runs only AFTER the
+  // settle CAS has landed. The route half: the claim is still called directly
+  // under `if (claim) {` (no try { wrapper), fails loud with its own 409, and
+  // the route itself no longer grants anything.
+  mustIndexOf(src, "runSettleFollowUps(", "landmark: the route hands its follow-ups to runSettleFollowUps");
   assert.ok(
-    earnTryIdx > outerTryIdx,
-    "landmark: the earn-side's nearest try { must be a DIFFERENT (later, nested) try than the outer handler's",
+    !src.includes("grantStampForSettledOrder"),
+    "the settle route must not grant the stamp itself — the grant lives in lib/settle-followups.ts",
   );
-  // The claim call itself must NOT sit between the earn-side's OWN try { and
-  // its matching catch — i.e. it must not be wrapped in that same
-  // swallow-everything block.
-  const claimIdx = mustIndexOf(
-    src,
-    "const claimed = await claimRewardStamps(String(old.customerId), old.orderId, claim.cost, rewardAssignment);",
-    "the settle-time claim call",
-  );
-  assert.ok(
-    claimIdx < earnTryIdx || claimIdx > earnCatchIdx,
-    "claimRewardStamps must be outside the grantStampForSettledOrder try/catch — the claim itself precedes that try block entirely in this route",
-  );
-  // Direct shape pin (catches a NEW try/catch introduced around the claim
-  // itself, which the two checks above cannot see since they only compare
-  // against the EARN-side's own try/catch): the `if (claim) {` guard must be
-  // followed IMMEDIATELY (module whitespace only) by the claim's own const
-  // declaration — no `try {` may be inserted between them.
   assert.match(
     src,
     /if\s*\(claim\)\s*\{\s*const\s+claimed\s*=\s*await\s+claimRewardStamps\(/,
     "the if (claim) guard must be followed directly by the claim call, with no try { wrapper introduced around it",
   );
-  // A failed claim must 409, not be swallowed: the call site immediately
-  // gates on its own boolean and fails loud.
   assert.match(
     src,
     /if\s*\(!claimed\)\s*return\s*failure\("Not enough stamps for that reward",\s*409\);/,
     "a failed settle-time claim must return a 409, never be swallowed like the earn-side grant",
   );
-  // And the grant call IS swallowed (empty catch), by contrast — proving the
-  // two shapes really do differ in this file, not just in the pin's mind.
-  // stripComments removes the explanatory comment inside the catch but keeps
-  // its line terminator, so the block reads as "} catch {" then only
-  // whitespace up to the closing "}".
-  const catchBody = src.slice(earnCatchIdx + "} catch {".length, src.indexOf("}", earnCatchIdx + "} catch {".length));
-  assert.equal(
-    catchBody.trim(),
-    "",
-    "landmark: the earn-side grant's catch block must still be empty (fire-and-forget) after stripping its comment",
+  // The claim must precede the runSettleFollowUps hand-off (claim before CAS,
+  // grant after it) — the two shapes cannot share one block.
+  const claimIdx = mustIndexOf(
+    src,
+    "const claimed = await claimRewardStamps(String(old.customerId), old.orderId, claim.cost, rewardAssignment);",
+    "the settle-time claim call",
   );
+  assert.ok(claimIdx < src.indexOf("runSettleFollowUps("), "the claim runs before the post-CAS follow-ups");
+
+  // The lib half: the grant IS swallowed — its NEAREST try {, and an EMPTY
+  // catch after comment-stripping — and the lib never claims.
+  const lib = stripComments(readSrc("lib/settle-followups.ts"));
+  const grantIdx = mustIndexOf(lib, "const granted = await deps.grantStampForSettledOrder(", "the earn-side grant call");
+  const earnTryIdx = lib.lastIndexOf("try {", grantIdx);
+  assert.ok(earnTryIdx !== -1, "landmark: the earn-side grant must be wrapped in its own try {");
+  const earnCatchIdx = lib.indexOf("} catch {", grantIdx);
+  assert.ok(earnCatchIdx !== -1, "landmark: the earn-side grant's try must be followed by its own swallowed catch");
+  assert.ok(
+    !lib.slice(earnTryIdx, grantIdx).includes("}"),
+    "the nearest try { must be the grant's OWN block (no block closes between it and the grant)",
+  );
+  const catchBody = lib.slice(earnCatchIdx + "} catch {".length, lib.indexOf("}", earnCatchIdx + "} catch {".length));
+  assert.equal(catchBody.trim(), "", "the earn-side grant's catch block must still be empty (fire-and-forget) after stripping its comment");
+  assert.ok(!lib.includes("claimRewardStamps"), "the follow-ups never claim — a claim belongs before the CAS");
 });
 
 // ── 5: D9 ITEM FENCE ──────────────────────────────────────────────────────────
@@ -281,6 +265,27 @@ test("PIN (CB-5D part 2 regression): app/api/orders/route.ts's claimFor does NOT
     captureIdx < claimForDeclIdx,
     "rewardAssignment must be declared ABOVE claimFor — captured once per request, before either claim attempt, never re-derived per attempt",
   );
+});
+
+// ── 6c: THE CREATE COMPENSATION UNWRITES THE MINTED CODE TOO (O10) ──────────
+// FOUND DEFECT (smooth-writes integrated plan, O10): claimFor passes the
+// captured rewardAssignment to claimRewardStamps, so a claim debits the stamps
+// AND mints the rung's promo code in one update — but unclaimFor returned only
+// the stamps. Every create compensation (a promo-fence refusal, a duplicate-key
+// insert, the slip-allocation undo) therefore left a live code with the diner
+// after giving the stamps back. lib/reward-redemption.ts's returnRewardStamps
+// takes the same assignment as its 4th argument for exactly this.
+test("PIN (O10 defect fix): app/api/orders/route.ts's unclaimFor passes the SAME rewardAssignment to returnRewardStamps that claimFor passed to the claim", () => {
+  const src = stripComments(readSrc("app/api/orders/route.ts"));
+  const declIdx = mustIndexOf(src, "const unclaimFor = async (oid: string): Promise<void> => {", "the unclaimFor declaration");
+  const bodyEnd = mustIndexOf(src.slice(declIdx), "};", "the end of unclaimFor's body") + declIdx;
+  const body = src.slice(declIdx, bodyEnd);
+  assert.match(
+    body,
+    /returnRewardStamps\(customerId!,\s*oid,\s*resolvedClaim\.cost,\s*rewardAssignment\)/,
+    "unclaimFor must hand returnRewardStamps the claim's rewardAssignment — without it the stamps come back and the minted code stays live",
+  );
+  assert.equal(body.split("returnRewardStamps(").length - 1, 1, "exactly one return call inside unclaimFor");
 });
 
 // ── 7: AMBIGUITY REFUSED ─────────────────────────────────────────────────────
@@ -730,7 +735,7 @@ test("PIN (S6): cancel/route.ts's stamp return is SWALLOWED — a committed canc
   );
   // ...and that nested try must have its own catch, which must be EMPTY after
   // comment-stripping (the deliberate swallow), exactly the shape the earn-side
-  // grant uses in settle/route.ts.
+  // grant uses in lib/settle-followups.ts.
   const catchIdx = src.indexOf("} catch {", returnIdx);
   assert.ok(catchIdx !== -1, "the stamp return's try must be closed by its own `} catch {`");
   const catchBody = src.slice(catchIdx + "} catch {".length, src.indexOf("}", catchIdx + "} catch {".length));

@@ -160,22 +160,31 @@ test("PIN: DuePaymentEditDialog — clearing a note that HAD content sends note:
   );
 });
 
-// ── 6 & 7. Server errors rendered inline; paused mutations checked first ───
+// ── 6 & 7. Server errors rendered inline; a mutation is never parked ────
+// 2026-09-28 (owner decision O2, reversing the earlier pinned "waiting for
+// connection" state): every mutation runs with networkMode "always"
+// (components/providers.tsx), so an offline save fails AT ONCE with its error
+// shown here and never fires by itself later — a parked money write was a
+// hidden background write. The paused branch would be dead code that promises
+// a save that can no longer happen, so it must not come back.
 
-test("PIN: DuePaymentEditDialog — a paused mutation is checked BEFORE the error branch, and a server error renders error.message inline (not toast-only)", () => {
+const PROVIDERS = "apps/cafe/components/providers.tsx";
+
+test("PIN: the global mutation default never parks a write — the due-payment dialogs rely on it", () => {
+  const src = stripComments(readSrc(PROVIDERS));
+  assert.ok(src.includes('mutations: { networkMode: "always" }'), "providers.tsx must default every mutation to networkMode \"always\"");
+});
+
+test("PIN: DuePaymentEditDialog — no parked-write state (a mutation cannot pause), and a server error renders error.message inline (not toast-only)", () => {
   const src = stripComments(readSrc(DUE_PAYMENT_EDIT_DIALOG));
 
-  const pausedIdx = src.indexOf("editPayment.isPaused");
-  const errorIdx = src.indexOf("editPayment.isError");
-  assert.ok(pausedIdx >= 0, "editPayment.isPaused must be read");
-  assert.ok(
-    errorIdx > pausedIdx,
-    "editPayment.isPaused must be checked before editPayment.isError — otherwise an offline save renders as a hard failure instead of a waiting-for-connection state",
-  );
+  assert.ok(src.includes("editPayment.isError"), "landmark: the dialog still reads editPayment.isError");
+  assert.ok(!src.includes("editPayment.isPaused"), "editPayment.isPaused must not be read — with networkMode \"always\" a save is never parked");
+  assert.ok(!src.includes("back online"), "no copy may promise a save once the device is back online");
 
   // Mutation this catches: dropping the inline <p> and relying on a toast
   // alone — a toast can be missed or dismissed; the dialog must still show
-  // the reason for a 400/409 to the admin who is staring right at it.
+  // the reason for a 400/409 (or an offline failure) to the admin staring at it.
   assert.match(
     src,
     /\{editPayment\.error\?\.message\s*\|\|\s*["']Could not update the payment\.["']\}/,
@@ -183,16 +192,12 @@ test("PIN: DuePaymentEditDialog — a paused mutation is checked BEFORE the erro
   );
 });
 
-test("PIN: DuePaymentDeleteDialog — a paused mutation is checked BEFORE the error branch, and a server error renders error.message inline (not toast-only)", () => {
+test("PIN: DuePaymentDeleteDialog — no parked-write state (a mutation cannot pause), and a server error renders error.message inline (not toast-only)", () => {
   const src = stripComments(readSrc(DUE_PAYMENT_DELETE_DIALOG));
 
-  const pausedIdx = src.indexOf("deletePayment.isPaused");
-  const errorIdx = src.indexOf("deletePayment.isError");
-  assert.ok(pausedIdx >= 0, "deletePayment.isPaused must be read");
-  assert.ok(
-    errorIdx > pausedIdx,
-    "deletePayment.isPaused must be checked before deletePayment.isError",
-  );
+  assert.ok(src.includes("deletePayment.isError"), "landmark: the dialog still reads deletePayment.isError");
+  assert.ok(!src.includes("deletePayment.isPaused"), "deletePayment.isPaused must not be read — with networkMode \"always\" a delete is never parked");
+  assert.ok(!src.includes("back online"), "no copy may promise a delete once the device is back online");
 
   assert.match(
     src,

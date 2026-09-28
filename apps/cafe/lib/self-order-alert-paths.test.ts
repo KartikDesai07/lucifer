@@ -92,11 +92,14 @@ test("PIN: readPosPulse's two queries both carry .limit( and .lean(), and the li
     "pos-pulse.ts must import the pulse constants from @pos/shared/self-order-alert",
   );
 
-  const openStart = mustIndexOf(src, "const openRows = await OrderRequest.find(", "query A's own declaration");
-  const selfStart = mustIndexOf(src, "const selfRows = await OrderRequest.find(", "query B's own declaration");
-  assert.ok(openStart < selfStart, "query A (openRows) must be declared before query B (selfRows)");
+  // Smooth-writes Slice B: both queries are BUILT first and awaited together
+  // (one Promise.all), so the pulse costs one round trip instead of two.
+  const openStart = mustIndexOf(src, "const openQuery = OrderRequest.find(", "query A's own declaration");
+  const selfStart = mustIndexOf(src, "const selfQuery = OrderRequest.find(", "query B's own declaration");
+  const allIdx = mustIndexOf(src, "const [openRows, selfRows] = await Promise.all([openQuery, selfQuery]);", "the parallel await of both queries");
+  assert.ok(openStart < selfStart && selfStart < allIdx, "query A, then query B, then the one await of both");
   const queryABody = src.slice(openStart, selfStart);
-  const queryBBody = src.slice(selfStart);
+  const queryBBody = src.slice(selfStart, allIdx);
 
   assert.match(queryABody, /\.limit\(PULSE_OPEN_SCAN_LIMIT\)/, "query A must limit() on PULSE_OPEN_SCAN_LIMIT");
   assert.match(queryABody, /\.lean\(\)/, "query A must .lean()");

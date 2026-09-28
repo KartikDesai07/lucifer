@@ -30,15 +30,18 @@ export function CartSection({
 }
 
 // One cart line. `locked` lines (already fired to the kitchen) show their qty
-// statically with no steppers or remove; unfired lines are fully editable.
+// statically with no steppers or remove; unfired lines are fully editable —
+// except while a send carrying them is in flight (`disabled`).
 export function CartLine({
   item,
   locked,
+  disabled,
   onUpdateQty,
   onRemove,
 }: {
   item: CartItem;
   locked?: boolean;
+  disabled?: boolean;
   onUpdateQty?: (lineId: string, qty: number) => void;
   onRemove?: (lineId: string) => void;
 }) {
@@ -71,6 +74,7 @@ export function CartLine({
               variant="outline"
               size="icon"
               className={cn(POS_CART_STEPPER_CLASS)}
+              disabled={disabled}
               onClick={() => onUpdateQty?.(item.lineId, item.qty - 1)}
               aria-label="Decrease quantity"
             >
@@ -81,6 +85,7 @@ export function CartLine({
               variant="outline"
               size="icon"
               className={cn(POS_CART_STEPPER_CLASS)}
+              disabled={disabled}
               onClick={() => onUpdateQty?.(item.lineId, item.qty + 1)}
               aria-label="Increase quantity"
             >
@@ -93,6 +98,7 @@ export function CartLine({
             variant="ghost"
             size="icon"
             className={cn(POS_CART_STEPPER_CLASS, "text-muted-foreground hover:text-destructive")}
+            disabled={disabled}
             onClick={() => onRemove?.(item.lineId)}
             aria-label={`Remove ${orderItemLabel(item)}`}
           >

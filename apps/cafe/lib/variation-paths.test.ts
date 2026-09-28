@@ -270,7 +270,7 @@ test("PIN: OrderReceipt's item rows render the label ONLY via orderItemLabel(ite
 
 // ── 5. Both order write paths reject a bad variation BEFORE their write ────
 
-test("PIN: POST /api/orders calls checkItemVariations and returns its rejection BEFORE resolveTableCharge (pricing) and the order write — a bad payload must cost nothing", () => {
+test("PIN: POST /api/orders calls checkItemVariations and returns its rejection BEFORE the table refusal, all pricing and the order write — a bad payload writes nothing and draws no number (the reads themselves run in one parallel wave, owner decision #4)", () => {
   const src = stripComments(readSrc(ORDERS_ROUTE));
   assert.match(src, /import \{ checkItemVariations \} from "@\/lib\/variations";/);
 
@@ -282,8 +282,8 @@ test("PIN: POST /api/orders calls checkItemVariations and returns its rejection 
   const failureIdx = src.indexOf("if (bad) return failure(bad, 400);", checkIdx);
   assert.ok(failureIdx > checkIdx, "the rejection must be returned right after the check");
 
-  const chargeIdx = src.indexOf("resolveTableCharge(data.tableNo)", postStart);
-  assert.ok(chargeIdx > failureIdx, "resolveTableCharge (pricing) must run AFTER the variation check returns, not before");
+  const tableRefusalIdx = src.indexOf('if ("error" in table) return failure(table.error, 400);', postStart);
+  assert.ok(tableRefusalIdx > failureIdx, "the table refusal (and all pricing after it) must come AFTER the variation check returns, not before");
 
   const createIdx = src.indexOf("Order.create({ ...doc", postStart);
   assert.ok(createIdx > failureIdx, "the order write must also happen after the variation check");

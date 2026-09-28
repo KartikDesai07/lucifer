@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { ApiError, apiGet, apiSend } from "./api-client";
+import { ApiError, NETWORK_ERROR_MESSAGE, TIMEOUT_ERROR_MESSAGE, apiGet, apiSend } from "./api-client";
 
 // The REAL helpers over a fake fetch: a retrying writer (apps/cafe
 // lib/pending-writes.ts) decides "refused" vs "maybe landed" from ApiError's
@@ -38,19 +38,25 @@ test("a body that is not the envelope keeps the old 'Request failed' message, wi
   });
 });
 
-test("a fetch that never answered is a network ApiError; the timeout abort is a timeout one — messages unchanged", async () => {
+test("a fetch that never answered is a network ApiError; the timeout abort is a timeout one — in plain English", async () => {
+  // Review 2026-09-28: every write now fails at once while offline (mutations
+  // networkMode "always"), and callers toast err.message — the browser's own
+  // "Failed to fetch" / "signal timed out" must never reach the operator. The
+  // copy never claims whether anything was saved (a write may have landed).
   await withFetch(async () => {
     throw new TypeError("Failed to fetch");
   }, async () => {
     const e = (await apiSend("/api/x", "POST").catch((err: unknown) => err)) as ApiError;
-    assert.deepEqual([e.kind, e.status, e.message], ["network", null, "Failed to fetch"]);
+    assert.deepEqual([e.kind, e.status, e.message], ["network", null, NETWORK_ERROR_MESSAGE]);
   });
   await withFetch(async () => {
     throw new DOMException("signal timed out", "TimeoutError");
   }, async () => {
     const e = (await apiGet("/api/x").catch((err: unknown) => err)) as ApiError;
-    assert.deepEqual([e.kind, e.status, e.message], ["timeout", null, "signal timed out"]);
+    assert.deepEqual([e.kind, e.status, e.message], ["timeout", null, TIMEOUT_ERROR_MESSAGE]);
   });
+  assert.equal(NETWORK_ERROR_MESSAGE, "Could not reach the server. Check the internet connection.");
+  assert.equal(TIMEOUT_ERROR_MESSAGE, "The server took too long to answer. Check the internet connection.");
 });
 
 test("success still unwraps data", async () => {

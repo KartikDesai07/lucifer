@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useProducts } from "@/hooks/use-products";
 import { useCategories } from "@/hooks/use-categories";
 import { useTables } from "@/hooks/use-tables";
-import { useOrders } from "@/hooks/use-orders";
+import { useOrders, OPEN_TABS_QUERY_OPTIONS } from "@/hooks/use-orders";
 import { usePosTab } from "@/hooks/use-pos-tab";
 import { useWakeLock } from "@/hooks/use-wake-lock";
 import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
@@ -52,7 +52,7 @@ export default function PosPage() {
   // Open running orders, so staff can resume a tab to add a round or settle. Status
   // is part of the filter, not just payment: a cancelled tab keeps its historical
   // "Unpaid" mode, and a dead tab must never be offered up as resumable.
-  const openTabs = useOrders({ payment: "Unpaid", status: "Pending" });
+  const openTabs = useOrders({ payment: "Unpaid", status: "Pending" }, OPEN_TABS_QUERY_OPTIONS);
   const pos = usePosTab(receiver);
   // Owner decision O4 (2026-09-04): screen stays awake for as long as the New
   // Order screen is mounted; no per-device toggle.
@@ -205,6 +205,7 @@ export default function PosPage() {
               onProductClick={handleProductClick}
               onProductOptions={handleProductOptions}
               qtyByProduct={qtyByProduct}
+              disabled={pos.isBusy}
             />
           )}
         </div>
@@ -223,21 +224,21 @@ export default function PosPage() {
         total={pos.total}
       />
 
-      {/* The five modal roots live in one child whose per-root memo boundaries let
-          a closed modal skip PosPage's re-renders (CB-1d.3c / C3); every piece of
-          modal state stays here. */}
+      {/* The five modal roots live in one child whose per-root memo boundaries let a
+          closed modal skip PosPage's re-renders (CB-1d.3c / C3); modal state stays here. */}
       <PosModals
         modifierProduct={modifierProduct}
         modifierOpen={modifierOpen}
         onModifierOpenChange={setModifierOpen}
         onModifierConfirm={(p, opts) => pos.addToCart(p, opts)}
         paymentOpen={pos.paymentOpen}
-        onPaymentOpenChange={pos.setPaymentOpen}
+        onPaymentOpenChange={pos.onPaymentOpenChange}
+        paymentNotice={pos.paymentNotice}
         totals={pos.modalTotals}
         customer={pos.customer}
         tableNo={pos.table}
         receiver={receiver}
-        isSubmitting={pos.isBusy}
+        isSubmitting={pos.paymentBusy}
         onPaymentConfirm={pos.confirmPayment}
         // The settle route only ATTACHES a customer to a tab that has none — it
         // never reassigns one that already carries one. Hiding the picker there
@@ -263,8 +264,7 @@ export default function PosPage() {
         // `kot:false` — the move's own slip IS the kitchen's paper; a round
         // ticket here would tell them to cook again. `keepUnfired:true` —
         // unsent cart lines are still owed and must survive the re-sync. No
-        // `chargeSent` — the move never carries a charge, so a waiver the
-        // operator already promised must not be cleared by this re-sync.
+        // charge rides a move, so the operator's waiver is left alone.
         onMoved={(order) =>
           pos.applyTabUpdate(order, { kot: false, keepUnfired: true })
         }

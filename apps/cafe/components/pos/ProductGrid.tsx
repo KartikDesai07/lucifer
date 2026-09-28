@@ -47,6 +47,9 @@ interface ProductGridProps {
   // on touch layouts where the cart is off-screen. Owned by the page, derived
   // from the cart lines.
   qtyByProduct?: Record<string, number>;
+  // A send is in flight: the tiles are inert (no line can join a request that
+  // already left), while the list itself still scrolls.
+  disabled?: boolean;
 }
 
 // Category-filtered, name-searchable product grid. Clicking a tile delegates to
@@ -57,6 +60,7 @@ export function ProductGrid({
   onProductClick,
   onProductOptions,
   qtyByProduct,
+  disabled = false,
 }: ProductGridProps) {
   const [search, setSearch] = useState("");
   const gridClass = useGridClass();
@@ -124,7 +128,7 @@ export function ProductGrid({
             description="Try a different category or search term."
           />
         ) : (
-          <div className={gridClass}>
+          <div className={cn(gridClass, disabled && "opacity-50")} inert={disabled}>
             {filtered.map((product) => (
               <ProductCard
                 key={product._id}

@@ -43,6 +43,13 @@ export const orderItemSchema = z.object({
   // reward and have it silently excluded from the bill total.
 });
 
+// F5 — the send idempotency key: one RFC-4122 UUID the POS mints per Send to
+// Kitchen / Pay Now attempt and repeats byte-identically on "Send again", so a
+// re-send whose first try actually landed replays that order/round instead of
+// making a second one (apps/cafe/lib/order-idem.ts). IDENTITY, never money —
+// the same echo-identity discipline as the due payment's `clientRef`.
+export const idemKeySchema = z.string().uuid();
+
 // Base shape. Money fields (subtotal/gstAmount/total/paidAmount) are accepted but
 // are NOT trusted — the server recomputes them from items + the cafe's GST config
 // (see app/api/orders + lib/receipt.computeOrderTotals). They stay here so the
@@ -116,6 +123,10 @@ const orderObject = z.object({
   // (a dine-in walk-in has no table either). Omit-empty: absent = dine-in.
   parcel: z.boolean().optional(),
   notes: z.string().trim().max(ORDER_NOTES_MAX_LEN).optional(),
+  // F5 — declared, not just tolerated: this object is NOT .strict(), so an
+  // undeclared key is silently stripped and the route's replay would be dead.
+  // Optional: a keyless (older) client creates exactly as before.
+  idemKey: idemKeySchema.optional(),
 });
 
 // Due/Credit are unpaid-at-counter sales, so a customer must be attached for the
@@ -202,6 +213,8 @@ export const addItemsSchema = z
     // CB-CHG — see orderObject's `extraCharges` above; same present=replace/
     // absent=unchanged rule.
     extraCharges: extraChargesSchema.optional(),
+    // F5 — see `idemKeySchema`; the round's own key (kotIdemKeys[round-1]).
+    idemKey: idemKeySchema.optional(),
   })
   .strict();
 

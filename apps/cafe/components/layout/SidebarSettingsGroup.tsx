@@ -50,7 +50,7 @@ export function SidebarSettingsGroup({
     return (
       <SidebarMenuItem>
         <SidebarMenuButton asChild isActive={onSettings} tooltip={tooltip} className={BRAND_NAV_ITEM_CLASS}>
-          <Link href={url} aria-current={pathname === url ? "page" : undefined} onClick={onNavigate}>
+          <Link href={url} prefetch={false} aria-current={pathname === url ? "page" : undefined} onClick={onNavigate}>
             <Icon aria-hidden="true" />
           </Link>
         </SidebarMenuButton>
@@ -93,7 +93,7 @@ export function SidebarSettingsGroup({
               return (
                 <SidebarMenuSubItem key={section.slug}>
                   <SidebarMenuSubButton asChild isActive={active} className={BRAND_NAV_SUB_ITEM_CLASS}>
-                    <Link href={href} aria-current={active ? "page" : undefined} onClick={onNavigate}>
+                    <Link href={href} prefetch={false} aria-current={active ? "page" : undefined} onClick={onNavigate}>
                       <span>{section.title}</span>
                     </Link>
                   </SidebarMenuSubButton>

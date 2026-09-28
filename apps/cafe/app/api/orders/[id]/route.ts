@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { publishCafeEvent } from "@/lib/realtime-publish";
 import { connectDB } from "@/lib/db";
 import { Order } from "@/models/Order";
 import { Table } from "@/models/Table";
@@ -98,27 +99,34 @@ export async function PUT(req: Request, { params }: Params) {
       runValidators: true,
     }).lean();
     if (!updated) return failure("Order changed — reload and try again", 409);
+    try {
+      // Reconcile the customer ledger by the contribution delta so moving a tab
+      // between customers stays accurate. (PUT can no longer change money/status —
+      // those flow through /items and /settle — so the only delta here comes from
+      // a customer change.)
+      const touched = await reconcileLedger(old, updated);
+      if (touched.size) {
+        cache.del("customers");
+        // Dues changed → refresh the dashboard's ledger-wide Outstanding Dues KPI,
+        // which lives in TODAY's summary regardless of this order's own date (the
+        // createdAt-keyed dels below don't cover today when editing a prior-day order).
+        cache.del(orderSummaryCacheKey());
+      }
 
-    // Reconcile the customer ledger by the contribution delta so moving a tab
-    // between customers stays accurate. (PUT can no longer change money/status —
-    // those flow through /items and /settle — so the only delta here comes from
-    // a customer change.)
-    const touched = await reconcileLedger(old, updated);
-    if (touched.size) {
-      cache.del("customers");
-      // Dues changed → refresh the dashboard's ledger-wide Outstanding Dues KPI,
-      // which lives in TODAY's summary regardless of this order's own date (the
-      // createdAt-keyed dels below don't cover today when editing a prior-day order).
-      cache.del(orderSummaryCacheKey());
+      // No table reconcile here by design: this route refuses a table change
+      // outright (see the guard above), so `tableNo` cannot differ. Seating,
+      // moving and unseating — and the occupancy writes they imply — all live in
+      // POST /api/orders/[id]/table, which is also the only writer that re-prices.
+
+      cache.del(orderSummaryCacheKey(new Date(old.createdAt)));
+      cache.del(orderSummaryCacheKey(new Date(updated.createdAt)));
+    } finally {
+      // The edit landed — nudge every device's open tabs and order lists. Only
+      // after the follow-ups above (the request starts at this call; after()
+      // only keeps it alive), and in a `finally` so a follow-up that throws
+      // still publishes an edit that landed. A failure is swallowed.
+      publishCafeEvent("order-changed");
     }
-
-    // No table reconcile here by design: this route refuses a table change
-    // outright (see the guard above), so `tableNo` cannot differ. Seating,
-    // moving and unseating — and the occupancy writes they imply — all live in
-    // POST /api/orders/[id]/table, which is also the only writer that re-prices.
-
-    cache.del(orderSummaryCacheKey(new Date(old.createdAt)));
-    cache.del(orderSummaryCacheKey(new Date(updated.createdAt)));
     return success(updated);
   } catch (error) {
     return serverError("Failed to update order", error);
@@ -146,34 +154,42 @@ export async function DELETE(_req: Request, { params }: Params) {
     // the damage is a silently under-counted customer rather than a visible error.
     const deleted = await Order.findByIdAndDelete(id);
     if (!deleted) return notFound("Order not found");
+    try {
+      // Reverse the order's ledger contribution (a held "Unpaid" tab contributed
+      // nothing, so deleting it touches no ledger).
+      const touched = await reconcileLedger(order, null);
+      if (touched.size) {
+        cache.del("customers");
+        // Ledger-wide Outstanding Dues KPI lives in today's summary regardless of
+        // this (possibly prior-day) order's own date — refresh it too.
+        cache.del(orderSummaryCacheKey());
+      }
 
-    // Reverse the order's ledger contribution (a held "Unpaid" tab contributed
-    // nothing, so deleting it touches no ledger).
-    const touched = await reconcileLedger(order, null);
-    if (touched.size) {
-      cache.del("customers");
-      // Ledger-wide Outstanding Dues KPI lives in today's summary regardless of
-      // this (possibly prior-day) order's own date — refresh it too.
-      cache.del(orderSummaryCacheKey());
+      // Free the table only if it still points to this order — and read the table
+      // off `deleted` (the document as it was AT REMOVAL), not off the earlier
+      // `order` snapshot. A table move landing between the two reads makes those
+      // two values different tables: freeing the snapshot's table is a harmless
+      // no-op (the move already freed it) while the table the order actually
+      // occupied stays Occupied forever, pointing at an order that no longer
+      // exists. Every other writer in this file already derives this from the
+      // post-write document.
+      if (deleted.tableNo) {
+        await Table.findOneAndUpdate(
+          { tableNo: deleted.tableNo, currentOrderId: deleted.orderId },
+          { status: "Available", currentOrderId: "" },
+        );
+        cache.del("tables");
+      }
+
+      cache.del(orderSummaryCacheKey(new Date(order.createdAt)));
+    } finally {
+      // The row is gone — nudge every device's lists and tables. Only after the
+      // follow-ups above (the request starts at this call; after() only keeps
+      // it alive), so their refetch reads the freed table, and in a `finally`
+      // so a follow-up that throws still publishes a delete that landed. A
+      // failure is swallowed.
+      publishCafeEvent("order-changed");
     }
-
-    // Free the table only if it still points to this order — and read the table
-    // off `deleted` (the document as it was AT REMOVAL), not off the earlier
-    // `order` snapshot. A table move landing between the two reads makes those
-    // two values different tables: freeing the snapshot's table is a harmless
-    // no-op (the move already freed it) while the table the order actually
-    // occupied stays Occupied forever, pointing at an order that no longer
-    // exists. Every other writer in this file already derives this from the
-    // post-write document.
-    if (deleted.tableNo) {
-      await Table.findOneAndUpdate(
-        { tableNo: deleted.tableNo, currentOrderId: deleted.orderId },
-        { status: "Available", currentOrderId: "" },
-      );
-      cache.del("tables");
-    }
-
-    cache.del(orderSummaryCacheKey(new Date(order.createdAt)));
     return success({ deleted: true });
   } catch (error) {
     return serverError("Failed to delete order", error);

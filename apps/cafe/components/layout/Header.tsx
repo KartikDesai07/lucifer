@@ -4,7 +4,6 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { useSettings } from "@/hooks/use-settings";
 import { APP_NAME } from "@/lib/constants";
-import { PendingWritesChip } from "@/components/layout/PendingWritesChip";
 
 export function Header() {
   // The cafe's name is configured from the Settings page (Settings.restaurantName);
@@ -17,8 +16,6 @@ export function Header() {
       <SidebarTrigger />
       <Separator orientation="vertical" className="h-6" />
       <h1 className="text-sm font-semibold">{name}</h1>
-      {/* Background settles in flight / not settled — PendingWritesProvider. */}
-      <PendingWritesChip />
     </header>
   );
 }

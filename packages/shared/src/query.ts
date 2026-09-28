@@ -54,6 +54,9 @@ export const REFETCH_INTERVALS = {
   // which stays the 2min focus/mount freshness window.
   SUMMARY: 30 * 1000,
   TABLES: STALE_TIMES.TABLES, // floor occupancy poll
+  // Open tabs, today's orders and the Orders list's first page — the same 30s
+  // beat as the floor, so every device converges on the true tab state.
+  LIVE_LISTS: 30 * 1000,
   POS_PULSE: 20 * 1000, // CR2.3 staff-attention pulse (open requests + self-orders)
   KITCHEN: 10 * 1000, // P4-A kitchen board — fired-line poll
 } as const;

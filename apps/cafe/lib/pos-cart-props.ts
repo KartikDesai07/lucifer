@@ -62,6 +62,10 @@ export function buildCartProps(pos: Pos, onVoidItem: () => void): CartProps {
     resumedOrderId: pos.resumedOrder?.orderId,
     nextRound: (pos.resumedOrder?.kotRounds ?? 0) + 1,
     isBusy: pos.isBusy,
+    // The Send button's "Sending…", and the unanswered send's notice (Send again).
+    sending: pos.sendingKitchen,
+    sendNotice: pos.kitchenNotice,
+    onDiscardSend: pos.discardSend,
   };
 }
 

@@ -605,7 +605,8 @@ test("PIN: hooks/use-pos-totals.ts calls gstEquivalentDiscount(subtotal, gstCfg)
 test("PIN: the three renderers call discountLineLabel(...) and none contains the literal label=\"Discount\" any more", () => {
   const files = [
     "components/pos/OrderReceipt.tsx",
-    "components/pos/PaymentModal.tsx",
+    // The payment popup's summary card moved out of PaymentModal.tsx (F8/F1 split).
+    "components/pos/PaymentSummary.tsx",
     "components/orders/OrderDetailSheet.tsx",
   ];
   for (const file of files) {

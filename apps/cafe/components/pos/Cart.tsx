@@ -1,6 +1,6 @@
 "use client";
 
-import { ShoppingCart, ChefHat, Ban, X, ChevronLeft } from "lucide-react";
+import { ShoppingCart, ChefHat, Ban, X, ChevronLeft, Loader2 } from "lucide-react";
 
 import { inr, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,9 @@ import {
 } from "@/components/pos/CartExtraCharges";
 import { CartMoreMenu } from "@/components/pos/CartMoreMenu";
 import { CartAppliedRows } from "@/components/pos/CartAppliedRows";
+import { WriteNoticePanel } from "@/components/pos/WriteNotice";
+import { SendDiscard } from "@/components/pos/SendDiscard";
+import type { WriteNotice } from "@/lib/pending-writes";
 import { POS_CART_CTA_CLASS, POS_CART_GST_BUTTON_CLASS, POS_CART_LIST_CLASS } from "@/lib/pos-layout";
 import { GST_DISCOUNT_LABEL } from "@/lib/constants";
 import type { CartItem } from "@/hooks/use-cart";
@@ -97,6 +100,9 @@ export interface CartProps {
   resumedOrderId?: string;
   nextRound?: number; // round number the next fire will create
   isBusy?: boolean; // disable actions while a mutation is in flight
+  sending?: boolean; // a Send to Kitchen is in flight — its button reads "Sending…"
+  sendNotice?: WriteNotice | null; // an unanswered send: "Couldn't confirm" + Send again
+  onDiscardSend?: () => void; // drop that unanswered send and the whole order (confirmed first)
   className?: string;
   // Rendered only by the mobile sheet — a way back to the menu that does not
   // fight the header's own Clear/Close controls.
@@ -152,6 +158,9 @@ export function Cart({
   resumedOrderId,
   nextRound,
   isBusy,
+  sending = false,
+  sendNotice = null,
+  onDiscardSend,
   className,
   onBack,
 }: CartProps) {
@@ -338,7 +347,7 @@ export function Cart({
           </Button>
         ) : (
           items.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={onClear}>
+            <Button variant="ghost" size="sm" onClick={onClear} disabled={isBusy}>
               Clear
             </Button>
           )
@@ -388,6 +397,7 @@ export function Cart({
                     <CartLine
                       key={item.lineId}
                       item={item}
+                      disabled={isBusy}
                       onUpdateQty={onUpdateQty}
                       onRemove={onRemove}
                     />
@@ -405,7 +415,7 @@ export function Cart({
           add-round payload carries no notes field), so the menu renders on its
           own line below instead — it must never become unreachable. */}
       {!resuming && (
-        <CartNotes value={notes} onChange={onNotesChange} trailing={moreMenu} />
+        <CartNotes value={notes} onChange={onNotesChange} trailing={moreMenu} disabled={isBusy} />
       )}
       {resuming && <div className="flex justify-end border-t p-3">{moreMenu}</div>}
 
@@ -467,6 +477,7 @@ export function Cart({
                     onChargeChange(Math.max(0, Number(e.target.value) || 0))
                   }
                   placeholder="0"
+                  disabled={isBusy}
                   className="h-8 w-20 text-right"
                   aria-label={`${chargeLabel} amount`}
                 />
@@ -476,7 +487,7 @@ export function Cart({
                   size="icon"
                   className="h-8 w-8 shrink-0"
                   onClick={() => onChargeChange(0)}
-                  disabled={charge === 0}
+                  disabled={charge === 0 || isBusy}
                   title={`Waive ${chargeLabel}`}
                   aria-label={`Waive ${chargeLabel}`}
                 >
@@ -498,6 +509,7 @@ export function Cart({
                 <button
                   type="button"
                   onClick={onChargeReset}
+                  disabled={isBusy}
                   className="shrink-0 underline underline-offset-2 hover:text-foreground"
                 >
                   Undo
@@ -525,11 +537,15 @@ export function Cart({
           <span>{inr(total)}</span>
         </div>
 
+        <WriteNoticePanel notice={sendNotice} />
         <CartActions
           resuming={resuming}
           hasNew={hasNew}
           nextRound={nextRound}
           disabled={items.length === 0 || isBusy}
+          sending={sending}
+          notice={sendNotice}
+          onDiscard={onDiscardSend}
           onSendToKitchen={onSendToKitchen}
           onPayNow={onPayNow}
           onSettle={onSettle}
@@ -545,6 +561,9 @@ function CartActions({
   hasNew,
   nextRound,
   disabled,
+  sending,
+  notice,
+  onDiscard = () => {},
   onSendToKitchen,
   onPayNow,
   onSettle,
@@ -553,16 +572,32 @@ function CartActions({
   hasNew: boolean;
   nextRound?: number;
   disabled?: boolean;
+  sending: boolean;
+  notice: WriteNotice | null;
+  onDiscard?: () => void;
   onSendToKitchen?: () => void;
   onPayNow?: () => void;
   onSettle?: () => void;
 }) {
+  const inFlight = sending && <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending…</>;
+  // An unanswered send (its notice sits above) freezes the cart: the ways on
+  // are Send again — the same request and key, never twice — or Discard.
+  if (notice?.action === "send-again") {
+    return (
+      <div className="grid grid-cols-2 gap-2">
+        <Button className={POS_CART_CTA_CLASS} size="lg" disabled={sending} onClick={onSendToKitchen}>
+          {inFlight || "Send again"}
+        </Button>
+        <SendDiscard kind="kitchen" disabled={sending} onDiscard={onDiscard} />
+      </div>
+    );
+  }
   if (resuming) {
     return (
       <div className="space-y-2">
         {hasNew && (
           <Button className={POS_CART_CTA_CLASS} size="lg" disabled={disabled} onClick={onSendToKitchen}>
-            <ChefHat className="mr-2 h-4 w-4" /> Send round {nextRound}
+            {inFlight || <><ChefHat className="mr-2 h-4 w-4" /> Send round {nextRound}</>}
           </Button>
         )}
         {/* Settle is blocked while there are unsent items — otherwise they'd be
@@ -594,7 +629,7 @@ function CartActions({
   return (
     <div className="grid grid-cols-2 gap-2">
       <Button className={POS_CART_CTA_CLASS} size="lg" disabled={disabled} onClick={onSendToKitchen}>
-        <ChefHat className="mr-2 h-4 w-4" /> Send to Kitchen
+        {inFlight || <><ChefHat className="mr-2 h-4 w-4" /> Send to Kitchen</>}
       </Button>
       <Button
         className={POS_CART_CTA_CLASS}

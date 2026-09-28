@@ -164,7 +164,11 @@ export function AppSidebar() {
     .flatMap((section) => section.items.map((item) => item.url));
   useWarmRoutes(warmHrefs);
 
-  const renderItem = (item: NavItem, warm = false) => {
+  // No sidebar Link prefetches on its own: a warm row's ONLY warmer is the
+  // hook above, which waits for a working line. A Link prefetch fires on sight
+  // and on hover — on a line still waking up it can fail, and a failed
+  // prefetch turns the next click on that row into a full page load.
+  const renderItem = (item: NavItem) => {
     if (item.url === "/settings") {
       return (
         <SidebarSettingsGroup
@@ -189,7 +193,7 @@ export function AppSidebar() {
         <SidebarMenuButton asChild isActive={active} tooltip={brandTooltip(item.title)} className={BRAND_NAV_ITEM_CLASS}>
           <Link
             href={item.url}
-            prefetch={warm ? true : undefined}
+            prefetch={false}
             aria-current={active ? "page" : undefined}
             onClick={closeMobile}
           >
@@ -225,7 +229,7 @@ export function AppSidebar() {
                   )}
                   <SidebarGroupContent>
                     <SidebarMenu className="gap-0.5" aria-labelledby={section.label ? id : undefined}>
-                      {section.items.map((item) => renderItem(item, section.warm))}
+                      {section.items.map((item) => renderItem(item))}
                     </SidebarMenu>
                   </SidebarGroupContent>
                 </SidebarGroup>

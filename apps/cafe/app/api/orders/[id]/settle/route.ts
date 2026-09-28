@@ -3,7 +3,6 @@ import { publishCafeEvent } from "@/lib/realtime-publish";
 import { connectDB } from "@/lib/db";
 import { Order, type IOrder } from "@/models/Order";
 import { Customer } from "@/models/Customer";
-import { Table } from "@/models/Table";
 import cache from "@/lib/cache";
 import {
   success,
@@ -14,15 +13,15 @@ import {
   serverError,
 } from "@/lib/api-helpers";
 import { orderSummaryCacheKey } from "@/lib/utils";
-import { resolveSettleMoney, reconcileLedger, validCustomer } from "@/lib/order";
+import { resolveSettleMoney, validCustomer } from "@/lib/order";
 import { computeOrderTotals, gstConfigFromOrder, resolveDiscountKind } from "@/lib/receipt";
-import { readSettings } from "@/lib/settings";
-import { grantStampForSettledOrder } from "@/lib/diner-loyalty-earn";
 import { voidGuardFilter } from "@/lib/order-void";
 import { settleRefusal } from "@/lib/settle-guard";
 import { getSettings, gstConfigOf } from "@/lib/settings";
-import { printConfigOf, printedSlipNumber } from "@/lib/print";
-import { nextSlipSequence } from "@/models/Counter";
+import { printConfigOf } from "@/lib/print";
+import { issueBillNumber, BILL_NUMBER_UNCONFIRMED } from "@/lib/slip-numbers";
+import { runSettleFollowUps } from "@/lib/settle-followups";
+import { settledValue } from "@/lib/settled";
 import { settleOrderSchema } from "@/schemas";
 import {
   resolveRewardClaim,
@@ -42,10 +41,14 @@ type Params = { params: Promise<{ id: string }> };
 // POST /api/orders/[id]/settle — take payment on an open tab and close it.
 // Server-authoritative: paidAmount is derived from the order's stored total (or
 // a settle-time discount recomputed against it) and the mode/collected-amount —
-// see resolveSettleMoney. The customer ledger gets the order's full contribution
-// applied now (a held tab contributed nothing at open), and the table is freed.
-// Idempotent-safe: the update is conditional on the order still being Pending,
-// so a double-fired settle applies the ledger delta exactly once.
+// see resolveSettleMoney. Idempotent-safe: the update is conditional on the
+// order still being Pending, so a double-fired settle lands exactly once.
+// Only the settle whose CAS LANDED takes the bill number (lib/slip-numbers.ts),
+// so a refused, stale or losing settle never leaves a gap in the bill series,
+// and the response carries the numbered doc the bill prints from. The ledger
+// (the open tab contributed nothing at open), the loyalty stamp and the table
+// free follow best-effort (lib/settle-followups.ts): a settle that landed
+// answers 200 whatever they do; only an unconfirmed bill number answers 500.
 export async function POST(req: Request, { params }: Params) {
   const authed = await requireAuth();
   if ("error" in authed) return authed.error;
@@ -59,20 +62,23 @@ export async function POST(req: Request, { params }: Params) {
 
   try {
     await connectDB();
-    const old = await Order.findById(id).lean();
+    // Both reads start together; they are still CHECKED in the old order (a
+    // missing or refused tab answers before a settings failure).
+    const [oldR, settingsR] = await Promise.allSettled([Order.findById(id).lean(), getSettings()]);
+    const old = settledValue(oldR);
     if (!old) return notFound("Order not found");
     // Cancelled, already settled, or not the tab the operator's bill was priced
     // from (the expectedTotal/expectedVoids echo) — lib/settle-guard.ts, shared
     // with the live-leg verifier so both refuse on the same rules.
     const refusal = settleRefusal(old, data);
     if (refusal) return failure(refusal, 409);
+    const settings = settledValue(settingsR);
 
     // CB-5B S5 — a reward claimed AT SETTLE TIME. refuseItemKind: TRUE (D9,
     // owner decision): a free DISH has to reach the kitchen while the order
     // is being taken, never after payment — this path may only grant a
     // flat/percent money-off. An order that already carries a reward refuses
     // a second one outright, same one-scalar-one-kind reasoning as add-round.
-    const settings = await getSettings();
     let claim: Extract<Awaited<ReturnType<typeof resolveRewardClaim>>, { ok: true }> | undefined;
     if (data.rewardAt !== undefined) {
       if (old.rewardAt !== undefined) {
@@ -199,23 +205,10 @@ export async function POST(req: Request, { params }: Params) {
     // us) because a waived charge also needs a $unset alongside it, and mixing
     // bare paths with an operator in one update document is exactly the kind of
     // driver-semantics coin-flip this codebase does not gamble on.
-    // The bill is being ISSUED right now, so this is where its number comes
-    // from. Only if the tab has none yet — a re-settle attempt must never
-    // renumber a bill the customer is already holding. An open tab that ran all
-    // evening therefore takes the number of the moment it was paid, not the
-    // moment it was opened, and a tab that gets cancelled instead never
-    // consumes one, so the day's bill series has no gaps.
-    const printCfg = printConfigOf(await getSettings());
-    const billNumber =
-      printCfg.bill.showNumber && old.billNumber === undefined
-        ? printedSlipNumber(await nextSlipSequence("bill"), printCfg.bill.numberStart)
-        : undefined;
-
     const set: Record<string, unknown> = {
       payment: data.payment,
       paidAmount: money.paidAmount,
       status: "Completed",
-      ...(billNumber !== undefined ? { billNumber } : {}),
     };
     const unset: Record<string, ""> = {};
     if (money.totals) {
@@ -278,7 +271,7 @@ export async function POST(req: Request, { params }: Params) {
     // bill must never be marked Completed before its stamps are spent (a
     // customer paying a discounted bill whose stamps were never debited is
     // money lost the next time that rung is priced). Unlike the earn-side
-    // stamp grant below (fire-and-forget, swallowed), this is NOT best-effort
+    // stamp grant (lib/settle-followups.ts, swallowed), this is NOT best-effort
     // — earn never changes the bill being settled, so a missed grant costs a
     // counter conversation; a redemption changes the bill BEFORE money is
     // taken, so a failed claim must fail the settle closed.
@@ -299,50 +292,32 @@ export async function POST(req: Request, { params }: Params) {
       return failure("Tab changed or already settled — reopen it and try again", 409);
     }
 
-    // Apply the full ledger effect now (the open tab contributed nothing at open).
-    const touched = await reconcileLedger(old, updated);
-    if (touched.size) cache.del("customers");
-
-    // CB-4 — one loyalty stamp for this settled bill, at most once per order.
-    // BEST-EFFORT and deliberately swallowed: the bill is already settled and
-    // committed above, so a stamp that fails to land must never turn money
-    // that was taken into a 409/500 for the operator. A missed stamp is a
-    // counter conversation; a failed settle is a broken till. The write itself
-    // is idempotent (a filter-predicate guard on stampOrders), so a retry of
-    // this request cannot double-stamp either.
-    try {
-      const granted = await grantStampForSettledOrder(
-        await readSettings(),
-        updated.customerId ? String(updated.customerId) : null,
-        updated.orderId,
-        // RUPEES — models/Order.ts's total is a plain Number. Do NOT convert:
-        // the Int32 paise shape is models/order.ledger.ts, which this route
-        // never reads (see lib/diner-loyalty.ts's unit note).
-        updated.total,
-      );
-      if (granted.granted) cache.del("customers");
-    } catch {
-      // Swallowed on purpose — see above. No console.* in app/lib code.
-    }
-
-    // Free the table only if it still points to this order.
-    if (updated.tableNo) {
-      await Table.findOneAndUpdate(
-        { tableNo: updated.tableNo, currentOrderId: updated.orderId },
-        { status: "Available", currentOrderId: "" },
-      );
-      cache.del("tables");
-    }
+    // The settle LANDED. Only now is the bill ISSUED, so only now does it take
+    // a number — and only if it has none (a re-settle never renumbers a bill
+    // the customer holds). A tab that ran all evening takes the number of the
+    // moment it was paid; a cancelled tab never takes one. The follow-ups run
+    // alongside; allSettled, so neither can turn this landed settle into a throw.
+    const printCfg = printConfigOf(settings);
+    const numbering = printCfg.bill.showNumber && updated.billNumber === undefined;
+    const [numbered, followUps] = await Promise.allSettled([
+      numbering ? issueBillNumber(id, printCfg.bill.numberStart) : Promise.resolve(updated),
+      runSettleFollowUps(old, updated, settings),
+    ]);
+    if (followUps.status === "rejected" || followUps.value.customersTouched) cache.del("customers");
+    if (updated.tableNo) cache.del("tables");
 
     // Today's KPIs change (tab leaves In-progress; collected/sales/dues move).
     cache.del(orderSummaryCacheKey());
     cache.del(orderSummaryCacheKey(new Date(updated.createdAt)));
     // The tab changed — nudge the POS pulse and the Kitchen board ahead of
-    // their polls. publishCafeEvent defers it past the response and swallows
+    // their polls. publishCafeEvent sends it at once (after() only keeps the invocation alive — which is why it sits after every follow-up) and swallows
     // every failure, so it can never delay or fail this write; the polls stay
     // the fallback and the source of truth.
     publishCafeEvent("order-changed");
-    return success(updated);
+    // Paid, but the number is unknown (the counter or the set failed): a 5xx
+    // sends the client to Check, which prints from the stored doc.
+    if (numbered.status === "rejected") return serverError(BILL_NUMBER_UNCONFIRMED, numbered.reason);
+    return success(numbered.value ?? updated);
   } catch (error) {
     return serverError("Failed to settle order", error);
   }

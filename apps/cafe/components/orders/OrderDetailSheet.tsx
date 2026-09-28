@@ -16,7 +16,7 @@ import { slipPrintOptions } from "@/lib/desktop-shell";
 import { printConfigOf, receiptPageStyle } from "@/lib/print";
 import { billPrintJob, cancelNoticePrintJob, kotPrintJob } from "@/lib/print-routing";
 import { useSettings } from "@/hooks/use-settings";
-import { useSettleOrder } from "@/hooks/use-orders";
+import { useSettleFlow } from "@/hooks/use-settle-flow";
 import { useHostRouting } from "@/hooks/use-print-routing";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -35,8 +35,7 @@ import { OrderVoidTrail } from "@/components/orders/OrderVoidTrail";
 import { MoveTableDialog } from "@/components/orders/MoveTableDialog";
 import type { PaymentResult } from "@/components/pos/PaymentModal";
 import { collectedAmount } from "@/lib/payment-result";
-import { usePendingWrites } from "@/components/layout/PendingWritesProvider";
-import type { Customer, Order } from "@/types";
+import type { Customer, Order, SettleOrderInput } from "@/types";
 
 const PaymentModal = dynamic(
   () => import("@/components/pos/PaymentModal").then((m) => m.PaymentModal),
@@ -76,6 +75,27 @@ function whatsAppLink(
 const PRINT_ORDER_CHANGED_MESSAGE =
   "That order is no longer open — reopen it from the list and print again.";
 
+// The settle this sheet sends for `order` — the latched bill being paid.
+function sheetSettlePayload(order: Order, result: PaymentResult, picked: Customer | undefined): SettleOrderInput {
+  return {
+    payment: result.payment as SettlementPayMode,
+    splitCash: result.splitCash,
+    splitOnline: result.splitOnline,
+    // The order's own customer is authoritative once attached; only an
+    // unattached order can pick one up here. No `discount` — this path
+    // (unlike the POS settle) always charges the stored total unchanged.
+    customerId: order.customerId ?? picked?._id,
+    paidAmount: collectedAmount(result),
+    // Only meaningful alongside a defined paidAmount above — lets the
+    // route detect a stale `order` snapshot (CR1.2 regression).
+    total: order.total,
+    // The tab this sheet is showing — refused once it has moved
+    // (lib/settle-guard.ts), so a bill is never closed unseen.
+    expectedTotal: order.total,
+    expectedVoids: order.voids?.length ?? 0,
+  };
+}
+
 interface OrderDetailSheetProps {
   order: Order | null;
   onOpenChange: (open: boolean) => void;
@@ -92,7 +112,6 @@ export function OrderDetailSheet({
   onSettled,
 }: OrderDetailSheetProps) {
   const settings = useSettings();
-  const settleOrder = useSettleOrder();
   // Both buttons in this sheet's footer are INDEPENDENT print sites: they fire
   // their own useReactToPrint triggers straight from onClick and never touch
   // usePosPrint, so nothing routes them to a print host unless it is wired
@@ -103,15 +122,54 @@ export function OrderDetailSheet({
   const { routePrint, enqueuePending } = useHostRouting();
   const [settleOpen, setSettleOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
-  // A tab the POS is settling in the background (PendingWritesProvider) is
-  // not settled or moved from here meanwhile — that would be a second payment
-  // taken for one bill on this very device.
-  const pendingWrites = usePendingWrites();
-  const settlingHere = !!order && pendingWrites.isSettling(order._id);
+  // The tab as it was when "Settle & Pay" opened: the popup shows, and the
+  // settle echoes, THIS bill even if a live refresh moves `order` meanwhile —
+  // never a total the operator did not collect. Cleared when the popup closes.
+  const [payingOrder, setPayingOrder] = useState<Order | null>(null);
+  const paying = payingOrder ?? order;
+  // One confirmed settle (hooks/use-settle-flow.ts); outcomes show in the popup.
+  // No bill prints here on a settle (owner O3) — Print stays in the footer.
+  const settleFlow = useSettleFlow({
+    onSettled: (u) => {
+      setSettleOpen(false);
+      setPayingOrder(null);
+      onSettled?.(u);
+    },
+    // The bill changed on another device: re-latch the fresh tab (or the next
+    // Settle would resend the old expectedTotal and 409 forever), show it.
+    onChanged: (o) => {
+      setPayingOrder(o);
+      onSettled?.(o);
+    },
+    onFinished: (o) => {
+      setSettleOpen(false);
+      setPayingOrder(null);
+      if (o) onSettled?.(o);
+      else onOpenChange(false);
+    },
+  });
+  const openSettle = () => {
+    setPayingOrder(order);
+    setSettleOpen(true);
+  };
+  // Every close of the popup: never mid-request; a finished notice ends here.
+  const settleOpenChange = (next: boolean) => {
+    if (next) return setSettleOpen(true);
+    if (!settleFlow.dismiss(paying?._id)) return;
+    setSettleOpen(false);
+    setPayingOrder(null);
+  };
   // Only relevant for a Due/Credit (or partial) settle on an order that has no
   // customer yet — reset whenever the sheet switches to viewing a new order.
   const [settleCustomer, setSettleCustomer] = useState<Customer | undefined>();
   useEffect(() => setSettleCustomer(undefined), [order?._id]);
+  // F10: load the payment popup's chunk as the sheet mounts, so Settle & Pay
+  // opens at once. The literal specifier is what webpack splits on — the same
+  // chunk the dynamic() loader above uses; a failed preload is simply retried
+  // by that loader when the popup opens.
+  useEffect(() => {
+    void import("@/components/pos/PaymentModal").catch(() => undefined);
+  }, []);
 
   // A reprint has to declare the SAME paper the slip is laid out for. The
   // receipt and KOT components below resolve their own width from Settings, so
@@ -205,36 +263,9 @@ export function OrderDetailSheet({
     );
   };
 
-  const handleSettle = async (result: PaymentResult) => {
-    if (!order) return;
-    try {
-      const updated = await settleOrder.mutateAsync({
-        id: order._id,
-        data: {
-          payment: result.payment as SettlementPayMode,
-          splitCash: result.splitCash,
-          splitOnline: result.splitOnline,
-          // The order's own customer is authoritative once attached; only an
-          // unattached order can pick one up here. No `discount` — this path
-          // (unlike the POS settle) always charges the stored total unchanged.
-          customerId: order.customerId ?? settleCustomer?._id,
-          paidAmount: collectedAmount(result),
-          // Only meaningful alongside a defined paidAmount above — lets the
-          // route detect a stale `order` snapshot (CR1.2 regression).
-          total: order.total,
-          // The tab this sheet is showing — refused once it has moved
-          // (lib/settle-guard.ts), so a bill is never closed unseen.
-          expectedTotal: order.total,
-          expectedVoids: order.voids?.length ?? 0,
-        },
-      });
-      setSettleOpen(false);
-      // Settled here: any "not settled" alert for this tab is now answered.
-      pendingWrites.dismiss(updated._id);
-      onSettled?.(updated);
-    } catch {
-      // hook toasts on error; leave the modal open to retry
-    }
+  const handleSettle = (result: PaymentResult) => {
+    if (!paying) return;
+    void settleFlow.submit(paying, sheetSettlePayload(paying, result, settleCustomer));
   };
 
   return (
@@ -409,14 +440,14 @@ export function OrderDetailSheet({
                 for a seated one. Owner decision: all staff, no admin gate
                 (matches Settle, not Cancel). */}
             {isOpenTab && (
-              <Button variant="outline" onClick={() => setMoveOpen(true)} disabled={settlingHere}>
+              <Button variant="outline" onClick={() => setMoveOpen(true)}>
                 <Replace className="mr-2 h-4 w-4" /> {order.tableNo ? "Move table" : "Assign table"}
               </Button>
             )}
           </div>
           {isOpenTab && (
-            <Button className="w-full" onClick={() => setSettleOpen(true)} disabled={settlingHere}>
-              <HandCoins className="mr-2 h-4 w-4" /> {settlingHere ? "Settling in the background…" : <>Settle &amp; Pay</>}
+            <Button className="w-full" onClick={openSettle}>
+              <HandCoins className="mr-2 h-4 w-4" /> Settle &amp; Pay
             </Button>
           )}
         </SheetFooter>
@@ -434,31 +465,32 @@ export function OrderDetailSheet({
         </div>
       </SheetContent>
 
-      {order && (
+      {order && paying && (
         <PaymentModal
           open={settleOpen}
-          onOpenChange={setSettleOpen}
-          subtotal={order.subtotal}
-          discount={order.discount}
-          discountKind={order.discountKind}
-          gstAmount={order.gstAmount ?? 0}
-          gstRate={order.gstRate}
-          charge={order.chargeAmount ?? 0}
-          chargeLabel={order.chargeLabel}
-          charges={chargesFromOrder(order)}
-          total={order.total}
-          itemCount={order.items.reduce((n, it) => n + it.qty, 0)}
+          onOpenChange={settleOpenChange}
+          subtotal={paying.subtotal}
+          discount={paying.discount}
+          discountKind={paying.discountKind}
+          gstAmount={paying.gstAmount ?? 0}
+          gstRate={paying.gstRate}
+          charge={paying.chargeAmount ?? 0}
+          chargeLabel={paying.chargeLabel}
+          charges={chargesFromOrder(paying)}
+          total={paying.total}
+          itemCount={paying.items.reduce((n, it) => n + it.qty, 0)}
           customer={
-            order.customerId
-              ? ({ _id: order.customerId, name: order.customerName } as Customer)
+            paying.customerId
+              ? ({ _id: paying.customerId, name: paying.customerName } as Customer)
               : settleCustomer
           }
-          tableNo={order.tableNo}
-          receiver={order.receiver}
-          isSubmitting={settleOrder.isPending}
+          tableNo={paying.tableNo}
+          receiver={paying.receiver}
+          isSubmitting={settleFlow.busy}
           onConfirm={handleSettle}
           confirmLabel="Settle"
-          onSelectCustomer={order.customerId ? undefined : setSettleCustomer}
+          onSelectCustomer={paying.customerId ? undefined : setSettleCustomer}
+          notice={settleFlow.noticeFor(order._id)}
         />
       )}
 

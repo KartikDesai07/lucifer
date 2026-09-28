@@ -8,6 +8,7 @@ import type { AddToCartOpts } from "@/components/pos/ModifierModal";
 import type { PosModalTotals } from "@/hooks/use-pos-modal-totals";
 import { useStableCallback } from "@/hooks/use-stable-callback";
 import type { PaymentResult } from "@/lib/payment-result";
+import type { WriteNotice } from "@/lib/pending-writes";
 import type { Customer, Order, Product, VoidItemInput } from "@/types";
 
 // CB-1d.3c / C3 — the five POS modal roots (ModifierModal · PaymentModal ·
@@ -62,6 +63,8 @@ export interface PosModalsProps extends PosPromptsProps {
   isSubmitting: boolean;
   onPaymentConfirm: (result: PaymentResult) => void;
   onSelectCustomer?: (customer: Customer | undefined) => void;
+  // The settle's outcome for the tab being paid (plain data, no callback).
+  paymentNotice: WriteNotice | null;
   // VoidItemDialog
   voidOpen: boolean;
   onVoidOpenChange: (open: boolean) => void;
@@ -94,6 +97,7 @@ export function PosModals({
   isSubmitting,
   onPaymentConfirm,
   onSelectCustomer,
+  paymentNotice,
   closeConfirmOpen,
   onCloseConfirmOpenChange,
   onConfirmCloseTab,
@@ -151,6 +155,7 @@ export function PosModals({
         isSubmitting={isSubmitting}
         onConfirm={paymentConfirm}
         onSelectCustomer={onSelectCustomer ? selectCustomer : undefined}
+        notice={paymentNotice}
       />
 
       <PosPrompts

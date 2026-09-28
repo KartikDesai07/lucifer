@@ -39,7 +39,9 @@ import { after } from "next/server";
 export const CAFE_EVENT_KINDS = [
   "kot-fired", // a round fired to the kitchen  → Kitchen board
   "kot-ticked", // a cook ticked a line off     → Kitchen board
-  "order-changed", // created / settled / voided → POS pulse + board
+  // a tab created / edited / moved / settled / voided / cancelled / deleted,
+  // or a table changed → Kitchen board + open tabs, order lists and tables
+  "order-changed",
   "self-order", // a QR self-order arrived      → POS pulse
   // Socket slice 2. The print host listens for this so it can drop its
   // discovery poll from 3s to 60s. It is a NUDGE ONLY — the poll stays as the
@@ -58,8 +60,9 @@ export const REALTIME_TS_HEADER = "x-realtime-ts";
 
 /** How long a publish may take before it is abandoned. A Vercel route's budget
  *  is <8s and this call is NOT part of the write's critical path, so it gets a
- *  deliberately tight budget. It runs under after(), i.e. AFTER the response is
- *  flushed, so it never eats the route's own budget — but it does hold the
+ *  deliberately tight budget. The request starts at the publish call site
+ *  (the route never awaits it); after() only keeps the invocation alive until
+ *  it settles, so it never delays the response — but it does hold the
  *  invocation open, and this bounds that to ~2s even against a black-holed
  *  Worker. */
 const PUBLISH_TIMEOUT_MS = 2000;
@@ -114,12 +117,17 @@ export function realtimeEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
  * registered with `waitUntil` has settled; a promise that was never registered
  * has no claim on that lifetime, so a fire-and-drop `void fetch(...)` would
  * race the freeze and lose the nudge a large share of the time. Next's
- * `after()` awaits the callback and holds the invocation open for it
+ * `after()` awaits the promise and holds the invocation open for it
  * (next/dist/server/after/after-context.js — the queue is drained under
- * `waitUntil`), which is what actually gets the request out the door.
+ * `waitUntil`), which is what lets the already-started request finish.
+ *
+ * Note the request STARTS when this function is called (at the route's publish
+ * call site), not after the response is sent — after() only keeps the
+ * invocation alive. So what keeps the nudge behind the write is placement:
+ * each route calls publishCafeEvent after its write and every follow-up.
  *
  * It still cannot hurt the write: every failure is swallowed here, the timeout
- * is tight, and it only ever runs AFTER the response has been sent.
+ * is tight, and the route never awaits it.
  */
 export async function broadcastCafeEvent(
   kind: CafeEventKind,

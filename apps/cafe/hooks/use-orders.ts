@@ -14,7 +14,8 @@ import { toast } from "sonner";
 import { apiGet, apiSend } from "@/lib/api-client";
 import { cafeDateString } from "@/lib/utils";
 import { STALE_TIMES, GC_TIMES, REFETCH_INTERVALS } from "@/lib/query";
-import { firstPageOnly, nextOrderCursor } from "@/lib/order-query";
+import { firstPageOnly, nextOrderCursor, onePageAtMost } from "@/lib/order-query";
+import { classifyFailure, settledMessage } from "@/lib/pending-writes";
 import { TABLE_KEYS } from "@/hooks/use-tables";
 import { CUSTOMER_KEYS } from "@/hooks/use-customers";
 import { PRODUCT_KEYS } from "@/hooks/use-products";
@@ -86,7 +87,8 @@ function buildQuery(filters: OrderFilters, before?: string): string {
 }
 
 // Orders are never cached (staleTime 0) — POS accuracy is critical (CLAUDE.md §9).
-// Pass refetchInterval to poll live (e.g. dashboard widgets, Step 6.7). Pass
+// Pass refetchInterval to poll live (e.g. dashboard widgets, Step 6.7), and
+// gcTime to keep a list longer than GC_TIMES.ORDERS (OPEN_TABS_QUERY_OPTIONS). Pass
 // enabled: false to skip the fetch entirely (CR1.5 Slice 5 — EndOfDayButton's
 // open-tabs query only makes sense for today, not a past EOD date); omitted,
 // it behaves exactly as before (TanStack default: enabled).
@@ -95,14 +97,14 @@ function buildQuery(filters: OrderFilters, before?: string): string {
 // mutation is in flight so they can't clobber the optimistic update mid-write.
 export function useOrders(
   filters: OrderFilters = {},
-  options: { refetchInterval?: number; enabled?: boolean } = {},
+  options: { refetchInterval?: number; enabled?: boolean; gcTime?: number } = {},
 ) {
   const isMutating = useIsMutating({ mutationKey: ORDER_KEYS.mutation }) > 0;
   return useQuery({
     queryKey: ORDER_KEYS.list(filters),
     queryFn: () => apiGet<Order[]>(`/api/orders${buildQuery(filters)}`),
     staleTime: STALE_TIMES.LIVE,
-    gcTime: GC_TIMES.ORDERS,
+    gcTime: options.gcTime ?? GC_TIMES.ORDERS,
     enabled: options.enabled,
     refetchInterval: isMutating ? false : options.refetchInterval,
     refetchOnWindowFocus: !isMutating,
@@ -121,15 +123,19 @@ const ORDERS_PAGE_SIZE = 50; // mirrors app/api/orders/route.ts's DEFAULT_LIMIT
 // paints the last rows at once while the refetch runs (staleTime stays 0, so it
 // always refetches), instead of a skeleton for a whole round trip on a slow
 // counter link. Only the first page is kept (useTrimOrdersListOnLeave below).
-const ORDERS_LIST_GC_MS = 30 * 60 * 1000;
+export const ORDERS_LIST_GC_MS = 30 * 60 * 1000;
+// The POS open-tabs list (and the Dashboard's): polled on the live beat so a tab
+// another device opened, grew or settled shows up here, and kept as long as the
+// Orders list so coming back paints at once. Declared after ORDERS_LIST_GC_MS,
+// which it reads.
+export const OPEN_TABS_QUERY_OPTIONS = { refetchInterval: REFETCH_INTERVALS.LIVE_LISTS, gcTime: ORDERS_LIST_GC_MS } as const;
 
 export function useOrdersInfinite(filters: OrderFilters = {}) {
   const pageSize = filters.limit ?? ORDERS_PAGE_SIZE;
-  // Same pause-while-mutating mechanism as useOrders, mirrored onto the one
-  // documented option that matters here: a focus-refetch mid-mutation could
-  // clobber optimistic state. Deliberately NOT given a refetchInterval — a
-  // timer re-fetching every loaded page (not just the first) on this list is
-  // not wanted.
+  // Same pause-while-mutating mechanism as useOrders: a focus-refetch or poll
+  // mid-mutation could clobber optimistic state. The poll runs ONLY while one
+  // page is loaded (onePageAtMost) — a timer re-fetching every loaded page, not
+  // just the first, on this list is still not wanted.
   const isMutating = useIsMutating({ mutationKey: ORDER_KEYS.mutation }) > 0;
   return useInfiniteQuery({
     queryKey: ORDER_KEYS.infiniteList(filters),
@@ -139,6 +145,7 @@ export function useOrdersInfinite(filters: OrderFilters = {}) {
     getNextPageParam: (lastPage: Order[]) => nextOrderCursor(lastPage, pageSize),
     staleTime: STALE_TIMES.LIVE,
     gcTime: ORDERS_LIST_GC_MS,
+    refetchInterval: isMutating ? false : (query) => (onePageAtMost(query.state.data) ? REFETCH_INTERVALS.LIVE_LISTS : false),
     refetchOnWindowFocus: !isMutating,
   });
 }
@@ -162,6 +169,13 @@ export function useTrimOrdersListOnLeave() {
   );
 }
 
+// The optimistic row's id — never a real ObjectId, so it can be found and swapped.
+const OPTIMISTIC_ORDER_ID = "optimistic";
+
+// An unanswered write (timeout, offline, 5xx) is shown by the POS's own
+// "Couldn't confirm" notice (lib/pos-send.ts), never also as a toast.
+const toastsFailure = (err: Error) => classifyFailure(err) !== "uncertain";
+
 // Build a transient optimistic order from the create payload so the orders list
 // (when mounted) reflects the new order instantly before the server responds.
 // Honors the payload's status/payment (a held tab is Pending/Unpaid, a one-shot
@@ -169,7 +183,7 @@ export function useTrimOrdersListOnLeave() {
 function optimisticOrder(input: CreateOrderInput): Order {
   return {
     ...input,
-    _id: "optimistic",
+    _id: OPTIMISTIC_ORDER_ID,
     orderId: "…",
     discount: input.discount ?? 0,
     items: input.items.map((it) => ({ ...it, kotRound: 1 })),
@@ -224,7 +238,7 @@ export function useCreateOrder() {
     },
     onError: (err: Error, _vars, ctx) => {
       ctx?.snapshot?.forEach(([key, data]) => qc.setQueryData(key, data));
-      toast.error(err.message || "Order failed — please try again");
+      if (toastsFailure(err)) toast.error(err.message || "Order failed — please try again");
       // A rejected order write can mean the menu moved under this terminal: the
       // product list is cached for 5 minutes, so a size the admin renamed or
       // removed is still on screen and every retry fails the same way until that
@@ -239,8 +253,16 @@ export function useCreateOrder() {
       qc.invalidateQueries({ queryKey: TABLE_KEYS.all });
       qc.invalidateQueries({ queryKey: CUSTOMER_KEYS.all });
     },
+    // The POS frees its cart on this answer, so the optimistic row becomes the
+    // real order now: until the refetch lands, Open tabs would otherwise offer a
+    // phantom "optimistic" tab that no round can be sent to. No toast — the
+    // caller's confirm says it once (lib/pos-send.ts).
     onSuccess: (order) => {
-      toast.success(`Order ${order.orderId} placed`);
+      qc.getQueriesData<Order[]>({ queryKey: ORDER_KEYS.lists }).forEach(([key, data]) => {
+        if (!data) return;
+        const belongs = orderMatchesFilters(order, (key[2] ?? {}) as OrderFilters) && !data.some((o) => o._id === order._id);
+        qc.setQueryData<Order[]>(key, data.flatMap((o) => (o._id !== OPTIMISTIC_ORDER_ID ? [o] : belongs ? [order] : [])));
+      });
     },
   });
 }
@@ -274,9 +296,9 @@ export function useAddOrderItems() {
     mutationKey: ORDER_KEYS.mutation,
     mutationFn: ({ id, data }: { id: string; data: AddItemsInput }) =>
       apiSend<Order>(`/api/orders/${id}/items`, "POST", data),
-    onSuccess: () => toast.success("Sent to kitchen"),
+    // No success toast — the POS's confirm says it once, with the round number.
     onError: (err: Error) => {
-      toast.error(err.message || "Could not send to kitchen");
+      if (toastsFailure(err)) toast.error(err.message || "Could not send to kitchen");
       // A rejected order write can mean the menu moved under this terminal: the
       // product list is cached for 5 minutes, so a size the admin renamed or
       // removed is still on screen and every retry fails the same way until that
@@ -295,16 +317,17 @@ export function useAddOrderItems() {
 
 // Settle an open tab: take payment server-authoritatively (paidAmount derived
 // from the stored total) → Completed + frees the table. The server frees the
-// table, so callers must NOT also touch table state.
+// table, so callers must NOT also touch table state. No error toast: the one
+// caller (hooks/use-settle-flow.ts) shows every failure inside the payment
+// popup, and a toast would say it twice. onSettled stays a block body, so
+// mutateAsync never waits on the refetches.
 export function useSettleOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationKey: ORDER_KEYS.mutation,
     mutationFn: ({ id, data }: { id: string; data: SettleOrderInput }) =>
       apiSend<Order>(`/api/orders/${id}/settle`, "POST", data),
-    onSuccess: (order) => toast.success(`Order ${order.orderId} settled`),
-    onError: (err: Error) =>
-      toast.error(err.message || "Could not settle order"),
+    onSuccess: (order) => toast.success(settledMessage(order)),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ORDER_KEYS.all });
       qc.invalidateQueries({ queryKey: TABLE_KEYS.all });

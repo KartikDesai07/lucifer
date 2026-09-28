@@ -40,6 +40,9 @@ import {
   shouldStoreDiscountKind,
   rewardFromOrderSnapshot,
 } from "@pos/shared/reward-redemption";
+import { buildKotIdemKeys } from "@pos/shared/order-idem";
+import { idemGuardFilter, roundReplayResponse, roundReplayAfterMiss } from "@/lib/order-idem";
+import { settledValue } from "@/lib/settled";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +58,8 @@ type Params = { params: Promise<{ id: string }> };
 // add from a second device, or a settle that landed first, makes the match fail
 // → 409 (the client retries with its items intact / reopens), so a round is never
 // silently lost and items can never be appended to an already-settled bill.
+// F5 — a round sent with an idemKey is fired at most once: a re-send of a round
+// that already landed answers 200 with the tab (lib/order-idem.ts), no write.
 export async function POST(req: Request, { params }: Params) {
   const authed = await requireAuth();
   if ("error" in authed) return authed.error;
@@ -68,26 +73,37 @@ export async function POST(req: Request, { params }: Params) {
   try {
     await connectDB();
 
-    // A product sold by size must never reach the kitchen as a bare name, and a
-    // variation the product does not have must never be printed as if it did.
-    // One indexed query, and only when the payload could possibly be affected —
-    // checked BEFORE the CAS write below, so a bad round never touches the tab.
+    // The independent reads start together and are CHECKED in order: the tab
+    // (404), then the send key — a round that already landed replays before a
+    // since-edited product could 400 it or a closed tab could 409 it — then the
+    // variation check, then the tab's own refusals.
     const productIds = parsed.data.items
       .map((it) => it.productId)
       .filter(mongoose.isValidObjectId);
-    if (productIds.length) {
-      const products = await Product.find({ _id: { $in: productIds } })
-        .select("name variations")
-        .lean();
-      const bad = checkItemVariations(
-        products.map((p) => ({ _id: String(p._id), name: p.name, variations: p.variations })),
-        parsed.data.items,
-      );
-      if (bad) return failure(bad, 400);
-    }
-
-    const old = await Order.findById(id).lean();
+    const [oldR, productsR, settingsR] = await Promise.allSettled([
+      Order.findById(id).lean(),
+      // One indexed query, only when the payload could possibly be affected.
+      productIds.length
+        ? Product.find({ _id: { $in: productIds } }).select("name variations").lean()
+        : Promise.resolve([]),
+      getSettings(),
+    ]);
+    const old = settledValue(oldR);
     if (!old) return notFound("Order not found");
+    const key = parsed.data.idemKey;
+    const replay = key ? roundReplayResponse(old, key, parsed.data.items) : null;
+    if (replay) return replay;
+
+    // A product sold by size must never reach the kitchen as a bare name, and a
+    // variation the product does not have must never be printed as if it did —
+    // checked BEFORE the CAS write below, so a bad round never touches the tab.
+    const products = settledValue(productsR);
+    const bad = checkItemVariations(
+      products.map((p) => ({ _id: String(p._id), name: p.name, variations: p.variations })),
+      parsed.data.items,
+    );
+    if (bad) return failure(bad, 400);
+
     if (old.status !== "Pending" || old.payment !== "Unpaid") {
       return failure("Can only add items to an open tab", 409);
     }
@@ -102,7 +118,7 @@ export async function POST(req: Request, { params }: Params) {
     // Absent = leave the tab's stored kind alone; null = the operator cleared
     // the preset; "gst" = (re-)apply it — same omit-unchanged discipline as discount.
     let discountKind = resolveDiscountKind(parsed.data.discountKind, old.discountKind);
-    const settings = await getSettings();
+    const settings = settledValue(settingsR);
     const gstCfg = gstConfigFromOrder(old, gstConfigOf(settings));
     // CB-CHG — charges[] is the source of truth (plan §4), upgraded in place
     // from the tab's legacy scalars if it predates this feature. The table
@@ -221,6 +237,7 @@ export async function POST(req: Request, { params }: Params) {
       payment: "Unpaid",
       kotRounds: old.kotRounds ?? 0,
       ...voidGuardFilter(old.voids?.length ?? 0),
+      ...idemGuardFilter(key),
     };
     // A waived charge is REMOVED, not stored as 0: the receipt keys its charge
     // line off the amount being present, so a 0 left beside the label would
@@ -262,6 +279,10 @@ export async function POST(req: Request, { params }: Params) {
     const kotFiredAt = Array.from({ length: round }, (_, i) =>
       i === round - 1 ? firedAt : (old.kotFiredAt?.[i] ?? old.createdAt),
     );
+    // F5 — same positional idiom: this round's send key at index round-1,
+    // earlier keyless rounds backfilled with "". Undefined (nothing written)
+    // when the round carries no key.
+    const kotIdemKeys = buildKotIdemKeys(old.kotIdemKeys, round, key);
 
     // CB-CHG — the ONE helper every charge writer uses (plan §4), so this
     // route can never hand-write the mirror or pick the wrong $set/$unset arm.
@@ -281,6 +302,7 @@ export async function POST(req: Request, { params }: Params) {
         // claim on this round writes discountKind:"reward" and its snapshot.
         ...(storeKind ? { discountKind } : {}),
         ...(kotNumbers ? { kotNumbers } : {}),
+        ...(kotIdemKeys ? { kotIdemKeys } : {}),
         ...(resolvedClaim ? rewardSnapshotFields(resolvedClaim.reward, resolvedClaim.cost) : {}),
       },
     };
@@ -299,7 +321,10 @@ export async function POST(req: Request, { params }: Params) {
     // one), so unlike create there is no orderId-minting subtlety here.
     if (resolvedClaim) {
       const claimed = await claimRewardStamps(String(old.customerId), old.orderId, resolvedClaim.cost, rewardAssignment);
-      if (!claimed) return failure("Not enough stamps for that reward", 409);
+      // A twin with the same key may have landed (and claimed) first.
+      if (!claimed) {
+        return (key ? await roundReplayAfterMiss(id, key, parsed.data.items) : null) ?? failure("Not enough stamps for that reward", 409);
+      }
     }
     const updated = await Order.findOneAndUpdate(filter, update, {
       new: true,
@@ -313,13 +338,17 @@ export async function POST(req: Request, { params }: Params) {
       if (resolvedClaim) {
         await returnRewardStamps(String(old.customerId), old.orderId, resolvedClaim.cost, rewardAssignment);
       }
+      // F5 — the overlap twin that won this CAS may be our own send: answer
+      // with the round that landed instead of a 409 the cashier would re-ring.
+      const late = key ? await roundReplayAfterMiss(id, key, parsed.data.items) : null;
+      if (late) return late;
       return failure("Tab changed or already settled — reopen it and try again", 409);
     }
 
     // In-progress KPI value (Σ pending totals) grew — refresh today's summary.
     cache.del(orderSummaryCacheKey());
     // A round just fired — nudge the Kitchen board ahead of its 10s poll.
-    // publishCafeEvent defers it past the response and swallows every failure
+    // publishCafeEvent sends it at once (after() only keeps the invocation alive — which is why it sits after every follow-up) and swallows every failure
     // (including after()'s own throw), so it can never delay or fail this
     // write; the poll stays the fallback and the source of truth.
     publishCafeEvent("kot-fired");

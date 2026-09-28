@@ -18,3 +18,21 @@ export interface PaymentResult {
 export function collectedAmount(result: PaymentResult): number | undefined {
   return result.partial ? result.paidAmount : undefined;
 }
+
+// F8 — the popup resets its pay mode only when it OPENS. A bill that changes
+// while it is open (a reward arming, a tab refreshed from another device)
+// keeps the mode the operator picked and says the bill changed instead.
+export type PopupSnapshot = { open: boolean; total: number };
+export type SplitAmounts = { cash: number; online: number };
+
+export function paymentPopupChange(prev: PopupSnapshot, next: PopupSnapshot): "opened" | "bill-changed" | "none" {
+  if (next.open && !prev.open) return "opened";
+  if (next.open && next.total !== prev.total) return "bill-changed";
+  return "none";
+}
+
+// Online is money already seen arriving; Cash takes the rest (never below 0 —
+// a sum that no longer matches keeps the popup's split mismatch blocking).
+export function splitAfterBillChange(s: SplitAmounts, total: number): SplitAmounts {
+  return { cash: Math.max(0, total - s.online), online: s.online };
+}

@@ -96,7 +96,9 @@ export async function nextOrderSequence(
 export const SLIP_SERIES = ["kot", "bill"] as const;
 export type SlipSeries = (typeof SLIP_SERIES)[number];
 
-function slipCounterKey(series: SlipSeries, date: Date): string {
+// Exported for the slip-number live leg, which must read the REAL day key
+// rather than re-deriving it (no behaviour change).
+export function slipCounterKey(series: SlipSeries, date: Date): string {
   return `${series}-${cafeDateString(date).replace(/-/g, "")}`;
 }
 

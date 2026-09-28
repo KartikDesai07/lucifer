@@ -2,15 +2,36 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { ApiError } from "@pos/shared/api-client";
+import * as mod from "./pending-writes";
 import {
-  SETTLE_MAX_ATTEMPTS,
-  SETTLE_RETRY_DELAYS_MS,
+  NOTICE_TITLES,
+  SETTLE_BILL_SAVING,
+  SETTLE_NOT_SETTLED,
+  SETTLE_STILL_UNREACHABLE,
+  SETTLE_TAB_CHANGED,
+  SETTLE_UNCONFIRMED,
+  SIGNED_OUT,
+  SIGNED_OUT_CHECK,
+  TAB_CANCELLED,
+  TAB_MISSING,
   classifyFailure,
+  intentOf,
+  moneyEditedSince,
+  noticeAction,
+  noticeOfReadError,
+  noticeOfSendError,
+  noticeOfStep,
+  noticeOfUnnumbered,
   reconcileSettle,
-  runSettle,
+  settledElsewhereMessage,
+  settledMessage,
+  signedOut,
+  stepFromOrder,
+  tabLabel,
   type SettleIntent,
+  type WriteNotice,
 } from "./pending-writes";
-import type { Order } from "@/types";
+import type { Order, SettleOrderInput } from "@/types";
 
 const http = (status: number, message = `HTTP ${status}`) => new ApiError(message, "http", status);
 const TIMEOUT = new ApiError("signal timed out", "timeout", null);
@@ -45,127 +66,146 @@ test("reconcileSettle recognises OUR settle only when mode and amount match what
   assert.equal(reconcileSettle(cash, order({ status: "Cancelled" })), "cancelled");
 });
 
-/** Fake ports: scripted send/read results, recorded sleeps. */
-function ports(sends: Array<Order | Error>, reads: Array<Order | Error> = []) {
-  const log = { sends: 0, reads: 0, sleeps: [] as number[], retries: [] as number[] };
-  return {
-    log,
-    ports: {
-      send: async () => {
-        const r = sends[Math.min(log.sends++, sends.length - 1)];
-        if (r instanceof Error) throw r;
-        return r;
-      },
-      read: async () => {
-        const r = reads[Math.min(log.reads++, reads.length - 1)];
-        if (r instanceof Error) throw r;
-        return r;
-      },
-      sleep: async (ms: number) => {
-        log.sleeps.push(ms);
-      },
-      onRetry: (n: number) => log.retries.push(n),
-    },
-  };
-}
+// ── The one-foreground-attempt API (owner decision 1, 2026-09-28) ──────────
 
 const CASH: SettleIntent = { payment: "Cash" };
 const DONE = order({ status: "Completed", payment: "Cash", paidAmount: 540, billNumber: 17 } as Partial<Order>);
+const SEEN = { expectedTotal: 540, expectedVoids: 0 };
 
-test("runSettle: a first-time answer is the whole story — no read, no retry", async () => {
-  const { ports: p, log } = ports([DONE]);
-  assert.deepEqual(await runSettle(CASH, p), { kind: "settled", order: DONE });
-  assert.deepEqual([log.sends, log.reads, log.sleeps.length], [1, 0, 0]);
+// Names built by concatenation so a repo grep for the removed lane stays empty.
+test("the background lane's retry loop is gone for good — no retry driver, no retry schedule", () => {
+  assert.ok("reconcileSettle" in mod, "landmark: the module still exports reconcileSettle");
+  for (const removed of ["run" + "Settle", "SETTLE_" + "RETRY_DELAYS_MS", "SETTLE_" + "MAX_ATTEMPTS"]) {
+    assert.ok(!(removed in mod), `no automatic resend: ${removed} must not come back`);
+  }
 });
 
-test("runSettle: a timeout whose settle DID land is adopted from the order — sent once, never twice", async () => {
-  const { ports: p, log } = ports([TIMEOUT], [DONE]);
-  assert.deepEqual(await runSettle(CASH, p), { kind: "settled", order: DONE });
-  assert.equal(log.sends, 1, "the order already says settled — re-sending would only 409");
+test("intentOf reads exactly the four money fields off the payload that was sent", () => {
+  const payload = { payment: "Split", splitCash: 240, splitOnline: 300, expectedTotal: 540, discount: 0 } as SettleOrderInput;
+  assert.deepEqual(intentOf(payload), { payment: "Split", paidAmount: undefined, splitCash: 240, splitOnline: 300 });
+  assert.deepEqual(intentOf({ payment: "Cash", paidAmount: 300 }), { payment: "Cash", paidAmount: 300, splitCash: undefined, splitOnline: undefined });
 });
 
-test("runSettle: a timeout on a tab still open waits, then re-sends", async () => {
-  const { ports: p, log } = ports([TIMEOUT, DONE], [order({ status: "Pending" })]);
-  assert.deepEqual(await runSettle(CASH, p), { kind: "settled", order: DONE });
-  assert.deepEqual(log.sleeps, [SETTLE_RETRY_DELAYS_MS[0]]);
-  assert.deepEqual(log.retries, [2]);
+test("stepFromOrder: a Completed order is ours ONLY when an unanswered attempt of ours matches it", () => {
+  assert.deepEqual(stepFromOrder(DONE, [CASH], SEEN), { kind: "settled", order: DONE });
+  // Ported from the lane's first-attempt 409 case: with nothing unanswered,
+  // no settle of ours can exist — a matching Completed order is someone else's.
+  assert.deepEqual(stepFromOrder(DONE, [], SEEN), { kind: "elsewhere", order: DONE });
+  const online = order({ status: "Completed", payment: "Online", paidAmount: 540 });
+  assert.deepEqual(stepFromOrder(online, [CASH], SEEN), { kind: "elsewhere", order: online });
+  assert.deepEqual(stepFromOrder(DONE, [{ payment: "Online" }, CASH], SEEN), { kind: "settled", order: DONE }, "any one of several unanswered attempts may be the one that landed");
 });
 
-test("runSettle: a 500 after the write committed is still our settle", async () => {
-  const { ports: p } = ports([http(500, "Failed to settle order")], [DONE]);
-  assert.equal((await runSettle(CASH, p)).kind, "settled");
+test("stepFromOrder: cancelled is gone; a Pending tab is changed when its total or void trail moved, otherwise open", () => {
+  const cancelled = order({ status: "Cancelled" });
+  assert.deepEqual(stepFromOrder(cancelled, [CASH], SEEN), { kind: "gone", message: TAB_CANCELLED, order: cancelled });
+  const bigger = order({ total: 560 });
+  assert.deepEqual(stepFromOrder(bigger, [CASH], SEEN), { kind: "changed", order: bigger });
+  const voided = order({ voids: [{}] } as unknown as Partial<Order>);
+  assert.deepEqual(stepFromOrder(voided, [], SEEN), { kind: "changed", order: voided });
+  const same = order({});
+  assert.deepEqual(stepFromOrder(same, [CASH], SEEN), { kind: "open", order: same });
+  assert.deepEqual(stepFromOrder(same, [], {}), { kind: "open", order: same }, "no echo, nothing to compare — open");
 });
 
-test("runSettle: a 409 on a tab another device settled is reported, not adopted — no second bill", async () => {
-  const other = order({ status: "Completed", payment: "Online", paidAmount: 540 });
-  const { ports: p } = ports([http(409, "Order already settled")], [other]);
-  assert.deepEqual(await runSettle(CASH, p), { kind: "elsewhere", order: other });
+function expectNotice(n: WriteNotice | "read" | null, kind: WriteNotice["kind"], message: string, action: WriteNotice["action"]) {
+  assert.ok(n && n !== "read", `expected a ${kind} notice, got ${JSON.stringify(n)}`);
+  assert.deepEqual(n, { kind, title: NOTICE_TITLES[kind], message, action });
+}
+
+const GONE_SUFFIX = ". If you took payment for it, give it back or ring it up again.";
+
+test("noticeOfSendError: a refusal shows the server's words, a 409 means read the order, anything unanswered is 'Couldn't confirm'", () => {
+  expectNotice(noticeOfSendError(http(400, "Select an existing customer for Due or Credit orders")), "refused", "Select an existing customer for Due or Credit orders", "confirm");
+  expectNotice(noticeOfSendError(http(401, "Not authenticated")), "refused", SIGNED_OUT, "confirm");
+  expectNotice(noticeOfSendError(http(404, "Order not found")), "gone", TAB_MISSING + GONE_SUFFIX, "close");
+  assert.equal(noticeOfSendError(http(409, "Order already settled")), "read");
+  for (const e of [http(500), http(502), http(503), http(504), http(408), http(429), TIMEOUT, OFFLINE, new Error("boom")]) {
+    expectNotice(noticeOfSendError(e), "uncertain", SETTLE_UNCONFIRMED, "check");
+  }
 });
 
-test("runSettle: a 409 on a tab that is still open means it changed — fail loud, do not retry", async () => {
-  const msg = "Tab changed or already settled — reopen it and try again";
-  const { ports: p, log } = ports([http(409, msg)], [order({ status: "Pending" })]);
-  assert.deepEqual(await runSettle(CASH, p), { kind: "failed", message: msg });
-  assert.equal(log.sends, 1);
+test("noticeOfStep: every reading has one plain-English answer; after a 409 an unchanged open tab is a refusal, never 'safe to settle again'", () => {
+  assert.equal(noticeOfStep({ kind: "settled", order: DONE }, "check"), null, "a settled step closes the popup — no notice");
+  const other = order({ status: "Completed", payment: "Online", paidAmount: 540, tableNo: "4" });
+  expectNotice(noticeOfStep({ kind: "elsewhere", order: other }, "check"), "elsewhere", settledElsewhereMessage(other), "close");
+  expectNotice(noticeOfStep({ kind: "changed", order: order({ total: 560 }) }, "conflict", "Tab changed"), "changed", SETTLE_TAB_CHANGED, "confirm");
+  expectNotice(noticeOfStep({ kind: "open", order: order({}) }, "check"), "open", SETTLE_NOT_SETTLED, "confirm");
+  // The route's pricing 409 leaves the tab unchanged — "safe to settle again"
+  // there would start a loop of identical refusals.
+  expectNotice(noticeOfStep({ kind: "open", order: order({}) }, "conflict", "The bill no longer matches the server"), "refused", "The bill no longer matches the server", "confirm");
+  expectNotice(noticeOfStep({ kind: "gone", message: TAB_CANCELLED, order: null }, "check"), "gone", TAB_CANCELLED + GONE_SUFFIX, "close");
 });
 
-test("runSettle: a refusal (400) is final — the order is not even read", async () => {
-  const { ports: p, log } = ports([http(400, "Select an existing customer for Due or Credit orders")]);
-  assert.deepEqual(await runSettle(CASH, p), { kind: "failed", message: "Select an existing customer for Due or Credit orders" });
-  assert.deepEqual([log.sends, log.reads], [1, 0]);
+// K4c: nothing was read, so the controller's next tap is another GET — every
+// notice but "gone" (Close) says Check, or the button would promise a Settle.
+test("noticeOfReadError: a failed look keeps Check alive, and never claims a result it did not read", () => {
+  expectNotice(noticeOfReadError(http(404), "check", undefined, true), "gone", TAB_MISSING + GONE_SUFFIX, "close");
+  expectNotice(noticeOfReadError(http(401), "check", undefined, true), "refused", SIGNED_OUT_CHECK, "check");
+  expectNotice(noticeOfReadError(http(403), "conflict", "Order already settled", true), "refused", SIGNED_OUT_CHECK, "check");
+  expectNotice(noticeOfReadError(OFFLINE, "check", undefined, true), "uncertain", SETTLE_STILL_UNREACHABLE, "check");
+  expectNotice(noticeOfReadError(OFFLINE, "conflict", "Order already settled", true), "uncertain", SETTLE_UNCONFIRMED, "check");
+  expectNotice(noticeOfReadError(OFFLINE, "conflict", "Order already settled", false), "refused", "Order already settled", "check");
 });
 
-test("runSettle: a cancelled tab and a vanished order are GONE — nothing to retry or reopen", async () => {
-  const a = ports([TIMEOUT], [order({ status: "Cancelled" })]);
-  assert.deepEqual(await runSettle(CASH, a.ports), { kind: "gone", message: "The tab was cancelled" });
-  const b = ports([TIMEOUT], [http(404, "Order not found")]);
-  assert.deepEqual(await runSettle(CASH, b.ports), { kind: "gone", message: "The tab no longer exists" });
-  const c = ports([http(404, "Order not found")]);
-  assert.deepEqual(await runSettle(CASH, c.ports), { kind: "gone", message: "The tab no longer exists" });
-  const d = ports([http(409, "Order was cancelled")], [order({ status: "Cancelled" })]);
-  assert.deepEqual(await runSettle(CASH, d.ports), { kind: "gone", message: "The tab was cancelled" });
-  assert.equal(a.log.sends + b.log.sends + c.log.sends + d.log.sends, 4);
+test("signed-out words: a settle POST says settle again; a failed Check read says tap Check", () => {
+  assert.equal(SIGNED_OUT_CHECK, "You were signed out. Sign in again, then tap Check.");
+  expectNotice(noticeOfSendError(http(401, "Not authenticated")), "refused", SIGNED_OUT, "confirm");
+  assert.ok(SIGNED_OUT.endsWith("then settle it"), "the POST's words are unchanged");
 });
 
-test("runSettle: a lapsed sign-in is final and says what to do in plain words", async () => {
-  const { ports: p, log } = ports([http(401, "Not authenticated")]);
-  assert.deepEqual(await runSettle(CASH, p), { kind: "failed", message: "You were signed out — sign in again, then settle it" });
-  assert.deepEqual([log.sends, log.reads], [1, 0]);
+test("K1: our settle read back without its bill number is 'still saving' — a Check, in plain words", () => {
+  expectNotice(noticeOfUnnumbered(), "uncertain", SETTLE_BILL_SAVING, "check");
+  assert.equal(SETTLE_BILL_SAVING, "The bill is still being saved. Tap Check again in a moment.");
 });
 
-test("runSettle: a re-send refused because the tab moved (expectedTotal echo) is loud and final", async () => {
-  const msg = "Tab changed — reopen it and try again";
-  const { ports: p, log } = ports([TIMEOUT, http(409, msg)], [order({ status: "Pending" }), order({ status: "Pending", total: 560 })]);
-  assert.deepEqual(await runSettle(CASH, p), { kind: "failed", message: msg });
-  assert.equal(log.sends, 2, "one re-send, then the operator must look at the bigger bill");
+test("K4b: the bill-changed words do not blame another device — this device may have changed it", () => {
+  assert.equal(SETTLE_TAB_CHANGED, "This tab changed after the bill was opened. Check the new total, then settle.");
+  assert.ok(!SETTLE_TAB_CHANGED.includes("another device"));
 });
 
-test("runSettle: when nothing ever answers it gives up after SETTLE_MAX_ATTEMPTS and says it could not confirm", async () => {
-  const { ports: p, log } = ports([TIMEOUT], [OFFLINE]);
-  const out = await runSettle(CASH, p);
-  assert.equal(out.kind, "unknown");
-  assert.equal(log.sends, SETTLE_MAX_ATTEMPTS);
-  assert.deepEqual(log.sleeps, SETTLE_RETRY_DELAYS_MS.slice(0, SETTLE_MAX_ATTEMPTS - 1));
-  assert.deepEqual(log.retries, [2, 3, 4]);
+test("signedOut: a 401 or a 403 is a sign-in problem; nothing else is", () => {
+  for (const s of [401, 403]) assert.equal(signedOut(http(s)), true, `${s}`);
+  for (const e of [http(400), http(404), http(409), http(500), TIMEOUT, OFFLINE, new Error("401")]) {
+    assert.equal(signedOut(e), false, String(e));
+  }
 });
 
-// Review fallout (2026-09-28): a 409 is the server saying THIS request wrote
-// nothing, so on a first attempt no settle of ours can exist — a Completed
-// order that happens to match our mode and amount is someone else's (a second
-// device, a second browser tab, the Orders page). Adopting it showed success
-// and printed a bill where the cashier needed "check before giving change".
-test("runSettle: a 409 on the FIRST attempt is never our settle, even when the order matches it", async () => {
-  const { ports: p, log } = ports([http(409, "Order already settled")], [DONE]);
-  assert.deepEqual(await runSettle(CASH, p), { kind: "elsewhere", order: DONE });
-  assert.equal(log.sends, 1);
+test("noticeAction and the titles: Check for an unanswered attempt, Close for a finished tab, otherwise the normal confirm", () => {
+  assert.equal(noticeAction("uncertain"), "check");
+  assert.equal(noticeAction("elsewhere"), "close");
+  assert.equal(noticeAction("gone"), "close");
+  for (const k of ["refused", "changed", "open"] as const) assert.equal(noticeAction(k), "confirm", k);
+  assert.deepEqual(NOTICE_TITLES, {
+    refused: "Not settled",
+    changed: "The bill changed",
+    open: "Not settled yet",
+    uncertain: "Couldn't confirm",
+    elsewhere: "Already settled",
+    gone: "Not settled",
+  });
 });
 
-test("runSettle: a 409 AFTER an unanswered attempt is our own earlier settle landing — adopted", async () => {
-  const { ports: p } = ports([TIMEOUT, http(409, "Order already settled")], [order({ status: "Pending" }), DONE]);
-  assert.deepEqual(await runSettle(CASH, p), { kind: "settled", order: DONE });
+test("the kept wording: the other-device warning names the tab and the money, and says to check before giving change", () => {
+  const other = order({ status: "Completed", payment: "Online", paidAmount: 540, tableNo: "4" });
+  const msg = settledElsewhereMessage(other);
+  assert.ok(msg.startsWith("Table 4 was already settled on another device (Online "), msg);
+  assert.ok(msg.endsWith("Check before giving change."), msg);
+  assert.equal(tabLabel(order({ tableNo: "4" })), "Table 4");
+  assert.equal(tabLabel(order({ tableNo: undefined })), "ORD-20260928-001");
+  assert.equal(settledMessage(DONE), "Order ORD-20260928-001 settled");
 });
 
-test("runSettle: a manual Retry after 'could not confirm' still counts the earlier unanswered sends", async () => {
-  const { ports: p } = ports([http(409, "Order already settled")], [DONE]);
-  assert.deepEqual(await runSettle(CASH, p, { mayHaveLanded: true }), { kind: "settled", order: DONE });
+test("moneyEditedSince compares the operator's money state with the tab it was seeded from — each field flips it", () => {
+  const tab = order({ discount: 50, discountKind: undefined, charges: [{ type: "table", label: "Table charge", amount: 40 }, { type: "extra", label: "Packing", amount: 20 }] } as Partial<Order>);
+  const seeded = { discountRaw: 50, discountUnit: "₹", chargeOverride: undefined, extraCharges: [{ label: "Packing", amount: 20 }] };
+  assert.equal(moneyEditedSince(seeded, tab), false, "exactly as seeded from the tab");
+  assert.equal(moneyEditedSince({ ...seeded, discountRaw: 60 }, tab), true, "discount");
+  assert.equal(moneyEditedSince({ ...seeded, discountUnit: "%" }, tab), true, "unit");
+  assert.equal(moneyEditedSince({ ...seeded, discountUnit: "GST" }, tab), true, "a GST preset the tab does not carry");
+  assert.equal(moneyEditedSince({ ...seeded, chargeOverride: 0 }, tab), true, "a waiver");
+  assert.equal(moneyEditedSince({ ...seeded, extraCharges: [] }, tab), true, "an extra removed");
+  assert.equal(moneyEditedSince({ ...seeded, extraCharges: [{ label: "Packing", amount: 25 }] }, tab), true, "an extra changed");
+  const gstTab = order({ discount: 27, discountKind: "gst" } as Partial<Order>);
+  assert.equal(moneyEditedSince({ discountRaw: 27, discountUnit: "GST", chargeOverride: undefined, extraCharges: [] }, gstTab), false, "the GST preset as seeded");
 });

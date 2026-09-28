@@ -13,6 +13,7 @@ import { usePathname } from "next/navigation";
 import { useIsMutating, useQueryClient } from "@tanstack/react-query";
 
 import { usePosPulse } from "@/hooks/use-pos-pulse";
+import { useLiveStateRealtime, usePosPulseRealtime } from "@/hooks/use-realtime";
 import { ORDER_REQUEST_KEYS } from "@/hooks/use-order-requests";
 import { ORDER_KEYS } from "@/hooks/use-orders";
 import { TABLE_KEYS } from "@/hooks/use-tables";
@@ -130,6 +131,12 @@ export function PosPulseProvider({ children }: { children: ReactNode }) {
   const { data } = usePosPulse();
   const qc = useQueryClient();
   const isMutating = useIsMutating({ mutationKey: ORDER_KEYS.mutation }) > 0;
+  // Realtime nudges, mounted once per tab here (this provider wraps every staff
+  // screen): a QR self-order refreshes the pulse; a tab/table change refreshes
+  // the open tabs, the order lists and the tables. Both are no-ops with
+  // realtime off, and every poll stays as it is.
+  usePosPulseRealtime();
+  useLiveStateRealtime();
 
   const prevRef = useRef<PosPulseData | null>(null);
   const lastPingRef = useRef<number>(0);

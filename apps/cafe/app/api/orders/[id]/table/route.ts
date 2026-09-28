@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { publishCafeEvent } from "@/lib/realtime-publish";
 import { connectDB } from "@/lib/db";
 import { Order } from "@/models/Order";
 import { Table } from "@/models/Table";
@@ -182,8 +183,8 @@ export async function POST(req: Request, { params }: Params) {
     // failure modes here need two different responses:
     //   - a THROW is NOT proof the write failed (project lesson: never revert
     //     on a write throw) — reverting the claim above could free a table
-    //     the order now legitimately holds, so we leave it alone and only
-    //     invalidate the cache.
+    //     the order now legitimately holds, so we leave it alone, invalidate
+    //     the cache and nudge the other devices to refetch.
     //   - a definite NO-MATCH (null) means the order genuinely did not move,
     //     so our claim must be released — guarded on our own order id so a
     //     table someone else has since taken is never freed out from under
@@ -213,6 +214,9 @@ export async function POST(req: Request, { params }: Params) {
       ).lean();
     } catch (error) {
       cache.del("tables");
+      // The move MAY have landed, and a nudge only triggers refetches — so
+      // nudge here too; a definite no-match (below) never does.
+      publishCafeEvent("order-changed");
       return serverError("Failed to move the order", error);
     }
     if (!moved) {
@@ -224,7 +228,6 @@ export async function POST(req: Request, { params }: Params) {
       cache.del("tables");
       return failure(ORDER_STALE_ERROR, 409);
     }
-
     // Step 3: release the OLD table, best-effort, CAS'd on this order. The
     // order has already moved, so failing the request now would only invite a
     // retry that cannot succeed (the CAS above would no-match a second time);
@@ -246,6 +249,13 @@ export async function POST(req: Request, { params }: Params) {
     // orders/summary derives from tableNo" reasoning no longer holds: the
     // MONEY changed, even though tableNo is what triggered it).
     cache.del(orderSummaryCacheKey());
+    // The tab moved (and was re-priced) — nudge every device's open tabs,
+    // order lists and tables. Only a landed move gets here (the uncertain
+    // catch above has its own nudge), and only after
+    // step 3 (the request starts at this call; after() only keeps it alive),
+    // so their refetch reads the old table already freed. Step 3 swallows its
+    // own throw, so nothing above can skip this. A failure is swallowed.
+    publishCafeEvent("order-changed");
     return success(moved);
   } catch (error) {
     return serverError("Failed to move the order", error);

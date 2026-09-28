@@ -164,7 +164,7 @@ export async function POST(req: Request) {
     }
 
     // The board changed — nudge every OTHER device ahead of its 10s poll.
-    // publishCafeEvent defers it past the response and swallows every failure,
+    // publishCafeEvent sends it at once (after() only keeps the invocation alive — which is why it sits after every follow-up) and swallows every failure,
     // so it can never delay or fail this write; the poll stays the fallback and
     // the source of truth.
     publishCafeEvent("kot-ticked");

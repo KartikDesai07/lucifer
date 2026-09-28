@@ -255,16 +255,16 @@ test("PIN: Cart.tsx never re-derives the bill total — it takes `total` as a re
 test("PIN: the POS drops a charge waiver only when the request it just made could actually carry it", () => {
   const src = stripComments(readSrc("hooks/use-pos-tab.ts"));
 
-  assert.match(
-    src,
-    /if\s*\(\s*chargeSent\s*\)\s*setChargeOverride\(undefined\)/,
-    "applyTabUpdate must clear the local waiver ONLY when chargeSent. Clearing it unconditionally silently discards a waiver on the void path, which cannot send one — the guest is then billed a charge the operator waived.",
-  );
+  // 2026-09-29 (smooth-writes C2, F4 "pins that must change"): a send no longer
+  // re-syncs the tab — the server's answer frees the whole cart (resetOrder), so
+  // the waiver goes with it exactly when the server has stored the request that
+  // carried it, and applyTabUpdate (void / move / refresh, none of which carry a
+  // charge) never touches it at all. Pinned both ways.
+  const apply = src.slice(src.indexOf("const applyTabUpdate"), src.indexOf("const sendToKitchen"));
+  assert.match(apply, /resync\(order\.items, keepUnfired\)/, "landmark: the applyTabUpdate slice must be the real re-sync");
   assert.ok(
-    !/^\s*setChargeOverride\(undefined\);\s*$/m.test(
-      src.slice(src.indexOf("const applyTabUpdate"), src.indexOf("const sendToKitchen")),
-    ),
-    "applyTabUpdate still contains an unconditional setChargeOverride(undefined).",
+    !apply.includes("setChargeOverride("),
+    "applyTabUpdate must never clear the local waiver: a void or move cannot send one, so clearing there throws away a waiver the operator promised — the guest is then billed a charge the operator waived.",
   );
   // WIDENED (CB-5B S9), never loosened: the original needle pinned the literal
   // as a CLOSED four-key object — a `}` immediately after chargeOverride — so
@@ -313,10 +313,19 @@ test("PIN: the POS drops a charge waiver only when the request it just made coul
     /data:\s*\{[^}]*\bchargeAmount:\s*chargeOverride\b/,
     "The add-a-round payload must carry chargeAmount, or a waiver made mid-tab never reaches the server and dies with this browser tab.",
   );
+  // The waiver is cleared only by the confirm that runs on the server's answer.
+  const confirm = kitchenPayload.slice(kitchenPayload.indexOf("confirm: (order"));
+  assert.ok(kitchenPayload.includes("confirm: (order"), "landmark: sendToKitchen frees the cart in its confirm");
   assert.match(
-    src,
-    /applyTabUpdate\(order,\s*\{\s*chargeSent:\s*true\s*\}\)/,
-    "sendToKitchen must declare that its request carried the charge, so the waiver is cleared exactly when the server has acknowledged it.",
+    confirm,
+    /if \(tabIdRef\.current === startedFor\) resetOrder\(\);/,
+    "sendToKitchen must free the cart (and with it the waiver) inside its confirm — exactly when the server has acknowledged the request that carried the charge.",
+  );
+  assert.ok(!kitchenPayload.includes("applyTabUpdate("), "the fire path no longer re-syncs the tab (that dropped lines added during the flight)");
+  assert.match(
+    src.slice(src.indexOf("const buildCreatePayload"), src.indexOf("const applyTabUpdate")),
+    /chargeAmount: chargeOverride,/,
+    "the create payload carries the waiver too, so freeing the cart after a NEW order's answer never drops an unsent waiver",
   );
 });
 
@@ -325,6 +334,8 @@ test("PIN: the void path does NOT claim to have sent a charge — voidItemSchema
 
   const voidCall = src.match(/applyTabUpdate\(order,\s*\{[^}]*\}\)/);
   assert.ok(voidCall, "the void handler must still call applyTabUpdate");
+  // The option itself is gone (C2): no caller may bring a "clear the waiver" flag back.
+  assert.ok(!stripComments(readSrc("hooks/use-pos-tab.ts")).includes("chargeSent"), "applyTabUpdate takes no chargeSent option any more");
   assert.ok(
     !/chargeSent/.test(voidCall[0]),
     "The void re-sync must not set chargeSent: a void request carries no charge, so clearing the waiver there throws away money the operator already promised to waive.",

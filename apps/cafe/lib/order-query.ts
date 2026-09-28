@@ -93,3 +93,29 @@ export function firstPageOnly<TPage, TParam>(
   if (!data || data.pages.length <= 1) return data;
   return { pages: data.pages.slice(0, 1), pageParams: data.pageParams.slice(0, 1) };
 }
+
+/**
+ * True while an infinite list holds at most one page — the only shape the
+ * Orders list may poll in (a timer must never re-fetch every loaded page in
+ * sequence). The same "nothing to cut" identity firstPageOnly already returns.
+ */
+export function onePageAtMost(data: { pages: unknown[]; pageParams: unknown[] } | undefined): boolean {
+  return firstPageOnly(data) === data;
+}
+
+/**
+ * The order a detail sheet should show: the list's row for it when that row is
+ * at least as new as the sheet's own snapshot, otherwise the snapshot. After a
+ * settle inside the sheet the snapshot is the fresher Completed order, and a
+ * not-yet-refetched Pending row must not bring "Settle & Pay" back. An
+ * unreadable date keeps the snapshot.
+ */
+export function liveOrderOf<T extends { _id: string; updatedAt: string }>(
+  snap: T | null,
+  rows: readonly T[],
+): T | null {
+  if (!snap) return null;
+  const row = rows.find((r) => r._id === snap._id);
+  if (!row) return snap;
+  return Date.parse(row.updatedAt) >= Date.parse(snap.updatedAt) ? row : snap;
+}

@@ -28,6 +28,8 @@ interface CustomerSearchProps {
   onChange: (customer: Customer | undefined) => void;
   // Applied to the trigger button only — the header sizes it per breakpoint.
   className?: string;
+  // A send is in flight: the customer cannot change under it.
+  disabled?: boolean;
 }
 
 // Separators a cafe actually types around a phone number ("+91 98765-43210").
@@ -36,7 +38,7 @@ interface CustomerSearchProps {
 const PHONE_SEPARATOR_PATTERN = /[+\s-]/g;
 const DIGITS_ONLY_PATTERN = /^\d+$/;
 
-export function CustomerSearch({ value, onChange, className }: CustomerSearchProps) {
+export function CustomerSearch({ value, onChange, className, disabled }: CustomerSearchProps) {
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -85,6 +87,7 @@ export function CustomerSearch({ value, onChange, className }: CustomerSearchPro
           variant="outline"
           size="sm"
           className={cn("gap-2 xl:max-w-[12rem]", className)}
+          disabled={disabled}
           aria-label={value ? `Customer: ${value.name}` : "Select customer"}
           title={value ? value.name : "Select customer"}
         >

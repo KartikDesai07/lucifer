@@ -79,3 +79,30 @@ export function readDeviceId(): string {
   }
   return minted;
 }
+
+// F5 / M1 — the idempotency key of one Send to Kitchen / Pay Now attempt. The
+// server parses it as a UUID (idemKeySchema), so the device-id fallback above
+// (32 bare hex chars) would refuse every send from a device without
+// randomUUID: the fallback here sets the RFC 4122 version-4 and variant bits
+// and adds the hyphens. undefined = no entropy source at all, and the send goes
+// without a key exactly as before F5 — never a made-up or constant value.
+const UUID_BYTES = 16;
+const UUID_VERSION_INDEX = 6;
+const UUID_VARIANT_INDEX = 8;
+const UUID_VERSION_MASK = 0x0f;
+const UUID_VERSION_4 = 0x40;
+const UUID_VARIANT_MASK = 0x3f;
+const UUID_VARIANT_RFC4122 = 0x80;
+/** Hex-string cut points of the 8-4-4-4-12 layout. */
+const UUID_GROUP_ENDS = [8, 12, 16, 20, 32] as const;
+
+export function mintAttemptId(): string | undefined {
+  if (typeof crypto === "undefined") return undefined;
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  if (typeof crypto.getRandomValues !== "function") return undefined;
+  const bytes = crypto.getRandomValues(new Uint8Array(UUID_BYTES));
+  bytes[UUID_VERSION_INDEX] = (bytes[UUID_VERSION_INDEX] & UUID_VERSION_MASK) | UUID_VERSION_4;
+  bytes[UUID_VARIANT_INDEX] = (bytes[UUID_VARIANT_INDEX] & UUID_VARIANT_MASK) | UUID_VARIANT_RFC4122;
+  const hex = Array.from(bytes, (b) => b.toString(HEX_RADIX).padStart(HEX_PAD_WIDTH, "0")).join("");
+  return UUID_GROUP_ENDS.map((end, i) => hex.slice(i === 0 ? 0 : UUID_GROUP_ENDS[i - 1], end)).join("-");
+}

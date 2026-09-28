@@ -68,6 +68,14 @@ const CANCEL_ROUTE = "apps/cafe/app/api/orders/[id]/cancel/route.ts";
 const VOID_ROUTE = "apps/cafe/app/api/orders/[id]/items/void/route.ts";
 const ORDER_REQUEST_ROUTE = "apps/cafe/app/api/public/order-request/route.ts";
 const ACCEPT_ROUTE = "apps/cafe/app/api/order-requests/[id]/accept/route.ts";
+// Slice D (smooth writes) — the publish gaps: every write that changes a tab or
+// a table nudges, with an existing kind (no Worker change).
+const MOVE_ROUTE = "apps/cafe/app/api/orders/[id]/table/route.ts";
+const ORDER_ID_ROUTE = "apps/cafe/app/api/orders/[id]/route.ts";
+const TABLE_ROUTE = "apps/cafe/app/api/tables/[tableNo]/route.ts";
+const TABLES_ROUTE = "apps/cafe/app/api/tables/route.ts";
+const TABLE_TOKEN_ROUTE = "apps/cafe/app/api/tables/[tableNo]/token/route.ts";
+const REJECT_ROUTE = "apps/cafe/app/api/order-requests/[id]/reject/route.ts";
 
 // ── (1) PURE LOGIC: signRealtime / buildRealtimeRequest ────────────────────
 
@@ -391,7 +399,7 @@ test("PIN: the room key shape is `cafe:${tenantId}`", () => {
 
 // ── (5) CALL-SITE PINS ──────────────────────────────────────────────────────
 
-test("PIN: exactly the NINE intended write sites call publishCafeEvent with the right kind (NOT broadcastCafeEvent, NOT wrapped in a route-local after()", () => {
+test("PIN: exactly the FOURTEEN intended write sites call publishCafeEvent with the right kind (NOT broadcastCafeEvent, NOT wrapped in a route-local after()", () => {
   // Each entry may list MORE THAN ONE expected kind for the same file (the
   // order-request route fires both self-order and, conditionally, kot-fired).
   const expectations: Array<[string, CafeEventKind[]]> = [
@@ -403,6 +411,9 @@ test("PIN: exactly the NINE intended write sites call publishCafeEvent with the 
     [VOID_ROUTE, ["order-changed"]],
     [ORDER_REQUEST_ROUTE, ["self-order", "kot-fired"]],
     [ACCEPT_ROUTE, ["kot-fired"]],
+    [MOVE_ROUTE, ["order-changed"]],
+    [ORDER_ID_ROUTE, ["order-changed"]],
+    [TABLE_ROUTE, ["order-changed"]],
   ];
 
   let totalCalls = 0;
@@ -426,7 +437,9 @@ test("PIN: exactly the NINE intended write sites call publishCafeEvent with the 
       totalCalls += (stripped.match(new RegExp(callRe.source, "g")) ?? []).length;
     }
   }
-  assert.equal(totalCalls, 9, `expected exactly 9 publish calls across the 8 files, counted ${totalCalls}`);
+  // 14 = one per landed write, plus the table move's uncertain-write catch
+  // (a nudge only triggers refetches, so a write that MAY have landed gets one).
+  assert.equal(totalCalls, 14, `expected exactly 14 publish calls across the 11 files, counted ${totalCalls}`);
 
   // The deferral itself has MOVED: it is no longer a per-call-site after(...)
   // wrapper — it now lives ONCE inside publishCafeEvent. Pin that a route file
@@ -476,6 +489,145 @@ test("NEGATIVE PIN: no file under app/api/print* or lib/print-queue-claim.ts cal
     }
   }
   assert.deepEqual(offenders, [], `the print lane must never call broadcastCafeEvent/publishCafeEvent; found in: ${offenders.join(", ")}`);
+});
+
+// Slice D — each write handler publishes ONCE, only after its write landed
+// (after the handler's own miss/raced guard), after the handler's LAST
+// follow-up, and before its success return. publishCafeEvent starts the
+// Worker request AT THE CALL (after() only keeps it alive), so a publish above
+// a follow-up would let other devices refetch the floor before it changes.
+function handlerBodies(src: string): Map<string, string> {
+  const marks = [...src.matchAll(/export async function (GET|POST|PUT|PATCH|DELETE)\(/g)];
+  const bodies = new Map<string, string>();
+  marks.forEach((m, i) => bodies.set(m[1], src.slice(m.index, marks[i + 1]?.index ?? src.length)));
+  return bodies;
+}
+
+test("PIN: the publish-gap handlers publish exactly once on the landed path, after the landed-write guard AND the handler's last follow-up, before the success return", () => {
+  const PUBLISH = /publishCafeEvent\(\s*"order-changed"\s*\)/g;
+  // `first` is set where a follow-up can throw after the write landed: the
+  // follow-ups then sit in a `try` opened right after the guard, and the
+  // publish in its `finally`, so a throwing follow-up still publishes.
+  // `publishes` > 1 only for the move, whose uncertain-write catch (pinned
+  // below) also nudges; the landed path's publish is then the LAST one.
+  const sites: Array<{ rel: string; verb: string; guard: string; last: string; ret: string; first?: string; publishes?: number }> = [
+    {
+      rel: MOVE_ROUTE, verb: "POST", guard: "return failure(ORDER_STALE_ERROR, 409);", last: "cache.del(orderSummaryCacheKey());",
+      ret: "return success(moved);", publishes: 2,
+    },
+    {
+      rel: ORDER_ID_ROUTE, verb: "PUT", guard: 'if (!updated) return failure("Order changed', first: "await reconcileLedger(old, updated);",
+      last: "cache.del(orderSummaryCacheKey(new Date(updated.createdAt)));", ret: "return success(updated);",
+    },
+    {
+      rel: ORDER_ID_ROUTE, verb: "DELETE", guard: 'if (!deleted) return notFound("Order not found");', first: "await reconcileLedger(order, null);",
+      last: "cache.del(orderSummaryCacheKey(new Date(order.createdAt)));", ret: "return success({ deleted: true });",
+    },
+    {
+      rel: CANCEL_ROUTE, verb: "POST", guard: 'if (!updated) return failure("Order changed', first: "await reconcileLedger(old, updated);",
+      last: "cache.del(orderSummaryCacheKey(new Date(updated.createdAt)));", ret: "return success(updated);",
+    },
+    { rel: TABLE_ROUTE, verb: "PUT", guard: ": notFound(TABLE_NOT_FOUND_ERROR);", last: "cache.del(CACHE_KEY);", ret: "return success(table);" },
+  ];
+  for (const { rel, verb, guard, last, ret, first, publishes = 1 } of sites) {
+    const where = `${rel} ${verb}`;
+    const body = handlerBodies(stripComments(readSrc(rel))).get(verb);
+    assert.ok(body, `${rel} must export ${verb}`);
+    const calls = [...body!.matchAll(PUBLISH)];
+    assert.equal(calls.length, publishes, `${where}: exactly ${publishes} publish(es), counted ${calls.length}`);
+    const at = calls[calls.length - 1].index!;
+    const guardAt = body!.lastIndexOf(guard);
+    const lastAt = body!.lastIndexOf(last);
+    const retAt = body!.indexOf(ret);
+    assert.ok(guardAt >= 0 && lastAt >= 0 && retAt >= 0, `${where}: landmarks "${guard}", "${last}" and "${ret}" must exist`);
+    assert.ok(guardAt < lastAt, `${where}: the last follow-up sits after the guard`);
+    assert.ok(lastAt < at && at < retAt, `${where}: the publish must sit after the last follow-up "${last}" and before "${ret}"`);
+    if (first === undefined) continue;
+    const firstAt = body!.indexOf(first);
+    const tryAt = body!.lastIndexOf("try {", firstAt);
+    const finallyAt = body!.indexOf("} finally {", lastAt);
+    assert.ok(firstAt > guardAt && tryAt > guardAt, `${where}: "${first}" sits in a try opened after the guard`);
+    assert.equal(body!.slice(body!.indexOf("\n", guardAt), tryAt).trim(), "", `${where}: the try opens right after the guard`);
+    assert.ok(finallyAt > lastAt && finallyAt < at, `${where}: the publish sits in the follow-ups' finally`);
+    const finallyEnd = body!.indexOf("}", finallyAt + "} finally {".length);
+    assert.ok(at < finallyEnd && finallyEnd < retAt, `${where}: the publish is inside the finally block, the return after it`);
+  }
+  // The read handlers stay silent.
+  for (const rel of [ORDER_ID_ROUTE, TABLES_ROUTE]) {
+    const get = handlerBodies(stripComments(readSrc(rel))).get("GET");
+    assert.ok(get?.includes("success("), `positive landmark: ${rel} GET`);
+    assert.ok(!get!.includes("publishCafeEvent"), `${rel} GET must not publish`);
+  }
+  // The move's uncertain-write catch (a throw is not proof the move failed —
+  // it MAY have landed) nudges; a nudge only triggers refetches. Its definite
+  // non-writes never do: the stale 409 (the CAS matched nothing) and the outer
+  // catch (a throw before the move ran, or after its landed path returned).
+  const move = stripComments(readSrc(MOVE_ROUTE));
+  const FAILED = 'return serverError("Failed to move the order", error);';
+  const write = move.indexOf("moved = await Order.findOneAndUpdate(");
+  const uncertain = move.indexOf("} catch (error) {", write);
+  const uncertainEnd = move.indexOf(FAILED, uncertain);
+  assert.ok(write >= 0 && uncertain > write && uncertainEnd > uncertain, "landmarks: the move write, its catch, the catch's 500");
+  const uncertainBlock = move.slice(uncertain, uncertainEnd);
+  assert.equal([...uncertainBlock.matchAll(PUBLISH)].length, 1, "the uncertain-write catch publishes exactly once, before its 500");
+  assert.ok(uncertainBlock.indexOf('cache.del("tables");') >= 0, "landmark: the catch still invalidates the tables");
+  const stale = move.indexOf("if (!moved) {", uncertainEnd);
+  const staleEnd = move.indexOf("return failure(ORDER_STALE_ERROR, 409);", stale);
+  assert.ok(stale > uncertainEnd && staleEnd > stale, "landmarks: the definite no-match branch and its 409");
+  assert.ok(!move.slice(stale, staleEnd).includes("publishCafeEvent"), "no publish on the definite no-match (the move did not land)");
+  const outer = move.lastIndexOf("} catch (error) {");
+  assert.ok(outer > staleEnd && move.indexOf(FAILED, outer) > outer, "landmark: the handler's outer catch");
+  assert.ok(!move.slice(outer).includes("publishCafeEvent"), "no publish in the outer catch");
+});
+
+test("NEGATIVE PIN (vision-guarded): the admin table-config handlers publish nothing — only the staff live-status PUT does", () => {
+  const needle = /\b(?:publishCafeEvent|broadcastCafeEvent)\s*\(/;
+  assert.ok(needle.test('publishCafeEvent("order-changed")') && needle.test("broadcastCafeEvent(kind)"), "the needle catches a real call");
+  const cases: Array<[string, string, string]> = [
+    [TABLES_ROUTE, "POST", "await Table.create("],
+    [TABLES_ROUTE, "PATCH", "await Table.bulkWrite("],
+    [TABLE_ROUTE, "PATCH", "{ $set: parsed.data }"],
+    [TABLE_ROUTE, "DELETE", "await Table.findOneAndDelete("],
+  ];
+  for (const [rel, verb, landmark] of cases) {
+    const body = handlerBodies(stripComments(readSrc(rel))).get(verb);
+    assert.ok(body, `${rel} must export ${verb}`);
+    assert.ok(body!.includes("await requireAdmin();") && body!.includes(landmark), `positive landmark: ${rel} ${verb} is the admin config write`);
+    assert.ok(!needle.test(body!), `${rel} ${verb} is admin config — it must not publish`);
+  }
+  const put = handlerBodies(stripComments(readSrc(TABLE_ROUTE))).get("PUT");
+  assert.ok(put && needle.test(put), "the live-status PUT still publishes");
+});
+
+test("NEGATIVE PIN (vision-guarded): the table token route and request reject publish nothing (the pulse poll covers a reject)", () => {
+  const needle = /publishCafeEvent\s*\(/;
+  assert.ok(needle.test('publishCafeEvent("order-changed")'), "the needle catches a real call");
+  for (const rel of [TABLE_TOKEN_ROUTE, REJECT_ROUTE]) {
+    const src = stripComments(readSrc(rel));
+    assert.match(src, /export async function POST\(/, `positive landmark: ${rel} POST`);
+    assert.ok(!needle.test(src), `${rel} must not publish`);
+  }
+});
+
+test("parity: PULSE_EVENT_KINDS is exactly [\"self-order\"] and LIVE_STATE_EVENT_KINDS is kot-fired + order-changed, both subsets of CAFE_EVENT_KINDS", () => {
+  const hookSrc = readSrc(USE_REALTIME);
+  const kindsOf = (name: string): string[] => {
+    const match = hookSrc.match(new RegExp(`const ${name} = \\[([^\\]]*)\\] as const;`));
+    assert.ok(match, `positive landmark: use-realtime.ts must declare \`const ${name} = [...] as const;\``);
+    return Array.from(match![1].matchAll(/"([^"]+)"/g)).map((m) => m[1]);
+  };
+  const pulse = kindsOf("PULSE_EVENT_KINDS");
+  const live = kindsOf("LIVE_STATE_EVENT_KINDS");
+  for (const k of [...pulse, ...live]) {
+    assert.ok((CAFE_EVENT_KINDS as readonly string[]).includes(k), `"${k}" must be one of CAFE_EVENT_KINDS`);
+  }
+  // O14: an order nudge must never refetch the pulse (each pulse refetch makes
+  // the print host write a beat).
+  assert.deepEqual(pulse, ["self-order"]);
+  assert.deepEqual([...live].sort(), ["kot-fired", "order-changed"]);
+  for (const k of ["print-job", "kot-ticked", "self-order"]) {
+    assert.ok(!live.includes(k), `LIVE_STATE_EVENT_KINDS must not contain "${k}"`);
+  }
 });
 
 test("PIN: hooks/use-realtime.ts is actually imported by the Kitchen page", () => {
@@ -972,4 +1124,39 @@ test("PIN: print-queue.ts calls publishCafeEvent(\"print-job\") at exactly the T
     const before = stripped.slice(Math.max(0, m.index! - 200), m.index!);
     assert.ok(!/publishCafeEvent/.test(before.slice(-80)), "an \"already-resolved\" outcome must not be immediately preceded by a publishCafeEvent call");
   }
+});
+
+// ── (14) LIVE-STATE NUDGE, END TO END OVER THE FAKE SOCKET ──────────────────
+
+test("integration: an order-changed FRAME on the shared socket invalidates ORDER_KEYS.lists through the live-state spec (one window later)", async () => {
+  const { QueryClient } = await import("@tanstack/react-query");
+  const { createRealtimeInvalidator } = await import("./realtime-invalidate");
+  const { LIVE_STATE_EVENT_KINDS, LIVE_STATE_REALTIME } = await import("@/hooks/use-realtime");
+  const { ORDER_KEYS } = await import("@/hooks/use-orders");
+  await withFakeSocket({ url: "wss://realtime.example.com/join" }, () => {
+    const qc = new QueryClient();
+    const openTabs = ORDER_KEYS.list({ payment: "Unpaid", status: "Pending" });
+    qc.setQueryData(openTabs, []);
+    const slot: { flush?: () => void } = {};
+    const armed = (): (() => void) | undefined => slot.flush;
+    const invalidator = createRealtimeInvalidator(qc, LIVE_STATE_EVENT_KINDS, LIVE_STATE_REALTIME, {
+      setTimeout: (fn) => ((slot.flush = fn), 1),
+      clearTimeout: () => (slot.flush = undefined),
+    });
+    const unsub = subscribeRealtime(invalidator.onKind);
+    try {
+      const ws = FakeWebSocket.instances[0];
+      ws.triggerOpen();
+      ws.triggerMessage("kot-ticked");
+      assert.equal(armed(), undefined, "a kind outside the live-state list arms nothing");
+      ws.triggerMessage("order-changed");
+      const flush = armed();
+      assert.ok(flush, "the frame armed the window");
+      flush();
+      assert.equal(qc.getQueryState(openTabs)?.isInvalidated, true, "the open tabs are stale");
+    } finally {
+      unsub();
+      invalidator.dispose();
+    }
+  });
 });

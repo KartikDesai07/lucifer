@@ -1,22 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import type { SettlementPayMode, DiscountKind } from "@/lib/constants";
 import { tableChargeOf } from "@/lib/receipt";
 import { chargesFromOrder } from "@pos/shared/order-charges";
 import type { ExtraChargeEntry } from "@/components/pos/CartExtraCharges";
 import { useTables } from "@/hooks/use-tables";
-import { useCart, cartItemFromOrderItem, cartItemToInput, nextCartFromServerItems } from "@/hooks/use-cart";
+import { useCart, cartItemFromOrderItem, cartItemToInput } from "@/hooks/use-cart";
 import { usePosTotals } from "@/hooks/use-pos-totals";
 import { usePosModalTotals } from "@/hooks/use-pos-modal-totals";
 import { usePosPrint } from "@/hooks/use-pos-print";
 import { useFreeTablePrompt } from "@/hooks/use-free-table-prompt";
 import { useSettings } from "@/hooks/use-settings";
-import { useCreateOrder, useAddOrderItems, useSettleOrder } from "@/hooks/use-orders";
+import { useCreateOrder, useAddOrderItems } from "@/hooks/use-orders";
 import { useRewardSelection } from "@/hooks/use-customer-rewards";
-import { usePosSettleLane } from "@/hooks/use-pos-settle-lane";
-import type { SettleDraft } from "@/components/layout/PendingWritesProvider";
+import { useSettleFlow } from "@/hooks/use-settle-flow";
+import { usePosSend } from "@/hooks/use-pos-send";
+import { moneyEditedSince } from "@/lib/pending-writes";
+import { kitchenSentMessage, kotRoundOfSend } from "@/lib/pos-send";
 import type { DiscountUnit } from "@/components/pos/Cart";
 import type { PaymentResult } from "@/components/pos/PaymentModal";
 import { collectedAmount } from "@/lib/payment-result";
@@ -31,7 +34,9 @@ export function usePosTab(receiver: string) {
   const settings = useSettings();
   const createOrder = useCreateOrder();
   const addItems = useAddOrderItems();
-  const settleOrder = useSettleOrder();
+  // The one foreground Send to Kitchen / Pay Now (hooks/use-pos-send.ts); its
+  // lock freezes the cart's edits in flight and while a send is unconfirmed.
+  const send = usePosSend();
   const {
     cart,
     count,
@@ -42,7 +47,10 @@ export function usePosTab(receiver: string) {
     removeFromCart,
     clearCart,
     hydrate,
-  } = useCart();
+    resync,
+  } = useCart(send.isLocked);
+  // The tab on screen: a late answer never frees or refreshes a different one.
+  const tabIdRef = useRef<string | null>(null);
 
   const [table, setTable] = useState<string | undefined>();
   const [customer, setCustomer] = useState<Customer | undefined>();
@@ -56,29 +64,22 @@ export function usePosTab(receiver: string) {
   // Order-level note for a brand-new sale only — see buildCreatePayload and
   // Cart's `resuming` gate (a resumed tab's add-round payload carries none).
   const [notes, setNotes] = useState("");
-  // CB-5D part 2 — the COUNTER's promo-code INTENT this session is choosing
-  // (a code string only, never an amount — the server resolves it). Cleared
-  // on the exact same lifecycle as rewardAt/notes below (resetOrder/
-  // enterResume) so a stale code never silently rides onto the next
-  // customer's bill.
+  // CB-5D part 2 — the COUNTER's promo-code INTENT (a code only, never an amount;
+  // the server resolves it). Cleared with rewardAt/notes (resetOrder/enterResume)
+  // so a stale code never silently rides onto the next customer's bill.
   const [promoCode, setPromoCode] = useState<string | null>(null);
 
-  // `undefined` = the operator has not touched the charge, so whatever the bill
-  // is entitled to (the table's config for a new sale, the tab's snapshot for a
-  // resumed one) stands. A NUMBER is a deliberate waiver/adjustment for this
-  // bill only — 0 means waived. The distinction is the whole point: omitting it
-  // from the payload lets the server re-derive the charge from the table, which
-  // stays right even when this client's 30s-cached table list is stale.
+  // `undefined` = untouched: the bill's entitlement (the table's config for a new
+  // sale, the tab's snapshot for a resumed one) stands. A NUMBER is a deliberate
+  // waiver/adjustment for this bill only (0 = waived). Omitting it lets the
+  // server re-derive the charge, right even when this client's table list is stale.
   const [chargeOverride, setChargeOverride] = useState<number | undefined>();
 
-  // CB-CHG (plan §5C/§5B) — the staff-entered extra charges for this bill
-  // (label + amount, no `type` key — the server stamps "extra"). Independent
-  // of chargeOverride above (that lane is the TABLE charge only —
-  // withTableCharge/applyExtraCharges never touch each other's entries).
-  // Cleared in resetOrder(); re-seeded from the server in enterResume()/
-  // applyTabUpdate() via chargesFromOrder(order).filter(type==="extra").
-  // Deliberately NOT cleared by selectTable — changing table is not an
-  // extra-charge change (only the table entry is table-scoped).
+  // CB-CHG (plan §5C/§5B) — the staff-entered extra charges (label + amount; the
+  // server stamps type "extra"). Independent of chargeOverride (the TABLE charge
+  // only). Cleared in resetOrder(); re-seeded from the server's charges in
+  // enterResume()/applyTabUpdate(). NOT cleared by selectTable — changing table
+  // is not an extra-charge change (only the table entry is table-scoped).
   const [extraCharges, setExtraCharges] = useState<ExtraChargeEntry[]>([]);
   const addExtraCharge = (entry: ExtraChargeEntry) =>
     setExtraCharges((prev) => [...prev, entry]);
@@ -90,15 +91,13 @@ export function usePosTab(receiver: string) {
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [pendingResume, setPendingResume] = useState<Order | null>(null);
 
-  // Print signals — extracted to keep this file under the line budget.
+  // Print signals and the post-Pay-Now free-table prompt — extracted for the line budget.
   const print = usePosPrint();
-  // Free-the-table prompt after a brand-new Pay-Now sale — same reason.
   const freeTable = useFreeTablePrompt();
 
-  // The charge this bill is entitled to before any waiver: a resumed tab keeps
-  // the charge it was OPENED with (a snapshot — re-reading the table mid-service
-  // would let an admin edit re-price a bill the kitchen already served), while a
-  // new sale takes it from the table currently selected.
+  // The charge before any waiver: a resumed tab keeps the one it was OPENED with
+  // (re-reading the table would let an admin edit re-price a served bill); a new
+  // sale takes it from the table currently selected.
   const tables = useTables();
   const entitledCharge = useMemo(() => {
     if (resumedOrder) return resumedOrder.chargeAmount ?? 0;
@@ -126,11 +125,10 @@ export function usePosTab(receiver: string) {
     [extraCharges],
   );
 
-  // PRE-REWARD pricing, exactly like the server's own `plainTotals`
-  // (app/api/orders/route.ts) and the add-round route's `billTotal`: a rung's
-  // per-milestone `minBill` is gated against what the customer is spending
-  // BEFORE the reward, so a reward may never fund its own gate. This pass is
-  // also the only one that exists while nothing is selected.
+  // PRE-REWARD pricing, exactly like the server's `plainTotals` (orders route)
+  // and the add-round route's `billTotal`: a rung's `minBill` is gated against
+  // the spend BEFORE the reward, so a reward never funds its own gate. It is
+  // also the only pass while nothing is selected.
   const plain = usePosTotals({
     subtotal,
     discountRaw,
@@ -147,11 +145,9 @@ export function usePosTab(receiver: string) {
     discountRaw, discountUnit, setDiscountRaw, setDiscountUnit,
   );
 
-  // The figures every surface actually shows. Re-priced with the SELECTED rung
-  // so the cart footer, the mobile bar and the payment modal preview the same
-  // bill the server will store — before S9 wired a reward in, these were the
-  // same object, and the reward-blind version silently collected the
-  // undiscounted amount against a discounted order.
+  // The figures every surface shows, re-priced with the SELECTED rung so cart,
+  // mobile bar and payment modal preview the bill the server will store (a
+  // reward-blind copy once collected the undiscounted amount).
   const { discount, gstAmount, gstRate, gstEnabled, total } = usePosTotals({
     subtotal,
     discountRaw,
@@ -162,8 +158,28 @@ export function usePosTab(receiver: string) {
     reward: reward.selectedReward,
   });
 
+  // The one foreground settle (hooks/use-settle-flow.ts). Its handlers run only
+  // after the server's answer; onSettled prints the tab's one bill.
+  const settleFlow = useSettleFlow({
+    onSettled: (order) => {
+      print.queueReceipt(order);
+      setPaymentOpen(false);
+      resetOrder();
+    },
+    // Changed on another device: refresh in place, keeping money edited since.
+    onChanged: (order) => {
+      if (resumedOrder?._id === order._id) applyTabUpdate(order, { kot: false, keepUnfired: true, keepMoney: moneyEditedSince({ discountRaw, discountUnit, chargeOverride, extraCharges }, resumedOrder) });
+    },
+    onFinished: () => {
+      setPaymentOpen(false);
+      resetOrder();
+    },
+  });
+
   const isBusy =
-    createOrder.isPending || addItems.isPending || settleOrder.isPending;
+    createOrder.isPending || addItems.isPending || settleFlow.busy || send.sending !== null || send.frozen !== null;
+  // The popup's spinner: in flight only, so its Send again is never a dead button (M3).
+  const paymentBusy = settleFlow.busy || send.sending !== null;
 
   // Work that a browser tab/window close would silently discard: a half-built
   // round (unsent items) or a resumed open tab mid-edit. Drives useUnsavedGuard
@@ -171,6 +187,7 @@ export function usePosTab(receiver: string) {
   const dirty = newCount > 0 || resumedOrder !== null;
 
   const resetOrder = () => {
+    send.reset(); // first: an unconfirmed send's freeze would refuse clearCart
     clearCart();
     setTable(undefined);
     setCustomer(undefined);
@@ -182,7 +199,10 @@ export function usePosTab(receiver: string) {
     setNotes("");
     setPromoCode(null);
     setExtraCharges([]);
+    tabIdRef.current = null;
   };
+  // R-d — Discard an unconfirmed send (after its confirm): the whole order goes.
+  const discard = () => { setPaymentOpen(false); resetOrder(); };
 
   // Picking a different table means a different charge, so a waiver made
   // against the previous one is dropped rather than silently carried across to
@@ -231,11 +251,13 @@ export function usePosTab(receiver: string) {
   // `kot: false` skips the print signal (void ticket = void slip, not a remake
   // order); `keepUnfired: true` re-syncs after a void without dropping unsent lines
   // it never touched — the fire path must leave it false, see nextCartFromServerItems.
+  // `keepMoney: true` (an unasked-for refresh) leaves edited discount/extras alone.
   const applyTabUpdate = (
     order: Order,
-    opts: { kot?: boolean; keepUnfired?: boolean; chargeSent?: boolean } = {},
+    opts: { kot?: boolean; keepUnfired?: boolean; keepMoney?: boolean } = {},
   ) => {
-    const { kot = true, keepUnfired = false, chargeSent = false } = opts;
+    if (order._id !== tabIdRef.current) return;
+    const { kot = true, keepUnfired = false, keepMoney = false } = opts;
     setResumedOrder(order);
     // Follow the server's table onto the header — a move lands here too, and
     // without this the POS keeps showing the table the tab was opened at.
@@ -244,64 +266,59 @@ export function usePosTab(receiver: string) {
     // already promised (a move never touches money, so nothing here should
     // touch the charge either).
     setTable(order.tableNo);
-    hydrate(nextCartFromServerItems(order.items, cart, keepUnfired));
-    // Mirror the server's (re-clamped) discount so the live cart footer total
-    // stays in sync with the stored tab total after a fire (matches enterResume).
-    setDiscountRaw(order.discount);
-    // Restore the kind from the server's order — else every round-trip silently drops the preset (charge-waiver bug's class).
-    setDiscountUnit(order.discountKind === "gst" ? "GST" : "₹");
-    // Drop the local waiver ONLY when the request that produced `order` actually
-    // carried it — then the server has answered, `order` holds the charge it
-    // stored, and `entitledCharge` reads straight off it. The void path carries
-    // no charge (voidItemSchema is intent-only), so clearing there would throw
-    // away a waiver the operator has already promised the guest and quietly
-    // bill it back at settle.
-    if (chargeSent) setChargeOverride(undefined);
-    // CB-CHG — re-seed the local extras from what the server actually stored,
-    // same "the server has answered" reasoning as chargeSent above but
-    // unconditional: every writer that reaches applyTabUpdate (fire, void
-    // re-sync, move) derives charges[] from the order it already has, so this
-    // is never behind on a request that didn't carry extras. `type` is never
-    // sent to the server, so it is dropped here too (matches enterResume).
-    setExtraCharges(
-      chargesFromOrder(order)
-        .filter((c) => c.type === "extra")
-        .map((c) => ({ label: c.label, amount: c.amount })),
-    );
+    resync(order.items, keepUnfired);
+    // A tab that gained a customer elsewhere: without it the Due/Credit picker
+    // is hidden while no customer is set — a dead end (shape as enterResume).
+    if (order.customerId && customer?._id !== order.customerId) {
+      setCustomer({ _id: order.customerId, name: order.customerName } as Customer);
+    }
+    // Never drops the local waiver: a void/move carries no charge, and a send
+    // frees the whole cart (resetOrder) only once the server has stored it.
+    if (!keepMoney) {
+      // Mirror the server's (re-clamped) discount so the live cart footer total
+      // stays in sync with the stored tab total after a fire (matches enterResume).
+      setDiscountRaw(order.discount);
+      // Restore the kind from the server's order — else every round-trip silently drops the preset (charge-waiver bug's class).
+      setDiscountUnit(order.discountKind === "gst" ? "GST" : "₹");
+      // CB-CHG — re-seed the local extras from what the server actually stored
+      // (fire, void re-sync, move all derive charges[] from the order they
+      // have). `type` is never sent to the server, so it is dropped here too.
+      setExtraCharges(
+        chargesFromOrder(order)
+          .filter((c) => c.type === "extra")
+          .map((c) => ({ label: c.label, amount: c.amount })),
+      );
+    }
     if (kot) print.queueKotRound(order);
   };
 
-  const sendToKitchen = async () => {
+  const sendToKitchen = () => {
     const newItems = cart.filter((ci) => ci.kotRound === 0).map(cartItemToInput);
     if (!newItems.length) return;
-    try {
-      const order = resumedOrder
-        ? await addItems.mutateAsync({
-            id: resumedOrder._id,
-            // CB-5B S9 — the reward claim rides the add-round too, not just a
-            // brand-new sale: an OPEN TAB is exactly when the counter applies
-            // one. INTENT ONLY (`pendingRewardAt` is the chosen rung's `at`,
-            // never an amount), and it is already `undefined` for a tab that
-            // carries a reward, so the route's 409 is a backstop rather than
-            // the gate. `undefined` omits the key over JSON, which is what the
-            // optional schema field expects — never `null`.
-            data: {
-              items: newItems,
-              discount,
-              discountKind: discountKind ?? null,
-              chargeAmount: chargeOverride,
-              // CB-CHG — the complete new extra set (replace, decision 6).
-              extraCharges,
-              rewardAt: reward.pendingRewardAt,
-            },
-          })
-        : await createOrder.mutateAsync(buildCreatePayload({}));
-      // Both branches carry chargeAmount, so the waiver is now durable on the
-      // order itself rather than surviving only in this browser's state.
-      applyTabUpdate(order, { chargeSent: true });
-    } catch {
-      /* hook toasts; nothing local mutated, staff can retry */
-    }
+    const startedFor = resumedOrder?._id ?? null;
+    // CB-5B S9 — the reward claim rides the add-round too: an OPEN TAB is exactly
+    // when the counter applies one. INTENT ONLY (`pendingRewardAt` is the rung's
+    // `at`), already `undefined` — omitted over JSON, never `null` — for a tab
+    // that carries a reward, so the route's 409 is a backstop. CB-CHG — the
+    // complete new extra set (replace, decision 6).
+    const round = resumedOrder
+      ? { id: resumedOrder._id, data: { items: newItems, discount, discountKind: discountKind ?? null, chargeAmount: chargeOverride, extraCharges, rewardAt: reward.pendingRewardAt } }
+      : null;
+    const create = buildCreatePayload({});
+    // One confirmed request: the cart is freed only on the server's answer, and
+    // the ticket prints from ITS order — the round this key landed as (M5).
+    void send.run({
+      kind: "kitchen",
+      scope: round?.id ?? "create",
+      request: (idemKey) =>
+        round ? addItems.mutateAsync({ id: round.id, data: { ...round.data, idemKey } }) : createOrder.mutateAsync({ ...create, idemKey }),
+      confirm: (order, idemKey) => {
+        const printed = kotRoundOfSend(order, round !== null, idemKey);
+        print.queueKotRound(order, printed);
+        toast.success(kitchenSentMessage(order, round ? printed : null));
+        if (tabIdRef.current === startedFor) resetOrder();
+      },
+    });
   };
 
   const payNow = () => {
@@ -313,8 +330,7 @@ export function usePosTab(receiver: string) {
     setPaymentOpen(true);
   };
 
-  // ONE settle payload for both lanes (background / foreground), so a tab can
-  // never be settled with different money depending on which lane took it.
+  // ONE settle payload, sent by the one foreground settle (use-settle-flow).
   const settlePayload = (result: PaymentResult, tab: Order): SettleOrderInput => ({
     payment: result.payment as SettlementPayMode,
     splitCash: result.splitCash,
@@ -340,57 +356,47 @@ export function usePosTab(receiver: string) {
   });
 
   const confirmPayment = async (result: PaymentResult) => {
-    try {
-      if (paymentIntent === "settle" && resumedOrder) {
-        // Background lane (a print host owns printing): the popup closes now
-        // and PendingWritesProvider finishes the settle and prints the bill —
-        // a slow counter network must not hold the next customer up.
-        if (settleLane.backgroundReady) {
-          const draft: SettleDraft = { discountRaw, discountUnit, chargeOverride, extraCharges, customer };
-          if (settleLane.enqueueSettle(resumedOrder, settlePayload(result, resumedOrder), draft)) {
-            setPaymentOpen(false);
-            resetOrder();
-          }
-          return;
-        }
-        const updated = await settleOrder.mutateAsync({ id: resumedOrder._id, data: settlePayload(result, resumedOrder) });
-        print.queueReceipt(updated);
-      } else {
-        const order = await createOrder.mutateAsync(
-          buildCreatePayload({
-            status: "Completed",
-            payment: result.payment,
-            // Same rule as the settle branch: omit on a full payment so the
-            // server prices against ITS own recomputed total. Sending the
-            // modal's number here made a stale client GST view read as a
-            // partial payment and hard-400 an ordinary cash sale.
-            paidAmount: collectedAmount(result),
-            splitCash: result.splitCash,
-            splitOnline: result.splitOnline,
-          }),
-        );
-        // POST /api/orders stamps every opening line with kotRound: 1, so a
-        // counter sale is a real KOT round server-side too — queue the ticket
-        // so the kitchen actually gets it (the settle branch above fires
-        // nothing new, so it must NOT print a KOT).
-        print.queueKotRound(order);
-        print.queueReceipt(order);
-        // POST /api/orders occupies the table on EVERY create, so a brand-new
-        // Pay-Now sale against a table would otherwise leave it Occupied
-        // forever — offer to free it now, before resetOrder() below clears
-        // the local `table` state this order was built against.
-        if (order.tableNo) {
-          freeTable.askToFreeTable({ tableNo: order.tableNo, orderId: order.orderId });
-        }
-      }
-      setPaymentOpen(false);
-      resetOrder();
-    } catch {
-      /* hook rolled back + toasted; leave the modal open */
+    if (paymentIntent === "settle" && resumedOrder) {
+      // One confirmed request; the flow's handlers close the popup and print.
+      await settleFlow.submit(resumedOrder, settlePayload(result, resumedOrder));
+      return;
+    } else {
+      const sale = buildCreatePayload({
+        status: "Completed",
+        payment: result.payment,
+        // Same rule as the settle branch: omit on a full payment so the server
+        // prices against ITS own recomputed total (a stale client GST view once
+        // read as a partial payment and hard-400'd an ordinary cash sale).
+        paidAmount: collectedAmount(result),
+        splitCash: result.splitCash,
+        splitOnline: result.splitOnline,
+      });
+      // One confirmed request (lib/pos-send.ts); "Couldn't confirm" keeps the
+      // popup open on Send again — the same sale with the same key (R13).
+      await send.run({
+        kind: "pay",
+        scope: "create",
+        request: (idemKey) => createOrder.mutateAsync({ ...sale, idemKey }),
+        confirm: (order) => {
+          // POST /api/orders stamps every opening line with kotRound: 1, so a
+          // counter sale is a real KOT round too — queue the ticket so the
+          // kitchen gets it (the settle branch fires nothing new: no KOT there).
+          print.queueKotRound(order);
+          print.queueReceipt(order);
+          // The create occupies the table, so offer to free it now — before
+          // resetOrder() below clears the `table` this sale was built against.
+          if (order.tableNo) freeTable.askToFreeTable({ tableNo: order.tableNo, orderId: order.orderId });
+          toast.success(`Order ${order.orderId} placed`);
+          setPaymentOpen(false);
+          resetOrder();
+        },
+      });
     }
   };
 
   const enterResume = (order: Order) => {
+    send.reset();
+    tabIdRef.current = order._id;
     setResumedOrder(order);
     setTable(order.tableNo);
     // Minimal customer for display + the modal's Due/Credit guard; the settle
@@ -420,31 +426,13 @@ export function usePosTab(receiver: string) {
         .map((c) => ({ label: c.label, amount: c.amount })),
     );
     hydrate(order.items.map((it, i) => cartItemFromOrderItem(it, i)));
-    // Opening a tab resolves its failed-settle alert, and after "Reopen tab"
-    // puts back what the operator had set (hooks/use-pos-settle-lane.ts).
-    settleLane.resumed(order);
   };
 
   // Resuming replaces the cart wholesale. If a fresh (unsent) cart is in
   // progress, confirm first so those local items aren't silently discarded
   // (mirrors the close-tab guard).
-  // "Reopen tab" after a failed background settle, and the guard that keeps a
-  // still-settling tab shut (hooks/use-pos-settle-lane.ts).
-  const settleLane = usePosSettleLane({
-    // Through requestResume, so an unsent cart still gets its confirm.
-    resume: (order) => requestResume(order),
-    activity: `${resumedOrder?._id ?? ""}|${cart.length}`,
-    applyDraft: (draft) => {
-      setDiscountRaw(draft.discountRaw);
-      setDiscountUnit(draft.discountUnit);
-      setChargeOverride(draft.chargeOverride);
-      setExtraCharges(draft.extraCharges);
-      if (draft.customer) setCustomer(draft.customer);
-    },
-  });
-
   const requestResume = (order: Order) => {
-    if (!settleLane.mayResume(order)) return;
+    if (send.isLocked()) return;
     if (newCount > 0) setPendingResume(order);
     else enterResume(order);
   };
@@ -452,9 +440,16 @@ export function usePosTab(receiver: string) {
     if (pendingResume) enterResume(pendingResume);
     setPendingResume(null);
   };
-  const cancelResume = () => {
-    setPendingResume(null);
-    settleLane.resumeCancelled();
+  const cancelResume = () => setPendingResume(null);
+
+  // Every close of the payment popup: never in flight; an unconfirmed Pay Now
+  // closes only through its confirmed Discard (R13, R-d); a finished notice ends the tab.
+  const onPaymentOpenChange = (next: boolean) => {
+    if (next) return setPaymentOpen(true);
+    if (send.holds("pay")) return discard();
+    if (isBusy) return;
+    if (!settleFlow.dismiss(resumedOrder?._id)) return;
+    setPaymentOpen(false);
   };
 
   const requestCloseTab = () => {
@@ -528,6 +523,10 @@ export function usePosTab(receiver: string) {
     clearCart,
     resumedOrder,
     isBusy,
+    paymentBusy,
+    sendingKitchen: send.sending === "kitchen",
+    kitchenNotice: send.kitchenNotice,
+    discardSend: discard,
     sendToKitchen,
     payNow,
     settle,
@@ -539,13 +538,13 @@ export function usePosTab(receiver: string) {
     requestCloseTab,
     confirmCloseTab,
     paymentOpen,
-    setPaymentOpen,
+    onPaymentOpenChange,
+    paymentNotice: resumedOrder ? settleFlow.noticeFor(resumedOrder._id) : send.payNotice,
     modalTotals,
     closeConfirmOpen,
     setCloseConfirmOpen,
-    // Re-syncs a server order into cart + resumedOrder (also used internally by
-    // sendToKitchen); a void passes { kot: false, keepUnfired: true } — see the
-    // definition for why each flag matters.
+    // Re-syncs a server order into cart + resumedOrder (the tab on screen only);
+    // a void passes { kot: false, keepUnfired: true } — see the definition.
     applyTabUpdate,
     // Spread, not hand-mirrored, so pos/page.tsx's `pos.*` surface tracks whatever
     // usePosPrint/useFreeTablePrompt expose — a new field needs no matching line here.

@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2, AlertCircle } from "lucide-react";
 
 import { SETTLEMENT_PAY_MODES, PAY_STYLES, type PaymentMode, type DiscountKind } from "@/lib/constants";
-import { discountLineLabel } from "@pos/shared/utils";
 import { inr, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,9 +17,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CustomerSearch } from "@/components/pos/CustomerSearch";
+import { PaymentSummary } from "@/components/pos/PaymentSummary";
+import { PaymentSplitFields } from "@/components/pos/PaymentSplitFields";
+import { WriteNoticePanel } from "@/components/pos/WriteNotice";
+import { SendDiscard } from "@/components/pos/SendDiscard";
 import type { OrderCharge } from "@pos/shared/order-charges";
 import type { Customer } from "@/types";
-import type { PaymentResult } from "@/lib/payment-result";
+import {
+  paymentPopupChange,
+  splitAfterBillChange,
+  type PaymentResult,
+  type PopupSnapshot,
+  type SplitAmounts,
+} from "@/lib/payment-result";
+import type { WriteNotice } from "@/lib/pending-writes";
 
 // Re-exported so existing importers of `@/components/pos/PaymentModal` keep
 // working unchanged — the type itself now lives in the pure `lib/payment-result`
@@ -60,6 +70,9 @@ interface PaymentModalProps {
   // Renders an inline, editable customer picker when provided; omit to keep
   // the modal's plain read-only display of whatever customer was passed in.
   onSelectCustomer?: (customer: Customer | undefined) => void;
+  // The last write's outcome for this bill (lib/pending-writes.ts). Its action
+  // decides the main button: confirm, Check, Send again or Close.
+  notice?: WriteNotice | null;
 }
 
 // Due/Credit are unpaid-at-counter sales — they require a customer so the
@@ -90,18 +103,26 @@ export function PaymentModal({
   modes = [...SETTLEMENT_PAY_MODES],
   confirmLabel = "Place Order",
   onSelectCustomer,
+  notice = null,
 }: PaymentModalProps) {
   const [mode, setMode] = useState<PaymentMode>("Cash");
   const [collected, setCollected] = useState(total);
-  const [splitCash, setSplitCash] = useState(0);
-  const [splitOnline, setSplitOnline] = useState(0);
+  const [split, setSplit] = useState<SplitAmounts>({ cash: 0, online: 0 });
+  const [openedTotal, setOpenedTotal] = useState(total);
+  // open:false first, so a popup that mounts already open still resets.
+  const seenRef = useRef<PopupSnapshot>({ open: false, total });
 
-  // Reset the mode + split fields whenever the modal opens (or the total changes while open).
+  // Reset the mode + split only as the popup OPENS. A bill that changes while
+  // it is open keeps the operator's mode and re-derives the split (F8).
   useEffect(() => {
-    if (open) {
+    const change = paymentPopupChange(seenRef.current, { open, total });
+    seenRef.current = { open, total };
+    if (change === "opened") {
       setMode("Cash");
-      setSplitCash(total);
-      setSplitOnline(0);
+      setSplit({ cash: total, online: 0 });
+      setOpenedTotal(total);
+    } else if (change === "bill-changed") {
+      setSplit((s) => splitAfterBillChange(s, total));
     }
   }, [open, total]);
   // Collected also resets on a mode switch, so a stale partial never carries over.
@@ -120,21 +141,35 @@ export function PaymentModal({
 
   const needsCustomer = UNPAID_MODES.includes(mode) || partial;
   const customerMissing = needsCustomer && !customer;
-  const splitSum = splitCash + splitOnline;
-  const splitMismatch = mode === "Split" && splitSum !== total;
-  const blocked = itemCount === 0 || isSubmitting || customerMissing || splitMismatch;
+  const splitMismatch = mode === "Split" && split.cash + split.online !== total;
+  // Check, Send again and Close act on the last attempt, not on these inputs.
+  const action = notice?.action ?? "confirm";
+  // An unconfirmed sale is frozen: Send again replays it exactly, so nothing may change (R-b).
+  const frozen = notice?.action === "send-again";
+  const locked = isSubmitting || frozen;
+  const blocked = isSubmitting || (action === "confirm" && (itemCount === 0 || customerMissing || splitMismatch));
 
   const confirm = () => {
     onConfirm({
       payment: mode,
       paidAmount: paid,
       partial,
-      ...(mode === "Split" ? { splitCash, splitOnline } : {}),
+      ...(mode === "Split" ? { splitCash: split.cash, splitOnline: split.online } : {}),
     });
   };
 
+  // X, Escape and an outside tap all land here: never while a request is in flight.
+  const openChange = (next: boolean) => {
+    if (!next && isSubmitting) return;
+    if (!next && frozen) return;
+    onOpenChange(next);
+  };
+
+  const label =
+    action === "check" ? "Check" : action === "close" ? "Close" : action === "send-again" ? "Send again" : `${confirmLabel} · ${inr(total)}`;
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={openChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Payment</DialogTitle>
@@ -145,36 +180,25 @@ export function PaymentModal({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Summary */}
-        <div className="space-y-1 rounded-lg border p-3 text-sm">
-          <Row label="Subtotal" value={inr(subtotal)} />
-          {discount > 0 && (
-            <Row label={discountLineLabel(discountKind)} value={`−${inr(discount)}`} muted />
-          )}
-          {gstAmount > 0 && (
-            <Row
-              label={gstRate ? `GST @${gstRate}%` : "GST"}
-              value={`+${inr(gstAmount)}`}
-            />
-          )}
-          {charges.length > 0
-            ? charges.map((c, i) => (
-                <Row key={`${c.label}-${i}`} label={c.label} value={`+${inr(c.amount)}`} />
-              ))
-            : charge > 0 && (
-                <Row label={chargeLabel || "Table charge"} value={`+${inr(charge)}`} />
-              )}
-          <div className="flex items-center justify-between border-t pt-1 text-base font-bold">
-            <span>Total</span>
-            <span>{inr(total)}</span>
-          </div>
-        </div>
+        <PaymentSummary
+          subtotal={subtotal}
+          discount={discount}
+          discountKind={discountKind}
+          gstAmount={gstAmount}
+          gstRate={gstRate}
+          charge={charge}
+          chargeLabel={chargeLabel}
+          charges={charges}
+          total={total}
+          // One "bill changed" message at a time: a write notice says it first.
+          billChangedFrom={notice == null && open && total !== openedTotal ? openedTotal : undefined}
+        />
 
         {/* CustomerSearch brings its own Dialog; nesting it here is deliberate. */}
         {onSelectCustomer && (
           <div className="flex items-center justify-between gap-2 rounded-lg border p-2 text-sm">
             <span className="font-medium">Customer</span>
-            <CustomerSearch value={customer} onChange={onSelectCustomer} />
+            <CustomerSearch value={customer} onChange={onSelectCustomer} disabled={locked} />
           </div>
         )}
 
@@ -187,12 +211,14 @@ export function PaymentModal({
               <button
                 key={m}
                 type="button"
+                disabled={locked}
                 onClick={() => setMode(m)}
                 className={cn(
-                  "rounded-md border py-2 text-sm font-semibold transition",
+                  "rounded-md border py-2 text-sm font-semibold transition disabled:cursor-not-allowed",
+                  // Locked (in flight / unconfirmed): the other modes dim, the chosen one stays clear.
                   active
                     ? `${style.bg} ${style.color} border-current ring-2 ring-current`
-                    : "hover:bg-muted",
+                    : "enabled:hover:bg-muted disabled:opacity-50",
                 )}
               >
                 {style.label}
@@ -209,6 +235,7 @@ export function PaymentModal({
               id="amount-received"
               type="number"
               min={0}
+              disabled={locked}
               value={collected === 0 ? "" : collected}
               onChange={(e) => setCollected(Math.max(0, Number(e.target.value) || 0))}
             />
@@ -227,40 +254,7 @@ export function PaymentModal({
         )}
 
         {mode === "Split" && (
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="split-cash">Cash</Label>
-              <Input
-                id="split-cash"
-                type="number"
-                min={0}
-                value={splitCash === 0 ? "" : splitCash}
-                onChange={(e) =>
-                  setSplitCash(Math.max(0, Number(e.target.value) || 0))
-                }
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="split-online">Online</Label>
-              <Input
-                id="split-online"
-                type="number"
-                min={0}
-                value={splitOnline === 0 ? "" : splitOnline}
-                onChange={(e) =>
-                  setSplitOnline(Math.max(0, Number(e.target.value) || 0))
-                }
-              />
-            </div>
-            <p
-              className={cn(
-                "col-span-2 text-xs",
-                splitMismatch ? "text-destructive" : "text-muted-foreground",
-              )}
-            >
-              Cash + Online = {inr(splitSum)} (must equal {inr(total)})
-            </p>
-          </div>
+          <PaymentSplitFields split={split} onSplitChange={setSplit} total={total} mismatch={splitMismatch} disabled={locked} />
         )}
 
         {(mode === "Due" || mode === "Credit") && (
@@ -278,6 +272,8 @@ export function PaymentModal({
           </p>
         )}
 
+        <WriteNoticePanel notice={notice} />
+
         <DialogFooter className="flex-col gap-2 sm:flex-col">
           <p className="text-center text-xs text-muted-foreground">
             Served by {receiver}
@@ -286,38 +282,13 @@ export function PaymentModal({
             size="lg"
             className="w-full"
             disabled={blocked}
-            onClick={confirm}
+            onClick={action === "close" ? () => onOpenChange(false) : confirm}
           >
-            {isSubmitting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              `${confirmLabel} · ${inr(total)}`
-            )}
+            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : label}
           </Button>
+          {frozen && <SendDiscard kind="pay" disabled={isSubmitting} onDiscard={() => onOpenChange(false)} />}
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function Row({
-  label,
-  value,
-  muted,
-}: {
-  label: string;
-  value: string;
-  muted?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex items-center justify-between",
-        muted && "text-muted-foreground",
-      )}
-    >
-      <span>{label}</span>
-      <span>{value}</span>
-    </div>
   );
 }

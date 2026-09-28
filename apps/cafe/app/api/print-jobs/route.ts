@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { connectDB } from "@/lib/db";
 import { z } from "zod";
 import { printJobPayloadSchema } from "@pos/shared/schemas/print-job.schema";
@@ -58,14 +59,22 @@ export async function POST(req: Request) {
       queuedBy,
     });
 
-    // Best-effort, AFTER the enqueue, in its own try/catch so a sweep failure
-    // can never fail a real enqueue — retention must never depend on the host
-    // device being alive (MERGED-14); the throttle keeps a busy shift from
-    // sweeping on every ticket.
+    // Best-effort, AFTER the response (after()), so a sweep never delays the
+    // enqueue — retention must never depend on the host device being alive
+    // (MERGED-14); the throttle keeps a busy shift from sweeping on every
+    // ticket. The callback is async, so waitUntil holds the invocation for it,
+    // and swallows its own failure; the outer try swallows after()'s own
+    // synchronous throw (no request scope), so neither can fail a real enqueue.
     try {
-      await prunePrintJobsThrottled(nowMs);
+      after(async () => {
+        try {
+          await prunePrintJobsThrottled(nowMs);
+        } catch {
+          // best-effort only — swallow
+        }
+      });
     } catch {
-      // best-effort only — swallow
+      // no after() in this runtime — skip the sweep, keep the enqueue
     }
 
     return noStore(success(result));

@@ -11,10 +11,12 @@ import {
   HandCoins,
 } from "lucide-react";
 
-import { useOrders, useOrderSummary } from "@/hooks/use-orders";
+import { useOrders, useOrderSummary, OPEN_TABS_QUERY_OPTIONS } from "@/hooks/use-orders";
 import { useTables } from "@/hooks/use-tables";
 import { useReservations } from "@/hooks/use-reservations";
 import { cafeDateString, inr } from "@/lib/utils";
+import { REFETCH_INTERVALS } from "@/lib/query";
+import { liveOrderOf } from "@/lib/order-query";
 import { SETTLEMENT_PAY_MODES, APP_NAME } from "@/lib/constants";
 import { useSettings } from "@/hooks/use-settings";
 import {
@@ -56,8 +58,6 @@ const HourlySalesChart = dynamic(
   { ssr: false, loading: ChartSkeleton },
 );
 
-const LIVE_REFRESH_MS = 30 * 1000; // recent-orders poll (Step 6.7)
-
 const plural = (n: number, word: string) =>
   `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -69,7 +69,7 @@ export default function DashboardPage() {
   const restaurantName = settings.data?.restaurantName?.trim() || APP_NAME;
   const todayOrders = useOrders(
     { date: today },
-    { refetchInterval: LIVE_REFRESH_MS },
+    { refetchInterval: REFETCH_INTERVALS.LIVE_LISTS },
   );
   const tables = useTables();
   const reservations = useReservations({ date: today });
@@ -79,9 +79,10 @@ export default function DashboardPage() {
   // Filtered on status too, not payment alone: cancelling a tab leaves `payment`
   // as the historical "Unpaid" (the record is never rewritten), so a payment-only
   // filter would keep showing a dead tab as occupying a table it no longer holds.
+  // Same query (and options) as the POS's open-tabs list.
   const openTabs = useOrders(
     { payment: "Unpaid", status: "Pending" },
-    { refetchInterval: LIVE_REFRESH_MS },
+    OPEN_TABS_QUERY_OPTIONS,
   );
 
   const [detail, setDetail] = useState<Order | null>(null);
@@ -255,8 +256,10 @@ export default function DashboardPage() {
         />
       </div>
 
+      {/* The sheet follows the live row (a tab another device grew or settled);
+          it latches its own copy while paying. */}
       <OrderDetailSheet
-        order={detail}
+        order={liveOrderOf(detail, floorOrders)}
         onOpenChange={(o) => !o && setDetail(null)}
         onSettled={setDetail}
       />

@@ -145,6 +145,12 @@ export interface IOrder extends Document {
   // a Date array must never carry holes, so earlier slots are backfilled from
   // the previous value rather than left sparse.
   kotFiredAt?: Date[];
+  // F5 — the send idempotency keys (lib/order-idem.ts). `idemKey` is the key the
+  // order was CREATED with; `kotIdemKeys` is positional like kotNumbers
+  // (`kotIdemKeys[n-1]` is round n's key, "" = a keyless round). Both absent on
+  // any order sent without a key — never null, which the partial index counts.
+  idemKey?: string;
+  kotIdemKeys?: string[];
   billNumber?: number;
   voids?: IOrderVoid[]; // absent until the first void ($push creates it)
   cancelReason?: string; // set together, only by POST /api/orders/[id]/cancel
@@ -307,6 +313,11 @@ const orderSchema = new Schema<IOrder>(
     // P4-A — mirrors kotNumbers' omit-empty discipline immediately above:
     // no default, short arrays legal, positional per KOT round.
     kotFiredAt: { type: [Date], default: undefined },
+    // F5 — declared, not interface-only: strict:true silently drops an
+    // undeclared path (the reward note/rewardItem incidents on this model).
+    // No defaults — omit-empty, same as kotNumbers.
+    idemKey: { type: String },
+    kotIdemKeys: { type: [String], default: undefined },
     billNumber: { type: Number },
     // No `default: []` — the overwhelming majority of orders never get a void, and
     // an empty array on every row is pure waste on a 512MB M0. `$push` creates it.
@@ -326,6 +337,18 @@ orderSchema.index({ status: 1 });
 orderSchema.index({ tableNo: 1 });
 orderSchema.index({ customerId: 1 });
 orderSchema.index({ sourceRequestIds: 1 }, { unique: true, sparse: true });
+// F5 — one order per send key. Byte-identical to models/order.ledger.ts's own
+// reserved index. On the SCALAR idemKey, partial on $exists, so the sparse
+// multikey empty-array trap above cannot apply; kotIdemKeys needs no index
+// (the round CAS is already by _id).
+orderSchema.index(
+  { idemKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { idemKey: { $exists: true } },
+    name: "idemKey_unique_partial",
+  },
+);
 
 // Reuse the compiled model across hot reloads / serverless invocations.
 export const Order: Model<IOrder> =

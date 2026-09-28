@@ -257,6 +257,12 @@ export interface Order {
   // round n's fire time. May be short or absent entirely on tabs predating
   // this field (kitchen board falls back to `createdAt` for those rounds).
   kotFiredAt?: string[];
+  // F5 — the send idempotency keys (order-idem.ts). `idemKey` is the key the
+  // order was CREATED with; `kotIdemKeys` is positional like kotNumbers
+  // (`kotIdemKeys[n-1]` is round n's key, "" = a keyless round). Absent on
+  // any order sent without a key.
+  idemKey?: string;
+  kotIdemKeys?: string[];
   billNumber?: number;
   // Absent until the first void / the cancel — an order that never had either
   // carries none of these fields (nothing to show, nothing stored).

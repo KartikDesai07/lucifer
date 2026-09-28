@@ -17,7 +17,7 @@ type ApiEnvelope<T> =
  *            done the work;
  *  "network" the request never got a response (offline, connection reset) —
  *            again, the server may or may not have received it.
- *  The message is exactly what the callers have always toasted. */
+ *  A server answer keeps the server's own message; no answer gets plain copy. */
 export type ApiErrorKind = "http" | "network" | "timeout";
 
 export class ApiError extends Error {
@@ -41,12 +41,19 @@ async function unwrap<T>(res: Response): Promise<T> {
   return body.data;
 }
 
-/** A fetch that never answered, re-thrown as an ApiError with the same message
- *  the browser gave (an abort from the timeout reads as a TimeoutError). */
+/** What a caller toasts when the request never got an answer. Plain English —
+ *  never the browser's own "Failed to fetch" / "signal timed out" — and never a
+ *  claim either way about whether a write was saved (it may have landed). */
+export const NETWORK_ERROR_MESSAGE = "Could not reach the server. Check the internet connection.";
+export const TIMEOUT_ERROR_MESSAGE = "The server took too long to answer. Check the internet connection.";
+
+/** A fetch that never answered, re-thrown as an ApiError (an abort from the
+ *  timeout reads as a TimeoutError). */
 function transportError(e: unknown): ApiError {
   const name = e instanceof Error ? e.name : "";
-  const message = e instanceof Error && e.message ? e.message : REQUEST_FAILED_MESSAGE;
-  return new ApiError(message, name === "TimeoutError" || name === "AbortError" ? "timeout" : "network", null);
+  return name === "TimeoutError" || name === "AbortError"
+    ? new ApiError(TIMEOUT_ERROR_MESSAGE, "timeout", null)
+    : new ApiError(NETWORK_ERROR_MESSAGE, "network", null);
 }
 
 export function apiGet<T>(url: string): Promise<T> {

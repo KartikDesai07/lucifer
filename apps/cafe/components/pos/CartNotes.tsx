@@ -15,6 +15,8 @@ interface CartNotesProps {
    *  more-actions trigger). Omitted while the note box is open, where the row
    *  is already carrying its own Done control. */
   trailing?: ReactNode;
+  /** A send carrying this note is in flight — the note cannot change under it. */
+  disabled?: boolean;
 }
 
 // Order-level note for a brand-new sale (create-only — Cart.tsx renders this
@@ -31,7 +33,7 @@ interface CartNotesProps {
 // note's presentation. A note that already has text always shows its
 // (truncated) preview in the collapsed row, so it can never be silently
 // forgotten — expanding is for editing, not for finding out one exists.
-export function CartNotes({ value, onChange, trailing }: CartNotesProps) {
+export function CartNotes({ value, onChange, trailing, disabled }: CartNotesProps) {
   const notesId = useId();
   const [expanded, setExpanded] = useState(false);
 
@@ -43,6 +45,7 @@ export function CartNotes({ value, onChange, trailing }: CartNotesProps) {
           variant="ghost"
           size="sm"
           className="h-auto min-w-0 flex-1 justify-start gap-1.5 px-2 py-1 text-xs text-muted-foreground"
+          disabled={disabled}
           onClick={() => setExpanded(true)}
         >
           <NotebookPen className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -94,6 +97,7 @@ export function CartNotes({ value, onChange, trailing }: CartNotesProps) {
         placeholder="Order note (prints on KOT)"
         rows={2}
         className="text-sm"
+        disabled={disabled}
         autoFocus
       />
     </div>

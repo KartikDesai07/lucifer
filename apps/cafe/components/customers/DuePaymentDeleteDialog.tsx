@@ -92,20 +92,12 @@ export function DuePaymentDeleteDialog({
           )}
         </div>
 
-        {deletePayment.isPaused ? (
-          // Offline: the mutation is parked, not failed — without this the
-          // button spins forever with no explanation while the write waits
-          // to leave.
-          <p className="text-sm text-muted-foreground">
-            Waiting for connection — this will save once you&apos;re back
-            online.
+        {/* Never parked: mutations run with networkMode "always"
+            (components/providers.tsx), so an offline save fails here at once. */}
+        {deletePayment.isError && (
+          <p className="text-sm text-destructive">
+            {deletePayment.error?.message || "Could not delete the payment."}
           </p>
-        ) : (
-          deletePayment.isError && (
-            <p className="text-sm text-destructive">
-              {deletePayment.error?.message || "Could not delete the payment."}
-            </p>
-          )
         )}
 
         <DialogFooter>

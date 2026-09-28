@@ -134,12 +134,23 @@ export interface UseCart {
   removeFromCart: (lineId: string) => void;
   clearCart: () => void;
   hydrate: (items: CartItem[]) => void; // replace the cart wholesale (resume a tab)
+  // Re-sync from the server's items against the cart as it is NOW (not a copy
+  // captured before an await) — see nextCartFromServerItems for keepUnfired.
+  resync: (serverItems: OrderItem[], keepUnfired: boolean) => void;
 }
 
-export function useCart(): UseCart {
+// `isLocked` — true while a send is in flight (hooks/use-pos-send.ts): the
+// operator's edits are refused then, so no line can be added, changed or
+// cleared under a request that already carries the cart (owner decision 2).
+// It must be a STABLE function (the send controller's), or these callbacks —
+// and every memo keyed on them — would change on every render.
+const NEVER_LOCKED = () => false;
+
+export function useCart(isLocked: () => boolean = NEVER_LOCKED): UseCart {
   const [cart, setCart] = useState<CartItem[]>([]);
 
   const addToCart = useCallback<UseCart["addToCart"]>((product, opts = {}) => {
+    if (isLocked()) return;
     const modifiers = opts.modifiers ?? [];
     const instructions = opts.instructions ?? "";
     const addQty = opts.qty ?? 1;
@@ -184,11 +195,12 @@ export function useCart(): UseCart {
         },
       ];
     });
-  }, []);
+  }, [isLocked]);
 
   // Qty/remove only ever act on unfired lines — fired lines are locked (already
   // sent to the kitchen). The UI also disables their controls.
   const updateQty = useCallback<UseCart["updateQty"]>((lineId, qty) => {
+    if (isLocked()) return;
     setCart((prev) =>
       qty <= 0
         ? prev.filter((ci) => !(ci.lineId === lineId && ci.kotRound === 0))
@@ -196,16 +208,23 @@ export function useCart(): UseCart {
             ci.lineId === lineId && ci.kotRound === 0 ? { ...ci, qty } : ci,
           ),
     );
-  }, []);
+  }, [isLocked]);
 
   const removeFromCart = useCallback<UseCart["removeFromCart"]>((lineId) => {
+    if (isLocked()) return;
     setCart((prev) =>
       prev.filter((ci) => !(ci.lineId === lineId && ci.kotRound === 0)),
     );
-  }, []);
+  }, [isLocked]);
 
-  const clearCart = useCallback(() => setCart([]), []);
+  const clearCart = useCallback(() => {
+    if (!isLocked()) setCart([]);
+  }, [isLocked]);
   const hydrate = useCallback<UseCart["hydrate"]>((items) => setCart(items), []);
+  const resync = useCallback<UseCart["resync"]>(
+    (serverItems, keepUnfired) => setCart((prev) => nextCartFromServerItems(serverItems, prev, keepUnfired)),
+    [],
+  );
 
   const subtotal = useMemo(
     // The cart-side twin of lib/receipt.ts:196's reducer — a reward line is
@@ -235,5 +254,6 @@ export function useCart(): UseCart {
     removeFromCart,
     clearCart,
     hydrate,
+    resync,
   };
 }

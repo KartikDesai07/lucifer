@@ -83,5 +83,5 @@ test("PIN: pos/page.tsx wraps both product handlers in useCallback (handleProduc
   // in pos-modals-paths.test.ts requires strictly < 300 and the ceiling is
   // the whole point of both pins. The meaning lives in CategorySidebar's
   // value/label split and ProductGrid's categoryId filter instead.
-  assert.equal(lineCount, 299, "CB-1d.4: pos/page.tsx is 299 (CB-1d.3c's PosModals extraction took it 314 -> 296; CB-1d.4 added the useUnsavedGuard import + call + one comment = +3 for the browser-close warning; CB-DL-2 changed no line count) - re-point this number only when a slice deliberately moves code in or out of this file, never upward past 300, got " + lineCount);
+  assert.equal(lineCount, 299, "CB-1d.4: pos/page.tsx is 299 (CB-1d.3c's PosModals extraction took it 314 -> 296; CB-1d.4 added the useUnsavedGuard import + call + one comment = +3 for the browser-close warning; CB-DL-2 changed no line count; the 2026-09-28 foreground settle added the paymentNotice prop and shortened the PosModals comment by one line = net 0) - re-point this number only when a slice deliberately moves code in or out of this file, never upward past 300, got " + lineCount);
 });

@@ -130,7 +130,7 @@ test("PIN: the sidebar's colours come from the brand palette on :root (the phone
 const WARM_URLS = ["/", "/pos", "/requests", "/kitchen", "/orders", "/reservations"];
 const NEXT_CONFIG = "apps/cafe/next.config.ts";
 
-test("PIN: exactly the Dashboard and Service sections are warm — no setup or admin screen — and their links prefetch the full route", () => {
+test("PIN: exactly the Dashboard and Service sections are warm — no setup or admin screen — and only the line-gated hook prefetches them (their Links never do)", () => {
   const src = stripComments(readSrc(APP_SIDEBAR));
   const heads = [...src.matchAll(/\{\s*(?:label:\s*"([^"]+)",\s*)?(warm:\s*true,\s*)?items:\s*\[/g)];
   assert.equal(heads.length, 4, "landmark: four nav sections (Dashboard, Service, Manage, Admin)");
@@ -145,12 +145,48 @@ test("PIN: exactly the Dashboard and Service sections are warm — no setup or a
   });
   assert.deepEqual(warmUrls, WARM_URLS, "the warm rows are the dashboard and the service screens, in sidebar order");
 
-  // The warm rows are what the hook keeps prefetched, and their own links ask
-  // for the FULL route (an automatic prefetch would only fetch the skeleton).
+  // The warm rows are what the hook keeps prefetched (the FULL route — its
+  // router.prefetch defaults to FULL); their own links do not prefetch at all.
   assert.match(src, /\.filter\(\(section\) => section\.warm\)\s*\.flatMap\(\(section\) => section\.items\.map\(\(item\) => item\.url\)\)/);
   assert.match(src, /useWarmRoutes\(warmHrefs\)/);
-  assert.match(src, /renderItem\(item, section\.warm\)/);
-  assert.match(src, /prefetch=\{warm \? true : undefined\}/);
+  // That their Links never prefetch is the next test (every sidebar Link).
+});
+
+/** Every `<Link …>` opening tag in `src`, brace-aware (a `>` inside `{…}` does not end it). */
+function linkTags(src: string): string[] {
+  const tags: string[] = [];
+  for (const m of src.matchAll(/<Link\b/g)) {
+    let depth = 0;
+    let end = m.index!;
+    for (; end < src.length; end++) {
+      const ch = src[end];
+      if (ch === "{") depth++;
+      else if (ch === "}") depth--;
+      else if (ch === ">" && depth === 0) break;
+    }
+    tags.push(src.slice(m.index!, end + 1));
+  }
+  return tags;
+}
+
+test("PIN: no sidebar Link prefetches on its own — every one says prefetch={false}; the warm rows' only warmer is useWarmRoutes", () => {
+  // 2026-09-29: a Link's default (or true) prefetch fires on sight and on
+  // hover; on a line still waking up it can fail, and a failed prefetch turns
+  // the next click into a full page load (vendor facts: lib/warm-routes.test.ts).
+  for (const [file, expected] of [[APP_SIDEBAR, 1], [SETTINGS_GROUP, 2]] as const) {
+    const src = stripComments(readSrc(file));
+    // Vision guards: Link is next/link under that one name, and the scan finds
+    // every tag the file renders (an extractor that finds none proves nothing).
+    assert.equal(src.match(/from "next\/link"/g)?.length, 1, `${file}: one next/link import`);
+    assert.match(src, /import Link from "next\/link";/, `${file}: imported as Link`);
+    const tags = linkTags(src);
+    assert.equal(tags.length, expected, `${file}: expected ${expected} <Link> tags, found ${tags.length}`);
+    for (const tag of tags) {
+      assert.ok(tag.includes("href="), `landmark: a whole Link tag was read: ${tag}`);
+      assert.equal(tag.match(/\bprefetch=/g)?.length, 1, `${file}: every Link sets prefetch exactly once: ${tag}`);
+      assert.ok(tag.includes("prefetch={false}"), `${file}: a Link keeps a default or true prefetch: ${tag}`);
+    }
+  }
 });
 
 test("PIN: next.config lengthens only the FULL-prefetch reuse window — staleTimes carries `static` and never `dynamic`", () => {

@@ -9,7 +9,7 @@ import {
   useCancelOrder,
   type OrderFilters,
 } from "@/hooks/use-orders";
-import { dedupeOrdersById } from "@/lib/order-query";
+import { dedupeOrdersById, liveOrderOf } from "@/lib/order-query";
 import { useTables } from "@/hooks/use-tables";
 import { useAuth } from "@/hooks/use-auth";
 import { ORDER_STATUSES, PAYMENT_MODES } from "@/lib/constants";
@@ -217,8 +217,10 @@ export default function OrdersPage() {
         </>
       )}
 
+      {/* The sheet follows the live row (a tab another device grew or settled);
+          it latches its own copy while paying. */}
       <OrderDetailSheet
-        order={detail}
+        order={liveOrderOf(detail, list)}
         onOpenChange={(o) => !o && setDetail(null)}
         onSettled={setDetail}
       />

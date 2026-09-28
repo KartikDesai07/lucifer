@@ -337,11 +337,10 @@ test("PIN (D9): use-pos-tab.ts's SETTLE payload block does NOT carry rewardAt â€
   // Positive landmark: the settle call site really exists and is the thing
   // being scoped, so the absence check below cannot pass vacuously against a
   // missing/renamed block.
-  // 2026-09-28: the settle payload is built ONCE, by settlePayload(), for both
-  // lanes â€” the background settle (PendingWritesProvider) and the foreground
-  // mutation. Pin that both lanes use it, then scope the check to its body.
-  assert.match(src, /settleLane\.enqueueSettle\(resumedOrder, settlePayload\(result, resumedOrder\), draft\)/, "landmark: the background lane sends settlePayload(result, resumedOrder)");
-  assert.match(src, /settleOrder\.mutateAsync\(\{ id: resumedOrder\._id, data: settlePayload\(result, resumedOrder\) \}\)/, "landmark: the foreground lane sends settlePayload(result, resumedOrder)");
+  // 2026-09-28: the settle payload is built ONCE, by settlePayload(), and the
+  // one foreground settle (hooks/use-settle-flow.ts) sends it. Pin that the
+  // settle sends it, then scope the check to its body.
+  assert.match(src, /settleFlow\.submit\(resumedOrder, settlePayload\(result, resumedOrder\)\)/, "landmark: the settle sends settlePayload(result, resumedOrder)");
   const settleCallIdx = src.indexOf("const settlePayload = (result: PaymentResult, tab: Order): SettleOrderInput => ({");
   assert.ok(settleCallIdx >= 0, "landmark: the settle payload builder must be found");
   // Scope to the builder's own object literal: up to the `});` that closes it.

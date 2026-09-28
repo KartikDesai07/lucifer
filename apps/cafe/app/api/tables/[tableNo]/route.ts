@@ -1,3 +1,4 @@
+import { publishCafeEvent } from "@/lib/realtime-publish";
 import { connectDB } from "@/lib/db";
 import { Table } from "@/models/Table";
 import cache from "@/lib/cache";
@@ -73,6 +74,10 @@ export async function PUT(req: Request, { params }: Params) {
     }
 
     cache.del(CACHE_KEY);
+    // The floor changed — nudge every device's tables and open tabs, after the
+    // cache del (the request starts at this call; after() only keeps it
+    // alive). It swallows every failure, so it can never fail this write.
+    publishCafeEvent("order-changed");
     return success(table);
   } catch (error) {
     return serverError("Failed to update table", error);

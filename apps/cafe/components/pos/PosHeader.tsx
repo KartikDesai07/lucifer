@@ -62,6 +62,7 @@ export const PosHeader = memo(function PosHeader({
             variant="outline"
             size="sm"
             onClick={onReprintKot}
+            disabled={isBusy}
             aria-label={`Print kitchen ticket for ${lastOrder.orderId}`}
             title={`Print kitchen ticket for ${lastOrder.orderId}`}
             className={cn(POS_HEADER_CONTROL_CLASS, "shrink-0")}
@@ -74,6 +75,7 @@ export const PosHeader = memo(function PosHeader({
           tabs={openTabs}
           onResume={onResumeTab}
           className={cn(POS_HEADER_CONTROL_CLASS, "shrink-0")}
+          disabled={isBusy}
         />
         {resumedOrder ? (
           // A resumed tab no longer locks the table picker — it swaps to a
@@ -118,12 +120,14 @@ export const PosHeader = memo(function PosHeader({
             tabs={openTabs}
             onResume={onResumeTab}
             className={cn(POS_HEADER_CONTROL_CLASS, POS_HEADER_CHIP_FIXED_CLASS)}
+            disabled={isBusy}
           />
         )}
         <CustomerSearch
           value={customer}
           onChange={onCustomerChange}
           className={cn(POS_HEADER_CONTROL_CLASS, POS_HEADER_CHIP_FLEX_CLASS)}
+          disabled={isBusy}
         />
       </div>
     </div>

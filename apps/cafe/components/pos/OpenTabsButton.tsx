@@ -15,7 +15,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { usePendingWrites } from "@/components/layout/PendingWritesProvider";
 import type { Order } from "@/types";
 
 interface OpenTabsButtonProps {
@@ -23,16 +22,15 @@ interface OpenTabsButtonProps {
   onResume: (order: Order) => void;
   // Applied to the trigger button only — the header sizes it per breakpoint.
   className?: string;
+  // A send is in flight: no other tab may be opened under it.
+  disabled?: boolean;
 }
 
 // Header control listing the open (Unpaid) running orders so staff can resume
 // one — to add another round or settle it. Handles table tabs and walk-in tabs
 // alike (a tab needn't have a table).
-export function OpenTabsButton({ tabs, onResume, className }: OpenTabsButtonProps) {
+export function OpenTabsButton({ tabs, onResume, className, disabled }: OpenTabsButtonProps) {
   const [open, setOpen] = useState(false);
-  // A tab whose settle is still being sent in the background can't be
-  // resumed — shown, but shut (the resume guard in use-pos-settle-lane agrees).
-  const { isSettling } = usePendingWrites();
 
   const resume = (order: Order) => {
     onResume(order);
@@ -48,6 +46,7 @@ export function OpenTabsButton({ tabs, onResume, className }: OpenTabsButtonProp
           variant="outline"
           size="sm"
           className={cn("gap-2", className)}
+          disabled={disabled}
           aria-label={`Open tabs (${tabs.length})`}
           title={`Open tabs (${tabs.length})`}
         >
@@ -78,8 +77,7 @@ export function OpenTabsButton({ tabs, onResume, className }: OpenTabsButtonProp
                 <button
                   type="button"
                   onClick={() => resume(t)}
-                  disabled={isSettling(t._id)}
-                  className="flex w-full items-center justify-between rounded-lg border p-3 text-left transition hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="flex w-full items-center justify-between rounded-lg border p-3 text-left transition hover:bg-muted/60"
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">
@@ -91,7 +89,7 @@ export function OpenTabsButton({ tabs, onResume, className }: OpenTabsButtonProp
                     </p>
                   </div>
                   <span className="shrink-0 text-sm font-semibold">
-                    {isSettling(t._id) ? "Settling…" : inr(t.total)}
+                    {inr(t.total)}
                   </span>
                 </button>
               </li>

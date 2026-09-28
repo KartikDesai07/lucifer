@@ -5,8 +5,11 @@ import { Order } from "@/models/Order";
 import { Customer } from "@/models/Customer";
 import { Product } from "@/models/Product";
 import { Table } from "@/models/Table";
-import { nextOrderSequence, bumpOrderSequenceTo, nextSlipSequence } from "@/models/Counter";
-import { printConfigOf, printedSlipNumber } from "@/lib/print";
+import { nextOrderSequence, bumpOrderSequenceTo } from "@/models/Counter";
+import { printConfigOf } from "@/lib/print";
+import { allocateOpeningKot, issueBillNumber, BILL_NUMBER_UNCONFIRMED } from "@/lib/slip-numbers";
+import { settledValue } from "@/lib/settled";
+import { createReplayResponse, createReplayVerdict, findCreateReplay, isIdemKeyDuplicate } from "@/lib/order-idem";
 import cache from "@/lib/cache";
 import {
   success,
@@ -141,33 +144,50 @@ export async function POST(req: Request) {
   try {
     await connectDB();
 
-    // A product sold by size must never reach the kitchen as a bare name, and a
-    // variation the product does not have must never be printed as if it did.
-    // One indexed query, and only when the payload could possibly be affected —
-    // checked BEFORE any pricing/write below, so a bad payload costs nothing.
+    // The independent reads start together and are CHECKED in order. First the
+    // send key (F5): a re-send whose first try already landed answers with that
+    // order (200) before anything else — no 400 on a product edited since, no
+    // sequence, no claim, no publish, and no slip number unless it finishes a
+    // stale unnumbered bill (createReplayVerdict).
     const productIds = data.items
       .map((it) => it.productId)
       .filter(mongoose.isValidObjectId);
-    if (productIds.length) {
-      const products = await Product.find({ _id: { $in: productIds } })
-        .select("name variations")
-        .lean();
-      const bad = checkItemVariations(
-        products.map((p) => ({ _id: String(p._id), name: p.name, variations: p.variations })),
-        data.items,
-      );
-      if (bad) return failure(bad, 400);
-    }
+    const [replayR, productsR, tableR, settingsR] = await Promise.allSettled([
+      data.idemKey ? findCreateReplay(data.idemKey) : Promise.resolve(null),
+      // One indexed query, only when the payload could possibly be affected.
+      productIds.length
+        ? Product.find({ _id: { $in: productIds } }).select("name variations").lean()
+        : Promise.resolve([]),
+      // The table's configured extra charge, doubling as its existence check.
+      resolveTableCharge(data.tableNo),
+      getSettings(),
+    ]);
+    // The replay reads the settings only for the bill numbering: a Pay Now sale
+    // with no number stored yet answers a retryable 503 while young, and is
+    // numbered by the replay once past BILL_NUMBER_SETTLE_MS. Awaited, so a
+    // throw inside it still lands in this route's catch.
+    const replayed = settledValue(replayR);
+    if (replayed) return await createReplayVerdict(replayed, data.items, printConfigOf(settledValue(settingsR)).bill);
 
-    // Resolves the table's configured extra charge AND doubles as the existence
-    // check, so this is still one query rather than two.
-    const table = await resolveTableCharge(data.tableNo);
+    // A product sold by size must never reach the kitchen as a bare name, and a
+    // variation the product does not have must never be printed as if it did —
+    // refused BEFORE any pricing/write below, so a bad payload writes nothing.
+    const products = settledValue(productsR);
+    const bad = checkItemVariations(
+      products.map((p) => ({ _id: String(p._id), name: p.name, variations: p.variations })),
+      data.items,
+    );
+    if (bad) return failure(bad, 400);
+
+    const table = settledValue(tableR);
     if ("error" in table) return failure(table.error, 400);
 
     // Money is server-authoritative — recompute from the items + the cafe's GST
     // config; never persist the client's subtotal/gst/total verbatim. paidAmount
     // may assert what was actually COLLECTED (derivePayment clamps it to the total).
-    const settings = await getSettings();
+    const settings = settledValue(settingsR);
+    // Bound here, before lateReplay below can first run (it reads printCfg).
+    const printCfg = printConfigOf(settings);
     const gstCfg = gstConfigOf(settings);
     // An OMITTED chargeAmount means "whatever this table charges" — safe to omit
     // because the server just re-derived it, and safer than echoing: the POS
@@ -246,9 +266,9 @@ export async function POST(req: Request) {
         },
         1,
       );
-      // Rejected BEFORE anything is written or a slip number is burned (moved
-      // above the kot/bill allocation below) — a bad claim must cost the
-      // till nothing, not even a gap in the ticket series.
+      // Rejected BEFORE anything is written or a slip number is burned (the
+      // KOT number is taken only after every refusal, the bill number only by
+      // the insert that won) — a bad claim must cost the till nothing.
       if (!resolved.ok) return failure(resolved.message, 400);
 
       // Appended to the priced items so it reaches BOTH computeOrderTotals
@@ -396,23 +416,6 @@ export async function POST(req: Request) {
     );
     if ("error" in pay) return failure(pay.error, 400);
 
-    // Slip numbers come from their OWN daily counters, separate from the order
-    // sequence: one tab issues several kitchen tickets but exactly one bill, so
-    // the three series cannot share a counter. Each allocation is a single
-    // atomic $inc, so two tills ringing up at the same instant can never be
-    // handed the same number. Allocated once here and reused by the
-    // duplicate-key retry below — a retry must not consume a second number.
-    // A reward claim is resolved (and can fail) ABOVE this point, so a
-    // rejected claim never burns a kot/bill number.
-    const printCfg = printConfigOf(settings);
-    const issuesBill = printCfg.bill.showNumber && data.status === "Completed";
-    const kotNumber = printCfg.kot.showNumber
-      ? printedSlipNumber(await nextSlipSequence("kot"), printCfg.kot.numberStart)
-      : 0;
-    const billNumber = issuesBill
-      ? printedSlipNumber(await nextSlipSequence("bill"), printCfg.bill.numberStart)
-      : 0;
-
     // A held "Unpaid" open tab is unpaid by definition and must NEVER require a
     // customer — the exclusion below is essential, don't "simplify" it away.
     // Every other mode that leaves a remainder uncollected parks that remainder
@@ -429,7 +432,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const doc = {
+    const unnumberedDoc = {
       customerName: data.customerName,
       customerId,
       // The opening items are KOT round 1 (sent to the kitchen at creation —
@@ -459,14 +462,6 @@ export async function POST(req: Request) {
       // for a plain create doc) when there is nothing to charge.
       ...(chargeWriteFields(charges).set ?? {}),
       total: totals.total,
-      // Printed slip numbers, resolved against the cafe's configured daily
-      // start and STORED — a reprint reproduces the paper, it never recomputes
-      // it. The opening items are round 1, hence the single-element array.
-      // A bill number is issued only when a BILL is: an order created as an
-      // open tab ("Pending") gets none, so a tab that runs all evening — or is
-      // cancelled — never burns a number out of the day's bill series.
-      kotNumbers: printCfg.kot.showNumber ? [kotNumber] : undefined,
-      billNumber: issuesBill ? billNumber : undefined,
       paidAmount: pay.paidAmount,
       payment: data.payment,
       splitCash: pay.splitCash,
@@ -487,6 +482,9 @@ export async function POST(req: Request) {
       // CB-5B — the reward reprint snapshot, omit-empty (no keys at all when
       // no reward resolved).
       ...(resolvedClaim ? rewardSnapshotFields(resolvedClaim.reward, resolvedClaim.cost) : {}),
+      // F5 — the send key, omit-empty (never null: the partial unique index
+      // counts null). A second insert with the same key is refused by the index.
+      ...(data.idemKey ? { idemKey: data.idemKey } : {}),
     };
 
     // Order number from an atomic per-day counter (no read-max race). On the
@@ -510,9 +508,16 @@ export async function POST(req: Request) {
     // what it claimed before the next one begins.
     const claimFor = async (oid: string): Promise<boolean> =>
       resolvedClaim ? claimRewardStamps(customerId!, oid, resolvedClaim.cost, rewardAssignment) : true;
+    // The undo passes the SAME assignment the claim minted (O10): whatever a
+    // claim writes, its compensation must unwrite — without it the stamps came
+    // back and the rung's promo code stayed live with the diner.
     const unclaimFor = async (oid: string): Promise<void> => {
-      if (resolvedClaim) await returnRewardStamps(customerId!, oid, resolvedClaim.cost);
+      if (resolvedClaim) await returnRewardStamps(customerId!, oid, resolvedClaim.cost, rewardAssignment);
     };
+    // F5 — an overlap twin with the same send key may have landed while this
+    // request was between its read wave and here: before refusing (or after
+    // losing the insert on the key), answer with the order the twin made.
+    const lateReplay = async () => (data.idemKey ? createReplayResponse(data.idemKey, data.items, printCfg.bill) : null);
 
     // CB-5D part 2 — the promo fence, claimed per ORDER ID for exactly the
     // reason the stamp claim above is: the duplicate-key retry re-numbers the
@@ -539,15 +544,33 @@ export async function POST(req: Request) {
     const seq = await nextOrderSequence();
     const orderId = generateOrderId(seq);
     if (!(await claimFor(orderId))) {
-      return failure("Not enough stamps for that reward", 409);
+      return (await lateReplay()) ?? failure("Not enough stamps for that reward", 409);
     }
     // After the stamp claim so the two compensations nest in one order: if the
     // fence refuses, the stamps claimed just above are returned before the
     // 409, leaving the customer exactly as they started.
     if (!(await fencePromoFor(orderId))) {
       await unclaimFor(orderId);
-      return failure(PROMO_USED_ERROR, 409);
+      return (await lateReplay()) ?? failure(PROMO_USED_ERROR, 409);
     }
+
+    // Slip numbers come from their OWN daily counters (one tab, several kitchen
+    // tickets, exactly one bill), each a single atomic $inc. The opening KOT
+    // number is taken HERE — after every refusal above, so a refused create
+    // costs the ticket series nothing — and reused by the duplicate-key retry.
+    // Losing it to a failed insert is an accepted burn. The BILL number is not
+    // taken here at all: only the insert that WON takes it (below), so a Pay
+    // Now twin that loses on the send key can never leave a gap in the bills.
+    const issuesBill = printCfg.bill.showNumber && data.status === "Completed";
+    let slips: Awaited<ReturnType<typeof allocateOpeningKot>>;
+    try {
+      slips = await allocateOpeningKot(printCfg);
+    } catch (slipError) {
+      // No insert has run, so this is a DEFINITE no-order: both claims go back.
+      await Promise.allSettled([unclaimFor(orderId), unfencePromoFor(orderId)]);
+      throw slipError;
+    }
+    const doc = { ...unnumberedDoc, ...slips };
     let order;
     try {
       order = await Order.create({ ...doc, orderId });
@@ -568,6 +591,14 @@ export async function POST(req: Request) {
       // fence row pointing at it would burn the customer's single use on an
       // order they were never billed for.
       await unfencePromoFor(orderId);
+      // F5 — the send key collided, not the orderId: our own twin's insert
+      // landed first. Adopt its order (its claims stand, ours just went back);
+      // renumbering would make the second order this key exists to prevent.
+      if (isIdemKeyDuplicate(e)) {
+        const won = await lateReplay();
+        if (won) return won;
+        throw e;
+      }
       const { start, end } = dayRange();
       const last = await Order.findOne({ createdAt: { $gte: start, $lte: end } })
         .sort({ orderId: -1 })
@@ -604,74 +635,73 @@ export async function POST(req: Request) {
           await unclaimFor(retryOrderId);
           await unfencePromoFor(retryOrderId);
         }
+        const won = isIdemKeyDuplicate(retryError) ? await lateReplay() : null;
+        if (won) return won;
         throw retryError;
       }
     }
 
-    // CB-5D part 2 — the fence's trace, best-effort AFTER the write landed
-    // (never blocking, failure swallowed inside the helper): which order
-    // actually consumed this code. The claim above IS the fence; this only
-    // makes it readable to staff/ops, so a failure here must never undo an
-    // order that already exists (never-revert-on-write-throw).
-    if (promoFenceMobile && promoIsClaimable(promoDiscount, data.promoCode, promoKind)) {
-      await backfillPromoRedemptionOrderId(data.promoCode, promoFenceMobile, order.orderId);
-    }
-    // CB-5D part 2 (owner decision) — the ASSIGNED code is now SPENT, so it
-    // leaves the diner's "my rewards" list. Best-effort, beside the backfill
-    // and under the same rule: the fence claimed BEFORE the write is what
-    // stops a second spend, so a failure here costs only a stale list row.
-    // Keyed on the customer's own stored mobile, resolved earlier for the
-    // fence; a counter order with no customer has no assigned code to spend.
-    if (data.promoCode && promoFenceMobile) {
-      await markAssignedRewardUsed(data.promoCode, promoFenceMobile, order.orderId, new Date());
-    }
-
-    // The order row is now the source of truth. The ledger + table updates are
-    // best-effort follow-ups: a failure here must NOT fail the request (that
-    // would invite a retry → duplicate order). Any drift is repairable via the
-    // customer reconcile endpoint.
-    if (customerId) {
-      // A held "Unpaid" open tab contributes nothing yet (ledgerContribution → 0);
-      // its visit/spend/due land at settlement. Every other order contributes now.
+    // The order row is now the source of truth. Everything below is a
+    // best-effort follow-up that must NOT fail the request (that would invite
+    // a retry → duplicate order), so all of it settles together: any drift is
+    // repairable via the customer reconcile endpoint.
+    const landed = order;
+    // A held "Unpaid" open tab contributes nothing yet (ledgerContribution → 0);
+    // its visit/spend/due land at settlement. Every other order contributes now.
+    const applyLedger = async (): Promise<void> => {
+      if (!customerId) return;
       const c = ledgerContribution({
         payment: data.payment,
         total: totals.total,
         paidAmount: pay.paidAmount,
         status: data.status,
       });
-      if (c.visits || c.spend || c.due) {
-        try {
-          await Customer.findByIdAndUpdate(customerId, {
-            $inc: { visits: c.visits, totalSpend: c.spend, totalDue: c.due },
-          });
-          cache.del("customers");
-        } catch {
-          /* best-effort — recoverable via reconcile */
-        }
-      }
-    }
-
+      if (!(c.visits || c.spend || c.due)) return;
+      await Customer.findByIdAndUpdate(customerId, {
+        $inc: { visits: c.visits, totalSpend: c.spend, totalDue: c.due },
+      });
+      cache.del("customers");
+    };
     // Occupy the table ONLY if it is currently free, so two staff can't claim
     // the same table and overwrite each other's currentOrderId.
-    if (data.tableNo) {
-      try {
-        await Table.findOneAndUpdate(
-          { tableNo: data.tableNo, status: "Available" },
-          { status: "Occupied", currentOrderId: order.orderId },
-        );
-        cache.del("tables");
-      } catch {
-        /* best-effort */
-      }
-    }
+    const occupyTable = async (): Promise<void> => {
+      if (!data.tableNo) return;
+      await Table.findOneAndUpdate(
+        { tableNo: data.tableNo, status: "Available" },
+        { status: "Occupied", currentOrderId: landed.orderId },
+      );
+      cache.del("tables");
+    };
+    const [numbered] = await Promise.allSettled([
+      // This insert WON, so a Pay Now bill takes its number now — exactly once
+      // per order: a twin that lost on the send key adopted above, unnumbered.
+      issuesBill ? issueBillNumber(landed._id, printCfg.bill.numberStart) : Promise.resolve(null),
+      // CB-5D part 2 — the fence's trace (which order consumed this code). The
+      // claim above IS the fence; this only makes it readable to staff/ops.
+      promoFenceMobile && promoIsClaimable(promoDiscount, data.promoCode, promoKind)
+        ? backfillPromoRedemptionOrderId(data.promoCode, promoFenceMobile, landed.orderId)
+        : null,
+      // CB-5D part 2 (owner decision) — the ASSIGNED code is now SPENT, so it
+      // leaves the diner's "my rewards" list; a failure costs a stale list row.
+      data.promoCode && promoFenceMobile
+        ? markAssignedRewardUsed(data.promoCode, promoFenceMobile, landed.orderId, new Date())
+        : null,
+      applyLedger(),
+      occupyTable(),
+    ]);
 
     cache.del(orderSummaryCacheKey());
     // The tab changed — nudge the POS pulse and the Kitchen board ahead of
-    // their polls. publishCafeEvent defers it past the response and swallows
+    // their polls. publishCafeEvent sends it at once (after() only keeps the invocation alive — which is why it sits after every follow-up) and swallows
     // every failure, so it can never delay or fail this write; the polls stay
     // the fallback and the source of truth.
     publishCafeEvent("order-changed");
-    return created(order);
+    // The order exists but its bill number is unknown: a 5xx sends the client
+    // to Send again. Within BILL_NUMBER_SETTLE_MS (30 s) that replay answers
+    // "still saving" (503); after it, the replay issues the number itself
+    // (guarded, never a second one) and answers with the numbered order.
+    if (numbered.status === "rejected") return serverError(BILL_NUMBER_UNCONFIRMED, numbered.reason);
+    return created(numbered.value ?? landed);
   } catch (error) {
     return serverError("Failed to create order", error);
   }

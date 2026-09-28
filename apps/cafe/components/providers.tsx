@@ -31,6 +31,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
             retry: 1,
             refetchOnWindowFocus: false,
           },
+          // Every write fails AT ONCE while offline and is never parked to fire
+          // by itself on reconnect (owner rule: no background writes). TanStack's
+          // default "online" pauses a mutation until the browser says online
+          // (query-core retryer canFetch). Queries keep "online", so their
+          // isPaused states are unchanged.
+          mutations: { networkMode: "always" },
         },
       }),
   );

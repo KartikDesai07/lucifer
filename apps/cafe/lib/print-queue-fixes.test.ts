@@ -296,11 +296,13 @@ test("PIN: readPosPulse's two OrderRequest reads (openRows/selfRows) run BEFORE 
   const fnEnd = mustIndexOf(src, "export type ClaimKotPrintResult", "the boundary after readPosPulse");
   const fnBody = src.slice(fnStart, fnEnd);
 
-  const openIdx = mustIndexOf(fnBody, "const openRows = await OrderRequest.find(", "the open-rows read");
-  const selfIdx = mustIndexOf(fnBody, "const selfRows = await OrderRequest.find(", "the self-rows read");
+  const openIdx = mustIndexOf(fnBody, "const openQuery = OrderRequest.find(", "the open-rows query");
+  const selfIdx = mustIndexOf(fnBody, "const selfQuery = OrderRequest.find(", "the self-rows query");
+  const awaitIdx = mustIndexOf(fnBody, "const [openRows, selfRows] = await Promise.all([openQuery, selfQuery]);", "the one await of both OrderRequest reads");
   const tryIdx = mustIndexOf(fnBody, "try {", "the print-read try block");
   assert.ok(openIdx < tryIdx, "the openRows OrderRequest read must run before the print-read try block");
   assert.ok(selfIdx < tryIdx, "the selfRows OrderRequest read must run before the print-read try block");
+  assert.ok(awaitIdx < tryIdx, "both OrderRequest reads must be AWAITED before the print-read try block — awaited inside it, their outage would fail soft");
 
   const catchIdx = mustIndexOf(fnBody, "} catch {", "the catch block");
   const tryBlock = fnBody.slice(tryIdx, catchIdx);
@@ -553,4 +555,29 @@ test('PIN (F-8): enqueuePrintJob\'s orphan dismiss stamps dismissedBy: ORPHAN_DI
   assert.ok(!/dismissedBy:\s*input\.queuedBy/.test(src), "dismissedBy must NEVER be input.queuedBy — the orphan dismiss is server-initiated, not a staff decision");
   assert.match(src, /dismissedBy:\s*ORPHAN_DISMISS_ACTOR/, "the orphan dismiss must stamp the neutral ORPHAN_DISMISS_ACTOR constant");
   assert.match(src, /queuedBy:\s*input\.queuedBy/, "positive landmark: queuedBy: input.queuedBy must still be used on PrintJob.create( — proves this isn't a blinded region");
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+// Smooth-writes Slice B (F2 S8) — the enqueue's prune runs AFTER the response
+// ═════════════════════════════════════════════════════════════════════════
+
+test("PIN: POST /api/print-jobs defers its throttled prune into after(async () => ...), inside its own try, with a swallowed inner catch — the enqueue answers without waiting on the sweep", () => {
+  const src = stripComments(readSrc(ENQUEUE_ROUTE));
+  assert.match(src, /import \{ after \} from "next\/server";/, "after must come from next/server");
+  assert.equal(src.split("prunePrintJobsThrottled(").length - 1, 1, "exactly one prune call site");
+  const enqueueIdx = mustIndexOf(src, "await enqueuePrintJob(", "the enqueue");
+  const afterIdx = mustIndexOf(src, "after(async () => {", "the deferred prune");
+  const pruneIdx = mustIndexOf(src, "await prunePrintJobsThrottled(nowMs);", "the prune call");
+  const returnIdx = mustIndexOf(src, "return noStore(success(result));", "the enqueue answer");
+  assert.ok(enqueueIdx < afterIdx && afterIdx < pruneIdx && pruneIdx < returnIdx, "enqueue, then after( holding the prune, then the answer");
+  assert.ok(!src.slice(enqueueIdx, afterIdx).includes("prunePrintJobs"), "no prune may run between the enqueue and the after(");
+  // after() throws synchronously outside a request scope: its call must sit in
+  // its own try whose catch is empty, and the callback must swallow its own
+  // prune failure (an async throw inside after() would surface as unhandled).
+  const outerTry = src.lastIndexOf("try {", afterIdx);
+  assert.ok(outerTry > mustIndexOf(src, "await connectDB();", "the handler's db connect"), "the after( call sits in its own nested try");
+  assert.ok(src.slice(outerTry, afterIdx).trim() === "try {", "nothing but the after( call opens that try");
+  const innerTry = mustIndexOf(src.slice(afterIdx), "try {", "the callback's own try") + afterIdx;
+  assert.ok(innerTry < pruneIdx, "the prune is wrapped inside the callback");
+  assert.match(src.slice(pruneIdx, returnIdx), /\}\s*catch\s*\{\s*\}\s*\}\);\s*\}\s*catch\s*\{\s*\}/, "both catches are empty swallows: callback's, then after()'s own");
 });

@@ -9,8 +9,10 @@ import {
   nextOrderCursor,
   dedupeOrdersById,
   firstPageOnly,
+  onePageAtMost,
+  liveOrderOf,
 } from "./order-query";
-import { GC_TIMES } from "./query";
+import { GC_TIMES, REFETCH_INTERVALS } from "./query";
 
 // CR1.5 Slice 3 — orders cursor pagination. `order-query.ts` is PURE (no
 // mongoose), so this suite is DB-free start to finish.
@@ -205,4 +207,46 @@ test("PIN: the Orders list outlives the live lists but still always refetches, a
   assert.match(hooks, /qc\.setQueriesData<[^>]+>>\(\s*\{ queryKey: ORDER_KEYS\.infinite \},\s*\(data\) => firstPageOnly\(data\),?\s*\)/);
   const page = readFileSync(fileURLToPath(new URL("../app/(dashboard)/orders/page.tsx", import.meta.url)), "utf8");
   assert.match(page, /useTrimOrdersListOnLeave\(\);/, "the Orders page must call useTrimOrdersListOnLeave()");
+});
+
+// ── F3 S2/S3: the live lists converge across devices (owner decision 3) ─────
+// Open tabs and the Orders list's first page poll on the live 30s beat and are
+// kept 30 minutes, so a return visit paints at once and then catches up.
+
+test("onePageAtMost: no data or one page is true, two pages is false (reuses firstPageOnly's no-cut identity)", () => {
+  assert.equal(onePageAtMost(undefined), true);
+  assert.equal(onePageAtMost({ pages: [["a"]], pageParams: [undefined] }), true);
+  assert.equal(onePageAtMost({ pages: [["a"], ["b"]], pageParams: [undefined, "t1"] }), false);
+});
+
+test("liveOrderOf: the list's row replaces the sheet's snapshot only when it is at least as new", () => {
+  const snap = { _id: "o1", updatedAt: "2026-09-28T10:00:00.000Z", total: 540 };
+  const newer = { _id: "o1", updatedAt: "2026-09-28T10:05:00.000Z", total: 560 };
+  const same = { _id: "o1", updatedAt: "2026-09-28T10:00:00.000Z", total: 541 };
+  const older = { _id: "o1", updatedAt: "2026-09-28T09:55:00.000Z", total: 500 };
+  assert.equal(liveOrderOf(null, [newer]), null, "no sheet open");
+  assert.equal(liveOrderOf(snap, []), snap, "the row is not in the list");
+  assert.equal(liveOrderOf(snap, [{ ...newer, _id: "o2" }]), snap, "a different order");
+  assert.equal(liveOrderOf(snap, [newer]), newer);
+  assert.equal(liveOrderOf(snap, [same]), same, "equal is fresh enough");
+  // After an in-sheet settle the snapshot is the fresher Completed doc; the
+  // not-yet-refetched row must not bring "Settle & Pay" back.
+  assert.equal(liveOrderOf(snap, [older]), snap);
+  assert.equal(liveOrderOf(snap, [{ ...newer, updatedAt: "not a date" }]), snap, "an unreadable date keeps the snapshot");
+});
+
+test("PIN: open tabs and the Orders list poll on the live beat — the infinite list only while one page is loaded", () => {
+  assert.equal(REFETCH_INTERVALS.LIVE_LISTS, 30 * 1000, "the live lists' beat");
+  const hooks = readFileSync(fileURLToPath(new URL("../hooks/use-orders.ts", import.meta.url)), "utf8");
+  const fnStart = hooks.indexOf("export function useOrdersInfinite");
+  const fnBody = hooks.slice(fnStart, hooks.indexOf("\nexport function", fnStart + 1));
+  assert.ok(fnStart >= 0, "landmark: useOrdersInfinite exists");
+  assert.match(fnBody, /refetchInterval: isMutating \? false : \(query\) => \(onePageAtMost\(query\.state\.data\) \? REFETCH_INTERVALS\.LIVE_LISTS : false\),/);
+  // Exported for the POS and Dashboard, and declared AFTER the constant it reads.
+  const gcAt = hooks.indexOf("export const ORDERS_LIST_GC_MS = ");
+  const optsAt = hooks.indexOf("export const OPEN_TABS_QUERY_OPTIONS = { refetchInterval: REFETCH_INTERVALS.LIVE_LISTS, gcTime: ORDERS_LIST_GC_MS } as const;");
+  assert.ok(gcAt >= 0 && optsAt > gcAt, "OPEN_TABS_QUERY_OPTIONS follows ORDERS_LIST_GC_MS");
+  assert.match(hooks, /gcTime: options\.gcTime \?\? GC_TIMES\.ORDERS,/, "useOrders takes a gcTime override");
+  const pos = readFileSync(fileURLToPath(new URL("../app/(dashboard)/pos/page.tsx", import.meta.url)), "utf8");
+  assert.match(pos, /useOrders\(\{ payment: "Unpaid", status: "Pending" \}, OPEN_TABS_QUERY_OPTIONS\)/, "the POS open-tabs list uses the shared options");
 });

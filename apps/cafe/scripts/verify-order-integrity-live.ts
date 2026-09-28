@@ -43,8 +43,11 @@ import { resolveItemVoid, voidGuardFilter, type ItemVoidRequest } from "@/lib/or
 import { resolveTableCharge } from "@/lib/table-admin";
 import { printConfigOf, printedSlipNumber } from "@/lib/print";
 import { nextSlipSequence } from "@/models/Counter";
-import { reconcileSettle } from "@/lib/pending-writes";
+import { issueBillNumber, SLIP_NUMBER_DEPS } from "@/lib/slip-numbers";
+import { intentOf, reconcileSettle, stepFromOrder } from "@/lib/pending-writes";
 import { TAB_CHANGED, settleRefusal } from "@/lib/settle-guard";
+import { settleOrderSchema } from "@/schemas";
+import type { Order as WireOrder } from "@/types";
 
 const SCRATCH_PREFIX = "pos_scratch_";
 const DEFAULT_URI = `mongodb://127.0.0.1:27017/${SCRATCH_PREFIX}order_integrity`;
@@ -500,6 +503,10 @@ async function attemptVoid(
 // Deliberately NOT the tab's own snapshot config, to prove gstConfigFromOrder
 // prices a void off the order's stored gstRate/gstMode, never live settings.
 const LIVE_GST_FALLBACK: GstConfig = { gstEnabled: false, gstRate: 0, gstMode: "inclusive" };
+
+// leg16 (e) — a bill-series position no real draw in this run reaches, handed
+// to the real guarded set so a renumber attempt cannot burn the real series.
+const RENUMBER_PROBE_SEQUENCE = 99;
 
 // ── legs ──────────────────────────────────────────────────────────────────────
 
@@ -1629,21 +1636,34 @@ async function leg16(): Promise<void> {
   );
   check("b) kotNumbers.length is now 2 — one entry per fired round", afterRound2?.kotNumbers?.length === 2);
 
-  // c) settle — assigns a billNumber, and it is the day's configured START:
-  // this is the day's first bill, so no other order has consumed the bill
-  // series before it (mirrors settle/route.ts's own condition:
-  // printCfg.bill.showNumber && old.billNumber === undefined).
-  const billNumber1 = printedSlipNumber(await nextSlipSequence("bill"), printCfg.bill.numberStart);
+  // c) settle — the route's CAS write carries NO billNumber
+  // (app/api/orders/[id]/settle/route.ts): the number is issued only AFTER the
+  // CAS landed, by the REAL issueBillNumber (lib/slip-numbers.ts, a guarded
+  // set that writes it only when the bill holds none), and only under the
+  // route's own condition: printCfg.bill.showNumber && updated.billNumber ===
+  // undefined. A settle that loses its CAS therefore never burns a number.
+  const settledCas = await Order.findOneAndUpdate(
+    { _id: order._id, status: "Pending" },
+    { $set: { status: "Completed", payment: "Cash", paidAmount: 200 } },
+    { new: true },
+  ).lean();
+  check(
+    "c) the settle CAS lands and completes the tab WITHOUT a bill number — the write itself carries none",
+    settledCas?.status === "Completed" && !!settledCas && !("billNumber" in settledCas),
+  );
+  const numbering = printCfg.bill.showNumber && settledCas?.billNumber === undefined;
+  check("c) the route's numbering condition holds on the landed settle", numbering);
+  const settled = numbering ? await issueBillNumber(order._id, printCfg.bill.numberStart) : settledCas;
+  const billNumber1 = settled?.billNumber;
   check(
     "c) the day's FIRST bill gets exactly the configured start number",
     billNumber1 === printCfg.bill.numberStart,
   );
-  const settled = await Order.findOneAndUpdate(
-    { _id: order._id, status: "Pending" },
-    { $set: { status: "Completed", payment: "Cash", paidAmount: 200, billNumber: billNumber1 } },
-    { new: true },
-  ).lean();
-  check("c) settling assigns billNumber and completes the tab", settled?.billNumber === billNumber1 && settled?.status === "Completed");
+  const storedAfterSettle = await Order.findById(order._id).lean();
+  check(
+    "c) settling assigns billNumber and completes the tab",
+    storedAfterSettle?.billNumber === billNumber1 && storedAfterSettle?.status === "Completed",
+  );
 
   // d) the kot and bill series are INDEPENDENT — this tab issued TWO kitchen
   // tickets but exactly one bill; the bill number reflects only the bill
@@ -1653,36 +1673,41 @@ async function leg16(): Promise<void> {
     settled?.billNumber === printCfg.bill.numberStart && settled?.kotNumbers?.length === 2,
   );
 
-  // e) re-settling (a second settle attempt) must NOT renumber an order that
-  // already has a billNumber — mirrors settle/route.ts's exact guard
-  // condition, computed against the ALREADY-SETTLED document.
-  const reSettleBillNumber =
-    printCfg.bill.showNumber && settled?.billNumber === undefined
-      ? printedSlipNumber(await nextSlipSequence("bill"), printCfg.bill.numberStart)
-      : undefined;
-  check(
-    "e) the re-settle guard computes NO new bill number for an order that already carries one",
-    reSettleBillNumber === undefined,
-  );
-  const reSettled = await Order.findOneAndUpdate(
-    { _id: order._id },
-    {
-      $set: {
-        paidAmount: 200,
-        ...(reSettleBillNumber !== undefined ? { billNumber: reSettleBillNumber } : {}),
-      },
-    },
+  // e) re-settling must NOT renumber a bill the customer holds. A second
+  // settle's CAS matches nothing on the Completed tab (the route 409s before
+  // it numbers anything); the route's numbering condition is false against the
+  // settled doc; and even the real guarded set, handed a DIFFERENT number
+  // (a fixed probe sequence, so the day's real bill series is not burned and
+  // the control below still sees the next number), leaves the held one alone.
+  const reSettleCas = await Order.findOneAndUpdate(
+    { _id: order._id, status: "Pending" },
+    { $set: { status: "Completed", payment: "Cash", paidAmount: 200 } },
     { new: true },
   ).lean();
+  check("e) a second settle's CAS matches NOTHING on the completed tab — no write, so no numbering", reSettleCas === null);
   check(
-    "e) the order's billNumber is byte-identical after the re-settle attempt — never renumbered",
+    "e) the re-settle guard computes NO new bill number for an order that already carries one",
+    !(printCfg.bill.showNumber && settled?.billNumber === undefined),
+  );
+  const probed = await issueBillNumber(order._id, printCfg.bill.numberStart, {
+    ...SLIP_NUMBER_DEPS,
+    nextSequence: async () => RENUMBER_PROBE_SEQUENCE,
+  });
+  check(
+    "e) the real guarded set misses on a held number and returns the stored bill, not the probe's",
+    probed?.billNumber === billNumber1 &&
+      billNumber1 !== printedSlipNumber(RENUMBER_PROBE_SEQUENCE, printCfg.bill.numberStart),
+  );
+  const reSettled = await Order.findById(order._id).lean();
+  check(
+    "e) the order's billNumber is byte-identical after the re-settle attempts — never renumbered",
     reSettled?.billNumber === billNumber1,
   );
 
   // Control: a SECOND order settled the same cafe-day gets the NEXT bill
   // number — proves (c)'s "day's first bill" claim is the series actually
-  // advancing, not a coincidence of an empty scratch database.
-  const billNumber2 = printedSlipNumber(await nextSlipSequence("bill"), printCfg.bill.numberStart);
+  // advancing, not a coincidence of an empty scratch database. A Pay Now
+  // insert, numbered the route's way: after the insert won (issueBillNumber).
   const order2 = await Order.create({
     orderId: "ORD-LEG16-002",
     customerName: "Walk-in",
@@ -1698,11 +1723,11 @@ async function leg16(): Promise<void> {
     status: "Completed",
     receiver: "Verifier",
     kotRounds: 1,
-    billNumber: billNumber2,
   });
+  const numbered2 = await issueBillNumber(order2._id, printCfg.bill.numberStart);
   check(
     "control: the same day's SECOND settled order gets the NEXT bill number, not a repeat of the first (series genuinely advances)",
-    order2.billNumber === billNumber1 + 1,
+    billNumber1 !== undefined && numbered2?.billNumber === billNumber1 + 1,
   );
 }
 
@@ -2010,13 +2035,15 @@ async function leg18(): Promise<void> {
   check("g) inclusive-mode stored gstAmount === 0", orderG.gstAmount === 0);
 }
 
-// 2026-09-28 — background settle (PendingWritesProvider). A settle whose
-// answer never reached the counter is RE-SENT; these two legs prove, against a
-// real mongod, the route's own refusal helper (lib/settle-guard.ts, run on a
-// FRESH read exactly as the route does) and its exact write shape, that a
-// re-send can never settle twice nor close a tab that grew after the money was
-// taken, and that lib/pending-writes' reconcileSettle reads the order
-// correctly in both directions.
+// 2026-09-28 — the foreground confirmed settle (lib/settle-flow.ts). A settle
+// whose answer never reached the counter is never re-sent by itself: the popup
+// says "Couldn't confirm" and the operator's Check reads the order once
+// (lib/pending-writes' stepFromOrder / reconcileSettle); a settle tapped after
+// that is a NEW request. These two legs prove, against a real mongod, the
+// route's own refusal helper (lib/settle-guard.ts, run on a FRESH read exactly
+// as the route does) and its exact write shape: a second settle can never
+// settle twice nor close a tab that grew after the money was taken, and
+// reconcileSettle reads the order correctly in both directions.
 async function leg19(): Promise<void> {
   console.log("\nLeg 19 — a re-sent settle after the first one already landed: no second write, and it is recognised as OURS\n");
   const order = await Order.create(
@@ -2104,6 +2131,97 @@ async function leg20(): Promise<void> {
   );
 }
 
+// F1 Step 8 — the operator's Check on the REAL wire shape. The unit tests
+// (lib/pending-writes.test.ts) feed stepFromOrder hand-typed Order literals;
+// the Check really reads an order that went through a Mongo write and a JSON
+// response: Dates arrive as strings, ObjectIds as hex, and omit-empty fields
+// (voids, splitCash, splitOnline) are ABSENT rather than undefined-valued. The
+// settle payload goes through JSON and the route's own schema too.
+function overTheWire(doc: unknown): WireOrder {
+  return JSON.parse(JSON.stringify(doc)) as WireOrder;
+}
+
+async function readLean(id: mongoose.Types.ObjectId): Promise<LeanOrder> {
+  const doc = await Order.findById(id).lean<LeanOrder>();
+  if (!doc) throw new Error("leg21: seed order missing");
+  return doc;
+}
+
+function seenOf(o: WireOrder) {
+  return { expectedTotal: o.total, expectedVoids: o.voids?.length ?? 0 };
+}
+
+async function leg21(): Promise<void> {
+  console.log(
+    "\nLeg 21 — the Check reads orders as the wire delivers them: our landed settle is adopted, another mode is elsewhere, a grown tab is changed, an untouched tab is open\n",
+  );
+  const seed = (orderId: string) =>
+    Order.create(
+      buildOrder({
+        orderId,
+        items: [line(fixtureHex("p-a"), "Item A", 300, 1, 1)],
+        payment: "Unpaid",
+        status: "Pending",
+        kotRounds: 1,
+      }),
+    );
+  const ours = await seed("ORD-LEG21-001");
+  const grown = await seed("ORD-LEG21-002");
+  const untouched = await seed("ORD-LEG21-003");
+
+  // What each popup priced: the tab as the client received it.
+  const oursPriced = overTheWire(await readLean(ours._id));
+  check(
+    "sanity: the wire copy is real JSON — id and dates are strings, the empty void trail and splits are absent",
+    typeof oursPriced._id === "string" &&
+      typeof oursPriced.createdAt === "string" &&
+      !("voids" in oursPriced) &&
+      !("splitCash" in oursPriced) &&
+      !("splitOnline" in oursPriced),
+  );
+  const sent = settleOrderSchema.parse(JSON.parse(JSON.stringify({ payment: "Cash", ...seenOf(oursPriced) })));
+  check("sanity: the parsed payload carries no paidAmount (pay in full)", !("paidAmount" in sent));
+
+  // Our settle lands exactly as the route does it: refusal on a fresh read,
+  // the CAS, then the bill number — and its answer never reaches the counter.
+  const fresh = await readLean(ours._id);
+  check("the route's fresh-read refusal lets our settle through", settleRefusal(fresh, sent) === null);
+  const write = buildSettleWrite(fresh, { payment: sent.payment }, LIVE_GST_FALLBACK);
+  if (!write.ok) throw new Error("leg21: settle should resolve cleanly");
+  const landed = await Order.findOneAndUpdate(write.filter, write.update, { new: true, runValidators: true }).lean();
+  if (!landed) throw new Error("leg21: our settle should land");
+  await issueBillNumber(landed._id, printConfigOf(undefined).bill.numberStart);
+  const oursChecked = overTheWire(await readLean(ours._id));
+  check(
+    "Check on our landed settle → settled (adopt: one bill, no second payment)",
+    stepFromOrder(oursChecked, [intentOf(sent)], seenOf(oursPriced)).kind === "settled",
+  );
+  check(
+    "Check with an unanswered attempt of ANOTHER mode → elsewhere (never adopted as ours)",
+    stepFromOrder(oursChecked, [intentOf({ payment: "Online" })], seenOf(oursPriced)).kind === "elsewhere",
+  );
+
+  // Device B fires a round on a tab whose settle we sent and never heard back.
+  const grownLean = await readLean(grown._id);
+  const grownPriced = overTheWire(grownLean);
+  const round = buildItemsWrite(grownLean, [line(fixtureHex("p-water"), "Water", 20, 1, 0)], undefined, LIVE_GST_FALLBACK);
+  const afterRound = await Order.findOneAndUpdate(round.filter, round.update, { new: true, runValidators: true }).lean();
+  check("device B's round lands and raises the total", afterRound !== null && afterRound.total > grownPriced.total);
+  const grownChecked = overTheWire(await readLean(grown._id));
+  check(
+    "Check on a tab that grew → changed (the fresh bill is shown, nothing settled)",
+    stepFromOrder(grownChecked, [intentOf(sent)], seenOf(grownPriced)).kind === "changed",
+  );
+
+  // Our settle never reached the server; nobody touched the tab.
+  const untouchedPriced = overTheWire(await readLean(untouched._id));
+  const untouchedChecked = overTheWire(await readLean(untouched._id));
+  check(
+    "Check on an untouched tab → open (safe to settle again)",
+    stepFromOrder(untouchedChecked, [intentOf(sent)], seenOf(untouchedPriced)).kind === "open",
+  );
+}
+
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
   const dbName = new URL(uri.replace("mongodb://", "http://")).pathname.slice(1);
@@ -2141,6 +2259,7 @@ async function main(): Promise<void> {
     await leg18();
     await leg19();
     await leg20();
+    await leg21();
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();

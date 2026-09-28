@@ -74,13 +74,13 @@ export async function readPosPulse(): Promise<PosPulseData> {
   const nowMs = Date.now();
 
   // Query A — open (actionable) requests, rides {status:1,createdAt:-1}.
-  const openRows = await OrderRequest.find({ status: { $in: ["pending", "accepting"] } })
+  // Both OrderRequest queries are built first and awaited together (one round
+  // trip, not two) — same filters, same limits, same results.
+  const openQuery = OrderRequest.find({ status: { $in: ["pending", "accepting"] } })
     .select("_id createdAt updatedAt")
     .sort({ createdAt: -1 })
     .limit(PULSE_OPEN_SCAN_LIMIT)
     .lean();
-
-  const newest = openRows[0] ?? null;
 
   // Query B — self-orders accepted recently enough to still need printing.
   // UNPRINTED-only (review C4): printed rows must not occupy the limited
@@ -91,7 +91,7 @@ export async function readPosPulse(): Promise<PosPulseData> {
   // `createdAt` (not `acceptedAt`) bounds the window here — pinned by the
   // CR2.3 spec so the filter can still lead with the request's own creation
   // time, which every row has from the moment it's inserted.
-  const selfRows = await OrderRequest.find({
+  const selfQuery = OrderRequest.find({
     status: "accepted",
     actor: SELF_ORDER_RECEIVER,
     acceptedKotRound: { $exists: true },
@@ -102,6 +102,9 @@ export async function readPosPulse(): Promise<PosPulseData> {
     .sort({ acceptedAt: -1 })
     .limit(PULSE_SELF_ORDER_LIMIT)
     .lean();
+
+  const [openRows, selfRows] = await Promise.all([openQuery, selfQuery]);
+  const newest = openRows[0] ?? null;
 
   const selfOrders: PulseSelfOrder[] = [];
   for (const row of selfRows) {

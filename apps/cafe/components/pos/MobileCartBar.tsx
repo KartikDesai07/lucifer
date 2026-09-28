@@ -51,7 +51,8 @@ export function MobileCartBar({
   // sheet is the only place those controls live, the operator cannot reach
   // them, and the adjustment silently rides onto the next customer's sale.
   // Shared predicate — pos/page.tsx's auto-close must agree with this exactly.
-  const isEmpty = cartProps.items.length === 0 && !hasPendingAdjustment(cartProps);
+  // An unanswered send keeps the bar tappable too, even after a Clear.
+  const isEmpty = cartProps.items.length === 0 && !hasPendingAdjustment(cartProps) && !cartProps.sendNotice;
   return (
     // One element carries both the breakpoint gate and the sticky bar styling:
     // a sticky child inside a same-sized wrapper would have nowhere to move.
@@ -77,11 +78,14 @@ export function MobileCartBar({
                 {/* An empty cart that is still open means an adjustment
                     survived Clear — say so, rather than "0 items · ₹0", which
                     reads like a bug and gives the operator no reason to look. */}
-                {count === 0
-                  ? "Adjustment still applied"
-                  : `${count} item${count === 1 ? "" : "s"} · ${inr(total)}`}
+                {cartProps.sendNotice
+                  ? cartProps.sendNotice.title
+                  : count === 0
+                    ? "Adjustment still applied"
+                    : `${count} item${count === 1 ? "" : "s"} · ${inr(total)}`}
               </span>
-              <span>View cart →</span>
+              {/* An unanswered send must be seen even with the sheet closed. */}
+              <span>{cartProps.sendNotice?.action === "send-again" ? "Tap to send again →" : "View cart →"}</span>
             </Button>
           </SheetTrigger>
         )}
