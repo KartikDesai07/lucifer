@@ -89,3 +89,8 @@ export interface DuesReport {
   /** New credit given in the range: Σ (total − paidAmount) over its Completed bills. */
   creditGiven: { total: number; orders: number };
 }
+
+// ── Batch 2 — Items & categories · Cancel & discounts · GST ──────────────────
+// Batch 2 types live in types/reports-b2.ts (split to keep each file small);
+// re-exported here so every reader keeps one import path.
+export type * from "@/types/reports-b2";

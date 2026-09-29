@@ -156,6 +156,24 @@ export interface ProductRef {
   since?: string;
 }
 
+/**
+ * A sold product -> its category, by the Dashboard's own rule: a product
+ * missing from the map lands in "Removed items", one whose category id no
+ * longer resolves lands in "Uncategorised". Shared with Reports' items table
+ * (lib/reports/items-fold.ts) so both screens can never disagree.
+ */
+export function categoryOf(
+  productId: unknown,
+  productCategory: ReadonlyMap<string, string>,
+  categoryName: ReadonlyMap<string, string>,
+): { key: string; label: string } {
+  const catId = productCategory.get(String(productId));
+  const name = catId ? categoryName.get(catId) : undefined;
+  const label = name ?? (catId ? UNCATEGORISED_LABEL : REMOVED_ITEMS_LABEL);
+  const key = name && catId ? catId : label;
+  return { key, label };
+}
+
 /** Revenue by menu category; a sold product that no longer exists lands in "Removed items". */
 export function foldCategories(
   rows: ItemRow[],
@@ -164,10 +182,7 @@ export function foldCategories(
 ): DashboardShareRow[] {
   const byCategory = new Map<string, { label: string; amount: number; count: number }>();
   for (const r of rows) {
-    const catId = productCategory.get(String(r._id.productId));
-    const name = catId ? categoryName.get(catId) : undefined;
-    const label = name ?? (catId ? UNCATEGORISED_LABEL : REMOVED_ITEMS_LABEL);
-    const key = name && catId ? catId : label;
+    const { key, label } = categoryOf(r._id.productId, productCategory, categoryName);
     const row = byCategory.get(key) ?? { label, amount: 0, count: 0 };
     row.amount += r.revenue;
     row.count += r.qty;

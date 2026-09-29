@@ -1,4 +1,4 @@
-import { inr, cn } from "@/lib/utils";
+import { inr, inrPaise, cn } from "@/lib/utils";
 import { DashCard, type DashCardStatus } from "@/components/dashboard/DashCard";
 import type { MoneyLineSign } from "@/lib/money-breakdown";
 
@@ -31,14 +31,25 @@ interface TallyCardProps {
   onRetry?: () => void;
   updating?: boolean;
   className?: string;
+  /**
+   * Lines to reserve while the figures load (the lines are [] until then), so the
+   * card landing never shoves the page down — on a phone this card sits above
+   * the tables and its growth alone read as CLS 0.12 on the GST page.
+   */
+  reserveLines?: number;
 }
 
 const LINE_ROW_PX = 28;
 const CHECK_ROW_PX = 40;
 
-export function TallyCard({ title, period, lines, check, status, onRetry, updating, className }: TallyCardProps) {
+const PAISE_PER_RUPEE = 100;
+
+export function TallyCard({ title, period, lines, check, status, onRetry, updating, className, reserveLines = 0 }: TallyCardProps) {
   const sum = check.parts.reduce((a, b) => a + b, 0);
-  const matches = sum === check.total;
+  // Fractional menu prices (Batch 2 items) make a float Σ noisy (e.g.
+  // 99.990000000000009); compare at PAISE precision rather than `===` rupees.
+  const diffPaise = Math.round(sum * PAISE_PER_RUPEE) - Math.round(check.total * PAISE_PER_RUPEE);
+  const matches = diffPaise === 0;
 
   return (
     <DashCard
@@ -48,7 +59,7 @@ export function TallyCard({ title, period, lines, check, status, onRetry, updati
       status={status}
       onRetry={onRetry}
       updating={updating}
-      bodyMinHeight={lines.length * LINE_ROW_PX + CHECK_ROW_PX}
+      bodyMinHeight={Math.max(lines.length, reserveLines) * LINE_ROW_PX + CHECK_ROW_PX}
     >
       <div className="flex flex-col">
         {lines.map((line) => (
@@ -76,7 +87,7 @@ export function TallyCard({ title, period, lines, check, status, onRetry, updati
         >
           {matches
             ? `✓ ${check.label}`
-            : `These don't match by ${inr(Math.abs(sum - check.total))} — please report it`}
+            : `These don't match by ${diffPaise % PAISE_PER_RUPEE === 0 ? inr(Math.abs(diffPaise) / PAISE_PER_RUPEE) : inrPaise(Math.abs(diffPaise))} — please report it`}
         </div>
       </div>
     </DashCard>

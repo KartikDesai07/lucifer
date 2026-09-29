@@ -18,16 +18,18 @@ import {
 import { Chart } from "react-chartjs-2";
 import { inr } from "@/lib/utils";
 import { inrCompact } from "@/lib/dashboard/format";
-import type { ReportChartBar, ReportChartLine } from "@/components/reports/chart-size";
+import { REPORT_CHART_LABEL_MAX_CHARS, type ReportChartBar, type ReportChartLine } from "@/components/reports/chart-size";
 
-// The Reports screens' own chart (Batch 1 — Sales/Payments day-by-day). Same
+// The Reports screens' own chart (Batch 1 — Sales/Payments day-by-day; Batch 2
+// adds a horizontal "Top 10 items" mode + a plain-count format). Same
 // Chart.js kit as the Dashboard's SalesChart (only that file and this one may
 // import chart.js — lib/dashboard-paths.test.ts's allow-list), loaded through
 // next/dynamic(ssr:false) by every page that uses it. Unlike SalesChart this
 // one can draw MORE THAN ONE bar series stacked (Payments' cash+online tally)
-// and reports a click as a day index, so the page can open that day's
-// DaySheet — "a tap anywhere in a day's column selects it" (bars are too thin
-// to hit precisely on a phone), matched with { intersect: false }.
+// and reports a click as a day/category index, so the page can open that
+// day's DaySheet or that item's ItemSheet — "a tap anywhere in a bar's row
+// selects it" (bars are too thin to hit precisely on a phone), matched with
+// { intersect: false }.
 
 ChartJS.register(BarController, BarElement, LineController, LineElement, PointElement, CategoryScale, LinearScale, Tooltip);
 
@@ -37,6 +39,13 @@ const LINE_PX = 2;
 const TICK_FONT_PX = 11.5;
 const Y_TICKS_MAX = 5;
 const ANIMATION_MS = 450;
+const COUNT_TICK_PRECISION = 0;
+
+/** Truncate by CODE POINTS (never UTF-16 units — breaks emoji/Devanagari mid-glyph). */
+function truncateLabel(label: string, max: number): string {
+  const chars = Array.from(label);
+  return chars.length <= max ? label : `${chars.slice(0, max).join("")}…`;
+}
 
 interface Theme {
   primary: string;
@@ -77,13 +86,18 @@ export interface ReportChartProps {
   selected: number | null;
   onSelect: (index: number) => void;
   ariaLabel: string;
+  /** Bars run along the category (y) axis — "Top 10 items" (Batch 2). Default false (vertical, day/hour charts). */
+  horizontal?: boolean;
+  /** Tooltip/ticks/sr-table number style: whole rupees (default) or a plain count. */
+  format?: "money" | "count";
 }
 
-export function ReportChart({ labels, bars, line, selected, onSelect, ariaLabel }: ReportChartProps) {
+export function ReportChart({ labels, bars, line, selected, onSelect, ariaLabel, horizontal = false, format = "money" }: ReportChartProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ChartJS<"bar" | "line"> | null>(null);
   const [theme, setTheme] = useState<Theme | null>(null);
   const stacked = bars.length > 1;
+  const fmt = (n: number) => (format === "count" ? String(Math.round(n)) : inr(n));
 
   useLayoutEffect(() => {
     if (wrapRef.current) setTheme(readTheme(wrapRef.current));
@@ -110,8 +124,12 @@ export function ReportChart({ labels, bars, line, selected, onSelect, ariaLabel 
           ? b.values.map((_, idx) => (idx === selected ? theme.primaryHover : color))
           : color,
         hoverBackgroundColor: theme?.primaryHover,
-        borderRadius: { topLeft: BAR_RADIUS_PX, topRight: BAR_RADIUS_PX },
-        borderSkipped: "bottom",
+        // Rounded on the VALUE end: the top for a vertical bar, the right end
+        // (Chart.js "end") for a horizontal one — "start" is skipped either way.
+        borderRadius: horizontal
+          ? { topRight: BAR_RADIUS_PX, bottomRight: BAR_RADIUS_PX }
+          : { topLeft: BAR_RADIUS_PX, topRight: BAR_RADIUS_PX },
+        borderSkipped: horizontal ? "start" : "bottom",
         maxBarThickness: BAR_MAX_PX,
         stack: stacked ? "report" : undefined,
         // A 1px slip-coloured separator between stacked segments — every bar
@@ -138,17 +156,30 @@ export function ReportChart({ labels, bars, line, selected, onSelect, ariaLabel 
         ]
       : [];
     return { labels, datasets: [...lineDataset, ...barDatasets] };
-  }, [labels, bars, line, selected, stacked, theme]);
+  }, [labels, bars, line, selected, stacked, theme, horizontal]);
 
   const options = useMemo<ChartOptions<"bar" | "line">>(() => {
     const reduced = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const tickFont = { family: theme?.font, size: TICK_FONT_PX };
+    // The category axis is x normally, y when horizontal — interaction/onClick
+    // must probe along THAT axis, or a click on a thin bar misses every point.
+    const categoryAxis = horizontal ? "y" : "x";
+    const valueTickCallback = (v: number | string) =>
+      format === "count" ? String(Math.round(Number(v))) : inrCompact(Number(v));
+    // The scale's own label for the tick (never a closure over `labels`, which
+    // would rebuild the options — and restart every animation — on each render).
+    const categoryTickCallback = function (this: { getLabelForValue: (v: number) => string }, value: number | string) {
+      return truncateLabel(this.getLabelForValue(Number(value)), REPORT_CHART_LABEL_MAX_CHARS);
+    };
     return {
+      indexAxis: horizontal ? "y" : "x",
       responsive: true,
       maintainAspectRatio: false,
       animation: reduced ? false : { duration: ANIMATION_MS },
-      animations: { x: { duration: 0 } },
-      interaction: { mode: "index", intersect: false },
+      // Bars snap along the CATEGORY axis (x, or y when horizontal) so a resize or
+      // data update never leaves a bar drifting away from its own label.
+      animations: { [categoryAxis]: { duration: 0 } },
+      interaction: { mode: "index", intersect: false, axis: categoryAxis },
       layout: { padding: { top: 4 } },
       onHover: (evt, elements) => {
         const target = evt.native?.target;
@@ -156,7 +187,7 @@ export function ReportChart({ labels, bars, line, selected, onSelect, ariaLabel 
       },
       onClick: (evt, _elements, chart) => {
         if (!evt.native) return;
-        const points = chart.getElementsAtEventForMode(evt.native, "index", { intersect: false }, false);
+        const points = chart.getElementsAtEventForMode(evt.native, "index", { intersect: false, axis: categoryAxis }, false);
         const index = points[0]?.index;
         if (index !== undefined) onSelect(index);
       },
@@ -171,26 +202,48 @@ export function ReportChart({ labels, bars, line, selected, onSelect, ariaLabel 
           padding: 10,
           titleFont: tickFont,
           bodyFont: tickFont,
-          callbacks: { label: (ctx) => `${ctx.dataset.label}: ${inr(Number(ctx.raw))}` },
+          // Full, untruncated label as the tooltip title — the axis tick is the
+          // one that gets shortened, never the tooltip's own identification.
+          callbacks: {
+            title: (items) => items[0]?.label ?? "",
+            label: (ctx) =>
+              format === "count" ? `${ctx.dataset.label}: ${Math.round(Number(ctx.raw))}` : `${ctx.dataset.label}: ${inr(Number(ctx.raw))}`,
+          },
         },
       },
-      scales: {
-        x: {
-          stacked,
-          grid: { display: false },
-          border: { color: theme?.rule },
-          ticks: { color: theme?.muted, font: tickFont, maxRotation: 0, autoSkip: true, autoSkipPadding: 10 },
-        },
-        y: {
-          stacked,
-          beginAtZero: true,
-          border: { display: false },
-          grid: { color: theme?.grid },
-          ticks: { color: theme?.muted, font: tickFont, maxTicksLimit: Y_TICKS_MAX, callback: (v) => inrCompact(Number(v)) },
-        },
-      },
+      scales: horizontal
+        ? {
+            x: {
+              stacked,
+              beginAtZero: true,
+              border: { display: false },
+              grid: { color: theme?.grid },
+              ticks: { color: theme?.muted, font: tickFont, maxTicksLimit: Y_TICKS_MAX, precision: format === "count" ? COUNT_TICK_PRECISION : undefined, callback: valueTickCallback },
+            },
+            y: {
+              stacked,
+              grid: { display: false },
+              border: { color: theme?.rule },
+              ticks: { color: theme?.muted, font: tickFont, autoSkip: false, callback: categoryTickCallback },
+            },
+          }
+        : {
+            x: {
+              stacked,
+              grid: { display: false },
+              border: { color: theme?.rule },
+              ticks: { color: theme?.muted, font: tickFont, maxRotation: 0, autoSkip: true, autoSkipPadding: 10 },
+            },
+            y: {
+              stacked,
+              beginAtZero: true,
+              border: { display: false },
+              grid: { color: theme?.grid },
+              ticks: { color: theme?.muted, font: tickFont, maxTicksLimit: Y_TICKS_MAX, precision: format === "count" ? COUNT_TICK_PRECISION : undefined, callback: valueTickCallback },
+            },
+          },
     };
-  }, [theme, stacked, onSelect]);
+  }, [theme, stacked, onSelect, horizontal, format]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -235,9 +288,9 @@ export function ReportChart({ labels, bars, line, selected, onSelect, ariaLabel 
               <tr key={label}>
                 <th scope="row">{label}</th>
                 {bars.map((b) => (
-                  <td key={b.name}>{inr(b.values[i] ?? 0)}</td>
+                  <td key={b.name}>{fmt(b.values[i] ?? 0)}</td>
                 ))}
-                {line && <td>{inr(line.values[i] ?? 0)}</td>}
+                {line && <td>{fmt(line.values[i] ?? 0)}</td>}
               </tr>
             ))}
           </tbody>

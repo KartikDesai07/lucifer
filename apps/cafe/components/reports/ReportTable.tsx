@@ -29,6 +29,11 @@ export interface ReportTableColumn<Row> {
   total?: ReactNode;
   /** Bold this column everywhere (e.g. Net sales). */
   strong?: boolean;
+  /**
+   * Free text that may be long (item names, reasons): wraps instead of widening
+   * the table past its card (at 1024 an unwrapped Reason hid 121px behind a scroll).
+   */
+  wrap?: boolean;
 }
 
 export interface ReportTablePhoneCard<Row> {
@@ -56,6 +61,8 @@ interface ReportTableProps<Row> {
 }
 
 const SKELETON_ROWS = 5;
+// A wrapping column still keeps a readable minimum width before it breaks words.
+const WRAP_CELL_CLASS = "min-w-[8rem] whitespace-normal break-words";
 
 export function ReportTable<Row>({
   columns,
@@ -120,7 +127,7 @@ export function ReportTable<Row>({
                   )}
                 >
                   {columns.map((c) => (
-                    <TableCell key={c.key} className={cn("whitespace-nowrap", c.align === "right" && "text-right tabular-nums", c.strong && "font-semibold")}>
+                    <TableCell key={c.key} className={cn(c.wrap ? WRAP_CELL_CLASS : "whitespace-nowrap", c.align === "right" && "text-right tabular-nums", c.strong && "font-semibold")}>
                       {c.cell(row)}
                     </TableCell>
                   ))}

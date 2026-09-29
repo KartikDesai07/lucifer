@@ -15,6 +15,9 @@ export interface ReportChartBar {
   tone: "primary" | "ink";
 }
 
+/** Category-axis tick labels are truncated to this many CODE POINTS, then "…". */
+export const REPORT_CHART_LABEL_MAX_CHARS = 14;
+
 export interface ReportChartLine {
   name: string;
   values: number[];

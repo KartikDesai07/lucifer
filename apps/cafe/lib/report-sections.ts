@@ -5,7 +5,7 @@
 
 export const REPORTS_BASE_PATH = "/reports";
 
-export type ReportSectionSlug = "sales" | "payments" | "dues";
+export type ReportSectionSlug = "sales" | "payments" | "items" | "cancels" | "gst" | "dues";
 
 export interface ReportSection {
   slug: ReportSectionSlug;
@@ -13,7 +13,7 @@ export interface ReportSection {
   description: string;
 }
 
-// Order here is also the sidebar sub-menu order (owner's Batch 1 plan).
+// Order here is also the sidebar sub-menu order (owner's Batch 1/2 plan).
 export const REPORT_SECTIONS: readonly ReportSection[] = [
   {
     slug: "sales",
@@ -24,6 +24,21 @@ export const REPORT_SECTIONS: readonly ReportSection[] = [
     slug: "payments",
     title: "Payments & cash tally",
     description: "Match the cash drawer and the bank, day by day",
+  },
+  {
+    slug: "items",
+    title: "Items & categories",
+    description: "What sells, and what it brings in",
+  },
+  {
+    slug: "cancels",
+    title: "Cancel & discounts",
+    description: "Every cancel, removed item and discount — who and why",
+  },
+  {
+    slug: "gst",
+    title: "GST",
+    description: "Tax on your bills, ready for your CA",
   },
   {
     slug: "dues",

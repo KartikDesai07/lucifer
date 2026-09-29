@@ -11,6 +11,7 @@ import {
   foldChannels,
   foldTopItems,
   foldCategories,
+  categoryOf,
   foldSlowItems,
   foldHeat,
   TOP_ITEMS_LIMIT,
@@ -289,6 +290,23 @@ test(`foldCategories: more than ${CATEGORY_LIMIT} categories folds the tail into
   assert.equal(other.count, 3);
   const totalShare = result.reduce((s, r) => s + r.share, 0);
   assert.ok(Math.abs(totalShare - 1) < 1e-9, `shares must sum to 1, got ${totalShare}`);
+});
+
+// ── categoryOf (extracted for Reports' items table, Batch 2) ────────────────
+
+test("categoryOf: resolves productId -> category name via the two maps", () => {
+  const productCategory = new Map([["p1", "c1"]]);
+  const categoryName = new Map([["c1", "Beverages"]]);
+  assert.deepEqual(categoryOf("p1", productCategory, categoryName), { key: "c1", label: "Beverages" });
+});
+
+test('categoryOf: a productId missing from the map -> "Removed items"', () => {
+  assert.deepEqual(categoryOf("gone", new Map(), new Map()), { key: REMOVED_ITEMS_LABEL, label: REMOVED_ITEMS_LABEL });
+});
+
+test('categoryOf: a category id that no longer resolves -> "Uncategorised"', () => {
+  const productCategory = new Map([["p1", "deletedCat"]]);
+  assert.deepEqual(categoryOf("p1", productCategory, new Map()), { key: UNCATEGORISED_LABEL, label: UNCATEGORISED_LABEL });
 });
 
 // ── foldSlowItems ────────────────────────────────────────────────────────────

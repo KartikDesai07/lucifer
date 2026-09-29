@@ -42,29 +42,33 @@ export function channelOf(order: { source?: string; parcel?: boolean; tableNo?: 
   return "counter";
 }
 
-/** The name AS SOLD — "Sp. Coco (Large)" — byte-for-byte the reports route's topProducts key. */
-export const ITEM_LABEL_EXPR = {
-  $cond: [
-    { $gt: [{ $strLenCP: { $ifNull: ["$items.variation", ""] } }, 0] },
-    { $concat: ["$items.name", " (", "$items.variation", ")"] },
-    "$items.name",
-  ],
-};
+/** The name AS SOLD ("items" path) — "Sp. Coco (Large)" — byte-for-byte the reports route's topProducts key. */
+export function itemLabelExpr(path: "items" | "voids") {
+  return {
+    $cond: [
+      { $gt: [{ $strLenCP: { $ifNull: [`$${path}.variation`, ""] } }, 0] },
+      { $concat: [`$${path}.name`, " (", `$${path}.variation`, ")"] },
+      `$${path}.name`,
+    ],
+  };
+}
+
+export const ITEM_LABEL_EXPR = itemLabelExpr("items");
 
 /** A manual or GST-equivalent discount (a reward is counted as a reward, not a discount). */
-const DISCOUNTED_ORDER_EXPR = {
+export const DISCOUNTED_ORDER_EXPR = {
   $and: [{ $gt: [{ $ifNull: ["$discount", 0] }, 0] }, { $ne: ["$discountKind", REWARD_DISCOUNT_KIND] }],
 };
 
 /** A flat/percent reward (discountKind) or a free-dish reward line. */
-const REWARDED_ORDER_EXPR = {
+export const REWARDED_ORDER_EXPR = {
   $or: [
     { $eq: ["$discountKind", REWARD_DISCOUNT_KIND] },
     { $in: [true, { $ifNull: ["$items.reward", []] }] },
   ],
 };
 
-const VOID_VALUE_EXPR = {
+export const VOID_VALUE_EXPR = {
   $cond: [{ $eq: ["$voids.reward", true] }, 0, { $multiply: ["$voids.price", "$voids.qty"] }],
 };
 

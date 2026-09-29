@@ -19,6 +19,10 @@ const readSrc = (rel: string) => stripComments(readFileSync(absOf(rel), "utf8"))
 const SIDEBAR_REPORTS_GROUP = "components/layout/SidebarReportsGroup.tsx";
 const SALES_ROUTE = "app/api/reports/sales/route.ts";
 const DUES_ROUTE = "app/api/reports/dues/route.ts";
+const ITEMS_ROUTE = "app/api/reports/items/route.ts";
+const ITEM_DETAIL_ROUTE = "app/api/reports/items/detail/route.ts";
+const CANCELS_ROUTE = "app/api/reports/cancels/route.ts";
+const GST_ROUTE = "app/api/reports/gst/route.ts";
 const REPORT_CHART = "components/reports/ReportChart.tsx";
 
 test("PIN: every REPORT_SECTIONS slug has app/(dashboard)/reports/<slug>/page.tsx on disk", () => {
@@ -35,8 +39,8 @@ test("PIN: SidebarReportsGroup reads REPORT_SECTIONS (not a hand-copied list)", 
   assert.match(src, /REPORT_SECTIONS\.map\(/, "must actually iterate REPORT_SECTIONS to render the sub-menu rows");
 });
 
-test("PIN: both report routes call requireAdmin() — reporting data is admin-only", () => {
-  for (const rel of [SALES_ROUTE, DUES_ROUTE]) {
+test("PIN: every report route calls requireAdmin() — reporting data is admin-only", () => {
+  for (const rel of [SALES_ROUTE, DUES_ROUTE, ITEMS_ROUTE, ITEM_DETAIL_ROUTE, CANCELS_ROUTE, GST_ROUTE]) {
     assert.ok(existsSync(absOf(rel)), `landmark: ${rel} must exist`);
     const src = readSrc(rel);
     assert.match(src, /requireAdmin\(\)/, `${rel} must call requireAdmin()`);
@@ -87,6 +91,9 @@ test("PIN: no cafe name is written into any Reports screen's code", () => {
 test("landmark: reportSectionPath builds the same paths the sidebar and the page-existence pin both rely on", () => {
   assert.equal(reportSectionPath("sales"), "/reports/sales");
   assert.equal(reportSectionPath("payments"), "/reports/payments");
+  assert.equal(reportSectionPath("items"), "/reports/items");
+  assert.equal(reportSectionPath("cancels"), "/reports/cancels");
+  assert.equal(reportSectionPath("gst"), "/reports/gst");
   assert.equal(reportSectionPath("dues"), "/reports/dues");
 });
 

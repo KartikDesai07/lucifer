@@ -122,12 +122,19 @@ const REWARD_LINES_EXPR = {
 const IS_REWARD_KIND_EXPR = { $eq: ["$discountKind", REWARD_DISCOUNT_KIND] };
 const DISCOUNT_OR_ZERO_EXPR = { $ifNull: ["$discount", 0] };
 
+// Per-document twins (no $sum) — orderMoneyContribution's discount/reward
+// branches, evaluated per un-unwound Order document. Exported so a caller
+// that needs a PER-BILL figure (Reports' Cancel & discounts rows) can reuse
+// the exact expression MONEY_BREAKDOWN_GROUP sums, rather than re-deriving it.
+export const DISCOUNT_DOC_EXPR = { $cond: [IS_REWARD_KIND_EXPR, 0, DISCOUNT_OR_ZERO_EXPR] };
+export const REWARD_DOC_EXPR = {
+  $add: [REWARD_LINES_EXPR, { $cond: [IS_REWARD_KIND_EXPR, DISCOUNT_OR_ZERO_EXPR, 0] }],
+};
+
 export const MONEY_BREAKDOWN_GROUP: Record<keyof MoneyBreakdown, { $sum: unknown }> = {
   gross: { $sum: { $add: [{ $ifNull: ["$subtotal", 0] }, REWARD_LINES_EXPR] } },
-  discount: { $sum: { $cond: [IS_REWARD_KIND_EXPR, 0, DISCOUNT_OR_ZERO_EXPR] } },
-  reward: {
-    $sum: { $add: [REWARD_LINES_EXPR, { $cond: [IS_REWARD_KIND_EXPR, DISCOUNT_OR_ZERO_EXPR, 0] }] },
-  },
+  discount: { $sum: DISCOUNT_DOC_EXPR },
+  reward: { $sum: REWARD_DOC_EXPR },
   gst: { $sum: { $ifNull: ["$gstAmount", 0] } },
   charges: { $sum: { $ifNull: ["$chargeAmount", 0] } },
 };

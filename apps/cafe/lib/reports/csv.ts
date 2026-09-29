@@ -11,7 +11,9 @@ import type { DuesReceiptRow, OutstandingDueRow, SalesDayRow, SalesReport, DuesR
 
 type CsvRow = Record<string, string | number>;
 
-const TOTAL_ROW_LABEL = "Total";
+// Exported so csv-b2.ts's Items/Cancels/GST rows close each section with the
+// same literal label, without behaviour change here.
+export const TOTAL_ROW_LABEL = "Total";
 
 /** One row per day of the range + a final Total row equal to the report's own totals. */
 export function salesCsvRows(report: SalesReport): CsvRow[] {
