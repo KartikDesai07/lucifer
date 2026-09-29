@@ -23,6 +23,8 @@ const ITEMS_ROUTE = "app/api/reports/items/route.ts";
 const ITEM_DETAIL_ROUTE = "app/api/reports/items/detail/route.ts";
 const CANCELS_ROUTE = "app/api/reports/cancels/route.ts";
 const GST_ROUTE = "app/api/reports/gst/route.ts";
+const ORDER_TYPES_ROUTE = "app/api/reports/order-types/route.ts";
+const ORDER_TYPES_DETAIL_ROUTE = "app/api/reports/order-types/detail/route.ts";
 const REPORT_CHART = "components/reports/ReportChart.tsx";
 
 test("PIN: every REPORT_SECTIONS slug has app/(dashboard)/reports/<slug>/page.tsx on disk", () => {
@@ -40,7 +42,7 @@ test("PIN: SidebarReportsGroup reads REPORT_SECTIONS (not a hand-copied list)", 
 });
 
 test("PIN: every report route calls requireAdmin() — reporting data is admin-only", () => {
-  for (const rel of [SALES_ROUTE, DUES_ROUTE, ITEMS_ROUTE, ITEM_DETAIL_ROUTE, CANCELS_ROUTE, GST_ROUTE]) {
+  for (const rel of [SALES_ROUTE, DUES_ROUTE, ITEMS_ROUTE, ITEM_DETAIL_ROUTE, CANCELS_ROUTE, GST_ROUTE, ORDER_TYPES_ROUTE, ORDER_TYPES_DETAIL_ROUTE]) {
     assert.ok(existsSync(absOf(rel)), `landmark: ${rel} must exist`);
     const src = readSrc(rel);
     assert.match(src, /requireAdmin\(\)/, `${rel} must call requireAdmin()`);
@@ -92,6 +94,7 @@ test("landmark: reportSectionPath builds the same paths the sidebar and the page
   assert.equal(reportSectionPath("sales"), "/reports/sales");
   assert.equal(reportSectionPath("payments"), "/reports/payments");
   assert.equal(reportSectionPath("items"), "/reports/items");
+  assert.equal(reportSectionPath("order-types"), "/reports/order-types");
   assert.equal(reportSectionPath("cancels"), "/reports/cancels");
   assert.equal(reportSectionPath("gst"), "/reports/gst");
   assert.equal(reportSectionPath("dues"), "/reports/dues");

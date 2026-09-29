@@ -94,3 +94,6 @@ export interface DuesReport {
 // Batch 2 types live in types/reports-b2.ts (split to keep each file small);
 // re-exported here so every reader keeps one import path.
 export type * from "@/types/reports-b2";
+
+// ── Batch 3 — Order types & busy hours ──────────────────────────────────────
+export type * from "@/types/reports-b3";

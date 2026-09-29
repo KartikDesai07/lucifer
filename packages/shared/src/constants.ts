@@ -387,14 +387,3 @@ export const PAY_STYLES: Record<string, { color: string; bg: string; label: stri
   // Held open tab — fired to the kitchen, payment not yet taken.
   Unpaid: { color: "text-slate-600", bg: "bg-slate-100", label: "Open" },
 };
-
-// Hex equivalents of the PAY_STYLES -600 shades, for recharts (which can't use
-// Tailwind classes). Keep these in sync with PAY_STYLES above.
-export const PAYMENT_COLORS: Record<string, string> = {
-  Cash: "#ca8a04", // yellow-600
-  Online: "#2563eb", // blue-600
-  Due: "#dc2626", // red-600
-  Split: "#9333ea", // purple-600
-  Credit: "#ea580c", // orange-600
-  Unpaid: "#475569", // slate-600 (held open tab; never plotted in the paid mix)
-};

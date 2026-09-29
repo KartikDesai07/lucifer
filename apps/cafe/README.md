@@ -53,7 +53,7 @@ share a single data pool (no multi-tenancy).
 | Auth | NextAuth.js v5 (Auth.js) — JWT + Credentials, role-based |
 | Validation | Zod (schemas shared client + server) |
 | Server state | TanStack Query v5 |
-| UI | shadcn/ui + Tailwind CSS 4, lucide-react, recharts |
+| UI | shadcn/ui + Tailwind CSS 4, lucide-react, Chart.js (react-chartjs-2) |
 | Forms | react-hook-form + zod resolver |
 | Images | Cloudflare R2 (the cafe's own bucket; presigned direct uploads) — single per-cafe Cloudinary as the alternative |
 | Printing | react-to-print |

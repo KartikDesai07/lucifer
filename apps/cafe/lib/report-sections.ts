@@ -1,11 +1,12 @@
 // Single source of truth for the Reports redesign (Batch 1 — sales, payments,
-// dues; Batch 2/3 append more). NO React/lucide import here — this file is
-// imported by node:test suites directly (lib/reports-paths.test.ts) as well
-// as the sidebar and every report page. Mirrors lib/settings-sections.ts's shape.
+// dues; Batch 2 — items, cancels, gst; Batch 3 — order types & busy hours).
+// NO React/lucide import here — this file is imported by node:test suites
+// directly (lib/reports-paths.test.ts) as well as the sidebar and every
+// report page. Mirrors lib/settings-sections.ts's shape.
 
 export const REPORTS_BASE_PATH = "/reports";
 
-export type ReportSectionSlug = "sales" | "payments" | "items" | "cancels" | "gst" | "dues";
+export type ReportSectionSlug = "sales" | "payments" | "items" | "order-types" | "cancels" | "gst" | "dues";
 
 export interface ReportSection {
   slug: ReportSectionSlug;
@@ -29,6 +30,11 @@ export const REPORT_SECTIONS: readonly ReportSection[] = [
     slug: "items",
     title: "Items & categories",
     description: "What sells, and what it brings in",
+  },
+  {
+    slug: "order-types",
+    title: "Order types & busy hours",
+    description: "Dine-in, takeaway, QR and counter — and your busiest hours",
   },
   {
     slug: "cancels",

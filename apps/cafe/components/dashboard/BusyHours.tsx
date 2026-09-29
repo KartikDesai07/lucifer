@@ -46,23 +46,31 @@ export function BusyHours({ heat }: { heat: DashboardHeat }) {
     );
     return best as Cell | null;
   })();
-  const [picked, setPicked] = useState<Cell | null>(null);
-  const shown = picked ?? busiest;
+  // The pick is kept by its HOUR, not its column: it survives a heat change
+  // (Reports' type filter, a range switch) and each heat has its own span of
+  // hours, so a column index would read past a shorter grid (heat.avg[w][i]
+  // undefined → fmtOrders throws) or silently re-point at another hour. The
+  // same weekday + hour stays picked, or the pick drops when that hour is gone.
+  const [picked, setPicked] = useState<{ weekday: number; hour: number } | null>(null);
+  const pickedIndex = picked ? heat.hours.indexOf(picked.hour) : -1;
+  const pickedCell: Cell | null = picked && pickedIndex >= 0 ? { weekday: picked.weekday, hourIndex: pickedIndex } : null;
+  const shown = pickedCell ?? busiest;
+  const pick = (weekday: number, hourIndex: number) => setPicked({ weekday, hour: heat.hours[hourIndex] });
 
   const cellLabel = (c: Cell) =>
     `${WEEKDAY_NAMES[c.weekday]}, ${hourLabel(heat.hours[c.hourIndex])} to ${hourLabel((heat.hours[c.hourIndex] + 1) % 24)}: ${fmtOrders(heat.avg[c.weekday][c.hourIndex])} on average`;
 
   const cell = (weekday: number, hourIndex: number, className: string) => {
     const v = heat.avg[weekday][hourIndex];
-    const active = shown?.weekday === weekday && shown.hourIndex === hourIndex && picked !== null;
+    const active = shown?.weekday === weekday && shown.hourIndex === hourIndex && pickedCell !== null;
     return (
       <button
         key={`${weekday}-${hourIndex}`}
         type="button"
         aria-label={cellLabel({ weekday, hourIndex })}
-        onClick={() => setPicked({ weekday, hourIndex })}
-        onMouseEnter={() => setPicked({ weekday, hourIndex })}
-        onFocus={() => setPicked({ weekday, hourIndex })}
+        onClick={() => pick(weekday, hourIndex)}
+        onMouseEnter={() => pick(weekday, hourIndex)}
+        onFocus={() => pick(weekday, hourIndex)}
         className={cn(
           "rounded-[4px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ink",
           STEPS[stepOf(v, heat.max)],
@@ -113,7 +121,7 @@ export function BusyHours({ heat }: { heat: DashboardHeat }) {
         <p className="min-h-5 text-[13px] leading-5 text-brand-ink" aria-live="polite">
           {shown ? (
             <>
-              {picked ? "" : <span className="text-brand-muted">Busiest: </span>}
+              {pickedCell ? "" : <span className="text-brand-muted">Busiest: </span>}
               {cellLabel(shown).replace(": ", " · ")}
             </>
           ) : null}

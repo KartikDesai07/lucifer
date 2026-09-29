@@ -12,7 +12,7 @@ import { ITEM_REVENUE_EXPR, MONEY_BREAKDOWN_GROUP } from "@/lib/money-breakdown"
 import type { DashboardChannel, DashboardSeriesMode } from "@/types/dashboard";
 import type { TimeWindow } from "@/lib/dashboard/range";
 
-const COMPLETED = { status: "Completed" } as const;
+export const COMPLETED = { status: "Completed" } as const;
 const CANCELLED = { status: "Cancelled" } as const;
 const REWARD_DISCOUNT_KIND = "reward";
 
@@ -78,7 +78,7 @@ export function seriesKeyExpr(mode: DashboardSeriesMode) {
     : { $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: CAFE_TIMEZONE } };
 }
 
-const SALES_TOTALS = {
+export const SALES_TOTALS = {
   orders: { $sum: 1 },
   sales: { $sum: "$total" },
   collected: { $sum: "$paidAmount" },

@@ -68,8 +68,12 @@ export default function ItemsReportPage() {
     if (item) setOpenItem(item);
   };
 
-  const filteredItems = categoryFilter ? (r?.items.filter((i) => i.categoryKey === categoryFilter) ?? []) : (r?.items ?? []);
-  const filteredCategoryLabel = categoryFilter ? (r?.categories.find((c) => c.key === categoryFilter)?.label ?? "") : "";
+  // A category picked in an earlier period that sold nothing in the one shown
+  // now is not applied — the Items card would go "empty" and hide its own
+  // "Show all", with no row left in Categories to pick instead.
+  const activeCategory = categoryFilter && r?.categories.some((c) => c.key === categoryFilter) ? categoryFilter : null;
+  const filteredItems = activeCategory ? (r?.items.filter((i) => i.categoryKey === activeCategory) ?? []) : (r?.items ?? []);
+  const filteredCategoryLabel = activeCategory ? (r?.categories.find((c) => c.key === activeCategory)?.label ?? "") : "";
   const filteredTotals = filteredItems.reduce((acc, i) => ({ sales: acc.sales + i.sales, qty: acc.qty + i.qty }), { sales: 0, qty: 0 });
 
   const itemSales = r ? r.items.reduce((s, i) => s + i.sales, 0) : 0;
@@ -206,7 +210,7 @@ export default function ItemsReportPage() {
         empty={{ title: "No categories in this period", description: "Pick another period to see category sales." }}
         bodyMinHeight={200}
       >
-        {r && <CategoriesTable categories={r.categories} loading={false} selected={categoryFilter} onSelect={(key) => setCategoryFilter(key)} />}
+        {r && <CategoriesTable categories={r.categories} loading={false} selected={activeCategory} onSelect={(key) => setCategoryFilter(key)} />}
       </DashCard>
 
       <DashCard
@@ -220,7 +224,7 @@ export default function ItemsReportPage() {
       >
         {r && (
           <div className="flex flex-col gap-3">
-            {categoryFilter && (
+            {activeCategory && (
               <div className="flex items-center gap-2 text-[12.5px] text-brand-muted">
                 <span>
                   Showing <span className="font-medium text-brand-ink">{filteredCategoryLabel}</span>
@@ -240,7 +244,7 @@ export default function ItemsReportPage() {
               showFree={filteredItems.some((i) => i.freeQty > 0)}
               totalSales={filteredTotals.sales}
               totalQty={filteredTotals.qty}
-              totalLabel={categoryFilter ? `Total · ${filteredCategoryLabel}` : undefined}
+              totalLabel={activeCategory ? `Total · ${filteredCategoryLabel}` : undefined}
               onRowClick={(row) => setOpenItem(row)}
             />
           </div>

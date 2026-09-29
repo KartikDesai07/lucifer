@@ -92,8 +92,8 @@ const nextConfig: NextConfig = {
   experimental: {
     // Rewrite heavy barrel imports to per-module paths so unused exports are
     // tree-shaken from the client bundle (CLAUDE.md §17). lucide-react is
-    // already covered by Next's defaults; recharts + date-fns are the wins.
-    optimizePackageImports: ["recharts", "date-fns", "lucide-react"],
+    // already covered by Next's defaults; date-fns is the win.
+    optimizePackageImports: ["date-fns", "lucide-react"],
     // Only `static` — see PREFETCH_REUSE_SECONDS above.
     staleTimes: { static: PREFETCH_REUSE_SECONDS },
   },

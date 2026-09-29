@@ -36,7 +36,7 @@ export const CHANNEL_LABELS: Readonly<Record<DashboardChannel, string>> = {
   qr: "QR self-order",
   counter: "Counter",
 };
-const CHANNELS = Object.keys(CHANNEL_LABELS) as DashboardChannel[];
+export const CHANNELS = Object.keys(CHANNEL_LABELS) as DashboardChannel[];
 
 export function foldKpis(row: TotalsRow | undefined): DashboardKpis {
   const sales = row?.sales ?? 0;
