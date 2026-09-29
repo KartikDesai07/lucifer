@@ -88,6 +88,7 @@
   --color-brand-field: var(--brand-field);
   --color-brand-accent: var(--brand-accent);
   --color-brand-danger: var(--brand-danger);
+  --color-brand-up: var(--brand-up);
   /* Brand motion. Always applied through `motion-safe:` so a device with
      "reduce motion" on gets a still screen — every animation here is
      decoration or feedback, never the only way something is communicated. */
@@ -178,6 +179,10 @@
   --brand-field: #8c8478;
   --brand-accent: #c4471f;
   --brand-danger: #b42318;
+  /* A change for the better on a dashboard figure ("▲ 6% vs Tue, 22 Sep") — text
+     only, always beside an arrow and words, never a fill or a status. The
+     worse direction reuses --brand-danger. */
+  --brand-up: #1d7a46;
 }
 
 :root {

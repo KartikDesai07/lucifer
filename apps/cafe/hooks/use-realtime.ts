@@ -7,6 +7,7 @@ import { PRINT_WAKE_KEYS } from "@/hooks/use-print-host-wake";
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
 import { ORDER_KEYS } from "@/hooks/use-orders";
 import { TABLE_KEYS } from "@/hooks/use-tables";
+import { DASHBOARD_KEYS } from "@/hooks/use-dashboard";
 import { subscribeRealtime } from "@/lib/realtime-client";
 import { onePageAtMost } from "@/lib/order-query";
 import { createRealtimeInvalidator, type RealtimeInvalidateSpec } from "@/lib/realtime-invalidate";
@@ -123,4 +124,24 @@ export function usePosPulseRealtime(): void {
  *  PosPulseProvider (every staff screen, never /m or /login). */
 export function useLiveStateRealtime(): void {
   useRealtimeInvalidate(LIVE_STATE_EVENT_KINDS, LIVE_STATE_REALTIME);
+}
+
+/** Kinds that change the Dashboard's "Needs attention" strip: a fired round or
+ *  any tab change (open tabs), and a QR self-order (orders waiting). */
+export const DASHBOARD_EVENT_KINDS = [...LIVE_STATE_EVENT_KINDS, ...PULSE_EVENT_KINDS] as const;
+
+// The Dashboard's live strip ONLY — its own spec, so the shared live-state and
+// pulse specs keep their pinned targets (a pulse refetch makes the print host
+// send a beat; it must never ride an order nudge). Coalesced like the live
+// lists: a burst of nudges is one refetch of one small uncached count.
+export const DASHBOARD_REALTIME: RealtimeInvalidateSpec = {
+  targets: [{ queryKey: DASHBOARD_KEYS.live }],
+  coalesceMs: REALTIME_NUDGE_COALESCE_MS,
+  holdWhileMutating: ORDER_KEYS.mutation,
+  staleOnlyWhenHidden: true,
+};
+
+/** Dashboard page only — refreshes the "Needs attention" strip on a nudge. */
+export function useDashboardRealtime(): void {
+  useRealtimeInvalidate(DASHBOARD_EVENT_KINDS, DASHBOARD_REALTIME);
 }

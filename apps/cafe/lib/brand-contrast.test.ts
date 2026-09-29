@@ -54,6 +54,13 @@ const PAIRS: ReadonlyArray<readonly [string, string, number, string]> = [
   ["accent", "slip", NON_TEXT_MIN, "the active nav icon, focus rings on cards"],
   ["accent", "paper", NON_TEXT_MIN, "focus rings on paper"],
   ["accent", "sidebar", NON_TEXT_MIN, "focus rings on the sidebar"],
+  // Dashboard (screen 3).
+  ["up", "slip", TEXT_MIN, "a dashboard figure's better-direction change (▲ 6% vs …) on a card"],
+  ["danger", "slip", TEXT_MIN, "a dashboard figure's worse-direction change on a card"],
+  ["muted", "paper", TEXT_MIN, "the dashboard's date line and period captions on paper"],
+  ["accent", "slip", NON_TEXT_MIN, "the sales chart's bars on a card"],
+  ["field", "slip", NON_TEXT_MIN, "the sales chart's comparison line on a card"],
+  ["ink", "paper", TEXT_MIN, "a Needs-attention chip's label (paper chip)"],
 ];
 
 /** `fg` drawn at `alpha` over `bg` — what a Tailwind `text-brand-ink/80` actually paints. */
@@ -68,9 +75,12 @@ function over(fg: string, bg: string, alpha: number): string {
 // alphas are the ones components/brand/brand-classes.ts paints the rows with.
 const NAV_ROW_ALPHA = 0.8;
 const NAV_SUB_ROW_ALPHA = 0.75;
+// components/dashboard/RankedList.tsx paints its bars bg-brand-ink/75.
+const RANKED_BAR_ALPHA = 0.75;
 const TRANSLUCENT_PAIRS: ReadonlyArray<readonly [string, number, string, number, string]> = [
   ["ink", NAV_ROW_ALPHA, "sidebar", TEXT_MIN, "a resting sidebar row's label (text-brand-ink/80)"],
   ["ink", NAV_SUB_ROW_ALPHA, "sidebar", TEXT_MIN, "a resting Settings section row (text-brand-ink/75)"],
+  ["ink", RANKED_BAR_ALPHA, "paper", NON_TEXT_MIN, "a dashboard ranked-list bar (bg-brand-ink/75) on its paper track"],
 ];
 
 test("the brand palette parses from app/globals.css — every token a pairing below needs is present", () => {

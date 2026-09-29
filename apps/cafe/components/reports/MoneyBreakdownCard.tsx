@@ -15,6 +15,8 @@ interface MoneyBreakdownCardProps {
   net: number;
   loading?: boolean;
   caption: string;
+  /** Surface override — the Dashboard puts the card on its Paper & Ink slip. */
+  className?: string;
 }
 
 // D10 — where the money came from and where it went, presented. Purely
@@ -25,9 +27,10 @@ export function MoneyBreakdownCard({
   net,
   loading,
   caption,
+  className,
 }: MoneyBreakdownCardProps) {
   return (
-    <Card>
+    <Card className={className}>
       <CardHeader>
         <CardTitle className="text-base">Bill breakdown</CardTitle>
         <CardDescription>{caption}</CardDescription>

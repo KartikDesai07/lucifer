@@ -283,7 +283,9 @@ test("PIN: Dashboard + Orders pages use the shared live beat and follow the live
   const dash = stripComments(readSrc(DASHBOARD));
   assert.match(dash, /useOrders\(\s*\{ date: today \},\s*\{ refetchInterval: REFETCH_INTERVALS\.LIVE_LISTS \},?\s*\)/);
   assert.match(dash, /useOrders\(\s*\{ payment: "Unpaid", status: "Pending" \},\s*OPEN_TABS_QUERY_OPTIONS,?\s*\)/);
-  assert.ok(dash.includes("useOrderSummary()"), "positive landmark: the dashboard page");
+  // Landmark moved with the 2026-09-29 redesign: the page reads its figures from
+  // GET /api/dashboard (useDashboard), no longer the day summary.
+  assert.ok(dash.includes("useDashboard("), "positive landmark: the dashboard page");
   assert.ok(!dash.includes("LIVE_REFRESH_MS"), "the page-local poll constant is gone");
   assert.match(dash, /order=\{liveOrderOf\(detail, floorOrders\)\}/);
   const orders = stripComments(readSrc(ORDERS_PAGE));

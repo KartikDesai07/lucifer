@@ -1,26 +1,18 @@
 "use client";
 
-import Link from "next/link";
-import { ArrowRight, CalendarClock, ChefHat } from "lucide-react";
+import { ChefHat } from "lucide-react";
 
 import { useUpdateReservation } from "@/hooks/use-reservations";
 import { type ReservationStatus } from "@/lib/constants";
 import { formatTime, cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState } from "@/components/shared/EmptyState";
+import { DashCard } from "@/components/dashboard/DashCard";
 import type { Reservation } from "@/types";
 
 interface TodayReservationsProps {
   reservations: Reservation[];
   loading?: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
 }
 
 const STATUS_VARIANTS: Record<ReservationStatus, string> = {
@@ -29,84 +21,57 @@ const STATUS_VARIANTS: Record<ReservationStatus, string> = {
   Completed: "border-gray-300 text-gray-600",
   Cancelled: "border-red-300 text-red-700",
 };
+const ROW_PX = 52;
+const MIN_ROWS = 3;
 
 // Today's active bookings (Booked/Seated), sorted by time, with a one-tap Seat
 // action. Cancelled/Completed are filtered out — this is an "upcoming" panel.
-export function TodayReservations({
-  reservations,
-  loading,
-}: TodayReservationsProps) {
+export function TodayReservations({ reservations, loading, isError, onRetry }: TodayReservationsProps) {
   const updateReservation = useUpdateReservation();
 
   const rows = reservations
     .filter((r) => r.status === "Booked" || r.status === "Seated")
     .sort((a, b) => a.time.localeCompare(b.time));
+  const status = loading ? "loading" : isError && reservations.length === 0 ? "error" : rows.length === 0 ? "empty" : "ready";
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-base">Today&apos;s reservations</CardTitle>
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/reservations">
-            View all <ArrowRight className="ml-1 h-3.5 w-3.5" />
-          </Link>
-        </Button>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <div className="space-y-2">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-12 w-full" />
-            ))}
-          </div>
-        ) : rows.length === 0 ? (
-          <EmptyState
-            icon={<CalendarClock className="h-7 w-7" />}
-            title="No upcoming reservations"
-            description="Today's bookings will appear here."
-          />
-        ) : (
-          <ul className="divide-y">
-            {rows.map((r) => (
-              <li
-                key={r._id}
-                className="flex items-center gap-3 py-2.5"
+    <DashCard
+      title="Today's reservations"
+      period="Booked and seated · by time"
+      link={{ href: "/reservations", label: "View all" }}
+      status={status}
+      onRetry={onRetry}
+      empty={{ title: "No bookings left today", description: "New bookings made on the Reservations screen appear here." }}
+      bodyMinHeight={MIN_ROWS * ROW_PX}
+    >
+      <ul className="divide-y divide-brand-rule/70">
+        {rows.map((r) => (
+          <li key={r._id} className="flex items-center gap-3" style={{ minHeight: ROW_PX }}>
+            <div className="w-[4.75rem] shrink-0 whitespace-nowrap text-[13.5px] font-medium tabular-nums text-brand-ink">{formatTime(r.time)}</div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[13.5px] font-medium text-brand-ink">{r.name}</div>
+              <div className="truncate text-[12px] text-brand-muted">
+                {r.guests} guests{r.tableNo ? ` · ${r.tableNo}` : ""}
+              </div>
+            </div>
+            <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[11.5px] font-medium", STATUS_VARIANTS[r.status])}>
+              {r.status}
+            </span>
+            {r.status === "Booked" && (
+              <button
+                type="button"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-brand-ink hover:bg-brand-wash focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent disabled:opacity-50"
+                disabled={updateReservation.isPending}
+                onClick={() => updateReservation.mutate({ id: r._id, data: { status: "Seated" } })}
+                aria-label={`Seat ${r.name}`}
+                title="Seat"
               >
-                <div className="w-16 shrink-0 text-sm font-medium tabular-nums">
-                  {formatTime(r.time)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">{r.name}</div>
-                  <div className="truncate text-xs text-muted-foreground">
-                    {r.guests} guests{r.tableNo ? ` · ${r.tableNo}` : ""}
-                  </div>
-                </div>
-                <Badge variant="outline" className={cn("shrink-0", STATUS_VARIANTS[r.status])}>
-                  {r.status}
-                </Badge>
-                {r.status === "Booked" && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="shrink-0"
-                    disabled={updateReservation.isPending}
-                    onClick={() =>
-                      updateReservation.mutate({
-                        id: r._id,
-                        data: { status: "Seated" },
-                      })
-                    }
-                    aria-label="Seat guest"
-                    title="Seat"
-                  >
-                    <ChefHat className="h-4 w-4" />
-                  </Button>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
+                <ChefHat className="h-4 w-4" aria-hidden />
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </DashCard>
   );
 }

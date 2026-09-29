@@ -1,33 +1,41 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import dynamic from "next/dynamic";
-import {
-  IndianRupee,
-  Receipt,
-  Banknote,
-  Hourglass,
-  Armchair,
-  HandCoins,
-} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
-import { useOrders, useOrderSummary, OPEN_TABS_QUERY_OPTIONS } from "@/hooks/use-orders";
+import { useOrders, OPEN_TABS_QUERY_OPTIONS } from "@/hooks/use-orders";
 import { useTables } from "@/hooks/use-tables";
 import { useReservations } from "@/hooks/use-reservations";
-import { cafeDateString, inr } from "@/lib/utils";
+import { useSettings } from "@/hooks/use-settings";
+import { useAuth } from "@/hooks/use-auth";
+import { useDashboard, useDashboardLive } from "@/hooks/use-dashboard";
+import { useDashboardRealtime } from "@/hooks/use-realtime";
+import { cafeDateString } from "@/lib/utils";
 import { REFETCH_INTERVALS } from "@/lib/query";
 import { liveOrderOf } from "@/lib/order-query";
-import { SETTLEMENT_PAY_MODES, APP_NAME } from "@/lib/constants";
-import { useSettings } from "@/hooks/use-settings";
+import { APP_NAME, CAFE_TIMEZONE } from "@/lib/constants";
+import { brandFontVariables } from "@/lib/brand-fonts";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { PageHeader } from "@/components/shared/PageHeader";
-import { SummaryCard } from "@/components/dashboard/SummaryCard";
+  DASHBOARD_PRESETS,
+  MAX_DASHBOARD_RANGE_DAYS,
+  presetRange,
+  rangeDays,
+  type DashboardPreset,
+} from "@/lib/dashboard/range";
+import { compareCaption, periodDates, periodLabel } from "@/lib/dashboard/labels";
+import { AttentionStrip } from "@/components/dashboard/AttentionStrip";
+import { RangeBar, type DashboardSelection } from "@/components/dashboard/RangeBar";
+import {
+  BusyHoursCard,
+  CategoriesCard,
+  ChannelsCard,
+  KpiRow,
+  LeaksCard,
+  PaymentMixCard,
+  SalesCard,
+  SlowItemsCard,
+  TopItemsCard,
+  type RangeCardProps,
+} from "@/components/dashboard/RangeCards";
 import { LiveFloorPanel } from "@/components/dashboard/LiveFloorPanel";
 import { RecentOrders } from "@/components/dashboard/RecentOrders";
 import { TodayReservations } from "@/components/dashboard/TodayReservations";
@@ -35,42 +43,105 @@ import { EndOfDayButton } from "@/components/reports/EndOfDayButton";
 import { MoneyBreakdownCard } from "@/components/reports/MoneyBreakdownCard";
 import { OrderDetailSheet } from "@/components/orders/OrderDetailSheet";
 import type { Order } from "@/types";
+import type { DashboardRange } from "@/types/dashboard";
 
-// Charts are heavy and DOM-dependent — load them client-only with a skeleton
-// fallback to avoid recharts SSR issues (Phase 6 Steps 6.3/6.4).
-const ChartSkeleton = () => <Skeleton className="h-[260px] w-full" />;
-const PaymentChart = dynamic(
-  () => import("@/components/dashboard/PaymentChart").then((m) => m.PaymentChart),
-  { ssr: false, loading: ChartSkeleton },
-);
-const TopProductsChart = dynamic(
-  () =>
-    import("@/components/dashboard/TopProductsChart").then(
-      (m) => m.TopProductsChart,
-    ),
-  { ssr: false, loading: ChartSkeleton },
-);
-const HourlySalesChart = dynamic(
-  () =>
-    import("@/components/dashboard/HourlySalesChart").then(
-      (m) => m.HourlySalesChart,
-    ),
-  { ssr: false, loading: ChartSkeleton },
-);
+// The Dashboard (owner's page-by-page programme, screen 3 — Paper & Ink,
+// "Stripe-style calm + a Needs attention strip"). Top: what needs acting on
+// right now. Then the chosen period (Today by default) against its comparison:
+// headline figures, sales by hour/day, payment mix, best sellers, and the live
+// floor beside them; below, busy hours, channels, slow movers, categories,
+// money leaks and the bill breakdown. Every range number comes from ONE server
+// aggregate (GET /api/dashboard) — never from a capped client list.
 
-const plural = (n: number, word: string) =>
-  `${n} ${word}${n === 1 ? "" : "s"}`;
+// Per-viewer convenience only (the period picked on this tab); never state
+// that matters — a blocked or empty storage just means "Today".
+const PERIOD_STORAGE_KEY = "pos.dashboard.period";
+
+interface StoredPeriod {
+  preset: DashboardPreset;
+  custom?: DashboardRange;
+}
+
+function readStoredPeriod(): StoredPeriod | null {
+  try {
+    const raw = window.sessionStorage.getItem(PERIOD_STORAGE_KEY);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as Partial<StoredPeriod>;
+    if (!v.preset || !(DASHBOARD_PRESETS as readonly string[]).includes(v.preset)) return null;
+    const c = v.custom;
+    const custom =
+      // Re-checked on read: a range the server would refuse (ends after today,
+      // wider than the cap) must never pin the page to an error card.
+      c &&
+      typeof c.from === "string" &&
+      typeof c.to === "string" &&
+      DAY_KEY.test(c.from) &&
+      DAY_KEY.test(c.to) &&
+      c.from <= c.to &&
+      c.to <= cafeDateString() &&
+      rangeDays({ from: c.from, to: c.to }) <= MAX_DASHBOARD_RANGE_DAYS
+        ? { from: c.from, to: c.to }
+        : undefined;
+    return { preset: v.preset, custom };
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredPeriod(p: StoredPeriod): void {
+  try {
+    window.sessionStorage.setItem(PERIOD_STORAGE_KEY, JSON.stringify(p));
+  } catch {
+    // Storage blocked (private mode, a preview) — the choice just isn't remembered.
+  }
+}
+
+const DATE_LINE = new Intl.DateTimeFormat("en-IN", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+  timeZone: CAFE_TIMEZONE,
+});
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 
 export default function DashboardPage() {
   const today = cafeDateString();
-
-  const summary = useOrderSummary();
+  const { isAdmin } = useAuth();
   const settings = useSettings();
   const restaurantName = settings.data?.restaurantName?.trim() || APP_NAME;
-  const todayOrders = useOrders(
-    { date: today },
-    { refetchInterval: REFETCH_INTERVALS.LIVE_LISTS },
-  );
+
+  // The stored choice is read after mount (sessionStorage does not exist during
+  // the server render); the range query waits for that one tick so a remembered
+  // "Last 7 days" never first fetches — and flashes — Today.
+  const [period, setPeriod] = useState<StoredPeriod>({ preset: "today" });
+  const [restored, setRestored] = useState(false);
+  useEffect(() => {
+    const stored = readStoredPeriod();
+    if (stored) setPeriod(stored);
+    setRestored(true);
+  }, []);
+
+  // A fixed preset is re-derived on every render (cheap; the query key hashes
+  // the from/to strings), so a tab left open past midnight moves to the new day
+  // on its next poll. A multi-day choice needs an admin (the server refuses it
+  // otherwise); staff fall back to Today — the picker and the data together.
+  const wanted = period.preset === "custom" ? (period.custom ?? presetRange("today")) : presetRange(period.preset);
+  const selection: DashboardSelection =
+    !isAdmin && wanted.from !== wanted.to
+      ? { preset: "today", range: presetRange("today") }
+      : { preset: period.preset, range: wanted };
+  const range = selection.range;
+  const onSelect = (next: DashboardSelection) => {
+    const stored: StoredPeriod = next.preset === "custom" ? { preset: "custom", custom: next.range } : { preset: next.preset };
+    setPeriod(stored);
+    writeStoredPeriod(stored);
+  };
+
+  const dash = useDashboard(range, restored);
+  const live = useDashboardLive();
+  useDashboardRealtime();
+  const todayOrders = useOrders({ date: today }, { refetchInterval: REFETCH_INTERVALS.LIVE_LISTS });
   const tables = useTables();
   const reservations = useReservations({ date: today });
   // Running tabs that occupy tables — date-independent and tiny (≤ #tables), so
@@ -80,10 +151,7 @@ export default function DashboardPage() {
   // as the historical "Unpaid" (the record is never rewritten), so a payment-only
   // filter would keep showing a dead tab as occupying a table it no longer holds.
   // Same query (and options) as the POS's open-tabs list.
-  const openTabs = useOrders(
-    { payment: "Unpaid", status: "Pending" },
-    OPEN_TABS_QUERY_OPTIONS,
-  );
+  const openTabs = useOrders({ payment: "Unpaid", status: "Pending" }, OPEN_TABS_QUERY_OPTIONS);
 
   const [detail, setDetail] = useState<Order | null>(null);
 
@@ -96,164 +164,101 @@ export default function DashboardPage() {
     return [...byId.values()];
   }, [todayOrders.data, openTabs.data]);
 
-  const s = summary.data;
-  const paymentSlices = s
-    ? SETTLEMENT_PAY_MODES.map((mode) => ({
-        mode,
-        amount: s.paymentBreakdown[mode].amount,
-      }))
-    : [];
-
-  const tableList = tables.data ?? [];
-  const occupiedTables = tableList.filter((t) => t.status === "Occupied").length;
-  const availableTables = tableList.filter(
-    (t) => t.status === "Available",
-  ).length;
-  const totalTables = tableList.length;
+  const d = dash.data;
+  const shownRange = d?.range ?? range;
+  const periodName = periodLabel(shownRange, today);
+  const cards: RangeCardProps = {
+    data: d,
+    status: d ? "ready" : dash.isError ? "error" : "loading",
+    updating: dash.isPlaceholderData,
+    onRetry: () => void dash.refetch(),
+    period: periodName,
+    today,
+  };
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        className="flex-wrap items-end"
-        title="Dashboard"
-        description={`Today's overview for ${restaurantName}.`}
-        actions={
-          <div className="flex items-center gap-3">
-            <EndOfDayButton />
-            <p
-              className="text-sm font-medium text-muted-foreground"
-              suppressHydrationWarning
-            >
-              {new Date().toLocaleDateString("en-IN", {
-                weekday: "long",
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-              })}
+    <div className={`${brandFontVariables} -m-4 min-h-[calc(100svh-3.5rem)] bg-brand-paper p-4 font-brand-sans text-brand-ink md:-m-6 md:p-6`}>
+      <div className="mx-auto flex max-w-[1440px] flex-col gap-4 sm:gap-5">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-[24px] font-semibold leading-8 tracking-[-0.015em]">Dashboard</h1>
+            <p className="truncate text-[13.5px] text-brand-muted" suppressHydrationWarning>
+              {restaurantName} · {DATE_LINE.format(new Date())}
             </p>
           </div>
-        }
-      />
+          <EndOfDayButton />
+        </div>
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
-        <SummaryCard
-          title="Today's Sales"
-          value={inr(s?.totalSales ?? 0)}
-          subtitle="Completed revenue"
-          icon={IndianRupee}
-          variant="green"
-          loading={summary.isLoading}
-        />
-        <SummaryCard
-          title="Orders Served"
-          value={s?.totalOrders ?? 0}
-          subtitle="Completed today"
-          icon={Receipt}
-          variant="blue"
-          loading={summary.isLoading}
-        />
-        <SummaryCard
-          title="Collected"
-          value={inr(s?.collected ?? 0)}
-          subtitle="Cash + online today"
-          icon={Banknote}
-          variant="indigo"
-          loading={summary.isLoading}
-        />
-        <SummaryCard
-          title="In-progress"
-          value={inr(s?.inProgress.value ?? 0)}
-          subtitle={plural(s?.inProgress.count ?? 0, "open tab")}
-          icon={Hourglass}
-          variant="amber"
-          loading={summary.isLoading}
-          href="/orders?payment=Unpaid&status=Pending"
-        />
-        <SummaryCard
-          title="Open Tables"
-          value={`${occupiedTables}/${totalTables}`}
-          subtitle={`${availableTables} available`}
-          icon={Armchair}
-          variant="purple"
-          loading={tables.isLoading}
-        />
-        <SummaryCard
-          title="Outstanding Dues"
-          value={inr(s?.outstandingDues.total ?? 0)}
-          subtitle={plural(s?.outstandingDues.customers ?? 0, "customer")}
-          icon={HandCoins}
-          variant="red"
-          loading={summary.isLoading}
-        />
-      </div>
+        <AttentionStrip live={live.data} loading={live.isLoading} isError={live.isError} />
 
-      <LiveFloorPanel
-        tables={tableList}
-        orders={floorOrders}
-        loading={tables.isLoading}
-        isError={tables.isError}
-        onSelectOrder={setDetail}
-      />
+        {/* The picker sits beside the title only when there is room for the caption on
+            one line (lg+); the caption reserves its phone height (two lines) so the
+            figures arriving never move the page. */}
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <h2 className="text-[17px] font-semibold leading-6">{periodName}</h2>
+            <p className="min-h-9 text-[12.5px] leading-[18px] text-brand-muted sm:min-h-[18px]">
+              {periodName === periodDates(shownRange) ? "" : `${periodDates(shownRange)} · `}
+              {d ? compareCaption(d, today) : "Loading…"}
+            </p>
+          </div>
+          <RangeBar value={selection} onChange={onSelect} isAdmin={isAdmin} />
+        </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-base">Sales by hour</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {summary.isLoading ? (
-              <ChartSkeleton />
-            ) : (
-              <HourlySalesChart data={s?.hourly ?? []} />
-            )}
-          </CardContent>
-        </Card>
-        <MoneyBreakdownCard
-          money={s?.money}
-          net={s?.totalSales ?? 0}
-          loading={summary.isLoading}
-          caption="Completed orders today"
-        />
-      </div>
+        <KpiRow {...cards} />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Payment breakdown</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {summary.isLoading ? (
-              <ChartSkeleton />
-            ) : (
-              <PaymentChart data={paymentSlices} />
-            )}
-          </CardContent>
-        </Card>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <SalesCard {...cards} className="lg:col-span-2" />
+          <PaymentMixCard {...cards} />
+        </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Top products today</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {summary.isLoading ? (
-              <ChartSkeleton />
-            ) : (
-              <TopProductsChart data={s?.topProducts ?? []} />
-            )}
-          </CardContent>
-        </Card>
-      </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <TopItemsCard {...cards} />
+          <RecentOrders
+            orders={todayOrders.data ?? []}
+            loading={todayOrders.isLoading}
+            isError={todayOrders.isError}
+            onRetry={() => void todayOrders.refetch()}
+            onSelect={setDetail}
+          />
+          <div className="md:col-span-2 xl:col-span-1">
+            <LiveFloorPanel
+              tables={tables.data ?? []}
+              orders={floorOrders}
+              loading={tables.isLoading}
+              isError={tables.isError}
+              onRetry={() => void tables.refetch()}
+              onSelectOrder={setDetail}
+            />
+          </div>
+        </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <RecentOrders
-          orders={todayOrders.data ?? []}
-          loading={todayOrders.isLoading}
-          onSelect={setDetail}
-        />
-        <TodayReservations
-          reservations={reservations.data ?? []}
-          loading={reservations.isLoading}
-        />
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <BusyHoursCard {...cards} className="lg:col-span-2" />
+          <ChannelsCard {...cards} />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <SlowItemsCard {...cards} />
+          <CategoriesCard {...cards} />
+          <LeaksCard {...cards} className="md:col-span-2 xl:col-span-1" />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <MoneyBreakdownCard
+            money={d?.money}
+            net={d?.kpis.current.sales ?? 0}
+            loading={!d}
+            caption={`Completed orders · ${periodName}`}
+            className="gap-4 rounded-xl border-brand-rule bg-brand-slip py-5 text-brand-ink shadow-none"
+          />
+          <TodayReservations
+            reservations={reservations.data ?? []}
+            loading={reservations.isLoading}
+            isError={reservations.isError}
+            onRetry={() => void reservations.refetch()}
+          />
+        </div>
       </div>
 
       {/* The sheet follows the live row (a tab another device grew or settled);
