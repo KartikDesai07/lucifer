@@ -34,7 +34,7 @@ export function RankedList({ rows, className }: { rows: RankedRow[]; className?:
           {r.bar !== undefined && (
             <div className="h-1.5 rounded-full bg-brand-paper" aria-hidden>
               <div
-                className="h-1.5 rounded-full bg-brand-ink/75 transition-[width] duration-500 ease-out"
+                className="h-1.5 rounded-full bg-brand-primary/85 transition-[width] duration-500 ease-out"
                 style={{ width: `${Math.max(r.bar > 0 ? 2 : 0, Math.round(r.bar * 100))}%` }}
               />
             </div>

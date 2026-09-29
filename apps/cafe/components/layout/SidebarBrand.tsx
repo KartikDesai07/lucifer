@@ -45,7 +45,7 @@ export function SidebarBrand({ brandName, logoUrl, collapsed, onNavigate }: Side
       {failed ? (
         <span
           aria-hidden="true"
-          className="grid size-8 shrink-0 place-items-center rounded-lg bg-brand-ink font-brand-display text-[15px] font-semibold text-brand-slip"
+          className="grid size-8 shrink-0 place-items-center rounded-lg bg-brand-primary font-brand-display text-[15px] font-semibold text-brand-slip"
         >
           {initial}
         </span>

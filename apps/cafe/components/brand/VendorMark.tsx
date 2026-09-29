@@ -2,7 +2,7 @@ import { VENDOR_PRODUCT_NAME } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 // "Powered by Sandbee POS" — the software vendor's small mark (owner decision
-// 2026-09-26). Deliberately quiet: muted text, one tiny terracotta dot, never
+// 2026-09-26). Deliberately quiet: muted text, one tiny accent dot, never
 // competing with the cafe's own name and logo. The vendor name comes from the
 // shared constant, never a literal here.
 export function VendorMark({ className }: { className?: string }) {

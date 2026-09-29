@@ -1,4 +1,4 @@
-// "Paper & Ink" control styles — the shared look for fields, labels and the
+// Brand control styles (White & Blue since 2026-09-29; first built as "Paper & Ink") — the shared look for fields, labels and the
 // primary action on every screen that moves to the brand system. Plain class
 // strings passed to the stock shadcn Button/Input/Label via className
 // (components/ui/** is never edited); cn()'s tailwind-merge makes each token
@@ -10,18 +10,18 @@
 export const BRAND_LABEL_CLASS = "text-[13px] font-medium text-brand-ink";
 
 /** 48px tall (a counter keyboard and a thumb both hit it first time), a 3.6:1
- *  field border, and a terracotta focus halo that is visible on bright glass.
+ *  field border, and a blue focus halo that is visible on bright glass.
  *  text-base below md keeps iOS from zooming the page on focus. A browser-
- *  filled field stays paper-coloured: the autofill blue is the browser's own
+ *  filled field stays the card colour: the autofill blue is the browser's own
  *  !important background, and an inset shadow is the one thing drawn over it. */
 export const BRAND_INPUT_CLASS =
-  "h-12 rounded-md border-brand-field bg-brand-slip px-3.5 text-base text-brand-ink shadow-none placeholder:text-brand-muted [&:-webkit-autofill]:shadow-[inset_0_0_0_100px_var(--color-brand-slip)] [&:-webkit-autofill]:[-webkit-text-fill-color:var(--color-brand-ink)] focus-visible:border-brand-ink focus-visible:ring-[3px] focus-visible:ring-brand-accent/25 md:text-[15px]";
+  "h-12 rounded-md border-brand-field bg-brand-slip px-3.5 text-base text-brand-ink shadow-none placeholder:text-brand-muted [&:-webkit-autofill]:shadow-[inset_0_0_0_100px_var(--color-brand-slip)] [&:-webkit-autofill]:[-webkit-text-fill-color:var(--color-brand-ink)] focus-visible:border-brand-primary focus-visible:ring-[3px] focus-visible:ring-brand-accent/25 md:text-[15px]";
 
-/** The primary action: solid ink, never green (green is the "Completed"
- *  status colour). `group` lets a trailing arrow nudge on hover; a slight
+/** The primary action: solid blue (--brand-primary), never green (green is
+ *  the "Completed" status colour). `group` lets a trailing arrow nudge on hover; a slight
  *  press-in on click (motion-safe) so a tap on glass feels registered. */
 export const BRAND_BUTTON_CLASS =
-  "group h-12 w-full rounded-md bg-brand-ink text-[15px] font-semibold tracking-wide text-brand-slip shadow-none transition-[background-color,transform] duration-150 hover:bg-brand-ink-hover focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-offset-2 focus-visible:ring-offset-brand-slip motion-safe:active:scale-[0.985] disabled:opacity-60";
+  "group h-12 w-full rounded-md bg-brand-primary text-[15px] font-semibold tracking-wide text-brand-slip shadow-none transition-[background-color,transform] duration-150 hover:bg-brand-primary-hover focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-offset-2 focus-visible:ring-offset-brand-slip motion-safe:active:scale-[0.985] disabled:opacity-60";
 
 /** An inline error line under a field. */
 export const BRAND_FIELD_ERROR_CLASS = "text-xs text-brand-danger";
@@ -44,20 +44,18 @@ export const BRAND_CHECKBOX_SQUARE_CLASS = "size-5 rounded-[4px]";
 // SidebarGroupLabel via className; tailwind-merge replaces each primitive
 // default they name. The icon-collapsed rail keeps the primitive's own
 // important 32px square, so nothing here can push an icon out of the 3rem
-// rail. The active row is a raised slip of paper with its icon in the
-// accent: the accent icon (4.8:1 on the slip), the heavier label and
-// aria-current carry the state, never the pale background alone. On the
-// near-white sidebar surface (--brand-sidebar, 2026-09-29) the slip itself
-// differs by only 1.05:1, so its hairline is 12% ink (1.27:1 against the
-// surface; 7% was enough on paper) — the edge, not the fill, draws the row.
+// rail. The active row sits on the soft blue tint with its icon in the blue:
+// the blue icon (4.5:1 on the tint), the heavier ink label (15.6:1) and
+// aria-current carry the state, never the pale fill alone (White & Blue,
+// 2026-09-29 — it replaced Paper & Ink's raised slip-of-paper row).
 
 const NAV_ACTIVE =
-  "data-[active=true]:bg-brand-slip data-[active=true]:font-semibold data-[active=true]:text-brand-ink data-[active=true]:shadow-[0_1px_2px_rgb(29_27_24/0.10),0_0_0_1px_rgb(29_27_24/0.12)]";
+  "data-[active=true]:bg-brand-primary-soft data-[active=true]:font-semibold data-[active=true]:text-brand-ink";
 
 /** A top-level nav row: 32px on a mouse (the whole list fits a 768px-tall
  *  laptop screen without scrolling), 44px on touch (tablet / phone). */
 export const BRAND_NAV_ITEM_CLASS =
-  "h-8 gap-3 rounded-lg px-2.5 text-[14px] font-medium text-brand-ink/80 transition-colors duration-150 hover:bg-brand-wash hover:text-brand-ink active:bg-brand-wash focus-visible:ring-brand-accent pointer-coarse:h-11 group-data-[collapsible=icon]:justify-center [&>svg]:size-[18px] [&>svg]:text-brand-muted [&:hover>svg]:text-brand-ink [&[data-active=true]>svg]:text-brand-accent " +
+  "h-8 gap-3 rounded-lg px-2.5 text-[14px] font-medium text-brand-ink/80 transition-colors duration-150 hover:bg-brand-wash hover:text-brand-ink active:bg-brand-wash focus-visible:ring-brand-accent pointer-coarse:h-11 group-data-[collapsible=icon]:justify-center [&>svg]:size-[18px] [&>svg]:text-brand-muted [&:hover>svg]:text-brand-ink [&[data-active=true]>svg]:text-brand-primary " +
   NAV_ACTIVE;
 
 /** A row inside an expanded group (Settings' sections). */

@@ -43,8 +43,15 @@ const PAIRS: ReadonlyArray<readonly [string, string, number, string]> = [
   ["ink", "paper", TEXT_MIN, "page text on paper"],
   ["ink", "sidebar", TEXT_MIN, "the brand name and account name on the sidebar"],
   ["ink", "wash", TEXT_MIN, "a hovered sidebar row"],
-  ["slip", "ink", TEXT_MIN, "the primary button's label"],
-  ["slip", "ink-hover", TEXT_MIN, "the primary button's label on hover"],
+  ["slip", "ink", TEXT_MIN, "the brand tooltip (white on ink)"],
+  ["slip", "ink-hover", TEXT_MIN, "white on the ink hover step"],
+  // White & Blue (2026-09-29): the action colour is blue.
+  ["slip", "primary", TEXT_MIN, "the primary button's label, the chosen period, the sidebar logo and avatar"],
+  ["slip", "primary-hover", TEXT_MIN, "the primary button's label on hover"],
+  ["ink", "primary-soft", TEXT_MIN, "the active nav row's label on its blue tint"],
+  ["primary", "primary-soft", NON_TEXT_MIN, "the active nav row's blue icon"],
+  ["accent", "slip", TEXT_MIN, "blue text on a card (the sign-in card's status line)"],
+  ["primary-hover", "primary-soft", TEXT_MIN, "every staff screen's ghost-button / menu hover (shadcn --accent-foreground on --accent)"],
   ["muted", "slip", TEXT_MIN, "secondary text on cards"],
   ["muted", "paper", TEXT_MIN, "the vendor mark on paper"],
   ["muted", "sidebar", TEXT_MIN, "sidebar section labels, the product name, row icons"],
@@ -75,12 +82,9 @@ function over(fg: string, bg: string, alpha: number): string {
 // alphas are the ones components/brand/brand-classes.ts paints the rows with.
 const NAV_ROW_ALPHA = 0.8;
 const NAV_SUB_ROW_ALPHA = 0.75;
-// components/dashboard/RankedList.tsx paints its bars bg-brand-ink/75.
-const RANKED_BAR_ALPHA = 0.75;
 const TRANSLUCENT_PAIRS: ReadonlyArray<readonly [string, number, string, number, string]> = [
   ["ink", NAV_ROW_ALPHA, "sidebar", TEXT_MIN, "a resting sidebar row's label (text-brand-ink/80)"],
   ["ink", NAV_SUB_ROW_ALPHA, "sidebar", TEXT_MIN, "a resting Settings section row (text-brand-ink/75)"],
-  ["ink", RANKED_BAR_ALPHA, "paper", NON_TEXT_MIN, "a dashboard ranked-list bar (bg-brand-ink/75) on its paper track"],
 ];
 
 test("the brand palette parses from app/globals.css — every token a pairing below needs is present", () => {
@@ -111,6 +115,18 @@ test("the sidebar's translucent row labels meet the text minimum on the sidebar 
     const ratio = contrast(over(tokens.get(fg)!, tokens.get(bg)!, alpha), tokens.get(bg)!);
     assert.ok(ratio >= min, `${fg}/${alpha} on ${bg} (${where}) is ${ratio.toFixed(2)}:1, needs ${min}:1`);
   }
+});
+
+// A translucent FILL (not text): components/dashboard/RankedList.tsx paints its
+// bars bg-brand-primary/85 over a paper track — a graphical object, so 3:1.
+const RANKED_BAR_ALPHA = 0.85;
+
+test("the dashboard's ranked-list bars stand out from their track (non-text 3:1), at the alpha RankedList really paints", () => {
+  const tokens = brandTokens();
+  const src = readFileSync(fileURLToPath(new URL("../components/dashboard/RankedList.tsx", import.meta.url)), "utf8");
+  assert.ok(src.includes(`bg-brand-primary/${Math.round(RANKED_BAR_ALPHA * 100)} `), "RankedList must paint bg-brand-primary/85");
+  const ratio = contrast(over(tokens.get("primary")!, tokens.get("paper")!, RANKED_BAR_ALPHA), tokens.get("paper")!);
+  assert.ok(ratio >= NON_TEXT_MIN, `primary/0.85 on paper is ${ratio.toFixed(2)}:1, needs ${NON_TEXT_MIN}:1`);
 });
 
 test("the sidebar surface is its own token, a step lighter than paper — the primitive's --sidebar reads it", () => {

@@ -89,7 +89,7 @@ export function RangeBar({ value, onChange, isAdmin }: RangeBarProps) {
               className={cn(
                 "h-9 flex-1 whitespace-nowrap rounded-md px-3 text-[13px] font-medium transition-colors sm:h-8 sm:flex-none",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent",
-                active ? "bg-brand-ink text-brand-slip" : "text-brand-muted hover:bg-brand-wash hover:text-brand-ink",
+                active ? "bg-brand-primary text-brand-slip" : "text-brand-muted hover:bg-brand-wash hover:text-brand-ink",
               )}
             >
               {p.label}

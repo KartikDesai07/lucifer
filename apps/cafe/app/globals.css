@@ -89,6 +89,9 @@
   --color-brand-accent: var(--brand-accent);
   --color-brand-danger: var(--brand-danger);
   --color-brand-up: var(--brand-up);
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-primary-hover: var(--brand-primary-hover);
+  --color-brand-primary-soft: var(--brand-primary-soft);
   /* Brand motion. Always applied through `motion-safe:` so a device with
      "reduce motion" on gets a still screen — every animation here is
      decoration or feedback, never the only way something is communicated. */
@@ -151,33 +154,40 @@
   }
 }
 
-/* Paper & Ink values. Every text pairing is WCAG-AA measured (relative-
-   luminance formula, 2026-09-26): ink on slip 16.9:1, slip on ink button
-   16.9:1 (hover 12.7:1), muted on slip 5.7:1 / on paper 5.2:1, danger on slip
-   6.5:1. Field borders are 3.6:1 on the slip (WCAG 1.4.11 needs 3:1 for a
-   control's edge); --brand-rule is DECORATIVE only (dividers), never a field.
-   The action colour is INK, deliberately not green: green already means
-   "Completed" in the status vocabulary, and a button must never read as a
-   status. --brand-accent (terracotta) is for focus rings and small marks
-   ONLY — never a status, never a fill behind text. */
+/* White & Blue values (owner, 2026-09-29: "full sab proper White and blue theme
+   base" — replaces the Paper & Ink beige/terracotta; the token NAMES are kept so
+   every screen already on the brand system moves together). Every text pairing
+   is WCAG-AA measured by lib/brand-contrast.test.ts (relative-luminance formula):
+   ink on white 17.9:1, white on the blue action 5.2:1 (hover 6.7:1), blue on
+   white 5.2:1, muted on white 6.4:1 / on paper 5.9:1. The active nav row keeps
+   INK text on the soft tint (blue text there is only 4.5:1 — no margin) and
+   carries the state in its blue icon + weight. Field borders are 3.1:1 on white (WCAG 1.4.11 needs 3:1 for a control's
+   edge); --brand-rule is DECORATIVE only (dividers), never a field.
+   The action colour is BLUE (--brand-primary), never green: green already
+   means "Completed" in the status vocabulary. --brand-accent is the same blue,
+   for focus rings, chart marks and small marks — never a status. */
 :root {
-  --brand-paper: #f6f2ea;
-  /* The staff sidebar's surface: paper a minor step toward white (owner,
-     2026-09-29 — "white theme base"), still in the paper family. Its rows
-     keep --brand-wash for hover, which reads MORE clearly on it (1.16:1 vs
-     1.11:1 on paper); the raised active row's hairline is strengthened in
-     components/brand/brand-classes.ts because a slip on this surface barely
-     differs from it. Used ONLY by the sidebar — other screens keep paper. */
-  --brand-sidebar: #faf7f1;
-  /* Paper one shade down: hover / pressed on a paper surface (the sidebar). */
-  --brand-wash: #ece6da;
-  --brand-slip: #fffdf8;
-  --brand-ink: #1d1b18;
-  --brand-ink-hover: #35312b;
-  --brand-muted: #6b645b;
-  --brand-rule: #dcd4c6;
-  --brand-field: #8c8478;
-  --brand-accent: #c4471f;
+  /* The page behind the cards: white a hair toward blue-grey, so white cards read. */
+  --brand-paper: #f5f7fb;
+  /* The staff sidebar's surface — near-white; rows hover on --brand-wash and the
+     active row is the soft blue tint below. */
+  --brand-sidebar: #f8fafc;
+  /* One step down from the surfaces: hover / pressed. */
+  --brand-wash: #eaeff6;
+  /* Cards, fields, the header. */
+  --brand-slip: #ffffff;
+  /* Text (never an action fill any more — the action is --brand-primary). */
+  --brand-ink: #0f172a;
+  --brand-ink-hover: #1e293b;
+  --brand-muted: #556070;
+  --brand-rule: #e2e8f0;
+  --brand-field: #8a94a6;
+  --brand-accent: #2563eb;
+  /* The action colour: primary buttons, the chosen period, the active nav row. */
+  --brand-primary: #2563eb;
+  --brand-primary-hover: #1d4ed8;
+  /* A soft blue tint: the active nav row's fill (ink text on it, blue icon). */
+  --brand-primary-soft: #e8f0fe;
   --brand-danger: #b42318;
   /* A change for the better on a dashboard figure ("▲ 6% vs Tue, 22 Sep") — text
      only, always beside an arrow and words, never a fill or a status. The
@@ -193,25 +203,28 @@
   --card-foreground: oklch(0.18 0.03 250);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.18 0.03 250);
-  --primary: oklch(0.62 0.17 155);
-  --primary-foreground: oklch(0.99 0.01 150);
-  --primary-soft: oklch(0.95 0.05 155);
+  /* White & Blue (owner, 2026-09-29: "full sab" — every staff screen, not only the
+     ones already on the brand classes): the shadcn action colour IS the brand
+     blue, one source. --success stays green (a status, never an action). */
+  --primary: var(--brand-primary);
+  --primary-foreground: var(--brand-slip);
+  --primary-soft: var(--brand-primary-soft);
   --secondary: oklch(0.96 0.01 240);
   --secondary-foreground: oklch(0.25 0.03 250);
   --muted: oklch(0.96 0.01 240);
   --muted-foreground: oklch(0.5 0.02 250);
-  --accent: oklch(0.95 0.05 155);
-  --accent-foreground: oklch(0.35 0.12 155);
+  --accent: var(--brand-primary-soft);
+  --accent-foreground: var(--brand-primary-hover);
   --destructive: oklch(0.6 0.22 25);
   --destructive-foreground: oklch(0.99 0.01 150);
   --success: oklch(0.62 0.17 155);
   --warning: oklch(0.78 0.16 75);
   --border: oklch(0.92 0.01 240);
   --input: oklch(0.92 0.01 240);
-  --ring: oklch(0.62 0.17 155);
-  --gradient-primary: linear-gradient(135deg, oklch(0.62 0.17 155), oklch(0.55 0.15 165));
+  --ring: var(--brand-accent);
+  --gradient-primary: linear-gradient(135deg, var(--brand-primary), var(--brand-primary-hover));
   --shadow-card: 0 1px 3px oklch(0.18 0.03 250 / 0.06), 0 1px 2px oklch(0.18 0.03 250 / 0.04);
-  --shadow-elevated: 0 10px 30px -10px oklch(0.62 0.17 155 / 0.25);
+  --shadow-elevated: 0 10px 30px -10px rgb(37 99 235 / 0.25);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);

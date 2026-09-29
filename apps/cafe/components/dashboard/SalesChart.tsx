@@ -22,7 +22,7 @@ import { SALES_CHART_HEIGHT_PX } from "@/components/dashboard/chart-size";
 import type { DashboardSeriesPoint } from "@/types/dashboard";
 
 // The Dashboard's main chart (Chart.js — owner's pick 2026-09-29): the chosen
-// period as terracotta bars, the comparison period as a grey line, one y-axis.
+// period as blue bars, the comparison period as a grey line, one y-axis.
 // Loaded through next/dynamic (ssr:false) so Chart.js stays out of the first
 // bundle. Colours and the font are READ from the brand tokens at mount, never
 // copied into code. The tooltip is our own HTML (sentence-case, ₹ grouping) and

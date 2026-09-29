@@ -48,7 +48,7 @@ export function SidebarAccount({ collapsed }: { collapsed: boolean }) {
               >
                 <span
                   aria-hidden="true"
-                  className="grid size-8 shrink-0 place-items-center rounded-full bg-brand-ink text-[13px] font-semibold text-brand-slip"
+                  className="grid size-8 shrink-0 place-items-center rounded-full bg-brand-primary text-[13px] font-semibold text-brand-slip"
                 >
                   {initial}
                 </span>
