@@ -269,6 +269,7 @@ export interface PublicStatusItem {
   qty: number;
   variation?: string; // omit-empty
   modifiers: string[];
+  removedModifiers?: string[]; // omit-empty — "NO …" on an item whose modifiers come ticked
   instructions?: string; // omit-empty
 }
 

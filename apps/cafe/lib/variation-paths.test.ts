@@ -112,7 +112,7 @@ test("PIN: use-cart.ts's lineKey takes a `variation` argument and folds it into 
   );
   assert.match(
     addToCartBody,
-    /const key = lineKey\(product\._id, modifiers, instructions, variation\);/,
+    /const key = lineKey\(product\._id, modifiers, instructions, variation(?:, removedModifiers)?\);/,
     "addToCart must pass the variation into lineKey — reading opts.variation without threading it into the key would still merge Small and Large",
   );
   assert.match(
@@ -219,7 +219,7 @@ test("PIN: pos/page.tsx's handleProductClick opens the modifier modal for a vari
 
 test("PIN: KOTReceipt's item rows render the label ONLY via orderItemLabel(item), on the BOLD qty-and-name line — a cook scanning a rail must not have to hunt a sub-line for the size, and no hand-built variation suffix can drift from the shared helper", () => {
   const src = stripComments(readSrc(KOT_RECEIPT));
-  assert.match(src, /import \{ orderItemLabel \} from "@pos\/shared\/utils";/);
+  assert.match(src, /import \{[^}]*\borderItemLabel\b[^}]*\} from "@pos\/shared\/utils";/);
 
   const marker = "items.map((item, i) => (";
   const mapStart = src.indexOf(marker);
@@ -272,7 +272,7 @@ test("PIN: OrderReceipt's item rows render the label ONLY via orderItemLabel(ite
 
 test("PIN: POST /api/orders calls checkItemVariations and returns its rejection BEFORE the table refusal, all pricing and the order write — a bad payload writes nothing and draws no number (the reads themselves run in one parallel wave, owner decision #4)", () => {
   const src = stripComments(readSrc(ORDERS_ROUTE));
-  assert.match(src, /import \{ checkItemVariations \} from "@\/lib\/variations";/);
+  assert.match(src, /import \{[^}]*\bcheckItemVariations\b[^}]*\} from "@\/lib\/variations";/);
 
   const postStart = src.indexOf("export async function POST(req: Request) {");
   assert.ok(postStart >= 0, "POST must exist with this signature");
@@ -291,7 +291,7 @@ test("PIN: POST /api/orders calls checkItemVariations and returns its rejection 
 
 test("PIN: POST /api/orders/[id]/items calls checkItemVariations and returns its rejection BEFORE the guarded CAS write — a bad round never touches the tab", () => {
   const src = stripComments(readSrc(ORDER_ITEMS_ROUTE));
-  assert.match(src, /import \{ checkItemVariations \} from "@\/lib\/variations";/);
+  assert.match(src, /import \{[^}]*\bcheckItemVariations\b[^}]*\} from "@\/lib\/variations";/);
 
   const postStart = src.indexOf("export async function POST(req: Request, { params }: Params) {");
   assert.ok(postStart >= 0, "POST must exist with this signature");
@@ -350,7 +350,7 @@ test("PIN: VoidItemDialog names each fired line via orderItemLabel — on a tab 
 
   assert.match(
     src,
-    /import \{ orderItemLabel \} from "@pos\/shared\/utils";/,
+    /import \{[^}]*\borderItemLabel\b[^}]*\} from "@pos\/shared\/utils";/,
     "VoidItemDialog must use the shared label helper, not its own formatting",
   );
   assert.match(

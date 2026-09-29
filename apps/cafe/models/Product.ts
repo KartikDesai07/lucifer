@@ -20,6 +20,11 @@ export interface IProduct extends Document {
   available: boolean; // in-stock / "86" toggle — hides from POS ordering when false
   image: string; // opaque image ref — "r2:<key>" or a legacy Cloudinary public_id (lib/images.ts)
   modifiers: string[];
+  // "Modifiers come ticked" — every modifier starts ticked at the POS and on
+  // the diner menu; an unticked one becomes a line's removedModifiers ("NO
+  // …"). No default, same reason as `publicVisible` below: the CSV import has
+  // no column for it, so an absent key must never switch it off. Absent = off.
+  modifiersPreselected?: boolean;
   isActive: boolean; // false = archived (soft-deleted), hidden from the menu
   // Public QR menu (CR2) visibility — ABSENT means visible, same omit-empty
   // discipline as `variations` above. No default on the schema field below:
@@ -57,6 +62,10 @@ export const productSchema = new Schema<IProduct>(
     available: { type: Boolean, default: true },
     image: { type: String, default: "" },
     modifiers: { type: [String], default: [] },
+    // No `default:` — see the IProduct comment above: absent means off, and a
+    // default here would flip every pre-existing product's meaning the
+    // moment it was next saved (same reasoning as `publicVisible` below).
+    modifiersPreselected: { type: Boolean },
     isActive: { type: Boolean, default: true },
     // No `default:` — see the IProduct comment above: absent means visible,
     // and a default here would flip every pre-CR2 product's meaning.

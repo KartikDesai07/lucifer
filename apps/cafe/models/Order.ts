@@ -24,6 +24,15 @@ export interface IOrderItem {
   // orderItemLabel() so the cart, the bill, and the KOT can never disagree.
   variation?: string;
   modifiers: string[];
+  // The modifiers the customer did NOT want, on an item whose modifiers come
+  // ticked (Product.modifiersPreselected) — printed "NO <modifier>". Omit-
+  // empty (no `default:` below, NOT `default: []`) — the ledger's own
+  // discipline: an ordinary line, and every order predating this feature,
+  // carries no key at all. Declared explicitly (not interface-only): this
+  // model's own note/rewardItem incidents proved strict:true silently drops
+  // an undeclared path. Rendered only through orderItemModifierLines
+  // (@pos/shared/utils).
+  removedModifiers?: string[];
   instructions: string;
   kotRound: number; // KOT round this line was fired in (0 = not yet sent / legacy)
   // CB-5B — this line was GIVEN as a loyalty reward (a free dish claimed off the
@@ -58,6 +67,9 @@ export interface IOrderVoid {
   // prepared differently. Omitted when the line carried none.
   instructions?: string;
   modifiers?: string[];
+  // Same reason: "Pizza" alone does not say which pizza to stop — the one
+  // with NO Mushroom (omit-empty, same as `modifiers` above).
+  removedModifiers?: string[];
   // Same reason as `instructions` — on a tab holding a Small and a Large of
   // the same dish, the void slip has to say WHICH size to stop making.
   variation?: string;
@@ -191,6 +203,9 @@ const orderVoidSchema = new Schema<IOrderVoid>(
     kotRound: { type: Number, required: true },
     instructions: { type: String },
     modifiers: { type: [String], default: undefined },
+    // Same omit-empty reason as `modifiers` above — a void trail entry with
+    // no removals carries no key at all.
+    removedModifiers: { type: [String], default: undefined },
     variation: { type: String },
     reward: { type: Boolean },
     reason: { type: String, required: true },
@@ -229,6 +244,12 @@ const orderItemSchema = new Schema<IOrderItem>(
     // absent — not even an empty string — for every pre-variations order).
     variation: { type: String },
     modifiers: { type: [String], default: [] },
+    // No default (NOT `default: []`) — omit-empty, the ledger discipline: an
+    // ordinary line carries no key at all. `default: []` would print-snapshot
+    // (hashed) and store a dead key on every line that never uses this
+    // feature. Declared explicitly — see the IOrderItem comment above for why
+    // (this model's own note/rewardItem strict:true incidents).
+    removedModifiers: { type: [String], default: undefined },
     instructions: { type: String, default: "" },
     kotRound: { type: Number, default: 0 },
     // No default: an ordinary sold line carries no key at all (the omit-empty

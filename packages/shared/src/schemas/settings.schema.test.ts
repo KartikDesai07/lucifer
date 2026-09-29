@@ -9,6 +9,7 @@ import {
   PRINT_LOGO_SIZES,
   PRINT_NUMBER_START_MIN,
   PRINT_NUMBER_START_MAX,
+  POS_LAYOUTS,
 } from "../constants";
 import { PROMO_CODE_MAX } from "../public";
 import { DEFAULT_APPEARANCE, APPEARANCE_SCHEMA_VERSION } from "../appearance";
@@ -380,4 +381,25 @@ test("updateSettingsSchema (PUT) still accepts an entirely empty patch with appe
 test("updateSettingsSchema rejects a PARTIAL appearance object — every key is required once the object is present at all", () => {
   const r = updateSettingsSchema.safeParse({ appearance: { presetId: "classicBistro" } });
   assert.equal(r.success, false);
+});
+
+// ── posLayout (UI batch 1 §H) ────────────────────────────────────────────────
+
+test("settingsSchema accepts a payload with NO posLayout key at all — fixture safety, same omit-empty precedent as promoCodes/appearance", () => {
+  const r = settingsSchema.safeParse(validPrintPayload());
+  assert.equal(r.success, true);
+});
+
+test("settingsSchema accepts every declared POS_LAYOUTS member and rejects an unknown value", () => {
+  for (const layout of POS_LAYOUTS) {
+    const r = settingsSchema.safeParse({ ...validPrintPayload(), posLayout: layout });
+    assert.equal(r.success, true, `posLayout must accept declared member ${layout}`);
+  }
+  const rejected = settingsSchema.safeParse({ ...validPrintPayload(), posLayout: "byPrice" });
+  assert.equal(rejected.success, false, "posLayout must reject an unknown value");
+});
+
+test("updateSettingsSchema (the PUT partial) accepts a patch carrying only posLayout", () => {
+  const r = updateSettingsSchema.safeParse({ posLayout: "byCategory" });
+  assert.equal(r.success, true);
 });

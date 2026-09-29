@@ -39,18 +39,38 @@ const WHITE = "#ffffff";
 
 // [foreground, background, minimum, where it is used]
 const PAIRS: ReadonlyArray<readonly [string, string, number, string]> = [
-  ["ink", "slip", TEXT_MIN, "body text on cards and fields"],
-  ["ink", "paper", TEXT_MIN, "sidebar rows, page text on paper"],
+  ["ink", "slip", TEXT_MIN, "body text on cards and fields, the active sidebar row"],
+  ["ink", "paper", TEXT_MIN, "page text on paper"],
+  ["ink", "sidebar", TEXT_MIN, "the brand name and account name on the sidebar"],
   ["ink", "wash", TEXT_MIN, "a hovered sidebar row"],
   ["slip", "ink", TEXT_MIN, "the primary button's label"],
   ["slip", "ink-hover", TEXT_MIN, "the primary button's label on hover"],
   ["muted", "slip", TEXT_MIN, "secondary text on cards"],
-  ["muted", "paper", TEXT_MIN, "sidebar section labels, the vendor mark"],
+  ["muted", "paper", TEXT_MIN, "the vendor mark on paper"],
+  ["muted", "sidebar", TEXT_MIN, "sidebar section labels, the product name, row icons"],
   ["muted", "wash", TEXT_MIN, "the role line on the hovered account row"],
   ["danger", "slip", TEXT_MIN, "field and sign-in errors"],
   ["field", "slip", NON_TEXT_MIN, "a text field's border"],
   ["accent", "slip", NON_TEXT_MIN, "the active nav icon, focus rings on cards"],
-  ["accent", "paper", NON_TEXT_MIN, "focus rings on the sidebar"],
+  ["accent", "paper", NON_TEXT_MIN, "focus rings on paper"],
+  ["accent", "sidebar", NON_TEXT_MIN, "focus rings on the sidebar"],
+];
+
+/** `fg` drawn at `alpha` over `bg` — what a Tailwind `text-brand-ink/80` actually paints. */
+function over(fg: string, bg: string, alpha: number): string {
+  const channel = (hex: string, i: number) => parseInt(hex.slice(i, i + 2), 16);
+  return `#${[1, 3, 5]
+    .map((i) => Math.round(channel(fg, i) * alpha + channel(bg, i) * (1 - alpha)).toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+// Translucent text: [foreground, its alpha, background, minimum, where]. The
+// alphas are the ones components/brand/brand-classes.ts paints the rows with.
+const NAV_ROW_ALPHA = 0.8;
+const NAV_SUB_ROW_ALPHA = 0.75;
+const TRANSLUCENT_PAIRS: ReadonlyArray<readonly [string, number, string, number, string]> = [
+  ["ink", NAV_ROW_ALPHA, "sidebar", TEXT_MIN, "a resting sidebar row's label (text-brand-ink/80)"],
+  ["ink", NAV_SUB_ROW_ALPHA, "sidebar", TEXT_MIN, "a resting Settings section row (text-brand-ink/75)"],
 ];
 
 test("the brand palette parses from app/globals.css — every token a pairing below needs is present", () => {
@@ -69,6 +89,29 @@ test("every brand pairing in use meets its WCAG contrast minimum", () => {
     const ratio = contrast(tokens.get(fg)!, tokens.get(bg)!);
     assert.ok(ratio >= min, `${fg} on ${bg} (${where}) is ${ratio.toFixed(2)}:1, needs ${min}:1`);
   }
+});
+
+test("the sidebar's translucent row labels meet the text minimum on the sidebar surface", () => {
+  const tokens = brandTokens();
+  assert.ok(TRANSLUCENT_PAIRS.length > 0, "the translucent pairing list itself must not be empty");
+  const classes = readFileSync(fileURLToPath(new URL("../components/brand/brand-classes.ts", import.meta.url)), "utf8");
+  for (const [fg, alpha, bg, min, where] of TRANSLUCENT_PAIRS) {
+    // The alpha measured here must be the one the rows really use.
+    assert.ok(classes.includes(`text-brand-${fg}/${Math.round(alpha * 100)} `), `brand-classes.ts must paint text-brand-${fg}/${alpha * 100}`);
+    const ratio = contrast(over(tokens.get(fg)!, tokens.get(bg)!, alpha), tokens.get(bg)!);
+    assert.ok(ratio >= min, `${fg}/${alpha} on ${bg} (${where}) is ${ratio.toFixed(2)}:1, needs ${min}:1`);
+  }
+});
+
+test("the sidebar surface is its own token, a step lighter than paper — the primitive's --sidebar reads it", () => {
+  const tokens = brandTokens();
+  assert.ok(tokens.has("sidebar") && tokens.has("paper") && tokens.has("slip"), "landmark: --brand-sidebar, paper and slip are declared");
+  const [sidebar, paper, slip] = ["sidebar", "paper", "slip"].map((t) => luminance(tokens.get(t)!));
+  // The owner asked for a MINOR step toward white: lighter than paper, still
+  // darker than the slip (so the raised active row keeps an edge to sit on).
+  assert.ok(sidebar > paper, "the sidebar must be lighter than paper");
+  assert.ok(sidebar < slip, "the sidebar must stay darker than the slip");
+  assert.match(CSS, /--sidebar:\s*var\(--brand-sidebar\);/);
 });
 
 test("the sidebar's request badge — white on the brand danger red — is readable", () => {

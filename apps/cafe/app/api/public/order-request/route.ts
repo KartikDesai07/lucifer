@@ -159,7 +159,7 @@ export async function POST(req: Request) {
     // publicVisible clause at accept time (lib/order-request-accept.ts).
     const productIds = data.items.map((it) => it.productId).filter(mongoose.isValidObjectId);
     const products = (await Product.find({ _id: { $in: productIds }, ...PUBLIC_PRODUCT_FILTER })
-      .select("name price discount available modifiers variations")
+      .select("name price discount available modifiers modifiersPreselected variations")
       .lean()) as unknown as PricedProductSource[];
     const priced = priceRequestItems(products, data.items);
     if ("error" in priced) return noStore(failure(priced.error, 422));

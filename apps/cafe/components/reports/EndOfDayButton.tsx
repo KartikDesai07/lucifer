@@ -15,7 +15,7 @@ import { RECEIPT_PAGE_STYLE } from "@/lib/print";
 import { eodPrintJob } from "@/lib/print-routing";
 import { useHostRouting } from "@/hooks/use-print-routing";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/shared/DatePicker";
 import { EndOfDaySummary } from "@/components/reports/EndOfDaySummary";
 
 // A routed print's local fallback fires only once the enqueue has answered, and
@@ -122,11 +122,10 @@ export function EndOfDayButton() {
   return (
     <>
       <div className="flex items-center gap-2">
-        <Input
-          type="date"
+        <DatePicker
           value={date}
           max={today}
-          onChange={(e) => setDate(e.target.value)}
+          onChange={setDate}
           className="h-8 w-auto"
           aria-label="End of day date"
         />

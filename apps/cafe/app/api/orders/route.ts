@@ -34,7 +34,7 @@ import { createOrderSchema } from "@/schemas";
 import { resolveTableCharge } from "@/lib/table-admin";
 import { withTableCharge, applyExtraCharges, splitChargeTotals } from "@pos/shared/order-charges";
 import { chargeWriteFields } from "@/lib/order-charges-write";
-import { checkItemVariations } from "@/lib/variations";
+import { checkItemVariations, checkItemRemovedModifiers } from "@/lib/variations";
 import {
   resolveRewardClaimAndLine,
   rewardSnapshotFields,
@@ -156,7 +156,9 @@ export async function POST(req: Request) {
       data.idemKey ? findCreateReplay(data.idemKey) : Promise.resolve(null),
       // One indexed query, only when the payload could possibly be affected.
       productIds.length
-        ? Product.find({ _id: { $in: productIds } }).select("name variations").lean()
+        ? Product.find({ _id: { $in: productIds } })
+            .select("name variations modifiers modifiersPreselected")
+            .lean()
         : Promise.resolve([]),
       // The table's configured extra charge, doubling as its existence check.
       resolveTableCharge(data.tableNo),
@@ -178,6 +180,20 @@ export async function POST(req: Request) {
       data.items,
     );
     if (bad) return failure(bad, 400);
+
+    // "Modifiers come ticked" (owner, 2026-09-29) — a removal is legal only on
+    // an item whose modifiers come ticked and must name one of that item's
+    // own modifiers; refused here too, before any pricing/write.
+    const badRemovals = checkItemRemovedModifiers(
+      products.map((p) => ({
+        _id: String(p._id),
+        name: p.name,
+        modifiers: p.modifiers,
+        modifiersPreselected: p.modifiersPreselected,
+      })),
+      data.items,
+    );
+    if (badRemovals) return failure(badRemovals, 400);
 
     const table = settledValue(tableR);
     if ("error" in table) return failure(table.error, 400);

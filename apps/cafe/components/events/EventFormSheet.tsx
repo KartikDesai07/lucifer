@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { FormSheet } from "@/components/shared/FormSheet";
 import { FormField } from "@/components/shared/FormField";
+import { DatePicker } from "@/components/shared/DatePicker";
 import type { Event } from "@/types";
 
 const eventFormSchema = createEventSchema.pick({
@@ -160,11 +161,18 @@ export function EventFormSheet({
 
       <div className="grid grid-cols-2 gap-3">
         <FormField label="Date" htmlFor="evt-date" error={errors.date?.message}>
-          <Input
-            id="evt-date"
-            type="date"
-            aria-invalid={!!errors.date}
-            {...register("date")}
+          <Controller
+            control={control}
+            name="date"
+            render={({ field }) => (
+              <DatePicker
+                id="evt-date"
+                value={field.value}
+                onChange={field.onChange}
+                invalid={!!errors.date}
+                ref={field.ref}
+              />
+            )}
           />
         </FormField>
         <FormField label="Time" htmlFor="evt-time" error={errors.time?.message}>

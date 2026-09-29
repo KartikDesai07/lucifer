@@ -263,6 +263,10 @@ export function printOrderSnapshot(order: Order): PrintOrderSnapshot {
       // ordinary line would change every payload for the sake of the rare one.
       return {
         productId, name, price, qty, variation, modifiers, instructions, kotRound,
+        // The "NO …" lines — same omit-empty rule, same reason.
+        ...(item.removedModifiers && item.removedModifiers.length > 0
+          ? { removedModifiers: item.removedModifiers }
+          : {}),
         ...(item.reward === true ? { reward: true as const } : {}),
         ...(item.note ? { note: item.note } : {}),
       };

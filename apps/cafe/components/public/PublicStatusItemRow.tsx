@@ -1,6 +1,7 @@
 import { Minus, Plus, Trash2 } from "lucide-react";
 
 import { PUBLIC_ORDER_MAX_QTY, type PublicStatusItem } from "@pos/shared/public";
+import { orderItemModifierLines } from "@pos/shared/utils";
 import { inr } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -23,9 +24,9 @@ export function StatusItemRow({
         </p>
         <span className="shrink-0 text-sm font-medium tabular-nums">{inr(line.price * line.qty)}</span>
       </div>
-      {line.modifiers.length > 0 && (
-        <p className="truncate text-xs text-muted-foreground">{line.modifiers.join(", ")}</p>
-      )}
+      {orderItemModifierLines(line).map((text) => (
+        <p key={text} className="truncate text-xs text-muted-foreground">{text}</p>
+      ))}
       {line.instructions && <p className="truncate text-xs italic text-muted-foreground">{line.instructions}</p>}
       {controls && (
         <div className="mt-1 flex items-center gap-2">

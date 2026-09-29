@@ -39,6 +39,7 @@ import type {
   PrintFontSize,
   PrintLogoSize,
   DiscountKind,
+  PosLayout,
 } from "./constants";
 import type { ImportRowStatus } from "./product-import";
 import type { DuesCollected } from "./types-analytics";
@@ -86,6 +87,10 @@ export interface Product {
   available: boolean; // in-stock / "86" toggle — disabled in POS when false
   image: string; // opaque image ref — "r2:<key>" or a legacy Cloudinary public_id ("" if none)
   modifiers: string[];
+  // "Modifiers come ticked": every modifier starts ticked at the POS and on the
+  // diner menu; an unticked one becomes a line's `removedModifiers` ("NO …").
+  // Absent = off — only `true` turns it on.
+  modifiersPreselected?: boolean;
   isActive: boolean; // false = archived (soft-deleted)
   // Whether this item appears on the PUBLIC QR menu. ABSENT means visible — so a
   // cafe that never touches this sees its whole menu published, and only an
@@ -152,7 +157,13 @@ export interface OrderItem {
   // pre-variations order is unchanged. Everything that displays a line renders it
   // through `orderItemLabel` so the cart, the bill and the KOT cannot disagree.
   variation?: string;
+  // Modifiers the customer ADDED (normal mode). On an item whose modifiers come
+  // ticked this stays empty — the kept defaults print nothing.
   modifiers: string[];
+  // Modifiers the customer did NOT want on such an item — printed "NO …".
+  // Omit-empty: absent on every ordinary line and every older order.
+  // Rendered only through orderItemModifierLines (@pos/shared/utils).
+  removedModifiers?: string[];
   instructions: string;
   kotRound: number; // KOT round this line was fired in (0 = not yet sent / legacy)
   // D5 REVERSAL (CB-5B S11/S12) — marks this line as given as a loyalty
@@ -188,6 +199,9 @@ export interface OrderVoid {
   // differently. Absent when the line carried none (omit-empty).
   instructions?: string;
   modifiers?: string[];
+  // Same reason: "Pizza" alone does not say which pizza to stop — the one
+  // with NO Mushroom (omit-empty).
+  removedModifiers?: string[];
   // Same reason as `instructions`: on a tab holding a Small and a Large of the
   // same dish, the slip has to name WHICH one to stop making.
   variation?: string;
@@ -397,6 +411,11 @@ export interface Settings {
 
   // CR2.3b — Telegram kill switch (§21.6): sends stop, connections stay.
   telegramPaused?: boolean;
+
+  // UI batch 1 §H — the New Order product-grid arrangement. Same lean-read
+  // hazard as the print block above: a pre-existing Settings document has no
+  // such key. Absent means "normal" (models/Settings.ts's stored default).
+  posLayout?: PosLayout;
 
   createdAt: string;
   updatedAt: string;

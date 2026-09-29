@@ -9,6 +9,7 @@ import {
   POS_GRID_CLASS_SIDEBAR_COLLAPSED,
 } from "@/lib/pos-layout";
 import { useSidebar } from "@/components/ui/sidebar";
+import { useSettings } from "@/hooks/use-settings";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -16,6 +17,7 @@ import { ALL_CATEGORIES } from "@/components/pos/CategorySidebar";
 import { ProductCard } from "@/components/pos/ProductCard";
 import { useCategoryMap } from "@/hooks/use-category-map";
 import { categoryNameOf, sortProductsByCategoryOrder } from "@/lib/category-map";
+import { groupProductsByCategory } from "@/lib/pos-category-groups";
 import type { Product } from "@/types";
 
 // Column count = viewport breakpoints keyed by the sidebar's state — together
@@ -65,6 +67,9 @@ export function ProductGrid({
   const [search, setSearch] = useState("");
   const gridClass = useGridClass();
   const { map: categoryMap, isLoading: categoriesLoading } = useCategoryMap();
+  // Absent (a pre-existing Settings doc) reads as "normal" — same lean-doc
+  // discipline as every other optional Settings field.
+  const byCategory = useSettings().data?.posLayout === "byCategory";
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -87,6 +92,17 @@ export function ProductGrid({
     // lib/category-map.ts so it can be unit-tested as pure data.
     return sortProductsByCategoryOrder(matching, categoryMap);
   }, [products, selectedCategory, search, categoryMap, categoriesLoading]);
+
+  // "By category" (owner decision, UI batch 1 §H): the SAME `filtered` list
+  // (already in category-order — see the comment above) split into
+  // contiguous per-category runs. One category selected or a search active
+  // narrows `filtered` first, so this naturally yields one heading for a
+  // single-category view. Skipped entirely in "normal" mode/while categories
+  // are loading — a flat grid needs no groups computed.
+  const groups = useMemo(
+    () => (byCategory && !categoriesLoading ? groupProductsByCategory(filtered, categoryMap) : null),
+    [byCategory, categoriesLoading, filtered, categoryMap],
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -127,6 +143,39 @@ export function ProductGrid({
             title="No products found"
             description="Try a different category or search term."
           />
+        ) : groups ? (
+          <div className="flex flex-col gap-4">
+            {groups.map((group) => (
+              <div key={group.categoryId ?? "other"}>
+                {/* role=heading + aria-level (not a literal <h3>): this list
+                    sits inside a page that already has its own heading
+                    hierarchy, so the level is asserted rather than assumed. */}
+                <div
+                  role="heading"
+                  aria-level={3}
+                  className="mb-2 border-b pb-1 text-sm font-semibold text-muted-foreground"
+                >
+                  {group.heading}
+                </div>
+                <div className={cn(gridClass, disabled && "opacity-50")} inert={disabled}>
+                  {group.items.map((product) => (
+                    <ProductCard
+                      key={product._id}
+                      product={product}
+                      // Every tile already sits under its own category's
+                      // heading here — repeating the name on the tile too
+                      // would just say the same thing twice.
+                      showCategory={false}
+                      categoryLabel={categoryNameOf(categoryMap, product.categoryId)}
+                      qty={qtyByProduct?.[product._id] ?? 0}
+                      onClick={onProductClick}
+                      onOptions={onProductOptions}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
           <div className={cn(gridClass, disabled && "opacity-50")} inert={disabled}>
             {filtered.map((product) => (

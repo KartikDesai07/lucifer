@@ -1,6 +1,6 @@
 "use client";
 
-import { orderItemLabel } from "@pos/shared/utils";
+import { orderItemLabel, orderItemModifierLines } from "@pos/shared/utils";
 import { inr, formatDate } from "@/lib/utils";
 import type { OrderVoid } from "@/types";
 
@@ -40,6 +40,11 @@ export function OrderVoidTrail({ voids }: OrderVoidTrailProps) {
                 <span>{inr(v.price * v.qty)}</span>
               )}
             </div>
+            {orderItemModifierLines(v).map((line) => (
+              <div key={line} className="text-muted-foreground">
+                {line}
+              </div>
+            ))}
             <div className="text-muted-foreground">
               {v.reason} — {v.voidedBy}, {formatDate(v.at)}
             </div>

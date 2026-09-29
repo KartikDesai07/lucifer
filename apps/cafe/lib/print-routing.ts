@@ -169,6 +169,11 @@ export function voidPrintJob(order: Order, entry: OrderVoid, opts: { reprint: bo
         price: entry.price,
         qty: entry.qty,
         modifiers: entry.modifiers ?? [],
+        // The "NO …" lines, so the slip names WHICH pizza to stop — the one
+        // with NO Mushroom (omit-empty, like kotNumber/reward below).
+        ...(entry.removedModifiers && entry.removedModifiers.length > 0
+          ? { removedModifiers: entry.removedModifiers }
+          : {}),
         instructions: voidLineInstructionsWithRewardMarker(entry.instructions ?? "", entry.reward),
         kotRound: entry.kotRound,
         // Omitted rather than sent as an explicit `undefined`: the sub-schema

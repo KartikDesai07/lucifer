@@ -1,4 +1,5 @@
 import { effectiveUnitPrice } from "@pos/shared/public";
+import { removedModifiersError } from "@pos/shared/utils";
 import { checkItemVariations } from "@/lib/variations";
 import type { ProductVariation } from "@/types";
 
@@ -31,6 +32,7 @@ export interface PricedProductSource {
   discount: number;
   available: boolean;
   modifiers: string[];
+  modifiersPreselected?: boolean;
   variations?: ProductVariation[];
 }
 
@@ -38,6 +40,7 @@ export interface PricedRequestItem {
   productId: string;
   variation?: string;
   modifiers: string[];
+  removedModifiers?: string[];
   instructions?: string;
   qty: number;
 }
@@ -49,6 +52,7 @@ export interface PricedLine {
   qty: number;
   variation?: string;
   modifiers: string[];
+  removedModifiers?: string[]; // omit-empty — same rule as the stored order line
   instructions?: string;
 }
 
@@ -110,6 +114,13 @@ export function priceRequestItems(
       }
     }
 
+    // "Modifiers come ticked" (owner, 2026-09-29) — same removedModifiersError
+    // gate the POS write routes run, applied here beside the modifier check:
+    // a removal is legal only when the product's flag is on, must name one of
+    // its own modifiers, and cannot also be an addition.
+    const removedError = removedModifiersError(product, item);
+    if (removedError) return { error: removedError };
+
     const line: PricedLine = {
       productId,
       name: product.name,
@@ -118,8 +129,11 @@ export function priceRequestItems(
       modifiers: item.modifiers,
     };
     // Omit-empty, matching the stored order-item shape: a line with no chosen
-    // variation/instructions carries no such key on the wire either.
+    // variation/instructions/removals carries no such key on the wire either.
     if (item.variation) line.variation = item.variation;
+    if (item.removedModifiers && item.removedModifiers.length > 0) {
+      line.removedModifiers = item.removedModifiers;
+    }
     if (item.instructions) line.instructions = item.instructions;
     lines.push(line);
   }

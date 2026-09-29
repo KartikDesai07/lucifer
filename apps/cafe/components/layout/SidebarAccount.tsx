@@ -44,7 +44,7 @@ export function SidebarAccount({ collapsed }: { collapsed: boolean }) {
               <SidebarMenuButton
                 size="lg"
                 tooltip={brandTooltip(name)}
-                className="h-12 gap-2.5 rounded-lg px-2 hover:bg-brand-wash data-[state=open]:bg-brand-slip data-[state=open]:shadow-[0_0_0_1px_rgb(29_27_24/0.07)]"
+                className="h-12 gap-2.5 rounded-lg px-2 hover:bg-brand-wash data-[state=open]:bg-brand-slip data-[state=open]:shadow-[0_0_0_1px_rgb(29_27_24/0.12)]"
               >
                 <span
                   aria-hidden="true"

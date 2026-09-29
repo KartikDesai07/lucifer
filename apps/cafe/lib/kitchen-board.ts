@@ -21,6 +21,7 @@ export interface FiredItem {
   qty: number;
   variation?: string;
   modifiers?: string[];
+  removedModifiers?: string[]; // "NO …" (modifiers come ticked) — part of the line's identity
   instructions?: string;
   kotRound: number; // 0 = not yet fired / legacy — filtered out below
 }
@@ -61,6 +62,8 @@ export interface KitchenRow {
   variation?: string;
   qty: number;
   modifiers: string[];
+  // Omit-empty — the "NO …" lines, rendered through orderItemModifierLines.
+  removedModifiers?: string[];
   instructions?: string;
   round: number;
   ticketNumber?: number;
@@ -166,6 +169,9 @@ export function buildKitchenRows({
         kotRound: item.kotRound,
         instructions: item.instructions,
         modifiers: item.modifiers,
+        // A "NO Mushroom" pizza is its own line to the cook: its own row and
+        // its own tick, never merged into a plain pizza of the same round.
+        removedModifiers: item.removedModifiers,
         variation: item.variation,
       });
       // P4-B — NOT dropped any more. `done` is a property of the REF, so the
@@ -193,6 +199,9 @@ export function buildKitchenRows({
         variation: item.variation,
         qty: item.qty,
         modifiers: [...(item.modifiers ?? [])],
+        ...(item.removedModifiers && item.removedModifiers.length > 0
+          ? { removedModifiers: [...item.removedModifiers] }
+          : {}),
         instructions: item.instructions || undefined,
         round,
         ticketNumber: order.kotNumbers?.[round - 1],

@@ -12,9 +12,9 @@ import {
 import { RESERVATION_STATUSES, type ReservationStatus } from "@/lib/constants";
 import { formatDate, formatTime, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DatePicker } from "@/components/shared/DatePicker";
 import {
   Select,
   SelectContent,
@@ -114,10 +114,10 @@ export default function ReservationsPage() {
             ))}
           </SelectContent>
         </Select>
-        <Input
-          type="date"
+        <DatePicker
           value={date}
-          onChange={(e) => setDate(e.target.value)}
+          onChange={setDate}
+          aria-label="Filter by date"
           className="sm:w-44"
         />
         {date && (

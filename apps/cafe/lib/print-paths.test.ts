@@ -492,7 +492,10 @@ test("PIN: KOTReceipt's void variant prints *** VOID *** / CANCELLED ITEMS — D
   // of the moment the cook was told to stop. The order is the assertion.
   assert.match(src, /fmtTime\(movedMeta\?\.at \?\? voidMeta\?\.at \?\? order\.createdAt\)/);
   assert.match(src, /movedMeta\?\.by \?\? voidMeta\?\.by \?\? order\.receiver/);
-  assert.match(src, /item\.modifiers\.length > 0/, "a void slip must still show the voided line's modifiers");
+  // 2026-09-29 (UI batch 1 F): the line's modifiers — additions AND the "NO …"
+  // removals — now render through the shared formatter, the one place every
+  // slip gets its words from; the intent (a void slip still names them) is unchanged.
+  assert.match(src, /orderItemModifierLines\(item\)\.map\(/, "a void slip must still show the voided line's modifiers");
   assert.match(src, /item\.instructions &&/, "a void slip must still show the voided line's instructions");
 });
 
@@ -593,6 +596,16 @@ test("PIN: EndOfDayButton references no session/role source at all — the cashi
   // while this instance's routed enqueue is in flight — `!ready` stays the
   // first disjunct, so "disabled until ready" is unchanged.
   assert.match(src, /disabled=\{!ready \|\| enqueuePending\}/, "the print button must be disabled until ready (and while a routed enqueue is in flight, PH-8)");
-  assert.match(src, /<Input\s+type="date"/, "a date picker must exist so a past day's slip can be reprinted");
-  assert.match(src, /onChange=\{\(e\) => setDate\(e\.target\.value\)\}/);
+  // UI batch 1 slice G (2026-09-29): the native `<Input type="date">` was
+  // replaced by the shared DatePicker — re-pin the INTENT (a date picker
+  // exists, bounded to today, not clearable), not the old markup.
+  assert.match(
+    src,
+    /<DatePicker\b/,
+    "a date picker must exist so a past day's slip can be reprinted",
+  );
+  assert.match(src, /from "@\/components\/shared\/DatePicker";/, "must import the shared DatePicker");
+  assert.match(src, /max=\{today\}/, "the date picker must be bounded to today (no future EOD slip)");
+  assert.ok(!/clearable/.test(src), "the EOD date picker must NOT be clearable — a cleared value is meant to clamp back to today, not go blank");
+  assert.match(src, /onChange=\{setDate\}/);
 });

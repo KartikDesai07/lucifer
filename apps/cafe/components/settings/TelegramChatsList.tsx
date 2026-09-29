@@ -20,6 +20,7 @@ import {
   type TelegramAlertType,
 } from "@pos/shared/telegram-alert";
 import { formatDate } from "@/lib/utils";
+import { BRAND_CHECKBOX_SQUARE_CLASS } from "@/components/brand/brand-classes";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -129,6 +130,7 @@ export function TelegramChatsList({ botUsername }: TelegramChatsListProps) {
                   {TELEGRAM_ALERT_REGISTRY.map((meta) => (
                     <label key={meta.type} className="flex items-start gap-2 text-xs">
                       <Checkbox
+                        className={BRAND_CHECKBOX_SQUARE_CLASS}
                         checked={row.types.includes(meta.type)}
                         onCheckedChange={(c) => toggleType(row, meta.type, c === true)}
                         disabled={updateChat.isPending || chats.isFetching}

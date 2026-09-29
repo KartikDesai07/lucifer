@@ -7,19 +7,32 @@ import type { PublicAddToCartOpts } from "@/components/public/PublicItemSheet";
 import type { PublicMenuProduct } from "@/components/public/PublicMenuItem";
 import type { CartLine } from "@/components/public/public-cart-store";
 
+// ASCII record/unit separators, written as escapes (never literal control chars).
+const REMOVED_KEY_SEP = "\u001e";
+const REMOVED_KEY_ITEM_SEP = "\u001f";
+
 // Two lines merge into one cart line only when product + variation +
-// modifiers + instructions all match — mirrors hooks/use-cart.ts's lineKey.
-// That hook is POS-only and reaches into @/types/@/models shapes this
-// diner-facing surface may never import, so this is a small, deliberate
-// re-implementation rather than a shared import.
+// modifiers + instructions (+ removedModifiers) all match — mirrors
+// hooks/use-cart.ts's lineKey. That hook is POS-only and reaches into
+// @/types/@/models shapes this diner-facing surface may never import, so
+// this is a small, deliberate re-implementation rather than a shared import.
+// removedModifiers is appended ONLY when non-empty, so the key stays
+// byte-identical to its pre-feature form for every line with no removals.
 export function lineKey(
   productId: string,
   variation: string | undefined,
   modifiers: string[],
   instructions: string | undefined,
+  removedModifiers?: string[],
 ): string {
-  return [productId, variation ?? "", [...modifiers].sort().join(","), instructions ?? ""].join("|");
+  const key = [productId, variation ?? "", [...modifiers].sort().join(","), instructions ?? ""].join("|");
+  // The removals follow a separator no diner can type (escapes, never literal
+  // control chars): after the free-text instructions, a "|" would let a note
+  // such as "less salt|Mushroom" read as a removal and merge two lines.
+  if (!removedModifiers || removedModifiers.length === 0) return key;
+  return key + REMOVED_KEY_SEP + [...removedModifiers].sort().join(REMOVED_KEY_ITEM_SEP);
 }
+
 
 export function resolveUnitPrice(product: PublicMenuProduct, variation: string | undefined): number {
   const chosen = variation ? product.variations?.find((v) => v.name === variation) : undefined;
@@ -65,7 +78,7 @@ export function computeAddLine(
   product: PublicMenuProduct,
   opts: PublicAddToCartOpts,
 ): { next: CartLine[]; capped: boolean } {
-  const key = lineKey(product.id, opts.variation, opts.modifiers, opts.instructions);
+  const key = lineKey(product.id, opts.variation, opts.modifiers, opts.instructions, opts.removedModifiers);
   const unitPrice = resolveUnitPrice(product, opts.variation);
   const idx = prev.findIndex((l) => l.lineId === key);
   if (idx >= 0) {
@@ -88,6 +101,9 @@ export function computeAddLine(
         variation: opts.variation,
         modifiers: opts.modifiers,
         instructions: opts.instructions,
+        ...(opts.removedModifiers && opts.removedModifiers.length > 0
+          ? { removedModifiers: opts.removedModifiers }
+          : {}),
       },
     ],
     capped: false,
@@ -128,6 +144,7 @@ export function buildRepeatCart(
     qty: number;
     variation?: string;
     modifiers: string[];
+    removedModifiers?: string[];
     instructions?: string;
   }[],
   menuItems: PublicMenuProduct[],
@@ -148,10 +165,23 @@ export function buildRepeatCart(
       skipped += 1;
       continue;
     }
+    // "NO Mushroom" must repeat as NO Mushroom — dropping it would put the
+    // mushroom back on. If the item no longer has its modifiers ticked, or no
+    // longer has that modifier, the line is skipped (the server would refuse
+    // it anyway), never silently repeated without the removal.
+    const removed = item.removedModifiers ?? [];
+    if (
+      removed.length > 0 &&
+      (product.modifiersPreselected !== true || !removed.every((m) => product.modifiers.includes(m)))
+    ) {
+      skipped += 1;
+      continue;
+    }
     const result = computeAddLine(next, product, {
       qty: Math.min(PUBLIC_ORDER_MAX_QTY, item.qty),
       variation: item.variation,
       modifiers: item.modifiers,
+      ...(removed.length > 0 ? { removedModifiers: removed } : {}),
       instructions: item.instructions,
     });
     if (result.capped) {

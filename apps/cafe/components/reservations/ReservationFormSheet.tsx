@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { FormSheet } from "@/components/shared/FormSheet";
 import { FormField } from "@/components/shared/FormField";
+import { DatePicker } from "@/components/shared/DatePicker";
 import type { Reservation } from "@/types";
 
 const reservationFormSchema = createReservationSchema.pick({
@@ -167,11 +168,18 @@ export function ReservationFormSheet({
 
       <div className="grid grid-cols-2 gap-3">
         <FormField label="Date" htmlFor="res-date" error={errors.date?.message}>
-          <Input
-            id="res-date"
-            type="date"
-            aria-invalid={!!errors.date}
-            {...register("date")}
+          <Controller
+            control={control}
+            name="date"
+            render={({ field }) => (
+              <DatePicker
+                id="res-date"
+                value={field.value}
+                onChange={field.onChange}
+                invalid={!!errors.date}
+                ref={field.ref}
+              />
+            )}
           />
         </FormField>
         <FormField label="Time" htmlFor="res-time" error={errors.time?.message}>

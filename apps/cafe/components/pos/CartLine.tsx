@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { Minus, Plus, Trash2 } from "lucide-react";
 
-import { orderItemLabel } from "@pos/shared/utils";
+import { orderItemLabel, orderItemModifierLines } from "@pos/shared/utils";
 import { inr, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { POS_CART_STEPPER_CLASS } from "@/lib/pos-layout";
@@ -50,11 +50,11 @@ export function CartLine({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{orderItemLabel(item)}</p>
-          {item.modifiers.length > 0 && (
-            <p className="truncate text-xs text-muted-foreground">
-              {item.modifiers.join(", ")}
+          {orderItemModifierLines(item).map((line) => (
+            <p key={line} className="truncate text-xs text-muted-foreground">
+              {line}
             </p>
-          )}
+          ))}
           {item.instructions && (
             <p className="truncate text-xs italic text-muted-foreground">
               {item.instructions}

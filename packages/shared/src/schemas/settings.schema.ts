@@ -6,6 +6,7 @@ import {
   PAPER_WIDTHS,
   PRINT_FONT_SIZES,
   PRINT_LOGO_SIZES,
+  POS_LAYOUTS,
 } from "../constants";
 import { SELF_ORDER_MODES } from "../public";
 import {
@@ -159,6 +160,14 @@ export const settingsSchema = z.object({
   // loyaltyRulesSchema requires every key once the object is present at all.
   // A cafe that never opts into this ladder simply never carries the key.
   loyaltyRules: loyaltyRulesSchema.optional(),
+
+  // UI batch 1 §H — the New Order screen's product-grid arrangement.
+  // OPTIONAL, no `.default()` (same promoCodes/telegram precedent above):
+  // every Settings document and fixture written before this field predates
+  // it, and models/Settings.ts carries the stored "normal" default instead —
+  // input === output here so the settings form can type useForm<z.infer<...>>
+  // directly.
+  posLayout: z.enum(POS_LAYOUTS).optional(),
 });
 
 // PUT accepts any subset; the form sends the full object.

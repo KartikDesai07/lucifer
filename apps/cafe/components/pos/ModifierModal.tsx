@@ -5,6 +5,8 @@ import { Minus, Plus } from "lucide-react";
 
 import { effectivePrice } from "@/hooks/use-cart";
 import { inr, cn } from "@/lib/utils";
+import { initialSelected, pickModifierResult, modifiersPreselectedFor } from "@/lib/modifier-picker";
+import { BRAND_CHECKBOX_SQUARE_CLASS } from "@/components/brand/brand-classes";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -21,6 +23,10 @@ import type { Product } from "@/types";
 
 export interface AddToCartOpts {
   modifiers: string[];
+  // "Modifiers come ticked" (reverse mode) — the modifiers the operator
+  // UNticked, so the kitchen knows what NOT to add. Omitted whenever nothing
+  // was unticked, or the product isn't in reverse mode.
+  removedModifiers?: string[];
   instructions: string;
   qty: number;
   // The variation name the operator picked, required (below) whenever the
@@ -53,17 +59,21 @@ export function ModifierModal({
   // starts empty and confirm stays disabled below until the operator taps one.
   const [variation, setVariation] = useState<string | undefined>(undefined);
 
-  // Reset the form each time a new product is opened.
+  // Reset the form each time a new product is opened. A reverse-mode product
+  // (modifiers come ticked) starts every modifier ticked; normal mode starts
+  // with none, same as always.
   useEffect(() => {
-    if (open) {
-      setSelected([]);
+    if (open && product) {
+      setSelected(initialSelected(product));
       setInstructions("");
       setQty(1);
       setVariation(undefined);
     }
-  }, [open, product?._id]);
+  }, [open, product]);
 
   if (!product) return null;
+
+  const reverseMode = modifiersPreselectedFor(product);
 
   const hasVariations = (product.variations?.length ?? 0) > 0;
   const chosenVariation = variation
@@ -87,7 +97,7 @@ export function ModifierModal({
 
   const confirm = () => {
     onConfirm(product, {
-      modifiers: selected,
+      ...pickModifierResult(product, selected),
       instructions: instructions.trim(),
       qty,
       variation,
@@ -144,6 +154,11 @@ export function ModifierModal({
           {product.modifiers.length > 0 && (
             <div className="space-y-2">
               <Label>Add-ons</Label>
+              {reverseMode && (
+                <p className="text-xs text-muted-foreground">
+                  Untick what the customer does not want.
+                </p>
+              )}
               <div className="space-y-2">
                 {product.modifiers.map((modifier) => (
                   <label
@@ -151,6 +166,7 @@ export function ModifierModal({
                     className="flex items-center gap-2 text-sm"
                   >
                     <Checkbox
+                      className={BRAND_CHECKBOX_SQUARE_CLASS}
                       checked={selected.includes(modifier)}
                       onCheckedChange={(c) => toggle(modifier, c === true)}
                     />

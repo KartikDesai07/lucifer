@@ -47,6 +47,10 @@ export function toStatusItems(items: IOrderRequestItem[]): PublicStatusItem[] {
       modifiers: item.modifiers,
     };
     if (item.variation) statusItem.variation = item.variation;
+    // Omit-empty, same rule as `variation` above.
+    if (item.removedModifiers && item.removedModifiers.length > 0) {
+      statusItem.removedModifiers = item.removedModifiers;
+    }
     if (item.instructions) statusItem.instructions = item.instructions;
     return statusItem;
   });

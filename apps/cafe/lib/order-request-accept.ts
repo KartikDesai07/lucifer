@@ -140,7 +140,7 @@ export async function acceptOrderRequest(
   // 4. Re-validate against LIVE products — isActive only (hidden-from-menu stays POS-orderable).
   const productIds = request.items.map((it) => it.productId).filter(mongoose.isValidObjectId);
   const products = (await Product.find({ _id: { $in: productIds }, isActive: true })
-    .select("name price discount available modifiers variations")
+    .select("name price discount available modifiers modifiersPreselected variations")
     .lean()) as unknown as PricedProductSource[];
   const priced = priceRequestItems(
     products,
@@ -148,6 +148,7 @@ export async function acceptOrderRequest(
       productId: String(it.productId),
       variation: it.variation,
       modifiers: it.modifiers,
+      removedModifiers: it.removedModifiers,
       instructions: it.instructions,
       qty: it.qty,
     })),
@@ -165,6 +166,11 @@ export async function acceptOrderRequest(
     qty: it.qty,
     ...(it.variation ? { variation: it.variation } : {}),
     modifiers: it.modifiers,
+    // Omit-empty — same rule as `variation` above (a request predating this
+    // feature, or a line with nothing unticked, carries no key at all).
+    ...(it.removedModifiers && it.removedModifiers.length > 0
+      ? { removedModifiers: it.removedModifiers }
+      : {}),
     instructions: it.instructions,
   }));
 

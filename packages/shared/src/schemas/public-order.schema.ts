@@ -52,6 +52,13 @@ export const publicOrderItemSchema = z
       .array(z.string().trim().min(1).max(PUBLIC_ORDER_MODIFIER_MAX_LEN))
       .max(PUBLIC_ORDER_MAX_MODIFIERS)
       .default([]),
+    // The modifiers the diner unticked on an item whose modifiers come ticked
+    // — printed "NO <modifier>". Omit-empty; the server checks each against
+    // the live product (removedModifiersError), like `modifiers` above.
+    removedModifiers: z
+      .array(z.string().trim().min(1).max(PUBLIC_ORDER_MODIFIER_MAX_LEN))
+      .max(PUBLIC_ORDER_MAX_MODIFIERS)
+      .optional(),
     instructions: z.string().trim().min(1).max(PUBLIC_NOTE_MAX_LEN).optional(),
     qty: z.number().int().min(1).max(PUBLIC_ORDER_MAX_QTY),
   })

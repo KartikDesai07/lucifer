@@ -135,7 +135,8 @@ export function orderLineKey(item: {
   qty: number;
   kotRound?: number;
   instructions?: string;
-  modifiers?: string[];
+  modifiers?: readonly string[];
+  removedModifiers?: readonly string[];
   variation?: string;
 }): string {
   const base = [
@@ -151,7 +152,22 @@ export function orderLineKey(item: {
   // so every key for an item sold one way stays byte-identical to the pre-
   // variations format: a tab opened before this shipped keeps matching its own
   // void echoes across the deploy instead of 409ing on the first void.
-  return (item.variation ? [...base, item.variation] : base).join(LINE_KEY_SEP);
+  return withIdentityTail(base, item).join(LINE_KEY_SEP);
+}
+
+/** The optional trailing slots of a line identity. A line with no removals
+ *  keeps the pre-removals format exactly (variation appended only when it has
+ *  one). A line WITH removals always carries both slots — `[variation ?? "",
+ *  removals]` — so a variation-only key (one slot) and a removals-only key
+ *  (two slots) can never be the same string: two pizzas, one with NO Mushroom,
+ *  are different lines to a void, a kitchen tick and a replay. */
+function withIdentityTail(
+  base: ReadonlyArray<string | number>,
+  item: { variation?: string; removedModifiers?: readonly string[] },
+): Array<string | number> {
+  const removed = item.removedModifiers ?? [];
+  if (removed.length > 0) return [...base, item.variation ?? "", [...removed].sort().join(MODIFIER_SEP)];
+  return item.variation ? [...base, item.variation] : [...base];
 }
 
 // A DURABLE line ref for the kitchen board (P4-A), deliberately qty-free.
@@ -167,7 +183,8 @@ export function kotLineRef(item: {
   productId: string;
   kotRound?: number;
   instructions?: string;
-  modifiers?: string[];
+  modifiers?: readonly string[];
+  removedModifiers?: readonly string[];
   variation?: string;
 }): string {
   const base = [
@@ -176,10 +193,9 @@ export function kotLineRef(item: {
     item.instructions ?? "",
     [...(item.modifiers ?? [])].sort().join(MODIFIER_SEP),
   ];
-  // Same trailing-separator discipline as orderLineKey: append the variation
-  // only when present, so a ref for a line sold one way stays unaffected by
-  // the variations feature ever having shipped.
-  return (item.variation ? [...base, item.variation] : base).join(LINE_KEY_SEP);
+  // Same trailing-slot discipline as orderLineKey: a ref for a line sold one
+  // way with no removals stays unaffected by either feature ever having shipped.
+  return withIdentityTail(base, item).join(LINE_KEY_SEP);
 }
 
 // The one place a line's display name is built: the product name, plus the
@@ -189,6 +205,20 @@ export function kotLineRef(item: {
 export function orderItemLabel(item: { name: string; variation?: string }): string {
   return item.variation ? `${item.name} (${item.variation})` : item.name;
 }
+
+// The line's modifier changes ("NO Mushroom", "+ Extra cheese") and the server
+// check on removals live in ./modifiers — re-exported so every surface imports
+// them from here, beside orderItemLabel.
+export {
+  ADDED_MODIFIER_PREFIX,
+  REMOVED_MODIFIER_PREFIX,
+  REMOVED_MODIFIERS_NOT_ALLOWED_ERROR,
+  REMOVED_MODIFIER_ALSO_ADDED_ERROR,
+  REMOVED_MODIFIER_REPEATED_ERROR,
+  REMOVED_MODIFIER_UNKNOWN_ERROR,
+  orderItemModifierLines,
+  removedModifiersError,
+} from "./modifiers";
 
 // The one place the discount line's name is built — receipts, the payment
 // modal and the order sheet all call it. Old orders without the field, and

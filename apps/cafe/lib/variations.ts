@@ -1,4 +1,5 @@
 import type { ProductVariation } from "@/types";
+import { removedModifiersError } from "@pos/shared/utils";
 
 // PURE — no DB import. Both order-write routes (POST /api/orders and
 // POST /api/orders/[id]/items) already have their own query in hand (one
@@ -48,6 +49,38 @@ export function checkItemVariations(
     if (item.variation && !names.includes(item.variation)) {
       return VARIATION_UNKNOWN_ERROR(item.name, item.variation);
     }
+  }
+  return null;
+}
+
+export interface RemovedModifiersSource {
+  _id: string;
+  name: string;
+  modifiers?: string[];
+  modifiersPreselected?: boolean;
+}
+
+export interface RemovedModifiersOrderedItem {
+  productId: string;
+  modifiers?: string[];
+  removedModifiers?: string[];
+}
+
+// "Modifiers come ticked" (owner, 2026-09-29) — the server-side twin of
+// checkItemVariations above: removals are allowed only on an item whose
+// modifiers come ticked, must each be one of that item's modifiers, and must
+// never also appear in `modifiers` (removedModifiersError, @pos/shared/utils).
+// Same "product missing → ignored" rule as checkItemVariations — existence is
+// not this function's job either. Returns the first rejection, or null.
+export function checkItemRemovedModifiers(
+  products: RemovedModifiersSource[],
+  items: RemovedModifiersOrderedItem[],
+): string | null {
+  for (const item of items) {
+    const product = products.find((p) => p._id === item.productId);
+    if (!product) continue; // existence is somebody else's problem
+    const bad = removedModifiersError(product, item);
+    if (bad) return bad;
   }
   return null;
 }

@@ -98,7 +98,12 @@ export function sameLine(a: DraftLine, b: DraftLine): boolean {
     // U+0001 control char, not "" — preserved exactly (any separator works
     // identically here since both sides use the SAME one; this just avoids
     // an invisible literal in source, per this repo's own lesson on those).
-    a.modifiers.join("\u0001") === b.modifiers.join("\u0001")
+    a.modifiers.join("\u0001") === b.modifiers.join("\u0001") &&
+    // "Modifiers come ticked" — two lines that differ only in which defaults
+    // were unticked are different lines to this compare too (same idiom as
+    // modifiers above; absent reads as empty so an old draft with no
+    // removedModifiers key still compares equal to itself).
+    (a.removedModifiers ?? []).join("\u0001") === (b.removedModifiers ?? []).join("\u0001")
   );
 }
 
@@ -126,6 +131,9 @@ export function buildStatusPatchBody(input: StatusPatchBodyInput) {
       qty: line.qty,
       variation: line.variation,
       modifiers: line.modifiers,
+      ...(line.removedModifiers && line.removedModifiers.length > 0
+        ? { removedModifiers: line.removedModifiers }
+        : {}),
       instructions: line.instructions,
     })),
     // Always sent (round-trip): "" clears the stored note, text replaces it

@@ -3,7 +3,9 @@
 import { AlertTriangle, Clock, QrCode } from "lucide-react";
 
 import { kitchenAgeBand, type KitchenRow } from "@/lib/kitchen-board";
+import { BRAND_CHECKBOX_SQUARE_CLASS } from "@/components/brand/brand-classes";
 import { Checkbox } from "@/components/ui/checkbox";
+import { orderItemModifierLines, REMOVED_MODIFIER_PREFIX } from "@pos/shared/utils";
 import { cn } from "@/lib/utils";
 
 // P4-A — one row of the kitchen board. Every status channel (self-order,
@@ -39,6 +41,7 @@ export function KitchenLineCard({ row, now, onToggle, pending }: KitchenLineCard
     <div className="flex items-start gap-2 p-2">
       <div className="grid min-h-10 min-w-10 shrink-0 place-items-center">
         <Checkbox
+          className={BRAND_CHECKBOX_SQUARE_CLASS}
           checked={row.done}
           disabled={pending}
           onCheckedChange={(checked) => onToggle(row, checked === true)}
@@ -61,9 +64,20 @@ export function KitchenLineCard({ row, now, onToggle, pending }: KitchenLineCard
           <span className="font-black tabular-nums">{row.qty}</span> × {row.name}
         </div>
 
-        {row.modifiers.length > 0 && (
-          <div className="text-sm text-muted-foreground">+ {row.modifiers.join(", ")}</div>
-        )}
+        {/* The words come from the shared formatter (the KOT prints the same
+            lines). A removal ("NO Mushroom") is what the cook must not miss,
+            so it reads in ink and bold; additions stay muted as before. */}
+        {orderItemModifierLines(row).map((line) => (
+          <div
+            key={line}
+            className={cn(
+              "text-sm",
+              line.startsWith(`${REMOVED_MODIFIER_PREFIX} `) ? "font-semibold" : "text-muted-foreground",
+            )}
+          >
+            {line}
+          </div>
+        ))}
 
         {row.instructions && (
           <div className="text-sm font-semibold italic">{row.instructions}</div>

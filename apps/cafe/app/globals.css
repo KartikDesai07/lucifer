@@ -161,6 +161,13 @@
    ONLY — never a status, never a fill behind text. */
 :root {
   --brand-paper: #f6f2ea;
+  /* The staff sidebar's surface: paper a minor step toward white (owner,
+     2026-09-29 — "white theme base"), still in the paper family. Its rows
+     keep --brand-wash for hover, which reads MORE clearly on it (1.16:1 vs
+     1.11:1 on paper); the raised active row's hairline is strengthened in
+     components/brand/brand-classes.ts because a slip on this surface barely
+     differs from it. Used ONLY by the sidebar — other screens keep paper. */
+  --brand-sidebar: #faf7f1;
   /* Paper one shade down: hover / pressed on a paper surface (the sidebar). */
   --brand-wash: #ece6da;
   --brand-slip: #fffdf8;
@@ -208,9 +215,10 @@
   /* 2026-09-26: the staff sidebar is the second Paper & Ink screen. These
      are read only by the shadcn sidebar primitive — the desktop rail AND the
      phone sheet, which is portaled out of the sidebar's own tree, so they
-     have to be set here rather than on a wrapper. Ink on paper 15.4:1, muted
-     on paper 5.2:1 (measured with the palette above). */
-  --sidebar: var(--brand-paper);
+     have to be set here rather than on a wrapper. Ink on the sidebar surface
+     16.1:1, muted 5.5:1, the accent focus ring 4.6:1 (pinned in
+     lib/brand-contrast.test.ts). */
+  --sidebar: var(--brand-sidebar);
   --sidebar-foreground: var(--brand-ink);
   --sidebar-primary: var(--brand-ink);
   --sidebar-primary-foreground: var(--brand-slip);

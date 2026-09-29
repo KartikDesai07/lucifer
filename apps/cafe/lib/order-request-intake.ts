@@ -218,6 +218,10 @@ export function quoteRequestTotals(
       instructions: sanitizePublicText(line.instructions ?? ""),
     };
     if (line.variation) item.variation = line.variation;
+    // Omit-empty, same rule as `variation` above.
+    if (line.removedModifiers && line.removedModifiers.length > 0) {
+      item.removedModifiers = line.removedModifiers;
+    }
     return item;
   });
 

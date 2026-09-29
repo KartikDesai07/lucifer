@@ -3,7 +3,7 @@
 import type { Ref } from "react";
 import Image from "next/image";
 
-import { orderItemLabel, discountLineLabel } from "@pos/shared/utils";
+import { orderItemLabel, orderItemModifierLines, discountLineLabel } from "@pos/shared/utils";
 import { chargesFromOrder } from "@pos/shared/order-charges";
 import { CAFE_TIMEZONE } from "@/lib/constants";
 import type { PrintLogoSize } from "@/lib/constants";
@@ -190,9 +190,9 @@ export function OrderReceipt({ order, settings, ref }: OrderReceiptProps) {
                 {item.reward && item.note && (
                   <div className="pl-2 text-[0.83em] italic">{item.note}</div>
                 )}
-                {item.modifiers.length > 0 && (
-                  <div className="pl-2 text-[0.83em]">+ {item.modifiers.join(", ")}</div>
-                )}
+                {orderItemModifierLines(item).map((line) => (
+                  <div key={line} className="pl-2 text-[0.83em]">{line}</div>
+                ))}
                 {item.instructions && (
                   <div className="pl-2 text-[0.83em] italic">{item.instructions}</div>
                 )}

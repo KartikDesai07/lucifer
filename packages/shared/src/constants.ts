@@ -221,6 +221,14 @@ export const PRINT_NUMBER_START_MAX = 999999;
 // linked to it cannot be deleted (see the DELETE route's guard).
 export const UNCATEGORIZED = "Uncategorized";
 
+// UI batch 1 §H (owner decision 2026-09-29) — how the New Order product grid
+// is arranged: "normal" is today's flat, category-filtered grid (the
+// default); "byCategory" groups the grid itself by the Categories screen's
+// own order (Category.order), one heading per category. Settings-level, not
+// per-device — every counter at the cafe sees the same layout.
+export const POS_LAYOUTS = ["normal", "byCategory"] as const;
+export type PosLayout = (typeof POS_LAYOUTS)[number];
+
 // The cafe operates in a single fixed timezone (India, no DST). Day boundaries
 // for "today's sales" / reports are anchored here so they stay correct even
 // when the server runs in UTC (e.g. Cloudflare Workers).

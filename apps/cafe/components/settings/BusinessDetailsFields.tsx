@@ -4,7 +4,15 @@ import { Controller } from "react-hook-form";
 import type { Control, FieldErrors, UseFormRegister } from "react-hook-form";
 
 import type { SettingsInput } from "@/schemas";
+import { POS_LAYOUTS } from "@/lib/constants";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Card,
   CardContent,
@@ -14,6 +22,13 @@ import {
 } from "@/components/ui/card";
 import { ImageUpload } from "@/components/shared/ImageUpload";
 import { Field } from "@/components/settings/SettingsFields";
+
+// Plain-English labels for the POS_LAYOUTS enum — never render the raw
+// camelCase value.
+const POS_LAYOUT_LABELS: Record<(typeof POS_LAYOUTS)[number], string> = {
+  normal: "Normal",
+  byCategory: "By category",
+};
 
 interface BusinessDetailsFieldsProps {
   control: Control<SettingsInput>;
@@ -77,6 +92,41 @@ export function BusinessDetailsFields({
             hint="Printed on the receipt when set."
           >
             <Input {...register("fssai")} />
+          </Field>
+        </CardContent>
+      </Card>
+
+      {/* New Order screen layout — owner decision 2026-09-29 (UI batch 1 §H). */}
+      <Card>
+        <CardHeader>
+          <CardTitle>New order screen</CardTitle>
+          <CardDescription>
+            How the product grid is arranged when a staff member starts a new order.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Field
+            label="New order screen"
+            hint="By category shows each category's name above its items, in the order set on the Categories screen."
+          >
+            <Controller
+              control={control}
+              name="posLayout"
+              render={({ field }) => (
+                <Select value={field.value ?? "normal"} onValueChange={field.onChange}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {POS_LAYOUTS.map((layout) => (
+                      <SelectItem key={layout} value={layout}>
+                        {POS_LAYOUT_LABELS[layout]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
           </Field>
         </CardContent>
       </Card>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { orderItemLabel } from "@pos/shared/utils";
+import { orderItemLabel, orderItemModifierLines } from "@pos/shared/utils";
 import { ORDER_REASON_MIN_LEN, ORDER_REASON_MAX_LEN } from "@/lib/constants";
 import { inr } from "@/lib/utils";
 import {
@@ -156,11 +156,11 @@ export function OrderRequestCard({
               <span>
                 {item.qty} × {orderItemLabel(item)}
               </span>
-              {item.modifiers.length > 0 && (
-                <div className="text-xs text-muted-foreground">
-                  + {item.modifiers.join(", ")}
+              {orderItemModifierLines(item).map((line) => (
+                <div key={line} className="text-xs text-muted-foreground">
+                  {line}
                 </div>
-              )}
+              ))}
               {item.instructions && (
                 <div className="text-xs italic text-muted-foreground">
                   {item.instructions}

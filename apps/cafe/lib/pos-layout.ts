@@ -272,28 +272,30 @@ export const POS_CHIP_CLASS =
 // floor reason CB-1b gave was wrong). Below md the sidebar is an overlay,
 // so both strings agree there. Every tier keeps tiles ≥ POS_MIN_TILE_PX for
 // pane = viewport − sidebar − main padding − [xl+: gaps + cart + rail] (the
-// matrix pin in lib/pos-layout.test.ts derives exactly that). No 5-column
-// tier: the ≥1536 desktop keeps its v1 four columns.
+// matrix pin in lib/pos-layout.test.ts derives exactly that).
+// AT MOST 3 COLUMNS (owner decision 2026-09-29, UI batch 1 §H — supersedes
+// the old "no 5-column tier: the ≥1536 desktop keeps its v1 four columns"):
+// once a tier reaches 3 it never grows further, so BOTH tables collapse to
+// two rows (a base 2-column tier, then 3 from `sm` up) — the old lg/xl/2xl
+// entries (4, 3-again, 4) and the collapsed md/xl entries (4, 4) are simply
+// redundant with the sm:3 tier now and are dropped rather than kept at a
+// value the owner capped.
 export const POS_GRID_CLASS_SIDEBAR_EXPANDED =
-  "grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-3 2xl:grid-cols-4";
+  "grid grid-cols-2 gap-2 sm:grid-cols-3";
 export const POS_GRID_CLASS_SIDEBAR_COLLAPSED =
-  "grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-4";
+  "grid grid-cols-2 gap-2 sm:grid-cols-3";
 export const POS_GRID_GAP_REM = 0.5;
 // The same tiers as data (viewport px → columns), for the layout pins' tile-
 // width matrix. Keep in step with the two class strings above (the test
-// asserts each string encodes exactly its table).
+// asserts each string encodes exactly its table). Both sidebar states share
+// the same table now that neither ever exceeds 3 columns.
 export const POS_GRID_COLUMN_TIERS_SIDEBAR_EXPANDED: ReadonlyArray<{ minPx: number; cols: number }> = [
   { minPx: 0, cols: 2 },
   { minPx: BREAKPOINT_SM_PX, cols: 3 },
-  { minPx: BREAKPOINT_LG_PX, cols: 4 },
-  { minPx: BREAKPOINT_XL_PX, cols: 3 },
-  { minPx: BREAKPOINT_2XL_PX, cols: 4 },
 ];
 export const POS_GRID_COLUMN_TIERS_SIDEBAR_COLLAPSED: ReadonlyArray<{ minPx: number; cols: number }> = [
   { minPx: 0, cols: 2 },
   { minPx: BREAKPOINT_SM_PX, cols: 3 },
-  { minPx: BREAKPOINT_MD_PX, cols: 4 },
-  { minPx: BREAKPOINT_XL_PX, cols: 4 },
 ];
 // Tile-internal geometry (ProductGrid markup, parity-pinned): what's left of
 // a tile after card padding, thumb, row gap and the options-button reserve is

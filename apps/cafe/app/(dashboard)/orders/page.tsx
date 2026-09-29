@@ -17,6 +17,7 @@ import { cafeDateString } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DatePicker } from "@/components/shared/DatePicker";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -153,10 +154,11 @@ export default function OrdersPage() {
           allLabel="All tables"
           options={tableOptions}
         />
-        <Input
-          type="date"
+        <DatePicker
           value={date}
-          onChange={(e) => setDate(e.target.value)}
+          onChange={setDate}
+          clearable
+          aria-label="Filter by date"
         />
       </div>
 

@@ -3,7 +3,7 @@
 import type { Ref } from "react";
 import Image from "next/image";
 
-import { orderItemLabel } from "@pos/shared/utils";
+import { orderItemLabel, orderItemModifierLines } from "@pos/shared/utils";
 import { CAFE_TIMEZONE } from "@/lib/constants";
 import { inr } from "@/lib/utils";
 import {
@@ -206,9 +206,9 @@ export function KOTReceipt({
                     </span>
                     {cfg.showPrices && <span>{inr(item.price * item.qty)}</span>}
                   </div>
-                  {item.modifiers.length > 0 && (
-                    <div className="pl-4 text-[0.86em]">+ {item.modifiers.join(", ")}</div>
-                  )}
+                  {orderItemModifierLines(item).map((line) => (
+                    <div key={line} className="pl-4 text-[0.86em]">{line}</div>
+                  ))}
                   {item.instructions && (
                     <div className="pl-4 text-[0.86em] font-semibold italic">
                       ▸ {item.instructions}

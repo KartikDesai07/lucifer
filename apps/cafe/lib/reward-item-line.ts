@@ -35,6 +35,10 @@ export interface RewardItemLine {
   variation?: string;
   reward: true;
   note: string;
+  // No `modifiers`/`removedModifiers` field at all, deliberately — a comped
+  // dish never carries modifier edits (it is not something the customer
+  // configured; "Modifiers come ticked" applies only to lines the customer
+  // actually ordered).
 }
 
 // Why a resolve can fail, as a CLOSED set — never a bare null. A caller has

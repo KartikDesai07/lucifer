@@ -175,6 +175,9 @@ export function buildOrderRequestBody(input: BuildOrderRequestBodyInput): Create
       productId: line.productId,
       variation: line.variation,
       modifiers: line.modifiers,
+      ...(line.removedModifiers && line.removedModifiers.length > 0
+        ? { removedModifiers: line.removedModifiers }
+        : {}),
       instructions: line.instructions,
       qty: line.qty,
     })),

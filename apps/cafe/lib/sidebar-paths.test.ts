@@ -19,6 +19,7 @@ const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel),
 
 const APP_SIDEBAR = "apps/cafe/components/layout/AppSidebar.tsx";
 const SETTINGS_GROUP = "apps/cafe/components/layout/SidebarSettingsGroup.tsx";
+const SIDEBAR_BRAND = "apps/cafe/components/layout/SidebarBrand.tsx";
 const REQUEST_BADGE = "apps/cafe/components/orders/RequestCountBadge.tsx";
 const GLOBALS_CSS = "apps/cafe/app/globals.css";
 
@@ -111,7 +112,7 @@ test("PIN: the sidebar's colours come from the brand palette on :root (the phone
   const root = [...css.matchAll(/:root\s*\{([^}]*)\}/g)].map((m) => m[1]).find((body) => body.includes("--sidebar:"));
   assert.ok(root, "a :root block must declare --sidebar");
   for (const [name, token] of [
-    ["sidebar", "brand-paper"],
+    ["sidebar", "brand-sidebar"],
     ["sidebar-foreground", "brand-ink"],
     ["sidebar-accent", "brand-wash"],
     ["sidebar-accent-foreground", "brand-ink"],
@@ -127,7 +128,8 @@ test("PIN: the sidebar's colours come from the brand palette on :root (the phone
 // lib/warm-routes.ts). Pinned so a later edit can neither drop the warmth nor
 // spread it to setup/admin screens (each warm route costs a background request
 // per reuse window on every open device).
-const WARM_URLS = ["/", "/pos", "/requests", "/kitchen", "/orders", "/reservations"];
+// Order (owner, 2026-09-29): Orders directly under New Order.
+const WARM_URLS = ["/", "/pos", "/orders", "/requests", "/kitchen", "/reservations"];
 const NEXT_CONFIG = "apps/cafe/next.config.ts";
 
 test("PIN: exactly the Dashboard and Service sections are warm — no setup or admin screen — and only the line-gated hook prefetches them (their Links never do)", () => {
@@ -173,7 +175,7 @@ test("PIN: no sidebar Link prefetches on its own — every one says prefetch={fa
   // 2026-09-29: a Link's default (or true) prefetch fires on sight and on
   // hover; on a line still waking up it can fail, and a failed prefetch turns
   // the next click into a full page load (vendor facts: lib/warm-routes.test.ts).
-  for (const [file, expected] of [[APP_SIDEBAR, 1], [SETTINGS_GROUP, 2]] as const) {
+  for (const [file, expected] of [[APP_SIDEBAR, 1], [SETTINGS_GROUP, 2], [SIDEBAR_BRAND, 1]] as const) {
     const src = stripComments(readSrc(file));
     // Vision guards: Link is next/link under that one name, and the scan finds
     // every tag the file renders (an extractor that finds none proves nothing).
@@ -197,4 +199,47 @@ test("PIN: next.config lengthens only the FULL-prefetch reuse window — staleTi
   // Mutation this catches: adding `dynamic` — every page a user VISITED would
   // then be re-shown from cache, which for any server-data page means stale data.
   assert.ok(!/dynamic/.test(block![1]), "staleTimes must not set `dynamic`");
+});
+
+test("PIN: the brand header is a link to the Dashboard that closes the phone sheet, and the icon rail shows the real logo (the monogram only when it fails to load)", () => {
+  const brand = stripComments(readSrc(SIDEBAR_BRAND));
+  const tags = linkTags(brand);
+  assert.equal(tags.length, 1, "landmark: SidebarBrand renders one <Link>");
+  // Mutation this catches: the header going back to a plain <div> (the owner
+  // asked for the cafe name to open the Dashboard), or pointing elsewhere.
+  assert.ok(tags[0].includes(`href="/"`), "the brand link goes to the Dashboard");
+  assert.ok(tags[0].includes("onClick={onNavigate}"), "a tap closes the phone sheet like a nav row");
+  const app = stripComments(readSrc(APP_SIDEBAR));
+  assert.match(app, /<SidebarBrand[^>]*onNavigate=\{closeMobile\}/, "AppSidebar hands the brand its closeMobile");
+  // Mutation this catches: bringing back the wide-logo rule that swapped a
+  // wordmark for the letter in the rail — only a load failure may.
+  assert.match(brand, /\{failed \? \(/, "the monogram branch is keyed on the load failure alone");
+  assert.ok(!/naturalWidth|WIDE_LOGO/.test(brand), "no logo-shape rule may hide the real logo in the rail");
+  assert.match(brand, /collapsed && "w-8 max-w-8"/, "in the rail the logo is fitted to the 32px square");
+  assert.match(brand, /object-contain/, "and scaled, never cropped");
+});
+
+// UI batch 1 C (2026-09-29) — "the Dashboard link sometimes does not respond".
+// In the folded icon rail the primitive hides each section heading with
+// opacity-0 and pulls it UP over the row above it (a negative top margin), and
+// every SidebarGroup is `relative`, so the NEXT group paints — and hit-tests —
+// on top of the previous one: the invisible "Service" heading sat over the
+// lower half of the Dashboard icon and swallowed the click (measured in a real
+// browser, c-dash harness). An invisible heading must never take a click.
+const BRAND_CLASSES = "apps/cafe/components/brand/brand-classes.ts";
+
+test("PIN: a section heading folded away in the icon rail is click-through — it can never swallow a tap on the row above it", () => {
+  const src = stripComments(readSrc(BRAND_CLASSES));
+  const m = src.match(/export const BRAND_NAV_LABEL_CLASS =\s*"([^"]*)";/);
+  assert.ok(m, "landmark: BRAND_NAV_LABEL_CLASS is a plain class string");
+  const classes = m![1].split(/\s+/);
+  assert.ok(classes.includes("group-data-[collapsible=icon]:-mt-6"), "landmark: the heading still folds up in the rail");
+  assert.ok(
+    classes.includes("group-data-[collapsible=icon]:pointer-events-none"),
+    "the folded (invisible) heading must not take pointer events",
+  );
+  // And every section heading in the sidebar uses that class.
+  const app = stripComments(readSrc(APP_SIDEBAR));
+  assert.equal(app.match(/<SidebarGroupLabel\b/g)?.length, 1, "landmark: one SidebarGroupLabel render site");
+  assert.match(app, /<SidebarGroupLabel id=\{id\} className=\{BRAND_NAV_LABEL_CLASS\}>/);
 });

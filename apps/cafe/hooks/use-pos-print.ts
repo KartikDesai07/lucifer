@@ -90,6 +90,10 @@ export function usePosPrint() {
         price: entry.price,
         qty: entry.qty,
         modifiers: entry.modifiers ?? [],
+        // Same "NO …" carry as print-routing.ts's voidPrintJob twin.
+        ...(entry.removedModifiers && entry.removedModifiers.length > 0
+          ? { removedModifiers: entry.removedModifiers }
+          : {}),
         instructions: voidLineInstructionsWithRewardMarker(entry.instructions ?? "", entry.reward),
         kotRound: entry.kotRound,
         // CB-5B S14-remainder — same OMIT-EMPTY carry as print-routing.ts's

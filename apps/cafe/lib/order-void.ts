@@ -31,6 +31,9 @@ export interface VoidableLine {
   kotRound?: number;
   instructions?: string;
   modifiers?: string[];
+  // "Modifiers come ticked" — the "NO …" removals, carried onto the void
+  // trail the same way `modifiers` is (omit-empty).
+  removedModifiers?: string[];
   variation?: string;
   // CB-5B S14 — the voided line was a loyalty reward (a free dish claimed off
   // the stamp ladder). `price` above still carries the dish's REAL value (same
@@ -181,6 +184,7 @@ export function resolveItemVoid<T extends VoidableLine>(
       kotRound: line.kotRound ?? 0,
       ...(line.instructions ? { instructions: line.instructions } : {}),
       ...(line.modifiers?.length ? { modifiers: [...line.modifiers] } : {}),
+      ...(line.removedModifiers?.length ? { removedModifiers: [...line.removedModifiers] } : {}),
       ...(line.variation ? { variation: line.variation } : {}),
       // "synthesized print lines need every new field" — IOrderVoid.reward was
       // declared and schema-backed (models/Order.ts:67) but never WRITTEN, so a

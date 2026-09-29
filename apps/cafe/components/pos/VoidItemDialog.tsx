@@ -9,7 +9,7 @@ import { isLastLine } from "@/lib/order-void-rules";
 import { orderLineKey } from "@pos/shared/utils";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { orderItemLabel } from "@pos/shared/utils";
+import { orderItemLabel, orderItemModifierLines } from "@pos/shared/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
@@ -123,7 +123,16 @@ export function VoidItemDialog({
                         two different prices, and a row that omits the size makes
                         the operator pick blind — the wrong money then comes off
                         the bill and the kitchen stops making the wrong cover. */}
-                    {orderItemLabel(item)} × {item.qty}
+                    <span>
+                      {orderItemLabel(item)} × {item.qty}
+                      {/* Two pizzas that differ only by "NO Mushroom" must not
+                          look alike at the moment the operator picks one. */}
+                      {orderItemModifierLines(item).map((line) => (
+                        <span key={line} className="block text-xs text-muted-foreground">
+                          {line}
+                        </span>
+                      ))}
+                    </span>
                   </span>
                   {/* CB-5B — this is the moment the operator picks WHICH line
                       to void, and a reward line has different money

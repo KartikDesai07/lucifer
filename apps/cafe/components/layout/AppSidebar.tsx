@@ -77,9 +77,11 @@ const sections: NavSection[] = [
     warm: true,
     items: [
       { title: "New Order", url: "/pos", icon: ShoppingCart },
+      // Orders sits right under New Order (owner, 2026-09-29): the two are
+      // used back to back — take an order, then find or settle one.
+      { title: "Orders", url: "/orders", icon: Receipt },
       { title: "Order Requests", url: "/requests", icon: Inbox },
       { title: "Kitchen", url: "/kitchen", icon: ChefHat },
-      { title: "Orders", url: "/orders", icon: Receipt },
       { title: "Reservations", url: "/reservations", icon: CalendarClock },
     ],
   },
@@ -213,7 +215,13 @@ export function AppSidebar() {
       <div className={`${brandFontVariables} flex min-h-0 flex-1 flex-col font-brand-sans`}>
         {/* h-14 lines its bottom rule up with the page header's. */}
         <SidebarHeader className="h-14 shrink-0 justify-center border-b border-sidebar-border px-3 py-0 group-data-[collapsible=icon]:px-2">
-          <SidebarBrand key={displayLogoUrl} brandName={brandName} logoUrl={displayLogoUrl} collapsed={collapsed} />
+          <SidebarBrand
+            key={displayLogoUrl}
+            brandName={brandName}
+            logoUrl={displayLogoUrl}
+            collapsed={collapsed}
+            onNavigate={closeMobile}
+          />
         </SidebarHeader>
 
         <SidebarContent className="gap-0 py-2 [scrollbar-color:var(--brand-rule)_transparent] [scrollbar-width:thin]">

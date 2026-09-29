@@ -353,11 +353,10 @@ test("PIN: no stray lg: token remains in pos/page.tsx — the mode switch moved 
   assert.match(src, /xl:block/, "landmark: pos/page.tsx must carry its xl: token (xl:block)");
 });
 
-test("PIN: lib/pos-layout.ts's only lg: token is the legitimate CB-1b grid tier, not a leftover xl-switch stray", () => {
+test("PIN: lib/pos-layout.ts carries NO lg: token any more — the owner's 2026-09-29 at-most-3-columns decision (UI batch 1 §H) retired CB-1b's lg:grid-cols-4 tier, and no xl-switch stray ever existed here either", () => {
   const src = stripComments(readSrc(POS_LAYOUT_TS));
   const occurrences = (src.match(/lg:/g) ?? []).length;
-  assert.equal(occurrences, 1, `expected exactly 1 "lg:" occurrence in lib/pos-layout.ts (the grid tier), found ${occurrences}`);
-  assert.match(src, /lg:grid-cols-4/, "landmark: the one lg: occurrence must be lg:grid-cols-4 (POS_GRID_CLASS_SIDEBAR_EXPANDED's tier)");
+  assert.equal(occurrences, 0, `expected 0 "lg:" occurrences in lib/pos-layout.ts (the 4-column grid tier is retired), found ${occurrences}`);
   assert.match(src, /xl:hidden/, "landmark: lib/pos-layout.ts must still carry its xl: mode-switch token");
 });
 

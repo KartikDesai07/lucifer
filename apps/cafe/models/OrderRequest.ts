@@ -20,6 +20,10 @@ export interface IOrderRequestItem {
   qty: number;
   variation?: string;
   modifiers: string[];
+  // Same "NO <modifier>" removals as models/Order.ts's IOrderItem — carried
+  // through intake so accept can mint an Order line that keeps them. Omit-
+  // empty (see the schema path below for why declared explicitly).
+  removedModifiers?: string[];
   instructions: string;
 }
 
@@ -115,6 +119,11 @@ const orderRequestItemSchema = new Schema<IOrderRequestItem>(
     // one way only carries no key at all.
     variation: { type: String },
     modifiers: { type: [String], default: [] },
+    // No default (NOT `default: []`) — omit-empty, mirrors models/Order.ts's
+    // own orderItemSchema removedModifiers path. Declared explicitly: this
+    // codebase's strict:true has repeatedly dropped an interface-only field
+    // silently (the reward note/rewardItem incidents).
+    removedModifiers: { type: [String], default: undefined },
     instructions: { type: String, default: "" },
   },
   { _id: false }, // embedded — no _id needed

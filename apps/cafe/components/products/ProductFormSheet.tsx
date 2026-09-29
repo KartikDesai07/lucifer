@@ -22,6 +22,7 @@ import { FormField } from "@/components/shared/FormField";
 import { ModifierInput } from "@/components/products/ModifierInput";
 import { VariationInput } from "@/components/products/VariationInput";
 import { PublicVisibleField } from "@/components/products/PublicVisibleField";
+import { ModifiersPreselectedField, modifiersPreselectedToSave } from "@/components/products/ModifiersPreselectedField";
 import { variationsErrorMessage } from "@/lib/variation-errors";
 import type { Category, Product } from "@/types";
 
@@ -48,6 +49,7 @@ const emptyValues: ProductFormValues = {
   available: true,
   image: "",
   modifiers: [],
+  modifiersPreselected: false,
 };
 
 export function ProductFormSheet({
@@ -86,6 +88,7 @@ export function ProductFormSheet({
             available: product.available !== false,
             image: product.image,
             modifiers: product.modifiers,
+            modifiersPreselected: product.modifiersPreselected === true,
             publicVisible: product.publicVisible,
           }
         : emptyValues,
@@ -97,6 +100,7 @@ export function ProductFormSheet({
   // next to Price, above the toggle in the form) doesn't need its own Controller.
   const variations = useWatch({ control, name: "variations" });
   const hasVariations = Array.isArray(variations);
+  const modifierCount = useWatch({ control, name: "modifiers" })?.length ?? 0;
 
   const onSubmit = async (values: CreateProductInput) => {
     try {
@@ -118,6 +122,7 @@ export function ProductFormSheet({
             available: values.available,
             image: values.image,
             modifiers: values.modifiers,
+            modifiersPreselected: modifiersPreselectedToSave(values),
             // Same null sentinel as variations above: the switch reads ON as
             // `undefined` (omit-empty), which JSON.stringify would drop — so a
             // product once saved OFF could never be shown again. null is the
@@ -126,7 +131,7 @@ export function ProductFormSheet({
           },
         });
       } else {
-        await createProduct.mutateAsync(values);
+        await createProduct.mutateAsync({ ...values, modifiersPreselected: modifiersPreselectedToSave(values) });
       }
       onOpenChange(false);
     } catch {
@@ -218,6 +223,13 @@ export function ProductFormSheet({
           )}
         />
       </FormField>
+      <Controller
+        control={control}
+        name="modifiersPreselected"
+        render={({ field }) => (
+          <ModifiersPreselectedField modifierCount={modifierCount} value={field.value} onChange={field.onChange} />
+        )}
+      />
 
       <Controller
         control={control}

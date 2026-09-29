@@ -15,6 +15,10 @@ export interface CartItem {
   // sold one way only.
   variation?: string;
   modifiers: string[];
+  // "Modifiers come ticked" (reverse mode) — the modifiers unticked from a
+  // product whose defaults come pre-selected. Omit-empty, like every other
+  // optional line field here.
+  removedModifiers?: string[];
   instructions: string;
   kotRound: number; // 0 = new/unfired (editable); >=1 = already fired (locked)
   // CB-5B — this line was GIVEN as a loyalty reward: it keeps its REAL `price`
@@ -35,23 +39,37 @@ export function effectivePrice(product: Pick<Product, "price" | "discount">): nu
   return effectiveUnitPrice(product.price, product.discount ?? 0);
 }
 
+// ASCII record/unit separators, written as escapes (never literal control chars).
+const REMOVED_KEY_SEP = "\u001e";
+const REMOVED_KEY_ITEM_SEP = "\u001f";
+
 // Two cart lines merge only when product + modifiers + instructions + variation
-// all match, so "Pizza (extra cheese)" stays separate from a plain "Pizza" and a
-// Small stays separate from a Large of the same item. Existing arg order kept;
-// variation is appended last so every existing call site only needs one new arg.
+// (+ removedModifiers) all match, so "Pizza (extra cheese)" stays separate from
+// a plain "Pizza" and a Small stays separate from a Large of the same item.
+// Existing arg order kept; variation is appended last so every existing call
+// site only needs one new arg. removedModifiers is appended AFTER that, and
+// ONLY when non-empty — the key stays byte-identical to its pre-feature form
+// for every line with no removals (open tabs keep matching across the deploy).
 function lineKey(
   productId: string,
   modifiers: string[],
   instructions: string,
   variation?: string,
+  removedModifiers?: string[],
 ) {
-  return [
+  const parts = [
     productId,
     [...modifiers].sort().join(","),
     instructions.trim(),
     variation ?? "",
-  ].join("|");
+  ];
+  const key = parts.join("|");
+  // Same untypeable separator as the diner cart's lineKey
+  // (components/public/public-cart-math.ts): no free text can forge a removal.
+  if (!removedModifiers || removedModifiers.length === 0) return key;
+  return key + REMOVED_KEY_SEP + [...removedModifiers].sort().join(REMOVED_KEY_ITEM_SEP);
 }
+
 
 // Seed a cart line from an order item when resuming an open tab. Already-fired
 // items carry their round (>=1) so the UI can lock them; the index keeps the
@@ -68,7 +86,7 @@ function lineKey(
 // nextCartFromServerItems below mix the two kinds of lines in one array.
 export function cartItemFromOrderItem(it: OrderItem, index: number): CartItem {
   return {
-    lineId: `#${index}:${lineKey(it.productId, it.modifiers, it.instructions, it.variation)}`,
+    lineId: `#${index}:${lineKey(it.productId, it.modifiers, it.instructions, it.variation, it.removedModifiers)}`,
     productId: it.productId,
     name: it.name,
     price: it.price,
@@ -81,6 +99,7 @@ export function cartItemFromOrderItem(it: OrderItem, index: number): CartItem {
     // must carry no extra key. Dropping it here was the whole bug — a reopened
     // tab's reward line came back priced like a sold one.
     ...(it.reward ? { reward: true as const } : {}),
+    ...(it.removedModifiers && it.removedModifiers.length > 0 ? { removedModifiers: it.removedModifiers } : {}),
   };
 }
 
@@ -95,6 +114,7 @@ export function cartItemToInput(ci: CartItem): OrderItemInput {
     variation: ci.variation,
     modifiers: ci.modifiers,
     instructions: ci.instructions,
+    ...(ci.removedModifiers && ci.removedModifiers.length > 0 ? { removedModifiers: ci.removedModifiers } : {}),
   };
 }
 
@@ -128,7 +148,13 @@ export interface UseCart {
   newCount: number; // qty across unfired (kotRound 0) lines
   addToCart: (
     product: Product,
-    opts?: { modifiers?: string[]; instructions?: string; qty?: number; variation?: string },
+    opts?: {
+      modifiers?: string[];
+      removedModifiers?: string[];
+      instructions?: string;
+      qty?: number;
+      variation?: string;
+    },
   ) => void;
   updateQty: (lineId: string, qty: number) => void;
   removeFromCart: (lineId: string) => void;
@@ -152,10 +178,11 @@ export function useCart(isLocked: () => boolean = NEVER_LOCKED): UseCart {
   const addToCart = useCallback<UseCart["addToCart"]>((product, opts = {}) => {
     if (isLocked()) return;
     const modifiers = opts.modifiers ?? [];
+    const removedModifiers = opts.removedModifiers;
     const instructions = opts.instructions ?? "";
     const addQty = opts.qty ?? 1;
     const variation = opts.variation;
-    const key = lineKey(product._id, modifiers, instructions, variation);
+    const key = lineKey(product._id, modifiers, instructions, variation, removedModifiers);
 
     // The chosen variation's OWN price bills the line once variations exist —
     // the product's `price` is only the base/reference figure then. Fall back
@@ -192,6 +219,7 @@ export function useCart(isLocked: () => boolean = NEVER_LOCKED): UseCart {
           modifiers,
           instructions,
           kotRound: 0,
+          ...(removedModifiers && removedModifiers.length > 0 ? { removedModifiers } : {}),
         },
       ];
     });

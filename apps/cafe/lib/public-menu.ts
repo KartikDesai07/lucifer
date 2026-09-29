@@ -43,6 +43,10 @@ export interface PublicProductSource {
   available: boolean;
   image: string;
   modifiers: string[];
+  // "Modifiers come ticked" — the diner menu must know a flagged item starts
+  // every modifier ticked, so PublicItemSheet can preselect them. Omit-empty,
+  // only ever `true` (models/Product.ts's own discipline).
+  modifiersPreselected?: boolean;
 }
 
 // Everything a diner's browser is allowed to know about one menu item. This
@@ -60,6 +64,8 @@ export interface PublicMenuItem {
   available: boolean;
   image: string;
   modifiers: string[];
+  // Same field, same omit-empty rule as PublicProductSource above.
+  modifiersPreselected?: boolean;
 }
 
 // Builds a brand-new object naming only the allowed keys — never a spread of
@@ -85,6 +91,11 @@ export function toPublicMenuItem(
   // one way only carries no `variations` key on the wire either.
   if (product.variations && product.variations.length > 0) {
     item.variations = product.variations;
+  }
+  // Omit-empty — only ever `true` (absent means off, the same rule the stored
+  // product field itself follows).
+  if (product.modifiersPreselected === true) {
+    item.modifiersPreselected = true;
   }
   return item;
 }

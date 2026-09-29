@@ -148,5 +148,9 @@ export function settingsFormDefaults(settings: Settings): SettingsInput {
     // "absent means the documented default". Same type-drift cast as
     // promoCodes above: @pos/shared's Settings type predates this field.
     appearance: appearanceFormDefaults(settings as Settings & { appearance?: unknown }),
+
+    // UI batch 1 §H — same lean-doc hazard as selfOrderMode above: a
+    // pre-existing Settings document carries no posLayout key at all.
+    posLayout: settings.posLayout ?? "normal",
   };
 }

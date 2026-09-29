@@ -34,6 +34,12 @@ export const orderItemSchema = z.object({
     .regex(VARIATION_NAME_PATTERN, VARIATION_NAME_MESSAGE)
     .optional(),
   modifiers: z.array(z.string()).default([]),
+  // The modifiers the customer did NOT want, on an item whose modifiers come
+  // ticked (Product.modifiersPreselected) — printed as "NO <modifier>" on the
+  // KOT, the kitchen screen and the bill. Optional, omit-empty: an ordinary
+  // line carries no key (absent reads as none). The write routes check each
+  // one against the product (removedModifiersError in ../utils).
+  removedModifiers: z.array(z.string().trim().min(1)).optional(),
   instructions: z.string().optional().default(""),
   // MONEY FENCE (CB-5B S11/D5 reversal): deliberately NO `reward` key here.
   // A client may never declare a line free — only the server sets

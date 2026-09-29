@@ -4,6 +4,7 @@ import {
   type PaperWidth,
   type PrintFontSize,
   type PrintLogoSize,
+  type PosLayout,
 } from "@/lib/constants";
 import { type SelfOrderMode, type PromoCodeConfig } from "@pos/shared/public";
 import { type LoyaltyRewardKind } from "@pos/shared/public-diner";
@@ -131,6 +132,11 @@ export interface ISettings extends Document {
   // settings-loyalty.schema.ts (packages/shared) for the field semantics —
   // this is a SEPARATE contract from the flat CB-4 loyalty* fields above.
   loyaltyRules?: LoyaltyRulesInput;
+
+  // UI batch 1 §H — the New Order screen's product-grid arrangement. Carries
+  // a stored "normal" default (models/Settings.ts), like gstMode above —
+  // not omit-empty, since every cafe genuinely has one of the two layouts.
+  posLayout: PosLayout;
 
   createdAt: Date;
   updatedAt: Date;

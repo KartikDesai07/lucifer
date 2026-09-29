@@ -24,6 +24,10 @@ export const printOrderSnapshotItemSchema = z.object({
   qty: z.number().int(),
   variation: z.string().optional(),
   modifiers: z.array(z.string()),
+  // "NO <modifier>" lines (Product.modifiersPreselected). Omit-empty: without
+  // this key the `.strict()` parse would REJECT the snapshot of any order
+  // holding a removal, and the host could not print it at all.
+  removedModifiers: z.array(z.string()).optional(),
   instructions: z.string(),
   kotRound: z.number().int(),
   // CB-5B S14 — this line was GIVEN as a loyalty reward (a free dish claimed
@@ -134,6 +138,9 @@ const voidPayloadSchema = z
         price: z.number(),
         qty: z.number().int(),
         modifiers: z.array(z.string()),
+        // Same strict-object reason as the snapshot item's key: a voided
+        // "NO Mushroom" pizza must still print its void slip.
+        removedModifiers: z.array(z.string()).optional(),
         instructions: z.string(),
         kotRound: z.number().int(),
         kotNumber: z.number().int().optional(),

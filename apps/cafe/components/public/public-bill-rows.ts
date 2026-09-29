@@ -4,6 +4,7 @@ import {
   type PublicOrderRequestStatusData,
   type PublicStatusItem,
 } from "@pos/shared/public";
+import { orderItemModifierLines } from "@pos/shared/utils";
 import type { CartLine } from "@/components/public/public-cart-store";
 import type { PublicBillLine, PublicBillTotal } from "@/components/public/PublicBillRows";
 
@@ -14,12 +15,17 @@ import type { PublicBillLine, PublicBillTotal } from "@/components/public/Public
 
 // variation/modifiers/instructions joined into ONE readable `sub` line —
 // mirrors how PublicCartLine/StatusItemRow already show them (variation in
-// parens next to the name, modifiers comma-joined, instructions italic) but
-// folded into a single string since PublicBillLine has one sub slot, not three.
-function joinSub(variation: string | undefined, modifiers: string[], instructions: string | undefined): string | undefined {
+// parens next to the name, the modifier changes as the shared formatter words
+// them — "NO Mushroom", "+ Extra cheese" — instructions italic) but folded
+// into a single string since PublicBillLine has one sub slot, not three.
+function joinSub(
+  variation: string | undefined,
+  line: { modifiers?: readonly string[]; removedModifiers?: readonly string[] },
+  instructions: string | undefined,
+): string | undefined {
   const parts: string[] = [];
   if (variation) parts.push(variation);
-  if (modifiers.length > 0) parts.push(modifiers.join(", "));
+  parts.push(...orderItemModifierLines(line));
   if (instructions) parts.push(instructions);
   return parts.length > 0 ? parts.join(" · ") : undefined;
 }
@@ -27,7 +33,7 @@ function joinSub(variation: string | undefined, modifiers: string[], instruction
 function lineFromStatusItem(item: PublicStatusItem): PublicBillLine {
   return {
     label: item.name,
-    sub: joinSub(item.variation, item.modifiers, item.instructions),
+    sub: joinSub(item.variation, item, item.instructions),
     qty: item.qty,
     amount: item.price * item.qty,
   };
@@ -105,7 +111,7 @@ export function billFromCart(
 ): { lines: PublicBillLine[]; totals: PublicBillTotal[] } {
   const lines = cart.map((line) => ({
     label: line.name,
-    sub: joinSub(line.variation, line.modifiers, line.instructions),
+    sub: joinSub(line.variation, line, line.instructions),
     qty: line.qty,
     amount: line.price * line.qty,
   }));

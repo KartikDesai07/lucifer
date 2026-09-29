@@ -566,16 +566,23 @@ test('PIN: AppSidebar declares an "Order Requests" nav entry directly after "New
     '{ title: "New Order", url: "/pos", icon: ShoppingCart },',
     "the New Order nav entry",
   );
-  const nextEntryIdx = src.indexOf("{ title:", newOrderIdx + 1);
-  assert.ok(nextEntryIdx > newOrderIdx, "an entry must follow New Order in the items array");
-  const nextEntryEnd = src.indexOf("},", nextEntryIdx) + 2;
-  const nextEntry = src.slice(nextEntryIdx, nextEntryEnd);
-  // Mutation this catches: the new entry landing anywhere else in the list —
-  // the owner asked for it directly below New Order, not just "somewhere".
+  const entryAfter = (from: number) => {
+    const at = src.indexOf("{ title:", from + 1);
+    assert.ok(at > from, "an entry must follow in the items array");
+    return { at, text: src.slice(at, src.indexOf("},", at) + 2) };
+  };
+  // Owner decision 2026-09-29 (UI batch 1 B) supersedes "directly below New
+  // Order": Orders now sits right under New Order, and Order Requests right
+  // under Orders — still the second service row a waiter reaches.
+  const orders = entryAfter(newOrderIdx);
+  assert.match(orders.text, /title:\s*"Orders"/, 'the entry directly after "New Order" must be "Orders"');
+  assert.match(orders.text, /url:\s*"\/orders"/);
+  const nextEntry = entryAfter(orders.at).text;
+  // Mutation this catches: the requests entry landing anywhere else in the list.
   assert.match(
     nextEntry,
     /title:\s*"Order Requests"/,
-    'the entry directly after "New Order" must be titled "Order Requests"',
+    'the entry directly after "Orders" must be titled "Order Requests"',
   );
   assert.match(nextEntry, /url:\s*"\/requests"/, 'the "Order Requests" entry must link to /requests');
 

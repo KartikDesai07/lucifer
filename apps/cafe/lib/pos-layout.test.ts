@@ -151,11 +151,11 @@ test("PIN: every POS breakpoint keeps the grid tile at or above POS_MIN_TILE_PX,
   }
 });
 
-test("PIN: desktop two-pane column counts match the sidebar-aware v1 parity target (viewport breakpoints, no scrollbar subtraction any more)", () => {
+test("PIN: desktop two-pane column counts cap at 3 everywhere (owner decision 2026-09-29, UI batch 1 §H — supersedes the old v1-four-columns-at-1536+ target)", () => {
   assert.equal(colsFor(1280, "expanded"), 3, "1280px two-pane grid (sidebar expanded) must give 3 columns");
-  assert.equal(colsFor(1536, "expanded"), 4, "1536px two-pane grid (sidebar expanded) must give 4 columns");
-  assert.equal(colsFor(1920, "expanded"), 4, "1920px two-pane grid (sidebar expanded) must give 4 columns");
-  assert.equal(colsFor(1280, "collapsed"), 4, "1280px two-pane grid (sidebar collapsed) must give 4 columns");
+  assert.equal(colsFor(1536, "expanded"), 3, "1536px two-pane grid (sidebar expanded) must give AT MOST 3 columns, not the old v1 four");
+  assert.equal(colsFor(1920, "expanded"), 3, "1920px two-pane grid (sidebar expanded) must give AT MOST 3 columns, not the old v1 four");
+  assert.equal(colsFor(1280, "collapsed"), 3, "1280px two-pane grid (sidebar collapsed) must give AT MOST 3 columns, not the old 4");
 });
 
 test("PIN: regression oracles — two retired breakpoint/tiering choices starved the grid; the shipped xl-switch does not", () => {

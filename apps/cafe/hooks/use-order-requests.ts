@@ -21,6 +21,7 @@ export interface TrayOrderRequestItem {
   qty: number;
   variation?: string;
   modifiers: string[];
+  removedModifiers?: string[]; // omit-empty — "NO …" (modifiers come ticked)
   instructions: string;
 }
 

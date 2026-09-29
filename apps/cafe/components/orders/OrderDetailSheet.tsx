@@ -7,7 +7,7 @@ import { Printer, ChefHat, MessageCircle, HandCoins, Replace } from "lucide-reac
 
 import { toast } from "sonner";
 
-import { orderItemLabel, discountLineLabel } from "@pos/shared/utils";
+import { orderItemLabel, orderItemModifierLines, discountLineLabel } from "@pos/shared/utils";
 import { REWARD_ITEM_LINE_NOTE } from "@pos/shared/reward-redemption";
 import { chargesFromOrder } from "@pos/shared/order-charges";
 import { PAY_STYLES, type SettlementPayMode } from "@/lib/constants";
@@ -333,11 +333,11 @@ export function OrderDetailSheet({
                       {orderItemLabel(item)}
                       {item.qty > 1 ? ` ×${item.qty}` : ""}
                     </span>
-                    {item.modifiers.length > 0 && (
-                      <div className="text-xs text-muted-foreground">
-                        + {item.modifiers.join(", ")}
+                    {orderItemModifierLines(item).map((line) => (
+                      <div key={line} className="text-xs text-muted-foreground">
+                        {line}
                       </div>
-                    )}
+                    ))}
                     {item.instructions && (
                       <div className="text-xs italic text-muted-foreground">
                         {item.instructions}

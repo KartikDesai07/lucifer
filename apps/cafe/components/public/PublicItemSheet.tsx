@@ -5,6 +5,8 @@ import { Minus, Plus } from "lucide-react";
 
 import { effectiveUnitPrice, PUBLIC_NOTE_MAX_LEN, PUBLIC_ORDER_MAX_QTY } from "@pos/shared/public";
 import { inr, cn } from "@/lib/utils";
+import { initialSelected, pickModifierResult, modifiersPreselectedFor } from "@/lib/modifier-picker";
+import { BRAND_CHECKBOX_SQUARE_CLASS } from "@/components/brand/brand-classes";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -25,6 +27,10 @@ import type { PublicMenuProduct } from "@/components/public/PublicMenuItem";
 export interface PublicAddToCartOpts {
   variation?: string;
   modifiers: string[];
+  // "Modifiers come ticked" (reverse mode) — mirrors ModifierModal's
+  // AddToCartOpts field. Omitted whenever nothing was unticked, or the
+  // product isn't in reverse mode.
+  removedModifiers?: string[];
   instructions?: string;
   qty: number;
 }
@@ -55,15 +61,17 @@ export function PublicItemSheet({
   const [variation, setVariation] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    if (open) {
-      setSelected([]);
+    if (open && product) {
+      setSelected(initialSelected(product));
       setInstructions("");
       setQty(1);
       setVariation(undefined);
     }
-  }, [open, product?.id]);
+  }, [open, product]);
 
   if (!product) return null;
+
+  const reverseMode = modifiersPreselectedFor(product);
 
   const hasVariations = (product.variations?.length ?? 0) > 0;
   const chosenVariation = variation
@@ -86,7 +94,7 @@ export function PublicItemSheet({
     const trimmed = instructions.trim();
     onConfirm(product, {
       variation,
-      modifiers: selected,
+      ...pickModifierResult(product, selected),
       instructions: trimmed.length > 0 ? trimmed : undefined,
       qty,
     });
@@ -139,10 +147,16 @@ export function PublicItemSheet({
           {product.modifiers.length > 0 && (
             <div className="space-y-2">
               <Label>Add-ons</Label>
+              {reverseMode && (
+                <p className="text-xs text-muted-foreground">
+                  Untick what you do not want.
+                </p>
+              )}
               <div className="space-y-2">
                 {product.modifiers.map((modifier) => (
                   <label key={modifier} className="flex items-center gap-2 text-sm">
                     <Checkbox
+                      className={BRAND_CHECKBOX_SQUARE_CLASS}
                       checked={selected.includes(modifier)}
                       onCheckedChange={(c) => toggle(modifier, c === true)}
                     />

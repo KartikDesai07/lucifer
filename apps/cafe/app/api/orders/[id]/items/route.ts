@@ -19,7 +19,7 @@ import { printConfigOf, printedSlipNumber } from "@/lib/print";
 import { nextSlipSequence } from "@/models/Counter";
 import { voidGuardFilter } from "@/lib/order-void";
 import { addItemsSchema } from "@/schemas";
-import { checkItemVariations } from "@/lib/variations";
+import { checkItemVariations, checkItemRemovedModifiers } from "@/lib/variations";
 import {
   chargesFromOrder,
   applyExtraCharges,
@@ -84,7 +84,9 @@ export async function POST(req: Request, { params }: Params) {
       Order.findById(id).lean(),
       // One indexed query, only when the payload could possibly be affected.
       productIds.length
-        ? Product.find({ _id: { $in: productIds } }).select("name variations").lean()
+        ? Product.find({ _id: { $in: productIds } })
+            .select("name variations modifiers modifiersPreselected")
+            .lean()
         : Promise.resolve([]),
       getSettings(),
     ]);
@@ -103,6 +105,19 @@ export async function POST(req: Request, { params }: Params) {
       parsed.data.items,
     );
     if (bad) return failure(bad, 400);
+
+    // "Modifiers come ticked" (owner, 2026-09-29) — same removals refusal as
+    // the create route, checked before the CAS write below.
+    const badRemovals = checkItemRemovedModifiers(
+      products.map((p) => ({
+        _id: String(p._id),
+        name: p.name,
+        modifiers: p.modifiers,
+        modifiersPreselected: p.modifiersPreselected,
+      })),
+      parsed.data.items,
+    );
+    if (badRemovals) return failure(badRemovals, 400);
 
     if (old.status !== "Pending" || old.payment !== "Unpaid") {
       return failure("Can only add items to an open tab", 409);

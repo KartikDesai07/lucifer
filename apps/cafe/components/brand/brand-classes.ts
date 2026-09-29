@@ -26,6 +26,19 @@ export const BRAND_BUTTON_CLASS =
 /** An inline error line under a field. */
 export const BRAND_FIELD_ERROR_CLASS = "text-xs text-brand-danger";
 
+/** components/ui/checkbox.tsx's own box is `h-4 w-4 rounded-sm` — 16px, and
+ *  globals.css's `--radius: 0.75rem` makes `--radius-sm` resolve to 8px, so
+ *  a "square" with a border-radius equal to half its side renders as a
+ *  CIRCLE (owner: a checkbox reads like the app's round radio buttons).
+ *  `--radius` is never touched here — it also shapes every card and button.
+ *  `size-5` (20px, up from 16px) gives the kitchen tablet a bigger target
+ *  while `rounded-[4px]` stays a visibly small corner, never a circle at any
+ *  size; both tokens are named ahead of `className` in the ui Checkbox's own
+ *  `cn(...)` call, so tailwind-merge replaces (never stacks with) its
+ *  `h-4 w-4 rounded-sm`. The Indicator's `Check` icon is centred by the ui
+ *  component's own `grid place-content-center`, independent of box size. */
+export const BRAND_CHECKBOX_SQUARE_CLASS = "size-5 rounded-[4px]";
+
 // ── Navigation (the staff sidebar; any later nav list reuses these) ─────────
 // Passed to the stock shadcn SidebarMenuButton / SidebarMenuSubButton /
 // SidebarGroupLabel via className; tailwind-merge replaces each primitive
@@ -33,10 +46,13 @@ export const BRAND_FIELD_ERROR_CLASS = "text-xs text-brand-danger";
 // important 32px square, so nothing here can push an icon out of the 3rem
 // rail. The active row is a raised slip of paper with its icon in the
 // accent: the accent icon (4.8:1 on the slip), the heavier label and
-// aria-current carry the state, never the pale background alone.
+// aria-current carry the state, never the pale background alone. On the
+// near-white sidebar surface (--brand-sidebar, 2026-09-29) the slip itself
+// differs by only 1.05:1, so its hairline is 12% ink (1.27:1 against the
+// surface; 7% was enough on paper) — the edge, not the fill, draws the row.
 
 const NAV_ACTIVE =
-  "data-[active=true]:bg-brand-slip data-[active=true]:font-semibold data-[active=true]:text-brand-ink data-[active=true]:shadow-[0_1px_2px_rgb(29_27_24/0.08),0_0_0_1px_rgb(29_27_24/0.07)]";
+  "data-[active=true]:bg-brand-slip data-[active=true]:font-semibold data-[active=true]:text-brand-ink data-[active=true]:shadow-[0_1px_2px_rgb(29_27_24/0.10),0_0_0_1px_rgb(29_27_24/0.12)]";
 
 /** A top-level nav row: 32px on a mouse (the whole list fits a 768px-tall
  *  laptop screen without scrolling), 44px on touch (tablet / phone). */
@@ -49,6 +65,13 @@ export const BRAND_NAV_SUB_ITEM_CLASS =
   "h-7 rounded-md px-2.5 text-[13.5px] text-brand-ink/75 transition-colors duration-150 hover:bg-brand-wash hover:text-brand-ink active:bg-brand-wash focus-visible:ring-brand-accent pointer-coarse:h-10 " +
   NAV_ACTIVE;
 
-/** A section heading in the nav: small, sentence case, muted (5.2:1). */
+/** A section heading in the nav: small, sentence case, muted (5.5:1 on the
+ *  sidebar). In the icon rail the primitive fades it out (opacity-0) and pulls
+ *  it up over the row above (the -mt below), and each SidebarGroup is
+ *  `relative`, so the next group paints — and takes clicks — on top of the
+ *  previous one: the invisible "Service" heading sat over the lower half of
+ *  the Dashboard icon and swallowed the click (UI batch 1 C, measured in a real
+ *  browser 2026-09-29). pointer-events-none makes the folded heading click-
+ *  through, so the whole icon above it answers. */
 export const BRAND_NAV_LABEL_CLASS =
-  "h-6 px-2.5 text-[12px] font-medium tracking-[0.01em] text-brand-muted group-data-[collapsible=icon]:-mt-6";
+  "h-6 px-2.5 text-[12px] font-medium tracking-[0.01em] text-brand-muted group-data-[collapsible=icon]:-mt-6 group-data-[collapsible=icon]:pointer-events-none";

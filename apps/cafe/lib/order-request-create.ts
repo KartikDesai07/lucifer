@@ -166,7 +166,7 @@ export async function buildHoneypotResponse(
 
     const productIds = data.items.map((it) => it.productId).filter(mongoose.isValidObjectId);
     const products = (await Product.find({ _id: { $in: productIds }, ...PUBLIC_PRODUCT_FILTER })
-      .select("name price discount available modifiers variations")
+      .select("name price discount available modifiers modifiersPreselected variations")
       .lean()) as unknown as PricedProductSource[];
     const priced = priceRequestItems(products, data.items);
     if ("error" in priced) throw new Error(priced.error);

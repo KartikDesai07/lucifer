@@ -62,6 +62,12 @@ export const createProductSchema = z.object({
   available: z.boolean().default(true), // in-stock / "86" toggle
   image: z.string().default(""), // opaque image ref — "r2:<key>" or a legacy Cloudinary public_id
   modifiers: z.array(z.string()).default([]),
+  // "Modifiers come ticked" (owner, 2026-09-29): every modifier starts ticked
+  // at the POS and on the diner menu, and an unticked one is sent as a
+  // REMOVAL that prints "NO <modifier>". Optional with NO default — the
+  // publicVisible precedent below: the CSV import has no column for it, so an
+  // absent key must never switch it off. Absent means off.
+  modifiersPreselected: z.boolean().optional(),
   isActive: z.boolean().default(true), // false = archived
   // Optional with NO default: absent means "shown on the public menu", so an
   // existing cafe publishes its whole menu without a migration and the CSV

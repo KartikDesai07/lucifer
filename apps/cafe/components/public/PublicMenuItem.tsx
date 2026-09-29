@@ -29,6 +29,9 @@ export interface PublicMenuProduct {
   available: boolean;
   image: string;
   modifiers: string[];
+  // "Modifiers come ticked" (reverse mode) — omit-empty on the wire (only
+  // ever `true`, lib/public-menu.ts); an absent key reads as normal mode.
+  modifiersPreselected?: boolean;
 }
 
 export interface PublicMenuCategoryInfo {
@@ -99,10 +102,13 @@ export function PublicMenuItem({ product, qty, onIncrement, onDecrement }: Publi
             {product.name}
           </h3>
           {/* Diner-facing add-on labels — no veg/non-veg field exists on the
-              schema yet, so this is deliberately the only descriptor line. */}
+              schema yet, so this is deliberately the only descriptor line.
+              A reverse-mode item ("modifiers come ticked") lists what it
+              comes with by default, not what can be added — "Add-ons" would
+              wrongly suggest tapping the tile adds extra cost. */}
           {product.modifiers.length > 0 && (
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Add-ons: {product.modifiers.join(", ")}
+              {product.modifiersPreselected === true ? "Comes with" : "Add-ons"}: {product.modifiers.join(", ")}
             </p>
           )}
         </div>

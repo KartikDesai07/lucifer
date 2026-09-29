@@ -22,6 +22,8 @@ type IdemProductId = string | { toString(): string };
 export interface IdemLine {
   productId: IdemProductId;
   variation?: string | null;
+  // "NO …" removals (Product.modifiersPreselected) — part of what was sent.
+  removedModifiers?: ReadonlyArray<string> | null;
   qty: number;
 }
 
@@ -59,8 +61,20 @@ export function kotRoundOfIdemKey(
   return at < 0 ? undefined : at + 1;
 }
 
+// Separators for the removals segment — escapes, never literal control chars
+// (a cashier cannot type either, so no modifier name can forge a boundary).
+const IDEM_REMOVED_SEP = "\u001e";
+const IDEM_REMOVED_ITEM_SEP = "\u001f";
+
 function lineKey(l: IdemLine): string {
-  return `${String(l.productId)}|${l.variation ?? ""}`;
+  const base = `${String(l.productId)}|${l.variation ?? ""}`;
+  // A Pizza with NO Mushroom is not the Pizza that was sent without it: a
+  // replay whose removals differ is a mismatch. Appended only when present,
+  // so every key for a line without removals is byte-identical to before.
+  const removed = l.removedModifiers ?? [];
+  return removed.length > 0
+    ? `${base}${IDEM_REMOVED_SEP}${[...removed].sort().join(IDEM_REMOVED_ITEM_SEP)}`
+    : base;
 }
 
 function addQty(into: Map<string, number>, l: IdemLine): void {
@@ -70,7 +84,7 @@ function addQty(into: Map<string, number>, l: IdemLine): void {
 
 /**
  * Did round `round` land with exactly the lines this attempt sent? Compared as
- * qty per product+variation. The stored side adds the round's voids back (a
+ * qty per product+variation(+removals). The stored side adds the round's voids back (a
  * void between landing and the re-send is still the same round) and leaves out
  * the server's own reward lines, which the client never sends. A Map, not an
  * object literal, so no key can collide with a prototype property.

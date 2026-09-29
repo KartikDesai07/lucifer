@@ -17,8 +17,8 @@ import { cafeDateString, inr } from "@/lib/utils";
 import { exportToCSV } from "@/lib/export";
 import { buildReportCsvRows } from "@/lib/report-csv";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DatePicker } from "@/components/shared/DatePicker";
 import {
   Card,
   CardContent,
@@ -114,14 +114,13 @@ function ReportsContent() {
             <Label htmlFor="from" className="text-xs">
               From
             </Label>
-            <Input
+            <DatePicker
               id="from"
-              type="date"
               className="w-40"
               value={draft.startDate}
               max={draft.endDate || undefined}
-              onChange={(e) =>
-                setDraft((d) => ({ ...d, startDate: e.target.value }))
+              onChange={(next) =>
+                setDraft((d) => ({ ...d, startDate: next }))
               }
             />
           </div>
@@ -129,15 +128,14 @@ function ReportsContent() {
             <Label htmlFor="to" className="text-xs">
               To
             </Label>
-            <Input
+            <DatePicker
               id="to"
-              type="date"
               className="w-40"
               value={draft.endDate}
               min={draft.startDate || undefined}
               max={cafeDateString()}
-              onChange={(e) =>
-                setDraft((d) => ({ ...d, endDate: e.target.value }))
+              onChange={(next) =>
+                setDraft((d) => ({ ...d, endDate: next }))
               }
             />
           </div>

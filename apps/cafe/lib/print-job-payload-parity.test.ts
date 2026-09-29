@@ -87,9 +87,24 @@ function orderItemLabelFunctionBody(): string {
 
 const orderItemLabelKeys = harvest(orderItemLabelFunctionBody(), /\bitem\.(\w+)/g);
 
+// `orderItemModifierLines` (packages/shared/src/modifiers.ts, UI batch 1 F) reads
+// its `item`-shaped parameter for the "NO …" / "+ …" lines under every receipt
+// line — the renderers stopped reading `item.modifiers` themselves when it
+// landed, so its reads are harvested here the same way orderItemLabel's are.
+const SHARED_MODIFIERS_PATH = path.join("..", "..", "packages", "shared", "src", "modifiers.ts");
+function orderItemModifierLinesBody(): string {
+  const src = stripComments(readFileSync(path.join(process.cwd(), SHARED_MODIFIERS_PATH), "utf8"));
+  const start = src.indexOf("export function orderItemModifierLines(");
+  assert.ok(start >= 0, "orderItemModifierLines function not found in packages/shared/src/modifiers.ts");
+  const nextExportIdx = src.indexOf("\nexport ", start + 1);
+  return nextExportIdx === -1 ? src.slice(start) : src.slice(start, nextExportIdx);
+}
+
+const modifierLinesKeys = harvest(orderItemModifierLinesBody(), /\bitem\.(\w+)/g);
+
 // Full harvested sets: renderer direct accessors UNION the helpers they call.
 const orderKeys = new Set<string>([...directOrderKeys, ...receiptGstKeys]);
-const itemKeys = new Set<string>([...directItemKeys, ...orderItemLabelKeys]);
+const itemKeys = new Set<string>([...directItemKeys, ...orderItemLabelKeys, ...modifierLinesKeys]);
 
 const schemaOrderKeys = new Set<string>(Object.keys(printOrderSnapshotSchema.shape));
 const schemaItemKeys = new Set<string>(Object.keys(printOrderSnapshotItemSchema.shape));
@@ -143,12 +158,17 @@ test("PIN: harvested item-level accessor keys are a subset of printOrderSnapshot
   // `reward` and `note` joined the harvest). Kept as FLOORS, never `===`: the
   // pin exists to catch a renderer that stops reading a field, not to freeze
   // the count.
+  // Re-baselined 2026-09-29 (UI batch 1 F, MEASURED: direct 6, union 10): the
+  // renderers' own `item.modifiers` reads moved into orderItemModifierLines,
+  // whose body is harvested above — the field is still read, one hop away —
+  // and the union gained `removedModifiers`.
   assert.ok(
-    directItemKeys.size >= 7,
-    `expected >=7 direct item keys, got ${directItemKeys.size}`,
+    directItemKeys.size >= 6,
+    `expected >=6 direct item keys, got ${directItemKeys.size}`,
   );
-  assert.ok(itemKeys.size >= 9, `expected >=9 union item keys, got ${itemKeys.size}`);
+  assert.ok(itemKeys.size >= 10, `expected >=10 union item keys, got ${itemKeys.size}`);
   assert.ok(itemKeys.has("reward"), "reward must be a harvested item key — the whole free-dish feature rides on it");
+  assert.ok(itemKeys.has("removedModifiers"), "removedModifiers must be a harvested item key — the NO lines ride on it");
 
   // Positive landmarks.
   assert.ok(itemKeys.has("modifiers"), "modifiers must be a harvested item key");

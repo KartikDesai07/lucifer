@@ -5,6 +5,7 @@ import {
   PRINT_FONT_SIZES,
   PRINT_LOGO_SIZES,
   PRINT_NUMBER_START_MIN,
+  POS_LAYOUTS,
 } from "@/lib/constants";
 import { SELF_ORDER_MODES } from "@pos/shared/public";
 import { LOYALTY_REWARD_KINDS } from "@pos/shared/public-diner";
@@ -135,6 +136,11 @@ export const settingsSchema = new Schema<ISettings>(
     // Settings doc must keep validating untouched with this key entirely
     // absent.
     loyaltyRules: { type: loyaltyRulesMongooseSchema, default: undefined },
+
+    // UI batch 1 §H (owner decision 2026-09-29) — the New Order product-grid
+    // arrangement. Defaults to "normal": an existing cafe's screen looks
+    // exactly as it does today until an admin opts into "byCategory".
+    posLayout: { type: String, enum: [...POS_LAYOUTS], default: "normal" },
   },
   { timestamps: true },
 );

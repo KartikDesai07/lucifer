@@ -100,6 +100,10 @@ export interface CartLine {
   qty: number;
   variation?: string;
   modifiers: string[];
+  // "Modifiers come ticked" (reverse mode) — omit-empty, like every other
+  // optional field here. NO cache-version bump: an absent key on an old
+  // stored line already means "no removals", the correct meaning.
+  removedModifiers?: string[];
   instructions?: string;
 }
 

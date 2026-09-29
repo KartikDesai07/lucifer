@@ -34,7 +34,10 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     slug: "business",
     title: "Business details",
     description: "Name, logo, contact details and licence number shown on bills.",
-    fields: ["logo", "restaurantName", "tagline", "mobile", "address", "productLogo", "fssai"],
+    // posLayout (UI batch 1 §H) rendered here in BusinessDetailsFields — the
+    // New Order screen's own arrangement is a business-identity choice, not a
+    // print or QR-ordering one.
+    fields: ["logo", "restaurantName", "tagline", "mobile", "address", "productLogo", "fssai", "posLayout"],
   },
   {
     slug: "taxes",
