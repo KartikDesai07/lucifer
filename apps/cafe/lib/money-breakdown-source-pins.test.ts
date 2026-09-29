@@ -38,33 +38,25 @@ test("source pin: app/api/orders/summary/route.ts imports from @/lib/money-break
   assert.ok(src.includes("cache.set(key, summary"), "existing cache-set pin must still hold");
 });
 
-test("source pin: app/api/reports/route.ts spreads MONEY_BREAKDOWN_GROUP into the Totals $group and uses ITEM_REVENUE_EXPR for topProducts", () => {
-  const src = stripComments(readSrc("app/api/reports/route.ts"));
-  assert.ok(src.includes("from \"@/lib/money-breakdown\""), "route must import from @/lib/money-breakdown");
+// Reports redesign Batch 1 (2026-09-29): app/api/reports/route.ts was
+// retired; its Totals $group (MONEY_BREAKDOWN_GROUP) and Completed-only
+// match now live in lib/reports/sales-pipelines.ts, and its
+// pickMoneyBreakdown(totals) presentation step in lib/reports/sales-fold.ts.
+// The topProducts / ITEM_REVENUE_EXPR half has no Batch 1 equivalent yet —
+// per-item reporting ("Items & categories") is Batch 2 (00-PLAN.md item 8),
+// not part of this redesign step, so that half of the old pin is dropped
+// rather than re-targeted at code that does not exist yet.
+test("source pin: lib/reports/sales-pipelines.ts spreads MONEY_BREAKDOWN_GROUP into its day $group and matches Completed only", () => {
+  const src = stripComments(readSrc("lib/reports/sales-pipelines.ts"));
+  assert.ok(src.includes("from \"@/lib/money-breakdown\""), "must import from @/lib/money-breakdown");
+  assert.ok(src.includes("...MONEY_BREAKDOWN_GROUP"), "the day $group must spread ...MONEY_BREAKDOWN_GROUP");
+  assert.ok(src.includes('status: "Completed"'), "must match only Completed orders");
+});
 
-  const totalSalesGroupNeedle = "totalSales: { " + "$sum: \"$total\" }";
-  const groupIdx = src.indexOf(totalSalesGroupNeedle);
-  assert.ok(groupIdx !== -1, "must find the totalSales $group accumulator");
-  const groupCloseIdx = src.indexOf("]),", groupIdx);
-  assert.ok(groupCloseIdx !== -1 && groupCloseIdx > groupIdx, "must find the $group's closing bracket after totalSales");
-  const groupSlice = src.slice(groupIdx, groupCloseIdx);
-  assert.ok(
-    groupSlice.includes("...MONEY_BREAKDOWN_GROUP"),
-    "the Totals $group must also spread ...MONEY_BREAKDOWN_GROUP",
-  );
-
-  const unwindIdx = src.indexOf('$unwind: "$items"');
-  assert.ok(unwindIdx !== -1, "landmark: $unwind: \"$items\" must still be present (topProducts pipeline)");
-  const topProductsSlice = src.slice(unwindIdx);
-  assert.ok(topProductsSlice.includes("ITEM_REVENUE_EXPR"), "topProducts revenue must use ITEM_REVENUE_EXPR");
-  const blindMultiplyNeedle = "$multiply: [" + '"$items.price"';
-  assert.ok(
-    !topProductsSlice.includes(blindMultiplyNeedle),
-    "topProducts must NOT still use a blind $multiply: [\"$items.price\" (the R8 twin bug)",
-  );
-
-  assert.ok(src.includes("money: pickMoneyBreakdown(totals)"), "report must carry money: pickMoneyBreakdown(totals)");
-  assert.ok(src.includes('status: "Completed"'), "existing completed-status pin must still hold");
+test("source pin: lib/reports/sales-fold.ts presents the range's money through pickMoneyBreakdown", () => {
+  const src = stripComments(readSrc("lib/reports/sales-fold.ts"));
+  assert.ok(src.includes("from \"@/lib/money-breakdown\""), "must import from @/lib/money-breakdown");
+  assert.ok(src.includes("pickMoneyBreakdown("), "must carry money through pickMoneyBreakdown(...)");
 });
 
 test("source pin: components/reports/MoneyBreakdownCard.tsx iterates MONEY_BREAKDOWN_LINES, renders MONEY_NET_LABEL, imports inr, captions via CardDescription", () => {
@@ -91,21 +83,19 @@ test("source pin: components/reports/EndOfDaySummary.tsx iterates MONEY_BREAKDOW
   assert.ok(src.includes("w-[300px]"), "must keep the 300px thermal-width class");
 });
 
-test("source pin: lib/report-csv.ts iterates MONEY_BREAKDOWN_LINES, has a 'Bill breakdown' section constant, pushes MONEY_NET_LABEL", () => {
-  const src = stripComments(readSrc("lib/report-csv.ts"));
-  assert.ok(src.includes("MONEY_BREAKDOWN_LINES"), "must iterate MONEY_BREAKDOWN_LINES");
-  const billBreakdownNeedle = "Bill" + " breakdown";
-  assert.ok(src.includes(billBreakdownNeedle), "must have a 'Bill breakdown' section constant");
-  assert.ok(src.includes("MONEY_NET_LABEL"), "must push a MONEY_NET_LABEL row");
-});
+// lib/report-csv.ts was retired with the old Reports screen (Reports
+// redesign Batch 1, 2026-09-29) — its replacement, lib/reports/csv.ts
+// (salesCsvRows/paymentsCsvRows/duesCsvRows), carries the equivalent pin in
+// lib/reports/csv.test.ts (implementer A's slice, not this file's).
 
-test("source pin: both dashboard pages render <MoneyBreakdownCard and import it from @/components/reports/MoneyBreakdownCard", () => {
-  for (const rel of ["app/(dashboard)/page.tsx", "app/(dashboard)/reports/page.tsx"]) {
-    const src = stripComments(readSrc(rel));
-    assert.ok(src.includes("<MoneyBreakdownCard"), `${rel} must render <MoneyBreakdownCard`);
-    assert.ok(
-      src.includes('from "@/components/reports/MoneyBreakdownCard"'),
-      `${rel} must import MoneyBreakdownCard from @/components/reports/MoneyBreakdownCard`,
-    );
-  }
+test("source pin: app/(dashboard)/page.tsx renders <MoneyBreakdownCard and imports it from @/components/reports/MoneyBreakdownCard", () => {
+  // Reports redesign Batch 1: the Reports screens moved off MoneyBreakdownCard
+  // onto their own TallyCard ("How it adds up" — a computed identity check,
+  // not a static breakdown list); the Dashboard alone still uses this card.
+  const src = stripComments(readSrc("app/(dashboard)/page.tsx"));
+  assert.ok(src.includes("<MoneyBreakdownCard"), "must render <MoneyBreakdownCard");
+  assert.ok(
+    src.includes('from "@/components/reports/MoneyBreakdownCard"'),
+    "must import MoneyBreakdownCard from @/components/reports/MoneyBreakdownCard",
+  );
 });

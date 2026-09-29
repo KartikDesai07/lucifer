@@ -39,9 +39,11 @@ interface RangeBarProps {
   value: DashboardSelection;
   onChange: (next: DashboardSelection) => void;
   isAdmin: boolean;
+  /** Widest custom range this screen's server route will accept (default: the Dashboard's own cap). */
+  maxDays?: number;
 }
 
-export function RangeBar({ value, onChange, isAdmin }: RangeBarProps) {
+export function RangeBar({ value, onChange, isAdmin, maxDays = MAX_DASHBOARD_RANGE_DAYS }: RangeBarProps) {
   const today = cafeDateString();
   const presets = isAdmin ? ADMIN_PRESETS : STAFF_PRESETS;
   const earliest = addDays(today, -CUSTOM_LOOKBACK_DAYS);
@@ -55,7 +57,7 @@ export function RangeBar({ value, onChange, isAdmin }: RangeBarProps) {
     if (!from) return;
     if (!isAdmin) return onChange({ preset: "custom", range: { from, to: from } });
     // Keep the end inside [from, from + cap − 1] and never after today.
-    const capEnd = addDays(from, MAX_DASHBOARD_RANGE_DAYS - 1);
+    const capEnd = addDays(from, maxDays - 1);
     const to = value.range.to < from ? from : value.range.to > capEnd ? capEnd : value.range.to;
     onChange({ preset: "custom", range: { from, to: to > today ? today : to } });
   };
@@ -65,7 +67,7 @@ export function RangeBar({ value, onChange, isAdmin }: RangeBarProps) {
   };
 
   const toMax = (() => {
-    const capEnd = addDays(value.range.from, MAX_DASHBOARD_RANGE_DAYS - 1);
+    const capEnd = addDays(value.range.from, maxDays - 1);
     return capEnd < today ? capEnd : today;
   })();
 

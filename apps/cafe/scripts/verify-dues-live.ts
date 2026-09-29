@@ -682,9 +682,10 @@ async function runOrdersSummaryDuesAggregate(
   ]);
 }
 
-// Mirrors app/api/reports/route.ts's DuePayment.aggregate EXACTLY (a SEPARATE
-// $match stage for ACTIVE_DUE_PAYMENT, kept apart from the date-range $match
-// exactly as the route does — see that route's own comment on why).
+// The DuePayment range total as the retired app/api/reports route summed it
+// (a SEPARATE $match stage for ACTIVE_DUE_PAYMENT after the date-range $match).
+// Its successors, lib/reports/sales-pipelines.ts duesByDayPipeline and
+// lib/reports/dues-build.ts, apply the same exclusion.
 async function runReportsDuesAggregate(start: Date, end: Date): Promise<number> {
   const [row] = await DuePayment.aggregate<{ total: number }>([
     { $match: { createdAt: { $gte: start, $lte: end } } },

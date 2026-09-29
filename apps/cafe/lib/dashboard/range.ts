@@ -154,22 +154,25 @@ const dayKeySchema = z
 
 const rangeSchema = z
   .object({ from: dayKeySchema, to: dayKeySchema })
-  .refine((r) => r.from <= r.to, { message: "The start date must be on or before the end date", path: ["from"] })
-  .refine((r) => rangeDays(r) <= MAX_DASHBOARD_RANGE_DAYS, {
-    message: `A range can cover at most ${MAX_DASHBOARD_RANGE_DAYS} days`,
-    path: ["to"],
-  });
+  .refine((r) => r.from <= r.to, { message: "The start date must be on or before the end date", path: ["from"] });
 
-/** Query params → a validated range; absent params mean today. A range ending after today is refused. */
+/**
+ * Query params → a validated range; absent params mean today. A range ending
+ * after today is refused. `maxDays` is a caller-supplied cap (not baked into
+ * the schema) so the Reports routes can pass their own, wider
+ * MAX_REPORT_RANGE_DAYS while the Dashboard keeps MAX_DASHBOARD_RANGE_DAYS.
+ */
 export function parseDashboardRange(
   input: { from: string | null; to: string | null },
   now: Date = new Date(),
+  maxDays: number = MAX_DASHBOARD_RANGE_DAYS,
 ): { range: DashboardRange } | { error: string } {
   const today = cafeDateString(now);
   const from = input.from ?? input.to ?? today;
   const to = input.to ?? from;
   const parsed = rangeSchema.safeParse({ from, to });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid date range" };
+  if (rangeDays(parsed.data) > maxDays) return { error: `A range can cover at most ${maxDays} days` };
   if (parsed.data.to > today) return { error: "The range cannot end after today" };
   return { range: parsed.data };
 }

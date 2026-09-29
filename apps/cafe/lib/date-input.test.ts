@@ -57,9 +57,13 @@ test("formatDateInput: a local Date built from y/m/d formats back to the same st
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const readSrc = (rel: string): string => stripComments(readFileSync(path.join(REPO_ROOT, rel), "utf8"));
 
+// Reports redesign Batch 1 (2026-09-29): the old Reports page's own From/To
+// DatePicker pair was retired along with its page body — every report now
+// picks its range through the shared RangeBar (components/dashboard/RangeBar.tsx,
+// the Dashboard's own picker), which wraps DatePicker rather than rendering
+// one directly, so it has no call site of its own in this list.
 const DATE_PICKER_CALL_SITES = [
   "apps/cafe/app/(dashboard)/orders/page.tsx",
-  "apps/cafe/app/(dashboard)/reports/page.tsx",
   "apps/cafe/app/(dashboard)/reservations/page.tsx",
   "apps/cafe/components/events/EventFormSheet.tsx",
   "apps/cafe/components/reservations/ReservationFormSheet.tsx",

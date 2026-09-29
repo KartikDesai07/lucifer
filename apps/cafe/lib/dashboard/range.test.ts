@@ -209,6 +209,33 @@ test(`parseDashboardRange: a range wider than ${MAX_DASHBOARD_RANGE_DAYS} days i
   assert.ok("error" in result, "expected an error result");
 });
 
+// ── parseDashboardRange: the day-cap check now lives in the FUNCTION (maxDays
+// param), not the schema — these pin the default cap is unchanged and that a
+// caller-supplied maxDays (the Reports routes' MAX_REPORT_RANGE_DAYS) works.
+
+test("parseDashboardRange: default cap — 92 days ok, 93 days refused", () => {
+  const now = new Date("2026-09-29T09:00:00Z");
+  const from92 = addDays("2026-09-29", -(MAX_DASHBOARD_RANGE_DAYS - 1)); // 92 days inclusive
+  const ok = parseDashboardRange({ from: from92, to: "2026-09-29" }, now);
+  assert.deepEqual(ok, { range: { from: from92, to: "2026-09-29" } });
+
+  const from93 = addDays("2026-09-29", -MAX_DASHBOARD_RANGE_DAYS); // 93 days inclusive
+  const refused = parseDashboardRange({ from: from93, to: "2026-09-29" }, now);
+  assert.deepEqual(refused, { error: `A range can cover at most ${MAX_DASHBOARD_RANGE_DAYS} days` });
+});
+
+test("parseDashboardRange: maxDays=366 accepts 366 days and refuses 367", () => {
+  const now = new Date("2026-09-29T09:00:00Z");
+  const MAX_REPORT_RANGE_DAYS = 366;
+  const from366 = addDays("2026-09-29", -(MAX_REPORT_RANGE_DAYS - 1)); // 366 days inclusive
+  const ok = parseDashboardRange({ from: from366, to: "2026-09-29" }, now, MAX_REPORT_RANGE_DAYS);
+  assert.deepEqual(ok, { range: { from: from366, to: "2026-09-29" } });
+
+  const from367 = addDays("2026-09-29", -MAX_REPORT_RANGE_DAYS); // 367 days inclusive
+  const refused = parseDashboardRange({ from: from367, to: "2026-09-29" }, now, MAX_REPORT_RANGE_DAYS);
+  assert.deepEqual(refused, { error: `A range can cover at most ${MAX_REPORT_RANGE_DAYS} days` });
+});
+
 test("parseDashboardRange: to after today is an error", () => {
   const now = new Date("2026-09-29T09:00:00Z"); // today = 2026-09-29
   const result = parseDashboardRange({ from: "2026-09-25", to: "2026-09-30" }, now);

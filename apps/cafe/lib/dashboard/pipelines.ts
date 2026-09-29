@@ -16,7 +16,7 @@ const COMPLETED = { status: "Completed" } as const;
 const CANCELLED = { status: "Cancelled" } as const;
 const REWARD_DISCOUNT_KIND = "reward";
 
-const inWindow = (w: TimeWindow) => ({ createdAt: { $gte: w.start, $lte: w.end } });
+export const inWindow = (w: TimeWindow) => ({ createdAt: { $gte: w.start, $lte: w.end } });
 
 /**
  * Where an order came from. Precedence matters and is mirrored by channelOf():
@@ -68,7 +68,7 @@ const VOID_VALUE_EXPR = {
   $cond: [{ $eq: ["$voids.reward", true] }, 0, { $multiply: ["$voids.price", "$voids.qty"] }],
 };
 
-function seriesKeyExpr(mode: DashboardSeriesMode) {
+export function seriesKeyExpr(mode: DashboardSeriesMode) {
   return mode === "hour"
     ? { $hour: { date: "$createdAt", timezone: CAFE_TIMEZONE } }
     : { $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: CAFE_TIMEZONE } };

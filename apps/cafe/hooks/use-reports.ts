@@ -1,34 +1,43 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api-client";
 import { STALE_TIMES } from "@/lib/query";
-import type { Report } from "@/types";
+import type { DashboardRange } from "@/types/dashboard";
+import type { SalesReport, DuesReport } from "@/types/reports";
 
-export interface ReportRange {
-  startDate: string; // YYYY-MM-DD
-  endDate: string; // YYYY-MM-DD
-}
-
+// The Reports screens' data (Batch 1 — sales, payments, dues). `all` is a
+// prefix every one of the three keys below falls under; use-customers.ts's
+// useReceiveDuePayment/useEditDuePayment/useDeleteDuePayment invalidate it —
+// keep it exactly ["reports"].
 export const REPORT_KEYS = {
   all: ["reports"] as const,
-  range: (range: ReportRange) => ["reports", range] as const,
+  sales: (r: DashboardRange) => ["reports", "sales", r.from, r.to] as const,
+  dues: (r: DashboardRange) => ["reports", "dues", r.from, r.to] as const,
 };
 
-function buildQuery(range: ReportRange): string {
-  const sp = new URLSearchParams();
-  sp.set("startDate", range.startDate);
-  sp.set("endDate", range.endDate);
-  return `?${sp.toString()}`;
+function rangeQuery(r: DashboardRange): string {
+  return `?from=${r.from}&to=${r.to}`;
 }
 
-// Date-range analytics for the reports page. Cached briefly — reports are
-// reviewed, not live POS data, and the same range is often re-opened.
-export function useReport(range: ReportRange, enabled = true) {
+// Sales summary + Payments & cash tally share this one query (same range —
+// the Payments page reads the same SalesReport, different presentation).
+export function useSalesReport(range: DashboardRange, enabled = true) {
   return useQuery({
-    queryKey: REPORT_KEYS.range(range),
-    queryFn: () => apiGet<Report>(`/api/reports${buildQuery(range)}`),
     enabled,
+    queryKey: REPORT_KEYS.sales(range),
+    queryFn: () => apiGet<SalesReport>(`/api/reports/sales${rangeQuery(range)}`),
     staleTime: STALE_TIMES.REPORTS,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useDuesReport(range: DashboardRange, enabled = true) {
+  return useQuery({
+    enabled,
+    queryKey: REPORT_KEYS.dues(range),
+    queryFn: () => apiGet<DuesReport>(`/api/reports/dues${rangeQuery(range)}`),
+    staleTime: STALE_TIMES.REPORTS,
+    placeholderData: keepPreviousData,
   });
 }

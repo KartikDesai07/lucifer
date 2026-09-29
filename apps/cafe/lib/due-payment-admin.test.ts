@@ -226,19 +226,42 @@ test("PIN (exclusion invariant): every DuePayment.aggregate(...) call under apps
 
   const callRe = /\bDuePayment\.aggregate\s*(?:<[^>]*>)?\s*\(/g;
   const sitesFound: string[] = [];
+  const sources = files.map((file) => ({
+    rel: path.relative(REPO_ROOT, file).split(path.sep).join("/"),
+    src: stripComments(readFileSync(file, "utf8")),
+  }));
 
-  for (const file of files) {
-    const raw = readFileSync(file, "utf8");
-    const src = stripComments(raw);
-    const rel = path.relative(REPO_ROOT, file).split(path.sep).join("/");
+  // A call may hand aggregate() a pipeline from a pure builder
+  // (`DuePayment.aggregate(duesByDayPipeline(w))` — lib/reports builds its
+  // stages that way so the unit tests and the live leg run the exact pipeline
+  // the route runs). Then the filter must sit in that builder's own body: the
+  // invariant is about the PIPELINE, wherever it is assembled.
+  const builderBody = (name: string): string | null => {
+    const defRe = new RegExp(`\\bfunction\\s+${name}\\s*\\(`);
+    for (const { src } of sources) {
+      const def = defRe.exec(src);
+      if (!def) continue;
+      const paramsClose = matchingParenEnd(src, def.index + def[0].length - 1);
+      const bodyOpen = src.indexOf("{", paramsClose);
+      let depth = 0;
+      for (let i = bodyOpen; i < src.length; i++) {
+        if (src[i] === "{") depth++;
+        else if (src[i] === "}" && --depth === 0) return src.slice(bodyOpen, i + 1);
+      }
+    }
+    return null;
+  };
 
+  for (const { rel, src } of sources) {
     for (const m of src.matchAll(callRe)) {
       const openIdx = m.index! + m[0].length - 1; // the "(" itself
       const closeIdx = matchingParenEnd(src, openIdx);
       const callText = src.slice(openIdx, closeIdx + 1);
       sitesFound.push(rel);
+      const builder = /^\(\s*(\w+)\s*\(/.exec(callText)?.[1];
+      const pipelineText = /ACTIVE_DUE_PAYMENT/.test(callText) || !builder ? callText : (builderBody(builder) ?? callText);
       assert.match(
-        callText,
+        pipelineText,
         /ACTIVE_DUE_PAYMENT/,
         `${rel}: a DuePayment.aggregate(...) call has no ACTIVE_DUE_PAYMENT in its pipeline — a soft-deleted row would keep counting`,
       );

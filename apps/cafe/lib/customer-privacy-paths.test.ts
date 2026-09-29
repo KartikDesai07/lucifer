@@ -63,7 +63,11 @@ const CUSTOMER_ID_ROUTE = "apps/cafe/app/api/customers/[id]/route.ts";
 const PAYMENTS_ROUTE = "apps/cafe/app/api/customers/[id]/payments/route.ts";
 const SETTLE_ROUTE = "apps/cafe/app/api/customers/[id]/settle/route.ts";
 const RECONCILE_ROUTE = "apps/cafe/app/api/customers/[id]/reconcile/route.ts";
-const REPORTS_ROUTE = "apps/cafe/app/api/reports/route.ts";
+// Reports redesign Batch 1 (2026-09-29): the old /api/reports route (whose
+// customerDues carried unmasked mobile numbers) was retired; the Customer
+// dues report's equivalent (outstanding.rows, also unmasked name+mobile) now
+// lives at /api/reports/dues.
+const REPORTS_ROUTE = "apps/cafe/app/api/reports/dues/route.ts";
 const CUSTOMERS_PAGE = "apps/cafe/app/(dashboard)/customers/page.tsx";
 const CUSTOMER_LIST_STATUS = "apps/cafe/components/customers/CustomerListStatus.tsx";
 const CUSTOMER_TABLE = "apps/cafe/components/customers/CustomerTable.tsx";
@@ -361,12 +365,12 @@ test("PIN: role is read from the session on every customer-returning route — n
 // it to requireAuth would leak real numbers with the whole rest of this
 // suite green.
 
-test("PIN: GET /api/reports stays requireAdmin — this is load-bearing for customer privacy, not just report access control", () => {
+test("PIN: GET /api/reports/dues stays requireAdmin — this is load-bearing for customer privacy, not just report access control", () => {
   const src = stripComments(readSrc(REPORTS_ROUTE));
   assert.match(
     src,
     /const authed\s*=\s*await requireAdmin\(\);/,
-    "GET /api/reports must guard with requireAdmin — customerDues is `name mobile totalDue` with no mask call, so requireAuth here would hand real mobile numbers to staff",
+    "GET /api/reports/dues must guard with requireAdmin — outstanding.rows is name+mobile+totalDue with no mask call, so requireAuth here would hand real mobile numbers to staff",
   );
 });
 

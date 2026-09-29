@@ -53,18 +53,22 @@ export default function OrdersPage() {
     return () => clearTimeout(t);
   }, [phoneInput]);
 
-  // Seed the payment AND status filters from the URL on mount, so the dashboard's
-  // In-progress KPI ("/orders?payment=Unpaid&status=Pending") lands pre-filtered to
-  // open tabs. Status is read too because a cancelled tab keeps its historical
-  // "Unpaid" payment: seeding payment alone would list dead tabs alongside the live
-  // ones, and the list would then disagree with the KPI that was clicked (CR1.3).
-  // Client-only (window) — no Suspense boundary needed, runs once.
+  // Seed the payment, status AND date filters from the URL on mount, so the
+  // dashboard's In-progress KPI ("/orders?payment=Unpaid&status=Pending") lands
+  // pre-filtered to open tabs, and a report's day drill-down
+  // ("/orders?date=YYYY-MM-DD") lands pre-filtered to that one day. Status is
+  // read too because a cancelled tab keeps its historical "Unpaid" payment:
+  // seeding payment alone would list dead tabs alongside the live ones, and the
+  // list would then disagree with the KPI that was clicked (CR1.3). Client-only
+  // (window), not useSearchParams (Suspense/prerender risk) — runs once.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const p = params.get("payment");
     if (p && (PAYMENT_MODES as readonly string[]).includes(p)) setPayment(p);
     const s = params.get("status");
     if (s && (ORDER_STATUSES as readonly string[]).includes(s)) setStatus(s);
+    const d = params.get("date");
+    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) setDate(d);
   }, []);
 
   const filters: OrderFilters = {

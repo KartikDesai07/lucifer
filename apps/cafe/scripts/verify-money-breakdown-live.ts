@@ -56,12 +56,13 @@ function toOrderView(f: MoneyFixtureOrder): MoneyOrderView {
   };
 }
 
-// Mirrors app/api/reports/route.ts's Totals $group EXACTLY (totalSales +
-// ...MONEY_BREAKDOWN_GROUP over the same $match).
+// The date-range Totals $group (totalSales + ...MONEY_BREAKDOWN_GROUP over a
+// Completed + range $match) that the retired app/api/reports route ran — the
+// same accumulators lib/reports/sales-pipelines.ts's days facet now runs.
 type TotalsAgg = { _id: null; totalSales: number } & MoneyBreakdown;
 
-// Mirrors app/api/reports/route.ts's topProducts pipeline EXACTLY ($unwind +
-// ITEM_REVENUE_EXPR), minus the name-with-variation concat (no fixture uses
+// The retired app/api/reports route's topProducts pipeline ($unwind +
+// ITEM_REVENUE_EXPR — the rule the Dashboard's items facet still runs), minus the name-with-variation concat (no fixture uses
 // variations) — grouped by the bare item name.
 type ProductAgg = { _id: string; qty: number; revenue: number };
 

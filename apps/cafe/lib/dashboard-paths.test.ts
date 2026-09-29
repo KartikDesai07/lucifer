@@ -33,9 +33,13 @@ test("Chart.js reaches the page only through a dynamic, client-only import", () 
     assert.ok(src.includes("@/components/dashboard/"), `${rel}: landmark (dashboard imports present)`);
     assert.ok(!src.includes(staticImport), `${rel} must not import SalesChart statically`);
   }
-  // Only SalesChart itself may import chart.js / react-chartjs-2.
+  // Only SalesChart and the Reports screens' own ReportChart may import
+  // chart.js / react-chartjs-2 (Reports redesign Batch 1, 2026-09-29 —
+  // ReportChart is the Reports screens' chart, same kit, allow-listed
+  // alongside SalesChart rather than replacing it).
   const needles = ['from "' + "chart.js" + '"', 'from "' + "react-chartjs-2" + '"'];
   const dirs = ["components", "app", "hooks", "lib"];
+  const ALLOWED_CHARTJS_FILES = ["components/dashboard/SalesChart.tsx", "components/reports/ReportChart.tsx"];
   const offenders: string[] = [];
   let scanned = 0;
   const walk = (rel: string) => {
@@ -45,13 +49,14 @@ test("Chart.js reaches the page only through a dynamic, client-only import", () 
       else if (/\.(ts|tsx)$/.test(entry.name) && !entry.name.endsWith(".test.ts")) {
         scanned += 1;
         const src = readSrc(child);
-        if (needles.some((n) => src.includes(n)) && child !== "components/dashboard/SalesChart.tsx") offenders.push(child);
+        if (needles.some((n) => src.includes(n)) && !ALLOWED_CHARTJS_FILES.includes(child)) offenders.push(child);
       }
     }
   };
   for (const d of dirs) walk(d);
   assert.ok(scanned > 100, `scanned ${scanned} source files — the walk must actually cover the app`);
   assert.ok(readSrc("components/dashboard/SalesChart.tsx").includes(needles[1]), "landmark: SalesChart does use react-chartjs-2");
+  assert.ok(readSrc("components/reports/ReportChart.tsx").includes(needles[1]), "landmark: ReportChart does use react-chartjs-2");
   assert.deepEqual(offenders, [], "no other file imports Chart.js");
 });
 

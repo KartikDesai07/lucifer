@@ -301,12 +301,15 @@ function readSource(relFromRepoRoot: string): string {
   return readFileSync(path.join(repoRoot, relFromRepoRoot), "utf8");
 }
 
-test("PIN: app/api/reports/route.ts still restricts its aggregation match to status Completed", () => {
-  const src = readSource("apps/cafe/app/api/reports/route.ts");
+test("PIN: lib/reports/sales-pipelines.ts still restricts its aggregation match to status Completed", () => {
+  // Reports redesign Batch 1 (2026-09-29): the old app/api/reports/route.ts
+  // was retired; its Completed-only match now lives in the pure pipeline
+  // builder lib/reports/sales-pipelines.ts, shared by both new report routes.
+  const src = readSource("apps/cafe/lib/reports/sales-pipelines.ts");
   assert.match(
     src,
     /status:\s*"Completed"/,
-    "reports/route.ts must match only Completed orders, or a cancelled sale would inflate the report totals",
+    "sales-pipelines.ts must match only Completed orders, or a cancelled sale would inflate the report totals",
   );
 });
 

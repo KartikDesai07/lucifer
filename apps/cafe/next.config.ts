@@ -126,6 +126,13 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [{ source: "/favicon.ico", destination: "/api/branding/productLogo" }];
   },
+  // /reports has no page of its own — it opens the first report (the first
+  // REPORT_SECTIONS entry, lib/report-sections.ts). Answered here, before
+  // anything renders: a redirect() thrown by a page under the client-rendered
+  // reports layout streamed a blank 200 instead (measured 2026-09-29).
+  async redirects() {
+    return [{ source: "/reports", destination: "/reports/sales", permanent: false }];
+  },
 };
 
 // Vercel BotID: wraps the config with the rewrites its client script needs to

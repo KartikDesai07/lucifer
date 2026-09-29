@@ -68,6 +68,12 @@ const PAIRS: ReadonlyArray<readonly [string, string, number, string]> = [
   ["accent", "slip", NON_TEXT_MIN, "the sales chart's bars on a card"],
   ["field", "slip", NON_TEXT_MIN, "the sales chart's comparison line on a card"],
   ["ink", "paper", TEXT_MIN, "a Needs-attention chip's label (paper chip)"],
+  // Reports (screen 4, Batch 1) — ReportChart's two bar tones, each a
+  // non-text mark against the card surface, and against EACH OTHER so a
+  // stacked Cash/Online bar's two segments read as two different colours.
+  ["primary", "slip", NON_TEXT_MIN, "ReportChart's primary-tone bar on a card"],
+  ["ink", "slip", NON_TEXT_MIN, "ReportChart's ink-tone bar on a card"],
+  ["primary", "ink", NON_TEXT_MIN, "ReportChart's two bar tones against each other (a stacked bar's two segments)"],
 ];
 
 /** `fg` drawn at `alpha` over `bg` — what a Tailwind `text-brand-ink/80` actually paints. */
@@ -143,4 +149,22 @@ test("the sidebar surface is its own token, a step lighter than paper — the pr
 test("the sidebar's request badge — white on the brand danger red — is readable", () => {
   const ratio = contrast(WHITE, brandTokens().get("danger")!);
   assert.ok(ratio >= TEXT_MIN, `white on danger is ${ratio.toFixed(2)}:1`);
+});
+
+// TallyCard's computed identity line: green "✓ <label>" text on its own tint
+// (bg-brand-up/10), or red on bg-brand-danger/10 when the parts don't add up —
+// both TEXT on a translucent fill, so TEXT_MIN applies (never a hard-coded
+// tick: memory "clearing a card must COMPARE, not flag").
+const TALLY_TINT_ALPHA = 0.1;
+
+test("TallyCard's computed check line is readable on its own tint, at the alpha TallyCard really paints", () => {
+  const tokens = brandTokens();
+  const src = readFileSync(fileURLToPath(new URL("../components/reports/TallyCard.tsx", import.meta.url)), "utf8");
+  const pct = Math.round(TALLY_TINT_ALPHA * 100);
+  assert.ok(src.includes(`bg-brand-up/${pct}`), `TallyCard must paint bg-brand-up/${pct}`);
+  assert.ok(src.includes(`bg-brand-danger/${pct}`), `TallyCard must paint bg-brand-danger/${pct}`);
+  for (const fg of ["up", "danger"] as const) {
+    const ratio = contrast(tokens.get(fg)!, over(tokens.get(fg)!, tokens.get("slip")!, TALLY_TINT_ALPHA));
+    assert.ok(ratio >= TEXT_MIN, `${fg} text on its own /${pct} tint is ${ratio.toFixed(2)}:1, needs ${TEXT_MIN}:1`);
+  }
 });

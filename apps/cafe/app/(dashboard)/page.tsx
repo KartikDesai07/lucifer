@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { useOrders, OPEN_TABS_QUERY_OPTIONS } from "@/hooks/use-orders";
 import { useTables } from "@/hooks/use-tables";
@@ -9,18 +9,13 @@ import { useSettings } from "@/hooks/use-settings";
 import { useAuth } from "@/hooks/use-auth";
 import { useDashboard, useDashboardLive } from "@/hooks/use-dashboard";
 import { useDashboardRealtime } from "@/hooks/use-realtime";
+import { useStoredPeriod, rangeOfPeriod } from "@/hooks/use-stored-period";
 import { cafeDateString } from "@/lib/utils";
 import { REFETCH_INTERVALS } from "@/lib/query";
 import { liveOrderOf } from "@/lib/order-query";
 import { APP_NAME, CAFE_TIMEZONE } from "@/lib/constants";
 import { brandFontVariables } from "@/lib/brand-fonts";
-import {
-  DASHBOARD_PRESETS,
-  MAX_DASHBOARD_RANGE_DAYS,
-  presetRange,
-  rangeDays,
-  type DashboardPreset,
-} from "@/lib/dashboard/range";
+import { MAX_DASHBOARD_RANGE_DAYS, presetRange } from "@/lib/dashboard/range";
 import { compareCaption, periodDates, periodLabel } from "@/lib/dashboard/labels";
 import { AttentionStrip } from "@/components/dashboard/AttentionStrip";
 import { RangeBar, type DashboardSelection } from "@/components/dashboard/RangeBar";
@@ -43,7 +38,6 @@ import { EndOfDayButton } from "@/components/reports/EndOfDayButton";
 import { MoneyBreakdownCard } from "@/components/reports/MoneyBreakdownCard";
 import { OrderDetailSheet } from "@/components/orders/OrderDetailSheet";
 import type { Order } from "@/types";
-import type { DashboardRange } from "@/types/dashboard";
 
 // The Dashboard (owner's page-by-page programme, screen 3 — Paper & Ink,
 // "Stripe-style calm + a Needs attention strip"). Top: what needs acting on
@@ -57,45 +51,6 @@ import type { DashboardRange } from "@/types/dashboard";
 // that matters — a blocked or empty storage just means "Today".
 const PERIOD_STORAGE_KEY = "pos.dashboard.period";
 
-interface StoredPeriod {
-  preset: DashboardPreset;
-  custom?: DashboardRange;
-}
-
-function readStoredPeriod(): StoredPeriod | null {
-  try {
-    const raw = window.sessionStorage.getItem(PERIOD_STORAGE_KEY);
-    if (!raw) return null;
-    const v = JSON.parse(raw) as Partial<StoredPeriod>;
-    if (!v.preset || !(DASHBOARD_PRESETS as readonly string[]).includes(v.preset)) return null;
-    const c = v.custom;
-    const custom =
-      // Re-checked on read: a range the server would refuse (ends after today,
-      // wider than the cap) must never pin the page to an error card.
-      c &&
-      typeof c.from === "string" &&
-      typeof c.to === "string" &&
-      DAY_KEY.test(c.from) &&
-      DAY_KEY.test(c.to) &&
-      c.from <= c.to &&
-      c.to <= cafeDateString() &&
-      rangeDays({ from: c.from, to: c.to }) <= MAX_DASHBOARD_RANGE_DAYS
-        ? { from: c.from, to: c.to }
-        : undefined;
-    return { preset: v.preset, custom };
-  } catch {
-    return null;
-  }
-}
-
-function writeStoredPeriod(p: StoredPeriod): void {
-  try {
-    window.sessionStorage.setItem(PERIOD_STORAGE_KEY, JSON.stringify(p));
-  } catch {
-    // Storage blocked (private mode, a preview) — the choice just isn't remembered.
-  }
-}
-
 const DATE_LINE = new Intl.DateTimeFormat("en-IN", {
   weekday: "long",
   day: "numeric",
@@ -103,7 +58,6 @@ const DATE_LINE = new Intl.DateTimeFormat("en-IN", {
   year: "numeric",
   timeZone: CAFE_TIMEZONE,
 });
-const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 
 export default function DashboardPage() {
   const today = cafeDateString();
@@ -114,29 +68,24 @@ export default function DashboardPage() {
   // The stored choice is read after mount (sessionStorage does not exist during
   // the server render); the range query waits for that one tick so a remembered
   // "Last 7 days" never first fetches — and flashes — Today.
-  const [period, setPeriod] = useState<StoredPeriod>({ preset: "today" });
-  const [restored, setRestored] = useState(false);
-  useEffect(() => {
-    const stored = readStoredPeriod();
-    if (stored) setPeriod(stored);
-    setRestored(true);
-  }, []);
+  const { period, restored, save } = useStoredPeriod({
+    key: PERIOD_STORAGE_KEY,
+    fallback: "today",
+    maxDays: MAX_DASHBOARD_RANGE_DAYS,
+  });
 
   // A fixed preset is re-derived on every render (cheap; the query key hashes
   // the from/to strings), so a tab left open past midnight moves to the new day
   // on its next poll. A multi-day choice needs an admin (the server refuses it
   // otherwise); staff fall back to Today — the picker and the data together.
-  const wanted = period.preset === "custom" ? (period.custom ?? presetRange("today")) : presetRange(period.preset);
+  const wanted = rangeOfPeriod(period, "today");
   const selection: DashboardSelection =
     !isAdmin && wanted.from !== wanted.to
       ? { preset: "today", range: presetRange("today") }
       : { preset: period.preset, range: wanted };
   const range = selection.range;
-  const onSelect = (next: DashboardSelection) => {
-    const stored: StoredPeriod = next.preset === "custom" ? { preset: "custom", custom: next.range } : { preset: next.preset };
-    setPeriod(stored);
-    writeStoredPeriod(stored);
-  };
+  const onSelect = (next: DashboardSelection) =>
+    save(next.preset === "custom" ? { preset: "custom", custom: next.range } : { preset: next.preset });
 
   const dash = useDashboard(range, restored);
   const live = useDashboardLive();

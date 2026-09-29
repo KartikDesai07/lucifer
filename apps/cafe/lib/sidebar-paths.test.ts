@@ -19,6 +19,7 @@ const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel),
 
 const APP_SIDEBAR = "apps/cafe/components/layout/AppSidebar.tsx";
 const SETTINGS_GROUP = "apps/cafe/components/layout/SidebarSettingsGroup.tsx";
+const REPORTS_GROUP = "apps/cafe/components/layout/SidebarReportsGroup.tsx";
 const SIDEBAR_BRAND = "apps/cafe/components/layout/SidebarBrand.tsx";
 const REQUEST_BADGE = "apps/cafe/components/orders/RequestCountBadge.tsx";
 const GLOBALS_CSS = "apps/cafe/app/globals.css";
@@ -175,7 +176,7 @@ test("PIN: no sidebar Link prefetches on its own — every one says prefetch={fa
   // 2026-09-29: a Link's default (or true) prefetch fires on sight and on
   // hover; on a line still waking up it can fail, and a failed prefetch turns
   // the next click into a full page load (vendor facts: lib/warm-routes.test.ts).
-  for (const [file, expected] of [[APP_SIDEBAR, 1], [SETTINGS_GROUP, 2], [SIDEBAR_BRAND, 1]] as const) {
+  for (const [file, expected] of [[APP_SIDEBAR, 1], [SETTINGS_GROUP, 2], [REPORTS_GROUP, 2], [SIDEBAR_BRAND, 1]] as const) {
     const src = stripComments(readSrc(file));
     // Vision guards: Link is next/link under that one name, and the scan finds
     // every tag the file renders (an extractor that finds none proves nothing).

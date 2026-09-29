@@ -474,7 +474,10 @@ test("PIN: EndOfDaySummary's dues-collected section iterates DUES_RECEIPT_MODES,
 // deletion/rename of either emit site fails the suite.
 
 const ORDERS_SUMMARY_ROUTE = "apps/cafe/app/api/orders/summary/route.ts";
-const REPORTS_ROUTE = "apps/cafe/app/api/reports/route.ts";
+// Reports redesign Batch 1 (2026-09-29): app/api/reports/route.ts was
+// retired; the Customer dues report's dues-received figure is now built by
+// this pure function (app/api/reports/dues/route.ts just calls it).
+const DUES_BUILD = "apps/cafe/lib/reports/dues-build.ts";
 
 test("PIN: orders/summary/route.ts aggregates DuePayment and emits duesCollected from the fold — without this the EOD slip silently prints Rs 0 and the drawer can never tally; tsc cannot catch it because success() takes `unknown`", () => {
   const src = readSrc(ORDERS_SUMMARY_ROUTE);
@@ -490,26 +493,21 @@ test("PIN: orders/summary/route.ts aggregates DuePayment and emits duesCollected
   );
 });
 
-test("PIN: reports/route.ts aggregates DuePayment bounded by the report's own [start,end] range and emits duesCollected into totals — without this the report's dues line silently prints Rs 0; tsc cannot catch it because success() takes `unknown`", () => {
-  const src = readSrc(REPORTS_ROUTE);
+test("PIN: lib/reports/dues-build.ts aggregates DuePayment bounded by the report's own range (never a hardcoded 'today' window) and emits `collected` into the DuesReport — without this the report's dues-received figure silently prints Rs 0; tsc cannot catch it because success() takes `unknown`", () => {
+  const src = readSrc(DUES_BUILD);
   assert.match(
     src,
-    /const\s*\{\s*start\s*\}\s*=\s*dayRange\(new Date\(startDate\)\)/,
-    "reports/route.ts must derive `start` from the report's own startDate — not a hardcoded 'today' window",
+    /const current\s*=\s*currentWindow\(range,\s*now\)/,
+    "dues-build.ts must derive its window from the report's own `range` argument — not a hardcoded 'today' window",
   );
   assert.match(
     src,
-    /const\s*\{\s*end\s*\}\s*=\s*dayRange\(new Date\(endDate\)\)/,
-    "reports/route.ts must derive `end` from the report's own endDate — not a hardcoded 'today' window",
+    /DuePayment\.aggregate<ReceiptModeRow>\(\[\s*\{\s*\$match:\s*\{\s*\.\.\.inWindow\(current\),\s*\.\.\.ACTIVE_DUE_PAYMENT\s*\}\s*\}/,
+    "dues-build.ts must run DuePayment.aggregate bounded by the report's own window and excluding soft-deleted rows (ACTIVE_DUE_PAYMENT)",
   );
   assert.match(
     src,
-    /\bDuePayment\.aggregate\s*<[^>]*>\s*\(\s*\[\s*\{\s*\$match:\s*\{\s*createdAt:\s*\{\s*\$gte:\s*start,\s*\$lte:\s*end\s*\}\s*\}\s*\}/,
-    "reports/route.ts must run DuePayment.aggregate bounded by the report's own [start, end] range, not today's window",
-  );
-  assert.match(
-    src,
-    /duesCollected:\s*duesCollectedRows\[0\]\?\.total\s*\?\?\s*0/,
-    "reports/route.ts must emit `duesCollected` into totals — without this the report's dues line silently prints Rs 0; tsc cannot catch it because success() takes `unknown`",
+    /collected:\s*\{/,
+    "dues-build.ts must emit a `collected` object into the DuesReport — without this the report's dues-received line silently prints Rs 0; tsc cannot catch it because success() takes `unknown`",
   );
 });

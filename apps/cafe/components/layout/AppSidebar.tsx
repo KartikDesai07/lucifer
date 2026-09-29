@@ -28,12 +28,14 @@ import { brandingUrl, productImageUrl } from "@/lib/images";
 import { APP_NAME } from "@/lib/constants";
 import { isActivePath } from "@/lib/nav-active";
 import { SETTINGS_BASE_PATH } from "@/lib/settings-sections";
+import { REPORTS_BASE_PATH } from "@/lib/report-sections";
 import { BRAND_NAV_ITEM_CLASS, BRAND_NAV_LABEL_CLASS } from "@/components/brand/brand-classes";
 import { brandTooltip } from "@/components/brand/brand-tooltip";
 import { RequestCountBadge } from "@/components/orders/RequestCountBadge";
 import { SidebarAccount } from "@/components/layout/SidebarAccount";
 import { SidebarBrand } from "@/components/layout/SidebarBrand";
 import { SidebarSettingsGroup } from "@/components/layout/SidebarSettingsGroup";
+import { SidebarReportsGroup } from "@/components/layout/SidebarReportsGroup";
 import {
   Sidebar,
   SidebarContent,
@@ -136,14 +138,23 @@ export function AppSidebar() {
     if (onSettings) setSettingsOpen(true);
   }, [onSettings]);
 
-  // Keep the lit row in view: on a short screen (or with Settings' list
-  // open) it can sit below the fold. Waits out the list's open animation.
+  // Reports expands the same way, but has no hub page of its own — every
+  // route under /reports is a section page, so `onReports` alone (no `onHub`
+  // branch) decides the trigger row's lit state.
+  const onReports = pathname === REPORTS_BASE_PATH || pathname.startsWith(`${REPORTS_BASE_PATH}/`);
+  const [reportsOpen, setReportsOpen] = useState(onReports);
+  useEffect(() => {
+    if (onReports) setReportsOpen(true);
+  }, [onReports]);
+
+  // Keep the lit row in view: on a short screen (or with Settings'/Reports'
+  // list open) it can sit below the fold. Waits out the list's open animation.
   useEffect(() => {
     const timer = window.setTimeout(() => {
       navRef.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest" });
     }, SCROLL_AFTER_OPEN_MS);
     return () => window.clearTimeout(timer);
-  }, [pathname, settingsOpen]);
+  }, [pathname, settingsOpen, reportsOpen]);
 
   // Brand name comes from the cafe's own Settings (Settings.restaurantName),
   // configured on the Settings page — generic fallback before it's set.
@@ -183,6 +194,23 @@ export function AppSidebar() {
           onSettings={onSettings}
           settingsOpen={settingsOpen}
           onSettingsOpenChange={setSettingsOpen}
+          onNavigate={closeMobile}
+          tooltip={brandTooltip(item.title)}
+        />
+      );
+    }
+
+    if (item.url === "/reports") {
+      return (
+        <SidebarReportsGroup
+          key={item.url}
+          title={item.title}
+          icon={item.icon}
+          collapsed={collapsed}
+          pathname={pathname}
+          onReports={onReports}
+          reportsOpen={reportsOpen}
+          onReportsOpenChange={setReportsOpen}
           onNavigate={closeMobile}
           tooltip={brandTooltip(item.title)}
         />
