@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 
 import { ORDER_REASON_MIN_LEN, ORDER_REASON_MAX_LEN } from "@/lib/constants";
-import { inr } from "@/lib/utils";
+import { cn, inr } from "@/lib/utils";
+import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -47,6 +48,7 @@ export function CancelOrderDialog({
 
   const trimmed = reason.trim();
   const canConfirm = trimmed.length >= ORDER_REASON_MIN_LEN && !isPending;
+  const tooShort = trimmed.length > 0 && trimmed.length < ORDER_REASON_MIN_LEN;
 
   return (
     <Dialog open={!!order} onOpenChange={onOpenChange}>
@@ -70,13 +72,19 @@ export function CancelOrderDialog({
             maxLength={ORDER_REASON_MAX_LEN}
             rows={3}
             disabled={isPending}
+            aria-invalid={tooShort}
           />
+          {tooShort && (
+            <p className="text-xs text-destructive">
+              At least {ORDER_REASON_MIN_LEN} characters.
+            </p>
+          )}
         </div>
 
         <DialogFooter>
           <Button
             variant="destructive"
-            className="w-full sm:w-auto"
+            className={cn("w-full sm:w-auto", BRAND_CONTROL_CLASS)}
             disabled={!canConfirm}
             onClick={() => onConfirm(trimmed)}
           >

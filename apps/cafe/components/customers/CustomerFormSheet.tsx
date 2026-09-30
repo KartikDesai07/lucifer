@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { FormSheet } from "@/components/shared/FormSheet";
 import { FormField } from "@/components/shared/FormField";
+import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 import { DinerPinResetRow } from "@/components/customers/DinerPinResetRow";
 import type { Customer } from "@/types";
 
@@ -123,6 +124,7 @@ export function CustomerFormSheet({
         <Input
           id="customer-name"
           autoFocus
+          className={BRAND_CONTROL_CLASS}
           aria-invalid={!!errors.name}
           {...register("name")}
         />
@@ -137,6 +139,7 @@ export function CustomerFormSheet({
           id="customer-mobile"
           inputMode="numeric"
           placeholder="10-digit number"
+          className={BRAND_CONTROL_CLASS}
           aria-invalid={!!errors.mobile}
           readOnly={!canEditMobile}
           {...register("mobile")}
@@ -154,7 +157,7 @@ export function CustomerFormSheet({
           name="notes"
           render={({ field }) => (
             <Select value={field.value} onValueChange={field.onChange}>
-              <SelectTrigger>
+              <SelectTrigger className={BRAND_CONTROL_CLASS}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

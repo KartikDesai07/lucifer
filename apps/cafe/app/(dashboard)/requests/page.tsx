@@ -9,6 +9,8 @@ import { useKotPrintBridge } from "@/hooks/use-kot-print-bridge";
 import { useSelfOrderAutoPrint } from "@/hooks/use-self-order-auto-print";
 import { useSettings } from "@/hooks/use-settings";
 import { printConfigOf } from "@/lib/print";
+import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
+import { MenuPageShell } from "@/components/menu/MenuPageShell";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { RequestsBoard } from "@/components/orders/RequestsBoard";
 import { DeviceAlertSettingsDialog } from "@/components/orders/DeviceAlertSettingsDialog";
@@ -23,6 +25,14 @@ import type { Order } from "@/types";
 // pos/page.tsx's own KOT sequencing (see its print-effects comment) for the
 // one job this page needs.
 export default function RequestsPage() {
+  return (
+    <MenuPageShell>
+      <RequestsContent />
+    </MenuPageShell>
+  );
+}
+
+function RequestsContent() {
   const settings = useSettings();
   const requests = usePendingOrderRequests(true);
 
@@ -67,18 +77,24 @@ export default function RequestsPage() {
     requests.refetch();
   };
 
+  // A failed first load must never read as "nothing waiting" (diners may be
+  // waiting). A failed background refetch with a list already loaded keeps the
+  // list on screen and says it may be stale.
+  const loadFailed = requests.isError && requests.data === undefined;
+  const refreshFailed = requests.isError && requests.data !== undefined;
+
   return (
-    <div className="space-y-4">
+    <>
       <PageHeader
-        className="flex-wrap"
-        title="Order requests"
+        eyebrow="Service"
+        title="Order Requests"
         description="Accept a request to fire it to the kitchen, or reject it with a reason."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <DeviceAlertSettingsDialog />
             <Button
               variant="outline"
-              size="sm"
+              className={BRAND_CONTROL_CLASS}
               onClick={() => requests.refetch()}
               disabled={requests.isFetching}
             >
@@ -92,9 +108,18 @@ export default function RequestsPage() {
       {/* PH-10b (owner): the per-device toggles live behind the Device
           settings button; the Print host card moved to /settings/printing. */}
 
+      {refreshFailed && (
+        <p role="status" className="text-sm text-destructive">
+          Couldn&apos;t refresh. Showing the last list. Tap Refresh to try again.
+        </p>
+      )}
+
       <RequestsBoard
         requests={requests.data ?? []}
         isLoading={requests.isLoading}
+        isError={loadFailed}
+        isOffline={requests.isPaused && requests.data === undefined}
+        onRetry={() => void requests.refetch()}
         onAccepted={handleAccepted}
         acceptingId={acceptingId}
         onAcceptingChange={setAcceptingId}
@@ -114,6 +139,6 @@ export default function RequestsPage() {
         voidedBy={print.voidedBy}
         voidedAt={print.voidedAt}
       />
-    </div>
+    </>
   );
 }

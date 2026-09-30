@@ -73,3 +73,27 @@ export const BRAND_NAV_SUB_ITEM_CLASS =
  *  through, so the whole icon above it answers. */
 export const BRAND_NAV_LABEL_CLASS =
   "h-6 px-2.5 text-[12px] font-medium tracking-[0.01em] text-brand-muted group-data-[collapsible=icon]:-mt-6 group-data-[collapsible=icon]:pointer-events-none";
+
+// ── List screens (Orders, Order Requests, Kitchen, Reservations, Customers,
+// Events, Staff — the polish pass of 2026-10-01) ────────────────────────────
+// One place for the three things every list screen repeats, so a filter, a
+// row action and a panel look and measure the same on every page.
+
+/** A search box, filter select, date picker or page-level button: 40px tall,
+ *  the finger-safe floor (the stock h-9 / size="sm" h-8 miss it on a phone). */
+export const BRAND_CONTROL_CLASS = "h-10";
+
+/** An icon-only row action: a 44px square on a phone, 40px from md up — the
+ *  Tables Setup row idiom (components/tables/AreaRow.tsx). */
+export const BRAND_ROW_ACTION_CLASS = "h-11 w-11 md:h-10 md:w-10";
+
+/** A white panel on the paper page (a table wrapper, a row card, a skeleton
+ *  box): without a fill a bordered box reads as a hole in bg-brand-paper. */
+export const BRAND_PANEL_CLASS = "border-brand-rule bg-brand-slip";
+
+/** On a list table's panel: its width never follows the table inside it. A
+ *  table's min-content width otherwise widens the whole page past the screen
+ *  (measured: 80px sideways scroll on Orders at 1024px, even inside the shell's
+ *  min-w-0 column); a table wider than its panel scrolls inside the ui Table's
+ *  own overflow-auto box instead. The Menu toolbar precedent. */
+export const BRAND_TABLE_CONTAIN_CLASS = "[contain:inline-size]";

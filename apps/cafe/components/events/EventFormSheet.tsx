@@ -20,6 +20,7 @@ import {
 import { FormSheet } from "@/components/shared/FormSheet";
 import { FormField } from "@/components/shared/FormField";
 import { DatePicker } from "@/components/shared/DatePicker";
+import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 import type { Event } from "@/types";
 
 const eventFormSchema = createEventSchema.pick({
@@ -131,6 +132,7 @@ export function EventFormSheet({
       >
         <Input
           id="evt-name"
+          className={BRAND_CONTROL_CLASS}
           autoFocus
           placeholder="e.g. Birthday party"
           aria-invalid={!!errors.eventName}
@@ -145,6 +147,7 @@ export function EventFormSheet({
       >
         <Input
           id="evt-customer"
+          className={BRAND_CONTROL_CLASS}
           aria-invalid={!!errors.name}
           {...register("name")}
         />
@@ -153,6 +156,7 @@ export function EventFormSheet({
       <FormField label="Mobile" htmlFor="evt-mobile" error={errors.mobile?.message}>
         <Input
           id="evt-mobile"
+          className={BRAND_CONTROL_CLASS}
           inputMode="numeric"
           aria-invalid={!!errors.mobile}
           {...register("mobile")}
@@ -167,6 +171,7 @@ export function EventFormSheet({
             render={({ field }) => (
               <DatePicker
                 id="evt-date"
+                className={BRAND_CONTROL_CLASS}
                 value={field.value}
                 onChange={field.onChange}
                 invalid={!!errors.date}
@@ -178,6 +183,7 @@ export function EventFormSheet({
         <FormField label="Time" htmlFor="evt-time" error={errors.time?.message}>
           <Input
             id="evt-time"
+            className={BRAND_CONTROL_CLASS}
             type="time"
             aria-invalid={!!errors.time}
             {...register("time")}
@@ -187,12 +193,13 @@ export function EventFormSheet({
 
       <div className="grid grid-cols-2 gap-3">
         <FormField
-          label="Payable (₹)"
+          label="Total amount (₹)"
           htmlFor="evt-payable"
           error={errors.payable?.message}
         >
           <Input
             id="evt-payable"
+            className={BRAND_CONTROL_CLASS}
             type="number"
             min={0}
             aria-invalid={!!errors.payable}
@@ -200,12 +207,13 @@ export function EventFormSheet({
           />
         </FormField>
         <FormField
-          label="Advance (₹)"
+          label="Advance paid (₹)"
           htmlFor="evt-advance"
           error={errors.advance?.message}
         >
           <Input
             id="evt-advance"
+            className={BRAND_CONTROL_CLASS}
             type="number"
             min={0}
             aria-invalid={!!errors.advance}
@@ -214,13 +222,13 @@ export function EventFormSheet({
         </FormField>
       </div>
 
-      <FormField label="Payment mode">
+      <FormField label="Payment mode" htmlFor="evt-paymode">
         <Controller
           control={control}
           name="payMode"
           render={({ field }) => (
             <Select value={field.value} onValueChange={field.onChange}>
-              <SelectTrigger>
+              <SelectTrigger id="evt-paymode" className={BRAND_CONTROL_CLASS}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

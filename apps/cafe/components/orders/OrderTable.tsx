@@ -4,6 +4,7 @@ import { Eye, Ban, HandCoins } from "lucide-react";
 
 import { PAY_STYLES } from "@/lib/constants";
 import { inr, formatDate, cn } from "@/lib/utils";
+import { BRAND_PANEL_CLASS, BRAND_ROW_ACTION_CLASS, BRAND_TABLE_CONTAIN_CLASS } from "@/components/brand/brand-classes";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -44,6 +45,11 @@ function deriveOrderRow(order: Order) {
   return { due, payStyle, preview, more };
 }
 
+// Hover/long-press text for a truncated first-item preview.
+function previewTitle(preview: string, more: number) {
+  return `${preview}${more > 0 ? ` +${more}` : ""}`;
+}
+
 // Colour is a reinforcement, not the only signal — the label itself always
 // names the status (cafe.md palette).
 function statusBadgeClass(status: Order["status"]) {
@@ -66,8 +72,10 @@ function OrderRowActions({
       <Button
         variant="ghost"
         size="icon"
+        className={BRAND_ROW_ACTION_CLASS}
         onClick={() => onView(order)}
         aria-label="View order"
+        title="View order"
       >
         <Eye className="h-4 w-4" />
       </Button>
@@ -75,17 +83,19 @@ function OrderRowActions({
         <Button
           variant="ghost"
           size="icon"
+          className={BRAND_ROW_ACTION_CLASS}
           onClick={() => onSettle(order)}
           aria-label="Settle order"
           title="Settle & pay"
         >
-          <HandCoins className="h-4 w-4 text-indigo-600" />
+          <HandCoins className="h-4 w-4 text-brand-primary" />
         </Button>
       )}
       {isAdmin && order.status !== "Cancelled" && (
         <Button
           variant="ghost"
           size="icon"
+          className={BRAND_ROW_ACTION_CLASS}
           onClick={() => onCancel(order)}
           aria-label="Cancel order"
           title="Cancel order"
@@ -106,11 +116,11 @@ function OrderRowCard({
 }: OrderRowProps) {
   const { due, payStyle, preview, more } = deriveOrderRow(order);
   return (
-    <div className="rounded-lg border p-3">
+    <div className={cn("rounded-lg border p-3", BRAND_PANEL_CLASS)}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="font-medium">{order.orderId}</div>
-          <div className="text-xs text-muted-foreground">
+          <div className="break-words text-xs text-muted-foreground">
             {formatDate(order.createdAt)} · {order.tableNo ?? "Walk-In"}
           </div>
         </div>
@@ -121,8 +131,8 @@ function OrderRowCard({
           {order.status}
         </Badge>
       </div>
-      <div className="mt-2 text-sm">{order.customerName}</div>
-      <div className="min-w-0 truncate text-sm text-muted-foreground">
+      <div className="mt-2 break-words text-sm">{order.customerName}</div>
+      <div className="min-w-0 truncate text-sm text-muted-foreground" title={previewTitle(preview, more)}>
         {preview}
         {more > 0 && ` +${more}`}
       </div>
@@ -139,7 +149,7 @@ function OrderRowCard({
           {payStyle?.label ?? order.payment}
         </Badge>
       </div>
-      <div className="mt-2 flex justify-end gap-1 border-t pt-2">
+      <div className="mt-2 flex justify-end gap-2 border-t pt-2">
         <OrderRowActions
           order={order}
           onView={onView}
@@ -161,8 +171,8 @@ export function OrderTable({
 }: OrderTableProps) {
   return (
     <>
-      <div className="hidden md:block">
-        <div className="rounded-lg border">
+      <div className="hidden xl:block">
+        <div className={cn("rounded-lg border", BRAND_PANEL_CLASS, BRAND_TABLE_CONTAIN_CLASS)}>
           <Table>
             <TableHeader>
               <TableRow>
@@ -173,7 +183,7 @@ export function OrderTable({
                 <TableHead className="text-right">Due</TableHead>
                 <TableHead>Payment</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="w-28 text-right">Actions</TableHead>
+                <TableHead className="w-36 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -189,7 +199,10 @@ export function OrderTable({
                       </div>
                     </TableCell>
                     <TableCell>{order.customerName}</TableCell>
-                    <TableCell className="max-w-[12rem] truncate text-muted-foreground">
+                    <TableCell
+                      className="max-w-[12rem] truncate text-muted-foreground"
+                      title={previewTitle(preview, more)}
+                    >
                       {preview}
                       {more > 0 && ` +${more}`}
                     </TableCell>
@@ -219,7 +232,7 @@ export function OrderTable({
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
+                      <div className="flex justify-end gap-2">
                         <OrderRowActions
                           order={order}
                           onView={onView}
@@ -237,7 +250,7 @@ export function OrderTable({
         </div>
       </div>
 
-      <div className="space-y-2 md:hidden">
+      <div className="space-y-2 xl:hidden">
         {orders.map((order) => (
           <OrderRowCard
             key={order._id}

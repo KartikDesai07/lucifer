@@ -4,7 +4,6 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useReactToPrint } from "react-to-print";
 import { Printer, ChefHat, MessageCircle, HandCoins, Replace } from "lucide-react";
-
 import { toast } from "sonner";
 
 import { orderItemLabel, orderItemModifierLines, discountLineLabel } from "@pos/shared/utils";
@@ -18,6 +17,7 @@ import { billPrintJob, cancelNoticePrintJob, kotPrintJob } from "@/lib/print-rou
 import { useSettings } from "@/hooks/use-settings";
 import { useSettleFlow } from "@/hooks/use-settle-flow";
 import { useHostRouting } from "@/hooks/use-print-routing";
+import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -327,7 +327,7 @@ export function OrderDetailSheet({
 
             <div className="space-y-2">
               {order.items.map((item, i) => (
-                <div key={`${item.productId}-${i}`} className="flex justify-between">
+                <div key={`${item.productId}-${i}`} className="flex justify-between gap-3">
                   <div className="min-w-0">
                     <span className="font-medium">
                       {orderItemLabel(item)}
@@ -384,13 +384,13 @@ export function OrderDetailSheet({
               {chargesFromOrder(order).map((c, i) => (
                 <Row key={`${c.label}-${i}`} label={c.label} value={`+${inr(c.amount)}`} />
               ))}
-              <div className="flex justify-between text-base font-bold">
+              <div className="flex justify-between gap-3 text-base font-bold">
                 <span>Total</span>
                 <span>{inr(order.total)}</span>
               </div>
               <Row label="Paid" value={inr(order.paidAmount)} />
               {due > 0 && order.status === "Completed" && (
-                <div className="flex justify-between font-medium text-destructive">
+                <div className="flex justify-between gap-3 font-medium text-destructive">
                   <span>Due</span>
                   <span>{inr(due)}</span>
                 </div>
@@ -415,13 +415,13 @@ export function OrderDetailSheet({
             row of its own, so the primary action is never squeezed. */}
         <SheetFooter className="flex-col gap-2 px-4 sm:flex-col sm:justify-start sm:space-x-0">
           <div className={cn("grid gap-2", isOpenTab ? "grid-cols-2" : "grid-cols-3")}>
-            <Button variant="outline" onClick={printBill} disabled={enqueuePending}>
+            <Button variant="outline" onClick={printBill} disabled={enqueuePending} className={BRAND_CONTROL_CLASS}>
               <Printer className="mr-2 h-4 w-4" /> Print
             </Button>
-            <Button variant="outline" onClick={printKitchenSlip} disabled={enqueuePending}>
+            <Button variant="outline" onClick={printKitchenSlip} disabled={enqueuePending} className={BRAND_CONTROL_CLASS}>
               <ChefHat className="mr-2 h-4 w-4" /> {isCancelled ? "Notify Kitchen" : "KOT"}
             </Button>
-            <Button variant="outline" asChild>
+            <Button variant="outline" asChild className={BRAND_CONTROL_CLASS}>
               <a
                 href={
                   order
@@ -440,13 +440,13 @@ export function OrderDetailSheet({
                 for a seated one. Owner decision: all staff, no admin gate
                 (matches Settle, not Cancel). */}
             {isOpenTab && (
-              <Button variant="outline" onClick={() => setMoveOpen(true)}>
+              <Button variant="outline" className={BRAND_CONTROL_CLASS} onClick={() => setMoveOpen(true)}>
                 <Replace className="mr-2 h-4 w-4" /> {order.tableNo ? "Move table" : "Assign table"}
               </Button>
             )}
           </div>
           {isOpenTab && (
-            <Button className="w-full" onClick={openSettle}>
+            <Button className={cn("w-full", BRAND_CONTROL_CLASS)} onClick={openSettle}>
               <HandCoins className="mr-2 h-4 w-4" /> Settle &amp; Pay
             </Button>
           )}
@@ -512,9 +512,9 @@ export function OrderDetailSheet({
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between">
+    <div className="flex justify-between gap-3">
       <span className="text-muted-foreground">{label}</span>
-      <span>{value}</span>
+      <span className="min-w-0 break-words">{value}</span>
     </div>
   );
 }

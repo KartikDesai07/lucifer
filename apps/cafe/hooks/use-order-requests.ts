@@ -139,7 +139,7 @@ export function useAcceptOrderRequest(options?: UseAcceptOrderRequestOptions) {
       else toast.success("Order accepted — KOT queued");
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Could not accept the request");
+      toast.error(err.message || "Could not accept the request. Check the connection, then try again.");
       qc.invalidateQueries({ queryKey: ORDER_REQUEST_KEYS.all });
     },
     onSettled: () => {
@@ -162,7 +162,7 @@ export function useRejectOrderRequest() {
       apiSend<TrayOrderRequest>(`/api/order-requests/${id}/reject`, "POST", { reason }),
     onSuccess: () => toast.success("Order request rejected"),
     onError: (err: Error) => {
-      toast.error(err.message || "Could not reject the request");
+      toast.error(err.message || "Could not reject the request. Check the connection, then try again.");
       qc.invalidateQueries({ queryKey: ORDER_REQUEST_KEYS.all });
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ORDER_REQUEST_KEYS.all }),

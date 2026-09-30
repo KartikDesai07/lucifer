@@ -2,6 +2,7 @@
 
 import { useCustomerOrders } from "@/hooks/use-customers";
 import { PAY_STYLES } from "@/lib/constants";
+import { POS_DIALOG_LIST_CAP_CLASS } from "@/lib/pos-layout";
 import { inr, formatDate, cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { ErrorState } from "@/components/shared/ErrorState";
 import { DuePaymentHistory } from "@/components/customers/DuePaymentHistory";
 import type { Customer } from "@/types";
 
@@ -61,9 +63,12 @@ export function CustomerHistoryDialog({
     // still cached must fall through to the list instead of landing here.
     if (orders.isLoadingError) {
       return (
-        <p className="p-4 text-sm text-destructive">
-          Failed to load orders. Retry by reopening this dialog.
-        </p>
+        <ErrorState
+          title="Couldn't load orders"
+          description="Check the internet connection, then try again."
+          onRetry={() => void orders.refetch()}
+          retryLabel="Try again"
+        />
       );
     }
     return (
@@ -80,20 +85,20 @@ export function CustomerHistoryDialog({
         <DialogHeader>
           <DialogTitle>Customer history</DialogTitle>
           <DialogDescription>
-            {customer?.name} · {customer?.visits ?? 0} visits ·{" "}
+            {customer?.name ?? "Customer"} · {customer?.visits ?? 0} visits ·{" "}
             {inr(customer?.totalSpend ?? 0)} lifetime
           </DialogDescription>
         </DialogHeader>
 
         <Tabs defaultValue="orders">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid h-12 w-full grid-cols-2">
             <TabsTrigger value="orders">Orders</TabsTrigger>
             <TabsTrigger value="payments">Payments</TabsTrigger>
           </TabsList>
 
           <TabsContent value="orders">
             {ordersPanel ?? (
-              <div className="max-h-[60vh] space-y-2 overflow-y-auto">
+              <div className={cn("space-y-2 overflow-y-auto", POS_DIALOG_LIST_CAP_CLASS)}>
                 {orders.data?.map((order) => {
                   const style = PAY_STYLES[order.payment];
                   const cancelled = order.status === "Cancelled";
@@ -104,16 +109,16 @@ export function CustomerHistoryDialog({
                   return (
                     <div
                       key={order._id}
-                      className="flex items-center justify-between rounded-md border p-2.5 text-sm"
+                      className="flex items-center justify-between gap-2 rounded-md border p-2.5 text-sm"
                     >
                       <div className="min-w-0">
-                        <p className="font-medium">{order.orderId}</p>
+                        <p className="truncate font-medium">{order.orderId}</p>
                         <p className="text-xs text-muted-foreground">
                           {formatDate(order.createdAt)} · {order.items.length} item
                           {order.items.length === 1 ? "" : "s"}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex shrink-0 items-center gap-2">
                         {due > 0 && (
                           <span className="text-xs font-medium text-destructive">
                             Due {inr(due)}

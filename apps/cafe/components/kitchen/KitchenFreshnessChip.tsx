@@ -32,12 +32,24 @@ export function KitchenFreshnessChip({ dataUpdatedAt }: KitchenFreshnessChipProp
     return () => clearInterval(id);
   }, []);
 
+  // Nothing has loaded yet (or the first load failed): dataUpdatedAt is 0 and
+  // "Updated 1790000000s ago" would be nonsense. The chip still keeps its place
+  // (invisible, hidden from screen readers) so the header does not grow when
+  // the first load lands — on a phone the chip wraps to its own line (CLS).
+  if (dataUpdatedAt === 0) {
+    return (
+      <span aria-hidden className="invisible text-sm">
+        Updated 0s ago
+      </span>
+    );
+  }
+
   const ageMs = now - dataUpdatedAt;
   const stale = dataUpdatedAt > 0 && ageMs >= KITCHEN_STALE_MS;
 
   if (stale) {
     return (
-      <span className="flex items-center gap-1.5 text-sm font-medium text-amber-600">
+      <span className="flex items-center gap-1.5 text-sm font-medium text-amber-700">
         <WifiOff className="h-4 w-4" />
         Stale — last synced {fmtSyncedAt(dataUpdatedAt)}
       </span>

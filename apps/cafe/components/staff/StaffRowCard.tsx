@@ -1,7 +1,9 @@
 import { KeyRound, Pencil, UserCheck, UserX } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { BRAND_PANEL_CLASS, BRAND_ROW_ACTION_CLASS } from "@/components/brand/brand-classes";
 import type { Staff } from "@/types";
 
 interface StaffRowCardProps {
@@ -27,16 +29,18 @@ export function StaffRowCard({
   onReactivate,
 }: StaffRowCardProps) {
   return (
-    <div className="rounded-lg border p-3">
+    <div className={cn("rounded-lg border p-3", BRAND_PANEL_CLASS)}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="font-medium">
+          <div className="break-words font-medium">
             {member.name}
             {isSelf && (
               <span className="ml-1 text-xs text-muted-foreground">(you)</span>
             )}
           </div>
-          <div className="text-xs text-muted-foreground">{member.username}</div>
+          <div className="truncate text-xs text-muted-foreground" title={member.username}>
+            {member.username}
+          </div>
         </div>
         <Badge variant={member.isActive ? "outline" : "secondary"}>
           {member.isActive ? "Active" : "Inactive"}
@@ -57,6 +61,7 @@ export function StaffRowCard({
         <Button
           variant="ghost"
           size="icon"
+          className={BRAND_ROW_ACTION_CLASS}
           onClick={() => onEdit(member)}
           aria-label="Edit staff"
         >
@@ -65,6 +70,7 @@ export function StaffRowCard({
         <Button
           variant="ghost"
           size="icon"
+          className={BRAND_ROW_ACTION_CLASS}
           onClick={() => onResetPassword(member)}
           aria-label="Reset password"
           title="Reset password"
@@ -75,6 +81,7 @@ export function StaffRowCard({
           <Button
             variant="ghost"
             size="icon"
+            className={BRAND_ROW_ACTION_CLASS}
             disabled={protectedAccount}
             onClick={() => onDeactivate(member)}
             aria-label="Deactivate staff"
@@ -90,6 +97,7 @@ export function StaffRowCard({
           <Button
             variant="ghost"
             size="icon"
+            className={BRAND_ROW_ACTION_CLASS}
             disabled={reactivateDisabled}
             onClick={() => onReactivate(member)}
             aria-label="Reactivate staff"

@@ -23,6 +23,7 @@ import {
 import { FormSheet } from "@/components/shared/FormSheet";
 import { FormField } from "@/components/shared/FormField";
 import { DatePicker } from "@/components/shared/DatePicker";
+import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 import type { Reservation } from "@/types";
 
 const reservationFormSchema = createReservationSchema.pick({
@@ -151,6 +152,7 @@ export function ReservationFormSheet({
       <FormField label="Guest name" htmlFor="res-name" error={errors.name?.message}>
         <Input
           id="res-name"
+          className={BRAND_CONTROL_CLASS}
           autoFocus
           aria-invalid={!!errors.name}
           {...register("name")}
@@ -160,6 +162,7 @@ export function ReservationFormSheet({
       <FormField label="Mobile" htmlFor="res-mobile" error={errors.mobile?.message}>
         <Input
           id="res-mobile"
+          className={BRAND_CONTROL_CLASS}
           inputMode="numeric"
           aria-invalid={!!errors.mobile}
           {...register("mobile")}
@@ -174,6 +177,7 @@ export function ReservationFormSheet({
             render={({ field }) => (
               <DatePicker
                 id="res-date"
+                className={BRAND_CONTROL_CLASS}
                 value={field.value}
                 onChange={field.onChange}
                 invalid={!!errors.date}
@@ -185,6 +189,7 @@ export function ReservationFormSheet({
         <FormField label="Time" htmlFor="res-time" error={errors.time?.message}>
           <Input
             id="res-time"
+            className={BRAND_CONTROL_CLASS}
             type="time"
             aria-invalid={!!errors.time}
             {...register("time")}
@@ -200,13 +205,14 @@ export function ReservationFormSheet({
         >
           <Input
             id="res-guests"
+            className={BRAND_CONTROL_CLASS}
             type="number"
             min={1}
             aria-invalid={!!errors.guests}
             {...register("guests", { valueAsNumber: true })}
           />
         </FormField>
-        <FormField label="Table">
+        <FormField label="Table" htmlFor="res-table">
           <Controller
             control={control}
             name="tableNo"
@@ -217,7 +223,7 @@ export function ReservationFormSheet({
                   field.onChange(v === UNASSIGNED ? undefined : v)
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger id="res-table" className={BRAND_CONTROL_CLASS}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

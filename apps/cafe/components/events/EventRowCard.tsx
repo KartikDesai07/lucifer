@@ -4,9 +4,10 @@ import type { EventStatus } from "@/lib/constants";
 import { formatDate, formatTime, inr, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { BRAND_PANEL_CLASS, BRAND_ROW_ACTION_CLASS } from "@/components/brand/brand-classes";
 import type { Event } from "@/types";
 
-const STATUS_VARIANTS: Record<EventStatus, string> = {
+export const STATUS_VARIANTS: Record<EventStatus, string> = {
   Booked: "border-blue-300 text-blue-700",
   Completed: "border-green-300 text-green-700",
   Cancelled: "border-red-300 text-red-700",
@@ -35,7 +36,7 @@ export function EventRowCard({
   const balance = Math.max(0, e.payable - e.advance);
 
   return (
-    <div className="rounded-lg border p-3">
+    <div className={cn("rounded-lg border p-3", BRAND_PANEL_CLASS)}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 font-medium">{e.eventName}</div>
         <Badge variant="outline" className={cn(STATUS_VARIANTS[e.status])}>
@@ -53,11 +54,11 @@ export function EventRowCard({
       </div>
 
       <div className="mt-2 flex items-center justify-between text-sm">
-        <span>{inr(e.payable)}</span>
+        <span>Total {inr(e.payable)}</span>
         {balance > 0 ? (
-          <Badge variant="destructive">{inr(balance)}</Badge>
+          <Badge variant="destructive">Due {inr(balance)}</Badge>
         ) : (
-          <span className="text-green-600">Paid</span>
+          <span className="text-green-700">Paid</span>
         )}
       </div>
 
@@ -66,6 +67,7 @@ export function EventRowCard({
           <Button
             variant="ghost"
             size="icon"
+            className={BRAND_ROW_ACTION_CLASS}
             disabled={busy}
             onClick={() => onReceiveBalance(e)}
             aria-label="Receive balance"
@@ -79,6 +81,7 @@ export function EventRowCard({
             <Button
               variant="ghost"
               size="icon"
+              className={BRAND_ROW_ACTION_CLASS}
               disabled={busy}
               onClick={() => onComplete(e)}
               aria-label="Complete event"
@@ -89,6 +92,7 @@ export function EventRowCard({
             <Button
               variant="ghost"
               size="icon"
+              className={BRAND_ROW_ACTION_CLASS}
               disabled={busy}
               onClick={() => onCancel(e)}
               aria-label="Cancel event"
@@ -101,6 +105,7 @@ export function EventRowCard({
         <Button
           variant="ghost"
           size="icon"
+          className={BRAND_ROW_ACTION_CLASS}
           onClick={() => onEdit(e)}
           aria-label="Edit event"
         >
@@ -109,6 +114,7 @@ export function EventRowCard({
         <Button
           variant="ghost"
           size="icon"
+          className={BRAND_ROW_ACTION_CLASS}
           onClick={() => onDelete(e)}
           aria-label="Delete event"
         >

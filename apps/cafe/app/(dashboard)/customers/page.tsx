@@ -11,10 +11,13 @@ import {
 } from "@/hooks/use-customers";
 import { useAuth } from "@/hooks/use-auth";
 import { CUSTOMER_SEARCH_LIMIT } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { BRAND_CONTROL_CLASS, BRAND_PANEL_CLASS } from "@/components/brand/brand-classes";
+import { MenuPageShell } from "@/components/menu/MenuPageShell";
 import { CustomerFormSheet } from "@/components/customers/CustomerFormSheet";
 import { CustomerHistoryDialog } from "@/components/customers/CustomerHistoryDialog";
 import { ReceivePaymentDialog } from "@/components/customers/ReceivePaymentDialog";
@@ -43,6 +46,14 @@ function mergeById(local: Customer[], remote: Customer[]): Customer[] {
 }
 
 export default function CustomersPage() {
+  return (
+    <MenuPageShell>
+      <CustomersContent />
+    </MenuPageShell>
+  );
+}
+
+function CustomersContent() {
   const customers = useCustomers();
   const deleteCustomer = useDeleteCustomer();
   const { isAdmin } = useAuth();
@@ -134,24 +145,26 @@ export default function CustomersPage() {
   const noCustomers = !hasCustomers && !query;
 
   return (
-    <div className="space-y-4">
+    <>
       <PageHeader
+        eyebrow="Manage"
         title="Customers"
         description="Track visits, spending, and outstanding dues."
         actions={
-          <Button onClick={openAdd}>
+          <Button onClick={openAdd} className={BRAND_CONTROL_CLASS}>
             <Plus className="mr-2 h-4 w-4" /> Add customer
           </Button>
         }
       />
 
       <div className="relative">
-        <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by name or mobile…"
-          className="pl-8"
+          aria-label="Search customers"
+          className={cn("pl-8", BRAND_CONTROL_CLASS)}
         />
       </div>
 
@@ -166,19 +179,21 @@ export default function CustomersPage() {
         searchOffline={searchOffline}
         searchFailed={remote.isError}
         onAdd={openAdd}
+        onRetry={() => void customers.refetch()}
+        onClearSearch={() => setSearch("")}
       />
       {hasRows && (
         <>
           {truncated && (
             // Without this, a capped list of look-alike masked numbers reads as
             // a complete answer.
-            <p className="rounded-lg border bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
+            <p className={cn("rounded-lg border px-4 py-2 text-xs text-muted-foreground", BRAND_PANEL_CLASS)}>
               Showing the first {CUSTOMER_SEARCH_LIMIT} matches. Type more of the
               name or number to narrow it down.
             </p>
           )}
 
-          <div className="hidden md:block">
+          <div className="hidden lg:block">
             <CustomerTable
               customers={filtered}
               isAdmin={isAdmin}
@@ -189,7 +204,7 @@ export default function CustomersPage() {
             />
           </div>
 
-          <div className="space-y-2 md:hidden">
+          <div className="space-y-2 lg:hidden">
             {filtered.map((customer) => (
               <CustomerRowCard
                 key={customer._id}
@@ -225,11 +240,11 @@ export default function CustomersPage() {
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}
         title="Delete customer?"
-        description={`"${deleting?.name}" will be permanently removed. Customers with outstanding dues cannot be deleted.`}
+        description={`"${deleting?.name ?? "This customer"}" will be permanently removed. Customers with outstanding dues cannot be deleted.`}
         confirmLabel="Delete"
         isLoading={deleteCustomer.isPending}
         onConfirm={confirmDelete}
       />
-    </div>
+    </>
   );
 }

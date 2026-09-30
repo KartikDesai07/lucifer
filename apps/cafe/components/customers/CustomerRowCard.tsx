@@ -2,9 +2,10 @@
 
 import { Pencil, Trash2, History, Wallet } from "lucide-react";
 
-import { inr } from "@/lib/utils";
+import { cn, inr } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { BRAND_PANEL_CLASS, BRAND_ROW_ACTION_CLASS } from "@/components/brand/brand-classes";
 import type { Customer } from "@/types";
 
 interface CustomerRowCardProps {
@@ -28,7 +29,7 @@ export function CustomerRowCard({
   onDelete,
 }: CustomerRowCardProps) {
   return (
-    <div className="rounded-lg border p-3">
+    <div className={cn("rounded-lg border p-3", BRAND_PANEL_CLASS)}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="font-medium">{customer.name}</div>
@@ -48,7 +49,7 @@ export function CustomerRowCard({
       </div>
       {customer.totalDue > 0 && (
         <div className="mt-1">
-          <Badge variant="destructive">{inr(customer.totalDue)}</Badge>
+          <Badge variant="destructive">Due {inr(customer.totalDue)}</Badge>
         </div>
       )}
       <div className="mt-2 flex justify-end gap-1 border-t pt-2">
@@ -56,6 +57,7 @@ export function CustomerRowCard({
           <Button
             variant="ghost"
             size="icon"
+            className={BRAND_ROW_ACTION_CLASS}
             onClick={() => onReceivePayment(customer)}
             aria-label="Receive payment"
           >
@@ -65,6 +67,7 @@ export function CustomerRowCard({
         <Button
           variant="ghost"
           size="icon"
+          className={BRAND_ROW_ACTION_CLASS}
           onClick={() => onHistory(customer)}
           aria-label="Order history"
         >
@@ -73,6 +76,7 @@ export function CustomerRowCard({
         <Button
           variant="ghost"
           size="icon"
+          className={BRAND_ROW_ACTION_CLASS}
           onClick={() => onEdit(customer)}
           aria-label="Edit customer"
         >
@@ -84,6 +88,7 @@ export function CustomerRowCard({
           <Button
             variant="ghost"
             size="icon"
+            className={BRAND_ROW_ACTION_CLASS}
             onClick={() => onDelete(customer)}
             aria-label="Delete customer"
           >

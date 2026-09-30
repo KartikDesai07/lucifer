@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 import { FormSheet } from "@/components/shared/FormSheet";
 import { FormField } from "@/components/shared/FormField";
 import type { Staff } from "@/types";
@@ -129,6 +130,7 @@ export function StaffFormSheet({
         <Input
           id="staff-name"
           autoFocus
+          className={BRAND_CONTROL_CLASS}
           aria-invalid={!!errors.name}
           {...register("name")}
         />
@@ -138,6 +140,8 @@ export function StaffFormSheet({
         <Input
           id="staff-mobile"
           inputMode="numeric"
+          placeholder="10-digit number"
+          className={BRAND_CONTROL_CLASS}
           aria-invalid={!!errors.mobile}
           {...register("mobile")}
         />
@@ -151,6 +155,7 @@ export function StaffFormSheet({
         <Input
           id="staff-username"
           autoComplete="off"
+          className={BRAND_CONTROL_CLASS}
           aria-invalid={!!errors.username}
           {...register("username")}
         />
@@ -166,9 +171,13 @@ export function StaffFormSheet({
             id="staff-password"
             type="password"
             autoComplete="new-password"
+            className={BRAND_CONTROL_CLASS}
             aria-invalid={!!errors.password}
             {...register("password")}
           />
+          <p className="text-xs text-muted-foreground">
+            At least {MIN_PASSWORD} characters.
+          </p>
         </FormField>
       )}
 
@@ -178,7 +187,7 @@ export function StaffFormSheet({
           name="role"
           render={({ field }) => (
             <Select value={field.value} onValueChange={field.onChange}>
-              <SelectTrigger>
+              <SelectTrigger className={BRAND_CONTROL_CLASS}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

@@ -1,12 +1,13 @@
-import { ChefHat, Check, Pencil, Trash2, X } from "lucide-react";
+import { Armchair, Check, Pencil, Trash2, X } from "lucide-react";
 
 import type { ReservationStatus } from "@/lib/constants";
 import { formatDate, formatTime, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { BRAND_PANEL_CLASS, BRAND_ROW_ACTION_CLASS } from "@/components/brand/brand-classes";
 import type { Reservation } from "@/types";
 
-const STATUS_VARIANTS: Record<ReservationStatus, string> = {
+export const STATUS_VARIANTS: Record<ReservationStatus, string> = {
   Booked: "border-blue-300 text-blue-700",
   Seated: "border-green-300 text-green-700",
   Completed: "border-gray-300 text-gray-600",
@@ -34,7 +35,7 @@ export function ReservationRowCard({
   onDelete,
 }: ReservationRowCardProps) {
   return (
-    <div className="rounded-lg border p-3">
+    <div className={cn("rounded-lg border p-3", BRAND_PANEL_CLASS)}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="font-medium">{formatDate(r.date)}</div>
@@ -60,18 +61,20 @@ export function ReservationRowCard({
           <Button
             variant="ghost"
             size="icon"
+            className={BRAND_ROW_ACTION_CLASS}
             disabled={busy}
             onClick={() => onSeat(r)}
             aria-label="Seat guest"
             title="Seat"
           >
-            <ChefHat className="h-4 w-4" />
+            <Armchair className="h-4 w-4" />
           </Button>
         )}
         {r.status === "Seated" && (
           <Button
             variant="ghost"
             size="icon"
+            className={BRAND_ROW_ACTION_CLASS}
             disabled={busy}
             onClick={() => onComplete(r)}
             aria-label="Complete reservation"
@@ -84,6 +87,7 @@ export function ReservationRowCard({
           <Button
             variant="ghost"
             size="icon"
+            className={BRAND_ROW_ACTION_CLASS}
             disabled={busy}
             onClick={() => onCancel(r)}
             aria-label="Cancel reservation"
@@ -95,6 +99,7 @@ export function ReservationRowCard({
         <Button
           variant="ghost"
           size="icon"
+          className={BRAND_ROW_ACTION_CLASS}
           onClick={() => onEdit(r)}
           aria-label="Edit reservation"
         >
@@ -103,6 +108,7 @@ export function ReservationRowCard({
         <Button
           variant="ghost"
           size="icon"
+          className={BRAND_ROW_ACTION_CLASS}
           onClick={() => onDelete(r)}
           aria-label="Delete reservation"
         >

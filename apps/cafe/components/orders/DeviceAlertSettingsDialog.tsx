@@ -11,6 +11,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 import { DeviceAlertSettings } from "@/components/orders/DeviceAlertSettings";
 
 // PH-10b (owner): the per-device toggles used to sit in a card that took up
@@ -26,7 +27,7 @@ export function DeviceAlertSettingsDialog() {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" aria-label="Device settings">
+        <Button variant="outline" className={BRAND_CONTROL_CLASS} aria-label="Device settings">
           <Settings2 className="mr-2 h-4 w-4" />
           Device settings
         </Button>

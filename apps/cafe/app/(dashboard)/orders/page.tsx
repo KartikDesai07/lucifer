@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Receipt, Search } from "lucide-react";
 
 import {
@@ -12,34 +13,42 @@ import {
 import { dedupeOrdersById, liveOrderOf } from "@/lib/order-query";
 import { useTables } from "@/hooks/use-tables";
 import { useAuth } from "@/hooks/use-auth";
-import { ORDER_STATUSES, PAYMENT_MODES } from "@/lib/constants";
-import { cafeDateString } from "@/lib/utils";
+import { ORDER_STATUSES, PAYMENT_MODES, PAY_STYLES } from "@/lib/constants";
+import { cafeDateString, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DatePicker } from "@/components/shared/DatePicker";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { ErrorState } from "@/components/shared/ErrorState";
+import { MenuPageShell } from "@/components/menu/MenuPageShell";
+import { BRAND_CONTROL_CLASS, BRAND_PANEL_CLASS } from "@/components/brand/brand-classes";
 import { OrderDetailSheet } from "@/components/orders/OrderDetailSheet";
 import { OrderTable } from "@/components/orders/OrderTable";
 import { CancelOrderDialog } from "@/components/orders/CancelOrderDialog";
+import { ALL, FilterSelect, type FilterOption } from "@/components/orders/OrderFilterSelect";
 import type { Order } from "@/types";
 
-// Sentinel for "no filter". Table names are free text now (CR1.1), so this must
-// be a value no real table can carry — a cafe naming a table "all" would other-
-// wise silently clear the filter. TABLE_NO_PATTERN requires an alphanumeric first
-// character, so a leading underscore is unnameable by construction.
-const ALL = "__all__";
+const PHONE_DEBOUNCE_MS = 350;
+const SKELETON_ROWS = 6;
+const POS_PATH = "/pos";
+
+// Filter options: the value is what the list query sends, the label is the word
+// the rows show (payment "Unpaid" reads "Open" on every row).
+const STATUS_OPTIONS: FilterOption[] = ORDER_STATUSES.map((s) => ({ value: s, label: s }));
+const PAYMENT_OPTIONS: FilterOption[] = PAYMENT_MODES.map((m) => ({ value: m, label: PAY_STYLES[m]?.label ?? m }));
 
 export default function OrdersPage() {
+  return (
+    <MenuPageShell>
+      <OrdersContent />
+    </MenuPageShell>
+  );
+}
+
+function OrdersContent() {
   const [status, setStatus] = useState(ALL);
   const [tableNo, setTableNo] = useState(ALL);
   const [payment, setPayment] = useState(ALL);
@@ -49,7 +58,7 @@ export default function OrdersPage() {
   const [phoneInput, setPhoneInput] = useState("");
   const [phone, setPhone] = useState("");
   useEffect(() => {
-    const t = setTimeout(() => setPhone(phoneInput.trim()), 350);
+    const t = setTimeout(() => setPhone(phoneInput.trim()), PHONE_DEBOUNCE_MS);
     return () => clearTimeout(t);
   }, [phoneInput]);
 
@@ -83,7 +92,7 @@ export default function OrdersPage() {
   const { isAdmin } = useAuth();
   const cancelOrder = useCancelOrder();
   const tables = useTables();
-  const tableOptions = (tables.data ?? []).map((t) => t.tableNo);
+  const tableOptions: FilterOption[] = (tables.data ?? []).map((t) => ({ value: t.tableNo, label: t.tableNo }));
 
   const [detail, setDetail] = useState<Order | null>(null);
   const [cancelling, setCancelling] = useState<Order | null>(null);
@@ -99,84 +108,108 @@ export default function OrdersPage() {
   };
 
   const list = dedupeOrdersById(orders.data?.pages ?? []);
-  const filtersActive =
-    status !== ALL || tableNo !== ALL || payment !== ALL || !!date || !!phone;
-  const activeFilterCount = [
-    status !== ALL,
-    tableNo !== ALL,
-    payment !== ALL,
-    !!date,
-    !!phone,
-  ].filter(Boolean).length;
+  const activeFilterCount = [status !== ALL, tableNo !== ALL, payment !== ALL, !!date, !!phone].filter(Boolean).length;
+  const filtersActive = activeFilterCount > 0;
+
+  // Clears the typed phone AND the debounced one, or the 350ms debounce would
+  // leave the old search applied for a beat after the box reads empty.
+  const clearFilters = () => {
+    setStatus(ALL);
+    setTableNo(ALL);
+    setPayment(ALL);
+    setDate("");
+    setPhoneInput("");
+    setPhone("");
+  };
 
   return (
-    <div className="space-y-4">
+    <>
       <PageHeader
+        eyebrow="Service"
         title="Orders"
-        description="View, filter, and manage orders."
+        description="View, filter and manage orders."
         actions={
-          <Button variant="outline" size="sm" onClick={() => setDate(cafeDateString())}>
+          <Button variant="outline" className={BRAND_CONTROL_CLASS} onClick={() => setDate(cafeDateString())}>
             Today
           </Button>
         }
       />
 
       <div className="relative">
-        <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Search className="pointer-events-none absolute left-2.5 top-3 h-4 w-4 text-muted-foreground" />
         <Input
           type="search"
           inputMode="tel"
           value={phoneInput}
           onChange={(e) => setPhoneInput(e.target.value)}
           placeholder="Search orders by customer phone…"
-          className="pl-8"
+          className={cn("pl-8", BRAND_CONTROL_CLASS)}
           aria-label="Search orders by customer phone"
         />
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <p className="text-sm font-medium">Filters</p>
         {filtersActive && <Badge variant="secondary">{activeFilterCount} active</Badge>}
+        {filtersActive && (
+          <Button variant="ghost" className={BRAND_CONTROL_CLASS} onClick={clearFilters}>
+            Clear all
+          </Button>
+        )}
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         <FilterSelect
           value={status}
           onChange={setStatus}
           allLabel="All statuses"
-          options={[...ORDER_STATUSES]}
+          ariaLabel="Filter by status"
+          options={STATUS_OPTIONS}
         />
         <FilterSelect
           value={payment}
           onChange={setPayment}
           allLabel="All payments"
-          options={[...PAYMENT_MODES]}
+          ariaLabel="Filter by payment"
+          options={PAYMENT_OPTIONS}
         />
         <FilterSelect
           value={tableNo}
           onChange={setTableNo}
           allLabel="All tables"
+          ariaLabel="Filter by table"
           options={tableOptions}
         />
         <DatePicker
           value={date}
           onChange={setDate}
           clearable
+          placeholder="All dates"
+          className={BRAND_CONTROL_CLASS}
           aria-label="Filter by date"
         />
       </div>
 
       {orders.isLoading ? (
-        <div className="space-y-2 rounded-lg border p-4">
-          {Array.from({ length: 6 }).map((_, i) => (
+        <div className={cn("space-y-2 rounded-lg border p-4", BRAND_PANEL_CLASS)}>
+          {Array.from({ length: SKELETON_ROWS }).map((_, i) => (
             <Skeleton key={i} className="h-12 w-full" />
           ))}
         </div>
       ) : orders.isError && !orders.data ? (
         // A first-load failure has no pages to fall back on — this is the
         // only case that should erase the table with a full-page error.
-        <p className="text-sm text-destructive">
-          Failed to load orders. Refresh to retry.
+        <ErrorState
+          title="Couldn't load orders"
+          description="Check the internet connection, then try again."
+          onRetry={() => void orders.refetch()}
+          retryLabel="Try again"
+        />
+      ) : orders.isPaused && !orders.data ? (
+        // A parked (offline) query has no data AND no error — without this
+        // branch the page would say "No orders yet".
+        <p role="status" className="text-sm text-muted-foreground">
+          You appear to be offline. Orders will load when the connection is back.
         </p>
       ) : list.length === 0 ? (
         <EmptyState
@@ -185,7 +218,25 @@ export default function OrdersPage() {
           description={
             filtersActive
               ? "Try clearing or changing the filters."
-              : "Orders placed from the POS will appear here."
+              : "Orders placed from New Order will appear here."
+          }
+          action={
+            filtersActive ? (
+              <Button
+                type="button"
+                variant="outline"
+                className={cn("mt-2", BRAND_CONTROL_CLASS)}
+                onClick={clearFilters}
+              >
+                Clear filters
+              </Button>
+            ) : (
+              <Button asChild className={cn("mt-2", BRAND_CONTROL_CLASS)}>
+                <Link href={POS_PATH} prefetch={false}>
+                  New order
+                </Link>
+              </Button>
+            )
           }
         />
       ) : (
@@ -201,14 +252,14 @@ export default function OrdersPage() {
               inline retry, never the full-page error, so the table stays. */}
           {orders.isFetchNextPageError && (
             <p className="text-center text-sm text-destructive">
-              Couldn&apos;t load more orders.
+              Couldn&apos;t load more orders. Check the connection, then tap Retry.
             </p>
           )}
           {orders.hasNextPage && (
             <div className="flex justify-center">
               <Button
                 variant="outline"
-                size="sm"
+                className={BRAND_CONTROL_CLASS}
                 onClick={() => orders.fetchNextPage()}
                 disabled={orders.isFetchingNextPage}
               >
@@ -239,34 +290,6 @@ export default function OrdersPage() {
           isPending={cancelOrder.isPending}
         />
       )}
-    </div>
-  );
-}
-
-function FilterSelect({
-  value,
-  onChange,
-  allLabel,
-  options,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  allLabel: string;
-  options: string[];
-}) {
-  return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={ALL}>{allLabel}</SelectItem>
-        {options.map((o) => (
-          <SelectItem key={o} value={o}>
-            {o}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    </>
   );
 }

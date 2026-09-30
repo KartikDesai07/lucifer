@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { orderItemLabel, orderItemModifierLines } from "@pos/shared/utils";
 import { ORDER_REASON_MIN_LEN, ORDER_REASON_MAX_LEN } from "@/lib/constants";
-import { inr } from "@/lib/utils";
+import { cn, inr } from "@/lib/utils";
+import { BRAND_CONTROL_CLASS, BRAND_PANEL_CLASS } from "@/components/brand/brand-classes";
 import {
   useAcceptOrderRequest,
   useRejectOrderRequest,
@@ -48,7 +49,7 @@ interface OrderRequestCardProps {
 const ACCEPTING_BADGE = "Needs retry";
 const PROMO_LABEL = "Promo";
 const ACCEPTING_COPY =
-  "An accept was interrupted — Accept again to finish it safely, or Reject if it shouldn't be billed.";
+  "An accept was interrupted. Tap Retry accept to finish it safely, or Reject if it shouldn't be billed.";
 const PRINT_BUSY_TITLE = "Waiting for the printer";
 
 // One diner self-order request in the staff tray (CR2.2 SLICE 9). Accept
@@ -114,7 +115,7 @@ export function OrderRequestCard({
   };
 
   return (
-    <div className="space-y-3 rounded-lg border p-3 text-sm">
+    <div className={cn("flex flex-col gap-3 rounded-lg border p-3 text-sm", BRAND_PANEL_CLASS)}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -127,7 +128,10 @@ export function OrderRequestCard({
                 pending one, or staff have no reason to retry it. */}
             {request.status === "accepting" && <Badge variant="destructive">{ACCEPTING_BADGE}</Badge>}
           </div>
-          <p className="truncate text-xs text-muted-foreground">
+          <p
+            className="truncate text-xs text-muted-foreground"
+            title={`${request.name} · ${request.mobile}`}
+          >
             {/* mobile already role-masked server-side — never re-mask here */}
             {request.name} · {request.mobile}
           </p>
@@ -178,11 +182,12 @@ export function OrderRequestCard({
         <p className="rounded-md bg-muted/60 p-2 text-xs italic">{request.note}</p>
       )}
 
-      <div className="grid grid-cols-2 gap-2">
-        <Button variant="outline" disabled={rejectDisabled} onClick={openReject}>
+      <div className="mt-auto grid grid-cols-2 gap-2">
+        <Button variant="outline" className="h-11" disabled={rejectDisabled} onClick={openReject}>
           Reject
         </Button>
         <Button
+          className="h-11"
           disabled={acceptDisabled}
           onClick={handleAccept}
           title={printBusy ? PRINT_BUSY_TITLE : undefined}
@@ -222,7 +227,7 @@ export function OrderRequestCard({
               variant="destructive"
               disabled={!canReject}
               onClick={confirmReject}
-              className="w-full sm:w-auto"
+              className={cn("w-full sm:w-auto", BRAND_CONTROL_CLASS)}
             >
               Reject request
             </Button>

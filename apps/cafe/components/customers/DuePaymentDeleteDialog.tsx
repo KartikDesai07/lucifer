@@ -63,7 +63,7 @@ export function DuePaymentDeleteDialog({
 
   return (
     <Dialog open={!!payment} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Delete payment</DialogTitle>
           <DialogDescription>
@@ -103,7 +103,7 @@ export function DuePaymentDeleteDialog({
         <DialogFooter>
           <Button
             variant="destructive"
-            className="w-full sm:w-auto"
+            className="h-11 w-full sm:h-10 sm:w-auto"
             disabled={!canConfirm}
             onClick={confirm}
           >

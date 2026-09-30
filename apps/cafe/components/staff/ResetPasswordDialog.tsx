@@ -10,6 +10,7 @@ import {
   type ResetPasswordInput,
 } from "@/schemas/staff.schema";
 import { useResetStaffPassword } from "@/hooks/use-staff";
+import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -63,11 +64,11 @@ export function ResetPasswordDialog({
 
   return (
     <Dialog open={!!staff} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Reset password</DialogTitle>
           <DialogDescription>
-            Set a new password for {staff?.name}. They can change it themselves
+            Set a new password for {staff?.name ?? "this team member"}. They can change it themselves
             after logging in.
           </DialogDescription>
         </DialogHeader>
@@ -82,6 +83,7 @@ export function ResetPasswordDialog({
               id="reset-newPassword"
               type="password"
               autoComplete="new-password"
+              className={BRAND_CONTROL_CLASS}
               aria-invalid={!!errors.newPassword}
               {...register("newPassword")}
             />
@@ -97,6 +99,7 @@ export function ResetPasswordDialog({
               id="reset-confirmPassword"
               type="password"
               autoComplete="new-password"
+              className={BRAND_CONTROL_CLASS}
               aria-invalid={!!errors.confirmPassword}
               {...register("confirmPassword")}
             />
@@ -107,7 +110,11 @@ export function ResetPasswordDialog({
             )}
           </div>
           <DialogFooter>
-            <Button type="submit" disabled={resetPassword.isPending}>
+            <Button
+              type="submit"
+              className="h-11 w-full sm:h-10 sm:w-auto"
+              disabled={resetPassword.isPending}
+            >
               {resetPassword.isPending && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}

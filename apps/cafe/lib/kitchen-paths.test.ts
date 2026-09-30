@@ -26,6 +26,7 @@ const APP_SIDEBAR = "apps/cafe/components/layout/AppSidebar.tsx";
 const KITCHEN_PAGE = "apps/cafe/app/(dashboard)/kitchen/page.tsx";
 const KITCHEN_CARD = "apps/cafe/components/kitchen/KitchenLineCard.tsx";
 const KITCHEN_CHIP = "apps/cafe/components/kitchen/KitchenFreshnessChip.tsx";
+const KITCHEN_BODY = "apps/cafe/components/kitchen/KitchenBoardBody.tsx";
 const KITCHEN_BOARD_LIB = "apps/cafe/lib/kitchen-board.ts";
 const ITEMS_ROUTE = "apps/cafe/app/api/orders/[id]/items/route.ts";
 const ADDROUND = "apps/cafe/lib/order-request-accept-addround.ts";
@@ -135,10 +136,10 @@ test("PIN (18b): kitchen/page.tsx contains no AdminGuard (staff and admin both u
 
 // ── (19) hygiene: no console., no hardcoded cafe name ───────────────────────
 
-test("PIN (19): use-kitchen.ts, kitchen/page.tsx, KitchenLineCard.tsx, KitchenFreshnessChip.tsx contain no console. and no hardcoded cafe name", () => {
+test("PIN (19): use-kitchen.ts, kitchen/page.tsx, KitchenBoardBody.tsx, KitchenLineCard.tsx, KitchenFreshnessChip.tsx contain no console. and no hardcoded cafe name", () => {
   const consoleNeedle = "console" + ".";
   const luciferNeedle = "Luci" + "fer";
-  const files = [USE_KITCHEN, KITCHEN_PAGE, KITCHEN_CARD, KITCHEN_CHIP];
+  const files = [USE_KITCHEN, KITCHEN_PAGE, KITCHEN_BODY, KITCHEN_CARD, KITCHEN_CHIP];
   for (const rel of files) {
     const raw = readSrc(rel);
     assert.ok(!raw.includes(consoleNeedle), `${rel} must NOT contain ${consoleNeedle} anywhere, not even in a comment`);
@@ -148,6 +149,7 @@ test("PIN (19): use-kitchen.ts, kitchen/page.tsx, KitchenLineCard.tsx, KitchenFr
   // aren't vacuously passing on an empty/blinded read.
   assert.match(readSrc(USE_KITCHEN), /export function useKitchenBoard\(/, "positive landmark: use-kitchen.ts must export useKitchenBoard(");
   assert.match(readSrc(KITCHEN_PAGE), /export default function KitchenPage\(/, "positive landmark: kitchen/page.tsx must export default function KitchenPage(");
+  assert.match(readSrc(KITCHEN_BODY), /export function KitchenBoardBody\(/, "positive landmark: KitchenBoardBody.tsx must export KitchenBoardBody(");
   assert.match(readSrc(KITCHEN_CARD), /export function KitchenLineCard\(/, "positive landmark: KitchenLineCard.tsx must export KitchenLineCard(");
   assert.match(readSrc(KITCHEN_CHIP), /export function KitchenFreshnessChip\(/, "positive landmark: KitchenFreshnessChip.tsx must export KitchenFreshnessChip(");
 });
@@ -178,6 +180,9 @@ test("PIN (21): each new UI-slice file stays within its stated line budget +20%"
     [KITCHEN_PAGE, 130],
     [KITCHEN_CARD, 110],
     [KITCHEN_CHIP, 70],
+    // Polish pass (2026-10-01): the board's skeleton / error / empty / grid,
+    // extracted from kitchen/page.tsx so the page keeps its own budget.
+    [KITCHEN_BODY, 85],
   ];
   for (const [rel, budget] of budgets) {
     const cap = Math.ceil(budget * 1.2);

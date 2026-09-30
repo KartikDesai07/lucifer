@@ -5,9 +5,12 @@ import { tableNoSchema } from "./table.schema";
 export const createReservationSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
   mobile: z.string().trim().min(10, "Enter a valid mobile number"),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD"),
-  time: z.string().regex(/^\d{2}:\d{2}$/, "Time must be HH:MM"),
-  guests: z.number().int().min(1, "At least 1 guest is required"),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a date"),
+  time: z.string().regex(/^\d{2}:\d{2}$/, "Pick a time"),
+  guests: z
+    .number({ invalid_type_error: "Enter the number of guests" })
+    .int("Use a whole number")
+    .min(1, "At least 1 guest is required"),
   tableNo: tableNoSchema.optional(),
   notes: z.string().optional(),
   status: z.enum(RESERVATION_STATUSES).default("Booked"),

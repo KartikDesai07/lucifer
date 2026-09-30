@@ -11,6 +11,7 @@ import {
 } from "@/lib/constants";
 import { inr, cn } from "@/lib/utils";
 import { useEditDuePayment, type DuePaymentRow } from "@/hooks/use-customers";
+import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -103,7 +104,7 @@ export function DuePaymentEditDialog({
 
   return (
     <Dialog open={!!payment} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Edit payment</DialogTitle>
           <DialogDescription>
@@ -118,6 +119,7 @@ export function DuePaymentEditDialog({
             type="number"
             min={1}
             step={1}
+            className={BRAND_CONTROL_CLASS}
             value={amountText}
             onChange={(e) => setAmountText(e.target.value)}
             disabled={isPending}
@@ -147,7 +149,7 @@ export function DuePaymentEditDialog({
                 onClick={() => setMode(m)}
                 disabled={isPending}
                 className={cn(
-                  "rounded-md border py-2 text-sm font-semibold transition",
+                  "min-h-11 rounded-md border py-2 text-sm font-semibold transition",
                   active
                     ? `${style.bg} ${style.color} border-current ring-2 ring-current`
                     : "hover:bg-muted",
@@ -182,7 +184,7 @@ export function DuePaymentEditDialog({
 
         <DialogFooter>
           <Button
-            className="w-full sm:w-auto"
+            className="h-11 w-full sm:h-10 sm:w-auto"
             disabled={!canConfirm}
             onClick={confirm}
           >

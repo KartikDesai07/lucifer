@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChefHat } from "lucide-react";
 import { toast } from "sonner";
 
 import { useKitchenBoard, useTickKitchenLine, useMarkOrderReady } from "@/hooks/use-kitchen";
@@ -13,18 +12,24 @@ import {
   type KitchenOrderCard as KitchenOrderCardData,
 } from "@/lib/kitchen-cards";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { EmptyState } from "@/components/shared/EmptyState";
-import { Skeleton } from "@/components/ui/skeleton";
-import { KitchenOrderCard } from "@/components/kitchen/KitchenOrderCard";
+import { MenuPageShell } from "@/components/menu/MenuPageShell";
+import { KitchenBoardBody } from "@/components/kitchen/KitchenBoardBody";
 import { KitchenFreshnessChip } from "@/components/kitchen/KitchenFreshnessChip";
 
 // P4-A/B — the "Kitchen" order-card board. Deliberately open to both roles —
 // staff and admin both work the kitchen, and nothing on this screen reads or
 // writes money (plan §5's RBAC note — requireAuth() only, on both API verbs)
 // — so this page renders with no admin-only wrapper around it.
-const SKELETON_CARDS = 6;
-
+// `wide`: a wall display must not lose order cards per row to the 1440px cap.
 export default function KitchenPage() {
+  return (
+    <MenuPageShell wide>
+      <KitchenBoard />
+    </MenuPageShell>
+  );
+}
+
+function KitchenBoard() {
   const board = useKitchenBoard();
   const tick = useTickKitchenLine();
   const ready = useMarkOrderReady();
@@ -50,7 +55,6 @@ export default function KitchenPage() {
   const cards = board.data?.cards ?? [];
   const tabCount = board.data?.tabCount ?? 0;
   const itemCount = cards.reduce((sum, card) => sum + card.totalCount, 0);
-  const hasCards = cards.length > 0;
 
   // A ticked line STAYS on the board (only the Ready tap removes a card), so
   // the checkbox can simply flip back — the API already accepts `done:false`.
@@ -109,47 +113,39 @@ export default function KitchenPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <>
       <PageHeader
+        eyebrow="Service"
         title="Kitchen"
         description="Every fired order, oldest first. Tick a line off once it's cooked."
         actions={<KitchenFreshnessChip dataUpdatedAt={board.dataUpdatedAt} />}
       />
 
-      <div className="text-sm text-muted-foreground">
-        {tabCount} open {tabCount === 1 ? "tab" : "tabs"} · {cards.length}{" "}
-        {cards.length === 1 ? "order" : "orders"} · {itemCount} {itemCount === 1 ? "item" : "items"}
-      </div>
+      {/* Counts only once the board has loaded (a 0/0/0 line under the skeleton
+          or an error would read as an empty kitchen); while it loads the line
+          holds its place so the cards do not jump down when they land (CLS). */}
+      {board.data !== undefined ? (
+        <div className="text-sm text-muted-foreground">
+          {tabCount} open {tabCount === 1 ? "tab" : "tabs"} · {cards.length}{" "}
+          {cards.length === 1 ? "order" : "orders"} · {itemCount} {itemCount === 1 ? "item" : "items"}
+        </div>
+      ) : board.isLoading ? (
+        <div className="text-sm text-muted-foreground">Loading orders…</div>
+      ) : null}
 
-      {board.isLoading ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {Array.from({ length: SKELETON_CARDS }).map((_, i) => (
-            <Skeleton key={i} className="h-64 w-full" />
-          ))}
-        </div>
-      ) : board.isError ? (
-        <p className="text-sm text-destructive">Failed to load the kitchen board. Refresh to retry.</p>
-      ) : !hasCards ? (
-        <EmptyState
-          icon={<ChefHat className="h-8 w-8" />}
-          title="All caught up"
-          description="Fired orders appear here the moment a round is sent to the kitchen."
-        />
-      ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {cards.map((card) => (
-            <KitchenOrderCard
-              key={card.orderId}
-              card={card}
-              now={now}
-              onToggleLine={handleToggle}
-              onReady={handleReady}
-              lineInFlight={(line) => inFlight.has(line.id)}
-              readyInFlight={readyInFlight.has(card.orderId)}
-            />
-          ))}
-        </div>
-      )}
-    </div>
+      <KitchenBoardBody
+        isLoading={board.isLoading}
+        hasData={board.data !== undefined}
+        isError={board.isError}
+        isPaused={board.isPaused}
+        cards={cards}
+        now={now}
+        onToggleLine={handleToggle}
+        onReady={handleReady}
+        inFlight={inFlight}
+        readyInFlight={readyInFlight}
+        onRetry={() => void board.refetch()}
+      />
+    </>
   );
 }

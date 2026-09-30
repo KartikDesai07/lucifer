@@ -4,6 +4,7 @@ import { Inbox } from "lucide-react";
 
 import { OrderRequestCard } from "@/components/orders/OrderRequestCard";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { ErrorState } from "@/components/shared/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { TrayOrderRequest, useAcceptOrderRequest } from "@/hooks/use-order-requests";
 import type { Order } from "@/types";
@@ -16,6 +17,13 @@ type AcceptMutate = ReturnType<typeof useAcceptOrderRequest>["mutate"];
 interface RequestsBoardProps {
   requests: TrayOrderRequest[];
   isLoading: boolean;
+  // True only when the list has NEVER loaded (the page passes a failed load
+  // with no data) — a failed background refetch keeps the cards on screen.
+  isError: boolean;
+  // True when the list has never loaded because the device is offline (a
+  // parked query: no data AND no error) — never "No pending requests".
+  isOffline: boolean;
+  onRetry: () => void;
   onAccepted: (order: Order) => void;
   acceptingId: string | null;
   onAcceptingChange: (id: string | null) => void;
@@ -30,6 +38,9 @@ interface RequestsBoardProps {
 export function RequestsBoard({
   requests,
   isLoading,
+  isError,
+  isOffline,
+  onRetry,
   onAccepted,
   acceptingId,
   onAcceptingChange,
@@ -38,20 +49,39 @@ export function RequestsBoard({
 }: RequestsBoardProps) {
   if (isLoading) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-hidden>
         {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-48 w-full" />
+          <Skeleton key={i} className="h-48 w-full rounded-lg" />
         ))}
       </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <ErrorState
+        title="Couldn't load order requests"
+        description="Check the internet connection, then try again."
+        onRetry={onRetry}
+        retryLabel="Try again"
+      />
+    );
+  }
+
+  if (isOffline) {
+    return (
+      <p role="status" className="text-sm text-muted-foreground">
+        You appear to be offline. Order requests will load when the connection is back.
+      </p>
     );
   }
 
   if (requests.length === 0) {
     return (
       <EmptyState
-        icon={<Inbox className="h-6 w-6" />}
+        icon={<Inbox className="h-8 w-8" />}
         title="No pending requests"
-        description="Diner orders from the QR menu appear here."
+        description="Diner orders from the QR menu appear here on their own."
       />
     );
   }

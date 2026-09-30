@@ -7,6 +7,7 @@ import type { KitchenOrderCard as KitchenOrderCardData } from "@/lib/kitchen-car
 import { Button } from "@/components/ui/button";
 import { KitchenLineCard } from "@/components/kitchen/KitchenLineCard";
 import { cn } from "@/lib/utils";
+import { BRAND_PANEL_CLASS } from "@/components/brand/brand-classes";
 
 // P4-B — one ORDER's card. Every status channel (destination, self-order,
 // age, ready state) pairs an icon + a colour + literal text, never colour
@@ -43,7 +44,7 @@ export function KitchenOrderCard({
   const ageText = `${card.cardFiredAtApprox ? "~" : ""}${ageMinutes}m`;
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border p-3">
+    <div className={cn("flex flex-col gap-2 rounded-lg border p-3", BRAND_PANEL_CLASS)}>
       {/* HEADER — destination is the biggest thing on the card: a cook needs
           to know WHERE before WHAT. Parcel and table are mutually exclusive,
           never colour alone. */}
@@ -72,7 +73,7 @@ export function KitchenOrderCard({
           className={cn(
             "flex items-center gap-1",
             band.key === "late" && "font-semibold text-red-600",
-            band.key === "warn" && "text-amber-600",
+            band.key === "warn" && "text-amber-700",
           )}
           title={card.cardFiredAtApprox ? "approximate — fired before age tracking" : undefined}
         >
@@ -101,7 +102,7 @@ export function KitchenOrderCard({
       </div>
 
       {card.allDone && (
-        <div className="flex items-center gap-1.5 text-sm font-semibold text-green-600">
+        <div className="flex items-center gap-1.5 text-sm font-semibold text-green-700">
           <CheckCircle2 className="h-4 w-4" />
           Ready to serve
         </div>

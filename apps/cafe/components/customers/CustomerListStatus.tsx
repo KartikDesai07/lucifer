@@ -1,11 +1,14 @@
 "use client";
 
-import { Plus, Users, Loader2 } from "lucide-react";
+import { Plus, Search, Users, Loader2 } from "lucide-react";
 
 import { CUSTOMER_SEARCH_MIN_CHARS } from "@/hooks/use-customers";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { ErrorState } from "@/components/shared/ErrorState";
+import { BRAND_CONTROL_CLASS, BRAND_PANEL_CLASS } from "@/components/brand/brand-classes";
 
 const LIST_SKELETON_ROWS = 6;
 
@@ -20,6 +23,8 @@ interface CustomerListStatusProps {
   searchOffline: boolean;
   searchFailed: boolean;
   onAdd: () => void;
+  onRetry: () => void;
+  onClearSearch: () => void;
 }
 
 // One ordered decision for what the panel says, so a newly-reachable state
@@ -38,13 +43,15 @@ export function CustomerListStatus({
   searchOffline,
   searchFailed,
   onAdd,
+  onRetry,
+  onClearSearch,
 }: CustomerListStatusProps) {
   // Having rows to show beats every status: a search that worked must not be
   // hidden behind a list that is still loading or failed to refresh.
   if (hasRows) return null;
   if (loading) {
     return (
-      <div className="space-y-2 rounded-lg border p-4">
+      <div className={cn("space-y-2 rounded-lg border p-4", BRAND_PANEL_CLASS)}>
         {Array.from({ length: LIST_SKELETON_ROWS }).map((_, i) => (
           <Skeleton key={i} className="h-12 w-full" />
         ))}
@@ -66,9 +73,12 @@ export function CustomerListStatus({
   // in hand must not throw away a list the operator can keep working from.
   if (refreshFailed) {
     return (
-      <p className="text-sm text-destructive">
-        Failed to load customers. Refresh to retry.
-      </p>
+      <ErrorState
+        title="Couldn't load customers"
+        description="Check the internet connection, then try again."
+        onRetry={onRetry}
+        retryLabel="Try again"
+      />
     );
   }
   if (noCustomers) {
@@ -78,7 +88,7 @@ export function CustomerListStatus({
         title="No customers yet"
         description="Customers are added here or automatically from the POS."
         action={
-          <Button onClick={onAdd} className="mt-2">
+          <Button onClick={onAdd} className={cn("mt-2", BRAND_CONTROL_CLASS)}>
             <Plus className="mr-2 h-4 w-4" /> Add customer
           </Button>
         }
@@ -94,7 +104,7 @@ export function CustomerListStatus({
   }
   if (searching) {
     return (
-      <div className="flex items-center gap-2 rounded-lg border p-4 text-sm text-muted-foreground">
+      <div className={cn("flex items-center gap-2 rounded-lg border p-4 text-sm text-muted-foreground", BRAND_PANEL_CLASS)}>
         <Loader2 className="h-4 w-4 animate-spin" /> Searching…
       </div>
     );
@@ -118,6 +128,20 @@ export function CustomerListStatus({
     );
   }
   return (
-    <EmptyState title="No matches" description="No customer matches your search." />
+    <EmptyState
+      icon={<Search className="h-8 w-8" />}
+      title="No matches"
+      description="No customer matches your search."
+      action={
+        <Button
+          type="button"
+          variant="outline"
+          className={cn("mt-2", BRAND_CONTROL_CLASS)}
+          onClick={onClearSearch}
+        >
+          Clear search
+        </Button>
+      }
+    />
   );
 }

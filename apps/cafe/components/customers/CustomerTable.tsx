@@ -2,9 +2,10 @@
 
 import { Pencil, Trash2, History, Wallet } from "lucide-react";
 
-import { inr } from "@/lib/utils";
+import { cn, inr } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { BRAND_PANEL_CLASS, BRAND_ROW_ACTION_CLASS, BRAND_TABLE_CONTAIN_CLASS } from "@/components/brand/brand-classes";
 import {
   Table,
   TableBody,
@@ -37,7 +38,7 @@ export function CustomerTable({
   onDelete,
 }: CustomerTableProps) {
   return (
-    <div className="rounded-lg border">
+    <div className={cn("rounded-lg border", BRAND_PANEL_CLASS, BRAND_TABLE_CONTAIN_CLASS)}>
       <Table>
         <TableHeader>
           <TableRow>
@@ -47,7 +48,7 @@ export function CustomerTable({
             <TableHead className="text-right">Spend</TableHead>
             <TableHead className="text-right">Due</TableHead>
             <TableHead>Type</TableHead>
-            <TableHead className="w-28 text-right">Actions</TableHead>
+            <TableHead className="w-48 text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -81,6 +82,7 @@ export function CustomerTable({
                     <Button
                       variant="ghost"
                       size="icon"
+                    className={BRAND_ROW_ACTION_CLASS}
                       onClick={() => onReceivePayment(customer)}
                       aria-label="Receive payment"
                     >
@@ -90,6 +92,7 @@ export function CustomerTable({
                   <Button
                     variant="ghost"
                     size="icon"
+                    className={BRAND_ROW_ACTION_CLASS}
                     onClick={() => onHistory(customer)}
                     aria-label="Order history"
                   >
@@ -98,6 +101,7 @@ export function CustomerTable({
                   <Button
                     variant="ghost"
                     size="icon"
+                    className={BRAND_ROW_ACTION_CLASS}
                     onClick={() => onEdit(customer)}
                     aria-label="Edit customer"
                   >
@@ -109,6 +113,7 @@ export function CustomerTable({
                     <Button
                       variant="ghost"
                       size="icon"
+                    className={BRAND_ROW_ACTION_CLASS}
                       onClick={() => onDelete(customer)}
                       aria-label="Delete customer"
                     >

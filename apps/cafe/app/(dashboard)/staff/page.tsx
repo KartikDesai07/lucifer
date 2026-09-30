@@ -5,9 +5,9 @@ import { Plus, Pencil, UserX, UserCheck, UserCog, KeyRound } from "lucide-react"
 
 import { useAuth } from "@/hooks/use-auth";
 import { useStaff, useDeleteStaff, useUpdateStaff } from "@/hooks/use-staff";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -20,15 +20,25 @@ import { AdminGuard } from "@/components/shared/AdminGuard";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import {
+  BRAND_CONTROL_CLASS,
+  BRAND_PANEL_CLASS,
+  BRAND_TABLE_CONTAIN_CLASS,
+  BRAND_ROW_ACTION_CLASS,
+} from "@/components/brand/brand-classes";
+import { MenuPageShell } from "@/components/menu/MenuPageShell";
 import { StaffFormSheet } from "@/components/staff/StaffFormSheet";
 import { ResetPasswordDialog } from "@/components/staff/ResetPasswordDialog";
+import { StaffLoadStatus } from "@/components/staff/StaffLoadStatus";
 import { StaffRowCard } from "@/components/staff/StaffRowCard";
 import type { Staff } from "@/types";
 
 export default function StaffPage() {
   return (
     <AdminGuard>
-      <StaffManager />
+      <MenuPageShell>
+        <StaffManager />
+      </MenuPageShell>
     </AdminGuard>
   );
 }
@@ -69,41 +79,38 @@ function StaffManager() {
   const list = staff.data ?? [];
 
   return (
-    <div className="space-y-4">
+    <>
       <PageHeader
+        eyebrow="Admin"
         title="Staff"
-        description="Manage team logins and roles. Admin only."
+        description="Manage team logins and roles."
         actions={
-          <Button onClick={openAdd}>
+          <Button onClick={openAdd} className={BRAND_CONTROL_CLASS}>
             <Plus className="mr-2 h-4 w-4" /> Add staff
           </Button>
         }
       />
 
-      {staff.isLoading ? (
-        <div className="space-y-2 rounded-lg border p-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
-          ))}
-        </div>
-      ) : staff.isError ? (
-        <p className="text-sm text-destructive">
-          Failed to load staff. Refresh to retry.
-        </p>
+      {staff.data === undefined ? (
+        <StaffLoadStatus
+          isError={staff.isError}
+          isPaused={staff.isPaused}
+          onRetry={() => void staff.refetch()}
+        />
       ) : list.length === 0 ? (
         <EmptyState
           icon={<UserCog className="h-8 w-8" />}
           title="No staff yet"
           description="Add your first team member to give them a login."
           action={
-            <Button onClick={openAdd} className="mt-2">
+            <Button onClick={openAdd} className={cn("mt-2", BRAND_CONTROL_CLASS)}>
               <Plus className="mr-2 h-4 w-4" /> Add staff
             </Button>
           }
         />
       ) : (
         <>
-          <div className="hidden rounded-lg border md:block">
+          <div className={cn("hidden rounded-lg border lg:block", BRAND_PANEL_CLASS, BRAND_TABLE_CONTAIN_CLASS)}>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -112,7 +119,7 @@ function StaffManager() {
                   <TableHead>Mobile</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="w-36 text-right">Actions</TableHead>
+                  <TableHead className="w-40 text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -153,6 +160,7 @@ function StaffManager() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            className={BRAND_ROW_ACTION_CLASS}
                             onClick={() => openEdit(member)}
                             aria-label="Edit staff"
                           >
@@ -161,6 +169,7 @@ function StaffManager() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            className={BRAND_ROW_ACTION_CLASS}
                             onClick={() => setResetting(member)}
                             aria-label="Reset password"
                             title="Reset password"
@@ -171,6 +180,7 @@ function StaffManager() {
                             <Button
                               variant="ghost"
                               size="icon"
+                              className={BRAND_ROW_ACTION_CLASS}
                               disabled={protectedAccount}
                               onClick={() => setDeactivating(member)}
                               aria-label="Deactivate staff"
@@ -186,6 +196,7 @@ function StaffManager() {
                             <Button
                               variant="ghost"
                               size="icon"
+                              className={BRAND_ROW_ACTION_CLASS}
                               disabled={updateStaff.isPending}
                               onClick={() => reactivate(member)}
                               aria-label="Reactivate staff"
@@ -203,7 +214,7 @@ function StaffManager() {
             </Table>
           </div>
 
-          <div className="space-y-2 md:hidden">
+          <div className="space-y-2 lg:hidden">
             {list.map((member) => {
               const isSelf = member._id === user?.id;
               const protectedAccount = isSelf || member.role === "admin";
@@ -240,11 +251,11 @@ function StaffManager() {
         open={!!deactivating}
         onOpenChange={(o) => !o && setDeactivating(null)}
         title="Deactivate staff?"
-        description={`"${deactivating?.name}" will no longer be able to log in. You can reactivate them later.`}
+        description={`"${deactivating?.name ?? "This team member"}" will no longer be able to log in. You can reactivate them later.`}
         confirmLabel="Deactivate"
         isLoading={deleteStaff.isPending}
         onConfirm={confirmDeactivate}
       />
-    </div>
+    </>
   );
 }

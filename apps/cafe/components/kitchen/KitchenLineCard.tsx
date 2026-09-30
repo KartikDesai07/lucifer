@@ -39,7 +39,8 @@ export function KitchenLineCard({ row, now, onToggle, pending }: KitchenLineCard
   // line read like a separate order.
   return (
     <div className="flex items-start gap-2 p-2">
-      <div className="grid min-h-10 min-w-10 shrink-0 place-items-center">
+      {/* A label, so a tap anywhere in the 40px box toggles the 20px checkbox. */}
+      <label className="grid min-h-10 min-w-10 shrink-0 cursor-pointer place-items-center">
         <Checkbox
           className={BRAND_CHECKBOX_SQUARE_CLASS}
           checked={row.done}
@@ -47,7 +48,7 @@ export function KitchenLineCard({ row, now, onToggle, pending }: KitchenLineCard
           onCheckedChange={(checked) => onToggle(row, checked === true)}
           aria-label={`Mark ${row.name} done`}
         />
-      </div>
+      </label>
 
       <div className="min-w-0 flex-1 space-y-1">
         <div
@@ -101,7 +102,7 @@ export function KitchenLineCard({ row, now, onToggle, pending }: KitchenLineCard
             className={cn(
               "flex items-center gap-1",
               band.key === "late" && "font-semibold text-red-600",
-              band.key === "warn" && "text-amber-600",
+              band.key === "warn" && "text-amber-700",
             )}
             title={row.firedAtApprox ? "approximate — fired before age tracking" : undefined}
           >
