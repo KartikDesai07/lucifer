@@ -9,6 +9,7 @@ import { SETTINGS_KEYS } from "@/hooks/use-settings";
 import { CATEGORY_KEYS } from "@/hooks/use-categories";
 import { PRODUCT_KEYS } from "@/hooks/use-products";
 import { TABLE_KEYS } from "@/hooks/use-tables";
+import { AREA_KEYS } from "@/hooks/use-areas";
 import { STAFF_KEYS } from "@/hooks/use-staff";
 import {
   BOOTSTRAP_VERSION,
@@ -26,6 +27,7 @@ export const MASTERS_QUERY_KEYS: Record<MastersPartKey, readonly string[]> = {
   categories: CATEGORY_KEYS.all,
   products: PRODUCT_KEYS.all,
   tables: TABLE_KEYS.all,
+  areas: AREA_KEYS.all,
   staff: STAFF_KEYS.all,
 };
 

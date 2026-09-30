@@ -1,4 +1,4 @@
-import mongoose, { Schema, type Document, type Model } from "mongoose";
+import mongoose, { Schema, type Document, type Model, type Types } from "mongoose";
 import { TABLE_STATUSES, type TableStatus } from "@/lib/constants";
 
 export interface ITable extends Document {
@@ -17,6 +17,9 @@ export interface ITable extends Document {
   // Mongo sorts before any value — so an un-arranged cafe keeps plain
   // name order. Lower = earlier.
   displayOrder?: number;
+  // The floor area this table sits in (Area._id). Absent = no area; an id whose
+  // area was deleted reads as no area. Admin config, never written by orders.
+  areaId?: Types.ObjectId;
   // The table's PUBLIC identity (CR2), printed into its QR sticker — opaque,
   // never the guessable tableNo (see packages/shared/src/public.ts). Absent on
   // every table that predates CR2 until an admin mints one via the token
@@ -44,6 +47,9 @@ export const tableSchema = new Schema<ITable>(
     // sorts a missing field before any value — so a cafe that never arranges its
     // floor plan keeps exactly today's name ordering with no backfill.
     displayOrder: { type: Number, min: 0 },
+    // No default and no index: absent = no area (omit-empty, like displayOrder),
+    // and the only lookup by area is the small in-use count on area delete.
+    areaId: { type: Schema.Types.ObjectId, ref: "Area" },
     // No default — omit-empty, same discipline as chargeAmount/displayOrder
     // above. A minted token overwrites this; nothing else ever should.
     publicToken: { type: String },

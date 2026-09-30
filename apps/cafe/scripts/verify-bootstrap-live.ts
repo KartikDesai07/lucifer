@@ -1,7 +1,7 @@
 /**
  * CB-DL-1 S6 live leg — proves GET /api/bootstrap's payload builder against a
  * REAL MongoDB, which the DB-free pins cannot: that every part is BYTE-EQUAL to
- * what the five master routes serve (same list functions AND the same raw query
+ * what the master routes serve (same list functions AND the same raw query
  * shapes those routes had before S1), that `mastersVersion` really moves on an
  * update and on a HARD delete, that it does NOT move across two `getSettings()`
  * calls with the cache cleared between them (the S0 read-first fix — the old
@@ -12,11 +12,12 @@
  *   MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_bootstrap npm run verify:bootstrap:live
  *
  * SAFETY: refuses to run against any database whose name does not carry the
- * scratch prefix, and drops only the five collections it creates.
+ * scratch prefix, and drops only the six collections it creates.
  * (console output is intentional — this is an ops CLI script, not app code.)
  */
 import assert from "node:assert/strict";
 import mongoose from "mongoose";
+import { areaPartChecks } from "./verify-bootstrap-live/area-checks";
 import { seedMasters, type SeedCounts } from "./verify-bootstrap-live/fixture";
 
 const SCRATCH_PREFIX = "pos_scratch_";
@@ -32,7 +33,7 @@ const LIVE_PRODUCT_COUNT = 173;
 const RECENT_AT_MS = 60_000;
 
 const MASTERS_VERSION_RE =
-  /^settings:\d+:\d+\|categories:\d+:\d+\|products:\d+:\d+\|tables:\d+:\d+\|staff:\d+:\d+$/;
+  /^settings:\d+:\d+\|categories:\d+:\d+\|products:\d+:\d+\|tables:\d+:\d+\|areas:\d+:\d+\|staff:\d+:\d+$/;
 
 let passed = 0;
 let failed = 0;
@@ -82,23 +83,25 @@ async function main(): Promise<void> {
   const { buildBootstrap } = await import("@/lib/bootstrap");
   const { BOOTSTRAP_VERSION, mastersVersionOf } = await import("@/lib/bootstrap-contract");
   type MastersParts = import("@/lib/bootstrap-contract").MastersParts;
-  const { listCategories, listProducts, listStaff, listTables } = await import("@/lib/masters");
+  const { listAreas, listCategories, listProducts, listStaff, listTables } = await import("@/lib/masters");
   const { getSettings, readSettings, SETTINGS_CACHE_KEY } = await import("@/lib/settings");
   const { default: cache } = await import("@/lib/cache");
   const { Settings } = await import("@/models/Settings");
   const { Category } = await import("@/models/Category");
   const { Product } = await import("@/models/Product");
   const { Table } = await import("@/models/Table");
+  const { Area } = await import("@/models/Area");
   const { Staff } = await import("@/models/Staff");
 
-  // The five cache keys `listFromSpec`/`getSettings` write, read off the specs so
+  // The six cache keys `listFromSpec`/`getSettings` write, read off the specs so
   // this leg cannot clear a different key than the code under test caches under.
-  const { CATEGORY_LIST, PRODUCT_LIST, TABLE_LIST, STAFF_LIST } = await import("@/lib/masters");
+  const { AREA_LIST, CATEGORY_LIST, PRODUCT_LIST, TABLE_LIST, STAFF_LIST } = await import("@/lib/masters");
   const CACHE_KEYS = [
     SETTINGS_CACHE_KEY,
     CATEGORY_LIST.cacheKey,
     PRODUCT_LIST.cacheKey,
     TABLE_LIST.cacheKey,
+    AREA_LIST.cacheKey,
     STAFF_LIST.cacheKey,
   ];
   const clearMasterCaches = (): void => {
@@ -114,12 +117,13 @@ async function main(): Promise<void> {
     Category.createIndexes(),
     Product.createIndexes(),
     Table.createIndexes(),
+    Area.createIndexes(),
     Staff.createIndexes(),
   ]);
 
   console.log(`\nCB-DL-1 bootstrap payload — live against ${dbName}\n`);
 
-  const seeded: SeedCounts = await seedMasters({ Settings, Category, Product, Table, Staff });
+  const seeded: SeedCounts = await seedMasters({ Settings, Category, Product, Table, Area, Staff });
   clearMasterCaches();
 
   // ── 1. every part is byte-equal to the SAME function the route calls ───────
@@ -131,6 +135,7 @@ async function main(): Promise<void> {
   deepEqual("categories part === listCategories() (GET /api/categories' list)", payload.categories, await listCategories());
   deepEqual("products part === listProducts() (GET /api/products' unfiltered list)", payload.products, await listProducts());
   deepEqual("tables part === listTables() (GET /api/tables' list)", payload.tables, await listTables());
+  deepEqual("areas part === listAreas() (GET /api/areas' list)", payload.areas, await listAreas());
   deepEqual("staff part === listStaff() (GET /api/staff's list)", payload.staff, await listStaff());
 
   // Route-truth: the EXACT query shapes the four routes carried before S1
@@ -152,6 +157,11 @@ async function main(): Promise<void> {
     await Table.find().sort({ displayOrder: 1, tableNo: 1 }).lean(),
   );
   deepEqual(
+    "areas part === Area.find().sort({displayOrder:1,name:1}) (the GET /api/areas query)",
+    payload.areas,
+    await Area.find().sort({ displayOrder: 1, name: 1 }).lean(),
+  );
+  deepEqual(
     'staff part === Staff.find().select("-password").sort({name:1}) (pre-S1 route query)',
     payload.staff,
     await Staff.find().select("-password").sort({ name: 1 }).lean(),
@@ -164,6 +174,8 @@ async function main(): Promise<void> {
     !names.includes(seeded.archivedProductName),
   );
   check("products part carries exactly the 5 active products", payload.products.length === 5);
+
+  for (const [label, ok] of areaPartChecks(payload, seeded)) check(label, ok);
   const staffRows = json(payload.staff) as Record<string, unknown>[];
   check(
     "no staff row carries a password key",
@@ -177,9 +189,11 @@ async function main(): Promise<void> {
   deepEqual("includeStaff:false categories part matches the admin payload", noStaff.categories, payload.categories);
   deepEqual("includeStaff:false products part matches the admin payload", noStaff.products, payload.products);
   deepEqual("includeStaff:false tables part matches the admin payload", noStaff.tables, payload.tables);
+  deepEqual("includeStaff:false areas part matches the admin payload", noStaff.areas, payload.areas);
 
   // ── 4. envelope fields ────────────────────────────────────────────────────
-  check(`v === BOOTSTRAP_VERSION (${BOOTSTRAP_VERSION})`, payload.v === BOOTSTRAP_VERSION);
+  check(`v === BOOTSTRAP_VERSION (${BOOTSTRAP_VERSION}) and >= 6 (Tables B2 areas part)`, payload.v === BOOTSTRAP_VERSION && BOOTSTRAP_VERSION >= 6);
+  check("mastersVersion carries an areas:<n>:<ms> component", /\|areas:\d+:\d+\|/.test(payload.mastersVersion));
   const atMs = Date.parse(payload.at);
   check(
     "at parses as a recent ISO timestamp",
@@ -194,6 +208,7 @@ async function main(): Promise<void> {
         categories: payload.categories,
         products: payload.products,
         tables: payload.tables,
+        areas: payload.areas,
         staff: payload.staff,
       }),
   );
@@ -218,7 +233,7 @@ async function main(): Promise<void> {
   const clearedStart = Date.now();
   await buildBootstrap({ includeStaff: true });
   const clearedMs = Date.now() - clearedStart;
-  console.log(`\n  buildBootstrap: cold ${coldMs}ms · warm-cache ${warmMs}ms · after cache.del of the five keys ${clearedMs}ms`);
+  console.log(`\n  buildBootstrap: cold ${coldMs}ms · warm-cache ${warmMs}ms · after cache.del of the master keys ${clearedMs}ms`);
   check(`cold buildBootstrap is under BUILD_BUDGET_MS (${BUILD_BUDGET_MS})`, coldMs <= BUILD_BUDGET_MS);
 
   // ── 6. mastersVersion moves on an update AND on a HARD delete ─────────────
@@ -252,6 +267,7 @@ async function main(): Promise<void> {
       categories: [],
       products: [],
       tables: [],
+      areas: [],
       staff: [],
     });
   const versionA = settingsVersion(settingsA);
@@ -271,9 +287,9 @@ async function main(): Promise<void> {
   cache.del(SETTINGS_CACHE_KEY);
   deepEqual("readSettings() and getSettings() return deep-equal documents", read, await getSettings());
 
-  // ── teardown: only the five collections this leg created ──────────────────
+  // ── teardown: only the six collections this leg created ──────────────────
   await Promise.all(
-    [Settings, Category, Product, Table, Staff].map((model) =>
+    [Settings, Category, Product, Table, Area, Staff].map((model) =>
       model.collection.drop().catch(() => undefined),
     ),
   );

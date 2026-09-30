@@ -1,6 +1,6 @@
 import { publishCafeEvent } from "@/lib/realtime-publish";
 import { connectDB } from "@/lib/db";
-import { Table } from "@/models/Table";
+import { Table, type ITable } from "@/models/Table";
 import cache from "@/lib/cache";
 import {
   success,
@@ -13,13 +13,17 @@ import {
   serverError,
 } from "@/lib/api-helpers";
 import { updateTableSchema, patchTableSchema } from "@/schemas";
+import { buildUpdate } from "@/lib/crud-route";
+import { checkAreaExists } from "@/lib/area-admin";
 import {
   FREE_TABLE_FILTER,
   TABLE_BUSY_ERROR,
   TABLE_CLAIMED_ERROR,
   TABLE_DUPLICATE_ERROR,
   TABLE_NOT_FOUND_ERROR,
+  TABLE_NULL_CLEARS_FIELDS,
   freeTableFilter,
+  nextTableDisplayOrder,
 } from "@/lib/table-admin";
 
 export const dynamic = "force-dynamic";
@@ -100,13 +104,25 @@ export async function PATCH(req: Request, { params }: Params) {
 
   try {
     await connectDB();
+    // A string areaId must name a live area (null clears it, so needs no check).
+    if (typeof parsed.data.areaId === "string") {
+      const invalid = await checkAreaExists(parsed.data.areaId);
+      if (invalid) return failure(invalid, 400);
+    }
+    // A table that changes area (set OR cleared) lands at the END of its new
+    // area's arrangement, the same "never jumps ahead" rule a new table follows.
+    const fields =
+      parsed.data.areaId !== undefined
+        ? { ...parsed.data, displayOrder: await nextTableDisplayOrder() }
+        : parsed.data;
     // The busy-guard lives IN the write filter (not a read-then-write check),
     // so a rename can never race a table being seated.
     const filter = renaming ? { tableNo, ...FREE_TABLE_FILTER } : { tableNo };
-    const table = await Table.findOneAndUpdate(filter, { $set: parsed.data }, {
-      new: true,
-      runValidators: true,
-    }).lean();
+    const table = await Table.findOneAndUpdate(
+      filter,
+      buildUpdate<ITable>(fields, TABLE_NULL_CLEARS_FIELDS),
+      { new: true, runValidators: true },
+    ).lean();
 
     if (!table) {
       if (!renaming) return notFound(TABLE_NOT_FOUND_ERROR);

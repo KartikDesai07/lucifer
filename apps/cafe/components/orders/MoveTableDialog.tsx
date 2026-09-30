@@ -4,8 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useReactToPrint } from "react-to-print";
 import { toast } from "sonner";
 
-import { cn, inr } from "@/lib/utils";
-import { POS_MOVE_TABLE_LIST_CAP_CLASS } from "@/lib/pos-layout";
+import { inr } from "@/lib/utils";
 import { slipPrintOptions } from "@/lib/desktop-shell";
 import { printConfigOf, receiptPageStyle } from "@/lib/print";
 import { moveChargePreview } from "@/lib/move-charge-preview";
@@ -23,26 +22,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { KOTReceipt } from "@/components/pos/KOTReceipt";
+import { MoveTablePicker } from "@/components/orders/MoveTablePicker";
 import type { Order, Table } from "@/types";
-
-// Same colour vocabulary as components/pos/TableSelector.tsx (CLAUDE.md §10
-// table colors), duplicated rather than imported: that control's tap means
-// "select/resume", this one's means "move a live tab", and nothing should
-// couple the two just to share four lines of Tailwind classes.
-const STATUS_STYLE: Record<string, string> = {
-  Available: "border-green-300 bg-green-50 text-green-700",
-  Occupied: "border-red-300 bg-red-50 text-red-700",
-  Reserved: "border-amber-300 bg-amber-50 text-amber-700",
-};
-
-// Mirrors lib/table-admin.ts's isTableFree, NOT imported from there: that
-// module's first line is `import { Table } from "@/models/Table"`, a live
-// Mongoose model — pulling it into this client bundle would ship a server-only
-// dependency to the browser. The predicate is one line and not worth a shared
-// module across that boundary.
-function isFree(table: Table): boolean {
-  return table.status === "Available" && !table.currentOrderId;
-}
 
 interface MoveTableDialogProps {
   order: Order | null;
@@ -283,57 +264,15 @@ export function MoveTableDialog({ order, open, onOpenChange, onMoved }: MoveTabl
               </div>
             </div>
           ) : (
-            <>
-              <div className={cn("grid grid-cols-3 gap-2 overflow-y-auto", POS_MOVE_TABLE_LIST_CAP_CLASS)}>
-                {(tables.data ?? []).map((t) => {
-                  const isCurrent = t.tableNo === currentTableNo;
-                  const tappable = !isCurrent && isFree(t);
-                  const disabled = !tappable || moveTable.isPending;
-                  return (
-                    <button
-                      key={t._id}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => handlePick(t)}
-                      className={cn(
-                        "flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg border p-2 text-sm font-semibold transition",
-                        STATUS_STYLE[t.status],
-                        isCurrent && "ring-2 ring-primary ring-offset-1",
-                        disabled && "cursor-not-allowed opacity-50",
-                      )}
-                    >
-                      <span className="max-w-full truncate px-1">{t.tableNo}</span>
-                      <span className="max-w-full truncate text-[10px] font-normal">
-                        {isCurrent ? "Current" : t.status} · {t.capacity} seats
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Its own row, never a grid tile — a tile-shaped control here
-                  could be mis-tapped while scanning tables. Still gated by the
-                  same confirm panel above before anything fires. */}
-              {!isAssign && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="min-h-11 w-full justify-center text-sm font-medium text-destructive hover:text-destructive"
-                  disabled={moveTable.isPending}
-                  onClick={armUnseat}
-                >
-                  Remove from table
-                </Button>
-              )}
-
-              <Button
-                variant="outline"
-                disabled={moveTable.isPending}
-                onClick={() => onOpenChange(false)}
-              >
-                Cancel
-              </Button>
-            </>
+            <MoveTablePicker
+              tables={tables.data}
+              currentTableNo={currentTableNo}
+              isAssign={isAssign}
+              disabled={moveTable.isPending}
+              onPick={handlePick}
+              onUnseat={armUnseat}
+              onCancel={() => onOpenChange(false)}
+            />
           )}
         </DialogContent>
       </Dialog>

@@ -17,6 +17,23 @@ export const TABLE_DUPLICATE_ERROR = "A table with that name already exists";
 export const TABLE_NOT_FOUND_ERROR = "Table not found";
 export const TABLE_CLAIMED_ERROR = "This table was already claimed by another order";
 
+// Fields of PATCH /api/tables/[tableNo] whose explicit `null` means "clear this":
+// buildUpdate turns it into a $unset, so a table taken out of its area goes back
+// to ABSENT (omit-empty) rather than storing null.
+export const TABLE_NULL_CLEARS_FIELDS = ["areaId"] as const;
+
+// Where a table lands when it is created or changes area: one past the LAST
+// arranged table (a document count would collide after a delete), i.e. at the
+// END of the arrangement and so of its area. Caller must have already called
+// connectDB().
+export async function nextTableDisplayOrder(): Promise<number> {
+  const last = await Table.findOne({ displayOrder: { $exists: true } })
+    .sort({ displayOrder: -1 })
+    .select("displayOrder")
+    .lean();
+  return (last?.displayOrder ?? -1) + 1;
+}
+
 export function unknownTableMessage(tableNo: string): string {
   return `Table "${tableNo}" is not on the floor plan`;
 }

@@ -9,6 +9,7 @@ import {
   buildFloorTiles,
   emptyFilterText,
   filterTiles,
+  floorSections,
   floorSummaryText,
   formatStayMinutes,
   itemCountOf,
@@ -20,7 +21,7 @@ import {
   type FloorTileModel,
 } from "@/lib/floor-tiles";
 import type { TableStatus } from "@/lib/constants";
-import type { Order, Reservation, Table } from "@/types";
+import type { Area, Order, Reservation, Table } from "@/types";
 
 const NOW = Date.parse("2026-09-30T12:00:00.000Z");
 const MIN = 60_000;
@@ -194,6 +195,85 @@ test("counts and filter", () => {
   assert.equal(filterTiles(tiles, "all").length, 4);
   assert.deepEqual(filterTiles(tiles, "Available").map((t) => t.table.tableNo), ["B", "C"]);
   assert.equal(emptyFilterText("Occupied"), "No occupied tables right now.");
+});
+
+function area(id: string, name: string): Area {
+  return { _id: id, name, displayOrder: 0, createdAt: "", updatedAt: "" };
+}
+
+const HALL = area("area-hall", "AC Hall");
+const GARDEN = area("area-garden", "Garden");
+const UNUSED = area("area-unused", "Rooftop");
+
+// Two areas listed Garden-first so AREA order (not table order) is what the test sees.
+const AREAS = [GARDEN, HALL, UNUSED];
+const FLOOR = build(
+  [
+    table("H-1", "Occupied", { areaId: HALL._id }),
+    table("G-1", "Available", { areaId: GARDEN._id }),
+    table("H-2", "Available", { areaId: HALL._id }),
+    table("G-2", "Available", { areaId: GARDEN._id }),
+    table("H-3", "Reserved", { areaId: HALL._id }),
+    table("X-1", "Occupied"),
+    table("X-2", "Available", { areaId: "area-deleted" }),
+  ],
+  [],
+);
+const nosOf = (tiles: FloorTileModel[]) => tiles.map((t) => t.table.tableNo);
+
+test("floorSections: groups follow AREA order, unassigned and dangling last under Other tables", () => {
+  const s = floorSections(FLOOR, AREAS, "all");
+  assert.equal(s.showHeadings, true);
+  assert.deepEqual(s.groups.map((g) => g.name), ["Garden", "AC Hall", "Other tables"]);
+  assert.deepEqual(s.groups.map((g) => nosOf(g.tiles)), [["G-1", "G-2"], ["H-1", "H-2", "H-3"], ["X-1", "X-2"]]);
+  assert.equal(s.groups[0].key, GARDEN._id);
+  assert.equal(s.groups[2].key, "none");
+  assert.ok(!s.groups.some((g) => g.key === UNUSED._id), "an area no table uses has no heading");
+});
+
+test("floorSections: summaries with filter All read '4 tables · 2 occupied'", () => {
+  const s = floorSections(FLOOR, AREAS, "all");
+  assert.deepEqual(s.groups.map((g) => g.summary), ["2 tables · 0 occupied", "3 tables · 1 occupied", "2 tables · 1 occupied"]);
+  const one = floorSections(build([table("A", "Occupied", { areaId: HALL._id })], []), AREAS, "all");
+  assert.equal(one.groups[0].summary, "1 table · 1 occupied");
+});
+
+test("floorSections: a status filter runs INSIDE every area and the summary reads 'shown of total'", () => {
+  const s = floorSections(FLOOR, AREAS, "Available");
+  assert.deepEqual(s.groups.map((g) => nosOf(g.tiles)), [["G-1", "G-2"], ["H-2"], ["X-2"]]);
+  assert.deepEqual(s.groups.map((g) => g.summary), ["2 of 2 tables", "1 of 3 tables", "1 of 2 tables"]);
+});
+
+test("floorSections: an area with no tile in the filter is hidden, and the headings stay judged from the unfiltered list", () => {
+  const s = floorSections(FLOOR, AREAS, "Reserved");
+  assert.deepEqual(s.groups.map((g) => g.name), ["AC Hall"], "Garden and Other tables have no Reserved tile");
+  assert.deepEqual(nosOf(s.groups[0].tiles), ["H-3"]);
+  assert.equal(s.showHeadings, true);
+  // Every table in the filter belongs to no area, but the floor still HAS areas: headings stay.
+  const skewed = build([table("H-1", "Occupied", { areaId: HALL._id }), table("X-1", "Available")], []);
+  const only = floorSections(skewed, AREAS, "Available");
+  assert.equal(only.showHeadings, true, "judged before the filter");
+  assert.deepEqual(only.groups.map((g) => g.name), ["Other tables"]);
+  const none = floorSections(skewed, AREAS, "Reserved");
+  assert.deepEqual(none.groups, []);
+  assert.equal(none.showHeadings, true);
+});
+
+test("floorSections: zero areas (or areas nobody uses) is today's flat list, no headings", () => {
+  const flat = build([table("A", "Occupied"), table("B", "Available"), table("C", "Available")], []);
+  for (const areas of [undefined, [], [UNUSED]]) {
+    for (const filter of ["all", "Available", "Occupied", "Reserved"] as const) {
+      const s = floorSections(flat, areas, filter);
+      assert.equal(s.showHeadings, false);
+      const expected = filterTiles(flat, filter);
+      if (expected.length === 0) assert.deepEqual(s.groups, []);
+      else {
+        assert.equal(s.groups.length, 1);
+        assert.deepEqual(s.groups[0].tiles, expected);
+      }
+    }
+  }
+  assert.deepEqual(floorSections([], AREAS, "all"), { showHeadings: false, groups: [] });
 });
 
 test("updatedLabel", () => {

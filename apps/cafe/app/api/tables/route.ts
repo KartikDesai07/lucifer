@@ -13,7 +13,8 @@ import {
 } from "@/lib/api-helpers";
 import { listTables, TABLE_LIST } from "@/lib/masters";
 import { createTableSchema, reorderTablesSchema } from "@/schemas";
-import { TABLE_DUPLICATE_ERROR } from "@/lib/table-admin";
+import { TABLE_DUPLICATE_ERROR, nextTableDisplayOrder } from "@/lib/table-admin";
+import { checkAreaExists } from "@/lib/area-admin";
 import {
   TABLE_LIST_CHANGED_ERROR,
   TABLES_FRESH_PARAM,
@@ -59,17 +60,17 @@ export async function POST(req: Request) {
 
   try {
     await connectDB();
+    // A posted area must name a live one - nothing is created otherwise.
+    if (parsed.data.areaId !== undefined) {
+      const invalid = await checkAreaExists(parsed.data.areaId);
+      if (invalid) return failure(invalid, 400);
+    }
     // Status is not accepted from the client — a new table always starts
     // Available via the model default. displayOrder is likewise never accepted
     // from the client (same discipline) — a new table always lands at the END
     // of the arrangement, never the top, so it doesn't jump ahead of tables the
     // operator already arranged.
-    const last = await Table.findOne({ displayOrder: { $exists: true } })
-      .sort({ displayOrder: -1 })
-      .select("displayOrder")
-      .lean();
-    // +1 past the last arranged table (count would collide after a delete).
-    const displayOrder = (last?.displayOrder ?? -1) + 1;
+    const displayOrder = await nextTableDisplayOrder();
     // Every NEW table gets a QR sticker token up front, same discipline as
     // status/displayOrder above: publicToken is never accepted from the
     // client, only minted here.

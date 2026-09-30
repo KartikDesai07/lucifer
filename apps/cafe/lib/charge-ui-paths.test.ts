@@ -21,6 +21,7 @@ const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel),
 
 const MOVE_CHARGE_PREVIEW = "apps/cafe/lib/move-charge-preview.ts";
 const MOVE_TABLE_DIALOG = "apps/cafe/components/orders/MoveTableDialog.tsx";
+const MOVE_TABLE_PICKER = "apps/cafe/components/orders/MoveTablePicker.tsx";
 const CART_TSX = "apps/cafe/components/pos/Cart.tsx";
 const POS_CART_PROPS = "apps/cafe/lib/pos-cart-props.ts";
 const CART_EXTRA_CHARGES = "apps/cafe/components/pos/CartExtraCharges.tsx";
@@ -44,8 +45,13 @@ test("PIN (1): MoveTableDialog.tsx's only moveTable.mutateAsync call site is ins
   );
 
   // The table-grid button's onClick must set pendingTable only, never call
-  // the mutation directly.
-  assert.match(src, /onClick=\{\(\) => handlePick\(t\)\}/, "the table-grid button must call onClick={() => handlePick(t)}");
+  // the mutation directly. The grid now lives in MoveTablePicker, which only
+  // reports the tap (onPick); the dialog wires onPick to the pure selection.
+  const picker = stripComments(readSrc(MOVE_TABLE_PICKER));
+  assert.match(src, /onPick=\{handlePick\}/, "the dialog must hand the picker onPick={handlePick} (vision guard for the picker checks below)");
+  assert.match(picker, /onClick=\{\(\) => onPick\(t\)\}/, "the picker's table-grid button must call onClick={() => onPick(t)}");
+  assert.ok(!picker.includes("mutateAsync" + "("), "the picker must never call a mutation - it only reports the tap");
+  assert.ok(!picker.includes("useMoveOrder" + "Table"), "the picker must not use the move mutation hook");
   assert.match(src, /const handlePick = \(table: Table\) => setPendingTable\(table\);/, "handlePick must be exactly setPendingTable(table) — a pure selection, no mutation");
 });
 

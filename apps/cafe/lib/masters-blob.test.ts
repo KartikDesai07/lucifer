@@ -1,4 +1,4 @@
-// CB-DL-1 S5.2 — lib/masters-blob.ts, the per-tab copy of the five master
+// CB-DL-1 S5.2 — lib/masters-blob.ts, the per-tab copy of the six master
 // lists, exercised as the REAL module over a fake storage object.
 //
 // The module takes an injectable `storage` (Pick<Storage, getItem|setItem|
@@ -84,15 +84,16 @@ function blobOf(parts: MastersBlob["parts"], at: string = AT_NOW): MastersBlob {
 // ── round trip + freshness of the returned object ───────────────────────────
 
 // Contract change (owner directive 2026-09-09/11, "use local store properly"):
-// the device store now persists exactly the four MASTERS_PERSISTED_PART_KEYS
+// the device store now persists exactly the five MASTERS_PERSISTED_PART_KEYS
 // and staff is never written to it — it stays in memory for the tab's life.
-test("masters-blob: write -> read round-trips exactly the four persisted parts and DROPS staff", () => {
+test("masters-blob: write -> read round-trips exactly the five persisted parts and DROPS staff", () => {
   const store = fakeStorage();
   const written = blobOf({
     settings: { restaurantName: "Cafe One" },
     categories: [{ _id: "c1", name: "Coffee" }],
     products: [{ _id: "p1", name: "Latte" }],
     tables: [{ _id: "t1", tableNo: "T1" }],
+    areas: [{ _id: "a1", name: "Garden" }],
     staff: [{ _id: "s1", name: "Asha" }],
   });
 
@@ -113,8 +114,8 @@ test("masters-blob: write -> read round-trips exactly the four persisted parts a
   assert.equal(read.at, AT_NOW, "the blob must carry back the SERVER's `at`, not the reader's clock");
   assert.deepEqual(
     Object.keys(read.parts).sort(),
-    ["categories", "products", "settings", "tables"],
-    "only the four persisted parts must survive the round trip",
+    ["areas", "categories", "products", "settings", "tables"],
+    "only the five persisted parts must survive the round trip",
   );
   assert.equal(read.parts.staff, undefined, "readMastersBlob must return no staff part even though the caller wrote one");
   assert.deepEqual(read.parts.products, [{ _id: "p1", name: "Latte" }]);
@@ -217,10 +218,10 @@ test("masters-blob: unknown part keys are dropped and a prototype key in `parts`
   assert.deepEqual(
     Object.keys(proto.parts),
     ["settings"],
-    "prototype-shaped keys must not become parts — only the five known keys, copied with Object.hasOwn",
+    "prototype-shaped keys must not become parts — only the six known keys, copied with Object.hasOwn",
   );
 
-  // The five part keys are not prototype-shaped, so nothing may be inherited.
+  // The six part keys are not prototype-shaped, so nothing may be inherited.
   const empty = normalizeMastersBlob({ v: BOOTSTRAP_VERSION, at: AT_NOW, parts: {} }, NOW);
   assert.ok(empty, "an empty parts object is a valid (if useless) blob");
   assert.deepEqual(Object.keys(empty.parts), [], "an empty parts object must yield no parts at all");
@@ -384,7 +385,7 @@ test("masters-blob: a stored blob carrying a staff part reads back WITHOUT staff
 
 // ── persistedBlob / isPersistedPart ─────────────────────────────────────────
 
-test("masters-blob: isPersistedPart is true for the four persisted keys and false for staff", () => {
+test("masters-blob: isPersistedPart is true for the five persisted keys and false for staff", () => {
   for (const key of MASTERS_PERSISTED_PART_KEYS) {
     assert.ok(isPersistedPart(key), `isPersistedPart(${key}) must be true`);
   }
@@ -397,6 +398,7 @@ test("masters-blob: persistedBlob strips every non-persisted part (staff) and ke
     categories: [{ _id: "c1" }],
     products: [{ _id: "p1" }],
     tables: [{ _id: "t1" }],
+    areas: [{ _id: "a1" }],
     staff: [{ _id: "s1", name: "Asha" }],
   });
   const persisted = persistedBlob(blob);
@@ -404,8 +406,8 @@ test("masters-blob: persistedBlob strips every non-persisted part (staff) and ke
   assert.equal(persisted.at, blob.at);
   assert.deepEqual(
     Object.keys(persisted.parts).sort(),
-    ["categories", "products", "settings", "tables"],
-    "persistedBlob must keep exactly the four persisted parts",
+    ["areas", "categories", "products", "settings", "tables"],
+    "persistedBlob must keep exactly the five persisted parts",
   );
   assert.equal(persisted.parts.staff, undefined, "staff must be stripped");
   assert.deepEqual(persisted.parts.products, [{ _id: "p1" }], "a kept part must be byte-identical to the input");

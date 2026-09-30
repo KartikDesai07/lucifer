@@ -1,6 +1,7 @@
 import { connectDB } from "@/lib/db";
 import { getSettings } from "@/lib/settings";
 import {
+  listAreas,
   listCategories,
   listProducts,
   listStaff,
@@ -26,11 +27,12 @@ export async function buildBootstrap(opts: {
   // served from the cache needs no DB at all).
   await connectDB();
 
-  const [settings, categories, products, tables, staff] = await Promise.all([
+  const [settings, categories, products, tables, areas, staff] = await Promise.all([
     getSettings(),
     listCategories(),
     listProducts(),
     listTables(),
+    listAreas(),
     // Staff is admin-only: a non-admin session gets `null`, and the client
     // never seeds the staff list from a payload that omits it.
     opts.includeStaff ? listStaff() : Promise.resolve(null),
@@ -47,6 +49,7 @@ export async function buildBootstrap(opts: {
     categories,
     products,
     tables,
+    areas,
     staff,
   } as unknown as MastersParts;
 
@@ -59,6 +62,7 @@ export async function buildBootstrap(opts: {
     categories: parts.categories,
     products: parts.products,
     tables: parts.tables,
+    areas: parts.areas,
     staff: parts.staff,
   };
 }

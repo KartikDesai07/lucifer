@@ -8,7 +8,7 @@
 // query client would have proved nothing about the one rule that matters —
 // never overwrite fresher client data.
 //
-// The five query keys are compared against the hook modules' OWN exports,
+// The six query keys are compared against the hook modules' OWN exports,
 // imported directly (they also import cleanly in node), rather than harvested
 // from source: a real import cannot drift the way a regex can.
 import { test } from "node:test";
@@ -20,6 +20,7 @@ import { CATEGORY_KEYS } from "@/hooks/use-categories";
 import { PRODUCT_KEYS } from "@/hooks/use-products";
 import { TABLE_KEYS } from "@/hooks/use-tables";
 import { STAFF_KEYS } from "@/hooks/use-staff";
+import { AREA_KEYS } from "@/hooks/use-areas";
 import {
   BOOTSTRAP_VERSION,
   MASTERS_PART_KEYS,
@@ -40,13 +41,21 @@ const SETTINGS = { restaurantName: "Cafe One" };
 const CATEGORIES = [{ _id: "c1", name: "Coffee" }];
 const PRODUCTS = [{ _id: "p1", name: "Latte" }];
 const TABLES = [{ _id: "t1", tableNo: "T1" }];
+const AREAS = [{ _id: "a1", name: "Garden" }];
 const STAFF = [{ _id: "s1", name: "Asha" }];
 
 function fullBlob(at: string = AT): MastersBlob {
   return {
     v: BOOTSTRAP_VERSION,
     at,
-    parts: { settings: SETTINGS, categories: CATEGORIES, products: PRODUCTS, tables: TABLES, staff: STAFF },
+    parts: {
+      settings: SETTINGS,
+      categories: CATEGORIES,
+      products: PRODUCTS,
+      tables: TABLES,
+      areas: AREAS,
+      staff: STAFF,
+    },
   };
 }
 
@@ -54,11 +63,12 @@ function payload(overrides: Partial<BootstrapPayload> = {}): BootstrapPayload {
   return {
     v: BOOTSTRAP_VERSION,
     at: AT,
-    mastersVersion: "settings:1:0|categories:1:0|products:1:0|tables:1:0|staff:1:0",
+    mastersVersion: "settings:1:0|categories:1:0|products:1:0|tables:1:0|areas:1:0|staff:1:0",
     settings: SETTINGS as unknown as BootstrapPayload["settings"],
     categories: CATEGORIES as unknown as BootstrapPayload["categories"],
     products: PRODUCTS as unknown as BootstrapPayload["products"],
     tables: TABLES as unknown as BootstrapPayload["tables"],
+    areas: AREAS as unknown as BootstrapPayload["areas"],
     staff: STAFF as unknown as BootstrapPayload["staff"],
     ...overrides,
   };
@@ -66,7 +76,7 @@ function payload(overrides: Partial<BootstrapPayload> = {}): BootstrapPayload {
 
 // ── the query-key contract ──────────────────────────────────────────────────
 
-test("masters-seed: MASTERS_QUERY_KEYS is exactly the five hook modules' own key exports (imported, not harvested) — a hook that renames its key must break here, not silently seed a key nobody reads", () => {
+test("masters-seed: MASTERS_QUERY_KEYS is exactly the six hook modules' own key exports (imported, not harvested) — a hook that renames its key must break here, not silently seed a key nobody reads", () => {
   assert.deepEqual(
     MASTERS_QUERY_KEYS,
     {
@@ -74,6 +84,7 @@ test("masters-seed: MASTERS_QUERY_KEYS is exactly the five hook modules' own key
       categories: CATEGORY_KEYS.all,
       products: PRODUCT_KEYS.all,
       tables: TABLE_KEYS.all,
+      areas: AREA_KEYS.all,
       staff: STAFF_KEYS.all,
     },
     "MASTERS_QUERY_KEYS must be built from the hooks that own the keys",
@@ -101,7 +112,7 @@ test("masters-seed: MASTERS_QUERY_KEYS is exactly the five hook modules' own key
 test("masters-seed: seedMasters sets every present part with dataUpdatedAt === Date.parse(blob.at) — the blob's own stamp, so each hook's staleTime governs the next refetch", () => {
   const qc = new QueryClient();
   const seeded = seedMasters(qc, fullBlob());
-  assert.deepEqual([...seeded].sort(), [...MASTERS_PART_KEYS].sort(), "all five present parts must be reported as seeded");
+  assert.deepEqual([...seeded].sort(), [...MASTERS_PART_KEYS].sort(), "all six present parts must be reported as seeded");
 
   for (const part of MASTERS_PART_KEYS) {
     const state = qc.getQueryState(MASTERS_QUERY_KEYS[part]);
@@ -144,8 +155,8 @@ test("masters-seed: a key already holding data with a NEWER dataUpdatedAt is NOT
     "the fresher in-tab data must survive — overwriting it would silently roll the screen back",
   );
   assert.equal(qc.getQueryState(MASTERS_QUERY_KEYS.products)?.dataUpdatedAt, AT_MS + 1, "the fresher stamp must survive too");
-  // The other four had nothing, so they must all have been seeded.
-  assert.deepEqual([...seeded].sort(), ["categories", "settings", "staff", "tables"], "the untouched keys must still be seeded");
+  // The other five had nothing, so they must all have been seeded.
+  assert.deepEqual([...seeded].sort(), ["areas", "categories", "settings", "staff", "tables"], "the untouched keys must still be seeded");
 });
 
 test("masters-seed: with { force: true } a NEWER existing entry IS overwritten — the bootstrap response is the authoritative refresh, so a client clock running ahead cannot pin older data forever", () => {
@@ -218,7 +229,7 @@ test("masters-seed: an entry stamped EXACTLY at the blob's at is left alone (the
 test("masters-seed: re-seeding the SAME blob is a no-op — it returns [] and leaves the data and stamps identical (the seed is idempotent, so the provider's effect can run twice)", () => {
   const qc = new QueryClient();
   const first = seedMasters(qc, fullBlob());
-  assert.equal(first.length, MASTERS_PART_KEYS.length, "the first seed must seed all five");
+  assert.equal(first.length, MASTERS_PART_KEYS.length, "the first seed must seed all six");
 
   const before = MASTERS_PART_KEYS.map((p) => ({
     data: qc.getQueryData(MASTERS_QUERY_KEYS[p]),
@@ -246,18 +257,21 @@ test("masters-seed: a blob whose `at` is unparseable seeds NOTHING rather than s
 
 test("masters-seed: partsOfPayload drops null settings and null staff, and keeps every other part", () => {
   const both = partsOfPayload(payload());
-  assert.deepEqual(Object.keys(both).sort(), [...MASTERS_PART_KEYS].sort(), "a full payload must yield all five parts");
+  assert.deepEqual(Object.keys(both).sort(), [...MASTERS_PART_KEYS].sort(), "a full payload must yield all six parts");
 
   const nonAdmin = partsOfPayload(payload({ staff: null }));
   assert.ok(!Object.hasOwn(nonAdmin, "staff"), "a non-admin payload's staff:null must not become a part (D3: the staff part is admin-only)");
-  assert.deepEqual(Object.keys(nonAdmin).sort(), ["categories", "products", "settings", "tables"]);
+  assert.deepEqual(Object.keys(nonAdmin).sort(), ["areas", "categories", "products", "settings", "tables"]);
 
   const unconfigured = partsOfPayload(payload({ settings: null, staff: null }));
   assert.deepEqual(
     Object.keys(unconfigured).sort(),
-    ["categories", "products", "tables"],
+    ["areas", "categories", "products", "tables"],
     "a cluster with no Settings document yet must not seed settings:null as if it were an answer",
   );
+
+  const noAreas = partsOfPayload(payload({ areas: [] }));
+  assert.deepEqual(noAreas.areas, [], "a cafe with no areas has an EMPTY areas part - a real answer that must still be seeded");
 
   const emptyLists = partsOfPayload(payload({ categories: [], products: [] }));
   assert.deepEqual(emptyLists.categories, [], "an EMPTY array is a real answer (a cafe with no categories) and must still be a part");
@@ -268,16 +282,16 @@ test("masters-seed: blobOfPayload carries the current version and the payload's 
   const blob = blobOfPayload(payload({ staff: null }));
   assert.equal(blob.v, BOOTSTRAP_VERSION, "the blob must be stamped with the current payload version so a bump discards it");
   assert.equal(blob.at, AT, "the blob must carry the payload's server-side at, not the browser's clock");
-  assert.deepEqual(Object.keys(blob.parts).sort(), ["categories", "products", "settings", "tables"], "only the present parts ride along");
+  assert.deepEqual(Object.keys(blob.parts).sort(), ["areas", "categories", "products", "settings", "tables"], "only the present parts ride along");
   assert.deepEqual(blob.parts.products, PRODUCTS, "the part values must be the payload's own");
 });
 
-test("masters-seed: blobOfPayload -> seedMasters is the provider's real path — a non-admin payload seeds four keys and leaves the staff key untouched", () => {
+test("masters-seed: blobOfPayload -> seedMasters is the provider's real path — a non-admin payload seeds five keys and leaves the staff key untouched", () => {
   const qc = new QueryClient();
   const seeded = seedMasters(qc, blobOfPayload(payload({ staff: null })));
-  assert.deepEqual([...seeded].sort(), ["categories", "products", "settings", "tables"], "four parts for a non-admin session");
+  assert.deepEqual([...seeded].sort(), ["areas", "categories", "products", "settings", "tables"], "five parts for a non-admin session");
   assert.equal(qc.getQueryData(MASTERS_QUERY_KEYS.staff), undefined, '["staff"] must remain untouched for a non-admin');
-  for (const part of ["categories", "products", "settings", "tables"] as const) {
+  for (const part of ["areas", "categories", "products", "settings", "tables"] as const) {
     assert.equal(qc.getQueryState(MASTERS_QUERY_KEYS[part])?.dataUpdatedAt, AT_MS, `${part} must carry the payload's at`);
   }
 });

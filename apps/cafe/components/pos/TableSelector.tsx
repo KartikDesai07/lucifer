@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { LayoutGrid, Check } from "lucide-react";
 
 import { cn, inr } from "@/lib/utils";
 import { POS_HEADER_CHIP_ICON_CLASS, POS_DIALOG_LIST_CAP_CLASS } from "@/lib/pos-layout";
 import { tablePickAction } from "@/lib/table-pick";
+import { groupTablesByArea, showAreaHeadings } from "@/lib/table-areas";
+import { useTableAreas } from "@/hooks/use-table-areas";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -59,6 +61,54 @@ export function TableSelector({
     setOpen(false);
   };
 
+  const areas = useTableAreas(tables);
+  const groups = groupTablesByArea(tables ?? [], areas.data);
+  const showHeadings = showAreaHeadings(groups);
+
+  const renderTile = (t: Table) => {
+    const isSelected = value === t.tableNo;
+    const pick = tablePickAction(t, tabs);
+    const tab = pick.kind === "resume" ? pick.tab : undefined;
+    // Rush friction: a red tile does nothing today. If it is holding a
+    // tab we already know about, tapping it should be a shortcut to
+    // that bill instead of a dead end — the operator can tell two red
+    // tables apart by name+total without opening the Open-tabs list.
+    const resumable = !!tab && !!onResume;
+    const disabled = !isSelected && !resumable && pick.kind !== "select";
+    return (
+      <button
+        key={t._id}
+        type="button"
+        disabled={disabled}
+        onClick={() => (tab && resumable ? resume(tab) : select(t.tableNo))}
+        className={cn(
+          "relative flex aspect-square flex-col items-center justify-center gap-0.5 rounded-lg border text-sm font-semibold transition",
+          STATUS_STYLE[t.status],
+          disabled && "cursor-not-allowed opacity-50",
+          isSelected && "ring-2 ring-primary ring-offset-1",
+        )}
+      >
+        {isSelected && (
+          <Check className="absolute right-1 top-1 h-3 w-3" />
+        )}
+        <span>{t.tableNo}</span>
+        {tab && resumable ? (
+          <>
+            <span className="max-w-full truncate px-1 text-[10px] font-normal">
+              {tab.customerName}
+            </span>
+            <span className="text-[10px] font-normal">{inr(tab.total)}</span>
+          </>
+        ) : (
+          <span className="text-[10px] font-normal">{t.status}</span>
+        )}
+        <span className="text-[9px] font-normal opacity-75">
+          {t.capacity} seats
+        </span>
+      </button>
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -90,49 +140,16 @@ export function TableSelector({
             unbounded — without a scroll cap a large plan pushes the dialog past
             the viewport and clips the Walk-In escape hatch off-screen. */}
         <div className={cn("grid grid-cols-4 gap-2 overflow-y-auto", POS_DIALOG_LIST_CAP_CLASS)}>
-          {(tables ?? []).map((t) => {
-            const isSelected = value === t.tableNo;
-            const pick = tablePickAction(t, tabs);
-            const tab = pick.kind === "resume" ? pick.tab : undefined;
-            // Rush friction: a red tile does nothing today. If it is holding a
-            // tab we already know about, tapping it should be a shortcut to
-            // that bill instead of a dead end — the operator can tell two red
-            // tables apart by name+total without opening the Open-tabs list.
-            const resumable = !!tab && !!onResume;
-            const disabled = !isSelected && !resumable && pick.kind !== "select";
-            return (
-              <button
-                key={t._id}
-                type="button"
-                disabled={disabled}
-                onClick={() => (tab && resumable ? resume(tab) : select(t.tableNo))}
-                className={cn(
-                  "relative flex aspect-square flex-col items-center justify-center gap-0.5 rounded-lg border text-sm font-semibold transition",
-                  STATUS_STYLE[t.status],
-                  disabled && "cursor-not-allowed opacity-50",
-                  isSelected && "ring-2 ring-primary ring-offset-1",
-                )}
-              >
-                {isSelected && (
-                  <Check className="absolute right-1 top-1 h-3 w-3" />
-                )}
-                <span>{t.tableNo}</span>
-                {tab && resumable ? (
-                  <>
-                    <span className="max-w-full truncate px-1 text-[10px] font-normal">
-                      {tab.customerName}
-                    </span>
-                    <span className="text-[10px] font-normal">{inr(tab.total)}</span>
-                  </>
-                ) : (
-                  <span className="text-[10px] font-normal">{t.status}</span>
-                )}
-                <span className="text-[9px] font-normal opacity-75">
-                  {t.capacity} seats
-                </span>
-              </button>
-            );
-          })}
+          {showHeadings
+            ? groups.map((g) => (
+                <Fragment key={g.key}>
+                  <h3 className="col-span-4 truncate pt-1 text-sm font-semibold first:pt-0" title={g.name}>
+                    {g.name}
+                  </h3>
+                  {g.items.map(renderTile)}
+                </Fragment>
+              ))
+            : (tables ?? []).map(renderTile)}
         </div>
 
         <Button

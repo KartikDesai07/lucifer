@@ -341,7 +341,8 @@ view every role sees), **Setup** and **QR codes** (both admin only).
 ### Arranging the floor plan (admin only, `Tables` → `Setup`)
 
 - [ ] On `Setup`, drag a table by its handle, or use its up/down arrows — the
-      same interaction as the `Categories` screen.
+      same interaction as the `Categories` screen. A table moves within its
+      area when the cafe uses areas (next subsection).
 - [ ] Tell them what it is FOR: this order is also the order tables appear in
       **the POS table picker**, so the tables they run busiest belong at the top
       and staff stop hunting for them mid-rush.
@@ -355,6 +356,31 @@ view every role sees), **Setup** and **QR codes** (both admin only).
       before `T-2` — arranging is how a cafe fixes that.
 - [ ] Arranging is admin-only, and it never touches occupancy: a table's status,
       its open tab, and its charge are all untouched by moving it up or down.
+
+### Areas (admin only, `Tables` → `Setup` → **Areas**)
+
+- [ ] Areas are **optional**. A cafe that never creates one sees no change at
+      all — the floor stays one plain list.
+- [ ] Create and order the names on `Tables` → `Setup` → **Areas** (for
+      example *AC Hall*, *Garden*, *Rooftop*). 1–24 characters, any language
+      (unlike table names, an area name may be Devanagari or accented). *Garden*
+      and *garden* count as the same name, so the second is refused. Up to 50
+      areas per cafe.
+- [ ] Put a table in an area from **Edit table** → *Area*. **+ New area…** in
+      that dropdown creates the area on the spot; **No area** takes the table
+      out of its area again.
+- [ ] Tell them: a table moved to another area lands at the **end** of that
+      area, and arranging tables (previous subsection) only ever happens
+      **within an area**.
+- [ ] Renaming or reordering an area changes it everywhere areas show. Other
+      screens that are already open pick the change up **after a reload**.
+- [ ] An area cannot be deleted while tables still use it — the app says how
+      many. Move those tables to another area (or **No area**) first.
+- [ ] Tell them where areas show, and where they do **not**. They show ONLY on
+      the **Floor**, **Setup**, the **New Order** table picker and **Move
+      table**. They never appear on the QR menu, the QR stickers, the
+      Dashboard floor panel, reservations, bills, kitchen slips or reports.
+- [ ] Tables with no area show **last**, under **Other tables**.
 
 ### The live floor (ANY staff, `Tables` → `Floor`)
 
@@ -888,7 +914,7 @@ and no point-in-time restore.** What follows is the entire safety net.
 ### DL rehearsal: master-data bootstrap + link migration dry run
 
 DL-1 shipped one `GET /api/bootstrap` call that feeds every screen's master
-data (settings, categories, products, tables; staff too, but only for an
+data (settings, categories, products, tables, areas; staff too, but only for an
 admin) at login and on a page refresh, keeping a copy on the device (the
 browser's local storage) for up to 24 hours so the next launch paints at
 once. The staff list is never stored on the device — it stays in memory for
@@ -1118,6 +1144,8 @@ the test fails — fix the code or this file, never just this file.
 | Seats range | 1–99 | `TABLE_CAPACITY_MIN` / `TABLE_CAPACITY_MAX` |
 | Table extra charge max | 10000 | `TABLE_CHARGE_MAX` |
 | Charge name max length | 24 | `TABLE_CHARGE_LABEL_MAX_LEN` |
+| Area name max length | 24 | `TABLE_AREA_NAME_MAX_LEN` |
+| Areas per cafe | 50 | `TABLE_AREAS_MAX` |
 | Charge is taxed | no — added after GST | `computeOrderTotals` |
 | Unnamed charge | not charged at all | `tableChargeOf` |
 | Starter tables | `T-1 … T-8` (8) | `TABLE_NUMBERS` |

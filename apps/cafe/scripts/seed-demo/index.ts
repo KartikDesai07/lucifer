@@ -24,6 +24,7 @@ import { printConfigOf } from "@/lib/print";
 import { Settings, type ISettings } from "@/models/Settings";
 import { Category } from "@/models/Category";
 import { Table } from "@/models/Table";
+import { Area } from "@/models/Area";
 import { Event } from "@/models/Event";
 import { Reservation } from "@/models/Reservation";
 import { DuePayment } from "@/models/DuePayment";
@@ -257,7 +258,7 @@ export async function runSeedDemo(opts: { file: string; imagesDir: string | null
   log("");
   log(`Demo data for "${summary.slug}": ${summary.days.count} days (${summary.days.from} … ${summary.days.to})`);
   log(`  Categories: ${summary.categories} · Products: ${summary.products} (${summary.imagesUploaded} photos uploaded, ${summary.imagesSkipped} skipped)`);
-  log(`  Tables: ${summary.tables} · Staff: ${summary.staff} · Customers: ${summary.customers}`);
+  log(`  Tables: ${summary.tables} · Areas: ${await Area.countDocuments()} · Staff: ${summary.staff} · Customers: ${summary.customers}`);
   log(`  Orders: ${summary.orders.total} (${summary.orders.completed} completed, ${summary.orders.pending} pending, ${summary.orders.cancelled} cancelled, ${summary.orders.selfOrder} self-order)`);
   log(`  Sales: ₹${summary.sales} · Due payments: ${summary.duePayments} · Events: ${summary.events} · Reservations: ${summary.reservations} · Self-order requests: ${summary.orderRequests}`);
   if (topProducts.length > 0) {

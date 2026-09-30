@@ -1,6 +1,7 @@
 import type { FilterQuery, FlattenMaps, Model, Types } from "mongoose";
 import cache, { TTL } from "@/lib/cache";
 import { connectDB } from "@/lib/db";
+import { Area, type IArea } from "@/models/Area";
 import { Category, type ICategory } from "@/models/Category";
 import { Product, type IProduct } from "@/models/Product";
 import { Staff, type IStaff } from "@/models/Staff";
@@ -58,6 +59,17 @@ export const TABLE_LIST: MasterListSpec<ITable> = {
   // The operator's hand arrangement wins; the name is the tie-break, so
   // tables that were never arranged (missing displayOrder) keep name order.
   sort: { displayOrder: 1, tableNo: 1 },
+};
+
+// Floor areas (Tables B2): the operator's arrangement wins, the name breaks ties.
+// Areas are a CORE master part like tables - GET /api/areas and the bootstrap
+// both read through this one spec.
+export const AREA_LIST: MasterListSpec<IArea> = {
+  model: Area,
+  cacheKey: "areas",
+  ttl: TTL.AREAS,
+  filter: {},
+  sort: { displayOrder: 1, name: 1 },
 };
 
 export const STAFF_LIST: MasterListSpec<IStaff> = {
@@ -135,6 +147,10 @@ export function listProducts(): Promise<LeanRow<IProduct>[]> {
 
 export function listTables(): Promise<LeanRow<ITable>[]> {
   return listFromSpec(TABLE_LIST);
+}
+
+export function listAreas(): Promise<LeanRow<IArea>[]> {
+  return listFromSpec(AREA_LIST);
 }
 
 export function listStaff(): Promise<LeanRow<IStaff>[]> {

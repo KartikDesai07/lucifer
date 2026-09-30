@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { LayoutGrid, Plus, QrCode } from "lucide-react";
+import { Layers, LayoutGrid, Plus, QrCode } from "lucide-react";
 
 import { useTables, useDeleteTable } from "@/hooks/use-tables";
+import { useTableAreas } from "@/hooks/use-table-areas";
 import { useSettings } from "@/hooks/use-settings";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,9 +15,11 @@ import { ErrorState } from "@/components/shared/ErrorState";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { AdminGuard } from "@/components/shared/AdminGuard";
 import { MenuPageShell } from "@/components/menu/MenuPageShell";
+import { AreasSheet } from "@/components/tables/AreasSheet";
 import { TableFormSheet } from "@/components/tables/TableFormSheet";
 import { TableSetupList } from "@/components/tables/TableSetupList";
 import { TABLES_QR_PATH } from "@/lib/table-sections";
+import { groupTablesByArea, namedAreaCount, showAreaHeadings, tableCountText } from "@/lib/table-areas";
 import { longStayMinutesOf } from "@/lib/table-status";
 import { settingsSectionPath } from "@/lib/settings-sections";
 import type { Table } from "@/types";
@@ -40,9 +43,11 @@ export default function TablesSetupPage() {
 
 function TablesSetupContent() {
   const tables = useTables();
+  const areas = useTableAreas(tables.data);
   const settings = useSettings();
   const deleteTable = useDeleteTable();
 
+  const [areasOpen, setAreasOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Table | null>(null);
   const [deleting, setDeleting] = useState<Table | null>(null);
@@ -67,6 +72,12 @@ function TablesSetupContent() {
   };
 
   const list = tables.data ?? [];
+  // Headings show only once a table sits in a known area; with none the page is
+  // the flat list it always was. Grouping itself lives in lib/table-areas.
+  const groups = groupTablesByArea(list, areas.data);
+  const headings = showAreaHeadings(groups);
+  const areaCount = namedAreaCount(groups);
+  const ready = tables.data !== undefined && areas.data !== undefined;
   // The dialog's copy keeps the last table while it fades out (deleting is
   // cleared the moment it closes, which would otherwise flash a blank name).
   const [shownDelete, setShownDelete] = useState<Table | null>(null);
@@ -87,18 +98,40 @@ function TablesSetupContent() {
     );
   }
 
+  // Setup waits for the areas (they arrive with the master data); the Floor and
+  // the New Order picker never block on them.
+  if (areas.isError && areas.data === undefined) {
+    return (
+      <div className="space-y-4">
+        <PageHeader eyebrow="Tables" title="Setup" />
+        <ErrorState
+          title="Couldn't load the areas"
+          description="Check the internet connection, then try again."
+          onRetry={() => areas.refetch()}
+          retryLabel="Try again"
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <PageHeader
         eyebrow="Tables"
         title="Setup"
         description={
-          tables.data === undefined
+          !ready
             ? "Loading tables…"
-            : `${list.length} table${list.length === 1 ? "" : "s"} · drag to arrange — the same order shows on the floor and in the New Order table picker`
+            : headings
+              ? `${tableCountText(list.length)} in ${areaCount} ${areaCount === 1 ? "area" : "areas"} · drag within an area, or move a table to another area from Edit`
+              : `${list.length} table${list.length === 1 ? "" : "s"} · drag to arrange — the same order shows on the floor and in the New Order table picker`
         }
         actions={
           <div className="flex flex-wrap gap-2">
+            {/* The sheet's in-use counts come from the tables list, so it opens once that has loaded. */}
+            <Button variant="outline" onClick={() => setAreasOpen(true)} disabled={tables.data === undefined}>
+              <Layers className="mr-2 h-4 w-4" /> Areas
+            </Button>
             <Button variant="outline" asChild>
               <Link prefetch={false} href={TABLES_QR_PATH}>
                 <QrCode className="mr-2 h-4 w-4" /> Print QR codes
@@ -125,7 +158,7 @@ function TablesSetupContent() {
 
       {/* No data yet — loading, or a paused (offline) first read — is never
           "No tables yet": that empty state offers Add table on a real empty plan only. */}
-      {tables.data === undefined ? (
+      {tables.data === undefined || areas.data === undefined ? (
         <div className="space-y-2 rounded-lg border p-4">
           {Array.from({ length: SKELETON_ROWS }).map((_, i) => (
             <Skeleton key={i} className="h-10 w-full" />
@@ -144,13 +177,16 @@ function TablesSetupContent() {
         />
       ) : (
         <>
-          <TableSetupList tables={list} onEdit={openEdit} onDelete={setDeleting} />
+          <TableSetupList tables={list} areas={areas.data} onEdit={openEdit} onDelete={setDeleting} />
           <p className="text-sm text-muted-foreground">
-            Drag the handle, or use the up and down arrows. Changes save at once.
+            {headings
+              ? "Drag the handle, or use the up and down arrows, to arrange tables within their area. Changes save at once."
+              : "Drag the handle, or use the up and down arrows. Changes save at once."}
           </p>
         </>
       )}
 
+      <AreasSheet open={areasOpen} onOpenChange={setAreasOpen} tables={list} />
       <TableFormSheet open={formOpen} onOpenChange={setFormOpen} table={editing} />
 
       <ConfirmDialog

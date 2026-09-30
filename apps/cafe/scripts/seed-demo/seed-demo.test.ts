@@ -32,6 +32,7 @@ import {
 } from "./people-data";
 import { planOrders, orderTotalsOf } from "./orders-plan";
 import { planExtras } from "./extras-plan";
+import { DEMO_AREA_NAMES, demoAreaIndexOf } from "./area-plan";
 import { rollupsOf } from "./finalize";
 import { computeOrderTotals } from "@/lib/receipt";
 import { derivePayment } from "@/lib/order";
@@ -669,6 +670,51 @@ test("rollupsOf: matches an independent brute-force fold over orders + due payme
   }
 });
 
+// ── area-plan.ts ─────────────────────────────────────────────────────────────
+const AREA_TABLE_COUNTS = [3, 4, 8, 12, 25, 40] as const;
+
+test("area plan: bands are non-decreasing and contiguous (no area reappears after another began)", () => {
+  for (const total of AREA_TABLE_COUNTS) {
+    const seen: number[] = [];
+    for (let i = 0; i < total; i++) seen.push(demoAreaIndexOf(i, total));
+    assert.equal(seen[0], 0, `total ${total}: the first table must land in the first area`);
+    for (let i = 1; i < total; i++) {
+      assert.ok(seen[i] >= seen[i - 1], `total ${total}: band index went backwards at table ${i} (${seen.join(",")})`);
+      assert.ok(seen[i] - seen[i - 1] <= 1, `total ${total}: an area was skipped at table ${i} (${seen.join(",")})`);
+    }
+  }
+});
+
+test("area plan: the LAST table (the one carrying the rooftop charge) lands in the last area, and all three areas are used once total >= 3", () => {
+  assert.deepEqual([...DEMO_AREA_NAMES], ["AC Hall", "Garden", "Rooftop"]);
+  const lastArea = DEMO_AREA_NAMES.length - 1;
+  for (const total of AREA_TABLE_COUNTS) {
+    assert.equal(demoAreaIndexOf(total - 1, total), lastArea, `total ${total}: last table must be in ${DEMO_AREA_NAMES[lastArea]}`);
+    const used = new Set(Array.from({ length: total }, (_, i) => demoAreaIndexOf(i, total)));
+    assert.equal(used.size, DEMO_AREA_NAMES.length, `total ${total}: every demo area must hold a table`);
+  }
+  assert.equal(fakeTables(8).at(-1)?.chargeLabel, "Rooftop seating", "landmark: the last fake table carries the rooftop charge");
+});
+
+test("source pin: seedTables creates each used area WITH a displayOrder (the model has no default) and sets areaId on every Table.create; the census checks Table.areaId", () => {
+  const core = readSeedDemoFile("seed-core.ts");
+  assert.ok(core.includes("export async function seedTables("), "landmark: seedTables is in seed-core.ts");
+  assert.match(core, /Area\.create\(\{[^}]*displayOrder:/, "an Area must be created with an explicit displayOrder");
+  assert.match(core, /areaId:\s*areaIds\.get\(demoAreaIndexOf\(/, "each Table.create must carry the band's areaId");
+  const census = readSeedDemoFile("finalize-census.ts");
+  assert.ok(census.includes("NOT_OBJECT_ID"), "landmark: the census idiom is present");
+  assert.match(census, /Table\.countDocuments\(\{\s*areaId:/, "the census must check Table.areaId");
+});
+
+test("area plan: a tiny floor never yields an out-of-range index", () => {
+  for (const total of [1, 2]) {
+    for (let i = 0; i < total; i++) {
+      const idx = demoAreaIndexOf(i, total);
+      assert.ok(Number.isInteger(idx) && idx >= 0 && idx < DEMO_AREA_NAMES.length, `total ${total} table ${i}: index ${idx} out of range`);
+    }
+  }
+});
+
 // ── Source pins ──────────────────────────────────────────────────────────────
 function readSeedDemoFile(name: string): string {
   return readFileSync(join(SEED_DIR, name), "utf8");
@@ -692,6 +738,7 @@ const SEED_DEMO_FILES = [
   "finalize.ts",
   "finalize-census.ts",
   "images.ts",
+  "area-plan.ts",
   "seed-core.ts",
   "orders-write.ts",
   "loyalty-data.ts",

@@ -524,7 +524,7 @@ test("PIN: TableSetupList rolls a failed save back to the LATEST server order â€
   // every render (a stale ref would roll back to the wrong order).
   assert.match(
     src,
-    /latestServerIdsRef\.current = tables\.map\(\(t\) => t\.tableNo\);/,
+    /latestServerIdsRef\.current = composeAreaOrder\(tables, areas\);/,
     "latestServerIdsRef must be refreshed from tables every render",
   );
 });

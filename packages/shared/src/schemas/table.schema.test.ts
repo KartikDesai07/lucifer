@@ -311,3 +311,51 @@ test("reorderTablesSchema is strict — a position cannot be smuggled in alongsi
     false,
   );
 });
+
+// ── areaId (Tables B2 — floor areas) ─────────────────────────────────────────
+// An area is optional on create, and on patch `null` is the ONLY way to take a
+// table out of its area (the route turns it into an $unset), so dropping
+// .nullable() from patchTableSchema would make "No area" impossible.
+
+const AREA_ID = "64f000000000000000000001";
+
+test("createTableSchema accepts an optional lower-case-hex areaId and rejects a malformed or null one", () => {
+  assert.equal(createTableSchema.safeParse({ tableNo: "T-1" }).success, true);
+  assert.equal(createTableSchema.safeParse({ tableNo: "T-1", areaId: AREA_ID }).success, true);
+  assert.equal(createTableSchema.safeParse({ tableNo: "T-1", areaId: "garden" }).success, false);
+  assert.equal(
+    createTableSchema.safeParse({ tableNo: "T-1", areaId: AREA_ID.toUpperCase() }).success,
+    false,
+  );
+  assert.equal(
+    createTableSchema.safeParse({ tableNo: "T-1", areaId: null }).success,
+    false,
+    "a new table has no area to clear — null is a patch-only value",
+  );
+});
+
+test("patchTableSchema: areaId alone satisfies the 'provide something' refinement — an id OR null", () => {
+  assert.equal(patchTableSchema.safeParse({ areaId: AREA_ID }).success, true);
+  assert.equal(patchTableSchema.safeParse({ areaId: null }).success, true);
+  assert.equal(patchTableSchema.safeParse({ areaId: "nope" }).success, false);
+});
+
+test("patchTableSchema: the empty-edit message now names the area", () => {
+  const r = patchTableSchema.safeParse({});
+  assert.equal(r.success, false);
+  if (!r.success) {
+    const messages = r.error.issues.map((i) => i.message);
+    assert.ok(
+      messages.includes("Provide a new name, seat count, area or charge"),
+      `got ${JSON.stringify(messages)}`,
+    );
+  }
+});
+
+test("patchTableSchema: areaId still rides with the charge rule — an amount with no label fails", () => {
+  assert.equal(patchTableSchema.safeParse({ areaId: AREA_ID, chargeAmount: 50 }).success, false);
+  assert.equal(
+    patchTableSchema.safeParse({ areaId: AREA_ID, chargeAmount: 50, chargeLabel: "AC" }).success,
+    true,
+  );
+});

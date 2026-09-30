@@ -4,8 +4,9 @@
 // what this returns, and lib/floor-tiles.test.ts pins every row.
 import type { TableStatus } from "@/lib/constants";
 import { openTabForTable } from "@/lib/table-pick";
+import { areaSummaryText, groupByArea, showAreaHeadings, tableAreaIdOf, tableCountText } from "@/lib/table-areas";
 import { inr } from "@/lib/utils";
-import type { Order, OrderItem, Reservation, Table } from "@/types";
+import type { Area, Order, OrderItem, Reservation, Table } from "@/types";
 
 // One shared clock for the minutes-open figures: a minute-level number does not
 // need a per-second tick, and the table poll itself runs every 30 s.
@@ -153,6 +154,49 @@ export function statusCounts(tables: readonly Pick<Table, "status">[]): Record<F
 
 export function filterTiles(tiles: readonly FloorTileModel[], filter: FloorFilter): FloorTileModel[] {
   return filter === "all" ? [...tiles] : tiles.filter((t) => t.table.status === filter);
+}
+
+export interface FloorSection {
+  /** An Area._id, or the trailing "Other tables" key. */
+  key: string;
+  name: string;
+  /** "4 tables · 2 occupied", or "1 of 4 tables" while a status chip filters. */
+  summary: string;
+  /** The area's tiles that pass the filter (never empty). */
+  tiles: FloorTileModel[];
+}
+
+export interface FloorSections {
+  /** Headings show only once a table sits in a KNOWN area - judged BEFORE the filter. */
+  showHeadings: boolean;
+  groups: FloorSection[];
+}
+
+/**
+ * The Floor's tiles laid out under their area headings. ALL tiles are grouped
+ * first (so the summary counts the whole area and headings do not appear or
+ * vanish as a chip is pressed), then the status filter runs inside each group;
+ * an area with no matching tile is dropped. With no areas the result is one
+ * group holding exactly filterTiles(tiles, filter) - today's flat list.
+ */
+export function floorSections(
+  tiles: readonly FloorTileModel[],
+  areas: readonly Area[] | undefined,
+  filter: FloorFilter,
+): FloorSections {
+  const all = groupByArea(tiles, (tile) => tableAreaIdOf(tile.table), areas);
+  const groups: FloorSection[] = [];
+  for (const group of all) {
+    const shown = filterTiles(group.items, filter);
+    if (shown.length === 0) continue;
+    const total = group.items.length;
+    const summary =
+      filter === "all"
+        ? areaSummaryText(total, statusCounts(group.items.map((t) => t.table)).Occupied)
+        : `${shown.length} of ${tableCountText(total)}`;
+    groups.push({ key: group.key, name: group.name, summary, tiles: shown });
+  }
+  return { showHeadings: showAreaHeadings(all), groups };
 }
 
 export function emptyFilterText(filter: TableStatus): string {

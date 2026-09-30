@@ -67,6 +67,16 @@ export const TABLE_CHARGE_LABEL_PATTERN = /^[\x20-\x7E\u00A0-\uFFFF]+$/;
 export const TABLE_CHARGE_LABEL_MESSAGE =
   'Name the charge as it should print, e.g. "Rooftop charge"';
 
+// A floor area groups tables by where they are (AC Hall, Garden, Rooftop).
+// Display-only text like the charge label, so it REUSES that charset rule
+// (control characters barred, every language allowed) rather than restating it.
+// Uniqueness is case-insensitive and enforced by the database (models/Area.ts).
+export const TABLE_AREA_NAME_MAX_LEN = 24;
+export const TABLE_AREA_NAME_PATTERN = TABLE_CHARGE_LABEL_PATTERN;
+export const TABLE_AREA_NAME_MESSAGE = 'Name the area as your staff call it, e.g. "Garden"';
+// The most areas one cafe can have — also the reorder payload cap.
+export const TABLE_AREAS_MAX = 50;
+
 // "Unpaid" is the held/open-tab state: a running order fired to the kitchen but
 // not yet settled (status Pending, paidAmount 0). It is NOT a way a bill gets
 // paid — settlement always picks a real mode from SETTLEMENT_PAY_MODES below.

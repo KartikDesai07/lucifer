@@ -6,6 +6,7 @@ import path from "node:path";
 
 import { stripComments } from "@/lib/source-pin-utils";
 import {
+  BOOTSTRAP_VERSION,
   MASTERS_PART_KEYS,
   mastersVersionOf,
   type MastersParts,
@@ -16,6 +17,7 @@ import {
 // so this stays a DB-free unit test (verified by probe: the import resolves
 // and the function runs with no mongod running).
 import {
+  AREA_LIST,
   CATEGORY_LIST,
   PRODUCT_LIST,
   STAFF_LIST,
@@ -158,6 +160,7 @@ test("PIN: listSpecConfig maps every spec field to the config field that must ag
     ["CATEGORY_LIST", CATEGORY_LIST as MasterListSpec<unknown>],
     ["PRODUCT_LIST", PRODUCT_LIST as MasterListSpec<unknown>],
     ["TABLE_LIST", TABLE_LIST as MasterListSpec<unknown>],
+    ["AREA_LIST", AREA_LIST as MasterListSpec<unknown>],
     ["STAFF_LIST", STAFF_LIST as MasterListSpec<unknown>],
   ];
 
@@ -247,7 +250,7 @@ test("PIN: GET /api/settings still resolves the singleton through getSettings() 
 
 // ── 2. the bootstrap calls the SAME symbols ─────────────────────────────────
 
-test("PIN: lib/bootstrap.ts's part loaders are exactly {getSettings, listCategories, listProducts, listTables, listStaff} — one Promise.all, mastersVersionOf, and no query of its own", () => {
+test("PIN: lib/bootstrap.ts's part loaders are exactly {getSettings, listCategories, listProducts, listTables, listAreas, listStaff} — one Promise.all, mastersVersionOf, and no query of its own", () => {
   const src = readStripped(BOOTSTRAP_LIB);
 
   // Harvest every master-getter call: the four list wrappers plus getSettings.
@@ -259,8 +262,8 @@ test("PIN: lib/bootstrap.ts's part loaders are exactly {getSettings, listCategor
 
   assert.deepEqual(
     [...calls].sort(),
-    ["getSettings", "listCategories", "listProducts", "listStaff", "listTables"].sort(),
-    "the bootstrap must load its parts through exactly the five functions the master routes use — no extra getter, none missing",
+    ["getSettings", "listAreas", "listCategories", "listProducts", "listStaff", "listTables"].sort(),
+    "the bootstrap must load its parts through exactly the six functions the master routes use — no extra getter, none missing",
   );
 
   // One concurrent batch: a second Promise.all would mean a second round of
@@ -315,7 +318,7 @@ test("PIN: app/api/bootstrap/route.ts is force-dynamic, requireAuth-gated before
 
 // ── 4. spec truth in lib/masters.ts ─────────────────────────────────────────
 
-test("PIN: each master spec's literal carries the exact filter/sort/select/cacheKey/TTL the five routes shipped with — the ONE description the routes and the bootstrap both read", () => {
+test("PIN: each master spec's literal carries the exact filter/sort/select/cacheKey/TTL the master routes serve — the ONE description the routes and the bootstrap both read", () => {
   const src = readStripped(MASTERS);
 
   const category = specLiteral(src, "CATEGORY_LIST");
@@ -341,6 +344,14 @@ test("PIN: each master spec's literal carries the exact filter/sort/select/cache
   assert.match(table, /cacheKey:\s*"tables"/, 'TABLE_LIST must cache under "tables"');
   assert.match(table, /ttl:\s*TTL\.TABLES/, "TABLE_LIST must use TTL.TABLES");
 
+  const area = specLiteral(src, "AREA_LIST");
+  // The operator's arrangement wins; the name only breaks ties.
+  assert.match(area, /sort:\s*\{ displayOrder: 1, name: 1 \}/, "AREA_LIST must sort by displayOrder then name");
+  assert.match(area, /filter:\s*\{\s*\}/, "AREA_LIST must list every area (empty filter)");
+  assert.match(area, /cacheKey:\s*"areas"/, 'AREA_LIST must cache under "areas"');
+  assert.match(area, /ttl:\s*TTL\.AREAS/, "AREA_LIST must use TTL.AREAS");
+  assert.match(area, /model:\s*Area\b/, "AREA_LIST must read the Area model");
+
   const staff = specLiteral(src, "STAFF_LIST");
   assert.match(staff, /select:\s*"-password"/, "STAFF_LIST must project away the password hash — a staff read NEVER carries it");
   assert.match(staff, /sort:\s*\{ name: 1 \}/, "STAFF_LIST must sort by name");
@@ -348,7 +359,7 @@ test("PIN: each master spec's literal carries the exact filter/sort/select/cache
   assert.match(staff, /ttl:\s*TTL\.STAFF/, "STAFF_LIST must use TTL.STAFF");
 });
 
-test("PIN: listFromSpec's order of operations is cache.get -> connectDB -> query -> cache.set — a cache hit must never open a DB connection (the same order the five routes shipped with)", () => {
+test("PIN: listFromSpec's order of operations is cache.get -> connectDB -> query -> cache.set — a cache hit must never open a DB connection (the same order the master routes shipped with)", () => {
   const src = readStripped(MASTERS);
   const body = functionBody(src, "export async function listFromSpec");
 
@@ -418,6 +429,7 @@ const partsOf = (p: Partial<Record<string, unknown>>): MastersParts =>
     categories: [],
     products: [],
     tables: [],
+    areas: [],
     staff: null,
     ...p,
   }) as unknown as MastersParts;
@@ -432,16 +444,26 @@ test("PIN: mastersVersionOf folds count + max updatedAt per part, in MASTERS_PAR
       ],
       products: [{ updatedAt: new Date(1_700_000_003_000) }],
       tables: [],
+      areas: [{ updatedAt: new Date(1_700_000_005_000) }],
       staff: [{ updatedAt: new Date(1_700_000_004_000) }],
     }),
   );
 
   assert.equal(
     version,
-    "settings:1:1700000000000|categories:2:1700000002000|products:1:1700000003000|tables:0:0|staff:1:1700000004000",
+    "settings:1:1700000000000|categories:2:1700000002000|products:1:1700000003000|tables:0:0|areas:1:1700000005000|staff:1:1700000004000",
   );
   // Key order is the contract's, not the literal's insertion order.
-  assert.deepEqual([...MASTERS_PART_KEYS], ["settings", "categories", "products", "tables", "staff"]);
+  assert.deepEqual([...MASTERS_PART_KEYS], ["settings", "categories", "products", "tables", "areas", "staff"]);
+});
+
+test("PIN: BOOTSTRAP_VERSION is at least 6 and the masters blob carries the areas part", () => {
+  // Tables B2 added the `areas` part and Table.areaId to the stored blob, so the
+  // version moved 5 -> 6: a device holding a v5 blob must discard it instead of
+  // serving a floor with no areas. Lowering it below 6 would revive those blobs.
+  assert.ok(BOOTSTRAP_VERSION >= 6, `BOOTSTRAP_VERSION is ${BOOTSTRAP_VERSION} - the areas part needs at least 6`);
+  // Positive landmark: the part the version bump was for is really in the key list.
+  assert.ok((MASTERS_PART_KEYS as readonly string[]).includes("areas"), "MASTERS_PART_KEYS includes areas");
 });
 
 test("PIN: a HARD delete changes mastersVersion even when the surviving rows' max updatedAt is identical — the row COUNT is why (a category/table/staff delete bumps no updatedAt anywhere)", () => {
@@ -466,7 +488,7 @@ test("PIN: a null part contributes <key>:0:0 (no settings document yet; staff om
   const empty = mastersVersionOf(partsOf({}));
   assert.match(empty, /settings:0:0/, "a null settings part must read settings:0:0");
   assert.match(empty, /staff:0:0/, "a null staff part (non-admin session) must read staff:0:0");
-  assert.equal(empty, "settings:0:0|categories:0:0|products:0:0|tables:0:0|staff:0:0");
+  assert.equal(empty, "settings:0:0|categories:0:0|products:0:0|tables:0:0|areas:0:0|staff:0:0");
 
   const unstamped = mastersVersionOf(
     partsOf({ tables: [{ tableNo: "T1" }, { tableNo: "T2", updatedAt: "not a date" }] }),

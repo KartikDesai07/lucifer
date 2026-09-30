@@ -71,6 +71,7 @@ const GLOBAL_ERROR = "apps/cafe/app/global-error.tsx";
 const TABLE_SELECTOR = "apps/cafe/components/pos/TableSelector.tsx";
 const OPEN_TABS_BUTTON = "apps/cafe/components/pos/OpenTabsButton.tsx";
 const MOVE_TABLE_DIALOG = "apps/cafe/components/orders/MoveTableDialog.tsx";
+const MOVE_TABLE_PICKER = "apps/cafe/components/orders/MoveTablePicker.tsx";
 const TOUCH_FEEL = "apps/cafe/components/shared/TouchFeel.tsx";
 
 test("PIN: pos/page.tsx imports the five layout classes and uses each as a real className, wrapping PosHeader/the split in POS_INSET_CLASS", () => {
@@ -794,28 +795,31 @@ test("PIN: TableSelector and OpenTabsButton use POS_DIALOG_LIST_CAP_CLASS for th
   }
 });
 
-test("PIN: MoveTableDialog uses POS_MOVE_TABLE_LIST_CAP_CLASS for its table grid — no bare max-h-[50vh] literal left behind", () => {
+test("PIN: MoveTablePicker (the table grid MoveTableDialog renders) uses POS_MOVE_TABLE_LIST_CAP_CLASS — no bare max-h-[50vh] literal left behind in the picker or the dialog", () => {
   const fiftyVh = "max-h-[50" + "vh]";
-  const src = stripComments(readSrc(MOVE_TABLE_DIALOG));
+  const picker = stripComments(readSrc(MOVE_TABLE_PICKER));
   assert.match(
-    src,
+    picker,
     /cn\("grid grid-cols-3 gap-2 overflow-y-auto", POS_MOVE_TABLE_LIST_CAP_CLASS\)/,
-    "landmark: MoveTableDialog must call cn(...) with POS_MOVE_TABLE_LIST_CAP_CLASS on its table grid",
+    "landmark: MoveTablePicker must call cn(...) with POS_MOVE_TABLE_LIST_CAP_CLASS on its table grid",
   );
-  assert.ok(!src.includes(fiftyVh), `MoveTableDialog must not carry a bare "${fiftyVh}" literal — POS_MOVE_TABLE_LIST_CAP_CLASS replaces it`);
+  assert.ok(!picker.includes(fiftyVh), `MoveTablePicker must not carry a bare "${fiftyVh}" literal — POS_MOVE_TABLE_LIST_CAP_CLASS replaces it`);
+  const dialog = stripComments(readSrc(MOVE_TABLE_DIALOG));
+  assert.match(dialog, /<MoveTablePicker\b/, "landmark: MoveTableDialog must still render the picker that owns the capped grid");
+  assert.ok(!dialog.includes(fiftyVh), `MoveTableDialog must not carry a bare "${fiftyVh}" literal`);
 });
 
-test("PIN: MoveTableDialog's table tile keeps a long table name readable — min-w-0 on the tile button, truncate px-1 on the name span, and the status sub-line also truncates", () => {
-  const src = stripComments(readSrc(MOVE_TABLE_DIALOG));
+test("PIN: MoveTablePicker's table tile keeps a long table name readable — min-w-0 on the tile button, truncate px-1 on the name span, and the status sub-line also truncates", () => {
+  const src = stripComments(readSrc(MOVE_TABLE_PICKER));
   assert.match(
     src,
     /"flex min-w-0 flex-col items-center justify-center gap-0\.5 rounded-lg border p-2 text-sm font-semibold transition"/,
-    "MoveTableDialog's tile button base class must include min-w-0",
+    "MoveTablePicker's tile button base class must include min-w-0",
   );
   assert.match(
     src,
     /<span className="max-w-full truncate px-1">\{t\.tableNo\}<\/span>/,
-    "MoveTableDialog's tile name span must be exactly max-w-full truncate px-1",
+    "MoveTablePicker's tile name span must be exactly max-w-full truncate px-1",
   );
   assert.match(
     src,

@@ -1,16 +1,25 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
 import { createTableSchema } from "@/schemas";
 import { TABLE_CHARGE_MAX, TABLE_CHARGE_LABEL_MAX_LEN } from "@/lib/constants";
+import { useAreas, useCreateArea } from "@/hooks/use-areas";
 import { useCreateTable, usePatchTable } from "@/hooks/use-tables";
+import {
+  NO_AREA_CHOICE,
+  areaPatchOf,
+  initialAreaChoice,
+  resolveAreaChoice,
+  type CreatedArea,
+} from "@/lib/table-areas";
 import { Input } from "@/components/ui/input";
 import { FormSheet } from "@/components/shared/FormSheet";
 import { FormField } from "@/components/shared/FormField";
+import { TableAreaField } from "@/components/tables/TableAreaField";
 import type { PatchTableInput } from "@/schemas";
 import type { Table } from "@/types";
 
@@ -46,7 +55,18 @@ export function TableFormSheet({
 }: TableFormSheetProps) {
   const createTable = useCreateTable();
   const patchTable = usePatchTable();
+  const createArea = useCreateArea();
+  const areasQuery = useAreas();
   const isEdit = !!table;
+
+  // The area picker lives outside react-hook-form: its value is an area id, the
+  // "new area" sentinel or the no-area sentinel, and it may need creating first.
+  const [choice, setChoice] = useState(NO_AREA_CHOICE);
+  const [newName, setNewName] = useState("");
+  const [areaError, setAreaError] = useState<string | undefined>(undefined);
+  // An area this form already created: a retry after a failed table save must
+  // reuse it, never create it a second time.
+  const [createdArea, setCreatedArea] = useState<CreatedArea | undefined>(undefined);
 
   const {
     register,
@@ -70,10 +90,28 @@ export function TableFormSheet({
           }
         : emptyValues,
     );
+    // The area picker resets with the rest of the form on every open.
+    setChoice(initialAreaChoice(table ?? undefined));
+    setNewName("");
+    setAreaError(undefined);
+    setCreatedArea(undefined);
   }, [open, table, reset]);
 
   const onSubmit = async (values: TableFormValues) => {
+    const resolved = resolveAreaChoice(choice, newName, areasQuery.data, createdArea);
+    if (resolved.kind === "invalid") {
+      setAreaError(resolved.message);
+      return;
+    }
+    setAreaError(undefined);
     try {
+      let nextAreaId: string | null = resolved.kind === "existing" ? resolved.id : null;
+      if (resolved.kind === "create") {
+        const created = await createArea.mutateAsync({ name: resolved.name });
+        setCreatedArea({ id: created._id, name: created.name });
+        setChoice(created._id);
+        nextAreaId = created._id;
+      }
       if (isEdit) {
         // A rename never rewrites historical orders — only send the fields
         // that actually changed, not the full stricter-shape values object.
@@ -93,8 +131,10 @@ export function TableFormSheet({
           data.chargeAmount = nextAmount;
           data.chargeLabel = nextAmount > 0 ? nextLabel : "";
         }
-        if (Object.keys(data).length > 0) {
-          await patchTable.mutateAsync({ tableNo: table.tableNo, data });
+        // Area: nothing when unchanged, {areaId: null} to clear, {areaId: id} to move.
+        const payload: PatchTableInput = { ...data, ...areaPatchOf(initialAreaChoice(table), nextAreaId) };
+        if (Object.keys(payload).length > 0) {
+          await patchTable.mutateAsync({ tableNo: table.tableNo, data: payload });
         }
       } else {
         // Same pairing rule on create: a table with no charge is stored with
@@ -106,6 +146,7 @@ export function TableFormSheet({
           ...(charged
             ? { chargeAmount: values.chargeAmount, chargeLabel: values.chargeLabel }
             : {}),
+          ...(nextAreaId ? { areaId: nextAreaId } : {}),
         });
       }
       onOpenChange(false);
@@ -114,7 +155,7 @@ export function TableFormSheet({
     }
   };
 
-  const saving = createTable.isPending || patchTable.isPending;
+  const saving = createArea.isPending || createTable.isPending || patchTable.isPending;
 
   return (
     <FormSheet
@@ -123,7 +164,7 @@ export function TableFormSheet({
       title={isEdit ? "Edit table" : "Add table"}
       description={
         isEdit
-          ? "Change this table's name, seats or charge."
+          ? "Change this table's name, seats, area or charge."
           : "Add a table to the floor plan."
       }
       submitLabel={isEdit ? "Save changes" : "Add table"}
@@ -156,6 +197,22 @@ export function TableFormSheet({
           {...register("capacity", { valueAsNumber: true })}
         />
       </FormField>
+
+      <TableAreaField
+        areas={areasQuery.data}
+        choice={choice}
+        onChoiceChange={(next) => {
+          setChoice(next);
+          setAreaError(undefined);
+        }}
+        newName={newName}
+        onNewNameChange={(name) => {
+          setNewName(name);
+          setAreaError(undefined);
+        }}
+        error={areaError}
+        disabled={saving}
+      />
 
       <FormField
         label="Extra charge (optional)"

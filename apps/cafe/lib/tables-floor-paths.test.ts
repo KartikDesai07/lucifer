@@ -25,11 +25,12 @@ const CHIPS = "apps/cafe/components/tables/FloorStatusChips.tsx";
 const INDICATOR = "apps/cafe/components/tables/FloorLiveIndicator.tsx";
 const DIALOGS = "apps/cafe/components/tables/FloorDialogs.tsx";
 const FLOOR_LIB = "apps/cafe/lib/floor-tiles.ts";
+const SECTIONS = "apps/cafe/components/tables/FloorAreaSections.tsx";
 const LIVE_PANEL = "apps/cafe/components/dashboard/LiveFloorPanel.tsx";
 const TABLES_DIR = "apps/cafe/components/tables";
 
 // Every file that makes up the Floor screen.
-const FLOOR_FILES = [PAGE, STATUS_HOOK, ACTIONS_HOOK, TILE, TILE_MENU, CHIPS, INDICATOR, DIALOGS, FLOOR_LIB];
+const FLOOR_FILES = [PAGE, STATUS_HOOK, ACTIONS_HOOK, TILE, TILE_MENU, CHIPS, INDICATOR, DIALOGS, FLOOR_LIB, SECTIONS];
 
 function count(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1;
@@ -162,6 +163,29 @@ test("PIN: chips wrap (never scroll sideways) and the ⋯ menu is a 40 px siblin
   assert.ok(readStripped(TILE_MENU).includes("h-10 w-10"), "the menu trigger is a 40 px target");
   const tile = readStripped(TILE);
   assert.ok(tile.indexOf("{surface}") < tile.indexOf("<FloorTileMenu"), "the menu is rendered after (beside) the link, not inside it");
+});
+
+test("PIN: area sections - one tile renderer, headings only when floorSections says so, flat grid otherwise", () => {
+  const page = readStripped(PAGE);
+  const sections = readStripped(SECTIONS);
+  assert.equal(count(page, "<FloorTile"), 1, "landmark: ONE tile call site (the renderTile closure) - sections and the flat grid share it");
+  assert.equal(count(page, "useTableAreas(tables.data)"), 1, "the page heals/reads areas through the one hook");
+  assert.equal(count(page, "floorSections(tiles, areas.data, filter)"), 1, "the page groups through floorSections");
+  assert.equal(count(page, "<FloorAreaSections groups={sections.groups} renderTile={renderTile} />"), 1);
+  // Branch order: the empty state comes first, then headings, then today's flat grid.
+  const empty = page.indexOf("visible.length === 0");
+  const headed = page.indexOf("sections.showHeadings");
+  const flat = page.indexOf("<div className={FLOOR_GRID_CLASS}>{visible.map(");
+  assert.ok(empty >= 0 && headed > empty && flat > headed, "empty state, then headings, then the flat grid");
+  // Each section is a labelled region whose heading is the area name, over the shared grid class.
+  assert.ok(sections.includes("aria-labelledby={headingId}") && sections.includes("id={headingId}"));
+  assert.ok(sections.includes("<h2") && sections.includes("group.summary") && sections.includes("title={group.name}"));
+  assert.equal(count(sections, "className={FLOOR_GRID_CLASS}"), 1, "every section reuses the one grid class");
+  assert.ok(sections.includes("border-brand-rule"), "a divider between sections, brand token");
+  // The screen never reads a table's area link itself: grouping is lib/table-areas + floorSections.
+  const bare = /\bareaId\b/;
+  for (const f of [PAGE, SECTIONS, TILE]) assert.ok(!bare.test(readStripped(f)), `${f} must not read the area link`);
+  assert.ok(readStripped(FLOOR_LIB).includes("groupByArea(tiles, (tile) => tableAreaIdOf(tile.table), areas)"), "landmark: floorSections groups via the shared helpers");
 });
 
 test("PIN: the old card and arrange list are gone and the grid uses the shared class", () => {

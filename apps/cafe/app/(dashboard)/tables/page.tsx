@@ -10,6 +10,7 @@ import { useNow } from "@/hooks/use-now";
 import { useOrders, OPEN_TABS_QUERY_OPTIONS } from "@/hooks/use-orders";
 import { useReservations } from "@/hooks/use-reservations";
 import { useSettings } from "@/hooks/use-settings";
+import { useTableAreas } from "@/hooks/use-table-areas";
 import { useTables } from "@/hooks/use-tables";
 import {
   FLOOR_CLOCK_TICK_MS,
@@ -17,9 +18,11 @@ import {
   buildFloorTiles,
   emptyFilterText,
   filterTiles,
+  floorSections,
   floorSummaryText,
   statusCounts,
   type FloorFilter,
+  type FloorTileModel,
 } from "@/lib/floor-tiles";
 import { OPEN_TABS_FILTERS } from "@/lib/table-pick";
 import { TABLES_SETUP_PATH } from "@/lib/table-sections";
@@ -31,6 +34,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { MenuPageShell } from "@/components/menu/MenuPageShell";
+import { FloorAreaSections } from "@/components/tables/FloorAreaSections";
 import { FloorDialogs } from "@/components/tables/FloorDialogs";
 import { FloorLiveIndicator } from "@/components/tables/FloorLiveIndicator";
 import { FloorStatusChips } from "@/components/tables/FloorStatusChips";
@@ -88,6 +92,7 @@ function FloorEmptyState() {
 
 function FloorContent() {
   const tables = useTables();
+  const areas = useTableAreas(tables.data);
   const openTabs = useOrders(OPEN_TABS_FILTERS, OPEN_TABS_QUERY_OPTIONS);
   const reservations = useReservations({ date: cafeDateString() });
   const settings = useSettings();
@@ -137,7 +142,19 @@ function FloorContent() {
 
   const list = tables.data;
   const visible = filterTiles(tiles, filter);
+  const sections = floorSections(tiles, areas.data, filter);
   const stamps = [tables.dataUpdatedAt, openTabs.dataUpdatedAt].filter((at) => at > 0);
+
+  const renderTile = (tile: FloorTileModel) => (
+    <FloorTile
+      key={tile.table._id}
+      tile={tile}
+      busy={actions.isBusy(tile.table.tableNo)}
+      tabsFailed={tabsFailed}
+      onTap={actions.tapPrimary}
+      onMenu={(t, action) => actions.pickMenu(t.table, action)}
+    />
+  );
 
   return (
     <div className="space-y-4">
@@ -173,19 +190,10 @@ function FloorContent() {
             </Button>
           }
         />
+      ) : sections.showHeadings ? (
+        <FloorAreaSections groups={sections.groups} renderTile={renderTile} />
       ) : (
-        <div className={FLOOR_GRID_CLASS}>
-          {visible.map((tile) => (
-            <FloorTile
-              key={tile.table._id}
-              tile={tile}
-              busy={actions.isBusy(tile.table.tableNo)}
-              tabsFailed={tabsFailed}
-              onTap={actions.tapPrimary}
-              onMenu={(t, action) => actions.pickMenu(t.table, action)}
-            />
-          ))}
-        </div>
+        <div className={FLOOR_GRID_CLASS}>{visible.map((tile) => renderTile(tile))}</div>
       )}
 
       <FloorDialogs

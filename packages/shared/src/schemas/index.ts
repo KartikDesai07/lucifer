@@ -4,6 +4,7 @@ export * from "./object-id.schema";
 export * from "./product.schema";
 export * from "./product-bulk.schema";
 export * from "./category.schema";
+export * from "./area.schema";
 export * from "./customer.schema";
 export * from "./order.schema";
 export * from "./staff.schema";

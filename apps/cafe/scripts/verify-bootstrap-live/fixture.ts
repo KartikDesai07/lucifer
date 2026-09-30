@@ -15,6 +15,7 @@ import type { ISettings } from "@/models/Settings";
 import type { ICategory } from "@/models/Category";
 import type { IProduct } from "@/models/Product";
 import type { ITable } from "@/models/Table";
+import type { IArea } from "@/models/Area";
 import type { IStaff } from "@/models/Staff";
 
 // A recognisable, obviously-scratch cafe name (never a real client's).
@@ -28,7 +29,10 @@ export interface SeedCounts {
   categories: number;
   products: number;
   tables: number;
+  areas: number;
   staff: number;
+  /** The area with the LOWER displayOrder although its name sorts last. */
+  rooftopAreaName: string;
   /** The isActive:false product — must never appear in the products part. */
   archivedProductName: string;
   /** The product the leg updates to prove mastersVersion moves. */
@@ -42,6 +46,7 @@ export interface FixtureModels {
   Category: Model<ICategory>;
   Product: Model<IProduct>;
   Table: Model<ITable>;
+  Area: Model<IArea>;
   Staff: Model<IStaff>;
 }
 
@@ -73,10 +78,18 @@ export async function seedMasters(models: FixtureModels): Promise<SeedCounts> {
     { name: "Retired Cooler", categoryId: beverages._id, price: 150, isActive: false },
   ]);
 
+  // displayOrder deliberately disagrees with name order (Rooftop=0 sorts before
+  // Garden=1 although G < R), so {displayOrder:1,name:1} and {name:1} differ.
+  const [rooftop, garden] = await models.Area.create([
+    { name: "Rooftop", displayOrder: 0 },
+    { name: "Garden", displayOrder: 1 },
+  ]);
+
   // displayOrder deliberately disagrees with tableNo order.
   await models.Table.create([
     { tableNo: "T-1", capacity: 4, displayOrder: 3 },
-    { tableNo: "T-2", capacity: 2, displayOrder: 1 },
+    // In an area: the wire carries areaId, which must be one of the areas' _id.
+    { tableNo: "T-2", capacity: 2, displayOrder: 1, areaId: garden._id },
     { tableNo: "T-3", capacity: 6, displayOrder: 0 },
     // Never arranged: no displayOrder key at all — Mongo sorts a missing field
     // before any value, which is exactly what the tables spec relies on.
@@ -104,7 +117,9 @@ export async function seedMasters(models: FixtureModels): Promise<SeedCounts> {
     categories: 3,
     products: 6,
     tables: 4,
+    areas: 2,
     staff: 2,
+    rooftopAreaName: rooftop.name,
     archivedProductName: "Retired Cooler",
     bumpProductName: "Cold Brew",
     deleteCategoryName: "Desserts",

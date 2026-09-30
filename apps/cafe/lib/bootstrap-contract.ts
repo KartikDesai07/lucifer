@@ -5,7 +5,7 @@
 //
 // Client-safe by construction: types + constants + one pure function. No
 // Mongoose, no DB, no Node-only API — the provider bundles this file.
-import type { Category, Product, Settings, Staff, Table } from "@/types";
+import type { Area, Category, Product, Settings, Staff, Table } from "@/types";
 
 // Bump when the payload/blob shape changes; a blob with another `v` is discarded.
 // Menu redesign (2026-09-30): Product gained `icon` — a stale v3 blob would
@@ -15,7 +15,11 @@ import type { Category, Product, Settings, Staff, Table } from "@/types";
 // Tables redesign (2026-09-30): Settings gained `tableLongStayMinutes`. Readers
 // fall back to the default when it is missing, so a v4 blob is harmless — the
 // bump is rule-following (the rule above is unconditional), not a shape need.
-export const BOOTSTRAP_VERSION = 5; // Settings DTO gained `tableLongStayMinutes`; v4 tab blobs are discarded
+// Tables B2 (2026-09-30): a new `areas` part and Table.areaId. A v5 blob has no
+// areas, so its tables would all read as unassigned until the next bootstrap -
+// the bump is rule-following (the rule above is unconditional), and v5 blobs
+// are discarded.
+export const BOOTSTRAP_VERSION = 6; // Tables B2: new `areas` part + Table.areaId; v5 tab blobs are discarded
 
 // Device storage key (the browser's persistent per-origin store — survives a
 // reload, a closed tab and a restart of the app shell; cleared on logout and
@@ -39,6 +43,7 @@ export const MASTERS_PART_KEYS = [
   "categories",
   "products",
   "tables",
+  "areas",
   "staff",
 ] as const;
 export type MastersPartKey = (typeof MASTERS_PART_KEYS)[number];
@@ -53,6 +58,7 @@ export const MASTERS_PERSISTED_PART_KEYS = [
   "categories",
   "products",
   "tables",
+  "areas",
 ] as const satisfies readonly MastersPartKey[];
 
 // What GET /api/bootstrap returns inside the { success: true, data } envelope.
@@ -67,6 +73,7 @@ export interface BootstrapPayload {
   categories: Category[];
   products: Product[];
   tables: Table[];
+  areas: Area[];
   staff: Staff[] | null;
 }
 

@@ -5,6 +5,9 @@ export type {
   UpdateProductInput,
   CreateCategoryInput,
   UpdateCategoryInput,
+  CreateAreaInput,
+  RenameAreaInput,
+  ReorderAreasInput,
   CreateCustomerInput,
   UpdateCustomerInput,
   OrderItemInput,
@@ -158,6 +161,19 @@ export interface Table {
   // later never rewrites a bill that was already printed.
   chargeAmount?: number;
   chargeLabel?: string;
+  // The floor area this table sits in (Area._id). Absent = no area; a dangling
+  // id (the area was deleted or is not loaded yet) reads as no area.
+  areaId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// A named group of tables ("Garden", "AC Hall"). displayOrder is set by the
+// server on every area it creates; optional only because the model has no default.
+export interface Area {
+  _id: string;
+  name: string;
+  displayOrder?: number;
   createdAt: string;
   updatedAt: string;
 }

@@ -9,12 +9,14 @@ import bcrypt from "bcryptjs";
 import { Types, type Document } from "mongoose";
 import { Staff } from "@/models/Staff";
 import { Table } from "@/models/Table";
+import { Area } from "@/models/Area";
 import { Product } from "@/models/Product";
 import { Customer } from "@/models/Customer";
 import { mintUniquePublicToken } from "@/lib/public-token";
 import { ensureCategoryId } from "../verify-shared/ensure-category";
 import { seedSettings, tableList } from "../seed-client";
 import { seedAdmin } from "../seed-admin";
+import { DEMO_AREA_NAMES, demoAreaIndexOf } from "./area-plan";
 import type {
   DemoCategory,
   DemoCustomer,
@@ -84,11 +86,20 @@ export async function seedStaff(
 }
 
 /** Floor plan: capacities cycle for variety, displayOrder = position, every
- *  table gets a public QR token, and the LAST table carries the demo's one
- *  extra charge (a rooftop seating fee) so the charge path has real data. */
+ *  table gets a public QR token and an area (contiguous bands, area-plan.ts),
+ *  and the LAST table carries the demo's one extra charge (a rooftop seating
+ *  fee) so the charge path has real data. */
 export async function seedTables(tables: TablesSpec, rng: Rng): Promise<PlannedTable[]> {
   const names = tableList(tables);
   const planned: PlannedTable[] = [];
+  // Areas first (only the ones a table lands in), displayOrder = position in
+  // DEMO_AREA_NAMES — the Area model has no default for it.
+  const usedAreas = [...new Set(names.map((_, index) => demoAreaIndexOf(index, names.length)))].sort((a, b) => a - b);
+  const areaIds = new Map<number, Types.ObjectId>();
+  for (const areaIndex of usedAreas) {
+    const area = await Area.create({ name: DEMO_AREA_NAMES[areaIndex], displayOrder: areaIndex });
+    areaIds.set(areaIndex, area._id as Types.ObjectId);
+  }
   for (const [index, tableNo] of names.entries()) {
     const capacity = CAPACITY_CYCLE[index % CAPACITY_CYCLE.length];
     const publicToken = await mintUniquePublicToken((t) => Table.exists({ publicToken: t }).then(Boolean));
@@ -100,6 +111,7 @@ export async function seedTables(tables: TablesSpec, rng: Rng): Promise<PlannedT
       status: "Available",
       capacity,
       displayOrder: index,
+      areaId: areaIds.get(demoAreaIndexOf(index, names.length)),
       publicToken,
       ...(chargeAmount !== undefined ? { chargeAmount, chargeLabel } : {}),
     });

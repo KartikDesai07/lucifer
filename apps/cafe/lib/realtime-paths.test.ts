@@ -74,6 +74,8 @@ const MOVE_ROUTE = "apps/cafe/app/api/orders/[id]/table/route.ts";
 const ORDER_ID_ROUTE = "apps/cafe/app/api/orders/[id]/route.ts";
 const TABLE_ROUTE = "apps/cafe/app/api/tables/[tableNo]/route.ts";
 const TABLES_ROUTE = "apps/cafe/app/api/tables/route.ts";
+const AREAS_ROUTE = "apps/cafe/app/api/areas/route.ts";
+const AREA_ID_ROUTE = "apps/cafe/app/api/areas/[id]/route.ts";
 const TABLE_TOKEN_ROUTE = "apps/cafe/app/api/tables/[tableNo]/token/route.ts";
 const REJECT_ROUTE = "apps/cafe/app/api/order-requests/[id]/reject/route.ts";
 
@@ -586,8 +588,13 @@ test("NEGATIVE PIN (vision-guarded): the admin table-config handlers publish not
   const cases: Array<[string, string, string]> = [
     [TABLES_ROUTE, "POST", "await Table.create("],
     [TABLES_ROUTE, "PATCH", "await Table.bulkWrite("],
-    [TABLE_ROUTE, "PATCH", "{ $set: parsed.data }"],
+    [TABLE_ROUTE, "PATCH", "buildUpdate<ITable>(fields, TABLE_NULL_CLEARS_FIELDS)"],
     [TABLE_ROUTE, "DELETE", "await Table.findOneAndDelete("],
+    // Areas are admin config too (Tables B2): every write is a config write.
+    [AREAS_ROUTE, "POST", "await Area.create("],
+    [AREAS_ROUTE, "PATCH", "await Area.bulkWrite("],
+    [AREA_ID_ROUTE, "PUT", "await Area.findOneAndUpdate("],
+    [AREA_ID_ROUTE, "DELETE", "await area.deleteOne()"],
   ];
   for (const [rel, verb, landmark] of cases) {
     const body = handlerBodies(stripComments(readSrc(rel))).get(verb);

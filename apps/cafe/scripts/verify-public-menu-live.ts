@@ -67,7 +67,10 @@ async function main(): Promise<void> {
 
   // ── 1. a minted token round-trips through a real Table doc ─────────────────
   const token = mintPublicToken();
-  await Table.create({ tableNo: "T-1", capacity: 4, publicToken: token });
+  // S-5e: the fixture table carries an areaId (like a real table in an area), so
+  // case 6's "exactly { tableNo }" also proves the area link does not leak.
+  const areaId = new mongoose.Types.ObjectId();
+  await Table.create({ tableNo: "T-1", capacity: 4, publicToken: token, areaId });
   const foundByToken = await Table.find({ publicToken: token }).lean();
   check(
     "a minted token round-trips through a real Table doc and resolves back to exactly one table",
@@ -202,9 +205,15 @@ async function main(): Promise<void> {
   if (!fullTableDoc) {
     check("the tokened table must still be found for the toPublicTable leak check", false);
   } else {
+    // Vision guard: the REAL doc holds the area link, so the projection has
+    // something to leak.
+    check(
+      "the REAL lean Table doc carries the areaId the projection must drop",
+      String(fullTableDoc.areaId) === String(areaId),
+    );
     const publicTable = toPublicTable(fullTableDoc);
     check(
-      "toPublicTable over a REAL lean Table doc that HAS a publicToken returns EXACTLY { tableNo } — the token does not survive the projection",
+      "toPublicTable over a REAL lean Table doc that HAS a publicToken and an areaId returns EXACTLY { tableNo } — neither survives the projection",
       JSON.stringify(Object.keys(publicTable)) === JSON.stringify(["tableNo"]) && publicTable.tableNo === "T-1",
     );
   }

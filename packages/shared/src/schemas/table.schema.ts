@@ -12,6 +12,7 @@ import {
   TABLE_CHARGE_LABEL_PATTERN,
   TABLE_REORDER_MAX,
 } from "../constants";
+import { objectIdString } from "./object-id.schema";
 
 // The shape of a table's identity, shared by every schema that carries a tableNo
 // (tables CRUD, orders, reservations). Shape only — that a table actually EXISTS
@@ -76,6 +77,9 @@ export const createTableSchema = z
     capacity: capacitySchema.optional(),
     chargeAmount: chargeAmountSchema.optional(),
     chargeLabel: chargeLabelSchema.optional(),
+    // The floor area this table sits in. Shape only — that the area EXISTS is a
+    // live lookup in the route layer.
+    areaId: objectIdString.optional(),
   })
   .strict()
   .superRefine(requireLabelWithCharge);
@@ -92,6 +96,8 @@ export const patchTableSchema = z
     // Sending "" clears the name; the route pairs that with a 0 amount so a
     // priced-but-unnamed charge can never be stored.
     chargeLabel: z.union([chargeLabelSchema, z.literal("")]).optional(),
+    // null takes the table out of its area (the route $unsets it); an id moves it.
+    areaId: objectIdString.nullable().optional(),
   })
   .strict()
   // Anchored to a field on purpose: validateBody surfaces only `fieldErrors`, so a
@@ -102,10 +108,11 @@ export const patchTableSchema = z
       d.tableNo !== undefined ||
       d.capacity !== undefined ||
       d.chargeAmount !== undefined ||
-      d.chargeLabel !== undefined,
+      d.chargeLabel !== undefined ||
+      d.areaId !== undefined,
     {
       path: ["tableNo"],
-      message: "Provide a new name, seat count or charge",
+      message: "Provide a new name, seat count, area or charge",
     },
   )
   .superRefine(requireLabelWithCharge);

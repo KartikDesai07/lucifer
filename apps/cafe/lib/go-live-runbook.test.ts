@@ -13,6 +13,8 @@ import {
   TABLE_CAPACITY_MAX,
   TABLE_CHARGE_MAX,
   TABLE_CHARGE_LABEL_MAX_LEN,
+  TABLE_AREA_NAME_MAX_LEN,
+  TABLE_AREAS_MAX,
   TABLE_NUMBERS,
   ADMIN_ROUTES,
   DUES_RECEIPT_MODES,
@@ -248,6 +250,28 @@ test("PIN §A: TABLE_CHARGE_MAX matches the doc's table-extra-charge-max row", (
 
 test("PIN §A: TABLE_CHARGE_LABEL_MAX_LEN matches the doc's charge-name-max-length row", () => {
   assert.equal(Number(factRow("Charge name max length")), TABLE_CHARGE_LABEL_MAX_LEN);
+});
+
+test("PIN §A: TABLE_AREA_NAME_MAX_LEN matches the doc's area-name-max-length row", () => {
+  assert.equal(Number(factRow("Area name max length")), TABLE_AREA_NAME_MAX_LEN);
+});
+
+test("PIN §A: TABLE_AREAS_MAX matches the doc's areas-per-cafe row", () => {
+  assert.equal(Number(factRow("Areas per cafe")), TABLE_AREAS_MAX);
+});
+
+// The Areas subsection tells an operator WHERE areas show — a claim about the
+// product surface, so it is pinned by its landmarks (the section is sliced by
+// heading, not read doc-wide, so another section can never satisfy it).
+test("PIN §4: the Areas subsection names where areas show, where they do not, the inline create, No area, and Other tables", () => {
+  const section = norm(sectionSlice("### Areas (admin only, `Tables` → `Setup` → **Areas**)"));
+  for (const landmark of ["**+ New area…**", "**No area**", "**Other tables**", "**Floor**", "New Order", "Move table"]) {
+    assert.ok(section.includes(landmark), `the Areas subsection must mention ${landmark}`);
+  }
+  assert.match(section, /ONLY on the/, "the subsection must say areas show ONLY on a named set of screens");
+  for (const notShown of ["QR menu", "QR stickers", "Dashboard floor panel", "reservations", "bills", "kitchen slips", "reports"]) {
+    assert.ok(section.includes(notShown), `the Areas subsection must name ${notShown} as a place areas do not appear`);
+  }
 });
 
 // The runbook tells the operator the charge is NOT taxed. That is a claim about

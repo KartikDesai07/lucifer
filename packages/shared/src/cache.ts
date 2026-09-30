@@ -30,6 +30,7 @@ export const TTL = {
   STAFF: 30,
   CUSTOMERS: 20,
   TABLES: 5, // floor view — effectively live
+  AREAS: 20,
   RESERVATIONS: 20,
   EVENTS: 20,
   ORDERS: 0, // never cache — POS accuracy is critical

@@ -10,6 +10,7 @@
 import { Order } from "@/models/Order";
 import { OrderRequest } from "@/models/OrderRequest";
 import { DuePayment } from "@/models/DuePayment";
+import { Table } from "@/models/Table";
 
 export interface CensusLine {
   pass: boolean;
@@ -54,6 +55,10 @@ export async function objectIdCensus(): Promise<CensusLine[]> {
   push(
     await DuePayment.countDocuments({ customerId: NOT_OBJECT_ID }),
     "every DuePayment.customerId is a BSON ObjectId",
+  );
+  push(
+    await Table.countDocuments({ areaId: { $exists: true, ...NOT_OBJECT_ID } }),
+    "every present Table.areaId is a BSON ObjectId",
   );
   return lines;
 }
