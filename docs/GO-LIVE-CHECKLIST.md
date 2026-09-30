@@ -389,13 +389,21 @@ tables before service.
 
 ---
 
-## §5 The menu (CAFE ADMIN, `Categories` then `Menu`)
+## §5 The menu (CAFE ADMIN, `Menu` → `Categories` then `Items`)
 
 Two routes: type it in, or import a CSV. For more than ~30 items, import.
 
-- [ ] Categories exist (or let the import create them — it adds any category
-      name it has not seen).
-- [ ] **Import route:** `Menu` → **Import** → *Import products from CSV* →
+- [ ] Categories first: `Menu` → **Categories** → **Add category** (or let the
+      CSV import create them — it adds any category name it has not seen).
+      The order categories appear in — on this screen, on New Order and on the
+      QR menu — is set here, by **dragging a row** or tapping its **up/down
+      arrows**; there is no separate "sort" step anywhere else.
+- [ ] Adding items by hand: `Menu` → **Items** → **Add item**, or open an
+      existing row's **⋯ → Edit**. An item can show a **photo**; with
+      no photo, it can show a **plain icon** instead (pizza, coffee, and dozens
+      more) — pick one from the icon picker in the item form. A photo always
+      wins over an icon if both are set.
+- [ ] **Import route:** `Menu` → **Items** → **Import CSV** →
       **Download template**, fill it, upload, review the preview, commit.
 - [ ] Column order in the template (header row exactly):
       `name,category,price,discount,image,modifiers,isActive`
@@ -409,7 +417,7 @@ Two routes: type it in, or import a CSV. For more than ~30 items, import.
       - Headers are forgiving: `product`/`item` → name, `rate`/`mrp`/`amount` →
         price, `addons`/`options` → modifiers, `active`/`enabled` → isActive;
         case and punctuation are ignored.
-      - **Products are matched by name** — re-importing updates the existing
+      - **Items are matched by name** — re-importing updates the existing
         item instead of duplicating it.
       - **A re-import OVERWRITES every optional column, including the ones your
         file leaves out.** A blank or missing `image` clears the photo,
@@ -417,7 +425,7 @@ Two routes: type it in, or import a CSV. For more than ~30 items, import.
         the item **active again** — an archived dish is republished. There is no
         undo, and the preview does not show it. So to change prices, either
         re-upload each item's *full* row (image ref, modifiers, discount,
-        isActive) or edit the price in the product form instead.
+        isActive) or edit the price in the item form instead.
       - Two rows with the same name in one file: the **last** one wins.
       - **Out-of-stock ("86") state is the one thing a re-import cannot touch** —
         it is not an import column, so a price update never puts a sold-out dish
@@ -429,13 +437,13 @@ Two routes: type it in, or import a CSV. For more than ~30 items, import.
       rest still import — so a green "done" does not mean every row landed.
       Fix the errors and re-import (updates are idempotent).
 - [ ] Photos: the CSV `image` column takes an existing image reference, **not a
-      file path**. Add photos from the product form (`Add product` / edit).
-- [ ] Spot-check in the POS: a product with modifiers, a discounted product, and
+      file path**. Add photos from the item form (`Add item` / edit item).
+- [ ] Spot-check in the POS: an item with modifiers, a discounted item, and
       an archived one.
 
 ### Items sold in sizes (variations)
 
-- [ ] Where: the product form's **Has variations** switch. Each row is a *name*
+- [ ] Where: the item form's **Has variations** switch. Each row is a *name*
       the operator picks at order time plus that size's **own price** (Small 109
       / Large 149). Up to 20 rows; two rows cannot share a name.
 - [ ] Tell them the base **Price** field stops being what a guest pays once
@@ -474,17 +482,23 @@ Two routes: type it in, or import a CSV. For more than ~30 items, import.
 - [ ] Add staff: *Name*, *Mobile* (≥10 digits), *Username* (≥3 characters,
       stored lowercase), *Role*, *Password* (≥8 characters).
 - [ ] Roles understood:
-      - **admin** — everything, including Staff, Reports and Settings.
+      - **admin** — everything, including Staff, Reports, Settings and
+        Categories.
       - **staff** — everything else: POS, orders, tables, customers,
-        reservations, events, **and the Menu and Categories screens**. Only
-        Staff, Reports and Settings are blocked (they get redirected, not just
-        hidden).
-- [ ] The client knows what a **staff** account can still do. This list
-      surprises owners, so read it to them:
-      - **Edit the menu** — change any price, archive or restore an item, and
-        run the bulk CSV import (with the overwrite behaviour described in §5).
-        If prices must be the owner's decision alone, they cannot hand out staff
-        logins.
+        reservations, events, **and the Items screen (Menu → Items)** — but on
+        Items, staff can only mark an item In stock / Out of stock. Staff,
+        Reports, Settings and Categories are blocked (they get redirected, not
+        just hidden).
+- [ ] The client knows what a **staff** account can still do — and, just as
+      important this session, what changed: **staff can now only mark an item
+      In stock or Out of stock**. Prices, adding or editing an item,
+      archive/restore, the bulk CSV import, QR menu visibility, and the whole
+      Categories screen are now **admin-only**. Read this list to them:
+      - **Mark an item In stock / Out of stock only** — every other menu
+        change (price, name, photo, icon, archive/restore, CSV import, QR
+        visibility, categories) now needs an admin. If a client's staff used
+        to edit prices or add items themselves, that workflow has changed —
+        tell them before they notice it missing.
       - **Permanently delete a customer** (Customers → delete; refused only
         while that customer owes money). Unlike products, staff and tables this
         is a *hard* delete — that person's visit and spend history is gone, and
@@ -503,15 +517,16 @@ Two routes: type it in, or import a CSV. For more than ~30 items, import.
       - Void a fired item (reason required, kitchen gets a VOID slip), receive a
         customer's dues payment, and print the end-of-day slip.
       - **Cancelling a whole order is admin-only**, as is resetting someone
-        else's password, **deleting a category**, and **changing an existing
-        customer's mobile number**. Staff can still add a NEW customer with a
-        real number, and can still edit that customer's name and type — but
-        the mobile field on an existing customer shows read-only with the
-        hint "Only an admin can see or change the full number."
-      - **A category can only be deleted once it has no products** — move its
-        products to another category first. There is no cascade any more: a
-        category with products still linked to it is refused with a count,
-        never silently re-tagged.
+        else's password, **anything on the Categories screen**, and
+        **changing an existing customer's mobile number**. Staff can still add
+        a NEW customer with a real number, and can still edit that customer's
+        name and type — but the mobile field on an existing customer shows
+        read-only with the hint "Only an admin can see or change the full
+        number."
+      - **A category can only be deleted once it has no items** — move its
+        items to another category first. There is no cascade any more: a
+        category with items still linked to it is refused with a count, never
+        silently re-tagged.
 - [ ] Password resets: admin resets any other account from the Staff row; each
       person can change their own from the sidebar account menu.
 - [ ] Leavers get **deactivated**, not deleted, so their history keeps its name.
@@ -1102,7 +1117,7 @@ the test fails — fix the code or this file, never just this file.
 | Username minimum | 3 | `createStaffSchema` |
 | Mobile minimum | 10 | `createStaffSchema` |
 | Customer mobile mask (staff, non-admin) | first 5 chars shown, rest `*` — `9876543210` → `98765*****` | `MOBILE_VISIBLE_PREFIX` / `MOBILE_MASK_CHAR` |
-| Admin-only screens | `/staff`, `/reports`, `/settings` | `ADMIN_ROUTES` |
+| Admin-only screens | `/staff`, `/reports`, `/settings`, `/categories` | `ADMIN_ROUTES` |
 | Slugs that never resolve to a cafe | www, app, api, admin, hub | `RESERVED_SUBDOMAINS` |
 | Dues receipt modes | Cash, Online | `DUES_RECEIPT_MODES` |
 | GST rate quick picks | 0, 5, 12, 18, 28 | `GST_RATES` |

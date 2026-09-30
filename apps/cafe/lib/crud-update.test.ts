@@ -55,3 +55,16 @@ test("a prototype key cannot pose as a present field", () => {
   const update = buildUpdate({ price: 10 }, ["constructor", "toString"]);
   assert.deepEqual(update, { $set: { price: 10 } });
 });
+
+// Menu redesign (owner, 2026-09-30) -- "Remove icon" sends icon:null, the same
+// sentinel discipline as variations/publicVisible above (products/[id]/route.ts
+// lists "icon" in nullClearsFields).
+test("icon:null becomes $unset, matching the variations/publicVisible sentinel discipline", () => {
+  const update = buildUpdate({ price: 120, icon: null }, ["variations", "publicVisible", "icon"]);
+  assert.deepEqual(update, { $set: { price: 120 }, $unset: { icon: "" } });
+});
+
+test("icon: 'coffee' (a real value) just $sets, like any other field", () => {
+  const update = buildUpdate({ icon: "coffee" }, ["variations", "publicVisible", "icon"]);
+  assert.deepEqual(update, { $set: { icon: "coffee" } });
+});

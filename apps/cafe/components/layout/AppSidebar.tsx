@@ -11,7 +11,6 @@ import {
   Users,
   CalendarClock,
   PartyPopper,
-  Tags,
   UserCog,
   Receipt,
   LayoutGrid,
@@ -29,6 +28,7 @@ import { APP_NAME } from "@/lib/constants";
 import { isActivePath } from "@/lib/nav-active";
 import { SETTINGS_BASE_PATH } from "@/lib/settings-sections";
 import { REPORTS_BASE_PATH } from "@/lib/report-sections";
+import { isMenuPath } from "@/lib/menu-sections";
 import { BRAND_NAV_ITEM_CLASS, BRAND_NAV_LABEL_CLASS } from "@/components/brand/brand-classes";
 import { brandTooltip } from "@/components/brand/brand-tooltip";
 import { RequestCountBadge } from "@/components/orders/RequestCountBadge";
@@ -36,6 +36,7 @@ import { SidebarAccount } from "@/components/layout/SidebarAccount";
 import { SidebarBrand } from "@/components/layout/SidebarBrand";
 import { SidebarSettingsGroup } from "@/components/layout/SidebarSettingsGroup";
 import { SidebarReportsGroup } from "@/components/layout/SidebarReportsGroup";
+import { SidebarMenuGroup } from "@/components/layout/SidebarMenuGroup";
 import {
   Sidebar,
   SidebarContent,
@@ -91,7 +92,6 @@ const sections: NavSection[] = [
     label: "Manage",
     items: [
       { title: "Menu", url: "/products", icon: Coffee },
-      { title: "Categories", url: "/categories", icon: Tags },
       { title: "Tables", url: "/tables", icon: LayoutGrid },
       { title: "Customers", url: "/customers", icon: Users },
       { title: "Events", url: "/events", icon: PartyPopper },
@@ -138,14 +138,20 @@ export function AppSidebar() {
     if (onSettings) setSettingsOpen(true);
   }, [onSettings]);
 
-  // Reports expands the same way, but has no hub page of its own — every
-  // route under /reports is a section page, so `onReports` alone (no `onHub`
-  // branch) decides the trigger row's lit state.
+  // Reports and Menu expand the same way, but neither has a hub page of its
+  // own distinct from its first section, so `onReports`/`onMenu` alone (no
+  // `onHub` branch) decide each trigger row's lit state.
   const onReports = pathname === REPORTS_BASE_PATH || pathname.startsWith(`${REPORTS_BASE_PATH}/`);
   const [reportsOpen, setReportsOpen] = useState(onReports);
   useEffect(() => {
     if (onReports) setReportsOpen(true);
   }, [onReports]);
+
+  const onMenu = isMenuPath(pathname);
+  const [menuOpen, setMenuOpen] = useState(onMenu);
+  useEffect(() => {
+    if (onMenu) setMenuOpen(true);
+  }, [onMenu]);
 
   // Keep the lit row in view: on a short screen (or with Settings'/Reports'
   // list open) it can sit below the fold. Waits out the list's open animation.
@@ -154,7 +160,7 @@ export function AppSidebar() {
       navRef.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest" });
     }, SCROLL_AFTER_OPEN_MS);
     return () => window.clearTimeout(timer);
-  }, [pathname, settingsOpen, reportsOpen]);
+  }, [pathname, settingsOpen, reportsOpen, menuOpen]);
 
   // Brand name comes from the cafe's own Settings (Settings.restaurantName),
   // configured on the Settings page — generic fallback before it's set.
@@ -182,39 +188,31 @@ export function AppSidebar() {
   // and on hover — on a line still waking up it can fail, and a failed
   // prefetch turns the next click on that row into a full page load.
   const renderItem = (item: NavItem) => {
-    if (item.url === "/settings") {
-      return (
-        <SidebarSettingsGroup
-          key={item.url}
-          url={item.url}
-          title={item.title}
-          icon={item.icon}
-          collapsed={collapsed}
-          pathname={pathname}
-          onSettings={onSettings}
-          settingsOpen={settingsOpen}
-          onSettingsOpenChange={setSettingsOpen}
-          onNavigate={closeMobile}
-          tooltip={brandTooltip(item.title)}
-        />
-      );
-    }
-
-    if (item.url === "/reports") {
-      return (
-        <SidebarReportsGroup
-          key={item.url}
-          title={item.title}
-          icon={item.icon}
-          collapsed={collapsed}
-          pathname={pathname}
-          onReports={onReports}
-          reportsOpen={reportsOpen}
-          onReportsOpenChange={setReportsOpen}
-          onNavigate={closeMobile}
-          tooltip={brandTooltip(item.title)}
-        />
-      );
+    switch (item.url) {
+      case "/settings":
+        return (
+          <SidebarSettingsGroup
+            key={item.url} url={item.url} title={item.title} icon={item.icon} collapsed={collapsed}
+            pathname={pathname} onSettings={onSettings} settingsOpen={settingsOpen}
+            onSettingsOpenChange={setSettingsOpen} onNavigate={closeMobile} tooltip={brandTooltip(item.title)}
+          />
+        );
+      case "/reports":
+        return (
+          <SidebarReportsGroup
+            key={item.url} title={item.title} icon={item.icon} collapsed={collapsed} pathname={pathname}
+            onReports={onReports} reportsOpen={reportsOpen} onReportsOpenChange={setReportsOpen}
+            onNavigate={closeMobile} tooltip={brandTooltip(item.title)}
+          />
+        );
+      case "/products":
+        return (
+          <SidebarMenuGroup
+            key={item.url} title={item.title} icon={item.icon} collapsed={collapsed} pathname={pathname}
+            isAdmin={isAdmin} menuOpen={menuOpen} onMenuOpenChange={setMenuOpen} onNavigate={closeMobile}
+            tooltip={brandTooltip(item.title)}
+          />
+        );
     }
 
     const active = isActivePath(pathname, item.url);

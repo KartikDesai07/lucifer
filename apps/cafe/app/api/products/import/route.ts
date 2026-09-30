@@ -7,9 +7,10 @@ import { Category, type ICategory } from "@/models/Category";
 import {
   success,
   validateBody,
-  requireAuth,
+  requireAdmin,
   serverError,
 } from "@/lib/api-helpers";
+import { PUBLIC_MENU_CACHE_KEY } from "@/lib/public-menu";
 import {
   importProductsSchema,
   importProductRowSchema,
@@ -61,7 +62,8 @@ function parseRow(raw: Record<string, unknown>, index: number): ParsedRow {
 // valid rows are upserted by name (re-import updates rather than duplicates) and
 // any missing categories are auto-created.
 export async function POST(req: Request) {
-  const authed = await requireAuth();
+  // Menu redesign (owner, 2026-09-30): the CSV bulk import is admin-only.
+  const authed = await requireAdmin();
   if ("error" in authed) return authed.error;
 
   const parsed = await validateBody(req, importProductsSchema);
@@ -220,6 +222,9 @@ export async function POST(req: Request) {
         created = res.upsertedCount ?? 0;
         updated = res.matchedCount ?? 0;
         cache.del("products");
+        // R7 — a real import can create, re-price or re-activate items the
+        // public QR menu should reflect immediately.
+        cache.del(PUBLIC_MENU_CACHE_KEY);
       }
       skippedByRace = unresolved;
     }
@@ -234,6 +239,6 @@ export async function POST(req: Request) {
     };
     return success(result);
   } catch (error) {
-    return serverError("Failed to import products", error);
+    return serverError("Failed to import items", error);
   }
 }

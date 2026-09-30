@@ -32,6 +32,13 @@ export interface IProduct extends Document {
   // import has no column for it, so a default would silently rewrite every
   // existing product's meaning the moment it was next saved.
   publicVisible?: boolean;
+  // Item icon (Menu redesign, owner 2026-09-30) — a @pos/shared/product-icons
+  // catalogue key, shown only when the item has no photo. No `default:` on the
+  // schema field below (the publicVisible precedent): absent means no icon,
+  // and the CSV import has no column for it, so a re-import can never clear a
+  // chosen icon. A stored key may predate a catalogue change — every renderer
+  // narrows with isProductIconKey and treats anything else as "no icon".
+  icon?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -70,6 +77,8 @@ export const productSchema = new Schema<IProduct>(
     // No `default:` — see the IProduct comment above: absent means visible,
     // and a default here would flip every pre-CR2 product's meaning.
     publicVisible: { type: Boolean },
+    // No `default:` — see the IProduct comment above: absent means no icon.
+    icon: { type: String },
   },
   { timestamps: true },
 );

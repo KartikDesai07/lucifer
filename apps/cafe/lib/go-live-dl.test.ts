@@ -575,8 +575,10 @@ test("PIN: §6's staff-briefing no longer says deleting a category silently re-t
   assert.ok(section.length > 500, `§6 must carry real staff-briefing content, got only ${section.length} bytes`);
   assert.match(
     section,
-    /category can only be deleted once it has no products/i,
-    "§6 must state the corrected rule: a category can only be deleted once it has no products",
+    // Menu redesign (2026-09-30): the rule is unchanged, only its wording
+    // follows the Menu screen's "item" vocabulary (the DELETE 409 copy too).
+    /category can only be deleted once it has no items/i,
+    "§6 must state the corrected rule: a category can only be deleted once it has no items",
   );
   assert.match(section, /admin-only/i, "§6 must say category deletion is admin-only somewhere in the section");
 

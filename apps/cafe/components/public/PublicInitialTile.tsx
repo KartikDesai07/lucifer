@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 
 import { productImageUrl } from "@/lib/images";
+import { productIconComponent } from "@/lib/product-icon-map";
 import { cn } from "@/lib/utils";
 
 // CB-6C — the diner surface's image-or-initial tile. Most cafes ship with NO
@@ -58,15 +59,20 @@ interface PublicInitialTileProps {
   tintKey?: string;
   // Opaque image ref (r2:/local:/cloudinary) — "" or undefined = no photo.
   imageRef?: string;
+  // Item icon key — shown only when there's no photo (photo, then icon, then
+  // initial). Absent/unknown falls through to the initial, same as everywhere
+  // else this catalogue is read.
+  icon?: string;
   size: InitialTileSize;
   // Sold-out / disabled look: greyscale + dimmed, the tile itself stays.
   muted?: boolean;
   className?: string;
 }
 
-export function PublicInitialTile({ name, tintKey, imageRef, size, muted = false, className }: PublicInitialTileProps) {
+export function PublicInitialTile({ name, tintKey, imageRef, icon, size, muted = false, className }: PublicInitialTileProps) {
   const [failed, setFailed] = useState(false);
   const url = imageRef ? productImageUrl(imageRef, size * 2) : null;
+  const Icon = productIconComponent(icon);
 
   if (url && !failed) {
     return (
@@ -93,7 +99,7 @@ export function PublicInitialTile({ name, tintKey, imageRef, size, muted = false
         className,
       )}
     >
-      {initialOf(name)}
+      {Icon ? <Icon className="h-[55%] w-[55%]" /> : initialOf(name)}
     </span>
   );
 }

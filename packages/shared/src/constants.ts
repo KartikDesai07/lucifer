@@ -156,8 +156,18 @@ export const TABLE_STATUSES = ["Available", "Occupied", "Reserved"] as const;
 export type TableStatus = (typeof TABLE_STATUSES)[number];
 
 // Page route prefixes only an admin may open. Enforced in middleware
-// (auth.config.ts) and again client-side via <AdminGuard>.
-export const ADMIN_ROUTES = ["/staff", "/reports", "/settings"] as const;
+// (auth.config.ts) and again client-side via <AdminGuard>. "/categories" joined
+// with the Menu redesign (owner, 2026-09-30: staff may only mark items in /
+// out of stock; categories are admin-only).
+export const ADMIN_ROUTES = ["/staff", "/reports", "/settings", "/categories"] as const;
+
+// Menu redesign (2026-09-30). Most items one bulk action may touch — the bulk
+// bar disables its actions above this and says so.
+export const PRODUCT_BULK_MAX = 500;
+// Most categories one drag-and-drop save may carry. At least MAX_IMPORT_ROWS:
+// a CSV import can create one category per row, and the list must stay
+// arrangeable afterwards (pinned in product-icons/category schema tests).
+export const CATEGORY_REORDER_MAX = 1000;
 
 // How GST is applied to a bill (admin-configurable in Settings):
 // - "inclusive": menu prices already include GST; the receipt breaks the GST

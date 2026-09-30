@@ -97,8 +97,23 @@ export interface Product {
   // explicit `false` hides an item. Hiding is public-only: the item stays fully
   // orderable by staff in the POS (that is what `available` is for).
   publicVisible?: boolean;
+  // Item icon — a product-icons catalogue key, shown only when there is no
+  // photo. ABSENT when none is chosen. Typed as string, not the key union: a
+  // stored key may predate a catalogue change, so every renderer narrows it
+  // with isProductIconKey and treats anything else as "no icon".
+  icon?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+// POST /api/products/bulk result. `matched` = items the action actually
+// applied to (already-in-state and unknown ids are not matched); UI copy
+// reads `matched`, never `modified` (timestamps make the two equal).
+export interface ProductBulkResult {
+  action: string;
+  requested: number;
+  matched: number;
+  modified: number;
 }
 
 export interface Category {

@@ -3,6 +3,7 @@ import type { LucideIcon } from "lucide-react";
 import { BellRing, CalendarClock, CircleCheck, CircleSlash, HandCoins, Hourglass } from "lucide-react";
 import { inr } from "@/lib/utils";
 import { plural } from "@/lib/dashboard/format";
+import { menuItemsHref } from "@/lib/menu-sections";
 import { BrandSkeleton } from "@/components/dashboard/DashCard";
 import type { DashboardLive } from "@/types/dashboard";
 
@@ -41,7 +42,7 @@ function chipsOf(live: DashboardLive): Chip[] {
       key: "unavailable",
       icon: CircleSlash,
       text: `${plural(live.unavailable.count, "item")} unavailable`,
-      href: "/products",
+      href: menuItemsHref({ status: "out-of-stock" }),
       title: `${live.unavailable.names.join(", ")}${more > 0 ? ` and ${more} more` : ""}`,
     });
   }

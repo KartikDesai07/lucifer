@@ -14,10 +14,11 @@ import {
   notFound,
   validateBody,
   requireAuth,
-  requireAdmin,
   isDuplicateKeyError,
   serverError,
 } from "@/lib/api-helpers";
+import { isStaffScopedUpdate } from "@/lib/write-access";
+import { type Guard, runGuard, capitalize, clearCaches } from "@/lib/crud-guards";
 
 // Generic CRUD route handlers for the entities whose API is pure boilerplate
 // (auth → connect → query → cache). Entities with special logic (orders' money
@@ -25,16 +26,6 @@ import {
 // handlers. Each route file destructures only the verbs it needs:
 //   export const { GET, POST } = createCollectionRoute({ ... })
 //   export const { PUT, DELETE } = createItemRoute({ ... })
-
-type Guard = "auth" | "admin";
-
-function runGuard(guard: Guard | undefined) {
-  return guard === "admin" ? requireAdmin() : requireAuth();
-}
-
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
 
 interface EntityLabels {
   singular: string; // "reservation" — used in error messages
@@ -97,6 +88,11 @@ interface CollectionRouteConfig<TDoc, TCreate extends ZodTypeAny> {
   // connectDB(), before the create — return a message to reject with 400,
   // or null to proceed.
   validate?: (data: z.infer<TCreate>) => Promise<string | null>;
+  // R1: POST's own guard, independent of `guard` (still covers GET). Default:
+  // same as `guard` (unchanged behaviour).
+  writeGuard?: Guard;
+  // R7: extra cache keys to clear alongside `cacheKey` after a write.
+  invalidateKeys?: readonly string[];
 }
 
 export function createCollectionRoute<TDoc, TCreate extends ZodTypeAny>(
@@ -136,7 +132,7 @@ export function createCollectionRoute<TDoc, TCreate extends ZodTypeAny>(
   }
 
   async function POST(req: Request) {
-    const authed = await runGuard(config.guard);
+    const authed = await runGuard(config.writeGuard ?? config.guard);
     if ("error" in authed) return authed.error;
 
     const parsed = await validateBody(req, config.createSchema);
@@ -154,7 +150,7 @@ export function createCollectionRoute<TDoc, TCreate extends ZodTypeAny>(
       // process, so warm invocations pay nothing (mirrors due-payment.ts).
       await config.model.init();
       const doc = await config.model.create(parsed.data as z.infer<TCreate>);
-      cache.del(config.cacheKey);
+      clearCaches(config.cacheKey, config.invalidateKeys);
       return created(doc);
     } catch (e) {
       if (config.onDuplicate && isDuplicateKeyError(e)) {
@@ -172,7 +168,7 @@ interface ItemRouteConfig<TDoc, TUpdate extends ZodTypeAny> {
   cacheKey: string;
   updateSchema: TUpdate;
   entity: EntityLabels;
-  guard?: Guard; // default "auth"
+  guard?: Guard; // default "auth" — GET; also PUT/DELETE when writeGuard is absent
   softDelete?: boolean; // set isActive:false instead of removing the document
   // Fields whose value may arrive as an explicit `null` meaning "clear this".
   // A plain update object cannot express that: Mongoose only $sets the keys
@@ -181,6 +177,13 @@ interface ItemRouteConfig<TDoc, TUpdate extends ZodTypeAny> {
   // on. Naming a field here turns its null into a real $unset. An ABSENT key is
   // untouched either way, which is what keeps a partial PUT partial.
   nullClearsFields?: readonly string[];
+  // R1. Applies to DELETE unconditionally (default "auth"). PUT follows the
+  // staff-scoped discipline ONLY when staffUpdateFields is ALSO set (PUT
+  // handler); otherwise PUT keeps runGuard(writeGuard ?? guard) — see there.
+  writeGuard?: Guard;
+  // Fields a NON-admin PUT may set, e.g. ["available"] (see the PUT handler).
+  staffUpdateFields?: readonly string[];
+  invalidateKeys?: readonly string[]; // R7: extra cache keys cleared with `cacheKey` after a write
 }
 
 // Turns a validated partial payload into an explicit update document, moving any
@@ -231,7 +234,13 @@ export function createItemRoute<TDoc, TUpdate extends ZodTypeAny>(
   }
 
   async function PUT(req: Request, { params }: Params) {
-    const authed = await runGuard(config.guard);
+    // R1 (staffUpdateFields set, currently products only): requireAuth first,
+    // a non-admin may qualify below. Every other entity keeps its original
+    // runGuard(writeGuard ?? guard) — G1: the staff-scoped branch must not run
+    // unconditionally, or it 403s a PUT on an entity that never opted in.
+    const authed = config.staffUpdateFields
+      ? await requireAuth()
+      : await runGuard(config.writeGuard ?? config.guard);
     if ("error" in authed) return authed.error;
 
     const { id } = await params;
@@ -239,6 +248,12 @@ export function createItemRoute<TDoc, TUpdate extends ZodTypeAny>(
 
     const parsed = await validateBody(req, config.updateSchema);
     if ("error" in parsed) return parsed.error;
+
+    if (config.staffUpdateFields && authed.session.user.role !== "admin") {
+      if (!isStaffScopedUpdate(parsed.data, config.staffUpdateFields)) {
+        return failure("Admin access required", 403);
+      }
+    }
 
     try {
       await connectDB();
@@ -249,7 +264,7 @@ export function createItemRoute<TDoc, TUpdate extends ZodTypeAny>(
         })
         .lean();
       if (!doc) return notFound(notFoundMsg);
-      cache.del(config.cacheKey);
+      clearCaches(config.cacheKey, config.invalidateKeys);
       return success(doc);
     } catch (error) {
       return serverError(`Failed to update ${config.entity.singular}`, error);
@@ -257,7 +272,7 @@ export function createItemRoute<TDoc, TUpdate extends ZodTypeAny>(
   }
 
   async function DELETE(_req: Request, { params }: Params) {
-    const authed = await runGuard(config.guard);
+    const authed = await runGuard(config.writeGuard ?? config.guard);
     if ("error" in authed) return authed.error;
 
     const { id } = await params;
@@ -273,7 +288,7 @@ export function createItemRoute<TDoc, TUpdate extends ZodTypeAny>(
             .lean()
         : await config.model.findByIdAndDelete(id).lean();
       if (!doc) return notFound(notFoundMsg);
-      cache.del(config.cacheKey);
+      clearCaches(config.cacheKey, config.invalidateKeys);
       return success({ deleted: true });
     } catch (error) {
       return serverError(`Failed to delete ${config.entity.singular}`, error);

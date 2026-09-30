@@ -13,7 +13,6 @@ import { IMAGE_CONTENT_TYPES, MAX_IMAGE_BYTES } from "@/lib/constants";
 import {
   success,
   failure,
-  requireAuth,
   requireAdmin,
   serverError,
   validateBody,
@@ -39,8 +38,11 @@ const uploadGrantSchema = z.object({
 // targets (IMAGE_STORE, lib/platform.ts). R2 → a presigned PUT URL; Cloudinary
 // (the single per-cafe-account alternative — never pooled, F2 §2.11) → the v1
 // signed payload. Image bytes never pass through this server on either path.
+// Admin-only (Menu redesign, owner 2026-09-30): its one caller is the admin
+// item editor's ImageUpload — a staff session has no legitimate reason to
+// request an upload grant at all.
 export async function POST(req: Request) {
-  const authed = await requireAuth();
+  const authed = await requireAdmin();
   if ("error" in authed) return authed.error;
 
   try {

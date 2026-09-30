@@ -141,10 +141,10 @@ export function ImportProductsDialog({ open, onOpenChange }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Import products from CSV</DialogTitle>
+          <DialogTitle>Import items from CSV</DialogTitle>
           <DialogDescription>
             {step === "upload" &&
-              "Upload a CSV to bulk add or update menu items. Products are matched by name."}
+              "Upload a CSV to bulk add or update menu items. Items are matched by name."}
             {step === "preview" && `Reviewing ${fileName}`}
             {step === "result" && "Import complete."}
           </DialogDescription>
@@ -168,7 +168,7 @@ export function ImportProductsDialog({ open, onOpenChange }: Props) {
                 (e.g. <code className="rounded bg-background px-1">
                   Extra Cheese|Thin Crust
                 </code>
-                ). A row whose name already exists overwrites that product with
+                ). A row whose name already exists overwrites that item with
                 every column in the row (omitted optional columns reset to their
                 defaults). New categories are created automatically.
               </p>
@@ -251,7 +251,7 @@ export function ImportProductsDialog({ open, onOpenChange }: Props) {
             {preview.summary.invalid > 0 && (
               <p className="text-xs text-muted-foreground">
                 Rows with errors are skipped — only the{" "}
-                {preview.summary.valid} valid product(s) will be imported.
+                {preview.summary.valid} valid item(s) will be imported.
               </p>
             )}
           </div>
@@ -296,7 +296,7 @@ export function ImportProductsDialog({ open, onOpenChange }: Props) {
                 {importMutation.isPending && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
-                Import {preview?.summary.valid ?? 0} product(s)
+                Import {preview?.summary.valid ?? 0} item(s)
               </Button>
             </>
           )}

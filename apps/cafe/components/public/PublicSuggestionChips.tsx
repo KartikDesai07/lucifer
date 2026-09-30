@@ -24,7 +24,7 @@ function PublicSuggestionChip({ item, onAdd }: { item: PublicMenuProduct; onAdd:
   const price = effectiveUnitPrice(item.price, item.discount);
   return (
     <div className={cn(PUB_CARD_CLASS, "flex w-40 shrink-0 items-center gap-2 p-2")}>
-      <PublicInitialTile name={item.name} tintKey={item.category} imageRef={item.image} size={SUGGESTION_TILE_SIZE} />
+      <PublicInitialTile name={item.name} tintKey={item.category} imageRef={item.image} icon={item.icon} size={SUGGESTION_TILE_SIZE} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-xs font-medium leading-tight">{item.name}</p>
         <p className="text-xs font-semibold tabular-nums">{inr(price)}</p>

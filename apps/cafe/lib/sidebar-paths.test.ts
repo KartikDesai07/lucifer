@@ -20,15 +20,21 @@ const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel),
 const APP_SIDEBAR = "apps/cafe/components/layout/AppSidebar.tsx";
 const SETTINGS_GROUP = "apps/cafe/components/layout/SidebarSettingsGroup.tsx";
 const REPORTS_GROUP = "apps/cafe/components/layout/SidebarReportsGroup.tsx";
+const MENU_GROUP = "apps/cafe/components/layout/SidebarMenuGroup.tsx";
 const SIDEBAR_BRAND = "apps/cafe/components/layout/SidebarBrand.tsx";
 const REQUEST_BADGE = "apps/cafe/components/orders/RequestCountBadge.tsx";
 const GLOBALS_CSS = "apps/cafe/app/globals.css";
 
-/** The owner's tools. Everything else in the sidebar is for every signed-in role. */
+/** The owner's tools. Everything else in the sidebar is for every signed-in role.
+ *  Categories is admin-only too, but it is no longer a flat `{title,url}` nav
+ *  entry (Menu redesign, 2026-09-30) — it moved into MENU_SECTIONS, read by
+ *  the SidebarMenuGroup drop-down, so it never appears in this file's regex
+ *  scan at all (see the Menu-group test below, which reads MENU_SECTIONS
+ *  directly instead). */
 const ADMIN_ONLY_URLS = ["/reports", "/settings", "/staff"];
-const NAV_ENTRY_COUNT = 14;
+const NAV_ENTRY_COUNT = 13;
 
-test("PIN: the sidebar lists all 14 screens once each, and exactly Staff, Reports and Settings are admin-only", () => {
+test("PIN: the sidebar lists all 13 flat screens once each, and exactly Staff, Reports and Settings are admin-only", () => {
   const src = stripComments(readSrc(APP_SIDEBAR));
   const entries = [...src.matchAll(/\{\s*title:\s*"([^"]+)",\s*url:\s*"([^"]+)"[^}]*\}/g)].map((m) => ({
     title: m[1],
@@ -68,6 +74,45 @@ test("PIN: every sidebar link says which page is current — aria-current rides 
   assert.match(group, /const onHub = pathname === url;/);
   assert.match(group, /isActive=\{onHub \|\| \(onSettings && !settingsOpen\)\}/, "the Settings row lights on the hub even with its list open");
   assert.match(group, /aria-current=\{onHub \? "page" : undefined\}/, "and announces the hub as the current page");
+});
+
+// Menu redesign (2026-09-30): Categories left the flat nav list and joined
+// Items under one drop-down, read from lib/menu-sections.ts (MENU_SECTIONS)
+// rather than a literal array inside the component — a shared source with the
+// Categories/Items pages themselves.
+test("PIN: the Menu group renders from MENU_SECTIONS (not a private literal) and announces its current sub-page with aria-current", () => {
+  const group = stripComments(readSrc(MENU_GROUP));
+  assert.match(
+    group,
+    /import\s*\{[^}]*MENU_SECTIONS[^}]*\}\s*from\s*"@\/lib\/menu-sections"/,
+    "the Menu group must import MENU_SECTIONS from lib/menu-sections",
+  );
+  assert.match(group, /MENU_SECTIONS\.filter\(/, "the sub-menu list must be built from MENU_SECTIONS, filtered to what's visible");
+  // Mutation this catches: dropping aria-current on a sub-row — a screen
+  // reader user could not tell Items from Categories as "the current page".
+  assert.match(group, /isActive=\{active\}/, "each Menu sub-row lights from its own `active` flag");
+  assert.match(group, /aria-current=\{active \? "page" : undefined\}/, "and announces it with aria-current");
+
+  const app = stripComments(readSrc(APP_SIDEBAR));
+  assert.match(app, /<SidebarMenuGroup\b/, "AppSidebar must render the Menu group for the /products entry");
+  assert.ok(!/\{ title: "Categories", url: "\/categories"/.test(app), "Categories must no longer be a flat AppSidebar nav entry");
+});
+
+// G15 (arbiter-confirmed): on the collapsed rail (or for staff, who see only
+// one Menu sub-section) the group collapses to one plain Link to Items. Its
+// LIT state must follow onMenu (isMenuPath), like SidebarReportsGroup's own
+// collapsed branch — otherwise an admin on /categories with the rail folded
+// sees the Menu icon go dark, as if no section under it were open.
+test("PIN: the Menu group's collapsed/single-section Link lights on ANY menu page (onMenu), not only its own exact href", () => {
+  const group = stripComments(readSrc(MENU_GROUP));
+  const collapsedBranchStart = group.indexOf("if (collapsed || sections.length <= 1)");
+  assert.ok(collapsedBranchStart >= 0, "landmark: the collapsed/single-section branch must still exist");
+  const collapsedBranchEnd = group.indexOf("\n  }\n", collapsedBranchStart);
+  const branch = group.slice(collapsedBranchStart, collapsedBranchEnd);
+
+  assert.match(branch, /isActive=\{onMenu\}/, "the collapsed Link's visual lit state must be isActive={onMenu}, not the exact-match `active` flag");
+  // aria-current stays exact -- this one Link only truly points at Items.
+  assert.match(branch, /aria-current=\{exact \? "page" : undefined\}/, "aria-current must still announce only the exact Items match");
 });
 
 test("PIN: the phone sheet always shows row labels, whatever the desktop rail was last folded to", () => {
@@ -176,7 +221,7 @@ test("PIN: no sidebar Link prefetches on its own — every one says prefetch={fa
   // 2026-09-29: a Link's default (or true) prefetch fires on sight and on
   // hover; on a line still waking up it can fail, and a failed prefetch turns
   // the next click into a full page load (vendor facts: lib/warm-routes.test.ts).
-  for (const [file, expected] of [[APP_SIDEBAR, 1], [SETTINGS_GROUP, 2], [REPORTS_GROUP, 2], [SIDEBAR_BRAND, 1]] as const) {
+  for (const [file, expected] of [[APP_SIDEBAR, 1], [SETTINGS_GROUP, 2], [REPORTS_GROUP, 2], [MENU_GROUP, 2], [SIDEBAR_BRAND, 1]] as const) {
     const src = stripComments(readSrc(file));
     // Vision guards: Link is next/link under that one name, and the scan finds
     // every tag the file renders (an extractor that finds none proves nothing).

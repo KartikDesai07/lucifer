@@ -2,6 +2,7 @@
 // Import from "@/schemas" anywhere a schema or its type is needed.
 export * from "./object-id.schema";
 export * from "./product.schema";
+export * from "./product-bulk.schema";
 export * from "./category.schema";
 export * from "./customer.schema";
 export * from "./order.schema";

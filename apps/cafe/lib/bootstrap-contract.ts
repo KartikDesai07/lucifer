@@ -8,11 +8,11 @@
 import type { Category, Product, Settings, Staff, Table } from "@/types";
 
 // Bump when the payload/blob shape changes; a blob with another `v` is discarded.
-// UI batch 1 §F/§H: Product gained `modifiersPreselected` and Settings gained
-// `posLayout` — a stale v2 blob would treat a flagged item as normal mode (and
-// an arranged grid as the default one) until the next bootstrap refresh lands
-// ("cached DTO shape change must bump blob version").
-export const BOOTSTRAP_VERSION = 3; // CB-DL-2: Product DTO changed (category -> categoryId); v1 tab blobs are discarded
+// Menu redesign (2026-09-30): Product gained `icon` — a stale v3 blob would
+// show no icon on any item (missing key reads as "no icon", not wrong) until
+// the next bootstrap refresh lands, which is harmless enough on its own, but
+// the rule ("cached DTO shape change must bump blob version") is unconditional.
+export const BOOTSTRAP_VERSION = 4; // Product DTO changed (gained `icon`); v3 tab blobs are discarded
 
 // Device storage key (the browser's persistent per-origin store — survives a
 // reload, a closed tab and a restart of the app shell; cleared on logout and

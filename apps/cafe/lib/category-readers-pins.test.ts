@@ -126,8 +126,10 @@ test("PIN: no product-category NAME read (`.category` as a bare field, `===`, or
 
 const PRODUCT_GRID = "apps/cafe/components/pos/ProductGrid.tsx";
 const PRODUCTS_PAGE = "apps/cafe/app/(dashboard)/products/page.tsx";
+const MENU_ITEMS_LIB = "apps/cafe/lib/menu-items.ts";
 const PRODUCT_FORM_SHEET = "apps/cafe/components/products/ProductFormSheet.tsx";
-const PRODUCTS_TABLE = "apps/cafe/components/products/ProductsTable.tsx";
+const ITEMS_TABLE = "apps/cafe/components/menu/ItemsTable.tsx";
+const ITEM_CARDS = "apps/cafe/components/menu/ItemCards.tsx";
 const PRODUCT_CARD = "apps/cafe/components/pos/ProductCard.tsx";
 const CATEGORY_SIDEBAR = "apps/cafe/components/pos/CategorySidebar.tsx";
 const PUBLIC_MENU_ROUTE = "apps/cafe/app/api/public/menu/route.ts";
@@ -176,9 +178,12 @@ test("PIN: C19 — ProductGrid holds the server order for the one render where t
   assert.match(src, /categoriesLoading/, "categoriesLoading must still be read from the category-map hook");
 });
 
-test("PIN: products/page.tsx filters by p.categoryId === category (landmark)", () => {
-  const src = stripComments(readSrc(PRODUCTS_PAGE));
-  assert.match(src, /p\.categoryId === category/, "products/page.tsx must filter products by p.categoryId === category");
+// Menu redesign (2026-09-30): the Items page's category filter moved into
+// lib/menu-items.ts's filterItems (pure, unit-tested) — the page itself just
+// calls it. Landmark moved from products/page.tsx to that module.
+test("PIN: lib/menu-items.ts's filterItems matches by p.categoryId === input.categoryId (landmark)", () => {
+  const src = stripComments(readSrc(MENU_ITEMS_LIB));
+  assert.match(src, /p\.categoryId === input\.categoryId/, "menu-items.ts must filter items by p.categoryId === input.categoryId");
 });
 
 test('PIN: ProductFormSheet binds the Select to name="categoryId" (landmark)', () => {
@@ -186,9 +191,14 @@ test('PIN: ProductFormSheet binds the Select to name="categoryId" (landmark)', (
   assert.match(src, /name="categoryId"/, 'ProductFormSheet.tsx must bind its category Select via name="categoryId"');
 });
 
-test("PIN: ProductsTable resolves each row's category via categoryNameOf( (landmark)", () => {
-  const src = stripComments(readSrc(PRODUCTS_TABLE));
-  assert.match(src, /categoryNameOf\(/, "ProductsTable.tsx must call categoryNameOf( to resolve a row's category display name");
+// Menu redesign (2026-09-30): ProductsTable was replaced by ItemsTable (lg+)
+// and ItemCards (below lg) — both must still resolve a row's category name
+// via categoryNameOf(, so the landmark now covers both.
+test("PIN: ItemsTable and ItemCards each resolve a row's category via categoryNameOf( (landmark)", () => {
+  const tableSrc = stripComments(readSrc(ITEMS_TABLE));
+  assert.match(tableSrc, /categoryNameOf\(/, "ItemsTable.tsx must call categoryNameOf( to resolve a row's category display name");
+  const cardsSrc = stripComments(readSrc(ITEM_CARDS));
+  assert.match(cardsSrc, /categoryNameOf\(/, "ItemCards.tsx must call categoryNameOf( to resolve a row's category display name");
 });
 
 test("PIN: ProductCard accepts a categoryLabel prop (landmark)", () => {

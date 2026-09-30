@@ -8,6 +8,7 @@ import {
   VARIATION_PRICE_MAX,
 } from "../constants";
 import { OBJECT_ID_HEX_PATTERN } from "./object-id.schema";
+import { productIconSchema } from "../product-icons";
 
 // carries a price ceiling rather than a percentage.
 export const productVariationSchema = z
@@ -74,6 +75,11 @@ export const createProductSchema = z.object({
   // import — which has no column for this — can never hide an item by omission.
   // Only an explicit `false` is stored.
   publicVisible: z.boolean().optional(),
+  // Item icon (owner, 2026-09-30) — a key from the product-icons catalogue,
+  // shown only when the item has no photo. Optional with NO default
+  // (omit-empty, the publicVisible precedent): the CSV import has no column
+  // for it, so a re-import can never clear a chosen icon.
+  icon: productIconSchema.optional(),
 });
 
 // PUT /api/products/[id]. Everything optional, PLUS one sentinel the create
@@ -95,6 +101,9 @@ export const updateProductSchema = createProductSchema.partial().extend({
   // explicit "clear it" the PUT route turns into an $unset; without it a
   // product once hidden could never be shown again.
   publicVisible: z.boolean().nullable().optional(),
+  // Same sentinel again: "Remove icon" must restore ABSENT, and JSON cannot
+  // carry undefined — `null` is the explicit clear the route turns into $unset.
+  icon: productIconSchema.nullable().optional(),
 });
 
 export type CreateProductInput = z.infer<typeof createProductSchema>;

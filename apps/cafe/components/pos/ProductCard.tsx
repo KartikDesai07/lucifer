@@ -6,6 +6,7 @@ import { NotebookPen } from "lucide-react";
 
 import { effectivePrice } from "@/hooks/use-cart";
 import { productImageUrl } from "@/lib/images";
+import { productIconComponent } from "@/lib/product-icon-map";
 import { inr, cn } from "@/lib/utils";
 import {
   POS_TILE_OPTIONS_BUTTON_CLASS,
@@ -52,6 +53,7 @@ export const ProductCard = memo(function ProductCard({
   onOptions,
 }: ProductCardProps) {
   const url = productImageUrl(product.image, THUMB_PX * 2);
+  const Icon = productIconComponent(product.icon);
   // Legacy products (pre-`available`) read as available; only an explicit
   // `available:false` ("86") disables ordering.
   const outOfStock = product.available === false;
@@ -111,7 +113,7 @@ export const ProductCard = memo(function ProductCard({
               aria-hidden
               className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-muted text-base font-semibold text-muted-foreground"
             >
-              {product.name.charAt(0).toUpperCase()}
+              {Icon ? <Icon className="h-5 w-5" /> : product.name.charAt(0).toUpperCase()}
             </span>
           )}
           {/* Reserves the top-right corner for the notes button, which is

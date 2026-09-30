@@ -248,11 +248,14 @@ test("PIN: CartNotes.tsx uses useId() instead of a hardcoded id", () => {
   assert.doesNotMatch(src, /"order-notes"/);
 });
 
-// ── upload route: DELETE must be admin-gated ────────────────────────────────
+// ── upload route: DELETE and POST must both be admin-gated ─────────────────
 // The products/ scope now holds the admin-owned Settings logo; arbiter
 // verified there is ZERO in-app DELETE caller (ImageUpload only POSTs;
 // product deletion goes through /api/products), so a staff session could
-// otherwise destroy it via a direct API call.
+// otherwise destroy it via a direct API call. Menu redesign (owner,
+// 2026-09-30) additionally moved POST to admin-only: its one caller is the
+// admin item editor's ImageUpload (D3 — the branding form's mounts pass
+// `slot` and go to /api/branding instead).
 
 test("PIN: /api/upload's DELETE handler requires admin", () => {
   const src = readFileSync(
@@ -265,8 +268,21 @@ test("PIN: /api/upload's DELETE handler requires admin", () => {
   assert.match(
     delBody,
     /requireAdmin/,
-    "DELETE must call requireAdmin — POST stays requireAuth",
+    "DELETE must call requireAdmin",
   );
+});
+
+test("PIN: /api/upload's POST handler also requires admin (Menu redesign, 2026-09-30)", () => {
+  const src = readFileSync(
+    fileURLToPath(new URL("../app/api/upload/route.ts", import.meta.url)),
+    "utf8",
+  );
+  const postStart = src.indexOf("export async function POST");
+  const delStart = src.indexOf("export async function DELETE");
+  assert.ok(postStart >= 0 && delStart > postStart, "POST handler must exist, followed by DELETE");
+  const postBody = src.slice(postStart, delStart);
+  assert.match(postBody, /requireAdmin/, "POST must call requireAdmin — only the admin item editor uploads images");
+  assert.ok(!/requireAuth/.test(postBody), "POST must not fall back to requireAuth any more");
 });
 
 // ── EndOfDaySummary.tsx: the Outstanding dues line must qualify a past date ──

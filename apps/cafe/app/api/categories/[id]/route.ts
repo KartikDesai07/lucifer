@@ -8,21 +8,22 @@ import {
   failure,
   notFound,
   validateBody,
-  requireAuth,
   requireAdmin,
   isDuplicateKeyError,
   serverError,
 } from "@/lib/api-helpers";
 import { updateCategorySchema } from "@/schemas";
+import { PUBLIC_MENU_CACHE_KEY } from "@/lib/public-menu";
 
 export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ id: string }> };
 
-// PUT /api/categories/[id] — rename / reorder. Products link by categoryId
-// only, so a rename touches nothing on the product side — no cascade needed.
+// PUT /api/categories/[id] — rename / reorder. Admin-only (owner, 2026-09-30).
+// Products link by categoryId only, so a rename touches nothing on the
+// product side — no cascade needed.
 export async function PUT(req: Request, { params }: Params) {
-  const authed = await requireAuth();
+  const authed = await requireAdmin();
   if ("error" in authed) return authed.error;
 
   const { id } = await params;
@@ -40,6 +41,7 @@ export async function PUT(req: Request, { params }: Params) {
     await existing.save();
 
     cache.del("categories");
+    cache.del(PUBLIC_MENU_CACHE_KEY);
     return success(existing.toObject());
   } catch (e) {
     if (isDuplicateKeyError(e)) return failure("Category already exists", 400);
@@ -66,7 +68,7 @@ export async function DELETE(_req: Request, { params }: Params) {
     const count = await Product.countDocuments({ categoryId: id });
     if (count > 0) {
       return failure(
-        `This category still has ${count} products. Move them to another category first.`,
+        `This category still has ${count} items. Move them to another category first.`,
         409,
       );
     }
@@ -75,6 +77,7 @@ export async function DELETE(_req: Request, { params }: Params) {
 
     cache.del("categories");
     cache.del("products");
+    cache.del(PUBLIC_MENU_CACHE_KEY);
     return success({ deleted: true });
   } catch (error) {
     return serverError("Failed to delete category", error);

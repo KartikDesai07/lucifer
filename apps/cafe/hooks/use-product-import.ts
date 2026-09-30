@@ -19,7 +19,7 @@ export function useImportPreview() {
     mutationFn: (rows: RawRow[]) =>
       apiSend<ImportPreview>(IMPORT_PATH, "POST", { dryRun: true, rows }),
     onError: (err: Error) =>
-      toast.error(err.message || "Could not validate the file"),
+      toast.error(err.message || "Could not check the file"),
   });
 }
 
@@ -31,7 +31,7 @@ export function useImportProducts() {
     mutationFn: (rows: RawRow[]) =>
       apiSend<ImportResult>(IMPORT_PATH, "POST", { dryRun: false, rows }),
     onError: (err: Error) =>
-      toast.error(err.message || "Could not import products"),
+      toast.error(err.message || "Could not import items"),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: PRODUCT_KEYS.all });
       qc.invalidateQueries({ queryKey: CATEGORY_KEYS.all });

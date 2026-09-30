@@ -114,7 +114,7 @@ export async function GET() {
       // it down again.
       Product.find(PUBLIC_PRODUCT_FILTER)
         .sort({ name: 1 })
-        .select("name categoryId price variations discount available image modifiers modifiersPreselected")
+        .select("name categoryId price variations discount available image modifiers modifiersPreselected icon")
         .lean(),
       // readSettings, NEVER getSettings: the getter's $setOnInsert upsert
       // writes updatedAt on every call (probed), and this route is public —

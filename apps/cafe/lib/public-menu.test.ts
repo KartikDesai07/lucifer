@@ -166,6 +166,23 @@ test("toPublicMenuItem: an unknown/unmatched categoryId resolves to UNCATEGORIZE
   assert.equal(item.category, UNCATEGORIZED, "an id the resolver does not recognise must fall back to UNCATEGORIZED");
 });
 
+// ── icon (Menu redesign, 2026-09-30): D6 — emit ONLY a live catalogue key ───
+
+test("toPublicMenuItem: a product with a real catalogue icon emits it", () => {
+  const item = toPublicMenuItem({ ...BASE_PRODUCT, icon: "coffee" }, CATEGORY_NAME_OF);
+  assert.equal(item.icon, "coffee");
+});
+
+test("toPublicMenuItem: a product with no icon omits the key entirely — not present-as-undefined", () => {
+  const item = toPublicMenuItem(BASE_PRODUCT, CATEGORY_NAME_OF);
+  assert.equal(Object.hasOwn(item, "icon"), false, "an item with no icon field must carry no icon key");
+});
+
+test("toPublicMenuItem: a stale/unknown stored icon key is treated as no icon at all — never published as-is", () => {
+  const item = toPublicMenuItem({ ...BASE_PRODUCT, icon: "a-retired-icon-key" }, CATEGORY_NAME_OF);
+  assert.equal(Object.hasOwn(item, "icon"), false, "an unknown icon key must not ride onto the wire");
+});
+
 // ── toPublicCategory: exact key set ─────────────────────────────────────────
 
 test("toPublicCategory: exact key set { name, order } — extras on the source are dropped", () => {

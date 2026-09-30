@@ -57,7 +57,7 @@ export function PublicPopularRow({ title, items, onQuickAdd, onBrowseMenu }: Pub
       <div className={cn(PUB_HSCROLL_CLASS, "mt-2")}>
         {items.map((item) => (
           <div key={item.id} className={cn(PUB_TONAL_CARD_CLASS, "w-40 shrink-0 snap-start p-3")}>
-            <PublicInitialTile name={item.name} tintKey={item.category} imageRef={item.image} size={80} />
+            <PublicInitialTile name={item.name} tintKey={item.category} imageRef={item.image} icon={item.icon} size={80} />
             <p className="mt-2 line-clamp-2 text-sm font-medium leading-tight">{item.name}</p>
             {item.discount > 0 ? (
               <div className="mt-0.5 flex flex-wrap items-center gap-1.5">

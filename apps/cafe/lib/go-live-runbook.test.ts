@@ -4,7 +4,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-import { createStaffSchema, settingsSchema, importProductRowSchema } from "@/schemas";
+import { createStaffSchema, settingsSchema, importProductRowSchema, STAFF_PRODUCT_BULK_ACTIONS } from "@/schemas";
+import { STAFF_PRODUCT_FIELDS } from "@/lib/write-access";
 import {
   TABLE_NO_PATTERN,
   TABLE_NO_MAX_LEN,
@@ -1289,4 +1290,49 @@ test("PIN §7 desktop app: every UI string the sub-section quotes exists verbati
   assert.ok(/Printing preferences/i.test(section) && /80 mm/.test(section), "silent printing uses the printer's Windows defaults — the section must say where to set the roll size");
   assert.ok(section.includes("pos-desktop.log") && sharedSrc.includes('LOG_FILE_NAME = "pos-desktop.log"'), "the section must name the log file support will ask for");
   assert.ok(/notification/i.test(section), "the section must say a failed print raises a Windows notification");
+});
+
+// ── §6 Staff accounts: Menu redesign (owner, 2026-09-30) wording must match
+// the SERVER fence, not just read plausibly — pinned against STAFF_PRODUCT_
+// FIELDS/STAFF_PRODUCT_BULK_ACTIONS/ADMIN_ROUTES so a future widening/
+// narrowing of what staff may touch cannot leave this runbook silently wrong.
+
+test("PIN §6: the doc states staff can only mark an item In stock / Out of stock, matching STAFF_PRODUCT_FIELDS (['available']) and STAFF_PRODUCT_BULK_ACTIONS (out-of-stock/in-stock only)", () => {
+  const section = sectionSlice("## §6 Staff accounts").replace(/\s+/g, " ");
+  assert.match(
+    section,
+    /only mark an item In stock (or|\/) Out of stock/i,
+    "§6 must state staff can only mark an item In stock/Out of stock — the ONE field STAFF_PRODUCT_FIELDS names",
+  );
+  assert.deepEqual([...STAFF_PRODUCT_FIELDS], ["available"], "STAFF_PRODUCT_FIELDS must still be exactly ['available'] for the doc's claim to be true");
+  assert.deepEqual(
+    [...STAFF_PRODUCT_BULK_ACTIONS].sort(),
+    ["in-stock", "out-of-stock"],
+    "STAFF_PRODUCT_BULK_ACTIONS must still be exactly the two stock-toggle actions for the doc's claim to be true",
+  );
+});
+
+test("PIN §6: the doc names prices, item add/edit, archive/restore, CSV import, QR visibility and Categories as admin-only, and ADMIN_ROUTES includes /categories", () => {
+  const section = sectionSlice("## §6 Staff accounts").replace(/\s+/g, " ");
+  for (const phrase of [/prices/i, /CSV import/i, /QR/i, /Categories/i, /archive.{0,10}restore/i]) {
+    assert.match(section, phrase, `§6 must name "${phrase}" as part of the admin-only list`);
+  }
+  assert.ok(
+    (ADMIN_ROUTES as readonly string[]).includes("/categories"),
+    "ADMIN_ROUTES must still include /categories for the doc's admin-only claim to be true",
+  );
+});
+
+test("PIN §6: the doc's role summary lists Categories alongside Staff, Reports and Settings as blocked for staff — the same four routes ADMIN_ROUTES names", () => {
+  const section = sectionSlice("## §6 Staff accounts").replace(/\s+/g, " ");
+  assert.match(
+    section,
+    /Staff, Reports, Settings and Categories are blocked/i,
+    "§6's role summary must list all four ADMIN_ROUTES screens by name",
+  );
+  assert.deepEqual(
+    [...ADMIN_ROUTES].sort(),
+    ["/categories", "/reports", "/settings", "/staff"],
+    "ADMIN_ROUTES must still be exactly these four routes for the doc's role summary to stay true",
+  );
 });

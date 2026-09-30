@@ -1,6 +1,7 @@
 import { type FilterQuery, type PipelineStage } from "mongoose";
 import type { IProduct } from "@/models/Product";
 import type { ProductVariation } from "@/types";
+import { isProductIconKey } from "@pos/shared/product-icons";
 
 // Pure shaping + the query filter for the PUBLIC (unauthenticated) QR menu —
 // the read side of phase CR2.1. No `connectDB`, no HTTP, no cache — those stay
@@ -47,6 +48,10 @@ export interface PublicProductSource {
   // every modifier ticked, so PublicItemSheet can preselect them. Omit-empty,
   // only ever `true` (models/Product.ts's own discipline).
   modifiersPreselected?: boolean;
+  // Item icon — a stored key may predate a catalogue change or be a stray
+  // string; typed as unknown-ish `string` and validated with isProductIconKey
+  // below before it is ever emitted (D6: the public DTO only emits a known key).
+  icon?: string;
 }
 
 // Everything a diner's browser is allowed to know about one menu item. This
@@ -66,6 +71,9 @@ export interface PublicMenuItem {
   modifiers: string[];
   // Same field, same omit-empty rule as PublicProductSource above.
   modifiersPreselected?: boolean;
+  // Only ever a real catalogue key (D6) — an unknown/stale stored key is
+  // treated exactly like no icon and never rides onto a diner's phone.
+  icon?: string;
 }
 
 // Builds a brand-new object naming only the allowed keys — never a spread of
@@ -96,6 +104,12 @@ export function toPublicMenuItem(
   // product field itself follows).
   if (product.modifiersPreselected === true) {
     item.modifiersPreselected = true;
+  }
+  // D6 — emit the icon ONLY when it is still a live catalogue key: a stored
+  // key may predate a catalogue change, and this is the one place that must
+  // never publish a stale/unknown string as if it were a real icon.
+  if (isProductIconKey(product.icon)) {
+    item.icon = product.icon;
   }
   return item;
 }

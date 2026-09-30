@@ -32,6 +32,9 @@ export interface PublicMenuProduct {
   // "Modifiers come ticked" (reverse mode) — omit-empty on the wire (only
   // ever `true`, lib/public-menu.ts); an absent key reads as normal mode.
   modifiersPreselected?: boolean;
+  // Item icon key, shown only when there's no photo — omit-empty on the wire
+  // (lib/public-menu.ts emits it only when isProductIconKey).
+  icon?: string;
 }
 
 export interface PublicMenuCategoryInfo {
@@ -92,6 +95,7 @@ export function PublicMenuItem({ product, qty, onIncrement, onDecrement }: Publi
         name={product.name}
         tintKey={product.category}
         imageRef={product.image}
+        icon={product.icon}
         size={80}
         muted={soldOut}
       />

@@ -31,6 +31,8 @@ interface ImageUploadProps {
   // static class strings below, never built by interpolating a ratio in.
   // Default "square" is today's look, unchanged for every existing call site.
   aspect?: "square" | "wide";
+  // Placeholder instead of ImagePlus with no photo (an item's icon/initial).
+  emptyPreview?: React.ReactNode;
 }
 
 const PREVIEW_BOX_CLASSNAMES: Record<"square" | "wide", string> = {
@@ -59,8 +61,8 @@ type UploadGrant =
       folder: string;
     };
 
-// Generous cap on the ORIGINAL file (decode-memory guard only) — the stored
-// image is the resized blob, which MAX_IMAGE_BYTES bounds.
+// Generous cap on the ORIGINAL file (decode-memory guard) — the stored image
+// is the resized blob, which MAX_IMAGE_BYTES bounds.
 const MAX_ORIGINAL_BYTES = 20 * 1024 * 1024;
 
 const WEBP_QUALITY = 0.82;
@@ -141,8 +143,8 @@ async function uploadPrepared(blob: Blob): Promise<string> {
 }
 
 // Branding transport: raw bytes straight to /api/branding/<slot> (no JSON body,
-// no presigned grant — the asset lives in the cafe's own database). apiSend
-// can't be reused here since it always JSON-encodes the payload.
+// no presigned grant, asset lives in the cafe's own DB) — apiSend always
+// JSON-encodes, so it can't be reused here.
 async function uploadBranding(slot: BrandingSlot, blob: Blob): Promise<string> {
   const res = await fetch(`/api/branding/${slot}`, {
     method: "PUT",
@@ -176,6 +178,7 @@ export function ImageUpload({
   alt = "Image",
   slot,
   aspect = "square",
+  emptyPreview,
 }: ImageUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -254,7 +257,7 @@ export function ImageUpload({
             unoptimized={Boolean(preview)}
           />
         ) : (
-          <ImagePlus className="h-6 w-6 text-muted-foreground" />
+          emptyPreview ?? <ImagePlus className="h-6 w-6 text-muted-foreground" />
         )}
         {uploading && (
           <div className="absolute inset-0 grid place-items-center bg-background/60">

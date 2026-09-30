@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   productVariationSchema,
   createProductSchema,
+  updateProductSchema,
   importProductRowSchema,
 } from "./product.schema";
 import { coerceProductRow } from "../product-import";
@@ -190,4 +191,50 @@ test("importProductRowSchema rejects a row with no category with path ['category
   if (!r.success) {
     assert.equal(r.error.issues.some((i) => i.path[0] === "category"), true);
   }
+});
+
+// ── icon (Menu redesign, 2026-09-30): create/update, omit-empty, sentinel ───
+
+test("createProductSchema: omitting `icon` entirely parses to undefined, not present — an item with no chosen icon stores no key at all", () => {
+  const r = createProductSchema.safeParse(BASE);
+  assert.equal(r.success, true);
+  assert.ok(r.success && !("icon" in r.data), "icon must be ABSENT from the parsed output when omitted");
+});
+
+test("createProductSchema: a valid catalogue key (e.g. 'coffee') is accepted", () => {
+  const r = createProductSchema.safeParse({ ...BASE, icon: "coffee" });
+  assert.equal(r.success, true);
+  assert.equal(r.success && r.data.icon, "coffee");
+});
+
+test("createProductSchema: an unknown icon key is rejected with the friendly message", () => {
+  const r = createProductSchema.safeParse({ ...BASE, icon: "not-a-real-icon" });
+  assert.equal(r.success, false);
+  if (!r.success) {
+    const issue = r.error.issues.find((i) => i.path[0] === "icon");
+    assert.ok(issue, "expected an issue on icon");
+    assert.equal(issue?.message, "Pick an icon from the list");
+  }
+});
+
+test("createProductSchema: icon does not accept null on CREATE — null is only a valid sentinel on the update shape", () => {
+  const r = createProductSchema.safeParse({ ...BASE, icon: null });
+  assert.equal(r.success, false);
+});
+
+test("updateProductSchema: icon is optional (a partial PUT that never mentions it leaves it absent)", () => {
+  const r = updateProductSchema.safeParse({ price: 130 });
+  assert.equal(r.success, true);
+  assert.ok(r.success && !("icon" in r.data), "icon must stay absent when the PUT body never mentions it");
+});
+
+test("updateProductSchema: icon:null parses through — the sentinel the route turns into an $unset ('Remove icon')", () => {
+  const r = updateProductSchema.safeParse({ icon: null });
+  assert.equal(r.success, true);
+  assert.equal(r.success && r.data.icon, null);
+});
+
+test("updateProductSchema: a valid catalogue key still parses on update, and an unknown key is still rejected", () => {
+  assert.equal(updateProductSchema.safeParse({ icon: "pizza" }).success, true);
+  assert.equal(updateProductSchema.safeParse({ icon: "not-a-real-icon" }).success, false);
 });

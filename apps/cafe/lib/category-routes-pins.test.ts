@@ -34,8 +34,11 @@ const PRODUCT_DOT = "Product" + ".";
 const UPDATE_MANY_CALL = PRODUCT_DOT + "updateMany";
 const CACHE_DEL_CATEGORIES = 'cache.del("categories")';
 const COUNT_DOCUMENTS_CATEGORY_ID = PRODUCT_DOT + "countDocuments({ categoryId";
+// Menu redesign (owner, 2026-09-30): the 409 copy now says "items", not
+// "products" -- the whole Menu screen's wording changed from "product" to
+// "item" (R21).
 const DELETE_GUARD_MESSAGE =
-  "This category still has ${count} products. Move them to another category first.";
+  "This category still has ${count} items. Move them to another category first.";
 
 test("PIN: PUT /api/categories/[id] runs no Product.updateMany cascade -- a rename touches nothing on the product side now that products link by categoryId, not a denormalized name", () => {
   const src = readStripped(CATEGORY_ID_ROUTE);
@@ -172,80 +175,8 @@ test("PIN: checkCategoryExists resolves null when the category exists and a plai
   );
 });
 
-// ══════════════════════════════════════════════════════════════════════════
-// C16 (arbiter-confirmed) — the categories page's delete/rename copy must
-// match the shipped rule (a hard 409 refusal), not the pre-DL-2 cascade.
-// ══════════════════════════════════════════════════════════════════════════
-
-const CATEGORIES_PAGE = "apps/cafe/app/(dashboard)/categories/page.tsx";
-
-test("PIN: the categories page's delete confirm copy states the shipped rule (no products left, move them first), not the old Uncategorized cascade", () => {
-  const src = readStripped(CATEGORIES_PAGE);
-
-  // Positive landmark: the delete confirm dialog itself must still exist.
-  assert.match(src, /title="Delete category\?"/, "the delete ConfirmDialog must still exist");
-
-  assert.ok(
-    !/moved to .{0,4}Uncategorized/i.test(src),
-    "the delete confirm copy must no longer say products are moved to Uncategorized",
-  );
-  assert.match(
-    src,
-    /category can only be deleted once it has no products/i,
-    "the delete confirm copy must state the shipped rule in plain English",
-  );
-});
-
-test("PIN: the categories page's rename copy says something true (products keep their link, the new name shows everywhere), not that renaming updates all products", () => {
-  const src = readStripped(CATEGORIES_PAGE);
-
-  // Positive landmark: the rename/add dialog's description branch must exist.
-  assert.match(src, /editing\s*\?\s*"/, "the rename/add DialogDescription's ternary must still exist");
-
-  assert.ok(
-    !/updates this category on all its products/i.test(src),
-    "the rename copy must no longer claim renaming updates this category on all its products -- products link by categoryId only, nothing to update",
-  );
-  assert.match(
-    src,
-    /keep their link.{0,40}new name shows everywhere/i,
-    "the rename copy must say products keep their link to the category, so the new name shows everywhere",
-  );
-});
-
-// ══════════════════════════════════════════════════════════════════════════
-// C17 (arbiter-confirmed) — the 409 guard counts ALL products (archived
-// included), but the archived ProductsTable view rendered no Edit control,
-// stranding the operator with products they were told to move but couldn't
-// reach. Fix: render Edit in the archived branch too.
-// ══════════════════════════════════════════════════════════════════════════
-
-const PRODUCTS_TABLE = "apps/cafe/components/products/ProductsTable.tsx";
-
-test("PIN: ProductsTable renders an Edit action in the ARCHIVED branch too, so an archived product (still counted by the category 409 guard) can be re-homed to another category", () => {
-  const src = readStripped(PRODUCTS_TABLE);
-
-  // Positive landmark: the archived branch's Restore action must still be
-  // there -- proves this is reading the real archived-branch JSX, not a
-  // vacuous match against an empty/gutted file.
-  assert.match(src, /onClick=\{\(\) => onRestore\(product\._id\)\}/, "the archived branch must still render its Restore action");
-
-  // Anchor on the actions column's own wrapper (unique to it -- the
-  // Availability column earlier in the file has its own, unrelated
-  // `{archived ? (...) : (...)}` ternary, which a bare indexOf("{archived ? (")
-  // would find FIRST and silently scope every assertion below to the wrong
-  // branch).
-  const actionsColumnStart = src.indexOf('className="flex justify-end gap-1"');
-  assert.ok(actionsColumnStart >= 0, "the actions column's wrapper div must still exist");
-  const archivedBranchStart = src.indexOf("{archived ? (", actionsColumnStart);
-  assert.ok(archivedBranchStart >= 0, "the products table must still branch on `archived` for its actions column");
-  const archivedBranchEnd = src.indexOf(") : (", archivedBranchStart);
-  assert.ok(archivedBranchEnd > archivedBranchStart, "the archived branch must be followed by the non-archived branch");
-  const archivedBranch = src.slice(archivedBranchStart, archivedBranchEnd);
-
-  assert.match(
-    archivedBranch,
-    /onClick=\{\(\) => onEdit\(product\)\}/,
-    "the archived branch must render an Edit action (onClick={() => onEdit(product)}) alongside Restore -- without it an archived product counted by the category 409 guard can never be moved to another category",
-  );
-});
+// C16 and C17's pins (categories page delete/rename copy; ProductsTable's
+// archived Edit action) were removed here as part of the Menu redesign
+// (2026-09-30) -- both source files are being rewritten by slices C and B
+// respectively, and their replacement pins live in those slices' own test
+// files (lib/menu-categories-paths.test.ts, lib/menu-items-paths.test.ts).

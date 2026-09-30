@@ -2,13 +2,14 @@ import { createCollectionRoute } from "@/lib/crud-route";
 import { PRODUCT_LIST, listSpecConfig } from "@/lib/masters";
 import { createProductSchema } from "@/schemas";
 import { checkCategoryExists } from "@/lib/category-admin";
+import { PUBLIC_MENU_CACHE_KEY } from "@/lib/public-menu";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/products — list non-archived products (cached, TTL.PRODUCTS), or the
 //   archived ones with `?archived=true` (uncached — a smaller, rarely-read
 //   management view).
-// POST /api/products — create a product (clears cache)
+// POST /api/products — create a product (admin-only; clears caches)
 //
 // The unfiltered list is described once, in PRODUCT_LIST (lib/masters.ts), which
 // GET /api/bootstrap serves the products part from too — `listSpecConfig`
@@ -16,7 +17,14 @@ export const dynamic = "force-dynamic";
 export const { GET, POST } = createCollectionRoute({
   ...listSpecConfig(PRODUCT_LIST),
   createSchema: createProductSchema,
-  entity: { singular: "product", plural: "products" },
+  // G17 (Menu redesign wording): crud-route's generated messages ("Item not
+  // found", "Failed to create item") now read "item", matching the renamed
+  // Items screen — never "product", which the redesign retired everywhere.
+  entity: { singular: "item", plural: "items" },
+  // Menu redesign (owner, 2026-09-30): only an admin may add an item.
+  writeGuard: "admin",
+  // R7 — a new item can join the public QR menu immediately.
+  invalidateKeys: [PUBLIC_MENU_CACHE_KEY],
   // `?archived=true` flips the active baseFilter to list soft-deleted products
   // (the later spread wins in crud-route) and bypasses the shared cache.
   listFilter: (sp) => {
