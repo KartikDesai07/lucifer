@@ -11,7 +11,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { apiGet, apiSend } from "@/lib/api-client";
+import { ApiError, apiGet, apiSend } from "@/lib/api-client";
 import { cafeDateString } from "@/lib/utils";
 import { STALE_TIMES, GC_TIMES, REFETCH_INTERVALS } from "@/lib/query";
 import { firstPageOnly, nextOrderCursor, onePageAtMost } from "@/lib/order-query";
@@ -19,6 +19,8 @@ import { classifyFailure, settledMessage } from "@/lib/pending-writes";
 import { TABLE_KEYS } from "@/hooks/use-tables";
 import { CUSTOMER_KEYS } from "@/hooks/use-customers";
 import { PRODUCT_KEYS } from "@/hooks/use-products";
+import { refreshMenuNow } from "@/lib/menu-refresh";
+import { MENU_REFUSAL_STATUS } from "@/lib/order-availability";
 import type {
   Order,
   OrderSummary,
@@ -176,6 +178,11 @@ const OPTIMISTIC_ORDER_ID = "optimistic";
 // "Couldn't confirm" notice (lib/pos-send.ts), never also as a toast.
 const toastsFailure = (err: Error) => classifyFailure(err) !== "uncertain";
 
+// The server ANSWERED that the menu no longer allows a line (Menu B2 — 409 from
+// lib/order-availability.ts). A dropped connection or a 5xx is not that.
+const isMenuRefusal = (err: Error) =>
+  err instanceof ApiError && err.status === MENU_REFUSAL_STATUS;
+
 // Build a transient optimistic order from the create payload so the orders list
 // (when mounted) reflects the new order instantly before the server responds.
 // Honors the payload's status/payment (a held tab is Pending/Unpaid, a one-shot
@@ -240,12 +247,15 @@ export function useCreateOrder() {
       ctx?.snapshot?.forEach(([key, data]) => qc.setQueryData(key, data));
       if (toastsFailure(err)) toast.error(err.message || "Order failed — please try again");
       // A rejected order write can mean the menu moved under this terminal: the
-      // product list is cached for 5 minutes, so a size the admin renamed or
-      // removed is still on screen and every retry fails the same way until that
-      // cache expires. Refetching products here makes the retry able to succeed
-      // NOW, which is the difference between a 5-second correction and a till
-      // stuck mid-rush.
-      qc.invalidateQueries({ queryKey: PRODUCT_KEYS.all });
+      // list on screen predates the change, so every retry fails the same way.
+      // A 409 is the server's own "the menu changed" answer (an item 86'd, a
+      // price or size changed): re-read products and categories now, bypassing
+      // the server's 20 s cache, so the cart notice can name the lines to fix.
+      // The refresh is NOT paired with the plain refetch below — that one is
+      // served from the cache and could repaint an older list over it.
+      // Any other error keeps the plain products refetch it always had.
+      if (isMenuRefusal(err)) void refreshMenuNow(qc).catch(() => undefined);
+      else qc.invalidateQueries({ queryKey: PRODUCT_KEYS.all });
     },
     onSettled: () => {
       // Reconcile after the write, even on rollback (design skill #5).
@@ -299,13 +309,9 @@ export function useAddOrderItems() {
     // No success toast — the POS's confirm says it once, with the round number.
     onError: (err: Error) => {
       if (toastsFailure(err)) toast.error(err.message || "Could not send to kitchen");
-      // A rejected order write can mean the menu moved under this terminal: the
-      // product list is cached for 5 minutes, so a size the admin renamed or
-      // removed is still on screen and every retry fails the same way until that
-      // cache expires. Refetching products here makes the retry able to succeed
-      // NOW, which is the difference between a 5-second correction and a till
-      // stuck mid-rush.
-      qc.invalidateQueries({ queryKey: PRODUCT_KEYS.all });
+      // Same menu-refresh rule as useCreateOrder's onError above.
+      if (isMenuRefusal(err)) void refreshMenuNow(qc).catch(() => undefined);
+      else qc.invalidateQueries({ queryKey: PRODUCT_KEYS.all });
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ORDER_KEYS.all });

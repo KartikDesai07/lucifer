@@ -18,6 +18,7 @@ import {
 import { CartMoreMenu } from "@/components/pos/CartMoreMenu";
 import { CartAppliedRows } from "@/components/pos/CartAppliedRows";
 import { WriteNoticePanel } from "@/components/pos/WriteNotice";
+import { CartUnavailableNotice, type CartMenuNoticeProps } from "@/components/pos/CartUnavailableNotice";
 import { SendDiscard } from "@/components/pos/SendDiscard";
 import type { WriteNotice } from "@/lib/pending-writes";
 import { POS_CART_CTA_CLASS, POS_CART_GST_BUTTON_CLASS, POS_CART_LIST_CLASS } from "@/lib/pos-layout";
@@ -103,6 +104,7 @@ export interface CartProps {
   sending?: boolean; // a Send to Kitchen is in flight — its button reads "Sending…"
   sendNotice?: WriteNotice | null; // an unanswered send: "Couldn't confirm" + Send again
   onDiscardSend?: () => void; // drop that unanswered send and the whole order (confirmed first)
+  menuNotice?: CartMenuNoticeProps; // unsent lines the menu can no longer sell as they stand (Menu B2)
   className?: string;
   // Rendered only by the mobile sheet — a way back to the menu that does not
   // fight the header's own Clear/Close controls.
@@ -161,6 +163,7 @@ export function Cart({
   sending = false,
   sendNotice = null,
   onDiscardSend,
+  menuNotice,
   className,
   onBack,
 }: CartProps) {
@@ -537,6 +540,7 @@ export function Cart({
           <span>{inr(total)}</span>
         </div>
 
+        <CartUnavailableNotice notice={menuNotice} disabled={isBusy} />
         <WriteNoticePanel notice={sendNotice} />
         <CartActions
           resuming={resuming}

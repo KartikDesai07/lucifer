@@ -100,7 +100,7 @@ test("PIN (F): both void slips (host print job and local print) carry the remova
 test("PIN (F): both order write routes load the flag and refuse bad removals after the variation check, before anything is written", () => {
   for (const rel of ["app/api/orders/route.ts", "app/api/orders/[id]/items/route.ts"]) {
     const src = stripComments(readSrc(rel));
-    assert.match(src, /\.select\("name variations modifiers modifiersPreselected"\)/, `${rel}: the product read carries the flag`);
+    assert.match(src, /\.select\("name variations modifiers modifiersPreselected price discount available isActive"\)/, `${rel}: the product read carries the flag`);
     const variations = src.indexOf("checkItemVariations(");
     const removals = src.indexOf("checkItemRemovedModifiers(");
     const refusal = src.indexOf("if (badRemovals) return failure(badRemovals, 400);");

@@ -12,7 +12,10 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
+import { QueryClient } from "@tanstack/react-query";
 import { stripComments } from "@/lib/source-pin-utils";
+import { CATEGORY_KEYS, commitCategories } from "@/hooks/use-categories";
+import type { Category } from "@/types";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel), "utf8");
@@ -113,8 +116,8 @@ test("PIN: useCreateCategory appends the created doc and commits it via commitCa
   assert.match(src, /export function useCreateCategory\(/, "useCreateCategory must be hand-written (exported as a function), not the factory's useCreate");
   assert.match(
     src,
-    /const prev = qc\.getQueryData<Category\[\]>\(CATEGORY_KEYS\.all\);\s*\n\s*commitCategories\(qc,\s*prev \? \[\.\.\.prev, created\] : \[created\]\);/,
-    "onSuccess must append the created doc to the current cached list and commit it via commitCategories",
+    /const prev = qc\.getQueryData<Category\[\]>\(CATEGORY_KEYS\.all\);\s*\n\s*void commitCategories\(qc,\s*prev \? \[\.\.\.prev, created\] : \[created\]\)\.catch\(\(\) => undefined\);/,
+    "onSuccess must append the created doc to the current cached list and commit it via commitCategories (a cancelled commit is caught, never an unhandled rejection)",
   );
 });
 
@@ -204,4 +207,47 @@ test("PIN: dragging and the arrows both pause while a save is pending", () => {
   assert.match(src, /disabled=\{saving\}/, "the CategoryRow must receive disabled={saving}");
   const rowSrc = readStripped(CATEGORY_ROW);
   assert.match(rowSrc, /useSortable\(\{\s*id:\s*category\._id,\s*disabled,\s*\}\)/, "useSortable must receive the disabled flag, pausing drag during a save");
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// RUNTIME (Menu B2 seam, s59): the bootstrap seeds the categories list with
+// the SERVER's clock as its dataUpdatedAt (lib/bootstrap.ts `at`,
+// lib/masters-seed.ts setQueryData updatedAt). On a device whose clock runs
+// behind, that stamp sits in the future, and fetchQuery with staleTime 0
+// alone serves the cache instead of running the queryFn (query-core
+// isStaleByTime) -- a reorder / new category would silently not land.
+// ══════════════════════════════════════════════════════════════════════════
+const CLOCK_SKEW_MS = 5 * 60 * 1000;
+const cat = (id: string, name: string, order: number): Category => ({
+  _id: id,
+  name,
+  order,
+  createdAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-09-30T00:00:00.000Z",
+});
+
+test("RUNTIME: commitCategories lands even when the cached list carries a FUTURE dataUpdatedAt (device clock behind the server)", async () => {
+  const qc = new QueryClient();
+  const seeded = [cat("c1", "Drinks", 0), cat("c2", "Snacks", 1)];
+  const reordered = [cat("c2", "Snacks", 0), cat("c1", "Drinks", 1)];
+  qc.setQueryData(CATEGORY_KEYS.all, seeded, { updatedAt: Date.now() + CLOCK_SKEW_MS });
+  await commitCategories(qc, reordered);
+  assert.deepEqual(qc.getQueryData(CATEGORY_KEYS.all), reordered);
+  qc.clear();
+});
+
+test("RUNTIME: commitCategories replaces a categories read already in flight instead of joining it (the read would land its older list)", async () => {
+  const qc = new QueryClient();
+  const before = [cat("c1", "Drinks", 0), cat("c2", "Snacks", 1)];
+  const saved = [cat("c2", "Snacks", 0), cat("c1", "Drinks", 1)];
+  qc.setQueryData(CATEGORY_KEYS.all, before);
+  let release: (list: Category[]) => void = () => undefined;
+  const inFlight = qc
+    .fetchQuery({ queryKey: CATEGORY_KEYS.all, queryFn: () => new Promise<Category[]>((r) => { release = r; }), staleTime: 0 })
+    .catch(() => undefined);
+  const commit = commitCategories(qc, saved);
+  release(before); // the older read answers while the commit is running
+  await Promise.all([commit, inFlight]);
+  assert.deepEqual(qc.getQueryData(CATEGORY_KEYS.all), saved);
+  qc.clear();
 });

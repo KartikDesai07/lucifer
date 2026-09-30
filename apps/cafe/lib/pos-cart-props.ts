@@ -1,5 +1,7 @@
 import type { CartProps } from "@/components/pos/Cart";
 import type { usePosTab } from "@/hooks/use-pos-tab";
+import { cartMenuActions, cartMenuIssues } from "@/lib/cart-availability";
+import type { Product } from "@/types";
 
 type Pos = ReturnType<typeof usePosTab>;
 
@@ -8,7 +10,12 @@ type Pos = ReturnType<typeof usePosTab>;
 // the desktop Cart and the MobileCartBar's sheet keep rendering the exact
 // SAME object, by construction, wherever it's built. Pure derivation, no
 // hooks of its own.
-export function buildCartProps(pos: Pos, onVoidItem: () => void): CartProps {
+//
+// `menu` = the products list on screen (undefined until it has loaded): the
+// cart notice for lines the menu can no longer sell is derived from it here,
+// so pos/page.tsx gains no lines (Menu B2).
+export function buildCartProps(pos: Pos, onVoidItem: () => void, menu?: Product[]): CartProps {
+  const menuIssues = cartMenuIssues(pos.cart, menu);
   return {
     items: pos.cart,
     subtotal: pos.subtotal,
@@ -66,6 +73,7 @@ export function buildCartProps(pos: Pos, onVoidItem: () => void): CartProps {
     sending: pos.sendingKitchen,
     sendNotice: pos.kitchenNotice,
     onDiscardSend: pos.discardSend,
+    menuNotice: menuIssues ? { ...menuIssues, ...cartMenuActions(menuIssues, pos) } : undefined,
   };
 }
 

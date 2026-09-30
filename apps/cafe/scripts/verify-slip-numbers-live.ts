@@ -23,6 +23,7 @@ import { Order } from "@/models/Order";
 import { Counter, nextSlipSequence, slipCounterKey } from "@/models/Counter";
 import { Customer } from "@/models/Customer";
 import { Table } from "@/models/Table";
+import { Product } from "@/models/Product";
 import { Settings } from "@/models/Settings";
 import { getSettings, invalidateSettingsCache } from "@/lib/settings";
 import { printedSlipNumber } from "@/lib/print";
@@ -250,6 +251,10 @@ async function main(): Promise<void> {
   await connectDB();
   await mongoose.connection.dropDatabase();
   await Promise.all([Order.createIndexes(), Customer.createIndexes(), Table.createIndexes()]);
+  // Menu B2: the order routes refuse a line whose product is missing or whose
+  // name/price differ from the menu — create() sends "Tea" at PRICE, so the
+  // product exists exactly so (no discount, no sizes), after the drop above.
+  await Product.create({ _id: PRODUCT, name: "Tea", categoryId: new mongoose.Types.ObjectId(), price: PRICE });
   await Settings.create({
     billShowNumber: true, billNumberStart: 1, kotShowNumber: true, kotNumberStart: 1,
     dinerAccountsEnabled: true, loyaltyEnabled: true, loyaltyMinBill: 0,

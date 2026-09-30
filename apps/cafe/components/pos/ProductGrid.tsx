@@ -10,12 +10,14 @@ import {
 } from "@/lib/pos-layout";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useSettings } from "@/hooks/use-settings";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ALL_CATEGORIES } from "@/components/pos/CategorySidebar";
 import { ProductCard } from "@/components/pos/ProductCard";
 import { useCategoryMap } from "@/hooks/use-category-map";
+import { useMenuFreshness } from "@/hooks/use-menu-freshness";
 import { categoryNameOf, sortProductsByCategoryOrder } from "@/lib/category-map";
 import { groupProductsByCategory } from "@/lib/pos-category-groups";
 import type { Product } from "@/types";
@@ -66,6 +68,9 @@ export function ProductGrid({
 }: ProductGridProps) {
   const [search, setSearch] = useState("");
   const gridClass = useGridClass();
+  // Menu B2 — re-reads the menu when New Order opens / is focused again; the
+  // grid stays up when a refresh fails (only the count slot below changes).
+  const { refreshFailed, retry } = useMenuFreshness();
   const { map: categoryMap, isLoading: categoriesLoading } = useCategoryMap();
   // Absent (a pre-existing Settings doc) reads as "normal" — same lean-doc
   // discipline as every other optional Settings field.
@@ -129,7 +134,21 @@ export function ProductGrid({
           aria-live="polite"
           className="shrink-0 text-xs tabular-nums text-muted-foreground"
         >
-          {filtered.length} {filtered.length === 1 ? "item" : "items"}
+          {refreshFailed ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-auto min-h-11 px-2 text-xs text-destructive md:min-h-8"
+              onClick={retry}
+            >
+              Couldn&apos;t refresh · Try again
+            </Button>
+          ) : (
+            <>
+              {filtered.length} {filtered.length === 1 ? "item" : "items"}
+            </>
+          )}
         </span>
       </div>
 

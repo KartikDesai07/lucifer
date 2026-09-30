@@ -148,7 +148,7 @@ export default function PosPage() {
   const onTableChange = useStableCallback(pos.setTable);
   const handleMoveTable = useCallback(() => setMoveTableOpen(true), []);
 
-  const cartProps = buildCartProps(pos, () => itemVoid.setOpen(true));
+  const cartProps = buildCartProps(pos, () => itemVoid.setOpen(true), products.data);
 
   return (
     <div className={POS_ROOT_CLASS}>
@@ -194,7 +194,7 @@ export default function PosPage() {
           )}
           {products.isLoading ? (
             <GridSkeleton />
-          ) : products.isError ? (
+          ) : products.isError && products.data === undefined ? (
             <p className="text-sm text-destructive">
               Failed to load products. Refresh to retry.
             </p>

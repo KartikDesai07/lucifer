@@ -29,8 +29,17 @@ export const CATEGORY_KEYS = {
 // through a trivial network-free queryFn makes it indistinguishable, to the
 // provider, from a normal background refetch. staleTime: 0 forces fetchQuery
 // to actually run that queryFn (and dispatch) every time, rather than
-// short-circuiting on an unexpired cache entry.
-function commitCategories(qc: QueryClient, list: Category[]): Promise<Category[]> {
+// short-circuiting on an unexpired cache entry -- but only once the entry is
+// marked invalidated: a list seeded by the bootstrap carries the SERVER's
+// clock as its dataUpdatedAt (lib/masters-seed.ts), which sits in the future
+// on a device whose clock runs behind, and fetchQuery would then serve the
+// cache and drop this commit (Menu B2 seam; same guard as lib/menu-refresh.ts).
+// refetchType "none": the invalidate itself starts no network read. The cancel
+// first: fetchQuery JOINS a read already in flight (query-core query.js fetch)
+// — New Order's uncached menu refresh is one — and would land ITS older list.
+export async function commitCategories(qc: QueryClient, list: Category[]): Promise<Category[]> {
+  await qc.cancelQueries({ queryKey: CATEGORY_KEYS.all, exact: true });
+  await qc.invalidateQueries({ queryKey: CATEGORY_KEYS.all, exact: true, refetchType: "none" });
   return qc.fetchQuery({
     queryKey: CATEGORY_KEYS.all,
     queryFn: () => Promise.resolve(list),
@@ -87,7 +96,9 @@ export function useCreateCategory() {
     onSuccess: (created) => {
       toast.success("Category added");
       const prev = qc.getQueryData<Category[]>(CATEGORY_KEYS.all);
-      commitCategories(qc, prev ? [...prev, created] : [created]);
+      // A concurrent cancel of the categories read can reject this commit; the
+      // read that cancelled it lands the live list (with this category) itself.
+      void commitCategories(qc, prev ? [...prev, created] : [created]).catch(() => undefined);
     },
     onError: (err: Error) => toast.error(err.message || "Could not add category"),
   });

@@ -20,6 +20,7 @@ import { nextSlipSequence } from "@/models/Counter";
 import { voidGuardFilter } from "@/lib/order-void";
 import { addItemsSchema } from "@/schemas";
 import { checkItemVariations, checkItemRemovedModifiers } from "@/lib/variations";
+import { orderLinesRefusal, MENU_REFUSAL_STATUS } from "@/lib/order-availability";
 import {
   chargesFromOrder,
   applyExtraCharges,
@@ -85,7 +86,7 @@ export async function POST(req: Request, { params }: Params) {
       // One indexed query, only when the payload could possibly be affected.
       productIds.length
         ? Product.find({ _id: { $in: productIds } })
-            .select("name variations modifiers modifiersPreselected")
+            .select("name variations modifiers modifiersPreselected price discount available isActive")
             .lean()
         : Promise.resolve([]),
       getSettings(),
@@ -122,6 +123,15 @@ export async function POST(req: Request, { params }: Params) {
     if (old.status !== "Pending" || old.payment !== "Unpaid") {
       return failure("Can only add items to an open tab", 409);
     }
+
+    // B2 - menu re-check on the NEW lines only (a fired line of the tab is
+    // never re-judged): refuse an item gone, out of stock, re-priced or
+    // renamed since the cashier picked it, before any number, claim or write.
+    // A twin of this send that already landed answers 200 first. It narrows,
+    // does not close, the race: a first try still in flight can land after
+    // this 409 (same class as the stamps 409 below).
+    const menuRefusal = orderLinesRefusal(products, parsed.data.items);
+    if (menuRefusal) return (key ? await roundReplayAfterMiss(id, key, parsed.data.items) : null) ?? failure(menuRefusal, MENU_REFUSAL_STATUS);
 
     const round = (old.kotRounds ?? 0) + 1;
     const newItems = parsed.data.items.map((it) => ({ ...it, kotRound: round }));

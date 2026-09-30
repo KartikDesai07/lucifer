@@ -29,7 +29,9 @@ export const { GET, POST } = createCollectionRoute({
   // (the later spread wins in crud-route) and bypasses the shared cache.
   listFilter: (sp) => {
     const archived = sp.get("archived") === "true";
-    return { query: archived ? { isActive: false } : {}, filtered: archived };
+    // B2 D8: ?fresh=1 is an uncached read of the same active list (New Order's
+    // post-409 / focus refresh must bypass the 20 s per-instance cache).
+    return { query: archived ? { isActive: false } : {}, filtered: archived || sp.get("fresh") === "1" };
   },
   // C12 — reject a categoryId that names no live Category (previously a 201
   // with a dangling link) before the create even runs.

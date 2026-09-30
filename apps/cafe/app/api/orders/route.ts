@@ -35,6 +35,7 @@ import { resolveTableCharge } from "@/lib/table-admin";
 import { withTableCharge, applyExtraCharges, splitChargeTotals } from "@pos/shared/order-charges";
 import { chargeWriteFields } from "@/lib/order-charges-write";
 import { checkItemVariations, checkItemRemovedModifiers } from "@/lib/variations";
+import { orderLinesRefusal, MENU_REFUSAL_STATUS } from "@/lib/order-availability";
 import {
   resolveRewardClaimAndLine,
   rewardSnapshotFields,
@@ -157,7 +158,7 @@ export async function POST(req: Request) {
       // One indexed query, only when the payload could possibly be affected.
       productIds.length
         ? Product.find({ _id: { $in: productIds } })
-            .select("name variations modifiers modifiersPreselected")
+            .select("name variations modifiers modifiersPreselected price discount available isActive")
             .lean()
         : Promise.resolve([]),
       // The table's configured extra charge, doubling as its existence check.
@@ -205,6 +206,18 @@ export async function POST(req: Request) {
     // Bound here, before lateReplay below can first run (it reads printCfg).
     const printCfg = printConfigOf(settings);
     const gstCfg = gstConfigOf(settings);
+    // F5 — an overlap twin with the same send key may have landed while this
+    // request was between its read wave and here: before refusing (or after
+    // losing the insert on the key), answer with the order the twin made.
+    const lateReplay = async () => (data.idemKey ? createReplayResponse(data.idemKey, data.items, printCfg.bill) : null);
+    // B2 - menu re-check: refuse a line whose item is gone, out of stock,
+    // re-priced or renamed since the cashier picked it, before any pricing,
+    // number, claim or write. lateReplay runs first so a twin of this send
+    // that already landed answers 200. It narrows, does not close, the race:
+    // a first try still in flight can land after this 409 (same class as the
+    // stamps and promo 409s below).
+    const menuRefusal = orderLinesRefusal(products, data.items);
+    if (menuRefusal) return (await lateReplay()) ?? failure(menuRefusal, MENU_REFUSAL_STATUS);
     // An OMITTED chargeAmount means "whatever this table charges" — safe to omit
     // because the server just re-derived it, and safer than echoing: the POS
     // caches tables for 30s, so an echo could re-apply a charge an admin has
@@ -530,10 +543,6 @@ export async function POST(req: Request) {
     const unclaimFor = async (oid: string): Promise<void> => {
       if (resolvedClaim) await returnRewardStamps(customerId!, oid, resolvedClaim.cost, rewardAssignment);
     };
-    // F5 — an overlap twin with the same send key may have landed while this
-    // request was between its read wave and here: before refusing (or after
-    // losing the insert on the key), answer with the order the twin made.
-    const lateReplay = async () => (data.idemKey ? createReplayResponse(data.idemKey, data.items, printCfg.bill) : null);
 
     // CB-5D part 2 — the promo fence, claimed per ORDER ID for exactly the
     // reason the stamp claim above is: the duplicate-key retry re-numbers the

@@ -297,7 +297,9 @@ async function legM7(): Promise<void> {
   const tab = await create({});
   const id = String(tab.body.data?._id);
   const key = randomUUID();
-  const sized = [line(pid, 1, { variation: "Large" })];
+  // B2: a sized line bills at the size's price (Large 150) under the product's
+  // own name — the plain `line()` defaults (100, "Line") would be refused.
+  const sized = [line(pid, 1, { variation: "Large", price: 150, name: "Latte" })];
   const landed = await round(id, sized, key);
   await Product.updateOne({ _id: pid }, { $set: { variations: [{ name: "Small", price: 90 }] } });
   const replay = await round(id, sized, key);
@@ -334,6 +336,12 @@ async function main(): Promise<void> {
     loyaltyRules: { v: LOYALTY_RULES_SCHEMA_VERSION, milestones: [{ at: REWARD_AT, kind: "flat", value: 20, qty: 1 }] },
   });
   invalidateSettingsCache();
+  // Menu B2: the order routes refuse (409) a NEW line whose product is missing,
+  // archived, out of stock, priced or named differently from the menu. Every
+  // line this leg sends is `line()` — name "Line", price 100 — so the two shared
+  // products carry exactly that name and base price (no discount, no sizes).
+  const categoryId = new mongoose.Types.ObjectId();
+  await Product.create([TEA, CAKE].map((_id) => ({ _id, name: "Line", categoryId, price: 100 })));
   console.log(`\nSlice B order idempotency — live against ${dbName}\n`);
   try {
     await leg1();
