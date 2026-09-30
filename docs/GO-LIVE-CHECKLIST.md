@@ -302,12 +302,13 @@ to a placeholder brand on paper.
 
 ---
 
-## §4 The floor plan (CAFE ADMIN, `Tables`)
+## §4 The floor plan (CAFE ADMIN, `Tables` → `Setup`)
 
 The starter `T-1 … T-8` are a placeholder. Replace them with the cafe's real
-tables before service.
+tables before service. The sidebar's **Tables** opens to **Floor** (the live
+view every role sees), **Setup** and **QR codes** (both admin only).
 
-- [ ] Add each real table: **Add table** → *Table name* + *Seats*.
+- [ ] Add each real table: `Tables` → `Setup` → **Add table** → *Table name* + *Seats*.
 - [ ] Name rules: 1–24 characters, must **start** with a letter or digit, then
       letters, digits, spaces, hyphens and underscores only. **ASCII only** —
       `Café 1` and Devanagari names are rejected (thermal printers cannot render
@@ -318,8 +319,8 @@ tables before service.
       be blank. 0–10000, whole rupees.
 - [ ] **Charge name** — required as soon as the amount is above 0, and printed
       on the customer's bill **exactly as typed**. There is no default: an
-      amount saved without a name **will not be charged at all**, and the Tables
-      page shows "Charge needs a name before it will apply" until it is fixed.
+      amount saved without a name **will not be charged at all**, and Tables →
+      Setup shows "Charge needs a name before it will apply" until it is fixed.
 - [ ] Tell them where the charge lands: **after GST, and outside the discount.**
       A percentage discount comes off the food only, and the charge itself is
       not taxed. Bill order on the slip is Subtotal → Discount → GST → *charge*
@@ -333,26 +334,37 @@ tables before service.
       `seed:tables` will not bring them back.
 - [ ] Tell them: **a table cannot be renamed or deleted while it is occupied,
       reserved, or holding an open tab** — the app answers "Free the table
-      before renaming or removing it". Free it from the Tables page first.
+      before renaming or removing it". Free it on Tables → Floor first.
 - [ ] Tell them: **renaming a table never rewrites past bills.** Old bills keep
       the old name, permanently and by design.
 
-### Arranging the floor plan (admin only)
+### Arranging the floor plan (admin only, `Tables` → `Setup`)
 
-- [ ] **Arrange** (top right of `Tables`) turns the tile grid into a list with
-      up/down arrows — the same interaction as the `Categories` screen. **Done**
-      switches back.
+- [ ] On `Setup`, drag a table by its handle, or use its up/down arrows — the
+      same interaction as the `Categories` screen.
 - [ ] Tell them what it is FOR: this order is also the order tables appear in
       **the POS table picker**, so the tables they run busiest belong at the top
       and staff stop hunting for them mid-rush.
-- [ ] Each arrow tap saves immediately (no Save button). If a save fails the row
-      snaps back and a toast says so — nothing is left half-arranged.
+- [ ] Each drag or arrow tap saves immediately (no Save button). If a save fails
+      the list is refreshed from the server and a toast says so — nothing is
+      left half-arranged. If another screen added, renamed or removed a table
+      meanwhile, the save is refused, the list refreshes, and they arrange again.
 - [ ] A table added later lands at the **end** of the arrangement, never at the
       top. Un-arranged floor plans stay in plain name order, so this is safe to
       never touch. Note that plain name order is alphabetical, so `T-10` sorts
       before `T-2` — arranging is how a cafe fixes that.
 - [ ] Arranging is admin-only, and it never touches occupancy: a table's status,
       its open tab, and its charge are all untouched by moving it up or down.
+
+### The live floor (ANY staff, `Tables` → `Floor`)
+
+- [ ] Tell them a tap on a table opens **New Order**: a free table starts a new
+      order on that table; a running table opens its open bill.
+- [ ] **Free table** always asks first, and is only offered when the table has
+      no open bill (a Pay Now sale leaves its table occupied until freed).
+- [ ] A running table shows **Long stay** once its bill has been open for the
+      minutes set in `Settings` → `Business details` → *Tables screen* (60 by
+      default).
 
 ### Moving a live tab to another table (ANY staff)
 
@@ -482,13 +494,13 @@ Two routes: type it in, or import a CSV. For more than ~30 items, import.
 - [ ] Add staff: *Name*, *Mobile* (≥10 digits), *Username* (≥3 characters,
       stored lowercase), *Role*, *Password* (≥8 characters).
 - [ ] Roles understood:
-      - **admin** — everything, including Staff, Reports, Settings and
-        Categories.
-      - **staff** — everything else: POS, orders, tables, customers,
-        reservations, events, **and the Items screen (Menu → Items)** — but on
-        Items, staff can only mark an item In stock / Out of stock. Staff,
-        Reports, Settings and Categories are blocked (they get redirected, not
-        just hidden).
+      - **admin** — everything, including Staff, Reports, Settings,
+        Categories, Tables Setup and Tables QR codes.
+      - **staff** — everything else: POS, orders, tables (the live floor only),
+        customers, reservations, events, **and the Items screen (Menu → Items)**
+        — but on Items, staff can only mark an item In stock / Out of stock.
+        Staff, Reports, Settings, Categories, Tables Setup and Tables QR codes are
+        blocked (they get redirected, not just hidden).
 - [ ] The client knows what a **staff** account can still do — and, just as
       important this session, what changed: **staff can now only mark an item
       In stock or Out of stock**. Prices, adding or editing an item,
@@ -1117,7 +1129,7 @@ the test fails — fix the code or this file, never just this file.
 | Username minimum | 3 | `createStaffSchema` |
 | Mobile minimum | 10 | `createStaffSchema` |
 | Customer mobile mask (staff, non-admin) | first 5 chars shown, rest `*` — `9876543210` → `98765*****` | `MOBILE_VISIBLE_PREFIX` / `MOBILE_MASK_CHAR` |
-| Admin-only screens | `/staff`, `/reports`, `/settings`, `/categories` | `ADMIN_ROUTES` |
+| Admin-only screens | `/staff`, `/reports`, `/settings`, `/categories`, `/tables/setup`, `/tables/qr` | `ADMIN_ROUTES` |
 | Slugs that never resolve to a cafe | www, app, api, admin, hub | `RESERVED_SUBDOMAINS` |
 | Dues receipt modes | Cash, Online | `DUES_RECEIPT_MODES` |
 | GST rate quick picks | 0, 5, 12, 18, 28 | `GST_RATES` |

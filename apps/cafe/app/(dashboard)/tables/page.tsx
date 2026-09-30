@@ -1,166 +1,199 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowUpDown, LayoutGrid, Plus, QrCode } from "lucide-react";
+import { LayoutGrid } from "lucide-react";
 
-import { useTables, useUpdateTable, useDeleteTable } from "@/hooks/use-tables";
 import { useAuth } from "@/hooks/use-auth";
-import type { TableStatus } from "@/lib/constants";
+import { useFloorActions } from "@/hooks/use-floor-actions";
+import { useNow } from "@/hooks/use-now";
+import { useOrders, OPEN_TABS_QUERY_OPTIONS } from "@/hooks/use-orders";
+import { useReservations } from "@/hooks/use-reservations";
+import { useSettings } from "@/hooks/use-settings";
+import { useTables } from "@/hooks/use-tables";
+import {
+  FLOOR_CLOCK_TICK_MS,
+  FLOOR_GRID_CLASS,
+  buildFloorTiles,
+  emptyFilterText,
+  filterTiles,
+  floorSummaryText,
+  statusCounts,
+  type FloorFilter,
+} from "@/lib/floor-tiles";
+import { OPEN_TABS_FILTERS } from "@/lib/table-pick";
+import { TABLES_SETUP_PATH } from "@/lib/table-sections";
+import { longStayMinutesOf } from "@/lib/table-status";
+import { cafeDateString } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PageHeader } from "@/components/shared/PageHeader";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
-import { TableCard } from "@/components/tables/TableCard";
-import { TableFormSheet } from "@/components/tables/TableFormSheet";
-import { TableArrangeList } from "@/components/tables/TableArrangeList";
-import type { Table } from "@/types";
+import { ErrorState } from "@/components/shared/ErrorState";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { MenuPageShell } from "@/components/menu/MenuPageShell";
+import { FloorDialogs } from "@/components/tables/FloorDialogs";
+import { FloorLiveIndicator } from "@/components/tables/FloorLiveIndicator";
+import { FloorStatusChips } from "@/components/tables/FloorStatusChips";
+import { FloorTile } from "@/components/tables/FloorTile";
 
-// Placeholder tiles shown while the floor plan loads. A cafe's real table count
-// is dynamic (CR1.1), so this is purely a loading shape, not an expected size.
+// Loading shape only: a cafe's real table count is dynamic.
 const SKELETON_TILES = 8;
+const SKELETON_TILE_CLASS = "h-28 w-full rounded-xl";
 
 export default function TablesPage() {
-  const { isAdmin } = useAuth();
+  return (
+    <MenuPageShell>
+      <FloorContent />
+    </MenuPageShell>
+  );
+}
+
+function FloorSkeleton() {
+  return (
+    <div className={FLOOR_GRID_CLASS} aria-hidden>
+      {Array.from({ length: SKELETON_TILES }).map((_, i) => (
+        <Skeleton key={i} className={SKELETON_TILE_CLASS} />
+      ))}
+    </div>
+  );
+}
+
+// The ONLY role-dependent part of the Floor: every tile action is a staff
+// action, so admins and staff see identical tiles. Waits for the session so
+// the copy never flips from the staff wording to the admin one.
+function FloorEmptyState() {
+  const { isAdmin, isLoading: authLoading } = useAuth();
+  if (authLoading) return <FloorSkeleton />;
+  return (
+    <EmptyState
+      icon={<LayoutGrid className="h-8 w-8" />}
+      title={isAdmin ? "No tables yet" : "Floor plan not set up"}
+      description={
+        isAdmin
+          ? "Add your tables on the Setup page to see them here."
+          : "Ask an admin to add tables on the Setup page."
+      }
+      action={
+        isAdmin ? (
+          <Button asChild className="mt-2">
+            <Link href={TABLES_SETUP_PATH} prefetch={false}>
+              Open Setup
+            </Link>
+          </Button>
+        ) : undefined
+      }
+    />
+  );
+}
+
+function FloorContent() {
   const tables = useTables();
-  const updateTable = useUpdateTable();
-  const deleteTable = useDeleteTable();
+  const openTabs = useOrders(OPEN_TABS_FILTERS, OPEN_TABS_QUERY_OPTIONS);
+  const reservations = useReservations({ date: cafeDateString() });
+  const settings = useSettings();
+  const now = useNow(FLOOR_CLOCK_TICK_MS);
+  const actions = useFloorActions(openTabs);
+  const [filter, setFilter] = useState<FloorFilter>("all");
 
-  const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState<Table | null>(null);
-  const [deleting, setDeleting] = useState<Table | null>(null);
-  // Admin-only: swaps the card grid for the up/down arrangement list (the
-  // Categories screen's interaction — owner ask). Off by default so staff
-  // (who never see the toggle at all) and admins land on the familiar grid.
-  const [arranging, setArranging] = useState(false);
+  const nowMs = now?.getTime() ?? null;
+  const longStayMinutes = longStayMinutesOf(settings.data);
+  // R17: the display keys on "the bills have loaded at least once", so a failed
+  // background poll keeps the amounts on screen. Only Free / Seat now re-read.
+  const tabsKnown = openTabs.data !== undefined;
+  const tabsFailed = openTabs.isError && !tabsKnown;
 
-  const setStatus = (table: Table, status: TableStatus) =>
-    updateTable.mutate({ tableNo: table.tableNo, data: { status } });
+  const tiles = useMemo(
+    () =>
+      buildFloorTiles({
+        tables: tables.data ?? [],
+        tabs: openTabs.data,
+        reservations: reservations.data,
+        nowMs,
+        longStayMinutes,
+      }),
+    [tables.data, openTabs.data, reservations.data, nowMs, longStayMinutes],
+  );
 
-  const openAdd = () => {
-    setEditing(null);
-    setFormOpen(true);
-  };
-  const openEdit = (table: Table) => {
-    setEditing(table);
-    setFormOpen(true);
-  };
-
-  const confirmDelete = async () => {
-    if (!deleting) return;
-    try {
-      await deleteTable.mutateAsync(deleting.tableNo);
-      setDeleting(null);
-    } catch {
-      // hook toasts on error (e.g. blocked while the table is occupied/reserved)
-    }
+  const retryAll = () => {
+    void tables.refetch();
+    void openTabs.refetch();
   };
 
-  const hasTables = (tables.data?.length ?? 0) > 0;
+  // A full error screen only when there is nothing to keep showing: with a
+  // list already loaded the grid stays and the indicator carries the failure.
+  if (tables.isError && tables.data === undefined) {
+    return (
+      <div className="space-y-4">
+        <PageHeader eyebrow="Tables" title="Floor" />
+        <ErrorState
+          title="Couldn't load the floor"
+          description="Check the internet connection, then try again."
+          onRetry={retryAll}
+          retryLabel="Try again"
+        />
+      </div>
+    );
+  }
+
+  const list = tables.data;
+  const visible = filterTiles(tiles, filter);
+  const stamps = [tables.dataUpdatedAt, openTabs.dataUpdatedAt].filter((at) => at > 0);
 
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Tables"
-        description={
-          arranging
-            ? "Arrange the floor plan — this is the same order the POS table picker shows, so put the busiest tables first."
-            : "Live table status. Updates automatically every 30 seconds."
-        }
-        actions={
-          <div className="flex gap-2">
-            {/* The ONLY route to /tables/qr — without this link the QR sheet is
-                unreachable and a pre-CR2 table can never get a token minted
-                (adversarial-review finding; a source pin asserts this href). */}
-            {isAdmin && (
-              <Button variant="outline" asChild>
-                <Link href="/tables/qr">
-                  <QrCode className="mr-2 h-4 w-4" /> QR codes
-                </Link>
-              </Button>
-            )}
-            {isAdmin && (
-              <Button variant="outline" onClick={() => setArranging((a) => !a)}>
-                <ArrowUpDown className="mr-2 h-4 w-4" />
-                {arranging ? "Done" : "Arrange"}
-              </Button>
-            )}
-            {isAdmin && (
-              <Button onClick={openAdd}>
-                <Plus className="mr-2 h-4 w-4" /> Add table
-              </Button>
-            )}
-          </div>
-        }
+        eyebrow="Tables"
+        title="Floor"
+        description={list ? floorSummaryText(tiles, tabsKnown) : "Loading tables…"}
       />
 
-      {tables.isLoading ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {Array.from({ length: SKELETON_TILES }).map((_, i) => (
-            <Skeleton key={i} className="h-40 w-full" />
-          ))}
+      {list !== undefined && list.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <FloorStatusChips counts={statusCounts(list)} value={filter} onChange={setFilter} />
+          <FloorLiveIndicator
+            updatedAtMs={stamps.length > 0 ? Math.min(...stamps) : 0}
+            nowMs={nowMs}
+            refreshFailed={tables.isError || openTabs.isError}
+            onRetry={retryAll}
+          />
         </div>
-      ) : tables.isError ? (
-        <p className="text-sm text-destructive">
-          Failed to load tables. Refresh to retry.
-        </p>
-      ) : !hasTables ? (
+      )}
+
+      {list === undefined ? (
+        <FloorSkeleton />
+      ) : list.length === 0 ? (
+        <FloorEmptyState />
+      ) : visible.length === 0 ? (
         <EmptyState
           icon={<LayoutGrid className="h-8 w-8" />}
-          title={isAdmin ? "No tables yet" : "Floor plan not set up"}
-          description={
-            isAdmin
-              ? "Add your first table to start tracking occupancy."
-              : "Ask an admin to set up the floor plan here."
-          }
+          title={filter === "all" ? "No tables" : emptyFilterText(filter)}
           action={
-            isAdmin ? (
-              <Button onClick={openAdd} className="mt-2">
-                <Plus className="mr-2 h-4 w-4" /> Add table
-              </Button>
-            ) : undefined
+            <Button type="button" variant="outline" className="mt-2" onClick={() => setFilter("all")}>
+              Show all tables
+            </Button>
           }
         />
-      ) : arranging && isAdmin ? (
-        // Arrange mode replaces the grid outright — editing/deleting stays on
-        // the cards, so this list is read-only besides the two arrows.
-        <TableArrangeList tables={tables.data ?? []} />
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {(tables.data ?? []).map((table) => (
-            <TableCard
-              key={table._id}
-              table={table}
-              isAdmin={isAdmin}
-              statusPending={updateTable.isPending}
-              onSetStatus={setStatus}
-              onEdit={openEdit}
-              onDelete={setDeleting}
+        <div className={FLOOR_GRID_CLASS}>
+          {visible.map((tile) => (
+            <FloorTile
+              key={tile.table._id}
+              tile={tile}
+              busy={actions.isBusy(tile.table.tableNo)}
+              tabsFailed={tabsFailed}
+              onTap={actions.tapPrimary}
+              onMenu={(t, action) => actions.pickMenu(t.table, action)}
             />
           ))}
         </div>
       )}
 
-      {isAdmin && (
-        <>
-          <TableFormSheet
-            open={formOpen}
-            onOpenChange={setFormOpen}
-            table={editing}
-          />
-
-          <ConfirmDialog
-            open={!!deleting}
-            onOpenChange={(o) => !o && setDeleting(null)}
-            title="Remove table?"
-            description={`"${deleting?.tableNo}" will be removed from the floor plan. Past orders keep this table's name and are not affected — free the table first if it's occupied or reserved.`}
-            confirmLabel="Remove"
-            isLoading={deleteTable.isPending}
-            onConfirm={confirmDelete}
-          />
-        </>
-      )}
+      <FloorDialogs
+        dialog={actions.dialog}
+        busy={actions.dialog !== null && actions.isBusy(actions.dialog.table.tableNo)}
+        onConfirm={actions.confirm}
+        onOpenChange={actions.onDialogOpenChange}
+      />
     </div>
   );
 }

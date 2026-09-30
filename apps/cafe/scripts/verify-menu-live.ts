@@ -365,7 +365,8 @@ async function legItemWording(): Promise<void> {
 
 async function legBootstrap(): Promise<void> {
   console.log("L7 — bootstrap version");
-  check("BOOTSTRAP_VERSION === 4", bootstrapContract.BOOTSTRAP_VERSION === 4);
+  // Menu B1 bumped to 4 (Product.icon); Tables B1 moved it on to 5 (Settings).
+  check("BOOTSTRAP_VERSION >= 4 (Menu B1 bump still in force)", bootstrapContract.BOOTSTRAP_VERSION >= 4);
 }
 
 async function main(): Promise<void> {

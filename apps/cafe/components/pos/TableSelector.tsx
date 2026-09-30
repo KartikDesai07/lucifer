@@ -5,6 +5,7 @@ import { LayoutGrid, Check } from "lucide-react";
 
 import { cn, inr } from "@/lib/utils";
 import { POS_HEADER_CHIP_ICON_CLASS, POS_DIALOG_LIST_CAP_CLASS } from "@/lib/pos-layout";
+import { tablePickAction } from "@/lib/table-pick";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -91,13 +92,14 @@ export function TableSelector({
         <div className={cn("grid grid-cols-4 gap-2 overflow-y-auto", POS_DIALOG_LIST_CAP_CLASS)}>
           {(tables ?? []).map((t) => {
             const isSelected = value === t.tableNo;
-            const tab = tabs?.find((o) => o.tableNo === t.tableNo);
+            const pick = tablePickAction(t, tabs);
+            const tab = pick.kind === "resume" ? pick.tab : undefined;
             // Rush friction: a red tile does nothing today. If it is holding a
             // tab we already know about, tapping it should be a shortcut to
             // that bill instead of a dead end — the operator can tell two red
             // tables apart by name+total without opening the Open-tabs list.
-            const resumable = t.status === "Occupied" && !!tab && !!onResume;
-            const disabled = !isSelected && !resumable && t.status !== "Available";
+            const resumable = !!tab && !!onResume;
+            const disabled = !isSelected && !resumable && pick.kind !== "select";
             return (
               <button
                 key={t._id}

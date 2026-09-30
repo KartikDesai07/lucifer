@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { OpenTabsButton } from "@/components/pos/OpenTabsButton";
 import { TableSelector } from "@/components/pos/TableSelector";
 import { CustomerSearch } from "@/components/pos/CustomerSearch";
+import { PosTableHandoff } from "@/components/pos/PosTableHandoff";
 import type { Customer, Order, Table } from "@/types";
 
 interface PosHeaderProps {
@@ -130,6 +131,8 @@ export const PosHeader = memo(function PosHeader({
           disabled={isBusy}
         />
       </div>
+      {/* Applies the table handed over from the Tables floor; renders nothing. */}
+      <PosTableHandoff resumedOrder={resumedOrder} onResume={onResumeTab} onSelect={onTableChange} />
     </div>
   );
 });

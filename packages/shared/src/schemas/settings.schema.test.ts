@@ -10,6 +10,9 @@ import {
   PRINT_NUMBER_START_MIN,
   PRINT_NUMBER_START_MAX,
   POS_LAYOUTS,
+  TABLE_LONG_STAY_MIN_MINUTES,
+  TABLE_LONG_STAY_MAX_MINUTES,
+  TABLE_LONG_STAY_DEFAULT_MINUTES,
 } from "../constants";
 import { PROMO_CODE_MAX } from "../public";
 import { DEFAULT_APPEARANCE, APPEARANCE_SCHEMA_VERSION } from "../appearance";
@@ -401,5 +404,39 @@ test("settingsSchema accepts every declared POS_LAYOUTS member and rejects an un
 
 test("updateSettingsSchema (the PUT partial) accepts a patch carrying only posLayout", () => {
   const r = updateSettingsSchema.safeParse({ posLayout: "byCategory" });
+  assert.equal(r.success, true);
+});
+
+// ── tableLongStayMinutes (Tables redesign, 2026-09-30) ──────────────────────
+
+test("settingsSchema accepts a payload with NO tableLongStayMinutes key — documents written before the field", () => {
+  const r = settingsSchema.safeParse(validPrintPayload());
+  assert.equal(r.success, true);
+});
+
+test("tableLongStayMinutes accepts whole minutes inside the range, including both ends and the default", () => {
+  for (const minutes of [TABLE_LONG_STAY_MIN_MINUTES, TABLE_LONG_STAY_DEFAULT_MINUTES, TABLE_LONG_STAY_MAX_MINUTES]) {
+    const r = settingsSchema.safeParse({ ...validPrintPayload(), tableLongStayMinutes: minutes });
+    assert.equal(r.success, true, `must accept ${minutes}`);
+  }
+});
+
+test("tableLongStayMinutes rejects out-of-range, fractional and string values", () => {
+  for (const bad of [TABLE_LONG_STAY_MIN_MINUTES - 1, TABLE_LONG_STAY_MAX_MINUTES + 1, 45.5, "60"]) {
+    const r = settingsSchema.safeParse({ ...validPrintPayload(), tableLongStayMinutes: bad });
+    assert.equal(r.success, false, `must reject ${String(bad)}`);
+  }
+});
+
+test("a cleared minutes box (NaN) gets the plain-English type message, not zod's default wording", () => {
+  const r = settingsSchema.safeParse({ ...validPrintPayload(), tableLongStayMinutes: Number.NaN });
+  assert.equal(r.success, false);
+  if (r.success) return;
+  const issue = r.error.issues.find((i) => i.path[0] === "tableLongStayMinutes");
+  assert.equal(issue?.message, "Enter the minutes as a whole number");
+});
+
+test("updateSettingsSchema (the PUT partial) accepts a patch carrying only tableLongStayMinutes", () => {
+  const r = updateSettingsSchema.safeParse({ tableLongStayMinutes: 45 });
   assert.equal(r.success, true);
 });

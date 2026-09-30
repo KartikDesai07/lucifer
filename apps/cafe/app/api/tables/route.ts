@@ -13,8 +13,13 @@ import {
 } from "@/lib/api-helpers";
 import { listTables, TABLE_LIST } from "@/lib/masters";
 import { createTableSchema, reorderTablesSchema } from "@/schemas";
-import { TABLE_DUPLICATE_ERROR, unknownTableMessage } from "@/lib/table-admin";
-import { reorderOps } from "@/lib/table-order";
+import { TABLE_DUPLICATE_ERROR } from "@/lib/table-admin";
+import {
+  TABLE_LIST_CHANGED_ERROR,
+  TABLES_FRESH_PARAM,
+  reorderOps,
+  sameTableSet,
+} from "@/lib/table-order";
 import { mintUniquePublicToken } from "@/lib/public-token";
 
 export const dynamic = "force-dynamic";
@@ -27,9 +32,14 @@ const CACHE_KEY = TABLE_LIST.cacheKey;
 // with live status (cached, TTL.TABLES). The query/sort/cache-key/TTL live in
 // TABLE_LIST (lib/masters.ts), which GET /api/bootstrap serves the tables part
 // from too, so this route and the bootstrap can never drift apart.
-export async function GET() {
+// ?fresh=1 (Setup's recovery read after a 409 or a failed save) drops THIS
+// instance's cached list first, so the read below hits the DB and re-primes it.
+// It sits after the auth check so an anonymous caller can never flush the cache.
+export async function GET(req: Request) {
   const authed = await requireAuth();
   if ("error" in authed) return authed.error;
+
+  if (new URL(req.url).searchParams.get(TABLES_FRESH_PARAM) === "1") cache.del(CACHE_KEY);
 
   try {
     return success(await listTables());
@@ -89,15 +99,15 @@ export async function PATCH(req: Request) {
 
   try {
     await connectDB();
-    const known = await Table.find({ tableNo: { $in: parsed.data.tableNos } })
-      .select("tableNo")
-      .lean();
-    // Every name must be a real table: a stale client list would otherwise
-    // silently drop positions, and an unknown name must not create anything.
-    if (known.length !== parsed.data.tableNos.length) {
-      const found = new Set(known.map((t) => t.tableNo));
-      const missing = parsed.data.tableNos.find((n) => !found.has(n));
-      return failure(unknownTableMessage(missing ?? ""), 400);
+    const current = await Table.find().select("tableNo").lean();
+    // The submitted list must be EXACTLY the current floor plan (the Categories
+    // rule): a stale list (a table added, renamed or removed on another screen)
+    // is refused whole, so nothing is half-arranged and an unknown name creates
+    // nothing. Accepted residual: two admins saving in the very same instant can
+    // both pass this check; the deterministic sort keeps the list valid and the
+    // next save renumbers it.
+    if (!sameTableSet(parsed.data.tableNos, current.map((t) => t.tableNo))) {
+      return failure(TABLE_LIST_CHANGED_ERROR, 409);
     }
     await Table.bulkWrite(reorderOps(parsed.data.tableNos));
     cache.del(CACHE_KEY);

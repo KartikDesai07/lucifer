@@ -6,6 +6,9 @@ import {
   PRINT_LOGO_SIZES,
   PRINT_NUMBER_START_MIN,
   POS_LAYOUTS,
+  TABLE_LONG_STAY_DEFAULT_MINUTES,
+  TABLE_LONG_STAY_MAX_MINUTES,
+  TABLE_LONG_STAY_MIN_MINUTES,
 } from "@/lib/constants";
 import { SELF_ORDER_MODES } from "@pos/shared/public";
 import { LOYALTY_REWARD_KINDS } from "@pos/shared/public-diner";
@@ -141,6 +144,16 @@ export const settingsSchema = new Schema<ISettings>(
     // arrangement. Defaults to "normal": an existing cafe's screen looks
     // exactly as it does today until an admin opts into "byCategory".
     posLayout: { type: String, enum: [...POS_LAYOUTS], default: "normal" },
+
+    // Tables redesign (2026-09-30) — minutes an open bill must be open before
+    // the Floor flags its table "Long stay". Carries a stored default like
+    // posLayout: every cafe has a threshold. Bounds mirror the shared Zod schema.
+    tableLongStayMinutes: {
+      type: Number,
+      min: TABLE_LONG_STAY_MIN_MINUTES,
+      max: TABLE_LONG_STAY_MAX_MINUTES,
+      default: TABLE_LONG_STAY_DEFAULT_MINUTES,
+    },
   },
   { timestamps: true },
 );

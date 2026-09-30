@@ -123,7 +123,7 @@ export function TableFormSheet({
       title={isEdit ? "Edit table" : "Add table"}
       description={
         isEdit
-          ? "Rename or re-seat this table."
+          ? "Change this table's name, seats or charge."
           : "Add a table to the floor plan."
       }
       submitLabel={isEdit ? "Save changes" : "Add table"}

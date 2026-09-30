@@ -8,6 +8,7 @@ import {
   LOYALTY_REWARD_KIND_DEFAULT,
   LOYALTY_REWARD_VALUE_DEFAULT,
 } from "@pos/shared/public-diner";
+import { TABLE_LONG_STAY_DEFAULT_MINUTES } from "@/lib/constants";
 import type { Settings } from "@/types";
 
 // The single `defaultValues` builder every settings section form seeds from
@@ -152,5 +153,9 @@ export function settingsFormDefaults(settings: Settings): SettingsInput {
     // UI batch 1 §H — same lean-doc hazard as selfOrderMode above: a
     // pre-existing Settings document carries no posLayout key at all.
     posLayout: settings.posLayout ?? "normal",
+
+    // Tables redesign — same lean-doc hazard: a pre-existing Settings document
+    // carries no tableLongStayMinutes key at all.
+    tableLongStayMinutes: settings.tableLongStayMinutes ?? TABLE_LONG_STAY_DEFAULT_MINUTES,
   };
 }

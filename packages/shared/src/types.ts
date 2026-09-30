@@ -432,6 +432,10 @@ export interface Settings {
   // such key. Absent means "normal" (models/Settings.ts's stored default).
   posLayout?: PosLayout;
 
+  // Tables redesign — minutes before "Long stay" shows on the live floor.
+  // Absent on documents written before the field (lean read) = the default.
+  tableLongStayMinutes?: number;
+
   createdAt: string;
   updatedAt: string;
 }

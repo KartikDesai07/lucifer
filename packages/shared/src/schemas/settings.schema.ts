@@ -7,6 +7,8 @@ import {
   PRINT_FONT_SIZES,
   PRINT_LOGO_SIZES,
   POS_LAYOUTS,
+  TABLE_LONG_STAY_MIN_MINUTES,
+  TABLE_LONG_STAY_MAX_MINUTES,
 } from "../constants";
 import { SELF_ORDER_MODES } from "../public";
 import {
@@ -168,6 +170,17 @@ export const settingsSchema = z.object({
   // input === output here so the settings form can type useForm<z.infer<...>>
   // directly.
   posLayout: z.enum(POS_LAYOUTS).optional(),
+
+  // Tables redesign (2026-09-30) — minutes before an occupied table's open bill
+  // shows "Long stay" on the live floor. OPTIONAL, no `.default()` (posLayout
+  // precedent): models/Settings.ts stores the default. The type message covers
+  // a cleared number box (NaN), which would otherwise toast zod's own wording.
+  tableLongStayMinutes: z
+    .number({ invalid_type_error: "Enter the minutes as a whole number" })
+    .int("Use whole minutes")
+    .min(TABLE_LONG_STAY_MIN_MINUTES, `At least ${TABLE_LONG_STAY_MIN_MINUTES} minutes`)
+    .max(TABLE_LONG_STAY_MAX_MINUTES, `At most ${TABLE_LONG_STAY_MAX_MINUTES} minutes`)
+    .optional(),
 });
 
 // PUT accepts any subset; the form sends the full object.

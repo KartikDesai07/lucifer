@@ -53,7 +53,7 @@ const ORDER_ROUTE = "apps/cafe/app/api/orders/[id]/route.ts";
 const KOT_RECEIPT = "apps/cafe/components/pos/KOTReceipt.tsx";
 const MOVE_TABLE_DIALOG = "apps/cafe/components/orders/MoveTableDialog.tsx";
 const TABLES_ROUTE = "apps/cafe/app/api/tables/route.ts";
-const TABLE_ARRANGE_LIST = "apps/cafe/components/tables/TableArrangeList.tsx";
+const TABLE_SETUP_LIST = "apps/cafe/components/tables/TableSetupList.tsx";
 const TABLE_MODEL = "apps/cafe/models/Table.ts";
 const ORDER_DETAIL_SHEET = "apps/cafe/components/orders/OrderDetailSheet.tsx";
 const POS_PAGE = "apps/cafe/app/(dashboard)/pos/page.tsx";
@@ -340,36 +340,45 @@ test("PIN: GET /api/tables sorts by displayOrder then tableNo, PATCH requires re
   );
 });
 
-// ── 8. TableArrangeList sends the whole list, not a pair ────────────────────
+// ── 8. TableSetupList sends the whole list, not a pair ──────────────────────
 
-test('PIN: TableArrangeList persists the whole reordered list via useReorderTables, not a pair of indices — a per-tap partial update could not express "where everything else ends up"', () => {
-  const src = stripComments(readSrc(TABLE_ARRANGE_LIST));
+// Tables redesign (2026-09-30): the swap-only TableArrangeList was replaced by
+// TableSetupList (the CategoryArrangeList shape, keyed by tableNo), whose one
+// `save` is reached from BOTH the arrows and the drag end — so the whole-list
+// rule is pinned on all three bodies.
+function bodyOf(src: string, header: string): string {
+  const start = src.indexOf(header);
+  assert.ok(start >= 0, `landmark: ${header} must exist`);
+  const braceOpen = src.indexOf("{", start);
+  return src.slice(braceOpen, matchingBraceEnd(src, braceOpen));
+}
 
-  const moveStart = src.indexOf("const move = (index: number, dir: -1 | 1) => {");
-  assert.ok(moveStart >= 0, "the move() handler must exist");
-  const braceOpen = src.indexOf("{", moveStart);
-  const braceClose = matchingBraceEnd(src, braceOpen);
-  const moveBody = src.slice(braceOpen, braceClose);
+test('PIN: TableSetupList persists the whole reordered list via useReorderTables, not a pair of indices — a per-tap partial update could not express "where everything else ends up"', () => {
+  const src = stripComments(readSrc(TABLE_SETUP_LIST));
 
-  // Mutation this catches: calling reorder.mutate with just the swapped pair
-  // (e.g. indices, or [tableNo, targetTableNo]) instead of the whole
-  // rebuilt array — the PATCH route's reorderTablesSchema and reorderOps both
-  // expect and require the FULL ordered list, not a delta.
+  // Mutation this catches: calling reorder.mutate with just a moved pair (or a
+  // delta) instead of the whole rebuilt array — the PATCH route's
+  // reorderTablesSchema and reorderOps both expect and require the FULL list.
   // (The mutate call also carries a per-call onError rollback — pinned
   // separately below — so this matches the argument, not the whole call.)
+  const saveBody = bodyOf(src, "const save = (next: string[]) => {");
   assert.match(
-    moveBody,
+    saveBody,
     /setOrder\(next\);\s*reorder\.mutate\(next[,)]/,
-    "move() must call reorder.mutate(next) with the whole locally-rebuilt array, right after setOrder(next)",
+    "save() must call reorder.mutate(next) with the whole array, right after setOrder(next)",
   );
-  // Mutation this catches: passing a pair/delta as the FIRST argument. `next` is
-  // built by copying `order` and swapping two entries, so pinning that
-  // construction is what proves the argument is the full list.
-  assert.match(
-    moveBody,
-    /const next = \[\.\.\.order\];\s*\[next\[index\], next\[target\]\] = \[next\[target\], next\[index\]\];/,
-    "next must be the whole current order with exactly two entries swapped",
-  );
+
+  // Mutation this catches: an arrow that builds a pair/delta of its own or
+  // skips save() — `moveId` returns the whole current order with two entries
+  // swapped, and save() is the only path that persists it.
+  const moveBody = bodyOf(src, "const move = (tableNo: string, delta: -1 | 1) => {");
+  assert.match(moveBody, /const next = moveId\(order, tableNo, delta\);/, "the arrows must build the whole next order with moveId");
+  assert.match(moveBody, /save\(next\);/, "the arrows must persist through save()");
+
+  // Mutation this catches: a drag end that reorders locally without saving
+  // (or saves a pair) — the drop would look done and never reach the server.
+  const dragBody = bodyOf(src, "const handleDragEnd = (event: DragEndEvent) => {");
+  assert.match(dragBody, /save\(arrayMove\(order, from, to\)\);/, "the drag end must persist the whole moved array through save()");
 });
 
 // ── 9. displayOrder carries no schema default ────────────────────────────────
@@ -504,11 +513,18 @@ test("PIN: the POS Move-table button is blocked while an order write is in fligh
   assert.match(posSrc, /isBusy=\{pos\.isBusy\}/, "pos/page.tsx must feed PosHeader the live isBusy flag");
 });
 
-test("PIN: TableArrangeList restores the previous order when a save fails — the re-seed effect cannot do it (a failed save leaves the server order unchanged, so its key never changes)", () => {
-  const src = stripComments(readSrc(TABLE_ARRANGE_LIST));
+test("PIN: TableSetupList rolls a failed save back to the LATEST server order — the re-seed effect cannot do it (a failed save leaves the server order unchanged, so its key never changes), and a pre-drag snapshot would overwrite the hook's fresh re-read", () => {
+  const src = stripComments(readSrc(TABLE_SETUP_LIST));
   assert.match(
     src,
-    /reorder\.mutate\(next, \{ onError: \(\) => setOrder\(previous\) \}\)/,
-    "the optimistic swap must be rolled back explicitly on failure",
+    /reorder\.mutate\(next, \{ onError: \(\) => setOrder\(latestServerIdsRef\.current\) \}\)/,
+    "the optimistic move must be rolled back explicitly on failure, to the latest confirmed order",
+  );
+  // The ref the rollback reads must be re-assigned from the live table list
+  // every render (a stale ref would roll back to the wrong order).
+  assert.match(
+    src,
+    /latestServerIdsRef\.current = tables\.map\(\(t\) => t\.tableNo\);/,
+    "latestServerIdsRef must be refreshed from tables every render",
   );
 });

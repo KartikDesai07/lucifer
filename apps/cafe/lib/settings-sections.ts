@@ -36,8 +36,19 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     description: "Name, logo, contact details and licence number shown on bills.",
     // posLayout (UI batch 1 §H) rendered here in BusinessDetailsFields — the
     // New Order screen's own arrangement is a business-identity choice, not a
-    // print or QR-ordering one.
-    fields: ["logo", "restaurantName", "tagline", "mobile", "address", "productLogo", "fssai", "posLayout"],
+    // print or QR-ordering one. tableLongStayMinutes (Tables redesign) is the
+    // Floor's long-stay threshold, rendered in the "Tables screen" card.
+    fields: [
+      "logo",
+      "restaurantName",
+      "tagline",
+      "mobile",
+      "address",
+      "productLogo",
+      "fssai",
+      "posLayout",
+      "tableLongStayMinutes",
+    ],
   },
   {
     slug: "taxes",

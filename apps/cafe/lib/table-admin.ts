@@ -46,16 +46,20 @@ export const FREE_TABLE_FILTER = {
 // today's plain-tableNo behavior — that omission is deliberate for callers
 // that genuinely have nothing to assert, not a license to skip it (a blind
 // free was the CR1-audit bug this guards against).
+//
+// The echo "" means "the card saw NO order": seeded tables carry no
+// currentOrderId at all and freed ones carry "", so it matches both (the same
+// pair as FREE_TABLE_FILTER). "" misses only a table that now points at a real
+// order. A real id is still matched verbatim.
 export function freeTableFilter(
   tableNo: string,
   expectedCurrentOrderId?: string,
 ): Record<string, unknown> {
-  return {
-    tableNo,
-    ...(expectedCurrentOrderId !== undefined
-      ? { currentOrderId: expectedCurrentOrderId }
-      : {}),
-  };
+  if (expectedCurrentOrderId === undefined) return { tableNo };
+  if (expectedCurrentOrderId === "") {
+    return { tableNo, currentOrderId: { $in: [null, ""] } };
+  }
+  return { tableNo, currentOrderId: expectedCurrentOrderId };
 }
 
 // Confirms a tableNo names an actual table on this cafe's floor plan. Returns

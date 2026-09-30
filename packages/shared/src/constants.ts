@@ -158,8 +158,24 @@ export type TableStatus = (typeof TABLE_STATUSES)[number];
 // Page route prefixes only an admin may open. Enforced in middleware
 // (auth.config.ts) and again client-side via <AdminGuard>. "/categories" joined
 // with the Menu redesign (owner, 2026-09-30: staff may only mark items in /
-// out of stock; categories are admin-only).
-export const ADMIN_ROUTES = ["/staff", "/reports", "/settings", "/categories"] as const;
+// out of stock; categories are admin-only). "/tables/setup" + "/tables/qr"
+// joined with the Tables redesign (owner, 2026-09-30: staff see only the live
+// floor at "/tables", which stays open to every role).
+export const ADMIN_ROUTES = [
+  "/staff",
+  "/reports",
+  "/settings",
+  "/categories",
+  "/tables/setup",
+  "/tables/qr",
+] as const;
+
+// Tables redesign (2026-09-30). An occupied table whose open bill is at least
+// this many minutes old shows a "Long stay" label on the live floor. Stored in
+// Settings (tableLongStayMinutes); absent = the default.
+export const TABLE_LONG_STAY_DEFAULT_MINUTES = 60;
+export const TABLE_LONG_STAY_MIN_MINUTES = 15;
+export const TABLE_LONG_STAY_MAX_MINUTES = 600;
 
 // Menu redesign (2026-09-30). Most items one bulk action may touch — the bulk
 // bar disables its actions above this and says so.

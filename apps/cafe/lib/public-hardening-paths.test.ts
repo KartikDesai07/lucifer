@@ -7,6 +7,7 @@ import path from "node:path";
 import { publicCartTotals, type PublicGstConfig } from "@pos/shared/public";
 import { computeOrderTotals, type GstConfig } from "@/lib/receipt";
 import { stripComments } from "@/lib/source-pin-utils";
+import { TABLES_QR_PATH, TABLE_SECTIONS } from "@/lib/table-sections";
 
 // CR2.1 adversarial-review regression pins. Every pin here corresponds to a
 // defect (or an unpinned load-bearing behaviour) the review of the public
@@ -28,7 +29,7 @@ const PUBLIC_TABLES_ROUTE = "apps/cafe/app/api/public/tables/route.ts";
 const MINT_ROUTE = "apps/cafe/app/api/tables/[tableNo]/token/route.ts";
 const QR_PAGE = "apps/cafe/app/(dashboard)/tables/qr/page.tsx";
 const QR_SHEET = "apps/cafe/components/tables/QrSheet.tsx";
-const TABLES_PAGE = "apps/cafe/app/(dashboard)/tables/page.tsx";
+const TABLES_SETUP_PAGE = "apps/cafe/app/(dashboard)/tables/setup/page.tsx";
 
 // ── 1. The menu route's .select() mirrors PublicProductSource exactly ────────
 
@@ -204,15 +205,21 @@ test("PIN: /tables/qr prints via react-to-print's isolated iframe, never window.
 
 // ── 6. The QR surface is reachable and the mint seam has a caller ─────────────
 
-test("PIN: the Tables page links to /tables/qr and QrSheet drives useMintTableToken — without both, no pre-CR2 table can EVER get a QR and the sheet is reachable only by typed URL", () => {
-  const tablesPage = stripComments(readSrc(TABLES_PAGE));
+test("PIN: the Setup page and the sidebar link to /tables/qr and QrSheet drives useMintTableToken — without both, no pre-CR2 table can EVER get a QR and the sheet is reachable only by typed URL", () => {
+  const setupPage = stripComments(readSrc(TABLES_SETUP_PAGE));
   const sheet = stripComments(readSrc(QR_SHEET));
 
   // Mutation this catches: the original review finding — useMintTableToken
   // shipped with ZERO call sites and no navigation reached /tables/qr, so
   // CR2.1's deliverable ("stickers go on the tables") was unattainable for
   // every existing table and a tampered sticker could never be revoked.
-  assert.match(tablesPage, /href="\/tables\/qr"/, "the Tables page must link to the QR sheet");
+  assert.equal(TABLES_QR_PATH, "/tables/qr", "the QR sheet lives at /tables/qr");
+  assert.match(setupPage, /href=\{TABLES_QR_PATH\}/, "the Setup page must link to the QR sheet");
+  // The sidebar's Tables drop-down is the other inbound link (admin only).
+  assert.ok(
+    TABLE_SECTIONS.some((s) => s.href === TABLES_QR_PATH && s.adminOnly === true),
+    "the sidebar's Tables sections must list the QR sheet, admin only",
+  );
   assert.match(sheet, /const mint = useMintTableToken\(\);/, "QrSheet must instantiate the mint hook");
   assert.match(sheet, /mint\.mutate\(table\.tableNo\)/, "a token-less table must offer first-mint");
   assert.match(sheet, /mint\.mutateAsync\(regenerating\.tableNo\)/, "a tokened table must offer regenerate");

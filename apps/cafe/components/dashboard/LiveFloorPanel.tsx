@@ -3,7 +3,7 @@
 import { Utensils } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import type { TableStatus } from "@/lib/constants";
+import { TABLE_STATUS_META } from "@/lib/table-status";
 import { DashCard } from "@/components/dashboard/DashCard";
 import type { Order, Table } from "@/types";
 
@@ -16,12 +16,6 @@ interface LiveFloorPanelProps {
   onSelectOrder: (order: Order) => void;
 }
 
-// Status colours are the product's table vocabulary (unchanged).
-const STATUS_STYLES: Record<TableStatus, { dot: string; ring: string }> = {
-  Available: { dot: "bg-green-500", ring: "border-green-200" },
-  Occupied: { dot: "bg-red-500", ring: "border-red-200" },
-  Reserved: { dot: "bg-amber-500", ring: "border-amber-200" },
-};
 const TILE_MIN_PX = 84;
 const TILE_PX = 64;
 const MIN_TILE_ROWS = 2;
@@ -54,7 +48,7 @@ export function LiveFloorPanel({ tables, orders, loading, isError, onRetry, onSe
     >
       <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${TILE_MIN_PX}px, 1fr))` }}>
         {tables.map((table) => {
-          const style = STATUS_STYLES[table.status];
+          const style = TABLE_STATUS_META[table.status];
           const order =
             table.status === "Occupied" && table.currentOrderId ? ordersById.get(table.currentOrderId) : undefined;
 
@@ -62,7 +56,7 @@ export function LiveFloorPanel({ tables, orders, loading, isError, onRetry, onSe
             <>
               <div className="flex items-center justify-between">
                 <span className="text-[13.5px] font-semibold text-brand-ink">{table.tableNo}</span>
-                <span className={cn("h-2.5 w-2.5 rounded-full", style.dot)} aria-hidden />
+                <span className={cn("h-2.5 w-2.5 rounded-full", style.dotClass)} aria-hidden />
               </div>
               <div className="mt-1 truncate text-[12px] text-brand-muted">
                 {table.status === "Occupied" && table.currentOrderId ? (
@@ -82,7 +76,7 @@ export function LiveFloorPanel({ tables, orders, loading, isError, onRetry, onSe
 
           const className = cn(
             "flex flex-col justify-center rounded-lg border bg-brand-slip px-2.5 py-2 text-left",
-            style.ring,
+            style.borderClass,
           );
 
           // Clickable only when we can resolve the order to open the sheet.

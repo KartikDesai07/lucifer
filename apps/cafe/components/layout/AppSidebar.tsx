@@ -37,6 +37,7 @@ import { SidebarBrand } from "@/components/layout/SidebarBrand";
 import { SidebarSettingsGroup } from "@/components/layout/SidebarSettingsGroup";
 import { SidebarReportsGroup } from "@/components/layout/SidebarReportsGroup";
 import { SidebarMenuGroup } from "@/components/layout/SidebarMenuGroup";
+import { SidebarTablesGroup } from "@/components/layout/SidebarTablesGroup";
 import {
   Sidebar,
   SidebarContent,
@@ -211,6 +212,13 @@ export function AppSidebar() {
             key={item.url} title={item.title} icon={item.icon} collapsed={collapsed} pathname={pathname}
             isAdmin={isAdmin} menuOpen={menuOpen} onMenuOpenChange={setMenuOpen} onNavigate={closeMobile}
             tooltip={brandTooltip(item.title)}
+          />
+        );
+      case "/tables":
+        return (
+          <SidebarTablesGroup
+            key={item.url} title={item.title} icon={item.icon} collapsed={collapsed} pathname={pathname}
+            isAdmin={isAdmin} onNavigate={closeMobile} tooltip={brandTooltip(item.title)}
           />
         );
     }

@@ -82,3 +82,10 @@ test("freeTableFilter: includes currentOrderId VERBATIM when an order is expecte
     currentOrderId: "ORD-A-20260811-001",
   });
 });
+
+test("freeTableFilter: the echo '' means 'expect no order' - it matches an ABSENT pointer and an empty one, never a real id", () => {
+  assert.deepEqual(freeTableFilter("T-1", ""), {
+    tableNo: "T-1",
+    currentOrderId: { $in: [null, ""] },
+  });
+});

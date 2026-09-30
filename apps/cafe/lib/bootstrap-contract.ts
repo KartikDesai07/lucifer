@@ -12,7 +12,10 @@ import type { Category, Product, Settings, Staff, Table } from "@/types";
 // show no icon on any item (missing key reads as "no icon", not wrong) until
 // the next bootstrap refresh lands, which is harmless enough on its own, but
 // the rule ("cached DTO shape change must bump blob version") is unconditional.
-export const BOOTSTRAP_VERSION = 4; // Product DTO changed (gained `icon`); v3 tab blobs are discarded
+// Tables redesign (2026-09-30): Settings gained `tableLongStayMinutes`. Readers
+// fall back to the default when it is missing, so a v4 blob is harmless — the
+// bump is rule-following (the rule above is unconditional), not a shape need.
+export const BOOTSTRAP_VERSION = 5; // Settings DTO gained `tableLongStayMinutes`; v4 tab blobs are discarded
 
 // Device storage key (the browser's persistent per-origin store — survives a
 // reload, a closed tab and a restart of the app shell; cleared on logout and

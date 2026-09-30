@@ -2,10 +2,10 @@
 
 import { brandFontVariables } from "@/lib/brand-fonts";
 
-// Paper & Ink wrapper for the Menu screens (Items + Categories) — the same
+// Paper & Ink wrapper for the Menu and Tables screens — the same
 // classes as the Reports layout (app/(dashboard)/reports/layout.tsx) so every
-// redesigned screen shares one page surface. No AdminGuard here: Items is open
-// to staff (stock only); the Categories page adds its own guard.
+// redesigned screen shares one page surface. No AdminGuard here: Items and the
+// Tables floor are open to staff; Categories, Setup and QR codes add their own.
 export function MenuPageShell({ children }: { children: React.ReactNode }) {
   return (
     <div className={`${brandFontVariables} -m-4 min-h-[calc(100svh-3.5rem)] bg-brand-paper p-4 font-brand-sans text-brand-ink md:-m-6 md:p-6`}>

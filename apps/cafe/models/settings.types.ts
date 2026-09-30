@@ -138,6 +138,10 @@ export interface ISettings extends Document {
   // not omit-empty, since every cafe genuinely has one of the two layouts.
   posLayout: PosLayout;
 
+  // Tables redesign — minutes before the Floor flags an open bill "Long stay".
+  // Stored default 60 (models/Settings.ts); a lean pre-existing doc may lack it.
+  tableLongStayMinutes: number;
+
   createdAt: Date;
   updatedAt: Date;
 }

@@ -4,7 +4,11 @@ import { Controller } from "react-hook-form";
 import type { Control, FieldErrors, UseFormRegister } from "react-hook-form";
 
 import type { SettingsInput } from "@/schemas";
-import { POS_LAYOUTS } from "@/lib/constants";
+import {
+  POS_LAYOUTS,
+  TABLE_LONG_STAY_MAX_MINUTES,
+  TABLE_LONG_STAY_MIN_MINUTES,
+} from "@/lib/constants";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -126,6 +130,32 @@ export function BusinessDetailsFields({
                   </SelectContent>
                 </Select>
               )}
+            />
+          </Field>
+        </CardContent>
+      </Card>
+
+      {/* Tables screen — long-stay threshold; the id is the Setup page's "Change" link target. */}
+      <Card id="tables-screen">
+        <CardHeader>
+          <CardTitle>Tables screen</CardTitle>
+          <CardDescription>
+            How the live floor on the Tables screen flags tables.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Field
+            label="Long stay alert (minutes)"
+            error={errors.tableLongStayMinutes?.message}
+            hint={`An occupied table shows a Long stay label once its bill has been open this long. ${TABLE_LONG_STAY_MIN_MINUTES} to ${TABLE_LONG_STAY_MAX_MINUTES} minutes.`}
+          >
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={TABLE_LONG_STAY_MIN_MINUTES}
+              max={TABLE_LONG_STAY_MAX_MINUTES}
+              step={1}
+              {...register("tableLongStayMinutes", { valueAsNumber: true })}
             />
           </Field>
         </CardContent>
