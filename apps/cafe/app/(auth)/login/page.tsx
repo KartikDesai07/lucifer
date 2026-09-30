@@ -103,7 +103,11 @@ export default function LoginPage() {
       intro={`Sign in to continue to ${APP_NAME}.`}
       footer="Forgot your password? Ask an admin to reset it."
     >
-      <form className="space-y-5" onSubmit={handleSubmit(onSubmit)} noValidate>
+      {/* method="post": a submit that lands before hydration (slow network,
+          quick typist) is a NATIVE form submit — without this the browser
+          GETs /login?username=…&password=… and the password lands in the
+          URL, the history and the request logs. */}
+      <form method="post" className="space-y-5" onSubmit={handleSubmit(onSubmit)} noValidate>
         <div className="space-y-2">
           <Label htmlFor="username" className={BRAND_LABEL_CLASS}>
             Username

@@ -785,3 +785,31 @@ test('PIN: /api/upload\'s grant schema and lib/r2.ts\'s presignProductImagePut b
     'presignProductImagePut must never fall back to the `in` operator on IMAGE_CONTENT_TYPES',
   );
 });
+
+// A submit that lands before hydration (slow network, quick typist) is a
+// NATIVE form submit. A <form> without a method defaults to GET, which puts
+// the typed username and password in the URL — and so in the browser history
+// and the request logs (seen in the polish-pass smoke, 2026-10-01).
+const loginFormProblems = (src: string): string[] => {
+  const tag = /<form\b[^>]*>/.exec(src);
+  if (!tag) return ["landmark: the login page must render a <form>"];
+  const problems: string[] = [];
+  if (!tag[0].includes("onSubmit={handleSubmit(onSubmit)}")) problems.push("landmark: the form must submit through handleSubmit(onSubmit)");
+  if (!/\bmethod="post"/.test(tag[0])) problems.push('the login <form> must declare method="post" — never a GET that carries credentials');
+  return problems;
+};
+
+test('PIN: the login form declares method="post" — a submit before hydration must never GET the credentials into the URL', () => {
+  const src = stripComments(readSrc(LOGIN_PAGE));
+  assert.deepEqual(loginFormProblems(src), []);
+  // Mutation proof, in memory only: each variant must be reported.
+  const mutations: ReadonlyArray<readonly [string, string]> = [
+    ["method removed", src.replace(' method="post"', "")],
+    ["method switched to get", src.replace('method="post"', 'method="get"')],
+    ["method renamed (methodx)", src.replace('method="post"', 'methodx="post"')],
+  ];
+  for (const [name, mutated] of mutations) {
+    assert.notEqual(mutated, src, `mutation "${name}" must change the source`);
+    assert.ok(loginFormProblems(mutated).length > 0, `mutation "${name}" must be caught`);
+  }
+});
