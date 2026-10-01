@@ -16,6 +16,7 @@ import {
 import { productImageUrl } from "@/lib/images";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 
 interface ImageUploadProps {
   value: string; // opaque image ref — "r2:<key>" or a legacy Cloudinary public_id ("" if none)
@@ -243,7 +244,7 @@ export function ImageUpload({
   };
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex flex-wrap items-center gap-3">
       <div className={cn(PREVIEW_BOX_CLASSNAMES[aspect], uploading && "opacity-70")}>
         {shownUrl ? (
           <Image
@@ -280,7 +281,7 @@ export function ImageUpload({
         <Button
           type="button"
           variant="outline"
-          size="sm"
+          className={BRAND_CONTROL_CLASS}
           disabled={disabled || uploading}
           onClick={() => inputRef.current?.click()}
         >
@@ -290,8 +291,7 @@ export function ImageUpload({
           <Button
             type="button"
             variant="ghost"
-            size="sm"
-            className="text-muted-foreground"
+            className={cn(BRAND_CONTROL_CLASS, "text-muted-foreground")}
             onClick={remove}
           >
             <X className="mr-1 h-3.5 w-3.5" /> Remove

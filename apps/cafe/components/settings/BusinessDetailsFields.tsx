@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/card";
 import { ImageUpload } from "@/components/shared/ImageUpload";
 import { Field } from "@/components/settings/SettingsFields";
+import { BRAND_CONTROL_CLASS, BRAND_PANEL_CLASS } from "@/components/brand/brand-classes";
 
 // Plain-English labels for the POS_LAYOUTS enum — never render the raw
 // camelCase value.
@@ -43,6 +44,10 @@ interface BusinessDetailsFieldsProps {
 // Business details — restaurant identity (incl. the FSSAI licence number,
 // folded in from the old GST card) and the product's own branding, split out
 // of the retired GeneralSettingsFields.tsx (CB-UI1 S3).
+//
+// Settings pass (2026-10-01): 40px fields, white panels, every label tied to
+// its input, and no autofocus (on a phone it opened the keyboard over the
+// logo as soon as the page loaded).
 export function BusinessDetailsFields({
   control,
   register,
@@ -51,11 +56,11 @@ export function BusinessDetailsFields({
   return (
     <>
       {/* Restaurant identity */}
-      <Card>
+      <Card className={BRAND_PANEL_CLASS}>
         <CardHeader>
           <CardTitle>Restaurant details</CardTitle>
           <CardDescription>
-            Shown at the top of every printed receipt.
+            Your restaurant&apos;s name and contact details, printed at the top of every bill.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -76,32 +81,33 @@ export function BusinessDetailsFields({
               )}
             />
           </Field>
-          <Field label="Restaurant name" error={errors.restaurantName?.message}>
-            <Input autoFocus {...register("restaurantName")} />
+          <Field label="Restaurant name" htmlFor="settings-restaurant-name" error={errors.restaurantName?.message}>
+            <Input id="settings-restaurant-name" className={BRAND_CONTROL_CLASS} {...register("restaurantName")} />
           </Field>
-          <Field label="Tagline" error={errors.tagline?.message}>
-            <Input {...register("tagline")} />
+          <Field label="Tagline" htmlFor="settings-tagline" error={errors.tagline?.message}>
+            <Input id="settings-tagline" className={BRAND_CONTROL_CLASS} {...register("tagline")} />
+          </Field>
+          <Field label="Address" htmlFor="settings-address" error={errors.address?.message}>
+            <Input id="settings-address" className={BRAND_CONTROL_CLASS} {...register("address")} />
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Contact mobile" error={errors.mobile?.message}>
-              <Input inputMode="tel" {...register("mobile")} />
+            <Field label="Contact mobile" htmlFor="settings-mobile" error={errors.mobile?.message}>
+              <Input id="settings-mobile" type="tel" inputMode="tel" className={BRAND_CONTROL_CLASS} {...register("mobile")} />
             </Field>
-            <Field label="Address" error={errors.address?.message}>
-              <Input {...register("address")} />
+            <Field
+              label="FSSAI licence number"
+              htmlFor="settings-fssai"
+              error={errors.fssai?.message}
+              hint="Printed on the bill when set."
+            >
+              <Input id="settings-fssai" className={BRAND_CONTROL_CLASS} {...register("fssai")} />
             </Field>
           </div>
-          <Field
-            label="FSSAI licence number"
-            error={errors.fssai?.message}
-            hint="Printed on the receipt when set."
-          >
-            <Input {...register("fssai")} />
-          </Field>
         </CardContent>
       </Card>
 
       {/* New Order screen layout — owner decision 2026-09-29 (UI batch 1 §H). */}
-      <Card>
+      <Card className={BRAND_PANEL_CLASS}>
         <CardHeader>
           <CardTitle>New order screen</CardTitle>
           <CardDescription>
@@ -110,7 +116,8 @@ export function BusinessDetailsFields({
         </CardHeader>
         <CardContent className="space-y-4">
           <Field
-            label="New order screen"
+            label="Layout"
+            htmlFor="settings-pos-layout"
             hint="By category shows each category's name above its items, in the order set on the Categories screen."
           >
             <Controller
@@ -118,7 +125,7 @@ export function BusinessDetailsFields({
               name="posLayout"
               render={({ field }) => (
                 <Select value={field.value ?? "normal"} onValueChange={field.onChange}>
-                  <SelectTrigger>
+                  <SelectTrigger id="settings-pos-layout" className={BRAND_CONTROL_CLASS}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -136,7 +143,7 @@ export function BusinessDetailsFields({
       </Card>
 
       {/* Tables screen — long-stay threshold; the id is the Setup page's "Change" link target. */}
-      <Card id="tables-screen">
+      <Card id="tables-screen" className={BRAND_PANEL_CLASS}>
         <CardHeader>
           <CardTitle>Tables screen</CardTitle>
           <CardDescription>
@@ -146,10 +153,13 @@ export function BusinessDetailsFields({
         <CardContent className="space-y-4">
           <Field
             label="Long stay alert (minutes)"
+            htmlFor="settings-long-stay"
             error={errors.tableLongStayMinutes?.message}
             hint={`An occupied table shows a Long stay label once its bill has been open this long. ${TABLE_LONG_STAY_MIN_MINUTES} to ${TABLE_LONG_STAY_MAX_MINUTES} minutes.`}
           >
             <Input
+              id="settings-long-stay"
+              className={BRAND_CONTROL_CLASS}
               type="number"
               inputMode="numeric"
               min={TABLE_LONG_STAY_MIN_MINUTES}
@@ -163,7 +173,7 @@ export function BusinessDetailsFields({
 
       {/* App branding — the PRODUCT's mark (tab icon, login screen), distinct
           from the restaurant's own logo above. Never printed on a bill. */}
-      <Card>
+      <Card className={BRAND_PANEL_CLASS}>
         <CardHeader>
           <CardTitle>App branding</CardTitle>
           <CardDescription>

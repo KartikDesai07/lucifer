@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 interface PageHeaderProps {
   title: string;
-  eyebrow?: string; // small muted line above the title, e.g. the section ("Menu")
+  eyebrow?: ReactNode; // small muted line above the title, e.g. the section ("Menu") or a back link
   description?: string;
   actions?: ReactNode;
   className?: string;

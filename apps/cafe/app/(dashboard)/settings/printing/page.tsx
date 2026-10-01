@@ -5,32 +5,20 @@
 // Chrome in kiosk-printing mode — the workaround from before the Windows
 // desktop app existed. That is gone; PrinterSetupCard is now the whole page:
 // name this PC as the print host, pick its printer, test print, and remove the
-// host if the PC is down. Server component: no hooks of its own.
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
-
+// host if the PC is down. Server component: no hooks of its own. Its header is
+// the shared settings one (the "‹ Settings" eyebrow), like every section page.
 import { AdminGuard } from "@/components/shared/AdminGuard";
-import { PageHeader } from "@/components/shared/PageHeader";
+import { SettingsPageHeader } from "@/components/settings/SettingsPageHeader";
 import { PrinterSetupCard } from "@/components/print/PrinterSetupCard";
-import { SETTINGS_BASE_PATH } from "@/lib/settings-sections";
 
 export default function PrinterSetupPage() {
   return (
     <AdminGuard>
       <div className="mx-auto w-full max-w-2xl space-y-6 pb-10">
-        <div className="space-y-1">
-          <Link
-            href={SETTINGS_BASE_PATH}
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            Settings
-          </Link>
-          <PageHeader
-            title="Printer setup"
-            description="Choose the PC that prints, pick its printer, and print a test slip."
-          />
-        </div>
+        <SettingsPageHeader
+          title="Printer setup"
+          description="Choose the PC that prints, pick its printer, and print a test slip."
+        />
         <PrinterSetupCard />
       </div>
     </AdminGuard>

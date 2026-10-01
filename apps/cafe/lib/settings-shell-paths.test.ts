@@ -70,10 +70,12 @@ test("PIN: app/(dashboard)/settings/layout.tsx imports AdminGuard and wraps {chi
     /import\s*\{\s*AdminGuard\s*\}\s*from\s*"@\/components\/shared\/AdminGuard"/,
     "settings/layout.tsx must import AdminGuard from @/components/shared/AdminGuard",
   );
+  // Settings pass (2026-10-01): the brand shell may sit between the guard and
+  // {children}; the guard stays OUTERMOST and still wraps every child.
   assert.match(
     src,
-    /<AdminGuard>\{children\}<\/AdminGuard>/,
-    "settings/layout.tsx must render <AdminGuard>{children}</AdminGuard> — a narrower wrap (e.g. wrapping only part of the tree, or a differently-named prop) would leave some settings route unguarded",
+    /<AdminGuard>\s*(?:<MenuPageShell>\s*\{children\}\s*<\/MenuPageShell>|\{children\})\s*<\/AdminGuard>/,
+    "settings/layout.tsx must render <AdminGuard>{children}</AdminGuard> (or <AdminGuard><MenuPageShell>{children}</MenuPageShell></AdminGuard>) — a narrower wrap (e.g. wrapping only part of the tree, or a differently-named prop) would leave some settings route unguarded",
   );
 });
 
@@ -205,7 +207,7 @@ test('PIN: SettingsSaveBar.tsx early-returns on !isDirty, both its buttons carry
 
   assert.match(
     src,
-    /<Button\s+type="submit"\s+disabled=\{isSaving\}>/,
+    /<Button\s+type="submit"\s+disabled=\{isSaving\}(?:\s+className=\{[A-Z_]+\})?\s*>/,
     'the Save button must be type="submit" (so the form\'s own onSubmit/handleSubmit fires) with disabled={isSaving}',
   );
 });
