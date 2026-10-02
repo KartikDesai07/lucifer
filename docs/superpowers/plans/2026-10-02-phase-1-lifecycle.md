@@ -4140,7 +4140,7 @@ Nothing below was taken from the Results section; each line was re-run or re-rea
 | Next build | success; `/api/print-jobs/lease`, `[id]/ack`, `[id]/confirm`, `[id]/retry` and `wake` listed; `rgb(var(--primary-rgb)/10%)` once, in `22b0ab1b93eaddb4.css` | same |
 | APKs (`GRADLE_USER_HOME='D:\gradle-home'`, x86_64 first) | `BUILD SUCCESSFUL` (1 m 25 s, 55 s); one ABI each; x86_64 7,407,761 B `fc4181e4…5f13d3`; arm64-v8a 7,276,038 B `9f89cd9a…0ff7`; armeabi-v7a 6,683,872 B `f3f62149…426cc` | byte-identical |
 | Secrets | `git log -p d5c323b~1..aeef4b1`: no env file, no `SEED_ADMIN_*` value, no secret or token. `e2e.env` appears only as a scratchpad path in Results. | — |
-| Emulator smoke | not re-run: the three APKs are byte-identical to the ones Phase 0 and Session 1A each checked on the emulator (items 1, 5 and 7) | — |
+| Emulator spot-check (AVD `Pixel_7_API_33`, WebView 109.0.5414.123, the rebuilt x86_64 APK) | item 1: the first start shows "Connect to your workspace"; item 5: `https://does-not-exist.example.com` shows "Could not open the POS" and "The app is trying again by itself.", the same PID (3157) at 15 s and 60 s; `adb logcat -b crash` empty. Screenshots in the gate's scratchpad. Item 7 not re-run (APK byte-identical). | items 1/5/7 pass |
 
 **Code read.** Every commit's diff, including the final-review fix `70a9106` and the docs commit `aeef4b1` (§7.10 matches the plan's block word for word).
 
