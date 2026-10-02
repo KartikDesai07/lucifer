@@ -7002,4 +7002,15 @@ Re-graded by effect on a cafe:
   - Test: a new `print-readback.test.ts` case, RED → GREEN.
   - Re-run: cafe 4046 tests, 4045 pass, 1 known fail; lint 0 errors; live legs 183/0.
 
-The owner's other answers (I2, R4, deploy, the main hotfix) are recorded for the 1B review gate in the next session's prompt.
+### Owner decisions after Session 1B (2026-10-03, for the 1B review gate; to be written into the spec there)
+
+1. **I2, decided.**
+   - While a printer is off or offline, make **no automatic attempts** at all. Every waiting slip shows in one clear panel with **Retry** and **Clear**, with a simple UI that is easy to understand and manage.
+   - When the printer is ready, a slip gets **at most 2 attempts**: the first, plus one labelled retry (REPRINT, or for a bill the cashier's DUPLICATE prompt). After that it is Failed and waits in the same panel.
+   - This replaces spec §7.2 / §7.8's `attempts ≥ 8` and `uncertainAttempts ≥ 3`. The gate decides the exact counting: refusals while offline must not burn attempts, and the agent must not lease while its printer is known to be disconnected.
+2. **R4 and load.** What is live today works, so it must stay that solid. No heavy server load and no continuously running processes. R4 (the auto-accept's job) comes back in 1C only with a job-aware host lane and no added load; otherwise the live lane stays as it is.
+3. **The table label:** fixed in `25c5e95` (UI-only; paper was always right).
+4. **Nothing is deployed until every phase is done.**
+   - Everything is built and verified on the owner's PC (local POS, emulator, fake printer), then deployed to all live clients together.
+   - Spec §17.3 item 5 (a measured scratch deployment) therefore becomes a local measurement: request counts per slip and per minute, plus timed handlers, extrapolated to the busy day.
+5. **The `7edf7aa` hotfix to `main` is approved** for the next session. It goes on a hotfix branch from `origin/main`, gets the full mobile checks, both APKs and an emulator check, and is then pushed to `main` with the token. Nothing that works today may break.
