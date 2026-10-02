@@ -384,6 +384,19 @@ any unresolved ──dismiss (staff, order cancelled, host cleared)──► dis
 - **On the server:** a late ack is accepted if the job has not been leased again since that epoch, i.e. it is still `leased` with that epoch, or it is `queued` or `needs-confirm` after expiring from that epoch. The job is marked `printed` and the log records `late-ack`.
 - **If the job was leased again:** the ack is logged and otherwise ignored. The new attempt carries REPRINT, or for a bill it is `needs-confirm`.
 
+### 7.10 Phase 1 decisions (implementation plan, 2026-10-02)
+
+The Phase 1 plan ([2026-10-02-phase-1-lifecycle.md](../plans/2026-10-02-phase-1-lifecycle.md)) makes these choices where this spec left room:
+
+- **Phase 2 items.** `printerIds` / `jobIds` on lease, and the `printerId` field and index, arrive with printers in Phase 2. In simple mode a device's line holds only jobs targeted at it, so the lease call itself is "lease mine now".
+- **No `{status, nextAttemptAt, createdAt, _id}` index.** No Phase 1 query uses it.
+- **`myRecentJobs` rides the 20 s pulse, not the wake.** Only agents poll wake; Active CPU is the tightest limit.
+- **A `"retried"` log event** covers Print again and Print now.
+- **The cashier's "print again" resets the counters and sets `approvedAt`.** The copy is neither parked as stale nor failed by the uncertain limit it came from.
+- **A spent daily wake share stops the agent's polling** until the next cafe-day. Leasing then rides realtime nudges and the pulse, so the shared cap truly bounds the cafe's total.
+- **Dismiss covers `queued`, `needs-confirm` and `failed`, never `leased`.**
+- **With a host, the sweep retargets every queued job to the current host** (rows from before Phase 1, and rows from before a re-designation).
+
 ## 8. Routing (Phase 2)
 
 Routing is a pure function, `routeJobs(event, catalog, printers, devices)`, with unit tests. It returns `{ printerId, payload, copyIndex, jobKey }[]`.

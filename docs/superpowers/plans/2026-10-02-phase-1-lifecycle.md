@@ -3968,4 +3968,176 @@ Each session below lists its tasks, the interfaces it must produce, the tests th
 
 ## Session 1A Results (filled in by the implementer)
 
-_Not started._
+Executed on 2026-10-02 on `feat/printing-reliability` (inline, superpowers:executing-plans, TDD per task). Not pushed, not merged. `<scratchpad>` below is this session's scratchpad, `C:\Users\KARTIK~1.DES\AppData\Local\Temp\claude\d--kd-lucifer\794cc608-45a8-4769-bcb3-fd3c1910dfef\scratchpad`.
+
+### Commits (cf068e7..HEAD)
+
+| Task | Commit | Subject |
+|---|---|---|
+| 0 | `d5c323b` | test(print): pin the USB flag resets, the PostCSS order and the one solid tint; record F0.8 as built |
+| 1 | `d3537e8` | feat(print): the shared print-job lifecycle … as pure plans |
+| 2 | `87945f8` | feat(print): agent wire contract, the shared wake cadence and cap, and the free-tier budget test |
+| 3 | `3c629d7` | feat(print): PrintJob lifecycle fields (omit-empty) and the PrintDevice heartbeat model |
+| 4 | `eb74fe7` | feat(print): lease the head of a device's line and acknowledge attempts with one epoch-fenced CAS |
+| 5 | `e0cbe29` | feat(print): device heartbeat, the cashier and Print again decisions, and the 60 s sweep |
+| 6 | `93edb68` | feat(print): lease, ack, confirm and retry routes for the print-job lifecycle |
+| 7 | `1159d35` | feat(print): enqueued jobs join the lifecycle …; the wake gains a heartbeat POST |
+| 8 | `b9f3e1a` | test(print): live legs for the lifecycle … |
+| 9 | `df79930` | test(print): a dependency-free fake ESC/POS LAN printer … |
+| Final review | `70a9106` | fix(print): clearing the host also dismisses parked and failed slips; the heartbeat awaits its unique index |
+| 10 | this commit | docs(print): Phase 1 Session 1A results; record the Phase 1 decisions in the spec |
+
+Every "Create" block and "Modify" anchor was applied by a scratchpad script that copies the plan's fenced blocks verbatim. Each anchor matched exactly once. The fresh final reviewer independently diffed all 20 created files against the plan blocks and found them byte-identical; the exceptions are `print-lifecycle-paths.test.ts`, which later tasks append to by design, and the review fixes below.
+
+### Per-task RED → GREEN (every Expected line compared)
+
+| Task | RED (as the plan said) | GREEN |
+|---|---|---|
+| 0 | n/a: the pins cover existing code. The new mutation rows prove the needles can fail | mobile `mobile-paths.test.ts` 37/37; cafe `css-compat.test.ts` 7/7 |
+| 1 | `Cannot find module …/print-lifecycle` | `print-lifecycle` 23/23 + `print-job` → 52/52; shared tsc 0 |
+| 2 | `Cannot find module …/print-agent-wire` | `print-budget` 5/5; shared `npm test` 625/625; tsc 0 |
+| 3 | `Cannot find module '../models/PrintDevice'` | `print-job-model` 24/24 (18 old + 6 new); cafe tsc 0 |
+| 4 | `Cannot find module './print-lease'` | `print-lease` 4/4 + `self-order-alert-paths` → 14/14; tsc 0; eslint 0 |
+| 5 | pin 1 passed; pins 2–5 ENOENT for the three libs | `print-lifecycle-paths` 5/5 + `self-order-alert-paths` → 15/15; tsc 0; eslint 0 |
+| 6 | `Cannot find module '@/lib/print-lifecycle-schemas'` | `print-lifecycle-paths` + `realtime-paths` → 55/55; tsc 0; eslint 0 |
+| 7 | the four new pins failed; the 9 earlier pins passed | 7 print suites → 237/237; tsc 0; lint 0 errors + the 2 old warnings |
+| 8 | the legs are the DB spec | `verify:print:live` → `157 passed, 0 failed`; tsc 0; eslint 0 |
+| 9 | `Cannot find module …/scripts/fake-escpos-printer.mjs` | `test:print-tools` 7/7 |
+
+### Task 10 Step 1: every suite (final HEAD, after the review fixes)
+
+| Suite | Command | Result |
+|---|---|---|
+| shared | `npm test`; `npx tsc --noEmit -p .` | 625/625; tsc 0 |
+| cafe | `npm test` | **4003 tests, 4002 pass, 1 fail**. The fail is the known `go-live-dl` ENOENT (`.claude/plan/v2/_research/cb-dl2-decisions.md` missing on this PC). Before the review fixes it was exactly the plan's 4001 / 4000 / 1. The +2 are the two review-fix pins. |
+| cafe | `npx tsc --noEmit`; `npm run lint` | tsc 0; 0 errors, the 2 old warnings in `lib/masters-blob.test.ts` |
+| mobile | `npx tsc --noEmit`; `npm run lint`; `npm test`; `npm run test:app` | tsc 0; lint 0; 114/114; Jest 3/3 |
+| desktop | `npm test` | 191/191 |
+| print tools | `npm run test:print-tools` | 7/7 |
+| live legs | `MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_print_host npm run verify:print:live` | **`161 passed, 0 failed`**: the plan's 157, plus 4 checks added to leg (w) by review fix I1. It was exactly `157 passed, 0 failed` at Task 8 and at Step 1 before the fix. |
+
+### Changed existing pins (each follows a deliberate change in this plan)
+
+1. **`apps/mobile/src/mobile-paths.test.ts` pin 16 / pin 16 mutation** (Task 0): adds the `usbWaitingForeground = false` reset check and two mutation rows. This only adds coverage.
+2. **`packages/shared/src/print-job.test.ts` dismiss-reason pin** (Task 1): renamed to "six values", and `"cashier"` was appended. It follows the new dismiss reason.
+3. **`apps/cafe/lib/self-order-alert-paths.test.ts` e2** (Tasks 4 and 5): the PrintJob writer allow-list gains `print-lease.ts`, then `print-sweep.ts`, with the CAS rationale in the comment.
+4. **`apps/cafe/lib/print-wake.test.ts`**, the wake route pin (Task 7): renamed, and its banned-needle check is sliced to the GET handler body. The `force-dynamic` landmark now reads the whole file. The GET must stay read-only, and the new POST writes.
+5. **`apps/cafe/lib/print-queue-fixes.test.ts`**, the `prunePrintJobs` filter #1 pin (Task 7): title and assertion follow the move from `status:"queued"` to `{$in:[...PRINT_JOB_UNRESOLVED_STATUSES]}`. The reviewer's minor M9 notes that the new rationale text is inaccurate; the pin's shape is right.
+6. **`apps/cafe/scripts/print-host-live/lifecycle-actions.ts` leg (w)** (review fix I1, not in the plan): 4 checks appended. Clearing the host dismisses a `needs-confirm` bill, a `failed` job and a `queued` job, never a `leased` one, and returns 3.
+
+No other existing pin failed at any step. Every `print-queue.test.ts` dismiss pin still passes untouched, including the bulk-dismiss `claimedAt` guard pin.
+
+### Step 2: Next production build
+
+`npm run build`: success, both at Task 10 and again at the final HEAD after the review fixes. The route list includes `/api/print-jobs/lease`, `/api/print-jobs/[id]/ack`, `/api/print-jobs/[id]/confirm` and `/api/print-jobs/[id]/retry`, plus `/api/print-jobs/wake`. `rgb(var(--primary-rgb)/10%)`: 1 in `.next/static/css/22b0ab1b93eaddb4.css`, 0 in the other three CSS files.
+
+### Step 3: APKs (x86_64 first, then ARM; `GRADLE_USER_HOME='D:\gradle-home'`)
+
+Both builds reported `BUILD SUCCESSFUL` (1 m 42 s and 53 s). Each APK holds only its own ABI. **All three are byte-identical to Phase 0's** (Session 1A touches no app code).
+
+| APK | Path | Size | SHA-256 |
+|---|---|---|---|
+| Emulator only (x86_64) | `<scratchpad>/pos-emulator-x86_64-release.apk` | 7,407,761 B | `fc4181e4f20799576277c7be312316d34d46db23b286bad6b13fec1cad5f13d3` |
+| Client, arm64-v8a | `apps/mobile/android/app/build/outputs/apk/release/app-arm64-v8a-release.apk` | 7,276,038 B | `9f89cd9a172b2ab8d5b72872bca947c44ae3c7c74c3a33dfc118e9c00e180ff7` |
+| Client, armeabi-v7a | `apps/mobile/android/app/build/outputs/apk/release/app-armeabi-v7a-release.apk` | 6,683,872 B | `f3f6214982c9122dbc7c28f415d7a478a8aef392b834bf8213cb909c73f426cc` |
+
+### Step 4: emulator start-up smoke (AVD `Pixel_7_API_33`, WebView 109, `-memory 4096 -no-snapshot -no-boot-anim`, booted in about 30 s)
+
+Screenshots are in `<scratchpad>/shots/`. `adb logcat -b crash` stayed empty for the whole session.
+
+1. First start shows the address screen ("Connect to your workspace"): `1a-01-first-start.png`. **Pass.**
+5. `https://does-not-exist.example.com` shows "Could not open the POS", "The app is trying again by itself.", Try again and Change address. The PID stayed 3630 at 15, 30, 45 and 60 s: `1a-02-bad-address.png`, `1a-03-bad-address-60s.png`. **Pass.**
+7. A never-answering server on `127.0.0.1:8097` (a scratchpad Node script; the port was checked free first), opened as `http://10.0.2.2:8097`. "Getting your workspace ready…", then after 12 s "Taking longer than usual. Check your connection." with Try again. Three taps each went back to "Getting your workspace ready…", with the same PID and no crash: `1a-04-cover-slow.png`, `1a-05-cover-after-taps.png`. **Pass.**
+
+### Step 5: E2E harness bring-up (local POS + emulator app + fake printer). Works end to end.
+
+1. Ports 3100 and 9100 were free.
+2. `<scratchpad>/e2e.env` (database `pos_scratch_e2e_1a`) was written by a scratchpad Python script using `secrets`, so the random values never appear in a command or log (see deviation 4). It is never printed and never committed.
+3. `scripts/seed-admin.ts` → "Admin account created." (user `e2eadmin`).
+4. `next start -p 3100` from the Step 2 build, with the env file: Ready, `/login` → 200.
+5. Fake printer: `node scripts/fake-escpos-printer.mjs --out "<scratchpad>/fake-jobs"`. It listened on `127.0.0.1:9100`.
+6. `adb reverse tcp:3100 tcp:3100`. The app opened `http://localhost:3100` and showed the login page: `1a-06-login.png`.
+7. `pm clear`, sign in as `e2eadmin` → Dashboard: `1a-07-signed-in.png`.
+8. Printer panel → Network printer `10.0.2.2` : `9100` → "Use this network printer" → "Network printer 10.0.2.2 is connected." (`1a-09-network-printer.png`). Then Print test slip → "Did the test slip print?" → Yes (`1a-10-test-slip.png`). `jobs.log` shows job 1 with `bytes: 0`, the connect probe from "Use", and job 2 with `bytes: 13694`, the test slip.
+9. Designated this device in the same panel ("Use one device for all printing" → "Print all slips on this device"). Android asked "Let app always run in background?" → Allow. The panel then read "This device prints all slips." (`1a-11-host-designated.png`).
+   - Seeded 8 tables and the sample menu with `seed-tables.ts` and `seed-menu.ts` into `pos_scratch_e2e_1a` (deviation 5).
+   - New Order → T-1 → Masala Chai → Send to Kitchen (`1a-12-new-order.png`, `1a-13-kot-sent.png`).
+   - The fake printer got job 3 with `bytes: 40494`. Today's claim path is still in charge.
+   - `<scratchpad>/last-job.ts` (projection excludes `payload`) on the newest row: `kind: "kot"`, `status: "printed"`, `targetDeviceId` = the PrintHost's `deviceId` (`14284a9d-…`, `targetIsHost: true`), `epoch: 0`, `attempts: 0`, `uncertainAttempts: 0`, `labels: []`, `log[0].event: "created"` (1 entry), `claimedBy` set, `printedAt: null` (legacy "claim won" meaning), `originDeviceId: null` (today's tabs send no header). There are 0 `printdevices` rows, so no client calls the new routes yet. **Exactly as expected.**
+   - Extra check: unauthenticated `POST` to `/api/print-jobs/lease`, `/wake`, `/[id]/ack`, `/[id]/confirm` and `/[id]/retry`, and `GET /wake`, all answer 401.
+10. Cleanup: `adb reverse --remove-all`; the POS, the fake printer and the 8097 script were stopped by PID (ports confirmed free); `pm clear com.possoftware.pos`; `adb emu kill`.
+    - **Left for 1C:** the database `pos_scratch_e2e_1a` holds `e2eadmin`, 8 tables, 4 categories and 8 products, order `ORD-20261002-001`, 1 PrintJob, and a PrintHost pointing at the emulator app's old device id (`pm clear` gave the app a new id, so 1C must clear or re-designate the host).
+    - The env file stays at `<scratchpad>/e2e.env`. If 1C cannot read this session's scratchpad, it should use a fresh `pos_scratch_e2e_1c` database and its own env file.
+
+**New harness facts for 1C–1E:**
+- On the login page the soft keyboard covers the password field. A tap there lands on the keyboard and the text goes into the username field. Move focus with TAB (`adb shell input keyevent 61`) and check that the focused EditText has `password="true"` (uiautomator dump) before typing the secret.
+- Python on this PC breaks under `MSYS_NO_PATHCONV=1` with MSYS paths. Give it Windows paths.
+- Print `uiautomator` text with `PYTHONIOENCODING=utf-8` (the ₹ sign).
+- The fake printer logs the app's 0-byte connect probe as a job. Count only `bytes > 0` lines as slips.
+
+### Step 6
+
+Spec §7.10 "Phase 1 decisions" was added after §7.9, verbatim from the plan.
+
+### Final whole-branch review (fresh reviewer subagent, cf068e7..df79930 plus the uncommitted §7.10)
+
+**Verdict: "With fixes". Critical 0, Important 4, Minor 10.** The reviewer confirmed:
+- the CAS fencing (including `epoch:{$in:[0,null]}` for rows from before Phase 1);
+- that the legacy claim and the lease can never both win a job;
+- the GET wake is unchanged;
+- the late-ack rules (§7.9);
+- that every route has auth and Zod validation;
+- the house rules;
+- that legs q–x test real behaviour.
+
+Re-graded by effect on a cafe:
+
+- **I1, fixed (`70a9106`).** `dismissQueuedPrintJobsForClearedHost` still dismissed only `queued`. Spec §7.1 says "host cleared" dismisses any unresolved job. Once 1C lands, a `needs-confirm` or `failed` slip aimed at a cleared host would survive with no device that may print it.
+  - Now: `status: {$in: ["queued","needs-confirm","failed"]}`, never `leased` (decision 7), with the `claimedAt` guard kept.
+  - Test: a new pin plus leg (w)'s 4 live checks, RED (3 FAIL, count 1) → GREEN.
+- **I4, fixed (`70a9106`).** The heartbeat upsert relied on the unique `deviceId` index without the house `await Model.init()` rule (`due-payment.ts`, `crud-route.ts`, areas). A cold-start race could create duplicate rows for good, inflate `countOnlineAgents`, and shrink every agent's wake share.
+  - Now: `await PrintDevice.init()` before the upsert.
+  - Test: a new pin, RED → GREEN.
+- **I1 part 2, ruled for the 1B gate.** With no host, nothing retargets or dismisses a job whose lease expires after the teardown and that is still aimed at the dead host. `planRetry` / `planConfirm` also never retarget.
+  - Fixing it means choosing between dismissing it as `host-cleared` and retargeting it to `originDeviceId`, and 1B owns the repair sweep. It stays dormant until 1C.
+- **I2, ruled for the owner at the 1C gate.** `attempts ≥ 8` also counts `sent:"no"` refusals.
+  - With 2/5/10/30 s backoff, a printer that is off for about 2.5 minutes fails the head KOT, and every KOT after it fails in turn. That conflicts with G4.
+  - Spec §7.2/§7.8 state the rule, so changing it is the owner's decision.
+  - The reviewer's suggestion: don't count `sent:"no"` attempts (the 30-minute stale window bounds them), or have the agent hold off leasing while its printer is disconnected.
+- **I3, ruled for the 1C gate.** `printWakeAgentCap` divides by devices seen in the last 90 s. An agent that spends its share goes quiet and drops out of the count, so the others' shares grow.
+  - Reviewer's worst case (no-host mode, socket down all day, 3 agents): about 21,840 requests/day, above the 18,000 ceiling. Host mode (one agent) is unaffected.
+  - Suggested fix: divide by devices seen this cafe-day, and add a join/leave simulation to `print-budget.test.ts`.
+
+**Deferred minors** (none fixed; for the gate):
+- M1: `lease/route.ts` runs `Promise.all([lease, touch])`, so a heartbeat failure returns 500 after the lease CAS already committed. That costs a 90 s wait and then a REPRINT, or a false cashier prompt.
+- M2: `leasePrintJobs` returns `retryAt: null` after 4 steps even when printable jobs remain.
+- M3: every ignored stale-epoch ack writes a log entry, so a 1C pending-ack loop could flood the log and the write budget.
+- M4: a duplicate enqueue reports `leased`, `needs-confirm` and `failed` rows as `already-resolved`.
+- M5: the lease CAS does not fence `targetDeviceId` (a tiny window during a retarget).
+- M6: dismisses push no `dismissed` log entry.
+- M7: in a mixed fleet, the legacy claim can print a lifecycle job (epoch ≥ 1) without its banner.
+- M8: §7.10 omits two deviations: the agent wake is a new POST beside the GET, and the sweep throttle is per server instance, not per cafe.
+- M9: the changed prune pin's rationale text is inaccurate.
+
+**Reviewer recommendations for 1C/1D:**
+1. Spec §17.2 says no-host mode adds "no polling", but 1C (C2) puts every device on the wake cadence. Reconcile these, given §17.3 rule 1.
+2. Nudge fan-out: every agent leases on every nudge. Carry `targetDeviceId` in the 1B created event, and model empty leases in the budget test.
+3. During the rollout window, an old ordering tab treats `leased`, `needs-confirm` and `failed` rows as gone after 60 s. Consider feeding them into D1/D2 for that release.
+
+### Deviations from the plan, each with its reason
+
+1. The ledger was kept in the session scratchpad, and the skill's `task-start` / `task-done` scripts were not used, because both write to `.superpowers/sdd/`, which the owner's rules say to leave alone. Each task's tests were run and recorded by hand instead.
+2. In `models/PrintJob.ts`, the two Phase 1 subschemas sit above the existing "Exported as a SCHEMA…" comment, not between it and `printJobSchema`. This keeps that comment next to the schema it describes. Cosmetic only.
+3. The two `testChain` entries were each put on their own line, matching the file's one-entry-per-line layout.
+4. The E2E env was generated by a script (`secrets` module) instead of being typed with the Write tool, so the random password and secret never appear in the session. During sign-in the password was typed into the visible username field once (the keyboard covered the password field) and showed up in a UI dump. It was **rotated at once**: a scratchpad script re-hashed `e2eadmin` in `pos_scratch_e2e_1a` with a new random password and rewrote the env. The exposed value is dead. It was local only and never committed or uploaded.
+5. A fresh database has no tables or products, so Step 9 seeded them with the repo's own `seed-tables.ts` and `seed-menu.ts` (scratch database only).
+6. Two final-review fixes (`70a9106`, I1 and I4) went beyond the pre-validated code. Both are TDD-verified. They added 2 pins (cafe 4001 → 4003) and 4 live checks (157 → 161).
+7. The Next build was re-run at the final HEAD after the fixes.
+
+### Open issues
+
+- **For the 1B gate:** I1 part 2.
+- **For the 1C gate:** I2 (owner decision) and I3; the reviewer's recommendations 1–3.
+- **Minors** M1–M9.
+- **Known, unrelated:** `lib/go-live-dl.test.ts` ENOENT.
+- **Still the owner's call:** the Phase 0 review's recommended hotfix of `7edf7aa` to `main`.
