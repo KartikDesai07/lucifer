@@ -99,12 +99,29 @@ cd android
 .\gradlew.bat assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
 ```
 
-The APK is written to
-`android\app\build\outputs\apk\release\app-release.apk`. Install it on a
-connected device with:
+Use exactly this command: the one-APK-per-phone split switches on only for task
+names with "release" in them, and both ARM types must be built for both APKs.
+
+The release build is made small and hard to read back:
+
+- **One APK per phone CPU type** in `android\app\build\outputs\apk\release\`:
+  `app-arm64-v8a-release.apk` fits nearly every phone sold since about 2017;
+  `app-armeabi-v7a-release.apk` is only for old 32-bit phones. Not sure? With
+  the phone connected, `adb shell getprop ro.product.cpu.abi` prints which one.
+- **R8** shrinks and obfuscates the app code (classes and methods get short,
+  meaningless names), unused resources are dropped, and native libraries are
+  stored compressed.
+- The JavaScript ships as **Hermes bytecode**, not readable source.
+
+No app can be made impossible to take apart; this one also holds no secrets
+(the POS address is typed in on the phone, and the bridge key is made fresh
+every time the app starts).
+
+Debug builds skip R8, so always test the RELEASE APK on a real phone before
+giving it to a client. Install it on a connected device with:
 
 ```powershell
-adb install -r app\build\outputs\apk\release\app-release.apk
+adb install -r app\build\outputs\apk\release\app-arm64-v8a-release.apk
 ```
 
 Or copy the file to the device and open it there (allow "install unknown
@@ -135,7 +152,7 @@ npm run test:app        # Jest smoke test of the app shell
 - **Back** goes back in the POS; at the first page it sends the app to the
   background (it never closes, because closing would stop printing).
 - To use a different address, open the printer panel in the POS and choose
-  **Change POS address** (under Advanced).
+  **Change POS address** (under More options).
 - When you turn on "Print all slips on this device", the app shows a
   **Printing is on** notification and keeps running with the screen off. Android
   may also ask once to let the app run without battery limits: choose **Allow**.

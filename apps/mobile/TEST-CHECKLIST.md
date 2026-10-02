@@ -44,7 +44,11 @@ the POS page and click **inspect**. In the Console:
 
 ## Part B. Release build with the real POS (about 1 hour plus the 30-minute test)
 
-Install the **release** APK. Use a fresh install (uninstall any older one).
+Install the **release** APK (`app-arm64-v8a-release.apk` on almost every phone;
+`app-armeabi-v7a-release.apk` only on an old 32-bit phone). Use a fresh install
+(uninstall any older one). This build is shrunk and obfuscated (R8), which the
+debug build of Part A is not: if anything works in Part A but fails here, note
+exactly what — it points at a shrinker rule, not at the printer.
 
 ### Start-up and address
 
@@ -128,18 +132,21 @@ Install the **release** APK. Use a fresh install (uninstall any older one).
 - [ ] Start the app with Wi-Fi off: the error screen shows and says it is trying
       again. Switch Wi-Fi on: the POS opens by itself within about 15 seconds.
 - [ ] Turn Wi-Fi off and on during use: the POS recovers without reinstalling.
-- [ ] **Change POS address** (printer panel, Advanced) returns to the address screen.
+- [ ] **Change POS address** (printer panel, More options) returns to the address screen.
 
 ## Part C. The POS in a browser (no app needed)
 
 Chrome or Edge on a PC, or Chrome on an Android phone (Android Chrome 138 or newer).
 Pair the Bluetooth printer in the device's own Bluetooth settings first.
 
-- [ ] Printer icon (top right) → **Bluetooth printer** → the browser's list shows the
+- [ ] Printer icon (top right) → **Connect printer** → the browser's list shows the
       paired printer → pick it → **Print test slip** prints and cuts; the dot is green.
+- [ ] **Connect printer**, then close the list without picking: the card says
+      "Did not see your printer?…" and what to do next.
 - [ ] Reload the page: the dot turns green again by itself, or after one
       **Reconnect** tap (a browser security rule).
-- [ ] A small Bluetooth LE printer: **Bluetooth LE printer** → pick it → test slip.
+- [ ] A printer that needs no pairing (often a small one): **Search nearby printers** →
+      pick it → test slip.
       After a reload it always needs one **Reconnect** tap (browser rule).
 - [ ] Open the POS in a second tab on the same device: that tab says the printer is
       in use in another tab, and the first tab keeps printing.

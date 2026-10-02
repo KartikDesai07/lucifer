@@ -31,6 +31,9 @@ const F = {
   advanced: `${PRINT}PrinterAdvanced.tsx`,
   card: `${PRINT}PrinterSetupCard.tsx`,
   parts: `${PRINT}PrintHostCardParts.tsx`,
+  type: `${PRINT}printer-type.ts`,
+  section: `${PRINT}PrinterSection.tsx`,
+  connect: `${PRINT}BrowserPrinterConnect.tsx`,
   picker: `${PRINT}DesktopPrinterPicker.tsx`,
   slip: `${PRINT}PrintHostTestSlip.tsx`,
   classes: `${PRINT}printer-classes.ts`,
@@ -102,7 +105,7 @@ const wherePin: Pin = (raw) => {
   check(p, own >= 0 && loading > own, "this device is the printing device is decided BEFORE the unresolved-pulse line");
   check(p, code.includes('role="status"') && code.includes("online ? CHECKING_MESSAGE : OFFLINE_MESSAGE"), "PR3: offline reads as a status line");
   check(p, !/still loading/i.test(raw), "never a 'still loading' line");
-  const needles = ["Where slips print", "This device prints all slips.", "All slips print at {hostLabel}.", "Each device prints its own slips.", "Name for this device", "Print all slips on this device", "Print on this device instead", "is printing now. Move printing to this device?", "Every slip from every device will print here."];
+  const needles = ["Where slips print", "This device prints all slips.", "All slips print at {hostLabel}.", "Each device prints its own slips.", "Name for this device", "Print all slips on this device", "Print on this device instead", "is printing now. Move printing to this device?", "<PrinterSection", "Use one device for all printing", "Good for a Counter PC with the printer: orders from phones print there."];
   for (const n of needles) check(p, code.includes(n), `must contain ${n}`);
   return p;
 };
@@ -114,27 +117,78 @@ const devicePin: Pin = (raw) => {
   check(p, !code.includes('id="printer-device"'), "W-P: no page-wide id (the sheet and the settings page can both be open)");
   check(p, code.includes("toastConnectOutcome(attempt)"), "the connect outcome is toasted by the shared helper");
   // The chooser must be the first await: the CLICK makes the call, nothing awaits before it.
-  check(p, /onClick=\{\(\) => void settle\(devicePrinter\(\)\.connectNew\("serial", paperDefault\)\)\}/.test(code), 'connectNew("serial" called straight from onClick');
-  check(p, /onClick=\{\(\) => void settle\(devicePrinter\(\)\.connectNew\("ble", paperDefault\)\)\}/.test(code), 'connectNew("ble" called straight from onClick');
+  // 2026-10-02 UI pass: ONE primary "Connect printer" (serial first: it lists paired Bluetooth and
+  // USB printers; Web Bluetooth only where serial is missing) plus a quiet "nearby" fallback.
+  check(p, code.includes('const primaryKind = caps.serial ? "serial" : "ble";'), "the primary kind is chosen synchronously: serial first, else nearby");
+  check(p, /onConnect=\{\(\) => void settle\(devicePrinter\(\)\.connectNew\(primaryKind, paperDefault\), true\)\}/.test(code), "connectNew(primaryKind called straight from the primary click");
+  check(p, /onSearchNearby=\{\(\) => void settle\(devicePrinter\(\)\.connectNew\("ble", paperDefault\)\)\}/.test(code), 'connectNew("ble" called straight from the nearby click');
   check(p, count(code, "connectNew(") === 2, "connectNew( has exactly the two click call sites");
+  // Review 2026-10-02: a closed nearby search no longer wipes the advice; Change / Keep / Remove start clean.
+  check(p, /if \(outcome === "connected"\) \{\s*setChanging\(false\);\s*setNotSeen\(false\);/.test(code), "a connect clears the not-seen hint");
+  check(p, /else if \(firstList && outcome === "cancelled"\) \{\s*setNotSeen\(true\);/.test(code), "only a closed FIRST list raises the not-seen hint");
+  check(p, count(code, "setNotSeen(false)") === 3, "the hint is also cleared by Change / Keep printer and by Remove");
+  check(p, code.includes("paired={caps.serial}") && code.includes("nearby={caps.serial && caps.bluetooth}"), "the connect block hears what this browser can do: the paired list, and the nearby search only when BOTH exist");
+  check(p, code.includes('variant={connected ? "outline" : "default"}'), "Reconnect is the primary button only while not connected");
+  check(p, !/Bluetooth LE/i.test(code), "no radio jargon (Bluetooth LE) in client copy");
   check(p, /onClick=\{\(\) => void settle\(devicePrinter\(\)\.reconnect\(\)\)\}/.test(code) && count(code, ".reconnect()") === 1, ".reconnect() called straight from onClick, once");
   check(p, code.includes("const paperDefault = printConfigOf(settings.data).bill.paperWidth;"), "paperDefault comes from the print settings");
   check(p, code.includes("const locked = busy || elsewhere;"), "one busy state plus the other-tab state lock everything");
   const buttons = code.split("<Button").slice(1).map((chunk) => chunk.slice(0, chunk.indexOf("</Button>")));
-  check(p, buttons.length >= 5 && buttons.every((b) => b.includes("disabled={locked}")), "every printer button is disabled while locked");
+  // The connect buttons moved to BrowserPrinterConnect (connectPin); the saved printer's three stay here.
+  check(p, buttons.length >= 3 && buttons.every((b) => b.includes("disabled={locked}")), "every printer button is disabled while locked");
+  check(p, count(code, "<BrowserPrinterConnect") === 1 && count(code, "<PrinterSection") === 1, "one connect block, one section shell");
   check(p, /lane === "desktop" \? \(\s*<DesktopPrinterPicker \/>/.test(code) && code.includes("caps.native") && code.includes("<NativePrinterPicker"), "desktop picker / app picker by capability");
   check(p, code.includes("devicePrinter().setPaper(paper)") && code.includes("<PaperSizeToggle") && code.includes("devicePrinter().forget()"), "paper toggle and remove are wired");
-  for (const n of ["Printer on this device", "Bluetooth printer", "Bluetooth LE printer", "Change printer", "from this device?", "This browser or app cannot connect to a printer directly", "PRINTER_ELSEWHERE_STATUS_MESSAGE"]) {
+  for (const n of ["Printer on this device", "Change printer", "Keep this printer","from this device?", "This browser or app cannot connect to a printer directly", "PRINTER_ELSEWHERE_STATUS_MESSAGE"]) {
     check(p, code.includes(n), `must contain ${n}`);
   }
   check(p, !/print window/i.test(code), "W-M: never claim a print window opens where the browser cannot print directly");
   return p;
 };
 
+// 2026-10-02 UI pass: one "Connect printer" with three plain steps; the nearby search is a
+// quiet second way, only where the browser has BOTH; the hint shows only after a closed list.
+const connectPin: Pin = (raw) => {
+  const p: string[] = [];
+  const code = stripComments(raw);
+  const needles = ["Connect printer", "Search nearby printers", "Printer not in the list?", "How to connect", "Turn the printer on and load paper.", "Bluetooth printer: pair it in this device's Bluetooth settings first. USB printer: plug it in.", "Keep the printer close to this device.", "Tap Connect printer, then pick your printer from the list.", "Finds printers that do not need pairing.", "Did not see your printer? Pair it in Bluetooth settings first (USB printer: check the cable), then tap Connect printer again", "Did not see your printer? Turn it on and keep it close, then tap Connect printer again.", " — or tap Search nearby printers.", "paired ? NOT_SEEN_PAIRED : NOT_SEEN_NEARBY_ONLY"];
+  for (const n of needles) check(p, code.includes(n), "must contain " + n);
+  const buttons = code.split("<Button").slice(1).map((chunk) => chunk.slice(0, chunk.indexOf("</Button>")));
+  check(p, buttons.length === 2 && buttons.every((b) => b.includes("disabled={locked}")), "both connect buttons exist and are disabled while locked");
+  const primary = code.indexOf("onClick={onConnect}");
+  const nearby = code.indexOf("onClick={onSearchNearby}");
+  check(p, primary >= 0 && nearby > primary, "the primary button (" + primary + ") comes before the nearby one (" + nearby + ")");
+  check(p, /\{nearby && \(\s*<div/.test(code) && /paired \? STEP_PAIR : STEP_CLOSE/.test(code), "the nearby row shows only when both ways exist; step 2 follows the browser");
+  check(p, /\{notSeen && \(\s*<p role="status"/.test(code), "the not-seen hint is a status line, shown only after a closed list");
+  check(p, !/Bluetooth LE/i.test(code), "no radio jargon (Bluetooth LE) in client copy");
+  return p;
+};
+const typePin: Pin = (raw) => {
+  const p: string[] = [];
+  const code = stripComments(raw);
+  for (const n of ['"bt-classic": "Bluetooth"', 'ble: "Bluetooth (nearby)"', 'tcp: "Network"', 'usb: "USB"', 'PC_PRINTER_LABEL = "PC printer"']) check(p, code.includes(n), "must contain " + n);
+  check(p, !/Bluetooth LE/i.test(code), "no radio jargon (Bluetooth LE) in client copy");
+  return p;
+};
+const sectionPin: Pin = (raw) => {
+  const p: string[] = [];
+  const code = stripComments(raw);
+  for (const n of ["BRAND_PANEL_CLASS", '"rounded-lg border"', "{...rest}", "<h3", "border-b border-brand-rule", "space-y-3 p-4 text-sm", "PRINTER_TILE_CLASS"]) check(p, code.includes(n), "must contain " + n);
+  return p;
+};
+const partsPin: Pin = (raw) => {
+  const p: string[] = [];
+  const code = stripComments(raw);
+  for (const n of ['"Connected"', '"Connecting…"', '"Not connected"', "{printerTypeLabel(printer)} · ", "printerTypeIcon(printer)", "break-words font-medium"]) check(p, code.includes(n), "must contain " + n);
+  // Review 2026-10-02: every status has its own words; another tab holding the printer is never "Not connected".
+  for (const n of ['elsewhere: "In another tab"', '"needs-tap": "Tap Reconnect"', "STATUS_LABEL[status]", "Record<PrinterStatus, string>"]) check(p, code.includes(n), "must contain " + n);
+  return p;
+};
+
 const nativePin: Pin = (raw) => {
   const p: string[] = [];
   const code = stripComments(raw);
-  const needles = ["listNative(false)", "listNative(true)", "selectNative({ id: printer.id }, paper)", "selectNative({ tcp: { host, port: portNumber } }, paper)", 'nativeRequest("bluetooth.enable")', 'nativeRequest("permissions.request", { kind: "bluetooth" })', "nativeErrorMessage(", "PRINTER_SCAN_MS", "String(DEFAULT_TCP_PRINTER_PORT)", 'inputMode="numeric"', 'bluetooth === "unsupported"', "Use this printer", "Find printers"];
+  const needles = ["listNative(false)", "listNative(true)", "selectNative({ id: printer.id }, paper)", "selectNative({ tcp: { host, port: portNumber } }, paper)", 'nativeRequest("bluetooth.enable")', 'nativeRequest("permissions.request", { kind: "bluetooth" })', "nativeErrorMessage(", "PRINTER_SCAN_MS", "String(DEFAULT_TCP_PRINTER_PORT)", 'inputMode="numeric"', 'bluetooth === "unsupported"', "Use this printer", "Find printers", "Printer on the network (Wi-Fi or cable)", "NATIVE_TYPE_ICONS"];
   for (const n of needles) check(p, code.includes(n), `must contain ${n}`);
   check(p, count(code, "toast.error(nativeErrorMessage(error))") >= 4, "every app request failure is worded by nativeErrorMessage");
   // A quoted or assigned 9100 is a literal default; the hint sentence "use 9100." is copy, not code.
@@ -213,7 +267,8 @@ function hygienePin(budget: number, usesAction: boolean): Pin {
 }
 const HYGIENE: [string, number, boolean][] = [
   [F.panel, 90, true], [F.where, 150, true], [F.device, 220, true], [F.native, 260, true], [F.paper, 60, true],
-  [F.tips, 50, false], [F.advanced, 90, true], [F.card, 260, true], [F.parts, 100, true], [F.picker, 160, false],
+  [F.tips, 50, false], [F.advanced, 100, true], [F.card, 260, true], [F.parts, 100, true], [F.picker, 160, false],
+  [F.connect, 110, true], [F.section, 50, false], [F.type, 60, false],
 ];
 const hygieneMutations = [
   append("a console call", "// " + "console" + ".log(1)"),
@@ -260,17 +315,29 @@ const CASES: PinCase[] = [
     mut("offline line dropped", "online ? CHECKING_MESSAGE : OFFLINE_MESSAGE", "CHECKING_MESSAGE"),
     mut("host check renamed", "isHostDevice ? (", "isHostDeviceX ? ("),
     mut("a loading line", "Checking where slips print…", "Still loading"),
+    mut("the one-device help dropped", "Good for a Counter PC with the printer: orders from phones print there.", "Every slip prints here."),
+    mut("the shell dropped", "<PrinterSection id", "<section id"),
   ] },
   { file: F.device, pin: devicePin, mutations: [
-    mut("an await before the serial chooser", 'onClick={() => void settle(devicePrinter().connectNew("serial", paperDefault))}', 'onClick={async () => { await Promise.resolve(); void settle(devicePrinter().connectNew("serial", paperDefault)); }}'),
-    mut("the ble button opens serial", 'connectNew("ble", paperDefault)', 'connectNew("serial", paperDefault)'),
+    // Re-anchored 2026-10-02 (one primary "Connect printer"): the old serial/ble click cases became these.
+    mut("an await before the primary chooser", "onConnect={() => void settle(devicePrinter().connectNew(primaryKind, paperDefault), true)}", "onConnect={async () => { await Promise.resolve(); void settle(devicePrinter().connectNew(primaryKind, paperDefault), true); }}"),
+    mut("the nearby button opens serial", 'connectNew("ble", paperDefault)', 'connectNew("serial", paperDefault)'),
+    mut("an await before the nearby chooser", 'onSearchNearby={() => void settle(devicePrinter().connectNew("ble", paperDefault))}', 'onSearchNearby={async () => { await Promise.resolve(); void settle(devicePrinter().connectNew("ble", paperDefault)); }}'),
+    mut("the primary kind flipped", 'caps.serial ? "serial" : "ble"', 'caps.serial ? "ble" : "serial"'),
+    mut("the hint raised by any cancel", 'else if (firstList && outcome === "cancelled")', 'else if (outcome === "cancelled")'),
+    mut("a connect leaves the hint up", "setChanging(false);\n        setNotSeen(false);", "setChanging(false);"),
+    mut("change printer keeps a stale hint", "setChanging((v) => !v);\n                      setNotSeen(false);", "setChanging((v) => !v);"),
+    mut("nearby offered on a BLE-only browser", "nearby={caps.serial && caps.bluetooth}", "nearby={caps.bluetooth}"),
+    mut("paired copy on a BLE-only browser", "paired={caps.serial}", "paired={true}"),
+    mut("reconnect always primary", 'variant={connected ? "outline" : "default"}', 'variant="default"'),
+    mut("a radio name back in the copy", 'title="Printer on this device"', 'title="Bluetooth LE printer on this device"'),
     mut("reconnect awaited first", "onClick={() => void settle(devicePrinter().reconnect())}", "onClick={async () => { await settle(devicePrinter().reconnect()); }}"),
-    mut("a button left enabled", "settle(devicePrinter().reconnect())} disabled={locked}", "settle(devicePrinter().reconnect())} disabled={false}"),
+    mut("a button left enabled", "settle(devicePrinter().reconnect())}\n                    disabled={locked}", "settle(devicePrinter().reconnect())}\n                    disabled={false}"),
     mut("remove button left enabled", 'onClick={() => setConfirmRemove(true)} disabled={locked}', "onClick={() => setConfirmRemove(true)}"),
-    mut("the target marker dropped", 'data-printer-target="device" ', ""),
-    mut("the page-wide id back", 'data-printer-target="device" ', 'id="printer-device" data-printer-target="device" '),
+    mut("the target marker dropped", '      data-printer-target="device"\n', ""),
+    mut("the page-wide id back", 'data-printer-target="device"', 'id="printer-device" data-printer-target="device"'),
     mut("a print window claimed", "This browser or app cannot connect to a printer directly.", "This browser cannot connect to a printer directly, so slips open the print window."),
-    mut("tabIndex dropped", " tabIndex={-1}", ""),
+    mut("tabIndex dropped", "      tabIndex={-1}\n", ""),
     mut("paper default hard-coded", "printConfigOf(settings.data).bill.paperWidth", '"80mm"'),
   ] },
   { file: F.native, pin: nativePin, mutations: [
@@ -282,7 +349,32 @@ const CASES: PinCase[] = [
     mut("host check dropped", "!isValidPrinterHost(host)", "host === \"\""),
     mut("paste split dropped", "onPaste={", "onPasteX={"),
     mut("printer button unnamed", "aria-label={`Use this printer: ${printer.name}`}", ""),
+    mut("the network block loses its title", "Printer on the network (Wi-Fi or cable)", "Network printer"),
     mut("printer button drops its visible label", "aria-label={`Use this printer: ${printer.name}`}", "aria-label={`Use ${printer.name}`}"),
+  ] },
+  { file: F.connect, pin: connectPin, mutations: [
+    mut("the nearby button left enabled", "onClick={onSearchNearby} disabled={locked}", "onClick={onSearchNearby}"),
+    mut("the primary button left enabled", "onClick={onConnect} disabled={locked}", "onClick={onConnect}"),
+    mut("the nearby row always shown", "{nearby && (", "{true && ("),
+    mut("a radio name back", "Search nearby printers", "Bluetooth LE printers"),
+    mut("the hint is no status line", '<p role="status" className="rounded-md', '<p className="rounded-md'),
+    mut("step 3 changed", "Tap Connect printer, then pick your printer from the list.", "Tap the button."),
+    mut("step 2 ignores the browser", "paired ? STEP_PAIR : STEP_CLOSE", "STEP_PAIR"),
+    mut("a BLE-only browser told to pair first", "paired ? NOT_SEEN_PAIRED : NOT_SEEN_NEARBY_ONLY", "NOT_SEEN_PAIRED"),
+    mut("USB users get Bluetooth-only advice", " (USB printer: check the cable)", ""),
+  ] },
+  { file: F.type, pin: typePin, mutations: [
+    mut("the radio name back", 'ble: "Bluetooth (nearby)"', 'ble: "Bluetooth LE"'),
+    mut("a PC printer renamed", 'PC_PRINTER_LABEL = "PC printer"', 'PC_PRINTER_LABEL = "Serial port"'),
+  ] },
+  { file: F.section, pin: sectionPin, mutations: [
+    mut("the rest props dropped", "{...rest}", ""),
+    mut("the hairline dropped", "border-b border-brand-rule", "border-b"),
+  ] },
+  { file: F.parts, pin: partsPin, mutations: [
+    mut("the status words dropped", /"Not connected"/g, '""'),
+    mut("another tab reads not connected", 'elsewhere: "In another tab"', 'elsewhere: "Not connected"'),
+    mut("the sub-line dropped", "{printerTypeLabel(printer)} · ", ""),
   ] },
   { file: F.advanced, pin: pinNeedles(['nativeRequest("app.changeUrl")', "More options", "Change POS address", "<Collapsible", "usePrintCapabilities()"]), mutations: [
     mut("change-address renamed", 'nativeRequest("app.changeUrl")', 'nativeRequest("app.changeAddress")'),

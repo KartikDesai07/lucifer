@@ -1,15 +1,16 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 
-import { PRINTER_ACTION_CLASS } from "@/components/print/printer-classes";
+import { PRINTER_ACTION_CLASS, PRINTER_TILE_BRAND_CLASS, PRINTER_TILE_CLASS } from "@/components/print/printer-classes";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { BRAND_PANEL_CLASS } from "@/components/brand/brand-classes";
 import { usePrintCapabilities } from "@/hooks/use-device-printer";
 import { nativeRequest } from "@/lib/printer/native-bridge";
+import { cn } from "@/lib/utils";
 
 const CHANGE_ADDRESS_FAILED_MESSAGE = "Could not open the address screen. Try again.";
 const CLEAR_HELP = "If the printing device is down, remove it from any device, even a phone. Waiting slips are cancelled and every device prints its own slips again.";
@@ -31,14 +32,19 @@ export function PrinterAdvanced({ clearControl }: PrinterAdvancedProps) {
   };
 
   return (
-    <Collapsible className={`${BRAND_PANEL_CLASS} rounded-lg border p-4 text-sm`}>
+    <Collapsible className={`${BRAND_PANEL_CLASS} rounded-lg border p-2 text-sm`}>
       <CollapsibleTrigger asChild>
-        <Button variant="ghost" className="h-11 w-full justify-between px-2 text-base font-semibold text-brand-ink">
-          More options
+        <Button variant="ghost" className="h-11 w-full justify-between gap-3 px-2 text-base font-semibold text-brand-ink">
+          <span className="flex items-center gap-3">
+            <span aria-hidden="true" className={cn(PRINTER_TILE_CLASS, PRINTER_TILE_BRAND_CLASS)}>
+              <SlidersHorizontal className="h-4 w-4" />
+            </span>
+            More options
+          </span>
           <ChevronDown className="h-4 w-4" aria-hidden="true" />
         </Button>
       </CollapsibleTrigger>
-      <CollapsibleContent className="space-y-4 pt-3">
+      <CollapsibleContent className="mt-2 space-y-4 border-t border-brand-rule px-2 pt-3">
         {clearControl !== null && (
           <div className="space-y-2">
             {clearControl}

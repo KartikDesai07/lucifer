@@ -1856,3 +1856,105 @@ test('pin 14 mutation: every needle can fail', () => {
     ['print_host_alert_text', 'print_host_alert_body'],
   ]);
 });
+
+// ── pin 15: the release build is hardened and small (owner, 2026-10-02: no reverse engineering, a very small
+// file). R8 obfuscates + shrinks, resources shrink, one APK per ARM CPU type, native libraries compressed, the JS is
+// Hermes bytecode, the WebView page bridge survives R8, and adb backup cannot pull the app data out.
+interface ReleaseSources {
+  gradle: string;
+  props: string;
+  rules: string;
+  manifest: string;
+}
+const NEWLINE = String.fromCharCode(10);
+const proguardCode = (text: string): string =>
+  text
+    .split(NEWLINE)
+    .filter((line) => !line.trim().startsWith('#'))
+    .join(NEWLINE);
+// Every line trimmed and joined by one space: a multi-line Gradle block reads as one sentence.
+const oneLine = (text: string): string =>
+  text
+    .split(NEWLINE)
+    .map((line) => line.trim())
+    .filter((line) => line !== '')
+    .join(' ');
+function releaseProblems(s: ReleaseSources): string[] {
+  const out: string[] = [];
+  const g = strip(s.gradle);
+  if (!/^def enableProguardInReleaseBuilds = true$/m.test(g)) {
+    out.push('R8 is off for release builds');
+  }
+  if (!g.includes('minifyEnabled enableProguardInReleaseBuilds')) {
+    out.push('the release build does not minify');
+  }
+  if (!g.includes('shrinkResources enableProguardInReleaseBuilds')) {
+    out.push('the release build does not shrink resources');
+  }
+  const splits =
+    'abi { enable isReleaseBuild reset() include "arm64-v8a", "armeabi-v7a" universalApk false }';
+  if (!oneLine(g).includes(splits)) {
+    out.push('release is not one APK per ARM CPU type');
+  }
+  const releaseTask =
+    'def isReleaseBuild = gradle.startParameter.taskNames.any { it.toLowerCase().contains("release") }';
+  if (!g.includes(releaseTask)) {
+    out.push('the per-CPU split no longer follows the release task');
+  }
+  const rulesWired =
+    'proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"';
+  if (!g.includes(rulesWired)) {
+    out.push('the project keep rules are not wired into R8');
+  }
+  if (!/useLegacyPackaging true/.test(g)) {
+    out.push('native libraries are not stored compressed');
+  }
+  if (!/^hermesEnabled=true$/m.test(s.props)) {
+    out.push('Hermes is off: the JS would ship as readable source');
+  }
+  const rules = proguardCode(s.rules);
+  if (!rules.includes('@android.webkit.JavascriptInterface <methods>;')) {
+    out.push('R8 may rename the WebView page bridge');
+  }
+  if (!rules.includes('-keep class com.reactnativecommunity.webview.** { *; }')) {
+    out.push('R8 may strip react-native-webview');
+  }
+  if (!strip(s.manifest).includes('android:allowBackup="false"')) {
+    out.push('adb backup can pull the app data out');
+  }
+  return out;
+}
+const releaseSources = (): ReleaseSources => ({
+  gradle: read(GRADLE_APP),
+  props: read(join(ROOT, 'android', 'gradle.properties')),
+  rules: read(join(ROOT, 'android', 'app', 'proguard-rules.pro')),
+  manifest: manifest(),
+});
+
+test('pin 15: the release build is obfuscated, shrunk and split per CPU type', () => {
+  assert.deepEqual(releaseProblems(releaseSources()), []);
+});
+
+test('pin 15 mutation: every hardening needle can fail', () => {
+  const base = releaseSources();
+  const run = (key: keyof ReleaseSources) => (text: string) =>
+    releaseProblems({ ...base, [key]: text });
+  everyMutationCaught(run('gradle'), base.gradle, [
+    ['def enableProguardInReleaseBuilds = true', 'def enableProguardInReleaseBuilds = false'],
+    ['minifyEnabled enableProguardInReleaseBuilds', 'minifyEnabled false'],
+    ['shrinkResources enableProguardInReleaseBuilds', 'shrinkResources false'],
+    ['include "arm64-v8a", "armeabi-v7a"', 'include "arm64-v8a", "armeabi-v7a", "x86_64"'],
+    ['universalApk false', 'universalApk true'],
+    ['useLegacyPackaging true', 'useLegacyPackaging false'],
+    ['contains("release")', 'contains("never")'],
+    ['"proguard-rules.pro"', '"other-rules.pro"'],
+  ]);
+  everyMutationCaught(run('props'), base.props, [['hermesEnabled=true', 'hermesEnabled=false']]);
+  everyMutationCaught(run('rules'), base.rules, [
+    ['@android.webkit.JavascriptInterface <methods>;', '<methods>;'],
+    ['-keep class com.reactnativecommunity.webview.** { *; }', '# webview rule removed'],
+  ]);
+  everyMutationCaught(run('manifest'), base.manifest, [
+    ['android:allowBackup="false"', 'android:allowBackup="true"'],
+  ]);
+});

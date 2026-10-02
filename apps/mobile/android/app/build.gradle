@@ -55,9 +55,19 @@ react {
 }
 
 /**
- * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
+ * R8 on release builds (2026-10-02): shrinks AND obfuscates the Java/Kotlin bytecode (classes and methods get short,
+ * meaningless names) and lets the resource shrinker drop unused resources. The JS already ships as Hermes bytecode,
+ * not readable source. React Native's own consumer rules keep every NativeModule (the printer bridge) and every
+ * @ReactProp; proguard-rules.pro keeps the WebView page bridge. Debug builds are untouched.
  */
-def enableProguardInReleaseBuilds = false
+def enableProguardInReleaseBuilds = true
+
+/**
+ * Release APKs are built one per phone CPU type: a "universal" APK carries all four and is about four times larger.
+ * app-arm64-v8a-release.apk fits nearly every phone sold since about 2017; app-armeabi-v7a-release.apk is for old
+ * 32-bit phones. Debug builds stay a single APK, so `npx react-native run-android` installs it as before.
+ */
+def isReleaseBuild = gradle.startParameter.taskNames.any { it.toLowerCase().contains("release") }
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -118,7 +128,22 @@ android {
             // see https://reactnative.dev/docs/signed-apk-android.
             signingConfig hasPosReleaseKey ? signingConfigs.release : signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
+            shrinkResources enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
+    }
+    splits {
+        abi {
+            enable isReleaseBuild
+            reset()
+            include "arm64-v8a", "armeabi-v7a"
+            universalApk false
+        }
+    }
+    // Native libraries are stored compressed inside the APK: a smaller file to download and share.
+    packaging {
+        jniLibs {
+            useLegacyPackaging true
         }
     }
 }

@@ -8,17 +8,18 @@
 // is NOT optional cosmetics: it is the only way a device becomes the printer.
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { ReceiptText } from "lucide-react";
 import { toast } from "sonner";
 
 import { PRINTER_ACTION_CLASS } from "@/components/print/printer-classes";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { BRAND_PANEL_CLASS } from "@/components/brand/brand-classes";
 import { usePosPulseContext } from "@/components/layout/PosPulseProvider";
 import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
 import { DevicePrinterSection } from "@/components/print/DevicePrinterSection";
 import { InlineConfirm } from "@/components/print/PrintHostCardParts";
 import { PrintWhereSection } from "@/components/print/PrintWhereSection";
+import { PrinterSection } from "@/components/print/PrinterSection";
 import { PrinterAdvanced } from "@/components/print/PrinterAdvanced";
 import { PrinterTestTips } from "@/components/print/PrinterTestTips";
 import { useDeviceOnline, usePrintLane } from "@/hooks/use-device-printer";
@@ -31,6 +32,7 @@ import { PRINT_HOST_BUSY_MESSAGE } from "@/lib/print-host-slips";
 import { DEVICE_LABEL_PC, defaultDeviceLabel } from "@/lib/printer/print-lane";
 
 const HOST_LABEL_FALLBACK = "Another device";
+const TEST_DESCRIPTION = "Print a small slip to check the printer.";
 
 const RASTER_QUESTION = "Did the test slip print?";
 const RASTER_NO = "No — help me";
@@ -209,8 +211,7 @@ export function PrinterSetupCard() {
       <DevicePrinterSection />
 
       {testable && (
-        <section className={`${BRAND_PANEL_CLASS} space-y-3 rounded-lg border p-4 text-sm`}>
-          <h3 className="text-base font-semibold text-brand-ink">Test print</h3>
+        <PrinterSection icon={ReceiptText} title="Test print" description={TEST_DESCRIPTION}>
           {phase === "confirm" ? (
             <InlineConfirm
               question={raster ? RASTER_QUESTION : WINDOW_QUESTION}
@@ -222,6 +223,7 @@ export function PrinterSetupCard() {
             />
           ) : (
             <Button
+              variant="outline"
               className={cn(PRINTER_ACTION_CLASS, "w-full sm:w-auto")}
               onClick={() => void handleTestPrint()}
               disabled={current !== null || phase !== "idle" || beat.isPending}
@@ -234,7 +236,7 @@ export function PrinterSetupCard() {
           <p className="text-xs text-brand-muted">
             {raster ? "Prints a small slip, then asks whether it came out." : "Prints a small slip, then asks whether a print window appeared."}
           </p>
-        </section>
+        </PrinterSection>
       )}
 
       <PrinterAdvanced clearControl={isHostDevice ? null : clearControl} />

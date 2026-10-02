@@ -1,17 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { Printer } from "lucide-react";
 import { toast } from "sonner";
 
 import { PRINTER_ACTION_CLASS } from "@/components/print/printer-classes";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { BRAND_PANEL_CLASS } from "@/components/brand/brand-classes";
+import { BrowserPrinterConnect } from "@/components/print/BrowserPrinterConnect";
 import { DesktopPrinterPicker } from "@/components/print/DesktopPrinterPicker";
 import { NativePrinterPicker } from "@/components/print/NativePrinterPicker";
 import { toastConnectOutcome } from "@/components/print/connect-outcome";
 import { PaperSizeToggle } from "@/components/print/PaperSizeToggle";
 import { InlineConfirm, PrinterRow } from "@/components/print/PrintHostCardParts";
+import { PrinterSection } from "@/components/print/PrinterSection";
 import { useDevicePrinter, usePrintCapabilities, usePrintLane } from "@/hooks/use-device-printer";
 import { useSettings } from "@/hooks/use-settings";
 import { printConfigOf } from "@/lib/print";
@@ -21,9 +22,7 @@ const REMOVED_MESSAGE = "Printer removed from this device.";
 const REMOVE_FAILED_MESSAGE = "Could not remove the printer. Try again.";
 const NO_CAPABILITY_MESSAGE =
   "This browser or app cannot connect to a printer directly. For direct printing, use Chrome or Edge, or the new POS app.";
-const BLUETOOTH_HELP = "Printers paired in this device's Bluetooth settings, or a USB printer on a PC.";
-const BLUETOOTH_LE_HELP = "Small Bluetooth printers that do not show up in the first list.";
-const BUTTON_CLASS = cn(PRINTER_ACTION_CLASS, "w-full sm:w-auto");
+const SECTION_DESCRIPTION = "The printer this device prints on.";
 
 // "Printer on this device": which way slips leave THIS device, by what it can
 // do. The desktop app has its own picker; the POS app lists printers it can
@@ -39,16 +38,26 @@ export function DevicePrinterSection() {
   const [busy, setBusy] = useState(false);
   const [changing, setChanging] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  // The FIRST list (paired / USB) was closed without a pick: say what to do next.
+  const [notSeen, setNotSeen] = useState(false);
   const { printer, status } = snapshot;
   const elsewhere = status === "elsewhere";
   const locked = busy || elsewhere;
 
   // The attempt is STARTED by the click handler (its chooser is the first
   // await, which needs the tap's user activation); this only waits for it.
-  const settle = async (attempt: Promise<ConnectOutcome>) => {
+  // A closed FIRST list raises the hint; a connect clears it. A closed nearby search leaves it as it
+  // was (both lists closed: the advice still stands), and so does a failure (its own toast speaks).
+  const settle = async (attempt: Promise<ConnectOutcome>, firstList = false) => {
     setBusy(true);
     try {
-      if ((await toastConnectOutcome(attempt)) === "connected") setChanging(false);
+      const outcome = await toastConnectOutcome(attempt);
+      if (outcome === "connected") {
+        setChanging(false);
+        setNotSeen(false);
+      } else if (firstList && outcome === "cancelled") {
+        setNotSeen(true);
+      }
     } finally {
       setBusy(false);
     }
@@ -60,6 +69,7 @@ export function DevicePrinterSection() {
     try {
       await devicePrinter().forget();
       setChanging(false);
+      setNotSeen(false);
       toast.success(REMOVED_MESSAGE);
     } catch {
       toast.error(REMOVE_FAILED_MESSAGE);
@@ -69,11 +79,18 @@ export function DevicePrinterSection() {
   };
 
   const choosing = printer === null || changing;
-  const webChoices = caps.serial || caps.bluetooth;
+  // Serial first: it lists printers PAIRED over Bluetooth, and USB ones on a PC.
+  const primaryKind = caps.serial ? "serial" : "ble";
+  const connected = status === "connected";
 
   return (
-    <section data-printer-target="device" tabIndex={-1} className={`${BRAND_PANEL_CLASS} space-y-3 rounded-lg border p-4 text-sm`}>
-      <h3 className="text-base font-semibold text-brand-ink">Printer on this device</h3>
+    <PrinterSection
+      icon={Printer}
+      title="Printer on this device"
+      description={SECTION_DESCRIPTION}
+      data-printer-target="device"
+      tabIndex={-1}
+    >
       {lane === "desktop" ? (
         <DesktopPrinterPicker />
       ) : lane === "pending" ? null : (
@@ -93,14 +110,28 @@ export function DevicePrinterSection() {
                   onNo={() => setConfirmRemove(false)}
                 />
               ) : (
+                // Sized to their words, so on a phone Reconnect and Change printer share a line.
                 <div className="flex flex-wrap gap-2">
-                  <Button className={BUTTON_CLASS} onClick={() => void settle(devicePrinter().reconnect())} disabled={locked}>
+                  <Button
+                    className={PRINTER_ACTION_CLASS}
+                    variant={connected ? "outline" : "default"}
+                    onClick={() => void settle(devicePrinter().reconnect())}
+                    disabled={locked}
+                  >
                     Reconnect
                   </Button>
-                  <Button className={BUTTON_CLASS} variant="outline" onClick={() => setChanging((v) => !v)} disabled={locked}>
+                  <Button
+                    className={PRINTER_ACTION_CLASS}
+                    variant="outline"
+                    onClick={() => {
+                      setChanging((v) => !v);
+                      setNotSeen(false);
+                    }}
+                    disabled={locked}
+                  >
                     {changing ? "Keep this printer" : "Change printer"}
                   </Button>
-                  <Button className={BUTTON_CLASS} variant="outline" onClick={() => setConfirmRemove(true)} disabled={locked}>
+                  <Button className={PRINTER_ACTION_CLASS} variant="outline" onClick={() => setConfirmRemove(true)} disabled={locked}>
                     Remove
                   </Button>
                 </div>
@@ -109,29 +140,19 @@ export function DevicePrinterSection() {
             </div>
           )}
           {choosing && caps.native && <NativePrinterPicker paper={paperDefault} busy={locked} onAttempt={settle} />}
-          {choosing && !caps.native && webChoices && (
-            <div className="space-y-3">
-              {caps.serial && (
-                <div className="space-y-1">
-                  <Button className={BUTTON_CLASS} onClick={() => void settle(devicePrinter().connectNew("serial", paperDefault))} disabled={locked}>
-                    Bluetooth printer
-                  </Button>
-                  <p className="text-xs text-brand-muted">{BLUETOOTH_HELP}</p>
-                </div>
-              )}
-              {caps.bluetooth && (
-                <div className="space-y-1">
-                  <Button className={BUTTON_CLASS} variant="outline" onClick={() => void settle(devicePrinter().connectNew("ble", paperDefault))} disabled={locked}>
-                    Bluetooth LE printer
-                  </Button>
-                  <p className="text-xs text-brand-muted">{BLUETOOTH_LE_HELP}</p>
-                </div>
-              )}
-            </div>
+          {choosing && !caps.native && (caps.serial || caps.bluetooth) && (
+            <BrowserPrinterConnect
+              paired={caps.serial}
+              nearby={caps.serial && caps.bluetooth}
+              locked={locked}
+              notSeen={notSeen}
+              onConnect={() => void settle(devicePrinter().connectNew(primaryKind, paperDefault), true)}
+              onSearchNearby={() => void settle(devicePrinter().connectNew("ble", paperDefault))}
+            />
           )}
-          {choosing && !caps.native && !webChoices && <p className="text-brand-muted">{NO_CAPABILITY_MESSAGE}</p>}
+          {choosing && !caps.native && !caps.serial && !caps.bluetooth && <p className="text-brand-muted">{NO_CAPABILITY_MESSAGE}</p>}
         </>
       )}
-    </section>
+    </PrinterSection>
   );
 }

@@ -185,12 +185,25 @@ const PINS: PinCase[] = [
       assert.match(src, /role="status" aria-live="polite"/);
       assert.ok(src.includes("{ dot: PrinterDot & { show: true }; copy: PrinterHeadline }"));
       assert.match(src, /<span\s+aria-hidden="true"/);
-      assert.match(src, /\{dot\.reason !== "checking" && \(\s*<span\s+aria-hidden="true"/, "W-U: a checking line shows no dot");
+      assert.match(src, /<span aria-hidden="true" className=\{cn\(PRINTER_TILE_CLASS, tone\)\}>/, "the status tile is decoration (aria-hidden)");
       assert.equal(count(src, "<Button"), 1, "at most ONE fix button");
       assert.ok(src.includes("PRINTER_ACTION_CLASS"), "the fix button is 44px (shared action class)");
       assert.ok(!src.includes(POS_PULSE_CTX), "the banner takes its copy as props");
     },
     mutate: (src) => src.replace('role="status" aria-live="polite"', ""),
+  },
+  {
+    // Re-anchored 2026-10-02 (W-U): the small dot became a 36px icon tile; "checking" is a spinner on a
+    // neutral tile (still no good/bad colour), ok/bad are the green/red tints with a distinct icon.
+    name: "banner tile: checking is a neutral spinner (no status colour); ok and bad carry different icons and tints",
+    file: BANNER,
+    check: (src) => {
+      assert.ok(src.includes('const checking = dot.reason === "checking";'), "landmark: the checking branch");
+      assert.ok(src.includes("checking ? PRINTER_TILE_NEUTRAL_CLASS : dot.ok ? PRINTER_TILE_OK_CLASS : PRINTER_TILE_BAD_CLASS"), "checking draws the neutral tone, never ok/bad");
+      assert.ok(src.includes("checking ? Loader2 : dot.ok ? CheckCircle2 : AlertCircle"), "icons: spinner / check / alert");
+      assert.ok(src.includes('checking && "motion-safe:animate-spin"'), "the spinner respects reduced motion");
+    },
+    mutate: (src) => src.replace("checking ? PRINTER_TILE_NEUTRAL_CLASS : dot.ok", "dot.ok"),
   },
   {
     name: "banner fixes: reconnect runs straight from the click; setup and print-here focus targets INSIDE this panel",

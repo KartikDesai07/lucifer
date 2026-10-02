@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { CheckCircle2, MonitorSmartphone } from "lucide-react";
 
 import { PRINTER_ACTION_CLASS, PRINTER_INPUT_CLASS } from "@/components/print/printer-classes";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { BRAND_PANEL_CLASS } from "@/components/brand/brand-classes";
 import { InlineConfirm } from "@/components/print/PrintHostCardParts";
+import { PrinterSection } from "@/components/print/PrinterSection";
 import type { PrintHostState } from "@pos/shared/print-job";
 
 // Mirrors PRINT_HOST_LABEL_MAX_CHARS, which lives in the server-only
@@ -16,6 +17,9 @@ import type { PrintHostState } from "@pos/shared/print-job";
 const LABEL_MAX_CHARS = 60;
 const OFFLINE_MESSAGE = "This device is offline. Where slips print will show here when it is back online.";
 const CHECKING_MESSAGE = "Checking where slips print…";
+const SECTION_DESCRIPTION = "Choose which device prints your slips.";
+const ONE_DEVICE_TITLE = "Use one device for all printing";
+const ONE_DEVICE_HELP = "Good for a Counter PC with the printer: orders from phones print there.";
 
 export interface PrintWhereSectionProps {
   /** `null` = unresolved pulse OR a degraded tick — never "no printing device". */
@@ -40,17 +44,19 @@ export function PrintWhereSection(props: PrintWhereSectionProps) {
   const anotherOnline = hostLabel !== null && host !== null && !host.offline;
 
   const designateButton = (text: string, onClick: () => void) => (
-    <Button data-action="designate" className={PRINTER_ACTION_CLASS} onClick={onClick} disabled={designating}>
+    <Button data-action="designate" variant="outline" className={cn(PRINTER_ACTION_CLASS, "w-full sm:w-auto")} onClick={onClick} disabled={designating}>
       {designating ? "Saving…" : text}
     </Button>
   );
 
   return (
-    <section id="printer-where" className={`${BRAND_PANEL_CLASS} space-y-3 rounded-lg border p-4 text-sm`}>
-      <h3 className="text-base font-semibold text-brand-ink">Where slips print</h3>
+    <PrinterSection id="printer-where" icon={MonitorSmartphone} title="Where slips print" description={SECTION_DESCRIPTION}>
       {isHostDevice ? (
         <>
-          <p>This device prints all slips.</p>
+          <p className="flex items-center gap-2 font-medium text-brand-ink">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-green-700" aria-hidden="true" />
+            This device prints all slips.
+          </p>
           {stopControl}
         </>
       ) : host === null ? (
@@ -75,21 +81,24 @@ export function PrintWhereSection(props: PrintWhereSectionProps) {
           )}
         </>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           <p>Each device prints its own slips.</p>
-          <label className="block space-y-1">
-            <span className="text-[13px] font-medium text-brand-ink">Name for this device</span>
-            <Input
-              value={label}
-              maxLength={LABEL_MAX_CHARS}
-              onChange={(e) => onLabelChange(e.target.value)}
-              className={cn(PRINTER_INPUT_CLASS, "max-w-sm")}
-            />
-          </label>
-          {designateButton("Print all slips on this device", onDesignate)}
-          <p className="text-xs text-brand-muted">Every slip from every device will print here.</p>
+          <div className="space-y-2 rounded-md border border-brand-rule p-3">
+            <p className="font-medium text-brand-ink">{ONE_DEVICE_TITLE}</p>
+            <p className="text-xs text-brand-muted">{ONE_DEVICE_HELP}</p>
+            <label className="block space-y-1">
+              <span className="text-[13px] font-medium text-brand-ink">Name for this device</span>
+              <Input
+                value={label}
+                maxLength={LABEL_MAX_CHARS}
+                onChange={(e) => onLabelChange(e.target.value)}
+                className={cn(PRINTER_INPUT_CLASS, "max-w-sm")}
+              />
+            </label>
+            {designateButton("Print all slips on this device", onDesignate)}
+          </div>
         </div>
       )}
-    </section>
+    </PrinterSection>
   );
 }
