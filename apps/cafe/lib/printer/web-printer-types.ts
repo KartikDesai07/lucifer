@@ -99,7 +99,7 @@ export type PaperChoice = DevicePrinter["paper"];
 export const PRINTER_NOT_CONNECTED_MESSAGE =
   "The printer is not connected. Tap the printer icon and reconnect it, then print the slip again.";
 export const PRINTER_WRITE_FAILED_MESSAGE =
-  "The printer stopped answering. Check it is on and has paper, then print the slip again.";
+  "The printer stopped answering. Check the paper first: part or all of this slip may already have printed. Reconnect, then reprint only if needed.";
 export const PRINTER_TOO_LARGE_MESSAGE = "This slip is too long to print.";
 export const PRINTER_ELSEWHERE_MESSAGE = "The printer is in use in another tab. Print from that tab, or close it.";
 

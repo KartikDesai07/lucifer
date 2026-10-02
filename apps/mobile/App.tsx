@@ -5,12 +5,12 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, StatusBar, StyleSheet, View } from 'react-native';
+import { StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PosPrinter } from './src/native/PosPrinter';
 import { LoadErrorScreen } from './src/screens/LoadErrorScreen';
 import { PosScreen } from './src/screens/PosScreen';
-import { colors } from './src/screens/theme';
+import { BootScreen } from './src/screens/Brand';
 import { UrlScreen } from './src/screens/UrlScreen';
 import { normalizePosUrl } from './src/url';
 
@@ -93,28 +93,17 @@ function App() {
       />
     );
   } else {
-    screen = (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
+    screen = <BootScreen />;
   }
 
   return (
     <SafeAreaProvider>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar
+        barStyle={boot.kind === 'loading' ? 'light-content' : 'dark-content'}
+      />
       {screen}
     </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.background,
-  },
-});
 
 export default App;

@@ -7,6 +7,35 @@ Things to have: the app installed (see README), the POS web app deployed with
 the printing update, a thermal printer (ideally one Bluetooth and one with a
 network port), a PC with Chrome for the debug part.
 
+## Regression checks added 2026-10-02
+
+- [ ] Deploy the updated cafe web build as well as the APK. The color fallback
+      ships in the website's CSS; replacing only the APK does not update it.
+- [ ] Check login, POS, printer panel and dark mode on WebView 109 and a current
+      WebView. Backgrounds, muted text and border colors must be visible. This
+      fallback covers colors, not all future Tailwind features on old engines.
+- [ ] On a tablet without Bluetooth (or with its permission denied), attach a
+      USB printer through a powered OTG connection. **Refresh USB / paired
+      printers** must show it without requiring Bluetooth.
+- [ ] Deny USB access. There must be no repeating permission popup. Tap
+      **Reconnect** explicitly, grant access, and print a test slip.
+- [ ] With a USB permission dialog pending, change/forget the printer. The old
+      request must not hold up the new printer for the full 60-second timeout.
+- [ ] Unplug/replug USB; turn Bluetooth off/on in Android settings; revoke and
+      restore permission. The connection status must follow the real adapter
+      state and recover. Test with the app foregrounded and backgrounded.
+- [ ] Attach two USB printers with identical VID/PID. Selection must fail
+      without printing on an arbitrary one. Remove one, then reconnect.
+- [ ] Interrupt Bluetooth/USB/LAN during a long slip. An uncertain/partial
+      write must show an error without automatically replaying the whole slip.
+      Check the paper before manually reprinting. A new job should reconnect.
+- [ ] Test 58mm and 80mm bills/KOTs, long orders, paper-out, lid-open and power
+      cycles on each client's actual ESC/POS model. A successful byte transfer
+      does not prove that paper physically came out.
+- [ ] For a printer cabled to Windows, select it in the desktop POS, designate
+      that PC as the printing device, and test orders sent from the mobile POS.
+      Test both the direct ESC/POS method and the driver method where required.
+
 ## Part A. Debug build, talking to the app directly (about 15 minutes)
 
 Build and install a **debug** build (`npx react-native run-android --active-arch-only`),

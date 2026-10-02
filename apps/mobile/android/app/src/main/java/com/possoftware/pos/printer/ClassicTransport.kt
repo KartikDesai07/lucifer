@@ -32,6 +32,7 @@ class ClassicTransport(
   @Volatile private var out: OutputStream? = null
 
   override fun open() {
+    if (closing.get()) throw TransportException(BridgeCodes.NOT_CONNECTED, "Closed")
     val adapter =
         BtAccess.adapter(ctx)
             ?: throw TransportException(BridgeCodes.UNSUPPORTED, "No Bluetooth adapter")
@@ -78,6 +79,10 @@ class ClassicTransport(
           device.createRfcommSocketToServiceRecord(SPP_UUID)
         }
     socket = s
+    if (closing.get()) {
+      closeSocket(s)
+      throw TransportException(BridgeCodes.NOT_CONNECTED, "Closed")
+    }
     val deadline = timer.schedule(Runnable { closeSocket(s) }, timeoutMs, TimeUnit.MILLISECONDS)
     try {
       s.connect()

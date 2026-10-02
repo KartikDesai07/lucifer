@@ -74,6 +74,7 @@ object PrinterDiscovery {
     for (device in manager.deviceList.values) {
       if (UsbTransport.findBulkOut(device) == null) continue
       val id = PrinterIds.usb(device.vendorId, device.productId)
+      if (entries.any { it.info.id == id }) continue
       val name = PrinterNames.usb(ctx, device.productName)
       entries.add(Entry(PrinterInfo(id, name, BridgeCodes.TRANSPORT_USB), true))
     }

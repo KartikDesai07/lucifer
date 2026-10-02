@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { NATIVE_TYPE_ICONS, NATIVE_TYPE_LABELS } from "@/components/print/printer-type";
 import type { PaperWidth } from "@/lib/constants";
 import { devicePrinter, type ConnectOutcome } from "@/lib/printer/device-printer";
-import { nativeRequest } from "@/lib/printer/native-bridge";
+import { nativeClient, nativeRequest } from "@/lib/printer/native-bridge";
 import {
   DEFAULT_TCP_PRINTER_PORT,
   PRINTER_SCAN_MS,
@@ -30,13 +30,13 @@ const ROW_BUTTON_CLASS = cn(PRINTER_ACTION_CLASS, "w-full sm:w-auto");
 const MS_PER_SECOND = 1_000;
 const TCP_PORT_MAX = 65_535;
 const PORT_MESSAGE = "The port is a number from 1 to 65535. Most printers use 9100.";
-const BLUETOOTH_UNSUPPORTED_MESSAGE = "This device has no Bluetooth. Use a network printer instead.";
+const BLUETOOTH_UNSUPPORTED_MESSAGE = "This device has no Bluetooth. You can still use a USB or network printer.";
 const BLUETOOTH_OFF_LINE = "Bluetooth is off on this device.";
 const BLUETOOTH_BLOCKED_LINE = "The POS app needs permission to use Bluetooth.";
 const NOTICE_CLASS = "space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900";
 const BLOCK_CLASS = "space-y-2 rounded-md border border-brand-rule p-3";
-const NETWORK_TITLE = "Printer on the network (Wi-Fi or cable)";
-const NONE_FOUND_MESSAGE = "No printers found yet. Turn the printer on and keep it close, then tap Find printers.";
+const NETWORK_TITLE = "Network printer (Wi-Fi or Ethernet)";
+const NONE_FOUND_MESSAGE = "No printers found yet. For USB, connect a powered printer with a USB OTG adapter and tap Refresh USB / paired printers. For Bluetooth, turn it on and tap Find printers.";
 
 interface NativePrinterPickerProps {
   paper: PaperWidth;
@@ -46,9 +46,7 @@ interface NativePrinterPickerProps {
   onAttempt: (attempt: Promise<ConnectOutcome>) => Promise<void>;
 }
 
-// Picking a printer inside the POS app: the printers the app can see (paired
-// ones first, a scan on request), a network address as the way in for a LAN
-// printer, and the Bluetooth fixes (turn on, allow) right where they are needed.
+// USB and paired devices are always available; Bluetooth scanning is separate.
 export function NativePrinterPicker({ paper, busy, onAttempt }: NativePrinterPickerProps) {
   const [printers, setPrinters] = useState<NativePrinter[] | null>(null);
   const [bluetooth, setBluetooth] = useState<NativeBluetoothState | null>(null);
@@ -61,21 +59,27 @@ export function NativePrinterPicker({ paper, busy, onAttempt }: NativePrinterPic
 
   useEffect(() => {
     let live = true;
-    Promise.all([nativeRequest("printer.status"), devicePrinter().listNative(false)])
+    const off = nativeClient()?.on("printer.status", (status) => {
+      if (live) setBluetooth(status.bluetooth);
+    });
+    Promise.allSettled([nativeRequest("printer.status"), devicePrinter().listNative(false)])
       .then(([status, list]) => {
         if (!live) return;
-        setBluetooth(status.bluetooth);
-        setPrinters(list);
-      })
-      .catch((error: unknown) => {
-        if (live) toast.error(nativeErrorMessage(error));
+        if (status.status === "fulfilled") setBluetooth(status.value.bluetooth);
+        if (list.status === "fulfilled") setPrinters(list.value);
+        else {
+          setPrinters([]);
+          toast.error(nativeErrorMessage(list.reason));
+        }
       });
     return () => {
       live = false;
+      off?.();
     };
   }, []);
 
   const findPrinters = async () => {
+    if (locked) return;
     setScanning(true);
     try {
       setPrinters(await devicePrinter().listNative(true));
@@ -83,6 +87,22 @@ export function NativePrinterPicker({ paper, busy, onAttempt }: NativePrinterPic
       toast.error(nativeErrorMessage(error));
     } finally {
       setScanning(false);
+    }
+  };
+
+  const refreshPrinters = async () => {
+    if (locked) return;
+    setWorking(true);
+    try {
+      const [status, list] = await Promise.all([
+        nativeRequest("printer.status"), devicePrinter().listNative(false),
+      ]);
+      setBluetooth(status.bluetooth);
+      setPrinters(list);
+    } catch (error) {
+      toast.error(nativeErrorMessage(error));
+    } finally {
+      setWorking(false);
     }
   };
 
@@ -113,6 +133,7 @@ export function NativePrinterPicker({ paper, busy, onAttempt }: NativePrinterPic
   };
 
   const connectNetworkPrinter = () => {
+    if (locked) return;
     // A pasted "host:port" fills both fields, so it works even typed by hand.
     const pasted = splitHostPort(address);
     const host = (pasted?.host ?? address).trim().toLowerCase();
@@ -148,9 +169,9 @@ export function NativePrinterPicker({ paper, busy, onAttempt }: NativePrinterPic
       )}
       {bluetooth === "unsupported" && <p role="status" className={NOTICE_CLASS}>{BLUETOOTH_UNSUPPORTED_MESSAGE}</p>}
 
-      {bluetooth !== "unsupported" && (
         <div className="space-y-2">
           <p className="font-medium text-brand-ink">Printers this device can see</p>
+          <p className="text-sm text-brand-muted">USB connects directly to this phone or tablet using OTG. A printer cabled to a PC must be selected in the POS desktop app on that PC.</p>
           {printers === null ? (
             <p role="status" className="text-brand-muted">Reading the printer list…</p>
           ) : printers.length === 0 ? (
@@ -183,13 +204,14 @@ export function NativePrinterPicker({ paper, busy, onAttempt }: NativePrinterPic
               })}
             </ul>
           )}
-          <Button className={ROW_BUTTON_CLASS} variant={printers?.length === 0 ? "default" : "outline"} onClick={() => void findPrinters()} disabled={locked}>
+          <Button className={ROW_BUTTON_CLASS} variant="outline" onClick={() => void refreshPrinters()} disabled={locked}>
+            {working ? "Refreshing printers…" : "Refresh USB / paired printers"}
+          </Button>
+          {bluetooth !== "unsupported" && <Button className={ROW_BUTTON_CLASS} variant={printers?.length === 0 ? "default" : "outline"} onClick={() => void findPrinters()} disabled={locked || bluetooth !== "on"}>
             {scanning && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
             {scanning ? `Looking for printers (about ${PRINTER_SCAN_MS / MS_PER_SECOND} seconds)…` : "Find printers"}
-          </Button>
+          </Button>}
         </div>
-      )}
-
       <form
         method="post"
         className={BLOCK_CLASS}
@@ -204,9 +226,14 @@ export function NativePrinterPicker({ paper, busy, onAttempt }: NativePrinterPic
             <span className="text-[13px] font-medium text-brand-ink">Printer address</span>
             <Input
               value={address}
-              inputMode="decimal"
+              inputMode="url"
               autoComplete="off"
-              onChange={(e) => setAddress(e.target.value)}
+              autoCapitalize="none"
+              spellCheck={false}
+              placeholder="192.168.1.50"
+              disabled={locked}
+              aria-invalid={formError !== null}
+              onChange={(e) => { setAddress(e.target.value); setFormError(null); }}
               onPaste={(e) => {
                 const pasted = splitHostPort(e.clipboardData.getData("text"));
                 if (pasted === null) return;
@@ -219,7 +246,7 @@ export function NativePrinterPicker({ paper, busy, onAttempt }: NativePrinterPic
           </label>
           <label className="w-28 space-y-1">
             <span className="text-[13px] font-medium text-brand-ink">Port</span>
-            <Input value={port} inputMode="numeric" autoComplete="off" onChange={(e) => setPort(e.target.value)} className={PRINTER_INPUT_CLASS} />
+            <Input value={port} inputMode="numeric" autoComplete="off" disabled={locked} onChange={(e) => { setPort(e.target.value); setFormError(null); }} className={PRINTER_INPUT_CLASS} />
           </label>
         </div>
         {formError !== null && <p role="alert" className="text-xs text-brand-danger">{formError}</p>}

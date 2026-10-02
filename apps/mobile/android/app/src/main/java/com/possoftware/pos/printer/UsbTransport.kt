@@ -13,6 +13,7 @@ import android.hardware.usb.UsbInterface
 import android.hardware.usb.UsbManager
 import android.os.Build
 import androidx.core.content.ContextCompat
+import androidx.core.content.IntentCompat
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -51,16 +52,23 @@ class UsbTransport(
   @Volatile private var connection: UsbDeviceConnection? = null
   @Volatile private var claimed: UsbInterface? = null
   @Volatile private var endpoint: UsbEndpoint? = null
+  private val lifecycleLock = Any()
+  @Volatile private var closed = false
+  @Volatile private var permissionAnswer: CountDownLatch? = null
 
   fun matches(vendor: Int, product: Int): Boolean = vendor == vendorId && product == productId
 
   override fun open() {
+    ensureOpen()
     val usb =
         ctx.getSystemService(Context.USB_SERVICE) as? UsbManager
             ?: throw TransportException(BridgeCodes.UNSUPPORTED, "No USB host")
-    val device =
-        usb.deviceList.values.firstOrNull { it.vendorId == vendorId && it.productId == productId }
-            ?: throw TransportException(BridgeCodes.NOT_CONNECTED, "USB printer not attached")
+    val matches = usb.deviceList.values.filter { it.vendorId == vendorId && it.productId == productId }
+    // VID/PID identify a model, not a physical printer. Never silently send a
+    // kitchen ticket to an arbitrary device when two identical models attach.
+    if (matches.size > 1) throw TransportException(BridgeCodes.UNSUPPORTED, "Attach only one printer of this model")
+    val device = matches.singleOrNull()
+        ?: throw TransportException(BridgeCodes.NOT_CONNECTED, "USB printer not attached")
     val (intf, ep) =
         findBulkOut(device)
             ?: throw TransportException(BridgeCodes.UNSUPPORTED, "Not a USB printer")
@@ -68,6 +76,7 @@ class UsbTransport(
       // Background reconnects must never raise a system dialog.
       if (!isVisible()) throw TransportException(BridgeCodes.UNAUTHORIZED, "USB permission needed")
       requestPermission(usb, device)
+      ensureOpen()
       // Never trust the broadcast extra; ask the system again.
       if (!usb.hasPermission(device)) {
         throw TransportException(BridgeCodes.UNAUTHORIZED, "USB permission denied")
@@ -80,17 +89,33 @@ class UsbTransport(
       conn.close()
       throw TransportException(BridgeCodes.NOT_CONNECTED, "USB printer is in use")
     }
-    claimed = intf
-    endpoint = ep
-    connection = conn
+    synchronized(lifecycleLock) {
+      if (closed) {
+        conn.releaseInterface(intf)
+        conn.close()
+        ensureOpen()
+      }
+      claimed = intf
+      endpoint = ep
+      connection = conn
+    }
+  }
+
+  private fun ensureOpen() {
+    if (closed) throw TransportException(BridgeCodes.NOT_CONNECTED, "USB connection cancelled")
   }
 
   private fun requestPermission(usb: UsbManager, device: UsbDevice) {
     val answered = CountDownLatch(1)
+    synchronized(lifecycleLock) {
+      ensureOpen()
+      permissionAnswer = answered
+    }
     val receiver =
         object : BroadcastReceiver() {
           override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == ACTION_USB_PERMISSION) answered.countDown()
+            val target = IntentCompat.getParcelableExtra(intent, UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+            if (intent.action == ACTION_USB_PERMISSION && target?.deviceName == device.deviceName) answered.countDown()
           }
         }
     ContextCompat.registerReceiver(
@@ -108,12 +133,14 @@ class UsbTransport(
               Intent(ACTION_USB_PERMISSION).setPackage(ctx.packageName),
               flags,
           )
+      ensureOpen()
       usb.requestPermission(device, reply)
       answered.await(PERMISSION_TIMEOUT_MS, TimeUnit.MILLISECONDS)
     } catch (e: InterruptedException) {
       Thread.currentThread().interrupt()
       throw TransportException(BridgeCodes.UNAUTHORIZED, "Interrupted")
     } finally {
+      permissionAnswer = null
       try {
         ctx.unregisterReceiver(receiver)
       } catch (e: IllegalArgumentException) {
@@ -135,14 +162,22 @@ class UsbTransport(
   }
 
   override fun close() {
-    val conn = connection
-    connection = null
+    val (conn, intf) = synchronized(lifecycleLock) {
+      closed = true
+      permissionAnswer?.countDown()
+      val owned = Pair(connection, claimed)
+      connection = null
+      claimed = null
+      endpoint = null
+      owned
+    }
     if (conn == null) return
     try {
-      claimed?.let { conn.releaseInterface(it) }
-      conn.close()
+      intf?.let { conn.releaseInterface(it) }
     } catch (e: RuntimeException) {
       // Device already gone.
+    } finally {
+      try { conn.close() } catch (_: RuntimeException) { }
     }
   }
 }

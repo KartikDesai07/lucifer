@@ -255,6 +255,10 @@ test("nativeStatusToSnapshot maps the app's status and keeps the page's paper si
   assert.equal(nativeStatusToSnapshot({ ...connected, state: "disconnected", bluetooth: "unauthorized" }, null).message, NATIVE_BLUETOOTH_BLOCKED_MESSAGE);
   assert.equal(nativeStatusToSnapshot({ ...connected, state: "connected", bluetooth: "off" }, null).message, null);
   const net = { ...connected, state: "disconnected" as const, printer: { id: "tcp", name: "10.0.0.5", transport: "tcp" as const }, bluetooth: "off" as const };
-  assert.equal(nativeStatusToSnapshot(net, null).message, null, "Bluetooth being off says nothing about a network printer");
+  assert.match(nativeStatusToSnapshot(net, null).message!, /same network/);
+  assert.doesNotMatch(nativeStatusToSnapshot(net, null).message!, /Bluetooth/, "network recovery must not request Bluetooth permission");
+  const usb = { ...net, printer: { id: "usb:1:2", name: "USB printer", transport: "usb" as const } };
+  assert.match(nativeStatusToSnapshot(usb, null).message!, /USB OTG/);
+  assert.doesNotMatch(nativeStatusToSnapshot(usb, null).message!, /Bluetooth/);
   assert.equal(nativeStatusToSnapshot({ ...connected, state: "connecting" }, null).status, "connecting");
 });

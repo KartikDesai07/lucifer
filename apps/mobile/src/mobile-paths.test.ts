@@ -1312,8 +1312,21 @@ function receiverProblems(s: KtSources): string[] {
   if (!receivers.includes('ContextCompat.RECEIVER_NOT_EXPORTED')) {
     out.push('PrinterReceivers lost RECEIVER_NOT_EXPORTED');
   }
-  if (/(?<!NOT_)RECEIVER_EXPORTED/.test(receivers)) {
-    out.push('PrinterReceivers exports a receiver');
+  if (
+    !/app, bluetoothReceiver, IntentFilter\(BluetoothAdapter.ACTION_STATE_CHANGED\), ContextCompat.RECEIVER_EXPORTED/.test(
+      receivers,
+    )
+  ) {
+    out.push(
+      'Bluetooth state receiver must receive privileged Bluetooth broadcasts',
+    );
+  }
+  if (
+    !/app, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED/.test(
+      receivers,
+    )
+  ) {
+    out.push('USB receiver must remain private');
   }
   return out;
 }
@@ -1676,6 +1689,7 @@ test('pin 14 mutation: every needle can fail', () => {
   everyMutationCaught(run(receiverProblems, 'receivers'), base.receivers, [
     ['ContextCompat.' + notExported, 'ContextCompat.RECEIVER_EXPORTED'],
     ['ContextCompat.' + notExported, 'flags'],
+    ['ContextCompat.RECEIVER_EXPORTED', 'ContextCompat.' + notExported],
   ]);
   everyMutationCaught(run(bleProblems, 'ble'), base.ble, [
     [
@@ -1870,14 +1884,14 @@ const NEWLINE = String.fromCharCode(10);
 const proguardCode = (text: string): string =>
   text
     .split(NEWLINE)
-    .filter((line) => !line.trim().startsWith('#'))
+    .filter(line => !line.trim().startsWith('#'))
     .join(NEWLINE);
 // Every line trimmed and joined by one space: a multi-line Gradle block reads as one sentence.
 const oneLine = (text: string): string =>
   text
     .split(NEWLINE)
-    .map((line) => line.trim())
-    .filter((line) => line !== '')
+    .map(line => line.trim())
+    .filter(line => line !== '')
     .join(' ');
 function releaseProblems(s: ReleaseSources): string[] {
   const out: string[] = [];
@@ -1916,7 +1930,9 @@ function releaseProblems(s: ReleaseSources): string[] {
   if (!rules.includes('@android.webkit.JavascriptInterface <methods>;')) {
     out.push('R8 may rename the WebView page bridge');
   }
-  if (!rules.includes('-keep class com.reactnativecommunity.webview.** { *; }')) {
+  if (
+    !rules.includes('-keep class com.reactnativecommunity.webview.** { *; }')
+  ) {
     out.push('R8 may strip react-native-webview');
   }
   if (!strip(s.manifest).includes('android:allowBackup="false"')) {
@@ -1940,19 +1956,30 @@ test('pin 15 mutation: every hardening needle can fail', () => {
   const run = (key: keyof ReleaseSources) => (text: string) =>
     releaseProblems({ ...base, [key]: text });
   everyMutationCaught(run('gradle'), base.gradle, [
-    ['def enableProguardInReleaseBuilds = true', 'def enableProguardInReleaseBuilds = false'],
+    [
+      'def enableProguardInReleaseBuilds = true',
+      'def enableProguardInReleaseBuilds = false',
+    ],
     ['minifyEnabled enableProguardInReleaseBuilds', 'minifyEnabled false'],
     ['shrinkResources enableProguardInReleaseBuilds', 'shrinkResources false'],
-    ['include "arm64-v8a", "armeabi-v7a"', 'include "arm64-v8a", "armeabi-v7a", "x86_64"'],
+    [
+      'include "arm64-v8a", "armeabi-v7a"',
+      'include "arm64-v8a", "armeabi-v7a", "x86_64"',
+    ],
     ['universalApk false', 'universalApk true'],
     ['useLegacyPackaging true', 'useLegacyPackaging false'],
     ['contains("release")', 'contains("never")'],
     ['"proguard-rules.pro"', '"other-rules.pro"'],
   ]);
-  everyMutationCaught(run('props'), base.props, [['hermesEnabled=true', 'hermesEnabled=false']]);
+  everyMutationCaught(run('props'), base.props, [
+    ['hermesEnabled=true', 'hermesEnabled=false'],
+  ]);
   everyMutationCaught(run('rules'), base.rules, [
     ['@android.webkit.JavascriptInterface <methods>;', '<methods>;'],
-    ['-keep class com.reactnativecommunity.webview.** { *; }', '# webview rule removed'],
+    [
+      '-keep class com.reactnativecommunity.webview.** { *; }',
+      '# webview rule removed',
+    ],
   ]);
   everyMutationCaught(run('manifest'), base.manifest, [
     ['android:allowBackup="false"', 'android:allowBackup="true"'],

@@ -46,6 +46,7 @@ class PosPrinterModule(private val reactContext: ReactApplicationContext) :
 
   override fun onHostResume() {
     PrinterManager.appVisible = true
+    PrinterApi.refreshStatus { }
     host.onResume()
   }
 

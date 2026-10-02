@@ -26,12 +26,14 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import type { ShouldStartLoadRequest } from 'react-native-webview/lib/WebViewTypes';
 import { useNativeBridge } from '../bridge/use-native-bridge';
 import { PosPrinter } from '../native/PosPrinter';
-import { classifyNavigation, startUrl } from '../url';
+import { classifyNavigation, isSameOrigin, startUrl } from '../url';
 import { usedAfterFailure } from './auto-retry';
 import { CRASH_URL } from './backstop';
 import { LoadErrorScreen } from './LoadErrorScreen';
 import { colors } from './theme';
 import { useLoadGuards } from './use-load-guards';
+import { WorkspaceCover } from './WorkspaceCover';
+import { buildPagePaintScript, isPageReadyMessage } from './page-presentation';
 
 export const ATTACH_RETRY_MAX = 5;
 export const ATTACH_RETRY_MS = 100;
@@ -69,6 +71,7 @@ function PosWebView({
   const crashNavRef = useRef(false);
   const bridge = useNativeBridge({ origin, onChangeUrl });
   const [documentStart, setDocumentStart] = useState<boolean | null>(null);
+  const [loading, setLoading] = useState(true);
   // True once native delivery holds THIS WebView (a resolved attachWebView).
   const attachedRef = useRef(false);
 
@@ -198,9 +201,13 @@ function PosWebView({
   const onMessage = useCallback(
     (event: WebViewMessageEvent) => {
       const { data, url } = event.nativeEvent;
+      if (isPageReadyMessage(data, url, origin)) {
+        setLoading(false);
+        return;
+      }
       bridge.router?.handle(data, url).catch(noop);
     },
-    [bridge.router],
+    [bridge.router, origin],
   );
 
   const fallbackScript = documentStart === false ? bridge.script : null;
@@ -220,6 +227,11 @@ function PosWebView({
           onNavigationStateChange={onNavigationStateChange}
           onLoadStart={onLoadStart}
           onLoadEnd={onLoadEnd}
+          onLoad={event => {
+            if (isSameOrigin(event.nativeEvent.url, origin)) {
+              webRef.current?.injectJavaScript(buildPagePaintScript(origin));
+            }
+          }}
           onError={onLoadError}
           onHttpError={onHttpError}
           onRenderProcessGone={onRenderGone}
@@ -236,7 +248,16 @@ function PosWebView({
           textZoom={100}
           webviewDebuggingEnabled={__DEV__}
           overScrollMode="never"
+          showsVerticalScrollIndicator={false}
+          showsHorizontalScrollIndicator={false}
+          cacheEnabled
+          cacheMode="LOAD_DEFAULT"
           style={styles.web}
+        />
+        <WorkspaceCover
+          ready={!loading}
+          origin={origin}
+          onRetry={onRenderGone}
         />
       </View>
     </SafeAreaView>

@@ -181,24 +181,38 @@ test("write: a job goes out in 2048-byte chunks, awaiting ready before each", as
   assert.equal(port.readyCount, 3);
 });
 
-test("write: a failed send reconnects silently and resends the WHOLE job exactly once", async () => {
+test("write: an uncertain send is not replayed and reports disconnected", async () => {
   const { printer, port } = await connectedSerial();
   const seen = statusLog(printer);
   port.failWrites = 1;
-  await printer.write(new Uint8Array(3000));
-  assert.deepEqual(port.delivered, [2048, 952], "the resend delivered the full job");
-  assert.equal(port.writeAttempts, 3, "one failed chunk + two resent chunks");
-  assert.equal(port.opens, 2, "one reconnect");
-  assert.ok(seen.includes("disconnected") && seen[seen.length - 1] === "connected");
+  await assert.rejects(printer.write(new Uint8Array(3000)), { message: PRINTER_WRITE_FAILED_MESSAGE });
+  assert.deepEqual(port.delivered, []);
+  assert.equal(port.writeAttempts, 1, "no automatic replay");
+  assert.equal(port.opens, 1);
+  assert.equal(seen[seen.length - 1], "disconnected");
 });
 
-test("write: a second failure throws the plain sentence after exactly ONE resend (never two), and the dot goes red", async () => {
+test("write: repeated transport failure sends only once and arms reconnect for future jobs", async () => {
   const { printer, port, clock } = await connectedSerial();
   port.failWrites = 99;
   await assert.rejects(printer.write(new Uint8Array(100)), (e: unknown) => (e as Error).message === PRINTER_WRITE_FAILED_MESSAGE);
-  assert.equal(port.writeAttempts, 2, "first try + one resend");
+  assert.equal(port.writeAttempts, 1, "uncertain delivery is never replayed");
   assert.equal(printer.getSnapshot().status, "disconnected");
   assert.equal(clock.pending(), 1, "the reconnect backoff is armed");
+});
+
+test("write: a failure after the first chunk does not duplicate it; the next job reconnects", async () => {
+  const { printer, port } = await connectedSerial();
+  let rejectChunk!: (error: Error) => void;
+  port.gates.push(Promise.resolve(), new Promise<void>((_resolve, reject) => { rejectChunk = reject; }));
+  const result = assert.rejects(printer.write(new Uint8Array(3000)), { message: PRINTER_WRITE_FAILED_MESSAGE });
+  await flush();
+  assert.deepEqual(port.delivered, [2048], "the printer has already received part of this slip");
+  rejectChunk(new Error("cable removed"));
+  await result;
+  assert.equal(port.writeAttempts, 2, "the first chunk must not be replayed");
+  await printer.write(new Uint8Array(20));
+  assert.deepEqual(port.delivered, [2048, 20], "only the new job is sent after reconnect");
 });
 
 test("write: when the reconnect itself fails the job is not sent and the sentence says so", async () => {

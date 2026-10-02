@@ -41,6 +41,7 @@ object PrinterManager {
   private var generation = 0
   private var attempts = 0
   private var btPaused = false
+  private var usbPermissionPaused = false
   private var reconnectTask: ScheduledFuture<*>? = null
   private var lastPublished: StatusSnapshot? = null
 
@@ -133,6 +134,7 @@ object PrinterManager {
           state = BridgeCodes.STATE_DISCONNECTED
           attempts = 0
           btPaused = false
+          usbPermissionPaused = false
           ++generation
         }
     old.forEach { closeQuietly(it) }
@@ -148,6 +150,7 @@ object PrinterManager {
       state = BridgeCodes.STATE_NONE
       attempts = 0
       btPaused = false
+      usbPermissionPaused = false
       generation++
     }
     old.forEach { closeQuietly(it) }
@@ -202,6 +205,16 @@ object PrinterManager {
       t.open()
     } catch (e: Exception) {
       closeQuietly(t)
+      if (info.transport == BridgeCodes.TRANSPORT_USB && e is TransportException && e.code == BridgeCodes.UNAUTHORIZED) {
+        synchronized(lock) {
+          if (gen != generation) return
+          pending = null
+          state = BridgeCodes.STATE_DISCONNECTED
+          usbPermissionPaused = true
+        }
+        publish()
+        return // A denied prompt needs an explicit Reconnect, never a prompt loop.
+      }
       failed(gen, t)
       return
     }
@@ -247,7 +260,7 @@ object PrinterManager {
     val ctx = app ?: return
     synchronized(lock) {
       val info = selected
-      if (gen != generation || info == null) return
+      if (gen != generation || info == null || usbPermissionPaused) return
       if (isBluetooth(info) && BtAccess.state(ctx) != BridgeCodes.BT_ON) {
         btPaused = true
         return
@@ -291,6 +304,14 @@ object PrinterManager {
   /** Bluetooth came back (or permission was granted) while a printer waited for it. */
   fun resumeIfPaused() {
     val ctx = app ?: return
+    val lost = synchronized(lock) {
+      val info = selected
+      if (info != null && isBluetooth(info) && BtAccess.state(ctx) != BridgeCodes.BT_ON) {
+        btPaused = true
+        transport
+      } else null
+    }
+    if (lost != null) onLinkLost(lost)
     val info = synchronized(lock) { if (btPaused) selected else null } ?: return
     if (BtAccess.state(ctx) == BridgeCodes.BT_ON) {
       val gen = begin(info)

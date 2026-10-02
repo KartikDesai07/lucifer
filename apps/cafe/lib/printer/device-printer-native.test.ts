@@ -184,12 +184,12 @@ test("native: a status request that fails leaves a saved printer disconnected, n
   assert.equal(env.printer.getSnapshot().message, PRINTER_NOT_CONNECTED_MESSAGE);
 });
 
-test("native write: a failed print does ONE silent printer.reconnect and ONE resend", async () => {
+test("native write: a pre-write NOT_CONNECTED refusal allows ONE reconnect and resend", async () => {
   const { printer, fake } = await nativeEnv();
   let prints = 0;
   fake.respond("printer.print", () => {
     prints += 1;
-    if (prints === 1) throw nativeError("WRITE_FAILED", "x");
+    if (prints === 1) throw nativeError("NOT_CONNECTED", "x");
     return { bytes: 4 };
   });
   fake.respond("printer.reconnect", () => nativeStatus("connected"));
@@ -197,15 +197,15 @@ test("native write: a failed print does ONE silent printer.reconnect and ONE res
   assert.deepEqual(fake.calls.filter((c) => c.method !== "printer.status").map((c) => c.method), ["printer.print", "printer.reconnect", "printer.print"]);
 });
 
-test("native write: a second failure throws the plain sentence after exactly one reconnect and one resend", async () => {
+test("native write: a partial WRITE_FAILED is never replayed", async () => {
   const { printer, fake } = await nativeEnv();
   fake.respond("printer.print", () => {
     throw nativeError("WRITE_FAILED", "x");
   });
   fake.respond("printer.reconnect", () => nativeStatus("connected"));
   await assert.rejects(printer.write(new Uint8Array(4)), (e: unknown) => (e as Error).message === PRINTER_WRITE_FAILED_MESSAGE);
-  assert.equal(fake.count("printer.print"), 2);
-  assert.equal(fake.count("printer.reconnect"), 1);
+  assert.equal(fake.count("printer.print"), 1);
+  assert.equal(fake.count("printer.reconnect"), 0);
 });
 
 test("native write: a TIMEOUT is never resent (the app may still be printing) and does not reconnect", async () => {

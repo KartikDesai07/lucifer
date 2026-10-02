@@ -188,7 +188,7 @@ const partsPin: Pin = (raw) => {
 const nativePin: Pin = (raw) => {
   const p: string[] = [];
   const code = stripComments(raw);
-  const needles = ["listNative(false)", "listNative(true)", "selectNative({ id: printer.id }, paper)", "selectNative({ tcp: { host, port: portNumber } }, paper)", 'nativeRequest("bluetooth.enable")', 'nativeRequest("permissions.request", { kind: "bluetooth" })', "nativeErrorMessage(", "PRINTER_SCAN_MS", "String(DEFAULT_TCP_PRINTER_PORT)", 'inputMode="numeric"', 'bluetooth === "unsupported"', "Use this printer", "Find printers", "Printer on the network (Wi-Fi or cable)", "NATIVE_TYPE_ICONS"];
+  const needles = ["listNative(false)", "listNative(true)", "selectNative({ id: printer.id }, paper)", "selectNative({ tcp: { host, port: portNumber } }, paper)", 'nativeRequest("bluetooth.enable")', 'nativeRequest("permissions.request", { kind: "bluetooth" })', "nativeErrorMessage(", "PRINTER_SCAN_MS", "String(DEFAULT_TCP_PRINTER_PORT)", 'inputMode="numeric"', 'bluetooth === "unsupported"', "Use this printer", "Find printers", "Network printer (Wi-Fi or Ethernet)", "NATIVE_TYPE_ICONS"];
   for (const n of needles) check(p, code.includes(n), `must contain ${n}`);
   check(p, count(code, "toast.error(nativeErrorMessage(error))") >= 4, "every app request failure is worded by nativeErrorMessage");
   // A quoted or assigned 9100 is a literal default; the hint sentence "use 9100." is copy, not code.
@@ -349,7 +349,7 @@ const CASES: PinCase[] = [
     mut("host check dropped", "!isValidPrinterHost(host)", "host === \"\""),
     mut("paste split dropped", "onPaste={", "onPasteX={"),
     mut("printer button unnamed", "aria-label={`Use this printer: ${printer.name}`}", ""),
-    mut("the network block loses its title", "Printer on the network (Wi-Fi or cable)", "Network printer"),
+    mut("the network block loses its title", "Network printer (Wi-Fi or Ethernet)", "Network printer"),
     mut("printer button drops its visible label", "aria-label={`Use this printer: ${printer.name}`}", "aria-label={`Use ${printer.name}`}"),
   ] },
   { file: F.connect, pin: connectPin, mutations: [
