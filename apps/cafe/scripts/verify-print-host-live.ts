@@ -25,11 +25,14 @@ import { connectDB } from "@/lib/db";
 import { PrintJob } from "@/models/PrintJob";
 import { PrintHost } from "@/models/PrintHost";
 import { Order } from "@/models/Order";
+import { PrintDevice } from "@/models/PrintDevice";
 import { SCRATCH_PREFIX, DEFAULT_URI, counts } from "./print-host-live/harness";
 import { legA, legsBC, legD, legI, legK } from "./print-host-live/jobs";
 import { legE, legJ, legL } from "./print-host-live/feeds";
 import { legF, legM } from "./print-host-live/prune";
 import { legG, legH, legN, legP } from "./print-host-live/host";
+import { legQ, legR, legS, legT, legU } from "./print-host-live/lifecycle";
+import { legV, legW, legX } from "./print-host-live/lifecycle-actions";
 
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
@@ -41,7 +44,7 @@ async function main(): Promise<void> {
   process.env.MONGODB_URI = uri;
   await connectDB();
   await mongoose.connection.dropDatabase(); // clean slate even after a crashed prior run
-  await Promise.all([PrintJob.createIndexes(), PrintHost.createIndexes(), Order.createIndexes()]);
+  await Promise.all([PrintJob.createIndexes(), PrintHost.createIndexes(), Order.createIndexes(), PrintDevice.createIndexes()]);
 
   console.log(`\nPH-10 print-host live legs — live against ${dbName}\n`);
 
@@ -67,6 +70,16 @@ async function main(): Promise<void> {
     // not add the min-interval offset.
     await legM(Date.now(), false);
     await legN(Date.now());
+    // Phase 1 lifecycle legs (plan 2026-10-02-phase-1-lifecycle.md Task 8). They run AFTER leg m,
+    // because the sweep arms the prune throttle that leg m must fire first.
+    await legQ(Date.now());
+    await legR(Date.now());
+    await legS(Date.now());
+    await legT(Date.now());
+    await legU(Date.now());
+    await legV(Date.now());
+    await legW(Date.now());
+    await legX(Date.now());
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
