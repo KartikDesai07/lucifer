@@ -195,6 +195,12 @@ Nothing in §1 can start until all of these exist.
       another — the board updates within about a second instead of waiting for
       its poll. Left empty (the default), the cafe polls exactly as before —
       nothing to verify here.
+- [ ] **Realtime, existing cafes — redeploy the Worker with each release that adds
+      an event kind** (printing Phase 1 adds `print-status`). An older Worker
+      answers 400 to a kind it does not know; the cafe swallows that, so nothing
+      breaks, but the new frames never arrive and the print readback waits for
+      its 20 s pulse instead. Re-run the go-live run for the cafe: its Realtime
+      step sees the changed Worker source (`sourceHash`) and redeploys it.
 - [ ] `GET /api/health` returns HTTP 200 with `ok: true` and `db: "up"`. A 503
       carrying `db: "down"` means the app is running but cannot reach the
       cluster — check the Atlas allowlist and `MONGODB_URI` before continuing.
