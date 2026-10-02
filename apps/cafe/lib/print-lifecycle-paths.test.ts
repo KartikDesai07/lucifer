@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { stripComments } from "@/lib/source-pin-utils";
+import { ackBodySchema, confirmBodySchema, leaseBodySchema, wakeBeatBodySchema } from "@/lib/print-lifecycle-schemas";
 
 // Printing redesign Phase 1 (plan docs/superpowers/plans/2026-10-02-phase-1-lifecycle.md, Session 1A):
 // source pins over the DB-touching lifecycle libs and routes. Behaviour is proven by the pure plans'
@@ -67,4 +68,67 @@ test("PIN: the sweep expires leases, retargets queued jobs to the current host, 
   assert.match(s, /if \(result\.requeued > 0 \|\| result\.retargeted > 0\) publishCafeEvent\("print-job"\);/);
   assert.equal(count(s, ".limit(PRINT_SWEEP_BATCH)"), 2, "both sweep reads are bounded");
   assert.ok(!s.includes("console."));
+});
+
+// ── Task 6: request bodies and routes ────────────────────────────────────────
+
+test("ackBodySchema: a printed ack carries no failure fields; a failed one must say whether anything was sent", () => {
+  const ok = (body: unknown): boolean => ackBodySchema.safeParse(body).success;
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "printed" }), true);
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "printed", sent: "no" }), false);
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "failed" }), false, "sent is required on a failure (spec §7.5)");
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "failed", sent: "maybe", error: "WRITE_FAILED" }), true);
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "failed", sent: "no", permanent: true }), true);
+  assert.equal(ok({ deviceId: "d", epoch: 0, outcome: "printed" }), false, "epoch 0 was never leased");
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "printed", extra: 1 }), false, "strict");
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "failed", sent: "maybe", error: "x".repeat(201) }), false);
+  assert.equal(ok({ deviceId: "", epoch: 1, outcome: "printed" }), false);
+});
+
+test("lease, confirm and wake bodies: required fields, enums and strictness", () => {
+  assert.equal(leaseBodySchema.safeParse({ deviceId: "d", tabId: "t" }).success, true);
+  assert.equal(leaseBodySchema.safeParse({ deviceId: "d" }).success, false, "a tab id makes two windows on one PC distinguishable");
+  for (const decision of ["reprint", "printed", "dismiss"]) assert.equal(confirmBodySchema.safeParse({ decision }).success, true, decision);
+  assert.equal(confirmBodySchema.safeParse({ decision: "maybe" }).success, false);
+  const beat = {
+    deviceId: "d",
+    label: "Counter PC",
+    shell: "windows",
+    capabilities: { lan: true, bluetooth: false, usb: false, windowsPrinters: true, webSerial: false, webBluetooth: false },
+  };
+  assert.equal(wakeBeatBodySchema.safeParse(beat).success, true);
+  assert.equal(wakeBeatBodySchema.safeParse({ ...beat, appVersion: "1.2.0", nativeProtocol: 1 }).success, true);
+  assert.equal(wakeBeatBodySchema.safeParse({ ...beat, shell: "ios" }).success, false);
+  assert.equal(wakeBeatBodySchema.safeParse({ ...beat, capabilities: { ...beat.capabilities, fax: true } }).success, false, "strict capabilities");
+});
+
+const ROUTES = {
+  lease: "apps/cafe/app/api/print-jobs/lease/route.ts",
+  ack: "apps/cafe/app/api/print-jobs/[id]/ack/route.ts",
+  confirm: "apps/cafe/app/api/print-jobs/[id]/confirm/route.ts",
+  retry: "apps/cafe/app/api/print-jobs/[id]/retry/route.ts",
+} as const;
+
+test("PIN: every Phase 1 print route authenticates, is force-dynamic and no-store, and writes only through the lifecycle libs", () => {
+  for (const [name, rel] of Object.entries(ROUTES)) {
+    const s = src(rel);
+    assert.match(s, /export const dynamic = "force-dynamic";/, name);
+    assert.match(s, /const authed = await requireAuth\(\);\s*if \("error" in authed\) return authed\.error;/, name);
+    assert.match(s, /await connectDB\(\);/, name);
+    assert.match(s, /return noStore\(success\(/, name);
+    assert.match(s, /noStore\(serverError\(/, name);
+    assert.ok(!/PrintJob\./.test(s), `${name}: no model call in a route`);
+    assert.ok(!s.includes("publishCafeEvent"), `${name}: nudges live in the libs (realtime-paths' print-route pin)`);
+  }
+  for (const name of ["ack", "confirm", "retry"] as const) {
+    assert.match(src(ROUTES[name]), /if \(!mongoose\.isValidObjectId\(id\)\) return noStore\(failure\("Print job not found", 404\)\);/, name);
+  }
+});
+
+test("PIN: each route calls its one lib, and a staff decision is stamped with the SESSION name, never a body field", () => {
+  assert.match(src(ROUTES.lease), /leasePrintJobs\(\{/);
+  assert.match(src(ROUTES.lease), /touchPrintDevice\(parsed\.data\.deviceId, nowMs\)/);
+  assert.match(src(ROUTES.ack), /ackPrintJob\(\{ id, \.\.\.parsed\.data, nowMs: Date\.now\(\) \}\)/);
+  assert.match(src(ROUTES.confirm), /staff: authed\.session\.user\.name \?\? UNNAMED_STAFF/);
+  assert.match(src(ROUTES.retry), /retryPrintJob\(\{ id, nowMs: Date\.now\(\) \}\)/);
 });
