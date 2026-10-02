@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Controller } from "react-hook-form";
 import type {
   Control,
@@ -11,66 +12,73 @@ import type {
 
 import type { SettingsInput } from "@/schemas";
 import {
-  PAPER_WIDTHS,
-  PRINT_FONT_SIZES,
   PRINT_LOGO_SIZES,
   PRINT_NUMBER_START_MIN,
   PRINT_NUMBER_START_MAX,
 } from "@/lib/constants";
+import { cn } from "@/lib/utils";
+import { settingsSectionPath } from "@/lib/settings-sections";
+import type { Settings } from "@/types";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Field, ToggleRow } from "@/components/settings/SettingsFields";
+import { Field, SettingsGroup, ToggleRow } from "@/components/settings/SettingsFields";
+import { PrintSizeChoice } from "@/components/settings/PrintSizeChoice";
+import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 import {
   blankToMinStart,
-  capitalizePrintOption,
   makeNumberStartBlurHandler,
 } from "@/components/settings/print-form-utils";
 
+const BILL_NUMBER_START_ID = "settings-bill-number-start";
+const HINT_CLASS = "text-xs text-brand-muted";
+// Always underlined: inside muted hint text, colour alone would not mark it as a link.
+const HINT_LINK_CLASS = "font-medium text-brand-primary underline underline-offset-2";
+
 type BillSwitchName =
-  | "billShowNumber"
   | "billShowLogo"
   | "billShowAddress"
   | "billShowMobile"
   | "billShowGstNumber"
   | "billShowFssai";
 
+// A toggle with an optional hint under it (a pointer to the section that sets
+// the value this toggle prints).
 function BillSwitch({
   control,
   name,
   label,
   description,
+  hint,
 }: {
   control: Control<SettingsInput>;
   name: BillSwitchName;
   label: string;
   description: string;
+  hint?: React.ReactNode;
 }) {
   return (
-    <Controller
-      control={control}
-      name={name}
-      render={({ field }) => (
-        <ToggleRow
-          label={label}
-          description={description}
-          checked={field.value}
-          onChange={field.onChange}
-        />
-      )}
-    />
+    <div className="space-y-1">
+      <Controller
+        control={control}
+        name={name}
+        render={({ field }) => (
+          <ToggleRow
+            label={label}
+            description={description}
+            checked={field.value}
+            onChange={field.onChange}
+          />
+        )}
+      />
+      {hint && <p className={HINT_CLASS}>{hint}</p>}
+    </div>
+  );
+}
+
+function SectionLink({ slug, children }: { slug: "business" | "taxes"; children: React.ReactNode }) {
+  return (
+    <Link href={settingsSectionPath(slug)} className={HINT_LINK_CLASS}>
+      {children}
+    </Link>
   );
 }
 
@@ -80,206 +88,156 @@ interface BillPrintCardProps {
   setValue: UseFormSetValue<SettingsInput>;
   watch: UseFormWatch<SettingsInput>;
   errors: FieldErrors<SettingsInput>;
+  settings: Settings;
 }
 
-// The customer's slip, regrouped into three cards (CB-UI1 S3): Numbering,
-// Show on the bill, and Paper and text. Same registered names, same
-// BillSwitch/Field/print-form-utils wiring as before the regroup.
-export function BillPrintCard({ control, register, setValue, watch, errors }: BillPrintCardProps) {
+// The customer's slip (settings pass slice 4, s66): the top of the bill, then
+// the bill number. Paper and text size live in BillPaperFields; the live
+// sample bill is BillPrintPreview. Same registered names and the same
+// print-form-utils wiring as before the redesign.
+export function BillPrintCard({ control, register, setValue, watch, errors, settings }: BillPrintCardProps) {
   const showNumber = watch("billShowNumber");
   const showLogo = watch("billShowLogo");
   const billNumberStartRegistration = register("billNumberStart", { setValueAs: blankToMinStart });
   const handleBillNumberStartBlur = makeNumberStartBlurHandler(setValue, "billNumberStart");
 
   // Cross-section hints (audit hazards 1-3): a toggle here prints a value
-  // that only Business details / GST & taxes can set. Read from the form's
-  // own loaded defaults — no extra fetch.
+  // that only Business details / GST & taxes can set. The values come from the
+  // form's own loaded defaults, the GST state from the saved settings.
   const hasLogo = Boolean(watch("logo"));
   const hasGstNumber = Boolean(watch("gstNumber"));
   const hasFssai = Boolean(watch("fssai"));
+  const gstPrints = settings.gstEnabled && settings.gstRate > 0;
+
+  let gstNumberHint: React.ReactNode;
+  if (!hasGstNumber) {
+    gstNumberHint = (
+      <>
+        Add a GST number in <SectionLink slug="taxes">GST &amp; taxes</SectionLink> to print it.
+      </>
+    );
+  } else if (!gstPrints) {
+    gstNumberHint = (
+      <>
+        It prints only while GST is on in <SectionLink slug="taxes">GST &amp; taxes</SectionLink>.
+      </>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Numbering</CardTitle>
-          <CardDescription>Sequential bill numbers, and where they start.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <SettingsGroup stacked title="Top of the bill" description="What prints above the items.">
+        <BillSwitch
+          control={control}
+          name="billShowLogo"
+          label="Show logo"
+          description="Prints the restaurant's logo at the top of the bill."
+          hint={
+            hasLogo ? undefined : (
+              <>
+                Add a logo in <SectionLink slug="business">Business details</SectionLink> to print it.
+              </>
+            )
+          }
+        />
+        {showLogo && (
           <Controller
             control={control}
-            name="billShowNumber"
+            name="billLogoSize"
             render={({ field }) => (
-              <ToggleRow
-                label="Show bill number"
-                description="Prints a sequential number on each bill."
-                checked={field.value}
-                onChange={(v) => {
-                  field.onChange(v);
-                  // Turning the reveal off unmounts the field below without
-                  // shouldUnregister — a stale invalid value would otherwise
-                  // survive in form state where the operator can no longer
-                  // see or fix it, permanently blocking Save.
-                  if (!v) {
-                    setValue("billNumberStart", PRINT_NUMBER_START_MIN, { shouldValidate: true });
-                  }
-                }}
+              <PrintSizeChoice
+                legend="Logo size"
+                options={PRINT_LOGO_SIZES}
+                value={field.value}
+                onChange={field.onChange}
               />
             )}
           />
-          {showNumber && (
-            <div className="rounded-lg border p-4">
-              <Field
-                label="Bill number starts at"
-                error={errors.billNumberStart?.message}
-                hint="Applies from the next bill onward; the counter resets every day."
-              >
-                <Input
-                  type="number"
-                  min={PRINT_NUMBER_START_MIN}
-                  max={PRINT_NUMBER_START_MAX}
-                  {...billNumberStartRegistration}
-                  onBlur={(e) => {
-                    void billNumberStartRegistration.onBlur(e);
-                    handleBillNumberStartBlur(e);
-                  }}
-                />
-              </Field>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        )}
+        <BillSwitch
+          control={control}
+          name="billShowAddress"
+          label="Show address"
+          description="Prints the restaurant's address on the bill."
+        />
+        <BillSwitch
+          control={control}
+          name="billShowMobile"
+          label="Show contact mobile"
+          description="Prints the restaurant's contact number on the bill."
+        />
+        <BillSwitch
+          control={control}
+          name="billShowGstNumber"
+          label="Show GST number"
+          description="Prints the GST number on the bill, when one is set."
+          hint={gstNumberHint}
+        />
+        <BillSwitch
+          control={control}
+          name="billShowFssai"
+          label="Show FSSAI number"
+          description="Prints the FSSAI licence number on the bill, when one is set."
+          hint={
+            hasFssai ? undefined : (
+              <>
+                Add an FSSAI licence number in <SectionLink slug="business">Business details</SectionLink> to
+                print it.
+              </>
+            )
+          }
+        />
+      </SettingsGroup>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Show on the bill</CardTitle>
-          <CardDescription>What prints on the customer&apos;s bill.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <BillSwitch
-            control={control}
-            name="billShowLogo"
-            label="Show logo"
-            description="Prints the restaurant's logo at the top of the bill."
-          />
-          {!hasLogo && (
-            <p className="text-xs text-muted-foreground">
-              Add a logo in Business details to print it.
-            </p>
+      <SettingsGroup
+        stacked
+        title="Bill number"
+        description="A number on each bill. It starts again every day."
+      >
+        <Controller
+          control={control}
+          name="billShowNumber"
+          render={({ field }) => (
+            <ToggleRow
+              label="Show bill number"
+              description="Prints a sequential number on each bill."
+              checked={field.value}
+              onChange={(v) => {
+                field.onChange(v);
+                // Turning the reveal off unmounts the field below without
+                // shouldUnregister — a stale invalid value would otherwise
+                // survive in form state where the operator can no longer
+                // see or fix it, permanently blocking Save.
+                if (!v) {
+                  setValue("billNumberStart", PRINT_NUMBER_START_MIN, { shouldValidate: true });
+                }
+              }}
+            />
           )}
-          {showLogo && (
-            <div className="rounded-lg border p-4">
-              <Field label="Logo size">
-                <Controller
-                  control={control}
-                  name="billLogoSize"
-                  render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {PRINT_LOGO_SIZES.map((size) => (
-                          <SelectItem key={size} value={size}>
-                            {capitalizePrintOption(size)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-              </Field>
-            </div>
-          )}
-
-          <BillSwitch
-            control={control}
-            name="billShowAddress"
-            label="Show address"
-            description="Prints the restaurant's address on the bill."
-          />
-          <BillSwitch
-            control={control}
-            name="billShowMobile"
-            label="Show contact mobile"
-            description="Prints the restaurant's contact number on the bill."
-          />
-          <BillSwitch
-            control={control}
-            name="billShowGstNumber"
-            label="Show GST number"
-            description="Prints the GST number on the bill, when one is set."
-          />
-          {!hasGstNumber && (
-            <p className="text-xs text-muted-foreground">
-              Add a GST number in GST & taxes to print it.
-            </p>
-          )}
-          <BillSwitch
-            control={control}
-            name="billShowFssai"
-            label="Show FSSAI number"
-            description="Prints the FSSAI license number on the bill, when one is set."
-          />
-          {!hasFssai && (
-            <p className="text-xs text-muted-foreground">
-              Add an FSSAI licence number in Business details to print it.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Paper and text</CardTitle>
-          <CardDescription>Must match the actual printer, or the bill will misprint.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Paper width">
-              <Controller
-                control={control}
-                name="billPaperWidth"
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PAPER_WIDTHS.map((width) => (
-                        <SelectItem key={width} value={width}>
-                          {width}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-            </Field>
-
-            <Field label="Font size">
-              <Controller
-                control={control}
-                name="billFontSize"
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PRINT_FONT_SIZES.map((size) => (
-                        <SelectItem key={size} value={size}>
-                          {capitalizePrintOption(size)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-            </Field>
-          </div>
-        </CardContent>
-      </Card>
+        />
+        {showNumber && (
+          <Field
+            label="Bill number starts at"
+            htmlFor={BILL_NUMBER_START_ID}
+            error={errors.billNumberStart?.message}
+            hint="Applies from the next bill onward; the counter resets every day."
+          >
+            <Input
+              id={BILL_NUMBER_START_ID}
+              className={cn(BRAND_CONTROL_CLASS, "w-32")}
+              type="number"
+              inputMode="numeric"
+              min={PRINT_NUMBER_START_MIN}
+              max={PRINT_NUMBER_START_MAX}
+              {...billNumberStartRegistration}
+              onBlur={(e) => {
+                void billNumberStartRegistration.onBlur(e);
+                handleBillNumberStartBlur(e);
+              }}
+            />
+          </Field>
+        )}
+      </SettingsGroup>
     </div>
   );
 }

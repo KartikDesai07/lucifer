@@ -196,8 +196,12 @@ test("PIN: BillPrintCard.tsx resets billNumberStart to PRINT_NUMBER_START_MIN, w
   assert.ok(toggleIdx >= 0, "the billShowNumber toggle must exist");
   const onChangeIdx = src.indexOf("onChange=", toggleIdx);
   assert.ok(onChangeIdx > toggleIdx, "billShowNumber's Controller must define an onChange");
-  const scopeEnd = src.indexOf("BillSwitch", onChangeIdx);
-  const scope = src.slice(onChangeIdx, scopeEnd > 0 ? scopeEnd : undefined);
+  // Ends at the conditional reveal, as the KOT twin below does: the s66 regroup
+  // left no BillSwitch after this Controller, so the old end marker ran the
+  // scope to the end of the file.
+  const scopeEnd = src.indexOf("showNumber &&", onChangeIdx);
+  assert.ok(scopeEnd > onChangeIdx, "the conditional reveal must follow the toggle's onChange");
+  const scope = src.slice(onChangeIdx, scopeEnd);
   assert.match(scope, /if \(!v\) \{/, "the reset must be gated on the toggle turning OFF");
   assert.match(
     scope,

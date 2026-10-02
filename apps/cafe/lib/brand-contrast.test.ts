@@ -57,6 +57,10 @@ const PAIRS: ReadonlyArray<readonly [string, string, number, string]> = [
   // primary on slip (the selected tile's border) and field on slip (the radio
   // ring) are already pinned as non-text pairs below.
   ["muted", "primary-soft", TEXT_MIN, "a selected layout tile's description on its blue tint"],
+  // Settings Bill print (slice 4): blue link text in a panel hint, and the
+  // phone-only "See the bill" jump link on the page.
+  ["primary", "slip", TEXT_MIN, "a hint's link to another Settings section, inside a panel"],
+  ["primary", "paper", TEXT_MIN, "the Bill print page's See the bill jump link, on paper"],
   ["muted", "paper", TEXT_MIN, "the vendor mark on paper"],
   ["muted", "sidebar", TEXT_MIN, "sidebar section labels, the product name, row icons"],
   ["muted", "wash", TEXT_MIN, "the role line on the hovered account row"],
