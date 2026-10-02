@@ -53,6 +53,10 @@ const PAIRS: ReadonlyArray<readonly [string, string, number, string]> = [
   ["accent", "slip", TEXT_MIN, "blue text on a card (the sign-in card's status line)"],
   ["primary-hover", "primary-soft", TEXT_MIN, "every staff screen's ghost-button / menu hover (shadcn --accent-foreground on --accent)"],
   ["muted", "slip", TEXT_MIN, "secondary text on cards"],
+  // Settings Business details (slice 2): the New order screen layout tiles.
+  // primary on slip (the selected tile's border) and field on slip (the radio
+  // ring) are already pinned as non-text pairs below.
+  ["muted", "primary-soft", TEXT_MIN, "a selected layout tile's description on its blue tint"],
   ["muted", "paper", TEXT_MIN, "the vendor mark on paper"],
   ["muted", "sidebar", TEXT_MIN, "sidebar section labels, the product name, row icons"],
   ["muted", "wash", TEXT_MIN, "the role line on the hovered account row"],

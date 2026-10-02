@@ -10,7 +10,7 @@ export default function BusinessSettingsPage() {
       {(settings, section) => (
         <SettingsSectionForm settings={settings} section={section}>
           {({ control, register, errors }) => (
-            <BusinessDetailsFields control={control} register={register} errors={errors} />
+            <BusinessDetailsFields control={control} register={register} errors={errors} settings={settings} />
           )}
         </SettingsSectionForm>
       )}
