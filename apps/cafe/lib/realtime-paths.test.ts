@@ -515,7 +515,8 @@ test("PIN: the publish-gap handlers publish exactly once on the landed path, aft
   const sites: Array<{ rel: string; verb: string; guard: string; last: string; ret: string; first?: string; publishes?: number }> = [
     {
       rel: MOVE_ROUTE, verb: "POST", guard: "return failure(ORDER_STALE_ERROR, 409);", last: "cache.del(orderSummaryCacheKey());",
-      ret: "return success(moved);", publishes: 2,
+      // Printing Phase 1 (Session 1B): the answer carries printJobs when the request opted in.
+      ret: "return success(withPrintJobs(moved, printJobs));", publishes: 2,
     },
     {
       rel: ORDER_ID_ROUTE, verb: "PUT", guard: 'if (!updated) return failure("Order changed', first: "await reconcileLedger(old, updated);",

@@ -33,6 +33,7 @@ import {
 import { buildRewardAssignment } from "@/lib/reward-assignment";
 import { shouldStoreDiscountKind, rewardFromOrderSnapshot } from "@pos/shared/reward-redemption";
 import { chargeWriteFields } from "@/lib/order-charges-write";
+import { createOrderPrintJobs, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +60,9 @@ export async function POST(req: Request, { params }: Params) {
   const parsed = await validateBody(req, settleOrderSchema);
   if ("error" in parsed) return parsed.error;
   const data = parsed.data;
+  // Printing Phase 1 (lib/print-order-jobs.ts): the bill prints from here only when this call site
+  // says so (the POS settle does; the Orders-sheet settle never printed).
+  const intent = printIntentOf(req);
 
   try {
     await connectDB();
@@ -317,7 +321,17 @@ export async function POST(req: Request, { params }: Params) {
     // Paid, but the number is unknown (the counter or the set failed): a 5xx
     // sends the client to Check, which prints from the stored doc.
     if (numbered.status === "rejected") return serverError(BILL_NUMBER_UNCONFIRMED, numbered.reason);
-    return success(numbered.value ?? updated);
+    // Printing Phase 1 (spec §7.4): the numbered bill, made from the order exactly as answered.
+    const printJobs = intent
+      ? await createOrderPrintJobs({
+          order: numbered.value ?? updated,
+          slips: intent.bill ? [{ kind: "bill" }] : [],
+          originDeviceId: intent.deviceId,
+          queuedBy: authed.session.user.name ?? "",
+          nowMs: Date.now(),
+        })
+      : null;
+    return success(withPrintJobs(numbered.value ?? updated, printJobs));
   } catch (error) {
     return serverError("Failed to settle order", error);
   }

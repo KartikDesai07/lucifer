@@ -62,3 +62,57 @@ test("PIN: createOrderPrintJobs never throws, announces each new job to its devi
   assert.equal(count(s, "PrintJob.create("), 1, "one write point");
   assert.ok(!s.includes("console."), "no console.* in a server lib");
 });
+
+// ── The order routes (Session 1B) ────────────────────────────────────────────
+
+const ROUTES: Array<[string, string]> = [
+  ["apps/cafe/app/api/orders/route.ts", 'publishCafeEvent("order-changed");'],
+  ["apps/cafe/app/api/orders/[id]/items/route.ts", 'publishCafeEvent("kot-fired");'],
+  ["apps/cafe/app/api/orders/[id]/settle/route.ts", 'publishCafeEvent("order-changed");'],
+  ["apps/cafe/app/api/orders/[id]/items/void/route.ts", 'publishCafeEvent("order-changed");'],
+  ["apps/cafe/app/api/orders/[id]/table/route.ts", 'publishCafeEvent("order-changed");'],
+  ["apps/cafe/app/api/order-requests/[id]/accept/route.ts", 'publishCafeEvent("kot-fired");'],
+];
+
+test("PIN: every order route opts in only through printIntentOf(req), and creates its slips once, after its landed publish (replays return before it)", () => {
+  for (const [rel, publish] of ROUTES) {
+    const s = src(rel);
+    assert.equal(count(s, "printIntentOf(req)"), 1, `${rel}: one opt-in read`);
+    assert.equal(count(s, "await createOrderPrintJobs({"), 1, `${rel}: one creation site`);
+    const at = s.lastIndexOf(publish);
+    assert.ok(at >= 0 && s.indexOf("await createOrderPrintJobs({") > at, `${rel}: creation follows the landed path's publish`);
+    assert.ok(!/PrintJob\./.test(s), `${rel}: no direct PrintJob access`);
+  }
+  for (const rel of ROUTES.slice(0, 5).map(([r]) => r)) {
+    assert.match(src(rel), /return (success|created)\(withPrintJobs\(/, `${rel}: the answer goes through withPrintJobs`);
+  }
+});
+
+test("PIN: the create and add-round CAS writes mark a round as the server's only when the request opted in", () => {
+  const create = src("apps/cafe/app/api/orders/route.ts");
+  assert.match(create, /\.\.\.\(intent \? \{ kotPrintDevices: \[intent\.deviceId\] \} : \{\}\),/);
+  assert.match(
+    create,
+    /\[\{ kind: "kot", round: 1 \}, \.\.\.\(intent\.bill && data\.status === "Completed" \? \[\{ kind: "bill" as const \}\] : \[\]\)\]/,
+    "Pay Now prints its bill only when asked",
+  );
+  const items = src("apps/cafe/app/api/orders/[id]/items/route.ts");
+  assert.match(items, /const kotPrintDevices = buildKotPrintDevices\(old\.kotPrintDevices, round, intent\?\.deviceId\);/);
+  assert.match(items, /\.\.\.\(kotPrintDevices \? \{ kotPrintDevices \} : \{\}\),/);
+  assert.match(src("apps/cafe/app/api/orders/[id]/settle/route.ts"), /slips: intent\.bill \? \[\{ kind: "bill" \}\] : \[\],/, "the settle prints the bill only when asked");
+  assert.match(src("apps/cafe/models/Order.ts"), /kotPrintDevices: \{ type: \[String\], default: undefined \},/, "declared, omit-empty");
+});
+
+test("PIN: the staff accept creates only on a fresh accept; the public auto-accept creates for the host only (no asking device)", () => {
+  assert.match(src("apps/cafe/app/api/order-requests/[id]/accept/route.ts"), /intent && !result\.replayed\s*\? await createOrderPrintJobs\(\{/);
+  const auto = src("apps/cafe/lib/order-request-create.ts");
+  const fn = auto.slice(auto.indexOf("export async function resolveAutoAcceptStatus("));
+  inOrder(fn, ['if ("error" in result) return "pending";', "if (!result.replayed) {", "await createOrderPrintJobs({", 'return "accepted";'], "auto-accept");
+  const call = fn.slice(fn.indexOf("await createOrderPrintJobs({"), fn.indexOf('return "accepted";'));
+  assert.ok(!call.includes("originDeviceId"), "no device asked: with no host nothing is made and kot-claim prints it");
+});
+
+test("PIN: POST /api/print-jobs falls back to the asking device only for an agent request that got no-host", () => {
+  const s = src("apps/cafe/app/api/print-jobs/route.ts");
+  assert.match(s, /if \(result\.outcome === "no-host" && intent !== null\) \{\s*result = await enqueueOwnPrintJob\(\{/);
+});

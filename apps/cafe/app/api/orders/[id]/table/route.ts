@@ -33,6 +33,7 @@ import { computeOrderTotals, gstConfigFromOrder } from "@/lib/receipt";
 import { rewardFromOrderSnapshot } from "@pos/shared/reward-redemption";
 import { chargesFromOrder, withTableCharge, splitChargeTotals } from "@pos/shared/order-charges";
 import { chargeWriteFields } from "@/lib/order-charges-write";
+import { createOrderPrintJobs, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +62,8 @@ export async function POST(req: Request, { params }: Params) {
   const parsed = await validateBody(req, moveOrderTableSchema);
   if ("error" in parsed) return parsed.error;
   const to = parsed.data.tableNo;
+  // Printing Phase 1 (lib/print-order-jobs.ts): null for a tab that prints its own slips.
+  const intent = printIntentOf(req);
 
   try {
     await connectDB();
@@ -256,7 +259,27 @@ export async function POST(req: Request, { params }: Params) {
     // so their refetch reads the old table already freed. Step 3 swallows its
     // own throw, so nothing above can skip this. A failure is swallowed.
     publishCafeEvent("order-changed");
-    return success(moved);
+    // Printing Phase 1 (spec §7.4): the table slip for all three verbs, as MoveTableDialog prints it —
+    // `from` is the table the tab left (none for an ASSIGN), the actor and the moment are the server's.
+    const printJobs = intent
+      ? await createOrderPrintJobs({
+          order: moved,
+          slips: [
+            {
+              kind: "moved",
+              meta: {
+                ...(order.tableNo ? { from: order.tableNo } : {}),
+                movedBy: authed.session.user.name ?? "Staff",
+                movedAt: new Date().toISOString(),
+              },
+            },
+          ],
+          originDeviceId: intent.deviceId,
+          queuedBy: authed.session.user.name ?? "",
+          nowMs: Date.now(),
+        })
+      : null;
+    return success(withPrintJobs(moved, printJobs));
   } catch (error) {
     return serverError("Failed to move the order", error);
   }

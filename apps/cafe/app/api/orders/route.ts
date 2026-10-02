@@ -10,6 +10,7 @@ import { printConfigOf } from "@/lib/print";
 import { allocateOpeningKot, issueBillNumber, BILL_NUMBER_UNCONFIRMED } from "@/lib/slip-numbers";
 import { settledValue } from "@/lib/settled";
 import { createReplayResponse, createReplayVerdict, findCreateReplay, isIdemKeyDuplicate } from "@/lib/order-idem";
+import { createOrderPrintJobs, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
 import cache from "@/lib/cache";
 import {
   success,
@@ -141,6 +142,8 @@ export async function POST(req: Request) {
   const parsed = await validateBody(req, createOrderSchema);
   if ("error" in parsed) return parsed.error;
   const data = parsed.data;
+  // Printing Phase 1 (lib/print-order-jobs.ts): null for a tab that prints its own slips.
+  const intent = printIntentOf(req);
 
   try {
     await connectDB();
@@ -514,6 +517,8 @@ export async function POST(req: Request) {
       // F5 — the send key, omit-empty (never null: the partial unique index
       // counts null). A second insert with the same key is refused by the index.
       ...(data.idemKey ? { idemKey: data.idemKey } : {}),
+      // Printing Phase 1 — round 1 is the server's to print, so the repair sweep may re-create it.
+      ...(intent ? { kotPrintDevices: [intent.deviceId] } : {}),
     };
 
     // Order number from an atomic per-day counter (no read-max race). On the
@@ -726,7 +731,18 @@ export async function POST(req: Request) {
     // "still saving" (503); after it, the replay issues the number itself
     // (guarded, never a second one) and answers with the numbered order.
     if (numbered.status === "rejected") return serverError(BILL_NUMBER_UNCONFIRMED, numbered.reason);
-    return created(numbered.value ?? landed);
+    // Printing Phase 1 (spec §7.4): the opening round's KOT, and Pay Now's bill when this call site
+    // prints it, made from the order exactly as answered. Never throws.
+    const printJobs = intent
+      ? await createOrderPrintJobs({
+          order: numbered.value ?? landed,
+          slips: [{ kind: "kot", round: 1 }, ...(intent.bill && data.status === "Completed" ? [{ kind: "bill" as const }] : [])],
+          originDeviceId: intent.deviceId,
+          queuedBy: authed.session.user.name ?? "",
+          nowMs: Date.now(),
+        })
+      : null;
+    return created(withPrintJobs(numbered.value ?? landed, printJobs));
   } catch (error) {
     return serverError("Failed to create order", error);
   }

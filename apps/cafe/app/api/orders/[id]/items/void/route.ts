@@ -21,6 +21,7 @@ import { nextSlipSequence } from "@/models/Counter";
 import { voidItemSchema } from "@/schemas";
 import { shouldStoreDiscountKind } from "@pos/shared/reward-redemption";
 import { chargesFromOrder, splitChargeTotals } from "@pos/shared/order-charges";
+import { createOrderPrintJobs, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,8 @@ export async function POST(req: Request, { params }: Params) {
 
   const parsed = await validateBody(req, voidItemSchema);
   if ("error" in parsed) return parsed.error;
+  // Printing Phase 1 (lib/print-order-jobs.ts): null for a tab that prints its own slips.
+  const intent = printIntentOf(req);
 
   try {
     await connectDB();
@@ -149,7 +152,17 @@ export async function POST(req: Request, { params }: Params) {
     // response and swallows every failure, so it can never delay or fail this
     // write; the polls stay the fallback and the source of truth.
     publishCafeEvent("order-changed");
-    return success(updated);
+    // Printing Phase 1 (spec §7.4): the VOID slip for the entry this request pushed.
+    const printJobs = intent
+      ? await createOrderPrintJobs({
+          order: updated,
+          slips: [{ kind: "void" }],
+          originDeviceId: intent.deviceId,
+          queuedBy: authed.session.user.name ?? "",
+          nowMs: Date.now(),
+        })
+      : null;
+    return success(withPrintJobs(updated, printJobs));
   } catch (error) {
     return serverError("Failed to void item", error);
   }
