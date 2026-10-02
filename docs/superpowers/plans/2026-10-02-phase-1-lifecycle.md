@@ -6843,5 +6843,154 @@ Do **not** push, merge or start Session 1C. Report to the owner in Hinglish, the
 
 ## Session 1B Results (filled in by the implementer)
 
-_Not run yet._
+Executed on 2026-10-03 on `feat/printing-reliability` (inline, superpowers:executing-plans, TDD per task). Not pushed, not merged. `<scratchpad>` below is this session's scratchpad, `C:\Users\KARTIK~1.DES\AppData\Local\Temp\claude\d--kd-lucifer\f6140a3c-2fb8-4a2f-84d2-32a2924dba6d\scratchpad`.
+
+### Commits (505944b..HEAD)
+
+| Task | Commit | Subject |
+|---|---|---|
+| B1 | `0197f37` | feat(print): opt-in headers for server-side printing, the one-poller rule, and the realtime budget |
+| B2 | `4fbb9fa` | feat(print): a print-status realtime kind (job id, status, device; no order content) with Worker parity |
+| B3 | `c14069a` | fix(print): the lease CAS is fenced on its device, a spent lease call says when to look again, the lease heartbeat is best-effort; final states publish print-status |
+| B4 | `def3829` | feat(print): server-side print-job creation under today's job keys, and the kotPrintDevices repair marker |
+| B5 | `ec81f13` | feat(print): order routes create their slips server-side when the call site opts in; the auto-accept queues its KOT for the host |
+| B6 | `1939d8b` | feat(print): waiting jobs go to the device that prints them now (no host: their own device), and the sweep repairs missing server-owned KOTs |
+| B7 | `53f8f0b` | test(print): live legs y-ab: server-side creation, the repair sweep, host changes, the lease fence and step bound |
+| Final review C1 | `4f2d428` | fix(print): the auto-accept makes no print job until Session 1C, because the host's self-order lane prints its KOT itself |
+| Final review I1 | `2f3b971` | fix(print): the repair reads past a rush (batch 100, pinned), so an older tab's missing KOT is not starved |
+| B8 | this commit | docs(print): Phase 1 Session 1B results |
+
+Code is unchanged between `aeef4b1` (the pre-validation base) and `505944b`; only docs changed. Every Create, Append, Replace and "Replace the whole of" block of B1–B7 was applied by a scratchpad script (`apply_plan.py`) that copies the plan's fenced blocks verbatim and refuses unless each "find" matches exactly once. Every find matched once. The fresh final reviewer independently checked the four created files line for line against the plan (0 lines missing).
+
+### Per-task RED → GREEN (every Expected line compared)
+
+| Task | RED (as the plan said) | GREEN (as the plan said) |
+|---|---|---|
+| B1 | `SyntaxError … does not provide an export named 'PRINT_REALTIME_BASE_PER_DAY'`, `# tests 1` / `# pass 0` / `# fail 1` | `print-budget` 8/8; shared `npm test` 628/628; tsc 0 |
+| B2 | `realtime-paths` 48 / 46 / 2 | 48/48; cafe tsc 0 |
+| B3 | `not ok 1`, `not ok 16`, `not ok 17`; 46 / 43 / 3 | the four files 102/102; tsc 0; live legs `161 passed, 0 failed` |
+| B4 | `Cannot find module '@/lib/print-order-jobs'`, 1 / 0 | 21/21; tsc 0; eslint clean |
+| B5 | 68 / 61 / 7 (the 4 route pins, the 2 `write-route-paths` answer pins, the move's answer pin) | the five files 171/171; tsc 0; lint `✖ 2 problems (0 errors, 2 warnings)` |
+| B6 | `Cannot find module '@/lib/print-repair'`, then 18 / 16 / 2 | the five files 131/131; tsc 0; live legs `161 passed, 0 failed` |
+| B7 | n/a: the legs verify the code B3–B6 landed | tsc and eslint silent; live legs `181 passed, 0 failed` (y 8, z 5, aa 4, ab 3) |
+| Fix C1 | the rewritten auto-accept pin failed (`not ok 7`) | 64/64 (`print-order-jobs`, `print-repair`, `order-request-paths`) |
+| Fix I1 | the new batch pin failed (`not ok 13`); leg (ac) `FAIL`, live legs `182 passed, 1 failed` | live legs `183 passed, 0 failed` |
+
+### Step 1: every suite
+
+| Suite | Command | Result |
+|---|---|---|
+| shared | `npm test`; `npx tsc --noEmit -p .` | 628/628; tsc 0 |
+| cafe | `npm test` | **4020 tests, 4019 pass, 1 fail**: the known `go-live-dl` ENOENT (`.claude/plan/v2/_research/cb-dl2-decisions.md` missing on this PC). At `53f8f0b`, before the review fixes, it was exactly the plan's 4019 / 4018 / 1. The +1 is the I1 batch pin. |
+| cafe | `npx tsc --noEmit`; `npm run lint` | tsc 0; 0 errors, the 2 old warnings in `lib/masters-blob.test.ts` |
+| mobile | `npx tsc --noEmit`; `npm run lint`; `npm test`; `npm run test:app` | tsc 0; lint 0; 114/114; Jest 3/3 (untouched) |
+| desktop | `npm test` | 191/191 (untouched) |
+| print tools | `npm run test:print-tools` | 7/7 |
+| live legs | `MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_print_host npm run verify:print:live` | **`183 passed, 0 failed`**: the plan's 181 at `53f8f0b`, plus leg (ac)'s 2 checks from fix I1 |
+
+The mobile, desktop and print-tools runs were at `53f8f0b`; the review fixes touch only `apps/cafe` and docs.
+
+### Changed existing pins (each follows a deliberate change in this plan)
+
+1. **`print-lifecycle-paths.test.ts`, "every lifecycle transition is ONE compare-and-set…"** (B3): follows `applyPrintJobPlan`'s optional fence (M5) and its print-status publish after a landed final transition.
+2. **`print-queue-fixes.test.ts`, the prune filter #1 pin** (B3, M9): wording only; the assertions are unchanged.
+3. **`self-order-alert-paths.test.ts`, `EXPECTED_PRINT_JOB_WRITERS`** (B4): gains `print-order-jobs.ts` (one `PrintJob.create` under today's unique `jobKey`), and the sweep comment covers the routing `updateMany`s.
+4. **`write-route-paths.test.ts`, the settle success answer and the create answer** (B5): both answers now go through `withPrintJobs(…, printJobs)`.
+5. **`realtime-paths.test.ts`, the move's answer pin** (B5): `return success(withPrintJobs(moved, printJobs));`.
+6. **`print-lifecycle-paths.test.ts`, the sweep-order pin** (B6): routing waiting jobs and the repair step; the sweep file now has two `print-job` publishes (its own nudge and the host teardown's).
+7. **`print-order-jobs.test.ts`, the auto-accept pin** (fix C1; a pin B5 created): now asserts the host-lane premise and that the auto-accept makes no print job in 1B.
+
+### Step 2: Next production build
+
+`npm run build`: success at `53f8f0b` and again at the final HEAD after the review fixes. Both list 123 routes, including `/api/print-jobs`, `/api/print-jobs/lease`, `/api/print-jobs/wake`, and `/api/print-jobs/[id]/ack`, `/claim`, `/confirm`, `/dismiss`, `/retry`. Session 1B adds no route file, so the route list is Session 1A's.
+
+### Step 3: APKs (x86_64 first, then ARM; `GRADLE_USER_HOME='D:\gradle-home'`)
+
+Both builds reported `BUILD SUCCESSFUL` (1 m 32 s, then 54 s). Each APK holds only its own ABI. **All three are byte-identical to Session 1A's** (1B touches no app code).
+
+| APK | Path | Size | SHA-256 |
+|---|---|---|---|
+| Emulator only (x86_64) | `<scratchpad>/pos-emulator-x86_64-release.apk` | 7,407,761 B | `fc4181e4f20799576277c7be312316d34d46db23b286bad6b13fec1cad5f13d3` |
+| Client, arm64-v8a | `apps/mobile/android/app/build/outputs/apk/release/app-arm64-v8a-release.apk` | 7,276,038 B | `9f89cd9a172b2ab8d5b72872bca947c44ae3c7c74c3a33dfc118e9c00e180ff7` |
+| Client, armeabi-v7a | `apps/mobile/android/app/build/outputs/apk/release/app-armeabi-v7a-release.apk` | 6,683,872 B | `f3f6214982c9122dbc7c28f415d7a478a8aef392b834bf8213cb909c73f426cc` |
+
+### Step 4: the E2E exit check (local POS + emulator app + fake printer). Passed.
+
+AVD `Pixel_7_API_33`, WebView 109.0.5414.123, booted in about 15 s with `-memory 4096 -no-snapshot -no-boot-anim`. Screenshots are in `<scratchpad>/shots/`. `adb logcat -b crash` stayed empty for the whole step.
+
+1. **Bring-up.** Ports 3100 and 9100 were free. `<scratchpad>/e2e.env` (database `pos_scratch_e2e_1b`, checked absent first) was written by `<scratchpad>/make-env.py` using `secrets`; it was never printed or committed. `seed-admin.ts` created `e2eadmin`; `seed-tables.ts` seeded T-1…T-8; `seed-menu.ts` seeded 4 categories and 8 products. `next start -p 3100` from the Step 2 build: Ready, `/login` → 200. The fake printer listened on `127.0.0.1:9100`. `adb reverse tcp:3100 tcp:3100`.
+2. **App.** `pm clear`, address `http://localhost:3100` → login (`1b-02-login.png`). Username typed, then TAB; a uiautomator dump showed the focused EditText with `password="true"` before `<scratchpad>/type-secret.py` typed the secret (it re-checks the focus itself and prints only the length). Signed in → Dashboard (`1b-03-signed-in.png`). Printer panel → network printer `10.0.2.2` : `9100` → "Network printer 10.0.2.2 is connected." (`1b-04-network-printer.png`; the fake printer logged the 0-byte connect probe). "Print all slips on this device" → "This device prints all slips." (`1b-05-host-designated.png`). Android's "always run in background?" prompt did not appear this time (Session 1A saw it once).
+3. **Old path, no header: printed exactly once.** New Order → T-1 → Masala Chai → Send to Kitchen (`1b-07-cart.png`, `1b-08-kot-sent.png`). The fake printer logged exactly one new job, `bytes: 40494`. `<scratchpad>/e2e-state.ts` (projection without `payload`): the only PrintJob is `kind: kot`, `status: printed`, `jobKey: kot:<orderId>:1`, `originDeviceId: null`, target = the host, `epoch 0`, `attempts 0`, `labels []`, log `[created]`, `claimedBy` set, `printedAt: null`. Order `ORD-20261003-001` has **no** `kotPrintDevices`. The server created nothing.
+4. **New path, with the header: server-side creation.** `<scratchpad>/e2e-header.ts header` (run from `apps/cafe` with `--env-file` and `--import tsx`) minted the session cookie itself: it read `AUTH_SECRET` from the env, found `e2eadmin` in `pos_scratch_e2e_1b`, encoded `{ name, id, role, lastValidated }` with `next-auth/jwt`'s `encode` (salt and cookie `authjs.session-token`), and printed no secret or token. The permission layer did not refuse it. `POST /api/orders` (T-2, Masala Chai, a fresh `idemKey`) with `x-pos-print-agent: 1` and `x-pos-device-id: e2e-script-device`: **201**, `printJobs: [{ kind: "kot", targetDeviceId: <the host's device id>, label: "KOT round 1 · T-T-2" }]`, and order `ORD-20261003-002` has `kotPrintDevices: ["e2e-script-device"]`. The fake printer logged exactly one more job, `bytes: 40494`, printed by the app's old claim drain (the host is a tab from before Phase 1, exactly the rollout case).
+5. **A replay creates nothing.** The same body and `idemKey` again: **200**, the same order, no `printJobs` key, PrintJob rows 2 → 2, no new paper.
+6. **No header stays today's behaviour.** One more order (T-3) without the headers: **201**, no `printJobs` key, 0 PrintJob rows for it, no `kotPrintDevices`, no paper.
+7. No permission refusal.
+8. **Cleanup.** `adb reverse --remove-all`; the POS (PID 14988) and the fake printer (PID 26396) stopped with `Stop-Process` (ports confirmed free); `pm clear com.possoftware.pos`; `adb emu kill`.
+   - **Left for 1C:** `pos_scratch_e2e_1b` holds `e2eadmin`, 8 tables, 4 categories and 8 products, orders `ORD-20261003-001` (T-1, the app), `-002` (T-2, header) and `-003` (T-3, no header), 2 PrintJobs, and a PrintHost pointing at the emulator app's old device id (`5e81d019-…`; `pm clear` gave the app a new id, so 1C must clear or re-designate the host).
+   - The env file stays at `<scratchpad>/e2e.env`. If 1C cannot read this scratchpad, use a fresh `pos_scratch_e2e_1c` and its own env file.
+
+### Final whole-branch review (fresh reviewer subagent, Opus, `505944b..53f8f0b`)
+
+**Verdict: "With fixes". Critical 1, Important 2, Minor 7, Declined 10.** The reviewer confirmed:
+- the header opt-in (no headers: the very same answer object; replays, 409s, 400s and the unconfirmed-bill-number 500 return before any creation);
+- creation never fails a landed order;
+- today's keys dedupe a server job against an old tab's enqueue, and the legacy claim and the lease exclude each other;
+- the repair's bounds and idempotency;
+- R5's pipeline routing (never a leased job);
+- M1, M2, M5 and M9 as ruled;
+- no order content in `print-status`.
+
+Re-graded by effect on a cafe:
+
+- **C1, fixed (`4f2d428`).** Every auto-accepted QR self-order in host mode printed its KOT twice, and this was the one flow 1B made live (R4). The plan's premise holds only for the page lanes, which enqueue to the host under the same key. The print host's own self-order lane (`PrintHostDrain.tsx:67`, `hostLane`) wins `/kot-claim` and prints the KOT locally through its bridge (`use-print-host-bridge.ts:215-217`, `queueSlip(kotRoundSlip(…))`) with no job. The auto-accept leaves `kotPrintedAt` unstamped (by R4's design), so the request stays in the pulse's self-order list (`pos-pulse.ts:94-99`) and the lane claims it after the server's job has already printed.
+  - Confirmed by reading the code.
+  - **Fix:** the auto-accept block is reverted to its exact `505944b` text, so it answers as before Phase 1. R4 moves to Session 1C, where the host lane becomes job-aware. Spec §7.10 records it under R4.
+  - Test: the rewritten auto-accept pin asserts the host-lane premise and that the auto-accept makes no job. RED → GREEN.
+  - 1B therefore changes no flow before 1C. The plan's "the only flow 1B changes" no longer applies.
+- **I1, fixed (`2f3b971`).** The repair read only the 20 newest candidates each sweep, and most of them already have their jobs. At a rush, an older tab's missing round left the 30-minute window before the repair reached it, a silently lost KOT once 1C writes the marker.
+  - **Fix:** `PRINT_REPAIR_BATCH` 20 → 100. That is a busy day's half hour at 4× the average, twice over, capped at 100 for §17. The cost is one indexed read of at most 100 tiny projections per sweep.
+  - Tests: a unit pin in `print-repair.test.ts`, and live leg (ac), where an older tab's missing round sits behind 30 newer orders. RED (`182 passed, 1 failed`) → GREEN (`183 passed, 0 failed`).
+- **I2** was C1's test gap. It is covered by the C1 pin.
+
+**Deferred minors** (none fixed; for the 1C gate):
+- M-a: a host-clear race. `enqueuePrintJob` orphan-dismisses a new keyed row even when it has an `originDeviceId`, then `enqueueOwnPrintJob` collides with that dismissed row and answers `already-resolved`, so the slip prints nowhere. Dormant until 1C sends the header.
+- M-b: `DELETE /api/print-host` can answer 500 after it committed if `returnPrintJobsToOrigins` throws. The sweep redoes it.
+- M-c: with no host, jobs sent home are announced with a broadcast `print-job`, not a `print-status` aimed at their device (R7).
+- M-d: `PrintJobRef` carries no status, so a deduped ref to a printed or dismissed job reads as fresh. This is the safe direction.
+- M-e: host-mode `enqueuePrintJob` publishes no `"queued"` `print-status`.
+- M-f: staff-accept rounds made by the server never write `kotPrintDevices`, so they are never repaired.
+- M-g: the repair counts a duplicate-key collision as repaired (count only).
+
+**Declined to judge, as ruled:**
+1. The cancel notice stays client-started (plan decision 9).
+2. No-host mode has no sweep until 1D's pulse sweep, because only the host polls (R6). 1C must not reach cafes without 1D; they release together at 1E.
+3. Bills, voids and moves are not repaired (R3 by design).
+4. The moved slip's key uses the server's `movedAt`, so the 1C client must re-send by ref, not rebuild.
+5. `print-status` sends job and device ids over the public `/join` socket. Sanctioned by spec §10 and R7: no order content. For owner awareness.
+6. `x-pos-device-id` and the lease `deviceId` are not credentials. This stays within the existing trust model (signed-in staff only).
+7. A repaired KOT queues behind newer slips and is rebuilt from the current order. Accepted by design.
+8. `PRINT_REALTIME_BASE_PER_DAY` (335) comes from the spec; 1E measures it.
+9. The wake POST still returns the divided cap. Harmless; the 1C agent decides.
+10. The 1C client behaviours are out of 1B by plan.
+
+### Deviations from the plan, each with its reason
+
+1. The ledger was kept in the session scratchpad, and the skill's `sdd-workspace` / `task-start` / `task-done` scripts were not used. They write to `.superpowers/sdd/`, which the owner's rules say to leave alone. Each task's tests were run and recorded by hand instead.
+2. Fix C1 reverts B5's auto-accept block (ruling R4 deferred to 1C), with a note under R4 in spec §7.10. Without it, every auto-accepted QR KOT in host mode prints twice.
+3. Fix I1 raises `PRINT_REPAIR_BATCH` from the plan's 20 to 100, pins it, and adds live leg (ac). This adds 1 cafe test and 2 live checks (cafe 4019 → 4020; live 181 → 183).
+4. **Test messages.** The diff has no message-less `assert.ok` or `assert(value)`, the class that hangs a big file under tsx (G2), and every assertion written in this session carries a message. The plan's verbatim blocks also hold 38 message-less `assert.equal` / `deepEqual` / `match` calls. They were left as written: those build their failure message from the values and never parse the source.
+5. The scratchpad header script failed once before sending any request: `import.meta.url`'s pathname kept `%7E` for the 8.3 path's `~`. It was fixed with `fileURLToPath` plus a `disconnect` in `finally`, and the session's own hung process was stopped by PID.
+6. The Next build was re-run at the final HEAD after the fixes.
+
+### Open issues
+
+- **For the 1C gate:**
+  - R4: make the host's self-order lane job-aware (or retire it for the agent), then let the auto-accept queue its KOT, with a live leg that runs the auto-accept with a host.
+  - M-a, M-c, M-d, M-e and M-f.
+  - Declined item 2: 1C ships with 1D.
+  - **I2 is still the owner's decision**; nothing was implemented for it.
+- **Minors** M-b and M-g.
+- **Pre-existing, cosmetic, not 1B:** the band label reads "KOT round 1 · T-T-2" when a table is named "T-2" (`lib/print-routing.ts` `TABLE_LABEL_PREFIX`; the label is UI-only and the old path builds the same one).
+- **Known, unrelated:** `lib/go-live-dl.test.ts` ENOENT.
+- **Still the owner's call:** the Phase 0 review's recommended hotfix of `7edf7aa` to `main`.
 
