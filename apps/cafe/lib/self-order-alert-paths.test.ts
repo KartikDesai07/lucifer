@@ -219,7 +219,14 @@ test("PIN: the exact set of apps/cafe production files that write PrintJob (.cre
   // Phase 1 adds print-lease.ts: every lifecycle transition is ONE CAS on {_id, status, epoch}
   // (printJobCasFilter), re-audited against the claimedAt guards above — the legacy claim CAS and
   // the lease CAS both fence on status:"queued", so exactly one of them wins a job.
-  const EXPECTED_PRINT_JOB_WRITERS = ["apps/cafe/lib/print-lease.ts", "apps/cafe/lib/print-queue-claim.ts", "apps/cafe/lib/print-queue.ts"].sort();
+  // print-sweep.ts writes only through applyPrintJobPlan's CAS, plus one updateMany that retargets
+  // QUEUED rows (never leased ones, so it cannot move a job out from under its writer).
+  const EXPECTED_PRINT_JOB_WRITERS = [
+    "apps/cafe/lib/print-lease.ts",
+    "apps/cafe/lib/print-queue-claim.ts",
+    "apps/cafe/lib/print-queue.ts",
+    "apps/cafe/lib/print-sweep.ts",
+  ].sort();
 
   const files: string[] = [];
   walk(path.join(REPO_ROOT, "apps/cafe"), files);

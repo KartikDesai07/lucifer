@@ -143,6 +143,7 @@
     "lib/print-queue.test.ts",
     "lib/print-queue-fixes.test.ts",
     "lib/print-lease.test.ts",
+    "lib/print-lifecycle-paths.test.ts",
     "lib/print-routing.test.ts",
     "lib/pos-install.test.ts",
     "lib/pos-install-paths.test.ts",
