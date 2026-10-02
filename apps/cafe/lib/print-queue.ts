@@ -5,10 +5,12 @@ import {
   PRINT_JOB_PRUNE_MIN_INTERVAL_MS,
   PRINT_JOB_QUEUED_RETENTION_MS,
   PRINT_JOB_RESOLVED_RETENTION_MS,
+  PRINT_JOB_UNRESOLVED_STATUSES,
   printJobPayloadWithinCap,
   type PrintJobDismissReason,
   type PrintJobEnqueueResult,
 } from "@pos/shared/print-job";
+import { printJobCreatedLog, printJobInitialLabels, printJobLifecycleInit } from "@pos/shared/print-lifecycle";
 import type { PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 import { PrintHost } from "@/models/PrintHost";
 import { PrintJob } from "@/models/PrintJob";
@@ -87,6 +89,12 @@ export async function enqueuePrintJob(input: {
   payload: PrintJobPayload;
   label: string;
   queuedBy: string;
+  /** The client's Idempotency-Key: a deliberate repeat it starts (reprint, EOD, cancel notice)
+   *  dedupes on it, so a retried POST is one job (spec §6.5 `reprint:<key>`). */
+  idempotencyKey?: string;
+  /** The device that asked (x-pos-device-id); its readback follows the job (spec §6.5). */
+  originDeviceId?: string;
+  nowMs?: number;
 }): Promise<PrintJobEnqueueResult> {
   // (1) Belt-and-braces cap — the route also 400s this; this is the single
   // write point so it fences independently of the route's own check.
@@ -95,11 +103,15 @@ export async function enqueuePrintJob(input: {
 
   // (2) No host configured ⇒ create nothing. This is the answer PH-4's
   // routing wrapper falls back to a local print on.
-  const host = await PrintHost.findOne({ key: PRINT_HOST_KEY }).select("_id").lean();
+  // deviceId too: simple mode with a host (spec §6.6) leases every job to the host.
+  const host = await PrintHost.findOne({ key: PRINT_HOST_KEY }).select("deviceId").lean();
   if (!host) return { outcome: "no-host" };
 
   const orderId = printJobOrderIdOf(input.payload);
-  const jobKey = printJobKeyOf(input.payload);
+  // A deliberate repeat has no deterministic key; the client's Idempotency-Key collapses its retries.
+  const jobKey =
+    printJobKeyOf(input.payload) ?? (input.idempotencyKey !== undefined ? `reprint:${input.idempotencyKey}` : undefined);
+  const nowMs = input.nowMs ?? Date.now();
 
   let createdId: string;
   try {
@@ -113,6 +125,13 @@ export async function enqueuePrintJob(input: {
       // `status` defaults to "queued" in the model — never passed here.
       ...(orderId !== undefined ? { orderId } : {}),
       ...(jobKey !== undefined ? { jobKey } : {}),
+      // Phase 1 lifecycle (spec §6.5): leased by the host, acknowledged, retried. The legacy /claim
+      // path ignores every one of these fields, so a tab from before Phase 1 still drains it.
+      targetDeviceId: host.deviceId,
+      ...(input.originDeviceId !== undefined ? { originDeviceId: input.originDeviceId } : {}),
+      copyIndex: 0,
+      ...printJobLifecycleInit(nowMs, printJobInitialLabels(input.payload)),
+      log: [printJobCreatedLog(nowMs, input.originDeviceId)],
     });
     createdId = String(created._id);
   } catch (error) {
@@ -203,8 +222,10 @@ export async function dismissPrintJob(input: {
     {
       _id: input.id,
       // Dropping this would let a staff dismiss race a resolved job back to
-      // "dismissed", overwriting a real print/earlier dismiss.
-      status: "queued",
+      // "dismissed", overwriting a real print/earlier dismiss. Phase 1: every
+      // parked or waiting state, but never "leased" — its writer may be printing
+      // it right now (a dead writer's lease expires in 90 s, then it is dismissable).
+      status: { $in: ["queued", "needs-confirm", "failed"] },
       // Dropping this would let a dismiss trample a job the host claimed in
       // the same instant — the claim CAS owns any job past this point.
       claimedAt: { $exists: false },
@@ -243,7 +264,8 @@ export async function dismissQueuedPrintJobsForClearedHost(dismissedBy: string):
  */
 export async function prunePrintJobs(nowMs: number): Promise<void> {
   try {
-    await PrintJob.deleteMany({ status: "queued", createdAt: { $lt: queuedPruneCutoff(nowMs) } });
+    // Every unresolved state older than 12 h goes (a Friday KOT must not print Monday).
+    await PrintJob.deleteMany({ status: { $in: [...PRINT_JOB_UNRESOLVED_STATUSES] }, createdAt: { $lt: queuedPruneCutoff(nowMs) } });
     await PrintJob.deleteMany({
       status: { $in: ["printed", "dismissed"] },
       createdAt: { $lt: resolvedPruneCutoff(nowMs) },

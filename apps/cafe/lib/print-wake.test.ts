@@ -170,8 +170,14 @@ test("writePrintWakeBudget: is a no-op when `window` is undefined — must not t
 
 // ── 3. Route pins — GET /api/print-jobs/wake ────────────────────────────────
 
-test('PIN: app/api/print-jobs/wake/route.ts contains requireAuth, connectDB, noStore(success(, printJobDrainHead(, force-dynamic, and export async function GET — and does NOT contain .find(, .aggregate(, prune, updateOne, findOneAndUpdate, deleteMany, deleteOne, insertMany, create(, or beat (READ-ONLY: no prune, no beat, no write, ever)', () => {
-  const src = stripComments(readSrc(WAKE_ROUTE));
+test('PIN: GET /api/print-jobs/wake stays READ-ONLY (requireAuth, connectDB, noStore(success(, printJobDrainHead(, force-dynamic — and no .find(, .aggregate(, prune, updateOne, findOneAndUpdate, deleteMany, deleteOne, insertMany, create( or beat, ever); the Phase 1 POST beside it is the only part that writes', () => {
+  // Phase 1 (plan 2026-10-02-phase-1-lifecycle.md Task 7) adds a POST that beats and sweeps; the
+  // banned needles below apply to the GET handler's own body, which must never change.
+  const full = stripComments(readSrc(WAKE_ROUTE));
+  const getAt = full.indexOf("export async function GET(");
+  const postAt = full.indexOf("export async function POST(");
+  assert.ok(getAt >= 0 && postAt > getAt, "GET is declared before the Phase 1 POST");
+  const src = full.slice(getAt, postAt);
 
   // Positive landmarks FIRST, per testing.md's vision-guard rule, so the
   // negative checks below cannot be trivially true over a blinded file.
@@ -179,7 +185,7 @@ test('PIN: app/api/print-jobs/wake/route.ts contains requireAuth, connectDB, noS
   assert.match(src, /connectDB/, "the route must reference connectDB");
   assert.match(src, /noStore\(success\(/, "the route must return noStore(success(");
   assert.match(src, /printJobDrainHead\(/, "the route must call printJobDrainHead(");
-  assert.match(src, /export const dynamic = "force-dynamic";/, 'the route must declare dynamic = "force-dynamic"');
+  assert.match(full, /export const dynamic = "force-dynamic";/, 'the route must declare dynamic = "force-dynamic"');
   assert.match(src, /export async function GET\(/, "the route must export async function GET(");
 
   // Banned needles built by concatenation (testing.md rule: never a literal

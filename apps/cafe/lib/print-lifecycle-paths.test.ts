@@ -132,3 +132,53 @@ test("PIN: each route calls its one lib, and a staff decision is stamped with th
   assert.match(src(ROUTES.confirm), /staff: authed\.session\.user\.name \?\? UNNAMED_STAFF/);
   assert.match(src(ROUTES.retry), /retryPrintJob\(\{ id, nowMs: Date\.now\(\) \}\)/);
 });
+
+// ── Task 7: enqueue, dismiss, prune, the wake POST ───────────────────────────
+
+const QUEUE = "apps/cafe/lib/print-queue.ts";
+const ENQUEUE_ROUTE = "apps/cafe/app/api/print-jobs/route.ts";
+const WAKE_ROUTE = "apps/cafe/app/api/print-jobs/wake/route.ts";
+
+test("PIN: enqueue stamps the host target, the lifecycle fields, the initial labels and the created log; a deliberate repeat dedupes on the client's Idempotency-Key", () => {
+  const s = src(QUEUE);
+  assert.match(s, /PrintHost\.findOne\(\{ key: PRINT_HOST_KEY \}\)\.select\("deviceId"\)\.lean\(\);\s*if \(!host\) return \{ outcome: "no-host" \};/);
+  assert.match(s, /targetDeviceId: host\.deviceId,/);
+  assert.match(s, /\.\.\.printJobLifecycleInit\(nowMs, printJobInitialLabels\(input\.payload\)\),/);
+  assert.match(s, /log: \[printJobCreatedLog\(nowMs, input\.originDeviceId\)\],/);
+  assert.match(s, /printJobKeyOf\(input\.payload\) \?\? \(input\.idempotencyKey !== undefined \? `reprint:\$\{input\.idempotencyKey\}` : undefined\)/);
+});
+
+test("PIN: dismiss never touches a leased job (its writer may be printing it); prune reaps every unresolved state after 12 h", () => {
+  const s = src(QUEUE);
+  assert.match(s, /status: \{ \$in: \["queued", "needs-confirm", "failed"\] \},/);
+  assert.match(s, /status: \{ \$in: \[\.\.\.PRINT_JOB_UNRESOLVED_STATUSES\] \}, createdAt: \{ \$lt: queuedPruneCutoff\(nowMs\) \}/);
+});
+
+test("PIN: the enqueue route takes both Phase 1 headers as OPTIONAL (a tab from before Phase 1 sends neither) and validates each", () => {
+  const s = src(ENQUEUE_ROUTE);
+  assert.match(s, /const idempotencyKey = optionalHeader\(req, PRINT_IDEMPOTENCY_HEADER\);/);
+  assert.match(s, /if \(idempotencyKey !== undefined && !PRINT_IDEMPOTENCY_KEY_PATTERN\.test\(idempotencyKey\)\)/);
+  assert.match(s, /const originDeviceId = optionalHeader\(req, PRINT_DEVICE_ID_HEADER\);/);
+  assert.match(s, /if \(originDeviceId !== undefined && originDeviceId\.length > PRINT_HOST_DEVICE_ID_MAX_CHARS\)/);
+});
+
+test("PIN: POST /api/print-jobs/wake beats, reads the device's line and the agent count, and sweeps AFTER the response", () => {
+  const s = src(WAKE_ROUTE);
+  const getAt = s.indexOf("export async function GET(");
+  const postAt = s.indexOf("export async function POST(");
+  assert.ok(getAt >= 0 && postAt > getAt, "GET first and unchanged, POST after it");
+  inOrder(
+    s.slice(postAt),
+    [
+      "validateBody(req, wakeBeatBodySchema)",
+      "await connectDB();",
+      "await beatPrintDevice(parsed.data, nowMs);",
+      "readJobsForDevice(parsed.data.deviceId, nowMs)",
+      "countOnlineAgents(nowMs)",
+      "after(() => sweepPrintJobsThrottled(nowMs))",
+      "return noStore(success(data));",
+    ],
+    "wake POST",
+  );
+  assert.ok(!/PrintJob\.|PrintDevice\./.test(s), "the route writes only through the libs");
+});
