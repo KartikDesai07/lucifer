@@ -182,3 +182,22 @@ test("PIN: POST /api/print-jobs/wake beats, reads the device's line and the agen
   );
   assert.ok(!/PrintJob\.|PrintDevice\./.test(s), "the route writes only through the libs");
 });
+
+// Session 1A final-review fixes (plan "Session 1A Results", findings I1 and I4).
+test("PIN: clearing the host dismisses every unresolved job but a leased one (spec §7.1; its writer may be printing it)", () => {
+  const s = src(QUEUE);
+  const start = s.indexOf("export async function dismissQueuedPrintJobsForClearedHost(");
+  const end = s.indexOf("export async function prunePrintJobs(");
+  assert.ok(start >= 0 && end > start, "the bulk teardown is declared before prunePrintJobs");
+  const bulk = s.slice(start, end);
+  assert.match(bulk, /status: \{ \$in: \["queued", "needs-confirm", "failed"\] \}, claimedAt: \{ \$exists: false \}/);
+  assert.ok(!bulk.includes('"leased"'), "a leased job is never torn down under its writer");
+});
+
+test("PIN: the heartbeat awaits the PrintDevice unique-index build before its first upsert (the house init() rule)", () => {
+  const s = src(DEVICE);
+  const start = s.indexOf("export async function beatPrintDevice(");
+  const end = s.indexOf("export async function touchPrintDevice(");
+  assert.ok(start >= 0 && end > start, "beatPrintDevice is declared before touchPrintDevice");
+  inOrder(s.slice(start, end), ["await PrintDevice.init();", "PrintDevice.updateOne("], "beatPrintDevice");
+});

@@ -242,14 +242,16 @@ export async function dismissPrintJob(input: {
   return { dismissed: false, reason: exists ? "raced" : "not-found" };
 }
 
-/** The DELETE-host bulk teardown (§B3) — returns how many queued jobs it
+/** The DELETE-host bulk teardown (§B3) — returns how many jobs it
  *  dismissed. This is the 5th writer of a PrintJob (§B2's reciprocal-guard
  *  list) and it carries the SAME `claimedAt:{$exists:false}` guard as the
  *  single dismiss so it can never trample a job the host claimed in the same
- *  instant. */
+ *  instant. Phase 1 (spec §7.1): the same states as the single dismiss, so a
+ *  parked or failed slip aimed at the cleared host is not left behind with no
+ *  device that may print it; never "leased" (its writer may be printing it). */
 export async function dismissQueuedPrintJobsForClearedHost(dismissedBy: string): Promise<number> {
   const res = await PrintJob.updateMany(
-    { status: "queued", claimedAt: { $exists: false } },
+    { status: { $in: ["queued", "needs-confirm", "failed"] }, claimedAt: { $exists: false } },
     { $set: { status: "dismissed", dismissedAt: new Date(), dismissReason: "host-cleared", dismissedBy } },
   );
   return res.modifiedCount ?? 0;

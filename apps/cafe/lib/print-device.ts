@@ -18,6 +18,11 @@ export interface PrintDeviceBeat {
 
 /** The wake's heartbeat: creates the row on first sight, refreshes it at most every 30 s. */
 export async function beatPrintDevice(beat: PrintDeviceBeat, nowMs: number): Promise<void> {
+  // The upsert's "one row per device" rests on the unique deviceId index, and connectDB()'s autoIndex
+  // build is not awaited. Without this, a cold-start wake could insert a second row before the index
+  // exists; the build then fails for good and countOnlineAgents over-counts, shrinking every agent's
+  // wake share. .init() is memoized per process (house rule: due-payment.ts, crud-route.ts).
+  await PrintDevice.init();
   try {
     await PrintDevice.updateOne(
       { deviceId: beat.deviceId, lastSeenAt: { $lt: new Date(nowMs - PRINT_DEVICE_HEARTBEAT_WRITE_MS) } },

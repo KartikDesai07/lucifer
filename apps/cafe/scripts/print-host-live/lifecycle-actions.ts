@@ -6,13 +6,13 @@
  */
 import { PrintJob } from "@/models/PrintJob";
 import { PrintDevice } from "@/models/PrintDevice";
-import { enqueuePrintJob } from "@/lib/print-queue";
+import { dismissQueuedPrintJobsForClearedHost, enqueuePrintJob } from "@/lib/print-queue";
 import { ackPrintJob } from "@/lib/print-lease";
 import { confirmPrintJob, retryPrintJob } from "@/lib/print-job-actions";
 import { beatPrintDevice, countOnlineAgents, touchPrintDevice } from "@/lib/print-device";
 import { billPrintJob, kotPrintJob } from "@/lib/print-routing";
 import { baseOrderFields, check, seedRealOrder } from "./harness";
-import { HOST, STAFF, freshHost, lease, queueBill, queueKot, rowOf } from "./lifecycle";
+import { HOST, STAFF, freshHost, lease, queueBill, queueKot, rowOf, setRaw } from "./lifecycle";
 
 export async function legV(nowMs: number): Promise<void> {
   console.log("\n(v) the device heartbeat writes at most once per 30 s");
@@ -75,6 +75,21 @@ export async function legW(nowMs: number): Promise<void> {
   const retried = await retryPrintJob({ id: kot, nowMs: nowMs + 11 });
   row = await rowOf(kot);
   check("(w) Print again requeues it with REPRINT (it may have printed), counters reset", retried.applied && row?.status === "queued" && JSON.stringify(row?.labels) === '["REPRINT"]' && row?.attempts === 0 && row?.uncertainAttempts === 0);
+
+  // Spec §7.1: clearing the host dismisses every unresolved job, but never a leased one (its writer
+  // may be printing it; the lease expires in 90 s). Session 1A final-review fix I1.
+  const parked = await queueBill(nowMs);
+  const stopped = await queueKot(nowMs);
+  const writing = await queueKot(nowMs);
+  await setRaw(parked, { status: "needs-confirm", epoch: 1, attempts: 1, uncertainAttempts: 1 });
+  await setRaw(stopped, { status: "failed", epoch: 1, attempts: 8 });
+  await setRaw(writing, { status: "leased", epoch: 1, attempts: 1, lease: { deviceId: HOST, tabId: "tab-a", epoch: 1, expiresAt: new Date(nowMs + 90_000) } });
+  const torn = await dismissQueuedPrintJobsForClearedHost(STAFF);
+  const [parkedRow, stoppedRow, writingRow, retriedRow] = await Promise.all([rowOf(parked), rowOf(stopped), rowOf(writing), rowOf(kot)]);
+  check("(w) clearing the host dismisses a bill waiting for the cashier", parkedRow?.status === "dismissed" && parkedRow?.dismissReason === "host-cleared");
+  check("(w) clearing the host dismisses a failed job", stoppedRow?.status === "dismissed" && stoppedRow?.dismissReason === "host-cleared");
+  check("(w) clearing the host still dismisses a queued job", retriedRow?.status === "dismissed" && retriedRow?.dismissReason === "host-cleared");
+  check("(w) clearing the host never tears down a leased job, and counts only what it dismissed", writingRow?.status === "leased" && torn === 3);
 }
 
 export async function legX(nowMs: number): Promise<void> {
