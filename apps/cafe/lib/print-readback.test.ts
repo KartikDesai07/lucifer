@@ -140,6 +140,19 @@ function resolvedRow(overrides: Partial<PrintJobResolvedRow> = {}): PrintJobReso
 
 // ── (a) printReadbackRecordOf ────────────────────────────────────────────
 
+// Session 1B follow-up (owner, 2026-10-03): seed-client.ts names tables "T-1", "T-2", …, and the
+// UI-only label prefixed every name with "T-", so the band and the readback chip read "T-T-2". A
+// bare number still gets the prefix; any other name is shown exactly as staff wrote it. Paper is
+// unaffected: a label is never printed (KOTReceipt prints the raw tableNo).
+test('printReadbackRecordOf: a table already named "T-2" (or "Garden 2") is never double-prefixed; a bare "4" still reads "T-4"', () => {
+  const ref = (tableNo: string): string =>
+    printReadbackRecordOf("job-t", { kind: "kot", snapshot: printOrderSnapshot(orderFixture({ tableNo })), round: 1 }).orderRef;
+  assert.equal(ref("T-2"), "T-2", "a seeded T-2 reads T-2, not T-T-2");
+  assert.equal(ref("t-7"), "t-7", "lower-case names stay as written");
+  assert.equal(ref("Garden 2"), "Garden 2", "a named table stays as written");
+  assert.equal(ref("4"), "T-4", "a bare number keeps its T- prefix");
+});
+
 test('printReadbackRecordOf: kot payload with tableNo "4" -> orderKey = snapshot._id, orderRef "T-4"', () => {
   const order = orderFixture({ tableNo: "4" });
   const snapshot = printOrderSnapshot(order);
