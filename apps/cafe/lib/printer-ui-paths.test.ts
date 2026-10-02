@@ -188,7 +188,7 @@ const partsPin: Pin = (raw) => {
 const nativePin: Pin = (raw) => {
   const p: string[] = [];
   const code = stripComments(raw);
-  const needles = ["listNative(false)", "listNative(true)", "selectNative({ id: printer.id }, paper)", "selectNative({ tcp: { host, port: portNumber } }, paper)", 'nativeRequest("bluetooth.enable")', 'nativeRequest("permissions.request", { kind: "bluetooth" })', "nativeErrorMessage(", "PRINTER_SCAN_MS", "String(DEFAULT_TCP_PRINTER_PORT)", 'inputMode="numeric"', 'bluetooth === "unsupported"', "Use this printer", "Find printers", "Network printer (Wi-Fi or Ethernet)", "NATIVE_TYPE_ICONS"];
+  const needles = ["listNative(false)", "listNative(true)", "selectNative({ id: printer.id }, paper)", "selectNative({ tcp: { host, port: portNumber } }, paper)", 'nativeRequest("bluetooth.enable")', 'nativeRequest("permissions.request", { kind: "bluetooth" })', "nativeErrorMessage(", "PRINTER_SCAN_MS", "String(DEFAULT_TCP_PRINTER_PORT)", 'inputMode="numeric"', 'bluetooth === "unsupported"', "Use this printer", "Find printers", "Network printer (Wi-Fi or Ethernet)", "NATIVE_TYPE_ICONS", "canScanBluetooth(bluetooth)", "loadPicker(", "statusOrder.fresh(startedAt)", "window.addEventListener(NATIVE_READY_EVENT, onReady)", '{refreshing ? "Refreshing printers…" : "Refresh USB / paired printers"}'];
   for (const n of needles) check(p, code.includes(n), `must contain ${n}`);
   check(p, count(code, "toast.error(nativeErrorMessage(error))") >= 4, "every app request failure is worded by nativeErrorMessage");
   // A quoted or assigned 9100 is a literal default; the hint sentence "use 9100." is copy, not code.
@@ -265,8 +265,10 @@ function hygienePin(budget: number, usesAction: boolean): Pin {
     return p;
   };
 }
+// F.native 280 (was 260): Phase 0 F0.4-F0.6 added the shared loader, the late-bridge subscription and
+// the separate Refresh flag; the pure rules live in lib/printer/native-picker-state.ts.
 const HYGIENE: [string, number, boolean][] = [
-  [F.panel, 90, true], [F.where, 150, true], [F.device, 220, true], [F.native, 260, true], [F.paper, 60, true],
+  [F.panel, 90, true], [F.where, 150, true], [F.device, 220, true], [F.native, 280, true], [F.paper, 60, true],
   [F.tips, 50, false], [F.advanced, 100, true], [F.card, 260, true], [F.parts, 100, true], [F.picker, 160, false],
   [F.connect, 110, true], [F.section, 50, false], [F.type, 60, false],
 ];
@@ -351,6 +353,11 @@ const CASES: PinCase[] = [
     mut("printer button unnamed", "aria-label={`Use this printer: ${printer.name}`}", ""),
     mut("the network block loses its title", "Network printer (Wi-Fi or Ethernet)", "Network printer"),
     mut("printer button drops its visible label", "aria-label={`Use this printer: ${printer.name}`}", "aria-label={`Use ${printer.name}`}"),
+    mut("find disabled on an unknown Bluetooth state", "!canScanBluetooth(bluetooth)", 'bluetooth !== "on"'),
+    mut("status and list coupled again", "loadPicker(", "loadPickerAll("),
+    mut("a stale status reply wins", "statusOrder.fresh(startedAt)", "true"),
+    mut("a late bridge is ignored", "window.addEventListener(NATIVE_READY_EVENT, onReady)", ""),
+    mut("refresh label follows the shared busy flag", '{refreshing ? "Refreshing printers…"', '{working ? "Refreshing printers…"'),
   ] },
   { file: F.connect, pin: connectPin, mutations: [
     mut("the nearby button left enabled", "onClick={onSearchNearby} disabled={locked}", "onClick={onSearchNearby}"),

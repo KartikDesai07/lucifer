@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -16,13 +16,14 @@ import { Input } from "@/components/ui/input";
 import { NATIVE_TYPE_ICONS, NATIVE_TYPE_LABELS } from "@/components/print/printer-type";
 import type { PaperWidth } from "@/lib/constants";
 import { devicePrinter, type ConnectOutcome } from "@/lib/printer/device-printer";
-import { nativeClient, nativeRequest } from "@/lib/printer/native-bridge";
+import { NATIVE_READY_EVENT, nativeClient, nativeRequest } from "@/lib/printer/native-bridge";
 import {
   DEFAULT_TCP_PRINTER_PORT,
   PRINTER_SCAN_MS,
   type NativeBluetoothState,
   type NativePrinter,
 } from "@/lib/printer/native-bridge-protocol";
+import { canScanBluetooth, createStatusOrder, loadPicker } from "@/lib/printer/native-picker-state";
 import { ADDRESS_MESSAGE, isValidPrinterHost, splitHostPort } from "@/lib/printer/network-address";
 import { NATIVE_BLUETOOTH_BLOCKED_MESSAGE, nativeErrorMessage } from "@/lib/printer/transport-native";
 
@@ -52,31 +53,56 @@ export function NativePrinterPicker({ paper, busy, onAttempt }: NativePrinterPic
   const [bluetooth, setBluetooth] = useState<NativeBluetoothState | null>(null);
   const [scanning, setScanning] = useState(false);
   const [working, setWorking] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [address, setAddress] = useState("");
   const [port, setPort] = useState(String(DEFAULT_TCP_PRINTER_PORT));
   const [formError, setFormError] = useState<string | null>(null);
-  const locked = busy || scanning || working;
+  const locked = busy || scanning || working || refreshing;
+  const statusOrder = useRef(createStatusOrder()).current;
+  const mounted = useRef(true);
+
+  // One loader for mount and Refresh. Status and list settle independently: a USB printer still
+  // lists when the Bluetooth status cannot be read, and a reply older than a pushed status event
+  // never overwrites it.
+  const load = useCallback(async () => {
+    const startedAt = statusOrder.start();
+    const result = await loadPicker(() => nativeRequest("printer.status"), () => devicePrinter().listNative(false));
+    if (!mounted.current) return;
+    if (result.bluetooth !== null && statusOrder.fresh(startedAt)) setBluetooth(result.bluetooth);
+    if (result.printers !== null) {
+      setPrinters(result.printers);
+      return;
+    }
+    setPrinters((current) => current ?? []);
+    const error = result.listError;
+    toast.error(nativeErrorMessage(error));
+  }, [statusOrder]);
 
   useEffect(() => {
-    let live = true;
-    const off = nativeClient()?.on("printer.status", (status) => {
-      if (live) setBluetooth(status.bluetooth);
-    });
-    Promise.allSettled([nativeRequest("printer.status"), devicePrinter().listNative(false)])
-      .then(([status, list]) => {
-        if (!live) return;
-        if (status.status === "fulfilled") setBluetooth(status.value.bluetooth);
-        if (list.status === "fulfilled") setPrinters(list.value);
-        else {
-          setPrinters([]);
-          toast.error(nativeErrorMessage(list.reason));
-        }
+    mounted.current = true;
+    let off: (() => void) | undefined;
+    const subscribe = (): void => {
+      if (off !== undefined) return;
+      off = nativeClient()?.on("printer.status", (status) => {
+        if (!mounted.current) return;
+        statusOrder.event();
+        setBluetooth(status.bluetooth);
       });
+    };
+    // The bridge can announce itself after this panel mounted (a slow app start): subscribe and load then.
+    const onReady = (): void => {
+      subscribe();
+      void load();
+    };
+    subscribe();
+    window.addEventListener(NATIVE_READY_EVENT, onReady);
+    void load();
     return () => {
-      live = false;
+      mounted.current = false;
+      window.removeEventListener(NATIVE_READY_EVENT, onReady);
       off?.();
     };
-  }, []);
+  }, [load, statusOrder]);
 
   const findPrinters = async () => {
     if (locked) return;
@@ -92,17 +118,11 @@ export function NativePrinterPicker({ paper, busy, onAttempt }: NativePrinterPic
 
   const refreshPrinters = async () => {
     if (locked) return;
-    setWorking(true);
+    setRefreshing(true);
     try {
-      const [status, list] = await Promise.all([
-        nativeRequest("printer.status"), devicePrinter().listNative(false),
-      ]);
-      setBluetooth(status.bluetooth);
-      setPrinters(list);
-    } catch (error) {
-      toast.error(nativeErrorMessage(error));
+      await load();
     } finally {
-      setWorking(false);
+      if (mounted.current) setRefreshing(false);
     }
   };
 
@@ -169,49 +189,49 @@ export function NativePrinterPicker({ paper, busy, onAttempt }: NativePrinterPic
       )}
       {bluetooth === "unsupported" && <p role="status" className={NOTICE_CLASS}>{BLUETOOTH_UNSUPPORTED_MESSAGE}</p>}
 
-        <div className="space-y-2">
-          <p className="font-medium text-brand-ink">Printers this device can see</p>
-          <p className="text-sm text-brand-muted">USB connects directly to this phone or tablet using OTG. A printer cabled to a PC must be selected in the POS desktop app on that PC.</p>
-          {printers === null ? (
-            <p role="status" className="text-brand-muted">Reading the printer list…</p>
-          ) : printers.length === 0 ? (
-            <p className="text-brand-muted">{NONE_FOUND_MESSAGE}</p>
-          ) : (
-            <ul className="space-y-2">
-              {printers.map((printer) => {
-                const Icon = NATIVE_TYPE_ICONS[printer.transport];
-                return (
-                  <li key={printer.id} className="flex items-center gap-3 rounded-md border border-brand-rule p-3">
-                    <span aria-hidden="true" className={cn(PRINTER_TILE_CLASS, PRINTER_TILE_BRAND_CLASS)}>
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="break-words font-medium text-brand-ink">{printer.name}</p>
-                      <p className="text-sm text-brand-muted">{NATIVE_TYPE_LABELS[printer.transport]}</p>
-                    </div>
-                    {/* Beside the name, not under it: a list row, compact on a phone too. */}
-                    <Button
-                      className={cn(PRINTER_ACTION_CLASS, "shrink-0")}
-                      variant="outline"
-                      aria-label={`Use this printer: ${printer.name}`}
-                      onClick={() => void onAttempt(devicePrinter().selectNative({ id: printer.id }, paper))}
-                      disabled={locked}
-                    >
-                      Use
-                    </Button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          <Button className={ROW_BUTTON_CLASS} variant="outline" onClick={() => void refreshPrinters()} disabled={locked}>
-            {working ? "Refreshing printers…" : "Refresh USB / paired printers"}
-          </Button>
-          {bluetooth !== "unsupported" && <Button className={ROW_BUTTON_CLASS} variant={printers?.length === 0 ? "default" : "outline"} onClick={() => void findPrinters()} disabled={locked || bluetooth !== "on"}>
-            {scanning && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
-            {scanning ? `Looking for printers (about ${PRINTER_SCAN_MS / MS_PER_SECOND} seconds)…` : "Find printers"}
-          </Button>}
-        </div>
+      <div className="space-y-2">
+        <p className="font-medium text-brand-ink">Printers this device can see</p>
+        <p className="text-sm text-brand-muted">USB connects directly to this phone or tablet using OTG. A printer cabled to a PC must be selected in the POS desktop app on that PC.</p>
+        {printers === null ? (
+          <p role="status" className="text-brand-muted">Reading the printer list…</p>
+        ) : printers.length === 0 ? (
+          <p className="text-brand-muted">{NONE_FOUND_MESSAGE}</p>
+        ) : (
+          <ul className="space-y-2">
+            {printers.map((printer) => {
+              const Icon = NATIVE_TYPE_ICONS[printer.transport];
+              return (
+                <li key={printer.id} className="flex items-center gap-3 rounded-md border border-brand-rule p-3">
+                  <span aria-hidden="true" className={cn(PRINTER_TILE_CLASS, PRINTER_TILE_BRAND_CLASS)}>
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words font-medium text-brand-ink">{printer.name}</p>
+                    <p className="text-sm text-brand-muted">{NATIVE_TYPE_LABELS[printer.transport]}</p>
+                  </div>
+                  {/* Beside the name, not under it: a list row, compact on a phone too. */}
+                  <Button
+                    className={cn(PRINTER_ACTION_CLASS, "shrink-0")}
+                    variant="outline"
+                    aria-label={`Use this printer: ${printer.name}`}
+                    onClick={() => void onAttempt(devicePrinter().selectNative({ id: printer.id }, paper))}
+                    disabled={locked}
+                  >
+                    Use
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <Button className={ROW_BUTTON_CLASS} variant="outline" onClick={() => void refreshPrinters()} disabled={locked}>
+          {refreshing ? "Refreshing printers…" : "Refresh USB / paired printers"}
+        </Button>
+        {bluetooth !== "unsupported" && <Button className={ROW_BUTTON_CLASS} variant={printers?.length === 0 ? "default" : "outline"} onClick={() => void findPrinters()} disabled={locked || !canScanBluetooth(bluetooth)}>
+          {scanning && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
+          {scanning ? `Looking for printers (about ${PRINTER_SCAN_MS / MS_PER_SECOND} seconds)…` : "Find printers"}
+        </Button>}
+      </div>
       <form
         method="post"
         className={BLOCK_CLASS}

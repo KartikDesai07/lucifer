@@ -311,6 +311,7 @@
     "lib/printer/device-printer-native.test.ts",
     "lib/printer/transports.test.ts",
     "lib/printer/transports-ble.test.ts",
+    "lib/printer/native-picker-state.test.ts",
     "lib/printer/native-bridge.test.ts",
     "lib/printer/native-bridge-protocol.test.ts",
     "lib/printer/native-bridge-protocol-parity.test.ts",
