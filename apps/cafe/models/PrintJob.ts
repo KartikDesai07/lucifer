@@ -7,6 +7,13 @@ import {
   type PrintJobKind,
   type PrintJobStatus,
 } from "@pos/shared/print-job";
+import {
+  PRINT_JOB_LABELS,
+  PRINT_JOB_LOG_EVENTS,
+  type PrintJobLabel,
+  type PrintJobLease,
+  type PrintJobLogEntry,
+} from "@pos/shared/print-lifecycle";
 
 // Print-host plan (.claude/plan/v2/print-host-plan.md §B1) — a durable queued
 // print job for the browser print host: any dashboard screen enqueues one of
@@ -40,9 +47,45 @@ export interface IPrintJob extends Document {
   dismissedAt?: Date;
   dismissReason?: PrintJobDismissReason;
   dismissedBy?: string; // staff name from session, mirrors queuedBy
+  // Phase 1 lifecycle (spec §6.5). All omit-empty: a row written before Phase 1 carries none of
+  // them, and lifecycleOf (@pos/shared/print-lifecycle) reads a missing counter as 0.
+  targetDeviceId?: string; // simple mode (§6.6): the one device that may lease it
+  originDeviceId?: string; // the device that asked; its readback follows the job
+  copyIndex?: number; // 0-based (copies arrive in Phase 2)
+  epoch?: number; // +1 on every lease; an ack must name the lease's epoch
+  lease?: PrintJobLease;
+  attempts?: number; // leases granted
+  uncertainAttempts?: number; // attempts that may have reached paper
+  nextAttemptAt?: Date; // the backoff gate
+  labels?: PrintJobLabel[]; // one printed banner; only ever added
+  approvedAt?: Date; // staff tapped Print now / Print again
+  printedAt?: Date; // set ONLY by an acknowledged write (or the cashier's "it printed")
+  printedBy?: string; // the writing device's id, or the staff name
+  lastError?: string;
+  log?: PrintJobLogEntry[]; // the newest PRINT_JOB_LOG_MAX entries
   createdAt: Date;
   updatedAt: Date;
 }
+
+// Phase 1 subdocuments. No _id: they are values, not entities.
+const printJobLeaseSchema = new Schema<PrintJobLease>(
+  {
+    deviceId: { type: String, required: true },
+    tabId: { type: String, required: true },
+    epoch: { type: Number, required: true },
+    expiresAt: { type: Date, required: true },
+  },
+  { _id: false },
+);
+const printJobLogSchema = new Schema<PrintJobLogEntry>(
+  {
+    at: { type: Date, required: true },
+    event: { type: String, enum: [...PRINT_JOB_LOG_EVENTS], required: true },
+    deviceId: { type: String },
+    detail: { type: String },
+  },
+  { _id: false },
+);
 
 // Exported as a SCHEMA (not only the default-bound model), matching the
 // codebase's schemas-not-models convention (models/OrderRequest.ts,
@@ -63,6 +106,23 @@ export const printJobSchema = new Schema<IPrintJob>(
     dismissedAt: { type: Date },
     dismissReason: { type: String, enum: [...PRINT_JOB_DISMISS_REASONS] },
     dismissedBy: { type: String },
+    // Phase 1 lifecycle (spec §6.5). Omit-empty with NO defaults, for the same reason as above: a row
+    // from before Phase 1 must stay exactly as it was. The arrays say `default: undefined` because
+    // Mongoose would otherwise write [] onto every row.
+    targetDeviceId: { type: String },
+    originDeviceId: { type: String },
+    copyIndex: { type: Number },
+    epoch: { type: Number },
+    lease: { type: printJobLeaseSchema },
+    attempts: { type: Number },
+    uncertainAttempts: { type: Number },
+    nextAttemptAt: { type: Date },
+    labels: { type: [{ type: String, enum: [...PRINT_JOB_LABELS] }], default: undefined },
+    approvedAt: { type: Date },
+    printedAt: { type: Date },
+    printedBy: { type: String },
+    lastError: { type: String },
+    log: { type: [printJobLogSchema], default: undefined },
   },
   { timestamps: true },
 );
@@ -75,6 +135,13 @@ printJobSchema.index({ status: 1, createdAt: 1, _id: 1 });
 // Dedupe fence for the deterministic jobKeys (kot/bill/void/moved). Sparse
 // because reprints, eod, and cancel-notice jobs carry no jobKey at all.
 printJobSchema.index({ jobKey: 1 }, { unique: true, sparse: true });
+
+// Phase 1: one device's line, oldest first (lib/print-lease.ts printJobLineFilter, and the wake's
+// jobsForMe read). The {status, nextAttemptAt, …} index in spec §6.5 is NOT created: no Phase 1
+// query uses it, and on M0 every index costs storage and write amplification.
+printJobSchema.index({ targetDeviceId: 1, status: 1, createdAt: 1, _id: 1 });
+// Phase 1: an ordering device's own recent jobs (its readback, Session 1D).
+printJobSchema.index({ originDeviceId: 1, createdAt: -1 });
 
 // NO TTL index: ttl-guard's default-deny (packages/shared/src/ttl-guard.ts)
 // allows exactly one registry TTL index platform-wide (Heartbeat) —
