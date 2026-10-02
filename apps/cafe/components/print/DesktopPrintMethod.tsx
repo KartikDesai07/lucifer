@@ -56,7 +56,7 @@ export function DesktopPrintMethod({ savePrintMode, printMode }: DesktopPrintMet
     <div className="space-y-2 border-t pt-3">
       <p className="font-medium">Print method</p>
       {DESKTOP_PRINT_MODES.map((value) => (
-        <label key={value} className="flex items-start gap-2 text-sm">
+        <label key={value} className="flex min-h-11 cursor-pointer items-start gap-2 py-1 text-sm">
           <input
             type="radio"
             name="desktop-print-mode"

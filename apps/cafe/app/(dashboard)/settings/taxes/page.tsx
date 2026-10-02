@@ -10,7 +10,7 @@ export default function TaxesSettingsPage() {
       {(settings, section) => (
         <SettingsSectionForm settings={settings} section={section}>
           {({ control, register, setValue, watch, errors }) => (
-            <GstFields control={control} register={register} setValue={setValue} watch={watch} errors={errors} />
+            <GstFields control={control} register={register} setValue={setValue} watch={watch} errors={errors} settings={settings} />
           )}
         </SettingsSectionForm>
       )}

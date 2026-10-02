@@ -2,7 +2,12 @@ import { useId } from "react";
 
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { BRAND_FIELD_ERROR_CLASS, BRAND_LABEL_CLASS } from "@/components/brand/brand-classes";
+import {
+  BRAND_FIELD_ERROR_CLASS,
+  BRAND_LABEL_CLASS,
+  BRAND_PANEL_CLASS,
+} from "@/components/brand/brand-classes";
+import { cn } from "@/lib/utils";
 
 // htmlFor (optional): the id of the input inside, so a tap on the label
 // focuses it and a screen reader names the input by it.
@@ -64,5 +69,39 @@ export function ToggleRow({
         aria-describedby={`${id}-hint`}
       />
     </label>
+  );
+}
+
+// One two-column settings row: the group's name + one line on the left, its
+// panel on the right. It stacks below lg because at md the sidebar leaves
+// only ~464px. The title is an h3 — the page title (PageHeader) is the h2.
+export function SettingsGroup({
+  title,
+  description,
+  id,
+  panelClassName,
+  children,
+}: {
+  title: string;
+  description: React.ReactNode;
+  id?: string;
+  panelClassName?: string;
+  children: React.ReactNode;
+}) {
+  const headingId = useId();
+  return (
+    <section
+      id={id}
+      aria-labelledby={headingId}
+      className="grid scroll-mt-20 gap-4 border-t border-brand-rule pt-6 first:border-t-0 first:pt-0 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-8"
+    >
+      <div className="space-y-1">
+        <h3 id={headingId} className="text-[15px] font-semibold text-brand-ink">{title}</h3>
+        <p className="text-sm text-brand-muted">{description}</p>
+      </div>
+      <div className={cn("min-w-0 space-y-4 rounded-lg border p-4 sm:p-5", BRAND_PANEL_CLASS, panelClassName)}>
+        {children}
+      </div>
+    </section>
   );
 }
