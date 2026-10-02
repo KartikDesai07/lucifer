@@ -1,12 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PRINT_WAKE_DAILY_CAP } from "./print-job";
-import { printAgentWakeIntervalMs, printWakeAgentCap } from "./print-agent-wire";
+import { printAgentPollsWake, printAgentWakeIntervalMs, printWakeAgentCap } from "./print-agent-wire";
 import {
   PRINT_AGENT_MIN_CADENCE_MS,
   PRINT_BUDGET_BUSY_DAY,
   PRINT_BUDGET_NORMAL_MAX_PER_DAY,
   PRINT_BUDGET_WORST_MAX_PER_DAY,
+  PRINT_REALTIME_BASE_PER_DAY,
+  PRINT_REALTIME_PER_SLIP,
+  REALTIME_FREE_REQUESTS_PER_DAY,
   printSlipRequestsPerDay,
 } from "./print-budget";
 
@@ -62,4 +65,35 @@ test("spec §9.1 cadences: 60 s on a healthy socket; 3 s while busy without one;
   assert.equal(cadence({ socketHealthy: false, msSinceLastJob: 119_999, capSpent: false }), 3_000);
   assert.equal(cadence({ socketHealthy: false, msSinceLastJob: 120_000, capSpent: false }), 15_000);
   assert.equal(cadence({ socketHealthy: false, msSinceLastJob: null, capSpent: false }), 15_000);
+});
+
+// 1A review gate (I3 and the reviewer's recommendation 1). Dividing the cap by the agents online cannot
+// bound agents that join late: one agent alone spends 9,600 before two more arrive, then each of them
+// spends 4,800, so 19,200 wake hits. Phase 1 therefore lets exactly one device poll the wake.
+test("Phase 1: at most one device polls the wake, in either simple mode, so the shared cap is exact", () => {
+  const fastest = cadence({ socketHealthy: false, msSinceLastJob: 0, capSpent: false });
+  for (const devices of [1, 2, 3, 5, 8, 16]) {
+    for (const hostConfigured of [true, false]) {
+      const pollers = Array.from({ length: devices }, (_, i) =>
+        printAgentPollsWake({ hostConfigured, isHost: hostConfigured && i === 0 }),
+      ).filter(Boolean).length;
+      assert.ok(pollers <= 1, `${devices} devices, host ${hostConfigured}: ${pollers} pollers`);
+      const total = printSlipRequestsPerDay() + pollers * Math.min(OPEN_MS / fastest, printWakeAgentCap(pollers));
+      assert.ok(total <= PRINT_BUDGET_WORST_MAX_PER_DAY, `${devices} devices, host ${hostConfigured}: ${total}/day`);
+    }
+  }
+  assert.equal(printAgentPollsWake({ hostConfigured: false, isHost: false }), false, "no host: nobody polls (spec §17.2)");
+  assert.equal(printAgentPollsWake({ hostConfigured: true, isHost: false }), false, "a device that is not the host never polls");
+  assert.equal(printAgentPollsWake({ hostConfigured: true, isHost: true }), true, "the host polls");
+});
+
+test("no host: printing costs only a lease and an ack per slip, never a poll (spec §17.2: 2,640/day)", () => {
+  assert.equal(printSlipRequestsPerDay(), 2_640);
+  assert.ok(printSlipRequestsPerDay() <= PRINT_BUDGET_NORMAL_MAX_PER_DAY, "inside the normal-day ceiling");
+});
+
+test("realtime: three Worker requests per slip stay under 5 % of the free 100,000 a day", () => {
+  const perDay = PRINT_BUDGET_BUSY_DAY.slips * PRINT_REALTIME_PER_SLIP + PRINT_REALTIME_BASE_PER_DAY;
+  assert.equal(perDay, 3_935);
+  assert.ok(perDay <= REALTIME_FREE_REQUESTS_PER_DAY * 0.05, `${perDay}/day`);
 });

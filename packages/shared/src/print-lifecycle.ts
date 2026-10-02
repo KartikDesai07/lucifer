@@ -40,6 +40,10 @@ export const PRINT_MY_RECENT_WINDOW_MS = 15 * 60 * 1000;
 export const PRINT_JOB_LOG_MAX = 20;
 /** An agent's failure text, stored for staff, is cut to this. */
 export const PRINT_ACK_ERROR_MAX_CHARS = 200;
+/** The repair sweep re-creates a server-owned KOT round's missing job for this long after the round
+ *  fired (§7.4 step 2). It is the stale window, so a repaired slip is never older than one that would
+ *  need a staff tap. */
+export const PRINT_REPAIR_WINDOW_MS = 30 * 60 * 1000;
 
 /** Banner labels in print order ("BACKUP PRINTER · REPRINT", §7.7). Labels are only ever added. */
 export const PRINT_JOB_LABELS = ["BACKUP PRINTER", "REPRINT", "DUPLICATE"] as const;
