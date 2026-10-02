@@ -35,6 +35,19 @@ network port), a PC with Chrome for the debug part.
 - [ ] For a printer cabled to Windows, select it in the desktop POS, designate
       that PC as the printing device, and test orders sent from the mobile POS.
       Test both the direct ESC/POS method and the driver method where required.
+- [ ] Chrome on a PC or Android phone with a Web Serial or Web Bluetooth printer: unplug or
+      power-cycle the printer, then print. A slip refused before anything was sent prints
+      once after the automatic reconnect; a slip cut off mid-way is NOT reprinted by itself
+      and the message says to check the paper.
+- [ ] Android app with a USB printer: put the app in the background, unplug and replug the
+      printer, then open the app. The USB permission prompt appears once; allow it and the
+      printer connects. Deny it: no further prompts until you tap Reconnect.
+- [ ] Old tablet (WebView 109 or older): light highlights, red error tints, borders and the
+      dark overlay behind dialogs look like tints (not solid colour blocks), in light and
+      dark mode.
+- [ ] Android app with Wi-Fi off (or a wrong POS address): wait on "Could not open the POS"
+      while it retries by itself, then tap Try again several times, and on the loading
+      screen tap its Try again too. The app never closes by itself.
 
 ## Part A. Debug build, talking to the app directly (about 15 minutes)
 
