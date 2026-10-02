@@ -1367,3 +1367,67 @@ Verdict: "With fixes" — 0 Critical, 1 Important, 7 Minor. The F0.1 resend path
 - Not covered on hardware (no printers attached to this PC): the USB background-replug prompt, Web Serial/BLE reconnect-and-resend, and the paper checks. These are in TEST-CHECKLIST.md for the real-printer run.
 - The demo deployment runs `main`, so the tint fix shows there only after this branch is deployed. The website CSS must be deployed together with the APK; the checklist already says so.
 - `7edf7aa` fixes a crash that is also on `main`. Any client APK built from `main` crashes on the first load error that retries. The owner may want it as a separate hotfix to `main`; that is the owner's call.
+
+---
+
+## Review (orchestrator session, 2026-10-02)
+
+Independent deep review of `93a31cf..a3d3fbe` (10 commits). Every number below was re-run in the review session, not copied from Results.
+
+**Verdict: PASS.** 0 Critical, 0 Important, 0 must-fix findings. Phase 1 may start.
+
+### Code review against spec §12
+
+| Item | Commit | Verdict |
+|---|---|---|
+| F0.1 web refusals resendable | `fc3c823` | Correct. Only pre-write refusals carry `NOT_CONNECTED` (no transport, `writable === null`, BLE drop before chunk 0, no native client). Every post-write failure stays code-less and is never replayed. The resend path's messages now say "not connected" because nothing printed. |
+| F0.2/F0.7 USB permission | `9f8bdc0`, `f762210` | Correct. `UsbTransport` and `PrinterManager` read the same `@Volatile appVisible`, so no tight loop. Every `resumeIfPaused()` caller runs on the single `pos-printer-timer` thread, and `begin()` clears `usbWaitingForeground` under the lock, so the cold-start race fix cannot ask twice. |
+| F0.3–F0.6 picker | `283fdb1` | Correct. The 260 → 280 line budget is accepted: the plan's own code needed it, every needle and mutation is intact, and Phase 2 (§11) rewrites this panel. |
+| F0.8 tints | `d69f053` | Correct. The rewrite (alias twins, merged-rule split, every-definition rule) is required by this CSS: light `--primary` is an alias and the optimizer merges 17 fallback rules. Fallback values are integers derived from parsed colours, so the step cannot inject CSS. |
+| F0.9 cover retry, Brand lint | `be90ecb` | Correct. `retryByTap` resets the automatic count, then remounts. |
+| F0.10, F0.11 | `4cdd927` | Correct. |
+| Outside the plan: remount crash | `7edf7aa` | Justified and correct. It removes a script handler only when it belongs to the WebView being attached. `WebViewDelivery.kt` on `main` is identical to this commit's parent, so the Kotlin applies cleanly to `main`; `mobile-paths.test.ts` needs a small manual merge. |
+| Outside the plan: runtime twins | `ad9a933` | Justified and correct. Twins come only from `HEX_COLOR_PATTERN` (6-digit hex) values, after sanitising. |
+| Docker port change | Results | Justified. 8099 is Docker's. |
+
+### Deferred minors: rulings
+
+None blocks Phase 1. Three cheap gaps are folded into Phase 1 Task 0:
+1. Pin 16 does not pin the `usbWaitingForeground = false` resets → **Phase 1 Task 0**.
+2. A KOT during a pending USB prompt can cause one extra prompt after Deny. This is pre-existing → Phase 3 (Android hardening).
+3. A list-error toast on a slow app start. The picker renders only when `caps.native` is true, so this is practically unreachable → no action.
+4. Picker code nits → no action. Phase 2 replaces the panel.
+5. One line of headroom under 280 → Phase 2 (§11 "This device" view).
+6. Nothing pins `postcss.config.mjs` → **Phase 1 Task 0**: pin the plugin order and the untwinned allow-list (`--border`).
+7. The spec F0.8 wording → **Phase 1 Task 0**.
+
+### Re-run results (review session)
+
+- cafe `npm test`: 3976 tests, 3975 pass, 1 fail. The failure is the known `lib/go-live-dl.test.ts` ENOENT pin.
+- cafe: tsc 0; lint 0 errors and the 2 old warnings in `masters-blob.test.ts:331`.
+- shared: 597/597, tsc 0.
+- mobile: tsc 0, lint 0, node 114/114, Jest 3/3.
+- desktop: 191/191.
+- Next production build succeeds. `.next/static/css/22b0ab1b93eaddb4.css` has 59 `rgb(var(--x-rgb)/N%)` fallbacks, including `rgb(var(--primary-rgb)/10%)`.
+- APKs are **byte-identical** to the Results hashes (x86_64 `fc4181e4…`, arm64-v8a `9f89cd9a…`, armeabi-v7a `f3f62149…`). Each APK holds only its own ABI.
+
+### Emulator (Pixel_7_API_33, WebView 109.0.5414.123)
+
+- Start-up and address items 1–7 pass.
+- Remount crash scenario:
+  - `does-not-exist.example.com`: 82 s of automatic retries, then 5 Try again taps.
+  - A connection-reset server: one remount every 15 s (4 in 50 s, server-logged).
+  - A never-answering server: "Taking longer than usual" after 12 s, then 3 cover Try again taps; each remounted (4 server GETs).
+  - One process throughout. `logcat -b crash` stayed empty, and the app process had no `FATAL|ClassNotFound|NoSuchMethod`.
+- Tints from the shipped minified CSS show light washes in light mode and dark-theme tints in dark mode.
+  - Probe: `color-mix: false`. Light `bg-primary/10 = rgba(37, 99, 235, 0.1)`; dark `rgba(226, 232, 240, 0.1)`.
+  - The overlay shows the text through it, and solid utilities stay solid.
+- Diner menu dark scheme (shipped CSS + `appearanceScopedCss` + `appearanceOverrideCss`, `data-pub-theme="dark"`, accent `#fcd34d`):
+  - The search bar and tab bar are dark (`rgba(25, 22, 22, 0.95)`) with readable text.
+  - The chip is a faint amber tint (`rgba(252, 211, 77, 0.1)`).
+- The demo POS login page loads (read-only, not signed in).
+
+### Notes
+
+- `.superpowers/sdd/` (two git-ignored files from the Phase 0 executor) is still in the working tree. It is not this session's to delete.
+- **Recommendation: hotfix `7edf7aa` to `main`.** Any APK built from `main` closes itself ~17 s after its first load error, for example a Wi-Fi blip at opening time. This is the owner's call; the review did not touch `main`.
