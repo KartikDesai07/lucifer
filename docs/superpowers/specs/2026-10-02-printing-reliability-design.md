@@ -273,7 +273,7 @@ log: Array<{ at: Date;
 ```
 created ─► queued ──lease──► leased ──ack printed──► printed ✓
              ▲                  │
-             │                  ├─ ack failed, sent:"no" ──────► queued (backoff)
+             │                  ├─ ack failed, sent:"no" ──────► queued (backoff; never an attempt)
              │                  ├─ ack failed, sent:"maybe" ─┬─ KOT/notice/EOD ─► queued + REPRINT
              │                  │                            └─ bill ───────────► needs-confirm
              │                  └─ lease expired (sweep or next lease) ─► same as sent:"maybe"
@@ -294,12 +294,12 @@ any unresolved ──dismiss (staff, order cancelled, host cleared)──► dis
 | `queued` (`nextAttemptAt ≤ now`, not stale) | lease by an eligible device (§9.3) at its printer's head of line (§7.6) | `leased` | CAS on `{_id, status:"queued", epoch}`. Sets `epoch+1`, `lease.expiresAt = now + 90 s`, `attempts+1` |
 | `leased` (`expiresAt < now`) | expiry, applied by the sweep or lazily by the next lease query | KOT/notice/EOD: `queued`, adds REPRINT to `labels`; bill: `needs-confirm` | `uncertainAttempts+1`, log `expired` |
 | `leased` | ack `printed` with a matching epoch | `printed` | sets `printedAt` and `printedBy`, clears `lease` |
-| `leased` | ack `failed`, `sent:"no"` | `queued` | `nextAttemptAt = now + backoff(attempts)` |
+| `leased` | ack `failed`, `sent:"no"` | `queued` | `nextAttemptAt = now + backoff(attempts)`. Never counts toward the limit (owner, after Session 1B); the agent stops leasing until its printer is back (§9.1) |
 | `leased` | ack `failed`, `sent:"maybe"` | KOT/notice/EOD: `queued` + REPRINT; bill: `needs-confirm` | `uncertainAttempts+1` |
 | `leased` | ack `failed` with a permanent error (`BAD_REQUEST`, `TOO_LARGE`) | `failed` | no retry, alert (§10) |
-| `needs-confirm` | cashier decision | `queued` + DUPLICATE / `printed` / `dismissed` | allowed from any device that can see the job |
-| `queued` | `uncertainAttempts ≥ 3` or `attempts ≥ 8` | `failed` | checked when acking and by the sweep |
-| `failed` | "Print again" | `queued` | Adds REPRINT (KOT) or DUPLICATE (bill) to `labels` if `uncertainAttempts > 0`, then resets `attempts` and `uncertainAttempts` to 0 |
+| `needs-confirm` | cashier decision | `queued` + DUPLICATE / `printed` / `dismissed` | allowed from any device that can see the job. "Print again" is the bill's one labelled retry: `uncertainAttempts = 1`, `attempts = 0`, `approvedAt = now` |
+| `queued` | `uncertainAttempts ≥ 2` (the owner's two-attempt rule, §7.8) | `failed` | checked when acking and by the sweep; leases refused before writing never count |
+| `failed` | "Retry" | `queued` | Adds REPRINT (KOT) or DUPLICATE (bill) to `labels` if `uncertainAttempts > 0`, then sets `attempts = 0` and `uncertainAttempts = 1`: one staff tap is one more attempt |
 | `queued`, stale (`createdAt` older than 30 min, no `approvedAt`) | "Print now" | `queued`, leasable | Stale is derived, not stored: a stale job can't be leased and doesn't block the head of line. The tap sets `approvedAt = now`. |
 | any unresolved | dismiss | `dismissed` | existing reasons, plus `"cashier"` |
 
@@ -326,7 +326,7 @@ any unresolved ──dismiss (staff, order cancelled, host cleared)──► dis
   - void → void notice
   - `orders/[id]/table` → moved notice
   - `orders/[id]/cancel` with notify → cancel notice
-  - `order-requests/[id]/accept`, and the auto-accept in `api/public/order-request` → KOT jobs
+  - `order-requests/[id]/accept` → KOT jobs; for a QR self-order, the lane's `order-requests/[id]/kot-claim` when an agent claims it (§7.10: the public auto-accept itself makes no job)
 - **Payloads** come from the existing builders in [lib/print-routing.ts](../../../apps/cafe/lib/print-routing.ts) (`kotPrintJob`, `billPrintJob`, `voidPrintJob`, …), run on the committed order. They are converted with the same snapshot function (`printOrderSnapshot`) the client uses today, so slips look exactly the same.
 - **Response:** the route returns `printJobs: [{ id, printerId | targetDeviceId, label }]` (`label` is the existing UI-only text, e.g. "KOT round 2 · T-4"), and the ordering device leases the ones that belong to it straight away.
 - **Errors:** if job creation throws after the order commits, the route still returns success and logs the error. The sweep repairs it. (Phase 1: the error is swallowed, because server libs never log; the repair covers a KOT round and the ordering device re-sends any other slip its answer did not name, §7.10.)
@@ -335,7 +335,7 @@ any unresolved ──dismiss (staff, order cancelled, host cleared)──► dis
   2. Re-create missing jobs. For orders with a KOT round fired in the last 30 min, recompute the expected jobKeys and insert any that are missing. A unique-key collision is a no-op. Phase 1 repairs only the KOT rounds the server owns (`Order.kotPrintDevices`, §7.10), so it never re-prints a round an old tab printed itself.
   3. Apply limits (stale, failed).
   4. Run the existing retention prune.
-- **Retired lane:** once the accept routes create KOT jobs, the QR self-order `/kot-claim` lane and its `kotPrintedAt` CAS are retired. They stay for one release.
+- **The self-order lane stays** (§7.10, the 1B review gate): its `/kot-claim` CAS still picks the one lane that prints a QR KOT, and for an agent that claim makes the KOT a print job. A tab from before Phase 1 still claims and prints it itself.
 
 ### 7.5 Failure classification
 
@@ -374,7 +374,7 @@ any unresolved ──dismiss (staff, order cancelled, host cleared)──► dis
 | Backoff after `sent:"no"` | 2, 5, 10, 30 s, then every 30 s | Matches today's reconnect cadence |
 | KOT alarm | 20 s from creation without `printed` | |
 | Stale, needs a tap | queued > 30 min (`PRINT_HOST_MAX_AGE_MS`, unchanged) | Stops yesterday's KOT printing at opening time |
-| Failed | `uncertainAttempts ≥ 3` or `attempts ≥ 8` | Caps duplicates when acknowledgements keep getting lost |
+| Failed | the second attempt that may have printed (`uncertainAttempts ≥ 2`); a refusal (`sent:"no"`) never counts | The owner's rule after Session 1B: the first attempt plus one labelled retry, then staff decide (§10's panel). No automatic attempt while the printer is off (§9.1) |
 | Device offline | no heartbeat for 90 s | |
 | Retention | unchanged: resolved 2 h, queued 12 h | |
 
@@ -410,7 +410,20 @@ The Phase 1 plan ([2026-10-02-phase-1-lifecycle.md](../plans/2026-10-02-phase-1-
 - **Only the host polls the wake in Phase 1** (the 1A review's I3, and its recommendation 1). With no host no device polls: each prints its own slips from its own order responses, `print-status` events aimed at it, local retry timers and the pulse (§17.2 "no polling", §17.3 rule 1). One poller keeps the shared daily cap exact. Dividing the cap by agents online, or by agents seen this cafe-day, does not bound agents that join late (one alone spends 9,600 wake hits before two more arrive, then each spends 4,800). When several agents poll (Phase 2), the cap becomes a server-side split of the cafe's remaining daily allowance, which agents report on their 30 s heartbeat.
 - **`print-status` (§10)** is `{ kind: "print-status", job: { id, status, target? } }`: `"queued"` with its device when a job is created, then the final state (printed, needs-confirm, failed, dismissed). An agent leases on the events aimed at it, so a nudge never fans out into empty leases. The `print-job` nudge is published for server-made jobs only when a host exists (one agent). Realtime cost: 3 Worker requests per slip (§17.2).
 - **The lease CAS is also fenced on `targetDeviceId`**, so a job retargeted between the read and the CAS is not leased by its old device. A lease call that ran out of steps answers `retryAt` = now + 2 s. A failed lease heartbeat no longer fails a lease that committed.
-- **Pending (owner, at the Session 1C gate):** whether `sent:"no"` refusals count toward `attempts ≥ 8` (§7.2, §7.8).
+- **Answered by the owner after Session 1B (see the next block):** refusals never count, and the limit is two attempts that may print.
+
+**Rulings at the Session 1B review gate (2026-10-03).** The owner's decisions after Session 1B, and the gate's rulings; implemented in Session 1C unless noted:
+
+- **No automatic attempt while a printer is off (owner).** An agent never leases while its device cannot print (`canPrintNow()`: no printer, not connected, or open in another tab), and after a refusal (`sent:"no"`) it leases again only once its printer's state changes, or after 30 s. A refusal marks nothing as attempted.
+- **At most two attempts per slip when the printer is ready (owner).** The first, plus one labelled retry: REPRINT for a KOT; for a bill, the cashier's DUPLICATE prompt. Then the slip is `failed` and waits in the panel (§10). Counting, pinned: `uncertainAttempts` counts a "maybe" failure, a permanent failure after a byte left, and an expired lease; `PRINT_MAX_PAPER_ATTEMPTS = 2`; `attempts` (leases) only paces the backoff. The cashier's print again and a staff Retry each set `uncertainAttempts = 1`: one tap, one try. This replaces `attempts ≥ 8` and `uncertainAttempts ≥ 3` (§7.2, §7.8).
+- **R4 becomes the job-aware self-order lane.** The agent's `/kot-claim` makes the KOT a print job in the same request (today's key), for the device that prints now. One creator per KOT, because the claim CAS still lets exactly one lane win; the public auto-accept stays exactly as live today and makes no job. A failed create keeps the claim and names no job, and the lane enqueues the KOT under the same key. No added request or write.
+- **Every device with an identity prints through the agent.** Its call sites never print a slip themselves: the order requests opt in (R1), a slip the answer named is followed by its id, and one it did not name is enqueued as the agent under today's key. The host leases for the whole cafe; with no host, every device leases its own line. Only a device with no identity keeps today's local print.
+- **A failure's class comes from its curated sentence** (`lib/print-write-outcome.ts`): refused before any byte left is "no", too large or blank is permanent, anything else is "maybe". The write queue is unchanged: the agent prints one job at a time.
+- **With no host, agents never lease on the broadcast `print-job` nudge** (1B's M-c): a job sent home reaches its device through the pulse's `printJobsForMe` (the agent names itself with `?device=` on the existing pulse) within 20 s, or a `print-status` aimed at it.
+- **1B's minors:** a ref carries its job's status (M-d); an enqueue that finds its host gone sends a row with an asking device home (M-a); an enqueued row announces itself (M-e); a staff accept the server prints writes `kotPrintDevices` in the same order write (M-f). M-b and M-g: no change.
+- **Known limit (gate finding G5):** on the Android app's TCP lane, a printer that cuts the connection after the raster was buffered reads as printed. The post-job `DLE EOT` check (§9.6, §10, Phase 3) detects it.
+- **The one waiting-slips panel lands in Session 1D** (§10): its rows come from 1D's pulse feed, with no host only 1D's pulse sweep moves them, and 1C and 1D release together.
+- **Nothing is deployed until every phase is done (owner).** The free-tier check is a local measurement (§17.3 item 5).
 
 ## 8. Routing (Phase 2)
 
@@ -440,6 +453,7 @@ Routing is a pure function, `routeJobs(event, catalog, printers, devices)`, with
     - socket not healthy: every 3 s, but only while the agent has seen a job in the last 2 minutes; otherwise every 15 s.
   - **Shared daily cap.** The cafe's agents share today's single-host cap of 14,400 wake hits per cafe-day. Each agent's cap is `floor(14,400 / onlineAgentCount)`; the wake response includes the agent count. Past its cap, an agent polls every 30 s until the next cafe-day. More printer devices therefore never raise the cafe's request total (§17).
   - **Phase 1: only the host polls** (§7.10, the 1A review gate). With no host no device polls the wake; it leases from its own order responses, `print-status` events aimed at it, local retry timers and the pulse. A divided cap cannot bound agents that join late, so Phase 2 replaces the division with a server-side split of the cafe's remaining daily allowance.
+- **It never leases while its device cannot print** (owner, after Session 1B): no printer, not connected, or open in another tab. After a refusal (`sent:"no"`) it waits until its printer's state changes, or 30 s, so a printer that is off costs no attempts and no requests.
 - **For each lease:** render, then write, then ack. It reports `sent` honestly, following §7.5.
 - It processes one job at a time per printer. Different printers can run in parallel.
 
@@ -509,7 +523,12 @@ Routing is a pure function, `routeJobs(event, catalog, printers, devices)`, with
     - **Fallback:** `myRecentJobs` on the existing 20 s pulse.
     - No new poll.
   - A KOT still not `printed` after 20 s sounds an alarm and shows a banner. The alarm also plays on every printer device.
-- **Failed and needs-confirm list:** shown on all devices, with Print again, It printed (bills only) and Dismiss.
+- **One waiting-slips panel** (owner, after Session 1B; Session 1D): every slip that is not printed yet and needs no more from the system, in one clear, simple panel on every device, opened from the printer dot, which shows their count. Three groups, in plain words:
+  - **Waiting for the printer:** queued for a printer that is off or not ready, or older than 30 minutes ("stale"). Retry (Print now) and Clear.
+  - **Check the bill:** a bill that may already have printed (`needs-confirm`). Print again (DUPLICATE), It printed, and Clear.
+  - **Couldn't print:** `failed` (two attempts that may have printed, or a slip that can never print). Retry (one more attempt) and Clear.
+
+  Each row names the slip ("KOT round 2 · T-4"), how long it has waited, and why, without jargon.
 - **Telegram (optional, per cafe):** uses the existing integration (`models/TelegramChat.ts`). It alerts when:
   - a job has waited more than 60 s because its printer is offline;
   - a job has `failed`;
@@ -592,7 +611,7 @@ Each phase gets its own implementation plan and ships on its own. The first plan
 | Phase | Contents | Exit criteria |
 |---|---|---|
 | **0** | §12 fixes | All suites pass; the new tests for F0.1 and F0.2 pass; WebView 109 tints look right on the emulator. |
-| **1** | Lifecycle (§7), `PrintDevice` heartbeat, server-side creation and sweep, readback statuses, 20 s alarm, failed/needs-confirm list, labels, and simple mode for existing outlets | With the fake printer: a dropped connection mid-KOT prints a REPRINT copy; a mid-bill drop raises the cashier prompt; killing the host mid-job re-queues it after 90 s; a missing job is repaired by the sweep; no silent loss in a 200-order soak test; the measured free-tier budget in §17.3 passes. |
+| **1** | Lifecycle (§7), `PrintDevice` heartbeat, server-side creation and sweep, readback statuses, 20 s alarm, the one waiting-slips panel, labels, and simple mode for existing outlets | With the fake printer: an attempt that may have printed (a lost ack, a mid-job drop on a lane that can see it) prints a REPRINT copy; on a bill it raises the cashier prompt; killing the host mid-job re-queues it after 90 s; a printer that is off costs no attempt; a missing job is repaired by the sweep; no silent loss in a 200-order soak test; the locally measured free-tier budget in §17.3 passes. (Android's TCP lane cannot see a mid-slip cut: §7.10, Phase 3.) |
 | **2** | `Station`, `Printer`, station fields on `Category`/`Product`, routing (§8), the setup UI (§11), several printers per device (§9.2) including bridge v2 and the Kotlin pool | One round with kitchen and bar items prints two station KOTs plus the full copy; bills go to the device's bill printer; an old APK (bridge v1) still prints in simple mode. |
 | **3** | Failover (§9.3–9.4), `DLE EOT` health, Windows raw TCP, Android hardening (§9.5), Telegram alerts | Stopping the primary LAN writer moves printing to the second device within 90 s; paper-out shows on every device; a killed service restarts; the boot notification appears. |
 | **4** | Fast text-mode ESC/POS for KOTs whose text is all Latin (raster stays for Indian scripts and logos), printer discovery, setup polish | A KOT payload is about 10× smaller than raster; Bluetooth KOT time is measured before and after. |
@@ -603,7 +622,7 @@ Each phase gets its own implementation plan and ships on its own. The first plan
 | Risk | Mitigation |
 |---|---|
 | Vercel and Mongo free-tier budgets, from more state writes | The heartbeat rides the existing wake poll; the lease returns the payload; the sweep runs at most once per 60 s; the state changes are only create, lease and ack, three writes per slip. |
-| Duplicate paper when acknowledgements keep getting lost | §7.9 late acks; `uncertainAttempts ≥ 3` → `failed`; every repeat is labelled. |
+| Duplicate paper when acknowledgements keep getting lost | §7.9 late acks; the second attempt that may have printed → `failed` (the owner's two-attempt rule); every repeat is labelled. |
 | Old tabs and old APKs during the rollout | `/claim` and `/kot-claim` stay for one release; bridge v1 keeps simple-mode behaviour. |
 | Head-of-line blocking by a poisoned job | Permanent errors go straight to `failed`; parked states don't block; the limits in §7.8. |
 | Clock skew between devices | All lease and expiry times use server time. |
@@ -672,7 +691,7 @@ A busy day is assumed:
 
 **Simple mode without a host** (each device prints its own slips) costs no server requests today. In this design it adds about 2,640 invocations/day on a busy day (lease, ack, retries) and no polling. That is the price of server-side acknowledgement, retry and visibility.
 
-**Phase 1 polls with one device at most** (§7.10): the host in host mode, nobody without a host. The "3 printer devices" columns above are Phase 2's target design; `print-budget.test.ts` pins both.
+**Phase 1 polls with one device at most** (§7.10): the host in host mode, nobody without a host. The "3 printer devices" columns above are Phase 2's target design; `print-budget.test.ts` pins both. With no host, each agent names itself on the existing 20 s pulse (`?device=`, one bounded read on a request that already runs), so no device adds a request.
 
 ### 17.3 Rules that keep it bounded
 
@@ -680,8 +699,8 @@ A busy day is assumed:
 2. No Vercel Cron. The sweep runs inside wake/pulse handling at most once per 60 s.
 3. The agents' shared wake cap (§9.1) is pinned by a test.
 4. **Budget test** (`packages/shared/src/print-budget.test.ts`, new). It recomputes the two "Vercel invocations" totals in §17.2 from the exported constants. It fails if the worst case exceeds 18,000/day, the normal case exceeds 6,000/day, or any agent cadence is below 3 s.
-5. **Phase 1 exit criterion (measured, not estimated):**
-   - On a scratch deployment in the owner's own free accounts, run a 2-hour simulated rush (fake printers, scripted orders).
-   - Read Vercel → Usage (invocations, Active CPU, provisioned memory) and the Atlas metrics.
-   - Extrapolate to a busy day. Printing must use **≤ 15 % of Active CPU** and **≤ 20 % of invocations** on a normal day, with Atlas under 10 ops/s at peak.
+5. **Phase 1 exit criterion (measured locally, not estimated).** Nothing is deployed until every phase is done (owner, after Session 1B), so the measurement runs on the owner's PC:
+   - The local POS (`next start`), the emulator app as host, the fake printer, and the 200-order soak plus a 30-minute idle run, through a scratchpad counting proxy that logs every request's route, status and duration.
+   - The server process's CPU time and `db.serverStatus().opcounters` before and after each run, and the peak over any 10 s window.
+   - Report requests per slip, per order and per minute by route, CPU ms per request, and Mongo operations per slip; extrapolate to the busy day (§17.2). Printing must use **≤ 15 % of Active CPU** and **≤ 20 % of invocations** on a normal day, with Atlas under 10 ops/s at peak. The local CPU per request stands in for Vercel's Active CPU, and the report says so.
    - If not, lower the cadences before release.
