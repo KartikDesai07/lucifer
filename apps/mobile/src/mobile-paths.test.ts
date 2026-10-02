@@ -2035,3 +2035,27 @@ test('pin 16 mutation: every USB permission needle can fail', () => {
     ['usbPermissionPaused || usbWaitingForeground) return', 'usbPermissionPaused) return'],
   ]);
 });
+
+// --------------------------------------------------------------- pin 17
+// Phase 0 F0.9: the loading cover's Try again is a person's retry (it resets the
+// automatic-retry count), not the silent crash remount.
+function coverRetryProblems(pos: string): string[] {
+  const code = strip(pos);
+  const out: string[] = [];
+  if (!code.includes('onRetry={onRetryTap}')) out.push('the loading cover must call the tap retry');
+  if (!code.includes('onRetryTap={retryByTap}')) out.push('PosScreen must hand retryByTap to the cover');
+  if (code.includes('onRetry={onRenderGone}')) out.push('the cover must not reuse the crash remount');
+  return out;
+}
+
+test('pin 17: the loading cover\'s Try again is a user retry', () => {
+  assert.deepEqual(coverRetryProblems(read(join(SRC, 'screens', 'PosScreen.tsx'))), []);
+});
+
+test('pin 17 mutation: the cover retry wiring can be cut', () => {
+  const base = read(join(SRC, 'screens', 'PosScreen.tsx'));
+  everyMutationCaught(coverRetryProblems, base, [
+    ['onRetry={onRetryTap}', 'onRetry={onRenderGone}'],
+    ['onRetryTap={retryByTap}', 'onRetryTap={remount}'],
+  ]);
+});

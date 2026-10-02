@@ -25,11 +25,7 @@ export function SandbeeLogo({
       source={logo}
       resizeMode="contain"
       accessibilityLabel="Sandbee"
-      style={{
-        width: size,
-        height: size,
-        tintColor: light ? '#ffffff' : colors.navy,
-      }}
+      style={[{ width: size, height: size }, light ? styles.logoLight : styles.logoDark]}
     />
   );
 }
@@ -102,6 +98,8 @@ export function PrimaryButton({
 }
 
 const styles = StyleSheet.create({
+  logoLight: { tintColor: '#ffffff' },
+  logoDark: { tintColor: colors.navy },
   boot: {
     flex: 1,
     backgroundColor: colors.navy,

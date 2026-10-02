@@ -57,13 +57,14 @@ function addDevMenuOnce() {
   }
 }
 
-type WebProps = Props & { onLoadError: () => void; onRenderGone: () => void };
+type WebProps = Props & { onLoadError: () => void; onRenderGone: () => void; onRetryTap: () => void };
 
 function PosWebView({
   origin,
   onChangeUrl,
   onLoadError,
   onRenderGone,
+  onRetryTap,
 }: WebProps) {
   const hostRef = useRef<ComponentRef<typeof View>>(null);
   const webRef = useRef<WebView<unknown>>(null);
@@ -257,7 +258,7 @@ function PosWebView({
         <WorkspaceCover
           ready={!loading}
           origin={origin}
-          onRetry={onRenderGone}
+          onRetry={onRetryTap}
         />
       </View>
     </SafeAreaView>
@@ -309,6 +310,7 @@ export function PosScreen({ origin, onChangeUrl }: Props) {
       onChangeUrl={onChangeUrl}
       onLoadError={showError}
       onRenderGone={remount}
+      onRetryTap={retryByTap}
     />
   );
 }
