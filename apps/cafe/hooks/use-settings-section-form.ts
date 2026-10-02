@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { settingsSchema, type SettingsInput } from "@/schemas";
 import { useUpdateSettings } from "@/hooks/use-settings";
 import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
+import { useInAppLeaveGuard, type InAppLeaveGuard } from "@/hooks/use-in-app-leave-guard";
 import { settingsFormDefaults } from "@/lib/settings-form-defaults";
 import { firstErrorLeaf } from "@/lib/form-errors";
 import {
@@ -23,6 +24,7 @@ interface UseSettingsSectionFormResult {
   isSaving: boolean;
   submit: ReturnType<ReturnType<typeof useForm<SettingsInput>>["handleSubmit"]>;
   discard: () => void;
+  leaveGuard: InAppLeaveGuard;
 }
 
 // One react-hook-form instance per settings section page, always validated
@@ -44,7 +46,11 @@ export function useSettingsSectionForm(
   const isDirty = formState.isDirty;
   const isSaving = updateSettings.isPending;
 
+  const discard = () => reset();
+
   useUnsavedGuard(isDirty);
+  // A save already in flight still lands, so no leave prompt while saving.
+  const leaveGuard = useInAppLeaveGuard(isDirty && !isSaving, discard);
 
   const onValid = async (values: SettingsInput) => {
     try {
@@ -82,7 +88,6 @@ export function useSettingsSectionForm(
   };
 
   const submit = handleSubmit(onValid, onInvalid);
-  const discard = () => reset();
 
-  return { form, isDirty, isSaving, submit, discard };
+  return { form, isDirty, isSaving, submit, discard, leaveGuard };
 }

@@ -4,6 +4,7 @@ import type { Control, FieldErrors, UseFormRegister, UseFormSetValue, UseFormWat
 import type { ReactNode } from "react";
 
 import { useSettingsSectionForm } from "@/hooks/use-settings-section-form";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { SettingsSaveBar } from "@/components/settings/SettingsSaveBar";
 import type { SettingsSection } from "@/lib/settings-sections";
 import type { SettingsInput } from "@/schemas";
@@ -28,13 +29,26 @@ interface SettingsSectionFormProps {
 // prop set the existing field components already take, so none of their
 // signatures change.
 export function SettingsSectionForm({ settings, section, children }: SettingsSectionFormProps) {
-  const { form, isDirty, isSaving, submit, discard } = useSettingsSectionForm(settings, section);
+  const { form, isDirty, isSaving, submit, discard, leaveGuard } = useSettingsSectionForm(settings, section);
   const { control, register, setValue, watch, formState } = form;
 
   return (
-    <form onSubmit={submit} noValidate className="space-y-6 pb-24">
-      {children({ control, register, setValue, watch, errors: formState.errors })}
-      <SettingsSaveBar isDirty={isDirty} isSaving={isSaving} onDiscard={discard} />
-    </form>
+    <>
+      <form onSubmit={submit} noValidate className="space-y-6 pb-24">
+        {children({ control, register, setValue, watch, errors: formState.errors })}
+        <SettingsSaveBar isDirty={isDirty} isSaving={isSaving} onDiscard={discard} />
+      </form>
+      <ConfirmDialog
+        open={leaveGuard.prompting}
+        onOpenChange={(open) => {
+          if (!open) leaveGuard.keepEditing();
+        }}
+        title="Discard changes?"
+        description="You have changes on this page that are not saved. If you leave now, they will be lost."
+        cancelLabel="Keep editing"
+        confirmLabel="Discard"
+        onConfirm={leaveGuard.leave}
+      />
+    </>
   );
 }
