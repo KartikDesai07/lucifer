@@ -252,10 +252,13 @@ export async function dismissPrintJob(input: {
  *  single dismiss so it can never trample a job the host claimed in the same
  *  instant. Phase 1 (spec §7.1): the same states as the single dismiss, so a
  *  parked or failed slip aimed at the cleared host is not left behind with no
- *  device that may print it; never "leased" (its writer may be printing it). */
+ *  device that may print it; never "leased" (its writer may be printing it).
+ *  Session 1B (1A review I1 part 2): a job that names the device that asked for
+ *  it is NOT dismissed — with no host that device prints its own slips (§6.6),
+ *  so routeWaitingPrintJobs (print-sweep.ts) sends it back there instead. */
 export async function dismissQueuedPrintJobsForClearedHost(dismissedBy: string): Promise<number> {
   const res = await PrintJob.updateMany(
-    { status: { $in: ["queued", "needs-confirm", "failed"] }, claimedAt: { $exists: false } },
+    { status: { $in: ["queued", "needs-confirm", "failed"] }, claimedAt: { $exists: false }, originDeviceId: { $exists: false } },
     { $set: { status: "dismissed", dismissedAt: new Date(), dismissReason: "host-cleared", dismissedBy } },
   );
   return res.modifiedCount ?? 0;

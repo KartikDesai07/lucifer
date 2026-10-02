@@ -145,6 +145,7 @@
     "lib/print-lease.test.ts",
     "lib/print-lifecycle-paths.test.ts",
     "lib/print-order-jobs.test.ts",
+    "lib/print-repair.test.ts",
     "lib/print-routing.test.ts",
     "lib/pos-install.test.ts",
     "lib/pos-install-paths.test.ts",

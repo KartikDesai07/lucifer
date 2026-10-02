@@ -65,10 +65,16 @@ test("PIN: the sweep's throttle claims its slot BEFORE awaiting, so two overlapp
   inOrder(s, ["lastSweepAtMs = nowMs;", "await sweepPrintJobs(nowMs);"], "throttle");
 });
 
-test("PIN: the sweep expires leases, retargets queued jobs to the current host, applies limits, then prunes — and nudges only when a job went back to the queue", () => {
+test("PIN: the sweep expires leases, routes waiting jobs to the device that prints them now, repairs, applies limits, then prunes — and nudges only when a job went back to the queue", () => {
   const s = src(SWEEP);
-  inOrder(s, ["planExpiry(", "targetDeviceId: { $ne: host.deviceId }", "planLimits(", "await prunePrintJobsThrottled(nowMs);"], "sweep order");
-  assert.equal(count(s, 'publishCafeEvent("print-job")'), 1);
+  // Session 1B: step 2 covers parked and failed jobs and the no-host case (1A review I1 part 2),
+  // and step 2b repairs missing KOT jobs (spec §7.4).
+  inOrder(
+    s,
+    ["planExpiry(", "await routeWaitingPrintJobs(host?.deviceId ?? null, nowMs);", "await repairMissingKotJobs(nowMs);", "planLimits(", "await prunePrintJobsThrottled(nowMs);"],
+    "sweep order",
+  );
+  assert.equal(count(s, 'publishCafeEvent("print-job")'), 2, "the sweep's own nudge, and the host teardown's");
   assert.match(s, /if \(result\.requeued > 0 \|\| result\.retargeted > 0\) publishCafeEvent\("print-job"\);/);
   assert.equal(count(s, ".limit(PRINT_SWEEP_BATCH)"), 2, "both sweep reads are bounded");
   assert.ok(!s.includes("console."));
