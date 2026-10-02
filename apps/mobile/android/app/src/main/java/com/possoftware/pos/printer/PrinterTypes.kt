@@ -28,8 +28,10 @@ sealed class Reply<out T> {
 
 typealias ReplyCallback<T> = (Reply<T>) -> Unit
 
-/** Failure of a transport call, carrying the bridge code it maps to. */
-class TransportException(val code: String, message: String) : IOException(message)
+/** Failure of a transport call, carrying the bridge code it maps to. [needsForeground]: refused
+ *  only because the app is hidden, so a system dialog cannot show yet. Not a denial: the manager
+ *  asks again once the app is visible. */
+class TransportException(val code: String, message: String, val needsForeground: Boolean = false) : IOException(message)
 
 /** A byte pipe to one printer. open/write run on the io thread; close may run on any thread. */
 interface PrinterTransport {

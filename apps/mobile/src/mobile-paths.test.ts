@@ -1281,6 +1281,7 @@ interface KtSources {
   codes: string;
   delivery: string;
   types: string;
+  usb: string;
   threads: string;
   strings: string;
   protocol: string;
@@ -1641,6 +1642,7 @@ const ktSources = (): KtSources => ({
   codes: kt('BridgeCodes.kt'),
   delivery: kt('WebViewDelivery.kt'),
   types: kt('PrinterTypes.kt'),
+  usb: kt('UsbTransport.kt'),
   threads: kt('PrinterThreads.kt'),
   strings: read(join(MAIN, 'res', 'values', 'strings.xml')),
   protocol: read(join(SRC, 'bridge', 'protocol.ts')),
@@ -1983,5 +1985,53 @@ test('pin 15 mutation: every hardening needle can fail', () => {
   ]);
   everyMutationCaught(run('manifest'), base.manifest, [
     ['android:allowBackup="false"', 'android:allowBackup="true"'],
+  ]);
+});
+
+// --------------------------------------------------------------- pin 16
+// Phase 0 F0.2/F0.7: a USB printer that needs permission while the app is hidden
+// is not a denial. Only a shown-and-refused dialog pauses reconnects.
+function usbPermissionProblems(s: KtSources): string[] {
+  const out: string[] = [];
+  const types = strip(s.types);
+  const usb = strip(s.usb);
+  const manager = strip(s.manager);
+  if (!types.includes('class TransportException(val code: String, message: String, val needsForeground: Boolean = false)')) {
+    out.push('TransportException must say when a refusal only needs the foreground');
+  }
+  if (!usb.includes('throw TransportException(BridgeCodes.UNAUTHORIZED, "USB permission needed", needsForeground = true)')) {
+    out.push('a hidden app must report "needs the foreground", not a denial');
+  }
+  if (!usb.includes('(target == null || target.deviceName == device.deviceName)')) {
+    out.push('a permission reply without EXTRA_DEVICE must still release the wait');
+  }
+  if (!manager.includes('if (e.needsForeground) usbWaitingForeground = true else usbPermissionPaused = true')) {
+    out.push('only a real denial may pause USB reconnects');
+  }
+  if (!manager.includes('if (usbWaitingForeground && appVisible) selected else null')) {
+    out.push('resumeIfPaused must ask again once the app is visible');
+  }
+  if (!manager.includes('usbPermissionPaused || usbWaitingForeground) return')) {
+    out.push('no background reconnect loop while USB waits for permission');
+  }
+  return out;
+}
+
+test('pin 16: USB permission — only a denial pauses; a hidden app asks again when visible', () => {
+  assert.deepEqual(usbPermissionProblems(ktSources()), []);
+});
+
+test('pin 16 mutation: every USB permission needle can fail', () => {
+  const base = ktSources();
+  const run = (key: keyof KtSources) => (text: string) => usbPermissionProblems({ ...base, [key]: text });
+  everyMutationCaught(run('types'), base.types, [[', val needsForeground: Boolean = false', '']]);
+  everyMutationCaught(run('usb'), base.usb, [
+    ['"USB permission needed", needsForeground = true', '"USB permission needed"'],
+    ['(target == null || target.deviceName == device.deviceName)', '(target?.deviceName == device.deviceName)'],
+  ]);
+  everyMutationCaught(run('manager'), base.manager, [
+    ['if (e.needsForeground) usbWaitingForeground = true else usbPermissionPaused = true', 'usbPermissionPaused = true'],
+    ['if (usbWaitingForeground && appVisible) selected else null', 'if (false) selected else null'],
+    ['usbPermissionPaused || usbWaitingForeground) return', 'usbPermissionPaused) return'],
   ]);
 });

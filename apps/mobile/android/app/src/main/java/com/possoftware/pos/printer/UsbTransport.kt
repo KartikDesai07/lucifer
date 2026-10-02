@@ -74,7 +74,7 @@ class UsbTransport(
             ?: throw TransportException(BridgeCodes.UNSUPPORTED, "Not a USB printer")
     if (!usb.hasPermission(device)) {
       // Background reconnects must never raise a system dialog.
-      if (!isVisible()) throw TransportException(BridgeCodes.UNAUTHORIZED, "USB permission needed")
+      if (!isVisible()) throw TransportException(BridgeCodes.UNAUTHORIZED, "USB permission needed", needsForeground = true)
       requestPermission(usb, device)
       ensureOpen()
       // Never trust the broadcast extra; ask the system again.
@@ -115,7 +115,8 @@ class UsbTransport(
         object : BroadcastReceiver() {
           override fun onReceive(context: Context, intent: Intent) {
             val target = IntentCompat.getParcelableExtra(intent, UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
-            if (intent.action == ACTION_USB_PERMISSION && target?.deviceName == device.deviceName) answered.countDown()
+            // The extra names the device; a reply without it is still a reply. hasPermission() decides below.
+            if (intent.action == ACTION_USB_PERMISSION && (target == null || target.deviceName == device.deviceName)) answered.countDown()
           }
         }
     ContextCompat.registerReceiver(

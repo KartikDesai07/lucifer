@@ -42,6 +42,9 @@ object PrinterManager {
   private var attempts = 0
   private var btPaused = false
   private var usbPermissionPaused = false
+  // The selected USB printer needs permission but the app was hidden (no dialog can show).
+  // resumeIfPaused() asks again once the app is visible; not a denial, so no explicit Reconnect needed.
+  private var usbWaitingForeground = false
   private var reconnectTask: ScheduledFuture<*>? = null
   private var lastPublished: StatusSnapshot? = null
 
@@ -135,6 +138,7 @@ object PrinterManager {
           attempts = 0
           btPaused = false
           usbPermissionPaused = false
+          usbWaitingForeground = false
           ++generation
         }
     old.forEach { closeQuietly(it) }
@@ -151,6 +155,7 @@ object PrinterManager {
       attempts = 0
       btPaused = false
       usbPermissionPaused = false
+      usbWaitingForeground = false
       generation++
     }
     old.forEach { closeQuietly(it) }
@@ -210,10 +215,12 @@ object PrinterManager {
           if (gen != generation) return
           pending = null
           state = BridgeCodes.STATE_DISCONNECTED
-          usbPermissionPaused = true
+          // Hidden app: ask again when visible. A real denial (the dialog was shown and refused)
+          // waits for an explicit Reconnect: never a prompt loop.
+          if (e.needsForeground) usbWaitingForeground = true else usbPermissionPaused = true
         }
         publish()
-        return // A denied prompt needs an explicit Reconnect, never a prompt loop.
+        return
       }
       failed(gen, t)
       return
@@ -260,7 +267,7 @@ object PrinterManager {
     val ctx = app ?: return
     synchronized(lock) {
       val info = selected
-      if (gen != generation || info == null || usbPermissionPaused) return
+      if (gen != generation || info == null || usbPermissionPaused || usbWaitingForeground) return
       if (isBluetooth(info) && BtAccess.state(ctx) != BridgeCodes.BT_ON) {
         btPaused = true
         return
@@ -304,6 +311,13 @@ object PrinterManager {
   /** Bluetooth came back (or permission was granted) while a printer waited for it. */
   fun resumeIfPaused() {
     val ctx = app ?: return
+    // A USB printer that needed permission while the app was hidden asks once the app is visible.
+    val usbInfo = synchronized(lock) { if (usbWaitingForeground && appVisible) selected else null }
+    if (usbInfo != null) {
+      val gen = begin(usbInfo)
+      connectAsync(gen) {}
+      return
+    }
     val lost = synchronized(lock) {
       val info = selected
       if (info != null && isBluetooth(info) && BtAccess.state(ctx) != BridgeCodes.BT_ON) {
