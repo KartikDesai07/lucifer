@@ -35,6 +35,7 @@ object WebViewDelivery {
 
   @Volatile private var webView: WeakReference<WebView>? = null
   private var scriptHandler: ScriptHandler? = null // UI thread only
+  private var scriptOwner: WeakReference<WebView>? = null // the WebView scriptHandler belongs to; UI thread only
 
   /**
    * Resolves the WebView behind [tag] and installs [script] at document start for [origin].
@@ -51,10 +52,11 @@ object WebViewDelivery {
         }
     val found = findWebView(root) ?: return null
     webView = WeakReference(found)
-    removeScript()
+    removeScript(found)
     if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return false
     return try {
       scriptHandler = WebViewCompat.addDocumentStartJavaScript(found, script, setOf(origin))
+      scriptOwner = WeakReference(found)
       true
     } catch (e: RuntimeException) {
       false
@@ -64,15 +66,23 @@ object WebViewDelivery {
   fun detach() {
     webView = null
     scriptHandler = null
+    scriptOwner = null
   }
 
-  private fun removeScript() {
+  // Only a handler of [current] is removed (a re-attach to the same WebView). A remount attaches a
+  // NEW WebView; the previous one is already destroyed, and ScriptHandler.remove() on a destroyed
+  // WebView crashes Chromium natively (SIGSEGV on WebView 109), which no try/catch can stop. Its
+  // scripts die with it anyway.
+  private fun removeScript(current: WebView) {
     val old = scriptHandler
+    val owner = scriptOwner?.get()
     scriptHandler = null
+    scriptOwner = null
+    if (old == null || owner !== current) return
     try {
-      old?.remove()
+      old.remove()
     } catch (e: RuntimeException) {
-      // The old WebView is already destroyed.
+      // The WebView is being torn down.
     }
   }
 

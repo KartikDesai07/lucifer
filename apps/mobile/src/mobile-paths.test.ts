@@ -1958,3 +1958,32 @@ test('pin 15 mutation: every hardening needle can fail', () => {
     ['android:allowBackup="false"', 'android:allowBackup="true"'],
   ]);
 });
+
+// --------------------------------------------------------------- pin 18
+// Phase 0 emulator finding: every WebView remount (auto-retry, Try again, crash
+// remount) attaches a NEW WebView. ScriptHandler.remove() on the previous, already
+// destroyed WebView crashes Chromium natively (SIGSEGV on WebView 109); no
+// try/catch can stop it. Only a handler of the WebView being attached is removed.
+function scriptRemoveProblems(delivery: string): string[] {
+  const code = strip(delivery);
+  const out: string[] = [];
+  if (!code.includes('removeScript(found)')) out.push('attach must say which WebView it is attaching');
+  if (!code.includes('scriptOwner = WeakReference(found)')) out.push('the handler must remember its WebView');
+  if (!code.includes('if (old == null || owner !== current) return')) {
+    out.push('a handler of another (destroyed) WebView must never be removed');
+  }
+  return out;
+}
+
+test('pin 18: a WebView remount never removes the destroyed WebView\'s script', () => {
+  assert.deepEqual(scriptRemoveProblems(ktSources().delivery), []);
+});
+
+test('pin 18 mutation: the owner check can be cut', () => {
+  const base = ktSources().delivery;
+  everyMutationCaught(scriptRemoveProblems, base, [
+    ['if (old == null || owner !== current) return', 'if (old == null) return'],
+    ['scriptOwner = WeakReference(found)', 'scriptOwner = null'],
+    ['removeScript(found)', 'removeScript(null)'],
+  ]);
+});
