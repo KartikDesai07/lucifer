@@ -75,17 +75,21 @@ export function ToggleRow({
 // One two-column settings row: the group's name + one line on the left, its
 // panel on the right. It stacks below lg because at md the sidebar leaves
 // only ~464px. The title is an h3 — the page title (PageHeader) is the h2.
+// `stacked` keeps the title above the panel at every width, for a page whose
+// width is shared with something else (the Bill print page's sticky preview).
 export function SettingsGroup({
   title,
   description,
   id,
   panelClassName,
+  stacked = false,
   children,
 }: {
   title: string;
   description: React.ReactNode;
   id?: string;
   panelClassName?: string;
+  stacked?: boolean;
   children: React.ReactNode;
 }) {
   const headingId = useId();
@@ -93,7 +97,10 @@ export function SettingsGroup({
     <section
       id={id}
       aria-labelledby={headingId}
-      className="grid scroll-mt-20 gap-4 border-t border-brand-rule pt-6 first:border-t-0 first:pt-0 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-8"
+      className={cn(
+        "grid scroll-mt-20 gap-4 border-t border-brand-rule pt-6 first:border-t-0 first:pt-0",
+        !stacked && "lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-8",
+      )}
     >
       <div className="space-y-1">
         <h3 id={headingId} className="text-[15px] font-semibold text-brand-ink">{title}</h3>
