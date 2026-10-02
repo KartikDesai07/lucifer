@@ -18,11 +18,18 @@ import type { PrintHostPrinterState } from "./print-host-printer";
 export const PRINT_JOB_KINDS = ["kot", "bill", "void", "moved", "eod", "cancel-notice"] as const;
 export type PrintJobKind = (typeof PRINT_JOB_KINDS)[number];
 
-/** `"printed"` means claim won / host accepted — NOT proof paper exists (§B2).
- *  `"dismissed"` covers staff dismiss, a cancelled order/round, and the
- *  host-cleared bulk dismiss. */
-export const PRINT_JOB_STATUSES = ["queued", "printed", "dismissed"] as const;
+/** Phase 1 lifecycle (docs/superpowers/specs/2026-10-02-printing-reliability-design.md §7.1).
+ *  `"printed"` on a row with `printedAt` means its writer ACKNOWLEDGED the write; on an older row
+ *  without `printedAt` it still means only "claim won" (the legacy /claim path, kept one release).
+ *  `"leased"`: one device is writing it now. `"needs-confirm"`: a bill that may already be on
+ *  paper, waiting for the cashier. `"failed"`: retries stopped, staff decide.
+ *  `"dismissed"` covers staff dismiss, a cancelled order/round, the host-cleared bulk dismiss and
+ *  the cashier's "dismiss". */
+export const PRINT_JOB_STATUSES = ["queued", "leased", "printed", "needs-confirm", "failed", "dismissed"] as const;
 export type PrintJobStatus = (typeof PRINT_JOB_STATUSES)[number];
+
+/** Statuses that still need a writer or a decision; retention prunes them after 12 h. */
+export const PRINT_JOB_UNRESOLVED_STATUSES = ["queued", "leased", "needs-confirm", "failed"] as const;
 
 /** Why a job was torn down without ever printing (§B1). Cross-party: the cafe
  *  SERVER stamps these (dismiss route, DELETE-clear, pre-CAS eligibility) and
@@ -39,6 +46,8 @@ export const PRINT_JOB_DISMISS_REASONS = [
   "staff",
   "host-cleared",
   "invalid-payload",
+  // Phase 1: the cashier dismissed a bill that was waiting for a "print again?" decision.
+  "cashier",
 ] as const;
 export type PrintJobDismissReason = (typeof PRINT_JOB_DISMISS_REASONS)[number];
 
