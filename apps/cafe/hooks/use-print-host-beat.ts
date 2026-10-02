@@ -3,10 +3,13 @@
 import { useEffect } from "react";
 import { hashKey, useMutation, useQueryClient } from "@tanstack/react-query";
 
+import type { PrintHostBeatPrinter } from "@pos/shared/print-host-printer";
 import type { PrintHostState } from "@pos/shared/print-job";
 import { apiSend } from "@/lib/api-client";
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
+import { useOfflineFollowUp } from "@/hooks/use-print-host-offline-followup";
 import { PRINT_JOB_KEYS } from "@/hooks/use-print-host";
+import { beatPrinterReport } from "@/lib/printer/print-lane";
 
 // Print-host plan §B3 (PH-5) — the host heartbeat. Fired once per SUCCESSFUL
 // pulse fetch, and it proves knowledge of THIS device's own id (D-5): the body
@@ -33,21 +36,28 @@ export interface BeatPrintHostInput {
   /** PH-7's attestation write (§B7) — absent on the routine 20s beat. */
   silentMode?: boolean;
   silentProbeMs?: number;
+  /** The printer report; absent = leave the server's last report untouched. */
+  printer?: PrintHostBeatPrinter;
 }
 
 const BEAT_ENDPOINT = "/api/print-host/beat";
+/** Beats share ONE mutation scope, so TanStack runs them in order: a printer report
+ *  can never be overtaken on the wire by the routine beat sent a moment before it. */
+export const PRINT_HOST_BEAT_SCOPE = "print-host-beat";
 
 /** POST /api/print-host/beat. Deliberately SILENT on error: a missed beat is
  *  retried on the very next fetch, and a flaky link would otherwise nag the
  *  host PC every 20s. `onNotHost` is HOOK-level (memory
  *  `tanstack-mutate-callbacks-unmount`). */
-export function useBeatPrintHost(opts: { onNotHost?: () => void } = {}) {
-  const { onNotHost } = opts;
+export function useBeatPrintHost(opts: { onNotHost?: () => void; onHost?: () => void } = {}) {
+  const { onNotHost, onHost } = opts;
   return useMutation({
     mutationKey: PRINT_JOB_KEYS.mutation,
+    scope: { id: PRINT_HOST_BEAT_SCOPE },
     mutationFn: (input: BeatPrintHostInput) => apiSend<BeatPrintHostResult>(BEAT_ENDPOINT, "POST", input),
     onSuccess: (result) => {
       if (!result.isHost) onNotHost?.();
+      else onHost?.();
     },
   });
 }
@@ -61,7 +71,8 @@ interface UsePrintHostBeatOptions {
 
 export function usePrintHostBeat({ enabled, deviceId, onDemoted }: UsePrintHostBeatOptions): void {
   const qc = useQueryClient();
-  const { mutate: beat } = useBeatPrintHost({ onNotHost: onDemoted });
+  const onHost = useOfflineFollowUp();
+  const { mutate: beat } = useBeatPrintHost({ onNotHost: onDemoted, onHost });
 
   useEffect(() => {
     if (!enabled || deviceId === "") return;
@@ -69,7 +80,7 @@ export function usePrintHostBeat({ enabled, deviceId, onDemoted }: UsePrintHostB
     return qc.getQueryCache().subscribe((event) => {
       if (event.type !== "updated" || event.query.queryHash !== pulseHash) return;
       if (event.action.type !== "success" || event.action.manual) return;
-      beat({ deviceId });
+      beat({ deviceId, printer: beatPrinterReport() });
     });
   }, [enabled, deviceId, qc, beat]);
 }

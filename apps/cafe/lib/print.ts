@@ -234,8 +234,12 @@ export function printedSlipNumber(sequence: number, start: number): number {
 // `MOBILE_UA_RE` below, exported as `isMobileUserAgent`) 3.3.0 fires
 // onAfterPrint on a fixed 500ms timer after invoking print() rather than at job
 // completion, so the two jobs can overlap there instead of being sequenced.
-// Tablets/phones are therefore NOT a supported counter device (CR1.6 decision —
-// docs/GO-LIVE-CHECKLIST.md §7); desktop Chrome/Firefox is the verified path.
+// Tablets/phones are therefore NOT a supported counter device on this system
+// print-window lane (CR1.6 decision — docs/GO-LIVE-CHECKLIST.md §7); desktop
+// Chrome/Firefox is the verified path. The printer lanes (a Bluetooth/USB
+// printer, or the POS app; lib/printer/lane-print.ts) never call window.print,
+// so that timer does not apply to them. Whether the checklist wording changes
+// for tablet hosts is the owner's call.
 //
 // The Windows desktop shell (apps/desktop, CB-D1) JOINS this chain, it does
 // not sidestep it: `slipPrintOptions` (lib/desktop-shell.ts) supplies

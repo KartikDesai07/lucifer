@@ -29,6 +29,8 @@ import {
   type HostPrintSlip,
   type HostPrintSurface,
 } from "@/lib/print-host-slips";
+import { createWindowLateCompletionGuard } from "@/lib/print-host-late-completion";
+import { laneFailureMessage } from "@/lib/printer/lane-print";
 import type { Order } from "@/types";
 
 /** What the bridge is printing: a claimed job's slip, or PH-7's attestation
@@ -80,8 +82,12 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
   // iframe — left `busy` true for the rest of the tab's life and every later
   // slip queued behind a job that would never print.
   const watchdogRef = useRef<number | null>(null);
+  // A job the watchdog gave up on is ABANDONED, not forgotten: its slot stays occupied
+  // until it reports or the grace passes (one shared onAfterPrint would settle the NEXT job).
+  const [lateGuard] = useState(createWindowLateCompletionGuard);
 
-  const settle = useCallback((failure: string | null) => {
+  const settle = useCallback((requested: string | null) => {
+    const failure = lateGuard.take() ? null : requested; // already announced at the watchdog
     if (watchdogRef.current !== null) {
       window.clearTimeout(watchdogRef.current);
       watchdogRef.current = null;
@@ -105,11 +111,22 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
     }
     occupiedRef.current = false;
     setCurrent(null);
-  }, []);
+  }, [lateGuard]);
   const finish = useCallback(() => settle(null), [settle]);
+  // The watchdog: announce now, reject a waiting test slip now, hold the slot.
+  const abandon = useCallback(() => {
+    toast.error(PRINT_HOST_PRINT_FAILED_MESSAGE);
+    testRef.current?.reject(new Error(PRINT_HOST_PRINT_FAILED_MESSAGE));
+    testRef.current = null;
+    lateGuard.abandon(() => settle(null));
+  }, [lateGuard, settle]);
   // A surface whose content node vanished mid-print (a re-render dropped the
   // slip) must release the drain, not wedge it behind a job that never prints.
-  const onPrintError = useCallback(() => settle(PRINT_HOST_PRINT_FAILED_MESSAGE), [settle]);
+  // A printer-lane failure says WHY (no printer, not connected, too long...).
+  const onPrintError = useCallback(
+    (_where: "onBeforePrint" | "print", error: Error) => settle(laneFailureMessage(error) ?? PRINT_HOST_PRINT_FAILED_MESSAGE),
+    [settle],
+  );
 
   const kotRef = useRef<HTMLDivElement>(null);
   const receiptRef = useRef<HTMLDivElement>(null);
@@ -166,11 +183,11 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
       return;
     }
     dispatchedRef.current = true;
-    watchdogRef.current = window.setTimeout(() => settle(PRINT_HOST_PRINT_FAILED_MESSAGE), PRINT_HOST_DISPATCH_TIMEOUT_MS);
+    watchdogRef.current = window.setTimeout(abandon, PRINT_HOST_DISPATCH_TIMEOUT_MS);
     if (surface === "receipt") printReceipt();
     else if (surface === "eod") printEod();
     else printKot();
-  }, [current, eodReady, surfacesMounted, printKot, printReceipt, printEod, settle]);
+  }, [current, eodReady, surfacesMounted, printKot, printReceipt, printEod, settle, abandon]);
 
   // The eod wait is bounded: an aggregate that never loads (host offline from
   // the API, a deploy in flight) must not hold every KOT behind it. The claim

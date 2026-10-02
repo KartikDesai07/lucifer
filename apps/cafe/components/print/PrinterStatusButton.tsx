@@ -1,0 +1,72 @@
+"use client";
+
+import { useState } from "react";
+import { Printer } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
+import { usePrintHostDot } from "@/components/layout/print-host-dot-context";
+import { PrinterPanel } from "@/components/print/PrinterPanel";
+import {
+  PRINTER_DOT_BAD_CLASS,
+  PRINTER_DOT_CLASS,
+  PRINTER_DOT_OK_CLASS,
+  PRINTER_ICON_BUTTON_CLASS,
+} from "@/components/print/printer-classes";
+import { useDesktopPrinterChosen, useDeviceOnline, useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
+import { printerButtonName, printerDotOf, printerDotTone } from "@/lib/printer/printer-dot";
+import { cn } from "@/lib/utils";
+
+// The top-bar printer button (all staff). Reads NARROW inputs only — the dot
+// context, this device's host flag, the device printer, the lane and the
+// network — never the wide pulse, so a quiet pulse tick re-renders nothing
+// here. The sheet's panel (mounted only while open) is the one that reads the
+// pulse for the labels.
+const SHEET_TITLE = "Printer";
+const SHEET_DESCRIPTION = "Printer status and setup for this device.";
+
+export function PrinterStatusButton() {
+  const [open, setOpen] = useState(false);
+  const remote = usePrintHostDot();
+  const { isHostDevice } = usePrintHostContext();
+  const snapshot = useDevicePrinter();
+  const lane = usePrintLane();
+  const online = useDeviceOnline();
+  const desktopChosen = useDesktopPrinterChosen();
+  const dot = printerDotOf({ remote, isHostDevice, lane, local: snapshot.status, deviceOffline: !online, desktopChosen });
+  const name = printerButtonName(dot);
+  // A printer that is only being checked draws no dot (never red while it connects).
+  const tone = printerDotTone(dot);
+
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={PRINTER_ICON_BUTTON_CLASS}
+          aria-label={name}
+          title={name}
+          data-printer-dot={tone}
+        >
+          <Printer />
+          {tone !== "none" && (
+            <span
+              aria-hidden="true"
+              className={cn(PRINTER_DOT_CLASS, tone === "green" ? PRINTER_DOT_OK_CLASS : PRINTER_DOT_BAD_CLASS)}
+            />
+          )}
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+        <SheetHeader>
+          <SheetTitle>{SHEET_TITLE}</SheetTitle>
+          <SheetDescription>{SHEET_DESCRIPTION}</SheetDescription>
+        </SheetHeader>
+        <PrinterPanel onDone={() => setOpen(false)} />
+      </SheetContent>
+    </Sheet>
+  );
+}

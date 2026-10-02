@@ -201,6 +201,17 @@ test("PrintHost: a minimal valid doc validates cleanly with silentMode/silentPro
   assert.equal(err, undefined, "a minimal doc must validate cleanly");
   assert.equal(doc.silentMode, undefined);
   assert.equal(doc.silentProbeMs, undefined);
+  // Omit-empty is load-bearing for printerState too: a default would resurrect it after the designation $unset.
+  assert.equal(doc.printerState, undefined);
+});
+
+test("PrintHost: printerState enum accepts connected/disconnected and rejects any other value", () => {
+  const base = { key: "primary", deviceId: "d", label: "L", setBy: "S", setAt: new Date(), lastSeenAt: new Date() };
+  for (const ok of ["connected", "disconnected"]) {
+    assert.equal(new PrintHost({ ...base, printerState: ok }).validateSync(), undefined, `${ok} must validate`);
+  }
+  const err = new PrintHost({ ...base, printerState: "maybe" }).validateSync();
+  assert.ok(err?.errors.printerState, "an unknown printerState must fail validation on the printerState path");
 });
 
 test("PrintHost: a doc missing deviceId/label/setBy fails validation on those exact paths", () => {

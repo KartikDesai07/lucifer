@@ -29,7 +29,7 @@ import { SCRATCH_PREFIX, DEFAULT_URI, counts } from "./print-host-live/harness";
 import { legA, legsBC, legD, legI, legK } from "./print-host-live/jobs";
 import { legE, legJ, legL } from "./print-host-live/feeds";
 import { legF, legM } from "./print-host-live/prune";
-import { legG, legH, legN } from "./print-host-live/host";
+import { legG, legH, legN, legP } from "./print-host-live/host";
 
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
@@ -56,6 +56,7 @@ async function main(): Promise<void> {
     await legF(Date.now());
     await legG(Date.now());
     await legH(Date.now());
+    await legP(Date.now());
     await legI(Date.now());
     await legJ(Date.now());
     await legK(Date.now());

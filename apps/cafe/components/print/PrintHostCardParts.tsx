@@ -1,21 +1,13 @@
 "use client";
 
-// Print-host plan §B7 (PH-7) — the card's prop-driven pieces, split out of
-// PrintHostCard.tsx for its 180-line budget (the PrinterSetupSteps idiom). No
-// state, no hooks, no print machinery: every value is derived by the card and
-// passed down. Generic product voice — the host's label comes from the pulse.
-// PH-10b (D5): the card now lives on /settings/printing itself, so the
-// no-host line no longer links there — it points at the wizard below in
-// device-agnostic words (a phone renders only the wizard's device check).
+// The printer panel's prop-driven pieces (no state, no hooks, no print
+// machinery): the inline yes/no and the one-line summary of the printer saved
+// on this device. Generic product voice; every control is 44px (PR1).
 import { Badge } from "@/components/ui/badge";
+import { PRINTER_ACTION_CLASS } from "@/components/print/printer-classes";
 import { Button } from "@/components/ui/button";
-import type { PrintHostState } from "@pos/shared/print-job";
-
-// REMOVED (2026-09-19 printer-setup-wizard cleanup): PrintDiagnostics, a
-// one-line wrapper around <DesktopPrinterPicker />, had no call site left
-// once the printing settings page was rebuilt around PrinterSetupCard.tsx
-// (which renders <DesktopPrinterPicker /> directly). InlineConfirm and
-// PrintHostStatus below still have real callers there and stay.
+import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+import type { PrinterStatus } from "@/lib/printer/web-printer-types";
 
 export interface InlineConfirmProps {
   question: string;
@@ -27,52 +19,42 @@ export interface InlineConfirmProps {
 }
 
 // A small inline yes/no, not a modal: the question is about paper the staff
-// member is looking at right now, and the card is already the context.
+// member is looking at right now. The sentence wraps; the buttons are 44px.
 export function InlineConfirm({ question, yes, no, disabled, onYes, onNo }: InlineConfirmProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span>{question}</span>
-      <Button size="sm" onClick={onYes} disabled={disabled}>{yes}</Button>
-      <Button size="sm" variant="outline" onClick={onNo} disabled={disabled}>{no}</Button>
+      <span className="min-w-0 flex-1 basis-full sm:basis-auto">{question}</span>
+      <Button className={PRINTER_ACTION_CLASS} onClick={onYes} disabled={disabled}>{yes}</Button>
+      <Button className={PRINTER_ACTION_CLASS} variant="outline" onClick={onNo} disabled={disabled}>{no}</Button>
     </div>
   );
 }
 
-export interface PrintHostStatusProps {
-  /** `null` = unresolved pulse OR a degraded tick (MERGED-19) — never "no host". */
-  host: PrintHostState | null;
-  /** The configured host's label; null when no host is configured. */
-  hostLabel: string | null;
-  isHostDevice: boolean;
+export const NATIVE_TYPE_LABELS = { "bt-classic": "Bluetooth", ble: "Bluetooth LE", tcp: "Network", usb: "USB" } as const;
+
+// How the printer connects, in words: Bluetooth / Bluetooth LE / Network / USB / PC printer.
+export function printerTypeLabel(printer: DevicePrinter): string {
+  if (printer.kind === "ble") return "Bluetooth LE";
+  if (printer.kind === "native") return NATIVE_TYPE_LABELS[printer.transport];
+  if (printer.bluetoothServiceClassId !== undefined) return "Bluetooth";
+  return printer.usbVendorId !== undefined ? "USB" : "PC printer";
 }
 
-// Where prints go, and whether THIS device is the host — so staff on any
-// screen know why a slip did (or did not) come out of the printer beside them.
-export function PrintHostStatus({ host, hostLabel, isHostDevice }: PrintHostStatusProps) {
+export interface PrinterRowProps {
+  printer: DevicePrinter;
+  status: PrinterStatus;
+}
+
+// name · type badge · paper badge · plain-words status (the colour is never the only signal).
+export function PrinterRow({ printer, status }: PrinterRowProps) {
+  const connected = status === "connected";
+  const statusLabel = connected ? "Connected" : status === "connecting" ? "Connecting…" : "Not connected";
   return (
-    <>
-      {host === null ? (
-        <p className="text-muted-foreground">Print host status is still loading.</p>
-      ) : hostLabel !== null ? (
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span>Host: {hostLabel}</span>
-            <Badge variant={host.offline ? "destructive" : "default"}>{host.offline ? "Offline" : "Online"}</Badge>
-          </div>
-          <p className={host.silentMode ? "text-green-600" : "text-amber-600"}>
-            {host.silentMode ? "Silent printing confirmed ✓" : "Silent printing not confirmed yet — run a test print on the host PC."}
-          </p>
-        </div>
-      ) : (
-        <p className="text-muted-foreground">
-          No print host is set — every device prints its own slips. Set one up on a PC or laptop with the steps below.
-        </p>
-      )}
-      {isHostDevice ? (
-        <p className="text-muted-foreground">This device is the print host — every slip prints here.</p>
-      ) : hostLabel !== null ? (
-        <p className="text-muted-foreground">Slips from this device print at {hostLabel}.</p>
-      ) : null}
-    </>
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="min-w-0 break-words font-medium text-brand-ink">{printer.name}</span>
+      <Badge variant="outline">{printerTypeLabel(printer)}</Badge>
+      <Badge variant="outline">{printer.paper === "58mm" ? "58 mm" : "80 mm"}</Badge>
+      <Badge variant={connected ? "default" : "secondary"}>{statusLabel}</Badge>
+    </div>
   );
 }

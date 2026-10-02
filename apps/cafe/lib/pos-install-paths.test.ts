@@ -255,8 +255,12 @@ test("PIN: scripts/gen-pos-icons.mjs's icon mark colour mirrors MANIFEST_THEME_C
 // ── P9. package.json test chain includes both new suites ───────────────────
 
 test("PIN: apps/cafe/package.json's test script includes lib/pos-install.test.ts and lib/pos-install-paths.test.ts", () => {
-  const pkg = JSON.parse(readSrc(CAFE_PACKAGE_JSON)) as { scripts?: Record<string, string> };
-  const testScript = pkg.scripts?.test ?? "";
+  // s63: the chain moved from the inline `scripts.test` string into the `testChain` array (cmd.exe's 8 191-character
+  // command-line cap stopped `npm test` at 272 files; scripts/run-test-chain.mjs spawns node with the array). The
+  // pin reads the real list the runner executes, and keeps proving the runner is what `npm test` calls.
+  const pkg = JSON.parse(readSrc(CAFE_PACKAGE_JSON)) as { scripts?: Record<string, string>; testChain?: string[] };
+  assert.equal(pkg.scripts?.test, "node scripts/run-test-chain.mjs", "npm test must run the chain runner");
+  const testScript = (pkg.testChain ?? []).join(" ");
 
   // Positive landmark: an existing, already-wired suite must still be present
   // (proves we parsed the real chain, not an empty/truncated string).

@@ -10,6 +10,7 @@
 import type { z } from "zod";
 import type { printOrderSnapshotSchema } from "./schemas/print-job.schema";
 import type { Order } from "./types";
+import type { PrintHostPrinterState } from "./print-host-printer";
 
 /** The five thermal documents + reprint/notice paths a `PrintJob` can carry.
  *  `"cancel-notice"` is the "Notify Kitchen" stop for an already-cancelled
@@ -125,6 +126,8 @@ export interface PrintHostState {
   lastSeenAt: string | null;
   offline: boolean;
   silentMode: boolean;
+  /** null = the host's lane cannot tell (desktop/system) or no report yet. */
+  printer: PrintHostPrinterState | null;
 }
 
 /** One row of the D1 (drain) or D2 (stale-band) feed — metadata only, the

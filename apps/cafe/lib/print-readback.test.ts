@@ -89,6 +89,7 @@ const BASE_PRINT_HOST_STATE: PrintHostState = {
   lastSeenAt: "2026-01-01T00:00:00.000Z",
   offline: false,
   silentMode: false,
+  printer: null, // PrintHostState gained the required `printer` field (bluetooth-print W1)
 };
 
 function printHostFixture(overrides: Partial<PrintHostState> = {}): PrintHostState {

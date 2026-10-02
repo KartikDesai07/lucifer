@@ -1,0 +1,83 @@
+import { desktopShell } from "@/lib/desktop-shell";
+import { bluetoothApi, inAppWebView, serialApi } from "@/lib/printer/capabilities";
+import { desktopChosen } from "@/lib/printer/desktop-printer-state";
+import { PRINTER_ELSEWHERE_MESSAGE, PRINTER_NOT_CONNECTED_MESSAGE, devicePrinter } from "@/lib/printer/device-printer";
+import { NO_PRINTER_MESSAGE } from "@/lib/printer/lane-print";
+import { nativeBridge } from "@/lib/printer/native-bridge";
+
+// Which way a slip leaves THIS device, resolved at call time (never cached, so
+// a setup change or a late-arriving bridge takes effect without a re-render):
+//   desktop - the Windows shell's silent pipeline
+//   raster  - a saved device printer (Web Serial, Web Bluetooth or the POS app)
+//   none    - inside the POS app with no printer chosen (a print window would do nothing)
+//   system  - the browser's print window
+//   pending - only ever the server/first-paint value of the hooks
+// Capability-keyed only: the presence of an API object, never the browser's
+// identity. This is the ONE file in lib/printer that imports the desktop-shell
+// seam (and the seam's sibling lane-print.ts must never import this file).
+export type PrintLane = "pending" | "desktop" | "raster" | "system" | "none";
+
+export interface PrintCapabilities {
+  serial: boolean;
+  bluetooth: boolean;
+  native: boolean;
+}
+
+// What this device tells the host beat: absent (undefined) means "leave the
+// server's last report untouched".
+export type BeatPrinterReport = "connected" | "disconnected" | "unknown";
+
+// The shell refuses every job while no printer is chosen on this PC.
+export const DESKTOP_NO_PRINTER_MESSAGE = "No printer is chosen on this PC. Choose one in printer setup, then print again.";
+export const DEVICE_LABEL_TABLET = "Counter tablet";
+export const DEVICE_LABEL_PC = "Counter PC";
+const COARSE_POINTER_QUERY = "(pointer: coarse)";
+
+export function printCapabilities(): PrintCapabilities {
+  return { serial: serialApi() !== null, bluetooth: bluetoothApi() !== null, native: nativeBridge() !== null };
+}
+
+export function currentLane(): PrintLane {
+  if (desktopShell() !== null) return "desktop";
+  if (devicePrinter().getSnapshot().printer !== null) return "raster";
+  // Inside the app's WebView the print window is a no-op even before its bridge arrives.
+  return nativeBridge() !== null || inAppWebView() ? "none" : "system";
+}
+
+// Can a slip be printed on this device right now? A raster printer must be
+// connected here — in a tab that does not own the printer it never is. The
+// desktop shell prints unless it says no printer is chosen (an older shell that
+// cannot say stays printable, as before).
+export function canPrintNow(): boolean {
+  const lane = currentLane();
+  if (lane === "desktop") return desktopChosen() !== "none";
+  if (lane === "system") return true;
+  return lane === "raster" && devicePrinter().getSnapshot().status === "connected";
+}
+
+// The sentence for a print this device cannot run right now (the band's manual
+// print of a waiting slip): no printer chosen in the app, the printer owned by
+// another tab of this browser, or a printer that is not answering.
+export function printBlockedMessage(): string {
+  const lane = currentLane();
+  if (lane === "none") return NO_PRINTER_MESSAGE;
+  if (lane === "desktop" && desktopChosen() === "none") return DESKTOP_NO_PRINTER_MESSAGE;
+  if (devicePrinter().getSnapshot().status === "elsewhere") return PRINTER_ELSEWHERE_MESSAGE;
+  return PRINTER_NOT_CONNECTED_MESSAGE;
+}
+
+export function beatPrinterReport(): BeatPrinterReport | undefined {
+  const lane = currentLane();
+  if (lane === "desktop") return desktopChosen() === "none" ? "disconnected" : "connected";
+  if (lane === "none") return "disconnected";
+  if (lane !== "raster") return "unknown";
+  const status = devicePrinter().getSnapshot().status;
+  if (status === "elsewhere") return undefined;
+  return status === "connected" ? "connected" : "disconnected";
+}
+
+export function defaultDeviceLabel(lane: PrintLane): string {
+  if (lane === "desktop") return DEVICE_LABEL_PC;
+  const coarse = typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(COARSE_POINTER_QUERY).matches;
+  return lane === "none" || nativeBridge() !== null || coarse ? DEVICE_LABEL_TABLET : DEVICE_LABEL_PC;
+}

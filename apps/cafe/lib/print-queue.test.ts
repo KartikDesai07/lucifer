@@ -327,6 +327,7 @@ test("printHostStateOf(null, now) -> the fixed unconfigured shape (configured de
     lastSeenAt: null,
     offline: true,
     silentMode: false,
+    printer: null, // the unconfigured shape now carries printer: null (bluetooth-print W1)
   });
 });
 
@@ -688,8 +689,9 @@ test("PIN: the beat route's POST handler runs NO prune (neither branch), and bea
 
   assert.match(
     hostLibSrc,
-    /\$unset:\s*\{\s*silentMode:\s*"",\s*silentProbeMs:\s*""\s*\}/,
-    "positive landmark: designatePrintHost's update must $unset both silentMode and silentProbeMs",
+    // Pin updated (bluetooth-print W1): a brand-new host has reported no printer, so designation also clears printerState.
+    /\$unset:\s*\{\s*silentMode:\s*"",\s*silentProbeMs:\s*"",\s*printerState:\s*""\s*\}/,
+    "positive landmark: designatePrintHost's update must $unset silentMode, silentProbeMs and printerState",
   );
 });
 

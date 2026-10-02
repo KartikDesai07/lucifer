@@ -62,7 +62,7 @@ export default function SettingsPage() {
             <div>
               <p className="text-sm font-medium text-brand-ink">Printer setup</p>
               <p className="text-sm text-muted-foreground">
-                Make this PC the print host and install the POS Printer shortcut.
+                Choose where slips print and connect the printer on this device.
               </p>
             </div>
           </div>

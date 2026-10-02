@@ -38,3 +38,7 @@
 *.cmd text eol=crlf
 *.bat text eol=crlf
 *.ps1 text eol=crlf
+
+# Android signing/Gradle binaries (never normalised as text)
+*.jar binary
+*.keystore binary

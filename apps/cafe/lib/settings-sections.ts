@@ -140,7 +140,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   {
     slug: "printing",
     title: "Printer setup",
-    description: "Make this PC the print host and install the POS Printer shortcut.",
+    description: "Choose where slips print and connect the printer on this device.",
     fields: [],
   },
 ];

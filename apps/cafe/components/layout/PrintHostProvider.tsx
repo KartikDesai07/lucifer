@@ -22,6 +22,8 @@ import { usePrintHostBridge, type HostPrintCurrent } from "@/hooks/use-print-hos
 import { mintTabId, readDeviceId } from "@/lib/pos-device-id";
 import { readDevicePrefs, writeDevicePrefs } from "@/lib/pos-device-prefs";
 import { PRINT_HOST_PRINT_FAILED_MESSAGE, hostPrintSlipOf } from "@/lib/print-host-slips";
+import { devicePrinter } from "@/lib/printer/device-printer";
+import { canPrintNow, printBlockedMessage } from "@/lib/printer/print-lane";
 import { cafeDateString } from "@/lib/utils";
 
 // Print-host plan §B5 (PH-5) — the layout-level host provider. Mounted once,
@@ -89,6 +91,7 @@ export function PrintHostProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setDeviceId(readDeviceId());
     setPrefHost(readDevicePrefs().printHost);
+    void devicePrinter().init();
   }, []);
 
   const syncHostPref = useCallback(() => setPrefHost(readDevicePrefs().printHost), []);
@@ -132,6 +135,11 @@ export function PrintHostProvider({ children }: { children: ReactNode }) {
   const printQueuedJob = useCallback(
     async (id: string) => {
       if (deviceId === "") return;
+      // A window that cannot print must not burn a claim (the drain is gated the same way).
+      if (!canPrintNow()) {
+        toast.error(printBlockedMessage());
+        return;
+      }
       claimLockRef.current = true;
       try {
         let result: Awaited<ReturnType<typeof claimAsync>>;

@@ -50,7 +50,22 @@ const PRINT_HOST_LIB = "apps/cafe/lib/print-host.ts";
 const PRINTING_PAGE = "apps/cafe/app/(dashboard)/settings/printing/page.tsx";
 const REQUESTS_PAGE = "apps/cafe/app/(dashboard)/requests/page.tsx";
 
-const CARD_FILES = [CARD_TSX, PARTS_TSX];
+// 2026-10-02 (printer panel, W5b): the card is now one piece of a panel, so the
+// hygiene pins below (b, e, g) cover every file of it, not just the two that
+// used to be the whole card. The panel files carry no print trigger of their own
+// either; PIN (b) MERGED-13 and the console/cafe-name scans stay as strict.
+const PANEL_FILES = [
+  "apps/cafe/components/print/PrinterPanel.tsx",
+  "apps/cafe/components/print/PrintWhereSection.tsx",
+  "apps/cafe/components/print/DevicePrinterSection.tsx",
+  "apps/cafe/components/print/NativePrinterPicker.tsx",
+  "apps/cafe/components/print/PaperSizeToggle.tsx",
+  "apps/cafe/components/print/PrinterTestTips.tsx",
+  "apps/cafe/components/print/PrinterAdvanced.tsx",
+];
+const PRINTER_PANEL_TSX = PANEL_FILES[0];
+const PRINT_WHERE_TSX = PANEL_FILES[1];
+const CARD_FILES = [CARD_TSX, PARTS_TSX, ...PANEL_FILES];
 
 // ── (a) Reachability ─────────────────────────────────────────────────────
 
@@ -82,6 +97,9 @@ test("PIN (a): requests/page.tsx imports { DeviceAlertSettingsDialog } from @/co
   // bans). Positive landmark for this pin's own vision: settings/printing/
   // page.tsx really does import+render PrinterSetupCard — so an accidentally-
   // blinded readSrc couldn't vacuously pass the negative half.
+  // RE-POINTED 2026-10-02 (printer panel, W5b): the page now renders
+  // <PrinterPanel /> (the same panel the top-bar printer button opens) instead
+  // of the card directly; the card is reached in a second hop, asserted below.
   const printerSetupCardNeedle = "PrinterSetup" + "Card";
   assert.ok(
     !src.includes(printerSetupCardNeedle),
@@ -91,10 +109,17 @@ test("PIN (a): requests/page.tsx imports { DeviceAlertSettingsDialog } from @/co
   const printingSrc = readSrc(PRINTING_PAGE);
   assert.match(
     printingSrc,
-    /import\s*\{\s*PrinterSetupCard\s*\}\s*from\s*"@\/components\/print\/PrinterSetupCard"/,
-    "positive landmark: settings/printing/page.tsx must import { PrinterSetupCard } from @/components/print/PrinterSetupCard",
+    /import\s*\{\s*PrinterPanel\s*\}\s*from\s*"@\/components\/print\/PrinterPanel"/,
+    "positive landmark: settings/printing/page.tsx must import { PrinterPanel } from @/components/print/PrinterPanel",
   );
-  assert.match(printingSrc, /<PrinterSetupCard\s*\/>/, "positive landmark: settings/printing/page.tsx must render <PrinterSetupCard />");
+  assert.match(printingSrc, /<PrinterPanel\s*\/>/, "positive landmark: settings/printing/page.tsx must render <PrinterPanel />");
+  const panelSrc = readSrc(PRINTER_PANEL_TSX);
+  assert.match(
+    panelSrc,
+    /import\s*\{\s*PrinterSetupCard\s*\}\s*from\s*"@\/components\/print\/PrinterSetupCard"/,
+    "2nd hop: PrinterPanel.tsx must import { PrinterSetupCard } from @/components/print/PrinterSetupCard",
+  );
+  assert.match(panelSrc, /<PrinterSetupCard\s*\/>/, "2nd hop: PrinterPanel.tsx must render <PrinterSetupCard />");
 });
 
 // ── (b) MERGED-13: no component-owned print trigger ──────────────────────
@@ -319,11 +344,22 @@ test("PIN (g): line budgets — PrinterSetupCard.tsx <= 260, PrintHostCardParts.
   // hygiene note) — assert the copy table's own mandated English strings ARE
   // present, non-vacuously, rather than banning a word that could coincide
   // with real English prose.
-  assert.match(cardSrc, /Print host removed — /, "positive landmark: PrinterSetupCard.tsx must carry the English clearedMessage template");
-  assert.match(cardSrc, /Remove print host/, "positive landmark: PrinterSetupCard.tsx must carry the English button label");
+  // RE-POINTED 2026-10-02 (owner PR6: no "print host" jargon in the UI):
+  //   "Print host removed — "  -> "Printing device removed — "
+  //   "Remove print host"      -> "Remove the printing device"
+  //   the Parts no-host line   -> the Parts InlineConfirm export; the line
+  //     itself ("Each device prints its own slips.") now lives in
+  //     PrintWhereSection.tsx, since PrintHostStatus left the Parts file.
+  assert.match(cardSrc, /Printing device removed — /, "positive landmark: PrinterSetupCard.tsx must carry the English clearedMessage template");
+  assert.match(cardSrc, /Remove the printing device/, "positive landmark: PrinterSetupCard.tsx must carry the English button label");
 
   const partsSrc = readSrc(PARTS_TSX);
-  assert.match(partsSrc, /No print host is set — every device prints its own slips\./, "positive landmark: PrintHostCardParts.tsx must carry the English no-host line");
+  assert.match(partsSrc, /export function InlineConfirm\(/, "positive landmark: PrintHostCardParts.tsx must still export InlineConfirm");
+  assert.match(
+    readSrc(PRINT_WHERE_TSX),
+    /Each device prints its own slips\./,
+    "positive landmark: PrintWhereSection.tsx must carry the English no-host line",
+  );
 });
 
 // ── (h) Fence untouched (dark rollout) ─────────────────────────────────────

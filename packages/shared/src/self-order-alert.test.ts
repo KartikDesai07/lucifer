@@ -31,6 +31,7 @@ function pulse(overrides: Partial<PosPulseData> = {}): PosPulseData {
       lastSeenAt: null,
       offline: true,
       silentMode: false,
+      printer: null, // PrintHostState gained the required `printer` field (bluetooth-print W1)
     },
     printJobs: [],
     printJobsTruncated: false,

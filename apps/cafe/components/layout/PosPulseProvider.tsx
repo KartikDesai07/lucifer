@@ -22,6 +22,8 @@ import { playAlertPing, isAlertSoundUnlocked, unlockAlertSound } from "@/lib/ale
 import { pulseArrival, ALERT_REPEAT_MS, type PosPulseData } from "@pos/shared/self-order-alert";
 import type { PrintJobFeedRow } from "@pos/shared/print-job";
 import { hostRoutingOf, type PrintHostRouting } from "@/lib/print-routing";
+import { PrintHostDotContext } from "@/components/layout/print-host-dot-context";
+import { printHostDotOf } from "@/lib/printer/printer-dot";
 import {
   prunePrintReadback,
   recordPrintReadback,
@@ -260,21 +262,27 @@ export function PosPulseProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const routing = hostRoutingOf(data);
+  // The top-bar printer dot's remote half, derived once here for the same
+  // reason as the lane: a narrow context re-renders its readers only when the
+  // value moves (components/layout/print-host-dot-context.ts).
+  const dot = printHostDotOf(data);
   const printJobs = data?.printJobs ?? EMPTY_PRINT_JOBS;
 
   return (
-    <PrintHostRoutingContext.Provider value={routing}>
-      <PrintJobFeedContext.Provider value={printJobs}>
-        <PrintReadbackRecordContext.Provider value={recordPrintJob}>
-          <PrintReadbackContext.Provider value={readback}>
-            <PosPulseContext.Provider
-              value={{ pulse: data, soundUnlocked, unlock, printHandler, registerKotPrintHandler }}
-            >
-              {children}
-            </PosPulseContext.Provider>
-          </PrintReadbackContext.Provider>
-        </PrintReadbackRecordContext.Provider>
-      </PrintJobFeedContext.Provider>
-    </PrintHostRoutingContext.Provider>
+    <PrintHostDotContext.Provider value={dot}>
+      <PrintHostRoutingContext.Provider value={routing}>
+        <PrintJobFeedContext.Provider value={printJobs}>
+          <PrintReadbackRecordContext.Provider value={recordPrintJob}>
+            <PrintReadbackContext.Provider value={readback}>
+              <PosPulseContext.Provider
+                value={{ pulse: data, soundUnlocked, unlock, printHandler, registerKotPrintHandler }}
+              >
+                {children}
+              </PosPulseContext.Provider>
+            </PrintReadbackContext.Provider>
+          </PrintReadbackRecordContext.Provider>
+        </PrintJobFeedContext.Provider>
+      </PrintHostRoutingContext.Provider>
+    </PrintHostDotContext.Provider>
   );
 }

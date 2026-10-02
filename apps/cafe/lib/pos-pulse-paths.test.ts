@@ -114,7 +114,7 @@ test("PIN: PosPulseProvider.tsx declares PrintHostRoutingContext<PrintHostRoutin
   assert.match(src, /usePosPulse\(\)/, "positive landmark: PosPulseProvider.tsx must still call usePosPulse()");
 });
 
-test("INVENTORY: usePosPulseContext( call sites are exactly the six deliberate consumers — a new one under the POS screen must be a deliberate decision, not an accident", () => {
+test("INVENTORY: usePosPulseContext( call sites are exactly the seven deliberate consumers — a new one under the POS screen must be a deliberate decision, not an accident", () => {
   const NEEDLE = "usePosPulseContext" + "(";
   const roots = ["app", "components", "hooks"].map((d) => path.join(REPO_ROOT, "apps/cafe", d));
   const hits: string[] = [];
@@ -148,12 +148,18 @@ test("INVENTORY: usePosPulseContext( call sites are exactly the six deliberate c
     // the whole /settings/printing page now): still never under the POS
     // screen, still needs the host's label/offline/silentMode, which live
     // only on pulse.printHost (the derived lane string cannot carry them). A
-    // deliberate sixth consumer; the inventory below stays SIX files (D7).
+    // deliberate sixth consumer (D7).
+    // Bluetooth-print plan W5: PrinterPanel.tsx is the deliberate SEVENTH. The open
+    // panel needs the printing device's label/offline/printer state, which live only
+    // on pulse.printHost. It mounts only inside the header button's Sheet (while open)
+    // or on /settings/printing, never in the POS render path; the header button
+    // itself reads the narrow dot context and never this one.
+    "components/print/PrinterPanel.tsx",
     "components/print/PrinterSetupCard.tsx",
     "hooks/use-self-order-auto-print.ts",
   ].sort();
 
-  assert.deepEqual(hits, expected, `usePosPulseContext( call sites must be exactly the six deliberate consumers; found: ${hits.join(", ")}`);
+  assert.deepEqual(hits, expected, `usePosPulseContext( call sites must be exactly the seven deliberate consumers; found: ${hits.join(", ")}`);
 });
 
 test("PIN: use-host-routing.ts, use-print-routing.ts, and PosPulseProvider.tsx each stay <= 300 lines (the split's own reason for existing)", () => {

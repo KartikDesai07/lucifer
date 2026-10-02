@@ -4,9 +4,12 @@ import { useCallback, useMemo, type MutableRefObject } from "react";
 
 import { PRINT_HOST_MAX_AGE_MS } from "@pos/shared/print-job";
 import { usePrintJobFeed } from "@/components/layout/PosPulseProvider";
+import { useCanPrintNow } from "@/hooks/use-device-printer";
+import { useNativeHostBackground } from "@/hooks/use-native-host";
 import { usePrintHostBeat } from "@/hooks/use-print-host-beat";
 import { usePrintHostDrain, type ClaimedPrintJobLike } from "@/hooks/use-print-host-drain";
 import { usePrintHostDrainLock } from "@/hooks/use-print-host-lock";
+import { usePrintHostPrinterBeat } from "@/hooks/use-print-host-printer-beat";
 import { usePrintHostWake } from "@/hooks/use-print-host-wake";
 import { usePrintHostWakeLock } from "@/hooks/use-print-host-wake-lock";
 import { usePrintRealtime } from "@/hooks/use-realtime";
@@ -46,12 +49,17 @@ export function PrintHostDrain({
 }: PrintHostDrainProps) {
   // Exactly one draining window per host PC (MERGED-23): both claiming lanes
   // wait for the lock; the beat and the wake lock do not — a second window is
-  // still this device, and its beats are as truthful as the holder's.
-  const holdsLock = usePrintHostDrainLock(enabled);
+  // still this device, and its beats are as truthful as the holder's. The lock
+  // is only asked for by a window that can print right now (a printer that is
+  // off, or open in another tab, hands the lock on to one that can).
+  const canPrint = useCanPrintNow();
+  const holdsLock = usePrintHostDrainLock(enabled && canPrint);
   const drains = enabled && holdsLock;
 
   usePrintHostWakeLock(enabled);
   usePrintHostBeat({ enabled, deviceId, onDemoted });
+  usePrintHostPrinterBeat({ enabled, deviceId, onDemoted });
+  useNativeHostBackground(enabled);
 
   // Stable identities, so neither lane's effect re-runs on this child's own
   // per-tick renders (the ref never changes; the constant never changes).

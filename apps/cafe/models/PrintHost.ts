@@ -1,4 +1,5 @@
 import mongoose, { Schema, type Document, type Model } from "mongoose";
+import { PRINT_HOST_PRINTER_STATES, type PrintHostPrinterState } from "@pos/shared/print-host-printer";
 
 // Print-host plan (.claude/plan/v2/print-host-plan.md §B1) — the ONE
 // designated Windows PC that drains apps/cafe/models/PrintJob.ts's queue and
@@ -23,6 +24,9 @@ export interface IPrintHost extends Document {
   // write that touches this doc.
   silentMode?: boolean;
   silentProbeMs?: number;
+  // Omit-empty too: absent = the host's lane cannot tell / no report yet. Set
+  // and unset by the beat, unset by designation — NO `default:` (see above).
+  printerState?: PrintHostPrinterState;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -41,6 +45,7 @@ export const printHostSchema = new Schema<IPrintHost>(
     lastSeenAt: { type: Date, required: true },
     silentMode: { type: Boolean },
     silentProbeMs: { type: Number },
+    printerState: { type: String, enum: [...PRINT_HOST_PRINTER_STATES] },
   },
   { timestamps: true },
 );

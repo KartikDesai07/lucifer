@@ -3,6 +3,7 @@ import { toast } from "sonner";
 
 import { DESKTOP_PRINT_EMPTY_MESSAGE, printDocumentHasText, serializePrintDocument } from "@/lib/desktop-shell-document";
 import type { DesktopPrintMode } from "@/lib/desktop-shell-printer";
+import { laneSlipPrintOptions } from "@/lib/printer/lane-print";
 
 // The document half (serialization, stylesheet inlining, the blank-slip fence)
 // lives in lib/desktop-shell-document.ts; re-exported so every existing import
@@ -132,11 +133,11 @@ async function printThroughShell(shell: PosDesktopBridge, html: string): Promise
 }
 
 // Wraps a useReactToPrint options object so it prints through the desktop
-// shell when one is present, and returns the SAME object reference otherwise
-// — every call site's options literal stays untouched in the no-shell case.
+// shell when one is present; without one it defers to the printer lanes
+// (lib/printer/lane-print.ts), which return the SAME reference on a plain browser.
 export function slipPrintOptions<T extends UseReactToPrintOptions>(options: T): T {
   const shell = desktopShell();
-  if (!shell) return options;
+  if (!shell) return laneSlipPrintOptions(options);
   return {
     ...options,
     print: async (iframe: HTMLIFrameElement) => {

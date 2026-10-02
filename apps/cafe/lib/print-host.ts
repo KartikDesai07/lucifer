@@ -1,5 +1,11 @@
 import { isDuplicateKeyError } from "@pos/shared/api";
 import { PRINT_HOST_KEY, printHostOffline, type PrintHostState } from "@pos/shared/print-job";
+import {
+  PRINT_HOST_BEAT_PRINTER_UNKNOWN,
+  PRINT_HOST_PRINTER_STATES,
+  type PrintHostBeatPrinter,
+  type PrintHostPrinterState,
+} from "@pos/shared/print-host-printer";
 import { PrintHost } from "@/models/PrintHost";
 
 // Print-host plan (.claude/plan/v2/print-host-plan.md §B3) — the PrintHost
@@ -31,6 +37,16 @@ export const PRINT_HOST_DESIGNATION_ENABLED = true;
 export const PRINT_HOST_DESIGNATION_CLOSED_ERROR =
   "Print host designation is not enabled yet — it arrives in the next update. You can install the shortcut and finish the other steps now.";
 
+/** The one field list every PrintHost read selects — `printHostStateOf` reads
+ *  exactly these, so a new mapped field is added here once, not per select. */
+const PRINT_HOST_STATE_SELECT = "deviceId label lastSeenAt silentMode printerState";
+
+/** Strict mapping of the stored `printerState` — anything but the two known
+ *  values (absent, or a stray string) reads as "cannot tell" (`null`). */
+function printerStateOf(v: string | undefined): PrintHostPrinterState | null {
+  return PRINT_HOST_PRINTER_STATES.find((s) => s === v) ?? null;
+}
+
 /**
  * Pure: maps the stored singleton (or its absence) to the wire shape. `offline`
  * is computed from the SERVER clock here, never a client's own (MERGED-15) —
@@ -38,12 +54,12 @@ export const PRINT_HOST_DESIGNATION_CLOSED_ERROR =
  * stale that caller's own read is.
  */
 export function printHostStateOf(
-  host: { deviceId: string; label: string; lastSeenAt: Date; silentMode?: boolean } | null,
+  host: { deviceId: string; label: string; lastSeenAt: Date; silentMode?: boolean; printerState?: string } | null,
   nowMs: number,
 ): PrintHostState {
   if (host === null) {
     // `configured` derives from document ABSENCE only (§F) — no separate flag.
-    return { configured: false, deviceId: null, label: null, lastSeenAt: null, offline: true, silentMode: false };
+    return { configured: false, deviceId: null, label: null, lastSeenAt: null, offline: true, silentMode: false, printer: null };
   }
   const lastSeenAtIso = host.lastSeenAt.toISOString();
   return {
@@ -55,6 +71,7 @@ export function printHostStateOf(
     // Strict `=== true` (object-literal-allow-list prototype-key lesson) — a
     // lean doc's `silentMode` is `undefined` unless explicitly set to `true`.
     silentMode: host.silentMode === true,
+    printer: printerStateOf(host.printerState),
     // silentProbeMs is deliberately NOT read/mapped here — server-side only (§B4).
   };
 }
@@ -62,7 +79,7 @@ export function printHostStateOf(
 /** `PrintHost.findOne` selected down to exactly what `printHostStateOf` reads. */
 export async function readPrintHostState(nowMs: number): Promise<PrintHostState> {
   const host = await PrintHost.findOne({ key: PRINT_HOST_KEY })
-    .select("deviceId label lastSeenAt silentMode")
+    .select(PRINT_HOST_STATE_SELECT)
     .lean();
   return printHostStateOf(host, nowMs);
 }
@@ -95,12 +112,13 @@ export async function designatePrintHost(
         // $set and $unset touch disjoint fields (identity vs. silent-probe
         // state) so combining them in one update is safe. Designation always
         // clears whatever silent-mode attestation the PREVIOUS host earned —
-        // a brand-new host device has not attested anything yet.
-        $unset: { silentMode: "", silentProbeMs: "" },
+        // a brand-new host device has not attested anything yet, and has
+        // reported no printer state yet either.
+        $unset: { silentMode: "", silentProbeMs: "", printerState: "" },
       },
       { new: true, upsert: true, runValidators: true },
     )
-      .select("deviceId label lastSeenAt silentMode")
+      .select(PRINT_HOST_STATE_SELECT)
       .lean();
 
   try {
@@ -132,32 +150,51 @@ export async function clearPrintHost(): Promise<{ cleared: boolean }> {
 
 export type BeatPrintHostResult = { isHost: true; state: PrintHostState } | { isHost: false };
 
+export interface BeatPrintHostInput {
+  deviceId: string;
+  silentMode?: boolean;
+  silentProbeMs?: number;
+  printer?: PrintHostBeatPrinter;
+}
+
+/**
+ * Pure: the update document a beat applies. `lastSeenAt` always; the silent
+ * fields and `printer` are omit-empty — an absent field must never overwrite
+ * a prior value with undefined/false noise. `printer: "unknown"` (the host's
+ * lane cannot tell) CLEARS the stored state via `$unset` rather than storing
+ * the word; connected/disconnected are `$set`.
+ */
+export function beatPrintHostUpdate(
+  input: BeatPrintHostInput,
+  nowMs: number,
+): { $set: Record<string, unknown>; $unset?: { printerState: "" } } {
+  const $set: Record<string, unknown> = {
+    lastSeenAt: new Date(nowMs),
+    ...(input.silentMode !== undefined ? { silentMode: input.silentMode } : {}),
+    ...(input.silentProbeMs !== undefined ? { silentProbeMs: input.silentProbeMs } : {}),
+  };
+  if (input.printer === undefined) return { $set };
+  if (input.printer === PRINT_HOST_BEAT_PRINTER_UNKNOWN) return { $set, $unset: { printerState: "" } };
+  return { $set: { ...$set, printerState: input.printer } };
+}
+
 /**
  * CAS heartbeat. The `deviceId` term in the filter (MERGED-07) is what stops
  * a DEMOTED device's stale beat from resurrecting the `silentMode`/
- * `silentProbeMs` that a later designation's $unset already cleared — without
- * it, a beat in flight from the old host at the moment of redesignation could
- * land after the $unset and silently restamp fields for the WRONG device.
+ * `silentProbeMs`/`printerState` that a later designation's $unset already
+ * cleared — without it, a beat in flight from the old host at the moment of
+ * redesignation could land after the $unset and silently restamp fields for
+ * the WRONG device.
  */
-export async function beatPrintHost(
-  input: { deviceId: string; silentMode?: boolean; silentProbeMs?: number },
-  nowMs: number,
-): Promise<BeatPrintHostResult> {
+export async function beatPrintHost(input: BeatPrintHostInput, nowMs: number): Promise<BeatPrintHostResult> {
   const host = await PrintHost.findOneAndUpdate(
     { key: PRINT_HOST_KEY, deviceId: input.deviceId },
-    {
-      $set: {
-        lastSeenAt: new Date(nowMs),
-        // Omit-empty: only stamp a silent-probe field when THIS beat actually
-        // carries one — an absent field must never overwrite a prior
-        // attestation with undefined/false noise.
-        ...(input.silentMode !== undefined ? { silentMode: input.silentMode } : {}),
-        ...(input.silentProbeMs !== undefined ? { silentProbeMs: input.silentProbeMs } : {}),
-      },
-    },
-    { new: true },
+    beatPrintHostUpdate(input, nowMs),
+    // runValidators: the schema enum on printerState is a second fence behind
+    // the route's Zod enum.
+    { new: true, runValidators: true },
   )
-    .select("deviceId label lastSeenAt silentMode")
+    .select(PRINT_HOST_STATE_SELECT)
     .lean();
 
   // A null result means "not the host" (wrong/no device, or no host

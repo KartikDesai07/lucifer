@@ -11,8 +11,8 @@ interface PrintHostTestSlipProps {
   ref?: Ref<HTMLDivElement>;
 }
 
-const TEST_SLIP_HEADING = "Print host test";
-const TEST_SLIP_BODY = "If this printed with no dialog, this PC prints silently.";
+const TEST_SLIP_HEADING = "Test slip";
+const TEST_SLIP_BODY = "If you can read this, this printer works.";
 
 // Print-host plan §B7 (PH-5) — the attestation slip PH-7's "Test print" sends
 // through the host's KOT surface. Rendered through the SAME bridge as every

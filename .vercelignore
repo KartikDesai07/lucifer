@@ -44,3 +44,7 @@ migrate-links-backup-*.archive.gz
 # (see the note above), so it needs its own line here.
 **/.wrangler
 **/.wrangler/**
+
+# Android app (React Native): its node_modules, Gradle output and keystores are never
+# part of a web deploy. Installed from apps/mobile with npm ci; the APK is hand-copied.
+/apps/mobile

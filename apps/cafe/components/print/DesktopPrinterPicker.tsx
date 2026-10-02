@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { desktopPrinterApi, type DesktopPrinter, type DesktopPrintMode } from "@/lib/desktop-shell-printer";
+import { publishDesktopPrinterSelection, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
 import { DesktopPrintMethod } from "@/components/print/DesktopPrintMethod";
 
 const LOAD_FAILED_MESSAGE = "Could not read the printer list from the desktop app.";
@@ -81,6 +82,10 @@ export function DesktopPrinterPicker() {
     try {
       const result = await api.savePrinter(name);
       setSelected(result.selected);
+      // The dot and canPrintNow() read the shared choice: it follows the shell's own answer at once
+      // (the re-read below is only a follow-up and may fail).
+      publishDesktopPrinterSelection(result.selected);
+      void refreshDesktopPrinterChosen();
       toast.success(result.selected === null ? CLEARED_MESSAGE : SAVED_MESSAGE);
     } catch {
       toast.error(SAVE_FAILED_MESSAGE);
@@ -102,7 +107,8 @@ export function DesktopPrinterPicker() {
       ) : (
         <>
           <select
-            className="h-9 w-full max-w-sm rounded-md border bg-background px-2 text-sm"
+            className="h-11 w-full max-w-sm rounded-md border bg-background px-2 text-base"
+            aria-label="Printer"
             value={selected ?? NOT_CHOSEN_VALUE}
             disabled={saving}
             onChange={(e) => void choose(e.target.value)}

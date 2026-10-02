@@ -227,9 +227,14 @@ test("PIN (T): use-print-host-bridge.ts's dispatch effect guards on !surfacesMou
     `expected both settle guards (node null @${nullNodeGuardAt}, empty slip @${emptySlipSettleAt}) BEFORE dispatchedRef.current = true;(${dispatchedTrueAt}), and that BEFORE printReceipt();(${printReceiptCallAt})`,
   );
 
+  // s63 fix round W-A(b), deliberate edit: the watchdog no longer SETTLES the job, it
+  // ABANDONS it (announces the failure, then holds the slot until the job reports or
+  // the grace passes) so a late completion can never settle the next job. The arm
+  // needle moved from settle(...) to abandon; the behaviour is pinned by
+  // lib/print-host-bridge-late.test.ts and the mutation cases in print-gating-paths.
   assert.ok(
-    src.includes("window.setTimeout(() => settle(PRINT_HOST_PRINT_FAILED_MESSAGE), PRINT_HOST_DISPATCH_TIMEOUT_MS)"),
-    "must arm the watchdog with window.setTimeout(() => settle(PRINT_HOST_PRINT_FAILED_MESSAGE), PRINT_HOST_DISPATCH_TIMEOUT_MS)",
+    src.includes("window.setTimeout(abandon, PRINT_HOST_DISPATCH_TIMEOUT_MS)"),
+    "must arm the watchdog with window.setTimeout(abandon, PRINT_HOST_DISPATCH_TIMEOUT_MS)",
   );
 
   const clearWatchdogAt = src.indexOf("window.clearTimeout(watchdogRef.current);");
@@ -361,10 +366,18 @@ test("PIN (E): use-print-host-drain.ts calls printJobDrainCandidate( with PRINT_
 
 // ── F. use-print-host-beat.ts (D-5) ─────────────────────────────────────────
 
-test('PIN (F): use-print-host-beat.ts sends beat({ deviceId }) — never printHost.deviceId, pulse., or usePosPulseContext; calls getQueryCache().subscribe(, hashKey(POS_PULSE_KEYS.all), checks event.action.type !== "success" and event.action.manual; demotes on if (!result.isHost) onNotHost?.(); and never toasts (silent beat)', () => {
+test('PIN (F): use-print-host-beat.ts sends beat({ deviceId, printer: beatPrinterReport() }) — never printHost.deviceId, pulse., or usePosPulseContext; calls getQueryCache().subscribe(, hashKey(POS_PULSE_KEYS.all), checks event.action.type !== "success" and event.action.manual; demotes on if (!result.isHost) onNotHost?.(); and never toasts (silent beat)', () => {
   const src = readSrc(USE_PRINT_HOST_BEAT);
 
-  assert.match(src, /beat\(\{ deviceId \}\)/, "positive landmark: the beat body must be beat({ deviceId })");
+  // Bluetooth-print plan W4: the routine beat now also reports the printer
+  // (beatPrinterReport(); undefined leaves the server's last report alone), so
+  // the old beat({ deviceId }) needle became the form below. The id is still
+  // this device's OWN; every negative that follows is unchanged.
+  assert.match(
+    src,
+    /beat\(\{ deviceId, printer: beatPrinterReport\(\) \}\)/,
+    "positive landmark: the beat body must be beat({ deviceId, printer: beatPrinterReport() })",
+  );
   assert.ok(!src.includes("printHost.deviceId"), "must NOT reference printHost.deviceId — the beat sends the device's OWN id, not the pulse-visible one (D-5)");
   assert.ok(!src.includes("pulse."), 'must NOT contain the substring "pulse." anywhere');
   assert.ok(!src.includes("usePosPulseContext"), "must NOT reference usePosPulseContext");
@@ -637,12 +650,14 @@ test("INVENTORY: files containing the needle useReactToPrint( under app/componen
 // check grew the dispatch effect past 200 lines (measured 233; smallest
 // round number >= 233 + 15). PrintHostProvider.tsx (192) and
 // PrintHostPrintSources.tsx (95) still fit their existing budgets unchanged.
-test("PIN (P): line budgets — PrintHostProvider.tsx <= 200, use-print-host-bridge.ts <= 250, use-print-host-drain.ts <= 150, use-print-host-beat.ts <= 80, PrintHostPrintSources.tsx <= 100, PrintHostEodSource.tsx <= 90, PosPulseProvider.tsx <= 300, use-self-order-auto-print.ts <= 300", () => {
+// s63 fix round: use-print-host-beat.ts 80 -> 90 (measured 86) -- the shared mutation scope (W-H) and the
+// onHost hook that lets a host answer trigger the offline follow-up (W-O) are 7 unavoidable lines.
+test("PIN (P): line budgets — PrintHostProvider.tsx <= 200, use-print-host-bridge.ts <= 250, use-print-host-drain.ts <= 150, use-print-host-beat.ts <= 90, PrintHostPrintSources.tsx <= 100, PrintHostEodSource.tsx <= 90, PosPulseProvider.tsx <= 300, use-self-order-auto-print.ts <= 300", () => {
   const budgets: [string, number][] = [
     [PRINT_HOST_PROVIDER, 200],
     [USE_PRINT_HOST_BRIDGE, 250],
     [USE_PRINT_HOST_DRAIN, 150],
-    [USE_PRINT_HOST_BEAT, 80],
+    [USE_PRINT_HOST_BEAT, 90],
     [PRINT_HOST_PRINT_SOURCES, 100],
     [PRINT_HOST_EOD_SOURCE, 90],
     [POS_PULSE_PROVIDER, 300],

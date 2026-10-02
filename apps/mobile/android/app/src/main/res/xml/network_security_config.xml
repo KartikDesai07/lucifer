@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext is permitted at the OS level because a POS may live on a private LAN address
+  (http://192.168.x.x). The fence is in the app: the address validator only accepts http for
+  localhost and private IPv4 ranges, navigation is locked to the saved origin, and the WebView
+  runs with mixedContentMode "never".
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

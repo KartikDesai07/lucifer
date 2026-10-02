@@ -67,6 +67,57 @@ export async function legH(nowMs: number): Promise<void> {
   check("leg h: silentProbeMs is STILL absent", reread?.silentProbeMs === undefined);
 }
 
+export async function legP(nowMs: number): Promise<void> {
+  console.log("\nLeg p — printerState: beat set / unset / absent, redesignation, demoted beat, validator, state mapping\n");
+  await resetCollections();
+
+  const stored = async (): Promise<string | undefined> => (await PrintHost.findOne({ key: PRINT_HOST_KEY }).lean())?.printerState;
+
+  await designatePrintHost({ deviceId: "A", label: "PC A", setBy: "Admin" }, nowMs);
+  check("leg p: a freshly designated host has NO printerState", (await stored()) === undefined);
+
+  await beatPrintHost({ deviceId: "A", printer: "connected" }, nowMs + 1000);
+  check('leg p: a "connected" beat sets printerState', (await stored()) === "connected");
+  check('leg p: readPrintHostState maps it to printer:"connected"', (await readPrintHostState(nowMs + 1000)).printer === "connected");
+
+  await beatPrintHost({ deviceId: "A", printer: "disconnected" }, nowMs + 2000);
+  check('leg p: a "disconnected" beat overwrites it', (await stored()) === "disconnected");
+  check('leg p: readPrintHostState maps it to printer:"disconnected"', (await readPrintHostState(nowMs + 2000)).printer === "disconnected");
+
+  await beatPrintHost({ deviceId: "A" }, nowMs + 3000);
+  check("leg p: a beat with NO printer leaves printerState unchanged", (await stored()) === "disconnected");
+
+  await beatPrintHost({ deviceId: "A", printer: "connected" }, nowMs + 4000);
+  await beatPrintHost({ deviceId: "A", printer: "unknown" }, nowMs + 5000);
+  const afterUnknown = await PrintHost.findOne({ key: PRINT_HOST_KEY }).lean();
+  check('leg p: an "unknown" beat UNSETS printerState (the field is gone, never the word)', afterUnknown?.printerState === undefined && !("printerState" in (afterUnknown ?? {})));
+  check("leg p: readPrintHostState maps the absent field to printer:null", (await readPrintHostState(nowMs + 5000)).printer === null);
+
+  await beatPrintHost({ deviceId: "A", printer: "connected" }, nowMs + 6000);
+  await designatePrintHost({ deviceId: "B", label: "PC B", setBy: "Admin" }, nowMs + 7000);
+  check("leg p: redesignating to another device clears printerState", (await stored()) === undefined);
+
+  const demoted = await beatPrintHost({ deviceId: "A", printer: "connected" }, nowMs + 8000);
+  check("leg p: the demoted device's beat is refused (isHost:false)", demoted.isHost === false);
+  check("leg p: the demoted device's beat leaves printerState absent", (await stored()) === undefined);
+
+  // The schema enum is a second fence: runValidators must reject a bogus value
+  // that bypasses the route's Zod enum.
+  let rejected = false;
+  try {
+    await PrintHost.findOneAndUpdate(
+      { key: PRINT_HOST_KEY, deviceId: "B" },
+      { $set: { printerState: "bogus" } },
+      { new: true, runValidators: true },
+    );
+  } catch {
+    rejected = true;
+  }
+  check('leg p: $set printerState:"bogus" is rejected under runValidators', rejected);
+  check("leg p: the rejected write left printerState absent", (await stored()) === undefined);
+
+}
+
 export async function legN(nowMs: number): Promise<void> {
   console.log("\nLeg n — DELETE /api/print-host's exact 3-call sequence: clearPrintHost -> prunePrintJobs -> dismissQueuedPrintJobsForClearedHost\n");
   await resetCollections();

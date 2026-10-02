@@ -5,8 +5,11 @@ import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiSend } from "@/lib/api-client";
 import { autoPrintCandidate } from "@pos/shared/self-order-alert";
-import { usePosPulseContext } from "@/components/layout/PosPulseProvider";
+import { usePosPulseContext, usePrintHostRouting } from "@/components/layout/PosPulseProvider";
+import { useCanPrintNow } from "@/hooks/use-device-printer";
 import { readDevicePrefs } from "@/lib/pos-device-prefs";
+import { shouldRoutePrint, type PrintHostRouting } from "@/lib/print-routing";
+import { canPrintNow, printBlockedMessage } from "@/lib/printer/print-lane";
 import type { Order } from "@/types";
 
 // POST /api/order-requests/[id]/kot-claim's own envelope (server contract,
@@ -17,6 +20,15 @@ type KotClaimResult =
   | { claimed: true; order: Order; kotRound: number };
 
 type ClaimSource = "auto" | "manual";
+
+// A page lane prints on THIS device (so it may only claim while this device can print) unless
+// the slip is routed to a print host. Mirrors the print path's own verdict: shouldRoutePrint
+// counts an unknown/degraded tick as routed only on a device that has seen a host, so a never-seen
+// device on a degraded tick prints locally and must be gated too. `printHostSeen` is read at CALL
+// time (it is a stored pref, not render state). The host lane never claims for itself here.
+function printsOnThisDevice(isHostLane: boolean, routing: PrintHostRouting): boolean {
+  return !isHostLane && !shouldRoutePrint(routing, readDevicePrefs().printHostSeen);
+}
 
 /** PH-5 (§B5/§B6) — present ONLY on the print host's layout-level lane. The
  *  host prints every accepted self-order (no per-device opt-in read), shares
@@ -52,6 +64,11 @@ export function useSelfOrderAutoPrint({
   const claimLock = hostLane?.claimLock;
   const maxAgeMs = hostLane?.maxAgeMs;
   const isHostLane = hostLane !== undefined;
+  // A page lane with NO print host prints on THIS device, so it may only claim while this
+  // device can print (an unreachable printer would burn the claim and lose the ticket).
+  // When the slip is routed to a host the page lane only enqueues, which needs no local printer.
+  const routing = usePrintHostRouting();
+  const canPrint = useCanPrintNow();
   // Guards the auto-print effect against re-entry: a claim mutation in
   // flight must not let a LATER tick's effect fire a second claim before the
   // first one settles.
@@ -124,12 +141,16 @@ export function useSelfOrderAutoPrint({
   useEffect(() => {
     if (!enabled) return;
     return registerKotPrintHandler((requestId) => {
+      if (printsOnThisDevice(isHostLane, routing) && !canPrintNow()) {
+        toast.error(printBlockedMessage());
+        return;
+      }
       if (claimLock) claimLock.current = true;
       claimAndPrint(requestId, "manual", () => {
         if (claimLock) claimLock.current = false;
       });
     });
-  }, [enabled, registerKotPrintHandler, claimAndPrint, claimLock]);
+  }, [enabled, registerKotPrintHandler, claimAndPrint, claimLock, isHostLane, routing]);
 
   // Auto-print: at most ONE claim per pulse tick, and never the same request
   // twice from this device (attemptedRef). A burned claim (claimed:false) is
@@ -148,6 +169,7 @@ export function useSelfOrderAutoPrint({
       const prefs = readDevicePrefs();
       if (!prefs.autoPrintSelfOrders || prefs.printHost) return;
     }
+    if (printsOnThisDevice(isHostLane, routing) && !canPrint) return; // retried when the printer comes back (canPrint is a dep)
     if (claimingRef.current) return;
     if (claimLock?.current) return;
 
@@ -175,5 +197,5 @@ export function useSelfOrderAutoPrint({
       claimingRef.current = false;
       if (claimLock) claimLock.current = false;
     });
-  }, [enabled, busy, pulse, claimAndPrint, isHostLane, claimLock, maxAgeMs]);
+  }, [enabled, busy, pulse, claimAndPrint, isHostLane, claimLock, maxAgeMs, routing, canPrint]);
 }
