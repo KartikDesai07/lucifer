@@ -103,13 +103,22 @@ test("PIN: the create and add-round CAS writes mark a round as the server's only
   assert.match(src("apps/cafe/models/Order.ts"), /kotPrintDevices: \{ type: \[String\], default: undefined \},/, "declared, omit-empty");
 });
 
-test("PIN: the staff accept creates only on a fresh accept; the public auto-accept creates for the host only (no asking device)", () => {
+// Session 1B final review C1: the print host's self-order lane (PrintHostDrain → useSelfOrderAutoPrint
+// with hostLane) wins /kot-claim and prints the KOT through its own bridge, with no job key, and the
+// auto-accept leaves kotPrintedAt unstamped. A server-made job for the host would therefore print a
+// second, unlabelled KOT for every auto-accepted QR order. Ruling R4 moves to Session 1C, where the
+// lane becomes job-aware; until then the auto-accept answers exactly as before Phase 1.
+test("PIN: the staff accept creates only on a fresh accept; the public auto-accept creates no print job in 1B (its host lane prints the KOT itself)", () => {
   assert.match(src("apps/cafe/app/api/order-requests/[id]/accept/route.ts"), /intent && !result\.replayed\s*\? await createOrderPrintJobs\(\{/);
+  assert.match(
+    src("apps/cafe/hooks/use-print-host-bridge.ts"),
+    /\(order: Order, round: number = order\.kotRounds\) => queueSlip\(kotRoundSlip\(order, round\)\)/,
+    "the premise: the host lane prints a claimed self-order KOT locally, outside the job queue",
+  );
   const auto = src("apps/cafe/lib/order-request-create.ts");
+  assert.ok(!auto.includes("createOrderPrintJobs"), "the auto-accept makes no print job in 1B (final review C1)");
   const fn = auto.slice(auto.indexOf("export async function resolveAutoAcceptStatus("));
-  inOrder(fn, ['if ("error" in result) return "pending";', "if (!result.replayed) {", "await createOrderPrintJobs({", 'return "accepted";'], "auto-accept");
-  const call = fn.slice(fn.indexOf("await createOrderPrintJobs({"), fn.indexOf('return "accepted";'));
-  assert.ok(!call.includes("originDeviceId"), "no device asked: with no host nothing is made and kot-claim prints it");
+  assert.match(fn, /return "error" in result \? "pending" : "accepted";/, "the auto-accept answers exactly as before Phase 1");
 });
 
 test("PIN: POST /api/print-jobs falls back to the asking device only for an agent request that got no-host", () => {

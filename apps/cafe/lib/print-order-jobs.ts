@@ -164,7 +164,7 @@ export async function insertPrintJob(input: {
 export async function createOrderPrintJobs(input: {
   order: unknown;
   slips: OrderPrintSlip[];
-  /** Absent only for the public auto-accept: no device asked. */
+  /** Absent only when no device asked (the public auto-accept, from Session 1C: final review C1). */
   originDeviceId?: string;
   queuedBy: string;
   nowMs: number;

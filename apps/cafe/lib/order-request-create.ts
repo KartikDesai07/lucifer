@@ -28,7 +28,6 @@ import {
 } from "@/lib/order-request-intake";
 import { acceptOrderRequest } from "@/lib/order-request-accept";
 import { resolveRequestReward } from "@/lib/order-request-reward";
-import { createOrderPrintJobs } from "@/lib/print-order-jobs";
 
 // Sibling of app/api/public/order-request/route.ts (CR2.2d split) — split out
 // purely to keep the route file under the ~300-line budget while POST's full
@@ -124,20 +123,7 @@ export async function resolveAutoAcceptStatus(
       settings,
       createCustomer: false,
     });
-    if ("error" in result) return "pending";
-    // Printing Phase 1 (spec §7.4): with a host, its KOT is queued for the host now, so it prints even
-    // with no POS tab open. The kot-claim lane stays and builds the same job key, so whichever makes the
-    // job first wins and the other is a no-op. With no host nothing is made (no device asked), and the
-    // lane prints it as today. Never throws.
-    if (!result.replayed) {
-      await createOrderPrintJobs({
-        order: result.order,
-        slips: [{ kind: "kot", round: result.order.kotRounds }],
-        queuedBy: SELF_ORDER_RECEIVER,
-        nowMs: Date.now(),
-      });
-    }
-    return "accepted";
+    return "error" in result ? "pending" : "accepted";
   } catch {
     // A throw here does NOT mean the request stayed "pending" in the DB —
     // acceptOrderRequest may have already CAS'd it into "accepting" (bridge
