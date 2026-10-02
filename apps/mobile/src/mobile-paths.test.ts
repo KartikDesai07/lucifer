@@ -2014,6 +2014,11 @@ function usbPermissionProblems(s: KtSources): string[] {
   if (!manager.includes('usbPermissionPaused || usbWaitingForeground) return')) {
     out.push('no background reconnect loop while USB waits for permission');
   }
+  // Cold start: initialize() starts the attempt just before onHostResume, so the app can turn
+  // visible between open()'s check and the flag. The attempt then asks for itself.
+  if (!manager.includes('if (e.needsForeground && appVisible) timer.execute(Runnable { resumeIfPaused() })')) {
+    out.push('a hidden refusal that lost the race with onHostResume must still ask once visible');
+  }
   return out;
 }
 
@@ -2033,6 +2038,7 @@ test('pin 16 mutation: every USB permission needle can fail', () => {
     ['if (e.needsForeground) usbWaitingForeground = true else usbPermissionPaused = true', 'usbPermissionPaused = true'],
     ['if (usbWaitingForeground && appVisible) selected else null', 'if (false) selected else null'],
     ['usbPermissionPaused || usbWaitingForeground) return', 'usbPermissionPaused) return'],
+    ['if (e.needsForeground && appVisible) timer.execute(Runnable { resumeIfPaused() })', ''],
   ]);
 });
 

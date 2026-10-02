@@ -220,6 +220,10 @@ object PrinterManager {
           if (e.needsForeground) usbWaitingForeground = true else usbPermissionPaused = true
         }
         publish()
+        // Cold start: initialize() starts this attempt just before onHostResume, so the app can turn
+        // visible between open()'s check and the flag above; that resume found nothing to ask for.
+        // Ask now, on the timer thread every other resumeIfPaused() caller uses.
+        if (e.needsForeground && appVisible) timer.execute(Runnable { resumeIfPaused() })
         return
       }
       failed(gen, t)
