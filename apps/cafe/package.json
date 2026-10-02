@@ -217,6 +217,7 @@
     "lib/brand-contrast.test.ts",
     "lib/nav-active.test.ts",
     "lib/sidebar-paths.test.ts",
+    "lib/sidebar-order-paths.test.ts",
     "lib/warm-routes.test.ts",
     "lib/pending-writes.test.ts",
     "lib/settle-flow.test.ts",

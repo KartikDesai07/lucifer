@@ -1,9 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { updatedLabel } from "@/lib/floor-tiles";
-import { TABLE_STATUS_META } from "@/lib/table-status";
 
 interface FloorLiveIndicatorProps {
   /** Oldest data timestamp across the floor's queries; 0 = never loaded. */
@@ -15,9 +13,10 @@ interface FloorLiveIndicatorProps {
   onRetry: () => void;
 }
 
-// "Live · updated just now" with a green dot — or, when a background refresh
-// failed, a plain notice plus a 44 px Try again. The grid never blanks on a
-// failed poll; this line is where the failure shows.
+// "Live · updated just now" as plain muted text (no green dot: green is the
+// Available colour on this screen) — or, when a background refresh failed, a
+// plain notice plus a 44 px Try again. The grid never blanks on a failed poll;
+// this line is where the failure shows.
 export function FloorLiveIndicator({ updatedAtMs, nowMs, refreshFailed, onRetry }: FloorLiveIndicatorProps) {
   if (refreshFailed) {
     return (
@@ -30,10 +29,5 @@ export function FloorLiveIndicator({ updatedAtMs, nowMs, refreshFailed, onRetry 
     );
   }
   if (updatedAtMs <= 0) return null;
-  return (
-    <p className="flex items-center gap-1.5 text-xs text-brand-muted">
-      <span className={cn("h-2 w-2 shrink-0 rounded-full", TABLE_STATUS_META.Available.dotClass)} aria-hidden />
-      {updatedLabel(updatedAtMs, nowMs ?? updatedAtMs)}
-    </p>
-  );
+  return <p className="text-xs text-brand-muted">{updatedLabel(updatedAtMs, nowMs ?? updatedAtMs)}</p>;
 }

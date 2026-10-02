@@ -7,8 +7,8 @@ import path from "node:path";
 import { stripComments } from "@/lib/source-pin-utils";
 import { SETTINGS_SECTIONS } from "@/lib/settings-sections";
 
-// CB-UI1 S6 — source-read pins for the new Settings shell (7 section routes +
-// Printer setup under a /settings hub, sidebar Settings expanding in place,
+// CB-UI1 S6 — source-read pins for the new Settings shell (the section routes
+// under a /settings hub, sidebar Settings expanding in place,
 // per-page Save). Same technique as branding-paths.test.ts / order-request-
 // paths.test.ts: readFileSync over the REAL source, comments stripped so a
 // comment merely DESCRIBING a rule can neither satisfy nor trip the pin
@@ -49,7 +49,8 @@ const RETIRED_SETTINGS_FORM = `${CAFE}/components/settings/SettingsForm.tsx`;
 const RETIRED_GENERAL_SETTINGS_FIELDS = `${CAFE}/components/settings/GeneralSettingsFields.tsx`;
 const RETIRED_PRINT_SETTINGS_FIELDS = `${CAFE}/components/settings/PrintSettingsFields.tsx`;
 
-const FORM_SECTION_SLUGS = SETTINGS_SECTIONS.filter((s) => s.slug !== "printing").map((s) => s.slug);
+// Printer setup left Settings (2026-10-02): every remaining section is a form section.
+const FORM_SECTION_SLUGS = SETTINGS_SECTIONS.map((s) => s.slug);
 
 // ── 1. every slug has a page.tsx on disk, and the hub exists ───────────────
 
@@ -79,9 +80,9 @@ test("PIN: app/(dashboard)/settings/layout.tsx imports AdminGuard and wraps {chi
   );
 });
 
-// ── 3. hub reachability — every section reachable, Printer setup reachable ─
+// ── 3. hub reachability — every section reachable ─────────────────────────
 
-test("PIN: settings/page.tsx (the hub) imports SETTINGS_SECTIONS + settingsSectionPath and contains a literal href=\"/settings/printing\" — every section (incl. Printer setup) must be reachable from the hub, not just compiled", () => {
+test("PIN: settings/page.tsx (the hub) imports SETTINGS_SECTIONS + settingsSectionPath and maps SETTINGS_SECTIONS directly — every section must be reachable from the hub, not just compiled; Printer setup (now /printers) has no card here", () => {
   const src = stripComments(readSrc(SETTINGS_HUB_PAGE));
 
   assert.match(
@@ -94,10 +95,11 @@ test("PIN: settings/page.tsx (the hub) imports SETTINGS_SECTIONS + settingsSecti
     /\bsettingsSectionPath\b/,
     "settings/page.tsx must use settingsSectionPath to build each section card's link",
   );
-  assert.ok(
-    src.includes('href="/settings/printing"'),
-    'settings/page.tsx must render a literal href="/settings/printing" card for Printer setup — printer-setup-paths.test.ts pins this exact literal',
-  );
+  // Re-anchored 2026-10-02: the literal Printer-setup card (and the FORM_SECTIONS
+  // filter that skipped it) are gone — the hub maps the whole list.
+  assert.ok(src.includes("{SETTINGS_SECTIONS.map("),"the hub must render a card for every SETTINGS_SECTIONS entry");
+  assert.ok(!src.includes("FORM_SECTIONS"), "no filtered copy of the section list");
+  assert.ok(!src.includes("printing"), "Printer setup is no longer a Settings card (it has its own /printers page)");
 
   // Positive landmark for the reachability claim itself: the hub must
   // actually render each section's own link target, not just import the
@@ -263,7 +265,7 @@ test("PIN: AppSidebar.tsx (+ the extracted SidebarSettingsGroup.tsx) import Side
 
 // ── 9. every section page renders SettingsSectionPage + SettingsSectionForm ─
 
-test("PIN: every SETTINGS_SECTIONS entry except printing renders <SettingsSectionPage and <SettingsSectionForm on its own page.tsx — the shared shell is actually used, not merely available", () => {
+test("PIN: every SETTINGS_SECTIONS entry renders <SettingsSectionPage and <SettingsSectionForm on its own page.tsx — the shared shell is actually used, not merely available", () => {
   for (const slug of FORM_SECTION_SLUGS) {
     const src = stripComments(readSrc(`${SETTINGS_APP_DIR}/${slug}/page.tsx`));
     assert.match(src, /<SettingsSectionPage/, `${slug}/page.tsx must render <SettingsSectionPage`);

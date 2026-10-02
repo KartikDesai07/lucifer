@@ -1,4 +1,4 @@
-import { Bell, ChefHat, Gift, type LucideIcon, Palette, Percent, Printer, QrCode, ReceiptText, Store } from "lucide-react";
+import { Bell, ChefHat, Gift, type LucideIcon, Palette, Percent, QrCode, ReceiptText, Store } from "lucide-react";
 
 import type { SettingsSectionSlug } from "@/lib/settings-sections";
 
@@ -14,5 +14,4 @@ export const SETTINGS_SECTION_ICONS: Record<SettingsSectionSlug, LucideIcon> = {
   loyalty: Gift,
   appearance: Palette,
   notifications: Bell,
-  printing: Printer,
 };

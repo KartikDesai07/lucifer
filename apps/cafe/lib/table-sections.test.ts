@@ -8,8 +8,10 @@ import { ADMIN_ROUTES } from "@/lib/constants";
 import {
   TABLES_FLOOR_PATH,
   TABLES_QR_PATH,
+  TABLES_MANAGE_SECTIONS,
   TABLES_SETUP_PATH,
   TABLE_SECTIONS,
+  isTablesManagePath,
   isTablesPath,
   isTableSectionActive,
   visibleTableSections,
@@ -81,4 +83,24 @@ test("every adminOnly section is an ADMIN_ROUTES entry, and the open Floor route
   }
   assert.ok(adminRoutes.includes("/tables/setup"), "landmark: ADMIN_ROUTES itself carries the Setup route");
   assert.ok(!adminRoutes.includes("/tables"), "/tables stays open to every role");
+});
+
+// 2026-10-02: the Floor got its own sidebar row; the Tables drop-down is now
+// the manage pair (Setup + QR codes), admin only.
+test("TABLES_MANAGE_SECTIONS is exactly Setup then QR codes, both adminOnly, and is what TABLE_SECTIONS adds after the Floor", () => {
+  assert.ok(TABLES_MANAGE_SECTIONS.length > 0, "an empty list would silently hide the whole drop-down");
+  assert.deepEqual(TABLES_MANAGE_SECTIONS.map((s) => s.href), ["/tables/setup", "/tables/qr"]);
+  assert.ok(TABLES_MANAGE_SECTIONS.every((s) => s.adminOnly === true), "every manage section is admin only");
+  assert.deepEqual(TABLE_SECTIONS.slice(1), [...TABLES_MANAGE_SECTIONS]);
+  assert.ok(!TABLES_MANAGE_SECTIONS.some((s) => s.href === TABLES_FLOOR_PATH), "the Floor is not in the drop-down");
+});
+
+test("isTablesManagePath: lights on Setup / QR and their sub-paths, never on the Floor or a look-alike", () => {
+  assert.equal(isTablesManagePath("/tables/setup"), true);
+  assert.equal(isTablesManagePath("/tables/setup/x"), true);
+  assert.equal(isTablesManagePath("/tables/qr"), true);
+  assert.equal(isTablesManagePath("/tables"), false);
+  assert.equal(isTablesManagePath("/tables/setup-old"), false);
+  assert.equal(isTablesManagePath("/tables/qrx"), false);
+  assert.equal(isTablesManagePath("/"), false);
 });

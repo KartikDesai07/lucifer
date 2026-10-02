@@ -1,22 +1,21 @@
 "use client";
 
-// The Tables nav row of AppSidebar, mirroring SidebarMenuGroup.tsx. Staff see
-// one section (the Floor) and so get a plain Link, not a drop-down with a
-// single child; so does the collapsed rail. The group owns its open state (so
-// AppSidebar stays under its line ceiling): a manual collapse sticks while
-// moving between the Tables pages, and the effect only forces it open when the
-// route ENTERS /tables from outside.
+// The Tables (manage) nav row of AppSidebar, mirroring SidebarMenuGroup.tsx.
+// Admin only: it holds Setup and QR codes — the live Floor is its own row under
+// New Order / Orders. The collapsed rail gets a plain Link to Setup. The group
+// owns its open state (so AppSidebar stays under its line ceiling): a manual
+// collapse sticks while moving between Setup and QR codes, and the effect only
+// forces it open when the route ENTERS the manage paths from outside.
 import { useEffect, useState } from "react";
 import { ChevronRight, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import type { ComponentProps } from "react";
 
 import {
-  TABLE_SECTIONS,
-  TABLES_FLOOR_PATH,
+  TABLES_MANAGE_SECTIONS,
+  TABLES_SETUP_PATH,
   isTableSectionActive,
-  isTablesPath,
-  visibleTableSections,
+  isTablesManagePath,
 } from "@/lib/table-sections";
 import { BRAND_NAV_ITEM_CLASS, BRAND_NAV_SUB_ITEM_CLASS } from "@/components/brand/brand-classes";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -33,7 +32,6 @@ interface SidebarTablesGroupProps {
   icon: LucideIcon;
   collapsed: boolean;
   pathname: string;
-  isAdmin: boolean;
   onNavigate: () => void;
   tooltip: ComponentProps<typeof SidebarMenuButton>["tooltip"];
 }
@@ -43,28 +41,26 @@ export function SidebarTablesGroup({
   icon: Icon,
   collapsed,
   pathname,
-  isAdmin,
   onNavigate,
   tooltip,
 }: SidebarTablesGroupProps) {
-  const sections = visibleTableSections(isAdmin);
-  const onTables = isTablesPath(pathname);
-  const [open, setOpen] = useState(onTables);
+  const onManage = isTablesManagePath(pathname);
+  const [open, setOpen] = useState(onManage);
   useEffect(() => {
-    if (onTables) setOpen(true);
-  }, [onTables]);
+    if (onManage) setOpen(true);
+  }, [onManage]);
 
-  // Collapsed rail, or staff (who only ever see the Floor): a single Link to
-  // the Floor. The row's lit state follows onTables (an admin on /tables/setup
-  // with the rail folded still sees the Tables icon lit); aria-current stays on
-  // the exact match, the only page this Link points at.
-  if (collapsed || sections.length <= 1) {
-    const exact = isTableSectionActive(pathname, TABLES_FLOOR_PATH);
+  // Collapsed rail: a single Link to Setup. The row's lit state follows
+  // onManage (an admin on /tables/qr with the rail folded still sees the Tables
+  // icon lit); aria-current stays on the exact match, the only page this Link
+  // points at.
+  if (collapsed) {
+    const exact = isTableSectionActive(pathname, TABLES_SETUP_PATH);
     return (
       <SidebarMenuItem>
-        <SidebarMenuButton asChild isActive={onTables} tooltip={tooltip} className={BRAND_NAV_ITEM_CLASS}>
+        <SidebarMenuButton asChild isActive={onManage} tooltip={tooltip} className={BRAND_NAV_ITEM_CLASS}>
           <Link
-            href={TABLES_FLOOR_PATH}
+            href={TABLES_SETUP_PATH}
             prefetch={false}
             aria-current={exact ? "page" : undefined}
             onClick={onNavigate}
@@ -85,7 +81,7 @@ export function SidebarTablesGroup({
             row lights only while the list is folded; the lit sub-row says where
             you are once it's open. */}
         <CollapsibleTrigger asChild>
-          <SidebarMenuButton isActive={onTables && !open} className={BRAND_NAV_ITEM_CLASS}>
+          <SidebarMenuButton isActive={onManage && !open} className={BRAND_NAV_ITEM_CLASS}>
             <Icon aria-hidden="true" />
             <span>{title}</span>
             <ChevronRight
@@ -96,7 +92,7 @@ export function SidebarTablesGroup({
         </CollapsibleTrigger>
         <CollapsibleContent className="overflow-hidden motion-safe:data-[state=closed]:animate-collapsible-up motion-safe:data-[state=open]:animate-collapsible-down">
           <SidebarMenuSub className="mx-0 ml-[18px] mt-0.5 gap-0.5 pl-2.5 pr-0">
-            {TABLE_SECTIONS.filter((section) => sections.includes(section)).map((section) => {
+            {TABLES_MANAGE_SECTIONS.map((section) => {
               const active = isTableSectionActive(pathname, section.href);
               return (
                 <SidebarMenuSubItem key={section.href}>

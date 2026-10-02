@@ -32,10 +32,12 @@ const GLOBALS_CSS = "apps/cafe/app/globals.css";
  *  the SidebarMenuGroup drop-down, so it never appears in this file's regex
  *  scan at all (see the Menu-group test below, which reads MENU_SECTIONS
  *  directly instead). */
-const ADMIN_ONLY_URLS = ["/reports", "/settings", "/staff"];
-const NAV_ENTRY_COUNT = 13;
+const ADMIN_ONLY_URLS = ["/printers", "/reports", "/settings", "/staff", "/tables/setup"];
+const NAV_ENTRY_COUNT = 15;
 
-test("PIN: the sidebar lists all 13 flat screens once each, and exactly Staff, Reports and Settings are admin-only", () => {
+// 2026-10-02: Floor (Service) and Printer setup (Admin, above Settings) became
+// flat rows; the Tables row (Setup + QR codes) became admin-only.
+test("PIN: the sidebar lists all 15 flat screens once each, and exactly Staff, Reports, Printer setup, Settings and the Tables (Setup / QR) row are admin-only", () => {
   const src = stripComments(readSrc(APP_SIDEBAR));
   const entries = [...src.matchAll(/\{\s*title:\s*"([^"]+)",\s*url:\s*"([^"]+)"[^}]*\}/g)].map((m) => ({
     title: m[1],
@@ -51,7 +53,7 @@ test("PIN: the sidebar lists all 13 flat screens once each, and exactly Staff, R
   assert.deepEqual(
     entries.filter((e) => e.adminOnly).map((e) => e.url).sort(),
     ADMIN_ONLY_URLS,
-    "exactly Staff, Reports and Settings carry adminOnly: true",
+    "exactly Staff, Reports, Printer setup, Settings and Tables carry adminOnly: true",
   );
   // And the filter that reads it is still applied to every section.
   assert.match(src, /items:\s*section\.items\.filter\(\(item\)\s*=>\s*!item\.adminOnly\s*\|\|\s*isAdmin\)/);
@@ -59,8 +61,9 @@ test("PIN: the sidebar lists all 13 flat screens once each, and exactly Staff, R
 
 test("PIN: every sidebar link says which page is current — aria-current rides the same flag as the lit row", () => {
   const src = stripComments(readSrc(APP_SIDEBAR));
-  const rowFlag = src.match(/const active = isActivePath\(pathname, item\.url\);/);
-  assert.ok(rowFlag, "the row's lit state must come from isActivePath (lib/nav-active.ts)");
+  // Re-anchored 2026-10-02: an `exact` row (Floor) lights on its own path only.
+  const rowFlag = src.match(/const active = item\.exact \? pathname === item\.url : isActivePath\(pathname, item\.url\);/);
+  assert.ok(rowFlag, "the row's lit state must come from isActivePath (lib/nav-active.ts), or an exact match for an exact row");
   // Mutation this catches: dropping aria-current — a screen reader user
   // would hear every row the same, with no "current page" anywhere.
   assert.match(src, /isActive=\{active\}/, "the row must light from the same `active` flag");
@@ -175,8 +178,8 @@ test("PIN: the sidebar's colours come from the brand palette on :root (the phone
 // lib/warm-routes.ts). Pinned so a later edit can neither drop the warmth nor
 // spread it to setup/admin screens (each warm route costs a background request
 // per reuse window on every open device).
-// Order (owner, 2026-09-29): Orders directly under New Order.
-const WARM_URLS = ["/", "/pos", "/orders", "/requests", "/kitchen", "/reservations"];
+// Order (owner, 2026-09-29): Orders directly under New Order; Floor under both (2026-10-02).
+const WARM_URLS = ["/", "/pos", "/orders", "/tables", "/requests", "/kitchen", "/reservations"];
 const NEXT_CONFIG = "apps/cafe/next.config.ts";
 
 test("PIN: exactly the Dashboard and Service sections are warm — no setup or admin screen — and only the line-gated hook prefetches them (their Links never do)", () => {

@@ -14,7 +14,9 @@ import {
   UserCog,
   Receipt,
   LayoutGrid,
+  Armchair,
   BarChart3,
+  Printer,
   Settings,
   ChefHat,
 } from "lucide-react";
@@ -67,6 +69,8 @@ type NavItem = {
   url: string;
   icon: typeof LayoutDashboard;
   adminOnly?: boolean;
+  /** Lights on this exact path only, not its sub-paths (Floor vs Setup / QR). */
+  exact?: boolean;
 };
 
 /** `warm`: the service screens staff hop between all shift — kept fully
@@ -84,6 +88,9 @@ const sections: NavSection[] = [
       // Orders sits right under New Order (owner, 2026-09-29): the two are
       // used back to back — take an order, then find or settle one.
       { title: "Orders", url: "/orders", icon: Receipt },
+      // Floor sits right under New Order and Orders (owner, 2026-10-02): the
+      // live table view is used with them all shift.
+      { title: "Floor", url: "/tables", icon: LayoutGrid, exact: true },
       { title: "Order Requests", url: "/requests", icon: Inbox },
       { title: "Kitchen", url: "/kitchen", icon: ChefHat },
       { title: "Reservations", url: "/reservations", icon: CalendarClock },
@@ -93,7 +100,7 @@ const sections: NavSection[] = [
     label: "Manage",
     items: [
       { title: "Menu", url: "/products", icon: Coffee },
-      { title: "Tables", url: "/tables", icon: LayoutGrid },
+      { title: "Tables", url: "/tables/setup", icon: Armchair, adminOnly: true },
       { title: "Customers", url: "/customers", icon: Users },
       { title: "Events", url: "/events", icon: PartyPopper },
     ],
@@ -103,6 +110,7 @@ const sections: NavSection[] = [
     items: [
       { title: "Staff", url: "/staff", icon: UserCog, adminOnly: true },
       { title: "Reports", url: "/reports", icon: BarChart3, adminOnly: true },
+      { title: "Printer setup", url: "/printers", icon: Printer, adminOnly: true },
       { title: "Settings", url: "/settings", icon: Settings, adminOnly: true },
     ],
   },
@@ -214,16 +222,16 @@ export function AppSidebar() {
             tooltip={brandTooltip(item.title)}
           />
         );
-      case "/tables":
+      case "/tables/setup":
         return (
           <SidebarTablesGroup
             key={item.url} title={item.title} icon={item.icon} collapsed={collapsed} pathname={pathname}
-            isAdmin={isAdmin} onNavigate={closeMobile} tooltip={brandTooltip(item.title)}
+            onNavigate={closeMobile} tooltip={brandTooltip(item.title)}
           />
         );
     }
 
-    const active = isActivePath(pathname, item.url);
+    const active = item.exact ? pathname === item.url : isActivePath(pathname, item.url);
     return (
       <SidebarMenuItem key={item.url}>
         <SidebarMenuButton asChild isActive={active} tooltip={brandTooltip(item.title)} className={BRAND_NAV_ITEM_CLASS}>

@@ -102,7 +102,10 @@ test("PIN: the Floor runs exactly one shared clock", () => {
 test("PIN: every tile shows its status as TEXT, not colour alone", () => {
   const src = readStripped(TILE);
   assert.ok(src.includes("const meta = TABLE_STATUS_META[table.status];"), "the tile reads the shared vocabulary");
-  assert.match(src, /aria-hidden \/>\s*\{meta\.label\}\s*<\/span>/, "the chip renders the status label right after its dot");
+  // Floor redesign (2026-10-02, owner: "looks AI generated"): the chip + dot + stripe became the tile's tint plus the
+  // status word in its bottom row — still text next to the colour, both from the same vocabulary entry.
+  assert.match(src, /meta\.textClass\)\}>\s*\{meta\.label\}\s*<\/span>/, "the status label renders as text in its status colour");
+  assert.ok(src.includes("cn(TILE_CLASS, meta.tileClass"), "the tint comes from the same vocabulary entry as the label");
 });
 
 test("PIN: Free, Seat now and Reserve re-read the open bills first and fail closed", () => {
@@ -186,6 +189,23 @@ test("PIN: area sections - one tile renderer, headings only when floorSections s
   const bare = /\bareaId\b/;
   for (const f of [PAGE, SECTIONS, TILE]) assert.ok(!bare.test(readStripped(f)), `${f} must not read the area link`);
   assert.ok(readStripped(FLOOR_LIB).includes("groupByArea(tiles, (tile) => tableAreaIdOf(tile.table), areas)"), "landmark: floorSections groups via the shared helpers");
+});
+
+// Review finding (2026-10-02), MEASURED at 360 px: "Available" + "New order ›" was 3 px wider than the tile, so the
+// status word — the tile's only text signal — truncated to an ellipsis. The row now wraps and the action stays right.
+test("PIN: the tile's bottom row wraps instead of clipping the status word", () => {
+  const src = readStripped(TILE);
+  assert.ok(src.includes("{meta.label}"), "landmark: the status word is in the tile");
+  assert.match(src, /<span className="mt-auto flex flex-wrap [^"]*">/, "the status row wraps on a narrow tile");
+  assert.ok(src.includes('cn("ml-auto inline-flex shrink-0'), "a wrapped action keeps to the right");
+});
+
+// Owner, 2026-10-02: the Floor moved into the sidebar's Service group, right under New Order and Orders — the
+// eyebrow names the group the page sits in, as on every screen (polish-pages-paths pins the one-header pages).
+test("PIN: both Floor headers carry the Service eyebrow and the Floor title", () => {
+  const page = readStripped(PAGE);
+  assert.equal(count(page, "<PageHeader"), 2, "landmark: the error screen and the live floor each have one header");
+  assert.equal((page.match(/<PageHeader\s+eyebrow="Service"\s+title="Floor"/g) ?? []).length, 2);
 });
 
 test("PIN: the old card and arrange list are gone and the grid uses the shared class", () => {

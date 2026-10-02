@@ -22,11 +22,14 @@ export interface TableStatusMeta {
   fg: string;
   /** Chip / tint background. */
   bg: string;
-  /** Dot and stripe colour (≥ 3:1 on white, pinned). */
+  /** Dot and legend-swatch colour (≥ 3:1 on white, pinned). */
   mark: string;
   chipClass: string;
   dotClass: string;
-  stripeClass: string;
+  /** The live floor tile's surface: the status tint plus its border. */
+  tileClass: string;
+  /** Status text on the tint (`fg`). */
+  textClass: string;
   borderClass: string;
 }
 
@@ -38,7 +41,8 @@ export const TABLE_STATUS_META: Record<TableStatus, TableStatusMeta> = {
     mark: "#dc2626",
     chipClass: "bg-[#fdecec] text-[#b91c1c]",
     dotClass: "bg-[#dc2626]",
-    stripeClass: "before:bg-[#dc2626]",
+    tileClass: "border-[#f5c2c2] bg-[#fdecec]",
+    textClass: "text-[#b91c1c]",
     borderClass: "border-[#f5c2c2]",
   },
   Available: {
@@ -48,7 +52,8 @@ export const TABLE_STATUS_META: Record<TableStatus, TableStatusMeta> = {
     mark: "#16a34a",
     chipClass: "bg-[#e8f6ee] text-[#166534]",
     dotClass: "bg-[#16a34a]",
-    stripeClass: "before:bg-[#16a34a]",
+    tileClass: "border-[#bfe3cc] bg-[#e8f6ee]",
+    textClass: "text-[#166534]",
     borderClass: "border-[#bfe3cc]",
   },
   Reserved: {
@@ -58,7 +63,8 @@ export const TABLE_STATUS_META: Record<TableStatus, TableStatusMeta> = {
     mark: "#d97706",
     chipClass: "bg-[#fdf3e2] text-[#92400e]",
     dotClass: "bg-[#d97706]",
-    stripeClass: "before:bg-[#d97706]",
+    tileClass: "border-[#f3d9a8] bg-[#fdf3e2]",
+    textClass: "text-[#92400e]",
     borderClass: "border-[#f3d9a8]",
   },
 };

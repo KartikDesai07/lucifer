@@ -1125,12 +1125,14 @@ test("PIN §7 PH-10b: the self-order alerts device step names BOTH the Device se
   const step = norm(doc.slice(start, end));
 
   assert.match(step, /\bDevice settings\b/, "the §7 device step must name the Device settings button (beside Refresh on /requests)");
-  assert.match(step, /Settings\s*→\s*Printer setup/, "the §7 device step must name Settings → Printer setup (where the print-host card now lives)");
+  // Re-anchored 2026-10-02: Printer setup left Settings for its own Admin sidebar row above Settings.
+  assert.match(step, /Admin\s*→\s*Printer setup/, "the §7 device step must name Admin → Printer setup (where the print-host card now lives)");
 });
 
-test("PIN: the runbook names the Printer setup page under Settings at EVERY occurrence (CB-UI1 renamed the sidebar label to match the page title) — a partial rename would leave an operator hunting for a 'Printing' entry that no longer exists", () => {
-  const renamed = doc.match(/Settings\s*→\s*Printer setup/g) ?? [];
-  assert.ok(renamed.length >= 3, `the runbook must say Settings → Printer setup at least 3 times (found ${renamed.length})`);
+test("PIN: the runbook names the Printer setup page under Admin at EVERY occurrence (CB-UI1 renamed the sidebar label to match the page title; it left Settings 2026-10-02) — a partial rename would leave an operator hunting for a 'Printing' entry that no longer exists", () => {
+  const renamed = doc.match(/Admin\s*→\s*Printer setup/g) ?? [];
+  assert.ok(renamed.length >= 3, `the runbook must say Admin → Printer setup at least 3 times (found ${renamed.length})`);
+  assert.doesNotMatch(doc, /Settings\s*→\s*Printer setup/, "Printer setup is no longer under Settings");
   assert.doesNotMatch(doc, /Settings\s*→\s*Printing\b/, "no stale 'Settings → Printing' path may remain");
   assert.doesNotMatch(doc, /Settings\s*→\s*Integrations\b/, "the Integrations tab is now the Notifications page");
 });
@@ -1347,16 +1349,16 @@ test("PIN §6: the doc names prices, item add/edit, archive/restore, CSV import,
   );
 });
 
-test("PIN §6: the doc's role summary lists Categories, Tables Setup and Tables QR codes alongside Staff, Reports and Settings as blocked for staff — the same six routes ADMIN_ROUTES names", () => {
+test("PIN §6: the doc's role summary lists Categories, Tables Setup, Tables QR codes and Printer setup alongside Staff, Reports and Settings as blocked for staff — the same seven routes ADMIN_ROUTES names", () => {
   const section = sectionSlice("## §6 Staff accounts").replace(/\s+/g, " ");
   assert.match(
     section,
-    /Staff, Reports, Settings, Categories, Tables Setup and Tables QR codes are blocked/i,
-    "§6's role summary must list all six ADMIN_ROUTES screens by name",
+    /Staff, Reports, Printer setup, Settings, Categories, Tables Setup and Tables QR codes are blocked/i,
+    "§6's role summary must list all seven ADMIN_ROUTES screens by name",
   );
   assert.deepEqual(
     [...ADMIN_ROUTES].sort(),
-    ["/categories", "/reports", "/settings", "/staff", "/tables/qr", "/tables/setup"],
-    "ADMIN_ROUTES must still be exactly these six routes for the doc's role summary to stay true",
+    ["/categories", "/printers", "/reports", "/settings", "/staff", "/tables/qr", "/tables/setup"],
+    "ADMIN_ROUTES must still be exactly these seven routes for the doc's role summary to stay true",
   );
 });

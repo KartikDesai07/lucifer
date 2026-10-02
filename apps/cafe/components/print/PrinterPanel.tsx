@@ -16,7 +16,7 @@ const CHECKING_DOT: PrinterDot & { show: true } = { show: true, ok: false, reaso
 
 // The printer panel: what the printer is doing right now (the banner), then
 // everything to change it (the setup card). One panel in two homes: the top-bar
-// sheet (with a Done button) and /settings/printing (inline, no Done). It reads
+// sheet (with a Done button) and /printers (inline, no Done). It reads
 // the pulse for the printing device's name, which only lives there — the
 // deliberate extra reader of the pulse; it mounts only where the panel is open,
 // never in the POS screen's render path.
@@ -42,7 +42,7 @@ export function PrinterPanel({ onDone }: { onDone?: () => void }) {
   });
 
   // data-printer-panel scopes the banner's focus targets to THIS panel (the
-  // sheet and /settings/printing can both be mounted at once).
+  // sheet and /printers can both be mounted at once).
   return (
     <div data-printer-panel className="space-y-4">
       <PrinterStatusBanner dot={dot.show ? dot : CHECKING_DOT} copy={copy} />

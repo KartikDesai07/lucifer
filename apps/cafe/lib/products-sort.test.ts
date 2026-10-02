@@ -128,7 +128,7 @@ test("alert-bar-scope: every other screen renders none of it — including the p
     "/products",
     "/reports",
     "/settings",
-    "/settings/printing",
+    "/printers",
     "/pos",
     "/requests",
     "/orders",

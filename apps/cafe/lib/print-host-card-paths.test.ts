@@ -1,6 +1,6 @@
 // Print-host plan (.claude/plan/v2/print-host-plan.md §B7, slice PH-7) — RAW
 // source-text pins over the print-host CARD tree: reachability from
-// /settings/printing, the design-review MERGED-13 ban on a component-owned
+// /printers, the design-review MERGED-13 ban on a component-owned
 // print trigger, the A-16/§B7 attestation call contract, the busy-gate/
 // never-queue rule, MERGED-17 clear-host (device-agnostic, UA-independent),
 // A-13's disabled auto-print toggle, line budgets + hygiene, and the dark-
@@ -47,7 +47,7 @@ const DEVICE_ALERT_SETTINGS = "apps/cafe/components/orders/DeviceAlertSettings.t
 const DEVICE_ALERT_SETTINGS_DIALOG = "apps/cafe/components/orders/DeviceAlertSettingsDialog.tsx";
 const SETTINGS_FIELDS = "apps/cafe/components/settings/SettingsFields.tsx";
 const PRINT_HOST_LIB = "apps/cafe/lib/print-host.ts";
-const PRINTING_PAGE = "apps/cafe/app/(dashboard)/settings/printing/page.tsx";
+const PRINTING_PAGE = "apps/cafe/app/(dashboard)/printers/page.tsx";
 const REQUESTS_PAGE = "apps/cafe/app/(dashboard)/requests/page.tsx";
 
 // 2026-10-02 (printer panel, W5b): the card is now one piece of a panel, so the
@@ -69,7 +69,7 @@ const CARD_FILES = [CARD_TSX, PARTS_TSX, ...PANEL_FILES];
 
 // ── (a) Reachability ─────────────────────────────────────────────────────
 
-test("PIN (a): requests/page.tsx imports { DeviceAlertSettingsDialog } from @/components/orders/DeviceAlertSettingsDialog and renders <DeviceAlertSettingsDialog />; that dialog imports { DeviceAlertSettings } and renders <DeviceAlertSettings /> and imports Dialog/DialogContent from @/components/ui/dialog (2-hop reachability); requests/page.tsx contains NO PrinterSetupCard (that card lives on /settings/printing)", () => {
+test("PIN (a): requests/page.tsx imports { DeviceAlertSettingsDialog } from @/components/orders/DeviceAlertSettingsDialog and renders <DeviceAlertSettingsDialog />; that dialog imports { DeviceAlertSettings } and renders <DeviceAlertSettings /> and imports Dialog/DialogContent from @/components/ui/dialog (2-hop reachability); requests/page.tsx contains NO PrinterSetupCard (that card lives on /printers)", () => {
   const src = readSrc(REQUESTS_PAGE);
 
   assert.match(
@@ -94,7 +94,7 @@ test("PIN (a): requests/page.tsx imports { DeviceAlertSettingsDialog } from @/co
 
   // Negative pin: requests/page.tsx must NOT reference PrinterSetupCard
   // (needle built by concatenation so this file never carries the literal it
-  // bans). Positive landmark for this pin's own vision: settings/printing/
+  // bans). Positive landmark for this pin's own vision: printers/
   // page.tsx really does import+render PrinterSetupCard — so an accidentally-
   // blinded readSrc couldn't vacuously pass the negative half.
   // RE-POINTED 2026-10-02 (printer panel, W5b): the page now renders
@@ -103,16 +103,16 @@ test("PIN (a): requests/page.tsx imports { DeviceAlertSettingsDialog } from @/co
   const printerSetupCardNeedle = "PrinterSetup" + "Card";
   assert.ok(
     !src.includes(printerSetupCardNeedle),
-    `requests/page.tsx must NOT reference ${printerSetupCardNeedle} — that card lives on /settings/printing`,
+    `requests/page.tsx must NOT reference ${printerSetupCardNeedle} — that card lives on /printers`,
   );
 
   const printingSrc = readSrc(PRINTING_PAGE);
   assert.match(
     printingSrc,
     /import\s*\{\s*PrinterPanel\s*\}\s*from\s*"@\/components\/print\/PrinterPanel"/,
-    "positive landmark: settings/printing/page.tsx must import { PrinterPanel } from @/components/print/PrinterPanel",
+    "positive landmark: printers/page.tsx must import { PrinterPanel } from @/components/print/PrinterPanel",
   );
-  assert.match(printingSrc, /<PrinterPanel\s*\/>/, "positive landmark: settings/printing/page.tsx must render <PrinterPanel />");
+  assert.match(printingSrc, /<PrinterPanel\s*\/>/, "positive landmark: printers/page.tsx must render <PrinterPanel />");
   const panelSrc = readSrc(PRINTER_PANEL_TSX);
   assert.match(
     panelSrc,

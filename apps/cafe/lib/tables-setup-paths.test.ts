@@ -210,15 +210,17 @@ test("PIN: the Setup and QR pages are wrapped in <AdminGuard> (the second layer 
 // ── 7. sidebar group ────────────────────────────────────────────────────────
 
 function checkTablesGroup(src: string): void {
-  assert.match(src, /import\s*\{[^}]*\bTABLE_SECTIONS\b[^}]*\}\s*from\s*"@\/lib\/table-sections"/, "the group imports TABLE_SECTIONS");
-  assert.match(src, /TABLE_SECTIONS\.filter\(/, "the sub-rows are built from TABLE_SECTIONS, filtered to what the role sees");
+  assert.match(src, /import\s*\{[^}]*\bTABLES_MANAGE_SECTIONS\b[^}]*\}\s*from\s*"@\/lib\/table-sections"/, "the group imports TABLES_MANAGE_SECTIONS");
+  // Re-anchored 2026-10-02: the drop-down holds only Setup + QR (the Floor is its own sidebar row), so no role filter.
+  assert.match(src, /TABLES_MANAGE_SECTIONS\.map\(/, "the sub-rows are built from TABLES_MANAGE_SECTIONS (Setup + QR codes only)");
   assert.match(src, /const active = isTableSectionActive\(pathname, section\.href\);/, "each sub-row's flag comes from isTableSectionActive (Floor is an exact match)");
   assert.match(src, /isActive=\{active\}/, "each sub-row lights from its own `active` flag");
   assert.match(src, /aria-current=\{active \? "page" : undefined\}/, "and announces it with aria-current");
-  const branchAt = src.indexOf("if (collapsed || sections.length <= 1)");
-  assert.ok(branchAt >= 0, "landmark: the collapsed / single-section branch exists");
+  const branchAt = src.indexOf("if (collapsed) {");
+  assert.ok(branchAt >= 0, "landmark: the collapsed branch exists");
   const branch = src.slice(branchAt, src.indexOf("\n  }\n", branchAt));
-  assert.ok(branch.includes("isActive={onTables}"), "the plain Link lights on ANY Tables page (isActive={onTables})");
+  assert.ok(branch.includes("isActive={onManage}"), "the plain Link lights on ANY manage page (isActive={onManage}), never on the Floor");
+  assert.ok(branch.includes("href={TABLES_SETUP_PATH}"), "the collapsed Link points at Setup (the Floor has its own row)");
 }
 
 test("PIN: the Tables sidebar group renders from TABLE_SECTIONS, lights and announces each sub-row, and the collapsed Link lights on any Tables page", () => {
@@ -227,9 +229,9 @@ test("PIN: the Tables sidebar group renders from TABLE_SECTIONS, lights and anno
 
 test("PIN: AppSidebar renders <SidebarTablesGroup for the /tables entry", () => {
   const app = readSrc(APP_SIDEBAR);
-  const caseAt = app.indexOf('case "/tables":');
+  const caseAt = app.indexOf('case "/tables/setup":');
   const renderAt = app.indexOf("<SidebarTablesGroup");
-  assert.ok(caseAt >= 0 && renderAt > caseAt, 'a case "/tables": precedes the group render');
+  assert.ok(caseAt >= 0 && renderAt > caseAt, 'a case "/tables/setup": precedes the group render');
   assert.equal(count(app, "<SidebarTablesGroup"), 1, "the group is rendered once");
 });
 
@@ -277,9 +279,10 @@ test("MUTATION: the source pins fail on broken copies of the files this slice ow
   );
 
   const group = readSrc(TABLES_GROUP);
-  assert.throws(() => checkTablesGroup(mutate(group, "isActive={onTables}", "isActive={exact}")), /isActive=\{onTables\}/);
+  assert.throws(() => checkTablesGroup(mutate(group, "isActive={onManage}", "isActive={exact}")), /isActive=\{onManage\}/);
+  assert.throws(() => checkTablesGroup(mutate(group, "href={TABLES_SETUP_PATH}", "href={TABLES_FLOOR_PATH}")), /Floor has its own row/);
   assert.throws(() => checkTablesGroup(mutate(group, 'aria-current={active ? "page" : undefined}', "")), /aria-current/);
-  assert.throws(() => checkTablesGroup(mutate(group, "TABLE_SECTIONS.filter(", "[].filter(")), /filtered to what the role sees/);
+  assert.throws(() => checkTablesGroup(mutate(group, "TABLES_MANAGE_SECTIONS.map(", "[].map(")), /Setup \+ QR codes only/);
 
   const setup = readSrc(SETUP_PAGE);
   assert.throws(() => checkAdminGuarded(mutate(setup, "<AdminGuard>", "<div>")), /<AdminGuard> once/);

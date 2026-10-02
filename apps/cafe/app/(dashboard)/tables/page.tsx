@@ -40,9 +40,10 @@ import { FloorLiveIndicator } from "@/components/tables/FloorLiveIndicator";
 import { FloorStatusChips } from "@/components/tables/FloorStatusChips";
 import { FloorTile } from "@/components/tables/FloorTile";
 
-// Loading shape only: a cafe's real table count is dynamic.
+// Loading shape only: a cafe's real table count is dynamic. Same size and corner
+// as a tile, so the grid does not jump when the tables arrive.
 const SKELETON_TILES = 8;
-const SKELETON_TILE_CLASS = "h-28 w-full rounded-xl";
+const SKELETON_TILE_CLASS = "h-28 w-full rounded-lg";
 
 export default function TablesPage() {
   return (
@@ -129,7 +130,7 @@ function FloorContent() {
   if (tables.isError && tables.data === undefined) {
     return (
       <div className="space-y-4">
-        <PageHeader eyebrow="Tables" title="Floor" />
+        <PageHeader eyebrow="Service" title="Floor" />
         <ErrorState
           title="Couldn't load the floor"
           description="Check the internet connection, then try again."
@@ -159,7 +160,7 @@ function FloorContent() {
   return (
     <div className="space-y-4">
       <PageHeader
-        eyebrow="Tables"
+        eyebrow="Service"
         title="Floor"
         description={list ? floorSummaryText(tiles, tabsKnown) : "Loading tables…"}
       />

@@ -11,12 +11,16 @@ interface FloorStatusChipsProps {
   onChange: (next: FloorFilter) => void;
 }
 
-// State-count chips: they filter the grid AND are the colour legend (each dot is
-// the tile's stripe colour, each label its status text). They WRAP onto a second
-// line on a narrow phone — a sideways-scrolling chip row hides the last state.
+// State-count filters: they filter the grid AND are the colour legend (each
+// swatch is the status colour, each label its status text). They WRAP onto a
+// second line on a narrow phone — a sideways-scrolling row hides the last state.
+// One selected style for every filter, All included.
 const CHIP_ORDER: readonly TableStatus[] = ["Occupied", "Available", "Reserved"];
 const CHIP_BASE =
-  "inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent";
+  "inline-flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm text-brand-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent";
+const CHIP_IDLE = "border-brand-rule bg-brand-slip hover:bg-brand-wash";
+const CHIP_SELECTED = "border-brand-primary bg-brand-primary-soft font-semibold";
+const COUNT_CLASS = "tabular-nums text-brand-muted";
 
 export function FloorStatusChips({ counts, value, onChange }: FloorStatusChipsProps) {
   return (
@@ -25,14 +29,9 @@ export function FloorStatusChips({ counts, value, onChange }: FloorStatusChipsPr
         type="button"
         aria-pressed={value === "all"}
         onClick={() => onChange("all")}
-        className={cn(
-          CHIP_BASE,
-          value === "all"
-            ? "border-brand-primary bg-brand-primary font-semibold text-white"
-            : "border-brand-rule bg-brand-slip text-brand-ink hover:bg-brand-wash",
-        )}
+        className={cn(CHIP_BASE, value === "all" ? CHIP_SELECTED : CHIP_IDLE)}
       >
-        All <span className="font-semibold tabular-nums">{counts.all}</span>
+        All <span className={COUNT_CLASS}>{counts.all}</span>
       </button>
       {CHIP_ORDER.map((status) => {
         const meta = TABLE_STATUS_META[status];
@@ -43,15 +42,10 @@ export function FloorStatusChips({ counts, value, onChange }: FloorStatusChipsPr
             type="button"
             aria-pressed={selected}
             onClick={() => onChange(status)}
-            className={cn(
-              CHIP_BASE,
-              selected
-                ? "border-brand-primary bg-brand-primary-soft font-semibold text-brand-ink"
-                : "border-brand-rule bg-brand-slip text-brand-ink hover:bg-brand-wash",
-            )}
+            className={cn(CHIP_BASE, selected ? CHIP_SELECTED : CHIP_IDLE)}
           >
-            <span className={cn("h-2 w-2 shrink-0 rounded-full", meta.dotClass)} aria-hidden />
-            {meta.label} <span className="font-semibold tabular-nums">{counts[status]}</span>
+            <span className={cn("h-2.5 w-2.5 shrink-0 rounded-[3px]", meta.dotClass)} aria-hidden />
+            {meta.label} <span className={COUNT_CLASS}>{counts[status]}</span>
           </button>
         );
       })}

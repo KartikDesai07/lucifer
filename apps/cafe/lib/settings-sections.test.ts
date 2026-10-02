@@ -42,8 +42,18 @@ test("PIN: SETTINGS_SECTIONS is non-empty and every slug is unique", () => {
 });
 
 test("PIN: settingsSectionPath builds /settings/<slug>", () => {
-  assert.equal(settingsSectionPath("printing"), "/settings/printing");
+  assert.equal(settingsSectionPath("taxes"), "/settings/taxes");
   assert.equal(settingsSectionPath("business"), "/settings/business");
+});
+
+// 2026-10-02: Printer setup moved out of Settings to its own /printers page
+// (sidebar row above Settings), so no Settings section may list it again.
+test("PIN: Printer setup is not a Settings section any more (it lives at /printers)", () => {
+  assert.ok(SETTINGS_SECTIONS.length > 0, "landmark: the curated list is not empty");
+  assert.ok(
+    SETTINGS_SECTIONS.every((s) => (s.slug as string) !== "printing" && s.title !== "Printer setup"),
+    "no printing slug or Printer setup title among the Settings sections",
+  );
 });
 
 test("PIN: pickSectionValues returns ONLY the section's own keys and ignores an inherited prototype key", () => {

@@ -559,7 +559,7 @@ test("PIN: pos/page.tsx no longer renders the order-request tray (owner request 
   }
 });
 
-test('PIN: AppSidebar declares an "Order Requests" nav entry directly after "New Order", pointing at /requests, and renders <RequestCountBadge /> beside it — the sidebar entry is the ONLY way in now that the POS button is gone', () => {
+test('PIN: AppSidebar declares an "Order Requests" nav entry after "New Order" (Orders, then Floor), pointing at /requests, and renders <RequestCountBadge /> beside it — the sidebar entry is the ONLY way in now that the POS button is gone', () => {
   const src = stripComments(readSrc(APP_SIDEBAR));
   const newOrderIdx = mustIndexOf(
     src,
@@ -577,12 +577,16 @@ test('PIN: AppSidebar declares an "Order Requests" nav entry directly after "New
   const orders = entryAfter(newOrderIdx);
   assert.match(orders.text, /title:\s*"Orders"/, 'the entry directly after "New Order" must be "Orders"');
   assert.match(orders.text, /url:\s*"\/orders"/);
-  const nextEntry = entryAfter(orders.at).text;
+  // Owner decision 2026-10-02: the Floor sits right under New Order and Orders,
+  // so Order Requests is now the row after the Floor (still the fourth service row).
+  const floor = entryAfter(orders.at);
+  assert.match(floor.text, /title:\s*"Floor"/, 'the entry directly after "Orders" must be "Floor"');
+  const nextEntry = entryAfter(floor.at).text;
   // Mutation this catches: the requests entry landing anywhere else in the list.
   assert.match(
     nextEntry,
     /title:\s*"Order Requests"/,
-    'the entry directly after "Orders" must be titled "Order Requests"',
+    'the entry directly after "Floor" must be titled "Order Requests"',
   );
   assert.match(nextEntry, /url:\s*"\/requests"/, 'the "Order Requests" entry must link to /requests');
 

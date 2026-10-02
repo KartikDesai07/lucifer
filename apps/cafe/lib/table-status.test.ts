@@ -5,6 +5,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import { TABLE_LONG_STAY_DEFAULT_MINUTES, TABLE_STATUSES } from "@/lib/constants";
 import { TABLE_STATUS_META, isFreeTable, longStayMinutesOf } from "@/lib/table-status";
@@ -50,7 +52,10 @@ test("class strings are built from the pinned hex values", () => {
     assert.ok(m.chipClass.includes(`bg-[${m.bg}]`), `${status} chipClass lacks bg-[${m.bg}]: ${m.chipClass}`);
     assert.ok(m.chipClass.includes(`text-[${m.fg}]`), `${status} chipClass lacks text-[${m.fg}]: ${m.chipClass}`);
     assert.ok(m.dotClass.includes(m.mark), `${status} dotClass lacks mark ${m.mark}`);
-    assert.ok(m.stripeClass.includes(m.mark), `${status} stripeClass lacks mark ${m.mark}`);
+    // Floor redesign (2026-10-02): the tile is tinted with the chip colours instead of a stripe.
+    assert.ok(m.tileClass.includes(`bg-[${m.bg}]`), `${status} tileClass lacks bg-[${m.bg}]: ${m.tileClass}`);
+    assert.ok(m.tileClass.includes(m.borderClass), `${status} tileClass lacks its border ${m.borderClass}`);
+    assert.equal(m.textClass, `text-[${m.fg}]`, `${status} textClass must be its fg colour`);
     assert.ok(m.borderClass.length > 0);
   }
 });
@@ -68,6 +73,27 @@ test("contrast: fg on bg is at least 4.5:1 and the mark against white at least 3
     assert.ok(contrast(m.fg, m.bg) >= TEXT_MIN, `${status} chip text ${m.fg} on ${m.bg} = ${contrast(m.fg, m.bg).toFixed(2)}`);
     assert.ok(contrast(m.mark, WHITE) >= NON_TEXT_MIN, `${status} mark ${m.mark} on white = ${contrast(m.mark, WHITE).toFixed(2)}`);
   }
+});
+
+// The live floor tile prints the brand ink (table, bill, action), the brand muted text (seats, items, stay time) and,
+// on an Occupied tile only, the brand danger colour ("Free table") straight onto the status tint.
+test("contrast: every text colour the floor tile prints stays readable on its status tint", () => {
+  const css = readFileSync(fileURLToPath(new URL("../app/globals.css", import.meta.url)), "utf8");
+  const token = (name: string): string => {
+    const value = css.match(new RegExp(`--${name}:\\s*(#[0-9a-f]{6});`, "i"))?.[1];
+    assert.ok(value, `--${name} must be a 6-digit hex in app/globals.css`);
+    return value;
+  };
+  const ink = token("brand-ink");
+  const muted = token("brand-muted");
+  const danger = token("brand-danger");
+  for (const status of TABLE_STATUSES) {
+    const { bg } = TABLE_STATUS_META[status];
+    assert.ok(contrast(ink, bg) >= TEXT_MIN, `${status}: ink ${ink} on ${bg} = ${contrast(ink, bg).toFixed(2)}`);
+    assert.ok(contrast(muted, bg) >= TEXT_MIN, `${status}: muted ${muted} on ${bg} = ${contrast(muted, bg).toFixed(2)}`);
+  }
+  const occupied = TABLE_STATUS_META.Occupied.bg;
+  assert.ok(contrast(danger, occupied) >= TEXT_MIN, `danger ${danger} on ${occupied} = ${contrast(danger, occupied).toFixed(2)}`);
 });
 
 test("longStayMinutesOf: missing settings / absent key / out-of-range / non-integer fall back to the default", () => {

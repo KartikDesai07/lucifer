@@ -131,7 +131,11 @@ const nextConfig: NextConfig = {
   // anything renders: a redirect() thrown by a page under the client-rendered
   // reports layout streamed a blank 200 instead (measured 2026-09-29).
   async redirects() {
-    return [{ source: "/reports", destination: "/reports/sales", permanent: false }];
+    return [
+      { source: "/reports", destination: "/reports/sales", permanent: false },
+      // Printer setup left Settings (owner, 2026-10-02): old bookmarks keep working.
+      { source: "/settings/printing", destination: "/printers", permanent: false },
+    ];
   },
 };
 

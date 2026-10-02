@@ -170,7 +170,9 @@ export type TableStatus = (typeof TABLE_STATUSES)[number];
 // with the Menu redesign (owner, 2026-09-30: staff may only mark items in /
 // out of stock; categories are admin-only). "/tables/setup" + "/tables/qr"
 // joined with the Tables redesign (owner, 2026-09-30: staff see only the live
-// floor at "/tables", which stays open to every role).
+// floor at "/tables", which stays open to every role). "/printers" joined
+// when Printer setup moved out of Settings into its own admin row (owner,
+// 2026-10-02) — it was admin-only inside Settings, so it stays so.
 export const ADMIN_ROUTES = [
   "/staff",
   "/reports",
@@ -178,6 +180,7 @@ export const ADMIN_ROUTES = [
   "/categories",
   "/tables/setup",
   "/tables/qr",
+  "/printers",
 ] as const;
 
 // Tables redesign (2026-09-30). An occupied table whose open bill is at least

@@ -520,12 +520,12 @@ Two routes: type it in, or import a CSV. For more than ~30 items, import.
 - [ ] Add staff: *Name*, *Mobile* (≥10 digits), *Username* (≥3 characters,
       stored lowercase), *Role*, *Password* (≥8 characters).
 - [ ] Roles understood:
-      - **admin** — everything, including Staff, Reports, Settings,
+      - **admin** — everything, including Staff, Reports, Printer setup, Settings,
         Categories, Tables Setup and Tables QR codes.
       - **staff** — everything else: POS, orders, tables (the live floor only),
         customers, reservations, events, **and the Items screen (Menu → Items)**
         — but on Items, staff can only mark an item In stock / Out of stock.
-        Staff, Reports, Settings, Categories, Tables Setup and Tables QR codes are
+        Staff, Reports, Printer setup, Settings, Categories, Tables Setup and Tables QR codes are
         blocked (they get redirected, not just hidden).
 - [ ] The client knows what a **staff** account can still do — and, just as
       important this session, what changed: **staff can now only mark an item
@@ -608,7 +608,7 @@ another program is in front.
       example `https://your-pos.example.com`) and choose **Use this address**.
 - [ ] Log in once as a real staff account. The sign-in lasts 30 days and renews
       with use, so the PC stays signed in.
-- [ ] **Settings → Printer setup** → **Use this PC** (this PC becomes the print
+- [ ] **Admin → Printer setup** → **Use this PC** (this PC becomes the print
       host), then pick the thermal printer under **Printer for this PC**, then
       **Test print**. The card must confirm silent printing is on. If nothing
       comes out, no printer was picked, or a file-saving device (Microsoft
@@ -703,7 +703,7 @@ Tick a box only after **looking at the paper**.
 Diners can self-order from the QR menu; the counter is alerted to a new
 request, and an accepted self-order's kitchen ticket can print without a
 tap. How it prints depends on whether a print host is set
-(**Settings → Printer setup** → the **Print host** card).
+(**Admin → Printer setup** → the **Print host** card).
 
 - [ ] **With a print host set**: the host PC prints every slip — KOTs,
       bills, void/moved slips, end of day — from ANY dashboard screen it has
@@ -1074,7 +1074,7 @@ intentionally not duplicated into the §A table below.
 
 - [ ] URL, admin username, and confirmation the password was changed by them.
 - [ ] The five-minute guide: **Settings → Staff → Menu (form or CSV)**.
-- [ ] Printer configuration written down: **which PC is the print host, and which printer is chosen on it** (Settings → Printer setup), plus the paper size. A fresh Windows profile loses the printer choice.
+- [ ] Printer configuration written down: **which PC is the print host, and which printer is chosen on it** (Admin → Printer setup), plus the paper size. A fresh Windows profile loses the printer choice.
 - [ ] Support boundary agreed, and what to send when something breaks:
       screenshot, order id, and the time.
 - [ ] Accepted platform realities stated plainly: hosting is on a free
@@ -1157,7 +1157,7 @@ the test fails — fix the code or this file, never just this file.
 | Username minimum | 3 | `createStaffSchema` |
 | Mobile minimum | 10 | `createStaffSchema` |
 | Customer mobile mask (staff, non-admin) | first 5 chars shown, rest `*` — `9876543210` → `98765*****` | `MOBILE_VISIBLE_PREFIX` / `MOBILE_MASK_CHAR` |
-| Admin-only screens | `/staff`, `/reports`, `/settings`, `/categories`, `/tables/setup`, `/tables/qr` | `ADMIN_ROUTES` |
+| Admin-only screens | `/staff`, `/reports`, `/settings`, `/categories`, `/tables/setup`, `/tables/qr`, `/printers` | `ADMIN_ROUTES` |
 | Slugs that never resolve to a cafe | www, app, api, admin, hub | `RESERVED_SUBDOMAINS` |
 | Dues receipt modes | Cash, Online | `DUES_RECEIPT_MODES` |
 | GST rate quick picks | 0, 5, 12, 18, 28 | `GST_RATES` |

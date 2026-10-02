@@ -1,5 +1,5 @@
 // Printer panel (04-web-plan.md slice W5b) — RAW source pins over the panel, its
-// setup sections and the /settings/printing page: the panel reads the pulse and
+// setup sections and the /printers page: the panel reads the pulse and
 // shows the banner BEFORE the card, the ids/data-action the banner focuses, the
 // click-handler call sites of connectNew/reconnect (the chooser must be the
 // first await, so the call is made by the click itself), the page has no own
@@ -34,7 +34,7 @@ const F = {
   picker: `${PRINT}DesktopPrinterPicker.tsx`,
   slip: `${PRINT}PrintHostTestSlip.tsx`,
   classes: `${PRINT}printer-classes.ts`,
-  page: `${SETTINGS}printing/page.tsx`,
+  page: "apps/cafe/app/(dashboard)/printers/page.tsx",
   hub: `${SETTINGS}page.tsx`,
   layout: `${SETTINGS}layout.tsx`,
   sections: "apps/cafe/lib/settings-sections.ts",
@@ -163,24 +163,35 @@ const cardPin: Pin = (raw) => {
   return p;
 };
 
+// 2026-10-02: Printer setup left Settings for /printers, so the page now guards
+// itself (AdminGuard outside, brand shell inside — the Staff page's idiom) and
+// uses the shared PageHeader, not the settings header with its "Settings" back link.
 const pagePin: Pin = (raw) => {
   const p: string[] = [];
   const code = stripComments(raw);
-  const guard = "Admin" + "Guard";
-  check(p, !raw.includes(guard), "the page has no guard of its own (settings/layout.tsx guards)");
+  const guard = code.indexOf("<AdminGuard>");
+  const shell = code.indexOf("<MenuPageShell>");
+  check(p, guard >= 0 && shell > guard, "the page guards itself: <AdminGuard> wraps <MenuPageShell> (no settings layout above it any more)");
+  check(p, code.split("<AdminGuard>").length - 1 === 1, "the page renders <AdminGuard> once");
+  check(p, code.includes('from "@/components/shared/AdminGuard"'), "the guard is the shared AdminGuard, not a local stand-in");
   check(p, !raw.includes("max-w-" + "2xl"), "the page is not the narrow column");
-  check(p, code.includes("max-w-3xl") && code.includes("<PrinterPanel />") && code.includes("<SettingsPageHeader"), "positive landmarks: section-page width, the panel, the shared header");
+  check(p, !code.includes("SettingsPageHeader"), "no settings header (its back link points at Settings)");
+  check(p, code.includes("max-w-3xl") && code.includes("<PrinterPanel />") && code.includes("<PageHeader") && code.includes('eyebrow="Admin"'), "positive landmarks: section-page width, the panel, the shared header under the Admin eyebrow");
   check(p, code.includes(`description="${PRINTING_DESCRIPTION}"`) && code.includes('title="Printer setup"'), "title and description");
   return p;
 };
 const layoutPin: Pin = (raw) => {
   const p: string[] = [];
-  check(p, /<AdminGuard>[\s\S]*\{children\}[\s\S]*<\/AdminGuard>/.test(stripComments(raw)), "settings/layout.tsx still guards every child (the page relies on it)");
+  check(p, /<AdminGuard>[\s\S]*\{children\}[\s\S]*<\/AdminGuard>/.test(stripComments(raw)), "settings/layout.tsx still guards every settings child");
   return p;
 };
-const copyPin: Pin = (raw) => {
+// The Settings hub and section list no longer carry Printer setup at all (it is
+// the /printers page now); only the old shortcut copy ban is kept for them.
+const goneFromSettingsPin: Pin = (raw) => {
   const p: string[] = [];
-  check(p, raw.includes(PRINTING_DESCRIPTION), "carries the new Printer setup description");
+  const code = stripComments(raw);
+  check(p, code.length > 0, "landmark: the file has code to scan");
+  check(p, !code.includes(PRINTING_DESCRIPTION) && !code.includes("Printer " + "setup"), "no Printer setup entry or copy left in Settings");
   check(p, !raw.includes("POS Printer " + "shortcut"), "no stale 'POS Printer shortcut' copy");
   return p;
 };
@@ -288,14 +299,24 @@ const CASES: PinCase[] = [
     mut("label no longer typed-first", "label ?? (lane", "(lane"),
   ] },
   { file: F.page, pin: pagePin, mutations: [
-    append("an own guard", "const x = <" + "Admin" + "Guard />;"),
+    mut("guard removed", "<AdminGuard>", "<div>"),
+    mut("guard swapped for a local stand-in", 'import { AdminGuard } from "@/components/shared/AdminGuard";', "const AdminGuard = ({ children }: { children: ReactNode }) => children;"),
+    mut("guard rendered twice", "<AdminGuard>", "<AdminGuard><AdminGuard>"),
+    mut("the settings header back", "<PageHeader", "<SettingsPageHeader"),
+    mut("eyebrow changed", 'eyebrow="Admin"', 'eyebrow="Settings"'),
     mut("narrow column back", "max-w-3xl", "max-w-" + "2xl"),
     mut("the card instead of the panel", "<PrinterPanel />", "<PrinterSetupCard />"),
     mut("stale description", PRINTING_DESCRIPTION, "Choose the PC that prints."),
   ] },
   { file: F.layout, pin: layoutPin, mutations: [mut("guard removed", "<AdminGuard>", "<div>")] },
-  { file: F.hub, pin: copyPin, mutations: [mut("stale copy back", PRINTING_DESCRIPTION, "Make this PC the print host and install the POS Printer " + "shortcut.")] },
-  { file: F.sections, pin: copyPin, mutations: [mut("stale copy back", PRINTING_DESCRIPTION, "Install the POS Printer " + "shortcut.")] },
+  { file: F.hub, pin: goneFromSettingsPin, mutations: [
+    append("the card back", 'const CARD = "Printer ' + 'setup";'),
+    append("stale shortcut copy", 'const COPY = "Install the POS Printer ' + 'shortcut.";'),
+  ] },
+  { file: F.sections, pin: goneFromSettingsPin, mutations: [
+    append("the entry back", 'const E = { title: "Printer ' + 'setup" };'),
+    append("the description back", "const D = \"" + PRINTING_DESCRIPTION + "\";"),
+  ] },
   { file: F.picker, pin: pickerPin, mutations: [
     mut("small select back", "h-11 w-full max-w-sm", "h-9 w-full max-w-sm"),
     mut("select unnamed", 'aria-label="Printer"', ""),

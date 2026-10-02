@@ -2,7 +2,7 @@
 
 import type { MouseEvent, ReactNode } from "react";
 import Link from "next/link";
-import { Clock, Loader2 } from "lucide-react";
+import { ChevronRight, Clock, Loader2 } from "lucide-react";
 
 import { cn, formatTime, inr } from "@/lib/utils";
 import { FLOOR_POS_PATH, FLOOR_PRIMARY_LABEL, formatStayMinutes, type FloorMenuAction, type FloorTileModel } from "@/lib/floor-tiles";
@@ -22,8 +22,13 @@ interface FloorTileProps {
   onMenu: (tile: FloorTileModel, action: FloorMenuAction) => void;
 }
 
+// A POS table view tile: the status is the tile's own tint and border plus its
+// name in words — one signal, said once (no stripe, no chip). The table number
+// leads, the bill is the one big figure, and the action is a quiet label.
 const TILE_CLASS =
-  "relative flex h-full min-h-28 w-full flex-col overflow-hidden rounded-xl border border-brand-rule bg-brand-slip py-3 pl-4 pr-3 text-left before:absolute before:inset-y-0 before:left-0 before:w-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent";
+  "flex h-full min-h-28 w-full flex-col rounded-lg border p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-offset-1";
+// Only a surface that does something on a tap reacts to the pointer.
+const TAPPABLE_CLASS = "transition-shadow hover:shadow-md active:shadow-none";
 const META_LINE = "block min-h-4 truncate text-xs text-brand-muted";
 
 // The hand-off is offered only for a plain primary click: a middle / modifier
@@ -36,14 +41,14 @@ function offerOnPlainClick(e: MouseEvent<HTMLAnchorElement>, tableNo: string) {
 function TileDetails({ tile, tabsFailed }: { tile: FloorTileModel; tabsFailed: boolean }) {
   const { table, tab } = tile;
   if (table.status === "Occupied") {
-    const stay = <span className="shrink-0 text-xs font-semibold tabular-nums text-brand-muted">{formatStayMinutes(tile.minutesOpen)}</span>;
+    const stay = <span className="shrink-0 text-xs font-medium tabular-nums text-brand-muted">{formatStayMinutes(tile.minutesOpen)}</span>;
     if (tab) {
       return (
         <>
           {/* Wraps rather than clips: a large bill plus a long stay does not fit
               one line of a 2-per-row phone tile, and money is never truncated. */}
-          <span className="mt-1.5 flex min-h-7 flex-wrap items-baseline justify-between gap-x-2">
-            <span className="text-lg font-bold tabular-nums">{inr(tab.total)}</span>
+          <span className="mt-1 flex min-h-7 flex-wrap items-baseline justify-between gap-x-2">
+            <span className="text-xl font-bold leading-7 tabular-nums text-brand-ink">{inr(tab.total)}</span>
             {stay}
           </span>
           <span className={META_LINE}>
@@ -54,9 +59,9 @@ function TileDetails({ tile, tabsFailed }: { tile: FloorTileModel; tabsFailed: b
     }
     return (
       <>
-        <span className="mt-1.5 flex min-h-7 items-center justify-between gap-2">
+        <span className="mt-1 flex min-h-7 items-center justify-between gap-2">
           {tile.tabsKnown ? (
-            <span className="text-sm text-brand-muted">No open bill</span>
+            <span className="text-sm font-medium text-brand-ink">No open bill</span>
           ) : tabsFailed ? (
             <span className="text-sm text-brand-muted">Bill not loaded</span>
           ) : (
@@ -69,19 +74,26 @@ function TileDetails({ tile, tabsFailed }: { tile: FloorTileModel; tabsFailed: b
       </>
     );
   }
+  if (table.status === "Reserved") {
+    // Who the table is held for leads; when, and how many it seats, follow.
+    const { reservation } = tile;
+    return (
+      <>
+        <span className="mt-1 block min-h-7 truncate text-sm font-medium leading-7 text-brand-ink">
+          {reservation ? reservation.name : "Held"}
+        </span>
+        <span className={META_LINE}>
+          {reservation ? `${formatTime(reservation.time)} · ${table.capacity} seats` : `${table.capacity} seats`}
+        </span>
+      </>
+    );
+  }
   const charge = tableChargeOf(table);
-  const reservationLine = tile.reservation ? `${tile.reservation.name} · ${formatTime(tile.reservation.time)}` : "Held";
   return (
     <>
-      <span className="mt-1.5 block min-h-7 text-sm text-brand-muted">{table.capacity} seats</span>
+      <span className="mt-1 block min-h-7 text-sm leading-7 text-brand-muted">{table.capacity} seats</span>
       <span className={META_LINE}>
-        {table.status === "Reserved"
-          ? reservationLine
-          : tab
-            ? `Open bill · ${inr(tab.total)}`
-            : charge.amount > 0
-              ? `${charge.label} ${inr(charge.amount)}`
-              : ""}
+        {tab ? `Open bill · ${inr(tab.total)}` : charge.amount > 0 ? `${charge.label} ${inr(charge.amount)}` : ""}
       </span>
     </>
   );
@@ -97,31 +109,31 @@ export function FloorTile({ tile, busy, tabsFailed, onTap, onMenu }: FloorTilePr
 
   const content = (
     <>
-      <span className={cn("flex min-w-0 items-center gap-2", hasMenu && "pr-10")}>
-        <span className="min-w-0 truncate text-[15px] font-bold" title={table.tableNo}>
+      <span className={cn("flex min-w-0 items-center gap-2", hasMenu && "pr-8")}>
+        <span className="min-w-0 truncate text-base font-bold leading-6 text-brand-ink" title={table.tableNo}>
           {table.tableNo}
         </span>
         {tile.longStay && (
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-brand-wash px-2 py-0.5 text-[11px] font-semibold text-brand-ink">
+          <span className={cn("inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold", meta.textClass)}>
             <Clock className="h-3 w-3" aria-hidden /> Long stay
           </span>
         )}
       </span>
       <TileDetails tile={tile} tabsFailed={tabsFailed} />
-      <span className="mt-auto flex flex-wrap items-center justify-between gap-x-2 gap-y-1 pt-2">
-        <span className={cn("inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold", meta.chipClass)}>
-          <span className={cn("h-1.5 w-1.5 rounded-full", meta.dotClass)} aria-hidden />
-          {meta.label}
-        </span>
-        <span className={cn("inline-flex shrink-0 items-center gap-1 text-sm font-semibold", primary === "free" ? "text-brand-danger" : "text-brand-primary")}>
-          {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
+      {/* Wraps rather than clips: on a 360 px phone "Available" + "New order ›" is 3 px wider than the tile (measured),
+          and the status word is the tile's only text signal — so the action drops to its own line, still on the right. */}
+      <span className="mt-auto flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 pt-2">
+        <span className={cn("min-w-0 truncate text-xs font-semibold", meta.textClass)}>{meta.label}</span>
+        <span className={cn("ml-auto inline-flex shrink-0 items-center text-xs font-medium", primary === "free" ? "text-brand-danger" : "text-brand-ink")}>
+          {busy && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" aria-hidden />}
           {actionLabel}
+          {actionLabel && !busy && <ChevronRight className="h-3.5 w-3.5 text-brand-muted" aria-hidden />}
         </span>
       </span>
     </>
   );
 
-  const className = cn(TILE_CLASS, meta.stripeClass, busy && "opacity-70");
+  const className = cn(TILE_CLASS, meta.tileClass, busy && "opacity-70");
   let surface: ReactNode;
   // While this table's own write (or its open-bill check) runs, the tile is not
   // a target at all: a tap would race the write (e.g. hand a table that is
@@ -134,13 +146,13 @@ export function FloorTile({ tile, busy, tabsFailed, onTap, onMenu }: FloorTilePr
     );
   } else if (primary === "open" || primary === "new-order") {
     surface = (
-      <Link href={FLOOR_POS_PATH} prefetch={false} onClick={(e) => offerOnPlainClick(e, table.tableNo)} className={className}>
+      <Link href={FLOOR_POS_PATH} prefetch={false} onClick={(e) => offerOnPlainClick(e, table.tableNo)} className={cn(className, TAPPABLE_CLASS)}>
         {content}
       </Link>
     );
   } else if (primary === "seat-now" || primary === "free") {
     surface = (
-      <button type="button" onClick={() => onTap(tile)} className={className}>
+      <button type="button" onClick={() => onTap(tile)} className={cn(className, TAPPABLE_CLASS)}>
         {content}
       </button>
     );

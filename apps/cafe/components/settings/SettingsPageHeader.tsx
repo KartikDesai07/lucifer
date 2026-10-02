@@ -9,7 +9,7 @@ interface SettingsPageHeaderProps {
   description: string;
 }
 
-// Shared header for every settings section page (and Printer setup): the
+// Shared header for every settings section page: the
 // page-header idiom of every other screen, with the eyebrow — the sidebar
 // group the page sits in — doubling as the way back to the Settings hub (a
 // phone has no sidebar on screen). py-3 + -my-3 make the link a 40px-tall

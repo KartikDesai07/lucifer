@@ -106,7 +106,7 @@ function RequestsContent() {
       />
 
       {/* PH-10b (owner): the per-device toggles live behind the Device
-          settings button; the Print host card moved to /settings/printing. */}
+          settings button; the Print host card moved to /printers. */}
 
       {refreshFailed && (
         <p role="status" className="text-sm text-destructive">

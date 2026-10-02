@@ -1,5 +1,6 @@
-// Single source of truth for the Settings redesign (CB-UI1): the 7 form
-// sections + Printer setup, their registered fields, and the helpers that
+// Single source of truth for the Settings redesign (CB-UI1): the 8 form
+// sections (Printer setup left Settings for its own /printers page, owner
+// 2026-10-02), their registered fields, and the helpers that
 // route/split/attribute values against them. NO React/lucide import here —
 // this file is imported by node:test suites directly (lib/settings-sections.test.ts)
 // as well as every settings page/hook. Icons live one layer up, in
@@ -16,8 +17,7 @@ export type SettingsSectionSlug =
   | "qr-ordering"
   | "loyalty"
   | "appearance"
-  | "notifications"
-  | "printing";
+  | "notifications";
 
 export interface SettingsSection {
   slug: SettingsSectionSlug;
@@ -27,8 +27,7 @@ export interface SettingsSection {
 }
 
 // Order here is also the hub card order and the sidebar sub-menu order
-// (design contract's routes table, copied verbatim). `printing` is the
-// existing Printer-setup page — it owns no settingsSchema fields of its own.
+// (design contract's routes table, copied verbatim).
 export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   {
     slug: "business",
@@ -136,12 +135,6 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     title: "Notifications",
     description: "Telegram alerts for new QR orders.",
     fields: ["telegramPaused"],
-  },
-  {
-    slug: "printing",
-    title: "Printer setup",
-    description: "Choose where slips print and connect the printer on this device.",
-    fields: [],
   },
 ];
 
