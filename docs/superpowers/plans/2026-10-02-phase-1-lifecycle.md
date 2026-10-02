@@ -32,7 +32,7 @@ Phase 1 is too big for one session. It runs as **five sessions, 1A → 1E**, eac
 | Session | Delivers | Behaviour change for a cafe |
 |---|---|---|
 | **1A (this prompt)** | The lifecycle core, dormant: shared state machine and budget test; `PrintJob` lifecycle fields; the `PrintDevice` model; lease, ack, confirm, retry and wake-POST routes; the sweep (expire, retarget, limits, prune); the live-Mongo legs; the fake ESC/POS printer; the E2E harness bring-up | **None.** No client calls the new routes yet. Jobs enqueued by today's tabs gain lifecycle fields and a `targetDeviceId`, and today's claim path keeps working unchanged. |
-| 1B | Server-side job creation in the order routes (header-gated, so tabs from before Phase 1 never duplicate a slip); the repair sweep; the `print-status` realtime kind (+ Worker parity) | Still none until 1C's clients send the header |
+| 1B | Server-side job creation in the order routes (header-gated, so tabs from before Phase 1 never duplicate a slip); the repair sweep; the `print-status` realtime kind (+ Worker parity). **Exact code at the end of this plan** (written at the 1A review gate) | None until 1C's clients send the header, except that the public auto-accept with a host queues its KOT for the host at once (ruling R4) |
 | 1C | The agent: coded write outcome (`sent: "no" \| "maybe"`), lease/ack loop, pending-ack store, local retry timers, the §9.1 poll cadence and shared cap; the REPRINT/DUPLICATE banner; order call sites hand `printJobs` to the agent | Slips print through lease → write → ack |
 | 1D | Readback (Queued → Printing → Printed / Failed per slip, on `/pos` too), the 20 s alarm, the failed / needs-confirm list on every device, the pulse sweep | Staff see every slip's fate |
 | 1E | The Phase 1 exit scenarios with the fake printer, the 200-order soak, TEST-CHECKLIST, and **the owner's measured free-tier check (§17.3 item 5)** | Release candidate |
@@ -41,7 +41,7 @@ Phase 1 is too big for one session. It runs as **five sessions, 1A → 1E**, eac
 - After each session, the orchestrating review session deep-reviews it.
 - It then writes the next session's exact code into this plan, against the code that actually landed, and commits it before handing over that session's prompt.
 - Sessions 1B–1E below are therefore task specifications with their interfaces, tests and exit checks. Their code blocks are filled in at their gate.
-- Session 1A is complete, exact code.
+- Session 1A is complete, exact code. Session 1B's exact code was written at the 1A review gate and is near the end of this plan, after the 1A review and its rulings.
 
 ---
 
@@ -3835,57 +3835,21 @@ Each session below lists its tasks, the interfaces it must produce, the tests th
 
 ### Session 1B: server-side job creation, repair sweep, `print-status` event
 
-**Gate decisions to confirm first.** The plan's recommendation comes first in each item:
+**Written as exact code at the 1A review gate:** see "Session 1B (exact code, written and pre-validated at the 1A review gate)" near the end of this plan. Its gate decisions are ruled in "1A review gate: rulings". Three of them changed from the recommendations first written here:
+- simple mode keeps today's job keys (R2), not the v2 keys;
+- the repair marker is `Order.kotPrintDevices` (R3), not `kotServerRounds` / `billServerPrint`;
+- the auto-accept does not stamp `kotPrintedAt` (R4).
 
-1. **How a request opts in.** Use request headers: `x-pos-device-id` plus `x-pos-print-agent: 1`. This needs an optional `headers` option on `apiSend` (`packages/shared/src/api-client.ts`, shared with the Hub, so the change must be backward compatible).
-   - Without the header, the route creates nothing, and a tab from before Phase 1 keeps its client-side printing. Nothing can duplicate.
-   - Headers are chosen over a body field because accept has no body and the order schemas are `.strict()`.
-2. **The repair marker.** The order CAS records which rounds the server owns, as an omit-empty `kotServerRounds: number[]` (`$addToSet`) and `billServerPrint: true`. The sweep repairs only those, so it never re-creates a slip an old tab printed client-side.
-3. **Settle print intent.** Settle prints only when the POS settle sends `x-pos-print-bill: 1`. The Orders-sheet settle never printed, and still doesn't.
-4. **Notify Kitchen** stays client-started (decision 9).
-5. **Self-order auto-accept.**
-   - With a host: create the KOT job for the host and stamp `kotPrintedAt` in the same request, so `/kot-claim` and old tabs never print it again.
-   - Without a host: the `/kot-claim` lane stays until Phase 2.
-
-**Tasks:**
-- **B1 `lib/print-order-jobs.ts`:** `createOrderPrintJobs(input: { order; event; originDeviceId?; queuedBy; nowMs }, deps?): Promise<PrintJobRef[]>`.
-  - Targeting: `host?.deviceId ?? originDeviceId`; no job when both are absent.
-  - Keys: v2 jobKeys `<kind>:<orderId>:<round|at>:<targetDeviceId>:<copyIndex>`.
-  - Ordering: creates run sequentially in kind order (KOT before bill), so `createdAt` increases (§7.6).
-  - Inputs: a JSON round-trip of the lean or hydrated Order into the wire `Order`, and a Zod check of each payload.
-  - Never throws. On failure it returns what it made, and the sweep repairs the rest.
-  - It publishes `print-status` "created", plus one `print-job` nudge.
-  - `PrintJobRef = { id; targetDeviceId; label; kind }`.
-- **B2:** wire it into
-  - `POST /api/orders` (round 1, plus the bill when Pay Now's numbering is fulfilled);
-  - `orders/[id]/items` (the round);
-  - `settle` (the bill, header-gated);
-  - `items/void` (the void notice from `updated.voids.at(-1)`);
-  - `orders/[id]/table` (the moved notice, with `from`, `movedBy` and `movedAt` minted on the server);
-  - `order-requests/[id]/accept` (`!replayed`);
-  - the public auto-accept (inside the library).
-
-  The response becomes `{ ...order, printJobs }` inside `data`. Update the exact-success-string pins (`write-route-paths.test.ts`) and the 14-site publish pin deliberately; the publish lives in the lib. Replays create nothing.
-- **B3:** the repair sweep step 2b. For orders updated in the last 30 min with `kotServerRounds` or `billServerPrint`, recompute the expected v2 keys and insert any that are missing. A duplicate key is a no-op. It stays bounded by `PRINT_SWEEP_BATCH`.
-- **B4:** the `print-status` kind.
-  - Add it to `CAFE_EVENT_KINDS` and the Worker's `EVENT_KINDS`, with the parity pins.
-  - The envelope gains `job: { id, status }` (no order content).
-  - `lib/realtime-client.ts` hands listeners the parsed message.
-  - Publish on created and on every terminal transition: printed, needs-confirm, failed, dismissed (spec §17.2: 2 per slip).
-  - Document the Worker redeploy in `docs/GO-LIVE-CHECKLIST.md`. An old Worker 400s the new kind, the publish is swallowed, and the readback falls back to the pulse.
-- **B5:** live legs y–z.
-  - The sweep repairs a missing KOT job, and never one for an old-tab round.
-  - Creation is idempotent across a route replay.
-  - The self-order with a host produces one job plus `kotPrintedAt`.
-
-**Exit:**
-- all suites;
-- the build;
-- both APKs;
-- an emulator check that a tab without the header still prints exactly once through today's path, and `curl` with the header creates jobs.
+`apiSend`'s `headers` option and the `realtime-client` change move to 1C, where they are first used.
 
 ### Session 1C: the agent
 
+- **C0 (the owner's I2 decision, asked at the 1A gate).** If the owner picks the recommended option A, a `sent:"no"` refusal no longer counts toward the failure limit:
+  - `printJobOverLimits` keeps `uncertainAttempts ≥ 3`;
+  - the attempts term counts only attempts that may have printed;
+  - the 30-minute stale window, measured from `approvedAt ?? createdAt`, bounds how long refusals can repeat.
+
+  The exact code is written at the 1C gate, against the owner's answer.
 - **C1:** a coded write outcome that survives the write queue. Today `device-printer-write.ts` rethrows a bare message (agent finding 2).
   - Define `PrintWriteError { sent: "no" | "maybe"; permanent: boolean }`.
   - The native mapping per §7.5: `NOT_CONNECTED`, `UNAUTHORIZED`, `UNSUPPORTED`, `BUSY` and `BLUETOOTH_OFF` are "no"; `WRITE_FAILED` and `TIMEOUT` are "maybe"; `BAD_REQUEST` and `TOO_LARGE` are permanent.
@@ -3895,28 +3859,42 @@ Each session below lists its tasks, the interfaces it must produce, the tests th
 - **C2 `hooks/use-print-agent.ts`** replaces the claim drain (`use-print-host-drain.ts` stays for one release, unused).
   - Who runs it: in host mode, only the host device; in no-host mode, every device, for its own line.
   - The device holds a Web Lock, and processes one job at a time.
-  - It leases on its own order response's `printJobs`, on a `print-job` nudge, on the wake POST (cadence from `printAgentWakeIntervalMs`, cap from `printWakeAgentCap(agents)`), and on pulse D1 changes once the cap is spent.
-  - After a write it acks. A "printed" ack waiting for an answer is kept in `pos.print-ack-pending.v1` and retried every 5 s for 10 min.
-  - Local retry timers come from `nextAttemptAt` / `retryAt`.
+  - **Who polls (R6).** `printAgentPollsWake({ hostConfigured, isHost })`: only the host polls the wake POST, with its cadence from `printAgentWakeIntervalMs` and its cap from `printWakeAgentCap(agents)`. With no host the agent never polls. It leases on:
+    - its own order responses' `printJobs`;
+    - `print-status` events whose `job.target` is this device;
+    - `print-job` nudges (rare: sweep requeues and retargets, staff actions, a host clear);
+    - its local timers (`retryAt`, `nextAttemptAt`, and its own lease expiry plus 1 s);
+    - the pulse. The 20 s pulse with `?device=<id>` adds `printJobsForMe { count, oldestCreatedAt }` (the line filter, read-only; amend its read-only pins deliberately), so a device whose socket is down still hears about a job the server re-queued within 20 s.
+  - **Pending acks (M3).** After a write it acks. A "printed" ack waiting for an answer is kept in `pos.print-ack-pending.v1` and retried every 5 s for 10 min. The entry is cleared on **any** answer from the server, applied or not (`stale-epoch`, `resolved`, `not-found` included). Only a network error or a 5xx retries.
+  - Local retry timers come from `nextAttemptAt` / `retryAt`. A lease call that ran out of steps answers `retryAt` = now + 2 s (M2).
   - Bridge slips carry `{ jobId, epoch, labels }`.
   - Split the files already at their line budget (`PrintHostProvider.tsx` 200/200, `use-print-host-bridge.ts` 250/250) instead of raising the pins.
 - **C3:** a `banner` prop on `KOTReceipt` and `OrderReceipt`: one large inverted block with `printBannerText(labels)` (§7.7).
-- **C4:** the order call sites send the 1B headers and hand `printJobs` to the agent; they stop printing locally for server-created kinds. Reprints, EOD and cancel notices `POST /api/print-jobs` with `Idempotency-Key` + `x-pos-device-id`.
+- **C4: the call sites.**
+  - The order call sites send `x-pos-print-agent: 1` and `x-pos-device-id`, plus `x-pos-print-bill: 1` on Pay Now and the POS settle. They send them through a new optional `headers` option on `apiSend` (`packages/shared/src/api-client.ts`, shared with the Hub, so it must stay backward compatible).
+  - They hand `printJobs` to the agent and stop printing locally the kinds the server now creates.
+  - **A missing ref falls back to the enqueue.** A slip the call site asked for may have no ref in the answer (a replay, a 5xx, a failed create). The call site then enqueues it through `POST /api/print-jobs` with today's builder (so the same job key), an `Idempotency-Key`, `x-pos-device-id` and `x-pos-print-agent: 1`:
+    - an existing job answers `queued` (duplicate) or `already-resolved` with its id (M4: follow that job, never print locally);
+    - with no host the server makes it the device's own job (1B `enqueueOwnPrintJob`).
+  - Reprints, End of day and cancel notices use the same `POST /api/print-jobs` path.
+  - `lib/realtime-client.ts` hands listeners the parsed message, so the agent and the readback can read `job`.
 - **Exit:**
   - On the E2E harness with the fake printer, a KOT prints through lease → write → ack and the row is `printed` with `printedAt`.
   - `--drop-after 2000` on a KOT prints a REPRINT copy.
   - A mid-bill drop leaves the bill `needs-confirm`.
+  - With no host, an ordering device makes no wake request (the budget test pins `printAgentPollsWake`; the E2E check counts requests in the POS log).
 
 ### Session 1D: readback, alarm, attention list
 
 - **D1:** the pulse adds `myRecentJobs` (`?device=<id>`, the origin index, the last 15 min, limit 30) and `attentionPrintJobs` (needs-confirm, failed, and stale; within 12 h; limit 20). Its read-only pins are amended deliberately.
-- **D2:** the pulse runs `sweepPrintJobsThrottled` through `after()`. No-host mode needs lease expiry even when nobody polls wake.
+- **D2:** the pulse runs `sweepPrintJobsThrottled` through `after()`. After R6 this is essential: a cafe without a host has no wake poller, so lease expiry, R5's routing and R3's repair run only from the pulse. That is one sweep per 60 s per instance, riding the existing pulse.
 - **D3:** readback states Queued → Printing → Printed ✓ / Failed ⚠ / Waiting for cashier.
   - Sources: the `print-status` event, falling back to `myRecentJobs`.
   - It is visible on `/pos` (amend the `alert-bar-scope` rule) and on the dashboard.
   - It survives a reload, because the server is the source.
 - **D4:** the 20 s KOT alarm (`PRINT_KOT_ALARM_MS`, `lib/alert-sound.ts`) on the ordering device and on the printing device, plus a banner.
 - **D5:** the attention list on every device, with Print again (retry), It printed / Print again / Dismiss (confirm), and Dismiss. The host-only gate in `PrintHostBandSection.tsx` goes.
+- **D6 (the 1A reviewer's recommendation 3).** During the rollout window, an old ordering tab treats `leased`, `needs-confirm` and `failed` rows as gone after 60 s. Decide at the 1D gate, with exact code, whether for one release the pulse's D1 feed carries `leased` (shown as printing) and D2 carries `needs-confirm` / `failed`. Do it only if every action the old band offers on those rows is safe: Dismiss is, the claim-based Print now is not.
 - **Exit:** emulator plus fake printer.
   - Pull the printer mid-job: the waiter's screen shows Failed or Waiting for cashier within one pulse.
   - The alarm sounds at 20 s.
@@ -4141,3 +4119,2729 @@ Re-graded by effect on a cafe:
 - **Minors** M1–M9.
 - **Known, unrelated:** `lib/go-live-dl.test.ts` ENOENT.
 - **Still the owner's call:** the Phase 0 review's recommended hotfix of `7edf7aa` to `main`.
+
+---
+
+## Session 1A review (gate, 2026-10-03)
+
+**Verdict: PASS.** Session 1A (`d5c323b..aeef4b1`, 12 commits on `feat/printing-reliability`) is complete and correct. This review found no new Critical or Important defect in the code that landed. The final review's open items are ruled in the next section.
+
+Nothing below was taken from the Results section; each line was re-run or re-read at the gate.
+
+| Check | Re-run at the gate | Session 1A Results |
+|---|---|---|
+| shared `npm test`; `tsc` | 625/625; 0 | same |
+| cafe `npm test` | 4003 tests, 4002 pass, 1 fail: the known `go-live-dl` ENOENT | same |
+| cafe `tsc`; `npm run lint` | 0; 0 errors and the 2 old warnings (`masters-blob.test.ts`) | same |
+| mobile `tsc`; lint; `npm test`; `test:app` | 0; 0; 114/114; Jest 3/3 | same |
+| desktop `npm test` | 191/191 | same |
+| `npm run test:print-tools` | 7/7 | same |
+| live legs (local mongod) | `161 passed, 0 failed` | same |
+| Next build | success; `/api/print-jobs/lease`, `[id]/ack`, `[id]/confirm`, `[id]/retry` and `wake` listed; `rgb(var(--primary-rgb)/10%)` once, in `22b0ab1b93eaddb4.css` | same |
+| APKs (`GRADLE_USER_HOME='D:\gradle-home'`, x86_64 first) | `BUILD SUCCESSFUL` (1 m 25 s, 55 s); one ABI each; x86_64 7,407,761 B `fc4181e4…5f13d3`; arm64-v8a 7,276,038 B `9f89cd9a…0ff7`; armeabi-v7a 6,683,872 B `f3f62149…426cc` | byte-identical |
+| Secrets | `git log -p d5c323b~1..aeef4b1`: no env file, no `SEED_ADMIN_*` value, no secret or token. `e2e.env` appears only as a scratchpad path in Results. | — |
+| Emulator smoke | not re-run: the three APKs are byte-identical to the ones Phase 0 and Session 1A each checked on the emulator (items 1, 5 and 7) | — |
+
+**Code read.** Every commit's diff, including the final-review fix `70a9106` and the docs commit `aeef4b1` (§7.10 matches the plan's block word for word).
+
+**Review Focus classes**, checked against the code and their legs:
+1. Two tabs racing for one head: the lease is one CAS on `{_id, status, epoch}` (`epoch: {$in: [0, null]}` for rows from before Phase 1); the loser re-reads, finds a live lease and is told `retryAt` = its expiry. Leg (q).
+2. The host killed mid-job: `planExpiry` runs lazily at the head of the line and in the sweep; a KOT goes back to the queue with REPRINT behind its backoff, a bill to `needs-confirm`; a late "printed" ack on the same epoch still resolves both. Leg (r).
+3. A late ack after the job was leased again: refused as `stale-epoch` and logged; a repeat of an applied ack answers `resolved` with status `printed`. Leg (s).
+4. A parked head: the line filter leaves out `needs-confirm`, `failed` and stale jobs, so fresher slips print; a refused head in backoff holds the line, so kitchen order is kept; Print now makes a stale job leasable. Leg (t).
+5. A re-designated host: the sweep retargets queued jobs (including rows with no target) to the current host, and fails a job over its limits. Leg (u).
+
+**Gate findings** (from this review and from pre-validating Session 1B):
+- **G1 (I3, design).** The fix the 1A reviewer suggested, dividing the cap by devices seen this cafe-day, does not bound agents that join late either: one agent alone spends 9,600 wake hits before two more arrive, and each of those then spends 4,800. That is 19,200 wake hits plus 2,640 slip requests, 21,840 a day, over the 18,000 ceiling. Ruled as R6.
+- **G2 (test hygiene).** A failing `assert.ok(value)` with no message makes Node read and parse the test's own source to build its message. Under `tsx` that blocked the event loop on `realtime-paths.test.ts` (1,200 lines) and hung the run. Every new Session 1B assertion therefore carries a message. This is not a 1A defect.
+- **G3 (environment).** During one pre-validation run the scratch clone's `node_modules` (a folder of junctions) disappeared mid-run. It did not recur in three later runs watched by a scratchpad watcher. The real repo's `node_modules` was checked intact (376 entries, `git status` clean).
+
+## 1A review gate: rulings (2026-10-03)
+
+Every ruling that changes the spec is written into spec §7.10 (and §6.5, §7.4, §9.1, §10 and §17.2 where they apply).
+
+**The final review's Important findings**
+- **I1 part 2 → R5: retarget, not dismiss.** With no host, every device prints its own slips (§6.6), so a waiting job aimed at a cleared or dead host goes back to the device that asked for it (`originDeviceId`), keeping its state and labels. Dismissing it would silently lose a KOT that may never have printed. Only a job no device asked for (an old tab's enqueue, the auto-accept) is dismissed as `host-cleared`. With a host, parked and failed jobs move to the host too, so `planRetry` and `planConfirm` need no retarget of their own. Never a leased job. Session 1B, Task B6.
+- **I2 → the owner's decision, asked at this gate** (see the report). The recommendation is option A: a `sent:"no"` refusal, where no byte reached the printer, no longer counts toward the failure limit. A KOT then waits for its printer, in order, for up to the 30-minute stale window. After that it parks as "stale, Print now", and a tap gives it another 30 minutes. Duplicates stay capped by `uncertainAttempts ≥ 3`, and the 20 s alarm (1D) tells staff the printer is down. The exact code comes at the 1C gate.
+- **I3 → R6: one poller.** Only the host polls the wake (`printAgentPollsWake`). With no host, no device polls. Spec §17.2's "no polling" and §17.3 rule 1 then hold, and the 90 s divisor is exact (one agent). Phase 2, when several agents poll, replaces the division with a server-side split of the remaining allowance (G1). The budget test pins it. Session 1B, Task B1; the agent follows it in 1C.
+
+**Minors M1–M9**
+
+| # | Finding | Ruling |
+|---|---|---|
+| M1 | The lease route's `Promise.all` lets a heartbeat failure 500 after the lease committed | **Fold, 1B Task B3.** `touchPrintDevice(...).catch(() => undefined)`. |
+| M2 | `leasePrintJobs` answers `retryAt: null` after its 4 steps | **Fold, 1B Task B3.** `retryAt` = now + 2 s (the shortest backoff). |
+| M3 | Every ignored stale-epoch ack writes a log entry | **No server change.** The log is capped at 20 (`$slice`), so storage cannot grow. 1C's agent clears a pending ack on any server answer (spec §7.9), so one ignored ack costs one write. 1C pins it. |
+| M4 | A duplicate enqueue reports `leased`, `needs-confirm` and `failed` rows as `already-resolved` | **No change.** It is the safe direction: it never authorizes a local duplicate print. The 1C client follows the job by id, and 1D's attention list shows `needs-confirm` and `failed`. |
+| M5 | The lease CAS does not fence `targetDeviceId` | **Fold, 1B Task B3.** Retargets are more common after R5. Leg (ab). |
+| M6 | Dismisses push no `dismissed` log entry | **No change.** `dismissedAt`, `dismissReason` and `dismissedBy` already record who, why and when. The readback hears the dismissal through `print-status` (1B Task B3). |
+| M7 | In a mixed fleet the legacy claim can print a lifecycle job (epoch ≥ 1) without its banner | **No change.** That is exactly today's behaviour, and only for the rollout window (until the old tab reloads). Fencing the legacy claim on the epoch would strand the slip on a host that never reloads, and a lost KOT is worse than a missing banner. |
+| M8 | §7.10 omits two deviations (the wake POST beside the GET; the per-instance sweep throttle) | **Fold now:** spec §7.10. |
+| M9 | The changed prune pin's rationale text is inaccurate | **Fold, 1B Task B3** (wording only). |
+
+**The 1A reviewer's recommendations for 1C/1D**
+1. **No-host polling** against §17.2 "no polling" and §17.3 rule 1 → R6. In 1C the agent uses `printAgentPollsWake`. The 20 s pulse with `?device=` gains this device's waiting-job count, so a device whose socket is down still hears about a job the server re-queued within 20 s.
+2. **Nudge fan-out and empty leases** → R7. A created job's `print-status` names its device, and only that agent leases on it. Server-made jobs publish `print-job` only when a host exists (one agent). The budget test pins 3 Worker requests per slip.
+3. **The rollout window**, where old ordering tabs treat `leased`, `needs-confirm` and `failed` rows as gone → **1D task D6.** For one release, the pulse's D1 feed may include `leased` and D2 may include `needs-confirm` / `failed`, but only if every action the old band offers on those rows is safe. Dismiss is; the claim-based Print now is not. Decided with exact code at the 1D gate.
+
+**Other gate decisions** (the Session 1B spec's "confirm first" list, as ruled; each in spec §7.10):
+- **R1 Opt-in by header:** confirmed as recommended. `apiSend`'s `headers` option moves to 1C, which first uses it.
+- **R2 Today's job keys in simple mode**, instead of the plan's v2 keys. A retarget would otherwise change the key the repair looks for. Today's keys also let a server job and an old tab's enqueue of one slip collide instead of printing twice.
+- **R3 The repair marker is `Order.kotPrintDevices`**, positional like `kotIdemKeys`, instead of `kotServerRounds` / `billServerPrint`. With no host the repair must know which device fired the round. Bills are not repaired, because the cashier is at the counter and 1C re-sends a missing ref. The candidate read uses the indexed `createdAt`, not `updatedAt`, which has no index.
+- **Settle print intent** (`x-pos-print-bill`) and **Notify Kitchen stays client-started:** confirmed as recommended.
+- **R4 The self-order auto-accept** with a host creates the KOT job for the host but does **not** stamp `kotPrintedAt`. The lane stays as the backstop and shares the key. Stamping it would lose the KOT if the host were cleared before it printed.
+- **R7 `print-status` carries `{ id, status, target? }`.** It is published on creation and on every final state, from `applyPrintJobPlan` (one place) and the single dismiss.
+
+---
+
+## Session 1B (exact code, written and pre-validated at the 1A review gate)
+
+**Pre-validated** by the review gate on 2026-10-03, on scratchpad clones only (never in the repo):
+- every Create, Append and Replace block applied verbatim to a fresh clone of `aeef4b1`, task by task, with each task's own Run lines: every "find" matched exactly once, and each RED and GREEN below is the output seen there;
+- the clone came out byte-identical to the development copy (`diff -r`, 33 files);
+- shared: `npm test` 628/628, tsc 0;
+- cafe: `npm test` 4019 tests, 4018 pass, 1 fail (only the known `go-live-dl` ENOENT; +16 new tests); tsc 0; lint 0 errors and the 2 old warnings;
+- live legs: `181 passed, 0 failed` (Session 1A's 161 + 20);
+- fake printer: 7/7. Mobile and desktop are untouched by 1B.
+
+A failure while executing therefore points to drift since then, or to a typo while copying. Compare with the plan first.
+
+**What 1B delivers.** Server-side job creation inside the order requests (spec §7.4), opted into per call site with request headers, so a tab from before Phase 1 keeps printing its own slips and nothing can print twice. The repair sweep for server-owned KOT rounds. The `print-status` realtime kind. The 1A review rulings that are server-side (I1 part 2, I3's one-poller rule, M1, M2, M5, M9). **No client sends the headers until Session 1C**, so 1B is dormant for every flow but one: the public auto-accept with a host now queues its KOT for the host at once (see ruling R4 below). It is safe with today's tabs, because the self-order lane builds the same job key.
+
+**Gate rulings this section implements** (each is also in spec §7.10):
+- **R1 Opt-in by header.** `x-pos-print-agent: 1` plus `x-pos-device-id` lets the server print a call site's slips; `x-pos-print-bill: 1` adds the bill (Pay Now, the POS settle). Without them the route creates nothing and answers exactly as before. A bad header never refuses an order write.
+- **R2 Today's job keys in simple mode.** `printJobKeyOf` (`kot:<orderId>:<round>`, `bill:<orderId>`, …), not spec §6.5's `…:<target>:<copy>`: simple mode has one job per slip, a retarget would otherwise change the key the repair looks for, and a server job and an old tab's enqueue of the same slip collide on the unique key instead of printing twice. Phase 2 printers add the printer and copy parts.
+- **R3 The repair marker** is `Order.kotPrintDevices` (positional, the `kotIdemKeys` idiom), written by the same order CAS. Only KOT rounds are repaired; bills, voids and moves are re-sent by the 1C client when its answer lacks their ref. Replays create nothing (the client's own enqueue of a missing ref dedupes on the key).
+- **R4 The public auto-accept**, with a host, queues its KOT for the host in the same request, so it prints even with no POS tab open. It does **not** stamp `kotPrintedAt`: the self-order lane stays as the backstop and builds the same key, so whichever creates the job first wins. With no host nothing is made and the lane prints it as today. This is the only flow 1B changes before 1C.
+- **R5 I1 part 2: retarget, not dismiss.** With no host a waiting job goes back to its `originDeviceId`; only a job no device asked for is dismissed (`host-cleared`). With a host, parked and failed jobs move to it too (so `planRetry` / `planConfirm` need no retarget of their own).
+- **R6 I3 and the reviewer's recommendation 1: one poller.** `printAgentPollsWake`: only the host polls the wake; with no host no device polls (spec §17.2 "no polling", §17.3 rule 1). The 90 s divisor is then exact (one agent). Dividing by agents online, or seen this cafe-day, overshoots when agents join late (19,200 wake hits in the budget test's comment); Phase 2, when several agents poll, replaces it with a server-side split of the cafe's remaining daily allowance reported on the 30 s heartbeat.
+- **R7 `print-status`** carries `{ id, status, target? }`: "queued" with its device on creation, then the final state from the lifecycle (printed / needs-confirm / failed / dismissed). Agents lease on events aimed at them (recommendation 2: no fan-out). Realtime cost: 3 Worker requests per slip, 3,935/day on the busy day (3.9 % of the free 100,000), pinned in the budget test.
+- **R8 Minors folded:** M1 (the lease heartbeat is best-effort), M2 (a spent lease call answers `retryAt` = now + 2 s), M5 (the lease CAS is fenced on `targetDeviceId`), M9 (the prune pin's wording). M8 goes into spec §7.10 now.
+
+**Not in 1B** (moved to 1C, the session that consumes them): `apiSend` request headers; `lib/realtime-client.ts` handing listeners the parsed message; the agent itself; the client's enqueue of any slip its answer did not name.
+
+### File map (Session 1B)
+
+| File | Change | Task |
+|---|---|---|
+| `packages/shared/src/print-agent-wire.ts` | modify: the opt-in headers, `PrintJobRef`, `printAgentPollsWake` | B1 |
+| `packages/shared/src/print-lifecycle.ts` | modify: `PRINT_REPAIR_WINDOW_MS` | B1 |
+| `packages/shared/src/print-budget.ts` | modify: the realtime budget constants | B1 |
+| `packages/shared/src/print-budget.test.ts` | modify: one poller, the no-host budget, the realtime budget | B1 |
+| `apps/cafe/lib/realtime-publish.ts` | modify: `print-status`, `CafeEventJob`, `publishPrintStatus` | B2 |
+| `workers/realtime/src/index.ts` | modify: `EVENT_KINDS` parity, the documented envelope | B2 |
+| `docs/GO-LIVE-CHECKLIST.md` | modify: redeploy the Worker for a new kind | B2 |
+| `apps/cafe/lib/realtime-paths.test.ts` | modify: append (B2); the move's answer pin (B5) | B2, B5 |
+| `apps/cafe/lib/print-lease.ts` | modify: the CAS fence, the final-state publish, the step bound | B3 |
+| `apps/cafe/lib/print-queue.ts` | modify: the dismiss publish (B3); the teardown spares jobs with a device (B6) | B3, B6 |
+| `apps/cafe/app/api/print-jobs/lease/route.ts` | modify: best-effort heartbeat | B3 |
+| `apps/cafe/lib/print-lifecycle-paths.test.ts` | modify: the CAS pin + append (B3); the sweep pin (B6) | B3, B6 |
+| `apps/cafe/lib/print-queue-fixes.test.ts` | modify: M9 wording | B3 |
+| `apps/cafe/models/Order.ts` | modify: `kotPrintDevices` | B4 |
+| `apps/cafe/lib/print-order-jobs.ts` | create: intent, marker, creation, own-device enqueue, the answer | B4 |
+| `apps/cafe/lib/print-order-jobs.test.ts` | create (B4); append the route pins (B5) | B4, B5 |
+| `apps/cafe/lib/self-order-alert-paths.test.ts` | modify: the PrintJob writer list | B4 |
+| `apps/cafe/package.json` | modify: `testChain` (two files) | B4, B6 |
+| `apps/cafe/app/api/orders/route.ts` | modify: KOT round 1 + Pay Now bill; the marker | B5 |
+| `apps/cafe/app/api/orders/[id]/items/route.ts` | modify: the round's KOT; the marker | B5 |
+| `apps/cafe/app/api/orders/[id]/settle/route.ts` | modify: the bill on `x-pos-print-bill` | B5 |
+| `apps/cafe/app/api/orders/[id]/items/void/route.ts` | modify: the VOID slip | B5 |
+| `apps/cafe/app/api/orders/[id]/table/route.ts` | modify: the moved slip | B5 |
+| `apps/cafe/app/api/order-requests/[id]/accept/route.ts` | modify: the accepted round's KOT | B5 |
+| `apps/cafe/lib/order-request-create.ts` | modify: the auto-accept's KOT for the host | B5 |
+| `apps/cafe/app/api/print-jobs/route.ts` | modify: the no-host agent enqueue | B5 |
+| `apps/cafe/lib/write-route-paths.test.ts` | modify: the create and settle answer pins | B5 |
+| `apps/cafe/lib/print-repair.ts` | create: the repair | B6 |
+| `apps/cafe/lib/print-repair.test.ts` | create | B6 |
+| `apps/cafe/lib/print-sweep.ts` | replace: routing waiting jobs, the repair step | B6 |
+| `apps/cafe/app/api/print-host/route.ts` | modify: DELETE sends waiting jobs home | B6 |
+| `apps/cafe/scripts/print-host-live/order-jobs.ts` | create: legs y–ab | B7 |
+| `apps/cafe/scripts/verify-print-host-live.ts` | modify: run legs y–ab | B7 |
+| `this plan` | modify: Session 1B Results | B8 |
+
+---
+
+### Task B1: the opt-in headers, the one-poller rule and the realtime budget (shared)
+
+**Files:**
+- Modify: `packages/shared/src/print-agent-wire.ts`, `packages/shared/src/print-lifecycle.ts`, `packages/shared/src/print-budget.ts`
+- Modify: `packages/shared/src/print-budget.test.ts` (imports; append three tests)
+
+**Interfaces produced:** `PRINT_AGENT_HEADER` (`x-pos-print-agent`), `PRINT_BILL_HEADER` (`x-pos-print-bill`), `PRINT_HEADER_ON` (`"1"`), `PrintJobRef { id; kind; targetDeviceId; label }`, `printAgentPollsWake({ hostConfigured, isHost })`, `PRINT_REPAIR_WINDOW_MS` (30 min), `PRINT_REALTIME_PER_SLIP` (3), `PRINT_REALTIME_BASE_PER_DAY` (335), `REALTIME_FREE_REQUESTS_PER_DAY` (100,000).
+
+- [ ] **Step 1: Write the failing budget tests**
+
+In `packages/shared/src/print-budget.test.ts`, find:
+
+```ts
+import { printAgentWakeIntervalMs, printWakeAgentCap } from "./print-agent-wire";
+import {
+  PRINT_AGENT_MIN_CADENCE_MS,
+  PRINT_BUDGET_BUSY_DAY,
+  PRINT_BUDGET_NORMAL_MAX_PER_DAY,
+  PRINT_BUDGET_WORST_MAX_PER_DAY,
+  printSlipRequestsPerDay,
+} from "./print-budget";
+```
+
+Replace it with:
+
+```ts
+import { printAgentPollsWake, printAgentWakeIntervalMs, printWakeAgentCap } from "./print-agent-wire";
+import {
+  PRINT_AGENT_MIN_CADENCE_MS,
+  PRINT_BUDGET_BUSY_DAY,
+  PRINT_BUDGET_NORMAL_MAX_PER_DAY,
+  PRINT_BUDGET_WORST_MAX_PER_DAY,
+  PRINT_REALTIME_BASE_PER_DAY,
+  PRINT_REALTIME_PER_SLIP,
+  REALTIME_FREE_REQUESTS_PER_DAY,
+  printSlipRequestsPerDay,
+} from "./print-budget";
+```
+
+Append to `packages/shared/src/print-budget.test.ts`:
+
+```ts
+// 1A review gate (I3 and the reviewer's recommendation 1). Dividing the cap by the agents online cannot
+// bound agents that join late: one agent alone spends 9,600 before two more arrive, then each of them
+// spends 4,800, so 19,200 wake hits. Phase 1 therefore lets exactly one device poll the wake.
+test("Phase 1: at most one device polls the wake, in either simple mode, so the shared cap is exact", () => {
+  const fastest = cadence({ socketHealthy: false, msSinceLastJob: 0, capSpent: false });
+  for (const devices of [1, 2, 3, 5, 8, 16]) {
+    for (const hostConfigured of [true, false]) {
+      const pollers = Array.from({ length: devices }, (_, i) =>
+        printAgentPollsWake({ hostConfigured, isHost: hostConfigured && i === 0 }),
+      ).filter(Boolean).length;
+      assert.ok(pollers <= 1, `${devices} devices, host ${hostConfigured}: ${pollers} pollers`);
+      const total = printSlipRequestsPerDay() + pollers * Math.min(OPEN_MS / fastest, printWakeAgentCap(pollers));
+      assert.ok(total <= PRINT_BUDGET_WORST_MAX_PER_DAY, `${devices} devices, host ${hostConfigured}: ${total}/day`);
+    }
+  }
+  assert.equal(printAgentPollsWake({ hostConfigured: false, isHost: false }), false, "no host: nobody polls (spec §17.2)");
+  assert.equal(printAgentPollsWake({ hostConfigured: true, isHost: false }), false, "a device that is not the host never polls");
+  assert.equal(printAgentPollsWake({ hostConfigured: true, isHost: true }), true, "the host polls");
+});
+
+test("no host: printing costs only a lease and an ack per slip, never a poll (spec §17.2: 2,640/day)", () => {
+  assert.equal(printSlipRequestsPerDay(), 2_640);
+  assert.ok(printSlipRequestsPerDay() <= PRINT_BUDGET_NORMAL_MAX_PER_DAY, "inside the normal-day ceiling");
+});
+
+test("realtime: three Worker requests per slip stay under 5 % of the free 100,000 a day", () => {
+  const perDay = PRINT_BUDGET_BUSY_DAY.slips * PRINT_REALTIME_PER_SLIP + PRINT_REALTIME_BASE_PER_DAY;
+  assert.equal(perDay, 3_935);
+  assert.ok(perDay <= REALTIME_FREE_REQUESTS_PER_DAY * 0.05, `${perDay}/day`);
+});
+```
+
+- [ ] **Step 2: Run it**
+
+Run: `cd /d/kd/lucifer/packages/shared && node --import tsx --test src/print-budget.test.ts 2>&1 | grep -E "^# (tests|pass|fail)|does not provide"`
+Expected: `SyntaxError: The requested module './print-budget' does not provide an export named 'PRINT_REALTIME_BASE_PER_DAY'`, then `# tests 1`, `# pass 0`, `# fail 1` (the file does not load).
+
+- [ ] **Step 3: The headers, the ref, the one-poller rule**
+
+In `packages/shared/src/print-agent-wire.ts`, find:
+
+```ts
+export const PRINT_IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9-]{8,64}$/;
+```
+
+Replace it with:
+
+```ts
+export const PRINT_IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9-]{8,64}$/;
+/** An order request whose call site lets the SERVER create the slips it would otherwise print itself
+ *  (spec §7.4). Without it the server creates nothing: a tab from before Phase 1 still prints its own
+ *  slips, so no slip can print twice. Needs PRINT_DEVICE_ID_HEADER too. */
+export const PRINT_AGENT_HEADER = "x-pos-print-agent";
+/** With PRINT_AGENT_HEADER: this call site also prints the customer bill (Pay Now, the POS settle). */
+export const PRINT_BILL_HEADER = "x-pos-print-bill";
+/** The one value that switches either header on. */
+export const PRINT_HEADER_ON = "1";
+
+/** One job the server created for a request (spec §7.4 `printJobs`): the asking device leases the ones
+ *  aimed at it straight away and follows each one's readback by id. */
+export interface PrintJobRef {
+  id: string;
+  kind: PrintJobKind;
+  targetDeviceId: string;
+  label: string;
+}
+```
+
+In `packages/shared/src/print-agent-wire.ts`, find:
+
+```ts
+/** Each agent's share of the cafe's one daily wake cap (spec §9.1): more agents never mean more hits. */
+```
+
+Replace it with:
+
+```ts
+/** Whether this device polls the wake at all (spec §9.1, §17.3 rule 1; 1A review gate, I3). In simple
+ *  mode only the host polls. With no host every device prints its own slips from its own order
+ *  responses, targeted print-status events, local retry timers and the pulse, so no ordering device
+ *  adds a recurring request, and one poller keeps the shared daily cap exact. */
+export function printAgentPollsWake(input: { hostConfigured: boolean; isHost: boolean }): boolean {
+  return input.hostConfigured && input.isHost;
+}
+
+/** Each agent's share of the cafe's one daily wake cap (spec §9.1): more agents never mean more hits. */
+```
+
+- [ ] **Step 4: The repair window and the realtime budget constants**
+
+In `packages/shared/src/print-lifecycle.ts`, find:
+
+```ts
+export const PRINT_ACK_ERROR_MAX_CHARS = 200;
+```
+
+Replace it with:
+
+```ts
+export const PRINT_ACK_ERROR_MAX_CHARS = 200;
+/** The repair sweep re-creates a server-owned KOT round's missing job for this long after the round
+ *  fired (§7.4 step 2). It is the stale window, so a repaired slip is never older than one that would
+ *  need a staff tap. */
+export const PRINT_REPAIR_WINDOW_MS = 30 * 60 * 1000;
+```
+
+In `packages/shared/src/print-budget.ts`, find:
+
+```ts
+/** No recurring agent poll may run faster than this. */
+export const PRINT_AGENT_MIN_CADENCE_MS = 3_000;
+```
+
+Replace it with:
+
+```ts
+/** No recurring agent poll may run faster than this. */
+export const PRINT_AGENT_MIN_CADENCE_MS = 3_000;
+/** Realtime Worker requests one slip costs (spec §17.2): its "queued" print-status, its final
+ *  print-status, and in host mode the print-job nudge a host from before Phase 1 drains on. */
+export const PRINT_REALTIME_PER_SLIP = 3;
+/** Today's realtime traffic without printing (spec §17.2). */
+export const PRINT_REALTIME_BASE_PER_DAY = 335;
+/** Cloudflare Workers Free (spec §17.1); printing may use at most 5 % of it. */
+export const REALTIME_FREE_REQUESTS_PER_DAY = 100_000;
+```
+
+- [ ] **Step 5: Run the shared suite**
+
+Run: `cd /d/kd/lucifer/packages/shared && node --import tsx --test src/print-budget.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npm test 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit -p . && echo TSC_OK`
+Expected: print-budget `# tests 8` / `# pass 8`; shared `npm test` `# tests 628` / `# pass 628` (625 + 3); `TSC_OK`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add packages/shared/src/print-agent-wire.ts packages/shared/src/print-lifecycle.ts packages/shared/src/print-budget.ts packages/shared/src/print-budget.test.ts
+git commit -m "feat(print): opt-in headers for server-side printing, the one-poller rule, and the realtime budget"
+```
+
+---
+
+### Task B2: the `print-status` realtime kind (cafe + Worker parity)
+
+**Files:**
+- Modify: `apps/cafe/lib/realtime-publish.ts`, `workers/realtime/src/index.ts`, `docs/GO-LIVE-CHECKLIST.md`
+- Modify: `apps/cafe/lib/realtime-paths.test.ts` (append two tests)
+
+**Interfaces produced:** `CAFE_EVENT_KINDS` gains `"print-status"` (last, so the Worker's list is the same array); `CafeEventJob { id; status; target? }`; `CafeEventEnvelope.job?`; `broadcastCafeEvent(kind, nowMs?, job?)`; `publishPrintStatus(job)` (libs only, never a route).
+
+Why the envelope may carry a job: spec §10 asks for `{ kind: "print-status", jobId, status }`. It names one print job and its device, never order content, so the Worker stays out of the trust path. `target` lets only the agent the job is aimed at lease on it (the 1A reviewer's recommendation 2: no fan-out of empty leases).
+
+- [ ] **Step 1: Write the failing tests**
+
+Append to `apps/cafe/lib/realtime-paths.test.ts`:
+
+```ts
+// ── (15) PRINTING PHASE 1 (Session 1B): "print-status" ──────────────────────
+
+test('print-status: a room kind, and only its envelope names a job (id, status, device) — never order content', () => {
+  assert.ok((CAFE_EVENT_KINDS as readonly string[]).includes("print-status"), "print-status is one of the room's kinds");
+  const plain = buildRealtimeRequest("s", { tenant: "t", kind: "print-job", at: "x" }, 0);
+  assert.equal(plain.body, JSON.stringify({ tenant: "t", kind: "print-job", at: "x" }), "every other kind is byte-for-byte as before");
+  const status = buildRealtimeRequest("s", { tenant: "t", kind: "print-status", at: "x", job: { id: "j1", status: "queued", target: "dev-1" } }, 0);
+  assert.deepEqual(JSON.parse(status.body), { tenant: "t", kind: "print-status", at: "x", job: { id: "j1", status: "queued", target: "dev-1" } });
+});
+
+test("PIN: publishPrintStatus keeps publishCafeEvent's after() + try/catch contract, and broadcasts the job only on print-status", () => {
+  const s = stripComments(readSrc("apps/cafe/lib/realtime-publish.ts"));
+  const fn = s.slice(s.indexOf("export function publishPrintStatus("));
+  assert.match(fn, /try \{\s*after\(broadcastCafeEvent\("print-status", Date\.now\(\), job\)\);\s*\} catch \{/);
+  assert.match(s, /\{ tenant, kind, at: new Date\(nowMs\)\.toISOString\(\), \.\.\.\(job !== undefined \? \{ job \} : \{\}\) \}/);
+});
+```
+
+- [ ] **Step 2: Run them**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/realtime-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 48`, `# pass 46`, `# fail 2` (the two new tests). Every new assertion carries a message on purpose (review finding G2): a failing message-less `assert.ok` hangs this file under tsx.
+
+- [ ] **Step 3: The kind, the envelope and `publishPrintStatus`**
+
+In `apps/cafe/lib/realtime-publish.ts`, find:
+
+```ts
+import { createHmac } from "node:crypto";
+import { after } from "next/server";
+```
+
+Replace it with:
+
+```ts
+import { createHmac } from "node:crypto";
+import { after } from "next/server";
+import type { PrintJobStatus } from "@pos/shared/print-job";
+```
+
+In `apps/cafe/lib/realtime-publish.ts`, find:
+
+```ts
+  "print-job",
+] as const;
+export type CafeEventKind = (typeof CAFE_EVENT_KINDS)[number];
+```
+
+Replace it with:
+
+```ts
+  "print-job",
+  // Printing Phase 1 (spec §10, §17.2): one print job's new state — created, or final — for the
+  // ordering device's readback and the agent the job is aimed at. It names the job, its status and
+  // its device; never order content. The readback's pulse fallback stays.
+  "print-status",
+] as const;
+export type CafeEventKind = (typeof CAFE_EVENT_KINDS)[number];
+
+/** The one thing a "print-status" envelope adds: which job, its status, and (on "queued") the device
+ *  that must print it, so only that agent leases on it (no fan-out of empty leases). */
+export interface CafeEventJob {
+  id: string;
+  status: PrintJobStatus;
+  target?: string;
+}
+```
+
+In `apps/cafe/lib/realtime-publish.ts`, find:
+
+```ts
+export interface CafeEventEnvelope {
+  tenant: string;
+  kind: CafeEventKind;
+  at: string;
+}
+```
+
+Replace it with:
+
+```ts
+export interface CafeEventEnvelope {
+  tenant: string;
+  kind: CafeEventKind;
+  at: string;
+  /** "print-status" only. */
+  job?: CafeEventJob;
+}
+```
+
+In `apps/cafe/lib/realtime-publish.ts`, find:
+
+```ts
+export async function broadcastCafeEvent(
+  kind: CafeEventKind,
+  nowMs: number = Date.now(),
+): Promise<void> {
+```
+
+Replace it with:
+
+```ts
+export async function broadcastCafeEvent(
+  kind: CafeEventKind,
+  nowMs: number = Date.now(),
+  job?: CafeEventJob,
+): Promise<void> {
+```
+
+In `apps/cafe/lib/realtime-publish.ts`, find:
+
+```ts
+      { tenant, kind, at: new Date(nowMs).toISOString() },
+      nowMs,
+    );
+```
+
+Replace it with:
+
+```ts
+      { tenant, kind, at: new Date(nowMs).toISOString(), ...(job !== undefined ? { job } : {}) },
+      nowMs,
+    );
+```
+
+In `apps/cafe/lib/realtime-publish.ts`, find:
+
+```ts
+export function publishCafeEvent(kind: CafeEventKind): void {
+  try {
+    after(broadcastCafeEvent(kind));
+  } catch {
+    // No `after()` in this runtime — skip the nudge, keep the write. Devices
+    // poll, which is the shipped behaviour and the source of truth anyway.
+  }
+}
+```
+
+Replace it with:
+
+```ts
+export function publishCafeEvent(kind: CafeEventKind): void {
+  try {
+    after(broadcastCafeEvent(kind));
+  } catch {
+    // No `after()` in this runtime — skip the nudge, keep the write. Devices
+    // poll, which is the shipped behaviour and the source of truth anyway.
+  }
+}
+
+/** Printing Phase 1 (spec §10): one job's new state, under the same two-part safety contract as
+ *  publishCafeEvent. Called by the print libs (job creation and the lifecycle's final transitions),
+ *  never by a route; a lost frame costs the readback one pulse. */
+export function publishPrintStatus(job: CafeEventJob): void {
+  try {
+    after(broadcastCafeEvent("print-status", Date.now(), job));
+  } catch {
+    // No `after()` in this runtime — skip the frame, keep the write.
+  }
+}
+```
+
+- [ ] **Step 4: Worker parity** (the Worker relays the raw body, so only its kind list and its documented envelope change)
+
+In `workers/realtime/src/index.ts`, find:
+
+```ts
+const EVENT_KINDS = ["kot-fired", "kot-ticked", "order-changed", "self-order", "print-job"] as const;
+```
+
+Replace it with:
+
+```ts
+const EVENT_KINDS = ["kot-fired", "kot-ticked", "order-changed", "self-order", "print-job", "print-status"] as const;
+```
+
+In `workers/realtime/src/index.ts`, find:
+
+```ts
+ *  path entirely — it never sees a price, a customer, or a bill. */
+interface PublishEnvelope {
+  tenant: string;
+  kind: EventKind;
+  at: string;
+}
+```
+
+Replace it with:
+
+```ts
+ *  path entirely — it never sees a price, a customer, or a bill. A "print-status"
+ *  envelope (printing Phase 1) also names one print job: its id, its status and the
+ *  device that prints it. That is still no order content; the room relays it as is. */
+interface PublishEnvelope {
+  tenant: string;
+  kind: EventKind;
+  at: string;
+  job?: { id: string; status: string; target?: string };
+}
+```
+
+- [ ] **Step 5: The redeploy note** (an older Worker answers 400 to an unknown kind; the cafe swallows it)
+
+In `docs/GO-LIVE-CHECKLIST.md`, find:
+
+```markdown
+      its poll. Left empty (the default), the cafe polls exactly as before —
+      nothing to verify here.
+```
+
+Replace it with:
+
+```markdown
+      its poll. Left empty (the default), the cafe polls exactly as before —
+      nothing to verify here.
+- [ ] **Realtime, existing cafes — redeploy the Worker with each release that adds
+      an event kind** (printing Phase 1 adds `print-status`). An older Worker
+      answers 400 to a kind it does not know; the cafe swallows that, so nothing
+      breaks, but the new frames never arrive and the print readback waits for
+      its 20 s pulse instead. Re-run the go-live run for the cafe: its Realtime
+      step sees the changed Worker source (`sourceHash`) and redeploys it.
+```
+
+- [ ] **Step 6: Run them again**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/realtime-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 48` / `# pass 48` and `TSC_OK`. The parity pins pass: `CAFE_EVENT_KINDS` and the Worker's `EVENT_KINDS` hold the same six kinds in the same order.
+
+- [ ] **Step 7: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/lib/realtime-publish.ts apps/cafe/lib/realtime-paths.test.ts workers/realtime/src/index.ts docs/GO-LIVE-CHECKLIST.md
+git commit -m "feat(print): a print-status realtime kind (job id, status, device; no order content) with Worker parity"
+```
+
+---
+
+### Task B3: the lease rulings (M1, M2, M5), final states publish, and the M9 pin text
+
+**Files:**
+- Modify: `apps/cafe/lib/print-lease.ts`, `apps/cafe/lib/print-queue.ts` (the single dismiss), `apps/cafe/app/api/print-jobs/lease/route.ts`
+- Modify: `apps/cafe/lib/print-lifecycle-paths.test.ts` (one pin follows the change; append two), `apps/cafe/lib/print-queue-fixes.test.ts` (M9: wording only)
+
+**Interfaces produced:** `applyPrintJobPlan(id, job, patch, fence = {})` (the extra CAS terms; it publishes `print-status` for printed / needs-confirm / failed / dismissed after the write lands); `leasePrintJobs` answers `retryAt = now + 2 s` when its four steps ran out.
+
+- [ ] **Step 1: Write the failing pins**
+
+The first pin follows the deliberate change of `applyPrintJobPlan` (record it in Results as a changed pin):
+
+In `apps/cafe/lib/print-lifecycle-paths.test.ts`, find:
+
+```ts
+test("PIN: every lifecycle transition is ONE compare-and-set on {_id, status, epoch}, and a lease call is bounded", () => {
+  const s = src(LEASE);
+  assert.match(s, /PrintJob\.updateOne\(printJobCasFilter\(id, job\), printJobUpdateOf\(patch\)/);
+  assert.match(s, /return res\.modifiedCount === 1;/);
+```
+
+Replace it with:
+
+```ts
+test("PIN: every lifecycle transition is ONE compare-and-set on {_id, status, epoch}, and a lease call is bounded", () => {
+  const s = src(LEASE);
+  // Session 1B: the CAS may carry an extra fence (a lease: still this device's job, 1A review M5),
+  // and a landed final transition publishes its print-status (spec §10).
+  assert.match(s, /PrintJob\.updateOne\(\{ \.\.\.printJobCasFilter\(id, job\), \.\.\.fence \}, printJobUpdateOf\(patch\)/);
+  assert.match(s, /const applied = res\.modifiedCount === 1;/);
+  assert.match(s, /if \(applied && PRINT_STATUS_PUBLISHED\.has\(patch\.status\)\) publishPrintStatus\(\{ id: String\(id\), status: patch\.status \}\);/);
+  assert.match(s, /applyPrintJobPlan\(head\._id, job, plan\.patch, \{ targetDeviceId: input\.deviceId \}\)/, "the lease CAS is fenced on the device");
+```
+
+Append to `apps/cafe/lib/print-lifecycle-paths.test.ts`:
+
+```ts
+// ── Session 1B: the 1A review's lease rulings and the print-status publishes ───────────────────────
+
+test("PIN: the lease route's heartbeat is best-effort (M1), and a lease call that cleared four bad heads says when to look again (M2)", () => {
+  assert.match(src("apps/cafe/app/api/print-jobs/lease/route.ts"), /touchPrintDevice\(parsed\.data\.deviceId, nowMs\)\.catch\(\(\) => undefined\),/);
+  assert.match(src(LEASE), /return \{ jobs: \[\], retryAt: new Date\(input\.nowMs \+ PRINT_BACKOFF_MS\[0\]\)\.toISOString\(\) \};/);
+});
+
+test("PIN: the lifecycle publishes exactly the final statuses, and a dismissed job announces itself", () => {
+  assert.match(src(LEASE), /new Set<PrintJobStatus>\(\["printed", "needs-confirm", "failed", "dismissed"\]\)/);
+  const queue = src("apps/cafe/lib/print-queue.ts");
+  const single = queue.slice(queue.indexOf("export async function dismissPrintJob("), queue.indexOf("export async function dismissQueuedPrintJobsForClearedHost("));
+  assert.match(single, /if \(dismissed\) \{\s*publishPrintStatus\(\{ id: input\.id, status: "dismissed" \}\);\s*return \{ dismissed: true \};\s*\}/);
+});
+```
+
+M9 (the 1A reviewer): the changed prune pin's rationale was inaccurate. Dropping filter #1's status term would not delete live printed jobs (filter #2 deletes resolved rows after 2 h anyway); the term keeps the two retention clocks apart. Wording only, the assertions stay:
+
+In `apps/cafe/lib/print-queue-fixes.test.ts`, find:
+
+```ts
+fences on status:{$in:[...PRINT_JOB_UNRESOLVED_STATUSES]} (dropping it would delete LIVE printed jobs inside their 2 h readback window) with a $lt cutoff
+```
+
+Replace it with:
+
+```ts
+fences on status:{$in:[...PRINT_JOB_UNRESOLVED_STATUSES]} (the 12 h clock is only for jobs still waiting for a writer or a decision; a resolved row keeps its 2 h clock in filter #2) with a $lt cutoff
+```
+
+In `apps/cafe/lib/print-queue-fixes.test.ts`, find:
+
+```ts
+  assert.equal(deleteCalls.length, 2, "prunePrintJobs must call PrintJob.deleteMany( exactly twice — filter #1 (queued) and filter #2 (resolved)");
+```
+
+Replace it with:
+
+```ts
+  assert.equal(deleteCalls.length, 2, "prunePrintJobs must call PrintJob.deleteMany( exactly twice — filter #1 (unresolved) and filter #2 (resolved)");
+```
+
+In `apps/cafe/lib/print-queue-fixes.test.ts`, find:
+
+```ts
+"filter #1 must fence on the unresolved statuses (Phase 1) — dropping it deletes live printed jobs inside their 2 h readback window");
+```
+
+Replace it with:
+
+```ts
+"filter #1 must fence on the unresolved statuses (Phase 1) — the 12 h clock is for jobs still waiting; a resolved row keeps its 2 h clock");
+```
+
+- [ ] **Step 2: Run them**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-lifecycle-paths.test.ts lib/print-queue-fixes.test.ts 2>&1 | grep -E "^# (tests|pass|fail)|^not ok"`
+Expected: three failures, `not ok 1 - PIN: every lifecycle transition is ONE compare-and-set…`, `not ok 16 - PIN: the lease route's heartbeat is best-effort (M1)…` and `not ok 17 - PIN: the lifecycle publishes exactly the final statuses…`; `# tests 46`, `# pass 43`, `# fail 3`. The M9 edits are wording only, so that pin passes before and after.
+
+- [ ] **Step 3: `print-lease.ts`: the fence, the final-state publish, the step bound**
+
+In `apps/cafe/lib/print-lease.ts`, find:
+
+```ts
+import mongoose, { type FilterQuery, type Types, type UpdateQuery } from "mongoose";
+import type { PrintJobKind } from "@pos/shared/print-job";
+import type { LeasedPrintJob, PrintAckData, PrintLeaseData } from "@pos/shared/print-agent-wire";
+import {
+  PRINT_JOB_LOG_MAX,
+```
+
+Replace it with:
+
+```ts
+import mongoose, { type FilterQuery, type Types, type UpdateQuery } from "mongoose";
+import type { PrintJobKind, PrintJobStatus } from "@pos/shared/print-job";
+import type { LeasedPrintJob, PrintAckData, PrintLeaseData } from "@pos/shared/print-agent-wire";
+import {
+  PRINT_BACKOFF_MS,
+  PRINT_JOB_LOG_MAX,
+```
+
+In `apps/cafe/lib/print-lease.ts`, find:
+
+```ts
+import { PrintJob, type IPrintJob } from "@/models/PrintJob";
+import { dismissPrintJob, drainAgeCutoff } from "./print-queue";
+```
+
+Replace it with:
+
+```ts
+import { PrintJob, type IPrintJob } from "@/models/PrintJob";
+import { publishPrintStatus } from "@/lib/realtime-publish";
+import { dismissPrintJob, drainAgeCutoff } from "./print-queue";
+```
+
+In `apps/cafe/lib/print-lease.ts`, find:
+
+```ts
+/** Applies a plan. false: another writer moved the job first, so re-read and re-plan. */
+export async function applyPrintJobPlan(id: Types.ObjectId, job: PrintJobLifecycle, patch: PrintJobPatch): Promise<boolean> {
+  const res = await PrintJob.updateOne(printJobCasFilter(id, job), printJobUpdateOf(patch) as UpdateQuery<IPrintJob>);
+  return res.modifiedCount === 1;
+}
+```
+
+Replace it with:
+
+```ts
+/** The statuses an ordering device's readback hears about at once (spec §10, §17.2: a job's creation
+ *  and its final state); the pulse stays the fallback. */
+const PRINT_STATUS_PUBLISHED: ReadonlySet<PrintJobStatus> = new Set<PrintJobStatus>(["printed", "needs-confirm", "failed", "dismissed"]);
+
+/** Applies a plan. false: another writer moved the job first, so re-read and re-plan. `fence` adds
+ *  terms the plan depends on but the epoch does not cover (a lease: still this device's job). */
+export async function applyPrintJobPlan(
+  id: Types.ObjectId,
+  job: PrintJobLifecycle,
+  patch: PrintJobPatch,
+  fence: FilterQuery<IPrintJob> = {},
+): Promise<boolean> {
+  const res = await PrintJob.updateOne({ ...printJobCasFilter(id, job), ...fence }, printJobUpdateOf(patch) as UpdateQuery<IPrintJob>);
+  const applied = res.modifiedCount === 1;
+  // Fire-and-forget, after the write: a lost frame costs the readback one pulse, never the transition.
+  if (applied && PRINT_STATUS_PUBLISHED.has(patch.status)) publishPrintStatus({ id: String(id), status: patch.status });
+  return applied;
+}
+```
+
+In `apps/cafe/lib/print-lease.ts`, find:
+
+```ts
+    const payload = await leaseEligibility(head, input.dismissedBy);
+    if (payload === null) continue;
+    if (!(await applyPrintJobPlan(head._id, job, plan.patch))) continue;
+    return { jobs: [leasedPrintJobOf(head, plan.patch, payload, job.labels)], retryAt: null };
+  }
+  return { jobs: [], retryAt: null };
+}
+```
+
+Replace it with:
+
+```ts
+    const payload = await leaseEligibility(head, input.dismissedBy);
+    if (payload === null) continue;
+    // Fenced on the target too: a retarget (the sweep, a host change) between the read and this CAS
+    // moves the job to another device's line, and this device must not win it then (1A review M5).
+    if (!(await applyPrintJobPlan(head._id, job, plan.patch, { targetDeviceId: input.deviceId }))) continue;
+    return { jobs: [leasedPrintJobOf(head, plan.patch, payload, job.labels)], retryAt: null };
+  }
+  // Every step cleared one bad head or lost one race, so the line may still hold a printable job:
+  // look again after the shortest backoff instead of waiting for a nudge (1A review M2).
+  return { jobs: [], retryAt: new Date(input.nowMs + PRINT_BACKOFF_MS[0]).toISOString() };
+}
+```
+
+- [ ] **Step 4: A dismissed job announces itself; the lease heartbeat is best-effort (M1)**
+
+In `apps/cafe/lib/print-queue.ts`, find:
+
+```ts
+import { publishCafeEvent } from "@/lib/realtime-publish";
+```
+
+Replace it with:
+
+```ts
+import { publishCafeEvent, publishPrintStatus } from "@/lib/realtime-publish";
+```
+
+In `apps/cafe/lib/print-queue.ts`, find:
+
+```ts
+  if (dismissed) return { dismissed: true };
+
+  // A lost race here is a NORMAL 200 outcome
+```
+
+Replace it with:
+
+```ts
+  if (dismissed) {
+    // Phase 1 (spec §10): the ordering device's readback hears it at once; the pulse is the fallback.
+    publishPrintStatus({ id: input.id, status: "dismissed" });
+    return { dismissed: true };
+  }
+
+  // A lost race here is a NORMAL 200 outcome
+```
+
+In `apps/cafe/app/api/print-jobs/lease/route.ts`, find:
+
+```ts
+      touchPrintDevice(parsed.data.deviceId, nowMs),
+    ]);
+```
+
+Replace it with:
+
+```ts
+      // Best-effort (1A review M1): the lease CAS may already have committed, and a 500 now would
+      // strand the job for 90 s and then reprint it. A missed touch only ages lastSeenAt.
+      touchPrintDevice(parsed.data.deviceId, nowMs).catch(() => undefined),
+    ]);
+```
+
+- [ ] **Step 5: Run them again, plus the live legs** (legs q–x must stay exactly as they were)
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-lifecycle-paths.test.ts lib/print-queue-fixes.test.ts lib/print-queue.test.ts lib/print-lease.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK && MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_print_host npm run verify:print:live 2>&1 | tail -2`
+Expected: `# tests 102` / `# pass 102`, `TSC_OK`, then `161 passed, 0 failed` (legs a–x exactly as before).
+
+- [ ] **Step 6: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/lib/print-lease.ts apps/cafe/lib/print-queue.ts apps/cafe/app/api/print-jobs/lease/route.ts apps/cafe/lib/print-lifecycle-paths.test.ts apps/cafe/lib/print-queue-fixes.test.ts
+git commit -m "fix(print): the lease CAS is fenced on its device, a spent lease call says when to look again, the lease heartbeat is best-effort; final states publish print-status"
+```
+
+---
+
+### Task B4: server-side job creation (`lib/print-order-jobs.ts`) and the repair marker
+
+**Files:**
+- Create: `apps/cafe/lib/print-order-jobs.ts`, `apps/cafe/lib/print-order-jobs.test.ts`
+- Modify: `apps/cafe/models/Order.ts` (`kotPrintDevices`), `apps/cafe/package.json` (`testChain`), `apps/cafe/lib/self-order-alert-paths.test.ts` (the PrintJob writer list)
+
+**Interfaces produced** (all in `@/lib/print-order-jobs`):
+- `printIntentOf(req): PrintIntent | null`, `PrintIntent { deviceId; bill }`: null unless `x-pos-print-agent: 1` and a usable `x-pos-device-id`. A bad header never refuses the order write.
+- `buildKotPrintDevices(old, round, deviceId)`: the positional marker, the `buildKotIdemKeys` idiom.
+- `OrderPrintSlip`: `{kind:"kot", round}` | `{kind:"bill"}` | `{kind:"void"}` (the order's newest void entry) | `{kind:"moved", meta}`.
+- `createOrderPrintJobs({ order, slips, originDeviceId?, queuedBy, nowMs }): Promise<PrintJobRef[]>`: target = host ?? originDeviceId (none: nothing made); slips in kind order; today's keys (`printJobKeyOf`), so a duplicate key answers the existing job; publishes `print-status` queued per new job and one `print-job` nudge when a host exists; never throws.
+- `insertPrintJob(...)`, `enqueueOwnPrintJob(...)` (no-host agent enqueue, used by Task B5), `wireOrderOf(order)`, `withPrintJobs(order, refs | null)`.
+- `IOrder.kotPrintDevices?: string[]` (declared, omit-empty).
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `apps/cafe/lib/print-order-jobs.test.ts`:
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+import { stripComments } from "@/lib/source-pin-utils";
+import { buildKotPrintDevices, printIntentOf, wireOrderOf, withPrintJobs } from "@/lib/print-order-jobs";
+
+// Printing redesign Phase 1, Session 1B (plan docs/superpowers/plans/2026-10-02-phase-1-lifecycle.md):
+// server-side job creation. DB behaviour is proven live (npm run verify:print:live, legs y–ab); these
+// are the pure helpers and the source pins.
+
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const src = (rel: string): string => stripComments(readFileSync(path.join(REPO_ROOT, rel), "utf8"));
+const count = (text: string, needle: string): number => text.split(needle).length - 1;
+function inOrder(text: string, needles: string[], label: string): void {
+  let at = -1;
+  for (const needle of needles) {
+    const next = text.indexOf(needle, at + 1);
+    assert.ok(next > at, `${label}: "${needle}" must come after the step before it`);
+    at = next;
+  }
+}
+
+const reqWith = (headers: Record<string, string>): Request => new Request("http://localhost/api/orders", { method: "POST", headers });
+
+test("printIntentOf: only an agent request with a usable device id opts in; a bad header never refuses the order", () => {
+  assert.equal(printIntentOf(reqWith({})), null, "a tab from before Phase 1 prints its own slips");
+  assert.equal(printIntentOf(reqWith({ "x-pos-device-id": "dev-1" })), null, "the device header alone is not an opt-in");
+  assert.equal(printIntentOf(reqWith({ "x-pos-print-agent": "1" })), null, "no device to print at");
+  assert.equal(printIntentOf(reqWith({ "x-pos-print-agent": "yes", "x-pos-device-id": "dev-1" })), null, "only the value 1 switches it on");
+  assert.equal(printIntentOf(reqWith({ "x-pos-print-agent": "1", "x-pos-device-id": "d".repeat(65) })), null, "an over-long id is ignored, not a 400");
+  assert.deepEqual(printIntentOf(reqWith({ "x-pos-print-agent": "1", "x-pos-device-id": " dev-1 " })), { deviceId: "dev-1", bill: false });
+  assert.deepEqual(printIntentOf(reqWith({ "x-pos-print-agent": "1", "x-pos-device-id": "dev-1", "x-pos-print-bill": "1" })), { deviceId: "dev-1", bill: true });
+});
+
+test("buildKotPrintDevices: positional like kotIdemKeys; a round its tab printed stays empty; no device writes nothing", () => {
+  assert.equal(buildKotPrintDevices(undefined, 1, undefined), undefined);
+  assert.deepEqual(buildKotPrintDevices(undefined, 1, "dev-1"), ["dev-1"]);
+  assert.deepEqual(buildKotPrintDevices(undefined, 3, "dev-1"), ["", "", "dev-1"], "earlier rounds were printed by their tab");
+  assert.deepEqual(buildKotPrintDevices(["dev-1"], 2, "dev-2"), ["dev-1", "dev-2"]);
+  assert.equal(buildKotPrintDevices(["dev-1"], 2, undefined), undefined, "an old tab's round leaves the marker as it was");
+});
+
+test("withPrintJobs: without an opt-in the answer is the very same object; with one it is the wire order plus printJobs", () => {
+  const order = { _id: "o1", createdAt: new Date("2026-10-02T10:00:00.000Z") };
+  assert.equal(withPrintJobs(order, null), order);
+  const refs = [{ id: "j1", kind: "kot" as const, targetDeviceId: "dev-1", label: "KOT round 1 · T-1" }];
+  assert.deepEqual(withPrintJobs(order, refs), { _id: "o1", createdAt: "2026-10-02T10:00:00.000Z", printJobs: refs });
+  assert.deepEqual(withPrintJobs(order, []), { _id: "o1", createdAt: "2026-10-02T10:00:00.000Z", printJobs: [] });
+  const wire = wireOrderOf({ createdAt: new Date("2026-10-02T10:00:00.000Z") });
+  assert.equal(wire.createdAt, "2026-10-02T10:00:00.000Z", "Dates reach the builders as the ISO strings the client sees");
+});
+
+test("PIN: createOrderPrintJobs never throws, announces each new job to its device, and nudges an old host only when there is one", () => {
+  const s = src("apps/cafe/lib/print-order-jobs.ts");
+  const fn = s.slice(s.indexOf("export async function createOrderPrintJobs("), s.indexOf("export async function enqueueOwnPrintJob("));
+  inOrder(fn, ["try {", "const target = host?.deviceId ?? input.originDeviceId;", "await insertPrintJob({", "} catch {", "return refs;"], "createOrderPrintJobs");
+  assert.match(fn, /publishPrintStatus\(\{ id: job\.ref\.id, status: "queued", target \}\);/);
+  assert.match(fn, /if \(made > 0 && host !== null\) publishCafeEvent\("print-job"\);/);
+  assert.match(s, /const jobKey = input\.jobKey \?\? printJobKeyOf\(payload\);/, "today's keys: a server job and an old tab's enqueue of one slip collide");
+  assert.equal(count(s, "PrintJob.create("), 1, "one write point");
+  assert.ok(!s.includes("console."), "no console.* in a server lib");
+});
+```
+
+In `apps/cafe/package.json`, add the file to `testChain` directly after `"lib/print-lifecycle-paths.test.ts",` (one entry per line):
+
+In `apps/cafe/package.json`, find:
+
+```json
+    "lib/print-lifecycle-paths.test.ts",
+```
+
+Replace it with:
+
+```json
+    "lib/print-lifecycle-paths.test.ts",
+    "lib/print-order-jobs.test.ts",
+```
+
+The PrintJob writer allow-list gains the new write point (a deliberate change; name it in Results):
+
+In `apps/cafe/lib/self-order-alert-paths.test.ts`, find:
+
+```ts
+  // print-sweep.ts writes only through applyPrintJobPlan's CAS, plus one updateMany that retargets
+  // QUEUED rows (never leased ones, so it cannot move a job out from under its writer).
+  const EXPECTED_PRINT_JOB_WRITERS = [
+    "apps/cafe/lib/print-lease.ts",
+    "apps/cafe/lib/print-queue-claim.ts",
+```
+
+Replace it with:
+
+```ts
+  // print-sweep.ts writes only through applyPrintJobPlan's CAS, plus the updateManys that route
+  // waiting rows to the device that prints them now (never leased ones, so it cannot move a job out
+  // from under its writer; the host-cleared one keeps the claimedAt guard).
+  // Session 1B adds print-order-jobs.ts: server-side creation, one PrintJob.create per slip under
+  // today's unique jobKey, so it races the legacy enqueue and the claim exactly as a second enqueue would.
+  const EXPECTED_PRINT_JOB_WRITERS = [
+    "apps/cafe/lib/print-lease.ts",
+    "apps/cafe/lib/print-order-jobs.ts",
+    "apps/cafe/lib/print-queue-claim.ts",
+```
+
+- [ ] **Step 2: Run them**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-order-jobs.test.ts 2>&1 | grep -E "Cannot find module|^# (tests|pass|fail)" | head -3`
+Expected: `# Error: Cannot find module '@/lib/print-order-jobs'`, `# tests 1`, `# pass 0` (the file does not load).
+
+- [ ] **Step 3: The repair marker on Order**
+
+In `apps/cafe/models/Order.ts`, find:
+
+```ts
+  idemKey?: string;
+  kotIdemKeys?: string[];
+  billNumber?: number;
+  voids?: IOrderVoid[]; // absent until the first void ($push creates it)
+```
+
+Replace it with:
+
+```ts
+  idemKey?: string;
+  kotIdemKeys?: string[];
+  // Printing Phase 1 (lib/print-order-jobs.ts) — positional like kotIdemKeys:
+  // `kotPrintDevices[n-1]` is the device whose request had the SERVER print round
+  // n's KOT ("" = a round its tab printed itself). The repair sweep re-creates a
+  // missing job only for those rounds, so it never re-prints an old tab's round.
+  // Absent on every order no agent tab fired.
+  kotPrintDevices?: string[];
+  billNumber?: number;
+  voids?: IOrderVoid[]; // absent until the first void ($push creates it)
+```
+
+In `apps/cafe/models/Order.ts`, find:
+
+```ts
+    kotIdemKeys: { type: [String], default: undefined },
+    billNumber: { type: Number },
+```
+
+Replace it with:
+
+```ts
+    kotIdemKeys: { type: [String], default: undefined },
+    // Printing Phase 1 — declared for the same strict:true reason; omit-empty.
+    kotPrintDevices: { type: [String], default: undefined },
+    billNumber: { type: Number },
+```
+
+- [ ] **Step 4: The creation lib**
+
+Create `apps/cafe/lib/print-order-jobs.ts`:
+
+```ts
+import { isDuplicateKeyError } from "@pos/shared/api";
+import {
+  PRINT_HOST_KEY,
+  printJobPayloadWithinCap,
+  type PrintJobEnqueueResult,
+  type PrintJobStatus,
+} from "@pos/shared/print-job";
+import {
+  PRINT_AGENT_HEADER,
+  PRINT_BILL_HEADER,
+  PRINT_DEVICE_ID_HEADER,
+  PRINT_HEADER_ON,
+  type PrintJobRef,
+} from "@pos/shared/print-agent-wire";
+import { printJobCreatedLog, printJobInitialLabels, printJobLifecycleInit } from "@pos/shared/print-lifecycle";
+import { printJobPayloadSchema, type PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
+import { PrintHost } from "@/models/PrintHost";
+import { PrintJob } from "@/models/PrintJob";
+import { PRINT_HOST_DEVICE_ID_MAX_CHARS } from "@/lib/print-host";
+import { printJobKeyOf, printJobOrderIdOf } from "@/lib/print-queue";
+import { billPrintJob, kotPrintJob, movedPrintJob, voidPrintJob, type PrintJobRequest } from "@/lib/print-routing";
+import { publishCafeEvent, publishPrintStatus } from "@/lib/realtime-publish";
+import type { Order } from "@/types";
+
+// Printing redesign, Phase 1 Session 1B (spec §7.4): server-side job creation. An order route whose
+// call site opts in (PRINT_AGENT_HEADER) creates, in the same request and right after its order write
+// landed, the slips that call site would otherwise print itself. Simple mode (§6.6): the current host
+// prints everything; with no host the asking device prints its own.
+//
+// Keys stay today's (printJobKeyOf): simple mode has one job per slip, so a server-made job and an old
+// tab's enqueue of the same slip collide on the unique jobKey instead of printing twice. The printer
+// and copy parts of spec §6.5's key arrive with Phase 2 printers.
+//
+// createOrderPrintJobs NEVER throws: an order that landed must still answer success. A job that did
+// not get made is covered by the repair sweep (print-repair.ts) for KOT rounds, and by the client's own
+// enqueue of any slip its response did not name (Session 1C). Never calls connectDB(). No console.*.
+
+export interface PrintIntent {
+  /** The asking device (x-pos-device-id). With no host it prints its own slips (§6.6). */
+  deviceId: string;
+  /** PRINT_BILL_HEADER: this call site also prints the bill (Pay Now, the POS settle). */
+  bill: boolean;
+}
+
+/** null unless the request opted in with a usable device id. A bad print header never refuses the
+ *  order write: the server then prints nothing, exactly as for a tab from before Phase 1. */
+export function printIntentOf(req: Request): PrintIntent | null {
+  if (req.headers.get(PRINT_AGENT_HEADER)?.trim() !== PRINT_HEADER_ON) return null;
+  const deviceId = req.headers.get(PRINT_DEVICE_ID_HEADER)?.trim() ?? "";
+  if (deviceId === "" || deviceId.length > PRINT_HOST_DEVICE_ID_MAX_CHARS) return null;
+  return { deviceId, bill: req.headers.get(PRINT_BILL_HEADER)?.trim() === PRINT_HEADER_ON };
+}
+
+/** The tab's kotPrintDevices after firing `round` for `deviceId`. Positional, the kotIdemKeys idiom:
+ *  index round-1 gets the device, earlier slots keep their own or "" (printed by its tab). No device →
+ *  undefined, so the route writes nothing (omit-empty). */
+export function buildKotPrintDevices(
+  old: readonly string[] | undefined,
+  round: number,
+  deviceId: string | undefined,
+): string[] | undefined {
+  if (!deviceId) return undefined;
+  return Array.from({ length: round }, (_, i) => (i === round - 1 ? deviceId : (old?.[i] ?? "")));
+}
+
+/** One slip an order request asks for. "void" is the newest entry of the order's void trail, the one
+ *  this request pushed. */
+export type OrderPrintSlip =
+  | { kind: "kot"; round: number }
+  | { kind: "bill" }
+  | { kind: "void" }
+  | { kind: "moved"; meta: { from?: string; movedBy: string; movedAt: string } };
+
+const UNNAMED_STAFF = "Staff";
+
+/** Kind order inside one request (§7.6 "KOT before bill"); creates run in this order, so createdAt does too. */
+const SLIP_ORDER: Record<OrderPrintSlip["kind"], number> = { kot: 0, void: 1, moved: 2, bill: 3 };
+
+/** A lean or hydrated Order as the wire Order the client builders read: through JSON, exactly as the
+ *  response sends it, so a server-made slip is the slip the device would have built (§7.4). */
+export function wireOrderOf(order: unknown): Order {
+  return JSON.parse(JSON.stringify(order)) as Order;
+}
+
+function requestOf(order: Order, slip: OrderPrintSlip): PrintJobRequest | null {
+  try {
+    switch (slip.kind) {
+      case "kot":
+        return kotPrintJob(order, slip.round);
+      case "bill":
+        return billPrintJob(order, { reprint: false });
+      case "void": {
+        const entry = order.voids?.at(-1);
+        return entry === undefined ? null : voidPrintJob(order, entry, { reprint: false });
+      }
+      case "moved":
+        return movedPrintJob(order, slip.meta, { reprint: false });
+    }
+  } catch {
+    // An order the snapshot cannot read (deploy skew): nothing to create.
+    return null;
+  }
+}
+
+/** One job made, or the one its key already names (a racing replay, an old tab's enqueue, a repair). */
+export interface InsertedPrintJob {
+  ref: PrintJobRef;
+  created: boolean;
+  status: PrintJobStatus;
+}
+
+/** Inserts one job. null: its payload fails the schema or the 64 KB cap. A DB error throws. */
+export async function insertPrintJob(input: {
+  request: PrintJobRequest;
+  targetDeviceId: string;
+  originDeviceId?: string;
+  queuedBy: string;
+  /** Default printJobKeyOf(payload); a client-started repeat passes its `reprint:<key>`. */
+  jobKey?: string;
+  nowMs: number;
+}): Promise<InsertedPrintJob | null> {
+  const parsed = printJobPayloadSchema.safeParse(input.request.payload);
+  if (!parsed.success) return null;
+  const payload: PrintJobPayload = parsed.data;
+  const json = JSON.stringify(payload);
+  if (!printJobPayloadWithinCap(json)) return null;
+  const jobKey = input.jobKey ?? printJobKeyOf(payload);
+  const orderId = printJobOrderIdOf(payload);
+  try {
+    const created = await PrintJob.create({
+      kind: payload.kind,
+      payload: json,
+      label: input.request.label,
+      // A Mongoose required string refuses "" (house rule: staff names fall back to "Staff").
+      queuedBy: input.queuedBy.trim() || UNNAMED_STAFF,
+      ...(orderId !== undefined ? { orderId } : {}),
+      ...(jobKey !== undefined ? { jobKey } : {}),
+      targetDeviceId: input.targetDeviceId,
+      ...(input.originDeviceId !== undefined ? { originDeviceId: input.originDeviceId } : {}),
+      copyIndex: 0,
+      ...printJobLifecycleInit(input.nowMs, printJobInitialLabels(payload)),
+      log: [printJobCreatedLog(input.nowMs, input.originDeviceId)],
+    });
+    const ref: PrintJobRef = { id: String(created._id), kind: payload.kind, targetDeviceId: input.targetDeviceId, label: input.request.label };
+    return { ref, created: true, status: "queued" };
+  } catch (error) {
+    if (!isDuplicateKeyError(error) || jobKey === undefined) throw error;
+    const existing = await PrintJob.findOne({ jobKey }).select("kind status label targetDeviceId").lean();
+    // Pruned in the instant since the collision: report nothing rather than invent a job.
+    if (existing === null) return null;
+    const ref: PrintJobRef = {
+      id: String(existing._id),
+      kind: existing.kind,
+      targetDeviceId: existing.targetDeviceId ?? input.targetDeviceId,
+      label: existing.label,
+    };
+    return { ref, created: false, status: existing.status };
+  }
+}
+
+/** Creates the slips one order request asked for (spec §7.4) and returns a ref for each job that
+ *  exists for them, made now or before. Publishes "print-status" queued per new job, aimed at its
+ *  device, plus one "print-job" nudge for a host from before Phase 1. */
+export async function createOrderPrintJobs(input: {
+  order: unknown;
+  slips: OrderPrintSlip[];
+  /** Absent only for the public auto-accept: no device asked. */
+  originDeviceId?: string;
+  queuedBy: string;
+  nowMs: number;
+}): Promise<PrintJobRef[]> {
+  const refs: PrintJobRef[] = [];
+  if (input.slips.length === 0) return refs;
+  try {
+    const host = await PrintHost.findOne({ key: PRINT_HOST_KEY }).select("deviceId").lean();
+    // With neither a host nor an asking device nothing is made: the self-order kot-claim lane prints it.
+    const target = host?.deviceId ?? input.originDeviceId;
+    if (target === undefined) return refs;
+    const order = wireOrderOf(input.order);
+    const slips = [...input.slips].sort((a, b) => SLIP_ORDER[a.kind] - SLIP_ORDER[b.kind]);
+    let made = 0;
+    for (const slip of slips) {
+      const request = requestOf(order, slip);
+      if (request === null) continue;
+      const job = await insertPrintJob({ request, targetDeviceId: target, originDeviceId: input.originDeviceId, queuedBy: input.queuedBy, nowMs: input.nowMs });
+      if (job === null) continue;
+      refs.push(job.ref);
+      if (job.created) {
+        made += 1;
+        publishPrintStatus({ id: job.ref.id, status: "queued", target });
+      }
+    }
+    if (made > 0 && host !== null) publishCafeEvent("print-job");
+  } catch {
+    // Never fails the order write that landed: the repair sweep or the client's own enqueue covers it.
+  }
+  return refs;
+}
+
+/** POST /api/print-jobs with no host, from an agent tab (spec §6.6): the asking device prints its own
+ *  client-started slip (a reprint, End of day, a cancel notice) through the lifecycle, under the same
+ *  key rules as enqueuePrintJob, so a retried POST is one job. */
+export async function enqueueOwnPrintJob(input: {
+  payload: PrintJobPayload;
+  label: string;
+  queuedBy: string;
+  idempotencyKey?: string;
+  originDeviceId: string;
+  nowMs: number;
+}): Promise<PrintJobEnqueueResult> {
+  const jobKey = printJobKeyOf(input.payload) ?? (input.idempotencyKey !== undefined ? `reprint:${input.idempotencyKey}` : undefined);
+  const job = await insertPrintJob({
+    request: { payload: input.payload, label: input.label },
+    targetDeviceId: input.originDeviceId,
+    originDeviceId: input.originDeviceId,
+    queuedBy: input.queuedBy,
+    ...(jobKey !== undefined ? { jobKey } : {}),
+    nowMs: input.nowMs,
+  });
+  if (job === null) return { outcome: "too-large" };
+  // A resolved job under this key already printed (or was dismissed): never report it as fresh.
+  if (!job.created && job.status !== "queued") return { outcome: "already-resolved", id: job.ref.id };
+  if (job.created) publishPrintStatus({ id: job.ref.id, status: "queued", target: input.originDeviceId });
+  return { outcome: "queued", id: job.ref.id, duplicate: !job.created };
+}
+
+/** A route's answer: the order exactly as before, plus `printJobs` when the request opted in. */
+export function withPrintJobs<T>(order: T, printJobs: PrintJobRef[] | null): T | (Order & { printJobs: PrintJobRef[] }) {
+  return printJobs === null ? order : { ...wireOrderOf(order), printJobs };
+}
+```
+
+- [ ] **Step 5: Run them again**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-order-jobs.test.ts lib/self-order-alert-paths.test.ts lib/order-create.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK && npx eslint lib/print-order-jobs.ts lib/print-order-jobs.test.ts models/Order.ts && echo ESLINT_OK`
+Expected: `# tests 21` / `# pass 21`, `TSC_OK`, `ESLINT_OK`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/lib/print-order-jobs.ts apps/cafe/lib/print-order-jobs.test.ts apps/cafe/models/Order.ts apps/cafe/package.json apps/cafe/lib/self-order-alert-paths.test.ts
+git commit -m "feat(print): server-side print-job creation under today's job keys, and the kotPrintDevices repair marker"
+```
+
+---
+
+### Task B5: the order routes create their slips when the call site opts in
+
+**Files:**
+- Modify: `apps/cafe/app/api/orders/route.ts`, `apps/cafe/app/api/orders/[id]/items/route.ts`, `apps/cafe/app/api/orders/[id]/settle/route.ts`, `apps/cafe/app/api/orders/[id]/items/void/route.ts`, `apps/cafe/app/api/orders/[id]/table/route.ts`, `apps/cafe/app/api/order-requests/[id]/accept/route.ts`, `apps/cafe/lib/order-request-create.ts`, `apps/cafe/app/api/print-jobs/route.ts`
+- Modify: `apps/cafe/lib/print-order-jobs.test.ts` (append), `apps/cafe/lib/write-route-paths.test.ts` (two answer pins), `apps/cafe/lib/realtime-paths.test.ts` (the move's answer pin)
+
+**Behaviour, per route** (the slips each call site prints today; the response becomes `{ ...order, printJobs }` only when the request opted in, and is byte-for-byte unchanged otherwise):
+- `POST /api/orders`: KOT round 1; Pay Now's bill only with `x-pos-print-bill: 1` and `status: "Completed"`. The insert marks round 1 (`kotPrintDevices: [deviceId]`). A replay, a 409, a 400 and the unconfirmed-bill-number 500 create nothing.
+- `orders/[id]/items`: the fired round's KOT; the CAS `$set` marks the round positionally. Replays create nothing.
+- `settle`: the bill only with `x-pos-print-bill: 1` (the Orders-sheet settle never printed and sends no header).
+- `items/void`: the VOID slip for the entry this request pushed (`voids.at(-1)`).
+- `orders/[id]/table`: the moved slip for all three verbs, `from` = the table the tab left (none for an ASSIGN), `movedBy`/`movedAt` from the server.
+- `order-requests/[id]/accept`: the accepted round (`order.kotRounds`, exactly what the bridge stamps as `acceptedKotRound`), never on `replayed`.
+- Public auto-accept (`resolveAutoAcceptStatus`): no device asked, so only with a host (ruling R4).
+- `POST /api/print-jobs`: an agent request that got `no-host` becomes the asking device's own job (`enqueueOwnPrintJob`); a tab without the header still gets `no-host`.
+
+Each creation runs after the route's own landed-path publish (replays and refusals return before it) and never fails the order write.
+
+- [ ] **Step 1: Write the failing pins**
+
+Append to `apps/cafe/lib/print-order-jobs.test.ts`:
+
+```ts
+// ── The order routes (Session 1B) ────────────────────────────────────────────
+
+const ROUTES: Array<[string, string]> = [
+  ["apps/cafe/app/api/orders/route.ts", 'publishCafeEvent("order-changed");'],
+  ["apps/cafe/app/api/orders/[id]/items/route.ts", 'publishCafeEvent("kot-fired");'],
+  ["apps/cafe/app/api/orders/[id]/settle/route.ts", 'publishCafeEvent("order-changed");'],
+  ["apps/cafe/app/api/orders/[id]/items/void/route.ts", 'publishCafeEvent("order-changed");'],
+  ["apps/cafe/app/api/orders/[id]/table/route.ts", 'publishCafeEvent("order-changed");'],
+  ["apps/cafe/app/api/order-requests/[id]/accept/route.ts", 'publishCafeEvent("kot-fired");'],
+];
+
+test("PIN: every order route opts in only through printIntentOf(req), and creates its slips once, after its landed publish (replays return before it)", () => {
+  for (const [rel, publish] of ROUTES) {
+    const s = src(rel);
+    assert.equal(count(s, "printIntentOf(req)"), 1, `${rel}: one opt-in read`);
+    assert.equal(count(s, "await createOrderPrintJobs({"), 1, `${rel}: one creation site`);
+    const at = s.lastIndexOf(publish);
+    assert.ok(at >= 0 && s.indexOf("await createOrderPrintJobs({") > at, `${rel}: creation follows the landed path's publish`);
+    assert.ok(!/PrintJob\./.test(s), `${rel}: no direct PrintJob access`);
+  }
+  for (const rel of ROUTES.slice(0, 5).map(([r]) => r)) {
+    assert.match(src(rel), /return (success|created)\(withPrintJobs\(/, `${rel}: the answer goes through withPrintJobs`);
+  }
+});
+
+test("PIN: the create and add-round CAS writes mark a round as the server's only when the request opted in", () => {
+  const create = src("apps/cafe/app/api/orders/route.ts");
+  assert.match(create, /\.\.\.\(intent \? \{ kotPrintDevices: \[intent\.deviceId\] \} : \{\}\),/);
+  assert.match(
+    create,
+    /\[\{ kind: "kot", round: 1 \}, \.\.\.\(intent\.bill && data\.status === "Completed" \? \[\{ kind: "bill" as const \}\] : \[\]\)\]/,
+    "Pay Now prints its bill only when asked",
+  );
+  const items = src("apps/cafe/app/api/orders/[id]/items/route.ts");
+  assert.match(items, /const kotPrintDevices = buildKotPrintDevices\(old\.kotPrintDevices, round, intent\?\.deviceId\);/);
+  assert.match(items, /\.\.\.\(kotPrintDevices \? \{ kotPrintDevices \} : \{\}\),/);
+  assert.match(src("apps/cafe/app/api/orders/[id]/settle/route.ts"), /slips: intent\.bill \? \[\{ kind: "bill" \}\] : \[\],/, "the settle prints the bill only when asked");
+  assert.match(src("apps/cafe/models/Order.ts"), /kotPrintDevices: \{ type: \[String\], default: undefined \},/, "declared, omit-empty");
+});
+
+test("PIN: the staff accept creates only on a fresh accept; the public auto-accept creates for the host only (no asking device)", () => {
+  assert.match(src("apps/cafe/app/api/order-requests/[id]/accept/route.ts"), /intent && !result\.replayed\s*\? await createOrderPrintJobs\(\{/);
+  const auto = src("apps/cafe/lib/order-request-create.ts");
+  const fn = auto.slice(auto.indexOf("export async function resolveAutoAcceptStatus("));
+  inOrder(fn, ['if ("error" in result) return "pending";', "if (!result.replayed) {", "await createOrderPrintJobs({", 'return "accepted";'], "auto-accept");
+  const call = fn.slice(fn.indexOf("await createOrderPrintJobs({"), fn.indexOf('return "accepted";'));
+  assert.ok(!call.includes("originDeviceId"), "no device asked: with no host nothing is made and kot-claim prints it");
+});
+
+test("PIN: POST /api/print-jobs falls back to the asking device only for an agent request that got no-host", () => {
+  const s = src("apps/cafe/app/api/print-jobs/route.ts");
+  assert.match(s, /if \(result\.outcome === "no-host" && intent !== null\) \{\s*result = await enqueueOwnPrintJob\(\{/);
+});
+```
+
+Three existing pins follow the answer's deliberate change (name each in Results):
+
+In `apps/cafe/lib/write-route-paths.test.ts`, find:
+
+```ts
+  const ok = mustIndexOf(src, "return success(numbered.value ?? updated);", "the success answer");
+```
+
+Replace it with:
+
+```ts
+  // Printing Phase 1 (Session 1B): the answer carries printJobs when the request opted in.
+  const ok = mustIndexOf(src, "return success(withPrintJobs(numbered.value ?? updated, printJobs));", "the success answer");
+```
+
+In `apps/cafe/lib/write-route-paths.test.ts`, find:
+
+```ts
+      ["return created(numbered.value ?? landed);", "the created answer"],
+```
+
+Replace it with:
+
+```ts
+      // Printing Phase 1 (Session 1B): the answer carries printJobs when the request opted in.
+      ["return created(withPrintJobs(numbered.value ?? landed, printJobs));", "the created answer"],
+```
+
+In `apps/cafe/lib/realtime-paths.test.ts`, find:
+
+```ts
+      ret: "return success(moved);", publishes: 2,
+```
+
+Replace it with:
+
+```ts
+      // Printing Phase 1 (Session 1B): the answer carries printJobs when the request opted in.
+      ret: "return success(withPrintJobs(moved, printJobs));", publishes: 2,
+```
+
+- [ ] **Step 2: Run them**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-order-jobs.test.ts lib/write-route-paths.test.ts lib/realtime-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 68`, `# pass 61`, `# fail 7`: the 4 new route pins, the 2 answer pins in `write-route-paths.test.ts` and the move's answer pin in `realtime-paths.test.ts`.
+
+- [ ] **Step 3: `POST /api/orders`**
+
+In `apps/cafe/app/api/orders/route.ts`, find:
+
+```ts
+import { createReplayResponse, createReplayVerdict, findCreateReplay, isIdemKeyDuplicate } from "@/lib/order-idem";
+```
+
+Replace it with:
+
+```ts
+import { createReplayResponse, createReplayVerdict, findCreateReplay, isIdemKeyDuplicate } from "@/lib/order-idem";
+import { createOrderPrintJobs, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
+```
+
+In `apps/cafe/app/api/orders/route.ts`, find:
+
+```ts
+  const parsed = await validateBody(req, createOrderSchema);
+  if ("error" in parsed) return parsed.error;
+  const data = parsed.data;
+```
+
+Replace it with:
+
+```ts
+  const parsed = await validateBody(req, createOrderSchema);
+  if ("error" in parsed) return parsed.error;
+  const data = parsed.data;
+  // Printing Phase 1 (lib/print-order-jobs.ts): null for a tab that prints its own slips.
+  const intent = printIntentOf(req);
+```
+
+In `apps/cafe/app/api/orders/route.ts`, find:
+
+```ts
+      ...(data.idemKey ? { idemKey: data.idemKey } : {}),
+    };
+```
+
+Replace it with:
+
+```ts
+      ...(data.idemKey ? { idemKey: data.idemKey } : {}),
+      // Printing Phase 1 — round 1 is the server's to print, so the repair sweep may re-create it.
+      ...(intent ? { kotPrintDevices: [intent.deviceId] } : {}),
+    };
+```
+
+In `apps/cafe/app/api/orders/route.ts`, find:
+
+```ts
+    if (numbered.status === "rejected") return serverError(BILL_NUMBER_UNCONFIRMED, numbered.reason);
+    return created(numbered.value ?? landed);
+```
+
+Replace it with:
+
+```ts
+    if (numbered.status === "rejected") return serverError(BILL_NUMBER_UNCONFIRMED, numbered.reason);
+    // Printing Phase 1 (spec §7.4): the opening round's KOT, and Pay Now's bill when this call site
+    // prints it, made from the order exactly as answered. Never throws.
+    const printJobs = intent
+      ? await createOrderPrintJobs({
+          order: numbered.value ?? landed,
+          slips: [{ kind: "kot", round: 1 }, ...(intent.bill && data.status === "Completed" ? [{ kind: "bill" as const }] : [])],
+          originDeviceId: intent.deviceId,
+          queuedBy: authed.session.user.name ?? "",
+          nowMs: Date.now(),
+        })
+      : null;
+    return created(withPrintJobs(numbered.value ?? landed, printJobs));
+```
+
+- [ ] **Step 4: `orders/[id]/items`**
+
+In `apps/cafe/app/api/orders/[id]/items/route.ts`, find:
+
+```ts
+import { idemGuardFilter, roundReplayResponse, roundReplayAfterMiss } from "@/lib/order-idem";
+import { settledValue } from "@/lib/settled";
+```
+
+Replace it with:
+
+```ts
+import { idemGuardFilter, roundReplayResponse, roundReplayAfterMiss } from "@/lib/order-idem";
+import { settledValue } from "@/lib/settled";
+import { buildKotPrintDevices, createOrderPrintJobs, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
+```
+
+In `apps/cafe/app/api/orders/[id]/items/route.ts`, find:
+
+```ts
+  const parsed = await validateBody(req, addItemsSchema);
+  if ("error" in parsed) return parsed.error;
+```
+
+Replace it with:
+
+```ts
+  const parsed = await validateBody(req, addItemsSchema);
+  if ("error" in parsed) return parsed.error;
+  // Printing Phase 1 (lib/print-order-jobs.ts): null for a tab that prints its own slips.
+  const intent = printIntentOf(req);
+```
+
+In `apps/cafe/app/api/orders/[id]/items/route.ts`, find:
+
+```ts
+    const kotIdemKeys = buildKotIdemKeys(old.kotIdemKeys, round, key);
+```
+
+Replace it with:
+
+```ts
+    const kotIdemKeys = buildKotIdemKeys(old.kotIdemKeys, round, key);
+    // Printing Phase 1 — same positional idiom: this round is the server's to print (and to repair)
+    // only when this call site opted in. Undefined (nothing written) otherwise.
+    const kotPrintDevices = buildKotPrintDevices(old.kotPrintDevices, round, intent?.deviceId);
+```
+
+In `apps/cafe/app/api/orders/[id]/items/route.ts`, find:
+
+```ts
+        ...(kotIdemKeys ? { kotIdemKeys } : {}),
+```
+
+Replace it with:
+
+```ts
+        ...(kotIdemKeys ? { kotIdemKeys } : {}),
+        ...(kotPrintDevices ? { kotPrintDevices } : {}),
+```
+
+In `apps/cafe/app/api/orders/[id]/items/route.ts`, find:
+
+```ts
+    publishCafeEvent("kot-fired");
+    return success(updated);
+```
+
+Replace it with:
+
+```ts
+    publishCafeEvent("kot-fired");
+    // Printing Phase 1 (spec §7.4): this round's KOT, when this call site lets the server print it.
+    const printJobs = intent
+      ? await createOrderPrintJobs({
+          order: updated,
+          slips: [{ kind: "kot", round }],
+          originDeviceId: intent.deviceId,
+          queuedBy: authed.session.user.name ?? "",
+          nowMs: Date.now(),
+        })
+      : null;
+    return success(withPrintJobs(updated, printJobs));
+```
+
+- [ ] **Step 5: `settle`**
+
+In `apps/cafe/app/api/orders/[id]/settle/route.ts`, find:
+
+```ts
+import { chargeWriteFields } from "@/lib/order-charges-write";
+
+export const dynamic = "force-dynamic";
+```
+
+Replace it with:
+
+```ts
+import { chargeWriteFields } from "@/lib/order-charges-write";
+import { createOrderPrintJobs, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
+
+export const dynamic = "force-dynamic";
+```
+
+In `apps/cafe/app/api/orders/[id]/settle/route.ts`, find:
+
+```ts
+  const parsed = await validateBody(req, settleOrderSchema);
+  if ("error" in parsed) return parsed.error;
+  const data = parsed.data;
+```
+
+Replace it with:
+
+```ts
+  const parsed = await validateBody(req, settleOrderSchema);
+  if ("error" in parsed) return parsed.error;
+  const data = parsed.data;
+  // Printing Phase 1 (lib/print-order-jobs.ts): the bill prints from here only when this call site
+  // says so (the POS settle does; the Orders-sheet settle never printed).
+  const intent = printIntentOf(req);
+```
+
+In `apps/cafe/app/api/orders/[id]/settle/route.ts`, find:
+
+```ts
+    if (numbered.status === "rejected") return serverError(BILL_NUMBER_UNCONFIRMED, numbered.reason);
+    return success(numbered.value ?? updated);
+```
+
+Replace it with:
+
+```ts
+    if (numbered.status === "rejected") return serverError(BILL_NUMBER_UNCONFIRMED, numbered.reason);
+    // Printing Phase 1 (spec §7.4): the numbered bill, made from the order exactly as answered.
+    const printJobs = intent
+      ? await createOrderPrintJobs({
+          order: numbered.value ?? updated,
+          slips: intent.bill ? [{ kind: "bill" }] : [],
+          originDeviceId: intent.deviceId,
+          queuedBy: authed.session.user.name ?? "",
+          nowMs: Date.now(),
+        })
+      : null;
+    return success(withPrintJobs(numbered.value ?? updated, printJobs));
+```
+
+- [ ] **Step 6: `items/void`**
+
+In `apps/cafe/app/api/orders/[id]/items/void/route.ts`, find:
+
+```ts
+import { chargesFromOrder, splitChargeTotals } from "@pos/shared/order-charges";
+
+export const dynamic = "force-dynamic";
+```
+
+Replace it with:
+
+```ts
+import { chargesFromOrder, splitChargeTotals } from "@pos/shared/order-charges";
+import { createOrderPrintJobs, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
+
+export const dynamic = "force-dynamic";
+```
+
+In `apps/cafe/app/api/orders/[id]/items/void/route.ts`, find:
+
+```ts
+  const parsed = await validateBody(req, voidItemSchema);
+  if ("error" in parsed) return parsed.error;
+```
+
+Replace it with:
+
+```ts
+  const parsed = await validateBody(req, voidItemSchema);
+  if ("error" in parsed) return parsed.error;
+  // Printing Phase 1 (lib/print-order-jobs.ts): null for a tab that prints its own slips.
+  const intent = printIntentOf(req);
+```
+
+In `apps/cafe/app/api/orders/[id]/items/void/route.ts`, find:
+
+```ts
+    publishCafeEvent("order-changed");
+    return success(updated);
+  } catch (error) {
+    return serverError("Failed to void item", error);
+```
+
+Replace it with:
+
+```ts
+    publishCafeEvent("order-changed");
+    // Printing Phase 1 (spec §7.4): the VOID slip for the entry this request pushed.
+    const printJobs = intent
+      ? await createOrderPrintJobs({
+          order: updated,
+          slips: [{ kind: "void" }],
+          originDeviceId: intent.deviceId,
+          queuedBy: authed.session.user.name ?? "",
+          nowMs: Date.now(),
+        })
+      : null;
+    return success(withPrintJobs(updated, printJobs));
+  } catch (error) {
+    return serverError("Failed to void item", error);
+```
+
+- [ ] **Step 7: `orders/[id]/table`**
+
+In `apps/cafe/app/api/orders/[id]/table/route.ts`, find:
+
+```ts
+import { chargeWriteFields } from "@/lib/order-charges-write";
+
+export const dynamic = "force-dynamic";
+```
+
+Replace it with:
+
+```ts
+import { chargeWriteFields } from "@/lib/order-charges-write";
+import { createOrderPrintJobs, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
+
+export const dynamic = "force-dynamic";
+```
+
+In `apps/cafe/app/api/orders/[id]/table/route.ts`, find:
+
+```ts
+  const parsed = await validateBody(req, moveOrderTableSchema);
+  if ("error" in parsed) return parsed.error;
+  const to = parsed.data.tableNo;
+```
+
+Replace it with:
+
+```ts
+  const parsed = await validateBody(req, moveOrderTableSchema);
+  if ("error" in parsed) return parsed.error;
+  const to = parsed.data.tableNo;
+  // Printing Phase 1 (lib/print-order-jobs.ts): null for a tab that prints its own slips.
+  const intent = printIntentOf(req);
+```
+
+In `apps/cafe/app/api/orders/[id]/table/route.ts`, find:
+
+```ts
+    publishCafeEvent("order-changed");
+    return success(moved);
+  } catch (error) {
+    return serverError("Failed to move the order", error);
+  }
+}
+```
+
+Replace it with:
+
+```ts
+    publishCafeEvent("order-changed");
+    // Printing Phase 1 (spec §7.4): the table slip for all three verbs, as MoveTableDialog prints it —
+    // `from` is the table the tab left (none for an ASSIGN), the actor and the moment are the server's.
+    const printJobs = intent
+      ? await createOrderPrintJobs({
+          order: moved,
+          slips: [
+            {
+              kind: "moved",
+              meta: {
+                ...(order.tableNo ? { from: order.tableNo } : {}),
+                movedBy: authed.session.user.name ?? "Staff",
+                movedAt: new Date().toISOString(),
+              },
+            },
+          ],
+          originDeviceId: intent.deviceId,
+          queuedBy: authed.session.user.name ?? "",
+          nowMs: Date.now(),
+        })
+      : null;
+    return success(withPrintJobs(moved, printJobs));
+  } catch (error) {
+    return serverError("Failed to move the order", error);
+  }
+}
+```
+
+- [ ] **Step 8: the staff accept and the public auto-accept**
+
+In `apps/cafe/app/api/order-requests/[id]/accept/route.ts`, find:
+
+```ts
+import { publishCafeEvent } from "@/lib/realtime-publish";
+import { success, failure, notFound, requireAuth, serverError } from "@/lib/api-helpers";
+```
+
+Replace it with:
+
+```ts
+import { publishCafeEvent } from "@/lib/realtime-publish";
+import { createOrderPrintJobs, printIntentOf } from "@/lib/print-order-jobs";
+import { success, failure, notFound, requireAuth, serverError } from "@/lib/api-helpers";
+```
+
+In `apps/cafe/app/api/order-requests/[id]/accept/route.ts`, find:
+
+```ts
+export async function POST(_req: Request, { params }: Params) {
+```
+
+Replace it with:
+
+```ts
+export async function POST(req: Request, { params }: Params) {
+```
+
+In `apps/cafe/app/api/order-requests/[id]/accept/route.ts`, find:
+
+```ts
+  if (!mongoose.isValidObjectId(id)) return noStore(notFound("Order request not found"));
+
+  try {
+```
+
+Replace it with:
+
+```ts
+  if (!mongoose.isValidObjectId(id)) return noStore(notFound("Order request not found"));
+  // Printing Phase 1 (lib/print-order-jobs.ts): null for a tab that prints its own slips.
+  const intent = printIntentOf(req);
+
+  try {
+```
+
+In `apps/cafe/app/api/order-requests/[id]/accept/route.ts`, find:
+
+```ts
+    publishCafeEvent("kot-fired");
+
+    const role = authed.session.user.role;
+    return noStore(
+      success({
+        order: result.order,
+        request: toTrayRequest(result.request, role),
+        replayed: result.replayed,
+      }),
+    );
+```
+
+Replace it with:
+
+```ts
+    publishCafeEvent("kot-fired");
+
+    // Printing Phase 1 (spec §7.4): the round this accept fired (the order's latest, exactly what the
+    // bridge stamps as acceptedKotRound). A replay creates nothing: its round may be several behind,
+    // and the device enqueues any slip its answer did not name (the key dedupes).
+    const printJobs =
+      intent && !result.replayed
+        ? await createOrderPrintJobs({
+            order: result.order,
+            slips: [{ kind: "kot", round: result.order.kotRounds }],
+            originDeviceId: intent.deviceId,
+            queuedBy: authed.session.user.name ?? "",
+            nowMs: Date.now(),
+          })
+        : null;
+
+    const role = authed.session.user.role;
+    return noStore(
+      success({
+        order: result.order,
+        request: toTrayRequest(result.request, role),
+        replayed: result.replayed,
+        ...(printJobs !== null ? { printJobs } : {}),
+      }),
+    );
+```
+
+In `apps/cafe/lib/order-request-create.ts`, find:
+
+```ts
+import { acceptOrderRequest } from "@/lib/order-request-accept";
+import { resolveRequestReward } from "@/lib/order-request-reward";
+```
+
+Replace it with:
+
+```ts
+import { acceptOrderRequest } from "@/lib/order-request-accept";
+import { resolveRequestReward } from "@/lib/order-request-reward";
+import { createOrderPrintJobs } from "@/lib/print-order-jobs";
+```
+
+In `apps/cafe/lib/order-request-create.ts`, find:
+
+```ts
+      createCustomer: false,
+    });
+    return "error" in result ? "pending" : "accepted";
+  } catch {
+```
+
+Replace it with:
+
+```ts
+      createCustomer: false,
+    });
+    if ("error" in result) return "pending";
+    // Printing Phase 1 (spec §7.4): with a host, its KOT is queued for the host now, so it prints even
+    // with no POS tab open. The kot-claim lane stays and builds the same job key, so whichever makes the
+    // job first wins and the other is a no-op. With no host nothing is made (no device asked), and the
+    // lane prints it as today. Never throws.
+    if (!result.replayed) {
+      await createOrderPrintJobs({
+        order: result.order,
+        slips: [{ kind: "kot", round: result.order.kotRounds }],
+        queuedBy: SELF_ORDER_RECEIVER,
+        nowMs: Date.now(),
+      });
+    }
+    return "accepted";
+  } catch {
+```
+
+- [ ] **Step 9: `POST /api/print-jobs` with no host, from an agent tab**
+
+In `apps/cafe/app/api/print-jobs/route.ts`, find:
+
+```ts
+import { enqueuePrintJob, prunePrintJobsThrottled } from "@/lib/print-queue";
+import { PRINT_HOST_DEVICE_ID_MAX_CHARS } from "@/lib/print-host";
+```
+
+Replace it with:
+
+```ts
+import { enqueuePrintJob, prunePrintJobsThrottled } from "@/lib/print-queue";
+import { enqueueOwnPrintJob, printIntentOf } from "@/lib/print-order-jobs";
+import { PRINT_HOST_DEVICE_ID_MAX_CHARS } from "@/lib/print-host";
+```
+
+In `apps/cafe/app/api/print-jobs/route.ts`, find:
+
+```ts
+    await connectDB();
+    const result = await enqueuePrintJob({
+      payload: parsed.data.payload,
+      label: parsed.data.label,
+      queuedBy,
+      ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+      ...(originDeviceId !== undefined ? { originDeviceId } : {}),
+      nowMs,
+    });
+```
+
+Replace it with:
+
+```ts
+    await connectDB();
+    let result = await enqueuePrintJob({
+      payload: parsed.data.payload,
+      label: parsed.data.label,
+      queuedBy,
+      ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+      ...(originDeviceId !== undefined ? { originDeviceId } : {}),
+      nowMs,
+    });
+    // Phase 1 (spec §6.6): with no host, an agent tab prints its own client-started slip through the
+    // lifecycle. A tab from before Phase 1 sends no agent header and still gets "no-host" (print here).
+    const intent = printIntentOf(req);
+    if (result.outcome === "no-host" && intent !== null) {
+      result = await enqueueOwnPrintJob({
+        payload: parsed.data.payload,
+        label: parsed.data.label,
+        queuedBy,
+        ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+        originDeviceId: intent.deviceId,
+        nowMs,
+      });
+    }
+```
+
+- [ ] **Step 10: Run them again**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-order-jobs.test.ts lib/write-route-paths.test.ts lib/realtime-paths.test.ts lib/order-request-paths.test.ts lib/print-queue.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK && npm run lint 2>&1 | tail -3`
+Expected: `# tests 171` / `# pass 171`, `TSC_OK`, and lint `✖ 2 problems (0 errors, 2 warnings)`: only the two old `masters-blob.test.ts` warnings.
+
+- [ ] **Step 11: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/app/api/orders/route.ts "apps/cafe/app/api/orders/[id]/items/route.ts" "apps/cafe/app/api/orders/[id]/settle/route.ts" "apps/cafe/app/api/orders/[id]/items/void/route.ts" "apps/cafe/app/api/orders/[id]/table/route.ts" "apps/cafe/app/api/order-requests/[id]/accept/route.ts" apps/cafe/lib/order-request-create.ts apps/cafe/app/api/print-jobs/route.ts apps/cafe/lib/print-order-jobs.test.ts apps/cafe/lib/write-route-paths.test.ts apps/cafe/lib/realtime-paths.test.ts
+git commit -m "feat(print): order routes create their slips server-side when the call site opts in; the auto-accept queues its KOT for the host"
+```
+
+---
+
+### Task B6: the sweep sends waiting jobs where they print now, and repairs missing KOTs
+
+**Files:**
+- Create: `apps/cafe/lib/print-repair.ts`, `apps/cafe/lib/print-repair.test.ts`
+- Replace: `apps/cafe/lib/print-sweep.ts` (whole file)
+- Modify: `apps/cafe/lib/print-queue.ts` (the host teardown), `apps/cafe/app/api/print-host/route.ts` (DELETE), `apps/cafe/package.json` (`testChain`), `apps/cafe/lib/print-lifecycle-paths.test.ts` (the sweep pin follows the change)
+
+**Interfaces produced:** `routeWaitingPrintJobs(hostDeviceId | null, nowMs)`, `returnPrintJobsToOrigins(nowMs)`, `PrintSweepResult.repaired`; `expectedKotJobs(orders, nowMs)`, `repairMissingKotJobs(nowMs)`, `PRINT_REPAIR_BATCH`, `PRINT_REPAIR_ACTOR`.
+
+**I1 part 2 (ruled at the gate): retarget, not dismiss.** With no host each device prints its own slips (§6.6), so a waiting job aimed at a cleared or dead host goes back to the device that asked for it, keeping its state and labels. Only a job no device asked for (an old tab's enqueue, the auto-accept) is dismissed as `host-cleared`, because no device may print it. Never a leased job. With a host, parked and failed jobs move to the host too, so Print again prints there.
+
+**The repair (spec §7.4 step 2).** Only server-owned KOT rounds (`kotPrintDevices[n-1]` set), fired in the last 30 min, with lines, on orders that are not cancelled, are re-created, under the same key. Bills, voids and moves are not repaired: the cashier is at the counter, and the 1C client re-sends any slip its answer did not name. The candidate read is one indexed query on `createdAt` (the last 12 h), limit 20, and the existence check one `$in` on `jobKey`.
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `apps/cafe/lib/print-repair.test.ts`:
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+import { stripComments } from "@/lib/source-pin-utils";
+import { expectedKotJobs } from "@/lib/print-repair";
+import { printJobKeyOf } from "@/lib/print-queue";
+import { kotPrintJob } from "@/lib/print-routing";
+import type { Order } from "@/types";
+
+// Printing redesign Phase 1, Session 1B: the repair sweep and where a waiting job prints after a host
+// change (1A review I1 part 2). Live: npm run verify:print:live, legs z and aa.
+
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const src = (rel: string): string => stripComments(readFileSync(path.join(REPO_ROOT, rel), "utf8"));
+function inOrder(text: string, needles: string[], label: string): void {
+  let at = -1;
+  for (const needle of needles) {
+    const next = text.indexOf(needle, at + 1);
+    assert.ok(next > at, `${label}: "${needle}" must come after the step before it`);
+    at = next;
+  }
+}
+
+const NOW = Date.parse("2026-10-02T12:00:00.000Z");
+const MIN = 60 * 1000;
+
+test("expectedKotJobs: only server-owned rounds fired in the last 30 min that still have lines", () => {
+  const order = {
+    _id: "64b7f0c2a1b2c3d4e5f60718",
+    createdAt: new Date(NOW - 60 * MIN),
+    kotRounds: 4,
+    kotFiredAt: [new Date(NOW - 60 * MIN), new Date(NOW - 10 * MIN), new Date(NOW - 5 * MIN), new Date(NOW - MIN)],
+    kotPrintDevices: ["dev-1", "", "dev-1", "dev-2"],
+    items: [{ kotRound: 1 }, { kotRound: 2 }, { kotRound: 4 }],
+  };
+  assert.deepEqual(
+    expectedKotJobs([order], NOW).map((job) => [job.round, job.deviceId]),
+    [[4, "dev-2"]],
+    "round 1 is too old, round 2 was printed by its tab, round 3 was wholly voided",
+  );
+  const fresh = { ...order, kotRounds: 1, kotFiredAt: undefined, kotPrintDevices: ["dev-1"], createdAt: new Date(NOW - MIN), items: [{ kotRound: 1 }] };
+  assert.deepEqual(expectedKotJobs([fresh], NOW).map((job) => job.round), [1], "a new order's round 1 fired when it was created");
+  assert.deepEqual(expectedKotJobs([{ ...fresh, kotPrintDevices: undefined }], NOW), [], "no marker: every round was printed by its tab");
+  assert.deepEqual(expectedKotJobs([{ ...fresh, createdAt: new Date(NOW - 31 * MIN) }], NOW), [], "older than the stale window");
+});
+
+test("expectedKotJobs: the key it looks for is the one a created job carries (printJobKeyOf)", () => {
+  const id = "64b7f0c2a1b2c3d4e5f60719";
+  const wire = {
+    _id: id, orderId: "ORD-1", customerName: "Walk-in",
+    items: [{ productId: "p1", name: "Tea", price: 100, qty: 1, modifiers: [], instructions: "", kotRound: 1 }],
+    subtotal: 100, discount: 0, total: 100, paidAmount: 0, payment: "Unpaid", status: "Pending", receiver: "Staff",
+    kotRounds: 1, createdAt: "2026-10-02T11:59:00.000Z", updatedAt: "2026-10-02T11:59:00.000Z",
+  } as unknown as Order;
+  const [job] = expectedKotJobs([{ _id: id, createdAt: new Date(NOW - MIN), kotRounds: 1, kotPrintDevices: ["dev-1"], items: [{ kotRound: 1 }] }], NOW);
+  assert.equal(job?.jobKey, printJobKeyOf(kotPrintJob(wire, 1).payload));
+});
+
+test("PIN: the repair reads a bounded, indexed window, skips cancelled orders, and creates only through createOrderPrintJobs", () => {
+  const s = src("apps/cafe/lib/print-repair.ts");
+  assert.match(s, /createdAt: \{ \$gte: new Date\(nowMs - PRINT_JOB_QUEUED_RETENTION_MS\) \},/);
+  assert.match(s, /status: \{ \$ne: "Cancelled" \},/);
+  assert.match(s, /\.limit\(PRINT_REPAIR_BATCH\)/);
+  assert.match(s, /if \(deviceId === ""\) continue;/, "a round its tab printed is never re-created");
+  assert.match(s, /await createOrderPrintJobs\(\{/);
+  assert.ok(!/PrintJob\.(create|updateOne|updateMany|findOneAndUpdate|deleteMany)\(/.test(s), "no direct PrintJob write");
+  assert.ok(!s.includes("console."), "no console.* in a server lib");
+});
+
+test("PIN: clearing the host dismisses only jobs no device asked for; the rest go back to their device, never a leased one", () => {
+  const queue = src("apps/cafe/lib/print-queue.ts");
+  const bulk = queue.slice(queue.indexOf("export async function dismissQueuedPrintJobsForClearedHost("), queue.indexOf("export async function prunePrintJobs("));
+  assert.match(bulk, /claimedAt: \{ \$exists: false \}, originDeviceId: \{ \$exists: false \} \}/);
+  const route = src("apps/cafe/app/api/print-host/route.ts");
+  inOrder(route, ["await clearPrintHost()", "await dismissQueuedPrintJobsForClearedHost(dismissedBy)", "await returnPrintJobsToOrigins(nowMs);"], "DELETE /api/print-host");
+  const sweep = src("apps/cafe/lib/print-sweep.ts");
+  assert.match(sweep, /const WAITING: readonly string\[\] = \["queued", "needs-confirm", "failed"\];/);
+  assert.match(sweep, /\$expr: \{ \$ne: \["\$targetDeviceId", "\$originDeviceId"\] \}/);
+  assert.match(sweep, /originDeviceId: \{ \$exists: false \}, claimedAt: \{ \$exists: false \}/, "the no-host dismissal keeps the claim guard");
+});
+```
+
+In `apps/cafe/package.json`, find:
+
+```json
+    "lib/print-order-jobs.test.ts",
+```
+
+Replace it with:
+
+```json
+    "lib/print-order-jobs.test.ts",
+    "lib/print-repair.test.ts",
+```
+
+The sweep pin follows the deliberate change (name it in Results):
+
+In `apps/cafe/lib/print-lifecycle-paths.test.ts`, find:
+
+```ts
+test("PIN: the sweep expires leases, retargets queued jobs to the current host, applies limits, then prunes — and nudges only when a job went back to the queue", () => {
+  const s = src(SWEEP);
+  inOrder(s, ["planExpiry(", "targetDeviceId: { $ne: host.deviceId }", "planLimits(", "await prunePrintJobsThrottled(nowMs);"], "sweep order");
+  assert.equal(count(s, 'publishCafeEvent("print-job")'), 1);
+  assert.match(s, /if \(result\.requeued > 0 \|\| result\.retargeted > 0\) publishCafeEvent\("print-job"\);/);
+```
+
+Replace it with:
+
+```ts
+test("PIN: the sweep expires leases, routes waiting jobs to the device that prints them now, repairs, applies limits, then prunes — and nudges only when a job went back to the queue", () => {
+  const s = src(SWEEP);
+  // Session 1B: step 2 covers parked and failed jobs and the no-host case (1A review I1 part 2),
+  // and step 2b repairs missing KOT jobs (spec §7.4).
+  inOrder(
+    s,
+    ["planExpiry(", "await routeWaitingPrintJobs(host?.deviceId ?? null, nowMs);", "await repairMissingKotJobs(nowMs);", "planLimits(", "await prunePrintJobsThrottled(nowMs);"],
+    "sweep order",
+  );
+  assert.equal(count(s, 'publishCafeEvent("print-job")'), 2, "the sweep's own nudge, and the host teardown's");
+  assert.match(s, /if \(result\.requeued > 0 \|\| result\.retargeted > 0\) publishCafeEvent\("print-job"\);/);
+```
+
+- [ ] **Step 2: Run them**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-repair.test.ts lib/print-lifecycle-paths.test.ts 2>&1 | grep -E "Cannot find module|^# (tests|pass|fail)" | head -4`
+Expected: `# Error: Cannot find module '@/lib/print-repair'`, then `# tests 18`, `# pass 16`, `# fail 2` (the repair file, and the sweep pin).
+
+- [ ] **Step 3: The repair**
+
+Create `apps/cafe/lib/print-repair.ts`:
+
+```ts
+import { PRINT_JOB_QUEUED_RETENTION_MS } from "@pos/shared/print-job";
+import { PRINT_REPAIR_WINDOW_MS } from "@pos/shared/print-lifecycle";
+import { Order } from "@/models/Order";
+import { PrintJob } from "@/models/PrintJob";
+import { createOrderPrintJobs } from "./print-order-jobs";
+
+// Printing redesign, Phase 1 Session 1B (spec §7.4, sweep step 2): the repair. A request can die
+// between its order write and its job create (a timeout, a crash), or its create can fail. For a KOT
+// round the SERVER owns (Order.kotPrintDevices, written by the same order CAS), a missing job is
+// re-created with the same key, so a racing create is a no-op and the slip never prints twice. A
+// round its tab printed itself ("" or no marker) is never touched. Bills, voids and moves are not
+// repaired: the cashier is at the counter, and the client re-sends any slip its answer did not name
+// (Session 1C). Never calls connectDB(). No console.*.
+
+/** Each sweep reads at most this many orders; the rest wait for the next sweep. */
+export const PRINT_REPAIR_BATCH = 20;
+/** The name a repaired job is queued under (PrintJob.queuedBy). */
+export const PRINT_REPAIR_ACTOR = "Repair";
+
+interface RepairCandidate {
+  _id: unknown;
+  createdAt: Date;
+  kotRounds?: number;
+  kotFiredAt?: Date[];
+  kotPrintDevices?: string[];
+  items: Array<{ kotRound?: number }>;
+}
+
+export interface MissingKotJob {
+  orderId: string;
+  round: number;
+  deviceId: string;
+  jobKey: string;
+}
+
+/** Pure: the server-owned rounds of these orders that fired inside the repair window and still have
+ *  lines, each with the jobKey its job carries (printJobKeyOf's KOT key; print-order-jobs.test.ts pins
+ *  the two together). A wholly voided round has nothing to print. */
+export function expectedKotJobs(orders: readonly RepairCandidate[], nowMs: number): MissingKotJob[] {
+  const since = nowMs - PRINT_REPAIR_WINDOW_MS;
+  const out: MissingKotJob[] = [];
+  for (const order of orders) {
+    const orderId = String(order._id);
+    for (let round = 1; round <= (order.kotRounds ?? 0); round++) {
+      const deviceId = order.kotPrintDevices?.[round - 1] ?? "";
+      if (deviceId === "") continue;
+      // Round 1 of a new order carries no kotFiredAt slot: it fired when the order was created.
+      const firedAt = order.kotFiredAt?.[round - 1] ?? order.createdAt;
+      if (firedAt.getTime() < since) continue;
+      if (!order.items.some((item) => item.kotRound === round)) continue;
+      out.push({ orderId, round, deviceId, jobKey: `kot:${orderId}:${round}` });
+    }
+  }
+  return out;
+}
+
+/** Re-creates the missing jobs of server-owned KOT rounds fired in the last 30 min. Returns how many it
+ *  made. Indexed on createdAt; a tab older than the queued retention is past saving anyway. */
+export async function repairMissingKotJobs(nowMs: number): Promise<number> {
+  const since = new Date(nowMs - PRINT_REPAIR_WINDOW_MS);
+  const candidates = await Order.find({
+    createdAt: { $gte: new Date(nowMs - PRINT_JOB_QUEUED_RETENTION_MS) },
+    status: { $ne: "Cancelled" },
+    kotPrintDevices: { $exists: true },
+    $or: [{ createdAt: { $gte: since } }, { kotFiredAt: { $elemMatch: { $gte: since } } }],
+  })
+    .select("_id createdAt kotRounds kotFiredAt kotPrintDevices items.kotRound")
+    .sort({ createdAt: -1 })
+    .limit(PRINT_REPAIR_BATCH)
+    .lean<RepairCandidate[]>();
+  const expected = expectedKotJobs(candidates, nowMs);
+  if (expected.length === 0) return 0;
+  const present = await PrintJob.find({ jobKey: { $in: expected.map((job) => job.jobKey) } })
+    .select("jobKey")
+    .lean<Array<{ jobKey?: string }>>();
+  const have = new Set(present.map((row) => row.jobKey));
+  let repaired = 0;
+  for (const missing of expected) {
+    if (have.has(missing.jobKey)) continue;
+    const order = await Order.findById(missing.orderId).lean();
+    if (order === null) continue;
+    const refs = await createOrderPrintJobs({
+      order,
+      slips: [{ kind: "kot", round: missing.round }],
+      originDeviceId: missing.deviceId,
+      queuedBy: PRINT_REPAIR_ACTOR,
+      nowMs,
+    });
+    repaired += refs.length;
+  }
+  return repaired;
+}
+```
+
+- [ ] **Step 4: The sweep**
+
+Replace the whole of `apps/cafe/lib/print-sweep.ts` with:
+
+```ts
+import { PRINT_HOST_KEY } from "@pos/shared/print-job";
+import {
+  PRINT_JOB_LOG_MAX,
+  PRINT_MAX_ATTEMPTS,
+  PRINT_MAX_UNCERTAIN_ATTEMPTS,
+  PRINT_SWEEP_MIN_INTERVAL_MS,
+  lifecycleOf,
+  planExpiry,
+  planLimits,
+} from "@pos/shared/print-lifecycle";
+import { PrintHost } from "@/models/PrintHost";
+import { PrintJob } from "@/models/PrintJob";
+import { publishCafeEvent } from "@/lib/realtime-publish";
+import { PRINT_LIFECYCLE_SELECT, applyPrintJobPlan, type PrintLifecycleRow } from "./print-lease";
+import { prunePrintJobsThrottled } from "./print-queue";
+import { repairMissingKotJobs } from "./print-repair";
+
+// Printing redesign, Phase 1 (spec §7.4): the sweep. It rides requests that already exist (the
+// agents' wake now; the pulse from Session 1D), at most once per 60 s per server instance — NEVER
+// Vercel Cron (Hobby allows one a day). Every step is idempotent, so a second instance sweeping in
+// the same minute only repeats no-ops. Never calls connectDB(). No console.*.
+
+/** Each sweep read takes at most this many rows; the rest wait for the next sweep. */
+export const PRINT_SWEEP_BATCH = 20;
+
+/** Jobs that wait for a writer or a decision and may move to another device. Never "leased": its
+ *  writer may be printing it now (its lease expires in 90 s, then it moves). */
+const WAITING: readonly string[] = ["queued", "needs-confirm", "failed"];
+/** The actor a host-cleared dismissal names when no staff tap caused it. */
+const SWEEP_ACTOR = "system";
+
+export interface PrintSweepResult {
+  expired: number;
+  requeued: number;
+  retargeted: number;
+  repaired: number;
+  failed: number;
+}
+
+/** Simple mode (§6.6): every waiting job prints at the device that should print it NOW. With a host,
+ *  that is the current host (rows from before Phase 1, rows from before a re-designation). With no
+ *  host, it is the device that asked for the job (1A review I1 part 2: a slip aimed at a cleared or
+ *  dead host goes back to its ordering device, labelled as it was); a job no device asked for (an old
+ *  tab's enqueue, the public auto-accept) has no device left that may print it and is dismissed as
+ *  host-cleared. Returns how many jobs moved. Pipeline updates: one write each, however many rows. */
+export async function routeWaitingPrintJobs(hostDeviceId: string | null, nowMs: number): Promise<number> {
+  const at = new Date(nowMs);
+  if (hostDeviceId !== null) {
+    const moved = await PrintJob.updateMany(
+      { status: { $in: WAITING }, targetDeviceId: { $ne: hostDeviceId } },
+      {
+        $set: { targetDeviceId: hostDeviceId },
+        $push: { log: { $each: [{ at, event: "retargeted", deviceId: hostDeviceId }], $slice: -PRINT_JOB_LOG_MAX } },
+      },
+    );
+    return moved.modifiedCount ?? 0;
+  }
+  const home = await PrintJob.updateMany(
+    { status: { $in: WAITING }, originDeviceId: { $exists: true }, $expr: { $ne: ["$targetDeviceId", "$originDeviceId"] } },
+    [
+      {
+        $set: {
+          targetDeviceId: "$originDeviceId",
+          log: {
+            $slice: [
+              { $concatArrays: [{ $ifNull: ["$log", []] }, [{ at, event: "retargeted", deviceId: "$originDeviceId" }]] },
+              -PRINT_JOB_LOG_MAX,
+            ],
+          },
+        },
+      },
+    ],
+  );
+  await PrintJob.updateMany(
+    { status: { $in: WAITING }, originDeviceId: { $exists: false }, claimedAt: { $exists: false } },
+    { $set: { status: "dismissed", dismissedAt: at, dismissReason: "host-cleared", dismissedBy: SWEEP_ACTOR } },
+  );
+  return home.modifiedCount ?? 0;
+}
+
+/** DELETE /api/print-host, after its bulk dismiss: with no host now, every waiting job that names the
+ *  device that asked for it goes back there, and that device is nudged to lease it (I1 part 2). */
+export async function returnPrintJobsToOrigins(nowMs: number): Promise<number> {
+  const moved = await routeWaitingPrintJobs(null, nowMs);
+  if (moved > 0) publishCafeEvent("print-job");
+  return moved;
+}
+
+export async function sweepPrintJobs(nowMs: number): Promise<PrintSweepResult> {
+  const result: PrintSweepResult = { expired: 0, requeued: 0, retargeted: 0, repaired: 0, failed: 0 };
+
+  // 1. Expire leases whose writer went quiet: the same as a "maybe sent" failure (§7.2).
+  const leased = await PrintJob.find({ status: "leased", "lease.expiresAt": { $lt: new Date(nowMs) } })
+    .select(PRINT_LIFECYCLE_SELECT)
+    .limit(PRINT_SWEEP_BATCH)
+    .lean<PrintLifecycleRow[]>();
+  for (const row of leased) {
+    const job = lifecycleOf(row);
+    const plan = planExpiry(job, nowMs);
+    if (plan.ok && (await applyPrintJobPlan(row._id, job, plan.patch))) {
+      result.expired += 1;
+      if (plan.patch.status === "queued") result.requeued += 1;
+    }
+  }
+
+  // 2. Every waiting job to the device that should print it now (§6.6).
+  const host = await PrintHost.findOne({ key: PRINT_HOST_KEY }).select("deviceId").lean();
+  result.retargeted = await routeWaitingPrintJobs(host?.deviceId ?? null, nowMs);
+
+  // 2b. Re-create the missing job of a server-owned KOT round (§7.4; print-repair.ts).
+  result.repaired = await repairMissingKotJobs(nowMs);
+
+  // 3. Limits (§7.8). They are normally applied when acking; this catches anything that slipped past.
+  const tired = await PrintJob.find({
+    status: "queued",
+    $or: [{ uncertainAttempts: { $gte: PRINT_MAX_UNCERTAIN_ATTEMPTS } }, { attempts: { $gte: PRINT_MAX_ATTEMPTS } }],
+  })
+    .select(PRINT_LIFECYCLE_SELECT)
+    .limit(PRINT_SWEEP_BATCH)
+    .lean<PrintLifecycleRow[]>();
+  for (const row of tired) {
+    const job = lifecycleOf(row);
+    const plan = planLimits(job, nowMs);
+    if (plan.ok && (await applyPrintJobPlan(row._id, job, plan.patch))) result.failed += 1;
+  }
+
+  // 4. Retention, unchanged (it keeps its own 5-minute throttle).
+  await prunePrintJobsThrottled(nowMs);
+
+  // A job back in the queue gets a nudge, so its device leases now (fire-and-forget; the poll is the safety net).
+  // A repaired job announces itself (createOrderPrintJobs).
+  if (result.requeued > 0 || result.retargeted > 0) publishCafeEvent("print-job");
+  return result;
+}
+
+// Per-instance throttle state, like prunePrintJobsThrottled's: a cold start merely re-arms it.
+let lastSweepAtMs = 0;
+
+/** At most once per 60 s per instance. Best-effort: it never fails the request it rides on. */
+export async function sweepPrintJobsThrottled(nowMs: number): Promise<void> {
+  if (nowMs - lastSweepAtMs < PRINT_SWEEP_MIN_INTERVAL_MS) return;
+  // Claimed BEFORE awaiting, so two overlapping requests cannot both pass the check.
+  lastSweepAtMs = nowMs;
+  try {
+    await sweepPrintJobs(nowMs);
+  } catch {
+    // best-effort: the next sweep (≤ 60 s) retries; lazy expiry in the lease path covers the gap
+  }
+}
+```
+
+- [ ] **Step 5: The host teardown dismisses only what no device may print, then sends the rest home**
+
+In `apps/cafe/lib/print-queue.ts`, find:
+
+```ts
+ *  parked or failed slip aimed at the cleared host is not left behind with no
+ *  device that may print it; never "leased" (its writer may be printing it). */
+export async function dismissQueuedPrintJobsForClearedHost(dismissedBy: string): Promise<number> {
+  const res = await PrintJob.updateMany(
+    { status: { $in: ["queued", "needs-confirm", "failed"] }, claimedAt: { $exists: false } },
+```
+
+Replace it with:
+
+```ts
+ *  parked or failed slip aimed at the cleared host is not left behind with no
+ *  device that may print it; never "leased" (its writer may be printing it).
+ *  Session 1B (1A review I1 part 2): a job that names the device that asked for
+ *  it is NOT dismissed — with no host that device prints its own slips (§6.6),
+ *  so routeWaitingPrintJobs (print-sweep.ts) sends it back there instead. */
+export async function dismissQueuedPrintJobsForClearedHost(dismissedBy: string): Promise<number> {
+  const res = await PrintJob.updateMany(
+    { status: { $in: ["queued", "needs-confirm", "failed"] }, claimedAt: { $exists: false }, originDeviceId: { $exists: false } },
+```
+
+In `apps/cafe/app/api/print-host/route.ts`, find:
+
+```ts
+import { dismissQueuedPrintJobsForClearedHost, prunePrintJobs } from "@/lib/print-queue";
+```
+
+Replace it with:
+
+```ts
+import { dismissQueuedPrintJobsForClearedHost, prunePrintJobs } from "@/lib/print-queue";
+import { returnPrintJobsToOrigins } from "@/lib/print-sweep";
+```
+
+In `apps/cafe/app/api/print-host/route.ts`, find:
+
+```ts
+    const dismissed = await dismissQueuedPrintJobsForClearedHost(dismissedBy);
+
+    return noStore(success({ cleared, dismissed }));
+```
+
+Replace it with:
+
+```ts
+    const dismissed = await dismissQueuedPrintJobsForClearedHost(dismissedBy);
+    // Phase 1 (1A review I1 part 2): a waiting slip that names the device that asked for it goes back
+    // there — with no host each device prints its own (§6.6) — and that device is nudged to lease it.
+    await returnPrintJobsToOrigins(nowMs);
+
+    return noStore(success({ cleared, dismissed }));
+```
+
+- [ ] **Step 6: Run them again, plus the live legs** (legs a–x unchanged; leg (u)'s two retargets still hold)
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-repair.test.ts lib/print-lifecycle-paths.test.ts lib/print-queue.test.ts lib/realtime-paths.test.ts lib/self-order-alert-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK && MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_print_host npm run verify:print:live 2>&1 | tail -2`
+Expected: `# tests 131` / `# pass 131`, `TSC_OK`, then `161 passed, 0 failed` (leg (u)'s two retargets still hold).
+
+- [ ] **Step 7: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/lib/print-repair.ts apps/cafe/lib/print-repair.test.ts apps/cafe/lib/print-sweep.ts apps/cafe/lib/print-queue.ts apps/cafe/app/api/print-host/route.ts apps/cafe/package.json apps/cafe/lib/print-lifecycle-paths.test.ts
+git commit -m "feat(print): waiting jobs go to the device that prints them now (no host: their own device), and the sweep repairs missing server-owned KOTs"
+```
+
+---
+
+### Task B7: live legs y–ab
+
+**Files:** Create `apps/cafe/scripts/print-host-live/order-jobs.ts`; modify `apps/cafe/scripts/verify-print-host-live.ts`.
+
+The legs, each against real Mongo (local mongod, `pos_scratch_*` only):
+- **(y)** creation: Pay Now makes the KOT then the bill for the host, KOT first in the line, today's keys, the asking device recorded; a racing second create and an old tab's enqueue of the same KOT land on the same jobs; no host → the asking device; no host and no device (the auto-accept) → nothing; the no-host agent enqueue (DUPLICATE, idempotent).
+- **(z)** repair: exactly the server-owned rounds; at the host, naming the firing device, fresh; never an old tab's round, a cancelled order or a round older than 30 min; a second sweep repairs nothing; with no host, at the firing device.
+- **(aa)** host changes (I1 part 2): the teardown dismisses only the job no device asked for; with no host, queued / parked / failed go home with their state; a leased job never moves; with a host again, all three move to it.
+- **(ab)** M5: a job retargeted between the read and the CAS is not leased by the old device; M2: four bad heads in one call → nothing leased, `retryAt` = now + 2 s, and the next call leases the good job.
+
+- [ ] **Step 1: The legs**
+
+Create `apps/cafe/scripts/print-host-live/order-jobs.ts`:
+
+```ts
+/**
+ * Phase 1 Session 1B live legs — server-side job creation (y), the repair sweep (z), where a waiting
+ * job prints after a host change (aa), and the lease fence and step bound (ab), against a REAL
+ * MongoDB. Run by scripts/verify-print-host-live.ts after legs q–x.
+ *
+ * (console output is intentional — this is an ops CLI script, not app code.)
+ */
+import mongoose from "mongoose";
+import { lifecycleOf, planLease } from "@pos/shared/print-lifecycle";
+import { PrintJob } from "@/models/PrintJob";
+import { PrintHost } from "@/models/PrintHost";
+import { Order } from "@/models/Order";
+import { createOrderPrintJobs, enqueueOwnPrintJob } from "@/lib/print-order-jobs";
+import { dismissQueuedPrintJobsForClearedHost, enqueuePrintJob } from "@/lib/print-queue";
+import { PRINT_LIFECYCLE_SELECT, applyPrintJobPlan, leasePrintJobs, type PrintLifecycleRow } from "@/lib/print-lease";
+import { routeWaitingPrintJobs, sweepPrintJobs } from "@/lib/print-sweep";
+import { billPrintJob, kotPrintJob } from "@/lib/print-routing";
+import { check, seedRealOrder } from "./harness";
+import { HOST, STAFF, freshHost, rowOf, setRaw } from "./lifecycle";
+
+const PHONE = "live-order-phone";
+const OLD_HOST = "live-old-host";
+
+async function orderOf(id: string) {
+  const order = await Order.findById(id).lean();
+  if (order === null) throw new Error("seeded order missing");
+  return order;
+}
+
+/** Raw driver write on an Order (timestamps would re-stamp updatedAt; some legs fake old rounds). */
+async function setOrderRaw(id: string, set: Record<string, unknown>): Promise<void> {
+  await Order.collection.updateOne({ _id: new mongoose.Types.ObjectId(id) }, { $set: set });
+}
+
+export async function legY(nowMs: number): Promise<void> {
+  console.log("\n(y) server-side creation: host or own device, KOT before bill, one job per slip");
+  await freshHost(nowMs);
+  const orderId = await seedRealOrder({ status: "Completed", kotRound: 1 });
+  const order = await orderOf(orderId);
+  const refs = await createOrderPrintJobs({ order, slips: [{ kind: "bill" }, { kind: "kot", round: 1 }], originDeviceId: PHONE, queuedBy: STAFF, nowMs });
+  const [kot, bill] = await Promise.all([rowOf(refs[0]?.id ?? ""), rowOf(refs[1]?.id ?? "")]);
+  check("(y) Pay Now makes the KOT and then the bill, both for the host", refs.length === 2 && refs[0]?.kind === "kot" && refs[1]?.kind === "bill" && refs.every((r) => r.targetDeviceId === HOST));
+  check("(y) the KOT is ahead of the bill in the host's line (§7.6)", kot !== null && bill !== null && (kot.createdAt < bill.createdAt || (kot.createdAt.getTime() === bill.createdAt.getTime() && String(kot._id) < String(bill._id))));
+  check("(y) each job is queued, keyed as today, and names the asking device", kot?.status === "queued" && kot?.jobKey === `kot:${orderId}:1` && bill?.jobKey === `bill:${orderId}` && kot?.originDeviceId === PHONE && kot?.epoch === 0 && kot?.log?.[0]?.event === "created");
+  const again = await createOrderPrintJobs({ order, slips: [{ kind: "kot", round: 1 }, { kind: "bill" }], originDeviceId: PHONE, queuedBy: STAFF, nowMs });
+  check("(y) a racing second create answers the same two jobs and makes none", again.map((r) => r.id).join() === refs.map((r) => r.id).join() && (await PrintJob.countDocuments({})) === 2);
+  const oldTab = await enqueuePrintJob({ ...kotPrintJob(JSON.parse(JSON.stringify(order)), 1), queuedBy: STAFF, nowMs });
+  check("(y) an old tab's enqueue of the same KOT lands on the same job, never a second slip", oldTab.outcome === "queued" && oldTab.duplicate && oldTab.id === refs[0]?.id);
+
+  await PrintHost.deleteMany({});
+  const own = await seedRealOrder({ status: "Completed", kotRound: 1 });
+  const mine = await createOrderPrintJobs({ order: await orderOf(own), slips: [{ kind: "kot", round: 1 }], originDeviceId: PHONE, queuedBy: STAFF, nowMs });
+  check("(y) with no host, the asking device prints its own slip (§6.6)", mine.length === 1 && mine[0]?.targetDeviceId === PHONE && (await rowOf(mine[0].id))?.targetDeviceId === PHONE);
+  const selfOrder = await seedRealOrder({ status: "Completed", kotRound: 1 });
+  const none = await createOrderPrintJobs({ order: await orderOf(selfOrder), slips: [{ kind: "kot", round: 1 }], queuedBy: STAFF, nowMs });
+  check("(y) with no host and no asking device (the auto-accept) nothing is made: kot-claim prints it", none.length === 0 && (await PrintJob.countDocuments({ orderId: selfOrder })) === 0);
+
+  const reprint = billPrintJob(JSON.parse(JSON.stringify(await orderOf(own))), { reprint: true });
+  const first = await enqueueOwnPrintJob({ ...reprint, queuedBy: STAFF, idempotencyKey: "live-key-0001-own", originDeviceId: PHONE, nowMs });
+  const retry = await enqueueOwnPrintJob({ ...reprint, queuedBy: STAFF, idempotencyKey: "live-key-0001-own", originDeviceId: PHONE, nowMs });
+  const firstId = first.outcome === "queued" ? first.id : "";
+  const ownRow = await rowOf(firstId);
+  check("(y) no host: an agent's own reprint is its own job, DUPLICATE, and a retry is the same job", first.outcome === "queued" && !first.duplicate && retry.outcome === "queued" && retry.duplicate && retry.id === firstId && ownRow?.targetDeviceId === PHONE && JSON.stringify(ownRow?.labels) === '["DUPLICATE"]');
+}
+
+export async function legZ(nowMs: number): Promise<void> {
+  console.log("\n(z) the repair sweep re-creates a server-owned round's missing KOT, and nothing else");
+  await freshHost(nowMs);
+  const owned = await seedRealOrder({ status: "Completed", kotRound: 1 });
+  await setOrderRaw(owned, { kotPrintDevices: [PHONE] });
+  const oldTab = await seedRealOrder({ status: "Completed", kotRound: 1 });
+  const cancelled = await seedRealOrder({ status: "Completed", kotRound: 1 });
+  await setOrderRaw(cancelled, { kotPrintDevices: [PHONE], status: "Cancelled" });
+  const late = await seedRealOrder({ status: "Completed", kotRound: 1 });
+  await setOrderRaw(late, { kotPrintDevices: [PHONE], createdAt: new Date(nowMs - 31 * 60 * 1000) });
+  const mixed = await seedRealOrder({ status: "Completed", kotRound: 1 });
+  await Order.collection.updateOne(
+    { _id: new mongoose.Types.ObjectId(mixed) },
+    {
+      $set: { kotRounds: 2, kotPrintDevices: ["", PHONE], kotFiredAt: [new Date(nowMs - 60_000), new Date(nowMs - 30_000)] },
+      $push: { items: { productId: "00000000000000000000aaa2", name: "Coffee", price: 120, qty: 1, modifiers: [], instructions: "", kotRound: 2 } },
+    } as Record<string, unknown>,
+  );
+
+  const swept = await sweepPrintJobs(nowMs);
+  const keys = (await PrintJob.find({}).select("jobKey targetDeviceId originDeviceId").lean()).map((r) => r.jobKey).sort();
+  check("(z) exactly the two server-owned rounds are repaired", swept.repaired === 2 && keys.join() === [`kot:${mixed}:2`, `kot:${owned}:1`].sort().join());
+  const repaired = await PrintJob.findOne({ jobKey: `kot:${owned}:1` }).lean();
+  check("(z) a repaired KOT prints at the host, names the device that fired it, and starts fresh", repaired?.targetDeviceId === HOST && repaired?.originDeviceId === PHONE && repaired?.status === "queued" && repaired?.epoch === 0);
+  check("(z) never a round its tab printed itself, a cancelled order, or a round older than 30 min", !keys.some((k) => k?.includes(oldTab) || k?.includes(cancelled) || k?.includes(late) || k === `kot:${mixed}:1`));
+  const second = await sweepPrintJobs(nowMs + 60_000);
+  check("(z) a second sweep repairs nothing (one job per slip, ever)", second.repaired === 0 && (await PrintJob.countDocuments({})) === 2);
+
+  await PrintHost.deleteMany({});
+  await PrintJob.deleteMany({});
+  const noHost = await sweepPrintJobs(nowMs + 120_000);
+  const home = await PrintJob.findOne({ jobKey: `kot:${owned}:1` }).lean();
+  check("(z) with no host, a repaired KOT goes to the device that fired the round", noHost.repaired === 2 && home?.targetDeviceId === PHONE);
+}
+
+export async function legAA(nowMs: number): Promise<void> {
+  console.log("\n(aa) after a host change every waiting job prints where it should (1A review I1 part 2)");
+  await freshHost(nowMs);
+  const orderId = await seedRealOrder({ status: "Completed", kotRound: 1 });
+  const order = JSON.parse(JSON.stringify(await orderOf(orderId)));
+  const make = async (status: string, origin: boolean, extra: Record<string, unknown> = {}) => {
+    const res = await enqueuePrintJob({ ...kotPrintJob(order, null), queuedBy: STAFF, ...(origin ? { originDeviceId: PHONE } : {}), nowMs });
+    if (res.outcome !== "queued") throw new Error(`seed refused: ${res.outcome}`);
+    await setRaw(res.id, { status, targetDeviceId: OLD_HOST, ...extra });
+    return res.id;
+  };
+  const queued = await make("queued", true);
+  const parked = await make("needs-confirm", true, { epoch: 1, attempts: 1, uncertainAttempts: 1 });
+  const stopped = await make("failed", true, { epoch: 1, attempts: 8 });
+  const writing = await make("leased", true, { epoch: 1, attempts: 1, lease: { deviceId: OLD_HOST, tabId: "t", epoch: 1, expiresAt: new Date(nowMs + 90_000) } });
+  const orphan = await make("queued", false);
+
+  const torn = await dismissQueuedPrintJobsForClearedHost(STAFF);
+  check("(aa) clearing the host dismisses only the job no device asked for", torn === 1 && (await rowOf(orphan))?.dismissReason === "host-cleared" && (await rowOf(queued))?.status === "queued");
+  await PrintHost.deleteMany({});
+  const moved = await routeWaitingPrintJobs(null, nowMs);
+  const [q, p, f, w] = await Promise.all([rowOf(queued), rowOf(parked), rowOf(stopped), rowOf(writing)]);
+  check("(aa) with no host, queued, parked and failed slips go back to their own device", moved === 3 && [q, p, f].every((r) => r?.targetDeviceId === PHONE) && q?.log?.at(-1)?.event === "retargeted");
+  check("(aa) … keeping their state, and a leased job is never moved under its writer", p?.status === "needs-confirm" && f?.status === "failed" && w?.targetDeviceId === OLD_HOST);
+
+  // A host is designated again: every waiting job, parked and failed ones too, now prints there.
+  await setRaw(parked, { targetDeviceId: OLD_HOST });
+  const rehomed = await routeWaitingPrintJobs(HOST, nowMs);
+  const after = await Promise.all([rowOf(queued), rowOf(parked), rowOf(stopped), rowOf(writing)]);
+  check(
+    "(aa) with a host, the queued, parked and failed jobs move to it (Print again then prints there); the leased one stays",
+    rehomed === 3 && after.slice(0, 3).every((r) => r?.targetDeviceId === HOST) && after[3]?.targetDeviceId === OLD_HOST,
+  );
+}
+
+export async function legAB(nowMs: number): Promise<void> {
+  console.log("\n(ab) the lease is fenced on the device, and a lease call that clears four bad heads says when to look again");
+  await freshHost(nowMs);
+  const orderId = await seedRealOrder({ status: "Completed", kotRound: 1 });
+  const res = await enqueuePrintJob({ ...kotPrintJob(JSON.parse(JSON.stringify(await orderOf(orderId))), 1), queuedBy: STAFF, nowMs });
+  const id = res.outcome === "queued" ? res.id : "";
+  const row = await PrintJob.findById(id).select(PRINT_LIFECYCLE_SELECT).lean<PrintLifecycleRow>();
+  const job = lifecycleOf(row!);
+  const plan = planLease(job, { deviceId: HOST, tabId: "tab-a" }, nowMs);
+  await setRaw(id, { targetDeviceId: PHONE });
+  const won = plan.ok && (await applyPrintJobPlan(row!._id, job, plan.patch, { targetDeviceId: HOST }));
+  check("(ab) a job retargeted between the read and the CAS is not leased by the old device (M5)", !won && (await rowOf(id))?.status === "queued");
+
+  await freshHost(nowMs);
+  for (let i = 0; i < 4; i++) {
+    await PrintJob.collection.insertOne({ kind: "kot", status: "queued", payload: "not json", label: `bad ${i}`, queuedBy: STAFF, targetDeviceId: HOST, createdAt: new Date(nowMs - 10_000 + i), updatedAt: new Date(nowMs) });
+  }
+  const good = await enqueuePrintJob({ ...kotPrintJob(JSON.parse(JSON.stringify(await orderOf(orderId))), 1), queuedBy: STAFF, nowMs });
+  const firstCall = await leasePrintJobs({ deviceId: HOST, tabId: "tab-a", dismissedBy: STAFF, nowMs });
+  check("(ab) four bad heads in one call: nothing leased, look again in 2 s (M2)", firstCall.jobs.length === 0 && firstCall.retryAt === new Date(nowMs + 2_000).toISOString());
+  const secondCall = await leasePrintJobs({ deviceId: HOST, tabId: "tab-a", dismissedBy: STAFF, nowMs: nowMs + 2_000 });
+  check("(ab) … and the next call leases the good job behind them", good.outcome === "queued" && secondCall.jobs[0]?.id === good.id);
+}
+```
+
+In `apps/cafe/scripts/verify-print-host-live.ts`, find:
+
+```ts
+import { legV, legW, legX } from "./print-host-live/lifecycle-actions";
+```
+
+Replace it with:
+
+```ts
+import { legV, legW, legX } from "./print-host-live/lifecycle-actions";
+import { legAA, legAB, legY, legZ } from "./print-host-live/order-jobs";
+```
+
+In `apps/cafe/scripts/verify-print-host-live.ts`, find:
+
+```ts
+    await legX(Date.now());
+  } finally {
+```
+
+Replace it with:
+
+```ts
+    await legX(Date.now());
+    // Phase 1 Session 1B legs (server-side creation, repair, host changes, the lease fence).
+    await legY(Date.now());
+    await legZ(Date.now());
+    await legAA(Date.now());
+    await legAB(Date.now());
+  } finally {
+```
+
+- [ ] **Step 2: Run them**
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx tsc --noEmit && npx eslint scripts/print-host-live/order-jobs.ts scripts/verify-print-host-live.ts && MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_print_host npm run verify:print:live 2>&1 | tail -2`
+Expected: tsc and eslint print nothing, then `181 passed, 0 failed`: Session 1A's 161 plus 20 (y 8, z 5, aa 4, ab 3).
+
+- [ ] **Step 3: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/scripts/print-host-live/order-jobs.ts apps/cafe/scripts/verify-print-host-live.ts
+git commit -m "test(print): live legs y-ab: server-side creation, the repair sweep, host changes, the lease fence and step bound"
+```
+
+---
+
+### Task B8: full verification, builds, the E2E exit check, Results
+
+**Files:** Modify this plan (fill in **Session 1B Results**) and the memory file `printing-redesign-2026-10.md`.
+
+- [ ] **Step 1: Every suite**
+
+```bash
+cd /d/kd/lucifer/packages/shared && npm test 2>&1 | grep -E "^# (tests|pass|fail)"; npx tsc --noEmit -p .
+cd /d/kd/lucifer/apps/cafe && npm test 2>&1 | grep -E "^# (tests|pass|fail)|^not ok"; npx tsc --noEmit; npm run lint 2>&1 | tail -4
+cd /d/kd/lucifer/apps/mobile && npx tsc --noEmit && npm run lint && npm test 2>&1 | grep -E "^# (tests|pass|fail)" && npm run test:app 2>&1 | grep -E "^Tests:"
+cd /d/kd/lucifer/apps/desktop && npm test 2>&1 | grep -E "^# (tests|pass|fail)"
+cd /d/kd/lucifer && npm run test:print-tools 2>&1 | grep -E "^# (tests|pass|fail)"
+cd /d/kd/lucifer/apps/cafe && MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_print_host npm run verify:print:live 2>&1 | tail -3
+```
+
+Expected:
+- shared: 628/628, tsc 0.
+- cafe: **4019 tests, 4018 pass, 1 fail**, the known `go-live-dl` ENOENT. The 16 new tests: `print-order-jobs` 8, `print-repair` 4, `realtime-paths` +2, `print-lifecycle-paths` +2. Account for any other difference in Results.
+- cafe: tsc 0; lint 0 errors and the 2 old warnings.
+- mobile: tsc 0, lint 0, node 114/114, Jest 3/3 (untouched). desktop: 191/191 (untouched). print tools: 7/7.
+- live legs: `181 passed, 0 failed`.
+
+- [ ] **Step 2: The Next production build**
+
+Run: `cd /d/kd/lucifer/apps/cafe && npm run build 2>&1 | tail -15`
+Expected: the build succeeds; the route list is the same as Session 1A's (1B adds no route).
+
+- [ ] **Step 3: Both APKs, x86_64 first** (exactly Session 1A's Task 10 Step 3 commands, `GRADLE_USER_HOME='D:\gradle-home'`)
+
+Expected: `BUILD SUCCESSFUL` twice, each APK holding only its own ABI. Session 1B touches no app code, so the three hashes should equal Session 1A's (`fc4181e4…`, `9f89cd9a…`, `f3f62149…`). Record them either way.
+
+- [ ] **Step 4: The E2E exit check** (spec §14 needs this harness in 1C–1E; a failure here is a finding, never faked)
+
+Bring the harness up exactly as Session 1A's Task 10 Step 5, with these differences:
+1. Use a fresh database `pos_scratch_e2e_1b` and a fresh `<scratchpad>/e2e.env`, generated by a scratchpad Python script with `secrets` (the 1A way), so no secret ever appears in a command, a log or this chat. Never print or commit it.
+2. Seed the admin, the tables and the menu with the repo's own `seed-admin.ts`, `seed-tables.ts` and `seed-menu.ts` (`--env-file`). Build with Step 2's build, start `next start -p 3100`, the fake printer on 9100, `adb reverse tcp:3100 tcp:3100`, the emulator app on `http://localhost:3100`, sign in (TAB to the password field, check focus in a uiautomator dump first), choose the network printer `10.0.2.2:9100`, and designate the app as the print host.
+3. **Old path, no header (must print exactly once):** fire one KOT from the app (a table, one item, Send to kitchen). Expected: the fake printer logs exactly one new job with `bytes > 0`. A scratchpad script (projection without `payload`) shows the newest PrintJob `status: printed`, no `originDeviceId`, `jobKey: kot:<orderId>:1`, and the order has **no** `kotPrintDevices`. The server created nothing, so the old claim path printed the tab's own enqueue once.
+4. **New path, with the header (server-side creation):** a scratchpad Node script (run from `apps/cafe` with `--env-file`, `--import tsx`) mints a session cookie instead of typing a password:
+   - it reads `AUTH_SECRET` from the env file itself and finds `e2eadmin`'s `_id` and role in `pos_scratch_e2e_1b`;
+   - it encodes `{ name, id, role, lastValidated: Date.now() }` with `encode` from `next-auth/jwt` (salt and cookie name `authjs.session-token`, the plain-http name) and sends it as that cookie;
+   - it never prints the secret, the token or the env file.
+   With it the script `POST`s `/api/orders` (a table, one item, a fresh `idemKey`) with `x-pos-print-agent: 1` and `x-pos-device-id: e2e-script-device`, and prints only: the HTTP status, `printJobs` (expected: one `kot` ref aimed at the host's device id), and the new order's `kotPrintDevices` (expected `["e2e-script-device"]`). Expected at the fake printer: exactly one more job with `bytes > 0`, printed by the app's old claim drain (the host is a tab from before Phase 1, exactly the rollout case).
+5. **A replay creates nothing:** the script re-sends the same body and `idemKey`. Expected: 200 with the same order and no `printJobs`, no new PrintJob row, no new paper.
+6. **No header on the new routes stays today's behaviour:** the script `POST`s one more order without the headers. Expected: no `printJobs` key in the answer, no PrintJob row, no `kotPrintDevices` (nothing printed: no tab enqueued it, which is exactly what an old tab would have done itself).
+7. If the permission layer refuses the script (it reads a secret from a file), stop and record it in Results with the exact refusal; do not work around it.
+8. Clean up: `adb reverse --remove-all`; stop the POS and the fake printer by PID (`Stop-Process`); `pm clear com.possoftware.pos`; `adb emu kill`. Leave `pos_scratch_e2e_1b` and its env file for 1C and say so in Results.
+
+`adb logcat -b crash` must stay empty for the whole step.
+
+- [ ] **Step 5: Results, memory, commit**
+
+Fill in **Session 1B Results** below (every command and its totals; each changed existing pin and why; the live-leg count; the APK paths, sizes and hashes; the E2E findings with screenshot paths; every deviation and why; open issues). Update the memory file `printing-redesign-2026-10.md`: Session 1B done with its last commit, and the next step (the 1B review gate).
+
+```bash
+cd /d/kd/lucifer
+git add docs/superpowers/plans/2026-10-02-phase-1-lifecycle.md
+git commit -m "docs(print): Phase 1 Session 1B results"
+git log --oneline -12
+```
+
+Do **not** push, merge or start Session 1C. Report to the owner in Hinglish, then stop.
+
+---
+
+## Session 1B Results (filled in by the implementer)
+
+_Not run yet._
+

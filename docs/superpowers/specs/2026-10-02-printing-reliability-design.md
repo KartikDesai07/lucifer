@@ -243,7 +243,7 @@ log: Array<{ at: Date;
              deviceId?: string; detail?: string }>;  // capped at 20 entries
 ```
 
-- **Keys.** `jobKey` becomes `<kind>:<orderId>:<round|at>:<printerId|targetDeviceId>:<copyIndex>`. A reprint uses `reprint:<Idempotency-Key>`, where the client supplies a UUID.
+- **Keys.** `jobKey` becomes `<kind>:<orderId>:<round|at>:<printerId|targetDeviceId>:<copyIndex>`. A reprint uses `reprint:<Idempotency-Key>`, where the client supplies a UUID. Phase 1's simple mode keeps today's keys (one job per slip; §7.10); the printer and copy parts arrive with Phase 2 printers.
 - **Old rows.** `claimedAt` and `claimedBy` stay on rows written before this change. New code never writes them.
 - **Old meaning of "printed".** A historical `printed` row means "claim won". The readback treats rows without `printedAt` as legacy.
 - **Indexes:**
@@ -329,10 +329,10 @@ any unresolved ──dismiss (staff, order cancelled, host cleared)──► dis
   - `order-requests/[id]/accept`, and the auto-accept in `api/public/order-request` → KOT jobs
 - **Payloads** come from the existing builders in [lib/print-routing.ts](../../../apps/cafe/lib/print-routing.ts) (`kotPrintJob`, `billPrintJob`, `voidPrintJob`, …), run on the committed order. They are converted with the same snapshot function (`printOrderSnapshot`) the client uses today, so slips look exactly the same.
 - **Response:** the route returns `printJobs: [{ id, printerId | targetDeviceId, label }]` (`label` is the existing UI-only text, e.g. "KOT round 2 · T-4"), and the ordering device leases the ones that belong to it straight away.
-- **Errors:** if job creation throws after the order commits, the route still returns success and logs the error. The sweep repairs it.
+- **Errors:** if job creation throws after the order commits, the route still returns success and logs the error. The sweep repairs it. (Phase 1: the error is swallowed, because server libs never log; the repair covers a KOT round and the ordering device re-sends any other slip its answer did not name, §7.10.)
 - **Repair sweep.** It runs inside wake/pulse handling, at most once per 60 s per cafe:
   1. Expire leases (§7.2).
-  2. Re-create missing jobs. For orders with a KOT round fired in the last 30 min, recompute the expected jobKeys and insert any that are missing. A unique-key collision is a no-op.
+  2. Re-create missing jobs. For orders with a KOT round fired in the last 30 min, recompute the expected jobKeys and insert any that are missing. A unique-key collision is a no-op. Phase 1 repairs only the KOT rounds the server owns (`Order.kotPrintDevices`, §7.10), so it never re-prints a round an old tab printed itself.
   3. Apply limits (stale, failed).
   4. Run the existing retention prune.
 - **Retired lane:** once the accept routes create KOT jobs, the QR self-order `/kot-claim` lane and its `kotPrintedAt` CAS are retired. They stay for one release.
@@ -396,6 +396,20 @@ The Phase 1 plan ([2026-10-02-phase-1-lifecycle.md](../plans/2026-10-02-phase-1-
 - **A spent daily wake share stops the agent's polling** until the next cafe-day. Leasing then rides realtime nudges and the pulse, so the shared cap truly bounds the cafe's total.
 - **Dismiss covers `queued`, `needs-confirm` and `failed`, never `leased`.**
 - **With a host, the sweep retargets every queued job to the current host** (rows from before Phase 1, and rows from before a re-designation).
+- **The agent's wake is a new `POST` beside the unchanged `GET`.** Tabs from before Phase 1 keep polling the read-only `GET` for one release.
+- **The sweep throttle is per server instance, not per cafe.** Every step is idempotent, so two instances sweeping in the same minute only repeat no-ops.
+
+**Rulings at the Session 1A review gate (2026-10-03).** Implemented in Session 1B unless noted:
+
+- **Opt-in by header (§7.4).** An order request creates its slips on the server only when its call site sends `x-pos-print-agent: 1` and `x-pos-device-id`; `x-pos-print-bill: 1` adds the bill (Pay Now, the POS settle). Without them the route creates nothing and answers exactly as before, so a tab from before Phase 1 keeps printing its own slips and nothing prints twice. A bad print header never refuses an order write. The answer carries `printJobs: [{ id, kind, targetDeviceId, label }]` only when the request opted in.
+- **Simple mode keeps today's job keys (§6.5).** `kot:<orderId>:<round>`, `bill:<orderId>`, `void:…`, `moved:…`: one job per slip, so a server-made job and an old tab's enqueue of the same slip collide on the unique key instead of printing twice, and a retarget never changes the key the repair looks for. The printer and copy parts join the key with Phase 2 printers.
+- **The repair (§7.4 step 2) covers server-owned KOT rounds only.** The order CAS records `Order.kotPrintDevices` (positional, like `kotIdemKeys`; `""` = a round its tab printed). Bills, voids and moves are not repaired; the client re-sends any slip its answer did not name, under the same key. Replays create nothing.
+- **The public auto-accept**, with a host, queues its KOT for the host in the same request, so it prints with no POS tab open. It does not stamp `kotPrintedAt`: the self-order lane stays as the backstop and builds the same key. With no host nothing is made and the lane prints it as today.
+- **No host: a waiting job goes back to the device that asked for it** (the 1A review's I1 part 2). The sweep and the host teardown send every `queued`, `needs-confirm` or `failed` job to its `originDeviceId`, keeping its state and labels; only a job no device asked for is dismissed as `host-cleared`. With a host, parked and failed jobs move to the host too. Never a leased job.
+- **Only the host polls the wake in Phase 1** (the 1A review's I3, and its recommendation 1). With no host no device polls: each prints its own slips from its own order responses, `print-status` events aimed at it, local retry timers and the pulse (§17.2 "no polling", §17.3 rule 1). One poller keeps the shared daily cap exact. Dividing the cap by agents online, or by agents seen this cafe-day, does not bound agents that join late (one alone spends 9,600 wake hits before two more arrive, then each spends 4,800). When several agents poll (Phase 2), the cap becomes a server-side split of the cafe's remaining daily allowance, which agents report on their 30 s heartbeat.
+- **`print-status` (§10)** is `{ kind: "print-status", job: { id, status, target? } }`: `"queued"` with its device when a job is created, then the final state (printed, needs-confirm, failed, dismissed). An agent leases on the events aimed at it, so a nudge never fans out into empty leases. The `print-job` nudge is published for server-made jobs only when a host exists (one agent). Realtime cost: 3 Worker requests per slip (§17.2).
+- **The lease CAS is also fenced on `targetDeviceId`**, so a job retargeted between the read and the CAS is not leased by its old device. A lease call that ran out of steps answers `retryAt` = now + 2 s. A failed lease heartbeat no longer fails a lease that committed.
+- **Pending (owner, at the Session 1C gate):** whether `sent:"no"` refusals count toward `attempts ≥ 8` (§7.2, §7.8).
 
 ## 8. Routing (Phase 2)
 
@@ -424,6 +438,7 @@ Routing is a pure function, `routeJobs(event, catalog, printers, devices)`, with
     - socket verified healthy: every 60 s;
     - socket not healthy: every 3 s, but only while the agent has seen a job in the last 2 minutes; otherwise every 15 s.
   - **Shared daily cap.** The cafe's agents share today's single-host cap of 14,400 wake hits per cafe-day. Each agent's cap is `floor(14,400 / onlineAgentCount)`; the wake response includes the agent count. Past its cap, an agent polls every 30 s until the next cafe-day. More printer devices therefore never raise the cafe's request total (§17).
+  - **Phase 1: only the host polls** (§7.10, the 1A review gate). With no host no device polls the wake; it leases from its own order responses, `print-status` events aimed at it, local retry timers and the pulse. A divided cap cannot bound agents that join late, so Phase 2 replaces the division with a server-side split of the cafe's remaining daily allowance.
 - **For each lease:** render, then write, then ack. It reports `sent` honestly, following §7.5.
 - It processes one job at a time per printer. Different printers can run in parallel.
 
@@ -489,7 +504,7 @@ Routing is a pure function, `routeJobs(event, catalog, printers, devices)`, with
   - **Settings → Printers:** every printer and device.
 - **Ordering device:**
   - Each slip shows Queued → Printing → Printed ✓ / Failed ⚠.
-    - **Primary source:** a small realtime event `{ kind: "print-status", jobId, status }`. It carries no order content.
+    - **Primary source:** a small realtime event `{ kind: "print-status", job: { id, status, target? } }` (§7.10: `target` names the printing device on "queued"). It carries no order content.
     - **Fallback:** `myRecentJobs` on the existing 20 s pulse.
     - No new poll.
   - A KOT still not `printed` after 20 s sounds an alarm and shows a banner. The alarm also plays on every printer device.
@@ -650,11 +665,13 @@ A busy day is assumed:
 | Status readback, heartbeats, sweep, Telegram | 0 extra | 0 extra | They ride the realtime event, the wake poll, the lease call and the existing 20 s pulse |
 | **Vercel invocations** | **≈ 4,800/day ≈ 144k/month (14 % of 1M)** | **≈ 17,040/day ≈ 511k/month (51 %)** | The worst case equals today's host worst case (14,400 wake + 2,400 enqueue/claim) |
 | Active CPU, estimated at 10 ms per print request (measured in Phase 1) | ≈ 48 s/day ≈ 24 min/month (10 %) | ≈ 170 s/day ≈ 85 min/month (35 %) | Phase 1 exit criterion (below) |
-| Realtime Worker requests | ≈ 2,735/day (2.7 % of 100k) | same | 2 publishes per slip (created, final status), plus today's ≈ 335 |
+| Realtime Worker requests | ≈ 3,935/day (3.9 % of 100k) | same | 3 publishes per slip (its "queued" and final `print-status`, and the host's `print-job` nudge), plus today's ≈ 335. Pinned in `print-budget.test.ts` (≤ 5 %). |
 | Mongo writes | ≈ 6,000/day (peak well under 10/s) | ≈ 18,000/day | 3 writes per slip, plus at most 1 device upsert per wake. `Printer.health` is written only on change. |
 | Mongo storage and transfer | ≤ about 10 MB live; ≈ 6 MB/day of payload reads | same | Unchanged retention (2 h / 12 h); log capped at 20 entries |
 
 **Simple mode without a host** (each device prints its own slips) costs no server requests today. In this design it adds about 2,640 invocations/day on a busy day (lease, ack, retries) and no polling. That is the price of server-side acknowledgement, retry and visibility.
+
+**Phase 1 polls with one device at most** (§7.10): the host in host mode, nobody without a host. The "3 printer devices" columns above are Phase 2's target design; `print-budget.test.ts` pins both.
 
 ### 17.3 Rules that keep it bounded
 
