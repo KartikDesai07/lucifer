@@ -6990,7 +6990,16 @@ Re-graded by effect on a cafe:
   - Declined item 2: 1C ships with 1D.
   - **I2 is still the owner's decision**; nothing was implemented for it.
 - **Minors** M-b and M-g.
-- **Pre-existing, cosmetic, not 1B:** the band label reads "KOT round 1 · T-T-2" when a table is named "T-2" (`lib/print-routing.ts` `TABLE_LABEL_PREFIX`; the label is UI-only and the old path builds the same one).
+- **Pre-existing, cosmetic, not 1B, fixed after the owner's answer (see below):** the band label read "KOT round 1 · T-T-2" when a table is named "T-2".
 - **Known, unrelated:** `lib/go-live-dl.test.ts` ENOENT.
 - **Still the owner's call:** the Phase 0 review's recommended hotfix of `7edf7aa` to `main`.
 
+### Follow-ups after the owner's answers (2026-10-03)
+
+- **Push.** The owner asked for the branch to be pushed, always with the owner's token and never the main account. `origin` now has `feat/printing-reliability`. The token is used through a repo-local credential-store file outside the repo, and the system Git Credential Manager is turned off for this repo. The token is never in the repo.
+- **`origin/main` merged into the branch** (`--no-ff`): two Settings commits (`cbcfa99`, `52eaad2`), no conflict. Re-run on the merged tree: shared 629/629, tsc 0; cafe 4045 tests, 4044 pass, 1 known fail; tsc 0; lint 0 errors and the 2 old warnings; live legs `183 passed, 0 failed`; Next build success (123 routes); mobile 114/114; desktop 191/191.
+- **The table label (owner answer 3).** The label is UI-only: the stale band rows and the readback chip show it, and paper never does (KOTReceipt prints the raw `tableNo`). `seed-client.ts` names every client's tables `T-1`, `T-2`, …, so live screens read "T-T-1". `printJobOrderRef` now prefixes `T-` only to a bare number ("4" → "T-4") and shows any other name as written.
+  - Test: a new `print-readback.test.ts` case, RED → GREEN.
+  - Re-run: cafe 4046 tests, 4045 pass, 1 known fail; lint 0 errors; live legs 183/0.
+
+The owner's other answers (I2, R4, deploy, the main hotfix) are recorded for the 1B review gate in the next session's prompt.
