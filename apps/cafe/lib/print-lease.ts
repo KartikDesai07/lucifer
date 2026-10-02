@@ -1,7 +1,8 @@
 import mongoose, { type FilterQuery, type Types, type UpdateQuery } from "mongoose";
-import type { PrintJobKind } from "@pos/shared/print-job";
+import type { PrintJobKind, PrintJobStatus } from "@pos/shared/print-job";
 import type { LeasedPrintJob, PrintAckData, PrintLeaseData } from "@pos/shared/print-agent-wire";
 import {
+  PRINT_BACKOFF_MS,
   PRINT_JOB_LOG_MAX,
   lifecycleOf,
   planAck,
@@ -19,6 +20,7 @@ import {
 import { printJobPayloadSchema, type PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 import { Order } from "@/models/Order";
 import { PrintJob, type IPrintJob } from "@/models/PrintJob";
+import { publishPrintStatus } from "@/lib/realtime-publish";
 import { dismissPrintJob, drainAgeCutoff } from "./print-queue";
 import { printJobEligibility, printJobNeedsOrderRead } from "./print-queue-claim";
 
@@ -71,10 +73,23 @@ export function printJobUpdateOf(patch: PrintJobPatch): PrintJobUpdate {
   return update;
 }
 
-/** Applies a plan. false: another writer moved the job first, so re-read and re-plan. */
-export async function applyPrintJobPlan(id: Types.ObjectId, job: PrintJobLifecycle, patch: PrintJobPatch): Promise<boolean> {
-  const res = await PrintJob.updateOne(printJobCasFilter(id, job), printJobUpdateOf(patch) as UpdateQuery<IPrintJob>);
-  return res.modifiedCount === 1;
+/** The statuses an ordering device's readback hears about at once (spec §10, §17.2: a job's creation
+ *  and its final state); the pulse stays the fallback. */
+const PRINT_STATUS_PUBLISHED: ReadonlySet<PrintJobStatus> = new Set<PrintJobStatus>(["printed", "needs-confirm", "failed", "dismissed"]);
+
+/** Applies a plan. false: another writer moved the job first, so re-read and re-plan. `fence` adds
+ *  terms the plan depends on but the epoch does not cover (a lease: still this device's job). */
+export async function applyPrintJobPlan(
+  id: Types.ObjectId,
+  job: PrintJobLifecycle,
+  patch: PrintJobPatch,
+  fence: FilterQuery<IPrintJob> = {},
+): Promise<boolean> {
+  const res = await PrintJob.updateOne({ ...printJobCasFilter(id, job), ...fence }, printJobUpdateOf(patch) as UpdateQuery<IPrintJob>);
+  const applied = res.modifiedCount === 1;
+  // Fire-and-forget, after the write: a lost frame costs the readback one pulse, never the transition.
+  if (applied && PRINT_STATUS_PUBLISHED.has(patch.status)) publishPrintStatus({ id: String(id), status: patch.status });
+  return applied;
 }
 
 export function leasedPrintJobOf(
@@ -153,10 +168,14 @@ export async function leasePrintJobs(input: { deviceId: string; tabId: string; d
     if (!plan.ok) return { jobs: [], retryAt: plan.reason === "not-due" ? job.nextAttemptAt.toISOString() : null };
     const payload = await leaseEligibility(head, input.dismissedBy);
     if (payload === null) continue;
-    if (!(await applyPrintJobPlan(head._id, job, plan.patch))) continue;
+    // Fenced on the target too: a retarget (the sweep, a host change) between the read and this CAS
+    // moves the job to another device's line, and this device must not win it then (1A review M5).
+    if (!(await applyPrintJobPlan(head._id, job, plan.patch, { targetDeviceId: input.deviceId }))) continue;
     return { jobs: [leasedPrintJobOf(head, plan.patch, payload, job.labels)], retryAt: null };
   }
-  return { jobs: [], retryAt: null };
+  // Every step cleared one bad head or lost one race, so the line may still hold a printable job:
+  // look again after the shortest backoff instead of waiting for a nudge (1A review M2).
+  return { jobs: [], retryAt: new Date(input.nowMs + PRINT_BACKOFF_MS[0]).toISOString() };
 }
 
 /** The writer's report on one attempt (spec §7.2, §7.9). Idempotent per (job, epoch): a repeat of

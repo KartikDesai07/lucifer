@@ -30,8 +30,12 @@ const SWEEP = "apps/cafe/lib/print-sweep.ts";
 
 test("PIN: every lifecycle transition is ONE compare-and-set on {_id, status, epoch}, and a lease call is bounded", () => {
   const s = src(LEASE);
-  assert.match(s, /PrintJob\.updateOne\(printJobCasFilter\(id, job\), printJobUpdateOf\(patch\)/);
-  assert.match(s, /return res\.modifiedCount === 1;/);
+  // Session 1B: the CAS may carry an extra fence (a lease: still this device's job, 1A review M5),
+  // and a landed final transition publishes its print-status (spec §10).
+  assert.match(s, /PrintJob\.updateOne\(\{ \.\.\.printJobCasFilter\(id, job\), \.\.\.fence \}, printJobUpdateOf\(patch\)/);
+  assert.match(s, /const applied = res\.modifiedCount === 1;/);
+  assert.match(s, /if \(applied && PRINT_STATUS_PUBLISHED\.has\(patch\.status\)\) publishPrintStatus\(\{ id: String\(id\), status: patch\.status \}\);/);
+  assert.match(s, /applyPrintJobPlan\(head\._id, job, plan\.patch, \{ targetDeviceId: input\.deviceId \}\)/, "the lease CAS is fenced on the device");
   assert.match(s, /for \(let step = 0; step < LEASE_MAX_STEPS; step\+\+\)/);
   assert.match(s, /printJobEligibility\(payload, order\)/, "the claim path's live-order gate still applies to a lease");
   assert.ok(!s.includes("console."), "no console.* in a server lib");
@@ -200,4 +204,18 @@ test("PIN: the heartbeat awaits the PrintDevice unique-index build before its fi
   const end = s.indexOf("export async function touchPrintDevice(");
   assert.ok(start >= 0 && end > start, "beatPrintDevice is declared before touchPrintDevice");
   inOrder(s.slice(start, end), ["await PrintDevice.init();", "PrintDevice.updateOne("], "beatPrintDevice");
+});
+
+// ── Session 1B: the 1A review's lease rulings and the print-status publishes ───────────────────────
+
+test("PIN: the lease route's heartbeat is best-effort (M1), and a lease call that cleared four bad heads says when to look again (M2)", () => {
+  assert.match(src("apps/cafe/app/api/print-jobs/lease/route.ts"), /touchPrintDevice\(parsed\.data\.deviceId, nowMs\)\.catch\(\(\) => undefined\),/);
+  assert.match(src(LEASE), /return \{ jobs: \[\], retryAt: new Date\(input\.nowMs \+ PRINT_BACKOFF_MS\[0\]\)\.toISOString\(\) \};/);
+});
+
+test("PIN: the lifecycle publishes exactly the final statuses, and a dismissed job announces itself", () => {
+  assert.match(src(LEASE), /new Set<PrintJobStatus>\(\["printed", "needs-confirm", "failed", "dismissed"\]\)/);
+  const queue = src("apps/cafe/lib/print-queue.ts");
+  const single = queue.slice(queue.indexOf("export async function dismissPrintJob("), queue.indexOf("export async function dismissQueuedPrintJobsForClearedHost("));
+  assert.match(single, /if \(dismissed\) \{\s*publishPrintStatus\(\{ id: input\.id, status: "dismissed" \}\);\s*return \{ dismissed: true \};\s*\}/);
 });

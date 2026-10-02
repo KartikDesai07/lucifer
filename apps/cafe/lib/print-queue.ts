@@ -14,7 +14,7 @@ import { printJobCreatedLog, printJobInitialLabels, printJobLifecycleInit } from
 import type { PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 import { PrintHost } from "@/models/PrintHost";
 import { PrintJob } from "@/models/PrintJob";
-import { publishCafeEvent } from "@/lib/realtime-publish";
+import { publishCafeEvent, publishPrintStatus } from "@/lib/realtime-publish";
 
 // Print-host plan (.claude/plan/v2/print-host-plan.md §B1/§B3/§B4) — the
 // PrintJob queue: enqueue, dismiss, and the lazy prune sweep (the §B4 feed
@@ -233,7 +233,11 @@ export async function dismissPrintJob(input: {
     { $set: { status: "dismissed", dismissedAt: new Date(), dismissReason: input.reason, dismissedBy: input.dismissedBy } },
     { new: true },
   );
-  if (dismissed) return { dismissed: true };
+  if (dismissed) {
+    // Phase 1 (spec §10): the ordering device's readback hears it at once; the pulse is the fallback.
+    publishPrintStatus({ id: input.id, status: "dismissed" });
+    return { dismissed: true };
+  }
 
   // A lost race here is a NORMAL 200 outcome (mirrors claimKotPrint's doc
   // comment), not an error — one extra existence read tells "never existed"

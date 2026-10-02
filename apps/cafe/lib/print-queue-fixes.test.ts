@@ -410,18 +410,18 @@ test("printJobResolvedRowOf: a recognised dismissReason survives untouched; an U
 // COVERAGE A — prunePrintJobs' two deleteMany filters, per-term
 // ═════════════════════════════════════════════════════════════════════════
 
-test("PIN: prunePrintJobs calls PrintJob.deleteMany( exactly twice. Filter #1 (unresolved, Phase 1) fences on status:{$in:[...PRINT_JOB_UNRESOLVED_STATUSES]} (dropping it would delete LIVE printed jobs inside their 2 h readback window) with a $lt cutoff (never $gt — a flipped operator deletes everything NEWER than the cutoff) filtering createdAt, never updatedAt. Filter #2 (resolved) fences on status:{$in:[\"printed\",\"dismissed\"]}, same $lt/createdAt discipline", () => {
+test("PIN: prunePrintJobs calls PrintJob.deleteMany( exactly twice. Filter #1 (unresolved, Phase 1) fences on status:{$in:[...PRINT_JOB_UNRESOLVED_STATUSES]} (the 12 h clock is only for jobs still waiting for a writer or a decision; a resolved row keeps its 2 h clock in filter #2) with a $lt cutoff (never $gt — a flipped operator deletes everything NEWER than the cutoff) filtering createdAt, never updatedAt. Filter #2 (resolved) fences on status:{$in:[\"printed\",\"dismissed\"]}, same $lt/createdAt discipline", () => {
   const src = stripComments(readSrc(PRINT_QUEUE_LIB));
   const fnStart = mustIndexOf(src, "export async function prunePrintJobs(", "prunePrintJobs");
   const fnEnd = mustIndexOf(src, "let lastPruneAtMs = 0;", "the boundary after prunePrintJobs");
   const fnBody = src.slice(fnStart, fnEnd);
 
   const deleteCalls = [...fnBody.matchAll(/PrintJob\.deleteMany\(/g)].map((m) => m.index as number);
-  assert.equal(deleteCalls.length, 2, "prunePrintJobs must call PrintJob.deleteMany( exactly twice — filter #1 (queued) and filter #2 (resolved)");
+  assert.equal(deleteCalls.length, 2, "prunePrintJobs must call PrintJob.deleteMany( exactly twice — filter #1 (unresolved) and filter #2 (resolved)");
 
   const filter1End = mustIndexOf(fnBody.slice(deleteCalls[0]), "});", "the close of filter #1's call") + deleteCalls[0] + 3;
   const filter1 = fnBody.slice(deleteCalls[0], filter1End);
-  assert.match(filter1, /status:\s*\{\s*\$in:\s*\[\.\.\.PRINT_JOB_UNRESOLVED_STATUSES\]\s*\}/, "filter #1 must fence on the unresolved statuses (Phase 1) — dropping it deletes live printed jobs inside their 2 h readback window");
+  assert.match(filter1, /status:\s*\{\s*\$in:\s*\[\.\.\.PRINT_JOB_UNRESOLVED_STATUSES\]\s*\}/, "filter #1 must fence on the unresolved statuses (Phase 1) — the 12 h clock is for jobs still waiting; a resolved row keeps its 2 h clock");
   assert.match(filter1, /\$lt:/, "filter #1's cutoff comparison must be $lt");
   assert.ok(!/\$gt:/.test(filter1), "filter #1 must never use $gt — a flipped operator deletes everything NEWER than the cutoff");
   assert.match(filter1, /createdAt:/, "filter #1 must filter createdAt");
