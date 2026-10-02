@@ -102,3 +102,5 @@ migrate-links-backup-*.archive.gz
 **/# Files created with a MANGLED absolute temp path by an earlier tool call
 # (the drive colon became U+FF1A, so the whole path became one filename).
 *AppDataLocalTempclaude*
+
+.playwright-mcp

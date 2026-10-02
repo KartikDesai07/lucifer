@@ -530,8 +530,8 @@ Routing is a pure function, `routeJobs(event, catalog, printers, devices)`, with
 | F0.7 | Low | `UsbTransport.kt:118` | If `EXTRA_DEVICE` is missing, release the latch anyway. The `hasPermission` re-check right after it decides. |
 | F0.8 | Medium (UI) | `postcss.config.mjs`, `lib/css-compat.test.ts` | Extend the test to cover opacity utilities on var-based tokens. Add `@supports not (color: color-mix(in lab, red, red))` fallbacks for the tints the POS uses (primary/brand surfaces, borders, overlays). Verify on the emulator's WebView 109. |
 | F0.9 | Low | `apps/mobile/src/screens/WorkspaceCover.tsx:40`, `Brand.tsx:28` | Route the cover's Try again through the shared retry accounting. Move the inline style into a StyleSheet (lint warning). |
-| F0.10 | Owner question | `apps/mobile/src/screens/Brand.tsx`, `UrlScreen.tsx:168`, `theme.ts:1`, `src/assets/sandbee-logo.png` | The 2026-10-02 changes brand the app's own screens "Sandbee POS" and "POS Software by Sandbee", with the Sandbee logo. The launcher name, README and package id are still "POS Software" (`com.possoftware.pos`). The owner decides the client-facing brand. Then make every screen, the launcher label and the icon match, or make the brand a build-time setting. |
-| F0.11 | Hygiene | repository root | `.playwright-mcp/` holds browser-tool session snapshots (about 2 MB, possibly with app data). Keep it out of commits and add it to `.gitignore`. |
+| F0.10 | Resolved (owner, 2026-10-02) | `apps/mobile/src/screens/Brand.tsx`, `UrlScreen.tsx`, `theme.ts`, `src/assets/sandbee-logo.png` | Keep GPT's Sandbee branding on the app's own native screens (boot, POS address, error, loading cover). Everything shown after the POS web page loads is the cafe's own brand. The launcher label stays as it is. No code change. |
+| F0.11 | Done | repository root | `.playwright-mcp` (browser-tool session snapshots) is in the root `.gitignore`. |
 
 ## 13. Testing
 
