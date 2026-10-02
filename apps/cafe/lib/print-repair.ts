@@ -12,8 +12,10 @@ import { createOrderPrintJobs } from "./print-order-jobs";
 // repaired: the cashier is at the counter, and the client re-sends any slip its answer did not name
 // (Session 1C). Never calls connectDB(). No console.*.
 
-/** Each sweep reads at most this many orders; the rest wait for the next sweep. */
-export const PRINT_REPAIR_BATCH = 20;
+/** Each sweep reads at most this many orders, newest first. It covers a rush's half hour (a busy day's
+ *  average at 4x, twice over: print-repair.test.ts), because most candidates already have their jobs
+ *  and a smaller batch would never reach an older tab's missing round in time (final review I1). */
+export const PRINT_REPAIR_BATCH = 100;
 /** The name a repaired job is queued under (PrintJob.queuedBy). */
 export const PRINT_REPAIR_ACTOR = "Repair";
 

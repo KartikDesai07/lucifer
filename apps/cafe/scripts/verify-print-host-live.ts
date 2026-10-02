@@ -33,7 +33,7 @@ import { legF, legM } from "./print-host-live/prune";
 import { legG, legH, legN, legP } from "./print-host-live/host";
 import { legQ, legR, legS, legT, legU } from "./print-host-live/lifecycle";
 import { legV, legW, legX } from "./print-host-live/lifecycle-actions";
-import { legAA, legAB, legY, legZ } from "./print-host-live/order-jobs";
+import { legAA, legAB, legAC, legY, legZ } from "./print-host-live/order-jobs";
 
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
@@ -86,6 +86,8 @@ async function main(): Promise<void> {
     await legZ(Date.now());
     await legAA(Date.now());
     await legAB(Date.now());
+    // Session 1B final review I1: the repair reads past a rush.
+    await legAC(Date.now());
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();

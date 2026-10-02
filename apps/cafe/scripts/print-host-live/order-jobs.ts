@@ -156,3 +156,29 @@ export async function legAB(nowMs: number): Promise<void> {
   const secondCall = await leasePrintJobs({ deviceId: HOST, tabId: "tab-a", dismissedBy: STAFF, nowMs: nowMs + 2_000 });
   check("(ab) … and the next call leases the good job behind them", good.outcome === "queued" && secondCall.jobs[0]?.id === good.id);
 }
+
+export async function legAC(nowMs: number): Promise<void> {
+  console.log("\n(ac) a rush of newer orders never hides an older tab's missing KOT from the repair (final review I1)");
+  await freshHost(nowMs);
+  // An older tab (opened 25 min ago) fires round 2 a minute ago; the server owned that round and its job went missing.
+  const older = await seedRealOrder({ status: "Completed", kotRound: 1 });
+  await Order.collection.updateOne(
+    { _id: new mongoose.Types.ObjectId(older) },
+    {
+      $set: { createdAt: new Date(nowMs - 25 * 60_000), kotRounds: 2, kotPrintDevices: ["", PHONE], kotFiredAt: [new Date(nowMs - 25 * 60_000), new Date(nowMs - 60_000)] },
+      $push: { items: { productId: "00000000000000000000aaa2", name: "Coffee", price: 120, qty: 1, modifiers: [], instructions: "", kotRound: 2 } },
+    } as Record<string, unknown>,
+  );
+  // A rush: 30 newer server-owned orders, each with its job already made.
+  const rushKeys: string[] = [];
+  for (let i = 0; i < 30; i++) {
+    const id = await seedRealOrder({ status: "Completed", kotRound: 1 });
+    await setOrderRaw(id, { kotPrintDevices: [PHONE] });
+    await createOrderPrintJobs({ order: await orderOf(id), slips: [{ kind: "kot", round: 1 }], originDeviceId: PHONE, queuedBy: STAFF, nowMs });
+    rushKeys.push(`kot:${id}:1`);
+  }
+  await sweepPrintJobs(nowMs);
+  const repaired = await PrintJob.findOne({ jobKey: `kot:${older}:2` }).lean();
+  check("(ac) the older tab's missing round is repaired behind a rush of 30 newer orders", repaired?.status === "queued" && repaired?.originDeviceId === PHONE);
+  check("(ac) … and every rush order still has exactly its one job", (await PrintJob.countDocuments({ jobKey: { $in: rushKeys } })) === 30);
+}

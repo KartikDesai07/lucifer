@@ -4,7 +4,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { stripComments } from "@/lib/source-pin-utils";
-import { expectedKotJobs } from "@/lib/print-repair";
+import { PRINT_BUDGET_BUSY_DAY } from "@pos/shared/print-budget";
+import { PRINT_REPAIR_WINDOW_MS } from "@pos/shared/print-lifecycle";
+import { PRINT_REPAIR_BATCH, expectedKotJobs } from "@/lib/print-repair";
 import { printJobKeyOf } from "@/lib/print-queue";
 import { kotPrintJob } from "@/lib/print-routing";
 import type { Order } from "@/types";
@@ -79,4 +81,13 @@ test("PIN: clearing the host dismisses only jobs no device asked for; the rest g
   assert.match(sweep, /const WAITING: readonly string\[\] = \["queued", "needs-confirm", "failed"\];/);
   assert.match(sweep, /\$expr: \{ \$ne: \["\$targetDeviceId", "\$originDeviceId"\] \}/);
   assert.match(sweep, /originDeviceId: \{ \$exists: false \}, claimedAt: \{ \$exists: false \}/, "the no-host dismissal keeps the claim guard");
+});
+
+// Session 1B final review I1: each sweep reads the NEWEST candidates first, and most of them already
+// have their jobs, so a batch smaller than a rush's half hour of active orders never reaches an older
+// tab's missing round before it leaves the 30-min window. Live: leg (ac).
+test("the repair batch covers a rush: a busy day's half hour at four times the average, with margin, and stays bounded", () => {
+  const perWindow = (PRINT_BUDGET_BUSY_DAY.orders / PRINT_BUDGET_BUSY_DAY.openHours) * (PRINT_REPAIR_WINDOW_MS / 3_600_000);
+  assert.ok(PRINT_REPAIR_BATCH >= 2 * 4 * perWindow, `batch ${PRINT_REPAIR_BATCH} vs a rush half hour of ${4 * perWindow} orders`);
+  assert.ok(PRINT_REPAIR_BATCH <= 100, `batch ${PRINT_REPAIR_BATCH}: one small indexed read per sweep (spec §17)`);
 });
