@@ -295,3 +295,13 @@ test("the web reconnect backoff refuses to start for an app printer, even if ask
   web.schedule();
   assert.equal(clock.pending(), 1, "landmark: the same call DOES arm a timer for a web printer");
 });
+
+test("native write: a NOT_CONNECTED refusal whose reconnect fails says not connected, because nothing printed", async () => {
+  const { printer, fake } = await nativeEnv();
+  fake.respond("printer.print", () => {
+    throw nativeError("NOT_CONNECTED", "x");
+  });
+  fake.respond("printer.reconnect", () => nativeStatus("disconnected"));
+  await assert.rejects(printer.write(new Uint8Array(4)), { message: PRINTER_NOT_CONNECTED_MESSAGE });
+  assert.equal(fake.count("printer.print"), 1, "no resend without a link");
+});

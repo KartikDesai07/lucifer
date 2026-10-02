@@ -11,6 +11,7 @@ import {
   connectBle,
   findWritableCharacteristic,
 } from "@/lib/printer/transport-ble";
+import { nativeErrorCode } from "@/lib/printer/native-bridge";
 import type { BleCharacteristicLike, BleDeviceLike, BleServerLike, BleServiceLike } from "@/lib/printer/web-printer-types";
 
 // ---- Web Bluetooth ---------------------------------------------------------------
@@ -180,4 +181,24 @@ test("bleRecordOf names the device (or a plain fallback) and keeps the discovere
   });
   assert.equal(bleRecordOf(fakeDevice(server), "80mm", link).name, "Bluetooth printer");
   assert.equal(bleRecordOf(fakeDevice(server, "n".repeat(500)), "80mm", link).name.length, 120);
+});
+
+test("connectBle: a link that dropped before the first chunk is a safe NOT_CONNECTED refusal", async () => {
+  const calls: { kind: string; len: number }[] = [];
+  const server = fakeServer({ [BLE_PRINTER_SERVICES[0].service]: [fakeChar(BLE_PRINTER_SERVICES[0].characteristic ?? "", true, false, calls)] });
+  const link = await connectBle(fakeDevice(server), async () => undefined);
+  (server as { connected: boolean }).connected = false;
+  await assert.rejects(link.transport.write(new Uint8Array(10)), (e: unknown) => nativeErrorCode(e) === "NOT_CONNECTED");
+  assert.equal(calls.length, 0, "nothing reached the printer");
+});
+
+test("connectBle: a link that drops after a chunk is uncertain (no NOT_CONNECTED code)", async () => {
+  const calls: { kind: string; len: number }[] = [];
+  const server = fakeServer({ [BLE_PRINTER_SERVICES[0].service]: [fakeChar(BLE_PRINTER_SERVICES[0].characteristic ?? "", true, false, calls)] });
+  // The pause between chunks is where the link goes: the first chunk is already on the printer.
+  const link = await connectBle(fakeDevice(server), async () => {
+    (server as { connected: boolean }).connected = false;
+  });
+  await assert.rejects(link.transport.write(new Uint8Array(400)), (e: unknown) => nativeErrorCode(e) === null);
+  assert.equal(calls.length, 1, "one chunk was written before the drop");
 });

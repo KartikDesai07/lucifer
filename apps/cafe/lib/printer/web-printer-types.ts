@@ -103,6 +103,14 @@ export const PRINTER_WRITE_FAILED_MESSAGE =
 export const PRINTER_TOO_LARGE_MESSAGE = "This slip is too long to print.";
 export const PRINTER_ELSEWHERE_MESSAGE = "The printer is in use in another tab. Print from that tab, or close it.";
 
+// A refusal made BEFORE any byte reached the printer (no link, the port is not writable,
+// Bluetooth dropped before the first chunk). It carries the native bridge's NOT_CONNECTED code
+// so the write queue treats web and app lanes alike: nothing printed, so ONE reconnect and ONE
+// resend is safe. Anything that fails after a byte left stays code-less: it may already be on paper.
+export function notConnectedError(message: string): Error & { code: "NOT_CONNECTED" } {
+  return Object.assign(new Error(message), { code: "NOT_CONNECTED" as const });
+}
+
 // Best-effort cleanup (close, forget, disconnect): a failure here has nothing
 // useful to tell the operator.
 export async function quiet(run: () => Promise<unknown> | undefined): Promise<void> {

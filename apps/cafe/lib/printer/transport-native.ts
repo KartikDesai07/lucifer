@@ -10,6 +10,7 @@ import {
   PRINTER_NOT_CONNECTED_MESSAGE,
   PRINTER_TOO_LARGE_MESSAGE,
   PRINTER_WRITE_FAILED_MESSAGE,
+  notConnectedError,
   quiet,
   type PaperChoice,
   type PrinterSnapshot,
@@ -185,7 +186,7 @@ export function createNativeLink(host: NativeLinkHost) {
     },
     write(bytes: Uint8Array): Promise<void> {
       const client = host.native();
-      return client === null ? Promise.reject(new Error(PRINTER_NOT_CONNECTED_MESSAGE)) : nativeWrite(client, bytes);
+      return client === null ? Promise.reject(notConnectedError(PRINTER_NOT_CONNECTED_MESSAGE)) : nativeWrite(client, bytes);
     },
   };
 }

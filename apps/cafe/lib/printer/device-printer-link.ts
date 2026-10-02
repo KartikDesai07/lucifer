@@ -3,6 +3,7 @@ import { connectBle, openChosenBle, requestBleDevice, resolveSavedBle, type Slee
 import { openChosenSerial, openSavedSerial, requestSerialPort } from "@/lib/printer/transport-serial";
 import {
   PRINTER_NOT_CONNECTED_MESSAGE,
+  notConnectedError,
   quiet,
   type BleDeviceLike,
   type ConnectOutcome,
@@ -223,7 +224,7 @@ export function createWebLink(host: WebLinkHost) {
       await dropTransport();
     },
     send(bytes: Uint8Array): Promise<void> {
-      return transport === null ? Promise.reject(new Error(PRINTER_NOT_CONNECTED_MESSAGE)) : transport.write(bytes);
+      return transport === null ? Promise.reject(notConnectedError(PRINTER_NOT_CONNECTED_MESSAGE)) : transport.write(bytes);
     },
     // Forget: invalidate anything in flight, close the link, give the browser its permissions back.
     async release(): Promise<void> {

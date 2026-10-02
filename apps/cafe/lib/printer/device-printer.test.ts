@@ -309,3 +309,21 @@ test("a forgotten printer is not resurrected by an open that was still in flight
   assert.equal(env.printer.getSnapshot().status, "none");
   assert.equal(env.store.value, null);
 });
+
+test("write: a port that is no longer writable is refused before any byte: one reconnect and ONE resend", async () => {
+  const { printer, port } = await connectedSerial();
+  // The OS closed the port underneath us and no disconnect event fired: the panel still says connected.
+  port.opened = false;
+  await printer.write(new Uint8Array(100));
+  assert.deepEqual(port.delivered, [100], "the resend delivered the whole job exactly once");
+  assert.equal(port.opens, 2, "one silent reconnect");
+  assert.equal(printer.getSnapshot().status, "connected");
+});
+
+test("write: a refusal whose reconnect fails says the printer is not connected, because nothing printed", async () => {
+  const { printer, port } = await connectedSerial();
+  port.opened = false;
+  port.failOpen = 99;
+  await assert.rejects(printer.write(new Uint8Array(10)), { message: PRINTER_NOT_CONNECTED_MESSAGE });
+  assert.deepEqual(port.delivered, []);
+});
