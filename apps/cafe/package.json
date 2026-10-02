@@ -98,6 +98,7 @@
     "lib/branding.test.ts",
     "lib/branding-paths.test.ts",
     "lib/bill-header-preview-paths.test.ts",
+    "lib/gst-sample-bill.test.ts",
     "lib/table-order.test.ts",
     "lib/order-table-move.test.ts",
     "lib/table-flow-paths.test.ts",

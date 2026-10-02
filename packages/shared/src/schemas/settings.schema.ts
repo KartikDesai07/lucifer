@@ -43,7 +43,11 @@ export const settingsSchema = z.object({
   receiptFooter: z.string().trim().max(120),
   gstEnabled: z.boolean(),
   gstNumber: z.string().trim().max(20),
-  gstRate: z.number().min(0, "Rate cannot be negative").max(100, "Rate cannot exceed 100%"),
+  // The type message covers a cleared rate box (NaN) — see tableLongStayMinutes.
+  gstRate: z
+    .number({ invalid_type_error: "Enter the GST rate as a number" })
+    .min(0, "Rate cannot be negative")
+    .max(100, "Rate cannot exceed 100%"),
   gstMode: z.enum(GST_MODES),
   logo: z.string().trim().max(IMAGE_REF_MAX_LEN),
   // The PRODUCT's own mark (browser tab, login screen) as opposed to `logo`,

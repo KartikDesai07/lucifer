@@ -436,6 +436,16 @@ test("a cleared minutes box (NaN) gets the plain-English type message, not zod's
   assert.equal(issue?.message, "Enter the minutes as a whole number");
 });
 
+// Settings slice 3 (s65): the GST & taxes page shows this under "Other rate"
+// when the box is cleared — zod's own wording is not plain English.
+test("a cleared GST rate box (NaN) gets the plain-English type message, not zod's default wording", () => {
+  const r = settingsSchema.safeParse({ ...validPrintPayload(), gstRate: Number.NaN });
+  assert.equal(r.success, false);
+  if (r.success) return;
+  const issue = r.error.issues.find((i) => i.path[0] === "gstRate");
+  assert.equal(issue?.message, "Enter the GST rate as a number");
+});
+
 test("updateSettingsSchema (the PUT partial) accepts a patch carrying only tableLongStayMinutes", () => {
   const r = updateSettingsSchema.safeParse({ tableLongStayMinutes: 45 });
   assert.equal(r.success, true);
