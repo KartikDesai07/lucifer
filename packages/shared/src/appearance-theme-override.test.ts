@@ -70,6 +70,20 @@ test("appearanceOverrideCss: fontFamilies containing < > or & throws", () => {
   assert.throws(() => appearanceOverrideCss(DEFAULT_APPEARANCE, { body: "Fine", display: "A & B" }));
 });
 
+test("appearanceOverrideCss: each block's colour tokens carry a matching rgb twin (old engines tint with it), a hostile accent included", () => {
+  const channels = (hex: string): string => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(" ");
+  for (const accentOverride of ["#123456", "#12345"]) {
+    const css = appearanceOverrideCss({ ...DEFAULT_APPEARANCE, accentOverride }, FONT_FAMILIES);
+    for (const scheme of ["light", "dark"] as const) {
+      const body = css.match(new RegExp(`:root\\[data-pub-theme="${scheme}"\\]\\{([^}]*)\\}`))?.[1] ?? "";
+      const vars = new Map([...body.matchAll(/(--[\w-]+):([^;]*);/g)].map((m) => [m[1], m[2]]));
+      const colourKeys = [...vars.keys()].filter((key) => /^#[0-9a-f]{6}$/.test(vars.get(key) ?? ""));
+      assert.ok(colourKeys.length >= 19, `${scheme}: the colour tokens are present`);
+      for (const key of colourKeys) assert.equal(vars.get(`${key}-rgb`), channels(vars.get(key) ?? ""), `${scheme}/${accentOverride}: ${key}-rgb`);
+    }
+  }
+});
+
 // ── parity vs appearanceCssVars ─────────────────────────────────────────
 
 test("PARITY: the dark block's token key set equals appearanceCssVars('dark')'s key set (plus the 2 font vars) — a token added to one producer and not the other must fail here", () => {

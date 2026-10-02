@@ -23,14 +23,22 @@ import { bestForeground } from "./appearance-contrast";
 // Every token appearanceCssVars must emit, restated here as the pinned
 // contract — a key silently dropped from the implementation fails THIS list,
 // not a vaguer "some keys are missing" assertion.
-const EXPECTED_TOKEN_KEYS = [
+const COLOR_KEYS = [
   "--background", "--foreground", "--card", "--card-foreground",
   "--muted", "--muted-foreground", "--border", "--accent",
   "--primary", "--primary-foreground", "--input", "--ring",
   "--secondary", "--secondary-foreground", "--accent-foreground",
   "--popover", "--popover-foreground", "--destructive", "--destructive-foreground",
-  "--radius", "--pub-gap", "--pub-pad",
 ];
+// Each colour token's "R G B" twin: engines without color-mix() (Android WebView 109) paint an
+// opacity tint as rgb(var(--x-rgb) / N%) (apps/cafe/postcss-tint-fallback.cjs), so a token set
+// at runtime must bring its own twin or old engines tint with the POS build's colours.
+const EXPECTED_TOKEN_KEYS = [...COLOR_KEYS, ...COLOR_KEYS.map((key) => `${key}-rgb`), "--radius", "--pub-gap", "--pub-pad"];
+
+/** "#2563eb" → "37 99 235", computed independently of the implementation. */
+function channels(hex: string): string {
+  return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(" ");
+}
 
 const FONT_FAMILIES = { body: "Inter, sans-serif", display: "Playfair Display, serif" };
 
@@ -145,6 +153,35 @@ test("appearanceCssVars emits the complete token cover for every preset × schem
         assert.ok(Object.hasOwn(vars, key), `${presetId}/${scheme} missing token ${key}`);
       }
       assert.equal(Object.keys(vars).length, EXPECTED_TOKEN_KEYS.length, `${presetId}/${scheme} must emit exactly the pinned token set`);
+    }
+  }
+});
+
+test("appearanceCssVars: every colour token carries its own rgb channel twin, override included", () => {
+  for (const presetId of PRESET_IDS) {
+    for (const scheme of ["light", "dark"] as const) {
+      for (const accentOverride of ["", "#123456"]) {
+        const vars = appearanceCssVars({ ...DEFAULT_APPEARANCE, presetId, accentOverride }, scheme);
+        for (const key of COLOR_KEYS) {
+          assert.equal(vars[`${key}-rgb`], channels(vars[key]), `${presetId}/${scheme}/${accentOverride || "preset"}: ${key}-rgb`);
+        }
+      }
+    }
+  }
+});
+
+test("appearanceScopedCss: both :root blocks carry a twin matching every colour token, and a hostile accent's twin follows the fallback", () => {
+  const blockVars = (css: string, index: 0 | 1): Map<string, string> => {
+    const body = [...css.matchAll(/:root\{([^}]*)\}/g)][index]?.[1] ?? "";
+    return new Map([...body.matchAll(/(--[\w-]+):([^;]*);/g)].map((m) => [m[1], m[2]]));
+  };
+  for (const accentOverride of ["#123456", "#12345"]) {
+    const css = appearanceScopedCss({ ...DEFAULT_APPEARANCE, accentOverride }, FONT_FAMILIES);
+    for (const index of [0, 1] as const) {
+      const vars = blockVars(css, index);
+      for (const key of COLOR_KEYS) {
+        assert.equal(vars.get(`${key}-rgb`), channels(vars.get(key) ?? ""), `block ${index}, accent ${accentOverride}: ${key}-rgb`);
+      }
     }
   }
 });

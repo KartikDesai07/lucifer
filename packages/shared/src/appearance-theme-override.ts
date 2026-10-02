@@ -1,5 +1,5 @@
 import type { ResolvedAppearance } from "./appearance";
-import { appearanceCssVars } from "./appearance";
+import { appearanceCssVars, withRgbTwins } from "./appearance";
 import { HEX_COLOR_PATTERN } from "./appearance-contrast";
 
 // CR2 S9 — the diner Account tab's theme OVERRIDE. appearanceScopedCss
@@ -48,7 +48,8 @@ function sanitizedVars(resolved: ResolvedAppearance, scheme: "light" | "dark"): 
   for (const key of COLOR_TOKEN_KEYS) {
     if (!HEX_COLOR_PATTERN.test(vars[key])) vars[key] = fallback[key];
   }
-  return vars;
+  // The twins follow the sanitized values (appearance.ts withRgbTwins).
+  return withRgbTwins(vars);
 }
 
 function declarationsOf(vars: Record<string, string>): string {
