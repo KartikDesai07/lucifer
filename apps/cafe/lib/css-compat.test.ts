@@ -99,3 +99,36 @@ test("old-WebView tints: the colour parser takes rgb() and hex, and refuses alph
   assert.equal(tintFallback.channelsOf("#0000001a"), null);
   assert.equal(tintFallback.channelsOf("oklch(0.6 0.2 260)"), null);
 });
+
+test("old-WebView tints: postcss.config.mjs runs the tint step last, after Tailwind and both colour fallbacks", () => {
+  const config = readFileSync(path.resolve(__dirname, "../postcss.config.mjs"), "utf8");
+  const order = [
+    '"@tailwindcss/postcss"',
+    '"@csstools/postcss-color-mix-function"',
+    '"@csstools/postcss-oklab-function"',
+    '"./postcss-tint-fallback.cjs"',
+  ].map((key) => config.indexOf(key));
+  assert.ok(order.every((index) => index >= 0), "every plugin of the production pipeline is configured");
+  assert.deepEqual([...order].sort((a, b) => a - b), order, "the plugins run in exactly this order");
+});
+
+test("old-WebView tints: every tint's old-engine fallback carries alpha, except the allow-listed --border", async () => {
+  const root = await compileCss();
+  const solid: string[] = [];
+  let checked = 0;
+  root.walkAtRules("supports", (supports) => {
+    if (!/color-mix\(in lab/.test(supports.params)) return;
+    supports.walkDecls((modern) => {
+      const m = MIX.exec(modern.value);
+      if (!m) return;
+      checked++;
+      const value = tintFallback.findFallback(supports, modern)?.value ?? "";
+      // Ours (rgb(var(--x-rgb) / N%)) or Tailwind's own alpha hex for a palette colour (#000c, #00a54466).
+      const tinted = value === `rgb(var(${m[1]}-rgb) / ${m[2]}%)` || /^#(?:[\da-f]{4}|[\da-f]{8})$/i.test(value);
+      if (!tinted) solid.push(`${m[1]}: ${value || "no fallback"}`);
+    });
+  });
+  assert.ok(checked > 50, `the POS uses dozens of tints; only ${checked} were checked`);
+  // Dark --border has its own alpha, so it is never twinned (postcss-tint-fallback.cjs) and its tints stay solid.
+  assert.deepEqual(solid, ["--border: var(--border)"]);
+});

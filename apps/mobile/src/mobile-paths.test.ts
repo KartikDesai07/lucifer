@@ -2019,6 +2019,11 @@ function usbPermissionProblems(s: KtSources): string[] {
   if (!manager.includes('if (e.needsForeground && appVisible) timer.execute(Runnable { resumeIfPaused() })')) {
     out.push('a hidden refusal that lost the race with onHostResume must still ask once visible');
   }
+  // begin() and halt() both clear the flag (a bare-assignment line; the field's own declaration
+  // starts with "private var", so it never matches).
+  if ((manager.match(/^\s+usbWaitingForeground = false$/gm) ?? []).length < 2) {
+    out.push('begin() and halt() must both clear usbWaitingForeground');
+  }
   return out;
 }
 
@@ -2039,6 +2044,8 @@ test('pin 16 mutation: every USB permission needle can fail', () => {
     ['if (usbWaitingForeground && appVisible) selected else null', 'if (false) selected else null'],
     ['usbPermissionPaused || usbWaitingForeground) return', 'usbPermissionPaused) return'],
     ['if (e.needsForeground && appVisible) timer.execute(Runnable { resumeIfPaused() })', ''],
+    ['usbWaitingForeground = false\n          ++generation', '++generation'],
+    ['usbWaitingForeground = false\n      generation++', 'generation++'],
   ]);
 });
 
