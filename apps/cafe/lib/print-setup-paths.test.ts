@@ -1,0 +1,146 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { Types } from "mongoose";
+
+import { stripComments } from "@/lib/source-pin-utils";
+import { createStationBodySchema, printerBodySchema, updateStationBodySchema } from "@/lib/print-printer-schemas";
+import { printerWireOf } from "@/lib/print-printers";
+import { stationWireOf } from "@/lib/print-stations";
+
+// Printing redesign, Phase 2 Session 2A (plan 2026-10-03-phase-2-routing.md, Task A4): the setup routes'
+// bodies, the wire shapes, and source pins for the routes and libs (auth, ids, no-store, no connectDB in
+// libs). Their database behaviour is proven by the live legs ah–aj.
+
+const STATION = "64f000000000000000000001";
+
+function lanBody(over: Record<string, unknown> = {}) {
+  return {
+    name: "Kitchen printer",
+    connection: { kind: "lan", host: "192.168.1.60" },
+    primaryDeviceId: "kitchen-tab",
+    paper: 80,
+    slips: { bill: false, kotStations: [STATION], kotAll: false, notices: true, eod: false },
+    copies: { kot: 1, bill: 1 },
+    enabled: true,
+    ...over,
+  };
+}
+
+const DEVICE = { kind: "device", deviceId: "counter-pc", transport: "windows", address: "EPSON TM-T82" };
+
+test("station bodies: a trimmed name of 1–32 characters; an update renames or makes it the default", () => {
+  assert.deepEqual(createStationBodySchema.parse({ name: "  Bar " }), { name: "Bar" });
+  assert.equal(createStationBodySchema.safeParse({ name: "   " }).success, false);
+  assert.equal(createStationBodySchema.safeParse({ name: "x".repeat(33) }).success, false);
+  assert.equal(createStationBodySchema.safeParse({ name: "Bar", isDefault: true }).success, false, "a new station is never the default by its body");
+  assert.equal(updateStationBodySchema.safeParse({ isDefault: true }).success, true);
+  assert.equal(updateStationBodySchema.safeParse({ isDefault: false }).success, false, "the default is moved, never unset");
+  assert.equal(updateStationBodySchema.safeParse({}).success, false, "nothing to change");
+});
+
+test("printer body: a LAN printer needs its printing device; its port defaults to 9100; the host is the app's rule", () => {
+  const parsed = printerBodySchema.parse(lanBody({ connection: { kind: "lan", host: "  192.168.1.60 " } }));
+  assert.deepEqual(parsed.connection, { kind: "lan", host: "192.168.1.60", port: 9100 });
+  assert.equal(printerBodySchema.parse(lanBody({ connection: { kind: "lan", host: "PRINTER.LOCAL", port: 9101 } })).connection.kind, "lan");
+  const noPrimary = printerBodySchema.safeParse(lanBody({ primaryDeviceId: undefined }));
+  assert.ok(!noPrimary.success && noPrimary.error.issues.some((i) => i.path[0] === "primaryDeviceId"), "a LAN printer without a printing device");
+  for (const host of ["192.168.1.256", "printer:9100", "http://10.0.0.1", "", "a b"]) {
+    assert.equal(printerBodySchema.safeParse(lanBody({ connection: { kind: "lan", host } })).success, false, host);
+  }
+  assert.equal(printerBodySchema.safeParse(lanBody({ connection: { kind: "lan", host: "10.0.0.5", port: 70000 } })).success, false);
+});
+
+test("printer body: a device printer is its own device's, so it never names another printing device", () => {
+  assert.equal(printerBodySchema.safeParse(lanBody({ connection: DEVICE, primaryDeviceId: undefined })).success, true);
+  assert.equal(printerBodySchema.safeParse(lanBody({ connection: DEVICE })).success, false);
+  assert.equal(printerBodySchema.safeParse(lanBody({ connection: { ...DEVICE, transport: "serial" }, primaryDeviceId: undefined })).success, false, "a known transport only");
+  assert.equal(printerBodySchema.safeParse(lanBody({ connection: { ...DEVICE, address: "" }, primaryDeviceId: undefined })).success, false);
+  assert.equal(printerBodySchema.safeParse(lanBody({ connection: { ...DEVICE, host: "10.0.0.1" }, primaryDeviceId: undefined })).success, false, "strict: no mixed connection");
+});
+
+test("printer body: paper 58/80, 1–3 copies, station ids once each, every slip type stated, nothing else", () => {
+  assert.equal(printerBodySchema.safeParse(lanBody({ paper: 76 })).success, false);
+  assert.equal(printerBodySchema.safeParse(lanBody({ copies: { kot: 4, bill: 1 } })).success, false);
+  assert.equal(printerBodySchema.safeParse(lanBody({ copies: { kot: 1, bill: 0 } })).success, false);
+  assert.equal(printerBodySchema.safeParse(lanBody({ slips: { bill: true, kotStations: [STATION, STATION], kotAll: false, notices: true, eod: false } })).success, false);
+  assert.equal(printerBodySchema.safeParse(lanBody({ slips: { bill: true, kotStations: ["bar"], kotAll: false, notices: true, eod: false } })).success, false);
+  assert.equal(printerBodySchema.safeParse(lanBody({ slips: { bill: true, kotStations: [], kotAll: false, notices: true } })).success, false, "eod must be stated");
+  assert.equal(printerBodySchema.safeParse(lanBody({ health: { state: "online" } })).success, false, "strict: Phase 3 fields are refused");
+  assert.equal(printerBodySchema.safeParse(lanBody({ name: "x".repeat(41) })).success, false);
+});
+
+test("wire shapes: ids are strings; a device printer carries no primaryDeviceId key", () => {
+  const id = new Types.ObjectId();
+  assert.deepEqual(stationWireOf({ _id: id, name: "Bar", order: 1, isDefault: false }), { id: String(id), name: "Bar", order: 1, isDefault: false });
+  const wire = printerWireOf({
+    _id: id,
+    name: "Counter",
+    connection: { kind: "device", deviceId: "counter-pc", transport: "windows", address: "EPSON" },
+    order: 0,
+    paper: 80,
+    slips: { bill: true, kotStations: [], kotAll: true, notices: true, eod: true },
+    copies: { kot: 1, bill: 2 },
+    enabled: true,
+  });
+  assert.equal(wire.id, String(id));
+  assert.ok(!("primaryDeviceId" in wire), "omit-empty on the wire too");
+  assert.deepEqual(wire.connection, { kind: "device", deviceId: "counter-pc", transport: "windows", address: "EPSON" });
+});
+
+function src(rel: string): string {
+  return stripComments(readFileSync(path.join(process.cwd(), rel), "utf8"));
+}
+
+const ROUTES = ["app/api/stations/route.ts", "app/api/stations/[id]/route.ts", "app/api/printers/route.ts", "app/api/printers/[id]/route.ts"];
+const LIBS = ["lib/print-stations.ts", "lib/print-printers.ts", "lib/print-routing-context.ts", "lib/print-printer-routing.ts"];
+
+test("PIN: reads need a signed-in device, every write needs an admin", () => {
+  for (const rel of ROUTES) {
+    const file = src(rel);
+    for (const [, verb, body] of file.matchAll(/export async function (GET|POST|PUT|DELETE)\([^)]*\) \{([\s\S]*?)\n\}/g)) {
+      const guard = verb === "GET" ? "requireAuth()" : "requireAdmin()";
+      assert.ok(body.trimStart().startsWith(`const authed = await ${guard};`), `${rel} ${verb} starts with ${guard}`);
+    }
+  }
+});
+
+test("PIN: every [id] is checked before the database; every answer after the guard is no-store", () => {
+  for (const rel of ROUTES.filter((r) => r.includes("[id]"))) {
+    const file = src(rel);
+    assert.equal((file.match(/if \(!mongoose\.isValidObjectId\(id\)\) return noStore\(notFound\(/g) ?? []).length, 2, `${rel}: PUT and DELETE`);
+  }
+  for (const rel of ROUTES) {
+    for (const line of src(rel).split("\n").filter((l) => /\breturn\b/.test(l))) {
+      if (/return (authed|parsed)\.error;/.test(line)) continue;
+      assert.match(line, /return noStore\(/, `${rel}: ${line.trim()}`);
+    }
+  }
+});
+
+test("PIN: the setup libs never connect, never log; the station delete clears the cached category and item lists", () => {
+  for (const rel of LIBS) {
+    const file = src(rel);
+    assert.ok(!/connectDB\(/.test(file), `${rel} never calls connectDB()`);
+    assert.ok(!/console\./.test(file), `${rel} never logs`);
+  }
+  const del = src("app/api/stations/[id]/route.ts");
+  assert.match(del, /cache\.del\(CATEGORY_LIST\.cacheKey\);\s*cache\.del\(PRODUCT_LIST\.cacheKey\);/);
+});
+
+test("PIN: simple mode costs one read: the printers first, and null before anything else is read", () => {
+  const file = src("lib/print-routing-context.ts");
+  const first = file.indexOf("await listPrinters()");
+  const bail = file.indexOf("if (!printersModeOn(printers)) return null;");
+  const stations = file.indexOf("Station.find(");
+  assert.ok(first > 0 && bail > first && stations > bail, "listPrinters, then the simple-mode answer, then the rest");
+  assert.ok(!/cache\./.test(file), "read fresh: a printer switched off stops getting slips at once");
+});
+
+test("PIN: the routing is pure: no model, no database, no clock", () => {
+  const file = src("lib/print-printer-routing.ts");
+  assert.ok(!/@\/models\//.test(file), "no model import");
+  assert.ok(!/Date\.now\(|new Date\(/.test(file), "no clock");
+  assert.ok(!/from "mongoose"/.test(file), "no mongoose");
+});
