@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 
-import { SETTINGS_SECTIONS, settingsSectionPath } from "@/lib/settings-sections";
+import { VISIBLE_SETTINGS_SECTIONS, settingsSectionPath } from "@/lib/settings-sections";
 import { SETTINGS_SECTION_ICONS } from "@/components/settings/settings-section-icons";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { BRAND_PANEL_CLASS } from "@/components/brand/brand-classes";
 import { cn } from "@/lib/utils";
 
-// CB-UI1 S2 — the settings hub: one card per SETTINGS_SECTIONS entry (Printer
-// setup has its own sidebar row and /printers page, owner 2026-10-02).
+// CB-UI1 S2 — the settings hub: one card per visible section (a hidden one,
+// HIDDEN_SETTINGS_SLUGS, has no card; Printer setup has its own sidebar row and
+// /printers page, owner 2026-10-02).
 // AdminGuard now lives in settings/layout.tsx, wrapping every settings route.
 // Eyebrow = the sidebar group Settings sits in (Admin), as on every screen.
 const CARD_CLASS = cn(
@@ -27,7 +28,7 @@ export default function SettingsPage() {
       />
 
       <div className="grid gap-3 sm:grid-cols-2">
-        {SETTINGS_SECTIONS.map((section) => {
+        {VISIBLE_SETTINGS_SECTIONS.map((section) => {
           const Icon = SETTINGS_SECTION_ICONS[section.slug];
           return (
             <Link

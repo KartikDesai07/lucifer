@@ -2,7 +2,7 @@
 
 // The Settings nav row of AppSidebar, extracted to keep AppSidebar.tsx under
 // the file's line ceiling. Settings expands in place: a Collapsible sub-menu
-// lists every SETTINGS_SECTIONS entry under the Settings row (icon-collapsed
+// lists every visible section (VISIBLE_SETTINGS_SECTIONS) under the Settings row (icon-collapsed
 // mode instead renders a plain link straight to the hub, since the primitive
 // hides sub-menus there anyway). Row styles are the brand nav classes, shared
 // with every other sidebar row; the list slides open (motion-safe only).
@@ -10,7 +10,7 @@ import { ChevronRight, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import type { ComponentProps } from "react";
 
-import { SETTINGS_SECTIONS, settingsSectionPath } from "@/lib/settings-sections";
+import { VISIBLE_SETTINGS_SECTIONS, settingsSectionPath } from "@/lib/settings-sections";
 import { BRAND_NAV_ITEM_CLASS, BRAND_NAV_SUB_ITEM_CLASS } from "@/components/brand/brand-classes";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -87,7 +87,7 @@ export function SidebarSettingsGroup({
           {/* ml-[18px]: the guide line runs straight down from the Settings
               icon's centre (row padding 10px + half the 18px icon). */}
           <SidebarMenuSub className="mx-0 ml-[18px] mt-0.5 gap-0.5 pl-2.5 pr-0">
-            {SETTINGS_SECTIONS.map((section) => {
+            {VISIBLE_SETTINGS_SECTIONS.map((section) => {
               const href = settingsSectionPath(section.slug);
               const active = pathname === href;
               return (

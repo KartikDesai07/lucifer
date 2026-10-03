@@ -138,6 +138,23 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   },
 ];
 
+// Sections whose code, route file and saved fields stay, but which the app does
+// not show (owner 2026-10-03: Notifications is not needed for now). The hub and
+// the sidebar list only VISIBLE_SETTINGS_SECTIONS, and a hidden section's own
+// route layout sends a typed URL back to the hub. SETTINGS_SECTIONS stays whole:
+// it still owns every settings field. To bring a section back, drop its slug here.
+export const HIDDEN_SETTINGS_SLUGS: ReadonlySet<SettingsSectionSlug> = new Set<SettingsSectionSlug>([
+  "notifications",
+]);
+
+export function isSettingsSectionHidden(slug: SettingsSectionSlug): boolean {
+  return HIDDEN_SETTINGS_SLUGS.has(slug);
+}
+
+export const VISIBLE_SETTINGS_SECTIONS: readonly SettingsSection[] = SETTINGS_SECTIONS.filter(
+  (section) => !isSettingsSectionHidden(section.slug),
+);
+
 export function settingsSectionPath(slug: SettingsSectionSlug): string {
   return `${SETTINGS_BASE_PATH}/${slug}`;
 }
