@@ -9,6 +9,7 @@ import { createPrintAgentWake } from "@/lib/print-agent-wake";
 import { printAgentEnqueueHeaders, printAgentHeaders, printJobRefOf } from "@/lib/print-agent-calls";
 import { createHostSlipOutcomes } from "@/lib/print-host-outcomes";
 import {
+  ackAnswered,
   createPrintAgent,
   failedAckBody,
   printAgentSlipOf,
@@ -546,6 +547,58 @@ test("M4: a failed ack with no answer is kept and re-sent at 5 s, even with the 
   await settle();
   assert.deepEqual(second.w.pending, [], "a server answer of any kind is never kept");
   other.stop();
+});
+
+// The 1D review gate (N-8): a refusal that says nothing about the job is not an answer, so the ack is
+// kept; forgetting it let the lease expire into a counted "maybe" (a false REPRINT or cashier prompt).
+test("N-8: signed out, forbidden, timed out or rate-limited is no answer: the ack is kept and re-sent", async () => {
+  for (const status of [401, 403, 408, 429]) assert.equal(ackAnswered(new ApiError("x", "http", status)), false, `${status} is no answer`);
+  for (const status of [400, 404, 409, 422]) assert.equal(ackAnswered(new ApiError("x", "http", status)), true, `${status} is an answer`);
+  assert.equal(ackAnswered(new ApiError("x", "http", 503)), false, "a 5xx is no answer");
+  assert.equal(ackAnswered(new ApiError("x", "network", null)), false, "the network is no answer");
+  const { w, deps } = world();
+  w.leases.push({ jobs: [job("j1")], retryAt: null });
+  w.ackAnswers.push(new ApiError("signed out", "http", 401), new ApiError("signed out", "http", 401));
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.equal(w.acks.length, 2, "sent, and sent again before the next lease (M6)");
+  assert.equal(w.pending.length, 1, "a 401 on a printed ack keeps it for the 5 s retry");
+  await advance(w, PRINT_ACK_RETRY_MS);
+  assert.deepEqual(w.pending, [], "re-sent and answered");
+  agent.stop();
+});
+
+test("M-4 (1D gate): a stop() while the cycle waits for a flush leases nothing", async () => {
+  const { w, deps } = world();
+  w.pending = [{ id: "old", epoch: 1, at: T0 }];
+  w.leases.push({ jobs: [job("j1")], retryAt: null });
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  agent.stop();
+  await settle();
+  assert.equal(w.leaseCalls, 0, "stopped mid-flush: no lease, so nothing is printed by a page that is going away");
+  assert.deepEqual(w.prints, [], "nothing printed");
+});
+
+test("M-3 (1D gate): a slip refused once for itself, then printed, is forgotten; a failed one keeps its count (one tap, one try)", async () => {
+  const { w, deps } = world();
+  w.leases.push({ jobs: [job("j1")], retryAt: null }, { jobs: [job("j1", 2)], retryAt: null }, { jobs: [job("j1", 3)], retryAt: null });
+  w.results.push({ ok: false, error: new Error(RASTER_FAILED_MESSAGE) }, { ok: true }, { ok: false, error: new Error(RASTER_FAILED_MESSAGE) });
+  w.ackAnswers.push({ applied: true, status: "queued", nextAttemptAt: new Date(T0 + 2_000).toISOString() });
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  await advance(w, 3_000);
+  // A staff reprint of the same job id (epoch 3) after it printed: its first refusal counts from one again.
+  agent.kick();
+  await settle();
+  assert.deepEqual(
+    w.acks.filter((a) => a.body.outcome === "failed").map((a) => `${a.body.epoch}:${a.body.permanent ?? false}`),
+    ["1:false", "3:false"],
+    "printed in between: the count started again, so the new refusal is not the second one",
+  );
+  agent.stop();
 });
 
 // M5: a storage that refuses the write (full, blocked) used to drop the printed ack before it was sent.

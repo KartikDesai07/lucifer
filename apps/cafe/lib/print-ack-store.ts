@@ -1,3 +1,4 @@
+import { ApiError } from "@/lib/api-client";
 import type { PendingPrintAck } from "@/lib/print-agent";
 
 // Printing redesign, Phase 1 (spec §7.9): the agent's pending-ack store, split out of print-agent.ts at
@@ -34,4 +35,11 @@ export function writePendingAcks(entries: PendingPrintAck[]): void {
   } catch {
     unstored = [...entries];
   }
+}
+
+/** A server answer clears a pending ack; no answer (network, timeout), a 5xx, or a refusal that says
+ *  nothing about the job (signed out, forbidden, timed out, too many requests: the 1D gate N-8) retries. */
+export function ackAnswered(error: unknown): boolean {
+  if (!(error instanceof ApiError) || error.kind !== "http" || error.status === null) return false;
+  return error.status < 500 && ![401, 403, 408, 429].includes(error.status);
 }

@@ -12,11 +12,19 @@ import { kickPrintAgent } from "@/lib/print-agent";
 import { printRetryNotice } from "@/lib/print-waiting";
 
 // Session 1D (spec §10): the waiting-slips panel's three actions, on the server routes Phase 1A built
-// (retry, confirm, dismiss). After a tap: wake this device's agent at once (it may be the one that
-// prints the slip; with no host the server also aims a print-status at the printing device, D7), and
-// refresh the panel. One request per tap, never a poll.
+// (retry, confirm, dismiss). A tap is one request; when it answers, this device's agent is woken (it may
+// be the one that prints the slip; with no host the server also aims a print-status at the printing
+// device, D7) and the panel is refreshed once. Never a poll.
+//
+// The 1D review gate: each action returns a promise that settles when ITS request does, success or
+// error. TanStack's per-call mutate() callbacks fire only for the latest call, so a second row tapped
+// before the first answered would have left the first row disabled; a promise per tap cannot be lost.
 
 const ACTION_ERROR = "That did not go through. Check the connection and try again.";
+/** A tap's answer stays long enough to read (the 1D E2E saw about 1.5 s on the emulator). */
+const NOTICE_MS = 6_000;
+
+const done = (): void => undefined;
 
 export function usePrintJobActions() {
   const qc = useQueryClient();
@@ -26,7 +34,7 @@ export function usePrintJobActions() {
   };
   const noticeOf = (answer: PrintActionData) => {
     const notice = printRetryNotice(answer);
-    if (notice !== null) toast.info(notice);
+    if (notice !== null) toast.info(notice, { duration: NOTICE_MS });
   };
   const retry = useMutation({
     mutationKey: PRINT_JOB_KEYS.mutation,
@@ -44,15 +52,10 @@ export function usePrintJobActions() {
     onSettled: settled,
   });
   const dismissJob = useDismissPrintJob();
-  const dismiss = {
-    // onSettled: the panel re-enables the row once Clear answers (1D final review I-2).
-    mutate: (id: string, onSettled?: () => void) =>
-      dismissJob.mutate(id, {
-        onSettled: () => {
-          settled();
-          onSettled?.();
-        },
-      }),
+  return {
+    retry: (id: string): Promise<void> => retry.mutateAsync(id).then(done, done),
+    confirm: (id: string, decision: PrintJobDecision): Promise<void> => confirm.mutateAsync({ id, decision }).then(done, done),
+    // useDismissPrintJob says its own error; the refresh and the kick follow the answer either way.
+    dismiss: (id: string): Promise<void> => dismissJob.mutateAsync(id).then(done, done).finally(settled),
   };
-  return { retry, confirm, dismiss };
 }

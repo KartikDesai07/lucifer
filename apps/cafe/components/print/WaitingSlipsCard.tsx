@@ -6,15 +6,17 @@ import { Button } from "@/components/ui/button";
 import { PRINTER_ACTION_CLASS } from "@/components/print/printer-classes";
 import { usePrintJobActions } from "@/hooks/use-print-job-actions";
 import { printWaitingGroups, type PrintWaitingGroup } from "@/lib/print-waiting";
+import type { PrintAttentionRow } from "@pos/shared/print-agent-wire";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
 
 // Session 1D (spec §10; the owner's decision after Session 1B): the ONE waiting-slips panel, on every
 // device, inside the printer sheet (and /printers). Every slip that is not printed and needs a person,
 // in three plain groups, each row with its age, its reason and big buttons: Print now / Retry, Print
 // again / It printed (a bill to check), and Clear. Prop-driven: PrinterPanel already reads the pulse,
-// so this is not another wide-pulse reader. A tapped row is disabled until its action answers (success
-// or error; 1D final review I-2: a row that stays in the feed, such as a Retry while its printer is off,
-// must not stay dead). The server's CAS makes a repeat tap a no-op.
+// so this is not another wide-pulse reader. A tapped row is disabled until its own action answers
+// (success or error; 1D final review I-2, and the 1D gate: one promise per tap, so a second row tapped
+// meanwhile never leaves the first one dead). The server's CAS makes a repeat tap a no-op. Each button
+// names its slip for a screen reader (1D gate M-5).
 
 const SECTION_TITLE = "Slips waiting";
 
@@ -39,35 +41,37 @@ export function WaitingSlipsCard({ pulse }: { pulse: PosPulseData | undefined })
       next.delete(id);
       return next;
     });
-  const tap = (id: string, run: (done: () => void) => void) => {
+  const tap = (id: string, run: () => Promise<void>) => {
     setTapped((prev) => new Set(prev).add(id));
-    run(() => release(id));
+    void run().finally(() => release(id));
   };
 
-  const actions = (group: PrintWaitingGroup, id: string) => {
+  const actions = (group: PrintWaitingGroup, row: PrintAttentionRow) => {
+    const { id, label } = row;
     const off = tapped.has(id);
     const clear = (
-      <Button variant="outline" className={PRINTER_ACTION_CLASS} disabled={off} onClick={() => tap(id, (done) => dismiss.mutate(id, done))}>
+      <Button variant="outline" className={PRINTER_ACTION_CLASS} disabled={off} aria-label={`Clear ${label}`} onClick={() => tap(id, () => dismiss(id))}>
         Clear
       </Button>
     );
     if (group === "bill") {
       return (
         <>
-          <Button className={PRINTER_ACTION_CLASS} disabled={off} onClick={() => tap(id, (done) => confirm.mutate({ id, decision: "reprint" }, { onSettled: done }))}>
+          <Button className={PRINTER_ACTION_CLASS} disabled={off} aria-label={`Print again ${label}`} onClick={() => tap(id, () => confirm(id, "reprint"))}>
             Print again
           </Button>
-          <Button variant="outline" className={PRINTER_ACTION_CLASS} disabled={off} onClick={() => tap(id, (done) => confirm.mutate({ id, decision: "printed" }, { onSettled: done }))}>
+          <Button variant="outline" className={PRINTER_ACTION_CLASS} disabled={off} aria-label={`It printed ${label}`} onClick={() => tap(id, () => confirm(id, "printed"))}>
             It printed
           </Button>
           {clear}
         </>
       );
     }
+    const verb = group === "failed" ? "Retry" : "Print now";
     return (
       <>
-        <Button className={PRINTER_ACTION_CLASS} disabled={off} onClick={() => tap(id, (done) => retry.mutate(id, { onSettled: done }))}>
-          {group === "failed" ? "Retry" : "Print now"}
+        <Button className={PRINTER_ACTION_CLASS} disabled={off} aria-label={`${verb} ${label}`} onClick={() => tap(id, () => retry(id))}>
+          {verb}
         </Button>
         {clear}
       </>
@@ -78,7 +82,7 @@ export function WaitingSlipsCard({ pulse }: { pulse: PosPulseData | undefined })
     <section aria-label={SECTION_TITLE} className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40">
       <h3 className="text-base font-semibold">
         {SECTION_TITLE}
-        {pulse?.printAttentionTruncated ? " (the oldest 20)" : ""}
+        {pulse?.printAttentionTruncated ? " (the latest 20)" : ""}
       </h3>
       {groups.map((section) => (
         <div key={section.group} className="space-y-2">
@@ -92,7 +96,7 @@ export function WaitingSlipsCard({ pulse }: { pulse: PosPulseData | undefined })
                 <p className="text-sm text-muted-foreground">
                   {age} · {reason}
                 </p>
-                <div className="mt-2 flex flex-wrap gap-2">{actions(section.group, row.id)}</div>
+                <div className="mt-2 flex flex-wrap gap-2">{actions(section.group, row)}</div>
               </li>
             ))}
           </ul>

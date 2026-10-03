@@ -7,7 +7,7 @@ import {
   type PrintAckData,
   type PrintLeaseData,
 } from "@pos/shared/print-agent-wire";
-import { ApiError } from "@/lib/api-client";
+import { ackAnswered } from "@/lib/print-ack-store";
 import {
   PRINT_HOST_DISPATCH_TIMEOUT_MS,
   PRINT_HOST_EOD_READY_TIMEOUT_MS,
@@ -96,11 +96,6 @@ export function printAgentSlipOf(job: LeasedPrintJob, todayKey: string): HostPri
   const slip = hostPrintSlipOf(job.payload, todayKey);
   const banner = printBannerText(job.labels);
   return banner === "" || slip.surface === "eod" ? slip : { ...slip, banner };
-}
-
-/** A server answer of any kind clears a pending ack; only no answer (network, timeout) or a 5xx retries. */
-export function ackAnswered(error: unknown): boolean {
-  return error instanceof ApiError && error.kind === "http" && error.status !== null && error.status < 500;
 }
 
 export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
@@ -194,7 +189,9 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
     let again = false;
     try {
       // An ack the last page (or a dropped answer) left goes first: a lease could expire our own job (M6).
+      // A stop() that landed meanwhile leases nothing (the 1D gate M-4).
       await flushAcks();
+      if (stopped) return;
       const data = await deps.lease();
       const job = data.jobs[0];
       if (job === undefined) {
@@ -203,6 +200,9 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
       }
       const result = await deps.print(job);
       if (result.ok) {
+        // A printed slip's refusal count is done with (1D gate M-3). A failed one keeps it, so a staff
+        // Retry stays one tap, one try.
+        slipRefusals.delete(job.id);
         // Kept BEFORE it is sent, so a reload mid-ack still reports the paper (spec §7.9). Awaited, so
         // the next lease does not find this job still leased at the head of the line.
         keep({ id: job.id, epoch: job.epoch, at: deps.now() });
@@ -279,7 +279,7 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
 
 // ── The agent's two module seams (client-only, never throws); the pending-ack store is print-ack-store.ts ──
 
-export { readPendingAcks, writePendingAcks } from "@/lib/print-ack-store";
+export { ackAnswered, readPendingAcks, writePendingAcks } from "@/lib/print-ack-store";
 
 const kickListeners = new Set<() => void>();
 
