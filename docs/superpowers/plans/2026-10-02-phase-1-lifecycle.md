@@ -34,7 +34,7 @@ Phase 1 is too big for one session. It runs as **five sessions, 1A → 1E**, eac
 | **1A (this prompt)** | The lifecycle core, dormant: shared state machine and budget test; `PrintJob` lifecycle fields; the `PrintDevice` model; lease, ack, confirm, retry and wake-POST routes; the sweep (expire, retarget, limits, prune); the live-Mongo legs; the fake ESC/POS printer; the E2E harness bring-up | **None.** No client calls the new routes yet. Jobs enqueued by today's tabs gain lifecycle fields and a `targetDeviceId`, and today's claim path keeps working unchanged. |
 | 1B | Server-side job creation in the order routes (header-gated, so tabs from before Phase 1 never duplicate a slip); the repair sweep; the `print-status` realtime kind (+ Worker parity). **Exact code at the end of this plan** (written at the 1A review gate) | None until 1C's clients send the header (the auto-accept's job was reverted at 1B's final review; R4 became 1C's job-aware lane) |
 | 1C | The agent: the owner's two-attempt rule; a failure's class (`sent: "no" \| "maybe"`); lease/ack loop, never while the printer is off; pending-ack store, local timers, the host's wake; the REPRINT/DUPLICATE banner; every call site prints through the agent; the job-aware self-order lane. **Exact code at the end of this plan** (written at the 1B review gate) | Slips print through lease → write → ack (released only together with 1D) |
-| 1D | Readback (Queued → Printing → Printed / Failed per slip, on `/pos` too), the 20 s alarm, **the one waiting-slips panel** on every device, the pulse sweep | Staff see every slip's fate |
+| 1D | The 1C gate's agent rulings (the owner's I3; F1, M4–M6); **the one waiting-slips panel** on every device with its count on the printer button (`/pos` too), the 20 s alarm, the pulse sweep, aimed retries. **Exact code at the end of this plan** (written at the 1C review gate) | Staff see every slip that did not print, and act on it |
 | 1E | The Phase 1 exit scenarios with the fake printer, the 200-order soak, TEST-CHECKLIST, and **the local free-tier measurement (§17.3 item 5; nothing is deployed until every phase is done)** | Release candidate |
 
 **Gate rule** ([[phase-per-session-workflow]]):
@@ -3894,6 +3894,14 @@ The specification as written at the 1A gate, for the record:
   - With no host, an ordering device makes no wake request (the budget test pins `printAgentPollsWake`; the E2E check counts requests in the POS log).
 
 ### Session 1D: readback, alarm, attention list
+
+**Written as exact code at the 1C review gate:** see "Session 1D (exact code, written and pre-validated at the 1C review gate)" at the end of this plan, with its rulings in "1C review gate: rulings". It changed from the specification below in these ways:
+- D1's `myRecentJobs` is not added: the panel, the count and the alarm read ONE bounded attention feed on the pulse (each row names its asking and printing device), and the readback is by exception;
+- the alarm fires at the first pulse after the 20 s mark, with a notice that opens the panel (Show);
+- D6: no change (the dashboard band stays one release);
+- a new first task (D1) folds the 1C gate's agent rulings: the owner's I3, F1, M4, M5, M6 and two budget pins.
+
+The specification as written at the 1A gate, for the record:
 
 - **D1:** the pulse adds `myRecentJobs` (`?device=<id>`, the origin index, the last 15 min, limit 30) and `attentionPrintJobs` (needs-confirm, failed, and stale; within 12 h; limit 20). Its read-only pins are amended deliberately.
 - **D2:** the pulse runs `sweepPrintJobsThrottled` through `after()`. After R6 this is essential: a cafe without a host has no wake poller, so lease expiry, R5's routing and R3's repair run only from the pulse. That is one sweep per 60 s per instance, riding the existing pulse.
@@ -12690,3 +12698,2458 @@ AVD `Pixel_7_API_33`, WebView 109.0.5414.123, `-memory 4096 -no-snapshot -no-boo
 - **Minors M4–M8** (above), for the 1C gate.
 - **G5** (item 7): Android TCP detects a cut mid-slip only sometimes; a missed cut reads as printed. Phase 3 (`DLE EOT`).
 - 1C still must not reach a cafe without 1D (the waiting-slips panel, the pulse sweep, readback, the alarm). Nothing was deployed.
+
+---
+
+## Session 1C review (gate, 2026-10-03)
+
+**Verdict: PASS.** Session 1C (`851c454..32f29ca`: the merge `5b1a6e6` of `origin/main` at `c05330a`, Tasks C0–C5b applied verbatim as `16c76b6..cb83487`, the final-review fix `fec4fd0`, and the Results commit `32f29ca`) is complete and correct for its scope. The gate's fresh review found no Critical or Important defect in the code that landed, `fec4fd0` included. Its one new minor (F1), the owner's I3 decision and the first review's minors M4–M6 are fixed in Session 1D's Task D1; M7 and M8 are ruled below.
+
+**How this gate stayed independent.** It ran in the same session that implemented 1C, because the owner asked for the review and the next prompt at once and could not test on their side. So the code was re-read by a fresh-context reviewer subagent (Opus, read-only) that had not written it, every suite and build was re-run on the merged tree, and Session 1D's code was validated on a fresh clone and on the emulator.
+
+Nothing below was taken from the Results section; each line was re-run at the gate.
+
+| Check | Re-run at the gate (`5945f74`, after merging `origin/main` at `22e9999`) | Session 1C Results |
+|---|---|---|
+| shared `npm test`; `tsc` | 635/635; 0 | same |
+| cafe `npm test` | 4153 tests, 4152 pass, 0 fail, 1 skipped (+19: the merge's own tests over 1C's 4134) | 4134/4133/0/1 |
+| cafe `tsc`; `npm run lint` | 0; 0 errors and the 2 old warnings | same |
+| Hub `tsc` | 0 | same |
+| mobile `tsc`; lint; `npm test`; `test:app` | 0; 0; 114/114; Jest 3/3 | same |
+| desktop `npm test` | 191/191 | same |
+| `npm run test:print-tools` | 7/7 | same |
+| live legs (local mongod) | `199 passed, 0 failed` | same |
+| Next build | success, 123 routes | same |
+| APKs | `git diff 0158ef3..HEAD -- apps/mobile apps/desktop` is empty, so 1C's builds of the same day stand: x86_64 `fc4181e4…`, arm64-v8a `9f89cd9a…`, armeabi-v7a `f3f62149…` | byte-identical to 1B |
+
+**The merge `5945f74`.** A clean `--no-ff` auto-merge of `22e9999` (the owner's Settings > QR ordering: 8 cafe files and one `testChain` entry). It touches no print file.
+
+**Code read (the fresh reviewer, Opus).**
+- **`fec4fd0` (1C's I1/I2 fix):** no Critical or Important defect. `graceRanOut()` cannot stay set for a later slip (its only setter is the grace timer, which settles at once and reads it); `sendPending`'s re-read loop is bounded (each `id:epoch` once per flush; expired and refused writes also end it); `kickedWhileRunning` cannot storm (one kick per cycle, every cycle makes a request); `stop()` and StrictMode are safe.
+- **F1 (minor, new):** `kickedWhileRunning` also remembered the bridge freeing up from the agent's own slip while its failed ack was on the wire, so every maybe with a `nextAttemptAt` cost one empty lease (about 120 a day at the 10 % retry share). **F2:** the 1C I2(b) test pinned the M6 race as wanted behaviour.
+- **Live legs:** (ad) is sound; (ae)'s cancelled case checked only `!claimed`; (w)'s Retry check is weak locally but (ad) covers it.
+- **Budget pins:** the arithmetic is right, but two request sources were not summed: one trailing empty lease after every burst (Phase 1's busy day: 750 slips × 2 × 1.1 + 750 bursts = 2,400 ≤ the 2,640 estimate), and the refusal re-check, which is bounded per slip, not per day (a printer that reports ready but keeps refusing: 2 requests per 30 s = 2,880 per device-day). **Phase 2 note:** with stations (1,200 slips, about 1,200 bursts) the normal day reaches the 6,000 ceiling exactly and the worst case 18,240 > 18,000, so Phase 2 must recount (for example, one lease per round).
+- **M4, M5, M6 confirmed** with traced scenarios on a scratch copy. **I3:** the server already fails a `sent:"no", permanent:true` ack without counting an attempt, so the owner's rule is client-only.
+
+**Pre-validating 1D end to end** (the golden build of the POS on `localhost:3100`, the branch APK on the emulator (WebView 109), the fake printer on 9100, database `pos_scratch_e2e_1c` (1C's E2E data); screenshots `1d-01…13` and `1d-raster-duplicate.png` in this session's scratchpad `4de5cd03…/scratchpad/shots/`):
+1. A bill 1C's E2E had left in `needs-confirm` showed at once: the printer button "1 slip waiting — open printer setup" with a red 1, and the sheet opened on "Slips waiting · Check the bill (1) · Bill · ORD-20261003-004 · 3 h 28 min · It may already have printed. Check the printer." with Print again, It printed and Clear. It printed → `printed`; the section left.
+2. Host mode, the printer stopped, KOT round 2 · T-1 sent at 04:15:05 (UTC): one lease and one `failed(not sent: …)`, `uncertainAttempts 0`. At 04:15:40 the notice "KOT round 2 · T-1 has not printed yet." and the count 1; the sheet: "Waiting for the printer · 1 min · The printer is off or not connected." Print now → "It prints by itself as soon as the printer is ready." The printer back at 04:16:40 → printed once (40,494 B) at 04:16:56; the section, the count and the notice were gone by 04:17:07.
+3. A failed KOT (set as two expired leases leave it) → the host's notice "… could not print."; the sheet: "Couldn't print · 2 min · Tried twice. Check the printer, then retry." Retry at 04:20:06 → one REPRINT copy (46,110 B) at 04:20:07, `printed`, `uncertainAttempts 1`, log `retried(print again)`, `printed`; the row left at 04:20:29.
+4. A bill's lost ack (settled with the bill header, leased as the host at 04:20:42, never acked) → `needs-confirm` and the host's notice "Bill · ORD-20261003-012 may not have printed." at 04:22:28. Print again at 04:24:20 → one DUPLICATE copy (41,718 B; the decoded raster shows the DUPLICATE banner) at 04:24:21, `confirmed(print again: Admin)`, `printed`.
+5. No host: a job of `e2e-script-device`, leased at 04:25:17 and never acked, which no device leases again → the pulse sweep alone expired it (`queued`, REPRINT, `expired(lease expired: may have printed)` by 04:27:35). The emulator's sheet listed it (another device's slip), and the script, as a second device, cleared it (`dismiss` → 200); it left the emulator's sheet within one pulse.
+6. **Two UI findings, fixed in Task D3 before the section was generated:** (a) on a phone the notice covered the printer button it pointed at (Sonner's top-right toaster is full width there), so the notice now carries its own **Show** button. Verified on the rebuilt golden POS: KOT round 2 · T-2 at 04:33:54 → the notice with Show at 04:34:39 → Show opened the sheet on its row; the printer back → printed once at 04:35:11, cleared by 04:35:18. (b) a REPRINT row waiting over 20 s said "Printing again", now "Waiting to print again, marked REPRINT."
+7. `adb logcat -b crash` held no entry for the app (its PID stayed the same through each run). It held one `UiAutomation` "Bad file descriptor" crash of the `uiautomator dump` tool itself; and on the 1C session's first cold boot the emulator's own Bluetooth stack crash-looped. Both are environment, recorded.
+8. Clean-up: `adb reverse --remove-all`; the POS and the fake printer stopped by PID; `pm clear`; `adb emu kill`.
+
+## 1C review gate: rulings (2026-10-03)
+
+Every ruling that changes the spec is written into spec §7.10 ("Rulings at the Session 1C review gate"), and §10 where it applies.
+
+**The owner's decision at this gate.** **I3 → option A:** a refusal caused by the slip itself (it could not be drawn, or its end-of-day figures never loaded) counts, and the second one for a slip while its printer is ready sends it to "Couldn't print", freeing its device's line. A refusal because the printer is off still never counts. Implemented in Task D1 (client-only).
+
+| # | Finding | Ruling |
+|---|---|---|
+| I1, I2 | 1C's final review; fixed in `fec4fd0` | Re-reviewed at the gate: sound. |
+| I3 | A slip that can never be drawn held its device's line until it went stale (30 min) | **Owner: option A.** Task D1. |
+| F1 | An empty lease after every maybe | **Fold, D1:** cleared where the answer names `nextAttemptAt`. |
+| F2 | The I2(b) test pinned the M6 race | **Fold, D1:** rewritten. |
+| M4 | A lost failed ack is never re-sent, so a refusal can expire into a counted maybe | **Fold, D1:** kept and re-sent like a printed ack. The `v1` store key stays (it never shipped). |
+| M5 | A refusing storage dropped the printed ack | **Fold, D1:** an in-memory copy. |
+| M6 | After a reload the first lease raced the mount flush | **Fold, D1:** each cycle waits for a flush on the wire. |
+| M7 | A flapping printer restarts the host's wake effect on each flap | **No change.** Bounded by the device's daily wake cap, only the host polls, and a printer that flaps that often is itself what staff must fix (1D's panel shows its waiting slips). |
+| M8 | A stale spec bullet ("print again resets the counters") | **Fixed** in spec §7.10 at this gate. |
+| Budget | The trailing empty lease per burst and the per-device refusal re-check were not summed | **Pinned, D1** (2,400 ≤ 2,640; 2,880 per device-day). Phase 2 recounts with stations. |
+| Leg (ae) | The cancelled case checked only `!claimed` | **Fold, D4:** asserts `reason === "not-eligible"`. |
+
+**Gate decisions that change the spec's 1D description** (each in spec §7.10 and §10):
+- **One attention feed, every device; no `myRecentJobs`.** The panel, the button's count and the alarm read ONE bounded, index-backed read on the existing pulse (≤ 20 rows: `queued` 20 s after it was made, `needs-confirm`, `failed`; 12 h). Each row names its asking and printing device, so no per-device read is added. A second read on the hottest poll was not worth it (Active CPU is the tightest limit).
+- **Readback by exception.** A slip that prints needs nobody; every slip that has not printed within 20 s shows with its state (waiting, check the bill, couldn't print) on every device, `/pos` included, through the printer button's count.
+- **The alarm** fires at the first pulse after the 20 s mark (between 20 s and 40 s), once per slip, on the asking and the printing device, for a KOT and for a bill to check; its notice carries a Show button that opens the sheet.
+- **D2:** the pulse runs the sweep after its answer (`after()`, throttled per instance). **D7:** Retry and Print again are aimed at the printing device.
+- **D6: no change.** Old tabs keep today's feeds for the release window; the dashboard band stays one release and goes with the old claim drain.
+- **The 1D exit's "second device"** is a scratchpad script with a minted session cookie, never a browser tool typing the password.
+
+---
+
+## Session 1D (exact code, written and pre-validated at the 1C review gate)
+
+**Pre-validated** by the 1C review gate on 2026-10-03, on scratchpad clones only (never in the repo):
+- The code was developed on a golden copy of `5945f74` (the branch after the gate merged `origin/main` at `22e9999`), one commit per task, and this section was generated from those commits: every Create and Replace-the-whole block is the golden file byte for byte, and every find is unique in its file at the moment it is applied.
+- A fresh clone of `5945f74` then got every block of this section applied verbatim, task by task, with each task's own Run lines; each RED and GREEN below is the output seen there. The clone came out byte-identical to the golden copy.
+- Totals on that clone: shared `npm test` **637/637**, tsc 0; cafe `npm test` **4173 tests, 4172 pass, 0 fail, 1 skipped** (the skip is 1C's `go-live-dl` pin; +20 over `5945f74`'s 4153), tsc 0, lint 0 errors and the 2 old warnings; Hub tsc 0; live legs **`206 passed, 0 failed`** (1C's 199 + (af)'s 7; (ae) gains a stricter check, not a new one); the Next build lists 123 routes (1D adds none). Mobile and desktop are untouched by 1D.
+- **Run end to end on the emulator** (WebView 109, the branch APK) against the golden build of the POS and the fake printer, before this section was written: see "Session 1C review (gate)" → "Pre-validating 1D end to end". It found two UI problems, both fixed in Task D3 before this section was generated: the alarm notice covered the printer button it pointed at (so it now carries its own Show button), and a REPRINT row waiting over 20 s said "Printing again".
+
+A failure while executing therefore points to drift since then, or to a typo while copying. Compare with the plan first.
+
+**What 1D delivers.** What staff see. Every slip that is not printed 20 s after it was made, every bill that may already have printed, and every slip that could not print shows in ONE panel on every device (the printer sheet), in three plain groups with Retry / Print now, Print again / It printed, and Clear; the printer button shows how many wait, on every screen including `/pos`; a KOT that has not printed after 20 s rings once and shows a notice (with Show) on the device that asked for it and on the device that prints it. With no host, the pulse now runs the sweep, so lease expiry, sending jobs home and the KOT repair happen without a wake poller. A staff Retry or Print again is aimed at the device that prints the slip. The agent gains the 1C gate's rulings (I3 and the minors). **1C and 1D release together; nothing is deployed until Phase 1 is done.**
+
+**Gate rulings this section implements** (each is also in spec §7.10, "Rulings at the Session 1C review gate"):
+- **I3 (owner, D1).** A refusal caused by the slip itself counts; the second one fails the slip. Printer-off refusals still never count.
+- **F1, M4, M5, M6 (D1).** No empty lease after a maybe; unanswered failed acks are kept and re-sent; the store survives a refusing storage; acks go before the next lease.
+- **The budget gaps (D1).** The trailing empty lease per burst and the per-device refusal re-check are pinned.
+- **One attention feed, no `myRecentJobs` (D2).** The panel, its count and the alarm read one bounded feed on the existing pulse; each row names its asking and printing device.
+- **The pulse sweep (D2) and aimed retries (D7, D2).**
+- **Readback by exception (D3).** A slip that prints needs nobody; one that does not print within 20 s is shown with its state, everywhere.
+- **D6: no change.** Old tabs during the release window keep today's feeds; the dashboard band (its readback chips and the host's legacy stale-row Print, which races the new Retry on the row's CAS, so nothing prints twice) stays one release and goes with the old claim drain.
+
+**Not in 1D** (1E, the session that consumes it): the Phase 1 exit scenarios with the fake printer, the 200-order soak, TEST-CHECKLIST, and the local free-tier measurement (E3). The optional Telegram alerts of spec §10 are not in Phase 1.
+
+### File map (Session 1D)
+
+| File | Change | Task |
+|---|---|---|
+| `apps/cafe/lib/print-write-outcome.ts` | `isSlipRefusal`, `PRINT_SLIP_REFUSALS_MAX` | D1 |
+| `apps/cafe/lib/print-agent.ts`, `lib/print-ack-store.ts` (create) | I3, F1, M4, M5, M6; the store split out | D1 |
+| `apps/cafe/lib/print-agent.test.ts`, `packages/shared/src/print-budget.test.ts` | seven tests, two deliberate changes; two budget pins | D1 |
+| `packages/shared/src/print-agent-wire.ts`, `self-order-alert.ts` | `PrintAttentionRow`; `PosPulseData.printAttention?` | D2 |
+| `apps/cafe/lib/print-attention.ts` (+ test, create) | the feed | D2 |
+| `apps/cafe/app/api/order-requests/pulse/route.ts` | the feed; the sweep after the answer | D2 |
+| `apps/cafe/lib/print-job-actions.ts` | aimed `print-status` | D2 |
+| `apps/cafe/lib/print-order-jobs.test.ts` | 1C's pulse pin (deliberate) | D2 |
+| `apps/cafe/lib/print-waiting.ts` (+ test), `lib/printer-panel-open.ts`, `components/print/WaitingSlipsCard.tsx`, `hooks/use-print-job-actions.ts`, `hooks/use-print-slip-alarm.ts`, `components/layout/print-waiting-context.ts` (create) | the panel, the count, the alarm | D3 |
+| `apps/cafe/components/print/PrinterPanel.tsx`, `PrinterStatusButton.tsx`, `components/layout/PosPulseProvider.tsx`, `components/print/PrintHostDrain.tsx` | the wiring | D3 |
+| `apps/cafe/lib/printer-ui-paths.test.ts` | the card joins the hygiene list | D3 |
+| `apps/cafe/scripts/print-host-live/attention.ts` (create), `agent.ts`, `verify-print-host-live.ts` | leg af; leg ae's reason | D4 |
+| `apps/cafe/package.json` | `testChain`: two files | D2, D3 |
+| this plan | Session 1D Results | D5 |
+
+---
+
+### Task D1: the agent rulings of the 1C gate: a slip that cannot be drawn fails on its second refusal (owner, I3); unanswered failed acks are kept (M4); the store survives a refusing storage (M5); acks go before the next lease (M6); no empty lease after a maybe (F1)
+
+**Files:**
+- Modify: `apps/cafe/lib/print-write-outcome.ts` (`isSlipRefusal`, `PRINT_SLIP_REFUSALS_MAX`)
+- Modify: `apps/cafe/lib/print-agent.ts` (the slip-refusal count; `keep()`; a kept failed ack; `await flushAcks()` before each lease; F1; the pending-ack store moves out and is re-exported)
+- Create: `apps/cafe/lib/print-ack-store.ts` (the pending-ack store, with an in-memory copy when storage refuses)
+- Modify: `apps/cafe/lib/print-agent.test.ts` (seven new tests; two deliberate changes: the 1C I2(b) test is rewritten for M6, and "a printed ack with no answer is retried every 5 s …" now expects the re-send before the next lease; the `settle()` helper waits 60 microtask turns instead of 20)
+- Modify: `packages/shared/src/print-budget.test.ts` (two pins: the trailing empty lease per burst, the per-device refusal re-check)
+
+**Interfaces produced:** `isSlipRefusal(outcome: PrintWriteOutcome): boolean`; `PRINT_SLIP_REFUSALS_MAX = 2`; `PendingPrintAck.fail?: PrintAgentAckBody`; `readPendingAcks` / `writePendingAcks` now live in `lib/print-ack-store.ts` and are re-exported from `lib/print-agent.ts` (no caller changes).
+
+**I3 (the owner's decision at the 1C gate).** A refusal caused by the slip itself counts: it could not be drawn (`RASTER_FAILED_MESSAGE`, the 12 s drawing deadline or a null canvas) or its end-of-day figures never loaded (`PRINT_HOST_EOD_TIMEOUT_MESSAGE`). The agent counts them per job in memory, only while its printer is ready, and acks the second one `permanent: true`; the server already fails a permanent `sent:"no"` ack with `uncertainAttempts` unchanged, so the line is free and the slip shows under "Couldn't print". A refusal because the printer is off (not connected, Bluetooth off, busy, another tab, no printer) still never counts. A slip refusal does not set the 30 s printer re-check, so its second try comes at the server's 2 s backoff. Client-only; at most 4 requests per such slip.
+
+**F1 (the gate's fresh review).** `kickedWhileRunning` (1C's `fec4fd0`) also remembered the bridge freeing up from the agent's own slip while its failed ack was on the wire, so every maybe with a `nextAttemptAt` cost one empty lease. A job back in line holds the line until then, so the flag is cleared there.
+
+**M4.** A failed ack with no answer is kept (with its body) and re-sent like a printed one, so the lease never expires into a counted maybe (a false REPRINT or cashier prompt). The `v1` store key is kept because it has never shipped. **M5.** A storage that refuses the write keeps the list in memory, so the ack is still sent. **M6.** Each cycle first waits for any flush on the wire, so a reload never re-leases its own just-printed job before the late ack lands.
+
+`lib/print-agent.ts` is 307 lines (was 306): the store moved to `lib/print-ack-store.ts`.
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/print-agent.test.ts`, find:
+
+```ts
+  createPrintAgent,
+  failedAckBody,
+  printAgentSlipOf,
+  type PendingPrintAck,
+  type PrintAgentAckBody,
+  type PrintAgentResult,
+} from "@/lib/print-agent";
+import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_TOO_LARGE_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
+
+// Printing Phase 1 Session 1C (spec §9.1, the owner's rules after Session 1B): the agent core, driven
+```
+
+Replace it with:
+
+```ts
+  createPrintAgent,
+  failedAckBody,
+  printAgentSlipOf,
+  readPendingAcks,
+  writePendingAcks,
+  type PendingPrintAck,
+  type PrintAgentAckBody,
+  type PrintAgentResult,
+} from "@/lib/print-agent";
+import { PRINT_HOST_EOD_TIMEOUT_MESSAGE } from "@/lib/print-host-slips";
+import { PRINT_SLIP_REFUSALS_MAX, isSlipRefusal, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+import { RASTER_FAILED_MESSAGE } from "@/lib/printer/raster";
+import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_TOO_LARGE_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
+
+// Printing Phase 1 Session 1C (spec §9.1, the owner's rules after Session 1B): the agent core, driven
+```
+
+In `apps/cafe/lib/print-agent.test.ts`, find:
+
+```ts
+}
+
+const settle = async (): Promise<void> => {
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+};
+async function advance(w: ReturnType<typeof world>["w"], ms: number): Promise<void> {
+  const end = w.now + ms;
+```
+
+Replace it with:
+
+```ts
+}
+
+const settle = async (): Promise<void> => {
+  // 60 turns (was 20): the 1C gate added one await (a cycle first waits for any flush on the wire, M6).
+  for (let i = 0; i < 60; i++) await Promise.resolve();
+};
+async function advance(w: ReturnType<typeof world>["w"], ms: number): Promise<void> {
+  const end = w.now + ms;
+```
+
+In `apps/cafe/lib/print-agent.test.ts`, find:
+
+```ts
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.equal(w.pending.length, 1, "kept after a network error");
+  await advance(w, PRINT_ACK_RETRY_MS);
+  assert.equal(w.pending.length, 1, "kept after a 5xx");
+  await advance(w, PRINT_ACK_RETRY_MS);
+  assert.equal(w.pending.length, 0, "a 409 is an answer: cleared");
+  assert.equal(w.acks.length, 3, "three sends, then no more");
+```
+
+Replace it with:
+
+```ts
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  // The 1C review gate (M6) changed this sequence deliberately: the next cycle re-sends the kept ack
+  // before it leases again, so the 5xx answers that re-send, and the 5 s retry carries the third.
+  assert.equal(w.pending.length, 1, "kept after a network error, and after the 5xx of its re-send before the next lease");
+  assert.equal(w.acks.length, 2, "sent, then sent again before the next lease");
+  await advance(w, PRINT_ACK_RETRY_MS);
+  assert.equal(w.pending.length, 0, "a 409 is an answer: cleared");
+  assert.equal(w.acks.length, 3, "three sends, then no more");
+```
+
+In `apps/cafe/lib/print-agent.test.ts`, find:
+
+```ts
+  agent.stop();
+});
+
+// Session 1C final review I2: a flush reads the pending list once. A printed ack kept while an earlier
+// flush was still on the wire waited for the 5 s retry, and the next lease found its own job still leased.
+test("a printed ack kept while an earlier flush is on the wire is sent by that flush, before the next lease", async () => {
+  const { w, deps } = world();
+  let releaseOld: () => void = () => undefined;
+  const agent = createPrintAgent({
+```
+
+Replace it with:
+
+```ts
+  agent.stop();
+});
+
+// Session 1C final review I2(b), rewritten at the 1C review gate for M6: the cycle now waits for a flush
+// already on the wire before it leases, and a flush re-reads the store until every entry was tried once.
+test("a printed ack still on the wire goes first: the next lease waits for its answer, then the new ack goes out at once", async () => {
+  const { w, deps } = world();
+  let releaseOld: () => void = () => undefined;
+  const agent = createPrintAgent({
+```
+
+In `apps/cafe/lib/print-agent.test.ts`, find:
+
+```ts
+  w.leases.push({ jobs: [job("j1")], retryAt: null });
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.deepEqual(w.prints, ["j1"], "j1 printed while the old ack was still on the wire");
+  releaseOld();
+  await settle();
+  assert.deepEqual(w.acks.map((a) => a.id), ["old", "j1"], "the same flush sends j1's ack too, without waiting for the retry timer");
+  assert.deepEqual(w.pending, [], "both acks answered and cleared");
+  assert.equal(w.leaseCalls, 2, "the next lease runs only after j1's ack was sent");
+  agent.stop();
+});
+
+```
+
+Replace it with:
+
+```ts
+  w.leases.push({ jobs: [job("j1")], retryAt: null });
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.equal(w.leaseCalls, 0, "no lease while an ack from before is unanswered: it could be our own job (M6)");
+  releaseOld();
+  await settle();
+  assert.deepEqual(w.prints, ["j1"], "then j1 prints");
+  assert.deepEqual(w.acks.map((a) => a.id), ["old", "j1"], "and its ack goes out without waiting for the retry timer");
+  assert.deepEqual(w.pending, [], "both acks answered and cleared");
+  assert.equal(w.leaseCalls, 2, "the next lease runs only after j1's ack was sent");
+  agent.stop();
+});
+
+test("a flush re-reads the store: an ack kept while it was on the wire goes out with it", async () => {
+  const { w, deps } = world();
+  w.pending = [{ id: "a", epoch: 1, at: T0 }];
+  const agent = createPrintAgent({
+    ...deps,
+    ack: (id: string, body: PrintAgentAckBody) => {
+      if (id === "a") w.pending = [...w.pending, { id: "b", epoch: 1, at: T0 }];
+      return deps.ack(id, body);
+    },
+  });
+  await agent.flushAcks();
+  assert.deepEqual(w.acks.map((a) => a.id), ["a", "b"], "one flush, both acks");
+  assert.deepEqual(w.pending, [], "both answered and cleared");
+  agent.stop();
+});
+
+// ── The 1C review gate (2026-10-03): the owner's I3 decision and the agent minors F1, M4, M5, M6 ──
+
+// I3 (owner): a refusal caused by the slip itself (it could not be drawn, or its figures never loaded)
+// counts. The second one for a job while the printer is ready fails it, freeing the line; a refusal
+// because the printer is off never counts.
+test("I3: the second refusal of a slip that cannot be drawn fails it, and the next slip prints", async () => {
+  const { w, deps } = world();
+  w.leases.push({ jobs: [job("j1")], retryAt: null }, { jobs: [job("j1", 2)], retryAt: null }, { jobs: [job("j2")], retryAt: null });
+  w.results.push({ ok: false, error: new Error(RASTER_FAILED_MESSAGE) }, { ok: false, error: new Error(RASTER_FAILED_MESSAGE) });
+  w.ackAnswers.push(
+    { applied: true, status: "queued", nextAttemptAt: new Date(T0 + 2_000).toISOString() },
+    { applied: true, status: "failed", nextAttemptAt: null },
+  );
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  await advance(w, 3_000);
+  assert.deepEqual(
+    w.acks.map((a) => `${a.id}:${a.body.sent}:${a.body.permanent ?? false}`),
+    ["j1:no:false", "j1:no:true", "j2:undefined:false"],
+    "the first refusal waits for the server's backoff (2 s, not the 30 s printer re-check); the second is permanent",
+  );
+  assert.deepEqual(w.prints, ["j1", "j1", "j2"], "the line is free again: j2 prints straight away");
+  agent.stop();
+});
+
+test("I3: printer refusals never count, even between two slip refusals; an end-of-day timeout counts", async () => {
+  const { w, deps } = world();
+  for (let i = 0; i < 4; i++) {
+    w.leases.push({ jobs: [job("j1", i + 1)], retryAt: null });
+    w.ackAnswers.push({ applied: true, status: "queued", nextAttemptAt: new Date(T0 + 2_000).toISOString() });
+  }
+  w.results.push(
+    { ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) },
+    { ok: false, error: new Error(PRINT_HOST_EOD_TIMEOUT_MESSAGE) },
+    { ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) },
+    { ok: false, error: new Error(PRINT_HOST_EOD_TIMEOUT_MESSAGE) },
+  );
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  await advance(w, 200_000);
+  assert.deepEqual(w.acks.map((a) => a.body.permanent ?? false), [false, false, false, true], "only the second slip refusal is permanent");
+  agent.stop();
+});
+
+test("I3: a slip refusal after the printer stopped being ready is a printer refusal, never counted", async () => {
+  const { w, deps } = world();
+  w.leases.push({ jobs: [job("j1")], retryAt: null });
+  w.results.push({ ok: false, error: new Error(RASTER_FAILED_MESSAGE) }, { ok: false, error: new Error(RASTER_FAILED_MESSAGE) });
+  const agent = createPrintAgent({
+    ...deps,
+    print: async (j: LeasedPrintJob): Promise<PrintAgentResult> => {
+      w.prints.push(j.id);
+      w.ready = false;
+      return w.results.shift() ?? { ok: true };
+    },
+  });
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.equal(w.acks[0]?.body.permanent, undefined, "not counted");
+  assert.equal(isSlipRefusal(printWriteOutcomeOf(new Error(RASTER_FAILED_MESSAGE))), true, "it is a slip refusal by its sentence");
+  assert.equal(isSlipRefusal(printWriteOutcomeOf(new Error(PRINTER_NOT_CONNECTED_MESSAGE))), false, "a printer refusal is not");
+  assert.equal(PRINT_SLIP_REFUSALS_MAX, 2, "two refusals of the slip itself, then failed: at most 4 requests (2 leases, 2 acks)");
+  agent.stop();
+});
+
+// F1 (the gate's fresh review): the bridge freeing up from this very slip lands while its failed ack is
+// on the wire. A job back in line holds the line until its nextAttemptAt, so that kick must not cost an
+// empty lease.
+test("F1: a maybe whose answer names a retry time costs no extra lease, whatever re-renders meanwhile", async () => {
+  const { w, deps } = world();
+  w.leases.push({ jobs: [job("j1")], retryAt: null });
+  w.results.push({ ok: false, error: new Error(PRINTER_WRITE_FAILED_MESSAGE) });
+  w.ackAnswers.push({ applied: true, status: "queued", nextAttemptAt: new Date(T0 + 5_000).toISOString() });
+  let agentRef: ReturnType<typeof createPrintAgent> | null = null;
+  const agent = createPrintAgent({
+    ...deps,
+    ack: (id: string, body: PrintAgentAckBody) => {
+      agentRef?.setGate({ enabled: true, busy: true });
+      agentRef?.setGate({ enabled: true, busy: false }); // the bridge re-renders while the ack is on the wire
+      return deps.ack(id, body);
+    },
+  });
+  agentRef = agent;
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.equal(w.leaseCalls, 1, "one lease: the retry waits for its own timer");
+  assert.equal(w.timers.length, 1, "one timer, at the job's nextAttemptAt");
+  agent.stop();
+});
+
+// M4: a failed ack that got no answer is kept and re-sent like a printed one, so the lease never expires
+// into a counted "maybe" (a false REPRINT, or a false cashier prompt).
+test("M4: a failed ack with no answer is kept and re-sent at 5 s, even with the printer off; a 4xx is an answer", async () => {
+  const { w, deps } = world();
+  w.leases.push({ jobs: [job("j1")], retryAt: null });
+  w.results.push({ ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) });
+  w.ackAnswers.push(new ApiError("offline", "network", null), { applied: true, status: "queued", nextAttemptAt: null });
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  w.ready = false;
+  await advance(w, PRINT_ACK_RETRY_MS + 1_000);
+  assert.deepEqual(w.acks.map((a) => `${a.id}:${a.body.outcome}:${a.body.sent}`), ["j1:failed:no", "j1:failed:no"], "re-sent once, as the same failed ack");
+  assert.deepEqual(w.pending, [], "answered: cleared");
+  agent.stop();
+
+  const second = world();
+  second.w.leases.push({ jobs: [job("j2")], retryAt: null });
+  second.w.results.push({ ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) });
+  second.w.ackAnswers.push(new ApiError("gone", "http", 409));
+  const other = createPrintAgent(second.deps);
+  other.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.deepEqual(second.w.pending, [], "a server answer of any kind is never kept");
+  other.stop();
+});
+
+// M5: a storage that refuses the write (full, blocked) used to drop the printed ack before it was sent.
+test("M5: the pending-ack store keeps the list in memory when storage refuses it (node has no window)", () => {
+  writePendingAcks([{ id: "a", epoch: 1, at: 1 }]);
+  assert.deepEqual(readPendingAcks(), [{ id: "a", epoch: 1, at: 1 }], "kept in memory, so it is still sent");
+  writePendingAcks([]);
+  assert.deepEqual(readPendingAcks(), [], "cleared");
+});
+
+```
+
+In `packages/shared/src/print-budget.test.ts`, find:
+
+```ts
+  assert.ok(PRINT_ACK_PENDING_MAX_MS / PRINT_ACK_RETRY_MS <= 120, "at most 120 re-sends per lost ack, then it is dropped");
+});
+
+```
+
+Replace it with:
+
+```ts
+  assert.ok(PRINT_ACK_PENDING_MAX_MS / PRINT_ACK_RETRY_MS <= 120, "at most 120 re-sends per lost ack, then it is dropped");
+});
+
+// The 1C review gate (fresh review, 2026-10-03): two request sources the per-event pins above did not add
+// up. After every burst of slips the agent leases once more and finds its line empty; and a printer that
+// reports ready but keeps refusing costs a lease and an ack per 30 s re-check, all day.
+test("1C gate: Phase 1's busy day, with one trailing empty lease per burst, still fits the no-host estimate", () => {
+  // Phase 1 has no stations: 1.5 KOT rounds + 1 bill per order. At worst every slip is its own burst.
+  const slips = PRINT_BUDGET_BUSY_DAY.orders * 2.5;
+  const bursts = slips;
+  const perDay = Math.round(slips * 2 * (1 + PRINT_BUDGET_BUSY_DAY.retryShare) + bursts);
+  assert.equal(perDay, 2_400);
+  assert.ok(perDay <= printSlipRequestsPerDay(), `${perDay}/day within the 2,640 estimate`);
+});
+
+test("1C gate: a printer that says ready but keeps refusing costs at most 2 requests per 30 s per device: 2,880 over the day", () => {
+  const perDevice = 2 * Math.ceil(OPEN_MS / PRINT_AGENT_REFUSED_RECHECK_MS);
+  assert.equal(perDevice, 2_880);
+  assert.ok(perDevice <= PRINT_BUDGET_NORMAL_MAX_PER_DAY, "even a whole day of it stays inside the normal-day ceiling");
+});
+
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-agent.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 23`; `# pass 15`; `# fail 8`
+
+- [ ] **Step 3: The code**
+
+Create `apps/cafe/lib/print-ack-store.ts`:
+
+```ts
+import type { PendingPrintAck } from "@/lib/print-agent";
+
+// Printing redesign, Phase 1 (spec §7.9): the agent's pending-ack store, split out of print-agent.ts at
+// the 1C review gate to keep that file near its ~300-line budget. An ack the server has not answered
+// (a "printed" one, or since the gate a failed one, M4) is kept here and re-sent every 5 s for 10
+// minutes, also after a reload. Client-only; never throws.
+
+const PENDING_ACK_KEY = "pos.print-ack-pending.v1";
+
+function isPendingAck(v: unknown): v is PendingPrintAck {
+  const o = v as Partial<PendingPrintAck> | null;
+  return typeof o === "object" && o !== null && typeof o.id === "string" && Number.isInteger(o.epoch) && Number.isFinite(o.at);
+}
+
+// A storage that refuses a write (full, blocked): this page keeps the list itself until a write lands,
+// so the ack is still sent and retried; only its retry after a reload is lost (M5).
+let unstored: PendingPrintAck[] | null = null;
+
+export function readPendingAcks(): PendingPrintAck[] {
+  if (unstored !== null) return [...unstored];
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(PENDING_ACK_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter(isPendingAck) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function writePendingAcks(entries: PendingPrintAck[]): void {
+  try {
+    if (entries.length === 0) window.localStorage.removeItem(PENDING_ACK_KEY);
+    else window.localStorage.setItem(PENDING_ACK_KEY, JSON.stringify(entries));
+    unstored = null;
+  } catch {
+    unstored = [...entries];
+  }
+}
+```
+
+In `apps/cafe/lib/print-agent.ts`, find:
+
+```ts
+  hostPrintSlipOf,
+  type HostPrintSlip,
+} from "@/lib/print-host-slips";
+import { printWriteOutcomeOf, type PrintWriteOutcome } from "@/lib/print-write-outcome";
+
+// Printing redesign, Phase 1 Session 1C (spec §9.1): the in-page print agent's core, with no React and
+// no globals except the pending-ack store, so every rule below is unit-tested with fakes
+```
+
+Replace it with:
+
+```ts
+  hostPrintSlipOf,
+  type HostPrintSlip,
+} from "@/lib/print-host-slips";
+import { PRINT_SLIP_REFUSALS_MAX, isSlipRefusal, printWriteOutcomeOf, type PrintWriteOutcome } from "@/lib/print-write-outcome";
+
+// Printing redesign, Phase 1 Session 1C (spec §9.1): the in-page print agent's core, with no React and
+// no globals except the pending-ack store, so every rule below is unit-tested with fakes
+```
+
+In `apps/cafe/lib/print-agent.ts`, find:
+
+```ts
+  id: string;
+  epoch: number;
+  at: number;
+}
+
+export interface PrintAgentDeps {
+```
+
+Replace it with:
+
+```ts
+  id: string;
+  epoch: number;
+  at: number;
+  /** A failed ack that got no answer (M4); absent: a "printed" ack. */
+  fail?: PrintAgentAckBody;
+}
+
+export interface PrintAgentDeps {
+```
+
+In `apps/cafe/lib/print-agent.ts`, find:
+
+```ts
+  let timerAt = Number.POSITIVE_INFINITY;
+  let ackTimer: unknown = null;
+  let flushing: Promise<void> | null = null;
+
+  function refusalHolds(): boolean {
+    if (refused === null) return false;
+```
+
+Replace it with:
+
+```ts
+  let timerAt = Number.POSITIVE_INFINITY;
+  let ackTimer: unknown = null;
+  let flushing: Promise<void> | null = null;
+  const slipRefusals = new Map<string, number>();
+
+  function refusalHolds(): boolean {
+    if (refused === null) return false;
+```
+
+In `apps/cafe/lib/print-agent.ts`, find:
+
+```ts
+      timerAt = Number.POSITIVE_INFINITY;
+      kick();
+    }, delay);
+  }
+
+  function forget(entry: PendingPrintAck): void {
+```
+
+Replace it with:
+
+```ts
+      timerAt = Number.POSITIVE_INFINITY;
+      kick();
+    }, delay);
+  }
+
+  function keep(entry: PendingPrintAck): void {
+    deps.writePending([...deps.readPending().filter((e) => e.id !== entry.id), entry].slice(-PRINT_ACK_PENDING_LIMIT));
+  }
+
+  function forget(entry: PendingPrintAck): void {
+```
+
+In `apps/cafe/lib/print-agent.ts`, find:
+
+```ts
+        continue;
+      }
+      try {
+        await deps.ack(entry.id, { deviceId: deps.deviceId, epoch: entry.epoch, outcome: "printed" });
+        forget(entry);
+      } catch (error) {
+        if (ackAnswered(error)) forget(entry);
+```
+
+Replace it with:
+
+```ts
+        continue;
+      }
+      try {
+        await deps.ack(entry.id, entry.fail ?? { deviceId: deps.deviceId, epoch: entry.epoch, outcome: "printed" });
+        forget(entry);
+      } catch (error) {
+        if (ackAnswered(error)) forget(entry);
+```
+
+In `apps/cafe/lib/print-agent.ts`, find:
+
+```ts
+    kickedWhileRunning = false;
+    let again = false;
+    try {
+      const data = await deps.lease();
+      const job = data.jobs[0];
+      if (job === undefined) {
+```
+
+Replace it with:
+
+```ts
+    kickedWhileRunning = false;
+    let again = false;
+    try {
+      // An ack the last page (or a dropped answer) left goes first: a lease could expire our own job (M6).
+      await flushAcks();
+      const data = await deps.lease();
+      const job = data.jobs[0];
+      if (job === undefined) {
+```
+
+In `apps/cafe/lib/print-agent.ts`, find:
+
+```ts
+      if (result.ok) {
+        // Kept BEFORE it is sent, so a reload mid-ack still reports the paper (spec §7.9). Awaited, so
+        // the next lease does not find this job still leased at the head of the line.
+        const kept = deps.readPending().filter((e) => e.id !== job.id);
+        deps.writePending([...kept, { id: job.id, epoch: job.epoch, at: deps.now() }].slice(-PRINT_ACK_PENDING_LIMIT));
+        await flushAcks();
+        again = true;
+        return;
+      }
+      const outcome = printWriteOutcomeOf(result.error);
+      // Nothing reached the printer: it is off or unreachable. No automatic attempt until it changes.
+      if (outcome.sent === "no" && !outcome.permanent) refused = { state: deps.printerState(), at: deps.now() };
+      const answer = await deps.ack(job.id, failedAckBody(deps.deviceId, job.epoch, outcome)).catch(() => null);
+      if (answer === null) {
+        wakeAt(deps.now() + PRINT_AGENT_REFUSED_RECHECK_MS);
+        return;
+      }
+      // A job back in line waits for its own nextAttemptAt; a parked or failed one frees the line.
+      if (answer.nextAttemptAt !== null) wakeAt(Date.parse(answer.nextAttemptAt));
+      else again = refused === null;
+    } catch {
+      // No answer from the lease (offline, a deploy): look again later, never in a tight loop.
+      wakeAt(deps.now() + PRINT_AGENT_REFUSED_RECHECK_MS);
+```
+
+Replace it with:
+
+```ts
+      if (result.ok) {
+        // Kept BEFORE it is sent, so a reload mid-ack still reports the paper (spec §7.9). Awaited, so
+        // the next lease does not find this job still leased at the head of the line.
+        keep({ id: job.id, epoch: job.epoch, at: deps.now() });
+        await flushAcks();
+        again = true;
+        return;
+      }
+      let outcome = printWriteOutcomeOf(result.error);
+      if (isSlipRefusal(outcome) && deps.printerReady()) {
+        // The slip itself was refused (owner, 1C gate I3): its second refusal fails the job, freeing the line.
+        const count = (slipRefusals.get(job.id) ?? 0) + 1;
+        slipRefusals.set(job.id, count);
+        if (count >= PRINT_SLIP_REFUSALS_MAX) outcome = { ...outcome, permanent: true };
+      } else if (outcome.sent === "no" && !outcome.permanent) {
+        // Nothing reached the printer: it is off or unreachable. No automatic attempt until it changes.
+        refused = { state: deps.printerState(), at: deps.now() };
+      }
+      const body = failedAckBody(deps.deviceId, job.epoch, outcome);
+      const answer = await deps.ack(job.id, body).catch((error: unknown) => {
+        // No answer: kept and re-sent like a printed ack, so the lease never expires into a counted "maybe" (M4).
+        if (!ackAnswered(error)) keep({ id: job.id, epoch: job.epoch, at: deps.now(), fail: body });
+        return null;
+      });
+      if (answer === null) {
+        scheduleAckRetry();
+        wakeAt(deps.now() + PRINT_AGENT_REFUSED_RECHECK_MS);
+        return;
+      }
+      // A job back in line holds the line until its own nextAttemptAt (the timer leases it then), so a
+      // kick that landed meanwhile (the bridge freeing up from this very slip) would only find it not due.
+      if (answer.nextAttemptAt !== null) {
+        kickedWhileRunning = false;
+        wakeAt(Date.parse(answer.nextAttemptAt));
+      } else again = refused === null;
+    } catch {
+      // No answer from the lease (offline, a deploy): look again later, never in a tight loop.
+      wakeAt(deps.now() + PRINT_AGENT_REFUSED_RECHECK_MS);
+```
+
+In `apps/cafe/lib/print-agent.ts`, find:
+
+```ts
+  };
+}
+
+// ── The pending-ack store and the agent's two module seams (client-only, never throws) ──────────────
+
+const PENDING_ACK_KEY = "pos.print-ack-pending.v1";
+
+function isPendingAck(v: unknown): v is PendingPrintAck {
+  const o = v as Partial<PendingPrintAck> | null;
+  return typeof o === "object" && o !== null && typeof o.id === "string" && Number.isInteger(o.epoch) && Number.isFinite(o.at);
+}
+
+export function readPendingAcks(): PendingPrintAck[] {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(PENDING_ACK_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter(isPendingAck) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function writePendingAcks(entries: PendingPrintAck[]): void {
+  try {
+    if (entries.length === 0) window.localStorage.removeItem(PENDING_ACK_KEY);
+    else window.localStorage.setItem(PENDING_ACK_KEY, JSON.stringify(entries));
+  } catch {
+    // A storage that refuses: the ack is still sent now; only its retry after a reload is lost.
+  }
+}
+
+const kickListeners = new Set<() => void>();
+
+```
+
+Replace it with:
+
+```ts
+  };
+}
+
+// ── The agent's two module seams (client-only, never throws); the pending-ack store is print-ack-store.ts ──
+
+export { readPendingAcks, writePendingAcks } from "@/lib/print-ack-store";
+
+const kickListeners = new Set<() => void>();
+
+```
+
+In `apps/cafe/lib/print-write-outcome.ts`, find:
+
+```ts
+  PRINT_HOST_EMPTY_SLIP_MESSAGE,
+]);
+
+const UNKNOWN_FAILURE_MESSAGE = "may have printed";
+
+export function printWriteOutcomeOf(error: unknown): PrintWriteOutcome {
+```
+
+Replace it with:
+
+```ts
+  PRINT_HOST_EMPTY_SLIP_MESSAGE,
+]);
+
+/** Refused because of the slip itself, not the printer (owner, 1C gate I3): it could not be drawn, or
+ *  its figures never loaded. The second one for a job while the printer is ready fails that job. */
+const SLIP_REFUSALS: ReadonlySet<string> = new Set([RASTER_FAILED_MESSAGE, PRINT_HOST_EOD_TIMEOUT_MESSAGE]);
+export const PRINT_SLIP_REFUSALS_MAX = 2;
+
+export function isSlipRefusal(outcome: PrintWriteOutcome): boolean {
+  return outcome.sent === "no" && !outcome.permanent && SLIP_REFUSALS.has(outcome.message);
+}
+
+const UNKNOWN_FAILURE_MESSAGE = "may have printed";
+
+export function printWriteOutcomeOf(error: unknown): PrintWriteOutcome {
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-agent.test.ts lib/print-write-outcome.test.ts lib/print-agent-paths.test.ts lib/print-host-bridge-late.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 44`; `# pass 44`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/packages/shared && node --import tsx --test src/print-budget.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit -p . && echo TSC_OK`
+Expected: `# tests 15`; `# pass 15`; `# fail 0`; `TSC_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/lib/print-ack-store.ts apps/cafe/lib/print-agent.test.ts apps/cafe/lib/print-agent.ts apps/cafe/lib/print-write-outcome.ts packages/shared/src/print-budget.test.ts
+git commit -m "fix(print): the 1C gate's agent rulings: a slip that cannot be drawn fails on its second refusal; unanswered failed acks are kept; acks go before the next lease; no empty lease after a maybe"
+```
+
+---
+
+### Task D2: the server half: the waiting-slips feed on the pulse, the pulse sweep, and staff taps aimed at the printing device
+
+**Files:**
+- Modify: `packages/shared/src/print-agent-wire.ts` (`PrintAttentionRow`, `PRINT_ATTENTION_LIMIT`, `PRINT_ATTENTION_WINDOW_MS`)
+- Modify: `packages/shared/src/self-order-alert.ts` (`PosPulseData.printAttention?`, `printAttentionTruncated?`)
+- Create: `apps/cafe/lib/print-attention.ts` (`printAttentionFilter`, `printAttentionRowOf`, `readPrintAttention`)
+- Modify: `apps/cafe/app/api/order-requests/pulse/route.ts` (the feed for every tab; `after(() => sweepPrintJobsThrottled(nowMs))`)
+- Modify: `apps/cafe/lib/print-job-actions.ts` (D7: a queued result also publishes `print-status` aimed at the row's `targetDeviceId`)
+- Create: `apps/cafe/lib/print-attention.test.ts`; Modify: `apps/cafe/package.json` (`testChain`)
+- Modify (deliberate pin change): `apps/cafe/lib/print-order-jobs.test.ts` (1C's pulse pin: the print fields are spread in, and the sweep runs after the answer)
+
+**Interfaces produced:** `PrintAttentionRow { id, kind, label, status: "queued" | "needs-confirm" | "failed", labels, createdAt, lastError?, originDeviceId?, targetDeviceId? }`; `readPrintAttention(nowMs): Promise<{ rows; truncated }>`; `PosPulseData.printAttention?` / `printAttentionTruncated?`.
+
+**One feed, every device (gate ruling).** The panel's rows are every slip that waits for a person, cafe-wide: still `queued` 20 s after it was made (`PRINT_KOT_ALARM_MS`; its printer is off or not ready, or it is stale), `needs-confirm`, or `failed`, within the 12 h queued retention, oldest first, at most 20 (`printAttentionTruncated` says when it was cut). A `leased` slip is printing and waits for nobody. Each row carries its asking and its printing device, so the 20 s alarm needs no per-device read: the spec's `myRecentJobs` (D1) is not added (budget: one bounded read per pulse instead of two), and `PRINT_MY_RECENT_WINDOW_MS` stays unused.
+
+**D2, the pulse sweep.** The pulse runs `sweepPrintJobsThrottled` after its answer (`after()`, at most once per 60 s per instance, §17.3 rule 2). With no host it is the only request that expires leases, sends jobs home and repairs KOT rounds. The route itself still writes nothing (pinned).
+
+**D7.** Retry and Print again also publish `print-status` `queued` aimed at the job's device: with no host, agents never lease on the broadcast `print-job` (1B M-c), so a tap would otherwise wait for that device's next pulse. One Worker request per tap.
+
+- [ ] **Step 1: The failing tests first**
+
+Create `apps/cafe/lib/print-attention.test.ts`:
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+
+import { PRINT_KOT_ALARM_MS } from "@pos/shared/print-lifecycle";
+import { PRINT_ATTENTION_LIMIT, PRINT_ATTENTION_WINDOW_MS } from "@pos/shared/print-agent-wire";
+import { stripComments } from "@/lib/source-pin-utils";
+import { printAttentionFilter, printAttentionRowOf } from "@/lib/print-attention";
+
+// Printing Phase 1 Session 1D (spec §10): the waiting-slips feed on the existing 20 s pulse (one bounded
+// read), the pulse sweep (D2), and staff Retry / Print again aimed at the printing device (D7). DB
+// behaviour is proven live (npm run verify:print:live, legs af–ag); these are the pure parts and pins.
+
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const src = (rel: string): string => stripComments(readFileSync(path.join(REPO_ROOT, rel), "utf8"));
+const T0 = Date.parse("2026-10-03T12:00:00.000Z");
+const at = (ms: number): Date => new Date(ms);
+
+test("printAttentionFilter: bills to check and failed slips from the last 12 h, and every slip still queued 20 s after it was made", () => {
+  assert.deepEqual(printAttentionFilter(T0), {
+    $or: [
+      { status: { $in: ["needs-confirm", "failed"] }, createdAt: { $gte: at(T0 - PRINT_ATTENTION_WINDOW_MS) } },
+      { status: "queued", createdAt: { $gte: at(T0 - PRINT_ATTENTION_WINDOW_MS), $lte: at(T0 - PRINT_KOT_ALARM_MS) } },
+    ],
+  });
+  assert.equal(PRINT_ATTENTION_WINDOW_MS, 12 * 60 * 60 * 1000, "the queued retention (§7.8): nothing older is still waiting");
+  assert.equal(PRINT_ATTENTION_LIMIT, 20, "a bounded read on the hottest poll");
+});
+
+test("printAttentionRowOf: a panel row says what, when, why, who asked and where it prints; nothing else reaches the wire", () => {
+  const row = printAttentionRowOf({
+    _id: "j1",
+    kind: "kot",
+    label: "KOT round 1 · T-4",
+    status: "queued",
+    labels: ["REPRINT"],
+    createdAt: at(T0),
+    lastError: "The printer is not connected.",
+    originDeviceId: "dev-2",
+    targetDeviceId: "dev-1",
+  });
+  assert.deepEqual(row, {
+    id: "j1",
+    kind: "kot",
+    label: "KOT round 1 · T-4",
+    status: "queued",
+    labels: ["REPRINT"],
+    createdAt: "2026-10-03T12:00:00.000Z",
+    lastError: "The printer is not connected.",
+    originDeviceId: "dev-2",
+    targetDeviceId: "dev-1",
+  });
+  const bare = printAttentionRowOf({ _id: "j2", kind: "bill", label: "Bill · ORD-1", status: "needs-confirm", createdAt: at(T0) });
+  assert.deepEqual(bare, { id: "j2", kind: "bill", label: "Bill · ORD-1", status: "needs-confirm", labels: [], createdAt: "2026-10-03T12:00:00.000Z" }, "omit-empty");
+  assert.equal(printAttentionRowOf({ _id: "j3", kind: "kot", label: "x", status: "printed", createdAt: at(T0) }), null, "a status the panel never shows is dropped, never thrown");
+  assert.equal(printAttentionRowOf({ _id: "j4", kind: "kot", label: "x", status: "leased", createdAt: at(T0) }), null, "a slip printing right now waits for nobody");
+});
+
+test("PIN: the pulse reads the waiting-slips feed for every tab, fail-soft; printJobsForMe stays the named agent's", () => {
+  const s = src("apps/cafe/app/api/order-requests/pulse/route.ts");
+  assert.match(s, /readPrintAttention\(nowMs\)\.catch\(\(\) => null\)/, "every device shows the panel and its count");
+  assert.match(s, /device === null \? Promise\.resolve\(null\) : readJobsForDevice\(device, nowMs\)\.catch\(\(\) => null\)/, "1C's printJobsForMe is kept");
+  assert.ok(s.includes("...(printJobsForMe === null ? {} : { printJobsForMe }),"), "printJobsForMe is omitted on a failed read");
+  assert.ok(
+    s.includes("...(attention === null ? {} : { printAttention: attention.rows, printAttentionTruncated: attention.truncated }),"),
+    "the feed is omitted on a failed read",
+  );
+  assert.equal(s.split("readPrintAttention(").length - 1, 1, "one read per pulse, not one per device or per row");
+});
+
+test("PIN (D2): the pulse sweeps after its answer, throttled, and the route itself writes nothing", () => {
+  const s = src("apps/cafe/app/api/order-requests/pulse/route.ts");
+  assert.match(s, /after\(\(\) => sweepPrintJobsThrottled\(nowMs\)\);/, "with no host the pulse is the only request that runs the sweep");
+  assert.ok(s.indexOf("after(() => sweepPrintJobsThrottled(nowMs));") > s.indexOf("readPosPulse()"), "the sweep runs after the reads it must never delay");
+  for (const write of ["updateOne(", "updateMany(", "create(", "findOneAndUpdate(", "prunePrintJobs", "pruneOrderRequests", "sweepPrintJobs("]) {
+    assert.ok(!s.includes(write), `the pulse route itself writes nothing: no ${write}`);
+  }
+  const lib = src("apps/cafe/lib/print-attention.ts");
+  for (const write of ["updateOne(", "updateMany(", ".create(", "findOneAndUpdate(", "connectDB("]) {
+    assert.ok(!lib.includes(write), `print-attention.ts only reads: no ${write}`);
+  }
+  assert.match(lib, /\.limit\(PRINT_ATTENTION_LIMIT\)/, "bounded by a named constant");
+});
+
+test("PIN (D7): a staff Retry or Print again announces its job to the device that prints it", () => {
+  const s = src("apps/cafe/lib/print-job-actions.ts");
+  assert.match(s, /\.select\(`\$\{PRINT_LIFECYCLE_SELECT\} targetDeviceId`\)/, "the row says where it prints");
+  assert.match(s, /if \(plan\.patch\.status === "queued"\) publishCafeEvent\("print-job"\);/, "the host still hears the broadcast nudge");
+  assert.match(
+    s,
+    /if \(plan\.patch\.status === "queued"\) publishPrintStatus\(\{ id, status: "queued", \.\.\.\(row\.targetDeviceId \? \{ target: row\.targetDeviceId \} : \{\}\) \}\);/,
+    "aimed: with no host only that device's agent leases on it (it ignores the broadcast)",
+  );
+});
+```
+
+In `apps/cafe/lib/print-order-jobs.test.ts`, find:
+
+```ts
+  assert.ok(!src("apps/cafe/lib/order-request-create.ts").includes("printDeviceId"), "the auto-accept marks nothing");
+});
+
+test("PIN: the pulse adds printJobsForMe only for a tab that named itself, read-only and fail-soft", () => {
+  const s = src("apps/cafe/app/api/order-requests/pulse/route.ts");
+  assert.match(s, /const device = printPulseDeviceOf\(req\.url\);/);
+  assert.match(s, /device === null \? Promise\.resolve\(null\) : readJobsForDevice\(device, Date\.now\(\)\)\.catch\(\(\) => null\)/);
+  assert.match(s, /success\(printJobsForMe === null \? data : \{ \.\.\.data, printJobsForMe \}\)/);
+  for (const write of ["updateOne(", "updateMany(", "create(", "findOneAndUpdate(", "sweepPrintJobs"]) {
+    assert.ok(!s.includes(write), `the pulse route stays read-only: no ${write}`);
+  }
+});
+
+```
+
+Replace it with:
+
+```ts
+  assert.ok(!src("apps/cafe/lib/order-request-create.ts").includes("printDeviceId"), "the auto-accept marks nothing");
+});
+
+// Session 1D deliberately changed this pin: the pulse now also sweeps AFTER its answer (D2; pinned in
+// print-attention.test.ts), and its print fields are spread in, each omitted on a failed read.
+test("PIN: the pulse adds printJobsForMe only for a tab that named itself, fail-soft, and the route itself writes nothing", () => {
+  const s = src("apps/cafe/app/api/order-requests/pulse/route.ts");
+  assert.match(s, /const device = printPulseDeviceOf\(req\.url\);/);
+  assert.match(s, /device === null \? Promise\.resolve\(null\) : readJobsForDevice\(device, nowMs\)\.catch\(\(\) => null\)/);
+  assert.ok(s.includes("...(printJobsForMe === null ? {} : { printJobsForMe }),"), "omitted on a failed read");
+  for (const write of ["updateOne(", "updateMany(", "create(", "findOneAndUpdate("]) {
+    assert.ok(!s.includes(write), `the pulse route itself writes nothing: no ${write}`);
+  }
+});
+
+```
+
+In `apps/cafe/package.json`, find:
+
+```json
+    "lib/print-write-outcome.test.ts",
+    "lib/print-agent.test.ts",
+    "lib/print-agent-paths.test.ts",
+    "lib/print-routing.test.ts",
+    "lib/pos-install.test.ts",
+    "lib/pos-install-paths.test.ts",
+```
+
+Replace it with:
+
+```json
+    "lib/print-write-outcome.test.ts",
+    "lib/print-agent.test.ts",
+    "lib/print-agent-paths.test.ts",
+    "lib/print-attention.test.ts",
+    "lib/print-routing.test.ts",
+    "lib/pos-install.test.ts",
+    "lib/pos-install-paths.test.ts",
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-attention.test.ts lib/print-order-jobs.test.ts 2>&1 | grep -E "^# (tests|pass|fail)|Cannot find module"`
+Expected: `# Error: Cannot find module '@/lib/print-attention'`; `# tests 15`; `# pass 13`; `# fail 2`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/app/api/order-requests/pulse/route.ts`, find:
+
+```ts
+import { connectDB } from "@/lib/db";
+import { readPosPulse } from "@/lib/pos-pulse";
+import { printPulseDeviceOf } from "@/lib/print-agent-server";
+import { readJobsForDevice } from "@/lib/print-lease";
+import { success, requireAuth, serverError } from "@/lib/api-helpers";
+import { noStore } from "@/lib/order-request-tray";
+
+```
+
+Replace it with:
+
+```ts
+import { after } from "next/server";
+import { connectDB } from "@/lib/db";
+import { readPosPulse } from "@/lib/pos-pulse";
+import { printPulseDeviceOf } from "@/lib/print-agent-server";
+import { readPrintAttention } from "@/lib/print-attention";
+import { readJobsForDevice } from "@/lib/print-lease";
+import { sweepPrintJobsThrottled } from "@/lib/print-sweep";
+import { success, requireAuth, serverError } from "@/lib/api-helpers";
+import { noStore } from "@/lib/order-request-tray";
+
+```
+
+In `apps/cafe/app/api/order-requests/pulse/route.ts`, find:
+
+```ts
+// printJobsForMe, the jobs waiting in that device's own line, so a job the server re-queued or sent
+// home reaches its agent within one tick even with the socket down. One more bounded, index-backed
+// READ on a poll that already runs (no new request), fail-soft: a failed read omits the field.
+export async function GET(req: Request) {
+  const authed = await requireAuth();
+  if ("error" in authed) return authed.error;
+```
+
+Replace it with:
+
+```ts
+// printJobsForMe, the jobs waiting in that device's own line, so a job the server re-queued or sent
+// home reaches its agent within one tick even with the socket down. One more bounded, index-backed
+// READ on a poll that already runs (no new request), fail-soft: a failed read omits the field.
+//
+// Printing Phase 1 Session 1D (spec §10, §17.3 rule 2): every tab also reads the waiting-slips feed (one
+// bounded read: the panel, its count, the 20 s alarm), and the pulse runs the print sweep AFTER its
+// answer, at most once per 60 s per instance (sweepPrintJobsThrottled). With no host nothing else runs
+// it: lease expiry, sending jobs home and the KOT repair would otherwise never happen. The route itself
+// still writes nothing; the sweep's writes are the sweep's (lib/print-sweep.ts), never on this answer.
+export async function GET(req: Request) {
+  const authed = await requireAuth();
+  if ("error" in authed) return authed.error;
+```
+
+In `apps/cafe/app/api/order-requests/pulse/route.ts`, find:
+
+```ts
+
+  try {
+    await connectDB();
+    const [data, printJobsForMe] = await Promise.all([
+      readPosPulse(),
+      device === null ? Promise.resolve(null) : readJobsForDevice(device, Date.now()).catch(() => null),
+    ]);
+    return noStore(success(printJobsForMe === null ? data : { ...data, printJobsForMe }));
+  } catch (error) {
+    return noStore(serverError("Failed to fetch pos pulse", error));
+  }
+```
+
+Replace it with:
+
+```ts
+
+  try {
+    await connectDB();
+    const nowMs = Date.now();
+    const [data, printJobsForMe, attention] = await Promise.all([
+      readPosPulse(),
+      device === null ? Promise.resolve(null) : readJobsForDevice(device, nowMs).catch(() => null),
+      readPrintAttention(nowMs).catch(() => null),
+    ]);
+    try {
+      after(() => sweepPrintJobsThrottled(nowMs));
+    } catch {
+      // no after() in this runtime: skip the sweep, keep the pulse
+    }
+    return noStore(
+      success({
+        ...data,
+        ...(printJobsForMe === null ? {} : { printJobsForMe }),
+        ...(attention === null ? {} : { printAttention: attention.rows, printAttentionTruncated: attention.truncated }),
+      }),
+    );
+  } catch (error) {
+    return noStore(serverError("Failed to fetch pos pulse", error));
+  }
+```
+
+Create `apps/cafe/lib/print-attention.ts`:
+
+```ts
+import type { FilterQuery } from "mongoose";
+import { PRINT_KOT_ALARM_MS, type PrintJobLabel } from "@pos/shared/print-lifecycle";
+import { PRINT_ATTENTION_LIMIT, PRINT_ATTENTION_WINDOW_MS, type PrintAttentionRow } from "@pos/shared/print-agent-wire";
+import type { PrintJobKind, PrintJobStatus } from "@pos/shared/print-job";
+import { PrintJob, type IPrintJob } from "@/models/PrintJob";
+
+// Printing redesign, Phase 1 Session 1D (spec §10): the one waiting-slips panel's feed. Every device
+// reads the same rows on the existing 20 s pulse (one bounded, index-backed read; no new request):
+//   · Waiting for the printer: still queued 20 s after it was made (PRINT_KOT_ALARM_MS) — its printer
+//     is off or not ready, or the slip is stale and needs a tap;
+//   · Check the bill: needs-confirm;
+//   · Couldn't print: failed.
+// A slip being printed right now (leased) waits for nobody. The rows also carry the asking and the
+// printing device, so both can sound the 20 s alarm without a per-device read. Read-only; never calls
+// connectDB() (the route does); no console.*.
+
+const ATTENTION_STATUSES: ReadonlySet<PrintJobStatus> = new Set(["queued", "needs-confirm", "failed"]);
+
+export function printAttentionFilter(nowMs: number): FilterQuery<IPrintJob> {
+  const since = new Date(nowMs - PRINT_ATTENTION_WINDOW_MS);
+  // Two branches, each riding {status:1, createdAt:1, _id:1}.
+  return {
+    $or: [
+      { status: { $in: ["needs-confirm", "failed"] }, createdAt: { $gte: since } },
+      { status: "queued", createdAt: { $gte: since, $lte: new Date(nowMs - PRINT_KOT_ALARM_MS) } },
+    ],
+  };
+}
+
+export function printAttentionRowOf(doc: {
+  _id: unknown;
+  kind: PrintJobKind;
+  label: string;
+  status: PrintJobStatus;
+  labels?: PrintJobLabel[];
+  createdAt: Date;
+  lastError?: string;
+  originDeviceId?: string;
+  targetDeviceId?: string;
+}): PrintAttentionRow | null {
+  // A status this panel never shows (deploy skew, a row that moved mid-read) degrades one row, never the pulse.
+  if (!ATTENTION_STATUSES.has(doc.status)) return null;
+  return {
+    id: String(doc._id),
+    kind: doc.kind,
+    label: doc.label,
+    status: doc.status as PrintAttentionRow["status"],
+    labels: doc.labels ?? [],
+    createdAt: doc.createdAt.toISOString(),
+    ...(doc.lastError ? { lastError: doc.lastError } : {}),
+    ...(doc.originDeviceId ? { originDeviceId: doc.originDeviceId } : {}),
+    ...(doc.targetDeviceId ? { targetDeviceId: doc.targetDeviceId } : {}),
+  };
+}
+
+export async function readPrintAttention(nowMs: number): Promise<{ rows: PrintAttentionRow[]; truncated: boolean }> {
+  const docs = await PrintJob.find(printAttentionFilter(nowMs))
+    .select("kind label status labels createdAt lastError originDeviceId targetDeviceId")
+    .sort({ createdAt: 1, _id: 1 })
+    .limit(PRINT_ATTENTION_LIMIT)
+    .lean();
+  const rows = docs.map(printAttentionRowOf).filter((row): row is PrintAttentionRow => row !== null);
+  // The same length===limit "at least this many" proxy the other pulse feeds use.
+  return { rows, truncated: docs.length === PRINT_ATTENTION_LIMIT };
+}
+```
+
+In `apps/cafe/lib/print-job-actions.ts`, find:
+
+```ts
+import type { PrintActionData } from "@pos/shared/print-agent-wire";
+import { lifecycleOf, planConfirm, planRetry, type PrintJobDecision, type PrintJobLifecycle, type PrintJobPlan } from "@pos/shared/print-lifecycle";
+import { PrintJob } from "@/models/PrintJob";
+import { publishCafeEvent } from "@/lib/realtime-publish";
+import { PRINT_LIFECYCLE_SELECT, applyPrintJobPlan, type PrintLifecycleRow } from "./print-lease";
+
+// Printing redesign, Phase 1 (spec §7.2, §7.3): the staff decisions. "Print again?" on a bill that
+```
+
+Replace it with:
+
+```ts
+import type { PrintActionData } from "@pos/shared/print-agent-wire";
+import { lifecycleOf, planConfirm, planRetry, type PrintJobDecision, type PrintJobLifecycle, type PrintJobPlan } from "@pos/shared/print-lifecycle";
+import { PrintJob } from "@/models/PrintJob";
+import { publishCafeEvent, publishPrintStatus } from "@/lib/realtime-publish";
+import { PRINT_LIFECYCLE_SELECT, applyPrintJobPlan, type PrintLifecycleRow } from "./print-lease";
+
+// Printing redesign, Phase 1 (spec §7.2, §7.3): the staff decisions. "Print again?" on a bill that
+```
+
+In `apps/cafe/lib/print-job-actions.ts`, find:
+
+```ts
+
+async function act(id: string, decide: (job: PrintJobLifecycle) => PrintJobPlan): Promise<PrintActionData> {
+  for (let step = 0; step < ACTION_MAX_STEPS; step++) {
+    const row = await PrintJob.findById(id).select(PRINT_LIFECYCLE_SELECT).lean<PrintLifecycleRow>();
+    if (row === null) return { applied: false, status: null, reason: "not-found" };
+    const job = lifecycleOf(row);
+    const plan = decide(job);
+```
+
+Replace it with:
+
+```ts
+
+async function act(id: string, decide: (job: PrintJobLifecycle) => PrintJobPlan): Promise<PrintActionData> {
+  for (let step = 0; step < ACTION_MAX_STEPS; step++) {
+    const row = await PrintJob.findById(id).select(`${PRINT_LIFECYCLE_SELECT} targetDeviceId`).lean<PrintLifecycleRow & { targetDeviceId?: string }>();
+    if (row === null) return { applied: false, status: null, reason: "not-found" };
+    const job = lifecycleOf(row);
+    const plan = decide(job);
+```
+
+In `apps/cafe/lib/print-job-actions.ts`, find:
+
+```ts
+      // Back in the queue: nudge the printing device, so it leases now rather than on its next poll.
+      // Fire-and-forget; the poll still finds it if the nudge is lost.
+      if (plan.patch.status === "queued") publishCafeEvent("print-job");
+      return { applied: true, status: plan.patch.status };
+    }
+  }
+```
+
+Replace it with:
+
+```ts
+      // Back in the queue: nudge the printing device, so it leases now rather than on its next poll.
+      // Fire-and-forget; the poll still finds it if the nudge is lost.
+      if (plan.patch.status === "queued") publishCafeEvent("print-job");
+      // Session 1D (D7): also aimed at the device whose line holds it. With no host, agents never lease on
+      // the broadcast above (1B M-c), so without this a tap would wait for that device's next pulse.
+      if (plan.patch.status === "queued") publishPrintStatus({ id, status: "queued", ...(row.targetDeviceId ? { target: row.targetDeviceId } : {}) });
+      return { applied: true, status: plan.patch.status };
+    }
+  }
+```
+
+In `packages/shared/src/print-agent-wire.ts`, find:
+
+```ts
+   *  already printed (or was dismissed) is followed, never leased or re-sent as if it were fresh. */
+  status: PrintJobStatus;
+}
+
+export const PRINT_DEVICE_SHELLS = ["android", "windows", "browser"] as const;
+export type PrintDeviceShell = (typeof PRINT_DEVICE_SHELLS)[number];
+```
+
+Replace it with:
+
+```ts
+   *  already printed (or was dismissed) is followed, never leased or re-sent as if it were fresh. */
+  status: PrintJobStatus;
+}
+
+/** Session 1D (spec §10): one row of the one waiting-slips panel. Every device reads the same feed on the
+ *  existing 20 s pulse: a slip still queued 20 s after it was made (its printer is off or not ready, or the
+ *  slip is stale), a bill that may already have printed, or a slip that could not print. */
+export interface PrintAttentionRow {
+  id: string;
+  kind: PrintJobKind;
+  label: string;
+  status: "queued" | "needs-confirm" | "failed";
+  labels: PrintJobLabel[];
+  createdAt: string;
+  /** The writer's last curated sentence (why it waits, or why it failed); absent when there is none. */
+  lastError?: string;
+  /** The device that asked for the slip, and the one whose line holds it: both sound the 20 s alarm. */
+  originDeviceId?: string;
+  targetDeviceId?: string;
+}
+
+/** The feed is one bounded read on the hottest poll: the oldest rows first, within the queued retention (§7.8). */
+export const PRINT_ATTENTION_LIMIT = 20;
+export const PRINT_ATTENTION_WINDOW_MS = 12 * 60 * 60 * 1000;
+
+export const PRINT_DEVICE_SHELLS = ["android", "windows", "browser"] as const;
+export type PrintDeviceShell = (typeof PRINT_DEVICE_SHELLS)[number];
+```
+
+In `packages/shared/src/self-order-alert.ts`, find:
+
+```ts
+// the same predicates run identically wherever the provider mounts.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import type { PrintHostState, PrintJobFeedRow, PrintJobResolvedRow } from "./print-job";
+
+/** Server-side scan bound when counting/paging OPEN self-order requests — a
+```
+
+Replace it with:
+
+```ts
+// the same predicates run identically wherever the provider mounts.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import type { PrintAttentionRow } from "./print-agent-wire";
+import type { PrintHostState, PrintJobFeedRow, PrintJobResolvedRow } from "./print-job";
+
+/** Server-side scan bound when counting/paging OPEN self-order requests — a
+```
+
+In `packages/shared/src/self-order-alert.ts`, find:
+
+```ts
+  // Printing Phase 1 Session 1C (spec §9.1): present only when the tab named itself (?device=): how
+  // many jobs wait in this device's own line, and the oldest. Absent on a failed read.
+  printJobsForMe?: { count: number; oldestCreatedAt: string | null };
+}
+
+/** What changed between two consecutive polls, for the provider to act on. */
+```
+
+Replace it with:
+
+```ts
+  // Printing Phase 1 Session 1C (spec §9.1): present only when the tab named itself (?device=): how
+  // many jobs wait in this device's own line, and the oldest. Absent on a failed read.
+  printJobsForMe?: { count: number; oldestCreatedAt: string | null };
+  // Printing Phase 1 Session 1D (spec §10): every slip that waits for people, cafe-wide: the one
+  // waiting-slips panel, its count on the printer button, and the 20 s KOT alarm. Absent on a failed read.
+  printAttention?: PrintAttentionRow[];
+  printAttentionTruncated?: boolean;
+}
+
+/** What changed between two consecutive polls, for the provider to act on. */
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-attention.test.ts lib/print-order-jobs.test.ts lib/self-order-alert-paths.test.ts lib/print-queue.test.ts lib/print-lifecycle-paths.test.ts lib/realtime-paths.test.ts lib/print-queue-fixes.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 175`; `# pass 175`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/packages/shared && npx tsc --noEmit -p . && echo TSC_OK`
+Expected: `TSC_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/app/api/order-requests/pulse/route.ts apps/cafe/lib/print-attention.test.ts apps/cafe/lib/print-attention.ts apps/cafe/lib/print-job-actions.ts apps/cafe/lib/print-order-jobs.test.ts apps/cafe/package.json packages/shared/src/print-agent-wire.ts packages/shared/src/self-order-alert.ts
+git commit -m "feat(print): the pulse reads the waiting-slips feed and sweeps after its answer; staff retries are aimed at the printing device"
+```
+
+---
+
+### Task D3: one waiting-slips panel on every device, its count on the printer button, and the 20 s alarm
+
+**Files:**
+- Create: `apps/cafe/lib/print-waiting.ts` (the groups, reasons, ages, the button's count and name, the alarm's rows and words, a tap's notice)
+- Create: `apps/cafe/components/print/WaitingSlipsCard.tsx` (the panel section), `apps/cafe/hooks/use-print-job-actions.ts` (retry, confirm, dismiss), `apps/cafe/hooks/use-print-slip-alarm.ts`, `apps/cafe/components/layout/print-waiting-context.ts`, `apps/cafe/lib/printer-panel-open.ts` (the alarm's Show opens the printer sheet)
+- Modify: `apps/cafe/components/print/PrinterPanel.tsx` (the card first), `apps/cafe/components/print/PrinterStatusButton.tsx` (the count), `apps/cafe/components/layout/PosPulseProvider.tsx` (the count's narrow context), `apps/cafe/components/print/PrintHostDrain.tsx` (the alarm)
+- Create: `apps/cafe/lib/print-waiting.test.ts`; Modify: `apps/cafe/lib/printer-ui-paths.test.ts` (the card joins the 44px / no-jargon hygiene list), `apps/cafe/package.json` (`testChain`)
+
+**Interfaces produced:** `printWaitingGroups(rows, nowMs)`, `printWaitingReason(row, nowMs)`, `printWaitingAge(createdAt, nowMs)`, `printWaitingBadgeOf(pulse)`, `printWaitingName(base, badge)`, `printAlarmRows(rows, deviceId, rung)`, `printAlarmMessage(row)`, `printRetryNotice(answer)`; `usePrintWaitingCount()`; `usePrintJobActions()`; `usePrintSlipAlarm(deviceId)`; `<WaitingSlipsCard pulse />`.
+
+**The panel (D5).** The printer sheet (and /printers) opens with "Slips waiting" when any slip waits: three plain groups, Waiting for the printer (Print now, Clear), Check the bill (Print again, It printed, Clear), Couldn't print (Retry, Clear). Each row names the slip, its age and why, with no server words. A tapped row stays disabled until it leaves the feed. A tap wakes this device's agent (`kickPrintAgent`) and refreshes the pulse once; "Print now" on a slip whose printer is merely off answers "It prints by itself as soon as the printer is ready." The card comes first in the panel (before the printer's status), and the printer button shows the count ("3", "20+") on every screen, `/pos` included, through a narrow context like the dot.
+
+**The alarm (D4).** The first pulse after a KOT has waited 20 s rings once (the cafe's sound setting) and leaves a lasting notice on the device that asked for it and on the device that prints it; a bill to check tells its cashier. It rides the pulse already polled (a query-cache subscription), and the notice goes when the slip leaves the feed. So it fires between 20 s and 40 s. On a phone the notice covers the top bar (the gate's E2E), so it carries its own **Show** button, which opens the printer sheet (`lib/printer-panel-open.ts`, a window event the printer button listens to).
+
+**Readback (D3), ruled at the gate.** A slip that prints needs nobody: the panel, the count and the alarm show every slip that did not print within 20 s, with its state. The dashboard band's readback chips and its host-only stale rows are unchanged for one release (their legacy claim and the panel's retry race on the row's CAS, so nothing prints twice); they go with the old claim drain.
+
+- [ ] **Step 1: The failing tests first**
+
+Create `apps/cafe/lib/print-waiting.test.ts`:
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+
+import type { PrintAttentionRow } from "@pos/shared/print-agent-wire";
+import { stripComments } from "@/lib/source-pin-utils";
+import { PRINTER_NOT_CONNECTED_MESSAGE } from "@/lib/printer/web-printer-types";
+import {
+  PRINT_WAITING_TITLES,
+  printAlarmMessage,
+  printAlarmRows,
+  printRetryNotice,
+  printWaitingAge,
+  printWaitingBadgeOf,
+  printWaitingGroups,
+  printWaitingName,
+  printWaitingReason,
+} from "@/lib/print-waiting";
+
+// Printing Phase 1 Session 1D (spec §10, the owner's decision after Session 1B): the one waiting-slips
+// panel, its count on the printer button, and the 20 s alarm. Pure rules here; the wiring pins below.
+
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const src = (rel: string): string => stripComments(readFileSync(path.join(REPO_ROOT, rel), "utf8"));
+const lines = (s: string): number => s.replace(/\n$/, "").split("\n").length;
+const T0 = Date.parse("2026-10-03T12:00:00.000Z");
+const ago = (ms: number): string => new Date(T0 - ms).toISOString();
+
+function row(over: Partial<PrintAttentionRow> = {}): PrintAttentionRow {
+  return { id: "j1", kind: "kot", label: "KOT round 1 · T-4", status: "queued", labels: [], createdAt: ago(30_000), ...over };
+}
+
+test("three groups in plain words, in this order, empty groups left out", () => {
+  assert.deepEqual(PRINT_WAITING_TITLES, { printer: "Waiting for the printer", bill: "Check the bill", failed: "Couldn't print" });
+  const groups = printWaitingGroups([row({ id: "f", status: "failed" }), row({ id: "q" }), row({ id: "b", kind: "bill", label: "Bill · ORD-1", status: "needs-confirm" })], T0);
+  assert.deepEqual(groups.map((g) => [g.group, g.title, g.rows.map((r) => r.row.id)]), [
+    ["printer", "Waiting for the printer", ["q"]],
+    ["bill", "Check the bill", ["b"]],
+    ["failed", "Couldn't print", ["f"]],
+  ]);
+  assert.deepEqual(printWaitingGroups([], T0), [], "nothing waiting: no panel section");
+});
+
+test("each row says how long it has waited and why, without jargon", () => {
+  assert.equal(printWaitingAge(ago(30_000), T0), "just now");
+  assert.equal(printWaitingAge(ago(5 * 60_000), T0), "5 min");
+  assert.equal(printWaitingAge(ago(75 * 60_000), T0), "1 h 15 min");
+  assert.equal(printWaitingReason(row({ lastError: PRINTER_NOT_CONNECTED_MESSAGE }), T0), "The printer is off or not connected.");
+  assert.equal(printWaitingReason(row({ labels: ["REPRINT"], lastError: PRINTER_NOT_CONNECTED_MESSAGE }), T0), "The printer is off or not connected.", "the printer being off says so first");
+  assert.equal(printWaitingReason(row({ status: "failed", lastError: "lease expired: may have printed" }), T0), "Tried twice. Check the printer, then retry.", "server words never reach the screen");
+  assert.equal(printWaitingReason(row(), T0), "Not printed yet.");
+  assert.equal(printWaitingReason(row({ labels: ["REPRINT"], lastError: "may have printed" }), T0), "Waiting to print again, marked REPRINT.", "after 20 s it is waiting, not printing (gate E2E)");
+  assert.equal(printWaitingReason(row({ createdAt: ago(31 * 60_000) }), T0), "Waiting over 30 minutes: print it now, or clear it.");
+  assert.equal(printWaitingReason(row({ kind: "bill", status: "needs-confirm" }), T0), "It may already have printed. Check the printer.");
+  assert.equal(printWaitingReason(row({ status: "failed", lastError: "This slip is too long to print." }), T0), "This slip is too long to print.");
+  assert.equal(printWaitingReason(row({ status: "failed" }), T0), "Tried twice. Check the printer, then retry.");
+  for (const r of [row(), row({ status: "failed", lastError: "x" }), row({ kind: "bill", status: "needs-confirm" })]) {
+    assert.ok(!/lease|epoch|queue|agent|host/i.test(printWaitingReason(r, T0)), "no jargon on screen");
+  }
+});
+
+test("the printer button's count: how many slips wait, '20+' when the feed was cut", () => {
+  assert.equal(printWaitingBadgeOf(undefined), "", "no pulse yet: no count");
+  assert.equal(printWaitingBadgeOf({ printAttention: [] }), "");
+  assert.equal(printWaitingBadgeOf({ printAttention: [row(), row({ id: "j2" })] }), "2");
+  assert.equal(printWaitingBadgeOf({ printAttention: Array.from({ length: 20 }, (_, i) => row({ id: `j${i}` })), printAttentionTruncated: true }), "20+");
+  assert.equal(printWaitingName("Printer connected — open printer setup", ""), "Printer connected — open printer setup", "unchanged with nothing waiting");
+  assert.equal(printWaitingName("Printer connected — open printer setup", "1"), "1 slip waiting — open printer setup");
+  assert.equal(printWaitingName("Printer connected — open printer setup", "20+"), "20+ slips waiting — open printer setup");
+});
+
+test("the 20 s alarm: a KOT this device asked for or prints, and a bill to check; once per slip until it leaves", () => {
+  const rows = [
+    row({ id: "mine", originDeviceId: "dev-a", targetDeviceId: "host" }),
+    row({ id: "printed-here", originDeviceId: "dev-b", targetDeviceId: "dev-a" }),
+    row({ id: "other", originDeviceId: "dev-b", targetDeviceId: "host" }),
+    row({ id: "bill", kind: "bill", label: "Bill · ORD-1", status: "needs-confirm", originDeviceId: "dev-a" }),
+    row({ id: "void", kind: "void", originDeviceId: "dev-a" }),
+  ];
+  assert.deepEqual(printAlarmRows(rows, "dev-a", new Set()).map((r) => r.id), ["mine", "printed-here", "bill"]);
+  assert.deepEqual(printAlarmRows(rows, "dev-a", new Set(["mine", "bill"])).map((r) => r.id), ["printed-here"], "rung once per slip");
+  assert.deepEqual(printAlarmRows(rows, "", new Set()), [], "no identity: no alarm");
+  // The gate's E2E: on a phone the notice covers the top bar, so it carries its own Show button instead of
+  // pointing at the printer icon underneath it.
+  assert.equal(printAlarmMessage(row()), "KOT round 1 · T-4 has not printed yet.");
+  assert.equal(printAlarmMessage(row({ status: "failed" })), "KOT round 1 · T-4 could not print.");
+  assert.equal(printAlarmMessage(row({ kind: "bill", label: "Bill · ORD-1", status: "needs-confirm" })), "Bill · ORD-1 may not have printed.");
+});
+
+test("a tap's answer in plain words: done, already handled, or it prints by itself when the printer is ready", () => {
+  assert.equal(printRetryNotice({ applied: true, status: "queued" }), null, "done: the row leaves on the next tick");
+  assert.equal(printRetryNotice({ applied: false, status: "queued", reason: "wrong-status" }), "It prints by itself as soon as the printer is ready.");
+  assert.equal(printRetryNotice({ applied: false, status: "printed", reason: "wrong-status" }), "Already handled.");
+  assert.equal(printRetryNotice({ applied: false, status: null, reason: "not-found" }), "Already handled.");
+});
+
+test("PIN: the panel shows the waiting slips, the button shows their count, and both stay within their budgets", () => {
+  const panel = src("apps/cafe/components/print/PrinterPanel.tsx");
+  assert.ok(panel.includes("<WaitingSlipsCard pulse={pulse} />"), "the panel lists them");
+  assert.ok(panel.indexOf("<WaitingSlipsCard pulse={pulse} />") < panel.indexOf("<PrinterStatusBanner"), "first: what needs a person, before the printer's status and setup");
+  const button = src("apps/cafe/components/print/PrinterStatusButton.tsx");
+  assert.match(button, /const waiting = usePrintWaitingCount\(\);/, "a narrow context, never the wide pulse");
+  assert.match(button, /const name = printWaitingName\(printerButtonName\(dot\), waiting\);/, "the count is part of the button's name");
+  assert.match(button, /\{waiting !== "" && \(/, "a count only when slips wait");
+  const card = readFileSync(path.join(REPO_ROOT, "apps/cafe/components/print/WaitingSlipsCard.tsx"), "utf8");
+  assert.ok(lines(card) <= 120, "WaitingSlipsCard stays <= 120 lines");
+  for (const action of ["retry.mutate(", "confirm.mutate(", "dismiss.mutate("]) assert.ok(card.includes(action), `the card offers ${action}`);
+  const actions = src("apps/cafe/hooks/use-print-job-actions.ts");
+  assert.match(actions, /kickPrintAgent\(\);/, "a tap wakes this device's agent at once (it may be the one that prints)");
+  assert.match(actions, /qc\.invalidateQueries\(\{ queryKey: POS_PULSE_KEYS\.all \}\)/, "the panel refreshes after a tap (one request per tap, never a poll)");
+});
+
+test("PIN: the alarm rides the pulse already polled (no request), and only the printing lane's drain mounts it", () => {
+  const alarm = src("apps/cafe/hooks/use-print-slip-alarm.ts");
+  assert.ok(!/apiGet|apiSend|useQuery\(|refetchInterval|setInterval/.test(alarm), "no request and no poll of its own");
+  assert.match(alarm, /qc\.getQueryCache\(\)\.subscribe\(/, "it hears each pulse answer");
+  assert.match(alarm, /if \(readDevicePrefs\(\)\.alertSound && isAlertSoundUnlocked\(\)\) playAlertPing\(\);/, "the cafe's sound setting decides");
+  assert.match(alarm, /action: \{ label: "Show", onClick: openPrinterPanel \}/, "the notice opens the panel itself (it covers the top bar on a phone)");
+  assert.match(src("apps/cafe/components/print/PrinterStatusButton.tsx"), /useEffect\(\(\) => onOpenPrinterPanel\(\(\) => setOpen\(true\)\), \[\]\);/, "the printer button opens its sheet when asked");
+  assert.match(src("apps/cafe/components/print/PrintHostDrain.tsx"), /usePrintSlipAlarm\(deviceId\);/, "every device with an identity");
+});
+```
+
+In `apps/cafe/lib/printer-ui-paths.test.ts`, find:
+
+```ts
+  connect: `${PRINT}BrowserPrinterConnect.tsx`,
+  picker: `${PRINT}DesktopPrinterPicker.tsx`,
+  slip: `${PRINT}PrintHostTestSlip.tsx`,
+  classes: `${PRINT}printer-classes.ts`,
+  page: "apps/cafe/app/(dashboard)/printers/page.tsx",
+  hub: `${SETTINGS}page.tsx`,
+```
+
+Replace it with:
+
+```ts
+  connect: `${PRINT}BrowserPrinterConnect.tsx`,
+  picker: `${PRINT}DesktopPrinterPicker.tsx`,
+  slip: `${PRINT}PrintHostTestSlip.tsx`,
+  waiting: `${PRINT}WaitingSlipsCard.tsx`,
+  classes: `${PRINT}printer-classes.ts`,
+  page: "apps/cafe/app/(dashboard)/printers/page.tsx",
+  hub: `${SETTINGS}page.tsx`,
+```
+
+In `apps/cafe/lib/printer-ui-paths.test.ts`, find:
+
+```ts
+  [F.panel, 90, true], [F.where, 150, true], [F.device, 220, true], [F.native, 280, true], [F.paper, 60, true],
+  [F.tips, 50, false], [F.advanced, 100, true], [F.card, 260, true], [F.parts, 100, true], [F.picker, 160, false],
+  [F.connect, 110, true], [F.section, 50, false], [F.type, 60, false],
+];
+const hygieneMutations = [
+  append("a console call", "// " + "console" + ".log(1)"),
+```
+
+Replace it with:
+
+```ts
+  [F.panel, 90, true], [F.where, 150, true], [F.device, 220, true], [F.native, 280, true], [F.paper, 60, true],
+  [F.tips, 50, false], [F.advanced, 100, true], [F.card, 260, true], [F.parts, 100, true], [F.picker, 160, false],
+  [F.connect, 110, true], [F.section, 50, false], [F.type, 60, false],
+  // Session 1D: the waiting-slips panel follows the same rules (44px controls, no jargon).
+  [F.waiting, 120, true],
+];
+const hygieneMutations = [
+  append("a console call", "// " + "console" + ".log(1)"),
+```
+
+In `apps/cafe/package.json`, find:
+
+```json
+    "lib/print-agent.test.ts",
+    "lib/print-agent-paths.test.ts",
+    "lib/print-attention.test.ts",
+    "lib/print-routing.test.ts",
+    "lib/pos-install.test.ts",
+    "lib/pos-install-paths.test.ts",
+```
+
+Replace it with:
+
+```json
+    "lib/print-agent.test.ts",
+    "lib/print-agent-paths.test.ts",
+    "lib/print-attention.test.ts",
+    "lib/print-waiting.test.ts",
+    "lib/print-routing.test.ts",
+    "lib/pos-install.test.ts",
+    "lib/pos-install-paths.test.ts",
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-waiting.test.ts 2>&1 | grep -E "^# (tests|pass|fail)|Cannot find module"`
+Expected: `# Error: Cannot find module '@/lib/print-waiting'`; `# tests 1`; `# pass 0`; `# fail 1`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/components/layout/PosPulseProvider.tsx`, find:
+
+```tsx
+import type { PrintJobFeedRow } from "@pos/shared/print-job";
+import { hostRoutingOf, type PrintHostRouting } from "@/lib/print-routing";
+import { PrintHostDotContext } from "@/components/layout/print-host-dot-context";
+import { printHostDotOf } from "@/lib/printer/printer-dot";
+import {
+  prunePrintReadback,
+```
+
+Replace it with:
+
+```tsx
+import type { PrintJobFeedRow } from "@pos/shared/print-job";
+import { hostRoutingOf, type PrintHostRouting } from "@/lib/print-routing";
+import { PrintHostDotContext } from "@/components/layout/print-host-dot-context";
+import { PrintWaitingContext } from "@/components/layout/print-waiting-context";
+import { printWaitingBadgeOf } from "@/lib/print-waiting";
+import { printHostDotOf } from "@/lib/printer/printer-dot";
+import {
+  prunePrintReadback,
+```
+
+In `apps/cafe/components/layout/PosPulseProvider.tsx`, find:
+
+```tsx
+  // value moves (components/layout/print-host-dot-context.ts).
+  const dot = printHostDotOf(data);
+  const printJobs = data?.printJobs ?? EMPTY_PRINT_JOBS;
+
+  return (
+    <PrintHostDotContext.Provider value={dot}>
+```
+
+Replace it with:
+
+```tsx
+  // value moves (components/layout/print-host-dot-context.ts).
+  const dot = printHostDotOf(data);
+  const printJobs = data?.printJobs ?? EMPTY_PRINT_JOBS;
+  // Session 1D: the waiting-slips count for the printer button, a plain string like the dot.
+  const waiting = printWaitingBadgeOf(data);
+
+  return (
+    <PrintHostDotContext.Provider value={dot}>
+```
+
+In `apps/cafe/components/layout/PosPulseProvider.tsx`, find:
+
+```tsx
+              <PosPulseContext.Provider
+                value={{ pulse: data, soundUnlocked, unlock, printHandler, registerKotPrintHandler }}
+              >
+                {children}
+              </PosPulseContext.Provider>
+            </PrintReadbackContext.Provider>
+          </PrintReadbackRecordContext.Provider>
+```
+
+Replace it with:
+
+```tsx
+              <PosPulseContext.Provider
+                value={{ pulse: data, soundUnlocked, unlock, printHandler, registerKotPrintHandler }}
+              >
+                <PrintWaitingContext.Provider value={waiting}>{children}</PrintWaitingContext.Provider>
+              </PosPulseContext.Provider>
+            </PrintReadbackContext.Provider>
+          </PrintReadbackRecordContext.Provider>
+```
+
+Create `apps/cafe/components/layout/print-waiting-context.ts`:
+
+```ts
+"use client";
+
+import { createContext, useContext } from "react";
+
+// Session 1D (spec §10): how many slips wait for people ("", "3", "20+"), as its OWN narrow context,
+// derived ONCE in PosPulseProvider (printWaitingBadgeOf) and served as a plain string, exactly like the
+// printer dot: the header button reads this instead of the wide pulse context, so a quiet tick
+// re-renders nothing. `null` default = the same crash fence as the other pulse accessors.
+export const PrintWaitingContext = createContext<string | null>(null);
+
+export function usePrintWaitingCount(): string {
+  const count = useContext(PrintWaitingContext);
+  if (count === null) {
+    throw new Error("usePrintWaitingCount must be used inside <PosPulseProvider>");
+  }
+  return count;
+}
+```
+
+In `apps/cafe/components/print/PrintHostDrain.tsx`, find:
+
+```tsx
+import { usePrintHostDrainLock } from "@/hooks/use-print-host-lock";
+import { usePrintHostPrinterBeat } from "@/hooks/use-print-host-printer-beat";
+import { usePrintHostWakeLock } from "@/hooks/use-print-host-wake-lock";
+import { useSelfOrderAutoPrint } from "@/hooks/use-self-order-auto-print";
+import { printJobRefOf } from "@/lib/print-agent-calls";
+import type { HostPrintDone } from "@/lib/print-host-outcomes";
+```
+
+Replace it with:
+
+```tsx
+import { usePrintHostDrainLock } from "@/hooks/use-print-host-lock";
+import { usePrintHostPrinterBeat } from "@/hooks/use-print-host-printer-beat";
+import { usePrintHostWakeLock } from "@/hooks/use-print-host-wake-lock";
+import { usePrintSlipAlarm } from "@/hooks/use-print-slip-alarm";
+import { useSelfOrderAutoPrint } from "@/hooks/use-self-order-auto-print";
+import { printJobRefOf } from "@/lib/print-agent-calls";
+import type { HostPrintDone } from "@/lib/print-host-outcomes";
+```
+
+In `apps/cafe/components/print/PrintHostDrain.tsx`, find:
+
+```tsx
+  useSelfOrderAutoPrint({ enabled: hostDrains, busy, queueKotRound, hostLane });
+
+  usePrintAgent({ enabled: drains, isHost: enabled, deviceId, tabId, busy, queueSlip: onSlip });
+
+  return null;
+}
+```
+
+Replace it with:
+
+```tsx
+  useSelfOrderAutoPrint({ enabled: hostDrains, busy, queueKotRound, hostLane });
+
+  usePrintAgent({ enabled: drains, isHost: enabled, deviceId, tabId, busy, queueSlip: onSlip });
+  // Session 1D: the 20 s alarm on every device with an identity (the asking one and the printing one).
+  usePrintSlipAlarm(deviceId);
+
+  return null;
+}
+```
+
+In `apps/cafe/components/print/PrinterPanel.tsx`, find:
+
+```tsx
+import { usePrintHostDot } from "@/components/layout/print-host-dot-context";
+import { PrinterSetupCard } from "@/components/print/PrinterSetupCard";
+import { PrinterStatusBanner } from "@/components/print/PrinterStatusBanner";
+import { useCanPrintNow, useDesktopPrinterChosen, useDeviceOnline, useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
+import { printerDotOf, printerHeadlineOf, type PrinterDot } from "@/lib/printer/printer-dot";
+
+```
+
+Replace it with:
+
+```tsx
+import { usePrintHostDot } from "@/components/layout/print-host-dot-context";
+import { PrinterSetupCard } from "@/components/print/PrinterSetupCard";
+import { PrinterStatusBanner } from "@/components/print/PrinterStatusBanner";
+import { WaitingSlipsCard } from "@/components/print/WaitingSlipsCard";
+import { useCanPrintNow, useDesktopPrinterChosen, useDeviceOnline, useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
+import { printerDotOf, printerHeadlineOf, type PrinterDot } from "@/lib/printer/printer-dot";
+
+```
+
+In `apps/cafe/components/print/PrinterPanel.tsx`, find:
+
+```tsx
+  // sheet and /printers can both be mounted at once).
+  return (
+    <div data-printer-panel className="space-y-4">
+      <PrinterStatusBanner dot={dot.show ? dot : CHECKING_DOT} copy={copy} />
+      <PrinterSetupCard />
+      {onDone !== undefined && (
+```
+
+Replace it with:
+
+```tsx
+  // sheet and /printers can both be mounted at once).
+  return (
+    <div data-printer-panel className="space-y-4">
+      <WaitingSlipsCard pulse={pulse} />
+      <PrinterStatusBanner dot={dot.show ? dot : CHECKING_DOT} copy={copy} />
+      <PrinterSetupCard />
+      {onDone !== undefined && (
+```
+
+Replace the whole of `apps/cafe/components/print/PrinterStatusButton.tsx` with:
+
+```tsx
+"use client";
+
+import { useEffect, useState } from "react";
+import { Printer } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
+import { usePrintHostDot } from "@/components/layout/print-host-dot-context";
+import { usePrintWaitingCount } from "@/components/layout/print-waiting-context";
+import { PrinterPanel } from "@/components/print/PrinterPanel";
+import {
+  PRINTER_DOT_BAD_CLASS,
+  PRINTER_DOT_CLASS,
+  PRINTER_DOT_OK_CLASS,
+  PRINTER_ICON_BUTTON_CLASS,
+} from "@/components/print/printer-classes";
+import { useDesktopPrinterChosen, useDeviceOnline, useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
+import { printerButtonName, printerDotOf, printerDotTone } from "@/lib/printer/printer-dot";
+import { printWaitingName } from "@/lib/print-waiting";
+import { onOpenPrinterPanel } from "@/lib/printer-panel-open";
+import { cn } from "@/lib/utils";
+
+// The top-bar printer button (all staff). Reads NARROW inputs only — the dot
+// context, this device's host flag, the device printer, the lane and the
+// network — never the wide pulse, so a quiet pulse tick re-renders nothing
+// here. The sheet's panel (mounted only while open) is the one that reads the
+// pulse for the labels.
+const SHEET_TITLE = "Printer";
+const SHEET_DESCRIPTION = "Printer status and setup for this device.";
+
+export function PrinterStatusButton() {
+  const [open, setOpen] = useState(false);
+  // Session 1D: the 20 s alarm's Show button opens this sheet.
+  useEffect(() => onOpenPrinterPanel(() => setOpen(true)), []);
+  const remote = usePrintHostDot();
+  const { isHostDevice } = usePrintHostContext();
+  const snapshot = useDevicePrinter();
+  const lane = usePrintLane();
+  const online = useDeviceOnline();
+  const desktopChosen = useDesktopPrinterChosen();
+  // Session 1D: how many slips wait for people, cafe-wide (the panel inside lists them).
+  const waiting = usePrintWaitingCount();
+  const dot = printerDotOf({ remote, isHostDevice, lane, local: snapshot.status, deviceOffline: !online, desktopChosen });
+  const name = printWaitingName(printerButtonName(dot), waiting);
+  // A printer that is only being checked draws no dot (never red while it connects).
+  const tone = printerDotTone(dot);
+
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={PRINTER_ICON_BUTTON_CLASS}
+          aria-label={name}
+          title={name}
+          data-printer-dot={tone}
+          data-printer-waiting={waiting}
+        >
+          <Printer />
+          {tone !== "none" && (
+            <span
+              aria-hidden="true"
+              className={cn(PRINTER_DOT_CLASS, tone === "green" ? PRINTER_DOT_OK_CLASS : PRINTER_DOT_BAD_CLASS)}
+            />
+          )}
+          {waiting !== "" && (
+            <span
+              aria-hidden="true"
+              className="absolute -left-1 -top-1 min-w-5 rounded-full bg-red-600 px-1 text-center text-xs font-semibold leading-5 text-white"
+            >
+              {waiting}
+            </span>
+          )}
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+        <SheetHeader>
+          <SheetTitle>{SHEET_TITLE}</SheetTitle>
+          <SheetDescription>{SHEET_DESCRIPTION}</SheetDescription>
+        </SheetHeader>
+        <PrinterPanel onDone={() => setOpen(false)} />
+      </SheetContent>
+    </Sheet>
+  );
+}
+```
+
+Create `apps/cafe/components/print/WaitingSlipsCard.tsx`:
+
+```tsx
+"use client";
+
+import { useEffect, useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import { PRINTER_ACTION_CLASS } from "@/components/print/printer-classes";
+import { usePrintJobActions } from "@/hooks/use-print-job-actions";
+import { printWaitingGroups, type PrintWaitingGroup } from "@/lib/print-waiting";
+import type { PosPulseData } from "@pos/shared/self-order-alert";
+
+// Session 1D (spec §10; the owner's decision after Session 1B): the ONE waiting-slips panel, on every
+// device, inside the printer sheet (and /printers). Every slip that is not printed and needs a person,
+// in three plain groups, each row with its age, its reason and big buttons: Print now / Retry, Print
+// again / It printed (a bill to check), and Clear. Prop-driven: PrinterPanel already reads the pulse,
+// so this is not another wide-pulse reader. A tapped row stays disabled until it leaves the feed.
+
+const SECTION_TITLE = "Slips waiting";
+
+export function WaitingSlipsCard({ pulse }: { pulse: PosPulseData | undefined }) {
+  const rows = pulse?.printAttention;
+  const { retry, confirm, dismiss } = usePrintJobActions();
+  const [tapped, setTapped] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    setTapped((prev) => {
+      const live = new Set((rows ?? []).map((row) => row.id));
+      const next = new Set([...prev].filter((id) => live.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [rows]);
+
+  const groups = printWaitingGroups(rows ?? [], Date.now());
+  if (groups.length === 0) return null;
+  const tap = (id: string, run: () => void) => {
+    setTapped((prev) => new Set(prev).add(id));
+    run();
+  };
+
+  const actions = (group: PrintWaitingGroup, id: string) => {
+    const off = tapped.has(id);
+    const clear = (
+      <Button variant="outline" className={PRINTER_ACTION_CLASS} disabled={off} onClick={() => tap(id, () => dismiss.mutate(id))}>
+        Clear
+      </Button>
+    );
+    if (group === "bill") {
+      return (
+        <>
+          <Button className={PRINTER_ACTION_CLASS} disabled={off} onClick={() => tap(id, () => confirm.mutate({ id, decision: "reprint" }))}>
+            Print again
+          </Button>
+          <Button variant="outline" className={PRINTER_ACTION_CLASS} disabled={off} onClick={() => tap(id, () => confirm.mutate({ id, decision: "printed" }))}>
+            It printed
+          </Button>
+          {clear}
+        </>
+      );
+    }
+    return (
+      <>
+        <Button className={PRINTER_ACTION_CLASS} disabled={off} onClick={() => tap(id, () => retry.mutate(id))}>
+          {group === "failed" ? "Retry" : "Print now"}
+        </Button>
+        {clear}
+      </>
+    );
+  };
+
+  return (
+    <section aria-label={SECTION_TITLE} className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40">
+      <h3 className="text-base font-semibold">
+        {SECTION_TITLE}
+        {pulse?.printAttentionTruncated ? " (the oldest 20)" : ""}
+      </h3>
+      {groups.map((section) => (
+        <div key={section.group} className="space-y-2">
+          <p className="text-sm font-semibold">
+            {section.title} ({section.rows.length})
+          </p>
+          <ul className="space-y-2">
+            {section.rows.map(({ row, reason, age }) => (
+              <li key={row.id} className="rounded-md bg-background p-3">
+                <p className="text-base font-medium">{row.label}</p>
+                <p className="text-sm text-muted-foreground">
+                  {age} · {reason}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">{actions(section.group, row.id)}</div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </section>
+  );
+}
+```
+
+Create `apps/cafe/hooks/use-print-job-actions.ts`:
+
+```ts
+"use client";
+
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+
+import type { PrintActionData } from "@pos/shared/print-agent-wire";
+import type { PrintJobDecision } from "@pos/shared/print-lifecycle";
+import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
+import { PRINT_JOB_KEYS, useDismissPrintJob } from "@/hooks/use-print-host";
+import { apiSend } from "@/lib/api-client";
+import { kickPrintAgent } from "@/lib/print-agent";
+import { printRetryNotice } from "@/lib/print-waiting";
+
+// Session 1D (spec §10): the waiting-slips panel's three actions, on the server routes Phase 1A built
+// (retry, confirm, dismiss). After a tap: wake this device's agent at once (it may be the one that
+// prints the slip; with no host the server also aims a print-status at the printing device, D7), and
+// refresh the panel. One request per tap, never a poll.
+
+const ACTION_ERROR = "That did not go through. Check the connection and try again.";
+
+export function usePrintJobActions() {
+  const qc = useQueryClient();
+  const settled = () => {
+    kickPrintAgent();
+    void qc.invalidateQueries({ queryKey: POS_PULSE_KEYS.all });
+  };
+  const noticeOf = (answer: PrintActionData) => {
+    const notice = printRetryNotice(answer);
+    if (notice !== null) toast.info(notice);
+  };
+  const retry = useMutation({
+    mutationKey: PRINT_JOB_KEYS.mutation,
+    mutationFn: (id: string) => apiSend<PrintActionData>(`/api/print-jobs/${encodeURIComponent(id)}/retry`, "POST", {}),
+    onSuccess: noticeOf,
+    onError: () => toast.error(ACTION_ERROR),
+    onSettled: settled,
+  });
+  const confirm = useMutation({
+    mutationKey: PRINT_JOB_KEYS.mutation,
+    mutationFn: ({ id, decision }: { id: string; decision: PrintJobDecision }) =>
+      apiSend<PrintActionData>(`/api/print-jobs/${encodeURIComponent(id)}/confirm`, "POST", { decision }),
+    onSuccess: noticeOf,
+    onError: () => toast.error(ACTION_ERROR),
+    onSettled: settled,
+  });
+  const dismissJob = useDismissPrintJob();
+  const dismiss = {
+    mutate: (id: string) => dismissJob.mutate(id, { onSettled: settled }),
+  };
+  return { retry, confirm, dismiss };
+}
+```
+
+Create `apps/cafe/hooks/use-print-slip-alarm.ts`:
+
+```ts
+"use client";
+
+import { useEffect } from "react";
+import { hashKey, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+
+import type { PosPulseData } from "@pos/shared/self-order-alert";
+import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
+import { isAlertSoundUnlocked, playAlertPing } from "@/lib/alert-sound";
+import { readDevicePrefs } from "@/lib/pos-device-prefs";
+import { printAlarmMessage, printAlarmRows } from "@/lib/print-waiting";
+import { openPrinterPanel } from "@/lib/printer-panel-open";
+
+// Session 1D (spec §10): the 20 s alarm. A KOT still not printed 20 s after it was made (it is in the
+// waiting-slips feed from then on) sounds once and shows a lasting notice on the device that asked for
+// it AND on the device that prints it; a bill that may already have printed tells its cashier. It rides
+// the pulse the provider already polls (a query-cache subscription, never a request or a poll of its
+// own), so it fires at the first pulse after the 20 s mark. The notice goes away when the slip leaves
+// the feed (printed, cleared); a slip that comes back rings again. On a phone it covers the top bar, so
+// it carries its own Show button that opens the printer sheet.
+
+export function usePrintSlipAlarm(deviceId: string): void {
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (deviceId === "") return;
+    const rung = new Set<string>();
+    const check = (data: PosPulseData | undefined): void => {
+      const rows = data?.printAttention;
+      if (rows === undefined) return; // a failed read says nothing either way
+      const live = new Set(rows.map((row) => row.id));
+      for (const id of [...rung]) {
+        if (live.has(id)) continue;
+        rung.delete(id);
+        toast.dismiss(`print-alarm-${id}`);
+      }
+      const fresh = printAlarmRows(rows, deviceId, rung);
+      if (fresh.length === 0) return;
+      if (readDevicePrefs().alertSound && isAlertSoundUnlocked()) playAlertPing();
+      for (const row of fresh) {
+        rung.add(row.id);
+        toast.warning(printAlarmMessage(row), {
+          id: `print-alarm-${row.id}`,
+          duration: Number.POSITIVE_INFINITY,
+          action: { label: "Show", onClick: openPrinterPanel },
+        });
+      }
+    };
+    check(qc.getQueryData<PosPulseData>(POS_PULSE_KEYS.all));
+    const pulseHash = hashKey(POS_PULSE_KEYS.all);
+    return qc.getQueryCache().subscribe((event) => {
+      if (event.type !== "updated" || event.action.type !== "success" || event.query.queryHash !== pulseHash) return;
+      check(event.query.state.data as PosPulseData | undefined);
+    });
+  }, [deviceId, qc]);
+}
+```
+
+Create `apps/cafe/lib/print-waiting.ts`:
+
+```ts
+import type { PrintActionData, PrintAttentionRow } from "@pos/shared/print-agent-wire";
+import { PRINT_HOST_MAX_AGE_MS } from "@pos/shared/print-job";
+import type { PosPulseData } from "@pos/shared/self-order-alert";
+import { printWriteOutcomeOf } from "@/lib/print-write-outcome";
+
+// Printing redesign, Phase 1 Session 1D (spec §10; the owner's decision after Session 1B): the one
+// waiting-slips panel, its count on the printer button, and the 20 s alarm, as pure rules. Every slip that
+// is not printed and needs a person shows in one of three groups, in plain words, with how long it has
+// waited and why. No React, no fetch; the server's words (lease, epoch, attempts) never reach the screen.
+
+export type PrintWaitingGroup = "printer" | "bill" | "failed";
+
+export const PRINT_WAITING_TITLES: Record<PrintWaitingGroup, string> = {
+  printer: "Waiting for the printer",
+  bill: "Check the bill",
+  failed: "Couldn't print",
+};
+
+const GROUP_ORDER: readonly PrintWaitingGroup[] = ["printer", "bill", "failed"];
+const SERVER_WORDS = /lease|epoch|attempt|limits/i;
+
+function groupOf(row: PrintAttentionRow): PrintWaitingGroup {
+  return row.status === "needs-confirm" ? "bill" : row.status === "failed" ? "failed" : "printer";
+}
+
+export function printWaitingAge(createdAt: string, nowMs: number): string {
+  const minutes = Math.floor((nowMs - Date.parse(createdAt)) / 60_000);
+  if (!(minutes >= 1)) return "just now";
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  return minutes % 60 === 0 ? `${hours} h` : `${hours} h ${minutes % 60} min`;
+}
+
+export function printWaitingReason(row: PrintAttentionRow, nowMs: number): string {
+  if (row.status === "needs-confirm") return "It may already have printed. Check the printer.";
+  if (row.status === "failed") {
+    return row.lastError && !SERVER_WORDS.test(row.lastError) ? row.lastError : "Tried twice. Check the printer, then retry.";
+  }
+  // Queued: a stale slip needs a tap whatever its printer does (the agent never leases it by itself).
+  if (nowMs - Date.parse(row.createdAt) > PRINT_HOST_MAX_AGE_MS) return "Waiting over 30 minutes: print it now, or clear it.";
+  if (row.lastError && printWriteOutcomeOf(new Error(row.lastError)).sent === "no") return "The printer is off or not connected.";
+  const repeat = row.labels.find((label) => label === "REPRINT" || label === "DUPLICATE");
+  if (repeat) return `Waiting to print again, marked ${repeat}.`;
+  return "Not printed yet.";
+}
+
+export interface PrintWaitingSection {
+  group: PrintWaitingGroup;
+  title: string;
+  rows: Array<{ row: PrintAttentionRow; reason: string; age: string }>;
+}
+
+export function printWaitingGroups(rows: readonly PrintAttentionRow[], nowMs: number): PrintWaitingSection[] {
+  return GROUP_ORDER.map((group) => ({
+    group,
+    title: PRINT_WAITING_TITLES[group],
+    rows: rows.filter((row) => groupOf(row) === group).map((row) => ({ row, reason: printWaitingReason(row, nowMs), age: printWaitingAge(row.createdAt, nowMs) })),
+  })).filter((section) => section.rows.length > 0);
+}
+
+/** The printer button's count: "" when nothing waits, "20+" when the feed was cut at its limit. */
+export function printWaitingBadgeOf(pulse: Pick<PosPulseData, "printAttention" | "printAttentionTruncated"> | undefined): string {
+  const count = pulse?.printAttention?.length ?? 0;
+  if (count === 0) return "";
+  return pulse?.printAttentionTruncated ? `${count}+` : String(count);
+}
+
+/** The button's accessible name: the count comes first while slips wait. */
+export function printWaitingName(base: string, badge: string): string {
+  return badge === "" ? base : `${badge} slip${badge === "1" ? "" : "s"} waiting — open printer setup`;
+}
+
+/** The 20 s alarm (spec §10): a KOT this device asked for or prints, or a bill it should check, once per
+ *  slip (`rung`) until the slip leaves the feed. A device with no identity hears nothing. */
+export function printAlarmRows(rows: readonly PrintAttentionRow[], deviceId: string, rung: ReadonlySet<string>): PrintAttentionRow[] {
+  if (deviceId === "") return [];
+  return rows.filter(
+    (row) =>
+      !rung.has(row.id) &&
+      (row.originDeviceId === deviceId || row.targetDeviceId === deviceId) &&
+      (row.kind === "kot" || (row.kind === "bill" && row.status === "needs-confirm")),
+  );
+}
+
+export function printAlarmMessage(row: PrintAttentionRow): string {
+  if (row.status === "needs-confirm") return `${row.label} may not have printed.`;
+  if (row.status === "failed") return `${row.label} could not print.`;
+  return `${row.label} has not printed yet.`;
+}
+
+/** What a Retry / Print now tap says when the server did not apply it (null: done). */
+export function printRetryNotice(answer: PrintActionData): string | null {
+  if (answer.applied) return null;
+  if (answer.status === "queued" && answer.reason === "wrong-status") return "It prints by itself as soon as the printer is ready.";
+  return "Already handled.";
+}
+```
+
+Create `apps/cafe/lib/printer-panel-open.ts`:
+
+```ts
+// Session 1D: open the top-bar printer sheet from anywhere on the page (the 20 s alarm's Show button).
+// On a phone the alarm notice covers the top bar, so it cannot point at the printer icon underneath it.
+// A window event, so the sheet's own open state stays inside PrinterStatusButton. Client-only.
+
+const OPEN_PRINTER_PANEL_EVENT = "pos:open-printer-panel";
+
+export function openPrinterPanel(): void {
+  window.dispatchEvent(new Event(OPEN_PRINTER_PANEL_EVENT));
+}
+
+export function onOpenPrinterPanel(listener: () => void): () => void {
+  window.addEventListener(OPEN_PRINTER_PANEL_EVENT, listener);
+  return () => window.removeEventListener(OPEN_PRINTER_PANEL_EVENT, listener);
+}
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-waiting.test.ts lib/printer-ui-paths.test.ts lib/printer-dot-ui-paths.test.ts lib/pos-pulse-paths.test.ts lib/print-host-band-paths.test.ts lib/print-host-paths.test.ts lib/self-order-alert-paths.test.ts lib/print-agent-paths.test.ts lib/printer/print-gating-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 129`; `# pass 129`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npm test 2>&1 | grep -E "^# (tests|pass|fail|skipped)|^not ok"; npm run lint 2>&1 | tail -2`
+Expected: `# tests 4173`; `# pass 4172`; `# fail 0`; `# skipped 1`; `✖ 2 problems (0 errors, 2 warnings)`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/components/layout/PosPulseProvider.tsx apps/cafe/components/layout/print-waiting-context.ts apps/cafe/components/print/PrintHostDrain.tsx apps/cafe/components/print/PrinterPanel.tsx apps/cafe/components/print/PrinterStatusButton.tsx apps/cafe/components/print/WaitingSlipsCard.tsx apps/cafe/hooks/use-print-job-actions.ts apps/cafe/hooks/use-print-slip-alarm.ts apps/cafe/lib/print-waiting.test.ts apps/cafe/lib/print-waiting.ts apps/cafe/lib/printer-panel-open.ts apps/cafe/lib/printer-ui-paths.test.ts apps/cafe/package.json
+git commit -m "feat(print): one waiting-slips panel on every device, its count on the printer button, and the 20 s alarm"
+```
+
+---
+
+### Task D4: live leg af (the waiting-slips feed) and leg ae's reason for a cancelled order
+
+**Files:**
+- Create: `apps/cafe/scripts/print-host-live/attention.ts` (leg af)
+- Modify: `apps/cafe/scripts/verify-print-host-live.ts` (run it after ae), `apps/cafe/scripts/print-host-live/agent.ts` (leg ae asserts `reason === "not-eligible"`, the gate's fresh review)
+
+**Interfaces produced:** none (legs only).
+
+Leg (af) runs `readPrintAttention` against real Mongo: a slip made just now is not in it; one still queued after 20 s is, with its `lastError` and asking device; a bill to check and a failed slip are, with their printing device; printed and older-than-12-h rows never are; the oldest is first; a leased slip leaves it; a backlog is cut at 20 and says so.
+
+- [ ] **Step 1: The legs**
+
+In `apps/cafe/scripts/print-host-live/agent.ts`, find:
+
+```ts
+  await Order.collection.updateOne({ _id: new mongoose.Types.ObjectId(cancelled) }, { $set: { status: "Cancelled" } });
+  const cancelledRequest = await seedSelfOrderRequest(cancelled, 1);
+  const refusedClaim = await claimKotPrintForAgent(cancelledRequest, { deviceId: PHONE, bill: false }, nowMs);
+  check("(ae) a cancelled order: not eligible, and no job", !refusedClaim.claimed && (await PrintJob.countDocuments({ jobKey: `kot:${cancelled}:1` })) === 0);
+  await OrderRequest.deleteMany({});
+}
+
+```
+
+Replace it with:
+
+```ts
+  await Order.collection.updateOne({ _id: new mongoose.Types.ObjectId(cancelled) }, { $set: { status: "Cancelled" } });
+  const cancelledRequest = await seedSelfOrderRequest(cancelled, 1);
+  const refusedClaim = await claimKotPrintForAgent(cancelledRequest, { deviceId: PHONE, bill: false }, nowMs);
+  check("(ae) a cancelled order: not eligible, and no job", !refusedClaim.claimed && refusedClaim.reason === "not-eligible" && (await PrintJob.countDocuments({ jobKey: `kot:${cancelled}:1` })) === 0);
+  await OrderRequest.deleteMany({});
+}
+
+```
+
+Create `apps/cafe/scripts/print-host-live/attention.ts`:
+
+```ts
+/**
+ * Phase 1 Session 1D live leg — the one waiting-slips panel's feed (af), against a REAL MongoDB: which
+ * rows every device's pulse carries, in what order, and how it is bounded. Run by
+ * scripts/verify-print-host-live.ts after legs ad–ae.
+ *
+ * (console output is intentional — this is an ops CLI script, not app code.)
+ */
+import { PRINT_ATTENTION_LIMIT, PRINT_ATTENTION_WINDOW_MS } from "@pos/shared/print-agent-wire";
+import { PRINT_KOT_ALARM_MS } from "@pos/shared/print-lifecycle";
+import { PrintJob } from "@/models/PrintJob";
+import { readPrintAttention } from "@/lib/print-attention";
+import { backdatePrintJob, check } from "./harness";
+import { HOST, freshHost, lease, queueBill, queueKot, setRaw } from "./lifecycle";
+
+export async function legAF(nowMs: number): Promise<void> {
+  console.log("\n(af) the waiting-slips feed: what waits for a person, cafe-wide, bounded");
+  await freshHost(nowMs);
+  const fresh = await queueKot(nowMs);
+  const waiting = await queueKot(nowMs);
+  await backdatePrintJob(waiting, new Date(nowMs - PRINT_KOT_ALARM_MS - 5_000));
+  await setRaw(waiting, { lastError: "The printer is not connected.", originDeviceId: "phone-1" });
+  const bill = await queueBill(nowMs);
+  await setRaw(bill, { status: "needs-confirm" });
+  const failed = await queueKot(nowMs);
+  await setRaw(failed, { status: "failed", lastError: "This slip is too long to print." });
+  const printed = await queueKot(nowMs);
+  await backdatePrintJob(printed, new Date(nowMs - 60_000));
+  await setRaw(printed, { status: "printed" });
+  const old = await queueKot(nowMs);
+  await backdatePrintJob(old, new Date(nowMs - PRINT_ATTENTION_WINDOW_MS - 60_000));
+  await setRaw(old, { status: "failed" });
+
+  let feed = await readPrintAttention(nowMs);
+  const ids = feed.rows.map((row) => row.id);
+  check("(af) a slip made just now is not waiting yet (it has 20 s to print)", !ids.includes(fresh));
+  check("(af) a slip still queued after 20 s waits, with why and who asked", ids.includes(waiting) && feed.rows.find((r) => r.id === waiting)?.lastError === "The printer is not connected." && feed.rows.find((r) => r.id === waiting)?.originDeviceId === "phone-1");
+  check("(af) a bill to check and a slip that could not print wait too, with where they print", ids.includes(bill) && ids.includes(failed) && feed.rows.find((r) => r.id === failed)?.targetDeviceId === HOST);
+  check("(af) a printed slip and one older than the queued retention never show", !ids.includes(printed) && !ids.includes(old));
+  check("(af) the oldest waits first", ids[0] === waiting);
+
+  // A slip being printed right now waits for nobody.
+  await backdatePrintJob(fresh, new Date(nowMs - PRINT_KOT_ALARM_MS - 1_000));
+  await PrintJob.updateMany({ _id: { $in: [waiting] } }, { $set: { status: "dismissed" } });
+  const leased = await lease(nowMs);
+  feed = await readPrintAttention(nowMs);
+  check("(af) a leased slip leaves the feed while it prints", leased.jobs[0]?.id === fresh && !feed.rows.some((r) => r.id === fresh));
+
+  // Bounded: one read of at most PRINT_ATTENTION_LIMIT rows, and it says when it was cut.
+  for (let i = 0; i < PRINT_ATTENTION_LIMIT + 1; i++) {
+    const id = await queueKot(nowMs);
+    await setRaw(id, { status: "failed" });
+  }
+  feed = await readPrintAttention(nowMs);
+  check("(af) a long backlog is cut at the limit and says so", feed.rows.length === PRINT_ATTENTION_LIMIT && feed.truncated);
+}
+```
+
+In `apps/cafe/scripts/verify-print-host-live.ts`, find:
+
+```ts
+import { legV, legW, legX } from "./print-host-live/lifecycle-actions";
+import { legAA, legAB, legAC, legY, legZ } from "./print-host-live/order-jobs";
+import { legAD, legAE } from "./print-host-live/agent";
+
+async function main(): Promise<void> {
+  const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
+```
+
+Replace it with:
+
+```ts
+import { legV, legW, legX } from "./print-host-live/lifecycle-actions";
+import { legAA, legAB, legAC, legY, legZ } from "./print-host-live/order-jobs";
+import { legAD, legAE } from "./print-host-live/agent";
+import { legAF } from "./print-host-live/attention";
+
+async function main(): Promise<void> {
+  const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
+```
+
+In `apps/cafe/scripts/verify-print-host-live.ts`, find:
+
+```ts
+    // Phase 1 Session 1C legs (the owner's two-attempt rule; the job-aware self-order lane).
+    await legAD(Date.now());
+    await legAE(Date.now());
+  } finally {
+    await mongoose.connection.dropDatabase();
+    await mongoose.disconnect();
+```
+
+Replace it with:
+
+```ts
+    // Phase 1 Session 1C legs (the owner's two-attempt rule; the job-aware self-order lane).
+    await legAD(Date.now());
+    await legAE(Date.now());
+    // Phase 1 Session 1D leg (the waiting-slips feed every device's pulse carries).
+    await legAF(Date.now());
+  } finally {
+    await mongoose.connection.dropDatabase();
+    await mongoose.disconnect();
+```
+
+- [ ] **Step 2: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx tsc --noEmit && echo TSC_OK && MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_print_host npm run verify:print:live 2>&1 | tail -3`
+Expected: `TSC_OK`; `206 passed, 0 failed`
+
+- [ ] **Step 3: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/scripts/print-host-live/agent.ts apps/cafe/scripts/print-host-live/attention.ts apps/cafe/scripts/verify-print-host-live.ts
+git commit -m "test(print): live leg af (the waiting-slips feed) and leg ae's reason for a cancelled order"
+```
+
+---
+
+### Task D5: full verification, builds, the E2E exit check, Results
+
+**Files:** Modify this plan (fill in **Session 1D Results**) and the memory file `printing-redesign-2026-10.md`.
+
+- [ ] **Step 1: Every suite**
+
+```bash
+cd /d/kd/lucifer/packages/shared && npm test 2>&1 | grep -E "^# (tests|pass|fail)"; npx tsc --noEmit -p .
+cd /d/kd/lucifer/apps/cafe && npm test 2>&1 | grep -E "^# (tests|pass|fail|skipped)|^not ok"; npx tsc --noEmit; npm run lint 2>&1 | tail -4
+cd /d/kd/lucifer/apps/hub && npx tsc --noEmit && echo HUB_TSC_OK
+cd /d/kd/lucifer/apps/mobile && npx tsc --noEmit && npm run lint && npm test 2>&1 | grep -E "^# (tests|pass|fail)" && npm run test:app 2>&1 | grep -E "^Tests:"
+cd /d/kd/lucifer/apps/desktop && npm test 2>&1 | grep -E "^# (tests|pass|fail)"
+cd /d/kd/lucifer && npm run test:print-tools 2>&1 | grep -E "^# (tests|pass|fail)"
+cd /d/kd/lucifer/apps/cafe && MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_print_host npm run verify:print:live 2>&1 | tail -3
+```
+
+Expected:
+- shared: **637/637**, tsc 0.
+- cafe: **4173 tests, 4172 pass, 0 fail, 1 skipped** (the skip is 1C's `go-live-dl` planning-file pin). If the session merged a newer `origin/main` first, add that merge's own tests and say so in Results.
+- cafe: tsc 0; lint 0 errors and the 2 old warnings. Hub: `HUB_TSC_OK`.
+- mobile: tsc 0, lint 0, node 114/114, Jest 3/3 (untouched). desktop: 191/191 (untouched). print tools: 7/7.
+- live legs: **`206 passed, 0 failed`** (1C's 199, plus (af)'s 7).
+
+- [ ] **Step 2: The Next production build**
+
+Run: `cd /d/kd/lucifer/apps/cafe && npm run build 2>&1 | tail -15`
+Expected: success, 123 routes (1D adds no route).
+
+- [ ] **Step 3: Both APKs, x86_64 first** (Session 1A's Task 10 Step 3 commands, `GRADLE_USER_HOME='D:\gradle-home'`)
+
+Expected: `BUILD SUCCESSFUL` twice, each APK holding only its own ABI. 1D changes no app code, so the hashes should equal Session 1C's (`fc4181e4…`, `9f89cd9a…`, `f3f62149…`). Record them either way.
+
+- [ ] **Step 4: The E2E exit check** (local POS + emulator app + fake printer; a failure here is a finding, never faked)
+
+Bring the harness up as Session 1C's Task C6 Step 4, with a fresh database `pos_scratch_e2e_1d` and its own script-generated env file (`secrets`; never printed or committed). Start the emulator, the POS and the fake printer as background commands with a 2-hour limit (a shorter limit kills them mid-run). Sign in with TAB to the password field and check the focus in a uiautomator dump before typing the secret. Choose the network printer `10.0.2.2` : `9100`, then "Print all slips on this device". Use a scratchpad state script (projection without `payload`). Count only the fake printer's `bytes > 0` jobs, and give each fake-printer run its own `--out` folder (its `jobs.log` appends across restarts). A slow swipe (≥ 300 ms) dismisses a notice; a tap low on the screen with the keyboard open lands on the keyboard.
+
+1. **Nothing waits: no count, no section.** The printer button reads "Printer connected — open printer setup" and the sheet shows no "Slips waiting".
+2. **The printer off: the alarm, the count, the panel; no attempt burned.** Stop the fake printer (by PID). Send a KOT. Expected: within one pulse after 20 s (by 40 s) the device rings once and shows "KOT round 1 · T-n has not printed yet." with a **Show** button, and the printer button reads "1 slip waiting — open printer setup" with a red "1". Show opens the sheet on "Waiting for the printer (1)": the slip, its age, "The printer is off or not connected.", Print now and Clear. Print now answers "It prints by itself as soon as the printer is ready." The job: one lease, one `failed(not sent: …)`, `uncertainAttempts 0`. Start the fake printer: the slip prints once, unlabelled; the row, the count and the notice are gone within one pulse.
+3. **Couldn't print → Retry: one tap, one try.** A scratchpad script creates a KOT as `e2e-script-device` with the agent headers, leases it at once as the host (so the app cannot print it), then sets it as two expired leases leave it (`status: failed`, `uncertainAttempts 2`, `labels: ["REPRINT"]`, `lastError: "lease expired: may have printed"`, the lease removed; the two-attempt rule itself is proven by live leg (ad)). Expected: the host rings with "… could not print."; the panel shows "Couldn't print (1)" · "Tried twice. Check the printer, then retry." with Retry and Clear. Retry: one REPRINT copy prints within seconds (larger than a plain KOT: the banner), the job `printed`, `uncertainAttempts 1`, log `retried(print again)`, and the row leaves within one pulse.
+4. **Check the bill → Print again; It printed.** As 1C's item 5 (settle an open order with the bill header, lease the bill as the host, never ack): about 90 s later the host rings "Bill · … may not have printed."; the panel shows "Check the bill" · "It may already have printed. Check the printer." Print again prints one DUPLICATE copy (decode its `GS v 0` raster: the DUPLICATE banner), `confirmed(print again: …)`, `printed`. Repeat with a second bill and tap It printed: `printed`, no paper.
+5. **No host: the pulse sweep, and a second device clears a slip.** In the sheet, Stop printing here → Yes, remove. The script creates a KOT as `e2e-script-device` (with no host it is that device's own job) and leases it as that device, never acking. No device leases it again, so only the pulse sweep can expire it: within about 150 s it is `queued`, `REPRINT`, `expired(lease expired: may have printed)`. Expected: the emulator's panel shows it under "Waiting for the printer" (every device sees every waiting slip). The script then clears it as a second device (`POST /api/print-jobs/<id>/dismiss` with `{ reason: "staff" }`): 200, and the row leaves the emulator's panel within one pulse.
+6. **I3, recorded, not exercised end to end:** a slip that cannot be drawn cannot be forced on the emulator; Task D1's tests prove it (two refusals of the slip itself while the printer is ready → `failed`; printer refusals never count).
+7. **G5, the known TCP limit, recorded:** as Session 1C's Results item 7 (a cut mid-slip is detected only sometimes on Android TCP; Phase 3's `DLE EOT`).
+8. Clean up: `adb reverse --remove-all`; stop the POS and the fake printer by PID (`Stop-Process`, command lines checked first); `pm clear com.possoftware.pos`; `adb emu kill`. Leave `pos_scratch_e2e_1d` and its env file for 1E and say so in Results.
+
+`adb logcat -b crash` must hold no entry for `com.possoftware.pos` for the whole step. Record any other entry with its process (the emulator's own Bluetooth stack can crash-loop on a cold boot; `uiautomator dump` itself can crash with "Bad file descriptor"); clear the buffer after boot, before launching the app.
+
+- [ ] **Step 5: Results, memory, commit, push**
+
+Fill in **Session 1D Results** below: every command and its totals; each changed existing pin and why (Tasks D1, D2 and D3 list them); the live-leg count; the APK paths, sizes and hashes; the E2E findings with screenshot paths; every deviation and why; open issues. Update the memory file `printing-redesign-2026-10.md`: Session 1D done with its last commit, and the next step (the 1D review gate, which writes Session 1E).
+
+```bash
+cd /d/kd/lucifer
+git add docs/superpowers/plans/2026-10-02-phase-1-lifecycle.md
+git commit -m "docs(print): Phase 1 Session 1D results"
+git log --oneline -10
+GIT_TERMINAL_PROMPT=0 git push origin feat/printing-reliability 2>&1 | sed 's/github_pat_[A-Za-z0-9_]*/[REDACTED]/g'
+```
+
+Push only with the repo's token credential (check `git config --local --get-all credential.helper` first: an empty line, then the `store --file=…` line). If authentication fails, stop and tell the owner. Do **not** merge, push `main`, or start Session 1E. Report to the owner in Hinglish, then stop.
+
+---
+
+## Session 1D Results (filled in by the implementer)
+
+(Empty until Session 1D runs.)

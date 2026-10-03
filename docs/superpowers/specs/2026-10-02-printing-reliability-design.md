@@ -392,7 +392,7 @@ The Phase 1 plan ([2026-10-02-phase-1-lifecycle.md](../plans/2026-10-02-phase-1-
 - **No `{status, nextAttemptAt, createdAt, _id}` index.** No Phase 1 query uses it.
 - **`myRecentJobs` rides the 20 s pulse, not the wake.** Only agents poll wake; Active CPU is the tightest limit.
 - **A `"retried"` log event** covers Print again and Print now.
-- **The cashier's "print again" resets the counters and sets `approvedAt`.** The copy is neither parked as stale nor failed by the uncertain limit it came from.
+- **The cashier's "print again" sets `approvedAt` and is the bill's one labelled retry** (corrected at the Session 1C review gate, M8: since the owner's rule after Session 1B it sets `uncertainAttempts = 1`, not 0). The copy is never parked as stale, and a second "maybe" fails it.
 - **A spent daily wake share stops the agent's polling** until the next cafe-day. Leasing then rides realtime nudges and the pulse, so the shared cap truly bounds the cafe's total.
 - **Dismiss covers `queued`, `needs-confirm` and `failed`, never `leased`.**
 - **With a host, the sweep retargets every queued job to the current host** (rows from before Phase 1, and rows from before a re-designation).
@@ -424,6 +424,17 @@ The Phase 1 plan ([2026-10-02-phase-1-lifecycle.md](../plans/2026-10-02-phase-1-
 - **Known limit (gate finding G5):** on the Android app's TCP lane, a printer that cuts the connection after the raster was buffered reads as printed. The post-job `DLE EOT` check (§9.6, §10, Phase 3) detects it.
 - **The one waiting-slips panel lands in Session 1D** (§10): its rows come from 1D's pulse feed, with no host only 1D's pulse sweep moves them, and 1C and 1D release together.
 - **Nothing is deployed until every phase is done (owner).** The free-tier check is a local measurement (§17.3 item 5).
+
+**Rulings at the Session 1C review gate (2026-10-03).** Implemented in Session 1D unless noted:
+
+- **A slip that cannot be drawn counts (owner, I3).** A refusal caused by the slip itself (it could not be drawn in time, or its end-of-day figures never loaded) counts toward the two attempts: the second one for a slip while its printer is ready sends it to `failed` ("Couldn't print"), freeing its device's line. A refusal because the printer is off (not connected, Bluetooth off, busy, open in another tab, no printer) still never counts. The agent counts per slip in memory and acks the second one `permanent`; the server rule is unchanged.
+- **The agent's minors.** An unanswered failed ack is kept and re-sent like a printed one (so a lost answer never turns a refusal into a counted "maybe"); the pending-ack store keeps an in-memory copy when storage refuses a write; each lease waits for any ack still on the wire; a maybe whose answer names a retry time costs no extra lease.
+- **The budget, recounted.** One trailing empty lease per burst (Phase 1's busy day: 2,400 lease and ack requests ≤ the 2,640 estimate) and the refusal re-check per device (at most 2,880 requests a day for a printer that reports ready but keeps refusing) are pinned. Phase 2's stations must recount (one lease per round).
+- **One attention feed (§10).** The waiting-slips panel, the printer button's count and the 20 s alarm read ONE bounded read on the existing pulse: every slip still `queued` 20 s after it was made, every `needs-confirm` and every `failed` slip of the last 12 h, oldest first, at most 20, each naming its asking and its printing device. `myRecentJobs` is not added: a second read on the hottest poll was not worth it (Active CPU is the tightest limit).
+- **Readback by exception (§10).** A slip that prints needs nobody. Every slip that has not printed within 20 s shows with its state on every device, `/pos` included, through the printer button's count and the panel.
+- **The alarm (§10)** fires at the first pulse after the 20 s mark (between 20 s and 40 s), once per slip, on the device that asked for it and on the device that prints it, for a KOT and for a bill to check. Its notice carries a Show button that opens the printer sheet (on a phone the notice covers the top bar).
+- **The pulse runs the sweep** after its answer, at most once per 60 s per instance (§17.3 rule 2): with no host it is the only request that expires leases, sends jobs home and repairs KOT rounds. **A staff Retry or Print again is aimed** at the printing device with a `print-status`, since with no host agents never lease on the broadcast.
+- **Old tabs (the 1A reviewer's recommendation 3): no change.** They keep today's pulse feeds for the release window; the dashboard band stays one release and goes with the old claim drain.
 
 ## 8. Routing (Phase 2)
 
@@ -523,6 +534,7 @@ Routing is a pure function, `routeJobs(event, catalog, printers, devices)`, with
     - **Fallback:** `myRecentJobs` on the existing 20 s pulse.
     - No new poll.
   - A KOT still not `printed` after 20 s sounds an alarm and shows a banner. The alarm also plays on every printer device.
+  - **As ruled at the Session 1C review gate (§7.10):** the readback is by exception (a slip not printed within 20 s shows with its state on every device, through the printer button's count and the panel; a printed slip needs nobody), and the alarm fires at the first pulse after the 20 s mark, with a notice that opens the panel.
 - **One waiting-slips panel** (owner, after Session 1B; Session 1D): every slip that is not printed yet and needs no more from the system, in one clear, simple panel on every device, opened from the printer dot, which shows their count. Three groups, in plain words:
   - **Waiting for the printer:** queued for a printer that is off or not ready, or older than 30 minutes ("stale"). Retry (Print now) and Clear.
   - **Check the bill:** a bill that may already have printed (`needs-confirm`). Print again (DUPLICATE), It printed, and Clear.
