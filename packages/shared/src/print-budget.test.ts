@@ -1,7 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PRINT_WAKE_DAILY_CAP } from "./print-job";
-import { printAgentPollsWake, printAgentWakeIntervalMs, printWakeAgentCap } from "./print-agent-wire";
+import { PRINT_HOST_MAX_AGE_MS, PRINT_WAKE_DAILY_CAP } from "./print-job";
+import {
+  PRINT_AGENT_REFUSED_RECHECK_MS,
+  PRINT_AGENT_TIMER_MAX_MS,
+  PRINT_AGENT_TIMER_MIN_MS,
+  printAgentMayLease,
+  printAgentPollsWake,
+  printAgentTimerDelayMs,
+  printAgentWakeIntervalMs,
+  printWakeAgentCap,
+} from "./print-agent-wire";
+import { PRINT_ACK_PENDING_MAX_MS, PRINT_ACK_RETRY_MS, PRINT_BACKOFF_MS, PRINT_MAX_PAPER_ATTEMPTS } from "./print-lifecycle";
 import {
   PRINT_AGENT_MIN_CADENCE_MS,
   PRINT_BUDGET_BUSY_DAY,
@@ -96,4 +106,40 @@ test("realtime: three Worker requests per slip stay under 5 % of the free 100,00
   const perDay = PRINT_BUDGET_BUSY_DAY.slips * PRINT_REALTIME_PER_SLIP + PRINT_REALTIME_BASE_PER_DAY;
   assert.equal(perDay, 3_935);
   assert.ok(perDay <= REALTIME_FREE_REQUESTS_PER_DAY * 0.05, `${perDay}/day`);
+});
+
+// Session 1C (the owner's decisions after Session 1B): no automatic attempt while a printer is off, at
+// most two attempts that may reach paper per slip, and nothing the agent adds is a recurring request on
+// an ordering device. Every new cadence the agent has is pinned here.
+test("1C agent: it never leases while its printer can not print, while a refusal holds, or while busy", () => {
+  const open = { enabled: true, busy: false, running: false, printerReady: true, refusalHolds: false };
+  assert.equal(printAgentMayLease(open), true, "an open gate leases");
+  for (const closed of [{ enabled: false }, { busy: true }, { running: true }, { printerReady: false }, { refusalHolds: true }]) {
+    assert.equal(printAgentMayLease({ ...open, ...closed }), false, `closed by ${JSON.stringify(closed)}`);
+  }
+});
+
+test("1C agent: its one local timer is clamped to 2–30 s from the server's clock, never a tight loop", () => {
+  const now = 1_800_000_000_000;
+  assert.equal(printAgentTimerDelayMs(now - 60_000, now), PRINT_AGENT_TIMER_MIN_MS, "a time in the past waits the shortest step");
+  assert.equal(printAgentTimerDelayMs(now + 10 * 60_000, now), PRINT_AGENT_TIMER_MAX_MS, "a far time is re-checked at the steady step");
+  assert.equal(printAgentTimerDelayMs(now + 5_000, now), 5_000);
+  assert.ok(PRINT_AGENT_TIMER_MIN_MS >= PRINT_BACKOFF_MS[0], "never sooner than the shortest backoff");
+  assert.ok(PRINT_AGENT_TIMER_MAX_MS <= PRINT_BACKOFF_MS[PRINT_BACKOFF_MS.length - 1], "never later than the steady backoff");
+});
+
+test("1C agent: a printer that says ready but keeps refusing costs at most one lease and one ack per 30 s per slip, until the slip is stale", () => {
+  assert.ok(PRINT_AGENT_REFUSED_RECHECK_MS >= 30_000, "a refusal holds the agent at least 30 s");
+  const perStuckSlip = 2 * Math.ceil(PRINT_HOST_MAX_AGE_MS / PRINT_AGENT_REFUSED_RECHECK_MS);
+  assert.ok(perStuckSlip <= 120, `${perStuckSlip} requests over the 30-minute stale window, then the slip waits for a tap`);
+});
+
+test("1C agent: a ready printer makes at most two attempts per slip (the first plus one labelled retry): at most 4 requests", () => {
+  assert.equal(PRINT_MAX_PAPER_ATTEMPTS, 2, "the owner's rule");
+  assert.ok(PRINT_MAX_PAPER_ATTEMPTS * 2 <= 4, "a lease and an ack per attempt");
+});
+
+test("1C agent: an unanswered printed ack is re-sent every 5 s for at most 10 minutes, only while no answer comes", () => {
+  assert.ok(PRINT_ACK_RETRY_MS >= 5_000, "never faster than every 5 s");
+  assert.ok(PRINT_ACK_PENDING_MAX_MS / PRINT_ACK_RETRY_MS <= 120, "at most 120 re-sends per lost ack, then it is dropped");
 });

@@ -153,6 +153,7 @@
     "lib/print-order-jobs.test.ts",
     "lib/print-repair.test.ts",
     "lib/print-write-outcome.test.ts",
+    "lib/print-agent.test.ts",
     "lib/print-routing.test.ts",
     "lib/pos-install.test.ts",
     "lib/pos-install-paths.test.ts",

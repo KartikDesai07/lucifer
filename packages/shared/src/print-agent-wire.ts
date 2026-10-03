@@ -78,6 +78,33 @@ export function printAgentWakeIntervalMs(input: {
   return PRINT_WAKE_SLOW_MS;
 }
 
+/** After a refusal made before any byte was sent (sent:"no": the printer was off or unreachable), the
+ *  agent leases again only once its printer's state changes, or after this long (a printer that says
+ *  ready but keeps refusing). The owner's rule after Session 1B: no automatic attempts while a printer
+ *  is off. A printer the device KNOWS is not connected is never leased for at all. */
+export const PRINT_AGENT_REFUSED_RECHECK_MS = 30_000;
+/** The agent's one local timer is set from the server's retryAt / nextAttemptAt (server time), so it is
+ *  clamped: never sooner than the shortest backoff, never later than the steady one, whatever the
+ *  device's own clock says (spec §15, clock skew). */
+export const PRINT_AGENT_TIMER_MIN_MS = 2_000;
+export const PRINT_AGENT_TIMER_MAX_MS = 30_000;
+
+export function printAgentTimerDelayMs(atMs: number, nowMs: number): number {
+  return Math.min(PRINT_AGENT_TIMER_MAX_MS, Math.max(PRINT_AGENT_TIMER_MIN_MS, atMs - nowMs));
+}
+
+/** Whether the agent may ask for a lease right now: its tab drains (the lock), nothing is printing, no
+ *  cycle is running, the printer can print here, and a recent refusal does not hold it back. */
+export function printAgentMayLease(input: {
+  enabled: boolean;
+  busy: boolean;
+  running: boolean;
+  printerReady: boolean;
+  refusalHolds: boolean;
+}): boolean {
+  return input.enabled && !input.busy && !input.running && input.printerReady && !input.refusalHolds;
+}
+
 /** One leased job (POST /api/print-jobs/lease). The payload rides the lease, so feeds stay metadata only. */
 export interface LeasedPrintJob {
   id: string;

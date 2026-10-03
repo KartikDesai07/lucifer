@@ -47,7 +47,9 @@ export const REALTIME_HEALTH_TTL_MS = REALTIME_PING_INTERVAL_MS + REALTIME_PONG_
 const RECONNECT_BASE_MS = 2000;
 const RECONNECT_MAX_MS = 60_000;
 
-export type RealtimeListener = (kind: string) => void;
+/** `message` (printing Phase 1 Session 1C) is the parsed frame, so the print agent and the readback
+ *  can read a "print-status" frame's `job`; every older listener reads only `kind`. */
+export type RealtimeListener = (kind: string, message: Readonly<Record<string, unknown>>) => void;
 
 const listeners = new Set<RealtimeListener>();
 let socket: WebSocket | null = null;
@@ -149,19 +151,21 @@ function connect(): void {
       pongTimer = undefined;
     }
     let kind: string;
+    let message: Readonly<Record<string, unknown>>;
     try {
       const data: unknown = JSON.parse(String(event.data));
       if (typeof data !== "object" || data === null) return; // "pong" lands here
       const raw = (data as { kind?: unknown }).kind;
       if (typeof raw !== "string") return;
       kind = raw;
+      message = data as Record<string, unknown>;
     } catch {
       return; // "pong" is not JSON — already counted as proof of life above
     }
     // A throwing listener must not starve the others.
     for (const listener of [...listeners]) {
       try {
-        listener(kind);
+        listener(kind, message);
       } catch {
         // Ignore — one bad subscriber cannot break the fan-out.
       }

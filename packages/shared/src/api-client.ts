@@ -68,14 +68,17 @@ export function apiGet<T>(url: string): Promise<T> {
 // PUT is this app's update verb almost everywhere; PATCH exists for the few seams
 // where an admin-only partial edit is deliberately split from a staff-facing PUT
 // so the two can carry different auth guards (tables, CR1.1).
+// `options.headers` (printing Phase 1 Session 1C): extra request headers, e.g. the print-agent opt-in.
+// Optional and last, so every existing caller (the cafe and the Hub) is unchanged.
 export function apiSend<T>(
   url: string,
   method: "POST" | "PUT" | "PATCH" | "DELETE",
   payload?: unknown,
+  options: { headers?: Record<string, string> } = {},
 ): Promise<T> {
   return fetch(url, {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: { ...options.headers, "Content-Type": "application/json" },
     body: payload === undefined ? undefined : JSON.stringify(payload),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   }).then(
