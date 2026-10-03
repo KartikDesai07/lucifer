@@ -9,9 +9,12 @@ import {
   contrastRatio,
   bestForeground,
   checkAccent,
+  accentProblemText,
+  type AccentProblem,
 } from "./appearance-contrast";
 import { APPEARANCE_PRESETS, PUBLIC_DESTRUCTIVE } from "./appearance-presets";
-import { PRESET_IDS } from "./appearance";
+import { PRESET_IDS, DEFAULT_APPEARANCE } from "./appearance";
+import { appearanceSchema } from "./schemas/settings-print.schema";
 
 // CR2.4 §22.5 A18a — the full preset-self-contrast matrix. This file is the
 // GATE the palette hex values in appearance-presets.ts must clear; a failing
@@ -181,5 +184,83 @@ test("MATRIX: PUBLIC_DESTRUCTIVE's bg clears WCAG_AA_LARGE vs EVERY preset's bac
       assert.ok(bgRatio >= WCAG_AA_LARGE, `destructive/${scheme} vs ${presetId} background: ${bgRatio} < ${WCAG_AA_LARGE}`);
       assert.ok(cardRatio >= WCAG_AA_LARGE, `destructive/${scheme} vs ${presetId} card: ${cardRatio} < ${WCAG_AA_LARGE}`);
     }
+  }
+});
+
+// ── reason + plain-English text (Settings slice 9) ───────────────────────────
+
+const ALL_REASONS: AccentProblem[] = ["invalid", "unknown-preset", "text", "light", "dark"];
+
+function reasonOf(hex: string, presetId: string): AccentProblem | "ok" {
+  const result = checkAccent(hex, presetId);
+  return result.ok ? "ok" : result.reason;
+}
+
+test("checkAccent reason: a near-white accent fails as \"light\" on every preset, with the raw failing string unchanged", () => {
+  for (const presetId of PRESET_IDS) {
+    assert.equal(reasonOf("#fefdfb", presetId), "light", presetId);
+  }
+  const result = checkAccent("#fefdfb", "classicBistro");
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.match(result.failing, /^accent vs light background: [\d.]+ < 3$/);
+});
+
+test("checkAccent reason: a near-black accent fails as \"dark\" on every preset, with the raw failing string unchanged", () => {
+  for (const presetId of PRESET_IDS) {
+    assert.equal(reasonOf("#050505", presetId), "dark", presetId);
+  }
+  const result = checkAccent("#050505", "classicBistro");
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.match(result.failing, /^accent vs dark (background|card): [\d.]+ < 3$/);
+});
+
+test("checkAccent reason: a malformed hex is \"invalid\" and an unknown preset is \"unknown-preset\"", () => {
+  assert.equal(reasonOf("zzz", "classicBistro"), "invalid");
+  assert.equal(reasonOf("#8A4A24", "classicBistro"), "invalid", "uppercase is not normalized here");
+  assert.equal(reasonOf("#9a6a3a", "midnightDiner"), "unknown-preset");
+  const result = checkAccent("zzz", "classicBistro");
+  if (!result.ok) assert.equal(result.failing, "accent is not a valid hex color");
+});
+
+test("checkAccent reason: the \"text\" branch is a guard the current thresholds cannot reach — the best of black/white on ANY colour clears 4.5, so no hex lands on it (a coarse sweep of the whole RGB cube finds none)", () => {
+  const hex2 = (v: number) => v.toString(16).padStart(2, "0");
+  const STEP = 15;
+  let sampled = 0;
+  for (let r = 0; r < 256; r += STEP) {
+    for (let g = 0; g < 256; g += STEP) {
+      for (let b = 0; b < 256; b += STEP) {
+        sampled += 1;
+        assert.notEqual(reasonOf("#" + hex2(r) + hex2(g) + hex2(b), "classicBistro"), "text");
+      }
+    }
+  }
+  assert.ok(sampled > 1000, "the sweep must actually sample the cube");
+});
+
+test("accentProblemText: every reason has plain English — non-empty, no digits, no \"vs\", no hex", () => {
+  for (const reason of ALL_REASONS) {
+    const text = accentProblemText(reason);
+    assert.ok(text.length > 0, reason);
+    assert.ok(!/\d/.test(text), `${reason}: no digits in ${text}`);
+    assert.ok(!/vs/i.test(text), `${reason}: no "vs" in ${text}`);
+    assert.ok(!/#/.test(text), `${reason}: no hex in ${text}`);
+  }
+  assert.equal(new Set(ALL_REASONS.map(accentProblemText)).size, ALL_REASONS.length, "every reason reads differently");
+});
+
+test("appearanceSchema: a failing accent is rejected with the plain message for its reason, never the raw failing string", () => {
+  const cases: Array<[string, AccentProblem]> = [
+    ["#fefdfb", "light"],
+    ["#050505", "dark"],
+  ];
+  for (const [hex, reason] of cases) {
+    const parsed = appearanceSchema.safeParse({ ...DEFAULT_APPEARANCE, accentOverride: hex });
+    assert.equal(parsed.success, false, hex);
+    if (parsed.success) continue;
+    const issue = parsed.error.issues.find((i) => i.path.includes("accentOverride"));
+    assert.ok(issue, "the rejection must land on accentOverride");
+    assert.equal(issue.message, accentProblemText(reason));
+    const result = checkAccent(hex, DEFAULT_APPEARANCE.presetId);
+    assert.ok(!result.ok && !issue.message.includes(result.failing), "the raw failing string must not leak into the message");
   }
 });

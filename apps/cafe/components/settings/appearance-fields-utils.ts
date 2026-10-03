@@ -9,13 +9,15 @@ import { checkAccent } from "@pos/shared/appearance-contrast";
 // FONT_PAIR_KEYS/CORNER_RADII/DENSITIES/LOGO_PLACEMENTS, never off these maps'
 // own key order).
 
-export const FONT_PAIR_LABELS: Record<FontPairKey, string> = {
-  clean: "Clean — Inter",
-  classic: "Classic — Playfair Display + Lato",
-  warm: "Warm — Quicksand + Nunito Sans",
-  bold: "Bold — Oswald + Inter",
-  elegant: "Elegant — Cormorant Garamond + Lato",
-  friendly: "Friendly — Baloo 2 + Nunito Sans",
+// A font tile shows the pair's name (written in its own display font) and, in a
+// small line under it, the font names.
+export const FONT_PAIR_LABELS: Record<FontPairKey, { name: string; fonts: string }> = {
+  clean: { name: "Clean", fonts: "Inter" },
+  classic: { name: "Classic", fonts: "Playfair Display + Lato" },
+  warm: { name: "Warm", fonts: "Quicksand + Nunito Sans" },
+  bold: { name: "Bold", fonts: "Oswald + Inter" },
+  elegant: { name: "Elegant", fonts: "Cormorant Garamond + Lato" },
+  friendly: { name: "Friendly", fonts: "Baloo 2 + Nunito Sans" },
 };
 
 export const CORNER_RADIUS_LABELS: Record<CornerRadius, string> = {
@@ -32,8 +34,8 @@ export const DENSITY_LABELS: Record<Density, string> = {
 
 export const LOGO_PLACEMENT_LABELS: Record<LogoPlacement, string> = {
   left: "Left",
-  center: "Center",
-  hidden: "Hidden",
+  center: "Centre",
+  hidden: "No logo",
 };
 
 // A curated, pre-vetted swatch row (§22.1 S5) instead of a bare color wheel,

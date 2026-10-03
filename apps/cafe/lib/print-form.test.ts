@@ -140,16 +140,15 @@ test("PIN: use-settings-section-form.ts's onInvalid resolves the errored field's
   );
 });
 
-test('PIN: no file under components/settings/ or app/(dashboard)/settings/ contains role="tablist"/role="tab" belonging to the retired SettingsForm tab router (excepting the pre-existing, unrelated AppearancePreview/AppearanceSegmentedField colour-scheme widget) — "keep every panel mounted, hidden via a class" is now obsolete BY CONSTRUCTION: one react-hook-form instance per route means there is no sibling panel to keep mounted at all', () => {
+test('PIN: no file under components/settings/ or app/(dashboard)/settings/ contains role="tablist"/role="tab" belonging to the retired SettingsForm tab router — "keep every panel mounted, hidden via a class" is now obsolete BY CONSTRUCTION: one react-hook-form instance per route means there is no sibling panel to keep mounted at all', () => {
   // Needle built by concatenation (testing.md grep-gate rule).
   const roleAttr = "role" + "=";
   const tablistValue = '"' + "tablist" + '"';
   const tabValue = '"' + "tab" + '"';
 
-  const KNOWN_SEGMENTED_CONTROL_FILES = new Set([
-    `${SETTINGS_COMPONENTS_DIR}/AppearancePreview.tsx`,
-    `${SETTINGS_COMPONENTS_DIR}/AppearanceSegmentedField.tsx`,
-  ]);
+  // No exemptions any more: the Appearance widgets moved to radio tiles in
+  // slice 9, so the scan covers every file.
+  const KNOWN_SEGMENTED_CONTROL_FILES = new Set<string>();
 
   const SKIP_DIRS = new Set(["node_modules", ".next"]);
   function walk(dirAbs: string, out: string[]): void {

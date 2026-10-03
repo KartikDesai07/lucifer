@@ -16,6 +16,7 @@ import {
 } from "../constants";
 import { PROMO_CODE_MAX } from "../public";
 import { DEFAULT_APPEARANCE, APPEARANCE_SCHEMA_VERSION } from "../appearance";
+import { accentProblemText } from "../appearance-contrast";
 
 // CR1.7 print customization — the Zod half of the bill*/kot* contract that
 // apps/cafe/lib/print.ts's resolver and models/Settings.ts's Mongoose schema
@@ -364,7 +365,7 @@ test("settingsSchema accepts a passing custom accentOverride, uppercase normaliz
   if (r.success) assert.equal(r.data.appearance?.accentOverride, "#9a6a3a");
 });
 
-test("settingsSchema rejects a low-contrast accentOverride, naming the failing pair", () => {
+test("settingsSchema rejects a low-contrast accentOverride with the plain-English message (accentProblemText), no raw pair or number", () => {
   const r = settingsSchema.safeParse({
     ...validPrintPayload(),
     appearance: { ...DEFAULT_APPEARANCE, accentOverride: "#fefdfb" },
@@ -373,7 +374,9 @@ test("settingsSchema rejects a low-contrast accentOverride, naming the failing p
   if (!r.success) {
     const issue = r.error.issues.find((i) => i.path.includes("accentOverride"));
     assert.ok(issue, "the rejection must land on the accentOverride path");
-    assert.match(issue!.message, /accent vs (light|dark) (background|card): [\d.]+ < 3/);
+    // Slice 9: the Save toast shows this message, so it is plain English, never the raw pair.
+    assert.equal(issue!.message, accentProblemText("light"));
+    assert.ok(!/accent vs|\d/.test(issue!.message), "no raw contrast pair or number in the message");
   }
 });
 
