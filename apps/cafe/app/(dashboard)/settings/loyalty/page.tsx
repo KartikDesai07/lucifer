@@ -6,14 +6,16 @@ import { LoyaltyCard } from "@/components/settings/LoyaltyCard";
 import { LoyaltyStampGrid } from "@/components/settings/LoyaltyStampGrid";
 
 // CB-5A S5 — the Rewards & loyalty section page. Order follows the simplest
-// path top-down: on/off toggles (LoyaltyCard) → the stamp card + its rewards.
+// path top-down: sign-in and the stamp card switch (LoyaltyCard: the groups
+// "Diner accounts" and "Stamp card") → the rewards on the card (the group
+// "Rewards" in LoyaltyStampGrid). Settings pass slice 8: three groups in one
+// space-y-6 column, like Taxes and QR ordering.
 //
 // CB-5D — membership and levels are REMOVED (owner, 2026-09-15): no client
 // used them, and the owner clears the stored data himself.
 // LoyaltyAdvancedFields.tsx was DELETED — it existed only to hold those two
-// sections plus the unit-label field; with both sections gone, the unit
-// label moved into LoyaltyStampGrid (same `loyaltyRules` container) rather
-// than keeping a one-field "Advanced" panel around.
+// sections plus the unit-label field. The unit label (and the card size) now
+// sit in LoyaltyCard's "Stamp card" group, beside the other card-wide settings.
 //
 // The "Start from a template" picker was REMOVED from this page (owner,
 // 2026-09-14): the card is configured directly on the grid below instead.
@@ -29,10 +31,10 @@ export default function LoyaltySettingsPage() {
       {(settings, section) => (
         <SettingsSectionForm settings={settings} section={section}>
           {({ control, register, setValue, errors }) => (
-            <>
+            <div className="space-y-6">
               <LoyaltyCard control={control} register={register} errors={errors} />
               <LoyaltyStampGrid control={control} register={register} errors={errors} setValue={setValue} />
-            </>
+            </div>
           )}
         </SettingsSectionForm>
       )}

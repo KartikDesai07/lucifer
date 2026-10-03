@@ -51,6 +51,26 @@ type Cb4LegacyFields = {
 // its last reward's `at`, which is exactly what ladderOf() derives when no
 // cardSize is stored. Falls back to the default only for an empty ladder,
 // where there is no cycle to preserve.
+// Settings pass slice 8 — every key the reward panel registers, present on
+// every row (undefined when unset). A Controller that mounts WRITES its key
+// into the form values even when the value is undefined (react-hook-form 7.80
+// register → updateValidAndValue → set()), and isDirty is a deepEqual that
+// fails on a key-count difference. Without these keys, opening a reward and
+// then cancelling a new one left "Save changes" up with nothing changed.
+// JSON drops undefined, so what Save sends is unchanged.
+type MilestoneRow = LoyaltyRulesInput["milestones"][number];
+function withPanelKeys(row: MilestoneRow): MilestoneRow {
+  if (row === null || typeof row !== "object") return row;
+  return {
+    ...row,
+    itemProductId: row.itemProductId,
+    qty: row.qty,
+    minBill: row.minBill,
+    promoCode: row.promoCode,
+    claimWithinDays: row.claimWithinDays,
+  };
+}
+
 function cardSizeFromRows(rows: LoyaltyRulesInput["milestones"] | undefined): number {
   if (!Array.isArray(rows) || rows.length === 0) return LOYALTY_CARD_SIZE_DEFAULT;
   const highest = rows.reduce((max, row) => (typeof row?.at === "number" && row.at > max ? row.at : max), 0);
@@ -67,12 +87,12 @@ export function loyaltyRulesFormDefaults(
       v: LOYALTY_RULES_SCHEMA_VERSION,
       unitLabel: LOYALTY_UNIT_LABEL_DEFAULT,
       milestones: [
-        {
+        withPanelKeys({
           at: settings?.loyaltyStampsPerReward ?? LOYALTY_STAMPS_DEFAULT,
           kind: settings?.loyaltyRewardKind ?? LOYALTY_REWARD_KIND_DEFAULT,
           value: settings?.loyaltyRewardValue ?? LOYALTY_REWARD_VALUE_DEFAULT,
           item: settings?.loyaltyRewardItem ?? "",
-        },
+        }),
       ],
       // CB-5C — a brand-new card gets a real size so the grid has boxes to
       // draw. Never below the seeded reward's own `at`, or that reward would
@@ -91,7 +111,7 @@ export function loyaltyRulesFormDefaults(
   return {
     v: LOYALTY_RULES_SCHEMA_VERSION,
     unitLabel: partial.unitLabel ?? LOYALTY_UNIT_LABEL_DEFAULT,
-    milestones: partial.milestones ?? [],
+    milestones: Array.isArray(partial.milestones) ? partial.milestones.map(withPanelKeys) : [],
     // Absent on every doc saved before CB-5C. Derived from the rows rather
     // than defaulted to a constant, so the grid an existing cafe opens matches
     // the cycle its diners are ALREADY on (ladderOf's own fallback) instead of
