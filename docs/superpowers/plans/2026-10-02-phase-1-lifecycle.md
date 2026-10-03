@@ -15346,4 +15346,5 @@ Times are UTC.
 - **The once-only sheet close and notice loss** (E2E note): not reproduced; for the gate to look at.
 - **G5:** Android TCP detects a cut mid-slip only sometimes; Phase 3 (`DLE EOT`).
 - **The reviewer's "declined to judge" items** above, especially the Atlas `explain()` of the feed and the backgrounded-app render deadline under I3.
+- **`origin/main` moved during the session** to `7877d44`: the owner's "Settings > Rewards & loyalty", 14 cafe files including two `testChain` lines in `apps/cafe/package.json`, and no print or pulse file. Not merged here (this session merges only at Step 0); the 1D gate merges it and re-runs the suites.
 - 1C and 1D release together, and only after 1E (the exit scenarios, the soak, the local free-tier measurement). **Nothing was deployed.**
