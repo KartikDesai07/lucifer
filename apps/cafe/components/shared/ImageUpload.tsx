@@ -167,7 +167,7 @@ async function uploadBranding(slot: BrandingSlot, blob: Blob): Promise<string> {
 const SLOT_LABELS: Record<BrandingSlot, string> = {
   logo: "Logo",
   productLogo: "Logo",
-  heroImage: "Hero image",
+  heroImage: "Banner picture",
 };
 
 // Direct browser → store upload using a server-issued grant, so no image bytes

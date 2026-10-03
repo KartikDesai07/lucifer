@@ -250,7 +250,7 @@ async function main(): Promise<void> {
       assert.equal(parsed.success, false, "a near-white accent must fail checkAccent against classicBistro's own near-white background/card");
       if (parsed.success) return;
       const message = parsed.error.flatten().fieldErrors.appearance?.join(" ") ?? "";
-      assert.match(message, /vs accent|vs (light|dark) (background|card)/i, "the rejection message must name the failing contrast pair");
+      assert.match(message, /This button colour/, "the rejection message must be the plain accent message, not a raw contrast pair");
     });
 
     await scenario(8, "schema gate: appearance.v !== APPEARANCE_SCHEMA_VERSION is REJECTED", () => {

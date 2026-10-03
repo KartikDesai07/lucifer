@@ -9,7 +9,7 @@ import type { SettingsInput } from "@/schemas";
 import { resolveAppearance, appearanceCssVars } from "@pos/shared/appearance";
 import { FONT_PAIR_CLASSNAMES, FONT_PAIR_FAMILIES } from "@/lib/public-fonts";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { PrintSizeChoice } from "@/components/settings/PrintSizeChoice";
 import { PublicMenuHeader } from "@/components/public/PublicMenuHeader";
 import { PublicMenuItem, type PublicMenuProduct } from "@/components/public/PublicMenuItem";
 
@@ -34,6 +34,8 @@ const PREVIEW_HEADER = {
 };
 
 type Scheme = "light" | "dark";
+
+const SCHEMES = ["light", "dark"] as const;
 
 function noop() {
   // Intentional no-op — the preview is browse-only, PublicMenuItem's
@@ -65,37 +67,20 @@ export function AppearancePreview({ control }: AppearancePreviewProps) {
   } as CSSProperties;
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">Live preview</span>
-        <div role="tablist" aria-label="Preview color scheme" className="inline-flex gap-1 rounded-lg border p-1">
-          <Button
-            type="button"
-            role="tab"
-            aria-selected={scheme === "light"}
-            variant={scheme === "light" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setScheme("light")}
-          >
-            Light
-          </Button>
-          <Button
-            type="button"
-            role="tab"
-            aria-selected={scheme === "dark"}
-            variant={scheme === "dark" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setScheme("dark")}
-          >
-            Dark
-          </Button>
-        </div>
-      </div>
+    <div className="space-y-4">
+      <PrintSizeChoice
+        legend="Diner's phone in"
+        options={SCHEMES}
+        value={scheme}
+        onChange={setScheme}
+        labelOf={(v) => (v === "light" ? "Light mode" : "Dark mode")}
+        hint="Diners see the dark version when their phone is in dark mode, unless they choose light themselves."
+      />
 
       <div
         style={frameStyle}
         className={cn(
-          "mx-auto max-w-sm overflow-hidden rounded-2xl border bg-background text-foreground font-pub-body",
+          "mx-auto w-full max-w-sm overflow-hidden rounded-2xl border bg-background text-foreground font-pub-body",
           FONT_PAIR_CLASSNAMES[draft.fontPairKey],
         )}
       >

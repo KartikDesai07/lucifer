@@ -116,18 +116,11 @@ test('PIN: no file under components/settings/ or app/(dashboard)/settings/ conta
   const tablistValue = '"' + "tablist" + '"';
   const tabValue = '"' + "tab" + '"';
 
-  // KNOWN, PRE-EXISTING, UNRELATED exception: AppearancePreview.tsx and
-  // AppearanceSegmentedField.tsx (both under components/settings/, landed in
-  // CR2.4, well before CB-UI1) use role="tablist"/role="tab" as an ARIA
-  // segmented-control idiom for the Appearance colour-scheme preview toggle —
-  // a completely different widget from the retired 4-tab Settings-form
-  // navigation this pin polices. Reported to the main thread as an ambiguity
-  // (S6 return); excluded here by exact relative path so the exclusion is
-  // narrow and visible, not a blanket carve-out.
-  const KNOWN_SEGMENTED_CONTROL_FILES = new Set([
-    `${CAFE}/components/settings/AppearancePreview.tsx`,
-    `${CAFE}/components/settings/AppearanceSegmentedField.tsx`,
-  ]);
+  // No exemptions any more: the Appearance widgets (the Light/Dark preview
+  // toggle and the old segmented field) moved to radio tiles in slice 9, so the
+  // scan now covers every file. The empty set stays so a future exemption has
+  // to be written down here, by exact relative path.
+  const KNOWN_SEGMENTED_CONTROL_FILES = new Set<string>();
 
   const files: string[] = [];
   walk(absOf(`${CAFE}/components/settings`), files);

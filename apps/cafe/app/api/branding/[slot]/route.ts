@@ -54,7 +54,7 @@ function asSlot(value: string): BrandingSlot | null {
 const SLOT_LABELS: Record<BrandingSlot, string> = {
   logo: "Logo",
   productLogo: "Logo",
-  heroImage: "Hero image",
+  heroImage: "Banner picture",
 };
 
 // BRANDING_SLOT_MAX_BYTES is a total map over BrandingSlot, but every other

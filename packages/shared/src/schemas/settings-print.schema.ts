@@ -20,7 +20,7 @@ import {
   LOGO_PLACEMENTS,
   APPEARANCE_SCHEMA_VERSION,
 } from "../appearance";
-import { HEX_COLOR_PATTERN, checkAccent } from "../appearance-contrast";
+import { HEX_COLOR_PATTERN, accentProblemText, checkAccent } from "../appearance-contrast";
 
 // Split out of settings.schema.ts (S1, CB-5A) to keep that file under the
 // ~300-line budget — this file carries the PRINT (bill/kot slip numbering)
@@ -175,6 +175,6 @@ export const appearanceSchema = z
     if (data.accentOverride === "") return; // "use preset accent" — nothing to gate
     const result = checkAccent(data.accentOverride, data.presetId);
     if (!result.ok) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["accentOverride"], message: result.failing });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["accentOverride"], message: accentProblemText(result.reason) });
     }
   });

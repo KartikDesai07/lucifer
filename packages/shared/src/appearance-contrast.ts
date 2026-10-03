@@ -45,6 +45,32 @@ export function bestForeground(hex: string): "#000000" | "#ffffff" {
   return contrastRatio("#ffffff", hex) >= contrastRatio("#000000", hex) ? "#ffffff" : "#000000";
 }
 
+/** Why an accent failed, as a closed set the admin UI can word in plain
+ *  English (accentProblemText) — `failing` stays the raw diagnostic. "light" =
+ *  lost against the light background or card, "dark" = against the dark ones. */
+export type AccentProblem = "invalid" | "unknown-preset" | "text" | "light" | "dark";
+
+/** Plain product English for an AccentProblem — no numbers, no jargon. The
+ *  admin never sees the raw `failing` string. */
+export function accentProblemText(reason: AccentProblem): string {
+  switch (reason) {
+    case "text":
+      return "This button colour would make the words on buttons hard to read. Pick a darker or a lighter shade.";
+    case "light":
+      return "This button colour is too pale for the menu's light background. Pick a darker shade.";
+    case "dark":
+      return "This button colour is too dark for the menu's dark background. Pick a lighter shade.";
+    case "invalid":
+      return "Pick a button colour with the colour picker.";
+    case "unknown-preset":
+      return "Pick a theme first, then a button colour.";
+    default: {
+      const exhaustive: never = reason;
+      return exhaustive;
+    }
+  }
+}
+
 /** Gates an admin-picked accentOverride against the preset it will render
  *  beside (A6): the derived foreground text must clear WCAG_AA_NORMAL against
  *  the accent itself, and the accent must clear WCAG_AA_LARGE against BOTH the
@@ -54,18 +80,18 @@ export function bestForeground(hex: string): "#000000" | "#ffffff" {
  *  z.enum(PRESET_IDS) already narrows it before this ever runs) so an unknown
  *  id fails closed rather than throwing. `failing` names the exact pair that
  *  lost, e.g. "accent vs dark background: 2.1 < 3". */
-export function checkAccent(hex: string, presetId: string): { ok: true } | { ok: false; failing: string } {
-  if (!HEX_COLOR_PATTERN.test(hex)) return { ok: false, failing: "accent is not a valid hex color" };
+export function checkAccent(hex: string, presetId: string): { ok: true } | { ok: false; failing: string; reason: AccentProblem } {
+  if (!HEX_COLOR_PATTERN.test(hex)) return { ok: false, failing: "accent is not a valid hex color", reason: "invalid" };
   // Object.hasOwn, never `in` — APPEARANCE_PRESETS is a plain object literal,
   // so `"constructor" in APPEARANCE_PRESETS` is true but not a real preset.
   if (!Object.hasOwn(APPEARANCE_PRESETS, presetId)) {
-    return { ok: false, failing: `unknown preset "${presetId}"` };
+    return { ok: false, failing: `unknown preset "${presetId}"`, reason: "unknown-preset" };
   }
   const preset = APPEARANCE_PRESETS[presetId as keyof typeof APPEARANCE_PRESETS];
 
   const textRatio = contrastRatio(bestForeground(hex), hex);
   if (textRatio < WCAG_AA_NORMAL) {
-    return { ok: false, failing: `text vs accent: ${textRatio.toFixed(1)} < ${WCAG_AA_NORMAL}` };
+    return { ok: false, failing: `text vs accent: ${textRatio.toFixed(1)} < ${WCAG_AA_NORMAL}`, reason: "text" };
   }
 
   const halves: Array<{ label: "light" | "dark"; palette: Palette }> = [
@@ -75,11 +101,11 @@ export function checkAccent(hex: string, presetId: string): { ok: true } | { ok:
   for (const { label, palette } of halves) {
     const bgRatio = contrastRatio(hex, palette.background);
     if (bgRatio < WCAG_AA_LARGE) {
-      return { ok: false, failing: `accent vs ${label} background: ${bgRatio.toFixed(1)} < ${WCAG_AA_LARGE}` };
+      return { ok: false, failing: `accent vs ${label} background: ${bgRatio.toFixed(1)} < ${WCAG_AA_LARGE}`, reason: label };
     }
     const cardRatio = contrastRatio(hex, palette.card);
     if (cardRatio < WCAG_AA_LARGE) {
-      return { ok: false, failing: `accent vs ${label} card: ${cardRatio.toFixed(1)} < ${WCAG_AA_LARGE}` };
+      return { ok: false, failing: `accent vs ${label} card: ${cardRatio.toFixed(1)} < ${WCAG_AA_LARGE}`, reason: label };
     }
   }
   return { ok: true };
