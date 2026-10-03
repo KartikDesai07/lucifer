@@ -9,8 +9,8 @@
 **Tech stack:**
 - `packages/shared` (TS, node:test via `tsx`);
 - `apps/cafe` (Next.js 15.5, Mongoose 8, Zod 3, node:test via `tsx`, live-Mongo legs);
-- `apps/desktop` (Electron) from Session 2D;
-- `apps/mobile` (React Native 0.87 + Kotlin) from Session 2E.
+- `apps/desktop` (Electron) from Session 2E;
+- `apps/mobile` (React Native 0.87 + Kotlin) from Session 2F.
 
 **Spec:** [docs/superpowers/specs/2026-10-02-printing-reliability-design.md](../specs/2026-10-02-printing-reliability-design.md). Read these sections before starting: §5, §6.1–6.3 and §6.6, §8, §9.1–9.3 and §9.7, §10, §11, §14, §17; and §7 (with §7.10, every gate ruling) for the lifecycle every printers-mode job rides.
 
@@ -20,7 +20,7 @@
 
 ## How Phase 2 is split
 
-Phase 2 runs as **six sessions, 2A → 2F**, each on `feat/printing-phase-2` (branched from `main` at `6ee2b1d`). Each session ends with:
+Phase 2 runs as **seven sessions, 2A → 2G**, each on `feat/printing-phase-2` (branched from `main` at `6ee2b1d`). Each session ends with:
 - all suites green;
 - the Next build;
 - both APK builds;
@@ -30,16 +30,17 @@ Phase 2 runs as **six sessions, 2A → 2F**, each on `feat/printing-phase-2` (br
 | Session | Delivers | Behaviour change for a cafe |
 |---|---|---|
 | **2A (this prompt)** | The dormant server core: the shared stations/printers contract; the `Station` and `Printer` models, a station on categories and items, a printer line on print jobs; routing (§8) as a pure function; the stations and printers API (admin writes); the routing read; the budget recount; live legs ah–aj | **None.** No screen calls the new routes and no request routes through printers yet: a cafe prints exactly as today, even with printers saved through the API. |
-| 2B | Printers mode goes live on the server: job creation routes through printers; a lease per printer line, only by its writer; the ack answers `more`; the sweep and the repair in printers mode; the writers' wake allowance; the station line on the KOT; copies; the agent prints the printers it writes on its one local printer; a `print-setup` realtime kind | A cafe with printers set up prints by station (one printer per device) |
-| 2C | The setup screens (spec §11) on the admin Printer setup page: Printers (add, edit, test print, enable), Stations (and the station of each category, an item's own station), Devices; "Set up printers" (simple mode → Printer 1, no change on paper); this device's bill printer | Staff set printers and stations up themselves |
-| 2D | Several printers per device, web and Windows: the device-printer store per printer, the agent drives each printer in parallel, the Windows app's printer list; a Chrome tab keeps one printer | A counter PC or a browser device drives its printers |
-| 2E | Android bridge v2 beside v1 (an old page on the new APK prints exactly as today) and the Kotlin printer pool, with pure-JVM unit tests | One phone or tablet drives several Bluetooth, USB and LAN printers |
-| 2F | The Phase 2 exit (spec §14) on the harness and the emulator, TEST-CHECKLIST for real printers, the free-tier measurement in printers mode | Release candidate |
+| 2B | **Direct print on the asking device** (decision 15, the owner's ask of 2026-10-04) and **no realtime message to yourself** (decision 16), in simple mode first: the job of a slip the asking tab prints itself is made already leased to it, its answer carries it, the tab prints at once; the replay delivers a lost answer again; the ack answers `more` (decision 9) | A host, or a device with no host, prints its own slips with no lease request and no realtime message: faster, and one request per slip instead of two |
+| 2C | Printers mode goes live on the server: job creation routes through printers (direct print per printer line); a lease per printer line, only by its writer; the sweep and the repair in printers mode; the writers' wake allowance; the station line on the KOT; copies; the agent prints the printers it writes on its one local printer; a `print-setup` realtime kind | A cafe with printers set up prints by station (one printer per device) |
+| 2D | The setup screens (spec §11) on the admin Printer setup page: Printers (add, edit, test print, enable), Stations (and the station of each category, an item's own station), Devices; "Set up printers" (simple mode → Printer 1, no change on paper); this device's bill printer | Staff set printers and stations up themselves |
+| 2E | Several printers per device, web and Windows: the device-printer store per printer, the agent drives each printer in parallel, the Windows app's printer list; a Chrome tab keeps one printer | A counter PC or a browser device drives its printers |
+| 2F | Android bridge v2 beside v1 (an old page on the new APK prints exactly as today) and the Kotlin printer pool, with pure-JVM unit tests | One phone or tablet drives several Bluetooth, USB and LAN printers |
+| 2G | The Phase 2 exit (spec §14) on the harness and the emulator, TEST-CHECKLIST for real printers, the free-tier measurement in both modes | Release candidate |
 
 **Gate rule** ([[phase-per-session-workflow]]):
 - After each session, the orchestrating review session deep-reviews it.
 - It then writes the next session's exact code into this plan, against the code that actually landed, pre-validates it on a scratch clone, and commits it before handing over that session's prompt.
-- Sessions 2B–2F below are therefore task specifications with their interfaces, tests and exit checks. Their code is written at their gate.
+- Sessions 2B–2G below are therefore task specifications with their interfaces, tests and exit checks. Their code is written at their gate.
 - Session 2A is complete, exact code, pre-validated.
 
 **Nothing is deployed by a session.** Phase 1 reaches cafes only through the owner's go-live run of `main`; Phase 2 reaches `main` only on the owner's explicit merge OK after its exit, and cafes only through a later go-live run (Worker first, then the app, then reload every POS screen).
@@ -72,7 +73,7 @@ Phase 2 runs as **six sessions, 2A → 2F**, each on `feat/printing-phase-2` (br
 - **Simple mode and old clients keep working** (spec §6.6, §15):
   - Until an enabled printer takes a slip, every request routes exactly as in Phase 1.
   - Phase 1's `/claim`, `/kot-claim`, the read-only `GET /api/print-jobs/wake` and the optional headers stay.
-  - An APK with bridge v1 keeps printing: simple mode as today, and in printers mode one printer per device (Session 2E).
+  - An APK with bridge v1 keeps printing: simple mode as today, and in printers mode one printer per device (Session 2F).
 - **Tests:**
   - cafe: a new test file is appended to `testChain` in `apps/cafe/package.json`.
   - shared: a new test file is added to the `test` script in `packages/shared/package.json`.
@@ -102,16 +103,18 @@ Phase 2 runs as **six sessions, 2A → 2F**, each on `feat/printing-phase-2` (br
 4. **A station no printer takes rides the full copy.** Spec §8 says to send it "to the kotAll printers, labelled with the station name"; as a separate slip, every KOT of a cafe with one full-copy printer and the default station would print twice. The full copy already holds those lines. With no full-copy printer it goes to the default bill printer as "BAR (NO PRINTER SET)" (spec §8), and with neither it fails at once, visibly ("No printer is set up for Bar."): a KOT is never dropped.
 5. **A full copy that is its round's only slip is today's KOT, unchanged.** Beside station slips it says "ALL STATIONS". A cafe converted from simple mode (Printer 1 takes bills, the full copy, notices and End of day) sees no change on paper.
 6. **Notices follow the KOT.** A void, moved or cancel notice goes to every printer the station's KOT reaches (its own printers, the full copies, the fallback) that has Notices on; none, none printed (staff switched notices off there). The voided item's station is resolved from today's menu at the void (order lines store no station).
-7. **The device's bill printer lives on the device** and rides the request as a header (`x-pos-bill-printer`, Session 2B; the picker in Session 2C), instead of spec §6.4's `PrintDevice.billPrinterId`: an ordering-only device has no `PrintDevice` row (only pollers beat, Phase 1 ruling R6), and rows go after 7 days unseen. A device that loses its storage falls back to the default bill printer.
+7. **The device's bill printer lives on the device** and rides the request as a header (`x-pos-bill-printer`, Session 2C; the picker in Session 2D), instead of spec §6.4's `PrintDevice.billPrinterId`: an ordering-only device has no `PrintDevice` row (only pollers beat, Phase 1 ruling R6), and rows go after 7 days unseen. A device that loses its storage falls back to the default bill printer.
 8. **In printers mode only writers poll the wake**, sharing `PRINT_WAKE_PRINTERS_DAILY_CAP` (14,000) split by the writers the setup names, never by who is online. This is the "server-side split" spec §7.10 asked for, with no new write; a writer that starts late never raises the total.
 9. **The ack answers `more`** (Session 2B), so an agent never leases to find an empty line; with copies as one job, a slip stays at one lease and one ack (A5's pins).
-10. **No `backupPrinterId` and no `health` on `Printer` yet.** Both are Phase 3 (failover, `DLE EOT` paper status); nothing in Phase 2 would read them. Phase 2's printer dot is its writer's heartbeat and link state (Session 2C).
+10. **No `backupPrinterId` and no `health` on `Printer` yet.** Both are Phase 3 (failover, `DLE EOT` paper status); nothing in Phase 2 would read them. Phase 2's printer dot is its writer's heartbeat and link state (Session 2D).
 11. **The setup screens live on the admin Printer setup page (`/printers`), not in Settings.** Settings sections are bound to fields of the Settings document, and `settings-sections.test.ts` forbids a "Printer setup" section; `/printers` is already the admin home of printing.
-12. **Bridge v2 keeps v1** (Session 2E). The new APK answers v1 messages exactly as today (one printer), so a page that is not deployed yet keeps printing with the new APK (today's web refuses any bridge whose version is not 1: `native-bridge.ts:117`); a v2 page opts in.
+12. **Bridge v2 keeps v1** (Session 2F). The new APK answers v1 messages exactly as today (one printer), so a page that is not deployed yet keeps printing with the new APK (today's web refuses any bridge whose version is not 1: `native-bridge.ts:117`); a v2 page opts in.
 13. **A deleted station is cleared everywhere it was chosen** (categories, items, printers' KOT stations); the default station can't be deleted, only moved. The owner's rule: no stale print data.
 14. **The routing read is never cached.** A printer switched off stops getting slips at once; simple mode pays one small read per order request.
+15. **Direct print on the asking device** (the owner, 2026-10-04: "if the host itself makes the order, print there directly"). When the device that makes a request is the one that prints a slip (simple mode: the host's own order, or any device's own slip with no host; printers mode: the writer of the slip's printer), the server makes that slip's job already leased to the asking tab, in the same write, and the request's answer carries the leased job: the tab prints at once and acks. No lease request, no realtime message, no poll: one request per slip (its ack) instead of two, and one database write fewer. It applies only when the tab says it can print now (it drains this device's slips and its printer is ready: header `x-pos-print-lease: <tabId>`, in printers mode with its ready printers) and the slip is the head of its line (§7.6), and only to the first slip of each line in one request (a Pay Now's bill follows its KOT through the ack's `more`). Every other slip is made `queued` exactly as today. Failures stay inside Phase 1's rules: a tab that dies before printing lets the lease expire in 90 s (KOT: REPRINT; bill: the cashier's question); an answer that never arrived is delivered again to the same tab when the client re-sends the slip (the enqueue finds the job leased to that tab), and the agent ignores a job it already holds (at-least-once delivery, an idempotent consumer).
+16. **No realtime message to yourself.** A job leased at creation publishes nothing: not its "queued" print-status, not the host's print-job nudge, and not its final state when the tab that made it acks it. Realtime (with the poll and the pulse as fallbacks) carries only the slips another device prints, or another tab of the same device. A cafe whose one device takes and prints its orders then spends almost no Cloudflare requests on printing.
 
-The spec carries decisions 1–14 as §8.1 "Phase 2 decisions" (written with this plan), so it stays the source of truth.
+The spec carries decisions 1–14 as §8.1 "Phase 2 decisions" and decisions 15–16 as §7.11 "Direct print on the asking device" (written with this plan), so it stays the source of truth.
 
 ---
 
@@ -148,17 +151,18 @@ The five input classes most likely to bite a cafe in Session 2A's code that unit
 
 ## Session 2A
 
-**Pre-validated** by the orchestrating session on 2026-10-03, on scratchpad clones only (never in the repo):
+**Pre-validated** by the orchestrating session on 2026-10-03/04, on scratchpad clones only (never in the repo):
 - The code was developed on a golden copy of `6ee2b1d` (this branch's base, `main`), one commit per task, and this section was generated from those commits: every Create block is the golden file byte for byte, and every find is unique in its file at the moment it is applied.
-- A fresh clone of `feat/printing-phase-2` (`6ee2b1d`) then got every block of this section applied verbatim, task by task, with each task's own Run lines; each RED and GREEN below is the output seen there. The clone came out byte-identical to the golden copy (tree `d392cbe…`).
-- Totals on that tree: shared `npm test` **667/667** (+21), tsc 0; cafe `npm test` **4300 tests, 4299 pass, 0 fail, 1 skipped** (+37 over `main`'s 4263; the skip is Phase 1's `go-live-dl` pin), tsc 0, lint 0 errors and the 2 old warnings; Hub tsc 0; mobile 117/117 and Jest 3/3, desktop 191/191 (untouched); print tools 8/8; live legs **`248 passed, 0 failed`** (220 + 28); the Next build lists **127 routes** (`main`'s 123 plus the four setup routes).
+- A fresh clone of `feat/printing-phase-2` then got every block of this section applied verbatim, task by task, with each task's own Run lines; each RED and GREEN below is the output seen there. Its code came out byte-identical to the golden copy (golden tree `0d24015…`; the clone differs only by this plan's own docs commit).
+- Totals on that code: shared `npm test` **667/667** (+21), tsc 0; cafe `npm test` **4300 tests, 4299 pass, 0 fail, 1 skipped** (+37 over `main`'s 4263; the skip is Phase 1's `go-live-dl` pin), tsc 0, lint 0 errors and the 2 old warnings; Hub tsc 0; mobile 117/117 and Jest 3/3, desktop 191/191 (untouched); print tools 8/8; live legs **`248 passed, 0 failed`** (220 + 28); the Next build lists **127 routes** (`main`'s 123 plus the four setup routes).
 - **Run on the emulator** (`Pixel_7_API_33`, WebView 109, the release APK) against the golden build and the fake printer, exactly as Task A7 Step 4: a KOT made by a second device printed once at the app as print host (44,454 B, no `printerId`); the setup API answered as Step 4 expects (stations 200 with the default Kitchen, Bar 201, three printers 201, a category on the Bar 200; both lists 200 and `no-store`; a bad id 404; a LAN printer with no printing device 400); with the three printers saved, the next KOT still printed exactly once and unchanged (44,454 B; the decoded slip has no station line; `withPrinterId: 0`, `withCopies: 0`); the teardown answered 200 four times and left no station on a category; Pay Now from the app printed the KOT, then the bill, once each.
+- After the owner's ask of 2026-10-04 added Session 2B (direct print), eight comment lines in A3 and A4 were renumbered (2B → 2C, 2C → 2D); no code changed. The verbatim apply on a fresh clone and every suite above were run again after it (same results); the build and the emulator run are from just before it.
 
 A failure while executing therefore points to drift since then, or to a typo while copying. Compare with the plan first.
 
-**What 2A delivers.** Everything Phase 2's later sessions build on, with no change for a cafe: the shapes and rules every side shares, the models, routing as a pure function proven row by row against spec §8, the setup API that Session 2C's screens will call, the routing read that Session 2B's job creation will call, and the budget recount that holds Phase 2 inside the free tier.
+**What 2A delivers.** Everything Phase 2's later sessions build on, with no change for a cafe: the shapes and rules every side shares, the models, routing as a pure function proven row by row against spec §8, the setup API that Session 2D's screens will call, the routing read that Session 2C's job creation will call, and the budget recount that holds Phase 2 inside the free tier.
 
-**Not in 2A:** no request routes through printers (2B), no screen (2C), no client change at all, no Kotlin or Windows change. The APKs and the Windows app are unchanged.
+**Not in 2A:** no direct print (2B), no request routes through printers (2C), no screen (2D), no client change at all, no Kotlin or Windows change. The APKs and the Windows app are unchanged.
 
 The tasks run in this order: A1 → A6 (each one commit), then A7 (verification, the emulator check, Results).
 
@@ -173,7 +177,7 @@ The tasks run in this order: A1 → A6 (each one commit), then A7 (verification,
 
 **Interfaces produced:** `STATION_NAME_MAX_CHARS` 32, `STATIONS_MAX` 20, `DEFAULT_STATION_NAME` "Kitchen", `PRINTER_NAME_MAX_CHARS` 40, `PRINTERS_MAX` 12, `PRINTER_PAPER_WIDTHS` [58, 80], `PRINTER_COPIES_MIN` 1, `PRINTER_COPIES_MAX` 3, `PRINTER_LAN_DEFAULT_PORT` 9100, `PRINTER_ADDRESS_MAX_CHARS` 256, `PRINTER_DEVICE_ID_MAX_CHARS` 64, `PRINTER_DEVICE_TRANSPORTS`; `printerWriterDeviceId(printer): string | null`; `printerTakesSlips(slips): boolean`; `routablePrinters(printers): PrinterConfig[]`; `printersModeOn(printers): boolean`; `defaultBillPrinterOf(printers): PrinterConfig | null`; `printerWriterDevices(printers): string[]`; `defaultStationOf(stations): StationConfig | null`; `resolveStationId({ productStationId?, categoryStationId? }, stations): string | null`.
 
-**Why a shared module.** The server's routing (A3), the setup routes (A4), the budget pins (A5), and from Session 2B the agent and the setup screens all read the same printer and station shapes and the same three rules: when a cafe leaves simple mode (spec §6.6: an enabled printer with a writer takes a slip), who writes to a printer (spec §9.3: a device printer's own device, a LAN printer's primary; Phase 3 adds failover), and where an item prints (spec §6.2: the item's station, else its category's, else the default; a deleted station falls back). Pure and client-safe, like `print-lifecycle.ts`.
+**Why a shared module.** The server's routing (A3), the setup routes (A4), the budget pins (A5), and from Sessions 2C and 2D the agent and the setup screens all read the same printer and station shapes and the same three rules: when a cafe leaves simple mode (spec §6.6: an enabled printer with a writer takes a slip), who writes to a printer (spec §9.3: a device printer's own device, a LAN printer's primary; Phase 3 adds failover), and where an item prints (spec §6.2: the item's station, else its category's, else the default; a deleted station falls back). Pure and client-safe, like `print-lifecycle.ts`.
 
 - [ ] **Step 1: The failing tests first**
 
@@ -505,7 +509,7 @@ git commit -m "feat(print): Phase 2 stations and printers: the shared contract (
 
 **Interfaces produced:** `Station`, `stationSchema`, `IStation`; `Printer`, `printerSchema`, `IPrinter`, `IPrinterConnection`, `printerConnectionComplete(c): boolean`; `ICategory.stationId?`, `IProduct.stationId?` (ObjectId); `IPrintJob.printerId?: string`, `IPrintJob.copies?: number`; `createCategorySchema`/`createProductSchema` accept `stationId?`, `updateCategorySchema`/`updateProductSchema` accept `stationId: string | null`.
 
-**Dormant.** Nothing writes `printerId` or `copies` yet, and no request reads a station: the models, the index and the station fields exist so Session 2B's job creation and 2C's setup screens have them. A category or item saved with no station stores no `stationId` key (omit-empty), so every existing row keeps meaning "the default station" and the CSV import (which has no station column) can never clear one.
+**Dormant.** Nothing writes `printerId` or `copies` yet, and no request reads a station: the models, the index and the station fields exist so Session 2C's job creation and 2D's setup screens have them. A category or item saved with no station stores no `stationId` key (omit-empty), so every existing row keeps meaning "the default station" and the CSV import (which has no station column) can never clear one.
 
 **The printer line index is partial** (`partialFilterExpression: { printerId: { $exists: true } }`): simple-mode rows never enter it, so it costs a simple-mode cafe nothing on M0, and every printer-line query names its `printerId`, which satisfies the filter. The Phase 1 pin "exactly three PrintJob indexes" becomes four (deliberate change, named in Results).
 
@@ -1394,7 +1398,7 @@ git commit -m "feat(print): Phase 2 models: Station and Printer, a station on ca
 
 **The rules (spec §8, with this plan's decisions 3–6).** A KOT's lines (the round's; a whole-tab reprint: every line) are grouped by station. Each station's lines go to every printer that takes that station; the whole round goes to every full-copy printer. A station no printer takes is covered by the full copy; with no full-copy printer it goes to the default bill printer as "BAR (NO PRINTER SET)"; with neither it fails at once with "No printer is set up for Bar." (a KOT is never dropped). A full copy that is its round's only slip is today's KOT unchanged, so a cafe converted to one printer sees no change on paper. Bills go to the asking device's bill printer, else the default one; End of day to the asking device's bill printer, else the first End of day printer, else the default bill printer. Notices follow the KOT: a void goes to the printers its item's station KOT reaches that take notices; a moved or cancel notice to those of every station that got a KOT of the order.
 
-**A station slip is the KOT for some of its lines:** the snapshot keeps only that station's lines of the round and the payload names the station, so the renderer (Session 2B) prints the lines it gets plus one header line. The round number and the KOT number stay the round's (D7). Copies are one job (decision 2). Keys: the slip's own key, then `:<printerId|none>:<stationId|all|->`, so every job of one slip has its own unique key and a replay or a repair collides instead of printing twice.
+**A station slip is the KOT for some of its lines:** the snapshot keeps only that station's lines of the round and the payload names the station, so the renderer (Session 2C) prints the lines it gets plus one header line. The round number and the KOT number stay the round's (D7). Copies are one job (decision 2). Keys: the slip's own key, then `:<printerId|none>:<stationId|all|->`, so every job of one slip has its own unique key and a replay or a repair collides instead of printing twice.
 
 - [ ] **Step 1: The failing tests first**
 
@@ -1801,7 +1805,7 @@ import { printJobLabel, type PrintJobRequest } from "@/lib/print-routing";
 // Printing redesign, Phase 2 (spec §8): routing, a PURE function. One slip a request asks for (built by the
 // existing builders in lib/print-routing.ts, so its paper is today's) becomes the jobs of printers mode:
 // which printer prints it, how many copies, and for a KOT, which station's items. No DB, no clock: the
-// server reads the setup (lib/print-routing-context.ts) and makes the jobs (Session 2B).
+// server reads the setup (lib/print-routing-context.ts) and makes the jobs (Session 2C).
 //
 //   KOT     the items of the round (a whole-tab reprint: every line) grouped by station. Each station's
 //           items go to every printer that takes that station; the whole round goes to every full-copy
@@ -1822,7 +1826,7 @@ export interface PrintRouting {
   /** Each item's resolved station (resolveStationId, spec §6.2), by productId. A product missing here
    *  prints at the default station. */
   itemStations: ReadonlyMap<string, string>;
-  /** The asking device's own bill printer (Session 2C); unknown, disabled or with no writer means none. */
+  /** The asking device's own bill printer (Session 2D); unknown, disabled or with no writer means none. */
   billPrinterId?: string;
 }
 
@@ -2106,9 +2110,9 @@ git commit -m "feat(print): Phase 2 routing (spec §8), a pure function: KOTs sp
 
 **Printers (spec §6.3).** Saved whole by the setup form, checked by `printerBodySchema`: a LAN printer's address follows the POS app's own host rule (`lib/printer/network-address.ts`) and needs its printing device (decision 1); a device printer never names another. Its stations must exist. A re-save replaces the connection, never merges it (leg ai). At most 12 printers and 20 stations.
 
-**The routing read (`readPrintRouting`).** Read fresh per request, never cached: a printer switched off must stop getting slips at once. Simple mode costs one small read (the printers) and answers null; printers mode adds the stations and the stations of this request's items (by id: the items, then their categories). Session 2B calls it from job creation.
+**The routing read (`readPrintRouting`).** Read fresh per request, never cached: a printer switched off must stop getting slips at once. Simple mode costs one small read (the printers) and answers null; printers mode adds the stations and the stations of this request's items (by id: the items, then their categories). Session 2C calls it from job creation.
 
-**Dormant.** No screen calls these routes yet (Session 2C), and no request routes through printers yet (Session 2B): a cafe that adds printers through the API still prints exactly as today.
+**Dormant.** No screen calls these routes yet (Session 2D), and no request routes through printers yet (Session 2C): a cafe that adds printers through the API still prints exactly as today.
 
 - [ ] **Step 1: The failing tests first**
 
@@ -2311,7 +2315,7 @@ type Params = { params: Promise<{ id: string }> };
 
 // Printing redesign, Phase 2 (spec §6.3, §11). Admin only.
 // PUT /api/printers/[id] — save a printer whole (the setup form's one unit).
-// DELETE /api/printers/[id] — remove a printer. (Session 2B decides what happens to slips still waiting for
+// DELETE /api/printers/[id] — remove a printer. (Session 2C decides what happens to slips still waiting for
 //   it; until then nothing makes a job for a printer.)
 export async function PUT(req: Request, { params }: Params) {
   const authed = await requireAdmin();
@@ -2362,7 +2366,7 @@ export const dynamic = "force-dynamic";
 
 // Printing redesign, Phase 2 (spec §6.3, §11).
 // GET /api/printers — every printer in display order, disabled ones too. Any signed-in device reads it (the
-//   setup screens; from Session 2B, each device's agent finds the printers it writes to).
+//   setup screens; from Session 2C, each device's agent finds the printers it writes to).
 // POST /api/printers — add a printer, saved whole (admin).
 export async function GET() {
   const authed = await requireAuth();
@@ -2517,7 +2521,7 @@ import { ADDRESS_MESSAGE, isValidPrinterHost } from "@/lib/printer/network-addre
 
 // Printing redesign, Phase 2 (spec §6.1, §6.3, §11): the request bodies of the stations and printers routes.
 // They live in a lib file because a Next route file cannot export extra names, and the tests need them.
-// Messages are the words staff read on the setup screens (Session 2C).
+// Messages are the words staff read on the setup screens (Session 2D).
 
 const stationName = z
   .string()
@@ -2612,8 +2616,8 @@ import { Station } from "@/models/Station";
 import type { PrinterBody } from "@/lib/print-printer-schemas";
 import type { PrintSetupResult } from "@/lib/print-stations";
 
-// Printing redesign, Phase 2 (spec §6.3, §11): the outlet's printers. The setup screens (Session 2C) save a
-// printer whole; the routing (lib/print-printer-routing.ts) and, from Session 2B, the agent read them as
+// Printing redesign, Phase 2 (spec §6.3, §11): the outlet's printers. The setup screens (Session 2D) save a
+// printer whole; the routing (lib/print-printer-routing.ts) and, from Session 2C, the agent read them as
 // PrinterConfig. Never calls connectDB() (the routes do). No console.*.
 
 export const PRINTER_NOT_FOUND = "Printer not found";
@@ -2726,7 +2730,7 @@ import { stationWireOf } from "@/lib/print-stations";
 // Printing redesign, Phase 2 (spec §6.2, §8): what one order request routes its slips with, read fresh
 // (never cached: a printer switched off must stop getting slips at once). Simple mode costs ONE small read
 // (the printers) and answers null; printers mode adds the stations and the stations of this request's items
-// (two reads by id: the items, then their categories). Session 2B calls it from job creation. Never calls
+// (two reads by id: the items, then their categories). Session 2C calls it from job creation. Never calls
 // connectDB(). No console.*.
 
 interface ProductStationRow {
@@ -2908,7 +2912,7 @@ git commit -m "feat(print): Phase 2 setup API: stations and printers (admin writ
 
 **The recount the 1C gate asked for** ("Phase 2's stations must recount, one lease per round per station"). Spec §17.2's busy day already assumed two stations (1,200 slips); the heavy setup adds a full copy per round (1,650). Each slip is one job (its copies ride along, decision 2) and costs one lease and one ack: Session 2B's ack answers whether its printer's line holds more, so no lease is ever made to find an empty line. Normal day: 4,800 (stations) and 5,790 (heavy), both under 6,000. Worst case (socket down all day, every writer always busy): the writers share `PRINT_WAKE_PRINTERS_DAILY_CAP` (14,000, a little under the host's 14,400), split by the writers the setup names, so the heavy day stays at 17,628 under 18,000 for any number of writers. Realtime: 2 Worker requests per slip in printers mode (no host nudge), 3,635 a day on the heavy day (3.6 %).
 
-**`printAgentPollsWake` in printers mode** (decision 8): the devices that write to a printer poll, and no other device does, a leftover host included. Simple mode is unchanged (the Phase 1 pin still runs). Nobody passes `printersMode` until Session 2B.
+**`printAgentPollsWake` in printers mode** (decision 8): the devices that write to a printer poll, and no other device does, a leftover host included. Simple mode is unchanged (the Phase 1 pin still runs). Nobody passes `printersMode` until Session 2C.
 
 - [ ] **Step 1: The failing tests first**
 
@@ -3591,7 +3595,7 @@ main().catch((error: unknown) => {
 
 1. `kot`, then `jobs`: one KOT job (`printJobs` has one ref, no `printerId`); the fake printer logs one job of bytes > 0; the slip is today's (the decoded raster has no station line).
 2. `setup`, then `api`: the stations read 200 with the default Kitchen; Bar 201; three printers 201; the category on the Bar 200. `api`: printers 200 with 3, stations 200 with 2, both `no-store`; a bad id 404; a LAN printer with no printing device 400.
-3. `kot` again, then `jobs`: **still exactly one KOT job, printed once at the host, unchanged**; `withPrinterId: 0`, `withCopies: 0`. This is the dormant proof: printers saved through the API change nothing until Session 2B.
+3. `kot` again, then `jobs`: **still exactly one KOT job, printed once at the host, unchanged**; `withPrinterId: 0`, `withCopies: 0`. This is the dormant proof: printers saved through the API change nothing until Session 2C.
 4. `teardown`: every printer and the Bar station removed (200s), `leftOnCategories: 0` (the deleted Bar was cleared from its category).
 5. The app's own screens still load and print: Send to Kitchen and Pay Now from the emulator print the KOT, then the bill, once each.
 
@@ -3607,27 +3611,41 @@ Fill in "Session 2A Results" below (every number from Steps 1–5, the APK hashe
 
 ---
 
-## Sessions 2B–2F (task specifications; exact code is written at each gate)
+## Sessions 2B–2G (task specifications; exact code is written at each gate)
 
 Each session below lists what it delivers, its interfaces, its tests and its exit check. Its exact code is written at its gate, against the code that landed, and pre-validated like Session 2A.
 
-### Session 2B: printers mode goes live (the server, the KOT's station line, and each device's one printer)
+### Session 2B: direct print on the asking device, and no realtime message to yourself (decisions 15, 16, 9)
 
-1. **Job creation routes through printers** (`lib/print-order-jobs.ts`). `createOrderPrintJobs` reads `readPrintRouting({ productIds, billPrinterId })` once per request (the order's lines, plus a void's line); null keeps Phase 1's simple mode exactly. Otherwise every slip goes through `routePrintRequest`, and each routed job is inserted with `printerId`, `targetDeviceId` = the printer's writer (so the pulse's jobs-for-me, the attention rows and the aimed `print-status` keep working on device ids), `copies` (absent when 1), `jobKey = routedJobKey(printJobKeyOf(payload), job)` and `originDeviceId`. A routed job with no printer is inserted `failed` with its `error` as `lastError` and a `failed` log entry, so it shows under "Couldn't print" at once. Kind order is kept (KOT before bill, §7.6). One `print-status` "queued" per created job, aimed at its writer; no `print-job` nudge in printers mode (no host). `PrintJobRef` gains `printerId?`.
+The owner's ask of 2026-10-04: when the device that takes an order is the one that prints it, print there at once, with no realtime round trip and the fewest server requests. Simple mode first (every live cafe today); Session 2C extends the same path to printer lines.
+
+1. **The asking tab says it can print now.** The agent hook keeps a module seam `directPrintTab(): string | null` in `lib/print-agent.ts`: this tab's id while it drains this device's slips (it holds the drain lock), its printer can print now (`canPrintNow()`) and no refusal holds it; null otherwise. Every order request that opts in (Phase 1 ruling R1), the job-aware `/kot-claim` and the client-started enqueue add `x-pos-print-lease: <tabId>` (`PRINT_LEASE_HEADER` in the shared wire) while the seam is not null. A bad header never refuses an order write (as R1).
+2. **The server makes the job leased at creation** (`lib/print-order-jobs.ts` `insertPrintJob`, used by the order routes, `/kot-claim` and the enqueue). When the request names a tab, the slip's printing device (simple mode: the host, or the asking device when there is no host) IS the asking device, it is the first slip of this request on that line, and the line holds no older `queued` or `leased` job (one read on the line index), the job is inserted `leased` to `{ deviceId, tabId }`: epoch 1, `attempts: 1`, `lease.expiresAt = now + 90 s`, log `created` then `leased` with `detail: "direct"`, in ONE write. A pure helper `directLeaseOf(...)` in `@pos/shared/print-lifecycle` builds those fields and is unit-tested against §7.2's lease row (the same fields `planLease` sets). Any other slip is made `queued` exactly as in Phase 1.
+3. **The answer carries it.** `PrintJobRef` gains `leased?: LeasedPrintJob` (payload, labels, epoch, copies) for a job leased at creation. The call site hands it to the agent through a module seam beside `kickPrintAgent` (`deliverLeasedJob(job)`), never through a lease request.
+4. **The agent takes it** (`lib/print-agent.ts`): `take(job)` prints it now when idle, or holds it (first in, first out) behind the job it is printing; it ignores a job whose `(id, epoch)` it already holds or has in its pending-ack store, so an answer delivered twice prints once. It acks like any leased job.
+5. **A lost answer is delivered again.** A replayed order creates nothing (ruling R3) and the client re-sends every slip its answer did not name (Session 1C). The enqueue now answers a job still `leased` to the asking device AND tab with a live lease with that same leased job (`outcome: "queued"`, `duplicate: true`, `leased`), where Phase 1 answered `already-resolved`; any other tab or device gets Phase 1's answer. A tab reloaded in between has a new id: its lease expires in 90 s and the KOT prints REPRINT (the Phase 1 rule for a lost lease, like a refresh mid-print, M7).
+6. **No realtime message to yourself:** a job leased at creation publishes no "queued" print-status and no print-job nudge, and its final state is not published when the ack comes from its creation lease (epoch 1, `direct`). A pure helper (`printStatusAudience`) decides and is pinned. The asking tab's readback (its "Sent ✓" chip) takes the final state from its own ack, so it stays instant without the message. Jobs made `queued` keep Phase 1's publishes (another tab of the same device may be the one that drains).
+7. **The ack answers `more`** (decision 9): `PrintAckData.more` is true when the acked job's line has a job due now (one bounded read on the line index); the agent leases again only then, or on a nudge or its timer. Phase 1's trailing empty lease per burst (the 1C gate's count) goes.
+8. **Budget pins** (`print-budget.test.ts`): a slip printed by the device that asked for it costs one request (its ack) and no realtime request; a Pay Now on one printer costs the order request plus ack, lease, ack; a slip another device prints keeps one lease, one ack and two realtime requests; the busy day of a one-device cafe is recounted.
+9. **Live legs ak–am:** a job leased at creation (its fields and log; one write), the second slip of the same request on that line made `queued`; a line with an older job gives a `queued` job; a re-sent slip from the same tab gets the same lease back, from another tab or another device it does not; a creation lease that expires gives REPRINT (KOT) and the cashier's question (bill); `more` true and false.
+- **Exit (2B):** on the harness, with the emulator app as host: Send to Kitchen and Pay Now print once each with no lease request before the KOT and no realtime publish (the counting proxy's log: the order, then the KOT's ack, the bill's lease and ack); a KOT from a second device still prints through realtime or the wake, as in Phase 1; the proxy drops one order answer: the client's re-send gets the lease back and the KOT prints once, unlabelled; the app killed right after its order answer: the KOT prints once, with REPRINT, after 90 s.
+
+### Session 2C: printers mode goes live (the server, the KOT's station line, and each device's one printer)
+
+1. **Job creation routes through printers** (`lib/print-order-jobs.ts`). `createOrderPrintJobs` reads `readPrintRouting({ productIds, billPrinterId })` once per request (the order's lines, plus a void's line); null keeps simple mode exactly (with 2B's direct print). Otherwise every slip goes through `routePrintRequest`, and each routed job is inserted with `printerId`, `targetDeviceId` = the printer's writer (so the pulse's jobs-for-me, the attention rows and the aimed `print-status` keep working on device ids), `copies` (absent when 1), `jobKey = routedJobKey(printJobKeyOf(payload), job)` and `originDeviceId`. A routed job with no printer is inserted `failed` with its `error` as `lastError` and a `failed` log entry, so it shows under "Couldn't print" at once. Kind order is kept (KOT before bill, §7.6). **Direct print per printer line** (decision 15): a request from the writer of a slip's printer that lists that printer as ready (`x-pos-print-ready: <printerIds>` beside 2B's `x-pos-print-lease`) gets the first slip of that printer's line leased at creation; the publishing rules of 2B apply. `PrintJobRef` gains `printerId?`.
    - **The device's bill printer** rides the new header `x-pos-bill-printer` (an ObjectId; a bad one is ignored and never refuses the order write).
    - **Client-started slips** (`POST /api/print-jobs` with the agent header: reprints, End of day, a cancel notice) and the job-aware self-order `/kot-claim` lane route the same way; a reprint's keys are `reprint:<Idempotency-Key>:<printer>:<part>`. The enqueue answer for a slip that became several jobs: decided at the gate (recommended: `queued` with the first id plus `jobs: PrintJobRef[]`).
-2. **A lease per printer line, only by its writer** (`lib/print-lease.ts`, `leaseBodySchema`). The lease body gains `printerIds?: string[]` (unique ObjectIds, at most `PRINTERS_MAX`). The server keeps the printers this device writes (one `Printer.find` by id: enabled, `printerWriterDeviceId(p) === deviceId`) and leases the head of each one's line (`{ printerId, status: queued | leased }`, not stale unless approved, on the partial index; the CAS fenced on `printerId` and `targetDeviceId`), at most one job per printer, plus the head of the device's simple line (`printerId: { $exists: false }`) as today. `LeasedPrintJob` gains `printerId?` and `copies`. `retryAt` is the soonest of the lines'.
-3. **The ack answers `more`** (decision 9): `PrintAckData.more` is true when the acked job's line (its printer's, or the device's simple line) has a job due now (one bounded read on the same index). The agent leases again only then, or on a nudge or its timer. A5's budget pins assume this.
-4. **The sweep in printers mode** (`lib/print-sweep.ts`): a waiting job whose printer's writer changed (the printer was re-saved with another device or printing device) moves to the new writer (`retargeted`); a waiting job whose printer was deleted or disabled is failed with "This printer was removed or switched off." (never guessed onto another printer); `routeWaitingPrintJobs` (the host and origin retarget of simple mode) never touches a job with a `printerId`. A staff Retry or Print again on a job whose printer is gone routes it again with today's setup (decided at the gate).
-5. **The repair in printers mode** (`lib/print-repair.ts`): a server-owned KOT round with no job at all (neither `kot:<order>:<round>` nor any key starting `kot:<order>:<round>:`; one read on the jobKey index with exact keys and anchored prefixes) is routed again with today's setup; a round that has some of its jobs is left alone (one request inserts them together).
-6. **The writers' wake** (`POST /api/print-jobs/wake`): in printers mode `agentDailyCap = printWakeWriterCap(printerWriterDevices(printers).length)`, and the agent polls by `printAgentPollsWake({ hostConfigured, isHost, printersMode, isWriter })` (A5).
-7. **The agent prints the printers it writes, on its one local printer** (until Session 2D). It reads `GET /api/printers` on mount, on a new `print-setup` realtime kind (cafe + Worker parity, published by every stations and printers write; 2 Worker requests per admin save, never per slip) and on focus at most every 5 min; `myPrinters` = the enabled printers this device writes. It leases with their ids. A printer prints only when it is this device's own local printer: a device printer whose transport and address match the device's saved printer, or a LAN printer whose `host:port` is the app's selected `tcp:host:port`; any other is refused `sent:"no"` (never counted) with "This printer is not connected to this device." Copies: one render, written `copies` times inside one lease; a failure after the first byte is "maybe" (the REPRINT repeats every copy, labelled).
-8. **The KOT's station line on paper:** `KOTReceipt` gains `stationLine?: string`, printed under the title (`printKotStationHeader`), fed by `hostPrintSlipOf` from `payload.station`. The payload-parity and print-host-slips pins follow. A local print (a device with no identity) never carries a station.
-9. **Attention rows carry `printerId?`**; the panel names the printer from the device's printer list.
-10. **Live legs ak–an:** creation in printers mode (two station KOTs plus the full copy; failed-at-creation; replays collide); a lease only by the writer (another device gets nothing), two printers of one device in one call, a stuck bar job never blocks the kitchen (head of line per printer), `more`; the sweep (a writer change, a removed printer); the repair (a round with no job is routed again, a round with some jobs is left).
-- **Exit (2B):** on the harness, the emulator app (one printer: the fake printer on 9100) writes the counter printer (bills and the full copy), and two scripted agents (scratchpad) write a kitchen printer (fake printer on 9101) and a bar printer (9102): one round with kitchen and bar items prints the kitchen slip, the bar slip and the full copy once each, with their station lines; a bill prints at the counter; removing every printer returns the cafe to simple mode (the KOT prints once at the host). The counting proxy shows one lease and one ack per slip and no empty lease.
+2. **A lease per printer line, only by its writer** (`lib/print-lease.ts`, `leaseBodySchema`). The lease body gains `printerIds?: string[]` (unique ObjectIds, at most `PRINTERS_MAX`). The server keeps the printers this device writes (one `Printer.find` by id: enabled, `printerWriterDeviceId(p) === deviceId`) and leases the head of each one's line (`{ printerId, status: queued | leased }`, not stale unless approved, on the partial index; the CAS fenced on `printerId` and `targetDeviceId`), at most one job per printer, plus the head of the device's simple line (`printerId: { $exists: false }`) as today. `LeasedPrintJob` gains `printerId?` and `copies`. `retryAt` is the soonest of the lines'. 2B's `more` answers for the acked job's own line.
+3. **The sweep in printers mode** (`lib/print-sweep.ts`): a waiting job whose printer's writer changed (the printer was re-saved with another device or printing device) moves to the new writer (`retargeted`); a waiting job whose printer was deleted or disabled is failed with "This printer was removed or switched off." (never guessed onto another printer); `routeWaitingPrintJobs` (the host and origin retarget of simple mode) never touches a job with a `printerId`. A staff Retry or Print again on a job whose printer is gone routes it again with today's setup (decided at the gate).
+4. **The repair in printers mode** (`lib/print-repair.ts`): a server-owned KOT round with no job at all (neither `kot:<order>:<round>` nor any key starting `kot:<order>:<round>:`; one read on the jobKey index with exact keys and anchored prefixes) is routed again with today's setup; a round that has some of its jobs is left alone (one request inserts them together).
+5. **The writers' wake** (`POST /api/print-jobs/wake`): in printers mode `agentDailyCap = printWakeWriterCap(printerWriterDevices(printers).length)`, and the agent polls by `printAgentPollsWake({ hostConfigured, isHost, printersMode, isWriter })` (A5).
+6. **The agent prints the printers it writes, on its one local printer** (until Session 2E). It reads `GET /api/printers` on mount, on a new `print-setup` realtime kind (cafe + Worker parity, published by every stations and printers write; 2 Worker requests per admin save, never per slip) and on focus at most every 5 min; `myPrinters` = the enabled printers this device writes. It leases with their ids. A printer prints only when it is this device's own local printer: a device printer whose transport and address match the device's saved printer, or a LAN printer whose `host:port` is the app's selected `tcp:host:port`; any other is refused `sent:"no"` (never counted) with "This printer is not connected to this device." Copies: one render, written `copies` times inside one lease; a failure after the first byte is "maybe" (the REPRINT repeats every copy, labelled).
+7. **The KOT's station line on paper:** `KOTReceipt` gains `stationLine?: string`, printed under the title (`printKotStationHeader`), fed by `hostPrintSlipOf` from `payload.station`. The payload-parity and print-host-slips pins follow. A station slip's item count and round total count its own lines (the gate checks the paper). A local print (a device with no identity) never carries a station.
+8. **Attention rows carry `printerId?`**; the panel names the printer from the device's printer list.
+9. **Live legs an–aq:** creation in printers mode (two station KOTs plus the full copy; failed-at-creation; replays collide; direct print on the writer's own line); a lease only by the writer (another device gets nothing), two printers of one device in one call, a stuck bar job never blocks the kitchen (head of line per printer); the sweep (a writer change, a removed printer); the repair (a round with no job is routed again, a round with some jobs is left).
+- **Exit (2C):** on the harness, the emulator app (one printer: the fake printer on 9100) writes the counter printer (bills and the full copy), and two scripted agents (scratchpad) write a kitchen printer (fake printer on 9101) and a bar printer (9102): one round with kitchen and bar items, ordered on the emulator, prints the full copy there with no lease request (direct print), and the kitchen and bar slips once each through their writers, with their station lines; a bill prints at the counter; removing every printer returns the cafe to simple mode (the KOT prints once at the host). The counting proxy shows one ack per slip, one lease per slip another device asked for, and no empty lease.
 
-### Session 2C: the setup screens (spec §11)
+### Session 2D: the setup screens (spec §11)
 
 1. **The admin Printer setup page (`/printers`)** gets three sections (decision 11):
    - **Printers:** each printer with its dot (its writer's heartbeat, and the writer's own link state when this device is the writer), its slips, stations, paper and copies; add, edit, enable/disable, delete; **Test print** (a new keyless job kind `test` printed on that printer, with its name, connection, address, slips, stations, paper and the time; decided at the gate).
@@ -3638,30 +3656,30 @@ Each session below lists what it delivers, its interfaces, its tests and its exi
 3. **This device's bill printer** in the printer panel ("Bill printer for this device: Default (‹name›) / ‹each printer›"), kept in this device's prefs and sent as `x-pos-bill-printer` on Pay Now, settle, End of day and a bill reprint.
 4. **The top-bar dot** (spec §10): the worst state among the printers this device writes and the device's own simple-mode printer.
 - Every new screen part gets its source pins; the Settings pins stay as they are.
-- **Exit (2C):** on the emulator and the harness, the owner's whole flow: Set up printers (one KOT prints exactly as before), add a Bar station, put Drinks on it, add a bar printer, a round with food and drinks prints by station; a test print; a station deleted while chosen; the item override.
+- **Exit (2D):** on the emulator and the harness, the owner's whole flow: Set up printers (one KOT prints exactly as before), add a Bar station, put Drinks on it, add a bar printer, a round with food and drinks prints by station; a test print; a station deleted while chosen; the item override.
 
-### Session 2D: several printers per device, web and Windows
+### Session 2E: several printers per device, web and Windows
 
 1. **The device-printer store per printer:** `pos.device-printer.v2` keeps one local printer record per printer id, plus the v1 record as this device's simple-mode printer until it is saved as a printer (migration; the v1 key stays readable for one release).
-2. **`devicePrinter()` becomes a registry of runtimes**, one per printer (its own link, write queue and reconnect; the tab-ownership lock stays per device); a lane and `canPrintNow(printerId)` per printer; the agent leases for every ready printer at once and prints different printers in parallel, one job at a time per printer (§9.1); the refusal hold is per printer.
+2. **`devicePrinter()` becomes a registry of runtimes**, one per printer (its own link, write queue and reconnect; the tab-ownership lock stays per device); a lane and `canPrintNow(printerId)` per printer; the agent leases for every ready printer at once and prints different printers in parallel, one job at a time per printer (§9.1); the refusal hold is per printer; direct print names every ready printer.
 3. **A Chrome tab drives at most one Web Serial or Web Bluetooth printer** (§9.7), with "Keep this tab open, or use the POS app".
 4. **The Windows app keeps a list of printers** (`printers: [{ printerId, deviceName, printMode }]`, migrated from `deviceName`), `printHtml(html, printerName?)` with one queue per printer; the desktop tests and the parity pins with `lib/desktop-shell.ts` follow. LAN printing from Windows stays Phase 3 (§9.6).
-5. Android stays on bridge v1 in 2D: one printer per Android device.
-- **Exit (2D):** a browser device and the emulator each write their printers; the Windows app's list is proven by its tests and, on the owner's PC, by TEST-CHECKLIST (two Windows printers, one KOT station each).
+5. Android stays on bridge v1 in 2E: one printer per Android device.
+- **Exit (2E):** a browser device and the emulator each write their printers; the Windows app's list is proven by its tests and, on the owner's PC, by TEST-CHECKLIST (two Windows printers, one KOT station each).
 
-### Session 2E: Android bridge v2 and the Kotlin printer pool
+### Session 2F: Android bridge v2 and the Kotlin printer pool
 
 1. **Protocol v2 beside v1** (decision 12): `PosNative.version` stays 1 for pages that know only v1, and the new APK adds `PosNative.versions = [1, 2]`. A v2 page sends `v: 2` envelopes whose `printer.*` methods take a `printerId` (`printer.select`, `printer.print`, `printer.reconnect`, `printer.forget`; `printer.status` answers every printer), and status events carry `printerId`. A v1 message acts on the default slot exactly as today. The web accepts v1 or v2; on v1 a device writes one printer.
 2. **The Kotlin pool:** a `PrinterManager` per printer (its own transport, reconnect backoff, pause flags and publish) with its own io executor (a blocked Classic connect or a USB permission wait never stalls another printer); `BUSY` per printer instead of the device-wide `printing` flag; `Prefs` keeps a list (migrated from the one printer); USB attach and detach reach the matching printer; two identical USB models stay refused (ids are VID:PID).
 3. **Pure-JVM unit tests** (spec §13): JUnit 4 as `testImplementation` (the Gradle cache on D:), for the state machine: backoff, pause flags, publish de-duplication, per-printer busy. The `mobile-paths.test.ts` pins that read exact Kotlin text (pins 0, 2, 11, 14 and 16) are rewritten deliberately and named in Results.
 4. The print-host service's notification shows the worst state across printers.
-- **Exit (2E):** one emulator drives two TCP printers (fake printers on 9100 and 9101) in parallel; an old page (v1) on the new APK prints exactly as today; the new page on the release APK (v1) prints with one printer.
+- **Exit (2F):** one emulator drives two TCP printers (fake printers on 9100 and 9101) in parallel; an old page (v1) on the new APK prints exactly as today; the new page on the release APK (v1) prints with one printer.
 
-### Session 2F: the Phase 2 exit
+### Session 2G: the Phase 2 exit
 
-1. **Spec §14 on the harness and the emulator:** one round with kitchen and bar items prints two station KOTs plus the full copy; a bill goes to the device's bill printer; the release APK (bridge v1) still prints in simple mode.
-2. **TEST-CHECKLIST:** "Stations and printers checks" for real printers (two Bluetooth printers on one phone, a LAN kitchen printer, a Windows counter, a station with no printer, copies, a deleted station, a printer switched off).
-3. **The free-tier measurement in printers mode** (the counting proxy, process CPU and opcounters, as in Session 1E) against A5's pins.
+1. **Spec §14 on the harness and the emulator:** one round with kitchen and bar items prints two station KOTs plus the full copy; a bill goes to the device's bill printer; the release APK (bridge v1) still prints in simple mode; a slip the asking device prints itself goes out with no lease request and no realtime message.
+2. **TEST-CHECKLIST:** "Stations and printers checks" for real printers (two Bluetooth printers on one phone, a LAN kitchen printer, a Windows counter, a station with no printer, copies, a deleted station, a printer switched off, an order lost in the network on the device that prints it).
+3. **The free-tier measurement in both modes** (the counting proxy, process CPU and opcounters, as in Session 1E) against A5's and 2B's pins.
 4. Results, the fresh review, and the final Phase 2 gate.
 
 ---
@@ -3670,11 +3688,12 @@ Each session below lists what it delivers, its interfaces, its tests and its exi
 
 | Criterion | Proven in |
 |---|---|
-| One round with kitchen and bar items prints two station KOTs plus the full copy | routing tests (A3), live leg (aj); end to end at 2B's exit and 2F |
-| Bills go to the device's bill printer | routing tests (A3); 2C's bill printer picker; 2F |
-| An old APK (bridge v1) still prints in simple mode | 2E (an old page on the new APK, the new page on the release APK); 2F |
+| One round with kitchen and bar items prints two station KOTs plus the full copy | routing tests (A3), live leg (aj); end to end at 2C's exit and 2G |
+| Bills go to the device's bill printer | routing tests (A3); 2D's bill printer picker; 2G |
+| An old APK (bridge v1) still prints in simple mode | 2F (an old page on the new APK, the new page on the release APK); 2G |
 | Existing outlets keep working with no new setup (G6) | A7's emulator check (dormant); every session's simple-mode legs and exit |
-| The free-tier budget holds with stations (§17) | A5's pins; 2F's measurement |
+| A slip the asking device prints itself costs one request and no realtime message (the owner, 2026-10-04) | 2B's pins, legs and exit; 2G's measurement |
+| The free-tier budget holds with stations (§17) | A5's and 2B's pins; 2G's measurement |
 
 ---
 
