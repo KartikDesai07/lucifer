@@ -1,5 +1,6 @@
 "use client";
 
+import { useId, useState } from "react";
 import { useFieldArray, useWatch } from "react-hook-form";
 import type { Control, FieldErrors, UseFormRegister } from "react-hook-form";
 import { Plus, Trash2 } from "lucide-react";
@@ -12,22 +13,20 @@ import {
 } from "@pos/shared/public-diner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Field } from "@/components/settings/SettingsFields";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { BRAND_CONTROL_CLASS, BRAND_FIELD_ERROR_CLASS } from "@/components/brand/brand-classes";
+import { Field, HINT_CLASS, SectionLink, SettingsGroup } from "@/components/settings/SettingsFields";
 
 interface DinerBannersFieldsProps {
+  // The SAVED "Diner accounts" switch: banners only show on the Home tab, and
+  // the tab shell exists only while diner accounts are on.
+  dinerAccountsOn: boolean;
   control: Control<SettingsInput>;
   register: UseFormRegister<SettingsInput>;
   errors: FieldErrors<SettingsInput>;
 }
 
-// Same TWO-error-homes reasoning as PromoCodesFields.tsx: per-ROW messages
+// Same TWO-error-homes reasoning as PromoCodeRow.tsx: per-ROW messages
 // (title's `.min(1)`/`.max()`) live at `dinerBanners.${i}.<field>.message`,
 // while the array's own `.max(DINER_BANNER_MAX)` bound has no single row to
 // anchor to and lives at the array root instead.
@@ -52,7 +51,7 @@ function rowFieldMessage(
   if (!bannersErrors || typeof bannersErrors !== "object") return undefined;
   const rows = bannersErrors as Record<number, BannerRowErrors | undefined>;
   const message = messageOf(rows[index]?.[field]);
-  return message ? `Banner ${index + 1}: ${message}` : undefined;
+  return message ? `Announcement ${index + 1}: ${message}` : undefined;
 }
 
 function arrayLevelMessage(bannersErrors: unknown): string | undefined {
@@ -66,45 +65,70 @@ interface DinerBannerRowProps {
   register: UseFormRegister<SettingsInput>;
   errors: FieldErrors<SettingsInput>;
   index: number;
-  onRemove: () => void;
+  onRemove: (title: string, body: string) => void;
 }
 
 // One row's own title is watched here (not in the parent) so adding or
 // removing a row never re-renders every other row's Controller subscriptions
-// — same isolation reasoning as PromoCodesFields.tsx's PromoCodeRow.
+// — same isolation reasoning as PromoCodeRow.tsx.
 function DinerBannerRow({ control, register, errors, index, onRemove }: DinerBannerRowProps) {
   const row = useWatch({ control, name: `dinerBanners.${index}` });
   const title = row?.title ?? "";
   const titleLen = title.length;
-  const bodyLen = (row?.body ?? "").length;
+  const body = row?.body ?? "";
+  const bodyLen = body.length;
+  const blank = title.trim() === "";
+  const idBase = useId();
+  const titleId = `${idBase}-title`;
+  const bodyId = `${idBase}-body`;
 
   return (
-    <div className="space-y-3 rounded-lg border p-3">
+    <div className="space-y-4 rounded-md border border-brand-rule bg-brand-paper p-3 sm:p-4">
+      <div className="flex items-center justify-between gap-3">
+        <h4 className="min-w-0 truncate text-sm font-semibold text-brand-ink">
+          {blank ? `Announcement ${index + 1}` : title}
+        </h4>
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-11 shrink-0 px-3 text-brand-danger md:h-10"
+          onClick={() => onRemove(title, body)}
+          aria-label={blank ? "Remove this announcement" : `Remove announcement ${title}`}
+        >
+          <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
+          Remove
+        </Button>
+      </div>
+
       <Field
         label="Title"
+        htmlFor={titleId}
         hint={`${titleLen}/${DINER_BANNER_TITLE_MAX_LEN}`}
         error={rowFieldMessage(errors.dinerBanners, index, "title")}
       >
-        <Input {...register(`dinerBanners.${index}.title`)} maxLength={DINER_BANNER_TITLE_MAX_LEN} placeholder="Diwali special" />
+        <Input
+          id={titleId}
+          className={BRAND_CONTROL_CLASS}
+          {...register(`dinerBanners.${index}.title`)}
+          maxLength={DINER_BANNER_TITLE_MAX_LEN}
+          placeholder="Diwali special"
+        />
       </Field>
 
       <Field
-        label="Body"
+        label="More details (optional)"
+        htmlFor={bodyId}
         hint={`${bodyLen}/${DINER_BANNER_BODY_MAX_LEN}`}
         error={rowFieldMessage(errors.dinerBanners, index, "body")}
       >
         <Input
+          id={bodyId}
+          className={BRAND_CONTROL_CLASS}
           {...register(`dinerBanners.${index}.body`)}
           maxLength={DINER_BANNER_BODY_MAX_LEN}
           placeholder="20% off on all desserts this week"
         />
       </Field>
-
-      <div className="flex justify-end">
-        <Button type="button" variant="ghost" size="icon" onClick={onRemove} aria-label={`Remove ${title || "banner"}`}>
-          <Trash2 className="h-4 w-4 text-destructive" />
-        </Button>
-      </div>
     </div>
   );
 }
@@ -113,23 +137,51 @@ function DinerBannerRow({ control, register, errors, index, onRemove }: DinerBan
 // Home tab (/m), embedded on Settings. Rows are a useFieldArray over
 // `dinerBanners`, one row registered per field (same PromoCodesFields.tsx
 // precedent) so per-row errors render inline without a collapsing helper.
-export function DinerBannersFields({ control, register, errors }: DinerBannersFieldsProps) {
+// Settings pass slice 7 (s69): a row with a title typed asks before it goes;
+// a blank row has nothing to lose and goes at once.
+export function DinerBannersFields({ dinerAccountsOn, control, register, errors }: DinerBannersFieldsProps) {
   const { fields, append, remove } = useFieldArray({ control, name: "dinerBanners" });
+  // The dialog's open flag and its target are separate on purpose: the target
+  // stays set through the close animation, so the title never flickers.
+  const [target, setTarget] = useState<{ index: number; label: string } | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const atMax = fields.length >= DINER_BANNER_MAX;
   const arrayError = arrayLevelMessage(errors.dinerBanners);
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Announcements on the QR menu</CardTitle>
-        <CardDescription>
-          Short marketing lines diners see at the top of the QR menu. Leave the list empty to show none.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {arrayError && <p className="text-xs text-destructive">{arrayError}</p>}
+  // Only a row with neither a title nor details typed has nothing to lose.
+  const requestRemove = (index: number, title: string, body: string) => {
+    if (title.trim() === "" && body.trim() === "") {
+      remove(index);
+      return;
+    }
+    setTarget({ index, label: title.trim() });
+    setConfirmOpen(true);
+  };
 
-        {fields.length === 0 && <p className="text-xs text-muted-foreground">No banners yet.</p>}
+  return (
+    <>
+      <SettingsGroup
+        title="Announcements"
+        description={`Short lines diners see on the Home tab of the QR menu, like a special offer. Up to ${DINER_BANNER_MAX}.`}
+      >
+        {!dinerAccountsOn && (
+          <p className={HINT_CLASS}>
+            Diners see these only while Diner accounts is on in{" "}
+            <SectionLink slug="loyalty">Rewards &amp; loyalty</SectionLink>.
+          </p>
+        )}
+
+        {arrayError && (
+          <p className={BRAND_FIELD_ERROR_CLASS} role="alert">
+            {arrayError}
+          </p>
+        )}
+
+        {fields.length === 0 && (
+          <p className="rounded-md border border-dashed border-brand-rule p-4 text-sm text-brand-muted">
+            No announcements yet.
+          </p>
+        )}
 
         {fields.map((field, index) => (
           <DinerBannerRow
@@ -138,23 +190,36 @@ export function DinerBannersFields({ control, register, errors }: DinerBannersFi
             register={register}
             errors={errors}
             index={index}
-            onRemove={() => remove(index)}
+            onRemove={(title, body) => requestRemove(index, title, body)}
           />
         ))}
 
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           <Button
             type="button"
             variant="outline"
-            size="sm"
+            className="h-11 md:h-10"
             onClick={() => append({ title: "", body: "" })}
             disabled={atMax}
           >
-            <Plus className="mr-2 h-4 w-4" /> Add banner
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+            Add an announcement
           </Button>
-          {atMax && <p className="text-xs text-muted-foreground">Maximum {DINER_BANNER_MAX} banners</p>}
+          {atMax && <p className={HINT_CLASS}>You can show up to {DINER_BANNER_MAX} announcements.</p>}
         </div>
-      </CardContent>
-    </Card>
+      </SettingsGroup>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={target?.label ? `Remove "${target.label}"?` : "Remove this announcement?"}
+        description="This removes it from the list. Nothing changes for diners until you save."
+        confirmLabel="Remove"
+        onConfirm={() => {
+          if (target) remove(target.index);
+          setConfirmOpen(false);
+        }}
+      />
+    </>
   );
 }
