@@ -18,11 +18,16 @@ import type { PrintJobPayload } from "./schemas/print-job.schema";
 
 /** A lease covers rendering (the 12 s raster deadline) plus the device write deadline (70 s). */
 export const PRINT_LEASE_MS = 90_000;
-/** The wait after a refusal made before any byte was sent: 2 s, 5 s, 10 s, then every 30 s. */
+/** The wait after a refusal made before any byte was sent: 2 s, 5 s, 10 s, then every 30 s. The agent
+ *  does not lease at all while its printer is known to be off (owner, after Session 1B), so this only
+ *  paces a printer whose link reports ready but keeps refusing. */
 export const PRINT_BACKOFF_MS = [2_000, 5_000, 10_000, 30_000] as const;
-/** Retries stop once a job may have printed this many times, or was leased this many times (§7.8). */
-export const PRINT_MAX_UNCERTAIN_ATTEMPTS = 3;
-export const PRINT_MAX_ATTEMPTS = 8;
+/** The owner's rule after Session 1B (2026-10-03, replacing §7.8's "3 uncertain or 8 leases"): when the
+ *  printer is ready, a slip gets at most TWO attempts that may reach paper, the first plus ONE labelled
+ *  retry (REPRINT; for a bill, the cashier's DUPLICATE). The second "maybe" (a failure after a byte left,
+ *  or a lease that ran out) ends in failed, and waits for staff. A refusal made before any byte was sent
+ *  (sent:"no": the printer was off) never counts, however often it happens. */
+export const PRINT_MAX_PAPER_ATTEMPTS = 2;
 /** A KOT still not printed this long after it was created sounds the alarm (§10). */
 export const PRINT_KOT_ALARM_MS = 20_000;
 /** A device whose last heartbeat is older than this is offline (§6.4). */
@@ -245,8 +250,10 @@ export function printJobInitialLabels(payload: PrintJobPayload): PrintJobLabel[]
   }
 }
 
-export function printJobOverLimits(attempts: number, uncertainAttempts: number): boolean {
-  return uncertainAttempts >= PRINT_MAX_UNCERTAIN_ATTEMPTS || attempts >= PRINT_MAX_ATTEMPTS;
+/** Only attempts that may have reached paper count (PRINT_MAX_PAPER_ATTEMPTS); leases refused before
+ *  writing never do. */
+export function printJobOverLimits(uncertainAttempts: number): boolean {
+  return uncertainAttempts >= PRINT_MAX_PAPER_ATTEMPTS;
 }
 
 /** Stale is derived, never stored (§7.2): a queued job over 30 minutes old that staff never
@@ -268,7 +275,7 @@ function afterUncertain(
   detail: string,
 ): PrintJobPatch {
   const uncertainAttempts = job.uncertainAttempts + 1;
-  if (printJobOverLimits(job.attempts, uncertainAttempts)) {
+  if (printJobOverLimits(uncertainAttempts)) {
     return failed(nowMs, { uncertainAttempts, lastError: detail }, deviceId, `limits: ${detail}`);
   }
   const log = logEntry(nowMs, event, deviceId, detail);
@@ -303,7 +310,7 @@ function printedPatch(nowMs: number, by: string, event: "printed" | "late-ack" |
 export function planLease(job: PrintJobLifecycle, who: { deviceId: string; tabId: string }, nowMs: number): PrintJobPlan {
   if (job.status !== "queued") return { ok: false, reason: "wrong-status" };
   if (printJobStale(job, nowMs)) return { ok: false, reason: "stale" };
-  if (printJobOverLimits(job.attempts, job.uncertainAttempts)) return { ok: false, reason: "over-limits" };
+  if (printJobOverLimits(job.uncertainAttempts)) return { ok: false, reason: "over-limits" };
   if (job.nextAttemptAt.getTime() > nowMs) return { ok: false, reason: "not-due" };
   const epoch = job.epoch + 1;
   return planned({
@@ -336,9 +343,8 @@ export function planAck(job: PrintJobLifecycle, ack: PrintJobAck, nowMs: number)
       return planned(failed(nowMs, { uncertainAttempts, lastError: error }, ack.deviceId, `permanent: ${error}`));
     }
     if (ack.sent === "no") {
-      if (printJobOverLimits(job.attempts, job.uncertainAttempts)) {
-        return planned(failed(nowMs, { lastError: error }, ack.deviceId, `limits: ${error}`));
-      }
+      // Nothing reached the printer, so this never counts toward the limit (owner, after Session 1B):
+      // the job waits in line, and the agent stops leasing until its printer is back.
       return planned({
         status: "queued",
         set: { status: "queued", nextAttemptAt: new Date(nowMs + printBackoffMs(job.attempts)), lastError: error },
@@ -366,15 +372,15 @@ export function planConfirm(job: PrintJobLifecycle, decision: PrintJobDecision, 
   if (job.status !== "needs-confirm") return { ok: false, reason: "wrong-status" };
   switch (decision) {
     case "reprint":
-      // Counters reset and approvedAt set: the cashier's tap is a fresh, approved attempt, so the
-      // copy is neither parked as stale nor failed by the uncertain limit it came from.
+      // The cashier's tap is the bill's ONE labelled retry (the owner's two-attempt rule): one more
+      // attempt, approved now so it is never parked as stale, and a second "maybe" fails it.
       return planned({
         status: "queued",
         set: {
           status: "queued",
           labels: addPrintLabel(job.labels, "DUPLICATE"),
           attempts: 0,
-          uncertainAttempts: 0,
+          uncertainAttempts: PRINT_MAX_PAPER_ATTEMPTS - 1,
           nextAttemptAt: new Date(nowMs),
           approvedAt: new Date(nowMs),
         },
@@ -393,13 +399,21 @@ export function planConfirm(job: PrintJobLifecycle, decision: PrintJobDecision, 
   }
 }
 
-/** failed → queued ("Print again"), or a stale queued job → leasable ("Print now") (§7.2). */
+/** failed → queued ("Retry"), or a stale queued job → leasable ("Print now") (§7.2). One staff tap is
+ *  one more attempt (the owner's rule): a second "maybe" sends the slip back to failed. */
 export function planRetry(job: PrintJobLifecycle, nowMs: number): PrintJobPlan {
   if (job.status === "failed") {
     const labels = job.uncertainAttempts > 0 ? addPrintLabel(job.labels, printRepeatLabel(job.kind)) : job.labels;
     return planned({
       status: "queued",
-      set: { status: "queued", labels, attempts: 0, uncertainAttempts: 0, nextAttemptAt: new Date(nowMs), approvedAt: new Date(nowMs) },
+      set: {
+        status: "queued",
+        labels,
+        attempts: 0,
+        uncertainAttempts: PRINT_MAX_PAPER_ATTEMPTS - 1,
+        nextAttemptAt: new Date(nowMs),
+        approvedAt: new Date(nowMs),
+      },
       unset: ["lastError"],
       log: logEntry(nowMs, "retried", undefined, "print again"),
     });
@@ -417,7 +431,7 @@ export function planRetry(job: PrintJobLifecycle, nowMs: number): PrintJobPlan {
 
 /** The sweep's limits check (§7.2): a queued job over its limits stops retrying. */
 export function planLimits(job: PrintJobLifecycle, nowMs: number): PrintJobPlan {
-  if (job.status !== "queued" || !printJobOverLimits(job.attempts, job.uncertainAttempts)) {
+  if (job.status !== "queued" || !printJobOverLimits(job.uncertainAttempts)) {
     return { ok: false, reason: "wrong-status" };
   }
   return planned({ status: "failed", set: { status: "failed", lastError: "too many attempts" }, unset: [], log: logEntry(nowMs, "failed", undefined, "limits") });

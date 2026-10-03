@@ -4,7 +4,7 @@ import { PRINT_HOST_MAX_AGE_MS, PRINT_JOB_KINDS } from "./print-job";
 import {
   PRINT_BACKOFF_MS,
   PRINT_LEASE_MS,
-  PRINT_MAX_ATTEMPTS,
+  PRINT_MAX_PAPER_ATTEMPTS,
   addPrintLabel,
   lifecycleOf,
   planAck,
@@ -83,7 +83,8 @@ test("lease: refused while in backoff, when stale, when over limits, and for eve
   assert.equal(refusalOf(planLease(job({ nextAttemptAt: new Date(T0 + 1) }), WHO, T0)).reason, "not-due");
   const old = job({ createdAt: new Date(T0 - PRINT_HOST_MAX_AGE_MS - 1) });
   assert.equal(refusalOf(planLease(old, WHO, T0)).reason, "stale");
-  assert.equal(refusalOf(planLease(job({ attempts: PRINT_MAX_ATTEMPTS }), WHO, T0)).reason, "over-limits");
+  assert.equal(refusalOf(planLease(job({ uncertainAttempts: PRINT_MAX_PAPER_ATTEMPTS }), WHO, T0)).reason, "over-limits");
+  assert.ok(planLease(job({ attempts: 50 }), WHO, T0).ok, "leases refused before writing never count toward the limit");
   for (const status of ["leased", "printed", "needs-confirm", "failed", "dismissed"] as const) {
     assert.equal(refusalOf(planLease(job({ status }), WHO, T0)).reason, "wrong-status", status);
   }
@@ -163,15 +164,37 @@ test("ack failed with a permanent error: failed at once, no retry", () => {
   assert.equal(maybe.set.uncertainAttempts, 1, "a permanent error after a byte left still counts as maybe printed");
 });
 
-test("limits: the third uncertain attempt or the eighth lease ends in failed, never another retry", () => {
-  const third = patchOf(planAck(leased({ uncertainAttempts: 2 }), { deviceId: "dev-a", epoch: 1, outcome: "failed", sent: "maybe" }, T0));
-  assert.equal(third.status, "failed");
-  const eighth = patchOf(planAck(leased({ attempts: PRINT_MAX_ATTEMPTS }), { deviceId: "dev-a", epoch: 1, outcome: "failed", sent: "no" }, T0));
-  assert.equal(eighth.status, "failed");
-  const swept = patchOf(planLimits(job({ uncertainAttempts: 3 }), T0));
-  assert.equal(swept.status, "failed");
-  assert.equal(refusalOf(planLimits(job({ uncertainAttempts: 2, attempts: 7 }), T0)).reason, "wrong-status");
-  assert.equal(refusalOf(planLimits(leased({ uncertainAttempts: 3 }), T0)).reason, "wrong-status", "only a queued job is failed by the sweep");
+// The owner's rule after Session 1B (2026-10-03): at most two attempts that may reach paper, the first
+// plus one labelled retry; refusals made before writing (the printer was off) never count.
+test("limits: the second attempt that may have printed ends in failed; a refusal never counts, however often", () => {
+  assert.equal(PRINT_MAX_PAPER_ATTEMPTS, 2, "the first attempt plus ONE labelled retry");
+  const first = patchOf(planAck(leased(), { deviceId: "dev-a", epoch: 1, outcome: "failed", sent: "maybe" }, T0));
+  assert.equal(first.status, "queued", "the first maybe is retried once, labelled");
+  assert.deepEqual(first.set.labels, ["REPRINT"], "the retry says REPRINT");
+  const second = patchOf(planAck(leased({ uncertainAttempts: 1, labels: ["REPRINT"] }), { deviceId: "dev-a", epoch: 1, outcome: "failed", sent: "maybe" }, T0));
+  assert.equal(second.status, "failed", "the second maybe ends in failed");
+  assert.equal(second.set.uncertainAttempts, 2, "both attempts are recorded");
+  const expired = patchOf(planExpiry(leased({ uncertainAttempts: 1, lease: { deviceId: "dev-a", tabId: "tab-1", epoch: 1, expiresAt: new Date(T0) } }), T0 + 1));
+  assert.equal(expired.status, "failed", "a second lease that ran out counts the same as a second maybe");
+  const refused = patchOf(planAck(leased({ attempts: 50, uncertainAttempts: 1 }), { deviceId: "dev-a", epoch: 1, outcome: "failed", sent: "no" }, T0));
+  assert.equal(refused.status, "queued", "the 50th refusal still waits in line");
+  assert.equal(refused.set.uncertainAttempts, undefined, "a refusal adds no attempt");
+  const swept = patchOf(planLimits(job({ uncertainAttempts: PRINT_MAX_PAPER_ATTEMPTS }), T0));
+  assert.equal(swept.status, "failed", "the sweep fails a queued job over the limit");
+  assert.equal(refusalOf(planLimits(job({ uncertainAttempts: 1, attempts: 50 }), T0)).reason, "wrong-status", "many refused leases are not over the limit");
+  assert.equal(refusalOf(planLimits(leased({ uncertainAttempts: 2 }), T0)).reason, "wrong-status", "only a queued job is failed by the sweep");
+});
+
+test("a bill: the first maybe asks the cashier; the cashier's print again is the one retry; a second maybe is failed", () => {
+  const asked = patchOf(planAck(leased({ kind: "bill" }), { deviceId: "dev-a", epoch: 1, outcome: "failed", sent: "maybe" }, T0));
+  assert.equal(asked.status, "needs-confirm", "the cashier decides after the first maybe");
+  const again = patchOf(planConfirm(job({ kind: "bill", status: "needs-confirm", epoch: 1, attempts: 1, uncertainAttempts: 1 }), "reprint", "Asha", T0));
+  const retried = lifecycleOf({ ...job({ kind: "bill", epoch: 1 }), ...again.set });
+  const leasedAgain = patchOf(planLease(retried, WHO, T0));
+  const secondMaybe = patchOf(
+    planAck(lifecycleOf({ ...retried, ...leasedAgain.set }), { deviceId: "dev-a", epoch: 2, outcome: "failed", sent: "maybe" }, T0),
+  );
+  assert.equal(secondMaybe.status, "failed", "never a second cashier prompt: the bill waits in failed");
 });
 
 test("late ack (spec §7.9): a printed ack for the epoch that expired still resolves the job", () => {
@@ -200,11 +223,11 @@ test("idempotent acks: a repeated printed ack of a printed job is 'resolved'; a 
   assert.equal(refusalOf(planAck(job({ epoch: 1 }), { deviceId: "dev-a", epoch: 1, outcome: "failed", sent: "no" }, T0)).reason, "not-leased");
 });
 
-test("needs-confirm, print again: queued with DUPLICATE, counters reset, approved now (never parked as stale)", () => {
+test("needs-confirm, print again: queued with DUPLICATE as the bill's one retry, approved now (never parked as stale)", () => {
   const waiting = job({ kind: "bill", status: "needs-confirm", epoch: 1, attempts: 1, uncertainAttempts: 1, createdAt: new Date(T0 - 2 * PRINT_HOST_MAX_AGE_MS) });
   const patch = patchOf(planConfirm(waiting, "reprint", "Asha", T0));
   assert.equal(patch.status, "queued");
-  assert.deepEqual(patch.set, { status: "queued", labels: ["DUPLICATE"], attempts: 0, uncertainAttempts: 0, nextAttemptAt: new Date(T0), approvedAt: new Date(T0) });
+  assert.deepEqual(patch.set, { status: "queued", labels: ["DUPLICATE"], attempts: 0, uncertainAttempts: 1, nextAttemptAt: new Date(T0), approvedAt: new Date(T0) });
   assert.equal(patch.log.event, "confirmed");
   assert.ok(planLease(lifecycleOf({ ...waiting, ...patch.set }), WHO, T0).ok, "the cashier's reprint is leasable at once");
 });
@@ -219,15 +242,19 @@ test("needs-confirm, it printed / dismiss: printed by the cashier, or dismissed 
   assert.equal(refusalOf(planConfirm(job(), "printed", "Asha", T0)).reason, "wrong-status", "only a job waiting for a decision takes one");
 });
 
-test("failed, print again: labelled when it may have printed, counters reset, approved now", () => {
-  const kot = patchOf(planRetry(job({ status: "failed", attempts: 8, uncertainAttempts: 1 }), T0));
-  assert.deepEqual(kot.set, { status: "queued", labels: ["REPRINT"], attempts: 0, uncertainAttempts: 0, nextAttemptAt: new Date(T0), approvedAt: new Date(T0) });
+test("failed, retry: one staff tap is one more attempt, labelled when it may have printed, approved now", () => {
+  const kot = patchOf(planRetry(job({ status: "failed", attempts: 8, uncertainAttempts: 2 }), T0));
+  assert.deepEqual(kot.set, { status: "queued", labels: ["REPRINT"], attempts: 0, uncertainAttempts: 1, nextAttemptAt: new Date(T0), approvedAt: new Date(T0) });
   assert.deepEqual(kot.unset, ["lastError"]);
   const bill = patchOf(planRetry(job({ kind: "bill", status: "failed", uncertainAttempts: 2 }), T0));
   assert.deepEqual(bill.set.labels, ["DUPLICATE"]);
   const never = patchOf(planRetry(job({ status: "failed", attempts: 8 }), T0));
   assert.deepEqual(never.set.labels, [], "nothing ever reached paper: no label");
   assert.equal(kot.log.event, "retried");
+  const tapped = lifecycleOf({ ...job({ epoch: 3 }), ...kot.set });
+  const lease = patchOf(planLease(tapped, WHO, T0));
+  const maybe = patchOf(planAck(lifecycleOf({ ...tapped, ...lease.set }), { deviceId: "dev-a", epoch: 4, outcome: "failed", sent: "maybe" }, T0));
+  assert.equal(maybe.status, "failed", "one tap, one try: a maybe on the retried slip sends it back to failed");
 });
 
 test("stale, print now: a 30-minute-old queued job becomes leasable; a fresh one needs no tap", () => {

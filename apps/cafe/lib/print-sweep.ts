@@ -1,8 +1,7 @@
 import { PRINT_HOST_KEY } from "@pos/shared/print-job";
 import {
   PRINT_JOB_LOG_MAX,
-  PRINT_MAX_ATTEMPTS,
-  PRINT_MAX_UNCERTAIN_ATTEMPTS,
+  PRINT_MAX_PAPER_ATTEMPTS,
   PRINT_SWEEP_MIN_INTERVAL_MS,
   lifecycleOf,
   planExpiry,
@@ -110,11 +109,9 @@ export async function sweepPrintJobs(nowMs: number): Promise<PrintSweepResult> {
   // 2b. Re-create the missing job of a server-owned KOT round (§7.4; print-repair.ts).
   result.repaired = await repairMissingKotJobs(nowMs);
 
-  // 3. Limits (§7.8). They are normally applied when acking; this catches anything that slipped past.
-  const tired = await PrintJob.find({
-    status: "queued",
-    $or: [{ uncertainAttempts: { $gte: PRINT_MAX_UNCERTAIN_ATTEMPTS } }, { attempts: { $gte: PRINT_MAX_ATTEMPTS } }],
-  })
+  // 3. Limits (§7.8, the owner's two-attempt rule). Normally applied when acking; this catches anything
+  // that slipped past. Only attempts that may have reached paper count; refused leases never do.
+  const tired = await PrintJob.find({ status: "queued", uncertainAttempts: { $gte: PRINT_MAX_PAPER_ATTEMPTS } })
     .select(PRINT_LIFECYCLE_SELECT)
     .limit(PRINT_SWEEP_BATCH)
     .lean<PrintLifecycleRow[]>();
