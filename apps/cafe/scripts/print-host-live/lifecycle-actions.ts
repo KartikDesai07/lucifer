@@ -6,7 +6,7 @@
  */
 import { PrintJob } from "@/models/PrintJob";
 import { PrintDevice } from "@/models/PrintDevice";
-import { dismissQueuedPrintJobsForClearedHost, enqueuePrintJob } from "@/lib/print-queue";
+import { dismissPrintJob, dismissQueuedPrintJobsForClearedHost, enqueuePrintJob } from "@/lib/print-queue";
 import { ackPrintJob } from "@/lib/print-lease";
 import { confirmPrintJob, retryPrintJob } from "@/lib/print-job-actions";
 import { beatPrintDevice, countOnlineAgents, touchPrintDevice } from "@/lib/print-device";
@@ -55,10 +55,16 @@ export async function legW(nowMs: number): Promise<void> {
   const second = await lease(nowMs + 2);
   check("(w) the DUPLICATE copy is leased next, epoch 2", second.jobs[0]?.id === bill && second.jobs[0]?.epoch === 2 && second.jobs[0]?.labels.includes("DUPLICATE") === true);
   await ackPrintJob({ id: bill, deviceId: HOST, epoch: 2, outcome: "failed", sent: "maybe", nowMs: nowMs + 3 });
-  const said = await confirmPrintJob({ id: bill, decision: "printed", staff: STAFF, nowMs: nowMs + 4 });
-  row = await rowOf(bill);
+  // Session 1C (the owner's two-attempt rule): the cashier's copy was the bill's one retry, so its maybe is failed.
+  check("(w) a maybe on the cashier's copy fails the bill: never a second prompt", (await rowOf(bill))?.status === "failed");
+  await dismissPrintJob({ id: bill, reason: "staff", dismissedBy: STAFF });
+  const asked = await queueBill(nowMs);
+  await lease(nowMs + 3);
+  await ackPrintJob({ id: asked, deviceId: HOST, epoch: 1, outcome: "failed", sent: "maybe", nowMs: nowMs + 3 });
+  const said = await confirmPrintJob({ id: asked, decision: "printed", staff: STAFF, nowMs: nowMs + 4 });
+  row = await rowOf(asked);
   check("(w) 'It printed' resolves it, stamped with the cashier", said.applied && row?.status === "printed" && row?.printedBy === STAFF);
-  const late = await confirmPrintJob({ id: bill, decision: "dismiss", staff: STAFF, nowMs: nowMs + 5 });
+  const late = await confirmPrintJob({ id: asked, decision: "dismiss", staff: STAFF, nowMs: nowMs + 5 });
   check("(w) a decision on a job that is not waiting for one is refused", !late.applied && late.reason === "wrong-status");
 
   const other = await queueBill(nowMs);
@@ -74,7 +80,8 @@ export async function legW(nowMs: number): Promise<void> {
   check("(w) a permanent error fails the job at once", (await rowOf(kot))?.status === "failed");
   const retried = await retryPrintJob({ id: kot, nowMs: nowMs + 11 });
   row = await rowOf(kot);
-  check("(w) Print again requeues it with REPRINT (it may have printed), counters reset", retried.applied && row?.status === "queued" && JSON.stringify(row?.labels) === '["REPRINT"]' && row?.attempts === 0 && row?.uncertainAttempts === 0);
+  // Session 1C: one staff tap is one more attempt (uncertainAttempts 1 of the 2 allowed).
+  check("(w) Print again requeues it with REPRINT (it may have printed) as one more attempt", retried.applied && row?.status === "queued" && JSON.stringify(row?.labels) === '["REPRINT"]' && row?.attempts === 0 && row?.uncertainAttempts === 1);
 
   // Spec §7.1: clearing the host dismisses every unresolved job, but never a leased one (its writer
   // may be printing it; the lease expires in 90 s). Session 1A final-review fix I1.
