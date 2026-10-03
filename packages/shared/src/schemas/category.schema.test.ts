@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { reorderCategoriesSchema } from "./category.schema";
+import { createCategorySchema, reorderCategoriesSchema, updateCategorySchema } from "./category.schema";
 import { CATEGORY_REORDER_MAX } from "../constants";
 import { MAX_IMPORT_ROWS } from "../product-import";
 
@@ -56,4 +56,21 @@ test("CATEGORY_REORDER_MAX >= MAX_IMPORT_ROWS", () => {
     CATEGORY_REORDER_MAX >= MAX_IMPORT_ROWS,
     `CATEGORY_REORDER_MAX (${CATEGORY_REORDER_MAX}) must be >= MAX_IMPORT_ROWS (${MAX_IMPORT_ROWS})`,
   );
+});
+
+// ── Printing Phase 2 (spec §6.2): the category's kitchen station ────────────
+
+test("createCategorySchema: stationId is optional with no default (absent = the default station)", () => {
+  const r = createCategorySchema.safeParse({ name: "Drinks" });
+  assert.equal(r.success, true);
+  assert.ok(r.success && !("stationId" in r.data), "no stationId key unless one is chosen");
+  assert.equal(createCategorySchema.safeParse({ name: "Drinks", stationId: ID1 }).success, true);
+  assert.equal(createCategorySchema.safeParse({ name: "Drinks", stationId: "Bar" }).success, false, "only a station id");
+});
+
+test("updateCategorySchema: stationId:null means back to the default station; absent leaves it alone", () => {
+  const cleared = updateCategorySchema.safeParse({ stationId: null });
+  assert.equal(cleared.success && cleared.data.stationId, null);
+  const renamed = updateCategorySchema.safeParse({ name: "Hot drinks" });
+  assert.ok(renamed.success && !("stationId" in renamed.data), "a rename never touches the station");
 });

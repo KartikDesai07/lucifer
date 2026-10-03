@@ -80,6 +80,9 @@ export const createProductSchema = z.object({
   // (omit-empty, the publicVisible precedent): the CSV import has no column
   // for it, so a re-import can never clear a chosen icon.
   icon: productIconSchema.optional(),
+  // Printing Phase 2 (spec §6.2): this item's own kitchen station, overriding its category's. Optional
+  // with NO default (the publicVisible precedent): the CSV import has no column for it.
+  stationId: z.string().regex(OBJECT_ID_HEX_PATTERN, "Pick a station").optional(),
 });
 
 // PUT /api/products/[id]. Everything optional, PLUS one sentinel the create
@@ -104,6 +107,8 @@ export const updateProductSchema = createProductSchema.partial().extend({
   // Same sentinel again: "Remove icon" must restore ABSENT, and JSON cannot
   // carry undefined — `null` is the explicit clear the route turns into $unset.
   icon: productIconSchema.nullable().optional(),
+  // Same sentinel once more: "Use the category's station" restores ABSENT.
+  stationId: z.string().regex(OBJECT_ID_HEX_PATTERN, "Pick a station").nullable().optional(),
 });
 
 export type CreateProductInput = z.infer<typeof createProductSchema>;

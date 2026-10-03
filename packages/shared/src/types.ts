@@ -105,6 +105,8 @@ export interface Product {
   // stored key may predate a catalogue change, so every renderer narrows it
   // with isProductIconKey and treats anything else as "no icon".
   icon?: string;
+  // Printing Phase 2: this item's own kitchen station; ABSENT = its category's.
+  stationId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -123,6 +125,8 @@ export interface Category {
   _id: string;
   name: string;
   order: number;
+  // Printing Phase 2: the kitchen station; ABSENT = the default station.
+  stationId?: string;
   createdAt: string;
   updatedAt: string;
 }

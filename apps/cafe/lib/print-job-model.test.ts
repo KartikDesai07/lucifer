@@ -246,8 +246,30 @@ test("PrintJob: Phase 1 indexes — one device's line; no index nothing reads", 
   // The Phase 1 final gate (m-1, deliberate change): the readback index served myRecentJobs, which the 1C gate
   // dropped; no query reads it, and on M0 it cost a write per insert and storage. Never deployed, so never built.
   assert.ok(!keys.some((k) => k.includes('"originDeviceId"')), "no originDeviceId index");
-  assert.equal(keys.length, 3, "exactly three PrintJob indexes: the feed/prune one, the job-key fence and the line");
+  // Phase 2 Session 2A (deliberate change): a fourth index, one printer's line (the next test).
+  assert.equal(keys.length, 4, "exactly four PrintJob indexes: the feed/prune one, the job-key fence, the device line and the printer line");
   assert.ok(keys.includes(JSON.stringify({ status: 1, createdAt: 1, _id: 1 })), "landmark: the prune/feed index stays");
+});
+
+// ── Phase 2 (plan 2026-10-03-phase-2-routing.md, Task A2) ──────────────────
+
+test("PrintJob: Phase 2's printer line index, in exactly that key order, partial on printerId", () => {
+  const match = printJobSchema.indexes().find(([fields]) => fields.printerId === 1);
+  assert.ok(match, "expected a printer line index");
+  const [fields, options] = match as [Record<string, unknown>, Record<string, unknown>];
+  assert.deepEqual(Object.keys(fields), ["printerId", "status", "createdAt", "_id"], "the head-of-line read: equality on printerId and status, then oldest first");
+  // Partial: a simple-mode row (no printerId) never enters it, so it costs simple mode nothing on M0.
+  assert.deepEqual(options.partialFilterExpression, { printerId: { $exists: true } });
+  assert.equal(options.unique, undefined, "not unique: a printer's line holds many jobs");
+});
+
+test("PrintJob: printerId and copies stay absent on a simple-mode row; copies is 1–3", () => {
+  const doc = new PrintJob({ ...MIN_JOB });
+  assert.equal(doc.get("printerId"), undefined, "omit-empty: simple mode never writes it");
+  assert.equal(doc.get("copies"), undefined, "omit-empty: absent means one copy");
+  assert.equal(new PrintJob({ ...MIN_JOB, printerId: "64f000000000000000000001", copies: 3 }).validateSync(), undefined);
+  assert.ok(new PrintJob({ ...MIN_JOB, copies: 0 }).validateSync()?.errors.copies, "no zero copies");
+  assert.ok(new PrintJob({ ...MIN_JOB, copies: 4 }).validateSync()?.errors.copies, "at most three");
 });
 
 test("PrintJob: every Phase 1 lifecycle field is absent on a minimal doc (omit-empty, the arrays included)", () => {
