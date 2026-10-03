@@ -350,3 +350,57 @@ test("the bridge's outcome line: each slip's caller hears once, in print order; 
   outcomes.finish({ ok: true });
   assert.deepEqual(heard, ["a:true", "c:false"], "in order, once each, the test slip in between untold");
 });
+
+// Session 1C final review I2: a kick that lands while a cycle runs used to be dropped. If that cycle's
+// lease read the line before the new job was inserted, the job waited for the next poll (up to 60 s on
+// the host, 20 s with no host).
+test("a kick that lands while a lease is on the wire is not lost: the agent leases once more when that cycle ends", async () => {
+  const { w, deps } = world();
+  let release: (data: PrintLeaseData) => void = () => undefined;
+  let calls = 0;
+  const agent = createPrintAgent({
+    ...deps,
+    lease: () => {
+      calls += 1;
+      if (calls === 1) return new Promise<PrintLeaseData>((resolve) => void (release = resolve));
+      return deps.lease();
+    },
+  });
+  w.leases.push({ jobs: [job("j2")], retryAt: null });
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  agent.kick(); // a new job's print-status arrives while the first lease is still on the wire
+  release({ jobs: [], retryAt: null }); // that lease read the line before the new job was inserted
+  await settle();
+  assert.deepEqual(w.prints, ["j2"], "the job that arrived mid-lease is printed at once, not at the next poll");
+  assert.equal(calls, 3, "one more lease for the kick, then one that finds the line empty");
+  agent.stop();
+});
+
+// Session 1C final review I2: a flush reads the pending list once. A printed ack kept while an earlier
+// flush was still on the wire waited for the 5 s retry, and the next lease found its own job still leased.
+test("a printed ack kept while an earlier flush is on the wire is sent by that flush, before the next lease", async () => {
+  const { w, deps } = world();
+  let releaseOld: () => void = () => undefined;
+  const agent = createPrintAgent({
+    ...deps,
+    ack: (id: string, body: PrintAgentAckBody) => {
+      if (id !== "old") return deps.ack(id, body);
+      w.acks.push({ id, body });
+      return new Promise<PrintAckData>((resolve) => void (releaseOld = () => resolve({ applied: true, status: "printed", nextAttemptAt: null })));
+    },
+  });
+  w.pending = [{ id: "old", epoch: 3, at: T0 }];
+  void agent.flushAcks(); // the mount flush, still waiting for the server
+  await settle();
+  w.leases.push({ jobs: [job("j1")], retryAt: null });
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.deepEqual(w.prints, ["j1"], "j1 printed while the old ack was still on the wire");
+  releaseOld();
+  await settle();
+  assert.deepEqual(w.acks.map((a) => a.id), ["old", "j1"], "the same flush sends j1's ack too, without waiting for the retry timer");
+  assert.deepEqual(w.pending, [], "both acks answered and cleared");
+  assert.equal(w.leaseCalls, 2, "the next lease runs only after j1's ack was sent");
+  agent.stop();
+});

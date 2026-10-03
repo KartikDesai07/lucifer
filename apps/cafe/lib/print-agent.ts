@@ -105,6 +105,7 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
   let enabled = false;
   let busy = false;
   let running = false;
+  let kickedWhileRunning = false;
   let stopped = false;
   let refused: { state: unknown; at: number } | null = null;
   let timer: unknown = null;
@@ -148,7 +149,12 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
   }
 
   async function sendPending(): Promise<void> {
-    for (const entry of deps.readPending()) {
+    // Re-read after each send, so an ack kept while this flush was on the wire goes out with it too.
+    const tried = new Set<string>();
+    for (;;) {
+      const entry = deps.readPending().find((e) => !tried.has(`${e.id}:${e.epoch}`));
+      if (entry === undefined) return;
+      tried.add(`${entry.id}:${entry.epoch}`);
       if (deps.now() - entry.at > PRINT_ACK_PENDING_MAX_MS) {
         forget(entry);
         continue;
@@ -177,6 +183,7 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
 
   async function cycle(): Promise<void> {
     running = true;
+    kickedWhileRunning = false;
     let again = false;
     try {
       const data = await deps.lease();
@@ -211,12 +218,14 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
       wakeAt(deps.now() + PRINT_AGENT_REFUSED_RECHECK_MS);
     } finally {
       running = false;
-      if (again) kick();
+      if (again || kickedWhileRunning) kick();
     }
   }
 
   function kick(): void {
     if (stopped) return;
+    // Remembered, not dropped: the running cycle's lease may have read the line before this job was in it.
+    if (running) return void (kickedWhileRunning = true);
     const holds = refusalHolds();
     if (!printAgentMayLease({ enabled, busy, running, printerReady: deps.printerReady(), refusalHolds: holds })) {
       if (holds && refused !== null) wakeAt(refused.at + PRINT_AGENT_REFUSED_RECHECK_MS);

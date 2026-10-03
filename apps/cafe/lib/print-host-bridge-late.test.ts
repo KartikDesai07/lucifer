@@ -149,3 +149,25 @@ test("budget: the dispatch watchdog plus the late-completion grace stays under t
   assert.equal(PRINT_HOST_LATE_COMPLETION_GRACE_MS, 30_000);
   assert.ok(PRINT_HOST_DISPATCH_TIMEOUT_MS + PRINT_HOST_LATE_COMPLETION_GRACE_MS < 3 * 60 * 1000);
 });
+
+// Session 1C final review I1: the print agent acks what the bridge tells it. A slip the watchdog gave up
+// on that never reported may or may not be on paper, so its caller must hear a failure ("maybe" for the
+// agent), never "printed"; a late completion inside the grace still says what really happened.
+test("Session 1C: a slip that never reports tells its caller it failed (may have printed); a late completion inside the grace still counts", (t) => {
+  const s = scene(t);
+  const heard: string[] = [];
+  const done = (result: { ok: boolean; error?: unknown }) =>
+    heard.push(result.ok ? "printed" : `failed: ${result.error instanceof Error ? result.error.message : "?"}`);
+  s.hook.act(() => s.hook.result().queueSlip(slip("A"), done));
+  s.tick(PRINT_HOST_DISPATCH_TIMEOUT_MS);
+  s.tick(PRINT_HOST_LATE_COMPLETION_GRACE_MS);
+  assert.deepEqual(heard, [`failed: ${PRINT_HOST_PRINT_FAILED_MESSAGE}`], "the grace ran out with no report: never 'printed'");
+  assert.deepEqual(stubs.toasts, [PRINT_HOST_PRINT_FAILED_MESSAGE], "announced once, at the watchdog");
+  s.hook.act(() => s.hook.result().queueSlip(slip("B"), done));
+  s.tick(PRINT_HOST_DISPATCH_TIMEOUT_MS);
+  s.finish(); // B's own completion, late but inside the grace
+  assert.deepEqual(heard.slice(1), ["printed"], "a late completion is the slip's real result");
+  s.tick(PRINT_HOST_LATE_COMPLETION_GRACE_MS);
+  assert.equal(heard.length, 2, "each caller hears once");
+  assert.equal(s.hook.result().busy, false, "the bridge is idle again");
+});

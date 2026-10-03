@@ -83,7 +83,8 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
 
   const settle = useCallback((requested: string | null) => {
     const failure = lateGuard.take() ? null : requested; // already announced at the watchdog
-    outcomesRef.current.finish(requested === null ? { ok: true } : { ok: false, error: new Error(requested) });
+    // A slip the watchdog gave up on that never reported may be on paper: its caller hears "maybe", never "printed".
+    outcomesRef.current.finish(requested === null && !lateGuard.graceRanOut() ? { ok: true } : { ok: false, error: new Error(requested ?? PRINT_HOST_PRINT_FAILED_MESSAGE) });
     if (watchdogRef.current !== null) {
       window.clearTimeout(watchdogRef.current);
       watchdogRef.current = null;
