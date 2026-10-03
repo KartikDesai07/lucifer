@@ -27,7 +27,7 @@ import {
   type HostPrintSurface,
 } from "@/lib/print-host-slips";
 import { createWindowLateCompletionGuard } from "@/lib/print-host-late-completion";
-import { laneFailureMessage } from "@/lib/printer/lane-print";
+import { hostPrintFailureMessage } from "@/lib/print-write-outcome";
 import { createHostSlipOutcomes, type HostPrintDone } from "@/lib/print-host-outcomes";
 import type { Order } from "@/types";
 
@@ -119,9 +119,10 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
   }, [lateGuard, settle]);
   // A surface whose content node vanished mid-print (a re-render dropped the
   // slip) must release the drain, not wedge it behind a job that never prints.
-  // A printer-lane failure says WHY (no printer, not connected, too long...).
+  // A printer-lane failure says WHY (no printer, not connected, too long...); the Windows app's own sentence
+  // comes unwrapped, so the agent tells a refusal from a slip that may be on paper (Phase 1 final gate, I-3).
   const onPrintError = useCallback(
-    (_where: "onBeforePrint" | "print", error: Error) => settle(laneFailureMessage(error) ?? PRINT_HOST_PRINT_FAILED_MESSAGE),
+    (_where: "onBeforePrint" | "print", error: Error) => settle(hostPrintFailureMessage(error)),
     [settle],
   );
 

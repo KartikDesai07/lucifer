@@ -86,7 +86,7 @@ test("PIN (1): RequestAlertBar.tsx imports usePosPulseContext + usePrintReadback
 
 // ── (2) PrintHostBandSection.tsx + PrintHostStaleRows.tsx ──────────────────
 
-test("PIN (2a): PrintHostBandSection.tsx does NOT contain readDeviceId( (deviceId now comes from usePrintHostContext()); positive landmark: the exact destructure line; isHost line is exact; PrintHostStaleRows renders only under `isHost &&`; imports useDismissPrintJob; calls printQueuedJob( and dismissMutate(; <= 120 lines", () => {
+test("PIN (2a): PrintHostBandSection.tsx does NOT contain readDeviceId( (deviceId now comes from usePrintHostContext()); positive landmark: the exact destructure line; isHost line is exact; PrintHostStaleRows renders only under `isHost &&`; imports useDismissPrintJob; Print is the lifecycle's Print now (the Phase 1 final gate, I-1), released by its own answer; calls dismissMutate(; <= 120 lines", () => {
   const src = readSrc(BAND_SECTION);
 
   const readDeviceIdNeedle = "readDeviceId" + "(";
@@ -96,8 +96,8 @@ test("PIN (2a): PrintHostBandSection.tsx does NOT contain readDeviceId( (deviceI
   );
   assert.match(
     src,
-    /const \{ isHostDevice, deviceId, printQueuedJob \} = usePrintHostContext\(\);/,
-    "positive landmark: must declare const { isHostDevice, deviceId, printQueuedJob } = usePrintHostContext();",
+    /const \{ isHostDevice, deviceId \} = usePrintHostContext\(\);/,
+    "positive landmark: must declare const { isHostDevice, deviceId } = usePrintHostContext();",
   );
 
   assert.match(
@@ -117,7 +117,13 @@ test("PIN (2a): PrintHostBandSection.tsx does NOT contain readDeviceId( (deviceI
     /import\s*\{\s*useDismissPrintJob\s*\}\s*from\s*"@\/hooks\/use-print-host"/,
     "must import { useDismissPrintJob } from @/hooks/use-print-host",
   );
-  assert.match(src, /printQueuedJob\(/, "positive landmark: must call printQueuedJob(");
+  // The Phase 1 final gate (I-1, deliberate change): the old claim printed a row with no REPRINT/DUPLICATE
+  // banner and marked it printed before any paper. Print is now the panel's own Print now: the agent prints
+  // it through the lifecycle (banner, ack), and the row is released by its own answer.
+  assert.ok(!src.includes("printQueuedJob"), "the band must never print through the old claim");
+  assert.match(src, /import\s*\{\s*usePrintJobActions\s*\}\s*from\s*"@\/hooks\/use-print-job-actions"/, "must import { usePrintJobActions }");
+  assert.match(src, /const \{ retry \} = usePrintJobActions\(\);/, "the lifecycle's Print now");
+  assert.match(src, /void retry\(id\)\.finally\(\(\) => release\(id\)\);/, "the tapped row is released by its own answer");
   assert.match(src, /dismissMutate\(/, "positive landmark: must call dismissMutate(");
 
   const lineCount = src.replace(/\n$/, "").split("\n").length;
@@ -283,81 +289,17 @@ test("PIN (4): PosPulseProvider.tsx declares the two readback contexts, exports 
 
 // ── (5) PrintHostProvider.tsx ────────────────────────────────────────────────
 
-test("PIN (5): PrintHostProvider.tsx's interface gained deviceId: string; printQueuedJob's outer try/finally + inner try/catch around claimAsync, not-host demote+return, post-claim toast on a queueSlip throw, the finally invalidates the pulse; imports; useMemo inclusion; <= 200 lines", () => {
+test("PIN (5): PrintHostProvider.tsx's interface declares deviceId: string; it offers no claim print (the Phase 1 final gate, I-1: the band's Print is the lifecycle's Print now); useMemo inclusion; <= 200 lines", () => {
   const src = readSrc(PRINT_HOST_PROVIDER);
-
-  assert.match(src, /printQueuedJob: \(id: string\) => Promise<void>;/, "the interface must declare printQueuedJob: (id: string) => Promise<void>;");
   assert.match(src, /deviceId: string;/, "positive landmark: the interface must declare deviceId: string;");
-
-  const claimTrueAt = src.indexOf("claimLockRef.current = true;");
-  const claimAsyncAt = src.indexOf("await claimAsync({ id, deviceId, tabId })");
-  const claimFalseAt = src.indexOf("claimLockRef.current = false;");
-  assert.ok(claimTrueAt >= 0 && claimAsyncAt >= 0 && claimFalseAt >= 0, "positive landmark: all three claim-lock markers must be present");
-  assert.ok(
-    claimTrueAt < claimAsyncAt && claimAsyncAt < claimFalseAt,
-    `expected order claimLockRef.current = true;(${claimTrueAt}) < await claimAsync(...)(${claimAsyncAt}) < claimLockRef.current = false;(${claimFalseAt})`,
-  );
-  const finallyAt = src.lastIndexOf("finally", claimFalseAt + 50);
-  assert.ok(finallyAt >= 0 && finallyAt < claimFalseAt, "claimLockRef.current = false; must be reached inside a finally block (the outer try/finally)");
-
-  // The invalidate must be inside the SAME outer finally as the lock release.
-  const invalidateAt = src.indexOf("void qc.invalidateQueries({ queryKey: POS_PULSE_KEYS.all });");
-  assert.ok(invalidateAt >= 0, "positive landmark: void qc.invalidateQueries({ queryKey: POS_PULSE_KEYS.all }); must be present");
-  assert.ok(invalidateAt > claimFalseAt, "the invalidate must follow claimLockRef.current = false; inside the same finally");
-
-  // Inner try/catch around the claim itself: not-host -> demote() + return.
-  assert.match(
-    src,
-    /if \(!result\.claimed\) \{[\s\S]*?if \(result\.reason === "not-host"\) demote\(\);[\s\S]*?return;[\s\S]*?\}/,
-    'must contain if (!result.claimed) { ... if (result.reason === "not-host") demote(); ... return; }',
-  );
-
-  // Post-claim: a queueSlip throw must be caught and toasted, not swallowed
-  // by the claim's own catch (a burned claim with no paper must be said aloud).
-  assert.match(
-    src,
-    /queueSlip\(hostPrintSlipOf\(result\.job\.payload, cafeDateString\(\)\)\)/,
-    "must call queueSlip(hostPrintSlipOf(result.job.payload, cafeDateString()))",
-  );
-  const queueSlipAt = src.indexOf("queueSlip(hostPrintSlipOf(result.job.payload, cafeDateString()))");
-  const toastAt = src.indexOf("toast.error(PRINT_HOST_PRINT_FAILED_MESSAGE);");
-  assert.ok(toastAt >= 0, "positive landmark: toast.error(PRINT_HOST_PRINT_FAILED_MESSAGE); must be present");
-  assert.ok(toastAt > queueSlipAt, "the post-claim toast must follow the queueSlip( call — it is the queueSlip throw's own catch");
-
-  assert.match(src, /if \(deviceId === ""\) return;/, 'must contain if (deviceId === "") return;');
-
-  assert.match(
-    src,
-    /import\s*\{\s*PRINT_HOST_PRINT_FAILED_MESSAGE,\s*hostPrintSlipOf\s*\}\s*from\s*"@\/lib\/print-host-slips"/,
-    'must import { PRINT_HOST_PRINT_FAILED_MESSAGE, hostPrintSlipOf } from "@/lib/print-host-slips"',
-  );
-  assert.match(
-    src,
-    /import\s*\{\s*useClaimPrintJob\s*\}\s*from\s*"@\/hooks\/use-print-host"/,
-    "must import { useClaimPrintJob } from @/hooks/use-print-host",
-  );
-  assert.match(
-    src,
-    /import\s*\{\s*useQueryClient\s*\}\s*from\s*"@tanstack\/react-query"/,
-    'must import { useQueryClient } from "@tanstack/react-query"',
-  );
-  assert.match(src, /import\s*\{\s*toast\s*\}\s*from\s*"sonner"/, 'must import { toast } from "sonner"');
-  assert.match(
-    src,
-    /import\s*\{\s*POS_PULSE_KEYS\s*\}\s*from\s*"@\/hooks\/use-pos-pulse"/,
-    'must import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse"',
-  );
-
+  for (const gone of ["printQueuedJob", "useClaimPrintJob", "claimAsync"]) {
+    assert.ok(!stripComments(src).includes(gone), `the old claim print is gone from new builds: ${gone}`);
+  }
   assert.match(src, /useMemo<PrintHostContextValue>/, "positive landmark: the context value must be built via useMemo<PrintHostContextValue>");
   assert.ok(
     /useMemo<PrintHostContextValue>\(\s*\(\) => \(\{[^}]*\bdeviceId\b[^}]*\}\)/.test(src),
     "deviceId must appear in the useMemo value object",
   );
-  assert.ok(
-    /useMemo<PrintHostContextValue>\(\s*\(\) => \(\{[^}]*\bprintQueuedJob\b[^}]*\}\)/.test(src),
-    "printQueuedJob must appear in the useMemo value object",
-  );
-
   const lineCount = src.replace(/\n$/, "").split("\n").length;
   assert.ok(lineCount <= 200, `PrintHostProvider.tsx must stay <= 200 lines, got ${lineCount}`);
 });
@@ -434,20 +376,19 @@ test("INVENTORY (7a): PrintHostBandSection is imported (by an actual import stat
   assert.deepEqual(hits, ["components/orders/RequestAlertBar.tsx"], `PrintHostBandSection must be imported by exactly RequestAlertBar.tsx; found: ${hits.join(", ")}`);
 });
 
-test("INVENTORY (7b): printQueuedJob( has exactly one call site outside PrintHostProvider.tsx — PrintHostBandSection.tsx", () => {
+test("INVENTORY (7b): printQueuedJob( has no call site at all (the Phase 1 final gate, I-1: new builds never print through the old claim)", () => {
   const roots = ["app", "components", "hooks"].map((d) => path.join(REPO_ROOT, "apps/cafe", d));
   const NEEDLE = "printQueuedJob" + "(";
   const hits: string[] = [];
   for (const root of roots) {
     walkFiles(root, (full) => {
       const rel = relCafe(full);
-      if (rel === "components/layout/PrintHostProvider.tsx") return;
       const text = readFileSync(full, "utf8");
       if (text.includes(NEEDLE)) hits.push(rel);
     });
   }
   hits.sort();
-  assert.deepEqual(hits, ["components/orders/PrintHostBandSection.tsx"], `printQueuedJob( must have exactly one call site outside PrintHostProvider.tsx; found: ${hits.join(", ")}`);
+  assert.deepEqual(hits, [], `printQueuedJob( must have no call site; found: ${hits.join(", ")}`);
 });
 
 test("INVENTORY (7c): usePrintReadbackRecorder( has exactly one call site outside PosPulseProvider.tsx — use-host-routing.ts", () => {

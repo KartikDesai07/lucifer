@@ -1,7 +1,8 @@
 import { DESKTOP_PRINT_EMPTY_MESSAGE } from "@/lib/desktop-shell-document";
-import { DESKTOP_PRINT_TOO_LARGE_MESSAGE } from "@/lib/desktop-shell";
-import { PRINT_HOST_EMPTY_SLIP_MESSAGE, PRINT_HOST_EOD_TIMEOUT_MESSAGE } from "@/lib/print-host-slips";
-import { NO_PRINTER_MESSAGE } from "@/lib/printer/lane-print";
+import { DESKTOP_PRINT_TOO_LARGE_MESSAGE, isDesktopShell, shellErrorMessage } from "@/lib/desktop-shell";
+import { DESKTOP_SHELL_NEVER_PRINTS, DESKTOP_SHELL_NOT_READY_MESSAGE, DESKTOP_SHELL_REFUSALS } from "@/lib/desktop-shell-messages";
+import { PRINT_HOST_EMPTY_SLIP_MESSAGE, PRINT_HOST_EOD_TIMEOUT_MESSAGE, PRINT_HOST_PRINT_FAILED_MESSAGE } from "@/lib/print-host-slips";
+import { NO_PRINTER_MESSAGE, laneFailureMessage } from "@/lib/printer/lane-print";
 import { RASTER_FAILED_MESSAGE, RASTER_TOO_LARGE_MESSAGE } from "@/lib/printer/raster";
 import {
   NATIVE_BLUETOOTH_BLOCKED_MESSAGE,
@@ -59,6 +60,8 @@ const NOTHING_SENT: ReadonlySet<string> = new Set([
   NATIVE_BLUETOOTH_OFF_MESSAGE,
   NATIVE_BLUETOOTH_BLOCKED_MESSAGE,
   NATIVE_LOCATION_OFF_MESSAGE,
+  ...DESKTOP_SHELL_REFUSALS,
+  DESKTOP_SHELL_NOT_READY_MESSAGE,
 ]);
 
 /** Refused before any byte left, and refused again every time: too large, or a blank slip. */
@@ -68,11 +71,26 @@ const NEVER_PRINTS: ReadonlySet<string> = new Set([
   DESKTOP_PRINT_TOO_LARGE_MESSAGE,
   DESKTOP_PRINT_EMPTY_MESSAGE,
   PRINT_HOST_EMPTY_SLIP_MESSAGE,
+  ...DESKTOP_SHELL_NEVER_PRINTS,
 ]);
 
 /** Refused because of the slip itself, not the printer (owner, 1C gate I3): it could not be drawn, or
  *  its figures never loaded. The second one for a job while the printer is ready fails that job. */
-const SLIP_REFUSALS: ReadonlySet<string> = new Set([RASTER_FAILED_MESSAGE, PRINT_HOST_EOD_TIMEOUT_MESSAGE]);
+const SLIP_REFUSALS: ReadonlySet<string> = new Set([RASTER_FAILED_MESSAGE, PRINT_HOST_EOD_TIMEOUT_MESSAGE, DESKTOP_SHELL_NOT_READY_MESSAGE]);
+
+/** A Windows app refusal: its own sentence tells staff what to fix on the PC (the panel shows it as is). */
+export function isDesktopShellRefusal(message: string): boolean {
+  return DESKTOP_SHELL_REFUSALS.includes(message);
+}
+
+/** The sentence a failed slip carries to its caller (the agent) and the toast. In the Windows app, the shell's own
+ *  curated sentence, unwrapped from the IPC layer's "Error invoking remote method …: Error: …": wrapped, every
+ *  Windows failure read as an unknown "may have printed" (the Phase 1 final gate, I-3). Elsewhere a lane's own
+ *  sentence, else the bridge's generic one (unchanged). */
+export function hostPrintFailureMessage(error: unknown, desktop: boolean = isDesktopShell()): string {
+  if (desktop) return shellErrorMessage(error);
+  return laneFailureMessage(error) ?? PRINT_HOST_PRINT_FAILED_MESSAGE;
+}
 export const PRINT_SLIP_REFUSALS_MAX = 2;
 
 export function isSlipRefusal(outcome: PrintWriteOutcome): boolean {

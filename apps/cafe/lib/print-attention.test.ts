@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { PRINT_KOT_ALARM_MS } from "@pos/shared/print-lifecycle";
 import { PRINT_ATTENTION_LIMIT, PRINT_ATTENTION_WINDOW_MS } from "@pos/shared/print-agent-wire";
-import { PRINT_JOB_QUEUED_RETENTION_MS } from "@pos/shared/print-job";
+import { PRINT_JOB_ACTED_GRACE_MS, PRINT_JOB_QUEUED_RETENTION_MS } from "@pos/shared/print-job";
 import { stripComments } from "@/lib/source-pin-utils";
 import { printAttentionFilter, printAttentionRowOf } from "@/lib/print-attention";
 
@@ -26,7 +26,9 @@ test("printAttentionFilter: bills to check and failed slips from the last 3 h, a
       { status: "queued", createdAt: { $gte: at(T0 - PRINT_ATTENTION_WINDOW_MS), $lte: at(T0 - PRINT_KOT_ALARM_MS) } },
     ],
   });
-  assert.equal(PRINT_ATTENTION_WINDOW_MS, PRINT_JOB_QUEUED_RETENTION_MS, "the queued retention (§7.8, 3 h): nothing older is still waiting");
+  // The Phase 1 final gate (M2, deliberate change): a slip tapped just before its 3 h is kept 15 min more by the
+  // prune, so the panel shows it until then.
+  assert.equal(PRINT_ATTENTION_WINDOW_MS, PRINT_JOB_QUEUED_RETENTION_MS + PRINT_JOB_ACTED_GRACE_MS, "the queued retention (§7.8, 3 h) plus the acted grace (15 min): the panel shows every waiting slip the prune keeps");
   assert.equal(PRINT_ATTENTION_LIMIT, 20, "a bounded read on the hottest poll");
 });
 
@@ -34,7 +36,7 @@ test("PIN (owner, after Session 1D: I-1 option A): the feed reads the NEWEST row
   const lib = src("apps/cafe/lib/print-attention.ts");
   assert.match(lib, /\.sort\(\{ createdAt: -1, _id: -1 \}\)/, "newest first: a new problem is never cut off by an old backlog");
   assert.ok(!lib.includes("sort({ createdAt: 1"), "never the oldest rows (they kept every new failure out once 20 waited)");
-  assert.match(lib, /const rows = docs\s*\.reverse\(\)/, "shown oldest first");
+  assert.match(lib, /const rows = docs\s*\.slice\(0, PRINT_ATTENTION_LIMIT\)\s*\.reverse\(\)/, "shown oldest first (the final gate's M5 reads one row more, never shown)");
   assert.match(lib, /approvedAt"\)/, "the row says when staff already tapped it");
 });
 
@@ -97,7 +99,10 @@ test("PIN (D2): the pulse sweeps after its answer, throttled, and the route itse
   for (const write of ["updateOne(", "updateMany(", ".create(", "findOneAndUpdate(", "connectDB("]) {
     assert.ok(!lib.includes(write), `print-attention.ts only reads: no ${write}`);
   }
-  assert.match(lib, /\.limit\(PRINT_ATTENTION_LIMIT\)/, "bounded by a named constant");
+  // The Phase 1 final gate (M5, deliberate change): one row more than it shows, so exactly 20 waiting is "20".
+  assert.match(lib, /\.limit\(PRINT_ATTENTION_LIMIT \+ 1\)/, "bounded by a named constant, plus the one row that proves a cut");
+  assert.match(lib, /truncated: docs\.length > PRINT_ATTENTION_LIMIT/, "cut only when more rows wait than it shows");
+  assert.match(lib, /docs\s*\.slice\(0, PRINT_ATTENTION_LIMIT\)\s*\.reverse\(\)/, "it shows the newest 20, oldest first");
 });
 
 test("PIN (D7): a staff Retry or Print again announces its job to the device that prints it", () => {

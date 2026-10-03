@@ -47,9 +47,6 @@ const DELEGATE = "if (!shell) return laneSlipPrintOptions(options);";
 const BEAT_CALL = "beat({ deviceId, printer: beatPrinterReport() });";
 // Session 1C: the agent (the host, or with no host every device) asks for the lock; still only while it can print.
 const LOCK_CALL = "const holdsLock = usePrintHostDrainLock(isAgent && canPrint);";
-// s63 INT: the sentence comes from printBlockedMessage() so an app with NO printer says "No printer is set up…"
-// instead of "reconnect it" (the three cases are unit-tested in print-lane.test.ts).
-const GUARD = 'if (!canPrintNow()) {\n        toast.error(printBlockedMessage());\n        return;\n      }';
 const LANE_MESSAGE_NAMES = ["NO_PRINTER_MESSAGE", "PRINTER_NOT_CONNECTED_MESSAGE", "PRINTER_WRITE_FAILED_MESSAGE", "PRINTER_ELSEWHERE_MESSAGE", "RASTER_FAILED_MESSAGE", "RASTER_TOO_LARGE_MESSAGE", "DESKTOP_PRINT_EMPTY_MESSAGE", "nativeErrorMessage(nativeError(code, code))"];
 
 const CASES: PinCase[] = [
@@ -142,42 +139,40 @@ const CASES: PinCase[] = [
     ],
   },
   {
-    name: "provider: init in the mount effect; a window that cannot print claims nothing",
+    // The Phase 1 final gate (I-1, deliberate change): the provider's claim print (and its "a window that
+    // cannot print claims nothing" guard) is gone; the band's Print is the lifecycle's Print now.
+    name: "provider: init in the mount effect; no claim print",
     file: "components/layout/PrintHostProvider.tsx",
     pin: (s, r) => {
       const p: string[] = [];
       const mount = between(s, "useEffect(() => {\n    setDeviceId(readDeviceId());", "}, []);");
       check(p, ordered(mount, ["setPrefHost(readDevicePrefs().printHost);", "void devicePrinter().init();"]), "devicePrinter().init() runs inside the mount effect after setPrefHost");
       check(p, count(s, "devicePrinter().init()") === 1, "init is called once");
-      const queued = between(s, "const printQueuedJob = useCallback(", "claimLockRef.current = false;");
-      check(p, ordered(queued, ['if (deviceId === "") return;', GUARD, "claimLockRef.current = true;", "await claimAsync("]), "guard sits after the deviceId check and BEFORE the claim lock");
-      check(p, s.includes('import { canPrintNow, printBlockedMessage } from "@/lib/printer/print-lane";'), "imports canPrintNow + printBlockedMessage");
+      check(p, !s.includes("claimAsync(") && !s.includes("printQueuedJob"), "no claim print in new builds");
       check(p, lines(r) <= 200, "stays <= 200 lines");
       return p;
     },
     mutations: [
-      { name: "guard removed", apply: sub(GUARD, "") },
-      { name: "guard after the claim lock", apply: sub(`${GUARD}\n      claimLockRef.current = true;`, `claimLockRef.current = true;\n      ${GUARD}`) },
-      // The elsewhere/no-printer choice moved into printBlockedMessage() (inversions are caught by print-lane.test.ts).
-      { name: "blocked sentence swapped for a fixed one", apply: sub("toast.error(printBlockedMessage());", "toast.error(PRINT_HOST_PRINT_FAILED_MESSAGE);") },
+      { name: "a claim print comes back", apply: sub("  const value = useMemo", "  const printQueuedJob = (id: string) => claimAsync({ id });\n  const value = useMemo") },
       { name: "init moved out of the effect", apply: (s) => sub("    void devicePrinter().init();\n", "")(s).replace("  const syncHostPref", "  void devicePrinter().init();\n  const syncHostPref") },
       { name: "init removed", apply: sub("    void devicePrinter().init();\n", "") },
     ],
   },
   {
-    name: "bridge: a lane failure shows its own sentence",
+    // The Phase 1 final gate (I-3, deliberate change): in the Windows app the shell's own sentence, unwrapped.
+    name: "bridge: a lane failure shows its own sentence; the Windows app's, unwrapped",
     file: "hooks/use-print-host-bridge.ts",
     pin: (s) => {
       const p: string[] = [];
-      check(p, s.includes('import { laneFailureMessage } from "@/lib/printer/lane-print";'), "imports laneFailureMessage");
+      check(p, s.includes('import { hostPrintFailureMessage } from "@/lib/print-write-outcome";'), "imports hostPrintFailureMessage");
       const handler = between(s, "const onPrintError = useCallback(", "[settle]");
-      check(p, handler.includes('(_where: "onBeforePrint" | "print", error: Error) =>') && handler.includes("settle(laneFailureMessage(error) ?? PRINT_HOST_PRINT_FAILED_MESSAGE)"), "onPrintError maps laneFailureMessage(error) ?? the generic sentence");
+      check(p, handler.includes('(_where: "onBeforePrint" | "print", error: Error) =>') && handler.includes("settle(hostPrintFailureMessage(error))"), "onPrintError maps hostPrintFailureMessage(error)");
       check(p, count(s, "onPrintError,") === 3, "all three surfaces still pass onPrintError,");
       return p;
     },
     mutations: [
-      { name: "always the generic sentence", apply: sub("settle(laneFailureMessage(error) ?? PRINT_HOST_PRINT_FAILED_MESSAGE)", "settle(PRINT_HOST_PRINT_FAILED_MESSAGE)") },
-      { name: "import dropped", apply: sub('import { laneFailureMessage } from "@/lib/printer/lane-print";\n', "") },
+      { name: "always the generic sentence", apply: sub("settle(hostPrintFailureMessage(error))", "settle(PRINT_HOST_PRINT_FAILED_MESSAGE)") },
+      { name: "import dropped", apply: sub('import { hostPrintFailureMessage } from "@/lib/print-write-outcome";\n', "") },
       { name: "error argument ignored", apply: sub("(_where: \"onBeforePrint\" | \"print\", error: Error) =>", "() =>") },
     ],
   },

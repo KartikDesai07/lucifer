@@ -22,20 +22,21 @@ import { openPrinterPanel } from "@/lib/printer-panel-open";
 //
 // The 1D review gate: what this page already rang is kept per page, not per mount (a remount rings
 // nothing twice), a page that opens while slips wait shows one summary notice instead of one per slip,
-// and an unmount takes its notices down (none is left behind after signing out).
+// and an unmount takes its notices down (none is left behind after signing out). The Phase 1 final gate
+// (M4): the summary stands for the slips that already waited, re-worded as they print, gone with the last.
 
 const SHOW = { label: "Show", onClick: openPrinterPanel };
 // Sonner's action button is small; 44 px is the house tap target (1D gate M-5).
 const SHOW_STYLE = { minHeight: 44, minWidth: 44 };
 const SUMMARY_ID = "print-alarm-summary";
 
-let page: { deviceId: string; memory: Map<string, PrintAlarmMemory>; seeded: boolean } = { deviceId: "", memory: new Map(), seeded: false };
+let page: { deviceId: string; memory: Map<string, PrintAlarmMemory>; seeded: boolean; summary: number } = { deviceId: "", memory: new Map(), seeded: false, summary: 0 };
 
 export function usePrintSlipAlarm(deviceId: string): void {
   const qc = useQueryClient();
   useEffect(() => {
     if (deviceId === "") return;
-    if (page.deviceId !== deviceId) page = { deviceId, memory: new Map(), seeded: false };
+    if (page.deviceId !== deviceId) page = { deviceId, memory: new Map(), seeded: false, summary: 0 };
     const check = (data: PosPulseData | undefined): void => {
       const rows = data?.printAttention;
       if (rows === undefined) return; // a failed read says nothing either way
@@ -43,13 +44,14 @@ export function usePrintSlipAlarm(deviceId: string): void {
       page.memory = step.memory;
       page.seeded = true;
       for (const id of step.dismiss) toast.dismiss(`print-alarm-${id}`);
-      if (step.wanted === 0) toast.dismiss(SUMMARY_ID);
       if ((step.ring || step.summary > 0) && readDevicePrefs().alertSound && isAlertSoundUnlocked()) playAlertPing();
       for (const row of step.show) {
         toast.warning(printAlarmMessage(row), { id: `print-alarm-${row.id}`, duration: Number.POSITIVE_INFINITY, action: SHOW, actionButtonStyle: SHOW_STYLE });
       }
-      if (step.summary > 0) {
-        toast.warning(printAlarmSummary(step.summary), { id: SUMMARY_ID, duration: Number.POSITIVE_INFINITY, action: SHOW, actionButtonStyle: SHOW_STYLE });
+      if (step.summaryWaiting !== page.summary) {
+        if (step.summaryWaiting === 0) toast.dismiss(SUMMARY_ID);
+        else toast.warning(printAlarmSummary(step.summaryWaiting), { id: SUMMARY_ID, duration: Number.POSITIVE_INFINITY, action: SHOW, actionButtonStyle: SHOW_STYLE });
+        page.summary = step.summaryWaiting;
       }
     };
     check(qc.getQueryData<PosPulseData>(POS_PULSE_KEYS.all));
@@ -61,6 +63,7 @@ export function usePrintSlipAlarm(deviceId: string): void {
     return () => {
       unsubscribe();
       toast.dismiss(SUMMARY_ID);
+      page.summary = 0;
       for (const [id, slip] of page.memory) {
         if (!slip.shown) continue;
         toast.dismiss(`print-alarm-${id}`);

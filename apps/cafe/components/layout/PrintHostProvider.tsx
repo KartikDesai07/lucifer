@@ -12,19 +12,11 @@ import {
   type RefObject,
 } from "react";
 
-import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-
 import { PrintHostDrain } from "@/components/print/PrintHostDrain";
-import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
-import { useClaimPrintJob } from "@/hooks/use-print-host";
 import { usePrintHostBridge, type HostPrintCurrent } from "@/hooks/use-print-host-bridge";
 import { mintTabId, readDeviceId } from "@/lib/pos-device-id";
 import { readDevicePrefs, writeDevicePrefs } from "@/lib/pos-device-prefs";
-import { PRINT_HOST_PRINT_FAILED_MESSAGE, hostPrintSlipOf } from "@/lib/print-host-slips";
 import { devicePrinter } from "@/lib/printer/device-printer";
-import { canPrintNow, printBlockedMessage } from "@/lib/printer/print-lane";
-import { cafeDateString } from "@/lib/utils";
 
 // Print-host plan §B5 (PH-5) — the layout-level host provider. Mounted once,
 // inside <PosPulseProvider>, on EVERY dashboard screen (owner Q7). Owns this
@@ -35,7 +27,9 @@ import { cafeDateString } from "@/lib/utils";
 // null-rendering child placed AFTER `children` — so its per-tick re-renders
 // never touch the screen, and its effects register after the page's own.
 // DARK until PH-7 writes `printHost: true` into a device's prefs: with the pref
-// false nothing here beats, locks, claims or prints.
+// false nothing here beats, locks, claims or prints. The Phase 1 final gate (I-1): the band's
+// Print for a stale row is the lifecycle's Print now (hooks/use-print-job-actions.ts), so this
+// provider no longer claims a row itself (the old claim marked it printed before any paper).
 
 export interface PrintHostContextValue {
   /** This device holds the `printHost` pref — hydration-safe: false on the
@@ -58,10 +52,6 @@ export interface PrintHostContextValue {
   /** PH-7 calls this after writing the `printHost` pref so the lanes arm
    *  without a reload; the beat's demotion path clears it the same way. */
   syncHostPref: () => void;
-  /** PH-8's host-only band "Print" for a STALE row (§B7, MERGED-06): claim it
-   *  with THIS device's `deviceId:tabId`, then hand the bridge the slip. Resolves
-   *  once the claim has answered (won, lost, or thrown) — never rejects. */
-  printQueuedJob: (id: string) => Promise<void>;
   /** `PrintHostPrintSources` reports its mount/unmount here (2026-09-11). The
    *  drain claims nothing and the bridge dispatches nothing until the DOM the
    *  three refs point at actually exists — a job claimed while the sources sat
@@ -122,62 +112,9 @@ export function PrintHostProvider({ children }: { children: ReactNode }) {
   const bridge = usePrintHostBridge({ surfacesMounted });
   const { current, busy, kotRef, receiptRef, eodRef, setEodReady, queueSlip, queueTestSlip } = bridge;
 
-  // The band's manual print of a stale row lives HERE, not in the band: the
-  // band section unmounts the moment its last row leaves the feed, and a
-  // claim whose continuation died with it would burn the CAS (row `printed`)
-  // without ever handing the bridge a slip. This provider never unmounts. Same
-  // lock discipline as the manual self-order path (held around the claim so
-  // the drain cannot claim in the same window); the bridge's FIFO absorbs a
-  // tap that lands mid-print. The drain never touches D2, so without this the
-  // >30-min backlog could only ever be dismissed.
-  const { mutateAsync: claimAsync } = useClaimPrintJob();
-  const qc = useQueryClient();
-  const printQueuedJob = useCallback(
-    async (id: string) => {
-      if (deviceId === "") return;
-      // A window that cannot print must not burn a claim (the drain is gated the same way).
-      if (!canPrintNow()) {
-        toast.error(printBlockedMessage());
-        return;
-      }
-      claimLockRef.current = true;
-      try {
-        let result: Awaited<ReturnType<typeof claimAsync>>;
-        try {
-          result = await claimAsync({ id, deviceId, tabId });
-        } catch {
-          // The claim hook's own onError toasted; nothing was handed to the bridge.
-          return;
-        }
-        if (!result.claimed) {
-          // `raced` / `not-found` / `not-eligible` / `invalid-payload`: the row
-          // leaves the feed on the next tick — silent, exactly like the drain.
-          if (result.reason === "not-host") demote();
-          return;
-        }
-        // The claim is WON (the row is `printed`) — from here a throw is a
-        // burned claim with no paper, so it must be said out loud, not swallowed
-        // by the claim's own catch above (adapter is pure over a payload the
-        // claim path already Zod-validated; deploy-skew is the only way in).
-        try {
-          queueSlip(hostPrintSlipOf(result.job.payload, cafeDateString()));
-        } catch {
-          toast.error(PRINT_HOST_PRINT_FAILED_MESSAGE);
-        }
-      } finally {
-        claimLockRef.current = false;
-        // Refresh the feeds now rather than on the 20s tick: the row leaves the
-        // band, and — the drain effect keys on the FEED, not on this ref — a
-        // changed feed is what wakes the automatic drain after the lock drops.
-        void qc.invalidateQueries({ queryKey: POS_PULSE_KEYS.all });
-      }
-    },
-    [claimAsync, deviceId, tabId, queueSlip, demote, qc],
-  );
-
   const value = useMemo<PrintHostContextValue>(
-    () => ({ isHostDevice, deviceId, tabId, current, kotRef, receiptRef, eodRef, setEodReady, queueTestSlip, syncHostPref, printQueuedJob, reportSurfacesMounted }),
-    [isHostDevice, deviceId, tabId, current, kotRef, receiptRef, eodRef, setEodReady, queueTestSlip, syncHostPref, printQueuedJob, reportSurfacesMounted],
+    () => ({ isHostDevice, deviceId, tabId, current, kotRef, receiptRef, eodRef, setEodReady, queueTestSlip, syncHostPref, reportSurfacesMounted }),
+    [isHostDevice, deviceId, tabId, current, kotRef, receiptRef, eodRef, setEodReady, queueTestSlip, syncHostPref, reportSurfacesMounted],
   );
 
   // The lanes arm only once the surfaces exist: a claim is a CAS that marks the

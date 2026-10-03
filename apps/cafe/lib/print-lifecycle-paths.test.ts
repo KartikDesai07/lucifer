@@ -158,7 +158,7 @@ test("PIN: enqueue stamps the host target, the lifecycle fields, the initial lab
   assert.match(s, /printJobKeyOf\(input\.payload\) \?\? \(input\.idempotencyKey !== undefined \? `reprint:\$\{input\.idempotencyKey\}` : undefined\)/);
 });
 
-test("PIN: dismiss never touches a leased job (its writer may be printing it); prune reaps every unresolved state after 3 h, unless staff acted on it or it was leased lately", () => {
+test("PIN: dismiss never touches a leased job (its writer may be printing it); prune reaps every unresolved state after 3 h, unless staff acted on it lately or it is still leased (a lease that runs, or ran out lately)", () => {
   const s = src(QUEUE);
   assert.match(s, /status: \{ \$in: \["queued", "needs-confirm", "failed"\] \},/);
   assert.match(s, /status: \{ \$in: \[\.\.\.PRINT_JOB_UNRESOLVED_STATUSES\] \}, createdAt: \{ \$lt: queuedPruneCutoff\(nowMs\) \}/);
@@ -229,4 +229,11 @@ test("PIN: the lifecycle publishes exactly the final statuses, and a dismissed j
   const queue = src("apps/cafe/lib/print-queue.ts");
   const single = queue.slice(queue.indexOf("export async function dismissPrintJob("), queue.indexOf("export async function dismissQueuedPrintJobsForClearedHost("));
   assert.match(single, /if \(dismissed\) \{\s*publishPrintStatus\(\{ id: input\.id, status: "dismissed" \}\);\s*return \{ dismissed: true \};\s*\}/);
+});
+
+test("PIN (the Phase 1 final gate, M8): the soak drives only a local POS on a local scratch database, and stops after its first order unless that order is in its own database", () => {
+  const soak = src("apps/cafe/scripts/print-soak.ts");
+  assert.ok(soak.includes(String.raw`if (!/^mongodb:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/pos_scratch_[a-z0-9_]+$/.test(uri)) throw new Error("refusing: not a local pos_scratch_* database");`), "a local pos_scratch_* database only");
+  assert.ok(soak.includes('throw new Error("refusing: the POS at --base writes to another database than MONGODB_URI");'), "the first order must be in the soak's own database");
+  assert.ok(soak.indexOf("refusing: the POS at --base writes") < soak.indexOf("await drainLine(args, cookie);"), "checked before anything else is driven");
 });

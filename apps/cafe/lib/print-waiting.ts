@@ -1,7 +1,7 @@
 import type { PrintActionData, PrintAttentionRow } from "@pos/shared/print-agent-wire";
 import { PRINT_HOST_MAX_AGE_MS } from "@pos/shared/print-job";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
-import { isSlipRefusal, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+import { isDesktopShellRefusal, isSlipRefusal, printWriteOutcomeOf } from "@/lib/print-write-outcome";
 
 // Printing redesign, Phase 1 Session 1D (spec §10; the owner's decision after Session 1B): the one
 // waiting-slips panel, its count on the printer button, and the 20 s alarm, as pure rules. Every slip that
@@ -43,7 +43,8 @@ export function printWaitingReason(row: PrintAttentionRow, nowMs: number): strin
     const outcome = printWriteOutcomeOf(new Error(row.lastError));
     // The slip itself was refused once (owner, 1C gate I3): not the printer's fault (1D gate M-6).
     if (isSlipRefusal(outcome)) return "The slip could not be prepared. It tries once more by itself.";
-    if (outcome.sent === "no") return "The printer is off or not connected.";
+    // The Windows app says what to fix on the PC (no printer chosen, not found): its own words (final gate, I-3).
+    if (outcome.sent === "no") return isDesktopShellRefusal(row.lastError) ? row.lastError : "The printer is off or not connected.";
   }
   const repeat = row.labels.find((label) => label === "REPRINT" || label === "DUPLICATE");
   if (repeat) return `Waiting to print again, marked ${repeat}.`;
@@ -110,6 +111,11 @@ export interface PrintAlarmMemory {
   /** Its notice went down because the slip left the feed (printed, or leased for a moment), not because
    *  staff acted on it: if it comes back still waiting, so does its notice (the 1E final review). */
   left?: true;
+  /** Staff tapped it (Print now, Retry, Print again): its notice went quietly (the Phase 1 final gate, M6). */
+  approved?: true;
+  /** It already waited when the page opened: the one summary notice stands for it until it leaves the feed or
+   *  gets a notice of its own (the Phase 1 final gate, M4). */
+  summary?: true;
 }
 
 export interface PrintAlarmStep {
@@ -122,13 +128,16 @@ export interface PrintAlarmStep {
   dismiss: string[];
   /** The first pulse of a page: how many of its slips already waited (one notice for all of them). */
   summary: number;
+  /** How many slips the summary notice still stands for (0: it goes; the Phase 1 final gate, M4). */
+  summaryWaiting: number;
   /** How many slips this device should hear about wait now (0: the summary notice can go too). */
   wanted: number;
 }
 
 /** One pulse of the alarm, pure. A slip rings once when it first waits, and again only when it gets worse
  *  (waiting → check the bill → could not print; the 1D gate N-4); a slip staff acted on loses its notice
- *  quietly. With the newest 20 rows read (owner, I-1 option A), a slip older than the page's oldest row
+ *  quietly: its group went down (Retry, Print again), or Print now on a stale slip (the Phase 1 final gate,
+ *  M6). With the newest 20 rows read (owner, I-1 option A), a slip older than the page's oldest row
  *  may still wait beyond the cut: while the feed says it was cut, it is kept, notice and all (N-2). */
 export function printAlarmStep(
   memory: ReadonlyMap<string, PrintAlarmMemory>,
@@ -138,29 +147,32 @@ export function printAlarmStep(
   first: boolean,
 ): PrintAlarmStep {
   const next = new Map(memory);
-  const step: PrintAlarmStep = { memory: next, ring: false, show: [], dismiss: [], summary: 0, wanted: 0 };
+  const step: PrintAlarmStep = { memory: next, ring: false, show: [], dismiss: [], summary: 0, summaryWaiting: 0, wanted: 0 };
   const seen = new Set<string>();
   for (const row of feed.rows) {
     if (!printAlarmWanted(row, deviceId)) continue;
     seen.add(row.id);
     step.wanted += 1;
     const group = groupOf(row);
+    const approved = row.approved === true ? { approved: true as const } : {};
     const was = next.get(row.id);
     if (was === undefined && first) {
       step.summary += 1;
-      next.set(row.id, { group, createdAt: row.createdAt, seenAt: nowMs, shown: false });
+      next.set(row.id, { group, createdAt: row.createdAt, seenAt: nowMs, shown: false, summary: true, ...approved });
     } else if (was === undefined || GROUP_RANK[group] > GROUP_RANK[was.group]) {
+      // A notice of its own: the summary no longer stands for it.
       step.ring = true;
       step.show.push(row);
-      next.set(row.id, { group, createdAt: row.createdAt, seenAt: nowMs, shown: true });
-    } else if (group !== was.group) {
+      next.set(row.id, { group, createdAt: row.createdAt, seenAt: nowMs, shown: true, ...approved });
+    } else if (group !== was.group || (row.approved === true && was.approved !== true)) {
+      // Staff acted on it: quietly.
       if (was.shown) step.dismiss.push(row.id);
-      next.set(row.id, { group, createdAt: was.createdAt, seenAt: nowMs, shown: false });
+      next.set(row.id, { group, createdAt: was.createdAt, seenAt: nowMs, shown: false, ...approved, ...(was.summary === true ? { summary: true as const } : {}) });
     } else if (was.left === true) {
       // Back from a moment's lease (a refused attempt) and still waiting: its notice comes back, without a
       // second ring. A gap must never read as "printed".
       step.show.push(row);
-      next.set(row.id, { group, createdAt: was.createdAt, seenAt: nowMs, shown: true });
+      next.set(row.id, { group, createdAt: was.createdAt, seenAt: nowMs, shown: true, ...approved });
     } else {
       next.set(row.id, { ...was, seenAt: nowMs });
     }
@@ -178,6 +190,8 @@ export function printAlarmStep(
     }
     if (nowMs - was.seenAt > PRINT_ALARM_FORGET_MS) next.delete(id);
   }
+  // Seen (or kept beyond a cut) on this pulse, and still under the summary.
+  for (const slip of next.values()) if (slip.summary === true && slip.seenAt === nowMs) step.summaryWaiting += 1;
   return step;
 }
 

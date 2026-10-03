@@ -61,13 +61,15 @@ export async function readPrintAttention(nowMs: number): Promise<{ rows: PrintAt
     .select("kind label status labels createdAt lastError originDeviceId targetDeviceId approvedAt")
     // The newest rows, on the same index (a merge of its scans, no in-memory sort: the 1D gate's explain()).
     .sort({ createdAt: -1, _id: -1 })
-    .limit(PRINT_ATTENTION_LIMIT)
+    // One row more than it shows, so a cut is a real cut: exactly 20 waiting reads "20", not "20+", and the
+    // alarm keeps a cut-off slip's notice only when something really was cut off (the Phase 1 final gate, M5).
+    .limit(PRINT_ATTENTION_LIMIT + 1)
     .lean();
-  // Shown oldest first.
+  // The newest 20, shown oldest first.
   const rows = docs
+    .slice(0, PRINT_ATTENTION_LIMIT)
     .reverse()
     .map(printAttentionRowOf)
     .filter((row): row is PrintAttentionRow => row !== null);
-  // The same length===limit "at least this many" proxy the other pulse feeds use.
-  return { rows, truncated: docs.length === PRINT_ATTENTION_LIMIT };
+  return { rows, truncated: docs.length > PRINT_ATTENTION_LIMIT };
 }

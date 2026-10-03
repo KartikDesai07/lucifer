@@ -48,7 +48,7 @@ export function printJobResolvedRowOf(doc: {
   // pulse, wrapped in pos-pulse.ts's fail-soft catch): the ONLY production
   // caller is readPrintJobFeeds's Promise.all below, so a THROW here rejects
   // the whole Promise.all, and the pulse's catch then discards D1/D2 as well
-  // — and because the bad row stays inside D3's 2h createdAt window, this
+  // — and because the bad row stays inside D3's createdAt window (45 min), this
   // repeats on EVERY tick for two hours, silently (no 500 anywhere; the host
   // just drains nothing and the band shows nothing). The D3 query only ever
   // returns status IN ["printed","dismissed"], so an out-of-range status here
@@ -105,7 +105,7 @@ export interface PrintJobFeeds {
  * matches `printJobDrainCandidate`'s own boundary rule (age === maxAgeMs is
  * still eligible). MERGED-01's point: a single oldest-first read let stale
  * rows permanently occupy the drain's slots and hide every fresher job for up
- * to the 12h prune window. Both sort `{createdAt:1,_id:1}` to ride
+ * to the prune window (3 h since the owner's decision after Session 1D). Both sort `{createdAt:1,_id:1}` to ride
  * `{status:1,createdAt:1,_id:1}` and drain oldest-first with a deterministic
  * same-millisecond tie-break (MERGED-16).
  */
@@ -145,7 +145,7 @@ export async function readPrintJobFeeds(nowMs: number): Promise<PrintJobFeeds> {
     // returns null for an out-of-range status (F-5) so ONE unexpected row
     // degrades by omission, never throws and takes the whole D3 read (and,
     // via pos-pulse.ts's fail-soft catch, D1/D2 too) down for the row's
-    // whole 2h createdAt window.
+    // whole createdAt window (45 min).
     resolvedPrintJobs: resolvedRows
       .map(printJobResolvedRowOf)
       .filter((row): row is PrintJobResolvedRow => row !== null),

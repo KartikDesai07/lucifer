@@ -88,11 +88,15 @@ test("PIN: the provider hands the drain its surfaces, and the bridge's own KOT p
   assert.ok(bridge.indexOf("outcomesRef.current.track(done ?? null);") < bridge.indexOf("if (occupiedRef.current) {\n      pendingRef.current.push(slip);"), "a slip is tracked before it waits or prints");
 });
 
-test("PIN: the agent leases on events aimed at it, names itself on the pulse only with no host, and only the host polls", () => {
+test("PIN: the agent leases on events aimed at it, names itself on the pulse (the host too), and only the host polls", () => {
   const agent = src("apps/cafe/hooks/use-print-agent.ts");
   assert.ok(agent.includes('if (job?.status === "queued" && job.target === deviceId) agent.kick();'), "a print-status frame for another device never leases (R7)");
   assert.ok(agent.includes('} else if (kind === "print-job" && isHost) {'), "the broadcast nudge wakes only the host (no fan-out, M-c)");
-  assert.ok(agent.includes("if (agent === null || !enabled || isHost) return;\n    setPulsePrintDevice(deviceId);"), "with no host, the agent names itself on the existing pulse");
+  // The Phase 1 final gate (I-2, deliberate change): the host names itself too. With its daily wake share spent and
+  // the socket down it heard of other devices' slips from nothing at all (spec §7.10: "leasing then rides realtime
+  // nudges and the pulse"); one bounded read on the host's own pulse, no new request.
+  assert.ok(agent.includes("if (agent === null || !enabled) return;\n    setPulsePrintDevice(deviceId);"), "every agent names itself on the existing pulse, the host too");
+  assert.ok(!agent.includes("if (agent === null || !enabled || isHost) return;"), "the host is no longer left out");
   assert.ok(src("apps/cafe/hooks/use-pos-pulse.ts").includes("apiGet<PosPulseData>(`${POS_PULSE_ENDPOINT}${pulsePrintDeviceQuery()}`)"), "the pulse carries it: no new request");
   assert.ok(agent.includes("printerReady: canPrintNow,"), "the agent's gate is the device's own can-print verdict");
   assert.ok(agent.includes("PRINT_AGENT_SLIP_DEADLINE_MS"), "its wait on one slip is bounded");

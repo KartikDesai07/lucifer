@@ -37,8 +37,9 @@ import { cafeDateString } from "@/lib/utils";
 // device printer and the signals that tell the agent a job is waiting for it:
 //   · an order answer that named a job for this device (kickPrintAgent, no request);
 //   · a "print-status" frame aimed at this device (R7), or — the host only — the "print-job" nudge;
-//   · the existing 20 s pulse: with no host the agent names itself there (?device=) and leases when
-//     its own line is not empty; the host instead polls the wake POST at the spec §9.1 cadence (R6);
+//   · the existing 20 s pulse: every agent names itself there (?device=) and leases when its own line is
+//     not empty (the host too, since the Phase 1 final gate: a spent wake share must not stop it);
+//   · the host only: the wake POST at the spec §9.1 cadence (R6);
 //   · its printer coming back, the bridge freeing up, the app returning to the screen;
 //   · its one local timer (retryAt / nextAttemptAt from the server).
 // No ordering device gains a recurring request: only the host polls, and only the wake it always had.
@@ -159,9 +160,11 @@ export function usePrintAgent({ enabled, isHost, deviceId, tabId, busy, queueSli
     });
   }, [agent, enabled, isHost, deviceId]);
 
-  // No host: name this device on the pulse, and lease when its own line holds a job.
+  // Name this device on the pulse, and lease when its own line holds a job. The host too (the Phase 1 final
+  // gate, I-2): with its daily wake share spent and the socket down, the pulse is how it still hears of the
+  // slips other devices send it (spec §7.10). One bounded read on a request that already runs.
   useEffect(() => {
-    if (agent === null || !enabled || isHost) return;
+    if (agent === null || !enabled) return;
     setPulsePrintDevice(deviceId);
     const pulseHash = hashKey(POS_PULSE_KEYS.all);
     const off = qc.getQueryCache().subscribe((event) => {
@@ -173,7 +176,7 @@ export function usePrintAgent({ enabled, isHost, deviceId, tabId, busy, queueSli
       off();
       setPulsePrintDevice(null);
     };
-  }, [agent, enabled, isHost, deviceId, qc]);
+  }, [agent, enabled, deviceId, qc]);
 
   // The host: the wake poll (spec §9.1), under the device's one daily cap.
   useEffect(() => {

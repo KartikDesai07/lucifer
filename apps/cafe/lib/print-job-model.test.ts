@@ -240,10 +240,13 @@ const LIFECYCLE_PATHS = [
   "nextAttemptAt", "labels", "approvedAt", "printedAt", "printedBy", "lastError", "log",
 ] as const;
 
-test("PrintJob: Phase 1 indexes — one device's line, and an ordering device's recent jobs", () => {
+test("PrintJob: Phase 1 indexes — one device's line; no index nothing reads", () => {
   const keys = printJobSchema.indexes().map(([fields]) => JSON.stringify(fields));
   assert.ok(keys.includes(JSON.stringify({ targetDeviceId: 1, status: 1, createdAt: 1, _id: 1 })), "the line index, in exactly that key order");
-  assert.ok(keys.includes(JSON.stringify({ originDeviceId: 1, createdAt: -1 })), "the readback index");
+  // The Phase 1 final gate (m-1, deliberate change): the readback index served myRecentJobs, which the 1C gate
+  // dropped; no query reads it, and on M0 it cost a write per insert and storage. Never deployed, so never built.
+  assert.ok(!keys.some((k) => k.includes('"originDeviceId"')), "no originDeviceId index");
+  assert.equal(keys.length, 3, "exactly three PrintJob indexes: the feed/prune one, the job-key fence and the line");
   assert.ok(keys.includes(JSON.stringify({ status: 1, createdAt: 1, _id: 1 })), "landmark: the prune/feed index stays");
 });
 

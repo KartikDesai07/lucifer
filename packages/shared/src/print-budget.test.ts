@@ -192,9 +192,10 @@ test("1D gate retention: finished slips go after 45 min, never inside the KOT re
   assert.ok(PRINT_JOB_RESOLVED_RETENTION_MS > PRINT_ACK_PENDING_MAX_MS + PRINT_LEASE_MS, "a late ack still finds its row");
 });
 
-test("1D gate retention: unattended waiting slips go after 3 h; the feed reads the same window; a slip staff acted on gets its try", () => {
+test("1D gate retention: unattended waiting slips go after 3 h; the feed reads that window plus the acted grace; a slip staff acted on gets its try", () => {
   assert.equal(PRINT_JOB_QUEUED_RETENTION_MS, 3 * 60 * 60 * 1000, "the owner: 3 h (was 12 h)");
-  assert.equal(PRINT_ATTENTION_WINDOW_MS, PRINT_JOB_QUEUED_RETENTION_MS, "the panel shows every waiting slip the prune keeps");
+  // The Phase 1 final gate (M2, deliberate change): a slip tapped just before its 3 h is kept 15 min more, and shown.
+  assert.equal(PRINT_ATTENTION_WINDOW_MS, PRINT_JOB_QUEUED_RETENTION_MS + PRINT_JOB_ACTED_GRACE_MS, "the panel shows every waiting slip the prune keeps (a tap before its 3 h)");
   assert.ok(PRINT_JOB_QUEUED_RETENTION_MS > PRINT_HOST_MAX_AGE_MS, "a stale slip is shown (and can be printed now) before it is deleted");
   assert.ok(PRINT_JOB_ACTED_GRACE_MS >= PRINT_LEASE_MS + PRINT_ACK_PENDING_MAX_MS, "a tapped slip is never deleted mid-print or before its late ack");
   assert.ok(PRINT_REPAIR_ORDER_MAX_AGE_MS >= PRINT_JOB_QUEUED_RETENTION_MS, "a long-sitting table's new round is still repaired");

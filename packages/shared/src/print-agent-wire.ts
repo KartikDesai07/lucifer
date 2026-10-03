@@ -2,6 +2,8 @@
 // server routes and the in-page agent; pure and client-safe.
 
 import {
+  PRINT_JOB_ACTED_GRACE_MS,
+  PRINT_JOB_QUEUED_RETENTION_MS,
   PRINT_WAKE_DAILY_CAP,
   PRINT_WAKE_FAST_MS,
   PRINT_WAKE_SLOW_MS,
@@ -59,9 +61,10 @@ export interface PrintAttentionRow {
 
 /** The feed is one bounded read on the hottest poll, within the queued retention (§7.8): the NEWEST rows
  *  (owner, after Session 1D: a new problem always shows and rings), shown oldest first. An older backlog
- *  beyond the limit stays in the count ("20+"). */
+ *  beyond the limit stays in the count ("20+"). The window adds the acted grace (the Phase 1 final gate,
+ *  M2): a slip staff tapped just before its 3 h is kept 15 min more by the prune, so it is shown until then. */
 export const PRINT_ATTENTION_LIMIT = 20;
-export const PRINT_ATTENTION_WINDOW_MS = 3 * 60 * 60 * 1000;
+export const PRINT_ATTENTION_WINDOW_MS = PRINT_JOB_QUEUED_RETENTION_MS + PRINT_JOB_ACTED_GRACE_MS;
 
 export const PRINT_DEVICE_SHELLS = ["android", "windows", "browser"] as const;
 export type PrintDeviceShell = (typeof PRINT_DEVICE_SHELLS)[number];

@@ -162,7 +162,11 @@ export function PosPulseProvider({ children }: { children: ReactNode }) {
   // moment staff interact with the page AT ALL (any click or keypress) —
   // Chrome's autoplay policy requires resume() inside a gesture handler
   // (lib/alert-sound.ts's own header), and this is the earliest one available.
+  // The printing Phase 1 final gate: one try on mount first. Where the page may play sound without a touch
+  // (the POS app's WebView; the Windows app) a device that restarted untouched still rings; in a browser
+  // tab the context stays suspended until the touch below resumes it, as before.
   useEffect(() => {
+    unlock();
     const handler = () => unlock();
     window.addEventListener("pointerdown", handler, { once: true, capture: true });
     window.addEventListener("keydown", handler, { once: true, capture: true });

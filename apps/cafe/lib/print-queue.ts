@@ -43,7 +43,7 @@ export function printJobKeyOf(payload: PrintJobPayload): string | undefined {
     // reprint is a staff-requested duplicate that must ALWAYS get a fresh
     // job; the dedupe fence exists only to collapse a RETRY of the SAME
     // first-time enqueue (else it collides E11000 with the still-"printed"
-    // original for the full 2h retention window, and "Print bill" silently
+    // original for its full retention window, and "Print bill" silently
     // does nothing). PH-4/PH-6's routing wrapper MUST set `reprint: true` on
     // every reprint path.
     case "bill":
@@ -301,7 +301,8 @@ export async function dismissQueuedPrintJobsForClearedHost(dismissedBy: string):
 export async function prunePrintJobs(nowMs: number): Promise<void> {
   try {
     // A slip still waiting that nobody acted on goes after 3 h. One staff tapped lately (approvedAt), or
-    // whose lease ran lately (it may be printing), gets its try first: never deleted mid-flight.
+    // one still leased whose lease runs or ran out lately (it may be printing; every way out of a lease
+    // clears it), gets its try first: never deleted mid-flight.
     const acted = actedGraceCutoff(nowMs);
     await PrintJob.deleteMany({
       status: { $in: [...PRINT_JOB_UNRESOLVED_STATUSES] }, createdAt: { $lt: queuedPruneCutoff(nowMs) },

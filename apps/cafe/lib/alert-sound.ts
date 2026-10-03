@@ -9,7 +9,10 @@
 // network callback — or the browser silently keeps it suspended forever
 // (developer.chrome.com/blog/autoplay/#webaudio). `unlockAlertSound()` is
 // the ONLY function here allowed to construct the context or call resume(),
-// and callers must invoke it directly from a gesture handler.
+// and callers must invoke it directly from a gesture handler — or once on
+// mount, best effort (the printing Phase 1 final gate): where the page may play
+// sound without a gesture (the POS app's WebView, the Windows app) that unlocks
+// it at once; elsewhere the context stays suspended until a gesture's call.
 //
 // Sound while the browser tab is hidden/backgrounded is NOT guaranteed by
 // any browser — this module's design never depends on it; the visual badge

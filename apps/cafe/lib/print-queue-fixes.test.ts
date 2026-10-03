@@ -120,7 +120,7 @@ function payload(kind: "kot" | "bill" | "void" | "moved", overrides: PayloadOver
 // FIX 1 — reprint discriminator (bill/void/moved gained reprint: z.literal(true).optional())
 // ═════════════════════════════════════════════════════════════════════════
 
-test('printJobKeyOf: bill — reprint:true -> undefined, reprint ABSENT -> the normal derived key, and the two productions of the SAME order DIFFER in dedupe outcome (MUTATION this catches: reverting the reprint discriminator makes an ordinary bill reprint collide E11000 with the already-"printed" original and answer already-resolved, which forbids a local fallback — the slip prints nowhere for 2h)', () => {
+test('printJobKeyOf: bill — reprint:true -> undefined, reprint ABSENT -> the normal derived key, and the two productions of the SAME order DIFFER in dedupe outcome (MUTATION this catches: reverting the reprint discriminator makes an ordinary bill reprint collide E11000 with the already-"printed" original and answer already-resolved, which forbids a local fallback — the slip prints nowhere for its whole retention window)', () => {
   const original = payload("bill");
   const reprint = payload("bill", { reprint: true });
   assert.notEqual(printJobKeyOf(original), undefined, "the ORIGINAL bill must still get a real dedupe key");
@@ -391,7 +391,7 @@ test("PIN: DELETE /api/print-host's internal ordering is clearPrintHost( < prune
 // FIX 10 — dismissReason narrowed on the wire, DEGRADING not throwing
 // ═════════════════════════════════════════════════════════════════════════
 
-test("printJobResolvedRowOf: a recognised dismissReason survives untouched; an UNRECOGNISED dismissReason is OMITTED (not present, never thrown) so a stale value from an older deploy degrades the 20s pulse readback instead of 500ing it; an out-of-range STATUS is likewise OMITTED (returns null), never thrown. DELIBERATE POLICY CHANGE from fix round 1 (F-5), not a weakened assertion: this row feeds pos-pulse.ts's hottest-path 20s readback behind a Promise.all — a throw there rejected the WHOLE Promise.all, so one bad D3 row inside the 2h createdAt window took D1/D2 down too, silently, on every tick for the full 2h window; omitting the one row instead degrades one row, never a whole tick", () => {
+test("printJobResolvedRowOf: a recognised dismissReason survives untouched; an UNRECOGNISED dismissReason is OMITTED (not present, never thrown) so a stale value from an older deploy degrades the 20s pulse readback instead of 500ing it; an out-of-range STATUS is likewise OMITTED (returns null), never thrown. DELIBERATE POLICY CHANGE from fix round 1 (F-5), not a weakened assertion: this row feeds pos-pulse.ts's hottest-path 20s readback behind a Promise.all — a throw there rejected the WHOLE Promise.all, so one bad D3 row inside the createdAt window took D1/D2 down too, silently, on every tick for the full window; omitting the one row instead degrades one row, never a whole tick", () => {
   const known = printJobResolvedRowOf({ _id: "j1", status: "dismissed", dismissReason: "host-cleared" });
   assert.ok(known !== null, "positive landmark: a recognised row is still built, never omitted");
   assert.equal(known.dismissReason, "host-cleared");
@@ -403,14 +403,14 @@ test("printJobResolvedRowOf: a recognised dismissReason survives untouched; an U
   assert.equal(unknown.id, "j2", "positive landmark: the row is still built — the omission is targeted, not a blinded/degenerate object");
 
   const badStatus = printJobResolvedRowOf({ _id: "j3", status: "queued" });
-  assert.equal(badStatus, null, "an out-of-range status must be OMITTED (return null), never thrown — the mutation this catches: reverting to a throw takes the whole 20s pulse feed down for the row's full 2h retention window");
+  assert.equal(badStatus, null, "an out-of-range status must be OMITTED (return null), never thrown — the mutation this catches: reverting to a throw takes the whole 20s pulse feed down for the row's full retention window");
 });
 
 // ═════════════════════════════════════════════════════════════════════════
 // COVERAGE A — prunePrintJobs' two deleteMany filters, per-term
 // ═════════════════════════════════════════════════════════════════════════
 
-test("PIN: prunePrintJobs calls PrintJob.deleteMany( exactly twice. Filter #1 (unresolved, Phase 1) fences on status:{$in:[...PRINT_JOB_UNRESOLVED_STATUSES]} (the 12 h clock is only for jobs still waiting for a writer or a decision; a resolved row keeps its 2 h clock in filter #2) with a $lt cutoff (never $gt — a flipped operator deletes everything NEWER than the cutoff) filtering createdAt, never updatedAt. Filter #2 (resolved) fences on status:{$in:[\"printed\",\"dismissed\"]}, same $lt/createdAt discipline", () => {
+test("PIN: prunePrintJobs calls PrintJob.deleteMany( exactly twice. Filter #1 (unresolved, Phase 1) fences on status:{$in:[...PRINT_JOB_UNRESOLVED_STATUSES]} (the 3 h clock is only for jobs still waiting for a writer or a decision; a resolved row keeps its 45 min clock in filter #2) with a $lt cutoff (never $gt — a flipped operator deletes everything NEWER than the cutoff) filtering createdAt, never updatedAt. Filter #2 (resolved) fences on status:{$in:[\"printed\",\"dismissed\"]}, same $lt/createdAt discipline", () => {
   const src = stripComments(readSrc(PRINT_QUEUE_LIB));
   const fnStart = mustIndexOf(src, "export async function prunePrintJobs(", "prunePrintJobs");
   const fnEnd = mustIndexOf(src, "let lastPruneAtMs = 0;", "the boundary after prunePrintJobs");
@@ -421,7 +421,7 @@ test("PIN: prunePrintJobs calls PrintJob.deleteMany( exactly twice. Filter #1 (u
 
   const filter1End = mustIndexOf(fnBody.slice(deleteCalls[0]), "});", "the close of filter #1's call") + deleteCalls[0] + 3;
   const filter1 = fnBody.slice(deleteCalls[0], filter1End);
-  assert.match(filter1, /status:\s*\{\s*\$in:\s*\[\.\.\.PRINT_JOB_UNRESOLVED_STATUSES\]\s*\}/, "filter #1 must fence on the unresolved statuses (Phase 1) — the 12 h clock is for jobs still waiting; a resolved row keeps its 2 h clock");
+  assert.match(filter1, /status:\s*\{\s*\$in:\s*\[\.\.\.PRINT_JOB_UNRESOLVED_STATUSES\]\s*\}/, "filter #1 must fence on the unresolved statuses (Phase 1) — the 3 h clock is for jobs still waiting; a resolved row keeps its 45 min clock");
   assert.match(filter1, /\$lt:/, "filter #1's cutoff comparison must be $lt");
   assert.ok(!/\$gt:/.test(filter1), "filter #1 must never use $gt — a flipped operator deletes everything NEWER than the cutoff");
   assert.match(filter1, /createdAt:/, "filter #1 must filter createdAt");

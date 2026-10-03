@@ -11,7 +11,7 @@ import { PRINT_JOB_QUEUED_RETENTION_MS, PRINT_JOB_RESOLVED_RETENTION_MS } from "
 import { PRINT_DEVICE_PRUNE_MS, PRINT_KOT_ALARM_MS } from "@pos/shared/print-lifecycle";
 import { PrintDevice } from "@/models/PrintDevice";
 import { PrintJob } from "@/models/PrintJob";
-import { readPrintAttention } from "@/lib/print-attention";
+import { printAttentionFilter, readPrintAttention } from "@/lib/print-attention";
 import { prunePrintJobs } from "@/lib/print-queue";
 import { backdatePrintJob, check } from "./harness";
 import { HOST, freshHost, lease, queueBill, queueKot, setRaw } from "./lifecycle";
@@ -71,6 +71,13 @@ export async function legAF(nowMs: number): Promise<void> {
   check("(af) the rows are still shown oldest first: the new failure is last", after[after.length - 1] === newest);
   check("(af) the oldest of the backlog is the one left to the count", !after.includes(backlog[0] ?? ""));
   check("(af) oldest first throughout", feed.rows.every((row, i) => i === 0 || Date.parse(feed.rows[i - 1]?.createdAt ?? "") <= Date.parse(row.createdAt)));
+
+  // The Phase 1 final gate (M5): exactly the limit waiting is all of them, not "20+" (the read takes one row more
+  // than it shows, so a cut is a real cut).
+  const all = await PrintJob.find(printAttentionFilter(nowMs)).sort({ createdAt: 1, _id: 1 }).select("_id").lean();
+  for (const row of all.slice(0, all.length - PRINT_ATTENTION_LIMIT)) await setRaw(String(row._id), { status: "dismissed" });
+  feed = await readPrintAttention(nowMs);
+  check("(af) exactly the limit waiting: every one shown, and not cut (final gate M5)", feed.rows.length === PRINT_ATTENTION_LIMIT && !feed.truncated);
 }
 
 export async function legAG(nowMs: number): Promise<void> {

@@ -144,7 +144,9 @@ function printerRecords(out: string, since: Date): PrinterRecord[] {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const uri = process.env.MONGODB_URI ?? "";
-  if (!/\/pos_scratch_[a-z0-9_]+$/.test(uri)) throw new Error("refusing: not a pos_scratch_* database");
+  // A local scratch database only, and (below) the first order must land in it: the POS at --base might use
+  // another database (the Phase 1 final gate, M8).
+  if (!/^mongodb:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/pos_scratch_[a-z0-9_]+$/.test(uri)) throw new Error("refusing: not a local pos_scratch_* database");
   const secret = process.env.AUTH_SECRET ?? "";
   if (secret.length < 32) throw new Error("AUTH_SECRET missing from the env file");
   await mongoose.connect(uri);
@@ -185,6 +187,9 @@ async function main(): Promise<void> {
       note(created, `order ${i + 1}`);
       const orderId = typeof created.json.data?._id === "string" ? created.json.data._id : null;
       if (orderId === null) continue;
+      if (counts.orders === 0 && (await db.collection("orders").findOne({ _id: new mongoose.Types.ObjectId(orderId) })) === null) {
+        throw new Error("refusing: the POS at --base writes to another database than MONGODB_URI");
+      }
       counts.orders += 1;
       await drainLine(args, cookie);
       if (i % 2 === 1) {

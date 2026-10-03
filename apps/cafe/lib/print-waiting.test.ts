@@ -83,6 +83,13 @@ test("the 1D gate (M-6): a slip refused once for itself is not blamed on the pri
   assert.equal(printWaitingReason(row({ createdAt: ago(31 * 60_000) }), T0), "Waiting over 30 minutes: print it now, or clear it.", "never tapped: still asks for a tap");
 });
 
+test("the Phase 1 final gate (I-3): a Windows app refusal says what to fix on the PC, in the app's own words", () => {
+  const noPrinter = "No printer is chosen for this PC. Open Settings, then Printing, and pick the printer.";
+  assert.equal(printWaitingReason(row({ lastError: noPrinter }), T0), noPrinter, "not 'the printer is off': it is not chosen");
+  assert.equal(printWaitingReason(row({ lastError: "The chosen printer was not found on this PC. Open Settings, then Printing, and pick it again." }), T0), "The chosen printer was not found on this PC. Open Settings, then Printing, and pick it again.");
+  assert.equal(printWaitingReason(row({ lastError: "The slip did not finish drawing. Print it again." }), T0), "The slip could not be prepared. It tries once more by itself.", "the slip's own refusal, as on the other lanes");
+});
+
 // The 1D gate changed the alarm deliberately (N-2, N-4, N-5, M-1): printAlarmRows became printAlarmWanted
 // plus printAlarmStep, one pulse of a remembered alarm.
 const feedOf = (rows: PrintAttentionRow[], truncated = false) => ({ rows, truncated });
@@ -177,6 +184,35 @@ test("a page that opens while slips wait shows one summary, not one notice per s
   assert.equal(printAlarmStep(next.memory, feedOf([]), "dev-a", T0 + 40_000, false).wanted, 0, "nothing waits: the summary can go");
 });
 
+test("the Phase 1 final gate (M6): Print now on a stale slip is staff acting on it: its notice goes quietly, like Retry and Print again", () => {
+  const stale = row({ id: "s", createdAt: ago(31 * 60_000), originDeviceId: "dev-a" });
+  let step = printAlarmStep(new Map(), feedOf([stale]), "dev-a", T0, false);
+  assert.deepEqual(step.show.map((r) => r.id), ["s"], "it waited: its notice shows");
+  step = printAlarmStep(step.memory, feedOf([{ ...stale, approved: true }]), "dev-a", T0 + 20_000, false);
+  assert.deepEqual(step.dismiss, ["s"], "Print now was tapped: its notice goes");
+  assert.equal(step.ring, false, "quietly");
+  step = printAlarmStep(step.memory, feedOf([]), "dev-a", T0 + 40_000, false);
+  step = printAlarmStep(step.memory, feedOf([{ ...stale, approved: true }]), "dev-a", T0 + 60_000, false);
+  assert.deepEqual(step.show, [], "a moment's lease after the tap brings no notice back: staff acted on it");
+  step = printAlarmStep(step.memory, feedOf([{ ...stale, approved: true, status: "failed" }]), "dev-a", T0 + 80_000, false);
+  assert.equal(step.ring, true, "it got worse after the tap: it rings again");
+});
+
+test("the Phase 1 final gate (M4): the summary counts the slips it stands for as they print, and goes with the last of them", () => {
+  const rows = [row({ id: "a", originDeviceId: "dev-a" }), row({ id: "b", originDeviceId: "dev-a" }), row({ id: "c", originDeviceId: "dev-a" })];
+  let step = printAlarmStep(new Map(), feedOf(rows), "dev-a", T0, true);
+  assert.equal(step.summary, 3, "three already waited when the page opened");
+  assert.equal(step.summaryWaiting, 3, "and the summary stands for three");
+  const d = row({ id: "d", originDeviceId: "dev-a" });
+  step = printAlarmStep(step.memory, feedOf([rows[2] ?? d, d]), "dev-a", T0 + 20_000, false);
+  assert.equal(step.summaryWaiting, 1, "two printed: the summary says one now");
+  assert.deepEqual(step.show.map((r) => r.id), ["d"], "a new slip has its own notice, outside the summary");
+  step = printAlarmStep(step.memory, feedOf([{ ...(rows[2] ?? d), status: "failed" }, d]), "dev-a", T0 + 40_000, false);
+  assert.equal(step.ring, true, "the last one got worse: it rings");
+  assert.deepEqual(step.show.map((r) => r.id), ["c"], "with its own notice");
+  assert.equal(step.summaryWaiting, 0, "so the summary stands for nothing now and goes, though d still waits under its own notice");
+});
+
 test("with the newest 20 rows read, a slip older than the page that is cut off is still waiting: kept, notice and all (N-2)", () => {
   const oldOne = row({ id: "old", createdAt: ago(10 * 60_000), originDeviceId: "dev-a" });
   let step = printAlarmStep(new Map(), feedOf([oldOne]), "dev-a", T0, false);
@@ -233,6 +269,18 @@ test("PIN: a tapped row is enabled again once ITS action answers, whatever the a
   assert.ok(card.includes("aria-label={`${verb} ${label}`}"), "Print now / Retry name their slip (M-5)");
 });
 
+test("PIN (the Phase 1 final gate, the alert sound): the page tries the sound once on mount, then on the first touch", () => {
+  // A printing device that restarted and was left untouched showed its notices but never rang: the page only ever
+  // tried the sound from a touch. Where the page may play sound without one (the POS app: Android's WebView lets a
+  // page's own AudioContext start untouched, measured on WebView 109 with today's APK; the Windows app) one try on
+  // mount is enough; in a browser tab it stays locked until the first touch, as before.
+  const provider = src("apps/cafe/components/layout/PosPulseProvider.tsx");
+  assert.match(provider, /useEffect\(\(\) => \{\s*unlock\(\);\s*const handler = \(\) => unlock\(\);/, "one try on mount, before the gesture listener");
+  assert.match(provider, /window\.addEventListener\("pointerdown", handler, \{ once: true, capture: true \}\);/, "the first touch still unlocks it");
+  const sound = src("apps/cafe/lib/alert-sound.ts");
+  assert.equal((sound.match(/\.resume\(\)/g) ?? []).length, 1, "resume() still only inside unlockAlertSound");
+});
+
 test("PIN: the alarm rides the pulse already polled (no request), and only the printing lane's drain mounts it", () => {
   const alarm = src("apps/cafe/hooks/use-print-slip-alarm.ts");
   assert.ok(!/apiGet|apiSend|useQuery\(|refetchInterval|setInterval/.test(alarm), "no request and no poll of its own");
@@ -244,7 +292,10 @@ test("PIN: the alarm rides the pulse already polled (no request), and only the p
   );
   assert.match(alarm, /const SHOW = \{ label: "Show", onClick: openPrinterPanel \};/, "the notice opens the panel itself (it covers the top bar on a phone)");
   assert.match(alarm, /const SHOW_STYLE = \{ minHeight: 44, minWidth: 44 \};/, "a 44 px Show button (1D gate M-5)");
-  assert.match(alarm, /let page: \{ deviceId: string; memory: Map<string, PrintAlarmMemory>; seeded: boolean \}/, "remembered per page, not per mount: a remount rings nothing twice");
+  assert.match(alarm, /let page: \{ deviceId: string; memory: Map<string, PrintAlarmMemory>; seeded: boolean; summary: number \}/, "remembered per page, not per mount: a remount rings nothing twice");
+  // The Phase 1 final gate (M4, deliberate change): the summary is re-worded as its slips print, and goes with the last.
+  assert.match(alarm, /if \(step\.summaryWaiting !== page\.summary\) \{/, "the summary follows the count it stands for");
+  assert.ok(!alarm.includes("if (step.wanted === 0) toast.dismiss(SUMMARY_ID);"), "not every waiting slip: a new one has its own notice");
   assert.match(alarm, /return \(\) => \{\s*unsubscribe\(\);\s*toast\.dismiss\(SUMMARY_ID\);/, "an unmount takes its notices down (M-1)");
   assert.match(src("apps/cafe/components/print/PrinterStatusButton.tsx"), /useEffect\(\(\) => onOpenPrinterPanel\(\(\) => setOpen\(true\)\), \[\]\);/, "the printer button opens its sheet when asked");
   assert.match(src("apps/cafe/components/print/PrintHostDrain.tsx"), /usePrintSlipAlarm\(deviceId\);/, "every device with an identity");

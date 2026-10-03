@@ -140,8 +140,8 @@ printJobSchema.index({ jobKey: 1 }, { unique: true, sparse: true });
 // jobsForMe read). The {status, nextAttemptAt, …} index in spec §6.5 is NOT created: no Phase 1
 // query uses it, and on M0 every index costs storage and write amplification.
 printJobSchema.index({ targetDeviceId: 1, status: 1, createdAt: 1, _id: 1 });
-// Phase 1: an ordering device's own recent jobs (its readback, Session 1D).
-printJobSchema.index({ originDeviceId: 1, createdAt: -1 });
+// No {originDeviceId, createdAt} index (the Phase 1 final gate, m-1): it served myRecentJobs, which the
+// 1C gate dropped for the one attention feed; nothing reads by it.
 
 // NO TTL index: ttl-guard's default-deny (packages/shared/src/ttl-guard.ts)
 // allows exactly one registry TTL index platform-wide (Heartbeat) —

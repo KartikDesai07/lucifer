@@ -28,7 +28,7 @@ export type PrintJobKind = (typeof PRINT_JOB_KINDS)[number];
 export const PRINT_JOB_STATUSES = ["queued", "leased", "printed", "needs-confirm", "failed", "dismissed"] as const;
 export type PrintJobStatus = (typeof PRINT_JOB_STATUSES)[number];
 
-/** Statuses that still need a writer or a decision; retention prunes them after 12 h. */
+/** Statuses that still need a writer or a decision; retention prunes them after 3 h (PRINT_JOB_QUEUED_RETENTION_MS). */
 export const PRINT_JOB_UNRESOLVED_STATUSES = ["queued", "leased", "needs-confirm", "failed"] as const;
 
 /** Why a job was torn down without ever printing (§B1). Cross-party: the cafe
@@ -99,11 +99,12 @@ export const PRINT_JOB_RESOLVED_RETENTION_MS = 45 * 60 * 1000;
 
 /** A slip still waiting (queued, needs-confirm, failed) that nobody acted on is pruned after this
  *  (owner, after Session 1D; was 12 h) — a Friday KOT must not print Monday (design review MERGED-14).
- *  The waiting-slips feed reads the same window (PRINT_ATTENTION_WINDOW_MS). */
+ *  The waiting-slips feed reads this window plus PRINT_JOB_ACTED_GRACE_MS (PRINT_ATTENTION_WINDOW_MS). */
 export const PRINT_JOB_QUEUED_RETENTION_MS = 3 * 60 * 60 * 1000;
 
-/** A waiting slip staff acted on within this long (Print now, Retry, Print again: approvedAt), or a
- *  lease that ran within it, is never pruned: it gets its try first (the 1D review gate). */
+/** A waiting slip staff acted on within this long (Print now, Retry, Print again: approvedAt), or one
+ *  still leased whose lease runs or ran out within it (every way out of a lease clears it), is never
+ *  pruned: it gets its try first (the 1D review gate; wording, the Phase 1 final gate M3). */
 export const PRINT_JOB_ACTED_GRACE_MS = 15 * 60 * 1000;
 
 /** Minimum gap between opportunistic `prunePrintJobs` sweeps fired from the

@@ -233,7 +233,7 @@ test("printJobResolvedRowOf: id is the stringified _id, and dismissReason is OMI
   assert.ok(!("dismissReason" in row), "dismissReason must be OMITTED, not present as undefined");
 });
 
-test("printJobResolvedRowOf: dismissReason IS included when present, and the function returns null (never throws) on a status outside {printed,dismissed} — F-5 policy: this row feeds pos-pulse.ts's 20s Promise.all readback, so a THROW there took the whole feed down for the row's 2h retention window; omitting the one row degrades one row instead (DELIBERATE POLICY CHANGE from an earlier fix round, not a weakened assertion — companion pin to the one in print-queue-fixes.test.ts)", () => {
+test("printJobResolvedRowOf: dismissReason IS included when present, and the function returns null (never throws) on a status outside {printed,dismissed} — F-5 policy: this row feeds pos-pulse.ts's 20s Promise.all readback, so a THROW there took the whole feed down for the row's retention window; omitting the one row degrades one row instead (DELIBERATE POLICY CHANGE from an earlier fix round, not a weakened assertion — companion pin to the one in print-queue-fixes.test.ts)", () => {
   const row = printJobResolvedRowOf({ _id: "xyz789", status: "dismissed", dismissReason: "staff" });
   assert.ok(row !== null, "positive landmark: a recognised status is never omitted");
   assert.equal(row.dismissReason, "staff");
