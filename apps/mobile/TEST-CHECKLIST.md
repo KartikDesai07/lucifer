@@ -49,6 +49,51 @@ network port), a PC with Chrome for the debug part.
       while it retries by itself, then tap Try again several times, and on the loading
       screen tap its Try again too. The app never closes by itself.
 
+## Printing lifecycle checks (Phase 1, added 2026-10-03)
+
+Every slip is now printed through the server: it counts as printed only when the device
+that printed it says so, a slip that may have printed is repeated with a black **REPRINT**
+banner (a KOT) or asks the cashier first (a bill, **DUPLICATE** banner), and every slip
+that did not print within 20 seconds shows in the printer panel on every device. Use one
+device as **Print all slips on this device** and a second device (phone or PC) to order.
+
+- [ ] **Nothing waits.** The printer button shows no number and the panel shows no
+      **Slips waiting** section.
+- [ ] **Printer off.** Switch the printer off and send a KOT from the second device.
+      Within 20–40 seconds both devices show "KOT round 1 · T-n has not printed yet."
+      with a **Show** button (the printing device rings once); the printer button shows
+      **1**. Show opens the panel: **Waiting for the printer**, "The printer is off or not
+      connected." Switch the printer on: the slip prints **once, without a banner**, and
+      the number and the notice go within about 20 seconds.
+- [ ] **Print now.** With the printer still off, tap **Print now** on the waiting slip:
+      "It prints by itself as soon as the printer is ready." stays readable for a few
+      seconds, and the row's buttons work again at once.
+- [ ] **A KOT cut mid-slip** (pull the LAN cable or switch the printer off while a long
+      KOT is printing). On USB, Bluetooth and the Windows app a **REPRINT** copy prints
+      by itself when the printer is back. On the Android app's network (LAN) lane the cut
+      may not be seen and nothing repeats (known limit, fixed in Phase 3): check the paper
+      and use **Reprint** in Orders if needed. Note which lane you tested.
+- [ ] **A bill cut mid-slip** (same way, on a bill): no second copy prints by itself; the
+      cashier sees "Bill · ORD-… may not have printed." and **Check the bill** in the
+      panel. **Print again** prints one copy with the black **DUPLICATE** banner; on a
+      second bill, **It printed** prints nothing and the row leaves.
+- [ ] **The printing device is killed mid-slip** (Settings → Apps → Force stop while a
+      slip prints). Open the app again after 2 minutes: the KOT prints once more with
+      **REPRINT** (a bill asks the cashier instead). Nothing prints a third time.
+- [ ] **Couldn't print.** A KOT whose two tries may both have printed (cut it twice) shows
+      under **Couldn't print**, "Tried twice. Check the printer, then retry." **Retry**
+      prints exactly one **REPRINT** copy.
+- [ ] **Clear from another device.** A waiting slip cleared on the second device leaves
+      the first device's panel within about 20 seconds and never prints.
+- [ ] **Two rows at once.** With two slips waiting, tap **Print now** on one and at once on
+      the other: both rows' buttons work again within a few seconds.
+- [ ] **A reload while slips wait** (or open the POS on a new device): one notice, "N slips
+      still waiting. Open the printer panel to check.", not one per slip.
+- [ ] **Screen off.** Repeat the 30-minute screen-off test below: no alarm for slips that
+      printed, and a slip that did not print still shows in the panel.
+- [ ] **Clean-up.** A slip nobody acts on disappears from the panel after 3 hours (a
+      Friday KOT never prints on Monday). Nothing to tap.
+
 ## Part A. Debug build, talking to the app directly (about 15 minutes)
 
 Build and install a **debug** build (`npx react-native run-android --active-arch-only`),
