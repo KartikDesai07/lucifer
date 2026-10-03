@@ -474,6 +474,25 @@ Routing is a pure function, `routeJobs(event, catalog, printers, devices)`, with
 | **End of day** | Use the requesting device's bill printer. |
 | **Simple mode** | §6.6: one job to `targetDeviceId`, exactly as today. |
 
+### 8.1 Phase 2 decisions (implementation plan, 2026-10-03)
+
+The Phase 2 plan ([2026-10-03-phase-2-routing.md](../plans/2026-10-03-phase-2-routing.md)) makes these choices where this spec left room or where its text would hurt a cafe. Each is a numbered decision there.
+
+- **One writer per printer in Phase 2.** A device printer is written only by its own device; a LAN printer only by its printing device (`primaryDeviceId`, required for LAN). The "any online LAN device" rule of §9.3 and the backup printer of §9.4 are Phase 3's failover.
+- **All copies of a slip are one job** (`PrintJob.copies`, 1–3), not one job per copy (§6.5 `copyIndex`): a copy never costs another lease and ack (§17). A retry that may repeat paper repeats every copy, labelled.
+- **The job key adds the station:** `<slip key>:<printerId | none>:<stationId | all | ->`; a printer that takes two stations gets one slip per station. Simple mode keeps today's keys.
+- **A station no printer takes rides the full copy** when a full-copy printer exists (it already holds those lines; a separate slip would print every KOT twice in the commonest setup). Otherwise the default bill printer prints it as "‹STATION› (NO PRINTER SET)"; with neither it fails at once, visibly: a KOT is never dropped.
+- **A full copy that is its round's only slip is today's KOT, unchanged**; beside station slips it says "ALL STATIONS". A cafe converted from simple mode sees no change on paper.
+- **Notices follow the KOT:** a void, moved or cancel notice goes to every printer its station's KOT reaches (own printers, full copies, fallback) that has Notices on. The voided item's station comes from today's menu (order lines store no station).
+- **The device's bill printer lives on the device** and rides the request as a header (`x-pos-bill-printer`), instead of `PrintDevice.billPrinterId` (§6.4): an ordering-only device has no `PrintDevice` row (only pollers beat, §7.10 R6), and rows go after 7 days unseen.
+- **In printers mode only writers poll the wake,** sharing 14,000 hits a day split by the writers the setup names (never by who is online): the server-side split §7.10 asked for, with no new write.
+- **The ack answers `more`,** so an agent never leases to find an empty line; with copies as one job a slip stays at one lease and one ack. The recount (§17.2 with stations): normal day 4,800 (two stations) and 5,790 (plus a full copy); worst case 17,628; 2 realtime requests per slip in printers mode.
+- **No `backupPrinterId` or `health` on `Printer` until Phase 3.** Phase 2's printer dot is its writer's heartbeat and link state.
+- **The setup screens live on the admin Printer setup page (`/printers`)**, not in Settings: Settings sections are bound to Settings-document fields.
+- **Android bridge v2 keeps v1:** the new APK answers v1 messages exactly as today, so a page not yet deployed keeps printing with it; a v2 page opts in.
+- **A deleted station is cleared everywhere it was chosen** (categories, items, printers); the default station can't be deleted, only moved.
+- **The routing read is never cached** (a printer switched off stops getting slips at once); simple mode pays one small read per order request.
+
 ## 9. Printer devices (agents)
 
 ### 9.1 What an agent does
