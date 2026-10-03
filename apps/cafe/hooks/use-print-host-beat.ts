@@ -9,7 +9,7 @@ import { apiSend } from "@/lib/api-client";
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
 import { useOfflineFollowUp } from "@/hooks/use-print-host-offline-followup";
 import { PRINT_JOB_KEYS } from "@/hooks/use-print-host";
-import { beatPrinterReport } from "@/lib/printer/print-lane";
+import { beatPrinterReport, beatSilentMode } from "@/lib/printer/print-lane";
 
 // Print-host plan §B3 (PH-5) — the host heartbeat. Fired once per SUCCESSFUL
 // pulse fetch, and it proves knowledge of THIS device's own id (D-5): the body
@@ -80,7 +80,8 @@ export function usePrintHostBeat({ enabled, deviceId, onDemoted }: UsePrintHostB
     return qc.getQueryCache().subscribe((event) => {
       if (event.type !== "updated" || event.query.queryHash !== pulseHash) return;
       if (event.action.type !== "success" || event.action.manual) return;
-      beat({ deviceId, printer: beatPrinterReport() });
+      // A host that can never open a print window says it is silent (no false "dialog" warning).
+      beat({ deviceId, printer: beatPrinterReport(), silentMode: beatSilentMode() });
     });
   }, [enabled, deviceId, qc, beat]);
 }

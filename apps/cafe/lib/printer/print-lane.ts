@@ -66,6 +66,15 @@ export function printBlockedMessage(): string {
   return PRINTER_NOT_CONNECTED_MESSAGE;
 }
 
+/** A host whose slips can never open a print window (the Windows app, or a printer on this device: the
+ *  Android app's Bluetooth / USB / LAN, web serial or Bluetooth) is silent by construction, so its beat says
+ *  so and the dashboard never claims "a dialog for every slip". A browser's print window may or may not be
+ *  silent (kiosk printing): undefined leaves the setup card's yes/no answer in force. */
+export function beatSilentMode(): true | undefined {
+  const lane = currentLane();
+  return lane === "desktop" || lane === "raster" ? true : undefined;
+}
+
 export function beatPrinterReport(): BeatPrinterReport | undefined {
   const lane = currentLane();
   if (lane === "desktop") return desktopChosen() === "none" ? "disconnected" : "connected";
