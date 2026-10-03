@@ -8,6 +8,8 @@ import {
   PRINTER_PAPER_WIDTHS,
   defaultBillPrinterOf,
   defaultStationOf,
+  printKotStationHeader,
+  printNoPrinterMessage,
   printerTakesSlips,
   printerWriterDeviceId,
   printerWriterDevices,
@@ -17,6 +19,7 @@ import {
   type PrinterConfig,
   type StationConfig,
 } from "./print-printers";
+import { printJobPayloadSchema } from "./schemas/print-job.schema";
 
 // Printing redesign, Phase 2 (spec §6.1–6.3, §8, §9.3): the pure rules every side reads.
 
@@ -114,4 +117,41 @@ test("spec §6.2: product station ?? category station ?? the default; a deleted 
   assert.equal(resolveStationId({ productStationId: "gone", categoryStationId: "tandoor" }, stations), "tandoor", "a deleted item station falls back to the category's");
   assert.equal(resolveStationId({ productStationId: "gone", categoryStationId: "gone-too" }, stations), "kitchen", "and then to the default");
   assert.equal(resolveStationId({ productStationId: "bar" }, []), null, "no stations at all: none");
+});
+
+test("a station KOT's header line (spec §8): the name, the full copy, the station with no printer", () => {
+  assert.equal(printKotStationHeader({ name: "Bar", mode: "station" }), "BAR");
+  assert.equal(printKotStationHeader({ name: "All stations", mode: "all" }), "ALL STATIONS");
+  assert.equal(printKotStationHeader({ name: "Tandoor", mode: "no-printer" }), "TANDOOR (NO PRINTER SET)");
+  assert.equal(printNoPrinterMessage("Bar"), "No printer is set up for Bar.");
+});
+
+const SNAPSHOT = {
+  _id: "665f0a0000000000000000a1",
+  orderId: "ORD-0001",
+  customerName: "Walk-in",
+  items: [{ productId: "p1", name: "Tea", price: 20, qty: 1, modifiers: [], instructions: "", kotRound: 1 }],
+  subtotal: 20,
+  discount: 0,
+  total: 20,
+  paidAmount: 0,
+  payment: "Cash",
+  status: "Pending",
+  receiver: "Staff",
+  kotRounds: 1,
+  createdAt: "2026-10-03T10:00:00.000Z",
+};
+
+test("a KOT payload may name its station; today's KOT (no station) still parses; the station is checked", () => {
+  const kot = { kind: "kot", snapshot: SNAPSHOT, round: 1 };
+  assert.equal(printJobPayloadSchema.safeParse(kot).success, true, "a simple-mode KOT is unchanged");
+  for (const mode of ["station", "all", "no-printer"]) {
+    assert.equal(printJobPayloadSchema.safeParse({ ...kot, station: { name: "Bar", mode } }).success, true, mode);
+  }
+  assert.equal(printJobPayloadSchema.safeParse({ ...kot, station: { name: "Bar", mode: "kitchen" } }).success, false, "an unknown mode");
+  assert.equal(printJobPayloadSchema.safeParse({ ...kot, station: { name: "", mode: "station" } }).success, false, "a blank name");
+  assert.equal(printJobPayloadSchema.safeParse({ ...kot, station: { name: "x".repeat(33), mode: "station" } }).success, false, "a name longer than a station's");
+  assert.equal(printJobPayloadSchema.safeParse({ ...kot, station: { name: "Bar", mode: "station", id: "x" } }).success, false, "strict");
+  const bill = { kind: "bill", snapshot: SNAPSHOT, station: { name: "Bar", mode: "station" } };
+  assert.equal(printJobPayloadSchema.safeParse(bill).success, false, "only a KOT names a station");
 });

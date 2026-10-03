@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { PAYMENT_MODES, ORDER_STATUSES, GST_MODES, DISCOUNT_KINDS } from "../constants";
 import { ORDER_CHARGE_TYPES } from "../order-charges";
+import { PRINT_KOT_STATION_MODES, STATION_NAME_MAX_CHARS } from "../print-printers";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Print-host plan, PH-1 — the payload contract. `printOrderSnapshotSchema`
@@ -108,8 +109,20 @@ export const printOrderSnapshotSchema = z.object({
 // roundItems/roundLabel/roundNumber unset, mirroring `reprintKot`'s three
 // resets); a number filters the snapshot's items to that round (MERGED-04).
 // NULLABLE, not optional — the discriminator must always be stated.
+//
+// Printing Phase 2 (spec §8, D7): `station` names the station a printers-mode KOT is for, and its snapshot
+// then holds only that station's items. ABSENT on every simple-mode KOT, and on a printers-mode KOT that
+// is its round's only slip: today's slip, unchanged.
 const kotPayloadSchema = z
-  .object({ kind: z.literal("kot"), snapshot: printOrderSnapshotSchema, round: z.number().int().nullable() })
+  .object({
+    kind: z.literal("kot"),
+    snapshot: printOrderSnapshotSchema,
+    round: z.number().int().nullable(),
+    station: z
+      .object({ name: z.string().trim().min(1).max(STATION_NAME_MAX_CHARS), mode: z.enum(PRINT_KOT_STATION_MODES) })
+      .strict()
+      .optional(),
+  })
   .strict();
 
 // `reprint: true` marks a staff-requested duplicate (mirrors `kot`'s

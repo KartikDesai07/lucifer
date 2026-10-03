@@ -14,6 +14,25 @@ export const STATIONS_MAX = 20;
 /** The station the first read seeds (§6.1); every category without a station uses the default one. */
 export const DEFAULT_STATION_NAME = "Kitchen";
 
+/** A KOT routed to printers says which station it is for (§8, D7), under its title. "station": only that
+ *  station's items; "all": the round's full copy while other printers got station slips; "no-printer": the
+ *  station has no printer and no printer takes a full copy, so it went to the default bill printer. */
+export const PRINT_KOT_STATION_MODES = ["station", "all", "no-printer"] as const;
+export type PrintKotStationMode = (typeof PRINT_KOT_STATION_MODES)[number];
+/** The name a full copy carries (its label and its header). */
+export const PRINT_FULL_KOT_NAME = "All stations";
+
+/** The line a station KOT prints under its title (§8): "BAR", "ALL STATIONS", "BAR (NO PRINTER SET)". */
+export function printKotStationHeader(station: { name: string; mode: PrintKotStationMode }): string {
+  const name = station.name.toUpperCase();
+  return station.mode === "no-printer" ? `${name} (NO PRINTER SET)` : name;
+}
+
+/** Why a slip has no printer (§8: a KOT is never dropped; it fails at once, visibly, instead). */
+export function printNoPrinterMessage(what: string): string {
+  return `No printer is set up for ${what}.`;
+}
+
 export const PRINTER_NAME_MAX_CHARS = 40;
 export const PRINTERS_MAX = 12;
 export const PRINTER_PAPER_WIDTHS = [58, 80] as const;
