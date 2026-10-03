@@ -12568,4 +12568,125 @@ Push only with the repo's token credential (check `git config --local --get-all 
 
 ## Session 1C Results (filled in by the implementer)
 
-(Empty until Session 1C runs.)
+Executed on 2026-10-03 with superpowers:executing-plans, inline. Every block of Tasks C0–C5 and C5b was applied verbatim by a scratchpad script (Create / find+Replace / Replace-the-whole, each find unique at its point of application), never retyped. A dry run of all 134 blocks against the merged tree passed before C0. Nothing was deployed anywhere: all checks ran locally (the local POS, the emulator, the fake printer, local mongod).
+
+### Commits (`851c454..HEAD`)
+
+| Commit | What |
+|---|---|
+| `5b1a6e6` | Step 0: `git merge --no-ff origin/main` (`c05330a`: `ebffdb5` Settings leave-guard, `c05330a` Settings > Kitchen ticket). A clean auto-merge. |
+| `16c76b6` | C0: the owner's two-attempt rule |
+| `639d0b0` | C1: a print failure says whether anything reached the printer |
+| `94fc0a2` | C2: the server half (job-aware claim, ref status, M-a, M-e, M-f, the pulse's jobs for me) |
+| `eaefec2` | C3: the agent core, its wire and the budget pins |
+| `7b97945` | C4: every device prints through the agent |
+| `9860c02` | C5: live legs ad–ae |
+| `cb83487` | C5b: the go-live-dl pin skips where its planning file is absent |
+| `fec4fd0` | Final-review fix pass: I1 and I2 (below) |
+| (this commit) | Results |
+
+### Step 0 (the merged tree, before C0)
+
+shared 629/629, tsc 0; cafe **4100 tests, 4099 pass, 1 fail** (only the known `go-live-dl` ENOENT); cafe tsc 0; lint 0 errors and the 2 old warnings (`masters-blob.test.ts`). As expected.
+
+### Per-task RED → GREEN (every Expected line compared; all matched)
+
+| Task | RED (seen) | GREEN (seen) |
+|---|---|---|
+| C0 | `does not provide an export named 'PRINT_MAX_PAPER_ATTEMPTS'`; 1/0/1 | print-lifecycle 24/24; shared 630/630; shared tsc 0; cafe tsc 0 |
+| C1 | `Cannot find module '@/lib/print-write-outcome'`; 1/0/1 | 5/5; cafe tsc 0 |
+| C2 | `Cannot find module '@/lib/print-agent-server'`; 1/0/1 | the five files 153/153; cafe tsc 0; shared tsc 0 |
+| C3 | budget: `does not provide an export named 'PRINT_AGENT_REFUSED_RECHECK_MS'` 1/0/1; agent: `Cannot find module '@/lib/print-agent-wake'` 1/0/1 | print-budget 13/13; shared 635/635, tsc 0; the five cafe files 84/84; cafe tsc 0; Hub tsc 0 |
+| C4 | `Cannot find module '@/lib/print-agent-calls'`; **91/77/14** | the ten files 180/180; cafe tsc 0; lint 0 errors + 2 old warnings; cafe `npm test` **4131 tests, 4130 pass, 1 fail** (the known ENOENT). The plan's 4091/4090/1 was captured before the merge; the merge adds 40 tests, so 4131 is the expected number. |
+| C5 | — (legs only) | cafe tsc 0; live legs `199 passed, 0 failed` |
+| C5b | — (skip only) | go-live-dl 24 tests, 23 pass, 0 fail, 1 skipped (`# SKIP the git-ignored planning file .claude/plan/v2/_research/cb-dl2-decisions.md is not on this PC`); cafe tsc 0 |
+
+### Task C6 Step 1: every suite
+
+At `cb83487` (every plan task done, before the fix pass):
+
+| Suite | Result | Expected |
+|---|---|---|
+| shared `npm test`; tsc | 635/635; 0 | same |
+| cafe `npm test` | **4131 tests, 4130 pass, 0 fail, 1 skipped** | same |
+| cafe tsc; lint | 0; 0 errors, 2 old warnings | same |
+| Hub tsc | `HUB_TSC_OK` | same |
+| mobile tsc; lint; `npm test`; `test:app` | 0; 0; 114/114; Jest 3/3 | same |
+| desktop `npm test` | 191/191 | same |
+| `npm run test:print-tools` | 7/7 | same |
+| live legs (`pos_scratch_print_host`) | `199 passed, 0 failed` | same |
+
+At the final code HEAD `fec4fd0` (after the fix pass, which touches only 5 cafe files): cafe **4134 tests, 4133 pass, 0 fail, 1 skipped** (+3: the fix pass's tests); tsc 0; lint 0 errors and the 2 old warnings; live legs `199 passed, 0 failed`. shared, Hub, mobile, desktop and print tools are untouched by the fix pass, so their `cb83487` results stand.
+
+### Changed existing pins (each follows a deliberate change in this plan)
+
+- `packages/shared/src/print-lifecycle.test.ts` (C0, the owner's two-attempt rule): "lease: refused … when over limits" (now `uncertainAttempts: PRINT_MAX_PAPER_ATTEMPTS`, plus "50 refused leases still lease"); "limits: …" (rewritten: the second maybe fails; a refusal never counts); "needs-confirm, print again …" (`uncertainAttempts: 1`, the bill's one retry); "failed, print again …" renamed "failed, retry …" (`uncertainAttempts: 1`: one tap, one try).
+- `apps/cafe/lib/print-order-jobs.test.ts` (C2): the `withPrintJobs` fixture gains `status` (M-d). (C4): the 1B C1 pin's premise (the host lane is now job-aware).
+- `apps/cafe/lib/print-host-paths.test.ts` (C4): PIN (D) now pins `PrintHostDrain` running the agent under the drain lock.
+- `apps/cafe/lib/printer/print-gating-paths.test.ts` (C4): the drain pin's needles.
+- `apps/cafe/lib/print-wake.test.ts` (C4): the `usePrintHostWake(` inventory and its wiring pin (the GET wake hook stays, uncalled, for one release).
+- `apps/cafe/lib/settle-flow-paths.test.ts` (C4): P2 (`printsBill`).
+- `apps/cafe/scripts/print-host-live/lifecycle-actions.ts` leg (w) (C5): the cashier's copy is the bill's one retry; a Retry is one more attempt.
+- The fix pass changed **no** existing pin. `print-gating-fx-paths.test.ts`'s bridge pins (the `abandon` shape, the `settle` first line, ≤ 250 lines) and the late-completion pins (grace 30 s, ordered expiry, no imports) all still hold.
+
+### Step 2: the Next production build
+
+`npm run build`: success at `cb83487` and again at `fec4fd0`, **123 routes** both times, including every `/api/print-jobs` route and `/api/order-requests/[id]/kot-claim` and `/pulse`. 1C adds no route.
+
+### Step 3: APKs (x86_64 first, then ARM; `GRADLE_USER_HOME='D:\gradle-home'`)
+
+Both builds reported `BUILD SUCCESSFUL` (2 m 24 s, then 1 m 3 s). Each APK holds only its own ABI. **All three are byte-identical to Session 1B's** (1C touches no app code).
+
+| APK | Path | Size | SHA-256 |
+|---|---|---|---|
+| Emulator only (x86_64) | `<scratchpad>/pos-emulator-x86_64-release.apk` | 7,407,761 B | `fc4181e4f20799576277c7be312316d34d46db23b286bad6b13fec1cad5f13d3` |
+| Client, arm64-v8a | `apps/mobile/android/app/build/outputs/apk/release/app-arm64-v8a-release.apk` | 7,276,038 B | `9f89cd9a172b2ab8d5b72872bca947c44ae3c7c74c3a33dfc118e9c00e180ff7` |
+| Client, armeabi-v7a | `apps/mobile/android/app/build/outputs/apk/release/app-armeabi-v7a-release.apk` | 6,683,872 B | `f3f6214982c9122dbc7c28f415d7a478a8aef392b834bf8213cb909c73f426cc` |
+
+### Step 4: the E2E exit check (local POS + emulator app + fake printer). Passed.
+
+AVD `Pixel_7_API_33`, WebView 109.0.5414.123, `-memory 4096 -no-snapshot -no-boot-anim`, booted in about 30 s. Screenshots and decoded rasters are in `<scratchpad>/shots/`. Bring-up: ports 3100 and 9100 checked free; `<scratchpad>/e2e.env` (database `pos_scratch_e2e_1c`, checked absent first) written by `<scratchpad>/make-env.py` with `secrets`, never printed or committed; `seed-admin.ts`, `seed-tables.ts` (T-1…T-8), `seed-menu.ts` (4 categories, 8 products); `next start -p 3100` from the Step 2 build, `/login` 200; fake printer on `127.0.0.1:9100`; `adb reverse tcp:3100 tcp:3100`; `pm clear`; address `http://localhost:3100`; username, then TAB, and a uiautomator dump showed the focused EditText with `password="true"` before `<scratchpad>/type-secret.py` typed the secret (it re-checks the focus itself and prints only the length) (`1c-01-login.png`, `1c-02-signed-in.png`); printer panel → network printer `10.0.2.2` : `9100` → "Network printer 10.0.2.2 is connected." (`1c-03-network-printer.png`; the 0-byte connect probe). State read with `<scratchpad>/e2e-state.ts` (projection without `payload`). Only `bytes > 0` printer jobs counted.
+
+**Run 1, on `cb83487`'s build:**
+1. **No host — a KOT through the queue, once. Pass.** T-1, Masala Chai, Send to Kitchen at 00:36:12 (UTC): one job `created → leased → printed`, `epoch 1`, `uncertainAttempts 0`, no label, `printedAt` set, about 3 s; exactly one printer job (40,494 B). `printdevices` empty (R6) (`1c-04-cart-t1.png`, `1c-05-kot-sent.png`).
+2. **No attempt while the printer is off. Pass.** Fake printer stopped by PID; T-2 KOT at 00:37:09: one lease and one `failed(not sent: The printer is not connected. …)`, the job `queued`, `uncertainAttempts 0`, no label (`1c-06-kot-printer-off.png`). At 00:39:39 (2.5 min): still `epoch 1`, `attempts 1`. Printer started at 00:39:52; the app's reconnect probe at 00:40:09, and the slip printed once, unlabelled (40,494 B), `epoch 2`, `uncertainAttempts 0`, about 18 s after the printer came back (`1c-07-printer-back.png`).
+3. **Host mode — Pay Now prints the KOT, then the bill. Pass.** "Print all slips on this device" → "This device prints all slips." (`1c-08-host-designated.png`; Android's background prompt did not appear). Pay Now (Cash) on T-3: KOT at 00:41:31.4 (40,494 B), then the bill at 00:41:32.1 (36,966 B), both `created → leased → printed`; one `printdevices` row, `shell: android`, from the host's wake POST (`1c-09-paynow-cash.png`, `1c-10-paynow-done.png`).
+4. **A lost ack — the REPRINT copy. Pass.** `<scratchpad>/e2e-lostack.ts kot` (cookie minted from the env as 1B's `e2e-header.ts`; nothing secret printed) created a KOT through `POST /api/orders` with the agent headers and `x-pos-device-id: e2e-script-device` (201, `printJobs` named one queued KOT for the host), then at once leased it as the host's device id with its own `tabId` (`epoch 1`, 00:41:55) and never acked. Nothing printed while that lease lived (checked at 00:43:00). At 00:43:29: `expired(lease expired: may have printed)` → `leased` → `printed`, `labels: ["REPRINT"]`, `uncertainAttempts 1`, one copy of **46,110 B** (a plain KOT is 40,494 B). The decoded raster shows the black REPRINT banner above "KITCHEN ORDER #4" (`1c-raster-reprint.png`; plain: `1c-raster-plain-kot.png`; `1c-11-reprint-printed.png`).
+5. **The same for a bill — the cashier's prompt, never paper. Pass.** `e2e-lostack.ts bill <order>` settled item 4's open order through `POST /api/orders/[id]/settle` with the agent and bill headers (200, one queued bill for the host) and at once leased the bill as the host (00:44:02), never acking. At 00:45:35: `needs-confirm`, `uncertainAttempts 1`, log `created, leased, expired(lease expired: may have printed)`, and no new paper (deviation 4).
+6. **A self-order KOT is one job (R4, job-aware lane). Pass.** `<scratchpad>/e2e-selforder.ts create` seeded a priced table request exactly as the diner intake does (`buildRequestDoc` + `priceRequestItems`) and accepted it with the `SELF_ORDER_RECEIVER` actor, as the public auto-accept does: `accepted`, `acceptedKotRound 1`, **no job** made by the accept. About 4 s later (00:45:51) the host's lane had claimed it: `kotPrintedAt` set, one KOT job `queuedBy: "Self-order"`, today's key, `created → leased → printed`, printed exactly once (40,494 B) (`1c-12-selforder-printed.png`).
+7. **G5, the known TCP limit — recorded, not a failure.** With `--drop-after 2000` (host mode, T-5 KOT): the first attempt's cut **was** detected (`failed(The printer stopped answering. … may already have printed …)`, a "maybe"), so the job came back `REPRINT`, `uncertainAttempts 1`; the REPRINT copy was cut at 2,000 bytes too, but read as **printed** (`printed`, `epoch 2`). So on Android TCP a cut mid-slip is detected only sometimes (it depends on whether the reset arrives before the app's write is flushed); when it is missed the slip reads as printed. The maybe path itself is proven by items 4 and 5; the fix is the post-job `DLE EOT` check (spec §9.6, §10, Phase 3). No Kotlin was changed.
+
+**Run 2, on the fixed `fec4fd0` build** (the fix pass changed client code, so the POS was rebuilt and items 1–4 and 6 were run again; item 5's lifecycle is server-side and unchanged): Pay Now on T-6 printed the KOT (40,494 B) then the bill (36,966 B); a lost ack (`ORD-…-008`, leased by the script at 00:55:36) expired into one REPRINT copy (46,110 B, `uncertainAttempts 1`) at 00:57:11; a self-order (T-6) was claimed in about 4 s and printed once, `queuedBy: "Self-order"`; then "Stop printing here" → "Each device prints its own slips", and with no host a T-7 KOT printed once (`created → leased → printed`); with the printer stopped a T-8 KOT got one lease and one `failed(not sent: …)`, and was still `epoch 1, attempts 1` at 2 min, across an emulator restart and an app cold start (deviation 6); the printer back at 01:02:13 → printed once, unlabelled, `epoch 2`, `uncertainAttempts 0`, at 01:02:36 (`1c-13-fix-printer-back.png`). All passed.
+
+8. **Cleanup.** `adb reverse --remove-all`; the POS and the fake printer stopped by PID with `Stop-Process` (command lines checked first; ports 3100 and 9100 confirmed free); `pm clear com.possoftware.pos`; `adb emu kill`.
+   - **Left for 1D:** `pos_scratch_e2e_1c` holds `e2eadmin`, 8 tables, 4 categories and 8 products, 11 orders, 14 PrintJobs (13 `printed`, 1 bill `needs-confirm`: item 5's), 2 OrderRequests, 1 `printdevices` row, no PrintHost (cleared in run 2). The env file stays at `<scratchpad>/e2e.env` (this session's scratchpad, `4de5cd03…`); its scripts `e2e-state.ts`, `e2e-lostack.ts`, `e2e-selforder.ts`, `raster2png.py`, `type-secret.py`, `ui.py` are there too.
+
+**`adb logcat -b crash`:** the app never crashed; the buffer stayed empty from the app's first launch to the end of both runs. Before the app was first launched, the emulator's own Bluetooth stack crash-looped at boot (7 entries, all `com.google.android.bluetooth`, `bt_stack_manage` SIGABRT; saved to `<scratchpad>/logs/crash-at-boot.log`, then the buffer was cleared) and showed "Bluetooth keeps stopping", dismissed with Close app (`1c-00-bt-dialog.png`). The second boot logged nothing.
+
+### Final whole-branch review (fresh reviewer subagent, Opus, `5b1a6e6..cb83487`, read-only)
+
+0 Critical, 3 Important, 5 Minor. Each was checked against the code before grading.
+
+- **I1 (fixed, `fec4fd0`).** When the bridge's watchdog gave a slip up and its 30 s grace ran out with no report, `settle(null)` told the slip's caller `{ ok: true }`, so the agent acked **printed** for a slip that may never have reached paper (the agent's own 140 s deadline was never reached first). The late-completion guard now reports `graceRanOut()`, and the bridge finishes such a slip as failed (`PRINT_HOST_PRINT_FAILED_MESSAGE`, which `printWriteOutcomeOf` reads as "maybe": a KOT retries once with REPRINT, a bill asks the cashier). A late completion inside the grace still reports what really happened. Test: `print-host-bridge-late.test.ts` "Session 1C: a slip that never reports …", RED (`'printed'`) → GREEN, through the real hook.
+- **I2 (fixed, `fec4fd0`).** (a) `kick()` while a cycle ran was dropped: if that cycle's lease read the line before a new job was in it, the job waited for the next poll (up to 60 s on the host, 20 s with no host). The kick is now remembered and runs once after the cycle. (b) A flush read the pending list once, so a printed ack kept while an earlier flush was on the wire waited for the 5 s retry, and the next lease found its own job still leased. The flush now re-reads until every entry was tried once. Tests: `print-agent.test.ts` "a kick that lands while a lease is on the wire …" and "a printed ack kept while an earlier flush is on the wire …", both RED → GREEN. Budget: a remembered kick adds at most one lease per cycle, and only after a real signal.
+- **I3 (ruled, not fixed; for the owner and the 1C review gate).** A refusal caused by the slip itself (`RASTER_FAILED_MESSAGE`, a render timeout or null canvas; `PRINT_HOST_EOD_TIMEOUT_MESSAGE`) is `sent:"no"`, and since C0 a refusal never counts, so a slip that can never be drawn holds its device's line (the head in backoff holds it) until it goes stale after 30 minutes. Fixing it changes the owner's explicit rule ("a refusal never counts") and needs a server-side counter (lifecycle, sweep, live legs), so it goes to the gate together with 1D's panel (Clear / Retry).
+- **Minors (deferred to the gate):** M4 a lost *failed* ack is never retried, so a refusal can expire into a counted "maybe" (a labelled REPRINT / a cashier prompt); M5 if `localStorage` refuses the write, the printed ack is never sent (`sendPending` sends only what `readPending` returns; the comment at `print-agent.ts` "the ack is still sent now" is wrong); M6 after a reload the first lease races the mount flush (an expired lease can be re-leased before the late ack lands: a needless labelled REPRINT); M7 a flapping printer restarts the host's wake effect on each flap (bounded by the daily cap); M8 spec §7 still has a bullet saying the cashier's print again resets the counters (ruled: `uncertainAttempts = 1`).
+- Declined to judge (reviewer): Windows "no" cases (Phase 3); `ackAnswered` clearing on 401/403/429 (the 1A M3 ruling); no-host devices without a printer (spec §6.6, 1D's panel); Web Serial/BLE mid-write classification (Phase 0 F0.1); a two-tab race on the pending-ack store; the browser print dialog lane; the live-leg scripts and the budget arithmetic were not read line by line.
+
+### Deviations from the plan, each with its reason
+
+1. **The ledger lives in the session scratchpad**, not `.superpowers/sdd/`: the session rules say to leave that folder alone and use no skill script that writes there.
+2. **Commit messages** are the plan's, plus the `Co-Authored-By` trailer this environment requires.
+3. **One commit beyond the plan, `fec4fd0`**: the final review's I1 and I2, each with a test that failed first. The cafe total is therefore 4134 / 4133 / 0 / 1 at the final HEAD, not the plan's 4131.
+4. **E2E item 5 used the POS settle of item 4's open order** (bill header) instead of a Pay Now order. A Pay Now order's KOT is the head of the host's line, so the bill can be leased first only by acking that KOT with no paper; the settle creates the bill as the only job. The bill's lifecycle is the same.
+5. **The E2E ran twice**: on `cb83487`'s build, then items 1–4 and 6 again on the fixed `fec4fd0` build.
+6. **The emulator was killed mid-run** (at about 01:00 UTC, during run 2's item 2) by this session's 30-minute limit on a background command. It was restarted with a 2-hour limit. Item 2 continued across the restart and the app's cold start, and still made no lease while the printer was off.
+7. **`lib/print-agent.ts` is 306 lines** after the fix pass (297 before), slightly over the "~300 lines" guideline.
+8. **`printdevices` after run 2's host phase:** the row the host's wake created stays, and with no host each lease touches it (`touchPrintDevice`, as designed). Run 1's item 1, before any host, saw the collection empty, as the plan expects.
+
+### Open issues
+
+- **I3** (above): needs the owner's ruling at the 1C gate, together with 1D's panel.
+- **Minors M4–M8** (above), for the 1C gate.
+- **G5** (item 7): Android TCP detects a cut mid-slip only sometimes; a missed cut reads as printed. Phase 3 (`DLE EOT`).
+- 1C still must not reach a cafe without 1D (the waiting-slips panel, the pulse sweep, readback, the alarm). Nothing was deployed.
