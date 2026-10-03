@@ -7130,6 +7130,7 @@ Every ruling that changes the spec is written into spec §7.10 ("Rulings at the 
 - The code was developed on a golden copy of `0158ef3` (the merged branch), one commit per task, and this section was generated from those commits: every Create and Replace-the-whole block is the golden file byte for byte, and every find is unique in its file at the moment it is applied.
 - A fresh clone of `0158ef3` then got every block of this section applied verbatim, task by task, with each task's own Run lines; each RED and GREEN below is the output seen there. The clone came out byte-identical to the golden copy (53 files).
 - Totals on that clone: shared `npm test` 635/635, tsc 0; cafe `npm test` **4091 tests, 4090 pass, 1 fail** (only the known `go-live-dl` ENOENT; +31 over `0158ef3`'s 4060), tsc 0, lint 0 errors and the 2 old warnings; live legs `199 passed, 0 failed` (Session 1B's 183 + 16); the Hub's tsc 0 (`apiSend`'s new option). Mobile and desktop are untouched by 1C.
+- **Re-checked after `origin/main` moved to `c05330a`** (the owner's `ebffdb5` Settings leave-guard and `c05330a` Settings > Kitchen ticket; both cafe-only): a fresh clone of `99653ac` merged it `--no-ff` cleanly (`package.json` auto-merges; the one shared file, `lib/print-host-slips.ts`, only gains `export` on `ROUND_LABEL_PREFIX`, far from 1C's anchor), then got every block of Tasks C0–C5 and C5b verbatim. Totals: shared 635/635, tsc 0; cafe **4131 tests, 4130 pass, 0 fail, 1 skipped** (the merge adds 40 tests; the skip is Task C5b's), tsc 0, lint 0 errors and the 2 old warnings; Hub tsc 0; live legs `199 passed, 0 failed`. Before C0, the merged tree reads shared 629/629 and cafe 4100 tests, 4099 pass, 1 fail (the known ENOENT).
 - **The agent was run end to end** on the emulator (WebView 109, the branch APK) against the golden build of the POS and the fake printer, before this section was written. It found one real bug (gate finding G4, `flushAcks`; fixed in Task C3 and pinned). What it showed is in "Session 1B review (gate)" → "Pre-validating 1C end to end".
 
 A failure while executing therefore points to drift since then, or to a typo while copying. Compare with the plan first.
@@ -7169,6 +7170,7 @@ A failure while executing therefore points to drift since then, or to a typo whi
 | `lib/print-host-paths.test.ts`, `lib/printer/print-gating-paths.test.ts`, `lib/print-wake.test.ts`, `lib/settle-flow-paths.test.ts`, `lib/print-order-jobs.test.ts` | deliberate pin changes | C2, C4 |
 | `apps/cafe/scripts/print-host-live/agent.ts`, `lifecycle-actions.ts`, `verify-print-host-live.ts` | legs ad–ae; leg w | C5 |
 | `apps/cafe/package.json` | `testChain`: three files | C1, C3, C4 |
+| `apps/cafe/lib/go-live-dl.test.ts` | the planning-file pin skips where the file is absent | C5b |
 | this plan | Session 1C Results | C6 |
 
 ---
@@ -12444,6 +12446,63 @@ git commit -m "test(print): live legs ad-ae: the two-attempt rule and the job-aw
 
 ---
 
+### Task C5b: the go-live-dl pin skips where its planning file is absent (owner decision, 2026-10-03)
+
+The one known cafe failure since Session 1A is `lib/go-live-dl.test.ts`'s pin on `.claude/plan/v2/_research/cb-dl2-decisions.md`. That file sits under the git-ignored `.claude/` folder (`.gitignore`, `/.claude/`), so it exists only on the PC that wrote it; everywhere else the test fails with ENOENT. No credential is involved. The owner's decision after the gate: skip it, with its reason, where the file is absent; it still runs wherever the file is (the owner checks it on their own PC). Pre-validated on the golden copy and on a fresh clone merged with `origin/main` at `c05330a`.
+
+**Files:** Modify `apps/cafe/lib/go-live-dl.test.ts`.
+
+- [ ] **Step 1: The skip**
+
+In `apps/cafe/lib/go-live-dl.test.ts`, find:
+
+```ts
+import { readFileSync } from "node:fs";
+```
+
+Replace it with:
+
+```ts
+import { existsSync, readFileSync } from "node:fs";
+```
+
+In `apps/cafe/lib/go-live-dl.test.ts`, find:
+
+```ts
+test("PIN: cb-dl2-decisions.md D-C's archive-path clause names the OS temp directory, not <cwd>, and says the path is printed", () => {
+  const decisionsPath = path.join(REPO_ROOT, ".claude/plan/v2/_research/cb-dl2-decisions.md");
+```
+
+Replace it with:
+
+```ts
+// The decisions file lives under the git-ignored .claude/ folder, so it exists only on the PC that wrote
+// it. Where it is absent the pin is skipped with that reason instead of failing with ENOENT; it still runs
+// wherever the file is.
+const CB_DL2_DECISIONS = path.join(REPO_ROOT, ".claude/plan/v2/_research/cb-dl2-decisions.md");
+const CB_DL2_DECISIONS_ABSENT = "the git-ignored planning file .claude/plan/v2/_research/cb-dl2-decisions.md is not on this PC";
+
+test("PIN: cb-dl2-decisions.md D-C's archive-path clause names the OS temp directory, not <cwd>, and says the path is printed", { skip: existsSync(CB_DL2_DECISIONS) ? false : CB_DL2_DECISIONS_ABSENT }, () => {
+  const decisionsPath = CB_DL2_DECISIONS;
+```
+
+- [ ] **Step 2: Run**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/go-live-dl.test.ts 2>&1 | grep -E "^# (tests|pass|fail|skipped)|# SKIP"; npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 24`, `# pass 23`, `# fail 0`, `# skipped 1`, and the `# SKIP` line naming the absent file; `TSC_OK`.
+
+- [ ] **Step 3: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/lib/go-live-dl.test.ts
+git commit -m "test(cafe): the go-live-dl decisions pin skips, with its reason, where the git-ignored planning file is absent"
+```
+
+From here on the cafe totals read **0 fail, 1 skipped** where earlier sessions read 1 fail.
+
+---
+
 ### Task C6: full verification, builds, the E2E exit check, Results
 
 **Files:** Modify this plan (fill in **Session 1C Results**) and the memory file `printing-redesign-2026-10.md`.
@@ -12462,7 +12521,7 @@ cd /d/kd/lucifer/apps/cafe && MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_
 
 Expected:
 - shared: 635/635, tsc 0.
-- cafe: **4091 tests, 4090 pass, 1 fail**, the one known fail being `go-live-dl` ENOENT. Account for any other difference in Results.
+- cafe: **4131 tests, 4130 pass, 0 fail, 1 skipped**: Session 1C's start merge of `origin/main` at `c05330a` adds 40 tests, and the skip is `go-live-dl`'s planning-file pin (Task C5b). Without the merge it is 4091 / 4090 / 0 / 1. Account for any other difference in Results.
 - cafe: tsc 0; lint 0 errors and the 2 old warnings. Hub: `HUB_TSC_OK` (`apiSend`'s new option is backward compatible).
 - mobile: tsc 0, lint 0, node 114/114, Jest 3/3 (untouched). desktop: 191/191 (untouched). print tools: 7/7.
 - live legs: `199 passed, 0 failed` (Session 1B's 183, plus (w)'s one new check, (ad) 10 and (ae) 5).
