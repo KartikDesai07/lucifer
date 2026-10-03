@@ -128,6 +128,6 @@ export async function legAE(nowMs: number): Promise<void> {
   await Order.collection.updateOne({ _id: new mongoose.Types.ObjectId(cancelled) }, { $set: { status: "Cancelled" } });
   const cancelledRequest = await seedSelfOrderRequest(cancelled, 1);
   const refusedClaim = await claimKotPrintForAgent(cancelledRequest, { deviceId: PHONE, bill: false }, nowMs);
-  check("(ae) a cancelled order: not eligible, and no job", !refusedClaim.claimed && (await PrintJob.countDocuments({ jobKey: `kot:${cancelled}:1` })) === 0);
+  check("(ae) a cancelled order: not eligible, and no job", !refusedClaim.claimed && refusedClaim.reason === "not-eligible" && (await PrintJob.countDocuments({ jobKey: `kot:${cancelled}:1` })) === 0);
   await OrderRequest.deleteMany({});
 }
