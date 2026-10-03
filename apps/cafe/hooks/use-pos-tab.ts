@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import type { SettlementPayMode, DiscountKind } from "@/lib/constants";
@@ -20,6 +20,7 @@ import { useSettleFlow } from "@/hooks/use-settle-flow";
 import { usePosSend } from "@/hooks/use-pos-send";
 import { moneyEditedSince } from "@/lib/pending-writes";
 import { kitchenSentMessage, kotRoundOfSend } from "@/lib/pos-send";
+import { holdUnsentWork } from "@/lib/page-refresh";
 import type { DiscountUnit } from "@/components/pos/Cart";
 import type { PaymentResult } from "@/components/pos/PaymentModal";
 import { collectedAmount } from "@/lib/payment-result";
@@ -37,6 +38,15 @@ export function usePosTab(receiver: string) {
   // The one foreground Send to Kitchen / Pay Now (hooks/use-pos-send.ts); its
   // lock freezes the cart's edits in flight and while a send is unconfirmed.
   const send = usePosSend();
+  // The POS app's Refresh warns harder while a send is in flight or unconfirmed: a reload forgets its retry key
+  // (lib/page-refresh.ts; the release review's I2).
+  const [sendToken] = useState(() => Symbol("pos-send"));
+  useEffect(() => {
+    holdUnsentWork(sendToken, send.sending !== null || send.frozen !== null ? "unconfirmed" : null);
+  }, [sendToken, send.sending, send.frozen]);
+  useEffect(() => {
+    return () => holdUnsentWork(sendToken, null);
+  }, [sendToken]);
   const {
     cart,
     count,
