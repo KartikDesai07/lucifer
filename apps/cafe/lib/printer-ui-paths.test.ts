@@ -36,6 +36,7 @@ const F = {
   connect: `${PRINT}BrowserPrinterConnect.tsx`,
   picker: `${PRINT}DesktopPrinterPicker.tsx`,
   slip: `${PRINT}PrintHostTestSlip.tsx`,
+  waiting: `${PRINT}WaitingSlipsCard.tsx`,
   classes: `${PRINT}printer-classes.ts`,
   page: "apps/cafe/app/(dashboard)/printers/page.tsx",
   hub: `${SETTINGS}page.tsx`,
@@ -271,6 +272,8 @@ const HYGIENE: [string, number, boolean][] = [
   [F.panel, 90, true], [F.where, 150, true], [F.device, 220, true], [F.native, 280, true], [F.paper, 60, true],
   [F.tips, 50, false], [F.advanced, 100, true], [F.card, 260, true], [F.parts, 100, true], [F.picker, 160, false],
   [F.connect, 110, true], [F.section, 50, false], [F.type, 60, false],
+  // Session 1D: the waiting-slips panel follows the same rules (44px controls, no jargon).
+  [F.waiting, 120, true],
 ];
 const hygieneMutations = [
   append("a console call", "// " + "console" + ".log(1)"),

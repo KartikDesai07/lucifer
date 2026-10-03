@@ -12,6 +12,7 @@ import { usePrintHostBeat } from "@/hooks/use-print-host-beat";
 import { usePrintHostDrainLock } from "@/hooks/use-print-host-lock";
 import { usePrintHostPrinterBeat } from "@/hooks/use-print-host-printer-beat";
 import { usePrintHostWakeLock } from "@/hooks/use-print-host-wake-lock";
+import { usePrintSlipAlarm } from "@/hooks/use-print-slip-alarm";
 import { useSelfOrderAutoPrint } from "@/hooks/use-self-order-auto-print";
 import { printJobRefOf } from "@/lib/print-agent-calls";
 import type { HostPrintDone } from "@/lib/print-host-outcomes";
@@ -69,6 +70,8 @@ export function PrintHostDrain({ enabled, surfacesMounted, deviceId, tabId, busy
   useSelfOrderAutoPrint({ enabled: hostDrains, busy, queueKotRound, hostLane });
 
   usePrintAgent({ enabled: drains, isHost: enabled, deviceId, tabId, busy, queueSlip: onSlip });
+  // Session 1D: the 20 s alarm on every device with an identity (the asking one and the printing one).
+  usePrintSlipAlarm(deviceId);
 
   return null;
 }
