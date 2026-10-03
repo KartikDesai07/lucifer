@@ -11,6 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { printJobEnqueueAllowsLocalPrint, type PrintJobEnqueueResult } from "@pos/shared/print-job";
+import type { PrintJobRef } from "@pos/shared/print-agent-wire";
 import { usePrintHostRouting, usePrintReadbackRecorder } from "@/components/layout/PosPulseProvider";
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
 import { useEnqueuePrintJob } from "@/hooks/use-print-host";
@@ -24,6 +25,9 @@ import {
   type PrintJobRequest,
 } from "@/lib/print-routing";
 import { readDevicePrefs, writeDevicePrefs } from "@/lib/pos-device-prefs";
+import { readDeviceId } from "@/lib/pos-device-id";
+import { kickPrintAgent } from "@/lib/print-agent";
+import { printAgentEnqueueHeaders, printJobRefOf } from "@/lib/print-agent-calls";
 import type { Order } from "@/types";
 
 export interface PrintRoutingHost {
@@ -53,8 +57,10 @@ export interface PrintRoutingHost {
    *  duplicate slip (§B7) or re-read the enqueue outcome itself (D-11).
    *  **`runLocal` may run AFTER an await** on the routed lane (the enqueue round
    *  trip, up to api-client's 15s timeout), so it must NOT assume the screen
-   *  still shows what the tap referred to — PH-6's sites guard for exactly that. */
-  routePrint: (buildJob: () => PrintJobRequest, runLocal: () => void) => void;
+   *  still shows what the tap referred to — PH-6's sites guard for exactly that.
+   *  Session 1C: `ref` is the job the order's own answer made for this slip; it
+   *  is followed, with no request. */
+  routePrint: (buildJob: () => PrintJobRequest, runLocal: () => void, ref?: PrintJobRef | null) => void;
   /** The moved slip's routed path — MoveTableDialog (PH-6) is the caller, and it
    *  keeps its own local `useReactToPrint` for the no-host case (§B5 carve-out).
    *  Resolves TRUE when the host owns the slip (caller must NOT print locally)
@@ -85,9 +91,13 @@ export function useHostRouting(): PrintRoutingHost {
   // `false` a first render sees is the hydration-safe default, and only matters
   // for a print fired in the very tick this mounts.
   const [printHostSeen, setPrintHostSeen] = useState(false);
+  // Session 1C: a device with an identity is a print agent. None of its prints is local any more: the
+  // server (or the routed enqueue) makes every slip a job, which an agent prints through lease → ack.
+  const [agentDeviceId, setAgentDeviceId] = useState("");
 
   useEffect(() => {
     setPrintHostSeen(readDevicePrefs().printHostSeen);
+    setAgentDeviceId(readDeviceId());
   }, []);
 
   // The `printHostSeen` writer (PH-4 owns it — the flag had none). Only a
@@ -108,7 +118,7 @@ export function useHostRouting(): PrintRoutingHost {
     writeDevicePrefs({ ...prefs, printHostSeen: seen });
   }, [routing]);
 
-  const shouldRoute = shouldRoutePrint(routing, printHostSeen);
+  const shouldRoute = agentDeviceId !== "" || shouldRoutePrint(routing, printHostSeen);
 
   // mutateAsync (not mutate) because the CALLER needs the server's answer to
   // decide whether the local path still has to run. The hook-level onError owns
@@ -123,7 +133,7 @@ export function useHostRouting(): PrintRoutingHost {
   const recordReadback = usePrintReadbackRecorder();
   const enqueue = useCallback(async (job: PrintJobRequest) => {
     try {
-      const result = await enqueueAsync(job);
+      const result = await enqueueAsync(agentDeviceId === "" ? job : { ...job, headers: printAgentEnqueueHeaders(agentDeviceId) });
       // PH-8 (A-17, §B7): the id the SERVER answered with joins this device's
       // readback set — for "queued" the new row; for "already-resolved" the
       // EXISTING row the tap referred to, so the chip still resolves it to
@@ -131,6 +141,8 @@ export function useHostRouting(): PrintRoutingHost {
       if (result.outcome === "queued" || result.outcome === "already-resolved") {
         recordReadback(printReadbackRecordOf(result.id, job.payload));
       }
+      // Session 1C: a queued job is this device's own line (no host), or this host's: lease it now.
+      if (agentDeviceId !== "" && result.outcome === "queued") kickPrintAgent();
       // PH-5 (OPS-7): a job the HOST itself queued should drain on the next
       // microtask, not the next 20s tick — refetch the pulse so the drain's
       // feed sees it now. A handler-time pref read (never during render); a
@@ -142,7 +154,21 @@ export function useHostRouting(): PrintRoutingHost {
     } catch {
       return null;
     }
-  }, [enqueueAsync, qc, recordReadback]);
+  }, [enqueueAsync, qc, recordReadback, agentDeviceId]);
+
+  // Session 1C: the order's own answer already made this slip a job (spec §7.4): follow it for the
+  // readback and, unless it is already resolved (M-d), wake the agent. No request at all.
+  const followPrintJob = useCallback(
+    (ref: PrintJobRef, buildJob: () => PrintJobRequest) => {
+      try {
+        recordReadback(printReadbackRecordOf(ref.id, buildJob().payload));
+      } catch {
+        // A builder throw changes nothing: the job exists and prints; only its chip is missing.
+      }
+      if (ref.status === "queued") kickPrintAgent();
+    },
+    [recordReadback],
+  );
 
   // Routed prints SERIALIZE through this chain — `confirmPayment`'s pay-now
   // branch fires the KOT and the bill in the SAME tick, and two concurrent
@@ -167,13 +193,19 @@ export function useHostRouting(): PrintRoutingHost {
   // `confirmPayment`'s catch, losing a receipt for an order the server had
   // already created.
   const routePrint = useCallback(
-    (buildJob: () => PrintJobRequest, runLocal: () => void) => {
+    (buildJob: () => PrintJobRequest, runLocal: () => void, ref?: PrintJobRef | null) => {
       // The no-host lane never touches the chain: it must stay SYNCHRONOUS so
       // both print flags land in ONE React batch, exactly as they did pre-PH-4
       // (§F byte-identical parity — that same-tick batching is the only reason
-      // the bridge can sequence KOT before bill).
+      // the bridge can sequence KOT before bill). Session 1C: only a device with
+      // no identity still takes it; every agent routes.
       if (!shouldRoute) {
         runLocal();
+        return;
+      }
+      // Session 1C: the server made this slip with the order, in kind order: follow its job.
+      if (ref) {
+        followPrintJob(ref, buildJob);
         return;
       }
       // Armed here, in the tap's own event, so the disable is on screen before
@@ -209,12 +241,18 @@ export function useHostRouting(): PrintRoutingHost {
           // slip queued after it.
         });
     },
-    [shouldRoute, enqueue],
+    [shouldRoute, enqueue, followPrintJob],
   );
 
   const queueMovedSlip = useCallback(
     async (order: Order, meta: { from?: string; movedBy: string; movedAt: string }) => {
       if (!shouldRoute) return false;
+      // Session 1C: the move's own answer made the slip a job (with the server's movedAt): follow it.
+      const ref = printJobRefOf(order, "moved");
+      if (ref) {
+        followPrintJob(ref, () => movedPrintJob(order, meta, { reprint: false }));
+        return true;
+      }
       // Built INSIDE the try for the same reason routePrint does it: a deploy-
       // skew order whose snapshot this builder cannot read would otherwise
       // reject the promise the caller awaits — no enqueue, no local print, no
@@ -235,7 +273,7 @@ export function useHostRouting(): PrintRoutingHost {
       if (result.outcome === "too-large") toast.error(PRINT_JOB_TOO_LARGE_MESSAGE);
       return !printJobEnqueueAllowsLocalPrint(result.outcome);
     },
-    [shouldRoute, enqueue],
+    [shouldRoute, enqueue, followPrintJob],
   );
 
   return { routing, hostConfigured, enqueue, enqueuePending, shouldRoute, routePrint, queueMovedSlip };

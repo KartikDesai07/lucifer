@@ -1,14 +1,11 @@
 "use client";
 
-// Print-host plan §B5 (PH-5) — the host's ONE print bridge: three provider-
-// owned react-to-print surfaces (KOT/void/moved · bill · end-of-day), the
-// "what is on the paper right now" state, and the dispatch effect that fires
-// exactly one surface per claimed job. Split out of PrintHostProvider.tsx for
-// the file budget (fresh-eyes F12). react-to-print keeps ONE fixed-id iframe
-// (`lib/print.ts` print-chain note), so `busy` here — the whole window from
-// claim to onAfterPrint — is the gate every claiming lane respects (§B5,
-// design review MERGED-13: the EOD and test slips are inside the same window,
-// never a component-owned trigger outside it).
+// Print-host plan §B5 (PH-5) — the host's ONE print bridge: three provider-owned react-to-print
+// surfaces (KOT/void/moved · bill · end-of-day), the "what is on the paper right now" state, and the
+// dispatch effect that fires exactly one surface per job. react-to-print keeps ONE fixed-id iframe
+// (`lib/print.ts` print-chain note), so `busy` — the whole window from claim to onAfterPrint — is the
+// gate every lane respects (§B5, MERGED-13: the EOD and test slips ride the same window). Session 1C:
+// each slip's caller (the print agent) hears its result once, in print order (print-host-outcomes.ts).
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useReactToPrint } from "react-to-print";
@@ -31,6 +28,7 @@ import {
 } from "@/lib/print-host-slips";
 import { createWindowLateCompletionGuard } from "@/lib/print-host-late-completion";
 import { laneFailureMessage } from "@/lib/printer/lane-print";
+import { createHostSlipOutcomes, type HostPrintDone } from "@/lib/print-host-outcomes";
 import type { Order } from "@/types";
 
 /** What the bridge is printing: a claimed job's slip, or PH-7's attestation
@@ -65,14 +63,10 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
   // Fires each surface at most once per job — the dispatch effect re-runs on
   // eodReady/print-fn identity changes while the same job is still current.
   const dispatchedRef = useRef(false);
-  // SYNCHRONOUS occupancy — set the moment a slip is accepted, cleared only
-  // when nothing is left to print. Handlers read this, never `current` (state
-  // lags a render). The two automatic lanes gate on `busy` and never queue
-  // while a slip is in flight, but the band's manual "Print round N" tap does
-  // not (its claim resolves whenever the server answers), so a second slip can
-  // arrive mid-print: it WAITS here instead of replacing `current` — a second
-  // react-to-print call tears down the fixed-id `#printWindow` iframe the first
-  // job is still printing from (lib/print.ts print-chain note; review PH-5 L1).
+  // SYNCHRONOUS occupancy — set the moment a slip is accepted, cleared only when nothing is left to
+  // print; handlers read this, never `current` (state lags a render). A slip that arrives mid-print
+  // (the band's manual tap has no busy gate) WAITS here instead of replacing `current`: a second
+  // react-to-print call tears down the fixed-id `#printWindow` iframe in use (review PH-5 L1).
   const occupiedRef = useRef(false);
   const pendingRef = useRef<HostPrintSlip[]>([]);
   const testRef = useRef<TestSlipWaiter | null>(null);
@@ -85,9 +79,11 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
   // A job the watchdog gave up on is ABANDONED, not forgotten: its slot stays occupied
   // until it reports or the grace passes (one shared onAfterPrint would settle the NEXT job).
   const [lateGuard] = useState(createWindowLateCompletionGuard);
+  const outcomesRef = useRef(createHostSlipOutcomes());
 
   const settle = useCallback((requested: string | null) => {
     const failure = lateGuard.take() ? null : requested; // already announced at the watchdog
+    outcomesRef.current.finish(requested === null ? { ok: true } : { ok: false, error: new Error(requested) });
     if (watchdogRef.current !== null) {
       window.clearTimeout(watchdogRef.current);
       watchdogRef.current = null;
@@ -201,7 +197,8 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
     return () => window.clearTimeout(id);
   }, [current, settle]);
 
-  const queueSlip = useCallback((slip: HostPrintSlip) => {
+  const queueSlip = useCallback((slip: HostPrintSlip, done?: HostPrintDone) => {
+    outcomesRef.current.track(done ?? null);
     if (occupiedRef.current) {
       pendingRef.current.push(slip);
       return;
@@ -230,6 +227,7 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
           return;
         }
         occupiedRef.current = true;
+        outcomesRef.current.track(null);
         testRef.current = { resolve, reject, startedAt: performance.now() };
         setCurrent({ kind: "test" });
       }),

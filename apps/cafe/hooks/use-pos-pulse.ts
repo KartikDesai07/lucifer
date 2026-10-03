@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "@/lib/api-client";
+import { pulsePrintDeviceQuery } from "@/lib/print-agent";
 import { STALE_TIMES, REFETCH_INTERVALS } from "@/lib/query";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
 
@@ -27,7 +28,8 @@ const POS_PULSE_ENDPOINT = "/api/order-requests/pulse";
 export function usePosPulse() {
   return useQuery({
     queryKey: POS_PULSE_KEYS.all,
-    queryFn: () => apiGet<PosPulseData>(POS_PULSE_ENDPOINT),
+    // Session 1C: with no host, the print agent names this device here (?device=) — no new request.
+    queryFn: () => apiGet<PosPulseData>(`${POS_PULSE_ENDPOINT}${pulsePrintDeviceQuery()}`),
     staleTime: STALE_TIMES.LIVE,
     refetchInterval: REFETCH_INTERVALS.POS_PULSE,
     refetchIntervalInBackground: true,

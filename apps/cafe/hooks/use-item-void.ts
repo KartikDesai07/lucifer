@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { apiSend } from "@/lib/api-client";
+import { printAgentRequestOptions } from "@/lib/print-agent-calls";
 import { ORDER_KEYS } from "@/hooks/use-orders";
 import { TABLE_KEYS } from "@/hooks/use-tables";
 import { CUSTOMER_KEYS } from "@/hooks/use-customers";
@@ -25,7 +26,7 @@ export function useItemVoid(
   const mutation = useMutation({
     mutationKey: ORDER_KEYS.mutation,
     mutationFn: (data: VoidItemInput) =>
-      apiSend<Order>(`/api/orders/${orderId}/items/void`, "POST", data),
+      apiSend<Order>(`/api/orders/${orderId}/items/void`, "POST", data, printAgentRequestOptions()),
     onSuccess: (order) => {
       // The route appends exactly one trail entry per call, so its last row is
       // this void's own snapshot — the authoritative thing to print. Guard the

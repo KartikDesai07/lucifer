@@ -174,7 +174,7 @@ export function usePosTab(receiver: string) {
       setPaymentOpen(false);
       resetOrder();
     },
-  });
+  }, { printsBill: true });
 
   const isBusy =
     createOrder.isPending || addItems.isPending || settleFlow.busy || send.sending !== null || send.frozen !== null;

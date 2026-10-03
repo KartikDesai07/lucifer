@@ -396,16 +396,20 @@ test('INVENTORY: files containing the needle "usePrintHostWake(" under app/compo
   for (const root of roots) walk(root);
   hits.sort();
 
-  const expected = ["components/print/PrintHostDrain.tsx", "hooks/use-print-host-wake.ts"].sort();
-  assert.deepEqual(hits, expected, `usePrintHostWake( call sites must be exactly these two files; found: ${hits.join(", ")}`);
+  // Session 1C: the host agent's wake POST (hooks/use-print-agent.ts) replaced the GET poll; the hook stays
+  // one release for its own tests, with no call site.
+  const expected = ["hooks/use-print-host-wake.ts"];
+  assert.deepEqual(hits, expected, `usePrintHostWake( must have no call site any more; found: ${hits.join(", ")}`);
 });
 
-test('PIN: PrintHostDrain.tsx calls usePrintHostWake({ drains, feed }) — the wiring pin that proves reachability, not just that the hook compiles — and "enabled: drains" still occurs exactly twice there (re-asserted here; owned by print-host-paths.test.ts, not touched)', () => {
-  const src = readSrc(PRINT_HOST_DRAIN);
-  assert.ok(src.includes("usePrintHostWake({ drains, feed });"), "PrintHostDrain.tsx must call usePrintHostWake({ drains, feed });");
-
-  const enabledDrainsCount = src.split("enabled: drains").length - 1;
-  assert.equal(enabledDrainsCount, 2, `expected "enabled: drains" exactly twice (both claiming lanes) in PrintHostDrain.tsx, found ${enabledDrainsCount}`);
+test("PIN (Session 1C): only the host agent polls the wake, through the POST beside the unchanged GET, and PrintHostDrain arms it only for the host", () => {
+  const drain = readSrc(PRINT_HOST_DRAIN);
+  assert.ok(drain.includes("usePrintAgent({ enabled: drains, isHost: enabled,"), "the agent learns whether it is the host");
+  const agent = stripComments(readSrc("apps/cafe/hooks/use-print-agent.ts"));
+  assert.ok(agent.includes("if (agent === null || !enabled || !isHost) return;"), "the wake poll is armed for the host only (R6)");
+  assert.ok(agent.includes('apiSend<PrintWakeBeatData>(WAKE_URL, "POST", wakeBody(deviceId))'), "the agent's wake is the POST heartbeat");
+  assert.ok(agent.includes("bumpPrintWakeBudget("), "under the device's one daily cap");
+  assert.ok(!agent.includes("apiGet"), "the agent never polls the read-only GET");
 });
 
 // ── 6. Constants single-homed in print-job.ts ───────────────────────────────

@@ -1,4 +1,4 @@
-import { PRINT_ACK_ERROR_MAX_CHARS, PRINT_ACK_PENDING_MAX_MS, PRINT_ACK_RETRY_MS } from "@pos/shared/print-lifecycle";
+import { PRINT_ACK_ERROR_MAX_CHARS, PRINT_ACK_PENDING_MAX_MS, PRINT_ACK_RETRY_MS, printBannerText } from "@pos/shared/print-lifecycle";
 import {
   PRINT_AGENT_REFUSED_RECHECK_MS,
   printAgentMayLease,
@@ -8,6 +8,12 @@ import {
   type PrintLeaseData,
 } from "@pos/shared/print-agent-wire";
 import { ApiError } from "@/lib/api-client";
+import {
+  PRINT_HOST_DISPATCH_TIMEOUT_MS,
+  PRINT_HOST_EOD_READY_TIMEOUT_MS,
+  hostPrintSlipOf,
+  type HostPrintSlip,
+} from "@/lib/print-host-slips";
 import { printWriteOutcomeOf, type PrintWriteOutcome } from "@/lib/print-write-outcome";
 
 // Printing redesign, Phase 1 Session 1C (spec §9.1): the in-page print agent's core, with no React and
@@ -62,6 +68,11 @@ export interface PrintAgent {
   stop(): void;
 }
 
+/** How long the agent waits for the bridge to settle one slip: past the bridge's own bounds (the end-of-day
+ *  figures' wait, then the dispatch watchdog), so only a slip the watchdog gave up on reaches it. Such a
+ *  slip may have printed, so it is acked "maybe". */
+export const PRINT_AGENT_SLIP_DEADLINE_MS = PRINT_HOST_EOD_READY_TIMEOUT_MS + PRINT_HOST_DISPATCH_TIMEOUT_MS + 5_000;
+
 /** The pending-ack store keeps at most this many entries (an agent prints one job at a time). */
 export const PRINT_ACK_PENDING_LIMIT = 50;
 
@@ -75,6 +86,14 @@ export function failedAckBody(deviceId: string, epoch: number, outcome: PrintWri
     ...(outcome.permanent ? { permanent: true as const } : {}),
     ...(error !== "" ? { error } : {}),
   };
+}
+
+/** The slip the host bridge prints for one leased job: today's renderer props (print-host-slips.ts),
+ *  plus the job's labels as the one banner on top (spec §7.7). An end-of-day summary takes none. */
+export function printAgentSlipOf(job: LeasedPrintJob, todayKey: string): HostPrintSlip {
+  const slip = hostPrintSlipOf(job.payload, todayKey);
+  const banner = printBannerText(job.labels);
+  return banner === "" || slip.surface === "eod" ? slip : { ...slip, banner };
 }
 
 /** A server answer of any kind clears a pending ack; only no answer (network, timeout) or a 5xx retries. */

@@ -13,6 +13,7 @@ import {
   PRINT_LOGO_CLASS,
 } from "@/lib/print";
 import { productImageUrl } from "@/lib/images";
+import { PrintBanner } from "@/components/pos/PrintBanner";
 import type { Order, OrderItem, Settings } from "@/types";
 
 // A kitchen ticket never needs a large logo — pinned to next/image's intrinsic
@@ -62,6 +63,9 @@ interface KOTReceiptProps {
   movedFrom?: string;
   movedBy?: string;
   movedAt?: string | Date;
+  // Session 1C (spec §7.7): the print job's labels as one inverted banner on top ("REPRINT"). Absent on
+  // every first print, so every existing call site prints exactly as before.
+  banner?: string;
   ref?: Ref<HTMLDivElement>;
 }
 
@@ -82,6 +86,7 @@ export function KOTReceipt({
   movedFrom,
   movedBy,
   movedAt,
+  banner,
   ref,
 }: KOTReceiptProps) {
   const cfg = printConfigOf(settings).kot;
@@ -106,6 +111,7 @@ export function KOTReceipt({
     >
       {order && (
         <>
+          <PrintBanner text={banner} />
           {cfg.showLogo && logoUrl && (
             <div className="text-center">
               <Image

@@ -298,29 +298,28 @@ test("PIN (C): PosPulseProvider.tsx exports usePrintJobFeed; declares createCont
 
 // ── D. PrintHostDrain.tsx ──────────────────────────────────────────────────
 
-test("PIN (D): PrintHostDrain.tsx calls usePrintJobFeed() (the narrow feed) and does NOT contain usePosPulseContext (the pos-pulse-paths.test.ts inventory pin stays at five); calls usePrintHostDrainLock(/usePrintHostWakeLock(/usePrintHostBeat(/useSelfOrderAutoPrint(/usePrintHostDrain(; passes hostLane containing PRINT_HOST_MAX_AGE_MS; both claiming lanes get enabled: drains where const drains = enabled && holdsLock; returns null; calls cafeDateString() inside onClaimed", () => {
+// Deliberately changed in printing Phase 1 Session 1C: the claim drain and the GET wake poll are
+// replaced by the print agent (hooks/use-print-agent.ts), which leases, prints through this provider's
+// bridge, and acks. The old hooks stay in the codebase for one release, uncalled here.
+test("PIN (D): PrintHostDrain.tsx runs the print agent (the host for the cafe; with no host, every device for its own line) under the drain lock, keeps the host-only lanes on `enabled`, never reads usePosPulseContext, and returns null", () => {
   const src = readSrc(PRINT_HOST_DRAIN);
 
-  assert.match(src, /usePrintJobFeed\(\)/, "must call usePrintJobFeed()");
   assert.ok(!src.includes("usePosPulseContext"), "PrintHostDrain.tsx must never reference usePosPulseContext — the pos-pulse-paths.test.ts inventory of five deliberate consumers must stay unchanged");
-
-  for (const call of [
-    "usePrintHostDrainLock(",
-    "usePrintHostWakeLock(",
-    "usePrintHostBeat(",
-    "useSelfOrderAutoPrint(",
-    "usePrintHostDrain(",
-  ]) {
+  for (const call of ["usePrintHostDrainLock(", "usePrintHostWakeLock(", "usePrintHostBeat(", "useSelfOrderAutoPrint(", "usePrintAgent("]) {
     assert.ok(src.includes(call), `PrintHostDrain.tsx must call ${call}`);
   }
-
-  assert.match(src, /const drains = enabled && holdsLock;/, "must declare const drains = enabled && holdsLock;");
-  const enabledDrainsCount = countOccurrences(src, "enabled: drains");
-  assert.equal(enabledDrainsCount, 2, `expected enabled: drains exactly twice (both claiming lanes), found ${enabledDrainsCount}`);
-
+  assert.ok(!src.includes("usePrintHostDrain(") && !src.includes("usePrintHostWake("), "the claim drain and the GET wake poll are no longer run here (Session 1C)");
+  assert.match(
+    src,
+    /const isAgent = enabled \|\| \(surfacesMounted && deviceId !== "" && routing !== "host" && routing !== "unknown"\);/,
+    "the agent: the host, or with no host every device whose surfaces exist; an unknown lane waits",
+  );
+  assert.match(src, /const drains = isAgent && holdsLock;/, "the agent drains only under the lock");
+  assert.match(src, /const hostDrains = enabled && holdsLock;/, "the host's self-order lane keeps the host gate");
+  assert.match(src, /usePrintAgent\(\{ enabled: drains, isHost: enabled, deviceId, tabId, busy, queueSlip: onSlip \}\);/, "the agent prints through the provider's bridge");
+  assert.match(src, /useSelfOrderAutoPrint\(\{ enabled: hostDrains, busy, queueKotRound, hostLane \}\);/, "the host lane hands a claimed KOT to the agent (job-aware lane)");
   assert.ok(src.includes("PRINT_HOST_MAX_AGE_MS"), "hostLane must reference PRINT_HOST_MAX_AGE_MS");
   assert.match(src, /return null;/, "PrintHostDrain must return null — a null-rendering child");
-  assert.match(src, /cafeDateString\(\)/, "must call cafeDateString() inside onClaimed");
 });
 
 // ── E. use-print-host-drain.ts ─────────────────────────────────────────────

@@ -28,8 +28,9 @@ import type { Order } from "@/types";
 
 export type { SettleFlowHandlers };
 
-export function useSettleFlow(handlers: SettleFlowHandlers) {
-  const settleOrder = useSettleOrder();
+export function useSettleFlow(handlers: SettleFlowHandlers, options: { printsBill?: boolean } = {}) {
+  // Session 1C (R1): only a settle that prints the bill (the POS) lets the server make it.
+  const settleOrder = useSettleOrder({ printsBill: options.printsBill === true });
   const qc = useQueryClient();
   const settings = useSettings();
   // Called after awaits: always the handlers, the POST and the settings of the latest commit.

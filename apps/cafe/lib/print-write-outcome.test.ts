@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { DESKTOP_PRINT_EMPTY_MESSAGE, DESKTOP_PRINT_NO_REPLY_MESSAGE, DESKTOP_PRINT_TOO_LARGE_MESSAGE } from "@/lib/desktop-shell";
-import { PRINT_HOST_EMPTY_SLIP_MESSAGE, PRINT_HOST_PRINT_FAILED_MESSAGE } from "@/lib/print-host-slips";
+import { PRINT_HOST_EMPTY_SLIP_MESSAGE, PRINT_HOST_EOD_TIMEOUT_MESSAGE, PRINT_HOST_PRINT_FAILED_MESSAGE } from "@/lib/print-host-slips";
 import { LANE_PRINT_FAILED_MESSAGE, NO_PRINTER_MESSAGE, laneFailureMessage } from "@/lib/printer/lane-print";
 import { nativeError } from "@/lib/printer/native-bridge";
 import { NATIVE_ERROR_CODES, type NativeErrorCode } from "@/lib/printer/native-bridge-protocol";
@@ -20,7 +20,7 @@ function outcome(message: string): string {
 }
 
 test("refusals made before any byte left are sent:'no' (no printer, not connected, another tab, could not draw)", () => {
-  for (const message of [NO_PRINTER_MESSAGE, PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_ELSEWHERE_MESSAGE, RASTER_FAILED_MESSAGE]) {
+  for (const message of [NO_PRINTER_MESSAGE, PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_ELSEWHERE_MESSAGE, RASTER_FAILED_MESSAGE, PRINT_HOST_EOD_TIMEOUT_MESSAGE]) {
     assert.equal(outcome(message), "no", message);
   }
 });

@@ -6,9 +6,12 @@ import { PRINT_ACK_PENDING_MAX_MS, PRINT_ACK_RETRY_MS } from "@pos/shared/print-
 import { PRINT_WAKE_FAST_MS, PRINT_WAKE_SLOW_MS, PRINT_WAKE_SOCKET_MS } from "@pos/shared/print-job";
 import { PRINT_AGENT_REFUSED_RECHECK_MS, type LeasedPrintJob, type PrintAckData, type PrintLeaseData } from "@pos/shared/print-agent-wire";
 import { createPrintAgentWake } from "@/lib/print-agent-wake";
+import { printAgentEnqueueHeaders, printAgentHeaders, printJobRefOf } from "@/lib/print-agent-calls";
+import { createHostSlipOutcomes } from "@/lib/print-host-outcomes";
 import {
   createPrintAgent,
   failedAckBody,
+  printAgentSlipOf,
   type PendingPrintAck,
   type PrintAgentAckBody,
   type PrintAgentResult,
@@ -312,4 +315,38 @@ test("the host's wake polls at the spec §9.1 cadence, never while hidden or pas
   await advance(w, 10 * PRINT_WAKE_SLOW_MS);
   assert.equal(wakes, 3, "a hidden tab never polls");
   wake.stop();
+});
+
+test("the slip for a leased job carries its labels as the banner; an end-of-day summary and a first print carry none", () => {
+  const kot = { ...job("k1"), kind: "kot" as const, labels: ["REPRINT" as const], payload: { kind: "kot", round: 1, snapshot: { _id: "o1", orderId: "ORD-1", createdAt: new Date(T0).toISOString(), items: [] } } as unknown as LeasedPrintJob["payload"] };
+  const slip = printAgentSlipOf(kot, "2026-10-03");
+  assert.equal(slip.surface === "eod" ? "eod" : slip.banner, "REPRINT", "a retried KOT prints REPRINT on top");
+  assert.equal("banner" in printAgentSlipOf({ ...kot, labels: [] }, "2026-10-03"), false, "a first print has no banner at all");
+  const eod = printAgentSlipOf({ ...job("e1"), kind: "eod", labels: ["REPRINT"] }, "2026-10-03");
+  assert.equal(eod.surface, "eod");
+  assert.equal("banner" in eod, false, "the end-of-day summary takes no banner");
+});
+
+test("the call sites' helpers: the opt-in headers, a ref by kind, and nothing for a device with no identity", () => {
+  assert.deepEqual(printAgentHeaders(""), {}, "no identity: the server prints nothing for it, the page prints as before");
+  assert.deepEqual(printAgentHeaders("dev-a", true), { "x-pos-print-agent": "1", "x-pos-device-id": "dev-a", "x-pos-print-bill": "1" });
+  const order = { printJobs: [{ id: "j1", kind: "kot", targetDeviceId: "dev-a", label: "KOT", status: "queued" }, { id: "j2", kind: "bill", targetDeviceId: "dev-a", label: "Bill", status: "printed" }] };
+  assert.equal(printJobRefOf(order, "bill")?.id, "j2", "found by kind");
+  assert.equal(printJobRefOf(order, "void"), null, "a slip the answer did not name: the call site enqueues it");
+  assert.equal(printJobRefOf({ printJobs: [{ id: 1 }] }, "kot"), null, "a malformed ref is ignored");
+  assert.equal(printJobRefOf(null, "kot"), null);
+  assert.ok(/^[A-Za-z0-9-]{8,64}$/.test(printAgentEnqueueHeaders("dev-a")["idempotency-key"] ?? ""), "an enqueue carries a usable Idempotency-Key");
+});
+
+test("the bridge's outcome line: each slip's caller hears once, in print order; the test slip and untracked slips keep their place", () => {
+  const outcomes = createHostSlipOutcomes();
+  const heard: string[] = [];
+  outcomes.track((r) => heard.push(`a:${r.ok}`));
+  outcomes.track(null);
+  outcomes.track((r) => heard.push(`c:${r.ok}`));
+  outcomes.finish({ ok: true });
+  outcomes.finish({ ok: true });
+  outcomes.finish({ ok: false, error: new Error("x") });
+  outcomes.finish({ ok: true });
+  assert.deepEqual(heard, ["a:true", "c:false"], "in order, once each, the test slip in between untold");
 });

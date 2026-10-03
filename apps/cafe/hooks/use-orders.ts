@@ -12,6 +12,7 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ApiError, apiGet, apiSend } from "@/lib/api-client";
+import { printAgentRequestOptions } from "@/lib/print-agent-calls";
 import { cafeDateString } from "@/lib/utils";
 import { STALE_TIMES, GC_TIMES, REFETCH_INTERVALS } from "@/lib/query";
 import { firstPageOnly, nextOrderCursor, onePageAtMost } from "@/lib/order-query";
@@ -224,8 +225,10 @@ export function useCreateOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationKey: ORDER_KEYS.mutation,
+    // Session 1C (R1): this hook's one caller (the POS) prints the KOT, and Pay Now's bill, so the
+    // server makes both in this request (lib/print-order-jobs.ts).
     mutationFn: (data: CreateOrderInput) =>
-      apiSend<Order>("/api/orders", "POST", data),
+      apiSend<Order>("/api/orders", "POST", data, printAgentRequestOptions(data.status === "Completed")),
     onMutate: async (newOrder) => {
       // Always cancel in-flight queries before writing the cache (design skill #4).
       await qc.cancelQueries({ queryKey: ORDER_KEYS.all });
@@ -305,7 +308,7 @@ export function useAddOrderItems() {
   return useMutation({
     mutationKey: ORDER_KEYS.mutation,
     mutationFn: ({ id, data }: { id: string; data: AddItemsInput }) =>
-      apiSend<Order>(`/api/orders/${id}/items`, "POST", data),
+      apiSend<Order>(`/api/orders/${id}/items`, "POST", data, printAgentRequestOptions()),
     // No success toast — the POS's confirm says it once, with the round number.
     onError: (err: Error) => {
       if (toastsFailure(err)) toast.error(err.message || "Could not send to kitchen");
@@ -327,12 +330,12 @@ export function useAddOrderItems() {
 // caller (hooks/use-settle-flow.ts) shows every failure inside the payment
 // popup, and a toast would say it twice. onSettled stays a block body, so
 // mutateAsync never waits on the refetches.
-export function useSettleOrder() {
+export function useSettleOrder(options: { printsBill?: boolean } = {}) {
   const qc = useQueryClient();
   return useMutation({
     mutationKey: ORDER_KEYS.mutation,
     mutationFn: ({ id, data }: { id: string; data: SettleOrderInput }) =>
-      apiSend<Order>(`/api/orders/${id}/settle`, "POST", data),
+      apiSend<Order>(`/api/orders/${id}/settle`, "POST", data, options.printsBill === true ? printAgentRequestOptions(true) : {}),
     onSuccess: (order) => toast.success(settledMessage(order)),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ORDER_KEYS.all });
@@ -353,7 +356,7 @@ export function useMoveOrderTable() {
   return useMutation({
     mutationKey: ORDER_KEYS.mutation,
     mutationFn: ({ id, tableNo }: { id: string; tableNo: string | null }) =>
-      apiSend<Order>(`/api/orders/${id}/table`, "POST", { tableNo }),
+      apiSend<Order>(`/api/orders/${id}/table`, "POST", { tableNo }, printAgentRequestOptions()),
     onError: (err: Error) => toast.error(err.message || "Could not move the table"),
     // No success toast — the caller shows the outcome and prints a slip.
     onSettled: () => {

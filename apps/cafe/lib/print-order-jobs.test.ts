@@ -109,13 +109,15 @@ test("PIN: the create and add-round CAS writes mark a round as the server's only
 // auto-accept leaves kotPrintedAt unstamped. A server-made job for the host would therefore print a
 // second, unlabelled KOT for every auto-accepted QR order. Ruling R4 moves to Session 1C, where the
 // lane becomes job-aware; until then the auto-accept answers exactly as before Phase 1.
-test("PIN: the staff accept creates only on a fresh accept; the public auto-accept creates no print job in 1B (its host lane prints the KOT itself)", () => {
+test("PIN: the staff accept creates only on a fresh accept; the public auto-accept creates no print job (the self-order lane's claim does, Session 1C)", () => {
   assert.match(src("apps/cafe/app/api/order-requests/[id]/accept/route.ts"), /intent && !result\.replayed\s*\? await createOrderPrintJobs\(\{/);
+  // Session 1C (R4, job-aware lane): the host lane hands a claimed KOT to the agent, never to the bridge.
   assert.match(
-    src("apps/cafe/hooks/use-print-host-bridge.ts"),
-    /\(order: Order, round: number = order\.kotRounds\) => queueSlip\(kotRoundSlip\(order, round\)\)/,
-    "the premise: the host lane prints a claimed self-order KOT locally, outside the job queue",
+    src("apps/cafe/components/print/PrintHostDrain.tsx"),
+    /routePrint\(\(\) => kotPrintJob\(order, round\), \(\) => undefined, printJobRefOf\(order, "kot"\)\)/,
+    "the host lane prints a claimed KOT only as a print job",
   );
+  assert.ok(!src("apps/cafe/components/layout/PrintHostProvider.tsx").includes("onKotRound="), "the bridge's own KOT print is no longer handed to the lane");
   const auto = src("apps/cafe/lib/order-request-create.ts");
   assert.ok(!auto.includes("createOrderPrintJobs"), "the auto-accept makes no print job in 1B (final review C1)");
   const fn = auto.slice(auto.indexOf("export async function resolveAutoAcceptStatus("));

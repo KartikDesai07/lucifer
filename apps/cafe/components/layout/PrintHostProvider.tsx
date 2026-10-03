@@ -120,7 +120,7 @@ export function PrintHostProvider({ children }: { children: ReactNode }) {
   const reportSurfacesMounted = useCallback((mounted: boolean) => setSurfacesMounted(mounted), []);
 
   const bridge = usePrintHostBridge({ surfacesMounted });
-  const { current, busy, kotRef, receiptRef, eodRef, setEodReady, queueSlip, queueKotRound, queueTestSlip } = bridge;
+  const { current, busy, kotRef, receiptRef, eodRef, setEodReady, queueSlip, queueTestSlip } = bridge;
 
   // The band's manual print of a stale row lives HERE, not in the band: the
   // band section unmounts the moment its last row leaves the feed, and a
@@ -192,7 +192,7 @@ export function PrintHostProvider({ children }: { children: ReactNode }) {
         busy={busy}
         claimLockRef={claimLockRef}
         onSlip={queueSlip}
-        onKotRound={queueKotRound}
+        surfacesMounted={surfacesMounted}
         onDemoted={demote}
       />
     </PrintHostContext.Provider>

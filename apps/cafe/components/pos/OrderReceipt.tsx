@@ -10,6 +10,7 @@ import type { PrintLogoSize } from "@/lib/constants";
 import { inr } from "@/lib/utils";
 import { receiptGst, type GstConfig } from "@/lib/receipt";
 import { productImageUrl } from "@/lib/images";
+import { PrintBanner } from "@/components/pos/PrintBanner";
 import {
   printConfigOf,
   PAPER_WIDTH_CLASS,
@@ -40,6 +41,8 @@ function fmtDateTime(value: string | Date): string {
 interface OrderReceiptProps {
   order: Order | null;
   settings?: Settings | null;
+  // Session 1C (spec §7.7): "DUPLICATE" on a bill printed again. Absent on a first print.
+  banner?: string;
   ref?: Ref<HTMLDivElement>;
 }
 
@@ -49,7 +52,7 @@ interface OrderReceiptProps {
 // (printConfigOf(settings).bill); a receipt must never print a fallback brand,
 // so the name/footer lines are omitted entirely when Settings hasn't set them
 // (CR1.5).
-export function OrderReceipt({ order, settings, ref }: OrderReceiptProps) {
+export function OrderReceipt({ order, settings, banner, ref }: OrderReceiptProps) {
   const cfg = printConfigOf(settings).bill;
   const name = settings?.restaurantName?.trim();
   const tagline = settings?.tagline?.trim();
@@ -78,6 +81,7 @@ export function OrderReceipt({ order, settings, ref }: OrderReceiptProps) {
     >
       {order && (
         <>
+          <PrintBanner text={banner} />
           <div className="text-center">
             {cfg.showLogo && logoUrl && (
               <Image

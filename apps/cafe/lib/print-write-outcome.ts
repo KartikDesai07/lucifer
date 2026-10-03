@@ -1,6 +1,6 @@
 import { DESKTOP_PRINT_EMPTY_MESSAGE } from "@/lib/desktop-shell-document";
 import { DESKTOP_PRINT_TOO_LARGE_MESSAGE } from "@/lib/desktop-shell";
-import { PRINT_HOST_EMPTY_SLIP_MESSAGE } from "@/lib/print-host-slips";
+import { PRINT_HOST_EMPTY_SLIP_MESSAGE, PRINT_HOST_EOD_TIMEOUT_MESSAGE } from "@/lib/print-host-slips";
 import { NO_PRINTER_MESSAGE } from "@/lib/printer/lane-print";
 import { RASTER_FAILED_MESSAGE, RASTER_TOO_LARGE_MESSAGE } from "@/lib/printer/raster";
 import {
@@ -48,8 +48,9 @@ export interface PrintWriteOutcome {
 }
 
 /** Refused before any byte left: no printer here, not connected, owned by another tab, Bluetooth
- *  off or blocked, the printer busy, or the slip could not be drawn. */
+ *  off or blocked, the printer busy, the slip could not be drawn, or its figures never loaded. */
 const NOTHING_SENT: ReadonlySet<string> = new Set([
+  PRINT_HOST_EOD_TIMEOUT_MESSAGE,
   NO_PRINTER_MESSAGE,
   PRINTER_NOT_CONNECTED_MESSAGE,
   PRINTER_ELSEWHERE_MESSAGE,

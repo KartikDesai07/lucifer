@@ -45,7 +45,8 @@ function check(problems: string[], ok: boolean, message: string): void {
 
 const DELEGATE = "if (!shell) return laneSlipPrintOptions(options);";
 const BEAT_CALL = "beat({ deviceId, printer: beatPrinterReport() });";
-const LOCK_CALL = "const holdsLock = usePrintHostDrainLock(enabled && canPrint);";
+// Session 1C: the agent (the host, or with no host every device) asks for the lock; still only while it can print.
+const LOCK_CALL = "const holdsLock = usePrintHostDrainLock(isAgent && canPrint);";
 // s63 INT: the sentence comes from printBlockedMessage() so an app with NO printer says "No printer is set up…"
 // instead of "reconnect it" (the three cases are unit-tested in print-lane.test.ts).
 const GUARD = 'if (!canPrintNow()) {\n        toast.error(printBlockedMessage());\n        return;\n      }';
@@ -124,7 +125,7 @@ const CASES: PinCase[] = [
     file: "components/print/PrintHostDrain.tsx",
     pin: (s) => {
       const p: string[] = [];
-      check(p, ordered(s, ["const canPrint = useCanPrintNow();", LOCK_CALL, "const drains = enabled && holdsLock;"]), "canPrint -> gated lock -> drains");
+      check(p, ordered(s, ["const canPrint = useCanPrintNow();", LOCK_CALL, "const drains = isAgent && holdsLock;"]), "canPrint -> gated lock -> drains");
       check(p, count(s, "usePrintHostDrainLock(") === 1 && !s.includes("usePrintHostDrainLock(enabled)"), "no ungated lock call");
       check(p, s.includes("usePrintHostWakeLock(enabled);") && s.includes("usePrintHostBeat({ enabled, deviceId, onDemoted });"), "wake lock and routine beat keep `enabled`");
       check(p, s.includes("usePrintHostPrinterBeat({ enabled, deviceId, onDemoted });"), "printer beat is wired with `enabled`");
