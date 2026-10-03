@@ -2101,3 +2101,14 @@ test('pin 18 mutation: the owner check can be cut', () => {
     ['removeScript(found)', 'removeScript(null)'],
   ]);
 });
+
+test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
+  const strings = readFileSync(join(MAIN, 'res', 'values', 'strings.xml'), 'utf8');
+  assert.ok(
+    strings.includes('<string name="app_name">Sandbee POS</string>'),
+    'the launcher label (app_name) is Sandbee POS',
+  );
+  const app = JSON.parse(readFileSync(join(ROOT, 'app.json'), 'utf8')) as { name: string; displayName: string };
+  assert.equal(app.displayName, 'Sandbee POS', 'app.json displayName matches the launcher label');
+  assert.equal(app.name, 'PosSoftware', 'the component name MainActivity registers never changes');
+});
