@@ -15152,4 +15152,198 @@ Push only with the repo's token credential (check `git config --local --get-all 
 
 ## Session 1D Results (filled in by the implementer)
 
-(Empty until Session 1D runs.)
+### Commits (`b06d294..HEAD`)
+
+| Commit | Task |
+|---|---|
+| `79125c6` | D1: the 1C gate's agent rulings (I3, M4, M5, M6, F1) and the two budget pins |
+| `fdb5205` | D2: the waiting-slips feed on the pulse, the pulse sweep, aimed staff retries |
+| `c418972` | D3: the one waiting-slips panel, its count on the printer button, the 20 s alarm |
+| `c7fa37e` | D4: live leg (af), leg (ae)'s reason |
+| `39222cb` | Final review I-2 (beyond the plan): a tapped row is enabled again once its action answers |
+| (this commit) | Results |
+
+### Step 0
+
+`git fetch`: `origin/main` was still `22e9999`, so nothing was merged. The branch was at `b06d294` (docs only on top of `5945f74`). Baseline re-run: shared **635/635**; cafe **4153 tests, 4152 pass, 0 fail, 1 skipped**. The gate's tsc 0 and lint (0 errors, the 2 old warnings) stand, since `b06d294` changes only docs. Every block of D1–D4 parsed (52 blocks). Step 1 of D1, D2 and D4 dry-ran clean against the tree. D3's `package.json` find depends on D2's edit, so it was checked in order.
+
+### Per-task RED → GREEN (every Expected line compared; all matched)
+
+Blocks were applied verbatim by a scratchpad script with the plan's rules: find text is the fenced lines joined with `\n`; Create and Replace-the-whole add one final newline; every find matches exactly once; each step is staged in memory and written only if every block applies.
+
+| Task | RED | GREEN |
+|---|---|---|
+| D1 | `print-agent.test.ts`: 23 tests, 15 pass, **8 fail** (each on missing behaviour, e.g. `isSlipRefusal is not a function`, "no lease while an ack from before is unanswered") | 4 files **44/44**, cafe tsc 0; shared `print-budget.test.ts` **15/15**, tsc 0. `lib/print-agent.ts` is 307 lines |
+| D2 | `Cannot find module '@/lib/print-attention'`; 15 tests, 13 pass, **2 fail** | 7 files **175/175**, cafe tsc 0, shared tsc 0 |
+| D3 | `Cannot find module '@/lib/print-waiting'`; 1/0/**1** | 9 files **129/129**, tsc 0; cafe `npm test` **4173 / 4172 / 0 fail / 1 skipped**; lint 0 errors and the 2 old warnings |
+| D4 | (legs: apply and run) | cafe tsc 0; `verify:print:live` **`206 passed, 0 failed`** |
+| I-2 fix | `print-waiting.test.ts` "PIN: a tapped row is enabled again once its action answers…" **fails** ("every tap hands its action a way to release its row") | the same 9 files **130/130**, tsc 0, eslint clean on the 3 files |
+
+### Task D5 Step 1: every suite (at `c7fa37e`, the plan's tree)
+
+| Suite | Result |
+|---|---|
+| shared `npm test`; `tsc` | **637/637**; 0 |
+| cafe `npm test` | **4173 tests, 4172 pass, 0 fail, 1 skipped** (the skip is 1C's `go-live-dl` pin) |
+| cafe `tsc`; `npm run lint` | 0; 0 errors and the 2 old warnings (`lib/masters-blob.test.ts:331`) |
+| Hub `tsc` | `HUB_TSC_OK` |
+| mobile `tsc`; lint; `npm test`; `test:app` | 0; 0; **114/114**; Jest **3/3** |
+| desktop `npm test` | **191/191** |
+| `npm run test:print-tools` | **7/7** |
+| live legs (local mongod, `pos_scratch_print_host`) | **`206 passed, 0 failed`** |
+
+**After the I-2 fix (`39222cb`):** cafe `npm test` **4174 tests, 4173 pass, 0 fail, 1 skipped** (+1: the new pin); lint 0 errors and the 2 old warnings. The fix changes only `components/print/WaitingSlipsCard.tsx`, `hooks/use-print-job-actions.ts` and a test, so shared, Hub, mobile, desktop, the print tools and the live legs are unaffected.
+
+### Changed existing pins (each follows a deliberate change in this plan)
+
+- **D1, `lib/print-agent.test.ts`:**
+  - the 1C I2(b) test is rewritten for M6 ("a printed ack still on the wire goes first…");
+  - "a printed ack with no answer is retried every 5 s …" now expects the re-send before the next lease (2 sends, then the 5 s retry's third);
+  - the `settle()` helper waits 60 microtask turns instead of 20 (one more await per cycle).
+- **D2, `lib/print-order-jobs.test.ts`:** 1C's pulse pin. The print fields are spread into the answer, and the sweep runs after it through `after()`.
+- **D3, `lib/printer-ui-paths.test.ts`:** `WaitingSlipsCard.tsx` joins the 44 px / no-jargon hygiene list.
+- **D4, leg (ae):** the cancelled case now asserts `reason === "not-eligible"`, not only `!claimed`.
+- **D2 and D3, `apps/cafe/package.json` `testChain`:** `lib/print-attention.test.ts` and `lib/print-waiting.test.ts` added.
+- The I-2 fix adds a pin; it changes none.
+
+### Step 2: the Next production build
+
+`npm run build`: success at `c7fa37e` (compiled in 70 s) and again at `39222cb`, **123 routes** both times, including `/api/order-requests/pulse` and every `/api/print-jobs` route. 1D adds no route.
+
+### Step 3: APKs (x86_64 first, then ARM; `GRADLE_USER_HOME='D:\gradle-home'`)
+
+Both builds reported `BUILD SUCCESSFUL` (1 m 26 s, then 54 s). Each APK holds only its own ABI. **All three are byte-identical to Session 1C's** (1D changes no app code).
+
+| APK | Path | Size | SHA-256 |
+|---|---|---|---|
+| Emulator only (x86_64) | `<scratchpad>/pos-emulator-x86_64-release.apk` | 7,407,761 B | `fc4181e4f20799576277c7be312316d34d46db23b286bad6b13fec1cad5f13d3` |
+| Client, arm64-v8a | `apps/mobile/android/app/build/outputs/apk/release/app-arm64-v8a-release.apk` | 7,276,038 B | `9f89cd9a172b2ab8d5b72872bca947c44ae3c7c74c3a33dfc118e9c00e180ff7` |
+| Client, armeabi-v7a | `apps/mobile/android/app/build/outputs/apk/release/app-armeabi-v7a-release.apk` | 6,683,872 B | `f3f6214982c9122dbc7c28f415d7a478a8aef392b834bf8213cb909c73f426cc` |
+
+### Step 4: the E2E exit check (local POS + emulator app + fake printer). Passed.
+
+`<scratchpad>` below is this session's scratchpad (`1cb97f89…/scratchpad/`); screenshots are in `<scratchpad>/shots/`.
+
+**Set-up:**
+- AVD `Pixel_7_API_33`, WebView 109.0.5414.123, `-memory 4096 -no-snapshot -no-boot-anim`, started as a background command with a 2-hour limit. It booted in about 28 s. The crash buffer was empty at boot (saved anyway, then cleared); no Bluetooth crash loop this time.
+- Ports 3100 and 9100 were checked free.
+- `<scratchpad>/e2e.env` (database `pos_scratch_e2e_1d`, checked absent first) was written by `make-env.py` with `secrets`, never printed or committed. Seeded with `seed-admin.ts`, `seed-tables.ts` (T-1…T-8) and `seed-menu.ts` (4 categories, 8 products).
+- `next start -p 3100` from the Step 2 build: `/login` 200.
+- Fake printer on `127.0.0.1:9100`, with its own `--out` folder per run (`fake-jobs-1/-2/-3`).
+- The x86_64 APK above was installed, then `pm clear`, `adb reverse tcp:3100 tcp:3100`, address `http://localhost:3100`.
+- Sign-in: username, then TAB. A uiautomator dump showed the focused EditText with `password="true"` before `type-secret.py` typed the secret (it re-checks the focus and prints only the length).
+- Network printer `10.0.2.2` : `9100` → "Network printer 10.0.2.2 is connected." (the 0-byte probe only); then "Print all slips on this device" → "This device prints all slips."
+- State was read with `<scratchpad>/e2e-state.ts` (projection without `payload`). Only `bytes > 0` printer jobs are counted.
+- **The ring:** the alarm's sound was confirmed from `dumpsys audio`. Each ring is a new AAudio player of `com.possoftware.pos` (PID 4651) at the notice's pulse.
+
+Times are UTC.
+
+1. **Nothing waits: no count, no section. Pass.** The button read "Printer connected — open printer setup"; the sheet had no "Slips waiting" (`1d-06-item1-no-count.png`).
+2. **The printer off: the alarm, the count, the panel; no attempt burned. Pass.**
+   - The fake printer was stopped by PID at 05:12:27.
+   - KOT round 1 · T-1 was sent from `/pos` at 05:13:24. The job: one lease, one `failed(not sent: The printer is not connected. …)`, `queued`, `uncertainAttempts 0`.
+   - The ring came at 05:13:47.9 (23.7 s after the KOT was made). By 05:13:52: "KOT round 1 · T-1 has not printed yet." with **Show**, and the button "1 slip waiting — open printer setup" with a red "1" (`1d-09-alarm-notice.png`).
+   - Show opened the sheet on "Waiting for the printer (1) · KOT round 1 · T-1 · 1 min · The printer is off or not connected." with Print now and Clear (`1d-10-show-opens-waiting.png`).
+   - Two more KOTs while the printer was off (deviation 4):
+     - T-2 from `/pos` at 05:16:02: rang at 05:16:35.7. While the printer was off it was never leased (`epoch 0`, "Not printed yet."), so no attempt was burned.
+     - T-3 from the script's device (`e2e-script-device`, via `kot-only`) at 05:25:28: rang on the host, the device that prints it, by 05:25:59 (`1d-15-sheet-with-new-notice.png`).
+   - **Print now** answered "It prints by itself as soon as the printer is ready." (`1d-16-print-now-t3-4.png`, 3.7 s after the tap).
+   - The fake printer was started at 05:28:33. All three printed **once each, unlabelled** (40,494 B each, at 05:28:37.9 / 38.6 / 39.3): `printed`, `uncertainAttempts 0`. T-1 was `epoch 2` (one refusal, one print); T-2 and T-3 were `epoch 1`.
+   - The section, the count and both notices were gone by 05:28:56; the button read "Printer connected — open printer setup" (`1d-17-printer-back-cleared.png`).
+3. **Couldn't print → Retry: one tap, one try. Pass.**
+   - `e2e-lostack.ts kot` made KOT round 1 · T-4 as `e2e-script-device` with the agent headers (201) and leased it at once as the host. `e2e-setjob.ts failed` then set it as two expired leases leave it.
+   - The host rang at 05:31:08.4: "KOT round 1 · T-4 could not print." (`1d-18-failed-alarm.png`).
+   - Show → "Couldn't print (1) · KOT round 1 · T-4 · just now · Tried twice. Check the printer, then retry." with Retry and Clear (`1d-19-panel-couldnt-print.png`).
+   - Retry at 05:31:40 → one REPRINT copy of **46,110 B** at 05:31:40.8 (a plain KOT is 40,494 B). The job: `printed`, `uncertainAttempts 1`, log `created, leased, retried(print again), leased, printed`. The row and the notice were gone by 05:31:46.
+4. **Check the bill → Print again; It printed. Pass.**
+   - `e2e-lostack.ts bill` settled T-4's order with the bill header (200) and leased the bill as the host at 05:32:04.9, never acking.
+   - The expiry made it `needs-confirm`, `uncertainAttempts 1`, `expired(lease expired: may have printed)`, with no paper. The ring came at 05:33:39.6: "Bill · ORD-20261003-004 may not have printed." (`1d-21-bill-alarm.png`).
+   - The panel: "Check the bill (1) · Bill · ORD-20261003-004 · 1 min · It may already have printed. Check the printer." with Print again, It printed and Clear (`1d-22-panel-check-bill.png`).
+   - **Print again** at 05:34:20 → one **DUPLICATE** copy (41,718 B) at 05:34:21.5. The decoded `GS v 0` raster shows the black DUPLICATE banner above "Bill No. 1 · ORD-20261003-004" (`1d-raster-duplicate.png`). The job: `printed`, `labels: ["DUPLICATE"]`, `confirmed(print again: Admin)`. The section left at once, the notice within one pulse.
+   - A second bill (T-3's order, leased at 05:35:07.8) → "Bill · ORD-20261003-003 may not have printed." → **It printed** at 05:37:15 → `printed`, `confirmed(it printed: Admin)`, `printedBy` the staff name, and no paper (printer jobs 6 → 6).
+5. **No host: the pulse sweep, and a second device clears a slip. Pass.**
+   - "Stop printing here" → "Yes, remove" → "Each device prints its own slips." (`1d-26-no-host.png`).
+   - `e2e-lostack.ts kot` made KOT round 1 · T-3 (ORD-…-005) as `e2e-script-device` and, with no host, leased it as that device at 05:38:09.7, never acking.
+   - Only the pulse sweep could expire it: between 05:40:05 and 05:40:20 it was `queued`, `REPRINT`, `expired(lease expired: may have printed)`.
+   - The emulator's panel listed this other device's slip: "Waiting for the printer (1) · KOT round 1 · T-3 · 2 min · Waiting to print again, marked REPRINT." (`1d-27-no-host-waiting.png`). The emulator did not ring: the alarm is for the asking and the printing device only.
+   - The script, as a second device, cleared it: `POST /api/print-jobs/<id>/dismiss` `{ reason: "staff" }` → **200** `{ dismissed: true }`, `dismissed`. The row left the emulator's panel within one pulse (`1d-28-after-second-device-clear.png`).
+6. **I3, recorded, not exercised end to end:** a slip that cannot be drawn cannot be forced on the emulator. Task D1's tests prove it (`print-agent.test.ts` "I3: …", three tests: the second slip refusal while the printer is ready is acked `permanent` → `failed`; printer refusals never count; a slip refusal after the printer stopped being ready is a printer refusal).
+7. **G5, the known TCP limit, recorded:** as Session 1C's Results item 7. On Android TCP a cut mid-slip is detected only sometimes; the fix is Phase 3's `DLE EOT`. No Kotlin was changed.
+8. **The I-2 fix, re-checked on the device (deviation 5):**
+   - The POS was rebuilt at `39222cb` and restarted, and the app cold-started.
+   - With no host and the printer off, KOT round 1 · T-5 was sent from `/pos` at 05:49:35: one lease, one refusal, `uncertainAttempts 0`. The notice came by 05:49:58.
+   - Show → Print now at 05:50:10. The answer came by 1.6 s, and **the row was enabled again** (Print now and Clear) (`1d-30-fix-after-print-now-1.png`). On the build before the fix, T-3's row stayed disabled after its answer (`1d-16-print-now-t3-4.png`…`-6.png`).
+   - The printer was started at 05:50:42: printed once, unlabelled (40,494 B) at 05:50:49.5. The panel and the notice cleared.
+9. **Clean-up:**
+   - `adb reverse --remove-all`.
+   - The POS (port 3100) and the fake printer (port 9100) were stopped by PID with `Stop-Process`, after checking each command line held this session's scratchpad path. Both ports were then free.
+   - `pm clear com.possoftware.pos`; `adb emu kill`.
+   - **Left for 1E:** `pos_scratch_e2e_1d` holds `e2eadmin`, 8 tables, 4 categories, 8 products, 6 orders (T-1, T-2, T-3 (ORD-…-005) and T-5 open; ORD-…-003 and -004 settled), 8 PrintJobs (7 `printed`, 1 `dismissed`), 1 `printdevices` row, and no PrintHost.
+   - The env file stays at `<scratchpad>/e2e.env`. Its scripts are there too: `e2e-state.ts` (`precheck | clear-host | orders | summary`), `e2e-lostack.ts` (`kot | kot-only | bill <orderId> | dismiss <jobId>`), `e2e-setjob.ts`, `run.sh`, `raster2png.py`, `type-secret.py`, `ui.py`, `make-env.py`, `secret-scan.py`.
+
+**`adb logcat -b crash`:** empty from boot to the end of the run (saved as `<scratchpad>/logs/crash-at-boot.log` and `crash-end.log`, 0 lines each). The app's PID stayed 4651 until the deliberate force-stop for the fixed build.
+
+**Secret scan** (`b06d294..HEAD` plus the working tree): the env file's `NEXTAUTH_SECRET`, `AUTH_SECRET` and `SEED_ADMIN_PASSWORD`, a `github_pat_` shape, a private key and an `AUTH_SECRET=<hex>` line are all absent.
+
+**Two E2E notes:**
+- **The answer to Print now is brief.** It arrived about 3 s after the tap on the first build (1.6 s on the second) and was visible for only about 1–1.5 s. Minor; for the gate.
+- **Once only, unexplained, not reproduced:** between 05:16:46 and 05:18:06 the open printer sheet closed and both lasting notices disappeared with no tap. The count ("2 slips waiting") and the panel still held both slips, so nothing was hidden. The app PID was unchanged, the crash buffer was empty, and there was no second ring, so there was no page reload. It did not recur in two attempts:
+  - 3 minutes idle with the sheet open;
+  - a new notice arriving over the open sheet, which stayed for 70 s.
+  
+  The most likely cause is a test-driving tap: a tap on a lasting notice that covers the sheet's top edge counts as "outside" the modal sheet and closes it. That still does not explain the notices going. Recorded for the gate.
+
+### Final whole-branch review (fresh reviewer subagent, Opus, `b06d294..c7fa37e`, read-only)
+
+0 Critical, 2 Important, 8 Minor. The reviewer traced every agent path, the pulse/`after()` sweep, the aimed retry and the UI, and found no double print, lost ack, leaked timer, deadlock or request loop. Budgets are bounded. Old tabs and the `GET` wake are unaffected. Retry, confirm and dismiss stay staff-auth.
+
+- **I-1 (Important; ruled, not fixed: for the 1D review gate).**
+  - **The defect:** the feed returns the **oldest** 20 waiting rows (`print-attention.ts`, `sort({createdAt: 1, _id: 1}).limit(20)`).
+  - **The scenario:** 20 uncleared rows in the 12 h window: unanswered bills to check, failed slips, or queued slips of a no-host device whose printer is off.
+  - **The effect:** a new failure never enters the feed. No ring, no notice, no panel row, and the count is stuck at "20+". The 20 s alarm goes silent for the rest of the day.
+  - **Why not fixed here:** which 20 the feed holds is a gate-ruled spec line (§7.10, "oldest first, at most 20"), and nothing is deployed before the gate.
+  - **Recommended for 1E:** read newest-first and show oldest-first (same single read, same index); or always include the last 30 min; or count stale rows outside the 20.
+- **I-2 (Important; fixed in `39222cb`).**
+  - **The defect:** a tapped row was released only when it left the feed. A row that stays in the feed kept every button disabled, Clear included. Cases: a Retry while its printer is off; a second failure before the next pulse; a network error; Print now on a slip that waits for its printer.
+  - **Seen on the emulator:** T-3's Print now left Print now and Clear disabled after the answer.
+  - **The fix:** each action releases its row when it settles. The server's CAS makes a repeat tap a no-op.
+  - **Test:** the new `print-waiting.test.ts` pin, RED → GREEN; re-checked on the device (item 8).
+- **Minors (deferred to the gate / 1E):**
+  - **M-1:** lasting notices stay after an unmount or a `deviceId` change. A pulse that catches a refused slip `leased` dismisses its notice, and it rings again on the next pulse.
+  - **M-2:** every tab of one device rings (the alarm runs per tab; the drain lock is per device).
+  - **M-3:** the agent's `slipRefusals` map is never pruned (one entry per slip-refused job per page life).
+  - **M-4:** a `stop()` during the new `await flushAcks()` still lets that cycle lease. The pattern is older; M6 widened the window.
+  - **M-5 (a11y):**
+    - the button's name drops the printer's state while slips wait;
+    - the per-row buttons have no per-row name;
+    - Sonner's Show button is under 44 px.
+  - **M-6:** a first slip refusal reads "The printer is off or not connected"; an approved row older than 30 min still suggests Print now.
+  - **M-7:** the pulse route's header comment still says the route does no prune (the `after()` sweep prunes).
+  - **M-8:** the "one request per tap" comment (a tap is the POST, a pulse refetch and a local kick).
+- **Declined to judge (reviewer), for the gate:**
+  - the feed query's plan on Atlas (`$or` + sort + limit; needs `explain()`);
+  - whether a backgrounded Android app can hit the 12 s drawing deadline while its printer reads ready (then I3 fails a KOT after two refusals about 2 s apart; needs a device test);
+  - the Active CPU cost of the larger pulse answer and the no-host sweep (1E's E3 measures it);
+  - false alarms when a KOT waits more than 20 s behind others on a slow Bluetooth printer (matches the gate ruling);
+  - every staff tab's pulse now carries every device's id (consistent with the existing trust model).
+
+### Deviations from the plan, each with its reason
+
+1. **The ledger lives in the session scratchpad**, not `.superpowers/sdd/`. The session rules say to leave that folder alone and to use no skill script that writes there.
+2. **Commit messages** are the plan's, plus the `Co-Authored-By` trailer this environment requires.
+3. **One commit beyond the plan, `39222cb`:** the final review's I-2, with a test that failed first. The cafe total at the final HEAD is therefore **4174 / 4173 / 0 / 1**, not the plan's 4173 / 4172 / 0 / 1. I-1 is ruled for the gate (above).
+4. **E2E item 2 sent three KOTs, not one.**
+   - T-2: the dump and the screenshot after T-1's Print now missed its brief answer, so it was re-checked on another waiting slip. That tap missed: the sheet had closed (the unexplained note above). It was re-checked on T-3.
+   - T-3 came from the script's device, which also showed the alarm on the printing device for another device's slip.
+   - All three printed once when the printer came back.
+5. **The fix pass changed client code after items 1–5.** So the POS was rebuilt and restarted, and item 2's core was re-run on the fixed build with no host (item 8), which also shows the fix on the device. The APKs are unaffected (no app code).
+6. **The panel's text was read from screenshots where needed.** uiautomator leaves the sheet's text out of its dump while a notice is on screen; the screenshots are the evidence for those steps.
+
+### Open issues
+
+- **I-1** (above): needs the 1D gate's ruling, and its fix in 1E.
+- **Minors M-1…M-8** and the brief Print-now answer: for the gate / 1E.
+- **The once-only sheet close and notice loss** (E2E note): not reproduced; for the gate to look at.
+- **G5:** Android TCP detects a cut mid-slip only sometimes; Phase 3 (`DLE EOT`).
+- **The reviewer's "declined to judge" items** above, especially the Atlas `explain()` of the feed and the backgrounded-app render deadline under I3.
+- 1C and 1D release together, and only after 1E (the exit scenarios, the soak, the local free-tier measurement). **Nothing was deployed.**
