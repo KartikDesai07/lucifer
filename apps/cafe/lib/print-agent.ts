@@ -14,7 +14,7 @@ import {
   hostPrintSlipOf,
   type HostPrintSlip,
 } from "@/lib/print-host-slips";
-import { printWriteOutcomeOf, type PrintWriteOutcome } from "@/lib/print-write-outcome";
+import { PRINT_SLIP_REFUSALS_MAX, isSlipRefusal, printWriteOutcomeOf, type PrintWriteOutcome } from "@/lib/print-write-outcome";
 
 // Printing redesign, Phase 1 Session 1C (spec §9.1): the in-page print agent's core, with no React and
 // no globals except the pending-ack store, so every rule below is unit-tested with fakes
@@ -42,6 +42,8 @@ export interface PendingPrintAck {
   id: string;
   epoch: number;
   at: number;
+  /** A failed ack that got no answer (M4); absent: a "printed" ack. */
+  fail?: PrintAgentAckBody;
 }
 
 export interface PrintAgentDeps {
@@ -112,6 +114,7 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
   let timerAt = Number.POSITIVE_INFINITY;
   let ackTimer: unknown = null;
   let flushing: Promise<void> | null = null;
+  const slipRefusals = new Map<string, number>();
 
   function refusalHolds(): boolean {
     if (refused === null) return false;
@@ -134,6 +137,10 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
       timerAt = Number.POSITIVE_INFINITY;
       kick();
     }, delay);
+  }
+
+  function keep(entry: PendingPrintAck): void {
+    deps.writePending([...deps.readPending().filter((e) => e.id !== entry.id), entry].slice(-PRINT_ACK_PENDING_LIMIT));
   }
 
   function forget(entry: PendingPrintAck): void {
@@ -160,7 +167,7 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
         continue;
       }
       try {
-        await deps.ack(entry.id, { deviceId: deps.deviceId, epoch: entry.epoch, outcome: "printed" });
+        await deps.ack(entry.id, entry.fail ?? { deviceId: deps.deviceId, epoch: entry.epoch, outcome: "printed" });
         forget(entry);
       } catch (error) {
         if (ackAnswered(error)) forget(entry);
@@ -186,6 +193,8 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
     kickedWhileRunning = false;
     let again = false;
     try {
+      // An ack the last page (or a dropped answer) left goes first: a lease could expire our own job (M6).
+      await flushAcks();
       const data = await deps.lease();
       const job = data.jobs[0];
       if (job === undefined) {
@@ -196,23 +205,38 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
       if (result.ok) {
         // Kept BEFORE it is sent, so a reload mid-ack still reports the paper (spec §7.9). Awaited, so
         // the next lease does not find this job still leased at the head of the line.
-        const kept = deps.readPending().filter((e) => e.id !== job.id);
-        deps.writePending([...kept, { id: job.id, epoch: job.epoch, at: deps.now() }].slice(-PRINT_ACK_PENDING_LIMIT));
+        keep({ id: job.id, epoch: job.epoch, at: deps.now() });
         await flushAcks();
         again = true;
         return;
       }
-      const outcome = printWriteOutcomeOf(result.error);
-      // Nothing reached the printer: it is off or unreachable. No automatic attempt until it changes.
-      if (outcome.sent === "no" && !outcome.permanent) refused = { state: deps.printerState(), at: deps.now() };
-      const answer = await deps.ack(job.id, failedAckBody(deps.deviceId, job.epoch, outcome)).catch(() => null);
+      let outcome = printWriteOutcomeOf(result.error);
+      if (isSlipRefusal(outcome) && deps.printerReady()) {
+        // The slip itself was refused (owner, 1C gate I3): its second refusal fails the job, freeing the line.
+        const count = (slipRefusals.get(job.id) ?? 0) + 1;
+        slipRefusals.set(job.id, count);
+        if (count >= PRINT_SLIP_REFUSALS_MAX) outcome = { ...outcome, permanent: true };
+      } else if (outcome.sent === "no" && !outcome.permanent) {
+        // Nothing reached the printer: it is off or unreachable. No automatic attempt until it changes.
+        refused = { state: deps.printerState(), at: deps.now() };
+      }
+      const body = failedAckBody(deps.deviceId, job.epoch, outcome);
+      const answer = await deps.ack(job.id, body).catch((error: unknown) => {
+        // No answer: kept and re-sent like a printed ack, so the lease never expires into a counted "maybe" (M4).
+        if (!ackAnswered(error)) keep({ id: job.id, epoch: job.epoch, at: deps.now(), fail: body });
+        return null;
+      });
       if (answer === null) {
+        scheduleAckRetry();
         wakeAt(deps.now() + PRINT_AGENT_REFUSED_RECHECK_MS);
         return;
       }
-      // A job back in line waits for its own nextAttemptAt; a parked or failed one frees the line.
-      if (answer.nextAttemptAt !== null) wakeAt(Date.parse(answer.nextAttemptAt));
-      else again = refused === null;
+      // A job back in line holds the line until its own nextAttemptAt (the timer leases it then), so a
+      // kick that landed meanwhile (the bridge freeing up from this very slip) would only find it not due.
+      if (answer.nextAttemptAt !== null) {
+        kickedWhileRunning = false;
+        wakeAt(Date.parse(answer.nextAttemptAt));
+      } else again = refused === null;
     } catch {
       // No answer from the lease (offline, a deploy): look again later, never in a tight loop.
       wakeAt(deps.now() + PRINT_AGENT_REFUSED_RECHECK_MS);
@@ -253,32 +277,9 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
   };
 }
 
-// ── The pending-ack store and the agent's two module seams (client-only, never throws) ──────────────
+// ── The agent's two module seams (client-only, never throws); the pending-ack store is print-ack-store.ts ──
 
-const PENDING_ACK_KEY = "pos.print-ack-pending.v1";
-
-function isPendingAck(v: unknown): v is PendingPrintAck {
-  const o = v as Partial<PendingPrintAck> | null;
-  return typeof o === "object" && o !== null && typeof o.id === "string" && Number.isInteger(o.epoch) && Number.isFinite(o.at);
-}
-
-export function readPendingAcks(): PendingPrintAck[] {
-  try {
-    const parsed: unknown = JSON.parse(window.localStorage.getItem(PENDING_ACK_KEY) ?? "[]");
-    return Array.isArray(parsed) ? parsed.filter(isPendingAck) : [];
-  } catch {
-    return [];
-  }
-}
-
-export function writePendingAcks(entries: PendingPrintAck[]): void {
-  try {
-    if (entries.length === 0) window.localStorage.removeItem(PENDING_ACK_KEY);
-    else window.localStorage.setItem(PENDING_ACK_KEY, JSON.stringify(entries));
-  } catch {
-    // A storage that refuses: the ack is still sent now; only its retry after a reload is lost.
-  }
-}
+export { readPendingAcks, writePendingAcks } from "@/lib/print-ack-store";
 
 const kickListeners = new Set<() => void>();
 

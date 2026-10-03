@@ -12,10 +12,15 @@ import {
   createPrintAgent,
   failedAckBody,
   printAgentSlipOf,
+  readPendingAcks,
+  writePendingAcks,
   type PendingPrintAck,
   type PrintAgentAckBody,
   type PrintAgentResult,
 } from "@/lib/print-agent";
+import { PRINT_HOST_EOD_TIMEOUT_MESSAGE } from "@/lib/print-host-slips";
+import { PRINT_SLIP_REFUSALS_MAX, isSlipRefusal, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+import { RASTER_FAILED_MESSAGE } from "@/lib/printer/raster";
 import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_TOO_LARGE_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
 
 // Printing Phase 1 Session 1C (spec §9.1, the owner's rules after Session 1B): the agent core, driven
@@ -86,7 +91,8 @@ function world() {
 }
 
 const settle = async (): Promise<void> => {
-  for (let i = 0; i < 20; i++) await Promise.resolve();
+  // 60 turns (was 20): the 1C gate added one await (a cycle first waits for any flush on the wire, M6).
+  for (let i = 0; i < 60; i++) await Promise.resolve();
 };
 async function advance(w: ReturnType<typeof world>["w"], ms: number): Promise<void> {
   const end = w.now + ms;
@@ -220,9 +226,10 @@ test("a printed ack with no answer is retried every 5 s; any server answer clear
   const agent = createPrintAgent(deps);
   agent.setGate({ enabled: true, busy: false });
   await settle();
-  assert.equal(w.pending.length, 1, "kept after a network error");
-  await advance(w, PRINT_ACK_RETRY_MS);
-  assert.equal(w.pending.length, 1, "kept after a 5xx");
+  // The 1C review gate (M6) changed this sequence deliberately: the next cycle re-sends the kept ack
+  // before it leases again, so the 5xx answers that re-send, and the 5 s retry carries the third.
+  assert.equal(w.pending.length, 1, "kept after a network error, and after the 5xx of its re-send before the next lease");
+  assert.equal(w.acks.length, 2, "sent, then sent again before the next lease");
   await advance(w, PRINT_ACK_RETRY_MS);
   assert.equal(w.pending.length, 0, "a 409 is an answer: cleared");
   assert.equal(w.acks.length, 3, "three sends, then no more");
@@ -377,9 +384,9 @@ test("a kick that lands while a lease is on the wire is not lost: the agent leas
   agent.stop();
 });
 
-// Session 1C final review I2: a flush reads the pending list once. A printed ack kept while an earlier
-// flush was still on the wire waited for the 5 s retry, and the next lease found its own job still leased.
-test("a printed ack kept while an earlier flush is on the wire is sent by that flush, before the next lease", async () => {
+// Session 1C final review I2(b), rewritten at the 1C review gate for M6: the cycle now waits for a flush
+// already on the wire before it leases, and a flush re-reads the store until every entry was tried once.
+test("a printed ack still on the wire goes first: the next lease waits for its answer, then the new ack goes out at once", async () => {
   const { w, deps } = world();
   let releaseOld: () => void = () => undefined;
   const agent = createPrintAgent({
@@ -396,11 +403,155 @@ test("a printed ack kept while an earlier flush is on the wire is sent by that f
   w.leases.push({ jobs: [job("j1")], retryAt: null });
   agent.setGate({ enabled: true, busy: false });
   await settle();
-  assert.deepEqual(w.prints, ["j1"], "j1 printed while the old ack was still on the wire");
+  assert.equal(w.leaseCalls, 0, "no lease while an ack from before is unanswered: it could be our own job (M6)");
   releaseOld();
   await settle();
-  assert.deepEqual(w.acks.map((a) => a.id), ["old", "j1"], "the same flush sends j1's ack too, without waiting for the retry timer");
+  assert.deepEqual(w.prints, ["j1"], "then j1 prints");
+  assert.deepEqual(w.acks.map((a) => a.id), ["old", "j1"], "and its ack goes out without waiting for the retry timer");
   assert.deepEqual(w.pending, [], "both acks answered and cleared");
   assert.equal(w.leaseCalls, 2, "the next lease runs only after j1's ack was sent");
   agent.stop();
+});
+
+test("a flush re-reads the store: an ack kept while it was on the wire goes out with it", async () => {
+  const { w, deps } = world();
+  w.pending = [{ id: "a", epoch: 1, at: T0 }];
+  const agent = createPrintAgent({
+    ...deps,
+    ack: (id: string, body: PrintAgentAckBody) => {
+      if (id === "a") w.pending = [...w.pending, { id: "b", epoch: 1, at: T0 }];
+      return deps.ack(id, body);
+    },
+  });
+  await agent.flushAcks();
+  assert.deepEqual(w.acks.map((a) => a.id), ["a", "b"], "one flush, both acks");
+  assert.deepEqual(w.pending, [], "both answered and cleared");
+  agent.stop();
+});
+
+// ── The 1C review gate (2026-10-03): the owner's I3 decision and the agent minors F1, M4, M5, M6 ──
+
+// I3 (owner): a refusal caused by the slip itself (it could not be drawn, or its figures never loaded)
+// counts. The second one for a job while the printer is ready fails it, freeing the line; a refusal
+// because the printer is off never counts.
+test("I3: the second refusal of a slip that cannot be drawn fails it, and the next slip prints", async () => {
+  const { w, deps } = world();
+  w.leases.push({ jobs: [job("j1")], retryAt: null }, { jobs: [job("j1", 2)], retryAt: null }, { jobs: [job("j2")], retryAt: null });
+  w.results.push({ ok: false, error: new Error(RASTER_FAILED_MESSAGE) }, { ok: false, error: new Error(RASTER_FAILED_MESSAGE) });
+  w.ackAnswers.push(
+    { applied: true, status: "queued", nextAttemptAt: new Date(T0 + 2_000).toISOString() },
+    { applied: true, status: "failed", nextAttemptAt: null },
+  );
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  await advance(w, 3_000);
+  assert.deepEqual(
+    w.acks.map((a) => `${a.id}:${a.body.sent}:${a.body.permanent ?? false}`),
+    ["j1:no:false", "j1:no:true", "j2:undefined:false"],
+    "the first refusal waits for the server's backoff (2 s, not the 30 s printer re-check); the second is permanent",
+  );
+  assert.deepEqual(w.prints, ["j1", "j1", "j2"], "the line is free again: j2 prints straight away");
+  agent.stop();
+});
+
+test("I3: printer refusals never count, even between two slip refusals; an end-of-day timeout counts", async () => {
+  const { w, deps } = world();
+  for (let i = 0; i < 4; i++) {
+    w.leases.push({ jobs: [job("j1", i + 1)], retryAt: null });
+    w.ackAnswers.push({ applied: true, status: "queued", nextAttemptAt: new Date(T0 + 2_000).toISOString() });
+  }
+  w.results.push(
+    { ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) },
+    { ok: false, error: new Error(PRINT_HOST_EOD_TIMEOUT_MESSAGE) },
+    { ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) },
+    { ok: false, error: new Error(PRINT_HOST_EOD_TIMEOUT_MESSAGE) },
+  );
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  await advance(w, 200_000);
+  assert.deepEqual(w.acks.map((a) => a.body.permanent ?? false), [false, false, false, true], "only the second slip refusal is permanent");
+  agent.stop();
+});
+
+test("I3: a slip refusal after the printer stopped being ready is a printer refusal, never counted", async () => {
+  const { w, deps } = world();
+  w.leases.push({ jobs: [job("j1")], retryAt: null });
+  w.results.push({ ok: false, error: new Error(RASTER_FAILED_MESSAGE) }, { ok: false, error: new Error(RASTER_FAILED_MESSAGE) });
+  const agent = createPrintAgent({
+    ...deps,
+    print: async (j: LeasedPrintJob): Promise<PrintAgentResult> => {
+      w.prints.push(j.id);
+      w.ready = false;
+      return w.results.shift() ?? { ok: true };
+    },
+  });
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.equal(w.acks[0]?.body.permanent, undefined, "not counted");
+  assert.equal(isSlipRefusal(printWriteOutcomeOf(new Error(RASTER_FAILED_MESSAGE))), true, "it is a slip refusal by its sentence");
+  assert.equal(isSlipRefusal(printWriteOutcomeOf(new Error(PRINTER_NOT_CONNECTED_MESSAGE))), false, "a printer refusal is not");
+  assert.equal(PRINT_SLIP_REFUSALS_MAX, 2, "two refusals of the slip itself, then failed: at most 4 requests (2 leases, 2 acks)");
+  agent.stop();
+});
+
+// F1 (the gate's fresh review): the bridge freeing up from this very slip lands while its failed ack is
+// on the wire. A job back in line holds the line until its nextAttemptAt, so that kick must not cost an
+// empty lease.
+test("F1: a maybe whose answer names a retry time costs no extra lease, whatever re-renders meanwhile", async () => {
+  const { w, deps } = world();
+  w.leases.push({ jobs: [job("j1")], retryAt: null });
+  w.results.push({ ok: false, error: new Error(PRINTER_WRITE_FAILED_MESSAGE) });
+  w.ackAnswers.push({ applied: true, status: "queued", nextAttemptAt: new Date(T0 + 5_000).toISOString() });
+  let agentRef: ReturnType<typeof createPrintAgent> | null = null;
+  const agent = createPrintAgent({
+    ...deps,
+    ack: (id: string, body: PrintAgentAckBody) => {
+      agentRef?.setGate({ enabled: true, busy: true });
+      agentRef?.setGate({ enabled: true, busy: false }); // the bridge re-renders while the ack is on the wire
+      return deps.ack(id, body);
+    },
+  });
+  agentRef = agent;
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.equal(w.leaseCalls, 1, "one lease: the retry waits for its own timer");
+  assert.equal(w.timers.length, 1, "one timer, at the job's nextAttemptAt");
+  agent.stop();
+});
+
+// M4: a failed ack that got no answer is kept and re-sent like a printed one, so the lease never expires
+// into a counted "maybe" (a false REPRINT, or a false cashier prompt).
+test("M4: a failed ack with no answer is kept and re-sent at 5 s, even with the printer off; a 4xx is an answer", async () => {
+  const { w, deps } = world();
+  w.leases.push({ jobs: [job("j1")], retryAt: null });
+  w.results.push({ ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) });
+  w.ackAnswers.push(new ApiError("offline", "network", null), { applied: true, status: "queued", nextAttemptAt: null });
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  w.ready = false;
+  await advance(w, PRINT_ACK_RETRY_MS + 1_000);
+  assert.deepEqual(w.acks.map((a) => `${a.id}:${a.body.outcome}:${a.body.sent}`), ["j1:failed:no", "j1:failed:no"], "re-sent once, as the same failed ack");
+  assert.deepEqual(w.pending, [], "answered: cleared");
+  agent.stop();
+
+  const second = world();
+  second.w.leases.push({ jobs: [job("j2")], retryAt: null });
+  second.w.results.push({ ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) });
+  second.w.ackAnswers.push(new ApiError("gone", "http", 409));
+  const other = createPrintAgent(second.deps);
+  other.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.deepEqual(second.w.pending, [], "a server answer of any kind is never kept");
+  other.stop();
+});
+
+// M5: a storage that refuses the write (full, blocked) used to drop the printed ack before it was sent.
+test("M5: the pending-ack store keeps the list in memory when storage refuses it (node has no window)", () => {
+  writePendingAcks([{ id: "a", epoch: 1, at: 1 }]);
+  assert.deepEqual(readPendingAcks(), [{ id: "a", epoch: 1, at: 1 }], "kept in memory, so it is still sent");
+  writePendingAcks([]);
+  assert.deepEqual(readPendingAcks(), [], "cleared");
 });

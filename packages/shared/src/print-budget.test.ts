@@ -143,3 +143,21 @@ test("1C agent: an unanswered printed ack is re-sent every 5 s for at most 10 mi
   assert.ok(PRINT_ACK_RETRY_MS >= 5_000, "never faster than every 5 s");
   assert.ok(PRINT_ACK_PENDING_MAX_MS / PRINT_ACK_RETRY_MS <= 120, "at most 120 re-sends per lost ack, then it is dropped");
 });
+
+// The 1C review gate (fresh review, 2026-10-03): two request sources the per-event pins above did not add
+// up. After every burst of slips the agent leases once more and finds its line empty; and a printer that
+// reports ready but keeps refusing costs a lease and an ack per 30 s re-check, all day.
+test("1C gate: Phase 1's busy day, with one trailing empty lease per burst, still fits the no-host estimate", () => {
+  // Phase 1 has no stations: 1.5 KOT rounds + 1 bill per order. At worst every slip is its own burst.
+  const slips = PRINT_BUDGET_BUSY_DAY.orders * 2.5;
+  const bursts = slips;
+  const perDay = Math.round(slips * 2 * (1 + PRINT_BUDGET_BUSY_DAY.retryShare) + bursts);
+  assert.equal(perDay, 2_400);
+  assert.ok(perDay <= printSlipRequestsPerDay(), `${perDay}/day within the 2,640 estimate`);
+});
+
+test("1C gate: a printer that says ready but keeps refusing costs at most 2 requests per 30 s per device: 2,880 over the day", () => {
+  const perDevice = 2 * Math.ceil(OPEN_MS / PRINT_AGENT_REFUSED_RECHECK_MS);
+  assert.equal(perDevice, 2_880);
+  assert.ok(perDevice <= PRINT_BUDGET_NORMAL_MAX_PER_DAY, "even a whole day of it stays inside the normal-day ceiling");
+});

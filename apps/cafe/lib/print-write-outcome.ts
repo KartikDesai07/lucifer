@@ -70,6 +70,15 @@ const NEVER_PRINTS: ReadonlySet<string> = new Set([
   PRINT_HOST_EMPTY_SLIP_MESSAGE,
 ]);
 
+/** Refused because of the slip itself, not the printer (owner, 1C gate I3): it could not be drawn, or
+ *  its figures never loaded. The second one for a job while the printer is ready fails that job. */
+const SLIP_REFUSALS: ReadonlySet<string> = new Set([RASTER_FAILED_MESSAGE, PRINT_HOST_EOD_TIMEOUT_MESSAGE]);
+export const PRINT_SLIP_REFUSALS_MAX = 2;
+
+export function isSlipRefusal(outcome: PrintWriteOutcome): boolean {
+  return outcome.sent === "no" && !outcome.permanent && SLIP_REFUSALS.has(outcome.message);
+}
+
 const UNKNOWN_FAILURE_MESSAGE = "may have printed";
 
 export function printWriteOutcomeOf(error: unknown): PrintWriteOutcome {
