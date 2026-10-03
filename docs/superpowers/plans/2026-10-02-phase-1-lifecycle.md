@@ -19027,3 +19027,189 @@ Push only with the repo's token credential (check `git config --local --get-all 
 ---
 
 ## Session 1E Results (filled in by the implementer)
+
+### Commits (`e842dc4..HEAD`)
+
+| Commit | Task |
+|---|---|
+| `cfa1c3f` | Step 0: merge `origin/main` at `7b7063e` (Settings > Appearance); the one conflict, the end of `testChain`, keeps all three entries |
+| `65bcb45` | E0a: the 1D gate's server half (newest 20; retention 3 h / 45 min / 15 min grace; device prune 7 days; the repair's own 12 h window) |
+| `470644a` | E0b: the 1D gate's client half (a promise per tap; the remembered alarm; named buttons; the agent's minors) |
+| `85c049b` | E1a: `apps/cafe/scripts/print-soak.ts` and the fake printer's `--drop-every` |
+| `bf7b3c6` | E2: TEST-CHECKLIST, the Phase 1 printing lifecycle checks |
+| `1ddc1fe` | Final review I-1 (beyond the plan): a waiting slip back from a moment's lease gets its notice back, without a second ring |
+| `6e125ee` | Merge `origin/main` at `a27614e` (Settings > Notifications hidden; it moved at the session's end) |
+| (this commit) | Results |
+
+### Step 0
+
+`git fetch` (token credential): `origin/main` was `7b7063e`, as the gate expected. The branch was at `e842dc4`. `git merge --no-ff origin/main` conflicted only at the end of `apps/cafe/package.json`'s `testChain`; the resolution keeps `lib/css-compat.test.ts`, `lib/appearance-settings-paths.test.ts` and `lib/appearance-settings-paths-2.test.ts`, in that order (`cfa1c3f`). The merged tree: shared **643/643** (637 + 6), tsc 0; cafe **4234 tests, 4233 pass, 0 fail, 1 skipped** (the gate's number); cafe tsc 0; lint 0 errors and the 2 old warnings (`lib/masters-blob.test.ts:331`). So every total below is the plan's + 6 (shared) and + 27 (full cafe).
+
+**`origin/main` moved again before the push**, to `a27614e` (the owner's "hide Settings > Notifications from the hub and the sidebar": 6 cafe files, two of them tests; no print file, no `testChain` change). It was merged with `--no-ff` as `6e125ee` (no conflict) and re-checked: cafe **4248 tests, 4247 pass, 0 fail, 1 skipped** (+2, the merge's own tests), cafe tsc 0, lint 0 errors and the 2 old warnings, Hub tsc OK, shared 646/646, the Next build **123 routes**. The other suites (mobile, desktop, print tools, live legs) and the APKs do not depend on those files. Every E1b and E3 run was on the tree before this merge.
+
+### Per-task RED → GREEN (every Expected line compared; all matched)
+
+Blocks were applied verbatim by the 1D gate's own applier script (copied unchanged to this session's scratchpad): the find text is the fenced lines joined with `\n`, Create and Replace-the-whole add one final newline, every find must match exactly once, and a step is written only if every block in it applies. Every step applied first time (E0a 13 + 19, E0b 6 + 15, E1a 2 + 7, E2 1 operations). After E2 the 31 files the session's tasks change were blob-compared with the gate's golden copy: **all 31 identical**.
+
+| Task | RED (Expected = seen) | GREEN (Expected = seen) |
+|---|---|---|
+| E0a | 5 cafe files: **172 tests, 165 pass, 7 fail**; shared `print-budget.test.ts`: `SyntaxError … does not provide an export named 'PRINT_DEVICE_PRUNE_MS'`, 1/0/**1** | shared budget **18/18**, tsc OK; 7 cafe files **211/211**, tsc OK; live legs **`219 passed, 0 failed`** |
+| E0b | **39 tests, 26 pass, 13 fail** | 12 files **176/176**, tsc OK; cafe `npm test` **4245 / 4244 / 0 fail / 1 skipped** (4218 + 27); lint `✖ 2 problems (0 errors, 2 warnings)` |
+| E1a | `test:print-tools` **8 tests, 6 pass, 2 fail** | **8/8**; `TSC_ESLINT_OK` |
+| E2 | — | `grep -c` → `1` |
+| Final fix I-1 | `print-waiting.test.ts` **14 tests, 13 pass, 1 fail** ("still not printed: its notice comes back …") | **14/14**, tsc 0, eslint clean; cafe `npm test` **4246 / 4245 / 0 / 1** (+1, the new test); lint 0 errors and the 2 old warnings |
+
+### Task E1b: the Phase 1 exit scenarios on the harness. All passed.
+
+`<scratchpad>` is this session's scratchpad (`23592d9c…/scratchpad/`); screenshots are in `<scratchpad>/shots/`; times are UTC (the emulator's clock shows IST, +5:30).
+
+**Set-up:**
+- `df -h`: C: 5.8 GB free, D: 5.8 GB free. The AVD `Pixel_7_API_33` (WebView 109.0.5414.123) booted at **`-memory 4096 -no-snapshot -no-boot-anim`** (no exit 21 this time). `adb logcat -b crash` at boot: **0 lines** (`logs/crash-at-boot.log`), then cleared.
+- A fresh database `pos_scratch_e2e_1e`: `make-env.py` wrote `<scratchpad>/e2e.env` (7 keys; never printed); `precheck` said `{"exists": false}`; then `seed-admin.ts` (e2eadmin), `seed-tables.ts` (T-1…T-8), `seed-menu.ts` (4 categories, 8 products).
+- The POS: `npm run build` right after E2 (`bf7b3c6`): **123 routes**; `next start -p 3100` with the env file; `/login` 200.
+- The fake printer on 9100, one `--out` folder per run (`fake-jobs-1`, `-2`, `-3`).
+- The app: the x86_64 APK `fc4181e4…` (Session 1D's, byte-identical; E4 rebuilt it and got the same hash), `pm clear`, `adb reverse tcp:3100 tcp:3100`, address `http://localhost:3100`; signed in as e2eadmin (username, TAB, focus checked in a dump: the focused field was the password field, then `type-secret.py`); network printer `10.0.2.2:9100` → "Network printer 10.0.2.2 is connected."; **Print all slips on this device** → "This device prints all slips." No background-permission prompt appeared this time.
+- The tools are the plan's, extracted verbatim from the plan by a script (each is byte-identical to the gate's tested copy). Two small extra scratchpad scripts, for the final-review fix only: `e2e-refuse.ts` (lease the host's head as the host, hold it, then ack `failed`, `sent: "no"`) and `e2e-keys.ts` (prints job keys with the order id folded).
+- Scenarios 0–3 ran on `bf7b3c6`'s build; then the final review's fix (`1ddc1fe`) was built (123 routes) and the POS restarted, and the fix check, scenario 4 and all of E3 ran on that build.
+
+**Scenario 0. A printer that is off costs no attempt.** Printer stopped (PID checked) at 10:43:46; `kot-only` at 10:43:47.5 (ORD-20261003-001, T-1). The host leased it once and refused it (log `created, leased, failed(not sent: The printer is not connected. …)`), then leased no more: `queued`, `uncertainAttempts 0`. One ring at 10:44:23.2 (35.8 s; `dumpsys audio`: a new AAudio player of the app); the notice **"KOT round 1 · T-1 has not printed yet."** with **Show** (118 px tall: 44 CSS px); the button **"1 slip waiting · Printer not connected — open printer setup"** with a red 1 (`e-03-s0-alarm.png`). Show opened **"Waiting for the printer (1) · KOT round 1 · T-1 · 1 min · The printer is off or not connected."** with Print now and Clear (`e-04-s0-panel.png`). Printer back (`fake-jobs-2`) at 10:45:08.4 → printed at 10:45:12.0, **one copy, 40,494 B, unlabelled**, `uncertainAttempts 0`; the row and the notice were gone by 10:45:40.
+
+**Scenario 1. A lost ack prints a REPRINT copy.** `kot` at 10:45:55.2 (ORD-…-002, T-2), leased as the host at 10:45:55.245 and never acked. The host's lease expired it after the 90 s: **one REPRINT copy, 46,110 B, at 10:47:28.6** (the decoded raster shows the black REPRINT banner: `e-raster-reprint.png`); `printed`, epoch 2, `uncertainAttempts 1`, labels `[REPRINT]`, log `created, leased, expired(lease expired: may have printed), leased, printed`. Nothing printed a third time.
+
+**Scenario 2. A mid-bill drop raises the cashier prompt.** `bill` for ORD-…-001, leased as the host at 10:47:49.2, never acked → `needs-confirm`, **no paper**; ring at 10:49:23.6; the notice **"Bill · ORD-20261003-001 may not have printed."** with Show (`e-05`); the panel's **"Check the bill (1)"** with the buttons named **"Print again Bill · ORD-20261003-001"**, **"It printed …"**, **"Clear …"** (`e-06`). **Print again** at 10:50:28.9 → **one DUPLICATE copy, 41,718 B, at 10:50:29.7** (the decoded raster shows the DUPLICATE banner over the bill: `e-raster-duplicate.png`); `printed`, `uncertainAttempts 1`, labels `[DUPLICATE]`, log `created, leased, expired(…), confirmed(print again: Admin), leased, printed`. For the moment between the tap and the print the row read "Waiting to print again, marked DUPLICATE." (`e-07-s2-printagain-2.png`). A second bill (ORD-…-002), leased as the host at 10:51:16.1 → `needs-confirm`, ring at 10:52:48.9 → **It printed** at 10:53:33 → `printed` (log `… expired(…), confirmed(it printed: Admin)`), **no paper** (the printer still held 3 full copies).
+
+**Scenario 3. Killing the host mid-job.** `kot` at 10:53:51.2 (ORD-…-003), leased as the host; the app force-stopped at 10:53:51.4. At 10:55:44 the job was still `leased`, epoch 1 (no device alive, so nothing ran the sweep). Relaunched at 10:55:45.5 → **one REPRINT copy, 46,110 B, at 10:55:49.9**; `printed`, epoch 2, `uncertainAttempts 1`, log `created, leased, expired(lease expired: may have printed), leased, printed`.
+
+**The final review's fix on the device** (the rebuilt POS; printer stopped at 11:01:43). `kot-only` at 11:01:44.7 (ORD-…-004, T-2) → the notice "KOT round 1 · T-2 has not printed yet." by 11:02:33. `e2e-refuse.ts` leased it as the host at 11:02:49.4 and held the lease 30 s: the notice was **gone** at 11:03:16 and 11:03:26 (a pulse saw the slip leased, so out of the feed: the reviewer's finding); the refusal ack at 11:03:19.4 (`queued`); the notice was **back** by 11:03:37 and stayed (11:03:47, 11:03:57), with no new audio player (`e-09-fix-notice-back.png`). (The relaunched app had had no tap yet, so its alert sound was not unlocked and the first notice did not ring either: the existing autoplay rule, `isAlertSoundUnlocked()`; the unit test pins "no second ring".)
+
+**Scenario 4. A deleted job is repaired by the sweep.** With the printer still off: `kot-only` at 11:04:12.9 (ORD-…-005, T-3); `delete` at 11:04:22.9 (`wasStatus: queued`, key `kot:<order>:1`). The pulse sweep re-created it at **11:04:48.4** (25.5 s): `queuedBy: "Repair"`, key `kot:<ORD-005's id>:1`. Printer back (`fake-jobs-3`) at 11:05:22 → the repaired job printed **once** (40,494 B; log `created, leased, printed`), and the T-2 KOT waiting from the fix check printed once, unlabelled (its refusal never counted).
+
+**Scenario 5. The 200-order soak:** E3's R1 and R3 (below), both `pass: true`.
+
+### Task E3: the free-tier check, measured locally (spec §17.3 item 5)
+
+**How to read it.** The local `next start` process's CPU time per request stands in for Vercel's Active CPU (one process, no children; `(Get-Process).TotalProcessorTime`). The local POS has no realtime Worker, so the host's wake polls at the socket-down cadence (every 3 s for 2 minutes after a job, then every 15 s): the measured idle rate is §17.2's **worst case**; the normal-day projection uses the socket-healthy 60 s cadence (1 a minute). The pulse is not counted as printing (every tab polls it, printing or not); its added feed read and sweep are inside its measured cost. Mongo operations are `db.serverStatus().opcounters` (insert + query + update + delete + getmore) sampled every 10 s; they include the soak's own few direct reads (its drain check), so they err high.
+
+**Set-up.** The counting proxy (`e3/count-proxy.mjs --listen 3200 --target 3100`) and `adb reverse tcp:3100 tcp:3200` (the app's address stays `http://localhost:3100`). The WebView's kept-alive connections bypassed the new mapping (2 requests in 60 s), so the app was force-stopped and relaunched before R1; from then every app request went through the proxy. The POS server is PID 19652 (the fix's build). The second fake printer `--port 9101 --drop-after 2000 --drop-every 9 --out soak-a`. Nothing else used the local mongod during the runs (checked: its only client connections were the POS server's).
+
+**Deviation (the owner, mid-session: "ye 30 min idle … bahut time lagega, proper deep code review karo and aage continue karo").** R2 was cut to 11.8 minutes, measured from R1's end (so it includes the host's 2-minute fast-wake tail after the soak: a higher, conservative idle rate), and R4 ran 10 minutes instead of 30. The idle traffic is a fixed cadence (wake 15 s, pulse 20 s, the old host beat 20 s), so 10 minutes holds 30–40 of each. The waiting time went to a deep code review (below).
+
+| Run | Window | Requests (function invocations) | Printing requests | CPU | CPU per request | Mongo ops | Raw peak |
+|---|---|---|---|---|---|---|---|
+| **R1** soak, the app as host, 200 orders | 5.6 min (11:09:12–11:14:47) | 1,665 (297.9/min) | 1,109: 501 lease, 500 ack, 108 wake (**2.22 per slip**, 5.55 per order) | 14,813 ms | **8.9 ms** | 5,591 (**11.18 per slip**) | 20.07 ops/s at 2,147 orders an hour |
+| **R2** idle, the app as host | 11.8 min (11:14:47–11:26:33, from R1's end) | 197 (16.75/min): 79 wake, 35 pulse, 35 host beat, 24 tables, 24 orders | 79 wake (**6.72/min**, the fast tail included) | 2,297 ms | 11.66 ms | 629 | 2.89 ops/s |
+| **R3** soak, no host, the soak as its own agent on the dropping printer (9101) | 5.4 min (11:28:02–11:33:23; the host removed in the app at 11:27:49) | 2,116 (395.3/min) | 1,579: 1,040 lease, 539 ack (**3.16 per slip**, 7.9 per order) | 16,484 ms | **7.79 ms** | 6,476 (**12.95 per slip**) | 24.56 ops/s at 2,242 orders an hour |
+| **R4** idle, no host | 10.0 min (11:35:04–11:45:04) | 78 (7.8/min): 30 pulse, 20 tables, 20 orders, one page load (8 requests) | **0** (no device polls with no host) | 1,438 ms | 18.44 ms (the page load included) | 446 | 3.2 ops/s |
+
+R1's soak report (`e3/soak-r1.json`): `"mode": "app host prints"`, 200 orders, 100 rounds, 200 bills = **500 slips, all `printed`**, `labelled 0`, the printer **500 full copies, 0 cut**, `pass: true`, no problems.
+
+Mean durations from the proxy log (the server's answer time, ms): R1 lease 7.8, ack 7.0, wake 8.0, pulse 7.2, orders 11.4, settle 11.0, items 11.2; R2 wake 7.6, **pulse 8.7** (p95 14). Session 1D recorded no pulse timing; the 1D gate's pre-run on the golden 1E build measured a pulse mean of 12.1 ms (37 pulses, `14ab0527…/scratchpad/e3/proxy-smoke.jsonl`).
+
+**Projection with a host** (`report.mjs project --soak run-r1.json --idle run-r2.json`): printing **3,384 invocations a day = 10.2 %** of the free allowance (≤ 20 %), worst case (socket down all day) **7,502 a day** (≤ 17,040), printing CPU **32.1 s a day = 6.7 %** of Active CPU (≤ 15 %), **11.18 Mongo ops per slip**, Atlas peak 20.07 ops/s raw → **0.93 ops/s** at the busy day's rush of 100 orders an hour (< 10). **`"pass": true`.**
+
+R3's soak report (`e3/soak-r3.json`): `"mode": "soak agent prints"`, 200 orders, 100 rounds, 200 bills = **500 slips: 480 `printed`, 20 bills `needs-confirm`** (each cut once: they wait under "Check the bill"), `labelled 39` (the KOTs repeated with REPRINT after a cut), the printer **480 full copies + 59 cut copies, and 59 counted attempts**: every printed slip has exactly one full copy, every cut copy is a counted `uncertainAttempts`, every repeat carries its label; `pass: true`, no problems. R3's printing requests per slip are the soak tool's own pattern (it drains its line after each of its three calls per order, so each drain ends with one empty lease): an upper bound for the app's agent, which ends a burst with one trailing empty lease (pinned at the 1C gate).
+
+After R3 the emulator (no longer the host) showed **"20+ slips waiting · Printer connected — open printer setup"** and the panel **"Slips waiting (the latest 20)" · "Check the bill (20)"** (`e-11-s5-check-bill-panel.png`): every device sees every waiting slip. Exactly 20 waiting read as "20+" (the reviewer's minor M5, seen live). **Clear** on Bill · ORD-20261003-212 in the panel at 11:34:05 → "Check the bill (19)"; the other 19 were dismissed with `e2e-tool.ts dismiss <id>` (19 × 200) by 11:34:46. Nothing waited during R4.
+
+Mean durations: R3 lease 6.4, ack 6.3, pulse 10.9 (p95 43: one slow pulse during the soak); R4 pulse **8.4** (p95 10).
+
+**Projection with no host** (`report.mjs project --soak run-r3.json --idle run-r4.json`): printing **3,792 invocations a day = 11.4 %** (≤ 20 %), worst case **3,792** (no polling with no host; ≤ 17,040), printing CPU **29.5 s a day = 6.2 %** (≤ 15 %), **12.95 Mongo ops per slip**, Atlas peak 24.56 ops/s raw → **1.1 ops/s** at the rush (< 10). **`"pass": true`.**
+
+**Both projections pass.** Nothing was tuned.
+
+**Writes per slip (the ≤ 3 rule).** Split from the opcounters: R1 made **700 inserts** (200 orders + 500 slips: one insert per slip) and 1,632 updates, of which the 500 leases that found a job (of 501) and the 500 acks are 1,000 (the rest are the order writes: rounds, settles and their counters, and 11 device heartbeats), so a slip that prints first time costs **3 writes** (create, lease, ack). R3: 700 inserts and 2,140 updates; its 59 cut attempts each add one lease and one ack, so 3.16 print writes per slip with one slip in nine cut. R1's 5,591 operations (11.18 per slip) are mostly reads: the pulses, the host's wake, the order routes and the soak's own drain check.
+
+**Retention, live.** At 11:45:35 the oldest print job left was from 11:01:44, and no finished slip older than 45 minutes remained: every E1b slip made between 10:43 and 10:55 had been pruned by the pulse's `after()` sweep (`e2e-age.ts`), with no cron and no extra request.
+
+### Changed existing pins (each follows a deliberate change in this plan)
+
+- **E0a:**
+  - `lib/print-attention.test.ts`: the window pin (12 h → `PRINT_JOB_QUEUED_RETENTION_MS`, 3 h) and its test name;
+  - `lib/print-lifecycle-paths.test.ts`: the prune pin ("after 12 h" → "after 3 h, unless staff acted on it or it was leased lately", plus the grace and device-prune matches);
+  - `lib/print-repair.test.ts`: the repair's order-window pin (`PRINT_JOB_QUEUED_RETENTION_MS` → `PRINT_REPAIR_ORDER_MAX_AGE_MS`);
+  - `lib/go-live-runbook.test.ts`: the queued-retention pin (12 hours → 3 hours) and the GO-LIVE row; a new 45-minute finished-retention pin and row.
+- **E0b, `lib/print-waiting.test.ts`:** the button-name expectations (the printer's state is kept after the count), the alarm test (`printAlarmRows` → `printAlarmStep`), the I-2 pin (a promise per tap) and the alarm pin.
+- **E1a, `scripts/fake-escpos-printer.test.mjs`:** the `parseArgs` pin gains `dropEvery: 1`.
+- The final-review fix adds a test; it changes no pin.
+
+### Task E4
+
+**Step 1: every suite** (at `1ddc1fe`, the final code)
+
+| Suite | Result |
+|---|---|
+| shared `npm test`; `tsc` | **646/646** (640 + 6 from the merge); 0 |
+| cafe `npm test` | **4246 tests, 4245 pass, 0 fail, 1 skipped** (the plan's 4218 + 27 from the merge + 1, the final fix's test; the skip is 1C's `go-live-dl` planning-file pin) |
+| cafe `tsc`; `npm run lint` | 0; 0 errors and the 2 old warnings (`lib/masters-blob.test.ts:331`) |
+| Hub `tsc` | `HUB_TSC_OK` |
+| mobile `tsc`; lint; `npm test`; `test:app` | 0; 0; **114/114**; Jest **3/3** |
+| desktop `npm test` | **191/191** |
+| `npm run test:print-tools` | **8/8** |
+| live legs (local mongod, `pos_scratch_print_host`) | **`219 passed, 0 failed`** (1D's 206, (af)'s 4 new checks, (ag)'s 9) |
+
+**Step 2: the Next production build.** `npm run build` at `bf7b3c6` (for E1b) and again at `1ddc1fe` (the final code; HEAD changes only this plan): success, **123 routes** both times (1E adds none).
+
+**Step 3: APKs** (x86_64 first, then ARM; `GRADLE_USER_HOME='D:\gradle-home'`; after the emulator was stopped, never with the Next build)
+
+Both builds reported `BUILD SUCCESSFUL` (1 m 16 s, then 41 s). Each APK holds only its own ABI. **All three are byte-identical to Session 1D's** (1E changes no app code; no Kotlin change).
+
+| APK | Path | Size | SHA-256 |
+|---|---|---|---|
+| Emulator only (x86_64) | `<scratchpad>/pos-emulator-x86_64-release.apk` | 7,407,761 B | `fc4181e4f20799576277c7be312316d34d46db23b286bad6b13fec1cad5f13d3` |
+| Client, arm64-v8a | `apps/mobile/android/app/build/outputs/apk/release/app-arm64-v8a-release.apk` | 7,276,038 B | `9f89cd9a172b2ab8d5b72872bca947c44ae3c7c74c3a33dfc118e9c00e180ff7` |
+| Client, armeabi-v7a | `apps/mobile/android/app/build/outputs/apk/release/app-armeabi-v7a-release.apk` | 6,683,872 B | `f3f6214982c9122dbc7c28f415d7a478a8aef392b834bf8213cb909c73f426cc` |
+
+### Final whole-branch review (fresh reviewer subagent, Opus, read-only, `cfa1c3f..bf7b3c6`)
+
+Verdict: no Critical; **one Important, fixed** (`1ddc1fe`); nine Minor, deferred to the orchestrator.
+
+- **I-1 (fixed).** The feed leaves out leased rows. With the printer off, the desktop and system lanes still lease every 30 s (their `canPrintNow()` stays true) and hold the lease while the connect fails; a pulse landing then took the slip out of the feed, its notice went down, and when it came back within the alarm's 60 s memory in the same group it was never shown again (no ring either: the refusal never counts, so it never reaches `failed`). Staff would read the notice going away as "printed". Fix: the alarm remembers that a notice went down because its slip left the feed (`left`), and shows it again, without a ring, when the slip is back still waiting; a slip staff acted on stays quiet. Test "the 1E final review: a slip back from a moment's lease…" RED (13/14) → GREEN (14/14); cafe 4246/4245/0/1; proven on the device (above).
+- **Deferred minors** (for the orchestrator's review; none can print twice or lose a slip):
+  - M2: the feed's 3 h window ends before the prune's 15 min grace, so a slip tapped at about 2 h 58 min leaves the panel while it is kept; the pin message "the panel shows every waiting slip the prune keeps" overstates; a pruned row's tap answers "Already handled.".
+  - M3: "a lease that ran within 15 min" protects only a row still `leased` (every exit unsets `lease`); a late ack then gets 404 and is forgotten (nothing prints twice); the spec and pin wording overstate.
+  - M4: the summary notice keeps its first count until nothing waits.
+  - M5: `truncated` is true at exactly 20 rows ("20+" with 20 waiting; seen live after R3), and the alarm then treats the feed as cut.
+  - M6: Print now on a stale slip keeps its notice (same group), although the spec says a slip staff acted on loses its notice.
+  - M7: TEST-CHECKLIST's "Couldn't print" quotes "Tried twice…", but a real cut on USB, Bluetooth or the Windows app shows the writer's own sentence.
+  - M8: the soak checks its own `MONGODB_URI` and `--base`, not that the server uses the same scratch database; the Mongo host is not required to be local.
+  - M9: the app-mode soak compares totals only; `--drop-every` counts connections, not jobs (exact for the soak's own lane).
+  - M10: message-less `assert.equal` / `deepEqual` in the gate's new tests (every new `assert.ok` has a message, so nothing can hang), and stale "12 h" / "2 h" wording in a few comments, the prune leg's labels and test messages.
+- **The reviewer's "declined to judge", ruled here:** queued cancel, void and moved notices do not ring while their printer is off (spec §10 and N-10 ring only for slips that could not print; the panel shows them); retention counts from `createdAt` (the owner's decision); an old slip that gets worse while the feed is cut keeps its first wording (N-2's design); Android's LAN lane does read "not connected" after its first refusal and leases no more (E1b scenario 0), so I-1 bites mainly the desktop and system lanes; TanStack's offline pause of a tap predates 1E.
+
+**Deep code review (the owner asked mid-session).** A second, own pass over the whole `cfa1c3f..1ddc1fe` diff: every reader of the retention constants re-traced (the prune, the feed, the repair's own 12 h window, the old tabs' resolved readback now 45 min, the device prune against `countOnlineAgents`, the only `PrintDevice` reader); the KOT repair against the 45 min prune (a job's `createdAt` is never before its round fired, so no printed row inside the 30 min window is ever deleted); the alarm with the fix across the summary, staff actions, a cut feed and a worse group; the single mount of the alarm (`PrintHostProvider` → `PrintHostDrain`); the card's promise per tap; the agent's M-3, M-4 and N-8; the soak's agent mode and end check; leg (ag); the new checklist. No further Critical or Important finding.
+
+### Phase 1 exit criteria (spec §14), with evidence
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| An attempt that may have printed prints a REPRINT copy | **Pass** | E1b scenario 1 (a lost ack: one REPRINT copy, 46,110 B, banner decoded); scenario 3; R3 (39 KOTs repeated with REPRINT after a cut, each counted) |
+| On a bill it raises the cashier prompt | **Pass** | E1b scenario 2 (`needs-confirm`, no paper; Print again → one DUPLICATE copy, banner decoded; It printed → no paper); R3 (20 cut bills under "Check the bill") |
+| Killing the host mid-job re-queues it after 90 s | **Pass** | E1b scenario 3 (leased while no device lived; relaunch → expired, one REPRINT copy 4.4 s later) |
+| A printer that is off costs no attempt | **Pass** | E1b scenario 0 (one refusal, `uncertainAttempts 0`, printed once unlabelled when back); 1C leg (ad) |
+| A missing job is repaired by the sweep | **Pass** | E1b scenario 4 (deleted → `queuedBy: Repair` with the same key in 25.5 s → printed once) |
+| No silent loss in a 200-order soak | **Pass** | R1 (500/500 printed, 500 full copies) and R3 (480 printed + 20 visibly waiting; 59 cut copies = 59 counted attempts), both `pass: true` |
+| The locally measured free-tier budget (§17.3) passes | **Pass** | Both projections `pass: true`: invocations 10.2 % / 11.4 %, Active CPU 6.7 % / 6.2 %, worst case 7,502 / 3,792 a day, Atlas 0.93 / 1.1 ops/s at the rush (R2 and R4 shortened at the owner's request) |
+| (Known limit) Android's TCP lane cannot see a mid-slip cut | Phase 3 (G5) | Unchanged; no Kotlin change |
+
+### Deviations from the plan, each with its reason
+
+1. **A fix beyond the plan:** `1ddc1fe`, the final review's I-1 (above), by TDD, with a device check.
+2. **R2 and R4 were shortened** (11.8 and 10 minutes) on the owner's mid-session instruction; R2's window starts at R1's end, so it includes the host's 2-minute fast-wake tail (a higher, conservative idle rate).
+3. **The build under test changed once:** E1b scenarios 0–3 ran on `bf7b3c6`'s build; the fix check, scenario 4 and E3 on `1ddc1fe`'s.
+4. **The app was force-stopped and relaunched after `adb reverse` moved to the proxy** (its kept-alive connections bypassed the new mapping).
+5. **The x86_64 APK for E1b and E3** was Session 1D's byte-identical `fc4181e4…` (the release folder held only the ARM APKs); E4 rebuilt it.
+6. **The plan asks for the pulse's mean duration "next to Session 1D's"**: 1D recorded none; the 1D gate's pre-run (12.1 ms) is given instead.
+7. **Extra scratchpad scripts** (never in the repo): `e2e-refuse.ts` (the fix's device check), `e2e-keys.ts`, `e2e-waiting.ts`, `e2e-age.ts`, `e3/run-e3.sh` (T0, T1 and CPU per run), `e3/route-stats.mjs`. The plan's own tools were extracted verbatim from the plan.
+8. **The ledger** lived in this session's scratchpad, not `.superpowers/sdd/` (the owner's rule).
+9. **A second merge of `origin/main`** (`a27614e`, as `6e125ee`), found by the fetch before the push, as the session prompt asks; re-checked as in Step 0.
+
+### Open issues (for the orchestrator's final Phase 1 review)
+
+- The nine deferred minors M2–M10 above.
+- **The alert sound needs a touch after every app launch** (pre-existing: `lib/alert-sound.ts` from CR2, Chrome's autoplay rule). A printing device that restarts and is left untouched shows its notices and its count but does not ring until someone touches it (seen in E1b after each relaunch). A native fix (the WebView's `mediaPlaybackRequiresUserGesture`) is Kotlin, so Phase 3; until then TEST-CHECKLIST could say "tap the screen once after opening the app".
+- G5 (Android's TCP lane cannot see a mid-slip cut) stays in Phase 3.
+- Nothing is deployed. Phase 1 is ready for the orchestrator's final review; deploy only when the orchestrator says so.
+
+### Leftovers
+
+`pos_scratch_e2e_1e` (e2eadmin, 8 tables, the sample menu, 405 orders, about 1,000 print jobs that the prune keeps reaping, no PrintHost) and its env file `<scratchpad>/e2e.env` are left, as the plan says. `adb reverse` removed; the POS, the proxy and every fake printer stopped by PID (command lines checked); `pm clear com.possoftware.pos`; the emulator stopped. `adb logcat -b crash` held **no entry** from boot to the end (`logs/crash-at-boot.log`, `logs/crash-end.log`: 0 lines each).
