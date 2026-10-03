@@ -87,6 +87,10 @@ export interface AcceptContext {
   actor: string;
   settings: ISettings | null; // nullable like readSettings() — degrades to defaults
   createCustomer: boolean;
+  /** Printing Phase 1 (1B final review M-f): the agent that asked the server to print this round's KOT.
+   *  The same order write records it in Order.kotPrintDevices, so the repair sweep covers the round.
+   *  Absent (the public auto-accept, a tab that prints its own) writes nothing. */
+  printDeviceId?: string;
 }
 
 // The bridge itself: resulting Order + resolved OrderRequest, or a rejection.
@@ -360,6 +364,7 @@ export async function acceptOrderRequest(
     ...(request.targetKind === PARCEL_SELECTION ? { parcel: true } : {}),
     source: SELF_ORDER_SOURCE,
     sourceRequestIds: [requestId],
+    ...(ctx.printDeviceId ? { kotPrintDevices: [ctx.printDeviceId] } : {}),
   };
 
   // Same atomic per-day counter as POST /api/orders; the day-rollover retry

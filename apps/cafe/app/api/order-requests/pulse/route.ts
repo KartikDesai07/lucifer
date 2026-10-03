@@ -1,5 +1,7 @@
 import { connectDB } from "@/lib/db";
 import { readPosPulse } from "@/lib/pos-pulse";
+import { printPulseDeviceOf } from "@/lib/print-agent-server";
+import { readJobsForDevice } from "@/lib/print-lease";
 import { success, requireAuth, serverError } from "@/lib/api-helpers";
 import { noStore } from "@/lib/order-request-tray";
 
@@ -23,14 +25,23 @@ export const dynamic = "force-dynamic";
 // free tier. The invariant that survives unchanged, and is still pinned, is
 // that this route performs NO WRITE (no pruneOrderRequests, no
 // prunePrintJobs/prunePrintJobsThrottled) and stays no-store.
-export async function GET() {
+//
+// Printing Phase 1 Session 1C (spec §9.1): an agent tab names itself (?device=<id>) and the answer adds
+// printJobsForMe, the jobs waiting in that device's own line, so a job the server re-queued or sent
+// home reaches its agent within one tick even with the socket down. One more bounded, index-backed
+// READ on a poll that already runs (no new request), fail-soft: a failed read omits the field.
+export async function GET(req: Request) {
   const authed = await requireAuth();
   if ("error" in authed) return authed.error;
+  const device = printPulseDeviceOf(req.url);
 
   try {
     await connectDB();
-    const data = await readPosPulse();
-    return noStore(success(data));
+    const [data, printJobsForMe] = await Promise.all([
+      readPosPulse(),
+      device === null ? Promise.resolve(null) : readJobsForDevice(device, Date.now()).catch(() => null),
+    ]);
+    return noStore(success(printJobsForMe === null ? data : { ...data, printJobsForMe }));
   } catch (error) {
     return noStore(serverError("Failed to fetch pos pulse", error));
   }

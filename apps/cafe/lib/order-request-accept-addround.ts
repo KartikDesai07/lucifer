@@ -13,6 +13,7 @@ import {
 import { chargesFromOrder, splitChargeTotals } from "@pos/shared/order-charges";
 import { chargeWriteFields } from "@/lib/order-charges-write";
 import { buildKotFiredAt, buildKotNumbers, mergedNote } from "@/lib/order-request-accept-core";
+import { buildKotPrintDevices } from "@/lib/print-order-jobs";
 import {
   resolveAcceptPromoFor,
   promoNoteLine,
@@ -114,6 +115,7 @@ export async function acceptAddRoundBranch(
     | "charges"
     | "kotNumbers"
     | "kotFiredAt"
+    | "kotPrintDevices"
     | "createdAt"
     | "notes"
     | "rewardAt"
@@ -239,6 +241,9 @@ export async function acceptAddRoundBranch(
   // accepted by staff). It must stamp the fire time too, or the kitchen board
   // ages this round from the tab's open time and shows it "Late" on arrival.
   const kotFiredAt = buildKotFiredAt(openTab.kotFiredAt, round, new Date(), openTab.createdAt);
+  // Printing Phase 1 (1B final review M-f): a round the server prints for a staff tab is the server's to
+  // repair too, so this same CAS records which device asked (positional, like kotNumbers).
+  const kotPrintDevices = buildKotPrintDevices(openTab.kotPrintDevices, round, ctx.printDeviceId);
   // FIX6 — carry the diner's note (and a promo line, when a discount
   // applied — promoNoteLine, order-request-accept-promo.ts) onto the tab,
   // through the EXISTING mergedNote helper both times so it composes with
@@ -261,6 +266,7 @@ export async function acceptAddRoundBranch(
       source: SELF_ORDER_SOURCE,
       ...(chargeFields.set ?? {}),
       ...(kotNumbers ? { kotNumbers } : {}),
+      ...(kotPrintDevices ? { kotPrintDevices } : {}),
       ...(notesChanged ? { notes } : {}),
     },
     $addToSet: { sourceRequestIds: requestId },

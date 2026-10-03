@@ -96,6 +96,9 @@ export interface PosPulseData {
   // length===limit proxy, so the band can tell "this id is in no feed because
   // the read was cut at PRINT_JOB_RESOLVED_LIMIT" from "genuinely gone".
   resolvedPrintJobsTruncated: boolean;
+  // Printing Phase 1 Session 1C (spec §9.1): present only when the tab named itself (?device=): how
+  // many jobs wait in this device's own line, and the oldest. Absent on a failed read.
+  printJobsForMe?: { count: number; oldestCreatedAt: string | null };
 }
 
 /** What changed between two consecutive polls, for the provider to act on. */

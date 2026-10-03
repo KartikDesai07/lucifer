@@ -10,7 +10,7 @@ import {
   type PrintJobDismissReason,
   type PrintJobEnqueueResult,
 } from "@pos/shared/print-job";
-import { printJobCreatedLog, printJobInitialLabels, printJobLifecycleInit } from "@pos/shared/print-lifecycle";
+import { PRINT_JOB_LOG_MAX, printJobCreatedLog, printJobInitialLabels, printJobLifecycleInit } from "@pos/shared/print-lifecycle";
 import type { PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 import { PrintHost } from "@/models/PrintHost";
 import { PrintJob } from "@/models/PrintJob";
@@ -177,6 +177,21 @@ export async function enqueuePrintJob(input: {
   // the one outcome that does NOT authorize a local duplicate print.
   try {
     const hostStillThere = await PrintHost.findOne({ key: PRINT_HOST_KEY }).select("_id").lean();
+    if (!hostStillThere && input.originDeviceId !== undefined) {
+      // Session 1B final review M-a: a row that names the device that asked for it is not an orphan.
+      // With no host that device prints its own slips (§6.6), so the row goes home now, and the asking
+      // agent follows it by id. Dismissing it would make the agent's own fallback enqueue collide with
+      // a dismissed row under the same key, and the slip would print nowhere.
+      await PrintJob.updateOne(
+        { _id: createdId, status: "queued" },
+        {
+          $set: { targetDeviceId: input.originDeviceId },
+          $push: { log: { $each: [{ at: new Date(nowMs), event: "retargeted", deviceId: input.originDeviceId }], $slice: -PRINT_JOB_LOG_MAX } },
+        },
+      );
+      publishPrintStatus({ id: createdId, status: "queued", target: input.originDeviceId });
+      return { outcome: "queued", id: createdId, duplicate: false };
+    }
     if (!hostStillThere) {
       const orphanDismiss = await dismissPrintJob({
         id: createdId,
@@ -208,6 +223,9 @@ export async function enqueuePrintJob(input: {
   // the job is already committed, and the poll still finds it if the nudge is
   // lost. Correctness stays with print-queue-claim.ts's CAS, never with this.
   publishCafeEvent("print-job");
+  // Session 1B final review M-e: like a server-made job, an enqueued one announces itself to the
+  // agent it is aimed at (R7: that agent leases on it) and to the asking device's readback.
+  publishPrintStatus({ id: createdId, status: "queued", target: host.deviceId });
   return { outcome: "queued", id: createdId, duplicate: false };
 }
 

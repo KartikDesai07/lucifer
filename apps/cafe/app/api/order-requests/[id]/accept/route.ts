@@ -35,6 +35,8 @@ export async function POST(req: Request, { params }: Params) {
       actor: authed.session.user.name ?? "",
       settings,
       createCustomer: true,
+      // 1B final review M-f: the round is marked as the server's, so the repair sweep covers it.
+      ...(intent ? { printDeviceId: intent.deviceId } : {}),
     });
     if ("error" in result) return noStore(failure(result.error, result.status));
 

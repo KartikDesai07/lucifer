@@ -141,7 +141,13 @@ export async function insertPrintJob(input: {
       ...printJobLifecycleInit(input.nowMs, printJobInitialLabels(payload)),
       log: [printJobCreatedLog(input.nowMs, input.originDeviceId)],
     });
-    const ref: PrintJobRef = { id: String(created._id), kind: payload.kind, targetDeviceId: input.targetDeviceId, label: input.request.label };
+    const ref: PrintJobRef = {
+      id: String(created._id),
+      kind: payload.kind,
+      targetDeviceId: input.targetDeviceId,
+      label: input.request.label,
+      status: "queued",
+    };
     return { ref, created: true, status: "queued" };
   } catch (error) {
     if (!isDuplicateKeyError(error) || jobKey === undefined) throw error;
@@ -153,6 +159,7 @@ export async function insertPrintJob(input: {
       kind: existing.kind,
       targetDeviceId: existing.targetDeviceId ?? input.targetDeviceId,
       label: existing.label,
+      status: existing.status,
     };
     return { ref, created: false, status: existing.status };
   }

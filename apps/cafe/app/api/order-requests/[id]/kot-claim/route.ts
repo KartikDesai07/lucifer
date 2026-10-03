@@ -1,6 +1,8 @@
 import mongoose from "mongoose";
 import { connectDB } from "@/lib/db";
 import { claimKotPrint } from "@/lib/pos-pulse";
+import { claimKotPrintForAgent } from "@/lib/print-agent-server";
+import { printIntentOf } from "@/lib/print-order-jobs";
 import { success, notFound, requireAuth, serverError } from "@/lib/api-helpers";
 import { noStore } from "@/lib/order-request-tray";
 
@@ -13,7 +15,7 @@ type Params = { params: Promise<{ id: string }> };
 // race (`claimed:false, reason:"raced"`) is a NORMAL outcome, not an error —
 // this always answers 200 so the client's auto-print bridge can just skip a
 // lost claim instead of surfacing an error toast for it.
-export async function POST(_req: Request, { params }: Params) {
+export async function POST(req: Request, { params }: Params) {
   const authed = await requireAuth();
   if ("error" in authed) return authed.error;
 
@@ -24,7 +26,10 @@ export async function POST(_req: Request, { params }: Params) {
 
   try {
     await connectDB();
-    const result = await claimKotPrint(id);
+    // Printing Phase 1 Session 1C (ruling R4, job-aware lane; lib/print-agent-server.ts): an agent's
+    // claim makes the KOT a print job in this same request. Without the header: exactly as before.
+    const intent = printIntentOf(req);
+    const result = intent ? await claimKotPrintForAgent(id, intent, Date.now()) : await claimKotPrint(id);
     return noStore(success(result));
   } catch (error) {
     return noStore(serverError("Failed to claim KOT print", error));

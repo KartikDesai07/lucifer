@@ -33,6 +33,9 @@ export interface PrintJobRef {
   kind: PrintJobKind;
   targetDeviceId: string;
   label: string;
+  /** The job's state when the answer was built (1B final review M-d): a deduped ref to a job that
+   *  already printed (or was dismissed) is followed, never leased or re-sent as if it were fresh. */
+  status: PrintJobStatus;
 }
 
 export const PRINT_DEVICE_SHELLS = ["android", "windows", "browser"] as const;

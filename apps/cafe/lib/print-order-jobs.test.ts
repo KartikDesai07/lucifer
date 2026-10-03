@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { stripComments } from "@/lib/source-pin-utils";
 import { buildKotPrintDevices, printIntentOf, wireOrderOf, withPrintJobs } from "@/lib/print-order-jobs";
+import { printPulseDeviceOf } from "@/lib/print-agent-server";
 
 // Printing redesign Phase 1, Session 1B (plan docs/superpowers/plans/2026-10-02-phase-1-lifecycle.md):
 // server-side job creation. DB behaviour is proven live (npm run verify:print:live, legs y–ab); these
@@ -45,7 +46,7 @@ test("buildKotPrintDevices: positional like kotIdemKeys; a round its tab printed
 test("withPrintJobs: without an opt-in the answer is the very same object; with one it is the wire order plus printJobs", () => {
   const order = { _id: "o1", createdAt: new Date("2026-10-02T10:00:00.000Z") };
   assert.equal(withPrintJobs(order, null), order);
-  const refs = [{ id: "j1", kind: "kot" as const, targetDeviceId: "dev-1", label: "KOT round 1 · T-1" }];
+  const refs = [{ id: "j1", kind: "kot" as const, targetDeviceId: "dev-1", label: "KOT round 1 · T-1", status: "queued" as const }];
   assert.deepEqual(withPrintJobs(order, refs), { _id: "o1", createdAt: "2026-10-02T10:00:00.000Z", printJobs: refs });
   assert.deepEqual(withPrintJobs(order, []), { _id: "o1", createdAt: "2026-10-02T10:00:00.000Z", printJobs: [] });
   const wire = wireOrderOf({ createdAt: new Date("2026-10-02T10:00:00.000Z") });
@@ -124,4 +125,68 @@ test("PIN: the staff accept creates only on a fresh accept; the public auto-acce
 test("PIN: POST /api/print-jobs falls back to the asking device only for an agent request that got no-host", () => {
   const s = src("apps/cafe/app/api/print-jobs/route.ts");
   assert.match(s, /if \(result\.outcome === "no-host" && intent !== null\) \{\s*result = await enqueueOwnPrintJob\(\{/);
+});
+
+// ── Session 1C, the server half (the 1B gate rulings: M-a, M-d, M-e, M-f, R4 job-aware lane, the pulse) ──
+
+test("printPulseDeviceOf: only a usable ?device= names the agent; anything else is ignored, never a 400", () => {
+  assert.equal(printPulseDeviceOf("http://localhost/api/order-requests/pulse"), null, "a tab that is not an agent sends none");
+  assert.equal(printPulseDeviceOf("http://localhost/api/order-requests/pulse?device="), null, "empty");
+  assert.equal(printPulseDeviceOf(`http://localhost/api/order-requests/pulse?device=${"d".repeat(65)}`), null, "too long");
+  assert.equal(printPulseDeviceOf("http://localhost/api/order-requests/pulse?device=%20dev-1%20"), "dev-1");
+});
+
+test("PIN (M-d): every ref says what state its job is in, made now or found under its key", () => {
+  const s = src("apps/cafe/lib/print-order-jobs.ts");
+  assert.match(s, /label: input\.request\.label,\s*status: "queued",\s*\};\s*return \{ ref, created: true, status: "queued" \};/, "a new job is queued");
+  assert.match(s, /label: existing\.label,\s*status: existing\.status,\s*\};/, "a found job keeps its own state");
+  assert.match(src("packages/shared/src/print-agent-wire.ts"), /export interface PrintJobRef \{[^}]*status: PrintJobStatus;/, "the wire type carries it");
+});
+
+test("PIN (M-a, M-e): an enqueue whose host vanished sends a row with an asking device home; every new row announces itself", () => {
+  const s = src("apps/cafe/lib/print-queue.ts");
+  const fn = s.slice(s.indexOf("export async function enqueuePrintJob("), s.indexOf("export type DismissPrintJobResult"));
+  inOrder(
+    fn,
+    [
+      "if (!hostStillThere && input.originDeviceId !== undefined) {",
+      "$set: { targetDeviceId: input.originDeviceId }",
+      'publishPrintStatus({ id: createdId, status: "queued", target: input.originDeviceId });',
+      'return { outcome: "queued", id: createdId, duplicate: false };',
+      "if (!hostStillThere) {",
+      "await dismissPrintJob({",
+    ],
+    "the orphan check",
+  );
+  assert.equal(count(fn, 'publishPrintStatus({ id: createdId, status: "queued", target: host.deviceId });'), 1, "a new job for the host announces itself");
+  assert.equal(count(fn, "publishPrintStatus("), 2, "no other print-status from the enqueue (a duplicate is not new; a failed re-read keeps the old nudge only)");
+});
+
+test("PIN (R4, job-aware lane): an agent's kot-claim makes the KOT a job in the same request; the D9 marker is never reopened", () => {
+  const route = src("apps/cafe/app/api/order-requests/[id]/kot-claim/route.ts");
+  assert.match(route, /const intent = printIntentOf\(req\);\s*const result = intent \? await claimKotPrintForAgent\(id, intent, Date\.now\(\)\) : await claimKotPrint\(id\);/);
+  const lib = src("apps/cafe/lib/print-agent-server.ts");
+  inOrder(lib, ["const result = await claimKotPrint(id);", "if (!result.claimed) return result;", "await createOrderPrintJobs({", 'slips: [{ kind: "kot", round: result.kotRound }]'], "the claim, then the job");
+  assert.ok(!/\$unset/.test(lib) && !/kotPrintedAt/.test(lib), "a failed create never reopens the claim: the lane enqueues the KOT itself");
+  assert.match(lib, /printJobs\.length > 0 \? \{ \.\.\.order, printJobs \} : order/, "no job: the answer names none, so the lane re-sends it under the same key");
+  assert.match(src("apps/cafe/lib/order-request-create.ts"), /return "error" in result \? "pending" : "accepted";/, "the public auto-accept stays exactly as live today");
+});
+
+test("PIN (M-f): a staff accept the server prints records the asking device in the same order write, on both writers", () => {
+  assert.match(src("apps/cafe/app/api/order-requests/[id]/accept/route.ts"), /\.\.\.\(intent \? \{ printDeviceId: intent\.deviceId \} : \{\}\),/);
+  assert.match(src("apps/cafe/lib/order-request-accept.ts"), /\.\.\.\(ctx\.printDeviceId \? \{ kotPrintDevices: \[ctx\.printDeviceId\] \} : \{\}\),/, "a new tab: round 1");
+  const add = src("apps/cafe/lib/order-request-accept-addround.ts");
+  assert.match(add, /const kotPrintDevices = buildKotPrintDevices\(openTab\.kotPrintDevices, round, ctx\.printDeviceId\);/, "an open tab: positional");
+  assert.match(add, /\.\.\.\(kotPrintDevices \? \{ kotPrintDevices \} : \{\}\),/);
+  assert.ok(!src("apps/cafe/lib/order-request-create.ts").includes("printDeviceId"), "the auto-accept marks nothing");
+});
+
+test("PIN: the pulse adds printJobsForMe only for a tab that named itself, read-only and fail-soft", () => {
+  const s = src("apps/cafe/app/api/order-requests/pulse/route.ts");
+  assert.match(s, /const device = printPulseDeviceOf\(req\.url\);/);
+  assert.match(s, /device === null \? Promise\.resolve\(null\) : readJobsForDevice\(device, Date\.now\(\)\)\.catch\(\(\) => null\)/);
+  assert.match(s, /success\(printJobsForMe === null \? data : \{ \.\.\.data, printJobsForMe \}\)/);
+  for (const write of ["updateOne(", "updateMany(", "create(", "findOneAndUpdate(", "sweepPrintJobs"]) {
+    assert.ok(!s.includes(write), `the pulse route stays read-only: no ${write}`);
+  }
 });
