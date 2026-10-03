@@ -102,6 +102,8 @@
     "lib/bill-print-preview-paths.test.ts",
     "lib/kitchen-ticket-preview-paths.test.ts",
     "lib/qr-ordering-settings-paths.test.ts",
+    "lib/loyalty-settings-paths.test.ts",
+    "lib/milestone-promo-status.test.ts",
     "lib/leave-guard.test.ts",
     "lib/leave-guard-paths.test.ts",
     "lib/table-order.test.ts",

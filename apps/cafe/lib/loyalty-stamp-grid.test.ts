@@ -111,6 +111,30 @@ test("loyaltyRulesFormDefaults: a brand-new cafe's card is never smaller than it
   );
 });
 
+// Settings pass slice 8 (smoke s8lylive2 + review): a Controller that mounts on a
+// row writes its key into the form values even when undefined, and isDirty is a
+// deepEqual that fails on a key-count difference — so a row missing one of these
+// keys made "open a reward, then cancel a new one" leave Save changes up.
+const PANEL_KEYS = ["itemProductId", "qty", "minBill", "promoCode", "claimWithinDays"] as const;
+
+test("loyaltyRulesFormDefaults: every row carries every key the reward panel registers, values untouched", () => {
+  const stored = { at: 4, kind: "flat", value: 25, item: "", promoCode: "SAVE10" };
+  const fromStored = loyaltyRulesFormDefaults({
+    loyaltyRules: { v: 1, unitLabel: "stamps", milestones: [stored], cardSize: 8 },
+  } as unknown as Parameters<typeof loyaltyRulesFormDefaults>[0]);
+  const starter = loyaltyRulesFormDefaults({ loyaltyStampsPerReward: 5 } as unknown as Parameters<typeof loyaltyRulesFormDefaults>[0]);
+
+  for (const [label, row] of [["stored", fromStored.milestones[0]], ["starter", starter.milestones[0]]] as const) {
+    for (const key of PANEL_KEYS) {
+      assert.ok(row && Object.hasOwn(row, key), `${label} row must own "${key}" (even as undefined)`);
+    }
+  }
+  assert.equal(fromStored.milestones[0]?.promoCode, "SAVE10", "a stored value is kept");
+  assert.equal(fromStored.milestones[0]?.minBill, undefined, "an absent value stays unset");
+  // What Save sends is unchanged: JSON drops the undefined keys.
+  assert.deepEqual(JSON.parse(JSON.stringify(fromStored.milestones[0])), stored);
+});
+
 // ── the surface ────────────────────────────────────────────────────────────
 
 test("SOURCE PIN: the grid draws one box per stamp and opens a per-box editor", () => {

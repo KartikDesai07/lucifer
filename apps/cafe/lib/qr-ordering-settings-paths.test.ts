@@ -231,7 +231,7 @@ test("PIN: Announcements says Home tab and warns while Diner accounts is off, li
     "the note and its loyalty link must render only while dinerAccountsOn is false",
   );
   assert.ok(src.includes("Diners see these only while Diner accounts is on in"), "the note's wording");
-  assert.match(code(`${SETTINGS}/SettingsFields.tsx`), /slug: "business" \| "taxes" \| "loyalty";/, "SectionLink must accept the loyalty section");
+  assert.match(code(`${SETTINGS}/SettingsFields.tsx`), /slug: "business" \| "taxes" \| "loyalty" \| "qr-ordering";/, "SectionLink must accept the loyalty section");
 });
 
 test("PIN: the announcement row has a visible Remove button that hands its typed title to onRemove", () => {

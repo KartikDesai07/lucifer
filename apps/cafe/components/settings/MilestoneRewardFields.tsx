@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { Controller, useWatch } from "react-hook-form";
 import type { Control, FieldErrors, UseFormRegister, UseFormSetValue } from "react-hook-form";
 
@@ -21,14 +22,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { BRAND_CONTROL_CLASS, BRAND_FIELD_ERROR_CLASS } from "@/components/brand/brand-classes";
 import { Field } from "@/components/settings/SettingsFields";
+import { PrintSizeChoice } from "@/components/settings/PrintSizeChoice";
 import { MilestoneRewardCodeFields } from "@/components/settings/MilestoneRewardCodeFields";
 
 const REWARD_KIND_LABELS: Record<LoyaltyRewardKind, string> = {
-  flat: "Money off the bill",
-  percent: "Percent off the bill",
-  item: "A free item",
+  flat: "Amount off",
+  percent: "Percent off",
+  item: "Free item",
 };
+
+// The form types a row's kind as a plain string; the choice row needs the union.
+function isRewardKind(value: unknown): value is LoyaltyRewardKind {
+  return LOYALTY_REWARD_KINDS.some((k) => k === value);
+}
 
 // Same two-place error lesson as PromoCodesFields.tsx: RHF reports a
 // milestone row's problems per-ROW (`loyaltyRules.milestones.${i}.<field>`)
@@ -60,6 +68,9 @@ function messageOf(field: RowFieldError | undefined): string | undefined {
 
 // Exported so MilestoneRewardCodeFields.tsx (the CB-5D promo/TTL split-out)
 // reads errors from the exact same per-row shape — one lookup, two callers.
+// Returns the BARE message: each field sits right under its own label inside a
+// panel titled with the stamp number, so a "Reward N:" prefix (N was the array
+// index, not the stamp) only added noise.
 export function rowFieldMessage(
   milestonesErrors: unknown,
   index: number,
@@ -68,7 +79,7 @@ export function rowFieldMessage(
   if (!milestonesErrors || typeof milestonesErrors !== "object") return undefined;
   const rows = milestonesErrors as Record<number, MilestoneRowErrors | undefined>;
   const message = messageOf(rows[index]?.[field]);
-  return message ? `Reward ${index + 1}: ${message}` : undefined;
+  return message;
 }
 
 // Only what the picker needs off a Product — keeps this component from
@@ -111,54 +122,56 @@ export function MilestoneRewardFields({ control, register, errors, index, setVal
   const { data: fetchedProducts } = useProducts();
   const pickable = products ?? fetchedProducts ?? [];
 
+  const itemId = useId();
+  const valueId = useId();
+  const qtyId = useId();
+  const minBillId = useId();
+
   const row = useWatch({ control, name: `loyaltyRules.milestones.${index}` });
   const kind = row?.kind ?? "flat";
 
   return (
     <>
-      <Field label="Reward" error={rowFieldMessage(errors.loyaltyRules?.milestones, index, "kind")}>
-        <Controller
-          control={control}
-          name={`loyaltyRules.milestones.${index}.kind`}
-          render={({ field }) => (
-            <Select
-              value={field.value}
-              onValueChange={(next) => {
-                field.onChange(next);
-                // Switching AWAY from a free item must drop the dish with
-                // it. RHF keeps hidden fields (shouldUnregister defaults
-                // false), so without this the rung would carry a dead
-                // product reference, and switching back would re-use it
-                // without the owner ever re-picking — the reference and the
-                // shown name silently diverging. The shared schema rejects
-                // that combination, so this also keeps Save working.
-                if (next !== "item") {
-                  setValue(`loyaltyRules.milestones.${index}.itemProductId`, undefined, {
-                    shouldDirty: true,
-                  });
-                  setValue(`loyaltyRules.milestones.${index}.qty`, undefined, { shouldDirty: true });
-                  setValue(`loyaltyRules.milestones.${index}.item`, "", { shouldDirty: true });
-                }
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {LOYALTY_REWARD_KINDS.map((k) => (
-                  <SelectItem key={k} value={k}>
-                    {REWARD_KIND_LABELS[k]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        />
-      </Field>
+      <Controller
+        control={control}
+        name={`loyaltyRules.milestones.${index}.kind`}
+        render={({ field }) => {
+          const kindError = rowFieldMessage(errors.loyaltyRules?.milestones, index, "kind");
+          return (
+            <div className="space-y-1.5">
+              <PrintSizeChoice
+                legend="Reward"
+                options={LOYALTY_REWARD_KINDS}
+                value={isRewardKind(field.value) ? field.value : "flat"}
+                labelOf={(k) => REWARD_KIND_LABELS[k]}
+                onChange={(next) => {
+                  field.onChange(next);
+                  // Switching AWAY from a free item must drop the dish with
+                  // it. RHF keeps hidden fields (shouldUnregister defaults
+                  // false), so without this the rung would carry a dead
+                  // product reference, and switching back would re-use it
+                  // without the owner ever re-picking — the reference and the
+                  // shown name silently diverging. The shared schema rejects
+                  // that combination, so this also keeps Save working.
+                  if (next !== "item") {
+                    setValue(`loyaltyRules.milestones.${index}.itemProductId`, undefined, {
+                      shouldDirty: true,
+                    });
+                    setValue(`loyaltyRules.milestones.${index}.qty`, undefined, { shouldDirty: true });
+                    setValue(`loyaltyRules.milestones.${index}.item`, "", { shouldDirty: true });
+                  }
+                }}
+              />
+              {kindError && <p className={BRAND_FIELD_ERROR_CLASS}>{kindError}</p>}
+            </div>
+          );
+        }}
+      />
 
       {kind === "item" ? (
         <Field
           label="Free item"
+          htmlFor={itemId}
           error={rowFieldMessage(errors.loyaltyRules?.milestones, index, "itemProductId")}
           hint="Pick it from your menu. The kitchen ticket and the bill both use this item."
         >
@@ -184,7 +197,7 @@ export function MilestoneRewardFields({ control, register, errors, index, setVal
                 }}
                 disabled={pickable.length === 0}
               >
-                <SelectTrigger>
+                <SelectTrigger id={itemId} className={BRAND_CONTROL_CLASS}>
                   <SelectValue placeholder={pickable.length === 0 ? "Add a menu item first" : "Choose an item"} />
                 </SelectTrigger>
                 <SelectContent>
@@ -201,10 +214,14 @@ export function MilestoneRewardFields({ control, register, errors, index, setVal
       ) : (
         <Field
           label={kind === "percent" ? "Value (%)" : "Value (₹)"}
+          htmlFor={valueId}
           error={rowFieldMessage(errors.loyaltyRules?.milestones, index, "value")}
         >
           <Input
+            id={valueId}
             type="number"
+            inputMode="numeric"
+            className={BRAND_CONTROL_CLASS}
             min={0}
             max={kind === "percent" ? LOYALTY_REWARD_PERCENT_MAX : undefined}
             {...register(`loyaltyRules.milestones.${index}.value`, { valueAsNumber: true })}
@@ -215,6 +232,7 @@ export function MilestoneRewardFields({ control, register, errors, index, setVal
       {kind === "item" && (
         <Field
           label="How many"
+          htmlFor={qtyId}
           error={rowFieldMessage(errors.loyaltyRules?.milestones, index, "qty")}
           hint="Leave blank for one"
         >
@@ -226,7 +244,10 @@ export function MilestoneRewardFields({ control, register, errors, index, setVal
             name={`loyaltyRules.milestones.${index}.qty`}
             render={({ field }) => (
               <Input
+                id={qtyId}
                 type="number"
+                inputMode="numeric"
+                className={BRAND_CONTROL_CLASS}
                 min={LOYALTY_REWARD_QTY_MIN}
                 max={LOYALTY_REWARD_QTY_MAX}
                 value={field.value ?? ""}
@@ -247,6 +268,7 @@ export function MilestoneRewardFields({ control, register, errors, index, setVal
 
       <Field
         label="Minimum bill (₹)"
+        htmlFor={minBillId}
         error={rowFieldMessage(errors.loyaltyRules?.milestones, index, "minBill")}
         hint="Leave blank for no minimum"
       >
@@ -255,7 +277,10 @@ export function MilestoneRewardFields({ control, register, errors, index, setVal
           name={`loyaltyRules.milestones.${index}.minBill`}
           render={({ field }) => (
             <Input
+              id={minBillId}
               type="number"
+              inputMode="numeric"
+              className={BRAND_CONTROL_CLASS}
               min={LOYALTY_MIN_BILL_MIN}
               max={LOYALTY_MIN_BILL_MAX}
               value={field.value ?? ""}
