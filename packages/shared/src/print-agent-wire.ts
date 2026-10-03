@@ -83,14 +83,27 @@ export const PRINT_AGENT_ACTIVE_WINDOW_MS = 2 * 60 * 1000;
 /** Whether this device polls the wake at all (spec §9.1, §17.3 rule 1; 1A review gate, I3). In simple
  *  mode only the host polls. With no host every device prints its own slips from its own order
  *  responses, targeted print-status events, local retry timers and the pulse, so no ordering device
- *  adds a recurring request, and one poller keeps the shared daily cap exact. */
-export function printAgentPollsWake(input: { hostConfigured: boolean; isHost: boolean }): boolean {
+ *  adds a recurring request, and one poller keeps the shared daily cap exact.
+ *  Phase 2, printers mode: the devices that write to a printer poll (each is its printers' only writer,
+ *  spec §9.3), and no other device does, host or not. They share PRINT_WAKE_PRINTERS_DAILY_CAP. */
+export function printAgentPollsWake(input: { hostConfigured: boolean; isHost: boolean; printersMode?: boolean; isWriter?: boolean }): boolean {
+  if (input.printersMode === true) return input.isWriter === true;
   return input.hostConfigured && input.isHost;
 }
 
 /** Each agent's share of the cafe's one daily wake cap (spec §9.1): more agents never mean more hits. */
 export function printWakeAgentCap(agents: number): number {
   return Math.floor(PRINT_WAKE_DAILY_CAP / Math.max(1, Math.floor(agents)));
+}
+
+/** Phase 2: the wake hits a day all printer writers share in printers mode. A little under the host's
+ *  14,400, so the heavy setup's worst case (a full copy per round, the socket down all day) still fits the
+ *  18,000 ceiling (print-budget.test.ts). The split is by the writers the SETUP names
+ *  (printerWriterDevices), never by who is online, so a writer that starts late never raises the total. */
+export const PRINT_WAKE_PRINTERS_DAILY_CAP = 14_000;
+
+export function printWakeWriterCap(writers: number): number {
+  return Math.floor(PRINT_WAKE_PRINTERS_DAILY_CAP / Math.max(1, Math.floor(writers)));
 }
 
 /** The agent's wake cadence (spec §9.1). false: the daily share is spent, so stop polling until the

@@ -18,6 +18,8 @@ import {
   printAgentTimerDelayMs,
   printAgentWakeIntervalMs,
   printWakeAgentCap,
+  printWakeWriterCap,
+  PRINT_WAKE_PRINTERS_DAILY_CAP,
 } from "./print-agent-wire";
 import {
   PRINT_ACK_PENDING_MAX_MS,
@@ -38,7 +40,11 @@ import {
   PRINT_REALTIME_BASE_PER_DAY,
   PRINT_REALTIME_PER_SLIP,
   REALTIME_FREE_REQUESTS_PER_DAY,
+  PRINT_BUDGET_STATIONS_DAY,
+  PRINT_REALTIME_PER_PRINTER_SLIP,
+  printRequestsForSlips,
   printSlipRequestsPerDay,
+  printStationSlipsPerDay,
 } from "./print-budget";
 
 // Spec §17.3 item 4: recompute §17.2's two "Vercel invocations" totals from the exported constants
@@ -205,4 +211,49 @@ test("1D gate retention: the prune rides the existing throttle, and stale device
   assert.equal(PRINT_JOB_PRUNE_MIN_INTERVAL_MS, 5 * 60 * 1000, "at most one prune per 5 min per instance");
   assert.equal(PRINT_DEVICE_PRUNE_MS, 7 * 24 * 60 * 60 * 1000);
   assert.ok(PRINT_DEVICE_PRUNE_MS > 1000 * PRINT_DEVICE_ONLINE_MS, "only a device gone for days, never one that is merely offline");
+});
+
+// Phase 2 Session 2A (plan 2026-10-03-phase-2-routing.md, Task A5): the stations recount the 1C gate asked
+// for. Printers mode routes each KOT round to its stations' printers (spec §8), and each printer's writer
+// leases its own line. These pins hold the cafe under the same ceilings with stations, with the heavy setup
+// (a full copy per round too), and with any number of writers.
+test("Phase 2 busy day with stations: spec §17.2's 1,200 slips; a full copy per round makes 1,650", () => {
+  assert.equal(printStationSlipsPerDay({ fullCopy: false }), 1_200, "1.5 rounds x 2 stations + 1 bill, 300 orders");
+  assert.equal(printStationSlipsPerDay({ fullCopy: true }), 1_650, "and a full copy of each round");
+  assert.equal(printRequestsForSlips(1_200), printSlipRequestsPerDay(), "the same lease-and-ack price per slip as Phase 1");
+});
+
+test("Phase 2 normal day (socket healthy): stations stay at 4,800; the heavy setup at 5,790, under 6,000", () => {
+  const wakePerWriter = OPEN_MS / cadence({ socketHealthy: true, msSinceLastJob: 0, capSpent: false });
+  const writers = PRINT_BUDGET_STATIONS_DAY.writers;
+  const stations = printRequestsForSlips(printStationSlipsPerDay({ fullCopy: false })) + writers * wakePerWriter;
+  const heavy = printRequestsForSlips(printStationSlipsPerDay({ fullCopy: true })) + writers * wakePerWriter;
+  assert.equal(stations, 4_800);
+  assert.equal(heavy, 5_790);
+  assert.ok(heavy <= PRINT_BUDGET_NORMAL_MAX_PER_DAY, `${heavy}/day`);
+});
+
+test("Phase 2 worst case (socket down all day, every writer always busy): the writers' shared cap holds even the heavy setup under 18,000", () => {
+  const fastest = cadence({ socketHealthy: false, msSinceLastJob: 0, capSpent: false });
+  const heavySlips = printRequestsForSlips(printStationSlipsPerDay({ fullCopy: true }));
+  for (const writers of [1, 2, 3, 5, 8, 12]) {
+    const wake = writers * Math.min(OPEN_MS / fastest, printWakeWriterCap(writers));
+    assert.ok(wake <= PRINT_WAKE_PRINTERS_DAILY_CAP, `${writers} writers: ${wake} wake hits`);
+    assert.ok(heavySlips + wake <= PRINT_BUDGET_WORST_MAX_PER_DAY, `${writers} writers: ${heavySlips + wake}/day`);
+  }
+  assert.equal(heavySlips + 3 * Math.min(OPEN_MS / fastest, printWakeWriterCap(3)), 17_628, "the heavy day's worst case");
+});
+
+test("Phase 2: in printers mode only writers poll; ordering devices and a leftover host never do", () => {
+  assert.equal(printAgentPollsWake({ hostConfigured: true, isHost: true, printersMode: true, isWriter: false }), false, "a host that writes to no printer stops polling");
+  assert.equal(printAgentPollsWake({ hostConfigured: false, isHost: false, printersMode: true, isWriter: true }), true, "a writer polls");
+  assert.equal(printAgentPollsWake({ hostConfigured: false, isHost: false, printersMode: true }), false, "an ordering device never polls");
+  assert.equal(printAgentPollsWake({ hostConfigured: true, isHost: true }), true, "simple mode is unchanged");
+  assert.ok(PRINT_WAKE_PRINTERS_DAILY_CAP <= PRINT_WAKE_DAILY_CAP, "printers mode never polls more than a host did");
+});
+
+test("Phase 2 realtime: two Worker requests per slip in printers mode, the heavy day under 5 %", () => {
+  const perDay = printStationSlipsPerDay({ fullCopy: true }) * PRINT_REALTIME_PER_PRINTER_SLIP + PRINT_REALTIME_BASE_PER_DAY;
+  assert.equal(perDay, 3_635);
+  assert.ok(perDay <= REALTIME_FREE_REQUESTS_PER_DAY * 0.05, `${perDay}/day`);
 });

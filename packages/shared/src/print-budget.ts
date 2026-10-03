@@ -30,5 +30,33 @@ export const REALTIME_FREE_REQUESTS_PER_DAY = 100_000;
 
 /** Lease + ack for every slip, plus the retried share (spec §17.2: 2,400 + 240). */
 export function printSlipRequestsPerDay(day: typeof PRINT_BUDGET_BUSY_DAY = PRINT_BUDGET_BUSY_DAY): number {
-  return Math.round(day.slips * PRINT_REQUESTS_PER_SLIP * (1 + day.retryShare));
+  return printRequestsForSlips(day.slips);
 }
+
+/** A lease and an ack per slip, plus the retried share, for any number of slips a day. */
+export function printRequestsForSlips(slips: number): number {
+  return Math.round(slips * PRINT_REQUESTS_PER_SLIP * (1 + PRINT_BUDGET_BUSY_DAY.retryShare));
+}
+
+/** Phase 2, the recount the 1C gate asked for (spec §8, §17.2): the busy day with stations. Each KOT round
+ *  splits over two stations (spec §17.2's 1,200 slips), and the heavy setup adds a full copy per round
+ *  (1,650). Every slip is ONE job whatever its copies, and costs one lease and one ack: the ack answers
+ *  whether its printer's line holds more, so no lease is made to find an empty line (Session 2B). */
+export const PRINT_BUDGET_STATIONS_DAY = {
+  roundsPerOrder: 1.5,
+  stationsPerRound: 2,
+  fullCopyPerRound: 1,
+  billsPerOrder: 1,
+  /** Devices that write to a printer: a kitchen, a bar and a counter device (spec §17.2's 3 agents). */
+  writers: 3,
+} as const;
+
+export function printStationSlipsPerDay(input: { fullCopy: boolean }): number {
+  const d = PRINT_BUDGET_STATIONS_DAY;
+  const perRound = d.stationsPerRound + (input.fullCopy ? d.fullCopyPerRound : 0);
+  return Math.round(PRINT_BUDGET_BUSY_DAY.orders * (d.roundsPerOrder * perRound + d.billsPerOrder));
+}
+
+/** Printers mode publishes 2 realtime requests per slip: its "queued" print-status aimed at its writer, and
+ *  its final state. No print-job nudge: that is for a host, and printers mode has none. */
+export const PRINT_REALTIME_PER_PRINTER_SLIP = 2;
