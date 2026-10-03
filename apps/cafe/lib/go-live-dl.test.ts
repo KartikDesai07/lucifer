@@ -13,7 +13,7 @@
 // 900-line document and pass while this section was empty.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -343,8 +343,14 @@ test("PIN: .vercelignore ALSO carries a pattern matching the --backup auto archi
   assert.ok(reportMatched, `.vercelignore must also match "${sampleReport}" via a report rule`);
 });
 
-test("PIN: cb-dl2-decisions.md D-C's archive-path clause names the OS temp directory, not <cwd>, and says the path is printed", () => {
-  const decisionsPath = path.join(REPO_ROOT, ".claude/plan/v2/_research/cb-dl2-decisions.md");
+// The decisions file lives under the git-ignored .claude/ folder, so it exists only on the PC that wrote
+// it. Where it is absent the pin is skipped with that reason instead of failing with ENOENT; it still runs
+// wherever the file is.
+const CB_DL2_DECISIONS = path.join(REPO_ROOT, ".claude/plan/v2/_research/cb-dl2-decisions.md");
+const CB_DL2_DECISIONS_ABSENT = "the git-ignored planning file .claude/plan/v2/_research/cb-dl2-decisions.md is not on this PC";
+
+test("PIN: cb-dl2-decisions.md D-C's archive-path clause names the OS temp directory, not <cwd>, and says the path is printed", { skip: existsSync(CB_DL2_DECISIONS) ? false : CB_DL2_DECISIONS_ABSENT }, () => {
+  const decisionsPath = CB_DL2_DECISIONS;
   const decisions = readFileSync(decisionsPath, "utf8");
   const dcHeadingIdx = decisions.indexOf("## D-C");
   assert.ok(dcHeadingIdx >= 0, "positive landmark: the D-C heading must still exist");
