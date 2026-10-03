@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { effectiveUnitPrice } from "@pos/shared/public";
+import { holdUnsentWork } from "@/lib/page-refresh";
 import type { OrderItem, OrderItemInput, Product } from "@/types";
 
 export interface CartItem {
@@ -174,6 +175,15 @@ const NEVER_LOCKED = () => false;
 
 export function useCart(isLocked: () => boolean = NEVER_LOCKED): UseCart {
   const [cart, setCart] = useState<CartItem[]>([]);
+
+  // The top bar's Refresh asks first while lines not sent yet (unfired) would be lost (lib/page-refresh.ts).
+  const [token] = useState(() => Symbol("cart"));
+  useEffect(() => {
+    holdUnsentWork(token, cart.some((line) => line.kotRound === 0));
+  }, [token, cart]);
+  useEffect(() => {
+    return () => holdUnsentWork(token, false);
+  }, [token]);
 
   const addToCart = useCallback<UseCart["addToCart"]>((product, opts = {}) => {
     if (isLocked()) return;
