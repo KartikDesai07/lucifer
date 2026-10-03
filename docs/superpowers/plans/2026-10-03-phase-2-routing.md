@@ -112,7 +112,7 @@ Phase 2 runs as **seven sessions, 2A → 2G**, each on `feat/printing-phase-2` (
 13. **A deleted station is cleared everywhere it was chosen** (categories, items, printers' KOT stations); the default station can't be deleted, only moved. The owner's rule: no stale print data.
 14. **The routing read is never cached.** A printer switched off stops getting slips at once; simple mode pays one small read per order request.
 15. **Direct print on the asking device** (the owner, 2026-10-04: "if the host itself makes the order, print there directly"). When the device that makes a request is the one that prints a slip (simple mode: the host's own order, or any device's own slip with no host; printers mode: the writer of the slip's printer), the server makes that slip's job already leased to the asking tab, in the same write, and the request's answer carries the leased job: the tab prints at once and acks. No lease request, no realtime message, no poll: one request per slip (its ack) instead of two, and one database write fewer. It applies only when the tab says it can print now (it drains this device's slips and its printer is ready: header `x-pos-print-lease: <tabId>`, in printers mode with its ready printers) and the slip is the head of its line (§7.6), and only to the first slip of each line in one request (a Pay Now's bill follows its KOT through the ack's `more`). Every other slip is made `queued` exactly as today. Failures stay inside Phase 1's rules: a tab that dies before printing lets the lease expire in 90 s (KOT: REPRINT; bill: the cashier's question); an answer that never arrived is delivered again to the same tab when the client re-sends the slip (the enqueue finds the job leased to that tab), and the agent ignores a job it already holds (at-least-once delivery, an idempotent consumer).
-16. **No realtime message to yourself.** A job leased at creation publishes nothing: not its "queued" print-status, not the host's print-job nudge, and not its final state when the tab that made it acks it. Realtime (with the poll and the pulse as fallbacks) carries only the slips another device prints, or another tab of the same device. A cafe whose one device takes and prints its orders then spends almost no Cloudflare requests on printing.
+16. **No realtime message to yourself.** A job leased at creation publishes nothing: not its "queued" print-status, not the host's print-job nudge, and not its final state when the tab that made it acks it. Realtime (with the poll and the pulse as fallbacks) carries only the slips another device prints, or another tab of the same device. A cafe whose one device takes and prints its orders then spends almost no Cloudflare requests on printing. *(The 2A review gate, G-1: no job's final state is published any more, since no device listened for it; see "2A review gate: rulings".)*
 
 The spec carries decisions 1–14 as §8.1 "Phase 2 decisions" and decisions 15–16 as §7.11 "Direct print on the asking device" (written with this plan), so it stays the source of truth.
 
@@ -3619,6 +3619,8 @@ Each session below lists what it delivers, its interfaces, its tests and its exi
 
 The owner's ask of 2026-10-04: when the device that takes an order is the one that prints it, print there at once, with no realtime round trip and the fewest server requests. Simple mode first (every live cafe today); Session 2C extends the same path to printer lines.
 
+**Written as exact code at the 2A review gate:** see "## Session 2B" at the end of this plan. Where it differs from the items below (G-1: no final state is published at all; G-2: "jobs for me" leaves out a running lease, and a change of the agent's own state is a nudge; `more` counts a job in backoff; the readback needs nothing new), "2A review gate: rulings" says why.
+
 1. **The asking tab says it can print now.** The agent hook keeps a module seam `directPrintTab(): string | null` in `lib/print-agent.ts`: this tab's id while it drains this device's slips (it holds the drain lock), its printer can print now (`canPrintNow()`) and no refusal holds it; null otherwise. Every order request that opts in (Phase 1 ruling R1), the job-aware `/kot-claim` and the client-started enqueue add `x-pos-print-lease: <tabId>` (`PRINT_LEASE_HEADER` in the shared wire) while the seam is not null. A bad header never refuses an order write (as R1).
 2. **The server makes the job leased at creation** (`lib/print-order-jobs.ts` `insertPrintJob`, used by the order routes, `/kot-claim` and the enqueue). When the request names a tab, the slip's printing device (simple mode: the host, or the asking device when there is no host) IS the asking device, it is the first slip of this request on that line, and the line holds no older `queued` or `leased` job (one read on the line index), the job is inserted `leased` to `{ deviceId, tabId }`: epoch 1, `attempts: 1`, `lease.expiresAt = now + 90 s`, log `created` then `leased` with `detail: "direct"`, in ONE write. A pure helper `directLeaseOf(...)` in `@pos/shared/print-lifecycle` builds those fields and is unit-tested against §7.2's lease row (the same fields `planLease` sets). Any other slip is made `queued` exactly as in Phase 1.
 3. **The answer carries it.** `PrintJobRef` gains `leased?: LeasedPrintJob` (payload, labels, epoch, copies) for a job leased at creation. The call site hands it to the agent through a module seam beside `kickPrintAgent` (`deliverLeasedJob(job)`), never through a lease request.
@@ -3638,7 +3640,8 @@ The owner's ask of 2026-10-04: when the device that takes an order is the one th
 2. **A lease per printer line, only by its writer** (`lib/print-lease.ts`, `leaseBodySchema`). The lease body gains `printerIds?: string[]` (unique ObjectIds, at most `PRINTERS_MAX`). The server keeps the printers this device writes (one `Printer.find` by id: enabled, `printerWriterDeviceId(p) === deviceId`) and leases the head of each one's line (`{ printerId, status: queued | leased }`, not stale unless approved, on the partial index; the CAS fenced on `printerId` and `targetDeviceId`), at most one job per printer, plus the head of the device's simple line (`printerId: { $exists: false }`) as today. `LeasedPrintJob` gains `printerId?` and `copies`. `retryAt` is the soonest of the lines'. 2B's `more` answers for the acked job's own line.
 3. **The sweep in printers mode** (`lib/print-sweep.ts`): a waiting job whose printer's writer changed (the printer was re-saved with another device or printing device) moves to the new writer (`retargeted`); a waiting job whose printer was deleted or disabled is failed with "This printer was removed or switched off." (never guessed onto another printer); `routeWaitingPrintJobs` (the host and origin retarget of simple mode) never touches a job with a `printerId`. A staff Retry or Print again on a job whose printer is gone routes it again with today's setup (decided at the gate).
 4. **The repair in printers mode** (`lib/print-repair.ts`): a server-owned KOT round with no job at all (neither `kot:<order>:<round>` nor any key starting `kot:<order>:<round>:`; one read on the jobKey index with exact keys and anchored prefixes) is routed again with today's setup; a round that has some of its jobs is left alone (one request inserts them together).
-5. **The writers' wake** (`POST /api/print-jobs/wake`): in printers mode `agentDailyCap = printWakeWriterCap(printerWriterDevices(printers).length)`, and the agent polls by `printAgentPollsWake({ hostConfigured, isHost, printersMode, isWriter })` (A5).
+5. **The writers' wake** (`POST /api/print-jobs/wake`): in printers mode `agentDailyCap = printWakeWriterCap(printerWriterDevices(printers).length)`, and the agent polls by `printAgentPollsWake({ hostConfigured, isHost, printersMode, isWriter })` (A5). **2A's Important 1 (confirmed at the 2A gate):** the agent's wake effect must also spend against `min(PRINT_WAKE_DAILY_CAP, the last answer's agentDailyCap)` and stop being `isHost`-gated, with a hook pin that the constant is no longer the only cap; the dead `hooks/use-print-host-wake.ts` (no call site) is deleted or pinned to stay unused. **M9:** count the writers of the printers devices chose as their bill printer, or refuse a non-routable choice.
+   - **M7 (2A gate):** station and printer names unique case-insensitively (collation strength 2 on the unique indexes, before any production collection exists, or a pre-check in create and update).
 6. **The agent prints the printers it writes, on its one local printer** (until Session 2E). It reads `GET /api/printers` on mount, on a new `print-setup` realtime kind (cafe + Worker parity, published by every stations and printers write; 2 Worker requests per admin save, never per slip) and on focus at most every 5 min; `myPrinters` = the enabled printers this device writes. It leases with their ids. A printer prints only when it is this device's own local printer: a device printer whose transport and address match the device's saved printer, or a LAN printer whose `host:port` is the app's selected `tcp:host:port`; any other is refused `sent:"no"` (never counted) with "This printer is not connected to this device." Copies: one render, written `copies` times inside one lease; a failure after the first byte is "maybe" (the REPRINT repeats every copy, labelled).
 7. **The KOT's station line on paper:** `KOTReceipt` gains `stationLine?: string`, printed under the title (`printKotStationHeader`), fed by `hostPrintSlipOf` from `payload.station`. The payload-parity and print-host-slips pins follow. A station slip's item count and round total count its own lines (the gate checks the paper). A local print (a device with no identity) never carries a station.
 8. **Attention rows carry `printerId?`**; the panel names the printer from the device's printer list.
@@ -3656,6 +3659,7 @@ The owner's ask of 2026-10-04: when the device that takes an order is the one th
 3. **This device's bill printer** in the printer panel ("Bill printer for this device: Default (‹name›) / ‹each printer›"), kept in this device's prefs and sent as `x-pos-bill-printer` on Pay Now, settle, End of day and a bill reprint.
 4. **The top-bar dot** (spec §10): the worst state among the printers this device writes and the device's own simple-mode printer.
 - Every new screen part gets its source pins; the Settings pins stay as they are.
+- **2A gate minors for 2D:** M3 (a rename onto an existing name with "make default" must not leave no default: check the name first, or save the rename, then move the default); M4 (`deleteStation` clears the pointers first, then deletes; the printer form drops unknown station ids); M5 (deleting a station names any printer that would then take nothing); while Full KOT copy is on, the station boxes of that printer are disabled or cleared (a station on a full-copy printer is a no-op on paper since `b112538`); the bill-printer picker lists routable printers only (M9).
 - **Exit (2D):** on the emulator and the harness, the owner's whole flow: Set up printers (one KOT prints exactly as before), add a Bar station, put Drinks on it, add a bar printer, a round with food and drinks prints by station; a test print; a station deleted while chosen; the item override.
 
 ### Session 2E: several printers per device, web and Windows
@@ -3842,3 +3846,3758 @@ A fresh read-only reviewer (Claude Fable 5.1) read `e73dd59..1181442` against th
 ### Pushed
 
 The branch was pushed with the token credential only (`GIT_TERMINAL_PROMPT=0 git push origin feat/printing-phase-2`): `e73dd59..` this commit. `main` is untouched and nothing is deployed. The E2E database `pos_scratch_e2e_p1final` ends with no print host, no printers and one station (the default Kitchen), plus 4 test orders `ORD-20261004-001…004`). The session's emulator, POS server and fake printer were stopped.
+
+---
+
+## Session 2A review (gate, 2026-10-04)
+
+**Verdict: PASS.** Session 2A (`e73dd59..4271848`: A1–A6 applied verbatim as `51c2191..1181442`, the final-review fix `b112538`, and the Results commit `4271848`) is complete and correct for its scope, and it changes nothing for a cafe today. A fresh reviewer at the gate found no Critical and no new Important defect. 2A's Important 1 is confirmed and stays with Session 2C; the minors are ruled below.
+
+**How this gate stayed independent.** Nothing below was taken from the Results section. Every suite and build was re-run on the repo at `4271848`; every one of the 35 files A1–A6 touched was compared with the 2A gate's golden branch (`v2`): **35 of 35 blob-identical**, so the only code the gate had not already validated was `b112538`. A fresh reviewer subagent (Claude Fable 5.1, read-only, which had not written any of it) re-read `e73dd59..b112538` against the spec and re-checked the Results' review findings in the code.
+
+| Check | Re-run at the gate (`4271848`) | Session 2A Results |
+|---|---|---|
+| shared `npm test`; `tsc` | 667/667; 0 | same |
+| cafe `npm test` | 4301 tests, 4300 pass, 0 fail, 1 skipped (the `go-live-dl` pin) | same |
+| cafe `tsc`; `npm run lint` | 0; 0 errors and the 2 old warnings | same |
+| Hub `tsc` | 0 | same |
+| mobile `tsc`; lint; `npm test`; `test:app` | 0; 0; 117/117; Jest 3/3 | same |
+| desktop `npm test` | 191/191 | same |
+| `npm run test:print-tools` | 8/8 | same |
+| live legs (local mongod) | `248 passed, 0 failed` | same |
+| Next build | success, 127 routes | same |
+| APKs (rebuilt, `GRADLE_USER_HOME='D:\gradle-home'`) | x86_64 `29115bdf…`, arm64-v8a `0e0ec314…`, armeabi-v7a `e618900a…`: byte-identical to the release | same |
+| Secrets in `e73dd59..4271848` | none (no token, key or connection string in the diff) | — |
+
+**`origin/main`** was fetched at the gate (token credential): still `6ee2b1d`, so nothing to merge.
+
+**Code read (the fresh reviewer, Fable 5.1).**
+- **`b112538` (2A's Important 2 fix) is sound** for every combination: a full-copy printer that is a station's only taker prints the round once, as its full copy; two full-copy printers each print one full copy; notices still reach each full-copy printer once (`noticeTargets` seeds them and dedupes with a Set); with no full-copy printer the fallback is unchanged ("BAR (NO PRINTER SET)", else failed); a converted one-printer cafe still gets today's KOT, the very same request object. `print-printer-routing.test.ts`: 17/17.
+- **2A's Important 1 is exact.** `hooks/use-print-agent.ts`'s wake effect is `isHost`-gated and spends against the constant `PRINT_WAKE_DAILY_CAP`; the wake answer's `agentDailyCap` has no reader; `printAgentPollsWake` and `printWakeWriterCap` have no production caller. Also found: `hooks/use-print-host-wake.ts` (`usePrintHostWake`) spends the same cap but has no call site (Phase 1 left it one release for its own tests), so 2C's fix must cover only the agent's effect, and should delete the dead hook or keep it out of any count.
+- **Dormancy holds.** `stationId` on Category and Product is optional with no default, the create schemas are not strict, a PUT touches it only when the key is present, and staff cannot set it; `printerId` and `copies` on PrintJob have no default and the new index is partial on `printerId`, so it holds no existing row; the KOT payload's `station` is optional, so no stored payload can newly fail its parse; `readPrintRouting` and `routePrintRequest` have no production caller.
+- **M3–M9 are all real**; none affects a cafe before 2C or 2D. **Two new minors:** `printSlipRequestsPerDay(day)` forwarded only `day.slips`, ignoring the day's `retryShare` (no number changed); and since `b112538`, ticking a station on a full-copy printer is a no-op on paper, so 2D's form should say so.
+
+**Pre-validating 2B on the emulator.** The gate wrote 2B on a golden copy and ran it end to end on the emulator (`Pixel_7_API_33`, WebView 109, the release APK `29115bdf…`, which 2B does not change) against the golden build of the POS on 3110, a counting proxy on 3200 (`adb reverse tcp:3100 tcp:3200`) and the fake printer on 9101. The app opened on the owner's live demo ("Olivea Pizza"); nothing was tapped there except the printer panel's More options → Change POS address → `http://localhost:3100`. Two defects of the first golden build were found there and fixed in Tasks B3 and B4 before this section was generated (G-2 below): a lease followed every direct KOT's ack. With the final build (screenshots `b-01…b-04` and the proxy log in the gate's scratchpad):
+1. **Send to Kitchen (the host's own KOT):** the proxy saw `POST /api/orders` (with the lease header), then `POST /api/print-jobs/:id/ack` 0.87 s later, and nothing else: no lease, no realtime. One slip of 40,494 B. The job's log: `created`, `leased(direct)`, `printed`; epoch 1, one attempt.
+2. **Pay Now:** `POST /api/orders`, the KOT's ack, `POST /api/print-jobs/lease` (the bill), the bill's ack, and nothing after: KOT (40,494 B) then bill (36,966 B).
+3. **A KOT from a second device** (a script as `e2e-script-device`, no lease header): made `queued` for the host, leased 8 s later through the host's wake (no realtime Worker runs locally) and printed once: Phase 1's path, unchanged.
+4. **A lost answer:** the proxy forwarded the order and cut the answer; the POS re-sent it at once (the same idempotent create: the replay answered 200 and named no job), then re-sent the KOT through `POST /api/print-jobs` with the lease header, which answered the same lease. It printed once, unlabelled, at epoch 1.
+5. **A tab that dies before printing** (a script made a KOT as the host device with a lease header naming a tab that never prints): no request at all for it for 90 s (the wake no longer counts a running lease); then the host expired it (`expired(lease expired: may have printed)`), leased it at epoch 2 and printed it once as **REPRINT** (46,110 B).
+6. **No host** ("Stop printing here"): Send to Kitchen made the device's own KOT leased to its tab: `POST /api/orders`, then its ack, nothing else.
+7. **The final build** (after the fresh review's I-1 and M-1 fixes, below) was run again: no host, Send to Kitchen (order, ack) and Pay Now (order, ack, lease, ack; 40,494 B then 36,966 B); the host again, a lost answer for which the POS this time showed "Couldn't confirm" with Send again: tapped 31 s later, the replay (200), `POST /api/print-jobs` with the lease header and the ack followed, and the KOT printed once, unlabelled, at epoch 1.
+8. `adb logcat -b crash` stayed empty. Put back as found: on the local POS "Stop printing here" ("0 waiting slips cancelled") and the network printer removed; the address back to `https://posdemo.sandbee.in` ("Olivea Pizza"; its printer panel, opened read-only: "No printer set up", "Each device prints its own slips"); `adb reverse tcp:3100 tcp:3100`; the gate's POS, proxy and fake printer stopped by PID; the emulator stopped.
+
+## 2A review gate: rulings (2026-10-04)
+
+Every ruling that changes the spec is written into spec §7.11 ("As built at the 2A review gate") and §17.2.
+
+| # | Finding | Ruling |
+|---|---|---|
+| I2 | A full-copy printer that also takes a station printed it twice; fixed in `b112538` | Re-read at the gate: **sound.** |
+| I1 | The client's wake poll is host-gated and spends the constant 14,400; the server's split has no consumer | **2C item 5** (unchanged): the agent spends against `min(PRINT_WAKE_DAILY_CAP, the last answer's agentDailyCap)` and polls by `printAgentPollsWake(...)`; a hook pin proves the constant is no longer the only cap. 2C also deletes the dead `usePrintHostWake` hook (or pins that it has no call site). |
+| M3 | `updateStation` clears the old default before a save that can fail (409), leaving no default | **2D:** check the name first (or save the rename, then move the default). Routing still falls back to the first station. |
+| M4 | `deleteStation` deletes before it clears the pointers | **2D:** clear first, then delete; 2D's printer form drops unknown station ids. |
+| M5 | Deleting a station can leave a printer that takes nothing (the cafe may silently fall back to simple mode) | **2D:** the delete confirmation names such printers. |
+| M6 | "Printers mode adds at most three small reads" means three over simple mode's one (four in all) | **Wording; no change.** |
+| M7 | Station and printer names are unique only case-sensitively ("Bar" and "bar" both print "BAR") | **2C:** a case-insensitive check (collation strength 2 on the unique index, before any production collection exists, or a pre-check). |
+| M8 | Two admins racing at the 20-station or 12-printer cap can land one over | **Accepted:** a soft cap; no effect on routing. |
+| M9 | A device's chosen bill printer need not be routable, so its writer may not poll | **2C** (count chosen printers' writers, or require a routable choice) and **2D** (the picker lists routable printers only). |
+| New minor | `printSlipRequestsPerDay(day)` ignored the day's `retryShare` | **Fixed in Task B5** (passed through; no number changes). |
+| New minor | A station ticked on a full-copy printer is a no-op on paper since `b112538` | **2D:** the form disables or clears the station boxes while Full KOT copy is on. |
+| **G-1** (gate) | Phase 1 publishes every job's final state (`printed`, `needs-confirm`, `failed`, `dismissed`) as a `print-status` frame, but no device listens for it: the readback chip and the waiting-slips panel read the pulse's feeds, and the agent leases only on a `queued` frame aimed at its own device (the only `print-status` reader in the app; the Worker only relays) | **Dropped in Task B3.** One Cloudflare Worker request fewer per slip for every cafe: a slip another device prints costs 2 Worker requests (was 3), a printers-mode slip 1 (was 2). Plan decision 16's "its final state is not published when its creation lease acks it" becomes "no final state is published". |
+| **G-2** (gate, emulator) | The pulse's and the wake's "jobs for me" counted this device's own running lease, and the bridge freeing up from the agent's own slip and its printer's status change were kicks: each queued a lease behind the direct KOT's print, after its `more: false` ack | **Fixed in Tasks B3 and B4:** "jobs for me" counts only what a lease call can act on (a lease that ran out still counts); a change of the agent's own state is a `nudge()`, which never queues a lease behind a running cycle. Proven on the emulator (items 1 and 5 above). |
+| 2B spec item 6, the readback | "The asking tab's readback takes the final state from its own ack" | **No change needed:** the readback has always read the pulse's feeds, never `print-status`, so dropping the frame changes nothing for the "Sent ✓" chip. |
+| 2B spec item 7, `more` | "true when the acked job's line has a job due now" | **As built:** true when the ACKING device's line holds a queued job (due now or in backoff). A job in backoff is then leased once, and the lease's `retryAt` sets the agent's timer; with "due now only", a job in backoff would wait for a nudge. |
+
+**The fresh review of 2B's golden code** (Claude Fable 5.1, read-only, `4271848..g2b` against the spec and this plan; it re-ran the six cafe and two shared test files: all pass). Verdict "ship with fixes": no Critical; the server side sound; G-1 and G-2 verified in the code (the only `subscribeRealtime` readers; an expired lease still counted; a job's kick never lost to a nudge). Its findings, each fixed or ruled before this section was generated:
+
+| # | Finding | Ruling |
+|---|---|---|
+| I-1 | A job held while its tab could not print (the printer went off, the drain lock moved on) printed whenever the gate reopened, even after its lease had run out and another writer had printed it as REPRINT: two KOTs | **Fixed in Task B4**, by a time bound rather than a drop when the gate closes (the reviewer's first suggestion): a held job prints only within `PRINT_DIRECT_HOLD_MS` (60 s: the 90 s lease less 30 s; its lease began at most one request timeout, 15 s, before it arrived), so its print always starts inside its lease and no other writer can have leased it; older ones are dropped unprinted. A short printer flap still prints the held KOT unlabelled, which a drop would have turned into a REPRINT. With no held job left, the cycle checks the lease gate before it leases. A new agent test proves both sides. **The reviewer re-checked the fix: sound, "ship as written"**; the time bound is strictly better than a drop for a flap. Residuals it accepted: a backward wall-clock step of over 30 s inside the window, or a suspended WebView that delivers its answer minutes late, can print a held job after its lease ran out, but in simple mode that device is still its line's only writer, so the outcome is one print (a late ack), never two. |
+| M-1 | Every slip of a request got the asking tab, so a collision on the bill read its payload for a re-delivery that cannot apply there | **Fixed in Task B2:** only the request's first slip on the line gets the tab. |
+| M-2 | `more` reads the ACKING device's line, not the job's target | **No change:** that is the agent's question ("does my line hold more?"); a wrong device id in the body only yields a wrong hint. Commented in `ackPrintJob`. |
+| M-3 | `more` counts a queued job in backoff, so one lease answers "not due" and sets the timer | **Accepted** (the gate's own ruling above): it is how the agent learns that job's time; never a loop. |
+| M-4 | An enqueue from a non-host device with the header reads the host twice | **Accepted:** rare (the header is sent only by a draining tab), and a small read. |
+| M-5 | No test for I-1 | **Added with the fix.** |
+
+**Gate decisions that shape 2B** (each in spec §7.11):
+- **One header, one meaning.** `x-pos-print-lease: <tabId>` is sent only while the tab drains this device's slips, its printer can print now and no refusal holds it; it both asks for direct print and lets the enqueue hand a lost lease back. A tab that is not ready gets Phase 1 throughout (a lost answer then expires into REPRINT, as for a refresh mid-print).
+- **The enqueue reads the host once.** `enqueueDirectPrintJob` makes the slip the asking device's own when there is no host or the asking device is the host; for any other host it answers null and Phase 1's `enqueuePrintJob` runs unchanged (`print-queue.ts` is not touched).
+- **No new field on PrintJob.** A job made leased is an ordinary leased job (`directLeaseOf` = `planLease`'s fields); its log says `leased(direct)`.
+- **A held job prints past the printer gate, but only well inside its lease.** Its attempt was made while the printer was ready; if the printer went off since, the bridge refuses it (`sent:"no"`, never counted) and it goes back in line, rather than expiring into a REPRINT. A job held longer than 60 s is dropped unprinted (I-1).
+
+---
+
+## Session 2B (exact code, written and pre-validated at the 2A review gate)
+
+**Pre-validated** by the 2A review gate on 2026-10-04, on scratchpad clones only (never in the repo):
+- The code was developed on a golden copy of `4271848` (this branch's head at the gate; `origin/main` still `6ee2b1d`, nothing to merge), one commit per task, and this section was generated from those commits: every Create block is the golden file byte for byte, and every find is unique in its file at the moment it is applied.
+- A fresh clone of `feat/printing-phase-2` at `4271848` then got every block of this section applied verbatim, task by task, with each task's own Run lines; each RED and GREEN below is the output seen there. Its tree came out **identical** to the golden copy's (`c22b72a…`). Every suite below was run on that tree.
+- Totals on that code: shared `npm test` **672/672** (+5), tsc 0; cafe `npm test` **4320 tests, 4319 pass, 0 fail, 1 skipped** (+19 over `4271848`'s 4301; the skip is Phase 1's `go-live-dl` pin), tsc 0, lint 0 errors and the 2 old warnings; Hub tsc 0; mobile 117/117 and Jest 3/3, desktop 191/191 (untouched); print tools 8/8; live legs **`272 passed, 0 failed`** (248 + 24); the Next build lists **127 routes** (2B adds none).
+- **Run on the emulator** (`Pixel_7_API_33`, WebView 109, the release APK) against the golden build of the POS through a counting proxy, exactly as Task B7 Step 4: see "Session 2A review (gate)" → "Pre-validating 2B on the emulator". It found two defects of the first golden build (G-2), both fixed in Tasks B3 and B4 before this section was generated, then passed every item.
+
+A failure while executing therefore points to drift since then, or to a typo while copying. Compare with the plan first.
+
+**What 2B delivers** (the owner's ask of 2026-10-04: "when the device that takes the order prints it, print there directly, no realtime round trip, the least server use"). When the tab that drains a device's slips asks for slips that print on that same device (the host's own order; with no host, any device's own slip), the first slip is made already leased to that tab in the one write that creates it, and the answer carries the lease: the tab prints at once and acks. No lease request, no realtime message, no poll: **one request per slip** (its ack) instead of two, and one database write fewer. A Pay Now's bill follows its KOT through the ack's `more` (KOT before bill holds by construction). An answer that is lost is handed back to the same tab when the client re-sends the slip. Every ack that takes a job off the line answers `more`, so no burst ends with an empty lease, on any device. No final `print-status` frame is published any more (G-1). **Slips another device prints keep Phase 1's path exactly.** Nothing changes on paper.
+
+**Gate rulings this section implements:** G-1 (B3, B5), G-2 (B3, B4), the 2A gate's `retryShare` minor (B5), the readback and `more` rulings above (B3, B4).
+
+**Not in 2B:** printers mode (2C: routing goes live, a lease per printer line, the writers' wake allowance, I1, M7, M9), the setup screens (2D: M3, M4, M5, the full-copy station boxes), several printers per device (2E), Android bridge v2 (2F). No Kotlin, Windows or mobile change: **the APKs stay byte-identical to the release.** Old tabs (from before 2B) send no lease header and get Phase 1 exactly; a new tab facing an older server gets no `leased` and no `more`, and falls back to Phase 1 too.
+
+### Review Focus (Session 2B)
+
+The five inputs most likely to bite a cafe that the unit tests alone would not exercise; each has a live leg, a test or an emulator item.
+1. **The order's answer is lost on the device that prints it:** the slip prints once, unlabelled (the replay names no job; the re-send gets the same lease back). → leg (al); emulator item 4.
+2. **The tab dies between its order and its print** (the app killed, a reload): the slip prints once, as REPRINT (a bill: the cashier's question), within about 90 s, and nothing polls meanwhile. → legs (am); emulator item 5.
+3. **Pay Now on the host:** the KOT before the bill, each once, three print requests in all. → leg (ak) (the line waits for the KOT's lease), leg (am) (`more`); agent test "Pay Now"; emulator item 2.
+4. **The printer goes off between the order and the print:** the job made leased is refused (`sent:"no"`, never counted) and waits in line, unlabelled, for the printer. → agent test "a taken job prints even if the printer went off since"; leg (am) "a creation lease its printer refused".
+5. **A slip another device prints, or the same device's other tab:** Phase 1 exactly (`queued`, its `print-status`, the host's lease). → leg (ak) ("never for a slip another device prints", "a line with an older job", "no lease header"); emulator item 3.
+
+### File map (Session 2B)
+
+| File | Change | Task |
+|---|---|---|
+| `packages/shared/src/print-agent-wire.ts`, `print-lifecycle.ts`, `print-job.ts` (+ `print-lifecycle.test.ts`) | the lease header; `PrintJobRef.leased`; `PrintAckData.more`; `directLeaseOf` | B1 |
+| `apps/cafe/lib/print-direct.ts` (create, + test), `lib/print-order-jobs.ts`, `lib/print-lease.ts` (`leasedJobOf`), the six order routes, `lib/print-agent-server.ts`, `app/api/print-jobs/route.ts` (+ `print-order-jobs.test.ts`, `package.json`) | direct creation, re-delivery, no announcement to yourself | B2 |
+| `apps/cafe/lib/print-lease.ts`, `lib/print-queue.ts` (+ `print-lifecycle-paths.test.ts`, `print-lease.test.ts`) | the ack's `more`; G-1; G-2's jobs-for-me | B3 |
+| `apps/cafe/lib/print-agent.ts`, `lib/print-agent-seams.ts` (create), `lib/print-agent-slip.ts` (create), `lib/print-agent-calls.ts`, `hooks/use-print-agent.ts`, `hooks/use-host-routing.ts` (+ `print-agent.test.ts`, `print-agent-paths.test.ts`) | the agent takes leased jobs, nudges, `more`; the header | B4 |
+| `packages/shared/src/print-budget.ts` (+ test) | the recount | B5 |
+| `apps/cafe/scripts/print-host-live/direct.ts` (create), `scripts/verify-print-host-live.ts` | live legs ak–am | B6 |
+| this plan | Session 2B Results | B7 |
+
+The tasks run in this order: B1 → B6 (each one commit), then B7 (verification, the emulator exit check, the fresh review, Results).
+
+---
+
+### Task B1: the shared contract: the lease header, a ref that carries its lease, the ack's `more`, and a job made leased at creation
+
+**Files:**
+- Modify: `packages/shared/src/print-agent-wire.ts` (`PRINT_LEASE_HEADER`; `PrintJobRef.leased?`; `PrintAckData.more?`)
+- Modify: `packages/shared/src/print-lifecycle.ts` (`PRINT_DIRECT_LEASE_DETAIL`, `PrintJobDirectLease`, `directLeaseOf`)
+- Modify: `packages/shared/src/print-job.ts` (`PrintJobEnqueueResult`'s queued answer may carry `leased`)
+- Test: `packages/shared/src/print-lifecycle.test.ts` (two new tests)
+
+**Interfaces produced:** `PRINT_LEASE_HEADER = "x-pos-print-lease"`; `PrintJobRef.leased?: LeasedPrintJob`; `PrintAckData.more?: boolean`; `PRINT_DIRECT_LEASE_DETAIL = "direct"`; `directLeaseOf({ labels, who: { deviceId, tabId }, originDeviceId?, nowMs }): PrintJobDirectLease` (`status: "leased"`, `epoch`, `attempts`, `uncertainAttempts`, `nextAttemptAt`, `labels`, `lease`, `log`); `PrintJobEnqueueResult` `{ outcome: "queued"; id; duplicate; leased?: LeasedPrintJob }`.
+
+**A job made leased is a leased job.** `directLeaseOf` builds exactly the fields `planLease` would set on a job created at the same moment (spec §7.2's lease row: epoch 1, one attempt, a 90 s lease for the asking device and tab), plus the create row's own fields and two log entries (`created`, then `leased` with the detail `direct`). The test proves it field by field against `planLease`, and runs the job through the ack, an expiry (KOT: REPRINT; bill: needs-confirm) and a late ack, so nothing downstream needs to know how a job was leased.
+
+**Everything new is optional on the wire.** An older client never sends the header and never reads `leased` or `more`; an older server never answers them. Each side falls back to Phase 1.
+
+- [ ] **Step 1: The failing tests first**
+
+In `packages/shared/src/print-lifecycle.test.ts`, find:
+
+```ts
+import { PRINT_HOST_MAX_AGE_MS, PRINT_JOB_KINDS } from "./print-job";
+import {
+  PRINT_BACKOFF_MS,
+  PRINT_LEASE_MS,
+  PRINT_MAX_PAPER_ATTEMPTS,
+  addPrintLabel,
+  lifecycleOf,
+  planAck,
+  planConfirm,
+```
+
+Replace it with:
+
+```ts
+import { PRINT_HOST_MAX_AGE_MS, PRINT_JOB_KINDS } from "./print-job";
+import {
+  PRINT_BACKOFF_MS,
+  PRINT_DIRECT_LEASE_DETAIL,
+  PRINT_LEASE_MS,
+  PRINT_MAX_PAPER_ATTEMPTS,
+  addPrintLabel,
+  directLeaseOf,
+  lifecycleOf,
+  planAck,
+  planConfirm,
+```
+
+In `packages/shared/src/print-lifecycle.test.ts`, find:
+
+```ts
+  assert.ok(planLease(legacy, WHO, T0).ok);
+});
+
+```
+
+Replace it with:
+
+```ts
+  assert.ok(planLease(legacy, WHO, T0).ok);
+});
+
+// Phase 2 Session 2B (spec §7.11, plan decision 15): a slip the asking tab prints itself is made already
+// leased to it, in the one write that creates it.
+function directRow(kind: PrintJobLifecycle["kind"], labels: PrintJobLifecycle["labels"] = []): PrintJobLifecycle {
+  const direct = directLeaseOf({ labels, who: WHO, originDeviceId: "dev-a", nowMs: T0 });
+  return lifecycleOf({
+    kind,
+    status: direct.status,
+    createdAt: new Date(T0),
+    epoch: direct.epoch,
+    attempts: direct.attempts,
+    uncertainAttempts: direct.uncertainAttempts,
+    nextAttemptAt: direct.nextAttemptAt,
+    labels: direct.labels,
+    lease: direct.lease,
+  });
+}
+
+test("direct lease: a job made leased to the asking tab is exactly what a lease request would make of it", () => {
+  const direct = directLeaseOf({ labels: ["DUPLICATE"], who: WHO, originDeviceId: "dev-a", nowMs: T0 });
+  const viaLease = patchOf(planLease(job({ labels: ["DUPLICATE"] }), WHO, T0));
+  assert.equal(direct.status, viaLease.status, "leased");
+  assert.equal(direct.epoch, viaLease.set.epoch, "epoch 1");
+  assert.equal(direct.attempts, viaLease.set.attempts, "one attempt");
+  assert.deepEqual(direct.lease, viaLease.set.lease, "the same 90 s lease, for the same tab");
+  assert.deepEqual(
+    { uncertainAttempts: direct.uncertainAttempts, nextAttemptAt: direct.nextAttemptAt, labels: direct.labels },
+    { uncertainAttempts: 0, nextAttemptAt: new Date(T0), labels: ["DUPLICATE"] },
+    "the create row's own fields, and its first label",
+  );
+  assert.deepEqual(
+    direct.log.map((entry) => [entry.event, entry.deviceId, entry.detail]),
+    [["created", "dev-a", undefined], ["leased", "dev-a", PRINT_DIRECT_LEASE_DETAIL]],
+    "its history says it was leased when it was made",
+  );
+  assert.deepEqual(directLeaseOf({ labels: [], who: WHO, nowMs: T0 }).log[0], { at: new Date(T0), event: "created" }, "no asking device: the created entry names none");
+});
+
+test("direct lease: its tab's ack prints it; a tab that dies lets it expire into REPRINT, or the cashier's question for a bill", () => {
+  assert.equal(patchOf(planAck(directRow("kot"), { deviceId: "dev-a", epoch: 1, outcome: "printed" }, T0 + 5_000)).status, "printed");
+  assert.equal(refusalOf(planExpiry(directRow("kot"), T0 + PRINT_LEASE_MS)).reason, "lease-held", "a live lease is never expired");
+  const kot = patchOf(planExpiry(directRow("kot"), T0 + PRINT_LEASE_MS + 1));
+  assert.deepEqual([kot.status, kot.set.labels, kot.set.uncertainAttempts], ["queued", ["REPRINT"], 1], "the KOT prints again, labelled");
+  assert.equal(patchOf(planExpiry(directRow("bill"), T0 + PRINT_LEASE_MS + 1)).status, "needs-confirm", "a bill that may have printed asks the cashier");
+  const late = patchOf(planAck({ ...directRow("kot"), status: "queued" }, { deviceId: "dev-a", epoch: 1, outcome: "printed" }, T0 + PRINT_LEASE_MS + 5_000));
+  assert.equal(late.log.event, "late-ack", "a late ack from its tab still resolves it (spec §7.9)");
+});
+
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/packages/shared && node --import tsx --test src/print-lifecycle.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 1`; `# pass 0`; `# fail 1`
+
+- [ ] **Step 3: The code**
+
+In `packages/shared/src/print-agent-wire.ts`, find:
+
+```ts
+export const PRINT_BILL_HEADER = "x-pos-print-bill";
+/** The one value that switches either header on. */
+export const PRINT_HEADER_ON = "1";
+
+/** One job the server created for a request (spec §7.4 `printJobs`): the asking device leases the ones
+ *  aimed at it straight away and follows each one's readback by id. */
+```
+
+Replace it with:
+
+```ts
+export const PRINT_BILL_HEADER = "x-pos-print-bill";
+/** The one value that switches either header on. */
+export const PRINT_HEADER_ON = "1";
+/** Phase 2 Session 2B (spec §7.11, plan decision 15): the tab that drains this device's slips and can print
+ *  right now names itself (its tab id) on every request that makes slips. When a slip prints on the asking
+ *  device, the server may then make it already leased to that tab, and the answer carries the lease
+ *  (PrintJobRef.leased): the tab prints at once, with no lease request and no realtime message. Optional like
+ *  every print header: an absent or unusable one only means the slip is made queued, as in Phase 1. */
+export const PRINT_LEASE_HEADER = "x-pos-print-lease";
+
+/** One job the server created for a request (spec §7.4 `printJobs`): the asking device leases the ones
+ *  aimed at it straight away and follows each one's readback by id. */
+```
+
+In `packages/shared/src/print-agent-wire.ts`, find:
+
+```ts
+  /** The job's state when the answer was built (1B final review M-d): a deduped ref to a job that
+   *  already printed (or was dismissed) is followed, never leased or re-sent as if it were fresh. */
+  status: PrintJobStatus;
+}
+
+/** Session 1D (spec §10): one row of the one waiting-slips panel. Every device reads the same feed on the
+```
+
+Replace it with:
+
+```ts
+  /** The job's state when the answer was built (1B final review M-d): a deduped ref to a job that
+   *  already printed (or was dismissed) is followed, never leased or re-sent as if it were fresh. */
+  status: PrintJobStatus;
+  /** Session 2B (spec §7.11): the job is leased to the asking tab (made so now, or still so from a request
+   *  whose answer was lost). The tab prints it at once and acks it; no lease request. */
+  leased?: LeasedPrintJob;
+}
+
+/** Session 1D (spec §10): one row of the one waiting-slips panel. Every device reads the same feed on the
+```
+
+In `packages/shared/src/print-agent-wire.ts`, find:
+
+```ts
+  /** Set when the job went back to the queue: the agent's local retry timer. */
+  nextAttemptAt: string | null;
+  reason?: PrintJobActionRefusal;
+}
+
+export interface PrintActionData {
+```
+
+Replace it with:
+
+```ts
+  /** Set when the job went back to the queue: the agent's local retry timer. */
+  nextAttemptAt: string | null;
+  reason?: PrintJobActionRefusal;
+  /** Session 2B (plan decision 9): set when the acked job left the line. true: the acking device's line still
+   *  holds a queued job, so the agent leases again; false: it waits for a nudge, its timer or a new slip, so a
+   *  burst no longer ends with an empty lease. Absent (an older server, an ack that changed nothing, a job
+   *  back in the queue): the agent leases again, as in Phase 1. */
+  more?: boolean;
+}
+
+export interface PrintActionData {
+```
+
+In `packages/shared/src/print-job.ts`, find:
+
+```ts
+import type { printOrderSnapshotSchema } from "./schemas/print-job.schema";
+import type { Order } from "./types";
+import type { PrintHostPrinterState } from "./print-host-printer";
+
+/** The five thermal documents + reprint/notice paths a `PrintJob` can carry.
+ *  `"cancel-notice"` is the "Notify Kitchen" stop for an already-cancelled
+```
+
+Replace it with:
+
+```ts
+import type { printOrderSnapshotSchema } from "./schemas/print-job.schema";
+import type { Order } from "./types";
+import type { PrintHostPrinterState } from "./print-host-printer";
+import type { LeasedPrintJob } from "./print-agent-wire";
+
+/** The five thermal documents + reprint/notice paths a `PrintJob` can carry.
+ *  `"cancel-notice"` is the "Notify Kitchen" stop for an already-cancelled
+```
+
+In `packages/shared/src/print-job.ts`, find:
+
+```ts
+ *  "natural wrong branch" left (repo memories `enum-reuse-across-opposite-
+ *  semantics`, `helper-null-verdict-discarded-at-call-site`).
+ *  `"already-resolved"` carries the EXISTING row's `id` so PH-8's readback
+ *  can still track the job the tap referred to. */
+export type PrintJobEnqueueResult =
+  | { outcome: "queued"; id: string; duplicate: boolean }
+  | { outcome: "no-host" }
+  | { outcome: "already-resolved"; id: string }
+  | { outcome: "too-large" };
+```
+
+Replace it with:
+
+```ts
+ *  "natural wrong branch" left (repo memories `enum-reuse-across-opposite-
+ *  semantics`, `helper-null-verdict-discarded-at-call-site`).
+ *  `"already-resolved"` carries the EXISTING row's `id` so PH-8's readback
+ *  can still track the job the tap referred to.
+ *  Phase 2 Session 2B (spec §7.11): `leased` is a job leased to the asking tab (made so now, or still so
+ *  from a send whose answer was lost); that tab prints it at once, with no lease request. */
+export type PrintJobEnqueueResult =
+  | { outcome: "queued"; id: string; duplicate: boolean; leased?: LeasedPrintJob }
+  | { outcome: "no-host" }
+  | { outcome: "already-resolved"; id: string }
+  | { outcome: "too-large" };
+```
+
+In `packages/shared/src/print-lifecycle.ts`, find:
+
+```ts
+  });
+}
+
+/** leased → (lease ran out) the same as a "maybe sent" failure (§7.2). */
+export function planExpiry(job: PrintJobLifecycle, nowMs: number): PrintJobPlan {
+  if (job.status !== "leased" || job.lease === undefined) return { ok: false, reason: "wrong-status" };
+```
+
+Replace it with:
+
+```ts
+  });
+}
+
+/** The log detail of a lease made at creation (spec §7.11), so a job's history says how it was leased. */
+export const PRINT_DIRECT_LEASE_DETAIL = "direct";
+
+/** The fields of a job created already leased (spec §7.11): the create row's own fields, the lease, and its
+ *  two log entries. */
+export interface PrintJobDirectLease {
+  status: "leased";
+  epoch: number;
+  attempts: number;
+  uncertainAttempts: number;
+  nextAttemptAt: Date;
+  labels: PrintJobLabel[];
+  lease: PrintJobLease;
+  log: PrintJobLogEntry[];
+}
+
+/** Phase 2 Session 2B (spec §7.11, plan decision 15): a job created already leased to the asking tab, so the
+ *  create and the lease are ONE write. It is exactly the job planLease would make of a job created at the same
+ *  moment (§7.2: epoch 1, one attempt, a 90 s lease), so every later transition (the ack, an expiry, a late
+ *  ack) treats it as any leased job: a tab that dies before printing lets it expire into REPRINT (a KOT) or
+ *  the cashier's question (a bill). The caller decides that the asking tab may lease it (§7.6, §9.3). */
+export function directLeaseOf(input: {
+  labels: readonly PrintJobLabel[];
+  who: { deviceId: string; tabId: string };
+  originDeviceId?: string;
+  nowMs: number;
+}): PrintJobDirectLease {
+  const init = printJobLifecycleInit(input.nowMs, input.labels);
+  const epoch = init.epoch + 1;
+  return {
+    ...init,
+    status: "leased",
+    epoch,
+    attempts: init.attempts + 1,
+    lease: { deviceId: input.who.deviceId, tabId: input.who.tabId, epoch, expiresAt: new Date(input.nowMs + PRINT_LEASE_MS) },
+    log: [printJobCreatedLog(input.nowMs, input.originDeviceId), logEntry(input.nowMs, "leased", input.who.deviceId, PRINT_DIRECT_LEASE_DETAIL)],
+  };
+}
+
+/** leased → (lease ran out) the same as a "maybe sent" failure (§7.2). */
+export function planExpiry(job: PrintJobLifecycle, nowMs: number): PrintJobPlan {
+  if (job.status !== "leased" || job.lease === undefined) return { ok: false, reason: "wrong-status" };
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/packages/shared && node --import tsx --test src/print-lifecycle.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit -p . && echo TSC_OK`
+Expected: `# tests 26`; `# pass 26`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx tsc --noEmit && echo TSC_OK`
+Expected: `TSC_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add packages/shared/src/print-agent-wire.ts packages/shared/src/print-job.ts packages/shared/src/print-lifecycle.test.ts packages/shared/src/print-lifecycle.ts
+git commit -m "feat(print): Phase 2 direct print, the shared contract: the lease header, a ref that carries its lease, the ack's more, and a job made leased at creation"
+```
+
+---
+
+### Task B2: the server: the asking tab's first slip on its own free line is made leased to it, a lost answer is handed back to that tab only, and nothing is announced to the device printing it
+
+**Files:**
+- Create: `apps/cafe/lib/print-direct.ts` (`PrintJobAskingTab`, `printLineIsFree`, `PRINT_REDELIVERY_SELECT`, `PrintRedeliveryRow`, `redeliveryOf`, `announcesQueuedJob`)
+- Modify: `apps/cafe/lib/print-order-jobs.ts` (`PrintIntent.leaseTabId`; `insertPrintJob`'s `tab`; `createOrderPrintJobs`'s `leaseTabId`; `enqueueOwnPrintJob`'s `tab`; `enqueueDirectPrintJob`)
+- Modify: `apps/cafe/lib/print-lease.ts` (`leasedJobOf`, which `leasedPrintJobOf` now calls)
+- Modify: `apps/cafe/app/api/orders/route.ts`, `apps/cafe/app/api/orders/[id]/items/route.ts`, `apps/cafe/app/api/orders/[id]/items/void/route.ts`, `apps/cafe/app/api/orders/[id]/settle/route.ts`, `apps/cafe/app/api/orders/[id]/table/route.ts`, `apps/cafe/app/api/order-requests/[id]/accept/route.ts`, `apps/cafe/lib/print-agent-server.ts` (each passes `leaseTabId: intent.leaseTabId`)
+- Modify: `apps/cafe/app/api/print-jobs/route.ts` (`enqueueDirectPrintJob` first, then Phase 1's enqueue)
+- Tests: `apps/cafe/lib/print-direct.test.ts` (create); `apps/cafe/lib/print-order-jobs.test.ts` (two new tests, two new pins, the M-d pin changed deliberately); `apps/cafe/package.json` (testChain)
+
+**Interfaces produced:** `printIntentOf(req)` → `{ deviceId, bill, leaseTabId? }`; `insertPrintJob({ …, tab?: { tabId, direct } })`; `createOrderPrintJobs({ …, leaseTabId? })`; `enqueueOwnPrintJob({ …, tab? })`; `enqueueDirectPrintJob({ payload, label, queuedBy, idempotencyKey?, originDeviceId, leaseTabId, nowMs }): Promise<PrintJobEnqueueResult | null>`; `printLineIsFree(deviceId, nowMs): Promise<boolean>`; `redeliveryOf(row, { deviceId, tabId }, nowMs): LeasedPrintJob | null`; `announcesQueuedJob({ created, status }, directOnLine): boolean`; `leasedJobOf(head, { epoch, attempts, labels }, payload): LeasedPrintJob`.
+
+**When a slip is made leased (spec §7.11, decision 15).** Only when all of these hold: the request names its tab (`x-pos-print-lease`, sent only by the tab that drains this device's slips while its printer can print now, Task B4); the slip prints on the asking device (simple mode: the host's own order, or any device's own slip when there is no host; a slip for another device never is); its line is free (`printLineIsFree`: no job leased, and no queued job that is fresh or approved, the lease's own line filter, one read); and it is the request's first slip on that line (`refs.length === 0`; only that slip gets the tab at all, so a collision on a later slip never reads a payload: the fresh review's M-1). Then the job is inserted already leased to `{ device, tab }` in the ONE write that creates it, and its ref carries the `LeasedPrintJob`. Every other slip is made queued exactly as in Phase 1. A Pay Now's bill therefore waits queued behind its KOT, and the KOT's ack (`more`, Task B3) brings it: KOT before bill (§7.6) holds by construction.
+
+**A lost answer (spec §7.11).** The order's replay creates nothing (ruling R3), so the client re-sends the slip through the enqueue (Session 1C), with the header. `enqueueDirectPrintJob` reads the host once: another device's host → null, and Phase 1's `enqueuePrintJob` runs as before; otherwise the slip goes through `enqueueOwnPrintJob` with the tab. On the key collision `insertPrintJob` reads the found job with its payload, and `redeliveryOf` hands back its lease only if it is still leased, to this very device AND tab, at the same epoch, with the lease running, on this device's line, and its payload still parses; any other case answers as Phase 1 did (`already-resolved` for a leased job). A tab reloaded since has a new id: its lease expires (REPRINT), like a refresh mid-print (M7).
+
+**No realtime message to yourself (decision 16).** A job made leased publishes nothing, and neither does a queued job made in the same request on that line (`announcesQueuedJob`): the asking tab is printing already and its ack's `more` brings it. The host's `print-job` nudge counts only announced jobs, so a host's own order nudges nobody. Every other new queued job keeps Phase 1's `queued` print-status aimed at its device.
+
+- [ ] **Step 1: The failing tests first**
+
+Create `apps/cafe/lib/print-direct.test.ts`:
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+import mongoose from "mongoose";
+import { PRINT_LEASE_MS, directLeaseOf } from "@pos/shared/print-lifecycle";
+import { stripComments } from "@/lib/source-pin-utils";
+import { announcesQueuedJob, redeliveryOf, type PrintRedeliveryRow } from "@/lib/print-direct";
+
+// Phase 2 Session 2B (spec §7.11, plan decisions 15 and 16): direct print on the asking device. The rules are
+// pure here; the creation itself is proven live (npm run verify:print:live, legs ak–am).
+
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const src = (rel: string): string => stripComments(readFileSync(path.join(REPO_ROOT, rel), "utf8"));
+const T0 = Date.parse("2026-10-04T12:00:00.000Z");
+const WHO = { deviceId: "dev-a", tabId: "tab-1" };
+const PAYLOAD = { kind: "eod", dateKey: "2026-10-04", dateLabel: "4 Oct" };
+
+function row(over: Partial<PrintRedeliveryRow> = {}): PrintRedeliveryRow {
+  const direct = directLeaseOf({ labels: [], who: WHO, originDeviceId: "dev-a", nowMs: T0 });
+  return {
+    _id: new mongoose.Types.ObjectId(),
+    kind: "eod",
+    status: direct.status,
+    label: "End of day",
+    createdAt: new Date(T0),
+    targetDeviceId: "dev-a",
+    epoch: direct.epoch,
+    attempts: direct.attempts,
+    uncertainAttempts: direct.uncertainAttempts,
+    nextAttemptAt: direct.nextAttemptAt,
+    labels: direct.labels,
+    lease: direct.lease,
+    payload: JSON.stringify(PAYLOAD),
+    copyIndex: 0,
+    ...over,
+  };
+}
+
+test("redeliveryOf: a job still leased to the asking tab, its lease running, is handed over again exactly as first sent", () => {
+  const leased = row();
+  const again = redeliveryOf(leased, WHO, T0 + 10_000);
+  assert.ok(again !== null, "the same tab asks again while its lease runs");
+  assert.deepEqual(again, {
+    id: String(leased._id),
+    epoch: 1,
+    kind: "eod",
+    label: "End of day",
+    createdAt: new Date(T0).toISOString(),
+    payload: PAYLOAD,
+    labels: [],
+    copyIndex: 0,
+    attempt: 1,
+  });
+});
+
+test("redeliveryOf: anything but that very lease answers as Phase 1 did (null)", () => {
+  const cases: Array<[string, PrintRedeliveryRow, { deviceId: string; tabId: string }, number]> = [
+    ["another tab of the device (a reload has a new id; its lease expires)", row(), { deviceId: "dev-a", tabId: "tab-2" }, T0],
+    ["another device", row(), { deviceId: "dev-b", tabId: "tab-1" }, T0],
+    ["a lease that ran out", row(), WHO, T0 + PRINT_LEASE_MS],
+    ["a job already printed", row({ status: "printed" }), WHO, T0],
+    ["a queued job (a lease expired into the queue)", row({ status: "queued" }), WHO, T0],
+    ["a job sent to another device since", row({ targetDeviceId: "dev-b" }), WHO, T0],
+    ["a lease from an older epoch", row({ epoch: 2 }), WHO, T0],
+    ["a payload that no longer parses", row({ payload: "{" }), WHO, T0],
+    ["a payload that fails the schema", row({ payload: JSON.stringify({ kind: "nope" }) }), WHO, T0],
+    ["a row read without its payload", row({ payload: undefined }), WHO, T0],
+  ];
+  for (const [label, r, who, nowMs] of cases) assert.equal(redeliveryOf(r, who, nowMs), null, label);
+});
+
+test("announcesQueuedJob: a new queued job is announced; never a job made leased, a job found under its key, or one its line's tab is printing past", () => {
+  assert.equal(announcesQueuedJob({ created: true, status: "queued" }, false), true, "Phase 1: another device or tab prints it");
+  assert.equal(announcesQueuedJob({ created: true, status: "leased" }, true), false, "made leased: the asking tab is printing it now");
+  assert.equal(announcesQueuedJob({ created: true, status: "queued" }, true), false, "Pay Now's bill behind its direct KOT: the ack's more brings it");
+  assert.equal(announcesQueuedJob({ created: false, status: "queued" }, false), false, "a job found under its key is not new");
+});
+
+test("PIN: the line is free only when nothing is leased or waiting on it (the lease's own line filter, one read)", () => {
+  const s = src("apps/cafe/lib/print-direct.ts");
+  assert.match(s, /return \(await PrintJob\.findOne\(printJobLineFilter\(deviceId, nowMs\)\)\.select\("_id"\)\.lean\(\)\) === null;/);
+  assert.ok(!/PrintJob\.(create|updateOne|updateMany|deleteMany|findOneAndUpdate)\(/.test(s), "the rules write nothing");
+  assert.ok(!s.includes("console."), "no console.* in a server lib");
+});
+```
+
+In `apps/cafe/lib/print-order-jobs.test.ts`, find:
+
+```ts
+  assert.deepEqual(printIntentOf(reqWith({ "x-pos-print-agent": "1", "x-pos-device-id": "dev-1", "x-pos-print-bill": "1" })), { deviceId: "dev-1", bill: true });
+});
+
+test("buildKotPrintDevices: positional like kotIdemKeys; a round its tab printed stays empty; no device writes nothing", () => {
+  assert.equal(buildKotPrintDevices(undefined, 1, undefined), undefined);
+  assert.deepEqual(buildKotPrintDevices(undefined, 1, "dev-1"), ["dev-1"]);
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual(printIntentOf(reqWith({ "x-pos-print-agent": "1", "x-pos-device-id": "dev-1", "x-pos-print-bill": "1" })), { deviceId: "dev-1", bill: true });
+});
+
+// Phase 2 Session 2B (spec §7.11): the draining tab that can print now names itself; an unusable name only
+// means no direct print (the slips are made queued, as in Phase 1), never a refused order.
+test("printIntentOf: the asking tab's lease header joins the intent only with an agent opt-in and a usable tab id", () => {
+  const agent = { "x-pos-print-agent": "1", "x-pos-device-id": "dev-1" };
+  assert.deepEqual(printIntentOf(reqWith({ ...agent, "x-pos-print-lease": " tab-1 " })), { deviceId: "dev-1", bill: false, leaseTabId: "tab-1" });
+  assert.deepEqual(printIntentOf(reqWith({ ...agent, "x-pos-print-lease": "  " })), { deviceId: "dev-1", bill: false }, "a blank tab id is no tab");
+  assert.deepEqual(printIntentOf(reqWith({ ...agent, "x-pos-print-lease": "t".repeat(65) })), { deviceId: "dev-1", bill: false }, "an over-long tab id is ignored, not a 400");
+  assert.equal(printIntentOf(reqWith({ "x-pos-device-id": "dev-1", "x-pos-print-lease": "tab-1" })), null, "the lease header alone is not an opt-in");
+});
+
+test("buildKotPrintDevices: positional like kotIdemKeys; a round its tab printed stays empty; no device writes nothing", () => {
+  assert.equal(buildKotPrintDevices(undefined, 1, undefined), undefined);
+  assert.deepEqual(buildKotPrintDevices(undefined, 1, "dev-1"), ["dev-1"]);
+```
+
+In `apps/cafe/lib/print-order-jobs.test.ts`, find:
+
+```ts
+  assert.match(fn, /if \(made > 0 && host !== null\) publishCafeEvent\("print-job"\);/);
+  assert.match(s, /const jobKey = input\.jobKey \?\? printJobKeyOf\(payload\);/, "today's keys: a server job and an old tab's enqueue of one slip collide");
+  assert.equal(count(s, "PrintJob.create("), 1, "one write point");
+  assert.ok(!s.includes("console."), "no console.* in a server lib");
+});
+
+```
+
+Replace it with:
+
+```ts
+  assert.match(fn, /if \(made > 0 && host !== null\) publishCafeEvent\("print-job"\);/);
+  assert.match(s, /const jobKey = input\.jobKey \?\? printJobKeyOf\(payload\);/, "today's keys: a server job and an old tab's enqueue of one slip collide");
+  assert.equal(count(s, "PrintJob.create("), 1, "one write point");
+  // Session 2B (spec §7.11): a job is made leased only on the asking device's own line, only the request's
+  // first slip there, only when the line is free; and a job printed by the asking tab is never announced.
+  assert.match(fn, /const leaseTabId = target === input\.originDeviceId \? input\.leaseTabId : undefined;/, "never for a slip another device prints");
+  assert.match(fn, /const lineFree = leaseTabId !== undefined && \(await printLineIsFree\(target, input\.nowMs\)\);/, "one read of the line, only when it can matter");
+  assert.match(fn, /const tab = leaseTabId === undefined \|\| refs\.length > 0 \? \{\} : \{ tab: \{ tabId: leaseTabId, direct: lineFree \} \};/, "only the first slip of the request on the line");
+  assert.match(fn, /if \(announcesQueuedJob\(job, directOnLine\)\) \{/, "no realtime message to yourself");
+  assert.match(s, /\.\.\.\(direct \?\? \{ \.\.\.printJobLifecycleInit\(input\.nowMs, labels\), log: \[printJobCreatedLog\(input\.nowMs, input\.originDeviceId\)\] \}\),/, "made leased in the same write that creates it");
+  assert.ok(!s.includes("console."), "no console.* in a server lib");
+});
+
+```
+
+In `apps/cafe/lib/print-order-jobs.test.ts`, find:
+
+```ts
+  assert.match(s, /if \(result\.outcome === "no-host" && intent !== null\) \{\s*result = await enqueueOwnPrintJob\(\{/);
+});
+
+// ── Session 1C, the server half (the 1B gate rulings: M-a, M-d, M-e, M-f, R4 job-aware lane, the pulse) ──
+
+test("printPulseDeviceOf: only a usable ?device= names the agent; anything else is ignored, never a 400", () => {
+```
+
+Replace it with:
+
+```ts
+  assert.match(s, /if \(result\.outcome === "no-host" && intent !== null\) \{\s*result = await enqueueOwnPrintJob\(\{/);
+});
+
+// Session 2B (spec §7.11): every request that makes slips carries the asking tab to job creation.
+test("PIN (2B): every order route and the self-order claim pass the asking tab; the enqueue tries direct print first", () => {
+  for (const rel of [...ROUTES.map(([r]) => r), "apps/cafe/lib/print-agent-server.ts"]) {
+    const s = src(rel);
+    assert.equal(count(s, "leaseTabId: intent.leaseTabId,"), 1, `${rel}: the asking tab reaches createOrderPrintJobs`);
+    assert.ok(s.indexOf("originDeviceId: intent.deviceId,") < s.indexOf("leaseTabId: intent.leaseTabId,"), `${rel}: beside the asking device`);
+  }
+  const route = src("apps/cafe/app/api/print-jobs/route.ts");
+  inOrder(route, ["const intent = printIntentOf(req);", "intent?.leaseTabId !== undefined", "await enqueueDirectPrintJob({", "direct ??", "(await enqueuePrintJob({"], "the enqueue");
+  const lib = src("apps/cafe/lib/print-order-jobs.ts");
+  const direct = lib.slice(lib.indexOf("export async function enqueueDirectPrintJob("), lib.indexOf("export function withPrintJobs<T>("));
+  assert.match(direct, /if \(host !== null && host\.deviceId !== input\.originDeviceId\) return null;/, "another device's host: Phase 1's enqueue");
+  assert.match(direct, /tab: \{ tabId: leaseTabId, direct: await printLineIsFree\(input\.originDeviceId, input\.nowMs\) \}/, "made leased only on a free line");
+  const own = lib.slice(lib.indexOf("export async function enqueueOwnPrintJob("), lib.indexOf("export async function enqueueDirectPrintJob("));
+  inOrder(own, ["if (job.ref.leased !== undefined) return {", "leased: job.ref.leased };", "if (!job.created && job.status !== \"queued\")", "if (job.created) publishPrintStatus("], "a leased job is answered with its lease before any announcement");
+});
+
+// ── Session 1C, the server half (the 1B gate rulings: M-a, M-d, M-e, M-f, R4 job-aware lane, the pulse) ──
+
+test("printPulseDeviceOf: only a usable ?device= names the agent; anything else is ignored, never a 400", () => {
+```
+
+In `apps/cafe/lib/print-order-jobs.test.ts`, find:
+
+```ts
+
+test("PIN (M-d): every ref says what state its job is in, made now or found under its key", () => {
+  const s = src("apps/cafe/lib/print-order-jobs.ts");
+  assert.match(s, /label: input\.request\.label,\s*status: "queued",\s*\};\s*return \{ ref, created: true, status: "queued" \};/, "a new job is queued");
+  assert.match(s, /label: existing\.label,\s*status: existing\.status,\s*\};/, "a found job keeps its own state");
+  assert.match(src("packages/shared/src/print-agent-wire.ts"), /export interface PrintJobRef \{[^}]*status: PrintJobStatus;/, "the wire type carries it");
+});
+
+```
+
+Replace it with:
+
+```ts
+
+test("PIN (M-d): every ref says what state its job is in, made now or found under its key", () => {
+  const s = src("apps/cafe/lib/print-order-jobs.ts");
+  // Session 2B deliberately changed the first two: a new job is queued, or leased to the asking tab and
+  // carrying its lease; a found job keeps its own state, plus its lease when it is still the asking tab's.
+  assert.match(
+    s,
+    /label: input\.request\.label,\s*status: direct === null \? "queued" : "leased",\s*\.\.\.\(direct !== null \? \{ leased: leasedJobOf\(created, direct, payload\) \} : \{\}\),\s*\};\s*return \{ ref, created: true, status: ref\.status \};/,
+    "a new job is queued, or made leased to the asking tab",
+  );
+  assert.match(s, /label: existing\.label,\s*status: existing\.status,\s*\.\.\.\(again !== null \? \{ leased: again \} : \{\}\),\s*\};/, "a found job keeps its own state");
+  assert.match(src("packages/shared/src/print-agent-wire.ts"), /export interface PrintJobRef \{[^}]*status: PrintJobStatus;/, "the wire type carries it");
+});
+
+```
+
+In `apps/cafe/package.json`, find:
+
+```json
+    "lib/appearance-settings-paths-2.test.ts",
+    "lib/print-printers-model.test.ts",
+    "lib/print-printer-routing.test.ts",
+    "lib/print-setup-paths.test.ts"
+  ],
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+```
+
+Replace it with:
+
+```json
+    "lib/appearance-settings-paths-2.test.ts",
+    "lib/print-printers-model.test.ts",
+    "lib/print-printer-routing.test.ts",
+    "lib/print-setup-paths.test.ts",
+    "lib/print-direct.test.ts"
+  ],
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-direct.test.ts lib/print-order-jobs.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 17`; `# pass 12`; `# fail 5`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/app/api/order-requests/[id]/accept/route.ts`, find:
+
+```ts
+            order: result.order,
+            slips: [{ kind: "kot", round: result.order.kotRounds }],
+            originDeviceId: intent.deviceId,
+            queuedBy: authed.session.user.name ?? "",
+            nowMs: Date.now(),
+          })
+```
+
+Replace it with:
+
+```ts
+            order: result.order,
+            slips: [{ kind: "kot", round: result.order.kotRounds }],
+            originDeviceId: intent.deviceId,
+            leaseTabId: intent.leaseTabId,
+            queuedBy: authed.session.user.name ?? "",
+            nowMs: Date.now(),
+          })
+```
+
+In `apps/cafe/app/api/orders/[id]/items/route.ts`, find:
+
+```ts
+          order: updated,
+          slips: [{ kind: "kot", round }],
+          originDeviceId: intent.deviceId,
+          queuedBy: authed.session.user.name ?? "",
+          nowMs: Date.now(),
+        })
+```
+
+Replace it with:
+
+```ts
+          order: updated,
+          slips: [{ kind: "kot", round }],
+          originDeviceId: intent.deviceId,
+          leaseTabId: intent.leaseTabId,
+          queuedBy: authed.session.user.name ?? "",
+          nowMs: Date.now(),
+        })
+```
+
+In `apps/cafe/app/api/orders/[id]/items/void/route.ts`, find:
+
+```ts
+          order: updated,
+          slips: [{ kind: "void" }],
+          originDeviceId: intent.deviceId,
+          queuedBy: authed.session.user.name ?? "",
+          nowMs: Date.now(),
+        })
+```
+
+Replace it with:
+
+```ts
+          order: updated,
+          slips: [{ kind: "void" }],
+          originDeviceId: intent.deviceId,
+          leaseTabId: intent.leaseTabId,
+          queuedBy: authed.session.user.name ?? "",
+          nowMs: Date.now(),
+        })
+```
+
+In `apps/cafe/app/api/orders/[id]/settle/route.ts`, find:
+
+```ts
+          order: numbered.value ?? updated,
+          slips: intent.bill ? [{ kind: "bill" }] : [],
+          originDeviceId: intent.deviceId,
+          queuedBy: authed.session.user.name ?? "",
+          nowMs: Date.now(),
+        })
+```
+
+Replace it with:
+
+```ts
+          order: numbered.value ?? updated,
+          slips: intent.bill ? [{ kind: "bill" }] : [],
+          originDeviceId: intent.deviceId,
+          leaseTabId: intent.leaseTabId,
+          queuedBy: authed.session.user.name ?? "",
+          nowMs: Date.now(),
+        })
+```
+
+In `apps/cafe/app/api/orders/[id]/table/route.ts`, find:
+
+```ts
+            },
+          ],
+          originDeviceId: intent.deviceId,
+          queuedBy: authed.session.user.name ?? "",
+          nowMs: Date.now(),
+        })
+```
+
+Replace it with:
+
+```ts
+            },
+          ],
+          originDeviceId: intent.deviceId,
+          leaseTabId: intent.leaseTabId,
+          queuedBy: authed.session.user.name ?? "",
+          nowMs: Date.now(),
+        })
+```
+
+In `apps/cafe/app/api/orders/route.ts`, find:
+
+```ts
+          order: numbered.value ?? landed,
+          slips: [{ kind: "kot", round: 1 }, ...(intent.bill && data.status === "Completed" ? [{ kind: "bill" as const }] : [])],
+          originDeviceId: intent.deviceId,
+          queuedBy: authed.session.user.name ?? "",
+          nowMs: Date.now(),
+        })
+```
+
+Replace it with:
+
+```ts
+          order: numbered.value ?? landed,
+          slips: [{ kind: "kot", round: 1 }, ...(intent.bill && data.status === "Completed" ? [{ kind: "bill" as const }] : [])],
+          originDeviceId: intent.deviceId,
+          leaseTabId: intent.leaseTabId,
+          queuedBy: authed.session.user.name ?? "",
+          nowMs: Date.now(),
+        })
+```
+
+In `apps/cafe/app/api/print-jobs/route.ts`, find:
+
+```ts
+import { PRINT_JOB_LABEL_MAX_CHARS, printJobPayloadWithinCap } from "@pos/shared/print-job";
+import { PRINT_DEVICE_ID_HEADER, PRINT_IDEMPOTENCY_HEADER, PRINT_IDEMPOTENCY_KEY_PATTERN } from "@pos/shared/print-agent-wire";
+import { enqueuePrintJob, prunePrintJobsThrottled } from "@/lib/print-queue";
+import { enqueueOwnPrintJob, printIntentOf } from "@/lib/print-order-jobs";
+import { PRINT_HOST_DEVICE_ID_MAX_CHARS } from "@/lib/print-host";
+import { success, failure, requireAuth, serverError, validateBody } from "@/lib/api-helpers";
+import { noStore } from "@/lib/order-request-tray";
+```
+
+Replace it with:
+
+```ts
+import { PRINT_JOB_LABEL_MAX_CHARS, printJobPayloadWithinCap } from "@pos/shared/print-job";
+import { PRINT_DEVICE_ID_HEADER, PRINT_IDEMPOTENCY_HEADER, PRINT_IDEMPOTENCY_KEY_PATTERN } from "@pos/shared/print-agent-wire";
+import { enqueuePrintJob, prunePrintJobsThrottled } from "@/lib/print-queue";
+import { enqueueDirectPrintJob, enqueueOwnPrintJob, printIntentOf } from "@/lib/print-order-jobs";
+import { PRINT_HOST_DEVICE_ID_MAX_CHARS } from "@/lib/print-host";
+import { success, failure, requireAuth, serverError, validateBody } from "@/lib/api-helpers";
+import { noStore } from "@/lib/order-request-tray";
+```
+
+In `apps/cafe/app/api/print-jobs/route.ts`, find:
+
+```ts
+
+  try {
+    await connectDB();
+    let result = await enqueuePrintJob({
+      payload: parsed.data.payload,
+      label: parsed.data.label,
+      queuedBy,
+      ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+      ...(originDeviceId !== undefined ? { originDeviceId } : {}),
+      nowMs,
+    });
+    // Phase 1 (spec §6.6): with no host, an agent tab prints its own client-started slip through the
+    // lifecycle. A tab from before Phase 1 sends no agent header and still gets "no-host" (print here).
+    const intent = printIntentOf(req);
+    if (result.outcome === "no-host" && intent !== null) {
+      result = await enqueueOwnPrintJob({
+        payload: parsed.data.payload,
+```
+
+Replace it with:
+
+```ts
+
+  try {
+    await connectDB();
+    const intent = printIntentOf(req);
+    // Session 2B (spec §7.11): the tab that drains the asking device's slips and can print now prints its
+    // own slip at once (made leased to it), and gets back a slip still leased to it whose first answer was
+    // lost. null: another device is the host, and the enqueue below makes the slip for it.
+    const direct =
+      intent?.leaseTabId !== undefined
+        ? await enqueueDirectPrintJob({
+            payload: parsed.data.payload,
+            label: parsed.data.label,
+            queuedBy,
+            ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+            originDeviceId: intent.deviceId,
+            leaseTabId: intent.leaseTabId,
+            nowMs,
+          })
+        : null;
+    let result =
+      direct ??
+      (await enqueuePrintJob({
+        payload: parsed.data.payload,
+        label: parsed.data.label,
+        queuedBy,
+        ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+        ...(originDeviceId !== undefined ? { originDeviceId } : {}),
+        nowMs,
+      }));
+    // Phase 1 (spec §6.6): with no host, an agent tab prints its own client-started slip through the
+    // lifecycle. A tab from before Phase 1 sends no agent header and still gets "no-host" (print here).
+    if (result.outcome === "no-host" && intent !== null) {
+      result = await enqueueOwnPrintJob({
+        payload: parsed.data.payload,
+```
+
+In `apps/cafe/lib/print-agent-server.ts`, find:
+
+```ts
+    order: result.order,
+    slips: [{ kind: "kot", round: result.kotRound }],
+    originDeviceId: intent.deviceId,
+    queuedBy: SELF_ORDER_RECEIVER,
+    nowMs,
+  });
+```
+
+Replace it with:
+
+```ts
+    order: result.order,
+    slips: [{ kind: "kot", round: result.kotRound }],
+    originDeviceId: intent.deviceId,
+    leaseTabId: intent.leaseTabId,
+    queuedBy: SELF_ORDER_RECEIVER,
+    nowMs,
+  });
+```
+
+Create `apps/cafe/lib/print-direct.ts`:
+
+```ts
+import type { Types } from "mongoose";
+import type { PrintJobKind, PrintJobStatus } from "@pos/shared/print-job";
+import type { LeasedPrintJob } from "@pos/shared/print-agent-wire";
+import { lifecycleOf, type PrintJobLease } from "@pos/shared/print-lifecycle";
+import { printJobPayloadSchema, type PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
+import { PrintJob } from "@/models/PrintJob";
+import { leasedJobOf, printJobLineFilter } from "@/lib/print-lease";
+
+// Phase 2 Session 2B (spec §7.11, plan decisions 15 and 16): direct print on the asking device. When the tab
+// that drains a device's slips, and can print right now, asks for slips that print on that same device, the
+// first one is made already leased to it and the answer carries the lease: the tab prints at once, with no
+// lease request and no realtime message. These are the server's rules for it; print-order-jobs.ts applies
+// them. Never calls connectDB(). No console.*.
+
+/** The asking tab, for a job whose line is the asking device's own (the caller's rule). `direct`: make the job
+ *  already leased to it. */
+export interface PrintJobAskingTab {
+  tabId: string;
+  direct: boolean;
+}
+
+/** Nothing waits on this device's line ahead of a slip made now (§7.6): no job leased, and no queued job that
+ *  is fresh or approved (a parked one never blocks the line). One read on the line index. */
+export async function printLineIsFree(deviceId: string, nowMs: number): Promise<boolean> {
+  return (await PrintJob.findOne(printJobLineFilter(deviceId, nowMs)).select("_id").lean()) === null;
+}
+
+/** What a job found under its key is read with when the asking tab may be handed it again. */
+export const PRINT_REDELIVERY_SELECT =
+  "kind status label orderId createdAt targetDeviceId epoch attempts uncertainAttempts nextAttemptAt labels lease payload copyIndex";
+
+export interface PrintRedeliveryRow {
+  _id: Types.ObjectId;
+  kind: PrintJobKind;
+  status: PrintJobStatus;
+  label: string;
+  orderId?: string;
+  createdAt: Date;
+  targetDeviceId?: string;
+  epoch?: number;
+  attempts?: number;
+  uncertainAttempts?: number;
+  nextAttemptAt?: Date;
+  labels?: string[];
+  lease?: PrintJobLease;
+  payload?: string;
+  copyIndex?: number;
+}
+
+/** A job its key already names that is still leased to the asking device's very tab, its lease still running:
+ *  the answer that carried it was lost (spec §7.11), so the same lease is handed over again. The agent ignores a
+ *  job it already holds (its id and epoch), so a delivery that did arrive still prints once. Anything else:
+ *  null, and the caller answers as in Phase 1 (a tab reloaded since has a new id; its lease expires). */
+export function redeliveryOf(row: PrintRedeliveryRow, who: { deviceId: string; tabId: string }, nowMs: number): LeasedPrintJob | null {
+  const job = lifecycleOf(row);
+  const lease = job.lease;
+  if (job.status !== "leased" || lease === undefined || row.payload === undefined || row.targetDeviceId !== who.deviceId) return null;
+  if (lease.deviceId !== who.deviceId || lease.tabId !== who.tabId || lease.epoch !== job.epoch || lease.expiresAt.getTime() <= nowMs) return null;
+  let payload: PrintJobPayload;
+  try {
+    const parsed = printJobPayloadSchema.safeParse(JSON.parse(row.payload) as unknown);
+    if (!parsed.success) return null;
+    payload = parsed.data;
+  } catch {
+    return null;
+  }
+  return leasedJobOf(row, { epoch: job.epoch, attempts: job.attempts, labels: job.labels }, payload);
+}
+
+/** Decision 16, no realtime message to yourself: a new queued job is announced to the device that prints it
+ *  (its "queued" print-status, and the host's print-job nudge) unless the same request made a job leased to
+ *  the asking tab on that line. That tab is printing already, and its ack's `more` brings it to the rest. A
+ *  job made leased is never announced, and a job found under its key is not new. */
+export function announcesQueuedJob(job: { created: boolean; status: PrintJobStatus }, directOnLine: boolean): boolean {
+  return job.created && job.status === "queued" && !directOnLine;
+}
+```
+
+In `apps/cafe/lib/print-lease.ts`, find:
+
+```ts
+  return applied;
+}
+
+export function leasedPrintJobOf(
+  head: { _id: unknown; kind: PrintJobKind; label: string; orderId?: string; createdAt: Date; copyIndex?: number },
+  patch: PrintJobPatch,
+  payload: PrintJobPayload,
+  labels: PrintJobLabel[],
+): LeasedPrintJob {
+  return {
+    id: String(head._id),
+    epoch: patch.set.epoch ?? 0,
+    kind: head.kind,
+    label: head.label,
+    ...(head.orderId !== undefined ? { orderId: head.orderId } : {}),
+    createdAt: head.createdAt.toISOString(),
+    payload,
+    labels,
+    copyIndex: head.copyIndex ?? 0,
+    attempt: patch.set.attempts ?? 1,
+  };
+}
+
+/** The claim path's gates, unchanged (print-queue-claim.ts): a payload that no longer parses, or a
+```
+
+Replace it with:
+
+```ts
+  return applied;
+}
+
+type LeasedHead = { _id: unknown; kind: PrintJobKind; label: string; orderId?: string; createdAt: Date; copyIndex?: number };
+
+/** The wire job for one lease (spec §7.3), from its row: leased by a lease request, made leased at creation,
+ *  or delivered again to the tab that holds it (Session 2B, spec §7.11). */
+export function leasedJobOf(head: LeasedHead, lease: { epoch: number; attempts: number; labels: PrintJobLabel[] }, payload: PrintJobPayload): LeasedPrintJob {
+  return {
+    id: String(head._id),
+    epoch: lease.epoch,
+    kind: head.kind,
+    label: head.label,
+    ...(head.orderId !== undefined ? { orderId: head.orderId } : {}),
+    createdAt: head.createdAt.toISOString(),
+    payload,
+    labels: lease.labels,
+    copyIndex: head.copyIndex ?? 0,
+    attempt: lease.attempts,
+  };
+}
+
+export function leasedPrintJobOf(head: LeasedHead, patch: PrintJobPatch, payload: PrintJobPayload, labels: PrintJobLabel[]): LeasedPrintJob {
+  return leasedJobOf(head, { epoch: patch.set.epoch ?? 0, attempts: patch.set.attempts ?? 1, labels }, payload);
+}
+
+/** The claim path's gates, unchanged (print-queue-claim.ts): a payload that no longer parses, or a
+```
+
+In `apps/cafe/lib/print-order-jobs.ts`, find:
+
+```ts
+  PRINT_BILL_HEADER,
+  PRINT_DEVICE_ID_HEADER,
+  PRINT_HEADER_ON,
+  type PrintJobRef,
+} from "@pos/shared/print-agent-wire";
+import { printJobCreatedLog, printJobInitialLabels, printJobLifecycleInit } from "@pos/shared/print-lifecycle";
+import { printJobPayloadSchema, type PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
+import { PrintHost } from "@/models/PrintHost";
+import { PrintJob } from "@/models/PrintJob";
+import { PRINT_HOST_DEVICE_ID_MAX_CHARS } from "@/lib/print-host";
+import { printJobKeyOf, printJobOrderIdOf } from "@/lib/print-queue";
+import { billPrintJob, kotPrintJob, movedPrintJob, voidPrintJob, type PrintJobRequest } from "@/lib/print-routing";
+import { publishCafeEvent, publishPrintStatus } from "@/lib/realtime-publish";
+import type { Order } from "@/types";
+```
+
+Replace it with:
+
+```ts
+  PRINT_BILL_HEADER,
+  PRINT_DEVICE_ID_HEADER,
+  PRINT_HEADER_ON,
+  PRINT_LEASE_HEADER,
+  type PrintJobRef,
+} from "@pos/shared/print-agent-wire";
+import { directLeaseOf, printJobCreatedLog, printJobInitialLabels, printJobLifecycleInit } from "@pos/shared/print-lifecycle";
+import { printJobPayloadSchema, type PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
+import { PrintHost } from "@/models/PrintHost";
+import { PrintJob } from "@/models/PrintJob";
+import { PRINT_HOST_DEVICE_ID_MAX_CHARS } from "@/lib/print-host";
+import {
+  PRINT_REDELIVERY_SELECT,
+  announcesQueuedJob,
+  printLineIsFree,
+  redeliveryOf,
+  type PrintJobAskingTab,
+  type PrintRedeliveryRow,
+} from "@/lib/print-direct";
+import { leasedJobOf } from "@/lib/print-lease";
+import { printJobKeyOf, printJobOrderIdOf } from "@/lib/print-queue";
+import { PRINT_HOST_TAB_ID_MAX_CHARS } from "@/lib/print-queue-claim";
+import { billPrintJob, kotPrintJob, movedPrintJob, voidPrintJob, type PrintJobRequest } from "@/lib/print-routing";
+import { publishCafeEvent, publishPrintStatus } from "@/lib/realtime-publish";
+import type { Order } from "@/types";
+```
+
+In `apps/cafe/lib/print-order-jobs.ts`, find:
+
+```ts
+  deviceId: string;
+  /** PRINT_BILL_HEADER: this call site also prints the bill (Pay Now, the POS settle). */
+  bill: boolean;
+}
+
+/** null unless the request opted in with a usable device id. A bad print header never refuses the
+```
+
+Replace it with:
+
+```ts
+  deviceId: string;
+  /** PRINT_BILL_HEADER: this call site also prints the bill (Pay Now, the POS settle). */
+  bill: boolean;
+  /** Session 2B (PRINT_LEASE_HEADER, spec §7.11): the asking tab drains this device's slips and can print
+   *  now, so a slip that prints on this device may be made already leased to it. */
+  leaseTabId?: string;
+}
+
+/** null unless the request opted in with a usable device id. A bad print header never refuses the
+```
+
+In `apps/cafe/lib/print-order-jobs.ts`, find:
+
+```ts
+  if (req.headers.get(PRINT_AGENT_HEADER)?.trim() !== PRINT_HEADER_ON) return null;
+  const deviceId = req.headers.get(PRINT_DEVICE_ID_HEADER)?.trim() ?? "";
+  if (deviceId === "" || deviceId.length > PRINT_HOST_DEVICE_ID_MAX_CHARS) return null;
+  return { deviceId, bill: req.headers.get(PRINT_BILL_HEADER)?.trim() === PRINT_HEADER_ON };
+}
+
+/** The tab's kotPrintDevices after firing `round` for `deviceId`. Positional, the kotIdemKeys idiom:
+```
+
+Replace it with:
+
+```ts
+  if (req.headers.get(PRINT_AGENT_HEADER)?.trim() !== PRINT_HEADER_ON) return null;
+  const deviceId = req.headers.get(PRINT_DEVICE_ID_HEADER)?.trim() ?? "";
+  if (deviceId === "" || deviceId.length > PRINT_HOST_DEVICE_ID_MAX_CHARS) return null;
+  const leaseTabId = req.headers.get(PRINT_LEASE_HEADER)?.trim() ?? "";
+  return {
+    deviceId,
+    bill: req.headers.get(PRINT_BILL_HEADER)?.trim() === PRINT_HEADER_ON,
+    // An unusable tab id only means no direct print: the slips are made queued, as in Phase 1.
+    ...(leaseTabId !== "" && leaseTabId.length <= PRINT_HOST_TAB_ID_MAX_CHARS ? { leaseTabId } : {}),
+  };
+}
+
+/** The tab's kotPrintDevices after firing `round` for `deviceId`. Positional, the kotIdemKeys idiom:
+```
+
+In `apps/cafe/lib/print-order-jobs.ts`, find:
+
+```ts
+  status: PrintJobStatus;
+}
+
+/** Inserts one job. null: its payload fails the schema or the 64 KB cap. A DB error throws. */
+export async function insertPrintJob(input: {
+  request: PrintJobRequest;
+  targetDeviceId: string;
+```
+
+Replace it with:
+
+```ts
+  status: PrintJobStatus;
+}
+
+/** Inserts one job. null: its payload fails the schema or the 64 KB cap. A DB error throws.
+ *  Session 2B (spec §7.11): `tab` is the asking tab, passed only when this job's line is the asking device's
+ *  own. With `direct` the job is made already leased to it, in this one write; and a job its key already
+ *  names that is still leased to that very tab is handed back with its lease (an answer lost on the way). */
+export async function insertPrintJob(input: {
+  request: PrintJobRequest;
+  targetDeviceId: string;
+```
+
+In `apps/cafe/lib/print-order-jobs.ts`, find:
+
+```ts
+  queuedBy: string;
+  /** Default printJobKeyOf(payload); a client-started repeat passes its `reprint:<key>`. */
+  jobKey?: string;
+  nowMs: number;
+}): Promise<InsertedPrintJob | null> {
+  const parsed = printJobPayloadSchema.safeParse(input.request.payload);
+```
+
+Replace it with:
+
+```ts
+  queuedBy: string;
+  /** Default printJobKeyOf(payload); a client-started repeat passes its `reprint:<key>`. */
+  jobKey?: string;
+  tab?: PrintJobAskingTab;
+  nowMs: number;
+}): Promise<InsertedPrintJob | null> {
+  const parsed = printJobPayloadSchema.safeParse(input.request.payload);
+```
+
+In `apps/cafe/lib/print-order-jobs.ts`, find:
+
+```ts
+  if (!printJobPayloadWithinCap(json)) return null;
+  const jobKey = input.jobKey ?? printJobKeyOf(payload);
+  const orderId = printJobOrderIdOf(payload);
+  try {
+    const created = await PrintJob.create({
+      kind: payload.kind,
+```
+
+Replace it with:
+
+```ts
+  if (!printJobPayloadWithinCap(json)) return null;
+  const jobKey = input.jobKey ?? printJobKeyOf(payload);
+  const orderId = printJobOrderIdOf(payload);
+  const labels = printJobInitialLabels(payload);
+  const who = input.tab === undefined ? null : { deviceId: input.targetDeviceId, tabId: input.tab.tabId };
+  const direct = who !== null && input.tab?.direct === true ? directLeaseOf({ labels, who, originDeviceId: input.originDeviceId, nowMs: input.nowMs }) : null;
+  try {
+    const created = await PrintJob.create({
+      kind: payload.kind,
+```
+
+In `apps/cafe/lib/print-order-jobs.ts`, find:
+
+```ts
+      targetDeviceId: input.targetDeviceId,
+      ...(input.originDeviceId !== undefined ? { originDeviceId: input.originDeviceId } : {}),
+      copyIndex: 0,
+      ...printJobLifecycleInit(input.nowMs, printJobInitialLabels(payload)),
+      log: [printJobCreatedLog(input.nowMs, input.originDeviceId)],
+    });
+    const ref: PrintJobRef = {
+      id: String(created._id),
+      kind: payload.kind,
+      targetDeviceId: input.targetDeviceId,
+      label: input.request.label,
+      status: "queued",
+    };
+    return { ref, created: true, status: "queued" };
+  } catch (error) {
+    if (!isDuplicateKeyError(error) || jobKey === undefined) throw error;
+    const existing = await PrintJob.findOne({ jobKey }).select("kind status label targetDeviceId").lean();
+    // Pruned in the instant since the collision: report nothing rather than invent a job.
+    if (existing === null) return null;
+    const ref: PrintJobRef = {
+      id: String(existing._id),
+      kind: existing.kind,
+      targetDeviceId: existing.targetDeviceId ?? input.targetDeviceId,
+      label: existing.label,
+      status: existing.status,
+    };
+    return { ref, created: false, status: existing.status };
+  }
+```
+
+Replace it with:
+
+```ts
+      targetDeviceId: input.targetDeviceId,
+      ...(input.originDeviceId !== undefined ? { originDeviceId: input.originDeviceId } : {}),
+      copyIndex: 0,
+      // Made leased to the asking tab (its log says "direct"), or queued as in Phase 1.
+      ...(direct ?? { ...printJobLifecycleInit(input.nowMs, labels), log: [printJobCreatedLog(input.nowMs, input.originDeviceId)] }),
+    });
+    const ref: PrintJobRef = {
+      id: String(created._id),
+      kind: payload.kind,
+      targetDeviceId: input.targetDeviceId,
+      label: input.request.label,
+      status: direct === null ? "queued" : "leased",
+      ...(direct !== null ? { leased: leasedJobOf(created, direct, payload) } : {}),
+    };
+    return { ref, created: true, status: ref.status };
+  } catch (error) {
+    if (!isDuplicateKeyError(error) || jobKey === undefined) throw error;
+    const existing = await PrintJob.findOne({ jobKey })
+      .select(who === null ? "kind status label targetDeviceId" : PRINT_REDELIVERY_SELECT)
+      .lean<PrintRedeliveryRow>();
+    // Pruned in the instant since the collision: report nothing rather than invent a job.
+    if (existing === null) return null;
+    const again = who === null ? null : redeliveryOf(existing, who, input.nowMs);
+    const ref: PrintJobRef = {
+      id: String(existing._id),
+      kind: existing.kind,
+      targetDeviceId: existing.targetDeviceId ?? input.targetDeviceId,
+      label: existing.label,
+      status: existing.status,
+      ...(again !== null ? { leased: again } : {}),
+    };
+    return { ref, created: false, status: existing.status };
+  }
+```
+
+In `apps/cafe/lib/print-order-jobs.ts`, find:
+
+```ts
+
+/** Creates the slips one order request asked for (spec §7.4) and returns a ref for each job that
+ *  exists for them, made now or before. Publishes "print-status" queued per new job, aimed at its
+ *  device, plus one "print-job" nudge for a host from before Phase 1. */
+export async function createOrderPrintJobs(input: {
+  order: unknown;
+  slips: OrderPrintSlip[];
+  /** Absent only when no device asked (the public auto-accept, from Session 1C: final review C1). */
+  originDeviceId?: string;
+  queuedBy: string;
+  nowMs: number;
+}): Promise<PrintJobRef[]> {
+```
+
+Replace it with:
+
+```ts
+
+/** Creates the slips one order request asked for (spec §7.4) and returns a ref for each job that
+ *  exists for them, made now or before. Publishes "print-status" queued per new job, aimed at its
+ *  device, plus one "print-job" nudge for a host from before Phase 1.
+ *  Session 2B (spec §7.11, decisions 15 and 16): when the slips print on the asking device and its draining
+ *  tab can print now (`leaseTabId`), the first one is made leased to that tab if nothing older waits on its
+ *  line; the rest follow it through the ack's `more`, so none of them is announced to the device printing. */
+export async function createOrderPrintJobs(input: {
+  order: unknown;
+  slips: OrderPrintSlip[];
+  /** Absent only when no device asked (the public auto-accept, from Session 1C: final review C1). */
+  originDeviceId?: string;
+  leaseTabId?: string;
+  queuedBy: string;
+  nowMs: number;
+}): Promise<PrintJobRef[]> {
+```
+
+In `apps/cafe/lib/print-order-jobs.ts`, find:
+
+```ts
+    if (target === undefined) return refs;
+    const order = wireOrderOf(input.order);
+    const slips = [...input.slips].sort((a, b) => SLIP_ORDER[a.kind] - SLIP_ORDER[b.kind]);
+    let made = 0;
+    for (const slip of slips) {
+      const request = requestOf(order, slip);
+      if (request === null) continue;
+      const job = await insertPrintJob({ request, targetDeviceId: target, originDeviceId: input.originDeviceId, queuedBy: input.queuedBy, nowMs: input.nowMs });
+      if (job === null) continue;
+      refs.push(job.ref);
+      if (job.created) {
+        made += 1;
+        publishPrintStatus({ id: job.ref.id, status: "queued", target });
+      }
+```
+
+Replace it with:
+
+```ts
+    if (target === undefined) return refs;
+    const order = wireOrderOf(input.order);
+    const slips = [...input.slips].sort((a, b) => SLIP_ORDER[a.kind] - SLIP_ORDER[b.kind]);
+    // The asking tab counts only when the slips print on its own device (the host's own order, or no host).
+    const leaseTabId = target === input.originDeviceId ? input.leaseTabId : undefined;
+    const lineFree = leaseTabId !== undefined && (await printLineIsFree(target, input.nowMs));
+    let directOnLine = false;
+    let made = 0;
+    for (const slip of slips) {
+      const request = requestOf(order, slip);
+      if (request === null) continue;
+      // Only the first slip of this request on the line may be leased now (§7.6: one writer, oldest first);
+      // the rest are made as in Phase 1, so a collision on them never reads a payload (the 2B review, M-1).
+      const tab = leaseTabId === undefined || refs.length > 0 ? {} : { tab: { tabId: leaseTabId, direct: lineFree } };
+      const job = await insertPrintJob({ request, targetDeviceId: target, originDeviceId: input.originDeviceId, queuedBy: input.queuedBy, ...tab, nowMs: input.nowMs });
+      if (job === null) continue;
+      refs.push(job.ref);
+      if (job.ref.leased !== undefined) directOnLine = true;
+      if (announcesQueuedJob(job, directOnLine)) {
+        made += 1;
+        publishPrintStatus({ id: job.ref.id, status: "queued", target });
+      }
+```
+
+In `apps/cafe/lib/print-order-jobs.ts`, find:
+
+```ts
+
+/** POST /api/print-jobs with no host, from an agent tab (spec §6.6): the asking device prints its own
+ *  client-started slip (a reprint, End of day, a cancel notice) through the lifecycle, under the same
+ *  key rules as enqueuePrintJob, so a retried POST is one job. */
+export async function enqueueOwnPrintJob(input: {
+  payload: PrintJobPayload;
+  label: string;
+  queuedBy: string;
+  idempotencyKey?: string;
+  originDeviceId: string;
+  nowMs: number;
+}): Promise<PrintJobEnqueueResult> {
+  const jobKey = printJobKeyOf(input.payload) ?? (input.idempotencyKey !== undefined ? `reprint:${input.idempotencyKey}` : undefined);
+```
+
+Replace it with:
+
+```ts
+
+/** POST /api/print-jobs with no host, from an agent tab (spec §6.6): the asking device prints its own
+ *  client-started slip (a reprint, End of day, a cancel notice) through the lifecycle, under the same
+ *  key rules as enqueuePrintJob, so a retried POST is one job. Session 2B: `tab` as in insertPrintJob. */
+export async function enqueueOwnPrintJob(input: {
+  payload: PrintJobPayload;
+  label: string;
+  queuedBy: string;
+  idempotencyKey?: string;
+  originDeviceId: string;
+  tab?: PrintJobAskingTab;
+  nowMs: number;
+}): Promise<PrintJobEnqueueResult> {
+  const jobKey = printJobKeyOf(input.payload) ?? (input.idempotencyKey !== undefined ? `reprint:${input.idempotencyKey}` : undefined);
+```
+
+In `apps/cafe/lib/print-order-jobs.ts`, find:
+
+```ts
+    originDeviceId: input.originDeviceId,
+    queuedBy: input.queuedBy,
+    ...(jobKey !== undefined ? { jobKey } : {}),
+    nowMs: input.nowMs,
+  });
+  if (job === null) return { outcome: "too-large" };
+  // A resolved job under this key already printed (or was dismissed): never report it as fresh.
+  if (!job.created && job.status !== "queued") return { outcome: "already-resolved", id: job.ref.id };
+  if (job.created) publishPrintStatus({ id: job.ref.id, status: "queued", target: input.originDeviceId });
+  return { outcome: "queued", id: job.ref.id, duplicate: !job.created };
+}
+
+/** A route's answer: the order exactly as before, plus `printJobs` when the request opted in. */
+```
+
+Replace it with:
+
+```ts
+    originDeviceId: input.originDeviceId,
+    queuedBy: input.queuedBy,
+    ...(jobKey !== undefined ? { jobKey } : {}),
+    ...(input.tab !== undefined ? { tab: input.tab } : {}),
+    nowMs: input.nowMs,
+  });
+  if (job === null) return { outcome: "too-large" };
+  // Session 2B: leased to the asking tab (made so now, or still so from a send whose answer was lost): it
+  // prints there at once, and nothing is announced to the device that is printing it.
+  if (job.ref.leased !== undefined) return { outcome: "queued", id: job.ref.id, duplicate: !job.created, leased: job.ref.leased };
+  // A resolved job under this key already printed (or was dismissed): never report it as fresh.
+  if (!job.created && job.status !== "queued") return { outcome: "already-resolved", id: job.ref.id };
+  if (job.created) publishPrintStatus({ id: job.ref.id, status: "queued", target: input.originDeviceId });
+  return { outcome: "queued", id: job.ref.id, duplicate: !job.created };
+}
+
+/** POST /api/print-jobs from the tab that drains the asking device's slips and can print now (Session 2B,
+ *  spec §7.11). When the slip prints on the asking device (no host, or the asking device is the host), it is
+ *  made leased to that tab if nothing older waits on its line, and a slip still leased to that tab (its first
+ *  answer was lost) is handed back. null: another device is the host, so Phase 1's enqueue makes it for it. */
+export async function enqueueDirectPrintJob(
+  input: Omit<Parameters<typeof enqueueOwnPrintJob>[0], "tab"> & { leaseTabId: string },
+): Promise<PrintJobEnqueueResult | null> {
+  const host = await PrintHost.findOne({ key: PRINT_HOST_KEY }).select("deviceId").lean();
+  if (host !== null && host.deviceId !== input.originDeviceId) return null;
+  const { leaseTabId, ...own } = input;
+  return enqueueOwnPrintJob({ ...own, tab: { tabId: leaseTabId, direct: await printLineIsFree(input.originDeviceId, input.nowMs) } });
+}
+
+/** A route's answer: the order exactly as before, plus `printJobs` when the request opted in. */
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-direct.test.ts lib/print-order-jobs.test.ts lib/print-lease.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 24`; `# pass 24`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint lib/print-direct.ts lib/print-direct.test.ts lib/print-order-jobs.ts lib/print-lease.ts lib/print-agent-server.ts app/api/print-jobs/route.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add "apps/cafe/app/api/order-requests/[id]/accept/route.ts" "apps/cafe/app/api/orders/[id]/items/route.ts" "apps/cafe/app/api/orders/[id]/items/void/route.ts" "apps/cafe/app/api/orders/[id]/settle/route.ts" "apps/cafe/app/api/orders/[id]/table/route.ts" apps/cafe/app/api/orders/route.ts apps/cafe/app/api/print-jobs/route.ts apps/cafe/lib/print-agent-server.ts apps/cafe/lib/print-direct.test.ts apps/cafe/lib/print-direct.ts apps/cafe/lib/print-lease.ts apps/cafe/lib/print-order-jobs.test.ts apps/cafe/lib/print-order-jobs.ts apps/cafe/package.json
+git commit -m "feat(print): Phase 2 direct print on the server: the asking tab's first slip on its own free line is made leased to it, a lost answer is handed back, and nothing is announced to the device printing it"
+```
+
+---
+
+### Task B3: the ack answers `more`, and the pulse and the wake stop counting a running lease, so a burst ends with no empty lease; no final print-status is published (gate finding G-1)
+
+**Files:**
+- Modify: `apps/cafe/lib/print-lease.ts` (`applyPrintJobPlan` publishes nothing; `printLineHasMore`; `ackPrintJob` answers `more`; `printJobsForMeFilter`, which `readJobsForDevice` reads)
+- Modify: `apps/cafe/lib/print-queue.ts` (`dismissPrintJob` publishes nothing)
+- Tests: `apps/cafe/lib/print-lifecycle-paths.test.ts` (two pins changed deliberately for G-1, one new pin); `apps/cafe/lib/print-lease.test.ts` (one new test)
+
+**Interfaces produced:** `printLineHasMore(deviceId, nowMs): Promise<boolean>`; `ackPrintJob(...)` answers `{ applied, status, nextAttemptAt, more? }` (`more` only when the acked job left the line: printed, needs-confirm or failed); `printJobsForMeFilter(deviceId, nowMs): FilterQuery<IPrintJob>`.
+
+**`more` (decision 9).** After an ack that takes its job off the line, one read on the line index (`printJobLineFilter` of the ACKING device, status queued) says whether that device's line holds more. The agent (Task B4) leases again only then, so Phase 1's trailing empty lease after every burst goes. A job back in the queue (a refusal, a maybe) is its line's head, and its `nextAttemptAt` already says when, so no hint is read. A failed read only drops the hint (`.catch(() => undefined)`): the ack itself has landed and is answered.
+
+**G-1 (this gate): no final print-status.** Phase 1 published a job's final state (printed, needs-confirm, failed, dismissed) for "the ordering device's readback", but no device listens for it: the readback chip and the waiting-slips panel read the pulse's feeds, and the agent leases only on a `queued` frame aimed at its own device (`hooks/use-print-agent.ts`; checked by grep at the gate: the only `print-status` reader). Each one cost a Cloudflare Worker request per slip for nothing. Only `queued` aimed at the printing device stays: the one frame an agent acts on.
+
+**G-2 (this gate, seen on the emulator): the pulse and the wake count only what a lease can act on.** Their "jobs for me" counted this device's own running lease, so a pulse or a wake that landed while the tab printed its direct KOT kicked the agent, and a lease followed its `more: false` ack. `printJobsForMeFilter` is the line less a lease that is still running; a lease that ran out still counts, so the lease call that expires it still comes (§7.2).
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/print-lease.test.ts`, find:
+
+```ts
+import { PRINT_HOST_MAX_AGE_MS } from "@pos/shared/print-job";
+import { PRINT_JOB_LOG_MAX, PRINT_LEASE_MS, lifecycleOf, planExpiry, planLease, type PrintJobPlan, type PrintJobPatch } from "@pos/shared/print-lifecycle";
+import type { PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
+import { leasedPrintJobOf, printJobCasFilter, printJobLineFilter, printJobUpdateOf } from "./print-lease";
+
+// Phase 1 Session 1A — DB-free tests of print-lease.ts's pure exports. The DB paths are proven live
+// (npm run verify:print:live, legs q–x) and pinned in print-lifecycle-paths.test.ts.
+```
+
+Replace it with:
+
+```ts
+import { PRINT_HOST_MAX_AGE_MS } from "@pos/shared/print-job";
+import { PRINT_JOB_LOG_MAX, PRINT_LEASE_MS, lifecycleOf, planExpiry, planLease, type PrintJobPlan, type PrintJobPatch } from "@pos/shared/print-lifecycle";
+import type { PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
+import { leasedPrintJobOf, printJobCasFilter, printJobLineFilter, printJobsForMeFilter, printJobUpdateOf } from "./print-lease";
+
+// Phase 1 Session 1A — DB-free tests of print-lease.ts's pure exports. The DB paths are proven live
+// (npm run verify:print:live, legs q–x) and pinned in print-lifecycle-paths.test.ts.
+```
+
+In `apps/cafe/lib/print-lease.test.ts`, find:
+
+```ts
+    targetDeviceId: "dev-a",
+    status: { $in: ["queued", "leased"] },
+    $or: [{ status: "leased" }, { createdAt: { $gte: new Date(T0 - PRINT_HOST_MAX_AGE_MS) } }, { approvedAt: { $exists: true } }],
+  });
+});
+
+```
+
+Replace it with:
+
+```ts
+    targetDeviceId: "dev-a",
+    status: { $in: ["queued", "leased"] },
+    $or: [{ status: "leased" }, { createdAt: { $gte: new Date(T0 - PRINT_HOST_MAX_AGE_MS) } }, { approvedAt: { $exists: true } }],
+  });
+});
+
+// Session 2B (found on the emulator at the 2A gate): the pulse and the wake counted this device's own running
+// lease, so one landing mid-print kicked the agent into an empty lease after its ack.
+test("printJobsForMeFilter: the line, less a lease still running; a lease that ran out still counts (its lease call expires it)", () => {
+  assert.deepEqual(printJobsForMeFilter("dev-a", T0), {
+    ...printJobLineFilter("dev-a", T0),
+    $nor: [{ status: "leased", "lease.expiresAt": { $gte: new Date(T0) } }],
+  });
+});
+
+```
+
+In `apps/cafe/lib/print-lifecycle-paths.test.ts`, find:
+
+```ts
+
+test("PIN: every lifecycle transition is ONE compare-and-set on {_id, status, epoch}, and a lease call is bounded", () => {
+  const s = src(LEASE);
+  // Session 1B: the CAS may carry an extra fence (a lease: still this device's job, 1A review M5),
+  // and a landed final transition publishes its print-status (spec §10).
+  assert.match(s, /PrintJob\.updateOne\(\{ \.\.\.printJobCasFilter\(id, job\), \.\.\.fence \}, printJobUpdateOf\(patch\)/);
+  assert.match(s, /const applied = res\.modifiedCount === 1;/);
+  assert.match(s, /if \(applied && PRINT_STATUS_PUBLISHED\.has\(patch\.status\)\) publishPrintStatus\(\{ id: String\(id\), status: patch\.status \}\);/);
+  assert.match(s, /applyPrintJobPlan\(head\._id, job, plan\.patch, \{ targetDeviceId: input\.deviceId \}\)/, "the lease CAS is fenced on the device");
+  assert.match(s, /for \(let step = 0; step < LEASE_MAX_STEPS; step\+\+\)/);
+  assert.match(s, /printJobEligibility\(payload, order\)/, "the claim path's live-order gate still applies to a lease");
+```
+
+Replace it with:
+
+```ts
+
+test("PIN: every lifecycle transition is ONE compare-and-set on {_id, status, epoch}, and a lease call is bounded", () => {
+  const s = src(LEASE);
+  // Session 1B: the CAS may carry an extra fence (a lease: still this device's job, 1A review M5).
+  // The Phase 2B gate (G-1) deliberately changed the rest: a landed transition publishes nothing, since no
+  // device listened for a final state.
+  assert.match(s, /PrintJob\.updateOne\(\{ \.\.\.printJobCasFilter\(id, job\), \.\.\.fence \}, printJobUpdateOf\(patch\)/);
+  assert.match(s, /return res\.modifiedCount === 1;/);
+  assert.ok(!s.includes("publishPrintStatus") && !s.includes("realtime-publish"), "the lifecycle's transitions publish nothing");
+  assert.match(s, /applyPrintJobPlan\(head\._id, job, plan\.patch, \{ targetDeviceId: input\.deviceId \}\)/, "the lease CAS is fenced on the device");
+  assert.match(s, /for \(let step = 0; step < LEASE_MAX_STEPS; step\+\+\)/);
+  assert.match(s, /printJobEligibility\(payload, order\)/, "the claim path's live-order gate still applies to a lease");
+```
+
+In `apps/cafe/lib/print-lifecycle-paths.test.ts`, find:
+
+```ts
+  assert.match(src(LEASE), /return \{ jobs: \[\], retryAt: new Date\(input\.nowMs \+ PRINT_BACKOFF_MS\[0\]\)\.toISOString\(\) \};/);
+});
+
+test("PIN: the lifecycle publishes exactly the final statuses, and a dismissed job announces itself", () => {
+  assert.match(src(LEASE), /new Set<PrintJobStatus>\(\["printed", "needs-confirm", "failed", "dismissed"\]\)/);
+  const queue = src("apps/cafe/lib/print-queue.ts");
+  const single = queue.slice(queue.indexOf("export async function dismissPrintJob("), queue.indexOf("export async function dismissQueuedPrintJobsForClearedHost("));
+  assert.match(single, /if \(dismissed\) \{\s*publishPrintStatus\(\{ id: input\.id, status: "dismissed" \}\);\s*return \{ dismissed: true \};\s*\}/);
+});
+
+test("PIN (the Phase 1 final gate, M8): the soak drives only a local POS on a local scratch database, and stops after its first order unless that order is in its own database", () => {
+```
+
+Replace it with:
+
+```ts
+  assert.match(src(LEASE), /return \{ jobs: \[\], retryAt: new Date\(input\.nowMs \+ PRINT_BACKOFF_MS\[0\]\)\.toISOString\(\) \};/);
+});
+
+// The Phase 2B gate (G-1, deliberate change): a final state ("printed", "needs-confirm", "failed",
+// "dismissed") had no listener on any device, so it is no longer published. Only "queued", aimed at the
+// device that prints, is: the one frame an agent leases on.
+test("PIN (G-1): no final state is published, from the lifecycle or a dismiss; only a queued job is announced to its printer", () => {
+  assert.ok(!src(LEASE).includes("PRINT_STATUS_PUBLISHED"), "no final-status set");
+  const queue = src("apps/cafe/lib/print-queue.ts");
+  const single = queue.slice(queue.indexOf("export async function dismissPrintJob("), queue.indexOf("export async function dismissQueuedPrintJobsForClearedHost("));
+  assert.match(single, /if \(dismissed\) \{\s*return \{ dismissed: true \};\s*\}/);
+  for (const rel of ["apps/cafe/lib/print-queue.ts", "apps/cafe/lib/print-order-jobs.ts", "apps/cafe/lib/print-job-actions.ts"]) {
+    for (const call of src(rel).match(/publishPrintStatus\(\{[^}]*\}\)/g) ?? []) {
+      assert.match(call, /status: "queued"/, `${rel}: ${call} announces a queued job only`);
+    }
+  }
+});
+
+// Session 2B (plan decision 9): the ack answers whether the acking device's line holds more, so a burst ends
+// with no empty lease. The hint never costs the ack itself.
+test("PIN (2B): an ack that takes a job off the line answers `more` from one read of the acking device's line", () => {
+  const s = src(LEASE);
+  const ack = s.slice(s.indexOf("export async function ackPrintJob("), s.indexOf("export async function readJobsForDevice("));
+  inOrder(
+    ack,
+    [
+      "if (await applyPrintJobPlan(row._id, job, plan.patch)) {",
+      'if (plan.patch.status === "queued") return { applied: true, status: plan.patch.status, nextAttemptAt };',
+      "const more = await printLineHasMore(input.deviceId, input.nowMs).catch(() => undefined);",
+      "...(more !== undefined ? { more } : {})",
+    ],
+    "the ack",
+  );
+  assert.match(s, /return \(await PrintJob\.findOne\(\{ \.\.\.printJobLineFilter\(deviceId, nowMs\), status: "queued" \}\)\.select\("_id"\)\.lean\(\)\) !== null;/, "one read on the line index");
+});
+
+test("PIN (the Phase 1 final gate, M8): the soak drives only a local POS on a local scratch database, and stops after its first order unless that order is in its own database", () => {
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-lifecycle-paths.test.ts lib/print-lease.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 24`; `# pass 20`; `# fail 4`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/lib/print-lease.ts`, find:
+
+```ts
+import mongoose, { type FilterQuery, type Types, type UpdateQuery } from "mongoose";
+import type { PrintJobKind, PrintJobStatus } from "@pos/shared/print-job";
+import type { LeasedPrintJob, PrintAckData, PrintLeaseData } from "@pos/shared/print-agent-wire";
+import {
+  PRINT_BACKOFF_MS,
+```
+
+Replace it with:
+
+```ts
+import mongoose, { type FilterQuery, type Types, type UpdateQuery } from "mongoose";
+import type { PrintJobKind } from "@pos/shared/print-job";
+import type { LeasedPrintJob, PrintAckData, PrintLeaseData } from "@pos/shared/print-agent-wire";
+import {
+  PRINT_BACKOFF_MS,
+```
+
+In `apps/cafe/lib/print-lease.ts`, find:
+
+```ts
+import { printJobPayloadSchema, type PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
+import { Order } from "@/models/Order";
+import { PrintJob, type IPrintJob } from "@/models/PrintJob";
+import { publishPrintStatus } from "@/lib/realtime-publish";
+import { dismissPrintJob, drainAgeCutoff } from "./print-queue";
+import { printJobEligibility, printJobNeedsOrderRead } from "./print-queue-claim";
+
+```
+
+Replace it with:
+
+```ts
+import { printJobPayloadSchema, type PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
+import { Order } from "@/models/Order";
+import { PrintJob, type IPrintJob } from "@/models/PrintJob";
+import { dismissPrintJob, drainAgeCutoff } from "./print-queue";
+import { printJobEligibility, printJobNeedsOrderRead } from "./print-queue-claim";
+
+```
+
+In `apps/cafe/lib/print-lease.ts`, find:
+
+```ts
+  return update;
+}
+
+/** The statuses an ordering device's readback hears about at once (spec §10, §17.2: a job's creation
+ *  and its final state); the pulse stays the fallback. */
+const PRINT_STATUS_PUBLISHED: ReadonlySet<PrintJobStatus> = new Set<PrintJobStatus>(["printed", "needs-confirm", "failed", "dismissed"]);
+
+/** Applies a plan. false: another writer moved the job first, so re-read and re-plan. `fence` adds
+ *  terms the plan depends on but the epoch does not cover (a lease: still this device's job). */
+export async function applyPrintJobPlan(
+  id: Types.ObjectId,
+  job: PrintJobLifecycle,
+```
+
+Replace it with:
+
+```ts
+  return update;
+}
+
+/** Applies a plan. false: another writer moved the job first, so re-read and re-plan. `fence` adds
+ *  terms the plan depends on but the epoch does not cover (a lease: still this device's job).
+ *  It publishes nothing (the Phase 2B gate, G-1): a job's final state had no listener on any device (the
+ *  readback and the waiting-slips panel read the pulse; an agent leases only on "queued" aimed at it), so its
+ *  Worker request bought nothing. */
+export async function applyPrintJobPlan(
+  id: Types.ObjectId,
+  job: PrintJobLifecycle,
+```
+
+In `apps/cafe/lib/print-lease.ts`, find:
+
+```ts
+  fence: FilterQuery<IPrintJob> = {},
+): Promise<boolean> {
+  const res = await PrintJob.updateOne({ ...printJobCasFilter(id, job), ...fence }, printJobUpdateOf(patch) as UpdateQuery<IPrintJob>);
+  const applied = res.modifiedCount === 1;
+  // Fire-and-forget, after the write: a lost frame costs the readback one pulse, never the transition.
+  if (applied && PRINT_STATUS_PUBLISHED.has(patch.status)) publishPrintStatus({ id: String(id), status: patch.status });
+  return applied;
+}
+
+type LeasedHead = { _id: unknown; kind: PrintJobKind; label: string; orderId?: string; createdAt: Date; copyIndex?: number };
+```
+
+Replace it with:
+
+```ts
+  fence: FilterQuery<IPrintJob> = {},
+): Promise<boolean> {
+  const res = await PrintJob.updateOne({ ...printJobCasFilter(id, job), ...fence }, printJobUpdateOf(patch) as UpdateQuery<IPrintJob>);
+  return res.modifiedCount === 1;
+}
+
+/** Session 2B (plan decision 9): this device's line still holds a queued job (due now, or after its backoff),
+ *  so its agent leases again after an ack; otherwise it waits for a nudge, its timer or a new slip, and a
+ *  burst ends with no empty lease. One read on the line index. */
+export async function printLineHasMore(deviceId: string, nowMs: number): Promise<boolean> {
+  return (await PrintJob.findOne({ ...printJobLineFilter(deviceId, nowMs), status: "queued" }).select("_id").lean()) !== null;
+}
+
+type LeasedHead = { _id: unknown; kind: PrintJobKind; label: string; orderId?: string; createdAt: Date; copyIndex?: number };
+```
+
+In `apps/cafe/lib/print-lease.ts`, find:
+
+```ts
+      return { applied: false, status: job.status, nextAttemptAt: null, reason: plan.reason };
+    }
+    if (await applyPrintJobPlan(row._id, job, plan.patch)) {
+      return { applied: true, status: plan.patch.status, nextAttemptAt: plan.patch.set.nextAttemptAt?.toISOString() ?? null };
+    }
+  }
+  return { applied: false, status: null, nextAttemptAt: null, reason: "raced" };
+}
+
+/** The wake's "jobs for me" (spec §7.3): how many jobs wait in this device's line, and the oldest. */
+export async function readJobsForDevice(deviceId: string, nowMs: number): Promise<{ count: number; oldestCreatedAt: string | null }> {
+  const rows = await PrintJob.find(printJobLineFilter(deviceId, nowMs))
+    .sort({ createdAt: 1, _id: 1 })
+    .select("createdAt")
+    .limit(PRINT_JOBS_FOR_ME_LIMIT)
+```
+
+Replace it with:
+
+```ts
+      return { applied: false, status: job.status, nextAttemptAt: null, reason: plan.reason };
+    }
+    if (await applyPrintJobPlan(row._id, job, plan.patch)) {
+      const nextAttemptAt = plan.patch.set.nextAttemptAt?.toISOString() ?? null;
+      // Session 2B (decision 9): a job that left the line says whether the acking device's line holds more. A
+      // job back in the queue is that line's head, and its nextAttemptAt says when. A failed read only drops
+      // the hint (the agent then leases, as in Phase 1): the ack itself has landed.
+      if (plan.patch.status === "queued") return { applied: true, status: plan.patch.status, nextAttemptAt };
+      const more = await printLineHasMore(input.deviceId, input.nowMs).catch(() => undefined);
+      return { applied: true, status: plan.patch.status, nextAttemptAt, ...(more !== undefined ? { more } : {}) };
+    }
+  }
+  return { applied: false, status: null, nextAttemptAt: null, reason: "raced" };
+}
+
+/** The jobs a lease call could act on now: this device's line, less any lease still running. A running
+ *  lease is being printed (often by this very tab, Session 2B's direct print), so counting it only kicked
+ *  the agent into an empty lease after its ack; a lease that ran out still counts, so the lease call that
+ *  expires it comes (spec §7.2). */
+export function printJobsForMeFilter(deviceId: string, nowMs: number): FilterQuery<IPrintJob> {
+  return { ...printJobLineFilter(deviceId, nowMs), $nor: [{ status: "leased", "lease.expiresAt": { $gte: new Date(nowMs) } }] } as FilterQuery<IPrintJob>;
+}
+
+/** The wake's "jobs for me" (spec §7.3), and the pulse's: how many jobs wait in this device's line for a
+ *  lease, and the oldest. */
+export async function readJobsForDevice(deviceId: string, nowMs: number): Promise<{ count: number; oldestCreatedAt: string | null }> {
+  const rows = await PrintJob.find(printJobsForMeFilter(deviceId, nowMs))
+    .sort({ createdAt: 1, _id: 1 })
+    .select("createdAt")
+    .limit(PRINT_JOBS_FOR_ME_LIMIT)
+```
+
+In `apps/cafe/lib/print-queue.ts`, find:
+
+```ts
+    { new: true },
+  );
+  if (dismissed) {
+    // Phase 1 (spec §10): the ordering device's readback hears it at once; the pulse is the fallback.
+    publishPrintStatus({ id: input.id, status: "dismissed" });
+    return { dismissed: true };
+  }
+
+```
+
+Replace it with:
+
+```ts
+    { new: true },
+  );
+  if (dismissed) {
+    // No print-status (the Phase 2B gate, G-1): no device listens for a final state; the pulse carries it.
+    return { dismissed: true };
+  }
+
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-lifecycle-paths.test.ts lib/print-lease.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK && npx eslint lib/print-lease.ts lib/print-queue.ts lib/print-lifecycle-paths.test.ts && echo LINT_OK`
+Expected: `# tests 24`; `# pass 24`; `# fail 0`; `TSC_OK`; `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/lib/print-lease.test.ts apps/cafe/lib/print-lease.ts apps/cafe/lib/print-lifecycle-paths.test.ts apps/cafe/lib/print-queue.ts
+git commit -m "feat(print): Phase 2 the ack answers more, so a burst ends with no empty lease; no final print-status is published (no device listened for one)"
+```
+
+---
+
+### Task B4: the page: the draining tab names itself while it can print, prints a job an answer carried leased to it before any lease, at most once, and leases again only when the ack says `more` (a change of its own state is a nudge)
+
+**Files:**
+- Create: `apps/cafe/lib/print-agent-seams.ts` (the module seams, moved from `print-agent.ts`, plus `setDirectPrintSource`, `directPrintTab`, `deliverLeasedJob`, `onLeasedJob`)
+- Create: `apps/cafe/lib/print-agent-slip.ts` (`PRINT_AGENT_SLIP_DEADLINE_MS`, `failedAckBody`, `printAgentSlipOf`, moved from `print-agent.ts` unchanged)
+- Create: `apps/cafe/lib/print-agent-types.ts` (the agent's shapes, moved from `print-agent.ts`; `PrintAgent` gains `take`, `directReady`, `nudge`)
+- Modify: `apps/cafe/lib/print-agent.ts` (`take`, `directReady`, `nudge`, the held jobs and `PRINT_DIRECT_HOLD_MS`, `more`; re-exports the three new files)
+- Modify: `apps/cafe/hooks/use-print-agent.ts` (registers the direct-print source and the leased-job listener; a printer change is a nudge)
+- Modify: `apps/cafe/lib/print-agent-calls.ts` (`printAgentHeaders` adds the lease header from the seam)
+- Modify: `apps/cafe/hooks/use-host-routing.ts` (a leased ref or enqueue answer is delivered to the agent)
+- Tests: `apps/cafe/lib/print-agent.test.ts` (ten new tests), `apps/cafe/lib/print-agent-paths.test.ts` (one new pin)
+
+**Interfaces produced:** `PrintAgent.take(job: LeasedPrintJob): void`; `PrintAgent.directReady(): boolean`; `PrintAgent.nudge(): void`; `PRINT_DIRECT_HOLD_MS` (60 s); `setDirectPrintSource(source: () => string | null): () => void`; `directPrintTab(): string | null`; `deliverLeasedJob(job: LeasedPrintJob): void`; `onLeasedJob(listener): () => void`; `printAgentHeaders(deviceId, bill = false, leaseTab = directPrintTab())`. Every name `@/lib/print-agent` exported before is still exported from it.
+
+**Who sends the header.** `directReady()` is true while this tab drains this device's slips (the agent's gate is open: it holds the drain lock), its printer can print now (`canPrintNow()`), and no refusal holds it. The hook registers `() => (agent.directReady() ? tabId : null)` as the seam, and `printAgentHeaders` (every order request, the kot-claim and every client-started enqueue use it) adds `x-pos-print-lease: <tabId>` from it. With a host, only the host's tab drains, so only it can ever name itself; any other device gets Phase 1.
+
+**How a leased job prints.** `followPrintJob` (an order answer's ref) and the enqueue's answer hand a `leased` job to `deliverLeasedJob`; the agent's `take` ignores a job whose `id:epoch` it already took or whose printed ack is still pending (at-least-once delivery, an idempotent consumer), else holds it (first in, first out) and kicks. A cycle prints held jobs before it ever leases. A held job prints whenever the tab drains and the bridge is free, even if the printer went off since: its attempt was made while the printer was ready, so the bridge refuses it (`sent:"no"`, never counted) and it goes back in line, instead of expiring into a REPRINT. A tab that stops (unmount) drops what it held; those leases expire (KOT: REPRINT; bill: the cashier), the Phase 1 rule for a tab that dies.
+
+**A held job prints only well inside its lease (the fresh review's I-1).** A job held while the tab could not print (its printer went off and the drain lock moved on) used to print whenever the gate reopened, even after its lease had run out and another writer had printed it as REPRINT: two KOTs. Each held job now carries the time it arrived, and it prints only within `PRINT_DIRECT_HOLD_MS` (the 90 s lease less 30 s: its lease began at most one request timeout, 15 s, before it arrived), so its print always starts inside its lease and no other writer can have leased it. Older ones are dropped unprinted and never acked; their lease expires into REPRINT (a bill: the cashier). A short printer flap (a Bluetooth reconnect) still prints the held KOT unlabelled. With no held job left, the cycle checks the lease gate before it leases.
+
+**`more`.** After a printed ack (and after a failed one that took the job off the line) the agent leases again only when the answer says `more: true`, or says nothing (an older server, no answer, an ack that changed nothing). So a host's own KOT costs exactly one request (its ack), and Pay Now costs ack, lease, ack. A kick that lands while a cycle runs (the bill's ref, a realtime frame, the pulse, the wake) still leases once after it, as in Phase 1.
+
+**A change of state is a nudge (G-2, seen on the emulator).** The bridge freeing up from the agent's own slip (`setGate`) and its printer's status changing (the hook's printer effect) used to be kicks, so they queued a lease behind every print, defeating `more`. They are `nudge()` now: they look at the line when the agent is idle, and never queue a lease behind a running cycle (that cycle's ack says whether the line holds more). Every job signal stays a kick.
+
+**File size.** `print-agent.ts` would have grown past its ~300-line budget, so its module seams, its slip helpers and its shapes move, unchanged, to three small files it re-exports (278 lines after); no import elsewhere changes.
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/print-agent-paths.test.ts`, find:
+
+```ts
+  assert.ok(agent.includes("PRINT_AGENT_SLIP_DEADLINE_MS"), "its wait on one slip is bounded");
+});
+
+test("PIN (spec §7.7): both receipts print the banner first, and every surface forwards it", () => {
+  for (const file of ["apps/cafe/components/pos/KOTReceipt.tsx", "apps/cafe/components/pos/OrderReceipt.tsx"]) {
+    const s = src(file);
+```
+
+Replace it with:
+
+```ts
+  assert.ok(agent.includes("PRINT_AGENT_SLIP_DEADLINE_MS"), "its wait on one slip is bounded");
+});
+
+// Phase 2 Session 2B (spec §7.11): direct print on the asking device, wired end to end on the page.
+test("PIN (2B): the draining tab offers itself for direct print, every answer that carries a lease reaches its agent, and only it", () => {
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.ok(agent.includes("const offSource = setDirectPrintSource(() => (agent.directReady() ? tabId : null));"), "the tab id only while this agent can print now");
+  assert.ok(agent.includes("const offLeased = onLeasedJob((job) => agent.take(job));"), "a leased job is printed by this page's agent");
+  const seam = src("apps/cafe/hooks/use-host-routing.ts");
+  assert.ok(seam.includes("if (ref.leased !== undefined) deliverLeasedJob(ref.leased);\n      else if (ref.status === \"queued\") kickPrintAgent();"), "an order answer's leased job prints with no lease request");
+  assert.ok(
+    seam.includes('if (result.outcome === "queued" && result.leased !== undefined) deliverLeasedJob(result.leased);\n      else if (agentDeviceId !== "" && result.outcome === "queued") kickPrintAgent();'),
+    "an enqueue's leased job too (a re-sent slip whose first answer was lost)",
+  );
+  const calls = src("apps/cafe/lib/print-agent-calls.ts");
+  assert.ok(calls.includes("leaseTab: string | null = directPrintTab()"), "every opt-in reads the seam: orders, rounds, settle, moves, voids, accepts, claims and enqueues");
+  assert.ok(calls.includes("...(leaseTab !== null ? { [PRINT_LEASE_HEADER]: leaseTab } : {}),"));
+  const core = src("apps/cafe/lib/print-agent.ts");
+  assert.ok(core.includes("if (held.length > 0 && enabled && !busy) return void cycle(true);"), "a held job prints before any lease, past the printer gate (its attempt was made while ready)");
+  assert.ok(core.includes("if (deps.now() - next.at < PRINT_DIRECT_HOLD_MS) return next.job;"), "but only well inside its lease (the fresh review, I-1)");
+  assert.ok(core.includes("again = answers.get(key)?.more !== false;"), "the ack's more decides the next lease");
+  assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, printer, canPrint]);"), "a printer state change is a nudge, never a lease queued behind a print");
+  assert.ok(core.includes("if (opened) nudge();"), "so is the gate opening or the bridge freeing up");
+});
+
+test("PIN (spec §7.7): both receipts print the banner first, and every surface forwards it", () => {
+  for (const file of ["apps/cafe/components/pos/KOTReceipt.tsx", "apps/cafe/components/pos/OrderReceipt.tsx"]) {
+    const s = src(file);
+```
+
+In `apps/cafe/lib/print-agent.test.ts`, find:
+
+```ts
+import { printAgentEnqueueHeaders, printAgentHeaders, printJobRefOf } from "@/lib/print-agent-calls";
+import { createHostSlipOutcomes } from "@/lib/print-host-outcomes";
+import {
+  ackAnswered,
+  createPrintAgent,
+  failedAckBody,
+  printAgentSlipOf,
+  readPendingAcks,
+  writePendingAcks,
+  type PendingPrintAck,
+  type PrintAgentAckBody,
+```
+
+Replace it with:
+
+```ts
+import { printAgentEnqueueHeaders, printAgentHeaders, printJobRefOf } from "@/lib/print-agent-calls";
+import { createHostSlipOutcomes } from "@/lib/print-host-outcomes";
+import {
+  PRINT_DIRECT_HOLD_MS,
+  ackAnswered,
+  createPrintAgent,
+  deliverLeasedJob,
+  directPrintTab,
+  failedAckBody,
+  onLeasedJob,
+  printAgentSlipOf,
+  readPendingAcks,
+  setDirectPrintSource,
+  writePendingAcks,
+  type PendingPrintAck,
+  type PrintAgentAckBody,
+```
+
+In `apps/cafe/lib/print-agent.test.ts`, find:
+
+```ts
+  assert.deepEqual(readPendingAcks(), [], "cleared");
+});
+
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual(readPendingAcks(), [], "cleared");
+});
+
+// ── Phase 2 Session 2B (spec §7.11, plan decisions 15, 16 and 9): direct print on the asking device ──
+
+const done = (more: boolean): PrintAckData => ({ applied: true, status: "printed", nextAttemptAt: null, more });
+
+test("2B: a job an answer carried leased to this tab prints at once with no lease, and its ack's more:false ends the burst", async () => {
+  const { w, deps } = world();
+  w.ackAnswers.push(done(false));
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.equal(w.leaseCalls, 1, "the gate's own look at the line");
+  agent.take(job("d1"));
+  await settle();
+  assert.deepEqual(w.prints, ["d1"], "printed from the answer");
+  assert.deepEqual(w.acks.map((a) => [a.id, a.body.outcome]), [["d1", "printed"]]);
+  assert.equal(w.leaseCalls, 1, "no lease for it, and none after it: the ack said the line is empty");
+  assert.deepEqual(w.pending, [], "its ack was answered");
+  agent.stop();
+});
+
+// Seen on the emulator at the 2A gate: the bridge freeing up from the agent's own slip, and its printer's
+// status changing, kicked the agent while it printed, so a lease followed every more:false ack.
+test("2B: its own print's state changes queue no lease after a more:false ack; a job's kick during the print still does", async () => {
+  const { w, deps } = world();
+  let during: "state" | "job" = "state";
+  let agentRef: ReturnType<typeof createPrintAgent> | null = null;
+  const agent = createPrintAgent({
+    ...deps,
+    print: (j: LeasedPrintJob) => {
+      if (during === "state") {
+        agentRef?.setGate({ enabled: true, busy: true });
+        agentRef?.setGate({ enabled: true, busy: false }); // the bridge prints this very slip, then frees up
+        agentRef?.nudge(); // its printer's status changes while it prints
+      } else agentRef?.kick(); // a new job is announced while it prints
+      return deps.print(j);
+    },
+  });
+  agentRef = agent;
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  w.ackAnswers.push(done(false), done(false));
+  agent.take(job("d1"));
+  await settle();
+  assert.deepEqual([w.prints, w.leaseCalls], [["d1"], 1], "printed, and no lease after it: only the gate's first look");
+  during = "job";
+  agent.take(job("d2"));
+  await settle();
+  assert.deepEqual([w.prints, w.leaseCalls], [["d1", "d2"], 2], "a job's kick during the print leases once after it");
+  agent.nudge();
+  await settle();
+  assert.equal(w.leaseCalls, 3, "an idle agent nudged looks at the line");
+  agent.stop();
+});
+
+test("2B: Pay Now: the KOT made leased prints first, its ack's more:true leases the bill, and the bill's more:false stops", async () => {
+  const { w, deps } = world();
+  w.leases.push({ jobs: [{ ...job("bill"), kind: "bill" }], retryAt: null });
+  w.ackAnswers.push(done(true), done(false));
+  const agent = createPrintAgent(deps);
+  agent.take(job("kot"));
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.deepEqual(w.prints, ["kot", "bill"], "KOT before bill (§7.6)");
+  assert.equal(w.leaseCalls, 1, "one lease, for the bill: order + ack + lease + ack, no empty lease after");
+  agent.stop();
+});
+
+test("2B: an answer delivered twice prints once; a job printed and waiting for its ack's answer is never printed again", async () => {
+  const { w, deps } = world();
+  w.ackAnswers.push(done(false));
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  agent.take(job("d1"));
+  agent.take(job("d1"));
+  await settle();
+  agent.take(job("d1"));
+  await settle();
+  assert.deepEqual(w.prints, ["d1"], "at-least-once delivery, an idempotent consumer");
+  w.pending = [{ id: "d2", epoch: 1, at: T0 }];
+  agent.take(job("d2"));
+  await settle();
+  assert.deepEqual(w.prints, ["d1"], "a job whose printed ack is still pending is already on paper");
+  agent.take(job("d1", 2));
+  await settle();
+  assert.deepEqual(w.prints, ["d1", "d1"], "a new epoch of a job is a new lease (a REPRINT) and prints");
+  agent.stop();
+});
+
+// Session 2B's fresh review (I-1): a job held while the tab could not print (its drain lock lost to a printer
+// that went off) printed when the gate reopened, even after its lease had run out and another writer had
+// printed it as REPRINT: two KOTs.
+test("2B: a held job prints only well inside its lease; one held longer is dropped unprinted, and leases nothing past the gate", async () => {
+  const late = world();
+  late.w.ready = false;
+  const lateAgent = createPrintAgent(late.deps);
+  lateAgent.take(job("late"));
+  await advance(late.w, PRINT_DIRECT_HOLD_MS);
+  lateAgent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.deepEqual([late.w.prints, late.w.acks.length], [[], 0], "dropped and never acked: another attempt may be on paper");
+  assert.equal(late.w.leaseCalls, 0, "with nothing left to print, the lease gate decides: the printer is off, so no lease");
+  late.w.ready = true;
+  lateAgent.kick();
+  await settle();
+  assert.equal(late.w.leaseCalls, 1, "the line is leased as usual once the printer is back");
+  lateAgent.stop();
+
+  const inTime = world();
+  inTime.w.ackAnswers.push(done(false));
+  const agent = createPrintAgent(inTime.deps);
+  agent.take(job("in-time"));
+  await advance(inTime.w, PRINT_DIRECT_HOLD_MS - 1);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.deepEqual(inTime.w.prints, ["in-time"], "a printer back within the hold window prints it, unlabelled");
+  agent.stop();
+});
+
+test("2B: taken jobs wait their turn (first in, first out) and for an open gate; stop drops them (their lease expires)", async () => {
+  const { w, deps } = world();
+  w.ackAnswers.push(done(false), done(false));
+  const agent = createPrintAgent(deps);
+  agent.take(job("a"));
+  agent.take(job("b"));
+  await settle();
+  assert.deepEqual(w.prints, [], "a tab that does not drain (yet) prints nothing");
+  agent.setGate({ enabled: true, busy: true });
+  await settle();
+  assert.deepEqual(w.prints, [], "nor while the bridge prints something else");
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.deepEqual(w.prints, ["a", "b"], "in the order they came");
+  assert.equal(w.leaseCalls, 0, "no lease at all");
+  const second = world();
+  const stopped = createPrintAgent(second.deps);
+  stopped.take(job("c"));
+  stopped.stop();
+  stopped.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.deepEqual(second.w.prints, [], "a stopped agent prints nothing it held");
+  agent.stop();
+});
+
+test("2B: a taken job prints even if the printer went off since: the bridge refuses it (sent:'no', never counted)", async () => {
+  const { w, deps } = world();
+  w.ready = false;
+  w.results.push({ ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) });
+  w.ackAnswers.push({ applied: true, status: "queued", nextAttemptAt: new Date(T0 + 2_000).toISOString() });
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  agent.take(job("d1"));
+  await settle();
+  assert.deepEqual(w.acks[0]?.body, { deviceId: "dev-a", epoch: 1, outcome: "failed", sent: "no", error: PRINTER_NOT_CONNECTED_MESSAGE }, "refused at once, never left to expire into a REPRINT");
+  assert.equal(w.leaseCalls, 0, "and the line is not leased while the printer is off");
+  agent.stop();
+});
+
+test("2B: a failed ack's more:false ends the burst too; with no more field (an older server) the agent leases as in Phase 1", async () => {
+  const { w, deps } = world();
+  w.leases.push({ jobs: [{ ...job("b1"), kind: "bill" }], retryAt: null }, { jobs: [job("j2")], retryAt: null });
+  w.results.push({ ok: false, error: new Error(PRINTER_WRITE_FAILED_MESSAGE) });
+  w.ackAnswers.push({ applied: true, status: "needs-confirm", nextAttemptAt: null, more: false });
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.equal(w.leaseCalls, 1, "a bill that may have printed waits for the cashier; nothing else waits, so no lease");
+  agent.kick();
+  await settle();
+  assert.deepEqual(w.prints, ["b1", "j2"]);
+  assert.equal(w.leaseCalls, 3, "the default answer has no more field: lease again, then find the line empty");
+  agent.stop();
+});
+
+test("2B: directReady is true only while this tab drains, its printer can print, and no refusal holds it", async () => {
+  const { w, deps } = world();
+  const agent = createPrintAgent(deps);
+  assert.equal(agent.directReady(), false, "not draining yet");
+  agent.setGate({ enabled: true, busy: true });
+  assert.equal(agent.directReady(), true, "a busy bridge only delays the print: the job waits its turn");
+  w.ready = false;
+  assert.equal(agent.directReady(), false, "a printer that can not print now");
+  w.ready = true;
+  w.leases.push({ jobs: [job("j1")], retryAt: null });
+  w.results.push({ ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) });
+  w.ackAnswers.push({ applied: true, status: "queued", nextAttemptAt: new Date(T0 + 2_000).toISOString() });
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.equal(agent.directReady(), false, "a refusal holds it, like a lease");
+  await advance(w, PRINT_AGENT_REFUSED_RECHECK_MS);
+  assert.equal(agent.directReady(), true, "until the recheck window has passed");
+  agent.stop();
+  assert.equal(agent.directReady(), false, "a stopped agent");
+});
+
+test("2B: the seams: the lease header names the draining tab only while its agent says so; a leased job reaches the agent that listens", () => {
+  assert.deepEqual(printAgentHeaders("dev-a", false, "tab-1"), { "x-pos-print-agent": "1", "x-pos-device-id": "dev-a", "x-pos-print-lease": "tab-1" });
+  assert.deepEqual(printAgentHeaders("dev-a", true, null), { "x-pos-print-agent": "1", "x-pos-device-id": "dev-a", "x-pos-print-bill": "1" });
+  assert.equal(directPrintTab(), null, "no agent registered: no header");
+  let ready = true;
+  const off = setDirectPrintSource(() => (ready ? "tab-1" : null));
+  assert.equal(printAgentHeaders("dev-a")["x-pos-print-lease"], "tab-1", "the default reads the seam");
+  ready = false;
+  assert.equal(printAgentHeaders("dev-a")["x-pos-print-lease"], undefined, "not ready: no header");
+  const offNewer = setDirectPrintSource(() => "tab-2");
+  off();
+  assert.equal(directPrintTab(), "tab-2", "an old agent's unregister leaves the newer agent's source in place");
+  offNewer();
+  assert.equal(directPrintTab(), null, "unregistered");
+  const offThrowing = setDirectPrintSource(() => {
+    throw new Error("boom");
+  });
+  assert.equal(directPrintTab(), null, "a throwing source is no tab, never a thrown order request");
+  offThrowing();
+  const got: string[] = [];
+  const offLeased = onLeasedJob((j) => got.push(j.id));
+  deliverLeasedJob(job("d9"));
+  offLeased();
+  deliverLeasedJob(job("d10"));
+  assert.deepEqual(got, ["d9"], "delivered to the agent that listens, never after it stopped listening");
+});
+
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-agent.test.ts lib/print-agent-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 43`; `# pass 32`; `# fail 11`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/hooks/use-host-routing.ts`, find:
+
+```ts
+} from "@/lib/print-routing";
+import { readDevicePrefs, writeDevicePrefs } from "@/lib/pos-device-prefs";
+import { readDeviceId } from "@/lib/pos-device-id";
+import { kickPrintAgent } from "@/lib/print-agent";
+import { printAgentEnqueueHeaders, printJobRefOf } from "@/lib/print-agent-calls";
+import type { Order } from "@/types";
+
+```
+
+Replace it with:
+
+```ts
+} from "@/lib/print-routing";
+import { readDevicePrefs, writeDevicePrefs } from "@/lib/pos-device-prefs";
+import { readDeviceId } from "@/lib/pos-device-id";
+import { deliverLeasedJob, kickPrintAgent } from "@/lib/print-agent";
+import { printAgentEnqueueHeaders, printJobRefOf } from "@/lib/print-agent-calls";
+import type { Order } from "@/types";
+
+```
+
+In `apps/cafe/hooks/use-host-routing.ts`, find:
+
+```ts
+      if (result.outcome === "queued" || result.outcome === "already-resolved") {
+        recordReadback(printReadbackRecordOf(result.id, job.payload));
+      }
+      // Session 1C: a queued job is this device's own line (no host), or this host's: lease it now.
+      if (agentDeviceId !== "" && result.outcome === "queued") kickPrintAgent();
+      // PH-5 (OPS-7): a job the HOST itself queued should drain on the next
+      // microtask, not the next 20s tick — refetch the pulse so the drain's
+      // feed sees it now. A handler-time pref read (never during render); a
+```
+
+Replace it with:
+
+```ts
+      if (result.outcome === "queued" || result.outcome === "already-resolved") {
+        recordReadback(printReadbackRecordOf(result.id, job.payload));
+      }
+      // Session 2B (spec §7.11): a job leased to this tab (made so now, or handed back after a lost
+      // answer) prints here at once. Session 1C: any other queued job is this device's own line (no host),
+      // or this host's: lease it now.
+      if (result.outcome === "queued" && result.leased !== undefined) deliverLeasedJob(result.leased);
+      else if (agentDeviceId !== "" && result.outcome === "queued") kickPrintAgent();
+      // PH-5 (OPS-7): a job the HOST itself queued should drain on the next
+      // microtask, not the next 20s tick — refetch the pulse so the drain's
+      // feed sees it now. A handler-time pref read (never during render); a
+```
+
+In `apps/cafe/hooks/use-host-routing.ts`, find:
+
+```ts
+
+  // Session 1C: the order's own answer already made this slip a job (spec §7.4): follow it for the
+  // readback and, unless it is already resolved (M-d), wake the agent. No request at all.
+  const followPrintJob = useCallback(
+    (ref: PrintJobRef, buildJob: () => PrintJobRequest) => {
+      try {
+```
+
+Replace it with:
+
+```ts
+
+  // Session 1C: the order's own answer already made this slip a job (spec §7.4): follow it for the
+  // readback and, unless it is already resolved (M-d), wake the agent. No request at all.
+  // Session 2B (spec §7.11): a job the answer made leased to this tab is handed to the agent, which prints
+  // it now: no lease request either.
+  const followPrintJob = useCallback(
+    (ref: PrintJobRef, buildJob: () => PrintJobRequest) => {
+      try {
+```
+
+In `apps/cafe/hooks/use-host-routing.ts`, find:
+
+```ts
+      } catch {
+        // A builder throw changes nothing: the job exists and prints; only its chip is missing.
+      }
+      if (ref.status === "queued") kickPrintAgent();
+    },
+    [recordReadback],
+  );
+```
+
+Replace it with:
+
+```ts
+      } catch {
+        // A builder throw changes nothing: the job exists and prints; only its chip is missing.
+      }
+      if (ref.leased !== undefined) deliverLeasedJob(ref.leased);
+      else if (ref.status === "queued") kickPrintAgent();
+    },
+    [recordReadback],
+  );
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+import {
+  PRINT_AGENT_SLIP_DEADLINE_MS,
+  createPrintAgent,
+  onPrintAgentKick,
+  printAgentSlipOf,
+  readPendingAcks,
+  setPulsePrintDevice,
+  writePendingAcks,
+  type PrintAgent,
+```
+
+Replace it with:
+
+```ts
+import {
+  PRINT_AGENT_SLIP_DEADLINE_MS,
+  createPrintAgent,
+  onLeasedJob,
+  onPrintAgentKick,
+  printAgentSlipOf,
+  readPendingAcks,
+  setDirectPrintSource,
+  setPulsePrintDevice,
+  writePendingAcks,
+  type PrintAgent,
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+    agent?.setGate({ enabled, busy });
+  }, [agent, enabled, busy]);
+
+  // The printer reconnected or changed: look at the line (the gate decides).
+  useEffect(() => {
+    agent?.kick();
+  }, [agent, printer, canPrint]);
+
+  useEffect(() => (agent === null ? undefined : onPrintAgentKick(() => agent.kick())), [agent]);
+
+  useEffect(() => {
+    if (agent === null || !enabled) return;
+```
+
+Replace it with:
+
+```ts
+    agent?.setGate({ enabled, busy });
+  }, [agent, enabled, busy]);
+
+  // The printer reconnected or changed: look at the line (the gate decides). Session 2B: a nudge, so the
+  // printer's own status changes during the agent's print never queue an empty lease after it.
+  useEffect(() => {
+    agent?.nudge();
+  }, [agent, printer, canPrint]);
+
+  useEffect(() => (agent === null ? undefined : onPrintAgentKick(() => agent.kick())), [agent]);
+
+  // Phase 2 Session 2B (spec §7.11): while this tab drains this device's slips and can print now, the requests
+  // that make slips name it (directPrintTab → x-pos-print-lease), and a job an answer carries already leased
+  // to it is printed here at once: no lease request, no realtime message.
+  useEffect(() => {
+    if (agent === null) return;
+    const offSource = setDirectPrintSource(() => (agent.directReady() ? tabId : null));
+    const offLeased = onLeasedJob((job) => agent.take(job));
+    return () => {
+      offSource();
+      offLeased();
+    };
+  }, [agent, tabId]);
+
+  useEffect(() => {
+    if (agent === null || !enabled) return;
+```
+
+In `apps/cafe/lib/print-agent-calls.ts`, find:
+
+```ts
+  PRINT_HEADER_ON,
+  PRINT_IDEMPOTENCY_HEADER,
+  PRINT_IDEMPOTENCY_KEY_PATTERN,
+  type PrintJobRef,
+} from "@pos/shared/print-agent-wire";
+import type { PrintJobKind } from "@pos/shared/print-job";
+import { mintTabId, readDeviceId } from "@/lib/pos-device-id";
+
+// Printing redesign, Phase 1 Session 1C (spec §7.4, §9.1; rulings R1 and M-d): the call sites' half of
+```
+
+Replace it with:
+
+```ts
+  PRINT_HEADER_ON,
+  PRINT_IDEMPOTENCY_HEADER,
+  PRINT_IDEMPOTENCY_KEY_PATTERN,
+  PRINT_LEASE_HEADER,
+  type PrintJobRef,
+} from "@pos/shared/print-agent-wire";
+import type { PrintJobKind } from "@pos/shared/print-job";
+import { directPrintTab } from "@/lib/print-agent-seams";
+import { mintTabId, readDeviceId } from "@/lib/pos-device-id";
+
+// Printing redesign, Phase 1 Session 1C (spec §7.4, §9.1; rulings R1 and M-d): the call sites' half of
+```
+
+In `apps/cafe/lib/print-agent-calls.ts`, find:
+
+```ts
+// failed create) is enqueued by the call site under today's job key, so it is still one job.
+
+/** R1's opt-in. {} for a device with no identity: the server then prints nothing for this request,
+ *  and the call site prints exactly as before Phase 1. */
+export function printAgentHeaders(deviceId: string, bill = false): Record<string, string> {
+  if (deviceId === "") return {};
+  return {
+    [PRINT_AGENT_HEADER]: PRINT_HEADER_ON,
+    [PRINT_DEVICE_ID_HEADER]: deviceId,
+    ...(bill ? { [PRINT_BILL_HEADER]: PRINT_HEADER_ON } : {}),
+  };
+}
+
+```
+
+Replace it with:
+
+```ts
+// failed create) is enqueued by the call site under today's job key, so it is still one job.
+
+/** R1's opt-in. {} for a device with no identity: the server then prints nothing for this request,
+ *  and the call site prints exactly as before Phase 1. Session 2B (spec §7.11): `leaseTab`, this tab while
+ *  it drains this device's slips and can print now, lets a slip this device prints be made leased to it. */
+export function printAgentHeaders(deviceId: string, bill = false, leaseTab: string | null = directPrintTab()): Record<string, string> {
+  if (deviceId === "") return {};
+  return {
+    [PRINT_AGENT_HEADER]: PRINT_HEADER_ON,
+    [PRINT_DEVICE_ID_HEADER]: deviceId,
+    ...(bill ? { [PRINT_BILL_HEADER]: PRINT_HEADER_ON } : {}),
+    ...(leaseTab !== null ? { [PRINT_LEASE_HEADER]: leaseTab } : {}),
+  };
+}
+
+```
+
+Create `apps/cafe/lib/print-agent-seams.ts`:
+
+```ts
+import type { LeasedPrintJob } from "@pos/shared/print-agent-wire";
+
+// Printing redesign: the in-page print agent's module seams (client-only, never throw). The call sites and the
+// pulse reach this page's one agent through them, with no React context: an order answer that named a job (a
+// kick), the agent naming itself on the pulse, and since Phase 2 Session 2B (spec §7.11) the tab that can print
+// its own slips at once and the leased jobs its answers carry. Split out of print-agent.ts at the 2A review gate
+// to keep that file near its ~300-line budget; print-agent.ts re-exports every name.
+
+const kickListeners = new Set<() => void>();
+
+/** An order answer named a job this device prints: lease it now, no poll (spec §9.1). */
+export function kickPrintAgent(): void {
+  for (const listener of [...kickListeners]) listener();
+}
+
+export function onPrintAgentKick(listener: () => void): () => void {
+  kickListeners.add(listener);
+  return () => void kickListeners.delete(listener);
+}
+
+let pulseDevice: string | null = null;
+
+/** The agent with no host names itself on the existing 20 s pulse (?device=), so a job the server
+ *  re-queued or sent home reaches it within one tick even with the socket down. Not the host: it polls
+ *  the wake, which answers the same. */
+export function setPulsePrintDevice(deviceId: string | null): void {
+  pulseDevice = deviceId;
+}
+
+export function pulsePrintDeviceQuery(): string {
+  return pulseDevice === null ? "" : `?device=${encodeURIComponent(pulseDevice)}`;
+}
+
+let directSource: (() => string | null) | null = null;
+
+/** Session 2B: the agent of the tab that drains this device's slips registers how it answers directPrintTab().
+ *  The returned function unregisters it, unless another agent registered since. */
+export function setDirectPrintSource(source: () => string | null): () => void {
+  directSource = source;
+  return () => {
+    if (directSource === source) directSource = null;
+  };
+}
+
+/** This tab's id while it drains this device's slips and its printer can print right now; null otherwise.
+ *  The requests that make slips then name it (PRINT_LEASE_HEADER), so a slip this device prints can be made
+ *  already leased to this tab (spec §7.11). */
+export function directPrintTab(): string | null {
+  try {
+    return directSource?.() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+const leasedListeners = new Set<(job: LeasedPrintJob) => void>();
+
+/** An answer carried a job already leased to this tab (Session 2B): the agent prints it now, with no lease
+ *  request. With no agent listening it is dropped, and its lease expires (KOT: REPRINT; bill: the cashier). */
+export function deliverLeasedJob(job: LeasedPrintJob): void {
+  for (const listener of [...leasedListeners]) listener(job);
+}
+
+export function onLeasedJob(listener: (job: LeasedPrintJob) => void): () => void {
+  leasedListeners.add(listener);
+  return () => void leasedListeners.delete(listener);
+}
+```
+
+Create `apps/cafe/lib/print-agent-slip.ts`:
+
+```ts
+import { PRINT_ACK_ERROR_MAX_CHARS, printBannerText } from "@pos/shared/print-lifecycle";
+import type { LeasedPrintJob } from "@pos/shared/print-agent-wire";
+import type { PrintAgentAckBody } from "@/lib/print-agent-types";
+import { PRINT_HOST_DISPATCH_TIMEOUT_MS, PRINT_HOST_EOD_READY_TIMEOUT_MS, hostPrintSlipOf, type HostPrintSlip } from "@/lib/print-host-slips";
+import type { PrintWriteOutcome } from "@/lib/print-write-outcome";
+
+// Printing redesign, Phase 1 Session 1C (spec §7.5, §7.7): what the in-page agent prints for one leased job,
+// and what it reports when that fails. Split out of print-agent.ts at the 2A review gate to keep that file
+// near its ~300-line budget; print-agent.ts re-exports every name.
+
+/** How long the agent waits for the bridge to settle one slip: past the bridge's own bounds (the end-of-day
+ *  figures' wait, then the dispatch watchdog), so only a slip the watchdog gave up on reaches it. Such a
+ *  slip may have printed, so it is acked "maybe". */
+export const PRINT_AGENT_SLIP_DEADLINE_MS = PRINT_HOST_EOD_READY_TIMEOUT_MS + PRINT_HOST_DISPATCH_TIMEOUT_MS + 5_000;
+
+export function failedAckBody(deviceId: string, epoch: number, outcome: PrintWriteOutcome): PrintAgentAckBody {
+  const error = outcome.message.trim().slice(0, PRINT_ACK_ERROR_MAX_CHARS).trim();
+  return {
+    deviceId,
+    epoch,
+    outcome: "failed",
+    sent: outcome.sent,
+    ...(outcome.permanent ? { permanent: true as const } : {}),
+    ...(error !== "" ? { error } : {}),
+  };
+}
+
+/** The slip the host bridge prints for one leased job: today's renderer props (print-host-slips.ts),
+ *  plus the job's labels as the one banner on top (spec §7.7). An end-of-day summary takes none. */
+export function printAgentSlipOf(job: LeasedPrintJob, todayKey: string): HostPrintSlip {
+  const slip = hostPrintSlipOf(job.payload, todayKey);
+  const banner = printBannerText(job.labels);
+  return banner === "" || slip.surface === "eod" ? slip : { ...slip, banner };
+}
+```
+
+Create `apps/cafe/lib/print-agent-types.ts`:
+
+```ts
+import type { LeasedPrintJob, PrintAckData, PrintLeaseData } from "@pos/shared/print-agent-wire";
+
+// Printing redesign, Phase 1 Session 1C (spec §9.1): the in-page print agent's shapes. Split out of
+// print-agent.ts in Session 2B to keep that file near its ~300-line budget; print-agent.ts re-exports them.
+
+export type PrintAgentResult = { ok: true } | { ok: false; error: unknown };
+
+export interface PrintAgentAckBody {
+  deviceId: string;
+  epoch: number;
+  outcome: "printed" | "failed";
+  sent?: "no" | "maybe";
+  permanent?: true;
+  error?: string;
+}
+
+export interface PendingPrintAck {
+  id: string;
+  epoch: number;
+  at: number;
+  /** A failed ack that got no answer (M4); absent: a "printed" ack. */
+  fail?: PrintAgentAckBody;
+}
+
+export interface PrintAgentDeps {
+  deviceId: string;
+  lease(): Promise<PrintLeaseData>;
+  ack(id: string, body: PrintAgentAckBody): Promise<PrintAckData>;
+  /** Prints one leased job through the host bridge. Never rejects. */
+  print(job: LeasedPrintJob): Promise<PrintAgentResult>;
+  /** canPrintNow(): a printer here that can print right now. */
+  printerReady(): boolean;
+  /** Any value whose identity changes when this device's printer changes (its snapshot). */
+  printerState(): unknown;
+  readPending(): PendingPrintAck[];
+  writePending(entries: PendingPrintAck[]): void;
+  now(): number;
+  setTimer(fn: () => void, ms: number): unknown;
+  clearTimer(handle: unknown): void;
+}
+
+export interface PrintAgent {
+  setGate(gate: { enabled: boolean; busy: boolean }): void;
+  /** A job may wait for this device (an answer, a frame, the pulse, the wake, a timer): lease now, or once
+   *  the running cycle ends. */
+  kick(): void;
+  /** Session 2B: this device's state changed (its printer): lease now if idle, never queued behind a cycle. */
+  nudge(): void;
+  flushAcks(): Promise<void>;
+  stop(): void;
+  /** Session 2B: a job already leased to this tab (an answer carried it). Printed before any lease. */
+  take(job: LeasedPrintJob): void;
+  /** Session 2B: this tab drains, its printer can print now and no refusal holds it, so its requests may
+   *  ask for their slips leased to it (directPrintTab). */
+  directReady(): boolean;
+}
+```
+
+Replace the whole of `apps/cafe/lib/print-agent.ts` with:
+
+```ts
+import { PRINT_ACK_PENDING_MAX_MS, PRINT_ACK_RETRY_MS, PRINT_LEASE_MS } from "@pos/shared/print-lifecycle";
+import {
+  PRINT_AGENT_REFUSED_RECHECK_MS,
+  printAgentMayLease,
+  printAgentTimerDelayMs,
+  type LeasedPrintJob,
+  type PrintAckData,
+} from "@pos/shared/print-agent-wire";
+import { ackAnswered } from "@/lib/print-ack-store";
+import { failedAckBody } from "@/lib/print-agent-slip";
+import type { PendingPrintAck, PrintAgent, PrintAgentDeps } from "@/lib/print-agent-types";
+import { PRINT_SLIP_REFUSALS_MAX, isSlipRefusal, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+
+// Printing redesign, Phase 1 Session 1C (spec §9.1): the in-page print agent's core, with no React and
+// no globals except the pending-ack store, so every rule below is unit-tested with fakes
+// (lib/print-agent.test.ts). hooks/use-print-agent.ts wires it to the page.
+//
+// One cycle at a time: lease the head of this device's line → print it through the host bridge → ack.
+// It never leases while the printer can not print here (the owner's rule: no automatic attempts while
+// a printer is off), and after a refusal (sent:"no") it waits for the printer's state to change, or
+// PRINT_AGENT_REFUSED_RECHECK_MS. Its only timer is local, set from the server's retryAt/nextAttemptAt.
+// A "printed" ack that got no answer is kept in localStorage and re-sent every 5 s for 10 min, and
+// cleared on ANY answer from the server (spec §7.9; 1A review M3).
+//
+// Phase 2 Session 2B (spec §7.11): a job an answer carried already leased to this tab is taken (take) and
+// printed before any lease, first in first out; a job it already holds or acked is ignored, so an answer
+// delivered twice prints once. After a job leaves the line, the ack's `more` decides whether to lease again.
+
+/** The pending-ack store keeps at most this many entries (an agent prints one job at a time). */
+export const PRINT_ACK_PENDING_LIMIT = 50;
+
+/** Session 2B (its fresh review, I-1): a job an answer carried leased to this tab prints only this long after
+ *  it arrived. Its 90 s lease began at most one request timeout (15 s) earlier, so the print stays inside the
+ *  lease with a margin. Later the lease may have run out and another attempt (a REPRINT) be on paper, so the
+ *  held job is dropped unprinted. */
+export const PRINT_DIRECT_HOLD_MS = PRINT_LEASE_MS - 30_000;
+
+export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
+  let enabled = false;
+  let busy = false;
+  let running = false;
+  let kickedWhileRunning = false;
+  let stopped = false;
+  let refused: { state: unknown; at: number } | null = null;
+  let timer: unknown = null;
+  let timerAt = Number.POSITIVE_INFINITY;
+  let ackTimer: unknown = null;
+  let flushing: Promise<void> | null = null;
+  const slipRefusals = new Map<string, number>();
+  // Session 2B: jobs already leased to this tab, waiting their turn; every (id:epoch) taken; each ack's answer.
+  const held: Array<{ job: LeasedPrintJob; at: number }> = [];
+  const taken = new Set<string>();
+  const answers = new Map<string, PrintAckData>();
+
+  /** A bounded insert: the oldest key goes once the store holds as many as the pending-ack store. */
+  function remember<T>(store: Set<string> | Map<string, T>, key: string, value?: T): void {
+    if (store instanceof Map) store.set(key, value as T);
+    else store.add(key);
+    if (store.size > PRINT_ACK_PENDING_LIMIT) store.delete(store.keys().next().value as string);
+  }
+
+  /** The oldest held job still well inside its lease; one held longer is dropped unprinted (I-1). */
+  function nextHeld(): LeasedPrintJob | undefined {
+    for (let next = held.shift(); next !== undefined; next = held.shift()) {
+      if (deps.now() - next.at < PRINT_DIRECT_HOLD_MS) return next.job;
+    }
+    return undefined;
+  }
+
+  function refusalHolds(): boolean {
+    if (refused === null) return false;
+    if (deps.printerState() !== refused.state || deps.now() - refused.at >= PRINT_AGENT_REFUSED_RECHECK_MS) {
+      refused = null;
+      return false;
+    }
+    return true;
+  }
+
+  function wakeAt(atMs: number): void {
+    if (stopped) return;
+    const delay = printAgentTimerDelayMs(atMs, deps.now());
+    const at = deps.now() + delay;
+    if (timer !== null && timerAt <= at) return;
+    if (timer !== null) deps.clearTimer(timer);
+    timerAt = at;
+    timer = deps.setTimer(() => {
+      timer = null;
+      timerAt = Number.POSITIVE_INFINITY;
+      kick();
+    }, delay);
+  }
+
+  function keep(entry: PendingPrintAck): void {
+    deps.writePending([...deps.readPending().filter((e) => e.id !== entry.id), entry].slice(-PRINT_ACK_PENDING_LIMIT));
+  }
+
+  function forget(entry: PendingPrintAck): void {
+    deps.writePending(deps.readPending().filter((e) => !(e.id === entry.id && e.epoch === entry.epoch)));
+  }
+
+  function scheduleAckRetry(): void {
+    if (stopped || ackTimer !== null || deps.readPending().length === 0) return;
+    ackTimer = deps.setTimer(() => {
+      ackTimer = null;
+      void flushAcks();
+    }, PRINT_ACK_RETRY_MS);
+  }
+
+  async function sendPending(): Promise<void> {
+    // Re-read after each send, so an ack kept while this flush was on the wire goes out with it too.
+    const tried = new Set<string>();
+    for (;;) {
+      const entry = deps.readPending().find((e) => !tried.has(`${e.id}:${e.epoch}`));
+      if (entry === undefined) return;
+      tried.add(`${entry.id}:${entry.epoch}`);
+      if (deps.now() - entry.at > PRINT_ACK_PENDING_MAX_MS) {
+        forget(entry);
+        continue;
+      }
+      try {
+        remember(answers, `${entry.id}:${entry.epoch}`, await deps.ack(entry.id, entry.fail ?? { deviceId: deps.deviceId, epoch: entry.epoch, outcome: "printed" }));
+        forget(entry);
+      } catch (error) {
+        if (ackAnswered(error)) forget(entry);
+      }
+    }
+  }
+
+  function flushAcks(): Promise<void> {
+    // One flush at a time. The reset is chained AFTER the assignment: with nothing pending, an async
+    // body would finish before `flushing` was even set, and every later flush would return that stale,
+    // resolved promise without sending its ack.
+    if (flushing === null) {
+      flushing = sendPending().finally(() => {
+        flushing = null;
+        scheduleAckRetry();
+      });
+    }
+    return flushing;
+  }
+
+  async function cycle(forHeld = false): Promise<void> {
+    running = true;
+    kickedWhileRunning = false;
+    let again = false;
+    try {
+      // An ack the last page (or a dropped answer) left goes first: a lease could expire our own job (M6).
+      // A stop() that landed meanwhile leases nothing (the 1D gate M-4).
+      await flushAcks();
+      if (stopped) return;
+      // Session 2B: a job already leased to this tab goes first; only then is the line leased.
+      let job = nextHeld();
+      if (job === undefined) {
+        // Only a held job prints past the lease gate; with none left (I-1), the gate decides as always.
+        if (forHeld && !printAgentMayLease({ enabled, busy, running: false, printerReady: deps.printerReady(), refusalHolds: refusalHolds() })) return;
+        const data = await deps.lease();
+        job = data.jobs[0];
+        if (job === undefined) {
+          if (data.retryAt !== null) wakeAt(Date.parse(data.retryAt));
+          return;
+        }
+      }
+      const result = await deps.print(job);
+      if (result.ok) {
+        // A printed slip's refusal count is done with (1D gate M-3). A failed one keeps it, so a staff
+        // Retry stays one tap, one try.
+        slipRefusals.delete(job.id);
+        // Kept BEFORE it is sent, so a reload mid-ack still reports the paper (spec §7.9). Awaited, so
+        // the next lease does not find this job still leased at the head of the line.
+        keep({ id: job.id, epoch: job.epoch, at: deps.now() });
+        await flushAcks();
+        // Session 2B (decision 9): lease again only when the ack says the line holds more. No answer, or
+        // an older server that does not say: lease again, as in Phase 1.
+        const key = `${job.id}:${job.epoch}`;
+        again = answers.get(key)?.more !== false;
+        answers.delete(key);
+        return;
+      }
+      let outcome = printWriteOutcomeOf(result.error);
+      if (isSlipRefusal(outcome) && deps.printerReady()) {
+        // The slip itself was refused (owner, 1C gate I3): its second refusal fails the job, freeing the line.
+        const count = (slipRefusals.get(job.id) ?? 0) + 1;
+        slipRefusals.set(job.id, count);
+        if (count >= PRINT_SLIP_REFUSALS_MAX) outcome = { ...outcome, permanent: true };
+      } else if (outcome.sent === "no" && !outcome.permanent) {
+        // Nothing reached the printer: it is off or unreachable. No automatic attempt until it changes.
+        refused = { state: deps.printerState(), at: deps.now() };
+      }
+      const body = failedAckBody(deps.deviceId, job.epoch, outcome);
+      const answer = await deps.ack(job.id, body).catch((error: unknown) => {
+        // No answer: kept and re-sent like a printed ack, so the lease never expires into a counted "maybe" (M4).
+        if (!ackAnswered(error)) keep({ id: job.id, epoch: job.epoch, at: deps.now(), fail: body });
+        return null;
+      });
+      if (answer === null) {
+        scheduleAckRetry();
+        wakeAt(deps.now() + PRINT_AGENT_REFUSED_RECHECK_MS);
+        return;
+      }
+      // A job back in line holds the line until its own nextAttemptAt (the timer leases it then), so a
+      // kick that landed meanwhile (the bridge freeing up from this very slip) would only find it not due.
+      if (answer.nextAttemptAt !== null) {
+        kickedWhileRunning = false;
+        wakeAt(Date.parse(answer.nextAttemptAt));
+      } else again = refused === null && answer.more !== false;
+    } catch {
+      // No answer from the lease (offline, a deploy): look again later, never in a tight loop.
+      wakeAt(deps.now() + PRINT_AGENT_REFUSED_RECHECK_MS);
+    } finally {
+      running = false;
+      if (again || kickedWhileRunning || held.length > 0) kick();
+    }
+  }
+
+  function kick(): void {
+    if (stopped) return;
+    // Remembered, not dropped: the running cycle's lease may have read the line before this job was in it.
+    if (running) return void (kickedWhileRunning = true);
+    // Session 2B: a job already leased to this tab prints now, whatever the lease gate says. Its attempt was
+    // made while the printer was ready, so a printer that went off since refuses it (sent:"no", never
+    // counted) instead of leaving it to expire into a REPRINT.
+    if (held.length > 0 && enabled && !busy) return void cycle(true);
+    const holds = refusalHolds();
+    if (!printAgentMayLease({ enabled, busy, running, printerReady: deps.printerReady(), refusalHolds: holds })) {
+      if (holds && refused !== null) wakeAt(refused.at + PRINT_AGENT_REFUSED_RECHECK_MS);
+      return;
+    }
+    void cycle();
+  }
+
+  /** Session 2B (seen on the emulator at the 2A gate): a change of state (the gate, the bridge freeing up, the
+   *  printer's status) looks at the line when idle, but is no reason to lease after a running cycle: its own
+   *  print causes them, and its ack's `more` already says whether the line holds more. */
+  function nudge(): void {
+    if (!running) kick();
+  }
+
+  return {
+    setGate(gate) {
+      const opened = (gate.enabled && !enabled) || (!gate.busy && busy);
+      enabled = gate.enabled;
+      busy = gate.busy;
+      if (opened) nudge();
+    },
+    kick,
+    nudge,
+    flushAcks,
+    stop() {
+      stopped = true;
+      // A job still held is dropped: its lease expires (KOT: REPRINT; bill: the cashier), as for a tab that died.
+      held.length = 0;
+      if (timer !== null) deps.clearTimer(timer);
+      if (ackTimer !== null) deps.clearTimer(ackTimer);
+      timer = null;
+      ackTimer = null;
+    },
+    take(job) {
+      if (stopped || typeof job.id !== "string" || !Number.isInteger(job.epoch)) return;
+      const key = `${job.id}:${job.epoch}`;
+      // At-least-once delivery, an idempotent consumer: a job already taken, or printed and waiting for its
+      // ack's answer, is never printed again.
+      if (taken.has(key) || deps.readPending().some((e) => e.id === job.id && e.epoch === job.epoch)) return;
+      remember(taken, key);
+      held.push({ job, at: deps.now() });
+      kick();
+    },
+    directReady() {
+      return enabled && !stopped && deps.printerReady() && !refusalHolds();
+    },
+  };
+}
+
+// ── Split out, re-exported: the shapes, the module seams, the slip and failure helpers, the pending-ack store ──
+
+export type { PendingPrintAck, PrintAgent, PrintAgentAckBody, PrintAgentDeps, PrintAgentResult } from "@/lib/print-agent-types";
+export * from "@/lib/print-agent-seams";
+export { PRINT_AGENT_SLIP_DEADLINE_MS, failedAckBody, printAgentSlipOf } from "@/lib/print-agent-slip";
+export { ackAnswered, readPendingAcks, writePendingAcks } from "@/lib/print-ack-store";
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-agent.test.ts lib/print-agent-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 43`; `# pass 43`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint lib/print-agent.ts lib/print-agent-seams.ts lib/print-agent-slip.ts lib/print-agent-calls.ts hooks/use-print-agent.ts hooks/use-host-routing.ts lib/print-agent.test.ts lib/print-agent-paths.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/hooks/use-host-routing.ts apps/cafe/hooks/use-print-agent.ts apps/cafe/lib/print-agent-calls.ts apps/cafe/lib/print-agent-paths.test.ts apps/cafe/lib/print-agent-seams.ts apps/cafe/lib/print-agent-slip.ts apps/cafe/lib/print-agent-types.ts apps/cafe/lib/print-agent.test.ts apps/cafe/lib/print-agent.ts
+git commit -m "feat(print): Phase 2 direct print on the page: the draining tab names itself while it can print, prints a job an answer carried leased to it before any lease, at most once, and leases again only when the ack says more"
+```
+
+---
+
+### Task B5: the budget recount: one request and no realtime per slip the asking device prints; no final print-status; no empty lease
+
+**Files:**
+- Modify: `packages/shared/src/print-budget.ts` (`PRINT_REALTIME_PER_SLIP` 3 → 2 and `PRINT_REALTIME_PER_PRINTER_SLIP` 2 → 1 for G-1; `PRINT_REQUESTS_PER_DIRECT_SLIP`, `PRINT_REALTIME_PER_DIRECT_SLIP`, `printOneDeviceRequestsPerDay`; `printRequestsForSlips` takes the day's retry share)
+- Test: `packages/shared/src/print-budget.test.ts` (two pins changed deliberately for G-1, three new tests)
+
+**Interfaces produced:** `PRINT_REQUESTS_PER_DIRECT_SLIP = 1`; `PRINT_REALTIME_PER_DIRECT_SLIP = 0`; `printOneDeviceRequestsPerDay(): number` (1,200); `printRequestsForSlips(slips, retryShare = PRINT_BUDGET_BUSY_DAY.retryShare)`.
+
+**The numbers (spec §17.2).** A slip the asking device prints itself: 1 request (its ack), 0 Worker requests. A slip another device prints: a lease and an ack, and 2 Worker requests (its `queued` print-status and the host's nudge; was 3 with the final state). Printers mode: at most 1 Worker request per slip (was 2). Pay Now on one printer: 3 requests (Phase 1: 5 with its trailing empty lease). Phase 1's busy day of 750 slips: 1,650 requests (was 2,400 with a trailing lease per burst). A cafe whose one device takes and prints its orders: 1,200 requests at worst (every bill riding with its KOT), 1,920 with the host's wake on a healthy socket, and no Worker request for printing at all.
+
+**The 2A gate's new minor:** `printSlipRequestsPerDay(day)` forwarded only `day.slips`, so a day's own `retryShare` was ignored; it is passed through now (no number changes).
+
+- [ ] **Step 1: The failing tests first**
+
+In `packages/shared/src/print-budget.test.ts`, find:
+
+```ts
+  REALTIME_FREE_REQUESTS_PER_DAY,
+  PRINT_BUDGET_STATIONS_DAY,
+  PRINT_REALTIME_PER_PRINTER_SLIP,
+  printRequestsForSlips,
+  printSlipRequestsPerDay,
+  printStationSlipsPerDay,
+```
+
+Replace it with:
+
+```ts
+  REALTIME_FREE_REQUESTS_PER_DAY,
+  PRINT_BUDGET_STATIONS_DAY,
+  PRINT_REALTIME_PER_PRINTER_SLIP,
+  PRINT_REALTIME_PER_DIRECT_SLIP,
+  PRINT_REQUESTS_PER_DIRECT_SLIP,
+  PRINT_REQUESTS_PER_SLIP,
+  printOneDeviceRequestsPerDay,
+  printRequestsForSlips,
+  printSlipRequestsPerDay,
+  printStationSlipsPerDay,
+```
+
+In `packages/shared/src/print-budget.test.ts`, find:
+
+```ts
+  assert.ok(printSlipRequestsPerDay() <= PRINT_BUDGET_NORMAL_MAX_PER_DAY, "inside the normal-day ceiling");
+});
+
+test("realtime: three Worker requests per slip stay under 5 % of the free 100,000 a day", () => {
+  const perDay = PRINT_BUDGET_BUSY_DAY.slips * PRINT_REALTIME_PER_SLIP + PRINT_REALTIME_BASE_PER_DAY;
+  assert.equal(perDay, 3_935);
+  assert.ok(perDay <= REALTIME_FREE_REQUESTS_PER_DAY * 0.05, `${perDay}/day`);
+});
+
+```
+
+Replace it with:
+
+```ts
+  assert.ok(printSlipRequestsPerDay() <= PRINT_BUDGET_NORMAL_MAX_PER_DAY, "inside the normal-day ceiling");
+});
+
+// The Phase 2B gate (G-1) deliberately changed this pin: a slip's final state is no longer published (no
+// device listened for it), so a slip another device prints costs 2 Worker requests, not 3 (was 3,935/day).
+test("realtime: two Worker requests per slip another device prints stay under 5 % of the free 100,000 a day", () => {
+  const perDay = PRINT_BUDGET_BUSY_DAY.slips * PRINT_REALTIME_PER_SLIP + PRINT_REALTIME_BASE_PER_DAY;
+  assert.equal(PRINT_REALTIME_PER_SLIP, 2, "its queued print-status and the host's nudge");
+  assert.equal(perDay, 2_735);
+  assert.ok(perDay <= REALTIME_FREE_REQUESTS_PER_DAY * 0.05, `${perDay}/day`);
+});
+
+```
+
+In `packages/shared/src/print-budget.test.ts`, find:
+
+```ts
+  assert.ok(PRINT_WAKE_PRINTERS_DAILY_CAP <= PRINT_WAKE_DAILY_CAP, "printers mode never polls more than a host did");
+});
+
+test("Phase 2 realtime: two Worker requests per slip in printers mode, the heavy day under 5 %", () => {
+  const perDay = printStationSlipsPerDay({ fullCopy: true }) * PRINT_REALTIME_PER_PRINTER_SLIP + PRINT_REALTIME_BASE_PER_DAY;
+  assert.equal(perDay, 3_635);
+  assert.ok(perDay <= REALTIME_FREE_REQUESTS_PER_DAY * 0.05, `${perDay}/day`);
+});
+
+```
+
+Replace it with:
+
+```ts
+  assert.ok(PRINT_WAKE_PRINTERS_DAILY_CAP <= PRINT_WAKE_DAILY_CAP, "printers mode never polls more than a host did");
+});
+
+// The Phase 2B gate (G-1) deliberately changed this pin: no final state, so one Worker request per slip in
+// printers mode, at most (a slip its writer asked for publishes none; was 2 per slip, 3,635/day).
+test("Phase 2 realtime: at most one Worker request per slip in printers mode, the heavy day under 5 %", () => {
+  const perDay = printStationSlipsPerDay({ fullCopy: true }) * PRINT_REALTIME_PER_PRINTER_SLIP + PRINT_REALTIME_BASE_PER_DAY;
+  assert.equal(PRINT_REALTIME_PER_PRINTER_SLIP, 1, "its queued print-status aimed at its writer");
+  assert.equal(perDay, 1_985);
+  assert.ok(perDay <= REALTIME_FREE_REQUESTS_PER_DAY * 0.05, `${perDay}/day`);
+});
+
+// Phase 2 Session 2B (spec §7.11, plan decisions 15, 16 and 9; the owner's ask of 2026-10-04): a slip the
+// asking device prints itself, with the fewest requests and no realtime message.
+test("2B: a slip the asking device prints itself costs one request (its ack) and no realtime request; another device's slip keeps a lease and an ack", () => {
+  assert.equal(PRINT_REQUESTS_PER_DIRECT_SLIP, 1, "made leased with the order request: only its ack");
+  assert.equal(PRINT_REALTIME_PER_DIRECT_SLIP, 0, "nothing is published to the device printing it");
+  assert.equal(PRINT_REQUESTS_PER_SLIP, 2, "a slip another device prints: one lease and one ack");
+  assert.equal(PRINT_REALTIME_PER_SLIP, 2, "its queued print-status and the host's nudge");
+  const payNow = PRINT_REQUESTS_PER_DIRECT_SLIP + PRINT_REQUESTS_PER_SLIP;
+  assert.equal(payNow, 3, "Pay Now on one printer: the KOT's ack, then the bill's lease and ack (Phase 1: 5, with its empty lease)");
+});
+
+test("2B: the ack's more ends a burst with no empty lease: Phase 1's busy day (2,400 with a trailing lease) costs 1,650", () => {
+  const slips = PRINT_BUDGET_BUSY_DAY.orders * (PRINT_BUDGET_STATIONS_DAY.roundsPerOrder + PRINT_BUDGET_STATIONS_DAY.billsPerOrder);
+  assert.equal(printRequestsForSlips(slips), 1_650, "a lease and an ack per slip, plus the retried share, nothing more");
+});
+
+test("2B: the busy day of a cafe whose one device takes and prints its orders: 1,200 requests and no realtime request for printing", () => {
+  const requests = printOneDeviceRequestsPerDay();
+  assert.equal(requests, 1_200, "every round's KOT made leased; every bill behind its KOT (Pay Now), the worst case");
+  assert.ok(requests < printRequestsForSlips(750), "less than the same day's slips leased one by one (1,650)");
+  const wakePerHost = OPEN_MS / cadence({ socketHealthy: true, msSinceLastJob: 0, capSpent: false });
+  assert.equal(requests + wakePerHost, 1_920, "the device as the host also polls the wake on a healthy socket");
+  assert.ok(requests + wakePerHost <= PRINT_BUDGET_NORMAL_MAX_PER_DAY, "well inside the normal-day ceiling");
+  const realtime = 750 * PRINT_REALTIME_PER_DIRECT_SLIP + PRINT_REALTIME_BASE_PER_DAY;
+  assert.equal(realtime, PRINT_REALTIME_BASE_PER_DAY, "printing adds no Worker request at all");
+});
+
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/packages/shared && node --import tsx --test src/print-budget.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 1`; `# pass 0`; `# fail 1`
+
+- [ ] **Step 3: The code**
+
+In `packages/shared/src/print-budget.ts`, find:
+
+```ts
+export const PRINT_BUDGET_WORST_MAX_PER_DAY = 18_000;
+/** No recurring agent poll may run faster than this. */
+export const PRINT_AGENT_MIN_CADENCE_MS = 3_000;
+/** Realtime Worker requests one slip costs (spec §17.2): its "queued" print-status, its final
+ *  print-status, and in host mode the print-job nudge a host from before Phase 1 drains on. */
+export const PRINT_REALTIME_PER_SLIP = 3;
+/** Today's realtime traffic without printing (spec §17.2). */
+export const PRINT_REALTIME_BASE_PER_DAY = 335;
+/** Cloudflare Workers Free (spec §17.1); printing may use at most 5 % of it. */
+```
+
+Replace it with:
+
+```ts
+export const PRINT_BUDGET_WORST_MAX_PER_DAY = 18_000;
+/** No recurring agent poll may run faster than this. */
+export const PRINT_AGENT_MIN_CADENCE_MS = 3_000;
+/** Realtime Worker requests one slip another device prints costs (spec §17.2): its "queued" print-status
+ *  aimed at that device, and in host mode the print-job nudge a host from before Phase 1 drains on. Its
+ *  final state is not published (the Phase 2B gate, G-1: no device listened for it; it was 3). */
+export const PRINT_REALTIME_PER_SLIP = 2;
+/** Today's realtime traffic without printing (spec §17.2). */
+export const PRINT_REALTIME_BASE_PER_DAY = 335;
+/** Cloudflare Workers Free (spec §17.1); printing may use at most 5 % of it. */
+```
+
+In `packages/shared/src/print-budget.ts`, find:
+
+```ts
+
+/** Lease + ack for every slip, plus the retried share (spec §17.2: 2,400 + 240). */
+export function printSlipRequestsPerDay(day: typeof PRINT_BUDGET_BUSY_DAY = PRINT_BUDGET_BUSY_DAY): number {
+  return printRequestsForSlips(day.slips);
+}
+
+/** A lease and an ack per slip, plus the retried share, for any number of slips a day. */
+export function printRequestsForSlips(slips: number): number {
+  return Math.round(slips * PRINT_REQUESTS_PER_SLIP * (1 + PRINT_BUDGET_BUSY_DAY.retryShare));
+}
+
+/** Phase 2, the recount the 1C gate asked for (spec §8, §17.2): the busy day with stations. Each KOT round
+```
+
+Replace it with:
+
+```ts
+
+/** Lease + ack for every slip, plus the retried share (spec §17.2: 2,400 + 240). */
+export function printSlipRequestsPerDay(day: typeof PRINT_BUDGET_BUSY_DAY = PRINT_BUDGET_BUSY_DAY): number {
+  return printRequestsForSlips(day.slips, day.retryShare);
+}
+
+/** A lease and an ack per slip, plus the retried share, for any number of slips a day. */
+export function printRequestsForSlips(slips: number, retryShare: number = PRINT_BUDGET_BUSY_DAY.retryShare): number {
+  return Math.round(slips * PRINT_REQUESTS_PER_SLIP * (1 + retryShare));
+}
+
+/** Phase 2 Session 2B (spec §7.11, plan decisions 15, 16 and 9): a slip the asking device prints itself is
+ *  made leased to its tab, so its one request is its ack, and nothing is published for it. A slip made with
+ *  it on the same line (Pay Now's bill) follows through the ack's `more`: one lease and one ack. */
+export const PRINT_REQUESTS_PER_DIRECT_SLIP = 1;
+export const PRINT_REALTIME_PER_DIRECT_SLIP = 0;
+
+/** The busy day (spec §17.2's 300 orders) of a cafe whose one device takes and prints every order, at its
+ *  worst: every bill rides with its KOT (Pay Now), so each bill costs a lease and an ack; every other KOT
+ *  round is made leased. A retried slip costs a lease and an ack. The ack's `more` leaves no empty lease. */
+export function printOneDeviceRequestsPerDay(): number {
+  const d = PRINT_BUDGET_STATIONS_DAY;
+  const orders = PRINT_BUDGET_BUSY_DAY.orders;
+  const slips = orders * (d.roundsPerOrder + d.billsPerOrder);
+  const firstTries = orders * (d.roundsPerOrder * PRINT_REQUESTS_PER_DIRECT_SLIP + d.billsPerOrder * PRINT_REQUESTS_PER_SLIP);
+  return Math.round(firstTries + slips * PRINT_BUDGET_BUSY_DAY.retryShare * PRINT_REQUESTS_PER_SLIP);
+}
+
+/** Phase 2, the recount the 1C gate asked for (spec §8, §17.2): the busy day with stations. Each KOT round
+```
+
+In `packages/shared/src/print-budget.ts`, find:
+
+```ts
+  return Math.round(PRINT_BUDGET_BUSY_DAY.orders * (d.roundsPerOrder * perRound + d.billsPerOrder));
+}
+
+/** Printers mode publishes 2 realtime requests per slip: its "queued" print-status aimed at its writer, and
+ *  its final state. No print-job nudge: that is for a host, and printers mode has none. */
+export const PRINT_REALTIME_PER_PRINTER_SLIP = 2;
+
+```
+
+Replace it with:
+
+```ts
+  return Math.round(PRINT_BUDGET_BUSY_DAY.orders * (d.roundsPerOrder * perRound + d.billsPerOrder));
+}
+
+/** Printers mode publishes 1 realtime request per slip its writer did not ask for: its "queued" print-status
+ *  aimed at that writer. No final state (the Phase 2B gate, G-1; it was 2), and no print-job nudge: that is
+ *  for a host, and printers mode has none. A slip its writer asked for publishes nothing (Session 2B). */
+export const PRINT_REALTIME_PER_PRINTER_SLIP = 1;
+
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/packages/shared && node --import tsx --test src/print-budget.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit -p . && echo TSC_OK`
+Expected: `# tests 26`; `# pass 26`; `# fail 0`; `TSC_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add packages/shared/src/print-budget.test.ts packages/shared/src/print-budget.ts
+git commit -m "feat(print): Phase 2 budget recount for direct print: one request and no realtime per slip the asking device prints, no final print-status, no empty lease"
+```
+
+---
+
+### Task B6: live legs ak–am: a slip made leased in one write, a lost answer handed back to that tab only, a creation lease that runs out, and the ack's `more`
+
+**Files:**
+- Create: `apps/cafe/scripts/print-host-live/direct.ts` (legs ak, al, am)
+- Modify: `apps/cafe/scripts/verify-print-host-live.ts` (the three legs after aj)
+
+**Interfaces produced:** `legAK(nowMs)`, `legAL(nowMs)`, `legAM(nowMs)`.
+
+**What they prove against a real mongod.** (ak) The host's own Pay Now: the KOT is made leased to its tab (epoch 1, one attempt, a 90 s lease, today's key, the log `created` then `leased(direct)`, and ONE write: its `updatedAt` is its `createdAt`), the bill queued behind it, and a lease call meanwhile gets nothing (the line waits for that lease: KOT before bill); never for a slip another device prints, never on a line with an older job, never without the header; with no host, a device's own slip. (al) A lost answer: the same tab re-sending gets the same job and lease back and nothing new; another tab, another device, or a lease that ran out gets Phase 1's answer; another device's host means no direct print at all; the host's own re-sent KOT gets its lease back. (am) The ack's `more` (true with the bill waiting, false after it, absent on a repeat); the pulse's and the wake's count leaves out a running lease and counts one that ran out (G-2); a creation lease whose tab died expires into REPRINT (KOT) or needs-confirm (bill); a refusal sends it back in line, never counted.
+
+- [ ] **Step 1: The change**
+
+Create `apps/cafe/scripts/print-host-live/direct.ts`:
+
+```ts
+/**
+ * Phase 2 Session 2B live legs — direct print on the asking device (spec §7.11, plan decisions 15, 16 and 9)
+ * against a REAL MongoDB: a slip made already leased to the asking tab, in one write (ak); a lost answer handed
+ * back to the same tab, and to no other (al); a creation lease that runs out, and the ack's `more` (am). Run by
+ * scripts/verify-print-host-live.ts after legs ah–aj.
+ *
+ * (console output is intentional — this is an ops CLI script, not app code.)
+ */
+import { PRINT_LEASE_MS, PRINT_DIRECT_LEASE_DETAIL } from "@pos/shared/print-lifecycle";
+import { PrintJob } from "@/models/PrintJob";
+import { PrintHost } from "@/models/PrintHost";
+import { Order } from "@/models/Order";
+import { createOrderPrintJobs, enqueueDirectPrintJob } from "@/lib/print-order-jobs";
+import { ackPrintJob, leasePrintJobs, readJobsForDevice } from "@/lib/print-lease";
+import { billPrintJob, kotPrintJob } from "@/lib/print-routing";
+import { check, seedPrintHost, seedRealOrder } from "./harness";
+import { HOST, STAFF, freshHost, queueKot, rowOf } from "./lifecycle";
+
+const PHONE = "live-direct-phone";
+const TAB = "live-direct-tab-1";
+
+async function wireOrder(id: string) {
+  const order = await Order.findById(id).lean();
+  if (order === null) throw new Error("seeded order missing");
+  return JSON.parse(JSON.stringify(order)) as Parameters<typeof kotPrintJob>[0];
+}
+
+/** A Pay Now on a fresh order, made by `device` (its tab `tab`, if any). */
+async function payNow(device: string, nowMs: number, tab?: string) {
+  const orderId = await seedRealOrder({ status: "Completed", kotRound: 1 });
+  const refs = await createOrderPrintJobs({
+    order: await Order.findById(orderId).lean(),
+    slips: [{ kind: "kot", round: 1 }, { kind: "bill" }],
+    originDeviceId: device,
+    ...(tab !== undefined ? { leaseTabId: tab } : {}),
+    queuedBy: STAFF,
+    nowMs,
+  });
+  return { orderId, refs };
+}
+
+export async function legAK(nowMs: number): Promise<void> {
+  console.log("\n(ak) direct print: the asking tab's first slip on its own free line is made leased to it, in one write");
+  await freshHost(nowMs);
+  const { orderId, refs } = await payNow(HOST, nowMs, TAB);
+  const [kotRef, billRef] = refs;
+  const kot = await rowOf(kotRef?.id ?? "");
+  const bill = await rowOf(billRef?.id ?? "");
+  check("(ak) the host's own Pay Now: the KOT's ref carries its lease; the bill's ref is queued, with none", kotRef?.status === "leased" && kotRef.leased?.epoch === 1 && kotRef.leased.attempt === 1 && kotRef.leased.payload.kind === "kot" && billRef?.status === "queued" && billRef.leased === undefined);
+  check(
+    "(ak) the KOT row is leased to that tab: epoch 1, one attempt, a 90 s lease, today's key",
+    kot?.status === "leased" && kot.epoch === 1 && kot.attempts === 1 && kot.uncertainAttempts === 0 && kot.lease?.deviceId === HOST && kot.lease.tabId === TAB && kot.lease.epoch === 1 && kot.lease.expiresAt.getTime() === nowMs + PRINT_LEASE_MS && kot.jobKey === `kot:${orderId}:1`,
+  );
+  check("(ak) its log says created, then leased directly; it was ONE write (updatedAt is its createdAt)", JSON.stringify(kot?.log?.map((e) => [e.event, e.detail ?? null])) === JSON.stringify([["created", null], ["leased", PRINT_DIRECT_LEASE_DETAIL]]) && kot?.updatedAt.getTime() === kot?.createdAt.getTime());
+  check("(ak) the bill waits queued behind it (epoch 0)", bill?.status === "queued" && bill.epoch === 0 && bill.lease === undefined);
+  const blocked = await leasePrintJobs({ deviceId: HOST, tabId: TAB, dismissedBy: STAFF, nowMs: nowMs + 1_000 });
+  check("(ak) the line waits for that lease: a lease call gets nothing, and when to look again (KOT before bill, §7.6)", blocked.jobs.length === 0 && blocked.retryAt === new Date(nowMs + PRINT_LEASE_MS).toISOString());
+
+  await freshHost(nowMs);
+  const phone = await payNow(PHONE, nowMs, TAB);
+  check("(ak) a slip another device prints is never made leased to the asking tab", phone.refs.every((r) => r.status === "queued" && r.leased === undefined && r.targetDeviceId === HOST));
+  await queueKot(nowMs - 5_000);
+  const busy = await payNow(HOST, nowMs, TAB);
+  check("(ak) a line with an older job waiting: made queued, as in Phase 1", busy.refs.length === 2 && busy.refs.every((r) => r.status === "queued" && r.leased === undefined));
+  const noTab = await payNow(HOST, nowMs);
+  check("(ak) no lease header: made queued, as in Phase 1", noTab.refs.every((r) => r.status === "queued" && r.leased === undefined));
+
+  await PrintHost.deleteMany({});
+  const own = await payNow(PHONE, nowMs, TAB);
+  check("(ak) no host: the asking device's own first slip is made leased to its tab", own.refs[0]?.status === "leased" && own.refs[0]?.leased !== undefined && own.refs[0]?.targetDeviceId === PHONE && own.refs[1]?.status === "queued");
+}
+
+export async function legAL(nowMs: number): Promise<void> {
+  console.log("\n(al) a lost answer: the same tab gets the same lease back from the enqueue; any other gets Phase 1's answer");
+  await freshHost(nowMs);
+  await PrintHost.deleteMany({});
+  const reprint = billPrintJob(await wireOrder(await seedRealOrder({ status: "Completed", kotRound: 1 })), { reprint: true });
+  const send = (tab: string, device = PHONE, at = nowMs) =>
+    enqueueDirectPrintJob({ ...reprint, queuedBy: STAFF, idempotencyKey: "live-key-0002-direct", originDeviceId: device, leaseTabId: tab, nowMs: at });
+  const first = await send(TAB);
+  const firstLeased = first?.outcome === "queued" ? first.leased : undefined;
+  check("(al) no host: an agent's own reprint is made leased to its tab and answered with the lease", first?.outcome === "queued" && !first.duplicate && firstLeased?.epoch === 1 && JSON.stringify(firstLeased.labels) === '["DUPLICATE"]');
+  const again = await send(TAB, PHONE, nowMs + 5_000);
+  check("(al) the same tab re-sends it (its answer was lost): the same job, the same lease, nothing new", again?.outcome === "queued" && again.duplicate && again.id === firstLeased?.id && again.leased?.epoch === 1 && (await PrintJob.countDocuments({})) === 1);
+  const otherTab = await send("live-direct-tab-2");
+  check("(al) another tab of the device (a reload): Phase 1's answer, no lease (its lease expires: REPRINT)", otherTab?.outcome === "already-resolved");
+  const otherDevice = await send(TAB, "live-direct-phone-2");
+  check("(al) another device: Phase 1's answer, no lease", otherDevice?.outcome === "already-resolved");
+  const late = await send(TAB, PHONE, nowMs + PRINT_LEASE_MS + 1);
+  check("(al) a lease that ran out is never handed back", late?.outcome === "already-resolved");
+
+  await seedPrintHost({ deviceId: HOST, label: "Counter PC", setBy: STAFF, nowMs });
+  const hostElsewhere = await enqueueDirectPrintJob({ ...billPrintJob(await wireOrder(await seedRealOrder({ status: "Completed", kotRound: 1 })), { reprint: true }), queuedBy: STAFF, idempotencyKey: "live-key-0003-direct", originDeviceId: PHONE, leaseTabId: TAB, nowMs });
+  check("(al) another device is the host: not direct (null), Phase 1's enqueue makes it for the host", hostElsewhere === null);
+
+  await freshHost(nowMs);
+  const { orderId, refs } = await payNow(HOST, nowMs, TAB);
+  const resend = await enqueueDirectPrintJob({ ...kotPrintJob(await wireOrder(orderId), 1), queuedBy: STAFF, originDeviceId: HOST, leaseTabId: TAB, nowMs: nowMs + 3_000 });
+  check("(al) the host's own order answer lost: its re-sent KOT gets the KOT's lease back, and no second job", resend?.outcome === "queued" && resend.duplicate && resend.id === refs[0]?.id && resend.leased?.epoch === 1 && (await PrintJob.countDocuments({ orderId })) === 2);
+}
+
+export async function legAM(nowMs: number): Promise<void> {
+  console.log("\n(am) a creation lease that runs out follows §7's rules; the ack answers whether the line holds more");
+  await freshHost(nowMs);
+  const { refs } = await payNow(HOST, nowMs, TAB);
+  const [kotRef, billRef] = refs;
+  const kotAck = await ackPrintJob({ id: kotRef?.id ?? "", deviceId: HOST, epoch: 1, outcome: "printed", nowMs: nowMs + 3_000 });
+  check("(am) the KOT's ack: printed, and more:true (the bill waits on the line)", kotAck.applied && kotAck.status === "printed" && kotAck.more === true);
+  const billLease = await leasePrintJobs({ deviceId: HOST, tabId: TAB, dismissedBy: STAFF, nowMs: nowMs + 3_100 });
+  check("(am) the bill is leased next", billLease.jobs[0]?.id === billRef?.id);
+  const billAck = await ackPrintJob({ id: billRef?.id ?? "", deviceId: HOST, epoch: 1, outcome: "printed", nowMs: nowMs + 6_000 });
+  check("(am) the bill's ack: more:false, so the agent leases nothing more", billAck.applied && billAck.status === "printed" && billAck.more === false);
+  const repeat = await ackPrintJob({ id: billRef?.id ?? "", deviceId: HOST, epoch: 1, outcome: "printed", nowMs: nowMs + 7_000 });
+  check("(am) a repeated ack changes nothing and says nothing about more", !repeat.applied && repeat.reason === "resolved" && repeat.more === undefined);
+
+  await freshHost(nowMs);
+  const dead = await payNow(HOST, nowMs, TAB);
+  const later = nowMs + PRINT_LEASE_MS + 1_000;
+  const [running, ranOut] = [await readJobsForDevice(HOST, nowMs + 1_000), await readJobsForDevice(HOST, later)];
+  check("(am) the pulse and the wake count what a lease can act on: never a running lease (the bill only), but one that ran out", running.count === 1 && ranOut.count === 2);
+  await leasePrintJobs({ deviceId: HOST, tabId: "live-direct-tab-new", dismissedBy: STAFF, nowMs: later });
+  const kot = await rowOf(dead.refs[0]?.id ?? "");
+  check("(am) the tab died before printing: its KOT's lease expires into REPRINT, counted once", kot?.status === "queued" && JSON.stringify(kot.labels) === '["REPRINT"]' && kot.uncertainAttempts === 1);
+  await freshHost(nowMs);
+  const orderId = await seedRealOrder({ status: "Completed", kotRound: 1 });
+  const billOnly = await createOrderPrintJobs({ order: await Order.findById(orderId).lean(), slips: [{ kind: "bill" }], originDeviceId: HOST, leaseTabId: TAB, queuedBy: STAFF, nowMs });
+  await leasePrintJobs({ deviceId: HOST, tabId: "live-direct-tab-new", dismissedBy: STAFF, nowMs: later });
+  check("(am) a bill made leased whose tab died asks the cashier (needs-confirm)", billOnly[0]?.status === "leased" && (await rowOf(billOnly[0].id))?.status === "needs-confirm");
+  const refused = await payNow(HOST, nowMs, TAB);
+  const no = await ackPrintJob({ id: refused.refs[0]?.id ?? "", deviceId: HOST, epoch: 1, outcome: "failed", sent: "no", error: "Printer not connected", nowMs: nowMs + 2_000 });
+  check("(am) a creation lease its printer refused goes back in line, never counted, with no more hint", no.applied && no.status === "queued" && no.nextAttemptAt !== null && no.more === undefined && (await rowOf(refused.refs[0]?.id ?? ""))?.uncertainAttempts === 0);
+}
+```
+
+In `apps/cafe/scripts/verify-print-host-live.ts`, find:
+
+```ts
+import { legAD, legAE } from "./print-host-live/agent";
+import { legAF, legAG } from "./print-host-live/attention";
+import { legAH, legAI, legAJ } from "./print-host-live/printers";
+import { Station } from "@/models/Station";
+import { Printer } from "@/models/Printer";
+import { Category } from "@/models/Category";
+```
+
+Replace it with:
+
+```ts
+import { legAD, legAE } from "./print-host-live/agent";
+import { legAF, legAG } from "./print-host-live/attention";
+import { legAH, legAI, legAJ } from "./print-host-live/printers";
+import { legAK, legAL, legAM } from "./print-host-live/direct";
+import { Station } from "@/models/Station";
+import { Printer } from "@/models/Printer";
+import { Category } from "@/models/Category";
+```
+
+In `apps/cafe/scripts/verify-print-host-live.ts`, find:
+
+```ts
+    await legAH();
+    await legAI();
+    await legAJ();
+  } finally {
+    await mongoose.connection.dropDatabase();
+    await mongoose.disconnect();
+```
+
+Replace it with:
+
+```ts
+    await legAH();
+    await legAI();
+    await legAJ();
+    // Phase 2 Session 2B legs (direct print on the asking device; the ack's more).
+    await legAK(Date.now());
+    await legAL(Date.now());
+    await legAM(Date.now());
+  } finally {
+    await mongoose.connection.dropDatabase();
+    await mongoose.disconnect();
+```
+
+- [ ] **Step 2: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx tsc --noEmit && echo TSC_OK && npx eslint scripts/print-host-live/direct.ts scripts/verify-print-host-live.ts && echo LINT_OK`
+Expected: `TSC_OK`; `LINT_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_print_host npm run verify:print:live 2>&1 | grep -E "passed, [0-9]+ failed"`
+Expected: `272 passed, 0 failed`
+
+- [ ] **Step 3: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/scripts/print-host-live/direct.ts apps/cafe/scripts/verify-print-host-live.ts
+git commit -m "test(print): Phase 2 live legs ak–am: a slip made leased to the asking tab in one write, a lost answer handed back to that tab only, a creation lease that runs out, and the ack's more"
+```
+
+---
+
+### Task B7: full verification, builds, the emulator exit check, the fresh review, Results
+
+**Files:** this plan (a new "Session 2B Results" section at its end). The two tools below go in this session's scratchpad, never in the repo.
+
+- [ ] **Step 1: Every suite**
+
+Run each from the repo (the totals the pre-validation saw on a fresh clone):
+
+| Run | Expected |
+|---|---|
+| `cd /d/kd/lucifer/packages/shared && npm test && npx tsc --noEmit -p .` | `# tests 672`, `# pass 672`; tsc 0 |
+| `cd /d/kd/lucifer/apps/cafe && npm test` | `# tests 4320`, `# pass 4319`, `# fail 0`, `# skipped 1` (the skip is the `go-live-dl` pin) |
+| `cd /d/kd/lucifer/apps/cafe && npx tsc --noEmit && npm run lint` | tsc 0; lint 0 errors and the 2 old warnings |
+| `cd /d/kd/lucifer/apps/hub && npx tsc --noEmit` | 0 |
+| `cd /d/kd/lucifer/apps/mobile && npx tsc --noEmit && npm run lint && npm test && npm run test:app` | 117/117; Jest 3/3 (untouched) |
+| `cd /d/kd/lucifer/apps/desktop && npm test` | 191/191 (untouched) |
+| `cd /d/kd/lucifer && npm run test:print-tools` | 8/8 |
+| `cd /d/kd/lucifer/apps/cafe && MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_print_host npm run verify:print:live` | `272 passed, 0 failed` (248 + 24: ak 9, al 7, am 8) |
+
+- [ ] **Step 2: The Next production build**
+
+Run: `cd /d/kd/lucifer/apps/cafe && npm run build`
+Expected: the build succeeds with 127 routes (2B adds none).
+
+- [ ] **Step 3: APKs (no mobile change: byte-identical to the release)**
+
+First `git diff 4271848..HEAD --stat -- apps/mobile apps/desktop` must print nothing. Then build the x86_64 APK and the ARM pair with `GRADLE_USER_HOME='D:\gradle-home'` (the README's commands). Expected: byte-identical to the 2026-10-03 release (`D:\kd\pos-apk-release\Sandbee-POS-final\`): x86_64 `29115bdf…`, arm64-v8a `0e0ec314…`, armeabi-v7a `e618900a…`. A different hash means something outside the plan changed: stop and find out what.
+
+- [ ] **Step 4: The emulator exit check (spec §7.11, the owner's ask)**
+
+**First check which POS the emulator's app shows** (Global Constraints, Demo POS): it was on the owner's live demo ("Olivea Pizza") at the 2A gate. Never act on the demo: open the printer panel, swipe to the bottom, More options → Change POS address → `http://localhost:3100`, and check that "POS Software" and the seeded menu (Masala Chai, Cheesecake…) show before any tap that writes.
+
+**The harness** (as the gate ran it; all ports were free on 2026-10-04: check `netstat -ano | grep LISTEN` first):
+- the local POS from this branch's build: `cd /d/kd/lucifer/apps/cafe && node --env-file=<scratchpad>/e2e.env ../../node_modules/next/dist/bin/next start -p 3110` (a background command with `timeout: 7200000`); `e2e.env` is the 2A session's env file (database `pos_scratch_e2e_p1final`, e2eadmin, tables and menu seeded), copied from its scratchpad (`88248c57…/scratchpad/e2e.env`, or the 2A gate's copy `88b72024…/scratchpad/e2e.env`; the gate left a few more test orders in it, `ORD-20261004-005…012`), or a fresh `pos_scratch_e2e_2b` made with Phase 1's `make-env.py` and the seed scripts;
+- the counting proxy in front of it: `node <scratchpad>/gate-proxy-2b.mjs --listen 3200 --target 3110 --log <scratchpad>/proxy-2b.jsonl --drop-once "POST /api/orders" --rearm <scratchpad>/rearm-drop`, and `adb reverse tcp:3100 tcp:3200`, so the app's address stays `http://localhost:3100`;
+- the fake printer: `node scripts/fake-escpos-printer.mjs --port 9101 --out <dir>`; give `--out` a long Windows path (`C:\Users\Kartik.desai\…`, not the `KARTIK~1.DES` short form: at the gate an output folder under the short path vanished and the printer crashed on its first job);
+- the app (`Pixel_7_API_33`, WebView 109, the release APK `29115bdf…`): its network printer `10.0.2.2` port `9101` (Use this network printer), then "Print all slips on this device" (the host);
+- **if a scratch clone's or the scratchpad's folders vanish mid-session** (the gate's clone lost its `node_modules` junctions once): re-run the link script and re-check before trusting a run.
+
+Save these two tools in the scratchpad (the Write tool), exactly as below. The proxy logs methods, routes (ids folded), statuses and whether a request named a lease tab; never a header value, a cookie or a body. The tool prints statuses, ids and job states; never a secret.
+
+`<scratchpad>/gate-proxy-2b.mjs`:
+
+```js
+// The Phase 2B gate: a proxy in front of the local POS, scratchpad only, no dependencies. It forwards every
+// request unchanged and logs one JSON line per request (time, method, route with ids folded, whether the
+// request named a lease tab (x-pos-print-lease), whether a pulse named a device, status, ms). Never a header
+// value, a body or a cookie.
+// With --drop-once "POST /api/orders" it forwards the FIRST matching request to the POS (the write lands), then
+// cuts the client's connection instead of answering: the device's answer is lost (spec §7.11's lost answer).
+// The armed drop can be re-armed by touching the file named by --rearm (its existence is checked per request).
+//   node gate-proxy-2b.mjs --listen 3200 --target 3110 --log <file.jsonl> [--drop-once "POST /api/orders"] [--rearm <file>]
+import http from "node:http";
+import { appendFileSync, existsSync, unlinkSync } from "node:fs";
+
+const arg = (name, fallback) => {
+  const i = process.argv.indexOf(name);
+  return i >= 0 && process.argv[i + 1] !== undefined ? process.argv[i + 1] : fallback;
+};
+const listen = Number(arg("--listen", "3200"));
+const target = Number(arg("--target", "3110"));
+const log = arg("--log", "");
+const dropSpec = arg("--drop-once", "");
+const rearm = arg("--rearm", "");
+// With --rearm the drop starts disarmed: touching that file arms it for the next matching request.
+let armed = dropSpec !== "" && rearm === "";
+if (log === "") throw new Error("--log <file.jsonl> is required");
+
+function routeOf(url) {
+  const pathOnly = (url ?? "/").split("?")[0];
+  return pathOnly.replace(/[0-9a-f]{24}/g, ":id").replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, ":uuid");
+}
+function deviceOf(url) {
+  const q = new URL(url ?? "/", "http://x").searchParams.get("device");
+  return q === null ? null : q.slice(0, 8);
+}
+
+const server = http.createServer((req, res) => {
+  const t0 = process.hrtime.bigint();
+  const route = routeOf(req.url);
+  if (!armed && rearm !== "" && existsSync(rearm)) {
+    armed = dropSpec !== "";
+    try {
+      unlinkSync(rearm);
+    } catch {
+      // the file is the operator's; a failed unlink only means it re-arms again
+    }
+  }
+  const drop = armed && `${req.method} ${route}` === dropSpec;
+  if (drop) armed = false;
+  const write = (status, extra = {}) => {
+    const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+    appendFileSync(
+      log,
+      `${JSON.stringify({
+        t: Date.now(),
+        m: req.method,
+        r: route,
+        lease: req.headers["x-pos-print-lease"] !== undefined ? true : undefined,
+        agent: req.headers["x-pos-print-agent"] !== undefined ? true : undefined,
+        device: route === "/api/order-requests/pulse" ? deviceOf(req.url) : undefined,
+        s: status,
+        ms: Math.round(ms),
+        ...extra,
+      })}\n`,
+    );
+  };
+  let logged = false;
+  const done = (status, extra) => {
+    if (logged) return;
+    logged = true;
+    write(status, extra);
+  };
+  const upstream = http.request({ host: "127.0.0.1", port: target, method: req.method, path: req.url, headers: req.headers }, (up) => {
+    if (drop) {
+      // The write landed upstream; the device never hears the answer.
+      up.resume();
+      up.on("end", () => {
+        done(up.statusCode ?? 502, { dropped: true });
+        res.socket?.destroy();
+      });
+      return;
+    }
+    res.writeHead(up.statusCode ?? 502, up.headers);
+    up.pipe(res);
+    up.on("end", () => done(up.statusCode ?? 502));
+    up.on("error", () => done(up.statusCode ?? 502));
+  });
+  upstream.on("error", () => {
+    if (!res.headersSent) res.writeHead(502);
+    res.end();
+    done(502);
+  });
+  req.pipe(upstream);
+});
+// No realtime socket runs locally; refuse upgrades plainly so a client falls back to its polls.
+server.on("upgrade", (_req, socket) => socket.destroy());
+server.listen(listen, "127.0.0.1", () => console.log(`gate proxy 127.0.0.1:${listen} -> 127.0.0.1:${target}${dropSpec ? ` (drop once: ${dropSpec})` : ""}, log ${log}`));
+```
+
+`<scratchpad>/p2b-tool.ts` (run from `apps/cafe`: `node --env-file=<scratchpad>/e2e.env --import tsx <scratchpad>/p2b-tool.ts <mode>`):
+
+```ts
+// Session 2B emulator check (scratchpad only; never in the repo). It drives the local POS as the e2e admin (a
+// session minted from the env file's AUTH_SECRET, never printed) and prints statuses, counts, ids and job states
+// only: never a secret, a token or a payload. Run from apps/cafe:
+//   node --env-file=<scratchpad>/e2e.env --import tsx <scratchpad>/p2b-tool.ts <mode>
+// modes: host        the print host's device id (an opaque id, not a secret) and the device rows
+//        kot-second  a KOT of one item made by a SECOND device (e2e-script-device): the host prints it, through
+//                    its wake or lease, exactly as in Phase 1 (no lease header)
+//        dead-tab    a KOT made AS the print host device with a lease header naming a tab that never prints
+//                    (e2e-dead-tab): the job is made leased to that tab; its lease must run out (90 s) and the
+//                    host's real tab print it once, as REPRINT
+//        jobs        the newest jobs: kind, status, labels, epoch, attempts, the lease's tab, the log
+import { createRequire } from "node:module";
+import { randomUUID } from "node:crypto";
+import path from "node:path";
+
+const require = createRequire(path.join(process.cwd(), "package.json"));
+const mongoose = require("mongoose") as typeof import("mongoose");
+const { encode } = require("next-auth/jwt") as typeof import("next-auth/jwt");
+
+const BASE = process.env.P2B_BASE ?? "http://localhost:3110";
+const COOKIE = "authjs.session-token";
+type Db = NonNullable<typeof mongoose.connection.db>;
+type Json = { data?: unknown; error?: string };
+
+async function cookieFor(db: Db): Promise<string> {
+  const secret = process.env.AUTH_SECRET ?? "";
+  if (secret.length < 32) throw new Error("AUTH_SECRET missing from the env file");
+  const staff = await db.collection("staffs").findOne({ username: "e2eadmin" }, { projection: { name: 1, role: 1 } });
+  if (staff === null) throw new Error("e2eadmin not found");
+  const token = await encode({ token: { name: staff.name, id: String(staff._id), role: staff.role, lastValidated: Date.now() }, secret, salt: COOKIE });
+  return `${COOKIE}=${token}`;
+}
+
+async function call(cookie: string, method: string, url: string, body: unknown, headers: Record<string, string> = {}): Promise<{ status: number; json: Json }> {
+  const res = await fetch(`${BASE}${url}`, { method, headers: { "content-type": "application/json", cookie, ...headers }, ...(method === "GET" ? {} : { body: JSON.stringify(body) }), redirect: "manual" });
+  const text = await res.text();
+  try {
+    return { status: res.status, json: JSON.parse(text) as Json };
+  } catch {
+    return { status: res.status, json: { error: `non-JSON answer (${text.length} chars)` } };
+  }
+}
+
+async function oneItemOrder(db: Db) {
+  const product = await db.collection("products").findOne({ isActive: true }, { projection: { name: 1, price: 1 } });
+  if (product === null) throw new Error("the menu is empty");
+  const items = [{ productId: String(product._id), name: product.name, price: Number(product.price), qty: 1, modifiers: [], instructions: "" }];
+  return { customerName: "Walk-in", items, subtotal: items[0]?.price ?? 0, discount: 0, total: items[0]?.price ?? 0, payment: "Unpaid", status: "Pending", receiver: "E2E script", idemKey: randomUUID() };
+}
+
+async function main(): Promise<void> {
+  const mode = process.argv[2];
+  const uri = process.env.MONGODB_URI ?? "";
+  if (!/\/pos_scratch_e2e_[a-z0-9_]+$/.test(uri)) throw new Error("refusing: not a pos_scratch_e2e_* database");
+  await mongoose.connect(uri);
+  try {
+    const db = mongoose.connection.db;
+    if (!db) throw new Error("no db");
+    const out = (v: unknown) => console.log(JSON.stringify(v, null, 1));
+    const host = await db.collection("printhosts").findOne({}, { projection: { deviceId: 1 } });
+    if (mode === "host") {
+      const devices = await db.collection("printdevices").find({}).project({ deviceId: 1, lastSeenAt: 1 }).toArray();
+      return out({ host: host?.deviceId ?? null, devices: devices.map((d) => [String(d.deviceId).slice(0, 8), d.lastSeenAt]) });
+    }
+    if (mode === "jobs") {
+      const rows = await db.collection("printjobs").find({}, { projection: { payload: 0 } }).sort({ createdAt: -1, _id: -1 }).limit(8).toArray();
+      return out(
+        rows.map((j) => ({
+          id: String(j._id).slice(-6),
+          kind: j.kind,
+          label: j.label,
+          status: j.status,
+          labels: j.labels ?? [],
+          epoch: j.epoch,
+          attempts: j.attempts,
+          uncertain: j.uncertainAttempts,
+          leaseTab: typeof j.lease?.tabId === "string" ? j.lease.tabId.slice(0, 12) : null,
+          target: typeof j.targetDeviceId === "string" ? j.targetDeviceId.slice(0, 8) : null,
+          origin: typeof j.originDeviceId === "string" ? j.originDeviceId.slice(0, 8) : null,
+          createdAt: j.createdAt,
+          printedAt: j.printedAt ?? null,
+          log: (j.log ?? []).map((e: { event: string; detail?: string; at: Date }) => `${new Date(e.at).toISOString().slice(11, 19)} ${e.event}${e.detail ? `(${e.detail})` : ""}`),
+        })),
+      );
+    }
+    const cookie = await cookieFor(db);
+    if (mode === "kot-second") {
+      const res = await call(cookie, "POST", "/api/orders", await oneItemOrder(db), { "x-pos-print-agent": "1", "x-pos-device-id": "e2e-script-device" });
+      const data = (res.json.data ?? {}) as { orderId?: string; printJobs?: Array<{ id: string; kind: string; status: string; leased?: unknown }> };
+      return out({ status: res.status, orderId: data.orderId ?? null, printJobs: (data.printJobs ?? []).map((j) => [j.id.slice(-6), j.kind, j.status, j.leased !== undefined]) });
+    }
+    if (mode === "dead-tab") {
+      if (typeof host?.deviceId !== "string") throw new Error("no print host: make the app the host first");
+      const res = await call(cookie, "POST", "/api/orders", await oneItemOrder(db), { "x-pos-print-agent": "1", "x-pos-device-id": host.deviceId, "x-pos-print-lease": "e2e-dead-tab" });
+      const data = (res.json.data ?? {}) as { orderId?: string; printJobs?: Array<{ id: string; kind: string; status: string; leased?: { epoch: number } }> };
+      return out({ status: res.status, orderId: data.orderId ?? null, at: new Date().toISOString(), printJobs: (data.printJobs ?? []).map((j) => [j.id.slice(-6), j.kind, j.status, j.leased?.epoch ?? null]) });
+    }
+    throw new Error("unknown mode (see the header)");
+  } finally {
+    await mongoose.disconnect();
+  }
+}
+
+main().catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : "failed");
+  process.exitCode = 1;
+});
+```
+
+Then, reading the proxy's log (`"m":"POST"` lines, leaving out `/api/print-host/beat`) and the fake printer's `jobs.log` (`bytes > 0`) after each item:
+1. **Send to Kitchen** (one Masala Chai, a walk-in): the proxy shows `POST /api/orders` with `"lease":true`, then `POST /api/print-jobs/:id/ack`, and **no** `POST /api/print-jobs/lease` for it; one slip (40,494 B); `jobs`: the KOT `printed`, epoch 1, attempts 1, log `created`, `leased(direct)`, `printed`.
+2. **Pay Now** (one Cheesecake, Cash, Place Order): `POST /api/orders`, the KOT's ack, one `POST /api/print-jobs/lease` (the bill), the bill's ack, and no lease after it; the KOT (40,494 B) prints before the bill (36,966 B).
+3. **`kot-second`**: its ref is `queued` with no lease; the host leases it (through its wake: no realtime Worker runs locally) and prints it once; its log `created`, `leased`, `printed`.
+4. **A lost answer:** `touch <scratchpad>/rearm-drop`, then Send to Kitchen. The proxy logs the first `POST /api/orders` with `"dropped":true`; the POS re-sends it (a replay: 200, no job named), then `POST /api/print-jobs` with `"lease":true`, then the ack. One slip, unlabelled; the KOT's log `created`, `leased(direct)`, `printed`, epoch 1. (At the gate the POS once re-sent by itself and once showed "Couldn't confirm" with Send again: tap it within about a minute, while the lease runs; the same requests follow.)
+5. **`dead-tab`**: its ref is `leased` (epoch 1, to `e2e-dead-tab`). For the next 90 s the proxy shows **no lease request** (the wake polls only). Then the host expires and prints it once: **REPRINT** (46,110 B), epoch 2; its log `created`, `leased(direct)`, `expired(lease expired: may have printed)`, `leased`, `printed`.
+6. **No host:** the printer panel → Stop printing here → Yes, remove ("0 waiting slips cancelled"), then Send to Kitchen: `POST /api/orders` (`"lease":true`) and its ack only.
+7. `adb logcat -b crash -d` is empty for the app.
+8. **Put back as found:** on the local POS, Remove the network printer ("No printer set up"); More options → Change POS address → `https://posdemo.sandbee.in` ("Olivea Pizza" loads; its printer panel, opened read-only, shows "No printer set up" and "Each device prints its own slips"); `adb reverse --remove-all` then `adb reverse tcp:3100 tcp:3100`; stop the POS, the proxy and the fake printer by PID after checking each one's command line (`Get-CimInstance Win32_Process`); `adb emu kill` if this session booted the emulator.
+
+Record every answer, the request counts per item and the fake printer's counts in Results.
+
+- [ ] **Step 5: The fresh review**
+
+A fresh reviewer subagent (the most capable model, read-only) reads `4271848..HEAD` against this plan (decisions 9, 15, 16; "2A review gate: rulings"; Session 2B) and spec §7.2, §7.6, §7.9 and §7.11, and reports Critical / Important / Minor findings, each with a concrete failure scenario. Fix Critical and Important ones by TDD on the branch (each RED seen before its GREEN) and re-run Step 1; list the rest in Results for the 2B gate.
+
+- [ ] **Step 6: Results, then push**
+
+Add "## Session 2B Results (filled in by the implementer)" at the end of this plan: every number from Steps 1–5, the APK hashes, the emulator answers, each changed pin, any deviation with its reason. Commit it, and push the branch with the token only: `GIT_TERMINAL_PROMPT=0 git push origin feat/printing-phase-2`.
+
+**Changed existing pins in 2B** (each follows a deliberate change; name them in Results):
+- `apps/cafe/lib/print-order-jobs.test.ts` "PIN (M-d)": a new job is queued, or made leased and carrying its lease; a found job keeps its state, plus its lease when it is still the asking tab's (B2).
+- `apps/cafe/lib/print-lifecycle-paths.test.ts`: the CAS pin no longer expects the final-status publish, and "the lifecycle publishes exactly the final statuses" becomes "no final state is published" (G-1, B3).
+- `packages/shared/src/print-budget.test.ts`: "three Worker requests per slip" (3,935) becomes two (2,735), and "two per slip in printers mode" (3,635) becomes one (1,985) (G-1, B5).
+- `apps/cafe/package.json` `testChain`: `lib/print-direct.test.ts` appended (B2).
