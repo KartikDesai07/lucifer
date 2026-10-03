@@ -37,8 +37,9 @@ test("parseArgs: safe defaults (loopback, a temp folder) and every flag", () => 
   assert.equal(d.port, 9100);
   assert.equal(d.host, "127.0.0.1", "never listens on the LAN unless asked");
   assert.ok(d.out.startsWith(os.tmpdir()), "jobs never land in the repo by default");
-  const f = parseArgs(["--port", "9101", "--drop-after", "100", "--delay", "50", "--paper-out", "--cover-open", "--refuse"]);
-  assert.deepEqual([f.port, f.dropAfter, f.delay, f.paperOut, f.coverOpen, f.refuse], [9101, 100, 50, true, true, true]);
+  const f = parseArgs(["--port", "9101", "--drop-after", "100", "--drop-every", "3", "--delay", "50", "--paper-out", "--cover-open", "--refuse"]);
+  assert.deepEqual([f.port, f.dropAfter, f.dropEvery, f.delay, f.paperOut, f.coverOpen, f.refuse], [9101, 100, 3, 50, true, true, true]);
+  assert.equal(d.dropEvery, 1, "--drop-after alone cuts every job, as before");
   assert.throws(() => parseArgs(["--bogus"]), /unknown option/);
   assert.throws(() => parseArgs(["--drop-after", "-1"]), /whole number/);
 });
@@ -81,6 +82,18 @@ test("--drop-after: the connection is cut mid-job and only the first N bytes are
     assert.equal(record.dropped, true);
     assert.equal(record.bytes, 100);
     assert.equal(statSync(record.file).size, 100);
+  });
+});
+
+test("--drop-every: with --drop-after, only every N-th connection is cut (the soak's drops)", async () => {
+  await withPrinter(["--drop-after", "100", "--drop-every", "2"], async ({ port, nextJob }) => {
+    const results = [];
+    for (let i = 0; i < 4; i++) {
+      const job = nextJob();
+      await send(port, Buffer.alloc(1_000, 0x55));
+      results.push(await job);
+    }
+    assert.deepEqual(results.map((r) => [r.dropped, r.bytes]), [[false, 1_000], [true, 100], [false, 1_000], [true, 100]], "jobs 2 and 4 are cut");
   });
 });
 

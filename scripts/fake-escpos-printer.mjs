@@ -3,7 +3,7 @@
 // Node only, no dependencies. A test tool: nothing here ships to a cafe.
 //
 //   node scripts/fake-escpos-printer.mjs [--port 9100] [--host 127.0.0.1] [--out <dir>]
-//                                        [--drop-after <bytes>] [--delay <ms>]
+//                                        [--drop-after <bytes>] [--drop-every <n>] [--delay <ms>]
 //                                        [--paper-out] [--cover-open] [--refuse]
 //
 // The Android emulator reaches it at 10.0.2.2:<port>, the Windows app at 127.0.0.1:<port>. A phone on
@@ -12,6 +12,7 @@
 // once, as a real printer answers its real-time status command.
 //
 //   --drop-after N  cut the connection after N bytes of a job (a slip cut off mid-way: "maybe sent")
+//   --drop-every N  with --drop-after, cut only every N-th connection (the soak's drops; default 1: every one)
 //   --delay MS      read nothing for MS after a connection opens (a slow or busy printer)
 //   --paper-out     DLE EOT reports "paper end"      --cover-open  DLE EOT reports "cover open"
 //   --refuse        reset every connection as it opens (the printer accepts nothing)
@@ -32,6 +33,7 @@ export function parseArgs(argv) {
     host: "127.0.0.1",
     out: path.join(os.tmpdir(), "fake-escpos-printer"),
     dropAfter: null,
+    dropEvery: 1,
     delay: 0,
     paperOut: false,
     coverOpen: false,
@@ -54,6 +56,7 @@ export function parseArgs(argv) {
       case "--host": opts.host = value(); break;
       case "--out": opts.out = path.resolve(value()); break;
       case "--drop-after": opts.dropAfter = whole(); break;
+      case "--drop-every": opts.dropEvery = Math.max(1, whole()); break;
       case "--delay": opts.delay = whole(); break;
       case "--paper-out": opts.paperOut = true; break;
       case "--cover-open": opts.coverOpen = true; break;
@@ -125,6 +128,8 @@ export function startFakePrinter(opts, onJob = () => {}) {
       return;
     }
     let carry = Buffer.alloc(0);
+    // Session 1E (the soak): only every N-th connection is cut, so most slips print and some are repeats.
+    const dropAfter = opts.dropAfter !== null && n % (opts.dropEvery ?? 1) === 0 ? opts.dropAfter : null;
     if (opts.delay > 0) {
       socket.pause();
       setTimeout(() => socket.resume(), opts.delay);
@@ -132,8 +137,8 @@ export function startFakePrinter(opts, onJob = () => {}) {
     socket.on("data", (chunk) => {
       if (record.dropped) return;
       let data = chunk;
-      if (opts.dropAfter !== null && record.bytes + data.length > opts.dropAfter) {
-        data = data.subarray(0, opts.dropAfter - record.bytes);
+      if (dropAfter !== null && record.bytes + data.length > dropAfter) {
+        data = data.subarray(0, dropAfter - record.bytes);
         record.dropped = true;
       }
       chunks.push(data);
