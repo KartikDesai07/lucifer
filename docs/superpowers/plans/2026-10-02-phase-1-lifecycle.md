@@ -15432,6 +15432,8 @@ Nothing below was taken from the Results section; each line was re-run at the ga
 7. **No host: the pulse sweep, Clear on the device, Clear from a second device.** Stop printing here → Yes, remove. A KOT leased as `e2e-script-device` at 07:05:37, never acked, was expired by the pulse sweep by 07:07:32 (`REPRINT`); the emulator listed it ("Waiting to print again, marked REPRINT.") with a second, never-leased one ("Not printed yet.") (`g-17`). Clear on the device and `dismiss` from the script: both `dismissed`, the section gone by 07:08:36.
 8. **The backgrounded app and I3's 12 s drawing deadline (the reviewer declined to judge).** The emulator as host: after 30 s on the home screen a KOT printed 2.2 s after it was made; with the screen off (`mWakefulness=Asleep`) for 90 s, 4 s after. No drawing timeout. Real phones with OEM battery limits are Phase 3's hardening; TEST-CHECKLIST's screen-off test covers them.
 
+**After the push, `origin/main` moved to `7b7063e`** (Settings > Appearance). The gate checked it on a scratch clone: the merge conflicts only in `apps/cafe/package.json`'s `testChain` (keep both sides), the merged tree reads cafe 4234/4233/0/1, and Session 1E's blocks still apply verbatim (shared 646, cafe 4245/4244/0/1, tsc 0). Session 1E's Step 0 merges it.
+
 **Pre-validating 1E end to end** (the golden build with E0a–E2 on `localhost:3100`, the same emulator and database; screenshots `g-20…g-26`):
 1. Two KOTs waiting with the printer off rang once together (07:45:15) with two notices; after a force-stop and relaunch the page showed ONE notice, "2 slips still waiting. Open the printer panel to check." with Show (`g-22`); the button read "2 slips waiting · Checking the printer — open printer setup".
 2. Show (118 px tall on the device: 44 CSS px) opened the panel; the row buttons are named "Print now KOT round 1 · T-6", "Clear KOT round 1 · T-6", … (uiautomator).
@@ -15520,6 +15522,20 @@ A failure while executing therefore points to drift since then, or to a typo whi
 | this plan | Session 1E Results | E4 |
 
 The tasks run in this order: E0a, E0b, E1a, E2 (each one commit), then E1b (the exit scenarios), E3 (the measurement) and E4 (verification and Results). E2 is committed before E1b, so the runs follow the written checklist.
+
+### Step 0 (before Task E0a): merge `origin/main`
+
+`git fetch` (with the token credential). After the gate pushed `977ecc3`, `origin/main` moved to `7b7063e` (the owner's Settings > Appearance: cafe and shared appearance files, two `testChain` lines; no print file). Merge it into `feat/printing-reliability` with `--no-ff`. It conflicts in one place only, the end of `testChain` in `apps/cafe/package.json` (both sides appended): keep all three entries, in this order, so the list ends:
+
+```text
+    "lib/printer/device-printer-teardown.test.ts",
+    "lib/css-compat.test.ts",
+    "lib/appearance-settings-paths.test.ts",
+    "lib/appearance-settings-paths-2.test.ts"
+  ],
+```
+
+Checked at the gate on a scratch clone (`977ecc3` + that merge): the merged tree's cafe `npm test` is **4234 tests, 4233 pass, 0 fail, 1 skipped** (+27 over `60f92e7`'s 4207), and every block of this section still applies verbatim (63 operations), giving shared **646/646** (+6 from the merge) and cafe **4245 tests, 4244 pass, 0 fail, 1 skipped**, cafe tsc 0. So after this merge, add **+6** to every shared total and **+27** to every full cafe total below (the per-task runs of a few files are unchanged). If `origin/main` moved again, merge that too, re-run the totals, and say so in Results. Re-run shared and cafe tests, cafe tsc and lint on the merged tree before E0a, and record them.
 
 ---
 
