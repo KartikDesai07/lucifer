@@ -15348,3 +15348,18 @@ Times are UTC.
 - **The reviewer's "declined to judge" items** above, especially the Atlas `explain()` of the feed and the backgrounded-app render deadline under I3.
 - **`origin/main` moved during the session** to `7877d44`: the owner's "Settings > Rewards & loyalty", 14 cafe files including two `testChain` lines in `apps/cafe/package.json`, and no print or pulse file. Not merged here (this session merges only at Step 0); the 1D gate merges it and re-runs the suites.
 - 1C and 1D release together, and only after 1E (the exit scenarios, the soak, the local free-tier measurement). **Nothing was deployed.**
+
+### Owner decisions after Session 1D (2026-10-03, for the 1D review gate; to be written into the spec there)
+
+1. **I-1 → option A.** The waiting-slips feed reads the **newest** 20 waiting rows and shows them oldest-first. The older backlog stays in the count ("20+"). So a new problem always rings and shows.
+2. **Keep no extra print data in the database.**
+   - **Unattended slips go after 3 hours.** A slip that waits for a person (`queued`, `needs-confirm`, `failed`) and that nobody acted on is deleted after 3 h. Today this is 12 h (`PRINT_JOB_QUEUED_RETENTION_MS`). The feed's window (`PRINT_ATTENTION_WINDOW_MS`, 12 h) follows it to 3 h.
+   - **Finished slips go as soon as it is safe.** Today `printed` / `dismissed` rows stay 2 h (`PRINT_JOB_RESOLVED_RETENTION_MS`). The owner wants them gone as soon as they are complete.
+     - **The safety floor:** the KOT repair (§7.4 step 2, `PRINT_REPAIR_WINDOW_MS`, 30 min) re-creates any missing job of a round fired in the last 30 min. A printed row deleted inside that window would be re-created and **print twice**.
+     - **Recommended at this session's end:** 45 min (the 30 min window plus a 15 min margin). Never immediately.
+     - The gate checks every other reader of these rows before choosing the number: the repair's own window in `lib/print-repair.ts` (which uses the queued retention today), late acks, the old tabs' readback for one release, and replays.
+   - **How it runs: no cron, nothing new to poll.**
+     - The delete rides the read call that already runs: the pulse answers first, then runs the throttled sweep and prune through `after()`. That is today's mechanism; only the numbers change.
+     - It is not awaited by the answer. `after()` is used instead of a bare promise because Vercel can stop a function when its answer ends.
+     - It stays throttled per instance and uses the existing `{status, createdAt, _id}` index.
+   - **Audit every print collection for growth.** A device that is reset or reinstalled gets a new id, so old `PrintDevice` rows pile up. The gate proposes a bounded prune for them (for example, not seen for 7 days) in the same throttled sweep, and checks `Order.kotPrintDevices`, the logs (capped at 20) and `PrintHost` for anything else that grows.
