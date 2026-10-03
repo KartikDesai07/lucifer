@@ -17,7 +17,7 @@ export const HINT_LINK_CLASS = "font-medium text-brand-primary underline underli
 
 // A link inside a hint that points at the section which sets the value a
 // toggle prints.
-export function SectionLink({ slug, children }: { slug: "business" | "taxes"; children: React.ReactNode }) {
+export function SectionLink({ slug, children }: { slug: "business" | "taxes" | "loyalty"; children: React.ReactNode }) {
   return (
     <Link href={settingsSectionPath(slug)} className={HINT_LINK_CLASS}>
       {children}
