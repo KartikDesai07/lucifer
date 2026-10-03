@@ -148,6 +148,18 @@ test("two printers that take one station both get its slip; copies stay one job"
   assert.deepEqual(kitchenJobs.map((j) => [j.printerId, j.copies]), [["kitchen", 1], ["kitchen-2", 2]]);
 });
 
+// The Session 2A final review (Important 2): "Full KOT copy" and a station ticked on one printer must not
+// print that station's lines twice on it. The full copy already holds them (decision 4's reasoning).
+test("a full-copy printer that also takes a station prints the round once, as its full copy", () => {
+  const counterKitchen = { ...COUNTER_P, slips: { ...COUNTER_P.slips, kotStations: [KITCHEN.id] } };
+  const jobs = routePrintRequest(kotPrintJob(order(), 1), routing([counterKitchen, BAR_P]));
+  assert.deepEqual(jobs.map((j) => [j.printerId, j.part]), [["bar", BAR.id], ["counter", "all"]], "no kitchen slip on the counter beside its full copy");
+  const kitchenOnly = kotPrintJob(order({ items: [ITEMS[0]], kotRounds: 1 }), 1);
+  const alone = routePrintRequest(kitchenOnly, routing([counterKitchen]));
+  assert.equal(alone.length, 1, "one slip on the one printer");
+  assert.equal(alone[0]?.request, kitchenOnly, "today's KOT, unchanged");
+});
+
 test("disabled printers and LAN printers nobody writes to never get a slip", () => {
   const off = printer("bar", { kotStations: [BAR.id] }, { enabled: false });
   const lan = printer("lan-bar", { kotStations: [BAR.id] }, { connection: { kind: "lan", host: "192.168.1.70", port: 9100 } });

@@ -89,9 +89,11 @@ function fullCopyPrinters(setup: Setup): PrinterConfig[] {
 }
 
 /** Where a station's own KOT prints (§8): the printers that take the station; else, with no full-copy
- *  printer, the default bill printer (fallback). Empty with a full-copy printer: the full copy covers it. */
+ *  printer, the default bill printer (fallback). Empty with a full-copy printer: the full copy covers it.
+ *  A full-copy printer that also ticks the station is left out: its full copy already holds those lines,
+ *  so a station slip beside it would print them twice on one printer (the 2A final review). */
 function stationTargets(setup: Setup, stationId: string): { printers: PrinterConfig[]; fallback: boolean } {
-  const own = setup.printers.filter((printer) => printer.slips.kotStations.includes(stationId));
+  const own = setup.printers.filter((printer) => !printer.slips.kotAll && printer.slips.kotStations.includes(stationId));
   if (own.length > 0) return { printers: own, fallback: false };
   if (fullCopyPrinters(setup).length > 0) return { printers: [], fallback: false };
   const bill = defaultBillPrinterOf(setup.printers);
