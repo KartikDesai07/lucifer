@@ -45,7 +45,14 @@ export function usePrintJobActions() {
   });
   const dismissJob = useDismissPrintJob();
   const dismiss = {
-    mutate: (id: string) => dismissJob.mutate(id, { onSettled: settled }),
+    // onSettled: the panel re-enables the row once Clear answers (1D final review I-2).
+    mutate: (id: string, onSettled?: () => void) =>
+      dismissJob.mutate(id, {
+        onSettled: () => {
+          settled();
+          onSettled?.();
+        },
+      }),
   };
   return { retry, confirm, dismiss };
 }

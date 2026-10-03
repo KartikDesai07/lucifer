@@ -112,6 +112,25 @@ test("PIN: the panel shows the waiting slips, the button shows their count, and 
   assert.match(actions, /qc\.invalidateQueries\(\{ queryKey: POS_PULSE_KEYS\.all \}\)/, "the panel refreshes after a tap (one request per tap, never a poll)");
 });
 
+// Session 1D final review I-2: a tapped row was released only when it left the feed, so a row that stays
+// in it (a Retry while its printer is off, a second failure before the next pulse, a network error, Print
+// now on a slip that waits for its printer) stayed disabled, Clear included. The server's CAS makes a
+// repeat tap a no-op, so the row comes back as soon as its action answers.
+test("PIN: a tapped row is enabled again once its action answers, whatever the answer (1D final review I-2)", () => {
+  const card = src("apps/cafe/components/print/WaitingSlipsCard.tsx");
+  assert.match(card, /run\(\(\) => release\(id\)\)/, "every tap hands its action a way to release its row");
+  for (const call of [
+    "retry.mutate(id, { onSettled: done })",
+    'confirm.mutate({ id, decision: "reprint" }, { onSettled: done })',
+    'confirm.mutate({ id, decision: "printed" }, { onSettled: done })',
+    "dismiss.mutate(id, done)",
+  ]) {
+    assert.ok(card.includes(call), `${call}: the row is released when the action settles, success or error`);
+  }
+  const actions = src("apps/cafe/hooks/use-print-job-actions.ts");
+  assert.match(actions, /onSettled\?\.\(\);/, "Clear tells its caller when it settles, after the panel refresh starts");
+});
+
 test("PIN: the alarm rides the pulse already polled (no request), and only the printing lane's drain mounts it", () => {
   const alarm = src("apps/cafe/hooks/use-print-slip-alarm.ts");
   assert.ok(!/apiGet|apiSend|useQuery\(|refetchInterval|setInterval/.test(alarm), "no request and no poll of its own");

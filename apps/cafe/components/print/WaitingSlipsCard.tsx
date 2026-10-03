@@ -12,7 +12,9 @@ import type { PosPulseData } from "@pos/shared/self-order-alert";
 // device, inside the printer sheet (and /printers). Every slip that is not printed and needs a person,
 // in three plain groups, each row with its age, its reason and big buttons: Print now / Retry, Print
 // again / It printed (a bill to check), and Clear. Prop-driven: PrinterPanel already reads the pulse,
-// so this is not another wide-pulse reader. A tapped row stays disabled until it leaves the feed.
+// so this is not another wide-pulse reader. A tapped row is disabled until its action answers (success
+// or error; 1D final review I-2: a row that stays in the feed, such as a Retry while its printer is off,
+// must not stay dead). The server's CAS makes a repeat tap a no-op.
 
 const SECTION_TITLE = "Slips waiting";
 
@@ -30,25 +32,32 @@ export function WaitingSlipsCard({ pulse }: { pulse: PosPulseData | undefined })
 
   const groups = printWaitingGroups(rows ?? [], Date.now());
   if (groups.length === 0) return null;
-  const tap = (id: string, run: () => void) => {
+  const release = (id: string) =>
+    setTapped((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  const tap = (id: string, run: (done: () => void) => void) => {
     setTapped((prev) => new Set(prev).add(id));
-    run();
+    run(() => release(id));
   };
 
   const actions = (group: PrintWaitingGroup, id: string) => {
     const off = tapped.has(id);
     const clear = (
-      <Button variant="outline" className={PRINTER_ACTION_CLASS} disabled={off} onClick={() => tap(id, () => dismiss.mutate(id))}>
+      <Button variant="outline" className={PRINTER_ACTION_CLASS} disabled={off} onClick={() => tap(id, (done) => dismiss.mutate(id, done))}>
         Clear
       </Button>
     );
     if (group === "bill") {
       return (
         <>
-          <Button className={PRINTER_ACTION_CLASS} disabled={off} onClick={() => tap(id, () => confirm.mutate({ id, decision: "reprint" }))}>
+          <Button className={PRINTER_ACTION_CLASS} disabled={off} onClick={() => tap(id, (done) => confirm.mutate({ id, decision: "reprint" }, { onSettled: done }))}>
             Print again
           </Button>
-          <Button variant="outline" className={PRINTER_ACTION_CLASS} disabled={off} onClick={() => tap(id, () => confirm.mutate({ id, decision: "printed" }))}>
+          <Button variant="outline" className={PRINTER_ACTION_CLASS} disabled={off} onClick={() => tap(id, (done) => confirm.mutate({ id, decision: "printed" }, { onSettled: done }))}>
             It printed
           </Button>
           {clear}
@@ -57,7 +66,7 @@ export function WaitingSlipsCard({ pulse }: { pulse: PosPulseData | undefined })
     }
     return (
       <>
-        <Button className={PRINTER_ACTION_CLASS} disabled={off} onClick={() => tap(id, () => retry.mutate(id))}>
+        <Button className={PRINTER_ACTION_CLASS} disabled={off} onClick={() => tap(id, (done) => retry.mutate(id, { onSettled: done }))}>
           {group === "failed" ? "Retry" : "Print now"}
         </Button>
         {clear}
