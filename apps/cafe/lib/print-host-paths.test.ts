@@ -371,11 +371,12 @@ test('PIN (F): use-print-host-beat.ts sends beat({ deviceId, printer: beatPrinte
   // Bluetooth-print plan W4: the routine beat now also reports the printer
   // (beatPrinterReport(); undefined leaves the server's last report alone), so
   // the old beat({ deviceId }) needle became the form below. The id is still
-  // this device's OWN; every negative that follows is unchanged.
+  // this device's OWN; every negative that follows is unchanged. The release check (2026-10-03, deliberate
+  // change): it also says whether this host is silent by construction (beatSilentMode).
   assert.match(
     src,
-    /beat\(\{ deviceId, printer: beatPrinterReport\(\) \}\)/,
-    "positive landmark: the beat body must be beat({ deviceId, printer: beatPrinterReport() })",
+    /beat\(\{ deviceId, printer: beatPrinterReport\(\), silentMode: beatSilentMode\(\) \}\)/,
+    "positive landmark: the beat body must be beat({ deviceId, printer: beatPrinterReport(), silentMode: beatSilentMode() })",
   );
   assert.ok(!src.includes("printHost.deviceId"), "must NOT reference printHost.deviceId — the beat sends the device's OWN id, not the pulse-visible one (D-5)");
   assert.ok(!src.includes("pulse."), 'must NOT contain the substring "pulse." anywhere');

@@ -24,6 +24,7 @@ import {
   DEVICE_LABEL_PC,
   DEVICE_LABEL_TABLET,
   beatPrinterReport,
+  beatSilentMode,
   canPrintNow,
   currentLane,
   defaultDeviceLabel,
@@ -176,6 +177,23 @@ test("beatPrinterReport: desktop connected, raster owner connected/disconnected,
   for (const [scene, expected] of table) {
     install(t, scene);
     assert.equal(beatPrinterReport(), expected, JSON.stringify(scene));
+  }
+});
+
+test("beatSilentMode: the Windows app and a printer on this device never open a print window (silent); the browser's window keeps the staff question", (t) => {
+  // The owner's release check (2026-10-03): the dashboard said "Print host shows a dialog for every slip." for
+  // an Android app host, which never shows one, until staff answered the setup card's yes/no question.
+  const table: [Scene, ReturnType<typeof beatSilentMode>][] = [
+    [{ shell: true }, true],
+    [{ printer: "connected" }, true],
+    [{ printer: "disconnected" }, true],
+    [{ printer: "elsewhere" }, true],
+    [{}, undefined],
+    [{ bridge: true }, undefined],
+  ];
+  for (const [scene, expected] of table) {
+    install(t, scene);
+    assert.equal(beatSilentMode(), expected, JSON.stringify(scene));
   }
 });
 

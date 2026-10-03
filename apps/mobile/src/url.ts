@@ -1,6 +1,7 @@
 // Pure URL validation for the saved POS address. No global URL (React Native's
 // polyfill is partial), no react-native import: safe for node:test.
-// Mirrors apps/desktop/src/server-url.ts, plus the private-network http rule.
+// Mirrors apps/desktop/src/server-url.ts, plus the private-network http rule and
+// the Sandbee app's bare workspace name (the Windows app does not expand one).
 
 export const START_PATH = '/pos';
 export const MIN_PORT = 1;
@@ -10,7 +11,7 @@ export const MAX_LABEL_CHARS = 63;
 
 export const URL_EMPTY_ERROR = 'Enter the address of your POS.';
 export const URL_INVALID_ERROR =
-  'That is not a valid web address. It should look like https://your-pos.example.com';
+  'That is not a valid address. Type your workspace name (like yourcafe) or the full address (like https://yourcafe.sandbee.in).';
 export const URL_SCHEME_ERROR = 'The address must start with https://';
 export const URL_HTTP_ERROR =
   'http:// only works for this device or a computer on your own network. Use https:// for any other address.';
@@ -125,6 +126,26 @@ function buildOrigin(parts: UrlParts, port: number | null): string {
   return parts.scheme + '://' + parts.host + (keep ? ':' + port : '');
 }
 
+// The Sandbee app's rule: a bare workspace name (one DNS label with a letter in
+// it, no dot, scheme or port; a path, query or hash after it is dropped later
+// with the rest of the address) means <name>.sandbee.in. A digits-only label is
+// a mistyped IP, never a name. Every full address is taken as written.
+export const SANDBEE_DOMAIN = 'sandbee.in';
+const HAS_LETTER = /[a-z]/;
+const PATH_START = /[/?#]/;
+
+function expandWorkspaceName(input: string): string {
+  const cut = input.search(PATH_START);
+  const name = (cut < 0 ? input : input.slice(0, cut)).toLowerCase();
+  const rest = cut < 0 ? '' : input.slice(cut);
+  return name !== 'localhost' &&
+    name.length <= MAX_LABEL_CHARS &&
+    LABEL.test(name) &&
+    HAS_LETTER.test(name)
+    ? name + '.' + SANDBEE_DOMAIN + rest
+    : input;
+}
+
 export function normalizePosUrl(input: string): NormalizeResult {
   const trimmed = input.trim();
   if (trimmed.length === 0) {
@@ -132,7 +153,7 @@ export function normalizePosUrl(input: string): NormalizeResult {
   }
   const withScheme = SCHEME_PREFIX.test(trimmed)
     ? trimmed
-    : 'https://' + trimmed;
+    : 'https://' + expandWorkspaceName(trimmed);
   const parts = parseUrlParts(withScheme);
   if (parts === null) {
     return { ok: false, error: URL_INVALID_ERROR };

@@ -3,6 +3,7 @@
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { PrinterStatusButton } from "@/components/print/PrinterStatusButton";
+import { RefreshButton } from "@/components/layout/RefreshButton";
 import { useSettings } from "@/hooks/use-settings";
 import { APP_NAME } from "@/lib/constants";
 
@@ -20,6 +21,7 @@ export function Header() {
           it widening SidebarInset at 768 px); flex-1 lets the name fill the row and truncate before the printer icon. */}
       <h1 className="min-w-0 truncate flex-1 text-sm font-semibold [contain:inline-size]">{name}</h1>
       <div className="ml-auto flex items-center">
+        <RefreshButton />
         <PrinterStatusButton />
       </div>
     </header>

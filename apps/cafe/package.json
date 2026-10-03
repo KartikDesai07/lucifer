@@ -339,6 +339,7 @@
     "lib/printer/print-gating-paths.test.ts",
     "lib/printer/printer-dot.test.ts",
     "lib/printer-dot-ui-paths.test.ts",
+    "lib/page-refresh.test.ts",
     "lib/printer-ui-paths.test.ts",
     "lib/print-host-bridge-late.test.ts",
     "lib/print-host-hooks.test.ts",

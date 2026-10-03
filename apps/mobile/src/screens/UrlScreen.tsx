@@ -1,6 +1,7 @@
-import { useRef, useState, type ComponentRef } from 'react';
+import { useEffect, useRef, useState, type ComponentRef } from 'react';
 import {
   Alert,
+  Animated,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -15,11 +16,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { normalizePosUrl } from '../url';
 import { PosPrinter } from '../native/PosPrinter';
 import { PrimaryButton, SandbeeLogo } from './Brand';
+import { Icon } from './Icon';
+import { EMPHASIZED, MOTION, reducedMotionOnce } from './motion';
 import { colors, MIN_TOUCH_TARGET, SCREEN_PADDING } from './theme';
 
 export const SAVE_FAILED_ERROR =
   'The address could not be saved. Close the app and try again.';
 type Props = { initialValue?: string; onSaved: (origin: string) => void };
+
+/** The hint card's change, as in the Sandbee app (onboarding/ui/UrlSetupContent.kt): fade in from 97 %. */
+const HINT_ENTER_SCALE = 0.97;
 
 export function UrlScreen({ initialValue = '', onSaved }: Props) {
   const [value, setValue] = useState(initialValue);
@@ -28,6 +34,36 @@ export function UrlScreen({ initialValue = '', onSaved }: Props) {
   const submitting = useRef(false);
   const input = useRef<ComponentRef<typeof TextInput>>(null);
   const [focused, setFocused] = useState(false);
+  const hasError = error !== null;
+  // The screen rises in once; the hint card fades and scales in whenever it switches between help and error.
+  const enter = useRef(new Animated.Value(0)).current;
+  const hint = useRef(new Animated.Value(1)).current;
+  const still = useRef(true);
+  useEffect(() => {
+    let live = true;
+    reducedMotionOnce().then(reduced => {
+      if (!live) return;
+      still.current = reduced;
+      if (reduced) {
+        enter.setValue(1);
+        return;
+      }
+      Animated.timing(enter, { toValue: 1, duration: MOTION.LONG_MS, easing: EMPHASIZED, useNativeDriver: true }).start();
+    });
+    return () => {
+      live = false;
+    };
+  }, [enter]);
+  const firstHint = useRef(true);
+  useEffect(() => {
+    if (firstHint.current) {
+      firstHint.current = false;
+      return;
+    }
+    if (still.current) return;
+    hint.setValue(0);
+    Animated.timing(hint, { toValue: 1, duration: MOTION.MEDIUM_MS, easing: EMPHASIZED, useNativeDriver: true }).start();
+  }, [hasError, hint]);
 
   async function submit() {
     if (submitting.current) return;
@@ -64,12 +100,12 @@ export function UrlScreen({ initialValue = '', onSaved }: Props) {
             onPress={() =>
               Alert.alert(
                 'Find your POS address',
-                'Enter the same web address you use to open your cafe’s POS. Ask your administrator if you do not have it.\n\nAfter signing in, open Printers to connect Bluetooth, USB OTG or a network printer.',
+                'Type your workspace name (for example yourcafe), or the full web address you use to open your cafe’s POS. Ask your administrator if you do not have it.\n\nAfter signing in, open Printers to connect Bluetooth, USB OTG or a network printer.',
                 [{ text: 'Got it' }],
               )
             }
           >
-            <Text style={styles.helpIcon}>?</Text>
+            <Icon name="help" color={colors.muted} size={26} />
           </Pressable>
         </View>
         <ScrollView
@@ -78,7 +114,15 @@ export function UrlScreen({ initialValue = '', onSaved }: Props) {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.content}
         >
-          <View style={styles.form}>
+          <Animated.View
+            style={[
+              styles.form,
+              {
+                opacity: enter,
+                transform: [{ translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
+              },
+            ]}
+          >
             <View style={styles.logo}>
               <SandbeeLogo />
             </View>
@@ -96,10 +140,8 @@ export function UrlScreen({ initialValue = '', onSaved }: Props) {
                 error !== null && styles.fieldError,
               ]}
             >
-              <View style={styles.linkBadge}>
-                <Text style={styles.linkIcon} accessible={false}>
-                  ↗
-                </Text>
+              <View style={[styles.linkBadge, hasError && styles.linkBadgeError]}>
+                <Icon name="workspace" color={hasError ? colors.error : colors.primary} size={18} />
               </View>
               <TextInput
                 ref={input}
@@ -109,10 +151,10 @@ export function UrlScreen({ initialValue = '', onSaved }: Props) {
                   setValue(text);
                   setError(null);
                 }}
-                placeholder="your-pos.example.com"
+                placeholder="yourcafe or yourcafe.sandbee.in"
                 placeholderTextColor={colors.muted}
                 accessibilityLabel="POS address"
-                accessibilityHint="Enter the web address supplied for your cafe"
+                accessibilityHint="Type your workspace name, or the full web address of your cafe's POS"
                 editable={!saving}
                 onFocus={() => setFocused(true)}
                 onBlur={() => setFocused(false)}
@@ -135,27 +177,37 @@ export function UrlScreen({ initialValue = '', onSaved }: Props) {
                     input.current?.focus();
                   }}
                 >
-                  <Text style={styles.clearText}>×</Text>
+                  <Icon name="clear" color={hasError ? colors.error : colors.muted} size={22} />
                 </Pressable>
               )}
             </View>
-            <View style={[styles.hint, error !== null && styles.hintError]}>
-              <Text
-                style={[styles.hintTitle, error !== null && styles.errorText]}
-              >
-                {error === null
-                  ? 'Your workspace address'
-                  : 'Check the address'}
-              </Text>
-              <Text
-                accessibilityRole={error !== null ? 'alert' : undefined}
-                accessibilityLiveRegion="polite"
-                style={[styles.hintBody, error !== null && styles.errorText]}
-              >
-                {error ??
-                  'Use the address shared by your administrator. We’ll remember it for next time.'}
-              </Text>
-            </View>
+            <Animated.View
+              style={[
+                styles.hint,
+                hasError && styles.hintError,
+                {
+                  opacity: hint,
+                  transform: [{ scale: hint.interpolate({ inputRange: [0, 1], outputRange: [HINT_ENTER_SCALE, 1] }) }],
+                },
+              ]}
+            >
+              <View style={[styles.hintBadge, hasError && styles.hintBadgeError]}>
+                <Icon name={hasError ? 'error' : 'info'} color="#ffffff" size={16} />
+              </View>
+              <View style={styles.hintCopy}>
+                <Text style={[styles.hintTitle, hasError && styles.errorText]}>
+                  {hasError ? 'Check the address' : 'Your workspace'}
+                </Text>
+                <Text
+                  accessibilityRole={hasError ? 'alert' : undefined}
+                  accessibilityLiveRegion="polite"
+                  style={[styles.hintBody, hasError && styles.errorText]}
+                >
+                  {error ??
+                    'Type your workspace name, or the full address shared by your administrator. We’ll remember it for next time.'}
+                </Text>
+              </View>
+            </Animated.View>
             <View style={styles.action}>
               <PrimaryButton
                 title={saving ? 'Connecting…' : 'Open POS'}
@@ -165,8 +217,8 @@ export function UrlScreen({ initialValue = '', onSaved }: Props) {
               />
             </View>
             <Text style={styles.footer}>Bluetooth · USB OTG · Wi-Fi / LAN</Text>
-            <Text style={styles.powered}>POS Software by Sandbee</Text>
-          </View>
+            <Text style={styles.powered}>Sandbee POS</Text>
+          </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -181,17 +233,6 @@ const styles = StyleSheet.create({
     height: MIN_TOUCH_TARGET,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  helpIcon: {
-    color: colors.muted,
-    borderColor: colors.muted,
-    borderWidth: 1.5,
-    borderRadius: 12,
-    width: 24,
-    height: 24,
-    textAlign: 'center',
-    fontSize: 16,
-    fontWeight: '600',
   },
   content: {
     flexGrow: 1,
@@ -243,7 +284,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 10,
   },
-  linkIcon: { color: colors.primary, fontSize: 20, fontWeight: '600' },
+  linkBadgeError: { backgroundColor: colors.errorSurface },
   input: {
     flex: 1,
     minWidth: 0,
@@ -259,22 +300,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  clearText: { color: colors.muted, fontSize: 26 },
   hint: {
-    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
     backgroundColor: colors.tint,
     borderRadius: 14,
     marginTop: 14,
     minHeight: 84,
   },
   hintError: { backgroundColor: colors.errorSurface },
+  hintBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hintBadgeError: { backgroundColor: colors.error },
+  hintCopy: { flex: 1, minWidth: 0 },
   hintTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.primaryPressed,
-    marginBottom: 4,
+    color: colors.text,
+    marginBottom: 2,
   },
-  hintBody: { fontSize: 13, lineHeight: 20, color: colors.primaryPressed },
+  hintBody: { fontSize: 13, lineHeight: 19, color: colors.muted },
   errorText: { color: colors.error },
   action: { marginTop: 28 },
   footer: {

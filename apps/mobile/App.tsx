@@ -1,5 +1,5 @@
 /**
- * POS Software mobile shell: loads the POS from one saved address.
+ * Sandbee POS mobile shell: loads the POS from one saved address.
  *
  * @format
  */
@@ -22,12 +22,17 @@ type Boot =
 
 const noop = () => undefined;
 
+/** First run only (no saved address): the splash stays long enough to be seen, as in the Sandbee app. A saved
+ *  address opens the POS at once. */
+export const FIRST_RUN_SPLASH_MS = 1400;
+
 function App() {
   const [boot, setBoot] = useState<Boot>({ kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    const startedAt = Date.now();
     async function start() {
       try {
         const saved = await PosPrinter.getSavedOrigin();
@@ -41,6 +46,10 @@ function App() {
         }
         if (saved !== null) {
           await PosPrinter.clearOrigin(); // a saved address that no longer passes the rules
+        }
+        const wait = FIRST_RUN_SPLASH_MS - (Date.now() - startedAt);
+        if (wait > 0) {
+          await new Promise(resolve => setTimeout(resolve, wait));
         }
         if (!cancelled) {
           setBoot({ kind: 'url', initial: '' });

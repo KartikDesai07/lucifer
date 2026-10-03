@@ -51,6 +51,29 @@ test('a bare host gets https:// prepended', () => {
   assert.equal(origin('  pos.example.com  '), ORIGIN);
 });
 
+test('a bare workspace name opens <name>.sandbee.in, as in the Sandbee app; full addresses are unchanged', () => {
+  assert.equal(origin('posdemo'), 'https://posdemo.sandbee.in');
+  assert.equal(origin('  PosDemo '), 'https://posdemo.sandbee.in', 'trimmed and lowercased');
+  assert.equal(origin('my-cafe'), 'https://my-cafe.sandbee.in');
+  assert.equal(origin('posdemo.sandbee.in'), 'https://posdemo.sandbee.in', 'the full address still works');
+  assert.equal(origin('pos.example.com'), ORIGIN, 'any other full address still works');
+  assert.equal(origin('localhost'), 'https://localhost', 'localhost stays itself');
+  assert.equal(origin('http://localhost:3100'), 'http://localhost:3100', 'a written scheme or port is never expanded');
+  assert.equal(error('-cafe'), URL_INVALID_ERROR);
+  assert.equal(error('cafe_1'), URL_INVALID_ERROR);
+});
+
+test('the release review: a bare name with a path, query or hash expands too; a digits-only name never does', () => {
+  assert.equal(origin('yourcafe/pos'), 'https://yourcafe.sandbee.in', 'M3: a path after the name');
+  assert.equal(origin('posdemo?x=1'), 'https://posdemo.sandbee.in', 'M3: a query');
+  assert.equal(origin('posdemo#top'), 'https://posdemo.sandbee.in', 'M3: a hash');
+  assert.equal(origin('localhost/pos'), 'https://localhost', 'localhost with a path stays itself');
+  assert.equal(error('192'), URL_INVALID_ERROR, 'M4: a mistyped IP is refused at once, never sent to sandbee.in');
+  assert.equal(error('10'), URL_INVALID_ERROR);
+  assert.equal(origin('cafe24'), 'https://cafe24.sandbee.in', 'letters and digits together are a name');
+  assert.match(URL_INVALID_ERROR, /workspace name/, 'M5: the error names both ways in');
+});
+
 test('https keeps only the origin: path, query, hash dropped', () => {
   assert.equal(origin('https://pos.example.com/pos?x=1#top'), ORIGIN);
 });

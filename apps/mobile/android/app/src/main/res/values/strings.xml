@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">POS Software</string>
+    <string name="app_name">Sandbee POS</string>
     <string name="print_host_channel_name">Printing</string>
     <string name="print_host_title_printer">Printing is on — %1$s</string>
     <string name="print_host_title_no_printer">Printing is on — printer not connected</string>

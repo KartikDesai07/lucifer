@@ -44,7 +44,9 @@ function check(problems: string[], ok: boolean, message: string): void {
 }
 
 const DELEGATE = "if (!shell) return laneSlipPrintOptions(options);";
-const BEAT_CALL = "beat({ deviceId, printer: beatPrinterReport() });";
+// The final release check (2026-10-03, deliberate change): the routine beat also says whether this host is
+// silent by construction (beatSilentMode), so an app host never reads "a dialog for every slip".
+const BEAT_CALL = "beat({ deviceId, printer: beatPrinterReport(), silentMode: beatSilentMode() });";
 // Session 1C: the agent (the host, or with no host every device) asks for the lock; still only while it can print.
 const LOCK_CALL = "const holdsLock = usePrintHostDrainLock(isAgent && canPrint);";
 const LANE_MESSAGE_NAMES = ["NO_PRINTER_MESSAGE", "PRINTER_NOT_CONNECTED_MESSAGE", "PRINTER_WRITE_FAILED_MESSAGE", "PRINTER_ELSEWHERE_MESSAGE", "RASTER_FAILED_MESSAGE", "RASTER_TOO_LARGE_MESSAGE", "DESKTOP_PRINT_EMPTY_MESSAGE", "nativeErrorMessage(nativeError(code, code))"];
@@ -182,7 +184,7 @@ const CASES: PinCase[] = [
     pin: (s, r) => {
       const p: string[] = [];
       check(p, count(s, BEAT_CALL) === 1 && !s.includes("beat({ deviceId });"), "the routine beat is beat({ deviceId, printer: beatPrinterReport() })");
-      check(p, s.includes('import { beatPrinterReport } from "@/lib/printer/print-lane";'), "imports beatPrinterReport");
+      check(p, s.includes('import { beatPrinterReport, beatSilentMode } from "@/lib/printer/print-lane";'), "imports beatPrinterReport and beatSilentMode");
       check(p, /printer\?: PrintHostBeatPrinter;/.test(s), "BeatPrintHostInput.printer is optional");
       // s63 W-H/W-O: 80 -> 90 -- the shared mutation scope, the onHost hook and its option add 7 lines (measured 86).
       check(p, lines(r) <= 90, "stays <= 90 lines");
@@ -190,6 +192,7 @@ const CASES: PinCase[] = [
     },
     mutations: [
       { name: "printer dropped", apply: sub(BEAT_CALL, "beat({ deviceId });") },
+      { name: "silent mode dropped", apply: sub(BEAT_CALL, "beat({ deviceId, printer: beatPrinterReport() });") },
       { name: "printer required", apply: sub("printer?: PrintHostBeatPrinter;", "printer: PrintHostBeatPrinter;") },
       { name: "reported only in a comment", apply: sub(BEAT_CALL, `beat({ deviceId }); // ${BEAT_CALL}`) },
     ],
