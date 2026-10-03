@@ -3699,4 +3699,146 @@ The owner's ask of 2026-10-04: when the device that takes an order is the one th
 
 ## Session 2A Results (filled in by the implementer)
 
-_Not started._
+Executed on 2026-10-04 with superpowers:executing-plans, task by task, A1 → A7.
+
+### Commits (`e73dd59..HEAD`)
+
+| Commit | Task |
+|---|---|
+| `51c2191` | A1: the shared contract (stations and printers, the simple-mode switch, writers, the default station and bill printer) |
+| `aa3935c` | A2: the models: Station and Printer, a station on categories and items, a printer line on print jobs (dormant) |
+| `376e25c` | A3: routing (spec §8), a pure function |
+| `ee09b76` | A4: the setup API and the routing read (dormant) |
+| `c990b55` | A5: the budget recount; in printers mode only writers poll |
+| `1181442` | A6: live legs ah–aj |
+| `b112538` | Final review Important 2 (beyond the plan): a full-copy printer that also takes a station prints the round once |
+| (this commit) | Results |
+
+### Start
+
+- `git branch --show-current`: `feat/printing-phase-2`; HEAD `e73dd59` (pushed); working tree clean.
+- `GIT_TERMINAL_PROMPT=0 git fetch origin` with the token credential: `origin/main` is still `6ee2b1d`, so there was nothing to note or merge.
+- Before A1, every block of A1–A6 (54 blocks) was dry-run in document order against `e73dd59`, in memory: every find matched exactly once. No drift.
+
+### How the code was applied
+
+Every block was applied verbatim by a scratchpad script (the orchestrator's applier): find text is the fenced lines joined with `\n`; Create adds one final newline; every find must match exactly once; a step's blocks are staged in memory and written only if all of them apply. Each task ran Step 1 (tests), Step 2 (RED), Step 3 (code), Step 4 (GREEN), Step 5 (commit), with the plan's own commands. After A6, **all 35 files the six commits touch are blob-identical to the orchestrator's golden branch** (`v2` in its scratchpad `gold/`).
+
+### Per-task RED → GREEN (every Expected line compared; all matched)
+
+| Task | RED | GREEN |
+|---|---|---|
+| A1 | `print-printers.test.ts`: tests 1, pass 0, **fail 1** (module missing) | **9/9**; shared tsc 0 |
+| A2 | cafe model tests: tests 27, pass 23, **fail 4**; shared schema tests: tests 37, pass 33, **fail 4** | shared schema tests **37/37**, tsc 0; cafe 5 files **79/79**, tsc 0 |
+| A3 | `print-printer-routing.test.ts`: 1/0/**1**; shared `print-printers.test.ts`: 1/0/**1** | shared 2 files **40/40**, tsc 0; cafe 4 files **99/99**, tsc 0 |
+| A4 | `print-setup-paths.test.ts`: 1/0/**1** | **10/10**; cafe tsc 0; eslint clean on the 9 files (`LINT_OK`) |
+| A5 | `print-budget.test.ts`: 1/0/**1** | **23/23**; shared tsc 0; cafe tsc 0 |
+| A6 | (legs: apply and run) | cafe tsc 0, eslint clean (`LINT_OK`); `verify:print:live` **`248 passed, 0 failed`** |
+| Important 2 fix | `print-printer-routing.test.ts` "a full-copy printer that also takes a station prints the round once, as its full copy" **fails** (the counter got a `st-kitchen` slip beside its full copy) | routing + 4 related files **110/110**; cafe tsc 0; eslint clean |
+
+New files stay small: `print-printer-routing.ts` 185 lines, `print-printers.ts` (shared) 162, `models/Printer.ts` 114, `print-stations.ts` 107, `print-printers.ts` (cafe) 105, `print-printer-schemas.ts` 99, `print-routing-context.ts` 54, `models/Station.ts` 33; the legs file 152. The six commits: 35 files, +2,097 / −12.
+
+### Task A7 Step 1: every suite (at `1181442`)
+
+| Suite | Result |
+|---|---|
+| shared `npm test`; `tsc` | **667/667**; 0 |
+| cafe `npm test` | **4300 tests, 4299 pass, 0 fail, 1 skipped** (the skip is Phase 1's `go-live-dl` pin: the git-ignored planning file is not on this PC) |
+| cafe `tsc`; `npm run lint` | 0; 0 errors and the 2 old warnings (`lib/masters-blob.test.ts:331`) |
+| Hub `tsc` | 0 |
+| mobile `tsc`; lint; `npm test`; `test:app` | 0; 0; **117/117**; Jest **3/3** (untouched) |
+| desktop `npm test` | **191/191** (untouched) |
+| `npm run test:print-tools` | **8/8** |
+| live legs (local mongod, `pos_scratch_print_host`) | **`248 passed, 0 failed`** (220 + 28) |
+
+Every row equals the plan's Expected.
+
+**After the Important 2 fix (`b112538`), Step 1 again:** shared **667/667**; cafe **4301 tests, 4300 pass, 0 fail, 1 skipped** (+1: the new routing test); cafe tsc 0, lint 0 errors and the 2 old warnings; Hub 0; mobile **117/117** and Jest **3/3**; desktop **191/191**; print tools **8/8**; live legs **`248 passed, 0 failed`**.
+
+### Changed existing pins (each follows a deliberate change in this plan)
+
+- **A2, `apps/cafe/lib/print-job-model.test.ts`:** the Phase 1 final gate's pin "exactly three PrintJob indexes" now reads **four** (the feed/prune one, the job-key fence, the device line and the new printer line); its "no originDeviceId index" and prune/feed-index landmarks are unchanged. Two new tests pin the printer-line index (key order, partial on `printerId`, not unique) and `printerId`/`copies` (absent on a simple-mode row, copies 1–3).
+- **`apps/cafe/package.json` `testChain`:** `lib/print-printers-model.test.ts` (A2), `lib/print-printer-routing.test.ts` (A3), `lib/print-setup-paths.test.ts` (A4) appended.
+- **`packages/shared/package.json` `test`:** `src/print-printers.test.ts` (A1) appended.
+- Only additions elsewhere: `category.schema.test.ts` (2 tests, the import widened), `product.schema.test.ts` (3 tests), `print-budget.test.ts` (5 tests, imports widened), `verify-print-host-live.ts` (Station, Printer, Category and Product indexes built before the legs; legs ah–aj after ag). No existing assertion there changed.
+
+### Step 2: the Next production build
+
+`npm run build` at `1181442`: success (compiled in 20.9 s), **127 routes** (`main`'s 123 plus `/api/printers`, `/api/printers/[id]`, `/api/stations`, `/api/stations/[id]`); only the 2 old lint warnings. Again at `b112538` after the fix: success, **127 routes**.
+
+### Step 3: APKs (x86_64 first, then ARM; `GRADLE_USER_HOME='D:\gradle-home'`)
+
+Both builds reported `BUILD SUCCESSFUL` (1 m 36 s, then 43 s). Each APK holds only its own ABI. **All three are byte-identical to the 2026-10-03 release** (`D:\kd\pos-apk-release\Sandbee-POS-final\`; 2A changes no app code).
+
+| APK | Size | SHA-256 |
+|---|---|---|
+| Emulator only (x86_64) | 7,425,177 B | `29115bdfbee901dfd4e6b7905885e057ccf5aeb81ba2702409f9ec57ac51dcbd` |
+| Client, arm64-v8a (`Sandbee POS.apk`) | 7,293,454 B | `0e0ec3148a89bad228b58d92f318da5ea2d6c9a515760eb10f25b619f69bd5e2` |
+| Client, armeabi-v7a (`Sandbee POS (old 32-bit phones).apk`) | 6,701,288 B | `e618900ac1799fb9f8355dc058b04c6f6e59261aed88e82c8d0110e5ef049279` |
+
+### Step 4: the emulator check (2A changes nothing for a cafe). Passed.
+
+**Harness.** This session booted its own `Pixel_7_API_33` (WebView 109; `-memory 4096`, C: had 13 GB free; the crash buffer stayed empty). The installed app is the release x86_64 APK (`sha256sum` of its `base.apk` on the device: `29115bdf…`). The local POS (`next start` of the `1181442` build) was served on **3110** with `adb reverse tcp:3100 tcp:3110`, so the app's address stayed `http://localhost:3100`; the fake printer ran on **9101** (`--out <scratchpad>/fake-jobs-2a`), and the app's network printer was `10.0.2.2:9101`. Ports 3100 and 9100 were free this time, but the session prompt's ports were kept. Database: `pos_scratch_e2e_p1final` (the Phase 1 final gate's env file, copied into this session's scratchpad; e2eadmin, tables and menu already seeded; no print host at the start). `p2a-tool.ts` is the plan's tool, byte for byte, run with `P2A_BASE=http://localhost:3110`.
+
+**The live demo first.** The app opened on the owner's live demo (`posdemo.sandbee.in`, "Olivea Pizza", signed in, "No printer set up", "Each device prints its own slips", "No printing device is set"). Nothing was tapped there except opening the printer panel and More options → **Change POS address** → `http://localhost:3100`. The local POS showed "POS Software" and the seeded menu before any write. The app was then made the print host (`35bd9663…`) with the network printer.
+
+| Item | Result |
+|---|---|
+| 1. `kot`, then `jobs` | `201`, `printJobs`: one `kot` ref, `queued`, `printerId: null`; it printed at the host; the fake printer logged **one job of 44,454 B** (plus the 0-byte probe of "Use"); the decoded slip is today's KOT ("KITCHEN ORDER #1 Round 1", Margherita Pizza and White Sauce Pasta), **no station line** |
+| 2. `setup`, then `api` | stations read **200**, default **Kitchen**; Bar **201**; three printers **201, 201, 201**; the category on the Bar **200**. `api`: printers **200, 3, `no-store`**; stations **200, 2, `no-store`**; a bad id **404, `no-store`**; a LAN printer with no printing device **400** ("Validation failed") |
+| 3. `kot` again, then `jobs` | **still exactly one KOT job**, printed once at the host, **44,454 B**, the decoded slip unchanged (no station line); `withPrinterId: 0`, `withCopies: 0`. The dormant proof: printers saved through the API change nothing |
+| 4. `teardown` | `removed: [200, 200, 200, 200]`, `leftOnCategories: 0`; `api` afterwards: printers 0, stations 1 (the default Kitchen stays) |
+| 5. The app's own screens | Masala Chai → **Send to Kitchen**: one KOT (40,494 B, `ORD-20261004-003`). Cheesecake → **Pay Now** (Cash, Place Order): the **KOT (40,494 B), then the bill (36,966 B)**, once each (`ORD-20261004-004`; the decoded bill reads "Bill No. 1 … Cheesecake ₹220 … TOTAL ₹220"). Every job: `printerId`/`copies` absent |
+
+The fake printer's log: 6 lines in all, the probe and the five slips above, each `bytes > 0` exactly once; nothing reached the saved "Bar printer" (`10.0.2.2:9101`, the same address, dormant).
+
+**Put back as found.** On the local POS: "Stop printing here" (`hosts: []`) and the network printer removed ("No printer set up"). Then More options → Change POS address → `https://posdemo.sandbee.in`: "Olivea Pizza" loads, and its printer panel (opened read-only) shows "No printer set up" and "Each device prints its own slips". `adb reverse tcp:3100 tcp:3100` was restored. Screenshots and the decoded slips are in the session scratchpad only (`shots/`).
+
+### Step 5: the fresh review
+
+A fresh read-only reviewer (Claude Fable 5.1) read `e73dd59..1181442` against this plan and spec §6.1–6.3, §6.6, §7.11, §8, §8.1, §9.3 and §17. It also re-ran the three new cafe test files (35/35), the two shared ones (34/34) and the live legs (248/0), and recomputed the budget arithmetic by hand (4,800 / 5,790 / 17,628 / 3,635). Verdict: **0 Critical, 2 Important, 8 Minor**; "Yes" for the 2A gate. Every Review Focus item is proven by a test or a live leg (legs ah/ai assert on the raw collections, so a stored `null` or a leftover host could not hide behind the wire shapes).
+
+- **Important 2: fixed (`b112538`).** A printer with "Full KOT copy" and a station both ticked got that station's slip AND the full copy, so the station's lines printed twice on it. Nothing forbids the combination, and 2D's form will be checkboxes. The fix is in routing: `stationTargets` leaves full-copy printers out, because the full copy already holds those lines (decision 4's reasoning). It holds however the data was saved, and a converted one-printer cafe that also ticks its station still gets today's KOT (the new test checks both).
+- **Important 1: for the 2C gate, not a 2A change.** The client's wake poll (`hooks/use-print-agent.ts`, the "host" effect) starts only `if (… !isHost)` and spends against the constant `PRINT_WAKE_DAILY_CAP` (14,400). The wake answer's `agentDailyCap` has no client consumer, and no production code calls `printAgentPollsWake` or `printWakeWriterCap` yet (checked by grep). That is exact in Phase 1 and 2A, where one device polls. But if 2C only sets the server's `agentDailyCap`, each writer still spends 14,400 on a socket-down day: 3 writers make 43,200 + 3,630 = 46,830 a day, over the 18,000 that A5's pin describes. 2A makes no client change, so this goes to **Session 2C item 5**:
+  - the agent spends against `min(PRINT_WAKE_DAILY_CAP, the last answer's agentDailyCap)`;
+  - it polls by `printAgentPollsWake({ hostConfigured, isHost, printersMode, isWriter })`;
+  - a hook pin proves the constant is no longer the only cap.
+- **Minors, for the gate (not fixed):**
+  - M3: `updateStation` clears the old default before `save()`. A rename onto an existing name (409) together with `isDefault: true` leaves no flagged default; routing then falls back to the first station by order.
+  - M4: `deleteStation` deletes before it clears the pointers. A failure between the two leaves a dead id in a printer's `kotStations`, and `stationsExist` then refuses every re-save of that printer. Fix: clear first, then delete, or have 2D drop unknown ids.
+  - M5: deleting a station can leave a printer that takes nothing, which can silently return the cafe to simple mode. 2D should warn.
+  - M6: the plan's "printers mode adds at most three small reads" means three more than simple mode's one: four reads in all (printers, stations, products, categories).
+  - M7: station and printer names are unique case-sensitively, so "Bar" and "bar" both print "BAR".
+  - M8: two admins racing at the 20-station or 12-printer cap can land one over.
+  - M9: a device's chosen bill printer need not be routable, so its writer is not in `printerWriterDevices`. The 2D picker should list routable printers only, or 2C should count chosen printers' writers.
+  - M10: these Results (done here).
+- **Set aside by the reviewer, each ruled "stands" in the ledger with its reason:**
+  - the validation 400s not wrapped in `noStore` (Phase 1's house style, excluded by the pin);
+  - device ids not checked against `PrintDevice` (decision 1, 2D's picker);
+  - item and category station ids not checked for existence (spec §6.2 fallback);
+  - `GET /api/printers` readable by any signed-in device;
+  - a whole-tab reprint includes unfired lines (today's behaviour);
+  - the seeding first read;
+  - End of day at 1 copy, with no health and no backup printer (decisions 2, 10);
+  - `VIRTUAL_DEFAULT` in a key;
+  - the realtime pin as an upper bound (2B recounts);
+  - the 120-character label.
+- Checked and fine, per the reviewer:
+  - no client parses payloads strictly, and a stored payload that fails the strict parse is dismissed as `invalid-payload` (`print-lease.ts`);
+  - `kotStations: []` passes `required`;
+  - string ids and ObjectIds compare correctly everywhere;
+  - Mongoose `set()` replaces the connection sub-document (no merge);
+  - `routedJobKey` is unique per slip.
+
+### Deviations and rulings
+
+- **No code deviation.** Every block went in verbatim; no plan text was wrong.
+- The skill's `task-start`/`task-brief` helpers match numeric task headings only, so the briefs (A1–A7) were read straight from the plan; the ledger lives in the git-ignored `.superpowers/sdd/2026-10-03-phase-2-routing/`.
+- Ruling: the fresh reviewer ran on **Claude Fable 5.1** (`fable`), Anthropic's most capable widely released model, as the prompt asks for the most capable model (the Phase 1 gates' reviewers were Opus).
+- The emulator check used port 3110 and fake printer 9101 as the session prompt says (3100 and 9100 were in fact free).
+- Ruling (Important 2): fixed in routing rather than by refusing the combination in `printerBodySchema`. Routing decides the paper, so the fix holds whatever is stored. Cost if wrong: an owner who wanted a separate station slip on a full-copy printer gets only the full copy (a one-line revert).
+- Ruling (Important 1): not fixed in 2A, because 2A makes no client change and nothing passes `printersMode` until 2C. It is carried to the 2C gate as above. Cost if wrong: if 2C misses it, N writers on a socket-down day spend N × 14,400 wake hits.
+
+### Pushed
+
+The branch was pushed with the token credential only (`GIT_TERMINAL_PROMPT=0 git push origin feat/printing-phase-2`): `e73dd59..` this commit. `main` is untouched and nothing is deployed. The E2E database `pos_scratch_e2e_p1final` ends with no print host, no printers and one station (the default Kitchen), plus 4 test orders `ORD-20261004-001…004`). The session's emulator, POS server and fake printer were stopped.
