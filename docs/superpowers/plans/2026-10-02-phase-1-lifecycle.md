@@ -19213,3 +19213,189 @@ Verdict: no Critical; **one Important, fixed** (`1ddc1fe`); nine Minor, deferred
 ### Leftovers
 
 `pos_scratch_e2e_1e` (e2eadmin, 8 tables, the sample menu, 405 orders, about 1,000 print jobs that the prune keeps reaping, no PrintHost) and its env file `<scratchpad>/e2e.env` are left, as the plan says. `adb reverse` removed; the POS, the proxy and every fake printer stopped by PID (command lines checked); `pm clear com.possoftware.pos`; the emulator stopped. `adb logcat -b crash` held **no entry** from boot to the end (`logs/crash-at-boot.log`, `logs/crash-end.log`: 0 lines each).
+
+---
+
+## Phase 1 final review (gate, 2026-10-03)
+
+**Verdict: Phase 1 PASSES, with the gate's fixes (below).** The whole range was re-checked independently, a fresh reviewer read it, and every finding was verified in the code before it was ruled. The fixes were made by TDD on the branch and proven on the emulator. Nothing was deployed and `main` was not touched.
+
+**How this gate stayed independent.** It ran in a new session, not the one that implemented 1E. It re-ran every suite, the build and both APKs itself, and recomputed 1E's free-tier projections from 1E's raw logs. A fresh-context reviewer subagent (Opus, read-only) read the whole branch against `main` (`a27614e..ac8d51c`: what a deploy would add). The emulator spot-check used a fresh database, `pos_scratch_e2e_p1final`. Nothing below was taken from the Results.
+
+### Re-run at `ac8d51c` (before the gate's fixes)
+
+`git fetch` (token credential): `origin/main` was still `a27614e`, which 1E had already merged, so there was nothing to merge.
+
+| Check | Re-run at the gate | Session 1E Results |
+|---|---|---|
+| shared `npm test`; `tsc` | 646/646; 0 | same |
+| cafe `npm test` | 4248 tests, 4247 pass, 0 fail, 1 skipped | same (after the `a27614e` merge) |
+| cafe `tsc`; `npm run lint` | 0; 0 errors and the 2 old warnings | same |
+| Hub `tsc`; mobile `tsc`, lint, `npm test`, `test:app` | 0; 0, 0, 114/114, Jest 3/3 | same |
+| desktop `npm test`; `npm run test:print-tools` | 191/191; 8/8 | same |
+| live legs (local mongod) | `219 passed, 0 failed` | same |
+| Next build | success, 123 routes | same |
+| APKs (`GRADLE_USER_HOME='D:\gradle-home'`) | x86_64 `fc4181e4…` (7,407,761 B), arm64-v8a `9f89cd9a…` (7,276,038 B), armeabi-v7a `f3f62149…` (6,683,872 B): byte-identical | same |
+
+**The 1E commits, read.**
+- The 31 files E0a–E2 change are blob-identical to the 1D gate's golden copy (`14ab0527…/scratchpad/gold`, compared here with `git hash-object`).
+- The beyond-plan fix `1ddc1fe` (the `left` flag) was traced through every branch of `printAlarmStep`: a notice that went down because its slip left the feed comes back quietly; a slip staff acted on stays quiet; a summary slip never gets `left`. Sound. It interacts with M6, ruled below.
+- 1E's projections recomputed from its raw E3 logs: `report.mjs project` gives exactly the Results' numbers (host 3,384 invocations a day, 10.2 %; 32.1 s CPU, 6.7 %; no host 3,792, 11.4 %; 29.5 s, 6.2 %; both `pass: true`). The soak reports read R1 500/500 printed with 500 full copies, and R3 480 printed + 20 needs-confirm with 59 cut copies.
+
+### The fresh review (Opus, read-only, `a27614e..ac8d51c`)
+
+**Verdict: "With fixes". 0 Critical, 4 Important, 3 Minor.** It praised the lifecycle (one fenced CAS per transition, §7.9 late acks, header opt-in with today's keys, the repair against the prune) and found no likely unlabelled double print or silent loss in normal operation. Each finding was verified in the code here:
+
+- **I-1 (CONFIRMED).** On a new build the host's dashboard band ("older slips", over 30 min) still offered Print through the old `/claim` (`PrintHostProvider.printQueuedJob`). It printed a REPRINT/DUPLICATE row with no banner, and marked it `printed` before any paper. The 1C/1D rulings ("races the new Retry on the CAS, so nothing prints twice") proved one writer, not the label.
+- **I-2 (CONFIRMED).** `use-print-agent.ts` left the host out of the pulse (`|| isHost`). With the socket down and its daily wake share spent, the host heard of other devices' slips from nothing, while spec §7.10 says leasing then rides "realtime nudges and the pulse". Before Phase 1, the host's drain rode the pulse.
+- **I-3 (CONFIRMED).** In the Windows app the bridge's `onPrintError` read only the web lanes' exact sentences. The shell's sentence arrives wrapped by the IPC layer ("Error invoking remote method …: Error: …"), so every Windows failure became the generic sentence, read as "maybe". The seam's own too-large refusal was lost the same way.
+- **I-4 (PLAUSIBLE).** E3 counted the pulse as not printing, but Phase 1 made every pulse heavier: the attention read, `jobsForMe` for agents, and the `after()` sweep. Measured here (below).
+- **m-1 (CONFIRMED).** The `{originDeviceId, createdAt}` index served `myRecentJobs`, which the 1C gate dropped; no query uses it. **m-2 (CONFIRMED).** An older realtime Worker answers 400 to `print-status`. **m-3.** Two tabs without Web Locks could lose a pending ack.
+- The reviewer agreed M2–M10 are minor, and called the alert sound "more serious than minor for an unattended kitchen host".
+
+### Fixes at the gate (TDD; RED seen before each GREEN)
+
+Commits: `0fc2116` (the code and its tests), then the docs commit (this plan, spec §6.5/§7.5/§7.8/§7.10, TEST-CHECKLIST, GO-LIVE-CHECKLIST).
+
+| Finding | Fix | RED → GREEN |
+|---|---|---|
+| I-3 | `hostPrintFailureMessage` (lib/print-write-outcome.ts): in the Windows app the bridge unwraps the shell's sentence (`shellErrorMessage`). The shell's sentences are copied in the new `lib/desktop-shell-messages.ts`. "Nothing sent": no printer chosen, a file printer, no server address, no spooler, printer not found. A slip refusal: did not finish drawing. Permanent: blank, too long. Anything else stays "maybe". The panel shows a Windows refusal in the shell's own words. | 23 tests, 19 pass, 4 fail → 23/23; a parity pin against `apps/desktop/src` (word for word); the bridge pin |
+| I-1 | The band's Print is the panel's Print now (`usePrintJobActions().retry`), released by its own answer. `PrintHostProvider` no longer offers a claim print (`printQueuedJob`, `useClaimPrintJob` and the now-unused imports removed). `/claim` stays one release for old tabs. No server guard: a labelled row reaches an old host tab only after a rollback, and a refused claim would stall that tab's drain. | band pins 12 tests, 9 pass, 3 fail → 24/24 (with the gating pins) |
+| I-2 | Every agent names itself on the pulse, the host too: one bounded, index-backed read on the host's own pulse, no new request. | 6 tests, 5 pass, 1 fail → 32/32 |
+| M2 | `PRINT_ATTENTION_WINDOW_MS` = queued retention + acted grace (3 h 15 min): a slip tapped before its 3 h stays shown while the prune keeps it. | RED in shared budget (17/18) and cafe attention → GREEN |
+| M5 | The feed reads `PRINT_ATTENTION_LIMIT + 1` and shows the newest 20; `truncated` only when more wait. Live leg (af) gains "exactly the limit waiting: every one shown, and not cut". | RED → GREEN; live legs 219 → 220 |
+| M6 | `printAlarmStep`: Print now on a stale slip (`approved` now set) is staff acting on it: its notice goes quietly, and a moment's lease after it brings no notice back. | RED → GREEN |
+| M4 | The summary notice stands for the slips that already waited (`summary` in the memory, `summaryWaiting` in the step), re-worded as they print, and gone with the last of them (the hook re-shows it under the same id). | RED → GREEN |
+| m-1 | The index is dropped (pinned: exactly three `PrintJob` indexes). Never deployed, so never built anywhere. | 24 tests, 23 pass, 1 fail → 24/24 |
+| M8 | The soak refuses a database that is not local, and stops after its first order unless that order is in its own database. | pin RED → GREEN; on the harness: a remote URI is refused before connecting; the 100-order soak below passed the guard |
+| The alert sound | `PosPulseProvider` tries the sound once on mount, then on the first touch as before. | pin RED → GREEN; proven on the device (below) |
+| M3, M7, M10, m-2 | Wording: the grace (spec §7.8, the prune's comment, the pin's name); TEST-CHECKLIST's "Couldn't print"; stale "12 h"/"2 h" in comments, test names and leg (f)'s labels; GO-LIVE-CHECKLIST says to use the go-live run (Worker first), not `npm run deploy` alone, for a release that adds an event kind. | — |
+
+**Changed existing pins (each deliberate):**
+- `print-host-band-paths.test.ts` (2a), (5), (7b);
+- `print-gating-paths.test.ts`: the provider's and the bridge's cases;
+- `print-agent-paths.test.ts`: the pulse-naming pin;
+- `print-attention.test.ts`: the window, the limit, and the oldest-first slice;
+- `print-budget.test.ts`: the window;
+- `print-job-model.test.ts`: the indexes;
+- `print-waiting.test.ts`: the alarm hook's `page` shape;
+- `print-lifecycle-paths.test.ts`: the prune pin's name.
+
+Two fixes needed a second step, because `desktop-shell.ts` (≤ 150 lines) and `use-print-host-bridge.ts` (≤ 250) have line budgets: the shell's sentences live in their own file, and the bridge's comment was shortened.
+
+### Totals after the fixes (the final tree)
+
+| Check | Result |
+|---|---|
+| shared `npm test`; `tsc` | **646/646**; 0 |
+| cafe `npm test` | **4256 tests, 4255 pass, 0 fail, 1 skipped** (+8: I-3 ×3, the panel's I-3, M6, M4, the sound, M8) |
+| cafe `tsc`; lint | 0; 0 errors and the 2 old warnings |
+| Hub `tsc`; mobile `tsc`, lint, `npm test`, `test:app` | 0; 0, 0, **114/114**, Jest **3/3** (no app code changed) |
+| desktop; print tools | **191/191**; **8/8** |
+| live legs | **`220 passed, 0 failed`** (+1, M5) |
+| Next build | success, **123 routes** (`main` builds 119; Phase 1 adds the 4 lifecycle routes) |
+| APKs | see "APKs at the end" below |
+
+### The emulator spot-check (final build)
+
+Set-up:
+- AVD `Pixel_7_API_33`, WebView 109.0.5414.123, booted at `-memory 4096`. The crash buffer was empty at both boots and at the end.
+- A fresh database `pos_scratch_e2e_p1final`, with its env file written by `make-env.py` (never printed); seeded with e2eadmin, T-1…T-8 and the sample menu.
+- The POS on `localhost:3100`, reached by the app through a scratchpad proxy (`gate-proxy.mjs`, which logs each request and whether a pulse named a device, and can answer 503 to the wake). The fake printer on 9100, one `--out` folder per run.
+- The app signed in, on the network printer `10.0.2.2:9100`, as **Print all slips on this device**.
+- Screenshots in this gate's scratchpad, `28c672ef…/scratchpad/shots/f-*`. Times are UTC.
+
+1. **I-2: the host hears other devices' slips through its pulse.** Every wake was answered 503, and the host's pulses carried its id (`?device=05ded80c…`). A KOT the script made at 12:53:52.44 (ORD-…-002): the host's next pulse at 12:53:59.437 was followed by a lease 35 ms later, then one copy (40,494 B, unlabelled) and the ack at 12:54:00.18. Log `created, leased, printed`.
+2. **I-1: the dashboard band's Print.** A KOT made with the printer off was set as one "maybe" leaves it, aged 31 min (`e2e-stale.ts`: `queued`, REPRINT, `uncertainAttempts 1`). On the host's dashboard the band showed "KOT round 1 · T-3 · 32 min" with Print and Dismiss (`f-03`). Print at 12:57:05.25 led to `POST …/retry` (12:57:05.345), a lease (.378), **one REPRINT copy, 46,110 B, banner decoded** (`f-raster-band-reprint.png`), and the ack. Log `… retried(print now), leased, printed`. No `/claim` call.
+3. **A lost ack prints a REPRINT copy.** ORD-…-004's KOT was leased as the host at 12:58:01.75 and never acked. **One REPRINT copy, 46,110 B**, at 12:59:36.07: epoch 2, `uncertainAttempts 1`. Log `created, leased, expired(lease expired: may have printed), leased, printed`.
+4. **A bill that may have printed asks the cashier.** Its bill was leased at 12:59:50 and never acked, reaching `needs-confirm` by 13:01:31. The notice read "Bill · ORD-20261003-004 may not have printed." with Show. The panel showed "Check the bill (1)", with buttons named "Print again Bill · ORD-20261003-004", "It printed …" and "Clear …". **Print again** at 13:02:19 gave **one DUPLICATE copy, 41,718 B** (`f-raster-duplicate.png`). Log `… confirmed(print again: Admin), leased, printed`.
+5. **A printer that is off costs no attempt, and the alarm rings with no touch.** The printer was stopped and the app relaunched and **not touched**. A KOT (ORD-…-005) at 13:06:44.83 produced the notice "KOT round 1 · T-4 has not printed yet." (`f-04`), and a new AAudio player of the app (uid 10177) started at 13:07:06.63, 21.8 s after the KOT. The job stayed `queued`, epoch 0, `uncertainAttempts 0` (log `created`). With the printer back it printed **once, unlabelled** (40,494 B) at 13:08:19.5.
+6. **The alert sound needs no app change.** That run used an APK rebuilt with a WebView prop (`mediaPlaybackRequiresUserAction={false}`). As a control, today's APK (`fc4181e4…`) was reinstalled, the app relaunched untouched, and a KOT made at 13:09:03.43. An AAudio player started at the launch (13:08:38.3, the mount-time try; it idled at 13:09:08) and **another at 13:09:38.67, the alarm**: `state:started`. Android's WebView lets the page's own AudioContext start without a touch; the old code simply never tried before one. **The WebView prop was reverted:** no app change, and the APKs are byte-identical to 1E's.
+7. **The 100-order soak on the final build** (the app as host): 100 orders, 50 rounds, 100 bills = **250 slips, all `printed`, 250 full copies, 0 cut, `pass: true`** (2.8 min).
+
+**Seen, and explained (a test artifact, not a product bug).** At 13:12:18 the repair re-created ORD-…-003's round-1 KOT (`queuedBy: "Repair"`) and it printed a second time. The step-2 script had backdated that job's `createdAt` 31 minutes before its round fired. The 45 min prune deleted the printed row inside the round's 30 min repair window, and the repair (right to do so) re-created it. A real job is always made after its round fires: the items route stamps the fire time before its write. So a printed row is never pruned inside the window; `print-budget.test.ts` pins that floor, and this run shows why it matters. The band itself also showed "Print host shows a dialog for every slip.": that is `silentMode`, set only by the setup card's test-print attestation, which this harness never runs. It predates Phase 1; no Phase 1 commit touches it.
+
+### I-4: the pulse's own cost, measured
+
+**The A/B.** `main` (`a27614e`, built in a scratch clone: 119 routes) and the final tree each served the same database (after the 100-order soak) on `localhost:3100`. In turn, 8 simulated devices each polled the pulse every 20 s for 10 minutes, after 20 warm-up pulses (`pulse-ab.ts`). Each device named itself (`?device=`, ignored by `main`): the no-host worst case. The server process's CPU was read before and after.
+
+| Run | Pulses | Server CPU | CPU per pulse | Mean answer |
+|---|---|---|---|---|
+| A, `main` | 240 | 3,875 ms (374 ms/min) | 16.15 ms | 10.0 ms |
+| B, the branch, first run | 240 | 5,281 ms (510 ms/min) | 22.01 ms | 10.1 ms |
+| B, the branch, clean | 240 | 3,219 ms (311 ms/min) | 13.41 ms | 8.5 ms |
+
+The first B run was **contaminated**: as print host the app had relaunched itself, and 83 of its requests (page loads, bootstrap, its own pulses and wakes) reached the server in that window, where A's had none. With the app cut off (`adb reverse --remove-all`), the clean run was below `main`. End to end, Phase 1's pulse cost is lost in run-to-run noise.
+
+**Each addition, by itself** (`bench-pulse.ts`: the app's own code and Mongo driver in one process, `process.cpuUsage`):
+
+| Call | CPU per call, 100 orders in the repair window | CPU per call, none |
+|---|---|---|
+| `readPosPulse` (the pulse `main` serves, for scale) | 3.13 ms | 2.66 ms |
+| `readPrintAttention` (every pulse) | 0.57 ms | 0.62 ms |
+| `readJobsForDevice` (an agent's pulse) | 0.41 ms | 0.42 ms |
+| `sweepPrintJobs` (repair included; at most once a minute per instance) | 5.47 ms | 2.58 ms |
+| `prunePrintJobs` (at most once every 5 min) | 4.70 ms | 0 ms |
+
+**Projected on the busy day of spec §17.2** (8 devices, 12 h: 17,280 pulses; Active CPU allowance ≈ 480 s a day):
+- the attention read on every pulse, 9.9 s;
+- `jobsForMe` on the 3 printing devices' pulses (no host: the worst Phase 1 case), 2.7 s;
+- the sweep every minute at its heavy cost, 3.9 s;
+- the prune, 0.7 s.
+
+That is **≈ 17 s a day, 3.6 % of Active CPU**. Even with all 8 devices naming themselves and two warm instances each sweeping, it stays under 26 s (5.4 %). Added to 1E's measured printing share (6.7 % with a host, 6.2 % without), printing stays at **≈ 10 % ≤ 15 %**. I-4 needs no cadence change.
+
+### APKs at the end
+
+After the WebView prop was reverted, both APKs were rebuilt from the final tree: see the table below this section's rulings ("APKs, final").
+
+### Leftovers
+
+`pos_scratch_e2e_p1final` (e2eadmin, 8 tables, the sample menu, 106 orders, about 250 print jobs that the prune keeps reaping, a PrintHost) and its env file `28c672ef…/scratchpad/e2e.env` are left.
+- The scratch clone `28c672ef…/scratchpad/mainA` (`main` at `a27614e`, its `node_modules` junctioned, a real copy of `next`, and its build) is left in the scratchpad.
+- `adb reverse` was removed; `pm clear com.possoftware.pos`; the emulator, the POS servers, the proxy and every fake printer were stopped by PID (command lines checked).
+- `adb logcat -b crash`: 0 lines at both boots, before the APK rebuild, and at the end.
+
+## Phase 1 final gate: rulings (2026-10-03)
+
+Every ruling is also in spec §7.10, "Rulings at the Phase 1 final review gate" (and §6.5, §7.5, §7.8).
+
+| # | Finding | Ruling |
+|---|---|---|
+| I-1 | The band's Print used the old claim (no banner, printed before paper) | **Fixed:** the lifecycle's Print now; no claim from new builds; no server guard (a rollback is ruled out, and a refused claim would stall an old host tab's drain) |
+| I-2 | The host left out of the pulse | **Fixed:** every agent names itself; proven with the wake blocked |
+| I-3 | Windows failures all read as "maybe" | **Fixed:** the shell's sentence unwrapped and classified; parity-pinned against `apps/desktop/src`; the panel shows the shell's words. A Windows printer switched OFF still looks printed to the spooler (the driver accepts the job): Windows spooler status is Phase 3 (§9.6) |
+| I-4 | The pulse's added cost not counted | **Measured, no change:** ≈ 3.6 % (worst ≈ 5.4 %); printing ≈ 10 % ≤ 15 % |
+| m-1 | Unused index | **Fixed:** dropped |
+| m-2 | Worker deploy order | **Ruled:** the go-live run already redeploys the Worker before the app; GO-LIVE-CHECKLIST now says to use it for such a release |
+| m-3 | Pending acks without Web Locks | **No change:** production is HTTPS; every shell here has Web Locks |
+| M2 | The feed's window ended before the grace | **Fixed:** window 3 h 15 min |
+| M3 | "Leased lately" overstated | **Wording** (spec §7.8, the prune's comment, the pin) |
+| M4 | The summary kept its first count | **Fixed:** it counts what it stands for, and goes with the last |
+| M5 | "20+" at exactly 20 | **Fixed:** one row more than shown |
+| M6 | Print now on a stale slip kept its notice | **Fixed:** it goes quietly (staff acted) |
+| M7 | TEST-CHECKLIST's "Couldn't print" sentence | **Fixed** |
+| M8 | The soak's database check | **Fixed:** local only, and the first order must be in it |
+| M9 | The app-mode soak compares totals | **No change:** a test tool; its agent mode is exact per job, and it ran R3 |
+| M10 | Message-less asserts; stale hours | **Wording fixed;** a message-less `assert.equal`/`deepEqual` cannot hang (only a falsy `assert.ok` without a message reads the source) |
+| Alert sound | An untouched printing device never rang after a restart | **Fixed (web only):** one try on mount; proven on WebView 109 with today's APK; no app change. The Windows app is expected to behave the same (Electron's default autoplay policy); the owner checks it with TEST-CHECKLIST's new item. A plain browser tab still needs one touch |
+| G5 | Android TCP cannot see a mid-slip cut | **Phase 3**, unchanged |
+
+**Phase 1 exit criteria (spec §14):** all met. They were met in 1E, re-confirmed here on the final build (spot-check items 1–7), and the free-tier measurement now includes the pulse.
+
+**Deploy or wait for Phase 2: recommended, wait for nothing in Phase 1; the owner decides.** The owner's rule is that nothing is deployed until every phase is done, and that stands unless the owner chooses otherwise. Phase 1 alone is deployable, if the owner wants its reliability sooner:
+- it is web-only (the APKs are unchanged), and old tabs and old APKs keep working;
+- it needs the go-live run per cafe (the Worker before the app), then a reload of every POS screen;
+- the real-printer run of TEST-CHECKLIST's "Printing lifecycle checks" comes first, on one cafe's own printers.
+
+Phase 2 changes the APK (bridge v2) and adds stations; it does not depend on Phase 1 being live.
+
+**APKs, final** (rebuilt from the final tree after the WebView prop was reverted; `GRADLE_USER_HOME='D:\gradle-home'`; both `BUILD SUCCESSFUL`; each APK holds only its own ABI): **byte-identical to Sessions 1D and 1E**. Phase 1 changes no app code.
+
+| APK | Size | SHA-256 |
+|---|---|---|
+| Emulator only (x86_64) | 7,407,761 B | `fc4181e4f20799576277c7be312316d34d46db23b286bad6b13fec1cad5f13d3` |
+| Client, arm64-v8a | 7,276,038 B | `9f89cd9a172b2ab8d5b72872bca947c44ae3c7c74c3a33dfc118e9c00e180ff7` |
+| Client, armeabi-v7a | 6,683,872 B | `f3f6214982c9122dbc7c28f415d7a478a8aef392b834bf8213cb909c73f426cc` |
+
+(The test build with the reverted WebView prop hashed x86_64 `06b5747f…`, arm64-v8a `91b48fa6…`, armeabi-v7a `cb17b81e…`; it was never committed.)

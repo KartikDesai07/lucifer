@@ -248,12 +248,12 @@ log: Array<{ at: Date;
 - **Old rows.** `claimedAt` and `claimedBy` stay on rows written before this change. New code never writes them.
 - **Old meaning of "printed".** A historical `printed` row means "claim won". The readback treats rows without `printedAt` as legacy.
 - **Indexes:**
-  - `{ status: 1, nextAttemptAt: 1, createdAt: 1, _id: 1 }`
-  - `{ printerId: 1, status: 1, createdAt: 1, _id: 1 }`
+  - `{ status: 1, nextAttemptAt: 1, createdAt: 1, _id: 1 }` (not created in Phase 1, §7.10: no query uses it)
+  - `{ printerId: 1, status: 1, createdAt: 1, _id: 1 }` (Phase 2)
   - `{ targetDeviceId: 1, status: 1, createdAt: 1, _id: 1 }`
-  - `{ originDeviceId: 1, createdAt: -1 }`
+  - ~~`{ originDeviceId: 1, createdAt: -1 }`~~ dropped at the Phase 1 final gate (m-1): it served `myRecentJobs`, which the 1C gate replaced with the one attention feed; nothing reads by it. Phase 1 was never deployed, so no database has it.
   - `jobKey`: unique and sparse (existing)
-- The existing `{ status: 1, createdAt: 1, _id: 1 }` index stays for the prune sweep.
+- The existing `{ status: 1, createdAt: 1, _id: 1 }` index stays for the prune sweep and the attention feed. Phase 1 creates exactly three `PrintJob` indexes (pinned).
 
 ### 6.6 Compatibility: simple mode
 
@@ -347,6 +347,7 @@ any unresolved ──dismiss (staff, order cancelled, host cleared)──► dis
 | Android bridge | `NOT_CONNECTED`, `UNAUTHORIZED`, `UNSUPPORTED`, `BUSY`, `BLUETOOTH_OFF` | `WRITE_FAILED`, `TIMEOUT` | `BAD_REQUEST`, `TOO_LARGE` |
 | Web Serial / Web Bluetooth | the coded pre-write refusals added in Phase 0 (F0.1) | any error after the first chunk | — |
 | Windows app | no printer; cannot open the printer; TCP connect fails | an error after `StartDocPrinter` or after the first TCP write | — |
+| Windows app, as built (Phase 1 final gate, I-3) | the shell's own sentences for no printer chosen, a printer that writes files, no server address, no spooler, the chosen printer not found (unwrapped from the IPC error); "the slip did not finish drawing" is the slip's own refusal (§7.10, 1C gate I3) | everything else: no answer, refused, access denied, a Windows error, a short write, a driver failure | a blank slip, a slip too long |
 | Render step (raster or desktop capture) | timeout or error; nothing was sent | — | a payload that cannot be rendered |
 | Lease expiry | — | always | — |
 
@@ -377,7 +378,7 @@ any unresolved ──dismiss (staff, order cancelled, host cleared)──► dis
 | Stale, needs a tap | queued > 30 min (`PRINT_HOST_MAX_AGE_MS`, unchanged) | Stops yesterday's KOT printing at opening time |
 | Failed | the second attempt that may have printed (`uncertainAttempts ≥ 2`); a refusal (`sent:"no"`) never counts | The owner's rule after Session 1B: the first attempt plus one labelled retry, then staff decide (§10's panel). No automatic attempt while the printer is off (§9.1) |
 | Device offline | no heartbeat for 90 s | |
-| Retention | waiting slips (queued, needs-confirm, failed, a leased row) 3 h, unless staff acted on it or it was leased in the last 15 min; finished slips (printed, dismissed) 45 min; `PrintDevice` rows unseen for 7 days | The owner, after Session 1D: no print data kept longer than needed. Never under the KOT repair window (30 min) plus 15 min, or a deleted printed row could be re-created and print twice |
+| Retention | waiting slips (queued, needs-confirm, failed, a leased row) 3 h, unless staff acted on it in the last 15 min or it is still leased (a lease that runs, or ran out within 15 min; final gate M3); finished slips (printed, dismissed) 45 min; `PrintDevice` rows unseen for 7 days. The panel's feed reads 3 h 15 min (final gate M2) | The owner, after Session 1D: no print data kept longer than needed. Never under the KOT repair window (30 min) plus 15 min, or a deleted printed row could be re-created and print twice |
 
 ### 7.9 Late acknowledgements
 
@@ -447,6 +448,17 @@ The Phase 1 plan ([2026-10-02-phase-1-lifecycle.md](../plans/2026-10-02-phase-1-
 - **1C, 1D and 1E ship together.** A failed ack kept in the pending store would be re-sent as "printed" by a 1C-only build: never deploy, or roll back to, a 1C-only build.
 - **Replays after a prune: no guard.** A "Send again" replay that comes after its finished row was pruned would enqueue it again; it exists only while that POS is frozen on an unconfirmed send, so it is not a realistic path at 45 min, and a guard would add an order read to every client enqueue.
 - **Measured, no change:** a backgrounded or screen-off Android host drew and printed KOTs in 2–4 s (no I3 drawing timeout); F1's dropped unrelated kick costs latency only (≤ 30 s); a slow slip's lease expiring under its own agent is resolved by the late ack (§7.9).
+
+**Rulings at the Phase 1 final review gate (2026-10-03).** Fixed on the branch at the gate (TDD), unless noted:
+
+- **The dashboard band's Print is the lifecycle's Print now (I-1).** On a new build the host's "older slips" Print called the old `/claim`: it marked the row printed before any paper and printed it without its REPRINT/DUPLICATE banner. It now calls the panel's own Print now (`/retry`), so the agent prints the slip through the lifecycle (banner, ack), and a tapped row is released by its own answer. New builds never call `/claim`; it stays one release for old tabs. No server-side guard on `/claim`: a labelled row reaches an old host tab only after a rollback (ruled out), and a refused claim would stall that tab's drain on the row.
+- **The host names itself on the pulse too (I-2).** Spec text above already said a spent wake share leaves leasing to realtime nudges and the pulse; the host was left out of the pulse, so with the socket down and its share spent it heard of other devices' slips from nothing. Every agent now names itself (`?device=`): one bounded, index-backed read on the host's own pulse, no new request. Proven on the device with every wake answered 503: a KOT made by another device leased 35 ms after the next pulse and printed.
+- **The Windows app's failures are classified (I-3, §7.5).** The host bridge unwraps the shell's own sentence from the IPC error; before, every Windows failure read as "maybe" (a PC with no printer chosen turned each KOT into REPRINT, then "Couldn't print"). The sentences are copied in `lib/desktop-shell-messages.ts` and pinned word for word against `apps/desktop/src`. The panel shows a Windows refusal in the shell's own words ("No printer is chosen for this PC…").
+- **The pulse's own cost, measured (I-4).** See the plan's "Phase 1 final review (gate)": the pulse before and after Phase 1 on the same database and traffic, counted as printing.
+- **Minors.** M2: the feed's window is the queued retention plus the acted grace (3 h 15 min), so a slip tapped before its 3 h stays shown while the prune keeps it. M3: the grace keeps a slip staff acted on lately, or one still leased (every way out of a lease clears it); wording only. M4: the summary notice counts the slips it stands for and goes with the last of them. M5: the feed reads one row more than it shows, so exactly 20 waiting reads "20", and the alarm keeps a cut-off notice only when something was really cut off. M6: Print now on a stale slip is staff acting on it: its notice goes quietly. M7: TEST-CHECKLIST's "Couldn't print" names the printer's own sentence too. M8: the soak refuses a database that is not local, and stops after its first order unless that order is in its own database. M9: no change (a test tool; its agent mode is exact). M10: stale hours fixed in comments, leg labels and test names; a message-less `assert.equal` cannot hang (only a falsy `assert.ok` without a message reads the source).
+- **Reviewer minors.** m-1: the unused `{ originDeviceId, createdAt }` index is dropped (§6.5). m-2: an older Worker refuses `print-status`; the go-live run redeploys the Worker before the app, and GO-LIVE-CHECKLIST says to use it (not `npm run deploy` alone) for such a release. m-3: no change: production is HTTPS, and every shell here (WebView 109+, Electron, `localhost`) has Web Locks.
+- **The alarm rings after an untouched restart.** The page tried the sound only from a touch, so a printing device that restarted untouched never rang. It now tries once on mount as well. Measured on WebView 109 with today's APK: Android's WebView lets the page's own AudioContext start without a touch, so the ring sounds with no app change (the APKs stay byte-identical). The Windows app is expected to behave the same (Electron's default autoplay policy); the owner checks it (TEST-CHECKLIST). A plain browser tab still needs one touch.
+- **Seen at the gate, a test artifact:** a script that backdated a printed job's `createdAt` 31 minutes before its round fired let the 45 min prune delete it inside the 30 min repair window, and the repair printed the round again. A real job is always made after its round fired, so the pinned floor (finished retention ≥ repair window + 15 min) holds; the run shows why that floor matters.
 
 ## 8. Routing (Phase 2)
 

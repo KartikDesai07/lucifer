@@ -81,8 +81,23 @@ device as **Print all slips on this device** and a second device (phone or PC) t
       slip prints). Open the app again after 2 minutes: the KOT prints once more with
       **REPRINT** (a bill asks the cashier instead). Nothing prints a third time.
 - [ ] **Couldn't print.** A KOT whose two tries may both have printed (cut it twice) shows
-      under **Couldn't print**, "Tried twice. Check the printer, then retry." **Retry**
-      prints exactly one **REPRINT** copy.
+      under **Couldn't print** with a reason: "Tried twice. Check the printer, then retry.",
+      or the printer's own sentence (on USB, Bluetooth and the Windows app it may say what
+      failed). **Retry** prints exactly one **REPRINT** copy.
+- [ ] **An old slip from the dashboard.** With a KOT waiting over 30 minutes, tap **Print**
+      on it in the dashboard's "older slips" line (on the printing device) instead of the
+      panel: it prints once, through the same path as the panel's **Print now** (a slip
+      that was marked **REPRINT** keeps its banner).
+- [ ] **Windows app: no printer chosen.** In the Windows app, choose no printer (Settings →
+      Printing) or rename the chosen one in Windows, then send a KOT: it waits under
+      **Waiting for the printer** with "No printer is chosen for this PC…" (or "The chosen
+      printer was not found…"), and nothing is marked REPRINT. Choose the printer again:
+      the KOT prints once, **without a banner**.
+- [ ] **The alarm after a restart, untouched.** Restart the printing phone or tablet (and,
+      separately, the Windows app's PC), open the POS app and do **not** touch the screen.
+      Switch the printer off and send a KOT from the second device: within 20–40 seconds
+      the printing device **rings**. (The POS in a plain browser tab still needs one tap
+      after it opens before it can ring.)
 - [ ] **Clear from another device.** A waiting slip cleared on the second device leaves
       the first device's panel within about 20 seconds and never prints.
 - [ ] **Two rows at once.** With two slips waiting, tap **Print now** on one and at once on
