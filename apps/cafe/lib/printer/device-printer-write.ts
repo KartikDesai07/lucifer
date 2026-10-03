@@ -7,8 +7,10 @@ import {
 } from "@/lib/printer/web-printer-types";
 
 // The write pipeline of the device printer: one job at a time (FIFO), one
-// silent reconnect before the first send, one reconnect + ONE resend after a
-// fast failure, and a hard deadline over the whole job. The deadline is
+// silent reconnect before the first send, and one resend ONLY after a refusal
+// made before writing (NOT_CONNECTED, from the native app or a web lane). A
+// failed write may already have printed part or all of a slip; replaying it
+// duplicates orders. A hard deadline covers the whole job. The deadline is
 // measured from ENQUEUE (time spent waiting behind another slip counts) and
 // covers the reconnect and the resend; it stays under the 90 s host dispatch
 // window together with the raster step.
@@ -55,18 +57,21 @@ export function createWriteQueue(host: WriteHost): (bytes: Uint8Array) => Promis
       return await host.send(bytes);
     } catch (first) {
       const code = nativeErrorCode(first);
-      // A refusal the app explained (too large, Bluetooth off, busy, timed out)
-      // will not change on a resend.
-      if (code !== null && code !== "WRITE_FAILED" && code !== "NOT_CONNECTED") throw new Error(nativeErrorMessage(first));
-      if (job.expired || host.now() - job.enqueuedAt >= DEVICE_WRITE_DEADLINE_MS) throw new Error(PRINTER_WRITE_FAILED_MESSAGE);
+      if (code !== "NOT_CONNECTED") {
+        if (code === null || code === "WRITE_FAILED" || code === "TIMEOUT") host.markDisconnected();
+        throw new Error(code === null ? PRINTER_WRITE_FAILED_MESSAGE : nativeErrorMessage(first));
+      }
+      // Refused before writing (app or web lane): nothing printed, so a failure from here on says
+      // "not connected", and ONE reconnect plus ONE resend is safe.
+      if (job.expired || host.now() - job.enqueuedAt >= DEVICE_WRITE_DEADLINE_MS) throw new Error(PRINTER_NOT_CONNECTED_MESSAGE);
       host.markDisconnected();
       const reconnected = await host.reconnect();
-      if (job.expired || !reconnected) throw new Error(PRINTER_WRITE_FAILED_MESSAGE);
+      if (job.expired || !reconnected) throw new Error(PRINTER_NOT_CONNECTED_MESSAGE);
       try {
         return await host.send(bytes); // the ONE resend
-      } catch {
+      } catch (second) {
         host.markDisconnected();
-        throw new Error(PRINTER_WRITE_FAILED_MESSAGE);
+        throw new Error(nativeErrorCode(second) === "NOT_CONNECTED" ? PRINTER_NOT_CONNECTED_MESSAGE : PRINTER_WRITE_FAILED_MESSAGE);
       }
     }
   }

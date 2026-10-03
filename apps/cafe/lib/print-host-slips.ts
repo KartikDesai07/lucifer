@@ -62,12 +62,16 @@ export interface HostKotSlip {
   movedBy?: string;
   movedAt?: string;
   documentTitle: string;
+  /** Session 1C (spec §7.7): the job's labels as one inverted banner ("REPRINT"); absent for none. */
+  banner?: string;
 }
 
 export interface HostReceiptSlip {
   surface: "receipt";
   order: Order;
   documentTitle: string;
+  /** Session 1C (spec §7.7): "DUPLICATE" on a bill printed again; absent for none. */
+  banner?: string;
 }
 
 /** The one payload exception (§B1): a live aggregate the host recomputes. */

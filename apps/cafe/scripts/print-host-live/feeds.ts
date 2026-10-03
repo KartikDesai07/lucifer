@@ -87,7 +87,7 @@ export async function legE(nowMs: number): Promise<void> {
   for (let i = 0; i < PRINT_JOB_STALE_LIMIT + 2; i++) {
     await seedQueuedRow(new Date(cutoff.getTime() - 1000 * (i + 1)), i);
   }
-  // D3: more than PRINT_JOB_RESOLVED_LIMIT resolved rows within the 2h window
+  // D3: more than PRINT_JOB_RESOLVED_LIMIT resolved rows within the resolved window (45 min)
   // (30, per the amendment) so the doc-examine bound is meaningful.
   for (let i = 0; i < 30; i++) {
     await seedResolvedRow(new Date(resolvedCutoff.getTime() + 1000 * (i + 1)), i, i % 2 === 0 ? "printed" : "dismissed");
@@ -146,7 +146,7 @@ export async function legE(nowMs: number): Promise<void> {
   // MEASURED on the stand-in mongod 6.0.3 (PH-10 build run): the D3 tree is
   // LIMIT>PROJECTION_SIMPLE>FETCH>SORT_MERGE>IXSCAN>IXSCAN — the $in on status
   // becomes two backward IXSCANs merged in sort order, so no blocking SORT
-  // stage ever materialises the 2h window. Pinned as measured (the plan's
+  // stage ever materialises the resolved window. Pinned as measured (the plan's
   // "SORT_MERGE over two IXSCANs" oracle, now proven here), and the full
   // stage list is printed so a deploy-target re-run can be compared by eye.
   const d3IxscanCount = d3Stages.filter((s) => s === "IXSCAN").length;

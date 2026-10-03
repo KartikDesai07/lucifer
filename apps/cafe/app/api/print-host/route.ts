@@ -9,6 +9,7 @@ import {
   clearPrintHost,
 } from "@/lib/print-host";
 import { dismissQueuedPrintJobsForClearedHost, prunePrintJobs } from "@/lib/print-queue";
+import { returnPrintJobsToOrigins } from "@/lib/print-sweep";
 import { success, failure, requireAuth, serverError, validateBody } from "@/lib/api-helpers";
 import { noStore } from "@/lib/order-request-tray";
 
@@ -132,6 +133,9 @@ export async function DELETE() {
     }
 
     const dismissed = await dismissQueuedPrintJobsForClearedHost(dismissedBy);
+    // Phase 1 (1A review I1 part 2): a waiting slip that names the device that asked for it goes back
+    // there — with no host each device prints its own (§6.6) — and that device is nudged to lease it.
+    await returnPrintJobsToOrigins(nowMs);
 
     return noStore(success({ cleared, dismissed }));
   } catch (error) {

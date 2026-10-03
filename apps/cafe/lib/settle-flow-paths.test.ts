@@ -71,7 +71,8 @@ test("P2: the hook is a thin shell — one controller, useSettleOrder's mutateAs
   assert.equal(count(src, "createSettleFlow("), 1, "one controller per hook");
   assert.ok(src.includes("const [flow] = useState(() =>"), "created once per mounted hook, never per render");
   // send = the settle mutation's mutateAsync, always the latest commit's.
-  assert.ok(src.includes("const settleOrder = useSettleOrder();"));
+  // Session 1C (R1): the hook passes on whether its caller prints the bill; still one settle mutation.
+  assert.ok(src.includes("const settleOrder = useSettleOrder({ printsBill: options.printsBill === true });"), "one settle mutation, told whether the bill prints");
   assert.ok(src.includes("sendRef.current = settleOrder.mutateAsync;"));
   assert.ok(src.includes("send: (id, data) => sendRef.current({ id, data }),"));
   assert.equal(count(src, "sendRef.current("), 1, "exactly one POST site");

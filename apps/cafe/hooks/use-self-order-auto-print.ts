@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiSend } from "@/lib/api-client";
+import { printAgentRequestOptions } from "@/lib/print-agent-calls";
 import { autoPrintCandidate } from "@pos/shared/self-order-alert";
 import { usePosPulseContext, usePrintHostRouting } from "@/components/layout/PosPulseProvider";
 import { useCanPrintNow } from "@/hooks/use-device-printer";
@@ -82,7 +83,8 @@ export function useSelfOrderAutoPrint({
 
   const claim = useMutation({
     mutationFn: (requestId: string) =>
-      apiSend<KotClaimResult>(`/api/order-requests/${requestId}/kot-claim`, "POST"),
+      // Session 1C (R4, job-aware lane): the claim makes the KOT a print job; queueKotRound follows it.
+      apiSend<KotClaimResult>(`/api/order-requests/${requestId}/kot-claim`, "POST", undefined, printAgentRequestOptions()),
   });
   // useMutation returns a NEW result object every render ({...result, mutate})
   // while `mutate` itself is useCallback-stable — depending on `claim` here

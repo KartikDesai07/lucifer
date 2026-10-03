@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiGet, apiSend } from "@/lib/api-client";
+import { printAgentRequestOptions } from "@/lib/print-agent-calls";
 import { STALE_TIMES } from "@/lib/query";
 import { ORDER_KEYS } from "@/hooks/use-orders";
 import { TABLE_KEYS } from "@/hooks/use-tables";
@@ -130,8 +131,12 @@ export function useAcceptOrderRequest(options?: UseAcceptOrderRequestOptions) {
   const qc = useQueryClient();
   return useMutation({
     mutationKey: ORDER_REQUEST_KEYS.mutation,
-    mutationFn: (id: string) =>
-      apiSend<AcceptResult>(`/api/order-requests/${id}/accept`, "POST"),
+    // Session 1C (R1): this hook's one caller (the requests page) prints the accepted round's KOT. The
+    // answer names its job beside the order; it rides ON the order, where the KOT print reads it.
+    mutationFn: async (id: string) => {
+      const result = await apiSend<AcceptResult & { printJobs?: unknown }>(`/api/order-requests/${id}/accept`, "POST", undefined, printAgentRequestOptions());
+      return result.printJobs === undefined ? result : { ...result, order: { ...result.order, printJobs: result.printJobs } };
+    },
     // FIX10 — a replayed accept did no new work server-side; say so instead
     // of promising a KOT that was already queued (and printed) the first time.
     onSuccess: (result) => {

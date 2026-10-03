@@ -195,6 +195,14 @@ Nothing in §1 can start until all of these exist.
       another — the board updates within about a second instead of waiting for
       its poll. Left empty (the default), the cafe polls exactly as before —
       nothing to verify here.
+- [ ] **Realtime, existing cafes — redeploy the Worker with each release that adds
+      an event kind** (printing Phase 1 adds `print-status`). An older Worker
+      answers 400 to a kind it does not know; the cafe swallows that, so nothing
+      breaks, but the new frames never arrive and the print readback waits for
+      its 20 s pulse instead. Re-run the go-live run for the cafe: its Realtime
+      step sees the changed Worker source (`sourceHash`) and redeploys it, BEFORE
+      the app's deploy. For such a release use the go-live run, not
+      `npm run deploy -- --profile <slug>` alone: that deploys only the app.
 - [ ] `GET /api/health` returns HTTP 200 with `ok: true` and `db: "up"`. A 503
       carrying `db: "down"` means the app is running but cannot reach the
       cluster — check the Atlas allowlist and `MONGODB_URI` before continuing.
@@ -1190,7 +1198,8 @@ the test fails — fix the code or this file, never just this file.
 | Print host offline threshold | 180 seconds (3 missed ~60 s throttled beats) | `PRINT_HOST_OFFLINE_MS` |
 | Print-job drain feed cap (per pulse) | 10 | `PRINT_JOB_PULSE_LIMIT` |
 | Print-job stale-band feed cap | 20 | `PRINT_JOB_STALE_LIMIT` |
-| Queued print job retention | 12 hours | `PRINT_JOB_QUEUED_RETENTION_MS` |
+| Queued print job retention | 3 hours | `PRINT_JOB_QUEUED_RETENTION_MS` |
+| Finished print job retention | 45 minutes | `PRINT_JOB_RESOLVED_RETENTION_MS` |
 | Desktop app installer | `POS-Software-Setup-${version}.exe` | `apps/desktop/package.json` (`build.nsis.artifactName`) |
 | Print host silent-off warning | `Print host shows a dialog for every slip.` | `PRINT_HOST_SILENT_OFF_WARNING` |
 | Print host active note | `Slips print at <label>.` | `PRINT_HOST_ACTIVE_NOTE` |

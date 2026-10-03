@@ -73,7 +73,7 @@ function roomName(tenantId: string): string {
 
 /** The event kinds slice 1 carries. A device subscribes to the whole room and
  *  ignores kinds it does not care about — adding a kind needs no room change. */
-const EVENT_KINDS = ["kot-fired", "kot-ticked", "order-changed", "self-order", "print-job"] as const;
+const EVENT_KINDS = ["kot-fired", "kot-ticked", "order-changed", "self-order", "print-job", "print-status"] as const;
 type EventKind = (typeof EVENT_KINDS)[number];
 
 function isEventKind(value: unknown): value is EventKind {
@@ -83,11 +83,14 @@ function isEventKind(value: unknown): value is EventKind {
 /** Publish envelope — deliberately CARRIES NO ORDER DATA. It is a nudge, not a
  *  feed: the device refetches its own authenticated query and the server stays
  *  the single source of truth. That is what keeps this Worker out of the trust
- *  path entirely — it never sees a price, a customer, or a bill. */
+ *  path entirely — it never sees a price, a customer, or a bill. A "print-status"
+ *  envelope (printing Phase 1) also names one print job: its id, its status and the
+ *  device that prints it. That is still no order content; the room relays it as is. */
 interface PublishEnvelope {
   tenant: string;
   kind: EventKind;
   at: string;
+  job?: { id: string; status: string; target?: string };
 }
 
 /** Bound the signed body. `content-length` is only a hint (it is absent on a

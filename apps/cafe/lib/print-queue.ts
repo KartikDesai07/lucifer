@@ -2,17 +2,21 @@ import { isDuplicateKeyError } from "@pos/shared/api";
 import {
   PRINT_HOST_KEY,
   PRINT_HOST_MAX_AGE_MS,
+  PRINT_JOB_ACTED_GRACE_MS,
   PRINT_JOB_PRUNE_MIN_INTERVAL_MS,
   PRINT_JOB_QUEUED_RETENTION_MS,
   PRINT_JOB_RESOLVED_RETENTION_MS,
+  PRINT_JOB_UNRESOLVED_STATUSES,
   printJobPayloadWithinCap,
   type PrintJobDismissReason,
   type PrintJobEnqueueResult,
 } from "@pos/shared/print-job";
+import { PRINT_JOB_LOG_MAX, printJobCreatedLog, printJobInitialLabels, printJobLifecycleInit } from "@pos/shared/print-lifecycle";
 import type { PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 import { PrintHost } from "@/models/PrintHost";
 import { PrintJob } from "@/models/PrintJob";
-import { publishCafeEvent } from "@/lib/realtime-publish";
+import { prunePrintDevices } from "@/lib/print-device";
+import { publishCafeEvent, publishPrintStatus } from "@/lib/realtime-publish";
 
 // Print-host plan (.claude/plan/v2/print-host-plan.md §B1/§B3/§B4) — the
 // PrintJob queue: enqueue, dismiss, and the lazy prune sweep (the §B4 feed
@@ -39,7 +43,7 @@ export function printJobKeyOf(payload: PrintJobPayload): string | undefined {
     // reprint is a staff-requested duplicate that must ALWAYS get a fresh
     // job; the dedupe fence exists only to collapse a RETRY of the SAME
     // first-time enqueue (else it collides E11000 with the still-"printed"
-    // original for the full 2h retention window, and "Print bill" silently
+    // original for its full retention window, and "Print bill" silently
     // does nothing). PH-4/PH-6's routing wrapper MUST set `reprint: true` on
     // every reprint path.
     case "bill":
@@ -75,6 +79,9 @@ export function resolvedPruneCutoff(nowMs: number): Date {
 export function drainAgeCutoff(nowMs: number): Date {
   return new Date(nowMs - PRINT_HOST_MAX_AGE_MS);
 }
+export function actedGraceCutoff(nowMs: number): Date {
+  return new Date(nowMs - PRINT_JOB_ACTED_GRACE_MS);
+}
 
 // The orphan dismiss below (enqueuePrintJob step 3) is SERVER-INITIATED — a
 // DELETE /api/print-host teardown that raced the create, not a decision the
@@ -87,6 +94,12 @@ export async function enqueuePrintJob(input: {
   payload: PrintJobPayload;
   label: string;
   queuedBy: string;
+  /** The client's Idempotency-Key: a deliberate repeat it starts (reprint, EOD, cancel notice)
+   *  dedupes on it, so a retried POST is one job (spec §6.5 `reprint:<key>`). */
+  idempotencyKey?: string;
+  /** The device that asked (x-pos-device-id); its readback follows the job (spec §6.5). */
+  originDeviceId?: string;
+  nowMs?: number;
 }): Promise<PrintJobEnqueueResult> {
   // (1) Belt-and-braces cap — the route also 400s this; this is the single
   // write point so it fences independently of the route's own check.
@@ -95,11 +108,15 @@ export async function enqueuePrintJob(input: {
 
   // (2) No host configured ⇒ create nothing. This is the answer PH-4's
   // routing wrapper falls back to a local print on.
-  const host = await PrintHost.findOne({ key: PRINT_HOST_KEY }).select("_id").lean();
+  // deviceId too: simple mode with a host (spec §6.6) leases every job to the host.
+  const host = await PrintHost.findOne({ key: PRINT_HOST_KEY }).select("deviceId").lean();
   if (!host) return { outcome: "no-host" };
 
   const orderId = printJobOrderIdOf(input.payload);
-  const jobKey = printJobKeyOf(input.payload);
+  // A deliberate repeat has no deterministic key; the client's Idempotency-Key collapses its retries.
+  const jobKey =
+    printJobKeyOf(input.payload) ?? (input.idempotencyKey !== undefined ? `reprint:${input.idempotencyKey}` : undefined);
+  const nowMs = input.nowMs ?? Date.now();
 
   let createdId: string;
   try {
@@ -113,6 +130,13 @@ export async function enqueuePrintJob(input: {
       // `status` defaults to "queued" in the model — never passed here.
       ...(orderId !== undefined ? { orderId } : {}),
       ...(jobKey !== undefined ? { jobKey } : {}),
+      // Phase 1 lifecycle (spec §6.5): leased by the host, acknowledged, retried. The legacy /claim
+      // path ignores every one of these fields, so a tab from before Phase 1 still drains it.
+      targetDeviceId: host.deviceId,
+      ...(input.originDeviceId !== undefined ? { originDeviceId: input.originDeviceId } : {}),
+      copyIndex: 0,
+      ...printJobLifecycleInit(nowMs, printJobInitialLabels(input.payload)),
+      log: [printJobCreatedLog(nowMs, input.originDeviceId)],
     });
     createdId = String(created._id);
   } catch (error) {
@@ -158,6 +182,21 @@ export async function enqueuePrintJob(input: {
   // the one outcome that does NOT authorize a local duplicate print.
   try {
     const hostStillThere = await PrintHost.findOne({ key: PRINT_HOST_KEY }).select("_id").lean();
+    if (!hostStillThere && input.originDeviceId !== undefined) {
+      // Session 1B final review M-a: a row that names the device that asked for it is not an orphan.
+      // With no host that device prints its own slips (§6.6), so the row goes home now, and the asking
+      // agent follows it by id. Dismissing it would make the agent's own fallback enqueue collide with
+      // a dismissed row under the same key, and the slip would print nowhere.
+      await PrintJob.updateOne(
+        { _id: createdId, status: "queued" },
+        {
+          $set: { targetDeviceId: input.originDeviceId },
+          $push: { log: { $each: [{ at: new Date(nowMs), event: "retargeted", deviceId: input.originDeviceId }], $slice: -PRINT_JOB_LOG_MAX } },
+        },
+      );
+      publishPrintStatus({ id: createdId, status: "queued", target: input.originDeviceId });
+      return { outcome: "queued", id: createdId, duplicate: false };
+    }
     if (!hostStillThere) {
       const orphanDismiss = await dismissPrintJob({
         id: createdId,
@@ -189,6 +228,9 @@ export async function enqueuePrintJob(input: {
   // the job is already committed, and the poll still finds it if the nudge is
   // lost. Correctness stays with print-queue-claim.ts's CAS, never with this.
   publishCafeEvent("print-job");
+  // Session 1B final review M-e: like a server-made job, an enqueued one announces itself to the
+  // agent it is aimed at (R7: that agent leases on it) and to the asking device's readback.
+  publishPrintStatus({ id: createdId, status: "queued", target: host.deviceId });
   return { outcome: "queued", id: createdId, duplicate: false };
 }
 
@@ -203,8 +245,10 @@ export async function dismissPrintJob(input: {
     {
       _id: input.id,
       // Dropping this would let a staff dismiss race a resolved job back to
-      // "dismissed", overwriting a real print/earlier dismiss.
-      status: "queued",
+      // "dismissed", overwriting a real print/earlier dismiss. Phase 1: every
+      // parked or waiting state, but never "leased" — its writer may be printing
+      // it right now (a dead writer's lease expires in 90 s, then it is dismissable).
+      status: { $in: ["queued", "needs-confirm", "failed"] },
       // Dropping this would let a dismiss trample a job the host claimed in
       // the same instant — the claim CAS owns any job past this point.
       claimedAt: { $exists: false },
@@ -212,7 +256,11 @@ export async function dismissPrintJob(input: {
     { $set: { status: "dismissed", dismissedAt: new Date(), dismissReason: input.reason, dismissedBy: input.dismissedBy } },
     { new: true },
   );
-  if (dismissed) return { dismissed: true };
+  if (dismissed) {
+    // Phase 1 (spec §10): the ordering device's readback hears it at once; the pulse is the fallback.
+    publishPrintStatus({ id: input.id, status: "dismissed" });
+    return { dismissed: true };
+  }
 
   // A lost race here is a NORMAL 200 outcome (mirrors claimKotPrint's doc
   // comment), not an error — one extra existence read tells "never existed"
@@ -221,14 +269,19 @@ export async function dismissPrintJob(input: {
   return { dismissed: false, reason: exists ? "raced" : "not-found" };
 }
 
-/** The DELETE-host bulk teardown (§B3) — returns how many queued jobs it
+/** The DELETE-host bulk teardown (§B3) — returns how many jobs it
  *  dismissed. This is the 5th writer of a PrintJob (§B2's reciprocal-guard
  *  list) and it carries the SAME `claimedAt:{$exists:false}` guard as the
  *  single dismiss so it can never trample a job the host claimed in the same
- *  instant. */
+ *  instant. Phase 1 (spec §7.1): the same states as the single dismiss, so a
+ *  parked or failed slip aimed at the cleared host is not left behind with no
+ *  device that may print it; never "leased" (its writer may be printing it).
+ *  Session 1B (1A review I1 part 2): a job that names the device that asked for
+ *  it is NOT dismissed — with no host that device prints its own slips (§6.6),
+ *  so routeWaitingPrintJobs (print-sweep.ts) sends it back there instead. */
 export async function dismissQueuedPrintJobsForClearedHost(dismissedBy: string): Promise<number> {
   const res = await PrintJob.updateMany(
-    { status: "queued", claimedAt: { $exists: false } },
+    { status: { $in: ["queued", "needs-confirm", "failed"] }, claimedAt: { $exists: false }, originDeviceId: { $exists: false } },
     { $set: { status: "dismissed", dismissedAt: new Date(), dismissReason: "host-cleared", dismissedBy } },
   );
   return res.modifiedCount ?? 0;
@@ -237,19 +290,36 @@ export async function dismissQueuedPrintJobsForClearedHost(dismissedBy: string):
 /**
  * Best-effort reap, mirroring pruneOrderRequests' discipline: retention is a
  * LAZY SWEEP, not a TTL index (ttl-guard default-deny), it deliberately
- * deletes never-printed jobs past 12h (a Friday KOT must not print Monday —
+ * deletes never-printed jobs past 3 h (a Friday KOT must not print Monday —
  * MERGED-14), and it filters `createdAt`, never `updatedAt` (no index on
- * updatedAt; mirrors order-request-intake.ts:57-61).
+ * updatedAt; mirrors order-request-intake.ts:57-61). The owner, after
+ * Session 1D: no print data kept longer than needed — finished rows go after
+ * 45 min (never inside the KOT repair window), and device rows not seen for
+ * 7 days go too. It rides the throttled sweep the pulse already runs after
+ * its answer: no cron, no new request.
  */
 export async function prunePrintJobs(nowMs: number): Promise<void> {
   try {
-    await PrintJob.deleteMany({ status: "queued", createdAt: { $lt: queuedPruneCutoff(nowMs) } });
+    // A slip still waiting that nobody acted on goes after 3 h. One staff tapped lately (approvedAt), or
+    // one still leased whose lease runs or ran out lately (it may be printing; every way out of a lease
+    // clears it), gets its try first: never deleted mid-flight.
+    const acted = actedGraceCutoff(nowMs);
+    await PrintJob.deleteMany({
+      status: { $in: [...PRINT_JOB_UNRESOLVED_STATUSES] }, createdAt: { $lt: queuedPruneCutoff(nowMs) },
+      approvedAt: { $not: { $gte: acted } },
+      "lease.expiresAt": { $not: { $gte: acted } },
+    });
     await PrintJob.deleteMany({
       status: { $in: ["printed", "dismissed"] },
       createdAt: { $lt: resolvedPruneCutoff(nowMs) },
     });
   } catch {
     // best-effort — see comment above
+  }
+  try {
+    await prunePrintDevices(nowMs);
+  } catch {
+    // best-effort, like the rows above
   }
 }
 

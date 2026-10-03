@@ -3,89 +3,75 @@
 import { useCallback, useMemo, type MutableRefObject } from "react";
 
 import { PRINT_HOST_MAX_AGE_MS } from "@pos/shared/print-job";
-import { usePrintJobFeed } from "@/components/layout/PosPulseProvider";
+import { usePrintHostRouting } from "@/components/layout/PosPulseProvider";
 import { useCanPrintNow } from "@/hooks/use-device-printer";
+import { useHostRouting } from "@/hooks/use-host-routing";
 import { useNativeHostBackground } from "@/hooks/use-native-host";
+import { usePrintAgent } from "@/hooks/use-print-agent";
 import { usePrintHostBeat } from "@/hooks/use-print-host-beat";
-import { usePrintHostDrain, type ClaimedPrintJobLike } from "@/hooks/use-print-host-drain";
 import { usePrintHostDrainLock } from "@/hooks/use-print-host-lock";
 import { usePrintHostPrinterBeat } from "@/hooks/use-print-host-printer-beat";
-import { usePrintHostWake } from "@/hooks/use-print-host-wake";
 import { usePrintHostWakeLock } from "@/hooks/use-print-host-wake-lock";
-import { usePrintRealtime } from "@/hooks/use-realtime";
+import { usePrintSlipAlarm } from "@/hooks/use-print-slip-alarm";
 import { useSelfOrderAutoPrint } from "@/hooks/use-self-order-auto-print";
-import { hostPrintSlipOf, type HostPrintSlip } from "@/lib/print-host-slips";
-import { cafeDateString } from "@/lib/utils";
+import { printJobRefOf } from "@/lib/print-agent-calls";
+import type { HostPrintDone } from "@/lib/print-host-outcomes";
+import type { HostPrintSlip } from "@/lib/print-host-slips";
+import { kotPrintJob } from "@/lib/print-routing";
 import type { Order } from "@/types";
 
 interface PrintHostDrainProps {
-  /** `isHostDevice` — the pref is on and this device has an identity. */
+  /** `isHostDevice && surfacesMounted` — this device is the print host, and its print surfaces exist. */
   enabled: boolean;
+  /** The print surfaces exist. With no host, every device is the agent for its own line (spec §6.6). */
+  surfacesMounted: boolean;
   deviceId: string;
   tabId: string;
   busy: boolean;
   claimLockRef: MutableRefObject<boolean>;
-  onSlip: (slip: HostPrintSlip) => void;
-  onKotRound: (order: Order, round?: number) => void;
+  onSlip: (slip: HostPrintSlip, done?: HostPrintDone) => void;
   onDemoted: () => void;
 }
 
-// Print-host plan §B5/§B6 (PH-5) — the host's three lanes in one null-
-// rendering child of PrintHostProvider (the SelfOrderAutoPrint pattern): the
-// print-job drain, the self-order lane, and the heartbeat, all armed by the
-// same `enabled`. It is the component that subscribes to pulse-derived state,
-// so a payload-changing tick re-renders THIS and nothing on screen. The
-// self-order lane here consumes the wide pulse through useSelfOrderAutoPrint
-// (an existing consumer); the drain reads the narrow feed context only.
-export function PrintHostDrain({
-  enabled,
-  deviceId,
-  tabId,
-  busy,
-  claimLockRef,
-  onSlip,
-  onKotRound,
-  onDemoted,
-}: PrintHostDrainProps) {
-  // Exactly one draining window per host PC (MERGED-23): both claiming lanes
-  // wait for the lock; the beat and the wake lock do not — a second window is
-  // still this device, and its beats are as truthful as the holder's. The lock
-  // is only asked for by a window that can print right now (a printer that is
-  // off, or open in another tab, hands the lock on to one that can).
+// Print-host plan §B5/§B6 (PH-5), Phase 1 Session 1C — the print agent and the host's own lanes in one
+// null-rendering child of PrintHostProvider, so a payload-changing tick re-renders THIS and nothing on
+// screen. The agent (hooks/use-print-agent.ts) leases this device's line, prints through the provider's
+// bridge, then acks: the host leases for the whole cafe, and with no host every device leases its own
+// slips (spec §6.6, R6). It replaces the claim drain and the host's GET wake poll, which stay in the
+// codebase for one release, unused here (a tab from before Phase 1 still runs them itself). The
+// heartbeat, the wake lock, the app's background service and the self-order lane stay host-only.
+export function PrintHostDrain({ enabled, surfacesMounted, deviceId, tabId, busy, claimLockRef, onSlip, onDemoted }: PrintHostDrainProps) {
+  // Written as host/unknown checks (D-11): an unknown lane waits for the pulse rather than guess.
+  const routing = usePrintHostRouting();
+  const isAgent = enabled || (surfacesMounted && deviceId !== "" && routing !== "host" && routing !== "unknown");
+  // Exactly one draining window per device (MERGED-23), asked for only by a window that can print right
+  // now: a printer that is off, or open in another tab, hands the lock on, so a line is never leased
+  // for a printer that cannot print (the owner's rule after Session 1B).
   const canPrint = useCanPrintNow();
-  const holdsLock = usePrintHostDrainLock(enabled && canPrint);
-  const drains = enabled && holdsLock;
+  const holdsLock = usePrintHostDrainLock(isAgent && canPrint);
+  const drains = isAgent && holdsLock;
+  const hostDrains = enabled && holdsLock;
 
   usePrintHostWakeLock(enabled);
   usePrintHostBeat({ enabled, deviceId, onDemoted });
   usePrintHostPrinterBeat({ enabled, deviceId, onDemoted });
   useNativeHostBackground(enabled);
 
-  // Stable identities, so neither lane's effect re-runs on this child's own
-  // per-tick renders (the ref never changes; the constant never changes).
-  const hostLane = useMemo(() => ({ claimLock: claimLockRef, maxAgeMs: PRINT_HOST_MAX_AGE_MS }), [claimLockRef]);
-  useSelfOrderAutoPrint({ enabled: drains, busy, queueKotRound: onKotRound, hostLane });
-
-  // `cafeDateString()` at CLAIM time is the host's cafe-day the eod slip's
-  // open-tabs applicability is derived from (PH-6 MUST — rollover noted in
-  // lib/print-host-slips.ts).
-  const onClaimed = useCallback(
-    (job: ClaimedPrintJobLike) => onSlip(hostPrintSlipOf(job.payload, cafeDateString())),
-    [onSlip],
+  // The host's self-order lane hands a claimed KOT to the agent (ruling R4, job-aware lane): the claim
+  // made it a print job, or, when the answer names none, the routed enqueue makes it one under the
+  // same key. Never a local print outside the queue, so it can never print twice.
+  const { routePrint } = useHostRouting();
+  const queueKotRound = useCallback(
+    (order: Order, round: number = order.kotRounds) =>
+      routePrint(() => kotPrintJob(order, round), () => undefined, printJobRefOf(order, "kot")),
+    [routePrint],
   );
+  const hostLane = useMemo(() => ({ claimLock: claimLockRef, maxAgeMs: PRINT_HOST_MAX_AGE_MS }), [claimLockRef]);
+  useSelfOrderAutoPrint({ enabled: hostDrains, busy, queueKotRound, hostLane });
 
-  const feed = usePrintJobFeed();
-  // CB-U1 — the fast wake poll, armed by the SAME `drains` gate as the two
-  // claiming lanes: only the lock-holding host tab polls (plan §B4 amendment).
-  usePrintHostWake({ drains, feed });
-  // Socket slice 2 — the realtime nudge that EARNS the relaxed wake cadence
-  // above. Mounted on this one component, which is already gated to the single
-  // lock-holding host tab, so there is exactly one subscriber per device (and
-  // the connection itself is shared and refcounted in lib/realtime-client.ts).
-  // If the socket is down the wake poll notices on its own and snaps back to
-  // the 3s cadence — this hook is a pure accelerator, never a dependency.
-  usePrintRealtime();
-  usePrintHostDrain({ enabled: drains, feed, busy, deviceId, tabId, claimLockRef, onClaimed, onDemoted });
+  usePrintAgent({ enabled: drains, isHost: enabled, deviceId, tabId, busy, queueSlip: onSlip });
+  // Session 1D: the 20 s alarm on every device with an identity (the asking one and the printing one).
+  usePrintSlipAlarm(deviceId);
 
   return null;
 }

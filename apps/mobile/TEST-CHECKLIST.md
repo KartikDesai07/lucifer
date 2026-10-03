@@ -7,6 +7,108 @@ Things to have: the app installed (see README), the POS web app deployed with
 the printing update, a thermal printer (ideally one Bluetooth and one with a
 network port), a PC with Chrome for the debug part.
 
+## Regression checks added 2026-10-02
+
+- [ ] Deploy the updated cafe web build as well as the APK. The color fallback
+      ships in the website's CSS; replacing only the APK does not update it.
+- [ ] Check login, POS, printer panel and dark mode on WebView 109 and a current
+      WebView. Backgrounds, muted text and border colors must be visible. This
+      fallback covers colors, not all future Tailwind features on old engines.
+- [ ] On a tablet without Bluetooth (or with its permission denied), attach a
+      USB printer through a powered OTG connection. **Refresh USB / paired
+      printers** must show it without requiring Bluetooth.
+- [ ] Deny USB access. There must be no repeating permission popup. Tap
+      **Reconnect** explicitly, grant access, and print a test slip.
+- [ ] With a USB permission dialog pending, change/forget the printer. The old
+      request must not hold up the new printer for the full 60-second timeout.
+- [ ] Unplug/replug USB; turn Bluetooth off/on in Android settings; revoke and
+      restore permission. The connection status must follow the real adapter
+      state and recover. Test with the app foregrounded and backgrounded.
+- [ ] Attach two USB printers with identical VID/PID. Selection must fail
+      without printing on an arbitrary one. Remove one, then reconnect.
+- [ ] Interrupt Bluetooth/USB/LAN during a long slip. An uncertain/partial
+      write must show an error without automatically replaying the whole slip.
+      Check the paper before manually reprinting. A new job should reconnect.
+- [ ] Test 58mm and 80mm bills/KOTs, long orders, paper-out, lid-open and power
+      cycles on each client's actual ESC/POS model. A successful byte transfer
+      does not prove that paper physically came out.
+- [ ] For a printer cabled to Windows, select it in the desktop POS, designate
+      that PC as the printing device, and test orders sent from the mobile POS.
+      Test both the direct ESC/POS method and the driver method where required.
+- [ ] Chrome on a PC or Android phone with a Web Serial or Web Bluetooth printer: unplug or
+      power-cycle the printer, then print. A slip refused before anything was sent prints
+      once after the automatic reconnect; a slip cut off mid-way is NOT reprinted by itself
+      and the message says to check the paper.
+- [ ] Android app with a USB printer: put the app in the background, unplug and replug the
+      printer, then open the app. The USB permission prompt appears once; allow it and the
+      printer connects. Deny it: no further prompts until you tap Reconnect.
+- [ ] Old tablet (WebView 109 or older): light highlights, red error tints, borders and the
+      dark overlay behind dialogs look like tints (not solid colour blocks), in light and
+      dark mode.
+- [ ] Android app with Wi-Fi off (or a wrong POS address): wait on "Could not open the POS"
+      while it retries by itself, then tap Try again several times, and on the loading
+      screen tap its Try again too. The app never closes by itself.
+
+## Printing lifecycle checks (Phase 1, added 2026-10-03)
+
+Every slip is now printed through the server: it counts as printed only when the device
+that printed it says so, a slip that may have printed is repeated with a black **REPRINT**
+banner (a KOT) or asks the cashier first (a bill, **DUPLICATE** banner), and every slip
+that did not print within 20 seconds shows in the printer panel on every device. Use one
+device as **Print all slips on this device** and a second device (phone or PC) to order.
+
+- [ ] **Nothing waits.** The printer button shows no number and the panel shows no
+      **Slips waiting** section.
+- [ ] **Printer off.** Switch the printer off and send a KOT from the second device.
+      Within 20–40 seconds both devices show "KOT round 1 · T-n has not printed yet."
+      with a **Show** button (the printing device rings once); the printer button shows
+      **1**. Show opens the panel: **Waiting for the printer**, "The printer is off or not
+      connected." Switch the printer on: the slip prints **once, without a banner**, and
+      the number and the notice go within about 20 seconds.
+- [ ] **Print now.** With the printer still off, tap **Print now** on the waiting slip:
+      "It prints by itself as soon as the printer is ready." stays readable for a few
+      seconds, and the row's buttons work again at once.
+- [ ] **A KOT cut mid-slip** (pull the LAN cable or switch the printer off while a long
+      KOT is printing). On USB, Bluetooth and the Windows app a **REPRINT** copy prints
+      by itself when the printer is back. On the Android app's network (LAN) lane the cut
+      may not be seen and nothing repeats (known limit, fixed in Phase 3): check the paper
+      and use **Reprint** in Orders if needed. Note which lane you tested.
+- [ ] **A bill cut mid-slip** (same way, on a bill): no second copy prints by itself; the
+      cashier sees "Bill · ORD-… may not have printed." and **Check the bill** in the
+      panel. **Print again** prints one copy with the black **DUPLICATE** banner; on a
+      second bill, **It printed** prints nothing and the row leaves.
+- [ ] **The printing device is killed mid-slip** (Settings → Apps → Force stop while a
+      slip prints). Open the app again after 2 minutes: the KOT prints once more with
+      **REPRINT** (a bill asks the cashier instead). Nothing prints a third time.
+- [ ] **Couldn't print.** A KOT whose two tries may both have printed (cut it twice) shows
+      under **Couldn't print** with a reason: "Tried twice. Check the printer, then retry.",
+      or the printer's own sentence (on USB, Bluetooth and the Windows app it may say what
+      failed). **Retry** prints exactly one **REPRINT** copy.
+- [ ] **An old slip from the dashboard.** With a KOT waiting over 30 minutes, tap **Print**
+      on it in the dashboard's "older slips" line (on the printing device) instead of the
+      panel: it prints once, through the same path as the panel's **Print now** (a slip
+      that was marked **REPRINT** keeps its banner).
+- [ ] **Windows app: no printer chosen.** In the Windows app, choose no printer (Settings →
+      Printing) or rename the chosen one in Windows, then send a KOT: it waits under
+      **Waiting for the printer** with "No printer is chosen for this PC…" (or "The chosen
+      printer was not found…"), and nothing is marked REPRINT. Choose the printer again:
+      the KOT prints once, **without a banner**.
+- [ ] **The alarm after a restart, untouched.** Restart the printing phone or tablet (and,
+      separately, the Windows app's PC), open the POS app and do **not** touch the screen.
+      Switch the printer off and send a KOT from the second device: within 20–40 seconds
+      the printing device **rings**. (The POS in a plain browser tab still needs one tap
+      after it opens before it can ring.)
+- [ ] **Clear from another device.** A waiting slip cleared on the second device leaves
+      the first device's panel within about 20 seconds and never prints.
+- [ ] **Two rows at once.** With two slips waiting, tap **Print now** on one and at once on
+      the other: both rows' buttons work again within a few seconds.
+- [ ] **A reload while slips wait** (or open the POS on a new device): one notice, "N slips
+      still waiting. Open the printer panel to check.", not one per slip.
+- [ ] **Screen off.** Repeat the 30-minute screen-off test below: no alarm for slips that
+      printed, and a slip that did not print still shows in the panel.
+- [ ] **Clean-up.** A slip nobody acts on disappears from the panel after 3 hours (a
+      Friday KOT never prints on Monday). Nothing to tap.
+
 ## Part A. Debug build, talking to the app directly (about 15 minutes)
 
 Build and install a **debug** build (`npx react-native run-android --active-arch-only`),

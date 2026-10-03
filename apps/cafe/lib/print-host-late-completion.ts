@@ -21,15 +21,20 @@ export interface LateCompletionGuard {
   /** A completion (onAfterPrint / onPrintError) arrived. True when it belongs to the
    *  abandoned job -- the caller then releases quietly (the failure was already announced). */
   take(): boolean;
+  /** True once, right after the grace ran out with no report (read it while settling that job): the
+   *  job may or may not be on paper, so its caller hears a failure, never "printed" (Session 1C). */
+  graceRanOut(): boolean;
 }
 
 export function createLateCompletionGuard<H>(timers: LateCompletionTimers<H>): LateCompletionGuard {
   let held: { handle: H } | null = null;
+  let ranOut = false;
   return {
     abandon(onGraceOver) {
       if (held !== null) timers.cancel(held.handle);
       held = {
         handle: timers.schedule(() => {
+          ranOut = true;
           held = null;
           onGraceOver();
         }, PRINT_HOST_LATE_COMPLETION_GRACE_MS),
@@ -40,6 +45,11 @@ export function createLateCompletionGuard<H>(timers: LateCompletionTimers<H>): L
       timers.cancel(held.handle);
       held = null;
       return true;
+    },
+    graceRanOut() {
+      const was = ranOut;
+      ranOut = false;
+      return was;
     },
   };
 }

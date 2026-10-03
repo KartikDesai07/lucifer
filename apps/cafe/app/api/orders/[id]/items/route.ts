@@ -44,6 +44,7 @@ import {
 import { buildKotIdemKeys } from "@pos/shared/order-idem";
 import { idemGuardFilter, roundReplayResponse, roundReplayAfterMiss } from "@/lib/order-idem";
 import { settledValue } from "@/lib/settled";
+import { buildKotPrintDevices, createOrderPrintJobs, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +71,8 @@ export async function POST(req: Request, { params }: Params) {
 
   const parsed = await validateBody(req, addItemsSchema);
   if ("error" in parsed) return parsed.error;
+  // Printing Phase 1 (lib/print-order-jobs.ts): null for a tab that prints its own slips.
+  const intent = printIntentOf(req);
 
   try {
     await connectDB();
@@ -308,6 +311,9 @@ export async function POST(req: Request, { params }: Params) {
     // earlier keyless rounds backfilled with "". Undefined (nothing written)
     // when the round carries no key.
     const kotIdemKeys = buildKotIdemKeys(old.kotIdemKeys, round, key);
+    // Printing Phase 1 — same positional idiom: this round is the server's to print (and to repair)
+    // only when this call site opted in. Undefined (nothing written) otherwise.
+    const kotPrintDevices = buildKotPrintDevices(old.kotPrintDevices, round, intent?.deviceId);
 
     // CB-CHG — the ONE helper every charge writer uses (plan §4), so this
     // route can never hand-write the mirror or pick the wrong $set/$unset arm.
@@ -328,6 +334,7 @@ export async function POST(req: Request, { params }: Params) {
         ...(storeKind ? { discountKind } : {}),
         ...(kotNumbers ? { kotNumbers } : {}),
         ...(kotIdemKeys ? { kotIdemKeys } : {}),
+        ...(kotPrintDevices ? { kotPrintDevices } : {}),
         ...(resolvedClaim ? rewardSnapshotFields(resolvedClaim.reward, resolvedClaim.cost) : {}),
       },
     };
@@ -377,7 +384,17 @@ export async function POST(req: Request, { params }: Params) {
     // (including after()'s own throw), so it can never delay or fail this
     // write; the poll stays the fallback and the source of truth.
     publishCafeEvent("kot-fired");
-    return success(updated);
+    // Printing Phase 1 (spec §7.4): this round's KOT, when this call site lets the server print it.
+    const printJobs = intent
+      ? await createOrderPrintJobs({
+          order: updated,
+          slips: [{ kind: "kot", round }],
+          originDeviceId: intent.deviceId,
+          queuedBy: authed.session.user.name ?? "",
+          nowMs: Date.now(),
+        })
+      : null;
+    return success(withPrintJobs(updated, printJobs));
   } catch (error) {
     return serverError("Failed to add items", error);
   }

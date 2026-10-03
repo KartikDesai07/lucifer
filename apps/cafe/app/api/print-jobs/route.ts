@@ -3,7 +3,10 @@ import { connectDB } from "@/lib/db";
 import { z } from "zod";
 import { printJobPayloadSchema } from "@pos/shared/schemas/print-job.schema";
 import { PRINT_JOB_LABEL_MAX_CHARS, printJobPayloadWithinCap } from "@pos/shared/print-job";
+import { PRINT_DEVICE_ID_HEADER, PRINT_IDEMPOTENCY_HEADER, PRINT_IDEMPOTENCY_KEY_PATTERN } from "@pos/shared/print-agent-wire";
 import { enqueuePrintJob, prunePrintJobsThrottled } from "@/lib/print-queue";
+import { enqueueOwnPrintJob, printIntentOf } from "@/lib/print-order-jobs";
+import { PRINT_HOST_DEVICE_ID_MAX_CHARS } from "@/lib/print-host";
 import { success, failure, requireAuth, serverError, validateBody } from "@/lib/api-helpers";
 import { noStore } from "@/lib/order-request-tray";
 
@@ -13,6 +16,10 @@ export const dynamic = "force-dynamic";
 // `required:true` and a "" would 500 the save — repo memory
 // mongoose-required-rejects-empty-string).
 const UNNAMED_STAFF = "Staff";
+
+// A header that is absent or blank reads as not sent. An expression body on purpose:
+// print-queue.test.ts requires every `return` in this file to go through noStore(.
+const optionalHeader = (req: Request, name: string): string | undefined => req.headers.get(name)?.trim() || undefined;
 
 // No `kind`, `orderId`, or `jobKey` in the body — all three are derived
 // server-side (in enqueuePrintJob) from the payload's OWN discriminator, so a
@@ -47,17 +54,45 @@ export async function POST(req: Request) {
     return noStore(failure("Print payload too large", 400));
   }
 
+  // Phase 1 (spec §7.3): a print the client starts carries an Idempotency-Key, so a retried POST is
+  // one job; the asking device names itself, so its readback can follow the job. Both stay OPTIONAL
+  // for one release: a tab from before Phase 1 sends neither and must keep printing.
+  const idempotencyKey = optionalHeader(req, PRINT_IDEMPOTENCY_HEADER);
+  if (idempotencyKey !== undefined && !PRINT_IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey)) {
+    return noStore(failure("Invalid Idempotency-Key", 400));
+  }
+  const originDeviceId = optionalHeader(req, PRINT_DEVICE_ID_HEADER);
+  if (originDeviceId !== undefined && originDeviceId.length > PRINT_HOST_DEVICE_ID_MAX_CHARS) {
+    return noStore(failure("Invalid device id", 400));
+  }
+
   const queuedBy = authed.session.user.name ?? UNNAMED_STAFF;
   // Called once per request, passed down.
   const nowMs = Date.now();
 
   try {
     await connectDB();
-    const result = await enqueuePrintJob({
+    let result = await enqueuePrintJob({
       payload: parsed.data.payload,
       label: parsed.data.label,
       queuedBy,
+      ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+      ...(originDeviceId !== undefined ? { originDeviceId } : {}),
+      nowMs,
     });
+    // Phase 1 (spec §6.6): with no host, an agent tab prints its own client-started slip through the
+    // lifecycle. A tab from before Phase 1 sends no agent header and still gets "no-host" (print here).
+    const intent = printIntentOf(req);
+    if (result.outcome === "no-host" && intent !== null) {
+      result = await enqueueOwnPrintJob({
+        payload: parsed.data.payload,
+        label: parsed.data.label,
+        queuedBy,
+        ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+        originDeviceId: intent.deviceId,
+        nowMs,
+      });
+    }
 
     // Best-effort, AFTER the response (after()), so a sweep never delays the
     // enqueue — retention must never depend on the host device being alive

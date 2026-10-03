@@ -10,6 +10,7 @@ import {
   PRINTER_NOT_CONNECTED_MESSAGE,
   PRINTER_TOO_LARGE_MESSAGE,
   PRINTER_WRITE_FAILED_MESSAGE,
+  notConnectedError,
   quiet,
   type PaperChoice,
   type PrinterSnapshot,
@@ -74,6 +75,12 @@ export function nativeRecordOf(printer: NativePrinter, paper: PaperChoice): Nati
 
 function statusMessage(status: NativePrinterStatus): string | null {
   if (status.state === "connected" || status.printer === null) return null;
+  if (status.state === "disconnected" && status.printer.transport === "usb") {
+    return "Check the printer power and USB OTG cable, then tap Reconnect and allow USB access. Connect only one printer of the same model at a time.";
+  }
+  if (status.state === "disconnected" && status.printer.transport === "tcp") {
+    return "Check that this device and the printer are on the same network. Confirm the printer address and port, then reconnect.";
+  }
   if (status.printer.transport !== "bt-classic" && status.printer.transport !== "ble") return null;
   if (status.bluetooth === "off") return NATIVE_BLUETOOTH_OFF_MESSAGE;
   return status.bluetooth === "unauthorized" ? NATIVE_BLUETOOTH_BLOCKED_MESSAGE : null;
@@ -179,7 +186,7 @@ export function createNativeLink(host: NativeLinkHost) {
     },
     write(bytes: Uint8Array): Promise<void> {
       const client = host.native();
-      return client === null ? Promise.reject(new Error(PRINTER_NOT_CONNECTED_MESSAGE)) : nativeWrite(client, bytes);
+      return client === null ? Promise.reject(notConnectedError(PRINTER_NOT_CONNECTED_MESSAGE)) : nativeWrite(client, bytes);
     },
   };
 }

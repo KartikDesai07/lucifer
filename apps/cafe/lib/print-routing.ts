@@ -63,6 +63,7 @@ const LABEL_SEPARATOR = " · ";
 // constant serving both would silently couple a label tweak to the paper.
 const PRINTED_NOTE_SEPARATOR = " · ";
 const TABLE_LABEL_PREFIX = "T-";
+const BARE_TABLE_NUMBER = /^[0-9]+$/;
 const KOT_ROUND_LABEL_PREFIX = "KOT round ";
 const KOT_REPRINT_LABEL = "KOT reprint";
 const BILL_LABEL = "Bill";
@@ -103,7 +104,9 @@ export function printJobLabel(text: string, fallback: string): string {
  *  two fields only — a payload SNAPSHOT (not a live Order) is what the chip has. */
 export function printJobOrderRef(order: Pick<Order, "tableNo" | "orderId">): string {
   const table = order.tableNo;
-  if (typeof table === "string" && table.trim() !== "") return `${TABLE_LABEL_PREFIX}${table}`;
+  // Only a bare number needs the prefix to read as a table ("4" → "T-4"). Any other name — the
+  // "T-1", "T-2" … seed-client.ts creates, or "Garden 2" — is shown as written, never "T-T-1".
+  if (typeof table === "string" && table.trim() !== "") return BARE_TABLE_NUMBER.test(table) ? `${TABLE_LABEL_PREFIX}${table}` : table;
   return order.orderId;
 }
 

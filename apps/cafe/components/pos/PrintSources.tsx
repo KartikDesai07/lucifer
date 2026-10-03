@@ -31,6 +31,8 @@ interface PrintSourcesProps {
   // Omitted for a KOT-only page (requests/page.tsx) — an accept never
   // collects money, so there is no customer receipt to render off-screen.
   receiptRef?: Ref<HTMLDivElement>;
+  // Session 1C (spec §7.7): the print job's banner, set only by the print agent's slips.
+  banner?: string;
 }
 
 // Off-screen print sources cloned by react-to-print — lifted out of
@@ -51,6 +53,7 @@ export function PrintSources({
   movedBy,
   movedAt,
   receiptRef,
+  banner,
 }: PrintSourcesProps) {
   // "test" is the provider-owned test slip (PH-5), which renders its own
   // component — it never reaches KOTReceipt. Narrowed explicitly rather than
@@ -63,7 +66,7 @@ export function PrintSources({
       aria-hidden
     >
       {receiptRef && (
-        <OrderReceipt order={order} settings={settings} ref={receiptRef} />
+        <OrderReceipt order={order} settings={settings} banner={banner} ref={receiptRef} />
       )}
       <KOTReceipt
         order={order}
@@ -78,6 +81,7 @@ export function PrintSources({
         movedFrom={movedFrom}
         movedBy={movedBy}
         movedAt={movedAt}
+        banner={banner}
         ref={kotRef}
       />
     </div>

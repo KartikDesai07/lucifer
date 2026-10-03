@@ -18,11 +18,18 @@ import type { PrintHostPrinterState } from "./print-host-printer";
 export const PRINT_JOB_KINDS = ["kot", "bill", "void", "moved", "eod", "cancel-notice"] as const;
 export type PrintJobKind = (typeof PRINT_JOB_KINDS)[number];
 
-/** `"printed"` means claim won / host accepted — NOT proof paper exists (§B2).
- *  `"dismissed"` covers staff dismiss, a cancelled order/round, and the
- *  host-cleared bulk dismiss. */
-export const PRINT_JOB_STATUSES = ["queued", "printed", "dismissed"] as const;
+/** Phase 1 lifecycle (docs/superpowers/specs/2026-10-02-printing-reliability-design.md §7.1).
+ *  `"printed"` on a row with `printedAt` means its writer ACKNOWLEDGED the write; on an older row
+ *  without `printedAt` it still means only "claim won" (the legacy /claim path, kept one release).
+ *  `"leased"`: one device is writing it now. `"needs-confirm"`: a bill that may already be on
+ *  paper, waiting for the cashier. `"failed"`: retries stopped, staff decide.
+ *  `"dismissed"` covers staff dismiss, a cancelled order/round, the host-cleared bulk dismiss and
+ *  the cashier's "dismiss". */
+export const PRINT_JOB_STATUSES = ["queued", "leased", "printed", "needs-confirm", "failed", "dismissed"] as const;
 export type PrintJobStatus = (typeof PRINT_JOB_STATUSES)[number];
+
+/** Statuses that still need a writer or a decision; retention prunes them after 3 h (PRINT_JOB_QUEUED_RETENTION_MS). */
+export const PRINT_JOB_UNRESOLVED_STATUSES = ["queued", "leased", "needs-confirm", "failed"] as const;
 
 /** Why a job was torn down without ever printing (§B1). Cross-party: the cafe
  *  SERVER stamps these (dismiss route, DELETE-clear, pre-CAS eligibility) and
@@ -39,6 +46,8 @@ export const PRINT_JOB_DISMISS_REASONS = [
   "staff",
   "host-cleared",
   "invalid-payload",
+  // Phase 1: the cashier dismissed a bill that was waiting for a "print again?" decision.
+  "cashier",
 ] as const;
 export type PrintJobDismissReason = (typeof PRINT_JOB_DISMISS_REASONS)[number];
 
@@ -81,13 +90,22 @@ export const PRINT_JOB_PAYLOAD_MAX_BYTES = 64 * 1024;
  *  overshoots this 400s the enqueue, and the slip then prints NOWHERE. */
 export const PRINT_JOB_LABEL_MAX_CHARS = 120;
 
-/** How long a resolved (`printed`/`dismissed`) job stays in the D3 readback
- *  window before the lazy prune sweep drops it. */
-export const PRINT_JOB_RESOLVED_RETENTION_MS = 2 * 60 * 60 * 1000;
+/** How long a resolved (`printed`/`dismissed`) job stays before the lazy prune sweep drops it
+ *  (owner, after Session 1D: no finished print data kept longer than safe; was 2 h). Never sooner
+ *  than the KOT repair window (PRINT_REPAIR_WINDOW_MS, 30 min) plus a margin: the repair re-creates
+ *  a missing job of a round fired in that window, so a printed row deleted inside it would print
+ *  twice (print-budget.test.ts pins the floor). */
+export const PRINT_JOB_RESOLVED_RETENTION_MS = 45 * 60 * 1000;
 
-/** A never-claimed `queued` job older than this is pruned outright — a Friday
- *  KOT must not print Monday (design review MERGED-14). */
-export const PRINT_JOB_QUEUED_RETENTION_MS = 12 * 60 * 60 * 1000;
+/** A slip still waiting (queued, needs-confirm, failed) that nobody acted on is pruned after this
+ *  (owner, after Session 1D; was 12 h) — a Friday KOT must not print Monday (design review MERGED-14).
+ *  The waiting-slips feed reads this window plus PRINT_JOB_ACTED_GRACE_MS (PRINT_ATTENTION_WINDOW_MS). */
+export const PRINT_JOB_QUEUED_RETENTION_MS = 3 * 60 * 60 * 1000;
+
+/** A waiting slip staff acted on within this long (Print now, Retry, Print again: approvedAt), or one
+ *  still leased whose lease runs or ran out within it (every way out of a lease clears it), is never
+ *  pruned: it gets its try first (the 1D review gate; wording, the Phase 1 final gate M3). */
+export const PRINT_JOB_ACTED_GRACE_MS = 15 * 60 * 1000;
 
 /** Minimum gap between opportunistic `prunePrintJobs` sweeps fired from the
  *  enqueue/designate/clear routes — retention must never depend on a live beat. */

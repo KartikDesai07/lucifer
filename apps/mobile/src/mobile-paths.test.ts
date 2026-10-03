@@ -1281,6 +1281,7 @@ interface KtSources {
   codes: string;
   delivery: string;
   types: string;
+  usb: string;
   threads: string;
   strings: string;
   protocol: string;
@@ -1312,8 +1313,21 @@ function receiverProblems(s: KtSources): string[] {
   if (!receivers.includes('ContextCompat.RECEIVER_NOT_EXPORTED')) {
     out.push('PrinterReceivers lost RECEIVER_NOT_EXPORTED');
   }
-  if (/(?<!NOT_)RECEIVER_EXPORTED/.test(receivers)) {
-    out.push('PrinterReceivers exports a receiver');
+  if (
+    !/app, bluetoothReceiver, IntentFilter\(BluetoothAdapter.ACTION_STATE_CHANGED\), ContextCompat.RECEIVER_EXPORTED/.test(
+      receivers,
+    )
+  ) {
+    out.push(
+      'Bluetooth state receiver must receive privileged Bluetooth broadcasts',
+    );
+  }
+  if (
+    !/app, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED/.test(
+      receivers,
+    )
+  ) {
+    out.push('USB receiver must remain private');
   }
   return out;
 }
@@ -1628,6 +1642,7 @@ const ktSources = (): KtSources => ({
   codes: kt('BridgeCodes.kt'),
   delivery: kt('WebViewDelivery.kt'),
   types: kt('PrinterTypes.kt'),
+  usb: kt('UsbTransport.kt'),
   threads: kt('PrinterThreads.kt'),
   strings: read(join(MAIN, 'res', 'values', 'strings.xml')),
   protocol: read(join(SRC, 'bridge', 'protocol.ts')),
@@ -1676,6 +1691,7 @@ test('pin 14 mutation: every needle can fail', () => {
   everyMutationCaught(run(receiverProblems, 'receivers'), base.receivers, [
     ['ContextCompat.' + notExported, 'ContextCompat.RECEIVER_EXPORTED'],
     ['ContextCompat.' + notExported, 'flags'],
+    ['ContextCompat.RECEIVER_EXPORTED', 'ContextCompat.' + notExported],
   ]);
   everyMutationCaught(run(bleProblems, 'ble'), base.ble, [
     [
@@ -1870,14 +1886,14 @@ const NEWLINE = String.fromCharCode(10);
 const proguardCode = (text: string): string =>
   text
     .split(NEWLINE)
-    .filter((line) => !line.trim().startsWith('#'))
+    .filter(line => !line.trim().startsWith('#'))
     .join(NEWLINE);
 // Every line trimmed and joined by one space: a multi-line Gradle block reads as one sentence.
 const oneLine = (text: string): string =>
   text
     .split(NEWLINE)
-    .map((line) => line.trim())
-    .filter((line) => line !== '')
+    .map(line => line.trim())
+    .filter(line => line !== '')
     .join(' ');
 function releaseProblems(s: ReleaseSources): string[] {
   const out: string[] = [];
@@ -1916,7 +1932,9 @@ function releaseProblems(s: ReleaseSources): string[] {
   if (!rules.includes('@android.webkit.JavascriptInterface <methods>;')) {
     out.push('R8 may rename the WebView page bridge');
   }
-  if (!rules.includes('-keep class com.reactnativecommunity.webview.** { *; }')) {
+  if (
+    !rules.includes('-keep class com.reactnativecommunity.webview.** { *; }')
+  ) {
     out.push('R8 may strip react-native-webview');
   }
   if (!strip(s.manifest).includes('android:allowBackup="false"')) {
@@ -1940,22 +1958,118 @@ test('pin 15 mutation: every hardening needle can fail', () => {
   const run = (key: keyof ReleaseSources) => (text: string) =>
     releaseProblems({ ...base, [key]: text });
   everyMutationCaught(run('gradle'), base.gradle, [
-    ['def enableProguardInReleaseBuilds = true', 'def enableProguardInReleaseBuilds = false'],
+    [
+      'def enableProguardInReleaseBuilds = true',
+      'def enableProguardInReleaseBuilds = false',
+    ],
     ['minifyEnabled enableProguardInReleaseBuilds', 'minifyEnabled false'],
     ['shrinkResources enableProguardInReleaseBuilds', 'shrinkResources false'],
-    ['include "arm64-v8a", "armeabi-v7a"', 'include "arm64-v8a", "armeabi-v7a", "x86_64"'],
+    [
+      'include "arm64-v8a", "armeabi-v7a"',
+      'include "arm64-v8a", "armeabi-v7a", "x86_64"',
+    ],
     ['universalApk false', 'universalApk true'],
     ['useLegacyPackaging true', 'useLegacyPackaging false'],
     ['contains("release")', 'contains("never")'],
     ['"proguard-rules.pro"', '"other-rules.pro"'],
   ]);
-  everyMutationCaught(run('props'), base.props, [['hermesEnabled=true', 'hermesEnabled=false']]);
+  everyMutationCaught(run('props'), base.props, [
+    ['hermesEnabled=true', 'hermesEnabled=false'],
+  ]);
   everyMutationCaught(run('rules'), base.rules, [
     ['@android.webkit.JavascriptInterface <methods>;', '<methods>;'],
-    ['-keep class com.reactnativecommunity.webview.** { *; }', '# webview rule removed'],
+    [
+      '-keep class com.reactnativecommunity.webview.** { *; }',
+      '# webview rule removed',
+    ],
   ]);
   everyMutationCaught(run('manifest'), base.manifest, [
     ['android:allowBackup="false"', 'android:allowBackup="true"'],
+  ]);
+});
+
+// --------------------------------------------------------------- pin 16
+// Phase 0 F0.2/F0.7: a USB printer that needs permission while the app is hidden
+// is not a denial. Only a shown-and-refused dialog pauses reconnects.
+function usbPermissionProblems(s: KtSources): string[] {
+  const out: string[] = [];
+  const types = strip(s.types);
+  const usb = strip(s.usb);
+  const manager = strip(s.manager);
+  if (!types.includes('class TransportException(val code: String, message: String, val needsForeground: Boolean = false)')) {
+    out.push('TransportException must say when a refusal only needs the foreground');
+  }
+  if (!usb.includes('throw TransportException(BridgeCodes.UNAUTHORIZED, "USB permission needed", needsForeground = true)')) {
+    out.push('a hidden app must report "needs the foreground", not a denial');
+  }
+  if (!usb.includes('(target == null || target.deviceName == device.deviceName)')) {
+    out.push('a permission reply without EXTRA_DEVICE must still release the wait');
+  }
+  if (!manager.includes('if (e.needsForeground) usbWaitingForeground = true else usbPermissionPaused = true')) {
+    out.push('only a real denial may pause USB reconnects');
+  }
+  if (!manager.includes('if (usbWaitingForeground && appVisible) selected else null')) {
+    out.push('resumeIfPaused must ask again once the app is visible');
+  }
+  if (!manager.includes('usbPermissionPaused || usbWaitingForeground) return')) {
+    out.push('no background reconnect loop while USB waits for permission');
+  }
+  // Cold start: initialize() starts the attempt just before onHostResume, so the app can turn
+  // visible between open()'s check and the flag. The attempt then asks for itself.
+  if (!manager.includes('if (e.needsForeground && appVisible) timer.execute(Runnable { resumeIfPaused() })')) {
+    out.push('a hidden refusal that lost the race with onHostResume must still ask once visible');
+  }
+  // begin() and halt() both clear the flag (a bare-assignment line; the field's own declaration
+  // starts with "private var", so it never matches).
+  if ((manager.match(/^\s+usbWaitingForeground = false$/gm) ?? []).length < 2) {
+    out.push('begin() and halt() must both clear usbWaitingForeground');
+  }
+  return out;
+}
+
+test('pin 16: USB permission — only a denial pauses; a hidden app asks again when visible', () => {
+  assert.deepEqual(usbPermissionProblems(ktSources()), []);
+});
+
+test('pin 16 mutation: every USB permission needle can fail', () => {
+  const base = ktSources();
+  const run = (key: keyof KtSources) => (text: string) => usbPermissionProblems({ ...base, [key]: text });
+  everyMutationCaught(run('types'), base.types, [[', val needsForeground: Boolean = false', '']]);
+  everyMutationCaught(run('usb'), base.usb, [
+    ['"USB permission needed", needsForeground = true', '"USB permission needed"'],
+    ['(target == null || target.deviceName == device.deviceName)', '(target?.deviceName == device.deviceName)'],
+  ]);
+  everyMutationCaught(run('manager'), base.manager, [
+    ['if (e.needsForeground) usbWaitingForeground = true else usbPermissionPaused = true', 'usbPermissionPaused = true'],
+    ['if (usbWaitingForeground && appVisible) selected else null', 'if (false) selected else null'],
+    ['usbPermissionPaused || usbWaitingForeground) return', 'usbPermissionPaused) return'],
+    ['if (e.needsForeground && appVisible) timer.execute(Runnable { resumeIfPaused() })', ''],
+    ['usbWaitingForeground = false\n          ++generation', '++generation'],
+    ['usbWaitingForeground = false\n      generation++', 'generation++'],
+  ]);
+});
+
+// --------------------------------------------------------------- pin 17
+// Phase 0 F0.9: the loading cover's Try again is a person's retry (it resets the
+// automatic-retry count), not the silent crash remount.
+function coverRetryProblems(pos: string): string[] {
+  const code = strip(pos);
+  const out: string[] = [];
+  if (!code.includes('onRetry={onRetryTap}')) out.push('the loading cover must call the tap retry');
+  if (!code.includes('onRetryTap={retryByTap}')) out.push('PosScreen must hand retryByTap to the cover');
+  if (code.includes('onRetry={onRenderGone}')) out.push('the cover must not reuse the crash remount');
+  return out;
+}
+
+test('pin 17: the loading cover\'s Try again is a user retry', () => {
+  assert.deepEqual(coverRetryProblems(read(join(SRC, 'screens', 'PosScreen.tsx'))), []);
+});
+
+test('pin 17 mutation: the cover retry wiring can be cut', () => {
+  const base = read(join(SRC, 'screens', 'PosScreen.tsx'));
+  everyMutationCaught(coverRetryProblems, base, [
+    ['onRetry={onRetryTap}', 'onRetry={onRenderGone}'],
+    ['onRetryTap={retryByTap}', 'onRetryTap={remount}'],
   ]);
 });
 

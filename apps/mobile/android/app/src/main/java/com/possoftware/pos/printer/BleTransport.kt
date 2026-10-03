@@ -191,7 +191,14 @@ class BleTransport(
     var offset = 0
     while (offset < data.size) {
       val end = minOf(offset + chunk, data.size)
-      writeChunk(g, ch, data.copyOfRange(offset, end))
+      try {
+        writeChunk(g, ch, data.copyOfRange(offset, end))
+      } catch (e: TransportException) {
+        // await() can report NOT_CONNECTED after GATT accepted a chunk. That
+        // is an uncertain delivery, not the safe pre-write refusal above.
+        if (e.code == BridgeCodes.NOT_CONNECTED) throw TransportException(BridgeCodes.WRITE_FAILED, "Link lost during write")
+        throw e
+      }
       offset = end
       if (writeType == BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE && offset < data.size) {
         pauseMs(CHUNK_PAUSE_MS)

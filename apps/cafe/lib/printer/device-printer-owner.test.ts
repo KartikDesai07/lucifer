@@ -216,7 +216,7 @@ test("source pin: the resend lives in one place — exactly two send calls in th
   assert.equal(code.split("host.send(").length - 1, 2);
   assert.ok(code.includes("the ONE resend") === false, "comments are stripped, so the pin reads code only");
   assert.ok(/host\.now\(\) - job\.enqueuedAt >= DEVICE_WRITE_DEADLINE_MS/.test(code), "landmark: the fast-failure gate");
-  assert.ok(code.includes('code !== "WRITE_FAILED"'), "landmark: a timeout / refusal code never resends");
+  assert.ok(code.includes('code !== "NOT_CONNECTED"'), "only a pre-write refusal permits a resend");
 });
 
 test("source pin: every mutating entry point of the runtime checks ownership first", () => {

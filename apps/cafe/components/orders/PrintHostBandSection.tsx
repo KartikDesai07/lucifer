@@ -9,6 +9,7 @@ import { PrintHostStaleRows } from "@/components/orders/PrintHostStaleRows";
 import { PrintReadbackChips } from "@/components/orders/PrintHostBandSummary";
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
 import { useDismissPrintJob } from "@/hooks/use-print-host";
+import { usePrintJobActions } from "@/hooks/use-print-job-actions";
 import { alertDetailForPath } from "@/lib/alert-bar-scope";
 import {
   printHostLabelOf,
@@ -27,7 +28,9 @@ import type { PosPulseData } from "@pos/shared/self-order-alert";
 // ONLY on the host device (MERGED-06: a phone's Print would burn a kitchen
 // ticket into a printerless dialog), a read-only count elsewhere — and this
 // device's readback chips (MERGED-10). Device id from PrintHostProvider's
-// post-mount read (F8). CB-UI2: renders on the DASHBOARD only.
+// post-mount read (F8). CB-UI2: renders on the DASHBOARD only. The Phase 1 final gate (I-1):
+// Print is the lifecycle's Print now (the panel's own action): the agent prints the slip with its
+// REPRINT/DUPLICATE banner and acks it; the old claim marked it printed before any paper.
 
 interface PrintHostBandSectionProps {
   pulse: PosPulseData | undefined;
@@ -37,7 +40,8 @@ interface PrintHostBandSectionProps {
 // CB-UI2 — dashboard-only; the route decides, via lib/alert-bar-scope.ts.
 export function PrintHostBandSection({ pulse, readback }: PrintHostBandSectionProps) {
   const onDashboard = alertDetailForPath(usePathname() ?? "");
-  const { isHostDevice, deviceId, printQueuedJob } = usePrintHostContext();
+  const { isHostDevice, deviceId } = usePrintHostContext();
+  const { retry } = usePrintJobActions();
   const qc = useQueryClient();
   // Only the stable `.mutate` (useMutation returns a fresh object per render).
   const { mutate: dismissMutate } = useDismissPrintJob();
@@ -70,15 +74,17 @@ export function PrintHostBandSection({ pulse, readback }: PrintHostBandSectionPr
   // The pulse's host binding, not just the local pref: a demoted device keeps
   // its pref until its next beat answers, and must not print in that window.
   const isHost = isHostDevice && deviceId !== "" && host?.deviceId === deviceId;
+  // Released by its own answer (it refreshes the pulse and wakes the agent itself): a slip whose printer
+  // is off stays in the feed, and its row must not stay dead.
+  const release = (id: string) => setTappedIds((prev) => new Set([...prev].filter((tapped) => tapped !== id)));
   const onPrint = (id: string) => {
     setTappedIds((prev) => new Set(prev).add(id));
-    void printQueuedJob(id); // refreshes the pulse itself once the claim answers
+    void retry(id).finally(() => release(id));
   };
   const onDismiss = (id: string) => {
     setTappedIds((prev) => new Set(prev).add(id));
     dismissMutate(id, { onSettled: () => void qc.invalidateQueries({ queryKey: POS_PULSE_KEYS.all }) });
   };
-
 
   return (
     <div className="flex flex-wrap items-center gap-2">

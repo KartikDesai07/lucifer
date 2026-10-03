@@ -3,6 +3,7 @@
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { NativeAppExperience } from "@/components/shared/NativeAppExperience";
 
 // Devtools are dev-only. Gating the dynamic import on NODE_ENV lets the bundler
 // dead-code-eliminate the import in production, so the package never ships in
@@ -43,6 +44,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <NativeAppExperience />
       {children}
       {ReactQueryDevtools && <ReactQueryDevtools initialIsOpen={false} />}
     </QueryClientProvider>

@@ -163,6 +163,12 @@ export interface IOrder extends Document {
   // any order sent without a key — never null, which the partial index counts.
   idemKey?: string;
   kotIdemKeys?: string[];
+  // Printing Phase 1 (lib/print-order-jobs.ts) — positional like kotIdemKeys:
+  // `kotPrintDevices[n-1]` is the device whose request had the SERVER print round
+  // n's KOT ("" = a round its tab printed itself). The repair sweep re-creates a
+  // missing job only for those rounds, so it never re-prints an old tab's round.
+  // Absent on every order no agent tab fired.
+  kotPrintDevices?: string[];
   billNumber?: number;
   voids?: IOrderVoid[]; // absent until the first void ($push creates it)
   cancelReason?: string; // set together, only by POST /api/orders/[id]/cancel
@@ -339,6 +345,8 @@ const orderSchema = new Schema<IOrder>(
     // No defaults — omit-empty, same as kotNumbers.
     idemKey: { type: String },
     kotIdemKeys: { type: [String], default: undefined },
+    // Printing Phase 1 — declared for the same strict:true reason; omit-empty.
+    kotPrintDevices: { type: [String], default: undefined },
     billNumber: { type: Number },
     // No `default: []` — the overwhelming majority of orders never get a void, and
     // an empty array on every row is pure waste on a 512MB M0. `$push` creates it.

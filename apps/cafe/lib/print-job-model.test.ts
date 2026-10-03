@@ -1,10 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { PRINT_JOB_DISMISS_REASONS } from "@pos/shared/print-job";
+import { PRINT_JOB_DISMISS_REASONS, PRINT_JOB_STATUSES } from "@pos/shared/print-job";
 
 import { printJobSchema, PrintJob } from "../models/PrintJob";
 import { printHostSchema, PrintHost } from "../models/PrintHost";
+import { printDeviceSchema, PrintDevice } from "../models/PrintDevice";
 import { assertSchemaTtlAllowed } from "./ttl-guard";
 
 // Print-host plan (.claude/plan/v2/print-host-plan.md §C PH-2) — DB-free
@@ -229,4 +230,80 @@ test("PrintHost: a doc missing deviceId/label/setBy fails validation on those ex
 
 test("assertSchemaTtlAllowed(PrintHost) does not throw — there is no TTL index", () => {
   assert.doesNotThrow(() => assertSchemaTtlAllowed("PrintHost", printHostSchema));
+});
+
+// ── Phase 1 lifecycle (plan 2026-10-02-phase-1-lifecycle.md, Task 3) ─────────
+
+const MIN_JOB = { kind: "kot", payload: "{}", label: "KOT round 1 · T-4", queuedBy: "Staff" } as const;
+const LIFECYCLE_PATHS = [
+  "targetDeviceId", "originDeviceId", "copyIndex", "epoch", "lease", "attempts", "uncertainAttempts",
+  "nextAttemptAt", "labels", "approvedAt", "printedAt", "printedBy", "lastError", "log",
+] as const;
+
+test("PrintJob: Phase 1 indexes — one device's line; no index nothing reads", () => {
+  const keys = printJobSchema.indexes().map(([fields]) => JSON.stringify(fields));
+  assert.ok(keys.includes(JSON.stringify({ targetDeviceId: 1, status: 1, createdAt: 1, _id: 1 })), "the line index, in exactly that key order");
+  // The Phase 1 final gate (m-1, deliberate change): the readback index served myRecentJobs, which the 1C gate
+  // dropped; no query reads it, and on M0 it cost a write per insert and storage. Never deployed, so never built.
+  assert.ok(!keys.some((k) => k.includes('"originDeviceId"')), "no originDeviceId index");
+  assert.equal(keys.length, 3, "exactly three PrintJob indexes: the feed/prune one, the job-key fence and the line");
+  assert.ok(keys.includes(JSON.stringify({ status: 1, createdAt: 1, _id: 1 })), "landmark: the prune/feed index stays");
+});
+
+test("PrintJob: every Phase 1 lifecycle field is absent on a minimal doc (omit-empty, the arrays included)", () => {
+  const doc = new PrintJob({ ...MIN_JOB });
+  assert.equal(doc.validateSync(), undefined);
+  for (const p of LIFECYCLE_PATHS) assert.equal(doc.get(p), undefined, `${p} must not default (a pre-Phase-1 row has none of them)`);
+});
+
+test("PrintJob: status accepts every Phase 1 state; labels, log events and the lease are validated", () => {
+  for (const status of PRINT_JOB_STATUSES) {
+    assert.equal(new PrintJob({ ...MIN_JOB, status }).validateSync(), undefined, status);
+  }
+  const badLabel = new PrintJob({ ...MIN_JOB, labels: ["REPRNT"] }).validateSync();
+  assert.ok(Object.keys(badLabel?.errors ?? {}).some((k) => k.startsWith("labels")), "an unknown label is refused");
+  const badEvent = new PrintJob({ ...MIN_JOB, log: [{ at: new Date(), event: "teleported" }] }).validateSync();
+  assert.ok(Object.keys(badEvent?.errors ?? {}).some((k) => k.startsWith("log")), "an unknown log event is refused");
+  const noExpiry = new PrintJob({ ...MIN_JOB, lease: { deviceId: "d", tabId: "t", epoch: 1 } }).validateSync();
+  assert.ok(noExpiry?.errors["lease.expiresAt"], "a lease always carries its expiry");
+  const full = new PrintJob({
+    ...MIN_JOB,
+    status: "leased",
+    targetDeviceId: "dev-a",
+    epoch: 1,
+    attempts: 1,
+    uncertainAttempts: 0,
+    nextAttemptAt: new Date(),
+    labels: ["REPRINT"],
+    lease: { deviceId: "dev-a", tabId: "t", epoch: 1, expiresAt: new Date() },
+    log: [{ at: new Date(), event: "leased", deviceId: "dev-a" }],
+  });
+  assert.equal(full.validateSync(), undefined, "a real leased row validates");
+});
+
+const BEAT_ROW = {
+  deviceId: "dev-1",
+  label: "Counter PC",
+  shell: "windows",
+  capabilities: { lan: true, bluetooth: false, usb: false, windowsPrinters: true, webSerial: false, webBluetooth: false },
+  lastSeenAt: new Date(),
+} as const;
+
+test("PrintDevice: a heartbeat row validates; appVersion and nativeProtocol stay absent unless sent", () => {
+  const doc = new PrintDevice({ ...BEAT_ROW });
+  assert.equal(doc.validateSync(), undefined);
+  assert.equal(doc.get("appVersion"), undefined);
+  assert.equal(doc.get("nativeProtocol"), undefined);
+});
+
+test("PrintDevice: deviceId is required and unique; shell is an enum; capabilities and lastSeenAt are required", () => {
+  assert.equal(printDeviceSchema.path("deviceId").options.unique, true);
+  const err = new PrintDevice({}).validateSync();
+  for (const p of ["deviceId", "label", "shell", "capabilities", "lastSeenAt"]) assert.ok(err?.errors[p], `${p} is required`);
+  assert.ok(new PrintDevice({ ...BEAT_ROW, shell: "ios" }).validateSync()?.errors.shell, "an unknown shell is refused");
+});
+
+test("assertSchemaTtlAllowed(PrintDevice) does not throw — there is no TTL index", () => {
+  assert.doesNotThrow(() => assertSchemaTtlAllowed("PrintDevice", printDeviceSchema));
+  assert.ok(printDeviceSchema.indexes().every(([, options]) => options?.expireAfterSeconds === undefined));
 });

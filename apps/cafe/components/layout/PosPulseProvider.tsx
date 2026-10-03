@@ -23,6 +23,8 @@ import { pulseArrival, ALERT_REPEAT_MS, type PosPulseData } from "@pos/shared/se
 import type { PrintJobFeedRow } from "@pos/shared/print-job";
 import { hostRoutingOf, type PrintHostRouting } from "@/lib/print-routing";
 import { PrintHostDotContext } from "@/components/layout/print-host-dot-context";
+import { PrintWaitingContext } from "@/components/layout/print-waiting-context";
+import { printWaitingBadgeOf } from "@/lib/print-waiting";
 import { printHostDotOf } from "@/lib/printer/printer-dot";
 import {
   prunePrintReadback,
@@ -160,7 +162,11 @@ export function PosPulseProvider({ children }: { children: ReactNode }) {
   // moment staff interact with the page AT ALL (any click or keypress) —
   // Chrome's autoplay policy requires resume() inside a gesture handler
   // (lib/alert-sound.ts's own header), and this is the earliest one available.
+  // The printing Phase 1 final gate: one try on mount first. Where the page may play sound without a touch
+  // (the POS app's WebView; the Windows app) a device that restarted untouched still rings; in a browser
+  // tab the context stays suspended until the touch below resumes it, as before.
   useEffect(() => {
+    unlock();
     const handler = () => unlock();
     window.addEventListener("pointerdown", handler, { once: true, capture: true });
     window.addEventListener("keydown", handler, { once: true, capture: true });
@@ -267,6 +273,8 @@ export function PosPulseProvider({ children }: { children: ReactNode }) {
   // value moves (components/layout/print-host-dot-context.ts).
   const dot = printHostDotOf(data);
   const printJobs = data?.printJobs ?? EMPTY_PRINT_JOBS;
+  // Session 1D: the waiting-slips count for the printer button, a plain string like the dot.
+  const waiting = printWaitingBadgeOf(data);
 
   return (
     <PrintHostDotContext.Provider value={dot}>
@@ -277,7 +285,7 @@ export function PosPulseProvider({ children }: { children: ReactNode }) {
               <PosPulseContext.Provider
                 value={{ pulse: data, soundUnlocked, unlock, printHandler, registerKotPrintHandler }}
               >
-                {children}
+                <PrintWaitingContext.Provider value={waiting}>{children}</PrintWaitingContext.Provider>
               </PosPulseContext.Provider>
             </PrintReadbackContext.Provider>
           </PrintReadbackRecordContext.Provider>

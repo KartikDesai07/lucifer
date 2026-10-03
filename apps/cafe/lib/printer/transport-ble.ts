@@ -1,11 +1,12 @@
 import { NAME_MAX_CHARS, type BleDevicePrinter } from "@/lib/printer/device-printer-store";
-import type {
-  BleCharacteristicLike,
-  BleDeviceLike,
-  BleServerLike,
-  BluetoothLike,
-  PaperChoice,
-  PrinterTransport,
+import {
+  notConnectedError,
+  type BleCharacteristicLike,
+  type BleDeviceLike,
+  type BleServerLike,
+  type BluetoothLike,
+  type PaperChoice,
+  type PrinterTransport,
 } from "@/lib/printer/web-printer-types";
 
 // Web Bluetooth (BLE GATT) lane. Receipt printers expose a writable
@@ -14,6 +15,7 @@ import type {
 export const BLE_CHUNK_BYTES = 180;
 export const BLE_CHUNK_PAUSE_MS = 20;
 const BLE_UNNAMED_PRINTER = "Bluetooth printer";
+const BLE_DISCONNECTED_MESSAGE = "The Bluetooth printer disconnected.";
 
 export interface BlePrinterService {
   readonly service: string;
@@ -120,7 +122,12 @@ export async function connectBle(
   const transport: PrinterTransport = {
     async write(bytes) {
       for (let i = 0; i < bytes.length; i += BLE_CHUNK_BYTES) {
-        if (!server.connected) throw new Error("The Bluetooth printer disconnected.");
+        if (!server.connected) {
+          // Before the first chunk nothing reached the printer: a safe refusal. After one, part of
+          // the slip may be on paper, so the error carries no code and is never replayed.
+          if (i === 0) throw notConnectedError(BLE_DISCONNECTED_MESSAGE);
+          throw new Error(BLE_DISCONNECTED_MESSAGE);
+        }
         await writeOne(target.characteristic, bytes.subarray(i, i + BLE_CHUNK_BYTES));
         if (i + BLE_CHUNK_BYTES < bytes.length) await sleep(BLE_CHUNK_PAUSE_MS);
       }

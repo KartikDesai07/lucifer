@@ -216,7 +216,21 @@ test("PIN: the exact set of apps/cafe production files that write OrderRequest (
 
 test("PIN: the exact set of apps/cafe production files that write PrintJob (.create/.updateOne/.findOneAndUpdate/.deleteMany/.updateMany) matches this list — a NEW writer must be added here deliberately, with the claimedAt CAS/status-transition semantics re-audited (the reciprocal-CAS lesson applies here too: print-queue-claim.ts's claim CAS and print-queue.ts's dismiss/prune/teardown paths all guard the SAME claimedAt field)", () => {
   const PRINT_JOB_WRITE_PATTERN = /PrintJob\.(create|updateOne|findOneAndUpdate|deleteMany|updateMany)\(/;
-  const EXPECTED_PRINT_JOB_WRITERS = ["apps/cafe/lib/print-queue-claim.ts", "apps/cafe/lib/print-queue.ts"].sort();
+  // Phase 1 adds print-lease.ts: every lifecycle transition is ONE CAS on {_id, status, epoch}
+  // (printJobCasFilter), re-audited against the claimedAt guards above — the legacy claim CAS and
+  // the lease CAS both fence on status:"queued", so exactly one of them wins a job.
+  // print-sweep.ts writes only through applyPrintJobPlan's CAS, plus the updateManys that route
+  // waiting rows to the device that prints them now (never leased ones, so it cannot move a job out
+  // from under its writer; the host-cleared one keeps the claimedAt guard).
+  // Session 1B adds print-order-jobs.ts: server-side creation, one PrintJob.create per slip under
+  // today's unique jobKey, so it races the legacy enqueue and the claim exactly as a second enqueue would.
+  const EXPECTED_PRINT_JOB_WRITERS = [
+    "apps/cafe/lib/print-lease.ts",
+    "apps/cafe/lib/print-order-jobs.ts",
+    "apps/cafe/lib/print-queue-claim.ts",
+    "apps/cafe/lib/print-queue.ts",
+    "apps/cafe/lib/print-sweep.ts",
+  ].sort();
 
   const files: string[] = [];
   walk(path.join(REPO_ROOT, "apps/cafe"), files);

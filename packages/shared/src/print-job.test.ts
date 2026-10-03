@@ -59,10 +59,10 @@ function order(overrides: Partial<Order> = {}): Order {
 
 // -- dismiss-reason contract --------------------------------------------------
 
-test("PRINT_JOB_DISMISS_REASONS pins five §B1 values (four §B1 + the PH-3 claim-path `invalid-payload`) verbatim — server writers stamp them, the band branches on \"staff\"", () => {
+test("PRINT_JOB_DISMISS_REASONS pins six values (four §B1, the PH-3 claim-path invalid-payload, and the Phase 1 cashier dismiss) verbatim — server writers stamp them, the band branches on \"staff\"", () => {
   assert.deepEqual(
     [...PRINT_JOB_DISMISS_REASONS],
-    ["order-cancelled", "round-voided", "staff", "host-cleared", "invalid-payload"],
+    ["order-cancelled", "round-voided", "staff", "host-cleared", "invalid-payload", "cashier"],
   );
 });
 

@@ -155,7 +155,7 @@ export function appearanceCssVars(resolved: ResolvedAppearance, scheme: Scheme):
   const primary = hasOverride ? resolved.accentOverride : palette.primary;
   const primaryForeground = hasOverride ? bestForeground(resolved.accentOverride) : palette.primaryForeground;
 
-  return {
+  return withRgbTwins({
     "--background": palette.background,
     "--foreground": palette.foreground,
     "--card": palette.card,
@@ -180,7 +180,7 @@ export function appearanceCssVars(resolved: ResolvedAppearance, scheme: Scheme):
     "--radius": CORNER_RADIUS_REM[resolved.cornerRadius],
     "--pub-gap": DENSITY_GAP_REM[resolved.density],
     "--pub-pad": DENSITY_PAD_REM[resolved.density],
-  };
+  });
 }
 
 const COLOR_TOKEN_KEYS = [
@@ -190,6 +190,25 @@ const COLOR_TOKEN_KEYS = [
   "--secondary", "--secondary-foreground", "--accent-foreground",
   "--popover", "--popover-foreground", "--destructive", "--destructive-foreground",
 ] as const;
+
+// Engines without color-mix() (Android WebView 109) paint an opacity tint such as bg-primary/10
+// as rgb(var(--primary-rgb) / 10%) (apps/cafe/postcss-tint-fallback.cjs). The POS stylesheet only
+// twins its OWN tokens, so every colour token set here carries its "R G B" twin, derived from
+// the value actually emitted; without it an old engine tints with the POS build's colours.
+function rgbChannelsOf(value: string): string | null {
+  if (!HEX_COLOR_PATTERN.test(value)) return null;
+  return [1, 3, 5].map((i) => parseInt(value.slice(i, i + 2), 16)).join(" ");
+}
+
+/** Sets each colour token's `-rgb` twin from its CURRENT value (drops it for a non-hex value). */
+export function withRgbTwins(vars: Record<string, string>): Record<string, string> {
+  for (const key of COLOR_TOKEN_KEYS) {
+    const channels = rgbChannelsOf(vars[key]);
+    if (channels === null) delete vars[`${key}-rgb`];
+    else vars[`${key}-rgb`] = channels;
+  }
+  return vars;
+}
 
 // Defense in depth, independent of resolveAppearance's own accentOverride
 // re-check (layered-gate discipline): this is the SOLE producer of literal
@@ -204,7 +223,7 @@ function sanitizedVars(resolved: ResolvedAppearance, scheme: Scheme): Record<str
   for (const key of COLOR_TOKEN_KEYS) {
     if (!HEX_COLOR_PATTERN.test(vars[key])) vars[key] = fallback[key];
   }
-  return vars;
+  return withRgbTwins(vars);
 }
 
 function assertSafeFontFamily(value: string): void {

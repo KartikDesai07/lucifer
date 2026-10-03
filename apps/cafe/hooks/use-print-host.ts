@@ -48,7 +48,12 @@ const DISMISS_ERROR = "Could not dismiss that print job — try again.";
 const DESIGNATE_ERROR = "Could not set the print host — try again.";
 const CLEAR_ERROR = "Could not clear the print host — try again.";
 
-export interface EnqueuePrintJobInput { payload: PrintJobPayload; label: string }
+export interface EnqueuePrintJobInput {
+  payload: PrintJobPayload;
+  label: string;
+  /** Session 1C: the agent's opt-in and Idempotency-Key (request headers, never part of the body). */
+  headers?: Record<string, string>;
+}
 
 /** POST /api/print-jobs. Resolves with the server's `outcome` discriminant —
  *  every value, `"too-large"` included, is a NORMAL 200, and the only sanctioned
@@ -56,7 +61,7 @@ export interface EnqueuePrintJobInput { payload: PrintJobPayload; label: string 
 export function useEnqueuePrintJob() {
   return useMutation({
     mutationKey: PRINT_JOB_KEYS.mutation,
-    mutationFn: (input: EnqueuePrintJobInput) => apiSend<PrintJobEnqueueResult>("/api/print-jobs", "POST", input),
+    mutationFn: ({ headers, ...input }: EnqueuePrintJobInput) => apiSend<PrintJobEnqueueResult>("/api/print-jobs", "POST", input, { headers }),
     onError: (err: Error) => toast.error(err.message || ENQUEUE_ERROR),
   });
 }

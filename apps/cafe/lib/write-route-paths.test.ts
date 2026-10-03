@@ -109,7 +109,8 @@ test("PIN (settle): follow-ups live in lib/settle-followups.ts and run alongside
   const wave = mustIndexOf(src, "await Promise.allSettled([\n      numbering", "the post-CAS wave");
   const publish = mustIndexOf(src, 'publishCafeEvent("order-changed");', "the publish");
   const unconfirmed = mustIndexOf(src, "return serverError(BILL_NUMBER_UNCONFIRMED, numbered.reason);", "the numbering-failure answer");
-  const ok = mustIndexOf(src, "return success(numbered.value ?? updated);", "the success answer");
+  // Printing Phase 1 (Session 1B): the answer carries printJobs when the request opted in.
+  const ok = mustIndexOf(src, "return success(withPrintJobs(numbered.value ?? updated, printJobs));", "the success answer");
   assert.ok(wave < publish && publish < unconfirmed && publish < ok, "the tab changed either way: publish before both answers");
 });
 
@@ -206,7 +207,8 @@ test("PIN (create): the insert carries no bill number; only the winner numbers i
       ["issuesBill ? issueBillNumber(landed._id, printCfg.bill.numberStart) : Promise.resolve(null),", "the winner's numbering"],
       ['publishCafeEvent("order-changed");', "the publish"],
       ["return serverError(BILL_NUMBER_UNCONFIRMED, numbered.reason);", "the numbering-failure answer"],
-      ["return created(numbered.value ?? landed);", "the created answer"],
+      // Printing Phase 1 (Session 1B): the answer carries printJobs when the request opted in.
+      ["return created(withPrintJobs(numbered.value ?? landed, printJobs));", "the created answer"],
     ],
     "a Pay Now twin that lost the insert must never draw a bill number",
   );

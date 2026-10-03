@@ -8,6 +8,7 @@ import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
 import { usePrintHostDot } from "@/components/layout/print-host-dot-context";
 import { PrinterSetupCard } from "@/components/print/PrinterSetupCard";
 import { PrinterStatusBanner } from "@/components/print/PrinterStatusBanner";
+import { WaitingSlipsCard } from "@/components/print/WaitingSlipsCard";
 import { useCanPrintNow, useDesktopPrinterChosen, useDeviceOnline, useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
 import { printerDotOf, printerHeadlineOf, type PrinterDot } from "@/lib/printer/printer-dot";
 
@@ -45,6 +46,7 @@ export function PrinterPanel({ onDone }: { onDone?: () => void }) {
   // sheet and /printers can both be mounted at once).
   return (
     <div data-printer-panel className="space-y-4">
+      <WaitingSlipsCard pulse={pulse} />
       <PrinterStatusBanner dot={dot.show ? dot : CHECKING_DOT} copy={copy} />
       <PrinterSetupCard />
       {onDone !== undefined && (

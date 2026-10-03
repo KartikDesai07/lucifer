@@ -170,8 +170,14 @@ test("writePrintWakeBudget: is a no-op when `window` is undefined — must not t
 
 // ── 3. Route pins — GET /api/print-jobs/wake ────────────────────────────────
 
-test('PIN: app/api/print-jobs/wake/route.ts contains requireAuth, connectDB, noStore(success(, printJobDrainHead(, force-dynamic, and export async function GET — and does NOT contain .find(, .aggregate(, prune, updateOne, findOneAndUpdate, deleteMany, deleteOne, insertMany, create(, or beat (READ-ONLY: no prune, no beat, no write, ever)', () => {
-  const src = stripComments(readSrc(WAKE_ROUTE));
+test('PIN: GET /api/print-jobs/wake stays READ-ONLY (requireAuth, connectDB, noStore(success(, printJobDrainHead(, force-dynamic — and no .find(, .aggregate(, prune, updateOne, findOneAndUpdate, deleteMany, deleteOne, insertMany, create( or beat, ever); the Phase 1 POST beside it is the only part that writes', () => {
+  // Phase 1 (plan 2026-10-02-phase-1-lifecycle.md Task 7) adds a POST that beats and sweeps; the
+  // banned needles below apply to the GET handler's own body, which must never change.
+  const full = stripComments(readSrc(WAKE_ROUTE));
+  const getAt = full.indexOf("export async function GET(");
+  const postAt = full.indexOf("export async function POST(");
+  assert.ok(getAt >= 0 && postAt > getAt, "GET is declared before the Phase 1 POST");
+  const src = full.slice(getAt, postAt);
 
   // Positive landmarks FIRST, per testing.md's vision-guard rule, so the
   // negative checks below cannot be trivially true over a blinded file.
@@ -179,7 +185,7 @@ test('PIN: app/api/print-jobs/wake/route.ts contains requireAuth, connectDB, noS
   assert.match(src, /connectDB/, "the route must reference connectDB");
   assert.match(src, /noStore\(success\(/, "the route must return noStore(success(");
   assert.match(src, /printJobDrainHead\(/, "the route must call printJobDrainHead(");
-  assert.match(src, /export const dynamic = "force-dynamic";/, 'the route must declare dynamic = "force-dynamic"');
+  assert.match(full, /export const dynamic = "force-dynamic";/, 'the route must declare dynamic = "force-dynamic"');
   assert.match(src, /export async function GET\(/, "the route must export async function GET(");
 
   // Banned needles built by concatenation (testing.md rule: never a literal
@@ -390,16 +396,20 @@ test('INVENTORY: files containing the needle "usePrintHostWake(" under app/compo
   for (const root of roots) walk(root);
   hits.sort();
 
-  const expected = ["components/print/PrintHostDrain.tsx", "hooks/use-print-host-wake.ts"].sort();
-  assert.deepEqual(hits, expected, `usePrintHostWake( call sites must be exactly these two files; found: ${hits.join(", ")}`);
+  // Session 1C: the host agent's wake POST (hooks/use-print-agent.ts) replaced the GET poll; the hook stays
+  // one release for its own tests, with no call site.
+  const expected = ["hooks/use-print-host-wake.ts"];
+  assert.deepEqual(hits, expected, `usePrintHostWake( must have no call site any more; found: ${hits.join(", ")}`);
 });
 
-test('PIN: PrintHostDrain.tsx calls usePrintHostWake({ drains, feed }) — the wiring pin that proves reachability, not just that the hook compiles — and "enabled: drains" still occurs exactly twice there (re-asserted here; owned by print-host-paths.test.ts, not touched)', () => {
-  const src = readSrc(PRINT_HOST_DRAIN);
-  assert.ok(src.includes("usePrintHostWake({ drains, feed });"), "PrintHostDrain.tsx must call usePrintHostWake({ drains, feed });");
-
-  const enabledDrainsCount = src.split("enabled: drains").length - 1;
-  assert.equal(enabledDrainsCount, 2, `expected "enabled: drains" exactly twice (both claiming lanes) in PrintHostDrain.tsx, found ${enabledDrainsCount}`);
+test("PIN (Session 1C): only the host agent polls the wake, through the POST beside the unchanged GET, and PrintHostDrain arms it only for the host", () => {
+  const drain = readSrc(PRINT_HOST_DRAIN);
+  assert.ok(drain.includes("usePrintAgent({ enabled: drains, isHost: enabled,"), "the agent learns whether it is the host");
+  const agent = stripComments(readSrc("apps/cafe/hooks/use-print-agent.ts"));
+  assert.ok(agent.includes("if (agent === null || !enabled || !isHost) return;"), "the wake poll is armed for the host only (R6)");
+  assert.ok(agent.includes('apiSend<PrintWakeBeatData>(WAKE_URL, "POST", wakeBody(deviceId))'), "the agent's wake is the POST heartbeat");
+  assert.ok(agent.includes("bumpPrintWakeBudget("), "under the device's one daily cap");
+  assert.ok(!agent.includes("apiGet"), "the agent never polls the read-only GET");
 });
 
 // ── 6. Constants single-homed in print-job.ts ───────────────────────────────

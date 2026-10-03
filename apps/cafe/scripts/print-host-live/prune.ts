@@ -31,23 +31,23 @@ export async function legF(nowMs: number): Promise<void> {
 
   const queuedDeletedId = await seedBackdatedRow(
     "queued",
-    new Date(nowMs - (PRINT_JOB_QUEUED_RETENTION_MS + 60_000)), // -12h01m
-    "queued -12h01m (deleted)",
+    new Date(nowMs - (PRINT_JOB_QUEUED_RETENTION_MS + 60_000)), // a minute past the queued retention
+    "queued, a minute past the retention (deleted)",
   );
   const queuedSurvivesId = await seedBackdatedRow(
     "queued",
-    new Date(nowMs - (PRINT_JOB_QUEUED_RETENTION_MS - 60_000)), // -11h59m
-    "queued -11h59m (survives)",
+    new Date(nowMs - (PRINT_JOB_QUEUED_RETENTION_MS - 60_000)), // a minute inside it
+    "queued, a minute inside the retention (survives)",
   );
   const resolvedDeletedId = await seedBackdatedRow(
     "printed",
-    new Date(nowMs - (PRINT_JOB_RESOLVED_RETENTION_MS + 60_000)), // -2h01m
-    "resolved -2h01m (deleted)",
+    new Date(nowMs - (PRINT_JOB_RESOLVED_RETENTION_MS + 60_000)), // a minute past the finished retention
+    "resolved, a minute past the retention (deleted)",
   );
   const resolvedSurvivesId = await seedBackdatedRow(
     "dismissed",
-    new Date(nowMs - (PRINT_JOB_RESOLVED_RETENTION_MS - 60_000)), // -1h59m
-    "resolved -1h59m (survives)",
+    new Date(nowMs - (PRINT_JOB_RESOLVED_RETENTION_MS - 60_000)), // a minute inside it
+    "resolved, a minute inside the retention (survives)",
   );
 
   await prunePrintJobs(nowMs);
@@ -55,10 +55,10 @@ export async function legF(nowMs: number): Promise<void> {
   const remaining = await PrintJob.find({}).select("_id").lean();
   const remainingIds = new Set(remaining.map((r) => String(r._id)));
 
-  check("leg f: the -12h01m queued row was deleted", !remainingIds.has(queuedDeletedId));
-  check("leg f: the -11h59m queued row survives", remainingIds.has(queuedSurvivesId));
-  check("leg f: the -2h01m resolved row was deleted", !remainingIds.has(resolvedDeletedId));
-  check("leg f: the -1h59m resolved row survives", remainingIds.has(resolvedSurvivesId));
+  check("leg f: the queued row a minute past the retention was deleted", !remainingIds.has(queuedDeletedId));
+  check("leg f: the queued row a minute inside the retention survives", remainingIds.has(queuedSurvivesId));
+  check("leg f: the resolved row a minute past the retention was deleted", !remainingIds.has(resolvedDeletedId));
+  check("leg f: the resolved row a minute inside the retention survives", remainingIds.has(resolvedSurvivesId));
   check("leg f: exactly the two survivor ids remain", remainingIds.size === 2);
 }
 

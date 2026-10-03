@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import { after } from "next/server";
+import type { PrintJobStatus } from "@pos/shared/print-job";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Realtime publish (socket slice 1) — the cafe runtime's ONE way to nudge its
@@ -48,8 +49,20 @@ export const CAFE_EVENT_KINDS = [
   // safety net and print-queue-claim.ts's CAS stays the correctness guarantee,
   // so a lost print-job frame costs at most one 60s tick, never a lost print.
   "print-job",
+  // Printing Phase 1 (spec §10, §17.2): one print job's new state — created, or final — for the
+  // ordering device's readback and the agent the job is aimed at. It names the job, its status and
+  // its device; never order content. The readback's pulse fallback stays.
+  "print-status",
 ] as const;
 export type CafeEventKind = (typeof CAFE_EVENT_KINDS)[number];
+
+/** The one thing a "print-status" envelope adds: which job, its status, and (on "queued") the device
+ *  that must print it, so only that agent leases on it (no fan-out of empty leases). */
+export interface CafeEventJob {
+  id: string;
+  status: PrintJobStatus;
+  target?: string;
+}
 
 /** Header + scheme literals. MIRROR of apps/hub/lib/heartbeat-hmac.ts's scheme
  *  (lowercase-hex HMAC-SHA256 over `${ts}.${rawBody}`, ts = unix SECONDS), with
@@ -72,6 +85,8 @@ export interface CafeEventEnvelope {
   tenant: string;
   kind: CafeEventKind;
   at: string;
+  /** "print-status" only. */
+  job?: CafeEventJob;
 }
 
 /** Lowercase-hex HMAC-SHA256 over the timestamp-bound message. Exported for the
@@ -132,6 +147,7 @@ export function realtimeEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
 export async function broadcastCafeEvent(
   kind: CafeEventKind,
   nowMs: number = Date.now(),
+  job?: CafeEventJob,
 ): Promise<void> {
   try {
     const url = process.env.REALTIME_PUBLISH_URL;
@@ -143,7 +159,7 @@ export async function broadcastCafeEvent(
     const tenant = process.env.TENANT_ID ?? "dev";
     const { body, headers } = buildRealtimeRequest(
       secret,
-      { tenant, kind, at: new Date(nowMs).toISOString() },
+      { tenant, kind, at: new Date(nowMs).toISOString(), ...(job !== undefined ? { job } : {}) },
       nowMs,
     );
 
@@ -184,5 +200,16 @@ export function publishCafeEvent(kind: CafeEventKind): void {
   } catch {
     // No `after()` in this runtime — skip the nudge, keep the write. Devices
     // poll, which is the shipped behaviour and the source of truth anyway.
+  }
+}
+
+/** Printing Phase 1 (spec §10): one job's new state, under the same two-part safety contract as
+ *  publishCafeEvent. Called by the print libs (job creation and the lifecycle's final transitions),
+ *  never by a route; a lost frame costs the readback one pulse. */
+export function publishPrintStatus(job: CafeEventJob): void {
+  try {
+    after(broadcastCafeEvent("print-status", Date.now(), job));
+  } catch {
+    // No `after()` in this runtime — skip the frame, keep the write.
   }
 }

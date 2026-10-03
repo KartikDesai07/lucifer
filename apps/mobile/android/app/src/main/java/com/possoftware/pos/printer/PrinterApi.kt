@@ -183,7 +183,7 @@ object PrinterApi {
     )
   }
 
-  /** One print job at a time; no native resend (the web resends once). */
+  /** One print job at a time; a failed/partial write must never be replayed automatically. */
   fun print(base64: String, cb: ReplyCallback<Int>) {
     if (!printing.compareAndSet(false, true)) {
       cb(Reply.fail(BridgeCodes.BUSY))

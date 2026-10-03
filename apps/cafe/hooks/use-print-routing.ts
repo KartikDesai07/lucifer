@@ -9,6 +9,7 @@
 import { useCallback } from "react";
 
 import { billPrintJob, kotPrintJob, voidPrintJob, type PrintHostRouting } from "@/lib/print-routing";
+import { printJobRefOf } from "@/lib/print-agent-calls";
 import type { Order, OrderVoid } from "@/types";
 import { useHostRouting, type PrintRoutingHost } from "@/hooks/use-host-routing";
 
@@ -69,12 +70,12 @@ export function usePrintRouting(args: {
     // lanes so the enqueued job and a local fallback print identical slips.
     const resolved = round ?? order.kotRounds;
     noteOrder(order);
-    routePrint(() => kotPrintJob(order, resolved), () => localKot(order, resolved));
+    routePrint(() => kotPrintJob(order, resolved), () => localKot(order, resolved), printJobRefOf(order, "kot"));
   }, [routePrint, localKot, noteOrder]);
 
   const queueVoidSlip = useCallback((order: Order, entry: OrderVoid) => {
     noteOrder(order);
-    routePrint(() => voidPrintJob(order, entry, { reprint: false }), () => localVoid(order, entry));
+    routePrint(() => voidPrintJob(order, entry, { reprint: false }), () => localVoid(order, entry), printJobRefOf(order, "void"));
   }, [routePrint, localVoid, noteOrder]);
 
   const reprintKot = useCallback(() => {
@@ -105,7 +106,7 @@ export function usePrintRouting(args: {
     // `bill:<id>` jobKey is what makes a retry idempotent. PH-6's
     // OrderDetailSheet reprint is the `{ reprint: true }` caller.
     noteOrder(order);
-    routePrint(() => billPrintJob(order, { reprint: false }), () => localBill(order));
+    routePrint(() => billPrintJob(order, { reprint: false }), () => localBill(order), printJobRefOf(order, "bill"));
   }, [routePrint, localBill, noteOrder]);
 
   return {

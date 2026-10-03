@@ -3,6 +3,18 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Installed Android shell: contain viewport rubber-banding without altering
+   individual POS scrollers or blocking pinch zoom / selection in fields. */
+@layer base {
+  html[data-pos-native], html[data-pos-native] body {
+    overscroll-behavior: none;
+  }
+  [data-pos-native] :where(button, a, label, summary, [role="button"]) {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
 /*
  * Design system definition.
  *

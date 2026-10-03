@@ -515,7 +515,8 @@ test("PIN: the publish-gap handlers publish exactly once on the landed path, aft
   const sites: Array<{ rel: string; verb: string; guard: string; last: string; ret: string; first?: string; publishes?: number }> = [
     {
       rel: MOVE_ROUTE, verb: "POST", guard: "return failure(ORDER_STALE_ERROR, 409);", last: "cache.del(orderSummaryCacheKey());",
-      ret: "return success(moved);", publishes: 2,
+      // Printing Phase 1 (Session 1B): the answer carries printJobs when the request opted in.
+      ret: "return success(withPrintJobs(moved, printJobs));", publishes: 2,
     },
     {
       rel: ORDER_ID_ROUTE, verb: "PUT", guard: 'if (!updated) return failure("Order changed', first: "await reconcileLedger(old, updated);",
@@ -1166,4 +1167,21 @@ test("integration: an order-changed FRAME on the shared socket invalidates ORDER
       invalidator.dispose();
     }
   });
+});
+
+// ── (15) PRINTING PHASE 1 (Session 1B): "print-status" ──────────────────────
+
+test('print-status: a room kind, and only its envelope names a job (id, status, device) — never order content', () => {
+  assert.ok((CAFE_EVENT_KINDS as readonly string[]).includes("print-status"), "print-status is one of the room's kinds");
+  const plain = buildRealtimeRequest("s", { tenant: "t", kind: "print-job", at: "x" }, 0);
+  assert.equal(plain.body, JSON.stringify({ tenant: "t", kind: "print-job", at: "x" }), "every other kind is byte-for-byte as before");
+  const status = buildRealtimeRequest("s", { tenant: "t", kind: "print-status", at: "x", job: { id: "j1", status: "queued", target: "dev-1" } }, 0);
+  assert.deepEqual(JSON.parse(status.body), { tenant: "t", kind: "print-status", at: "x", job: { id: "j1", status: "queued", target: "dev-1" } });
+});
+
+test("PIN: publishPrintStatus keeps publishCafeEvent's after() + try/catch contract, and broadcasts the job only on print-status", () => {
+  const s = stripComments(readSrc("apps/cafe/lib/realtime-publish.ts"));
+  const fn = s.slice(s.indexOf("export function publishPrintStatus("));
+  assert.match(fn, /try \{\s*after\(broadcastCafeEvent\("print-status", Date\.now\(\), job\)\);\s*\} catch \{/);
+  assert.match(s, /\{ tenant, kind, at: new Date\(nowMs\)\.toISOString\(\), \.\.\.\(job !== undefined \? \{ job \} : \{\}\) \}/);
 });

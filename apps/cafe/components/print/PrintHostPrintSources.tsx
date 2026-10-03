@@ -71,7 +71,7 @@ export function PrintHostPrintSources() {
 
   if (slip.surface === "receipt") {
     return (
-      <PrintSources order={slip.order} settings={settings.data} kotRef={kotRef} kotVariant="kot" receiptRef={receiptRef} />
+      <PrintSources order={slip.order} settings={settings.data} kotRef={kotRef} kotVariant="kot" receiptRef={receiptRef} banner={slip.banner} />
     );
   }
 
@@ -90,6 +90,7 @@ export function PrintHostPrintSources() {
       movedFrom={slip.movedFrom}
       movedBy={slip.movedBy}
       movedAt={slip.movedAt}
+      banner={slip.banner}
     />
   );
 }

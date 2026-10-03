@@ -12,12 +12,14 @@ import {
   queuedPruneCutoff,
   resolvedPruneCutoff,
   drainAgeCutoff,
+  actedGraceCutoff,
 } from "./print-queue";
 import { printJobFeedRowOf, printJobResolvedRowOf, printJobDrainFilter } from "./print-queue-feeds";
 import { PRINT_HOST_TAB_ID_MAX_CHARS, claimedByOf, printJobEligibility, printJobNeedsOrderRead } from "./print-queue-claim";
 import { printHostStateOf } from "./print-host";
 import {
   PRINT_JOB_KINDS,
+  PRINT_JOB_ACTED_GRACE_MS,
   PRINT_JOB_QUEUED_RETENTION_MS,
   PRINT_JOB_RESOLVED_RETENTION_MS,
   PRINT_HOST_MAX_AGE_MS,
@@ -189,6 +191,7 @@ test("queuedPruneCutoff / resolvedPruneCutoff / drainAgeCutoff: each is nowMs mi
   assert.equal(queuedPruneCutoff(now).getTime(), now - PRINT_JOB_QUEUED_RETENTION_MS);
   assert.equal(resolvedPruneCutoff(now).getTime(), now - PRINT_JOB_RESOLVED_RETENTION_MS);
   assert.equal(drainAgeCutoff(now).getTime(), now - PRINT_HOST_MAX_AGE_MS);
+  assert.equal(actedGraceCutoff(now).getTime(), now - PRINT_JOB_ACTED_GRACE_MS, "a slip staff acted on within 15 min is kept (the 1D gate)");
 });
 
 test("drainAgeCutoff / printJobDrainCandidate boundary agreement (D1/D2 split): a row created EXACTLY PRINT_HOST_MAX_AGE_MS ago is >= drainAgeCutoff (still D1, not stale), matching printJobDrainCandidate's own age===maxAgeMs-is-still-eligible boundary — a disagreement here would strand a job in neither band", () => {
@@ -230,7 +233,7 @@ test("printJobResolvedRowOf: id is the stringified _id, and dismissReason is OMI
   assert.ok(!("dismissReason" in row), "dismissReason must be OMITTED, not present as undefined");
 });
 
-test("printJobResolvedRowOf: dismissReason IS included when present, and the function returns null (never throws) on a status outside {printed,dismissed} — F-5 policy: this row feeds pos-pulse.ts's 20s Promise.all readback, so a THROW there took the whole feed down for the row's 2h retention window; omitting the one row degrades one row instead (DELIBERATE POLICY CHANGE from an earlier fix round, not a weakened assertion — companion pin to the one in print-queue-fixes.test.ts)", () => {
+test("printJobResolvedRowOf: dismissReason IS included when present, and the function returns null (never throws) on a status outside {printed,dismissed} — F-5 policy: this row feeds pos-pulse.ts's 20s Promise.all readback, so a THROW there took the whole feed down for the row's retention window; omitting the one row degrades one row instead (DELIBERATE POLICY CHANGE from an earlier fix round, not a weakened assertion — companion pin to the one in print-queue-fixes.test.ts)", () => {
   const row = printJobResolvedRowOf({ _id: "xyz789", status: "dismissed", dismissReason: "staff" });
   assert.ok(row !== null, "positive landmark: a recognised status is never omitted");
   assert.equal(row.dismissReason, "staff");

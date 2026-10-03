@@ -1,4 +1,4 @@
-import { quiet, type PaperChoice, type PrinterTransport, type SerialLike, type SerialPortInfoLike, type SerialPortLike, type SerialWriterLike } from "@/lib/printer/web-printer-types";
+import { notConnectedError, quiet, type PaperChoice, type PrinterTransport, type SerialLike, type SerialPortInfoLike, type SerialPortLike, type SerialWriterLike } from "@/lib/printer/web-printer-types";
 import type { SerialDevicePrinter } from "@/lib/printer/device-printer-store";
 
 // Web Serial lane: a paired Bluetooth printer (SPP) or, on a PC, a USB-serial
@@ -84,7 +84,7 @@ export async function openSerial(port: SerialPortLike): Promise<PrinterTransport
   return {
     async write(bytes) {
       const writable = port.writable;
-      if (writable === null) throw new Error("The serial port is not writable.");
+      if (writable === null) throw notConnectedError("The serial port is not writable.");
       const writer = writable.getWriter();
       active = writer;
       try {
