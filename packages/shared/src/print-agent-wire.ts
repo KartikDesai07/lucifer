@@ -38,6 +38,27 @@ export interface PrintJobRef {
   status: PrintJobStatus;
 }
 
+/** Session 1D (spec §10): one row of the one waiting-slips panel. Every device reads the same feed on the
+ *  existing 20 s pulse: a slip still queued 20 s after it was made (its printer is off or not ready, or the
+ *  slip is stale), a bill that may already have printed, or a slip that could not print. */
+export interface PrintAttentionRow {
+  id: string;
+  kind: PrintJobKind;
+  label: string;
+  status: "queued" | "needs-confirm" | "failed";
+  labels: PrintJobLabel[];
+  createdAt: string;
+  /** The writer's last curated sentence (why it waits, or why it failed); absent when there is none. */
+  lastError?: string;
+  /** The device that asked for the slip, and the one whose line holds it: both sound the 20 s alarm. */
+  originDeviceId?: string;
+  targetDeviceId?: string;
+}
+
+/** The feed is one bounded read on the hottest poll: the oldest rows first, within the queued retention (§7.8). */
+export const PRINT_ATTENTION_LIMIT = 20;
+export const PRINT_ATTENTION_WINDOW_MS = 12 * 60 * 60 * 1000;
+
 export const PRINT_DEVICE_SHELLS = ["android", "windows", "browser"] as const;
 export type PrintDeviceShell = (typeof PRINT_DEVICE_SHELLS)[number];
 export interface PrintDeviceCapabilities {

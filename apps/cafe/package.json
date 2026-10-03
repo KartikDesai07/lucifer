@@ -156,6 +156,7 @@
     "lib/print-write-outcome.test.ts",
     "lib/print-agent.test.ts",
     "lib/print-agent-paths.test.ts",
+    "lib/print-attention.test.ts",
     "lib/print-routing.test.ts",
     "lib/pos-install.test.ts",
     "lib/pos-install-paths.test.ts",

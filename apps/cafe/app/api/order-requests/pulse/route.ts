@@ -1,7 +1,10 @@
+import { after } from "next/server";
 import { connectDB } from "@/lib/db";
 import { readPosPulse } from "@/lib/pos-pulse";
 import { printPulseDeviceOf } from "@/lib/print-agent-server";
+import { readPrintAttention } from "@/lib/print-attention";
 import { readJobsForDevice } from "@/lib/print-lease";
+import { sweepPrintJobsThrottled } from "@/lib/print-sweep";
 import { success, requireAuth, serverError } from "@/lib/api-helpers";
 import { noStore } from "@/lib/order-request-tray";
 
@@ -30,6 +33,12 @@ export const dynamic = "force-dynamic";
 // printJobsForMe, the jobs waiting in that device's own line, so a job the server re-queued or sent
 // home reaches its agent within one tick even with the socket down. One more bounded, index-backed
 // READ on a poll that already runs (no new request), fail-soft: a failed read omits the field.
+//
+// Printing Phase 1 Session 1D (spec §10, §17.3 rule 2): every tab also reads the waiting-slips feed (one
+// bounded read: the panel, its count, the 20 s alarm), and the pulse runs the print sweep AFTER its
+// answer, at most once per 60 s per instance (sweepPrintJobsThrottled). With no host nothing else runs
+// it: lease expiry, sending jobs home and the KOT repair would otherwise never happen. The route itself
+// still writes nothing; the sweep's writes are the sweep's (lib/print-sweep.ts), never on this answer.
 export async function GET(req: Request) {
   const authed = await requireAuth();
   if ("error" in authed) return authed.error;
@@ -37,11 +46,24 @@ export async function GET(req: Request) {
 
   try {
     await connectDB();
-    const [data, printJobsForMe] = await Promise.all([
+    const nowMs = Date.now();
+    const [data, printJobsForMe, attention] = await Promise.all([
       readPosPulse(),
-      device === null ? Promise.resolve(null) : readJobsForDevice(device, Date.now()).catch(() => null),
+      device === null ? Promise.resolve(null) : readJobsForDevice(device, nowMs).catch(() => null),
+      readPrintAttention(nowMs).catch(() => null),
     ]);
-    return noStore(success(printJobsForMe === null ? data : { ...data, printJobsForMe }));
+    try {
+      after(() => sweepPrintJobsThrottled(nowMs));
+    } catch {
+      // no after() in this runtime: skip the sweep, keep the pulse
+    }
+    return noStore(
+      success({
+        ...data,
+        ...(printJobsForMe === null ? {} : { printJobsForMe }),
+        ...(attention === null ? {} : { printAttention: attention.rows, printAttentionTruncated: attention.truncated }),
+      }),
+    );
   } catch (error) {
     return noStore(serverError("Failed to fetch pos pulse", error));
   }

@@ -183,12 +183,14 @@ test("PIN (M-f): a staff accept the server prints records the asking device in t
   assert.ok(!src("apps/cafe/lib/order-request-create.ts").includes("printDeviceId"), "the auto-accept marks nothing");
 });
 
-test("PIN: the pulse adds printJobsForMe only for a tab that named itself, read-only and fail-soft", () => {
+// Session 1D deliberately changed this pin: the pulse now also sweeps AFTER its answer (D2; pinned in
+// print-attention.test.ts), and its print fields are spread in, each omitted on a failed read.
+test("PIN: the pulse adds printJobsForMe only for a tab that named itself, fail-soft, and the route itself writes nothing", () => {
   const s = src("apps/cafe/app/api/order-requests/pulse/route.ts");
   assert.match(s, /const device = printPulseDeviceOf\(req\.url\);/);
-  assert.match(s, /device === null \? Promise\.resolve\(null\) : readJobsForDevice\(device, Date\.now\(\)\)\.catch\(\(\) => null\)/);
-  assert.match(s, /success\(printJobsForMe === null \? data : \{ \.\.\.data, printJobsForMe \}\)/);
-  for (const write of ["updateOne(", "updateMany(", "create(", "findOneAndUpdate(", "sweepPrintJobs"]) {
-    assert.ok(!s.includes(write), `the pulse route stays read-only: no ${write}`);
+  assert.match(s, /device === null \? Promise\.resolve\(null\) : readJobsForDevice\(device, nowMs\)\.catch\(\(\) => null\)/);
+  assert.ok(s.includes("...(printJobsForMe === null ? {} : { printJobsForMe }),"), "omitted on a failed read");
+  for (const write of ["updateOne(", "updateMany(", "create(", "findOneAndUpdate("]) {
+    assert.ok(!s.includes(write), `the pulse route itself writes nothing: no ${write}`);
   }
 });
