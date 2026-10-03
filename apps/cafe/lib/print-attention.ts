@@ -11,8 +11,9 @@ import { PrintJob, type IPrintJob } from "@/models/PrintJob";
 //   · Check the bill: needs-confirm;
 //   · Couldn't print: failed.
 // A slip being printed right now (leased) waits for nobody. The rows also carry the asking and the
-// printing device, so both can sound the 20 s alarm without a per-device read. Read-only; never calls
-// connectDB() (the route does); no console.*.
+// printing device, so both can sound the 20 s alarm without a per-device read. The read takes the
+// NEWEST rows (owner, after Session 1D: a new problem always shows and rings, however long the backlog)
+// and hands them over oldest first. Read-only; never calls connectDB() (the route does); no console.*.
 
 const ATTENTION_STATUSES: ReadonlySet<PrintJobStatus> = new Set(["queued", "needs-confirm", "failed"]);
 
@@ -37,6 +38,7 @@ export function printAttentionRowOf(doc: {
   lastError?: string;
   originDeviceId?: string;
   targetDeviceId?: string;
+  approvedAt?: Date;
 }): PrintAttentionRow | null {
   // A status this panel never shows (deploy skew, a row that moved mid-read) degrades one row, never the pulse.
   if (!ATTENTION_STATUSES.has(doc.status)) return null;
@@ -50,16 +52,22 @@ export function printAttentionRowOf(doc: {
     ...(doc.lastError ? { lastError: doc.lastError } : {}),
     ...(doc.originDeviceId ? { originDeviceId: doc.originDeviceId } : {}),
     ...(doc.targetDeviceId ? { targetDeviceId: doc.targetDeviceId } : {}),
+    ...(doc.approvedAt ? { approved: true as const } : {}),
   };
 }
 
 export async function readPrintAttention(nowMs: number): Promise<{ rows: PrintAttentionRow[]; truncated: boolean }> {
   const docs = await PrintJob.find(printAttentionFilter(nowMs))
-    .select("kind label status labels createdAt lastError originDeviceId targetDeviceId")
-    .sort({ createdAt: 1, _id: 1 })
+    .select("kind label status labels createdAt lastError originDeviceId targetDeviceId approvedAt")
+    // The newest rows, on the same index (a merge of its scans, no in-memory sort: the 1D gate's explain()).
+    .sort({ createdAt: -1, _id: -1 })
     .limit(PRINT_ATTENTION_LIMIT)
     .lean();
-  const rows = docs.map(printAttentionRowOf).filter((row): row is PrintAttentionRow => row !== null);
+  // Shown oldest first.
+  const rows = docs
+    .reverse()
+    .map(printAttentionRowOf)
+    .filter((row): row is PrintAttentionRow => row !== null);
   // The same length===limit "at least this many" proxy the other pulse feeds use.
   return { rows, truncated: docs.length === PRINT_ATTENTION_LIMIT };
 }

@@ -35,7 +35,7 @@ import { legQ, legR, legS, legT, legU } from "./print-host-live/lifecycle";
 import { legV, legW, legX } from "./print-host-live/lifecycle-actions";
 import { legAA, legAB, legAC, legY, legZ } from "./print-host-live/order-jobs";
 import { legAD, legAE } from "./print-host-live/agent";
-import { legAF } from "./print-host-live/attention";
+import { legAF, legAG } from "./print-host-live/attention";
 
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
@@ -95,6 +95,8 @@ async function main(): Promise<void> {
     await legAE(Date.now());
     // Phase 1 Session 1D leg (the waiting-slips feed every device's pulse carries).
     await legAF(Date.now());
+    // Phase 1 Session 1E leg (the owner's retention after Session 1D).
+    await legAG(Date.now());
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();

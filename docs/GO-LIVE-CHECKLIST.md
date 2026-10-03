@@ -1196,7 +1196,8 @@ the test fails — fix the code or this file, never just this file.
 | Print host offline threshold | 180 seconds (3 missed ~60 s throttled beats) | `PRINT_HOST_OFFLINE_MS` |
 | Print-job drain feed cap (per pulse) | 10 | `PRINT_JOB_PULSE_LIMIT` |
 | Print-job stale-band feed cap | 20 | `PRINT_JOB_STALE_LIMIT` |
-| Queued print job retention | 12 hours | `PRINT_JOB_QUEUED_RETENTION_MS` |
+| Queued print job retention | 3 hours | `PRINT_JOB_QUEUED_RETENTION_MS` |
+| Finished print job retention | 45 minutes | `PRINT_JOB_RESOLVED_RETENTION_MS` |
 | Desktop app installer | `POS-Software-Setup-${version}.exe` | `apps/desktop/package.json` (`build.nsis.artifactName`) |
 | Print host silent-off warning | `Print host shows a dialog for every slip.` | `PRINT_HOST_SILENT_OFF_WARNING` |
 | Print host active note | `Slips print at <label>.` | `PRINT_HOST_ACTIVE_NOTE` |

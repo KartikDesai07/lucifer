@@ -49,7 +49,8 @@ export const printDeviceSchema = new Schema<IPrintDevice>(
   { timestamps: true },
 );
 
-// NO TTL index (ttl-guard default-deny): a device row is tiny, one per device, and stays.
+// NO TTL index (ttl-guard default-deny): a device row is tiny, one per device. A row not seen for 7 days
+// goes on the print prune's lazy sweep (lib/print-device.ts prunePrintDevices; owner, after Session 1D).
 
 export const PrintDevice: Model<IPrintDevice> =
   (mongoose.models.PrintDevice as Model<IPrintDevice>) ??

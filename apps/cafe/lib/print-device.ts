@@ -1,6 +1,6 @@
 import { isDuplicateKeyError } from "@pos/shared/api";
 import type { PrintDeviceCapabilities, PrintDeviceShell } from "@pos/shared/print-agent-wire";
-import { PRINT_DEVICE_HEARTBEAT_WRITE_MS, PRINT_DEVICE_ONLINE_MS } from "@pos/shared/print-lifecycle";
+import { PRINT_DEVICE_HEARTBEAT_WRITE_MS, PRINT_DEVICE_ONLINE_MS, PRINT_DEVICE_PRUNE_MS } from "@pos/shared/print-lifecycle";
 import { PrintDevice } from "@/models/PrintDevice";
 
 // Printing redesign, Phase 1 (spec §6.4, §10): the device heartbeat. It rides the agent's existing
@@ -57,4 +57,11 @@ export async function touchPrintDevice(deviceId: string, nowMs: number): Promise
 export async function countOnlineAgents(nowMs: number): Promise<number> {
   const online = await PrintDevice.countDocuments({ lastSeenAt: { $gte: new Date(nowMs - PRINT_DEVICE_ONLINE_MS) } });
   return Math.max(1, online);
+}
+
+/** Owner, after Session 1D: a device not seen for 7 days is gone (a reset or reinstall gets a new id), so
+ *  its row goes. A device that comes back writes its row again on its next wake. One delete over a
+ *  collection of a few rows (no index needed), on the prune's own throttle (lib/print-queue.ts). */
+export async function prunePrintDevices(nowMs: number): Promise<void> {
+  await PrintDevice.deleteMany({ lastSeenAt: { $lt: new Date(nowMs - PRINT_DEVICE_PRUNE_MS) } });
 }

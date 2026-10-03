@@ -67,6 +67,7 @@ import {
   PRINT_JOB_PULSE_LIMIT,
   PRINT_JOB_STALE_LIMIT,
   PRINT_JOB_QUEUED_RETENTION_MS,
+  PRINT_JOB_RESOLVED_RETENTION_MS,
   PRINT_HOST_SILENT_OFF_WARNING,
   PRINT_HOST_ACTIVE_NOTE,
   PRINT_WAKE_FAST_MS,
@@ -1036,9 +1037,14 @@ test("PIN §A: PRINT_JOB_STALE_LIMIT (20) matches the doc's stale-band-feed-cap 
   assert.match(factRow("Print-job stale-band feed cap"), /20/);
 });
 
-test("PIN §A: PRINT_JOB_QUEUED_RETENTION_MS (12 hours) matches the doc's queued-print-job-retention row", () => {
-  assert.equal(PRINT_JOB_QUEUED_RETENTION_MS, 12 * 60 * 60 * 1000);
-  assert.match(factRow("Queued print job retention"), /12/);
+test("PIN §A: PRINT_JOB_QUEUED_RETENTION_MS (3 hours, the owner after Session 1D) matches the doc's queued-print-job-retention row", () => {
+  assert.equal(PRINT_JOB_QUEUED_RETENTION_MS, 3 * 60 * 60 * 1000);
+  assert.match(factRow("Queued print job retention"), /3 hours/);
+});
+
+test("PIN §A: PRINT_JOB_RESOLVED_RETENTION_MS (45 minutes, the owner after Session 1D) matches the doc's finished-print-job-retention row", () => {
+  assert.equal(PRINT_JOB_RESOLVED_RETENTION_MS, 45 * 60 * 1000);
+  assert.match(factRow("Finished print job retention"), /45 minutes/);
 });
 
 // REMOVED (2026-09-19 printer-setup-wizard cleanup): the kiosk .bat generator

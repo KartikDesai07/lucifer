@@ -53,11 +53,15 @@ export interface PrintAttentionRow {
   /** The device that asked for the slip, and the one whose line holds it: both sound the 20 s alarm. */
   originDeviceId?: string;
   targetDeviceId?: string;
+  /** Staff already tapped Print now / Retry / Print again on it (approvedAt): it waits for its printer. */
+  approved?: true;
 }
 
-/** The feed is one bounded read on the hottest poll: the oldest rows first, within the queued retention (§7.8). */
+/** The feed is one bounded read on the hottest poll, within the queued retention (§7.8): the NEWEST rows
+ *  (owner, after Session 1D: a new problem always shows and rings), shown oldest first. An older backlog
+ *  beyond the limit stays in the count ("20+"). */
 export const PRINT_ATTENTION_LIMIT = 20;
-export const PRINT_ATTENTION_WINDOW_MS = 12 * 60 * 60 * 1000;
+export const PRINT_ATTENTION_WINDOW_MS = 3 * 60 * 60 * 1000;
 
 export const PRINT_DEVICE_SHELLS = ["android", "windows", "browser"] as const;
 export type PrintDeviceShell = (typeof PRINT_DEVICE_SHELLS)[number];

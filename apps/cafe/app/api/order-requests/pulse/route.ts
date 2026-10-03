@@ -39,6 +39,9 @@ export const dynamic = "force-dynamic";
 // answer, at most once per 60 s per instance (sweepPrintJobsThrottled). With no host nothing else runs
 // it: lease expiry, sending jobs home and the KOT repair would otherwise never happen. The route itself
 // still writes nothing; the sweep's writes are the sweep's (lib/print-sweep.ts), never on this answer.
+// That includes the print retention (the sweep's last step, on its own 5-minute throttle: waiting slips
+// after 3 h, finished ones after 45 min, device rows unseen for 7 days; the owner, after Session 1D), so
+// the "no prune" invariant above holds for this answer, not for the after() work that follows it.
 export async function GET(req: Request) {
   const authed = await requireAuth();
   if ("error" in authed) return authed.error;

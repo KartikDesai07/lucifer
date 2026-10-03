@@ -62,7 +62,7 @@ test("expectedKotJobs: the key it looks for is the one a created job carries (pr
 
 test("PIN: the repair reads a bounded, indexed window, skips cancelled orders, and creates only through createOrderPrintJobs", () => {
   const s = src("apps/cafe/lib/print-repair.ts");
-  assert.match(s, /createdAt: \{ \$gte: new Date\(nowMs - PRINT_JOB_QUEUED_RETENTION_MS\) \},/);
+  assert.match(s, /createdAt: \{ \$gte: new Date\(nowMs - PRINT_REPAIR_ORDER_MAX_AGE_MS\) \},/, "its own 12 h order window, never the 3 h queued retention (1D gate)");
   assert.match(s, /status: \{ \$ne: "Cancelled" \},/);
   assert.match(s, /\.limit\(PRINT_REPAIR_BATCH\)/);
   assert.match(s, /if \(deviceId === ""\) continue;/, "a round its tab printed is never re-created");

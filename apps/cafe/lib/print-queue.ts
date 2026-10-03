@@ -2,6 +2,7 @@ import { isDuplicateKeyError } from "@pos/shared/api";
 import {
   PRINT_HOST_KEY,
   PRINT_HOST_MAX_AGE_MS,
+  PRINT_JOB_ACTED_GRACE_MS,
   PRINT_JOB_PRUNE_MIN_INTERVAL_MS,
   PRINT_JOB_QUEUED_RETENTION_MS,
   PRINT_JOB_RESOLVED_RETENTION_MS,
@@ -14,6 +15,7 @@ import { PRINT_JOB_LOG_MAX, printJobCreatedLog, printJobInitialLabels, printJobL
 import type { PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 import { PrintHost } from "@/models/PrintHost";
 import { PrintJob } from "@/models/PrintJob";
+import { prunePrintDevices } from "@/lib/print-device";
 import { publishCafeEvent, publishPrintStatus } from "@/lib/realtime-publish";
 
 // Print-host plan (.claude/plan/v2/print-host-plan.md §B1/§B3/§B4) — the
@@ -76,6 +78,9 @@ export function resolvedPruneCutoff(nowMs: number): Date {
 }
 export function drainAgeCutoff(nowMs: number): Date {
   return new Date(nowMs - PRINT_HOST_MAX_AGE_MS);
+}
+export function actedGraceCutoff(nowMs: number): Date {
+  return new Date(nowMs - PRINT_JOB_ACTED_GRACE_MS);
 }
 
 // The orphan dismiss below (enqueuePrintJob step 3) is SERVER-INITIATED — a
@@ -285,20 +290,35 @@ export async function dismissQueuedPrintJobsForClearedHost(dismissedBy: string):
 /**
  * Best-effort reap, mirroring pruneOrderRequests' discipline: retention is a
  * LAZY SWEEP, not a TTL index (ttl-guard default-deny), it deliberately
- * deletes never-printed jobs past 12h (a Friday KOT must not print Monday —
+ * deletes never-printed jobs past 3 h (a Friday KOT must not print Monday —
  * MERGED-14), and it filters `createdAt`, never `updatedAt` (no index on
- * updatedAt; mirrors order-request-intake.ts:57-61).
+ * updatedAt; mirrors order-request-intake.ts:57-61). The owner, after
+ * Session 1D: no print data kept longer than needed — finished rows go after
+ * 45 min (never inside the KOT repair window), and device rows not seen for
+ * 7 days go too. It rides the throttled sweep the pulse already runs after
+ * its answer: no cron, no new request.
  */
 export async function prunePrintJobs(nowMs: number): Promise<void> {
   try {
-    // Every unresolved state older than 12 h goes (a Friday KOT must not print Monday).
-    await PrintJob.deleteMany({ status: { $in: [...PRINT_JOB_UNRESOLVED_STATUSES] }, createdAt: { $lt: queuedPruneCutoff(nowMs) } });
+    // A slip still waiting that nobody acted on goes after 3 h. One staff tapped lately (approvedAt), or
+    // whose lease ran lately (it may be printing), gets its try first: never deleted mid-flight.
+    const acted = actedGraceCutoff(nowMs);
+    await PrintJob.deleteMany({
+      status: { $in: [...PRINT_JOB_UNRESOLVED_STATUSES] }, createdAt: { $lt: queuedPruneCutoff(nowMs) },
+      approvedAt: { $not: { $gte: acted } },
+      "lease.expiresAt": { $not: { $gte: acted } },
+    });
     await PrintJob.deleteMany({
       status: { $in: ["printed", "dismissed"] },
       createdAt: { $lt: resolvedPruneCutoff(nowMs) },
     });
   } catch {
     // best-effort — see comment above
+  }
+  try {
+    await prunePrintDevices(nowMs);
+  } catch {
+    // best-effort, like the rows above
   }
 }
 

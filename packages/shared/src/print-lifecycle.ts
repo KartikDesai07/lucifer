@@ -34,6 +34,9 @@ export const PRINT_KOT_ALARM_MS = 20_000;
 export const PRINT_DEVICE_ONLINE_MS = 90_000;
 /** The heartbeat writes a device's PrintDevice row at most this often (the Atlas M0 write budget, §10). */
 export const PRINT_DEVICE_HEARTBEAT_WRITE_MS = 30_000;
+/** A PrintDevice row not seen for this long is pruned (owner, after Session 1D: a reset or reinstalled
+ *  device gets a new id, so old rows would pile up). A device that comes back writes its row again. */
+export const PRINT_DEVICE_PRUNE_MS = 7 * 24 * 60 * 60 * 1000;
 /** The sweep runs at most this often per server instance, riding requests that already exist (§17.3: never Vercel Cron). */
 export const PRINT_SWEEP_MIN_INTERVAL_MS = 60_000;
 /** An agent retries an unanswered "printed" ack this often, for at most PRINT_ACK_PENDING_MAX_MS (§7.9). */
@@ -49,6 +52,9 @@ export const PRINT_ACK_ERROR_MAX_CHARS = 200;
  *  fired (§7.4 step 2). It is the stale window, so a repaired slip is never older than one that would
  *  need a staff tap. */
 export const PRINT_REPAIR_WINDOW_MS = 30 * 60 * 1000;
+/** The repair looks at orders opened this long ago at most: a long-sitting table's new round is
+ *  still repaired. Its own window, not the queued retention (the 1D review gate: that shrank to 3 h). */
+export const PRINT_REPAIR_ORDER_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
 /** Banner labels in print order ("BACKUP PRINTER · REPRINT", §7.7). Labels are only ever added. */
 export const PRINT_JOB_LABELS = ["BACKUP PRINTER", "REPRINT", "DUPLICATE"] as const;

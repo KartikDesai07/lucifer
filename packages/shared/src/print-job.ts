@@ -90,13 +90,21 @@ export const PRINT_JOB_PAYLOAD_MAX_BYTES = 64 * 1024;
  *  overshoots this 400s the enqueue, and the slip then prints NOWHERE. */
 export const PRINT_JOB_LABEL_MAX_CHARS = 120;
 
-/** How long a resolved (`printed`/`dismissed`) job stays in the D3 readback
- *  window before the lazy prune sweep drops it. */
-export const PRINT_JOB_RESOLVED_RETENTION_MS = 2 * 60 * 60 * 1000;
+/** How long a resolved (`printed`/`dismissed`) job stays before the lazy prune sweep drops it
+ *  (owner, after Session 1D: no finished print data kept longer than safe; was 2 h). Never sooner
+ *  than the KOT repair window (PRINT_REPAIR_WINDOW_MS, 30 min) plus a margin: the repair re-creates
+ *  a missing job of a round fired in that window, so a printed row deleted inside it would print
+ *  twice (print-budget.test.ts pins the floor). */
+export const PRINT_JOB_RESOLVED_RETENTION_MS = 45 * 60 * 1000;
 
-/** A never-claimed `queued` job older than this is pruned outright — a Friday
- *  KOT must not print Monday (design review MERGED-14). */
-export const PRINT_JOB_QUEUED_RETENTION_MS = 12 * 60 * 60 * 1000;
+/** A slip still waiting (queued, needs-confirm, failed) that nobody acted on is pruned after this
+ *  (owner, after Session 1D; was 12 h) — a Friday KOT must not print Monday (design review MERGED-14).
+ *  The waiting-slips feed reads the same window (PRINT_ATTENTION_WINDOW_MS). */
+export const PRINT_JOB_QUEUED_RETENTION_MS = 3 * 60 * 60 * 1000;
+
+/** A waiting slip staff acted on within this long (Print now, Retry, Print again: approvedAt), or a
+ *  lease that ran within it, is never pruned: it gets its try first (the 1D review gate). */
+export const PRINT_JOB_ACTED_GRACE_MS = 15 * 60 * 1000;
 
 /** Minimum gap between opportunistic `prunePrintJobs` sweeps fired from the
  *  enqueue/designate/clear routes — retention must never depend on a live beat. */

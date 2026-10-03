@@ -121,7 +121,8 @@ export async function sweepPrintJobs(nowMs: number): Promise<PrintSweepResult> {
     if (plan.ok && (await applyPrintJobPlan(row._id, job, plan.patch))) result.failed += 1;
   }
 
-  // 4. Retention, unchanged (it keeps its own 5-minute throttle).
+  // 4. Retention (it keeps its own 5-minute throttle): waiting slips after 3 h, finished ones after 45 min,
+  // device rows unseen for 7 days (the owner, after Session 1D; lib/print-queue.ts).
   await prunePrintJobsThrottled(nowMs);
 
   // A job back in the queue gets a nudge, so its device leases now (fire-and-forget; the poll is the safety net).

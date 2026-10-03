@@ -6,6 +6,7 @@ import path from "node:path";
 
 import { PRINT_KOT_ALARM_MS } from "@pos/shared/print-lifecycle";
 import { PRINT_ATTENTION_LIMIT, PRINT_ATTENTION_WINDOW_MS } from "@pos/shared/print-agent-wire";
+import { PRINT_JOB_QUEUED_RETENTION_MS } from "@pos/shared/print-job";
 import { stripComments } from "@/lib/source-pin-utils";
 import { printAttentionFilter, printAttentionRowOf } from "@/lib/print-attention";
 
@@ -18,15 +19,30 @@ const src = (rel: string): string => stripComments(readFileSync(path.join(REPO_R
 const T0 = Date.parse("2026-10-03T12:00:00.000Z");
 const at = (ms: number): Date => new Date(ms);
 
-test("printAttentionFilter: bills to check and failed slips from the last 12 h, and every slip still queued 20 s after it was made", () => {
+test("printAttentionFilter: bills to check and failed slips from the last 3 h, and every slip still queued 20 s after it was made", () => {
   assert.deepEqual(printAttentionFilter(T0), {
     $or: [
       { status: { $in: ["needs-confirm", "failed"] }, createdAt: { $gte: at(T0 - PRINT_ATTENTION_WINDOW_MS) } },
       { status: "queued", createdAt: { $gte: at(T0 - PRINT_ATTENTION_WINDOW_MS), $lte: at(T0 - PRINT_KOT_ALARM_MS) } },
     ],
   });
-  assert.equal(PRINT_ATTENTION_WINDOW_MS, 12 * 60 * 60 * 1000, "the queued retention (§7.8): nothing older is still waiting");
+  assert.equal(PRINT_ATTENTION_WINDOW_MS, PRINT_JOB_QUEUED_RETENTION_MS, "the queued retention (§7.8, 3 h): nothing older is still waiting");
   assert.equal(PRINT_ATTENTION_LIMIT, 20, "a bounded read on the hottest poll");
+});
+
+test("PIN (owner, after Session 1D: I-1 option A): the feed reads the NEWEST rows on the same index and shows them oldest first", () => {
+  const lib = src("apps/cafe/lib/print-attention.ts");
+  assert.match(lib, /\.sort\(\{ createdAt: -1, _id: -1 \}\)/, "newest first: a new problem is never cut off by an old backlog");
+  assert.ok(!lib.includes("sort({ createdAt: 1"), "never the oldest rows (they kept every new failure out once 20 waited)");
+  assert.match(lib, /const rows = docs\s*\.reverse\(\)/, "shown oldest first");
+  assert.match(lib, /approvedAt"\)/, "the row says when staff already tapped it");
+});
+
+test("printAttentionRowOf: a slip staff already tapped says so (it waits for its printer, not for a tap)", () => {
+  const row = printAttentionRowOf({ _id: "j5", kind: "kot", label: "KOT round 1 · T-1", status: "queued", createdAt: at(T0), approvedAt: at(T0 + 60_000) });
+  assert.equal(row?.approved, true, "approvedAt becomes approved: true");
+  const plain = printAttentionRowOf({ _id: "j6", kind: "kot", label: "KOT round 1 · T-1", status: "queued", createdAt: at(T0) });
+  assert.equal(plain !== null && "approved" in plain, false, "omit-empty");
 });
 
 test("printAttentionRowOf: a panel row says what, when, why, who asked and where it prints; nothing else reaches the wire", () => {

@@ -1,5 +1,4 @@
-import { PRINT_JOB_QUEUED_RETENTION_MS } from "@pos/shared/print-job";
-import { PRINT_REPAIR_WINDOW_MS } from "@pos/shared/print-lifecycle";
+import { PRINT_REPAIR_ORDER_MAX_AGE_MS, PRINT_REPAIR_WINDOW_MS } from "@pos/shared/print-lifecycle";
 import { Order } from "@/models/Order";
 import { PrintJob } from "@/models/PrintJob";
 import { createOrderPrintJobs } from "./print-order-jobs";
@@ -57,11 +56,12 @@ export function expectedKotJobs(orders: readonly RepairCandidate[], nowMs: numbe
 }
 
 /** Re-creates the missing jobs of server-owned KOT rounds fired in the last 30 min. Returns how many it
- *  made. Indexed on createdAt; a tab older than the queued retention is past saving anyway. */
+ *  made. Indexed on createdAt: orders opened in the last 12 h (its own window since the 1D review gate,
+ *  so the 3 h queued retention never stops a long-sitting table's new round from being repaired). */
 export async function repairMissingKotJobs(nowMs: number): Promise<number> {
   const since = new Date(nowMs - PRINT_REPAIR_WINDOW_MS);
   const candidates = await Order.find({
-    createdAt: { $gte: new Date(nowMs - PRINT_JOB_QUEUED_RETENTION_MS) },
+    createdAt: { $gte: new Date(nowMs - PRINT_REPAIR_ORDER_MAX_AGE_MS) },
     status: { $ne: "Cancelled" },
     kotPrintDevices: { $exists: true },
     $or: [{ createdAt: { $gte: since } }, { kotFiredAt: { $elemMatch: { $gte: since } } }],

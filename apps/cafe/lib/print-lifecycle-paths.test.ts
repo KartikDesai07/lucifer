@@ -158,10 +158,15 @@ test("PIN: enqueue stamps the host target, the lifecycle fields, the initial lab
   assert.match(s, /printJobKeyOf\(input\.payload\) \?\? \(input\.idempotencyKey !== undefined \? `reprint:\$\{input\.idempotencyKey\}` : undefined\)/);
 });
 
-test("PIN: dismiss never touches a leased job (its writer may be printing it); prune reaps every unresolved state after 12 h", () => {
+test("PIN: dismiss never touches a leased job (its writer may be printing it); prune reaps every unresolved state after 3 h, unless staff acted on it or it was leased lately", () => {
   const s = src(QUEUE);
   assert.match(s, /status: \{ \$in: \["queued", "needs-confirm", "failed"\] \},/);
   assert.match(s, /status: \{ \$in: \[\.\.\.PRINT_JOB_UNRESOLVED_STATUSES\] \}, createdAt: \{ \$lt: queuedPruneCutoff\(nowMs\) \}/);
+  assert.match(s, /approvedAt: \{ \$not: \{ \$gte: acted \} \},/, "a slip staff tapped lately gets its try (the 1D gate)");
+  assert.match(s, /"lease\.expiresAt": \{ \$not: \{ \$gte: acted \} \},/, "never deleted while its lease may still be printing");
+  assert.match(s, /await prunePrintDevices\(nowMs\);/, "stale device rows go on the same throttled prune (owner, after Session 1D)");
+  const device = src(DEVICE);
+  assert.match(device, /PrintDevice\.deleteMany\(\{ lastSeenAt: \{ \$lt: new Date\(nowMs - PRINT_DEVICE_PRUNE_MS\) \} \}\);/, "only a device not seen for 7 days");
 });
 
 test("PIN: the enqueue route takes both Phase 1 headers as OPTIONAL (a tab from before Phase 1 sends neither) and validates each", () => {
