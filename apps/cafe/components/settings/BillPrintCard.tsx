@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { Controller } from "react-hook-form";
 import type {
   Control,
@@ -17,10 +16,15 @@ import {
   PRINT_NUMBER_START_MAX,
 } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { settingsSectionPath } from "@/lib/settings-sections";
 import type { Settings } from "@/types";
 import { Input } from "@/components/ui/input";
-import { Field, SettingsGroup, ToggleRow } from "@/components/settings/SettingsFields";
+import {
+  Field,
+  HINT_CLASS,
+  SectionLink,
+  SettingsGroup,
+  ToggleRow,
+} from "@/components/settings/SettingsFields";
 import { PrintSizeChoice } from "@/components/settings/PrintSizeChoice";
 import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 import {
@@ -29,9 +33,6 @@ import {
 } from "@/components/settings/print-form-utils";
 
 const BILL_NUMBER_START_ID = "settings-bill-number-start";
-const HINT_CLASS = "text-xs text-brand-muted";
-// Always underlined: inside muted hint text, colour alone would not mark it as a link.
-const HINT_LINK_CLASS = "font-medium text-brand-primary underline underline-offset-2";
 
 type BillSwitchName =
   | "billShowLogo"
@@ -71,14 +72,6 @@ function BillSwitch({
       />
       {hint && <p className={HINT_CLASS}>{hint}</p>}
     </div>
-  );
-}
-
-function SectionLink({ slug, children }: { slug: "business" | "taxes"; children: React.ReactNode }) {
-  return (
-    <Link href={settingsSectionPath(slug)} className={HINT_LINK_CLASS}>
-      {children}
-    </Link>
   );
 }
 

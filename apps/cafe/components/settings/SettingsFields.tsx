@@ -1,4 +1,5 @@
 import { useId } from "react";
+import Link from "next/link";
 
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -8,6 +9,21 @@ import {
   BRAND_PANEL_CLASS,
 } from "@/components/brand/brand-classes";
 import { cn } from "@/lib/utils";
+import { settingsSectionPath } from "@/lib/settings-sections";
+
+export const HINT_CLASS = "text-xs text-brand-muted";
+// Always underlined: inside muted hint text, colour alone would not mark it as a link.
+export const HINT_LINK_CLASS = "font-medium text-brand-primary underline underline-offset-2";
+
+// A link inside a hint that points at the section which sets the value a
+// toggle prints.
+export function SectionLink({ slug, children }: { slug: "business" | "taxes"; children: React.ReactNode }) {
+  return (
+    <Link href={settingsSectionPath(slug)} className={HINT_LINK_CLASS}>
+      {children}
+    </Link>
+  );
+}
 
 // htmlFor (optional): the id of the input inside, so a tap on the label
 // focuses it and a screen reader names the input by it.

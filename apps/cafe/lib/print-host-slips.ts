@@ -85,7 +85,7 @@ export interface HostEodSlip {
 
 export type HostPrintSlip = HostKotSlip | HostReceiptSlip | HostEodSlip;
 
-const ROUND_LABEL_PREFIX = "Round ";
+export const ROUND_LABEL_PREFIX = "Round ";
 const KOT_TITLE_PREFIX = "KOT-";
 const EOD_TITLE_PREFIX = "EOD-";
 
