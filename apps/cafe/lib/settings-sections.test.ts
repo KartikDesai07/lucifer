@@ -7,6 +7,10 @@ import path from "node:path";
 import { settingsSchema, type SettingsInput } from "@pos/shared/schemas";
 import {
   SETTINGS_SECTIONS,
+  SETTINGS_BASE_PATH,
+  HIDDEN_SETTINGS_SLUGS,
+  VISIBLE_SETTINGS_SECTIONS,
+  isSettingsSectionHidden,
   settingsSectionPath,
   pickSectionValues,
 } from "./settings-sections";
@@ -252,4 +256,34 @@ test("PIN: settings-form-defaults.ts byte-carries the moved lean-doc comment lan
     /export function settingsFormDefaults\(settings: Settings\): SettingsInput/,
     "must export settingsFormDefaults(settings: Settings): SettingsInput",
   );
+});
+
+// Owner 2026-10-03: Notifications is hidden (code, route and fields kept). The
+// raw list still owns telegramPaused; only the hub, the sidebar and the route
+// layout read the hidden set.
+test("PIN: Notifications is hidden — HIDDEN_SETTINGS_SLUGS is exactly {notifications}, VISIBLE_SETTINGS_SECTIONS is SETTINGS_SECTIONS minus it in the same order, and the raw list still carries it", () => {
+  assert.deepEqual([...HIDDEN_SETTINGS_SLUGS], ["notifications"]);
+  assert.ok(SETTINGS_SECTIONS.some((s) => s.slug === "notifications"), "the raw list keeps the section (it owns telegramPaused)");
+  assert.deepEqual(
+    VISIBLE_SETTINGS_SECTIONS.map((s) => s.slug),
+    SETTINGS_SECTIONS.map((s) => s.slug).filter((slug) => slug !== "notifications"),
+  );
+  assert.ok(VISIBLE_SETTINGS_SECTIONS.length > 0, "landmark: the visible list is not empty");
+  assert.equal(isSettingsSectionHidden("notifications"), true);
+  assert.equal(isSettingsSectionHidden("appearance"), false);
+});
+
+test("PIN: every hidden section's route has a server layout.tsx that redirects to the Settings hub while the slug is hidden — a typed URL never shows the page", () => {
+  const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
+  for (const slug of HIDDEN_SETTINGS_SLUGS) {
+    const rel = `apps/cafe/app/(dashboard)/settings/${slug}/layout.tsx`;
+    const src = readFileSync(path.join(repoRoot, rel), "utf8");
+    assert.match(src, /import \{ redirect \} from "next\/navigation";/, rel + " imports redirect");
+    assert.ok(
+      src.includes('if (isSettingsSectionHidden("' + slug + '")) redirect(SETTINGS_BASE_PATH);'),
+      rel + " must redirect to the hub while the slug is hidden",
+    );
+    assert.ok(!/^"use client"/m.test(src), rel + " is a server layout (redirect before any page code runs)");
+  }
+  assert.equal(SETTINGS_BASE_PATH, "/settings");
 });

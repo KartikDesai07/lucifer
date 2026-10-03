@@ -82,13 +82,13 @@ test("PIN: app/(dashboard)/settings/layout.tsx imports AdminGuard and wraps {chi
 
 // ── 3. hub reachability — every section reachable ─────────────────────────
 
-test("PIN: settings/page.tsx (the hub) imports SETTINGS_SECTIONS + settingsSectionPath and maps SETTINGS_SECTIONS directly — every section must be reachable from the hub, not just compiled; Printer setup (now /printers) has no card here", () => {
+test("PIN: settings/page.tsx (the hub) imports VISIBLE_SETTINGS_SECTIONS + settingsSectionPath and maps it directly — every section that is not hidden (HIDDEN_SETTINGS_SLUGS, owner 2026-10-03) must be reachable from the hub, not just compiled; Printer setup (now /printers) has no card here", () => {
   const src = stripComments(readSrc(SETTINGS_HUB_PAGE));
 
   assert.match(
     src,
-    /import\s*\{[^}]*\bSETTINGS_SECTIONS\b[^}]*\}\s*from\s*"@\/lib\/settings-sections"/,
-    "settings/page.tsx must import SETTINGS_SECTIONS from @/lib/settings-sections",
+    /import\s*\{[^}]*\bVISIBLE_SETTINGS_SECTIONS\b[^}]*\}\s*from\s*"@\/lib\/settings-sections"/,
+    "settings/page.tsx must import VISIBLE_SETTINGS_SECTIONS from @/lib/settings-sections",
   );
   assert.match(
     src,
@@ -97,7 +97,8 @@ test("PIN: settings/page.tsx (the hub) imports SETTINGS_SECTIONS + settingsSecti
   );
   // Re-anchored 2026-10-02: the literal Printer-setup card (and the FORM_SECTIONS
   // filter that skipped it) are gone — the hub maps the whole list.
-  assert.ok(src.includes("{SETTINGS_SECTIONS.map("),"the hub must render a card for every SETTINGS_SECTIONS entry");
+  assert.ok(src.includes("{VISIBLE_SETTINGS_SECTIONS.map("), "the hub must render a card for every visible section");
+  assert.ok(!src.includes("{SETTINGS_SECTIONS.map("), "the hub must not list hidden sections (the raw list includes them)");
   assert.ok(!src.includes("FORM_SECTIONS"), "no filtered copy of the section list");
   assert.ok(!src.includes("printing"), "Printer setup is no longer a Settings card (it has its own /printers page)");
 
@@ -228,8 +229,12 @@ test("PIN: AppSidebar.tsx (+ the extracted SidebarSettingsGroup.tsx) import Side
   );
   assert.match(
     combined,
-    /\bSETTINGS_SECTIONS\b/,
-    "SETTINGS_SECTIONS must be imported and iterated to render one sub-item per section",
+    /\{VISIBLE_SETTINGS_SECTIONS\.map\(/,
+    "VISIBLE_SETTINGS_SECTIONS must be iterated to render one sub-item per visible section",
+  );
+  assert.ok(
+    !/\{SETTINGS_SECTIONS\.map\(/.test(combined),
+    "the sidebar must not iterate the raw SETTINGS_SECTIONS (it includes hidden sections)",
   );
 
   // setOpenMobile(false) specifically — not merely "setOpenMobile" — since a
