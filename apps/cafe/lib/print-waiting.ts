@@ -107,6 +107,9 @@ export interface PrintAlarmMemory {
   createdAt: string;
   seenAt: number;
   shown: boolean;
+  /** Its notice went down because the slip left the feed (printed, or leased for a moment), not because
+   *  staff acted on it: if it comes back still waiting, so does its notice (the 1E final review). */
+  left?: true;
 }
 
 export interface PrintAlarmStep {
@@ -152,7 +155,12 @@ export function printAlarmStep(
       next.set(row.id, { group, createdAt: row.createdAt, seenAt: nowMs, shown: true });
     } else if (group !== was.group) {
       if (was.shown) step.dismiss.push(row.id);
-      next.set(row.id, { ...was, group, seenAt: nowMs, shown: false });
+      next.set(row.id, { group, createdAt: was.createdAt, seenAt: nowMs, shown: false });
+    } else if (was.left === true) {
+      // Back from a moment's lease (a refused attempt) and still waiting: its notice comes back, without a
+      // second ring. A gap must never read as "printed".
+      step.show.push(row);
+      next.set(row.id, { group, createdAt: was.createdAt, seenAt: nowMs, shown: true });
     } else {
       next.set(row.id, { ...was, seenAt: nowMs });
     }
@@ -166,7 +174,7 @@ export function printAlarmStep(
     }
     if (was.shown) {
       step.dismiss.push(id);
-      next.set(id, { ...was, shown: false });
+      next.set(id, { ...was, shown: false, left: true });
     }
     if (nowMs - was.seenAt > PRINT_ALARM_FORGET_MS) next.delete(id);
   }

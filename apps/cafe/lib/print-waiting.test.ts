@@ -144,6 +144,26 @@ test("the alarm forgets a slip a minute after it left; a slip merely being print
   assert.equal(step.memory.has("k"), false, "forgotten a minute after it left");
 });
 
+test("the 1E final review: a slip back from a moment's lease (a refusal) gets its notice back, quietly; a slip staff acted on does not", () => {
+  const kot = row({ id: "k", originDeviceId: "dev-a" });
+  let step = printAlarmStep(new Map(), feedOf([kot]), "dev-a", T0, false);
+  step = printAlarmStep(step.memory, feedOf([]), "dev-a", T0 + 20_000, false);
+  assert.deepEqual(step.dismiss, ["k"], "leased for a moment: the notice goes");
+  step = printAlarmStep(step.memory, feedOf([kot]), "dev-a", T0 + 40_000, false);
+  assert.deepEqual(step.show.map((r) => r.id), ["k"], "still not printed: its notice comes back (staff must not read the gap as printed)");
+  assert.equal(step.ring, false, "no second ring for the same wait");
+  step = printAlarmStep(step.memory, feedOf([kot]), "dev-a", T0 + 60_000, false);
+  assert.deepEqual(step.show, [], "shown once; not re-shown every pulse");
+  assert.equal(step.ring, false, "and still no ring");
+  const failed = row({ id: "f", status: "failed", originDeviceId: "dev-a" });
+  step = printAlarmStep(new Map(), feedOf([failed]), "dev-a", T0, false);
+  step = printAlarmStep(step.memory, feedOf([]), "dev-a", T0 + 20_000, false);
+  step = printAlarmStep(step.memory, feedOf([row({ id: "f", originDeviceId: "dev-a", approved: true })]), "dev-a", T0 + 40_000, false);
+  assert.deepEqual(step.show, [], "Retry from another device while it was away: staff acted, no notice");
+  step = printAlarmStep(step.memory, feedOf([row({ id: "f", originDeviceId: "dev-a", approved: true })]), "dev-a", T0 + 60_000, false);
+  assert.deepEqual(step.show, [], "and it stays quiet while it waits for its printer");
+});
+
 test("a page that opens while slips wait shows one summary, not one notice per slip (N-5)", () => {
   const rows = [row({ id: "a", originDeviceId: "dev-a" }), row({ id: "b", status: "failed", targetDeviceId: "dev-a" }), row({ id: "c", originDeviceId: "dev-b" })];
   const first = printAlarmStep(new Map(), feedOf(rows), "dev-a", T0, true);
