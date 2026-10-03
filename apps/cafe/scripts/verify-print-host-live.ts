@@ -36,6 +36,11 @@ import { legV, legW, legX } from "./print-host-live/lifecycle-actions";
 import { legAA, legAB, legAC, legY, legZ } from "./print-host-live/order-jobs";
 import { legAD, legAE } from "./print-host-live/agent";
 import { legAF, legAG } from "./print-host-live/attention";
+import { legAH, legAI, legAJ } from "./print-host-live/printers";
+import { Station } from "@/models/Station";
+import { Printer } from "@/models/Printer";
+import { Category } from "@/models/Category";
+import { Product } from "@/models/Product";
 
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
@@ -48,6 +53,8 @@ async function main(): Promise<void> {
   await connectDB();
   await mongoose.connection.dropDatabase(); // clean slate even after a crashed prior run
   await Promise.all([PrintJob.createIndexes(), PrintHost.createIndexes(), Order.createIndexes(), PrintDevice.createIndexes()]);
+  // Phase 2: the unique station and printer names are what the setup legs (ah, ai) lean on.
+  await Promise.all([Station.createIndexes(), Printer.createIndexes(), Category.createIndexes(), Product.createIndexes()]);
 
   console.log(`\nPH-10 print-host live legs — live against ${dbName}\n`);
 
@@ -97,6 +104,10 @@ async function main(): Promise<void> {
     await legAF(Date.now());
     // Phase 1 Session 1E leg (the owner's retention after Session 1D).
     await legAG(Date.now());
+    // Phase 2 Session 2A legs (stations, printers, the routing read over a real catalog).
+    await legAH();
+    await legAI();
+    await legAJ();
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
