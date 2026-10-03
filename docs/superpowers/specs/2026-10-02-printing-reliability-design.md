@@ -218,6 +218,7 @@ interface IPrintDevice {
 
 - The heartbeat rides the existing wake poll, so it adds no new request (§10). The wake poll upserts this record.
 - A device is **online** when `lastSeenAt` is within 90 s.
+- A row not seen for 7 days is pruned (owner, after Session 1D: a reset or reinstalled device gets a new id); a device that comes back writes its row again.
 
 ### 6.5 `PrintJob` (changed, Phase 1)
 
@@ -376,7 +377,7 @@ any unresolved ──dismiss (staff, order cancelled, host cleared)──► dis
 | Stale, needs a tap | queued > 30 min (`PRINT_HOST_MAX_AGE_MS`, unchanged) | Stops yesterday's KOT printing at opening time |
 | Failed | the second attempt that may have printed (`uncertainAttempts ≥ 2`); a refusal (`sent:"no"`) never counts | The owner's rule after Session 1B: the first attempt plus one labelled retry, then staff decide (§10's panel). No automatic attempt while the printer is off (§9.1) |
 | Device offline | no heartbeat for 90 s | |
-| Retention | unchanged: resolved 2 h, queued 12 h | |
+| Retention | waiting slips (queued, needs-confirm, failed, a leased row) 3 h, unless staff acted on it or it was leased in the last 15 min; finished slips (printed, dismissed) 45 min; `PrintDevice` rows unseen for 7 days | The owner, after Session 1D: no print data kept longer than needed. Never under the KOT repair window (30 min) plus 15 min, or a deleted printed row could be re-created and print twice |
 
 ### 7.9 Late acknowledgements
 
@@ -435,6 +436,17 @@ The Phase 1 plan ([2026-10-02-phase-1-lifecycle.md](../plans/2026-10-02-phase-1-
 - **The alarm (§10)** fires at the first pulse after the 20 s mark (between 20 s and 40 s), once per slip, on the device that asked for it and on the device that prints it, for a KOT and for a bill to check. Its notice carries a Show button that opens the printer sheet (on a phone the notice covers the top bar).
 - **The pulse runs the sweep** after its answer, at most once per 60 s per instance (§17.3 rule 2): with no host it is the only request that expires leases, sends jobs home and repairs KOT rounds. **A staff Retry or Print again is aimed** at the printing device with a `print-status`, since with no host agents never lease on the broadcast.
 - **Old tabs (the 1A reviewer's recommendation 3): no change.** They keep today's pulse feeds for the release window; the dashboard band stays one release and goes with the old claim drain.
+
+**Rulings at the Session 1D review gate (2026-10-03).** The owner's decisions after Session 1D, and the gate's rulings; implemented in Session 1E unless noted:
+
+- **The newest 20 (owner, I-1 option A).** The waiting-slips feed reads the newest 20 rows (`{createdAt: -1, _id: -1}` on the same index; `explain()`: a merge of index scans, no in-memory sort) and shows them oldest first, so a new problem always shows and rings; the older backlog stays in the count ("20+").
+- **No extra print data (owner).** Waiting slips nobody acted on are deleted 3 h after they were made (was 12 h), and the feed's window follows; a slip staff acted on (Print now, Retry, Print again) or whose lease ran within the last 15 min is kept until then, so nothing is deleted mid-print. Finished slips go 45 min after they were made (was 2 h): never sooner than the KOT repair's 30 min window plus a margin, since a job is never made before its round fired and the repair would re-create a deleted printed row and print it twice. `PrintDevice` rows unseen for 7 days go too. It all rides the existing prune (the pulse's `after()` sweep, at most every 5 min per instance, the existing index): no cron, no new request. The repair keeps its own 12 h window for candidate orders, so a long-sitting table's new round is still repaired.
+- **The alarm, remembered.** Once per slip; again only when it gets worse; a slip staff acted on loses its notice quietly; a slip that leaves the feed is remembered for a minute (a moment's lease never rings twice); while the feed is cut, a slip older than the page is kept; a slip of any kind that could not print rings; a page that opens while slips wait shows one summary; an unmount takes its notices down.
+- **A tapped row is released by its own answer** (one promise per tap; TanStack's per-call callbacks fire only for the latest call).
+- **An ack the server did not really answer is kept:** 401, 403, 408 and 429 are no answer.
+- **1C, 1D and 1E ship together.** A failed ack kept in the pending store would be re-sent as "printed" by a 1C-only build: never deploy, or roll back to, a 1C-only build.
+- **Replays after a prune: no guard.** A "Send again" replay that comes after its finished row was pruned would enqueue it again; it exists only while that POS is frozen on an unconfirmed send, so it is not a realistic path at 45 min, and a guard would add an order read to every client enqueue.
+- **Measured, no change:** a backgrounded or screen-off Android host drew and printed KOTs in 2–4 s (no I3 drawing timeout); F1's dropped unrelated kick costs latency only (≤ 30 s); a slow slip's lease expiring under its own agent is resolved by the late ack (§7.9).
 
 ## 8. Routing (Phase 2)
 
@@ -535,6 +547,7 @@ Routing is a pure function, `routeJobs(event, catalog, printers, devices)`, with
     - No new poll.
   - A KOT still not `printed` after 20 s sounds an alarm and shows a banner. The alarm also plays on every printer device.
   - **As ruled at the Session 1C review gate (§7.10):** the readback is by exception (a slip not printed within 20 s shows with its state on every device, through the printer button's count and the panel; a printed slip needs nobody), and the alarm fires at the first pulse after the 20 s mark, with a notice that opens the panel.
+  - **As ruled at the Session 1D review gate (§7.10):** the feed holds the newest 20 waiting slips, shown oldest first (the backlog stays in "20+"); the alarm rings once per slip and again only when it gets worse (waiting → check the bill → could not print), a slip of any kind that could not print rings, a page that opens while slips wait shows one summary notice, and a slip staff acted on loses its notice quietly.
 - **One waiting-slips panel** (owner, after Session 1B; Session 1D): every slip that is not printed yet and needs no more from the system, in one clear, simple panel on every device, opened from the printer dot, which shows their count. Three groups, in plain words:
   - **Waiting for the printer:** queued for a printer that is off or not ready, or older than 30 minutes ("stale"). Retry (Print now) and Clear.
   - **Check the bill:** a bill that may already have printed (`needs-confirm`). Print again (DUPLICATE), It printed, and Clear.
@@ -699,7 +712,7 @@ A busy day is assumed:
 | Active CPU, estimated at 10 ms per print request (measured in Phase 1) | ≈ 48 s/day ≈ 24 min/month (10 %) | ≈ 170 s/day ≈ 85 min/month (35 %) | Phase 1 exit criterion (below) |
 | Realtime Worker requests | ≈ 3,935/day (3.9 % of 100k) | same | 3 publishes per slip (its "queued" and final `print-status`, and the host's `print-job` nudge), plus today's ≈ 335. Pinned in `print-budget.test.ts` (≤ 5 %). |
 | Mongo writes | ≈ 6,000/day (peak well under 10/s) | ≈ 18,000/day | 3 writes per slip, plus at most 1 device upsert per wake. `Printer.health` is written only on change. |
-| Mongo storage and transfer | ≤ about 10 MB live; ≈ 6 MB/day of payload reads | same | Unchanged retention (2 h / 12 h); log capped at 20 entries |
+| Mongo storage and transfer | ≤ about 10 MB live; ≈ 6 MB/day of payload reads | same | Retention 45 min (finished) / 3 h (waiting), devices 7 days (owner, after Session 1D); log capped at 20 entries |
 
 **Simple mode without a host** (each device prints its own slips) costs no server requests today. In this design it adds about 2,640 invocations/day on a busy day (lease, ack, retries) and no polling. That is the price of server-side acknowledgement, retry and visibility.
 
