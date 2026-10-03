@@ -51,6 +51,18 @@ test('a bare host gets https:// prepended', () => {
   assert.equal(origin('  pos.example.com  '), ORIGIN);
 });
 
+test('a bare workspace name opens <name>.sandbee.in, as in the Sandbee app; full addresses are unchanged', () => {
+  assert.equal(origin('posdemo'), 'https://posdemo.sandbee.in');
+  assert.equal(origin('  PosDemo '), 'https://posdemo.sandbee.in', 'trimmed and lowercased');
+  assert.equal(origin('my-cafe'), 'https://my-cafe.sandbee.in');
+  assert.equal(origin('posdemo.sandbee.in'), 'https://posdemo.sandbee.in', 'the full address still works');
+  assert.equal(origin('pos.example.com'), ORIGIN, 'any other full address still works');
+  assert.equal(origin('localhost'), 'https://localhost', 'localhost stays itself');
+  assert.equal(origin('http://localhost:3100'), 'http://localhost:3100', 'a written scheme or port is never expanded');
+  assert.equal(error('-cafe'), URL_INVALID_ERROR);
+  assert.equal(error('cafe_1'), URL_INVALID_ERROR);
+});
+
 test('https keeps only the origin: path, query, hash dropped', () => {
   assert.equal(origin('https://pos.example.com/pos?x=1#top'), ORIGIN);
 });

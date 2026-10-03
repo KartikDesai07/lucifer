@@ -1,5 +1,5 @@
 import React from 'react';
-import { NativeModules, Text } from 'react-native';
+import { AccessibilityInfo, NativeModules, Text } from 'react-native';
 import ReactTestRenderer from 'react-test-renderer';
 import { UrlScreen } from '../src/screens/UrlScreen';
 
@@ -7,6 +7,9 @@ jest.mock(
   'react-native-safe-area-context',
   () => jest.requireActual('react-native-safe-area-context/jest/mock').default,
 );
+
+// The test renderer cannot run native-driver animations: answer "animations off".
+jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(true);
 
 test('an invalid public HTTP address is explained without saving it', async () => {
   const saveOrigin = jest.fn();

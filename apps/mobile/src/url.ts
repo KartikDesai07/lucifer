@@ -125,6 +125,17 @@ function buildOrigin(parts: UrlParts, port: number | null): string {
   return parts.scheme + '://' + parts.host + (keep ? ':' + port : '');
 }
 
+// The Sandbee app's rule: a bare workspace name (one DNS label, no dot, scheme
+// or port) means <name>.sandbee.in. Every full address is taken as written.
+export const SANDBEE_DOMAIN = 'sandbee.in';
+
+function expandWorkspaceName(input: string): string {
+  const name = input.toLowerCase();
+  return name !== 'localhost' && name.length <= MAX_LABEL_CHARS && LABEL.test(name)
+    ? name + '.' + SANDBEE_DOMAIN
+    : input;
+}
+
 export function normalizePosUrl(input: string): NormalizeResult {
   const trimmed = input.trim();
   if (trimmed.length === 0) {
@@ -132,7 +143,7 @@ export function normalizePosUrl(input: string): NormalizeResult {
   }
   const withScheme = SCHEME_PREFIX.test(trimmed)
     ? trimmed
-    : 'https://' + trimmed;
+    : 'https://' + expandWorkspaceName(trimmed);
   const parts = parseUrlParts(withScheme);
   if (parts === null) {
     return { ok: false, error: URL_INVALID_ERROR };
