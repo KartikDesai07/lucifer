@@ -1,4 +1,5 @@
 import { PRINT_HOST_KEY } from "@pos/shared/print-job";
+import { PRINTER_GONE_MESSAGE, PRINT_JOB_NO_PRINTER, printerWriterDeviceId, routablePrinters } from "@pos/shared/print-printers";
 import {
   PRINT_JOB_LOG_MAX,
   PRINT_MAX_PAPER_ATTEMPTS,
@@ -11,6 +12,7 @@ import { PrintHost } from "@/models/PrintHost";
 import { PrintJob } from "@/models/PrintJob";
 import { publishCafeEvent } from "@/lib/realtime-publish";
 import { PRINT_LIFECYCLE_SELECT, applyPrintJobPlan, type PrintLifecycleRow } from "./print-lease";
+import { listPrinters } from "./print-printers";
 import { prunePrintJobsThrottled } from "./print-queue";
 import { repairMissingKotJobs } from "./print-repair";
 
@@ -41,12 +43,14 @@ export interface PrintSweepResult {
  *  host, it is the device that asked for the job (1A review I1 part 2: a slip aimed at a cleared or
  *  dead host goes back to its ordering device, labelled as it was); a job no device asked for (an old
  *  tab's enqueue, the public auto-accept) has no device left that may print it and is dismissed as
- *  host-cleared. Returns how many jobs moved. Pipeline updates: one write each, however many rows. */
+ *  host-cleared. Returns how many jobs moved. Pipeline updates: one write each, however many rows.
+ *  Session 2C: a printer job waits on its printer's line, so none of this ever reaches it
+ *  (routePrinterJobs moves it). */
 export async function routeWaitingPrintJobs(hostDeviceId: string | null, nowMs: number): Promise<number> {
   const at = new Date(nowMs);
   if (hostDeviceId !== null) {
     const moved = await PrintJob.updateMany(
-      { status: { $in: WAITING }, targetDeviceId: { $ne: hostDeviceId } },
+      { status: { $in: WAITING }, printerId: { $exists: false }, targetDeviceId: { $ne: hostDeviceId } },
       {
         $set: { targetDeviceId: hostDeviceId },
         $push: { log: { $each: [{ at, event: "retargeted", deviceId: hostDeviceId }], $slice: -PRINT_JOB_LOG_MAX } },
@@ -55,7 +59,7 @@ export async function routeWaitingPrintJobs(hostDeviceId: string | null, nowMs: 
     return moved.modifiedCount ?? 0;
   }
   const home = await PrintJob.updateMany(
-    { status: { $in: WAITING }, originDeviceId: { $exists: true }, $expr: { $ne: ["$targetDeviceId", "$originDeviceId"] } },
+    { status: { $in: WAITING }, printerId: { $exists: false }, originDeviceId: { $exists: true }, $expr: { $ne: ["$targetDeviceId", "$originDeviceId"] } },
     [
       {
         $set: {
@@ -71,7 +75,7 @@ export async function routeWaitingPrintJobs(hostDeviceId: string | null, nowMs: 
     ],
   );
   await PrintJob.updateMany(
-    { status: { $in: WAITING }, originDeviceId: { $exists: false }, claimedAt: { $exists: false } },
+    { status: { $in: WAITING }, printerId: { $exists: false }, originDeviceId: { $exists: false }, claimedAt: { $exists: false } },
     { $set: { status: "dismissed", dismissedAt: at, dismissReason: "host-cleared", dismissedBy: SWEEP_ACTOR } },
   );
   return home.modifiedCount ?? 0;
@@ -83,6 +87,40 @@ export async function returnPrintJobsToOrigins(nowMs: number): Promise<number> {
   const moved = await routeWaitingPrintJobs(null, nowMs);
   if (moved > 0) publishCafeEvent("print-job");
   return moved;
+}
+
+/** Session 2C (printers mode, plan decision 1): every waiting job on a printer line follows its printer. A printer
+ *  re-saved with another device (or printing device) takes its jobs to that writer; a queued job whose printer was
+ *  deleted, switched off or left with no writer is failed with PRINTER_GONE_MESSAGE, shown under "Couldn't print",
+ *  never guessed onto another printer. A bill waiting for the cashier's answer keeps waiting for it (the 2C gate's
+ *  review, I-1: "It printed" and Clear still work; Print again is refused while the printer is gone). A leased job
+ *  is left to its lease. One read when no queued or needs-confirm printer job waits (every simple-mode cafe, and
+ *  every outlet whose waiting rows are only failed ones); otherwise the printers, one write per printer and one for
+ *  the gone ones. */
+export async function routePrinterJobs(nowMs: number): Promise<{ retargeted: number; failed: number }> {
+  const waiting = await PrintJob.findOne({ printerId: { $exists: true, $ne: PRINT_JOB_NO_PRINTER }, status: { $in: ["queued", "needs-confirm"] } })
+    .select("_id")
+    .lean();
+  if (waiting === null) return { retargeted: 0, failed: 0 };
+  const at = new Date(nowMs);
+  const printers = routablePrinters(await listPrinters());
+  let retargeted = 0;
+  for (const printer of printers) {
+    const writer = printerWriterDeviceId(printer) ?? "";
+    const moved = await PrintJob.updateMany(
+      { printerId: printer.id, status: { $in: WAITING }, targetDeviceId: { $ne: writer } },
+      { $set: { targetDeviceId: writer }, $push: { log: { $each: [{ at, event: "retargeted", deviceId: writer }], $slice: -PRINT_JOB_LOG_MAX } } },
+    );
+    retargeted += moved.modifiedCount ?? 0;
+  }
+  const gone = await PrintJob.updateMany(
+    { printerId: { $exists: true, $nin: [...printers.map((printer) => printer.id), PRINT_JOB_NO_PRINTER] }, status: "queued" },
+    {
+      $set: { status: "failed", lastError: PRINTER_GONE_MESSAGE },
+      $push: { log: { $each: [{ at, event: "failed", detail: PRINTER_GONE_MESSAGE }], $slice: -PRINT_JOB_LOG_MAX } },
+    },
+  );
+  return { retargeted, failed: gone.modifiedCount ?? 0 };
 }
 
 export async function sweepPrintJobs(nowMs: number): Promise<PrintSweepResult> {
@@ -105,6 +143,10 @@ export async function sweepPrintJobs(nowMs: number): Promise<PrintSweepResult> {
   // 2. Every waiting job to the device that should print it now (§6.6).
   const host = await PrintHost.findOne({ key: PRINT_HOST_KEY }).select("deviceId").lean();
   result.retargeted = await routeWaitingPrintJobs(host?.deviceId ?? null, nowMs);
+  // 2a. Printers mode (Session 2C): a printer job follows its printer's writer, or fails when its printer is gone.
+  const printerMoves = await routePrinterJobs(nowMs);
+  result.retargeted += printerMoves.retargeted;
+  result.failed += printerMoves.failed;
 
   // 2b. Re-create the missing job of a server-owned KOT round (§7.4; print-repair.ts).
   result.repaired = await repairMissingKotJobs(nowMs);

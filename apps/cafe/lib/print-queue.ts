@@ -280,7 +280,8 @@ export async function dismissPrintJob(input: {
  *  so routeWaitingPrintJobs (print-sweep.ts) sends it back there instead. */
 export async function dismissQueuedPrintJobsForClearedHost(dismissedBy: string): Promise<number> {
   const res = await PrintJob.updateMany(
-    { status: { $in: ["queued", "needs-confirm", "failed"] }, claimedAt: { $exists: false }, originDeviceId: { $exists: false } },
+    // Session 2C: never a printer job; its printer, not the host, prints it.
+    { printerId: { $exists: false }, status: { $in: ["queued", "needs-confirm", "failed"] }, claimedAt: { $exists: false }, originDeviceId: { $exists: false } },
     { $set: { status: "dismissed", dismissedAt: new Date(), dismissReason: "host-cleared", dismissedBy } },
   );
   return res.modifiedCount ?? 0;

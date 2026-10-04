@@ -231,6 +231,8 @@ test("a tap's answer in plain words: done, already handled, or it prints by itse
   assert.equal(printRetryNotice({ applied: false, status: "queued", reason: "wrong-status" }), "It prints by itself as soon as the printer is ready.");
   assert.equal(printRetryNotice({ applied: false, status: "printed", reason: "wrong-status" }), "Already handled.");
   assert.equal(printRetryNotice({ applied: false, status: null, reason: "not-found" }), "Already handled.");
+  // Session 2C (the 2B gate's ruling R2): never guessed onto another printer.
+  assert.equal(printRetryNotice({ applied: false, status: "failed", reason: "printer-gone" }), "No printer takes this slip now (removed, switched off, or none set up). Print it again from its order.");
 });
 
 test("PIN: the panel shows the waiting slips, the button shows their count, and both stay within their budgets", () => {

@@ -56,7 +56,8 @@ test("PIN: staff actions go through applyPrintJobPlan and nudge the printer only
   const s = src(ACTIONS);
   assert.match(s, /planConfirm\(job, input\.decision, input\.staff, input\.nowMs\)/);
   assert.match(s, /planRetry\(job, input\.nowMs\)/);
-  assert.match(s, /await applyPrintJobPlan\(row\._id, job, plan\.patch\)/);
+  // Session 2C: the plan, plus a printer job's current writer (the R2 pin below).
+  assert.match(s, /await applyPrintJobPlan\(row\._id, job, patch\)/);
   assert.equal(count(s, 'publishCafeEvent("print-job")'), 1);
   assert.match(s, /if \(plan\.patch\.status === "queued"\) publishCafeEvent\("print-job"\);/);
   assert.ok(!/PrintJob\.(create|updateOne|findOneAndUpdate|updateMany|deleteMany)\(/.test(s), "no direct PrintJob write");
@@ -81,6 +82,49 @@ test("PIN: the sweep expires leases, routes waiting jobs to the device that prin
   assert.match(s, /if \(result\.requeued > 0 \|\| result\.retargeted > 0\) publishCafeEvent\("print-job"\);/);
   assert.equal(count(s, ".limit(PRINT_SWEEP_BATCH)"), 2, "both sweep reads are bounded");
   assert.ok(!s.includes("console."));
+});
+
+// Session 2C (printers mode): a printer job waits on its printer's line. Simple mode's moves (to the host, or
+// back to the asking device) and the host teardown's dismissal never touch it; it follows its printer's writer,
+// and fails visibly when its printer is gone (deleted, switched off, no writer), never guessed onto another.
+test("PIN (2C): the sweep moves a waiting printer job only with its printer, and fails it when its printer is gone", () => {
+  const s = src(SWEEP);
+  inOrder(s, ["await routeWaitingPrintJobs(host?.deviceId ?? null, nowMs);", "routePrinterJobs(nowMs)", "await repairMissingKotJobs(nowMs);"], "sweep order");
+  const simple = s.slice(s.indexOf("export async function routeWaitingPrintJobs("), s.indexOf("export async function returnPrintJobsToOrigins("));
+  assert.equal(count(simple, "printerId: { $exists: false }"), 3, "neither move nor the dismissal reaches a printer job");
+  const printers = s.slice(s.indexOf("export async function routePrinterJobs("), s.indexOf("export async function sweepPrintJobs("));
+  inOrder(
+    printers,
+    [
+      'status: { $in: ["queued", "needs-confirm"] } })',
+      "if (waiting === null) return { retargeted: 0, failed: 0 };",
+      "const printers = routablePrinters(await listPrinters());",
+      "{ printerId: printer.id, status: { $in: WAITING }, targetDeviceId: { $ne: writer } }",
+      "{ printerId: { $exists: true, $nin: [...printers.map((printer) => printer.id), PRINT_JOB_NO_PRINTER] }, status: \"queued\" }",
+      "$set: { status: \"failed\", lastError: PRINTER_GONE_MESSAGE }",
+    ],
+    "routePrinterJobs",
+  );
+  const queue = src("apps/cafe/lib/print-queue.ts");
+  const bulk = queue.slice(queue.indexOf("export async function dismissQueuedPrintJobsForClearedHost("), queue.indexOf("export async function prunePrintJobs("));
+  assert.match(bulk, /printerId: \{ \$exists: false \},/, "Stop printing here never cancels a printer's slips");
+});
+
+test("PIN (2C ruling R2): Retry or Print again on a job whose printer is gone is refused; on a printer that still takes slips it goes to its current writer", () => {
+  const s = src(ACTIONS);
+  assert.match(s, /\.select\(`\$\{PRINT_LIFECYCLE_SELECT\} targetDeviceId printerId`\)/, "the row says which printer it is for");
+  inOrder(
+    s,
+    [
+      'if (plan.patch.status === "queued" && row.printerId !== undefined) {',
+      "const printer = routablePrinterOf(await listPrinters(), row.printerId);",
+      'if (printer === null) return { applied: false, status: job.status, reason: "printer-gone" };',
+      "target = printerWriterDeviceId(printer) ?? target;",
+      "patch = { ...plan.patch, set: { ...plan.patch.set, ...(target !== undefined ? { targetDeviceId: target } : {}) } };",
+      "if (await applyPrintJobPlan(row._id, job, patch)) {",
+    ],
+    "the retry (the 2C gate's review, I-3: retargeted in the same write)",
+  );
 });
 
 // ── Task 6: request bodies and routes ────────────────────────────────────────

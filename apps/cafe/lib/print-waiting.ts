@@ -198,6 +198,7 @@ export function printAlarmStep(
 /** What a Retry / Print now tap says when the server did not apply it (null: done). */
 export function printRetryNotice(answer: PrintActionData): string | null {
   if (answer.applied) return null;
+  if (answer.reason === "printer-gone") return "No printer takes this slip now (removed, switched off, or none set up). Print it again from its order.";
   if (answer.status === "queued" && answer.reason === "wrong-status") return "It prints by itself as soon as the printer is ready.";
   return "Already handled.";
 }
