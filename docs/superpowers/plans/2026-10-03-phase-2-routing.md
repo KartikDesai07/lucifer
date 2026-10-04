@@ -3668,6 +3668,8 @@ The owner's ask of 2026-10-04: when the device that takes an order is the one th
 
 ### Session 2E: several printers per device, web and Windows
 
+**Written as exact code at the 2D review gate:** see "## Session 2E" at the end of this plan. Where it differs from the items below, "2D review gate: rulings" says why: the Windows app is the one device that prints several printers in 2E, by name, through a new bridge call `printHtmlOn` (E-R1–E-R3), and the per-printer web store and the registry of runtimes (items 1 and 2) move to 2F, where bridge v2 gives them a first consumer; slips print one at a time through the one bridge, with a refusal held per printer (E-R5); the Windows app keeps no list of its own (a printer is saved by its Windows name) and one print method per PC (E-R2); every job of a slip leased to the asking tab reaches it; the 2D gate's fixes come first (Tasks E0, E1).
+
 1. **The device-printer store per printer:** `pos.device-printer.v2` keeps one local printer record per printer id, plus the v1 record as this device's simple-mode printer until it is saved as a printer (migration; the v1 key stays readable for one release).
 2. **`devicePrinter()` becomes a registry of runtimes**, one per printer (its own link, write queue and reconnect; the tab-ownership lock stays per device); a lane and `canPrintNow(printerId)` per printer; the agent leases for every ready printer at once and prints different printers in parallel, one job at a time per printer (§9.1); the refusal hold is per printer; direct print names every ready printer.
 3. **A Chrome tab drives at most one Web Serial or Web Bluetooth printer** (§9.7), with "Keep this tab open, or use the POS app".
@@ -21670,3 +21672,6370 @@ Part B on the emulator (needs `"Bash(adb:*)"` allowed by the owner, or the owner
 ### Pushed
 
 With the token only: `GIT_TERMINAL_PROMPT=0 git push origin feat/printing-phase-2`. `origin/main` was still `6ee2b1d` at the end (no merge). `main` untouched; nothing deployed.
+
+## Session 2D review (gate, 2026-10-05)
+
+**Verdict: PASS, with fixes folded into Session 2E (Tasks E0 and E1).** Session 2D (`e836470..7211299`: D0–D7 applied verbatim as `06ce95d..c4c14d5`, the final-review fix `9e201c7`, the Results `7211299`) is complete and correct for its scope: staff set the outlet up on `/printers`, every new screen and route behaves as written, and a cafe with no printer prints exactly as before. A fresh reviewer at the gate found no Critical and no Important defect in the range; its minors and the open bill-printer question are ruled below. The emulator exit check that Session 2D could not run (Part B) ran at this gate and passed.
+
+**How this gate stayed independent.** The gate ran in a session of its own. Every suite, the Next build and the three APKs were re-run on the repo at `7211299`; the non-docs tree at `c4c14d5` was compared with the 2C gate's golden branch; a fresh reviewer subagent (Claude Fable 5.1, read-only, which wrote none of the code) re-read `9e201c7` and the spec §8.1 amendment, checked the bill picker against routing over 700 input combinations with a scratchpad test, and ruled on every open minor; and Part B ran on the emulator with the owner's adb allow rule.
+
+| Check | Re-run at the gate (`7211299`) | Session 2D Results |
+|---|---|---|
+| shared `npm test`; `tsc` | 682/682; 0 | same |
+| cafe `npm test` | 4394 tests, 4393 pass, 0 fail, 1 skipped (the `go-live-dl` pin) | same (after `9e201c7`) |
+| cafe `tsc`; `npm run lint` | 0; 0 errors and the 2 old warnings | same |
+| Hub `tsc` | 0 | same |
+| mobile `tsc`; lint; `npm test`; `test:app` | 0; 0; 117/117; Jest 3/3 | same |
+| desktop `npm test` | 191/191 | same |
+| `npm run test:print-tools` | 8/8 | same |
+| live legs (local mongod, `pos_scratch_print_host`) | `316 passed, 0 failed` | same |
+| Next build | 129 routes (`/api/print-devices` and `/api/printers/[id]/test` among them) | same |
+| APKs (`GRADLE_USER_HOME='D:\gradle-home'`; x86_64 with `aR`) | x86_64 `29115bdf…` (7,425,177 B), arm64-v8a `0e0ec314…` (7,293,454 B), armeabi-v7a `e618900a…` (6,701,288 B): byte-identical to `D:\kd\pos-apk-release\Sandbee-POS-final\`; `git diff e836470..7211299 -- apps/mobile apps/desktop workers` is empty | same |
+| Non-docs tree at `c4c14d5` vs the 2C gate's gold `g2d-v2` (`f6d7cf9`, tree `bfbd1d9`) | blob-identical (`git ls-tree -r`, `docs/` left out: 1,749 entries each, no difference) | same |
+| Secrets in `e836470..7211299` | none (3,911 diff lines scanned for tokens, keys and connection strings) | — |
+
+**`origin/main`** was fetched at the gate (token credential): still `6ee2b1d`, so nothing to merge.
+
+**Code read (the fresh reviewer).** `9e201c7` is correct and complete for what it claims. M-1: with no print host every device's slips now route to Printer 1, and with a host only the host can tap Set up printers; the toast's two clauses hold in both cases. M-6: `billPrinterChoiceOf` shows the printer routing uses in every one of 700 combinations (two printers × 16 states × 4 choices); the remaining gaps were the bill section hiding itself while a routable choice without Bill still got this device's bills (72 combinations) and the section's words promising End of day where routing sends it to the first End of day printer. The spec §8.1 paragraph said what the code did for bills. The two new routes are admin-only, `noStore`, bounded. Every Results number matched git.
+
+**Part B, the app on the emulator: PASS** (Task D8 Step 4 Part B, items 1–8; the owner had added `"Bash(adb:*)"` to `.claude/settings.local.json` and cleared the app's data, so it opened on "Connect to your workspace"). The harness as Session 2D wrote it: this branch's build (`7211299`) on 3110, the counting proxy on 3200 (`adb reverse tcp:3100 tcp:3200`), fake printers on 9100 and 9102 with long `--out` paths, the 2D session's env (database `pos_scratch_e2e_p1final`); as found: stations Kitchen (default) and Bar, no printer, no pointer, no print host. `Pixel_7_API_33` (`-memory 4096 -no-audio -no-snapshot-save`, boot 24 s, crash buffer empty), the installed APK the release `29115bdf…`. `http://localhost:3100` typed on the start screen, signed in as e2eadmin (the secret typed by the scratchpad's `type-secret.py` into a field a uiautomator dump showed to be the focused password field; never printed).
+
+| # | Item | Result |
+|---|---|---|
+| 1 | The app's network printer 10.0.2.2:9100 ("Connected"); Send to Kitchen (Cheesecake, Masala Chai), no printer set up | one slip, **44,454 B**; the proxy: the order and one ack (`leased(direct)`) |
+| 2 | Printer setup → Set up printers; the same round | Printer 1 "Prints on this device · Network 10.0.2.2:9100 · printed by This device · Bill, Full KOT copy, Notices, End of day · Paper 80 mm · KOT copies 1 · Bill copies 1"; bill picker "Default (Printer 1)"; one slip, **the same 44,454 B**, `station: null`, at Printer 1, direct (the order and one ack). The save cost the create, one printers read and one empty lease (the new list nudged the agent; once per setup change) |
+| 3 | Bar deleted and added again in the app (the question "Delete Bar? Its categories, items and printers go back to the default station."); Beverages → Bar (the category dialog: "Default station (Kitchen)", Kitchen, Bar); `beat e2e-bar-agent "Bar phone"`; Add printer in the app (Bar printer, 127.0.0.1:9102, "Bar phone …gent", Bar KOTs; Notices already ticked); the scripted bar agent; the round | "ALL STATIONS" (Cheesecake, Masala Chai) **48,198 B** at the counter with no lease request (the order and one ack), "BAR" (Masala Chai) **62 B** by the agent, once each, `more: false` |
+| 4 | Test print on each printer | Printer 1's **31,414 B** on the app at once (`leased(direct)`: the test call and one ack); the bar printer's **153 B** by its agent |
+| 5 | Cheesecake → Bar (the item sheet's Kitchen station); a round with Cheesecake | the full copy **44,238 B** and the "BAR" slip **61 B** both hold Cheesecake |
+| 6 | Delete Bar while Beverages and Cheesecake chose it | the same question (no printer named: the bar printer keeps Notices); both pointers gone; the next round: **one** KOT, `station: null`, **44,454 B** at the counter |
+| 7 | The crash buffer; the printer panel | empty; "Printing is on", "Printers are set up: each slip prints at its printer (Printer setup → Printers).", "Bill printer for this device · Default (Printer 1)", the top-bar dot "Printer connected" |
+| 8 | Put back | the agent stopped by PID; the app's printer removed ("Remove Network printer 10.0.2.2 from this device?"); `reset2d`; Bar added back in the app; state as found; the app back on "Connect to your workspace" with the address cleared (More options → Change POS address), **its demo address and sign-in are the owner's to restore**; `adb reverse --remove-all`, then `adb reverse tcp:3100 tcp:3100`; the POS, the proxy and both fake printers stopped by PID after checking each command line; `adb emu kill` |
+
+Paper: counter 6 slips (44,454, 44,454, 48,198, 31,414, 44,238, 44,454), bar 3 (62, 153, 61). The app's new device row and its orders and jobs stay in `pos_scratch_e2e_p1final` (retention prunes the jobs), as earlier sessions' rows do.
+
+**Pre-validating 2E.** The gate wrote 2E on a golden copy and ran it twice end to end before generating its section.
+
+*The Windows app's web half* (Part A of Task E7 Step 4): the golden build on 3110 behind the counting proxy, a headless desktop Chrome (this PC's Chrome through the npx cache's `playwright-core`; local only) with a fake `window.posDesktop` injected before any page script: version 1.11.0 with `printHtmlOn` (or 1.10.0 without it), the printers "EPSON TM-T82" (chosen), "Kitchen TVS" and "Microsoft Print to PDF", every print it receives logged with its channel, printer, `@page` width and first words. The first run found the leased-jobs gap (a slip's second leased job printed 90 s late as REPRINT: "REPRINT · KITCHEN ORDER ALL STATIONS"), the unnamed Windows rows and the held printer's backoff lease, all fixed in E4 and E5. The final run, from the harness as found:
+
+| # | Item | Result |
+|---|---|---|
+| 1 | The setup page, simple mode | "Set up printers" offered (this PC prints today) |
+| 2 | Set up printers | Printer 1 "Windows printer EPSON TM-T82 · This device · Bill, Full KOT copy, Notices, End of day · Paper 80 mm" (the cafe's KOT paper) |
+| 3 | Send to Kitchen (Cheesecake, Masala Chai) | one KOT through `printHtmlOn("EPSON TM-T82")`, `@page 80mm`, direct (the order and one ack) |
+| 4 | Beverages → Bar; Add printer → Device printer → "Windows printer" | offered "EPSON TM-T82", "Kitchen TVS", "Microsoft Print to PDF (saves a file, cannot be used)"; "Bar printer · Windows printer Kitchen TVS · This device · Bar KOTs, Notices · Paper 58 mm"; Devices: "Prints Printer 1, Bar printer" |
+| 5 | The same round | "BAR" on Kitchen TVS `@page 58mm` and "ALL STATIONS" on EPSON `@page 80mm`, once each, both direct (the order and two acks) |
+| 6 | Test print on each | each on its own printer, at its own paper |
+| 7 | Add printer on "EPSON TM-T82" again | "Printer 1 already prints on that Windows printer. Choose another Windows printer."; nothing added |
+| 8 | Kitchen TVS refusing (the app's own sentence); two rounds in one open page | "BAR" refused (not sent: back in the queue with "That printer is not on this PC…"); "ALL STATIONS" and the next round print on EPSON at once; no lease at the 2 s backoff; the bar printer tried again at about 30 s and 60 s (one lease and one ack each), refused again |
+| 9 | Kitchen TVS printing again (a new page) | "BAR" printed once, unlabelled |
+| 10 | The app as 1.10.0 (no `printHtmlOn`) | the panel "A printer is not on this device", the dot red; a round: "ALL STATIONS" through `printHtml` on the chosen EPSON, "BAR" left queued (never leased, never on EPSON's paper); the form: "This Windows app prints one printer, the one chosen for this PC. Install the Windows app 1.11 or later to print several printers here." |
+| 11 | Back to 1.11.0 | the waiting "BAR" printed |
+| 12 | The panel | "Printing is on", "Printers are set up: each slip prints at its printer (Printer setup → Printers).", "Default (Printer 1)", the dot "Printer connected" |
+
+Prints over the final run: 13 (EPSON 5 named and 1 through `printHtml`, all `@page 80mm`; Kitchen TVS 4 printed and 3 refused, all `@page 58mm`). The harness was put back as found.
+
+*The Android app on the golden build* (Part B, a smoke): the emulator again, the app typed onto the local POS (its session kept), its network printer 10.0.2.2:9100; Set up printers in the app ("Network 10.0.2.2:9100 · printed by This device"); Beverages → Bar and a LAN bar printer written by the scripted agent. A station round: "ALL STATIONS" 48,198 B direct (the order and one ack), "BAR" 62 B by the agent. Pay Now: the KOT 40,494 B direct, then the bill 36,966 B (the order, ack, lease, ack). The counter printer stopped: the KOT's direct print refused after about 10 s ("The printer is not connected…", not sent), the dot "1 slip waiting", no request at all until the printer came back, then one lease and the slip printed once, unlabelled (40,494 B). Crash buffer empty. Put back as found; the app left on the start screen with the address cleared; `adb reverse tcp:3100 tcp:3100`; everything stopped by PID; `adb emu kill`.
+
+## 2D review gate: rulings (2026-10-05)
+
+Every ruling that changes the spec is written into spec §8.1 ("Changed by Session 2D's final review", rewritten, and "As built at the 2D review gate (Session 2E)"), §9.2, §9.7, §10, §11 and §17.2.
+
+**2D's open items** (the fresh reviewer's evidence; each with its ruling):
+
+| # | Finding | Ruling |
+|---|---|---|
+| M-1 (`9e201c7`) | The Set up printers toast | **Sound** as fixed |
+| M-6 (`9e201c7`) | The bill picker said "Default" while routing sent bills to a chosen printer whose Bill box was unticked | **Sound** as fixed; superseded by the Bill ruling below |
+| The open question | Should a device's chosen bill printer need its Bill box (a server rule), or stay "routable is enough" (the 2B gate) with the words fixed? | **Needs Bill — Task E0.** A printer prints only the slips its boxes say: unticking Bill is the admin's "no bills here", and a device's choice lives in that device's storage where the admin cannot see it. Nothing is lost (a tablet that wants bills at the bar printer ticks Bill there and chooses it), deploy skew is safe (an old page's header with such a choice now falls back to the default), and the 2B gate's reason (the writer must poll the wake) is kept: routable and taking bills is strictly tighter. End of day follows the same choice (spec §8) |
+| The hide rule | The bill section hid itself while a routable choice without Bill still got this device's bills | **Resolved by the Bill ruling:** with no printer taking bills no choice can route a bill, so the rule is right as written. The section's description promises End of day only for a chosen printer (E0) |
+| M-2 | A station delete that changed printers' KOT stations published no `print-setup` frame: other devices' lists and dots stayed stale up to the 30-min focus read | **Fixed in E0:** the delete publishes `print-setup` when it modified a printer (two Worker requests per such delete) |
+| M-3 | `WaitingSlipsCard` subscribed to `print-setup` itself: two printers reads per admin save on a device with the panel open | **Fixed in E1:** it reads the agent's entry (`usePrintersRead`) |
+| M-4 | Test print offered for a printer this device writes but cannot print right now; the toast said "sent" while the slip only waited | **Fixed in E1:** `testPrintBlock` (disabled, with the row's reason); a remote writer that is away gets "It prints when its printing device is back online." |
+| M-5 | Switching a printer off failed its waiting slips (the sweep) with no question | **Fixed in E1:** the off direction asks, as Delete does |
+| M-7 | A failed devices read was silent; every remote printer read "has not checked in" | **Fixed in E1:** the setup waits for the devices read and says when it failed |
+| M-8 | (a) A switched-off printer named as one a delete "stops"; (b) the Devices section counted printers that take no slip; (c) `requestedBy` has no max | (a) **E0**, (b) **E1**; (c) **accepted**: server-set from the session's name, the payload has its 64 KB cap |
+| LAN `printerIsLocal` compares case exactly while the server lower-cases the host | Consistent today (the web picker lower-cases before the app saves `tcp:host:port`) | **Noted for 2F** (the Kotlin pool's ids) |
+
+**The 2E design rulings** (where the 2E specification left a choice; Session 2E implements them):
+
+| # | Question | Ruling |
+|---|---|---|
+| E-R1 | 2E's scope | **The Windows app is the device that prints several printers in 2E.** A Chrome tab drives one Web Serial or Web Bluetooth printer (§9.7; it now says "Keep this tab open, or use the POS app"); an Android device stays on bridge v1 with one printer until 2F. The per-printer web device-printer store (`pos.device-printer.v2`) and the registry of runtimes move to 2F, where bridge v2 gives them their first consumer (no web lane drives two printers before then); building them now would add risk with nothing to use them |
+| E-R2 | How the Windows app prints a printer job | A new bridge call `printHtmlOn(html, printerName)` (desktop 1.11.0, IPC `pos-desktop:print-html-on`) beside `printHtml`, feature-detected by the page; the same gate as every print, the name a printer Windows reports at that moment (read per job) and never a virtual one; one queue for both channels (serial; a spooled job returns in about a second). The print method (direct ESC/POS or driver) stays one per PC in 2E (per-printer method: Phase 4 setup polish) |
+| E-R3 | Which Windows printers are this PC's | By name, saved from this PC's own list (never typed): on an app with `printHtmlOn` every printer Windows reports; on an older app only its chosen printer, so another Windows printer is never printed on that paper (the 2C gate's F-3) and waits visibly. The page keeps the list in the desktop printer store, read again with every printers read, when the printer form opens, and after a failed Windows print (local calls to the app, no request) |
+| E-R4 | Paper per Windows printer | A slip for a Windows printer is drawn, and its page sized, for that printer's paper (as if the cafe's paper setting were its own); End of day keeps its 300 px summary on that roll's page (the direct lane scales it to the head). A Windows printer saved from this PC, and Set up printers' Printer 1, take the cafe's KOT paper, so Printer 1 changes nothing on paper (a cafe whose bill and KOT widths differ sees its bills at Printer 1's width: one roll, rare; accepted) |
+| E-R5 | The agent with several printers | One bridge, slips one at a time across printers (no parallel printing in 2E). A refusal holds its own line (a named Windows printer) or the device line (the one printer of every other lane, which holds everything as before); the lease, the direct-print header and the pulse/wake kicks name only printers no refusal holds; a held line is looked at again when its hold ends, never at its backoff while another printer is open; no lease while every printer this device prints is held. **Every job of a slip leased to this tab reaches the agent** (with two printers on one device a slip is leased once per printer line) |
+| E-R6 | The setup's one-printer rule (D-R6) | Lifted only for the Windows app: a PC may write several routable Windows printers, each a different one (names compared ignoring case), with their own words; every other device keeps one routable printer until 2F. The form on an app with `printHtmlOn` chooses the printer under "Windows printer"; an older app offers only its chosen printer (a second is refused as the same printer) and says to install 1.11 |
+| E-R7 | Budget (spec §17) | No new recurring request: `printHtmlOn` and the Windows list are local calls; the lease names fewer printers while one is held; a printer that keeps refusing costs one lease and one ack per 30 s while its slip waits (Phase 1's rule for a refusing printer, now per printer); a station delete that changed a printer costs two Worker requests |
+
+**The fresh review of 2E's golden code** (Claude Fable 5.1, read-only, `7211299..g2e` against the spec and this plan; it re-ran the 14 touched cafe suites (199/199), 2 shared ones (45/45) and the desktop suite (192/192), and proved the hold timer gap with a scratchpad test). Verdict "ship with fixes": no Critical, no path to a slip printed twice or on another printer's paper; Android, a browser and simple mode behave as before (the holds proven equivalent on the device line). Each finding fixed or ruled before the 2E section was generated:
+
+| # | Finding | Ruling |
+|---|---|---|
+| **I-1** | A held printer's slip was not leased when its hold ended while another printer was open (the hold-end timer was armed only when every line was held), and the refused job's 2 s backoff woke an empty lease | **Fixed in E4** (also seen in the gate's browser run): the hold-end timer is armed whenever a hold exists; the backoff wake of a held line moves to its hold end |
+| **I-2** | Choosing a Windows printer's name again in the form reset its paper to the cafe's KOT paper (a 58 mm printer saved at 80 mm prints clipped) | **Fixed in E5:** the name keeps the paper the form holds; a new printer starts on the cafe's KOT paper |
+| M-1 | End of day stayed 80 mm on a 58 mm Windows printer (the direct lane takes its raster width from the page) | **Fixed in E3:** its page follows the printer's paper |
+| M-2 | `names: null` at boot: the form said "Windows reports no printer" while the list loaded | **Fixed in E5:** "Reading the printers on this PC…"; the dot's sub-second red at boot is accepted |
+| M-3 | On an app with `printHtmlOn`, a cleared picker stops every lease (`canPrintNow`), though named printing needs no chosen printer | **Accepted:** visible ("No printer chosen"); the chosen printer stays the PC's own printer; 2F may lift it |
+| M-4 | Android in printers mode: the pulse/wake no longer keep the fast cadence while its printer is off | **Accepted, deliberate:** the kick was a no-op while the printer cannot print; fewer requests |
+| M-5 | `again` after an unapplied refusal re-checks the hold's expiry | **Accepted:** benign (an earlier lease only when the printer changed during the ack) |
+| M-6 | Printer 1's bills drawn at its (KOT) paper | **Accepted** (E-R4) |
+| M-7 | An un-reloaded page keeps 2D's bill words while the server routes by the new rule | **Accepted:** the go-live run reloads every POS screen |
+| M-8 | IPC nits (a malformed name throws without the tray notice; a named virtual printer's words say "chosen") | **Accepted:** only a malformed call or the raw API reaches them |
+| M-9 | `printerIsLocal` matches names exactly while the clash compares ignoring case | **Accepted:** the form never types a name; an address saved otherwise waits visibly instead of being refused at the spooler |
+| M-10 | The 2E agent tests drove every second lease by hand | **Fixed in E4:** a test proves the held printer is leased at its hold's end with no outside kick |
+| M-11 | Test print's words for a second printer on an older app ("Edit it first") | **Accepted:** the form there says to install 1.11 |
+
+**Found by the gate's browser run of the Windows app** (before the review): with two printers on one PC, `printJobRefOf` handed the agent only one of a slip's leased jobs; the other stayed leased until its lease ran out and printed 90 s late as REPRINT (seen live: "REPRINT · KITCHEN ORDER ALL STATIONS"). **Fixed in E4** (`alsoLeased`, every leased job of an enqueue's `jobs`), with a test. And a Windows printer's row named no printer ("Windows printer · This device" twice): **fixed in E5**.
+
+**Gate decisions that shape 2E** (each in spec §8.1, §9.2, §9.7, §10, §11 or §17.2):
+- **A chosen bill printer needs its Bill box**; End of day follows the same choice.
+- **One Windows PC prints each of its Windows printers by name** (desktop 1.11.0); an older Windows app prints only its chosen printer, and nothing ever prints on another printer's paper.
+- **A refusal holds only its own printer** on the Windows app; everywhere else the device's one printer, as before.
+- **Every other device keeps one printer** until 2F (Android bridge v2), and a Chrome tab drives one (§9.7).
+- **No new recurring request.**
+
+---
+
+## Session 2E (exact code, written and pre-validated at the 2D review gate)
+
+**Pre-validated** by the 2D review gate on 2026-10-05, on scratchpad clones only (never in the repo):
+- The code was developed on a golden copy of `7211299` (this branch's head at the gate), one commit per task, and this section was generated from those commits: every Create block is the golden file byte for byte, and every find is unique in its file at the moment it is applied.
+- A fresh clone of `feat/printing-phase-2` at `7211299` then got every block of this section applied verbatim, task by task, with each task's own Run lines (172 operations; the section as committed dry-runs against the repo as `172 ops OK`, plan lines 21843–27748); each RED and GREEN below is the output seen there. Its tree came out **identical** to the golden copy's (`4650f7c…`). Every suite below was run on that tree (the golden copy).
+- Totals on that code: shared `npm test` **683/683** (+1 over `7211299`'s 682), tsc 0; cafe `npm test` **4421 tests, 4420 pass, 0 fail, 1 skipped** (+27 over 4394; the skip is Phase 1's `go-live-dl` pin), tsc 0, lint 0 errors and the 2 old warnings; Hub tsc 0; mobile 117/117 and Jest 3/3 (no app code changed); desktop **192/192** (+1), typecheck 0, lint 0; print tools 8/8; live legs **`324 passed, 0 failed`** (316 + 8); the Next build lists **129 routes** (no new route). 60 files, +1,225 / −255.
+- **Reviewed and run before it was generated.** A fresh reviewer (Claude Fable 5.1) read the golden code (I-1, I-2 and minors, every fix folded into its task), the gate drove the Windows app's web half in a headless desktop Chrome with a fake Windows bridge (two printers) against the golden build, and ran a smoke of the Android app on the emulator with the golden build (see "Session 2D review (gate)" → "Pre-validating 2E").
+
+A failure while executing therefore points to drift since then, or to a typo while copying. Compare with the plan first.
+
+**What 2E delivers** (spec §9.1, §9.2, §9.7; plan decisions 1, 15; the 2D gate's rulings E-R1–E-R7). **A counter PC prints several printers.** The Windows app (desktop 1.11.0) gains `printHtmlOn(html, printerName)`: a printer job prints on its own Windows printer, chosen by name in the printer form from the printers Windows reports, and is drawn for that printer's paper; one PC may write several Windows printers, each a different one, and an older Windows app prints only its chosen printer, so nothing ever prints on another printer's paper. The agent holds a refusal on its own printer's line, so a Windows printer that refuses never stops the PC's other printers, and every job of a slip leased to the asking tab now reaches it (with two printers on one device a slip is leased once per printer line). A browser tab that drives a printer says to keep it open. First the 2D gate's fixes: a device's chosen bill printer counts only while it takes bills; a station delete that changed a printer publishes `print-setup`; Test print only when its slip can print; switching a printer off asks first; the setup waits for its devices read; the waiting-slips panel reads the agent's printers. **A cafe with no printer set up, an Android device and a browser print exactly as before**: one printer each, the same headers and requests.
+
+**Gate rulings this section implements** (see "2D review gate: rulings"): the Bill ruling, the hide rule, M-2 and M-8 (a) (Task E0); M-3, M-4, M-5, M-7 and M-8 (b) (E1); E-R2 (E2); E-R3 and E-R4 (E3); E-R5 (E4); E-R1's tab note and E-R6 (E5); E-R7 (no new recurring request: E0–E5); the fresh review of 2E's golden code: I-1 and M-10 (E4), I-2 and M-2 (E5), M-1 (E3); the gate's browser run: every leased job of a slip (E4), a Windows row names its printer (E5).
+
+**Not in 2E:** the per-printer web device-printer store and the registry of runtimes, Android bridge v2 and the Kotlin pool (2F); parallel printing across printers; a print method per Windows printer; Windows raw TCP to LAN printers (Phase 3, §9.6); the Phase 2 exit (2G). No Kotlin or mobile app change: **the APKs stay byte-identical to the release** (only `apps/mobile/TEST-CHECKLIST.md`, a document, changes). The Windows app changes (1.11.0): its installer is built on the owner's PC for TEST-CHECKLIST. No Worker change. Nothing is deployed.
+
+### Review Focus (Session 2E)
+
+The inputs most likely to bite a cafe that the unit tests alone would not exercise; each has a test, a live leg or a gate check.
+1. **A Windows PC with two printers saved runs an older Windows app** (1.10.0, hand-copied, never auto-updated): only its chosen printer is local; the other printer's slips wait visibly and never print on the chosen printer's paper. → `print-agent-printers.test.ts` (2E), `print-windows-printers.test.ts`; the gate's browser run item 10.
+2. **One slip leased to the asking tab on two printer lines** (a round with kitchen and bar items on a PC that prints both): both print at once, direct, neither waits for its lease to run out. → `print-agent.test.ts` ("every job of a slip leased to this tab"); the gate's browser run item 5.
+3. **One Windows printer refuses** (renamed or removed in Windows, a spooler refusal): its slip waits, the PC's other printer keeps printing at once, the held printer is tried again when its hold ends (not at its backoff), and a failed Windows print reads the list again. → `print-agent.test.ts` (2E holds), leg (av); the gate's browser run item 8.
+4. **A printer's paper**: each Windows slip is drawn and paged for its printer's roll (58 or 80 mm); choosing the name again keeps the paper; Set up printers' Printer 1 takes the cafe's KOT paper. → `print-windows-printers.test.ts`, `print-setup-ui-paths.test.ts`; the gate's browser run items 2–6.
+5. **Simple mode, Android and a browser**: one printer each; the device line's hold behaves as before; no new header or request. → the unchanged agent tests, `print-agent.test.ts` (2E: the device line); the gate's emulator smoke.
+6. **A chosen bill printer whose Bill box is unticked**: that device's bills and End of day go the default way, and its panel says so. → `print-printer-routing.test.ts`, `print-bill-printer.test.ts`.
+
+### File map (Session 2E)
+
+| File | Change | Task |
+|---|---|---|
+| `apps/cafe/lib/print-printer-routing.ts`, `lib/print-bill-printer.ts`, `components/print/BillPrinterSection.tsx`, `lib/print-stations.ts`, `lib/print-setup-text.ts` (+ tests) | the 2D gate's fixes | E0 |
+| `apps/cafe/lib/print-setup-text.ts`, `components/print/setup/PrintersSetupSection.tsx`, `PrintSetupSections.tsx`, `DevicesSetupSection.tsx`, `hooks/use-print-setup.ts`, `components/print/WaitingSlipsCard.tsx` (+ tests) | the 2D gate's fixes on the setup screens | E1 |
+| `apps/desktop/src/shared.ts`, `preload.ts`, `print-messages.ts`, `print.ts`, `package.json`; `apps/cafe/lib/desktop-shell.ts` (+ tests) | `printHtmlOn` (desktop 1.11.0) | E2 |
+| `apps/cafe/lib/printer/desktop-printer-state.ts`, `lib/desktop-shell-printer.ts`, `lib/desktop-shell.ts`, `lib/desktop-shell-messages.ts`, `lib/print-agent-printers.ts`, `hooks/use-device-printer.ts`, `hooks/use-agent-printers.ts`, `lib/print-host-slips.ts`, `lib/print-agent-slip.ts`, `hooks/use-print-agent.ts`, `hooks/use-print-host-bridge.ts`, `components/print/PrintHostPrintSources.tsx`, `lib/print.ts`, `components/print/setup/PrintersSetupSection.tsx`; `lib/print-windows-printers.test.ts` (create) (+ tests, `package.json`) | Windows printers by name, a slip's target and paper | E3 |
+| `apps/cafe/lib/print-agent-holds.ts` (create), `lib/print-agent.ts`, `lib/print-agent-types.ts`, `hooks/use-print-agent.ts`, `lib/print-agent-calls.ts`, `hooks/use-host-routing.ts` (+ tests) | one hold per line; every leased job of a slip | E4 |
+| `packages/shared/src/print-printers.ts`, `apps/cafe/lib/print-printers.ts`, `lib/print-setup-form.ts`, `lib/print-setup-text.ts`, `lib/desktop-shell-printer.ts`, `hooks/use-print-setup.ts`, `components/print/setup/WindowsPrinterSelect.tsx` (create), `PrinterFormDialog.tsx`, `SetUpPrintersCard.tsx`, `components/print/DesktopPrinterPicker.tsx`, `DevicePrinterSection.tsx`, `hooks/use-print-agent.ts`, `apps/mobile/TEST-CHECKLIST.md` (+ tests) | the setup of several Windows printers; the tab note | E5 |
+| `apps/cafe/scripts/print-host-live/setup-2e.ts` (create), `scripts/verify-print-host-live.ts` | live legs au–av | E6 |
+| this plan | Session 2E Results | E7 |
+
+The tasks run in this order: E0 → E6 (each one commit), then E7 (verification, the exit check, the fresh review, Results).
+
+---
+
+### Task E0: the 2D review gate's fixes: a device's chosen bill printer counts only while it takes bills, a station delete that changed a printer publishes print-setup, and a switched-off printer is never named as one a delete stops
+
+**Files:**
+- Modify: `apps/cafe/lib/print-printer-routing.ts` (`chosenBillPrinter` requires Bill), `apps/cafe/lib/print-bill-printer.ts` (`billPrinterChoiceOf`: a choice without Bill shows the default and says why), `apps/cafe/components/print/BillPrinterSection.tsx` (its words)
+- Modify: `apps/cafe/lib/print-stations.ts` (`deleteStation` publishes `print-setup` when it took the station off a printer), `apps/cafe/lib/print-setup-text.ts` (`printersLeftEmptyBy`: enabled printers only)
+- Tests: `apps/cafe/lib/print-printer-routing.test.ts`, `print-bill-printer.test.ts`, `print-setup-paths.test.ts`, `print-setup-form.test.ts`, `print-setup-fields.test.ts` (new tests and three changed pins, named below)
+
+**Interfaces produced:** None new; `chosenBillPrinter` and `billPrinterChoiceOf` keep their signatures.
+
+**A chosen bill printer needs its Bill box** (the 2D review gate's ruling; spec §8.1 rewritten). A printer prints only the slips its boxes say: a device's choice (`x-pos-bill-printer`) counts while that printer is routable AND takes bills; otherwise its bills, and its End of day, go the default way (the default bill printer; End of day: the first End of day printer, else the default bill printer, spec §8). Before, unticking Bill on a printer a tablet had chosen kept that tablet's bills on it, invisible to the admin who unticked it. The picker now shows the default with "‹printer› no longer takes bills, so this device's bills go to the default."; the bill section's hide rule (no routable printer takes bills) is right as written; its description promises End of day only for a chosen printer (with "Default" it goes to the first End of day printer). **Changed existing pins:** `print-printer-routing.test.ts` "bill: the asking device's bill printer, else the default …" (a choice that does not take bills now falls back); `print-bill-printer.test.ts` "2D final review (M-6) …" (the unticked case shows the default).
+
+**M-2: a station delete is a printers write when it changes a printer.** `deleteStation` pulls the station from every printer's KOT stations; when that modified a printer, it publishes `print-setup` (two Worker requests per such delete), so every device's printer list and dot follow at once instead of at the 30-min focus read. **Changed existing pin:** `print-setup-paths.test.ts` "PIN (2C): each printer write publishes print-setup …" (a station write published nothing; now exactly that delete does).
+
+**M-8 (a):** a station delete's question names only printers that are switched on (one already off does not "stop printing").
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/print-bill-printer.test.ts`, find:
+
+```ts
+  };
+}
+
+test("2D final review (M-6): the bill picker shows where this device's bills print, exactly as routing chooses", () => {
+  const P1 = "64f0000000000000000000a1";
+  const BAR = "64f0000000000000000000b2";
+  const counter = printer(P1, "Printer 1", { bill: true, kotAll: true, notices: true, eod: true });
+```
+
+Replace it with:
+
+```ts
+  };
+}
+
+test("2D final review (M-6), as changed at the 2D review gate: the bill picker shows where this device's bills print, exactly as routing chooses", () => {
+  const P1 = "64f0000000000000000000a1";
+  const BAR = "64f0000000000000000000b2";
+  const counter = printer(P1, "Printer 1", { bill: true, kotAll: true, notices: true, eod: true });
+```
+
+In `apps/cafe/lib/print-bill-printer.test.ts`, find:
+
+```ts
+  const cases: Array<{ name: string; printers: PrinterConfig[]; chosen: string | null; value: string; offered: string[]; note: RegExp | null }> = [
+    { name: "none chosen", printers: [counter, bar], chosen: null, value: BILL_PRINTER_DEFAULT, offered: [P1, BAR], note: null },
+    { name: "a bill printer chosen", printers: [counter, bar], chosen: BAR, value: BAR, offered: [P1, BAR], note: null },
+    { name: "chosen, then Bill unticked there", printers: [counter, barNoBill], chosen: BAR, value: BAR, offered: [P1, BAR], note: /^Bar printer no longer takes bills, but this device's bills still print there\./ },
+    { name: "chosen, then switched off", printers: [counter, barOff], chosen: BAR, value: BILL_PRINTER_DEFAULT, offered: [P1], note: /switched off or gone, so bills go to the default/ },
+    { name: "chosen, then deleted", printers: [counter], chosen: BAR, value: BILL_PRINTER_DEFAULT, offered: [P1], note: /switched off or gone, so bills go to the default/ },
+  ];
+  for (const c of cases) {
+    const choice = billPrinterChoiceOf(c.printers, c.chosen);
+    // The server sends this device's bills to its choice while that printer is routable (chosenBillPrinter), else
+    // to the default bill printer: the picker must say the same.
+    const routed = c.chosen === null ? null : routablePrinterOf(c.printers, c.chosen);
+    assert.equal(choice.value, routed?.id ?? BILL_PRINTER_DEFAULT, `${c.name}: the picker shows the printer routing uses`);
+    assert.equal(choice.value, c.value, `${c.name}: value`);
+    assert.deepEqual(choice.options.map((p) => p.id), c.offered, `${c.name}: the printers offered, the shown one among them`);
+    if (c.note === null) assert.equal(choice.note, null, `${c.name}: no note`);
+```
+
+Replace it with:
+
+```ts
+  const cases: Array<{ name: string; printers: PrinterConfig[]; chosen: string | null; value: string; offered: string[]; note: RegExp | null }> = [
+    { name: "none chosen", printers: [counter, bar], chosen: null, value: BILL_PRINTER_DEFAULT, offered: [P1, BAR], note: null },
+    { name: "a bill printer chosen", printers: [counter, bar], chosen: BAR, value: BAR, offered: [P1, BAR], note: null },
+    { name: "chosen, then Bill unticked there", printers: [counter, barNoBill], chosen: BAR, value: BILL_PRINTER_DEFAULT, offered: [P1], note: /^Bar printer no longer takes bills, so this device's bills go to the default\./ },
+    { name: "chosen, then switched off", printers: [counter, barOff], chosen: BAR, value: BILL_PRINTER_DEFAULT, offered: [P1], note: /switched off or gone, so bills go to the default/ },
+    { name: "chosen, then deleted", printers: [counter], chosen: BAR, value: BILL_PRINTER_DEFAULT, offered: [P1], note: /switched off or gone, so bills go to the default/ },
+  ];
+  for (const c of cases) {
+    const choice = billPrinterChoiceOf(c.printers, c.chosen);
+    // The server sends this device's bills to its choice while that printer is routable and takes bills
+    // (chosenBillPrinter, the 2D review gate), else to the default bill printer: the picker must say the same.
+    const routed = c.chosen === null ? null : routablePrinterOf(c.printers, c.chosen);
+    assert.equal(choice.value, routed !== null && routed.slips.bill ? routed.id : BILL_PRINTER_DEFAULT, `${c.name}: the picker shows the printer routing uses`);
+    assert.equal(choice.value, c.value, `${c.name}: value`);
+    assert.deepEqual(choice.options.map((p) => p.id), c.offered, `${c.name}: the printers offered, the shown one among them`);
+    if (c.note === null) assert.equal(choice.note, null, `${c.name}: no note`);
+```
+
+In `apps/cafe/lib/print-printer-routing.test.ts`, find:
+
+```ts
+  const disabled = routePrintRequest(request, routing([COUNTER_P, { ...second, enabled: false }], { billPrinterId: "counter-2" }));
+  assert.deepEqual(disabled.map((j) => j.printerId), ["counter"], "a disabled choice falls back to the default");
+  const kitchenAsBill = routePrintRequest(request, routing([COUNTER_P, KITCHEN_P], { billPrinterId: "kitchen" }));
+  assert.deepEqual(kitchenAsBill.map((j) => j.printerId), ["kitchen"], "the device's own choice need not be a default bill printer");
+  const nowhere = routePrintRequest(request, routing([KITCHEN_P]));
+  assert.deepEqual(nowhere.map((j) => [j.printerId, j.error]), [[null, "No printer is set up for bills."]]);
+  // The 2A gate's M9 (ruled at the 2B gate, R4): a choice that takes no slip is not routable, so its writer would
+```
+
+Replace it with:
+
+```ts
+  const disabled = routePrintRequest(request, routing([COUNTER_P, { ...second, enabled: false }], { billPrinterId: "counter-2" }));
+  assert.deepEqual(disabled.map((j) => j.printerId), ["counter"], "a disabled choice falls back to the default");
+  const kitchenAsBill = routePrintRequest(request, routing([COUNTER_P, KITCHEN_P], { billPrinterId: "kitchen" }));
+  assert.deepEqual(kitchenAsBill.map((j) => j.printerId), ["counter"], "a choice that does not take bills: the default (the 2D review gate)");
+  const nowhere = routePrintRequest(request, routing([KITCHEN_P]));
+  assert.deepEqual(nowhere.map((j) => [j.printerId, j.error]), [[null, "No printer is set up for bills."]]);
+  // The 2A gate's M9 (ruled at the 2B gate, R4): a choice that takes no slip is not routable, so its writer would
+```
+
+In `apps/cafe/lib/print-printer-routing.test.ts`, find:
+
+```ts
+  assert.deepEqual(routePrintRequest(request, routing([bill, office], { billPrinterId: "bill" })).map((j) => j.printerId), ["bill"]);
+  assert.deepEqual(routePrintRequest(request, routing([bill])).map((j) => j.printerId), ["bill"]);
+  assert.deepEqual(routePrintRequest(request, routing([KITCHEN_P])).map((j) => j.error), ["No printer is set up for End of day."]);
+});
+
+test("void: to the printers the voided item's station KOT reaches, that take notices", () => {
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual(routePrintRequest(request, routing([bill, office], { billPrinterId: "bill" })).map((j) => j.printerId), ["bill"]);
+  assert.deepEqual(routePrintRequest(request, routing([bill])).map((j) => j.printerId), ["bill"]);
+  assert.deepEqual(routePrintRequest(request, routing([KITCHEN_P])).map((j) => j.error), ["No printer is set up for End of day."]);
+});
+
+// The 2D review gate: a printer prints only the slips its boxes say. A device's chosen bill printer counts only while
+// it takes bills; unticking Bill there sends that device's bills, and its End of day, the default way again.
+test("2D gate: a device's chosen bill printer counts only while it takes bills; its End of day follows the same choice", () => {
+  const second = printer("counter-2", { bill: true }, { order: 4 });
+  const bill = billPrintJob(order({ status: "Completed" }), { reprint: false });
+  const eod = eodPrintJob({ dateKey: "2026-10-03", dateLabel: "3 Oct 2026" });
+  const office = printer("office", { eod: true }, { order: 9 });
+  assert.deepEqual(routePrintRequest(bill, routing([COUNTER_P, second], { billPrinterId: "counter-2" })).map((j) => j.printerId), ["counter-2"], "a second bill printer may be chosen");
+  const unticked = { ...second, slips: { ...second.slips, bill: false, notices: true } };
+  assert.deepEqual(routePrintRequest(bill, routing([COUNTER_P, unticked], { billPrinterId: "counter-2" })).map((j) => j.printerId), ["counter"], "Bill unticked there: the default bill printer");
+  assert.deepEqual(routePrintRequest(eod, routing([COUNTER_P, unticked, office], { billPrinterId: "counter-2" })).map((j) => j.printerId), ["counter"], "its End of day: the first End of day printer, as with no choice");
+  assert.deepEqual(routePrintRequest(eod, routing([second, office], { billPrinterId: "counter-2" })).map((j) => j.printerId), ["counter-2"], "a chosen bill printer takes the device's End of day (spec §8)");
+});
+
+test("void: to the printers the voided item's station KOT reaches, that take notices", () => {
+```
+
+In `apps/cafe/lib/print-setup-fields.test.ts`, find:
+
+```ts
+  assert.match(select, /const shown = value !== "" && stations\.some\(\(station\) => station\.id === value\) \? value : INHERIT;/, "an unlisted id shows as inherited and is kept until changed");
+});
+
+test("PIN (2D, decision 7): this device's bill printer: printers mode only, routable bill printers only, kept on the device", () => {
+  const panel = src("components/print/PrinterPanel.tsx");
+  const card = panel.indexOf("<PrinterSetupCard />");
+```
+
+Replace it with:
+
+```ts
+  assert.match(select, /const shown = value !== "" && stations\.some\(\(station\) => station\.id === value\) \? value : INHERIT;/, "an unlisted id shows as inherited and is kept until changed");
+});
+
+// The 2D review gate: with "Default" chosen, End of day goes to the first End of day printer, which need not be the
+// default bill printer, so the section promises End of day only for a chosen printer.
+test("PIN (the 2D review gate): the bill printer section says End of day follows a chosen printer", () => {
+  const section = src("components/print/BillPrinterSection.tsx");
+  assert.match(section, /const DESCRIPTION = "Bills from this device print here, and its End of day too when you choose a printer\.";/);
+});
+
+test("PIN (2D, decision 7): this device's bill printer: printers mode only, routable bill printers only, kept on the device", () => {
+  const panel = src("components/print/PrinterPanel.tsx");
+  const card = panel.indexOf("<PrinterSetupCard />");
+```
+
+In `apps/cafe/lib/print-setup-form.test.ts`, find:
+
+```ts
+  assert.deepEqual(printersLeftEmptyBy([bar, both, counter], "s-bar").map((p) => p.id), ["Bar"], "only the printer that took nothing else");
+});
+
+const CAFE = process.cwd();
+const src = (rel: string): string => stripComments(readFileSync(path.join(CAFE, rel), "utf8"));
+
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual(printersLeftEmptyBy([bar, both, counter], "s-bar").map((p) => p.id), ["Bar"], "only the printer that took nothing else");
+});
+
+// The 2D review gate (M-8): a printer already switched off does not "stop printing" because of a station delete.
+test("2D gate (M-8): a station delete names only printers that print now and would take no slip after it", () => {
+  const bar = printer("Bar", { slips: { ...NO_SLIPS, kotStations: ["s-bar"] } });
+  const barOff = printer("Bar off", { enabled: false, slips: { ...NO_SLIPS, kotStations: ["s-bar"] } });
+  assert.deepEqual(printersLeftEmptyBy([bar, barOff], "s-bar").map((p) => p.id), ["Bar"], "the switched-off printer is not named");
+});
+
+const CAFE = process.cwd();
+const src = (rel: string): string => stripComments(readFileSync(path.join(CAFE, rel), "utf8"));
+
+```
+
+In `apps/cafe/lib/print-setup-paths.test.ts`, find:
+
+```ts
+test("PIN (2C): each printer write publishes print-setup; the kind is the room's, on both sides", () => {
+  const s = src("lib/print-printers.ts");
+  assert.equal(s.split('publishCafeEvent("print-setup")').length - 1, 3, "create, replace, delete");
+  assert.ok(!src("lib/print-stations.ts").includes("print-setup"), "a station write publishes nothing");
+  assert.match(src("lib/realtime-publish.ts"), /"print-setup",/);
+  assert.match(src("../../workers/realtime/src/index.ts"), /"print-setup"/);
+});
+```
+
+Replace it with:
+
+```ts
+test("PIN (2C): each printer write publishes print-setup; the kind is the room's, on both sides", () => {
+  const s = src("lib/print-printers.ts");
+  assert.equal(s.split('publishCafeEvent("print-setup")').length - 1, 3, "create, replace, delete");
+  // The 2D review gate (M-2): a station delete that took the station off a printer is a printers write too.
+  assert.equal(src("lib/print-stations.ts").split('publishCafeEvent("print-setup")').length - 1, 1, "only that delete; no other station write");
+  assert.match(src("lib/realtime-publish.ts"), /"print-setup",/);
+  assert.match(src("../../workers/realtime/src/index.ts"), /"print-setup"/);
+});
+```
+
+In `apps/cafe/lib/print-setup-paths.test.ts`, find:
+
+```ts
+  assert.ok(pulled >= 0 && deleted > pulled, `the pointers (${pulled}) before the delete (${deleted})`);
+});
+
+test("PIN (2D, the 2C review gate's F-3): a printer save refuses a second enabled printer for one printing device", () => {
+  const s = src("lib/print-printers.ts");
+  assert.equal((s.match(/const clash = printerWriterClash\(/g) ?? []).length, 2, "create and replace both check");
+```
+
+Replace it with:
+
+```ts
+  assert.ok(pulled >= 0 && deleted > pulled, `the pointers (${pulled}) before the delete (${deleted})`);
+});
+
+// The 2D review gate (M-2): a station delete that took a station off a printer is a printers write, so the other
+// devices read their printers again, as after any printer save (two Worker requests per such delete).
+test("PIN (the 2D review gate, M-2): a station delete that changed a printer's stations publishes print-setup", () => {
+  const s = src("lib/print-stations.ts");
+  const body = s.slice(s.indexOf("export async function deleteStation("));
+  const pulled = body.indexOf('Printer.updateMany({ "slips.kotStations": id }');
+  const deleted = body.indexOf("await Station.deleteOne({ _id: id });");
+  const published = body.indexOf('if (printers.modifiedCount > 0) publishCafeEvent("print-setup");');
+  assert.ok(pulled >= 0 && deleted > pulled && published > deleted, `the pointers (${pulled}), the delete (${deleted}), then the frame (${published})`);
+});
+
+test("PIN (2D, the 2C review gate's F-3): a printer save refuses a second enabled printer for one printing device", () => {
+  const s = src("lib/print-printers.ts");
+  assert.equal((s.match(/const clash = printerWriterClash\(/g) ?? []).length, 2, "create and replace both check");
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-printer-routing.test.ts lib/print-bill-printer.test.ts lib/print-setup-paths.test.ts lib/print-setup-form.test.ts lib/print-setup-fields.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 55`; `# pass 48`; `# fail 7`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/components/print/BillPrinterSection.tsx`, find:
+
+```tsx
+import { usePrintersRead } from "@/hooks/use-agent-printers";
+import { BILL_PRINTER_DEFAULT, billPrinterChoiceOf, readBillPrinterId, writeBillPrinterId } from "@/lib/print-bill-printer";
+
+const DESCRIPTION = "Bills and End of day from this device print here.";
+
+// Printing redesign, Phase 2 Session 2D (plan decision 7; spec §11 "Bill printer for this device"): in printers
+// mode, this device chooses which bill printer its bills and End of day go to; kept on this device and sent with
+```
+
+Replace it with:
+
+```tsx
+import { usePrintersRead } from "@/hooks/use-agent-printers";
+import { BILL_PRINTER_DEFAULT, billPrinterChoiceOf, readBillPrinterId, writeBillPrinterId } from "@/lib/print-bill-printer";
+
+const DESCRIPTION = "Bills from this device print here, and its End of day too when you choose a printer.";
+
+// Printing redesign, Phase 2 Session 2D (plan decision 7; spec §11 "Bill printer for this device"): in printers
+// mode, this device chooses which bill printer its bills and End of day go to; kept on this device and sent with
+```
+
+In `apps/cafe/components/print/BillPrinterSection.tsx`, find:
+
+```tsx
+  const billPrinters = routablePrinters(printers).filter((printer) => printer.slips.bill);
+  if (!printersModeOn(printers) || billPrinters.length === 0) return null;
+  const fallback = defaultBillPrinterOf(printers);
+  // What routing does with this device's choice (Session 2D's final review, M-6): never "Default" while bills
+  // still go to the chosen printer.
+  const { value, options, note } = billPrinterChoiceOf(printers, chosen);
+
+  const choose = (next: string) => {
+```
+
+Replace it with:
+
+```tsx
+  const billPrinters = routablePrinters(printers).filter((printer) => printer.slips.bill);
+  if (!printersModeOn(printers) || billPrinters.length === 0) return null;
+  const fallback = defaultBillPrinterOf(printers);
+  // What routing does with this device's choice (Session 2D's final review, M-6; the 2D review gate: a choice counts
+  // only while it takes bills).
+  const { value, options, note } = billPrinterChoiceOf(printers, chosen);
+
+  const choose = (next: string) => {
+```
+
+In `apps/cafe/lib/print-bill-printer.ts`, find:
+
+```ts
+// printer panel and kept in this device's storage, never on the server (an ordering-only device has no PrintDevice
+// row, and rows go after 7 days unseen). Every print request names it (x-pos-bill-printer); absent, bills and End
+// of day go to the default bill printer. A stale id is harmless: the server counts it only while that printer is
+// routable (the 2B gate's ruling R4). The same safe-storage discipline as lib/pos-device-prefs.ts: a staff
+// device's storage is outside this app's control, so nothing here ever throws. Zero React.
+import { routablePrinterOf, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
+
+```
+
+Replace it with:
+
+```ts
+// printer panel and kept in this device's storage, never on the server (an ordering-only device has no PrintDevice
+// row, and rows go after 7 days unseen). Every print request names it (x-pos-bill-printer); absent, bills and End
+// of day go to the default bill printer. A stale id is harmless: the server counts it only while that printer is
+// routable and takes bills (the 2B gate's ruling R4; the 2D review gate). The same safe-storage discipline as
+// lib/pos-device-prefs.ts: a staff
+// device's storage is outside this app's control, so nothing here ever throws. Zero React.
+import { routablePrinterOf, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
+
+```
+
+In `apps/cafe/lib/print-bill-printer.ts`, find:
+
+```ts
+export type BillPrinterChoice = {
+  /** The printer this device's bills print at, as routing chooses it, or BILL_PRINTER_DEFAULT. */
+  value: string;
+  /** The printers offered: every routable printer that takes bills, and the chosen one while bills still go there. */
+  options: PrinterConfig[];
+  /** Words for a choice the setup changed under it; null when there is nothing to say. */
+  note: string | null;
+};
+
+/** Session 2D's final review (M-6): the picker says what routing does. The server sends this device's bills to
+ *  its choice while that printer is routable, whether or not it still takes bills (chosenBillPrinter, the 2B gate's
+ *  ruling), so a choice whose Bill box was unticked later is still shown, with words, never as the default. */
+export function billPrinterChoiceOf(printers: readonly PrinterConfig[], chosen: string | null): BillPrinterChoice {
+  const billPrinters = routablePrinters(printers).filter((printer) => printer.slips.bill);
+  const routed = chosen === null ? null : routablePrinterOf(printers, chosen);
+  if (routed === null) return { value: BILL_PRINTER_DEFAULT, options: billPrinters, note: chosen === null ? null : CHOICE_GONE };
+  if (routed.slips.bill) return { value: routed.id, options: billPrinters, note: null };
+  const note = `${routed.name} no longer takes bills, but this device's bills still print there. Choose another printer to change it.`;
+  return { value: routed.id, options: [...billPrinters, routed], note };
+}
+
+const PRINTER_ID_PATTERN = /^[0-9a-f]{24}$/i;
+```
+
+Replace it with:
+
+```ts
+export type BillPrinterChoice = {
+  /** The printer this device's bills print at, as routing chooses it, or BILL_PRINTER_DEFAULT. */
+  value: string;
+  /** The printers offered: every routable printer that takes bills. */
+  options: PrinterConfig[];
+  /** Words for a choice the setup changed under it; null when there is nothing to say. */
+  note: string | null;
+};
+
+/** Session 2D's final review (M-6): the picker says what routing does. The server sends this device's bills to its
+ *  choice while that printer is routable and takes bills (chosenBillPrinter; the 2D review gate), else to the default
+ *  bill printer, so a choice whose Bill box was unticked later shows the default, and says why. */
+export function billPrinterChoiceOf(printers: readonly PrinterConfig[], chosen: string | null): BillPrinterChoice {
+  const billPrinters = routablePrinters(printers).filter((printer) => printer.slips.bill);
+  if (chosen === null) return { value: BILL_PRINTER_DEFAULT, options: billPrinters, note: null };
+  if (billPrinters.some((printer) => printer.id === chosen)) return { value: chosen, options: billPrinters, note: null };
+  const routed = routablePrinterOf(printers, chosen);
+  const note = routed === null ? CHOICE_GONE : `${routed.name} no longer takes bills, so this device's bills go to the default. Choose another printer to change it.`;
+  return { value: BILL_PRINTER_DEFAULT, options: billPrinters, note };
+}
+
+const PRINTER_ID_PATTERN = /^[0-9a-f]{24}$/i;
+```
+
+In `apps/cafe/lib/print-printer-routing.ts`, find:
+
+```ts
+  return out;
+}
+
+/** The asking device's own bill printer, when routing may send it slips: enabled, with a writer, taking some
+ *  slip (it need not take bills by default; the device chose it). The 2A gate's M9, ruled at the 2B gate: a
+ *  printer that takes no slip is not routable, so its writer would not poll the wake; such a choice falls back
+ *  to the default bill printer. */
+function chosenBillPrinter(routing: PrintRouting): PrinterConfig | null {
+  return routing.billPrinterId === undefined ? null : routablePrinterOf(routing.printers, routing.billPrinterId);
+}
+
+/** The jobs one slip becomes in printers mode (spec §8). Empty only for a KOT with no lines, and for a
+```
+
+Replace it with:
+
+```ts
+  return out;
+}
+
+/** The asking device's own bill printer, when routing may send it bills: routable (the 2A gate's M9, ruled at the
+ *  2B gate: a printer that takes no slip has no writer polling the wake) and taking bills (the 2D review gate: a
+ *  printer prints only the slips its boxes say, so unticking Bill there sends every device's bills elsewhere). Any
+ *  other choice falls back to the default bill printer. */
+function chosenBillPrinter(routing: PrintRouting): PrinterConfig | null {
+  const printer = routing.billPrinterId === undefined ? null : routablePrinterOf(routing.printers, routing.billPrinterId);
+  return printer !== null && printer.slips.bill ? printer : null;
+}
+
+/** The jobs one slip becomes in printers mode (spec §8). Empty only for a KOT with no lines, and for a
+```
+
+In `apps/cafe/lib/print-setup-text.ts`, find:
+
+```ts
+  return empty.length === 0 ? base : `${base} ${empty.join(", ")} will then take no slips and stop printing.`;
+}
+
+/** The 2A gate's M5: the printers a station's delete leaves with no slip at all (they stop printing). */
+export function printersLeftEmptyBy(printers: readonly PrinterConfig[], stationId: string): PrinterConfig[] {
+  return printers.filter(
+    (printer) => printer.slips.kotStations.includes(stationId) && !printerTakesSlips({ ...printer.slips, kotStations: printer.slips.kotStations.filter((id) => id !== stationId) }),
+  );
+}
+
+```
+
+Replace it with:
+
+```ts
+  return empty.length === 0 ? base : `${base} ${empty.join(", ")} will then take no slips and stop printing.`;
+}
+
+/** The 2A gate's M5: the printers a station's delete leaves with no slip at all (they stop printing). Only printers
+ *  switched on (the 2D review gate, M-8): one already off does not stop because of the delete. */
+export function printersLeftEmptyBy(printers: readonly PrinterConfig[], stationId: string): PrinterConfig[] {
+  return printers.filter(
+    (printer) =>
+      printer.enabled &&
+      printer.slips.kotStations.includes(stationId) &&
+      !printerTakesSlips({ ...printer.slips, kotStations: printer.slips.kotStations.filter((id) => id !== stationId) }),
+  );
+}
+
+```
+
+In `apps/cafe/lib/print-stations.ts`, find:
+
+```ts
+import { Product } from "@/models/Product";
+import { Station } from "@/models/Station";
+import type { CreateStationBody, UpdateStationBody } from "@/lib/print-printer-schemas";
+
+// Printing redesign, Phase 2 (spec §6.1, §11): kitchen stations. The first read seeds the default
+// "Kitchen"; there is always exactly one default, which can be moved but never deleted. Deleting a station
+```
+
+Replace it with:
+
+```ts
+import { Product } from "@/models/Product";
+import { Station } from "@/models/Station";
+import type { CreateStationBody, UpdateStationBody } from "@/lib/print-printer-schemas";
+import { publishCafeEvent } from "@/lib/realtime-publish";
+
+// Printing redesign, Phase 2 (spec §6.1, §11): kitchen stations. The first read seeds the default
+// "Kitchen"; there is always exactly one default, which can be moved but never deleted. Deleting a station
+```
+
+In `apps/cafe/lib/print-stations.ts`, find:
+
+```ts
+/** Deletes a station that is not the default, after clearing it from every category, item and printer that chose
+ *  it: they fall back to the default (spec §6.2), as a lookup of a deleted station would. The pointers go FIRST
+ *  (the 2A gate's M4): a request cut in between leaves a station nobody points at, never a printer whose saved
+ *  station is gone (its form could not be saved again). */
+export async function deleteStation(id: string): Promise<PrintSetupResult<{ deleted: true }>> {
+  const stations = await readStations();
+  const station = stations.find((s) => s.id === id);
+  if (station === undefined) return { ok: false, status: 404, error: STATION_NOT_FOUND };
+  if (defaultStationOf(stations)?.id === id) return { ok: false, status: 400, error: STATION_DEFAULT_DELETE_MESSAGE };
+  await Promise.all([
+    Category.updateMany({ stationId: id }, { $unset: { stationId: "" } }),
+    Product.updateMany({ stationId: id }, { $unset: { stationId: "" } }),
+    Printer.updateMany({ "slips.kotStations": id }, { $pull: { "slips.kotStations": id } }),
+  ]);
+  await Station.deleteOne({ _id: id });
+  return { ok: true, data: { deleted: true } };
+}
+
+```
+
+Replace it with:
+
+```ts
+/** Deletes a station that is not the default, after clearing it from every category, item and printer that chose
+ *  it: they fall back to the default (spec §6.2), as a lookup of a deleted station would. The pointers go FIRST
+ *  (the 2A gate's M4): a request cut in between leaves a station nobody points at, never a printer whose saved
+ *  station is gone (its form could not be saved again). A delete that took the station off a printer is a printers
+ *  write (the 2D review gate, M-2): the other devices read their printers again, as after a printer save. */
+export async function deleteStation(id: string): Promise<PrintSetupResult<{ deleted: true }>> {
+  const stations = await readStations();
+  const station = stations.find((s) => s.id === id);
+  if (station === undefined) return { ok: false, status: 404, error: STATION_NOT_FOUND };
+  if (defaultStationOf(stations)?.id === id) return { ok: false, status: 400, error: STATION_DEFAULT_DELETE_MESSAGE };
+  const [, , printers] = await Promise.all([
+    Category.updateMany({ stationId: id }, { $unset: { stationId: "" } }),
+    Product.updateMany({ stationId: id }, { $unset: { stationId: "" } }),
+    Printer.updateMany({ "slips.kotStations": id }, { $pull: { "slips.kotStations": id } }),
+  ]);
+  await Station.deleteOne({ _id: id });
+  if (printers.modifiedCount > 0) publishCafeEvent("print-setup");
+  return { ok: true, data: { deleted: true } };
+}
+
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-printer-routing.test.ts lib/print-bill-printer.test.ts lib/print-setup-paths.test.ts lib/print-setup-form.test.ts lib/print-setup-fields.test.ts lib/print-setup-ui-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 62`; `# pass 62`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint lib/print-printer-routing.ts lib/print-bill-printer.ts components/print/BillPrinterSection.tsx lib/print-stations.ts lib/print-setup-text.ts lib/print-printer-routing.test.ts lib/print-bill-printer.test.ts lib/print-setup-paths.test.ts lib/print-setup-form.test.ts lib/print-setup-fields.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/components/print/BillPrinterSection.tsx apps/cafe/lib/print-bill-printer.test.ts apps/cafe/lib/print-bill-printer.ts apps/cafe/lib/print-printer-routing.test.ts apps/cafe/lib/print-printer-routing.ts apps/cafe/lib/print-setup-fields.test.ts apps/cafe/lib/print-setup-form.test.ts apps/cafe/lib/print-setup-paths.test.ts apps/cafe/lib/print-setup-text.ts apps/cafe/lib/print-stations.ts
+git commit -m "fix(print): the 2D review gate: a device's chosen bill printer counts only while it takes bills, a station delete that changed a printer publishes print-setup, and a switched-off printer is never named as one a delete stops"
+```
+
+---
+
+### Task E1: the 2D review gate's fixes on the setup screens: Test print only when its slip can print, switching a printer off asks first, the setup waits for the devices read, the Devices section counts printers that print, and the waiting-slips panel reads the agent's printers
+
+**Files:**
+- Modify: `apps/cafe/lib/print-setup-text.ts` (`TEST_UNAVAILABLE`, `testPrintBlock`, `testPrintSentText`), `apps/cafe/components/print/setup/PrintersSetupSection.tsx`, `PrintSetupSections.tsx`, `DevicesSetupSection.tsx`, `apps/cafe/hooks/use-print-setup.ts` (`usePrintDevices` returns `{ devices, loaded, failed }`), `apps/cafe/components/print/WaitingSlipsCard.tsx`
+- Tests: `apps/cafe/lib/print-setup-form.test.ts`, `print-setup-ui-paths.test.ts` (new tests and three changed pins, named below)
+
+**Interfaces produced:** `testPrintBlock(printer, printers, { deviceId, localIds, canPrint }): string | null`, `testPrintSentText(printer, rowState): string`; `usePrintDevices()` → `{ devices, loaded, failed }`.
+
+**M-4: Test print only when its slip can print.** A printer its writer's lease would never take, or one this device writes but cannot print right now (not its printer, or its printer not ready), offers no Test print and says why in a line; a printer another device prints is tested even while that device is away, and the toast then says "It prints when its printing device is back online."
+
+**M-5: switching a printer off asks first** ("Switch ‹name› off? Slips still waiting for it will show under Couldn't print."), as Delete does, because the sweep fails its waiting slips; switching on needs no question.
+
+**M-7: the setup waits for the devices read** and says so when it failed (an empty list read as "No device has checked in yet" and every remote printer as "has not checked in").
+
+**M-8 (b): the Devices section counts printers that print** (routable: switched on and taking a slip). **M-3: the waiting-slips panel reads the agent's printers entry** (`usePrintersRead`): one admin save costs a device one printers read, never two.
+
+**Changed existing pins** (`print-setup-ui-paths.test.ts`): "PIN (2D): the admin Printer setup page …" (the devices read is awaited), "PIN (2D): each printer row …" (`testPrintBlock`, the switch-off question), "PIN (2D): the Devices section …" (routable printers).
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/print-setup-form.test.ts`, find:
+
+```ts
+  printerDraftOf,
+  setUpPrintersBody,
+} from "@/lib/print-setup-form";
+import { connectionText, deviceName, printerRowState, printersLeftEmptyBy, setupGaps, slipsText } from "@/lib/print-setup-text";
+import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+
+// Printing redesign, Phase 2 Session 2D (spec §11): the Printer setup page's pure half: the form, "Set up printers"
+```
+
+Replace it with:
+
+```ts
+  printerDraftOf,
+  setUpPrintersBody,
+} from "@/lib/print-setup-form";
+import { connectionText, deviceName, printerRowState, printersLeftEmptyBy, setupGaps, slipsText, testPrintBlock, testPrintSentText } from "@/lib/print-setup-text";
+import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+
+// Printing redesign, Phase 2 Session 2D (spec §11): the Printer setup page's pure half: the form, "Set up printers"
+```
+
+In `apps/cafe/lib/print-setup-form.test.ts`, find:
+
+```ts
+  assert.deepEqual(printersLeftEmptyBy([bar, both, counter], "s-bar").map((p) => p.id), ["Bar"], "only the printer that took nothing else");
+});
+
+// The 2D review gate (M-8): a printer already switched off does not "stop printing" because of a station delete.
+test("2D gate (M-8): a station delete names only printers that print now and would take no slip after it", () => {
+  const bar = printer("Bar", { slips: { ...NO_SLIPS, kotStations: ["s-bar"] } });
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual(printersLeftEmptyBy([bar, both, counter], "s-bar").map((p) => p.id), ["Bar"], "only the printer that took nothing else");
+});
+
+// The 2D review gate (M-4): Test print said "sent" for a printer this device writes but could not print right then; the
+// slip only waited in the panel until it went stale. It is offered only when its slip can print, or will once the
+// printer's own device is back, and the toast says which.
+test("2D gate (M-4): Test print is offered only when its slip can print, and the toast says when another device is away", () => {
+  const here = { deviceId: "me", localIds: ["Mine"], canPrint: true };
+  const mine = printer("Mine", { connection: { kind: "device", deviceId: "me", transport: "usb", address: "04b8:0e15" } });
+  const lan = printer("Kitchen", { connection: { kind: "lan", host: "192.168.1.60", port: 9100 }, primaryDeviceId: "tablet-0001", slips: { ...NO_SLIPS, notices: true } });
+  const all = [mine, lan];
+  assert.equal(testPrintBlock(mine, all, here), null, "this device's own printer, ready");
+  assert.equal(testPrintBlock(mine, all, { ...here, canPrint: false }), "Connect this device's printer to test it.", "not ready here: nothing would print");
+  assert.equal(testPrintBlock({ ...mine, id: "Other" }, [{ ...mine, id: "Other" }], here), "This device prints it, but it is not this device's printer. Edit it first.", "written here, but not its printer");
+  assert.equal(testPrintBlock(lan, all, here), null, "another device's printer: its slip waits for that device");
+  assert.equal(testPrintBlock({ ...lan, enabled: false }, [{ ...lan, enabled: false }], here), "Switch it on, choose its slips and its printing device to test it.", "not routable");
+  assert.equal(testPrintSentText(lan, { tone: "ok", text: "POS app is online" }), "Test slip sent to Kitchen.");
+  assert.equal(testPrintSentText(lan, { tone: "bad", text: "POS app is offline" }), "Test slip sent to Kitchen. It prints when its printing device is back online.");
+});
+
+// The 2D review gate (M-8): a printer already switched off does not "stop printing" because of a station delete.
+test("2D gate (M-8): a station delete names only printers that print now and would take no slip after it", () => {
+  const bar = printer("Bar", { slips: { ...NO_SLIPS, kotStations: ["s-bar"] } });
+```
+
+In `apps/cafe/lib/print-setup-ui-paths.test.ts`, find:
+
+```ts
+  const order = ["<PrintersSetupSection", "<StationsSetupSection", "<DevicesSetupSection"].map((tag) => container.indexOf(tag));
+  assert.ok(order.every((at, i) => at >= 0 && (i === 0 || at > (order[i - 1] ?? 0))), "Printers, Kitchen stations, Devices");
+  assert.match(container, /void qc\.invalidateQueries\(\{ queryKey: PRINTERS_KEYS\.all \}\);/, "the printers are read again when the page opens");
+  // The 2D gate's review (I-1, M-1): nothing shows, and so nothing saves, before both lists are in.
+  assert.match(container, /if \(!loaded \|\| !ready\) return <p role="status"/, "the sections wait for the printers and the stations");
+  assert.match(container, /if \(failed \|\| stationsFailed\) return <p role="alert"/, "and say so when either read failed");
+  assert.match(container, /const \{ printers, loaded, failed \} = usePrintersRead\(true\);/, "the agent's entry, read without a second subscription");
+});
+
+```
+
+Replace it with:
+
+```ts
+  const order = ["<PrintersSetupSection", "<StationsSetupSection", "<DevicesSetupSection"].map((tag) => container.indexOf(tag));
+  assert.ok(order.every((at, i) => at >= 0 && (i === 0 || at > (order[i - 1] ?? 0))), "Printers, Kitchen stations, Devices");
+  assert.match(container, /void qc\.invalidateQueries\(\{ queryKey: PRINTERS_KEYS\.all \}\);/, "the printers are read again when the page opens");
+  // The 2D gate's review (I-1, M-1): nothing shows, and so nothing saves, before both lists are in; the 2D review gate
+  // (M-7): the devices too, or every remote printer reads "has not checked in" and the LAN form offers no device.
+  assert.match(container, /if \(!loaded \|\| !ready \|\| !devicesLoaded\) return <p role="status"/, "the sections wait for the printers, the stations and the devices");
+  assert.match(container, /if \(failed \|\| stationsFailed \|\| devicesFailed\) return <p role="alert"/, "and say so when any read failed");
+  assert.match(container, /const \{ printers, loaded, failed \} = usePrintersRead\(true\);/, "the agent's entry, read without a second subscription");
+});
+
+```
+
+In `apps/cafe/lib/print-setup-ui-paths.test.ts`, find:
+
+```ts
+  const section = src(`${SETUP}PrintersSetupSection.tsx`);
+  assert.match(section, /const state = printerRowState\(printer, devices, \{ deviceId, localIds, canPrint \}\);/);
+  assert.match(section, /const localIds = agentPrintersOf\(printers, deviceId, local, lane === "desktop"\)\.localIds;/, "from the list the page holds");
+  assert.match(section, /const testable = routablePrinterOf\(printers, printer\.id\) !== null;/, "a printer its writer's lease would never take is not tested");
+  assert.match(section, /await testPrint\.mutateAsync\(printer\.id\);/);
+  assert.match(section, /printerBodyOf\(\{ \.\.\.printerDraftOf\(printer, stations\), enabled: !printer\.enabled \}, printers, printer\.id\)/, "on/off saves the printer whole, through the same rules as the form");
+  assert.match(section, /question=\{`Delete \$\{printer\.name\}\? Slips still waiting for it will show under Couldn't print\.`\}/);
+  assert.match(section, /\{gaps\.map\(\(gap\) => \(/, "what the setup leaves without a printer is said above the list");
+});
+```
+
+Replace it with:
+
+```ts
+  const section = src(`${SETUP}PrintersSetupSection.tsx`);
+  assert.match(section, /const state = printerRowState\(printer, devices, \{ deviceId, localIds, canPrint \}\);/);
+  assert.match(section, /const localIds = agentPrintersOf\(printers, deviceId, local, lane === "desktop"\)\.localIds;/, "from the list the page holds");
+  // The 2D review gate (M-4): a printer its writer's lease would never take, or one this device writes but cannot print
+  // right now, is not tested (the slip would only wait).
+  assert.match(section, /const blocked = testPrintBlock\(printer, printers, \{ deviceId, localIds, canPrint \}\);/, "Test print only when its slip can print");
+  assert.match(section, /disabled=\{blocked !== null \|\| testPrint\.isPending\}/);
+  assert.match(section, /await testPrint\.mutateAsync\(printer\.id\);\s*toast\.success\(testPrintSentText\(printer, state\)\);/);
+  assert.match(section, /printerBodyOf\(\{ \.\.\.printerDraftOf\(printer, stations\), enabled: !printer\.enabled \}, printers, printer\.id\)/, "on/off saves the printer whole, through the same rules as the form");
+  // The 2D review gate (M-5): switching a printer off fails its waiting slips (the sweep), so it asks first, as Delete does.
+  assert.match(section, /question=\{`Switch \$\{printer\.name\} off\? Slips still waiting for it will show under Couldn't print\.`\}/, "switching off asks first");
+  assert.match(section, /onCheckedChange=\{\(\) => \(printer\.enabled \? setSwitchingOff\(printer\.id\) : void toggle\(printer\)\)\}/, "switching on needs no question");
+  assert.match(section, /question=\{`Delete \$\{printer\.name\}\? Slips still waiting for it will show under Couldn't print\.`\}/);
+  assert.match(section, /\{gaps\.map\(\(gap\) => \(/, "what the setup leaves without a printer is said above the list");
+});
+```
+
+In `apps/cafe/lib/print-setup-ui-paths.test.ts`, find:
+
+```ts
+
+test("PIN (2D): the Devices section lists each device, online or when last seen, and the printers it prints", () => {
+  const devices = src(`${SETUP}DevicesSetupSection.tsx`);
+  assert.match(devices, /printers\.filter\(\(printer\) => printer\.enabled && printerWriterDeviceId\(printer\) === device\.deviceId\)/, "the printers it prints: switched-off ones are not");
+  assert.match(devices, /device\.online \? "Online" : `Offline · seen \$\{seenAt\(device\.lastSeenAt\)\}`/);
+});
+
+test("PIN (2D): the setup screens are client components, stay small, never log, and keep every write's error at its hook", () => {
+```
+
+Replace it with:
+
+```ts
+
+test("PIN (2D): the Devices section lists each device, online or when last seen, and the printers it prints", () => {
+  const devices = src(`${SETUP}DevicesSetupSection.tsx`);
+  // The 2D review gate (M-8): only printers routing sends slips to (switched on and taking a slip).
+  assert.match(devices, /routablePrinters\(printers\)\.filter\(\(printer\) => printerWriterDeviceId\(printer\) === device\.deviceId\)/, "the printers it prints: switched-off ones, and ones taking no slip, are not");
+  assert.match(devices, /device\.online \? "Online" : `Offline · seen \$\{seenAt\(device\.lastSeenAt\)\}`/);
+});
+
+// The 2D review gate (M-3): the waiting-slips panel only shows printer names; it reads the agent's entry, so an admin
+// save costs this device one printers read, never two (the agent's subscription is the only one).
+test("PIN (the 2D review gate, M-3): only the agent's printers read subscribes; the waiting-slips panel reads the same entry", () => {
+  const card = src("components/print/WaitingSlipsCard.tsx");
+  assert.match(card, /const \{ printers \} = usePrintersRead\(true\);/);
+  assert.ok(!/usePrinters\(/.test(card), "no subscription of its own");
+  const hook = src("hooks/use-print-setup.ts");
+  assert.match(hook, /return \{ devices: query\.data \?\? NO_DEVICES, loaded: query\.isSuccess, failed: query\.isError \};/, "the devices read says when it is in and when it failed");
+});
+
+test("PIN (2D): the setup screens are client components, stay small, never log, and keep every write's error at its hook", () => {
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-setup-form.test.ts lib/print-setup-ui-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 17`; `# pass 12`; `# fail 5`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/components/print/WaitingSlipsCard.tsx`, find:
+
+```tsx
+
+import { Button } from "@/components/ui/button";
+import { PRINTER_ACTION_CLASS } from "@/components/print/printer-classes";
+import { usePrinters } from "@/hooks/use-agent-printers";
+import { usePrintJobActions } from "@/hooks/use-print-job-actions";
+import { printWaitingGroups, printerNameOf, type PrintWaitingGroup } from "@/lib/print-waiting";
+import type { PrintAttentionRow } from "@pos/shared/print-agent-wire";
+```
+
+Replace it with:
+
+```tsx
+
+import { Button } from "@/components/ui/button";
+import { PRINTER_ACTION_CLASS } from "@/components/print/printer-classes";
+import { usePrintersRead } from "@/hooks/use-agent-printers";
+import { usePrintJobActions } from "@/hooks/use-print-job-actions";
+import { printWaitingGroups, printerNameOf, type PrintWaitingGroup } from "@/lib/print-waiting";
+import type { PrintAttentionRow } from "@pos/shared/print-agent-wire";
+```
+
+In `apps/cafe/components/print/WaitingSlipsCard.tsx`, find:
+
+```tsx
+
+export function WaitingSlipsCard({ pulse }: { pulse: PosPulseData | undefined }) {
+  // Session 2C: names each slip's printer (printers mode); the same cached read the agent makes.
+  const printers = usePrinters(true);
+  const rows = pulse?.printAttention;
+  const { retry, confirm, dismiss } = usePrintJobActions();
+  const [tapped, setTapped] = useState<ReadonlySet<string>>(new Set());
+```
+
+Replace it with:
+
+```tsx
+
+export function WaitingSlipsCard({ pulse }: { pulse: PosPulseData | undefined }) {
+  // Session 2C: names each slip's printer (printers mode); the same cached read the agent makes.
+  // The agent's entry, read without a subscription of its own (the 2D review gate, M-3: one read per admin save).
+  const { printers } = usePrintersRead(true);
+  const rows = pulse?.printAttention;
+  const { retry, confirm, dismiss } = usePrintJobActions();
+  const [tapped, setTapped] = useState<ReadonlySet<string>>(new Set());
+```
+
+In `apps/cafe/components/print/setup/DevicesSetupSection.tsx`, find:
+
+```tsx
+import { MonitorSmartphone } from "lucide-react";
+
+import type { PrintDeviceShell, PrintDeviceSummary } from "@pos/shared/print-agent-wire";
+import { printerWriterDeviceId, type PrinterConfig } from "@pos/shared/print-printers";
+import { PrinterSection } from "@/components/print/PrinterSection";
+import { PRINTER_DOT_BAD_CLASS, PRINTER_DOT_OK_CLASS } from "@/components/print/printer-classes";
+import { CAFE_TIMEZONE } from "@/lib/constants";
+```
+
+Replace it with:
+
+```tsx
+import { MonitorSmartphone } from "lucide-react";
+
+import type { PrintDeviceShell, PrintDeviceSummary } from "@pos/shared/print-agent-wire";
+import { printerWriterDeviceId, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
+import { PrinterSection } from "@/components/print/PrinterSection";
+import { PRINTER_DOT_BAD_CLASS, PRINTER_DOT_OK_CLASS } from "@/components/print/printer-classes";
+import { CAFE_TIMEZONE } from "@/lib/constants";
+```
+
+In `apps/cafe/components/print/setup/DevicesSetupSection.tsx`, find:
+
+```tsx
+    <PrinterSection icon={MonitorSmartphone} title="Devices" description={SECTION_DESCRIPTION}>
+      {devices.length === 0 && <p className="text-brand-muted">{EMPTY}</p>}
+      {devices.map((device) => {
+        const writes = printers.filter((printer) => printer.enabled && printerWriterDeviceId(printer) === device.deviceId).map((printer) => printer.name);
+        return (
+          <div key={device.deviceId} className="space-y-1 rounded-md border border-brand-rule p-3" data-device-row={device.deviceId}>
+            <div className="flex flex-wrap items-center gap-2">
+```
+
+Replace it with:
+
+```tsx
+    <PrinterSection icon={MonitorSmartphone} title="Devices" description={SECTION_DESCRIPTION}>
+      {devices.length === 0 && <p className="text-brand-muted">{EMPTY}</p>}
+      {devices.map((device) => {
+        // Only printers routing sends slips to (the 2D review gate, M-8): switched on and taking a slip.
+        const writes = routablePrinters(printers).filter((printer) => printerWriterDeviceId(printer) === device.deviceId).map((printer) => printer.name);
+        return (
+          <div key={device.deviceId} className="space-y-1 rounded-md border border-brand-rule p-3" data-device-row={device.deviceId}>
+            <div className="flex flex-wrap items-center gap-2">
+```
+
+In `apps/cafe/components/print/setup/PrintSetupSections.tsx`, find:
+
+```tsx
+// read the agent makes (one cache entry), read again when the page opens so an admin edits the setup as it is now.
+// Nothing shows until both the printers and the stations are in (the 2D gate's review, I-1 and M-1): an empty list
+// while loading would offer Set up printers to a cafe that has printers, or save a printer with its stations gone.
+export function PrintSetupSections() {
+  const qc = useQueryClient();
+  const { deviceId } = usePrintHostContext();
+  const { printers, loaded, failed } = usePrintersRead(true);
+  const { stations, ready, failed: stationsFailed } = useStations();
+  const devices = usePrintDevices();
+
+  useEffect(() => {
+    void qc.invalidateQueries({ queryKey: PRINTERS_KEYS.all });
+  }, [qc]);
+
+  if (failed || stationsFailed) return <p role="alert" className="text-destructive">{FAILED}</p>;
+  if (!loaded || !ready) return <p role="status" className="text-brand-muted">{LOADING}</p>;
+  return (
+    <div className="space-y-6" data-print-setup>
+      <PrintersSetupSection printers={printers} stations={stations} devices={devices} deviceId={deviceId} />
+```
+
+Replace it with:
+
+```tsx
+// read the agent makes (one cache entry), read again when the page opens so an admin edits the setup as it is now.
+// Nothing shows until both the printers and the stations are in (the 2D gate's review, I-1 and M-1): an empty list
+// while loading would offer Set up printers to a cafe that has printers, or save a printer with its stations gone.
+// The devices too (the 2D review gate, M-7): without them every remote printer reads "has not checked in".
+export function PrintSetupSections() {
+  const qc = useQueryClient();
+  const { deviceId } = usePrintHostContext();
+  const { printers, loaded, failed } = usePrintersRead(true);
+  const { stations, ready, failed: stationsFailed } = useStations();
+  const { devices, loaded: devicesLoaded, failed: devicesFailed } = usePrintDevices();
+
+  useEffect(() => {
+    void qc.invalidateQueries({ queryKey: PRINTERS_KEYS.all });
+  }, [qc]);
+
+  if (failed || stationsFailed || devicesFailed) return <p role="alert" className="text-destructive">{FAILED}</p>;
+  if (!loaded || !ready || !devicesLoaded) return <p role="status" className="text-brand-muted">{LOADING}</p>;
+  return (
+    <div className="space-y-6" data-print-setup>
+      <PrintersSetupSection printers={printers} stations={stations} devices={devices} deviceId={deviceId} />
+```
+
+In `apps/cafe/components/print/setup/PrintersSetupSection.tsx`, find:
+
+```tsx
+import { toast } from "sonner";
+
+import type { PrintDeviceSummary } from "@pos/shared/print-agent-wire";
+import { routablePrinterOf, type PrinterConfig, type StationConfig } from "@pos/shared/print-printers";
+import { InlineConfirm } from "@/components/print/PrintHostCardParts";
+import { PrinterSection } from "@/components/print/PrinterSection";
+import { PRINTER_ACTION_CLASS, PRINTER_DOT_BAD_CLASS, PRINTER_DOT_OK_CLASS } from "@/components/print/printer-classes";
+```
+
+Replace it with:
+
+```tsx
+import { toast } from "sonner";
+
+import type { PrintDeviceSummary } from "@pos/shared/print-agent-wire";
+import type { PrinterConfig, StationConfig } from "@pos/shared/print-printers";
+import { InlineConfirm } from "@/components/print/PrintHostCardParts";
+import { PrinterSection } from "@/components/print/PrinterSection";
+import { PRINTER_ACTION_CLASS, PRINTER_DOT_BAD_CLASS, PRINTER_DOT_OK_CLASS } from "@/components/print/printer-classes";
+```
+
+In `apps/cafe/components/print/setup/PrintersSetupSection.tsx`, find:
+
+```tsx
+import { useDeletePrinter, useSavePrinter, useTestPrinter } from "@/hooks/use-print-setup";
+import { agentPrintersOf } from "@/lib/print-agent-printers";
+import { printerBodyOf, printerDraftOf } from "@/lib/print-setup-form";
+import { connectionText, printerRowState, setupGaps, slipsText } from "@/lib/print-setup-text";
+import { cn } from "@/lib/utils";
+
+interface PrintersSetupSectionProps {
+```
+
+Replace it with:
+
+```tsx
+import { useDeletePrinter, useSavePrinter, useTestPrinter } from "@/hooks/use-print-setup";
+import { agentPrintersOf } from "@/lib/print-agent-printers";
+import { printerBodyOf, printerDraftOf } from "@/lib/print-setup-form";
+import { connectionText, printerRowState, setupGaps, slipsText, testPrintBlock, testPrintSentText } from "@/lib/print-setup-text";
+import { cn } from "@/lib/utils";
+
+interface PrintersSetupSectionProps {
+```
+
+In `apps/cafe/components/print/setup/PrintersSetupSection.tsx`, find:
+
+```tsx
+}
+
+const SECTION_DESCRIPTION = "Each printer, the slips it prints and the device that prints it.";
+const TEST_UNAVAILABLE = "Switch it on, choose its slips and its printing device to test it.";
+
+// Printing redesign, Phase 2 Session 2D (spec §11 Printers): every printer with its dot in words (its printing
+// device's heartbeat, or this device's own printer), its connection, slips, paper and copies; switch it on or off,
+```
+
+Replace it with:
+
+```tsx
+}
+
+const SECTION_DESCRIPTION = "Each printer, the slips it prints and the device that prints it.";
+
+// Printing redesign, Phase 2 Session 2D (spec §11 Printers): every printer with its dot in words (its printing
+// device's heartbeat, or this device's own printer), its connection, slips, paper and copies; switch it on or off,
+```
+
+In `apps/cafe/components/print/setup/PrintersSetupSection.tsx`, find:
+
+```tsx
+export function PrintersSetupSection({ printers, stations, devices, deviceId }: PrintersSetupSectionProps) {
+  const [form, setForm] = useState<{ key: string; printer: PrinterConfig | null } | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const save = useSavePrinter();
+  const remove = useDeletePrinter();
+  const testPrint = useTestPrinter();
+```
+
+Replace it with:
+
+```tsx
+export function PrintersSetupSection({ printers, stations, devices, deviceId }: PrintersSetupSectionProps) {
+  const [form, setForm] = useState<{ key: string; printer: PrinterConfig | null } | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  // The 2D review gate (M-5): switching a printer off fails its waiting slips, so it asks first, as Delete does.
+  const [switchingOff, setSwitchingOff] = useState<string | null>(null);
+  const save = useSavePrinter();
+  const remove = useDeletePrinter();
+  const testPrint = useTestPrinter();
+```
+
+In `apps/cafe/components/print/setup/PrintersSetupSection.tsx`, find:
+
+```tsx
+  const busy = save.isPending || remove.isPending;
+
+  const toggle = async (printer: PrinterConfig) => {
+    const result = printerBodyOf({ ...printerDraftOf(printer, stations), enabled: !printer.enabled }, printers, printer.id);
+    if (!result.ok) {
+      toast.error(result.error);
+```
+
+Replace it with:
+
+```tsx
+  const busy = save.isPending || remove.isPending;
+
+  const toggle = async (printer: PrinterConfig) => {
+    setSwitchingOff(null);
+    const result = printerBodyOf({ ...printerDraftOf(printer, stations), enabled: !printer.enabled }, printers, printer.id);
+    if (!result.ok) {
+      toast.error(result.error);
+```
+
+In `apps/cafe/components/print/setup/PrintersSetupSection.tsx`, find:
+
+```tsx
+    }
+  };
+
+  const test = async (printer: PrinterConfig) => {
+    try {
+      await testPrint.mutateAsync(printer.id);
+      toast.success(`Test slip sent to ${printer.name}.`);
+    } catch {
+      // The hook toasted it.
+    }
+```
+
+Replace it with:
+
+```tsx
+    }
+  };
+
+  const test = async (printer: PrinterConfig, state: ReturnType<typeof printerRowState>) => {
+    try {
+      await testPrint.mutateAsync(printer.id);
+      toast.success(testPrintSentText(printer, state));
+    } catch {
+      // The hook toasted it.
+    }
+```
+
+In `apps/cafe/components/print/setup/PrintersSetupSection.tsx`, find:
+
+```tsx
+          ))}
+          {printers.map((printer) => {
+            const state = printerRowState(printer, devices, { deviceId, localIds, canPrint });
+            const testable = routablePrinterOf(printers, printer.id) !== null;
+            return (
+              <div key={printer.id} className="space-y-2 rounded-md border border-brand-rule p-3" data-printer-row={printer.id}>
+                <div className="flex flex-wrap items-center gap-2">
+```
+
+Replace it with:
+
+```tsx
+          ))}
+          {printers.map((printer) => {
+            const state = printerRowState(printer, devices, { deviceId, localIds, canPrint });
+            const blocked = testPrintBlock(printer, printers, { deviceId, localIds, canPrint });
+            return (
+              <div key={printer.id} className="space-y-2 rounded-md border border-brand-rule p-3" data-printer-row={printer.id}>
+                <div className="flex flex-wrap items-center gap-2">
+```
+
+In `apps/cafe/components/print/setup/PrintersSetupSection.tsx`, find:
+
+```tsx
+                    <span aria-hidden="true" className={cn("h-2.5 w-2.5 rounded-full", state.tone === "ok" ? PRINTER_DOT_OK_CLASS : state.tone === "bad" ? PRINTER_DOT_BAD_CLASS : "bg-gray-400")} />
+                    {state.text}
+                  </span>
+                  <Switch aria-label={`${printer.name} on`} checked={printer.enabled} disabled={busy} onCheckedChange={() => void toggle(printer)} />
+                </div>
+                <p className="text-brand-muted">{connectionText(printer, devices, deviceId)}</p>
+                <p className="text-brand-muted">{slipsText(printer, stations)}</p>
+                <p className="text-brand-muted">
+                  Paper {printer.paper} mm · KOT copies {printer.copies.kot} · Bill copies {printer.copies.bill}
+                </p>
+                {deleting === printer.id ? (
+                  <InlineConfirm
+                    question={`Delete ${printer.name}? Slips still waiting for it will show under Couldn't print.`}
+                    yes="Yes, delete"
+```
+
+Replace it with:
+
+```tsx
+                    <span aria-hidden="true" className={cn("h-2.5 w-2.5 rounded-full", state.tone === "ok" ? PRINTER_DOT_OK_CLASS : state.tone === "bad" ? PRINTER_DOT_BAD_CLASS : "bg-gray-400")} />
+                    {state.text}
+                  </span>
+                  <Switch
+                    aria-label={`${printer.name} on`}
+                    checked={printer.enabled}
+                    disabled={busy}
+                    onCheckedChange={() => (printer.enabled ? setSwitchingOff(printer.id) : void toggle(printer))}
+                  />
+                </div>
+                <p className="text-brand-muted">{connectionText(printer, devices, deviceId)}</p>
+                <p className="text-brand-muted">{slipsText(printer, stations)}</p>
+                <p className="text-brand-muted">
+                  Paper {printer.paper} mm · KOT copies {printer.copies.kot} · Bill copies {printer.copies.bill}
+                </p>
+                {switchingOff === printer.id ? (
+                  <InlineConfirm
+                    question={`Switch ${printer.name} off? Slips still waiting for it will show under Couldn't print.`}
+                    yes="Yes, switch off"
+                    no="No"
+                    disabled={busy}
+                    onYes={() => void toggle(printer)}
+                    onNo={() => setSwitchingOff(null)}
+                  />
+                ) : deleting === printer.id ? (
+                  <InlineConfirm
+                    question={`Delete ${printer.name}? Slips still waiting for it will show under Couldn't print.`}
+                    yes="Yes, delete"
+```
+
+In `apps/cafe/components/print/setup/PrintersSetupSection.tsx`, find:
+
+```tsx
+                  />
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" className={PRINTER_ACTION_CLASS} disabled={!testable || testPrint.isPending} onClick={() => void test(printer)}>
+                      Test print
+                    </Button>
+                    <Button variant="outline" className={PRINTER_ACTION_CLASS} onClick={() => setForm({ key: printer.id, printer })}>
+```
+
+Replace it with:
+
+```tsx
+                  />
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" className={PRINTER_ACTION_CLASS} disabled={blocked !== null || testPrint.isPending} onClick={() => void test(printer, state)}>
+                      Test print
+                    </Button>
+                    <Button variant="outline" className={PRINTER_ACTION_CLASS} onClick={() => setForm({ key: printer.id, printer })}>
+```
+
+In `apps/cafe/components/print/setup/PrintersSetupSection.tsx`, find:
+
+```tsx
+                    </Button>
+                  </div>
+                )}
+                {!testable && <p className="text-xs text-brand-muted">{TEST_UNAVAILABLE}</p>}
+              </div>
+            );
+          })}
+```
+
+Replace it with:
+
+```tsx
+                    </Button>
+                  </div>
+                )}
+                {blocked !== null && <p className="text-xs text-brand-muted">{blocked}</p>}
+              </div>
+            );
+          })}
+```
+
+In `apps/cafe/hooks/use-print-setup.ts`, find:
+
+```ts
+  return { stations: query.data ?? NO_STATIONS, ready: query.isSuccess, failed: query.isError };
+}
+
+/** The devices that print or lease (admin), the most recently seen first. */
+export function usePrintDevices(enabled = true): PrintDeviceSummary[] {
+  const query = useQuery({ queryKey: PRINT_DEVICES_KEYS.all, queryFn: () => apiGet<PrintDeviceSummary[]>("/api/print-devices"), enabled });
+  return query.data ?? NO_DEVICES;
+}
+
+/** The Windows app's chosen printer, the address a Windows printer is saved with (null: not the Windows app, or
+```
+
+Replace it with:
+
+```ts
+  return { stations: query.data ?? NO_STATIONS, ready: query.isSuccess, failed: query.isError };
+}
+
+/** The devices that print or lease (admin), the most recently seen first; whether they are in, and whether the read
+ *  failed (the 2D review gate, M-7: an empty list while loading reads as "no device has checked in"). */
+export function usePrintDevices(enabled = true): { devices: PrintDeviceSummary[]; loaded: boolean; failed: boolean } {
+  const query = useQuery({ queryKey: PRINT_DEVICES_KEYS.all, queryFn: () => apiGet<PrintDeviceSummary[]>("/api/print-devices"), enabled });
+  return { devices: query.data ?? NO_DEVICES, loaded: query.isSuccess, failed: query.isError };
+}
+
+/** The Windows app's chosen printer, the address a Windows printer is saved with (null: not the Windows app, or
+```
+
+In `apps/cafe/lib/print-setup-text.ts`, find:
+
+```ts
+  defaultBillPrinterOf,
+  printerTakesSlips,
+  printerWriterDeviceId,
+  routablePrinters,
+  type PrinterConfig,
+  type PrinterConnection,
+```
+
+Replace it with:
+
+```ts
+  defaultBillPrinterOf,
+  printerTakesSlips,
+  printerWriterDeviceId,
+  routablePrinterOf,
+  routablePrinters,
+  type PrinterConfig,
+  type PrinterConnection,
+```
+
+In `apps/cafe/lib/print-setup-text.ts`, find:
+
+```ts
+  return row.online ? { tone: "ok", text: `${row.label} is online` } : { tone: "bad", text: `${row.label} is offline` };
+}
+
+/** What the setup leaves without a printer, in words (printers mode only): bills, a station's KOTs (which then print
+ *  at the default bill printer marked NO PRINTER SET, spec §8), and notices. */
+export function setupGaps(printers: readonly PrinterConfig[], stations: readonly StationConfig[]): string[] {
+```
+
+Replace it with:
+
+```ts
+  return row.online ? { tone: "ok", text: `${row.label} is online` } : { tone: "bad", text: `${row.label} is offline` };
+}
+
+export const TEST_UNAVAILABLE = "Switch it on, choose its slips and its printing device to test it.";
+
+/** Why a printer's Test print is not offered, or null (the 2D review gate, M-4): one its writer's lease would never
+ *  take, or one this device writes but cannot print right now, whose slip would only wait in the panel. A printer
+ *  another device prints is tested even while that device is away: its slip prints when it is back. */
+export function testPrintBlock(
+  printer: PrinterConfig,
+  printers: readonly PrinterConfig[],
+  here: { deviceId: string; localIds: readonly string[]; canPrint: boolean },
+): string | null {
+  if (routablePrinterOf(printers, printer.id) === null) return TEST_UNAVAILABLE;
+  if (printerWriterDeviceId(printer) !== here.deviceId) return null;
+  if (!here.localIds.includes(printer.id)) return "This device prints it, but it is not this device's printer. Edit it first.";
+  return here.canPrint ? null : "Connect this device's printer to test it.";
+}
+
+/** The toast after a Test print: said plainly when its printing device is away (its slip waits for it). */
+export function testPrintSentText(printer: PrinterConfig, state: { tone: PrinterRowTone; text: string }): string {
+  const sent = `Test slip sent to ${printer.name}.`;
+  return state.tone === "bad" ? `${sent} It prints when its printing device is back online.` : sent;
+}
+
+/** What the setup leaves without a printer, in words (printers mode only): bills, a station's KOTs (which then print
+ *  at the default bill printer marked NO PRINTER SET, spec §8), and notices. */
+export function setupGaps(printers: readonly PrinterConfig[], stations: readonly StationConfig[]): string[] {
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-setup-form.test.ts lib/print-setup-ui-paths.test.ts lib/print-bill-printer.test.ts lib/printer-ui-paths.test.ts lib/print-host-card-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 65`; `# pass 65`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint components/print/setup lib/print-setup-text.ts hooks/use-print-setup.ts components/print/WaitingSlipsCard.tsx lib/print-setup-form.test.ts lib/print-setup-ui-paths.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/components/print/WaitingSlipsCard.tsx apps/cafe/components/print/setup/DevicesSetupSection.tsx apps/cafe/components/print/setup/PrintSetupSections.tsx apps/cafe/components/print/setup/PrintersSetupSection.tsx apps/cafe/hooks/use-print-setup.ts apps/cafe/lib/print-setup-form.test.ts apps/cafe/lib/print-setup-text.ts apps/cafe/lib/print-setup-ui-paths.test.ts
+git commit -m "fix(print): the 2D review gate on the setup screens: Test print only when its slip can print, switching a printer off asks first, the setup waits for the devices read, the Devices section counts printers that print, and the waiting-slips panel reads the agent's printers"
+```
+
+---
+
+### Task E2: the Windows app prints a slip on the Windows printer the page names (printHtmlOn, desktop 1.11.0)
+
+**Files:**
+- Modify: `apps/desktop/src/shared.ts` (`PRINT_ON_CHANNEL`), `apps/desktop/src/preload.ts` (`printHtmlOn`), `apps/desktop/src/print-messages.ts` (`PRINT_PRINTER_NOT_HERE_MESSAGE`), `apps/desktop/src/print.ts` (`vetPrintRequest`, `printOn`, the second handler), `apps/desktop/package.json` (version 1.11.0)
+- Modify: `apps/cafe/lib/desktop-shell.ts` (the bridge type gains the optional `printHtmlOn`)
+- Tests: `apps/desktop/src/desktop-paths.test.ts` (one new pin and two widened ones, named below)
+
+**Interfaces produced:** `window.posDesktop.printHtmlOn?(html: string, printerName: string): Promise<void>` (IPC channel `pos-desktop:print-html-on`).
+
+**Why** (spec §9.2; the 2D gate's design ruling E-R2): the Windows app printed every slip on the one printer chosen in its picker. A counter PC with a counter printer and a kitchen printer needs each printer job on its own Windows printer. The page now names it: `printHtmlOn(html, printerName)`, beside `printHtml` (kept for every slip that names no printer: simple mode, local reprints, an un-reloaded page).
+
+**The same gate as every print:** only the main window, only a frame on the saved origin, a slip of a sane size (`vetPrintRequest`, shared by both channels); the name must be a non-empty string of at most 256 characters, a printer Windows reports at that moment (read per job, so one removed or renamed in Windows is refused, never sent to a stale name) and never a virtual one. Refusals go through the job promise (the tray notification and the log), exactly as the chosen printer's: "That printer is not on this PC. Open Printer setup in the POS and choose a printer this PC has." is a refusal before any byte (the page treats it as sent:"no", never counted).
+
+**One queue for both channels** (one offscreen window at a time; a spooled job returns in about a second). The print method (direct ESC/POS or the Windows driver) stays one per PC in 2E. The chosen printer stays this PC's own printer for everything that names none. An older shell lacks `printHtmlOn`: the page feature-detects it (E3) and then prints only the chosen printer.
+
+**Changed existing pins** (`desktop-paths.test.ts`): "(6) preload.ts exposes exactly […]" (six members: `printHtmlOn` added, still a closed set), "(7) preload.ts duplicated literals equal shared.ts …" (the new channel), "(13) parity: apps/cafe/lib/desktop-shell.ts carries the expected bridge surface" (the optional `printHtmlOn`). The installer is built on the owner's PC for TEST-CHECKLIST (`npm run dist` in `apps/desktop`; nothing is deployed by a session).
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+  PRINTERS_CHANNEL,
+  PRINTER_SAVE_CHANNEL,
+  PRINT_MODE_SAVE_CHANNEL,
+  PRINT_MODES,
+  DEFAULT_PRINT_MODE,
+  isNonPaperPrinter,
+```
+
+Replace it with:
+
+```ts
+  PRINTERS_CHANNEL,
+  PRINTER_SAVE_CHANNEL,
+  PRINT_MODE_SAVE_CHANNEL,
+  PRINT_ON_CHANNEL,
+  PRINT_MODES,
+  DEFAULT_PRINT_MODE,
+  isNonPaperPrinter,
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+  return keys;
+}
+
+test("(6) preload.ts exposes exactly ['version', 'printHtml', 'listPrinters', 'savePrinter', 'savePrintMode'] on posDesktop", () => {
+  // WIDENED 2026-09-17 and again 2026-09-19, deliberately — this stays a
+  // CLOSED set, which is the point of the pin: the renderer's whole privileged
+  // surface is these five and nothing else (never ipcRenderer, never a node
+```
+
+Replace it with:
+
+```ts
+  return keys;
+}
+
+test("(6) preload.ts exposes exactly ['version', 'printHtml', 'printHtmlOn', 'listPrinters', 'savePrinter', 'savePrintMode'] on posDesktop", () => {
+  // WIDENED 2026-09-17 and again 2026-09-19, deliberately — this stays a
+  // CLOSED set, which is the point of the pin: the renderer's whole privileged
+  // surface is these five and nothing else (never ipcRenderer, never a node
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+  // save-file dialog), so nothing ever reached paper and no error appeared.
+  // Both new methods are name-only — they return printer NAMES and store one;
+  // they never hand the renderer a handle, a driver object, or a file path.
+  const keys = extractExposedKeys(preloadSrc, '"posDesktop"');
+  assert.deepEqual(keys.sort(), ["listPrinters", "printHtml", "savePrintMode", "savePrinter", "version"]);
+});
+
+test("(6) preload.ts: exactly one require('electron'), no other require, no ipcRenderer exposure, no posDesktopSetup", () => {
+```
+
+Replace it with:
+
+```ts
+  // save-file dialog), so nothing ever reached paper and no error appeared.
+  // Both new methods are name-only — they return printer NAMES and store one;
+  // they never hand the renderer a handle, a driver object, or a file path.
+  //
+  // WIDENED again in Phase 2 Session 2E (spec §9.2, several printers per PC): printHtmlOn prints one slip on a
+  // Windows printer the page NAMES. Name-only like the picker: the main process prints only on a device Windows
+  // reports at that moment, never a virtual one, and hands nothing privileged back.
+  const keys = extractExposedKeys(preloadSrc, '"posDesktop"');
+  assert.deepEqual(keys.sort(), ["listPrinters", "printHtml", "printHtmlOn", "savePrintMode", "savePrinter", "version"]);
+});
+
+test("(6) preload.ts: exactly one require('electron'), no other require, no ipcRenderer exposure, no posDesktopSetup", () => {
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+  assert.ok(preloadSrc.includes(JSON.stringify(PRINT_MODE_SAVE_CHANNEL)));
+  // And each literal is the one its bridge method invokes.
+  assert.match(preloadSrc, /savePrintMode:[\s\S]{0,120}?ipcRenderer\.invoke\(PRINT_MODE_SAVE_CHANNEL, mode\)/);
+});
+
+// -- 2026-09-17: no slip may reach a device that writes a FILE -------------
+```
+
+Replace it with:
+
+```ts
+  assert.ok(preloadSrc.includes(JSON.stringify(PRINT_MODE_SAVE_CHANNEL)));
+  // And each literal is the one its bridge method invokes.
+  assert.match(preloadSrc, /savePrintMode:[\s\S]{0,120}?ipcRenderer\.invoke\(PRINT_MODE_SAVE_CHANNEL, mode\)/);
+  // Phase 2 Session 2E: the slip and the printer's name, nothing else.
+  assert.ok(preloadSrc.includes(JSON.stringify(PRINT_ON_CHANNEL)));
+  assert.match(preloadSrc, /printHtmlOn: \(html: string, printerName: string\): Promise<void> =>\s*electron\.ipcRenderer\.invoke\(PRINT_ON_CHANNEL, html, printerName\)/);
+  assert.equal(PRINT_ON_CHANNEL, "pos-desktop:print-html-on");
+});
+
+// -- Phase 2 Session 2E (spec §9.2): several printers per PC ------------------
+// A printer job names its Windows printer. The same gate as every print (main window, saved origin, a slip of a
+// sane size), the same one-job-at-a-time queue, and the same refusals routed through the job promise; the name must
+// be a device Windows reports at that moment and never a virtual one. The chosen printer stays this PC's own.
+test("(E2) print.ts: printHtmlOn prints on the printer the page names, vetted like the chosen one, through the one queue", () => {
+  assert.match(printSrc, /ipcMain\.handle\(PRINT_ON_CHANNEL, async \(event: IpcMainInvokeEvent, html: unknown, name: unknown\) => \{/);
+  const onHandler = printSrc.slice(printSrc.indexOf("ipcMain.handle(PRINT_ON_CHANNEL"));
+  assert.match(onHandler, /const request = vetPrintRequest\(event, html\);/, "the same sender, origin, frame and size gate");
+  assert.match(onHandler, /if \(typeof name !== "string" \|\| name\.length === 0 \|\| name\.length > PRINTER_NAME_MAX_CHARS\) throw new Error\(PRINT_REJECTED_MESSAGE\);/);
+  assert.match(onHandler, /const printers = await event\.sender\.getPrintersAsync\(\);\s*await printOn\(request\.html, request\.origin, name, printers\.some\(\(p\) => p\.name === name\)\);/, "a name Windows reports right now");
+  const defaultHandler = printSrc.slice(printSrc.indexOf("ipcMain.handle(PRINT_CHANNEL"), printSrc.indexOf("ipcMain.handle(PRINT_ON_CHANNEL"));
+  assert.match(defaultHandler, /await printOn\(request\.html, request\.origin, deps\.getDeviceName\(\), true\);/, "the default channel prints on the chosen printer, as before");
+  assert.equal((printSrc.match(/let queue: Promise<unknown> = Promise\.resolve\(\);/g) ?? []).length, 1, "one queue for both channels: one offscreen window at a time");
+  const refusal = printSrc.slice(printSrc.indexOf("const refusal"), printSrc.indexOf("runJob(html, origin, deviceName"));
+  assert.match(refusal, /: !onThisPc\s*\? PRINT_PRINTER_NOT_HERE_MESSAGE/, "a printer Windows no longer reports is refused before any window opens");
+  assert.match(messagesSrc, /export const PRINT_PRINTER_NOT_HERE_MESSAGE =\s*"That printer is not on this PC\. Open Printer setup in the POS and choose a printer this PC has\.";/);
+});
+
+// -- 2026-09-17: no slip may reach a device that writes a FILE -------------
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+  assert.ok(cafeDesktopShellSrc.includes("window.posDesktop"));
+  assert.ok(cafeDesktopShellSrc.includes("printHtml"));
+  assert.ok(cafeDesktopShellSrc.includes("export function isDesktopShell("));
+});
+
+test("(13) vision-guard: cafe/lib/desktop-shell.ts stays capability-keyed (no UA sniffing)", () => {
+```
+
+Replace it with:
+
+```ts
+  assert.ok(cafeDesktopShellSrc.includes("window.posDesktop"));
+  assert.ok(cafeDesktopShellSrc.includes("printHtml"));
+  assert.ok(cafeDesktopShellSrc.includes("export function isDesktopShell("));
+  // Phase 2 Session 2E: the page names a slip's Windows printer only through printHtmlOn, which it feature-detects.
+  assert.ok(cafeDesktopShellSrc.includes("printHtmlOn?(html: string, printerName: string): Promise<void>;"));
+});
+
+test("(13) vision-guard: cafe/lib/desktop-shell.ts stays capability-keyed (no UA sniffing)", () => {
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/desktop && npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 192`; `# pass 188`; `# fail 4`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/lib/desktop-shell.ts`, find:
+
+```ts
+export interface PosDesktopBridge {
+  readonly version: string;
+  printHtml(html: string): Promise<void>;
+  // The printer picker (2026-09-17) — types and the feature-detecting accessor
+  // live in lib/desktop-shell-printer.ts. OPTIONAL on purpose: the counter
+  // PC's installer is hand-copied and never auto-updates, so an older shell
+```
+
+Replace it with:
+
+```ts
+export interface PosDesktopBridge {
+  readonly version: string;
+  printHtml(html: string): Promise<void>;
+  // Phase 2 Session 2E: the slip on the Windows printer named. An older shell lacks it: feature-detect.
+  printHtmlOn?(html: string, printerName: string): Promise<void>;
+  // The printer picker (2026-09-17) — types and the feature-detecting accessor
+  // live in lib/desktop-shell-printer.ts. OPTIONAL on purpose: the counter
+  // PC's installer is hand-copied and never auto-updates, so an older shell
+```
+
+In `apps/desktop/package.json`, find:
+
+```json
+{
+  "name": "pos-desktop",
+  "productName": "POS Software by sandbee",
+  "version": "1.10.0",
+  "author": "sandbee",
+  "private": true,
+  "description": "Windows desktop shell for the counter PC: loads the cafe's POS web app from one saved address, stays in the tray, starts with Windows, and prints slips silently. Outside the npm workspace (own node_modules); built locally with electron-builder, the installer is hand-copied, never uploaded.",
+```
+
+Replace it with:
+
+```json
+{
+  "name": "pos-desktop",
+  "productName": "POS Software by sandbee",
+  "version": "1.11.0",
+  "author": "sandbee",
+  "private": true,
+  "description": "Windows desktop shell for the counter PC: loads the cafe's POS web app from one saved address, stays in the tray, starts with Windows, and prints slips silently. Outside the npm workspace (own node_modules); built locally with electron-builder, the installer is hand-copied, never uploaded.",
+```
+
+In `apps/desktop/src/preload.ts`, find:
+
+```ts
+const PRINTERS_CHANNEL = "pos-desktop:printers";
+const PRINTER_SAVE_CHANNEL = "pos-desktop:printer-save";
+const PRINT_MODE_SAVE_CHANNEL = "pos-desktop:print-mode-save";
+const VERSION_ARG_PREFIX = "--pos-desktop-version=";
+
+const versionArg = process.argv.find((arg: string) => arg.startsWith(VERSION_ARG_PREFIX));
+```
+
+Replace it with:
+
+```ts
+const PRINTERS_CHANNEL = "pos-desktop:printers";
+const PRINTER_SAVE_CHANNEL = "pos-desktop:printer-save";
+const PRINT_MODE_SAVE_CHANNEL = "pos-desktop:print-mode-save";
+const PRINT_ON_CHANNEL = "pos-desktop:print-html-on";
+const VERSION_ARG_PREFIX = "--pos-desktop-version=";
+
+const versionArg = process.argv.find((arg: string) => arg.startsWith(VERSION_ARG_PREFIX));
+```
+
+In `apps/desktop/src/preload.ts`, find:
+
+```ts
+contextBridge.exposeInMainWorld("posDesktop", {
+  version,
+  printHtml: (html: string): Promise<void> => electron.ipcRenderer.invoke(PRINT_CHANNEL, html),
+  listPrinters: (): Promise<unknown> => electron.ipcRenderer.invoke(PRINTERS_CHANNEL),
+  savePrinter: (name: string | null): Promise<unknown> =>
+    electron.ipcRenderer.invoke(PRINTER_SAVE_CHANNEL, name),
+```
+
+Replace it with:
+
+```ts
+contextBridge.exposeInMainWorld("posDesktop", {
+  version,
+  printHtml: (html: string): Promise<void> => electron.ipcRenderer.invoke(PRINT_CHANNEL, html),
+  // Phase 2 Session 2E: the same slip on the Windows printer named; the main process vets the name.
+  printHtmlOn: (html: string, printerName: string): Promise<void> =>
+    electron.ipcRenderer.invoke(PRINT_ON_CHANNEL, html, printerName),
+  listPrinters: (): Promise<unknown> => electron.ipcRenderer.invoke(PRINTERS_CHANNEL),
+  savePrinter: (name: string | null): Promise<unknown> =>
+    electron.ipcRenderer.invoke(PRINTER_SAVE_CHANNEL, name),
+```
+
+In `apps/desktop/src/print-messages.ts`, find:
+
+```ts
+  "No printer is chosen for this PC. Open Settings, then Printing, and pick the printer.";
+export const PRINT_NOT_A_PRINTER_MESSAGE =
+  "The chosen printer saves files instead of printing. Open Settings, then Printing, and pick the real printer.";
+
+// Chromium's failure reasons are short English strings ("Invalid deviceName
+// provided", "Print job canceled"). Anything else is not forwarded verbatim —
+```
+
+Replace it with:
+
+```ts
+  "No printer is chosen for this PC. Open Settings, then Printing, and pick the printer.";
+export const PRINT_NOT_A_PRINTER_MESSAGE =
+  "The chosen printer saves files instead of printing. Open Settings, then Printing, and pick the real printer.";
+// Phase 2 Session 2E: a slip for a named Windows printer this PC no longer has (removed or renamed in Windows). Refused
+// before any window opens, so nothing printed: the slip waits, and the POS shows the printer as not on this PC.
+export const PRINT_PRINTER_NOT_HERE_MESSAGE =
+  "That printer is not on this PC. Open Printer setup in the POS and choose a printer this PC has.";
+
+// Chromium's failure reasons are short English strings ("Invalid deviceName
+// provided", "Print job canceled"). Anything else is not forwarded verbatim —
+```
+
+In `apps/desktop/src/print.ts`, find:
+
+```ts
+  PRINT_NO_ORIGIN_MESSAGE,
+  PRINT_NO_PRINTER_MESSAGE,
+  PRINT_NOT_A_PRINTER_MESSAGE,
+  PRINT_REJECTED_MESSAGE,
+} from "./print-messages";
+import { isSameOrigin } from "./server-url";
+```
+
+Replace it with:
+
+```ts
+  PRINT_NO_ORIGIN_MESSAGE,
+  PRINT_NO_PRINTER_MESSAGE,
+  PRINT_NOT_A_PRINTER_MESSAGE,
+  PRINT_PRINTER_NOT_HERE_MESSAGE,
+  PRINT_REJECTED_MESSAGE,
+} from "./print-messages";
+import { isSameOrigin } from "./server-url";
+```
+
+In `apps/desktop/src/print.ts`, find:
+
+```ts
+  PRINT_CHANNEL,
+  PRINT_HTML_MAX_CHARS,
+  PRINT_MODE_SAVE_CHANNEL,
+  PRINTER_NAME_MAX_CHARS,
+  PRINTER_SAVE_CHANNEL,
+  PRINTERS_CHANNEL,
+```
+
+Replace it with:
+
+```ts
+  PRINT_CHANNEL,
+  PRINT_HTML_MAX_CHARS,
+  PRINT_MODE_SAVE_CHANNEL,
+  PRINT_ON_CHANNEL,
+  PRINTER_NAME_MAX_CHARS,
+  PRINTER_SAVE_CHANNEL,
+  PRINTERS_CHANNEL,
+```
+
+In `apps/desktop/src/print.ts`, find:
+
+```ts
+export function registerPrintHandler(deps: PrintHandlerDeps): void {
+  // One print job at a time: each call chains onto this promise so a second
+  // slip never opens a second offscreen window while the first is printing.
+  let queue: Promise<unknown> = Promise.resolve();
+
+  const effectiveMode = (): PrintMode => deps.getPrintMode() ?? DEFAULT_PRINT_MODE;
+```
+
+Replace it with:
+
+```ts
+export function registerPrintHandler(deps: PrintHandlerDeps): void {
+  // One print job at a time: each call chains onto this promise so a second
+  // slip never opens a second offscreen window while the first is printing.
+  // Both print channels share it (Phase 2 Session 2E): a slip on a named
+  // printer waits its turn like any other; the spooler takes each in a second.
+  let queue: Promise<unknown> = Promise.resolve();
+
+  const effectiveMode = (): PrintMode => deps.getPrintMode() ?? DEFAULT_PRINT_MODE;
+```
+
+In `apps/desktop/src/print.ts`, find:
+
+```ts
+    return { printMode: mode };
+  });
+
+  ipcMain.handle(PRINT_CHANNEL, async (event: IpcMainInvokeEvent, html: unknown) => {
+    if (event.sender.id !== deps.getMainWebContentsId()) {
+      throw new Error(PRINT_REJECTED_MESSAGE);
+    }
+```
+
+Replace it with:
+
+```ts
+    return { printMode: mode };
+  });
+
+  // The gate every print request passes, whichever channel: only the main
+  // window, only a frame actually on the saved origin, a slip of a sane size.
+  const vetPrintRequest = (event: IpcMainInvokeEvent, html: unknown): { html: string; origin: string } => {
+    if (event.sender.id !== deps.getMainWebContentsId()) {
+      throw new Error(PRINT_REJECTED_MESSAGE);
+    }
+```
+
+In `apps/desktop/src/print.ts`, find:
+
+```ts
+    if (typeof html !== "string" || html.length === 0 || html.length > PRINT_HTML_MAX_CHARS) {
+      throw new Error(PRINT_REJECTED_MESSAGE);
+    }
+
+    // The printer is decided BEFORE any window opens: an unchosen or
+    // file-writing device must fail loudly, not silently eat the slip. No
+    // implicit "system default" any more — that default WAS the bug. These
+    // two refusals go through the SAME job promise as every other failure, so
+    // they reach the tray notification and the log; thrown straight from here
+    // they would bypass the catch below and the operator would see nothing —
+    // which is the exact silence this whole fix exists to remove.
+    const chosen = deps.getDeviceName();
+    const refusal =
+      chosen === null || chosen.length === 0
+        ? PRINT_NO_PRINTER_MESSAGE
+        : isNonPaperPrinter(chosen)
+          ? PRINT_NOT_A_PRINTER_MESSAGE
+          : null;
+    // `chosen` is a real, printable device on this branch — the refusal above
+    // is the only way past the two null/virtual cases.
+    const deviceName = chosen ?? "";
+    // Read once per job, so a mode saved mid-queue applies from the next slip.
+    const mode = effectiveMode();
+```
+
+Replace it with:
+
+```ts
+    if (typeof html !== "string" || html.length === 0 || html.length > PRINT_HTML_MAX_CHARS) {
+      throw new Error(PRINT_REJECTED_MESSAGE);
+    }
+    return { html, origin };
+  };
+
+  // One slip on one printer, for both channels. `onThisPc`: the named printer
+  // is one Windows reports right now (the chosen printer was vetted when saved).
+  const printOn = async (html: string, origin: string, chosen: string | null, onThisPc: boolean): Promise<void> => {
+    // The printer is decided BEFORE any window opens: an unchosen or
+    // file-writing device must fail loudly, not silently eat the slip. No
+    // implicit "system default" any more — that default WAS the bug. These
+    // refusals go through the SAME job promise as every other failure, so
+    // they reach the tray notification and the log; thrown straight from here
+    // they would bypass the catch below and the operator would see nothing —
+    // which is the exact silence this whole fix exists to remove.
+    const refusal =
+      chosen === null || chosen.length === 0
+        ? PRINT_NO_PRINTER_MESSAGE
+        : isNonPaperPrinter(chosen)
+          ? PRINT_NOT_A_PRINTER_MESSAGE
+          : !onThisPc
+            ? PRINT_PRINTER_NOT_HERE_MESSAGE
+            : null;
+    // `chosen` is a real, printable device on this branch — the refusal above
+    // is the only way past the null/virtual/missing cases.
+    const deviceName = chosen ?? "";
+    // Read once per job, so a mode saved mid-queue applies from the next slip.
+    const mode = effectiveMode();
+```
+
+In `apps/desktop/src/print.ts`, find:
+
+```ts
+      deps.onJobFailed(message);
+      throw new Error(message);
+    }
+  });
+}
+
+```
+
+Replace it with:
+
+```ts
+      deps.onJobFailed(message);
+      throw new Error(message);
+    }
+  };
+
+  ipcMain.handle(PRINT_CHANNEL, async (event: IpcMainInvokeEvent, html: unknown) => {
+    const request = vetPrintRequest(event, html);
+    await printOn(request.html, request.origin, deps.getDeviceName(), true);
+  });
+
+  // Phase 2 Session 2E (spec §9.2): a printer job names its Windows printer, so
+  // one PC prints several printers. The name must be a device Windows reports
+  // at this moment (read per job: one removed or renamed in Windows is refused,
+  // never sent to a stale name), and never a virtual one.
+  ipcMain.handle(PRINT_ON_CHANNEL, async (event: IpcMainInvokeEvent, html: unknown, name: unknown) => {
+    const request = vetPrintRequest(event, html);
+    if (typeof name !== "string" || name.length === 0 || name.length > PRINTER_NAME_MAX_CHARS) throw new Error(PRINT_REJECTED_MESSAGE);
+    const printers = await event.sender.getPrintersAsync();
+    await printOn(request.html, request.origin, name, printers.some((p) => p.name === name));
+  });
+}
+
+```
+
+In `apps/desktop/src/shared.ts`, find:
+
+```ts
+// 32-item bill was cut short on a Letter page. No per-client driver
+// configuration can make that lane dynamic; the direct lane needs none.
+export const PRINT_MODE_SAVE_CHANNEL = "pos-desktop:print-mode-save";
+export const PRINT_MODES = ["direct", "driver"] as const;
+export type PrintMode = (typeof PRINT_MODES)[number];
+export const DEFAULT_PRINT_MODE: PrintMode = "direct";
+```
+
+Replace it with:
+
+```ts
+// 32-item bill was cut short on a Letter page. No per-client driver
+// configuration can make that lane dynamic; the direct lane needs none.
+export const PRINT_MODE_SAVE_CHANNEL = "pos-desktop:print-mode-save";
+// Phase 2 Session 2E (spec §9.2, several printers per PC): one slip printed on the Windows printer the page NAMES.
+// A cafe with stations sets up one printer per Windows printer (Printer setup in the POS), each with its own slips;
+// the chosen printer above stays this PC's own printer for everything that names none.
+export const PRINT_ON_CHANNEL = "pos-desktop:print-html-on";
+export const PRINT_MODES = ["direct", "driver"] as const;
+export type PrintMode = (typeof PRINT_MODES)[number];
+export const DEFAULT_PRINT_MODE: PrintMode = "direct";
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/desktop && npm test 2>&1 | grep -E "^# (tests|pass|fail)" && npm run typecheck && npm run lint && echo DESKTOP_OK`
+Expected: `# tests 192`; `# pass 192`; `# fail 0`; `> pos-desktop@1.11.0 typecheck`; `> tsc --noEmit -p tsconfig.json`; `> pos-desktop@1.11.0 lint`; `> eslint .`; `DESKTOP_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/desktop-shell-paths.test.ts lib/desktop-shell.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 44`; `# pass 44`; `# fail 0`; `TSC_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/lib/desktop-shell.ts apps/desktop/package.json apps/desktop/src/desktop-paths.test.ts apps/desktop/src/preload.ts apps/desktop/src/print-messages.ts apps/desktop/src/print.ts apps/desktop/src/shared.ts
+git commit -m "feat(desktop): Phase 2 printHtmlOn: the Windows app prints a slip on the Windows printer the page names, vetted like the chosen one (a device Windows reports now, never a virtual one), through the one print queue (desktop 1.11.0)"
+```
+
+---
+
+### Task E3: Windows printers by name: the Windows app prints each Windows printer it has (an older app only its chosen one), and a printer job carries its printer's name and paper to the slip it prints
+
+**Files:**
+- Modify: `apps/cafe/lib/printer/desktop-printer-state.ts` (the store keeps the chosen printer's name and every printer Windows reports: `desktopPrinterSnapshot`), `apps/cafe/lib/desktop-shell-printer.ts` (`desktopPrintsOnNamed`, `DesktopPrintTarget`), `apps/cafe/lib/desktop-shell.ts` (`slipPrintOptions(options, printerName?)`), `apps/cafe/lib/desktop-shell-messages.ts` (the new refusal)
+- Modify: `apps/cafe/lib/print-agent-printers.ts` (`DesktopPrinters`; `printerIsLocal` by name; `AgentPrinters.targets`), `apps/cafe/hooks/use-device-printer.ts` (`useDesktopPrinterSnapshot`), `apps/cafe/hooks/use-agent-printers.ts` (`useDesktopPrinters`; the Windows list read again with every printers read), `apps/cafe/components/print/setup/PrintersSetupSection.tsx`
+- Modify: `apps/cafe/lib/print-host-slips.ts` (a slip's optional `target`), `apps/cafe/lib/print-agent-slip.ts`, `apps/cafe/hooks/use-print-agent.ts` (the job's target on its slip), `apps/cafe/hooks/use-print-host-bridge.ts` (each surface prints on the slip's printer, its page on its paper), `apps/cafe/components/print/PrintHostPrintSources.tsx` and `apps/cafe/lib/print.ts` (`settingsForPaper`)
+- Tests: `apps/cafe/lib/print-windows-printers.test.ts` (create), `print-agent-printers.test.ts`, `print-setup-form.test.ts`, `print-agent.test.ts`, `printer/print-lane.test.ts`, `print-host-paths.test.ts`, `printer/print-gating-fx-paths.test.ts`, `print-printer-test.test.ts`, `print-setup-ui-paths.test.ts`; `apps/cafe/package.json` (`testChain`)
+
+**Interfaces produced:** `DesktopPrinters { selected; names; named }`, `printerIsLocal(printer, local, desktop: DesktopPrinters | null)`, `AgentPrinters.targets: Record<printerId, DesktopPrintTarget>`, `DesktopPrintTarget { printerName; paper }`, `desktopPrintsOnNamed()`, `desktopPrinterSnapshot()`, `useDesktopPrinterSnapshot()`, `useDesktopPrinters()`, `printAgentSlipOf(job, todayKey, target?)`, `slipPrintOptions(options, printerName?)`, `settingsForPaper(settings, width)`.
+
+**Which Windows printers are this PC's** (E-R3): by name, saved from this PC's own list (never typed). An app with `printHtmlOn` prints any printer Windows reports here; an older app only its chosen printer, so another Windows printer is never printed on the chosen printer's paper (the 2C gate's F-3): its slips wait and the dot says "A printer is not on this device". The desktop printer store keeps the chosen printer's name and the list (`names: null` until read) and is read again with every printers read (a local call to the app, no request).
+
+**Each printer job prints on its own Windows printer, drawn for its paper** (E-R4): a local named Windows printer gets a target `{ printerName, paper }`; the agent puts it on the job's slip; the host bridge passes the name to `slipPrintOptions` (→ `printHtmlOn`) and draws the slip as if the cafe's paper setting were that printer's (`settingsForPaper` for the slip, `receiptPageStyle` for its page; End of day keeps its 300 px summary on that roll's page, so the direct lane scales it to the head). Every slip with no target (simple mode, Android, a browser, an older Windows app) prints exactly as before.
+
+**Changed existing pins:** `print-agent-printers.test.ts` (every `printerIsLocal`/`agentPrintersOf`/`dotPrintersOf` call's desktop argument: `false` → `null`, the Windows case by name, `targets: {}` in each `agentPrintersOf` result); `print-setup-form.test.ts` (the same arguments); `print-host-paths.test.ts` "PIN (I) …" (the eod surface: `RECEIPT_PAGE_STYLE`, or a Windows printer's own paper) and "PIN (P): line budgets" (`use-print-host-bridge.ts` 250 → 255: measured 252); `printer/print-gating-fx-paths.test.ts` "bridge: the watchdog ABANDONS …" (the same budget); `print-printer-test.test.ts` "PIN (2D): the device prints a test slip …" (`settings={printSettings}`); `print-setup-ui-paths.test.ts` "PIN (2D): each printer row …" (`agentPrintersOf(printers, deviceId, local, desktop)`); `apps/cafe/package.json` `testChain` (`lib/print-windows-printers.test.ts` appended).
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+import type { PrinterConfig } from "@pos/shared/print-printers";
+import { stripComments } from "@/lib/source-pin-utils";
+import { PRINT_JOBS_FOR_ME_LIMIT } from "@pos/shared/print-agent-wire";
+import { PRINTER_NOT_LOCAL_MESSAGE, agentPrintersOf, dotPrintersOf, jobsForMeLeasable, printJobCopies, printerIsLocal, printerListLooksStale } from "@/lib/print-agent-printers";
+import type { PrintAgentResult } from "@/lib/print-agent-types";
+import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
+```
+
+Replace it with:
+
+```ts
+import type { PrinterConfig } from "@pos/shared/print-printers";
+import { stripComments } from "@/lib/source-pin-utils";
+import { PRINT_JOBS_FOR_ME_LIMIT } from "@pos/shared/print-agent-wire";
+import { PRINTER_NOT_LOCAL_MESSAGE, agentPrintersOf, dotPrintersOf, jobsForMeLeasable, printJobCopies, printerIsLocal, printerListLooksStale, type DesktopPrinters } from "@/lib/print-agent-printers";
+import type { PrintAgentResult } from "@/lib/print-agent-types";
+import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
+```
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+const NATIVE_USB: DevicePrinter = { kind: "native", name: "USB", paper: "80mm", printerId: "usb:0416:5011", transport: "usb" };
+const WEB_BLE: DevicePrinter = { kind: "ble", name: "BLE", paper: "58mm", deviceId: "ble-1", serviceUuid: "s", characteristicUuid: "c" };
+const WEB_SERIAL: DevicePrinter = { kind: "serial", name: "USB", paper: "80mm" };
+
+test("printerIsLocal: a printer is printed here only when it IS this device's printer", () => {
+  const lan = printer("lan", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "dev-a" });
+  assert.equal(printerIsLocal(lan, NATIVE_TCP, false), true, "the app's selected network printer, same host and port");
+  assert.equal(printerIsLocal({ ...lan, connection: { kind: "lan", host: "192.168.1.60", port: 9101 } }, NATIVE_TCP, false), false, "another port");
+  assert.equal(printerIsLocal(lan, NATIVE_BT, false), false, "a Bluetooth printer is not that LAN printer");
+  const bt = printer("bt", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "00:11:22:33:44:55" });
+  assert.equal(printerIsLocal(bt, NATIVE_BT, false), true, "the paired printer by its address");
+  assert.equal(printerIsLocal({ ...bt, connection: { ...bt.connection, address: "AA:BB" } as PrinterConfig["connection"] }, NATIVE_BT, false), false, "another paired printer");
+  // Session 2C's final review (I-1): the app names its printer "<transport>:<id>"; the setup's address is the bare
+  // id (§6.3), or the app's whole id when the setup stored what the app reported.
+  assert.equal(printerIsLocal(printer("bt2", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "bt-classic:00:11:22:33:44:55" }), NATIVE_BT, false), true, "the app's whole id");
+  const ble = printer("ble-n", { kind: "device", deviceId: "dev-a", transport: "ble", address: "00:11:22:33:44:55" });
+  assert.equal(printerIsLocal(ble, NATIVE_BLE, false), true, "a BLE printer by its address");
+  assert.equal(printerIsLocal(ble, NATIVE_BT, false), false, "the same address over another transport is another printer");
+  assert.equal(printerIsLocal(printer("usb", { kind: "device", deviceId: "dev-a", transport: "usb", address: "0416:5011" }), NATIVE_USB, false), true, "a USB printer by its vendor:product id");
+  assert.equal(printerIsLocal(printer("usb2", { kind: "device", deviceId: "dev-a", transport: "usb", address: "0416:5012" }), NATIVE_USB, false), false, "another USB model");
+  assert.equal(printerIsLocal(printer("ble", { kind: "device", deviceId: "dev-a", transport: "web-bluetooth", address: "ble-1" }), WEB_BLE, false), true);
+  assert.equal(printerIsLocal(printer("ser", { kind: "device", deviceId: "dev-a", transport: "web-serial", address: "usb" }), WEB_SERIAL, false), true, "a tab drives one serial printer");
+  const win = printer("win", { kind: "device", deviceId: "dev-a", transport: "windows", address: "EPSON TM-T82" });
+  assert.equal(printerIsLocal(win, null, true), true, "the Windows app prints a Windows printer");
+  assert.equal(printerIsLocal(win, null, false), false, "a browser does not");
+  assert.equal(printerIsLocal(bt, null, false), false, "no printer saved here");
+});
+
+// The 2C review gate (F-2): the app spells a MAC upper-case and a USB id lower-case (Kotlin PrinterIds); an
+```
+
+Replace it with:
+
+```ts
+const NATIVE_USB: DevicePrinter = { kind: "native", name: "USB", paper: "80mm", printerId: "usb:0416:5011", transport: "usb" };
+const WEB_BLE: DevicePrinter = { kind: "ble", name: "BLE", paper: "58mm", deviceId: "ble-1", serviceUuid: "s", characteristicUuid: "c" };
+const WEB_SERIAL: DevicePrinter = { kind: "serial", name: "USB", paper: "80mm" };
+// Phase 2 Session 2E (spec §9.2): the Windows app's printers, by name. NAMED: an app that prints on a named printer
+// (printHtmlOn, desktop 1.11.0); OLD: one that prints only on its chosen printer.
+const WIN_NAMED: DesktopPrinters = { selected: "EPSON TM-T82", names: ["EPSON TM-T82", "Kitchen TVS"], named: true };
+const WIN_OLD: DesktopPrinters = { ...WIN_NAMED, named: false };
+
+test("printerIsLocal: a printer is printed here only when it IS this device's printer", () => {
+  const lan = printer("lan", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "dev-a" });
+  assert.equal(printerIsLocal(lan, NATIVE_TCP, null), true, "the app's selected network printer, same host and port");
+  assert.equal(printerIsLocal({ ...lan, connection: { kind: "lan", host: "192.168.1.60", port: 9101 } }, NATIVE_TCP, null), false, "another port");
+  assert.equal(printerIsLocal(lan, NATIVE_BT, null), false, "a Bluetooth printer is not that LAN printer");
+  const bt = printer("bt", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "00:11:22:33:44:55" });
+  assert.equal(printerIsLocal(bt, NATIVE_BT, null), true, "the paired printer by its address");
+  assert.equal(printerIsLocal({ ...bt, connection: { ...bt.connection, address: "AA:BB" } as PrinterConfig["connection"] }, NATIVE_BT, null), false, "another paired printer");
+  // Session 2C's final review (I-1): the app names its printer "<transport>:<id>"; the setup's address is the bare
+  // id (§6.3), or the app's whole id when the setup stored what the app reported.
+  assert.equal(printerIsLocal(printer("bt2", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "bt-classic:00:11:22:33:44:55" }), NATIVE_BT, null), true, "the app's whole id");
+  const ble = printer("ble-n", { kind: "device", deviceId: "dev-a", transport: "ble", address: "00:11:22:33:44:55" });
+  assert.equal(printerIsLocal(ble, NATIVE_BLE, null), true, "a BLE printer by its address");
+  assert.equal(printerIsLocal(ble, NATIVE_BT, null), false, "the same address over another transport is another printer");
+  assert.equal(printerIsLocal(printer("usb", { kind: "device", deviceId: "dev-a", transport: "usb", address: "0416:5011" }), NATIVE_USB, null), true, "a USB printer by its vendor:product id");
+  assert.equal(printerIsLocal(printer("usb2", { kind: "device", deviceId: "dev-a", transport: "usb", address: "0416:5012" }), NATIVE_USB, null), false, "another USB model");
+  assert.equal(printerIsLocal(printer("ble", { kind: "device", deviceId: "dev-a", transport: "web-bluetooth", address: "ble-1" }), WEB_BLE, null), true);
+  assert.equal(printerIsLocal(printer("ser", { kind: "device", deviceId: "dev-a", transport: "web-serial", address: "usb" }), WEB_SERIAL, null), true, "a tab drives one serial printer");
+  const win = printer("win", { kind: "device", deviceId: "dev-a", transport: "windows", address: "EPSON TM-T82" });
+  assert.equal(printerIsLocal(win, null, WIN_OLD), true, "the Windows app prints the Windows printer chosen there");
+  assert.equal(printerIsLocal(win, null, null), false, "a browser does not");
+  assert.equal(printerIsLocal(bt, null, null), false, "no printer saved here");
+});
+
+// The 2C review gate (F-2): the app spells a MAC upper-case and a USB id lower-case (Kotlin PrinterIds); an
+```
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+test("2C gate (F-2): a Bluetooth, BLE or USB printer is this device's printer whatever the case of its address", () => {
+  const mac = "aa:bb:cc:dd:ee:ff";
+  const btApp: DevicePrinter = { kind: "native", name: "BT", paper: "58mm", printerId: "bt-classic:AA:BB:CC:DD:EE:FF", transport: "bt-classic" };
+  assert.equal(printerIsLocal(printer("bt", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: mac }), btApp, false), true, "a lower-case MAC");
+  assert.equal(printerIsLocal(printer("bt", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: `bt-classic:${mac}` }), btApp, false), true, "the whole id, lower-case");
+  const usbApp: DevicePrinter = { kind: "native", name: "USB", paper: "80mm", printerId: "usb:04b8:0e15", transport: "usb" };
+  assert.equal(printerIsLocal(printer("usb", { kind: "device", deviceId: "dev-a", transport: "usb", address: "04B8:0E15" }), usbApp, false), true, "an upper-case USB id");
+  assert.equal(printerIsLocal(printer("ble", { kind: "device", deviceId: "dev-a", transport: "ble", address: mac }), btApp, false), false, "case never makes another transport match");
+});
+
+test("agentPrintersOf: printers mode, whether this device writes one, and the ones it prints here", () => {
+```
+
+Replace it with:
+
+```ts
+test("2C gate (F-2): a Bluetooth, BLE or USB printer is this device's printer whatever the case of its address", () => {
+  const mac = "aa:bb:cc:dd:ee:ff";
+  const btApp: DevicePrinter = { kind: "native", name: "BT", paper: "58mm", printerId: "bt-classic:AA:BB:CC:DD:EE:FF", transport: "bt-classic" };
+  assert.equal(printerIsLocal(printer("bt", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: mac }), btApp, null), true, "a lower-case MAC");
+  assert.equal(printerIsLocal(printer("bt", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: `bt-classic:${mac}` }), btApp, null), true, "the whole id, lower-case");
+  const usbApp: DevicePrinter = { kind: "native", name: "USB", paper: "80mm", printerId: "usb:04b8:0e15", transport: "usb" };
+  assert.equal(printerIsLocal(printer("usb", { kind: "device", deviceId: "dev-a", transport: "usb", address: "04B8:0E15" }), usbApp, null), true, "an upper-case USB id");
+  assert.equal(printerIsLocal(printer("ble", { kind: "device", deviceId: "dev-a", transport: "ble", address: mac }), btApp, null), false, "case never makes another transport match");
+});
+
+test("agentPrintersOf: printers mode, whether this device writes one, and the ones it prints here", () => {
+```
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+  const kitchen = printer("kitchen", { kind: "lan", host: "192.168.1.61", port: 9100 }, { primaryDeviceId: "dev-k" });
+  const bar = printer("bar", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "AA:BB" });
+  const off = printer("off", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "dev-a", enabled: false });
+  assert.deepEqual(agentPrintersOf([counter, kitchen, bar, off], "dev-a", NATIVE_TCP, false), { printersMode: true, isWriter: true, localIds: ["counter"] }, "it writes the counter and the bar; only the counter is its printer");
+  assert.deepEqual(agentPrintersOf([counter, kitchen], "dev-p", NATIVE_TCP, false), { printersMode: true, isWriter: false, localIds: [] }, "an ordering phone writes nothing");
+  assert.deepEqual(agentPrintersOf([], "dev-a", NATIVE_TCP, false), { printersMode: false, isWriter: false, localIds: [] }, "simple mode");
+  assert.deepEqual(agentPrintersOf([counter], "", NATIVE_TCP, false), { printersMode: true, isWriter: false, localIds: [] }, "no device identity");
+});
+
+// The 2C gate's review (I-2) and its emulator run: a list goes stale both ways when a print-setup frame is missed.
+```
+
+Replace it with:
+
+```ts
+  const kitchen = printer("kitchen", { kind: "lan", host: "192.168.1.61", port: 9100 }, { primaryDeviceId: "dev-k" });
+  const bar = printer("bar", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "AA:BB" });
+  const off = printer("off", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "dev-a", enabled: false });
+  assert.deepEqual(agentPrintersOf([counter, kitchen, bar, off], "dev-a", NATIVE_TCP, null), { printersMode: true, isWriter: true, localIds: ["counter"], targets: {} }, "it writes the counter and the bar; only the counter is its printer");
+  assert.deepEqual(agentPrintersOf([counter, kitchen], "dev-p", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], targets: {} }, "an ordering phone writes nothing");
+  assert.deepEqual(agentPrintersOf([], "dev-a", NATIVE_TCP, null), { printersMode: false, isWriter: false, localIds: [], targets: {} }, "simple mode");
+  assert.deepEqual(agentPrintersOf([counter], "", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], targets: {} }, "no device identity");
+});
+
+// Phase 2 Session 2E (spec §9.2): one Windows PC prints several printers, each by its own Windows name. An older app
+// prints only its chosen printer, so another Windows printer is never local there: its slips wait, visibly, rather than
+// print on the chosen printer's paper (the 2C gate's F-3).
+test("2E: a Windows printer is this PC's printer by its name: any printer Windows reports on an app that prints on a named printer, only the chosen one on an older app", () => {
+  const counter = printer("counter", { kind: "device", deviceId: "dev-a", transport: "windows", address: "EPSON TM-T82" });
+  const kitchen = printer("kitchen", { kind: "device", deviceId: "dev-a", transport: "windows", address: "Kitchen TVS" });
+  const gone = printer("gone", { kind: "device", deviceId: "dev-a", transport: "windows", address: "Old printer" });
+  assert.equal(printerIsLocal(kitchen, null, WIN_NAMED), true, "a printer Windows reports on this PC");
+  assert.equal(printerIsLocal(gone, null, WIN_NAMED), false, "a printer this PC no longer has");
+  assert.equal(printerIsLocal(kitchen, null, WIN_OLD), false, "an older app: never another printer's slips on the chosen printer's paper");
+  assert.equal(printerIsLocal(counter, null, WIN_OLD), true, "its chosen printer");
+  assert.equal(printerIsLocal(kitchen, null, { ...WIN_NAMED, names: null }), false, "the list not read yet: nothing local yet");
+  assert.equal(printerIsLocal(kitchen, null, null), false, "not the Windows app");
+});
+
+test("2E: each Windows printer this PC prints gets its target (its name and its paper); none on an older app or another lane", () => {
+  const counter = printer("counter", { kind: "device", deviceId: "dev-a", transport: "windows", address: "EPSON TM-T82" });
+  const kitchen = printer("kitchen", { kind: "device", deviceId: "dev-a", transport: "windows", address: "Kitchen TVS" }, { paper: 58 });
+  const theirs = printer("theirs", { kind: "device", deviceId: "dev-b", transport: "windows", address: "Kitchen TVS" });
+  const both = agentPrintersOf([counter, kitchen, theirs], "dev-a", null, WIN_NAMED);
+  assert.deepEqual(both.localIds, ["counter", "kitchen"], "both printers of this PC, not another PC's");
+  assert.deepEqual(both.targets, { counter: { printerName: "EPSON TM-T82", paper: "80mm" }, kitchen: { printerName: "Kitchen TVS", paper: "58mm" } });
+  const old = agentPrintersOf([counter, kitchen], "dev-a", null, WIN_OLD);
+  assert.deepEqual([old.localIds, old.targets], [["counter"], {}], "an older app: its chosen printer, printed as before, named nowhere");
+  assert.deepEqual(agentPrintersOf([counter], "dev-a", NATIVE_TCP, null).targets, {}, "not the Windows app");
+  assert.deepEqual(dotPrintersOf([counter, kitchen], "dev-a", null, WIN_OLD), { printersMode: true, isWriter: true, allLocal: false }, "the dot shows the printer an older app cannot print");
+});
+
+// The 2C gate's review (I-2) and its emulator run: a list goes stale both ways when a print-setup frame is missed.
+```
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+test("2D: the dot's view of printers mode: on or off, whether this device writes a printer, and whether it prints every one it writes", () => {
+  const counter = printer("counter", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "dev-a" });
+  const bar = printer("bar", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "00:11:22:33:44:55" });
+  assert.deepEqual(dotPrintersOf([counter], "dev-a", NATIVE_TCP, false), { printersMode: true, isWriter: true, allLocal: true }, "it writes the counter, which is its printer");
+  assert.deepEqual(dotPrintersOf([counter, bar], "dev-a", NATIVE_TCP, false), { printersMode: true, isWriter: true, allLocal: false }, "it also writes the bar, not its printer");
+  assert.deepEqual(dotPrintersOf([counter], "dev-p", null, false), { printersMode: true, isWriter: false, allLocal: true }, "an ordering phone");
+  assert.deepEqual(dotPrintersOf([], "dev-a", NATIVE_TCP, false), { printersMode: false, isWriter: false, allLocal: true }, "simple mode");
+});
+
+test("printerListLooksStale: a printer job it does not print on, or a writer the setup no longer names", () => {
+```
+
+Replace it with:
+
+```ts
+test("2D: the dot's view of printers mode: on or off, whether this device writes a printer, and whether it prints every one it writes", () => {
+  const counter = printer("counter", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "dev-a" });
+  const bar = printer("bar", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "00:11:22:33:44:55" });
+  assert.deepEqual(dotPrintersOf([counter], "dev-a", NATIVE_TCP, null), { printersMode: true, isWriter: true, allLocal: true }, "it writes the counter, which is its printer");
+  assert.deepEqual(dotPrintersOf([counter, bar], "dev-a", NATIVE_TCP, null), { printersMode: true, isWriter: true, allLocal: false }, "it also writes the bar, not its printer");
+  assert.deepEqual(dotPrintersOf([counter], "dev-p", null, null), { printersMode: true, isWriter: false, allLocal: true }, "an ordering phone");
+  assert.deepEqual(dotPrintersOf([], "dev-a", NATIVE_TCP, null), { printersMode: false, isWriter: false, allLocal: true }, "simple mode");
+});
+
+test("printerListLooksStale: a printer job it does not print on, or a writer the setup no longer names", () => {
+```
+
+In `apps/cafe/lib/print-agent.test.ts`, find:
+
+```ts
+  const eod = printAgentSlipOf({ ...job("e1"), kind: "eod", labels: ["REPRINT"] }, "2026-10-03");
+  assert.equal(eod.surface, "eod");
+  assert.equal("banner" in eod, false, "the end-of-day summary takes no banner");
+});
+
+test("the call sites' helpers: the opt-in headers, a ref by kind, and nothing for a device with no identity", () => {
+```
+
+Replace it with:
+
+```ts
+  const eod = printAgentSlipOf({ ...job("e1"), kind: "eod", labels: ["REPRINT"] }, "2026-10-03");
+  assert.equal(eod.surface, "eod");
+  assert.equal("banner" in eod, false, "the end-of-day summary takes no banner");
+});
+
+// Phase 2 Session 2E (spec §9.2): a printer job on the Windows app carries its printer's name and paper to the bridge.
+test("2E: a slip for a Windows printer carries its target; a slip with none is unchanged", () => {
+  const target = { printerName: "Kitchen TVS", paper: "58mm" as const };
+  assert.deepEqual(printAgentSlipOf(job("k1"), "2026-10-03", target).target, target, "the printer's name and paper");
+  assert.equal("target" in printAgentSlipOf(job("k1"), "2026-10-03"), false, "no target: the slip as before");
+});
+
+test("the call sites' helpers: the opt-in headers, a ref by kind, and nothing for a device with no identity", () => {
+```
+
+In `apps/cafe/lib/print-host-paths.test.ts`, find:
+
+```ts
+  const onPrintErrorCalls = countOccurrences(src, "onPrintError,");
+  assert.equal(onPrintErrorCalls, 3, `expected onPrintError, exactly 3 times, found ${onPrintErrorCalls}`);
+
+  assert.match(src, /pageStyle: RECEIPT_PAGE_STYLE,/, "the eod surface must use pageStyle: RECEIPT_PAGE_STYLE");
+  assert.match(
+    src,
+    /window\.setTimeout\(\(\) => \{[\s\S]*?\}, PRINT_HOST_EOD_READY_TIMEOUT_MS\)/,
+```
+
+Replace it with:
+
+```ts
+  const onPrintErrorCalls = countOccurrences(src, "onPrintError,");
+  assert.equal(onPrintErrorCalls, 3, `expected onPrintError, exactly 3 times, found ${onPrintErrorCalls}`);
+
+  // Phase 2 Session 2E: on a Windows printer its own paper (the direct lane scales the 300 px summary to its roll).
+  assert.match(src, /pageStyle: target === undefined \? RECEIPT_PAGE_STYLE : receiptPageStyle\(target\.paper\),/, "the eod surface must use pageStyle: RECEIPT_PAGE_STYLE");
+  assert.match(
+    src,
+    /window\.setTimeout\(\(\) => \{[\s\S]*?\}, PRINT_HOST_EOD_READY_TIMEOUT_MS\)/,
+```
+
+In `apps/cafe/lib/print-host-paths.test.ts`, find:
+
+```ts
+// PrintHostPrintSources.tsx (95) still fit their existing budgets unchanged.
+// s63 fix round: use-print-host-beat.ts 80 -> 90 (measured 86) -- the shared mutation scope (W-H) and the
+// onHost hook that lets a host answer trigger the offline follow-up (W-O) are 7 unavoidable lines.
+test("PIN (P): line budgets — PrintHostProvider.tsx <= 200, use-print-host-bridge.ts <= 250, use-print-host-drain.ts <= 150, use-print-host-beat.ts <= 90, PrintHostPrintSources.tsx <= 100, PrintHostEodSource.tsx <= 90, PosPulseProvider.tsx <= 300, use-self-order-auto-print.ts <= 300", () => {
+  const budgets: [string, number][] = [
+    [PRINT_HOST_PROVIDER, 200],
+    [USE_PRINT_HOST_BRIDGE, 250],
+    [USE_PRINT_HOST_DRAIN, 150],
+    [USE_PRINT_HOST_BEAT, 90],
+    [PRINT_HOST_PRINT_SOURCES, 100],
+```
+
+Replace it with:
+
+```ts
+// PrintHostPrintSources.tsx (95) still fit their existing budgets unchanged.
+// s63 fix round: use-print-host-beat.ts 80 -> 90 (measured 86) -- the shared mutation scope (W-H) and the
+// onHost hook that lets a host answer trigger the offline follow-up (W-O) are 7 unavoidable lines.
+// Phase 2 Session 2E: use-print-host-bridge.ts 250 -> 255 (measured 252): a slip's own Windows printer and paper.
+test("PIN (P): line budgets — PrintHostProvider.tsx <= 200, use-print-host-bridge.ts <= 255, use-print-host-drain.ts <= 150, use-print-host-beat.ts <= 90, PrintHostPrintSources.tsx <= 100, PrintHostEodSource.tsx <= 90, PosPulseProvider.tsx <= 300, use-self-order-auto-print.ts <= 300", () => {
+  const budgets: [string, number][] = [
+    [PRINT_HOST_PROVIDER, 200],
+    [USE_PRINT_HOST_BRIDGE, 255],
+    [USE_PRINT_HOST_DRAIN, 150],
+    [USE_PRINT_HOST_BEAT, 90],
+    [PRINT_HOST_PRINT_SOURCES, 100],
+```
+
+In `apps/cafe/lib/print-printer-test.test.ts`, find:
+
+```ts
+
+test("PIN (2D): the device prints a test slip on the KOT surface through the same bridge as every slip", () => {
+  const sources = src("components/print/PrintHostPrintSources.tsx");
+  assert.match(sources, /if \(slip === null \|\| slip\.surface === "test"\) \{[\s\S]*?<PrinterTestSlip slip=\{slip\} settings=\{settings\.data\} ref=\{kotRef\} \/>/, "rendered into the KOT surface's ref");
+  const bridge = src("hooks/use-print-host-bridge.ts");
+  assert.match(bridge, /return current\.kind === "test" \|\| current\.slip\.surface === "test" \? "kot" : current\.slip\.surface;/, "the bridge fires the KOT surface for it");
+  const slip = src("components/print/PrinterTestSlip.tsx");
+```
+
+Replace it with:
+
+```ts
+
+test("PIN (2D): the device prints a test slip on the KOT surface through the same bridge as every slip", () => {
+  const sources = src("components/print/PrintHostPrintSources.tsx");
+  // Session 2E: drawn for its printer's paper on the Windows app (printSettings; the cafe's settings everywhere else).
+  assert.match(sources, /if \(slip === null \|\| slip\.surface === "test"\) \{[\s\S]*?<PrinterTestSlip slip=\{slip\} settings=\{printSettings\} ref=\{kotRef\} \/>/, "rendered into the KOT surface's ref");
+  const bridge = src("hooks/use-print-host-bridge.ts");
+  assert.match(bridge, /return current\.kind === "test" \|\| current\.slip\.surface === "test" \? "kot" : current\.slip\.surface;/, "the bridge fires the KOT surface for it");
+  const slip = src("components/print/PrinterTestSlip.tsx");
+```
+
+In `apps/cafe/lib/print-setup-form.test.ts`, find:
+
+```ts
+    assert.deepEqual(body.slips, { bill: true, kotStations: [], kotAll: true, notices: true, eod: true }, "nothing changes on paper (decision 5)");
+    assert.deepEqual(body.copies, { kot: 1, bill: 1 });
+    const config: PrinterConfig = { id: "p1", order: 0, ...body };
+    assert.equal(printerIsLocal(config, local ?? null, false), true, `the agent recognises it as this device's printer (${local?.kind})`);
+  }
+  const windows = localPrinterConnectionOf({ local: null, deviceId: "dev-a", desktop: { printerName: "EPSON" }, defaultPaper: 58 });
+  assert.ok(windows !== null && printerIsLocal({ id: "w", order: 0, ...setUpPrintersBody(windows) }, null, true), "the Windows app's printer");
+});
+
+test("2D: a new printer's form starts with Notices on (the 2B gate's M-7); an edit drops a station that is gone (the 2A gate's M4)", () => {
+```
+
+Replace it with:
+
+```ts
+    assert.deepEqual(body.slips, { bill: true, kotStations: [], kotAll: true, notices: true, eod: true }, "nothing changes on paper (decision 5)");
+    assert.deepEqual(body.copies, { kot: 1, bill: 1 });
+    const config: PrinterConfig = { id: "p1", order: 0, ...body };
+    assert.equal(printerIsLocal(config, local ?? null, null), true, `the agent recognises it as this device's printer (${local?.kind})`);
+  }
+  const windows = localPrinterConnectionOf({ local: null, deviceId: "dev-a", desktop: { printerName: "EPSON" }, defaultPaper: 58 });
+  assert.ok(windows !== null && printerIsLocal({ id: "w", order: 0, ...setUpPrintersBody(windows) }, null, { selected: "EPSON", names: ["EPSON"], named: false }), "the Windows app's printer");
+});
+
+test("2D: a new printer's form starts with Notices on (the 2B gate's M-7); an edit drops a station that is gone (the 2A gate's M4)", () => {
+```
+
+In `apps/cafe/lib/print-setup-ui-paths.test.ts`, find:
+
+```ts
+test("PIN (2D): each printer row: its state in words, on/off, Test print only when it can print, edit, delete with a question", () => {
+  const section = src(`${SETUP}PrintersSetupSection.tsx`);
+  assert.match(section, /const state = printerRowState\(printer, devices, \{ deviceId, localIds, canPrint \}\);/);
+  assert.match(section, /const localIds = agentPrintersOf\(printers, deviceId, local, lane === "desktop"\)\.localIds;/, "from the list the page holds");
+  // The 2D review gate (M-4): a printer its writer's lease would never take, or one this device writes but cannot print
+  // right now, is not tested (the slip would only wait).
+  assert.match(section, /const blocked = testPrintBlock\(printer, printers, \{ deviceId, localIds, canPrint \}\);/, "Test print only when its slip can print");
+```
+
+Replace it with:
+
+```ts
+test("PIN (2D): each printer row: its state in words, on/off, Test print only when it can print, edit, delete with a question", () => {
+  const section = src(`${SETUP}PrintersSetupSection.tsx`);
+  assert.match(section, /const state = printerRowState\(printer, devices, \{ deviceId, localIds, canPrint \}\);/);
+  assert.match(section, /const localIds = agentPrintersOf\(printers, deviceId, local, desktop\)\.localIds;/, "from the list the page holds (Session 2E: and this PC's Windows printers)");
+  // The 2D review gate (M-4): a printer its writer's lease would never take, or one this device writes but cannot print
+  // right now, is not tested (the slip would only wait).
+  assert.match(section, /const blocked = testPrintBlock\(printer, printers, \{ deviceId, localIds, canPrint \}\);/, "Test print only when its slip can print");
+```
+
+Create `apps/cafe/lib/print-windows-printers.test.ts`:
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import type { UseReactToPrintOptions } from "react-to-print";
+import { stripComments } from "@/lib/source-pin-utils";
+import { slipPrintOptions, type PosDesktopBridge } from "@/lib/desktop-shell";
+import { desktopPrintsOnNamed } from "@/lib/desktop-shell-printer";
+import { printConfigOf, settingsForPaper } from "@/lib/print";
+import type { Settings } from "@/types";
+
+// Printing redesign, Phase 2 Session 2E (spec §9.2): several printers on one Windows PC. A printer job names its Windows
+// printer (printHtmlOn, desktop 1.11.0) and is drawn for that printer's paper; the page names a printer only on an app
+// that can print on one, and everything else prints exactly as before.
+
+const CAFE = process.cwd();
+const src = (rel: string): string => stripComments(readFileSync(path.join(CAFE, rel), "utf8"));
+
+type FakeWindow = { posDesktop?: PosDesktopBridge };
+function installWindow(t: { after(fn: () => void): void }, win: FakeWindow): void {
+  (globalThis as unknown as { window: FakeWindow }).window = win;
+  t.after(() => delete (globalThis as unknown as { window?: unknown }).window);
+}
+
+function fakeIframe(body: string): HTMLIFrameElement {
+  const doc = { title: "", documentElement: { outerHTML: `<html><head></head><body>${body}</body></html>` } };
+  return { contentDocument: doc } as unknown as HTMLIFrameElement;
+}
+
+test("2E: a slip with a Windows printer prints there through printHtmlOn; a slip with none through printHtml, as before", async (t) => {
+  const calls: string[] = [];
+  installWindow(t, {
+    posDesktop: {
+      version: "1.11.0",
+      printHtml: async () => void calls.push("chosen"),
+      printHtmlOn: async (_html: string, name: string) => void calls.push(`on ${name}`),
+    },
+  });
+  assert.equal(desktopPrintsOnNamed(), true, "the app prints on a named printer");
+  await slipPrintOptions<UseReactToPrintOptions>({}, "Kitchen TVS").print?.(fakeIframe("Paneer Tikka x1"));
+  await slipPrintOptions<UseReactToPrintOptions>({}).print?.(fakeIframe("Filter Coffee x2"));
+  assert.deepEqual(calls, ["on Kitchen TVS", "chosen"], "a named printer, then this PC's chosen printer");
+});
+
+test("2E: an older Windows app cannot print on a named printer, so the page names none there", (t) => {
+  installWindow(t, { posDesktop: { version: "1.10.0", printHtml: async () => undefined } });
+  assert.equal(desktopPrintsOnNamed(), false, "no printHtmlOn: one printer, its chosen one");
+});
+
+test("2E: a slip for a printer is drawn for that printer's paper, as if the cafe's paper setting were its own", () => {
+  const settings = { billPaperWidth: "80mm", kotPaperWidth: "80mm", restaurantName: "Cafe" } as unknown as Settings;
+  const narrow = settingsForPaper(settings, "58mm");
+  assert.equal(printConfigOf(narrow).kot.paperWidth, "58mm", "the KOT");
+  assert.equal(printConfigOf(narrow).bill.paperWidth, "58mm", "and the bill");
+  assert.equal((narrow as unknown as { restaurantName: string }).restaurantName, "Cafe", "everything else as set");
+  assert.equal(printConfigOf(settings).kot.paperWidth, "80mm", "the cafe's own settings are untouched");
+  assert.equal(settingsForPaper(undefined, "58mm"), undefined, "settings not read yet: the defaults, as before");
+});
+
+test("PIN (2E): each slip carries its printer's target from the agent to the Windows app, and is drawn for its paper", () => {
+  const hook = src("hooks/use-print-agent.ts");
+  assert.match(hook, /printAgentSlipOf\(job, cafeDateString\(\), job\.printerId === undefined \? undefined : targetsRef\.current\[job\.printerId\]\)/, "the job's printer's target rides its slip");
+  const bridge = src("hooks/use-print-host-bridge.ts");
+  assert.match(bridge, /const target = current\?\.kind === "slip" \? current\.slip\.target : undefined;/);
+  assert.equal((bridge.match(/, target\?\.printerName\)\);/g) ?? []).length, 3, "every surface prints on the slip's printer");
+  assert.match(bridge, /pageStyle: receiptPageStyle\(target\?\.paper \?\? printCfg\.kot\.paperWidth\),/, "its paper on the page");
+  assert.match(bridge, /pageStyle: receiptPageStyle\(target\?\.paper \?\? printCfg\.bill\.paperWidth\),/);
+  assert.match(bridge, /pageStyle: target === undefined \? RECEIPT_PAGE_STYLE : receiptPageStyle\(target\.paper\),/, "End of day: 80 mm as before, a Windows printer's own roll since 2E");
+  const sources = src("components/print/PrintHostPrintSources.tsx");
+  assert.match(sources, /const printSettings = slip\?\.target === undefined \? settings\.data : settingsForPaper\(settings\.data, slip\.target\.paper\);/, "and its paper in the slip");
+  const shell = src("lib/desktop-shell.ts");
+  assert.match(shell, /printerName !== undefined && shell\.printHtmlOn !== undefined \? shell\.printHtmlOn\(html, printerName\) : shell\.printHtml\(html\)/);
+});
+
+test("PIN (2E): the agent's printers follow the Windows app's printer list, read again with every printers read", () => {
+  const hook = src("hooks/use-agent-printers.ts");
+  assert.match(hook, /if \(enabled && isDesktopShell\(\)\) void refreshDesktopPrinterChosen\(\);/, "a printer added in Windows is seen with the next printers read");
+  assert.match(hook, /lane === "desktop" \? \{ selected: snapshot\.selected, names: snapshot\.names, named: desktopPrintsOnNamed\(\) \} : null/);
+});
+```
+
+In `apps/cafe/lib/printer/print-gating-fx-paths.test.ts`, find:
+
+```ts
+      check(p, ordered(abandon, ["toast.error(PRINT_HOST_PRINT_FAILED_MESSAGE);", "testRef.current?.reject(", "testRef.current = null;", "lateGuard.abandon(() => settle(null));"]), "abandon: announce, reject a waiting test slip, then hold the slot");
+      check(p, s.includes("window.setTimeout(abandon, PRINT_HOST_DISPATCH_TIMEOUT_MS)"), "the watchdog abandons (it no longer settles)");
+      check(p, !abandon.includes("occupiedRef") && !abandon.includes("setCurrent"), "abandon must NOT free the slot itself");
+      check(p, lines(r) <= 250, "stays <= 250 lines");
+      return p;
+    },
+    mutations: [
+```
+
+Replace it with:
+
+```ts
+      check(p, ordered(abandon, ["toast.error(PRINT_HOST_PRINT_FAILED_MESSAGE);", "testRef.current?.reject(", "testRef.current = null;", "lateGuard.abandon(() => settle(null));"]), "abandon: announce, reject a waiting test slip, then hold the slot");
+      check(p, s.includes("window.setTimeout(abandon, PRINT_HOST_DISPATCH_TIMEOUT_MS)"), "the watchdog abandons (it no longer settles)");
+      check(p, !abandon.includes("occupiedRef") && !abandon.includes("setCurrent"), "abandon must NOT free the slot itself");
+      check(p, lines(r) <= 255, "stays <= 255 lines (Phase 2 Session 2E: a slip's own Windows printer and paper)");
+      return p;
+    },
+    mutations: [
+```
+
+In `apps/cafe/lib/printer/print-lane.test.ts`, find:
+
+```ts
+import { rasterCapable } from "@/lib/printer/capabilities";
+import {
+  desktopChosen,
+  publishDesktopPrinterSelection,
+  refreshDesktopPrinterChosen,
+  resetDesktopPrinterChosen,
+```
+
+Replace it with:
+
+```ts
+import { rasterCapable } from "@/lib/printer/capabilities";
+import {
+  desktopChosen,
+  desktopPrinterSnapshot,
+  publishDesktopPrinterSelection,
+  refreshDesktopPrinterChosen,
+  resetDesktopPrinterChosen,
+```
+
+In `apps/cafe/lib/printer/print-lane.test.ts`, find:
+
+```ts
+  assert.equal(desktopChosen(), "chosen");
+});
+
+test("defaultDeviceLabel: tablet for the app or a coarse pointer, PC otherwise and always on the desktop shell", (t) => {
+  install(t, { bridge: true });
+  assert.equal(defaultDeviceLabel("none"), DEVICE_LABEL_TABLET);
+```
+
+Replace it with:
+
+```ts
+  assert.equal(desktopChosen(), "chosen");
+});
+
+// Phase 2 Session 2E (spec §9.2): the store also keeps the chosen printer's name and every printer Windows reports, so
+// the page knows which of its Windows printers this PC prints.
+test("2E: the store keeps the chosen printer's name and every printer Windows reports; a cleared choice keeps the list", async (t) => {
+  await installShellWithPicker(t, null);
+  const holder = globalThis as unknown as { window: { posDesktop: { listPrinters: () => Promise<unknown> } } };
+  holder.window.posDesktop.listPrinters = async () => ({ selected: "EPSON", printers: [{ name: "EPSON", displayName: "EPSON" }, { name: "Kitchen TVS", displayName: "Kitchen" }] });
+  await refreshDesktopPrinterChosen();
+  assert.deepEqual(desktopPrinterSnapshot(), { chosen: "chosen", selected: "EPSON", names: ["EPSON", "Kitchen TVS"] });
+  const before = desktopPrinterSnapshot();
+  await refreshDesktopPrinterChosen();
+  assert.equal(desktopPrinterSnapshot(), before, "an unchanged read keeps the same value (a stable store snapshot)");
+  publishDesktopPrinterSelection(null);
+  assert.deepEqual(desktopPrinterSnapshot(), { chosen: "none", selected: null, names: ["EPSON", "Kitchen TVS"] }, "the list stays");
+});
+
+test("defaultDeviceLabel: tablet for the app or a coarse pointer, PC otherwise and always on the desktop shell", (t) => {
+  install(t, { bridge: true });
+  assert.equal(defaultDeviceLabel("none"), DEVICE_LABEL_TABLET);
+```
+
+In `apps/cafe/package.json`, find:
+
+```json
+    "lib/print-bill-printer.test.ts",
+    "lib/print-setup-form.test.ts",
+    "lib/print-setup-ui-paths.test.ts",
+    "lib/print-setup-fields.test.ts"
+  ],
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+```
+
+Replace it with:
+
+```json
+    "lib/print-bill-printer.test.ts",
+    "lib/print-setup-form.test.ts",
+    "lib/print-setup-ui-paths.test.ts",
+    "lib/print-setup-fields.test.ts",
+    "lib/print-windows-printers.test.ts"
+  ],
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-agent-printers.test.ts lib/print-setup-form.test.ts lib/print-agent.test.ts lib/printer/print-lane.test.ts lib/desktop-shell.test.ts lib/print-windows-printers.test.ts lib/print-write-outcome.test.ts lib/print-host-paths.test.ts lib/print-printer-test.test.ts lib/print-setup-ui-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 160`; `# pass 146`; `# fail 14`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/components/print/PrintHostPrintSources.tsx`, find:
+
+```tsx
+import { PrintHostTestSlip } from "@/components/print/PrintHostTestSlip";
+import { PrinterTestSlip } from "@/components/print/PrinterTestSlip";
+import { useSettings } from "@/hooks/use-settings";
+
+// MODULE scope (RR-13): declared inside the component it would be a NEW
+// component type on every render, remounting the eod queries mid-load.
+```
+
+Replace it with:
+
+```tsx
+import { PrintHostTestSlip } from "@/components/print/PrintHostTestSlip";
+import { PrinterTestSlip } from "@/components/print/PrinterTestSlip";
+import { useSettings } from "@/hooks/use-settings";
+import { settingsForPaper } from "@/lib/print";
+
+// MODULE scope (RR-13): declared inside the component it would be a NEW
+// component type on every render, remounting the eod queries mid-load.
+```
+
+In `apps/cafe/components/print/PrintHostPrintSources.tsx`, find:
+
+```tsx
+  if (!current) return null;
+
+  const slip = current.kind === "slip" ? current.slip : null;
+  if (slip === null || slip.surface === "test") {
+    return (
+      <div className={OFFSCREEN_CLASS} aria-hidden>
+        {slip === null ? <PrintHostTestSlip settings={settings.data} ref={kotRef} /> : <PrinterTestSlip slip={slip} settings={settings.data} ref={kotRef} />}
+      </div>
+    );
+  }
+```
+
+Replace it with:
+
+```tsx
+  if (!current) return null;
+
+  const slip = current.kind === "slip" ? current.slip : null;
+  const printSettings = slip?.target === undefined ? settings.data : settingsForPaper(settings.data, slip.target.paper);
+  if (slip === null || slip.surface === "test") {
+    return (
+      <div className={OFFSCREEN_CLASS} aria-hidden>
+        {slip === null ? <PrintHostTestSlip settings={settings.data} ref={kotRef} /> : <PrinterTestSlip slip={slip} settings={printSettings} ref={kotRef} />}
+      </div>
+    );
+  }
+```
+
+In `apps/cafe/components/print/PrintHostPrintSources.tsx`, find:
+
+```tsx
+
+  if (slip.surface === "receipt") {
+    return (
+      <PrintSources order={slip.order} settings={settings.data} kotRef={kotRef} kotVariant="kot" receiptRef={receiptRef} banner={slip.banner} />
+    );
+  }
+
+  return (
+    <PrintSources
+      order={slip.order}
+      settings={settings.data}
+      kotRef={kotRef}
+      kotRoundItems={slip.kotRoundItems}
+      kotRoundLabel={slip.kotRoundLabel}
+```
+
+Replace it with:
+
+```tsx
+
+  if (slip.surface === "receipt") {
+    return (
+      <PrintSources order={slip.order} settings={printSettings} kotRef={kotRef} kotVariant="kot" receiptRef={receiptRef} banner={slip.banner} />
+    );
+  }
+
+  return (
+    <PrintSources
+      order={slip.order}
+      settings={printSettings}
+      kotRef={kotRef}
+      kotRoundItems={slip.kotRoundItems}
+      kotRoundLabel={slip.kotRoundLabel}
+```
+
+In `apps/cafe/components/print/setup/PrintersSetupSection.tsx`, find:
+
+```tsx
+import { SetUpPrintersCard } from "@/components/print/setup/SetUpPrintersCard";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { useCanPrintNow, useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
+import { useDeletePrinter, useSavePrinter, useTestPrinter } from "@/hooks/use-print-setup";
+import { agentPrintersOf } from "@/lib/print-agent-printers";
+import { printerBodyOf, printerDraftOf } from "@/lib/print-setup-form";
+```
+
+Replace it with:
+
+```tsx
+import { SetUpPrintersCard } from "@/components/print/setup/SetUpPrintersCard";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { useDesktopPrinters } from "@/hooks/use-agent-printers";
+import { useCanPrintNow, useDevicePrinter } from "@/hooks/use-device-printer";
+import { useDeletePrinter, useSavePrinter, useTestPrinter } from "@/hooks/use-print-setup";
+import { agentPrintersOf } from "@/lib/print-agent-printers";
+import { printerBodyOf, printerDraftOf } from "@/lib/print-setup-form";
+```
+
+In `apps/cafe/components/print/setup/PrintersSetupSection.tsx`, find:
+
+```tsx
+  const testPrint = useTestPrinter();
+  // The printers this device prints here, from the list this page already holds (no second read, no subscription).
+  const local = useDevicePrinter().printer;
+  const lane = usePrintLane();
+  const localIds = agentPrintersOf(printers, deviceId, local, lane === "desktop").localIds;
+  const canPrint = useCanPrintNow();
+  const gaps = setupGaps(printers, stations);
+  const busy = save.isPending || remove.isPending;
+```
+
+Replace it with:
+
+```tsx
+  const testPrint = useTestPrinter();
+  // The printers this device prints here, from the list this page already holds (no second read, no subscription).
+  const local = useDevicePrinter().printer;
+  const desktop = useDesktopPrinters();
+  const localIds = agentPrintersOf(printers, deviceId, local, desktop).localIds;
+  const canPrint = useCanPrintNow();
+  const gaps = setupGaps(printers, stations);
+  const busy = save.isPending || remove.isPending;
+```
+
+In `apps/cafe/hooks/use-agent-printers.ts`, find:
+
+```ts
+
+import { PRINT_SETUP_STALE_MS } from "@pos/shared/print-budget";
+import type { PrinterConfig } from "@pos/shared/print-printers";
+import { useDevicePrinter } from "@/hooks/use-device-printer";
+import { apiGet } from "@/lib/api-client";
+import { isDesktopShell } from "@/lib/desktop-shell";
+import { agentPrintersOf, dotPrintersOf, type AgentPrinters } from "@/lib/print-agent-printers";
+import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
+import { subscribeRealtime } from "@/lib/realtime-client";
+
+```
+
+Replace it with:
+
+```ts
+
+import { PRINT_SETUP_STALE_MS } from "@pos/shared/print-budget";
+import type { PrinterConfig } from "@pos/shared/print-printers";
+import { useDesktopPrinterSnapshot, useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
+import { apiGet } from "@/lib/api-client";
+import { isDesktopShell } from "@/lib/desktop-shell";
+import { desktopPrintsOnNamed } from "@/lib/desktop-shell-printer";
+import { agentPrintersOf, dotPrintersOf, type AgentPrinters, type DesktopPrinters } from "@/lib/print-agent-printers";
+import { refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
+import { subscribeRealtime } from "@/lib/realtime-client";
+
+```
+
+In `apps/cafe/hooks/use-agent-printers.ts`, find:
+
+```ts
+  return { printers: query.data ?? NO_PRINTERS, loaded: query.isSuccess, failed: query.isError };
+}
+
+/** The agent's read: the same query, plus the one print-setup subscription. */
+export function usePrinters(enabled: boolean): PrinterConfig[] {
+  const qc = useQueryClient();
+  const { printers } = usePrintersRead(enabled);
+```
+
+Replace it with:
+
+```ts
+  return { printers: query.data ?? NO_PRINTERS, loaded: query.isSuccess, failed: query.isError };
+}
+
+/** The agent's read: the same query, plus the one print-setup subscription. Session 2E: the Windows app's own printer
+ *  list is read again with every printers read (a local call to the app, no request), so a printer just added in
+ *  Windows and saved in the setup is this PC's at once. */
+export function usePrinters(enabled: boolean): PrinterConfig[] {
+  const qc = useQueryClient();
+  const { printers } = usePrintersRead(enabled);
+```
+
+In `apps/cafe/hooks/use-agent-printers.ts`, find:
+
+```ts
+      if (kind === "print-setup") void qc.invalidateQueries({ queryKey: PRINTERS_KEYS.all });
+    });
+  }, [enabled, qc]);
+  return printers;
+}
+
+/** Session 2D (spec §10): the top-bar dot's view of printers mode. The same printers read as the agent's (one cache
+```
+
+Replace it with:
+
+```ts
+      if (kind === "print-setup") void qc.invalidateQueries({ queryKey: PRINTERS_KEYS.all });
+    });
+  }, [enabled, qc]);
+  useEffect(() => {
+    if (enabled && isDesktopShell()) void refreshDesktopPrinterChosen();
+  }, [enabled, printers]);
+  return printers;
+}
+
+/** Session 2E (spec §9.2): the Windows app's printers, by name; null on any other device. */
+export function useDesktopPrinters(): DesktopPrinters | null {
+  const snapshot = useDesktopPrinterSnapshot();
+  const lane = usePrintLane();
+  return useMemo(() => (lane === "desktop" ? { selected: snapshot.selected, names: snapshot.names, named: desktopPrintsOnNamed() } : null), [lane, snapshot]);
+}
+
+/** Session 2D (spec §10): the top-bar dot's view of printers mode. The same printers read as the agent's (one cache
+```
+
+In `apps/cafe/hooks/use-agent-printers.ts`, find:
+
+```ts
+export function useDotPrinters(deviceId: string): PrinterDotPrinters {
+  const { printers } = usePrintersRead(deviceId !== "");
+  const local = useDevicePrinter().printer;
+  return useMemo(() => dotPrintersOf(printers, deviceId, local, isDesktopShell()), [printers, deviceId, local]);
+}
+
+/** The printers this device writes, and which it prints on its one local printer (lib/print-agent-printers.ts). */
+export function useAgentPrinters(deviceId: string, enabled: boolean): AgentPrinters {
+  const printers = usePrinters(enabled);
+  const local = useDevicePrinter().printer;
+  return useMemo(() => agentPrintersOf(printers, deviceId, local, isDesktopShell()), [printers, deviceId, local]);
+}
+
+```
+
+Replace it with:
+
+```ts
+export function useDotPrinters(deviceId: string): PrinterDotPrinters {
+  const { printers } = usePrintersRead(deviceId !== "");
+  const local = useDevicePrinter().printer;
+  const desktop = useDesktopPrinters();
+  return useMemo(() => dotPrintersOf(printers, deviceId, local, desktop), [printers, deviceId, local, desktop]);
+}
+
+/** The printers this device writes, and which it prints here (lib/print-agent-printers.ts). */
+export function useAgentPrinters(deviceId: string, enabled: boolean): AgentPrinters {
+  const printers = usePrinters(enabled);
+  const local = useDevicePrinter().printer;
+  const desktop = useDesktopPrinters();
+  return useMemo(() => agentPrintersOf(printers, deviceId, local, desktop), [printers, deviceId, local, desktop]);
+}
+
+```
+
+In `apps/cafe/hooks/use-device-printer.ts`, find:
+
+```ts
+import { onWindowEvent } from "@/lib/printer/capabilities";
+import {
+  SERVER_DESKTOP_CHOSEN,
+  desktopChosen,
+  subscribeDesktopPrinterChosen,
+  type DesktopChosen,
+} from "@/lib/printer/desktop-printer-state";
+import { NONE_SNAPSHOT, devicePrinter, type PrinterSnapshot } from "@/lib/printer/device-printer";
+import { NATIVE_READY_EVENT } from "@/lib/printer/native-bridge";
+```
+
+Replace it with:
+
+```ts
+import { onWindowEvent } from "@/lib/printer/capabilities";
+import {
+  SERVER_DESKTOP_CHOSEN,
+  SERVER_DESKTOP_SNAPSHOT,
+  desktopChosen,
+  desktopPrinterSnapshot,
+  subscribeDesktopPrinterChosen,
+  type DesktopChosen,
+  type DesktopPrinterSnapshot,
+} from "@/lib/printer/desktop-printer-state";
+import { NONE_SNAPSHOT, devicePrinter, type PrinterSnapshot } from "@/lib/printer/device-printer";
+import { NATIVE_READY_EVENT } from "@/lib/printer/native-bridge";
+```
+
+In `apps/cafe/hooks/use-device-printer.ts`, find:
+
+```ts
+  return useSyncExternalStore(subscribeDesktopPrinterChosen, desktopChosen, () => SERVER_DESKTOP_CHOSEN);
+}
+
+export function useCanPrintNow(): boolean {
+  return useSyncExternalStore(subscribeLane, canPrintNow, () => false);
+}
+```
+
+Replace it with:
+
+```ts
+  return useSyncExternalStore(subscribeDesktopPrinterChosen, desktopChosen, () => SERVER_DESKTOP_CHOSEN);
+}
+
+/** Phase 2 Session 2E: the Windows app's chosen printer and every printer Windows reports on this PC. */
+export function useDesktopPrinterSnapshot(): DesktopPrinterSnapshot {
+  return useSyncExternalStore(subscribeDesktopPrinterChosen, desktopPrinterSnapshot, () => SERVER_DESKTOP_SNAPSHOT);
+}
+
+export function useCanPrintNow(): boolean {
+  return useSyncExternalStore(subscribeLane, canPrintNow, () => false);
+}
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+  useEffect(() => {
+    writerRef.current = printers.isWriter;
+  }, [printers.isWriter]);
+  // Session 2C (the 2C gate's review, I-2): a printer job aimed at this device that it does not print on means its
+  // printer list is stale (a missed print-setup frame, a printer just re-saved onto it): read it again, at most once
+  // a minute, and the agent leases it as soon as it knows. A device that writes a printer which is not its local
+```
+
+Replace it with:
+
+```ts
+  useEffect(() => {
+    writerRef.current = printers.isWriter;
+  }, [printers.isWriter]);
+  // Session 2E (spec §9.2): the Windows printer each printer job of this PC prints on, by printer id.
+  const targetsRef = useRef(printers.targets);
+  useEffect(() => {
+    targetsRef.current = printers.targets;
+  }, [printers.targets]);
+  // Session 2C (the 2C gate's review, I-2): a printer job aimed at this device that it does not print on means its
+  // printer list is stale (a missed print-setup frame, a printer just re-saved onto it): read it again, at most once
+  // a minute, and the agent leases it as soon as it knows. A device that writes a printer which is not its local
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+          resolve(result);
+        };
+        try {
+          queueRef.current(printAgentSlipOf(job, cafeDateString()), done);
+        } catch {
+          // A payload this page cannot turn into a slip (deploy skew): nothing was sent, and never will be.
+          done({ ok: false, error: new PrintWriteError(PRINT_HOST_PRINT_FAILED_MESSAGE, "no", true) });
+```
+
+Replace it with:
+
+```ts
+          resolve(result);
+        };
+        try {
+          queueRef.current(printAgentSlipOf(job, cafeDateString(), job.printerId === undefined ? undefined : targetsRef.current[job.printerId]), done);
+        } catch {
+          // A payload this page cannot turn into a slip (deploy skew): nothing was sent, and never will be.
+          done({ ok: false, error: new PrintWriteError(PRINT_HOST_PRINT_FAILED_MESSAGE, "no", true) });
+```
+
+In `apps/cafe/hooks/use-print-host-bridge.ts`, find:
+
+```ts
+  const receiptRef = useRef<HTMLDivElement>(null);
+  const eodRef = useRef<HTMLDivElement>(null);
+  const documentTitle = current?.kind === "slip" ? current.slip.documentTitle : PRINT_HOST_TEST_TITLE;
+
+  const printKot = useReactToPrint(slipPrintOptions({
+    contentRef: kotRef,
+    documentTitle,
+    pageStyle: receiptPageStyle(printCfg.kot.paperWidth),
+    onAfterPrint: finish,
+    onPrintError,
+  }));
+  const printReceipt = useReactToPrint(slipPrintOptions({
+    contentRef: receiptRef,
+    documentTitle,
+    pageStyle: receiptPageStyle(printCfg.bill.paperWidth),
+    onAfterPrint: finish,
+    onPrintError,
+  }));
+  // Fixed 80mm like EndOfDayButton (EndOfDaySummary is hardcoded w-[300px]).
+  const printEod = useReactToPrint(slipPrintOptions({
+    contentRef: eodRef,
+    documentTitle,
+    pageStyle: RECEIPT_PAGE_STYLE,
+    onAfterPrint: finish,
+    onPrintError,
+  }));
+
+  // Dispatch: runs AFTER the commit that rendered the slip into its surface
+  // (PrintHostPrintSources is a context consumer below this provider, so its
+```
+
+Replace it with:
+
+```ts
+  const receiptRef = useRef<HTMLDivElement>(null);
+  const eodRef = useRef<HTMLDivElement>(null);
+  const documentTitle = current?.kind === "slip" ? current.slip.documentTitle : PRINT_HOST_TEST_TITLE;
+  // Phase 2 Session 2E (spec §9.2): a Windows printer job prints on its printer, drawn for its paper; else as before.
+  const target = current?.kind === "slip" ? current.slip.target : undefined;
+
+  const printKot = useReactToPrint(slipPrintOptions({
+    contentRef: kotRef,
+    documentTitle,
+    pageStyle: receiptPageStyle(target?.paper ?? printCfg.kot.paperWidth),
+    onAfterPrint: finish,
+    onPrintError,
+  }, target?.printerName));
+  const printReceipt = useReactToPrint(slipPrintOptions({
+    contentRef: receiptRef,
+    documentTitle,
+    pageStyle: receiptPageStyle(target?.paper ?? printCfg.bill.paperWidth),
+    onAfterPrint: finish,
+    onPrintError,
+  }, target?.printerName));
+  // Fixed 80mm like EndOfDayButton (EndOfDaySummary is hardcoded w-[300px]); a Windows printer's own roll (scaled).
+  const printEod = useReactToPrint(slipPrintOptions({
+    contentRef: eodRef,
+    documentTitle,
+    pageStyle: target === undefined ? RECEIPT_PAGE_STYLE : receiptPageStyle(target.paper),
+    onAfterPrint: finish,
+    onPrintError,
+  }, target?.printerName));
+
+  // Dispatch: runs AFTER the commit that rendered the slip into its surface
+  // (PrintHostPrintSources is a context consumer below this provider, so its
+```
+
+In `apps/cafe/lib/desktop-shell-messages.ts`, find:
+
+```ts
+  "No server address is set.",
+  "Direct printing is not available on this PC. Open Settings, then Printing, and choose the Windows driver method.",
+  "The chosen printer was not found on this PC. Open Settings, then Printing, and pick it again.",
+];
+/** Refused before any byte left because of the slip itself: it did not finish drawing (owner, 1C gate I3). */
+export const DESKTOP_SHELL_NOT_READY_MESSAGE = "The slip did not finish drawing. Print it again.";
+```
+
+Replace it with:
+
+```ts
+  "No server address is set.",
+  "Direct printing is not available on this PC. Open Settings, then Printing, and choose the Windows driver method.",
+  "The chosen printer was not found on this PC. Open Settings, then Printing, and pick it again.",
+  // Phase 2 Session 2E: a named Windows printer this PC no longer has.
+  "That printer is not on this PC. Open Printer setup in the POS and choose a printer this PC has.",
+];
+/** Refused before any byte left because of the slip itself: it did not finish drawing (owner, 1C gate I3). */
+export const DESKTOP_SHELL_NOT_READY_MESSAGE = "The slip did not finish drawing. Print it again.";
+```
+
+In `apps/cafe/lib/desktop-shell-printer.ts`, find:
+
+```ts
+// the browser print dialog kept working, because the operator picks the
+// printer there. This is that choice, made once and stored by the shell.
+import { desktopShell } from "@/lib/desktop-shell";
+
+export interface DesktopPrinter {
+  /** What Chromium's deviceName matches on — the OS name, not the label. */
+```
+
+Replace it with:
+
+```ts
+// the browser print dialog kept working, because the operator picks the
+// printer there. This is that choice, made once and stored by the shell.
+import { desktopShell } from "@/lib/desktop-shell";
+import type { PaperWidth } from "@/lib/constants";
+
+export interface DesktopPrinter {
+  /** What Chromium's deviceName matches on — the OS name, not the label. */
+```
+
+In `apps/cafe/lib/desktop-shell-printer.ts`, find:
+
+```ts
+  savePrintMode?: (mode: DesktopPrintMode) => Promise<{ printMode: DesktopPrintMode }>;
+}
+
+/**
+ * The picker half of the bridge, or null when there is no shell at all or the
+ * installed one predates the picker.
+```
+
+Replace it with:
+
+```ts
+  savePrintMode?: (mode: DesktopPrintMode) => Promise<{ printMode: DesktopPrintMode }>;
+}
+
+/** Phase 2 Session 2E (spec §9.2): the shell prints a slip on a printer the page names (printHtmlOn, desktop 1.11.0).
+ *  Feature-detected like the picker: an older shell prints only on its chosen printer, so the page names none there. */
+export function desktopPrintsOnNamed(): boolean {
+  return typeof desktopShell()?.printHtmlOn === "function";
+}
+
+/** Phase 2 Session 2E: where a printer job prints on the Windows app: its Windows printer, drawn for its paper. */
+export interface DesktopPrintTarget {
+  printerName: string;
+  paper: PaperWidth;
+}
+
+/**
+ * The picker half of the bridge, or null when there is no shell at all or the
+ * installed one predates the picker.
+```
+
+In `apps/cafe/lib/desktop-shell.ts`, find:
+
+```ts
+export interface PosDesktopBridge {
+  readonly version: string;
+  printHtml(html: string): Promise<void>;
+  // Phase 2 Session 2E: the slip on the Windows printer named. An older shell lacks it: feature-detect.
+  printHtmlOn?(html: string, printerName: string): Promise<void>;
+  // The printer picker (2026-09-17) — types and the feature-detecting accessor
+  // live in lib/desktop-shell-printer.ts. OPTIONAL on purpose: the counter
+```
+
+Replace it with:
+
+```ts
+export interface PosDesktopBridge {
+  readonly version: string;
+  printHtml(html: string): Promise<void>;
+  // Phase 2 Session 2E: the slip on its own Windows printer (slipPrintOptions' printerName). Feature-detect: an older shell lacks it.
+  printHtmlOn?(html: string, printerName: string): Promise<void>;
+  // The printer picker (2026-09-17) — types and the feature-detecting accessor
+  // live in lib/desktop-shell-printer.ts. OPTIONAL on purpose: the counter
+```
+
+In `apps/cafe/lib/desktop-shell.ts`, find:
+
+```ts
+  };
+}
+
+async function printThroughShell(shell: PosDesktopBridge, html: string): Promise<void> {
+  // A document with no body text is a blank slip — refused here, out loud,
+  // never handed to a printer (owner rule 2026-09-11).
+  if (!printDocumentHasText(html)) throw new Error(DESKTOP_PRINT_EMPTY_MESSAGE);
+```
+
+Replace it with:
+
+```ts
+  };
+}
+
+async function printThroughShell(shell: PosDesktopBridge, html: string, printerName?: string): Promise<void> {
+  // A document with no body text is a blank slip — refused here, out loud,
+  // never handed to a printer (owner rule 2026-09-11).
+  if (!printDocumentHasText(html)) throw new Error(DESKTOP_PRINT_EMPTY_MESSAGE);
+```
+
+In `apps/cafe/lib/desktop-shell.ts`, find:
+
+```ts
+    timer = setTimeout(() => reject(new Error(DESKTOP_PRINT_NO_REPLY_MESSAGE)), desktopPrintTimeoutMs);
+  });
+  try {
+    await Promise.race([shell.printHtml(html), noReply]);
+  } finally {
+    clearTimeout(timer);
+  }
+```
+
+Replace it with:
+
+```ts
+    timer = setTimeout(() => reject(new Error(DESKTOP_PRINT_NO_REPLY_MESSAGE)), desktopPrintTimeoutMs);
+  });
+  try {
+    await Promise.race([printerName !== undefined && shell.printHtmlOn !== undefined ? shell.printHtmlOn(html, printerName) : shell.printHtml(html), noReply]);
+  } finally {
+    clearTimeout(timer);
+  }
+```
+
+In `apps/cafe/lib/desktop-shell.ts`, find:
+
+```ts
+// Wraps a useReactToPrint options object so it prints through the desktop
+// shell when one is present; without one it defers to the printer lanes
+// (lib/printer/lane-print.ts), which return the SAME reference on a plain browser.
+export function slipPrintOptions<T extends UseReactToPrintOptions>(options: T): T {
+  const shell = desktopShell();
+  if (!shell) return laneSlipPrintOptions(options);
+  return {
+    ...options,
+    print: async (iframe: HTMLIFrameElement) => {
+      await printThroughShell(shell, serializePrintDocument(iframe, resolveTitle(options.documentTitle)));
+    },
+    onPrintError: options.onPrintError ?? defaultOnPrintError(options),
+  };
+```
+
+Replace it with:
+
+```ts
+// Wraps a useReactToPrint options object so it prints through the desktop
+// shell when one is present; without one it defers to the printer lanes
+// (lib/printer/lane-print.ts), which return the SAME reference on a plain browser.
+export function slipPrintOptions<T extends UseReactToPrintOptions>(options: T, printerName?: string): T {
+  const shell = desktopShell();
+  if (!shell) return laneSlipPrintOptions(options);
+  return {
+    ...options,
+    print: async (iframe: HTMLIFrameElement) => {
+      await printThroughShell(shell, serializePrintDocument(iframe, resolveTitle(options.documentTitle)), printerName);
+    },
+    onPrintError: options.onPrintError ?? defaultOnPrintError(options),
+  };
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+import { PRINT_JOBS_FOR_ME_LIMIT, type LeasedPrintJob, type PrintJobsForMe } from "@pos/shared/print-agent-wire";
+import { printerWriterDeviceId, printersModeOn, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
+import type { PrintAgentResult } from "@/lib/print-agent-types";
+import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
+
+// Printing redesign, Phase 2 Session 2C (spec §9.3, plan decision 1): the printers this device writes, and which
+// of them it prints on its one local printer (several printers per device arrive in Session 2E). Pure and
+// client-safe; hooks/use-agent-printers.ts reads it on every printers read and every change of this device's
+// printer.
+
+/** The refusal a leased job gets when its printer is not this device's printer (sent:"no", never counted). */
+export const PRINTER_NOT_LOCAL_MESSAGE = "This printer is not connected to this device.";
+
+/** A printer this device writes is printed here only when it IS this device's one printer: a LAN printer whose
+ *  host:port is the app's selected network printer, a device printer whose transport and address match the
+ *  saved one, a Windows printer on the Windows app. Anything else would put a bar's slips on the kitchen's paper. */
+export function printerIsLocal(printer: PrinterConfig, local: DevicePrinter | null, desktop: boolean): boolean {
+  const connection = printer.connection;
+  if (connection.kind === "lan") {
+    return local?.kind === "native" && local.transport === "tcp" && local.printerId === `tcp:${connection.host}:${connection.port}`;
+  }
+  switch (connection.transport) {
+    case "windows":
+      return desktop;
+    case "bt-classic":
+    case "ble":
+    case "usb": {
+```
+
+Replace it with:
+
+```ts
+import { PRINT_JOBS_FOR_ME_LIMIT, type LeasedPrintJob, type PrintJobsForMe } from "@pos/shared/print-agent-wire";
+import { printerWriterDeviceId, printersModeOn, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
+import type { PrintAgentResult } from "@/lib/print-agent-types";
+import type { DesktopPrintTarget } from "@/lib/desktop-shell-printer";
+import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
+
+// Printing redesign, Phase 2 Session 2C (spec §9.3, plan decision 1): the printers this device writes, and which of
+// them it prints here. Session 2E (spec §9.2): a phone, a tablet or a browser tab prints one printer, its own; the
+// Windows app prints each Windows printer it has, by name. Pure and client-safe; hooks/use-agent-printers.ts reads it
+// on every printers read and every change of this device's printer.
+
+/** The refusal a leased job gets when its printer is not this device's printer (sent:"no", never counted). */
+export const PRINTER_NOT_LOCAL_MESSAGE = "This printer is not connected to this device.";
+
+/** Session 2E (spec §9.2): the Windows app's printers. `named`: the app prints a slip on a printer the page names
+ *  (desktopPrintsOnNamed); `names`: every printer Windows reports on this PC (null until read); `selected`: the one
+ *  chosen in its picker. null for any other device. */
+export interface DesktopPrinters {
+  selected: string | null;
+  names: readonly string[] | null;
+  named: boolean;
+}
+
+/** A printer this device writes is printed here only when it IS one of this device's printers: a LAN printer whose
+ *  host:port is the app's selected network printer, a device printer whose transport and address match the
+ *  saved one, a Windows printer this PC has. Anything else would put a bar's slips on the kitchen's paper. */
+export function printerIsLocal(printer: PrinterConfig, local: DevicePrinter | null, desktop: DesktopPrinters | null): boolean {
+  const connection = printer.connection;
+  if (connection.kind === "lan") {
+    return local?.kind === "native" && local.transport === "tcp" && local.printerId === `tcp:${connection.host}:${connection.port}`;
+  }
+  switch (connection.transport) {
+    case "windows":
+      // Session 2E: by name (saved from this PC's own list, never typed). An app that prints on a named printer prints
+      // any printer Windows reports here; an older one prints only its chosen printer, so another Windows printer is
+      // never printed on that paper (the 2C gate's F-3): its slips wait, and the dot says so.
+      if (desktop === null) return false;
+      return desktop.named ? (desktop.names ?? []).includes(connection.address) : desktop.selected === connection.address;
+    case "bt-classic":
+    case "ble":
+    case "usb": {
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+  printersMode: boolean;
+  /** This device writes a routable printer: it drains and polls the wake in printers mode, host or not. */
+  isWriter: boolean;
+  /** The routable printers this device writes that ARE its local printer: the lines it leases and prints. */
+  localIds: string[];
+}
+
+function printersWrittenBy(printers: readonly PrinterConfig[], deviceId: string): PrinterConfig[] {
+  return deviceId === "" ? [] : routablePrinters(printers).filter((printer) => printerWriterDeviceId(printer) === deviceId);
+}
+
+export function agentPrintersOf(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, desktop: boolean): AgentPrinters {
+  const mine = printersWrittenBy(printers, deviceId);
+  return {
+    printersMode: printersModeOn(printers),
+    isWriter: mine.length > 0,
+    localIds: mine.filter((printer) => printerIsLocal(printer, local, desktop)).map((printer) => printer.id),
+  };
+}
+
+/** Session 2D (spec §10): what the top-bar dot needs: printers mode, whether this device writes a printer, and
+ *  whether it prints every printer it writes (a printer it writes that is not its own never prints here). */
+export function dotPrintersOf(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, desktop: boolean): PrinterDotPrinters {
+  const agent = agentPrintersOf(printers, deviceId, local, desktop);
+  return { printersMode: agent.printersMode, isWriter: agent.isWriter, allLocal: agent.localIds.length === printersWrittenBy(printers, deviceId).length };
+}
+```
+
+Replace it with:
+
+```ts
+  printersMode: boolean;
+  /** This device writes a routable printer: it drains and polls the wake in printers mode, host or not. */
+  isWriter: boolean;
+  /** The routable printers this device writes that ARE its local printers: the lines it leases and prints. */
+  localIds: string[];
+  /** Session 2E: each of them that prints on a named Windows printer, by id: its name and its paper. */
+  targets: Record<string, DesktopPrintTarget>;
+}
+
+function printersWrittenBy(printers: readonly PrinterConfig[], deviceId: string): PrinterConfig[] {
+  return deviceId === "" ? [] : routablePrinters(printers).filter((printer) => printerWriterDeviceId(printer) === deviceId);
+}
+
+/** Session 2E: a Windows printer this PC prints by name (only on an app that can), drawn for its own paper. */
+function targetsOf(printers: readonly PrinterConfig[], desktop: DesktopPrinters | null): Record<string, DesktopPrintTarget> {
+  const targets: Record<string, DesktopPrintTarget> = {};
+  if (desktop === null || !desktop.named) return targets;
+  for (const printer of printers) {
+    if (printer.connection.kind === "device" && printer.connection.transport === "windows") {
+      targets[printer.id] = { printerName: printer.connection.address, paper: `${printer.paper}mm` };
+    }
+  }
+  return targets;
+}
+
+export function agentPrintersOf(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, desktop: DesktopPrinters | null): AgentPrinters {
+  const mine = printersWrittenBy(printers, deviceId);
+  const here = mine.filter((printer) => printerIsLocal(printer, local, desktop));
+  return {
+    printersMode: printersModeOn(printers),
+    isWriter: mine.length > 0,
+    localIds: here.map((printer) => printer.id),
+    targets: targetsOf(here, desktop),
+  };
+}
+
+/** Session 2D (spec §10): what the top-bar dot needs: printers mode, whether this device writes a printer, and
+ *  whether it prints every printer it writes (a printer it writes that is not its own never prints here). */
+export function dotPrintersOf(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, desktop: DesktopPrinters | null): PrinterDotPrinters {
+  const agent = agentPrintersOf(printers, deviceId, local, desktop);
+  return { printersMode: agent.printersMode, isWriter: agent.isWriter, allLocal: agent.localIds.length === printersWrittenBy(printers, deviceId).length };
+}
+```
+
+In `apps/cafe/lib/print-agent-slip.ts`, find:
+
+```ts
+import { PRINT_ACK_ERROR_MAX_CHARS, printBannerText } from "@pos/shared/print-lifecycle";
+import type { LeasedPrintJob } from "@pos/shared/print-agent-wire";
+import type { PrintAgentAckBody } from "@/lib/print-agent-types";
+import { PRINT_HOST_DISPATCH_TIMEOUT_MS, PRINT_HOST_EOD_READY_TIMEOUT_MS, hostPrintSlipOf, type HostPrintSlip } from "@/lib/print-host-slips";
+import type { PrintWriteOutcome } from "@/lib/print-write-outcome";
+```
+
+Replace it with:
+
+```ts
+import { PRINT_ACK_ERROR_MAX_CHARS, printBannerText } from "@pos/shared/print-lifecycle";
+import type { LeasedPrintJob } from "@pos/shared/print-agent-wire";
+import type { DesktopPrintTarget } from "@/lib/desktop-shell-printer";
+import type { PrintAgentAckBody } from "@/lib/print-agent-types";
+import { PRINT_HOST_DISPATCH_TIMEOUT_MS, PRINT_HOST_EOD_READY_TIMEOUT_MS, hostPrintSlipOf, type HostPrintSlip } from "@/lib/print-host-slips";
+import type { PrintWriteOutcome } from "@/lib/print-write-outcome";
+```
+
+In `apps/cafe/lib/print-agent-slip.ts`, find:
+
+```ts
+}
+
+/** The slip the host bridge prints for one leased job: today's renderer props (print-host-slips.ts),
+ *  plus the job's labels as the one banner on top (spec §7.7). An end-of-day summary takes none. */
+export function printAgentSlipOf(job: LeasedPrintJob, todayKey: string): HostPrintSlip {
+  const slip = hostPrintSlipOf(job.payload, todayKey);
+  const banner = printBannerText(job.labels);
+  return banner === "" || slip.surface === "eod" ? slip : { ...slip, banner };
+}
+
+```
+
+Replace it with:
+
+```ts
+}
+
+/** The slip the host bridge prints for one leased job: today's renderer props (print-host-slips.ts),
+ *  plus the job's labels as the one banner on top (spec §7.7). An end-of-day summary takes none. Session 2E: a job
+ *  on a Windows printer this PC prints by name carries that printer's target. */
+export function printAgentSlipOf(job: LeasedPrintJob, todayKey: string, target?: DesktopPrintTarget): HostPrintSlip {
+  const slip = hostPrintSlipOf(job.payload, todayKey);
+  const banner = printBannerText(job.labels);
+  const labelled: HostPrintSlip = banner === "" || slip.surface === "eod" ? slip : { ...slip, banner };
+  return target === undefined ? labelled : { ...labelled, target };
+}
+
+```
+
+In `apps/cafe/lib/print-host-slips.ts`, find:
+
+```ts
+} from "@pos/shared/schemas/print-job.schema";
+import type { PrintOrderSnapshot } from "@pos/shared/print-job";
+import type { KotReceiptVariant } from "@/hooks/use-pos-print";
+import type { Order, OrderItem } from "@/types";
+
+/** Web Locks name every window of the host PC contends for — the holder drains,
+```
+
+Replace it with:
+
+```ts
+} from "@pos/shared/schemas/print-job.schema";
+import type { PrintOrderSnapshot } from "@pos/shared/print-job";
+import type { KotReceiptVariant } from "@/hooks/use-pos-print";
+import type { DesktopPrintTarget } from "@/lib/desktop-shell-printer";
+import type { Order, OrderItem } from "@/types";
+
+/** Web Locks name every window of the host PC contends for — the holder drains,
+```
+
+In `apps/cafe/lib/print-host-slips.ts`, find:
+
+```ts
+  banner?: string;
+}
+
+export type HostPrintSlip = HostKotSlip | HostReceiptSlip | HostEodSlip | HostTestSlip;
+
+export const ROUND_LABEL_PREFIX = "Round ";
+const KOT_TITLE_PREFIX = "KOT-";
+```
+
+Replace it with:
+
+```ts
+  banner?: string;
+}
+
+/** Phase 2 Session 2E (spec §9.2): a printer job on the Windows app names its Windows printer and is drawn for its
+ *  paper; absent everywhere else (the slip prints as before). */
+export type HostPrintSlip = (HostKotSlip | HostReceiptSlip | HostEodSlip | HostTestSlip) & { target?: DesktopPrintTarget };
+
+export const ROUND_LABEL_PREFIX = "Round ";
+const KOT_TITLE_PREFIX = "KOT-";
+```
+
+In `apps/cafe/lib/print.ts`, find:
+
+```ts
+// lands in the wrong place.
+export function receiptPageStyle(width: PaperWidth): string {
+  return `@page { size: ${width} ${PAGE_HEIGHT}; margin: 4mm; } @media print { body { margin: 0; } }`;
+}
+
+// Written as whole literal class names, never built by interpolation: Tailwind
+```
+
+Replace it with:
+
+```ts
+// lands in the wrong place.
+export function receiptPageStyle(width: PaperWidth): string {
+  return `@page { size: ${width} ${PAGE_HEIGHT}; margin: 4mm; } @media print { body { margin: 0; } }`;
+}
+
+/** Phase 2 Session 2E (spec §9.2): the cafe's settings as if both slips' paper were this printer's, so a slip for a
+ *  Windows printer is drawn, and its page sized, for that printer's roll. Settings not read yet stay unread (the
+ *  defaults, as before). */
+export function settingsForPaper(settings: Settings | null | undefined, width: PaperWidth): Settings | null | undefined {
+  return settings ? { ...settings, billPaperWidth: width, kotPaperWidth: width } : settings;
+}
+
+// Written as whole literal class names, never built by interpolation: Tailwind
+```
+
+Replace the whole of `apps/cafe/lib/printer/desktop-printer-state.ts` with:
+
+```ts
+import { desktopPrinterApi } from "@/lib/desktop-shell-printer";
+
+// Whether the Windows desktop shell has a printer CHOSEN. The shell refuses
+// every job while none is chosen (apps/desktop/src/print.ts), so a PC in that
+// state must not read "connected" and must not burn a slip claim:
+//   unknown - the shell predates listPrinters/savePrinter, or nothing was read
+//             yet (treated exactly as before this store existed: can print)
+//   none    - the shell says no printer is chosen
+//   chosen  - a printer is chosen
+// A module store (subscribe / snapshot) so the hooks and the call-time lane
+// functions read ONE value. It refreshes on the first subscribe and whenever
+// the picker saves a choice (publishDesktopPrinterSelection, then a refresh).
+// Phase 2 Session 2E (spec §9.2): it also keeps the chosen printer's NAME and
+// every printer Windows reports on this PC, so the page knows which of the
+// outlet's Windows printers this PC prints (lib/print-agent-printers.ts).
+export type DesktopChosen = "unknown" | "none" | "chosen";
+
+export const SERVER_DESKTOP_CHOSEN: DesktopChosen = "unknown";
+
+/** One immutable value, replaced on every change (a stable useSyncExternalStore snapshot). */
+export interface DesktopPrinterSnapshot {
+  chosen: DesktopChosen;
+  /** The chosen printer's name; null when none is chosen or nothing was read. */
+  selected: string | null;
+  /** Every printer Windows reports on this PC, by name; null until read. */
+  names: readonly string[] | null;
+}
+
+export const SERVER_DESKTOP_SNAPSHOT: DesktopPrinterSnapshot = { chosen: SERVER_DESKTOP_CHOSEN, selected: null, names: null };
+
+let current: DesktopPrinterSnapshot = SERVER_DESKTOP_SNAPSHOT;
+// Bumped by every read, so a slow earlier read can never overwrite a later one.
+let readTicket = 0;
+const listeners = new Set<() => void>();
+
+// The shell's "selected" field: null / "" = nothing chosen, a name = chosen, anything else = cannot tell.
+function chosenOf(selected: unknown): DesktopChosen {
+  if (selected === null || selected === "") return "none";
+  return typeof selected === "string" ? "chosen" : "unknown";
+}
+
+function selectedOf(selected: unknown): string | null {
+  return typeof selected === "string" && selected !== "" ? selected : null;
+}
+
+function namesOf(printers: unknown): readonly string[] | null {
+  if (!Array.isArray(printers)) return null;
+  return printers.map((printer: unknown) => (printer as { name?: unknown } | null)?.name).filter((name): name is string => typeof name === "string" && name !== "");
+}
+
+function sameNames(a: readonly string[] | null, b: readonly string[] | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.length === b.length && a.every((name, i) => name === b[i]);
+}
+
+function publish(next: DesktopPrinterSnapshot): void {
+  if (next.chosen === current.chosen && next.selected === current.selected && sameNames(next.names, current.names)) return;
+  current = next;
+  for (const listener of [...listeners]) listener();
+}
+
+export function desktopChosen(): DesktopChosen {
+  return current.chosen;
+}
+
+/** Phase 2 Session 2E: the chosen printer, its name and this PC's printers, as one stable value. */
+export function desktopPrinterSnapshot(): DesktopPrinterSnapshot {
+  return current;
+}
+
+/** Re-read the choice from the shell. A failed read keeps the last known value. */
+export async function refreshDesktopPrinterChosen(): Promise<DesktopChosen> {
+  const ticket = ++readTicket;
+  const api = desktopPrinterApi();
+  if (api === null) {
+    publish(SERVER_DESKTOP_SNAPSHOT);
+    return current.chosen;
+  }
+  try {
+    const { selected, printers } = await api.listPrinters();
+    if (ticket !== readTicket) return current.chosen;
+    publish({ chosen: chosenOf(selected), selected: selectedOf(selected), names: namesOf(printers) });
+  } catch {
+    // Unreadable right now: keep what we knew rather than flip the dot.
+  }
+  return current.chosen;
+}
+
+/** Follow what the shell just answered to a save (savePrinter's `selected`) without reading the
+ *  shell again, so a failing follow-up read cannot leave the store on the old choice. Bumps the
+ *  ticket so a slower read that started earlier cannot overwrite it. The printer list stays. */
+export function publishDesktopPrinterSelection(selected: string | null): void {
+  readTicket += 1;
+  publish({ ...current, chosen: chosenOf(selected), selected: selectedOf(selected) });
+}
+
+export function subscribeDesktopPrinterChosen(onChange: () => void): () => void {
+  listeners.add(onChange);
+  if (listeners.size === 1) void refreshDesktopPrinterChosen();
+  return () => {
+    listeners.delete(onChange);
+  };
+}
+
+/** Test seam: back to the never-read state. */
+export function resetDesktopPrinterChosen(): void {
+  readTicket += 1;
+  listeners.clear();
+  current = SERVER_DESKTOP_SNAPSHOT;
+}
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-agent-printers.test.ts lib/print-setup-form.test.ts lib/print-agent.test.ts lib/printer/print-lane.test.ts lib/desktop-shell-paths.test.ts lib/desktop-shell.test.ts lib/print-windows-printers.test.ts lib/print-write-outcome.test.ts lib/print-host-paths.test.ts lib/print-printer-test.test.ts lib/print-setup-ui-paths.test.ts lib/print-host-slips.test.ts lib/printer-ui-paths.test.ts lib/print-host-hooks.test.ts lib/printer/printer-dot.test.ts lib/printer/print-gating-paths.test.ts lib/printer/print-gating-fx-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 275`; `# pass 275`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint lib/printer/desktop-printer-state.ts lib/desktop-shell-printer.ts lib/desktop-shell.ts lib/desktop-shell-messages.ts lib/print-agent-printers.ts hooks/use-device-printer.ts hooks/use-agent-printers.ts components/print/setup/PrintersSetupSection.tsx lib/print-host-slips.ts lib/print-agent-slip.ts hooks/use-print-agent.ts hooks/use-print-host-bridge.ts components/print/PrintHostPrintSources.tsx lib/print.ts lib/print-windows-printers.test.ts lib/print-agent-printers.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+Run: `cd /d/kd/lucifer/apps/desktop && npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 192`; `# pass 192`; `# fail 0`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/components/print/PrintHostPrintSources.tsx apps/cafe/components/print/setup/PrintersSetupSection.tsx apps/cafe/hooks/use-agent-printers.ts apps/cafe/hooks/use-device-printer.ts apps/cafe/hooks/use-print-agent.ts apps/cafe/hooks/use-print-host-bridge.ts apps/cafe/lib/desktop-shell-messages.ts apps/cafe/lib/desktop-shell-printer.ts apps/cafe/lib/desktop-shell.ts apps/cafe/lib/print-agent-printers.test.ts apps/cafe/lib/print-agent-printers.ts apps/cafe/lib/print-agent-slip.ts apps/cafe/lib/print-agent.test.ts apps/cafe/lib/print-host-paths.test.ts apps/cafe/lib/print-host-slips.ts apps/cafe/lib/print-printer-test.test.ts apps/cafe/lib/print-setup-form.test.ts apps/cafe/lib/print-setup-ui-paths.test.ts apps/cafe/lib/print-windows-printers.test.ts apps/cafe/lib/print.ts apps/cafe/lib/printer/desktop-printer-state.ts apps/cafe/lib/printer/print-gating-fx-paths.test.ts apps/cafe/lib/printer/print-lane.test.ts apps/cafe/package.json
+git commit -m "feat(print): Phase 2 Windows printers by name: the Windows app prints each Windows printer it has (an older app only its chosen one), and a printer job carries its printer's name and paper to the slip it prints"
+```
+
+---
+
+### Task E4: the agent: a refusal holds only its own printer's line, and every job of a slip leased to this tab reaches it
+
+**Files:**
+- Create: `apps/cafe/lib/print-agent-holds.ts` (`PRINT_DEVICE_LINE`, `createRefusalHolds`)
+- Modify: `apps/cafe/lib/print-agent.ts` (one hold per line; the lease names open printers; the hold-end timer; `openPrinters()`), `apps/cafe/lib/print-agent-types.ts` (`lease(printerIds)`, `readyPrinters?`, `lineOf?`, `openPrinters()`), `apps/cafe/hooks/use-print-agent.ts`
+- Modify: `apps/cafe/lib/print-agent-calls.ts` (`leasedJobsOf`; `printJobRefOf` → `FollowedPrintJobRef` with `alsoLeased`), `apps/cafe/hooks/use-host-routing.ts` (every leased job of a slip is delivered)
+- Tests: `apps/cafe/lib/print-agent.test.ts`, `print-windows-printers.test.ts`, `print-agent-printers.test.ts` (new tests and two changed pins, named below)
+
+**Interfaces produced:** `createRefusalHolds({ printerState, now }): RefusalHolds` (`hold`, `holding`, `open`, `mayLease`, `nextEnd`); `PrintAgent.openPrinters(): string[]`; `leasedJobsOf(refs)`; `FollowedPrintJobRef = PrintJobRef & { alsoLeased?: LeasedPrintJob[] }`.
+
+**One hold per line** (E-R5): after a refusal (sent:"no") the agent made no automatic attempt on ANY line until the printer's state changed or 30 s passed. With several Windows printers on one PC, one printer that refuses would stall the others for 30 s per refusal. Now a refusal holds its own line: a named Windows printer's id, else `PRINT_DEVICE_LINE` ("": this device's one printer on every other lane, which holds every line exactly as before: Android, a browser, simple mode). The lease, the `x-pos-print-ready` header (direct print) and the pulse/wake kicks name only the printers no refusal holds (`openPrinters()`); a held line is looked at again when its hold ends (a timer at the soonest hold end, also while other printers print; the refused job's 2 s backoff no longer wakes an empty lease); no lease at all while every printer this device prints is held. On the Windows app the printer state is the desktop store's snapshot, so a re-read printer list releases a hold at once.
+
+**Every job of a slip leased to this tab reaches the agent** (found by the gate's browser run of the Windows app): with two printers on one device a slip is leased to the asking tab once per printer line (decision 15: the first slip of each line), but `printJobRefOf` handed the agent only one of them; the other stayed leased until its lease ran out and printed 90 s late as REPRINT. An order answer now carries the slip's other leased jobs beside the followed one (`alsoLeased`), and an enqueue answer delivers every leased job of `jobs`; the agent ignores one it already holds.
+
+Slips still print one at a time through the one bridge (no parallel printing in 2E: a Windows spooler job returns in about a second). **Changed existing pins** (`print-agent-printers.test.ts`): "PIN (2C final review, I-2): the pulse and the wake kick …" (`agent.openPrinters()`), "PIN (2C): the page reads the printers …" (the lease names `printerIds`; the ready header is `agent.openPrinters()`).
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+
+test("PIN (2C final review, I-2): the pulse and the wake kick the agent only on jobs it can lease", () => {
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.match(agent, /if \(jobsForMeLeasable\(data\?\.printJobsForMe, readyRef\.current\)\) agent\.kick\(\);/, "the pulse");
+  assert.match(agent, /leasable: \(jobs\) => jobsForMeLeasable\(jobs, readyRef\.current\),/, "the wake");
+  assert.ok(agent.includes("noteJobsForMe(data?.printJobsForMe);"), "a stale list is still read again from the pulse");
+});
+
+```
+
+Replace it with:
+
+```ts
+
+test("PIN (2C final review, I-2): the pulse and the wake kick the agent only on jobs it can lease", () => {
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  // Session 2E: on the printers it prints here that no refusal holds (agent.openPrinters()).
+  assert.match(agent, /if \(jobsForMeLeasable\(data\?\.printJobsForMe, agent\.openPrinters\(\)\)\) agent\.kick\(\);/, "the pulse");
+  assert.match(agent, /leasable: \(jobs\) => jobsForMeLeasable\(jobs, agent\.openPrinters\(\)\),/, "the wake");
+  assert.ok(agent.includes("noteJobsForMe(data?.printJobsForMe);"), "a stale list is still read again from the pulse");
+});
+
+```
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+  const drain = src("apps/cafe/components/print/PrintHostDrain.tsx");
+  assert.match(drain, /const printers = useAgentPrinters\(deviceId, surfacesMounted && deviceId !== ""\);/);
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.match(agent, /lease: \(\) => apiSend<PrintLeaseData>\(LEASE_URL, "POST", \{ deviceId, tabId, \.\.\.printerIdsBody\(readyRef\.current\) \}\),/, "it leases its ready printers' lines too");
+  assert.match(agent, /const offReady = setReadyPrintersSource\(\(\) => readyRef\.current\);/);
+  // The 2C gate's review (I-2) and its emulator run: a list that looks stale is read again.
+  assert.match(agent, /if \(!printerListLooksStale\(\{ ready: readyRef\.current, isWriter: writerRef\.current, jobsForMe: jobs, writesPrinters \}\)\) return;/);
+  assert.match(agent, /void qc\.invalidateQueries\(\{ queryKey: PRINTERS_KEYS\.all \}\);/);
+```
+
+Replace it with:
+
+```ts
+  const drain = src("apps/cafe/components/print/PrintHostDrain.tsx");
+  assert.match(drain, /const printers = useAgentPrinters\(deviceId, surfacesMounted && deviceId !== ""\);/);
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  // Session 2E: the agent names the printers no refusal holds (lib/print-agent-holds.ts) to the lease and the headers.
+  assert.match(agent, /lease: \(printerIds\) => apiSend<PrintLeaseData>\(LEASE_URL, "POST", \{ deviceId, tabId, \.\.\.printerIdsBody\(printerIds\) \}\),/, "it leases its ready printers' lines too");
+  assert.match(agent, /readyPrinters: \(\) => readyRef\.current,/);
+  assert.match(agent, /const offReady = setReadyPrintersSource\(\(\) => agent\.openPrinters\(\)\);/);
+  // The 2C gate's review (I-2) and its emulator run: a list that looks stale is read again.
+  assert.match(agent, /if \(!printerListLooksStale\(\{ ready: readyRef\.current, isWriter: writerRef\.current, jobsForMe: jobs, writesPrinters \}\)\) return;/);
+  assert.match(agent, /void qc\.invalidateQueries\(\{ queryKey: PRINTERS_KEYS\.all \}\);/);
+```
+
+In `apps/cafe/lib/print-agent.test.ts`, find:
+
+```ts
+import { PRINT_WAKE_FAST_MS, PRINT_WAKE_SLOW_MS, PRINT_WAKE_SOCKET_MS } from "@pos/shared/print-job";
+import { PRINT_AGENT_REFUSED_RECHECK_MS, type LeasedPrintJob, type PrintAckData, type PrintLeaseData } from "@pos/shared/print-agent-wire";
+import { createPrintAgentWake } from "@/lib/print-agent-wake";
+import { printAgentEnqueueHeaders, printAgentHeaders, printJobRefOf } from "@/lib/print-agent-calls";
+import { createHostSlipOutcomes } from "@/lib/print-host-outcomes";
+import {
+  PRINT_DIRECT_HOLD_MS,
+```
+
+Replace it with:
+
+```ts
+import { PRINT_WAKE_FAST_MS, PRINT_WAKE_SLOW_MS, PRINT_WAKE_SOCKET_MS } from "@pos/shared/print-job";
+import { PRINT_AGENT_REFUSED_RECHECK_MS, type LeasedPrintJob, type PrintAckData, type PrintLeaseData } from "@pos/shared/print-agent-wire";
+import { createPrintAgentWake } from "@/lib/print-agent-wake";
+import { leasedJobsOf, printAgentEnqueueHeaders, printAgentHeaders, printJobRefOf } from "@/lib/print-agent-calls";
+import { createHostSlipOutcomes } from "@/lib/print-host-outcomes";
+import {
+  PRINT_DIRECT_HOLD_MS,
+```
+
+In `apps/cafe/lib/print-agent.test.ts`, find:
+
+```ts
+  type PrintAgentAckBody,
+  type PrintAgentResult,
+} from "@/lib/print-agent";
+import { PRINT_HOST_EOD_TIMEOUT_MESSAGE } from "@/lib/print-host-slips";
+import { PRINT_SLIP_REFUSALS_MAX, isSlipRefusal, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+import { RASTER_FAILED_MESSAGE } from "@/lib/printer/raster";
+```
+
+Replace it with:
+
+```ts
+  type PrintAgentAckBody,
+  type PrintAgentResult,
+} from "@/lib/print-agent";
+import { PRINT_DEVICE_LINE, createRefusalHolds } from "@/lib/print-agent-holds";
+import { PRINT_HOST_EOD_TIMEOUT_MESSAGE } from "@/lib/print-host-slips";
+import { PRINT_SLIP_REFUSALS_MAX, isSlipRefusal, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+import { RASTER_FAILED_MESSAGE } from "@/lib/printer/raster";
+```
+
+In `apps/cafe/lib/print-agent.test.ts`, find:
+
+```ts
+  const eod = printAgentSlipOf({ ...job("e1"), kind: "eod", labels: ["REPRINT"] }, "2026-10-03");
+  assert.equal(eod.surface, "eod");
+  assert.equal("banner" in eod, false, "the end-of-day summary takes no banner");
+});
+
+// Phase 2 Session 2E (spec §9.2): a printer job on the Windows app carries its printer's name and paper to the bridge.
+```
+
+Replace it with:
+
+```ts
+  const eod = printAgentSlipOf({ ...job("e1"), kind: "eod", labels: ["REPRINT"] }, "2026-10-03");
+  assert.equal(eod.surface, "eod");
+  assert.equal("banner" in eod, false, "the end-of-day summary takes no banner");
+});
+
+// Phase 2 Session 2E (spec §9.2, decision 15): with two printers on one device, one slip is leased to the asking tab once
+// per printer line (the first slip of each line). Every one of them must reach the agent, or the second waits leased
+// until its lease runs out and prints late, as a REPRINT (found by the 2D gate's browser run of the Windows app).
+test("2E: every job of a slip leased to this tab reaches the agent: the one followed, and the others beside it", () => {
+  const lease = (id: string): LeasedPrintJob => ({ ...job(id), printerId: `p-${id}` });
+  const order = {
+    printJobs: [
+      { id: "all", kind: "kot", targetDeviceId: "pc", label: "KOT 1 · All stations", status: "leased", leased: lease("all") },
+      { id: "bar", kind: "kot", targetDeviceId: "pc", label: "KOT 1 · Bar", status: "leased", leased: lease("bar") },
+      { id: "kit", kind: "kot", targetDeviceId: "tab", label: "KOT 1 · Kitchen", status: "queued" },
+      { id: "bill", kind: "bill", targetDeviceId: "pc", label: "Bill", status: "queued" },
+    ],
+  };
+  const ref = printJobRefOf(order, "kot");
+  assert.equal(ref?.id, "all", "the first leased one is followed (its readback chip)");
+  assert.deepEqual(ref?.alsoLeased?.map((j) => j.id), ["bar"], "the other one leased to this tab rides beside it");
+  assert.equal(printJobRefOf(order, "bill")?.alsoLeased, undefined, "a slip with one job: nothing beside it");
+  assert.deepEqual(leasedJobsOf([{ leased: lease("a") }, {}, { leased: lease("a") }, { leased: lease("b") }]).map((j) => j.id), ["a", "b"], "each once, in order");
+});
+
+// Phase 2 Session 2E (spec §9.2): a printer job on the Windows app carries its printer's name and paper to the bridge.
+```
+
+In `apps/cafe/lib/print-agent.test.ts`, find:
+
+```ts
+  assert.equal(agent.directReady(), false, "a stopped agent");
+});
+
+test("2B: the seams: the lease header names the draining tab only while its agent says so; a leased job reaches the agent that listens", () => {
+  assert.deepEqual(printAgentHeaders("dev-a", false, "tab-1"), { "x-pos-print-agent": "1", "x-pos-device-id": "dev-a", "x-pos-print-lease": "tab-1" });
+  assert.deepEqual(printAgentHeaders("dev-a", true, null), { "x-pos-print-agent": "1", "x-pos-device-id": "dev-a", "x-pos-print-bill": "1" });
+```
+
+Replace it with:
+
+```ts
+  assert.equal(agent.directReady(), false, "a stopped agent");
+});
+
+// Phase 2 Session 2E (spec §9.1, §9.2): a Windows PC prints several printers. A refusal (nothing sent) holds that
+// printer's own line: the next lease names the others only, and the held one again once its state changes or the
+// re-check window passes. A refusal on the device's own printer (every other lane: one printer) holds everything.
+function printersWorld(ready: string[], lineOf: (j: LeasedPrintJob) => string) {
+  const made = world();
+  const asked: string[][] = [];
+  const deps = {
+    ...made.deps,
+    readyPrinters: () => ready,
+    lineOf,
+    lease: async (printerIds: readonly string[] = []): Promise<PrintLeaseData> => {
+      asked.push([...printerIds]);
+      return made.deps.lease();
+    },
+  };
+  return { ...made, deps, asked };
+}
+
+test("2E: a refusal holds its own Windows printer only: the next lease names the others, and the held one comes back when its state changes", async () => {
+  const { w, deps, asked } = printersWorld(["p-bar", "p-kitchen"], (j) => j.printerId ?? "");
+  w.leases.push({ jobs: [{ ...job("b1"), printerId: "p-bar" }], retryAt: null }, { jobs: [{ ...job("k1"), printerId: "p-kitchen" }], retryAt: null });
+  w.results.push({ ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) });
+  w.ackAnswers.push({ applied: true, status: "queued", nextAttemptAt: new Date(T0 + 2_000).toISOString() }, { applied: true, status: "printed", nextAttemptAt: null, more: false });
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.equal(w.acks[0]?.body.sent, "no", "the bar printer refused: nothing sent");
+  assert.deepEqual(agent.openPrinters(), ["p-kitchen"], "the bar printer is held, the kitchen printer open");
+  assert.equal(agent.directReady(), true, "this PC still prints its kitchen slips at once");
+  agent.kick();
+  await settle();
+  assert.deepEqual(asked, [["p-bar", "p-kitchen"], ["p-kitchen"]], "the next lease names the kitchen printer only");
+  assert.deepEqual(w.prints, ["b1", "k1"], "the kitchen slip printed while the bar printer was held");
+  w.printer = {};
+  assert.deepEqual(agent.openPrinters(), ["p-bar", "p-kitchen"], "its state changed (the printer list was read again): both open");
+  agent.stop();
+});
+
+// Found by the 2D gate's browser run: with another printer open, the refused job's 2 s backoff woke the agent into a
+// lease that could only find the open printers' lines, and nothing looked at the held printer when its hold ended.
+test("2E: a held printer is looked at again when its hold ends, never at its backoff while another printer is open", async () => {
+  const { w, deps, asked } = printersWorld(["p-bar", "p-kitchen"], (j) => j.printerId ?? "");
+  w.leases.push({ jobs: [{ ...job("b1"), printerId: "p-bar" }], retryAt: null }, { jobs: [{ ...job("b1", 2), printerId: "p-bar" }], retryAt: null });
+  w.results.push({ ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) });
+  w.ackAnswers.push({ applied: true, status: "queued", nextAttemptAt: new Date(T0 + 2_000).toISOString() }, { applied: true, status: "printed", nextAttemptAt: null, more: false });
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  await advance(w, PRINT_AGENT_REFUSED_RECHECK_MS - 1);
+  assert.deepEqual(asked, [["p-bar", "p-kitchen"]], "no lease at the 2 s backoff: it could only find the kitchen's line");
+  await advance(w, 1);
+  assert.deepEqual(asked, [["p-bar", "p-kitchen"], ["p-bar", "p-kitchen"]], "the hold ended: one lease names the bar printer again");
+  assert.deepEqual(w.prints, ["b1", "b1"], "and its slip prints, unlabelled: nothing reached paper the first time");
+  agent.stop();
+});
+
+test("2E: a refusal on this device's own printer (its one printer on every other lane) still holds every line, as before", async () => {
+  const { w, deps } = printersWorld(["p-counter"], () => PRINT_DEVICE_LINE);
+  w.leases.push({ jobs: [{ ...job("c1"), printerId: "p-counter" }], retryAt: null });
+  w.results.push({ ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) });
+  w.ackAnswers.push({ applied: true, status: "queued", nextAttemptAt: new Date(T0 + 2_000).toISOString() });
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.deepEqual(agent.openPrinters(), [], "its one printer refused: nothing is open");
+  assert.equal(agent.directReady(), false, "and nothing is asked for at once");
+  agent.kick();
+  await settle();
+  assert.equal(w.leaseCalls, 1, "no lease until its state changes or the window passes");
+  await advance(w, PRINT_AGENT_REFUSED_RECHECK_MS);
+  assert.equal(w.leaseCalls, 2, "the window passed: one lease");
+  agent.stop();
+});
+
+test("2E: every Windows printer held: no lease at all, and the agent looks again when the first hold ends", async () => {
+  const { w, deps } = printersWorld(["p-bar"], (j) => j.printerId ?? "");
+  w.leases.push({ jobs: [{ ...job("b1"), printerId: "p-bar" }], retryAt: null });
+  w.results.push({ ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) });
+  w.ackAnswers.push({ applied: true, status: "queued", nextAttemptAt: null });
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  agent.kick();
+  await settle();
+  assert.equal(w.leaseCalls, 1, "its only printer is held: a lease would find nothing it may print");
+  await advance(w, PRINT_AGENT_REFUSED_RECHECK_MS);
+  assert.equal(w.leaseCalls, 2, "the hold ended: one lease");
+  agent.stop();
+});
+
+test("2E: the holds: per line, released by a state change or the window, the device line holding every printer", () => {
+  let state: object = {};
+  let now = T0;
+  const holds = createRefusalHolds({ printerState: () => state, now: () => now });
+  assert.deepEqual([holds.open(["a", "b"]), holds.mayLease(["a", "b"]), holds.nextEnd()], [["a", "b"], true, null], "nothing held");
+  holds.hold("a");
+  assert.deepEqual([holds.open(["a", "b"]), holds.mayLease(["a", "b"]), holds.mayLease(["a"])], [["b"], true, false], "a held, b open; with only a: nothing to lease");
+  assert.equal(holds.nextEnd(), T0 + PRINT_AGENT_REFUSED_RECHECK_MS, "the soonest end");
+  now += PRINT_AGENT_REFUSED_RECHECK_MS;
+  assert.deepEqual(holds.open(["a", "b"]), ["a", "b"], "the window passed");
+  holds.hold(PRINT_DEVICE_LINE);
+  assert.deepEqual([holds.open(["a", "b"]), holds.mayLease([]), holds.holding(PRINT_DEVICE_LINE)], [[], false, true], "the device line holds everything");
+  state = {};
+  assert.deepEqual([holds.open(["a"]), holds.mayLease([])], [["a"], true], "a state change releases it");
+});
+
+test("2B: the seams: the lease header names the draining tab only while its agent says so; a leased job reaches the agent that listens", () => {
+  assert.deepEqual(printAgentHeaders("dev-a", false, "tab-1"), { "x-pos-print-agent": "1", "x-pos-device-id": "dev-a", "x-pos-print-lease": "tab-1" });
+  assert.deepEqual(printAgentHeaders("dev-a", true, null), { "x-pos-print-agent": "1", "x-pos-device-id": "dev-a", "x-pos-print-bill": "1" });
+```
+
+In `apps/cafe/lib/print-windows-printers.test.ts`, find:
+
+```ts
+  assert.match(shell, /printerName !== undefined && shell\.printHtmlOn !== undefined \? shell\.printHtmlOn\(html, printerName\) : shell\.printHtml\(html\)/);
+});
+
+test("PIN (2E): the agent's printers follow the Windows app's printer list, read again with every printers read", () => {
+  const hook = src("hooks/use-agent-printers.ts");
+  assert.match(hook, /if \(enabled && isDesktopShell\(\)\) void refreshDesktopPrinterChosen\(\);/, "a printer added in Windows is seen with the next printers read");
+```
+
+Replace it with:
+
+```ts
+  assert.match(shell, /printerName !== undefined && shell\.printHtmlOn !== undefined \? shell\.printHtmlOn\(html, printerName\) : shell\.printHtml\(html\)/);
+});
+
+test("PIN (2E): the agent leases, offers for direct print and is kicked only for the printers no refusal holds", () => {
+  const hook = src("hooks/use-print-agent.ts");
+  assert.match(hook, /lease: \(printerIds\) => apiSend<PrintLeaseData>\(LEASE_URL, "POST", \{ deviceId, tabId, \.\.\.printerIdsBody\(printerIds\) \}\),/, "the lease names what the agent says is open");
+  assert.match(hook, /readyPrinters: \(\) => readyRef\.current,/);
+  assert.match(hook, /lineOf: \(job\) => \(job\.printerId !== undefined && targetsRef\.current\[job\.printerId\] !== undefined \? job\.printerId : PRINT_DEVICE_LINE\),/, "a named Windows printer is a line of its own");
+  assert.match(hook, /const offReady = setReadyPrintersSource\(\(\) => agent\.openPrinters\(\)\);/, "direct print names only open printers");
+  assert.equal((hook.match(/jobsForMeLeasable\([^)]*, agent\.openPrinters\(\)\)/g) ?? []).length, 2, "the pulse and the wake kick only for open printers");
+  assert.match(hook, /printerState: \(\) => \(isDesktopShell\(\) \? desktopPrinterSnapshot\(\) : devicePrinter\(\)\.getSnapshot\(\)\),/, "a Windows printer list read again releases a hold");
+});
+
+test("PIN (2E): every job of a slip leased to this tab is handed to the agent, from an order answer and from an enqueue", () => {
+  const seam = src("hooks/use-host-routing.ts");
+  assert.match(seam, /for \(const job of ref\.alsoLeased \?\? \[\]\) deliverLeasedJob\(job\);/, "an order answer: the slip's other leased jobs");
+  assert.match(seam, /if \(result\.outcome === "queued"\) for \(const job of leasedJobsOf\(result\.jobs \?\? \[\]\)\.filter\(\(leased\) => leased\.id !== result\.leased\?\.id\)\) deliverLeasedJob\(job\);/, "an enqueue: every job of the slip");
+});
+
+test("PIN (2E): the agent's printers follow the Windows app's printer list, read again with every printers read", () => {
+  const hook = src("hooks/use-agent-printers.ts");
+  assert.match(hook, /if \(enabled && isDesktopShell\(\)\) void refreshDesktopPrinterChosen\(\);/, "a printer added in Windows is seen with the next printers read");
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-agent.test.ts lib/print-windows-printers.test.ts lib/print-agent-printers.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 22`; `# pass 17`; `# fail 5`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/hooks/use-host-routing.ts`, find:
+
+```ts
+import { readDevicePrefs, writeDevicePrefs } from "@/lib/pos-device-prefs";
+import { readDeviceId } from "@/lib/pos-device-id";
+import { deliverLeasedJob, kickPrintAgent } from "@/lib/print-agent";
+import { printAgentEnqueueHeaders, printJobRefOf } from "@/lib/print-agent-calls";
+import type { Order } from "@/types";
+
+export interface PrintRoutingHost {
+```
+
+Replace it with:
+
+```ts
+import { readDevicePrefs, writeDevicePrefs } from "@/lib/pos-device-prefs";
+import { readDeviceId } from "@/lib/pos-device-id";
+import { deliverLeasedJob, kickPrintAgent } from "@/lib/print-agent";
+import { leasedJobsOf, printAgentEnqueueHeaders, printJobRefOf, type FollowedPrintJobRef } from "@/lib/print-agent-calls";
+import type { Order } from "@/types";
+
+export interface PrintRoutingHost {
+```
+
+In `apps/cafe/hooks/use-host-routing.ts`, find:
+
+```ts
+      // or this host's: lease it now.
+      if (result.outcome === "queued" && result.leased !== undefined) deliverLeasedJob(result.leased);
+      else if (agentDeviceId !== "" && result.outcome === "queued") kickPrintAgent();
+      // PH-5 (OPS-7): a job the HOST itself queued should drain on the next
+      // microtask, not the next 20s tick — refetch the pulse so the drain's
+      // feed sees it now. A handler-time pref read (never during render); a
+```
+
+Replace it with:
+
+```ts
+      // or this host's: lease it now.
+      if (result.outcome === "queued" && result.leased !== undefined) deliverLeasedJob(result.leased);
+      else if (agentDeviceId !== "" && result.outcome === "queued") kickPrintAgent();
+      // Session 2E (spec §9.2): a slip that became several jobs leased to this tab (one per printer line of this
+      // device) prints each here; the agent ignores one it already holds.
+      if (result.outcome === "queued") for (const job of leasedJobsOf(result.jobs ?? []).filter((leased) => leased.id !== result.leased?.id)) deliverLeasedJob(job);
+      // PH-5 (OPS-7): a job the HOST itself queued should drain on the next
+      // microtask, not the next 20s tick — refetch the pulse so the drain's
+      // feed sees it now. A handler-time pref read (never during render); a
+```
+
+In `apps/cafe/hooks/use-host-routing.ts`, find:
+
+```ts
+  // Session 2B (spec §7.11): a job the answer made leased to this tab is handed to the agent, which prints
+  // it now: no lease request either.
+  const followPrintJob = useCallback(
+    (ref: PrintJobRef, buildJob: () => PrintJobRequest) => {
+      try {
+        recordReadback(printReadbackRecordOf(ref.id, buildJob().payload));
+      } catch {
+```
+
+Replace it with:
+
+```ts
+  // Session 2B (spec §7.11): a job the answer made leased to this tab is handed to the agent, which prints
+  // it now: no lease request either.
+  const followPrintJob = useCallback(
+    (ref: FollowedPrintJobRef, buildJob: () => PrintJobRequest) => {
+      try {
+        recordReadback(printReadbackRecordOf(ref.id, buildJob().payload));
+      } catch {
+```
+
+In `apps/cafe/hooks/use-host-routing.ts`, find:
+
+```ts
+      }
+      if (ref.leased !== undefined) deliverLeasedJob(ref.leased);
+      else if (ref.status === "queued") kickPrintAgent();
+    },
+    [recordReadback],
+  );
+```
+
+Replace it with:
+
+```ts
+      }
+      if (ref.leased !== undefined) deliverLeasedJob(ref.leased);
+      else if (ref.status === "queued") kickPrintAgent();
+      // Session 2E (spec §9.2): the slip's other jobs leased to this tab (another printer of this device) print here too.
+      for (const job of ref.alsoLeased ?? []) deliverLeasedJob(job);
+    },
+    [recordReadback],
+  );
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+import { PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print-host-slips";
+import { bumpPrintWakeBudget, mergePrintWakeBudget, readPrintWakeBudget, writePrintWakeBudget, type PrintWakeBudget } from "@/lib/print-wake-budget";
+import { PrintWriteError } from "@/lib/print-write-outcome";
+import { devicePrinter } from "@/lib/printer/device-printer";
+import { nativeBridge, nativeOn } from "@/lib/printer/native-bridge";
+import { canPrintNow, currentLane, defaultDeviceLabel, printCapabilities } from "@/lib/printer/print-lane";
+```
+
+Replace it with:
+
+```ts
+import { PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print-host-slips";
+import { bumpPrintWakeBudget, mergePrintWakeBudget, readPrintWakeBudget, writePrintWakeBudget, type PrintWakeBudget } from "@/lib/print-wake-budget";
+import { PrintWriteError } from "@/lib/print-write-outcome";
+import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
+import { desktopPrinterSnapshot } from "@/lib/printer/desktop-printer-state";
+import { devicePrinter } from "@/lib/printer/device-printer";
+import { nativeBridge, nativeOn } from "@/lib/printer/native-bridge";
+import { canPrintNow, currentLane, defaultDeviceLabel, printCapabilities } from "@/lib/printer/print-lane";
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+  useEffect(() => {
+    queueRef.current = queueSlip;
+  }, [queueSlip]);
+  // Session 2C: the printers this tab prints on, read at call time by the lease, the wake and the headers.
+  const readyRef = useRef<readonly string[]>(printers.localIds);
+  const readyKey = printers.localIds.join(",");
+  useEffect(() => {
+```
+
+Replace it with:
+
+```ts
+  useEffect(() => {
+    queueRef.current = queueSlip;
+  }, [queueSlip]);
+  // Session 2C: the printers this tab prints on, read at call time. Session 2E: the agent leases, offers for direct
+  // print and is kicked only for those of them no refusal holds (agent.openPrinters()).
+  const readyRef = useRef<readonly string[]>(printers.localIds);
+  const readyKey = printers.localIds.join(",");
+  useEffect(() => {
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+    const print = (job: LeasedPrintJob): Promise<PrintAgentResult> => printJobCopies(job, readyRef.current, () => printOnce(job));
+    const created = createPrintAgent({
+      deviceId,
+      lease: () => apiSend<PrintLeaseData>(LEASE_URL, "POST", { deviceId, tabId, ...printerIdsBody(readyRef.current) }),
+      ack: (id, body) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", body),
+      print,
+      printerReady: canPrintNow,
+      printerState: () => devicePrinter().getSnapshot(),
+      readPending: readPendingAcks,
+      writePending: writePendingAcks,
+      ...timers(),
+```
+
+Replace it with:
+
+```ts
+    const print = (job: LeasedPrintJob): Promise<PrintAgentResult> => printJobCopies(job, readyRef.current, () => printOnce(job));
+    const created = createPrintAgent({
+      deviceId,
+      lease: (printerIds) => apiSend<PrintLeaseData>(LEASE_URL, "POST", { deviceId, tabId, ...printerIdsBody(printerIds) }),
+      ack: (id, body) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", body),
+      print,
+      printerReady: canPrintNow,
+      // Session 2E: the Windows app's printer list read again (a printer added or removed) releases a refusal's hold.
+      printerState: () => (isDesktopShell() ? desktopPrinterSnapshot() : devicePrinter().getSnapshot()),
+      readyPrinters: () => readyRef.current,
+      lineOf: (job) => (job.printerId !== undefined && targetsRef.current[job.printerId] !== undefined ? job.printerId : PRINT_DEVICE_LINE),
+      readPending: readPendingAcks,
+      writePending: writePendingAcks,
+      ...timers(),
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+  useEffect(() => {
+    if (agent === null) return;
+    const offSource = setDirectPrintSource(() => (agent.directReady() ? tabId : null));
+    const offReady = setReadyPrintersSource(() => readyRef.current);
+    const offLeased = onLeasedJob((job) => agent.take(job));
+    return () => {
+      offSource();
+```
+
+Replace it with:
+
+```ts
+  useEffect(() => {
+    if (agent === null) return;
+    const offSource = setDirectPrintSource(() => (agent.directReady() ? tabId : null));
+    const offReady = setReadyPrintersSource(() => agent.openPrinters());
+    const offLeased = onLeasedJob((job) => agent.take(job));
+    return () => {
+      offSource();
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+      const data = event.query.state.data as PosPulseData | undefined;
+      if ((data?.printJobsForMe?.count ?? 0) > 0) {
+        noteJobsForMe(data?.printJobsForMe);
+        if (jobsForMeLeasable(data?.printJobsForMe, readyRef.current)) agent.kick();
+      }
+    });
+    return () => {
+```
+
+Replace it with:
+
+```ts
+      const data = event.query.state.data as PosPulseData | undefined;
+      if ((data?.printJobsForMe?.count ?? 0) > 0) {
+        noteJobsForMe(data?.printJobsForMe);
+        if (jobsForMeLeasable(data?.printJobsForMe, agent.openPrinters())) agent.kick();
+      }
+    });
+    return () => {
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+        writePrintWakeBudget(record);
+        return allowed;
+      },
+      leasable: (jobs) => jobsForMeLeasable(jobs, readyRef.current),
+      onJobs: () => agent.kick(),
+      ...timers(),
+    });
+```
+
+Replace it with:
+
+```ts
+        writePrintWakeBudget(record);
+        return allowed;
+      },
+      leasable: (jobs) => jobsForMeLeasable(jobs, agent.openPrinters()),
+      onJobs: () => agent.kick(),
+      ...timers(),
+    });
+```
+
+In `apps/cafe/lib/print-agent-calls.ts`, find:
+
+```ts
+  PRINT_IDEMPOTENCY_KEY_PATTERN,
+  PRINT_LEASE_HEADER,
+  PRINT_READY_HEADER,
+  type PrintJobRef,
+} from "@pos/shared/print-agent-wire";
+import type { PrintJobKind } from "@pos/shared/print-job";
+```
+
+Replace it with:
+
+```ts
+  PRINT_IDEMPOTENCY_KEY_PATTERN,
+  PRINT_LEASE_HEADER,
+  PRINT_READY_HEADER,
+  type LeasedPrintJob,
+  type PrintJobRef,
+} from "@pos/shared/print-agent-wire";
+import type { PrintJobKind } from "@pos/shared/print-job";
+```
+
+In `apps/cafe/lib/print-agent-calls.ts`, find:
+
+```ts
+  return typeof ref === "object" && ref !== null && typeof ref.id === "string" && typeof ref.kind === "string" && typeof ref.status === "string";
+}
+
+/** The job an order answer made for one kind of slip, or null: then the call site enqueues it. Session 2C: a slip
+ *  routed to several printers has a ref per printer; the one leased to this tab (at most one) must reach its agent,
+ *  and each other one is printed by its own printer's writer. */
+export function printJobRefOf(order: unknown, kind: PrintJobKind): PrintJobRef | null {
+  const refs = (order as { printJobs?: unknown } | null | undefined)?.printJobs;
+  if (!Array.isArray(refs)) return null;
+  const ofKind = refs.filter((ref): ref is PrintJobRef => isPrintJobRef(ref) && ref.kind === kind);
+  return ofKind.find((ref) => ref.leased !== undefined) ?? ofKind[0] ?? null;
+}
+
+```
+
+Replace it with:
+
+```ts
+  return typeof ref === "object" && ref !== null && typeof ref.id === "string" && typeof ref.kind === "string" && typeof ref.status === "string";
+}
+
+/** Session 2E (spec §9.2): the ref a call site follows, and every other job of that slip leased to this tab. */
+export type FollowedPrintJobRef = PrintJobRef & { alsoLeased?: LeasedPrintJob[] };
+
+/** Session 2E (spec §9.2, decision 15): the jobs of one slip an answer leased to this tab, each once. A slip routed to
+ *  several printers this device prints is leased once per printer line (the first slip of each line). */
+export function leasedJobsOf(refs: readonly { leased?: LeasedPrintJob }[]): LeasedPrintJob[] {
+  const out: LeasedPrintJob[] = [];
+  for (const ref of refs) {
+    const job = ref.leased;
+    if (job !== undefined && !out.some((seen) => seen.id === job.id && seen.epoch === job.epoch)) out.push(job);
+  }
+  return out;
+}
+
+/** The job an order answer made for one kind of slip, or null: then the call site enqueues it. Session 2C: a slip
+ *  routed to several printers has a ref per printer; the one leased to this tab must reach its agent, and each other
+ *  one is printed by its own printer's writer. Session 2E: with several printers on this device, the slip's other jobs
+ *  leased to this tab ride beside it (alsoLeased), and each reaches the agent too. */
+export function printJobRefOf(order: unknown, kind: PrintJobKind): FollowedPrintJobRef | null {
+  const refs = (order as { printJobs?: unknown } | null | undefined)?.printJobs;
+  if (!Array.isArray(refs)) return null;
+  const ofKind = refs.filter((ref): ref is PrintJobRef => isPrintJobRef(ref) && ref.kind === kind);
+  const chosen = ofKind.find((ref) => ref.leased !== undefined) ?? ofKind[0] ?? null;
+  if (chosen === null) return null;
+  const alsoLeased = leasedJobsOf(ofKind.filter((ref) => ref !== chosen));
+  return alsoLeased.length === 0 ? chosen : { ...chosen, alsoLeased };
+}
+
+```
+
+Create `apps/cafe/lib/print-agent-holds.ts`:
+
+```ts
+import { PRINT_AGENT_REFUSED_RECHECK_MS } from "@pos/shared/print-agent-wire";
+
+// Printing redesign (spec §9.1, the owner's rule after Session 1B): after a refusal (sent:"no": the printer is off,
+// unplugged or not answering) the agent makes no automatic attempt on that printer until its state changes, or
+// PRINT_AGENT_REFUSED_RECHECK_MS passes. Phase 2 Session 2E (spec §9.2): one hold per line, so a Windows printer that
+// refuses never stops this PC's other printers. A device on any other lane prints on one printer, its own: that is
+// PRINT_DEVICE_LINE, and its hold stops every line, as before. Pure: print-agent.ts keeps one per agent.
+
+/** The line of this device's own printer: its simple-mode line, and every printer job it prints on that printer. */
+export const PRINT_DEVICE_LINE = "";
+
+export interface RefusalHolds {
+  /** A refusal on this line now, under the printer state it was made in. */
+  hold(line: string): void;
+  /** True while the line is held: the state unchanged and the re-check window not over. */
+  holding(line: string): boolean;
+  /** Of the printers ready here, those that may be leased now: none while the device line is held. */
+  open(ready: readonly string[]): string[];
+  /** Whether a lease could find work: the device line is free and, for a device that prints printers, one is open. */
+  mayLease(ready: readonly string[]): boolean;
+  /** When the soonest hold ends (ms), or null when nothing is held. */
+  nextEnd(): number | null;
+}
+
+export function createRefusalHolds(deps: { printerState(): unknown; now(): number }): RefusalHolds {
+  const holds = new Map<string, { state: unknown; at: number }>();
+
+  function holding(line: string): boolean {
+    const hold = holds.get(line);
+    if (hold === undefined) return false;
+    if (deps.printerState() !== hold.state || deps.now() - hold.at >= PRINT_AGENT_REFUSED_RECHECK_MS) {
+      holds.delete(line);
+      return false;
+    }
+    return true;
+  }
+
+  return {
+    hold(line) {
+      holds.set(line, { state: deps.printerState(), at: deps.now() });
+    },
+    holding,
+    open(ready) {
+      return holding(PRINT_DEVICE_LINE) ? [] : ready.filter((id) => !holding(id));
+    },
+    mayLease(ready) {
+      return !holding(PRINT_DEVICE_LINE) && (ready.length === 0 || ready.some((id) => !holding(id)));
+    },
+    nextEnd() {
+      let soonest: number | null = null;
+      for (const [line, hold] of [...holds]) {
+        if (holding(line) && (soonest === null || hold.at < soonest)) soonest = hold.at;
+      }
+      return soonest === null ? null : soonest + PRINT_AGENT_REFUSED_RECHECK_MS;
+    },
+  };
+}
+```
+
+In `apps/cafe/lib/print-agent-types.ts`, find:
+
+```ts
+
+export interface PrintAgentDeps {
+  deviceId: string;
+  lease(): Promise<PrintLeaseData>;
+  ack(id: string, body: PrintAgentAckBody): Promise<PrintAckData>;
+  /** Prints one leased job through the host bridge. Never rejects. */
+  print(job: LeasedPrintJob): Promise<PrintAgentResult>;
+```
+
+Replace it with:
+
+```ts
+
+export interface PrintAgentDeps {
+  deviceId: string;
+  /** Leases this device's own line and the printers named (Session 2E: those no refusal holds). */
+  lease(printerIds: readonly string[]): Promise<PrintLeaseData>;
+  ack(id: string, body: PrintAgentAckBody): Promise<PrintAckData>;
+  /** Prints one leased job through the host bridge. Never rejects. */
+  print(job: LeasedPrintJob): Promise<PrintAgentResult>;
+```
+
+In `apps/cafe/lib/print-agent-types.ts`, find:
+
+```ts
+  printerReady(): boolean;
+  /** Any value whose identity changes when this device's printer changes (its snapshot). */
+  printerState(): unknown;
+  readPending(): PendingPrintAck[];
+  writePending(entries: PendingPrintAck[]): void;
+  now(): number;
+```
+
+Replace it with:
+
+```ts
+  printerReady(): boolean;
+  /** Any value whose identity changes when this device's printer changes (its snapshot). */
+  printerState(): unknown;
+  /** Session 2E: the printers this device prints here (printers mode); absent: its own line only. */
+  readyPrinters?(): readonly string[];
+  /** Session 2E: the line a job's refusal holds: its named Windows printer, else this device's own printer (""). */
+  lineOf?(job: LeasedPrintJob): string;
+  readPending(): PendingPrintAck[];
+  writePending(entries: PendingPrintAck[]): void;
+  now(): number;
+```
+
+In `apps/cafe/lib/print-agent-types.ts`, find:
+
+```ts
+  /** Session 2B: this tab drains, its printer can print now and no refusal holds it, so its requests may
+   *  ask for their slips leased to it (directPrintTab). */
+  directReady(): boolean;
+}
+
+```
+
+Replace it with:
+
+```ts
+  /** Session 2B: this tab drains, its printer can print now and no refusal holds it, so its requests may
+   *  ask for their slips leased to it (directPrintTab). */
+  directReady(): boolean;
+  /** Session 2E: the printers this tab can print now: ready here and not held by a refusal of their own. */
+  openPrinters(): string[];
+}
+
+```
+
+In `apps/cafe/lib/print-agent.ts`, find:
+
+```ts
+  type PrintAckData,
+} from "@pos/shared/print-agent-wire";
+import { ackAnswered } from "@/lib/print-ack-store";
+import { failedAckBody } from "@/lib/print-agent-slip";
+import type { PendingPrintAck, PrintAgent, PrintAgentDeps } from "@/lib/print-agent-types";
+import { PRINT_SLIP_REFUSALS_MAX, isSlipRefusal, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+```
+
+Replace it with:
+
+```ts
+  type PrintAckData,
+} from "@pos/shared/print-agent-wire";
+import { ackAnswered } from "@/lib/print-ack-store";
+import { PRINT_DEVICE_LINE, createRefusalHolds } from "@/lib/print-agent-holds";
+import { failedAckBody } from "@/lib/print-agent-slip";
+import type { PendingPrintAck, PrintAgent, PrintAgentDeps } from "@/lib/print-agent-types";
+import { PRINT_SLIP_REFUSALS_MAX, isSlipRefusal, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+```
+
+In `apps/cafe/lib/print-agent.ts`, find:
+
+```ts
+// printed before any lease, first in first out; a job it already holds, is printing (however it came) or
+// acked is ignored, so an answer delivered twice prints once. After a job leaves the line, the ack's `more`
+// decides whether to lease again.
+
+/** The pending-ack store keeps at most this many entries (an agent prints one job at a time). */
+export const PRINT_ACK_PENDING_LIMIT = 50;
+```
+
+Replace it with:
+
+```ts
+// printed before any lease, first in first out; a job it already holds, is printing (however it came) or
+// acked is ignored, so an answer delivered twice prints once. After a job leaves the line, the ack's `more`
+// decides whether to lease again.
+//
+// Phase 2 Session 2E (spec §9.2): a Windows PC prints several printers, one slip at a time through its one bridge.
+// A refusal holds only its own printer's line (lib/print-agent-holds.ts); the lease, direct print and the kicks name
+// only the printers no refusal holds.
+
+/** The pending-ack store keeps at most this many entries (an agent prints one job at a time). */
+export const PRINT_ACK_PENDING_LIMIT = 50;
+```
+
+In `apps/cafe/lib/print-agent.ts`, find:
+
+```ts
+  let running = false;
+  let kickedWhileRunning = false;
+  let stopped = false;
+  let refused: { state: unknown; at: number } | null = null;
+  let timer: unknown = null;
+  let timerAt = Number.POSITIVE_INFINITY;
+  let ackTimer: unknown = null;
+```
+
+Replace it with:
+
+```ts
+  let running = false;
+  let kickedWhileRunning = false;
+  let stopped = false;
+  const holds = createRefusalHolds(deps);
+  const ready = (): readonly string[] => deps.readyPrinters?.() ?? [];
+  const lineOf = (job: LeasedPrintJob): string => deps.lineOf?.(job) ?? PRINT_DEVICE_LINE;
+  let timer: unknown = null;
+  let timerAt = Number.POSITIVE_INFINITY;
+  let ackTimer: unknown = null;
+```
+
+In `apps/cafe/lib/print-agent.ts`, find:
+
+```ts
+    handedBack = true;
+  }
+
+  function refusalHolds(): boolean {
+    if (refused === null) return false;
+    if (deps.printerState() !== refused.state || deps.now() - refused.at >= PRINT_AGENT_REFUSED_RECHECK_MS) {
+      refused = null;
+      return false;
+    }
+    return true;
+  }
+
+  function wakeAt(atMs: number): void {
+```
+
+Replace it with:
+
+```ts
+    handedBack = true;
+  }
+
+  /** No line this device could lease is free of a refusal's hold (Session 2E: per line). */
+  function refusalHolds(): boolean {
+    return !holds.mayLease(ready());
+  }
+
+  function wakeAt(atMs: number): void {
+```
+
+In `apps/cafe/lib/print-agent.ts`, find:
+
+```ts
+      if (job === undefined) {
+        // Only a held job prints past the lease gate; with none left (I-1), the gate decides as always.
+        if (forHeld && !printAgentMayLease({ enabled, busy, running: false, printerReady: deps.printerReady(), refusalHolds: refusalHolds() })) return;
+        const data = await deps.lease();
+        // Session 2C: one job per line (its own and each printer line it writes); on its one local printer they
+        // print one by one, the rest held like a taken job. A line that gave none sets the timer even so.
+        for (const extra of data.jobs.slice(1)) {
+```
+
+Replace it with:
+
+```ts
+      if (job === undefined) {
+        // Only a held job prints past the lease gate; with none left (I-1), the gate decides as always.
+        if (forHeld && !printAgentMayLease({ enabled, busy, running: false, printerReady: deps.printerReady(), refusalHolds: refusalHolds() })) return;
+        const data = await deps.lease(holds.open(ready()));
+        // Session 2C: one job per line (its own and each printer line it writes); on its one local printer they
+        // print one by one, the rest held like a taken job. A line that gave none sets the timer even so.
+        for (const extra of data.jobs.slice(1)) {
+```
+
+In `apps/cafe/lib/print-agent.ts`, find:
+
+```ts
+        slipRefusals.set(job.id, count);
+        if (count >= PRINT_SLIP_REFUSALS_MAX) outcome = { ...outcome, permanent: true };
+      } else if (outcome.sent === "no" && !outcome.permanent) {
+        // Nothing reached the printer: it is off or unreachable. No automatic attempt until it changes.
+        refused = { state: deps.printerState(), at: deps.now() };
+      }
+      const body = failedAckBody(deps.deviceId, job.epoch, outcome);
+      const answer = await deps.ack(job.id, body).catch((error: unknown) => {
+```
+
+Replace it with:
+
+```ts
+        slipRefusals.set(job.id, count);
+        if (count >= PRINT_SLIP_REFUSALS_MAX) outcome = { ...outcome, permanent: true };
+      } else if (outcome.sent === "no" && !outcome.permanent) {
+        // Nothing reached the printer: it is off or unreachable. No automatic attempt on it until it changes.
+        holds.hold(lineOf(job));
+      }
+      const body = failedAckBody(deps.deviceId, job.epoch, outcome);
+      const answer = await deps.ack(job.id, body).catch((error: unknown) => {
+```
+
+In `apps/cafe/lib/print-agent.ts`, find:
+
+```ts
+      // kick that landed meanwhile (the bridge freeing up from this very slip) would only find it not due.
+      if (answer.nextAttemptAt !== null) {
+        kickedWhileRunning = false;
+        wakeAt(Date.parse(answer.nextAttemptAt));
+      } else again = refused === null && answer.more !== false;
+    } catch {
+      // No answer from the lease (offline, a deploy): look again later, never in a tight loop.
+      wakeAt(deps.now() + PRINT_AGENT_REFUSED_RECHECK_MS);
+```
+
+Replace it with:
+
+```ts
+      // kick that landed meanwhile (the bridge freeing up from this very slip) would only find it not due.
+      if (answer.nextAttemptAt !== null) {
+        kickedWhileRunning = false;
+        // Session 2E: a line its refusal holds is looked at again when the hold ends; a lease at its backoff would
+        // only find the other printers' lines.
+        wakeAt(holds.holding(lineOf(job)) ? (holds.nextEnd() ?? Date.parse(answer.nextAttemptAt)) : Date.parse(answer.nextAttemptAt));
+      } else again = !holds.holding(lineOf(job)) && answer.more !== false;
+    } catch {
+      // No answer from the lease (offline, a deploy): look again later, never in a tight loop.
+      wakeAt(deps.now() + PRINT_AGENT_REFUSED_RECHECK_MS);
+```
+
+In `apps/cafe/lib/print-agent.ts`, find:
+
+```ts
+    // made while the printer was ready, so a printer that went off since refuses it (sent:"no", never
+    // counted) instead of leaving it to expire into a REPRINT.
+    if (held.length > 0 && enabled && !busy) return void cycle(true);
+    const holds = refusalHolds();
+    if (!printAgentMayLease({ enabled, busy, running, printerReady: deps.printerReady(), refusalHolds: holds })) {
+      if (holds && refused !== null) wakeAt(refused.at + PRINT_AGENT_REFUSED_RECHECK_MS);
+      return;
+    }
+    void cycle();
+  }
+
+```
+
+Replace it with:
+
+```ts
+    // made while the printer was ready, so a printer that went off since refuses it (sent:"no", never
+    // counted) instead of leaving it to expire into a REPRINT.
+    if (held.length > 0 && enabled && !busy) return void cycle(true);
+    const blocked = refusalHolds();
+    if (!printAgentMayLease({ enabled, busy, running, printerReady: deps.printerReady(), refusalHolds: blocked })) {
+      const end = holds.nextEnd();
+      if (blocked && end !== null) wakeAt(end);
+      return;
+    }
+    // Session 2E: a printer held while others print is looked at again when its hold ends.
+    const holdEnd = holds.nextEnd();
+    if (holdEnd !== null) wakeAt(holdEnd);
+    void cycle();
+  }
+
+```
+
+In `apps/cafe/lib/print-agent.ts`, find:
+
+```ts
+    directReady() {
+      return enabled && !stopped && deps.printerReady() && !refusalHolds();
+    },
+  };
+}
+
+```
+
+Replace it with:
+
+```ts
+    directReady() {
+      return enabled && !stopped && deps.printerReady() && !refusalHolds();
+    },
+    openPrinters() {
+      return deps.printerReady() ? holds.open(ready()) : [];
+    },
+  };
+}
+
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-agent.test.ts lib/print-windows-printers.test.ts lib/print-agent-printers.test.ts lib/print-agent-paths.test.ts lib/print-order-jobs.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 95`; `# pass 95`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint lib/print-agent.ts lib/print-agent-holds.ts lib/print-agent-types.ts lib/print-agent-calls.ts hooks/use-print-agent.ts hooks/use-host-routing.ts lib/print-agent.test.ts lib/print-windows-printers.test.ts lib/print-agent-printers.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/hooks/use-host-routing.ts apps/cafe/hooks/use-print-agent.ts apps/cafe/lib/print-agent-calls.ts apps/cafe/lib/print-agent-holds.ts apps/cafe/lib/print-agent-printers.test.ts apps/cafe/lib/print-agent-types.ts apps/cafe/lib/print-agent.test.ts apps/cafe/lib/print-agent.ts apps/cafe/lib/print-windows-printers.test.ts
+git commit -m "feat(print): Phase 2 the agent holds a refusal on its own printer's line, so a Windows printer that refuses never stops the PC's other printers; the lease, direct print and the kicks name only the printers no refusal holds"
+```
+
+---
+
+### Task E5: several printers on one Windows PC in the setup: each of its Windows printers by name on the cafe's paper, the same one twice refused, every other device still one printer; and a browser tab says to stay open
+
+**Files:**
+- Modify: `packages/shared/src/print-printers.ts` (`printerWriterClash` allows a PC's different Windows printers; `printerClashMessage`), `apps/cafe/lib/print-printers.ts` (both saves use it)
+- Modify: `apps/cafe/lib/print-setup-form.ts` (`printerPaperOf`, `windowsPrinterConnectionOf`; the form's clash words), `apps/cafe/lib/print-setup-text.ts` (a Windows row names its Windows printer), `apps/cafe/lib/desktop-shell-printer.ts` (`desktopPrinterSavesToFile`, moved from the picker), `apps/cafe/components/print/DesktopPrinterPicker.tsx`, `apps/cafe/hooks/use-print-setup.ts` (`useDesktopPrinterChoices` replaces `useDesktopPrinterName`)
+- Create: `apps/cafe/components/print/setup/WindowsPrinterSelect.tsx`. Modify: `apps/cafe/components/print/setup/PrinterFormDialog.tsx`, `SetUpPrintersCard.tsx`, `apps/cafe/components/print/DevicePrinterSection.tsx` (the tab note), `apps/cafe/hooks/use-print-agent.ts` (a failed Windows print reads the Windows list again)
+- Modify: `apps/mobile/TEST-CHECKLIST.md` ("Several printers on one Windows PC"; a document only: the APKs stay byte-identical)
+- Tests: `packages/shared/src/print-printers.test.ts`, `apps/cafe/lib/print-setup-form.test.ts`, `print-setup-ui-paths.test.ts`, `print-setup-paths.test.ts`, `print-agent-printers.test.ts`, `print-windows-printers.test.ts` (new tests and two changed pins, named below)
+
+**Interfaces produced:** `printerClashMessage(clash, draft): string`; `printerPaperOf(width): PrinterPaperWidth`; `windowsPrinterConnectionOf(deviceId, name, paper): LocalPrinterConnection`; `desktopPrinterSavesToFile(name)`; `useDesktopPrinterChoices(): DesktopPrinterSnapshot | null`; `<WindowsPrinterSelect names value onChange />`.
+
+**The setup** (E-R6): a PC may write several routable Windows printers, each a different one (Windows names compared ignoring case: "‹printer› already prints on that Windows printer. Choose another Windows printer."); every other device keeps the 2D rule of one routable printer until 2F (an Android app on bridge v1 prints one; a Chrome tab drives one, §9.7). The printer form on an app with `printHtmlOn` chooses this PC's printer under "Windows printer" from the printers Windows reports (a file printer listed but not choosable; "Reading the printers on this PC…" while the list loads); it never offers that over another device's printer; an older app keeps "Use this device's printer" (its chosen printer) and says it prints one printer. A new printer, and Set up printers' Printer 1, take the cafe's KOT paper (a Windows printer is drawn for its own paper since E3, so Printer 1 changes nothing on paper); choosing the name again keeps the paper the form holds. A Windows row names its Windows printer.
+
+**A failed Windows print reads the Windows list again**, so a printer renamed or removed in Windows stops being this PC's (its slips wait, the dot says so) instead of being retried every 30 s. **A browser tab that drives a Web Serial or Web Bluetooth printer** shows "Keep this tab open, or use the POS app: a hidden or closed tab prints late or not at all." (spec §9.7).
+
+**Changed existing pins:** `print-setup-paths.test.ts` "PIN (2D, the 2C review gate's F-3) …" (`printerClashMessage(clash, stored)`); `print-agent-printers.test.ts` "PIN (2C): the agent prints a leased job through printJobCopies …" (the same call inside a body that looks a failed Windows printer up again).
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+
+test("PIN (2C): the agent prints a leased job through printJobCopies on this device's printers; the station line reaches the paper", () => {
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.match(agent, /const print = \(job: LeasedPrintJob\): Promise<PrintAgentResult> => printJobCopies\(job, readyRef\.current, \(\) => printOnce\(job\)\);/);
+  const kot = src("apps/cafe/components/pos/KOTReceipt.tsx");
+  const title = kot.indexOf("KITCHEN ORDER");
+  const line = kot.indexOf("{stationLine && (");
+```
+
+Replace it with:
+
+```ts
+
+test("PIN (2C): the agent prints a leased job through printJobCopies on this device's printers; the station line reaches the paper", () => {
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  // Session 2E: the same call, inside a body that looks a failed Windows printer up again.
+  assert.match(agent, /const print = async \(job: LeasedPrintJob\): Promise<PrintAgentResult> => \{\s*const result = await printJobCopies\(job, readyRef\.current, \(\) => printOnce\(job\)\);/);
+  const kot = src("apps/cafe/components/pos/KOTReceipt.tsx");
+  const title = kot.indexOf("KITCHEN ORDER");
+  const line = kot.indexOf("{stationLine && (");
+```
+
+In `apps/cafe/lib/print-setup-form.test.ts`, find:
+
+```ts
+import { stripComments } from "@/lib/source-pin-utils";
+import { printerIsLocal } from "@/lib/print-agent-printers";
+import {
+  PRINTER_DEVICE_REQUIRED,
+  PRINTER_HOST_REQUIRED,
+  PRINTER_LOCAL_REQUIRED,
+```
+
+Replace it with:
+
+```ts
+import { stripComments } from "@/lib/source-pin-utils";
+import { printerIsLocal } from "@/lib/print-agent-printers";
+import {
+  printerPaperOf,
+  windowsPrinterConnectionOf,
+  PRINTER_DEVICE_REQUIRED,
+  PRINTER_HOST_REQUIRED,
+  PRINTER_LOCAL_REQUIRED,
+```
+
+In `apps/cafe/lib/print-setup-form.test.ts`, find:
+
+```ts
+  assert.deepEqual(printersLeftEmptyBy([bar, both, counter], "s-bar").map((p) => p.id), ["Bar"], "only the printer that took nothing else");
+});
+
+// The 2D review gate (M-4): Test print said "sent" for a printer this device writes but could not print right then; the
+// slip only waited in the panel until it went stale. It is offered only when its slip can print, or will once the
+// printer's own device is back, and the toast says which.
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual(printersLeftEmptyBy([bar, both, counter], "s-bar").map((p) => p.id), ["Bar"], "only the printer that took nothing else");
+});
+
+// Phase 2 Session 2E (spec §9.2, §11): a printer of this PC is one of its Windows printers, by name, on the cafe's own
+// paper; a second Windows printer of the same PC is saved, the same one twice is refused in words.
+test("2E: a Windows printer of this PC by its name, on the cafe's paper; a second one saves, the same one twice is refused", () => {
+  assert.equal(printerPaperOf("58mm"), 58);
+  assert.equal(printerPaperOf("80mm"), 80);
+  const kitchen = windowsPrinterConnectionOf("dev-pc", "Kitchen TVS", 58);
+  assert.deepEqual(kitchen, { connection: { kind: "device", deviceId: "dev-pc", transport: "windows", address: "Kitchen TVS" }, paper: 58 });
+  const counter = printer("Counter", { connection: { kind: "device", deviceId: "dev-pc", transport: "windows", address: "EPSON TM-T82" } });
+  const draft = draftWithLocal({ ...printerDraftOf(null, [KITCHEN]), name: "Kitchen" }, kitchen);
+  const saved = printerBodyOf(draft, [counter]);
+  assert.ok(saved.ok && saved.body.connection.kind === "device" && saved.body.connection.address === "Kitchen TVS" && saved.body.paper === 58, "a second Windows printer of this PC");
+  const twice = printerBodyOf(draftWithLocal(draft, windowsPrinterConnectionOf("dev-pc", "EPSON TM-T82", 80)), [counter]);
+  assert.ok(!twice.ok && twice.error === "Counter already prints on that Windows printer. Choose another Windows printer.", "the same printer twice");
+  // Two Windows printers of one PC: each row says which Windows printer it is (a Bluetooth address says nothing to staff).
+  assert.equal(connectionText(counter, DEVICES, "dev-pc"), "Windows printer EPSON TM-T82 · This device");
+});
+
+// The 2D review gate (M-4): Test print said "sent" for a printer this device writes but could not print right then; the
+// slip only waited in the panel until it went stale. It is offered only when its slip can print, or will once the
+// printer's own device is back, and the toast says which.
+```
+
+In `apps/cafe/lib/print-setup-paths.test.ts`, find:
+
+```ts
+test("PIN (2D, the 2C review gate's F-3): a printer save refuses a second enabled printer for one printing device", () => {
+  const s = src("lib/print-printers.ts");
+  assert.equal((s.match(/const clash = printerWriterClash\(/g) ?? []).length, 2, "create and replace both check");
+  assert.equal((s.match(/if \(clash !== null\) return \{ ok: false, status: 409, error: printerWriterTakenMessage\(clash\.name\) \};/g) ?? []).length, 2, "both refuse with 409 and the other printer's name");
+});
+
+test("PIN (2C, the 2A gate's Important 1): the wake answers each agent's share from the setup", () => {
+```
+
+Replace it with:
+
+```ts
+test("PIN (2D, the 2C review gate's F-3): a printer save refuses a second enabled printer for one printing device", () => {
+  const s = src("lib/print-printers.ts");
+  assert.equal((s.match(/const clash = printerWriterClash\(/g) ?? []).length, 2, "create and replace both check");
+  // Session 2E: the words say which clash it is (the same Windows printer twice, or a device that prints one).
+  assert.equal((s.match(/if \(clash !== null\) return \{ ok: false, status: 409, error: printerClashMessage\(clash, stored\) \};/g) ?? []).length, 2, "both refuse with 409 and the other printer's name");
+});
+
+test("PIN (2C, the 2A gate's Important 1): the wake answers each agent's share from the setup", () => {
+```
+
+In `apps/cafe/lib/print-setup-ui-paths.test.ts`, find:
+
+```ts
+  assert.ok(form.includes("static IP") && form.includes("DHCP reservation"), "the fixed-address tip");
+});
+
+test("PIN (2D, the 2A gate's M5): a station's delete names the printers it leaves with nothing; the default is never deleted, said in words", () => {
+  const stations = src(`${SETUP}StationsSetupSection.tsx`);
+  assert.match(stations, /<InlineConfirm question=\{stationDeleteQuestion\(station, printers\)\}/);
+```
+
+Replace it with:
+
+```ts
+  assert.ok(form.includes("static IP") && form.includes("DHCP reservation"), "the fixed-address tip");
+});
+
+// Phase 2 Session 2E (spec §9.2, §11): on a Windows app that prints on a named printer, the form chooses one of this PC's
+// Windows printers by name; an older app says it prints one printer; a printer of another device keeps its connection.
+test("PIN (2E): the printer form chooses one of this PC's Windows printers by name, on the cafe's paper; Printer 1 too", () => {
+  const form = src(`${SETUP}PrinterFormDialog.tsx`);
+  assert.match(form, /const named = desktop !== null && desktopPrintsOnNamed\(\);/);
+  assert.match(form, /const windowsHere = named && \(draft\.device === null \|\| \(draft\.device\.transport === "windows" && draft\.device\.deviceId === deviceId\)\);/, "never over another device's printer");
+  // The gate's review of the 2E gold (I-2): choosing the name again keeps the paper the form holds; a new printer
+  // starts on the cafe's KOT paper.
+  assert.match(form, /onChange=\{\(name\) => setDraft\(\(current\) => draftWithLocal\(current, windowsPrinterConnectionOf\(deviceId, name, current\.paper\)\)\)\}/);
+  assert.match(form, /useState<PrinterDraft>\(\(\) => \(printer === null \? \{ \.\.\.printerDraftOf\(null, stations\), paper \} : printerDraftOf\(printer, stations\)\)\)/);
+  assert.match(src(`${SETUP}WindowsPrinterSelect.tsx`), /if \(names === null\) return <p className="text-brand-muted">\{READING\}<\/p>;/, "the list still being read is said so");
+  assert.match(form, /\{here !== null && !named && \(/, "Use this device's printer elsewhere, and on an older Windows app");
+  assert.match(form, /\{desktop !== null && !named && <p className="text-xs text-brand-muted">\{ONE_WINDOWS_PRINTER\}<\/p>\}/);
+  for (const file of [`${SETUP}PrinterFormDialog.tsx`, `${SETUP}SetUpPrintersCard.tsx`]) {
+    assert.match(src(file), /const paper = printerPaperOf\(printConfigOf\(useSettings\(\)\.data\)\.kot\.paperWidth\);/, `${file}: the cafe's KOT paper, so Printer 1 changes nothing on paper`);
+  }
+  const select = src(`${SETUP}WindowsPrinterSelect.tsx`);
+  assert.match(select, /disabled=\{desktopPrinterSavesToFile\(name\)\}/, "a device that saves a file cannot be chosen");
+  const picker = src("components/print/DesktopPrinterPicker.tsx");
+  assert.match(picker, /const savesToFile = desktopPrinterSavesToFile;/, "one list of file devices in the page");
+});
+
+test("PIN (2E, spec §9.7): a browser tab that drives a printer says to keep it open, or use the POS app", () => {
+  const section = src("components/print/DevicePrinterSection.tsx");
+  assert.match(section, /const KEEP_TAB_OPEN = "Keep this tab open, or use the POS app: a hidden or closed tab prints late or not at all\.";/);
+  assert.match(section, /\{printer\.kind !== "native" && <p className="text-xs text-brand-muted">\{KEEP_TAB_OPEN\}<\/p>\}/, "a Web Serial or Web Bluetooth printer only");
+});
+
+test("PIN (2D, the 2A gate's M5): a station's delete names the printers it leaves with nothing; the default is never deleted, said in words", () => {
+  const stations = src(`${SETUP}StationsSetupSection.tsx`);
+  assert.match(stations, /<InlineConfirm question=\{stationDeleteQuestion\(station, printers\)\}/);
+```
+
+In `apps/cafe/lib/print-windows-printers.test.ts`, find:
+
+```ts
+  assert.match(hook, /printerState: \(\) => \(isDesktopShell\(\) \? desktopPrinterSnapshot\(\) : devicePrinter\(\)\.getSnapshot\(\)\),/, "a Windows printer list read again releases a hold");
+});
+
+test("PIN (2E): every job of a slip leased to this tab is handed to the agent, from an order answer and from an enqueue", () => {
+  const seam = src("hooks/use-host-routing.ts");
+  assert.match(seam, /for \(const job of ref\.alsoLeased \?\? \[\]\) deliverLeasedJob\(job\);/, "an order answer: the slip's other leased jobs");
+```
+
+Replace it with:
+
+```ts
+  assert.match(hook, /printerState: \(\) => \(isDesktopShell\(\) \? desktopPrinterSnapshot\(\) : devicePrinter\(\)\.getSnapshot\(\)\),/, "a Windows printer list read again releases a hold");
+});
+
+test("PIN (2E): a Windows printer that failed is looked up again, so one renamed or removed in Windows stops being this PC's", () => {
+  const hook = src("hooks/use-print-agent.ts");
+  assert.match(hook, /if \(!result\.ok && job\.printerId !== undefined && targetsRef\.current\[job\.printerId\] !== undefined\) void refreshDesktopPrinterChosen\(\);/);
+});
+
+test("PIN (2E): every job of a slip leased to this tab is handed to the agent, from an order answer and from an enqueue", () => {
+  const seam = src("hooks/use-host-routing.ts");
+  assert.match(seam, /for \(const job of ref\.alsoLeased \?\? \[\]\) deliverLeasedJob\(job\);/, "an order answer: the slip's other leased jobs");
+```
+
+In `packages/shared/src/print-printers.test.ts`, find:
+
+```ts
+  defaultBillPrinterOf,
+  defaultStationOf,
+  printKotStationHeader,
+  printerWriterClash,
+  printerWriterTakenMessage,
+  printNoPrinterMessage,
+```
+
+Replace it with:
+
+```ts
+  defaultBillPrinterOf,
+  defaultStationOf,
+  printKotStationHeader,
+  printerClashMessage,
+  printerWriterClash,
+  printerWriterTakenMessage,
+  printNoPrinterMessage,
+```
+
+In `packages/shared/src/print-printers.test.ts`, find:
+
+```ts
+  assert.equal(printerWriterTakenMessage("Kitchen"), "That device already prints Kitchen. For now one device prints one printer: switch Kitchen off, or choose another device.");
+});
+
+// Phase 2 Session 2D (spec §11): a printer's test slip. The server writes its lines from the stored printer, so
+// it carries no order, no station and no key.
+test("2D: a test slip names its printer, at most ten short lines, who asked and when; nothing else", () => {
+```
+
+Replace it with:
+
+```ts
+  assert.equal(printerWriterTakenMessage("Kitchen"), "That device already prints Kitchen. For now one device prints one printer: switch Kitchen off, or choose another device.");
+});
+
+// Phase 2 Session 2E (spec §9.2): the Windows app prints each Windows printer it has by name, so one PC may write
+// several, each a different one; any other device still prints one printer until Session 2F.
+test("2E: a Windows PC may write several Windows printers, each a different one (any case is the same printer); any other device one", () => {
+  const slips = { ...NO_SLIPS, notices: true };
+  const windows = (address: string) => ({ kind: "device" as const, deviceId: "dev-pc", transport: "windows" as const, address });
+  const counter = printer("counter", { connection: windows("EPSON TM-T82"), slips });
+  assert.equal(printerWriterClash([counter], { connection: windows("Kitchen TVS"), enabled: true, slips }), null, "another Windows printer of the same PC");
+  const same = { connection: windows("epson tm-t82"), enabled: true, slips };
+  assert.equal(printerWriterClash([counter], same)?.id, "counter", "the same Windows printer twice, in another case");
+  const lan = { connection: { kind: "lan" as const, host: "10.0.0.9", port: 9100 }, primaryDeviceId: "dev-pc", enabled: true, slips };
+  assert.equal(printerWriterClash([counter], lan)?.id, "counter", "a network printer for that PC: one printer, as before");
+  const phone = printer("phone", { connection: { kind: "device", deviceId: "dev-phone", transport: "bt-classic", address: "AA:BB" }, slips });
+  const usb = { connection: { kind: "device" as const, deviceId: "dev-phone", transport: "usb" as const, address: "04b8:0e15" }, enabled: true, slips };
+  assert.equal(printerWriterClash([phone], usb)?.id, "phone", "an Android app device: one printer until Session 2F");
+  assert.equal(printerClashMessage(counter, same), "Printer counter already prints on that Windows printer. Choose another Windows printer.");
+  assert.equal(printerClashMessage(counter, lan), printerWriterTakenMessage("Printer counter"), "any other clash: the 2D words");
+});
+
+// Phase 2 Session 2D (spec §11): a printer's test slip. The server writes its lines from the stored printer, so
+// it carries no order, no station and no key.
+test("2D: a test slip names its printer, at most ten short lines, who asked and when; nothing else", () => {
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/packages/shared && node --import tsx --test src/print-printers.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 1`; `# pass 0`; `# fail 1`
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-setup-form.test.ts lib/print-setup-ui-paths.test.ts lib/print-setup-paths.test.ts lib/print-agent-printers.test.ts lib/print-windows-printers.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 60`; `# pass 54`; `# fail 6`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/components/print/DesktopPrinterPicker.tsx`, find:
+
+```tsx
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+
+import { desktopPrinterApi, type DesktopPrinter, type DesktopPrintMode } from "@/lib/desktop-shell-printer";
+import { publishDesktopPrinterSelection, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import { DesktopPrintMethod } from "@/components/print/DesktopPrintMethod";
+
+```
+
+Replace it with:
+
+```tsx
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+
+import { desktopPrinterApi, desktopPrinterSavesToFile, type DesktopPrinter, type DesktopPrintMode } from "@/lib/desktop-shell-printer";
+import { publishDesktopPrinterSelection, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import { DesktopPrintMethod } from "@/components/print/DesktopPrintMethod";
+
+```
+
+In `apps/cafe/components/print/DesktopPrinterPicker.tsx`, find:
+
+```tsx
+const SAVED_MESSAGE = "Printer saved — slips will print on it from now on.";
+const CLEARED_MESSAGE = "Printer cleared — slips will not print until you pick one.";
+const NOT_CHOSEN_VALUE = "";
+// Mirrors NON_PAPER_PRINTER_PATTERNS in apps/desktop/src/shared.ts, which is
+// the ENFORCING copy — the shell refuses these whatever this list says. Here
+// they are only greyed out with a reason, so the operator understands why.
+const NON_PAPER_PATTERNS = [
+  "print to pdf",
+  "xps document writer",
+  "onenote",
+  "fax",
+  "adobe pdf",
+  "pdfcreator",
+];
+
+function savesToFile(name: string): boolean {
+  const lower = name.toLowerCase();
+  return NON_PAPER_PATTERNS.some((p) => lower.includes(p));
+}
+
+export function DesktopPrinterPicker() {
+  // undefined = still deciding; null = this shell has no picker.
+```
+
+Replace it with:
+
+```tsx
+const SAVED_MESSAGE = "Printer saved — slips will print on it from now on.";
+const CLEARED_MESSAGE = "Printer cleared — slips will not print until you pick one.";
+const NOT_CHOSEN_VALUE = "";
+// The file-writing devices: one list in the page since Phase 2 Session 2E (lib/desktop-shell-printer.ts).
+const savesToFile = desktopPrinterSavesToFile;
+
+export function DesktopPrinterPicker() {
+  // undefined = still deciding; null = this shell has no picker.
+```
+
+In `apps/cafe/components/print/DevicePrinterSection.tsx`, find:
+
+```tsx
+const NO_CAPABILITY_MESSAGE =
+  "This browser or app cannot connect to a printer directly. For direct printing, use Chrome or Edge, or the new POS app.";
+const SECTION_DESCRIPTION = "The printer this device prints on.";
+
+// "Printer on this device": which way slips leave THIS device, by what it can
+// do. The desktop app has its own picker; the POS app lists printers it can
+```
+
+Replace it with:
+
+```tsx
+const NO_CAPABILITY_MESSAGE =
+  "This browser or app cannot connect to a printer directly. For direct printing, use Chrome or Edge, or the new POS app.";
+const SECTION_DESCRIPTION = "The printer this device prints on.";
+// Spec §9.7 (Phase 2 Session 2E): a browser tab drives one printer, and a hidden tab's timers are slowed.
+const KEEP_TAB_OPEN = "Keep this tab open, or use the POS app: a hidden or closed tab prints late or not at all.";
+
+// "Printer on this device": which way slips leave THIS device, by what it can
+// do. The desktop app has its own picker; the POS app lists printers it can
+```
+
+In `apps/cafe/components/print/DevicePrinterSection.tsx`, find:
+
+```tsx
+          {printer !== null && (
+            <div className="space-y-3">
+              <PrinterRow printer={printer} status={status} />
+              {snapshot.message !== null && !elsewhere && <p role="status" className="text-brand-muted">{snapshot.message}</p>}
+              {confirmRemove ? (
+                <InlineConfirm
+```
+
+Replace it with:
+
+```tsx
+          {printer !== null && (
+            <div className="space-y-3">
+              <PrinterRow printer={printer} status={status} />
+              {printer.kind !== "native" && <p className="text-xs text-brand-muted">{KEEP_TAB_OPEN}</p>}
+              {snapshot.message !== null && !elsewhere && <p role="status" className="text-brand-muted">{snapshot.message}</p>}
+              {confirmRemove ? (
+                <InlineConfirm
+```
+
+In `apps/cafe/components/print/setup/PrinterFormDialog.tsx`, find:
+
+```tsx
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { useDevicePrinter, usePrintCapabilities, usePrintLane } from "@/hooks/use-device-printer";
+import { useDesktopPrinterName, useSavePrinter } from "@/hooks/use-print-setup";
+import { draftWithLocal, localPrinterConnectionOf, printerBodyOf, printerDraftOf, type PrinterDraft } from "@/lib/print-setup-form";
+import { deviceConnectionText, deviceName } from "@/lib/print-setup-text";
+
+interface PrinterFormDialogProps {
+```
+
+Replace it with:
+
+```tsx
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { WindowsPrinterSelect } from "@/components/print/setup/WindowsPrinterSelect";
+import { useDevicePrinter, usePrintCapabilities } from "@/hooks/use-device-printer";
+import { useDesktopPrinterChoices, useSavePrinter } from "@/hooks/use-print-setup";
+import { useSettings } from "@/hooks/use-settings";
+import { desktopPrintsOnNamed } from "@/lib/desktop-shell-printer";
+import { printConfigOf } from "@/lib/print";
+import { draftWithLocal, localPrinterConnectionOf, printerBodyOf, printerDraftOf, printerPaperOf, windowsPrinterConnectionOf, type PrinterDraft } from "@/lib/print-setup-form";
+import { deviceConnectionText, deviceName } from "@/lib/print-setup-text";
+
+interface PrinterFormDialogProps {
+```
+
+In `apps/cafe/components/print/setup/PrinterFormDialog.tsx`, find:
+
+```tsx
+const FULL_COPY_NOTE = "A full copy already holds every station's items.";
+const NOTICES_NOTE = "Void, moved and cancel slips for the stations it prints.";
+const COPIES = ["1", "2", "3"];
+
+// Printing redesign, Phase 2 Session 2D (spec §11 Add printer): one printer saved whole. 1. the connection: a
+// network printer and the Android app device that prints it, or a printer only its own device reaches (taken from
+```
+
+Replace it with:
+
+```tsx
+const FULL_COPY_NOTE = "A full copy already holds every station's items.";
+const NOTICES_NOTE = "Void, moved and cancel slips for the stations it prints.";
+const COPIES = ["1", "2", "3"];
+const ONE_WINDOWS_PRINTER = "This Windows app prints one printer, the one chosen for this PC. Install the Windows app 1.11 or later to print several printers here.";
+
+// Printing redesign, Phase 2 Session 2D (spec §11 Add printer): one printer saved whole. 1. the connection: a
+// network printer and the Android app device that prints it, or a printer only its own device reaches (taken from
+```
+
+In `apps/cafe/components/print/setup/PrinterFormDialog.tsx`, find:
+
+```tsx
+  const save = useSavePrinter();
+  const local = useDevicePrinter().printer;
+  const caps = usePrintCapabilities();
+  const lane = usePrintLane();
+  const desktopName = useDesktopPrinterName();
+  const [draft, setDraft] = useState<PrinterDraft>(() => printerDraftOf(printer, stations));
+  const [error, setError] = useState<string | null>(null);
+  const set = (patch: Partial<PrinterDraft>) => setDraft((current) => ({ ...current, ...patch }));
+  const here = localPrinterConnectionOf({ local, deviceId, desktop: lane === "desktop" ? { printerName: desktopName } : null, defaultPaper: 80 });
+  const android = devices.filter((device) => device.shell === "android" && device.deviceId !== deviceId).map((device) => device.deviceId);
+  const choices = [...(caps.native && deviceId !== "" ? [deviceId] : []), ...android];
+  if (draft.primaryDeviceId !== "" && !choices.includes(draft.primaryDeviceId)) choices.push(draft.primaryDeviceId);
+```
+
+Replace it with:
+
+```tsx
+  const save = useSavePrinter();
+  const local = useDevicePrinter().printer;
+  const caps = usePrintCapabilities();
+  const desktop = useDesktopPrinterChoices();
+  const paper = printerPaperOf(printConfigOf(useSettings().data).kot.paperWidth);
+  const [draft, setDraft] = useState<PrinterDraft>(() => (printer === null ? { ...printerDraftOf(null, stations), paper } : printerDraftOf(printer, stations)));
+  const [error, setError] = useState<string | null>(null);
+  const set = (patch: Partial<PrinterDraft>) => setDraft((current) => ({ ...current, ...patch }));
+  const here = localPrinterConnectionOf({ local, deviceId, desktop: desktop === null ? null : { printerName: desktop.selected }, defaultPaper: paper });
+  // Session 2E (spec §9.2): on a Windows app that prints on a named printer, this PC's printer is one of its Windows
+  // printers, chosen by name; a printer of another device keeps its saved connection.
+  const named = desktop !== null && desktopPrintsOnNamed();
+  const windowsHere = named && (draft.device === null || (draft.device.transport === "windows" && draft.device.deviceId === deviceId));
+  const android = devices.filter((device) => device.shell === "android" && device.deviceId !== deviceId).map((device) => device.deviceId);
+  const choices = [...(caps.native && deviceId !== "" ? [deviceId] : []), ...android];
+  if (draft.primaryDeviceId !== "" && !choices.includes(draft.primaryDeviceId)) choices.push(draft.primaryDeviceId);
+```
+
+In `apps/cafe/components/print/setup/PrinterFormDialog.tsx`, find:
+
+```tsx
+              <Button type="button" variant={draft.kind === "device" ? "default" : "outline"} className={PRINTER_ACTION_CLASS} onClick={() => set({ kind: "device" })}>
+                Device printer
+              </Button>
+              {here !== null && (
+                <Button type="button" variant="outline" className={PRINTER_ACTION_CLASS} onClick={() => setDraft((current) => draftWithLocal(current, here))}>
+                  Use this device&apos;s printer
+                </Button>
+```
+
+Replace it with:
+
+```tsx
+              <Button type="button" variant={draft.kind === "device" ? "default" : "outline"} className={PRINTER_ACTION_CLASS} onClick={() => set({ kind: "device" })}>
+                Device printer
+              </Button>
+              {here !== null && !named && (
+                <Button type="button" variant="outline" className={PRINTER_ACTION_CLASS} onClick={() => setDraft((current) => draftWithLocal(current, here))}>
+                  Use this device&apos;s printer
+                </Button>
+```
+
+In `apps/cafe/components/print/setup/PrinterFormDialog.tsx`, find:
+
+```tsx
+                </Select>
+                <p className="text-xs text-brand-muted">{LAN_DEVICE_NOTE}</p>
+              </div>
+            ) : (
+              <p className="text-brand-muted">{shownDevice ?? "Connect a printer on this device (Printer on this device, above), then tap Use this device's printer."}</p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <p className="font-medium">2. Slips</p>
+```
+
+Replace it with:
+
+```tsx
+                </Select>
+                <p className="text-xs text-brand-muted">{LAN_DEVICE_NOTE}</p>
+              </div>
+            ) : windowsHere ? (
+              <WindowsPrinterSelect
+                names={desktop?.names ?? null}
+                value={draft.device?.address ?? ""}
+                onChange={(name) => setDraft((current) => draftWithLocal(current, windowsPrinterConnectionOf(deviceId, name, current.paper)))}
+              />
+            ) : (
+              <p className="text-brand-muted">{shownDevice ?? "Connect a printer on this device (Printer on this device, above), then tap Use this device's printer."}</p>
+            )}
+            {desktop !== null && !named && <p className="text-xs text-brand-muted">{ONE_WINDOWS_PRINTER}</p>}
+          </div>
+          <div className="space-y-2">
+            <p className="font-medium">2. Slips</p>
+```
+
+In `apps/cafe/components/print/setup/SetUpPrintersCard.tsx`, find:
+
+```tsx
+import { usePrintHostDot } from "@/components/layout/print-host-dot-context";
+import { PRINTER_ACTION_CLASS } from "@/components/print/printer-classes";
+import { Button } from "@/components/ui/button";
+import { useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
+import { useDesktopPrinterName, useSavePrinter } from "@/hooks/use-print-setup";
+import { localPrinterConnectionOf, setUpPrintersBody } from "@/lib/print-setup-form";
+
+const EXPLAIN =
+  "Slips print as set above. To send each kitchen station's KOTs to its own printer, set up printers: this device's printer becomes Printer 1 and takes every slip, so its paper does not change (other devices' slips print there too). Then add stations and printers.";
+```
+
+Replace it with:
+
+```tsx
+import { usePrintHostDot } from "@/components/layout/print-host-dot-context";
+import { PRINTER_ACTION_CLASS } from "@/components/print/printer-classes";
+import { Button } from "@/components/ui/button";
+import { useDevicePrinter } from "@/hooks/use-device-printer";
+import { useDesktopPrinterChoices, useSavePrinter } from "@/hooks/use-print-setup";
+import { useSettings } from "@/hooks/use-settings";
+import { printConfigOf } from "@/lib/print";
+import { localPrinterConnectionOf, printerPaperOf, setUpPrintersBody } from "@/lib/print-setup-form";
+
+const EXPLAIN =
+  "Slips print as set above. To send each kitchen station's KOTs to its own printer, set up printers: this device's printer becomes Printer 1 and takes every slip, so its paper does not change (other devices' slips print there too). Then add stations and printers.";
+```
+
+In `apps/cafe/components/print/setup/SetUpPrintersCard.tsx`, find:
+
+```tsx
+  const remote = usePrintHostDot();
+  const { isHostDevice } = usePrintHostContext();
+  const local = useDevicePrinter().printer;
+  // The lane, not a render-time shell check: the server and the first paint agree on "pending".
+  const lane = usePrintLane();
+  const desktopName = useDesktopPrinterName();
+  const save = useSavePrinter();
+  const here = localPrinterConnectionOf({ local, deviceId, desktop: lane === "desktop" ? { printerName: desktopName } : null, defaultPaper: 80 });
+  const known = remote !== "loading" && remote !== "unknown";
+  const elsewhere = known && remote !== "none" && !isHostDevice;
+  const reason = !known ? CHECKING : elsewhere ? ON_THE_HOST : here === null ? NO_PRINTER_HERE : null;
+```
+
+Replace it with:
+
+```tsx
+  const remote = usePrintHostDot();
+  const { isHostDevice } = usePrintHostContext();
+  const local = useDevicePrinter().printer;
+  // The lane, not a render-time shell check (inside the hook): the server and the first paint agree on "pending".
+  const desktop = useDesktopPrinterChoices();
+  // Session 2E: a Windows printer is drawn for its own paper, so Printer 1 takes the cafe's KOT paper: nothing changes.
+  const paper = printerPaperOf(printConfigOf(useSettings().data).kot.paperWidth);
+  const save = useSavePrinter();
+  const here = localPrinterConnectionOf({ local, deviceId, desktop: desktop === null ? null : { printerName: desktop.selected }, defaultPaper: paper });
+  const known = remote !== "loading" && remote !== "unknown";
+  const elsewhere = known && remote !== "none" && !isHostDevice;
+  const reason = !known ? CHECKING : elsewhere ? ON_THE_HOST : here === null ? NO_PRINTER_HERE : null;
+```
+
+Create `apps/cafe/components/print/setup/WindowsPrinterSelect.tsx`:
+
+```tsx
+"use client";
+
+import { PRINTER_INPUT_CLASS } from "@/components/print/printer-classes";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { desktopPrinterSavesToFile } from "@/lib/desktop-shell-printer";
+
+const PLACEHOLDER = "Choose the Windows printer";
+const NONE = "Windows reports no printer on this PC. Add the printer in Windows Settings, then open this form again.";
+const READING = "Reading the printers on this PC…";
+
+// Printing redesign, Phase 2 Session 2E (spec §9.2, §11): on the Windows app a printer of this PC is one of the
+// printers Windows reports, chosen by its name (never typed), so one PC prints several printers, each its own Windows
+// printer. A device that writes a file instead of paper is listed but cannot be chosen (the Windows app refuses it).
+export function WindowsPrinterSelect({ names, value, onChange }: { names: readonly string[] | null; value: string; onChange: (name: string) => void }) {
+  if (names === null) return <p className="text-brand-muted">{READING}</p>;
+  if (names.length === 0) return <p className="text-brand-muted">{NONE}</p>;
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger aria-label="Windows printer" className={PRINTER_INPUT_CLASS}>
+        <SelectValue placeholder={PLACEHOLDER} />
+      </SelectTrigger>
+      <SelectContent>
+        {names.map((name) => (
+          <SelectItem key={name} value={name} disabled={desktopPrinterSavesToFile(name)}>
+            {desktopPrinterSavesToFile(name) ? `${name} (saves a file, cannot be used)` : name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+import { bumpPrintWakeBudget, mergePrintWakeBudget, readPrintWakeBudget, writePrintWakeBudget, type PrintWakeBudget } from "@/lib/print-wake-budget";
+import { PrintWriteError } from "@/lib/print-write-outcome";
+import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
+import { desktopPrinterSnapshot } from "@/lib/printer/desktop-printer-state";
+import { devicePrinter } from "@/lib/printer/device-printer";
+import { nativeBridge, nativeOn } from "@/lib/printer/native-bridge";
+import { canPrintNow, currentLane, defaultDeviceLabel, printCapabilities } from "@/lib/printer/print-lane";
+```
+
+Replace it with:
+
+```ts
+import { bumpPrintWakeBudget, mergePrintWakeBudget, readPrintWakeBudget, writePrintWakeBudget, type PrintWakeBudget } from "@/lib/print-wake-budget";
+import { PrintWriteError } from "@/lib/print-write-outcome";
+import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
+import { desktopPrinterSnapshot, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import { devicePrinter } from "@/lib/printer/device-printer";
+import { nativeBridge, nativeOn } from "@/lib/printer/native-bridge";
+import { canPrintNow, currentLane, defaultDeviceLabel, printCapabilities } from "@/lib/printer/print-lane";
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+          done({ ok: false, error: new PrintWriteError(PRINT_HOST_PRINT_FAILED_MESSAGE, "no", true) });
+        }
+      });
+    // Session 2C: a printer job only on this device's own printer, every copy inside its one lease.
+    const print = (job: LeasedPrintJob): Promise<PrintAgentResult> => printJobCopies(job, readyRef.current, () => printOnce(job));
+    const created = createPrintAgent({
+      deviceId,
+      lease: (printerIds) => apiSend<PrintLeaseData>(LEASE_URL, "POST", { deviceId, tabId, ...printerIdsBody(printerIds) }),
+```
+
+Replace it with:
+
+```ts
+          done({ ok: false, error: new PrintWriteError(PRINT_HOST_PRINT_FAILED_MESSAGE, "no", true) });
+        }
+      });
+    // Session 2C: a printer job only on this device's own printer, every copy inside its one lease. Session 2E: a Windows
+    // printer that failed is looked up again in the Windows app, so one renamed or removed there stops being this PC's.
+    const print = async (job: LeasedPrintJob): Promise<PrintAgentResult> => {
+      const result = await printJobCopies(job, readyRef.current, () => printOnce(job));
+      if (!result.ok && job.printerId !== undefined && targetsRef.current[job.printerId] !== undefined) void refreshDesktopPrinterChosen();
+      return result;
+    };
+    const created = createPrintAgent({
+      deviceId,
+      lease: (printerIds) => apiSend<PrintLeaseData>(LEASE_URL, "POST", { deviceId, tabId, ...printerIdsBody(printerIds) }),
+```
+
+In `apps/cafe/hooks/use-print-setup.ts`, find:
+
+```ts
+"use client";
+
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+
+import type { PrintDeviceSummary, PrintJobRef } from "@pos/shared/print-agent-wire";
+import type { PrinterConfig, StationConfig } from "@pos/shared/print-printers";
+import { PRINTERS_KEYS } from "@/hooks/use-agent-printers";
+import { CATEGORY_KEYS } from "@/hooks/use-categories";
+import { PRODUCT_KEYS } from "@/hooks/use-products";
+import { apiGet, apiSend } from "@/lib/api-client";
+import { isDesktopShell } from "@/lib/desktop-shell";
+import { desktopPrinterApi } from "@/lib/desktop-shell-printer";
+import { deliverLeasedJob, kickPrintAgent } from "@/lib/print-agent";
+import { printAgentHeaders } from "@/lib/print-agent-calls";
+import type { PrinterBody } from "@/lib/print-printer-schemas";
+import { readDeviceId } from "@/lib/pos-device-id";
+
+// Printing redesign, Phase 2 Session 2D (spec §11): the Printer setup page's reads and writes. Reads happen on that
+// page only (mount and focus; never polled), so they add nothing to an ordering device's day. Every write refreshes
+```
+
+Replace it with:
+
+```ts
+"use client";
+
+import { useEffect } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+
+import type { PrintDeviceSummary, PrintJobRef } from "@pos/shared/print-agent-wire";
+import type { PrinterConfig, StationConfig } from "@pos/shared/print-printers";
+import { PRINTERS_KEYS } from "@/hooks/use-agent-printers";
+import { useDesktopPrinterSnapshot, usePrintLane } from "@/hooks/use-device-printer";
+import { CATEGORY_KEYS } from "@/hooks/use-categories";
+import { PRODUCT_KEYS } from "@/hooks/use-products";
+import { apiGet, apiSend } from "@/lib/api-client";
+import { isDesktopShell } from "@/lib/desktop-shell";
+import { deliverLeasedJob, kickPrintAgent } from "@/lib/print-agent";
+import { printAgentHeaders } from "@/lib/print-agent-calls";
+import type { PrinterBody } from "@/lib/print-printer-schemas";
+import { readDeviceId } from "@/lib/pos-device-id";
+import { refreshDesktopPrinterChosen, type DesktopPrinterSnapshot } from "@/lib/printer/desktop-printer-state";
+
+// Printing redesign, Phase 2 Session 2D (spec §11): the Printer setup page's reads and writes. Reads happen on that
+// page only (mount and focus; never polled), so they add nothing to an ordering device's day. Every write refreshes
+```
+
+In `apps/cafe/hooks/use-print-setup.ts`, find:
+
+```ts
+  return { devices: query.data ?? NO_DEVICES, loaded: query.isSuccess, failed: query.isError };
+}
+
+/** The Windows app's chosen printer, the address a Windows printer is saved with (null: not the Windows app, or
+ *  not read). Read once per mount of the form that needs it. */
+export function useDesktopPrinterName(): string | null {
+  const [name, setName] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isDesktopShell()) return;
+    let live = true;
+    void desktopPrinterApi()
+      ?.listPrinters()
+      .then(
+        (list) => {
+          if (live) setName(list.selected);
+        },
+        () => undefined,
+      );
+    return () => {
+      live = false;
+    };
+  }, []);
+  return name;
+}
+
+export function useSavePrinter() {
+```
+
+Replace it with:
+
+```ts
+  return { devices: query.data ?? NO_DEVICES, loaded: query.isSuccess, failed: query.isError };
+}
+
+/** The Windows app's chosen printer and every printer Windows reports on this PC (a Windows printer is saved by its
+ *  name), read again when the form or the card that needs them mounts (Session 2E: the store the agent reads, so a
+ *  printer just added in Windows is this PC's for both). null: not the Windows app. */
+export function useDesktopPrinterChoices(): DesktopPrinterSnapshot | null {
+  const snapshot = useDesktopPrinterSnapshot();
+  const lane = usePrintLane();
+  useEffect(() => {
+    if (isDesktopShell()) void refreshDesktopPrinterChosen();
+  }, []);
+  return lane === "desktop" ? snapshot : null;
+}
+
+export function useSavePrinter() {
+```
+
+In `apps/cafe/lib/desktop-shell-printer.ts`, find:
+
+```ts
+  savePrintMode?: (mode: DesktopPrintMode) => Promise<{ printMode: DesktopPrintMode }>;
+}
+
+/** Phase 2 Session 2E (spec §9.2): the shell prints a slip on a printer the page names (printHtmlOn, desktop 1.11.0).
+ *  Feature-detected like the picker: an older shell prints only on its chosen printer, so the page names none there. */
+export function desktopPrintsOnNamed(): boolean {
+```
+
+Replace it with:
+
+```ts
+  savePrintMode?: (mode: DesktopPrintMode) => Promise<{ printMode: DesktopPrintMode }>;
+}
+
+// Mirrors NON_PAPER_PRINTER_PATTERNS in apps/desktop/src/shared.ts, which is the ENFORCING copy: the shell refuses
+// these whatever this list says. Here they are only greyed out with a reason, so the operator understands why.
+const NON_PAPER_PATTERNS = ["print to pdf", "xps document writer", "onenote", "fax", "adobe pdf", "pdfcreator"];
+
+/** A Windows device that saves a file instead of printing (the picker and, since Session 2E, the printer form). */
+export function desktopPrinterSavesToFile(name: string): boolean {
+  const lower = name.toLowerCase();
+  return NON_PAPER_PATTERNS.some((pattern) => lower.includes(pattern));
+}
+
+/** Phase 2 Session 2E (spec §9.2): the shell prints a slip on a printer the page names (printHtmlOn, desktop 1.11.0).
+ *  Feature-detected like the picker: an older shell prints only on its chosen printer, so the page names none there. */
+export function desktopPrintsOnNamed(): boolean {
+```
+
+In `apps/cafe/lib/print-printers.ts`, find:
+
+```ts
+import type { Types } from "mongoose";
+import { isDuplicateKeyError } from "@pos/shared/api";
+import { PRINTERS_MAX, printerWriterClash, printerWriterTakenMessage, type PrinterConfig, type PrinterConnection } from "@pos/shared/print-printers";
+import { Printer, type IPrinter, type IPrinterConnection } from "@/models/Printer";
+import { Station } from "@/models/Station";
+import type { PrinterBody } from "@/lib/print-printer-schemas";
+```
+
+Replace it with:
+
+```ts
+import type { Types } from "mongoose";
+import { isDuplicateKeyError } from "@pos/shared/api";
+import { PRINTERS_MAX, printerClashMessage, printerWriterClash, type PrinterConfig, type PrinterConnection } from "@pos/shared/print-printers";
+import { Printer, type IPrinter, type IPrinterConnection } from "@/models/Printer";
+import { Station } from "@/models/Station";
+import type { PrinterBody } from "@/lib/print-printer-schemas";
+```
+
+In `apps/cafe/lib/print-printers.ts`, find:
+
+```ts
+  if (existing.length >= PRINTERS_MAX) return { ok: false, status: 400, error: PRINTERS_FULL_MESSAGE };
+  const last = existing.length === 0 ? -1 : Math.max(...existing.map((row) => row.order));
+  if (await nameTaken(stored.name)) return { ok: false, status: 409, error: PRINTER_EXISTS_MESSAGE };
+  // Session 2D (the 2C review gate, F-3): one enabled printer per printing device until Session 2E.
+  const clash = printerWriterClash(existing, stored);
+  if (clash !== null) return { ok: false, status: 409, error: printerWriterTakenMessage(clash.name) };
+  // The unique name index must exist before the first insert (house rule: crud-route.ts).
+  await Printer.init();
+  try {
+```
+
+Replace it with:
+
+```ts
+  if (existing.length >= PRINTERS_MAX) return { ok: false, status: 400, error: PRINTERS_FULL_MESSAGE };
+  const last = existing.length === 0 ? -1 : Math.max(...existing.map((row) => row.order));
+  if (await nameTaken(stored.name)) return { ok: false, status: 409, error: PRINTER_EXISTS_MESSAGE };
+  // Session 2D (the 2C review gate, F-3): one routable printer per printing device; Session 2E: a Windows PC may
+  // print several Windows printers, each a different one.
+  const clash = printerWriterClash(existing, stored);
+  if (clash !== null) return { ok: false, status: 409, error: printerClashMessage(clash, stored) };
+  // The unique name index must exist before the first insert (house rule: crud-route.ts).
+  await Printer.init();
+  try {
+```
+
+In `apps/cafe/lib/print-printers.ts`, find:
+
+```ts
+  if (!(await stationsExist(stored.slips.kotStations))) return { ok: false, status: 400, error: PRINTER_UNKNOWN_STATION_MESSAGE };
+  if (await nameTaken(stored.name, id)) return { ok: false, status: 409, error: PRINTER_EXISTS_MESSAGE };
+  const clash = printerWriterClash(await listPrinters(), stored, id);
+  if (clash !== null) return { ok: false, status: 409, error: printerWriterTakenMessage(clash.name) };
+  printer.set("connection", stored.connection);
+  printer.set("primaryDeviceId", stored.primaryDeviceId);
+  printer.set({ name: stored.name, paper: stored.paper, slips: stored.slips, copies: stored.copies, enabled: stored.enabled });
+```
+
+Replace it with:
+
+```ts
+  if (!(await stationsExist(stored.slips.kotStations))) return { ok: false, status: 400, error: PRINTER_UNKNOWN_STATION_MESSAGE };
+  if (await nameTaken(stored.name, id)) return { ok: false, status: 409, error: PRINTER_EXISTS_MESSAGE };
+  const clash = printerWriterClash(await listPrinters(), stored, id);
+  if (clash !== null) return { ok: false, status: 409, error: printerClashMessage(clash, stored) };
+  printer.set("connection", stored.connection);
+  printer.set("primaryDeviceId", stored.primaryDeviceId);
+  printer.set({ name: stored.name, paper: stored.paper, slips: stored.slips, copies: stored.copies, enabled: stored.enabled });
+```
+
+In `apps/cafe/lib/print-setup-form.ts`, find:
+
+```ts
+  PRINTER_COPIES_MAX,
+  PRINTER_COPIES_MIN,
+  PRINTER_LAN_DEFAULT_PORT,
+  printerWriterClash,
+  printerWriterTakenMessage,
+  type PrinterConfig,
+  type PrinterConnection,
+  type PrinterDeviceTransport,
+  type PrinterPaperWidth,
+  type StationConfig,
+} from "@pos/shared/print-printers";
+import type { PrinterBody } from "@/lib/print-printer-schemas";
+import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+
+```
+
+Replace it with:
+
+```ts
+  PRINTER_COPIES_MAX,
+  PRINTER_COPIES_MIN,
+  PRINTER_LAN_DEFAULT_PORT,
+  printerClashMessage,
+  printerWriterClash,
+  type PrinterConfig,
+  type PrinterConnection,
+  type PrinterDeviceTransport,
+  type PrinterPaperWidth,
+  type StationConfig,
+} from "@pos/shared/print-printers";
+import type { PaperWidth } from "@/lib/constants";
+import type { PrinterBody } from "@/lib/print-printer-schemas";
+import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+
+```
+
+In `apps/cafe/lib/print-setup-form.ts`, find:
+
+```ts
+
+function paperOf(paper: string): PrinterPaperWidth {
+  return paper === "58mm" ? 58 : 80;
+}
+
+function hex4(n: number): string {
+```
+
+Replace it with:
+
+```ts
+
+function paperOf(paper: string): PrinterPaperWidth {
+  return paper === "58mm" ? 58 : 80;
+}
+
+/** Session 2E: a printer's paper from the cafe's paper setting (a Windows printer has no saved paper of its own). */
+export function printerPaperOf(width: PaperWidth): PrinterPaperWidth {
+  return paperOf(width);
+}
+
+/** Session 2E (spec §9.2, §11): one of this PC's Windows printers, by the name Windows reports (never typed). */
+export function windowsPrinterConnectionOf(deviceId: string, name: string, paper: PrinterPaperWidth): LocalPrinterConnection {
+  return { connection: { kind: "device", deviceId, transport: "windows", address: name }, paper };
+}
+
+function hex4(n: number): string {
+```
+
+In `apps/cafe/lib/print-setup-form.ts`, find:
+
+```ts
+}
+
+/** The body the save sends, or what is missing in words. Full KOT copy clears the station boxes (a station on a
+ *  full-copy printer adds nothing to its paper). One enabled printer per printing device until Session 2E. */
+export function printerBodyOf(
+  draft: PrinterDraft,
+  printers: readonly PrinterConfig[],
+```
+
+Replace it with:
+
+```ts
+}
+
+/** The body the save sends, or what is missing in words. Full KOT copy clears the station boxes (a station on a
+ *  full-copy printer adds nothing to its paper). One routable printer per printing device, except a Windows PC's
+ *  Windows printers, each a different one (Session 2E). */
+export function printerBodyOf(
+  draft: PrinterDraft,
+  printers: readonly PrinterConfig[],
+```
+
+In `apps/cafe/lib/print-setup-form.ts`, find:
+
+```ts
+    enabled: draft.enabled,
+  };
+  const clash = printerWriterClash(printers, { connection, primaryDeviceId, enabled: draft.enabled, slips: body.slips }, editingId);
+  if (clash !== null) return { ok: false, error: printerWriterTakenMessage(clash.name) };
+  return { ok: true, body };
+}
+
+```
+
+Replace it with:
+
+```ts
+    enabled: draft.enabled,
+  };
+  const clash = printerWriterClash(printers, { connection, primaryDeviceId, enabled: draft.enabled, slips: body.slips }, editingId);
+  if (clash !== null) return { ok: false, error: printerClashMessage(clash, { connection }) };
+  return { ok: true, body };
+}
+
+```
+
+In `apps/cafe/lib/print-setup-text.ts`, find:
+
+```ts
+    const by = printer.primaryDeviceId === undefined ? "no printing device" : `printed by ${deviceName(printer.primaryDeviceId, devices, thisDeviceId)}`;
+    return `Network ${c.host}:${c.port} · ${by}`;
+  }
+  return deviceConnectionText(c, devices, thisDeviceId);
+}
+
+```
+
+Replace it with:
+
+```ts
+    const by = printer.primaryDeviceId === undefined ? "no printing device" : `printed by ${deviceName(printer.primaryDeviceId, devices, thisDeviceId)}`;
+    return `Network ${c.host}:${c.port} · ${by}`;
+  }
+  // Session 2E (spec §9.2): one PC prints several Windows printers, so a row says which one (its Windows name).
+  if (c.transport === "windows") return `Windows printer ${c.address} · ${deviceName(c.deviceId, devices, thisDeviceId)}`;
+  return deviceConnectionText(c, devices, thisDeviceId);
+}
+
+```
+
+In `apps/mobile/TEST-CHECKLIST.md`, find:
+
+```markdown
+      before; choose **Not chosen — slips will not print** in the picker: the dot
+      turns red with "No printer chosen"; choose the printer again: green.
+
+## Result
+
+Date: ________  Device and Android version: ________________________
+```
+
+Replace it with:
+
+```markdown
+      before; choose **Not chosen — slips will not print** in the picker: the dot
+      turns red with "No printer chosen"; choose the printer again: green.
+
+## Several printers on one Windows PC (Phase 2, added 2026-10-05)
+
+Needs the Windows app 1.11.0 or later on the counter PC, two thermal printers installed in Windows, and the
+POS with Phase 2. An older Windows app prints one printer, the one chosen for the PC: the printer form says so.
+
+- [ ] Printer setup in the Windows app: **Set up printers** makes Printer 1 from the printer chosen for this PC,
+      on the cafe's KOT paper. **Send to Kitchen**: one KOT on it, exactly as before.
+- [ ] Add a station **Bar** and put the drinks category on it. **Add printer** → **Device printer** → choose the
+      second printer under **Windows printer** → tick **Bar KOTs** → save. The same Windows printer as Printer 1 is
+      refused: "… already prints on that Windows printer."
+- [ ] A round with food and drinks: the full copy (ALL STATIONS) at Printer 1 and the BAR slip at the second printer,
+      once each, each as wide as its own roll (try one 58 mm and one 80 mm printer if you have them).
+- [ ] **Test print** on each printer: each slip comes out of its own printer.
+- [ ] Rename the second printer in Windows (Settings → Printers): its next slip waits under the printer icon with
+      "That printer is not on this PC…", while Printer 1 keeps printing at once. Edit the printer in Printer setup,
+      choose it again under **Windows printer**: the waiting slip prints once.
+- [ ] An unplugged printer: Windows keeps its slips in its own print queue and prints them when it is back; the POS
+      cannot see that queue (spec §9.6), so check the paper.
+
+## Result
+
+Date: ________  Device and Android version: ________________________
+```
+
+In `packages/shared/src/print-printers.ts`, find:
+
+```ts
+  return out;
+}
+
+/** Session 2D (until Session 2E's several printers per device, spec §9.2): a device prints one printer, so at most
+ *  one ROUTABLE printer (enabled, taking a slip) names it as its writer. A second would never print, or, for a
+ *  Windows or browser serial printer (matched by transport alone), print on the first one's paper (the 2C review
+ *  gate, F-3). The routable printer that already does, or null; a printer switched off or taking no slip is never
+ *  leased, so it never clashes (the 2D gate's review, M-4). */
+export function printerWriterClash(
+  printers: readonly PrinterConfig[],
+  draft: Pick<PrinterConfig, "connection" | "primaryDeviceId" | "enabled" | "slips">,
+```
+
+Replace it with:
+
+```ts
+  return out;
+}
+
+/** Session 2D: a device prints one printer, so at most one ROUTABLE printer (enabled, taking a slip) names it as its
+ *  writer. A second would never print, or print on the first one's paper (the 2C review gate, F-3). Session 2E (spec
+ *  §9.2): the Windows app prints each Windows printer it has by name, so a PC may write several Windows printers,
+ *  each a different one (a Windows printer's name is the same printer whatever its case); any other device prints one
+ *  printer until Session 2F (the Android app on bridge v1; a Chrome tab drives one, §9.7). The routable printer that
+ *  clashes, or null; a printer switched off or taking no slip is never leased, so it never clashes (the 2D gate's
+ *  review, M-4). */
+export function printerWriterClash(
+  printers: readonly PrinterConfig[],
+  draft: Pick<PrinterConfig, "connection" | "primaryDeviceId" | "enabled" | "slips">,
+```
+
+In `packages/shared/src/print-printers.ts`, find:
+
+```ts
+): PrinterConfig | null {
+  const writer = printerWriterDeviceId(draft);
+  if (!draft.enabled || writer === null || !printerTakesSlips(draft.slips)) return null;
+  return routablePrinters(printers).find((printer) => printer.id !== exceptId && printerWriterDeviceId(printer) === writer) ?? null;
+}
+
+export function printerWriterTakenMessage(name: string): string {
+  return `That device already prints ${name}. For now one device prints one printer: switch ${name} off, or choose another device.`;
+}
+
+/** Session 2C: a waiting job's printer, if routing may still send it slips (enabled, with a writer, taking a
+```
+
+Replace it with:
+
+```ts
+): PrinterConfig | null {
+  const writer = printerWriterDeviceId(draft);
+  if (!draft.enabled || writer === null || !printerTakesSlips(draft.slips)) return null;
+  return (
+    routablePrinters(printers).find(
+      (printer) => printer.id !== exceptId && printerWriterDeviceId(printer) === writer && !differentWindowsPrinters(printer.connection, draft.connection),
+    ) ?? null
+  );
+}
+
+/** Session 2E: a Windows printer's name as the printer it is (Windows names ignore case); null for any other. */
+function windowsPrinterKey(connection: PrinterConnection): string | null {
+  return connection.kind === "device" && connection.transport === "windows" ? connection.address.toLowerCase() : null;
+}
+
+/** Two Windows printers of one PC that are not the same printer. */
+function differentWindowsPrinters(a: PrinterConnection, b: PrinterConnection): boolean {
+  const left = windowsPrinterKey(a);
+  const right = windowsPrinterKey(b);
+  return left !== null && right !== null && left !== right;
+}
+
+export function printerWriterTakenMessage(name: string): string {
+  return `That device already prints ${name}. For now one device prints one printer: switch ${name} off, or choose another device.`;
+}
+
+/** The words for a clash (Session 2E): the same Windows printer twice, else a second printer for a device that prints one. */
+export function printerClashMessage(clash: Pick<PrinterConfig, "name" | "connection">, draft: Pick<PrinterConfig, "connection">): string {
+  if (windowsPrinterKey(clash.connection) !== null && windowsPrinterKey(draft.connection) !== null) {
+    return `${clash.name} already prints on that Windows printer. Choose another Windows printer.`;
+  }
+  return printerWriterTakenMessage(clash.name);
+}
+
+/** Session 2C: a waiting job's printer, if routing may still send it slips (enabled, with a writer, taking a
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/packages/shared && node --import tsx --test src/print-printers.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit -p . && echo TSC_OK`
+Expected: `# tests 16`; `# pass 16`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-setup-form.test.ts lib/print-setup-ui-paths.test.ts lib/print-setup-paths.test.ts lib/print-agent-printers.test.ts lib/print-windows-printers.test.ts lib/printer-ui-paths.test.ts lib/print-host-card-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 101`; `# pass 101`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint components/print hooks lib/print-setup-form.ts lib/print-setup-text.ts lib/desktop-shell-printer.ts lib/print-printers.ts lib/print-windows-printers.test.ts lib/print-setup-form.test.ts lib/print-setup-ui-paths.test.ts lib/print-setup-paths.test.ts lib/print-agent-printers.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/components/print/DesktopPrinterPicker.tsx apps/cafe/components/print/DevicePrinterSection.tsx apps/cafe/components/print/setup/PrinterFormDialog.tsx apps/cafe/components/print/setup/SetUpPrintersCard.tsx apps/cafe/components/print/setup/WindowsPrinterSelect.tsx apps/cafe/hooks/use-print-agent.ts apps/cafe/hooks/use-print-setup.ts apps/cafe/lib/desktop-shell-printer.ts apps/cafe/lib/print-agent-printers.test.ts apps/cafe/lib/print-printers.ts apps/cafe/lib/print-setup-form.test.ts apps/cafe/lib/print-setup-form.ts apps/cafe/lib/print-setup-paths.test.ts apps/cafe/lib/print-setup-text.ts apps/cafe/lib/print-setup-ui-paths.test.ts apps/cafe/lib/print-windows-printers.test.ts apps/mobile/TEST-CHECKLIST.md packages/shared/src/print-printers.test.ts packages/shared/src/print-printers.ts
+git commit -m "feat(print): Phase 2 several printers on one Windows PC: the setup saves each of its Windows printers by name on the cafe's paper (the same one twice refused, every other device still one printer), a failed Windows printer is looked up again, and a browser tab says to stay open"
+```
+
+---
+
+### Task E6: live legs au–av: one Windows PC's printers against a real database
+
+**Files:**
+- Create: `apps/cafe/scripts/print-host-live/setup-2e.ts` (legs au, av)
+- Modify: `apps/cafe/scripts/verify-print-host-live.ts` (the two legs after at)
+
+**Interfaces produced:** `legAU()`, `legAV(nowMs)`.
+
+**What they prove against a real mongod.** (au) Two Windows printers of one PC are both saved; the same Windows printer twice, in another case, is refused (409) with the Windows words; a network printer for that PC is refused with the 2D words; a twin saved switched off is kept, switching it on is refused, moved to another Windows printer it saves. (av) A test slip on each printer, both aimed at the PC; a lease naming the counter only (the kitchen printer held) takes the counter's slip and the kitchen's waits; named again, the kitchen's line gives its slip while the counter's holds its leased one; its ack says `more: false` for its own line. 8 new checks (au 4, av 4).
+
+- [ ] **Step 1: The change**
+
+Create `apps/cafe/scripts/print-host-live/setup-2e.ts`:
+
+```ts
+/**
+ * Phase 2 Session 2E live legs — several printers on one Windows PC (spec §9.2) against a REAL MongoDB: the setup
+ * saves each of a PC's Windows printers by name and refuses the same one twice, while every other device still prints
+ * one printer (au); one PC leases each of its Windows printers' lines by name, in one call or one at a time, so a
+ * printer it does not name (one a refusal holds) keeps its slip waiting (av). Run by scripts/verify-print-host-live.ts
+ * after legs ar–at. Each leg sets its outlet up and ends with no printer.
+ *
+ * (console output is intentional — this is an ops CLI script, not app code.)
+ */
+import { PrintJob } from "@/models/PrintJob";
+import { Printer } from "@/models/Printer";
+import { Station } from "@/models/Station";
+import type { PrinterBody } from "@/lib/print-printer-schemas";
+import { ackPrintJob, leasePrintJobs } from "@/lib/print-lease";
+import { createPrinterTestJob } from "@/lib/print-printer-test";
+import { createPrinter, replacePrinter } from "@/lib/print-printers";
+import { check, resetCollections } from "./harness";
+import { STAFF } from "./lifecycle";
+
+const PC = "live-2e-counter-pc";
+const NO_SLIPS = { bill: false, kotStations: [], kotAll: false, notices: false, eod: false };
+
+function windows(name: string, address: string, over: Partial<PrinterBody> = {}): PrinterBody {
+  return {
+    name,
+    connection: { kind: "device", deviceId: PC, transport: "windows", address },
+    paper: 80,
+    slips: { ...NO_SLIPS, notices: true },
+    copies: { kot: 1, bill: 1 },
+    enabled: true,
+    ...over,
+  };
+}
+
+async function fresh(): Promise<void> {
+  await Promise.all([resetCollections(), Station.deleteMany({}), Printer.deleteMany({})]);
+}
+
+export async function legAU(): Promise<void> {
+  console.log("\n(au) one Windows PC saves each of its Windows printers by name; the same one twice, or a second kind, is refused");
+  await fresh();
+  const counter = await createPrinter(windows("Counter", "EPSON TM-T82", { slips: { ...NO_SLIPS, bill: true, kotAll: true, notices: true, eod: true } }));
+  const kitchen = await createPrinter(windows("Kitchen", "Kitchen TVS", { paper: 58 }));
+  check("(au) two Windows printers of one PC are both saved", counter.ok && kitchen.ok && kitchen.data.paper === 58);
+  const twice = await createPrinter(windows("Again", "epson tm-t82"));
+  check("(au) the same Windows printer twice (any case) is refused (409), saying so", !twice.ok && twice.status === 409 && twice.error === "Counter already prints on that Windows printer. Choose another Windows printer.");
+  const lan = await createPrinter({ ...windows("Network", ""), connection: { kind: "lan", host: "10.0.0.9", port: 9100 }, primaryDeviceId: PC });
+  check("(au) a network printer for that PC: one printer, as before (409, the 2D words)", !lan.ok && lan.status === 409 && lan.error.startsWith("That device already prints "));
+  const spare = await createPrinter(windows("Spare", "EPSON TM-T82", { enabled: false }));
+  const spareId = spare.ok ? spare.data.id : "";
+  const onAgain = await replacePrinter(spareId, windows("Spare", "EPSON TM-T82"));
+  const moved = await replacePrinter(spareId, windows("Spare", "Bar Printer"));
+  check("(au) one saved off on the same printer is kept; switched on it is refused; on another Windows printer it saves", spare.ok && !onAgain.ok && onAgain.status === 409 && moved.ok && moved.data.enabled);
+  await Printer.deleteMany({});
+}
+
+export async function legAV(nowMs: number): Promise<void> {
+  console.log("\n(av) one PC leases each of its Windows printers' lines by name; one it does not name keeps its slip waiting");
+  await fresh();
+  const counter = await createPrinter(windows("Counter", "EPSON TM-T82", { slips: { ...NO_SLIPS, bill: true, kotAll: true, notices: true, eod: true } }));
+  const kitchen = await createPrinter(windows("Kitchen", "Kitchen TVS"));
+  const counterId = counter.ok ? counter.data.id : "";
+  const kitchenId = kitchen.ok ? kitchen.data.id : "";
+  const one = await createPrinterTestJob({ printerId: counterId, queuedBy: "Asha", nowMs });
+  const two = await createPrinterTestJob({ printerId: kitchenId, queuedBy: "Asha", nowMs: nowMs + 1 });
+  check("(av) a slip on each printer, both aimed at the PC", one.ok && two.ok && (await PrintJob.countDocuments({ targetDeviceId: PC, status: "queued" })) === 2);
+  const onlyCounter = await leasePrintJobs({ deviceId: PC, tabId: "pc-tab", printerIds: [counterId], dismissedBy: STAFF, nowMs: nowMs + 1_000 });
+  const waiting = await PrintJob.findOne({ printerId: kitchenId }).lean();
+  check("(av) a lease naming the counter only (the kitchen printer held) takes the counter's slip; the kitchen's waits", onlyCounter.jobs.length === 1 && onlyCounter.jobs[0]?.printerId === counterId && waiting?.status === "queued");
+  const both = await leasePrintJobs({ deviceId: PC, tabId: "pc-tab", printerIds: [counterId, kitchenId], dismissedBy: STAFF, nowMs: nowMs + 2_000 });
+  check("(av) named again, its line gives its slip; the counter's line holds its leased one (head of line per printer)", both.jobs.length === 1 && both.jobs[0]?.printerId === kitchenId);
+  const acked = await ackPrintJob({ id: both.jobs[0]?.id ?? "", deviceId: PC, epoch: 1, outcome: "printed", nowMs: nowMs + 3_000 });
+  check("(av) its ack: printed, and more:false for its own line, whatever the counter's holds", acked.status === "printed" && acked.more === false);
+  await Printer.deleteMany({});
+}
+```
+
+In `apps/cafe/scripts/verify-print-host-live.ts`, find:
+
+```ts
+import { legAK, legAL, legAM } from "./print-host-live/direct";
+import { legAN, legAO, legAP, legAQ } from "./print-host-live/printers-mode";
+import { legAR, legAS, legAT } from "./print-host-live/setup-2d";
+import { Station } from "@/models/Station";
+import { Printer } from "@/models/Printer";
+import { Category } from "@/models/Category";
+```
+
+Replace it with:
+
+```ts
+import { legAK, legAL, legAM } from "./print-host-live/direct";
+import { legAN, legAO, legAP, legAQ } from "./print-host-live/printers-mode";
+import { legAR, legAS, legAT } from "./print-host-live/setup-2d";
+import { legAU, legAV } from "./print-host-live/setup-2e";
+import { Station } from "@/models/Station";
+import { Printer } from "@/models/Printer";
+import { Category } from "@/models/Category";
+```
+
+In `apps/cafe/scripts/verify-print-host-live.ts`, find:
+
+```ts
+    await legAR(Date.now());
+    await legAS();
+    await legAT(Date.now());
+  } finally {
+    await mongoose.connection.dropDatabase();
+    await mongoose.disconnect();
+```
+
+Replace it with:
+
+```ts
+    await legAR(Date.now());
+    await legAS();
+    await legAT(Date.now());
+    // Phase 2 Session 2E legs (several printers on one Windows PC: the setup by name, a lease per named line).
+    await legAU();
+    await legAV(Date.now());
+  } finally {
+    await mongoose.connection.dropDatabase();
+    await mongoose.disconnect();
+```
+
+- [ ] **Step 2: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx tsc --noEmit && echo TSC_OK && npx eslint scripts/print-host-live/setup-2e.ts scripts/verify-print-host-live.ts && echo LINT_OK`
+Expected: `TSC_OK`; `LINT_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_print_host npm run verify:print:live 2>&1 | grep -E "passed, [0-9]+ failed"`
+Expected: `324 passed, 0 failed`
+
+- [ ] **Step 3: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/scripts/print-host-live/setup-2e.ts apps/cafe/scripts/verify-print-host-live.ts
+git commit -m "test(print): Phase 2 live legs au–av: one Windows PC saves each of its Windows printers by name (the same one twice refused, any other kind one printer) and leases each printer's line by name"
+```
+
+---
+
+### Task E7: full verification, builds, the exit check, the fresh review, Results
+
+**Files:** this plan (a new "Session 2E Results" section at its end). The tools below go in this session's scratchpad, never in the repo.
+
+- [ ] **Step 1: Every suite**
+
+Run each from the repo (the totals the pre-validation saw on the golden tree):
+
+| Run | Expected |
+|---|---|
+| `cd /d/kd/lucifer/packages/shared && npm test && npx tsc --noEmit -p .` | `# tests 683`, `# pass 683`; tsc 0 |
+| `cd /d/kd/lucifer/apps/cafe && npm test` | `# tests 4421`, `# pass 4420`, `# fail 0`, `# skipped 1` (the skip is the `go-live-dl` pin) |
+| `cd /d/kd/lucifer/apps/cafe && npx tsc --noEmit && npm run lint` | tsc 0; lint 0 errors and the 2 old warnings |
+| `cd /d/kd/lucifer/apps/hub && npx tsc --noEmit` | 0 |
+| `cd /d/kd/lucifer/apps/mobile && npx tsc --noEmit && npm run lint && npm test && npm run test:app` | 117/117; Jest 3/3 (no app code changed) |
+| `cd /d/kd/lucifer/apps/desktop && npm test && npm run typecheck && npm run lint` | 192/192; typecheck 0; lint 0 |
+| `cd /d/kd/lucifer && npm run test:print-tools` | 8/8 |
+| `cd /d/kd/lucifer/apps/cafe && MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_print_host npm run verify:print:live` | `324 passed, 0 failed` (316 + 8: au 4, av 4) |
+
+- [ ] **Step 2: The Next production build**
+
+Run: `cd /d/kd/lucifer/apps/cafe && npm run build`
+Expected: the build succeeds with 129 routes (2E adds none).
+
+- [ ] **Step 3: APKs (no app change: byte-identical to the release), and the Windows app**
+
+`git diff <start>..HEAD --stat -- apps/mobile workers` (`<start>`: the commit this session started from, in Results' Start) must list only `apps/mobile/TEST-CHECKLIST.md` (a document; nothing that goes into an APK). Then build the x86_64 APK (`gradlew.bat aR -PreactNativeArchitectures=x86_64`) and the ARM pair (`assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a`) with `GRADLE_USER_HOME='D:\gradle-home'`. Expected: byte-identical to the 2026-10-03 release (`D:\kd\pos-apk-release\Sandbee-POS-final\`): x86_64 `29115bdf…`, arm64-v8a `0e0ec314…`, armeabi-v7a `e618900a…`. A different hash means something outside the plan changed: stop and find out what. The Windows app (`apps/desktop`, 1.11.0) is proven by Step 1's desktop row; its installer (`npm run dist` in `apps/desktop`) is built on the owner's PC for TEST-CHECKLIST (no session deploys or copies it). No Worker change in 2E; the go-live run still deploys the Worker first, then the web, then reloads every POS screen.
+
+- [ ] **Step 4: The exit check (spec §9.2, §9.7; the 2E exit)**
+
+**The harness** (as the gate ran it; check `netstat -ano | grep LISTEN` for 3110, 3200, 9100 and 9102 first):
+- the local POS from this branch's build on 3110 (`cd /d/kd/lucifer/apps/cafe && node --env-file=<scratchpad>/e2e.env ../../node_modules/next/dist/bin/next start -p 3110`, a background command with `timeout: 7200000`); `e2e.env` copied from the 2D gate's scratchpad (`C:\Users\KARTIK~1.DES\AppData\Local\Temp\claude\d--kd-lucifer\269fd273-742e-45e1-ba78-51ad37b144ed\scratchpad\e2e.env`: database `pos_scratch_e2e_p1final`, e2eadmin, tables and menu seeded). **As found at the gate:** stations Kitchen (default) and Bar, no printer, no station on any category or item, no print host;
+- the counting proxy (`gate-proxy-2b.mjs`, saved exactly as in Task B7 Step 4): `node <scratchpad>/gate-proxy-2b.mjs --listen 3200 --target 3110 --log <scratchpad>/proxy-2e.jsonl`;
+- for Part B, two fake printers: `node scripts/fake-escpos-printer.mjs --port 9100 --out <dir-counter>` and the same on `9102` (`<dir-bar>`), each `--out` a long Windows path (`C:\Users\Kartik.desai\…`, never the `KARTIK~1.DES` short form);
+- `p2d-tool.ts` saved exactly as in Task D8 Step 4 (Session 2D), run from `apps/cafe` as `node --env-file=<scratchpad>/e2e.env --import tsx <scratchpad>/p2d-tool.ts <mode> [args]`; and `pw-2e.mjs` below (a headless desktop Chrome on the local POS acting as the Windows app, signed in with a session minted from the env file, never printed), saved with the Write tool exactly as shown and run as `MSYS_NO_PATHCONV=1 PW_BASE=http://localhost:3200 node --env-file=<scratchpad>/e2e.env <scratchpad>/pw-2e.mjs <step> [args]` (it loads `playwright-core` from this PC's npx cache and drives the installed Chrome; nothing is downloaded). `FAKE_VERSION=1.10.0` makes it an older Windows app (no `printHtmlOn`); `FAKE_REFUSE="Kitchen TVS"` makes that printer refuse with the Windows app's own sentence.
+
+`<scratchpad>/pw-2e.mjs`:
+
+```js
+// Session 2E gate: drive the local POS in a headless desktop Chrome AS the Windows app (scratchpad only; never the live
+// demo). A fake window.posDesktop is injected before any page script: version FAKE_VERSION (1.11.0 has printHtmlOn,
+// 1.10.0 does not), two thermal printers plus a file printer, the chosen one FAKE_CHOSEN; FAKE_REFUSE names a printer
+// whose printHtmlOn is refused with the Windows app's own sentence. Every print it receives is appended to
+// <scratchpad>/fake-windows-prints.jsonl: the channel, the printer, the @page width, the slip's first words.
+// Signs in as the e2e admin with a session minted from the env file's AUTH_SECRET (never printed).
+// Run from apps/cafe:  node --env-file=<scratchpad>/e2e.env <scratchpad>/pw-2e.mjs <step> [args]
+import { appendFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(path.join(process.cwd(), "package.json"));
+const mongoose = require("mongoose");
+const { encode } = require("next-auth/jwt");
+const pwRequire = createRequire("C:/Users/Kartik.desai/AppData/Local/npm-cache/_npx/9833c18b2d85bc59/node_modules/playwright-core/package.json");
+const { chromium } = pwRequire("playwright-core");
+
+const BASE = process.env.PW_BASE ?? "http://localhost:3110";
+const COOKIE = "authjs.session-token";
+const SHOTS = path.join(HERE, "shots");
+const LOG = path.join(HERE, "fake-windows-prints.jsonl");
+const FAKE = {
+  version: process.env.FAKE_VERSION ?? "1.11.0",
+  chosen: process.env.FAKE_CHOSEN ?? "EPSON TM-T82",
+  refuse: process.env.FAKE_REFUSE ?? "",
+  printers: ["EPSON TM-T82", "Kitchen TVS", "Microsoft Print to PDF"],
+};
+
+async function sessionCookie() {
+  const uri = process.env.MONGODB_URI ?? "";
+  if (!/\/pos_scratch_e2e_[a-z0-9_]+$/.test(uri)) throw new Error("refusing: not a pos_scratch_e2e_* database");
+  await mongoose.connect(uri);
+  try {
+    const staff = await mongoose.connection.db.collection("staffs").findOne({ username: "e2eadmin" }, { projection: { name: 1, role: 1 } });
+    if (staff === null) throw new Error("e2eadmin not found");
+    return await encode({ token: { name: staff.name, id: String(staff._id), role: staff.role, lastValidated: Date.now() }, secret: process.env.AUTH_SECRET, salt: COOKIE });
+  } finally {
+    await mongoose.disconnect();
+  }
+}
+
+// What the slip says, without tags: enough to tell ALL STATIONS from BAR and a test slip from a KOT.
+function slipWords(html) {
+  const body = html.slice(html.indexOf("<body"));
+  return body.replace(/<style[\s\S]*?<\/style>/g, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim().slice(0, 160);
+}
+
+const [step, ...args] = process.argv.slice(2);
+const token = await sessionCookie();
+const context = await chromium.launchPersistentContext(path.join(HERE, "pw-profile-2e"), {
+  executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe",
+  headless: true,
+  viewport: { width: 1280, height: 1000 },
+});
+await context.addCookies([{ name: COOKIE, value: token, domain: "localhost", path: "/", httpOnly: true, sameSite: "Lax" }]);
+await context.exposeBinding("__fakeWindowsPrint", (_source, entry) => {
+  const page = /@page\s*\{\s*size:\s*([0-9]+mm)/.exec(entry.html)?.[1] ?? "none";
+  const line = { at: new Date().toISOString().slice(11, 19), channel: entry.channel, printer: entry.printer, page, refused: entry.refused, words: slipWords(entry.html) };
+  appendFileSync(LOG, `${JSON.stringify(line)}\n`);
+  console.log("print", JSON.stringify(line));
+});
+await context.addInitScript((fake) => {
+  const refusal = "Error invoking remote method 'pos-desktop:print-html-on': Error: That printer is not on this PC. Open Printer setup in the POS and choose a printer this PC has.";
+  let chosen = fake.chosen;
+  const bridge = {
+    version: fake.version,
+    printHtml: async (html) => {
+      await window.__fakeWindowsPrint({ channel: "printHtml", printer: chosen, html, refused: false });
+    },
+    listPrinters: async () => ({ selected: chosen, printers: fake.printers.map((name) => ({ name, displayName: name })), printMode: "direct" }),
+    savePrinter: async (name) => ((chosen = name), { selected: name }),
+    savePrintMode: async (mode) => ({ printMode: mode }),
+  };
+  if (fake.version !== "1.10.0") {
+    bridge.printHtmlOn = async (html, name) => {
+      const refused = name === fake.refuse || !fake.printers.includes(name);
+      await window.__fakeWindowsPrint({ channel: "printHtmlOn", printer: name, html, refused });
+      if (refused) throw new Error(refusal);
+    };
+  }
+  window.posDesktop = bridge;
+}, FAKE);
+const page = context.pages()[0] ?? (await context.newPage());
+const errors = [];
+page.on("pageerror", (e) => errors.push(String(e.message).slice(0, 200)));
+page.on("console", (m) => {
+  if (m.type() === "error") errors.push(m.text().slice(0, 200));
+});
+
+const shot = async (name) => {
+  await page.screenshot({ path: path.join(SHOTS, `2e-${name}.png`), fullPage: true });
+  console.log(`shot 2e-${name}.png`);
+};
+const text = async (selector) => (await page.locator(selector).first().innerText()).replace(/\s+\n/g, "\n").slice(0, 3500);
+const setup = async () => {
+  await page.goto(`${BASE}/printers`, { waitUntil: "networkidle" });
+  await page.locator("[data-print-setup]").waitFor({ timeout: 20000 });
+};
+
+try {
+  if (step === "device") {
+    await page.goto(`${BASE}/printers`, { waitUntil: "networkidle" });
+    console.log(await page.evaluate(() => localStorage.getItem("pos.device-id.v1")));
+  } else if (step === "setup") {
+    await setup();
+    console.log(await text("[data-print-setup]"));
+    await shot(args[0] ?? "setup");
+  } else if (step === "panel") {
+    // The printer panel's words (the dot, Where slips print, the bill printer).
+    await page.goto(`${BASE}/printers`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(2500);
+    console.log(await text("main"));
+    const dot = page.locator("[aria-label*='open printer setup']").first();
+    console.log("dot:", await dot.getAttribute("aria-label"));
+    await shot(args[0] ?? "panel");
+  } else if (step === "set-up-printers") {
+    await setup();
+    await page.getByRole("button", { name: "Set up printers" }).click();
+    await page.getByText("Printer 1 is set up.").first().waitFor({ timeout: 10000 });
+    await page.waitForTimeout(1500);
+    console.log(await text("[data-print-setup]"));
+    await shot("set-up-printers");
+  } else if (step === "add-station") {
+    await setup();
+    await page.getByLabel("New station name").fill(args[0]);
+    await page.getByRole("button", { name: "Add station" }).click();
+    await page.getByText(args[0], { exact: true }).waitFor({ timeout: 10000 });
+  } else if (step === "category-station") {
+    await page.goto(`${BASE}/categories`, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: `Rename ${args[0]}` }).click();
+    await page.locator("#category-station").click();
+    await page.getByRole("option", { name: args[1] === "default" ? /Default station/ : args[1] }).click();
+    await page.getByRole("button", { name: "Save" }).click();
+    await page.waitForTimeout(1500);
+  } else if (step === "add-windows-printer") {
+    // args: <name> <Windows printer> <paper 58|80> <station name | "-">
+    await setup();
+    await page.getByRole("button", { name: "Add printer" }).click();
+    await page.locator("#printer-name").fill(args[0]);
+    await page.getByRole("button", { name: "Device printer" }).click();
+    const formText = await text("[role=dialog]");
+    console.log("form:", formText.split("\n").filter((l) => /Windows|printer|PC/.test(l)).slice(0, 8).join(" | "));
+    await page.getByLabel("Windows printer").click();
+    const options = await page.getByRole("option").allInnerTexts();
+    console.log("windows printers offered:", JSON.stringify(options));
+    await page.getByRole("option", { name: args[1], exact: true }).click();
+    await page.getByRole("button", { name: `${args[2]} mm` }).click();
+    if (args[3] !== "-") await page.getByText(`${args[3]} KOTs`, { exact: true }).click();
+    await shot(`add-${args[0]}-form`);
+    await page.getByRole("button", { name: "Save printer" }).click();
+    await page.waitForTimeout(2000);
+    const alert = page.locator("[role=dialog] [role=alert]");
+    if ((await alert.count()) > 0) console.log("form says:", await alert.first().innerText());
+    console.log(await text("[data-print-setup]"));
+    await shot(`add-${args[0]}-saved`);
+  } else if (step === "form-note") {
+    // An older Windows app: the form's words for this PC's printer.
+    await setup();
+    await page.getByRole("button", { name: "Add printer" }).click();
+    await page.getByRole("button", { name: "Device printer" }).click();
+    console.log(await text("[role=dialog]"));
+    await shot("form-old-app");
+  } else if (step === "test-print") {
+    await setup();
+    const row = page.locator(`[data-printer-row]`).filter({ hasText: args[0] }).first();
+    await row.getByRole("button", { name: "Test print" }).click();
+    await page.getByText(`Test slip sent to ${args[0]}.`).first().waitFor({ timeout: 10000 });
+    console.log("toast: Test slip sent to", args[0]);
+    await page.waitForTimeout(3000);
+  } else if (step === "order") {
+    // args: <name>... then Send to Kitchen (a walk-in order from this PC)
+    await page.goto(`${BASE}/pos`, { waitUntil: "networkidle" });
+    for (const name of args) {
+      await page.getByRole("button", { name: new RegExp(`^${name}`) }).first().click();
+      await page.waitForTimeout(400);
+    }
+    await page.getByRole("button", { name: "Send to Kitchen" }).click();
+    await page.waitForTimeout(5000);
+    await shot(`order-${args.join("-")}`);
+  } else if (step === "orders") {
+    // args: "<a,b>" "<c>" <seconds>: two rounds from one open POS page (one agent, its holds kept), then wait.
+    await page.goto(`${BASE}/pos`, { waitUntil: "networkidle" });
+    for (const round of [args[0], args[1]]) {
+      for (const name of round.split(",")) {
+        await page.getByRole("button", { name: new RegExp(`^${name}`) }).first().click();
+        await page.waitForTimeout(400);
+      }
+      await page.getByRole("button", { name: "Send to Kitchen" }).click();
+      console.log("sent", round, new Date().toISOString().slice(11, 19));
+      await page.waitForTimeout(6000);
+    }
+    await page.waitForTimeout(Number(args[2] ?? "10") * 1000);
+    await page.locator("[aria-label*='open printer setup']").first().click();
+    await page.waitForTimeout(1500);
+    console.log((await page.locator("[role=dialog]").first().innerText()).split("\n").slice(0, 30).join(" | "));
+    await shot("orders-panel");
+  } else if (step === "wait") {
+    // Keep the POS open on this PC for N seconds (its agent prints what it leases).
+    await page.goto(`${BASE}/pos`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(Number(args[0] ?? "40") * 1000);
+  } else {
+    throw new Error("unknown step");
+  }
+  if (errors.length > 0) console.log("page errors:", JSON.stringify(errors.slice(0, 8)));
+} finally {
+  await context.close();
+}
+```
+
+**Part A: the Windows app's web half in a desktop browser** (the gate ran exactly this on the golden build; every print the fake app receives is a line of `<scratchpad>/fake-windows-prints.jsonl`; read it, `payloads`, `jobs`, `state` and the proxy log after each item):
+1. `setup`: simple mode; "Set up printers" offered (this PC prints today).
+2. `set-up-printers`: Printer 1 "Windows printer EPSON TM-T82 · This device · Bill, Full KOT copy, Notices, End of day · Paper 80 mm" (the cafe's KOT paper).
+3. `order Cheesecake Masala`: one KOT through `printHtmlOn` on "EPSON TM-T82", `@page 80mm`, direct (the proxy: the order and one ack).
+4. `category-station Beverages Bar`; `add-windows-printer "Bar printer" "Kitchen TVS" 58 Bar`: offered "EPSON TM-T82", "Kitchen TVS" and "Microsoft Print to PDF (saves a file, cannot be used)"; the row "Windows printer Kitchen TVS · This device", "Bar KOTs, Notices", "Paper 58 mm"; Devices: "Prints Printer 1, Bar printer".
+5. `order Cheesecake Masala`: "BAR" on "Kitchen TVS" at `@page 58mm` and "ALL STATIONS" on "EPSON TM-T82" at `@page 80mm`, once each, both direct (the order and two acks; no lease).
+6. `test-print "Printer 1"`, `test-print "Bar printer"`: each test slip on its own printer, at its own paper.
+7. `add-windows-printer Again "EPSON TM-T82" 80 Kitchen`: "Printer 1 already prints on that Windows printer. Choose another Windows printer."; nothing added.
+8. `FAKE_REFUSE="Kitchen TVS"`, `orders "Cheesecake,Masala" "Cheesecake" 36`: "BAR" refused (the job back in the queue, "not sent: That printer is not on this PC…"); "ALL STATIONS" and the second round print on EPSON at once; no lease at the refused job's 2 s backoff; the bar printer tried again at about 30 s and 60 s (one lease and one ack each), refused again.
+9. `wait 10` (no `FAKE_REFUSE`): "BAR" printed once, unlabelled.
+10. `FAKE_VERSION=1.10.0`: `panel` ("A printer is not on this device", the dot "Printer not connected"); `order Cheesecake Masala`: "ALL STATIONS" through `printHtml` on the chosen EPSON, "BAR" left queued (never leased); `form-note`: "This Windows app prints one printer, the one chosen for this PC. Install the Windows app 1.11 or later to print several printers here."
+11. `wait 10` (1.11.0 again): the waiting "BAR" prints.
+12. `panel`: "Printing is on", "Printers are set up: each slip prints at its printer (Printer setup → Printers).", "Default (Printer 1)", the dot "Printer connected".
+
+Put the database back: `reset2d`, then `add-station Bar` (with `pw-2e.mjs`): as found.
+
+**Part B: the Android app on the emulator** (`Pixel_7_API_33`, WebView 109, the release APK `29115bdf…`; boot your own with `timeout: 7200000`; the owner's `"Bash(adb:*)"` allow rule is in `.claude/settings.local.json`). **The app was left on its start screen ("Connect to your workspace") at the 2D gate; the owner may have set the demo address again** (`https://posdemo.sandbee.in`, "Olivea Pizza"): never act on the demo. If the app shows the demo, ask the owner to switch it (or to clear the app's data) and wait; if any adb input is refused, stop and ask the owner; never work around it. On the start screen type `http://localhost:3100` (`adb reverse tcp:3100 tcp:3200` first); sign in as e2eadmin if asked, typing the secret only through the 2D gate's scratchpad helper `type-secret.py` (it checks the focused field is a password field and never prints the secret). Check "POS Software" and the seeded menu before any tap that writes. On the local POS:
+1. The app's network printer 10.0.2.2:9100; Printer setup → **Set up printers**: Printer 1 "Network 10.0.2.2:9100 · printed by This device".
+2. Beverages → Bar; `beat e2e-bar-agent "Bar phone"`; a LAN bar printer (127.0.0.1:9102, "Bar phone …gent", Bar KOTs); `agent e2e-bar-agent "Bar printer" 9102`. Send to Kitchen (Cheesecake, Masala Chai): "ALL STATIONS" at the counter with no lease request (the order and one ack), "BAR" by the agent, once each.
+3. Pay Now (Cheesecake, Cash): the KOT, then the bill at the counter (the order, ack, lease, ack).
+4. Stop the counter's fake printer (by PID); Send to Kitchen (Cheesecake): the direct print is refused after a few seconds (not sent), the dot says a slip waits, and no request follows; start the fake printer again: the slip prints once, unlabelled.
+5. `adb logcat -b crash -d` is empty for the app.
+6. **Put back as found:** stop the agent; `reset2d`, then add the Bar station back; on the local POS remove the app's network printer ("No printer set up"); More options → Change POS address → the start screen, the address cleared (the owner sets the demo address and signs in himself); `adb reverse --remove-all`, then `adb reverse tcp:3100 tcp:3100`; stop the POS, the proxy and the fake printers by PID after checking each command line; `adb emu kill`.
+
+**Part C (the owner, on the counter PC):** TEST-CHECKLIST "Several printers on one Windows PC" with the Windows app 1.11.0 built from this branch. Record in Results that it is the owner's step (a session has no Windows printers).
+
+Record every answer, the request counts per item and the prints per printer in Results. If Part B could not run, say so in Results; Part A, the live legs and the gate's runs still stand.
+
+- [ ] **Step 5: The fresh review**
+
+A fresh reviewer subagent (the most capable model, read-only) reads `<start>..HEAD` against this plan (decisions 1–16; "2D review gate: rulings"; Session 2E and its Review Focus) and spec §8.1, §9.1, §9.2, §9.7, §10, §11 and §17, and reports Critical / Important / Minor findings, each with a concrete failure scenario. Fix Critical and Important ones by TDD on the branch (each RED seen before its GREEN) and re-run Step 1; list the rest in Results for the 2E gate.
+
+- [ ] **Step 6: Results, then push**
+
+Add "## Session 2E Results (filled in by the implementer)" at the end of this plan: every number from Steps 1–5, the APK hashes, the exit check's answers, each changed pin, any deviation with its reason. Commit it, and push the branch with the token only: `GIT_TERMINAL_PROMPT=0 git push origin feat/printing-phase-2`.
+
+**Changed existing pins in 2E** (each follows a deliberate change; name them in Results):
+- E0: `print-printer-routing.test.ts` "bill: the asking device's bill printer, else the default …" (a choice that does not take bills falls back); `print-bill-printer.test.ts` "2D final review (M-6) …" (the unticked case shows the default); `print-setup-paths.test.ts` "PIN (2C): each printer write publishes print-setup …" (exactly the station delete that changed a printer publishes).
+- E1: `print-setup-ui-paths.test.ts` "PIN (2D): the admin Printer setup page …", "PIN (2D): each printer row …", "PIN (2D): the Devices section …".
+- E2: `apps/desktop/src/desktop-paths.test.ts` "(6) preload.ts exposes exactly […]", "(7) preload.ts duplicated literals …", "(13) parity: apps/cafe/lib/desktop-shell.ts …".
+- E3: `print-agent-printers.test.ts` (the desktop argument of every `printerIsLocal`/`agentPrintersOf`/`dotPrintersOf` call; `targets: {}`), `print-setup-form.test.ts` (the same), `print-host-paths.test.ts` "PIN (I) …" (the eod surface's page) and "PIN (P): line budgets" (`use-print-host-bridge.ts` 250 → 255), `printer/print-gating-fx-paths.test.ts` "bridge: the watchdog ABANDONS …" (the same budget), `print-printer-test.test.ts` "PIN (2D): the device prints a test slip …", `print-setup-ui-paths.test.ts` "PIN (2D): each printer row …" (`agentPrintersOf(…, desktop)`); `apps/cafe/package.json` `testChain` (`lib/print-windows-printers.test.ts` appended).
+- E4: `print-agent-printers.test.ts` "PIN (2C final review, I-2): the pulse and the wake kick …", "PIN (2C): the page reads the printers …".
+- E5: `print-setup-paths.test.ts` "PIN (2D, the 2C review gate's F-3) …" (`printerClashMessage`), `print-agent-printers.test.ts` "PIN (2C): the agent prints a leased job through printJobCopies …".

@@ -544,8 +544,14 @@ The Phase 2 plan ([2026-10-03-phase-2-routing.md](../plans/2026-10-03-phase-2-ro
 - **Station writes never leave the setup half-done:** a rename is saved before the default moves; a delete clears every pointer before the station goes, and names any printer it leaves with no slip.
 
 **Changed by Session 2D's final review (2026-10-04; the 2D gate re-checks it).**
-- **The bill printer picker says what routing does (M-6).** Routing sends this device's bills to its choice while that printer is routable, whether or not it still takes bills (the 2B gate's ruling). A choice whose Bill box was unticked later is therefore shown as chosen, with "‹printer› no longer takes bills, but this device's bills still print there. Choose another printer to change it.", never as the default; a choice switched off or gone shows the default and says so. Before, the panel said "Default" while bills kept printing at the chosen printer.
+- **The bill printer picker says what routing does (M-6).** *(Rewritten by the 2D review gate.)* Routing sends this device's bills, and its End of day, to its choice while that printer is routable **and takes bills**: a printer prints only the slips its boxes say (the 2B gate had counted any routable choice, so a tablet's bills kept printing at a printer whose Bill box the admin had unticked). A choice whose Bill box was unticked later, or that was switched off or deleted, shows the default and says why ("‹printer› no longer takes bills, so this device's bills go to the default."); the section shows only while some routable printer takes bills, and promises End of day only for a chosen printer (with "Default" it goes to the first End of day printer, §8).
 - **"Set up printers" says where other devices' slips go (M-1).** Its confirmation reads "Printer 1 is set up. This device's paper does not change, and other devices' slips print here too." (with no print host, every device's slips now print at Printer 1); before, it said "Nothing changes on paper".
+
+**As built at the 2D review gate (Session 2E's exact code, 2026-10-05).** Where §9.2 left room, or the gate found more (plan: "2D review gate: rulings"):
+- **One Windows PC prints several printers** (§9.2): a printer job names its Windows printer (`printHtmlOn`, desktop 1.11.0) and is drawn, and its page sized, for that printer's paper; a PC may write several Windows printers, each a different one (Windows names compared ignoring case). An older Windows app prints only its chosen printer: another Windows printer is never local there, so its slips wait visibly and never print on that paper. Every other device prints one printer until Session 2F (an Android app on bridge v1; a Chrome tab, §9.7).
+- **A refusal holds only its own printer** on the Windows app (everywhere else the device's one printer, as before); the lease, direct print and the kicks name only the printers no refusal holds, and a held printer is tried again when its hold ends.
+- **Every job of a slip leased to the asking tab reaches it:** with two printers on one device a slip is leased once per printer line (decision 15), and each prints at once.
+- **A station delete that took a station off a printer publishes `print-setup`**, as a printer save does.
 
 ## 9. Printer devices (agents)
 
@@ -573,6 +579,8 @@ The Phase 2 plan ([2026-10-03-phase-2-routing.md](../plans/2026-10-03-phase-2-ro
 | Android bridge | protocol v1, one selected printer | **Protocol v2:** every `printer.*` method takes a `printerId`, and status events carry `printerId`. The web code falls back to single-printer behaviour when `version === 1` (old APKs). |
 | Kotlin `PrinterManager` | one `selected` printer and one transport | A pool of per-printer state machines, each with its own transport, reconnect backoff and pause flags. Bluetooth Classic and BLE keep one link per printer; TCP still connects per job. |
 | Desktop store | one `deviceName` | A list of printers, each a Windows printer (spooler) or a LAN printer (raw TCP, §9.6). |
+
+*As built at the 2D review gate (Session 2E):* the Windows app keeps its one chosen printer (`deviceName`) and prints any printer the page names (`printHtmlOn`) when Windows reports it at that moment; a printer is saved by its Windows name from the printers Windows reports, so the app keeps no list of its own, and its print method stays one per PC. The per-printer web store and the Kotlin pool are Session 2F's (bridge v2), where a web lane first drives two printers; a Chrome tab stays at one (§9.7).
 
 ### 9.3 Who may lease which job
 
@@ -612,7 +620,7 @@ The Phase 2 plan ([2026-10-03-phase-2-routing.md](../plans/2026-10-03-phase-2-ro
 ### 9.7 Chrome tab
 
 - It drives at most one Web Serial or Web Bluetooth printer.
-- It shows "Keep this tab open, or use the POS app" while it owns a printer, because hidden tabs throttle timers.
+- It shows "Keep this tab open, or use the POS app" while it owns a printer, because hidden tabs throttle timers. *(Session 2E: "Keep this tab open, or use the POS app: a hidden or closed tab prints late or not at all.", under this device's printer.)*
 - A plain browser cannot drive a LAN printer. Chrome's Local Network Access rules and the lack of raw sockets prevent it.
 
 ## 10. Health, status and alerts
@@ -623,7 +631,7 @@ The Phase 2 plan ([2026-10-03-phase-2-routing.md](../plans/2026-10-03-phase-2-ro
   - **Paper and cover** (Phase 3) come from `DLE EOT` after each job and on a slow idle poll (every 60 s) on LAN, USB and Bluetooth Classic. BLE reports link state only.
   - A **LAN printer's health** comes from the outcome of its last job, plus a probe when idle (one connect and close every 60 s, only while the printer has no queued jobs).
 - **On every device:**
-  - **Top-bar dot:** the worst state among the printers this device prints to or orders for. *(As built at the 2C gate, Session 2D: in printers mode it is the worst state among the printers this device writes, red when one it writes is not its own printer, and green for a device that writes none, whose slips print at the cafe's printers; simple mode is unchanged. Its words: "A printer is not on this device", "Printing is on · Each slip prints at its printer".)*
+  - **Top-bar dot:** the worst state among the printers this device prints to or orders for. *(As built at the 2C gate, Session 2D: in printers mode it is the worst state among the printers this device writes, red when one it writes is not its own printer, and green for a device that writes none, whose slips print at the cafe's printers; simple mode is unchanged. Its words: "A printer is not on this device", "Printing is on · Each slip prints at its printer". Session 2E: on the Windows app a printer it writes is its own when Windows reports that printer on this PC; on an older Windows app only its chosen printer.)*
   - **Settings → Printers:** every printer and device.
 - **Ordering device:**
   - Each slip shows Queued → Printing → Printed ✓ / Failed ⚠.
@@ -662,6 +670,7 @@ The Phase 2 plan ([2026-10-03-phase-2-routing.md](../plans/2026-10-03-phase-2-ro
 - **Settings → Devices:** each device's online status, its label, and "Bill printer for this device".
 - **The current printer panel** (`components/print/*`) becomes the "This device" view: the printers this device owns and their state.
 - **As built at the 2C review gate (Session 2D; plan decision 11):** the setup lives on the admin Printer setup page (`/printers`), under this device's printer panel: **Printers** (Set up printers first; Add printer, each printer's state in words, on/off, Test print, Edit, Delete, and what the setup leaves without a printer), **Kitchen stations** (add, rename, make default, delete) and **Devices** (each device, online or last seen, the printers it prints). The category dialog and the item form gain "Kitchen station". "Bill printer for this device" sits in the printer panel (it is the device's own). No backup printer yet (Phase 3).
+- **As built at the 2D review gate (Session 2E):** on the Windows app (1.11.0) a printer of this PC is chosen under "Windows printer" from the printers Windows reports (a file printer listed but not choosable), on the cafe's KOT paper unless changed; an older Windows app offers its chosen printer and says it prints one. A Windows row names its printer. Test print is offered only when its slip can print; switching a printer off asks first.
 
 ## 12. Phase 0: fixes to the uncommitted 2026-10-02 changes
 
@@ -807,6 +816,8 @@ A busy day is assumed:
 **Printers mode (Phase 2 Session 2C, the 2B gate).** Reading the printers costs at most 192 requests a day (8 devices, a focus read at most twice an hour for 12 h), plus one per page load and per admin save (whose `print-setup` frame costs 2 Worker requests); a list shown stale by the pulse or the wake is read again at most once a minute (at most 30 times for one waiting slip, which leaves the count after 30 min). With every read the heavy setup stays under both ceilings: 5,982 on a normal day, 17,820 worst case. When the counter device takes every order, each round's full copy costs it one request (direct print per printer line): the heavy day is 5,340 with the wake (was 5,790). Pinned in `print-budget.test.ts`.
 
 **The setup screens (Phase 2 Session 2D, the 2C gate).** No new recurring request: the setup page reads the printers, the stations and the devices when it opens (never polled); a Test print costs its create, a lease and an ack (and two Worker requests when another device prints it); the top-bar dot and the bill printer read the agent's printers entry with no request or subscription of their own, so an admin save still costs one printers read per device. A device whose list keeps looking stale (a printer it writes whose address is not its own printer) reads it at most once a minute (at most ~720 a day), and its dot shows that printer red (the 2C gate, F-5). The wake's read of the printers costs one small Mongo read per poll (at most 14,400 a day, ~0.17 operations a second on M0's 100; the 2C gate, M-3).
+
+**Several printers on one Windows PC (Phase 2 Session 2E, the 2D gate).** No new recurring request: `printHtmlOn` and the Windows printer list are local calls to the app; the lease names fewer printers while one is held; a Windows printer that keeps refusing costs one lease and one ack per 30 s while its slip waits (Phase 1's rule for a refusing printer, now per printer), and one renamed or removed in Windows stops being leased once the app's list is read again. A station delete that took a station off a printer costs two Worker requests (its `print-setup` frame).
 
 **Phase 1 polls with one device at most** (§7.10): the host in host mode, nobody without a host. The "3 printer devices" columns above are Phase 2's target design; `print-budget.test.ts` pins both. With no host, each agent names itself on the existing 20 s pulse (`?device=`, one bounded read on a request that already runs), so no device adds a request.
 
