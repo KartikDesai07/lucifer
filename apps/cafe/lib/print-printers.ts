@@ -1,6 +1,6 @@
 import type { Types } from "mongoose";
 import { isDuplicateKeyError } from "@pos/shared/api";
-import { PRINTERS_MAX, type PrinterConfig, type PrinterConnection } from "@pos/shared/print-printers";
+import { PRINTERS_MAX, printerWriterClash, printerWriterTakenMessage, type PrinterConfig, type PrinterConnection } from "@pos/shared/print-printers";
 import { Printer, type IPrinter, type IPrinterConnection } from "@/models/Printer";
 import { Station } from "@/models/Station";
 import type { PrinterBody } from "@/lib/print-printer-schemas";
@@ -72,10 +72,13 @@ async function stationsExist(ids: readonly string[]): Promise<boolean> {
 export async function createPrinter(body: PrinterBody): Promise<PrintSetupResult<PrinterConfig>> {
   const { order, ...stored } = body;
   if (!(await stationsExist(stored.slips.kotStations))) return { ok: false, status: 400, error: PRINTER_UNKNOWN_STATION_MESSAGE };
-  const existing = await Printer.find().select("order").lean<Array<{ order: number }>>();
+  const existing = await listPrinters();
   if (existing.length >= PRINTERS_MAX) return { ok: false, status: 400, error: PRINTERS_FULL_MESSAGE };
   const last = existing.length === 0 ? -1 : Math.max(...existing.map((row) => row.order));
   if (await nameTaken(stored.name)) return { ok: false, status: 409, error: PRINTER_EXISTS_MESSAGE };
+  // Session 2D (the 2C review gate, F-3): one enabled printer per printing device until Session 2E.
+  const clash = printerWriterClash(existing, stored);
+  if (clash !== null) return { ok: false, status: 409, error: printerWriterTakenMessage(clash.name) };
   // The unique name index must exist before the first insert (house rule: crud-route.ts).
   await Printer.init();
   try {
@@ -98,6 +101,8 @@ export async function replacePrinter(id: string, body: PrinterBody): Promise<Pri
   if (printer === null) return { ok: false, status: 404, error: PRINTER_NOT_FOUND };
   if (!(await stationsExist(stored.slips.kotStations))) return { ok: false, status: 400, error: PRINTER_UNKNOWN_STATION_MESSAGE };
   if (await nameTaken(stored.name, id)) return { ok: false, status: 409, error: PRINTER_EXISTS_MESSAGE };
+  const clash = printerWriterClash(await listPrinters(), stored, id);
+  if (clash !== null) return { ok: false, status: 409, error: printerWriterTakenMessage(clash.name) };
   printer.set("connection", stored.connection);
   printer.set("primaryDeviceId", stored.primaryDeviceId);
   printer.set({ name: stored.name, paper: stored.paper, slips: stored.slips, copies: stored.copies, enabled: stored.enabled });

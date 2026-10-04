@@ -150,6 +150,25 @@ export function printerWriterDevices(printers: readonly PrinterConfig[]): string
   return out;
 }
 
+/** Session 2D (until Session 2E's several printers per device, spec §9.2): a device prints one printer, so at most
+ *  one ROUTABLE printer (enabled, taking a slip) names it as its writer. A second would never print, or, for a
+ *  Windows or browser serial printer (matched by transport alone), print on the first one's paper (the 2C review
+ *  gate, F-3). The routable printer that already does, or null; a printer switched off or taking no slip is never
+ *  leased, so it never clashes (the 2D gate's review, M-4). */
+export function printerWriterClash(
+  printers: readonly PrinterConfig[],
+  draft: Pick<PrinterConfig, "connection" | "primaryDeviceId" | "enabled" | "slips">,
+  exceptId?: string,
+): PrinterConfig | null {
+  const writer = printerWriterDeviceId(draft);
+  if (!draft.enabled || writer === null || !printerTakesSlips(draft.slips)) return null;
+  return routablePrinters(printers).find((printer) => printer.id !== exceptId && printerWriterDeviceId(printer) === writer) ?? null;
+}
+
+export function printerWriterTakenMessage(name: string): string {
+  return `That device already prints ${name}. For now one device prints one printer: switch ${name} off, or choose another device.`;
+}
+
 /** Session 2C: a waiting job's printer, if routing may still send it slips (enabled, with a writer, taking a
  *  slip); null when it was deleted, switched off or left with no writer (and for PRINT_JOB_NO_PRINTER). */
 export function routablePrinterOf(printers: readonly PrinterConfig[], printerId: string): PrinterConfig | null {

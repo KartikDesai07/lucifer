@@ -80,39 +80,45 @@ export async function createStation(body: CreateStationBody): Promise<PrintSetup
   }
 }
 
-/** A rename and/or "make this the default". The old default is cleared FIRST, so two defaults never
- *  coexist; a request cut between the two writes leaves none for a moment, and defaultStationOf then
- *  picks the first in order. */
+/** A rename and/or "make this the default". The rename is saved FIRST (the 2A gate's M3), so a rename the unique
+ *  index refuses (two admins racing) never leaves the cafe with no default; then the old default is cleared
+ *  before this one is set, so two defaults never coexist (a request cut between those two writes leaves none
+ *  for a moment, and defaultStationOf then picks the first in order). */
 export async function updateStation(id: string, body: UpdateStationBody): Promise<PrintSetupResult<StationConfig>> {
   const station = await Station.findById(id);
   if (station === null) return { ok: false, status: 404, error: STATION_NOT_FOUND };
   if (body.name !== undefined && (await nameTaken(body.name, id))) return { ok: false, status: 409, error: STATION_EXISTS_MESSAGE };
+  if (body.name !== undefined && body.name !== station.name) {
+    station.name = body.name;
+    try {
+      await station.save();
+    } catch (error) {
+      if (isDuplicateKeyError(error)) return { ok: false, status: 409, error: STATION_EXISTS_MESSAGE };
+      throw error;
+    }
+  }
   if (body.isDefault === true && !station.isDefault) {
     await Station.updateMany({ _id: { $ne: station._id }, isDefault: true }, { $set: { isDefault: false } });
     station.isDefault = true;
-  }
-  if (body.name !== undefined) station.name = body.name;
-  try {
     await station.save();
-    return { ok: true, data: stationWireOf(station) };
-  } catch (error) {
-    if (isDuplicateKeyError(error)) return { ok: false, status: 409, error: STATION_EXISTS_MESSAGE };
-    throw error;
   }
+  return { ok: true, data: stationWireOf(station) };
 }
 
-/** Deletes a station that is not the default, then clears it from every category, item and printer that
- *  chose it: they fall back to the default (spec §6.2), as a lookup of a deleted station would. */
+/** Deletes a station that is not the default, after clearing it from every category, item and printer that chose
+ *  it: they fall back to the default (spec §6.2), as a lookup of a deleted station would. The pointers go FIRST
+ *  (the 2A gate's M4): a request cut in between leaves a station nobody points at, never a printer whose saved
+ *  station is gone (its form could not be saved again). */
 export async function deleteStation(id: string): Promise<PrintSetupResult<{ deleted: true }>> {
   const stations = await readStations();
   const station = stations.find((s) => s.id === id);
   if (station === undefined) return { ok: false, status: 404, error: STATION_NOT_FOUND };
   if (defaultStationOf(stations)?.id === id) return { ok: false, status: 400, error: STATION_DEFAULT_DELETE_MESSAGE };
-  await Station.deleteOne({ _id: id });
   await Promise.all([
     Category.updateMany({ stationId: id }, { $unset: { stationId: "" } }),
     Product.updateMany({ stationId: id }, { $unset: { stationId: "" } }),
     Printer.updateMany({ "slips.kotStations": id }, { $pull: { "slips.kotStations": id } }),
   ]);
+  await Station.deleteOne({ _id: id });
   return { ok: true, data: { deleted: true } };
 }

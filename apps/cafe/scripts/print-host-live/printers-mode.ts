@@ -162,9 +162,11 @@ export async function legAO(nowMs: number): Promise<void> {
   check("(ao) the bar's next slip waits behind its leased one (head of line per printer)", next.jobs.length === 0 && next.retryAt !== null);
   const kitchen2 = await leasePrintJobs({ deviceId: KITCHEN, tabId: "kitchen-tab", printerIds: [o.kitchen], dismissedBy: STAFF, nowMs: nowMs + 3_000 });
   check("(ao) ... and never blocks the kitchen's", kitchen2.jobs.length === 1 && kitchen2.jobs[0]?.printerId === o.kitchen);
-  // A fresh outlet where the kitchen tablet writes both the kitchen and the bar printer.
+  // A fresh outlet where the kitchen tablet writes both the kitchen and the bar printer. Session 2D's save refuses a
+  // second enabled printer for one device (until 2E), so the row is written with the model: the server still leases
+  // both lines of one writer.
   const two = await outlet();
-  await replacePrinter(two.bar, body("Bar", { connection: { kind: "device", deviceId: KITCHEN, transport: "bt-classic", address: "AA:BB" }, slips: { ...NO_SLIPS, kotStations: [two.barStation], notices: true } }));
+  await Printer.updateOne({ _id: two.bar }, { $set: { connection: { kind: "device", deviceId: KITCHEN, transport: "bt-classic", address: "AA:BB" } } });
   await payNow(await order(two), COUNTER, nowMs);
   const counted = await readJobsForDevice(KITCHEN, nowMs + 1_000);
   const both = await leasePrintJobs({ deviceId: KITCHEN, tabId: "kitchen-tab", printerIds: [two.kitchen, two.bar], dismissedBy: STAFF, nowMs: nowMs + 1_000 });

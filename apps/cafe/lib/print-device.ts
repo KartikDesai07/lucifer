@@ -1,5 +1,5 @@
 import { isDuplicateKeyError } from "@pos/shared/api";
-import type { PrintDeviceCapabilities, PrintDeviceShell } from "@pos/shared/print-agent-wire";
+import { PRINT_DEVICES_LIST_MAX, type PrintDeviceCapabilities, type PrintDeviceShell, type PrintDeviceSummary } from "@pos/shared/print-agent-wire";
 import { PRINT_DEVICE_HEARTBEAT_WRITE_MS, PRINT_DEVICE_ONLINE_MS, PRINT_DEVICE_PRUNE_MS } from "@pos/shared/print-lifecycle";
 import { PrintDevice } from "@/models/PrintDevice";
 
@@ -57,6 +57,23 @@ export async function touchPrintDevice(deviceId: string, nowMs: number): Promise
 export async function countOnlineAgents(nowMs: number): Promise<number> {
   const online = await PrintDevice.countDocuments({ lastSeenAt: { $gte: new Date(nowMs - PRINT_DEVICE_ONLINE_MS) } });
   return Math.max(1, online);
+}
+
+/** Session 2D (spec §11 Devices): the devices that print or lease, the most recently seen first (so the online ones
+ *  lead), for the Printer setup page and a network printer's printing device. One bounded read; no write. */
+export async function listPrintDevices(nowMs: number): Promise<PrintDeviceSummary[]> {
+  const rows = await PrintDevice.find()
+    .select("deviceId label shell lastSeenAt")
+    .sort({ lastSeenAt: -1 })
+    .limit(PRINT_DEVICES_LIST_MAX)
+    .lean<Array<{ deviceId: string; label: string; shell: PrintDeviceShell; lastSeenAt: Date }>>();
+  return rows.map((row) => ({
+    deviceId: row.deviceId,
+    label: row.label,
+    shell: row.shell,
+    online: nowMs - row.lastSeenAt.getTime() <= PRINT_DEVICE_ONLINE_MS,
+    lastSeenAt: row.lastSeenAt.toISOString(),
+  }));
 }
 
 /** Owner, after Session 1D: a device not seen for 7 days is gone (a reset or reinstall gets a new id), so

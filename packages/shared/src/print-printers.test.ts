@@ -13,6 +13,8 @@ import {
   defaultBillPrinterOf,
   defaultStationOf,
   printKotStationHeader,
+  printerWriterClash,
+  printerWriterTakenMessage,
   printNoPrinterMessage,
   printerIdsOf,
   printerTakesSlips,
@@ -188,6 +190,26 @@ test("2C: the wake allowance per agent: printers mode by the setup's writers, si
   assert.equal(printAgentDailyCap(two, 5), Math.floor(PRINT_WAKE_PRINTERS_DAILY_CAP / 2), "two writers (dev-p1 writes two printers), however many are online");
   assert.equal(printAgentDailyCap([], 3), printWakeAgentCap(3), "simple mode: today's split");
   assert.equal(printAgentDailyCap([printer("off", { enabled: false })], 1), printWakeAgentCap(1), "a disabled printer keeps simple mode");
+});
+
+// Phase 2 Session 2D (until Session 2E's several printers per device, spec §9.2): a device prints one printer, so
+// at most one enabled printer names it as its writer. A second would never print (or, for a Windows or browser
+// serial printer, print on the first one's paper: the 2C review gate, F-3).
+test("2D: one routable printer per printing device; one switched off or taking no slip, the printer itself or another device never clash", () => {
+  const kitchen = printer("kitchen");
+  const slips = { ...NO_SLIPS, notices: true };
+  const lanSame = { connection: { kind: "lan" as const, host: "10.0.0.9", port: 9100 }, primaryDeviceId: "dev-kitchen", enabled: true, slips };
+  assert.equal(printerWriterClash([kitchen], lanSame)?.id, "kitchen", "a LAN printer whose printing device already prints the kitchen's");
+  const deviceSame = { connection: { kind: "device" as const, deviceId: "dev-kitchen", transport: "usb" as const, address: "04b8:0e15" }, enabled: true, slips };
+  assert.equal(printerWriterClash([kitchen], deviceSame)?.id, "kitchen", "a device printer on that same device");
+  assert.equal(printerWriterClash([kitchen], { ...lanSame, enabled: false }), null, "saved switched off: never leased, so never a clash");
+  assert.equal(printerWriterClash([kitchen], { ...lanSame, slips: NO_SLIPS }), null, "saved taking no slip: never leased either (the 2D gate's review, M-4)");
+  assert.equal(printerWriterClash([printer("kitchen", { enabled: false })], lanSame), null, "the other one is switched off");
+  assert.equal(printerWriterClash([printer("kitchen", { slips: NO_SLIPS })], lanSame), null, "the other one takes no slip");
+  assert.equal(printerWriterClash([kitchen], lanSame, "kitchen"), null, "the printer being saved is not its own clash");
+  assert.equal(printerWriterClash([kitchen], { ...lanSame, primaryDeviceId: "dev-x" }), null, "another device");
+  assert.equal(printerWriterClash([kitchen], { connection: lanSame.connection, enabled: true, slips }), null, "a LAN printer with no printing device has no writer");
+  assert.equal(printerWriterTakenMessage("Kitchen"), "That device already prints Kitchen. For now one device prints one printer: switch Kitchen off, or choose another device.");
 });
 
 // Phase 2 Session 2D (spec §11): a printer's test slip. The server writes its lines from the stored printer, so

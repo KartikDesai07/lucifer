@@ -165,6 +165,45 @@ test("PIN (2C): each printer write publishes print-setup; the kind is the room's
   assert.match(src("../../workers/realtime/src/index.ts"), /"print-setup"/);
 });
 
+// Session 2D (spec §11 Devices): the Printer setup page lists the devices that print or lease, and a network
+// printer's printing device is chosen from them. An admin read, like the setup writes.
+test("PIN (2D): the devices list is an admin read, no-store; its lib never connects or logs and reads one bounded page", () => {
+  const route = src("app/api/print-devices/route.ts");
+  assert.match(route, /export async function GET\(\) \{\s*const authed = await requireAdmin\(\);/, "admin only");
+  for (const line of route.split("\n").filter((l) => /\breturn\b/.test(l))) {
+    if (/return authed\.error;/.test(line)) continue;
+    assert.match(line, /return noStore\(/, line.trim());
+  }
+  const lib = src("lib/print-device.ts");
+  assert.ok(!/connectDB\(|console\./.test(lib), "never connects, never logs");
+  assert.match(lib, /\.sort\(\{ lastSeenAt: -1 \}\)\s*\.limit\(PRINT_DEVICES_LIST_MAX\)/, "newest first, one bounded page");
+});
+
+// The 2A gate's M3 and M4, and the 2C review gate's F-3: station writes that never leave the setup half-done, and
+// one enabled printer per printing device until Session 2E.
+test("PIN (2D, the 2A gate's M3): a rename is saved before the default moves, so a refused rename never leaves no default", () => {
+  const s = src("lib/print-stations.ts");
+  const body = s.slice(s.indexOf("export async function updateStation("), s.indexOf("export async function deleteStation("));
+  const renamed = body.indexOf("station.name = body.name;");
+  const saved = body.indexOf("await station.save();");
+  const cleared = body.indexOf("await Station.updateMany(");
+  assert.ok(renamed >= 0 && saved > renamed && cleared > saved, `rename (${renamed}), its save (${saved}), then the old default cleared (${cleared})`);
+});
+
+test("PIN (2D, the 2A gate's M4): every pointer to a station is cleared before the station is deleted", () => {
+  const s = src("lib/print-stations.ts");
+  const body = s.slice(s.indexOf("export async function deleteStation("));
+  const pulled = body.indexOf('Printer.updateMany({ "slips.kotStations": id }');
+  const deleted = body.indexOf("await Station.deleteOne({ _id: id });");
+  assert.ok(pulled >= 0 && deleted > pulled, `the pointers (${pulled}) before the delete (${deleted})`);
+});
+
+test("PIN (2D, the 2C review gate's F-3): a printer save refuses a second enabled printer for one printing device", () => {
+  const s = src("lib/print-printers.ts");
+  assert.equal((s.match(/const clash = printerWriterClash\(/g) ?? []).length, 2, "create and replace both check");
+  assert.equal((s.match(/if \(clash !== null\) return \{ ok: false, status: 409, error: printerWriterTakenMessage\(clash\.name\) \};/g) ?? []).length, 2, "both refuse with 409 and the other printer's name");
+});
+
 test("PIN (2C, the 2A gate's Important 1): the wake answers each agent's share from the setup", () => {
   const s = src("app/api/print-jobs/wake/route.ts");
   assert.match(s, /listPrinters\(\)/, "one read of the printers");

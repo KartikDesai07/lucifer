@@ -90,6 +90,18 @@ export const PRINT_ATTENTION_WINDOW_MS = PRINT_JOB_QUEUED_RETENTION_MS + PRINT_J
 
 export const PRINT_DEVICE_SHELLS = ["android", "windows", "browser"] as const;
 export type PrintDeviceShell = (typeof PRINT_DEVICE_SHELLS)[number];
+/** Session 2D (spec §11 Devices): one device as GET /api/print-devices lists it. `online` is the server's verdict
+ *  (seen within PRINT_DEVICE_ONLINE_MS); a device has a row once it has polled the wake (a host, a printer's writer). */
+export interface PrintDeviceSummary {
+  deviceId: string;
+  label: string;
+  shell: PrintDeviceShell;
+  online: boolean;
+  lastSeenAt: string;
+}
+/** The devices list's one page: far above any cafe's devices (rows unseen for 7 days are pruned). */
+export const PRINT_DEVICES_LIST_MAX = 50;
+
 export interface PrintDeviceCapabilities {
   lan: boolean;
   bluetooth: boolean;
