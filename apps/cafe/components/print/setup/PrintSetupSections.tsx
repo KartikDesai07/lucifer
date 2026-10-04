@@ -18,19 +18,20 @@ const FAILED = "Couldn't load the printer setup. Reload the page to try again.";
 // read the agent makes (one cache entry), read again when the page opens so an admin edits the setup as it is now.
 // Nothing shows until both the printers and the stations are in (the 2D gate's review, I-1 and M-1): an empty list
 // while loading would offer Set up printers to a cafe that has printers, or save a printer with its stations gone.
+// The devices too (the 2D review gate, M-7): without them every remote printer reads "has not checked in".
 export function PrintSetupSections() {
   const qc = useQueryClient();
   const { deviceId } = usePrintHostContext();
   const { printers, loaded, failed } = usePrintersRead(true);
   const { stations, ready, failed: stationsFailed } = useStations();
-  const devices = usePrintDevices();
+  const { devices, loaded: devicesLoaded, failed: devicesFailed } = usePrintDevices();
 
   useEffect(() => {
     void qc.invalidateQueries({ queryKey: PRINTERS_KEYS.all });
   }, [qc]);
 
-  if (failed || stationsFailed) return <p role="alert" className="text-destructive">{FAILED}</p>;
-  if (!loaded || !ready) return <p role="status" className="text-brand-muted">{LOADING}</p>;
+  if (failed || stationsFailed || devicesFailed) return <p role="alert" className="text-destructive">{FAILED}</p>;
+  if (!loaded || !ready || !devicesLoaded) return <p role="status" className="text-brand-muted">{LOADING}</p>;
   return (
     <div className="space-y-6" data-print-setup>
       <PrintersSetupSection printers={printers} stations={stations} devices={devices} deviceId={deviceId} />

@@ -19,7 +19,7 @@ import {
   printerDraftOf,
   setUpPrintersBody,
 } from "@/lib/print-setup-form";
-import { connectionText, deviceName, printerRowState, printersLeftEmptyBy, setupGaps, slipsText } from "@/lib/print-setup-text";
+import { connectionText, deviceName, printerRowState, printersLeftEmptyBy, setupGaps, slipsText, testPrintBlock, testPrintSentText } from "@/lib/print-setup-text";
 import type { DevicePrinter } from "@/lib/printer/device-printer-store";
 
 // Printing redesign, Phase 2 Session 2D (spec §11): the Printer setup page's pure half: the form, "Set up printers"
@@ -170,6 +170,23 @@ test("2D: what the setup leaves without a printer (printers mode only), and the 
   const bar = printer("Bar", { slips: { ...NO_SLIPS, kotStations: ["s-bar"] } });
   const both = printer("Both", { slips: { ...NO_SLIPS, kotStations: ["s-bar", "s-kitchen"] } });
   assert.deepEqual(printersLeftEmptyBy([bar, both, counter], "s-bar").map((p) => p.id), ["Bar"], "only the printer that took nothing else");
+});
+
+// The 2D review gate (M-4): Test print said "sent" for a printer this device writes but could not print right then; the
+// slip only waited in the panel until it went stale. It is offered only when its slip can print, or will once the
+// printer's own device is back, and the toast says which.
+test("2D gate (M-4): Test print is offered only when its slip can print, and the toast says when another device is away", () => {
+  const here = { deviceId: "me", localIds: ["Mine"], canPrint: true };
+  const mine = printer("Mine", { connection: { kind: "device", deviceId: "me", transport: "usb", address: "04b8:0e15" } });
+  const lan = printer("Kitchen", { connection: { kind: "lan", host: "192.168.1.60", port: 9100 }, primaryDeviceId: "tablet-0001", slips: { ...NO_SLIPS, notices: true } });
+  const all = [mine, lan];
+  assert.equal(testPrintBlock(mine, all, here), null, "this device's own printer, ready");
+  assert.equal(testPrintBlock(mine, all, { ...here, canPrint: false }), "Connect this device's printer to test it.", "not ready here: nothing would print");
+  assert.equal(testPrintBlock({ ...mine, id: "Other" }, [{ ...mine, id: "Other" }], here), "This device prints it, but it is not this device's printer. Edit it first.", "written here, but not its printer");
+  assert.equal(testPrintBlock(lan, all, here), null, "another device's printer: its slip waits for that device");
+  assert.equal(testPrintBlock({ ...lan, enabled: false }, [{ ...lan, enabled: false }], here), "Switch it on, choose its slips and its printing device to test it.", "not routable");
+  assert.equal(testPrintSentText(lan, { tone: "ok", text: "POS app is online" }), "Test slip sent to Kitchen.");
+  assert.equal(testPrintSentText(lan, { tone: "bad", text: "POS app is offline" }), "Test slip sent to Kitchen. It prints when its printing device is back online.");
 });
 
 // The 2D review gate (M-8): a printer already switched off does not "stop printing" because of a station delete.

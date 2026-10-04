@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { PRINTER_ACTION_CLASS } from "@/components/print/printer-classes";
-import { usePrinters } from "@/hooks/use-agent-printers";
+import { usePrintersRead } from "@/hooks/use-agent-printers";
 import { usePrintJobActions } from "@/hooks/use-print-job-actions";
 import { printWaitingGroups, printerNameOf, type PrintWaitingGroup } from "@/lib/print-waiting";
 import type { PrintAttentionRow } from "@pos/shared/print-agent-wire";
@@ -23,7 +23,8 @@ const SECTION_TITLE = "Slips waiting";
 
 export function WaitingSlipsCard({ pulse }: { pulse: PosPulseData | undefined }) {
   // Session 2C: names each slip's printer (printers mode); the same cached read the agent makes.
-  const printers = usePrinters(true);
+  // The agent's entry, read without a subscription of its own (the 2D review gate, M-3: one read per admin save).
+  const { printers } = usePrintersRead(true);
   const rows = pulse?.printAttention;
   const { retry, confirm, dismiss } = usePrintJobActions();
   const [tapped, setTapped] = useState<ReadonlySet<string>>(new Set());

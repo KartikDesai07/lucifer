@@ -5,7 +5,7 @@ import { Printer as PrinterIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import type { PrintDeviceSummary } from "@pos/shared/print-agent-wire";
-import { routablePrinterOf, type PrinterConfig, type StationConfig } from "@pos/shared/print-printers";
+import type { PrinterConfig, StationConfig } from "@pos/shared/print-printers";
 import { InlineConfirm } from "@/components/print/PrintHostCardParts";
 import { PrinterSection } from "@/components/print/PrinterSection";
 import { PRINTER_ACTION_CLASS, PRINTER_DOT_BAD_CLASS, PRINTER_DOT_OK_CLASS } from "@/components/print/printer-classes";
@@ -17,7 +17,7 @@ import { useCanPrintNow, useDevicePrinter, usePrintLane } from "@/hooks/use-devi
 import { useDeletePrinter, useSavePrinter, useTestPrinter } from "@/hooks/use-print-setup";
 import { agentPrintersOf } from "@/lib/print-agent-printers";
 import { printerBodyOf, printerDraftOf } from "@/lib/print-setup-form";
-import { connectionText, printerRowState, setupGaps, slipsText } from "@/lib/print-setup-text";
+import { connectionText, printerRowState, setupGaps, slipsText, testPrintBlock, testPrintSentText } from "@/lib/print-setup-text";
 import { cn } from "@/lib/utils";
 
 interface PrintersSetupSectionProps {
@@ -28,7 +28,6 @@ interface PrintersSetupSectionProps {
 }
 
 const SECTION_DESCRIPTION = "Each printer, the slips it prints and the device that prints it.";
-const TEST_UNAVAILABLE = "Switch it on, choose its slips and its printing device to test it.";
 
 // Printing redesign, Phase 2 Session 2D (spec §11 Printers): every printer with its dot in words (its printing
 // device's heartbeat, or this device's own printer), its connection, slips, paper and copies; switch it on or off,
@@ -37,6 +36,8 @@ const TEST_UNAVAILABLE = "Switch it on, choose its slips and its printing device
 export function PrintersSetupSection({ printers, stations, devices, deviceId }: PrintersSetupSectionProps) {
   const [form, setForm] = useState<{ key: string; printer: PrinterConfig | null } | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  // The 2D review gate (M-5): switching a printer off fails its waiting slips, so it asks first, as Delete does.
+  const [switchingOff, setSwitchingOff] = useState<string | null>(null);
   const save = useSavePrinter();
   const remove = useDeletePrinter();
   const testPrint = useTestPrinter();
@@ -49,6 +50,7 @@ export function PrintersSetupSection({ printers, stations, devices, deviceId }: 
   const busy = save.isPending || remove.isPending;
 
   const toggle = async (printer: PrinterConfig) => {
+    setSwitchingOff(null);
     const result = printerBodyOf({ ...printerDraftOf(printer, stations), enabled: !printer.enabled }, printers, printer.id);
     if (!result.ok) {
       toast.error(result.error);
@@ -61,10 +63,10 @@ export function PrintersSetupSection({ printers, stations, devices, deviceId }: 
     }
   };
 
-  const test = async (printer: PrinterConfig) => {
+  const test = async (printer: PrinterConfig, state: ReturnType<typeof printerRowState>) => {
     try {
       await testPrint.mutateAsync(printer.id);
-      toast.success(`Test slip sent to ${printer.name}.`);
+      toast.success(testPrintSentText(printer, state));
     } catch {
       // The hook toasted it.
     }
@@ -93,7 +95,7 @@ export function PrintersSetupSection({ printers, stations, devices, deviceId }: 
           ))}
           {printers.map((printer) => {
             const state = printerRowState(printer, devices, { deviceId, localIds, canPrint });
-            const testable = routablePrinterOf(printers, printer.id) !== null;
+            const blocked = testPrintBlock(printer, printers, { deviceId, localIds, canPrint });
             return (
               <div key={printer.id} className="space-y-2 rounded-md border border-brand-rule p-3" data-printer-row={printer.id}>
                 <div className="flex flex-wrap items-center gap-2">
@@ -102,14 +104,28 @@ export function PrintersSetupSection({ printers, stations, devices, deviceId }: 
                     <span aria-hidden="true" className={cn("h-2.5 w-2.5 rounded-full", state.tone === "ok" ? PRINTER_DOT_OK_CLASS : state.tone === "bad" ? PRINTER_DOT_BAD_CLASS : "bg-gray-400")} />
                     {state.text}
                   </span>
-                  <Switch aria-label={`${printer.name} on`} checked={printer.enabled} disabled={busy} onCheckedChange={() => void toggle(printer)} />
+                  <Switch
+                    aria-label={`${printer.name} on`}
+                    checked={printer.enabled}
+                    disabled={busy}
+                    onCheckedChange={() => (printer.enabled ? setSwitchingOff(printer.id) : void toggle(printer))}
+                  />
                 </div>
                 <p className="text-brand-muted">{connectionText(printer, devices, deviceId)}</p>
                 <p className="text-brand-muted">{slipsText(printer, stations)}</p>
                 <p className="text-brand-muted">
                   Paper {printer.paper} mm · KOT copies {printer.copies.kot} · Bill copies {printer.copies.bill}
                 </p>
-                {deleting === printer.id ? (
+                {switchingOff === printer.id ? (
+                  <InlineConfirm
+                    question={`Switch ${printer.name} off? Slips still waiting for it will show under Couldn't print.`}
+                    yes="Yes, switch off"
+                    no="No"
+                    disabled={busy}
+                    onYes={() => void toggle(printer)}
+                    onNo={() => setSwitchingOff(null)}
+                  />
+                ) : deleting === printer.id ? (
                   <InlineConfirm
                     question={`Delete ${printer.name}? Slips still waiting for it will show under Couldn't print.`}
                     yes="Yes, delete"
@@ -120,7 +136,7 @@ export function PrintersSetupSection({ printers, stations, devices, deviceId }: 
                   />
                 ) : (
                   <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" className={PRINTER_ACTION_CLASS} disabled={!testable || testPrint.isPending} onClick={() => void test(printer)}>
+                    <Button variant="outline" className={PRINTER_ACTION_CLASS} disabled={blocked !== null || testPrint.isPending} onClick={() => void test(printer, state)}>
                       Test print
                     </Button>
                     <Button variant="outline" className={PRINTER_ACTION_CLASS} onClick={() => setForm({ key: printer.id, printer })}>
@@ -131,7 +147,7 @@ export function PrintersSetupSection({ printers, stations, devices, deviceId }: 
                     </Button>
                   </div>
                 )}
-                {!testable && <p className="text-xs text-brand-muted">{TEST_UNAVAILABLE}</p>}
+                {blocked !== null && <p className="text-xs text-brand-muted">{blocked}</p>}
               </div>
             );
           })}

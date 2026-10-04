@@ -26,9 +26,10 @@ test("PIN (2D): the admin Printer setup page shows the outlet's sections after t
   const order = ["<PrintersSetupSection", "<StationsSetupSection", "<DevicesSetupSection"].map((tag) => container.indexOf(tag));
   assert.ok(order.every((at, i) => at >= 0 && (i === 0 || at > (order[i - 1] ?? 0))), "Printers, Kitchen stations, Devices");
   assert.match(container, /void qc\.invalidateQueries\(\{ queryKey: PRINTERS_KEYS\.all \}\);/, "the printers are read again when the page opens");
-  // The 2D gate's review (I-1, M-1): nothing shows, and so nothing saves, before both lists are in.
-  assert.match(container, /if \(!loaded \|\| !ready\) return <p role="status"/, "the sections wait for the printers and the stations");
-  assert.match(container, /if \(failed \|\| stationsFailed\) return <p role="alert"/, "and say so when either read failed");
+  // The 2D gate's review (I-1, M-1): nothing shows, and so nothing saves, before both lists are in; the 2D review gate
+  // (M-7): the devices too, or every remote printer reads "has not checked in" and the LAN form offers no device.
+  assert.match(container, /if \(!loaded \|\| !ready \|\| !devicesLoaded\) return <p role="status"/, "the sections wait for the printers, the stations and the devices");
+  assert.match(container, /if \(failed \|\| stationsFailed \|\| devicesFailed\) return <p role="alert"/, "and say so when any read failed");
   assert.match(container, /const \{ printers, loaded, failed \} = usePrintersRead\(true\);/, "the agent's entry, read without a second subscription");
 });
 
@@ -50,9 +51,15 @@ test("PIN (2D): each printer row: its state in words, on/off, Test print only wh
   const section = src(`${SETUP}PrintersSetupSection.tsx`);
   assert.match(section, /const state = printerRowState\(printer, devices, \{ deviceId, localIds, canPrint \}\);/);
   assert.match(section, /const localIds = agentPrintersOf\(printers, deviceId, local, lane === "desktop"\)\.localIds;/, "from the list the page holds");
-  assert.match(section, /const testable = routablePrinterOf\(printers, printer\.id\) !== null;/, "a printer its writer's lease would never take is not tested");
-  assert.match(section, /await testPrint\.mutateAsync\(printer\.id\);/);
+  // The 2D review gate (M-4): a printer its writer's lease would never take, or one this device writes but cannot print
+  // right now, is not tested (the slip would only wait).
+  assert.match(section, /const blocked = testPrintBlock\(printer, printers, \{ deviceId, localIds, canPrint \}\);/, "Test print only when its slip can print");
+  assert.match(section, /disabled=\{blocked !== null \|\| testPrint\.isPending\}/);
+  assert.match(section, /await testPrint\.mutateAsync\(printer\.id\);\s*toast\.success\(testPrintSentText\(printer, state\)\);/);
   assert.match(section, /printerBodyOf\(\{ \.\.\.printerDraftOf\(printer, stations\), enabled: !printer\.enabled \}, printers, printer\.id\)/, "on/off saves the printer whole, through the same rules as the form");
+  // The 2D review gate (M-5): switching a printer off fails its waiting slips (the sweep), so it asks first, as Delete does.
+  assert.match(section, /question=\{`Switch \$\{printer\.name\} off\? Slips still waiting for it will show under Couldn't print\.`\}/, "switching off asks first");
+  assert.match(section, /onCheckedChange=\{\(\) => \(printer\.enabled \? setSwitchingOff\(printer\.id\) : void toggle\(printer\)\)\}/, "switching on needs no question");
   assert.match(section, /question=\{`Delete \$\{printer\.name\}\? Slips still waiting for it will show under Couldn't print\.`\}/);
   assert.match(section, /\{gaps\.map\(\(gap\) => \(/, "what the setup leaves without a printer is said above the list");
 });
@@ -91,8 +98,19 @@ test("PIN (2D, the 2A gate's M5): a station's delete names the printers it leave
 
 test("PIN (2D): the Devices section lists each device, online or when last seen, and the printers it prints", () => {
   const devices = src(`${SETUP}DevicesSetupSection.tsx`);
-  assert.match(devices, /printers\.filter\(\(printer\) => printer\.enabled && printerWriterDeviceId\(printer\) === device\.deviceId\)/, "the printers it prints: switched-off ones are not");
+  // The 2D review gate (M-8): only printers routing sends slips to (switched on and taking a slip).
+  assert.match(devices, /routablePrinters\(printers\)\.filter\(\(printer\) => printerWriterDeviceId\(printer\) === device\.deviceId\)/, "the printers it prints: switched-off ones, and ones taking no slip, are not");
   assert.match(devices, /device\.online \? "Online" : `Offline · seen \$\{seenAt\(device\.lastSeenAt\)\}`/);
+});
+
+// The 2D review gate (M-3): the waiting-slips panel only shows printer names; it reads the agent's entry, so an admin
+// save costs this device one printers read, never two (the agent's subscription is the only one).
+test("PIN (the 2D review gate, M-3): only the agent's printers read subscribes; the waiting-slips panel reads the same entry", () => {
+  const card = src("components/print/WaitingSlipsCard.tsx");
+  assert.match(card, /const \{ printers \} = usePrintersRead\(true\);/);
+  assert.ok(!/usePrinters\(/.test(card), "no subscription of its own");
+  const hook = src("hooks/use-print-setup.ts");
+  assert.match(hook, /return \{ devices: query\.data \?\? NO_DEVICES, loaded: query\.isSuccess, failed: query\.isError \};/, "the devices read says when it is in and when it failed");
 });
 
 test("PIN (2D): the setup screens are client components, stay small, never log, and keep every write's error at its hook", () => {

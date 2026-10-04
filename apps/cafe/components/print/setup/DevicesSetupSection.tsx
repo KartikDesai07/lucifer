@@ -3,7 +3,7 @@
 import { MonitorSmartphone } from "lucide-react";
 
 import type { PrintDeviceShell, PrintDeviceSummary } from "@pos/shared/print-agent-wire";
-import { printerWriterDeviceId, type PrinterConfig } from "@pos/shared/print-printers";
+import { printerWriterDeviceId, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
 import { PrinterSection } from "@/components/print/PrinterSection";
 import { PRINTER_DOT_BAD_CLASS, PRINTER_DOT_OK_CLASS } from "@/components/print/printer-classes";
 import { CAFE_TIMEZONE } from "@/lib/constants";
@@ -32,7 +32,8 @@ export function DevicesSetupSection({ devices, printers, deviceId }: DevicesSetu
     <PrinterSection icon={MonitorSmartphone} title="Devices" description={SECTION_DESCRIPTION}>
       {devices.length === 0 && <p className="text-brand-muted">{EMPTY}</p>}
       {devices.map((device) => {
-        const writes = printers.filter((printer) => printer.enabled && printerWriterDeviceId(printer) === device.deviceId).map((printer) => printer.name);
+        // Only printers routing sends slips to (the 2D review gate, M-8): switched on and taking a slip.
+        const writes = routablePrinters(printers).filter((printer) => printerWriterDeviceId(printer) === device.deviceId).map((printer) => printer.name);
         return (
           <div key={device.deviceId} className="space-y-1 rounded-md border border-brand-rule p-3" data-device-row={device.deviceId}>
             <div className="flex flex-wrap items-center gap-2">

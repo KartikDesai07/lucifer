@@ -3,6 +3,7 @@ import {
   defaultBillPrinterOf,
   printerTakesSlips,
   printerWriterDeviceId,
+  routablePrinterOf,
   routablePrinters,
   type PrinterConfig,
   type PrinterConnection,
@@ -79,6 +80,28 @@ export function printerRowState(
   const row = devices.find((device) => device.deviceId === writer);
   if (row === undefined) return { tone: "bad", text: "Its printing device has not checked in" };
   return row.online ? { tone: "ok", text: `${row.label} is online` } : { tone: "bad", text: `${row.label} is offline` };
+}
+
+export const TEST_UNAVAILABLE = "Switch it on, choose its slips and its printing device to test it.";
+
+/** Why a printer's Test print is not offered, or null (the 2D review gate, M-4): one its writer's lease would never
+ *  take, or one this device writes but cannot print right now, whose slip would only wait in the panel. A printer
+ *  another device prints is tested even while that device is away: its slip prints when it is back. */
+export function testPrintBlock(
+  printer: PrinterConfig,
+  printers: readonly PrinterConfig[],
+  here: { deviceId: string; localIds: readonly string[]; canPrint: boolean },
+): string | null {
+  if (routablePrinterOf(printers, printer.id) === null) return TEST_UNAVAILABLE;
+  if (printerWriterDeviceId(printer) !== here.deviceId) return null;
+  if (!here.localIds.includes(printer.id)) return "This device prints it, but it is not this device's printer. Edit it first.";
+  return here.canPrint ? null : "Connect this device's printer to test it.";
+}
+
+/** The toast after a Test print: said plainly when its printing device is away (its slip waits for it). */
+export function testPrintSentText(printer: PrinterConfig, state: { tone: PrinterRowTone; text: string }): string {
+  const sent = `Test slip sent to ${printer.name}.`;
+  return state.tone === "bad" ? `${sent} It prints when its printing device is back online.` : sent;
 }
 
 /** What the setup leaves without a printer, in words (printers mode only): bills, a station's KOTs (which then print

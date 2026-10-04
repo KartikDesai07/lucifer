@@ -42,10 +42,11 @@ export function useStations(enabled = true): { stations: StationConfig[]; ready:
   return { stations: query.data ?? NO_STATIONS, ready: query.isSuccess, failed: query.isError };
 }
 
-/** The devices that print or lease (admin), the most recently seen first. */
-export function usePrintDevices(enabled = true): PrintDeviceSummary[] {
+/** The devices that print or lease (admin), the most recently seen first; whether they are in, and whether the read
+ *  failed (the 2D review gate, M-7: an empty list while loading reads as "no device has checked in"). */
+export function usePrintDevices(enabled = true): { devices: PrintDeviceSummary[]; loaded: boolean; failed: boolean } {
   const query = useQuery({ queryKey: PRINT_DEVICES_KEYS.all, queryFn: () => apiGet<PrintDeviceSummary[]>("/api/print-devices"), enabled });
-  return query.data ?? NO_DEVICES;
+  return { devices: query.data ?? NO_DEVICES, loaded: query.isSuccess, failed: query.isError };
 }
 
 /** The Windows app's chosen printer, the address a Windows printer is saved with (null: not the Windows app, or
