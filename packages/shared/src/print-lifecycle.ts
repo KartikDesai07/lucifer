@@ -120,6 +120,8 @@ export interface PrintJobLifecycleDoc {
 /** The fields a transition may $set. */
 export interface PrintJobSet {
   status?: PrintJobStatus;
+  /** Session 2C: a printer job claimed for its printer's current writer (a lease, a staff retry). */
+  targetDeviceId?: string;
   epoch?: number;
   attempts?: number;
   uncertainAttempts?: number;

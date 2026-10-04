@@ -1,6 +1,6 @@
 import mongoose, { type FilterQuery, type Types, type UpdateQuery } from "mongoose";
 import type { PrintJobKind } from "@pos/shared/print-job";
-import type { LeasedPrintJob, PrintAckData, PrintLeaseData } from "@pos/shared/print-agent-wire";
+import type { LeasedPrintJob, PrintAckData, PrintJobsForMe, PrintLeaseData } from "@pos/shared/print-agent-wire";
 import {
   PRINT_BACKOFF_MS,
   PRINT_JOB_LOG_MAX,
@@ -17,9 +17,11 @@ import {
   type PrintJobPatch,
   type PrintJobSet,
 } from "@pos/shared/print-lifecycle";
+import { PRINT_JOB_NO_PRINTER, printerWriterDeviceId, routablePrinters } from "@pos/shared/print-printers";
 import { printJobPayloadSchema, type PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 import { Order } from "@/models/Order";
 import { PrintJob, type IPrintJob } from "@/models/PrintJob";
+import { listPrinters } from "./print-printers";
 import { dismissPrintJob, drainAgeCutoff } from "./print-queue";
 import { printJobEligibility, printJobNeedsOrderRead } from "./print-queue-claim";
 
@@ -31,7 +33,7 @@ import { printJobEligibility, printJobNeedsOrderRead } from "./print-queue-claim
 
 /** The fields every lifecycle read selects; lifecycleOf reads exactly these. */
 export const PRINT_LIFECYCLE_SELECT = "kind status createdAt epoch attempts uncertainAttempts nextAttemptAt labels approvedAt lease";
-const LEASE_SELECT = `${PRINT_LIFECYCLE_SELECT} label orderId payload copyIndex`;
+const LEASE_SELECT = `${PRINT_LIFECYCLE_SELECT} label orderId payload copyIndex printerId copies`;
 /** Bounds one lease call: each step expires, fails or dismisses one bad head, or loses one race. */
 const LEASE_MAX_STEPS = 4;
 const ACK_MAX_STEPS = 2;
@@ -39,7 +41,7 @@ const ACK_MAX_STEPS = 2;
 export const PRINT_JOBS_FOR_ME_LIMIT = 20;
 
 export type PrintLifecycleRow = PrintJobLifecycleDoc & { _id: Types.ObjectId };
-type LeaseHead = PrintLifecycleRow & { label: string; orderId?: string; payload: string; copyIndex?: number };
+type LeaseHead = PrintLifecycleRow & { label: string; orderId?: string; payload: string; copyIndex?: number; printerId?: string; copies?: number };
 
 /** A line's own jobs: its leased one, plus each queued job that is not parked as stale. needs-confirm and
  *  failed jobs are parked and never block the line. A leased job stays at the head whatever its age, so a line
@@ -104,6 +106,11 @@ export async function printLineHasMore(deviceId: string, nowMs: number): Promise
   return (await PrintJob.findOne({ ...printJobLineFilter(deviceId, nowMs), status: "queued" }).select("_id").lean()) !== null;
 }
 
+/** Session 2C: the same, for a printer job's own printer line (the 2B gate's ruling R3). */
+export async function printerLineHasMore(printerId: string, nowMs: number): Promise<boolean> {
+  return (await PrintJob.findOne({ ...printerLineFilter(printerId, nowMs), status: "queued" }).select("_id").lean()) !== null;
+}
+
 type LeasedHead = { _id: unknown; kind: PrintJobKind; label: string; orderId?: string; createdAt: Date; copyIndex?: number; printerId?: string; copies?: number };
 
 /** The wire job for one lease (spec §7.3), from its row: leased by a lease request, made leased at creation,
@@ -159,20 +166,25 @@ async function leaseEligibility(head: LeaseHead, dismissedBy: string): Promise<P
   return payload;
 }
 
-/** Leases the head of this device's line (spec §7.6: at most one job per printer). An expired lease
- *  at the head is applied lazily here, so a dead writer never blocks the line past 90 s. */
-export async function leasePrintJobs(input: { deviceId: string; tabId: string; dismissedBy: string; nowMs: number }): Promise<PrintLeaseData> {
+type LeaseInput = { deviceId: string; tabId: string; dismissedBy: string; nowMs: number };
+
+/** Leases the head of one line (spec §7.6: at most one job per line). An expired lease at the head is
+ *  applied lazily here, so a dead writer never blocks the line past 90 s. `claim`: fields the lease also sets
+ *  (a printer line: its verified writer). */
+async function leaseLineHead(
+  line: FilterQuery<IPrintJob>,
+  fence: FilterQuery<IPrintJob>,
+  input: LeaseInput,
+  claim?: PrintJobSet,
+): Promise<{ job: LeasedPrintJob | null; retryAt: string | null }> {
   for (let step = 0; step < LEASE_MAX_STEPS; step++) {
-    const head = await PrintJob.findOne(printJobLineFilter(input.deviceId, input.nowMs))
-      .sort({ createdAt: 1, _id: 1 })
-      .select(LEASE_SELECT)
-      .lean<LeaseHead>();
-    if (head === null) return { jobs: [], retryAt: null };
+    const head = await PrintJob.findOne(line).sort({ createdAt: 1, _id: 1 }).select(LEASE_SELECT).lean<LeaseHead>();
+    if (head === null) return { job: null, retryAt: null };
     const job = lifecycleOf(head);
     if (job.status === "leased") {
       const expiry = planExpiry(job, input.nowMs);
       // A live lease (another tab of this device is writing it): the line waits for that ack.
-      if (!expiry.ok) return { jobs: [], retryAt: job.lease?.expiresAt.toISOString() ?? null };
+      if (!expiry.ok) return { job: null, retryAt: job.lease?.expiresAt.toISOString() ?? null };
       await applyPrintJobPlan(head._id, job, expiry.patch);
       continue;
     }
@@ -183,24 +195,51 @@ export async function leasePrintJobs(input: { deviceId: string; tabId: string; d
     }
     const plan = planLease(job, input, input.nowMs);
     // In backoff, the head HOLDS the line (kitchen order is kept); the agent sets one timer.
-    if (!plan.ok) return { jobs: [], retryAt: plan.reason === "not-due" ? job.nextAttemptAt.toISOString() : null };
+    if (!plan.ok) return { job: null, retryAt: plan.reason === "not-due" ? job.nextAttemptAt.toISOString() : null };
     const payload = await leaseEligibility(head, input.dismissedBy);
     if (payload === null) continue;
-    // Fenced on the target too: a retarget (the sweep, a host change) between the read and this CAS
-    // moves the job to another device's line, and this device must not win it then (1A review M5).
-    if (!(await applyPrintJobPlan(head._id, job, plan.patch, { targetDeviceId: input.deviceId }))) continue;
-    return { jobs: [leasedPrintJobOf(head, plan.patch, payload, job.labels)], retryAt: null };
+    // Fenced on the target too: a retarget (the sweep, a host change) between the read and this CAS moves the job
+    // to another device's line, and this device must not win it then (1A review M5). A printer line is fenced on
+    // its printer and claims the job for its writer, verified by the caller: a writer that changed since the job
+    // was made (a re-saved printer) takes it at once, never spinning until the sweep (the 2C gate's review, I-3).
+    const claimed = claim === undefined ? plan.patch : { ...plan.patch, set: { ...plan.patch.set, ...claim } };
+    if (!(await applyPrintJobPlan(head._id, job, claimed, fence))) continue;
+    return { job: leasedPrintJobOf(head, plan.patch, payload, job.labels), retryAt: null };
   }
   // Every step cleared one bad head or lost one race, so the line may still hold a printable job:
   // look again after the shortest backoff instead of waiting for a nudge (1A review M2).
-  return { jobs: [], retryAt: new Date(input.nowMs + PRINT_BACKOFF_MS[0]).toISOString() };
+  return { job: null, retryAt: new Date(input.nowMs + PRINT_BACKOFF_MS[0]).toISOString() };
+}
+
+/** Leases the head of this device's line, and (Session 2C, printers mode) the head of each printer line it names
+ *  that it really writes: routable (as the sweep sees it), with this device as its writer, read fresh (§9.3,
+ *  decision 1: one writer per printer). At most one job per line, so a stuck bar job never blocks the kitchen.
+ *  retryAt: the soonest moment a line that gave no job can be leased again. */
+export async function leasePrintJobs(input: LeaseInput & { printerIds?: readonly string[] }): Promise<PrintLeaseData> {
+  type Line = { line: FilterQuery<IPrintJob>; fence: FilterQuery<IPrintJob>; claim?: PrintJobSet };
+  const lines: Line[] = [{ line: printJobLineFilter(input.deviceId, input.nowMs), fence: { targetDeviceId: input.deviceId } }];
+  if (input.printerIds !== undefined && input.printerIds.length > 0) {
+    for (const printer of routablePrinters(await listPrinters())) {
+      if (input.printerIds.includes(printer.id) && printerWriterDeviceId(printer) === input.deviceId) {
+        lines.push({ line: printerLineFilter(printer.id, input.nowMs), fence: { printerId: printer.id }, claim: { targetDeviceId: input.deviceId } });
+      }
+    }
+  }
+  const jobs: LeasedPrintJob[] = [];
+  let retryAt: string | null = null;
+  for (const { line, fence, claim } of lines) {
+    const result = await leaseLineHead(line, fence, input, claim);
+    if (result.job !== null) jobs.push(result.job);
+    else if (result.retryAt !== null && (retryAt === null || result.retryAt < retryAt)) retryAt = result.retryAt;
+  }
+  return { jobs, retryAt };
 }
 
 /** The writer's report on one attempt (spec §7.2, §7.9). Idempotent per (job, epoch): a repeat of
  *  an applied "printed" ack answers status "printed", applied:false, reason "resolved". */
 export async function ackPrintJob(input: PrintJobAck & { id: string; nowMs: number }): Promise<PrintAckData> {
   for (let step = 0; step < ACK_MAX_STEPS; step++) {
-    const row = await PrintJob.findById(input.id).select(PRINT_LIFECYCLE_SELECT).lean<PrintLifecycleRow>();
+    const row = await PrintJob.findById(input.id).select(`${PRINT_LIFECYCLE_SELECT} printerId`).lean<PrintLifecycleRow & { printerId?: string }>();
     if (row === null) return { applied: false, status: null, nextAttemptAt: null, reason: "not-found" };
     const job = lifecycleOf(row);
     const plan = planAck(job, input, input.nowMs);
@@ -215,30 +254,35 @@ export async function ackPrintJob(input: PrintJobAck & { id: string; nowMs: numb
       const nextAttemptAt = plan.patch.set.nextAttemptAt?.toISOString() ?? null;
       // Session 2B (decision 9): a job that left the line says whether the acking device's line holds more. A
       // job back in the queue is that line's head, and its nextAttemptAt says when. A failed read only drops
-      // the hint (the agent then leases, as in Phase 1): the ack itself has landed.
+      // the hint (the agent then leases, as in Phase 1): the ack itself has landed. Session 2C: a printer job
+      // asks its own printer's line (the 2B gate's ruling R3).
       if (plan.patch.status === "queued") return { applied: true, status: plan.patch.status, nextAttemptAt };
-      const more = await printLineHasMore(input.deviceId, input.nowMs).catch(() => undefined);
+      const more = await (row.printerId !== undefined ? printerLineHasMore(row.printerId, input.nowMs) : printLineHasMore(input.deviceId, input.nowMs)).catch(
+        () => undefined,
+      );
       return { applied: true, status: plan.patch.status, nextAttemptAt, ...(more !== undefined ? { more } : {}) };
     }
   }
   return { applied: false, status: null, nextAttemptAt: null, reason: "raced" };
 }
 
-/** The jobs a lease call could act on now: this device's line, less any lease still running. A running
- *  lease is being printed (often by this very tab, Session 2B's direct print), so counting it only kicked
- *  the agent into an empty lease after its ack; a lease that ran out still counts, so the lease call that
- *  expires it comes (spec §7.2). */
+/** The jobs a lease call could act on now: every line job aimed at this device (its own line, and since Session
+ *  2C the lines of the printers it writes), less any lease still running. A running lease is being printed (often
+ *  by this very tab, Session 2B's direct print), so counting it only kicked the agent into an empty lease after its
+ *  ack; a lease that ran out still counts, so the lease call that expires it comes (spec §7.2). Printer jobs are
+ *  counted whether or not the device's printer list knows them yet (the 2C gate's review, I-2). */
 export function printJobsForMeFilter(deviceId: string, nowMs: number): FilterQuery<IPrintJob> {
-  return { ...printJobLineFilter(deviceId, nowMs), $nor: [{ status: "leased", "lease.expiresAt": { $gte: new Date(nowMs) } }] } as FilterQuery<IPrintJob>;
+  return { targetDeviceId: deviceId, ...lineJobs(nowMs), $nor: [{ status: "leased", "lease.expiresAt": { $gte: new Date(nowMs) } }] } as FilterQuery<IPrintJob>;
 }
 
-/** The wake's "jobs for me" (spec §7.3), and the pulse's: how many jobs wait in this device's line for a
- *  lease, and the oldest. */
-export async function readJobsForDevice(deviceId: string, nowMs: number): Promise<{ count: number; oldestCreatedAt: string | null }> {
+/** The wake's "jobs for me" (spec §7.3), and the pulse's: how many jobs wait for this device, the oldest, and
+ *  the printers of the printer jobs among them (Session 2C: an agent whose list lacks one reads its printers). */
+export async function readJobsForDevice(deviceId: string, nowMs: number): Promise<PrintJobsForMe> {
   const rows = await PrintJob.find(printJobsForMeFilter(deviceId, nowMs))
     .sort({ createdAt: 1, _id: 1 })
-    .select("createdAt")
+    .select("createdAt printerId")
     .limit(PRINT_JOBS_FOR_ME_LIMIT)
-    .lean<{ createdAt: Date }[]>();
-  return { count: rows.length, oldestCreatedAt: rows[0]?.createdAt.toISOString() ?? null };
+    .lean<{ createdAt: Date; printerId?: string }[]>();
+  const printerIds = [...new Set(rows.map((row) => row.printerId).filter((id): id is string => id !== undefined && id !== PRINT_JOB_NO_PRINTER))];
+  return { count: rows.length, oldestCreatedAt: rows[0]?.createdAt.toISOString() ?? null, ...(printerIds.length > 0 ? { printerIds } : {}) };
 }

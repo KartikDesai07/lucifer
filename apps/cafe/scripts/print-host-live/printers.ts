@@ -149,4 +149,6 @@ export async function legAJ(): Promise<void> {
     return payload?.kind === "kot" ? payload.snapshot.items.map((line) => line.name).join("+") : "";
   };
   check("(aj) end to end: the kitchen gets Hot Coffee and Paneer, the bar the Mojito, the counter all three", jobs.length === 3 && itemsOf(0) === "Hot Coffee+Paneer Tikka" && itemsOf(1) === "Mojito" && itemsOf(2) === "Mojito+Hot Coffee+Paneer Tikka");
+  // Session 2C: a saved printer now routes every slip, so the legs after this one start in simple mode again.
+  await resetSetup();
 }

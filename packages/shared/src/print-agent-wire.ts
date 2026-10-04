@@ -216,9 +216,18 @@ export interface PrintActionData {
   reason?: PrintJobActionRefusal;
 }
 
+/** The jobs waiting for this device (spec §7.3; the wake's and the pulse's): how many, the oldest, and since
+ *  Session 2C the printers of the printer jobs among them, so an agent whose printer list is stale reads it again
+ *  (the 2C gate's fresh review, I-2). */
+export interface PrintJobsForMe {
+  count: number;
+  oldestCreatedAt: string | null;
+  printerIds?: string[];
+}
+
 /** POST /api/print-jobs/wake. serverNow lets an agent run timers on server time (spec §15 clock skew). */
 export interface PrintWakeBeatData {
-  jobsForMe: { count: number; oldestCreatedAt: string | null };
+  jobsForMe: PrintJobsForMe;
   agents: number;
   agentDailyCap: number;
   serverNow: string;

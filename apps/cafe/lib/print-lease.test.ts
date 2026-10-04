@@ -39,9 +39,13 @@ test("printerLineFilter: one printer's leased job, plus its queued jobs that are
 
 // Session 2B (found on the emulator at the 2A gate): the pulse and the wake counted this device's own running
 // lease, so one landing mid-print kicked the agent into an empty lease after its ack.
-test("printJobsForMeFilter: the line, less a lease still running; a lease that ran out still counts (its lease call expires it)", () => {
+// Session 2C deliberately widened it to every line job aimed at the device: its own line AND the lines of the
+// printers it writes (a printer job is aimed at its writer), whether or not its printer list knows them yet (the
+// 2C gate's fresh review, I-2: a stale list must not hide a writer's own slips from its pulse and wake).
+test("printJobsForMeFilter: every line job aimed at it, less a lease still running; a lease that ran out still counts (its lease call expires it)", () => {
+  const { printerId: _simpleOnly, ...line } = printJobLineFilter("dev-a", T0);
   assert.deepEqual(printJobsForMeFilter("dev-a", T0), {
-    ...printJobLineFilter("dev-a", T0),
+    ...line,
     $nor: [{ status: "leased", "lease.expiresAt": { $gte: new Date(T0) } }],
   });
 });
