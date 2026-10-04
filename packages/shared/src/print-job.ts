@@ -11,6 +11,7 @@ import type { z } from "zod";
 import type { printOrderSnapshotSchema } from "./schemas/print-job.schema";
 import type { Order } from "./types";
 import type { PrintHostPrinterState } from "./print-host-printer";
+import type { LeasedPrintJob } from "./print-agent-wire";
 
 /** The five thermal documents + reprint/notice paths a `PrintJob` can carry.
  *  `"cancel-notice"` is the "Notify Kitchen" stop for an already-cancelled
@@ -179,9 +180,11 @@ export interface PrintJobResolvedRow {
  *  "natural wrong branch" left (repo memories `enum-reuse-across-opposite-
  *  semantics`, `helper-null-verdict-discarded-at-call-site`).
  *  `"already-resolved"` carries the EXISTING row's `id` so PH-8's readback
- *  can still track the job the tap referred to. */
+ *  can still track the job the tap referred to.
+ *  Phase 2 Session 2B (spec §7.11): `leased` is a job leased to the asking tab (made so now, or still so
+ *  from a send whose answer was lost); that tab prints it at once, with no lease request. */
 export type PrintJobEnqueueResult =
-  | { outcome: "queued"; id: string; duplicate: boolean }
+  | { outcome: "queued"; id: string; duplicate: boolean; leased?: LeasedPrintJob }
   | { outcome: "no-host" }
   | { outcome: "already-resolved"; id: string }
   | { outcome: "too-large" };

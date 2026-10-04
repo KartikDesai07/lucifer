@@ -27,6 +27,12 @@ export const PRINT_AGENT_HEADER = "x-pos-print-agent";
 export const PRINT_BILL_HEADER = "x-pos-print-bill";
 /** The one value that switches either header on. */
 export const PRINT_HEADER_ON = "1";
+/** Phase 2 Session 2B (spec §7.11, plan decision 15): the tab that drains this device's slips and can print
+ *  right now names itself (its tab id) on every request that makes slips. When a slip prints on the asking
+ *  device, the server may then make it already leased to that tab, and the answer carries the lease
+ *  (PrintJobRef.leased): the tab prints at once, with no lease request and no realtime message. Optional like
+ *  every print header: an absent or unusable one only means the slip is made queued, as in Phase 1. */
+export const PRINT_LEASE_HEADER = "x-pos-print-lease";
 
 /** One job the server created for a request (spec §7.4 `printJobs`): the asking device leases the ones
  *  aimed at it straight away and follows each one's readback by id. */
@@ -38,6 +44,9 @@ export interface PrintJobRef {
   /** The job's state when the answer was built (1B final review M-d): a deduped ref to a job that
    *  already printed (or was dismissed) is followed, never leased or re-sent as if it were fresh. */
   status: PrintJobStatus;
+  /** Session 2B (spec §7.11): the job is leased to the asking tab (made so now, or still so from a request
+   *  whose answer was lost). The tab prints it at once and acks it; no lease request. */
+  leased?: LeasedPrintJob;
 }
 
 /** Session 1D (spec §10): one row of the one waiting-slips panel. Every device reads the same feed on the
@@ -176,6 +185,11 @@ export interface PrintAckData {
   /** Set when the job went back to the queue: the agent's local retry timer. */
   nextAttemptAt: string | null;
   reason?: PrintJobActionRefusal;
+  /** Session 2B (plan decision 9): set when the acked job left the line. true: the acking device's line still
+   *  holds a queued job, so the agent leases again; false: it waits for a nudge, its timer or a new slip, so a
+   *  burst no longer ends with an empty lease. Absent (an older server, an ack that changed nothing, a job
+   *  back in the queue): the agent leases again, as in Phase 1. */
+  more?: boolean;
 }
 
 export interface PrintActionData {

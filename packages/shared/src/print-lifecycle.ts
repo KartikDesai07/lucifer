@@ -332,6 +332,45 @@ export function planLease(job: PrintJobLifecycle, who: { deviceId: string; tabId
   });
 }
 
+/** The log detail of a lease made at creation (spec §7.11), so a job's history says how it was leased. */
+export const PRINT_DIRECT_LEASE_DETAIL = "direct";
+
+/** The fields of a job created already leased (spec §7.11): the create row's own fields, the lease, and its
+ *  two log entries. */
+export interface PrintJobDirectLease {
+  status: "leased";
+  epoch: number;
+  attempts: number;
+  uncertainAttempts: number;
+  nextAttemptAt: Date;
+  labels: PrintJobLabel[];
+  lease: PrintJobLease;
+  log: PrintJobLogEntry[];
+}
+
+/** Phase 2 Session 2B (spec §7.11, plan decision 15): a job created already leased to the asking tab, so the
+ *  create and the lease are ONE write. It is exactly the job planLease would make of a job created at the same
+ *  moment (§7.2: epoch 1, one attempt, a 90 s lease), so every later transition (the ack, an expiry, a late
+ *  ack) treats it as any leased job: a tab that dies before printing lets it expire into REPRINT (a KOT) or
+ *  the cashier's question (a bill). The caller decides that the asking tab may lease it (§7.6, §9.3). */
+export function directLeaseOf(input: {
+  labels: readonly PrintJobLabel[];
+  who: { deviceId: string; tabId: string };
+  originDeviceId?: string;
+  nowMs: number;
+}): PrintJobDirectLease {
+  const init = printJobLifecycleInit(input.nowMs, input.labels);
+  const epoch = init.epoch + 1;
+  return {
+    ...init,
+    status: "leased",
+    epoch,
+    attempts: init.attempts + 1,
+    lease: { deviceId: input.who.deviceId, tabId: input.who.tabId, epoch, expiresAt: new Date(input.nowMs + PRINT_LEASE_MS) },
+    log: [printJobCreatedLog(input.nowMs, input.originDeviceId), logEntry(input.nowMs, "leased", input.who.deviceId, PRINT_DIRECT_LEASE_DETAIL)],
+  };
+}
+
 /** leased → (lease ran out) the same as a "maybe sent" failure (§7.2). */
 export function planExpiry(job: PrintJobLifecycle, nowMs: number): PrintJobPlan {
   if (job.status !== "leased" || job.lease === undefined) return { ok: false, reason: "wrong-status" };
