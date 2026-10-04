@@ -1,4 +1,4 @@
-import type { LeasedPrintJob, PrintJobsForMe } from "@pos/shared/print-agent-wire";
+import { PRINT_JOBS_FOR_ME_LIMIT, type LeasedPrintJob, type PrintJobsForMe } from "@pos/shared/print-agent-wire";
 import { printerWriterDeviceId, printersModeOn, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
 import type { PrintAgentResult } from "@/lib/print-agent-types";
 import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
@@ -25,15 +25,16 @@ export function printerIsLocal(printer: PrinterConfig, local: DevicePrinter | nu
       return desktop;
     case "bt-classic":
     case "ble":
-    case "usb":
+    case "usb": {
       // The app names its printer "<transport>:<id>" (Kotlin PrinterIds: "bt-classic:<MAC>", "ble:<MAC>",
       // "usb:<vendor>:<product>"); the setup's address is the bare id (§6.3), or the app's whole id as it reported
-      // it (Session 2C's final review, I-1).
-      return (
-        local?.kind === "native" &&
-        local.transport === connection.transport &&
-        (local.printerId === `${connection.transport}:${connection.address}` || local.printerId === connection.address)
-      );
+      // it (Session 2C's final review, I-1). Ignoring case (the 2C review gate, F-2): the app spells a MAC
+      // upper-case and a USB id lower-case, and an address typed by hand may not.
+      if (local?.kind !== "native" || local.transport !== connection.transport) return false;
+      const id = local.printerId.toLowerCase();
+      const address = connection.address.toLowerCase();
+      return id === `${connection.transport}:${address}` || id === address;
+    }
     case "web-bluetooth":
       return local?.kind === "ble" && local.deviceId === connection.address;
     case "web-serial":
@@ -82,6 +83,8 @@ export function printerListLooksStale(input: {
 export function jobsForMeLeasable(jobs: PrintJobsForMe | undefined, ready: readonly string[]): boolean {
   if (jobs === undefined || jobs.count === 0) return false;
   if (jobs.printerIds === undefined || jobs.ownLine === true) return true;
+  // A full answer names only the oldest jobs: one it can lease may wait behind them (the 2C review gate, F-1).
+  if (jobs.count >= PRINT_JOBS_FOR_ME_LIMIT) return true;
   return jobs.printerIds.some((id) => ready.includes(id));
 }
 

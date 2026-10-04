@@ -225,6 +225,10 @@ export interface PrintActionData {
   reason?: PrintJobActionRefusal;
 }
 
+/** The pulse's and the wake's jobs-for-me read counts at most this many jobs, the oldest first: an agent needs only
+ *  "some" and the oldest age. A full answer may hold more than it names (the 2C review gate, F-1). */
+export const PRINT_JOBS_FOR_ME_LIMIT = 20;
+
 /** The jobs waiting for this device (spec §7.3; the wake's and the pulse's): how many, the oldest, and since
  *  Session 2C the printers of the printer jobs among them, so an agent whose printer list is stale reads it again
  *  (the 2C gate's fresh review, I-2). */

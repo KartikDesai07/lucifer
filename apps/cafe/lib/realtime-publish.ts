@@ -54,7 +54,8 @@ export const CAFE_EVENT_KINDS = [
   // its device; never order content. The readback's pulse fallback stays.
   "print-status",
   // Phase 2 Session 2C: a printer was added, changed or removed, so every agent reads its printers again
-  // (GET /api/printers). Carries nothing; the agent's focus read (every 5 min at most) is the fallback.
+  // (GET /api/printers). Carries nothing; the fallbacks are the agent's focus read (every 30 min at most,
+  // PRINT_SETUP_STALE_MS) and a list the pulse or the wake shows stale (the 2C review gate, M-7).
   "print-setup",
 ] as const;
 export type CafeEventKind = (typeof CAFE_EVENT_KINDS)[number];

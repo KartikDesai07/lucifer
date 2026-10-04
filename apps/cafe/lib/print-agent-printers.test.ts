@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import type { PrinterConfig } from "@pos/shared/print-printers";
 import { stripComments } from "@/lib/source-pin-utils";
+import { PRINT_JOBS_FOR_ME_LIMIT } from "@pos/shared/print-agent-wire";
 import { PRINTER_NOT_LOCAL_MESSAGE, agentPrintersOf, jobsForMeLeasable, printJobCopies, printerIsLocal, printerListLooksStale } from "@/lib/print-agent-printers";
 import type { PrintAgentResult } from "@/lib/print-agent-types";
 import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
@@ -54,6 +55,18 @@ test("printerIsLocal: a printer is printed here only when it IS this device's pr
   assert.equal(printerIsLocal(bt, null, false), false, "no printer saved here");
 });
 
+// The 2C review gate (F-2): the app spells a MAC upper-case and a USB id lower-case (Kotlin PrinterIds); an
+// address typed or copied by hand may not, and a printer that is never this device's waits forever.
+test("2C gate (F-2): a Bluetooth, BLE or USB printer is this device's printer whatever the case of its address", () => {
+  const mac = "aa:bb:cc:dd:ee:ff";
+  const btApp: DevicePrinter = { kind: "native", name: "BT", paper: "58mm", printerId: "bt-classic:AA:BB:CC:DD:EE:FF", transport: "bt-classic" };
+  assert.equal(printerIsLocal(printer("bt", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: mac }), btApp, false), true, "a lower-case MAC");
+  assert.equal(printerIsLocal(printer("bt", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: `bt-classic:${mac}` }), btApp, false), true, "the whole id, lower-case");
+  const usbApp: DevicePrinter = { kind: "native", name: "USB", paper: "80mm", printerId: "usb:04b8:0e15", transport: "usb" };
+  assert.equal(printerIsLocal(printer("usb", { kind: "device", deviceId: "dev-a", transport: "usb", address: "04B8:0E15" }), usbApp, false), true, "an upper-case USB id");
+  assert.equal(printerIsLocal(printer("ble", { kind: "device", deviceId: "dev-a", transport: "ble", address: mac }), btApp, false), false, "case never makes another transport match");
+});
+
 test("agentPrintersOf: printers mode, whether this device writes one, and the ones it prints here", () => {
   const counter = printer("counter", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "dev-a" });
   const kitchen = printer("kitchen", { kind: "lan", host: "192.168.1.61", port: 9100 }, { primaryDeviceId: "dev-k" });
@@ -95,6 +108,15 @@ test("jobsForMeLeasable: only jobs this agent can lease kick it: its own line, o
   assert.equal(jobsForMeLeasable({ count: 3, oldestCreatedAt: null, printerIds: [b, a] }, [a]), true, "one of them is");
   assert.equal(jobsForMeLeasable({ count: 1, oldestCreatedAt: null, printerIds: [b] }, [a]), false, "only a printer it does not print on: no kick");
   assert.equal(jobsForMeLeasable({ count: 2, oldestCreatedAt: null, printerIds: [b], ownLine: true }, [a]), true, "beside a job on its own line");
+});
+
+// The 2C review gate (F-1): jobs-for-me reads the oldest PRINT_JOBS_FOR_ME_LIMIT jobs, so a full answer cannot
+// vouch for the jobs past them: one the agent can lease may wait behind twenty it cannot.
+test("2C gate (F-1): a full jobs-for-me answer may hide a job the agent can lease behind the ones it names, so it kicks", () => {
+  const full = { count: PRINT_JOBS_FOR_ME_LIMIT, oldestCreatedAt: "2026-10-04T10:00:00.000Z", printerIds: ["second"] };
+  assert.equal(jobsForMeLeasable(full, ["kitchen"]), true, "twenty jobs on a printer it does not print on: its own may be the twenty-first");
+  assert.equal(jobsForMeLeasable({ ...full, count: PRINT_JOBS_FOR_ME_LIMIT - 1 }, ["kitchen"]), false, "a shorter answer names every job, and none is its own");
+  assert.equal(PRINT_JOBS_FOR_ME_LIMIT, 20, "the read's limit, shared by the server and the page");
 });
 
 test("PIN (2C final review, I-2): the pulse and the wake kick the agent only on jobs it can lease", () => {

@@ -1,6 +1,6 @@
 import mongoose, { type FilterQuery, type Types, type UpdateQuery } from "mongoose";
 import type { PrintJobKind } from "@pos/shared/print-job";
-import type { LeasedPrintJob, PrintAckData, PrintJobsForMe, PrintLeaseData } from "@pos/shared/print-agent-wire";
+import { PRINT_JOBS_FOR_ME_LIMIT, type LeasedPrintJob, type PrintAckData, type PrintJobsForMe, type PrintLeaseData } from "@pos/shared/print-agent-wire";
 import {
   PRINT_BACKOFF_MS,
   PRINT_JOB_LOG_MAX,
@@ -37,8 +37,6 @@ const LEASE_SELECT = `${PRINT_LIFECYCLE_SELECT} label orderId payload copyIndex 
 /** Bounds one lease call: each step expires, fails or dismisses one bad head, or loses one race. */
 const LEASE_MAX_STEPS = 4;
 const ACK_MAX_STEPS = 2;
-/** The wake's jobsForMe counts up to this many: the agent only needs "some" and the oldest age. */
-export const PRINT_JOBS_FOR_ME_LIMIT = 20;
 
 export type PrintLifecycleRow = PrintJobLifecycleDoc & { _id: Types.ObjectId };
 type LeaseHead = PrintLifecycleRow & { label: string; orderId?: string; payload: string; copyIndex?: number; printerId?: string; copies?: number };
