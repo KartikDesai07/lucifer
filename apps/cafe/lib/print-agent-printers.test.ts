@@ -6,7 +6,7 @@ import path from "node:path";
 import type { PrinterConfig } from "@pos/shared/print-printers";
 import { stripComments } from "@/lib/source-pin-utils";
 import { PRINT_JOBS_FOR_ME_LIMIT } from "@pos/shared/print-agent-wire";
-import { PRINTER_NOT_LOCAL_MESSAGE, agentPrintersOf, jobsForMeLeasable, printJobCopies, printerIsLocal, printerListLooksStale } from "@/lib/print-agent-printers";
+import { PRINTER_NOT_LOCAL_MESSAGE, agentPrintersOf, dotPrintersOf, jobsForMeLeasable, printJobCopies, printerIsLocal, printerListLooksStale } from "@/lib/print-agent-printers";
 import type { PrintAgentResult } from "@/lib/print-agent-types";
 import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
 import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
@@ -81,6 +81,15 @@ test("agentPrintersOf: printers mode, whether this device writes one, and the on
 // The 2C gate's review (I-2) and its emulator run: a list goes stale both ways when a print-setup frame is missed.
 // A device made a writer hears of its printer's jobs; a writer whose printer was removed or moved hears it from the
 // wake, or it would poll the wake all day for nothing. A host in simple mode is never a writer: it never re-reads.
+test("2D: the dot's view of printers mode: on or off, whether this device writes a printer, and whether it prints every one it writes", () => {
+  const counter = printer("counter", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "dev-a" });
+  const bar = printer("bar", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "00:11:22:33:44:55" });
+  assert.deepEqual(dotPrintersOf([counter], "dev-a", NATIVE_TCP, false), { printersMode: true, isWriter: true, allLocal: true }, "it writes the counter, which is its printer");
+  assert.deepEqual(dotPrintersOf([counter, bar], "dev-a", NATIVE_TCP, false), { printersMode: true, isWriter: true, allLocal: false }, "it also writes the bar, not its printer");
+  assert.deepEqual(dotPrintersOf([counter], "dev-p", null, false), { printersMode: true, isWriter: false, allLocal: true }, "an ordering phone");
+  assert.deepEqual(dotPrintersOf([], "dev-a", NATIVE_TCP, false), { printersMode: false, isWriter: false, allLocal: true }, "simple mode");
+});
+
 test("printerListLooksStale: a printer job it does not print on, or a writer the setup no longer names", () => {
   const a = "a".repeat(24);
   const b = "b".repeat(24);

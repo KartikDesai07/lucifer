@@ -20,6 +20,7 @@ const CHECKING_MESSAGE = "Checking where slips print…";
 const SECTION_DESCRIPTION = "Choose which device prints your slips.";
 const ONE_DEVICE_TITLE = "Use one device for all printing";
 const ONE_DEVICE_HELP = "Good for a Counter PC with the printer: orders from phones print there.";
+const PRINTERS_MODE_LINE = "Printers are set up: each slip prints at its printer (Printer setup → Printers).";
 
 export interface PrintWhereSectionProps {
   /** `null` = unresolved pulse OR a degraded tick — never "no printing device". */
@@ -35,11 +36,13 @@ export interface PrintWhereSectionProps {
   designating: boolean;
   /** The remove-the-printing-device control, shown here only while this device is the one. */
   stopControl: ReactNode;
+  /** Phase 2 Session 2D: printers are set up (spec §6.6), so no printing device plays a part. */
+  printersMode?: boolean;
 }
 
 // Which device prints the slips: this one, another one, or each device its own.
 export function PrintWhereSection(props: PrintWhereSectionProps) {
-  const { host, hostLabel, isHostDevice, online, label, onLabelChange, onDesignate, designating, stopControl } = props;
+  const { host, hostLabel, isHostDevice, online, label, onLabelChange, onDesignate, designating, stopControl, printersMode } = props;
   const [confirmMove, setConfirmMove] = useState(false);
   const anotherOnline = hostLabel !== null && host !== null && !host.offline;
 
@@ -51,7 +54,14 @@ export function PrintWhereSection(props: PrintWhereSectionProps) {
 
   return (
     <PrinterSection id="printer-where" icon={MonitorSmartphone} title="Where slips print" description={SECTION_DESCRIPTION}>
-      {isHostDevice ? (
+      {printersMode === true ? (
+        // In printers mode a printing device decides nothing: the words say so, and a former printing device can
+        // still stop (removing every printer brings it back, spec §6.6).
+        <>
+          <p>{PRINTERS_MODE_LINE}</p>
+          {stopControl}
+        </>
+      ) : isHostDevice ? (
         <>
           <p className="flex items-center gap-2 font-medium text-brand-ink">
             <CheckCircle2 className="h-4 w-4 shrink-0 text-green-700" aria-hidden="true" />

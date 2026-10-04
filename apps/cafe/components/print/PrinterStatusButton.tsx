@@ -15,6 +15,7 @@ import {
   PRINTER_DOT_OK_CLASS,
   PRINTER_ICON_BUTTON_CLASS,
 } from "@/components/print/printer-classes";
+import { useDotPrinters } from "@/hooks/use-agent-printers";
 import { useDesktopPrinterChosen, useDeviceOnline, useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
 import { printerButtonName, printerDotOf, printerDotTone } from "@/lib/printer/printer-dot";
 import { printWaitingName } from "@/lib/print-waiting";
@@ -34,14 +35,16 @@ export function PrinterStatusButton() {
   // Session 1D: the 20 s alarm's Show button opens this sheet.
   useEffect(() => onOpenPrinterPanel(() => setOpen(true)), []);
   const remote = usePrintHostDot();
-  const { isHostDevice } = usePrintHostContext();
+  const { isHostDevice, deviceId } = usePrintHostContext();
   const snapshot = useDevicePrinter();
   const lane = usePrintLane();
   const online = useDeviceOnline();
   const desktopChosen = useDesktopPrinterChosen();
+  // Session 2D (spec §10): in printers mode, the printers this device writes.
+  const dotPrinters = useDotPrinters(deviceId);
   // Session 1D: how many slips wait for people, cafe-wide (the panel inside lists them).
   const waiting = usePrintWaitingCount();
-  const dot = printerDotOf({ remote, isHostDevice, lane, local: snapshot.status, deviceOffline: !online, desktopChosen });
+  const dot = printerDotOf({ remote, isHostDevice, lane, local: snapshot.status, printers: dotPrinters, deviceOffline: !online, desktopChosen });
   const name = printWaitingName(printerButtonName(dot), waiting);
   // A printer that is only being checked draws no dot (never red while it connects).
   const tone = printerDotTone(dot);

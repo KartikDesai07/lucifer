@@ -42,7 +42,11 @@ export type PrinterDotReason =
   | "printer-elsewhere"
   | "host-offline"
   | "host-printer-off"
-  | "host-print-window";
+  | "host-print-window"
+  // Phase 2 Session 2D (spec §10), printers mode: this device writes a printer that is not its own printer; or it
+  // writes none, and its slips print at the cafe's printers.
+  | "printer-not-here"
+  | "printers-elsewhere";
 
 export type PrinterDot = { show: false } | { show: true; ok: boolean; reason: PrinterDotReason };
 
@@ -57,12 +61,22 @@ export interface PrinterDotInput {
   deviceOffline: boolean;
   /** Whether the desktop shell has a printer chosen; only read on the desktop lane. */
   desktopChosen: DesktopChosen;
+  /** Session 2D: printers mode as this device sees it; absent or off, today's rules. */
+  printers?: PrinterDotPrinters;
+}
+
+/** Session 2D (spec §10): an enabled printer takes a slip (no host plays a part), whether this device writes a
+ *  printer, and whether every printer it writes is its own printer. */
+export interface PrinterDotPrinters {
+  printersMode: boolean;
+  isWriter: boolean;
+  allLocal: boolean;
 }
 
 const NO_DOT: PrinterDot = { show: false };
 
 function dot(reason: PrinterDotReason): PrinterDot {
-  return { show: true, ok: reason === "ok", reason };
+  return { show: true, ok: reason === "ok" || reason === "printers-elsewhere", reason };
 }
 
 // How a printing device that is not this tab reads: its own report, verbatim.
@@ -101,10 +115,19 @@ function thisDeviceHostRow(remote: PrintHostDot, lane: DotLane, local: PrinterSt
   return dot("no-printer");
 }
 
+// Session 2D (spec §10): the worst state among the printers this device writes; with none, its slips print at the
+// cafe's printers (the waiting count and the alarm speak for those). A former host's record plays no part.
+function printersRow(printers: PrinterDotPrinters, lane: DotLane, local: PrinterStatus, desktopChosen: DesktopChosen): PrinterDot {
+  if (!printers.isWriter) return dot("printers-elsewhere");
+  if (!printers.allLocal) return dot("printer-not-here");
+  return noHostRow(lane, local, desktopChosen);
+}
+
 export function printerDotOf(input: PrinterDotInput): PrinterDot {
   const { remote, isHostDevice, lane, local, deviceOffline, desktopChosen } = input;
   if (deviceOffline) return dot("device-offline");
   if (lane === "pending" || remote === "loading") return NO_DOT;
+  if (input.printers?.printersMode === true) return printersRow(input.printers, lane, local, desktopChosen);
   if (remote === "unknown") return dot("checking");
   if (remote === "none") return noHostRow(lane, local, desktopChosen);
   if (isHostDevice) return thisDeviceHostRow(remote, lane, local, desktopChosen);
@@ -240,6 +263,14 @@ function copyFor(reason: PrinterDotReason, i: PrinterHeadlineInput, label: strin
         detail: `${host} opens a print window for every slip. Set up a printer there so slips print by themselves.`,
         fix: i.isHostDevice ? "setup" : null,
       };
+    case "printer-not-here":
+      return {
+        headline: "A printer is not on this device",
+        detail: "This device is set to print a printer that is not its own printer. Check it in Printer setup.",
+        fix: "setup",
+      };
+    case "printers-elsewhere":
+      return { headline: "Printing is on", detail: "Each slip prints at its printer (Printer setup).", fix: null };
   }
 }
 

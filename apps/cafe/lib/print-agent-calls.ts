@@ -1,6 +1,7 @@
 import {
   PRINT_AGENT_HEADER,
   PRINT_BILL_HEADER,
+  PRINT_BILL_PRINTER_HEADER,
   PRINT_DEVICE_ID_HEADER,
   PRINT_HEADER_ON,
   PRINT_IDEMPOTENCY_HEADER,
@@ -10,6 +11,7 @@ import {
   type PrintJobRef,
 } from "@pos/shared/print-agent-wire";
 import type { PrintJobKind } from "@pos/shared/print-job";
+import { readBillPrinterId } from "@/lib/print-bill-printer";
 import { directPrintTab, readyPrinterIds } from "@/lib/print-agent-seams";
 import { mintTabId, readDeviceId } from "@/lib/pos-device-id";
 
@@ -22,12 +24,14 @@ import { mintTabId, readDeviceId } from "@/lib/pos-device-id";
 /** R1's opt-in. {} for a device with no identity: the server then prints nothing for this request,
  *  and the call site prints exactly as before Phase 1. Session 2B (spec §7.11): `leaseTab`, this tab while
  *  it drains this device's slips and can print now, lets a slip this device prints be made leased to it.
- *  Session 2C (printers mode): `ready`, the printers that tab prints on, so a slip routed to one of them can be. */
+ *  Session 2C (printers mode): `ready`, the printers that tab prints on, so a slip routed to one of them can be.
+ *  Session 2D (decision 7): `billPrinter`, this device's own bill printer, for its bills and End of day. */
 export function printAgentHeaders(
   deviceId: string,
   bill = false,
   leaseTab: string | null = directPrintTab(),
   ready: readonly string[] = readyPrinterIds(),
+  billPrinter: string | null = readBillPrinterId(),
 ): Record<string, string> {
   if (deviceId === "") return {};
   return {
@@ -36,6 +40,7 @@ export function printAgentHeaders(
     ...(bill ? { [PRINT_BILL_HEADER]: PRINT_HEADER_ON } : {}),
     ...(leaseTab !== null ? { [PRINT_LEASE_HEADER]: leaseTab } : {}),
     ...(leaseTab !== null && ready.length > 0 ? { [PRINT_READY_HEADER]: ready.join(",") } : {}),
+    ...(billPrinter !== null ? { [PRINT_BILL_PRINTER_HEADER]: billPrinter } : {}),
   };
 }
 

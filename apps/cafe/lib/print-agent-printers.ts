@@ -3,6 +3,7 @@ import { printerWriterDeviceId, printersModeOn, routablePrinters, type PrinterCo
 import type { PrintAgentResult } from "@/lib/print-agent-types";
 import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
 import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
 
 // Printing redesign, Phase 2 Session 2C (spec §9.3, plan decision 1): the printers this device writes, and which
 // of them it prints on its one local printer (several printers per device arrive in Session 2E). Pure and
@@ -52,13 +53,24 @@ export interface AgentPrinters {
   localIds: string[];
 }
 
+function printersWrittenBy(printers: readonly PrinterConfig[], deviceId: string): PrinterConfig[] {
+  return deviceId === "" ? [] : routablePrinters(printers).filter((printer) => printerWriterDeviceId(printer) === deviceId);
+}
+
 export function agentPrintersOf(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, desktop: boolean): AgentPrinters {
-  const mine = deviceId === "" ? [] : routablePrinters(printers).filter((printer) => printerWriterDeviceId(printer) === deviceId);
+  const mine = printersWrittenBy(printers, deviceId);
   return {
     printersMode: printersModeOn(printers),
     isWriter: mine.length > 0,
     localIds: mine.filter((printer) => printerIsLocal(printer, local, desktop)).map((printer) => printer.id),
   };
+}
+
+/** Session 2D (spec §10): what the top-bar dot needs: printers mode, whether this device writes a printer, and
+ *  whether it prints every printer it writes (a printer it writes that is not its own never prints here). */
+export function dotPrintersOf(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, desktop: boolean): PrinterDotPrinters {
+  const agent = agentPrintersOf(printers, deviceId, local, desktop);
+  return { printersMode: agent.printersMode, isWriter: agent.isWriter, allLocal: agent.localIds.length === printersWrittenBy(printers, deviceId).length };
 }
 
 /** Session 2C (the 2C gate's review, I-2, and its emulator run): the device's printer list is stale when a missed

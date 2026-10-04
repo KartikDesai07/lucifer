@@ -9,6 +9,7 @@ import { usePrintHostDot } from "@/components/layout/print-host-dot-context";
 import { PrinterSetupCard } from "@/components/print/PrinterSetupCard";
 import { PrinterStatusBanner } from "@/components/print/PrinterStatusBanner";
 import { WaitingSlipsCard } from "@/components/print/WaitingSlipsCard";
+import { useDotPrinters } from "@/hooks/use-agent-printers";
 import { useCanPrintNow, useDesktopPrinterChosen, useDeviceOnline, useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
 import { printerDotOf, printerHeadlineOf, type PrinterDot } from "@/lib/printer/printer-dot";
 
@@ -24,14 +25,15 @@ const CHECKING_DOT: PrinterDot & { show: true } = { show: true, ok: false, reaso
 export function PrinterPanel({ onDone }: { onDone?: () => void }) {
   const { pulse } = usePosPulseContext();
   const remote = usePrintHostDot();
-  const { isHostDevice } = usePrintHostContext();
+  const { isHostDevice, deviceId } = usePrintHostContext();
   const snapshot = useDevicePrinter();
   const lane = usePrintLane();
   const online = useDeviceOnline();
   const desktopChosen = useDesktopPrinterChosen();
   const canPrintHere = useCanPrintNow();
+  const dotPrinters = useDotPrinters(deviceId);
 
-  const dot = printerDotOf({ remote, isHostDevice, lane, local: snapshot.status, deviceOffline: !online, desktopChosen });
+  const dot = printerDotOf({ remote, isHostDevice, lane, local: snapshot.status, printers: dotPrinters, deviceOffline: !online, desktopChosen });
   const host = pulse?.printHost ?? null;
   const copy = printerHeadlineOf(dot, {
     hostLabel: host !== null && host.configured ? host.label : null,
