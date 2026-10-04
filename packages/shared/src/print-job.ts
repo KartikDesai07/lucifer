@@ -11,7 +11,7 @@ import type { z } from "zod";
 import type { printOrderSnapshotSchema } from "./schemas/print-job.schema";
 import type { Order } from "./types";
 import type { PrintHostPrinterState } from "./print-host-printer";
-import type { LeasedPrintJob } from "./print-agent-wire";
+import type { LeasedPrintJob, PrintJobRef } from "./print-agent-wire";
 
 /** The five thermal documents + reprint/notice paths a `PrintJob` can carry.
  *  `"cancel-notice"` is the "Notify Kitchen" stop for an already-cancelled
@@ -183,8 +183,13 @@ export interface PrintJobResolvedRow {
  *  can still track the job the tap referred to.
  *  Phase 2 Session 2B (spec §7.11): `leased` is a job leased to the asking tab (made so now, or still so
  *  from a send whose answer was lost); that tab prints it at once, with no lease request. */
+/** Session 2C (printers mode): a slip routed to several printers answers "queued" with the first job's id and
+ *  every job in `jobs`; `leased` is the one (if any) made leased to the asking tab. A slip no printer takes for
+ *  a reason staff chose (a notice where Notices are off, a KOT with no lines) answers "not-routed": nothing to
+ *  print, and never a local print. */
 export type PrintJobEnqueueResult =
-  | { outcome: "queued"; id: string; duplicate: boolean; leased?: LeasedPrintJob }
+  | { outcome: "queued"; id: string; duplicate: boolean; leased?: LeasedPrintJob; jobs?: PrintJobRef[] }
+  | { outcome: "not-routed" }
   | { outcome: "no-host" }
   | { outcome: "already-resolved"; id: string }
   | { outcome: "too-large" };

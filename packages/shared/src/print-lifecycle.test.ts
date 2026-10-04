@@ -17,6 +17,7 @@ import {
   planRetry,
   printBackoffMs,
   printBannerText,
+  printJobFailedAtCreation,
   printJobInitialLabels,
   printJobLifecycleInit,
   printJobStale,
@@ -342,4 +343,24 @@ test("direct lease: its tab's ack prints it; a tab that dies lets it expire into
   assert.equal(patchOf(planExpiry(directRow("bill"), T0 + PRINT_LEASE_MS + 1)).status, "needs-confirm", "a bill that may have printed asks the cashier");
   const late = patchOf(planAck({ ...directRow("kot"), status: "queued" }, { deviceId: "dev-a", epoch: 1, outcome: "printed" }, T0 + PRINT_LEASE_MS + 5_000));
   assert.equal(late.log.event, "late-ack", "a late ack from its tab still resolves it (spec §7.9)");
+});
+
+// Phase 2 Session 2C (spec §8: a KOT is never dropped): a slip no printer takes is made failed at once, in the
+// write that creates it, so staff see it under "Couldn't print".
+test("failed at creation: never attempted, its reason kept and logged, and a staff Retry queues it unlabelled", () => {
+  const made = printJobFailedAtCreation({ labels: [], error: "No printer is set up for bills.", originDeviceId: "dev-a", nowMs: T0 });
+  assert.deepEqual(
+    [made.status, made.epoch, made.attempts, made.uncertainAttempts, made.lastError, made.labels],
+    ["failed", 0, 0, 0, "No printer is set up for bills.", []],
+    "nothing was attempted, so nothing can be on paper",
+  );
+  assert.deepEqual(
+    made.log.map((entry) => [entry.event, entry.deviceId, entry.detail]),
+    [["created", "dev-a", undefined], ["failed", undefined, "no printer: No printer is set up for bills."]],
+    "its history says why",
+  );
+  const row = lifecycleOf({ kind: "bill", status: made.status, createdAt: new Date(T0), epoch: made.epoch, attempts: made.attempts, uncertainAttempts: made.uncertainAttempts, nextAttemptAt: made.nextAttemptAt, labels: made.labels });
+  const retried = patchOf(planRetry(row, T0 + 1_000));
+  assert.deepEqual([retried.status, retried.set.labels], ["queued", []], "a Retry queues it with no DUPLICATE: it never printed");
+  assert.deepEqual(printJobFailedAtCreation({ labels: ["REPRINT"], error: "x", nowMs: T0 }).labels, ["REPRINT"], "a staff reprint keeps its label");
 });

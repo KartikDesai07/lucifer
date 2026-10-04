@@ -371,6 +371,23 @@ export function directLeaseOf(input: {
   };
 }
 
+/** Phase 2 Session 2C (spec §8, "a KOT is never dropped"): a slip no printer takes is made failed in the write
+ *  that creates it, never attempted, with its reason, so staff see it under "Couldn't print" at once. A staff
+ *  Retry then queues it unlabelled (planRetry: it never printed). */
+export function printJobFailedAtCreation(input: {
+  labels: readonly PrintJobLabel[];
+  error: string;
+  originDeviceId?: string;
+  nowMs: number;
+}): ReturnType<typeof printJobLifecycleInit> & { status: "failed"; lastError: string; log: PrintJobLogEntry[] } {
+  return {
+    ...printJobLifecycleInit(input.nowMs, input.labels),
+    status: "failed",
+    lastError: input.error,
+    log: [printJobCreatedLog(input.nowMs, input.originDeviceId), logEntry(input.nowMs, "failed", undefined, `no printer: ${input.error}`)],
+  };
+}
+
 /** leased → (lease ran out) the same as a "maybe sent" failure (§7.2). */
 export function planExpiry(job: PrintJobLifecycle, nowMs: number): PrintJobPlan {
   if (job.status !== "leased" || job.lease === undefined) return { ok: false, reason: "wrong-status" };

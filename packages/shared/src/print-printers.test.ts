@@ -2,19 +2,23 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_STATION_NAME,
+  PRINTERS_MAX,
   PRINTER_COPIES_MAX,
   PRINTER_COPIES_MIN,
   PRINTER_DEVICE_TRANSPORTS,
   PRINTER_PAPER_WIDTHS,
+  PRINT_JOB_NO_PRINTER,
   defaultBillPrinterOf,
   defaultStationOf,
   printKotStationHeader,
   printNoPrinterMessage,
+  printerIdsOf,
   printerTakesSlips,
   printerWriterDeviceId,
   printerWriterDevices,
   printersModeOn,
   resolveStationId,
+  routablePrinterOf,
   routablePrinters,
   type PrinterConfig,
   type StationConfig,
@@ -154,4 +158,22 @@ test("a KOT payload may name its station; today's KOT (no station) still parses;
   assert.equal(printJobPayloadSchema.safeParse({ ...kot, station: { name: "Bar", mode: "station", id: "x" } }).success, false, "strict");
   const bill = { kind: "bill", snapshot: SNAPSHOT, station: { name: "Bar", mode: "station" } };
   assert.equal(printJobPayloadSchema.safeParse(bill).success, false, "only a KOT names a station");
+});
+
+// Phase 2 Session 2C: the printers a device names in a request (the ready header, the lease body, the pulse),
+// and the printer a waiting job still has.
+test("2C: the printers a device names are printer ids only, each once, at most twelve; a gone printer is not routable", () => {
+  const a = "a".repeat(24);
+  const b = "b".repeat(24);
+  assert.deepEqual(printerIdsOf(`${a}, ${b},${a}`), [a, b], "a header: trimmed, each once, in order");
+  assert.deepEqual(printerIdsOf([a, "nope", "", b]), [a, b], "a body: anything that is not a printer id is dropped");
+  assert.deepEqual([printerIdsOf(null), printerIdsOf(undefined), printerIdsOf("")], [[], [], []], "none named");
+  const many = Array.from({ length: 20 }, (_, i) => i.toString(16).padStart(24, "0"));
+  assert.equal(printerIdsOf(many).length, PRINTERS_MAX, "never more than a cafe can have");
+  const printers = [printer("p1"), printer("p2", { enabled: false }), printer("p3", { slips: NO_SLIPS })];
+  assert.equal(routablePrinterOf(printers, "p1")?.id, "p1", "enabled, with a writer, taking a slip");
+  assert.equal(routablePrinterOf(printers, "p2"), null, "switched off");
+  assert.equal(routablePrinterOf(printers, "p3"), null, "takes no slip");
+  assert.equal(routablePrinterOf(printers, "p9"), null, "removed");
+  assert.equal(routablePrinterOf(printers, PRINT_JOB_NO_PRINTER), null, "the no-printer mark is never a printer");
 });

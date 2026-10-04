@@ -33,6 +33,13 @@ export function printNoPrinterMessage(what: string): string {
   return `No printer is set up for ${what}.`;
 }
 
+/** Session 2C: the printerId of a job made failed at creation (no printer takes its slip). It marks the job
+ *  as a printers-mode job, so simple mode's sweep never moves it to a host, and it is never a printer's id. */
+export const PRINT_JOB_NO_PRINTER = "none";
+/** Session 2C (the sweep): why a waiting job failed when its printer was deleted, switched off or left with
+ *  no printing device. It is never guessed onto another printer. */
+export const PRINTER_GONE_MESSAGE = "This printer was removed or switched off.";
+
 export const PRINTER_NAME_MAX_CHARS = 40;
 export const PRINTERS_MAX = 12;
 export const PRINTER_PAPER_WIDTHS = [58, 80] as const;
@@ -133,6 +140,28 @@ export function printerWriterDevices(printers: readonly PrinterConfig[]): string
   for (const printer of routablePrinters(printers)) {
     const writer = printerWriterDeviceId(printer);
     if (writer !== null && !out.includes(writer)) out.push(writer);
+  }
+  return out;
+}
+
+/** Session 2C: a waiting job's printer, if routing may still send it slips (enabled, with a writer, taking a
+ *  slip); null when it was deleted, switched off or left with no writer (and for PRINT_JOB_NO_PRINTER). */
+export function routablePrinterOf(printers: readonly PrinterConfig[], printerId: string): PrinterConfig | null {
+  return routablePrinters(printers).find((printer) => printer.id === printerId) ?? null;
+}
+
+const PRINTER_ID_PATTERN = /^[0-9a-f]{24}$/i;
+
+/** Session 2C: the printers a device names (the ready header "id,id", the lease body, the pulse): printer ids
+ *  only, each once, in order, at most PRINTERS_MAX. Anything else is dropped, so a bad value only means fewer
+ *  printers, never a refused request. */
+export function printerIdsOf(raw: string | readonly string[] | null | undefined): string[] {
+  const parts = typeof raw === "string" ? raw.split(",") : (raw ?? []);
+  const out: string[] = [];
+  for (const part of parts) {
+    const id = part.trim();
+    if (PRINTER_ID_PATTERN.test(id) && !out.includes(id)) out.push(id);
+    if (out.length === PRINTERS_MAX) break;
   }
   return out;
 }

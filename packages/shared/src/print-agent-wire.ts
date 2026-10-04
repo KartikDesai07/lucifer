@@ -33,6 +33,13 @@ export const PRINT_HEADER_ON = "1";
  *  (PrintJobRef.leased): the tab prints at once, with no lease request and no realtime message. Optional like
  *  every print header: an absent or unusable one only means the slip is made queued, as in Phase 1. */
 export const PRINT_LEASE_HEADER = "x-pos-print-lease";
+/** Phase 2 Session 2C (printers mode, spec §8, plan decision 15): beside PRINT_LEASE_HEADER, the printers this
+ *  tab can print on right now ("id,id"). A slip routed to one of them, on a printer this device writes, may be
+ *  made already leased to the tab. Unusable ids are dropped (printerIdsOf), never a refused request. */
+export const PRINT_READY_HEADER = "x-pos-print-ready";
+/** Session 2C (plan decision 7): this device's own bill printer (an id), chosen on the device (Session 2D). An
+ *  unknown, switched-off or unusable one means the default bill printer; it never refuses the order write. */
+export const PRINT_BILL_PRINTER_HEADER = "x-pos-bill-printer";
 
 /** One job the server created for a request (spec §7.4 `printJobs`): the asking device leases the ones
  *  aimed at it straight away and follows each one's readback by id. */
@@ -47,6 +54,9 @@ export interface PrintJobRef {
   /** Session 2B (spec §7.11): the job is leased to the asking tab (made so now, or still so from a request
    *  whose answer was lost). The tab prints it at once and acks it; no lease request. */
   leased?: LeasedPrintJob;
+  /** Session 2C (printers mode): the printer the job prints on; PRINT_JOB_NO_PRINTER when none takes it (the
+   *  job is failed at creation). Absent in simple mode. */
+  printerId?: string;
 }
 
 /** Session 1D (spec §10): one row of the one waiting-slips panel. Every device reads the same feed on the
@@ -66,6 +76,8 @@ export interface PrintAttentionRow {
   targetDeviceId?: string;
   /** Staff already tapped Print now / Retry / Print again on it (approvedAt): it waits for its printer. */
   approved?: true;
+  /** Session 2C (printers mode): the job's printer, so the panel can name it. */
+  printerId?: string;
 }
 
 /** The feed is one bounded read on the hottest poll, within the queued retention (§7.8): the NEWEST rows
@@ -168,6 +180,10 @@ export interface LeasedPrintJob {
   copyIndex: number;
   /** 1 for the first lease of this job. */
   attempt: number;
+  /** Session 2C (printers mode): the printer this job is for, and how many copies to write in this one lease
+   *  (absent: 1). Absent printerId: the device's own simple-mode line. */
+  printerId?: string;
+  copies?: number;
 }
 
 /** retryAt: when the head of this device's line can next be leased (backoff, or another tab's live
@@ -177,7 +193,9 @@ export interface PrintLeaseData {
   retryAt: string | null;
 }
 
-export type PrintJobActionRefusal = PrintJobRefusal | "not-found" | "raced";
+/** "printer-gone" (Session 2C): a Retry or Print again on a job whose printer was removed or switched off; it is
+ *  never guessed onto another printer (staff print the slip again from its order). */
+export type PrintJobActionRefusal = PrintJobRefusal | "not-found" | "raced" | "printer-gone";
 
 export interface PrintAckData {
   applied: boolean;
