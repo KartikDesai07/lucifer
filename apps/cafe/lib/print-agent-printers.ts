@@ -26,7 +26,14 @@ export function printerIsLocal(printer: PrinterConfig, local: DevicePrinter | nu
     case "bt-classic":
     case "ble":
     case "usb":
-      return local?.kind === "native" && local.transport === connection.transport && local.printerId === connection.address;
+      // The app names its printer "<transport>:<id>" (Kotlin PrinterIds: "bt-classic:<MAC>", "ble:<MAC>",
+      // "usb:<vendor>:<product>"); the setup's address is the bare id (§6.3), or the app's whole id as it reported
+      // it (Session 2C's final review, I-1).
+      return (
+        local?.kind === "native" &&
+        local.transport === connection.transport &&
+        (local.printerId === `${connection.transport}:${connection.address}` || local.printerId === connection.address)
+      );
     case "web-bluetooth":
       return local?.kind === "ble" && local.deviceId === connection.address;
     case "web-serial":
@@ -65,6 +72,17 @@ export function printerListLooksStale(input: {
 }): boolean {
   if (input.jobsForMe?.printerIds?.some((id) => !input.ready.includes(id)) === true) return true;
   return input.isWriter && input.writesPrinters === false;
+}
+
+/** Session 2C's final review (I-2): jobs-for-me counts every job aimed at the device, including ones on a printer
+ *  it does not print on (a second printer it writes, before Session 2E; a printer whose address is not its own),
+ *  which its lease never names. A kick on those leased nothing on every pulse and every wake, and kept the wake's
+ *  fast cadence: only its own line's jobs, or a printer it prints here, kick it. A printer it does not know of yet
+ *  is read again by printerListLooksStale; the new list nudges the agent. */
+export function jobsForMeLeasable(jobs: PrintJobsForMe | undefined, ready: readonly string[]): boolean {
+  if (jobs === undefined || jobs.count === 0) return false;
+  if (jobs.printerIds === undefined || jobs.ownLine === true) return true;
+  return jobs.printerIds.some((id) => ready.includes(id));
 }
 
 /** One leased job on this device (spec §6.3 copies, plan decision 2): a printer job is refused (sent:"no", never

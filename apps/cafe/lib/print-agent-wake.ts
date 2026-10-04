@@ -12,6 +12,8 @@ export interface PrintAgentWakeDeps {
   mayPoll(): boolean;
   /** Spends one hit of today's cap; false once it is spent (spec §9.1, decision 6). */
   spendOne(): boolean;
+  /** Session 2C's final review (I-2): whether the counted jobs hold one this agent can lease. Absent: all can. */
+  leasable?(jobs: PrintWakeBeatData["jobsForMe"]): boolean;
   onJobs(): void;
   now(): number;
   setTimer(fn: () => void, ms: number): unknown;
@@ -34,7 +36,8 @@ export function createPrintAgentWake(deps: PrintAgentWakeDeps): { start(): void;
         capSpent = !deps.spendOne();
         if (!capSpent) {
           const data = await deps.wake();
-          if (data.jobsForMe.count > 0) {
+          // A job only on a printer it does not print on neither kicks nor keeps the fast cadence.
+          if (data.jobsForMe.count > 0 && (deps.leasable?.(data.jobsForMe) ?? true)) {
             lastJobAt = deps.now();
             deps.onJobs();
           }

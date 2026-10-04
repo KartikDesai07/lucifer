@@ -333,6 +333,38 @@ test("the host's wake polls at the spec §9.1 cadence, never while hidden or pas
   wake.stop();
 });
 
+// Session 2C's final review (I-2): a writer whose counted jobs sit on a printer it does not print on (a second
+// printer it writes, before 2E) kicked an empty lease on every wake, every 3 s with the socket down, all service.
+test("2C: a wake whose jobs the agent cannot lease neither kicks it nor keeps the fast cadence", async () => {
+  const { w } = world();
+  let jobs = 0;
+  let leasable = false;
+  const wake = createPrintAgentWake({
+    wake: async () => ({ jobsForMe: { count: 1, oldestCreatedAt: null, printerIds: ["b".repeat(24)] }, agents: 1, agentDailyCap: 7_000, serverNow: new Date(w.now).toISOString() }),
+    socketHealthy: () => false,
+    mayPoll: () => true,
+    spendOne: () => true,
+    leasable: () => leasable,
+    onJobs: () => void (jobs += 1),
+    now: () => w.now,
+    setTimer: (fn, ms) => {
+      const id = w.nextId++;
+      w.timers.push({ at: w.now + ms, fn, id });
+      return id;
+    },
+    clearTimer: (handle) => void (w.timers = w.timers.filter((t) => t.id !== handle)),
+  });
+  wake.start();
+  await settle();
+  assert.equal(jobs, 0, "nothing it can lease: no kick");
+  assert.equal(w.timers[0]?.at, T0 + PRINT_WAKE_SLOW_MS, "and the slow cadence, not the fast one");
+  leasable = true;
+  await advance(w, PRINT_WAKE_SLOW_MS);
+  assert.equal(jobs, 1, "its list now knows that printer: the kick comes");
+  assert.equal(w.timers[0]?.at, w.now + PRINT_WAKE_FAST_MS, "a job it can lease: the fast cadence");
+  wake.stop();
+});
+
 test("the slip for a leased job carries its labels as the banner; an end-of-day summary and a first print carry none", () => {
   const kot = { ...job("k1"), kind: "kot" as const, labels: ["REPRINT" as const], payload: { kind: "kot", round: 1, snapshot: { _id: "o1", orderId: "ORD-1", createdAt: new Date(T0).toISOString(), items: [] } } as unknown as LeasedPrintJob["payload"] };
   const slip = printAgentSlipOf(kot, "2026-10-03");

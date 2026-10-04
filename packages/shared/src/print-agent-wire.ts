@@ -232,6 +232,9 @@ export interface PrintJobsForMe {
   count: number;
   oldestCreatedAt: string | null;
   printerIds?: string[];
+  /** Session 2C's final review (I-2): beside printer jobs, a counted job waits on the device's own simple-mode
+   *  line, so an agent that cannot lease the named printers still leases for it. Absent: no such job named. */
+  ownLine?: boolean;
 }
 
 /** POST /api/print-jobs/wake. serverNow lets an agent run timers on server time (spec §15 clock skew). */

@@ -33,7 +33,7 @@ import {
   type PrintAgent,
   type PrintAgentResult,
 } from "@/lib/print-agent";
-import { printJobCopies, printerListLooksStale, type AgentPrinters } from "@/lib/print-agent-printers";
+import { jobsForMeLeasable, printJobCopies, printerListLooksStale, type AgentPrinters } from "@/lib/print-agent-printers";
 import { createPrintAgentWake } from "@/lib/print-agent-wake";
 import type { HostPrintDone } from "@/lib/print-host-outcomes";
 import { PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print-host-slips";
@@ -240,7 +240,7 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
       const data = event.query.state.data as PosPulseData | undefined;
       if ((data?.printJobsForMe?.count ?? 0) > 0) {
         noteJobsForMe(data?.printJobsForMe);
-        agent.kick();
+        if (jobsForMeLeasable(data?.printJobsForMe, readyRef.current)) agent.kick();
       }
     });
     return () => {
@@ -272,6 +272,7 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
         writePrintWakeBudget(record);
         return allowed;
       },
+      leasable: (jobs) => jobsForMeLeasable(jobs, readyRef.current),
       onJobs: () => agent.kick(),
       ...timers(),
     });

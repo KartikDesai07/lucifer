@@ -283,6 +283,13 @@ export async function readJobsForDevice(deviceId: string, nowMs: number): Promis
     .select("createdAt printerId")
     .limit(PRINT_JOBS_FOR_ME_LIMIT)
     .lean<{ createdAt: Date; printerId?: string }[]>();
+  return jobsForMeOf(rows);
+}
+
+/** The answer from the rows, oldest first. Simple mode answers as before; beside printer jobs it says whether one
+ *  waits on the device's own line (Session 2C's final review, I-2: the agent kicks only on jobs it can lease). */
+export function jobsForMeOf(rows: readonly { createdAt: Date; printerId?: string }[]): PrintJobsForMe {
   const printerIds = [...new Set(rows.map((row) => row.printerId).filter((id): id is string => id !== undefined && id !== PRINT_JOB_NO_PRINTER))];
-  return { count: rows.length, oldestCreatedAt: rows[0]?.createdAt.toISOString() ?? null, ...(printerIds.length > 0 ? { printerIds } : {}) };
+  const ownLine = printerIds.length > 0 && rows.some((row) => row.printerId === undefined);
+  return { count: rows.length, oldestCreatedAt: rows[0]?.createdAt.toISOString() ?? null, ...(printerIds.length > 0 ? { printerIds } : {}), ...(ownLine ? { ownLine } : {}) };
 }

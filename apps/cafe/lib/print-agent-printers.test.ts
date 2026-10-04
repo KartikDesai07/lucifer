@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import type { PrinterConfig } from "@pos/shared/print-printers";
 import { stripComments } from "@/lib/source-pin-utils";
-import { PRINTER_NOT_LOCAL_MESSAGE, agentPrintersOf, printJobCopies, printerIsLocal, printerListLooksStale } from "@/lib/print-agent-printers";
+import { PRINTER_NOT_LOCAL_MESSAGE, agentPrintersOf, jobsForMeLeasable, printJobCopies, printerIsLocal, printerListLooksStale } from "@/lib/print-agent-printers";
 import type { PrintAgentResult } from "@/lib/print-agent-types";
 import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
 import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
@@ -23,7 +23,10 @@ function printer(id: string, connection: PrinterConfig["connection"], over: Part
 }
 
 const NATIVE_TCP: DevicePrinter = { kind: "native", name: "LAN", paper: "80mm", printerId: "tcp:192.168.1.60:9100", transport: "tcp" };
-const NATIVE_BT: DevicePrinter = { kind: "native", name: "BT", paper: "58mm", printerId: "00:11:22:33:44:55", transport: "bt-classic" };
+// The ids the Android app reports (Kotlin PrinterIds, stored verbatim by nativeRecordOf): "<transport>:<id>".
+const NATIVE_BT: DevicePrinter = { kind: "native", name: "BT", paper: "58mm", printerId: "bt-classic:00:11:22:33:44:55", transport: "bt-classic" };
+const NATIVE_BLE: DevicePrinter = { kind: "native", name: "BLE", paper: "58mm", printerId: "ble:00:11:22:33:44:55", transport: "ble" };
+const NATIVE_USB: DevicePrinter = { kind: "native", name: "USB", paper: "80mm", printerId: "usb:0416:5011", transport: "usb" };
 const WEB_BLE: DevicePrinter = { kind: "ble", name: "BLE", paper: "58mm", deviceId: "ble-1", serviceUuid: "s", characteristicUuid: "c" };
 const WEB_SERIAL: DevicePrinter = { kind: "serial", name: "USB", paper: "80mm" };
 
@@ -35,6 +38,14 @@ test("printerIsLocal: a printer is printed here only when it IS this device's pr
   const bt = printer("bt", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "00:11:22:33:44:55" });
   assert.equal(printerIsLocal(bt, NATIVE_BT, false), true, "the paired printer by its address");
   assert.equal(printerIsLocal({ ...bt, connection: { ...bt.connection, address: "AA:BB" } as PrinterConfig["connection"] }, NATIVE_BT, false), false, "another paired printer");
+  // Session 2C's final review (I-1): the app names its printer "<transport>:<id>"; the setup's address is the bare
+  // id (§6.3), or the app's whole id when the setup stored what the app reported.
+  assert.equal(printerIsLocal(printer("bt2", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "bt-classic:00:11:22:33:44:55" }), NATIVE_BT, false), true, "the app's whole id");
+  const ble = printer("ble-n", { kind: "device", deviceId: "dev-a", transport: "ble", address: "00:11:22:33:44:55" });
+  assert.equal(printerIsLocal(ble, NATIVE_BLE, false), true, "a BLE printer by its address");
+  assert.equal(printerIsLocal(ble, NATIVE_BT, false), false, "the same address over another transport is another printer");
+  assert.equal(printerIsLocal(printer("usb", { kind: "device", deviceId: "dev-a", transport: "usb", address: "0416:5011" }), NATIVE_USB, false), true, "a USB printer by its vendor:product id");
+  assert.equal(printerIsLocal(printer("usb2", { kind: "device", deviceId: "dev-a", transport: "usb", address: "0416:5012" }), NATIVE_USB, false), false, "another USB model");
   assert.equal(printerIsLocal(printer("ble", { kind: "device", deviceId: "dev-a", transport: "web-bluetooth", address: "ble-1" }), WEB_BLE, false), true);
   assert.equal(printerIsLocal(printer("ser", { kind: "device", deviceId: "dev-a", transport: "web-serial", address: "usb" }), WEB_SERIAL, false), true, "a tab drives one serial printer");
   const win = printer("win", { kind: "device", deviceId: "dev-a", transport: "windows", address: "EPSON TM-T82" });
@@ -69,6 +80,28 @@ test("printerListLooksStale: a printer job it does not print on, or a writer the
   assert.equal(printerListLooksStale({ ready: [a], isWriter: true, writesPrinters: true }), false);
   assert.equal(printerListLooksStale({ ready: [a], isWriter: true }), false, "an older server says nothing");
   assert.equal(printerListLooksStale({ ready: [], isWriter: false, writesPrinters: false }), false, "the host in simple mode");
+});
+
+// Session 2C's final review (I-2): jobs-for-me counts every job aimed at the device, including ones on a printer it
+// does not print on (a second printer it writes, before Session 2E; a printer whose address is not its own). A kick
+// on those leased nothing, on every pulse and every wake, with the wake's fast cadence re-armed: a loop.
+test("jobsForMeLeasable: only jobs this agent can lease kick it: its own line, or a printer it prints here", () => {
+  const a = "a".repeat(24);
+  const b = "b".repeat(24);
+  assert.equal(jobsForMeLeasable(undefined, [a]), false, "nothing counted");
+  assert.equal(jobsForMeLeasable({ count: 0, oldestCreatedAt: null }, [a]), false, "an empty count");
+  assert.equal(jobsForMeLeasable({ count: 2, oldestCreatedAt: null }, []), true, "its own simple-mode line (or an older server)");
+  assert.equal(jobsForMeLeasable({ count: 1, oldestCreatedAt: null, printerIds: [a] }, [a]), true, "a printer it prints here");
+  assert.equal(jobsForMeLeasable({ count: 3, oldestCreatedAt: null, printerIds: [b, a] }, [a]), true, "one of them is");
+  assert.equal(jobsForMeLeasable({ count: 1, oldestCreatedAt: null, printerIds: [b] }, [a]), false, "only a printer it does not print on: no kick");
+  assert.equal(jobsForMeLeasable({ count: 2, oldestCreatedAt: null, printerIds: [b], ownLine: true }, [a]), true, "beside a job on its own line");
+});
+
+test("PIN (2C final review, I-2): the pulse and the wake kick the agent only on jobs it can lease", () => {
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.match(agent, /if \(jobsForMeLeasable\(data\?\.printJobsForMe, readyRef\.current\)\) agent\.kick\(\);/, "the pulse");
+  assert.match(agent, /leasable: \(jobs\) => jobsForMeLeasable\(jobs, readyRef\.current\),/, "the wake");
+  assert.ok(agent.includes("noteJobsForMe(data?.printJobsForMe);"), "a stale list is still read again from the pulse");
 });
 
 test("PIN (2C): the page reads the printers on mount, on a print-setup frame and on focus at most every 30 min; every agent and the drain use it", () => {

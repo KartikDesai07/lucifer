@@ -47,7 +47,9 @@ export type PrinterPaperWidth = (typeof PRINTER_PAPER_WIDTHS)[number];
 export const PRINTER_COPIES_MIN = 1;
 export const PRINTER_COPIES_MAX = 3;
 export const PRINTER_LAN_DEFAULT_PORT = 9100;
-/** A device printer's transport-specific id (a Bluetooth address, a USB id, a Windows printer name). */
+/** A device printer's transport-specific id (a Bluetooth address, a USB id, a Windows printer name). The Android
+ *  app reports its printer as "<transport>:<id>" ("bt-classic:<MAC>", "ble:<MAC>", "usb:<vendor>:<product>"); either
+ *  form matches it (the cafe's printerIsLocal, Session 2C's final review). */
 export const PRINTER_ADDRESS_MAX_CHARS = 256;
 /** Equal to the cafe's PRINT_HOST_DEVICE_ID_MAX_CHARS (pinned there): a device id is the same value everywhere. */
 export const PRINTER_DEVICE_ID_MAX_CHARS = 64;
