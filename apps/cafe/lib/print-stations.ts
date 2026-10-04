@@ -6,6 +6,7 @@ import { Printer } from "@/models/Printer";
 import { Product } from "@/models/Product";
 import { Station } from "@/models/Station";
 import type { CreateStationBody, UpdateStationBody } from "@/lib/print-printer-schemas";
+import { publishCafeEvent } from "@/lib/realtime-publish";
 
 // Printing redesign, Phase 2 (spec §6.1, §11): kitchen stations. The first read seeds the default
 // "Kitchen"; there is always exactly one default, which can be moved but never deleted. Deleting a station
@@ -108,17 +109,19 @@ export async function updateStation(id: string, body: UpdateStationBody): Promis
 /** Deletes a station that is not the default, after clearing it from every category, item and printer that chose
  *  it: they fall back to the default (spec §6.2), as a lookup of a deleted station would. The pointers go FIRST
  *  (the 2A gate's M4): a request cut in between leaves a station nobody points at, never a printer whose saved
- *  station is gone (its form could not be saved again). */
+ *  station is gone (its form could not be saved again). A delete that took the station off a printer is a printers
+ *  write (the 2D review gate, M-2): the other devices read their printers again, as after a printer save. */
 export async function deleteStation(id: string): Promise<PrintSetupResult<{ deleted: true }>> {
   const stations = await readStations();
   const station = stations.find((s) => s.id === id);
   if (station === undefined) return { ok: false, status: 404, error: STATION_NOT_FOUND };
   if (defaultStationOf(stations)?.id === id) return { ok: false, status: 400, error: STATION_DEFAULT_DELETE_MESSAGE };
-  await Promise.all([
+  const [, , printers] = await Promise.all([
     Category.updateMany({ stationId: id }, { $unset: { stationId: "" } }),
     Product.updateMany({ stationId: id }, { $unset: { stationId: "" } }),
     Printer.updateMany({ "slips.kotStations": id }, { $pull: { "slips.kotStations": id } }),
   ]);
   await Station.deleteOne({ _id: id });
+  if (printers.modifiedCount > 0) publishCafeEvent("print-setup");
   return { ok: true, data: { deleted: true } };
 }

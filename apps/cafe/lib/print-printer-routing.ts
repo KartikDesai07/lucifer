@@ -145,12 +145,13 @@ function routeKot(request: PrintJobRequest, payload: KotPrintJobPayload, setup: 
   return out;
 }
 
-/** The asking device's own bill printer, when routing may send it slips: enabled, with a writer, taking some
- *  slip (it need not take bills by default; the device chose it). The 2A gate's M9, ruled at the 2B gate: a
- *  printer that takes no slip is not routable, so its writer would not poll the wake; such a choice falls back
- *  to the default bill printer. */
+/** The asking device's own bill printer, when routing may send it bills: routable (the 2A gate's M9, ruled at the
+ *  2B gate: a printer that takes no slip has no writer polling the wake) and taking bills (the 2D review gate: a
+ *  printer prints only the slips its boxes say, so unticking Bill there sends every device's bills elsewhere). Any
+ *  other choice falls back to the default bill printer. */
 function chosenBillPrinter(routing: PrintRouting): PrinterConfig | null {
-  return routing.billPrinterId === undefined ? null : routablePrinterOf(routing.printers, routing.billPrinterId);
+  const printer = routing.billPrinterId === undefined ? null : routablePrinterOf(routing.printers, routing.billPrinterId);
+  return printer !== null && printer.slips.bill ? printer : null;
 }
 
 /** The jobs one slip becomes in printers mode (spec §8). Empty only for a KOT with no lines, and for a

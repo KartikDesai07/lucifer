@@ -31,6 +31,13 @@ test("PIN (2D): the item form's Kitchen station: Use the category's station send
   assert.match(select, /const shown = value !== "" && stations\.some\(\(station\) => station\.id === value\) \? value : INHERIT;/, "an unlisted id shows as inherited and is kept until changed");
 });
 
+// The 2D review gate: with "Default" chosen, End of day goes to the first End of day printer, which need not be the
+// default bill printer, so the section promises End of day only for a chosen printer.
+test("PIN (the 2D review gate): the bill printer section says End of day follows a chosen printer", () => {
+  const section = src("components/print/BillPrinterSection.tsx");
+  assert.match(section, /const DESCRIPTION = "Bills from this device print here, and its End of day too when you choose a printer\.";/);
+});
+
 test("PIN (2D, decision 7): this device's bill printer: printers mode only, routable bill printers only, kept on the device", () => {
   const panel = src("components/print/PrinterPanel.tsx");
   const card = panel.indexOf("<PrinterSetupCard />");

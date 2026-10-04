@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { usePrintersRead } from "@/hooks/use-agent-printers";
 import { BILL_PRINTER_DEFAULT, billPrinterChoiceOf, readBillPrinterId, writeBillPrinterId } from "@/lib/print-bill-printer";
 
-const DESCRIPTION = "Bills and End of day from this device print here.";
+const DESCRIPTION = "Bills from this device print here, and its End of day too when you choose a printer.";
 
 // Printing redesign, Phase 2 Session 2D (plan decision 7; spec §11 "Bill printer for this device"): in printers
 // mode, this device chooses which bill printer its bills and End of day go to; kept on this device and sent with
@@ -28,8 +28,8 @@ export function BillPrinterSection() {
   const billPrinters = routablePrinters(printers).filter((printer) => printer.slips.bill);
   if (!printersModeOn(printers) || billPrinters.length === 0) return null;
   const fallback = defaultBillPrinterOf(printers);
-  // What routing does with this device's choice (Session 2D's final review, M-6): never "Default" while bills
-  // still go to the chosen printer.
+  // What routing does with this device's choice (Session 2D's final review, M-6; the 2D review gate: a choice counts
+  // only while it takes bills).
   const { value, options, note } = billPrinterChoiceOf(printers, chosen);
 
   const choose = (next: string) => {

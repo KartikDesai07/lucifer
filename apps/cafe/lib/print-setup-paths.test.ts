@@ -160,7 +160,8 @@ test("PIN (2C, M7): a station or printer name is refused when another differs fr
 test("PIN (2C): each printer write publishes print-setup; the kind is the room's, on both sides", () => {
   const s = src("lib/print-printers.ts");
   assert.equal(s.split('publishCafeEvent("print-setup")').length - 1, 3, "create, replace, delete");
-  assert.ok(!src("lib/print-stations.ts").includes("print-setup"), "a station write publishes nothing");
+  // The 2D review gate (M-2): a station delete that took the station off a printer is a printers write too.
+  assert.equal(src("lib/print-stations.ts").split('publishCafeEvent("print-setup")').length - 1, 1, "only that delete; no other station write");
   assert.match(src("lib/realtime-publish.ts"), /"print-setup",/);
   assert.match(src("../../workers/realtime/src/index.ts"), /"print-setup"/);
 });
@@ -196,6 +197,17 @@ test("PIN (2D, the 2A gate's M4): every pointer to a station is cleared before t
   const pulled = body.indexOf('Printer.updateMany({ "slips.kotStations": id }');
   const deleted = body.indexOf("await Station.deleteOne({ _id: id });");
   assert.ok(pulled >= 0 && deleted > pulled, `the pointers (${pulled}) before the delete (${deleted})`);
+});
+
+// The 2D review gate (M-2): a station delete that took a station off a printer is a printers write, so the other
+// devices read their printers again, as after any printer save (two Worker requests per such delete).
+test("PIN (the 2D review gate, M-2): a station delete that changed a printer's stations publishes print-setup", () => {
+  const s = src("lib/print-stations.ts");
+  const body = s.slice(s.indexOf("export async function deleteStation("));
+  const pulled = body.indexOf('Printer.updateMany({ "slips.kotStations": id }');
+  const deleted = body.indexOf("await Station.deleteOne({ _id: id });");
+  const published = body.indexOf('if (printers.modifiedCount > 0) publishCafeEvent("print-setup");');
+  assert.ok(pulled >= 0 && deleted > pulled && published > deleted, `the pointers (${pulled}), the delete (${deleted}), then the frame (${published})`);
 });
 
 test("PIN (2D, the 2C review gate's F-3): a printer save refuses a second enabled printer for one printing device", () => {

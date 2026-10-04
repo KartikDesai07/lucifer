@@ -110,9 +110,13 @@ export function stationDeleteQuestion(station: StationConfig, printers: readonly
   return empty.length === 0 ? base : `${base} ${empty.join(", ")} will then take no slips and stop printing.`;
 }
 
-/** The 2A gate's M5: the printers a station's delete leaves with no slip at all (they stop printing). */
+/** The 2A gate's M5: the printers a station's delete leaves with no slip at all (they stop printing). Only printers
+ *  switched on (the 2D review gate, M-8): one already off does not stop because of the delete. */
 export function printersLeftEmptyBy(printers: readonly PrinterConfig[], stationId: string): PrinterConfig[] {
   return printers.filter(
-    (printer) => printer.slips.kotStations.includes(stationId) && !printerTakesSlips({ ...printer.slips, kotStations: printer.slips.kotStations.filter((id) => id !== stationId) }),
+    (printer) =>
+      printer.enabled &&
+      printer.slips.kotStations.includes(stationId) &&
+      !printerTakesSlips({ ...printer.slips, kotStations: printer.slips.kotStations.filter((id) => id !== stationId) }),
   );
 }

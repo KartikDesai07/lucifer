@@ -47,7 +47,7 @@ function printer(id: string, name: string, slips: Partial<PrinterConfig["slips"]
   };
 }
 
-test("2D final review (M-6): the bill picker shows where this device's bills print, exactly as routing chooses", () => {
+test("2D final review (M-6), as changed at the 2D review gate: the bill picker shows where this device's bills print, exactly as routing chooses", () => {
   const P1 = "64f0000000000000000000a1";
   const BAR = "64f0000000000000000000b2";
   const counter = printer(P1, "Printer 1", { bill: true, kotAll: true, notices: true, eod: true });
@@ -57,16 +57,16 @@ test("2D final review (M-6): the bill picker shows where this device's bills pri
   const cases: Array<{ name: string; printers: PrinterConfig[]; chosen: string | null; value: string; offered: string[]; note: RegExp | null }> = [
     { name: "none chosen", printers: [counter, bar], chosen: null, value: BILL_PRINTER_DEFAULT, offered: [P1, BAR], note: null },
     { name: "a bill printer chosen", printers: [counter, bar], chosen: BAR, value: BAR, offered: [P1, BAR], note: null },
-    { name: "chosen, then Bill unticked there", printers: [counter, barNoBill], chosen: BAR, value: BAR, offered: [P1, BAR], note: /^Bar printer no longer takes bills, but this device's bills still print there\./ },
+    { name: "chosen, then Bill unticked there", printers: [counter, barNoBill], chosen: BAR, value: BILL_PRINTER_DEFAULT, offered: [P1], note: /^Bar printer no longer takes bills, so this device's bills go to the default\./ },
     { name: "chosen, then switched off", printers: [counter, barOff], chosen: BAR, value: BILL_PRINTER_DEFAULT, offered: [P1], note: /switched off or gone, so bills go to the default/ },
     { name: "chosen, then deleted", printers: [counter], chosen: BAR, value: BILL_PRINTER_DEFAULT, offered: [P1], note: /switched off or gone, so bills go to the default/ },
   ];
   for (const c of cases) {
     const choice = billPrinterChoiceOf(c.printers, c.chosen);
-    // The server sends this device's bills to its choice while that printer is routable (chosenBillPrinter), else
-    // to the default bill printer: the picker must say the same.
+    // The server sends this device's bills to its choice while that printer is routable and takes bills
+    // (chosenBillPrinter, the 2D review gate), else to the default bill printer: the picker must say the same.
     const routed = c.chosen === null ? null : routablePrinterOf(c.printers, c.chosen);
-    assert.equal(choice.value, routed?.id ?? BILL_PRINTER_DEFAULT, `${c.name}: the picker shows the printer routing uses`);
+    assert.equal(choice.value, routed !== null && routed.slips.bill ? routed.id : BILL_PRINTER_DEFAULT, `${c.name}: the picker shows the printer routing uses`);
     assert.equal(choice.value, c.value, `${c.name}: value`);
     assert.deepEqual(choice.options.map((p) => p.id), c.offered, `${c.name}: the printers offered, the shown one among them`);
     if (c.note === null) assert.equal(choice.note, null, `${c.name}: no note`);

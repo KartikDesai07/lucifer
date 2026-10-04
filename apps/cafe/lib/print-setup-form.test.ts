@@ -172,6 +172,13 @@ test("2D: what the setup leaves without a printer (printers mode only), and the 
   assert.deepEqual(printersLeftEmptyBy([bar, both, counter], "s-bar").map((p) => p.id), ["Bar"], "only the printer that took nothing else");
 });
 
+// The 2D review gate (M-8): a printer already switched off does not "stop printing" because of a station delete.
+test("2D gate (M-8): a station delete names only printers that print now and would take no slip after it", () => {
+  const bar = printer("Bar", { slips: { ...NO_SLIPS, kotStations: ["s-bar"] } });
+  const barOff = printer("Bar off", { enabled: false, slips: { ...NO_SLIPS, kotStations: ["s-bar"] } });
+  assert.deepEqual(printersLeftEmptyBy([bar, barOff], "s-bar").map((p) => p.id), ["Bar"], "the switched-off printer is not named");
+});
+
 const CAFE = process.cwd();
 const src = (rel: string): string => stripComments(readFileSync(path.join(CAFE, rel), "utf8"));
 

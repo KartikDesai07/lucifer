@@ -201,7 +201,7 @@ test("bill: the asking device's bill printer, else the default; copies; nowhere 
   const disabled = routePrintRequest(request, routing([COUNTER_P, { ...second, enabled: false }], { billPrinterId: "counter-2" }));
   assert.deepEqual(disabled.map((j) => j.printerId), ["counter"], "a disabled choice falls back to the default");
   const kitchenAsBill = routePrintRequest(request, routing([COUNTER_P, KITCHEN_P], { billPrinterId: "kitchen" }));
-  assert.deepEqual(kitchenAsBill.map((j) => j.printerId), ["kitchen"], "the device's own choice need not be a default bill printer");
+  assert.deepEqual(kitchenAsBill.map((j) => j.printerId), ["counter"], "a choice that does not take bills: the default (the 2D review gate)");
   const nowhere = routePrintRequest(request, routing([KITCHEN_P]));
   assert.deepEqual(nowhere.map((j) => [j.printerId, j.error]), [[null, "No printer is set up for bills."]]);
   // The 2A gate's M9 (ruled at the 2B gate, R4): a choice that takes no slip is not routable, so its writer would
@@ -218,6 +218,20 @@ test("End of day: the asking device's bill printer, else the first End of day pr
   assert.deepEqual(routePrintRequest(request, routing([bill, office], { billPrinterId: "bill" })).map((j) => j.printerId), ["bill"]);
   assert.deepEqual(routePrintRequest(request, routing([bill])).map((j) => j.printerId), ["bill"]);
   assert.deepEqual(routePrintRequest(request, routing([KITCHEN_P])).map((j) => j.error), ["No printer is set up for End of day."]);
+});
+
+// The 2D review gate: a printer prints only the slips its boxes say. A device's chosen bill printer counts only while
+// it takes bills; unticking Bill there sends that device's bills, and its End of day, the default way again.
+test("2D gate: a device's chosen bill printer counts only while it takes bills; its End of day follows the same choice", () => {
+  const second = printer("counter-2", { bill: true }, { order: 4 });
+  const bill = billPrintJob(order({ status: "Completed" }), { reprint: false });
+  const eod = eodPrintJob({ dateKey: "2026-10-03", dateLabel: "3 Oct 2026" });
+  const office = printer("office", { eod: true }, { order: 9 });
+  assert.deepEqual(routePrintRequest(bill, routing([COUNTER_P, second], { billPrinterId: "counter-2" })).map((j) => j.printerId), ["counter-2"], "a second bill printer may be chosen");
+  const unticked = { ...second, slips: { ...second.slips, bill: false, notices: true } };
+  assert.deepEqual(routePrintRequest(bill, routing([COUNTER_P, unticked], { billPrinterId: "counter-2" })).map((j) => j.printerId), ["counter"], "Bill unticked there: the default bill printer");
+  assert.deepEqual(routePrintRequest(eod, routing([COUNTER_P, unticked, office], { billPrinterId: "counter-2" })).map((j) => j.printerId), ["counter"], "its End of day: the first End of day printer, as with no choice");
+  assert.deepEqual(routePrintRequest(eod, routing([second, office], { billPrinterId: "counter-2" })).map((j) => j.printerId), ["counter-2"], "a chosen bill printer takes the device's End of day (spec §8)");
 });
 
 test("void: to the printers the voided item's station KOT reaches, that take notices", () => {
