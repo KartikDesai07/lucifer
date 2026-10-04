@@ -4,7 +4,7 @@ import mongoose from "mongoose";
 import { PRINT_HOST_MAX_AGE_MS } from "@pos/shared/print-job";
 import { PRINT_JOB_LOG_MAX, PRINT_LEASE_MS, lifecycleOf, planExpiry, planLease, type PrintJobPlan, type PrintJobPatch } from "@pos/shared/print-lifecycle";
 import type { PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
-import { leasedPrintJobOf, printJobCasFilter, printJobLineFilter, printJobsForMeFilter, printJobUpdateOf } from "./print-lease";
+import { leasedPrintJobOf, printJobCasFilter, printJobLineFilter, printJobsForMeFilter, printJobUpdateOf, printerLineFilter } from "./print-lease";
 
 // Phase 1 Session 1A — DB-free tests of print-lease.ts's pure exports. The DB paths are proven live
 // (npm run verify:print:live, legs q–x) and pinned in print-lifecycle-paths.test.ts.
@@ -17,9 +17,21 @@ function patchOf(plan: PrintJobPlan): PrintJobPatch {
   return plan.patch;
 }
 
-test("printJobLineFilter: this device's leased job, plus its queued jobs that are fresh or approved", () => {
+// Session 2C deliberately added printerId: { $exists: false }: a printers-mode job is aimed at its printer's
+// writer too (targetDeviceId), but it waits on its printer's line, never on the device's simple line.
+test("printJobLineFilter: this device's leased job, plus its queued jobs that are fresh or approved (simple mode only)", () => {
   assert.deepEqual(printJobLineFilter("dev-a", T0), {
     targetDeviceId: "dev-a",
+    printerId: { $exists: false },
+    status: { $in: ["queued", "leased"] },
+    $or: [{ status: "leased" }, { createdAt: { $gte: new Date(T0 - PRINT_HOST_MAX_AGE_MS) } }, { approvedAt: { $exists: true } }],
+  });
+});
+
+// Session 2C (spec §7.6, plan decision 1): in printers mode each printer is a line of its own, oldest first.
+test("printerLineFilter: one printer's leased job, plus its queued jobs that are fresh or approved", () => {
+  assert.deepEqual(printerLineFilter("p1", T0), {
+    printerId: "p1",
     status: { $in: ["queued", "leased"] },
     $or: [{ status: "leased" }, { createdAt: { $gte: new Date(T0 - PRINT_HOST_MAX_AGE_MS) } }, { approvedAt: { $exists: true } }],
   });

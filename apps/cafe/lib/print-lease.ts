@@ -41,15 +41,25 @@ export const PRINT_JOBS_FOR_ME_LIMIT = 20;
 export type PrintLifecycleRow = PrintJobLifecycleDoc & { _id: Types.ObjectId };
 type LeaseHead = PrintLifecycleRow & { label: string; orderId?: string; payload: string; copyIndex?: number };
 
-/** One device's line (simple mode, spec §6.6/§7.6): its leased job, plus each queued job that is
- *  not parked as stale. needs-confirm and failed jobs are parked and never block the line. */
-export function printJobLineFilter(deviceId: string, nowMs: number): FilterQuery<IPrintJob> {
+/** A line's own jobs: its leased one, plus each queued job that is not parked as stale. needs-confirm and
+ *  failed jobs are parked and never block the line. A leased job stays at the head whatever its age, so a line
+ *  never has two writers. */
+function lineJobs(nowMs: number): FilterQuery<IPrintJob> {
   return {
-    targetDeviceId: deviceId,
     status: { $in: ["queued", "leased"] },
-    // A leased job stays at the head whatever its age, so a line never has two writers.
     $or: [{ status: "leased" }, { createdAt: { $gte: drainAgeCutoff(nowMs) } }, { approvedAt: { $exists: true } }],
   };
+}
+
+/** One device's line (simple mode, spec §6.6/§7.6). Session 2C: a printers-mode job is aimed at its printer's
+ *  writer too, but it waits on its printer's line (printerLineFilter), never here. */
+export function printJobLineFilter(deviceId: string, nowMs: number): FilterQuery<IPrintJob> {
+  return { targetDeviceId: deviceId, printerId: { $exists: false }, ...lineJobs(nowMs) };
+}
+
+/** Session 2C (spec §7.6, plan decision 1): one printer's line, on the partial printer-line index. */
+export function printerLineFilter(printerId: string, nowMs: number): FilterQuery<IPrintJob> {
+  return { printerId, ...lineJobs(nowMs) };
 }
 
 /** The CAS fence: the status and epoch the plan was computed from. A row from before Phase 1 has no
@@ -94,7 +104,7 @@ export async function printLineHasMore(deviceId: string, nowMs: number): Promise
   return (await PrintJob.findOne({ ...printJobLineFilter(deviceId, nowMs), status: "queued" }).select("_id").lean()) !== null;
 }
 
-type LeasedHead = { _id: unknown; kind: PrintJobKind; label: string; orderId?: string; createdAt: Date; copyIndex?: number };
+type LeasedHead = { _id: unknown; kind: PrintJobKind; label: string; orderId?: string; createdAt: Date; copyIndex?: number; printerId?: string; copies?: number };
 
 /** The wire job for one lease (spec §7.3), from its row: leased by a lease request, made leased at creation,
  *  or delivered again to the tab that holds it (Session 2B, spec §7.11). */
@@ -110,6 +120,9 @@ export function leasedJobOf(head: LeasedHead, lease: { epoch: number; attempts: 
     labels: lease.labels,
     copyIndex: head.copyIndex ?? 0,
     attempt: lease.attempts,
+    // Session 2C (printers mode): the printer it is for, and its copies (absent: 1).
+    ...(head.printerId !== undefined ? { printerId: head.printerId } : {}),
+    ...(head.copies !== undefined && head.copies > 1 ? { copies: head.copies } : {}),
   };
 }
 

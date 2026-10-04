@@ -5,7 +5,7 @@ import type { LeasedPrintJob } from "@pos/shared/print-agent-wire";
 import { PRINT_LEASE_MS, lifecycleOf, type PrintJobLease } from "@pos/shared/print-lifecycle";
 import { printJobPayloadSchema, type PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 import { PrintJob } from "@/models/PrintJob";
-import { leasedJobOf, printJobLineFilter } from "@/lib/print-lease";
+import { leasedJobOf, printJobLineFilter, printerLineFilter } from "@/lib/print-lease";
 
 // Phase 2 Session 2B (spec §7.11, plan decisions 15 and 16): direct print on the asking device. When the tab
 // that drains a device's slips, and can print right now, asks for slips that print on that same device, the
@@ -26,9 +26,14 @@ export async function printLineIsFree(deviceId: string, nowMs: number): Promise<
   return (await PrintJob.findOne(printJobLineFilter(deviceId, nowMs)).select("_id").lean()) === null;
 }
 
+/** Session 2C (printers mode): the same, for one printer's line (decision 15 per printer line). */
+export async function printerLineIsFree(printerId: string, nowMs: number): Promise<boolean> {
+  return (await PrintJob.findOne(printerLineFilter(printerId, nowMs)).select("_id").lean()) === null;
+}
+
 /** What a job found under its key is read with when the asking tab may be handed it again. */
 export const PRINT_REDELIVERY_SELECT =
-  "kind status label orderId createdAt targetDeviceId epoch attempts uncertainAttempts nextAttemptAt labels lease payload copyIndex";
+  "kind status label orderId createdAt targetDeviceId epoch attempts uncertainAttempts nextAttemptAt labels lease payload copyIndex printerId copies";
 
 export interface PrintRedeliveryRow {
   _id: Types.ObjectId;
@@ -46,6 +51,8 @@ export interface PrintRedeliveryRow {
   lease?: PrintJobLease;
   payload?: string;
   copyIndex?: number;
+  printerId?: string;
+  copies?: number;
 }
 
 /** A job its key already names that is still leased to the asking device's very tab, its lease still running:

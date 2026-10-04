@@ -6,6 +6,7 @@ import { PRINT_JOB_LABEL_MAX_CHARS, printJobPayloadWithinCap } from "@pos/shared
 import { PRINT_DEVICE_ID_HEADER, PRINT_IDEMPOTENCY_HEADER, PRINT_IDEMPOTENCY_KEY_PATTERN } from "@pos/shared/print-agent-wire";
 import { enqueuePrintJob, prunePrintJobsThrottled } from "@/lib/print-queue";
 import { enqueueDirectPrintJob, enqueueOwnPrintJob, printIntentOf } from "@/lib/print-order-jobs";
+import { enqueueRoutedPrintJob } from "@/lib/print-printer-jobs";
 import { PRINT_HOST_DEVICE_ID_MAX_CHARS } from "@/lib/print-host";
 import { success, failure, requireAuth, serverError, validateBody } from "@/lib/api-helpers";
 import { noStore } from "@/lib/order-request-tray";
@@ -73,11 +74,23 @@ export async function POST(req: Request) {
   try {
     await connectDB();
     const intent = printIntentOf(req);
+    // Session 2C (spec §8): printers mode routes the slip to its printers, whoever asks. null: simple mode.
+    const routed = await enqueueRoutedPrintJob({
+      payload: parsed.data.payload,
+      label: parsed.data.label,
+      queuedBy,
+      ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+      originDeviceId: intent?.deviceId ?? originDeviceId,
+      leaseTabId: intent?.leaseTabId,
+      readyPrinterIds: intent?.readyPrinterIds,
+      ...(intent?.billPrinterId !== undefined ? { billPrinterId: intent.billPrinterId } : {}),
+      nowMs,
+    });
     // Session 2B (spec §7.11): the tab that drains the asking device's slips and can print now prints its
     // own slip at once (made leased to it), and gets back a slip still leased to it whose first answer was
     // lost. null: another device is the host, and the enqueue below makes the slip for it.
     const direct =
-      intent?.leaseTabId !== undefined
+      routed === null && intent?.leaseTabId !== undefined
         ? await enqueueDirectPrintJob({
             payload: parsed.data.payload,
             label: parsed.data.label,
@@ -89,6 +102,7 @@ export async function POST(req: Request) {
           })
         : null;
     let result =
+      routed ??
       direct ??
       (await enqueuePrintJob({
         payload: parsed.data.payload,
