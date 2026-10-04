@@ -49,6 +49,9 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
   let busy = false;
   let running = false;
   let kickedWhileRunning = false;
+  // Session 2E's final review (I-1): a wish to lease (an ack's `more`, a kick while a cycle ran) kept until a cycle
+  // leases, so held jobs printed first (a slip leased to this tab on two printers' lines) never drop it.
+  let leaseWanted = false;
   let stopped = false;
   const holds = createRefusalHolds(deps);
   const ready = (): readonly string[] => deps.readyPrinters?.() ?? [];
@@ -186,6 +189,7 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
       if (job === undefined) {
         // Only a held job prints past the lease gate; with none left (I-1), the gate decides as always.
         if (forHeld && !printAgentMayLease({ enabled, busy, running: false, printerReady: deps.printerReady(), refusalHolds: refusalHolds() })) return;
+        leaseWanted = false;
         const data = await deps.lease(holds.open(ready()));
         // Session 2C: one job per line (its own and each printer line it writes); on its one local printer they
         // print one by one, the rest held like a taken job. A line that gave none sets the timer even so.
@@ -252,7 +256,8 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
       wakeAt(deps.now() + PRINT_AGENT_REFUSED_RECHECK_MS);
     } finally {
       running = false;
-      if (again || kickedWhileRunning || held.length > 0) kick();
+      if (again || kickedWhileRunning) leaseWanted = true;
+      if (leaseWanted || held.length > 0) kick();
     }
   }
 

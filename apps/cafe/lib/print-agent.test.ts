@@ -1085,6 +1085,29 @@ test("2E: every Windows printer held: no lease at all, and the agent looks again
   agent.stop();
 });
 
+// Session 2E's final review (I-1): Pay Now on a PC that prints two printers. The answer carries the counter's KOT and
+// the bar's KOT leased to this tab (alsoLeased) and the bill queued behind the KOT on the counter's line. The KOT's
+// ack says more:true, but the bar KOT's held cycle started next and dropped that wish, so the bill waited for the pulse.
+test("2E: two KOTs leased to this tab and a bill queued behind the first: the bill is leased right after them, once", async () => {
+  const { w, deps, asked } = printersWorld(["p-counter", "p-bar"], (j) => j.printerId ?? "");
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.equal(w.leaseCalls, 1, "the gate's own look at the lines");
+  w.leases.push({ jobs: [{ ...job("bill"), kind: "bill", printerId: "p-counter" }], retryAt: null });
+  w.ackAnswers.push(done(true), done(false), done(false));
+  // followPrintJob: the followed KOT, then the one beside it (alsoLeased); then the bill's ref (queued) kicks.
+  agent.take({ ...job("kotC"), printerId: "p-counter" });
+  agent.take({ ...job("kotB"), printerId: "p-bar" });
+  agent.kick();
+  await settle();
+  assert.deepEqual(w.prints, ["kotC", "kotB", "bill"], "both KOTs at once, then the bill without waiting for the pulse");
+  assert.deepEqual(asked.slice(1), [["p-counter", "p-bar"]], "one lease, for the bill, after the held jobs");
+  await advance(w, 60_000);
+  assert.equal(w.leaseCalls, 2, "and none after the bill's more:false");
+  agent.stop();
+});
+
 test("2E: the holds: per line, released by a state change or the window, the device line holding every printer", () => {
   let state: object = {};
   let now = T0;
