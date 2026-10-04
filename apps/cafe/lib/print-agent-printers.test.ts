@@ -71,7 +71,7 @@ test("printerListLooksStale: a printer job it does not print on, or a writer the
   assert.equal(printerListLooksStale({ ready: [], isWriter: false, writesPrinters: false }), false, "the host in simple mode");
 });
 
-test("PIN (2C): the page reads the printers on mount, on a print-setup frame and on focus at most every 5 min; every agent and the drain use it", () => {
+test("PIN (2C): the page reads the printers on mount, on a print-setup frame and on focus at most every 30 min; every agent and the drain use it", () => {
   const hook = src("apps/cafe/hooks/use-agent-printers.ts");
   assert.match(hook, /queryFn: \(\) => apiGet<PrinterConfig\[\]>\("\/api\/printers"\),/);
   assert.match(hook, /staleTime: PRINTERS_STALE_MS,/);

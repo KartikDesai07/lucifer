@@ -3,6 +3,7 @@
 import { useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { PRINT_SETUP_STALE_MS } from "@pos/shared/print-budget";
 import type { PrinterConfig } from "@pos/shared/print-printers";
 import { useDevicePrinter } from "@/hooks/use-device-printer";
 import { apiGet } from "@/lib/api-client";
@@ -12,10 +13,11 @@ import { subscribeRealtime } from "@/lib/realtime-client";
 
 // Printing redesign, Phase 2 Session 2C (spec §9.1, §9.3): this device's view of the outlet's printers. Read on
 // mount, again on a "print-setup" frame (an admin saved a printer: two Worker requests per save, never per
-// slip), and on focus at most every 5 min (the fallback when a frame was missed). Never a poll.
+// slip), and on focus at most every 30 min (the fallback when a frame was missed; print-budget.test.ts). Never
+// a poll.
 
 export const PRINTERS_KEYS = { all: ["printers"] as const };
-const PRINTERS_STALE_MS = 5 * 60 * 1000;
+const PRINTERS_STALE_MS = PRINT_SETUP_STALE_MS;
 const NO_PRINTERS: PrinterConfig[] = [];
 
 export function usePrinters(enabled: boolean): PrinterConfig[] {

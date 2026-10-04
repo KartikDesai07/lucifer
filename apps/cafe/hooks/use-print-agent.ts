@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { hashKey, useQueryClient } from "@tanstack/react-query";
 
+import { PRINT_SETUP_REFRESH_MIN_MS } from "@pos/shared/print-budget";
 import { PRINT_WAKE_DAILY_CAP } from "@pos/shared/print-job";
 import {
   printAgentPollsWake,
@@ -79,9 +80,6 @@ function printerIdsBody(ids: readonly string[]): { printerIds?: string[] } {
   return ids.length > 0 ? { printerIds: [...ids] } : {};
 }
 
-/** Session 2C (the 2C gate's review, I-2): a stale printer list is read again at most this often. */
-const PRINTERS_STALE_REFRESH_MS = 60_000;
-
 /** The heartbeat the host's wake carries (spec §10). */
 function wakeBody(deviceId: string) {
   const caps = printCapabilities();
@@ -136,7 +134,7 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
   const noteJobsForMe = useCallback(
     (jobs: PrintJobsForMe | undefined, writesPrinters?: boolean): void => {
       if (!printerListLooksStale({ ready: readyRef.current, isWriter: writerRef.current, jobsForMe: jobs, writesPrinters })) return;
-      if (Date.now() - setupReadAtRef.current < PRINTERS_STALE_REFRESH_MS) return;
+      if (Date.now() - setupReadAtRef.current < PRINT_SETUP_REFRESH_MIN_MS) return;
       setupReadAtRef.current = Date.now();
       void qc.invalidateQueries({ queryKey: PRINTERS_KEYS.all });
     },

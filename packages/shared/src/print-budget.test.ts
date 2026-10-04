@@ -49,6 +49,10 @@ import {
   printRequestsForSlips,
   printSlipRequestsPerDay,
   printStationSlipsPerDay,
+  PRINT_SETUP_REFRESH_MIN_MS,
+  PRINT_SETUP_STALE_MS,
+  printHeavyCounterDayRequests,
+  printSetupReadsWorstPerDay,
 } from "./print-budget";
 
 // Spec §17.3 item 4: recompute §17.2's two "Vercel invocations" totals from the exported constants
@@ -293,4 +297,38 @@ test("2B: the busy day of a cafe whose one device takes and prints its orders: 1
   assert.ok(requests + wakePerHost <= PRINT_BUDGET_NORMAL_MAX_PER_DAY, "well inside the normal-day ceiling");
   const realtime = 750 * PRINT_REALTIME_PER_DIRECT_SLIP + PRINT_REALTIME_BASE_PER_DAY;
   assert.equal(realtime, PRINT_REALTIME_BASE_PER_DAY, "printing adds no Worker request at all");
+});
+
+// Phase 2 Session 2C: each device reads the outlet's printers on mount, on a print-setup frame (an admin save:
+// two Worker requests, then one read per device) and on a focus at most every 30 min. Never per slip, never on a
+// timer. 30 min, not 5: at 5 min a focus-happy day would push the heavy worst case past 18,000 (the 2B gate).
+test("2C: reading the printers costs at most 192 requests a day, and the heavy setup still fits both ceilings", () => {
+  assert.equal(PRINT_SETUP_STALE_MS, 30 * 60 * 1000);
+  const reads = printSetupReadsWorstPerDay();
+  assert.equal(reads, 192, "8 devices, a focus read at most twice an hour, 12 h");
+  const wakePerWriter = Math.round(OPEN_MS / cadence({ socketHealthy: true, msSinceLastJob: null, capSpent: false }));
+  const heavy = printRequestsForSlips(printStationSlipsPerDay({ fullCopy: true })) + PRINT_BUDGET_STATIONS_DAY.writers * wakePerWriter;
+  assert.ok(heavy + reads <= PRINT_BUDGET_NORMAL_MAX_PER_DAY, `normal heavy day ${heavy + reads}/day`);
+  const fastest = cadence({ socketHealthy: false, msSinceLastJob: 0, capSpent: false });
+  const worst = printRequestsForSlips(printStationSlipsPerDay({ fullCopy: true })) + 3 * Math.min(OPEN_MS / fastest, printWakeWriterCap(3));
+  assert.equal(worst + reads, 17_820, "the heavy worst case with every focus read");
+  assert.ok(worst + reads <= PRINT_BUDGET_WORST_MAX_PER_DAY, `${worst + reads}/day`);
+});
+
+// Session 2C (decision 15 per printer line): the counter device writes the full copy and the bills; when it takes
+// every order, each round's full copy is made leased to it (one request), its bill follows through the ack's
+// more, and each station slip costs its writer a lease and an ack.
+test("2C: the heavy day when the counter takes every order: its full copies cost one request each (5,340 with the wake)", () => {
+  const wakePerWriter = Math.round(OPEN_MS / cadence({ socketHealthy: true, msSinceLastJob: null, capSpent: false }));
+  assert.equal(printHeavyCounterDayRequests(), 3_180, "450 full copies at one request instead of two");
+  assert.equal(printHeavyCounterDayRequests() + PRINT_BUDGET_STATIONS_DAY.writers * wakePerWriter, 5_340);
+});
+
+// The 2C gate's review (I-2): a stale printer list heals from the pulse or the wake within a minute, and the read
+// is bounded: at most one a minute, only while a printer job aimed at the device is not among its ready printers,
+// and such a job goes stale (out of the count) after 30 min.
+test("2C: a stale printer list is read again at most once a minute, and at most 30 times for one waiting slip", () => {
+  assert.equal(PRINT_SETUP_REFRESH_MIN_MS, 60_000);
+  assert.ok(PRINT_SETUP_REFRESH_MIN_MS >= 3 * 20_000, "never more often than every third pulse");
+  assert.equal(Math.ceil(PRINT_HOST_MAX_AGE_MS / PRINT_SETUP_REFRESH_MIN_MS), 30, "a slip leaves the count when it goes stale (30 min)");
 });

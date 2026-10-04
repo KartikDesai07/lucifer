@@ -79,3 +79,26 @@ export function printStationSlipsPerDay(input: { fullCopy: boolean }): number {
  *  aimed at that writer. No final state (the Phase 2B gate, G-1; it was 2), and no print-job nudge: that is
  *  for a host, and printers mode has none. A slip its writer asked for publishes nothing (Session 2B). */
 export const PRINT_REALTIME_PER_PRINTER_SLIP = 1;
+
+/** Phase 2 Session 2C: how long a device keeps the outlet's printers list before a focus reads it again (the
+ *  "print-setup" frame reads it at once; this is the fallback for a missed frame). */
+export const PRINT_SETUP_STALE_MS = 30 * 60 * 1000;
+/** Session 2C (the 2C gate's review, I-2): a list a printer job shows to be stale (the pulse or the wake names a
+ *  printer job aimed at this device that it does not print on) is read again at most this often. */
+export const PRINT_SETUP_REFRESH_MIN_MS = 60 * 1000;
+
+/** Session 2C: the printers reads of a day at most, every device refocused all day (spec §17.2's 3 + 5
+ *  devices): mount and print-setup reads come on top only per page load and per admin save. */
+export function printSetupReadsWorstPerDay(): number {
+  const devices = PRINT_BUDGET_BUSY_DAY.agents + PRINT_BUDGET_BUSY_DAY.orderingDevices;
+  return devices * Math.round((PRINT_BUDGET_BUSY_DAY.openHours * 60 * 60 * 1000) / PRINT_SETUP_STALE_MS);
+}
+
+/** Session 2C (decision 15 per printer line): the heavy day when the counter device, the writer of the full copy
+ *  and the bills, takes every order: each round's full copy is made leased to it (one request); its bill follows
+ *  through the ack's more, and each station slip costs its writer a lease and an ack, as before. */
+export function printHeavyCounterDayRequests(): number {
+  const d = PRINT_BUDGET_STATIONS_DAY;
+  const fullCopies = PRINT_BUDGET_BUSY_DAY.orders * d.roundsPerOrder * d.fullCopyPerRound;
+  return printRequestsForSlips(printStationSlipsPerDay({ fullCopy: true })) - Math.round(fullCopies * (PRINT_REQUESTS_PER_SLIP - PRINT_REQUESTS_PER_DIRECT_SLIP));
+}
