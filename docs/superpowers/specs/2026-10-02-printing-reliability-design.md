@@ -530,6 +530,10 @@ The Phase 2 plan ([2026-10-03-phase-2-routing.md](../plans/2026-10-03-phase-2-ro
 - **The sweep moves a waiting printer job to its printer's current writer**, and fails a queued one whose printer was removed, switched off or left with no writer; a bill waiting for the cashier's answer keeps waiting. A staff Retry on a printer that still takes slips puts the job on its current writer; on a gone one it is refused, never guessed onto another printer. The repair routes a server-owned round with no job again, with today's setup.
 - **Each device reads the outlet's printers** (`GET /api/printers`) on mount, on a `print-setup` frame (published by printer writes only), on focus at most every 30 min, and when its list looks stale (above). Names are unique ignoring case (a pre-check); a device's bill printer counts only when routable.
 
+**Changed by Session 2C's final review (2026-10-04; the 2C gate re-checks it).**
+- **A device printer is this device's printer by the id the app reports (I-1).** The Android app names its printer `<transport>:<id>` (`bt-classic:<MAC>`, `ble:<MAC>`, `usb:<vendor>:<product>`). A device printer's `address` may hold the bare id (as §6.3 says) or that whole id; either matches. Before, a Bluetooth, BLE or USB printer was never this device's, so its slips would have waited forever once the setup screens (Session 2D) let staff save one.
+- **Only jobs an agent can lease kick it (I-2).** Jobs for me name the printers of the printer jobs they count and, beside them, whether one waits on the device's own simple-mode line (`ownLine`; absent in simple mode, whose answer is unchanged). The pulse and the wake kick a lease, and the wake keeps its fast cadence, only for the device's own line or a printer it prints here. Jobs on a printer it writes but does not print on (a second printer before §9.2's several printers per device; a printer whose address is not its own) wait visibly in the panel, and the list is read again at most once a minute; before, they kicked an empty lease on every pulse and every wake for the whole service.
+
 ## 9. Printer devices (agents)
 
 ### 9.1 What an agent does

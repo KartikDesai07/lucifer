@@ -15156,3 +15156,138 @@ Add "## Session 2C Results (filled in by the implementer)" at the end of this pl
 - `apps/cafe/package.json` `testChain` (C2, C6): `lib/print-printer-jobs.test.ts`, then `lib/print-agent-printers.test.ts`, appended.
 
 ---
+
+## Session 2C Results (filled in by the implementer)
+
+Executed on 2026-10-04 with superpowers:executing-plans, task by task, C0 → C10.
+
+### Commits (`0ce5def..HEAD`)
+
+| Commit | Task |
+|---|---|
+| `8644f06` | C0: the 2B review gate's fixes (I-A re-delivery bound, M-A, M-B) |
+| `69c91ce` | C1: the shared contract: the ready and bill-printer headers, a job's printer and copies on the wire, a slip made failed at creation, `printerIdsOf` |
+| `189ca40` | C2: creation routed per printer line, one job per line with its copies; failed at creation; direct print per printer line |
+| `cc2428c` | C3: a lease per printer line, only by its writer, claimed for it; `more` per line; jobs-for-me counts every job aimed at the device |
+| `61f2c87` | C4: the sweep, the repair and a staff retry in printers mode |
+| `70e6a96` | C5: the writers' wake allowance, M9, M7, the `print-setup` kind (Worker change) |
+| `7216ed8` | C6: the page in printers mode: every device an agent, ready printers named, several jobs one by one, a stale list read again, the wake by every writer |
+| `4cb1c6f` | C7: only on its own printer, every copy in one lease; the station line; the panel names the printer |
+| `70a28d1` | C8: the budget recount |
+| `41bf76d` | C9: live legs an–aq |
+| `88946dc` | Final review I-1 and I-2 (beyond the plan): a device printer is this device's printer by the id the app reports; only jobs an agent can lease kick it |
+| (this commit) | Results; spec §8.1 "Changed by Session 2C's final review" |
+
+### Start
+
+- `git branch --show-current`: `feat/printing-phase-2`; HEAD `0ce5def` (= origin); working tree clean.
+- `GIT_TERMINAL_PROMPT=0 git fetch origin` (token credential): `origin/main` still `6ee2b1d`: nothing to note or merge.
+- Before C0, the whole C0–C9 range (plan lines 7882–14908) was dry-run with the gate's applier against `0ce5def`: **191 ops OK** (as the gate saw).
+
+### How the code was applied
+
+Every block was applied verbatim to the real repo by the gate's applier (`apply_blocks_clone.py`, copied to this session's scratchpad), one step range at a time, so each RED was seen before its code went in. After C9, **every file outside `docs/` is blob-identical to the gate's golden branch `g2c-v3`** (`git ls-tree -r` of both, `docs/` left out: 1,727 entries, no difference; the root trees differ only by `0ce5def`'s plan and spec: `67b5468…` here, `d38dc5d…` the gold). C0–C9: 70 files, **+1,922 / −233**, as the gate counted.
+
+### Per-task RED → GREEN (every Expected line compared; all matched)
+
+| Task | RED | GREEN |
+|---|---|---|
+| C0 | `print-direct` + `print-agent`: tests 45, pass 42, **fail 3** | 3 files **52/52**; cafe and shared tsc 0; `LINT_OK` |
+| C1 | `print-printers` + `print-lifecycle` + `print-job`: tests 32, pass 30, **fail 2** | **69/69**; shared and cafe tsc 0 |
+| C2 | 4 files: tests 34, pass 27, **fail 7** | 6 files **62/62**; tsc 0; `LINT_OK` |
+| C3 | `print-lease` + `print-lifecycle-paths`: tests 26, pass 20, **fail 6** | 4 files **50/50**; tsc 0 ×2; `LINT_OK` |
+| C4 | 4 files: tests 53, pass 47, **fail 6** | **53/53**; tsc 0; `LINT_OK` |
+| C5 | `print-printer-routing` + `print-setup-paths`: tests 30, pass 26, **fail 4**; shared `print-printers`: tests 1, pass 0, **fail 1** | 4 files **100/100**; shared 2 files **39/39**; tsc 0 ×2; `LINT_OK` |
+| C6 | 6 files: tests 109, pass 103, **fail 6** | **113/113**; tsc 0 ×2; `LINT_OK` |
+| C7 | 4 files: tests 50, pass 45, **fail 5** | 5 files **57/57**; tsc 0; `LINT_OK` |
+| C8 | `print-budget`: tests 1, pass 0, **fail 1** | **29/29**; `print-agent-printers` **7/7**; tsc 0 ×2; `LINT_OK` |
+| C9 | (legs: apply and run) | tsc 0, `LINT_OK`; `verify:print:live` **`302 passed, 0 failed`** |
+| I-1 fix | `print-agent-printers.test.ts` "printerIsLocal…" with the app's real ids **fails** ("the paired printer by its address": false !== true) | 7 files **125/125**; tsc 0 ×2; `LINT_OK` |
+| I-2 fix | "jobsForMeLeasable…" (not a function), "PIN (2C final review, I-2)…", `print-agent.test.ts` "2C: a wake whose jobs the agent cannot lease…" (**1 !== 0**: it kicked), `print-lease.test.ts` "jobsForMeOf…" (not a function) **fail** | (same run) |
+
+Line counts at the end: new `print-job-insert.ts` 105, `print-printer-jobs.ts` 146, `print-agent-printers.ts` 104 (86 before the fix), `use-agent-printers.ts` 46, legs `printers-mode.ts` 236; `print-order-jobs.ts` 242, `print-lease.ts` 295 (288 before the fix), `print-sweep.ts` 189, `print-direct.ts` 88, `use-print-agent.ts` 288; `print-agent.ts` 322 (a client lib, over the ~300 budget as the gold has it).
+
+### Task C10 Step 1: every suite (at `41bf76d`)
+
+| Suite | Result |
+|---|---|
+| shared `npm test`; `tsc` | **679/679**; 0 |
+| cafe `npm test` | **4350 tests, 4349 pass, 0 fail, 1 skipped** (the `go-live-dl` pin) |
+| cafe `tsc`; `npm run lint` | 0; 0 errors and the 2 old warnings (`lib/masters-blob.test.ts:331`) |
+| Hub `tsc` | 0 |
+| mobile `tsc`; lint; `npm test`; `test:app` | 0; 0; **117/117**; Jest **3/3** (untouched) |
+| desktop `npm test` | **191/191** (untouched) |
+| `npm run test:print-tools` | **8/8** |
+| live legs (local mongod, `pos_scratch_print_host`) | **`302 passed, 0 failed`** (272 + 30) |
+
+Every row equals the plan's Expected.
+
+**After the fix (`88946dc`), Step 1 again:** shared **679/679**, tsc 0; cafe **4354 tests, 4353 pass, 0 fail, 1 skipped** (+4: the fix's tests); cafe tsc 0, lint 0 errors and the 2 old warnings; Hub 0; mobile **117/117** and Jest **3/3**; desktop **191/191**; print tools **8/8**; live legs **`302 passed, 0 failed`**.
+
+### Changed existing pins (each follows a deliberate change)
+
+The eight the plan names (C2, C3, C4, C6): `print-order-jobs.test.ts` (the `insertPrintJob` pins read `lib/print-job-insert.ts`); `print-lease.test.ts` ("printJobLineFilter", "printJobsForMeFilter"); `self-order-alert-paths.test.ts` (the job write points); `print-lifecycle-paths.test.ts` (the lease CAS fenced on its line, the line's backoff answer, `more` per line, a staff action's `patch`); `print-attention.test.ts` (the action reads `targetDeviceId printerId`); `print-host-paths.test.ts` PIN (D) (`isAgent` adds `printers.printersMode`); `print-wake.test.ts` (the wake by `printAgentPollsWake`, `wakeBody(deviceId)`); `apps/cafe/package.json` `testChain` (+ `lib/print-printer-jobs.test.ts`, `lib/print-agent-printers.test.ts`). Beyond the plan, for the I-1 fix: `print-agent-printers.test.ts`'s fixture `NATIVE_BT` is now the id the app reports (`bt-classic:00:11:22:33:44:55`, was `00:11:22:33:44:55`, an id the app never produces); the pin's intent ("the paired printer by its address") is kept.
+
+### Step 2: the Next production build
+
+Success, **127 routes** (2C adds none), at `41bf76d` and again at `88946dc`.
+
+### Step 3: APKs (no mobile change: byte-identical to the release), and the Worker
+
+`git diff 0ce5def..HEAD --stat -- apps/mobile apps/desktop` printed nothing. Built with `GRADLE_USER_HOME='D:\gradle-home'` (BUILD SUCCESSFUL 1m 29s and 46s): x86_64 **`29115bdf…`**, arm64-v8a **`0e0ec314…`**, armeabi-v7a **`e618900a…`**: byte-identical to `D:\kd\pos-apk-release\Sandbee-POS-final\`. The fix (`88946dc`) is web-only.
+
+**The Worker:** `workers/realtime/src/index.ts` gains the `print-setup` kind (C5). Nothing was deployed. **The go-live run must deploy the Worker before the web** (an older Worker refuses the unknown kind, which costs only the frame: devices still read their printers on mount, on focus, and when a pulse or a wake shows their list stale), then reload every POS screen (a tab older than 2C never leases a printer job until it reloads).
+
+### Step 4: the emulator exit check. Passed.
+
+`Pixel_7_API_33` (own boot at `-memory 4096 -no-audio -no-snapshot-save`, C: 11 GB free, booted in ~25 s), WebView 109; the installed APK hashed on the device: the release `29115bdf…`; crash buffer empty at boot. **The app opened on the owner's live demo "Olivea Pizza"** (signed in; its printer panel: "No printer set up", "Each device prints its own slips"); nothing was tapped there except the printer panel's More options → Change POS address → `http://localhost:3100`, and "POS Software" with the seeded menu (Pizza, Pasta, Beverages, Desserts; Masala Chai, Cheesecake) showed before any write. The harness as the plan says: this branch's build on 3110 (env: the gate's `e2e.env`, database `pos_scratch_e2e_p1final`; no print host), the plan's counting proxy on 3200 (`adb reverse tcp:3100 tcp:3200`), three fake printers on 9100 (counter), 9101 (kitchen), 9102 (bar), each with a long `--out` path (nothing vanished); the app's network printer `10.0.2.2:9100` ("Network printer 10.0.2.2 is connected."). `gate-proxy-2b.mjs` and `p2c-tool.ts` were extracted from the plan's fences (B7 Step 4, C10 Step 4) into the scratchpad, byte-identical to the gate's copies. The app's device is `35bd9663…` (the newest row, seen at the start). `setup 35bd9663…`: category 200, printers Counter/Kitchen/Bar 201; the writers `agent e2e-kitchen-agent Kitchen 9101` and `agent e2e-bar-agent Bar 9102`; then the app's Refresh: `GET /api/printers`, the writer's first wake, one lease.
+
+Requests are the app's, from the proxy, less the beats and its own wake polls (no Worker runs locally: every 3 s for 2 min after a job it can lease, then 15 s). Paper is each fake printer's `jobs.log` with bytes > 0.
+
+| # | Item | Requests | Paper | Jobs |
+|---|---|---|---|---|
+| 1 | Send to Kitchen (Cheesecake, Masala Chai; walk-in; `ORD-20261004-038`) | `POST /api/orders` (`lease:true`) 201, its ack 0.87 s later; **no lease** | counter: full copy ("All stations") **48,198 B**; kitchen **69 B**; bar **62 B**; each writer `more:false` | full copy Counter, target the app: `created`, `leased(direct)`, `printed`; Kitchen and Bar `created`, `leased`, `printed` at their writers; epoch 1, no labels |
+| 2 | Pay Now (the same two, Cash, Place Order; `-039`) | order; the full copy's ack +0.77 s; **one** `POST /api/print-jobs/lease` +0.78 s (the bill, after `more`); the bill's ack +2.0 s; nothing after in 20 s | counter: full copy 48,198 B, then the bill **2 × 40,854 B**; kitchen 69 B; bar 62 B | bill: Counter, **copies 2** (one job), `created`, `leased`, `printed` |
+| 3 | Bar writer stopped (by PID), Send to Kitchen (the same two; `-040`) | order, ack +0.78 s; no lease from the app while the bar slip waited (6 wakes, 5 pulses in 95 s) | full copy 48,198 B; kitchen 69 B; the bar slip `queued`. 67 s after the order the panel: "Slips waiting", "Waiting for the printer (1)", "KOT round 1 · ORD-20261004-040 · Bar", "1 min · Not printed yet. · Bar", Print now / Clear. The bar writer restarted: it printed it **once**, 62 B, `more:false` | Bar: `created`, `leased`, `printed`, unlabelled, epoch 1 |
+| 4 | Kitchen writer stopped; `assign Kitchen 35bd9663… 10.0.2.2 9100` (200); no Refresh; Send to Kitchen (Cheesecake; `-041`) | order, ack +0.79 s; **+2.59 s** `GET /api/printers` and a lease, a second lease +2.67 s; the Kitchen slip's ack +3.35 s | counter: the full copy and the KITCHEN slip, **44,238 B each** | Kitchen: printer Kitchen, target the app, `created`, `leased`, `printed` |
+| 5 | `teardown` (removed 200 × 3, category 200, left 0) at 08:00:35, no Refresh; then Send to Kitchen (Cheesecake; `-042`) | 08:00:36.165 a wake, 08:00:36.177 `GET /api/printers`, 08:00:36.241 one lease; then **no wake for 2 min 37 s** (to the order). The KOT: `POST /api/orders` (`lease:true`) and its ack +0.73 s only; 0 wakes after | one slip, **40,494 B** | printer none, `created`, `leased(direct)`, `printed`: simple mode again |
+| 6 | `adb logcat -b crash -d` | **0 lines** (at boot, after item 5, and at the end) | | |
+| 7 | Put back as found | after the fix smoke below: the bar writer stopped; `teardown`; on the local POS the app's printer removed ("Remove Network printer 10.0.2.2 from this device?" → Yes, remove → "No printer set up", "Each device prints its own slips."); More options → Change POS address → `https://posdemo.sandbee.in` ("Olivea Pizza" loads; its panel, opened read-only: "No printer set up", "Each device prints its own slips.", closed with its X); `adb reverse --remove-all`, then `adb reverse tcp:3100 tcp:3100`; the POS, the proxy and the three fake printers stopped by PID after checking each command line; `adb emu kill` | | |
+
+In item 5 the item-4 list read was 109 s old, so the once-a-minute bound did not delay the re-read.
+
+**The fix smoke (the build of `88946dc`, 127 routes; the same harness; the app Refreshed onto it: `GET /api/printers`, a wake, a lease).** `setup` again, then `assign Kitchen 35bd9663… 10.0.2.2 9101`: the app now writes Counter (its own printer) and Kitchen (not its printer: the I-2 case). Send to Kitchen (Cheesecake, Masala Chai; `-043`) at 08:11:21: order (`lease:true`) and its ack +0.81 s; the counter's full copy 48,198 B (`leased(direct)`), the bar slip 62 B at its writer; the Kitchen job stays `queued`, aimed at the app, and the panel shows it ("KOT round 1 · ORD-20261004-043 · Kitchen", "2 min · Not printed yet. · Kitchen"). In the next 2 min 29 s: **0 lease calls**, wakes every 15 s (10), pulses every 20 s, `GET /api/printers` once a minute (08:11:30, 08:12:30, 08:13:30). Before the fix each pulse and each wake (then every 3 s) kicked an empty lease. I-1 (Bluetooth, BLE, USB ids) cannot be exercised on the emulator (its printer is LAN only); its unit test covers it.
+
+Fake printer totals (bytes > 0): counter 9 slips (plus the 0-byte connect probe of "Use this network printer"), kitchen 3, bar 4.
+
+### Step 5: the fresh review
+
+Claude Fable 5.1 (as at every Phase 2 session and gate: the most capable widely released model), read-only, on `0ce5def..41bf76d` against the plan (decisions 1–9, 15, 16; "2B review gate: rulings"; Session 2C and its Review Focus, passed verbatim) and spec §6.6, §7.6, §7.11, §8, §8.1, §9.1, §9.3, §17. It read the whole review package in four passes, re-ran the five touched cafe test files (65/65) and proved I-1 with a scratchpad test outside the repo. Verdict "with fixes": no path to two papers or a silently lost slip; one writer per printer enforced server-side; simple mode preserved but for the reads noted; every new wire field optional; every printer id through `printerIdsOf`; setup writes admin-only.
+
+| # | Finding | Outcome |
+|---|---|---|
+| **I-1** (Important) | `printerIsLocal` compared the app's printer id with the bare `address` for `bt-classic`, `ble` and `usb`, but the app reports `"<transport>:<id>"` (Kotlin `PrinterIds`: `bt-classic:<MAC>`, `ble:<MAC>`, `usb:%04x:%04x`, stored verbatim by `nativeRecordOf`). Once 2D lets staff save a Bluetooth printer, its slips would be routed to the phone and wait forever (masked by a test fixture holding an id the app never produces) | **Fixed (`88946dc`)**: either form matches (`<transport>:<address>`, or an address that holds the app's whole id); the fixtures use the real ids, plus BLE and USB cases; the shared contract's comment says which form the app reports. RED → GREEN |
+| **I-2** (Important) | Jobs-for-me counts every job aimed at the device (I-2 of the gate), including jobs on a printer it writes but does not print on (a second printer before 2E, which the API allows and leg (ao) builds; a printer whose address is not its own). The pulse and the wake kicked a lease on each, which named only its local printers and came back empty, and the wake kept its 3 s cadence: up to 20 wakes + 20 leases a minute with the socket down, for the whole service | **Fixed (`88946dc`)**: `jobsForMeLeasable`: the pulse and the wake kick, and the wake keeps its fast cadence, only for the device's own line's jobs or a printer it prints here; the answer gains an optional `ownLine` beside printer jobs (absent in simple mode, whose answer is unchanged), so an own-line job counted beside a foreign printer's still kicks. A printer it does not know yet is still read again at most once a minute, and the new list nudges the agent. RED → GREEN (agent, printers, lease tests); proven on the emulator (above) |
+| M-3 | The wake reads `listPrinters()` on every poll: simple mode's host pays one more small Mongo read per wake (≤ ~14,400 a day on M0, ~0.3 ops/s at the 3 s cadence; no invocation added) | For the 2C gate (accept and pin, or skip) |
+| M-4 | A replay or re-send after an admin changed the setup inside one request's retry window routes to another printer: its routed key differs, and both jobs print (inherent to decision 3; the repair is immune) | For the 2C gate (a sentence in §8.1) |
+| M-5 | `not-routed` (a notice where Notices is off everywhere) is silent on the client | For the 2C gate / 2D (a toast) |
+| M-6 | A non-host device made the very first printer's writer while its frame is missed (simple mode with a host before) learns it only on focus (≤ 30 min): it is not an agent, so it never names itself on the pulse; its slips wait visibly | For the 2C gate |
+| M-7 | Stale comment `apps/cafe/lib/realtime-publish.ts:57` ("every 5 min"; `PRINT_SETUP_STALE_MS` is 30 min) | For the 2C gate |
+| M-8 | Test fixture realism | Done inside the I-1 fix |
+
+The reviewer's "declined to judge" list (12 items: two Windows printers on one PC (2E), notices off everywhere (2D), the client-supplied device id (Phase 1's trust model), a held direct job's lease left, the readback chip's first job, the host's broadcast kicks, the non-atomic free-line check, the name pre-check race, a reprint POST with no key, the per-instance sweep throttle, a pre-2C tab left open in printers mode (the go-live run reloads every screen), a former host's stale row) was ruled item by item in the ledger: each stands as built or as an earlier gate ruled. Its recommendation that 2D refuse or warn on a second printer for one writer until 2E is passed to the gate. One more observation while fixing I-2: a queued `print-status` frame aimed at a writer for a printer it does not print on still kicks one empty lease per slip (one per event, bounded; the frame names no printer): for the gate.
+
+### Deviations and rulings
+
+- **Beyond the plan:** the fix commit `88946dc` (I-1, I-2), its tests and one changed fixture; the optional `ownLine` on `PrintJobsForMe`; spec §8.1 gained "Changed by Session 2C's final review".
+- **The fresh review ran in parallel with Steps 2–4** (it is read-only and reads only the code, told not to touch the database or the ports); the fix was then smoke-checked on the emulator with its own build before the put-back.
+- The skill's `task-start` extracts only numeric "Task N" headings, so each C-task's brief was read from the plan by line range (ledgered; no plan text changed).
+- Every decision is in the ledger (`.superpowers/sdd/2026-10-03-phase-2-routing/progress.md`, git-ignored, kept for the gate).
+
+### Open for the 2C gate
+
+M-3 to M-7 and the `print-status` observation above; the reviewer's recommendation for 2D (one printer per writer until 2E); re-check I-1, I-2 and the §8.1 amendment. Carried: M-2 (2E), M-4 / M-5 (noted), M-7 of the 2B gate (2D). The go-live run deploys the Worker first (the `print-setup` kind).
+
+### Pushed
+
+With the token only: `GIT_TERMINAL_PROMPT=0 git push origin feat/printing-phase-2`. `origin/main` was still `6ee2b1d` at the end (no merge). `main` untouched; nothing deployed.
