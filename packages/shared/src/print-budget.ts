@@ -20,9 +20,10 @@ export const PRINT_BUDGET_NORMAL_MAX_PER_DAY = 6_000;
 export const PRINT_BUDGET_WORST_MAX_PER_DAY = 18_000;
 /** No recurring agent poll may run faster than this. */
 export const PRINT_AGENT_MIN_CADENCE_MS = 3_000;
-/** Realtime Worker requests one slip costs (spec §17.2): its "queued" print-status, its final
- *  print-status, and in host mode the print-job nudge a host from before Phase 1 drains on. */
-export const PRINT_REALTIME_PER_SLIP = 3;
+/** Realtime Worker requests one slip another device prints costs (spec §17.2): its "queued" print-status
+ *  aimed at that device, and in host mode the print-job nudge a host from before Phase 1 drains on. Its
+ *  final state is not published (the Phase 2B gate, G-1: no device listened for it; it was 3). */
+export const PRINT_REALTIME_PER_SLIP = 2;
 /** Today's realtime traffic without printing (spec §17.2). */
 export const PRINT_REALTIME_BASE_PER_DAY = 335;
 /** Cloudflare Workers Free (spec §17.1); printing may use at most 5 % of it. */
@@ -30,12 +31,29 @@ export const REALTIME_FREE_REQUESTS_PER_DAY = 100_000;
 
 /** Lease + ack for every slip, plus the retried share (spec §17.2: 2,400 + 240). */
 export function printSlipRequestsPerDay(day: typeof PRINT_BUDGET_BUSY_DAY = PRINT_BUDGET_BUSY_DAY): number {
-  return printRequestsForSlips(day.slips);
+  return printRequestsForSlips(day.slips, day.retryShare);
 }
 
 /** A lease and an ack per slip, plus the retried share, for any number of slips a day. */
-export function printRequestsForSlips(slips: number): number {
-  return Math.round(slips * PRINT_REQUESTS_PER_SLIP * (1 + PRINT_BUDGET_BUSY_DAY.retryShare));
+export function printRequestsForSlips(slips: number, retryShare: number = PRINT_BUDGET_BUSY_DAY.retryShare): number {
+  return Math.round(slips * PRINT_REQUESTS_PER_SLIP * (1 + retryShare));
+}
+
+/** Phase 2 Session 2B (spec §7.11, plan decisions 15, 16 and 9): a slip the asking device prints itself is
+ *  made leased to its tab, so its one request is its ack, and nothing is published for it. A slip made with
+ *  it on the same line (Pay Now's bill) follows through the ack's `more`: one lease and one ack. */
+export const PRINT_REQUESTS_PER_DIRECT_SLIP = 1;
+export const PRINT_REALTIME_PER_DIRECT_SLIP = 0;
+
+/** The busy day (spec §17.2's 300 orders) of a cafe whose one device takes and prints every order, at its
+ *  worst: every bill rides with its KOT (Pay Now), so each bill costs a lease and an ack; every other KOT
+ *  round is made leased. A retried slip costs a lease and an ack. The ack's `more` leaves no empty lease. */
+export function printOneDeviceRequestsPerDay(): number {
+  const d = PRINT_BUDGET_STATIONS_DAY;
+  const orders = PRINT_BUDGET_BUSY_DAY.orders;
+  const slips = orders * (d.roundsPerOrder + d.billsPerOrder);
+  const firstTries = orders * (d.roundsPerOrder * PRINT_REQUESTS_PER_DIRECT_SLIP + d.billsPerOrder * PRINT_REQUESTS_PER_SLIP);
+  return Math.round(firstTries + slips * PRINT_BUDGET_BUSY_DAY.retryShare * PRINT_REQUESTS_PER_SLIP);
 }
 
 /** Phase 2, the recount the 1C gate asked for (spec §8, §17.2): the busy day with stations. Each KOT round
@@ -57,6 +75,7 @@ export function printStationSlipsPerDay(input: { fullCopy: boolean }): number {
   return Math.round(PRINT_BUDGET_BUSY_DAY.orders * (d.roundsPerOrder * perRound + d.billsPerOrder));
 }
 
-/** Printers mode publishes 2 realtime requests per slip: its "queued" print-status aimed at its writer, and
- *  its final state. No print-job nudge: that is for a host, and printers mode has none. */
-export const PRINT_REALTIME_PER_PRINTER_SLIP = 2;
+/** Printers mode publishes 1 realtime request per slip its writer did not ask for: its "queued" print-status
+ *  aimed at that writer. No final state (the Phase 2B gate, G-1; it was 2), and no print-job nudge: that is
+ *  for a host, and printers mode has none. A slip its writer asked for publishes nothing (Session 2B). */
+export const PRINT_REALTIME_PER_PRINTER_SLIP = 1;

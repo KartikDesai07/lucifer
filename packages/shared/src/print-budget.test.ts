@@ -42,6 +42,10 @@ import {
   REALTIME_FREE_REQUESTS_PER_DAY,
   PRINT_BUDGET_STATIONS_DAY,
   PRINT_REALTIME_PER_PRINTER_SLIP,
+  PRINT_REALTIME_PER_DIRECT_SLIP,
+  PRINT_REQUESTS_PER_DIRECT_SLIP,
+  PRINT_REQUESTS_PER_SLIP,
+  printOneDeviceRequestsPerDay,
   printRequestsForSlips,
   printSlipRequestsPerDay,
   printStationSlipsPerDay,
@@ -126,9 +130,12 @@ test("no host: printing costs only a lease and an ack per slip, never a poll (sp
   assert.ok(printSlipRequestsPerDay() <= PRINT_BUDGET_NORMAL_MAX_PER_DAY, "inside the normal-day ceiling");
 });
 
-test("realtime: three Worker requests per slip stay under 5 % of the free 100,000 a day", () => {
+// The Phase 2B gate (G-1) deliberately changed this pin: a slip's final state is no longer published (no
+// device listened for it), so a slip another device prints costs 2 Worker requests, not 3 (was 3,935/day).
+test("realtime: two Worker requests per slip another device prints stay under 5 % of the free 100,000 a day", () => {
   const perDay = PRINT_BUDGET_BUSY_DAY.slips * PRINT_REALTIME_PER_SLIP + PRINT_REALTIME_BASE_PER_DAY;
-  assert.equal(perDay, 3_935);
+  assert.equal(PRINT_REALTIME_PER_SLIP, 2, "its queued print-status and the host's nudge");
+  assert.equal(perDay, 2_735);
   assert.ok(perDay <= REALTIME_FREE_REQUESTS_PER_DAY * 0.05, `${perDay}/day`);
 });
 
@@ -252,8 +259,38 @@ test("Phase 2: in printers mode only writers poll; ordering devices and a leftov
   assert.ok(PRINT_WAKE_PRINTERS_DAILY_CAP <= PRINT_WAKE_DAILY_CAP, "printers mode never polls more than a host did");
 });
 
-test("Phase 2 realtime: two Worker requests per slip in printers mode, the heavy day under 5 %", () => {
+// The Phase 2B gate (G-1) deliberately changed this pin: no final state, so one Worker request per slip in
+// printers mode, at most (a slip its writer asked for publishes none; was 2 per slip, 3,635/day).
+test("Phase 2 realtime: at most one Worker request per slip in printers mode, the heavy day under 5 %", () => {
   const perDay = printStationSlipsPerDay({ fullCopy: true }) * PRINT_REALTIME_PER_PRINTER_SLIP + PRINT_REALTIME_BASE_PER_DAY;
-  assert.equal(perDay, 3_635);
+  assert.equal(PRINT_REALTIME_PER_PRINTER_SLIP, 1, "its queued print-status aimed at its writer");
+  assert.equal(perDay, 1_985);
   assert.ok(perDay <= REALTIME_FREE_REQUESTS_PER_DAY * 0.05, `${perDay}/day`);
+});
+
+// Phase 2 Session 2B (spec §7.11, plan decisions 15, 16 and 9; the owner's ask of 2026-10-04): a slip the
+// asking device prints itself, with the fewest requests and no realtime message.
+test("2B: a slip the asking device prints itself costs one request (its ack) and no realtime request; another device's slip keeps a lease and an ack", () => {
+  assert.equal(PRINT_REQUESTS_PER_DIRECT_SLIP, 1, "made leased with the order request: only its ack");
+  assert.equal(PRINT_REALTIME_PER_DIRECT_SLIP, 0, "nothing is published to the device printing it");
+  assert.equal(PRINT_REQUESTS_PER_SLIP, 2, "a slip another device prints: one lease and one ack");
+  assert.equal(PRINT_REALTIME_PER_SLIP, 2, "its queued print-status and the host's nudge");
+  const payNow = PRINT_REQUESTS_PER_DIRECT_SLIP + PRINT_REQUESTS_PER_SLIP;
+  assert.equal(payNow, 3, "Pay Now on one printer: the KOT's ack, then the bill's lease and ack (Phase 1: 5, with its empty lease)");
+});
+
+test("2B: the ack's more ends a burst with no empty lease: Phase 1's busy day (2,400 with a trailing lease) costs 1,650", () => {
+  const slips = PRINT_BUDGET_BUSY_DAY.orders * (PRINT_BUDGET_STATIONS_DAY.roundsPerOrder + PRINT_BUDGET_STATIONS_DAY.billsPerOrder);
+  assert.equal(printRequestsForSlips(slips), 1_650, "a lease and an ack per slip, plus the retried share, nothing more");
+});
+
+test("2B: the busy day of a cafe whose one device takes and prints its orders: 1,200 requests and no realtime request for printing", () => {
+  const requests = printOneDeviceRequestsPerDay();
+  assert.equal(requests, 1_200, "every round's KOT made leased; every bill behind its KOT (Pay Now), the worst case");
+  assert.ok(requests < printRequestsForSlips(750), "less than the same day's slips leased one by one (1,650)");
+  const wakePerHost = OPEN_MS / cadence({ socketHealthy: true, msSinceLastJob: 0, capSpent: false });
+  assert.equal(requests + wakePerHost, 1_920, "the device as the host also polls the wake on a healthy socket");
+  assert.ok(requests + wakePerHost <= PRINT_BUDGET_NORMAL_MAX_PER_DAY, "well inside the normal-day ceiling");
+  const realtime = 750 * PRINT_REALTIME_PER_DIRECT_SLIP + PRINT_REALTIME_BASE_PER_DAY;
+  assert.equal(realtime, PRINT_REALTIME_BASE_PER_DAY, "printing adds no Worker request at all");
 });
