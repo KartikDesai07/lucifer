@@ -5,7 +5,7 @@ import { printJobPayloadSchema } from "@pos/shared/schemas/print-job.schema";
 import { PRINT_JOB_LABEL_MAX_CHARS, printJobPayloadWithinCap } from "@pos/shared/print-job";
 import { PRINT_DEVICE_ID_HEADER, PRINT_IDEMPOTENCY_HEADER, PRINT_IDEMPOTENCY_KEY_PATTERN } from "@pos/shared/print-agent-wire";
 import { enqueuePrintJob, prunePrintJobsThrottled } from "@/lib/print-queue";
-import { enqueueOwnPrintJob, printIntentOf } from "@/lib/print-order-jobs";
+import { enqueueDirectPrintJob, enqueueOwnPrintJob, printIntentOf } from "@/lib/print-order-jobs";
 import { PRINT_HOST_DEVICE_ID_MAX_CHARS } from "@/lib/print-host";
 import { success, failure, requireAuth, serverError, validateBody } from "@/lib/api-helpers";
 import { noStore } from "@/lib/order-request-tray";
@@ -72,17 +72,34 @@ export async function POST(req: Request) {
 
   try {
     await connectDB();
-    let result = await enqueuePrintJob({
-      payload: parsed.data.payload,
-      label: parsed.data.label,
-      queuedBy,
-      ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
-      ...(originDeviceId !== undefined ? { originDeviceId } : {}),
-      nowMs,
-    });
+    const intent = printIntentOf(req);
+    // Session 2B (spec §7.11): the tab that drains the asking device's slips and can print now prints its
+    // own slip at once (made leased to it), and gets back a slip still leased to it whose first answer was
+    // lost. null: another device is the host, and the enqueue below makes the slip for it.
+    const direct =
+      intent?.leaseTabId !== undefined
+        ? await enqueueDirectPrintJob({
+            payload: parsed.data.payload,
+            label: parsed.data.label,
+            queuedBy,
+            ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+            originDeviceId: intent.deviceId,
+            leaseTabId: intent.leaseTabId,
+            nowMs,
+          })
+        : null;
+    let result =
+      direct ??
+      (await enqueuePrintJob({
+        payload: parsed.data.payload,
+        label: parsed.data.label,
+        queuedBy,
+        ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+        ...(originDeviceId !== undefined ? { originDeviceId } : {}),
+        nowMs,
+      }));
     // Phase 1 (spec §6.6): with no host, an agent tab prints its own client-started slip through the
     // lifecycle. A tab from before Phase 1 sends no agent header and still gets "no-host" (print here).
-    const intent = printIntentOf(req);
     if (result.outcome === "no-host" && intent !== null) {
       result = await enqueueOwnPrintJob({
         payload: parsed.data.payload,

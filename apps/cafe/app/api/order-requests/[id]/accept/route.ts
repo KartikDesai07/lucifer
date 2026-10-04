@@ -56,6 +56,7 @@ export async function POST(req: Request, { params }: Params) {
             order: result.order,
             slips: [{ kind: "kot", round: result.order.kotRounds }],
             originDeviceId: intent.deviceId,
+            leaseTabId: intent.leaseTabId,
             queuedBy: authed.session.user.name ?? "",
             nowMs: Date.now(),
           })

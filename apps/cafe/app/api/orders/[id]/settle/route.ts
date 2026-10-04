@@ -327,6 +327,7 @@ export async function POST(req: Request, { params }: Params) {
           order: numbered.value ?? updated,
           slips: intent.bill ? [{ kind: "bill" }] : [],
           originDeviceId: intent.deviceId,
+          leaseTabId: intent.leaseTabId,
           queuedBy: authed.session.user.name ?? "",
           nowMs: Date.now(),
         })

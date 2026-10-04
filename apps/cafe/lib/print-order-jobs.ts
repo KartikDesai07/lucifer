@@ -10,14 +10,25 @@ import {
   PRINT_BILL_HEADER,
   PRINT_DEVICE_ID_HEADER,
   PRINT_HEADER_ON,
+  PRINT_LEASE_HEADER,
   type PrintJobRef,
 } from "@pos/shared/print-agent-wire";
-import { printJobCreatedLog, printJobInitialLabels, printJobLifecycleInit } from "@pos/shared/print-lifecycle";
+import { directLeaseOf, printJobCreatedLog, printJobInitialLabels, printJobLifecycleInit } from "@pos/shared/print-lifecycle";
 import { printJobPayloadSchema, type PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 import { PrintHost } from "@/models/PrintHost";
 import { PrintJob } from "@/models/PrintJob";
 import { PRINT_HOST_DEVICE_ID_MAX_CHARS } from "@/lib/print-host";
+import {
+  PRINT_REDELIVERY_SELECT,
+  announcesQueuedJob,
+  printLineIsFree,
+  redeliveryOf,
+  type PrintJobAskingTab,
+  type PrintRedeliveryRow,
+} from "@/lib/print-direct";
+import { leasedJobOf } from "@/lib/print-lease";
 import { printJobKeyOf, printJobOrderIdOf } from "@/lib/print-queue";
+import { PRINT_HOST_TAB_ID_MAX_CHARS } from "@/lib/print-queue-claim";
 import { billPrintJob, kotPrintJob, movedPrintJob, voidPrintJob, type PrintJobRequest } from "@/lib/print-routing";
 import { publishCafeEvent, publishPrintStatus } from "@/lib/realtime-publish";
 import type { Order } from "@/types";
@@ -40,6 +51,9 @@ export interface PrintIntent {
   deviceId: string;
   /** PRINT_BILL_HEADER: this call site also prints the bill (Pay Now, the POS settle). */
   bill: boolean;
+  /** Session 2B (PRINT_LEASE_HEADER, spec §7.11): the asking tab drains this device's slips and can print
+   *  now, so a slip that prints on this device may be made already leased to it. */
+  leaseTabId?: string;
 }
 
 /** null unless the request opted in with a usable device id. A bad print header never refuses the
@@ -48,7 +62,13 @@ export function printIntentOf(req: Request): PrintIntent | null {
   if (req.headers.get(PRINT_AGENT_HEADER)?.trim() !== PRINT_HEADER_ON) return null;
   const deviceId = req.headers.get(PRINT_DEVICE_ID_HEADER)?.trim() ?? "";
   if (deviceId === "" || deviceId.length > PRINT_HOST_DEVICE_ID_MAX_CHARS) return null;
-  return { deviceId, bill: req.headers.get(PRINT_BILL_HEADER)?.trim() === PRINT_HEADER_ON };
+  const leaseTabId = req.headers.get(PRINT_LEASE_HEADER)?.trim() ?? "";
+  return {
+    deviceId,
+    bill: req.headers.get(PRINT_BILL_HEADER)?.trim() === PRINT_HEADER_ON,
+    // An unusable tab id only means no direct print: the slips are made queued, as in Phase 1.
+    ...(leaseTabId !== "" && leaseTabId.length <= PRINT_HOST_TAB_ID_MAX_CHARS ? { leaseTabId } : {}),
+  };
 }
 
 /** The tab's kotPrintDevices after firing `round` for `deviceId`. Positional, the kotIdemKeys idiom:
@@ -109,7 +129,10 @@ export interface InsertedPrintJob {
   status: PrintJobStatus;
 }
 
-/** Inserts one job. null: its payload fails the schema or the 64 KB cap. A DB error throws. */
+/** Inserts one job. null: its payload fails the schema or the 64 KB cap. A DB error throws.
+ *  Session 2B (spec §7.11): `tab` is the asking tab, passed only when this job's line is the asking device's
+ *  own. With `direct` the job is made already leased to it, in this one write; and a job its key already
+ *  names that is still leased to that very tab is handed back with its lease (an answer lost on the way). */
 export async function insertPrintJob(input: {
   request: PrintJobRequest;
   targetDeviceId: string;
@@ -117,6 +140,7 @@ export async function insertPrintJob(input: {
   queuedBy: string;
   /** Default printJobKeyOf(payload); a client-started repeat passes its `reprint:<key>`. */
   jobKey?: string;
+  tab?: PrintJobAskingTab;
   nowMs: number;
 }): Promise<InsertedPrintJob | null> {
   const parsed = printJobPayloadSchema.safeParse(input.request.payload);
@@ -126,6 +150,9 @@ export async function insertPrintJob(input: {
   if (!printJobPayloadWithinCap(json)) return null;
   const jobKey = input.jobKey ?? printJobKeyOf(payload);
   const orderId = printJobOrderIdOf(payload);
+  const labels = printJobInitialLabels(payload);
+  const who = input.tab === undefined ? null : { deviceId: input.targetDeviceId, tabId: input.tab.tabId };
+  const direct = who !== null && input.tab?.direct === true ? directLeaseOf({ labels, who, originDeviceId: input.originDeviceId, nowMs: input.nowMs }) : null;
   try {
     const created = await PrintJob.create({
       kind: payload.kind,
@@ -138,28 +165,33 @@ export async function insertPrintJob(input: {
       targetDeviceId: input.targetDeviceId,
       ...(input.originDeviceId !== undefined ? { originDeviceId: input.originDeviceId } : {}),
       copyIndex: 0,
-      ...printJobLifecycleInit(input.nowMs, printJobInitialLabels(payload)),
-      log: [printJobCreatedLog(input.nowMs, input.originDeviceId)],
+      // Made leased to the asking tab (its log says "direct"), or queued as in Phase 1.
+      ...(direct ?? { ...printJobLifecycleInit(input.nowMs, labels), log: [printJobCreatedLog(input.nowMs, input.originDeviceId)] }),
     });
     const ref: PrintJobRef = {
       id: String(created._id),
       kind: payload.kind,
       targetDeviceId: input.targetDeviceId,
       label: input.request.label,
-      status: "queued",
+      status: direct === null ? "queued" : "leased",
+      ...(direct !== null ? { leased: leasedJobOf(created, direct, payload) } : {}),
     };
-    return { ref, created: true, status: "queued" };
+    return { ref, created: true, status: ref.status };
   } catch (error) {
     if (!isDuplicateKeyError(error) || jobKey === undefined) throw error;
-    const existing = await PrintJob.findOne({ jobKey }).select("kind status label targetDeviceId").lean();
+    const existing = await PrintJob.findOne({ jobKey })
+      .select(who === null ? "kind status label targetDeviceId" : PRINT_REDELIVERY_SELECT)
+      .lean<PrintRedeliveryRow>();
     // Pruned in the instant since the collision: report nothing rather than invent a job.
     if (existing === null) return null;
+    const again = who === null ? null : redeliveryOf(existing, who, input.nowMs);
     const ref: PrintJobRef = {
       id: String(existing._id),
       kind: existing.kind,
       targetDeviceId: existing.targetDeviceId ?? input.targetDeviceId,
       label: existing.label,
       status: existing.status,
+      ...(again !== null ? { leased: again } : {}),
     };
     return { ref, created: false, status: existing.status };
   }
@@ -167,12 +199,16 @@ export async function insertPrintJob(input: {
 
 /** Creates the slips one order request asked for (spec §7.4) and returns a ref for each job that
  *  exists for them, made now or before. Publishes "print-status" queued per new job, aimed at its
- *  device, plus one "print-job" nudge for a host from before Phase 1. */
+ *  device, plus one "print-job" nudge for a host from before Phase 1.
+ *  Session 2B (spec §7.11, decisions 15 and 16): when the slips print on the asking device and its draining
+ *  tab can print now (`leaseTabId`), the first one is made leased to that tab if nothing older waits on its
+ *  line; the rest follow it through the ack's `more`, so none of them is announced to the device printing. */
 export async function createOrderPrintJobs(input: {
   order: unknown;
   slips: OrderPrintSlip[];
   /** Absent only when no device asked (the public auto-accept, from Session 1C: final review C1). */
   originDeviceId?: string;
+  leaseTabId?: string;
   queuedBy: string;
   nowMs: number;
 }): Promise<PrintJobRef[]> {
@@ -185,14 +221,22 @@ export async function createOrderPrintJobs(input: {
     if (target === undefined) return refs;
     const order = wireOrderOf(input.order);
     const slips = [...input.slips].sort((a, b) => SLIP_ORDER[a.kind] - SLIP_ORDER[b.kind]);
+    // The asking tab counts only when the slips print on its own device (the host's own order, or no host).
+    const leaseTabId = target === input.originDeviceId ? input.leaseTabId : undefined;
+    const lineFree = leaseTabId !== undefined && (await printLineIsFree(target, input.nowMs));
+    let directOnLine = false;
     let made = 0;
     for (const slip of slips) {
       const request = requestOf(order, slip);
       if (request === null) continue;
-      const job = await insertPrintJob({ request, targetDeviceId: target, originDeviceId: input.originDeviceId, queuedBy: input.queuedBy, nowMs: input.nowMs });
+      // Only the first slip of this request on the line may be leased now (§7.6: one writer, oldest first);
+      // the rest are made as in Phase 1, so a collision on them never reads a payload (the 2B review, M-1).
+      const tab = leaseTabId === undefined || refs.length > 0 ? {} : { tab: { tabId: leaseTabId, direct: lineFree } };
+      const job = await insertPrintJob({ request, targetDeviceId: target, originDeviceId: input.originDeviceId, queuedBy: input.queuedBy, ...tab, nowMs: input.nowMs });
       if (job === null) continue;
       refs.push(job.ref);
-      if (job.created) {
+      if (job.ref.leased !== undefined) directOnLine = true;
+      if (announcesQueuedJob(job, directOnLine)) {
         made += 1;
         publishPrintStatus({ id: job.ref.id, status: "queued", target });
       }
@@ -206,13 +250,14 @@ export async function createOrderPrintJobs(input: {
 
 /** POST /api/print-jobs with no host, from an agent tab (spec §6.6): the asking device prints its own
  *  client-started slip (a reprint, End of day, a cancel notice) through the lifecycle, under the same
- *  key rules as enqueuePrintJob, so a retried POST is one job. */
+ *  key rules as enqueuePrintJob, so a retried POST is one job. Session 2B: `tab` as in insertPrintJob. */
 export async function enqueueOwnPrintJob(input: {
   payload: PrintJobPayload;
   label: string;
   queuedBy: string;
   idempotencyKey?: string;
   originDeviceId: string;
+  tab?: PrintJobAskingTab;
   nowMs: number;
 }): Promise<PrintJobEnqueueResult> {
   const jobKey = printJobKeyOf(input.payload) ?? (input.idempotencyKey !== undefined ? `reprint:${input.idempotencyKey}` : undefined);
@@ -222,13 +267,30 @@ export async function enqueueOwnPrintJob(input: {
     originDeviceId: input.originDeviceId,
     queuedBy: input.queuedBy,
     ...(jobKey !== undefined ? { jobKey } : {}),
+    ...(input.tab !== undefined ? { tab: input.tab } : {}),
     nowMs: input.nowMs,
   });
   if (job === null) return { outcome: "too-large" };
+  // Session 2B: leased to the asking tab (made so now, or still so from a send whose answer was lost): it
+  // prints there at once, and nothing is announced to the device that is printing it.
+  if (job.ref.leased !== undefined) return { outcome: "queued", id: job.ref.id, duplicate: !job.created, leased: job.ref.leased };
   // A resolved job under this key already printed (or was dismissed): never report it as fresh.
   if (!job.created && job.status !== "queued") return { outcome: "already-resolved", id: job.ref.id };
   if (job.created) publishPrintStatus({ id: job.ref.id, status: "queued", target: input.originDeviceId });
   return { outcome: "queued", id: job.ref.id, duplicate: !job.created };
+}
+
+/** POST /api/print-jobs from the tab that drains the asking device's slips and can print now (Session 2B,
+ *  spec §7.11). When the slip prints on the asking device (no host, or the asking device is the host), it is
+ *  made leased to that tab if nothing older waits on its line, and a slip still leased to that tab (its first
+ *  answer was lost) is handed back. null: another device is the host, so Phase 1's enqueue makes it for it. */
+export async function enqueueDirectPrintJob(
+  input: Omit<Parameters<typeof enqueueOwnPrintJob>[0], "tab"> & { leaseTabId: string },
+): Promise<PrintJobEnqueueResult | null> {
+  const host = await PrintHost.findOne({ key: PRINT_HOST_KEY }).select("deviceId").lean();
+  if (host !== null && host.deviceId !== input.originDeviceId) return null;
+  const { leaseTabId, ...own } = input;
+  return enqueueOwnPrintJob({ ...own, tab: { tabId: leaseTabId, direct: await printLineIsFree(input.originDeviceId, input.nowMs) } });
 }
 
 /** A route's answer: the order exactly as before, plus `printJobs` when the request opted in. */

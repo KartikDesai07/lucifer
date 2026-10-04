@@ -738,6 +738,7 @@ export async function POST(req: Request) {
           order: numbered.value ?? landed,
           slips: [{ kind: "kot", round: 1 }, ...(intent.bill && data.status === "Completed" ? [{ kind: "bill" as const }] : [])],
           originDeviceId: intent.deviceId,
+          leaseTabId: intent.leaseTabId,
           queuedBy: authed.session.user.name ?? "",
           nowMs: Date.now(),
         })

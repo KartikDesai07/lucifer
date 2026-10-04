@@ -353,7 +353,8 @@
     "lib/appearance-settings-paths-2.test.ts",
     "lib/print-printers-model.test.ts",
     "lib/print-printer-routing.test.ts",
-    "lib/print-setup-paths.test.ts"
+    "lib/print-setup-paths.test.ts",
+    "lib/print-direct.test.ts"
   ],
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -92,24 +92,27 @@ export async function applyPrintJobPlan(
   return applied;
 }
 
-export function leasedPrintJobOf(
-  head: { _id: unknown; kind: PrintJobKind; label: string; orderId?: string; createdAt: Date; copyIndex?: number },
-  patch: PrintJobPatch,
-  payload: PrintJobPayload,
-  labels: PrintJobLabel[],
-): LeasedPrintJob {
+type LeasedHead = { _id: unknown; kind: PrintJobKind; label: string; orderId?: string; createdAt: Date; copyIndex?: number };
+
+/** The wire job for one lease (spec §7.3), from its row: leased by a lease request, made leased at creation,
+ *  or delivered again to the tab that holds it (Session 2B, spec §7.11). */
+export function leasedJobOf(head: LeasedHead, lease: { epoch: number; attempts: number; labels: PrintJobLabel[] }, payload: PrintJobPayload): LeasedPrintJob {
   return {
     id: String(head._id),
-    epoch: patch.set.epoch ?? 0,
+    epoch: lease.epoch,
     kind: head.kind,
     label: head.label,
     ...(head.orderId !== undefined ? { orderId: head.orderId } : {}),
     createdAt: head.createdAt.toISOString(),
     payload,
-    labels,
+    labels: lease.labels,
     copyIndex: head.copyIndex ?? 0,
-    attempt: patch.set.attempts ?? 1,
+    attempt: lease.attempts,
   };
+}
+
+export function leasedPrintJobOf(head: LeasedHead, patch: PrintJobPatch, payload: PrintJobPayload, labels: PrintJobLabel[]): LeasedPrintJob {
+  return leasedJobOf(head, { epoch: patch.set.epoch ?? 0, attempts: patch.set.attempts ?? 1, labels }, payload);
 }
 
 /** The claim path's gates, unchanged (print-queue-claim.ts): a payload that no longer parses, or a

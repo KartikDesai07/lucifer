@@ -29,6 +29,7 @@ export async function claimKotPrintForAgent(id: string, intent: PrintIntent, now
     order: result.order,
     slips: [{ kind: "kot", round: result.kotRound }],
     originDeviceId: intent.deviceId,
+    leaseTabId: intent.leaseTabId,
     queuedBy: SELF_ORDER_RECEIVER,
     nowMs,
   });
