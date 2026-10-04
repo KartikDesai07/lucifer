@@ -15,7 +15,8 @@ const EXPLAIN =
 const NO_PRINTER_HERE = "Connect this device's printer first (Printer on this device, above).";
 const ON_THE_HOST = "Do this on the device that prints all slips today (Where slips print, above).";
 const CHECKING = "Checking which device prints today…";
-const DONE_MESSAGE = "Printer 1 is set up. Nothing changes on paper.";
+// With no print host, other devices' slips move here (as EXPLAIN says): the toast never says nothing changes.
+const DONE_MESSAGE = "Printer 1 is set up. This device's paper does not change, and other devices' slips print here too.";
 
 // Printing redesign, Phase 2 Session 2D (spec §6.6 "Set up printers"): on the device that prints today (the print
 // host, or with no host this device), one tap makes Printer 1 from this device's own printer with Bill, Full KOT

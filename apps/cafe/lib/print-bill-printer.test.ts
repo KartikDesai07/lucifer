@@ -4,7 +4,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { stripComments } from "@/lib/source-pin-utils";
 import { printAgentHeaders } from "@/lib/print-agent-calls";
-import { BILL_PRINTER_KEY, billPrinterIdOf, readBillPrinterId, writeBillPrinterId } from "@/lib/print-bill-printer";
+import { routablePrinterOf, type PrinterConfig } from "@pos/shared/print-printers";
+import { BILL_PRINTER_DEFAULT, BILL_PRINTER_KEY, billPrinterChoiceOf, billPrinterIdOf, readBillPrinterId, writeBillPrinterId } from "@/lib/print-bill-printer";
 
 // Printing redesign, Phase 2 Session 2D (plan decision 7): this device's own bill printer, kept on the device and
 // sent with every print request; and the two page signals 2D adds (the not-routed notice, the dot in printers mode).
@@ -28,6 +29,49 @@ test("2D: every print request names this device's bill printer when one is chose
   assert.equal(printAgentHeaders("dev-a", true, null, [], null)["x-pos-bill-printer"], undefined, "none chosen: the default bill printer");
   assert.equal(printAgentHeaders("dev-a", true)["x-pos-bill-printer"], undefined, "the default reads this device's storage (none here)");
   assert.deepEqual(printAgentHeaders("", true, null, [], ID), {}, "no identity: nothing at all, as before");
+});
+
+const NO_SLIPS = { bill: false, kotStations: [], kotAll: false, notices: false, eod: false };
+function printer(id: string, name: string, slips: Partial<PrinterConfig["slips"]>, over: Partial<PrinterConfig> = {}): PrinterConfig {
+  return {
+    id,
+    name,
+    connection: { kind: "lan", host: "192.168.1.50", port: 9100 },
+    primaryDeviceId: `dev-${name}`,
+    order: 0,
+    paper: 80,
+    slips: { ...NO_SLIPS, ...slips },
+    copies: { kot: 1, bill: 1 },
+    enabled: true,
+    ...over,
+  };
+}
+
+test("2D final review (M-6): the bill picker shows where this device's bills print, exactly as routing chooses", () => {
+  const P1 = "64f0000000000000000000a1";
+  const BAR = "64f0000000000000000000b2";
+  const counter = printer(P1, "Printer 1", { bill: true, kotAll: true, notices: true, eod: true });
+  const bar = printer(BAR, "Bar printer", { bill: true, kotStations: ["s-bar"], notices: true }, { order: 1 });
+  const barNoBill = { ...bar, slips: { ...bar.slips, bill: false } };
+  const barOff = { ...bar, enabled: false };
+  const cases: Array<{ name: string; printers: PrinterConfig[]; chosen: string | null; value: string; offered: string[]; note: RegExp | null }> = [
+    { name: "none chosen", printers: [counter, bar], chosen: null, value: BILL_PRINTER_DEFAULT, offered: [P1, BAR], note: null },
+    { name: "a bill printer chosen", printers: [counter, bar], chosen: BAR, value: BAR, offered: [P1, BAR], note: null },
+    { name: "chosen, then Bill unticked there", printers: [counter, barNoBill], chosen: BAR, value: BAR, offered: [P1, BAR], note: /^Bar printer no longer takes bills, but this device's bills still print there\./ },
+    { name: "chosen, then switched off", printers: [counter, barOff], chosen: BAR, value: BILL_PRINTER_DEFAULT, offered: [P1], note: /switched off or gone, so bills go to the default/ },
+    { name: "chosen, then deleted", printers: [counter], chosen: BAR, value: BILL_PRINTER_DEFAULT, offered: [P1], note: /switched off or gone, so bills go to the default/ },
+  ];
+  for (const c of cases) {
+    const choice = billPrinterChoiceOf(c.printers, c.chosen);
+    // The server sends this device's bills to its choice while that printer is routable (chosenBillPrinter), else
+    // to the default bill printer: the picker must say the same.
+    const routed = c.chosen === null ? null : routablePrinterOf(c.printers, c.chosen);
+    assert.equal(choice.value, routed?.id ?? BILL_PRINTER_DEFAULT, `${c.name}: the picker shows the printer routing uses`);
+    assert.equal(choice.value, c.value, `${c.name}: value`);
+    assert.deepEqual(choice.options.map((p) => p.id), c.offered, `${c.name}: the printers offered, the shown one among them`);
+    if (c.note === null) assert.equal(choice.note, null, `${c.name}: no note`);
+    else assert.match(choice.note ?? "", c.note, `${c.name}: the note`);
+  }
 });
 
 const CAFE = process.cwd();

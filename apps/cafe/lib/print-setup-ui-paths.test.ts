@@ -40,6 +40,10 @@ test("PIN (2D, spec §6.6): with no printer, Set up printers comes first, makes 
   assert.match(card, /const elsewhere = known && remote !== "none" && !isHostDevice;/, "a device that is not the print host is told where to do it");
   assert.ok(!card.includes("usePosPulse" + "Context"), "the narrow dot context, never the wide pulse");
   assert.match(card, /disabled=\{reason !== null \|\| save\.isPending\}/);
+  // Session 2D's final review (M-1, the 2C gate's M-6 words): with no host, other devices' slips move to Printer 1,
+  // so the toast after the tap must not say that nothing changes; it says what the text above the button says.
+  assert.ok(!card.includes("Nothing changes on paper"), "the toast never says nothing changes on paper");
+  assert.match(card, /const DONE_MESSAGE = "Printer 1 is set up\. This device's paper does not change, and other devices' slips print here too\.";/, "the toast says where other devices' slips print now");
 });
 
 test("PIN (2D): each printer row: its state in words, on/off, Test print only when it can print, edit, delete with a question", () => {

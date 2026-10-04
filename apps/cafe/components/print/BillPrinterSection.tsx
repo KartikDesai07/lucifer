@@ -9,11 +9,9 @@ import { PrinterSection } from "@/components/print/PrinterSection";
 import { PRINTER_INPUT_CLASS } from "@/components/print/printer-classes";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePrintersRead } from "@/hooks/use-agent-printers";
-import { readBillPrinterId, writeBillPrinterId } from "@/lib/print-bill-printer";
+import { BILL_PRINTER_DEFAULT, billPrinterChoiceOf, readBillPrinterId, writeBillPrinterId } from "@/lib/print-bill-printer";
 
-const DEFAULT = "default";
 const DESCRIPTION = "Bills and End of day from this device print here.";
-const GONE = "The printer chosen before is switched off or gone, so bills go to the default.";
 
 // Printing redesign, Phase 2 Session 2D (plan decision 7; spec §11 "Bill printer for this device"): in printers
 // mode, this device chooses which bill printer its bills and End of day go to; kept on this device and sent with
@@ -30,10 +28,12 @@ export function BillPrinterSection() {
   const billPrinters = routablePrinters(printers).filter((printer) => printer.slips.bill);
   if (!printersModeOn(printers) || billPrinters.length === 0) return null;
   const fallback = defaultBillPrinterOf(printers);
-  const value = chosen !== null && billPrinters.some((printer) => printer.id === chosen) ? chosen : DEFAULT;
+  // What routing does with this device's choice (Session 2D's final review, M-6): never "Default" while bills
+  // still go to the chosen printer.
+  const { value, options, note } = billPrinterChoiceOf(printers, chosen);
 
   const choose = (next: string) => {
-    const id = next === DEFAULT ? null : next;
+    const id = next === BILL_PRINTER_DEFAULT ? null : next;
     writeBillPrinterId(id);
     setChosen(id);
   };
@@ -45,15 +45,15 @@ export function BillPrinterSection() {
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={DEFAULT}>Default ({fallback?.name ?? "none"})</SelectItem>
-          {billPrinters.map((printer) => (
+          <SelectItem value={BILL_PRINTER_DEFAULT}>Default ({fallback?.name ?? "none"})</SelectItem>
+          {options.map((printer) => (
             <SelectItem key={printer.id} value={printer.id}>
               {printer.name}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
-      {chosen !== null && value === DEFAULT && <p className="text-xs text-brand-muted">{GONE}</p>}
+      {note !== null && <p className="text-xs text-brand-muted">{note}</p>}
     </PrinterSection>
   );
 }
