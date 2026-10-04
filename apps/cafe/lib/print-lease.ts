@@ -1,5 +1,5 @@
 import mongoose, { type FilterQuery, type Types, type UpdateQuery } from "mongoose";
-import type { PrintJobKind, PrintJobStatus } from "@pos/shared/print-job";
+import type { PrintJobKind } from "@pos/shared/print-job";
 import type { LeasedPrintJob, PrintAckData, PrintLeaseData } from "@pos/shared/print-agent-wire";
 import {
   PRINT_BACKOFF_MS,
@@ -20,7 +20,6 @@ import {
 import { printJobPayloadSchema, type PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 import { Order } from "@/models/Order";
 import { PrintJob, type IPrintJob } from "@/models/PrintJob";
-import { publishPrintStatus } from "@/lib/realtime-publish";
 import { dismissPrintJob, drainAgeCutoff } from "./print-queue";
 import { printJobEligibility, printJobNeedsOrderRead } from "./print-queue-claim";
 
@@ -73,12 +72,11 @@ export function printJobUpdateOf(patch: PrintJobPatch): PrintJobUpdate {
   return update;
 }
 
-/** The statuses an ordering device's readback hears about at once (spec §10, §17.2: a job's creation
- *  and its final state); the pulse stays the fallback. */
-const PRINT_STATUS_PUBLISHED: ReadonlySet<PrintJobStatus> = new Set<PrintJobStatus>(["printed", "needs-confirm", "failed", "dismissed"]);
-
 /** Applies a plan. false: another writer moved the job first, so re-read and re-plan. `fence` adds
- *  terms the plan depends on but the epoch does not cover (a lease: still this device's job). */
+ *  terms the plan depends on but the epoch does not cover (a lease: still this device's job).
+ *  It publishes nothing (the Phase 2B gate, G-1): a job's final state had no listener on any device (the
+ *  readback and the waiting-slips panel read the pulse; an agent leases only on "queued" aimed at it), so its
+ *  Worker request bought nothing. */
 export async function applyPrintJobPlan(
   id: Types.ObjectId,
   job: PrintJobLifecycle,
@@ -86,10 +84,14 @@ export async function applyPrintJobPlan(
   fence: FilterQuery<IPrintJob> = {},
 ): Promise<boolean> {
   const res = await PrintJob.updateOne({ ...printJobCasFilter(id, job), ...fence }, printJobUpdateOf(patch) as UpdateQuery<IPrintJob>);
-  const applied = res.modifiedCount === 1;
-  // Fire-and-forget, after the write: a lost frame costs the readback one pulse, never the transition.
-  if (applied && PRINT_STATUS_PUBLISHED.has(patch.status)) publishPrintStatus({ id: String(id), status: patch.status });
-  return applied;
+  return res.modifiedCount === 1;
+}
+
+/** Session 2B (plan decision 9): this device's line still holds a queued job (due now, or after its backoff),
+ *  so its agent leases again after an ack; otherwise it waits for a nudge, its timer or a new slip, and a
+ *  burst ends with no empty lease. One read on the line index. */
+export async function printLineHasMore(deviceId: string, nowMs: number): Promise<boolean> {
+  return (await PrintJob.findOne({ ...printJobLineFilter(deviceId, nowMs), status: "queued" }).select("_id").lean()) !== null;
 }
 
 type LeasedHead = { _id: unknown; kind: PrintJobKind; label: string; orderId?: string; createdAt: Date; copyIndex?: number };
@@ -197,15 +199,30 @@ export async function ackPrintJob(input: PrintJobAck & { id: string; nowMs: numb
       return { applied: false, status: job.status, nextAttemptAt: null, reason: plan.reason };
     }
     if (await applyPrintJobPlan(row._id, job, plan.patch)) {
-      return { applied: true, status: plan.patch.status, nextAttemptAt: plan.patch.set.nextAttemptAt?.toISOString() ?? null };
+      const nextAttemptAt = plan.patch.set.nextAttemptAt?.toISOString() ?? null;
+      // Session 2B (decision 9): a job that left the line says whether the acking device's line holds more. A
+      // job back in the queue is that line's head, and its nextAttemptAt says when. A failed read only drops
+      // the hint (the agent then leases, as in Phase 1): the ack itself has landed.
+      if (plan.patch.status === "queued") return { applied: true, status: plan.patch.status, nextAttemptAt };
+      const more = await printLineHasMore(input.deviceId, input.nowMs).catch(() => undefined);
+      return { applied: true, status: plan.patch.status, nextAttemptAt, ...(more !== undefined ? { more } : {}) };
     }
   }
   return { applied: false, status: null, nextAttemptAt: null, reason: "raced" };
 }
 
-/** The wake's "jobs for me" (spec §7.3): how many jobs wait in this device's line, and the oldest. */
+/** The jobs a lease call could act on now: this device's line, less any lease still running. A running
+ *  lease is being printed (often by this very tab, Session 2B's direct print), so counting it only kicked
+ *  the agent into an empty lease after its ack; a lease that ran out still counts, so the lease call that
+ *  expires it comes (spec §7.2). */
+export function printJobsForMeFilter(deviceId: string, nowMs: number): FilterQuery<IPrintJob> {
+  return { ...printJobLineFilter(deviceId, nowMs), $nor: [{ status: "leased", "lease.expiresAt": { $gte: new Date(nowMs) } }] } as FilterQuery<IPrintJob>;
+}
+
+/** The wake's "jobs for me" (spec §7.3), and the pulse's: how many jobs wait in this device's line for a
+ *  lease, and the oldest. */
 export async function readJobsForDevice(deviceId: string, nowMs: number): Promise<{ count: number; oldestCreatedAt: string | null }> {
-  const rows = await PrintJob.find(printJobLineFilter(deviceId, nowMs))
+  const rows = await PrintJob.find(printJobsForMeFilter(deviceId, nowMs))
     .sort({ createdAt: 1, _id: 1 })
     .select("createdAt")
     .limit(PRINT_JOBS_FOR_ME_LIMIT)

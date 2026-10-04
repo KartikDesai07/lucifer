@@ -30,11 +30,12 @@ const SWEEP = "apps/cafe/lib/print-sweep.ts";
 
 test("PIN: every lifecycle transition is ONE compare-and-set on {_id, status, epoch}, and a lease call is bounded", () => {
   const s = src(LEASE);
-  // Session 1B: the CAS may carry an extra fence (a lease: still this device's job, 1A review M5),
-  // and a landed final transition publishes its print-status (spec §10).
+  // Session 1B: the CAS may carry an extra fence (a lease: still this device's job, 1A review M5).
+  // The Phase 2B gate (G-1) deliberately changed the rest: a landed transition publishes nothing, since no
+  // device listened for a final state.
   assert.match(s, /PrintJob\.updateOne\(\{ \.\.\.printJobCasFilter\(id, job\), \.\.\.fence \}, printJobUpdateOf\(patch\)/);
-  assert.match(s, /const applied = res\.modifiedCount === 1;/);
-  assert.match(s, /if \(applied && PRINT_STATUS_PUBLISHED\.has\(patch\.status\)\) publishPrintStatus\(\{ id: String\(id\), status: patch\.status \}\);/);
+  assert.match(s, /return res\.modifiedCount === 1;/);
+  assert.ok(!s.includes("publishPrintStatus") && !s.includes("realtime-publish"), "the lifecycle's transitions publish nothing");
   assert.match(s, /applyPrintJobPlan\(head\._id, job, plan\.patch, \{ targetDeviceId: input\.deviceId \}\)/, "the lease CAS is fenced on the device");
   assert.match(s, /for \(let step = 0; step < LEASE_MAX_STEPS; step\+\+\)/);
   assert.match(s, /printJobEligibility\(payload, order\)/, "the claim path's live-order gate still applies to a lease");
@@ -224,11 +225,37 @@ test("PIN: the lease route's heartbeat is best-effort (M1), and a lease call tha
   assert.match(src(LEASE), /return \{ jobs: \[\], retryAt: new Date\(input\.nowMs \+ PRINT_BACKOFF_MS\[0\]\)\.toISOString\(\) \};/);
 });
 
-test("PIN: the lifecycle publishes exactly the final statuses, and a dismissed job announces itself", () => {
-  assert.match(src(LEASE), /new Set<PrintJobStatus>\(\["printed", "needs-confirm", "failed", "dismissed"\]\)/);
+// The Phase 2B gate (G-1, deliberate change): a final state ("printed", "needs-confirm", "failed",
+// "dismissed") had no listener on any device, so it is no longer published. Only "queued", aimed at the
+// device that prints, is: the one frame an agent leases on.
+test("PIN (G-1): no final state is published, from the lifecycle or a dismiss; only a queued job is announced to its printer", () => {
+  assert.ok(!src(LEASE).includes("PRINT_STATUS_PUBLISHED"), "no final-status set");
   const queue = src("apps/cafe/lib/print-queue.ts");
   const single = queue.slice(queue.indexOf("export async function dismissPrintJob("), queue.indexOf("export async function dismissQueuedPrintJobsForClearedHost("));
-  assert.match(single, /if \(dismissed\) \{\s*publishPrintStatus\(\{ id: input\.id, status: "dismissed" \}\);\s*return \{ dismissed: true \};\s*\}/);
+  assert.match(single, /if \(dismissed\) \{\s*return \{ dismissed: true \};\s*\}/);
+  for (const rel of ["apps/cafe/lib/print-queue.ts", "apps/cafe/lib/print-order-jobs.ts", "apps/cafe/lib/print-job-actions.ts"]) {
+    for (const call of src(rel).match(/publishPrintStatus\(\{[^}]*\}\)/g) ?? []) {
+      assert.match(call, /status: "queued"/, `${rel}: ${call} announces a queued job only`);
+    }
+  }
+});
+
+// Session 2B (plan decision 9): the ack answers whether the acking device's line holds more, so a burst ends
+// with no empty lease. The hint never costs the ack itself.
+test("PIN (2B): an ack that takes a job off the line answers `more` from one read of the acking device's line", () => {
+  const s = src(LEASE);
+  const ack = s.slice(s.indexOf("export async function ackPrintJob("), s.indexOf("export async function readJobsForDevice("));
+  inOrder(
+    ack,
+    [
+      "if (await applyPrintJobPlan(row._id, job, plan.patch)) {",
+      'if (plan.patch.status === "queued") return { applied: true, status: plan.patch.status, nextAttemptAt };',
+      "const more = await printLineHasMore(input.deviceId, input.nowMs).catch(() => undefined);",
+      "...(more !== undefined ? { more } : {})",
+    ],
+    "the ack",
+  );
+  assert.match(s, /return \(await PrintJob\.findOne\(\{ \.\.\.printJobLineFilter\(deviceId, nowMs\), status: "queued" \}\)\.select\("_id"\)\.lean\(\)\) !== null;/, "one read on the line index");
 });
 
 test("PIN (the Phase 1 final gate, M8): the soak drives only a local POS on a local scratch database, and stops after its first order unless that order is in its own database", () => {

@@ -257,8 +257,7 @@ export async function dismissPrintJob(input: {
     { new: true },
   );
   if (dismissed) {
-    // Phase 1 (spec §10): the ordering device's readback hears it at once; the pulse is the fallback.
-    publishPrintStatus({ id: input.id, status: "dismissed" });
+    // No print-status (the Phase 2B gate, G-1): no device listens for a final state; the pulse carries it.
     return { dismissed: true };
   }
 

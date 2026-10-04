@@ -4,7 +4,7 @@ import mongoose from "mongoose";
 import { PRINT_HOST_MAX_AGE_MS } from "@pos/shared/print-job";
 import { PRINT_JOB_LOG_MAX, PRINT_LEASE_MS, lifecycleOf, planExpiry, planLease, type PrintJobPlan, type PrintJobPatch } from "@pos/shared/print-lifecycle";
 import type { PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
-import { leasedPrintJobOf, printJobCasFilter, printJobLineFilter, printJobUpdateOf } from "./print-lease";
+import { leasedPrintJobOf, printJobCasFilter, printJobLineFilter, printJobsForMeFilter, printJobUpdateOf } from "./print-lease";
 
 // Phase 1 Session 1A — DB-free tests of print-lease.ts's pure exports. The DB paths are proven live
 // (npm run verify:print:live, legs q–x) and pinned in print-lifecycle-paths.test.ts.
@@ -22,6 +22,15 @@ test("printJobLineFilter: this device's leased job, plus its queued jobs that ar
     targetDeviceId: "dev-a",
     status: { $in: ["queued", "leased"] },
     $or: [{ status: "leased" }, { createdAt: { $gte: new Date(T0 - PRINT_HOST_MAX_AGE_MS) } }, { approvedAt: { $exists: true } }],
+  });
+});
+
+// Session 2B (found on the emulator at the 2A gate): the pulse and the wake counted this device's own running
+// lease, so one landing mid-print kicked the agent into an empty lease after its ack.
+test("printJobsForMeFilter: the line, less a lease still running; a lease that ran out still counts (its lease call expires it)", () => {
+  assert.deepEqual(printJobsForMeFilter("dev-a", T0), {
+    ...printJobLineFilter("dev-a", T0),
+    $nor: [{ status: "leased", "lease.expiresAt": { $gte: new Date(T0) } }],
   });
 });
 
