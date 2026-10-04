@@ -1,7 +1,8 @@
 import type { Types } from "mongoose";
+import { REQUEST_TIMEOUT_MS } from "@pos/shared/api-client";
 import type { PrintJobKind, PrintJobStatus } from "@pos/shared/print-job";
 import type { LeasedPrintJob } from "@pos/shared/print-agent-wire";
-import { lifecycleOf, type PrintJobLease } from "@pos/shared/print-lifecycle";
+import { PRINT_LEASE_MS, lifecycleOf, type PrintJobLease } from "@pos/shared/print-lifecycle";
 import { printJobPayloadSchema, type PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 import { PrintJob } from "@/models/PrintJob";
 import { leasedJobOf, printJobLineFilter } from "@/lib/print-lease";
@@ -50,12 +51,16 @@ export interface PrintRedeliveryRow {
 /** A job its key already names that is still leased to the asking device's very tab, its lease still running:
  *  the answer that carried it was lost (spec §7.11), so the same lease is handed over again. The agent ignores a
  *  job it already holds (its id and epoch), so a delivery that did arrive still prints once. Anything else:
- *  null, and the caller answers as in Phase 1 (a tab reloaded since has a new id; its lease expires). */
+ *  null, and the caller answers as in Phase 1 (a tab reloaded since has a new id; its lease expires).
+ *  The 2B review gate (I-A): only within one request timeout of the lease's start. The agent may hold a job 60 s
+ *  (PRINT_DIRECT_HOLD_MS) while its drain lock is elsewhere; a later hand-back could print after the lease ran out,
+ *  beside another window's REPRINT. An older lease is left to expire into one REPRINT (a bill: the cashier). */
 export function redeliveryOf(row: PrintRedeliveryRow, who: { deviceId: string; tabId: string }, nowMs: number): LeasedPrintJob | null {
   const job = lifecycleOf(row);
   const lease = job.lease;
   if (job.status !== "leased" || lease === undefined || row.payload === undefined || row.targetDeviceId !== who.deviceId) return null;
   if (lease.deviceId !== who.deviceId || lease.tabId !== who.tabId || lease.epoch !== job.epoch || lease.expiresAt.getTime() <= nowMs) return null;
+  if (lease.expiresAt.getTime() - nowMs < PRINT_LEASE_MS - REQUEST_TIMEOUT_MS) return null;
   let payload: PrintJobPayload;
   try {
     const parsed = printJobPayloadSchema.safeParse(JSON.parse(row.payload) as unknown);

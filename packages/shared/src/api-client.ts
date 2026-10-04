@@ -4,8 +4,9 @@
 
 // A network blip mid-request must fail visibly, not hang the caller forever
 // (e.g. a cashier staring at a spinner mid-settle with no idea whether the
-// sale landed). Both read and write paths abort after this ceiling.
-const REQUEST_TIMEOUT_MS = 15 * 1000;
+// sale landed). Both read and write paths abort after this ceiling. Exported for the print server's
+// re-delivery bound (Phase 2, the 2B review gate: a lease is handed back only within one request timeout).
+export const REQUEST_TIMEOUT_MS = 15 * 1000;
 
 type ApiEnvelope<T> =
   | { success: true; data: T }

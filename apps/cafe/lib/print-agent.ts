@@ -35,6 +35,9 @@ export const PRINT_ACK_PENDING_LIMIT = 50;
  *  lease with a margin. Later the lease may have run out and another attempt (a REPRINT) be on paper, so the
  *  held job is dropped unprinted. */
 export const PRINT_DIRECT_HOLD_MS = PRINT_LEASE_MS - 30_000;
+/** Why a held job went back to its line unprinted: its refusal's error (the waiting-slips panel may show it). */
+const HELD_TOO_LONG = "held too long on this device";
+const PRINTING_STOPPED = "printing stopped on this device";
 
 export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
   let enabled = false;
@@ -66,7 +69,7 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
   function nextHeld(): LeasedPrintJob | undefined {
     for (let next = held.shift(); next !== undefined; next = held.shift()) {
       if (deps.now() - next.at < PRINT_DIRECT_HOLD_MS) return next.job;
-      handBack(next.job, "held too long on this device");
+      handBack(next.job, HELD_TOO_LONG);
     }
     return undefined;
   }
@@ -74,7 +77,7 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
   /** A held job dropped unprinted goes back to its line as a refusal (sent:"no", never counted), kept and sent
    *  like any ack: this tab knows nothing of it reached a printer, so it prints again unlabelled rather than
    *  expiring into a REPRINT (a bill: the cashier's question). The server takes it only while the job is still
-   *  leased at that epoch; a lease that ran out, or a new one, ignores it (the final review, I-1). */
+   *  leased at that epoch; once its expiry is applied, or a new lease made, it is ignored (the final review, I-1). */
   function handBack(job: LeasedPrintJob, why: string): void {
     keep({ id: job.id, epoch: job.epoch, at: deps.now(), fail: { deviceId: deps.deviceId, epoch: job.epoch, outcome: "failed", sent: "no", error: why } });
     handedBack = true;
@@ -131,8 +134,11 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
         continue;
       }
       try {
-        remember(answers, `${entry.id}:${entry.epoch}`, await deps.ack(entry.id, entry.fail ?? { deviceId: deps.deviceId, epoch: entry.epoch, outcome: "printed" }));
+        const answer = await deps.ack(entry.id, entry.fail ?? { deviceId: deps.deviceId, epoch: entry.epoch, outcome: "printed" });
+        remember(answers, `${entry.id}:${entry.epoch}`, answer);
         forget(entry);
+        // A refusal sent again and applied put its job back in line: lease it when its backoff ends (the 2B gate, M-B).
+        if (entry.fail !== undefined && answer.nextAttemptAt !== null) wakeAt(Date.parse(answer.nextAttemptAt));
       } catch (error) {
         if (ackAnswered(error)) forget(entry);
       }
@@ -167,7 +173,12 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
         // A held job dropped just now frees its lease first, so the lease below can reach it (I-1).
         handedBack = false;
         await flushAcks();
-        if (stopped) return;
+        if (stopped) {
+          // A stop() during that ack: the job this cycle already took is handed back too (the 2B gate, M-A).
+          if (job !== undefined) handBack(job, PRINTING_STOPPED);
+          void flushAcks();
+          return;
+        }
       }
       if (job === undefined) {
         // Only a held job prints past the lease gate; with none left (I-1), the gate decides as always.
@@ -273,7 +284,7 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
       stopped = true;
       // A job still held is dropped and handed back (I-1), sent now or by the next page's first flush; with
       // neither, its lease expires (KOT: REPRINT; bill: the cashier), as for a tab that died.
-      for (const h of held.splice(0)) handBack(h.job, "printing stopped on this device");
+      for (const h of held.splice(0)) handBack(h.job, PRINTING_STOPPED);
       if (timer !== null) deps.clearTimer(timer);
       if (ackTimer !== null) deps.clearTimer(ackTimer);
       timer = null;

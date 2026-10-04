@@ -811,6 +811,51 @@ test("2B: a held job dropped by the hold bound or by stop() is handed back as a 
   assert.deepEqual(stopping.w.acks.map((a) => [a.id, a.body.outcome, a.body.sent]), [["held", "failed", "no"]], "and hands it back at once");
 });
 
+// The 2B review gate (M-A): the cycle took a fresh held job out of the queue, then waited for the ack of a stale
+// one it had just handed back; a stop() landing in that wait dropped the fresh job with no ack at all.
+test("2B gate: a stop() while a hand-back is on the wire hands back the job the cycle already took", async () => {
+  const { w, deps } = world();
+  let agentRef: ReturnType<typeof createPrintAgent> | null = null;
+  const agent = createPrintAgent({
+    ...deps,
+    ack: (id: string, body: PrintAgentAckBody) => {
+      if (id === "stale") agentRef?.stop(); // the page goes away while the stale job's refusal is on the wire
+      return deps.ack(id, body);
+    },
+  });
+  agentRef = agent;
+  agent.take(job("stale"));
+  await advance(w, PRINT_DIRECT_HOLD_MS);
+  agent.take(job("fresh"));
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.deepEqual(w.prints, [], "nothing prints on a stopped page");
+  assert.deepEqual(
+    w.acks.map((a) => [a.id, a.body.sent]),
+    [["stale", "no"], ["fresh", "no"]],
+    "both handed back, so neither waits 90 s to expire into a REPRINT",
+  );
+});
+
+// The 2B review gate (M-B): a refusal whose first send got no answer was applied later by the 5 s retry, but
+// nothing then leased the job it put back in line: it waited for the pulse.
+test("2B gate: a refusal applied by the retry sets the agent's timer from its answer", async () => {
+  const { w, deps } = world();
+  const agent = createPrintAgent(deps);
+  agent.take(job("late"));
+  await advance(w, PRINT_DIRECT_HOLD_MS);
+  w.ackAnswers.push(new ApiError("offline", "network", null));
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.equal(w.leaseCalls, 1, "the cycle's lease after the hand-back (its ack got no answer)");
+  w.ackAnswers.push({ applied: true, status: "queued", nextAttemptAt: new Date(w.now + PRINT_ACK_RETRY_MS + 2_000).toISOString() });
+  await advance(w, PRINT_ACK_RETRY_MS);
+  assert.deepEqual(w.acks.map((a) => a.body.sent), ["no", "no"], "re-sent at 5 s, and applied");
+  await advance(w, 2_000);
+  assert.equal(w.leaseCalls, 2, "the job back in line is leased when its backoff ends, not at the next pulse");
+  agent.stop();
+});
+
 test("2B: taken jobs wait their turn (first in, first out) and for an open gate; stop drops them unprinted", async () => {
   const { w, deps } = world();
   w.ackAnswers.push(done(false), done(false));

@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import mongoose from "mongoose";
+import { REQUEST_TIMEOUT_MS } from "@pos/shared/api-client";
 import { PRINT_LEASE_MS, directLeaseOf } from "@pos/shared/print-lifecycle";
 import { stripComments } from "@/lib/source-pin-utils";
 import { announcesQueuedJob, redeliveryOf, type PrintRedeliveryRow } from "@/lib/print-direct";
@@ -69,6 +70,14 @@ test("redeliveryOf: anything but that very lease answers as Phase 1 did (null)",
     ["a row read without its payload", row({ payload: undefined }), WHO, T0],
   ];
   for (const [label, r, who, nowMs] of cases) assert.equal(redeliveryOf(r, who, nowMs), null, label);
+});
+
+// The 2B review gate (I-A): a re-send that arrived late could be held by a tab that then lost its drain lock,
+// and print after its lease ran out, beside another window's REPRINT. A lease is handed back only within one
+// request timeout of its start, so the agent's 60 s hold always starts its print inside the lease.
+test("redeliveryOf: a lease is handed back only within one request timeout of its start; an older one is left to expire", () => {
+  assert.ok(redeliveryOf(row(), WHO, T0 + REQUEST_TIMEOUT_MS) !== null, "a re-send within one request timeout gets the lease back");
+  assert.equal(redeliveryOf(row(), WHO, T0 + REQUEST_TIMEOUT_MS + 1), null, "later: Phase 1's answer, and the lease expires into one REPRINT");
 });
 
 test("announcesQueuedJob: a new queued job is announced; never a job made leased, a job found under its key, or one its line's tab is printing past", () => {
