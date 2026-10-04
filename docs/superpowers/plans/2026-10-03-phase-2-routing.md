@@ -21541,3 +21541,132 @@ Add "## Session 2D Results (filled in by the implementer)" at the end of this pl
 - `apps/cafe/package.json` `testChain` (D1, D3, D4, D5, D6): `lib/print-printer-test.test.ts`, `lib/print-bill-printer.test.ts`, `lib/print-setup-form.test.ts`, `lib/print-setup-ui-paths.test.ts`, `lib/print-setup-fields.test.ts`, appended.
 
 ---
+
+## Session 2D Results (filled in by the implementer)
+
+Executed on 2026-10-04 with superpowers:executing-plans, task by task, D0 → D8.
+
+### Commits (`e836470..HEAD`)
+
+| Commit | Task |
+|---|---|
+| `06ce95d` | D0: the 2C review gate's fixes (F-1 a full jobs-for-me answer kicks; F-2 a device printer's address ignoring case; M-7 comment) |
+| `e4e0052` | D1: Test print: a keyless `test` job on the printer's own line for its one writer, printed on the KOT surface |
+| `83fe801` | D2: the setup server: `GET /api/print-devices`, one routable printer per printing device until 2E, the 2A gate's M3 and M4 |
+| `cb10649` | D3: this device in printers mode: its bill printer header, the dot, Where slips print, the not-routed toast |
+| `7d35b9e` | D4: the setup page's pure half and data (`print-setup-form.ts`, `print-setup-text.ts`, `use-print-setup.ts`) |
+| `de781f8` | D5: the setup screens on `/printers`: Printers, Kitchen stations, Devices |
+| `03198b9` | D6: the Kitchen station on each category and item; this device's bill printer in the printer panel |
+| `c4c14d5` | D7: live legs ar–at |
+| `9e201c7` | Final review M-1 and M-6 (beyond the plan): the Set up printers toast; the bill picker shows where this device's bills print, as routing chooses |
+| (this commit) | Results; spec §8.1 "Changed by Session 2D's final review" |
+
+### Start
+
+- `git branch --show-current`: `feat/printing-phase-2`; HEAD `e836470` (= origin); working tree clean.
+- `GIT_TERMINAL_PROMPT=0 git fetch origin` (token credential): `origin/main` still `6ee2b1d`: nothing to merge or note.
+- Before D0, the whole D0–D7 range (plan lines 15447–21094) was dry-run with the gate's applier against `e836470`: **130 ops OK** (as the gate saw).
+
+### How the code was applied
+
+Every block was applied verbatim to the real repo by the gate's applier (`apply_blocks_clone.py`, copied to this session's scratchpad), one step range at a time, so each RED was seen before its code went in. After D7, **every file outside `docs/` is blob-identical to the gate's golden branch `g2d-v2`** (`git ls-tree -r` of both, `docs/` left out: 1,749 entries, no difference; the root trees differ only by the plan and spec committed at the gate: `e0068ed…` here, `bfbd1d9…` the gold). D0–D7: 65 files, **+2,553 / −70**, as the gate counted. The plan's `git add` lines for D5 and D6 leave `apps/cafe/app/(dashboard)/…` unquoted (Bash refuses the parentheses): the same files were staged with the paths quoted.
+
+### Per-task RED → GREEN (every Expected line compared; all matched)
+
+| Task | RED | GREEN |
+|---|---|---|
+| D0 | `print-agent-printers`: tests 11, pass 9, **fail 2** | 3 files **61/61**; cafe and shared tsc 0; `LINT_OK` |
+| D1 | shared `print-printers` + `print-lifecycle`: tests 29, pass 27, **fail 2**; cafe 3 files: tests 72, pass 68, **fail 4** | shared 3 files **72/72**, tsc 0; cafe 7 files **174/174**, tsc 0; `LINT_OK` |
+| D2 | shared `print-printers`: tests 1, pass 0, **fail 1**; cafe `print-setup-paths`: tests 17, pass 13, **fail 4** | shared **15/15**, tsc 0; cafe **17/17**, tsc 0; `LINT_OK` |
+| D3 | 3 files: tests 28, pass 24, **fail 4** | 8 files **201/201**; tsc 0; `LINT_OK` |
+| D4 | `print-setup-form`: tests 1, pass 0, **fail 1** | **7/7**; tsc 0; `LINT_OK` |
+| D5 | `print-setup-ui-paths`: tests 7, pass 0, **fail 7** | 4 files **55/55**; tsc 0; `LINT_OK` |
+| D6 | `print-setup-fields`: tests 3, pass 0, **fail 3** | 5 files **85/85**; tsc 0; `LINT_OK` |
+| D7 | (legs: apply and run) | tsc 0, `LINT_OK`; `verify:print:live` **`316 passed, 0 failed`** |
+| M-1 fix | `print-setup-ui-paths` "PIN (2D, spec §6.6) … Set up printers …": tests 7, pass 6, **fail 1** ("the toast never says nothing changes on paper") | 8 files **127/127**; tsc 0; `LINT_OK` |
+| M-6 fix | `print-bill-printer` "2D final review (M-6) …": tests 7, pass 6, **fail 1** (`billPrinterChoiceOf is not a function`) | (same run) |
+
+Line counts at the end (new files): `print-printer-test.ts` 100, `app/api/printers/[id]/test/route.ts` 43, `PrinterTestSlip.tsx` 48, `app/api/print-devices/route.ts` 22, `print-bill-printer.ts` 61 (34 before the fix), `print-setup-form.ts` 212, `print-setup-text.ts` 118, `use-print-setup.ts` 124, `components/print/setup/*` 40–204 (`PrinterFormDialog.tsx` 204), `BillPrinterSection.tsx` 59, legs `setup-2d.ts` 112. Changed: `print-lease.ts` 293, `printer-dot.ts` 281, `categories/page.tsx` 321, `ProductFormSheet.tsx` 289.
+
+### Task D8 Step 1: every suite (at `c4c14d5`)
+
+| Suite | Result |
+|---|---|
+| shared `npm test`; `tsc` | **682/682**; 0 |
+| cafe `npm test` | **4393 tests, 4392 pass, 0 fail, 1 skipped** (the `go-live-dl` pin) |
+| cafe `tsc`; `npm run lint` | 0; 0 errors and the 2 old warnings (`lib/masters-blob.test.ts:331`) |
+| Hub `tsc` | 0 |
+| mobile `tsc`; lint; `npm test`; `test:app` | 0; 0; **117/117**; Jest **3/3** (untouched) |
+| desktop `npm test` | **191/191** (untouched) |
+| `npm run test:print-tools` | **8/8** |
+| live legs (local mongod, `pos_scratch_print_host`) | **`316 passed, 0 failed`** (302 + 14: ar 6, as 5, at 3) |
+
+Every row equals the plan's Expected.
+
+**After the fix (`9e201c7`), Step 1 again:** shared **682/682**, tsc 0; cafe **4394 tests, 4393 pass, 0 fail, 1 skipped** (+1: the M-6 test; M-1's asserts joined an existing test); cafe tsc 0, lint 0 errors and the 2 old warnings; Hub 0; mobile **117/117** and Jest **3/3**; desktop **191/191**; print tools **8/8**; live legs **`316 passed, 0 failed`**.
+
+### Changed existing pins (each follows a deliberate change)
+
+The four the plan names: `print-host-slips.test.ts` "hostPrintSlipOf is exhaustive over PRINT_JOB_KINDS" (D1: the surfaces seen are kot, receipt, eod and test); leg (ao) in `scripts/print-host-live/printers-mode.ts` (D2: "a device writing two printers" built with `Printer.updateOne`); `menu-categories-paths.test.ts` "a new category's order comes from nextCategoryOrder(list)" (D6: the create may carry its station after its order); `apps/cafe/package.json` `testChain` (D1, D3, D4, D5, D6: `lib/print-printer-test.test.ts`, `lib/print-bill-printer.test.ts`, `lib/print-setup-form.test.ts`, `lib/print-setup-ui-paths.test.ts`, `lib/print-setup-fields.test.ts`). Beyond the plan, for the fix: 2D's own pin "PIN (2D, spec §6.6): with no printer, Set up printers comes first …" gains two asserts (the toast's words); every line the bill printer pin in `print-setup-fields.test.ts` reads is unchanged.
+
+### Step 2: the Next production build
+
+Success, **129 routes** (127 plus `/api/printers/[id]/test` and `/api/print-devices`), at `c4c14d5` and again at `9e201c7`.
+
+### Step 3: APKs (no mobile change: byte-identical to the release)
+
+`git diff e836470..HEAD --stat -- apps/mobile apps/desktop workers` printed nothing. Built with `GRADLE_USER_HOME='D:\gradle-home'`: x86_64 with `gradlew aR -PreactNativeArchitectures=x86_64` (BUILD SUCCESSFUL 32 s), the ARM pair with the README's `assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a` (17 s): x86_64 **`29115bdf…`** (7,425,177 B), arm64-v8a **`0e0ec314…`** (7,293,454 B), armeabi-v7a **`e618900a…`** (6,701,288 B): byte-identical to `D:\kd\pos-apk-release\Sandbee-POS-final\`. (The README's `assembleRelease` with `x86_64` alone gives no APK: the release split includes only the two ARM types; the `aR` spelling turns the split off, as Sessions 2A–2C built it.) No Worker change in 2D; the go-live run still deploys the Worker first (2C's `print-setup` kind), then the web, then reloads every POS screen.
+
+### Step 4: the exit check
+
+**Part A, the setup screens in a desktop browser: passed.** Exactly as the plan writes it: this branch's build (`c4c14d5`) on 3110 (env copied from the 2C session: database `pos_scratch_e2e_p1final`), the counting proxy on 3200, fake printers on 9100 and 9102 with long `--out` paths (nothing vanished), `p2d-tool.ts` and `pw-2d.mjs` extracted from this plan's fences into the scratchpad (byte-identical to the gate's copies), a headless desktop Chrome (the npx cache's `playwright-core`, the installed Chrome; nothing downloaded). As found: stations Kitchen (default) and Bar, no printer, no station on any category or item, no print host. `beat` for "Counter tablet" and "Bar phone": 200, 200.
+
+| # | Item | Result |
+|---|---|---|
+| 1 | `setup` (simple mode); `setup1 e2e-counter-agent 127.0.0.1 9100`; the counter agent; `order Cheesecake Masala` | "Set up printers" disabled: "Connect this device's printer first (Printer on this device, above)."; Printer 1 **201**; **one** KOT job (`ORD-20261004-052`), `station: null`, `created`, `leased`, `printed`, epoch 1, no labels: **67 B** at Printer 1, once |
+| 2 | `delete-station Bar` (as found), `add-station Bar`, `category-station Beverages Bar`, `add-printer "Bar printer" 127.0.0.1 9102 "Bar phone" Bar`, the bar agent, `order Cheesecake Masala` | the question "Delete Bar? Its categories, items and printers go back to the default station."; `state`: "Beverages -> Bar"; the form saved with Notices already ticked; the list: "Bar printer · Bar phone is online · Network 127.0.0.1:9102 · printed by Bar phone …gent · Bar KOTs, Notices"; the round (`-053`): "All stations" (Cheesecake, Masala Chai) **95 B** at Printer 1 and "Bar" (Masala Chai) **62 B** at the bar printer, once each, `more: false` |
+| 3 | `test-print "Printer 1"`, `test-print "Bar printer"`, `payloads 2` | both toasts "Test slip sent to …"; two `test` jobs: "Connection: Network 127.0.0.1:9100 · Slips: Bill, Full KOT copy, Notices, End of day · Stations: none · Paper: 80 mm · Copies: KOT 1 · Bill 1" and "Connection: Network 127.0.0.1:9102 · Slips: Notices · Stations: Bar · …"; each printed once by its own writer (**183 B**, **153 B**) |
+| 4 | `item-station Cheesecake Bar`, `order Cheesecake` | `state`: "Cheesecake -> Bar"; the full copy (Cheesecake) **79 B** and the "Bar" slip (Cheesecake) **61 B** (`-054`) |
+| 5 | `delete-station Bar`, `order Cheesecake Masala` | the same question; Beverages and Cheesecake lose their station, the bar printer keeps Notices only (the question names no printer: none is left with no slip); the round (`-055`): **one** KOT, `station: null`, **67 B** at Printer 1 |
+| 6 | `add-printer Clash 127.0.0.1 9103 "Counter tablet …gent" Kitchen` | the form: "That device already prints Printer 1. For now one device prints one printer: switch Printer 1 off, or choose another device."; nothing added (`state`: Printer 1 and Bar printer) |
+| 7 | `setup final` | "Printing is on · Each slip prints at its printer (Printer setup).", "Printers are set up: each slip prints at its printer (Printer setup → Printers).", "Bill printer for this device: Default (Printer 1)"; the top-bar dot green |
+
+Paper (bytes > 0): counter 5 slips (67, 95, 183, 79, 67), bar 3 (62, 153, 61). Put back: both agents stopped by PID (command lines checked), `reset2d` (2 printers, 2 scripted device rows), `add-station Bar`: as found.
+
+**The fix smoke (the build of `9e201c7`, the same harness):** Printer 1 and "Bar printer" (Bar KOTs and Notices, Bill off) made through the API, the browser's bill printer stored as "Bar printer": the panel shows **"Bar printer"** and "Bar printer no longer takes bills, but this device's bills still print there. Choose another printer to change it." (before the fix: "Default (Printer 1)" and "bills go to the default", while routing sent the bills to the bar). Put back as found again.
+
+**Part B, the app on the emulator: not run.** The session booted its own `Pixel_7_API_33` (`-memory 4096 -no-audio -no-snapshot-save`, C: 7 GB free; cold boot; crash buffer 0 lines at boot and at the end), the installed APK hashed on the device: the release `29115bdf…`; `adb reverse tcp:3100 tcp:3200`. The app opened on the owner's live demo ("Olivea Pizza"): only a screenshot was taken, nothing was tapped. Asked, the owner cleared the app's data himself (the app then showed the start screen "Connect to your workspace" with no address). Typing `http://localhost:3100` there (`adb shell input`) was **refused by the session's permission classifier** ("Sensitive Remote Exec"), and adding an `adb` allow rule to the project's `.claude` settings (the owner asked for it) was refused as self-modification; neither was worked around. The owner can add `"Bash(adb:*)"` to `.claude/settings.local.json` himself for the gate or a later session. Put back: `adb reverse --remove-all`, then `adb reverse tcp:3100 tcp:3100`; the POS, the proxy and both fake printers stopped by PID after checking each command line; `adb emu kill`. The app's demo address and sign-in were cleared by the owner and are his to restore. Part A, the live legs and the gate's own browser runs stand; the APK is byte-identical to the one the 2C session drove on the emulator.
+
+### Step 5: the fresh review
+
+Claude Fable 5.1 (the most capable model, as at every Phase 2 session and gate), read-only, on `e836470..c4c14d5` against this plan (decisions 1–16; "2C review gate: rulings"; Session 2D and its Review Focus, passed verbatim) and spec §6.6, §7.11, §8, §8.1, §9.3, §10, §11, §17. It read every non-test file, re-ran the 10 touched cafe suites (143/143) and 3 shared ones (73/73), and followed paths out of the diff (the agent hook, the insert, direct print, the sweep, the lease, the legacy claim, the Kotlin printer ids, the network-printer picker). Verdict "with fixes": no Critical; no path to a lost or doubled slip; a printerless cafe unchanged (no new header, request or dot change); the `test` kind closed in every switch; both new routes admin-only with `noStore`. It labelled every finding Minor; re-graded by their effect on staff:
+
+| # | Finding | Outcome |
+|---|---|---|
+| **M-1 → Important** | After "Set up printers" the toast said "Printer 1 is set up. Nothing changes on paper." With no print host, every other device's slips now print at Printer 1 (the text above the button says so): the admin is told the opposite of what happens (the 2C gate's M-6 words were recorded as fixed) | **Fixed (`9e201c7`)**: "Printer 1 is set up. This device's paper does not change, and other devices' slips print here too." RED → GREEN |
+| **M-6 → Important** | The bill picker listed only routable printers that take bills, but routing honours any routable choice (the 2B gate's ruling). After Bill is unticked on the printer a device chose, that device's bills keep printing there while its panel shows "Default (Printer 1)" and "bills go to the default" | **Fixed (`9e201c7`)** in the words: `billPrinterChoiceOf` (pure, in `lib/print-bill-printer.ts`) shows the printer routing uses (the same `routablePrinterOf` rule, checked in the test case by case) with a note; a choice switched off or gone still shows the default and says so. The routing rule itself is unchanged (the gate's call). RED → GREEN; proven in the browser (above) |
+| M-2 | A station delete that changes printers' KOT stations publishes no `print-setup` frame: other devices' lists stay stale up to the 30-min focus read or the wake's writer check (words and latency; routing is server-side) | For the 2D gate |
+| M-3 | `WaitingSlipsCard` still subscribes through `usePrinters(true)`: with the panel open, one admin save can cost that device two printers reads | For the 2D gate |
+| M-4 | Test print is offered for a routable printer whose row says "Not this device's printer": the toast says sent, the slip waits visibly until stale | For the 2D gate |
+| M-5 | The on/off switch fails a printer's waiting slips (the sweep) with no question; Delete asks one | For the 2D gate |
+| M-7 | A failed devices read is silent on the setup page | For the 2D gate |
+| M-8 | Wording: an already-off printer named as one that "will stop printing"; the Devices section's "Prints X" counts enabled printers that take no slip; `requestedBy` has no max (server-set) | For the 2D gate |
+
+Also for the gate (seen while fixing M-6): the bill section still hides itself when no routable printer takes bills, even if this device's routable choice (Bill unticked) still gets its bills. The reviewer's "declined to judge" list (14 items: the legacy claim, the sweep on a switched-off printer, an un-reloaded tab and a `test` job, `chosenBillPrinter` not requiring Bill, the default station seeded on a read, printer addresses visible to staff, the stale re-read, a Test print announced to its own device, one Printer 1 for a no-host cafe, an 80 mm test slip, focus refetches on admin pages, the Windows Printer 1's paper, two admins racing on/off, Part B) was ruled item by item in the ledger: each stands as built or as an earlier gate ruled. Its plan notes: Review Focus item 3's "or a printer with no slip … refused" should read that only a second routable printer is refused (one taking no slip never clashes, D-R6); the bill printer header rides whenever a choice is stored (the server ignores it in simple mode and when the printer is not routable); the unquoted `git add` paths (above).
+
+### Deviations and rulings
+
+- **Beyond the plan:** the fix commit `9e201c7` (M-1, M-6), its tests, and spec §8.1 "Changed by Session 2D's final review".
+- **The emulator exit check (Part B) did not run** (above); the plan allows it ("If Part B could not run … say so in Results").
+- **The x86_64 APK** was built with `aR` (the README's `assembleRelease` gives no x86_64 APK); same as earlier sessions; same hash.
+- **The fresh review ran while Part B waited for the owner** (read-only, told not to touch the database, the ports or the emulator).
+- The skill's `task-start` extracts only numeric "Task N" headings, so each D-task's brief was read from the plan by line range (ledgered; no plan text changed).
+- Every decision is in the ledger (`.superpowers/sdd/2026-10-03-phase-2-routing/progress.md`, git-ignored, kept for the gate).
+
+### Open for the 2D gate
+
+Part B on the emulator (needs `"Bash(adb:*)"` allowed by the owner, or the owner's own taps); M-2 to M-5, M-7, M-8 and the bill section's hide rule above; re-check M-1, M-6 and the §8.1 amendment (whether a device's chosen printer should need Bill to keep getting its bills is the gate's call). Carried: 2E's several printers per device (lifts the one-printer refusal in the form and the server), M-2 of the 2B gate. The go-live run deploys the Worker first.
+
+### Pushed
+
+With the token only: `GIT_TERMINAL_PROMPT=0 git push origin feat/printing-phase-2`. `origin/main` was still `6ee2b1d` at the end (no merge). `main` untouched; nothing deployed.

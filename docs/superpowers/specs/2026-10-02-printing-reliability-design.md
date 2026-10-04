@@ -543,6 +543,10 @@ The Phase 2 plan ([2026-10-03-phase-2-routing.md](../plans/2026-10-03-phase-2-ro
 - **A replay or re-send after an admin changed the setup** inside one request's retry window routes to the new printer, and both print (inherent to the key adding the printer, decision 3; the repair is immune: it routes only a round with no job). Accepted at the 2C gate (M-4).
 - **Station writes never leave the setup half-done:** a rename is saved before the default moves; a delete clears every pointer before the station goes, and names any printer it leaves with no slip.
 
+**Changed by Session 2D's final review (2026-10-04; the 2D gate re-checks it).**
+- **The bill printer picker says what routing does (M-6).** Routing sends this device's bills to its choice while that printer is routable, whether or not it still takes bills (the 2B gate's ruling). A choice whose Bill box was unticked later is therefore shown as chosen, with "‹printer› no longer takes bills, but this device's bills still print there. Choose another printer to change it.", never as the default; a choice switched off or gone shows the default and says so. Before, the panel said "Default" while bills kept printing at the chosen printer.
+- **"Set up printers" says where other devices' slips go (M-1).** Its confirmation reads "Printer 1 is set up. This device's paper does not change, and other devices' slips print here too." (with no print host, every device's slips now print at Printer 1); before, it said "Nothing changes on paper".
+
 ## 9. Printer devices (agents)
 
 ### 9.1 What an agent does
