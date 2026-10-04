@@ -8,6 +8,8 @@ import { z } from "zod";
 import { createProductSchema, type CreateProductInput } from "@/schemas";
 import { isProductIconKey } from "@pos/shared/product-icons";
 import { useCreateProduct, useUpdateProduct } from "@/hooks/use-products";
+import { useStations } from "@/hooks/use-print-setup";
+import { StationSelect } from "@/components/print/setup/StationSelect";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -61,6 +63,8 @@ export function ProductFormSheet({
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
   const isEdit = !!product;
+  // Printing Phase 2 Session 2D (spec §6.2): read only while the sheet is open.
+  const { stations } = useStations(open);
 
   const {
     register,
@@ -93,6 +97,8 @@ export function ProductFormSheet({
             // A stored key that predates a catalogue change reads as "none" —
             // saving would otherwise resend an icon the enum now rejects (400).
             icon: isProductIconKey(product.icon) ? product.icon : undefined,
+            // The saved id as it is: a station list still loading never clears it on save.
+            stationId: product.stationId,
           }
         : emptyValues,
     );
@@ -134,6 +140,8 @@ export function ProductFormSheet({
             // explicit clear, and an unpicked icon on a create-shaped value is
             // `undefined`, which JSON drops — null is what $unsets it.
             icon: values.icon ?? null,
+            // And once more: "Use the category's station" restores ABSENT.
+            stationId: values.stationId ?? null,
           },
         });
       } else {
@@ -260,6 +268,22 @@ export function ProductFormSheet({
         name="publicVisible"
         render={({ field }) => <PublicVisibleField value={field.value} onChange={field.onChange} />}
       />
+
+      <FormField label="Kitchen station">
+        <Controller
+          control={control}
+          name="stationId"
+          render={({ field }) => (
+            <StationSelect
+              id="product-station"
+              value={field.value ?? ""}
+              onChange={(next) => field.onChange(next === "" ? undefined : next)}
+              stations={stations}
+              inheritLabel="Use the category's station"
+            />
+          )}
+        />
+      </FormField>
     </FormSheet>
   );
 }

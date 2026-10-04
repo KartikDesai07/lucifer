@@ -360,7 +360,8 @@
     "lib/print-printer-test.test.ts",
     "lib/print-bill-printer.test.ts",
     "lib/print-setup-form.test.ts",
-    "lib/print-setup-ui-paths.test.ts"
+    "lib/print-setup-ui-paths.test.ts",
+    "lib/print-setup-fields.test.ts"
   ],
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

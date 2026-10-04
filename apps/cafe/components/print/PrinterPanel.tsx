@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { usePosPulseContext } from "@/components/layout/PosPulseProvider";
 import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
 import { usePrintHostDot } from "@/components/layout/print-host-dot-context";
+import { BillPrinterSection } from "@/components/print/BillPrinterSection";
 import { PrinterSetupCard } from "@/components/print/PrinterSetupCard";
 import { PrinterStatusBanner } from "@/components/print/PrinterStatusBanner";
 import { WaitingSlipsCard } from "@/components/print/WaitingSlipsCard";
@@ -51,6 +52,7 @@ export function PrinterPanel({ onDone }: { onDone?: () => void }) {
       <WaitingSlipsCard pulse={pulse} />
       <PrinterStatusBanner dot={dot.show ? dot : CHECKING_DOT} copy={copy} />
       <PrinterSetupCard />
+      <BillPrinterSection />
       {onDone !== undefined && (
         <Button className={cn(PRINTER_ACTION_CLASS, "w-full")} onClick={onDone}>
           Done

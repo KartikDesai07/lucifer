@@ -11,6 +11,8 @@ import {
   useDeleteCategory,
 } from "@/hooks/use-categories";
 import { useProducts } from "@/hooks/use-products";
+import { useStations } from "@/hooks/use-print-setup";
+import { StationSelect } from "@/components/print/setup/StationSelect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -65,9 +67,19 @@ function CategoriesPageContent() {
   const [editing, setEditing] = useState<Category | null>(null);
   const [name, setName] = useState("");
   const [deleting, setDeleting] = useState<Category | null>(null);
+  // Printing Phase 2 Session 2D (spec §6.2, §11): the category's kitchen station; "" is the default station (it
+  // follows a moved default). Every station is listed, the default too, so a category kept on the station that is the
+  // default now shows as kept and can be set back to the default (the 2D gate's review, I-2).
+  const { stations } = useStations();
+  const defaultStation = stations.find((station) => station.isDefault);
+  const [stationId, setStationId] = useState("");
 
   useEffect(() => {
     if (formOpen) setName(editing?.name ?? "");
+  }, [formOpen, editing]);
+  useEffect(() => {
+    // The saved id as it is: a list still loading never turns it into "default" on save.
+    if (formOpen) setStationId(editing?.stationId ?? "");
   }, [formOpen, editing]);
 
   const list = categories.data ?? [];
@@ -115,10 +127,11 @@ function CategoriesPageContent() {
       if (editing) {
         await updateCategory.mutateAsync({
           id: editing._id,
-          data: { name: trimmed },
+          // null: back to the default station (an absent key would leave the saved one).
+          data: { name: trimmed, stationId: stationId === "" ? null : stationId },
         });
       } else {
-        await createCategory.mutateAsync({ name: trimmed, order: nextCategoryOrder(list) });
+        await createCategory.mutateAsync({ name: trimmed, order: nextCategoryOrder(list), ...(stationId !== "" ? { stationId } : {}) });
       }
       setFormOpen(false);
     } catch {
@@ -226,6 +239,15 @@ function CategoriesPageContent() {
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Beverages"
             />
+            <Label htmlFor="category-station">Kitchen station</Label>
+            <StationSelect
+              id="category-station"
+              value={stationId}
+              onChange={setStationId}
+              stations={stations}
+              inheritLabel={`Default station (${defaultStation?.name ?? "Kitchen"})`}
+            />
+            <p className="text-xs text-muted-foreground">Where this category&apos;s KOTs print once printers are set up (Printer setup).</p>
             <DialogFooter className="pt-2">
               <Button type="submit" disabled={!name.trim() || createCategory.isPending || updateCategory.isPending}>
                 {(createCategory.isPending || updateCategory.isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
