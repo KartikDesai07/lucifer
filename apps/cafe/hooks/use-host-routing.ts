@@ -28,7 +28,7 @@ import {
 import { readDevicePrefs, writeDevicePrefs } from "@/lib/pos-device-prefs";
 import { readDeviceId } from "@/lib/pos-device-id";
 import { deliverLeasedJob, kickPrintAgent } from "@/lib/print-agent";
-import { printAgentEnqueueHeaders, printJobRefOf } from "@/lib/print-agent-calls";
+import { leasedJobsOf, printAgentEnqueueHeaders, printJobRefOf, type FollowedPrintJobRef } from "@/lib/print-agent-calls";
 import type { Order } from "@/types";
 
 export interface PrintRoutingHost {
@@ -147,6 +147,9 @@ export function useHostRouting(): PrintRoutingHost {
       // or this host's: lease it now.
       if (result.outcome === "queued" && result.leased !== undefined) deliverLeasedJob(result.leased);
       else if (agentDeviceId !== "" && result.outcome === "queued") kickPrintAgent();
+      // Session 2E (spec §9.2): a slip that became several jobs leased to this tab (one per printer line of this
+      // device) prints each here; the agent ignores one it already holds.
+      if (result.outcome === "queued") for (const job of leasedJobsOf(result.jobs ?? []).filter((leased) => leased.id !== result.leased?.id)) deliverLeasedJob(job);
       // PH-5 (OPS-7): a job the HOST itself queued should drain on the next
       // microtask, not the next 20s tick — refetch the pulse so the drain's
       // feed sees it now. A handler-time pref read (never during render); a
@@ -165,7 +168,7 @@ export function useHostRouting(): PrintRoutingHost {
   // Session 2B (spec §7.11): a job the answer made leased to this tab is handed to the agent, which prints
   // it now: no lease request either.
   const followPrintJob = useCallback(
-    (ref: PrintJobRef, buildJob: () => PrintJobRequest) => {
+    (ref: FollowedPrintJobRef, buildJob: () => PrintJobRequest) => {
       try {
         recordReadback(printReadbackRecordOf(ref.id, buildJob().payload));
       } catch {
@@ -173,6 +176,8 @@ export function useHostRouting(): PrintRoutingHost {
       }
       if (ref.leased !== undefined) deliverLeasedJob(ref.leased);
       else if (ref.status === "queued") kickPrintAgent();
+      // Session 2E (spec §9.2): the slip's other jobs leased to this tab (another printer of this device) print here too.
+      for (const job of ref.alsoLeased ?? []) deliverLeasedJob(job);
     },
     [recordReadback],
   );

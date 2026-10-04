@@ -72,6 +72,22 @@ test("PIN (2E): each slip carries its printer's target from the agent to the Win
   assert.match(shell, /printerName !== undefined && shell\.printHtmlOn !== undefined \? shell\.printHtmlOn\(html, printerName\) : shell\.printHtml\(html\)/);
 });
 
+test("PIN (2E): the agent leases, offers for direct print and is kicked only for the printers no refusal holds", () => {
+  const hook = src("hooks/use-print-agent.ts");
+  assert.match(hook, /lease: \(printerIds\) => apiSend<PrintLeaseData>\(LEASE_URL, "POST", \{ deviceId, tabId, \.\.\.printerIdsBody\(printerIds\) \}\),/, "the lease names what the agent says is open");
+  assert.match(hook, /readyPrinters: \(\) => readyRef\.current,/);
+  assert.match(hook, /lineOf: \(job\) => \(job\.printerId !== undefined && targetsRef\.current\[job\.printerId\] !== undefined \? job\.printerId : PRINT_DEVICE_LINE\),/, "a named Windows printer is a line of its own");
+  assert.match(hook, /const offReady = setReadyPrintersSource\(\(\) => agent\.openPrinters\(\)\);/, "direct print names only open printers");
+  assert.equal((hook.match(/jobsForMeLeasable\([^)]*, agent\.openPrinters\(\)\)/g) ?? []).length, 2, "the pulse and the wake kick only for open printers");
+  assert.match(hook, /printerState: \(\) => \(isDesktopShell\(\) \? desktopPrinterSnapshot\(\) : devicePrinter\(\)\.getSnapshot\(\)\),/, "a Windows printer list read again releases a hold");
+});
+
+test("PIN (2E): every job of a slip leased to this tab is handed to the agent, from an order answer and from an enqueue", () => {
+  const seam = src("hooks/use-host-routing.ts");
+  assert.match(seam, /for \(const job of ref\.alsoLeased \?\? \[\]\) deliverLeasedJob\(job\);/, "an order answer: the slip's other leased jobs");
+  assert.match(seam, /if \(result\.outcome === "queued"\) for \(const job of leasedJobsOf\(result\.jobs \?\? \[\]\)\.filter\(\(leased\) => leased\.id !== result\.leased\?\.id\)\) deliverLeasedJob\(job\);/, "an enqueue: every job of the slip");
+});
+
 test("PIN (2E): the agent's printers follow the Windows app's printer list, read again with every printers read", () => {
   const hook = src("hooks/use-agent-printers.ts");
   assert.match(hook, /if \(enabled && isDesktopShell\(\)\) void refreshDesktopPrinterChosen\(\);/, "a printer added in Windows is seen with the next printers read");

@@ -6,7 +6,7 @@ import { PRINT_ACK_PENDING_MAX_MS, PRINT_ACK_RETRY_MS } from "@pos/shared/print-
 import { PRINT_WAKE_FAST_MS, PRINT_WAKE_SLOW_MS, PRINT_WAKE_SOCKET_MS } from "@pos/shared/print-job";
 import { PRINT_AGENT_REFUSED_RECHECK_MS, type LeasedPrintJob, type PrintAckData, type PrintLeaseData } from "@pos/shared/print-agent-wire";
 import { createPrintAgentWake } from "@/lib/print-agent-wake";
-import { printAgentEnqueueHeaders, printAgentHeaders, printJobRefOf } from "@/lib/print-agent-calls";
+import { leasedJobsOf, printAgentEnqueueHeaders, printAgentHeaders, printJobRefOf } from "@/lib/print-agent-calls";
 import { createHostSlipOutcomes } from "@/lib/print-host-outcomes";
 import {
   PRINT_DIRECT_HOLD_MS,
@@ -27,6 +27,7 @@ import {
   type PrintAgentAckBody,
   type PrintAgentResult,
 } from "@/lib/print-agent";
+import { PRINT_DEVICE_LINE, createRefusalHolds } from "@/lib/print-agent-holds";
 import { PRINT_HOST_EOD_TIMEOUT_MESSAGE } from "@/lib/print-host-slips";
 import { PRINT_SLIP_REFUSALS_MAX, isSlipRefusal, printWriteOutcomeOf } from "@/lib/print-write-outcome";
 import { RASTER_FAILED_MESSAGE } from "@/lib/printer/raster";
@@ -373,6 +374,26 @@ test("the slip for a leased job carries its labels as the banner; an end-of-day 
   const eod = printAgentSlipOf({ ...job("e1"), kind: "eod", labels: ["REPRINT"] }, "2026-10-03");
   assert.equal(eod.surface, "eod");
   assert.equal("banner" in eod, false, "the end-of-day summary takes no banner");
+});
+
+// Phase 2 Session 2E (spec §9.2, decision 15): with two printers on one device, one slip is leased to the asking tab once
+// per printer line (the first slip of each line). Every one of them must reach the agent, or the second waits leased
+// until its lease runs out and prints late, as a REPRINT (found by the 2D gate's browser run of the Windows app).
+test("2E: every job of a slip leased to this tab reaches the agent: the one followed, and the others beside it", () => {
+  const lease = (id: string): LeasedPrintJob => ({ ...job(id), printerId: `p-${id}` });
+  const order = {
+    printJobs: [
+      { id: "all", kind: "kot", targetDeviceId: "pc", label: "KOT 1 · All stations", status: "leased", leased: lease("all") },
+      { id: "bar", kind: "kot", targetDeviceId: "pc", label: "KOT 1 · Bar", status: "leased", leased: lease("bar") },
+      { id: "kit", kind: "kot", targetDeviceId: "tab", label: "KOT 1 · Kitchen", status: "queued" },
+      { id: "bill", kind: "bill", targetDeviceId: "pc", label: "Bill", status: "queued" },
+    ],
+  };
+  const ref = printJobRefOf(order, "kot");
+  assert.equal(ref?.id, "all", "the first leased one is followed (its readback chip)");
+  assert.deepEqual(ref?.alsoLeased?.map((j) => j.id), ["bar"], "the other one leased to this tab rides beside it");
+  assert.equal(printJobRefOf(order, "bill")?.alsoLeased, undefined, "a slip with one job: nothing beside it");
+  assert.deepEqual(leasedJobsOf([{ leased: lease("a") }, {}, { leased: lease("a") }, { leased: lease("b") }]).map((j) => j.id), ["a", "b"], "each once, in order");
 });
 
 // Phase 2 Session 2E (spec §9.2): a printer job on the Windows app carries its printer's name and paper to the bridge.
@@ -972,6 +993,112 @@ test("2B: directReady is true only while this tab drains, its printer can print,
   assert.equal(agent.directReady(), true, "until the recheck window has passed");
   agent.stop();
   assert.equal(agent.directReady(), false, "a stopped agent");
+});
+
+// Phase 2 Session 2E (spec §9.1, §9.2): a Windows PC prints several printers. A refusal (nothing sent) holds that
+// printer's own line: the next lease names the others only, and the held one again once its state changes or the
+// re-check window passes. A refusal on the device's own printer (every other lane: one printer) holds everything.
+function printersWorld(ready: string[], lineOf: (j: LeasedPrintJob) => string) {
+  const made = world();
+  const asked: string[][] = [];
+  const deps = {
+    ...made.deps,
+    readyPrinters: () => ready,
+    lineOf,
+    lease: async (printerIds: readonly string[] = []): Promise<PrintLeaseData> => {
+      asked.push([...printerIds]);
+      return made.deps.lease();
+    },
+  };
+  return { ...made, deps, asked };
+}
+
+test("2E: a refusal holds its own Windows printer only: the next lease names the others, and the held one comes back when its state changes", async () => {
+  const { w, deps, asked } = printersWorld(["p-bar", "p-kitchen"], (j) => j.printerId ?? "");
+  w.leases.push({ jobs: [{ ...job("b1"), printerId: "p-bar" }], retryAt: null }, { jobs: [{ ...job("k1"), printerId: "p-kitchen" }], retryAt: null });
+  w.results.push({ ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) });
+  w.ackAnswers.push({ applied: true, status: "queued", nextAttemptAt: new Date(T0 + 2_000).toISOString() }, { applied: true, status: "printed", nextAttemptAt: null, more: false });
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.equal(w.acks[0]?.body.sent, "no", "the bar printer refused: nothing sent");
+  assert.deepEqual(agent.openPrinters(), ["p-kitchen"], "the bar printer is held, the kitchen printer open");
+  assert.equal(agent.directReady(), true, "this PC still prints its kitchen slips at once");
+  agent.kick();
+  await settle();
+  assert.deepEqual(asked, [["p-bar", "p-kitchen"], ["p-kitchen"]], "the next lease names the kitchen printer only");
+  assert.deepEqual(w.prints, ["b1", "k1"], "the kitchen slip printed while the bar printer was held");
+  w.printer = {};
+  assert.deepEqual(agent.openPrinters(), ["p-bar", "p-kitchen"], "its state changed (the printer list was read again): both open");
+  agent.stop();
+});
+
+// Found by the 2D gate's browser run: with another printer open, the refused job's 2 s backoff woke the agent into a
+// lease that could only find the open printers' lines, and nothing looked at the held printer when its hold ended.
+test("2E: a held printer is looked at again when its hold ends, never at its backoff while another printer is open", async () => {
+  const { w, deps, asked } = printersWorld(["p-bar", "p-kitchen"], (j) => j.printerId ?? "");
+  w.leases.push({ jobs: [{ ...job("b1"), printerId: "p-bar" }], retryAt: null }, { jobs: [{ ...job("b1", 2), printerId: "p-bar" }], retryAt: null });
+  w.results.push({ ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) });
+  w.ackAnswers.push({ applied: true, status: "queued", nextAttemptAt: new Date(T0 + 2_000).toISOString() }, { applied: true, status: "printed", nextAttemptAt: null, more: false });
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  await advance(w, PRINT_AGENT_REFUSED_RECHECK_MS - 1);
+  assert.deepEqual(asked, [["p-bar", "p-kitchen"]], "no lease at the 2 s backoff: it could only find the kitchen's line");
+  await advance(w, 1);
+  assert.deepEqual(asked, [["p-bar", "p-kitchen"], ["p-bar", "p-kitchen"]], "the hold ended: one lease names the bar printer again");
+  assert.deepEqual(w.prints, ["b1", "b1"], "and its slip prints, unlabelled: nothing reached paper the first time");
+  agent.stop();
+});
+
+test("2E: a refusal on this device's own printer (its one printer on every other lane) still holds every line, as before", async () => {
+  const { w, deps } = printersWorld(["p-counter"], () => PRINT_DEVICE_LINE);
+  w.leases.push({ jobs: [{ ...job("c1"), printerId: "p-counter" }], retryAt: null });
+  w.results.push({ ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) });
+  w.ackAnswers.push({ applied: true, status: "queued", nextAttemptAt: new Date(T0 + 2_000).toISOString() });
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.deepEqual(agent.openPrinters(), [], "its one printer refused: nothing is open");
+  assert.equal(agent.directReady(), false, "and nothing is asked for at once");
+  agent.kick();
+  await settle();
+  assert.equal(w.leaseCalls, 1, "no lease until its state changes or the window passes");
+  await advance(w, PRINT_AGENT_REFUSED_RECHECK_MS);
+  assert.equal(w.leaseCalls, 2, "the window passed: one lease");
+  agent.stop();
+});
+
+test("2E: every Windows printer held: no lease at all, and the agent looks again when the first hold ends", async () => {
+  const { w, deps } = printersWorld(["p-bar"], (j) => j.printerId ?? "");
+  w.leases.push({ jobs: [{ ...job("b1"), printerId: "p-bar" }], retryAt: null });
+  w.results.push({ ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) });
+  w.ackAnswers.push({ applied: true, status: "queued", nextAttemptAt: null });
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  agent.kick();
+  await settle();
+  assert.equal(w.leaseCalls, 1, "its only printer is held: a lease would find nothing it may print");
+  await advance(w, PRINT_AGENT_REFUSED_RECHECK_MS);
+  assert.equal(w.leaseCalls, 2, "the hold ended: one lease");
+  agent.stop();
+});
+
+test("2E: the holds: per line, released by a state change or the window, the device line holding every printer", () => {
+  let state: object = {};
+  let now = T0;
+  const holds = createRefusalHolds({ printerState: () => state, now: () => now });
+  assert.deepEqual([holds.open(["a", "b"]), holds.mayLease(["a", "b"]), holds.nextEnd()], [["a", "b"], true, null], "nothing held");
+  holds.hold("a");
+  assert.deepEqual([holds.open(["a", "b"]), holds.mayLease(["a", "b"]), holds.mayLease(["a"])], [["b"], true, false], "a held, b open; with only a: nothing to lease");
+  assert.equal(holds.nextEnd(), T0 + PRINT_AGENT_REFUSED_RECHECK_MS, "the soonest end");
+  now += PRINT_AGENT_REFUSED_RECHECK_MS;
+  assert.deepEqual(holds.open(["a", "b"]), ["a", "b"], "the window passed");
+  holds.hold(PRINT_DEVICE_LINE);
+  assert.deepEqual([holds.open(["a", "b"]), holds.mayLease([]), holds.holding(PRINT_DEVICE_LINE)], [[], false, true], "the device line holds everything");
+  state = {};
+  assert.deepEqual([holds.open(["a"]), holds.mayLease([])], [["a"], true], "a state change releases it");
 });
 
 test("2B: the seams: the lease header names the draining tab only while its agent says so; a leased job reaches the agent that listens", () => {

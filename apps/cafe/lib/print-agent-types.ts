@@ -24,7 +24,8 @@ export interface PendingPrintAck {
 
 export interface PrintAgentDeps {
   deviceId: string;
-  lease(): Promise<PrintLeaseData>;
+  /** Leases this device's own line and the printers named (Session 2E: those no refusal holds). */
+  lease(printerIds: readonly string[]): Promise<PrintLeaseData>;
   ack(id: string, body: PrintAgentAckBody): Promise<PrintAckData>;
   /** Prints one leased job through the host bridge. Never rejects. */
   print(job: LeasedPrintJob): Promise<PrintAgentResult>;
@@ -32,6 +33,10 @@ export interface PrintAgentDeps {
   printerReady(): boolean;
   /** Any value whose identity changes when this device's printer changes (its snapshot). */
   printerState(): unknown;
+  /** Session 2E: the printers this device prints here (printers mode); absent: its own line only. */
+  readyPrinters?(): readonly string[];
+  /** Session 2E: the line a job's refusal holds: its named Windows printer, else this device's own printer (""). */
+  lineOf?(job: LeasedPrintJob): string;
   readPending(): PendingPrintAck[];
   writePending(entries: PendingPrintAck[]): void;
   now(): number;
@@ -53,4 +58,6 @@ export interface PrintAgent {
   /** Session 2B: this tab drains, its printer can print now and no refusal holds it, so its requests may
    *  ask for their slips leased to it (directPrintTab). */
   directReady(): boolean;
+  /** Session 2E: the printers this tab can print now: ready here and not held by a refusal of their own. */
+  openPrinters(): string[];
 }

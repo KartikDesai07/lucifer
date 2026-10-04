@@ -7,6 +7,7 @@ import {
   type PrintAckData,
 } from "@pos/shared/print-agent-wire";
 import { ackAnswered } from "@/lib/print-ack-store";
+import { PRINT_DEVICE_LINE, createRefusalHolds } from "@/lib/print-agent-holds";
 import { failedAckBody } from "@/lib/print-agent-slip";
 import type { PendingPrintAck, PrintAgent, PrintAgentDeps } from "@/lib/print-agent-types";
 import { PRINT_SLIP_REFUSALS_MAX, isSlipRefusal, printWriteOutcomeOf } from "@/lib/print-write-outcome";
@@ -26,6 +27,10 @@ import { PRINT_SLIP_REFUSALS_MAX, isSlipRefusal, printWriteOutcomeOf } from "@/l
 // printed before any lease, first in first out; a job it already holds, is printing (however it came) or
 // acked is ignored, so an answer delivered twice prints once. After a job leaves the line, the ack's `more`
 // decides whether to lease again.
+//
+// Phase 2 Session 2E (spec §9.2): a Windows PC prints several printers, one slip at a time through its one bridge.
+// A refusal holds only its own printer's line (lib/print-agent-holds.ts); the lease, direct print and the kicks name
+// only the printers no refusal holds.
 
 /** The pending-ack store keeps at most this many entries (an agent prints one job at a time). */
 export const PRINT_ACK_PENDING_LIMIT = 50;
@@ -45,7 +50,9 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
   let running = false;
   let kickedWhileRunning = false;
   let stopped = false;
-  let refused: { state: unknown; at: number } | null = null;
+  const holds = createRefusalHolds(deps);
+  const ready = (): readonly string[] => deps.readyPrinters?.() ?? [];
+  const lineOf = (job: LeasedPrintJob): string => deps.lineOf?.(job) ?? PRINT_DEVICE_LINE;
   let timer: unknown = null;
   let timerAt = Number.POSITIVE_INFINITY;
   let ackTimer: unknown = null;
@@ -83,13 +90,9 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
     handedBack = true;
   }
 
+  /** No line this device could lease is free of a refusal's hold (Session 2E: per line). */
   function refusalHolds(): boolean {
-    if (refused === null) return false;
-    if (deps.printerState() !== refused.state || deps.now() - refused.at >= PRINT_AGENT_REFUSED_RECHECK_MS) {
-      refused = null;
-      return false;
-    }
-    return true;
+    return !holds.mayLease(ready());
   }
 
   function wakeAt(atMs: number): void {
@@ -183,7 +186,7 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
       if (job === undefined) {
         // Only a held job prints past the lease gate; with none left (I-1), the gate decides as always.
         if (forHeld && !printAgentMayLease({ enabled, busy, running: false, printerReady: deps.printerReady(), refusalHolds: refusalHolds() })) return;
-        const data = await deps.lease();
+        const data = await deps.lease(holds.open(ready()));
         // Session 2C: one job per line (its own and each printer line it writes); on its one local printer they
         // print one by one, the rest held like a taken job. A line that gave none sets the timer even so.
         for (const extra of data.jobs.slice(1)) {
@@ -222,8 +225,8 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
         slipRefusals.set(job.id, count);
         if (count >= PRINT_SLIP_REFUSALS_MAX) outcome = { ...outcome, permanent: true };
       } else if (outcome.sent === "no" && !outcome.permanent) {
-        // Nothing reached the printer: it is off or unreachable. No automatic attempt until it changes.
-        refused = { state: deps.printerState(), at: deps.now() };
+        // Nothing reached the printer: it is off or unreachable. No automatic attempt on it until it changes.
+        holds.hold(lineOf(job));
       }
       const body = failedAckBody(deps.deviceId, job.epoch, outcome);
       const answer = await deps.ack(job.id, body).catch((error: unknown) => {
@@ -240,8 +243,10 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
       // kick that landed meanwhile (the bridge freeing up from this very slip) would only find it not due.
       if (answer.nextAttemptAt !== null) {
         kickedWhileRunning = false;
-        wakeAt(Date.parse(answer.nextAttemptAt));
-      } else again = refused === null && answer.more !== false;
+        // Session 2E: a line its refusal holds is looked at again when the hold ends; a lease at its backoff would
+        // only find the other printers' lines.
+        wakeAt(holds.holding(lineOf(job)) ? (holds.nextEnd() ?? Date.parse(answer.nextAttemptAt)) : Date.parse(answer.nextAttemptAt));
+      } else again = !holds.holding(lineOf(job)) && answer.more !== false;
     } catch {
       // No answer from the lease (offline, a deploy): look again later, never in a tight loop.
       wakeAt(deps.now() + PRINT_AGENT_REFUSED_RECHECK_MS);
@@ -259,11 +264,15 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
     // made while the printer was ready, so a printer that went off since refuses it (sent:"no", never
     // counted) instead of leaving it to expire into a REPRINT.
     if (held.length > 0 && enabled && !busy) return void cycle(true);
-    const holds = refusalHolds();
-    if (!printAgentMayLease({ enabled, busy, running, printerReady: deps.printerReady(), refusalHolds: holds })) {
-      if (holds && refused !== null) wakeAt(refused.at + PRINT_AGENT_REFUSED_RECHECK_MS);
+    const blocked = refusalHolds();
+    if (!printAgentMayLease({ enabled, busy, running, printerReady: deps.printerReady(), refusalHolds: blocked })) {
+      const end = holds.nextEnd();
+      if (blocked && end !== null) wakeAt(end);
       return;
     }
+    // Session 2E: a printer held while others print is looked at again when its hold ends.
+    const holdEnd = holds.nextEnd();
+    if (holdEnd !== null) wakeAt(holdEnd);
     void cycle();
   }
 
@@ -310,6 +319,9 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
     },
     directReady() {
       return enabled && !stopped && deps.printerReady() && !refusalHolds();
+    },
+    openPrinters() {
+      return deps.printerReady() ? holds.open(ready()) : [];
     },
   };
 }

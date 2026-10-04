@@ -162,8 +162,9 @@ test("2C gate (F-1): a full jobs-for-me answer may hide a job the agent can leas
 
 test("PIN (2C final review, I-2): the pulse and the wake kick the agent only on jobs it can lease", () => {
   const agent = src("apps/cafe/hooks/use-print-agent.ts");
-  assert.match(agent, /if \(jobsForMeLeasable\(data\?\.printJobsForMe, readyRef\.current\)\) agent\.kick\(\);/, "the pulse");
-  assert.match(agent, /leasable: \(jobs\) => jobsForMeLeasable\(jobs, readyRef\.current\),/, "the wake");
+  // Session 2E: on the printers it prints here that no refusal holds (agent.openPrinters()).
+  assert.match(agent, /if \(jobsForMeLeasable\(data\?\.printJobsForMe, agent\.openPrinters\(\)\)\) agent\.kick\(\);/, "the pulse");
+  assert.match(agent, /leasable: \(jobs\) => jobsForMeLeasable\(jobs, agent\.openPrinters\(\)\),/, "the wake");
   assert.ok(agent.includes("noteJobsForMe(data?.printJobsForMe);"), "a stale list is still read again from the pulse");
 });
 
@@ -176,8 +177,10 @@ test("PIN (2C): the page reads the printers on mount, on a print-setup frame and
   const drain = src("apps/cafe/components/print/PrintHostDrain.tsx");
   assert.match(drain, /const printers = useAgentPrinters\(deviceId, surfacesMounted && deviceId !== ""\);/);
   const agent = src("apps/cafe/hooks/use-print-agent.ts");
-  assert.match(agent, /lease: \(\) => apiSend<PrintLeaseData>\(LEASE_URL, "POST", \{ deviceId, tabId, \.\.\.printerIdsBody\(readyRef\.current\) \}\),/, "it leases its ready printers' lines too");
-  assert.match(agent, /const offReady = setReadyPrintersSource\(\(\) => readyRef\.current\);/);
+  // Session 2E: the agent names the printers no refusal holds (lib/print-agent-holds.ts) to the lease and the headers.
+  assert.match(agent, /lease: \(printerIds\) => apiSend<PrintLeaseData>\(LEASE_URL, "POST", \{ deviceId, tabId, \.\.\.printerIdsBody\(printerIds\) \}\),/, "it leases its ready printers' lines too");
+  assert.match(agent, /readyPrinters: \(\) => readyRef\.current,/);
+  assert.match(agent, /const offReady = setReadyPrintersSource\(\(\) => agent\.openPrinters\(\)\);/);
   // The 2C gate's review (I-2) and its emulator run: a list that looks stale is read again.
   assert.match(agent, /if \(!printerListLooksStale\(\{ ready: readyRef\.current, isWriter: writerRef\.current, jobsForMe: jobs, writesPrinters \}\)\) return;/);
   assert.match(agent, /void qc\.invalidateQueries\(\{ queryKey: PRINTERS_KEYS\.all \}\);/);

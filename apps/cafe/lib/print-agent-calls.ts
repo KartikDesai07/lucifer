@@ -8,6 +8,7 @@ import {
   PRINT_IDEMPOTENCY_KEY_PATTERN,
   PRINT_LEASE_HEADER,
   PRINT_READY_HEADER,
+  type LeasedPrintJob,
   type PrintJobRef,
 } from "@pos/shared/print-agent-wire";
 import type { PrintJobKind } from "@pos/shared/print-job";
@@ -63,12 +64,30 @@ function isPrintJobRef(value: unknown): value is PrintJobRef {
   return typeof ref === "object" && ref !== null && typeof ref.id === "string" && typeof ref.kind === "string" && typeof ref.status === "string";
 }
 
+/** Session 2E (spec §9.2): the ref a call site follows, and every other job of that slip leased to this tab. */
+export type FollowedPrintJobRef = PrintJobRef & { alsoLeased?: LeasedPrintJob[] };
+
+/** Session 2E (spec §9.2, decision 15): the jobs of one slip an answer leased to this tab, each once. A slip routed to
+ *  several printers this device prints is leased once per printer line (the first slip of each line). */
+export function leasedJobsOf(refs: readonly { leased?: LeasedPrintJob }[]): LeasedPrintJob[] {
+  const out: LeasedPrintJob[] = [];
+  for (const ref of refs) {
+    const job = ref.leased;
+    if (job !== undefined && !out.some((seen) => seen.id === job.id && seen.epoch === job.epoch)) out.push(job);
+  }
+  return out;
+}
+
 /** The job an order answer made for one kind of slip, or null: then the call site enqueues it. Session 2C: a slip
- *  routed to several printers has a ref per printer; the one leased to this tab (at most one) must reach its agent,
- *  and each other one is printed by its own printer's writer. */
-export function printJobRefOf(order: unknown, kind: PrintJobKind): PrintJobRef | null {
+ *  routed to several printers has a ref per printer; the one leased to this tab must reach its agent, and each other
+ *  one is printed by its own printer's writer. Session 2E: with several printers on this device, the slip's other jobs
+ *  leased to this tab ride beside it (alsoLeased), and each reaches the agent too. */
+export function printJobRefOf(order: unknown, kind: PrintJobKind): FollowedPrintJobRef | null {
   const refs = (order as { printJobs?: unknown } | null | undefined)?.printJobs;
   if (!Array.isArray(refs)) return null;
   const ofKind = refs.filter((ref): ref is PrintJobRef => isPrintJobRef(ref) && ref.kind === kind);
-  return ofKind.find((ref) => ref.leased !== undefined) ?? ofKind[0] ?? null;
+  const chosen = ofKind.find((ref) => ref.leased !== undefined) ?? ofKind[0] ?? null;
+  if (chosen === null) return null;
+  const alsoLeased = leasedJobsOf(ofKind.filter((ref) => ref !== chosen));
+  return alsoLeased.length === 0 ? chosen : { ...chosen, alsoLeased };
 }

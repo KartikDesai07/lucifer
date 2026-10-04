@@ -39,6 +39,8 @@ import type { HostPrintDone } from "@/lib/print-host-outcomes";
 import { PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print-host-slips";
 import { bumpPrintWakeBudget, mergePrintWakeBudget, readPrintWakeBudget, writePrintWakeBudget, type PrintWakeBudget } from "@/lib/print-wake-budget";
 import { PrintWriteError } from "@/lib/print-write-outcome";
+import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
+import { desktopPrinterSnapshot } from "@/lib/printer/desktop-printer-state";
 import { devicePrinter } from "@/lib/printer/device-printer";
 import { nativeBridge, nativeOn } from "@/lib/printer/native-bridge";
 import { canPrintNow, currentLane, defaultDeviceLabel, printCapabilities } from "@/lib/printer/print-lane";
@@ -115,7 +117,8 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
   useEffect(() => {
     queueRef.current = queueSlip;
   }, [queueSlip]);
-  // Session 2C: the printers this tab prints on, read at call time by the lease, the wake and the headers.
+  // Session 2C: the printers this tab prints on, read at call time. Session 2E: the agent leases, offers for direct
+  // print and is kicked only for those of them no refusal holds (agent.openPrinters()).
   const readyRef = useRef<readonly string[]>(printers.localIds);
   const readyKey = printers.localIds.join(",");
   useEffect(() => {
@@ -172,11 +175,14 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
     const print = (job: LeasedPrintJob): Promise<PrintAgentResult> => printJobCopies(job, readyRef.current, () => printOnce(job));
     const created = createPrintAgent({
       deviceId,
-      lease: () => apiSend<PrintLeaseData>(LEASE_URL, "POST", { deviceId, tabId, ...printerIdsBody(readyRef.current) }),
+      lease: (printerIds) => apiSend<PrintLeaseData>(LEASE_URL, "POST", { deviceId, tabId, ...printerIdsBody(printerIds) }),
       ack: (id, body) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", body),
       print,
       printerReady: canPrintNow,
-      printerState: () => devicePrinter().getSnapshot(),
+      // Session 2E: the Windows app's printer list read again (a printer added or removed) releases a refusal's hold.
+      printerState: () => (isDesktopShell() ? desktopPrinterSnapshot() : devicePrinter().getSnapshot()),
+      readyPrinters: () => readyRef.current,
+      lineOf: (job) => (job.printerId !== undefined && targetsRef.current[job.printerId] !== undefined ? job.printerId : PRINT_DEVICE_LINE),
       readPending: readPendingAcks,
       writePending: writePendingAcks,
       ...timers(),
@@ -212,7 +218,7 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
   useEffect(() => {
     if (agent === null) return;
     const offSource = setDirectPrintSource(() => (agent.directReady() ? tabId : null));
-    const offReady = setReadyPrintersSource(() => readyRef.current);
+    const offReady = setReadyPrintersSource(() => agent.openPrinters());
     const offLeased = onLeasedJob((job) => agent.take(job));
     return () => {
       offSource();
@@ -245,7 +251,7 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
       const data = event.query.state.data as PosPulseData | undefined;
       if ((data?.printJobsForMe?.count ?? 0) > 0) {
         noteJobsForMe(data?.printJobsForMe);
-        if (jobsForMeLeasable(data?.printJobsForMe, readyRef.current)) agent.kick();
+        if (jobsForMeLeasable(data?.printJobsForMe, agent.openPrinters())) agent.kick();
       }
     });
     return () => {
@@ -277,7 +283,7 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
         writePrintWakeBudget(record);
         return allowed;
       },
-      leasable: (jobs) => jobsForMeLeasable(jobs, readyRef.current),
+      leasable: (jobs) => jobsForMeLeasable(jobs, agent.openPrinters()),
       onJobs: () => agent.kick(),
       ...timers(),
     });
