@@ -9,6 +9,7 @@
 // the browser print dialog kept working, because the operator picks the
 // printer there. This is that choice, made once and stored by the shell.
 import { desktopShell } from "@/lib/desktop-shell";
+import type { PaperWidth } from "@/lib/constants";
 
 export interface DesktopPrinter {
   /** What Chromium's deviceName matches on — the OS name, not the label. */
@@ -38,6 +39,18 @@ export interface DesktopPrinterApi {
   // Optional on purpose (same rationale as savePrinter): an older shell
   // exposes a bridge WITHOUT it. Callers must feature-detect.
   savePrintMode?: (mode: DesktopPrintMode) => Promise<{ printMode: DesktopPrintMode }>;
+}
+
+/** Phase 2 Session 2E (spec §9.2): the shell prints a slip on a printer the page names (printHtmlOn, desktop 1.11.0).
+ *  Feature-detected like the picker: an older shell prints only on its chosen printer, so the page names none there. */
+export function desktopPrintsOnNamed(): boolean {
+  return typeof desktopShell()?.printHtmlOn === "function";
+}
+
+/** Phase 2 Session 2E: where a printer job prints on the Windows app: its Windows printer, drawn for its paper. */
+export interface DesktopPrintTarget {
+  printerName: string;
+  paper: PaperWidth;
 }
 
 /**

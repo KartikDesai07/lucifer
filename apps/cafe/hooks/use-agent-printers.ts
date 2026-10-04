@@ -5,10 +5,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { PRINT_SETUP_STALE_MS } from "@pos/shared/print-budget";
 import type { PrinterConfig } from "@pos/shared/print-printers";
-import { useDevicePrinter } from "@/hooks/use-device-printer";
+import { useDesktopPrinterSnapshot, useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
 import { apiGet } from "@/lib/api-client";
 import { isDesktopShell } from "@/lib/desktop-shell";
-import { agentPrintersOf, dotPrintersOf, type AgentPrinters } from "@/lib/print-agent-printers";
+import { desktopPrintsOnNamed } from "@/lib/desktop-shell-printer";
+import { agentPrintersOf, dotPrintersOf, type AgentPrinters, type DesktopPrinters } from "@/lib/print-agent-printers";
+import { refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
 import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
 import { subscribeRealtime } from "@/lib/realtime-client";
 
@@ -35,7 +37,9 @@ export function usePrintersRead(enabled: boolean): { printers: PrinterConfig[]; 
   return { printers: query.data ?? NO_PRINTERS, loaded: query.isSuccess, failed: query.isError };
 }
 
-/** The agent's read: the same query, plus the one print-setup subscription. */
+/** The agent's read: the same query, plus the one print-setup subscription. Session 2E: the Windows app's own printer
+ *  list is read again with every printers read (a local call to the app, no request), so a printer just added in
+ *  Windows and saved in the setup is this PC's at once. */
 export function usePrinters(enabled: boolean): PrinterConfig[] {
   const qc = useQueryClient();
   const { printers } = usePrintersRead(enabled);
@@ -45,7 +49,17 @@ export function usePrinters(enabled: boolean): PrinterConfig[] {
       if (kind === "print-setup") void qc.invalidateQueries({ queryKey: PRINTERS_KEYS.all });
     });
   }, [enabled, qc]);
+  useEffect(() => {
+    if (enabled && isDesktopShell()) void refreshDesktopPrinterChosen();
+  }, [enabled, printers]);
   return printers;
+}
+
+/** Session 2E (spec §9.2): the Windows app's printers, by name; null on any other device. */
+export function useDesktopPrinters(): DesktopPrinters | null {
+  const snapshot = useDesktopPrinterSnapshot();
+  const lane = usePrintLane();
+  return useMemo(() => (lane === "desktop" ? { selected: snapshot.selected, names: snapshot.names, named: desktopPrintsOnNamed() } : null), [lane, snapshot]);
 }
 
 /** Session 2D (spec §10): the top-bar dot's view of printers mode. The same printers read as the agent's (one cache
@@ -53,12 +67,14 @@ export function usePrinters(enabled: boolean): PrinterConfig[] {
 export function useDotPrinters(deviceId: string): PrinterDotPrinters {
   const { printers } = usePrintersRead(deviceId !== "");
   const local = useDevicePrinter().printer;
-  return useMemo(() => dotPrintersOf(printers, deviceId, local, isDesktopShell()), [printers, deviceId, local]);
+  const desktop = useDesktopPrinters();
+  return useMemo(() => dotPrintersOf(printers, deviceId, local, desktop), [printers, deviceId, local, desktop]);
 }
 
-/** The printers this device writes, and which it prints on its one local printer (lib/print-agent-printers.ts). */
+/** The printers this device writes, and which it prints here (lib/print-agent-printers.ts). */
 export function useAgentPrinters(deviceId: string, enabled: boolean): AgentPrinters {
   const printers = usePrinters(enabled);
   const local = useDevicePrinter().printer;
-  return useMemo(() => agentPrintersOf(printers, deviceId, local, isDesktopShell()), [printers, deviceId, local]);
+  const desktop = useDesktopPrinters();
+  return useMemo(() => agentPrintersOf(printers, deviceId, local, desktop), [printers, deviceId, local, desktop]);
 }

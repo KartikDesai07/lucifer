@@ -6,6 +6,7 @@ import path from "node:path";
 import { rasterCapable } from "@/lib/printer/capabilities";
 import {
   desktopChosen,
+  desktopPrinterSnapshot,
   publishDesktopPrinterSelection,
   refreshDesktopPrinterChosen,
   resetDesktopPrinterChosen,
@@ -283,6 +284,21 @@ test("R2-W6: a slower read that started BEFORE the save cannot overwrite the pub
   release({ selected: null, printers: [] });
   assert.equal(await slow, "chosen", "the stale read is dropped");
   assert.equal(desktopChosen(), "chosen");
+});
+
+// Phase 2 Session 2E (spec §9.2): the store also keeps the chosen printer's name and every printer Windows reports, so
+// the page knows which of its Windows printers this PC prints.
+test("2E: the store keeps the chosen printer's name and every printer Windows reports; a cleared choice keeps the list", async (t) => {
+  await installShellWithPicker(t, null);
+  const holder = globalThis as unknown as { window: { posDesktop: { listPrinters: () => Promise<unknown> } } };
+  holder.window.posDesktop.listPrinters = async () => ({ selected: "EPSON", printers: [{ name: "EPSON", displayName: "EPSON" }, { name: "Kitchen TVS", displayName: "Kitchen" }] });
+  await refreshDesktopPrinterChosen();
+  assert.deepEqual(desktopPrinterSnapshot(), { chosen: "chosen", selected: "EPSON", names: ["EPSON", "Kitchen TVS"] });
+  const before = desktopPrinterSnapshot();
+  await refreshDesktopPrinterChosen();
+  assert.equal(desktopPrinterSnapshot(), before, "an unchanged read keeps the same value (a stable store snapshot)");
+  publishDesktopPrinterSelection(null);
+  assert.deepEqual(desktopPrinterSnapshot(), { chosen: "none", selected: null, names: ["EPSON", "Kitchen TVS"] }, "the list stays");
 });
 
 test("defaultDeviceLabel: tablet for the app or a coarse pointer, PC otherwise and always on the desktop shell", (t) => {

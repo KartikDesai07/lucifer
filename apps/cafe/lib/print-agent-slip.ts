@@ -1,5 +1,6 @@
 import { PRINT_ACK_ERROR_MAX_CHARS, printBannerText } from "@pos/shared/print-lifecycle";
 import type { LeasedPrintJob } from "@pos/shared/print-agent-wire";
+import type { DesktopPrintTarget } from "@/lib/desktop-shell-printer";
 import type { PrintAgentAckBody } from "@/lib/print-agent-types";
 import { PRINT_HOST_DISPATCH_TIMEOUT_MS, PRINT_HOST_EOD_READY_TIMEOUT_MS, hostPrintSlipOf, type HostPrintSlip } from "@/lib/print-host-slips";
 import type { PrintWriteOutcome } from "@/lib/print-write-outcome";
@@ -26,9 +27,11 @@ export function failedAckBody(deviceId: string, epoch: number, outcome: PrintWri
 }
 
 /** The slip the host bridge prints for one leased job: today's renderer props (print-host-slips.ts),
- *  plus the job's labels as the one banner on top (spec §7.7). An end-of-day summary takes none. */
-export function printAgentSlipOf(job: LeasedPrintJob, todayKey: string): HostPrintSlip {
+ *  plus the job's labels as the one banner on top (spec §7.7). An end-of-day summary takes none. Session 2E: a job
+ *  on a Windows printer this PC prints by name carries that printer's target. */
+export function printAgentSlipOf(job: LeasedPrintJob, todayKey: string, target?: DesktopPrintTarget): HostPrintSlip {
   const slip = hostPrintSlipOf(job.payload, todayKey);
   const banner = printBannerText(job.labels);
-  return banner === "" || slip.surface === "eod" ? slip : { ...slip, banner };
+  const labelled: HostPrintSlip = banner === "" || slip.surface === "eod" ? slip : { ...slip, banner };
+  return target === undefined ? labelled : { ...labelled, target };
 }

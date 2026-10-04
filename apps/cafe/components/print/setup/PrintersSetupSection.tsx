@@ -13,7 +13,8 @@ import { PrinterFormDialog } from "@/components/print/setup/PrinterFormDialog";
 import { SetUpPrintersCard } from "@/components/print/setup/SetUpPrintersCard";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { useCanPrintNow, useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
+import { useDesktopPrinters } from "@/hooks/use-agent-printers";
+import { useCanPrintNow, useDevicePrinter } from "@/hooks/use-device-printer";
 import { useDeletePrinter, useSavePrinter, useTestPrinter } from "@/hooks/use-print-setup";
 import { agentPrintersOf } from "@/lib/print-agent-printers";
 import { printerBodyOf, printerDraftOf } from "@/lib/print-setup-form";
@@ -43,8 +44,8 @@ export function PrintersSetupSection({ printers, stations, devices, deviceId }: 
   const testPrint = useTestPrinter();
   // The printers this device prints here, from the list this page already holds (no second read, no subscription).
   const local = useDevicePrinter().printer;
-  const lane = usePrintLane();
-  const localIds = agentPrintersOf(printers, deviceId, local, lane === "desktop").localIds;
+  const desktop = useDesktopPrinters();
+  const localIds = agentPrintersOf(printers, deviceId, local, desktop).localIds;
   const canPrint = useCanPrintNow();
   const gaps = setupGaps(printers, stations);
   const busy = save.isPending || remove.isPending;

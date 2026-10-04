@@ -6,9 +6,12 @@ import { useSyncExternalStore } from "react";
 import { onWindowEvent } from "@/lib/printer/capabilities";
 import {
   SERVER_DESKTOP_CHOSEN,
+  SERVER_DESKTOP_SNAPSHOT,
   desktopChosen,
+  desktopPrinterSnapshot,
   subscribeDesktopPrinterChosen,
   type DesktopChosen,
+  type DesktopPrinterSnapshot,
 } from "@/lib/printer/desktop-printer-state";
 import { NONE_SNAPSHOT, devicePrinter, type PrinterSnapshot } from "@/lib/printer/device-printer";
 import { NATIVE_READY_EVENT } from "@/lib/printer/native-bridge";
@@ -56,6 +59,11 @@ export function usePrintLane(): PrintLane {
 
 export function useDesktopPrinterChosen(): DesktopChosen {
   return useSyncExternalStore(subscribeDesktopPrinterChosen, desktopChosen, () => SERVER_DESKTOP_CHOSEN);
+}
+
+/** Phase 2 Session 2E: the Windows app's chosen printer and every printer Windows reports on this PC. */
+export function useDesktopPrinterSnapshot(): DesktopPrinterSnapshot {
+  return useSyncExternalStore(subscribeDesktopPrinterChosen, desktopPrinterSnapshot, () => SERVER_DESKTOP_SNAPSHOT);
 }
 
 export function useCanPrintNow(): boolean {

@@ -6,7 +6,7 @@ import path from "node:path";
 import type { PrinterConfig } from "@pos/shared/print-printers";
 import { stripComments } from "@/lib/source-pin-utils";
 import { PRINT_JOBS_FOR_ME_LIMIT } from "@pos/shared/print-agent-wire";
-import { PRINTER_NOT_LOCAL_MESSAGE, agentPrintersOf, dotPrintersOf, jobsForMeLeasable, printJobCopies, printerIsLocal, printerListLooksStale } from "@/lib/print-agent-printers";
+import { PRINTER_NOT_LOCAL_MESSAGE, agentPrintersOf, dotPrintersOf, jobsForMeLeasable, printJobCopies, printerIsLocal, printerListLooksStale, type DesktopPrinters } from "@/lib/print-agent-printers";
 import type { PrintAgentResult } from "@/lib/print-agent-types";
 import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
 import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
@@ -30,29 +30,33 @@ const NATIVE_BLE: DevicePrinter = { kind: "native", name: "BLE", paper: "58mm", 
 const NATIVE_USB: DevicePrinter = { kind: "native", name: "USB", paper: "80mm", printerId: "usb:0416:5011", transport: "usb" };
 const WEB_BLE: DevicePrinter = { kind: "ble", name: "BLE", paper: "58mm", deviceId: "ble-1", serviceUuid: "s", characteristicUuid: "c" };
 const WEB_SERIAL: DevicePrinter = { kind: "serial", name: "USB", paper: "80mm" };
+// Phase 2 Session 2E (spec §9.2): the Windows app's printers, by name. NAMED: an app that prints on a named printer
+// (printHtmlOn, desktop 1.11.0); OLD: one that prints only on its chosen printer.
+const WIN_NAMED: DesktopPrinters = { selected: "EPSON TM-T82", names: ["EPSON TM-T82", "Kitchen TVS"], named: true };
+const WIN_OLD: DesktopPrinters = { ...WIN_NAMED, named: false };
 
 test("printerIsLocal: a printer is printed here only when it IS this device's printer", () => {
   const lan = printer("lan", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "dev-a" });
-  assert.equal(printerIsLocal(lan, NATIVE_TCP, false), true, "the app's selected network printer, same host and port");
-  assert.equal(printerIsLocal({ ...lan, connection: { kind: "lan", host: "192.168.1.60", port: 9101 } }, NATIVE_TCP, false), false, "another port");
-  assert.equal(printerIsLocal(lan, NATIVE_BT, false), false, "a Bluetooth printer is not that LAN printer");
+  assert.equal(printerIsLocal(lan, NATIVE_TCP, null), true, "the app's selected network printer, same host and port");
+  assert.equal(printerIsLocal({ ...lan, connection: { kind: "lan", host: "192.168.1.60", port: 9101 } }, NATIVE_TCP, null), false, "another port");
+  assert.equal(printerIsLocal(lan, NATIVE_BT, null), false, "a Bluetooth printer is not that LAN printer");
   const bt = printer("bt", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "00:11:22:33:44:55" });
-  assert.equal(printerIsLocal(bt, NATIVE_BT, false), true, "the paired printer by its address");
-  assert.equal(printerIsLocal({ ...bt, connection: { ...bt.connection, address: "AA:BB" } as PrinterConfig["connection"] }, NATIVE_BT, false), false, "another paired printer");
+  assert.equal(printerIsLocal(bt, NATIVE_BT, null), true, "the paired printer by its address");
+  assert.equal(printerIsLocal({ ...bt, connection: { ...bt.connection, address: "AA:BB" } as PrinterConfig["connection"] }, NATIVE_BT, null), false, "another paired printer");
   // Session 2C's final review (I-1): the app names its printer "<transport>:<id>"; the setup's address is the bare
   // id (§6.3), or the app's whole id when the setup stored what the app reported.
-  assert.equal(printerIsLocal(printer("bt2", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "bt-classic:00:11:22:33:44:55" }), NATIVE_BT, false), true, "the app's whole id");
+  assert.equal(printerIsLocal(printer("bt2", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "bt-classic:00:11:22:33:44:55" }), NATIVE_BT, null), true, "the app's whole id");
   const ble = printer("ble-n", { kind: "device", deviceId: "dev-a", transport: "ble", address: "00:11:22:33:44:55" });
-  assert.equal(printerIsLocal(ble, NATIVE_BLE, false), true, "a BLE printer by its address");
-  assert.equal(printerIsLocal(ble, NATIVE_BT, false), false, "the same address over another transport is another printer");
-  assert.equal(printerIsLocal(printer("usb", { kind: "device", deviceId: "dev-a", transport: "usb", address: "0416:5011" }), NATIVE_USB, false), true, "a USB printer by its vendor:product id");
-  assert.equal(printerIsLocal(printer("usb2", { kind: "device", deviceId: "dev-a", transport: "usb", address: "0416:5012" }), NATIVE_USB, false), false, "another USB model");
-  assert.equal(printerIsLocal(printer("ble", { kind: "device", deviceId: "dev-a", transport: "web-bluetooth", address: "ble-1" }), WEB_BLE, false), true);
-  assert.equal(printerIsLocal(printer("ser", { kind: "device", deviceId: "dev-a", transport: "web-serial", address: "usb" }), WEB_SERIAL, false), true, "a tab drives one serial printer");
+  assert.equal(printerIsLocal(ble, NATIVE_BLE, null), true, "a BLE printer by its address");
+  assert.equal(printerIsLocal(ble, NATIVE_BT, null), false, "the same address over another transport is another printer");
+  assert.equal(printerIsLocal(printer("usb", { kind: "device", deviceId: "dev-a", transport: "usb", address: "0416:5011" }), NATIVE_USB, null), true, "a USB printer by its vendor:product id");
+  assert.equal(printerIsLocal(printer("usb2", { kind: "device", deviceId: "dev-a", transport: "usb", address: "0416:5012" }), NATIVE_USB, null), false, "another USB model");
+  assert.equal(printerIsLocal(printer("ble", { kind: "device", deviceId: "dev-a", transport: "web-bluetooth", address: "ble-1" }), WEB_BLE, null), true);
+  assert.equal(printerIsLocal(printer("ser", { kind: "device", deviceId: "dev-a", transport: "web-serial", address: "usb" }), WEB_SERIAL, null), true, "a tab drives one serial printer");
   const win = printer("win", { kind: "device", deviceId: "dev-a", transport: "windows", address: "EPSON TM-T82" });
-  assert.equal(printerIsLocal(win, null, true), true, "the Windows app prints a Windows printer");
-  assert.equal(printerIsLocal(win, null, false), false, "a browser does not");
-  assert.equal(printerIsLocal(bt, null, false), false, "no printer saved here");
+  assert.equal(printerIsLocal(win, null, WIN_OLD), true, "the Windows app prints the Windows printer chosen there");
+  assert.equal(printerIsLocal(win, null, null), false, "a browser does not");
+  assert.equal(printerIsLocal(bt, null, null), false, "no printer saved here");
 });
 
 // The 2C review gate (F-2): the app spells a MAC upper-case and a USB id lower-case (Kotlin PrinterIds); an
@@ -60,11 +64,11 @@ test("printerIsLocal: a printer is printed here only when it IS this device's pr
 test("2C gate (F-2): a Bluetooth, BLE or USB printer is this device's printer whatever the case of its address", () => {
   const mac = "aa:bb:cc:dd:ee:ff";
   const btApp: DevicePrinter = { kind: "native", name: "BT", paper: "58mm", printerId: "bt-classic:AA:BB:CC:DD:EE:FF", transport: "bt-classic" };
-  assert.equal(printerIsLocal(printer("bt", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: mac }), btApp, false), true, "a lower-case MAC");
-  assert.equal(printerIsLocal(printer("bt", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: `bt-classic:${mac}` }), btApp, false), true, "the whole id, lower-case");
+  assert.equal(printerIsLocal(printer("bt", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: mac }), btApp, null), true, "a lower-case MAC");
+  assert.equal(printerIsLocal(printer("bt", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: `bt-classic:${mac}` }), btApp, null), true, "the whole id, lower-case");
   const usbApp: DevicePrinter = { kind: "native", name: "USB", paper: "80mm", printerId: "usb:04b8:0e15", transport: "usb" };
-  assert.equal(printerIsLocal(printer("usb", { kind: "device", deviceId: "dev-a", transport: "usb", address: "04B8:0E15" }), usbApp, false), true, "an upper-case USB id");
-  assert.equal(printerIsLocal(printer("ble", { kind: "device", deviceId: "dev-a", transport: "ble", address: mac }), btApp, false), false, "case never makes another transport match");
+  assert.equal(printerIsLocal(printer("usb", { kind: "device", deviceId: "dev-a", transport: "usb", address: "04B8:0E15" }), usbApp, null), true, "an upper-case USB id");
+  assert.equal(printerIsLocal(printer("ble", { kind: "device", deviceId: "dev-a", transport: "ble", address: mac }), btApp, null), false, "case never makes another transport match");
 });
 
 test("agentPrintersOf: printers mode, whether this device writes one, and the ones it prints here", () => {
@@ -72,10 +76,38 @@ test("agentPrintersOf: printers mode, whether this device writes one, and the on
   const kitchen = printer("kitchen", { kind: "lan", host: "192.168.1.61", port: 9100 }, { primaryDeviceId: "dev-k" });
   const bar = printer("bar", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "AA:BB" });
   const off = printer("off", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "dev-a", enabled: false });
-  assert.deepEqual(agentPrintersOf([counter, kitchen, bar, off], "dev-a", NATIVE_TCP, false), { printersMode: true, isWriter: true, localIds: ["counter"] }, "it writes the counter and the bar; only the counter is its printer");
-  assert.deepEqual(agentPrintersOf([counter, kitchen], "dev-p", NATIVE_TCP, false), { printersMode: true, isWriter: false, localIds: [] }, "an ordering phone writes nothing");
-  assert.deepEqual(agentPrintersOf([], "dev-a", NATIVE_TCP, false), { printersMode: false, isWriter: false, localIds: [] }, "simple mode");
-  assert.deepEqual(agentPrintersOf([counter], "", NATIVE_TCP, false), { printersMode: true, isWriter: false, localIds: [] }, "no device identity");
+  assert.deepEqual(agentPrintersOf([counter, kitchen, bar, off], "dev-a", NATIVE_TCP, null), { printersMode: true, isWriter: true, localIds: ["counter"], targets: {} }, "it writes the counter and the bar; only the counter is its printer");
+  assert.deepEqual(agentPrintersOf([counter, kitchen], "dev-p", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], targets: {} }, "an ordering phone writes nothing");
+  assert.deepEqual(agentPrintersOf([], "dev-a", NATIVE_TCP, null), { printersMode: false, isWriter: false, localIds: [], targets: {} }, "simple mode");
+  assert.deepEqual(agentPrintersOf([counter], "", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], targets: {} }, "no device identity");
+});
+
+// Phase 2 Session 2E (spec §9.2): one Windows PC prints several printers, each by its own Windows name. An older app
+// prints only its chosen printer, so another Windows printer is never local there: its slips wait, visibly, rather than
+// print on the chosen printer's paper (the 2C gate's F-3).
+test("2E: a Windows printer is this PC's printer by its name: any printer Windows reports on an app that prints on a named printer, only the chosen one on an older app", () => {
+  const counter = printer("counter", { kind: "device", deviceId: "dev-a", transport: "windows", address: "EPSON TM-T82" });
+  const kitchen = printer("kitchen", { kind: "device", deviceId: "dev-a", transport: "windows", address: "Kitchen TVS" });
+  const gone = printer("gone", { kind: "device", deviceId: "dev-a", transport: "windows", address: "Old printer" });
+  assert.equal(printerIsLocal(kitchen, null, WIN_NAMED), true, "a printer Windows reports on this PC");
+  assert.equal(printerIsLocal(gone, null, WIN_NAMED), false, "a printer this PC no longer has");
+  assert.equal(printerIsLocal(kitchen, null, WIN_OLD), false, "an older app: never another printer's slips on the chosen printer's paper");
+  assert.equal(printerIsLocal(counter, null, WIN_OLD), true, "its chosen printer");
+  assert.equal(printerIsLocal(kitchen, null, { ...WIN_NAMED, names: null }), false, "the list not read yet: nothing local yet");
+  assert.equal(printerIsLocal(kitchen, null, null), false, "not the Windows app");
+});
+
+test("2E: each Windows printer this PC prints gets its target (its name and its paper); none on an older app or another lane", () => {
+  const counter = printer("counter", { kind: "device", deviceId: "dev-a", transport: "windows", address: "EPSON TM-T82" });
+  const kitchen = printer("kitchen", { kind: "device", deviceId: "dev-a", transport: "windows", address: "Kitchen TVS" }, { paper: 58 });
+  const theirs = printer("theirs", { kind: "device", deviceId: "dev-b", transport: "windows", address: "Kitchen TVS" });
+  const both = agentPrintersOf([counter, kitchen, theirs], "dev-a", null, WIN_NAMED);
+  assert.deepEqual(both.localIds, ["counter", "kitchen"], "both printers of this PC, not another PC's");
+  assert.deepEqual(both.targets, { counter: { printerName: "EPSON TM-T82", paper: "80mm" }, kitchen: { printerName: "Kitchen TVS", paper: "58mm" } });
+  const old = agentPrintersOf([counter, kitchen], "dev-a", null, WIN_OLD);
+  assert.deepEqual([old.localIds, old.targets], [["counter"], {}], "an older app: its chosen printer, printed as before, named nowhere");
+  assert.deepEqual(agentPrintersOf([counter], "dev-a", NATIVE_TCP, null).targets, {}, "not the Windows app");
+  assert.deepEqual(dotPrintersOf([counter, kitchen], "dev-a", null, WIN_OLD), { printersMode: true, isWriter: true, allLocal: false }, "the dot shows the printer an older app cannot print");
 });
 
 // The 2C gate's review (I-2) and its emulator run: a list goes stale both ways when a print-setup frame is missed.
@@ -84,10 +116,10 @@ test("agentPrintersOf: printers mode, whether this device writes one, and the on
 test("2D: the dot's view of printers mode: on or off, whether this device writes a printer, and whether it prints every one it writes", () => {
   const counter = printer("counter", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "dev-a" });
   const bar = printer("bar", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "00:11:22:33:44:55" });
-  assert.deepEqual(dotPrintersOf([counter], "dev-a", NATIVE_TCP, false), { printersMode: true, isWriter: true, allLocal: true }, "it writes the counter, which is its printer");
-  assert.deepEqual(dotPrintersOf([counter, bar], "dev-a", NATIVE_TCP, false), { printersMode: true, isWriter: true, allLocal: false }, "it also writes the bar, not its printer");
-  assert.deepEqual(dotPrintersOf([counter], "dev-p", null, false), { printersMode: true, isWriter: false, allLocal: true }, "an ordering phone");
-  assert.deepEqual(dotPrintersOf([], "dev-a", NATIVE_TCP, false), { printersMode: false, isWriter: false, allLocal: true }, "simple mode");
+  assert.deepEqual(dotPrintersOf([counter], "dev-a", NATIVE_TCP, null), { printersMode: true, isWriter: true, allLocal: true }, "it writes the counter, which is its printer");
+  assert.deepEqual(dotPrintersOf([counter, bar], "dev-a", NATIVE_TCP, null), { printersMode: true, isWriter: true, allLocal: false }, "it also writes the bar, not its printer");
+  assert.deepEqual(dotPrintersOf([counter], "dev-p", null, null), { printersMode: true, isWriter: false, allLocal: true }, "an ordering phone");
+  assert.deepEqual(dotPrintersOf([], "dev-a", NATIVE_TCP, null), { printersMode: false, isWriter: false, allLocal: true }, "simple mode");
 });
 
 test("printerListLooksStale: a printer job it does not print on, or a writer the setup no longer names", () => {

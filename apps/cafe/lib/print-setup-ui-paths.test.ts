@@ -50,7 +50,7 @@ test("PIN (2D, spec §6.6): with no printer, Set up printers comes first, makes 
 test("PIN (2D): each printer row: its state in words, on/off, Test print only when it can print, edit, delete with a question", () => {
   const section = src(`${SETUP}PrintersSetupSection.tsx`);
   assert.match(section, /const state = printerRowState\(printer, devices, \{ deviceId, localIds, canPrint \}\);/);
-  assert.match(section, /const localIds = agentPrintersOf\(printers, deviceId, local, lane === "desktop"\)\.localIds;/, "from the list the page holds");
+  assert.match(section, /const localIds = agentPrintersOf\(printers, deviceId, local, desktop\)\.localIds;/, "from the list the page holds (Session 2E: and this PC's Windows printers)");
   // The 2D review gate (M-4): a printer its writer's lease would never take, or one this device writes but cannot print
   // right now, is not tested (the slip would only wait).
   assert.match(section, /const blocked = testPrintBlock\(printer, printers, \{ deviceId, localIds, canPrint \}\);/, "Test print only when its slip can print");

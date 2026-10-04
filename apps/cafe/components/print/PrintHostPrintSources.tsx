@@ -8,6 +8,7 @@ import { PrintSources } from "@/components/pos/PrintSources";
 import { PrintHostTestSlip } from "@/components/print/PrintHostTestSlip";
 import { PrinterTestSlip } from "@/components/print/PrinterTestSlip";
 import { useSettings } from "@/hooks/use-settings";
+import { settingsForPaper } from "@/lib/print";
 
 // MODULE scope (RR-13): declared inside the component it would be a NEW
 // component type on every render, remounting the eod queries mid-load.
@@ -48,10 +49,11 @@ export function PrintHostPrintSources() {
   if (!current) return null;
 
   const slip = current.kind === "slip" ? current.slip : null;
+  const printSettings = slip?.target === undefined ? settings.data : settingsForPaper(settings.data, slip.target.paper);
   if (slip === null || slip.surface === "test") {
     return (
       <div className={OFFSCREEN_CLASS} aria-hidden>
-        {slip === null ? <PrintHostTestSlip settings={settings.data} ref={kotRef} /> : <PrinterTestSlip slip={slip} settings={settings.data} ref={kotRef} />}
+        {slip === null ? <PrintHostTestSlip settings={settings.data} ref={kotRef} /> : <PrinterTestSlip slip={slip} settings={printSettings} ref={kotRef} />}
       </div>
     );
   }
@@ -72,14 +74,14 @@ export function PrintHostPrintSources() {
 
   if (slip.surface === "receipt") {
     return (
-      <PrintSources order={slip.order} settings={settings.data} kotRef={kotRef} kotVariant="kot" receiptRef={receiptRef} banner={slip.banner} />
+      <PrintSources order={slip.order} settings={printSettings} kotRef={kotRef} kotVariant="kot" receiptRef={receiptRef} banner={slip.banner} />
     );
   }
 
   return (
     <PrintSources
       order={slip.order}
-      settings={settings.data}
+      settings={printSettings}
       kotRef={kotRef}
       kotRoundItems={slip.kotRoundItems}
       kotRoundLabel={slip.kotRoundLabel}

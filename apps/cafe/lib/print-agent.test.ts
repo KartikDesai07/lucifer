@@ -375,6 +375,13 @@ test("the slip for a leased job carries its labels as the banner; an end-of-day 
   assert.equal("banner" in eod, false, "the end-of-day summary takes no banner");
 });
 
+// Phase 2 Session 2E (spec §9.2): a printer job on the Windows app carries its printer's name and paper to the bridge.
+test("2E: a slip for a Windows printer carries its target; a slip with none is unchanged", () => {
+  const target = { printerName: "Kitchen TVS", paper: "58mm" as const };
+  assert.deepEqual(printAgentSlipOf(job("k1"), "2026-10-03", target).target, target, "the printer's name and paper");
+  assert.equal("target" in printAgentSlipOf(job("k1"), "2026-10-03"), false, "no target: the slip as before");
+});
+
 test("the call sites' helpers: the opt-in headers, a ref by kind, and nothing for a device with no identity", () => {
   assert.deepEqual(printAgentHeaders(""), {}, "no identity: the server prints nothing for it, the page prints as before");
   assert.deepEqual(printAgentHeaders("dev-a", true), { "x-pos-print-agent": "1", "x-pos-device-id": "dev-a", "x-pos-print-bill": "1" });

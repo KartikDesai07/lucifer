@@ -1,29 +1,43 @@
 import { PRINT_JOBS_FOR_ME_LIMIT, type LeasedPrintJob, type PrintJobsForMe } from "@pos/shared/print-agent-wire";
 import { printerWriterDeviceId, printersModeOn, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
 import type { PrintAgentResult } from "@/lib/print-agent-types";
+import type { DesktopPrintTarget } from "@/lib/desktop-shell-printer";
 import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
 import type { DevicePrinter } from "@/lib/printer/device-printer-store";
 import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
 
-// Printing redesign, Phase 2 Session 2C (spec §9.3, plan decision 1): the printers this device writes, and which
-// of them it prints on its one local printer (several printers per device arrive in Session 2E). Pure and
-// client-safe; hooks/use-agent-printers.ts reads it on every printers read and every change of this device's
-// printer.
+// Printing redesign, Phase 2 Session 2C (spec §9.3, plan decision 1): the printers this device writes, and which of
+// them it prints here. Session 2E (spec §9.2): a phone, a tablet or a browser tab prints one printer, its own; the
+// Windows app prints each Windows printer it has, by name. Pure and client-safe; hooks/use-agent-printers.ts reads it
+// on every printers read and every change of this device's printer.
 
 /** The refusal a leased job gets when its printer is not this device's printer (sent:"no", never counted). */
 export const PRINTER_NOT_LOCAL_MESSAGE = "This printer is not connected to this device.";
 
-/** A printer this device writes is printed here only when it IS this device's one printer: a LAN printer whose
+/** Session 2E (spec §9.2): the Windows app's printers. `named`: the app prints a slip on a printer the page names
+ *  (desktopPrintsOnNamed); `names`: every printer Windows reports on this PC (null until read); `selected`: the one
+ *  chosen in its picker. null for any other device. */
+export interface DesktopPrinters {
+  selected: string | null;
+  names: readonly string[] | null;
+  named: boolean;
+}
+
+/** A printer this device writes is printed here only when it IS one of this device's printers: a LAN printer whose
  *  host:port is the app's selected network printer, a device printer whose transport and address match the
- *  saved one, a Windows printer on the Windows app. Anything else would put a bar's slips on the kitchen's paper. */
-export function printerIsLocal(printer: PrinterConfig, local: DevicePrinter | null, desktop: boolean): boolean {
+ *  saved one, a Windows printer this PC has. Anything else would put a bar's slips on the kitchen's paper. */
+export function printerIsLocal(printer: PrinterConfig, local: DevicePrinter | null, desktop: DesktopPrinters | null): boolean {
   const connection = printer.connection;
   if (connection.kind === "lan") {
     return local?.kind === "native" && local.transport === "tcp" && local.printerId === `tcp:${connection.host}:${connection.port}`;
   }
   switch (connection.transport) {
     case "windows":
-      return desktop;
+      // Session 2E: by name (saved from this PC's own list, never typed). An app that prints on a named printer prints
+      // any printer Windows reports here; an older one prints only its chosen printer, so another Windows printer is
+      // never printed on that paper (the 2C gate's F-3): its slips wait, and the dot says so.
+      if (desktop === null) return false;
+      return desktop.named ? (desktop.names ?? []).includes(connection.address) : desktop.selected === connection.address;
     case "bt-classic":
     case "ble":
     case "usb": {
@@ -49,26 +63,42 @@ export interface AgentPrinters {
   printersMode: boolean;
   /** This device writes a routable printer: it drains and polls the wake in printers mode, host or not. */
   isWriter: boolean;
-  /** The routable printers this device writes that ARE its local printer: the lines it leases and prints. */
+  /** The routable printers this device writes that ARE its local printers: the lines it leases and prints. */
   localIds: string[];
+  /** Session 2E: each of them that prints on a named Windows printer, by id: its name and its paper. */
+  targets: Record<string, DesktopPrintTarget>;
 }
 
 function printersWrittenBy(printers: readonly PrinterConfig[], deviceId: string): PrinterConfig[] {
   return deviceId === "" ? [] : routablePrinters(printers).filter((printer) => printerWriterDeviceId(printer) === deviceId);
 }
 
-export function agentPrintersOf(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, desktop: boolean): AgentPrinters {
+/** Session 2E: a Windows printer this PC prints by name (only on an app that can), drawn for its own paper. */
+function targetsOf(printers: readonly PrinterConfig[], desktop: DesktopPrinters | null): Record<string, DesktopPrintTarget> {
+  const targets: Record<string, DesktopPrintTarget> = {};
+  if (desktop === null || !desktop.named) return targets;
+  for (const printer of printers) {
+    if (printer.connection.kind === "device" && printer.connection.transport === "windows") {
+      targets[printer.id] = { printerName: printer.connection.address, paper: `${printer.paper}mm` };
+    }
+  }
+  return targets;
+}
+
+export function agentPrintersOf(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, desktop: DesktopPrinters | null): AgentPrinters {
   const mine = printersWrittenBy(printers, deviceId);
+  const here = mine.filter((printer) => printerIsLocal(printer, local, desktop));
   return {
     printersMode: printersModeOn(printers),
     isWriter: mine.length > 0,
-    localIds: mine.filter((printer) => printerIsLocal(printer, local, desktop)).map((printer) => printer.id),
+    localIds: here.map((printer) => printer.id),
+    targets: targetsOf(here, desktop),
   };
 }
 
 /** Session 2D (spec §10): what the top-bar dot needs: printers mode, whether this device writes a printer, and
  *  whether it prints every printer it writes (a printer it writes that is not its own never prints here). */
-export function dotPrintersOf(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, desktop: boolean): PrinterDotPrinters {
+export function dotPrintersOf(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, desktop: DesktopPrinters | null): PrinterDotPrinters {
   const agent = agentPrintersOf(printers, deviceId, local, desktop);
   return { printersMode: agent.printersMode, isWriter: agent.isWriter, allLocal: agent.localIds.length === printersWrittenBy(printers, deviceId).length };
 }

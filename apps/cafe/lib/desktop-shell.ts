@@ -23,7 +23,7 @@ export { serializePrintDocument, DESKTOP_PRINT_EMPTY_MESSAGE };
 export interface PosDesktopBridge {
   readonly version: string;
   printHtml(html: string): Promise<void>;
-  // Phase 2 Session 2E: the slip on the Windows printer named. An older shell lacks it: feature-detect.
+  // Phase 2 Session 2E: the slip on its own Windows printer (slipPrintOptions' printerName). Feature-detect: an older shell lacks it.
   printHtmlOn?(html: string, printerName: string): Promise<void>;
   // The printer picker (2026-09-17) — types and the feature-detecting accessor
   // live in lib/desktop-shell-printer.ts. OPTIONAL on purpose: the counter
@@ -118,7 +118,7 @@ function defaultOnPrintError(
   };
 }
 
-async function printThroughShell(shell: PosDesktopBridge, html: string): Promise<void> {
+async function printThroughShell(shell: PosDesktopBridge, html: string, printerName?: string): Promise<void> {
   // A document with no body text is a blank slip — refused here, out loud,
   // never handed to a printer (owner rule 2026-09-11).
   if (!printDocumentHasText(html)) throw new Error(DESKTOP_PRINT_EMPTY_MESSAGE);
@@ -128,7 +128,7 @@ async function printThroughShell(shell: PosDesktopBridge, html: string): Promise
     timer = setTimeout(() => reject(new Error(DESKTOP_PRINT_NO_REPLY_MESSAGE)), desktopPrintTimeoutMs);
   });
   try {
-    await Promise.race([shell.printHtml(html), noReply]);
+    await Promise.race([printerName !== undefined && shell.printHtmlOn !== undefined ? shell.printHtmlOn(html, printerName) : shell.printHtml(html), noReply]);
   } finally {
     clearTimeout(timer);
   }
@@ -137,13 +137,13 @@ async function printThroughShell(shell: PosDesktopBridge, html: string): Promise
 // Wraps a useReactToPrint options object so it prints through the desktop
 // shell when one is present; without one it defers to the printer lanes
 // (lib/printer/lane-print.ts), which return the SAME reference on a plain browser.
-export function slipPrintOptions<T extends UseReactToPrintOptions>(options: T): T {
+export function slipPrintOptions<T extends UseReactToPrintOptions>(options: T, printerName?: string): T {
   const shell = desktopShell();
   if (!shell) return laneSlipPrintOptions(options);
   return {
     ...options,
     print: async (iframe: HTMLIFrameElement) => {
-      await printThroughShell(shell, serializePrintDocument(iframe, resolveTitle(options.documentTitle)));
+      await printThroughShell(shell, serializePrintDocument(iframe, resolveTitle(options.documentTitle)), printerName);
     },
     onPrintError: options.onPrintError ?? defaultOnPrintError(options),
   };

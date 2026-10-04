@@ -99,7 +99,8 @@ test("PIN (2D): a test slip goes on its printer's line for its writer, or straig
 
 test("PIN (2D): the device prints a test slip on the KOT surface through the same bridge as every slip", () => {
   const sources = src("components/print/PrintHostPrintSources.tsx");
-  assert.match(sources, /if \(slip === null \|\| slip\.surface === "test"\) \{[\s\S]*?<PrinterTestSlip slip=\{slip\} settings=\{settings\.data\} ref=\{kotRef\} \/>/, "rendered into the KOT surface's ref");
+  // Session 2E: drawn for its printer's paper on the Windows app (printSettings; the cafe's settings everywhere else).
+  assert.match(sources, /if \(slip === null \|\| slip\.surface === "test"\) \{[\s\S]*?<PrinterTestSlip slip=\{slip\} settings=\{printSettings\} ref=\{kotRef\} \/>/, "rendered into the KOT surface's ref");
   const bridge = src("hooks/use-print-host-bridge.ts");
   assert.match(bridge, /return current\.kind === "test" \|\| current\.slip\.surface === "test" \? "kot" : current\.slip\.surface;/, "the bridge fires the KOT surface for it");
   const slip = src("components/print/PrinterTestSlip.tsx");
