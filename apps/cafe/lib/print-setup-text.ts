@@ -5,6 +5,7 @@ import {
   printerWriterDeviceId,
   routablePrinters,
   type PrinterConfig,
+  type PrinterConnection,
   type PrinterDeviceTransport,
   type StationConfig,
 } from "@pos/shared/print-printers";
@@ -33,13 +34,18 @@ export function deviceName(deviceId: string, devices: readonly PrintDeviceSummar
   return row === undefined ? `Device …${tail}` : `${row.label} …${tail}`;
 }
 
+/** A device printer's connection in words: how its device reaches it, and which device. */
+export function deviceConnectionText(c: Extract<PrinterConnection, { kind: "device" }>, devices: readonly PrintDeviceSummary[], thisDeviceId: string): string {
+  return `${TRANSPORT_WORDS[c.transport]} · ${deviceName(c.deviceId, devices, thisDeviceId)}`;
+}
+
 export function connectionText(printer: PrinterConfig, devices: readonly PrintDeviceSummary[], thisDeviceId: string): string {
   const c = printer.connection;
   if (c.kind === "lan") {
     const by = printer.primaryDeviceId === undefined ? "no printing device" : `printed by ${deviceName(printer.primaryDeviceId, devices, thisDeviceId)}`;
     return `Network ${c.host}:${c.port} · ${by}`;
   }
-  return `${TRANSPORT_WORDS[c.transport]} · ${deviceName(c.deviceId, devices, thisDeviceId)}`;
+  return deviceConnectionText(c, devices, thisDeviceId);
 }
 
 export function slipsText(printer: PrinterConfig, stations: readonly StationConfig[]): string {
@@ -95,6 +101,13 @@ export function setupGaps(printers: readonly PrinterConfig[], stations: readonly
   }
   if (!live.some((printer) => printer.slips.notices)) gaps.push("No printer takes notices: void, moved and cancel slips will not print.");
   return gaps;
+}
+
+/** The 2A gate's M5: a station's delete says what changes, and names any printer it leaves with no slip at all. */
+export function stationDeleteQuestion(station: StationConfig, printers: readonly PrinterConfig[]): string {
+  const empty = printersLeftEmptyBy(printers, station.id).map((printer) => printer.name);
+  const base = `Delete ${station.name}? Its categories, items and printers go back to the default station.`;
+  return empty.length === 0 ? base : `${base} ${empty.join(", ")} will then take no slips and stop printing.`;
 }
 
 /** The 2A gate's M5: the printers a station's delete leaves with no slip at all (they stop printing). */

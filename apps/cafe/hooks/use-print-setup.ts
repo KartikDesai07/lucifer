@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -9,6 +10,8 @@ import { PRINTERS_KEYS } from "@/hooks/use-agent-printers";
 import { CATEGORY_KEYS } from "@/hooks/use-categories";
 import { PRODUCT_KEYS } from "@/hooks/use-products";
 import { apiGet, apiSend } from "@/lib/api-client";
+import { isDesktopShell } from "@/lib/desktop-shell";
+import { desktopPrinterApi } from "@/lib/desktop-shell-printer";
 import { deliverLeasedJob, kickPrintAgent } from "@/lib/print-agent";
 import { printAgentHeaders } from "@/lib/print-agent-calls";
 import type { PrinterBody } from "@/lib/print-printer-schemas";
@@ -43,6 +46,28 @@ export function useStations(enabled = true): { stations: StationConfig[]; ready:
 export function usePrintDevices(enabled = true): PrintDeviceSummary[] {
   const query = useQuery({ queryKey: PRINT_DEVICES_KEYS.all, queryFn: () => apiGet<PrintDeviceSummary[]>("/api/print-devices"), enabled });
   return query.data ?? NO_DEVICES;
+}
+
+/** The Windows app's chosen printer, the address a Windows printer is saved with (null: not the Windows app, or
+ *  not read). Read once per mount of the form that needs it. */
+export function useDesktopPrinterName(): string | null {
+  const [name, setName] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isDesktopShell()) return;
+    let live = true;
+    void desktopPrinterApi()
+      ?.listPrinters()
+      .then(
+        (list) => {
+          if (live) setName(list.selected);
+        },
+        () => undefined,
+      );
+    return () => {
+      live = false;
+    };
+  }, []);
+  return name;
 }
 
 export function useSavePrinter() {
