@@ -169,4 +169,7 @@ test("PIN (2C, the 2A gate's Important 1): the wake answers each agent's share f
   const s = src("app/api/print-jobs/wake/route.ts");
   assert.match(s, /listPrinters\(\)/, "one read of the printers");
   assert.match(s, /agentDailyCap: printAgentDailyCap\(printers, agents\),/);
+  // The 2C gate's emulator run: a writer whose printer list missed the frame hears from the same read that the
+  // setup no longer names it, so it reads its list again and stops polling.
+  assert.match(s, /writesPrinters: printerWriterDevices\(printers\)\.includes\(parsed\.data\.deviceId\),/);
 });

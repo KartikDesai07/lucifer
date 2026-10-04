@@ -7,6 +7,7 @@ import { listPrinters } from "@/lib/print-printers";
 import { sweepPrintJobsThrottled } from "@/lib/print-sweep";
 import { wakeBeatBodySchema } from "@/lib/print-lifecycle-schemas";
 import { printAgentDailyCap, type PrintWakeBeatData } from "@pos/shared/print-agent-wire";
+import { printerWriterDevices } from "@pos/shared/print-printers";
 import { success, requireAuth, serverError, validateBody } from "@/lib/api-helpers";
 import { noStore } from "@/lib/order-request-tray";
 
@@ -68,6 +69,8 @@ export async function POST(req: Request) {
       // Session 2C (the 2A gate's Important 1): printers mode shares the writers' allowance by the setup.
       agentDailyCap: printAgentDailyCap(printers, agents),
       serverNow: new Date(nowMs).toISOString(),
+      // The 2C gate's emulator run: a writer whose printer list missed a print-setup frame learns it here.
+      writesPrinters: printerWriterDevices(printers).includes(parsed.data.deviceId),
     };
     return noStore(success(data));
   } catch (error) {

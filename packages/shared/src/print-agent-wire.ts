@@ -240,4 +240,8 @@ export interface PrintWakeBeatData {
   agents: number;
   agentDailyCap: number;
   serverNow: string;
+  /** Session 2C (the 2C gate's emulator run): whether the setup names this device a routable printer's writer. A
+   *  writer told false has a stale printer list (its printer removed or moved while the print-setup frame was
+   *  missed): it reads the list again and stops polling. Absent from an older server. */
+  writesPrinters?: boolean;
 }

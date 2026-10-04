@@ -355,7 +355,8 @@
     "lib/print-printer-routing.test.ts",
     "lib/print-setup-paths.test.ts",
     "lib/print-direct.test.ts",
-    "lib/print-printer-jobs.test.ts"
+    "lib/print-printer-jobs.test.ts",
+    "lib/print-agent-printers.test.ts"
   ],
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

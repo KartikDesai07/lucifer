@@ -31,6 +31,26 @@ export function pulsePrintDeviceQuery(): string {
   return pulseDevice === null ? "" : `?device=${encodeURIComponent(pulseDevice)}`;
 }
 
+let readySource: (() => readonly string[]) | null = null;
+
+/** Session 2C: the agent of the tab that drains this device's slips registers the printers it prints on (the
+ *  routable ones this device writes that are its local printer). Unregistered as setDirectPrintSource is. */
+export function setReadyPrintersSource(source: () => readonly string[]): () => void {
+  readySource = source;
+  return () => {
+    if (readySource === source) readySource = null;
+  };
+}
+
+/** The printers this tab prints on (printers mode); [] in simple mode or with no agent. */
+export function readyPrinterIds(): string[] {
+  try {
+    return [...(readySource?.() ?? [])];
+  } catch {
+    return [];
+  }
+}
+
 let directSource: (() => string | null) | null = null;
 
 /** Session 2B: the agent of the tab that drains this device's slips registers how it answers directPrintTab().

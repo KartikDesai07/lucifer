@@ -309,14 +309,15 @@ test("PIN (D): PrintHostDrain.tsx runs the print agent (the host for the cafe; w
     assert.ok(src.includes(call), `PrintHostDrain.tsx must call ${call}`);
   }
   assert.ok(!src.includes("usePrintHostDrain(") && !src.includes("usePrintHostWake("), "the claim drain and the GET wake poll are no longer run here (Session 1C)");
+  // Session 2C deliberately added printers mode: no host plays a part there, so every device is an agent (a writer drains its printers).
   assert.match(
     src,
-    /const isAgent = enabled \|\| \(surfacesMounted && deviceId !== "" && routing !== "host" && routing !== "unknown"\);/,
-    "the agent: the host, or with no host every device whose surfaces exist; an unknown lane waits",
+    /const isAgent = enabled \|\| \(surfacesMounted && deviceId !== "" && \(printers\.printersMode \|\| \(routing !== "host" && routing !== "unknown"\)\)\);/,
+    "the agent: the host, every device in printers mode, or with no host every device whose surfaces exist; an unknown lane waits",
   );
   assert.match(src, /const drains = isAgent && holdsLock;/, "the agent drains only under the lock");
   assert.match(src, /const hostDrains = enabled && holdsLock;/, "the host's self-order lane keeps the host gate");
-  assert.match(src, /usePrintAgent\(\{ enabled: drains, isHost: enabled, deviceId, tabId, busy, queueSlip: onSlip \}\);/, "the agent prints through the provider's bridge");
+  assert.match(src, /usePrintAgent\(\{ enabled: drains, isHost: enabled, printers, deviceId, tabId, busy, queueSlip: onSlip \}\);/, "the agent prints through the provider's bridge");
   assert.match(src, /useSelfOrderAutoPrint\(\{ enabled: hostDrains, busy, queueKotRound, hostLane \}\);/, "the host lane hands a claimed KOT to the agent (job-aware lane)");
   assert.ok(src.includes("PRINT_HOST_MAX_AGE_MS"), "hostLane must reference PRINT_HOST_MAX_AGE_MS");
   assert.match(src, /return null;/, "PrintHostDrain must return null — a null-rendering child");

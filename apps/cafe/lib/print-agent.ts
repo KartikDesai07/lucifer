@@ -184,11 +184,15 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
         // Only a held job prints past the lease gate; with none left (I-1), the gate decides as always.
         if (forHeld && !printAgentMayLease({ enabled, busy, running: false, printerReady: deps.printerReady(), refusalHolds: refusalHolds() })) return;
         const data = await deps.lease();
-        job = data.jobs[0];
-        if (job === undefined) {
-          if (data.retryAt !== null) wakeAt(Date.parse(data.retryAt));
-          return;
+        // Session 2C: one job per line (its own and each printer line it writes); on its one local printer they
+        // print one by one, the rest held like a taken job. A line that gave none sets the timer even so.
+        for (const extra of data.jobs.slice(1)) {
+          remember(taken, `${extra.id}:${extra.epoch}`);
+          held.push({ job: extra, at: deps.now() });
         }
+        if (data.retryAt !== null) wakeAt(Date.parse(data.retryAt));
+        job = data.jobs[0];
+        if (job === undefined) return;
       }
       // One (id, epoch) prints once however it reached this tab (the final review, C-1): the enqueue hands a
       // running lease back to its tab, even one this cycle leased itself, while it prints or before.

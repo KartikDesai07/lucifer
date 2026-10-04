@@ -17,8 +17,11 @@ import {
   failedAckBody,
   onLeasedJob,
   printAgentSlipOf,
+  pulsePrintDeviceQuery,
   readPendingAcks,
   setDirectPrintSource,
+  setPulsePrintDevice,
+  setReadyPrintersSource,
   writePendingAcks,
   type PendingPrintAck,
   type PrintAgentAckBody,
@@ -957,4 +960,52 @@ test("2B: the seams: the lease header names the draining tab only while its agen
   offLeased();
   deliverLeasedJob(job("d10"));
   assert.deepEqual(got, ["d9"], "delivered to the agent that listens, never after it stopped listening");
+});
+
+// Phase 2 Session 2C (the 2B gate's ruling R9): one lease may answer one job per line (the device's own line and
+// each printer line it writes); on its one local printer they print one by one.
+test("2C: a lease that answers several lines' jobs prints them one by one, and a line in backoff sets the timer", async () => {
+  const { w, deps } = world();
+  w.leases.push({ jobs: [job("k1"), job("b1")], retryAt: null });
+  w.ackAnswers.push(done(false), done(false));
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.deepEqual(w.prints, ["k1", "b1"], "both printed, in the order they came");
+  assert.equal(w.leaseCalls, 1, "no lease between them, and none after: each ack said its line was empty");
+  agent.stop();
+
+  const timed = world();
+  timed.w.leases.push({ jobs: [job("k2")], retryAt: new Date(T0 + 10_000).toISOString() });
+  timed.w.ackAnswers.push(done(false));
+  const second = createPrintAgent(timed.deps);
+  second.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.deepEqual([timed.w.prints, timed.w.leaseCalls], [["k2"], 1]);
+  await advance(timed.w, 10_000);
+  assert.equal(timed.w.leaseCalls, 2, "another line's backoff ends: it is leased then, with no poll");
+  second.stop();
+});
+
+test("2C: the ready printers ride the direct-print header; the pulse names the device only; a slip routed to several printers is followed by its leased ref", () => {
+  const a = "a".repeat(24);
+  const b = "b".repeat(24);
+  assert.deepEqual(printAgentHeaders("dev-a", false, "tab-1", [a, b]), { "x-pos-print-agent": "1", "x-pos-device-id": "dev-a", "x-pos-print-lease": "tab-1", "x-pos-print-ready": `${a},${b}` });
+  assert.equal(printAgentHeaders("dev-a", false, null, [a])["x-pos-print-ready"], undefined, "no draining tab ready: no ready printers either");
+  assert.equal(printAgentHeaders("dev-a", false, "tab-1", [])["x-pos-print-ready"], undefined, "simple mode: none");
+  setPulsePrintDevice("dev-a");
+  const off = setReadyPrintersSource(() => [a]);
+  assert.equal(printAgentHeaders("dev-a", false, "tab-1")["x-pos-print-ready"], a, "the default reads the ready seam");
+  assert.equal(pulsePrintDeviceQuery(), "?device=dev-a", "the pulse counts every job aimed at the device (the 2C gate's review, I-2): it names only the device");
+  off();
+  setPulsePrintDevice(null);
+  assert.equal(pulsePrintDeviceQuery(), "");
+  const leased = { id: "k3", epoch: 1 } as never;
+  const order = {
+    printJobs: [
+      { id: "k1", kind: "kot", targetDeviceId: "dev-k", label: "KOT · Kitchen", status: "queued", printerId: "p-kitchen" },
+      { id: "k3", kind: "kot", targetDeviceId: "dev-a", label: "KOT · All stations", status: "leased", printerId: "p-counter", leased },
+    ],
+  };
+  assert.equal(printJobRefOf(order, "kot")?.id, "k3", "the one leased to this tab must reach its agent");
 });

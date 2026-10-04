@@ -402,11 +402,13 @@ test('INVENTORY: files containing the needle "usePrintHostWake(" under app/compo
   assert.deepEqual(hits, expected, `usePrintHostWake( must have no call site any more; found: ${hits.join(", ")}`);
 });
 
-test("PIN (Session 1C): only the host agent polls the wake, through the POST beside the unchanged GET, and PrintHostDrain arms it only for the host", () => {
+// Session 2C deliberately changed who polls (the 2A gate's Important 1): in simple mode the host only (R6), in
+// printers mode each printer's writer, host or not (printAgentPollsWake; pinned in print-agent-printers.test.ts).
+test("PIN (Session 1C, 2C): the agent polls the wake by printAgentPollsWake, through the POST beside the unchanged GET", () => {
   const drain = readSrc(PRINT_HOST_DRAIN);
   assert.ok(drain.includes("usePrintAgent({ enabled: drains, isHost: enabled,"), "the agent learns whether it is the host");
   const agent = stripComments(readSrc("apps/cafe/hooks/use-print-agent.ts"));
-  assert.ok(agent.includes("if (agent === null || !enabled || !isHost) return;"), "the wake poll is armed for the host only (R6)");
+  assert.ok(agent.includes("if (agent === null || !enabled || !pollsWake) return;"), "the wake poll is armed by printAgentPollsWake (simple mode: the host only, R6)");
   assert.ok(agent.includes('apiSend<PrintWakeBeatData>(WAKE_URL, "POST", wakeBody(deviceId))'), "the agent's wake is the POST heartbeat");
   assert.ok(agent.includes("bumpPrintWakeBudget("), "under the device's one daily cap");
   assert.ok(!agent.includes("apiGet"), "the agent never polls the read-only GET");

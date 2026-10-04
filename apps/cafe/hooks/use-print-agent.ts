@@ -1,10 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { hashKey, useQueryClient } from "@tanstack/react-query";
 
 import { PRINT_WAKE_DAILY_CAP } from "@pos/shared/print-job";
-import type { LeasedPrintJob, PrintAckData, PrintLeaseData, PrintWakeBeatData } from "@pos/shared/print-agent-wire";
+import {
+  printAgentPollsWake,
+  type LeasedPrintJob,
+  type PrintAckData,
+  type PrintJobsForMe,
+  type PrintLeaseData,
+  type PrintWakeBeatData,
+} from "@pos/shared/print-agent-wire";
+import { PRINTERS_KEYS } from "@/hooks/use-agent-printers";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
 import { useCanPrintNow, useDevicePrinter } from "@/hooks/use-device-printer";
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
@@ -19,10 +27,12 @@ import {
   readPendingAcks,
   setDirectPrintSource,
   setPulsePrintDevice,
+  setReadyPrintersSource,
   writePendingAcks,
   type PrintAgent,
   type PrintAgentResult,
 } from "@/lib/print-agent";
+import { printerListLooksStale, type AgentPrinters } from "@/lib/print-agent-printers";
 import { createPrintAgentWake } from "@/lib/print-agent-wake";
 import type { HostPrintDone } from "@/lib/print-host-outcomes";
 import { PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print-host-slips";
@@ -55,12 +65,22 @@ interface UsePrintAgentOptions {
   enabled: boolean;
   /** This device is the print host: it polls the wake and also leases on the broadcast nudge. */
   isHost: boolean;
+  /** Session 2C: printers mode, whether this device writes a printer, and the ones it prints here. */
+  printers: AgentPrinters;
   deviceId: string;
   tabId: string;
   /** The host bridge is printing something (a test slip, another slip). */
   busy: boolean;
   queueSlip: (slip: HostPrintSlip, done?: HostPrintDone) => void;
 }
+
+/** Session 2C: the printers a lease names, omitted when there are none (simple mode, an old server). */
+function printerIdsBody(ids: readonly string[]): { printerIds?: string[] } {
+  return ids.length > 0 ? { printerIds: [...ids] } : {};
+}
+
+/** Session 2C (the 2C gate's review, I-2): a stale printer list is read again at most this often. */
+const PRINTERS_STALE_REFRESH_MS = 60_000;
 
 /** The heartbeat the host's wake carries (spec §10). */
 function wakeBody(deviceId: string) {
@@ -89,7 +109,7 @@ function timers() {
   };
 }
 
-export function usePrintAgent({ enabled, isHost, deviceId, tabId, busy, queueSlip }: UsePrintAgentOptions): void {
+export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy, queueSlip }: UsePrintAgentOptions): void {
   const qc = useQueryClient();
   const printer = useDevicePrinter();
   const canPrint = useCanPrintNow();
@@ -97,6 +117,31 @@ export function usePrintAgent({ enabled, isHost, deviceId, tabId, busy, queueSli
   useEffect(() => {
     queueRef.current = queueSlip;
   }, [queueSlip]);
+  // Session 2C: the printers this tab prints on, read at call time by the lease, the wake and the headers.
+  const readyRef = useRef<readonly string[]>(printers.localIds);
+  const readyKey = printers.localIds.join(",");
+  useEffect(() => {
+    readyRef.current = readyKey === "" ? [] : readyKey.split(",");
+  }, [readyKey]);
+  const writerRef = useRef(printers.isWriter);
+  useEffect(() => {
+    writerRef.current = printers.isWriter;
+  }, [printers.isWriter]);
+  // Session 2C (the 2C gate's review, I-2): a printer job aimed at this device that it does not print on means its
+  // printer list is stale (a missed print-setup frame, a printer just re-saved onto it): read it again, at most once
+  // a minute, and the agent leases it as soon as it knows. A device that writes a printer which is not its local
+  // printer reads it once a minute while that printer's slips wait (they go stale after 30 min). The other way (the
+  // gate's emulator run): a writer the wake says the setup no longer names reads it once and stops polling.
+  const setupReadAtRef = useRef(0);
+  const noteJobsForMe = useCallback(
+    (jobs: PrintJobsForMe | undefined, writesPrinters?: boolean): void => {
+      if (!printerListLooksStale({ ready: readyRef.current, isWriter: writerRef.current, jobsForMe: jobs, writesPrinters })) return;
+      if (Date.now() - setupReadAtRef.current < PRINTERS_STALE_REFRESH_MS) return;
+      setupReadAtRef.current = Date.now();
+      void qc.invalidateQueries({ queryKey: PRINTERS_KEYS.all });
+    },
+    [qc],
+  );
   const [agent, setAgent] = useState<PrintAgent | null>(null);
 
   // One agent per device identity and tab. A reload re-sends any "printed" ack the last page left.
@@ -122,7 +167,7 @@ export function usePrintAgent({ enabled, isHost, deviceId, tabId, busy, queueSli
       });
     const created = createPrintAgent({
       deviceId,
-      lease: () => apiSend<PrintLeaseData>(LEASE_URL, "POST", { deviceId, tabId }),
+      lease: () => apiSend<PrintLeaseData>(LEASE_URL, "POST", { deviceId, tabId, ...printerIdsBody(readyRef.current) }),
       ack: (id, body) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", body),
       print,
       printerReady: canPrintNow,
@@ -149,6 +194,11 @@ export function usePrintAgent({ enabled, isHost, deviceId, tabId, busy, queueSli
     agent?.nudge();
   }, [agent, printer, canPrint]);
 
+  // Session 2C: the printers it prints on changed (a setup save, its printer reconnected as another): look again.
+  useEffect(() => {
+    agent?.nudge();
+  }, [agent, readyKey]);
+
   useEffect(() => (agent === null ? undefined : onPrintAgentKick(() => agent.kick())), [agent]);
 
   // Phase 2 Session 2B (spec §7.11): while this tab drains this device's slips and can print now, the requests
@@ -157,9 +207,11 @@ export function usePrintAgent({ enabled, isHost, deviceId, tabId, busy, queueSli
   useEffect(() => {
     if (agent === null) return;
     const offSource = setDirectPrintSource(() => (agent.directReady() ? tabId : null));
+    const offReady = setReadyPrintersSource(() => readyRef.current);
     const offLeased = onLeasedJob((job) => agent.take(job));
     return () => {
       offSource();
+      offReady();
       offLeased();
     };
   }, [agent, tabId]);
@@ -186,25 +238,36 @@ export function usePrintAgent({ enabled, isHost, deviceId, tabId, busy, queueSli
     const off = qc.getQueryCache().subscribe((event) => {
       if (event.type !== "updated" || event.action.type !== "success" || event.query.queryHash !== pulseHash) return;
       const data = event.query.state.data as PosPulseData | undefined;
-      if ((data?.printJobsForMe?.count ?? 0) > 0) agent.kick();
+      if ((data?.printJobsForMe?.count ?? 0) > 0) {
+        noteJobsForMe(data?.printJobsForMe);
+        agent.kick();
+      }
     });
     return () => {
       off();
       setPulsePrintDevice(null);
     };
-  }, [agent, enabled, deviceId, qc]);
+  }, [agent, enabled, deviceId, qc, noteJobsForMe]);
 
-  // The host: the wake poll (spec §9.1), under the device's one daily cap.
+  // The wake poll (spec §9.1): the host in simple mode; in printers mode each writer, host or not (Session 2C, the
+  // 2A gate's Important 1). Each spends against its share: the smaller of the constant and the wake's answer.
+  const pollsWake = printAgentPollsWake({ hostConfigured: isHost, isHost, printersMode: printers.printersMode, isWriter: printers.isWriter });
+  const capRef = useRef(PRINT_WAKE_DAILY_CAP);
   useEffect(() => {
-    if (agent === null || !enabled || !isHost) return;
+    if (agent === null || !enabled || !pollsWake) return;
     let memory: PrintWakeBudget | null = null;
     const wake = createPrintAgentWake({
-      wake: () => apiSend<PrintWakeBeatData>(WAKE_URL, "POST", wakeBody(deviceId)),
+      wake: async () => {
+        const data = await apiSend<PrintWakeBeatData>(WAKE_URL, "POST", wakeBody(deviceId));
+        capRef.current = Math.min(PRINT_WAKE_DAILY_CAP, data.agentDailyCap);
+        noteJobsForMe(data.jobsForMe, data.writesPrinters);
+        return data;
+      },
       socketHealthy: isRealtimeHealthy,
       mayPoll: () => isDesktopShell() || document.visibilityState === "visible",
       spendOne: () => {
         const dayKey = cafeDateString();
-        const { record, allowed } = bumpPrintWakeBudget(mergePrintWakeBudget(readPrintWakeBudget(), memory, dayKey), dayKey, PRINT_WAKE_DAILY_CAP);
+        const { record, allowed } = bumpPrintWakeBudget(mergePrintWakeBudget(readPrintWakeBudget(), memory, dayKey), dayKey, capRef.current);
         memory = record;
         writePrintWakeBudget(record);
         return allowed;
@@ -214,7 +277,7 @@ export function usePrintAgent({ enabled, isHost, deviceId, tabId, busy, queueSli
     });
     wake.start();
     return () => wake.stop();
-  }, [agent, enabled, isHost, deviceId]);
+  }, [agent, enabled, pollsWake, deviceId, noteJobsForMe]);
 
   // The POS app came back to the screen, or its network returned.
   useEffect(() => {
