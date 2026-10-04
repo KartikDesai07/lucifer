@@ -23,6 +23,8 @@ export { serializePrintDocument, DESKTOP_PRINT_EMPTY_MESSAGE };
 export interface PosDesktopBridge {
   readonly version: string;
   printHtml(html: string): Promise<void>;
+  // Phase 2 Session 2E: the slip on the Windows printer named. An older shell lacks it: feature-detect.
+  printHtmlOn?(html: string, printerName: string): Promise<void>;
   // The printer picker (2026-09-17) — types and the feature-detecting accessor
   // live in lib/desktop-shell-printer.ts. OPTIONAL on purpose: the counter
   // PC's installer is hand-copied and never auto-updates, so an older shell

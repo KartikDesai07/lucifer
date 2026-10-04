@@ -29,6 +29,7 @@ import {
   PRINTERS_CHANNEL,
   PRINTER_SAVE_CHANNEL,
   PRINT_MODE_SAVE_CHANNEL,
+  PRINT_ON_CHANNEL,
   PRINT_MODES,
   DEFAULT_PRINT_MODE,
   isNonPaperPrinter,
@@ -264,7 +265,7 @@ function extractExposedKeys(source: string, bridgeKeyLiteral: string): string[] 
   return keys;
 }
 
-test("(6) preload.ts exposes exactly ['version', 'printHtml', 'listPrinters', 'savePrinter', 'savePrintMode'] on posDesktop", () => {
+test("(6) preload.ts exposes exactly ['version', 'printHtml', 'printHtmlOn', 'listPrinters', 'savePrinter', 'savePrintMode'] on posDesktop", () => {
   // WIDENED 2026-09-17 and again 2026-09-19, deliberately — this stays a
   // CLOSED set, which is the point of the pin: the renderer's whole privileged
   // surface is these five and nothing else (never ipcRenderer, never a node
@@ -277,8 +278,12 @@ test("(6) preload.ts exposes exactly ['version', 'printHtml', 'listPrinters', 's
   // save-file dialog), so nothing ever reached paper and no error appeared.
   // Both new methods are name-only — they return printer NAMES and store one;
   // they never hand the renderer a handle, a driver object, or a file path.
+  //
+  // WIDENED again in Phase 2 Session 2E (spec §9.2, several printers per PC): printHtmlOn prints one slip on a
+  // Windows printer the page NAMES. Name-only like the picker: the main process prints only on a device Windows
+  // reports at that moment, never a virtual one, and hands nothing privileged back.
   const keys = extractExposedKeys(preloadSrc, '"posDesktop"');
-  assert.deepEqual(keys.sort(), ["listPrinters", "printHtml", "savePrintMode", "savePrinter", "version"]);
+  assert.deepEqual(keys.sort(), ["listPrinters", "printHtml", "printHtmlOn", "savePrintMode", "savePrinter", "version"]);
 });
 
 test("(6) preload.ts: exactly one require('electron'), no other require, no ipcRenderer exposure, no posDesktopSetup", () => {
@@ -303,6 +308,28 @@ test("(7) preload.ts duplicated literals equal shared.ts (PRINT_CHANNEL, BRIDGE_
   assert.ok(preloadSrc.includes(JSON.stringify(PRINT_MODE_SAVE_CHANNEL)));
   // And each literal is the one its bridge method invokes.
   assert.match(preloadSrc, /savePrintMode:[\s\S]{0,120}?ipcRenderer\.invoke\(PRINT_MODE_SAVE_CHANNEL, mode\)/);
+  // Phase 2 Session 2E: the slip and the printer's name, nothing else.
+  assert.ok(preloadSrc.includes(JSON.stringify(PRINT_ON_CHANNEL)));
+  assert.match(preloadSrc, /printHtmlOn: \(html: string, printerName: string\): Promise<void> =>\s*electron\.ipcRenderer\.invoke\(PRINT_ON_CHANNEL, html, printerName\)/);
+  assert.equal(PRINT_ON_CHANNEL, "pos-desktop:print-html-on");
+});
+
+// -- Phase 2 Session 2E (spec §9.2): several printers per PC ------------------
+// A printer job names its Windows printer. The same gate as every print (main window, saved origin, a slip of a
+// sane size), the same one-job-at-a-time queue, and the same refusals routed through the job promise; the name must
+// be a device Windows reports at that moment and never a virtual one. The chosen printer stays this PC's own.
+test("(E2) print.ts: printHtmlOn prints on the printer the page names, vetted like the chosen one, through the one queue", () => {
+  assert.match(printSrc, /ipcMain\.handle\(PRINT_ON_CHANNEL, async \(event: IpcMainInvokeEvent, html: unknown, name: unknown\) => \{/);
+  const onHandler = printSrc.slice(printSrc.indexOf("ipcMain.handle(PRINT_ON_CHANNEL"));
+  assert.match(onHandler, /const request = vetPrintRequest\(event, html\);/, "the same sender, origin, frame and size gate");
+  assert.match(onHandler, /if \(typeof name !== "string" \|\| name\.length === 0 \|\| name\.length > PRINTER_NAME_MAX_CHARS\) throw new Error\(PRINT_REJECTED_MESSAGE\);/);
+  assert.match(onHandler, /const printers = await event\.sender\.getPrintersAsync\(\);\s*await printOn\(request\.html, request\.origin, name, printers\.some\(\(p\) => p\.name === name\)\);/, "a name Windows reports right now");
+  const defaultHandler = printSrc.slice(printSrc.indexOf("ipcMain.handle(PRINT_CHANNEL"), printSrc.indexOf("ipcMain.handle(PRINT_ON_CHANNEL"));
+  assert.match(defaultHandler, /await printOn\(request\.html, request\.origin, deps\.getDeviceName\(\), true\);/, "the default channel prints on the chosen printer, as before");
+  assert.equal((printSrc.match(/let queue: Promise<unknown> = Promise\.resolve\(\);/g) ?? []).length, 1, "one queue for both channels: one offscreen window at a time");
+  const refusal = printSrc.slice(printSrc.indexOf("const refusal"), printSrc.indexOf("runJob(html, origin, deviceName"));
+  assert.match(refusal, /: !onThisPc\s*\? PRINT_PRINTER_NOT_HERE_MESSAGE/, "a printer Windows no longer reports is refused before any window opens");
+  assert.match(messagesSrc, /export const PRINT_PRINTER_NOT_HERE_MESSAGE =\s*"That printer is not on this PC\. Open Printer setup in the POS and choose a printer this PC has\.";/);
 });
 
 // -- 2026-09-17: no slip may reach a device that writes a FILE -------------
@@ -738,6 +765,8 @@ test("(13) parity: apps/cafe/lib/desktop-shell.ts carries the expected bridge su
   assert.ok(cafeDesktopShellSrc.includes("window.posDesktop"));
   assert.ok(cafeDesktopShellSrc.includes("printHtml"));
   assert.ok(cafeDesktopShellSrc.includes("export function isDesktopShell("));
+  // Phase 2 Session 2E: the page names a slip's Windows printer only through printHtmlOn, which it feature-detects.
+  assert.ok(cafeDesktopShellSrc.includes("printHtmlOn?(html: string, printerName: string): Promise<void>;"));
 });
 
 test("(13) vision-guard: cafe/lib/desktop-shell.ts stays capability-keyed (no UA sniffing)", () => {
