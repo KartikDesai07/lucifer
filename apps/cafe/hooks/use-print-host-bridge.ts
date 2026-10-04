@@ -31,8 +31,8 @@ import { hostPrintFailureMessage } from "@/lib/print-write-outcome";
 import { createHostSlipOutcomes, type HostPrintDone } from "@/lib/print-host-outcomes";
 import type { Order } from "@/types";
 
-/** What the bridge is printing: a claimed job's slip, or PH-7's attestation
- *  test slip (`PrintHostTestSlip`, rendered through the KOT surface). */
+/** What the bridge is printing: a claimed job's slip, or PH-7's attestation test slip
+ *  (`PrintHostTestSlip`); it and a printer's Test print (Session 2D) use the KOT surface. */
 export type HostPrintCurrent = { kind: "slip"; slip: HostPrintSlip } | { kind: "test" };
 
 interface TestSlipWaiter {
@@ -42,7 +42,7 @@ interface TestSlipWaiter {
 }
 
 function surfaceOf(current: HostPrintCurrent): HostPrintSurface {
-  return current.kind === "test" ? "kot" : current.slip.surface;
+  return current.kind === "test" || current.slip.surface === "test" ? "kot" : current.slip.surface;
 }
 
 interface UsePrintHostBridgeOptions {

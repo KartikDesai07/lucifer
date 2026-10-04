@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
 import { PrintSources } from "@/components/pos/PrintSources";
 import { PrintHostTestSlip } from "@/components/print/PrintHostTestSlip";
+import { PrinterTestSlip } from "@/components/print/PrinterTestSlip";
 import { useSettings } from "@/hooks/use-settings";
 
 // MODULE scope (RR-13): declared inside the component it would be a NEW
@@ -29,7 +30,8 @@ const OFFSCREEN_CLASS = "pointer-events-none absolute left-[-9999px] top-0";
 //   · a claimed bill → PrintSources' OrderReceipt (receiptRef);
 //   · a claimed eod → PrintHostEodSource inside the eodRef wrapper (the ref
 //     stays on a plain div, never threaded through the dynamic boundary);
-//   · PH-7's test slip → PrintHostTestSlip on the KOT surface.
+//   · PH-7's test slip → PrintHostTestSlip on the KOT surface;
+//   · a printer's Test print (Phase 2 Session 2D) → PrinterTestSlip on the KOT surface.
 export function PrintHostPrintSources() {
   const { current, kotRef, receiptRef, eodRef, setEodReady, reportSurfacesMounted } = usePrintHostContext();
   const settings = useSettings();
@@ -45,15 +47,14 @@ export function PrintHostPrintSources() {
 
   if (!current) return null;
 
-  if (current.kind === "test") {
+  const slip = current.kind === "slip" ? current.slip : null;
+  if (slip === null || slip.surface === "test") {
     return (
       <div className={OFFSCREEN_CLASS} aria-hidden>
-        <PrintHostTestSlip settings={settings.data} ref={kotRef} />
+        {slip === null ? <PrintHostTestSlip settings={settings.data} ref={kotRef} /> : <PrinterTestSlip slip={slip} settings={settings.data} ref={kotRef} />}
       </div>
     );
   }
-
-  const { slip } = current;
   if (slip.surface === "eod") {
     return (
       <div className={OFFSCREEN_CLASS} aria-hidden>

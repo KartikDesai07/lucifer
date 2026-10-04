@@ -177,6 +177,9 @@ export function routePrintRequest(request: PrintJobRequest, routing: PrintRoutin
       const stationIds = [...new Set(fired.map((item) => setup.stationOf(item.productId).id))];
       return noticeTargets(setup, stationIds.length > 0 ? stationIds : [setup.stationOf("").id]).map((printer) => job(printer, request, 1, NO_PART));
     }
+    case "test":
+      // Session 2D: a printer's test slip is made on its own printer's line by its Test print, never by slip type.
+      return [];
   }
 }
 

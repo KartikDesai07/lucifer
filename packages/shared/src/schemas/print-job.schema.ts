@@ -1,7 +1,13 @@
 import { z } from "zod";
 import { PAYMENT_MODES, ORDER_STATUSES, GST_MODES, DISCOUNT_KINDS } from "../constants";
 import { ORDER_CHARGE_TYPES } from "../order-charges";
-import { PRINT_KOT_STATION_MODES, STATION_NAME_MAX_CHARS } from "../print-printers";
+import {
+  PRINTER_NAME_MAX_CHARS,
+  PRINT_KOT_STATION_MODES,
+  PRINT_TEST_LINES_MAX,
+  PRINT_TEST_LINE_MAX_CHARS,
+  STATION_NAME_MAX_CHARS,
+} from "../print-printers";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Print-host plan, PH-1 — the payload contract. `printOrderSnapshotSchema`
@@ -212,6 +218,19 @@ const cancelNoticePayloadSchema = z
   .object({ kind: z.literal("cancel-notice"), snapshot: printOrderSnapshotSchema, reason: z.string() })
   .strict();
 
+// Phase 2 Session 2D (spec §11): a printer's Test print. The server writes the lines from the stored printer
+// (its connection, slips, stations, paper and copies), so the paper says what the setup says; no order, no
+// station, no key (every tap is one slip). `requestedAt` is the server's moment, printed in the cafe's time.
+const testPayloadSchema = z
+  .object({
+    kind: z.literal("test"),
+    printerName: z.string().min(1).max(PRINTER_NAME_MAX_CHARS),
+    lines: z.array(z.string().max(PRINT_TEST_LINE_MAX_CHARS)).max(PRINT_TEST_LINES_MAX),
+    requestedBy: z.string(),
+    requestedAt: z.string(),
+  })
+  .strict();
+
 export const printJobPayloadSchema = z.discriminatedUnion("kind", [
   kotPayloadSchema,
   billPayloadSchema,
@@ -219,6 +238,7 @@ export const printJobPayloadSchema = z.discriminatedUnion("kind", [
   movedPayloadSchema,
   eodPayloadSchema,
   cancelNoticePayloadSchema,
+  testPayloadSchema,
 ]);
 
 export type PrintOrderSnapshotInput = z.infer<typeof printOrderSnapshotSchema>;
@@ -229,3 +249,4 @@ export type VoidPrintJobPayload = z.infer<typeof voidPayloadSchema>;
 export type MovedPrintJobPayload = z.infer<typeof movedPayloadSchema>;
 export type EodPrintJobPayload = z.infer<typeof eodPayloadSchema>;
 export type CancelNoticePrintJobPayload = z.infer<typeof cancelNoticePayloadSchema>;
+export type TestPrintJobPayload = z.infer<typeof testPayloadSchema>;

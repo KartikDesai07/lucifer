@@ -18,6 +18,9 @@ export const dynamic = "force-dynamic";
 // mongoose-required-rejects-empty-string).
 const UNNAMED_STAFF = "Staff";
 
+// Phase 2 Session 2D: a printer's test slip is made only by its printer's Test print, on that printer's line.
+const PRINT_TEST_ENQUEUE_MESSAGE = "A test slip is printed from its printer's Test print.";
+
 // A header that is absent or blank reads as not sent. An expression body on purpose:
 // print-queue.test.ts requires every `return` in this file to go through noStore(.
 const optionalHeader = (req: Request, name: string): string | undefined => req.headers.get(name)?.trim() || undefined;
@@ -49,6 +52,7 @@ export async function POST(req: Request) {
 
   const parsed = await validateBody(req, enqueueBodySchema);
   if ("error" in parsed) return parsed.error;
+  if (parsed.data.payload.kind === "test") return noStore(failure(PRINT_TEST_ENQUEUE_MESSAGE, 400));
 
   // 64KB M0 fence, checked here at the edge as well as inside the lib.
   if (!printJobPayloadWithinCap(JSON.stringify(parsed.data.payload))) {

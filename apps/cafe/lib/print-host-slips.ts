@@ -91,11 +91,25 @@ export interface HostEodSlip {
   documentTitle: string;
 }
 
-export type HostPrintSlip = HostKotSlip | HostReceiptSlip | HostEodSlip;
+/** Phase 2 Session 2D (spec §11): a printer's Test print. The server wrote its lines from the stored printer;
+ *  the bridge prints it on the KOT surface (PrinterTestSlip), like the host's own test slip. */
+export interface HostTestSlip {
+  surface: "test";
+  printerName: string;
+  lines: string[];
+  requestedBy: string;
+  requestedAt: string;
+  documentTitle: string;
+  /** "REPRINT" when a lost ack made it print again (spec §7.7); absent for none. */
+  banner?: string;
+}
+
+export type HostPrintSlip = HostKotSlip | HostReceiptSlip | HostEodSlip | HostTestSlip;
 
 export const ROUND_LABEL_PREFIX = "Round ";
 const KOT_TITLE_PREFIX = "KOT-";
 const EOD_TITLE_PREFIX = "EOD-";
+const TEST_TITLE_PREFIX = "TEST-";
 
 /** Widens a payload snapshot back into the `Order` the receipts render. The
  *  snapshot carries every field they read (§B1); `updatedAt` is the one
@@ -208,6 +222,15 @@ export function hostPrintSlipOf(payload: PrintJobPayload, todayKey: string): Hos
         dateLabel: payload.dateLabel,
         isToday: payload.dateKey === todayKey,
         documentTitle: `${EOD_TITLE_PREFIX}${payload.dateKey}`,
+      };
+    case "test":
+      return {
+        surface: "test",
+        printerName: payload.printerName,
+        lines: [...payload.lines],
+        requestedBy: payload.requestedBy,
+        requestedAt: payload.requestedAt,
+        documentTitle: `${TEST_TITLE_PREFIX}${payload.printerName}`,
       };
   }
 }

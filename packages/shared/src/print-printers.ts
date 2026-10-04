@@ -53,6 +53,10 @@ export const PRINTER_LAN_DEFAULT_PORT = 9100;
 export const PRINTER_ADDRESS_MAX_CHARS = 256;
 /** Equal to the cafe's PRINT_HOST_DEVICE_ID_MAX_CHARS (pinned there): a device id is the same value everywhere. */
 export const PRINTER_DEVICE_ID_MAX_CHARS = 64;
+/** Session 2D (spec §11): a printer's test slip prints its name, then at most this many short lines the server
+ *  writes from the stored printer (its connection, slips, stations, paper and copies). */
+export const PRINT_TEST_LINES_MAX = 10;
+export const PRINT_TEST_LINE_MAX_CHARS = 64;
 
 /** How the owning device reaches a device printer (§6.3). A Chrome tab drives at most one Web Serial or
  *  Web Bluetooth printer (§9.7). */

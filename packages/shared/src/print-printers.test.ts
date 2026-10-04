@@ -8,6 +8,8 @@ import {
   PRINTER_DEVICE_TRANSPORTS,
   PRINTER_PAPER_WIDTHS,
   PRINT_JOB_NO_PRINTER,
+  PRINT_TEST_LINES_MAX,
+  PRINT_TEST_LINE_MAX_CHARS,
   defaultBillPrinterOf,
   defaultStationOf,
   printKotStationHeader,
@@ -186,4 +188,17 @@ test("2C: the wake allowance per agent: printers mode by the setup's writers, si
   assert.equal(printAgentDailyCap(two, 5), Math.floor(PRINT_WAKE_PRINTERS_DAILY_CAP / 2), "two writers (dev-p1 writes two printers), however many are online");
   assert.equal(printAgentDailyCap([], 3), printWakeAgentCap(3), "simple mode: today's split");
   assert.equal(printAgentDailyCap([printer("off", { enabled: false })], 1), printWakeAgentCap(1), "a disabled printer keeps simple mode");
+});
+
+// Phase 2 Session 2D (spec §11): a printer's test slip. The server writes its lines from the stored printer, so
+// it carries no order, no station and no key.
+test("2D: a test slip names its printer, at most ten short lines, who asked and when; nothing else", () => {
+  const ok = { kind: "test", printerName: "Kitchen printer", lines: ["Network printer 192.168.1.60:9100"], requestedBy: "Asha", requestedAt: "2026-10-04T10:00:00.000Z" };
+  assert.equal(printJobPayloadSchema.safeParse(ok).success, true, "a test slip parses");
+  assert.equal(printJobPayloadSchema.safeParse({ ...ok, lines: [] }).success, true, "no lines: the name and the time still print");
+  assert.equal(printJobPayloadSchema.safeParse({ ...ok, printerName: "" }).success, false, "a blank name");
+  assert.equal(printJobPayloadSchema.safeParse({ ...ok, printerName: "x".repeat(41) }).success, false, "a name longer than a printer's");
+  assert.equal(printJobPayloadSchema.safeParse({ ...ok, lines: Array.from({ length: PRINT_TEST_LINES_MAX + 1 }, () => "x") }).success, false, "too many lines");
+  assert.equal(printJobPayloadSchema.safeParse({ ...ok, lines: ["x".repeat(PRINT_TEST_LINE_MAX_CHARS + 1)] }).success, false, "a line too long");
+  assert.equal(printJobPayloadSchema.safeParse({ ...ok, snapshot: SNAPSHOT }).success, false, "strict: no order rides along");
 });

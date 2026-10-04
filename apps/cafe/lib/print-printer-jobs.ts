@@ -24,6 +24,7 @@ export function printPayloadProductIds(payload: PrintJobPayload): string[] {
     case "void":
       return [payload.line.productId];
     case "eod":
+    case "test":
       return [];
     default:
       return payload.snapshot.items.map((item) => item.productId);

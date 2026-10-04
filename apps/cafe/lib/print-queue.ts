@@ -28,7 +28,7 @@ import { publishCafeEvent, publishPrintStatus } from "@/lib/realtime-publish";
  *  pre-CAS eligibility looks the live Order up by `_id`. `undefined` for eod
  *  (§B1 — the one payload kind with no order to point at). */
 export function printJobOrderIdOf(payload: PrintJobPayload): string | undefined {
-  return payload.kind === "eod" ? undefined : payload.snapshot._id;
+  return payload.kind === "eod" || payload.kind === "test" ? undefined : payload.snapshot._id;
 }
 
 /** Pure. Deterministic dedupe key so a retried enqueue collapses to one doc;
@@ -66,6 +66,9 @@ export function printJobKeyOf(payload: PrintJobPayload): string | undefined {
       return undefined;
     case "cancel-notice":
       // The stop-instruction itself; a re-notify is deliberately repeatable.
+      return undefined;
+    case "test":
+      // Phase 2 Session 2D: a printer's Test print; every tap is one slip.
       return undefined;
   }
 }

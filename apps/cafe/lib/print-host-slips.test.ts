@@ -277,24 +277,39 @@ function minimalPayloadOf(kind: PrintJobPayload["kind"]): PrintJobPayload {
       return { kind: "eod", dateKey: "2026-09-06", dateLabel: "Sun" };
     case "cancel-notice":
       return { kind: "cancel-notice", snapshot: SNAPSHOT, reason: "r" };
+    case "test":
+      return { kind: "test", printerName: "Kitchen printer", lines: ["Connection: Network 192.168.1.60:9100"], requestedBy: "Asha", requestedAt: "2026-09-06T00:00:00.000Z" };
   }
 }
 
-test("UNIT: hostPrintSlipOf is exhaustive over PRINT_JOB_KINDS — every kind (minimal payload) resolves to a slip whose surface is one of kot|receipt|eod", () => {
+// Changed in Phase 2 Session 2D (a printer's Test print is a kind of its own): the test slip's own surface
+// joins the three, printed through the KOT surface by the bridge.
+test("UNIT: hostPrintSlipOf is exhaustive over PRINT_JOB_KINDS — every kind (minimal payload) resolves to a slip whose surface is one of kot|receipt|eod|test", () => {
   assert.ok(PRINT_JOB_KINDS.length > 0, "positive landmark: PRINT_JOB_KINDS must be non-empty");
   const seenSurfaces = new Set<string>();
   for (const kind of PRINT_JOB_KINDS) {
     const payload = minimalPayloadOf(kind);
     const slip = hostPrintSlipOf(payload, "2026-09-06");
     assert.ok(
-      slip.surface === "kot" || slip.surface === "receipt" || slip.surface === "eod",
-      `hostPrintSlipOf(${kind}) must resolve to a kot|receipt|eod surface, got ${slip.surface}`,
+      slip.surface === "kot" || slip.surface === "receipt" || slip.surface === "eod" || slip.surface === "test",
+      `hostPrintSlipOf(${kind}) must resolve to a kot|receipt|eod|test surface, got ${slip.surface}`,
     );
     seenSurfaces.add(slip.surface);
   }
-  // Positive landmark that this loop is not vacuous: at least the three known
-  // surfaces were actually produced across the six kinds.
-  assert.deepEqual([...seenSurfaces].sort(), ["eod", "kot", "receipt"]);
+  // Positive landmark that this loop is not vacuous: every known surface was
+  // actually produced across the seven kinds.
+  assert.deepEqual([...seenSurfaces].sort(), ["eod", "kot", "receipt", "test"]);
+});
+
+test("2D: a printer's test job prints its test slip: the printer's name, the server's lines, who asked and when", () => {
+  const slip = hostPrintSlipOf(minimalPayloadOf("test"), "2026-09-06");
+  assert.equal(slip.surface, "test");
+  if (slip.surface !== "test") throw new Error("unreachable");
+  assert.equal(slip.printerName, "Kitchen printer");
+  assert.deepEqual(slip.lines, ["Connection: Network 192.168.1.60:9100"]);
+  assert.equal(slip.requestedBy, "Asha");
+  assert.equal(slip.requestedAt, "2026-09-06T00:00:00.000Z");
+  assert.equal(slip.documentTitle, "TEST-Kitchen printer");
 });
 
 // ── 11. constants ─────────────────────────────────────────────────────────

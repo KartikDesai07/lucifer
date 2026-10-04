@@ -61,6 +61,7 @@ const KIND_NAMES: Record<PrintJobKind, string> = {
   moved: "Move",
   eod: "Closing slip",
   "cancel-notice": "Cancel notice",
+  test: "Test print",
 };
 
 /** The four readback states of §B7 (MERGED-10, fresh-eyes F13). Ranked worst-
@@ -100,6 +101,7 @@ export type PrintReadbackRecord = Pick<PrintReadbackEntry, "id" | "kind" | "orde
  *  tap referred to — plus the order handle the chip groups and names by. */
 export function printReadbackRecordOf(id: string, payload: PrintJobPayload): PrintReadbackRecord {
   if (payload.kind === "eod") return { id, kind: payload.kind, orderKey: id, orderRef: `${EOD_ORDER_REF} ${payload.dateLabel}` };
+  if (payload.kind === "test") return { id, kind: payload.kind, orderKey: id, orderRef: payload.printerName };
   return { id, kind: payload.kind, orderKey: payload.snapshot._id, orderRef: printJobOrderRef(payload.snapshot) };
 }
 

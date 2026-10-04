@@ -21,6 +21,7 @@ import {
   printJobInitialLabels,
   printJobLifecycleInit,
   printJobStale,
+  printRepeatLabel,
   type PrintJobLifecycle,
   type PrintJobLogEntry,
   type PrintJobPatch,
@@ -286,6 +287,13 @@ test("a client-started repeat carries its label from the start (spec §7.7)", ()
     [{ kind: "eod", dateKey: "2026-10-02", dateLabel: "2 Oct" }, []],
   ];
   for (const [payload, labels] of cases) assert.deepEqual(printJobInitialLabels(payload), labels, JSON.stringify(payload).slice(0, 40));
+});
+
+test("2D: a printer's test slip is a kind of its own, starts with no label, and a repeat of it says REPRINT", () => {
+  assert.ok(PRINT_JOB_KINDS.includes("test"), "the test kind is listed (the model's enum reads this list)");
+  const payload: PrintJobPayload = { kind: "test", printerName: "Bar", lines: [], requestedBy: "Asha", requestedAt: "2026-10-04T10:00:00.000Z" };
+  assert.deepEqual(printJobInitialLabels(payload), [], "a first test slip carries no banner");
+  assert.equal(printRepeatLabel("test"), "REPRINT", "only a bill says DUPLICATE");
 });
 
 test("lifecycleOf: a row from before Phase 1 reads as a fresh job due since it was created", () => {

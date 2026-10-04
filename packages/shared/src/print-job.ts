@@ -15,8 +15,10 @@ import type { LeasedPrintJob, PrintJobRef } from "./print-agent-wire";
 
 /** The five thermal documents + reprint/notice paths a `PrintJob` can carry.
  *  `"cancel-notice"` is the "Notify Kitchen" stop for an already-cancelled
- *  order — distinct from a line-level `"void"`. */
-export const PRINT_JOB_KINDS = ["kot", "bill", "void", "moved", "eod", "cancel-notice"] as const;
+ *  order — distinct from a line-level `"void"`. `"test"` (Phase 2 Session 2D,
+ *  spec §11) is a printer's test slip: made only by its printer's Test print, on
+ *  that printer's line, never routed by slip type and never keyed. */
+export const PRINT_JOB_KINDS = ["kot", "bill", "void", "moved", "eod", "cancel-notice", "test"] as const;
 export type PrintJobKind = (typeof PRINT_JOB_KINDS)[number];
 
 /** Phase 1 lifecycle (docs/superpowers/specs/2026-10-02-printing-reliability-design.md §7.1).

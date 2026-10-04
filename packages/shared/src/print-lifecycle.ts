@@ -254,6 +254,7 @@ export function printJobInitialLabels(payload: PrintJobPayload): PrintJobLabel[]
       return payload.reprint === true ? ["REPRINT"] : [];
     case "eod":
     case "cancel-notice":
+    case "test":
       return [];
   }
 }
