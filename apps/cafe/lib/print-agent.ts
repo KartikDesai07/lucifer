@@ -23,8 +23,9 @@ import { PRINT_SLIP_REFUSALS_MAX, isSlipRefusal, printWriteOutcomeOf } from "@/l
 // cleared on ANY answer from the server (spec §7.9; 1A review M3).
 //
 // Phase 2 Session 2B (spec §7.11): a job an answer carried already leased to this tab is taken (take) and
-// printed before any lease, first in first out; a job it already holds or acked is ignored, so an answer
-// delivered twice prints once. After a job leaves the line, the ack's `more` decides whether to lease again.
+// printed before any lease, first in first out; a job it already holds, is printing (however it came) or
+// acked is ignored, so an answer delivered twice prints once. After a job leaves the line, the ack's `more`
+// decides whether to lease again.
 
 /** The pending-ack store keeps at most this many entries (an agent prints one job at a time). */
 export const PRINT_ACK_PENDING_LIMIT = 50;
@@ -51,6 +52,8 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
   const held: Array<{ job: LeasedPrintJob; at: number }> = [];
   const taken = new Set<string>();
   const answers = new Map<string, PrintAckData>();
+  // A held job was handed back since the cycle last sent acks (the final review, I-1).
+  let handedBack = false;
 
   /** A bounded insert: the oldest key goes once the store holds as many as the pending-ack store. */
   function remember<T>(store: Set<string> | Map<string, T>, key: string, value?: T): void {
@@ -63,8 +66,18 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
   function nextHeld(): LeasedPrintJob | undefined {
     for (let next = held.shift(); next !== undefined; next = held.shift()) {
       if (deps.now() - next.at < PRINT_DIRECT_HOLD_MS) return next.job;
+      handBack(next.job, "held too long on this device");
     }
     return undefined;
+  }
+
+  /** A held job dropped unprinted goes back to its line as a refusal (sent:"no", never counted), kept and sent
+   *  like any ack: this tab knows nothing of it reached a printer, so it prints again unlabelled rather than
+   *  expiring into a REPRINT (a bill: the cashier's question). The server takes it only while the job is still
+   *  leased at that epoch; a lease that ran out, or a new one, ignores it (the final review, I-1). */
+  function handBack(job: LeasedPrintJob, why: string): void {
+    keep({ id: job.id, epoch: job.epoch, at: deps.now(), fail: { deviceId: deps.deviceId, epoch: job.epoch, outcome: "failed", sent: "no", error: why } });
+    handedBack = true;
   }
 
   function refusalHolds(): boolean {
@@ -150,6 +163,12 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
       if (stopped) return;
       // Session 2B: a job already leased to this tab goes first; only then is the line leased.
       let job = nextHeld();
+      if (handedBack) {
+        // A held job dropped just now frees its lease first, so the lease below can reach it (I-1).
+        handedBack = false;
+        await flushAcks();
+        if (stopped) return;
+      }
       if (job === undefined) {
         // Only a held job prints past the lease gate; with none left (I-1), the gate decides as always.
         if (forHeld && !printAgentMayLease({ enabled, busy, running: false, printerReady: deps.printerReady(), refusalHolds: refusalHolds() })) return;
@@ -160,6 +179,12 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
           return;
         }
       }
+      // One (id, epoch) prints once however it reached this tab (the final review, C-1): the enqueue hands a
+      // running lease back to its tab, even one this cycle leased itself, while it prints or before.
+      const key = `${job.id}:${job.epoch}`;
+      remember(taken, key);
+      const twin = held.findIndex((h) => `${h.job.id}:${h.job.epoch}` === key);
+      if (twin >= 0) held.splice(twin, 1);
       const result = await deps.print(job);
       if (result.ok) {
         // A printed slip's refusal count is done with (1D gate M-3). A failed one keeps it, so a staff
@@ -171,7 +196,6 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
         await flushAcks();
         // Session 2B (decision 9): lease again only when the ack says the line holds more. No answer, or
         // an older server that does not say: lease again, as in Phase 1.
-        const key = `${job.id}:${job.epoch}`;
         again = answers.get(key)?.more !== false;
         answers.delete(key);
         return;
@@ -247,12 +271,17 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
     flushAcks,
     stop() {
       stopped = true;
-      // A job still held is dropped: its lease expires (KOT: REPRINT; bill: the cashier), as for a tab that died.
-      held.length = 0;
+      // A job still held is dropped and handed back (I-1), sent now or by the next page's first flush; with
+      // neither, its lease expires (KOT: REPRINT; bill: the cashier), as for a tab that died.
+      for (const h of held.splice(0)) handBack(h.job, "printing stopped on this device");
       if (timer !== null) deps.clearTimer(timer);
       if (ackTimer !== null) deps.clearTimer(ackTimer);
       timer = null;
       ackTimer = null;
+      if (handedBack) {
+        handedBack = false;
+        void flushAcks();
+      }
     },
     take(job) {
       if (stopped || typeof job.id !== "string" || !Number.isInteger(job.epoch)) return;

@@ -703,6 +703,45 @@ test("2B: an answer delivered twice prints once; a job printed and waiting for i
   agent.stop();
 });
 
+// Session 2B's final review (C-1): the enqueue hands a running lease back to its tab, even one this tab took
+// through the lease call. A Send again that landed while that job printed made it print twice, unlabelled.
+test("2B: a job leased through the lease call prints once when the enqueue hands it back, while it prints or before", async () => {
+  const during = world();
+  let agentRef: ReturnType<typeof createPrintAgent> | null = null;
+  during.w.leases.push({ jobs: [job("b1")], retryAt: null });
+  during.w.ackAnswers.push(done(false));
+  const agent = createPrintAgent({
+    ...during.deps,
+    print: (j: LeasedPrintJob) => {
+      agentRef?.take(job("b1")); // the re-sent slip's answer arrives while it prints
+      return during.deps.print(j);
+    },
+  });
+  agentRef = agent;
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.deepEqual(during.w.prints, ["b1"], "the lease's job and the enqueue's are one (id, epoch): one print");
+  assert.deepEqual(during.w.acks.map((a) => [a.id, a.body.outcome]), [["b1", "printed"]], "and one ack");
+  agent.stop();
+
+  const before = world();
+  let beforeRef: ReturnType<typeof createPrintAgent> | null = null;
+  before.w.leases.push({ jobs: [job("b2")], retryAt: null });
+  before.w.ackAnswers.push(done(false));
+  const early = createPrintAgent({
+    ...before.deps,
+    lease: () => {
+      if (before.w.leases.length > 0) beforeRef?.take(job("b2")); // the enqueue's answer arrives before the lease's
+      return before.deps.lease();
+    },
+  });
+  beforeRef = early;
+  early.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.deepEqual(before.w.prints, ["b2"], "held first, then leased: still one print");
+  early.stop();
+});
+
 // Session 2B's fresh review (I-1): a job held while the tab could not print (its drain lock lost to a printer
 // that went off) printed when the gate reopened, even after its lease had run out and another writer had
 // printed it as REPRINT: two KOTs.
@@ -714,7 +753,11 @@ test("2B: a held job prints only well inside its lease; one held longer is dropp
   await advance(late.w, PRINT_DIRECT_HOLD_MS);
   lateAgent.setGate({ enabled: true, busy: false });
   await settle();
-  assert.deepEqual([late.w.prints, late.w.acks.length], [[], 0], "dropped and never acked: another attempt may be on paper");
+  assert.deepEqual(
+    [late.w.prints, late.w.acks.map((a) => [a.id, a.body.outcome, a.body.sent, a.body.epoch])],
+    [[], [["late", "failed", "no", 1]]],
+    "dropped unprinted (its lease may be near its end), and handed back as a refusal at its epoch (the final review, I-1)",
+  );
   assert.equal(late.w.leaseCalls, 0, "with nothing left to print, the lease gate decides: the printer is off, so no lease");
   late.w.ready = true;
   lateAgent.kick();
@@ -733,7 +776,42 @@ test("2B: a held job prints only well inside its lease; one held longer is dropp
   agent.stop();
 });
 
-test("2B: taken jobs wait their turn (first in, first out) and for an open gate; stop drops them (their lease expires)", async () => {
+// Session 2B's final review (I-1): a held job dropped unprinted was never acked, so a slip this tab knew it never
+// sent expired into a REPRINT KOT (a bill: the cashier's "did it print?"). It is handed back as a refusal
+// (sent:"no", never counted), which the server takes only while the job is still leased at that epoch.
+test("2B: a held job dropped by the hold bound or by stop() is handed back as a refusal (sent:'no') before any lease", async () => {
+  const late = world();
+  const order: string[] = [];
+  const agent = createPrintAgent({
+    ...late.deps,
+    lease: () => {
+      order.push("lease");
+      return late.deps.lease();
+    },
+    ack: (id: string, body: PrintAgentAckBody) => {
+      order.push(`ack ${id} ${body.outcome} ${body.sent ?? ""}`.trim());
+      return late.deps.ack(id, body);
+    },
+  });
+  agent.take(job("late"));
+  await advance(late.w, PRINT_DIRECT_HOLD_MS);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  assert.deepEqual(late.w.prints, [], "dropped unprinted");
+  assert.deepEqual(order, ["ack late failed no", "lease"], "its lease handed back first, so the line's lease can reach it, unlabelled");
+  assert.deepEqual(late.w.pending, [], "the refusal was answered and cleared");
+  agent.stop();
+
+  const stopping = world();
+  const stopped = createPrintAgent(stopping.deps);
+  stopped.take(job("held"));
+  stopped.stop();
+  await settle();
+  assert.deepEqual(stopping.w.prints, [], "a stopped agent prints nothing it held");
+  assert.deepEqual(stopping.w.acks.map((a) => [a.id, a.body.outcome, a.body.sent]), [["held", "failed", "no"]], "and hands it back at once");
+});
+
+test("2B: taken jobs wait their turn (first in, first out) and for an open gate; stop drops them unprinted", async () => {
   const { w, deps } = world();
   w.ackAnswers.push(done(false), done(false));
   const agent = createPrintAgent(deps);
