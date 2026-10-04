@@ -12,6 +12,7 @@ import {
   type PrintJobStatus,
 } from "./print-job";
 import type { PrintJobLabel, PrintJobRefusal } from "./print-lifecycle";
+import { printerWriterDevices, printersModeOn, type PrinterConfig } from "./print-printers";
 import type { PrintJobPayload } from "./schemas/print-job.schema";
 
 /** The header a device names itself with on print requests (spec §6.5 originDeviceId). */
@@ -125,6 +126,14 @@ export const PRINT_WAKE_PRINTERS_DAILY_CAP = 14_000;
 
 export function printWakeWriterCap(writers: number): number {
   return Math.floor(PRINT_WAKE_PRINTERS_DAILY_CAP / Math.max(1, Math.floor(writers)));
+}
+
+/** Session 2C (the 2A gate's Important 1): the share of the wake allowance the wake answers each agent
+ *  (agentDailyCap). Printers mode: PRINT_WAKE_PRINTERS_DAILY_CAP by the writers the setup names; simple mode:
+ *  PRINT_WAKE_DAILY_CAP by the agents online, as in Phase 1. The agent spends against the smaller of this and
+ *  its own constant, so the cafe's total never grows with its devices. */
+export function printAgentDailyCap(printers: readonly PrinterConfig[], onlineAgents: number): number {
+  return printersModeOn(printers) ? printWakeWriterCap(printerWriterDevices(printers).length) : printWakeAgentCap(onlineAgents);
 }
 
 /** The agent's wake cadence (spec §9.1). false: the daily share is spent, so stop polling until the

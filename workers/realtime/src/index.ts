@@ -73,7 +73,7 @@ function roomName(tenantId: string): string {
 
 /** The event kinds slice 1 carries. A device subscribes to the whole room and
  *  ignores kinds it does not care about — adding a kind needs no room change. */
-const EVENT_KINDS = ["kot-fired", "kot-ticked", "order-changed", "self-order", "print-job", "print-status"] as const;
+const EVENT_KINDS = ["kot-fired", "kot-ticked", "order-changed", "self-order", "print-job", "print-status", "print-setup"] as const;
 type EventKind = (typeof EVENT_KINDS)[number];
 
 function isEventKind(value: unknown): value is EventKind {

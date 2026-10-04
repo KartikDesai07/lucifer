@@ -20,6 +20,15 @@ export const STATION_EXISTS_MESSAGE = "A station with this name already exists."
 export const STATIONS_FULL_MESSAGE = `A cafe can have at most ${STATIONS_MAX} stations.`;
 export const STATION_DEFAULT_DELETE_MESSAGE = "The default station can't be deleted. Make another station the default first.";
 
+/** Session 2C (the 2A gate's M7): "Bar" and "bar" would both print BAR, so a name is unique ignoring case. A
+ *  pre-check read (the 2A unique index stays as it is on every database); two admins racing can still land a
+ *  pair, which the unique index stops when the case matches too (the 2A gate's M8: accepted). */
+const NAME_IGNORING_CASE = { locale: "en", strength: 2 } as const;
+
+async function nameTaken(name: string, exceptId?: string): Promise<boolean> {
+  return (await Station.findOne({ name, ...(exceptId !== undefined ? { _id: { $ne: exceptId } } : {}) }).collation(NAME_IGNORING_CASE).select("_id").lean()) !== null;
+}
+
 interface StationRow {
   _id: Types.ObjectId;
   name: string;
@@ -61,6 +70,7 @@ export async function createStation(body: CreateStationBody): Promise<PrintSetup
   const stations = await listStations();
   if (stations.length >= STATIONS_MAX) return { ok: false, status: 400, error: STATIONS_FULL_MESSAGE };
   const order = Math.max(...stations.map((station) => station.order)) + 1;
+  if (await nameTaken(body.name)) return { ok: false, status: 409, error: STATION_EXISTS_MESSAGE };
   try {
     const created = await Station.create({ name: body.name, order, isDefault: false });
     return { ok: true, data: stationWireOf(created) };
@@ -76,6 +86,7 @@ export async function createStation(body: CreateStationBody): Promise<PrintSetup
 export async function updateStation(id: string, body: UpdateStationBody): Promise<PrintSetupResult<StationConfig>> {
   const station = await Station.findById(id);
   if (station === null) return { ok: false, status: 404, error: STATION_NOT_FOUND };
+  if (body.name !== undefined && (await nameTaken(body.name, id))) return { ok: false, status: 409, error: STATION_EXISTS_MESSAGE };
   if (body.isDefault === true && !station.isDefault) {
     await Station.updateMany({ _id: { $ne: station._id }, isDefault: true }, { $set: { isDefault: false } });
     station.isDefault = true;

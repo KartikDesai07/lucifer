@@ -144,3 +144,29 @@ test("PIN: the routing is pure: no model, no database, no clock", () => {
   assert.ok(!/Date\.now\(|new Date\(/.test(file), "no clock");
   assert.ok(!/from "mongoose"/.test(file), "no mongoose");
 });
+
+// Session 2C (the 2A gate's M7): "Bar" and "bar" would both print BAR, so names are unique ignoring case: a
+// pre-check read with a case-insensitive collation (the 2A indexes stay as they are on every database).
+test("PIN (2C, M7): a station or printer name is refused when another differs from it only in case", () => {
+  for (const [rel, model] of [["lib/print-stations.ts", "Station"], ["lib/print-printers.ts", "Printer"]] as const) {
+    const s = src(rel);
+    assert.match(s, /const NAME_IGNORING_CASE = \{ locale: "en", strength: 2 \} as const;/, `${rel}: one collation`);
+    assert.match(s, new RegExp(`${model}\\.findOne\\(\\{ name, \\.\\.\\.\\(exceptId !== undefined \\? \\{ _id: \\{ \\$ne: exceptId \\} \\} : \\{\\}\\) \\}\\)\\.collation\\(NAME_IGNORING_CASE\\)`), `${rel}: the pre-check`);
+  }
+});
+
+// Session 2C (the 2B gate's ruling R6): every printer write tells each device to read its printers again (two
+// Worker requests per admin save, never per slip). Stations change no device's printers.
+test("PIN (2C): each printer write publishes print-setup; the kind is the room's, on both sides", () => {
+  const s = src("lib/print-printers.ts");
+  assert.equal(s.split('publishCafeEvent("print-setup")').length - 1, 3, "create, replace, delete");
+  assert.ok(!src("lib/print-stations.ts").includes("print-setup"), "a station write publishes nothing");
+  assert.match(src("lib/realtime-publish.ts"), /"print-setup",/);
+  assert.match(src("../../workers/realtime/src/index.ts"), /"print-setup"/);
+});
+
+test("PIN (2C, the 2A gate's Important 1): the wake answers each agent's share from the setup", () => {
+  const s = src("app/api/print-jobs/wake/route.ts");
+  assert.match(s, /listPrinters\(\)/, "one read of the printers");
+  assert.match(s, /agentDailyCap: printAgentDailyCap\(printers, agents\),/);
+});

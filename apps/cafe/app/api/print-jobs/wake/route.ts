@@ -3,9 +3,10 @@ import { connectDB } from "@/lib/db";
 import { printJobDrainHead } from "@/lib/print-queue-feeds";
 import { readJobsForDevice } from "@/lib/print-lease";
 import { beatPrintDevice, countOnlineAgents } from "@/lib/print-device";
+import { listPrinters } from "@/lib/print-printers";
 import { sweepPrintJobsThrottled } from "@/lib/print-sweep";
 import { wakeBeatBodySchema } from "@/lib/print-lifecycle-schemas";
-import { printWakeAgentCap, type PrintWakeBeatData } from "@pos/shared/print-agent-wire";
+import { printAgentDailyCap, type PrintWakeBeatData } from "@pos/shared/print-agent-wire";
 import { success, requireAuth, serverError, validateBody } from "@/lib/api-helpers";
 import { noStore } from "@/lib/order-request-tray";
 
@@ -55,7 +56,7 @@ export async function POST(req: Request) {
   try {
     await connectDB();
     await beatPrintDevice(parsed.data, nowMs);
-    const [jobsForMe, agents] = await Promise.all([readJobsForDevice(parsed.data.deviceId, nowMs), countOnlineAgents(nowMs)]);
+    const [jobsForMe, agents, printers] = await Promise.all([readJobsForDevice(parsed.data.deviceId, nowMs), countOnlineAgents(nowMs), listPrinters()]);
     try {
       after(() => sweepPrintJobsThrottled(nowMs));
     } catch {
@@ -64,7 +65,8 @@ export async function POST(req: Request) {
     const data: PrintWakeBeatData = {
       jobsForMe,
       agents,
-      agentDailyCap: printWakeAgentCap(agents),
+      // Session 2C (the 2A gate's Important 1): printers mode shares the writers' allowance by the setup.
+      agentDailyCap: printAgentDailyCap(printers, agents),
       serverNow: new Date(nowMs).toISOString(),
     };
     return noStore(success(data));

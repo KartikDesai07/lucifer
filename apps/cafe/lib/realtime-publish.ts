@@ -53,6 +53,9 @@ export const CAFE_EVENT_KINDS = [
   // ordering device's readback and the agent the job is aimed at. It names the job, its status and
   // its device; never order content. The readback's pulse fallback stays.
   "print-status",
+  // Phase 2 Session 2C: a printer was added, changed or removed, so every agent reads its printers again
+  // (GET /api/printers). Carries nothing; the agent's focus read (every 5 min at most) is the fallback.
+  "print-setup",
 ] as const;
 export type CafeEventKind = (typeof CAFE_EVENT_KINDS)[number];
 

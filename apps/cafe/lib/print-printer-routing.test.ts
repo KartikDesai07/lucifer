@@ -204,6 +204,10 @@ test("bill: the asking device's bill printer, else the default; copies; nowhere 
   assert.deepEqual(kitchenAsBill.map((j) => j.printerId), ["kitchen"], "the device's own choice need not be a default bill printer");
   const nowhere = routePrintRequest(request, routing([KITCHEN_P]));
   assert.deepEqual(nowhere.map((j) => [j.printerId, j.error]), [[null, "No printer is set up for bills."]]);
+  // The 2A gate's M9 (ruled at the 2B gate, R4): a choice that takes no slip is not routable, so its writer would
+  // not poll the wake; it falls back to the default bill printer.
+  const idle = printer("idle", {}, { order: 7 });
+  assert.deepEqual(routePrintRequest(request, routing([COUNTER_P, idle], { billPrinterId: "idle" })).map((j) => j.printerId), ["counter"], "a choice that takes no slip");
 });
 
 test("End of day: the asking device's bill printer, else the first End of day printer, else the default bill printer", () => {

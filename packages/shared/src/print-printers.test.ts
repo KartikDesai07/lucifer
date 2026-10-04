@@ -24,6 +24,7 @@ import {
   type StationConfig,
 } from "./print-printers";
 import { printJobPayloadSchema } from "./schemas/print-job.schema";
+import { PRINT_WAKE_PRINTERS_DAILY_CAP, printAgentDailyCap, printWakeAgentCap } from "./print-agent-wire";
 
 // Printing redesign, Phase 2 (spec §6.1–6.3, §8, §9.3): the pure rules every side reads.
 
@@ -176,4 +177,13 @@ test("2C: the printers a device names are printer ids only, each once, at most t
   assert.equal(routablePrinterOf(printers, "p3"), null, "takes no slip");
   assert.equal(routablePrinterOf(printers, "p9"), null, "removed");
   assert.equal(routablePrinterOf(printers, PRINT_JOB_NO_PRINTER), null, "the no-printer mark is never a printer");
+});
+
+// Session 2C (the 2A gate's Important 1, the server half): each agent's share of the wake. Printers mode splits
+// the cafe's 14,000 by the writers the setup names, never by who is online; simple mode keeps 14,400 by agents.
+test("2C: the wake allowance per agent: printers mode by the setup's writers, simple mode by the agents online", () => {
+  const two = [printer("p1"), printer("p2"), printer("p3", { connection: { kind: "device", deviceId: "dev-p1", transport: "usb", address: "x" } })];
+  assert.equal(printAgentDailyCap(two, 5), Math.floor(PRINT_WAKE_PRINTERS_DAILY_CAP / 2), "two writers (dev-p1 writes two printers), however many are online");
+  assert.equal(printAgentDailyCap([], 3), printWakeAgentCap(3), "simple mode: today's split");
+  assert.equal(printAgentDailyCap([printer("off", { enabled: false })], 1), printWakeAgentCap(1), "a disabled printer keeps simple mode");
 });
