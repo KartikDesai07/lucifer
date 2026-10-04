@@ -37,6 +37,7 @@ import { legAA, legAB, legAC, legY, legZ } from "./print-host-live/order-jobs";
 import { legAD, legAE } from "./print-host-live/agent";
 import { legAF, legAG } from "./print-host-live/attention";
 import { legAH, legAI, legAJ } from "./print-host-live/printers";
+import { legAK, legAL, legAM } from "./print-host-live/direct";
 import { Station } from "@/models/Station";
 import { Printer } from "@/models/Printer";
 import { Category } from "@/models/Category";
@@ -108,6 +109,10 @@ async function main(): Promise<void> {
     await legAH();
     await legAI();
     await legAJ();
+    // Phase 2 Session 2B legs (direct print on the asking device; the ack's more).
+    await legAK(Date.now());
+    await legAL(Date.now());
+    await legAM(Date.now());
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
