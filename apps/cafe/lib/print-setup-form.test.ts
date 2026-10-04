@@ -7,6 +7,8 @@ import type { PrinterConfig, StationConfig } from "@pos/shared/print-printers";
 import { stripComments } from "@/lib/source-pin-utils";
 import { printerIsLocal } from "@/lib/print-agent-printers";
 import {
+  printerPaperOf,
+  windowsPrinterConnectionOf,
   PRINTER_DEVICE_REQUIRED,
   PRINTER_HOST_REQUIRED,
   PRINTER_LOCAL_REQUIRED,
@@ -170,6 +172,23 @@ test("2D: what the setup leaves without a printer (printers mode only), and the 
   const bar = printer("Bar", { slips: { ...NO_SLIPS, kotStations: ["s-bar"] } });
   const both = printer("Both", { slips: { ...NO_SLIPS, kotStations: ["s-bar", "s-kitchen"] } });
   assert.deepEqual(printersLeftEmptyBy([bar, both, counter], "s-bar").map((p) => p.id), ["Bar"], "only the printer that took nothing else");
+});
+
+// Phase 2 Session 2E (spec §9.2, §11): a printer of this PC is one of its Windows printers, by name, on the cafe's own
+// paper; a second Windows printer of the same PC is saved, the same one twice is refused in words.
+test("2E: a Windows printer of this PC by its name, on the cafe's paper; a second one saves, the same one twice is refused", () => {
+  assert.equal(printerPaperOf("58mm"), 58);
+  assert.equal(printerPaperOf("80mm"), 80);
+  const kitchen = windowsPrinterConnectionOf("dev-pc", "Kitchen TVS", 58);
+  assert.deepEqual(kitchen, { connection: { kind: "device", deviceId: "dev-pc", transport: "windows", address: "Kitchen TVS" }, paper: 58 });
+  const counter = printer("Counter", { connection: { kind: "device", deviceId: "dev-pc", transport: "windows", address: "EPSON TM-T82" } });
+  const draft = draftWithLocal({ ...printerDraftOf(null, [KITCHEN]), name: "Kitchen" }, kitchen);
+  const saved = printerBodyOf(draft, [counter]);
+  assert.ok(saved.ok && saved.body.connection.kind === "device" && saved.body.connection.address === "Kitchen TVS" && saved.body.paper === 58, "a second Windows printer of this PC");
+  const twice = printerBodyOf(draftWithLocal(draft, windowsPrinterConnectionOf("dev-pc", "EPSON TM-T82", 80)), [counter]);
+  assert.ok(!twice.ok && twice.error === "Counter already prints on that Windows printer. Choose another Windows printer.", "the same printer twice");
+  // Two Windows printers of one PC: each row says which Windows printer it is (a Bluetooth address says nothing to staff).
+  assert.equal(connectionText(counter, DEVICES, "dev-pc"), "Windows printer EPSON TM-T82 · This device");
 });
 
 // The 2D review gate (M-4): Test print said "sent" for a printer this device writes but could not print right then; the

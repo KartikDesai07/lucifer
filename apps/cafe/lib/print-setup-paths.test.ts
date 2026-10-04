@@ -213,7 +213,8 @@ test("PIN (the 2D review gate, M-2): a station delete that changed a printer's s
 test("PIN (2D, the 2C review gate's F-3): a printer save refuses a second enabled printer for one printing device", () => {
   const s = src("lib/print-printers.ts");
   assert.equal((s.match(/const clash = printerWriterClash\(/g) ?? []).length, 2, "create and replace both check");
-  assert.equal((s.match(/if \(clash !== null\) return \{ ok: false, status: 409, error: printerWriterTakenMessage\(clash\.name\) \};/g) ?? []).length, 2, "both refuse with 409 and the other printer's name");
+  // Session 2E: the words say which clash it is (the same Windows printer twice, or a device that prints one).
+  assert.equal((s.match(/if \(clash !== null\) return \{ ok: false, status: 409, error: printerClashMessage\(clash, stored\) \};/g) ?? []).length, 2, "both refuse with 409 and the other printer's name");
 });
 
 test("PIN (2C, the 2A gate's Important 1): the wake answers each agent's share from the setup", () => {

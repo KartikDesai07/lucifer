@@ -82,6 +82,11 @@ test("PIN (2E): the agent leases, offers for direct print and is kicked only for
   assert.match(hook, /printerState: \(\) => \(isDesktopShell\(\) \? desktopPrinterSnapshot\(\) : devicePrinter\(\)\.getSnapshot\(\)\),/, "a Windows printer list read again releases a hold");
 });
 
+test("PIN (2E): a Windows printer that failed is looked up again, so one renamed or removed in Windows stops being this PC's", () => {
+  const hook = src("hooks/use-print-agent.ts");
+  assert.match(hook, /if \(!result\.ok && job\.printerId !== undefined && targetsRef\.current\[job\.printerId\] !== undefined\) void refreshDesktopPrinterChosen\(\);/);
+});
+
 test("PIN (2E): every job of a slip leased to this tab is handed to the agent, from an order answer and from an enqueue", () => {
   const seam = src("hooks/use-host-routing.ts");
   assert.match(seam, /for \(const job of ref\.alsoLeased \?\? \[\]\) deliverLeasedJob\(job\);/, "an order answer: the slip's other leased jobs");

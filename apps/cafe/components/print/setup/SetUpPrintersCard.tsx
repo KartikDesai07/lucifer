@@ -6,9 +6,11 @@ import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
 import { usePrintHostDot } from "@/components/layout/print-host-dot-context";
 import { PRINTER_ACTION_CLASS } from "@/components/print/printer-classes";
 import { Button } from "@/components/ui/button";
-import { useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
-import { useDesktopPrinterName, useSavePrinter } from "@/hooks/use-print-setup";
-import { localPrinterConnectionOf, setUpPrintersBody } from "@/lib/print-setup-form";
+import { useDevicePrinter } from "@/hooks/use-device-printer";
+import { useDesktopPrinterChoices, useSavePrinter } from "@/hooks/use-print-setup";
+import { useSettings } from "@/hooks/use-settings";
+import { printConfigOf } from "@/lib/print";
+import { localPrinterConnectionOf, printerPaperOf, setUpPrintersBody } from "@/lib/print-setup-form";
 
 const EXPLAIN =
   "Slips print as set above. To send each kitchen station's KOTs to its own printer, set up printers: this device's printer becomes Printer 1 and takes every slip, so its paper does not change (other devices' slips print there too). Then add stations and printers.";
@@ -27,11 +29,12 @@ export function SetUpPrintersCard({ deviceId }: { deviceId: string }) {
   const remote = usePrintHostDot();
   const { isHostDevice } = usePrintHostContext();
   const local = useDevicePrinter().printer;
-  // The lane, not a render-time shell check: the server and the first paint agree on "pending".
-  const lane = usePrintLane();
-  const desktopName = useDesktopPrinterName();
+  // The lane, not a render-time shell check (inside the hook): the server and the first paint agree on "pending".
+  const desktop = useDesktopPrinterChoices();
+  // Session 2E: a Windows printer is drawn for its own paper, so Printer 1 takes the cafe's KOT paper: nothing changes.
+  const paper = printerPaperOf(printConfigOf(useSettings().data).kot.paperWidth);
   const save = useSavePrinter();
-  const here = localPrinterConnectionOf({ local, deviceId, desktop: lane === "desktop" ? { printerName: desktopName } : null, defaultPaper: 80 });
+  const here = localPrinterConnectionOf({ local, deviceId, desktop: desktop === null ? null : { printerName: desktop.selected }, defaultPaper: paper });
   const known = remote !== "loading" && remote !== "unknown";
   const elsewhere = known && remote !== "none" && !isHostDevice;
   const reason = !known ? CHECKING : elsewhere ? ON_THE_HOST : here === null ? NO_PRINTER_HERE : null;

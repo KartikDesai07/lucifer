@@ -256,6 +256,25 @@ Pair the Bluetooth printer in the device's own Bluetooth settings first.
       before; choose **Not chosen — slips will not print** in the picker: the dot
       turns red with "No printer chosen"; choose the printer again: green.
 
+## Several printers on one Windows PC (Phase 2, added 2026-10-05)
+
+Needs the Windows app 1.11.0 or later on the counter PC, two thermal printers installed in Windows, and the
+POS with Phase 2. An older Windows app prints one printer, the one chosen for the PC: the printer form says so.
+
+- [ ] Printer setup in the Windows app: **Set up printers** makes Printer 1 from the printer chosen for this PC,
+      on the cafe's KOT paper. **Send to Kitchen**: one KOT on it, exactly as before.
+- [ ] Add a station **Bar** and put the drinks category on it. **Add printer** → **Device printer** → choose the
+      second printer under **Windows printer** → tick **Bar KOTs** → save. The same Windows printer as Printer 1 is
+      refused: "… already prints on that Windows printer."
+- [ ] A round with food and drinks: the full copy (ALL STATIONS) at Printer 1 and the BAR slip at the second printer,
+      once each, each as wide as its own roll (try one 58 mm and one 80 mm printer if you have them).
+- [ ] **Test print** on each printer: each slip comes out of its own printer.
+- [ ] Rename the second printer in Windows (Settings → Printers): its next slip waits under the printer icon with
+      "That printer is not on this PC…", while Printer 1 keeps printing at once. Edit the printer in Printer setup,
+      choose it again under **Windows printer**: the waiting slip prints once.
+- [ ] An unplugged printer: Windows keeps its slips in its own print queue and prints them when it is back; the POS
+      cannot see that queue (spec §9.6), so check the paper.
+
 ## Result
 
 Date: ________  Device and Android version: ________________________

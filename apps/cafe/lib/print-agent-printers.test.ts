@@ -226,7 +226,8 @@ test("printJobCopies: only this device's printer; every copy in one lease; a fai
 
 test("PIN (2C): the agent prints a leased job through printJobCopies on this device's printers; the station line reaches the paper", () => {
   const agent = src("apps/cafe/hooks/use-print-agent.ts");
-  assert.match(agent, /const print = \(job: LeasedPrintJob\): Promise<PrintAgentResult> => printJobCopies\(job, readyRef\.current, \(\) => printOnce\(job\)\);/);
+  // Session 2E: the same call, inside a body that looks a failed Windows printer up again.
+  assert.match(agent, /const print = async \(job: LeasedPrintJob\): Promise<PrintAgentResult> => \{\s*const result = await printJobCopies\(job, readyRef\.current, \(\) => printOnce\(job\)\);/);
   const kot = src("apps/cafe/components/pos/KOTReceipt.tsx");
   const title = kot.indexOf("KITCHEN ORDER");
   const line = kot.indexOf("{stationLine && (");

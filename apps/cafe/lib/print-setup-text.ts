@@ -46,6 +46,8 @@ export function connectionText(printer: PrinterConfig, devices: readonly PrintDe
     const by = printer.primaryDeviceId === undefined ? "no printing device" : `printed by ${deviceName(printer.primaryDeviceId, devices, thisDeviceId)}`;
     return `Network ${c.host}:${c.port} · ${by}`;
   }
+  // Session 2E (spec §9.2): one PC prints several Windows printers, so a row says which one (its Windows name).
+  if (c.transport === "windows") return `Windows printer ${c.address} · ${deviceName(c.deviceId, devices, thisDeviceId)}`;
   return deviceConnectionText(c, devices, thisDeviceId);
 }
 

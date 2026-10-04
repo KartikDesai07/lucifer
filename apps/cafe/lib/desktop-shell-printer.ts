@@ -41,6 +41,16 @@ export interface DesktopPrinterApi {
   savePrintMode?: (mode: DesktopPrintMode) => Promise<{ printMode: DesktopPrintMode }>;
 }
 
+// Mirrors NON_PAPER_PRINTER_PATTERNS in apps/desktop/src/shared.ts, which is the ENFORCING copy: the shell refuses
+// these whatever this list says. Here they are only greyed out with a reason, so the operator understands why.
+const NON_PAPER_PATTERNS = ["print to pdf", "xps document writer", "onenote", "fax", "adobe pdf", "pdfcreator"];
+
+/** A Windows device that saves a file instead of printing (the picker and, since Session 2E, the printer form). */
+export function desktopPrinterSavesToFile(name: string): boolean {
+  const lower = name.toLowerCase();
+  return NON_PAPER_PATTERNS.some((pattern) => lower.includes(pattern));
+}
+
 /** Phase 2 Session 2E (spec §9.2): the shell prints a slip on a printer the page names (printHtmlOn, desktop 1.11.0).
  *  Feature-detected like the picker: an older shell prints only on its chosen printer, so the page names none there. */
 export function desktopPrintsOnNamed(): boolean {

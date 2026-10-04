@@ -1,21 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import type { PrintDeviceSummary, PrintJobRef } from "@pos/shared/print-agent-wire";
 import type { PrinterConfig, StationConfig } from "@pos/shared/print-printers";
 import { PRINTERS_KEYS } from "@/hooks/use-agent-printers";
+import { useDesktopPrinterSnapshot, usePrintLane } from "@/hooks/use-device-printer";
 import { CATEGORY_KEYS } from "@/hooks/use-categories";
 import { PRODUCT_KEYS } from "@/hooks/use-products";
 import { apiGet, apiSend } from "@/lib/api-client";
 import { isDesktopShell } from "@/lib/desktop-shell";
-import { desktopPrinterApi } from "@/lib/desktop-shell-printer";
 import { deliverLeasedJob, kickPrintAgent } from "@/lib/print-agent";
 import { printAgentHeaders } from "@/lib/print-agent-calls";
 import type { PrinterBody } from "@/lib/print-printer-schemas";
 import { readDeviceId } from "@/lib/pos-device-id";
+import { refreshDesktopPrinterChosen, type DesktopPrinterSnapshot } from "@/lib/printer/desktop-printer-state";
 
 // Printing redesign, Phase 2 Session 2D (spec §11): the Printer setup page's reads and writes. Reads happen on that
 // page only (mount and focus; never polled), so they add nothing to an ordering device's day. Every write refreshes
@@ -49,26 +50,16 @@ export function usePrintDevices(enabled = true): { devices: PrintDeviceSummary[]
   return { devices: query.data ?? NO_DEVICES, loaded: query.isSuccess, failed: query.isError };
 }
 
-/** The Windows app's chosen printer, the address a Windows printer is saved with (null: not the Windows app, or
- *  not read). Read once per mount of the form that needs it. */
-export function useDesktopPrinterName(): string | null {
-  const [name, setName] = useState<string | null>(null);
+/** The Windows app's chosen printer and every printer Windows reports on this PC (a Windows printer is saved by its
+ *  name), read again when the form or the card that needs them mounts (Session 2E: the store the agent reads, so a
+ *  printer just added in Windows is this PC's for both). null: not the Windows app. */
+export function useDesktopPrinterChoices(): DesktopPrinterSnapshot | null {
+  const snapshot = useDesktopPrinterSnapshot();
+  const lane = usePrintLane();
   useEffect(() => {
-    if (!isDesktopShell()) return;
-    let live = true;
-    void desktopPrinterApi()
-      ?.listPrinters()
-      .then(
-        (list) => {
-          if (live) setName(list.selected);
-        },
-        () => undefined,
-      );
-    return () => {
-      live = false;
-    };
+    if (isDesktopShell()) void refreshDesktopPrinterChosen();
   }, []);
-  return name;
+  return lane === "desktop" ? snapshot : null;
 }
 
 export function useSavePrinter() {

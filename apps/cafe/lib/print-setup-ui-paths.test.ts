@@ -75,6 +75,34 @@ test("PIN (2D, spec §11): the printer form: a network printer's printing device
   assert.ok(form.includes("static IP") && form.includes("DHCP reservation"), "the fixed-address tip");
 });
 
+// Phase 2 Session 2E (spec §9.2, §11): on a Windows app that prints on a named printer, the form chooses one of this PC's
+// Windows printers by name; an older app says it prints one printer; a printer of another device keeps its connection.
+test("PIN (2E): the printer form chooses one of this PC's Windows printers by name, on the cafe's paper; Printer 1 too", () => {
+  const form = src(`${SETUP}PrinterFormDialog.tsx`);
+  assert.match(form, /const named = desktop !== null && desktopPrintsOnNamed\(\);/);
+  assert.match(form, /const windowsHere = named && \(draft\.device === null \|\| \(draft\.device\.transport === "windows" && draft\.device\.deviceId === deviceId\)\);/, "never over another device's printer");
+  // The gate's review of the 2E gold (I-2): choosing the name again keeps the paper the form holds; a new printer
+  // starts on the cafe's KOT paper.
+  assert.match(form, /onChange=\{\(name\) => setDraft\(\(current\) => draftWithLocal\(current, windowsPrinterConnectionOf\(deviceId, name, current\.paper\)\)\)\}/);
+  assert.match(form, /useState<PrinterDraft>\(\(\) => \(printer === null \? \{ \.\.\.printerDraftOf\(null, stations\), paper \} : printerDraftOf\(printer, stations\)\)\)/);
+  assert.match(src(`${SETUP}WindowsPrinterSelect.tsx`), /if \(names === null\) return <p className="text-brand-muted">\{READING\}<\/p>;/, "the list still being read is said so");
+  assert.match(form, /\{here !== null && !named && \(/, "Use this device's printer elsewhere, and on an older Windows app");
+  assert.match(form, /\{desktop !== null && !named && <p className="text-xs text-brand-muted">\{ONE_WINDOWS_PRINTER\}<\/p>\}/);
+  for (const file of [`${SETUP}PrinterFormDialog.tsx`, `${SETUP}SetUpPrintersCard.tsx`]) {
+    assert.match(src(file), /const paper = printerPaperOf\(printConfigOf\(useSettings\(\)\.data\)\.kot\.paperWidth\);/, `${file}: the cafe's KOT paper, so Printer 1 changes nothing on paper`);
+  }
+  const select = src(`${SETUP}WindowsPrinterSelect.tsx`);
+  assert.match(select, /disabled=\{desktopPrinterSavesToFile\(name\)\}/, "a device that saves a file cannot be chosen");
+  const picker = src("components/print/DesktopPrinterPicker.tsx");
+  assert.match(picker, /const savesToFile = desktopPrinterSavesToFile;/, "one list of file devices in the page");
+});
+
+test("PIN (2E, spec §9.7): a browser tab that drives a printer says to keep it open, or use the POS app", () => {
+  const section = src("components/print/DevicePrinterSection.tsx");
+  assert.match(section, /const KEEP_TAB_OPEN = "Keep this tab open, or use the POS app: a hidden or closed tab prints late or not at all\.";/);
+  assert.match(section, /\{printer\.kind !== "native" && <p className="text-xs text-brand-muted">\{KEEP_TAB_OPEN\}<\/p>\}/, "a Web Serial or Web Bluetooth printer only");
+});
+
 test("PIN (2D, the 2A gate's M5): a station's delete names the printers it leaves with nothing; the default is never deleted, said in words", () => {
   const stations = src(`${SETUP}StationsSetupSection.tsx`);
   assert.match(stations, /<InlineConfirm question=\{stationDeleteQuestion\(station, printers\)\}/);

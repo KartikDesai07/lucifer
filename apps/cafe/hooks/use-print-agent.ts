@@ -40,7 +40,7 @@ import { PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print
 import { bumpPrintWakeBudget, mergePrintWakeBudget, readPrintWakeBudget, writePrintWakeBudget, type PrintWakeBudget } from "@/lib/print-wake-budget";
 import { PrintWriteError } from "@/lib/print-write-outcome";
 import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
-import { desktopPrinterSnapshot } from "@/lib/printer/desktop-printer-state";
+import { desktopPrinterSnapshot, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
 import { devicePrinter } from "@/lib/printer/device-printer";
 import { nativeBridge, nativeOn } from "@/lib/printer/native-bridge";
 import { canPrintNow, currentLane, defaultDeviceLabel, printCapabilities } from "@/lib/printer/print-lane";
@@ -171,8 +171,13 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
           done({ ok: false, error: new PrintWriteError(PRINT_HOST_PRINT_FAILED_MESSAGE, "no", true) });
         }
       });
-    // Session 2C: a printer job only on this device's own printer, every copy inside its one lease.
-    const print = (job: LeasedPrintJob): Promise<PrintAgentResult> => printJobCopies(job, readyRef.current, () => printOnce(job));
+    // Session 2C: a printer job only on this device's own printer, every copy inside its one lease. Session 2E: a Windows
+    // printer that failed is looked up again in the Windows app, so one renamed or removed there stops being this PC's.
+    const print = async (job: LeasedPrintJob): Promise<PrintAgentResult> => {
+      const result = await printJobCopies(job, readyRef.current, () => printOnce(job));
+      if (!result.ok && job.printerId !== undefined && targetsRef.current[job.printerId] !== undefined) void refreshDesktopPrinterChosen();
+      return result;
+    };
     const created = createPrintAgent({
       deviceId,
       lease: (printerIds) => apiSend<PrintLeaseData>(LEASE_URL, "POST", { deviceId, tabId, ...printerIdsBody(printerIds) }),

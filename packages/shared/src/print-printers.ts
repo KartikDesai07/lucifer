@@ -150,11 +150,13 @@ export function printerWriterDevices(printers: readonly PrinterConfig[]): string
   return out;
 }
 
-/** Session 2D (until Session 2E's several printers per device, spec §9.2): a device prints one printer, so at most
- *  one ROUTABLE printer (enabled, taking a slip) names it as its writer. A second would never print, or, for a
- *  Windows or browser serial printer (matched by transport alone), print on the first one's paper (the 2C review
- *  gate, F-3). The routable printer that already does, or null; a printer switched off or taking no slip is never
- *  leased, so it never clashes (the 2D gate's review, M-4). */
+/** Session 2D: a device prints one printer, so at most one ROUTABLE printer (enabled, taking a slip) names it as its
+ *  writer. A second would never print, or print on the first one's paper (the 2C review gate, F-3). Session 2E (spec
+ *  §9.2): the Windows app prints each Windows printer it has by name, so a PC may write several Windows printers,
+ *  each a different one (a Windows printer's name is the same printer whatever its case); any other device prints one
+ *  printer until Session 2F (the Android app on bridge v1; a Chrome tab drives one, §9.7). The routable printer that
+ *  clashes, or null; a printer switched off or taking no slip is never leased, so it never clashes (the 2D gate's
+ *  review, M-4). */
 export function printerWriterClash(
   printers: readonly PrinterConfig[],
   draft: Pick<PrinterConfig, "connection" | "primaryDeviceId" | "enabled" | "slips">,
@@ -162,11 +164,35 @@ export function printerWriterClash(
 ): PrinterConfig | null {
   const writer = printerWriterDeviceId(draft);
   if (!draft.enabled || writer === null || !printerTakesSlips(draft.slips)) return null;
-  return routablePrinters(printers).find((printer) => printer.id !== exceptId && printerWriterDeviceId(printer) === writer) ?? null;
+  return (
+    routablePrinters(printers).find(
+      (printer) => printer.id !== exceptId && printerWriterDeviceId(printer) === writer && !differentWindowsPrinters(printer.connection, draft.connection),
+    ) ?? null
+  );
+}
+
+/** Session 2E: a Windows printer's name as the printer it is (Windows names ignore case); null for any other. */
+function windowsPrinterKey(connection: PrinterConnection): string | null {
+  return connection.kind === "device" && connection.transport === "windows" ? connection.address.toLowerCase() : null;
+}
+
+/** Two Windows printers of one PC that are not the same printer. */
+function differentWindowsPrinters(a: PrinterConnection, b: PrinterConnection): boolean {
+  const left = windowsPrinterKey(a);
+  const right = windowsPrinterKey(b);
+  return left !== null && right !== null && left !== right;
 }
 
 export function printerWriterTakenMessage(name: string): string {
   return `That device already prints ${name}. For now one device prints one printer: switch ${name} off, or choose another device.`;
+}
+
+/** The words for a clash (Session 2E): the same Windows printer twice, else a second printer for a device that prints one. */
+export function printerClashMessage(clash: Pick<PrinterConfig, "name" | "connection">, draft: Pick<PrinterConfig, "connection">): string {
+  if (windowsPrinterKey(clash.connection) !== null && windowsPrinterKey(draft.connection) !== null) {
+    return `${clash.name} already prints on that Windows printer. Choose another Windows printer.`;
+  }
+  return printerWriterTakenMessage(clash.name);
 }
 
 /** Session 2C: a waiting job's printer, if routing may still send it slips (enabled, with a writer, taking a

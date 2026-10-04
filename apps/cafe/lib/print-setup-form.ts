@@ -2,14 +2,15 @@ import {
   PRINTER_COPIES_MAX,
   PRINTER_COPIES_MIN,
   PRINTER_LAN_DEFAULT_PORT,
+  printerClashMessage,
   printerWriterClash,
-  printerWriterTakenMessage,
   type PrinterConfig,
   type PrinterConnection,
   type PrinterDeviceTransport,
   type PrinterPaperWidth,
   type StationConfig,
 } from "@pos/shared/print-printers";
+import type { PaperWidth } from "@/lib/constants";
 import type { PrinterBody } from "@/lib/print-printer-schemas";
 import type { DevicePrinter } from "@/lib/printer/device-printer-store";
 
@@ -54,6 +55,16 @@ const SERIAL_ADDRESS_FALLBACK = "serial";
 
 function paperOf(paper: string): PrinterPaperWidth {
   return paper === "58mm" ? 58 : 80;
+}
+
+/** Session 2E: a printer's paper from the cafe's paper setting (a Windows printer has no saved paper of its own). */
+export function printerPaperOf(width: PaperWidth): PrinterPaperWidth {
+  return paperOf(width);
+}
+
+/** Session 2E (spec §9.2, §11): one of this PC's Windows printers, by the name Windows reports (never typed). */
+export function windowsPrinterConnectionOf(deviceId: string, name: string, paper: PrinterPaperWidth): LocalPrinterConnection {
+  return { connection: { kind: "device", deviceId, transport: "windows", address: name }, paper };
 }
 
 function hex4(n: number): string {
@@ -159,7 +170,8 @@ function copiesOf(n: number): number {
 }
 
 /** The body the save sends, or what is missing in words. Full KOT copy clears the station boxes (a station on a
- *  full-copy printer adds nothing to its paper). One enabled printer per printing device until Session 2E. */
+ *  full-copy printer adds nothing to its paper). One routable printer per printing device, except a Windows PC's
+ *  Windows printers, each a different one (Session 2E). */
 export function printerBodyOf(
   draft: PrinterDraft,
   printers: readonly PrinterConfig[],
@@ -191,7 +203,7 @@ export function printerBodyOf(
     enabled: draft.enabled,
   };
   const clash = printerWriterClash(printers, { connection, primaryDeviceId, enabled: draft.enabled, slips: body.slips }, editingId);
-  if (clash !== null) return { ok: false, error: printerWriterTakenMessage(clash.name) };
+  if (clash !== null) return { ok: false, error: printerClashMessage(clash, { connection }) };
   return { ok: true, body };
 }
 

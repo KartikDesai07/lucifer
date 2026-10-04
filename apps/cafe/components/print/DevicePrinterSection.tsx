@@ -23,6 +23,8 @@ const REMOVE_FAILED_MESSAGE = "Could not remove the printer. Try again.";
 const NO_CAPABILITY_MESSAGE =
   "This browser or app cannot connect to a printer directly. For direct printing, use Chrome or Edge, or the new POS app.";
 const SECTION_DESCRIPTION = "The printer this device prints on.";
+// Spec §9.7 (Phase 2 Session 2E): a browser tab drives one printer, and a hidden tab's timers are slowed.
+const KEEP_TAB_OPEN = "Keep this tab open, or use the POS app: a hidden or closed tab prints late or not at all.";
 
 // "Printer on this device": which way slips leave THIS device, by what it can
 // do. The desktop app has its own picker; the POS app lists printers it can
@@ -99,6 +101,7 @@ export function DevicePrinterSection() {
           {printer !== null && (
             <div className="space-y-3">
               <PrinterRow printer={printer} status={status} />
+              {printer.kind !== "native" && <p className="text-xs text-brand-muted">{KEEP_TAB_OPEN}</p>}
               {snapshot.message !== null && !elsewhere && <p role="status" className="text-brand-muted">{snapshot.message}</p>}
               {confirmRemove ? (
                 <InlineConfirm
