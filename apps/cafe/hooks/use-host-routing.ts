@@ -26,7 +26,7 @@ import {
 } from "@/lib/print-routing";
 import { readDevicePrefs, writeDevicePrefs } from "@/lib/pos-device-prefs";
 import { readDeviceId } from "@/lib/pos-device-id";
-import { kickPrintAgent } from "@/lib/print-agent";
+import { deliverLeasedJob, kickPrintAgent } from "@/lib/print-agent";
 import { printAgentEnqueueHeaders, printJobRefOf } from "@/lib/print-agent-calls";
 import type { Order } from "@/types";
 
@@ -141,8 +141,11 @@ export function useHostRouting(): PrintRoutingHost {
       if (result.outcome === "queued" || result.outcome === "already-resolved") {
         recordReadback(printReadbackRecordOf(result.id, job.payload));
       }
-      // Session 1C: a queued job is this device's own line (no host), or this host's: lease it now.
-      if (agentDeviceId !== "" && result.outcome === "queued") kickPrintAgent();
+      // Session 2B (spec §7.11): a job leased to this tab (made so now, or handed back after a lost
+      // answer) prints here at once. Session 1C: any other queued job is this device's own line (no host),
+      // or this host's: lease it now.
+      if (result.outcome === "queued" && result.leased !== undefined) deliverLeasedJob(result.leased);
+      else if (agentDeviceId !== "" && result.outcome === "queued") kickPrintAgent();
       // PH-5 (OPS-7): a job the HOST itself queued should drain on the next
       // microtask, not the next 20s tick — refetch the pulse so the drain's
       // feed sees it now. A handler-time pref read (never during render); a
@@ -158,6 +161,8 @@ export function useHostRouting(): PrintRoutingHost {
 
   // Session 1C: the order's own answer already made this slip a job (spec §7.4): follow it for the
   // readback and, unless it is already resolved (M-d), wake the agent. No request at all.
+  // Session 2B (spec §7.11): a job the answer made leased to this tab is handed to the agent, which prints
+  // it now: no lease request either.
   const followPrintJob = useCallback(
     (ref: PrintJobRef, buildJob: () => PrintJobRequest) => {
       try {
@@ -165,7 +170,8 @@ export function useHostRouting(): PrintRoutingHost {
       } catch {
         // A builder throw changes nothing: the job exists and prints; only its chip is missing.
       }
-      if (ref.status === "queued") kickPrintAgent();
+      if (ref.leased !== undefined) deliverLeasedJob(ref.leased);
+      else if (ref.status === "queued") kickPrintAgent();
     },
     [recordReadback],
   );

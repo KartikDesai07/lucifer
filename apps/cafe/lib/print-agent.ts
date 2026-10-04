@@ -1,20 +1,15 @@
-import { PRINT_ACK_ERROR_MAX_CHARS, PRINT_ACK_PENDING_MAX_MS, PRINT_ACK_RETRY_MS, printBannerText } from "@pos/shared/print-lifecycle";
+import { PRINT_ACK_PENDING_MAX_MS, PRINT_ACK_RETRY_MS, PRINT_LEASE_MS } from "@pos/shared/print-lifecycle";
 import {
   PRINT_AGENT_REFUSED_RECHECK_MS,
   printAgentMayLease,
   printAgentTimerDelayMs,
   type LeasedPrintJob,
   type PrintAckData,
-  type PrintLeaseData,
 } from "@pos/shared/print-agent-wire";
 import { ackAnswered } from "@/lib/print-ack-store";
-import {
-  PRINT_HOST_DISPATCH_TIMEOUT_MS,
-  PRINT_HOST_EOD_READY_TIMEOUT_MS,
-  hostPrintSlipOf,
-  type HostPrintSlip,
-} from "@/lib/print-host-slips";
-import { PRINT_SLIP_REFUSALS_MAX, isSlipRefusal, printWriteOutcomeOf, type PrintWriteOutcome } from "@/lib/print-write-outcome";
+import { failedAckBody } from "@/lib/print-agent-slip";
+import type { PendingPrintAck, PrintAgent, PrintAgentDeps } from "@/lib/print-agent-types";
+import { PRINT_SLIP_REFUSALS_MAX, isSlipRefusal, printWriteOutcomeOf } from "@/lib/print-write-outcome";
 
 // Printing redesign, Phase 1 Session 1C (spec §9.1): the in-page print agent's core, with no React and
 // no globals except the pending-ack store, so every rule below is unit-tested with fakes
@@ -26,77 +21,19 @@ import { PRINT_SLIP_REFUSALS_MAX, isSlipRefusal, printWriteOutcomeOf, type Print
 // PRINT_AGENT_REFUSED_RECHECK_MS. Its only timer is local, set from the server's retryAt/nextAttemptAt.
 // A "printed" ack that got no answer is kept in localStorage and re-sent every 5 s for 10 min, and
 // cleared on ANY answer from the server (spec §7.9; 1A review M3).
-
-export type PrintAgentResult = { ok: true } | { ok: false; error: unknown };
-
-export interface PrintAgentAckBody {
-  deviceId: string;
-  epoch: number;
-  outcome: "printed" | "failed";
-  sent?: "no" | "maybe";
-  permanent?: true;
-  error?: string;
-}
-
-export interface PendingPrintAck {
-  id: string;
-  epoch: number;
-  at: number;
-  /** A failed ack that got no answer (M4); absent: a "printed" ack. */
-  fail?: PrintAgentAckBody;
-}
-
-export interface PrintAgentDeps {
-  deviceId: string;
-  lease(): Promise<PrintLeaseData>;
-  ack(id: string, body: PrintAgentAckBody): Promise<PrintAckData>;
-  /** Prints one leased job through the host bridge. Never rejects. */
-  print(job: LeasedPrintJob): Promise<PrintAgentResult>;
-  /** canPrintNow(): a printer here that can print right now. */
-  printerReady(): boolean;
-  /** Any value whose identity changes when this device's printer changes (its snapshot). */
-  printerState(): unknown;
-  readPending(): PendingPrintAck[];
-  writePending(entries: PendingPrintAck[]): void;
-  now(): number;
-  setTimer(fn: () => void, ms: number): unknown;
-  clearTimer(handle: unknown): void;
-}
-
-export interface PrintAgent {
-  setGate(gate: { enabled: boolean; busy: boolean }): void;
-  kick(): void;
-  flushAcks(): Promise<void>;
-  stop(): void;
-}
-
-/** How long the agent waits for the bridge to settle one slip: past the bridge's own bounds (the end-of-day
- *  figures' wait, then the dispatch watchdog), so only a slip the watchdog gave up on reaches it. Such a
- *  slip may have printed, so it is acked "maybe". */
-export const PRINT_AGENT_SLIP_DEADLINE_MS = PRINT_HOST_EOD_READY_TIMEOUT_MS + PRINT_HOST_DISPATCH_TIMEOUT_MS + 5_000;
+//
+// Phase 2 Session 2B (spec §7.11): a job an answer carried already leased to this tab is taken (take) and
+// printed before any lease, first in first out; a job it already holds or acked is ignored, so an answer
+// delivered twice prints once. After a job leaves the line, the ack's `more` decides whether to lease again.
 
 /** The pending-ack store keeps at most this many entries (an agent prints one job at a time). */
 export const PRINT_ACK_PENDING_LIMIT = 50;
 
-export function failedAckBody(deviceId: string, epoch: number, outcome: PrintWriteOutcome): PrintAgentAckBody {
-  const error = outcome.message.trim().slice(0, PRINT_ACK_ERROR_MAX_CHARS).trim();
-  return {
-    deviceId,
-    epoch,
-    outcome: "failed",
-    sent: outcome.sent,
-    ...(outcome.permanent ? { permanent: true as const } : {}),
-    ...(error !== "" ? { error } : {}),
-  };
-}
-
-/** The slip the host bridge prints for one leased job: today's renderer props (print-host-slips.ts),
- *  plus the job's labels as the one banner on top (spec §7.7). An end-of-day summary takes none. */
-export function printAgentSlipOf(job: LeasedPrintJob, todayKey: string): HostPrintSlip {
-  const slip = hostPrintSlipOf(job.payload, todayKey);
-  const banner = printBannerText(job.labels);
-  return banner === "" || slip.surface === "eod" ? slip : { ...slip, banner };
-}
+/** Session 2B (its fresh review, I-1): a job an answer carried leased to this tab prints only this long after
+ *  it arrived. Its 90 s lease began at most one request timeout (15 s) earlier, so the print stays inside the
+ *  lease with a margin. Later the lease may have run out and another attempt (a REPRINT) be on paper, so the
+ *  held job is dropped unprinted. */
+export const PRINT_DIRECT_HOLD_MS = PRINT_LEASE_MS - 30_000;
 
 export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
   let enabled = false;
@@ -110,6 +47,25 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
   let ackTimer: unknown = null;
   let flushing: Promise<void> | null = null;
   const slipRefusals = new Map<string, number>();
+  // Session 2B: jobs already leased to this tab, waiting their turn; every (id:epoch) taken; each ack's answer.
+  const held: Array<{ job: LeasedPrintJob; at: number }> = [];
+  const taken = new Set<string>();
+  const answers = new Map<string, PrintAckData>();
+
+  /** A bounded insert: the oldest key goes once the store holds as many as the pending-ack store. */
+  function remember<T>(store: Set<string> | Map<string, T>, key: string, value?: T): void {
+    if (store instanceof Map) store.set(key, value as T);
+    else store.add(key);
+    if (store.size > PRINT_ACK_PENDING_LIMIT) store.delete(store.keys().next().value as string);
+  }
+
+  /** The oldest held job still well inside its lease; one held longer is dropped unprinted (I-1). */
+  function nextHeld(): LeasedPrintJob | undefined {
+    for (let next = held.shift(); next !== undefined; next = held.shift()) {
+      if (deps.now() - next.at < PRINT_DIRECT_HOLD_MS) return next.job;
+    }
+    return undefined;
+  }
 
   function refusalHolds(): boolean {
     if (refused === null) return false;
@@ -162,7 +118,7 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
         continue;
       }
       try {
-        await deps.ack(entry.id, entry.fail ?? { deviceId: deps.deviceId, epoch: entry.epoch, outcome: "printed" });
+        remember(answers, `${entry.id}:${entry.epoch}`, await deps.ack(entry.id, entry.fail ?? { deviceId: deps.deviceId, epoch: entry.epoch, outcome: "printed" }));
         forget(entry);
       } catch (error) {
         if (ackAnswered(error)) forget(entry);
@@ -183,7 +139,7 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
     return flushing;
   }
 
-  async function cycle(): Promise<void> {
+  async function cycle(forHeld = false): Promise<void> {
     running = true;
     kickedWhileRunning = false;
     let again = false;
@@ -192,11 +148,17 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
       // A stop() that landed meanwhile leases nothing (the 1D gate M-4).
       await flushAcks();
       if (stopped) return;
-      const data = await deps.lease();
-      const job = data.jobs[0];
+      // Session 2B: a job already leased to this tab goes first; only then is the line leased.
+      let job = nextHeld();
       if (job === undefined) {
-        if (data.retryAt !== null) wakeAt(Date.parse(data.retryAt));
-        return;
+        // Only a held job prints past the lease gate; with none left (I-1), the gate decides as always.
+        if (forHeld && !printAgentMayLease({ enabled, busy, running: false, printerReady: deps.printerReady(), refusalHolds: refusalHolds() })) return;
+        const data = await deps.lease();
+        job = data.jobs[0];
+        if (job === undefined) {
+          if (data.retryAt !== null) wakeAt(Date.parse(data.retryAt));
+          return;
+        }
       }
       const result = await deps.print(job);
       if (result.ok) {
@@ -207,7 +169,11 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
         // the next lease does not find this job still leased at the head of the line.
         keep({ id: job.id, epoch: job.epoch, at: deps.now() });
         await flushAcks();
-        again = true;
+        // Session 2B (decision 9): lease again only when the ack says the line holds more. No answer, or
+        // an older server that does not say: lease again, as in Phase 1.
+        const key = `${job.id}:${job.epoch}`;
+        again = answers.get(key)?.more !== false;
+        answers.delete(key);
         return;
       }
       let outcome = printWriteOutcomeOf(result.error);
@@ -236,13 +202,13 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
       if (answer.nextAttemptAt !== null) {
         kickedWhileRunning = false;
         wakeAt(Date.parse(answer.nextAttemptAt));
-      } else again = refused === null;
+      } else again = refused === null && answer.more !== false;
     } catch {
       // No answer from the lease (offline, a deploy): look again later, never in a tight loop.
       wakeAt(deps.now() + PRINT_AGENT_REFUSED_RECHECK_MS);
     } finally {
       running = false;
-      if (again || kickedWhileRunning) kick();
+      if (again || kickedWhileRunning || held.length > 0) kick();
     }
   }
 
@@ -250,6 +216,10 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
     if (stopped) return;
     // Remembered, not dropped: the running cycle's lease may have read the line before this job was in it.
     if (running) return void (kickedWhileRunning = true);
+    // Session 2B: a job already leased to this tab prints now, whatever the lease gate says. Its attempt was
+    // made while the printer was ready, so a printer that went off since refuses it (sent:"no", never
+    // counted) instead of leaving it to expire into a REPRINT.
+    if (held.length > 0 && enabled && !busy) return void cycle(true);
     const holds = refusalHolds();
     if (!printAgentMayLease({ enabled, busy, running, printerReady: deps.printerReady(), refusalHolds: holds })) {
       if (holds && refused !== null) wakeAt(refused.at + PRINT_AGENT_REFUSED_RECHECK_MS);
@@ -258,50 +228,51 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
     void cycle();
   }
 
+  /** Session 2B (seen on the emulator at the 2A gate): a change of state (the gate, the bridge freeing up, the
+   *  printer's status) looks at the line when idle, but is no reason to lease after a running cycle: its own
+   *  print causes them, and its ack's `more` already says whether the line holds more. */
+  function nudge(): void {
+    if (!running) kick();
+  }
+
   return {
     setGate(gate) {
       const opened = (gate.enabled && !enabled) || (!gate.busy && busy);
       enabled = gate.enabled;
       busy = gate.busy;
-      if (opened) kick();
+      if (opened) nudge();
     },
     kick,
+    nudge,
     flushAcks,
     stop() {
       stopped = true;
+      // A job still held is dropped: its lease expires (KOT: REPRINT; bill: the cashier), as for a tab that died.
+      held.length = 0;
       if (timer !== null) deps.clearTimer(timer);
       if (ackTimer !== null) deps.clearTimer(ackTimer);
       timer = null;
       ackTimer = null;
     },
+    take(job) {
+      if (stopped || typeof job.id !== "string" || !Number.isInteger(job.epoch)) return;
+      const key = `${job.id}:${job.epoch}`;
+      // At-least-once delivery, an idempotent consumer: a job already taken, or printed and waiting for its
+      // ack's answer, is never printed again.
+      if (taken.has(key) || deps.readPending().some((e) => e.id === job.id && e.epoch === job.epoch)) return;
+      remember(taken, key);
+      held.push({ job, at: deps.now() });
+      kick();
+    },
+    directReady() {
+      return enabled && !stopped && deps.printerReady() && !refusalHolds();
+    },
   };
 }
 
-// ── The agent's two module seams (client-only, never throws); the pending-ack store is print-ack-store.ts ──
+// ── Split out, re-exported: the shapes, the module seams, the slip and failure helpers, the pending-ack store ──
 
+export type { PendingPrintAck, PrintAgent, PrintAgentAckBody, PrintAgentDeps, PrintAgentResult } from "@/lib/print-agent-types";
+export * from "@/lib/print-agent-seams";
+export { PRINT_AGENT_SLIP_DEADLINE_MS, failedAckBody, printAgentSlipOf } from "@/lib/print-agent-slip";
 export { ackAnswered, readPendingAcks, writePendingAcks } from "@/lib/print-ack-store";
-
-const kickListeners = new Set<() => void>();
-
-/** An order answer named a job this device prints: lease it now, no poll (spec §9.1). */
-export function kickPrintAgent(): void {
-  for (const listener of [...kickListeners]) listener();
-}
-
-export function onPrintAgentKick(listener: () => void): () => void {
-  kickListeners.add(listener);
-  return () => void kickListeners.delete(listener);
-}
-
-let pulseDevice: string | null = null;
-
-/** The agent with no host names itself on the existing 20 s pulse (?device=), so a job the server
- *  re-queued or sent home reaches it within one tick even with the socket down. Not the host: it polls
- *  the wake, which answers the same. */
-export function setPulsePrintDevice(deviceId: string | null): void {
-  pulseDevice = deviceId;
-}
-
-export function pulsePrintDeviceQuery(): string {
-  return pulseDevice === null ? "" : `?device=${encodeURIComponent(pulseDevice)}`;
-}

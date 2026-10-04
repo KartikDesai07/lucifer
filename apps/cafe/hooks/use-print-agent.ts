@@ -13,9 +13,11 @@ import { isDesktopShell } from "@/lib/desktop-shell";
 import {
   PRINT_AGENT_SLIP_DEADLINE_MS,
   createPrintAgent,
+  onLeasedJob,
   onPrintAgentKick,
   printAgentSlipOf,
   readPendingAcks,
+  setDirectPrintSource,
   setPulsePrintDevice,
   writePendingAcks,
   type PrintAgent,
@@ -141,12 +143,26 @@ export function usePrintAgent({ enabled, isHost, deviceId, tabId, busy, queueSli
     agent?.setGate({ enabled, busy });
   }, [agent, enabled, busy]);
 
-  // The printer reconnected or changed: look at the line (the gate decides).
+  // The printer reconnected or changed: look at the line (the gate decides). Session 2B: a nudge, so the
+  // printer's own status changes during the agent's print never queue an empty lease after it.
   useEffect(() => {
-    agent?.kick();
+    agent?.nudge();
   }, [agent, printer, canPrint]);
 
   useEffect(() => (agent === null ? undefined : onPrintAgentKick(() => agent.kick())), [agent]);
+
+  // Phase 2 Session 2B (spec §7.11): while this tab drains this device's slips and can print now, the requests
+  // that make slips name it (directPrintTab → x-pos-print-lease), and a job an answer carries already leased
+  // to it is printed here at once: no lease request, no realtime message.
+  useEffect(() => {
+    if (agent === null) return;
+    const offSource = setDirectPrintSource(() => (agent.directReady() ? tabId : null));
+    const offLeased = onLeasedJob((job) => agent.take(job));
+    return () => {
+      offSource();
+      offLeased();
+    };
+  }, [agent, tabId]);
 
   useEffect(() => {
     if (agent === null || !enabled) return;

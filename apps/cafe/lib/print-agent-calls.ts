@@ -5,9 +5,11 @@ import {
   PRINT_HEADER_ON,
   PRINT_IDEMPOTENCY_HEADER,
   PRINT_IDEMPOTENCY_KEY_PATTERN,
+  PRINT_LEASE_HEADER,
   type PrintJobRef,
 } from "@pos/shared/print-agent-wire";
 import type { PrintJobKind } from "@pos/shared/print-job";
+import { directPrintTab } from "@/lib/print-agent-seams";
 import { mintTabId, readDeviceId } from "@/lib/pos-device-id";
 
 // Printing redesign, Phase 1 Session 1C (spec §7.4, §9.1; rulings R1 and M-d): the call sites' half of
@@ -17,13 +19,15 @@ import { mintTabId, readDeviceId } from "@/lib/pos-device-id";
 // failed create) is enqueued by the call site under today's job key, so it is still one job.
 
 /** R1's opt-in. {} for a device with no identity: the server then prints nothing for this request,
- *  and the call site prints exactly as before Phase 1. */
-export function printAgentHeaders(deviceId: string, bill = false): Record<string, string> {
+ *  and the call site prints exactly as before Phase 1. Session 2B (spec §7.11): `leaseTab`, this tab while
+ *  it drains this device's slips and can print now, lets a slip this device prints be made leased to it. */
+export function printAgentHeaders(deviceId: string, bill = false, leaseTab: string | null = directPrintTab()): Record<string, string> {
   if (deviceId === "") return {};
   return {
     [PRINT_AGENT_HEADER]: PRINT_HEADER_ON,
     [PRINT_DEVICE_ID_HEADER]: deviceId,
     ...(bill ? { [PRINT_BILL_HEADER]: PRINT_HEADER_ON } : {}),
+    ...(leaseTab !== null ? { [PRINT_LEASE_HEADER]: leaseTab } : {}),
   };
 }
 

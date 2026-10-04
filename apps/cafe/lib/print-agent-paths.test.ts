@@ -102,6 +102,28 @@ test("PIN: the agent leases on events aimed at it, names itself on the pulse (th
   assert.ok(agent.includes("PRINT_AGENT_SLIP_DEADLINE_MS"), "its wait on one slip is bounded");
 });
 
+// Phase 2 Session 2B (spec §7.11): direct print on the asking device, wired end to end on the page.
+test("PIN (2B): the draining tab offers itself for direct print, every answer that carries a lease reaches its agent, and only it", () => {
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.ok(agent.includes("const offSource = setDirectPrintSource(() => (agent.directReady() ? tabId : null));"), "the tab id only while this agent can print now");
+  assert.ok(agent.includes("const offLeased = onLeasedJob((job) => agent.take(job));"), "a leased job is printed by this page's agent");
+  const seam = src("apps/cafe/hooks/use-host-routing.ts");
+  assert.ok(seam.includes("if (ref.leased !== undefined) deliverLeasedJob(ref.leased);\n      else if (ref.status === \"queued\") kickPrintAgent();"), "an order answer's leased job prints with no lease request");
+  assert.ok(
+    seam.includes('if (result.outcome === "queued" && result.leased !== undefined) deliverLeasedJob(result.leased);\n      else if (agentDeviceId !== "" && result.outcome === "queued") kickPrintAgent();'),
+    "an enqueue's leased job too (a re-sent slip whose first answer was lost)",
+  );
+  const calls = src("apps/cafe/lib/print-agent-calls.ts");
+  assert.ok(calls.includes("leaseTab: string | null = directPrintTab()"), "every opt-in reads the seam: orders, rounds, settle, moves, voids, accepts, claims and enqueues");
+  assert.ok(calls.includes("...(leaseTab !== null ? { [PRINT_LEASE_HEADER]: leaseTab } : {}),"));
+  const core = src("apps/cafe/lib/print-agent.ts");
+  assert.ok(core.includes("if (held.length > 0 && enabled && !busy) return void cycle(true);"), "a held job prints before any lease, past the printer gate (its attempt was made while ready)");
+  assert.ok(core.includes("if (deps.now() - next.at < PRINT_DIRECT_HOLD_MS) return next.job;"), "but only well inside its lease (the fresh review, I-1)");
+  assert.ok(core.includes("again = answers.get(key)?.more !== false;"), "the ack's more decides the next lease");
+  assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, printer, canPrint]);"), "a printer state change is a nudge, never a lease queued behind a print");
+  assert.ok(core.includes("if (opened) nudge();"), "so is the gate opening or the bridge freeing up");
+});
+
 test("PIN (spec §7.7): both receipts print the banner first, and every surface forwards it", () => {
   for (const file of ["apps/cafe/components/pos/KOTReceipt.tsx", "apps/cafe/components/pos/OrderReceipt.tsx"]) {
     const s = src(file);
