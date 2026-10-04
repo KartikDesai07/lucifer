@@ -553,6 +553,9 @@ The Phase 2 plan ([2026-10-03-phase-2-routing.md](../plans/2026-10-03-phase-2-ro
 - **Every job of a slip leased to the asking tab reaches it:** with two printers on one device a slip is leased once per printer line (decision 15), and each prints at once.
 - **A station delete that took a station off a printer publishes `print-setup`**, as a printer save does.
 
+**Changed by Session 2E's final review (2026-10-05; the 2E gate re-checks it).**
+- **A Pay Now's bill follows its KOTs on a PC that prints two printers (I-1).** With a slip leased to the asking tab on two printers' lines, the agent printed both KOTs at once but lost the first KOT's `more` (the bill waiting behind it on its line) while it printed the second, so the bill waited for the pulse or the wake (up to 20–60 s at the counter). The agent now keeps its wish to lease (an ack's `more`, a kick while it printed) until a cycle leases: the bill is leased right after the KOTs, as on one printer (§7.11: a Pay Now's bill follows its KOT through the ack's `more`).
+
 ## 9. Printer devices (agents)
 
 ### 9.1 What an agent does
