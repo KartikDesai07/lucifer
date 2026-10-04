@@ -91,6 +91,7 @@ export function PrintHostPrintSources() {
       movedBy={slip.movedBy}
       movedAt={slip.movedAt}
       banner={slip.banner}
+      kotStationLine={slip.stationLine}
     />
   );
 }

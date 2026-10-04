@@ -32,7 +32,7 @@ import {
   type PrintAgent,
   type PrintAgentResult,
 } from "@/lib/print-agent";
-import { printerListLooksStale, type AgentPrinters } from "@/lib/print-agent-printers";
+import { printJobCopies, printerListLooksStale, type AgentPrinters } from "@/lib/print-agent-printers";
 import { createPrintAgentWake } from "@/lib/print-agent-wake";
 import type { HostPrintDone } from "@/lib/print-host-outcomes";
 import { PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print-host-slips";
@@ -147,7 +147,7 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
   // One agent per device identity and tab. A reload re-sends any "printed" ack the last page left.
   useEffect(() => {
     if (deviceId === "") return;
-    const print = (job: LeasedPrintJob): Promise<PrintAgentResult> =>
+    const printOnce = (job: LeasedPrintJob): Promise<PrintAgentResult> =>
       new Promise((resolve) => {
         // The bridge settles every slip; one its watchdog gave up on settles late, so this wait is bounded.
         const deadline = window.setTimeout(
@@ -165,6 +165,8 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
           done({ ok: false, error: new PrintWriteError(PRINT_HOST_PRINT_FAILED_MESSAGE, "no", true) });
         }
       });
+    // Session 2C: a printer job only on this device's own printer, every copy inside its one lease.
+    const print = (job: LeasedPrintJob): Promise<PrintAgentResult> => printJobCopies(job, readyRef.current, () => printOnce(job));
     const created = createPrintAgent({
       deviceId,
       lease: () => apiSend<PrintLeaseData>(LEASE_URL, "POST", { deviceId, tabId, ...printerIdsBody(readyRef.current) }),

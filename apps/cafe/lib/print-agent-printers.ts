@@ -1,5 +1,7 @@
-import type { PrintJobsForMe } from "@pos/shared/print-agent-wire";
+import type { LeasedPrintJob, PrintJobsForMe } from "@pos/shared/print-agent-wire";
 import { printerWriterDeviceId, printersModeOn, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
+import type { PrintAgentResult } from "@/lib/print-agent-types";
+import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
 import type { DevicePrinter } from "@/lib/printer/device-printer-store";
 
 // Printing redesign, Phase 2 Session 2C (spec §9.3, plan decision 1): the printers this device writes, and which
@@ -63,4 +65,22 @@ export function printerListLooksStale(input: {
 }): boolean {
   if (input.jobsForMe?.printerIds?.some((id) => !input.ready.includes(id)) === true) return true;
   return input.isWriter && input.writesPrinters === false;
+}
+
+/** One leased job on this device (spec §6.3 copies, plan decision 2): a printer job is refused (sent:"no", never
+ *  counted) when its printer is not this device's printer; otherwise every copy is written in its one lease, one
+ *  after another. A failure after the first copy may already have put paper out, so it is "maybe" (the REPRINT
+ *  repeats every copy, labelled). A job of the device's own simple-mode line prints once, as today. */
+export async function printJobCopies(
+  job: Pick<LeasedPrintJob, "printerId" | "copies">,
+  localIds: readonly string[],
+  printOnce: () => Promise<PrintAgentResult>,
+): Promise<PrintAgentResult> {
+  if (job.printerId !== undefined && !localIds.includes(job.printerId)) return { ok: false, error: new PrintWriteError(PRINTER_NOT_LOCAL_MESSAGE, "no") };
+  const copies = job.copies ?? 1;
+  for (let copy = 1; copy <= copies; copy++) {
+    const result = await printOnce();
+    if (!result.ok) return copy === 1 ? result : { ok: false, error: new PrintWriteError(printWriteOutcomeOf(result.error).message, "maybe") };
+  }
+  return { ok: true };
 }

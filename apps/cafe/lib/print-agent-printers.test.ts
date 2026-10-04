@@ -5,7 +5,10 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import type { PrinterConfig } from "@pos/shared/print-printers";
 import { stripComments } from "@/lib/source-pin-utils";
-import { agentPrintersOf, printerIsLocal, printerListLooksStale } from "@/lib/print-agent-printers";
+import { PRINTER_NOT_LOCAL_MESSAGE, agentPrintersOf, printJobCopies, printerIsLocal, printerListLooksStale } from "@/lib/print-agent-printers";
+import type { PrintAgentResult } from "@/lib/print-agent-types";
+import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
 import type { DevicePrinter } from "@/lib/printer/device-printer-store";
 
 // Phase 2 Session 2C (spec §9.3, plan decision 1): the printers this device writes, and which of them it prints
@@ -94,4 +97,42 @@ test("PIN (2C, the 2A gate's Important 1): the agent polls the wake by printAgen
   assert.ok(!agent.includes("if (agent === null || !enabled || !isHost) return;"), "no longer the host alone");
   assert.match(agent, /capRef\.current = Math\.min\(PRINT_WAKE_DAILY_CAP, data\.agentDailyCap\);/, "the wake's answer lowers the cap");
   assert.match(agent, /bumpPrintWakeBudget\(mergePrintWakeBudget\(readPrintWakeBudget\(\), memory, dayKey\), dayKey, capRef\.current\)/, "the constant is no longer the only cap");
+});
+
+function printsWith(results: PrintAgentResult[]) {
+  const calls: number[] = [];
+  const once = async (): Promise<PrintAgentResult> => {
+    calls.push(calls.length + 1);
+    return results.shift() ?? { ok: true };
+  };
+  return { calls, once };
+}
+
+// Session 2C (spec §6.3 copies, plan decision 2): all copies of a slip are one job, written in its one lease.
+test("printJobCopies: only this device's printer; every copy in one lease; a failure after the first copy may be on paper", async () => {
+  const away = printsWith([]);
+  const refused = await printJobCopies({ printerId: "p-bar" }, ["p-counter"], away.once);
+  assert.deepEqual([away.calls.length, refused.ok ? null : printWriteOutcomeOf(refused.error)], [0, { sent: "no", permanent: false, message: PRINTER_NOT_LOCAL_MESSAGE }], "not this device's printer: refused, nothing sent, never counted");
+  const simple = printsWith([]);
+  assert.deepEqual([await printJobCopies({}, [], simple.once), simple.calls.length], [{ ok: true }, 1], "the device's own simple-mode line: one copy, as today");
+  const two = printsWith([]);
+  assert.deepEqual([await printJobCopies({ printerId: "p-counter", copies: 2 }, ["p-counter"], two.once), two.calls.length], [{ ok: true }, 2], "both copies, back to back");
+  const firstFails = printsWith([{ ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) }]);
+  const first = await printJobCopies({ printerId: "p-counter", copies: 2 }, ["p-counter"], firstFails.once);
+  assert.deepEqual([firstFails.calls.length, first.ok ? null : printWriteOutcomeOf(first.error).sent], [1, "no"], "the first copy's refusal stands: nothing reached paper");
+  const secondFails = printsWith([{ ok: true }, { ok: false, error: new PrintWriteError(PRINTER_WRITE_FAILED_MESSAGE, "no") }]);
+  const second = await printJobCopies({ printerId: "p-counter", copies: 2 }, ["p-counter"], secondFails.once);
+  assert.deepEqual(second.ok ? null : printWriteOutcomeOf(second.error), { sent: "maybe", permanent: false, message: PRINTER_WRITE_FAILED_MESSAGE }, "a copy is on paper already: maybe (its REPRINT repeats every copy)");
+});
+
+test("PIN (2C): the agent prints a leased job through printJobCopies on this device's printers; the station line reaches the paper", () => {
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.match(agent, /const print = \(job: LeasedPrintJob\): Promise<PrintAgentResult> => printJobCopies\(job, readyRef\.current, \(\) => printOnce\(job\)\);/);
+  const kot = src("apps/cafe/components/pos/KOTReceipt.tsx");
+  const title = kot.indexOf("KITCHEN ORDER");
+  const line = kot.indexOf("{stationLine && (");
+  const number = kot.indexOf("#{roundNumber}");
+  assert.ok(title > 0 && line > title && number > line, "under the title, above the number a cook calls out");
+  assert.ok(src("apps/cafe/components/pos/PrintSources.tsx").includes("stationLine={kotStationLine}"), "PrintSources forwards it");
+  assert.ok(src("apps/cafe/components/print/PrintHostPrintSources.tsx").includes("kotStationLine={slip.stationLine}"), "the agent's slip carries it");
 });

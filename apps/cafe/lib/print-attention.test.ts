@@ -70,6 +70,8 @@ test("printAttentionRowOf: a panel row says what, when, why, who asked and where
     originDeviceId: "dev-2",
     targetDeviceId: "dev-1",
   });
+  // Session 2C: a printers-mode row names its printer, so the panel can say which one waits.
+  assert.equal(printAttentionRowOf({ _id: "j7", kind: "kot", label: "KOT", status: "queued", createdAt: at(T0), printerId: "p-bar" })?.printerId, "p-bar");
   const bare = printAttentionRowOf({ _id: "j2", kind: "bill", label: "Bill · ORD-1", status: "needs-confirm", createdAt: at(T0) });
   assert.deepEqual(bare, { id: "j2", kind: "bill", label: "Bill · ORD-1", status: "needs-confirm", labels: [], createdAt: "2026-10-03T12:00:00.000Z" }, "omit-empty");
   assert.equal(printAttentionRowOf({ _id: "j3", kind: "kot", label: "x", status: "printed", createdAt: at(T0) }), null, "a status the panel never shows is dropped, never thrown");

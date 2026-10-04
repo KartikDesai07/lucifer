@@ -373,3 +373,18 @@ test('PARITY: lib/print-host-slips.ts and hooks/use-pos-print.ts both build the 
   assert.ok(slipsSrc.includes('"Round "'), 'print-host-slips.ts must build the label from the literal "Round " prefix');
   assert.match(posPrintSrc, /`Round \$\{/, "use-pos-print.ts must build the label via a literal `Round ${...}` template");
 });
+
+// Phase 2 Session 2C (spec §8, plan decision 5): a station KOT names its station under its title; a full copy
+// beside station slips says ALL STATIONS; today's KOT (no station on the payload) carries none.
+test("2C: a routed KOT's station line; today's KOT carries none", () => {
+  const kot = { kind: "kot", snapshot: SNAPSHOT, round: 1 } as PrintJobPayload;
+  assert.equal((hostPrintSlipOf(kot, "2026-09-06") as HostKotSlip).stationLine, undefined, "simple mode: the slip is today's");
+  const cases = [
+    [{ name: "Bar", mode: "station" }, "BAR"],
+    [{ name: "All stations", mode: "all" }, "ALL STATIONS"],
+    [{ name: "Bar", mode: "no-printer" }, "BAR (NO PRINTER SET)"],
+  ] as const;
+  for (const [station, line] of cases) {
+    assert.equal((hostPrintSlipOf({ ...kot, station } as PrintJobPayload, "2026-09-06") as HostKotSlip).stationLine, line, station.mode);
+  }
+});

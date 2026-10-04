@@ -16,6 +16,7 @@ import {
   printAlarmSummary,
   printAlarmWanted,
   printRetryNotice,
+  printerNameOf,
   printWaitingAge,
   printWaitingBadgeOf,
   printWaitingGroups,
@@ -301,4 +302,13 @@ test("PIN: the alarm rides the pulse already polled (no request), and only the p
   assert.match(alarm, /return \(\) => \{\s*unsubscribe\(\);\s*toast\.dismiss\(SUMMARY_ID\);/, "an unmount takes its notices down (M-1)");
   assert.match(src("apps/cafe/components/print/PrinterStatusButton.tsx"), /useEffect\(\(\) => onOpenPrinterPanel\(\(\) => setOpen\(true\)\), \[\]\);/, "the printer button opens its sheet when asked");
   assert.match(src("apps/cafe/components/print/PrintHostDrain.tsx"), /usePrintSlipAlarm\(deviceId\);/, "every device with an identity");
+});
+
+// Session 2C (printers mode): the panel names a waiting slip's printer from this device's printer list.
+test("2C: a waiting slip's printer by name; none for simple mode, a printer no longer listed, or no printer at all", () => {
+  const printers = [{ id: "p-bar", name: "Bar printer" }];
+  assert.equal(printerNameOf(printers, "p-bar"), "Bar printer");
+  assert.equal(printerNameOf(printers, undefined), null, "simple mode");
+  assert.equal(printerNameOf(printers, "p-gone"), null, "removed since");
+  assert.equal(printerNameOf(printers, "none"), null, "no printer took it (its reason says so)");
 });

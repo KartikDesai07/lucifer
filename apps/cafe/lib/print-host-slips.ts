@@ -6,6 +6,7 @@
 // (kotRoundSlip ↔ queueKotRound/reprintKot, void ↔ queueVoidSlip), and the
 // unit suite pins the pair.
 
+import { printKotStationHeader } from "@pos/shared/print-printers";
 import type {
   KotPrintJobPayload,
   PrintJobPayload,
@@ -51,6 +52,9 @@ export type HostPrintSurface = "kot" | "receipt" | "eod";
 export interface HostKotSlip {
   surface: "kot";
   order: Order;
+  /** Phase 2 Session 2C (spec §8): the station a routed KOT is for, under its title ("BAR", "ALL STATIONS",
+   *  "BAR (NO PRINTER SET)"); absent on today's KOT and every other slip. */
+  stationLine?: string;
   kotRoundItems?: OrderItem[];
   kotRoundLabel?: string;
   kotRoundNumber?: number;
@@ -128,7 +132,8 @@ export function kotRoundSlip(order: Order, round: number | null): HostKotSlip {
 }
 
 function kotSlipOf(payload: KotPrintJobPayload): HostKotSlip {
-  return kotRoundSlip(orderFromSnapshot(payload.snapshot), payload.round);
+  const slip = kotRoundSlip(orderFromSnapshot(payload.snapshot), payload.round);
+  return payload.station === undefined ? slip : { ...slip, stationLine: printKotStationHeader(payload.station) };
 }
 
 /** `queueVoidSlip` verbatim: the synthesized single line (voided qty, the

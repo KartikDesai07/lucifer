@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { PRINTER_ACTION_CLASS } from "@/components/print/printer-classes";
+import { usePrinters } from "@/hooks/use-agent-printers";
 import { usePrintJobActions } from "@/hooks/use-print-job-actions";
-import { printWaitingGroups, type PrintWaitingGroup } from "@/lib/print-waiting";
+import { printWaitingGroups, printerNameOf, type PrintWaitingGroup } from "@/lib/print-waiting";
 import type { PrintAttentionRow } from "@pos/shared/print-agent-wire";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
 
@@ -21,6 +22,8 @@ import type { PosPulseData } from "@pos/shared/self-order-alert";
 const SECTION_TITLE = "Slips waiting";
 
 export function WaitingSlipsCard({ pulse }: { pulse: PosPulseData | undefined }) {
+  // Session 2C: names each slip's printer (printers mode); the same cached read the agent makes.
+  const printers = usePrinters(true);
   const rows = pulse?.printAttention;
   const { retry, confirm, dismiss } = usePrintJobActions();
   const [tapped, setTapped] = useState<ReadonlySet<string>>(new Set());
@@ -95,6 +98,7 @@ export function WaitingSlipsCard({ pulse }: { pulse: PosPulseData | undefined })
                 <p className="text-base font-medium">{row.label}</p>
                 <p className="text-sm text-muted-foreground">
                   {age} · {reason}
+                  {printerNameOf(printers, row.printerId) !== null ? ` · ${printerNameOf(printers, row.printerId)}` : ""}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">{actions(section.group, row)}</div>
               </li>
