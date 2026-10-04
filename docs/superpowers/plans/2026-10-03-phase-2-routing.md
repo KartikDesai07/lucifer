@@ -7601,3 +7601,126 @@ Add "## Session 2B Results (filled in by the implementer)" at the end of this pl
 - `apps/cafe/lib/print-lifecycle-paths.test.ts`: the CAS pin no longer expects the final-status publish, and "the lifecycle publishes exactly the final statuses" becomes "no final state is published" (G-1, B3).
 - `packages/shared/src/print-budget.test.ts`: "three Worker requests per slip" (3,935) becomes two (2,735), and "two per slip in printers mode" (3,635) becomes one (1,985) (G-1, B5).
 - `apps/cafe/package.json` `testChain`: `lib/print-direct.test.ts` appended (B2).
+
+---
+
+## Session 2B Results (filled in by the implementer)
+
+Executed on 2026-10-04 with superpowers:executing-plans, task by task, B1 → B7.
+
+### Commits (`d605dc4..HEAD`)
+
+| Commit | Task |
+|---|---|
+| `617fcff` | B1: the shared contract: the lease header, a ref that carries its lease, the ack's `more`, a job made leased at creation |
+| `7c4641c` | B2: the server: the asking tab's first slip on its own free line is made leased to it, a lost answer is handed back, nothing announced to yourself |
+| `d126f03` | B3: the ack answers `more`; no final print-status (G-1); jobs-for-me leaves out a running lease (G-2) |
+| `65538ba` | B4: the page: the draining tab names itself, takes leased jobs, nudges, leases again only on `more` |
+| `83610a4` | B5: the budget recount |
+| `e435601` | B6: live legs ak–am |
+| `8869e63` | Final review C-1 and I-1 (beyond the plan): one (id, epoch) prints once however it reached the tab; a held job dropped unprinted is handed back as a refusal |
+| (this commit) | Results; spec §7.11 "Changed by Session 2B's final review" |
+
+### Start
+
+- `git branch --show-current`: `feat/printing-phase-2`; HEAD `d605dc4` (= origin); working tree clean.
+- `GIT_TERMINAL_PROMPT=0 git fetch origin` (token credential): `origin/main` still `6ee2b1d`: nothing to note or merge.
+- Before B1, the whole B1–B6 range (plan lines 3972–7326) was dry-run with the gate's applier against `d605dc4`: **70 ops OK** (as the gate saw).
+
+### How the code was applied
+
+Every block was applied verbatim to the real repo by the gate's applier (`apply_blocks_clone.py`, copied to this session's scratchpad), one step range at a time, so each RED was seen before its code went in. After B6, **all 34 files the six commits touch are blob-identical to the gate's golden branch `g2b`** (gold tree `c22b72a`; `4271848..d605dc4` touches only the plan and the spec).
+
+### Per-task RED → GREEN (every Expected line compared; all matched)
+
+| Task | RED | GREEN |
+|---|---|---|
+| B1 | `print-lifecycle.test.ts`: tests 1, pass 0, **fail 1** | **26/26**; shared tsc 0; cafe tsc 0 |
+| B2 | `print-direct.test.ts` + `print-order-jobs.test.ts`: tests 17, pass 12, **fail 5** | 3 files **24/24**; cafe tsc 0; eslint `LINT_OK` |
+| B3 | `print-lifecycle-paths.test.ts` + `print-lease.test.ts`: tests 24, pass 20, **fail 4** | **24/24**; tsc 0; `LINT_OK` |
+| B4 | `print-agent.test.ts` + `print-agent-paths.test.ts`: tests 43, pass 32, **fail 11** | **43/43**; tsc 0; `LINT_OK`; `print-agent.ts` 278 lines |
+| B5 | `print-budget.test.ts`: tests 1, pass 0, **fail 1** | **26/26**; shared tsc 0 |
+| B6 | (legs: apply and run) | tsc 0, `LINT_OK`; `verify:print:live` **`272 passed, 0 failed`** |
+| C-1 fix | "2B: a job leased through the lease call prints once when the enqueue hands it back, while it prints or before" **fails** (prints `b1, b1`); the "before" order proven on the old agent by a scratchpad test (prints `b2, b2`) | agent + paths **45/45**; tsc 0; `LINT_OK` |
+| I-1 fix | "2B: a held job dropped by the hold bound or by stop() is handed back as a refusal (sent:'no') before any lease" **fails** (no ack); the changed pin below fails the same way | (same run) |
+
+The six commits: 34 files, +1,238 / −193. New files: `print-direct.ts` 76 lines, `print-agent-seams.ts` 67, `print-agent-types.ts` 56, `print-agent-slip.ts` 34, legs `direct.ts` 132; `print-order-jobs.ts` 299, `print-lease.ts` 231, `print-agent.ts` 278 (307 after the fix).
+
+### Task B7 Step 1: every suite (at `e435601`)
+
+| Suite | Result |
+|---|---|
+| shared `npm test`; `tsc` | **672/672**; 0 |
+| cafe `npm test` | **4320 tests, 4319 pass, 0 fail, 1 skipped** (the `go-live-dl` pin) |
+| cafe `tsc`; `npm run lint` | 0; 0 errors and the 2 old warnings (`lib/masters-blob.test.ts:331`) |
+| Hub `tsc` | 0 |
+| mobile `tsc`; lint; `npm test`; `test:app` | 0; 0; **117/117**; Jest **3/3** (untouched) |
+| desktop `npm test` | **191/191** (untouched) |
+| `npm run test:print-tools` | **8/8** |
+| live legs (local mongod, `pos_scratch_print_host`) | **`272 passed, 0 failed`** (248 + 24) |
+
+Every row equals the plan's Expected.
+
+**After the fix (`8869e63`), Step 1 again:** shared **672/672**, tsc 0; cafe **4322 tests, 4321 pass, 0 fail, 1 skipped** (+2: the two new agent tests); cafe tsc 0, lint 0 errors and the 2 old warnings; Hub 0; mobile **117/117** and Jest **3/3**; desktop **191/191**; print tools **8/8**; live legs **`272 passed, 0 failed`**.
+
+### Changed existing pins (each follows a deliberate change)
+
+The four the plan names (B2, B3, B5): `print-order-jobs.test.ts` "PIN (M-d)"; `print-lifecycle-paths.test.ts` (the CAS pin without the final-status publish; "no final state is published"); `print-budget.test.ts` (3,935 → 2,735 and 3,635 → 1,985 Worker requests); `apps/cafe/package.json` `testChain` (+ `lib/print-direct.test.ts`). Beyond the plan, for the I-1 fix: `print-agent.test.ts` "2B: a held job prints only well inside its lease…" now expects the dropped job's refusal ack (`failed`, `sent:"no"`, epoch 1) where it expected no ack; the title of "2B: taken jobs wait their turn…" now ends "stop drops them unprinted" (was "(their lease expires)"; its assertions are unchanged).
+
+### Step 2: the Next production build
+
+Success, **127 routes** (2B adds none), at `e435601` and again at `8869e63`.
+
+### Step 3: APKs (no mobile change: byte-identical to the release)
+
+`git diff 4271848..HEAD --stat -- apps/mobile apps/desktop` printed nothing. Built with `GRADLE_USER_HOME='D:\gradle-home'` (BUILD SUCCESSFUL 1m 15s and 39s): x86_64 **`29115bdf…`**, arm64-v8a **`0e0ec314…`**, armeabi-v7a **`e618900a…`**: byte-identical to `D:\kd\pos-apk-release\Sandbee-POS-final\`. The fix (`8869e63`) is web-only.
+
+### Step 4: the emulator exit check. Passed.
+
+`Pixel_7_API_33` (own boot at `-memory 4096 -no-audio -no-snapshot-save`, C: 12 GB free), WebView 109; the installed APK pulled and hashed: the release `29115bdf…`. **The app opened on the owner's live demo "Olivea Pizza"** (signed in; its printer panel: "No printer set up", "Each device prints its own slips"); nothing was tapped there except the printer panel's More options → Change POS address → `http://localhost:3100`, and "POS Software" with the seeded menu showed before any write. The harness as the plan says: this branch's build on 3110 (env: the 2A gate's `e2e.env`, database `pos_scratch_e2e_p1final`), the plan's counting proxy on 3200 (`adb reverse tcp:3100 tcp:3200`), the fake printer on 9101 (long `--out` path; nothing vanished), the network printer `10.0.2.2:9101`, then "Print all slips on this device" (host = the app's device `35bd9663…`). The two tools were saved from the plan into the scratchpad (byte-identical to the gate's copies). Requests are the proxy's POSTs less the beats; the host's own wake polls (every 3 s for 2 min after a job, then 15 s: no realtime Worker locally) are left out below.
+
+| # | Item | Requests | Paper (fake printer, bytes > 0) | Job |
+|---|---|---|---|---|
+| 1 | Send to Kitchen (Masala Chai) | `POST /api/orders` (`lease:true`), its ack 0.92 s later; **no lease** | one slip, 40,494 B | `created`, `leased(direct)`, `printed`; epoch 1, attempts 1 |
+| 2 | Pay Now (Cheesecake, Cash, Place Order) | order, the KOT's ack, **one** `POST /api/print-jobs/lease` (the bill), the bill's ack; nothing after in 20 s+ | KOT 40,494 B, then bill 36,966 B | KOT `leased(direct)`; bill `leased` |
+| 3 | `kot-second` | its ref `queued`, no lease; the host's wake 5 s later → lease → ack | one slip, 40,494 B | `created`, `leased`, `printed` |
+| 4 | Lost answer (`rearm-drop`, then Send to Kitchen) | `POST /api/orders` `"dropped":true` (upstream 201); the POS re-sent it by itself 13 ms later (replay 200, no job named); `POST /api/print-jobs` (`lease:true`) 200 handed the lease back; its ack | one slip, 40,494 B, unlabelled | `created`, `leased(direct)`, `printed`; epoch 1 |
+| 5 | `dead-tab` | its ref `leased` (epoch 1); **no lease request for 94 s** (26 wake polls and the pulses only); then a lease (it expired the job) and 3.3 s later a lease at epoch 2, then its ack | once, **REPRINT**, 46,110 B | `created`, `leased(direct)`, `expired(lease expired: may have printed)`, `leased`, `printed` |
+| 6 | No host (Stop printing here → "Printing device removed — 0 waiting slips cancelled."), Send to Kitchen | `POST /api/orders` (`lease:true`) and its ack only | one slip, 40,494 B | `leased(direct)`, `printed` |
+| 7 | `adb logcat -b crash` | empty (at boot and after) | | |
+
+Fake printer total: 7 slips with bytes > 0. **After the fix**, the build of `8869e63` was run again on the same harness (the app switched from the demo the same way): Send to Kitchen = order + ack (40,494 B); Pay Now = order, ack, lease, ack, nothing after in 25 s (40,494 B then 36,966 B); a lost answer = dropped order, replay 200, the enqueue's lease, ack, one slip unlabelled at epoch 1. Crash buffer empty.
+
+**Item 8, put back as found (twice):** on the local POS "Stop printing here" ("0 waiting slips cancelled") and the network printer removed ("No printer set up"); the address back to `https://posdemo.sandbee.in` ("Olivea Pizza" loads; its printer panel, opened read-only: "No printer set up", "Each device prints its own slips"); `adb reverse --remove-all` then `adb reverse tcp:3100 tcp:3100`; the POS, the proxy and the fake printer stopped by PID after checking each command line; `adb emu kill`.
+
+### Step 5: the fresh review
+
+Claude Fable 5.1 (as at the 2A session and gate: the most capable widely released model), read-only, on `d605dc4..e435601` against the plan (decisions 9, 15, 16; the 2A gate rulings; Session 2B, its Review Focus) and spec §7.2, §7.6, §7.9, §7.11, §17.2; it re-ran the six cafe and two shared test files (87/87, 52/52) and proved its Critical finding with a scratchpad test. Verdict "with fixes": the server side, G-1, G-2, `more` and the budget sound; backward compatibility holds; nothing new is trusted from the header.
+
+| # | Finding | Outcome |
+|---|---|---|
+| **C-1** (Critical) | The enqueue hands back any running lease of the asking device and tab, including one the agent took through the lease call. `take` ignored only jobs it had taken or whose ack was pending, so a Send again that landed while that job printed (after a timed-out order answer in a rush) printed it twice, unlabelled; also a bill, a notice, and a REPRINT re-delivered while it printed. The same happens when the enqueue's answer arrives before the lease's. | **Fixed (`8869e63`)**: the cycle remembers every (id, epoch) it prints, whatever the path, and drops a held twin. Agent test RED → GREEN for both orders. Server unchanged: handing a lease-call lease back is useful (a lost lease answer then prints unlabelled instead of REPRINT); the agent is the idempotent consumer the spec names. |
+| **I-1** (Important) | A held job dropped by the 60 s bound, or by `stop()`, was never acked, so a slip the tab knew it never sent (the printer off for over a minute right after the order) ended as a REPRINT KOT (a kitchen may skip it as a copy) or the cashier's "Did the bill print?". Phase 1 printed the same case clean. | **Fixed (`8869e63`)**: it is acked `failed`, `sent:"no"` (never counted) before any lease. `planAck` applies that only while the job is leased at that epoch; a lease that ran out (`not-leased`), a new epoch (`stale-epoch`) or a resolved job ignore it, so it can never cause a second paper. This changes the 2A gate's "dropped unprinted and never acked": the gate's reason (another writer may have printed it) concerns printing, not acking. Spec §7.11 now says so ("Changed by Session 2B's final review"). |
+| M-1 | The 60 s hold bound assumes the lease began ≤ 15 s before arrival; a re-delivered lease may have little left | For the 2B gate. No double print: this tab is the line's only leaser; the ack lands as a late ack (§7.9). |
+| M-2 | `printLineIsFree` → insert is not atomic: two concurrent own requests from one tab can both be made leased on one line | For the 2B gate (same writer; both print once, in arrival order). |
+| M-3 | Leg (al) asserts only creation leases | For the 2B gate (the lease-call re-delivery is covered by the new agent test). |
+| M-4 | "holds or has acked-pending" → "holds, is printing, or has acked-pending" | The code comment and spec §7.11 are updated; the plan's decision 15 text is left for the gate. |
+| M-5 | `PRINT_REDELIVERY_SELECT` reads the payload on every keyed collision with the header, even when the answer is `already-resolved` | For the 2B gate (budget only; a two-step read). |
+| M-6 | `directReady()` calls `refusalHolds()`, which can clear a stale refusal while building a header | For the 2B gate (no behaviour change). |
+
+The reviewer's "declined to judge" list (10 items: the Orders-sheet bill reprint key, the gate-accepted M-2/M-4 and clock residuals, the doubled payload in the answer, no host nudge for the host's own enqueue, `directReady` ignoring a busy bridge, a host change while a job is held, the 50-entry stores, printers mode, `more`'s device) was ruled item by item in the ledger: each stands as built or as the gate ruled, and #6/#7 are softened by the I-1 fix.
+
+### Deviations and rulings
+
+- **Beyond the plan:** the fix commit `8869e63` (C-1, I-1) and its two changed pins; spec §7.11 gained "Changed by Session 2B's final review". `print-agent.ts` is 307 lines after the fix (the ~300 budget).
+- **The fresh review ran in parallel with Steps 3–4** (it is read-only and reads only the code); the fix was then smoke-checked on the emulator with its own build.
+- The two tools were extracted from the plan's fences into the scratchpad (byte-identical to the gate's copies) rather than retyped.
+- Every decision is in the ledger (`.superpowers/sdd/2026-10-03-phase-2-routing/progress.md`, git-ignored, kept for the gate).
+
+### Open for the 2B gate
+
+M-1, M-2, M-3, M-5, M-6 above; M-4's plan wording; re-check C-1/I-1 and the §7.11 amendment; the reviewer's recommendation of an emulator item "Send again tapped while the re-sent KOT is already printing on the host → one KOT" (hard to time by hand; the agent test covers it). Unchanged from 2A: I1 (2C item 5), M7, M9 (2C), M3, M4, M5 (2D).
+
+### Pushed
+
+With the token only: `GIT_TERMINAL_PROMPT=0 git push origin feat/printing-phase-2`. `origin/main` was still `6ee2b1d` at the end (no merge). `main` untouched; nothing deployed.
