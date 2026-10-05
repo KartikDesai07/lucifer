@@ -35306,3 +35306,143 @@ Add "## Session 2F1 Results (filled in by the implementer)" at the end of this p
 - F4: `print-agent-paths.test.ts` "PIN: the agent leases on events aimed at it …"; `print-agent-printers.test.ts` "PIN (2C): the page reads the printers …"; `print-windows-printers.test.ts` "PIN (2E): the agent leases, offers for direct print …", "PIN (2E): a Windows printer that failed is looked up again …"; `printer/print-gating-paths.test.ts` "drain: the lock is asked for only by a window that can print …".
 - F5: `packages/shared/src/print-printers.test.ts` "2D: one routable printer per printing device …", "2E: a Windows PC may write several Windows printers …"; `print-setup-form.test.ts` "2D: the form's body …"; `print-setup-ui-paths.test.ts` "PIN (2D): each printer row …", "PIN (2D, spec §11): the printer form …", "PIN (2E): the printer form chooses one of this PC's Windows printers …", "PIN (2D): the setup screens … stay small" (`PrinterFormDialog.tsx` 220 → 240); `printer-ui-paths.test.ts` the hygiene budget of `NativePrinterPicker.tsx` (280 → 290).
 - F6: leg (as) "a second enabled printer for one device is refused …" → "the same printer a second time for one device is refused (409), naming the first".
+
+---
+
+## Session 2F1 Results (filled in by the implementer)
+
+Executed on 2026-10-05 with superpowers:executing-plans, task by task, F0 → F7.
+
+### Commits (`997f10c..HEAD`)
+
+| Commit | Task |
+|---|---|
+| `f3534d5` | F0: the 2E review gate's agent fixes: a job leased to this tab is no wish to lease (G-E1), a state change just after a `more: false` ack leases nothing (the trailing lease), a kick for a held printer's job leases nothing (M-1), a hold's end looked at 50 ms after it on the tab's own clock (M-2), the acks and the wake poll in files of their own (M-5) |
+| `a1549ee` | F1: the 2E review gate's setup fixes: a failed devices read hides only what needs the devices (M-3); "Choose the Windows printer." (M-4) |
+| `618075d` | F2: bridge v2 on the page: the contract (`native-bridge-v2.ts`) and the app's printers as a pool (`native-pool.ts`); the release APK (v1) untouched |
+| `b987d68` | F3: a printer job of one of the POS app's printers names it: drawn at its paper, written to it by its id (`printer-registry.ts`) |
+| `256d820` | F4: the agent prints each of the POS app's printers on bridge v2 (state, readiness, refusal hold per printer; a network printer this device writes added to the app; `nativeProtocol` on the wake) |
+| `b558249` | F5: several printers on one phone or tablet in the setup (per printer family; the same printer twice refused; a v1 tablet refused a second in words; "Other printers on this device") |
+| `00b4831` | F6: live legs aw–ax |
+| (this commit) | Results |
+
+### Start
+
+- `git branch --show-current`: `feat/printing-phase-2`; HEAD `997f10c` (= origin); working tree clean.
+- `GIT_TERMINAL_PROMPT=0 git fetch origin` (token credential): `origin/main` still `6ee2b1d`: nothing to merge or note.
+- The gate's applier (`apply_blocks_clone.py`) copied from the 2E gate's scratchpad into this session's; the whole F0–F6 range (plan lines 28375–34831) dry-run against `997f10c`: **160 ops OK** (as the gate saw; no drift).
+
+### How the code was applied
+
+Every block was applied verbatim to the real repo by the gate's applier, one step range at a time (each task's Step 1, then its Step 3; F6's one change step), so each RED was seen before its code went in: F0 19 + 19 ops, F1 6 + 15, F2 2 + 6, F3 6 + 15, F4 10 + 24, F5 9 + 25, F6 4 (160). After F6, **every file outside `docs/` is blob-identical to the gate's golden branch `g2f-v3`** (`b20442d`, tree `f741f4e`; `git ls-tree -r` of both with `docs/` left out: 1,762 entries each, no difference). F0–F6: 62 files, **+1,931 / −307**, as the gate counted. Every commit has the plan's message plus the session's co-author line.
+
+### Per-task RED → GREEN (every Expected line compared; all matched)
+
+| Task | RED | GREEN |
+|---|---|---|
+| F0 | 7 agent files: tests 124, pass 108, **fail 16** | **124/124**; tsc 0; `LINT_OK` |
+| F1 | 2 files: tests 20, pass 15, **fail 5** | 4 files **42/42**; tsc 0; `LINT_OK` |
+| F2 | `native-pool.test.ts`: tests 1, pass 0, **fail 1** (module missing) | 4 files **81/81**; tsc 0; `LINT_OK` |
+| F3 | 3 files: tests 39, pass 35, **fail 4** | 6 files **103/103**; tsc 0; `LINT_OK` |
+| F4 | 6 files: tests 82, pass 69, **fail 13** | 9 files **158/158**; tsc 0; `LINT_OK` |
+| F5 | shared `print-printers`: tests 17, pass 15, **fail 2**; cafe 3 files: tests 55, pass 49, **fail 6** | shared **17/17**, tsc 0; cafe 6 files **100/100**, tsc 0; `LINT_OK` |
+| F6 | (legs: apply and run) | tsc 0, `LINT_OK`; `verify:print:live` **`332 passed, 0 failed`** |
+
+Line counts at the end (the files 2F1 touched most): `print-agent.ts` **300** (339 before F0), `print-agent-acks.ts` 106 (new), `print-agent-holds.ts` 60, `print-agent-types.ts` 64, `use-print-agent.ts` **258** (304 before), `use-print-agent-wake.ts` 87 (new), `native-bridge-v2.ts` 144 (new), `native-pool.ts` 213 (new), `printer-registry.ts` 29 (new), `lane-print.ts` 184, `print-agent-printers.ts` 216, `print-setup-form.ts` 256, `PrinterFormDialog.tsx` 239 (its pinned budget 240), `NativePrinterPicker.tsx` 281 (its pinned budget 290), `OtherDevicePrinters.tsx` 115 (new), `NativePrinterSelect.tsx` 32 (new), `packages/shared/src/print-printers.ts` 259, legs `setup-2f.ts` 88 (new).
+
+### Task F7 Step 1: every suite (at `00b4831`)
+
+| Suite | Result |
+|---|---|
+| shared `npm test`; `tsc` | **684/684**; 0 |
+| cafe `npm test` | **4448 tests, 4447 pass, 0 fail, 1 skipped** (the `go-live-dl` pin) |
+| cafe `tsc`; `npm run lint` | 0; 0 errors and the 2 old warnings (`lib/masters-blob.test.ts:331`) |
+| Hub `tsc` | 0 |
+| mobile `tsc`; lint; `npm test`; `test:app` | 0; 0; **117/117**; Jest **3/3** (no app code changed) |
+| desktop `npm test`; `typecheck`; `lint` | **192/192**; 0; 0 |
+| `npm run test:print-tools` | **8/8** |
+| live legs (local mongod, `pos_scratch_print_host`) | **`332 passed, 0 failed`** (324 + 8: aw 4, ax 4) |
+
+Every row equals the plan's Expected.
+
+### Changed existing pins (each follows a deliberate change)
+
+Exactly the ones the plan names (F7 "Changed existing pins in 2F1"): F0 `print-agent.test.ts` "2B: its own print's state changes queue no lease after a more:false ack …", "2E: the holds …", "a refusal with no printer change is retried after the recheck window …", "2E: a held printer is looked at again when its hold ends …", "2E: a refusal on this device's own printer …", "2E: every Windows printer held …"; `print-agent-paths.test.ts` "PIN: every print wrapper follows …", "PIN: the agent leases on events aimed at it …", "PIN (2B): the draining tab offers itself …"; `print-agent-printers.test.ts` "PIN (2C final review, I-2) …", "PIN (2C): the page reads the printers …", "PIN (2C, the 2A gate's Important 1) …"; `print-wake.test.ts` "PIN (Session 1C, 2C): the agent polls the wake …"; `print-windows-printers.test.ts` "PIN (2E): the agent leases, offers for direct print …"; `print-attention.test.ts` "PIN (D7) …"; `print-printer-jobs.test.ts` "PIN: printers mode routes every slip …". F1 `print-setup-ui-paths.test.ts` "PIN (2D): the admin Printer setup page …", "PIN (2D): each printer row …", "PIN (2D, spec §11): the printer form …". F3 `printer/print-gating-paths.test.ts` "seam: the shell branch stays first, then the delegate line"; `print-windows-printers.test.ts` "PIN (2E): each slip carries its printer's target …". F4 `print-agent-paths.test.ts` "PIN: the agent leases on events aimed at it …"; `print-agent-printers.test.ts` "PIN (2C): the page reads the printers …"; `print-windows-printers.test.ts` "PIN (2E): the agent leases, offers for direct print …", "PIN (2E): a Windows printer that failed is looked up again …"; `printer/print-gating-paths.test.ts` "drain: the lock is asked for only by a window that can print …". F5 `packages/shared/src/print-printers.test.ts` "2D: one routable printer per printing device …", "2E: a Windows PC may write several Windows printers …"; `print-setup-form.test.ts` "2D: the form's body …"; `print-setup-ui-paths.test.ts` "PIN (2D): each printer row …", "PIN (2D, spec §11): the printer form …", "PIN (2E): the printer form chooses one of this PC's Windows printers …", "PIN (2D): the setup screens … stay small" (`PrinterFormDialog.tsx` 220 → 240); `printer-ui-paths.test.ts` the hygiene budget of `NativePrinterPicker.tsx` (280 → 290). F6 leg (as) "a second enabled printer for one device is refused …" → "the same printer a second time for one device is refused (409), naming the first". `apps/cafe/package.json` `testChain`: `lib/printer/native-pool.test.ts` appended (F2).
+
+### Step 2: the Next production build
+
+Success, **129 routes** (2F1 adds none), at `00b4831`; only the 2 old lint warnings.
+
+### Step 3: APKs (no app change: byte-identical to the release)
+
+`git diff 997f10c..HEAD --stat -- apps/mobile workers` lists only `workers/realtime/src/index.ts` (**+3 / −2**: the publish envelope's TypeScript type and its comment; the room relays the frame byte for byte, so nothing to redeploy) and nothing under `apps/mobile`. Built with `GRADLE_USER_HOME='D:\gradle-home'`: x86_64 with `gradlew aR -PreactNativeArchitectures=x86_64` (BUILD SUCCESSFUL 1 m 31 s), the ARM pair with `assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a` (58 s): x86_64 **`29115bdf…`** (7,425,177 B), arm64-v8a **`0e0ec314…`** (7,293,454 B), armeabi-v7a **`e618900a…`** (6,701,288 B): byte-identical to `D:\kd\pos-apk-release\Sandbee-POS-final\`. The go-live run still deploys the Worker first, then the web, then reloads every POS screen.
+
+### Step 4: the exit check
+
+**The harness**, exactly as the plan writes it: this branch's build (`00b4831`) on 3110 (`e2e.env` copied from the 2E gate's scratchpad: database `pos_scratch_e2e_p1final`), the counting proxy on 3200 (`gate-proxy-2b.mjs` and `p2d-tool.ts` copied from the gate's scratchpad), the fake printers on 9100 and 9101 with long `--out` paths (nothing vanished), `since-2f.sh` and `pw-2f.mjs` written with the Write tool from this plan's fences (each checked byte-identical to its fence by a script), a headless desktop Chrome (the npx cache's `playwright-core`, the installed Chrome; nothing downloaded). Ports 3110, 3200, 9100 and 9101 were free. **As found:** stations Kitchen (default) and Bar, no printer, no station on any category or item, no print host.
+
+**Part A, the web half against a fake POS app (`window.PosNative` v2 / v1, real TCP to the fake printers): passed, 12/12.**
+
+| # | Item | Result |
+|---|---|---|
+| 1 | `panel` (v2) | "Printer on this device · Network printer 127.0.0.1 · Network · 80 mm · Connected", "Other printers on this device", "Add another printer"; the dot "Printer connected — open printer setup" |
+| 2 | `set-up-printers` | Printer 1 "Network 127.0.0.1:9100 · printed by This device · Bill, Full KOT copy, Notices, End of day · Paper 80 mm · KOT copies 1 · Bill copies 1"; the proxy: `POST /api/printers` 201, one printers read, one lease |
+| 3 | `order Cheesecake Masala` | one KOT, **44,598 B** on 9100, through the app's v2 `printer.print` for `tcp:127.0.0.1:9100` (the device's own printer by its id); the order (`lease`, `agent` headers) and one ack (beside the page's own mount lease before the order) |
+| 4 | `category-station Beverages Bar`; `add-lan-printer "Bar printer" 127.0.0.1 9101 58 Bar` | "Bar printer · Prints on this device · Network 127.0.0.1:9101 · printed by This device · Bar KOTs, Notices · Paper 58 mm · KOT copies 1 · Bill copies 1"; Devices "Prints Printer 1, Bar printer"; the fake app's log: a v2 `printer.select` for `tcp:127.0.0.1:9101` at once |
+| 5 | `order Cheesecake Masala` | "BAR" **28,206 B** on 9101 and "ALL STATIONS" **48,342 B** on 9100, each through a v2 `printer.print` with its own id, both direct (`leased(direct)`): the order and two acks, **no lease after them** |
+| 6 | `paynow Cheesecake Masala` | "BAR" 28,206 B on 9101, "ALL STATIONS" 48,342 B on 9100, then the bill **40,998 B** on 9100: the order, ack, ack, lease, ack (the bill 1.8 s after the order) |
+| 7 | `test-print "Printer 1"`, `test-print "Bar printer"` | Printer 1 **31,558 B** on 9100, Bar printer **14,278 B** on 9101, each by its id; each the test call (direct) and one ack |
+| 8 | 9101 stopped (by PID, command line checked); `WAIT_MS=25000 order …`; then `wait 30` with 9101 started again 15 s after the step began (≈ 12 s into the page's wait) | "ALL STATIONS" 48,342 B on 9100 at once; "BAR" refused by the app before any byte (`ok: false`, NOT_CONNECTED), one v2 `printer.reconnect`, `failed(not sent: The printer is not connected. …)`, back in the queue; **no lease for the 25 s**. Then the app reported 9101 back: one lease, "BAR" printed **once, unlabelled** (28,206 B, `labels: []`, epoch 2), **no lease after its ack** |
+| 9 | `form-device` (v2) | Device printer offers `["Network printer 127.0.0.1 · Network 127.0.0.1:9100","Network printer 127.0.0.1 · Network 127.0.0.1:9101"]` |
+| 10 | `FAKE_APP=v1` (the release APK): `panel`; `form-device`; `order …` | "A printer is not on this device" ("This device is set to print a printer that is not its own printer. Check it in Printer setup."), the dot "Printer not connected — open printer setup", no "Other printers on this device"; the form: "This POS app prints one printer, the one on this device. Update the POS app to print several printers here."; "ALL STATIONS" 48,342 B on 9100 through the **v1** `printer.print`, "BAR" left **queued, epoch 0** (never leased, never on 9100's paper) |
+| 11 | `wait 10` (v2 again, a new page) | the waiting "BAR" printed once on 9101 by its id (`leased`, `printed`, epoch 1); one more lease 11 ms after its ack (a fresh page's mount lease printed the waiting slip: the gate's accepted M-3, as in its own run) |
+| 12 | `panel` | "Printing is on", "Printers are set up: each slip prints at its printer (Printer setup → Printers).", "Other printers on this device · Network printer 127.0.0.1 · Network 127.0.0.1:9101 · Connected", "Bill printer for this device · Default (Printer 1)", the dot "Printer connected — open printer setup" |
+
+Paper over the run: 9100 seven slips (44,598, 48,342, 48,342, 40,998, 31,558, 48,342, 48,342), 9101 five (28,206 four times, 14,278); one refusal never reached 9101: **the same tally as the gate's run**. No page error in any step. Put back: `reset2d`, `add-station Bar` (`pw-2f.mjs`), `pw-2f.mjs reset-app`: as found.
+
+**Part B, the release APK on the emulator: passed.** `Pixel_7_API_33` booted by this session (`-memory 4096 -no-audio -no-snapshot-save`, 39 s, C: 12 GB free), crash buffer 0 lines; the installed APK hashed on the device: the release **`29115bdf…`**; `adb reverse tcp:3100 tcp:3200`. The app opened on its start screen "Connect to your workspace" with the address cleared (as the 2E gate left it; not the demo); `http://localhost:3100` typed there (the owner's `"Bash(adb:*)"` rule: every `adb shell input` worked); it opened signed in (the WebView kept the local POS session: no secret typed); "POS Software" and the seeded menu checked before any write.
+
+| # | Item | Result |
+|---|---|---|
+| 1 | The app's network printer 10.0.2.2:9100 | "Network printer 10.0.2.2 · Network · 80 mm · Connected"; **no "Other printers on this device"** (the release APK speaks v1) |
+| 2 | Send to Kitchen (Cheesecake, Masala Chai) | one KOT, **44,454 B**; the order and one ack |
+| 3 | Pay Now (Cheesecake, Cash) | the KOT **40,494 B**, then the bill **36,966 B**: the order, ack, lease, ack |
+| 4 | Printer setup → **Set up printers**; New Order, the same round as 2 | Printer 1 "Prints on this device · Network 10.0.2.2:9100 · printed by This device · Bill, Full KOT copy, Notices, End of day · Paper 80 mm · KOT copies 1 · Bill copies 1" (`POST /api/printers` 201, one printers read, one lease); the round: one KOT, **44,454 B** (nothing changed on paper), the order and one ack; the app's device row `nativeProtocol: 1` (its wake) |
+| 5 | `adb logcat -b crash -d` | 0 lines |
+| 6 | Put back | `reset2d`, Bar added back (`pw-2f.mjs add-station Bar`), `reset-app`: as found; the app's printer removed ("Remove Network printer 10.0.2.2 from this device?" → Yes, remove; "No printer set up"); More options → Change POS address → the start screen, the address cleared ("Clear POS address": the placeholder shows), **the owner sets the demo address and signs in himself**; `adb reverse --remove-all`, then `adb reverse tcp:3100 tcp:3100`; `adb emu kill` |
+
+The byte counts equal the gate's Part B and Sessions 2D/2E: on the release APK this page prints exactly as before. The proxy saw 526 requests over Parts A and B (print routes: 30 wakes, 29 leases, 17 acks, 29 printers reads, 2 test calls, 8 orders). Leftovers, as earlier sessions': the app's device row, a fake-app browser row (`pw-profile-2f`) and the test orders and jobs in `pos_scratch_e2e_p1final` (retention prunes the jobs; devices go after 7 days).
+
+### Step 5: the fresh review
+
+Claude Fable 5.1 (the most capable model, as at every Phase 2 session and gate), read-only, on `997f10c..00b4831` against this plan (decisions 1–16; "2E review gate: rulings"; Session 2F1 and its Review Focus, passed verbatim) and spec §7.11, §8.1, §9.1, §9.2, §10, §11, §17. It re-ran the touched suites itself (native-pool 10/10, print-agent 56/56, print-agent-printers 19/19, lane-print 19/19, print-lane 19/19, print-setup-form 11/11, printer-dot 16/16, print-agent-paths 8/8, print-setup-ui-paths 11/11, print-windows-printers 8/8, print-gating-paths 12/12; shared print-printers 17/17; cafe tsc 0), checked that the realtime Worker relays `/publish` verbatim (so the frame's `printerId` needs no Worker deploy), and ran three scratch tests in this session's scratchpad (never in the repo), one of them also against `997f10c`'s agent. Verdict **"Yes"**: **no Critical, no Important**; no path to a slip lost, printed twice or on the wrong paper; no new recurring request; the release APK (v1) isolated structurally (`nativeV2Bridge()` is null unless `versions` holds 2, so the pool stays empty and every 2F1 branch takes its pre-2F1 path); F0 the minimal fix of the gate's findings, its tests pinning each one; the contract header carrying every F-R2 sentence and the review's additions; the pool a thin mirror on the proven write queue.
+
+Six minors, each re-graded by its effect (none loses, doubles or misplaces a slip, none adds a server request; 1 and 2 can only show on 2F2's v2 app), so none entered a fix pass and no code changed after `00b4831`:
+
+| # | Finding | For |
+|---|---|---|
+| M-1 | A direct job refused because its printer left the app's list between the request and the print (PRINTER_NOT_LOCAL, `sent:"no"`) has no target, so its hold lands on the device line `""` and pauses every printer of a v2 tablet for up to 30 s (a one-request race, reachable only once 2F2's app can forget a printer; the panel hides Remove for a setup printer) | The 2F1 gate / 2F2, with the 2E gate's M-9 (on v2 give such a job its printer's line, or skip the hold when its printer is not ready) |
+| M-2 | `printerRowState` / `testPrintBlock` say "This device's printer is not ready" / "Connect this device's printer to test it." on a v2 tablet's down named printer (the state is right, the words generic) | Name the printer |
+| M-3 | The contract header (`native-bridge-v2.ts`) should also say that a TCP printer reads `connected` between jobs (the app connects per job) and that `printer.status` answers `{ printers: [], defaultId: null }` for an empty list: 2F2's Kotlin pool is written against it | The 2F1 gate, before 2F2's exact code |
+| M-4 | `use-agent-printers.ts`'s `lanAsked` is never cleared: a LAN printer removed from the app and then added to the setup again in the same page session is not re-added to the app until a reload (its slips wait visibly, the dot red) | Key it on host:port and drop it when the pool lists the printer again |
+| M-5 | A v2 app that never answers `printer.status` is asked again every request timeout, one chain per `start()` trigger (local bridge calls only, no server cost) | A cap or one kept handle |
+| M-6 | `OtherDevicePrinters.tsx` has no hygiene pin in `printer-ui-paths.test.ts` (44 px controls, no console, line budget), unlike the other panel components | Add the pin |
+
+**The reviewer's "declined to judge" list** (8 lines), each ruled in the ledger: a job signal landing while the bridge is busy and a direct job is held waits for the pulse (pre-existing since 2C: its scratch test reads the same at `997f10c`; bounded by the 20 s pulse; for 2G with M-11); the server accepting two LAN printers for a Windows PC or a browser through the API (the gate's accepted M-13 class; the form never offers it); a printer back within 500 ms of a `more: false` ack (the gate's accepted M-2); the lease after a fresh page's mount lease (the gate's accepted M-3; seen in Part A item 11); the pool inactive until the first `printer.status` answers after a v2 page loads (transient, local); F-R5, M-9 and the gold review's M-1 (the code matches the gate's rulings); this Results section and `apps/mobile` (outside the range by design). Each stands.
+
+### Deviations and rulings
+
+- **No code deviation:** every block went in verbatim; no plan text was wrong; nothing beyond the plan was committed except this Results section.
+- **Part A item 8's restart:** the 9101 printer was started 15 s after the `wait 30` step began (the browser's start and the session mint take a few seconds, so ≈ 12 s into the page's wait), from a second background command; the plan names the result, not the mechanism.
+- **Part B's put-back:** Bar was added back with `pw-2f.mjs add-station Bar` (as Part A's put-back), and `pw-2f.mjs reset-app` was run again so the fake app ends as found.
+- The skill's `task-start` extracts only numeric "Task N" headings, so each F-task's brief was read from the plan by line range (as in 2D and 2E); the ledger lines were written by hand.
+- Ruling: the plan's workspace (`.superpowers/sdd/2026-10-03-phase-2-routing/`, git-ignored) is kept, not deleted after the clean review as the skill says: the plan continues (the 2F1 gate, 2F2, 2G) and every gate reads its ledger.
+- Every decision is in that ledger.
+
+### Open for the 2F1 gate
+
+The six minors above (M-3's two sentences belong in the contract header before 2F2's exact code is written against it; M-1 with the 2E gate's M-9); Part C on the owner's counter PC (TEST-CHECKLIST "Several printers on one Windows PC" with the Windows app 1.11.0); Session 2F2 (the app half: `versions`, the v2 router, the Kotlin pool, `Prefs` as a list, JUnit 4, the notification's worst state, the `mobile-paths` pins, the v2 parity pin, the emulator exit with two TCP printers). The go-live run deploys the Worker first, then the web, then reloads every POS screen; nothing is deployed.
+
+### Pushed
+
+With the token only: `GIT_TERMINAL_PROMPT=0 git push origin feat/printing-phase-2`. `origin/main` was still `6ee2b1d` at the end (no merge). `main` untouched; nothing deployed. This session's POS, proxy and fake printers were stopped by PID after checking each command line; the emulator was stopped with `adb emu kill`.
