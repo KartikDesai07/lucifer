@@ -3695,6 +3695,8 @@ The owner's ask of 2026-10-04: when the device that takes an order is the one th
 
 ### Session 2G: the Phase 2 exit
 
+**Written as exact code at the 2F2 review gate:** see "## Session 2G" at the end of this plan. Where it differs from the items below, "2F2 review gate: rulings" says why: the 2F2 gate's page fixes come first (Task G0: M-4, m-3, m-1, m-5); the soak is extended to drive direct print and printers mode so the measurement covers both modes (G1); 2G changes no app code, so the APKs stay byte-identical to Session 2F2's; the TEST-CHECKLIST runs on real printers and Part C are the owner's.
+
 1. **Spec §14 on the harness and the emulator:** one round with kitchen and bar items prints two station KOTs plus the full copy; a bill goes to the device's bill printer; the release APK (bridge v1) still prints in simple mode; a slip the asking device prints itself goes out with no lease request and no realtime message.
 2. **TEST-CHECKLIST:** "Stations and printers checks" for real printers (two Bluetooth printers on one phone, a LAN kitchen printer, a Windows counter, a station with no printer, copies, a deleted station, a printer switched off, an order lost in the network on the device that prints it).
 3. **The free-tier measurement in both modes** (the counting proxy, process CPU and opcounters, as in Session 1E) against A5's and 2B's pins.
@@ -41582,3 +41584,1750 @@ Each stands. Its one recommendation, a JVM test of `PrinterPool`'s change → ha
 ### Pushed
 
 With the token only: `GIT_TERMINAL_PROMPT=0 git push origin feat/printing-phase-2`. `origin/main` was still `6ee2b1d` at the end (no merge). `main` untouched; nothing deployed. This session's POS servers, proxies and fake printers were stopped by PID after checking each command line; the emulator was stopped with `adb emu kill`.
+
+---
+
+## Session 2F2 review (gate, 2026-10-05)
+
+**Verdict: PASS, with fixes folded into Session 2G (Task G0).** Session 2F2 (`7f6379e..936e791`: P0–P3 applied verbatim as `3b46bc0..236c863`, the Results `936e791`) is complete and correct for its scope: the POS app drives several printers on bridge v2 (one manager, io thread and busy flag per printer; the list in `Prefs` with the v1 printer migrated in; one publish for both bridge versions; the notification's worst state), an old page on the new APK prints exactly as before, and the new APK installs over the release APK keeping its printer. The range's first review on Claude Fable 5.1 (Session 2F2's own ran on Opus 5.5) found no Critical and no Important finding; the six minors stand, and the gate's emulator spot-check saw one of them (M-4's device-section half) live.
+
+**How this gate stayed independent.** The gate ran in a session of its own. Every suite, the Next build, the Gradle JUnit run and the three APKs were re-run on the repo at `936e791`; the non-docs tree at `236c863` was compared with the 2F1 gate's golden branch; the range was scanned for secrets; a fresh reviewer subagent (Claude Fable 5.1, read-only, which wrote none of the code) re-read the range with scratchpad tests (never in the repo); and the 2F2 APK was spot-checked on the emulator.
+
+| Check | Re-run at the gate (`936e791`) | Session 2F2 Results |
+|---|---|---|
+| shared `npm test`; `tsc` | 684/684; 0 | same |
+| cafe `npm test` | 4457 tests, 4456 pass, 0 fail, 1 skipped (the `go-live-dl` pin) | same |
+| cafe `tsc`; `npm run lint` | 0; 0 errors and the 2 old warnings | same |
+| Hub `tsc` | 0 | same |
+| mobile `tsc`; lint; `npm test`; `test:app` | 0; 0; 125/125; Jest 3/3 | same |
+| `gradlew :app:testDebugUnitTest` | the first run read **UP-TO-DATE** (the session's results of 16:07, not a re-run); with `--rerun` (17:52): `PrinterManagerTest` 13, `PoolListTest` 6, `PoolStatusTest` 2: 21 tests, 0 failures, 0 errors | 21/21 |
+| desktop `npm test`; `typecheck`; `lint` | 192/192; 0; 0 | same |
+| `npm run test:print-tools` | 8/8 | same |
+| live legs (local mongod, `pos_scratch_print_host`) | `332 passed, 0 failed` | same |
+| Next build | 129 routes | same |
+| APKs (`GRADLE_USER_HOME='D:\gradle-home'`; x86_64 with `aR`) | x86_64 `3736540b…` (7,435,349 B), arm64-v8a `b10feedb…` (7,303,622 B), armeabi-v7a `86b7ff13…` (6,711,460 B): byte-identical to the session's | same |
+| Non-docs tree at `236c863` vs the 2F1 gate's gold `g2f2-v4` (`3739361`, tree `bd42cce`) | blob-identical (`git ls-tree -r`, `docs/` left out: 1,772 entries each, no difference); `236c863..936e791` is the plan alone | same |
+| Secrets in `7f6379e..936e791` | none (2,381 added lines scanned for tokens, keys and connection strings) | — |
+
+**`origin/main`** was fetched at the gate (token credential): still `6ee2b1d`, so nothing to merge.
+
+**The fresh review (Claude Fable 5.1).** Verdict "ship": no Critical, no Important. It re-ran the mobile suite (125/125) and ten touched cafe files (186/186), and wrote sixteen scratch tests (`review2f2-gate/` in the gate's scratchpad: the real page link under both event orders, the refusal holds under `lineOf`, the injected script's and the router's v2 edges; all pass) and two Kotlin probes. It checked and found sound: the lock order (`publishLock` → `poolLock` → a manager's lock, never reversed; no `changed()` under a manager's lock; transports closed outside every lock), every `@ReactMethod` settling exactly once (rejected executions included), every printer's threads ending on a halt, an old page seeing the same v1 events in the same order as the base, the `Prefs` migration and reconcile, NOT_CONNECTED only before any byte per transport, the router's v2 validation, the injected script's version routing, the P0 page fixes, the parity pin (21 mutations each caught) and the budget (no new request). Its findings and the six minors, each with the gate's ruling, are in "2F2 review gate: rulings".
+
+**The emulator spot-check of the 2F2 APK** (`Pixel_7_API_33` booted by the gate, `-memory 4096 -no-audio -no-snapshot-save`, C: 5.4 GB free). **The app was absent again** (`pm path` empty) although `dumpsys package` still held its record with `lastUpdateTime 16:48:06`, Session 2F2's own reinstall of the release APK: a reinstall right before `adb emu kill` is not flushed to the AVD's data. The gate installed the release APK (`29115bdf…`, hashed on the device) as the baseline; at its own put-back it ran `adb shell sync` before the kill, and the app was still installed at the next boot. The repo's build at `936e791` on 3110 behind the counting proxy, fake printers on 9100 and 9101:
+
+| # | Item | Result |
+|---|---|---|
+| S1 | Release APK; the panel's network printer 10.0.2.2:9100 | "Network printer 10.0.2.2 · Network · 80 mm · Connected"; no "Other printers on this device" |
+| S2 | The 2F2 APK (`3736540b…` on the device) installed over it | "Printer connected" at once (the migration); "Other printers on this device", "Add another printer"; crash buffer empty |
+| S3 | Set up printers on the app's screen; a Bar printer (LAN 10.0.2.2:9101, 58 mm, Bar KOTs, written by the app) and Beverages → Bar through the API; Refresh | `POST /api/printers` 201, one read, one lease; the page added `tcp:10.0.2.2:9101` to the app by itself (Connected, the 2E gate's I-3 sentence instead of Remove) |
+| S4 | Send to Kitchen (Cheesecake, Masala Chai) | BAR 28,110 B on 9101 and ALL STATIONS 48,198 B on 9100, both `leased(direct)`, epoch 1; the order and two acks; no lease in 20 s |
+| S5 | 9101 stopped (by PID); the same round; 9101 started again at +109 s | BAR refused +10.9 s, ALL STATIONS +11.6 s, one lease at the hold's end (+41.0 s), **no lease to +95 s** while the app probed (N-1); 9101 back: a lease 0.5 s later, BAR **once, unlabelled, epoch 2**, one ack, no lease after |
+| S6 | The device section's **Remove** on this device's printer (9100 = Printer 1, a setup printer) | the app promoted 9101 and the page showed it (G-2, as designed), **but the page added 9100 back to the app at once** (it had never asked for it, so it was not in `lanAsked`): the 2E gate's I-3 loop on the device section (M-4, live); the promoted printer showed **"80 mm"** while its setup printer is 58 mm (m-1, live) |
+
+Put back as found (`reset2d`, Bar added back; both app printers removed; the start screen with no address; the release APK reinstalled and hashed; `adb shell sync`; `adb reboot` showed the app persists; `adb reverse` reset; every server stopped by PID; `adb emu kill`).
+
+**Pre-validating 2G.** The gate wrote 2G on a golden copy of `936e791` (three commits, one per task), had it read by a fresh reviewer (Claude Fable 5.1), folded the review's fixes into their tasks, ran every suite on it, ran the Phase 2 exit and the measurement tools end to end on the emulator against its build, and generated the section from it (see "Session 2G" → "Pre-validated").
+
+*The exit on the emulator* (the golden build on 3110 behind the counting proxy on 3200; fake printers on 9100–9104; the gate's own boot; the release APK had persisted across the earlier kill):
+
+| # | Item | Result |
+|---|---|---|
+| 1 | Release APK (bridge v1), simple mode: the panel's network printer 10.0.2.2:9100; Send to Kitchen | one KOT **44,454 B**; the order and one ack (spec §14: an old APK still prints in simple mode) |
+| 2 | The 2F2 APK over it; Set up printers | "Printer connected" at once; `POST /api/printers` 201, one read, one lease |
+| 3 | Bar printer (10.0.2.2:9101, 58 mm, Bar KOTs) and Kitchen printer (10.0.2.2:9102, 80 mm, Kitchen KOTs and Bill), both written by the app; Beverages → Bar; Refresh | the page added 9101 and 9102 to the app; this device's printer (9100, Printer 1) shows the I-3 sentence and **no Remove** (G0) |
+| 4 | Send to Kitchen | **KITCHEN 44,238 B on 9102, BAR 28,110 B on 9101, ALL STATIONS 48,198 B on 9100**, all `leased(direct)`, epoch 1; the order and three acks, no lease (spec §14: two station KOTs plus the full copy; one request per slip the asking device prints) |
+| 5 | Bill printer for this device → Kitchen printer; Pay Now | the three KOTs and **the bill 40,854 B on 9102**: the order, ack ×3, lease, ack (spec §14: the device's bill printer) |
+| 6 | Change printer → a new printer 10.0.2.2:9103; Send to Kitchen | this device's printer 9103; **9100 kept in the app** (the sentence), 9101, 9102; the three slips printed as in 4 |
+| 7 | Kitchen printer moved to 10.0.2.2:9104; Refresh (a reload) | 9104 added, **9102 removed by the page** (its record survived the reload); KITCHEN on 9104 |
+| 8 | All printers deleted (`reset2d`), Refresh | the page removed the printers it had added (9101, 9104); staff's 9100 and the default 9103 stayed |
+| 9 | (the review's fixes, rebuilt) Change printer 9103 → 9100 (a plain select), then setup printer 9100 → listed 9103 (only chosen: m-B); Send to Kitchen | 9100 kept in the app; the three slips printed as in 4; crash buffer 0 lines throughout |
+
+*The measurement tools* (the gold's soak, `e3/mongo-sampler.mjs` and `e3/report.mjs`, 4 orders each): printers mode with the app writing three printers: 10 slips → 16 jobs, all printed, 16 acks, 10 leases, 4 wakes, 1.88 print requests per job, 16.35 ms of server CPU per request; printers mode with the soak writing them `--direct`: 16 jobs, 16 acks, **no lease** (after the drain fix; the first run's one lease was the soak's own drain); simple mode `--agent --direct`: 10 jobs, 10 acks, no lease; simple mode `--agent` (the Phase 1 path): 10 leases, 10 acks, no trailing lease.
+
+Put back as found (the bill printer back to Default; `reset2d`, Bar added back; the app's printers removed, "No printer set up"; the start screen with no address; the release APK `29115bdf…` reinstalled and hashed; notifications not granted; `adb reverse --remove-all`, then `tcp:3100 tcp:3100`; `adb shell sync`; `adb emu kill`; every server stopped by PID after checking its command line).
+
+## 2F2 review gate: rulings (2026-10-05)
+
+Every ruling that changes the spec is written into spec §8.1 ("As built at the 2F2 review gate"), §9.2, §13 and §17.2.
+
+**2F2's open items** (the session's review and the gate's reviewer; each with its ruling):
+
+| # | Finding | Ruling |
+|---|---|---|
+| M-4 (the 2F1 gate's, for 2G) | `lanAsked` never forgets, and the device section's Remove on a setup printer | **Fixed in G0.** Seen live at this gate (S6): Remove of this device's printer, a setup printer, was undone by the page a moment later. Now no panel offers Remove for a printer the setup prints through this device (the I-3 sentence instead; `ownPrinterInSetup`), Change printer on a bridge v2 app keeps such a printer in the app (a v2 add, then a v1 select of the listed printer: G-R3 as changed), and so `lanAsked` can forget a printer once the app lists it (a setup printer that leaves the app another way comes back with no reload). Cost if wrong: a staff action undone, or a setup printer's slips waiting until a reload |
+| m-1 | A printer the app promotes keeps the removed printer's paper | **Fixed in G0:** `apply()` keeps the saved paper only for the same printer id; another starts at 80 mm, shown by the panel's toggle (seen live at S6). Cost if wrong: simple-mode slips at the wrong width until staff set the toggle |
+| m-2 | Two network printers on one host share a name; `PoolStatusTest`'s fixtures share one | **Phase 4** (setup polish), with the fixture rename: two printers on one address are rare in a cafe (each LAN printer has its own address), and the panel already shows `host:port`; only the notification is ambiguous. Cost if wrong: one ambiguous notification line |
+| m-3 | No cap on the app's list; a setup-deleted network printer stays in the app | **Fixed in G0, page side:** the page records the network printers it added by itself (`pos.app-lan-added.v1`) and removes one once no routable setup printer of this device names it (deleted, re-addressed, moved, switched off), never the app's default, never one staff added, only after the printers read loaded. **No Kotlin cap:** the list grows only by the setup's printers and staff's own adds. Cost if wrong: a dead printer probed every 30 s and named by the notification |
+| m-4 | `PoolList.restore` with a damaged saved default overwrites the first printer | **Accepted** (the trigger is a damaged `Prefs` file, which the app never writes; the v1 keys bound it). Cost if wrong: one printer lost from the list after a corrupt file |
+| m-5 | The G-2 test claims both orders | **Fixed in G0:** event first (the device's real order) and answer first, each written once at the default paper |
+| m-6 | The emulator's end state | **No code.** The app's absence at a session start is an unflushed reinstall at `adb emu kill`; `adb shell sync` before the kill keeps it (this gate). Written into 2G's put-back |
+| R-1 (the gate's reviewer) | m-1 also on the v1 path (an older app's change followed) | **Fixed with m-1** |
+| R-2 | `PoolStatusTest`'s fixtures share a name | **With m-2, Phase 4** |
+| R-3 | A `PRINTER_NOT_LOCAL` refusal costs one lease at its hold's end (+30.05 s), as a Windows printer's hold since 2E | **Not a defect;** spec §17.2 says "one lease per such refusal" |
+| R-4 | Two Bluetooth-state reads per publish | **Accepted:** each event is self-consistent; the next publish converges |
+| The reviewer's recommendation | A JVM test of `PrinterPool`'s change → halt → save → publish chain | **Phase 3**, with the Android hardening: it needs seams in `PrinterPool` (a store, the delivery, the environment, a start without receivers, and `org.json` for the JVM), a production change this late in Phase 2 for an order that two independent traces and four emulator runs already prove. Cost if wrong: that order stays proven only on the emulator until Phase 3 |
+| The 11 "declined to judge" lines | (Session 2F2 Results) | **Stand** (the reviewer agreed with each); line 3 (two USB printers asking for permission at once, now reachable by design) joins 2G's TEST-CHECKLIST; line 6 (a v1 Change printer to a new printer dropped a setup default) is removed by G0 |
+| M-11 (the 2E gate's, for 2G) | A failed job's cycle drops a kick for another line that landed during it | **Accepted** (the reviewer agreed): the other line waits at most for the 20 s pulse; `print-agent.ts` is at its 300-line budget. Cost if wrong: one slip waits ≤ 20 s in a rare coincidence |
+| Part C (the 2E gate's) | The Windows app 1.11.0 on the owner's counter PC | **The owner's step** (2G Task G3 Step 7) |
+
+**The fresh review of 2G's golden code** (Claude Fable 5.1, read-only, `936e791..g2g` against this plan, the spec and the rulings above; 30 scratch tests in `review2g-gold/`, 1863/1863 of the touched area's files re-run). Verdict **"ship as written"**: no Critical, no Important. Five minors and one observation, each fixed in its task or ruled before the section was generated; the same reviewer re-checked the fixes ("the fixes are sound; ship", 1867/1867 of the touched area, its probes re-pointed) and found one more minor (m-F), fixed too:
+
+| # | Finding | Ruling |
+|---|---|---|
+| m-A | A network printer moved to a new address while it is the app's default (a tablet whose only printer the page added) is never removed: the page never removes the default | **Checklist wording (G2), not code:** removing the default by itself would let a printer switched off in the setup change the tablet's own printer for good. The panel offers Remove on the old address (it is no longer a setup printer), and the checklist says to remove it there |
+| m-B | Change printer from a setup printer to one the app lists restarted that printer's link twice (a v2 add of a listed id, then the v1 select) | **Fixed in G0:** a printer the app lists is only chosen |
+| m-C | Remove showed for a setup printer before the printers read answered | **Fixed in G0:** Remove shows once the read answered or failed |
+| m-D | The soak decided printers mode from enabled printers, not as the server does | **Fixed in G1:** `routablePrinters` |
+| m-E | After a refused or "maybe" ack the soak leased at once; the page waits for the job's backoff | **Fixed in G1:** a job back in line waits for its own backoff |
+| Observation (i) | With no device id the page's effect would remove every recorded printer (unreachable: its one caller passes `enabled` only with an id) | **Guarded in G0** (`deviceId === ""` returns) |
+| m-F (the re-check of the fixes) | While the printers read had not answered (or failed with no data), Change printer on a setup printer still replaced it (a Bluetooth setup printer would leave the app and its slips wait) | **Fixed in G0:** until the setup is known, Change printer keeps this device's printer in the app too (one kept by mistake costs a Remove) |
+
+**Gate decisions that shape 2G** (each in spec §8.1, §9.2, §13 or §17.2):
+- **A printer the setup prints through a device never leaves that device's POS app from the page;** the page removes from the app only what it added and the setup no longer names.
+- **No app code in 2G:** the APKs stay byte-identical to Session 2F2's.
+- **The measurement covers both modes** with a soak that drives direct print and printers mode as the page does.
+- **No new request.**
+
+---
+
+## Session 2G (exact code, written and pre-validated at the 2F2 review gate)
+
+**Pre-validated** by the 2F2 review gate on 2026-10-05, on scratchpad clones only (never in the repo):
+- The code was developed on a golden copy of `936e791` (this branch's head at the gate), one commit per task (branch `g2g-v3`, tree `694ddd8…`), and this section was generated from those commits: every Create and Replace-the-whole block is the golden file byte for byte, and every find is unique in its file at the moment it is applied.
+- A fresh clone of `feat/printing-phase-2` at `936e791` then got every block of this section applied verbatim, task by task, with each task's own Run lines (21 operations; the section as committed dry-runs against the repo as `21 ops OK`, plan lines 41733–43098); each RED and GREEN below is the output seen there. Its tree came out **identical** to the golden copy's (`694ddd8…`). Every suite below was run on that tree (the golden copy).
+- Totals on that code: shared `npm test` **684/684** (no shared change), tsc 0; cafe `npm test` **4466 tests, 4465 pass, 0 fail, 1 skipped** (+9 over `936e791`'s 4457; the skip is Phase 1's `go-live-dl` pin), tsc 0, lint 0 errors and the 2 old warnings; Hub tsc 0; mobile 125/125, tsc 0, lint 0, Jest 3/3; desktop 192/192, typecheck 0, lint 0; print tools 8/8; live legs **`332 passed, 0 failed`** (no leg change); the Next build lists **129 routes**. 14 files, +566 / −120, and no file under `apps/mobile` but `TEST-CHECKLIST.md`: **no app code changes**, so the APKs stay byte-identical to Session 2F2's (`3736540b…`, `b10feedb…`, `86b7ff13…`, which the gate rebuilt and matched) and JUnit stays 21/21.
+- **Reviewed and run before it was generated.** A fresh reviewer (Claude Fable 5.1) read the golden code ("ship as written"; its m-B, m-C, m-D, m-E and one observation fixed in their tasks, m-A in the checklist's words) and re-checked the fixes ("sound"; one more minor, m-F, fixed in G0); the gate ran the Phase 2 exit (Task G3 Step 4's items) on the emulator with Session 2F2's APK against the golden build, before and after the review's fixes, and the measurement tools on short runs in both modes (see "Session 2F2 review (gate)" → "Pre-validating 2G").
+
+A failure while executing therefore points to drift since then, or to a typo while copying. Compare with the plan first.
+
+**Session 2G is the Phase 2 exit** (spec §14; the plan's "Session 2G"). It lands the 2F2 review gate's page fixes (Task G0), a soak that measures what Phase 2 changed (G1) and the real-printer checklist (G2), then runs the exit (G3): every suite and build, the APKs (byte-identical to Session 2F2's: 2G changes no app code), spec §14's Phase 2 criteria end to end on the harness and the emulator, the free-tier measurement in both modes, the fresh review and Results. After 2G comes the orchestrator's final Phase 2 gate, then the owner's merge decision and the go-live run (the Worker first, then the web, then every POS screen reloaded; the Windows app 1.11.0 and the new APK reach devices only then).
+
+**What 2G delivers** (spec §8.1, §9.2, §13, §14, §17; the 2F2 review gate's rulings). **A printer the setup prints through this device never leaves the POS app from the page:** the printer panel offers no Remove for it (on this device's own printer too, the 2F2 gate saw that loop live), and Change printer on a bridge v2 app keeps it in the app; so a setup network printer that leaves the app another way is added back with no reload, and one the setup stops naming (deleted, moved to a new address, moved to another device, switched off) is removed from the app again, never one staff added and never the app's default. A printer the app promotes starts at the default paper. The soak (`scripts/print-soak.ts`) drives direct print and printers mode, so the measurement covers both modes. `apps/mobile/TEST-CHECKLIST.md` gains the stations and printers checks for real printers.
+
+**Gate rulings this section implements** (see "2F2 review gate: rulings"): M-4, m-3, m-1, m-5 and the gold review's m-B, m-C and m-F (Task G0); the gold review's m-D and m-E (G1); the gold review's m-A and the 2F2 review's declined line 3 (G2); the exit, the measurement and the 2E gate's Part C (G3).
+
+**Not in 2G:** m-2 (two network printers on one host share a name in the app's notification: Phase 4's setup polish, with `PoolStatusTest`'s fixture names), m-4 (`PoolList.restore` with a damaged `Prefs` file: accepted), the `PrinterPool` publish-chain JVM test (it needs seams in `PrinterPool`: Phase 3, with the Android hardening), M-11 (a failed job's cycle drops a kick for another line: accepted, the pulse covers it within 20 s), a cap on the app's list (not needed: it grows only by the setup's printers and staff's own adds), parallel writes across printers (F-R5), a network printer from the Windows app and failover (Phase 3). No app code (the APKs stay byte-identical to Session 2F2's), no Worker change, no server change, no new request. The TEST-CHECKLIST runs on real printers and Part C (the Windows app 1.11.0 on the owner's counter PC) are the owner's. Nothing is deployed.
+
+### Review Focus (Session 2G)
+
+The inputs most likely to bite a cafe that the unit tests alone would not exercise; each has a test, a pin or a gate check.
+1. **A tablet with two network printers, both in the setup**: no Remove for either (this device's printer included); Change printer on this device's printer keeps the old one in the app and its slips keep printing; nothing re-adds a printer staff removed, nothing removes one staff added. → `print-agent-printers.test.ts` (2F2 gate, M-4), the PIN (2F2 gate); the gate's emulator run (items 5, 8, 9).
+2. **A setup network printer moved to a new address** (a DHCP change) or deleted: the new address is added and the old one removed from the app, never the default, never before the printers read loaded, with no add/remove flip-flop. → `print-agent-printers.test.ts` (2F2 gate, m-3); the gold review's hook probes; the gate's emulator run (items 10, 15).
+3. **Spec §14 end to end**: one round with kitchen and bar items prints two station KOTs plus the full copy, a bill goes to the device's bill printer, the release APK prints in simple mode, a slip the asking device prints itself costs one request and no lease. → Task G3 Step 4, items 2, 6, 7.
+4. **The free-tier budget in both modes, measured**: direct print one request per job, another device's slip a lease and an ack, the writers' wake within its share, CPU and Mongo within spec §17.3's limits. → Task G3 Step 5 (four projections, each `pass: true`).
+5. **The soak itself**: a faithful stand-in for the page (the same headers, no request the page would not make), and the Phase 1 runs unchanged. → `print-soak-agent.test.ts`; the gate's short runs.
+
+### File map (Session 2G)
+
+| File | Change | Task |
+|---|---|---|
+| `apps/cafe/lib/print-agent-printers.ts`, `hooks/use-agent-printers.ts`, `components/print/DevicePrinterSection.tsx`, `components/print/OtherDevicePrinters.tsx`, `components/print/NativePrinterPicker.tsx`, `lib/printer/transport-native.ts` (+ tests) | the 2F2 review gate's page fixes | G0 |
+| `apps/cafe/scripts/print-soak-agent.ts` (create), `scripts/print-soak.ts`, `scripts/print-soak-agent.test.ts` (create), `package.json`, `lib/print-lifecycle-paths.test.ts` | the soak measures Phase 2 | G1 |
+| `apps/mobile/TEST-CHECKLIST.md` | the stations and printers checks on real printers | G2 |
+| this plan | Session 2G Results | G3 |
+
+The tasks run in this order: G0 → G2 (each one commit), then G3 (verification, the APKs, the Phase 2 exit on the emulator, the measurement, the fresh review, Results).
+
+---
+
+### Task G0: the 2F2 review gate's page fixes: a printer the setup prints through this device has no Remove in the printer panel and stays in the POS app when this device's printer is changed, a network printer the page added is asked for again once the app has lost it and removed again once the setup stops naming it, and a printer the app promotes starts at the default paper
+
+**Files:**
+- Modify: `apps/cafe/lib/print-agent-printers.ts` (`PRINTER_IN_SETUP_MESSAGE`, `lanPrintersToRemove`, `ownPrinterInSetup`) (M-4, m-3)
+- Modify: `apps/cafe/hooks/use-agent-printers.ts` (`lanAsked` forgets a printer the app lists; the record `pos.app-lan-added.v1` and the removals; `useOwnPrinterInSetup`; `usePoolView` says the app's default) (M-4, m-3; the gold review's m-C)
+- Modify: `apps/cafe/components/print/DevicePrinterSection.tsx` (no Remove on a setup printer, none before the setup is known; Change printer keeps a setup printer in the app) (M-4; the gold review's m-B, m-C, m-F), `components/print/OtherDevicePrinters.tsx` (the shared sentence), `components/print/NativePrinterPicker.tsx` (a doc line)
+- Modify: `apps/cafe/lib/printer/transport-native.ts` (`apply()`: the saved paper only for the same printer) (m-1)
+- Tests: `apps/cafe/lib/print-agent-printers.test.ts` (two tests and a pin, new; one pin's message changed), `apps/cafe/lib/printer/device-printer-native.test.ts` (two tests, new) (m-5, m-1)
+
+**Interfaces produced:** `PRINTER_IN_SETUP_MESSAGE`, `lanPrintersToRemove(printers, deviceId, pool, defaultId, added): { remove: string[]; record: string[] }` and `ownPrinterInSetup(printers, deviceId, local, pool, defaultId): boolean` in `lib/print-agent-printers.ts`; `useOwnPrinterInSetup(deviceId): { inSetup: boolean; known: boolean }` in `hooks/use-agent-printers.ts`; `usePoolView(): NativePoolSnapshot | null`.
+
+**M-4 (the 2F1 review gate, for 2G; seen live on the emulator at the 2F2 gate): a printer the setup prints through this device no longer leaves the POS app from the page.** At the 2F2 gate, the device section's **Remove** on this device's printer (a setup printer, Printer 1) made the app promote its other printer (G-2, as designed), and the page added the removed printer back a moment later (it was not in `lanAsked`, having never been asked for): the 2E gate's I-3 loop, on the device section. So the printer panel now shows the I-3 sentence ("Printer setup prints slips here: to remove it, change or delete that printer in Printer setup first.", one shared constant) instead of **Remove** for this device's own printer whenever the setup prints it through this device (`ownPrinterInSetup`: on bridge v2 the app's default is the target of a setup printer this device writes; on v1, and on any other device, its one printer is local to such a printer), as **Other printers on this device** already did for the others. On a bridge v2 app, **Change printer** on such a printer adds the chosen printer first (a v2 select) and then makes it this device's printer (a v1 select of a printer the app lists, which keeps the old default listed: ruling G-R3 as changed); a printer the app lists already is only chosen (the gold review's m-B: an add would restart its link). Remove shows only once the printers read has answered or failed (the gold review's m-C: before it, every printer would look like no setup printer), and until then Change printer keeps this device's printer in the app too (its re-check, m-F: a setup printer dropped there would wait; one kept costs a Remove). Anywhere else Change printer replaces this device's printer, as before.
+
+**With that, `lanAsked` forgets a printer once the app lists it** (M-4's own half): a setup network printer that leaves the app another way (an older page's Change printer, an older app) is added back on the next change of the printers or the app's list, with no reload, and no staff action can be undone by it, because no panel offers Remove for such a printer.
+
+**m-3 (the 2F2 session's review): a network printer the page added is removed again once the setup stops naming it.** The page keeps, on the device (`pos.app-lan-added.v1`, at most 32 ids; a blocked or broken store reads as empty), the app's ids of the network printers it added by itself, recorded before it asks; once the printers read has loaded, a recorded printer that no routable printer of the setup written by this device names any more (deleted, re-addressed after a DHCP change, moved to another device, switched off) is removed from the app (`lanPrintersToRemove`), so the app stops probing it every 30 s and its notification never names a printer nothing prints on. Never a printer staff added (it was not recorded), never the app's default (this device's own printer prints the slips no setup printer takes: the gold review's m-A is the checklist's wording, Task G2), and nothing on an app on v1. No Kotlin cap: the app's list grows only by the setup's printers and staff's own adds.
+
+**m-1: a printer the app promotes starts at the default paper.** `apply()` kept the saved record's paper for whatever printer the app reported, so after the G-2 promotion (or an older app's change) the promoted printer printed simple-mode slips and the panel's test at the removed printer's width. The saved paper now counts only for the same printer id; another starts at 80 mm, which the panel's paper toggle shows.
+
+**m-5: the G-2 test covers both orders.** On the device the app's status event comes first (`PrinterPool.change()` posts it before `PrinterApi` answers); the new test runs both orders and checks the record is written once, at the default paper.
+
+**Changed existing pin:** `print-agent-printers.test.ts` "PIN (2F1): the page follows the app's printers: the agent's lines, the dot, the drain, the wake's heartbeat, the network printers it writes" (the add line's message: "a local call", no longer "once per page").
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+  dotPrintersOf,
+  jobsForMeLeasable,
+  lanPrintersToAdd,
+  nativeIdOf,
+  printJobCopies,
+  printerIsLocal,
+  printerListLooksStale,
+```
+
+Replace it with:
+
+```ts
+  dotPrintersOf,
+  jobsForMeLeasable,
+  lanPrintersToAdd,
+  lanPrintersToRemove,
+  nativeIdOf,
+  ownPrinterInSetup,
+  printJobCopies,
+  printerIsLocal,
+  printerListLooksStale,
+```
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+  assert.deepEqual(lanPrintersToAdd([third], "dev-a", null), [], "never on an app that speaks only v1");
+});
+
+test("PIN (2F1): the page follows the app's printers: the agent's lines, the dot, the drain, the wake's heartbeat, the network printers it writes", () => {
+  const hook = src("apps/cafe/hooks/use-agent-printers.ts");
+  assert.match(hook, /return useMemo\(\(\) => agentPrintersOf\(printers, deviceId, local, desktop, pool\), \[printers, deviceId, local, desktop, pool\]\);/);
+  assert.match(hook, /return useMemo\(\(\) => dotPrintersOf\(printers, deviceId, local, desktop, pool\), \[printers, deviceId, local, desktop, pool\]\);/);
+  assert.match(hook, /for \(const lan of lanPrintersToAdd\(printers, deviceId, pool\)\) \{/, "a network printer it writes is added to the app");
+  assert.match(hook, /void nativePool\(\)\.add\(\{ tcp: lan \}\)\.catch\(\(\) => undefined\);/, "a local call; once per page");
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  // The 2F1 review gate (N-1, deliberate change): a change of which of the app's printers can print now is a nudge.
+  assert.ok(agent.includes("const poolReady = connectedPoolKey(useNativePool());"), "which of the app's printers are connected");
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual(lanPrintersToAdd([third], "dev-a", null), [], "never on an app that speaks only v1");
+});
+
+// The 2F2 review gate (M-4, m-3): a printer the setup prints through this device never leaves the POS app from the page,
+// and a network printer the page added by itself goes again once the setup stops naming it.
+test("2F2 gate (M-4): this device's own printer is in the setup when the setup prints it through this device", () => {
+  const kitchen = printer("kitchen", { kind: "lan", host: "10.0.2.2", port: 9100 }, { primaryDeviceId: "dev-a" });
+  assert.equal(ownPrinterInSetup([kitchen], "dev-a", null, POOL, "tcp:10.0.2.2:9100"), true, "v2: the app's default is a setup printer this device writes");
+  assert.equal(ownPrinterInSetup([kitchen], "dev-a", null, POOL, "tcp:10.0.2.2:9101"), false, "v2: the default is another of the app's printers");
+  assert.equal(ownPrinterInSetup([kitchen], "dev-b", null, POOL, "tcp:10.0.2.2:9100"), false, "another device writes it");
+  assert.equal(ownPrinterInSetup([{ ...kitchen, enabled: false }], "dev-a", null, POOL, "tcp:10.0.2.2:9100"), false, "a printer switched off prints nothing here");
+  assert.equal(ownPrinterInSetup([], "dev-a", null, POOL, "tcp:10.0.2.2:9100"), false, "simple mode: nothing in the setup");
+  assert.equal(ownPrinterInSetup([kitchen], "dev-a", null, POOL, null), false, "v2: an app with no default");
+  const appKitchen: DevicePrinter = { ...NATIVE_TCP, printerId: "tcp:10.0.2.2:9100" };
+  assert.equal(ownPrinterInSetup([kitchen], "dev-a", appKitchen, null, null), true, "v1: its one printer is the setup printer");
+  assert.equal(ownPrinterInSetup([kitchen], "dev-a", NATIVE_TCP, null, null), false, "v1: its printer is another one");
+  const serial = printer("serial", { kind: "device", deviceId: "dev-a", transport: "web-serial", address: "usb" });
+  assert.equal(ownPrinterInSetup([serial], "dev-a", WEB_SERIAL, null, null), true, "a browser's printer the setup prints");
+});
+
+test("2F2 gate (m-3): a network printer the page added goes again once no printer of the setup this device writes names it; never one staff added, never the default", () => {
+  const kitchen = printer("kitchen", { kind: "lan", host: "10.0.2.2", port: 9100 }, { primaryDeviceId: "dev-a" });
+  const added = ["tcp:10.0.2.2:9100", "tcp:10.0.2.2:9101"];
+  assert.deepEqual(lanPrintersToRemove([kitchen], "dev-a", POOL, "bt-classic:00:11:22:33:44:55", added), { remove: ["tcp:10.0.2.2:9101"], record: ["tcp:10.0.2.2:9100"] }, "9101 no longer named: removed and forgotten");
+  assert.deepEqual(lanPrintersToRemove([kitchen], "dev-a", POOL, "tcp:10.0.2.2:9101", added), { remove: [], record: added }, "the app's default is never removed");
+  assert.deepEqual(lanPrintersToRemove([kitchen], "dev-a", POOL, null, ["tcp:10.0.2.2:9100"]), { remove: [], record: ["tcp:10.0.2.2:9100"] }, "9101 was added by staff (not recorded): kept");
+  assert.deepEqual(lanPrintersToRemove([{ ...kitchen, primaryDeviceId: "dev-b" }], "dev-a", POOL, null, ["TCP:10.0.2.2:9100"]).remove, ["tcp:10.0.2.2:9100"], "moved to another device: removed (ids compared ignoring case)");
+  assert.deepEqual(lanPrintersToRemove([], "dev-a", POOL, null, ["tcp:10.0.2.3:9100"]), { remove: [], record: [] }, "one the app no longer lists and the setup no longer names is forgotten");
+  assert.deepEqual(lanPrintersToRemove([kitchen], "dev-a", null, null, added), { remove: [], record: added }, "never on an app that speaks only v1");
+});
+
+test("PIN (the 2F2 review gate, M-4, m-3): a setup printer never leaves the app from the page; an ask is forgotten once the app lists the printer; the page removes only what it added", () => {
+  const hook = src("apps/cafe/hooks/use-agent-printers.ts");
+  assert.ok(hook.includes("for (const key of [...lanAsked]) if (pool.printers.some((entry) => entry.id.toLowerCase() === `tcp:${key}`)) lanAsked.delete(key);"), "an ask is forgotten once the app lists the printer");
+  assert.ok(hook.includes("const { remove, record } = loaded ? lanPrintersToRemove(printers, deviceId, pool, pool.defaultId, added) : { remove: [], record: added };"), "removals only against a printers read that has loaded");
+  assert.ok(hook.includes('const LAN_ADDED_KEY = "pos.app-lan-added.v1";'), "the record is kept on the device");
+  assert.ok(hook.indexOf("added.push(`tcp:${key}`)") > 0 && hook.indexOf("added.push(`tcp:${key}`)") < hook.indexOf("void nativePool().add({ tcp: lan })"), "recorded before it is asked for");
+  const section = src("apps/cafe/components/print/DevicePrinterSection.tsx");
+  assert.match(section, /\{inSetup \? \(\s*<p className="text-xs text-brand-muted">\{PRINTER_IN_SETUP_MESSAGE\}<\/p>\s*\) : known \? \(\s*<Button className=\{PRINTER_ACTION_CLASS\} variant="outline" onClick=\{\(\) => setConfirmRemove\(true\)\} disabled=\{locked\}>/, "no Remove on a setup printer (the 2E gate's I-3 sentence), and none before the setup is known");
+  assert.ok(section.includes("if (!listed(target)) await nativePool().add(target);\n    return devicePrinter().selectNative(target, paperDefault);"), "Change printer keeps a setup printer in the app; a listed printer is only chosen");
+  assert.ok(section.includes("const keepInApp = pool.active && (inSetup || !known) ?"), "kept also while the setup is not known yet");
+  assert.ok(src("apps/cafe/hooks/use-agent-printers.ts").includes("known: deviceId === \"\" || loaded || failed"), "known once the printers read answered or failed");
+  assert.ok(src("apps/cafe/hooks/use-agent-printers.ts").includes('if (!enabled || pool === null || deviceId === "") return;'), "no add or removal without a device id");
+  assert.ok(section.includes("<NativePrinterPicker paper={paperDefault} busy={locked} onAttempt={settle} add={keepInApp} />"), "the picker applies it");
+  assert.ok(src("apps/cafe/components/print/OtherDevicePrinters.tsx").includes("const IN_SETUP = PRINTER_IN_SETUP_MESSAGE;"), "one sentence for both sections");
+});
+
+test("PIN (2F1): the page follows the app's printers: the agent's lines, the dot, the drain, the wake's heartbeat, the network printers it writes", () => {
+  const hook = src("apps/cafe/hooks/use-agent-printers.ts");
+  assert.match(hook, /return useMemo\(\(\) => agentPrintersOf\(printers, deviceId, local, desktop, pool\), \[printers, deviceId, local, desktop, pool\]\);/);
+  assert.match(hook, /return useMemo\(\(\) => dotPrintersOf\(printers, deviceId, local, desktop, pool\), \[printers, deviceId, local, desktop, pool\]\);/);
+  assert.match(hook, /for \(const lan of lanPrintersToAdd\(printers, deviceId, pool\)\) \{/, "a network printer it writes is added to the app");
+  // The 2F2 review gate (M-4, deliberate change): asked again once the app has listed it and lost it, not once per page.
+  assert.match(hook, /void nativePool\(\)\.add\(\{ tcp: lan \}\)\.catch\(\(\) => undefined\);/, "a local call");
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  // The 2F1 review gate (N-1, deliberate change): a change of which of the app's printers can print now is a nudge.
+  assert.ok(agent.includes("const poolReady = connectedPoolKey(useNativePool());"), "which of the app's printers are connected");
+```
+
+In `apps/cafe/lib/printer/device-printer-native.test.ts`, find:
+
+```ts
+  assert.equal(printer.getSnapshot().status, "none");
+});
+
+test("the web reconnect backoff refuses to start for an app printer, even if asked (Kotlin owns that loop)", () => {
+  const clock = makeClock();
+  const link = createWebLink({
+```
+
+Replace it with:
+
+```ts
+  assert.equal(printer.getSnapshot().status, "none");
+});
+
+// The 2F2 review gate (m-5, m-1): on the device the app's status event comes first, then the forget's answer
+// (PrinterPool.change() posts the event before PrinterApi answers); the page keeps the promoted printer either way,
+// writes it once, and at the default paper: the removed printer's paper is not its paper.
+test("2F2 gate (m-5, m-1): the promoted printer is kept whichever of the app's event and the forget's answer lands first, written once, at the default paper", async () => {
+  const promoted = { id: "tcp:10.0.2.2:9100", name: "Network printer 10.0.2.2", transport: "tcp", address: "10.0.2.2:9100" };
+  for (const eventFirst of [true, false]) {
+    const { printer, store, fake } = await nativeEnv();
+    const order = eventFirst ? "event first" : "answer first";
+    const writes = store.writes;
+    fake.respond("printer.forget", () => {
+      if (eventFirst) fake.emit(nativeStatus("connected", promoted));
+      return nativeStatus("connected", promoted);
+    });
+    await printer.forget();
+    if (!eventFirst) fake.emit(nativeStatus("connected", promoted));
+    assert.equal(store.value?.kind === "native" ? store.value.printerId : null, promoted.id, `${order}: the promoted printer is this device's printer`);
+    assert.equal(store.value?.paper, "80mm", `${order}: the default paper, not the removed printer's 58mm`);
+    assert.equal(store.writes - writes, 1, `${order}: the record is written once`);
+    assert.equal(printer.getSnapshot().status, "connected", `${order}: it reads as the app reports it`);
+  }
+});
+
+test("2F2 gate (m-1): a status naming the saved printer keeps its paper; one naming another printer does not take it", async () => {
+  const { printer, store, fake } = await nativeEnv();
+  fake.emit(nativeStatus("disconnected"));
+  assert.equal(store.value?.paper, "58mm", "the same printer keeps the paper the page chose");
+  fake.emit(nativeStatus("connected", { id: "AA:CC", name: "Other", transport: "bt-classic", address: "AA:CC" }));
+  assert.equal(store.value?.paper, "80mm", "another printer starts at the default paper");
+  assert.equal(printer.getSnapshot().printer?.paper, "80mm", "and the panel shows it");
+});
+
+test("the web reconnect backoff refuses to start for an app printer, even if asked (Kotlin owns that loop)", () => {
+  const clock = makeClock();
+  const link = createWebLink({
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-agent-printers.test.ts lib/printer/device-printer-native.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 46`; `# pass 41`; `# fail 5`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/components/print/DevicePrinterSection.tsx`, find:
+
+```tsx
+import { PaperSizeToggle } from "@/components/print/PaperSizeToggle";
+import { InlineConfirm, PrinterRow } from "@/components/print/PrintHostCardParts";
+import { PrinterSection } from "@/components/print/PrinterSection";
+import { useDevicePrinter, usePrintCapabilities, usePrintLane } from "@/hooks/use-device-printer";
+import { useSettings } from "@/hooks/use-settings";
+import { printConfigOf } from "@/lib/print";
+import { PRINTER_ELSEWHERE_STATUS_MESSAGE, devicePrinter, type ConnectOutcome } from "@/lib/printer/device-printer";
+
+const REMOVED_MESSAGE = "Printer removed from this device.";
+const REMOVE_FAILED_MESSAGE = "Could not remove the printer. Try again.";
+```
+
+Replace it with:
+
+```tsx
+import { PaperSizeToggle } from "@/components/print/PaperSizeToggle";
+import { InlineConfirm, PrinterRow } from "@/components/print/PrintHostCardParts";
+import { PrinterSection } from "@/components/print/PrinterSection";
+import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
+import { useOwnPrinterInSetup } from "@/hooks/use-agent-printers";
+import { useDevicePrinter, useNativePool, usePrintCapabilities, usePrintLane } from "@/hooks/use-device-printer";
+import { useSettings } from "@/hooks/use-settings";
+import { printConfigOf } from "@/lib/print";
+import { PRINTER_IN_SETUP_MESSAGE } from "@/lib/print-agent-printers";
+import { PRINTER_ELSEWHERE_STATUS_MESSAGE, devicePrinter, type ConnectOutcome } from "@/lib/printer/device-printer";
+import { nativePool } from "@/lib/printer/native-pool";
+import { nativeTargetId, type NativeSelectTarget } from "@/lib/printer/transport-native";
+
+const REMOVED_MESSAGE = "Printer removed from this device.";
+const REMOVE_FAILED_MESSAGE = "Could not remove the printer. Try again.";
+```
+
+In `apps/cafe/components/print/DevicePrinterSection.tsx`, find:
+
+```tsx
+  const { printer, status } = snapshot;
+  const elsewhere = status === "elsewhere";
+  const locked = busy || elsewhere;
+
+  // The attempt is STARTED by the click handler (its chooser is the first
+  // await, which needs the tap's user activation); this only waits for it.
+```
+
+Replace it with:
+
+```tsx
+  const { printer, status } = snapshot;
+  const elsewhere = status === "elsewhere";
+  const locked = busy || elsewhere;
+  const { deviceId } = usePrintHostContext();
+  const { inSetup, known } = useOwnPrinterInSetup(deviceId);
+  const pool = useNativePool();
+  // The 2F2 review gate (M-4): Change printer of a printer the setup prints through this device keeps it in the POS app
+  // (bridge v2): a new printer is added first (one the app lists already is only chosen: an add would restart its link),
+  // then made this device's printer, and the old one stays among the app's other printers; also while the setup is not
+  // known yet (its review, m-F: a setup printer dropped there would wait; one kept costs a Remove). Anywhere else it is
+  // replaced, as before.
+  const listed = (target: NativeSelectTarget) => pool.printers.some((entry) => entry.id.toLowerCase() === nativeTargetId(target).toLowerCase());
+  const keepInApp = pool.active && (inSetup || !known) ? async (target: NativeSelectTarget) => {
+    if (!listed(target)) await nativePool().add(target);
+    return devicePrinter().selectNative(target, paperDefault);
+  } : undefined;
+
+  // The attempt is STARTED by the click handler (its chooser is the first
+  // await, which needs the tap's user activation); this only waits for it.
+```
+
+In `apps/cafe/components/print/DevicePrinterSection.tsx`, find:
+
+```tsx
+                  >
+                    {changing ? "Keep this printer" : "Change printer"}
+                  </Button>
+                  <Button className={PRINTER_ACTION_CLASS} variant="outline" onClick={() => setConfirmRemove(true)} disabled={locked}>
+                    Remove
+                  </Button>
+                </div>
+              )}
+              <PaperSizeToggle value={printer.paper} disabled={locked} onChange={(paper) => devicePrinter().setPaper(paper)} />
+            </div>
+          )}
+          {choosing && caps.native && <NativePrinterPicker paper={paperDefault} busy={locked} onAttempt={settle} />}
+          {choosing && !caps.native && (caps.serial || caps.bluetooth) && (
+            <BrowserPrinterConnect
+              paired={caps.serial}
+```
+
+Replace it with:
+
+```tsx
+                  >
+                    {changing ? "Keep this printer" : "Change printer"}
+                  </Button>
+                  {inSetup ? (
+                    <p className="text-xs text-brand-muted">{PRINTER_IN_SETUP_MESSAGE}</p>
+                  ) : known ? (
+                    <Button className={PRINTER_ACTION_CLASS} variant="outline" onClick={() => setConfirmRemove(true)} disabled={locked}>
+                      Remove
+                    </Button>
+                  ) : null}
+                </div>
+              )}
+              <PaperSizeToggle value={printer.paper} disabled={locked} onChange={(paper) => devicePrinter().setPaper(paper)} />
+            </div>
+          )}
+          {choosing && caps.native && <NativePrinterPicker paper={paperDefault} busy={locked} onAttempt={settle} add={keepInApp} />}
+          {choosing && !caps.native && (caps.serial || caps.bluetooth) && (
+            <BrowserPrinterConnect
+              paired={caps.serial}
+```
+
+In `apps/cafe/components/print/NativePrinterPicker.tsx`, find:
+
+```tsx
+  busy: boolean;
+  /** Runs a connect attempt under the section's busy flag and toasts the outcome. */
+  onAttempt: (attempt: Promise<ConnectOutcome>) => Promise<void>;
+  /** Phase 2 Session 2F1: adds the printer to the app's printers (bridge v2) instead of replacing this device's own. */
+  add?: (target: NativeSelectTarget) => Promise<ConnectOutcome>;
+}
+
+```
+
+Replace it with:
+
+```tsx
+  busy: boolean;
+  /** Runs a connect attempt under the section's busy flag and toasts the outcome. */
+  onAttempt: (attempt: Promise<ConnectOutcome>) => Promise<void>;
+  /** Phase 2 Session 2F1: adds the printer to the app's printers (bridge v2) instead of replacing this device's own. The 2F2
+   *  review gate (M-4): also Change printer of a printer the setup prints here (added, then made this device's printer). */
+  add?: (target: NativeSelectTarget) => Promise<ConnectOutcome>;
+}
+
+```
+
+In `apps/cafe/components/print/OtherDevicePrinters.tsx`, find:
+
+```tsx
+import { usePrintersRead } from "@/hooks/use-agent-printers";
+import { useNativePool } from "@/hooks/use-device-printer";
+import type { PaperWidth } from "@/lib/constants";
+import { agentPrintersOf } from "@/lib/print-agent-printers";
+import { PRINTER_CONNECT_FAILED_MESSAGE, type ConnectOutcome } from "@/lib/printer/device-printer";
+import { nativePool, type PoolPrinter } from "@/lib/printer/native-pool";
+import { cn } from "@/lib/utils";
+```
+
+Replace it with:
+
+```tsx
+import { usePrintersRead } from "@/hooks/use-agent-printers";
+import { useNativePool } from "@/hooks/use-device-printer";
+import type { PaperWidth } from "@/lib/constants";
+import { PRINTER_IN_SETUP_MESSAGE, agentPrintersOf } from "@/lib/print-agent-printers";
+import { PRINTER_CONNECT_FAILED_MESSAGE, type ConnectOutcome } from "@/lib/printer/device-printer";
+import { nativePool, type PoolPrinter } from "@/lib/printer/native-pool";
+import { cn } from "@/lib/utils";
+```
+
+In `apps/cafe/components/print/OtherDevicePrinters.tsx`, find:
+
+```tsx
+const RECONNECTED = "Printer connected.";
+const NOT_YET = "The printer is added, but not connected yet. Check it is on, then tap Reconnect.";
+const REMOVE_FAILED = "Could not remove the printer. Try again.";
+const IN_SETUP = "Printer setup prints slips here: to remove it, change or delete that printer in Printer setup first.";
+const STATUS_WORDS: Record<PoolPrinter["status"], string> = { connected: "Connected", connecting: "Connecting…", disconnected: "Not connected" };
+
+// Printing redesign, Phase 2 Session 2F1 (spec §9.2, §11): on the POS app with bridge v2 one phone or tablet drives
+```
+
+Replace it with:
+
+```tsx
+const RECONNECTED = "Printer connected.";
+const NOT_YET = "The printer is added, but not connected yet. Check it is on, then tap Reconnect.";
+const REMOVE_FAILED = "Could not remove the printer. Try again.";
+const IN_SETUP = PRINTER_IN_SETUP_MESSAGE;
+const STATUS_WORDS: Record<PoolPrinter["status"], string> = { connected: "Connected", connecting: "Connecting…", disconnected: "Not connected" };
+
+// Printing redesign, Phase 2 Session 2F1 (spec §9.2, §11): on the POS app with bridge v2 one phone or tablet drives
+```
+
+In `apps/cafe/hooks/use-agent-printers.ts`, find:
+
+```ts
+import { apiGet } from "@/lib/api-client";
+import { isDesktopShell } from "@/lib/desktop-shell";
+import { desktopPrintsOnNamed } from "@/lib/desktop-shell-printer";
+import { agentPrintersOf, dotPrintersOf, lanPrintersToAdd, type AgentPrinters, type DesktopPrinters, type NativePoolView } from "@/lib/print-agent-printers";
+import { refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import { nativePool } from "@/lib/printer/native-pool";
+import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
+import { subscribeRealtime } from "@/lib/realtime-client";
+
+```
+
+Replace it with:
+
+```ts
+import { apiGet } from "@/lib/api-client";
+import { isDesktopShell } from "@/lib/desktop-shell";
+import { desktopPrintsOnNamed } from "@/lib/desktop-shell-printer";
+import { agentPrintersOf, dotPrintersOf, lanPrintersToAdd, lanPrintersToRemove, ownPrinterInSetup, type AgentPrinters, type DesktopPrinters } from "@/lib/print-agent-printers";
+import { refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import { nativePool, type NativePoolSnapshot } from "@/lib/printer/native-pool";
+import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
+import { subscribeRealtime } from "@/lib/realtime-client";
+
+```
+
+In `apps/cafe/hooks/use-agent-printers.ts`, find:
+
+```ts
+}
+
+/** Session 2F1 (spec §9.2): the POS app's printers on bridge v2; null on any other device, and on an app on v1. */
+export function usePoolView(): NativePoolView | null {
+  const pool = useNativePool();
+  return pool.active ? pool : null;
+}
+
+/** Session 2D (spec §10): the top-bar dot's view of printers mode. The same printers read as the agent's (one cache
+```
+
+Replace it with:
+
+```ts
+}
+
+/** Session 2F1 (spec §9.2): the POS app's printers on bridge v2; null on any other device, and on an app on v1. */
+export function usePoolView(): NativePoolSnapshot | null {
+  const pool = useNativePool();
+  return pool.active ? pool : null;
+}
+
+/** The 2F2 review gate (M-4): this device's own printer is one the setup prints through this device (ownPrinterInSetup):
+ *  the printer panel then offers no Remove for it. `known`: the printers read has answered (or failed, or this device
+ *  has no id), so the panel offers Remove only once it knows (its review, m-C). The same printers read as the agent's:
+ *  no request of its own. */
+export function useOwnPrinterInSetup(deviceId: string): { inSetup: boolean; known: boolean } {
+  const { printers, loaded, failed } = usePrintersRead(deviceId !== "");
+  const local = useDevicePrinter().printer;
+  const pool = usePoolView();
+  return useMemo(() => ({ inSetup: ownPrinterInSetup(printers, deviceId, local, pool, pool?.defaultId ?? null), known: deviceId === "" || loaded || failed }), [printers, loaded, failed, deviceId, local, pool]);
+}
+
+/** Session 2D (spec §10): the top-bar dot's view of printers mode. The same printers read as the agent's (one cache
+```
+
+In `apps/cafe/hooks/use-agent-printers.ts`, find:
+
+```ts
+  return useMemo(() => dotPrintersOf(printers, deviceId, local, desktop, pool), [printers, deviceId, local, desktop, pool]);
+}
+
+// The network printers this page already asked the app to add (once per page: one the app could not reach stays in
+// its list, down, and its own reconnect loop keeps trying).
+const lanAsked = new Set<string>();
+
+/** The printers this device writes, and which it prints here (lib/print-agent-printers.ts). Session 2F1: a network
+ *  printer this device writes is added to the POS app's printers on bridge v2 (a local call, no request). */
+export function useAgentPrinters(deviceId: string, enabled: boolean): AgentPrinters {
+  const printers = usePrinters(enabled);
+  const local = useDevicePrinter().printer;
+  const desktop = useDesktopPrinters();
+  const pool = usePoolView();
+  useEffect(() => {
+    if (!enabled) return;
+    for (const lan of lanPrintersToAdd(printers, deviceId, pool)) {
+      const key = `${lan.host}:${lan.port}`;
+      if (lanAsked.has(key)) continue;
+      lanAsked.add(key);
+      void nativePool().add({ tcp: lan }).catch(() => undefined);
+    }
+  }, [enabled, printers, deviceId, pool]);
+  return useMemo(() => agentPrintersOf(printers, deviceId, local, desktop, pool), [printers, deviceId, local, desktop, pool]);
+}
+
+```
+
+Replace it with:
+
+```ts
+  return useMemo(() => dotPrintersOf(printers, deviceId, local, desktop, pool), [printers, deviceId, local, desktop, pool]);
+}
+
+// The network printers this page asked the app to add that the app does not list yet: one ask per printer (one the app
+// could not reach stays in its list, down, and its own reconnect loop keeps trying). The 2F2 review gate (M-4): a key
+// goes once the app lists that printer, so a setup printer that leaves the app another way (an older page's Change
+// printer, an older app) is added back with no reload. The panel offers no Remove for a printer the setup prints through
+// this device (ownPrinterInSetup), so no staff action is undone by this (the 2E gate's I-3).
+const lanAsked = new Set<string>();
+// The 2F2 review gate (m-3): the app's ids of the network printers this page added by itself, kept on the device, so one
+// the setup stops naming is removed from the app again (lanPrintersToRemove), even after a reload.
+const LAN_ADDED_KEY = "pos.app-lan-added.v1";
+const LAN_ADDED_MAX = 32;
+
+function readLanAdded(): string[] {
+  try {
+    const list: unknown = JSON.parse(window.localStorage.getItem(LAN_ADDED_KEY) ?? "[]");
+    return Array.isArray(list) ? list.filter((id): id is string => typeof id === "string").slice(0, LAN_ADDED_MAX) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLanAdded(ids: readonly string[]): void {
+  try {
+    if (ids.length === 0) window.localStorage.removeItem(LAN_ADDED_KEY);
+    else window.localStorage.setItem(LAN_ADDED_KEY, JSON.stringify(ids.slice(0, LAN_ADDED_MAX)));
+  } catch {
+    // Storage blocked: the page forgets what it added, so it removes nothing (never a printer staff added).
+  }
+}
+
+/** The printers this device writes, and which it prints here (lib/print-agent-printers.ts). Session 2F1: a network
+ *  printer this device writes is added to the POS app's printers on bridge v2 (a local call, no request). */
+export function useAgentPrinters(deviceId: string, enabled: boolean): AgentPrinters {
+  const printers = usePrinters(enabled);
+  const { loaded } = usePrintersRead(enabled);
+  const local = useDevicePrinter().printer;
+  const desktop = useDesktopPrinters();
+  const pool = usePoolView();
+  useEffect(() => {
+    if (!enabled || pool === null || deviceId === "") return;
+    for (const key of [...lanAsked]) if (pool.printers.some((entry) => entry.id.toLowerCase() === `tcp:${key}`)) lanAsked.delete(key);
+    const added = readLanAdded();
+    for (const lan of lanPrintersToAdd(printers, deviceId, pool)) {
+      const key = `${lan.host}:${lan.port}`;
+      if (lanAsked.has(key)) continue;
+      lanAsked.add(key);
+      if (!added.includes(`tcp:${key}`)) added.push(`tcp:${key}`);
+      void nativePool().add({ tcp: lan }).catch(() => undefined);
+    }
+    // Only against a printers read that has loaded: before it, every printer the page added would look unnamed.
+    const { remove, record } = loaded ? lanPrintersToRemove(printers, deviceId, pool, pool.defaultId, added) : { remove: [], record: added };
+    for (const id of remove) void nativePool().remove(id).catch(() => undefined);
+    if (JSON.stringify(record) !== JSON.stringify(readLanAdded())) writeLanAdded(record);
+  }, [enabled, loaded, printers, deviceId, pool]);
+  return useMemo(() => agentPrintersOf(printers, deviceId, local, desktop, pool), [printers, deviceId, local, desktop, pool]);
+}
+
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+
+/** The refusal a leased job gets when its printer is not this device's printer (sent:"no", never counted). */
+export const PRINTER_NOT_LOCAL_MESSAGE = "This printer is not connected to this device.";
+
+/** Session 2E (spec §9.2): the Windows app's printers. `named`: the app prints a slip on a printer the page names
+ *  (desktopPrintsOnNamed); `names`: every printer Windows reports on this PC (null until read); `selected`: the one
+```
+
+Replace it with:
+
+```ts
+
+/** The refusal a leased job gets when its printer is not this device's printer (sent:"no", never counted). */
+export const PRINTER_NOT_LOCAL_MESSAGE = "This printer is not connected to this device.";
+/** The 2E gate's review (I-3), and the 2F2 review gate (M-4) for this device's own printer: what the printer panel
+ *  shows instead of Remove for a printer the setup prints through this device. */
+export const PRINTER_IN_SETUP_MESSAGE = "Printer setup prints slips here: to remove it, change or delete that printer in Printer setup first.";
+
+/** Session 2E (spec §9.2): the Windows app's printers. `named`: the app prints a slip on a printer the page names
+ *  (desktopPrintsOnNamed); `names`: every printer Windows reports on this PC (null until read); `selected`: the one
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+  return out;
+}
+
+/** Session 2C (the 2C gate's review, I-2, and its emulator run): the device's printer list is stale when a missed
+ *  print-setup frame left it behind the setup. Either a printer job aimed at it is on a printer it does not print
+ *  on (it was just made that printer's writer), or the wake says the setup no longer names a writer it believes
+```
+
+Replace it with:
+
+```ts
+  return out;
+}
+
+/** The 2F2 review gate (m-3): network printers the page added to the POS app by itself (`added`: the app's ids it
+ *  recorded when lanPrintersToAdd asked for them) that no printer of the setup this device writes names any more
+ *  (deleted, re-addressed, moved to another device, switched off): removed again, so the app stops probing them every
+ *  30 s and its notification never names a printer nothing prints on. Never one staff added (it was not recorded), and
+ *  never the app's default (this device's own printer prints the slips no printer of the setup takes). `record`: what
+ *  stays recorded, the ids the setup still names (added, or being added) and the app's default. */
+export function lanPrintersToRemove(printers: readonly PrinterConfig[], deviceId: string, pool: NativePoolView | null, defaultId: string | null, added: readonly string[]): { remove: string[]; record: string[] } {
+  if (pool === null) return { remove: [], record: [...added] };
+  const wanted = new Set(printersWrittenBy(printers, deviceId).flatMap((printer) => (printer.connection.kind === "lan" ? [`tcp:${printer.connection.host}:${printer.connection.port}`.toLowerCase()] : [])));
+  const recorded = new Set(added.map((id) => id.toLowerCase()));
+  const own = defaultId?.toLowerCase() ?? null;
+  return {
+    remove: pool.printers.filter((entry) => entry.id.toLowerCase() !== own && recorded.has(entry.id.toLowerCase()) && !wanted.has(entry.id.toLowerCase())).map((entry) => entry.id),
+    record: added.filter((id) => wanted.has(id.toLowerCase()) || id.toLowerCase() === own),
+  };
+}
+
+/** The 2F2 review gate (M-4): this device's own printer (the POS app's default on bridge v2; the one printer of any
+ *  other device) is a printer the setup prints through this device. The panel then offers no Remove for it, and on
+ *  bridge v2 its Change printer keeps it in the app, so a setup printer never leaves the app from the page (and the
+ *  network printers the page adds by itself are never re-added after a staff action: the 2E gate's I-3). */
+export function ownPrinterInSetup(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, pool: NativePoolView | null, defaultId: string | null): boolean {
+  const agent = agentPrintersOf(printers, deviceId, local, null, pool);
+  if (pool !== null) return defaultId !== null && Object.values(agent.targets).some((target) => target.nativeId === defaultId);
+  return agent.localIds.length > 0;
+}
+
+/** Session 2C (the 2C gate's review, I-2, and its emulator run): the device's printer list is stale when a missed
+ *  print-setup frame left it behind the setup. Either a printer job aimed at it is on a printer it does not print
+ *  on (it was just made that printer's writer), or the wake says the setup no longer names a writer it believes
+```
+
+In `apps/cafe/lib/printer/transport-native.ts`, find:
+
+```ts
+    const stored = host.readStore();
+    const id = status.printer?.id;
+    const wanted = paper ?? (id === undefined ? undefined : requestedPaper.get(id));
+    const next = nativeStatusToSnapshot(status, wanted ? { paper: wanted } : stored);
+    if (next.printer === null && stored !== null && stored.kind !== "native") return;
+    if (JSON.stringify(next.printer) !== JSON.stringify(stored)) host.writeStore(next.printer);
+    if (id !== undefined) requestedPaper.delete(id);
+```
+
+Replace it with:
+
+```ts
+    const stored = host.readStore();
+    const id = status.printer?.id;
+    const wanted = paper ?? (id === undefined ? undefined : requestedPaper.get(id));
+    // The 2F2 review gate (m-1): the saved paper is that printer's own. A printer the app made this device's (the one it
+    // promotes when the default leaves, an older app's change) starts at the default paper, which the panel's toggle shows.
+    const same = stored?.kind === "native" && stored.printerId === id ? stored : null;
+    const next = nativeStatusToSnapshot(status, wanted ? { paper: wanted } : same);
+    if (next.printer === null && stored !== null && stored.kind !== "native") return;
+    if (JSON.stringify(next.printer) !== JSON.stringify(stored)) host.writeStore(next.printer);
+    if (id !== undefined) requestedPaper.delete(id);
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-agent-printers.test.ts lib/printer/device-printer-native.test.ts lib/printer-ui-paths.test.ts lib/print-setup-ui-paths.test.ts lib/print-host-card-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 99`; `# pass 99`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint lib/print-agent-printers.ts hooks/use-agent-printers.ts components/print/DevicePrinterSection.tsx components/print/OtherDevicePrinters.tsx components/print/NativePrinterPicker.tsx lib/printer/transport-native.ts lib/print-agent-printers.test.ts lib/printer/device-printer-native.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/components/print/DevicePrinterSection.tsx apps/cafe/components/print/NativePrinterPicker.tsx apps/cafe/components/print/OtherDevicePrinters.tsx apps/cafe/hooks/use-agent-printers.ts apps/cafe/lib/print-agent-printers.test.ts apps/cafe/lib/print-agent-printers.ts apps/cafe/lib/printer/device-printer-native.test.ts apps/cafe/lib/printer/transport-native.ts
+git commit -m "fix(print): the 2F2 review gate on the page: a printer the setup prints through this device has no Remove in the printer panel and stays in the POS app when this device's printer is changed, a network printer the page added is asked for again once the app has lost it and removed again once the setup stops naming it, and a printer the app promotes starts at the default paper"
+```
+
+---
+
+### Task G1: the print soak measures Phase 2: direct print on the asking device and printers mode
+
+**Files:**
+- Create: `apps/cafe/scripts/print-soak-agent.ts` (the soak's agent: the headers, a job an answer carried, a lease of its lines, the ack's `more`); modify `apps/cafe/scripts/print-soak.ts` (`--direct`, `--printer`, `--out` a list; printers mode as the server decides it; the jobs the answers named; a drain that leases only while a job is open)
+- Tests: `apps/cafe/scripts/print-soak-agent.test.ts` (create; `apps/cafe/package.json` `testChain` gains it as its own entry); `apps/cafe/lib/print-lifecycle-paths.test.ts` (one pin's line, changed)
+
+**Interfaces produced:** `soakHeaders(agent, bill)`, `printAndAck(agent, call, job)`, `printLeased(agent, call, res)`, `leaseLines(agent, call)` and the types `SoakAgent`, `SoakCall`, `SoakJson`, `SoakAddress` in `scripts/print-soak-agent.ts`.
+
+**Why:** the free-tier measurement of Task G3 must drive what Phase 2 changed, which the Phase 1 soak (`scripts/print-soak.ts`, Session 1E) could not: it never named a lease tab (so no slip was made leased to it, decision 15), it leased again after every ack until the line was empty (Phase 1's trailing lease, removed by decision 9), and it counted one job per slip (printers mode routes a slip to one job per printer line).
+
+**`--direct`** (with `--agent` or `--printer`): every request that makes slips carries `x-pos-print-lease` (and in printers mode `x-pos-print-ready` naming the printers the soak writes), exactly as the page's draining tab does; the soak prints each job an answer carries leased to it, acks it, and leases only when an ack says `more` (or says nothing, as an older server would) or the answer names a queued slip aimed at it (the page's kick). A job refused before any byte waits for its own backoff, as the page's timer does (the gold review's m-E).
+
+**`--printer "<name>=<host>:<port>"`** (printers mode, repeatable): the soak writes that printer (its printing device must be `--device`) to the fake printer there; the lease names the printers' lines. Printers mode is decided as the server does (`printersModeOn` over the printers: the gold review's m-D). Without `--agent` and `--printer`, another device prints (the host in simple mode, the printers' writer, the emulator app, in printers mode) and the soak only orders. `--out` takes every fake printer's folder, comma separated.
+
+**The check:** in printers mode the soak expects exactly the jobs its answers named (a slip on two printers is two jobs; a bill's copies are one job's copies), each printed with its copies on paper, or visibly waiting; the drain leases only while one of its jobs is open, so a measured run holds no request the page would not make. The Phase 1 runs (`--agent` without `--direct`, a host printing) behave as before.
+
+**Changed existing pin:** `print-lifecycle-paths.test.ts` "PIN (the Phase 1 final gate, M8): the soak drives only a local POS on a local scratch database, and stops after its first order unless that order is in its own database" (its last line names the soak agent's first print or lease, `printLeased`, instead of `drainLine`).
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/print-lifecycle-paths.test.ts`, find:
+
+```ts
+  const soak = src("apps/cafe/scripts/print-soak.ts");
+  assert.ok(soak.includes(String.raw`if (!/^mongodb:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/pos_scratch_[a-z0-9_]+$/.test(uri)) throw new Error("refusing: not a local pos_scratch_* database");`), "a local pos_scratch_* database only");
+  assert.ok(soak.includes('throw new Error("refusing: the POS at --base writes to another database than MONGODB_URI");'), "the first order must be in the soak's own database");
+  assert.ok(soak.indexOf("refusing: the POS at --base writes") < soak.indexOf("await drainLine(args, cookie);"), "checked before anything else is driven");
+});
+
+```
+
+Replace it with:
+
+```ts
+  const soak = src("apps/cafe/scripts/print-soak.ts");
+  assert.ok(soak.includes(String.raw`if (!/^mongodb:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/pos_scratch_[a-z0-9_]+$/.test(uri)) throw new Error("refusing: not a local pos_scratch_* database");`), "a local pos_scratch_* database only");
+  assert.ok(soak.includes('throw new Error("refusing: the POS at --base writes to another database than MONGODB_URI");'), "the first order must be in the soak's own database");
+  // Session 2G (the 2F2 review gate): the first print or lease after an order is the soak agent's (scripts/print-soak-agent.ts).
+  assert.ok(soak.indexOf("refusing: the POS at --base writes") < soak.indexOf("if (await printLeased(agent, soakCall, created)) await leaseLines(agent, soakCall);"), "checked before anything else is driven");
+});
+
+```
+
+In `apps/cafe/package.json`, find:
+
+```json
+    "lib/print-setup-fields.test.ts",
+    "lib/print-windows-printers.test.ts",
+    "lib/printer/native-pool.test.ts",
+    "lib/printer/native-bridge-v2-parity.test.ts"
+  ],
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+```
+
+Replace it with:
+
+```json
+    "lib/print-setup-fields.test.ts",
+    "lib/print-windows-printers.test.ts",
+    "lib/printer/native-pool.test.ts",
+    "lib/printer/native-bridge-v2-parity.test.ts",
+    "scripts/print-soak-agent.test.ts"
+  ],
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+```
+
+Create `apps/cafe/scripts/print-soak-agent.test.ts`:
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import net from "node:net";
+
+import type { LeasedPrintJob } from "@pos/shared/print-agent-wire";
+import { leaseLines, printLeased, soakHeaders, type SoakAgent, type SoakCall, type SoakJson } from "./print-soak-agent";
+
+// Phase 2 Session 2G (the 2F2 review gate): the print soak's agent prints a job an answer carried leased to it before
+// any lease, writes each printer's jobs to that printer, and leases again only when an ack says `more`, so the soak
+// measures Phase 2's requests (decisions 9 and 15), not Phase 1's trailing empty lease.
+
+/** A fake printer: keeps every connection's bytes and answers DLE EOT 1 with a status byte. */
+async function fakePrinter(): Promise<{ port: number; jobs: string[]; close: () => Promise<void> }> {
+  const jobs: string[] = [];
+  const server = net.createServer((socket) => {
+    let bytes = Buffer.alloc(0);
+    socket.on("data", (chunk: Buffer) => {
+      bytes = Buffer.concat([bytes, chunk]);
+      if (bytes.subarray(-3).equals(Buffer.from([0x10, 0x04, 0x01]))) {
+        jobs.push(bytes.toString("utf8").split("\n")[0] ?? "");
+        socket.end(Buffer.from([0x12]));
+      }
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("no port");
+  return { port: address.port, jobs, close: () => new Promise((resolve) => server.close(() => resolve())) };
+}
+
+function leased(id: string, printerId?: string): LeasedPrintJob {
+  return { id, epoch: 1, kind: "kot", label: "KOT", createdAt: new Date(0).toISOString(), payload: {} as LeasedPrintJob["payload"], labels: [], copyIndex: 0, attempt: 1, ...(printerId !== undefined ? { printerId } : {}) };
+}
+
+/** A fake server: every request recorded; each ack answers the next `more`, each lease the next job list. */
+function fakeServer(acks: boolean[], leases: LeasedPrintJob[][]): { call: SoakCall; seen: string[] } {
+  const seen: string[] = [];
+  const call: SoakCall = async (method, url, body) => {
+    seen.push(`${method} ${url}${url.endsWith("/ack") ? ` ${(body as { outcome: string }).outcome}` : ""}`);
+    const json: SoakJson = url.endsWith("/ack") ? { data: { applied: true, more: acks.shift() ?? false } } : { data: { jobs: leases.shift() ?? [], retryAt: null } };
+    return { status: 200, json };
+  };
+  return { call, seen };
+}
+
+test("the soak's headers: the agent pair always; with --direct the lease header, and in printers mode the printers it writes", () => {
+  const simple: SoakAgent = { lines: new Map([["", { host: "127.0.0.1", port: 9100 }]]), device: "soak-device", direct: false };
+  assert.deepEqual(soakHeaders(simple, false), { "x-pos-print-agent": "1", "x-pos-device-id": "soak-device" }, "Phase 1's agent: no lease header");
+  assert.deepEqual(soakHeaders({ ...simple, direct: true }, true), { "x-pos-print-agent": "1", "x-pos-device-id": "soak-device", "x-pos-print-bill": "1", "x-pos-print-lease": "soak-tab" }, "simple mode, direct: the lease header, no printers");
+  const printers: SoakAgent = { lines: new Map([["p1", { host: "127.0.0.1", port: 9100 }], ["p2", { host: "127.0.0.1", port: 9101 }]]), device: "soak-device", direct: true };
+  assert.equal(soakHeaders(printers, false)["x-pos-print-ready"], "p1,p2", "printers mode, direct: the printers it writes");
+  assert.equal(soakHeaders({ lines: new Map(), device: "soak-device", direct: true }, false)["x-pos-print-lease"], undefined, "an ordering-only soak never names a tab");
+});
+
+test("a job an answer carried leased to the soak prints on its own printer and is acked; no lease after an ack that says the line is empty", async () => {
+  const kitchen = await fakePrinter();
+  const bar = await fakePrinter();
+  try {
+    const agent: SoakAgent = { lines: new Map([["p-kitchen", { host: "127.0.0.1", port: kitchen.port }], ["p-bar", { host: "127.0.0.1", port: bar.port }]]), device: "soak-device", direct: true };
+    const server = fakeServer([false, false], []);
+    const res = { json: { data: { printJobs: [{ id: "a1", status: "leased", targetDeviceId: "soak-device", leased: leased("a1", "p-bar") }, { id: "a2", status: "leased", targetDeviceId: "soak-device", leased: leased("a2", "p-kitchen") }] } } };
+    assert.equal(await printLeased(agent, server.call, res), false, "both acks said more: false, so no lease");
+    assert.deepEqual(bar.jobs, ["JOB a1 1 kot"], "the bar job on the bar printer");
+    assert.deepEqual(kitchen.jobs, ["JOB a2 1 kot"], "the kitchen job on the kitchen printer");
+    assert.deepEqual(server.seen, ["POST /api/print-jobs/a1/ack printed", "POST /api/print-jobs/a2/ack printed"], "one ack each, no lease");
+    assert.equal(await printLeased(agent, fakeServer([true], []).call, { json: { data: { printJobs: [{ id: "b1", status: "leased", targetDeviceId: "soak-device", leased: leased("b1", "p-bar") }] } } }), true, "an ack that says more asks for a lease");
+    assert.equal(await printLeased(agent, fakeServer([], []).call, { json: { data: { printJobs: [{ id: "c1", status: "queued", targetDeviceId: "soak-device" }] } } }), true, "a queued slip aimed at the soak asks for a lease");
+    assert.equal(await printLeased(agent, fakeServer([], []).call, { json: { data: { printJobs: [{ id: "d1", status: "queued", targetDeviceId: "the-app" }] } } }), false, "a slip another device prints asks for nothing");
+    assert.equal(await printLeased({ ...agent, direct: false }, fakeServer([], []).call, { json: { data: {} } }), true, "without --direct the soak leases after every request (Phase 1's agent)");
+    assert.equal(await printLeased({ lines: new Map(), device: "soak-device", direct: false }, fakeServer([], []).call, { json: { data: {} } }), false, "an ordering-only soak never leases");
+  } finally {
+    await kitchen.close();
+    await bar.close();
+  }
+});
+
+test("a job refused before any byte waits for its own backoff: no lease right after its ack (the page sets a timer)", async () => {
+  const agent: SoakAgent = { lines: new Map([["p-bar", { host: "127.0.0.1", port: 1 }]]), device: "soak-device", direct: true };
+  const seen: string[] = [];
+  const call: SoakCall = async (method, url, body) => {
+    seen.push(`${method} ${url} ${(body as { outcome?: string; sent?: string }).outcome ?? ""} ${(body as { sent?: string }).sent ?? ""}`.trim());
+    return { status: 200, json: { data: { applied: true, nextAttemptAt: new Date(Date.now() + 30_000).toISOString() } } };
+  };
+  const res = { json: { data: { printJobs: [{ id: "x1", status: "leased", targetDeviceId: "soak-device", leased: leased("x1", "p-bar") }] } } };
+  assert.equal(await printLeased(agent, call, res), false, "back in line with a backoff: no lease now");
+  assert.deepEqual(seen, ["POST /api/print-jobs/x1/ack failed no"], "refused before any byte (nothing listens on port 1), acked sent no");
+});
+
+test("a lease of two printers' lines prints each job on its printer and stops when the acks say the lines are empty", async () => {
+  const kitchen = await fakePrinter();
+  const bar = await fakePrinter();
+  try {
+    const agent: SoakAgent = { lines: new Map([["p-kitchen", { host: "127.0.0.1", port: kitchen.port }], ["p-bar", { host: "127.0.0.1", port: bar.port }]]), device: "soak-device", direct: false };
+    const server = fakeServer([false, false], [[leased("k1", "p-kitchen"), leased("b1", "p-bar")]]);
+    assert.equal(await leaseLines(agent, server.call), null, "no retryAt: the lines are empty");
+    assert.deepEqual(server.seen, ["POST /api/print-jobs/lease", "POST /api/print-jobs/k1/ack printed", "POST /api/print-jobs/b1/ack printed"], "one lease, two acks, no trailing lease");
+    assert.deepEqual([kitchen.jobs, bar.jobs], [["JOB k1 1 kot"], ["JOB b1 1 kot"]], "each job on its own printer");
+  } finally {
+    await kitchen.close();
+    await bar.close();
+  }
+});
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test scripts/print-soak-agent.test.ts lib/print-lifecycle-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 23`; `# pass 21`; `# fail 2`
+
+- [ ] **Step 3: The code**
+
+Create `apps/cafe/scripts/print-soak-agent.ts`:
+
+```ts
+/**
+ * Phase 2 Session 2G (the 2F2 review gate; spec §7.11, §9.1, §17.3): the print soak's own agent, split out of
+ * scripts/print-soak.ts. It writes each job it holds to a fake printer over TCP (the job's id first, so the soak's
+ * check reads it back, then DLE EOT 1, so a connection the printer cut mid-slip is seen as "maybe") and acks it.
+ * Like the page's agent it prints a job an answer carried already leased to it before any lease (decision 15), and
+ * leases again only when an ack says `more`, or says nothing, as an older server would (decision 9). A local test
+ * tool: console-free, every request through `call`.
+ */
+import net from "node:net";
+import type { LeasedPrintJob, PrintJobRef } from "@pos/shared/print-agent-wire";
+
+export const SOAK_TAB = "soak-tab";
+const SLIP_BYTES = 4_096;
+
+export type SoakJson = { data?: Record<string, unknown>; error?: string };
+export type SoakCall = (method: string, url: string, body: unknown) => Promise<{ status: number; json: SoakJson }>;
+export interface SoakAddress { host: string; port: number }
+
+export interface SoakAgent {
+  /** Where each line this soak writes prints: "" is the device's own simple-mode line, else a printer's id. */
+  lines: Map<string, SoakAddress>;
+  device: string;
+  /** --direct: the soak names its tab (and its printers) on every request that makes slips. */
+  direct: boolean;
+}
+
+/** One write of a job's slip: its id first, then DLE EOT 1. The answer comes only after every byte before it was
+ *  read, so a cut connection is a "maybe". */
+function writeSlip(address: SoakAddress, job: { id: string; epoch: number; kind: string }): Promise<"printed" | "maybe" | "no"> {
+  return new Promise((resolve) => {
+    const socket = net.connect(address.port, address.host);
+    let connected = false;
+    let settled = false;
+    const done = (result: "printed" | "maybe" | "no") => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(result);
+    };
+    socket.setTimeout(5_000, () => done(connected ? "maybe" : "no"));
+    socket.on("error", () => done(connected ? "maybe" : "no"));
+    socket.on("close", () => done(connected ? "maybe" : "no"));
+    socket.on("data", () => done("printed"));
+    socket.on("connect", () => {
+      connected = true;
+      const head = Buffer.from(`JOB ${job.id} ${job.epoch} ${job.kind}\n`, "utf8");
+      socket.write(Buffer.concat([head, Buffer.alloc(SLIP_BYTES - head.length, 0x2e), Buffer.from([0x10, 0x04, 0x01])]));
+    });
+  });
+}
+
+/** The headers a request that makes slips carries: the agent pair always, the lease header (and in printers mode the
+ *  printers this soak writes) with --direct, the bill header on a settle. */
+export function soakHeaders(agent: SoakAgent, bill: boolean): Record<string, string> {
+  const printers = [...agent.lines.keys()].filter((line) => line !== "");
+  return {
+    "x-pos-print-agent": "1",
+    "x-pos-device-id": agent.device,
+    ...(bill ? { "x-pos-print-bill": "1" } : {}),
+    ...(agent.direct && agent.lines.size > 0 ? { "x-pos-print-lease": SOAK_TAB } : {}),
+    ...(agent.direct && printers.length > 0 ? { "x-pos-print-ready": printers.join(",") } : {}),
+  };
+}
+
+/** Prints one held job on its line's printer (every copy, one write each; a failure after the first copy is a
+ *  "maybe") and acks it. True when the agent should lease again: the line holds more, or the server did not say; a
+ *  job back in line waits for its own backoff (the page sets a timer from nextAttemptAt; the soak's drain waits). */
+export async function printAndAck(agent: SoakAgent, call: SoakCall, job: LeasedPrintJob): Promise<boolean> {
+  const address = agent.lines.get(job.printerId ?? "");
+  let result: "printed" | "maybe" | "no" = address === undefined ? "no" : "printed";
+  for (let copy = 0; address !== undefined && copy < (job.copies ?? 1) && result === "printed"; copy++) {
+    const written = await writeSlip(address, job);
+    if (written !== "printed") result = copy === 0 ? written : "maybe";
+  }
+  const body =
+    result === "printed"
+      ? { deviceId: agent.device, epoch: job.epoch, outcome: "printed" }
+      : { deviceId: agent.device, epoch: job.epoch, outcome: "failed", sent: result, error: result === "no" ? "The printer is not connected." : "The printer cut the connection mid-slip." };
+  const ack = await call("POST", `/api/print-jobs/${job.id}/ack`, body);
+  if (result !== "printed" && typeof ack.json.data?.nextAttemptAt === "string") return false;
+  return ack.json.data?.more !== false;
+}
+
+/** After a request: prints every job its answer carried leased to this soak, and says whether to lease (an ack said
+ *  `more`, or the answer names a queued slip aimed at this device). Without --direct, always (Phase 1's agent). */
+export async function printLeased(agent: SoakAgent, call: SoakCall, res: { json: SoakJson }): Promise<boolean> {
+  if (agent.lines.size === 0) return false;
+  let again = !agent.direct;
+  for (const ref of (res.json.data?.printJobs as PrintJobRef[] | undefined) ?? []) {
+    if (ref.leased !== undefined) again = (await printAndAck(agent, call, ref.leased)) || again;
+    else if (ref.status === "queued" && ref.targetDeviceId === agent.device) again = true;
+  }
+  return again;
+}
+
+/** Leases this soak's lines (each printer it writes, one job per line) and prints what it gets, until an ack says the
+ *  lines are empty. Returns when the server says to look again (retryAt), or null. */
+export async function leaseLines(agent: SoakAgent, call: SoakCall): Promise<number | null> {
+  if (agent.lines.size === 0) return null;
+  const printerIds = [...agent.lines.keys()].filter((line) => line !== "");
+  for (;;) {
+    const lease = await call("POST", "/api/print-jobs/lease", { deviceId: agent.device, tabId: SOAK_TAB, ...(printerIds.length > 0 ? { printerIds } : {}) });
+    const jobs = (lease.json.data?.jobs as LeasedPrintJob[] | undefined) ?? [];
+    if (jobs.length === 0) {
+      const retryAt = lease.json.data?.retryAt;
+      return typeof retryAt === "string" ? Date.parse(retryAt) : null;
+    }
+    let more = false;
+    for (const job of jobs) more = (await printAndAck(agent, call, job)) || more;
+    if (!more) return null;
+  }
+}
+```
+
+Replace the whole of `apps/cafe/scripts/print-soak.ts` with:
+
+```ts
+/**
+ * Phase 1 Session 1E (spec §14, plan Task E1 scenario 5; spec §17.3 item 5): the print soak. It drives the
+ * REAL HTTP API of a running local POS (`next start`) the way an ordering device does — orders, a second
+ * KOT round on every other order, and Pay Now bills, all with the agent headers — then proves nothing was
+ * lost silently: every slip it caused ends printed, or visibly needs-confirm / failed, and the fake
+ * printers' jobs.log match. A local test tool: it refuses any database but pos_scratch_* and any POS
+ * but localhost.
+ *
+ * Phase 2 Session 2G (the 2F2 review gate; spec §7.11, §8, §17.3): it measures what Phase 2 changed too. In printers
+ * mode (an enabled printer exists) every slip is routed to printers, so a slip may be several jobs: the soak counts
+ * the jobs its answers named. --direct: the soak's own slips are made leased to it as it asks (decision 15): it
+ * prints each job an answer carries and leases only when an ack says `more` (decision 9). scripts/print-soak-agent.ts
+ * holds its agent.
+ *
+ *   node --env-file=<env> --import tsx scripts/print-soak.ts --out <folder>[,<folder>]
+ *        [--orders 200] [--base http://localhost:3100] [--every-ms 1500] [--drain-s 300]
+ *        [--agent 127.0.0.1:9100 | --printer "<name>=127.0.0.1:9100" ...] [--direct] [--device soak-device]
+ *
+ * --agent HOST:PORT   simple mode, no host: the soak is its own device's print agent. It leases, writes each job to
+ *                     the fake printer over TCP and asks DLE EOT 1 at the end, so a connection the printer cut
+ *                     mid-slip is seen ("maybe"): a lane that can see the drop, which Android's TCP lane cannot
+ *                     (gate finding G5). Start the printer with --drop-after 2000 --drop-every N.
+ * --printer NAME=H:P  printers mode (repeatable): the soak writes that printer (its printing device must be
+ *                     --device) on the fake printer at H:P.
+ * --direct            with --agent or --printer: the lease header (and the printers it writes) on every request.
+ * neither             another device prints: the host (simple mode) or the printers' writer (the emulator app);
+ *                     the soak only orders, then waits.
+ * --out               every fake printer's --out folder, comma separated (the check reads each jobs.log).
+ *
+ * It mints a staff session from the env file's AUTH_SECRET (never printed) and prints counts only: no
+ * secret, no payload. (console output is intentional — this is an ops CLI script, not app code.)
+ */
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import mongoose from "mongoose";
+import { encode } from "next-auth/jwt";
+import { PrintHost } from "@/models/PrintHost";
+import { PrintJob } from "@/models/PrintJob";
+import { printerWriterDeviceId, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
+import { leaseLines, printLeased, soakHeaders, type SoakAddress, type SoakAgent, type SoakCall, type SoakJson } from "./print-soak-agent";
+
+const COOKIE = "authjs.session-token";
+
+interface Args {
+  orders: number;
+  base: string;
+  everyMs: number;
+  drainS: number;
+  agent: SoakAddress | null;
+  printers: Array<{ name: string } & SoakAddress>;
+  direct: boolean;
+  outs: string[];
+  device: string;
+}
+
+function addressOf(value: string): SoakAddress {
+  const [host, port] = value.split(":");
+  return { host: host ?? "", port: Number(port) };
+}
+
+function parseArgs(argv: string[]): Args {
+  const args: Args = { orders: 200, base: "http://localhost:3100", everyMs: 1_500, drainS: 300, agent: null, printers: [], direct: false, outs: [], device: "soak-device" };
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--direct") {
+      args.direct = true;
+      continue;
+    }
+    const value = argv[++i] ?? "";
+    switch (argv[i - 1]) {
+      case "--orders": args.orders = Number(value); break;
+      case "--base": args.base = value; break;
+      case "--every-ms": args.everyMs = Number(value); break;
+      case "--drain-s": args.drainS = Number(value); break;
+      case "--out": args.outs = value.split(",").filter((out) => out !== ""); break;
+      case "--device": args.device = value; break;
+      case "--agent": args.agent = addressOf(value); break;
+      case "--printer": {
+        const at = value.lastIndexOf("=");
+        args.printers.push({ name: value.slice(0, at), ...addressOf(value.slice(at + 1)) });
+        break;
+      }
+      default: throw new Error(`unknown option ${argv[i - 1]}`);
+    }
+  }
+  if (!Number.isInteger(args.orders) || args.orders < 1) throw new Error("--orders needs a whole number");
+  if (!/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(args.base)) throw new Error("refusing: --base must be a local POS");
+  if (args.outs.length === 0 || args.outs.some((out) => !existsSync(out))) throw new Error("--out must be the fake printers' --out folders");
+  if (args.agent !== null && args.printers.length > 0) throw new Error("--agent (simple mode) or --printer (printers mode), not both");
+  if (args.direct && args.agent === null && args.printers.length === 0) throw new Error("--direct needs --agent or --printer");
+  return args;
+}
+
+const requests = new Map<string, number>();
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function call(args: Args, cookie: string, method: string, url: string, body: unknown, headers: Record<string, string> = {}): Promise<{ status: number; json: SoakJson }> {
+  const route = `${method} ${url.replace(/[0-9a-f]{24}/g, ":id")}`;
+  requests.set(route, (requests.get(route) ?? 0) + 1);
+  const res = await fetch(`${args.base}${url}`, { method, headers: { "content-type": "application/json", cookie, ...headers }, body: JSON.stringify(body), redirect: "manual" });
+  const text = await res.text();
+  try {
+    return { status: res.status, json: JSON.parse(text) as SoakJson };
+  } catch {
+    return { status: res.status, json: { error: `non-JSON answer (${text.length} chars)` } };
+  }
+}
+
+interface PrinterRecord { bytes: number; dropped: boolean; file: string | null; at: string; out: string }
+
+function printerRecords(outs: readonly string[], since: Date): PrinterRecord[] {
+  return outs.flatMap((out) => {
+    const log = path.join(out, "jobs.log");
+    if (!existsSync(log)) return [];
+    return readFileSync(log, "utf8")
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .map((line) => ({ ...(JSON.parse(line) as Omit<PrinterRecord, "out">), out }))
+      .filter((r) => r.bytes > 0 && Date.parse(r.at) >= since.getTime());
+  });
+}
+
+async function main(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2));
+  const uri = process.env.MONGODB_URI ?? "";
+  // A local scratch database only, and (below) the first order must land in it: the POS at --base might use
+  // another database (the Phase 1 final gate, M8).
+  if (!/^mongodb:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/pos_scratch_[a-z0-9_]+$/.test(uri)) throw new Error("refusing: not a local pos_scratch_* database");
+  const secret = process.env.AUTH_SECRET ?? "";
+  if (secret.length < 32) throw new Error("AUTH_SECRET missing from the env file");
+  await mongoose.connect(uri);
+  try {
+    const db = mongoose.connection.db;
+    if (!db) throw new Error("no db");
+    // Printers mode as the server decides it (printersModeOn: a routable printer exists). The host plays no part then.
+    const printerDocs = await db.collection("printers").find({}).toArray();
+    const routable = routablePrinters(printerDocs.map((p) => ({ id: String(p._id), name: String(p.name), connection: p.connection, primaryDeviceId: p.primaryDeviceId, order: Number(p.order ?? 0), paper: p.paper, slips: p.slips, copies: p.copies, enabled: p.enabled === true }) as PrinterConfig));
+    const printersMode = routable.length > 0;
+    const lines = new Map<string, SoakAddress>();
+    if (printersMode) {
+      if (args.agent !== null) throw new Error("printers mode: the soak writes printers with --printer, not --agent");
+      for (const wanted of args.printers) {
+        const printer = routable.find((p) => p.name === wanted.name);
+        if (printer === undefined || printerWriterDeviceId(printer) !== args.device) throw new Error(`--printer ${wanted.name}: no routable printer of that name printed by --device`);
+        lines.set(printer.id, { host: wanted.host, port: wanted.port });
+      }
+    } else {
+      if (args.printers.length > 0) throw new Error("--printer needs printers mode (set printers up first)");
+      const host = await PrintHost.findOne({}).select("deviceId").lean();
+      if (args.agent !== null && host !== null) throw new Error("--agent needs no host: clear it in the app first (Stop printing here)");
+      if (args.agent === null && host === null) throw new Error("without --agent a host must print: designate the app first");
+      if (args.agent !== null) lines.set("", args.agent);
+    }
+    const agent: SoakAgent = { lines, device: args.device, direct: args.direct };
+    const staff = await db.collection("staffs").findOne({ role: "admin", isActive: { $ne: false } }, { projection: { name: 1, role: 1 } });
+    if (staff === null) throw new Error("no admin to act as");
+    const token = await encode({ token: { name: staff.name, id: String(staff._id), role: staff.role, lastValidated: Date.now() }, secret, salt: COOKIE });
+    const cookie = `${COOKIE}=${token}`;
+    const soakCall: SoakCall = (method, url, body) => call(args, cookie, method, url, body);
+    // Plain items only: a sized item or one on discount needs the POS's own price rules.
+    const products = await db
+      .collection("products")
+      .find({ available: { $ne: false }, isActive: { $ne: false }, "variations.0": { $exists: false }, discount: { $in: [0, null] } }, { projection: { name: 1, price: 1 } })
+      .limit(3)
+      .toArray();
+    if (products.length === 0) throw new Error("no product to order");
+    const line = (i: number) => {
+      const p = products[i % products.length];
+      return { productId: String(p?._id), name: String(p?.name), price: Number(p?.price), qty: 1, modifiers: [], instructions: "" };
+    };
+    const startedAt = new Date(Date.now() - 1_000);
+    const named = new Set<string>();
+    const refuse: string[] = [];
+    const counts = { orders: 0, rounds: 0, bills: 0 };
+    const note = (res: { status: number; json: SoakJson }, what: string) => {
+      if (res.status >= 300) refuse.push(`${what}: ${res.status} ${res.json.error ?? ""}`.trim());
+      for (const ref of (res.json.data?.printJobs as Array<{ id: string }> | undefined) ?? []) named.add(ref.id);
+    };
+
+    for (let i = 0; i < args.orders; i++) {
+      const item = line(i);
+      const created = await call(args, cookie, "POST", "/api/orders", { customerName: "Soak", items: [item], subtotal: item.price, discount: 0, total: item.price, payment: "Unpaid", status: "Pending", receiver: "Soak", idemKey: randomUUID() }, soakHeaders(agent, false));
+      note(created, `order ${i + 1}`);
+      const orderId = typeof created.json.data?._id === "string" ? created.json.data._id : null;
+      if (orderId === null) continue;
+      if (counts.orders === 0 && (await db.collection("orders").findOne({ _id: new mongoose.Types.ObjectId(orderId) })) === null) {
+        throw new Error("refusing: the POS at --base writes to another database than MONGODB_URI");
+      }
+      counts.orders += 1;
+      if (await printLeased(agent, soakCall, created)) await leaseLines(agent, soakCall);
+      if (i % 2 === 1) {
+        const round = await call(args, cookie, "POST", `/api/orders/${orderId}/items`, { items: [line(i + 1)], idemKey: randomUUID() }, soakHeaders(agent, false));
+        note(round, `round ${i + 1}`);
+        if (round.status < 300) counts.rounds += 1;
+        if (await printLeased(agent, soakCall, round)) await leaseLines(agent, soakCall);
+      }
+      const settled = await call(args, cookie, "POST", `/api/orders/${orderId}/settle`, { payment: "Cash" }, soakHeaders(agent, true));
+      note(settled, `bill ${i + 1}`);
+      if (settled.status < 300) counts.bills += 1;
+      if (await printLeased(agent, soakCall, settled)) await leaseLines(agent, soakCall);
+      if ((i + 1) % 20 === 0) console.log(`  ${i + 1}/${args.orders} orders`);
+      await sleep(args.everyMs);
+    }
+
+    // Drain: wait until no slip of this soak is still queued or leased (a REPRINT waits for its backoff). Session 2G: a
+    // lease only while one is open, so the measured run holds no request the page would not make.
+    const deadline = Date.now() + args.drainS * 1_000;
+    const mine = { originDeviceId: args.device, createdAt: { $gte: startedAt } };
+    for (;;) {
+      const open = await PrintJob.countDocuments({ ...mine, status: { $in: ["queued", "leased"] } });
+      if (open === 0 || Date.now() > deadline) break;
+      const next = await leaseLines(agent, soakCall);
+      await sleep(Math.min(5_000, Math.max(1_000, (next ?? Date.now() + 2_000) - Date.now())));
+    }
+
+    const jobs = await PrintJob.find(mine).select("kind status labels uncertainAttempts copies").lean();
+    const byStatus: Record<string, number> = {};
+    for (const job of jobs) byStatus[job.status] = (byStatus[job.status] ?? 0) + 1;
+    const problems: string[] = [...refuse];
+    const ids = new Set(jobs.map((job) => String(job._id)));
+    const missing = [...named].filter((id) => !ids.has(id));
+    if (missing.length > 0) problems.push(`${missing.length} slip(s) an answer named are missing`);
+    // Simple mode: one job per slip. Printers mode: a slip is one job per printer line, each named in its answer.
+    const expected = printersMode ? named.size : counts.orders + counts.rounds + counts.bills;
+    if (jobs.length !== expected) problems.push(`${jobs.length} jobs for ${expected} expected (${printersMode ? "the jobs the answers named" : "orders + rounds + bills"})`);
+    const silent = jobs.filter((job) => job.status === "queued" || job.status === "leased" || job.status === "dismissed");
+    if (silent.length > 0) problems.push(`${silent.length} slip(s) neither printed nor visibly waiting`);
+
+    const records = printerRecords(args.outs, startedAt);
+    const complete = records.filter((r) => !r.dropped);
+    const dropped = records.filter((r) => r.dropped);
+    const printed = jobs.filter((job) => job.status === "printed");
+    const copiesOf = (job: { copies?: number }) => job.copies ?? 1;
+    if (lines.size > 0) {
+      const tally = new Map<string, { complete: number; dropped: number }>();
+      for (const r of records) {
+        if (r.file === null) continue;
+        const head = readFileSync(path.join(r.out, r.file), "utf8").slice(0, 80).split("\n")[0] ?? "";
+        const id = /^JOB ([0-9a-f]{24}) /.exec(head)?.[1];
+        if (id === undefined) continue;
+        const t = tally.get(id) ?? { complete: 0, dropped: 0 };
+        if (r.dropped) t.dropped += 1;
+        else t.complete += 1;
+        tally.set(id, t);
+      }
+      for (const job of jobs) {
+        const t = tally.get(String(job._id)) ?? { complete: 0, dropped: 0 };
+        const want = job.status === "printed" ? copiesOf(job) : 0;
+        if (t.complete !== want) problems.push(`${job.kind} ${String(job._id)}: ${t.complete} full copies on paper, status ${job.status}`);
+        if (t.dropped !== (job.uncertainAttempts ?? 0)) problems.push(`${job.kind} ${String(job._id)}: ${t.dropped} cut copies, ${job.uncertainAttempts ?? 0} counted`);
+        if (job.status === "printed" && (job.uncertainAttempts ?? 0) > 0 && !(job.labels ?? []).includes(job.kind === "bill" ? "DUPLICATE" : "REPRINT")) {
+          problems.push(`${job.kind} ${String(job._id)}: a repeat without its label`);
+        }
+      }
+    } else {
+      const want = printed.reduce((sum, job) => sum + copiesOf(job), 0);
+      if (complete.length !== want || dropped.length > 0) problems.push(`the printers have ${complete.length} full and ${dropped.length} cut copies for ${printed.length} printed jobs (${want} copies)`);
+    }
+
+    console.log(
+      JSON.stringify(
+        {
+          mode: `${printersMode ? "printers mode" : "simple mode"}, ${lines.size > 0 ? "soak agent prints" : printersMode ? "the printers' writer prints" : "app host prints"}${args.direct ? ", direct" : ""}`,
+          ...counts,
+          slips: counts.orders + counts.rounds + counts.bills,
+          jobs: jobs.length,
+          byStatus,
+          labelled: jobs.filter((job) => (job.labels ?? []).length > 0).length,
+          printer: { complete: complete.length, dropped: dropped.length },
+          requests: Object.fromEntries([...requests].sort()),
+          minutes: Math.round((Date.now() - startedAt.getTime()) / 6_000) / 10,
+          pass: problems.length === 0,
+          problems: problems.slice(0, 20),
+        },
+        null,
+        1,
+      ),
+    );
+    if (problems.length > 0) process.exitCode = 1;
+  } finally {
+    await mongoose.disconnect();
+  }
+}
+
+main().catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : "failed");
+  process.exitCode = 1;
+});
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test scripts/print-soak-agent.test.ts lib/print-lifecycle-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 26`; `# pass 26`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint scripts/print-soak.ts scripts/print-soak-agent.ts scripts/print-soak-agent.test.ts lib/print-lifecycle-paths.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/lib/print-lifecycle-paths.test.ts apps/cafe/package.json apps/cafe/scripts/print-soak-agent.test.ts apps/cafe/scripts/print-soak-agent.ts apps/cafe/scripts/print-soak.ts
+git commit -m "test(print): Phase 2 the print soak measures what Phase 2 changed: direct print on the asking device (the lease header, the jobs an answer carries printed first, a lease only when an ack says more) and printers mode (the soak writes its printers, or the emulator app does; every job the answers named is checked on paper)"
+```
+
+---
+
+### Task G2: TEST-CHECKLIST: stations and printers checks on real printers
+
+**Files:**
+- Modify: `apps/mobile/TEST-CHECKLIST.md` (a new section before "Several printers on one Windows PC")
+
+**Interfaces produced:** None (a document).
+
+**The real-printer checks of Phase 2** (the plan's Session 2G item 2; spec §13 "Hardware"), run by the owner before the APK and the web reach a client: the new APK over the old one keeps its printer (and prints the old POS's slips), Set up printers changes nothing on paper, a LAN kitchen printer, two Bluetooth printers on one phone or tablet, a station with no printer, copies, a deleted station, a printer switched off in the setup and one powered off, the notification's worst state, an order lost in the network on the device that prints it, a setup printer in the panel (the 2F2 gate's M-4), a network printer moved to a new address (m-3, with the gold review's m-A: when the old address was this device's own printer, staff remove it there), and two USB printers asking for permission at once (the 2F2 session review's declined line 3, now reachable). The Windows counter PC keeps its own section (the 2E gate's Part C).
+
+- [ ] **Step 1: The change**
+
+In `apps/mobile/TEST-CHECKLIST.md`, find:
+
+```markdown
+      before; choose **Not chosen — slips will not print** in the picker: the dot
+      turns red with "No printer chosen"; choose the printer again: green.
+
+## Several printers on one Windows PC (Phase 2, added 2026-10-05)
+
+Needs the Windows app 1.11.0 or later on the counter PC, two thermal printers installed in Windows, and the
+```
+
+Replace it with:
+
+```markdown
+      before; choose **Not chosen — slips will not print** in the picker: the dot
+      turns red with "No printer chosen"; choose the printer again: green.
+
+## Stations and printers checks (Phase 2, added 2026-10-05)
+
+Needs the Phase 2 APK on a phone or tablet, the POS with Phase 2 (the go-live run: the Worker first, then the web,
+then every POS screen reloaded), two Bluetooth printers paired with that phone or tablet, one network (LAN) printer
+with a fixed address (a DHCP reservation in the router), and a second device to order from. Do the Phase 1 checks
+above first. The Windows counter PC has its own section below.
+
+- [ ] **The new APK over the old one.** On a device that already prints, install the Phase 2 APK over the installed
+      one (no uninstall): it opens on the POS with **Printer connected** at once, no re-pairing, and **Send to
+      Kitchen** prints one KOT exactly as before. Do this once before the web update reaches that device too: the
+      new APK prints the old POS's slips exactly as before.
+- [ ] **Set up printers.** On the device that prints today: Printer setup → **Set up printers**. Printer 1 is that
+      device's printer with Bill, Full KOT copy, Notices and End of day; **Send to Kitchen** still prints one KOT,
+      exactly as before.
+- [ ] **A LAN kitchen printer.** **Add printer** → Network (LAN) → its address and port, printed by the phone or
+      tablet → **Kitchen KOTs**. A round with food: the KITCHEN slip at the LAN printer and the full copy (ALL
+      STATIONS) at Printer 1, once each.
+- [ ] **Two Bluetooth printers on one phone or tablet.** Printer panel → **Other printers on this device** → **Add
+      another printer** → the second paired printer. Add a station **Bar**, put the drinks category on it, then
+      **Add printer** → Device printer → that printer → **Bar KOTs**, 58 mm if it is a 58 mm printer. A round with
+      food and drinks: the BAR slip on the second Bluetooth printer, the full copy on Printer 1, each as wide as its
+      own roll, nothing on the wrong printer. Note the phone model (two Bluetooth links at once depend on the phone).
+- [ ] **A station with no printer.** Add a station **Desserts** with no printer and put the desserts category on it:
+      a dessert round prints only inside the full copy at Printer 1 (no slip of its own).
+- [ ] **Copies.** Set Printer 1's bill copies to 2: **Pay Now** prints the bill twice, back to back; nothing else
+      prints twice.
+- [ ] **A deleted station.** Delete **Desserts** while the desserts category uses it: the category goes back to the
+      default station, and the next dessert round prints as a kitchen item.
+- [ ] **A printer switched off in the setup.** Switch the bar printer off in Printer setup: the next drinks round
+      prints only in the full copy. Switch it on again: BAR slips print again.
+- [ ] **A printer powered off.** Power the second Bluetooth printer off and send a round with drinks: the full copy
+      prints at once; the BAR slip waits in the printer panel under **Waiting for the printer**, naming the bar
+      printer; other slips keep printing. Power it on: the BAR slip prints **once, without a banner**.
+- [ ] **The notification** (simple mode, **Print all slips on this device**, notifications allowed for the POS app,
+      two printers in the app): "Printing is on — 2 printers"; with one printer off, "Printing is on — ‹name› not
+      connected".
+- [ ] **An order lost in the network on the device that prints it.** On the tablet that prints its own KOTs, switch
+      Wi-Fi off just as you tap **Send to Kitchen**, then on again: the POS sends it again by itself (or offers Send
+      again); the KOT prints **once, without a banner**, never twice. (A device killed mid-print gives one
+      **REPRINT** copy, as in Phase 1.)
+- [ ] **A printer Printer setup prints through this device.** In the printer panel it shows "Printer setup prints
+      slips here: to remove it, change or delete that printer in Printer setup first." instead of **Remove** (as this
+      device's printer and under Other printers). **Change printer** on it adds the new printer and keeps the old one
+      under Other printers, and the old one's slips still print.
+- [ ] **A network printer moved to a new address.** Change the LAN printer's address in Printer setup: the tablet
+      adds the new address to Other printers on this device by itself, prints the next kitchen slip there, and drops
+      the old address from the list. If the old address was this device's own printer (the one at the top), the panel
+      now offers **Remove** on it: remove it there, and the new address becomes this device's printer.
+- [ ] **Two USB printers asking for permission at once** (a USB hub with two printers, plugged in together): allow
+      each prompt; both printers connect. If only one prompt shows, tap **Reconnect** on the other and note it.
+
+## Several printers on one Windows PC (Phase 2, added 2026-10-05)
+
+Needs the Windows app 1.11.0 or later on the counter PC, two thermal printers installed in Windows, and the
+```
+
+- [ ] **Step 2: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer && grep -c '^## Stations and printers checks (Phase 2, added 2026-10-05)$' apps/mobile/TEST-CHECKLIST.md && awk '/^## Stations and printers checks/{f=1;next} /^## /{f=0} f && /^- \[ \]/' apps/mobile/TEST-CHECKLIST.md | wc -l`
+Expected: `1`; `14`
+
+- [ ] **Step 3: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/mobile/TEST-CHECKLIST.md
+git commit -m "docs(print): Phase 2 TEST-CHECKLIST: stations and printers checks on real printers (the new APK over the old one, Set up printers, a LAN kitchen printer, two Bluetooth printers on one phone, a station with no printer, copies, a deleted station, a printer switched off and powered off, the notification, an order lost on the device that prints it, a setup printer in the panel, a moved network printer, two USB prompts)"
+```
+
+---
+
+### Task G3: full verification, the APKs, the Phase 2 exit on the emulator, the free-tier measurement in both modes, the fresh review, Results
+
+**Files:** this plan (a new "Session 2G Results" section at its end). The tools below go in this session's scratchpad, never in the repo.
+
+- [ ] **Step 1: Every suite**
+
+Run each from the repo (the totals the pre-validation saw on the golden tree):
+
+| Run | Expected |
+|---|---|
+| `cd /d/kd/lucifer/packages/shared && npm test && npx tsc --noEmit -p .` | `# tests 684`, `# pass 684`; tsc 0 (no shared change) |
+| `cd /d/kd/lucifer/apps/cafe && npm test` | `# tests 4466`, `# pass 4465`, `# fail 0`, `# skipped 1` (+9 over Session 2F2's 4457; the skip is the `go-live-dl` pin) |
+| `cd /d/kd/lucifer/apps/cafe && npx tsc --noEmit && npm run lint` | tsc 0; lint 0 errors and the 2 old warnings |
+| `cd /d/kd/lucifer/apps/hub && npx tsc --noEmit` | 0 |
+| `cd /d/kd/lucifer/apps/mobile && npx tsc --noEmit && npm run lint && npm test && npm run test:app` | 0; 0; 125/125; Jest 3/3 |
+| `cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun` (then the JUnit XML under `app/build/test-results/testDebugUnitTest`) | `BUILD SUCCESSFUL`; `PrinterManagerTest` 13, `PoolListTest` 6, `PoolStatusTest` 2: 21 tests, 0 failures, 0 errors (no Kotlin change; `--rerun` makes Gradle run them again instead of reading them UP-TO-DATE, as the 2F2 gate found) |
+| `cd /d/kd/lucifer/apps/desktop && npm test && npm run typecheck && npm run lint` | 192/192; typecheck 0; lint 0 |
+| `cd /d/kd/lucifer && npm run test:print-tools` | 8/8 |
+| `cd /d/kd/lucifer/apps/cafe && MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_print_host npm run verify:print:live` | `332 passed, 0 failed` (no leg change) |
+
+- [ ] **Step 2: The Next production build**
+
+Run: `cd /d/kd/lucifer/apps/cafe && npm run build`
+Expected: the build succeeds with 129 routes (2G adds none).
+
+- [ ] **Step 3: The APKs (no app code: byte-identical to Session 2F2's)**
+
+`git diff 936e791..HEAD --stat -- apps/mobile workers packages` must list only `apps/mobile/TEST-CHECKLIST.md`. Check `df -h /d`. Build the x86_64 APK (`gradlew.bat aR -PreactNativeArchitectures=x86_64`, output `app-release.apk`) and the ARM pair (`assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a`) with `GRADLE_USER_HOME='D:\gradle-home'`. Expected: `BUILD SUCCESSFUL` each, and every hash **equal** to Session 2F2's (re-built and matched at the 2F2 gate): x86_64 `3736540bff2ab340f6c0a7ba104cd23381a42b858065794105c9b9ff4a3884a1` (7,435,349 B), arm64-v8a `b10feedb175d6839317892caa070cfca7d21f88318a97ede97abd6a22c81333a` (7,303,622 B), armeabi-v7a `86b7ff13ff68b8d4edc611d4112b0a9309f29c50365f0698ce038d8414d26cd8` (6,711,460 B). The release folder `D:\kd\pos-apk-release\Sandbee-POS-final\` is not touched: these APKs reach a device only after the go-live run.
+
+- [ ] **Step 4: The Phase 2 exit (spec §14) on the harness and the emulator**
+
+**The harness** (as the gate ran it; check `netstat -ano | grep LISTEN` for 3110, 3200 and 9100–9104 first):
+- the local POS from this branch's build on 3110 (`cd /d/kd/lucifer/apps/cafe && node --env-file=<scratchpad>/e2e.env ../../node_modules/next/dist/bin/next start -p 3110`, a background command with `timeout: 7200000`); `e2e.env` copied from Session 2F2's scratchpad (`C:\Users\KARTIK~1.DES\AppData\Local\Temp\claude\d--kd-lucifer\73cdc401-09a9-4ff7-9d33-ad386b4098e5\scratchpad\e2e.env`: database `pos_scratch_e2e_p1final`, e2eadmin, tables and menu seeded), with `ui.py` and `type-secret.py` from the same folder. **As found at the gate:** stations Kitchen (default) and Bar, no printer, no station on any category or item, no print host;
+- the counting proxy `gate-proxy-2b.mjs` (saved exactly as in Task B7 Step 4): `--listen 3200 --target 3110 --log <scratchpad>/proxy-g3.jsonl`;
+- five fake printers, each `node scripts/fake-escpos-printer.mjs --port <p> --out <scratchpad>\fake-g3-<p>` for 9100, 9101, 9102, 9103 and 9104, each `--out` a long Windows path (`C:\Users\Kartik.desai\…`, never the `KARTIK~1.DES` short form);
+- `p2d-tool.ts` saved exactly as in Task D8 Step 4 (`state`, `jobs`, `devices`, `reset2d`), and `p2g-tool.ts` and `since-g3.sh` below, saved with the Write tool exactly as shown; each tool runs from `apps/cafe` as `P2C_BASE=http://localhost:3110 node --env-file=<scratchpad>/e2e.env --import tsx <scratchpad>/<tool> <mode>`.
+
+`<scratchpad>/p2g-tool.ts`:
+
+```ts
+// Session 2G exit check (scratchpad only; never in the repo; grown from the 2F2 gate's g-tool.ts). It drives the local
+// POS as the e2e admin (a session minted from the env file's AUTH_SECRET, never printed) and prints statuses, names and
+// opaque device ids only: never a secret, a token or an order's payload. Run from apps/cafe:
+//   P2C_BASE=http://localhost:3110 node --env-file=<scratchpad>/e2e.env --import tsx <scratchpad>/p2g-tool.ts <mode> [args]
+// modes: writer <printerName>         the printer's printing device id (an opaque id, not a secret)
+//        printer <name> <writerDeviceId> <host> <port> <paper> <slips>
+//                                      a network printer printed by <writerDeviceId>, made or saved again by name;
+//                                      <slips> is a comma list of bill, all (Full KOT copy), notices, eod and
+//                                      station:<Station name> (that station's KOTs); bill copies 1, KOT copies 1
+//        delete <printerName>          deletes that printer
+//        station <name>                adds a kitchen station
+//        category <categoryName> <stationName|none>
+//                                      puts a category on a station (none: back to the default station)
+import { createRequire } from "node:module";
+import path from "node:path";
+
+const require = createRequire(path.join(process.cwd(), "package.json"));
+const mongoose = require("mongoose") as typeof import("mongoose");
+const { encode } = require("next-auth/jwt") as typeof import("next-auth/jwt");
+const BASE = process.env.P2C_BASE ?? "http://localhost:3110";
+const COOKIE = "authjs.session-token";
+
+async function main(): Promise<void> {
+  const [mode, ...args] = process.argv.slice(2);
+  const uri = process.env.MONGODB_URI ?? "";
+  if (!/^mongodb:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/pos_scratch_[a-z0-9_]+$/.test(uri)) throw new Error("refusing: not a local pos_scratch_* database");
+  await mongoose.connect(uri);
+  try {
+    const db = mongoose.connection.db;
+    if (!db) throw new Error("no db");
+    if (mode === "writer") {
+      const p = await db.collection("printers").findOne({ name: args[0] ?? "" });
+      console.log(p === null ? "none" : String(p.primaryDeviceId ?? p.connection?.deviceId ?? ""));
+      return;
+    }
+    const secret = process.env.AUTH_SECRET ?? "";
+    if (secret.length < 32) throw new Error("AUTH_SECRET missing from the env file");
+    const staff = await db.collection("staffs").findOne({ username: "e2eadmin" }, { projection: { name: 1, role: 1 } });
+    if (staff === null) throw new Error("e2eadmin not found");
+    const cookie = `${COOKIE}=${await encode({ token: { name: staff.name, id: String(staff._id), role: staff.role, lastValidated: Date.now() }, secret, salt: COOKIE })}`;
+    const call = async (method: string, url: string, body?: unknown) => {
+      const res = await fetch(`${BASE}${url}`, { method, headers: { "content-type": "application/json", cookie }, body: body === undefined ? undefined : JSON.stringify(body) });
+      return { status: res.status, json: (await res.json().catch(() => ({}))) as { data?: unknown; error?: string } };
+    };
+    const stations = async () => (await call("GET", "/api/stations")).json.data as Array<{ id: string; name: string; isDefault: boolean }>;
+    const printers = async () => ((await call("GET", "/api/printers")).json.data ?? []) as Array<{ id: string; name: string }>;
+    if (mode === "printer") {
+      const [name, writer, host, port, paper, slipList] = args;
+      if (name === undefined || writer === undefined || host === undefined || port === undefined || paper === undefined || slipList === undefined) throw new Error("printer <name> <writerDeviceId> <host> <port> <paper> <slips>");
+      const known = await stations();
+      const parts = slipList.split(",");
+      const kotStations = parts.filter((s) => s.startsWith("station:")).map((s) => {
+        const station = known.find((k) => k.name === s.slice("station:".length));
+        if (station === undefined) throw new Error(`no station ${s}`);
+        return station.id;
+      });
+      const body = { name, connection: { kind: "lan", host, port: Number(port) }, primaryDeviceId: writer, paper: Number(paper), slips: { bill: parts.includes("bill"), kotStations, kotAll: parts.includes("all"), notices: parts.includes("notices"), eod: parts.includes("eod") }, copies: { kot: 1, bill: 1 }, enabled: true };
+      const existing = (await printers()).find((p) => p.name === name);
+      const res = existing === undefined ? await call("POST", "/api/printers", body) : await call("PUT", `/api/printers/${existing.id}`, body);
+      console.log(JSON.stringify({ printer: name, status: res.status, error: res.json.error ?? null }));
+      return;
+    }
+    if (mode === "delete") {
+      const existing = (await printers()).find((p) => p.name === (args[0] ?? ""));
+      if (existing === undefined) throw new Error(`no printer named ${args[0] ?? ""}`);
+      console.log(JSON.stringify({ deleted: args[0], status: (await call("DELETE", `/api/printers/${existing.id}`)).status }));
+      return;
+    }
+    if (mode === "station") {
+      const made = await call("POST", "/api/stations", { name: args[0] ?? "" });
+      console.log(JSON.stringify({ station: made.status, error: made.json.error ?? null }));
+      return;
+    }
+    if (mode === "category") {
+      const [categoryName, stationName] = args;
+      const category = await db.collection("categories").findOne({ name: categoryName ?? "" });
+      if (category === null || stationName === undefined) throw new Error("category <categoryName> <stationName|none>");
+      const station = stationName === "none" ? null : (await stations()).find((s) => s.name === stationName);
+      if (station === undefined) throw new Error(`no station ${stationName}`);
+      const res = await call("PUT", `/api/categories/${String(category._id)}`, { name: category.name, stationId: station === null ? null : station.id });
+      console.log(JSON.stringify({ category: categoryName, station: stationName, status: res.status }));
+      return;
+    }
+    throw new Error("mode: writer | printer | delete | station | category");
+  } finally {
+    await mongoose.disconnect();
+  }
+}
+
+main().catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : "failed");
+  process.exitCode = 1;
+});
+```
+
+`<scratchpad>/since-g3.sh`:
+
+```bash
+#!/usr/bin/env bash
+# since-g3.sh mark        remember the current length of the proxy log and of every fake printer's jobs.log
+# since-g3.sh show [all]  print what each gained since the mark (proxy: print routes only, wake and pulse counted unless "all")
+# The fake printers run with --out <this folder>/fake-g3-<port> (long Windows paths). No header, body or cookie is ever
+# printed (the logs hold none).
+SP="$(cd "$(dirname "$0")" && pwd)"
+P="$SP/proxy-g3.jsonl"
+M="$SP/.since-g3-mark"
+count() { [ -f "$1" ] && wc -l < "$1" || echo 0; }
+if [ "$1" = "mark" ]; then
+  : > "$M"
+  echo "proxy $(count "$P")" >> "$M"
+  for d in "$SP"/fake-g3-*; do [ -d "$d" ] && echo "$(basename "$d") $(count "$d/jobs.log")" >> "$M"; done
+  exit 0
+fi
+pn=$(grep '^proxy ' "$M" | cut -d' ' -f2)
+echo "--- proxy (since mark)"
+if [ "$2" = "all" ]; then
+  tail -n +"$((pn + 1))" "$P"
+else
+  tail -n +"$((pn + 1))" "$P" | grep -vE '"r":"/api/(print-jobs/wake|order-requests/pulse)' | grep -E '"r":"/api/(print|orders|order|stations|printers)' | sed -E 's/^\{"t":([0-9]+),/\1 /'
+  echo "wake: $(tail -n +"$((pn + 1))" "$P" | grep -c '/api/print-jobs/wake')  pulse: $(tail -n +"$((pn + 1))" "$P" | grep -c '/api/order-requests/pulse')"
+fi
+for d in "$SP"/fake-g3-*; do
+  [ -d "$d" ] || continue
+  n=$(grep "^$(basename "$d") " "$M" | cut -d' ' -f2)
+  echo "--- printer $(basename "$d" | sed 's/fake-g3-//') (since mark)"
+  [ -f "$d/jobs.log" ] && tail -n +"$(( ${n:-0} + 1 ))" "$d/jobs.log" | grep -E '"bytes":[1-9]'
+done
+exit 0
+```
+
+**The emulator** (`Pixel_7_API_33`, booted by this session with `-memory 4096 -no-audio -no-snapshot-save` and `timeout: 7200000`; `df -h /c` first, `-memory 2048` under ~2 GB). The owner's `"Bash(adb:*)"` rule is in `.claude/settings.local.json`. **Check `pm path com.possoftware.pos` first:** the app was absent at the start of Session 2F2 and of the 2F2 gate (a reinstall right before `adb emu kill` was not flushed to the AVD; `adb shell sync` before the kill fixed it at the gate). If it is absent, install the release APK (`29115bdf…`, Session 2F2's `apk-release/` copy, hashed) as the baseline and say so in Results. The app must be on its start screen with no address, never the live demo ("Olivea Pizza"): if it shows the demo, stop and ask the owner to switch it. Check "POS Software" and the seeded menu before any tap that writes. `adb logcat -b crash -d` empty before the app runs. The installed APK hashed on the device first: the release `29115bdf…`. Every tap is on the app's own screens (uiautomator dumps for the coordinates; when a dump leaves the printer panel's form out, a `screencap` shows where it is).
+
+| # | Step | Expected (the gate's run, 2026-10-05) |
+|---|---|---|
+| 1 | Release APK: `adb reverse tcp:3100 tcp:3200`; on the start screen type `http://localhost:3100`, Open POS; the printer panel → Network printer `10.0.2.2`, port 9100 → Use this network printer | "POS Software", the seeded menu; "Network printer 10.0.2.2 · Network · 80 mm · Connected"; **no** "Other printers on this device" |
+| 2 | New Order: Cheesecake, Masala Chai → Send to Kitchen | one KOT **44,454 B** on 9100; the order (`lease`, `agent`) and one ack: **an old APK (bridge v1) still prints in simple mode** (spec §14) |
+| 3 | `adb install -r` of this session's x86_64 APK (byte-identical to Session 2F2's); relaunch | the local POS, signed in, "Printer connected" at once; crash buffer empty |
+| 4 | Sidebar → Printer setup → **Set up printers** | Printer 1 "Network 10.0.2.2:9100 · printed by This device · Bill, Full KOT copy, Notices, End of day · Paper 80 mm"; the proxy: `POST /api/printers` 201, one printers read, one lease |
+| 5 | `p2g-tool.ts writer 'Printer 1'` (the app's device id); `printer 'Bar printer' <app> 10.0.2.2 9101 58 station:Bar,notices`; `printer 'Kitchen printer' <app> 10.0.2.2 9102 80 station:Kitchen,bill,notices`; `category Beverages Bar`; close the panel (an open panel blocks Refresh), tap Refresh; open the panel | this device's printer (Network printer 10.0.2.2, 9100, Printer 1) shows **"Printer setup prints slips here: to remove it, change or delete that printer in Printer setup first." and no Remove** (M-4); "Other printers on this device": 10.0.2.2:9101 and 10.0.2.2:9102, each Connected, each with the same sentence (the page added both to the app) |
+| 6 | New Order: Cheesecake, Masala Chai → Send to Kitchen | **KITCHEN 44,238 B on 9102, BAR 28,110 B on 9101 and ALL STATIONS 48,198 B on 9100**, all `leased(direct)`, epoch 1; the order and three acks, **no lease** (spec §14: two station KOTs plus the full copy; a slip the asking device prints itself costs one request, no lease) |
+| 7 | The panel → **Bill printer for this device** → Kitchen printer; the same round → Pay Now (Cash, Place Order); then Bill printer for this device → Default (Printer 1) | the three KOTs as in item 6, then **the bill 40,854 B on 9102**: the order, ack, ack, ack, lease, ack (spec §14: bills go to the device's bill printer; the bill follows the kitchen KOT on its line through the ack's `more`) |
+| 8 | The panel → this device's printer → **Change printer** → Network printer `10.0.2.2` port `9103` → Use this network printer; close the panel; Send to Kitchen | this device's printer is 10.0.2.2:9103, with Remove (not a setup printer); "Other printers on this device" lists **10.0.2.2:9100 (the sentence: kept in the app, M-4)**, 9101, 9102; the three slips as in item 6 (9100 still prints the full copy) |
+| 9 | Change printer → `10.0.2.2` `9100` (a printer the app lists; 9103 is not a setup printer, so a plain select); then Change printer → `10.0.2.2` `9103` (from a setup printer to one the app lists: only chosen, the gold review's m-B); Send to Kitchen; then Change printer → `10.0.2.2` `9100` | after the first: this device's printer 9100 (the sentence), Other printers 9103 (Remove), 9101, 9102; after the second: this device's printer 9103 (Remove), Other printers **9100 (the sentence)**, 9101, 9102, and the three slips as in item 6; after the third: this device's printer 9100 again |
+| 10 | `p2g-tool.ts printer 'Kitchen printer' <app> 10.0.2.2 9104 80 station:Kitchen,bill,notices` (the printer moved to a new address); close the panel, Refresh (a reload); the panel; Send to Kitchen | "Other printers on this device": 9103 (Remove), 9101 and **9104** (the sentence); **9102 gone** (the page removed the printer it had added, its record surviving the reload: m-3); KITCHEN 44,238 B on **9104**, BAR on 9101, ALL STATIONS on 9100 |
+| 11 | The measurement (Step 5) runs here | — |
+| 12 | `adb logcat -b crash -d` | 0 lines (throughout) |
+
+Record every answer, the request counts per item and the prints per printer in Results.
+
+- [ ] **Step 5: The free-tier measurement in both modes** (spec §17.3 item 5, as Session 1E's E3; the plan's Session 2G item 3)
+
+**The tools** (scratchpad only): the counting proxy is Step 4's `gate-proxy-2b.mjs` (each log line carries the `t`, `m`, `r`, `s` and `ms` that `report.mjs` reads; ids folded to `:id`). Save `<scratchpad>/e3/mongo-sampler.mjs` and `<scratchpad>/e3/report.mjs` exactly as in the Phase 1 plan's Task E3 Step 1 (`docs/superpowers/plans/2026-10-02-phase-1-lifecycle.md`; Session 2F2's `extract_fence.py` writes a fence out byte for byte). The soak is G1's `scripts/print-soak.ts`, run from `apps/cafe` as `node --env-file=<scratchpad>/e2e.env --import tsx scripts/print-soak.ts …`.
+
+**Set-up:** nothing else may use the local mongod during a run (its opcounters are server-wide: no live legs, no other test). The POS server's PID: `netstat -ano | grep LISTEN | grep ":3110 "` (one process); its CPU: `powershell -NoProfile -Command "(Get-Process -Id <pid>).TotalProcessorTime.TotalMilliseconds"`. For every run: start the sampler first (`cd /d/kd/lucifer/apps/cafe && node <scratchpad>/e3/mongo-sampler.mjs --seconds <run + 60> --log <scratchpad>/e3/samples-<run>.jsonl`, background), note `T0` (`node -e "console.log(Date.now())"`) and the CPU, run, note `T1` and the CPU again; then `node <scratchpad>/e3/report.mjs run --label <run> --proxy <scratchpad>/proxy-g3.jsonl --samples <scratchpad>/e3/samples-<run>.jsonl --from <T0> --to <T1> --cpu-before <cpu0> --cpu-after <cpu1> [--slips <the soak's "jobs"> --orders <its "orders">] > <scratchpad>/e3/run-<run>.json`. Spec §17.2's 1,200 slips are one per station, so `--slips` is the soak's **jobs** (in simple mode, jobs = slips). `<out>` below stands for `<scratchpad>\fake-g3-<port>`.
+
+The runs, in this order (after Step 4's item 10; the harness as item 10 left it: printers mode, the app writes Printer 1 on 9100, Bar printer on 9101 and Kitchen printer on 9104, the app's own printer 9100, no host):
+
+| Run | What | Command and set-up | Expected (the gate's short runs: 4 orders each) |
+|---|---|---|---|
+| M5 | printers mode, the app writes three printers, the soak only orders (a slip another device prints) | `print-soak.ts --orders 100 --every-ms 1500 --drain-s 300 --base http://localhost:3200 --out <out 9100>,<out 9101>,<out 9104>` | `"mode": "printers mode, the printers' writer prints"`, every job printed, `printer.complete` = the jobs, `pass: true`; ≈ 1.9 print requests per job (the gate: 16 jobs, 10 leases, 16 acks, 4 wakes) |
+| M6 | printers mode, idle, the app as writer | 10 minutes, the app on `/pos`, no orders | the writer's wake at its cadence; no lease |
+| M4 | printers mode, the soak writes the three printers with direct print (the device that asks prints) | `p2g-tool.ts printer 'Printer 1' soak-device 127.0.0.1 9100 80 bill,all,notices,eod`, `printer 'Bar printer' soak-device 127.0.0.1 9101 58 station:Bar,notices`, `printer 'Kitchen printer' soak-device 127.0.0.1 9104 80 station:Kitchen,bill,notices`; then `print-soak.ts --orders 100 --every-ms 1500 --drain-s 300 --base http://localhost:3200 --printer "Printer 1=127.0.0.1:9100" --printer "Bar printer=127.0.0.1:9101" --printer "Kitchen printer=127.0.0.1:9104" --direct --out <out 9100>,<out 9101>,<out 9104>` | `"printers mode, soak agent prints, direct"`, every job printed; the soak's own requests: acks = jobs, **no lease**; `pass: true` (the gate: 16 jobs, 16 acks, 0 leases) |
+| M1 | simple mode, no host, the soak prints its own slips with direct print | `p2d-tool.ts reset2d`, `p2g-tool.ts station Bar`; `p2d-tool.ts devices`: host null; `print-soak.ts --orders 100 --every-ms 1500 --drain-s 300 --base http://localhost:3200 --agent 127.0.0.1:9103 --direct --out <out 9103>` | `"simple mode, soak agent prints, direct"`, acks = jobs, **no lease**, `pass: true` (the gate: 10 jobs, 10 acks, 0 leases) |
+| M2 | simple mode, the app as the print host, the soak only orders (the Phase 1 path) | the panel → **Print all slips on this device** (allow Android's background prompt if it shows); `adb shell am force-stop com.possoftware.pos`, relaunch (kept-alive connections bypass the proxy otherwise, Session 1E); `print-soak.ts --orders 100 --every-ms 1500 --drain-s 300 --base http://localhost:3200 --out <out 9100>` | `"simple mode, app host prints"`, every job printed on 9100, `pass: true`; ≈ 2 print requests per job (a lease and an ack) |
+| M3 | simple mode, idle, the app as host | 10 minutes, the app on `/pos`; then the panel → **Stop printing here** → Yes, remove (`p2d-tool.ts devices`: host null) | the host's wake at its cadence; no lease |
+
+(The gate also ran the soak's Phase 1 agent path, `--agent 127.0.0.1:9103` without `--direct`: 10 jobs, 10 leases, 10 acks, no trailing lease.)
+
+**The projections:** `node <scratchpad>/e3/report.mjs project --soak run-<soak>.json --idle run-<idle>.json` for **P1** simple mode, direct (M1 with M3), **P2** simple mode, the host prints another device's slips (M2 with M3), **P3** printers mode, direct (M4 with M6) and **P4** printers mode, the writer prints another device's slips (M5 with M6). (M1 and M4 have no wake of their own; pairing them with the writer's or the host's idle wake is the conservative case.)
+
+**Pass:** all four projections say `"pass": true`: printing ≤ 15 % of Active CPU and ≤ 20 % of invocations on a normal day, the worst case (socket down all day) within §17.2's 17,040 invocations, and Atlas under 10 ops/s at a busy rush (record the raw peak too). Compare the per-job requests with the pins (`packages/shared/src/print-budget.test.ts`): a slip the asking device prints itself, one request (its ack: M1, M4 ≈ 1.0, decisions 15 and 9); a slip another device prints, a lease and an ack (M2, M5 ≤ 2); the heavy day within A5's 5,790 normal and 17,628 worst. **How to read it** (say so in Results): the local server's CPU per request stands in for Vercel's Active CPU; the local POS has no realtime Worker, so the wake polls at the socket-down cadence and the idle runs are §17.2's worst case (the normal-day projection uses the socket-healthy 60 s cadence). **If a projection fails:** tune nothing in this session; record the numbers and stop (the orchestrator decides before release).
+
+Afterwards: `adb reverse --remove-all; adb reverse tcp:3100 tcp:3100`, the sampler ends by itself.
+
+- [ ] **Step 6: Put back**
+
+`p2d-tool.ts reset2d`, then `p2g-tool.ts station Bar`: **as found** (Kitchen (default), Bar, no printer, no station on any category or item, host null); Refresh in the app (with the panel closed): the page removes the printers it added; the app's remaining printers removed (this device's printer → Remove → Yes, remove, until "No printer set up"); More options → Change POS address → the start screen, "Clear POS address" (the placeholder shows); **the release APK reinstalled** (`adb install -r` of the `29115bdf…` build), hashed on the device, the start screen with no address; notifications not granted; `adb reverse --remove-all`, then `adb reverse tcp:3100 tcp:3100`; **`adb shell sync`, then `adb emu kill`** (an unflushed reinstall is lost at a kill); the POS server, the proxy and the fake printers stopped by PID after checking each command line.
+
+- [ ] **Step 7: The owner's steps (open in Results, not run by the session)**
+
+- **TEST-CHECKLIST "Stations and printers checks (Phase 2, added 2026-10-05)"** on real printers (Task G2), with the Phase 1 checks above it.
+- **Part C:** TEST-CHECKLIST "Several printers on one Windows PC" with the Windows app 1.11.0 on the owner's counter PC (the 2E gate's ruling).
+
+- [ ] **Step 8: The fresh review**
+
+A fresh reviewer subagent on **Claude Fable 5.1** (read-only; scratch tests only in this session's scratchpad) reads `936e791..HEAD` against this plan (decisions 1–16; "2F1 review gate: rulings"; "2F2 review gate: rulings"; Session 2G and its Review Focus) and spec §8.1, §9.2, §13, §14, §17, and reports Critical / Important / Minor findings, each with a concrete failure scenario. If Fable is rate-limited, wait for its reset and say so; do not substitute another model silently. Fix Critical and Important ones by TDD on the branch (each RED seen before its GREEN) and re-run Step 1 (and the steps a fix touches); list the rest in Results for the final Phase 2 gate.
+
+- [ ] **Step 9: Results, then push**
+
+Add "## Session 2G Results (filled in by the implementer)" at the end of this plan: every number from Steps 1–8, the APK hashes, the exit's answers, the measurement (the six runs' requests by route, CPU ms per request, Mongo ops per job, the raw and the rush peak, and the four projections), each changed pin, any deviation with its reason, the owner's open steps. Commit it, and push the branch with the token only: `GIT_TERMINAL_PROMPT=0 git push origin feat/printing-phase-2`. Nothing is merged and nothing is deployed: the final Phase 2 gate comes next.
+
+**Changed existing pins in 2G** (each follows a deliberate change; name them in Results):
+- G0: `print-agent-printers.test.ts` "PIN (2F1): the page follows the app's printers: the agent's lines, the dot, the drain, the wake's heartbeat, the network printers it writes" (the add line's message).
+- G1: `print-lifecycle-paths.test.ts` "PIN (the Phase 1 final gate, M8): the soak drives only a local POS on a local scratch database, and stops after its first order unless that order is in its own database" (its last line); `apps/cafe/package.json` `testChain` gains `scripts/print-soak-agent.test.ts` (its own array entry).
