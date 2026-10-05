@@ -336,5 +336,6 @@ test("PIN (the Phase 1 final gate, M8): the soak drives only a local POS on a lo
   const soak = src("apps/cafe/scripts/print-soak.ts");
   assert.ok(soak.includes(String.raw`if (!/^mongodb:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/pos_scratch_[a-z0-9_]+$/.test(uri)) throw new Error("refusing: not a local pos_scratch_* database");`), "a local pos_scratch_* database only");
   assert.ok(soak.includes('throw new Error("refusing: the POS at --base writes to another database than MONGODB_URI");'), "the first order must be in the soak's own database");
-  assert.ok(soak.indexOf("refusing: the POS at --base writes") < soak.indexOf("await drainLine(args, cookie);"), "checked before anything else is driven");
+  // Session 2G (the 2F2 review gate): the first print or lease after an order is the soak agent's (scripts/print-soak-agent.ts).
+  assert.ok(soak.indexOf("refusing: the POS at --base writes") < soak.indexOf("if (await printLeased(agent, soakCall, created)) await leaseLines(agent, soakCall);"), "checked before anything else is driven");
 });

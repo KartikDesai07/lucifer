@@ -364,7 +364,8 @@
     "lib/print-setup-fields.test.ts",
     "lib/print-windows-printers.test.ts",
     "lib/printer/native-pool.test.ts",
-    "lib/printer/native-bridge-v2-parity.test.ts"
+    "lib/printer/native-bridge-v2-parity.test.ts",
+    "scripts/print-soak-agent.test.ts"
   ],
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
