@@ -3685,6 +3685,8 @@ The owner's ask of 2026-10-04: when the device that takes an order is the one th
 - **Pins:** JUnit 4 (item 3); the `mobile-paths.test.ts` pins rewritten deliberately and named in Results; a parity pin between the app's v2 router and `native-bridge-v2.ts` (the method names, the envelope, the error codes), as the desktop bridge has.
 - **Exit (2F2):** the emulator with the new APK drives two TCP printers (fake printers on 9100 and 9101) through this branch's page: each slip on its own printer at its own paper, one printer off holds only its own line, the setup's whole flow on the app's own screens; a page from before 2F1 (bridge v1) on the new APK prints exactly as today; the new APK installs over the release APK and keeps its printer (the `Prefs` migration); the APK hashes change for the first time in Phase 2 and are recorded.
 
+**Session 2F2 is written as exact code at the 2F1 review gate:** see "## Session 2F2" at the end of this plan. Where it differs from the items below, "2F1 review gate: rulings" says why: the class per printer is `PrinterManager` and the list a new `PrinterPool` (G-R1); the state machine reaches the platform only through `PrinterEnv`, so plain JUnit 4 runs it, by `:app:testDebugUnitTest` (G-R2); a v1 select of a printer the app already lists makes it the default and keeps the old one (G-R3); the v1 keys always name the default (G-R4); a selection ticket per slot (G-R5); an unknown printer id prints NOT_CONNECTED (G-R6); BUSY stays, no queue in the app (G-R7); the 2F1 gate's page fixes come first (Task P0), and the test chain refuses an entry that names no file (P3, G-1).
+
 1. **Protocol v2 beside v1** (decision 12): `PosNative.version` stays 1 for pages that know only v1, and the new APK adds `PosNative.versions = [1, 2]`. A v2 page sends `v: 2` envelopes whose `printer.*` methods take a `printerId` (`printer.select`, `printer.print`, `printer.reconnect`, `printer.forget`; `printer.status` answers every printer), and status events carry `printerId`. A v1 message acts on the default slot exactly as today. The web accepts v1 or v2; on v1 a device writes one printer.
 2. **The Kotlin pool:** a `PrinterManager` per printer (its own transport, reconnect backoff, pause flags and publish) with its own io executor (a blocked Classic connect or a USB permission wait never stalls another printer); `BUSY` per printer instead of the device-wide `printing` flag; `Prefs` keeps a list (migrated from the one printer); USB attach and detach reach the matching printer; two identical USB models stay refused (ids are VID:PID).
 3. **Pure-JVM unit tests** (spec §13): JUnit 4 as `testImplementation` (the Gradle cache on D:), for the state machine: backoff, pause flags, publish de-duplication, per-printer busy. The `mobile-paths.test.ts` pins that read exact Kotlin text (pins 0, 2, 11, 14 and 16) are rewritten deliberately and named in Results.
@@ -35446,3 +35448,5961 @@ The six minors above (M-3's two sentences belong in the contract header before 2
 ### Pushed
 
 With the token only: `GIT_TERMINAL_PROMPT=0 git push origin feat/printing-phase-2`. `origin/main` was still `6ee2b1d` at the end (no merge). `main` untouched; nothing deployed. This session's POS, proxy and fake printers were stopped by PID after checking each command line; the emulator was stopped with `adb emu kill`.
+
+---
+
+## Session 2F1 review (gate, 2026-10-05)
+
+**Verdict: PASS, with fixes folded into Session 2F2 (Task P0).** Session 2F1 (`997f10c..237ad1b`: F0–F6 applied verbatim as `f3534d5..00b4831`, the Results `237ad1b`) is complete and correct for its scope: the page drives each of the POS app's printers on bridge v2 against the contract in `native-bridge-v2.ts`, the setup lets one phone or tablet write several printers, and on the release APK (bridge v1) the page prints exactly as before. Its six minors are real and ruled below; the gate's fresh reviewer found one more (N-1: on v2 a down printer's own reconnect probes would cost leases), which matters only once Session 2F2's app exists and is fixed first thing there, page side.
+
+**How this gate stayed independent.** The gate ran in a session of its own. Every suite, the Next build and the three APKs were re-run on the repo at `237ad1b`; the non-docs tree at `00b4831` was compared with the 2E gate's golden branch; the range was scanned for secrets; and a fresh reviewer subagent (Claude Fable 5.1, read-only, which wrote none of the code) re-checked the six minors with scratchpad tests (never in the repo) and listed every duty the page relies on from the app.
+
+| Check | Re-run at the gate (`237ad1b`) | Session 2F1 Results |
+|---|---|---|
+| shared `npm test`; `tsc` | 684/684; 0 | same |
+| cafe `npm test` | 4448 tests, 4447 pass, 0 fail, 1 skipped (the `go-live-dl` pin) | same |
+| cafe `tsc`; `npm run lint` | 0; 0 errors and the 2 old warnings | same |
+| Hub `tsc` | 0 | same |
+| mobile `tsc`; lint; `npm test`; `test:app` | 0; 0; 117/117; Jest 3/3 | same |
+| desktop `npm test`; `typecheck`; `lint` | 192/192; 0; 0 | same |
+| `npm run test:print-tools` | 8/8 | same |
+| live legs (local mongod, `pos_scratch_print_host`) | `332 passed, 0 failed` | same |
+| Next build | 129 routes | same |
+| APKs (`GRADLE_USER_HOME='D:\gradle-home'`; x86_64 with `aR`) | x86_64 `29115bdf…` (7,425,177 B), arm64-v8a `0e0ec314…` (7,293,454 B), armeabi-v7a `e618900a…` (6,701,288 B): byte-identical to the release | same |
+| Non-docs tree at `00b4831` vs the 2E gate's gold `g2f-v3` (`b20442d`, tree `f741f4e`) | blob-identical (`git ls-tree -r`, `docs/` left out: 1,762 entries each, no difference) | same |
+| Secrets in `997f10c..237ad1b` | none (2,071 added lines scanned for tokens, keys and connection strings) | — |
+
+**`origin/main`** was fetched at the gate (token credential): still `6ee2b1d`, so nothing to merge.
+
+**The fresh review (Claude Fable 5.1), on the six minors.** Verdict: no Critical; the six stand as graded (none loses, doubles or misplaces a slip; none adds a server request on the release APK). Twelve scratch tests (`review2f1-gate/` in the gate's scratchpad, 12/12) proved M-1, M-2, M-5, M-6 and N-1; the touched suites were re-run read-only (native-pool 10/10, print-agent-printers 19/19, print-agent 56/56). Its findings, each with the gate's ruling, are in "2F1 review gate: rulings". It also listed 23 duties the page relies on from the app beyond the header (the bridge object, the envelope's version and the injected `deliver`, the list's shape and order, `defaultId`, the ids' case, each method's envelope and answer, unknown printer ids, BUSY, the v1 event on v2, a v1 select on v2, forgetting the last printer, Bluetooth changes, one publish lock, timeouts, TCP, the migration, `printer.list`, `app.wake`, the parity pins, the notification); every one is implemented and pinned by Session 2F2 below, and three that the header left open are ruled (G-R3, G-R6, G-R7).
+
+**Pre-validating 2F2.** The gate wrote 2F2 on a golden copy of `237ad1b` (four commits, one per task), ran every suite on it, ran its JUnit tests and built its APK in a scratch build clone, ran its exit check end to end on the emulator with that APK and two fake TCP printers, had it read by a fresh reviewer (Claude Fable 5.1), and generated the section from it.
+
+*Building the app from a scratch clone* (new at this gate). The scratchpad's path (≈ 120 characters) put the Android native build's paths over Windows' 260 (`ninja: … Filename longer than 260 characters`): the build clone was reached through `subst W: <scratchpad>`, with a real copy of `apps/mobile/node_modules` (a junction kept the library paths short but Metro cannot follow it) and, in that build clone only, a Metro `watchFolders` entry for the drive's real path (Node resolves a subst drive to its C: path). None of this is in the plan's code or needed in the repo (`D:\kd\lucifer` is short); the gate's APK hash (`f33937d8…`, 7,435,473 B) is therefore not the 2F2 session's.
+
+*The exit check on the emulator* (Task P4 Step 4 as written): `Pixel_7_API_33` booted by the gate (`-memory 4096 -no-audio -no-snapshot-save`, C: 11 GB free); the app on its start screen with no address (as the 2F1 session left it, not the demo); the release APK hashed on the device (`29115bdf…`); the golden build on 3110 behind the counting proxy on 3200, the 2E gate's page (`997f10c`, bridge v1) built in a scratch clone on 3111 behind a second proxy on 3201, fake printers on 9100 and 9101; every tap on the app's own screens.
+
+| # | Item | Result |
+|---|---|---|
+| 1 | Release APK (this first run with the golden APK before the review's fixes, `f33937d8…`): `http://localhost:3100` typed on the start screen; the panel's network printer 10.0.2.2:9100 | "POS Software", the seeded menu; "Network printer 10.0.2.2 · Network · 80 mm · Connected", no "Other printers on this device" |
+| 2 | Send to Kitchen (Cheesecake, Masala Chai) | one KOT **44,454 B**; the order and one ack |
+| 3 | The new APK installed over the release APK (`adb install -r`), relaunched | opened signed in, **"Printer connected" at once** (the printer kept: the `Prefs` migration); the panel: "Printer on this device · Network printer 10.0.2.2 · Connected", "Other printers on this device", "Add another printer"; crash buffer empty |
+| 4 | **The old page (`997f10c`, bridge v1) on the new APK** | the panel "Network printer 10.0.2.2 · Connected", no "Other printers"; Send to Kitchen **44,454 B**, the order and one ack; Pay Now **40,494 B** + **36,966 B**, the order, ack, lease, ack: **exactly as on the release APK** |
+| 5 | The new page: Printer setup → **Set up printers** | Printer 1 "Network 10.0.2.2:9100 · printed by This device · Bill, Full KOT copy, Notices, End of day · Paper 80 mm"; `POST /api/printers` 201, one read, one lease |
+| 6 | **Add printer** on the app's screen: "Bar printer", Network (LAN) 10.0.2.2 9101, This device, Bar KOTs (Notices ticked), 58 mm | "Bar printer · Prints on this device · Network 10.0.2.2:9101 · printed by This device · Bar KOTs, Notices · Paper 58 mm"; the panel's "Other printers on this device": "Network printer 10.0.2.2 · Network 10.0.2.2:9101" (the page added it to the app: a v2 `printer.select`); `POST /api/printers` 201, one read, one lease |
+| 7 | Menu → Categories → Beverages → Kitchen station "Bar" | `Beverages -> Bar` |
+| 8 | Send to Kitchen (Cheesecake, Masala Chai) | **"BAR" 28,110 B on 9101** (58 mm) and **"ALL STATIONS" 48,198 B on 9100** (80 mm), both `leased(direct)`, epoch 1; the order and two acks, **no lease after them** |
+| 9 | Pay Now (Cash) | BAR 28,110 B on 9101, ALL STATIONS 48,198 B and the **bill 40,854 B** on 9100: the order, ack, ack, lease, ack |
+| 10 | Test print on each | **31,414 B** on 9100, **14,182 B** on 9101; each the test call (direct) and one ack |
+| 11 | 9101 stopped; Send to Kitchen; 45 s more; 9101 started again | ALL STATIONS 48,198 B on 9100 after BAR's refusal (≈ 11 s: slips print one at a time, F-R5); BAR `failed(not sent: The printer is not connected. …)`; one lease at the hold's end (≈ 30 s); **no lease in the next 45 s** while the app probed 9101 (N-1 fixed); 9101 back → one lease 14 s later, BAR printed **once, unlabelled** (`labels: []`, epoch 2, 28,110 B), one ack, no lease after |
+| 12 | The print-host notification (simple mode after `reset2d`; Print all slips on this device; notifications granted for the check) | **"Printing is on — 2 printers"**; 9101 stopped and reconnected from the panel → **"Printing is on — Network printer 10.0.2.2 not connected"**; notifications revoked again (Android restarts the app), the host stopped ("Stop printing here": host null) |
+| 13 | `adb logcat -b crash -d` | 0 lines throughout |
+| 14 | Put back | `reset2d`, Bar added back on the app's screen (as found); both app printers removed (the second removal showed the printer promoted to the default: the list's rule live) → "No printer set up"; More options → Change POS address → the start screen, the address cleared; **the release APK `29115bdf…` reinstalled** (hashed on the device; the start screen, no address); `adb reverse --remove-all`, then `adb reverse tcp:3100 tcp:3100` |
+
+*The final golden APK* (after the review's fixes below: `54fd7c76…`, 7,435,349 B), on the same emulator and harness: installed over the release APK with a printer (kept: "Network printer 10.0.2.2" at once); the panel's Add another printer 10.0.2.2:9101 (a v2 select, listed under "Other printers on this device"); **Change printer → 10.0.2.2:9101** (a v1 select of a printer the app lists) kept 10.0.2.2:9100 under "Other printers" (ruling G-R3 as changed, M-4) and a KOT printed **44,454 B on 9101**; with the rebuilt golden page (G-2 fixed), this device's printer **removed on an app with two printers showed the printer the app promoted** ("Network printer 10.0.2.2 is connected.") and a KOT printed 44,454 B on it; crash buffer 0; put back as above (the last printer removed, the start screen with no address, the release APK `29115bdf…` reinstalled and hashed, notifications not granted, `adb reverse` reset, every server stopped by PID, `adb emu kill`). The first run's G-2 sighting: after the put-back's first Remove the page showed "No printer set up" while the app still had 9100 (a reload showed it).
+
+The KOT, bill and test byte counts equal Session 2C's emulator runs (48,198 B full copy, 40,854 B bill) and Session 2F1's Part B (44,454 B; 40,494 + 36,966 B).
+
+## 2F1 review gate: rulings (2026-10-05)
+
+Every ruling that changes the spec is written into spec §8.1 ("As built at the 2F1 review gate"), §9.2 and §13.
+
+**2F1's open items** (the fresh reviewer's evidence; each with its ruling):
+
+| # | Finding | Ruling |
+|---|---|---|
+| M-1 (with the 2E gate's M-9) | A printer job refused because its printer left the app's list between the request and the print (`PRINTER_NOT_LOCAL`, `sent: "no"`) held the device line, pausing every printer of a v2 tablet ≤ 30 s (one mechanism with M-9: the device line's hold empties every printer's lease) | **Fixed in P0:** every printer job holds its own printer's line (`lineOf: job.printerId ?? PRINT_DEVICE_LINE`); a slip with no printer holds the device line as before; on a one-printer device nothing changes. M-9's other half (the device line still leased on v2: one indexed read per lease, no request) **accepted** |
+| M-2 | A down named printer of a v2 tablet read "This device's printer is not ready" / "Connect this device's printer to test it." | **Fixed in P0:** "‹name› is not ready on this device" / "Connect ‹name› on this device to test it." (`ownState`) |
+| M-3 | The contract header lacked how a network printer reads between jobs and what an empty list is | **Fixed in P0** (decided before 2F2's code): the two sentences, and the review's wording of two more (the v1 status follows every change of the default printer's status; a print refused BUSY is sent again after its hold when the agent printed it, a person's print says so) |
+| M-4 | `lanAsked` is never cleared: a setup LAN printer removed from the app is not added back until a reload | **For Session 2G**, with the device section's Remove on a setup printer (show the 2E gate's I-3 sentence there too). The reviewer's own fix (drop the key when the app lists the printer again) would add back a printer staff removed a second later: the 2E gate's I-3 loop. Its effect meanwhile: the slips wait visibly, nothing lost, no request |
+| M-5 | An app that never answers `printer.status` was asked twice per request timeout (one retry chain per `start()`) | **Fixed in P0:** one kept retry handle |
+| M-6 | `OtherDevicePrinters.tsx` had no hygiene pin | **Fixed in P0:** `[F.others, 120, true]` |
+| **N-1** (new, the gate's reviewer) | On bridge v2 every state flip of any listed printer was a nudge, and with another printer connected one lease; the app's reconnect loop probes a down printer at 2 s, 5 s, 10 s, then every 30 s (each probe `connecting`, then `disconnected`): ≈ 2 leases per probe, ≈ 200 an hour, ≈ 2,000 over a night with the page open. Invisible to the 2F1 gate's fake app (it never flips) | **Fixed in P0, page side** (robust to any app): the agent is nudged only when what can print now changes (this device's own printer, or which of the app's printers are connected: `connectedPoolKey`). Proven on the emulator: 45 s of probes, no lease. The app keeps reporting `connecting` (the panel's "Checking…") |
+| Part C | The Windows app 1.11.0 on the owner's counter PC | **The owner's step** (TEST-CHECKLIST); joins Session 2G |
+| The 2F1 review's "declined to judge" list | (eight lines; the 2F1 session ruled each) | **Stand** |
+
+**The gate's own finding:**
+
+| # | Finding | Ruling |
+|---|---|---|
+| G-2 | Seen on the emulator with the golden app: on an app with two printers, the panel's Remove on this device's printer showed "No printer set up" while the app had made its other printer the default (the contract's promotion; a reload showed it). `devicePrinter().forget()` ignored the app's answer and cleared the record, racing the app's own status event | **Fixed in P0:** the native link's `forget()` applies the printer the app answers with; the record is cleared only when the app has none left (an app on v1 answers "none": as before). Proven on the emulator with the final APK: the promoted printer shown, a KOT printed on it |
+| G-1 | `apps/cafe/package.json` `testChain` is an array the runner hands to `node --test` one argument per entry; an entry holding two paths in one string (the gate's own first draft of P3) ran neither file and the suite passed (4441 tests instead of 4456); the one pin over the chain joins the entries with spaces, so it could not see it | **Fixed in P3:** `scripts/run-test-chain.mjs` exits 1 and names every entry that is not an existing file, before any test runs |
+
+**The 2F2 design rulings** (where the 2F2 specification, the contract or the reviewer's list of duties left a choice; Session 2F2 implements them):
+
+| # | Question | Ruling |
+|---|---|---|
+| G-R1 | The shape of the pool | The class per printer is **`PrinterManager`** (its state machine moved unchanged from the old object, with its own io executor and busy flag; the print moves in from `PrinterApi`); **`PrinterPool`** (new object) keeps the list, `Prefs`, the one publish, `appVisible` and the notification's observer; `PrinterApi` stays the request entry points (v1 on the default, v2 by id) |
+| G-R2 | JUnit on the JVM | The state machine imports nothing from Android: every platform call goes through `PrinterEnv` (Bluetooth, the screen, the transports, the timer, base64, "changed"), so plain JUnit 4 runs it (no Robolectric). `testImplementation "junit:junit:4.13.2"` (≈ 400 KB, fetched once into the Gradle cache on D:); the task is `:app:testDebugUnitTest` (AGP 9 builds unit tests for the debug variant only: `testReleaseUnitTest` does not exist), ≈ 450 MB of debug output under `apps/mobile/android/app/build` |
+| G-R3 | A v1 `printer.select` on a v2 app (the device panel's "Change printer", an old page's picker) | A v1 select of a **new** printer **replaces the default in its place** (the old default leaves the list, its link closed, exactly as v1 replaced its one printer); a v1 select of a printer **already listed** (a v2 page's "Change printer" to one of the app's other printers) makes it the default and keeps the old default listed (changed by the review of the gold code, M-4: otherwise a setup printer would leave the app and its slips wait); a v1 forget removes the default and promotes the first remaining one. A v2 select adds a printer (the first of an empty list becomes the default; the default otherwise unchanged); a v2 select of a listed id starts it anew in its place. Every select makes a new manager and halts the one it replaces |
+| G-R4 | `Prefs` | The list and its default (`printers`, `printerDefault`); **the v1 keys always name the default printer**, so an older app reinstalled over this one still finds this device's printer, and when the v1 keys name another printer, or none, this app follows that change as a v1 select or forget would (`PoolList.restore`); a list that cannot be read falls back to the v1 keys alone |
+| G-R5 | Selections in flight | `SelectionFence` keeps a ticket **per slot** (the default for v1, each printer's id for v2), so the page adding two network printers at once (F-R7) adds both; a v1 select still supersedes a v1 select, a forget the select of its own slot |
+| G-R6 | Unknown printer ids on v2 | `printer.print` of a printer the app does not list is **NOT_CONNECTED** (nothing sent: an unlabelled retry), never BAD_REQUEST (which the page reads as "maybe": a REPRINT or the cashier's question for a slip that never touched paper); `printer.reconnect` / `printer.forget` of one answer the list unchanged |
+| G-R7 | BUSY or a queue in the app | **BUSY stays** (refused before any byte): a second print queued behind the first could outlive the page's 65 s print timeout and print after the page gave up (a "maybe" that is paper). The page serializes its own v2 prints per printer and the agent prints one job at a time, so BUSY arises only when a v1 slip (simple mode, the panel's test, a manual print) meets a v2 job on the default printer; the header says what each caller does |
+| G-R8 | The notification's worst state | One printer as before ("Printing is on — ‹name›" / "— printer not connected"); several: "— N printers", "— ‹name› not connected", "— N printers not connected"; `connecting` counts as not connected |
+| G-R9 | Where v2 lives in the app and its parity pin | `apps/mobile/src/bridge/protocol-v2.ts` (`BRIDGE_V2`, `BRIDGE_VERSIONS`, `V2_METHODS`, the list's type), so `protocol.ts` keeps exactly v1's lists (the v1 parity pin counts its `NATIVE_` declarations); the v2 parity pin lives in the cafe beside v1's and the Windows app's (`native-bridge-v2-parity.test.ts`), reading both halves as text |
+
+**The fresh review of 2F2's golden code** (Claude Fable 5.1, read-only, `237ad1b..g2f2` against this plan, the spec and the rulings above; seven scratchpad tests against the golden code, 7/7: the real page link under the new app's event sequence, the refusal holds under `lineOf`, the real injected script against the real page bridge; the mobile suite 125/125 and the touched cafe suites 120/120 re-run read-only). Verdict **"ship as written"**: no Critical, no Important; locks, events, settling promises, halts, v1 behaviour, every contract sentence, `Prefs`, the notification, the pins, the P0 fixes, R8 and the budget each checked and sound. Six minors, each fixed in its task or ruled before the section was generated:
+
+| # | Finding | Ruling |
+|---|---|---|
+| M-1 | `status()` / `poolStatus()` read a printer's state after releasing the pool lock, so a forget or select racing a publish could send a v1 `{ state: "none", printer: P }` (a state v1 never sent) for a moment | **Fixed in P1:** both read under the pool lock (the lock order already allowed it) |
+| M-2 | A select published the new printer as `disconnected` before `connecting`: an old page saw one more event than on v1 (the one deviation from "exactly as today") | **Fixed in P1:** a new manager reads `connecting` until its first attempt settles (and `begin()` sets `connecting`), so the attempt's own `connecting` de-duplicates: the same events in the same order as v1 |
+| M-3 | Two claims unpinned: `halt()` closes a live link and a late drop of it is ignored; a stale attempt publishes nothing | **Fixed in P1:** two JUnit tests (`PrinterManagerTest` 11 → 13) |
+| M-4 | On a v2 tablet with K (the default) and B, the panel's "Change printer → B" (a v1 select) dropped K from the app: a setup printer's slips would wait until K was added again (a Bluetooth K never would be) | **Fixed in P1** (ruling G-R3 as changed): a v1 select of a printer already listed makes it the default and keeps the old one listed; a new printer still replaces the default |
+| M-5 | The print watchdog's `cancel()` can win while the watchdog runs but before it marks the timeout (a few instructions at exactly 60 s): the job reads printed, the link is closed under a connected printer, the next job reads WRITE_FAILED | **Accepted:** byte-identical to v1's `runPrint` (pre-existing); for Phase 3 with the printer status work |
+| M-6 | Selection slots are per version: a v1 network select in its DNS lookup is not superseded by a v2 forget of that printer (or the reverse) | **Accepted:** no page mixes the two for one printer within a lookup's milliseconds |
+
+**Gate decisions that shape 2F2** (each in spec §8.1, §9.2 or §13):
+- **One phone or tablet drives several printers in the app:** one manager and io thread per printer, BUSY per printer, the list in `Prefs` with the v1 printer migrated in.
+- **An old page and an old app keep working:** v1 acts on the default exactly as before; the v1 keys always name the default.
+- **No request is added:** a down printer's probes lease nothing (N-1); the app's printers are read and followed with local bridge calls.
+- **The APK changes for the first time in Phase 2** and reaches devices only after the go-live run.
+
+---
+
+## Session 2F2 (exact code, written and pre-validated at the 2F1 review gate)
+
+**Pre-validated** by the 2F1 review gate on 2026-10-05, on scratchpad clones only (never in the repo):
+- The code was developed on a golden copy of `237ad1b` (this branch's head at the gate), one commit per task (branch `g2f2-v4`, tree `bd42cce…`), and this section was generated from those commits: every Create and Replace-the-whole block is the golden file byte for byte, and every find is unique in its file at the moment it is applied.
+- A fresh clone of `feat/printing-phase-2` at `237ad1b` then got every block of this section applied verbatim, task by task, with each task's own Run lines (126 operations; the section as committed dry-runs against the repo as `126 ops OK`, plan lines 35606–41302); each RED and GREEN below is the output seen there (the clone reached through a short drive path, for Gradle). Its tree came out **identical** to the golden copy's (`bd42cce…`). Every suite below was run on that tree (the golden copy).
+- Totals on that code: shared `npm test` **684/684** (no shared change), tsc 0; cafe `npm test` **4457 tests, 4456 pass, 0 fail, 1 skipped** (+9 over `237ad1b`'s 4448; the skip is Phase 1's `go-live-dl` pin), tsc 0, lint 0 errors and the 2 old warnings; Hub tsc 0; mobile **125/125** (+8 over 117), tsc 0, lint 0, Jest 3/3; **JUnit 21/21** (new: `PrinterManagerTest` 13, `PoolListTest` 6, `PoolStatusTest` 2); desktop 192/192, typecheck 0, lint 0; print tools 8/8; live legs **`332 passed, 0 failed`** (no leg change); the Next build lists **129 routes**. 50 files, +2,205 / −471. **The app changes**: the gate built the golden APK in a scratch clone (its hash, `54fd7c76…`, is not the session's: built through a short drive path) and ran Task P4's exit on the emulator with it.
+- **Reviewed and run before it was generated.** A fresh reviewer (Claude Fable 5.1) read the golden code ("ship as written"; M-1–M-4 fixed in their task, M-5 and M-6 accepted); the gate ran Task P4 Step 4 on the emulator with the golden APK and two fake TCP printers, the release APK first and the 2E gate's page as the old page (see "Session 2F1 review (gate)" → "Pre-validating 2F2"), and found and fixed G-2 there.
+
+A failure while executing therefore points to drift since then, or to a typo while copying. Compare with the plan first.
+
+**Session 2F2 is the app half of bridge v2** (the 2E gate's ruling F-R1): the React Native bridge and the Kotlin printer pool, written against the contract in the header of `apps/cafe/lib/printer/native-bridge-v2.ts` (spec §9.2) that Session 2F1 fixed and the 2F1 gate completed (Task P0, M-3). **The APK changes for the first time in Phase 2**: its hashes are recorded in Results. An old page (bridge v1) on the new APK prints exactly as on the release APK, and the new APK installs over the release APK and keeps its printer.
+
+**What 2F2 delivers** (spec §9.2, §13; plan decision 12; the 2E gate's rulings F-R1–F-R9; the 2F1 gate's rulings). **One phone or tablet drives several printers.** The POS app says it speaks bridge v2 (`PosNative.versions = [1, 2]`; `request` and `on` take the version last); its router validates v2 envelopes (each printer method naming its printer by the app's id) and answers them in v2. In Kotlin every printer is a `PrinterManager` of its own with its own io thread (a blocked connect on one printer never stalls another) and its own busy flag (BUSY per printer, so a v1 and a v2 print aimed at one printer are serialized); the printers are a list in `Prefs` with a default, the one v1 printer migrated into it; one publish sends the v1 `printer.status` (the default printer's, on every change of it) and the v2 `printer.status` (every printer), each only when it changed; the print-host notification says the worst state across the printers; the state machine is free of Android, so JUnit 4 runs it on the JVM. First the 2F1 gate's page fixes: a printer job's refusal holds only its own printer's line (M-1, with the 2E gate's M-9), a down printer's reconnect probes lease nothing (N-1), Remove on this device's printer keeps the printer the app promotes (G-2), one kept retry of the app's first read (M-5), a down named printer named in words (M-2), and the contract's two sentences (M-3).
+
+**Gate rulings this section implements** (see "2F1 review gate: rulings"): M-1 with the 2E gate's M-9, N-1, M-5, M-2, M-3, M-6 and the gate's own G-2 (Task P0); the 2F2 design rulings G-R1–G-R9 (Tasks P1–P3); the gate's own G-1 (Task P3).
+
+**Not in 2F2:** parallel writes across printers (F-R5: slips still print one at a time through the page's one print surface, so a slip waits behind another printer's refusal for up to that printer's connect timeout); the per-printer `lanAsked` and the device section's Remove on a setup printer (M-4, Session 2G); a network printer from the Windows app (Phase 3, §9.6); the Phase 2 exit (2G). No server change: no new request, no Worker change. Nothing is deployed: the new APK reaches devices only after the go-live run (Worker, then web, then every POS screen reloaded).
+
+### Review Focus (Session 2F2)
+
+The inputs most likely to bite a cafe that the unit tests alone would not exercise; each has a test, a pin or a gate check.
+1. **An old page on the new APK** (every cafe's page until the web is deployed and reloaded): every v1 message acts on the default printer exactly as before (a select of a new printer replaces it, a forget removes it; the same events in the same order), one printer prints with the same bytes and the same requests. → `PoolListTest` (a v1 select replaces the default in its place), `router.test.ts` (2F2, "a v1 envelope still acts on the default printer"), `injected.test.ts` (a v1 request and its reply); the gate's emulator run (the 997f10c page on the new APK: 44,454 B; Pay Now 40,494 + 36,966 B).
+2. **The new APK installed over the release APK**: the one saved printer becomes the list and its default (no re-pairing, no re-adding); an older app reinstalled over this one still finds it. → `PoolListTest` (the migration and the reconcile), pin 19 (the v1 keys name the default); the gate's emulator run (installed over the release APK with a printer: "Printer connected" at once).
+3. **A tablet with two network printers, one switched off**: the other keeps printing; the off one's slip is refused before any byte and held; the app's probes (every 30 s) lease nothing; it prints once, unlabelled, when the app finds it again. → `PrinterManagerTest` (NOT_CONNECTED before any byte, the backoff), `native-pool.test.ts` (2F1 gate, N-1), `print-agent.test.ts` (2F1 gate, M-1); the gate's emulator run (45 s with no lease; one lease and one ack on return).
+4. **Two prints aimed at one printer at once** (a v1 slip and a v2 job of the default printer): the second is refused BUSY before any byte, never interleaved; another printer is not busy. → `PrinterManagerTest` ("busy is per printer").
+5. **This device's printer removed on a tablet with two** (the panel's Remove): the app makes the other the default, and the page shows it and prints on it. → `device-printer-native.test.ts` (2F1 gate, G-2), `PoolListTest`; the gate's emulator run.
+6. **A printer removed while it has work** (v2 forget, a v1 select replacing it): its link closes, its reconnect stops, its io thread ends, and every call still answers. → `PrinterManagerTest` ("a printer that left the list …"), pin 19.
+
+### File map (Session 2F2)
+
+| File | Change | Task |
+|---|---|---|
+| `apps/cafe/hooks/use-print-agent.ts`, `lib/print-agent-types.ts`, `lib/printer/native-pool.ts`, `lib/printer/native-bridge-v2.ts`, `lib/print-setup-text.ts`, `components/print/setup/PrintersSetupSection.tsx`, `lib/printer/transport-native.ts`, `lib/printer/device-printer.ts` (+ tests) | the 2F1 gate's page fixes | P0 |
+| `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterEnv.kt`, `PoolList.kt`, `PoolStatus.kt`, `PrinterPool.kt` (create); `PrinterManager.kt`, `PrinterApi.kt`, `SelectionFence.kt`, `Prefs.kt`, `BridgeCodes.kt`, `PrinterThreads.kt`, `PrinterTypes.kt`, `StatusJson.kt`, `WebViewDelivery.kt`, `PosPrinterModule.kt`, `PrintHostService.kt`, `HostController.kt`; `res/values/strings.xml`; `android/app/build.gradle`; `apps/mobile/src/bridge/protocol-v2.ts` (create), `src/native/PosPrinter.ts`; `android/app/src/test/java/…/PrinterFakes.kt`, `PrinterManagerTest.kt`, `PoolListTest.kt`, `PoolStatusTest.kt` (create); `src/mobile-paths.test.ts` | the printer pool | P1 |
+| `apps/mobile/src/bridge/injected.ts`, `router.ts`, `validate.ts`, `src/native/PosPrinter.ts` (+ `router.test.ts`, `injected.test.ts`) | bridge v2 in the app | P2 |
+| `apps/cafe/lib/printer/native-bridge-v2-parity.test.ts` (create), `apps/cafe/package.json`, `apps/cafe/scripts/run-test-chain.mjs` | the v2 parity pin; the test chain refuses an entry that names no file | P3 |
+| this plan | Session 2F2 Results | P4 |
+
+The tasks run in this order: P0 → P3 (each one commit), then P4 (verification, the APKs, the exit check on the emulator, the fresh review, Results).
+
+---
+
+### Task P0: the 2F1 review gate's page fixes: a printer job's refusal holds its own printer's line, a down printer's reconnect probes lease nothing, the app's first read is retried once, a printer with a state of its own is named, and the contract says how a network printer reads between jobs and what an empty list is
+
+**Files:**
+- Modify: `apps/cafe/hooks/use-print-agent.ts` (`lineOf`; one nudge effect on `canPrint` and `poolReady`), `apps/cafe/lib/print-agent-types.ts` (`lineOf`'s comment) (M-1 with the 2E gate's M-9; N-1)
+- Modify: `apps/cafe/lib/printer/native-pool.ts` (`connectedPoolKey`; one kept retry of the first read) (N-1; M-5), `apps/cafe/lib/printer/native-bridge-v2.ts` (the contract header) (M-3)
+- Modify: `apps/cafe/lib/print-setup-text.ts` (`ownState`), `apps/cafe/components/print/setup/PrintersSetupSection.tsx` (M-2)
+- Modify: `apps/cafe/lib/printer/transport-native.ts` (the native link's `forget()` applies the printer the app makes the default), `apps/cafe/lib/printer/device-printer.ts` (`forget()`) (G-2)
+- Tests: `apps/cafe/lib/print-agent.test.ts`, `printer/native-pool.test.ts`, `print-setup-form.test.ts`, `printer/device-printer-native.test.ts` (new tests); `print-windows-printers.test.ts`, `print-agent-paths.test.ts`, `print-agent-printers.test.ts`, `print-setup-ui-paths.test.ts`, `printer-ui-paths.test.ts` (changed pins, named below)
+
+**Interfaces produced:** `connectedPoolKey(snapshot)` in `lib/printer/native-pool.ts`; `printerRowState` and `testPrintBlock` take `here.ownState?`; the native link's `forget(): Promise<boolean>` (true when it applied another printer); `PrintAgentDeps.lineOf` unchanged in type.
+
+**M-1, with the 2E gate's M-9 (the 2F1 gate's fresh reviewer proved both one mechanism): a printer job refused because its printer left the POS app's list held the device line, pausing every printer of the tablet for up to 30 s.** The hook's `lineOf` gave a job its printer's line only when the tab still had a target for it; one whose printer left the app's list between the request and the print (`PRINTER_NOT_LOCAL`, `sent: "no"`) fell to the device line `""`, whose hold empties every printer's lease and direct print. Now every printer job holds its own printer's line (`job.printerId ?? PRINT_DEVICE_LINE`); a job with no printer (simple mode) holds the device line as before. On a one-printer device nothing changes (its one printer held, `mayLease` false, as before). M-9's other half (the device line is still leased on v2) costs one indexed read per lease and no request: accepted.
+
+**N-1 (new, the 2F1 gate's reviewer): on bridge v2 every state flip of any listed printer was a nudge, and with another printer connected one lease.** The app's reconnect loop probes a down printer at 2 s, 5 s, 10 s, then every 30 s, reporting `connecting` and `disconnected` each time, so one down printer beside a working one would have cost ≈ 2 leases per probe (≈ 200 an hour, ≈ 2,000 over a night with the page open), invisible to the 2F1 gate's fake app (which never flips). The hook now nudges only when what can print now changes: this device's own printer (`canPrint`) or which of the app's printers are connected (`connectedPoolKey`). Holds still release on any change of the printers' state (the hold reads `printersState()` lazily), and a printer coming back connected changes the key: a nudge, then the lease.
+
+**G-2 (the gate's own, seen on the emulator with this session's app): Remove on this device's printer, on an app with two printers, showed "No printer set up" while the app had made its other printer the default.** The contract promotes the first remaining printer when the default leaves (and answers the forget with that printer's status), but `devicePrinter().forget()` ignored the answer and cleared the record; whether the app's own status event landed before or after that, the page could end with no printer of its own while the app printed on one. The native link's `forget()` now applies the printer the app names (true), and the record is cleared only when the app has none left (an app on v1 answers "none": as before). Proven on the emulator: the promoted printer shown, and a KOT printed on it.
+
+**M-5: one kept retry of the app's first `printer.status` read.** `init()` and a late bridge's ready event each started a retry chain (two reads per request timeout from an app that never answers); now one handle is kept and replaced.
+
+**M-2: a printer with a state of its own is named.** On a v2 tablet a down named printer's row said "This device's printer is not ready" and its Test print "Connect this device's printer to test it."; now "‹name› is not ready on this device" and "Connect ‹name› on this device to test it." (`ownState`: the printer has an app target).
+
+**M-3 (decided before this code): the contract header gains two sentences** Session 2F2's app is written against: a network printer has no standing link (it reads `connected` from the last probe or job that reached it; a failed connect in a print is NOT_CONNECTED, no byte sent; the app's loop probes it, each probe reported `connecting`), and an app with no printer answers `{ printers: [], defaultId: null, bluetooth }` (all three keys always there, the app's own order). Two sentences are worded by the 2F1 gate's review: the v1 status follows every change of the default printer's status (its state, Bluetooth, which printer it is), and a print refused BUSY is sent again after its hold when the agent printed it, while a print a person started says so.
+
+**Changed existing pins:** `print-windows-printers.test.ts` "PIN (2E): the agent leases, offers for direct print and is kicked only for the printers no refusal holds" (the `lineOf` line); `print-agent-paths.test.ts` "PIN (2B): the draining tab offers itself for direct print …" (the nudge effect's dependencies); `print-agent-printers.test.ts` "PIN (2F1): the page follows the app's printers …" (the nudge on what can print now); `print-setup-ui-paths.test.ts` "PIN (2D): each printer row …" (`ownState`); `printer-ui-paths.test.ts` the hygiene table (`OtherDevicePrinters.tsx`, 120 lines, M-6). M-4 (`lanAsked` never cleared) is ruled for Session 2G, with the device section's Remove on a setup printer.
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/print-agent-paths.test.ts`, find:
+
+```ts
+  assert.ok(core.includes("if (held.length > 0 && enabled && !busy) return void cycle(true);"), "a held job prints before any lease, past the printer gate (its attempt was made while ready)");
+  assert.ok(core.includes("if (deps.now() - next.at < PRINT_DIRECT_HOLD_MS) return next.job;"), "but only well inside its lease (the fresh review, I-1)");
+  assert.ok(core.includes("again = answers.get(key)?.more !== false;"), "the ack's more decides the next lease");
+  assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, printer, canPrint]);"), "a printer state change is a nudge, never a lease queued behind a print");
+  assert.ok(core.includes("if (opened) nudge();"), "so is the gate opening or the bridge freeing up");
+});
+
+```
+
+Replace it with:
+
+```ts
+  assert.ok(core.includes("if (held.length > 0 && enabled && !busy) return void cycle(true);"), "a held job prints before any lease, past the printer gate (its attempt was made while ready)");
+  assert.ok(core.includes("if (deps.now() - next.at < PRINT_DIRECT_HOLD_MS) return next.job;"), "but only well inside its lease (the fresh review, I-1)");
+  assert.ok(core.includes("again = answers.get(key)?.more !== false;"), "the ack's more decides the next lease");
+  // The 2F1 review gate (N-1, deliberate change): only a change of what can print now is a nudge.
+  assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, canPrint, poolReady]);"), "a printer state change is a nudge, never a lease queued behind a print");
+  assert.ok(core.includes("if (opened) nudge();"), "so is the gate opening or the bridge freeing up");
+});
+
+```
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+  assert.match(hook, /for \(const lan of lanPrintersToAdd\(printers, deviceId, pool\)\) \{/, "a network printer it writes is added to the app");
+  assert.match(hook, /void nativePool\(\)\.add\(\{ tcp: lan \}\)\.catch\(\(\) => undefined\);/, "a local call; once per page");
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, pool]);"), "a change of the app's printers is a nudge");
+  assert.ok(src("apps/cafe/components/layout/PrintHostProvider.tsx").includes("nativePool().init();"), "read once per page, beside the device printer");
+  assert.ok(src("apps/cafe/hooks/use-print-agent-wake.ts").includes("...(caps.native ? { nativeProtocol: nativeV2Bridge() !== null ? NATIVE_BRIDGE_V2 : 1 } : {}),"), "the wake says which app prints several printers");
+  assert.ok(src("apps/cafe/lib/printer/printer-dot.ts").includes("return noHostRow(lane, printers.worst ?? local, desktopChosen);"), "the dot's worst printer");
+```
+
+Replace it with:
+
+```ts
+  assert.match(hook, /for \(const lan of lanPrintersToAdd\(printers, deviceId, pool\)\) \{/, "a network printer it writes is added to the app");
+  assert.match(hook, /void nativePool\(\)\.add\(\{ tcp: lan \}\)\.catch\(\(\) => undefined\);/, "a local call; once per page");
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  // The 2F1 review gate (N-1, deliberate change): a change of which of the app's printers can print now is a nudge.
+  assert.ok(agent.includes("const poolReady = connectedPoolKey(useNativePool());"), "which of the app's printers are connected");
+  assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, canPrint, poolReady]);"), "a change of the app's printers that can print now is a nudge");
+  assert.ok(src("apps/cafe/components/layout/PrintHostProvider.tsx").includes("nativePool().init();"), "read once per page, beside the device printer");
+  assert.ok(src("apps/cafe/hooks/use-print-agent-wake.ts").includes("...(caps.native ? { nativeProtocol: nativeV2Bridge() !== null ? NATIVE_BRIDGE_V2 : 1 } : {}),"), "the wake says which app prints several printers");
+  assert.ok(src("apps/cafe/lib/printer/printer-dot.ts").includes("return noHostRow(lane, printers.worst ?? local, desktopChosen);"), "the dot's worst printer");
+```
+
+In `apps/cafe/lib/print-agent.test.ts`, find:
+
+```ts
+  type PrintAgentResult,
+} from "@/lib/print-agent";
+import { PRINT_AGENT_HOLD_END_MARGIN_MS, PRINT_DEVICE_LINE, createRefusalHolds } from "@/lib/print-agent-holds";
+import { PRINT_HOST_EOD_TIMEOUT_MESSAGE } from "@/lib/print-host-slips";
+import { PRINT_SLIP_REFUSALS_MAX, isSlipRefusal, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+import { RASTER_FAILED_MESSAGE } from "@/lib/printer/raster";
+import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_TOO_LARGE_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
+
+// Printing Phase 1 Session 1C (spec §9.1, the owner's rules after Session 1B): the agent core, driven
+```
+
+Replace it with:
+
+```ts
+  type PrintAgentResult,
+} from "@/lib/print-agent";
+import { PRINT_AGENT_HOLD_END_MARGIN_MS, PRINT_DEVICE_LINE, createRefusalHolds } from "@/lib/print-agent-holds";
+import { PRINT_HOST_EOD_TIMEOUT_MESSAGE } from "@/lib/print-host-slips";
+import { PRINTER_NOT_LOCAL_MESSAGE } from "@/lib/print-agent-printers";
+import { PRINT_SLIP_REFUSALS_MAX, PrintWriteError, isSlipRefusal, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+import { RASTER_FAILED_MESSAGE } from "@/lib/printer/raster";
+import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_TOO_LARGE_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
+
+// Printing Phase 1 Session 1C (spec §9.1, the owner's rules after Session 1B): the agent core, driven
+```
+
+In `apps/cafe/lib/print-agent.test.ts`, find:
+
+```ts
+  assert.equal(w.leaseCalls, 3, "a job with no printer named leases as before");
+  agent.stop();
+});
+
+```
+
+Replace it with:
+
+```ts
+  assert.equal(w.leaseCalls, 3, "a job with no printer named leases as before");
+  agent.stop();
+});
+
+// The 2F1 review gate (M-1, with the 2E gate's M-9): a job whose printer this tab no longer prints (it left the POS
+// app's list between the request and the print) is refused on that printer's own line, so the others keep printing.
+test("2F1 gate (M-1): a job whose printer this tab no longer prints is refused on that printer's own line; the others keep printing", async () => {
+  const { w, deps, asked } = printersWorld(["p-kitchen"], (j) => j.printerId ?? PRINT_DEVICE_LINE);
+  w.results.push({ ok: false, error: new PrintWriteError(PRINTER_NOT_LOCAL_MESSAGE, "no") });
+  w.ackAnswers.push({ applied: true, status: "queued", nextAttemptAt: new Date(T0 + 2_000).toISOString() });
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  agent.take({ ...job("b1"), printerId: "p-bar" });
+  await settle();
+  assert.equal(w.acks[0]?.body.sent, "no", "refused before any byte");
+  assert.deepEqual(agent.openPrinters(), ["p-kitchen"], "the kitchen printer stays open");
+  assert.equal(agent.directReady(), true, "and prints its slips at once");
+  agent.kick("p-kitchen");
+  await settle();
+  assert.deepEqual(asked.slice(1), [["p-kitchen"]], "a kitchen slip's kick leases the kitchen line");
+  agent.stop();
+});
+
+```
+
+In `apps/cafe/lib/print-setup-form.test.ts`, find:
+
+```ts
+  assert.deepEqual(printerRowState({ ...mine, id: "Other" }, DEVICES, here), { tone: "bad", text: "Not this device's printer" });
+});
+
+test("2D: what the setup leaves without a printer (printers mode only), and the printers a station's delete leaves empty (the 2A gate's M5)", () => {
+  assert.deepEqual(setupGaps([], [KITCHEN]), [], "simple mode: nothing to say");
+  const kitchen = printer("Kitchen", { slips: { ...NO_SLIPS, kotStations: ["s-kitchen"] } });
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual(printerRowState({ ...mine, id: "Other" }, DEVICES, here), { tone: "bad", text: "Not this device's printer" });
+});
+
+// The 2F1 review gate (M-2): one of the POS app's printers (bridge v2) has a state of its own, so its words name it.
+test("2F1 gate (M-2): a printer with a state of its own is named when it is not ready, and in its Test print's reason", () => {
+  const here = { deviceId: "me", localIds: ["Mine"], canPrint: false, ownState: true };
+  const mine = printer("Mine", { connection: { kind: "device", deviceId: "me", transport: "bt-classic", address: "00:11:22:33:44:55" } });
+  assert.deepEqual(printerRowState(mine, DEVICES, here), { tone: "bad", text: "Mine is not ready on this device" });
+  assert.equal(testPrintBlock(mine, [mine], here), "Connect Mine on this device to test it.");
+  assert.deepEqual(printerRowState(mine, DEVICES, { ...here, ownState: false }), { tone: "bad", text: "This device's printer is not ready" }, "this device's own printer: as before");
+  assert.deepEqual(printerRowState(mine, DEVICES, { ...here, canPrint: true }), { tone: "ok", text: "Prints on this device" });
+});
+
+test("2D: what the setup leaves without a printer (printers mode only), and the printers a station's delete leaves empty (the 2A gate's M5)", () => {
+  assert.deepEqual(setupGaps([], [KITCHEN]), [], "simple mode: nothing to say");
+  const kitchen = printer("Kitchen", { slips: { ...NO_SLIPS, kotStations: ["s-kitchen"] } });
+```
+
+In `apps/cafe/lib/print-setup-ui-paths.test.ts`, find:
+
+```ts
+
+test("PIN (2D): each printer row: its state in words, on/off, Test print only when it can print, edit, delete with a question", () => {
+  const section = src(`${SETUP}PrintersSetupSection.tsx`);
+  assert.match(section, /const state = printerRowState\(printer, devices, \{ deviceId, localIds, canPrint, devicesFailed \}\);/);
+  // Session 2F1 (deliberate change): the POS app's printers too (bridge v2), each ready by its own state.
+  assert.match(section, /const here = agentPrintersOf\(printers, deviceId, local, desktop, pool\);\s*const localIds = here\.localIds;/, "from the list the page holds (Session 2E: and this PC's Windows printers)");
+  assert.match(section, /const readyIds = readyPrinterIdsOf\(localIds, here\.targets, useCanPrintNow\(\), printerStatusOf\);/);
+  assert.match(section, /const canPrint = readyIds\.includes\(printer\.id\);/, "each row by its own printer");
+  // The 2D review gate (M-4): a printer its writer's lease would never take, or one this device writes but cannot print
+  // right now, is not tested (the slip would only wait).
+  assert.match(section, /const blocked = testPrintBlock\(printer, printers, \{ deviceId, localIds, canPrint \}\);/, "Test print only when its slip can print");
+  assert.match(section, /disabled=\{blocked !== null \|\| testPrint\.isPending\}/);
+  assert.match(section, /await testPrint\.mutateAsync\(printer\.id\);\s*toast\.success\(testPrintSentText\(printer, state\)\);/);
+  assert.match(section, /printerBodyOf\(\{ \.\.\.printerDraftOf\(printer, stations\), enabled: !printer\.enabled \}, printers, printer\.id\)/, "on/off saves the printer whole, through the same rules as the form");
+```
+
+Replace it with:
+
+```ts
+
+test("PIN (2D): each printer row: its state in words, on/off, Test print only when it can print, edit, delete with a question", () => {
+  const section = src(`${SETUP}PrintersSetupSection.tsx`);
+  // The 2F1 review gate (M-2, deliberate change): one of the POS app's printers is named in its row's words.
+  assert.match(section, /const ownState = here\.targets\[printer\.id\]\?\.nativeId !== undefined;/, "a printer with a state of its own");
+  assert.match(section, /const state = printerRowState\(printer, devices, \{ deviceId, localIds, canPrint, devicesFailed, ownState \}\);/);
+  // Session 2F1 (deliberate change): the POS app's printers too (bridge v2), each ready by its own state.
+  assert.match(section, /const here = agentPrintersOf\(printers, deviceId, local, desktop, pool\);\s*const localIds = here\.localIds;/, "from the list the page holds (Session 2E: and this PC's Windows printers)");
+  assert.match(section, /const readyIds = readyPrinterIdsOf\(localIds, here\.targets, useCanPrintNow\(\), printerStatusOf\);/);
+  assert.match(section, /const canPrint = readyIds\.includes\(printer\.id\);/, "each row by its own printer");
+  // The 2D review gate (M-4): a printer its writer's lease would never take, or one this device writes but cannot print
+  // right now, is not tested (the slip would only wait).
+  assert.match(section, /const blocked = testPrintBlock\(printer, printers, \{ deviceId, localIds, canPrint, ownState \}\);/, "Test print only when its slip can print");
+  assert.match(section, /disabled=\{blocked !== null \|\| testPrint\.isPending\}/);
+  assert.match(section, /await testPrint\.mutateAsync\(printer\.id\);\s*toast\.success\(testPrintSentText\(printer, state\)\);/);
+  assert.match(section, /printerBodyOf\(\{ \.\.\.printerDraftOf\(printer, stations\), enabled: !printer\.enabled \}, printers, printer\.id\)/, "on/off saves the printer whole, through the same rules as the form");
+```
+
+In `apps/cafe/lib/print-windows-printers.test.ts`, find:
+
+```ts
+  const hook = src("hooks/use-print-agent.ts");
+  assert.match(hook, /lease: \(printerIds\) => apiSend<PrintLeaseData>\(LEASE_URL, "POST", \{ deviceId, tabId, \.\.\.printerIdsBody\(printerIds\) \}\),/, "the lease names what the agent says is open");
+  assert.match(hook, /readyPrinters: readyNow,/, "Session 2F1: those of them that can print now");
+  assert.match(hook, /lineOf: \(job\) => \(job\.printerId !== undefined && targetsRef\.current\[job\.printerId\] !== undefined \? job\.printerId : PRINT_DEVICE_LINE\),/, "a named Windows printer is a line of its own");
+  assert.match(hook, /const offReady = setReadyPrintersSource\(\(\) => agent\.openPrinters\(\)\);/, "direct print names only open printers");
+  // The 2E review gate (M-5): the wake poll lives in its own hook.
+  const both = hook + src("hooks/use-print-agent-wake.ts");
+```
+
+Replace it with:
+
+```ts
+  const hook = src("hooks/use-print-agent.ts");
+  assert.match(hook, /lease: \(printerIds\) => apiSend<PrintLeaseData>\(LEASE_URL, "POST", \{ deviceId, tabId, \.\.\.printerIdsBody\(printerIds\) \}\),/, "the lease names what the agent says is open");
+  assert.match(hook, /readyPrinters: readyNow,/, "Session 2F1: those of them that can print now");
+  // The 2F1 review gate (M-1, deliberate change): every printer job, named here or not, holds its own printer's line.
+  assert.match(hook, /lineOf: \(job\) => job\.printerId \?\? PRINT_DEVICE_LINE,/, "a printer job's refusal holds its own printer's line, never the device line");
+  assert.match(hook, /const offReady = setReadyPrintersSource\(\(\) => agent\.openPrinters\(\)\);/, "direct print names only open printers");
+  // The 2E review gate (M-5): the wake poll lives in its own hook.
+  const both = hook + src("hooks/use-print-agent-wake.ts");
+```
+
+In `apps/cafe/lib/printer-ui-paths.test.ts`, find:
+
+```ts
+  where: `${PRINT}PrintWhereSection.tsx`,
+  device: `${PRINT}DevicePrinterSection.tsx`,
+  native: `${PRINT}NativePrinterPicker.tsx`,
+  paper: `${PRINT}PaperSizeToggle.tsx`,
+  tips: `${PRINT}PrinterTestTips.tsx`,
+  advanced: `${PRINT}PrinterAdvanced.tsx`,
+```
+
+Replace it with:
+
+```ts
+  where: `${PRINT}PrintWhereSection.tsx`,
+  device: `${PRINT}DevicePrinterSection.tsx`,
+  native: `${PRINT}NativePrinterPicker.tsx`,
+  others: `${PRINT}OtherDevicePrinters.tsx`,
+  paper: `${PRINT}PaperSizeToggle.tsx`,
+  tips: `${PRINT}PrinterTestTips.tsx`,
+  advanced: `${PRINT}PrinterAdvanced.tsx`,
+```
+
+In `apps/cafe/lib/printer-ui-paths.test.ts`, find:
+
+```ts
+  [F.connect, 110, true], [F.section, 50, false], [F.type, 60, false],
+  // Session 1D: the waiting-slips panel follows the same rules (44px controls, no jargon).
+  [F.waiting, 120, true],
+];
+const hygieneMutations = [
+  append("a console call", "// " + "console" + ".log(1)"),
+```
+
+Replace it with:
+
+```ts
+  [F.connect, 110, true], [F.section, 50, false], [F.type, 60, false],
+  // Session 1D: the waiting-slips panel follows the same rules (44px controls, no jargon).
+  [F.waiting, 120, true],
+  // Session 2F1 (the 2F1 review gate, M-6): the POS app's other printers on bridge v2.
+  [F.others, 120, true],
+];
+const hygieneMutations = [
+  append("a console call", "// " + "console" + ".log(1)"),
+```
+
+In `apps/cafe/lib/printer/device-printer-native.test.ts`, find:
+
+```ts
+  assert.equal(printer.getSnapshot().status, "none");
+});
+
+test("the web reconnect backoff refuses to start for an app printer, even if asked (Kotlin owns that loop)", () => {
+  const clock = makeClock();
+  const link = createWebLink({
+```
+
+Replace it with:
+
+```ts
+  assert.equal(printer.getSnapshot().status, "none");
+});
+
+// The 2F1 review gate (G-2, seen on the emulator with Session 2F2's app): an app on bridge v2 makes the first of its
+// other printers the default when this device's printer leaves it (the contract's promotion), and answers the forget
+// with that printer's status. The page keeps it as this device's printer, whichever of the answer and the app's own
+// status event lands first; an app with no other printer answers "none" and the record is cleared as before.
+test("2F1 gate (G-2): forget on an app that makes another of its printers the default keeps that one as this device's", async () => {
+  const { printer, store, fake } = await nativeEnv();
+  const promoted = { id: "tcp:10.0.2.2:9100", name: "Network printer 10.0.2.2", transport: "tcp", address: "10.0.2.2:9100" };
+  fake.respond("printer.forget", () => nativeStatus("connected", promoted));
+  await printer.forget();
+  assert.equal(fake.count("printer.forget"), 1, "the app was told");
+  assert.equal(store.value?.kind === "native" ? store.value.printerId : null, promoted.id, "the promoted printer is this device's printer");
+  assert.equal(printer.getSnapshot().status, "connected", "and it reads as the app reports it");
+  fake.respond("printer.forget", () => nativeStatus("none", null));
+  await printer.forget();
+  assert.equal(store.value, null, "the last printer gone: no printer, as before");
+  assert.equal(printer.getSnapshot().status, "none");
+});
+
+test("the web reconnect backoff refuses to start for an app printer, even if asked (Kotlin owns that loop)", () => {
+  const clock = makeClock();
+  const link = createWebLink({
+```
+
+In `apps/cafe/lib/printer/native-pool.test.ts`, find:
+
+```ts
+import { flush, makeClock } from "@/lib/printer/device-printer-fakes";
+import { NATIVE_REQUEST_TIMEOUT_MS, nativeError } from "@/lib/printer/native-bridge";
+import { NATIVE_BRIDGE_V2, nativeV2Bridge, nativeV2Client, nativeV2Request, type NativePoolStatus, type NativeV2Client } from "@/lib/printer/native-bridge-v2";
+import { EMPTY_POOL, createNativePool, poolSnapshotOf } from "@/lib/printer/native-pool";
+import { PRINTER_CONNECT_FAILED_MESSAGE } from "@/lib/printer/device-printer-link";
+import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
+
+```
+
+Replace it with:
+
+```ts
+import { flush, makeClock } from "@/lib/printer/device-printer-fakes";
+import { NATIVE_REQUEST_TIMEOUT_MS, nativeError } from "@/lib/printer/native-bridge";
+import { NATIVE_BRIDGE_V2, nativeV2Bridge, nativeV2Client, nativeV2Request, type NativePoolStatus, type NativeV2Client } from "@/lib/printer/native-bridge-v2";
+import { EMPTY_POOL, connectedPoolKey, createNativePool, poolSnapshotOf } from "@/lib/printer/native-pool";
+import { readFileSync } from "node:fs";
+import { PRINTER_CONNECT_FAILED_MESSAGE } from "@/lib/printer/device-printer-link";
+import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
+
+```
+
+In `apps/cafe/lib/printer/native-pool.test.ts`, find:
+
+```ts
+  assert.deepEqual([pool.getSnapshot().active, pool.getSnapshot().printers.map((p) => p.id), reads.length], [true, [KITCHEN.id], 2], "read again, and active with the app's list");
+});
+
+test("2F1: a job for one of the app's printers is written to that printer in a v2 print; a printer not in the list is refused before any byte", async () => {
+  const { app, client } = fakeApp([{ state: "connected", printer: KITCHEN }, { state: "connected", printer: BAR }], KITCHEN.id);
+  const { pool } = poolWith(client);
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual([pool.getSnapshot().active, pool.getSnapshot().printers.map((p) => p.id), reads.length], [true, [KITCHEN.id], 2], "read again, and active with the app's list");
+});
+
+// The 2F1 review gate (M-5): however many times the pool starts (init, a late bridge), an app that never answers is
+// asked once per request timeout.
+test("2F1 gate (M-5): init and a late bridge keep one retry of the first read, not two", async () => {
+  const reads: number[] = [];
+  const client: NativeV2Client = {
+    request: (async (method: string) => {
+      if (method === "printer.status") reads.push(1);
+      throw nativeError("TIMEOUT", "x");
+    }) as NativeV2Client["request"],
+    onStatus: () => () => undefined,
+  };
+  const clock = makeClock();
+  const late: { ready: (() => void) | null } = { ready: null };
+  const pool = createNativePool({ v2: () => client, now: clock.now, setTimer: clock.setTimer, clearTimer: clock.clearTimer, onNativeReady: (fn) => ((late.ready = fn), () => undefined) });
+  pool.init();
+  await flush();
+  late.ready?.();
+  await flush();
+  assert.equal(reads.length, 2, "a read at init and one when the bridge announces itself");
+  await clock.advance(NATIVE_REQUEST_TIMEOUT_MS);
+  await clock.advance(NATIVE_REQUEST_TIMEOUT_MS);
+  await clock.advance(NATIVE_REQUEST_TIMEOUT_MS);
+  assert.equal(reads.length, 5, "then one read per request timeout");
+  assert.equal(pool.getSnapshot().active, false, "inactive meanwhile");
+});
+
+// The 2F1 review gate (N-1): the agent is nudged by what can print now, never by a down printer's own probes.
+test("2F1 gate (N-1): a down printer's connecting <-> disconnected flip keeps the connected key; a printer connecting changes it", () => {
+  const key = (bar: "connecting" | "connected" | "disconnected") =>
+    connectedPoolKey(poolSnapshotOf({ printers: [{ state: "connected", printer: KITCHEN }, { state: bar, printer: BAR }], defaultId: KITCHEN.id, bluetooth: "on" }));
+  assert.equal(key("disconnected"), KITCHEN.id, "the kitchen printer alone");
+  assert.equal(key("connecting"), key("disconnected"), "a probe of the bar printer changes nothing that prints");
+  assert.equal(key("connected"), `${KITCHEN.id},${BAR.id}`, "the bar printer back: a new key, a nudge");
+  assert.equal(connectedPoolKey(EMPTY_POOL), "", "no app printers");
+});
+
+// The 2F1 review gate (M-3): the contract Session 2F2's app is written against says how a network printer reads
+// between jobs and what an empty list looks like.
+test("2F1 gate (M-3): the contract header states the network printer between jobs, the empty list, the v1 status and BUSY", () => {
+  const header = readFileSync(new URL("./native-bridge-v2.ts", import.meta.url), "utf8");
+  assert.ok(header.includes("A network (tcp) printer has no standing link: the app connects per job"), "a tcp printer between jobs");
+  assert.ok(header.includes("`{ printers: [], defaultId: null, bluetooth }`: all three keys are always there"), "the empty list");
+  assert.ok(header.includes("whenever that status changes: its state, Bluetooth,"), "the v1 status on every change of the default printer");
+  assert.ok(header.includes("a print agent's job refused BUSY is sent again after"), "BUSY, said for both callers");
+});
+
+test("2F1: a job for one of the app's printers is written to that printer in a v2 print; a printer not in the list is refused before any byte", async () => {
+  const { app, client } = fakeApp([{ state: "connected", printer: KITCHEN }, { state: "connected", printer: BAR }], KITCHEN.id);
+  const { pool } = poolWith(client);
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-agent.test.ts lib/print-agent-paths.test.ts lib/print-agent-printers.test.ts lib/print-windows-printers.test.ts lib/printer/native-pool.test.ts lib/print-setup-form.test.ts lib/print-setup-ui-paths.test.ts lib/printer-ui-paths.test.ts lib/printer/device-printer-native.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 184`; `# pass 175`; `# fail 9`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/components/print/setup/PrintersSetupSection.tsx`, find:
+
+```tsx
+          ))}
+          {printers.map((printer) => {
+            const canPrint = readyIds.includes(printer.id);
+            const state = printerRowState(printer, devices, { deviceId, localIds, canPrint, devicesFailed });
+            const blocked = testPrintBlock(printer, printers, { deviceId, localIds, canPrint });
+            return (
+              <div key={printer.id} className="space-y-2 rounded-md border border-brand-rule p-3" data-printer-row={printer.id}>
+                <div className="flex flex-wrap items-center gap-2">
+```
+
+Replace it with:
+
+```tsx
+          ))}
+          {printers.map((printer) => {
+            const canPrint = readyIds.includes(printer.id);
+            // The 2F1 review gate (M-2): one of the POS app's printers has a state of its own, so its words name it.
+            const ownState = here.targets[printer.id]?.nativeId !== undefined;
+            const state = printerRowState(printer, devices, { deviceId, localIds, canPrint, devicesFailed, ownState });
+            const blocked = testPrintBlock(printer, printers, { deviceId, localIds, canPrint, ownState });
+            return (
+              <div key={printer.id} className="space-y-2 rounded-md border border-brand-rule p-3" data-printer-row={printer.id}>
+                <div className="flex flex-wrap items-center gap-2">
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+import type { LeasedPrintJob, PrintAckData, PrintJobsForMe, PrintLeaseData } from "@pos/shared/print-agent-wire";
+import { PRINTERS_KEYS } from "@/hooks/use-agent-printers";
+import type { PosPulseData } from "@pos/shared/self-order-alert";
+import { useCanPrintNow, useDevicePrinter, useNativePool } from "@/hooks/use-device-printer";
+import { usePrintAgentWake } from "@/hooks/use-print-agent-wake";
+import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
+import { apiSend } from "@/lib/api-client";
+```
+
+Replace it with:
+
+```ts
+import type { LeasedPrintJob, PrintAckData, PrintJobsForMe, PrintLeaseData } from "@pos/shared/print-agent-wire";
+import { PRINTERS_KEYS } from "@/hooks/use-agent-printers";
+import type { PosPulseData } from "@pos/shared/self-order-alert";
+import { useCanPrintNow, useNativePool } from "@/hooks/use-device-printer";
+import { usePrintAgentWake } from "@/hooks/use-print-agent-wake";
+import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
+import { apiSend } from "@/lib/api-client";
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
+import { desktopPrinterSnapshot, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import { nativeBridge, nativeOn } from "@/lib/printer/native-bridge";
+import { printerStatusOf, printersState } from "@/lib/printer/printer-registry";
+import { canPrintNow } from "@/lib/printer/print-lane";
+import { subscribeRealtime } from "@/lib/realtime-client";
+```
+
+Replace it with:
+
+```ts
+import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
+import { desktopPrinterSnapshot, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import { nativeBridge, nativeOn } from "@/lib/printer/native-bridge";
+import { connectedPoolKey } from "@/lib/printer/native-pool";
+import { printerStatusOf, printersState } from "@/lib/printer/printer-registry";
+import { canPrintNow } from "@/lib/printer/print-lane";
+import { subscribeRealtime } from "@/lib/realtime-client";
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+
+export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy, queueSlip }: UsePrintAgentOptions): void {
+  const qc = useQueryClient();
+  const printer = useDevicePrinter();
+  const canPrint = useCanPrintNow();
+  const pool = useNativePool();
+  const queueRef = useRef(queueSlip);
+  useEffect(() => {
+    queueRef.current = queueSlip;
+```
+
+Replace it with:
+
+```ts
+
+export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy, queueSlip }: UsePrintAgentOptions): void {
+  const qc = useQueryClient();
+  const canPrint = useCanPrintNow();
+  // The 2F1 review gate (N-1): which of the POS app's printers can print now (bridge v2).
+  const poolReady = connectedPoolKey(useNativePool());
+  const queueRef = useRef(queueSlip);
+  useEffect(() => {
+    queueRef.current = queueSlip;
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+      // Session 2F1: so does any change of this device's printers (its own, or another of the app's).
+      printerState: () => (isDesktopShell() ? desktopPrinterSnapshot() : printersState()),
+      readyPrinters: readyNow,
+      lineOf: (job) => (job.printerId !== undefined && targetsRef.current[job.printerId] !== undefined ? job.printerId : PRINT_DEVICE_LINE),
+      readPending: readPendingAcks,
+      writePending: writePendingAcks,
+      ...timers(),
+```
+
+Replace it with:
+
+```ts
+      // Session 2F1: so does any change of this device's printers (its own, or another of the app's).
+      printerState: () => (isDesktopShell() ? desktopPrinterSnapshot() : printersState()),
+      readyPrinters: readyNow,
+      // The 2F1 review gate (M-1, with the 2E gate's M-9): a printer job's refusal holds its own printer's line, whether
+      // or not this device still prints it (one that left the app's list between the request and the print), never the
+      // device line, which would pause every other printer. A job with no printer (simple mode) holds the device line.
+      lineOf: (job) => job.printerId ?? PRINT_DEVICE_LINE,
+      readPending: readPendingAcks,
+      writePending: writePendingAcks,
+      ...timers(),
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+    agent?.setGate({ enabled, busy });
+  }, [agent, enabled, busy]);
+
+  // The printer reconnected or changed: look at the line (the gate decides). Session 2B: a nudge, so the
+  // printer's own status changes during the agent's print never queue an empty lease after it.
+  useEffect(() => {
+    agent?.nudge();
+  }, [agent, printer, canPrint]);
+
+  // Session 2C: the printers it prints on changed (a setup save, its printer reconnected as another): look again.
+  useEffect(() => {
+    agent?.nudge();
+  }, [agent, readyKey]);
+
+  // Session 2F1 (spec §9.2): one of the POS app's printers changed (connected, down, added, removed): look again.
+  useEffect(() => {
+    agent?.nudge();
+  }, [agent, pool]);
+
+  useEffect(() => (agent === null ? undefined : onPrintAgentKick((printerId) => agent.kick(printerId))), [agent]);
+
+```
+
+Replace it with:
+
+```ts
+    agent?.setGate({ enabled, busy });
+  }, [agent, enabled, busy]);
+
+  // The printer reconnected or went away: look at the line (the gate decides). Session 2B: a nudge, so the
+  // printer's own status changes during the agent's print never queue an empty lease after it. Session 2F1: one of
+  // the POS app's printers too. The 2F1 review gate (N-1): only a change of what can print now (this device's own
+  // printer, or which of the app's printers are connected): a down printer's own reconnect probes (connecting <->
+  // disconnected, every 30 s) lease nothing while another printer prints.
+  useEffect(() => {
+    agent?.nudge();
+  }, [agent, canPrint, poolReady]);
+
+  // Session 2C: the printers it prints on changed (a setup save, its printer reconnected as another): look again.
+  useEffect(() => {
+    agent?.nudge();
+  }, [agent, readyKey]);
+
+  useEffect(() => (agent === null ? undefined : onPrintAgentKick((printerId) => agent.kick(printerId))), [agent]);
+
+```
+
+In `apps/cafe/lib/print-agent-types.ts`, find:
+
+```ts
+  printerState(): unknown;
+  /** Session 2E: the printers this device prints here (printers mode); absent: its own line only. */
+  readyPrinters?(): readonly string[];
+  /** Session 2E: the line a job's refusal holds: its named Windows printer, else this device's own printer (""). */
+  lineOf?(job: LeasedPrintJob): string;
+  readPending(): PendingPrintAck[];
+  writePending(entries: PendingPrintAck[]): void;
+```
+
+Replace it with:
+
+```ts
+  printerState(): unknown;
+  /** Session 2E: the printers this device prints here (printers mode); absent: its own line only. */
+  readyPrinters?(): readonly string[];
+  /** Session 2E: the line a job's refusal holds: its printer, by id (the 2F1 review gate, M-1), else this device's own
+   *  printer (""). */
+  lineOf?(job: LeasedPrintJob): string;
+  readPending(): PendingPrintAck[];
+  writePending(entries: PendingPrintAck[]): void;
+```
+
+In `apps/cafe/lib/print-setup-text.ts`, find:
+
+```ts
+export function printerRowState(
+  printer: PrinterConfig,
+  devices: readonly PrintDeviceSummary[],
+  here: { deviceId: string; localIds: readonly string[]; canPrint: boolean; devicesFailed?: boolean },
+): { tone: PrinterRowTone; text: string } {
+  if (!printer.enabled) return { tone: "off", text: "Switched off" };
+  if (!printerTakesSlips(printer.slips)) return { tone: "off", text: "Takes no slips" };
+```
+
+Replace it with:
+
+```ts
+export function printerRowState(
+  printer: PrinterConfig,
+  devices: readonly PrintDeviceSummary[],
+  here: { deviceId: string; localIds: readonly string[]; canPrint: boolean; devicesFailed?: boolean; ownState?: boolean },
+): { tone: PrinterRowTone; text: string } {
+  if (!printer.enabled) return { tone: "off", text: "Switched off" };
+  if (!printerTakesSlips(printer.slips)) return { tone: "off", text: "Takes no slips" };
+```
+
+In `apps/cafe/lib/print-setup-text.ts`, find:
+
+```ts
+  if (writer === null) return { tone: "bad", text: "No printing device" };
+  if (writer === here.deviceId) {
+    if (!here.localIds.includes(printer.id)) return { tone: "bad", text: "Not this device's printer" };
+    return here.canPrint ? { tone: "ok", text: "Prints on this device" } : { tone: "bad", text: "This device's printer is not ready" };
+  }
+  const row = devices.find((device) => device.deviceId === writer);
+  // The 2E review gate (M-3): with the devices read failed, nothing is known of it (not "has not checked in").
+```
+
+Replace it with:
+
+```ts
+  if (writer === null) return { tone: "bad", text: "No printing device" };
+  if (writer === here.deviceId) {
+    if (!here.localIds.includes(printer.id)) return { tone: "bad", text: "Not this device's printer" };
+    if (here.canPrint) return { tone: "ok", text: "Prints on this device" };
+    // The 2F1 review gate (M-2): a printer with a state of its own (one of the POS app's, bridge v2) is named.
+    return { tone: "bad", text: here.ownState === true ? `${printer.name} is not ready on this device` : "This device's printer is not ready" };
+  }
+  const row = devices.find((device) => device.deviceId === writer);
+  // The 2E review gate (M-3): with the devices read failed, nothing is known of it (not "has not checked in").
+```
+
+In `apps/cafe/lib/print-setup-text.ts`, find:
+
+```ts
+export function testPrintBlock(
+  printer: PrinterConfig,
+  printers: readonly PrinterConfig[],
+  here: { deviceId: string; localIds: readonly string[]; canPrint: boolean },
+): string | null {
+  if (routablePrinterOf(printers, printer.id) === null) return TEST_UNAVAILABLE;
+  if (printerWriterDeviceId(printer) !== here.deviceId) return null;
+  if (!here.localIds.includes(printer.id)) return "This device prints it, but it is not this device's printer. Edit it first.";
+  return here.canPrint ? null : "Connect this device's printer to test it.";
+}
+
+/** The toast after a Test print: said plainly when its printing device is away (its slip waits for it). */
+```
+
+Replace it with:
+
+```ts
+export function testPrintBlock(
+  printer: PrinterConfig,
+  printers: readonly PrinterConfig[],
+  here: { deviceId: string; localIds: readonly string[]; canPrint: boolean; ownState?: boolean },
+): string | null {
+  if (routablePrinterOf(printers, printer.id) === null) return TEST_UNAVAILABLE;
+  if (printerWriterDeviceId(printer) !== here.deviceId) return null;
+  if (!here.localIds.includes(printer.id)) return "This device prints it, but it is not this device's printer. Edit it first.";
+  if (here.canPrint) return null;
+  return here.ownState === true ? `Connect ${printer.name} on this device to test it.` : "Connect this device's printer to test it.";
+}
+
+/** The toast after a Test print: said plainly when its printing device is away (its slip waits for it). */
+```
+
+In `apps/cafe/lib/printer/device-printer.ts`, find:
+
+```ts
+      requireOwner();
+      const wasNative = isNative();
+      await link.release();
+      if (wasNative) await nativeLink.forget();
+      deps.writeStore(null);
+      publish(NONE_SNAPSHOT);
+    },
+```
+
+Replace it with:
+
+```ts
+      requireOwner();
+      const wasNative = isNative();
+      await link.release();
+      // The 2F1 review gate (G-2): an app on bridge v2 makes another of its printers this device's printer when this one
+      // leaves it; the link has applied that one.
+      if (wasNative && (await nativeLink.forget())) return;
+      deps.writeStore(null);
+      publish(NONE_SNAPSHOT);
+    },
+```
+
+In `apps/cafe/lib/printer/native-bridge-v2.ts`, find:
+
+```ts
+//     the print's is the whole list, like the v2 `printer.status` event the app sends on every change of any printer.
+//   · A printer is named by the app's own id (`tcp:host:port`, `bt-classic:<MAC>`, `ble:<MAC>`, `usb:<vendor>:<product>`).
+//     The default printer leaving the list (v1 or v2 forget) makes the first remaining printer the default.
+//   · The app sends a v1 `printer.status` (its default printer's) on every change of the default (a select into an empty
+//     list, a promotion after a forget, a v1 select or forget), so a page of either version knows this device's printer.
+//   · `printer.select` keeps the printer listed (down) when its first connect fails, and the app's own reconnect loop
+//     keeps trying, as v1 keeps its one printer.
+//   · No v2 status event when nothing a page reads changed (each event nudges the page's agent).
+```
+
+Replace it with:
+
+```ts
+//     the print's is the whole list, like the v2 `printer.status` event the app sends on every change of any printer.
+//   · A printer is named by the app's own id (`tcp:host:port`, `bt-classic:<MAC>`, `ble:<MAC>`, `usb:<vendor>:<product>`).
+//     The default printer leaving the list (v1 or v2 forget) makes the first remaining printer the default.
+//   · The app sends a v1 `printer.status` (its default printer's) whenever that status changes: its state, Bluetooth,
+//     and which printer is the default (a select into an empty list, a promotion after a forget, a v1 select or
+//     forget), so a page of either version knows this device's printer.
+//   · `printer.select` keeps the printer listed (down) when its first connect fails, and the app's own reconnect loop
+//     keeps trying, as v1 keeps its one printer.
+//   · No v2 status event when nothing a page reads changed (each event nudges the page's agent).
+```
+
+In `apps/cafe/lib/printer/native-bridge-v2.ts`, find:
+
+```ts
+//   · The app's list always holds its default printer: an app updated from v1 moves its one printer into the list as
+//     the default, so a page on v2 (which trusts the list alone) still finds this device's printer.
+//   · A v1 and a v2 print aimed at the same printer are serialized in the app (one print at a time per printer: the
+//     other is refused BUSY before any byte and the page sends it again), never interleaved.
+// (These are the 2E review gate's ruling F-R2 and its review's M-4 and re-check; Session 2F2 implements them and pins
+// them.)
+//   · Every other method (app.info, printer.list, permissions, bluetooth, host.background, app.changeUrl) stays v1.
+
+export const NATIVE_BRIDGE_V2 = 2;
+```
+
+Replace it with:
+
+```ts
+//   · The app's list always holds its default printer: an app updated from v1 moves its one printer into the list as
+//     the default, so a page on v2 (which trusts the list alone) still finds this device's printer.
+//   · A v1 and a v2 print aimed at the same printer are serialized in the app (one print at a time per printer: the
+//     other is refused BUSY before any byte), never interleaved: a print agent's job refused BUSY is sent again after
+//     its hold, and a print a person started says so.
+//   · A network (tcp) printer has no standing link: the app connects per job, and `printer.select` / `printer.reconnect`
+//     only probe it (connect, then close). Between jobs it reads `connected` from the last probe or job that reached
+//     it, and `disconnected` once a job's connect or write failed (a print whose connect failed is refused
+//     NOT_CONNECTED: no byte sent); the app's own loop then probes it (2 s, 5 s, 10 s, then every 30 s, each probe
+//     reported `connecting`) until it answers. On a tcp printer `connected` means "it answered last time".
+//   · An app with no printer answers `printer.status` (and every list answer and event) with
+//     `{ printers: [], defaultId: null, bluetooth }`: all three keys are always there (`defaultId` is null only for an
+//     empty list, else one of the listed ids), the printers in the app's own order (a v2 select adds one last; a v1
+//     select of a new printer puts it in the default's place, and of a listed one makes it the default where it is).
+//     The page reads such a list as a v2 app with no printer yet.
+// (These are the 2E review gate's ruling F-R2 and its review's M-4 and re-check, and the 2F1 review gate's M-3 and
+// its review's wording of the v1 status and BUSY; Session 2F2 implements them and pins them.)
+//   · Every other method (app.info, printer.list, permissions, bluetooth, host.background, app.changeUrl) stays v1.
+
+export const NATIVE_BRIDGE_V2 = 2;
+```
+
+In `apps/cafe/lib/printer/native-pool.ts`, find:
+
+```ts
+  return JSON.stringify([snapshot.active, snapshot.defaultId, snapshot.printers.map((p) => [p.id, p.printer.name, p.printer.transport, p.status, p.message])]);
+}
+
+/** The app's list as the page's snapshot; a printer's state "none" (never sent for a listed printer) reads as down. */
+export function poolSnapshotOf(status: NativePoolStatus): NativePoolSnapshot {
+  const printers: PoolPrinter[] = [];
+```
+
+Replace it with:
+
+```ts
+  return JSON.stringify([snapshot.active, snapshot.defaultId, snapshot.printers.map((p) => [p.id, p.printer.name, p.printer.transport, p.status, p.message])]);
+}
+
+/** The 2F1 review gate (N-1): what the print agent can print on now, the app's connected printers in its order. A down
+ *  printer's own reconnect probes (connecting <-> disconnected) leave it unchanged, so they never nudge the agent. */
+export function connectedPoolKey(snapshot: NativePoolSnapshot): string {
+  return snapshot.printers.filter((entry) => entry.status === "connected").map((entry) => entry.id).join(",");
+}
+
+/** The app's list as the page's snapshot; a printer's state "none" (never sent for a listed printer) reads as down. */
+export function poolSnapshotOf(status: NativePoolStatus): NativePoolSnapshot {
+  const printers: PoolPrinter[] = [];
+```
+
+In `apps/cafe/lib/printer/native-pool.ts`, find:
+
+```ts
+  const queues = new Map<string, (bytes: Uint8Array) => Promise<void>>();
+  let off: (() => void) | null = null;
+  let started = false;
+
+  // Replaced only when something a reader sees changed, so a repeated status keeps every subscriber still.
+  function publish(next: NativePoolSnapshot): void {
+```
+
+Replace it with:
+
+```ts
+  const queues = new Map<string, (bytes: Uint8Array) => Promise<void>>();
+  let off: (() => void) | null = null;
+  let started = false;
+  // The 2F1 review gate (M-5): one kept retry of the first read, however many times start() runs (init, a late bridge).
+  let retry: unknown = null;
+
+  // Replaced only when something a reader sees changed, so a repeated status keeps every subscriber still.
+  function publish(next: NativePoolSnapshot): void {
+```
+
+In `apps/cafe/lib/printer/native-pool.ts`, find:
+
+```ts
+    const client = deps.v2();
+    off?.();
+    off = null;
+    if (client === null) {
+      publish(EMPTY_POOL);
+      return;
+```
+
+Replace it with:
+
+```ts
+    const client = deps.v2();
+    off?.();
+    off = null;
+    if (retry !== null) deps.clearTimer(retry);
+    retry = null;
+    if (client === null) {
+      publish(EMPTY_POOL);
+      return;
+```
+
+In `apps/cafe/lib/printer/native-pool.ts`, find:
+
+```ts
+      .then((status) => publish(poolSnapshotOf(status)))
+      // An app slow to answer at boot is asked again (the 2E gate's review, M-5); until a list arrives the page acts as
+      // on v1, never as a v2 app with no printers (every printer of the setup would then wait).
+      .catch(() => void deps.setTimer(start, NATIVE_REQUEST_TIMEOUT_MS));
+  }
+
+  async function ask(id: string, run: (client: NativeV2Client) => Promise<NativePoolStatus>): Promise<ConnectOutcome> {
+```
+
+Replace it with:
+
+```ts
+      .then((status) => publish(poolSnapshotOf(status)))
+      // An app slow to answer at boot is asked again (the 2E gate's review, M-5); until a list arrives the page acts as
+      // on v1, never as a v2 app with no printers (every printer of the setup would then wait).
+      .catch(() => {
+        if (retry !== null) deps.clearTimer(retry);
+        retry = deps.setTimer(start, NATIVE_REQUEST_TIMEOUT_MS);
+      });
+  }
+
+  async function ask(id: string, run: (client: NativeV2Client) => Promise<NativePoolStatus>): Promise<ConnectOutcome> {
+```
+
+In `apps/cafe/lib/printer/transport-native.ts`, find:
+
+```ts
+  PRINTER_TOO_LARGE_MESSAGE,
+  PRINTER_WRITE_FAILED_MESSAGE,
+  notConnectedError,
+  quiet,
+  type PaperChoice,
+  type PrinterSnapshot,
+} from "@/lib/printer/web-printer-types";
+```
+
+Replace it with:
+
+```ts
+  PRINTER_TOO_LARGE_MESSAGE,
+  PRINTER_WRITE_FAILED_MESSAGE,
+  notConnectedError,
+  type PaperChoice,
+  type PrinterSnapshot,
+} from "@/lib/printer/web-printer-types";
+```
+
+In `apps/cafe/lib/printer/transport-native.ts`, find:
+
+```ts
+      const client = host.native();
+      return client === null ? [] : (await client.request("printer.list", { scan })).printers;
+    },
+    async forget(): Promise<void> {
+      await quiet(() => host.native()?.request("printer.forget"));
+    },
+    write(bytes: Uint8Array): Promise<void> {
+      const client = host.native();
+```
+
+Replace it with:
+
+```ts
+      const client = host.native();
+      return client === null ? [] : (await client.request("printer.list", { scan })).printers;
+    },
+    /** Forgets the app's default printer. The 2F1 review gate (G-2): an app on bridge v2 then makes the first of its
+     *  other printers the default and answers with its status; that printer is applied (true), so the page shows the
+     *  printer the app prints on. False when the app has none left, or did not answer. */
+    async forget(): Promise<boolean> {
+      const client = host.native();
+      if (client === null) return false;
+      try {
+        const status = await client.request("printer.forget");
+        if (status.printer === null) return false;
+        apply(status);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    write(bytes: Uint8Array): Promise<void> {
+      const client = host.native();
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-agent.test.ts lib/print-agent-paths.test.ts lib/print-agent-printers.test.ts lib/print-windows-printers.test.ts lib/printer/native-pool.test.ts lib/print-setup-form.test.ts lib/print-setup-ui-paths.test.ts lib/printer-ui-paths.test.ts lib/printer/device-printer-native.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 184`; `# pass 184`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint hooks/use-print-agent.ts lib/print-agent-types.ts lib/printer/native-pool.ts lib/printer/native-bridge-v2.ts lib/print-setup-text.ts components/print/setup/PrintersSetupSection.tsx lib/printer/transport-native.ts lib/printer/device-printer.ts lib/print-agent.test.ts lib/print-agent-paths.test.ts lib/print-agent-printers.test.ts lib/print-windows-printers.test.ts lib/printer/native-pool.test.ts lib/print-setup-form.test.ts lib/print-setup-ui-paths.test.ts lib/printer-ui-paths.test.ts lib/printer/device-printer-native.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/components/print/setup/PrintersSetupSection.tsx apps/cafe/hooks/use-print-agent.ts apps/cafe/lib/print-agent-paths.test.ts apps/cafe/lib/print-agent-printers.test.ts apps/cafe/lib/print-agent-types.ts apps/cafe/lib/print-agent.test.ts apps/cafe/lib/print-setup-form.test.ts apps/cafe/lib/print-setup-text.ts apps/cafe/lib/print-setup-ui-paths.test.ts apps/cafe/lib/print-windows-printers.test.ts apps/cafe/lib/printer-ui-paths.test.ts apps/cafe/lib/printer/device-printer-native.test.ts apps/cafe/lib/printer/device-printer.ts apps/cafe/lib/printer/native-bridge-v2.ts apps/cafe/lib/printer/native-pool.test.ts apps/cafe/lib/printer/native-pool.ts apps/cafe/lib/printer/transport-native.ts
+git commit -m "fix(print): the 2F1 review gate on the page: a printer job's refusal holds its own printer's line, a down printer's reconnect probes lease nothing, the app's first read is retried once, a printer with a state of its own is named, and the bridge v2 contract says how a network printer reads between jobs and what an empty list is"
+```
+
+---
+
+### Task P1: the POS app's printer pool: one PrinterManager and one io thread per printer, BUSY per printer, the printers as a list in Prefs with the v1 printer migrated in, both bridge versions' status from one publish, the notification's worst state, and JUnit 4 on the JVM
+
+**Files:**
+- Create: `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterEnv.kt` (what a printer's manager needs from the platform), `PoolList.kt` (the list and its default, and the saved list's restore), `PoolStatus.kt` (`StatusDedupe`, `HostTitle`), `PrinterPool.kt` (the pool: the managers, Prefs, the one publish)
+- Modify (rewrite): `PrinterManager.kt` (an object → a class per printer, with its own io executor and busy flag; the print moved in from `PrinterApi`), `PrinterApi.kt` (v1 on the default, v2 by id), `SelectionFence.kt` (a ticket per slot), `Prefs.kt` (the list)
+- Modify: `BridgeCodes.kt` (`BRIDGE_V2`), `PrinterThreads.kt` (`newIo()`), `PrinterTypes.kt` (`PoolEntry`, `PoolSnapshot`), `StatusJson.kt` (`poolJson`, `poolMap`), `WebViewDelivery.kt` (an event's version), `PosPrinterModule.kt` (six v2 methods), `PrintHostService.kt` (the worst state), `HostController.kt`, `res/values/strings.xml` (three titles), `android/app/build.gradle` (`testImplementation "junit:junit:4.13.2"`)
+- Create: `apps/mobile/src/bridge/protocol-v2.ts` (the app's copy of the v2 contract); modify `apps/mobile/src/native/PosPrinter.ts` (the module's six v2 methods)
+- Tests: `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterFakes.kt`, `PrinterManagerTest.kt`, `PoolListTest.kt`, `PoolStatusTest.kt` (create, JUnit 4); `apps/mobile/src/mobile-paths.test.ts` (pins 0, 4, 11, 14, 16 rewritten, pin 19 new)
+
+**Interfaces produced:** `class PrinterManager(info, env: PrinterEnv, io: ExecutorService)` with `begin()`, `connectAsync(gen, after)`, `halt()`, `onLinkLost(t)`, `resumeIfPaused()`, `print(base64, cb)`, `state()`, `connectedTransport()`, `activeTransport()` and the companion `backoffMs(n)`, `isBluetooth(info)`, `closeQuietly(t)`, `PRINT_JOB_TIMEOUT_MS`; `interface PrinterEnv` and `fun interface Cancel`; `class PoolList<T>` (`put`, `putDefault`, `remove`, `makeDefault`, `find`, `default`, `all`, `defaultId`; `PoolList.restore(listed, listedDefault, v1)`); `StatusDedupe.next(v1, v2)`; `HostTitle.of(pool)`; `object PrinterPool` (`init`, `status()`, `poolStatus()`, `manager(id)`, `defaultManager()`, `managers()`, `add(info)`, `replaceDefault(info)`, `remove(id)`, `removeDefault()`, `publish()`, `appVisible`, `statusObserver`); `PrinterApi.poolSelectPrinter`, `poolSelectTcp`, `poolReconnect`, `poolForget`, `poolPrint`; `SelectionFence.begin(slot)`, `check(host, slot, ticket, cb, answer, commit)`; `Prefs.savedPrinters(ctx)`, `savePrinters(ctx, printers, defaultId)`; the module's `poolStatus`, `poolSelectPrinter`, `poolSelectTcp`, `poolReconnect`, `poolForget`, `poolPrint`; `BRIDGE_V2`, `BRIDGE_VERSIONS`, `V2_METHODS`, `PoolStatus`, `BridgeReplyV2` in `src/bridge/protocol-v2.ts`.
+
+**One `PrinterManager` and one io thread per printer** (spec §9.2, plan decision 12's app half). The one printer's state machine (its link, the reconnect backoff of 2 s, 5 s, 10 s then every 30 s, the Bluetooth and USB pause flags, the generation that invalidates an attempt in flight) moves unchanged from the `PrinterManager` object into a class with one instance per listed printer, each with an io executor of its own (`PrinterThreads.newIo()`), so a blocked Bluetooth Classic connect (up to 2 × 30 s) or a USB permission wait (60 s) on one printer never stalls another. Every platform call goes through `PrinterEnv` (Bluetooth, the screen, the transports, the timer, base64, "something changed"), so the class imports nothing from Android and JUnit 4 runs it on the JVM. A printer that leaves the list is halted: its link closed, its reconnect wait cancelled, its io thread shut down (a call that arrives later settles at once, never on a dead thread).
+
+**BUSY per printer.** The device-wide `printing` flag of `PrinterApi` becomes each manager's own: a second print on one printer is refused BUSY at once, before any byte (so a v1 and a v2 print aimed at one printer are serialized, never interleaved), while another printer prints. NOT_CONNECTED still comes only before any byte (a network printer's per-job connect that fails), every later failure WRITE_FAILED, and a job that outlives the 60 s watchdog TIMEOUT (never printed).
+
+**The list and its default (`PoolList`, `PrinterPool`).** A v2 select adds a printer (the first of an empty list becomes the default; a listed one is started anew in its place); a v2 forget removes one (the default leaving promotes the first remaining one); a v1 select of a new printer replaces the default in its place and a v1 forget removes it, exactly as v1 always replaced and forgot its one printer, so an old page on this app sees what it saw (the same events in the same order: a new printer reads `connecting` until its first attempt settles); a v1 select of a printer already listed (a v2 page's "Change printer" to one of the app's other printers) makes it the default and keeps the old default listed. Every select starts its printer anew (a new manager; the replaced one is halted). The pool reads each printer's state under its lock, so a printer being retired is never read after its halt.
+
+**`Prefs` as a list, the v1 printer migrated in.** The printers are saved as a list with its default (`printers`, `printerDefault`); the v1 keys (`printerId` …) always name the default printer, so an app updated from v1 finds its one printer as the default, and an older app reinstalled over this one still finds this device's printer. When the v1 keys name another printer, or none, an older app changed it, and this app follows as a v1 select or forget would (`PoolList.restore`).
+
+**One publish, both versions** (`PrinterPool.publish`, under one lock, de-duplicated per version by `StatusDedupe`): the v1 `printer.status` (the default printer's status, so it follows every change of the default: a select into an empty list, a promotion after a forget, a v1 select or forget, its state, Bluetooth) and the v2 `printer.status` with every printer, each only when what it carries changed; `WebViewDelivery.deliverEvent` sends an event with its version. A v1 and a v2 selection of different printers no longer cancel each other (`SelectionFence` keeps a ticket per slot: the default for v1, each printer for v2), so a page adding two network printers at once adds both.
+
+**The print-host notification says the worst state across the printers** (`HostTitle`): one printer reads as before ("Printing is on — ‹name›", or "— printer not connected"); several read "— 2 printers", "— ‹name› not connected" or "— 2 printers not connected".
+
+**JUnit 4 on the JVM** (spec §13; `testImplementation "junit:junit:4.13.2"`, fetched once into the Gradle cache on D:): `PrinterManagerTest` (the backoff, Bluetooth off, USB waiting for the screen and a denial, a dropped link, BUSY per printer, NOT_CONNECTED before any byte, WRITE_FAILED, the watchdog, a halted printer and its live link, a stale attempt), `PoolListTest` (the list's rules, the migration and the reconcile), `PoolStatusTest` (de-duplication per version, the worst state), with fakes in `PrinterFakes.kt` (a hand-cranked io executor, virtual time). Run with `gradlew :app:testDebugUnitTest` (AGP builds unit tests for the debug variant; ≈ 450 MB of debug build output under `apps/mobile/android/app/build`, check `df -h /d` first).
+
+**The `mobile-paths.test.ts` pins rewritten deliberately** (each named in Results): pin 0 (the pool's four new files and `protocol-v2.ts`), pin 4 (the method oracle 18 → 24), pin 11 (the pool publishes both versions natively; the wake gate reads `PrinterPool.appVisible`), pin 14 (the hardening as the pool holds it: the publish lock in `PrinterPool`, the per-slot selection fence, the watchdog in `PrinterManager`), pin 16 (a USB printer's permission per printer); **pin 19 (new)**: one manager and io thread per printer, BUSY per printer, no Android in the state machine, the list in Prefs with the v1 keys naming the default, the notification's worst state, JUnit 4 as a test dependency, the JVM test files present.
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/mobile/android/app/build.gradle`, find:
+
+```groovy
+    implementation("com.facebook.react:react-android")
+    // document-start script injection for the native bridge (same version react-native-webview resolves)
+    implementation "androidx.webkit:webkit:1.14.0"
+
+    if (hermesEnabled.toBoolean()) {
+        implementation("com.facebook.react:hermes-android")
+```
+
+Replace it with:
+
+```groovy
+    implementation("com.facebook.react:react-android")
+    // document-start script injection for the native bridge (same version react-native-webview resolves)
+    implementation "androidx.webkit:webkit:1.14.0"
+    // Phase 2 Session 2F2 (spec §13): pure-JVM unit tests of the printer pool's state machine (src/test); no device.
+    testImplementation "junit:junit:4.13.2"
+
+    if (hermesEnabled.toBoolean()) {
+        implementation("com.facebook.react:hermes-android")
+```
+
+Create `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PoolListTest.kt`:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Test
+
+/**
+ * The app's list of printers and its default (Phase 2 Session 2F2, spec §9.2): what bridge v2 lists and every v1
+ * message acts on, and the saved list as the app starts (the one v1 printer migrated into it).
+ */
+class PoolListTest {
+  private val kitchen = tcpPrinter(9100)
+  private val bar = tcpPrinter(9101)
+  private val bt = btPrinter()
+
+  private fun ids(pool: PoolList<PrinterInfo>): List<String> = pool.all().map { it.id }
+
+  private fun listOf3(): PoolList<PrinterInfo> {
+    val pool = PoolList<PrinterInfo> { it.id }
+    pool.put(kitchen)
+    pool.put(bar)
+    pool.put(bt)
+    return pool
+  }
+
+  @Test
+  fun theFirstPrinterOfAnEmptyListIsTheDefaultAndOthersJoinAfterIt() {
+    val pool = PoolList<PrinterInfo> { it.id }
+    pool.put(kitchen)
+    pool.put(bar)
+    assertEquals("in the order they were added", listOf(kitchen.id, bar.id), ids(pool))
+    assertEquals("the first one is the default", kitchen.id, pool.defaultId)
+    val renamed = bar.copy(name = "Bar")
+    assertEquals("one entry per printer id: a select again replaces it in its place", listOf(bar), pool.put(renamed))
+    assertEquals(listOf(kitchen.id, bar.id), ids(pool))
+    assertEquals("Bar", pool.find(bar.id)?.name)
+  }
+
+  @Test
+  fun theDefaultLeavingPromotesTheFirstRemainingPrinter() {
+    val pool = listOf3()
+    assertEquals(kitchen, pool.remove(kitchen.id))
+    assertEquals("the first remaining one", bar.id, pool.defaultId)
+    assertEquals("another printer leaving keeps the default", bt, pool.remove(bt.id))
+    assertEquals(bar.id, pool.defaultId)
+    assertNull("an unknown id: nothing", pool.remove("tcp:10.0.0.1:9100"))
+    pool.remove(bar.id)
+    assertNull("an empty list has no default", pool.defaultId)
+  }
+
+  @Test
+  fun aV1SelectReplacesTheDefaultInItsPlace() {
+    val pool = listOf3()
+    val usb = usbPrinter()
+    assertEquals("the old default retires", listOf(kitchen), pool.putDefault(usb))
+    assertEquals("in the default's place", listOf(usb.id, bar.id, bt.id), ids(pool))
+    assertEquals(usb.id, pool.defaultId)
+    val renamed = bt.copy(name = "Bar Bluetooth")
+    assertEquals("a printer already listed is started anew in its own place", listOf(bt), pool.putDefault(renamed))
+    assertEquals("and the old default stays listed", listOf(usb.id, bar.id, bt.id), ids(pool))
+    assertEquals(bt.id, pool.defaultId)
+    val empty = PoolList<PrinterInfo> { it.id }
+    assertEquals(emptyList<PrinterInfo>(), empty.putDefault(kitchen))
+    assertEquals("into an empty list", kitchen.id, empty.defaultId)
+  }
+
+  @Test
+  fun anAppUpdatedFromV1KeepsItsOnePrinterAsTheDefault() {
+    val pool = PoolList.restore(null, null, kitchen)
+    assertEquals(listOf(kitchen.id), ids(pool))
+    assertEquals(kitchen.id, pool.defaultId)
+    assertEquals("no printer before, none now", 0, PoolList.restore(null, null, null).all().size)
+  }
+
+  @Test
+  fun aSavedListComesBackWithItsDefault() {
+    val pool = PoolList.restore(listOf(kitchen, bar, bar), bar.id, bar)
+    assertEquals("a repeated id once", listOf(kitchen.id, bar.id), ids(pool))
+    assertEquals("its own default", bar.id, pool.defaultId)
+  }
+
+  @Test
+  fun anOlderAppsChangeOfItsPrinterIsFollowed() {
+    val chose = PoolList.restore(listOf(kitchen, bar), kitchen.id, bt)
+    assertEquals("an older app chose another printer: it replaces the default", listOf(bt.id, bar.id), ids(chose))
+    assertEquals(bt.id, chose.defaultId)
+    val forgot = PoolList.restore(listOf(kitchen, bar), kitchen.id, null)
+    assertEquals("an older app forgot its printer: the default leaves", listOf(bar.id), ids(forgot))
+    assertEquals(bar.id, forgot.defaultId)
+    val emptied = PoolList.restore(emptyList(), null, kitchen)
+    assertEquals("a list emptied here, a printer chosen there", listOf(kitchen.id), ids(emptied))
+  }
+}
+```
+
+Create `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PoolStatusTest.kt`:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+/**
+ * Publish de-duplication per bridge version and the print-host notification's worst state (Phase 2 Session 2F2,
+ * spec §9.2).
+ */
+class PoolStatusTest {
+  private val kitchen = tcpPrinter(9100)
+  private val bar = tcpPrinter(9101)
+
+  private fun one(state: String, printer: PrinterInfo?): StatusSnapshot = StatusSnapshot(state, printer, BridgeCodes.BT_ON)
+
+  private fun all(defaultId: String?, vararg entries: Pair<PrinterInfo, String>): PoolSnapshot =
+      PoolSnapshot(entries.map { PoolEntry(it.second, it.first) }, defaultId, BridgeCodes.BT_ON)
+
+  @Test
+  fun eachVersionsEventGoesOutOnlyWhenWhatItCarriesChanged() {
+    val dedupe = StatusDedupe()
+    val c = BridgeCodes.STATE_CONNECTED
+    val d = BridgeCodes.STATE_DISCONNECTED
+    assertEquals("the first publish: both", StatusDedupe.Changes(v1 = true, v2 = true), dedupe.next(one(c, kitchen), all(kitchen.id, kitchen to c, bar to c)))
+    assertEquals("nothing changed: none", StatusDedupe.Changes(v1 = false, v2 = false), dedupe.next(one(c, kitchen), all(kitchen.id, kitchen to c, bar to c)))
+    assertEquals("another printer's state: v2 only", StatusDedupe.Changes(v1 = false, v2 = true), dedupe.next(one(c, kitchen), all(kitchen.id, kitchen to c, bar to d)))
+    assertEquals("the default's state: both", StatusDedupe.Changes(v1 = true, v2 = true), dedupe.next(one(d, kitchen), all(kitchen.id, kitchen to d, bar to d)))
+    assertEquals("a new default: both", StatusDedupe.Changes(v1 = true, v2 = true), dedupe.next(one(d, bar), all(bar.id, bar to d)))
+    assertEquals("the last printer gone", StatusDedupe.Changes(v1 = true, v2 = true), dedupe.next(one(BridgeCodes.STATE_NONE, null), all(null)))
+  }
+
+  @Test
+  fun theNotificationSaysTheWorstStateAcrossPrinters() {
+    val c = BridgeCodes.STATE_CONNECTED
+    val d = BridgeCodes.STATE_DISCONNECTED
+    val k = BridgeCodes.STATE_CONNECTING
+    val third = tcpPrinter(9102)
+    assertEquals("no printer", HostTitle.NotConnected, HostTitle.of(all(null)))
+    assertEquals("the only printer, connected: its name, as before", HostTitle.Printer(kitchen.name), HostTitle.of(all(kitchen.id, kitchen to c)))
+    assertEquals("the only printer, down: the words of one printer", HostTitle.NotConnected, HostTitle.of(all(kitchen.id, kitchen to d)))
+    assertEquals("every printer connected", HostTitle.AllConnected(2), HostTitle.of(all(kitchen.id, kitchen to c, bar to c)))
+    assertEquals("one of several down, connecting counted as down", HostTitle.OneDown(bar.name), HostTitle.of(all(kitchen.id, kitchen to c, bar to k)))
+    assertEquals("several down", HostTitle.SomeDown(2), HostTitle.of(all(kitchen.id, kitchen to d, bar to c, third to d)))
+  }
+}
+```
+
+Create `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterFakes.kt`:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import java.util.concurrent.AbstractExecutorService
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.TimeUnit
+
+/**
+ * Fakes for the JVM unit tests of the printer pool (Phase 2 Session 2F2, spec §13): a hand-cranked io executor, a
+ * virtual-time timer, a transport whose open and write do what a test says, and the platform as a [PrinterEnv].
+ */
+
+/** A printer's io thread, run by hand: [runAll] runs what was queued (and what that queues). */
+class ManualIo : AbstractExecutorService() {
+  private val queue = ArrayDeque<Runnable>()
+  private var down = false
+
+  override fun execute(command: Runnable) {
+    if (down) throw RejectedExecutionException("shut down")
+    queue.addLast(command)
+  }
+
+  fun pending(): Int = queue.size
+
+  fun runAll() {
+    while (queue.isNotEmpty()) queue.removeFirst().run()
+  }
+
+  override fun shutdown() {
+    down = true
+  }
+
+  override fun shutdownNow(): MutableList<Runnable> {
+    down = true
+    val left = queue.toMutableList()
+    queue.clear()
+    return left
+  }
+
+  override fun isShutdown(): Boolean = down
+
+  override fun isTerminated(): Boolean = down && queue.isEmpty()
+
+  override fun awaitTermination(timeout: Long, unit: TimeUnit): Boolean = isTerminated
+}
+
+/** A transport that records what happened to it; [onOpen] and [onWrite] decide the outcome. */
+class FakeTransport(val listener: LinkListener) : PrinterTransport {
+  var onOpen: () -> Unit = {}
+  var onWrite: (ByteArray) -> Unit = {}
+  val written = ArrayList<ByteArray>()
+  var closed = 0
+
+  override fun open() = onOpen()
+
+  override fun write(data: ByteArray) {
+    onWrite(data)
+    written.add(data)
+  }
+
+  override fun close() {
+    closed++
+  }
+}
+
+/** The platform: Bluetooth, the screen, the transports and a timer on virtual time. */
+class FakeEnv : PrinterEnv {
+  private class Task(val at: Long, val task: Runnable) {
+    var cancelled = false
+    var ran = false
+  }
+
+  var now = 0L
+  var bluetooth = true
+  var shown = true
+  var changes = 0
+  /** What the next transport's open does (throw to fail it); every transport made, in order. */
+  var nextOpen: () -> Unit = {}
+  var nextWrite: (ByteArray) -> Unit = {}
+  val made = ArrayList<FakeTransport>()
+  val onTimerRuns = ArrayList<Runnable>()
+  private val tasks = ArrayList<Task>()
+
+  override fun bluetoothOn(): Boolean = bluetooth
+
+  override fun visible(): Boolean = shown
+
+  override fun transport(info: PrinterInfo, listener: LinkListener): PrinterTransport {
+    val t = FakeTransport(listener)
+    t.onOpen = nextOpen
+    t.onWrite = nextWrite
+    made.add(t)
+    return t
+  }
+
+  override fun schedule(delayMs: Long, task: Runnable): Cancel {
+    val entry = Task(now + delayMs, task)
+    tasks.add(entry)
+    return Cancel {
+      if (entry.ran || entry.cancelled) {
+        false
+      } else {
+        entry.cancelled = true
+        true
+      }
+    }
+  }
+
+  override fun onTimer(task: Runnable) {
+    onTimerRuns.add(task)
+  }
+
+  override fun decode(base64: String): ByteArray? = if (base64 == "!") null else base64.toByteArray()
+
+  override fun changed() {
+    changes++
+  }
+
+  /** The delays (from now) of the timer tasks still waiting. */
+  fun waiting(): List<Long> = tasks.filter { !it.cancelled && !it.ran }.map { it.at - now }
+
+  /** Moves virtual time on by [ms], running every timer task that falls due, in order. */
+  fun advance(ms: Long) {
+    val end = now + ms
+    while (true) {
+      val next = tasks.filter { !it.cancelled && !it.ran && it.at <= end }.minByOrNull { it.at } ?: break
+      now = next.at
+      next.ran = true
+      next.task.run()
+    }
+    now = end
+  }
+}
+
+fun tcpPrinter(port: Int = 9100): PrinterInfo =
+    PrinterInfo("tcp:10.0.2.2:$port", "Network printer 10.0.2.2", BridgeCodes.TRANSPORT_TCP, "10.0.2.2:$port")
+
+fun btPrinter(): PrinterInfo =
+    PrinterInfo("bt-classic:00:11:22:33:44:55", "RPP02N", BridgeCodes.TRANSPORT_BT_CLASSIC, "00:11:22:33:44:55")
+
+fun usbPrinter(): PrinterInfo = PrinterInfo("usb:04b8:0e15", "USB printer", BridgeCodes.TRANSPORT_USB)
+
+/** The answers a callback got, in order. */
+class Replies<T> {
+  val got = ArrayList<Reply<T>>()
+  val cb: ReplyCallback<T> = { got.add(it) }
+
+  fun codes(): List<String> = got.map { if (it is Reply.Err) it.code else "OK" }
+}
+```
+
+Create `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterManagerTest.kt`:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * The state machine of one printer (Phase 2 Session 2F2, spec §9.2, §13): the reconnect backoff, the pause flags
+ * (Bluetooth off, a USB permission), a dropped link, BUSY per printer, NOT_CONNECTED only before any byte, the print
+ * watchdog and a printer that left the list. On the JVM, with a hand-cranked io thread and virtual time.
+ */
+class PrinterManagerTest {
+  private fun notConnected(): () -> Unit = { throw TransportException(BridgeCodes.NOT_CONNECTED, "no answer") }
+
+  private fun started(info: PrinterInfo, env: FakeEnv, io: ManualIo = ManualIo()): Pair<PrinterManager, ManualIo> {
+    val manager = PrinterManager(info, env, io)
+    manager.connectAsync(manager.begin()) {}
+    io.runAll()
+    return Pair(manager, io)
+  }
+
+  @Test
+  fun backoffWaitsTwoFiveTenThenEveryThirtySeconds() {
+    assertEquals("the waits, attempt by attempt", listOf(2_000L, 5_000L, 10_000L, 30_000L, 30_000L), (0..4).map { PrinterManager.backoffMs(it) })
+  }
+
+  @Test
+  fun failedConnectsRetryOnTheBackoffAndAConnectResetsIt() {
+    val env = FakeEnv()
+    env.nextOpen = notConnected()
+    val (manager, io) = started(tcpPrinter(), env)
+    assertEquals("down after its first attempt", BridgeCodes.STATE_DISCONNECTED, manager.state())
+    val seen = ArrayList<Long>()
+    repeat(4) {
+      val wait = env.waiting().single()
+      seen.add(wait)
+      env.advance(wait)
+      io.runAll()
+    }
+    assertEquals("2 s, 5 s, 10 s, then 30 s", listOf(2_000L, 5_000L, 10_000L, 30_000L), seen)
+    env.nextOpen = {}
+    env.advance(env.waiting().single())
+    io.runAll()
+    assertEquals("the printer answered", BridgeCodes.STATE_CONNECTED, manager.state())
+    assertTrue("no reconnect waits while connected", env.waiting().isEmpty())
+    env.made.last().listener.onLinkLost(env.made.last())
+    assertEquals("a dropped link reads as down at once", BridgeCodes.STATE_DISCONNECTED, manager.state())
+    assertEquals("and the backoff starts again from 2 s", listOf(2_000L), env.waiting())
+  }
+
+  @Test
+  fun bluetoothOffPausesABluetoothPrinterUntilItIsOnAgain() {
+    val env = FakeEnv()
+    env.bluetooth = false
+    val (manager, io) = started(btPrinter(), env)
+    assertEquals("down", BridgeCodes.STATE_DISCONNECTED, manager.state())
+    assertTrue("no link was even tried", env.made.isEmpty())
+    assertTrue("and no reconnect loop", env.waiting().isEmpty())
+    manager.resumeIfPaused()
+    io.runAll()
+    assertTrue("Bluetooth still off: still nothing", env.made.isEmpty())
+    env.bluetooth = true
+    manager.resumeIfPaused()
+    io.runAll()
+    assertEquals("Bluetooth back: it connects", BridgeCodes.STATE_CONNECTED, manager.state())
+  }
+
+  @Test
+  fun aUsbPrinterThatNeedsTheScreenWaitsAndAsksAgainOnceVisible() {
+    val env = FakeEnv()
+    env.shown = false
+    env.nextOpen = { throw TransportException(BridgeCodes.UNAUTHORIZED, "USB permission needed", needsForeground = true) }
+    val (manager, io) = started(usbPrinter(), env)
+    assertEquals("down", BridgeCodes.STATE_DISCONNECTED, manager.state())
+    assertTrue("no reconnect loop while it waits for the screen", env.waiting().isEmpty())
+    assertTrue("hidden: nothing asked at once", env.onTimerRuns.isEmpty())
+    manager.resumeIfPaused()
+    io.runAll()
+    assertEquals("still hidden: not asked again", 1, env.made.size)
+    env.shown = true
+    env.nextOpen = {}
+    manager.resumeIfPaused()
+    io.runAll()
+    assertEquals("visible: asked again, and granted", BridgeCodes.STATE_CONNECTED, manager.state())
+  }
+
+  @Test
+  fun aUsbPrinterTurnedVisibleDuringItsAttemptAsksOnTheTimer() {
+    val env = FakeEnv()
+    env.nextOpen = { throw TransportException(BridgeCodes.UNAUTHORIZED, "USB permission needed", needsForeground = true) }
+    started(usbPrinter(), env)
+    assertEquals("the cold-start race: one resume queued on the timer thread", 1, env.onTimerRuns.size)
+  }
+
+  @Test
+  fun aUsbDenialWaitsForAnExplicitReconnect() {
+    val env = FakeEnv()
+    env.nextOpen = { throw TransportException(BridgeCodes.UNAUTHORIZED, "USB permission denied") }
+    val (manager, io) = started(usbPrinter(), env)
+    assertTrue("a denial starts no loop", env.waiting().isEmpty())
+    manager.resumeIfPaused()
+    io.runAll()
+    assertEquals("and no prompt loop on resume", 1, env.made.size)
+    env.nextOpen = {}
+    manager.connectAsync(manager.begin()) {}
+    io.runAll()
+    assertEquals("an explicit reconnect asks again", BridgeCodes.STATE_CONNECTED, manager.state())
+  }
+
+  @Test
+  fun busyIsPerPrinter() {
+    val env = FakeEnv()
+    val (kitchen, kitchenIo) = started(tcpPrinter(9100), env)
+    val (bar, barIo) = started(tcpPrinter(9101), env, ManualIo())
+    val first = Replies<Int>()
+    val second = Replies<Int>()
+    val other = Replies<Int>()
+    kitchen.print("AAAA", first.cb)
+    kitchen.print("BBBB", second.cb)
+    assertEquals("a second print on one printer is BUSY at once, before any byte", listOf(BridgeCodes.BUSY), second.codes())
+    bar.print("CCCC", other.cb)
+    assertEquals("another printer is not busy", 1, barIo.pending())
+    kitchenIo.runAll()
+    barIo.runAll()
+    assertEquals("the first job printed", listOf("OK"), first.codes())
+    assertEquals("so did the other printer's", listOf("OK"), other.codes())
+    val third = Replies<Int>()
+    kitchen.print("DDDD", third.cb)
+    kitchenIo.runAll()
+    assertEquals("the printer is free again after its job", listOf("OK"), third.codes())
+    assertEquals("each printer's own bytes", listOf(2, 1), listOf(env.made[0].written.size, env.made[1].written.size))
+  }
+
+  @Test
+  fun notConnectedComesBeforeAnyByteAndAFailedWriteMarksThePrinterDown() {
+    val env = FakeEnv()
+    env.nextOpen = notConnected()
+    val (down, _) = started(tcpPrinter(), env)
+    val refused = Replies<Int>()
+    down.print("AAAA", refused.cb)
+    assertEquals("not connected: refused before any byte", listOf(BridgeCodes.NOT_CONNECTED), refused.codes())
+    val env2 = FakeEnv()
+    val (manager, io) = started(tcpPrinter(), env2)
+    env2.made.last().onWrite = { throw TransportException(BridgeCodes.NOT_CONNECTED, "Could not connect") }
+    val gone = Replies<Int>()
+    manager.print("AAAA", gone.cb)
+    io.runAll()
+    assertEquals("a network printer that no longer answers: its connect failed, nothing sent", listOf(BridgeCodes.NOT_CONNECTED), gone.codes())
+    assertEquals("and it reads as down, with its reconnect loop", BridgeCodes.STATE_DISCONNECTED, manager.state())
+    assertEquals(listOf(2_000L), env2.waiting())
+    val env3 = FakeEnv()
+    val (broken, brokenIo) = started(tcpPrinter(), env3)
+    env3.made.last().onWrite = { throw TransportException(BridgeCodes.WRITE_FAILED, "Write failed") }
+    val partial = Replies<Int>()
+    broken.print("AAAA", partial.cb)
+    brokenIo.runAll()
+    assertEquals("a write that failed part way is WRITE_FAILED", listOf(BridgeCodes.WRITE_FAILED), partial.codes())
+    val bad = Replies<Int>()
+    broken.print("!", bad.cb)
+    assertEquals("down now: refused", listOf(BridgeCodes.NOT_CONNECTED), bad.codes())
+  }
+
+  @Test
+  fun aPrintPayloadThatIsNotBase64IsABadRequest() {
+    val env = FakeEnv()
+    val (manager, io) = started(tcpPrinter(), env)
+    val bad = Replies<Int>()
+    manager.print("!", bad.cb)
+    io.runAll()
+    assertEquals(listOf(BridgeCodes.BAD_REQUEST), bad.codes())
+    assertEquals("still connected: nothing was written", BridgeCodes.STATE_CONNECTED, manager.state())
+  }
+
+  @Test
+  fun aWriteThatOutlivesTheWatchdogIsATimeoutNeverPrinted() {
+    val env = FakeEnv()
+    val (manager, io) = started(tcpPrinter(), env)
+    val link = env.made.last()
+    link.onWrite = { env.advance(PrinterManager.PRINT_JOB_TIMEOUT_MS) }
+    val late = Replies<Int>()
+    manager.print("AAAA", late.cb)
+    io.runAll()
+    assertEquals("the watchdog fired: TIMEOUT", listOf(BridgeCodes.TIMEOUT), late.codes())
+    assertTrue("it closed the link", link.closed > 0)
+    assertEquals("the printer reads as down", BridgeCodes.STATE_DISCONNECTED, manager.state())
+  }
+
+  @Test
+  fun aPrinterThatLeftTheListClosesItsLiveLinkAndALateDropIsIgnored() {
+    val env = FakeEnv()
+    val (manager, _) = started(tcpPrinter(), env)
+    val link = env.made.last()
+    assertEquals("connected before it leaves", BridgeCodes.STATE_CONNECTED, manager.state())
+    val before = env.changes
+    manager.halt()
+    assertTrue("halt closes the live link", link.closed > 0)
+    link.listener.onLinkLost(link)
+    assertEquals("a late drop of the closed link publishes nothing", before, env.changes)
+    assertTrue("and schedules no reconnect", env.waiting().isEmpty())
+    assertEquals(BridgeCodes.STATE_NONE, manager.state())
+  }
+
+  @Test
+  fun aStaleAttemptPublishesNothingAndMakesNoLink() {
+    val env = FakeEnv()
+    val io = ManualIo()
+    val manager = PrinterManager(tcpPrinter(), env, io)
+    assertEquals("a new printer reads as connecting until its first attempt", BridgeCodes.STATE_CONNECTING, manager.state())
+    manager.connectAsync(manager.begin()) {}
+    manager.connectAsync(manager.begin()) {}
+    val before = env.changes
+    io.runAll()
+    assertEquals("only the newer attempt publishes: connecting, then connected", before + 2, env.changes)
+    assertEquals("the stale attempt never made a transport", 1, env.made.size)
+    assertEquals(BridgeCodes.STATE_CONNECTED, manager.state())
+  }
+
+  @Test
+  fun aPrinterThatLeftTheListStopsItsLoopAndTakesNoNewWork() {
+    val env = FakeEnv()
+    env.nextOpen = notConnected()
+    val (manager, io) = started(tcpPrinter(), env)
+    assertEquals(listOf(2_000L), env.waiting())
+    manager.halt()
+    assertEquals("none once it left the list", BridgeCodes.STATE_NONE, manager.state())
+    assertTrue("its reconnect wait is cancelled", env.waiting().isEmpty())
+    var settled = 0
+    manager.connectAsync(manager.begin()) { settled++ }
+    assertEquals("a late reconnect still answers its caller, at once", 1, settled)
+    assertEquals("and runs nothing", 0, io.pending())
+    val refused = Replies<Int>()
+    manager.print("AAAA", refused.cb)
+    assertEquals("a late print: not connected", listOf(BridgeCodes.NOT_CONNECTED), refused.codes())
+  }
+}
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  'reconnect',
+  'forget',
+  'print',
+  'refreshStatus',
+  'enableBluetooth',
+  'setHostActive',
+```
+
+Replace it with:
+
+```ts
+  'reconnect',
+  'forget',
+  'print',
+  // Phase 2 Session 2F2 (deliberate change): the app's printers, bridge v2.
+  'poolStatus',
+  'poolSelectPrinter',
+  'poolSelectTcp',
+  'poolReconnect',
+  'poolForget',
+  'poolPrint',
+  'refreshStatus',
+  'enableBluetooth',
+  'setHostActive',
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+    join(MAIN, 'res', 'xml', 'usb_printer_filter.xml'),
+    join(JAVA, 'com', 'possoftware', 'pos', 'MainApplication.kt'),
+    join(SRC, 'bridge', 'protocol.ts'),
+    join(SRC, 'native', 'PosPrinter.ts'),
+    join(SRC, 'screens', 'PosScreen.tsx'),
+    ...[
+```
+
+Replace it with:
+
+```ts
+    join(MAIN, 'res', 'xml', 'usb_printer_filter.xml'),
+    join(JAVA, 'com', 'possoftware', 'pos', 'MainApplication.kt'),
+    join(SRC, 'bridge', 'protocol.ts'),
+    join(SRC, 'bridge', 'protocol-v2.ts'),
+    join(SRC, 'native', 'PosPrinter.ts'),
+    join(SRC, 'screens', 'PosScreen.tsx'),
+    ...[
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+      'PrinterReceivers.kt',
+      'PrinterThreads.kt',
+      'PrinterTypes.kt',
+    ].map(name => join(KT_DIR, name)),
+  ];
+  for (const path of paths) {
+```
+
+Replace it with:
+
+```ts
+      'PrinterReceivers.kt',
+      'PrinterThreads.kt',
+      'PrinterTypes.kt',
+      // Phase 2 Session 2F2: the printer pool.
+      'PrinterPool.kt',
+      'PrinterEnv.kt',
+      'PoolList.kt',
+      'PoolStatus.kt',
+    ].map(name => join(KT_DIR, name)),
+  ];
+  for (const path of paths) {
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+test('pin 4: JS wrapper and Kotlin @ReactMethod list equal the oracle', () => {
+  const module = kt('PosPrinterModule.kt');
+  const js = read(join(SRC, 'native', 'PosPrinter.ts'));
+  assert.equal(NATIVE_METHOD_ORACLE.length, 18);
+  assert.ok(strip(module).includes('@ReactMethod'), 'landmark');
+  assert.deepEqual(methodProblems(module, js), []);
+  assert.deepEqual(moduleNameProblems(module, js), []);
+```
+
+Replace it with:
+
+```ts
+test('pin 4: JS wrapper and Kotlin @ReactMethod list equal the oracle', () => {
+  const module = kt('PosPrinterModule.kt');
+  const js = read(join(SRC, 'native', 'PosPrinter.ts'));
+  assert.equal(NATIVE_METHOD_ORACLE.length, 24, '18 v1 methods and 6 of bridge v2');
+  assert.ok(strip(module).includes('@ReactMethod'), 'landmark');
+  assert.deepEqual(methodProblems(module, js), []);
+  assert.deepEqual(moduleNameProblems(module, js), []);
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+// --------------------------------------------------------------- pin 11
+interface DeliverySources {
+  delivery: string;
+  manager: string;
+  api: string;
+  service: string;
+}
+```
+
+Replace it with:
+
+```ts
+// --------------------------------------------------------------- pin 11
+interface DeliverySources {
+  delivery: string;
+  pool: string;
+  api: string;
+  service: string;
+}
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  if (!d.includes('ESCAPED_CODES.contains(ch.code)')) {
+    out.push('escapeForScript does not use ESCAPED_CODES');
+  }
+  const publish =
+    /fun publish\(\)[\s\S]*?\n {2}\}\n/.exec(strip(s.manager))?.[0] ?? '';
+  if (
+    !publish.includes(
+      'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS,',
+    )
+  ) {
+    out.push(
+      'PrinterManager.publish() does not deliver printer.status natively',
+    );
+  }
+  const api = strip(s.api);
+  if (!api.includes('PrinterManager.publish()')) {
+    out.push('PrinterApi never publishes through PrinterManager');
+  }
+  for (const banned of ['DeviceEventManagerModule', 'sendEvent', 'emit(']) {
+    if (api.includes(banned)) {
+```
+
+Replace it with:
+
+```ts
+  if (!d.includes('ESCAPED_CODES.contains(ch.code)')) {
+    out.push('escapeForScript does not use ESCAPED_CODES');
+  }
+  // Session 2F2 (deliberate change): the printer pool publishes, for both bridge versions.
+  const publish =
+    /fun publish\(\)[\s\S]*?\n {2}\}\n/.exec(strip(s.pool))?.[0] ?? '';
+  if (
+    !publish.includes(
+      'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.toJson(one))',
+    )
+  ) {
+    out.push('PrinterPool.publish() does not deliver the v1 printer.status natively');
+  }
+  if (
+    !publish.includes(
+      'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.poolJson(all), BridgeCodes.BRIDGE_V2)',
+    )
+  ) {
+    out.push('PrinterPool.publish() does not deliver the v2 printer.status natively');
+  }
+  const api = strip(s.api);
+  if (!api.includes('PrinterPool.publish()')) {
+    out.push('PrinterApi never publishes through PrinterPool');
+  }
+  for (const banned of ['DeviceEventManagerModule', 'sendEvent', 'emit(']) {
+    if (api.includes(banned)) {
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  }
+  const svc = strip(s.service);
+  const wake =
+    /if\s*\(\s*!PrinterManager\.appVisible\s*\)\s*\{\s*WebViewDelivery\.deliverEvent\(BridgeCodes\.EVENT_APP_WAKE,/;
+  if (!wake.test(svc)) {
+    out.push('app.wake is not gated on !PrinterManager.appVisible');
+  }
+  if ((svc.match(/EVENT_APP_WAKE/g) ?? []).length !== 1) {
+    out.push('app.wake must be delivered from exactly one place');
+```
+
+Replace it with:
+
+```ts
+  }
+  const svc = strip(s.service);
+  const wake =
+    /if\s*\(\s*!PrinterPool\.appVisible\s*\)\s*\{\s*WebViewDelivery\.deliverEvent\(BridgeCodes\.EVENT_APP_WAKE,/;
+  if (!wake.test(svc)) {
+    out.push('app.wake is not gated on !PrinterPool.appVisible');
+  }
+  if ((svc.match(/EVENT_APP_WAKE/g) ?? []).length !== 1) {
+    out.push('app.wake must be delivered from exactly one place');
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+}
+const deliverySources = (): DeliverySources => ({
+  delivery: kt('WebViewDelivery.kt'),
+  manager: kt('PrinterManager.kt'),
+  api: kt('PrinterApi.kt'),
+  service: kt('PrintHostService.kt'),
+});
+```
+
+Replace it with:
+
+```ts
+}
+const deliverySources = (): DeliverySources => ({
+  delivery: kt('WebViewDelivery.kt'),
+  pool: kt('PrinterPool.kt'),
+  api: kt('PrinterApi.kt'),
+  service: kt('PrintHostService.kt'),
+});
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+    ],
+    ['ESCAPED_CODES.contains(ch.code)', 'false'],
+  ]);
+  everyMutationCaught(run('manager'), base.manager, [
+    [
+      'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS,',
+      'sendEvent(BridgeCodes.EVENT_PRINTER_STATUS,',
+```
+
+Replace it with:
+
+```ts
+    ],
+    ['ESCAPED_CODES.contains(ch.code)', 'false'],
+  ]);
+  everyMutationCaught(run('pool'), base.pool, [
+    [
+      'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS,',
+      'sendEvent(BridgeCodes.EVENT_PRINTER_STATUS,',
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+      'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS,',
+      'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_APP_WAKE,',
+    ],
+  ]);
+  everyMutationCaught(run('api'), base.api, [
+    ['PrinterManager.publish()', 'PrinterManager.status()'],
+    [
+      'fun onBluetoothStateChanged() {',
+      'fun onBluetoothStateChanged() {\n    DeviceEventManagerModule.noop()',
+    ],
+  ]);
+  everyMutationCaught(run('service'), base.service, [
+    ['if (!PrinterManager.appVisible) {', 'if (PrinterManager.appVisible) {'],
+    ['if (!PrinterManager.appVisible) {', 'run {'],
+  ]);
+});
+
+```
+
+Replace it with:
+
+```ts
+      'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS,',
+      'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_APP_WAKE,',
+    ],
+    ['StatusJson.poolJson(all), BridgeCodes.BRIDGE_V2)', 'StatusJson.poolJson(all))'],
+  ]);
+  everyMutationCaught(run('api'), base.api, [
+    ['PrinterPool.publish()', 'PrinterPool.status()'],
+    [
+      'fun onBluetoothStateChanged() {',
+      'fun onBluetoothStateChanged() {\n    DeviceEventManagerModule.noop()',
+    ],
+  ]);
+  everyMutationCaught(run('service'), base.service, [
+    ['if (!PrinterPool.appVisible) {', 'if (PrinterPool.appVisible) {'],
+    ['if (!PrinterPool.appVisible) {', 'run {'],
+  ]);
+});
+
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  ble: string;
+  host: string;
+  manager: string;
+  tcp: string;
+  tcpAddress: string;
+  fence: string;
+```
+
+Replace it with:
+
+```ts
+  ble: string;
+  host: string;
+  manager: string;
+  pool: string;
+  tcp: string;
+  tcpAddress: string;
+  fence: string;
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  if (svc.includes('stopSelf()')) {
+    out.push('a bare stopSelf() drops a newer start command');
+  }
+  if (count(svc, 'if (!PrinterManager.appVisible) {') !== 1) {
+    out.push('the app.wake gate must appear exactly once');
+  }
+  return out;
+```
+
+Replace it with:
+
+```ts
+  if (svc.includes('stopSelf()')) {
+    out.push('a bare stopSelf() drops a newer start command');
+  }
+  if (count(svc, 'if (!PrinterPool.appVisible) {') !== 1) {
+    out.push('the app.wake gate must appear exactly once');
+  }
+  return out;
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+function managerProblems(s: KtSources): string[] {
+  const out: string[] = [];
+  const mgr = strip(s.manager);
+  if (!mgr.includes('private val publishLock = Any()')) {
+    out.push('PrinterManager has no publishLock');
+  }
+  const publish = /fun publish\(\)[\s\S]*?\n {2}\}\n/.exec(mgr)?.[0] ?? '';
+  const underLock = [
+    'synchronized(publishLock) {',
+    'lastPublished = snapshot',
+    'WebViewDelivery.deliverEvent(',
+    'statusObserver?.invoke(snapshot)',
+  ];
+  if (!inOrder(publish, underLock)) {
+    out.push('publish does not deliver under publishLock');
+```
+
+Replace it with:
+
+```ts
+function managerProblems(s: KtSources): string[] {
+  const out: string[] = [];
+  const mgr = strip(s.manager);
+  // Session 2F2 (deliberate change): the pool publishes for every printer, de-duplicated per bridge version.
+  const pool = strip(s.pool);
+  if (!pool.includes('private val publishLock = Any()')) {
+    out.push('PrinterPool has no publishLock');
+  }
+  const publish = /fun publish\(\)[\s\S]*?\n {2}\}\n/.exec(pool)?.[0] ?? '';
+  const underLock = [
+    'synchronized(publishLock) {',
+    'val changes = dedupe.next(one, all)',
+    'WebViewDelivery.deliverEvent(',
+    'statusObserver?.invoke()',
+  ];
+  if (!inOrder(publish, underLock)) {
+    out.push('publish does not deliver under publishLock');
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  const out: string[] = [];
+  const api = strip(s.api);
+  const fence = strip(s.fence);
+  const ticketed = [
+    'val ticket = SelectionFence.begin()',
+    'fenceThenCommit(ctx, info, ticket, cb)',
+  ];
+  if (!inOrder(api, ticketed)) {
+    out.push('select does not take a ticket before the fence');
+  }
+  const check =
+    'SelectionFence.check(target.first, ticket, cb) { commit(ctx, info, cb) }';
+  if (!api.includes(check)) {
+    out.push('selecting a tcp: id skips the address fence');
+  }
+  if (!/SelectionFence\.begin\(\)\s*PrinterManager\.halt\(\)/.test(api)) {
+    out.push('forget does not supersede a pending selection');
+  }
+  if (api.includes('TcpAddress.')) {
+    out.push('PrinterApi resolves a host itself');
+```
+
+Replace it with:
+
+```ts
+  const out: string[] = [];
+  const api = strip(s.api);
+  const fence = strip(s.fence);
+  // Session 2F2 (deliberate change): one ticket per slot (the default for v1, each printer for v2).
+  const ticketed = [
+    'val slot = if (v2) info.id else V1_SLOT',
+    'val ticket = SelectionFence.begin(slot)',
+    'fenceThenCommit(info, slot, ticket, cb, answer) { commit(info, v2, cb, answer) }',
+  ];
+  if (!inOrder(api, ticketed)) {
+    out.push('select does not take a ticket before the fence');
+  }
+  const check = 'SelectionFence.check(target.first, slot, ticket, cb, answer, commit)';
+  if (!api.includes(check)) {
+    out.push('selecting a tcp: id skips the address fence');
+  }
+  if (!/SelectionFence\.begin\(V1_SLOT\)\s*PrinterPool\.removeDefault\(\)/.test(api)) {
+    out.push('forget does not supersede a pending selection');
+  }
+  if (!/SelectionFence\.begin\(printerId\)\s*PrinterPool\.remove\(printerId\)/.test(api)) {
+    out.push('a v2 forget does not supersede a pending selection of that printer');
+  }
+  if (api.includes('TcpAddress.')) {
+    out.push('PrinterApi resolves a host itself');
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+    'TcpAddress.isForbidden(host)',
+    'old.lookup?.cancel(false)',
+    'settled.compareAndSet(false, true)',
+    'return ++ticket',
+  ]) {
+    if (!fence.includes(needle)) {
+      out.push('SelectionFence lacks ' + needle);
+```
+
+Replace it with:
+
+```ts
+    'TcpAddress.isForbidden(host)',
+    'old.lookup?.cancel(false)',
+    'settled.compareAndSet(false, true)',
+    'tickets[slot] = next',
+  ]) {
+    if (!fence.includes(needle)) {
+      out.push('SelectionFence lacks ' + needle);
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+    out.push('the DNS fence runs on the io thread');
+  }
+  const finish = [
+    'if (pending.ticket != ticket) {',
+    'pending.settle(Reply.Ok(PrinterManager.status()))',
+    'return',
+    'inFlight = null',
+    'if (forbidden) pending.settle(Reply.fail(BridgeCodes.BAD_REQUEST)) else commit()',
+  ];
+  if (!inOrder(tail(fence, 'private fun finish('), finish)) {
+    out.push('a stale selection can still commit');
+  }
+  const begin = [
+    'val old = inFlight',
+    'inFlight = null',
+    'old.settle(Reply.Ok(',
+    'return ++ticket',
+  ];
+  if (!inOrder(fence, begin)) {
+    out.push('a superseded selection is not answered');
+```
+
+Replace it with:
+
+```ts
+    out.push('the DNS fence runs on the io thread');
+  }
+  const finish = [
+    'if (pending.ticket != tickets[slot]) {',
+    'pending.superseded()',
+    'return',
+    'inFlight.remove(slot)',
+    'if (forbidden) pending.settle(Reply.fail(BridgeCodes.BAD_REQUEST)) else commit()',
+  ];
+  if (!inOrder(tail(fence, 'private fun <T> finish('), finish)) {
+    out.push('a stale selection can still commit');
+  }
+  const begin = [
+    'val old = inFlight.remove(slot)',
+    'old.superseded()',
+    'tickets[slot] = next',
+    'return next',
+  ];
+  if (!inOrder(fence, begin)) {
+    out.push('a superseded selection is not answered');
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+// A job that hit the watchdog never reports success: it is TIMEOUT and the link is lost.
+function watchdogProblems(s: KtSources): string[] {
+  const out: string[] = [];
+  const run = tail(strip(s.api), 'private fun runPrint(');
+  const verdict =
+    /t\.write\(bytes\)\s*if \(watchdogFired\(watchdog, timedOut\)\) \{\s*PrinterManager\.onLinkLost\(t\)\s*Reply\.fail\(BridgeCodes\.TIMEOUT\)\s*\} else \{\s*Reply\.Ok\(bytes\.size\)/;
+  if (!verdict.test(run)) {
+    out.push('a write that returns after the watchdog still counts as printed');
+  }
+  if (!strip(s.api).includes('!watchdog.cancel(false) || timedOut.get()')) {
+    out.push('watchdogFired ignores a watchdog that is already running');
+  }
+  if (count(run, 'Reply.Ok(bytes.size)') !== 1) {
+```
+
+Replace it with:
+
+```ts
+// A job that hit the watchdog never reports success: it is TIMEOUT and the link is lost.
+function watchdogProblems(s: KtSources): string[] {
+  const out: string[] = [];
+  // Session 2F2 (deliberate change): every printer's print runs in its own PrinterManager.
+  const run = tail(strip(s.manager), 'private fun runPrint(');
+  const verdict =
+    /t\.write\(bytes\)\s*if \(watchdogFired\(watchdog, timedOut\)\) \{\s*onLinkLost\(t\)\s*Reply\.fail\(BridgeCodes\.TIMEOUT\)\s*\} else \{\s*Reply\.Ok\(bytes\.size\)/;
+  if (!verdict.test(run)) {
+    out.push('a write that returns after the watchdog still counts as printed');
+  }
+  if (!strip(s.manager).includes('!watchdog.cancel() || timedOut.get()')) {
+    out.push('watchdogFired ignores a watchdog that is already running');
+  }
+  if (count(run, 'Reply.Ok(bytes.size)') !== 1) {
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  ble: kt('BleTransport.kt'),
+  host: kt('PrintHostService.kt'),
+  manager: kt('PrinterManager.kt'),
+  tcp: kt('TcpTransport.kt'),
+  tcpAddress: kt('TcpAddress.kt'),
+  fence: kt('SelectionFence.kt'),
+```
+
+Replace it with:
+
+```ts
+  ble: kt('BleTransport.kt'),
+  host: kt('PrintHostService.kt'),
+  manager: kt('PrinterManager.kt'),
+  pool: kt('PrinterPool.kt'),
+  tcp: kt('TcpTransport.kt'),
+  tcpAddress: kt('TcpAddress.kt'),
+  fence: kt('SelectionFence.kt'),
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+    ['if (foregroundReached) {', 'if (true) {'],
+    ['if (stopWanted) {', 'if (false) {'],
+    ['foregroundReached = true', 'foregroundReached = false'],
+    ['if (!PrinterManager.appVisible) {', 'if (PrinterManager.appVisible) {'],
+    [inner('stopService'), 'stopSelf()'],
+    ['stopSelf(startId)', 'stopSelf()'],
+    [
+```
+
+Replace it with:
+
+```ts
+    ['if (foregroundReached) {', 'if (true) {'],
+    ['if (stopWanted) {', 'if (false) {'],
+    ['foregroundReached = true', 'foregroundReached = false'],
+    ['if (!PrinterPool.appVisible) {', 'if (PrinterPool.appVisible) {'],
+    [inner('stopService'), 'stopSelf()'],
+    ['stopSelf(startId)', 'stopSelf()'],
+    [
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+    ],
+    ['R.string.print_host_alert_title', 'R.string.print_host_title_printer'],
+  ]);
+  everyMutationCaught(run(managerProblems, 'manager'), base.manager, [
+    ['private val publishLock = Any()', 'private val publishLock2 = Any()'],
+    ['synchronized(publishLock) {', 'run {'],
+    ['pendingLost = true', 'pendingLost = false'],
+    ['else if (pendingLost) {', 'else if (false) {'],
+    [
+      'object PrinterManager {',
+      'object PrinterThreads {}\nobject PrinterManager {',
+    ],
+  ]);
+  everyMutationCaught(run(managerProblems, 'threads'), base.threads, [
+```
+
+Replace it with:
+
+```ts
+    ],
+    ['R.string.print_host_alert_title', 'R.string.print_host_title_printer'],
+  ]);
+  everyMutationCaught(run(managerProblems, 'pool'), base.pool, [
+    ['private val publishLock = Any()', 'private val publishLock2 = Any()'],
+    ['synchronized(publishLock) {', 'run {'],
+    ['statusObserver?.invoke()', 'statusObserver?.hashCode()'],
+  ]);
+  everyMutationCaught(run(managerProblems, 'manager'), base.manager, [
+    ['pendingLost = true', 'pendingLost = false'],
+    ['else if (pendingLost) {', 'else if (false) {'],
+    [
+      'class PrinterManager(',
+      'object PrinterThreads {}\nclass PrinterManager(',
+    ],
+  ]);
+  everyMutationCaught(run(managerProblems, 'threads'), base.threads, [
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+    ['    return local\n  }', '    return local.take(1)\n  }'],
+  ]);
+  everyMutationCaught(run(selectionProblems, 'api'), base.api, [
+    ['val ticket = SelectionFence.begin()', 'val ticket = 0'],
+    ['fenceThenCommit(ctx, info, ticket, cb)', 'commit(ctx, info, cb)'],
+    [
+      'SelectionFence.check(target.first, ticket, cb)',
+      'SelectionFence.check(target.second.toString(), ticket, cb)',
+    ],
+    [
+      'SelectionFence.begin()\n          PrinterManager.halt()',
+      'PrinterManager.halt()',
+    ],
+    [
+      'PrinterIds.tcpOf(info.id)',
+```
+
+Replace it with:
+
+```ts
+    ['    return local\n  }', '    return local.take(1)\n  }'],
+  ]);
+  everyMutationCaught(run(selectionProblems, 'api'), base.api, [
+    ['val ticket = SelectionFence.begin(slot)', 'val ticket = 0'],
+    ['val slot = if (v2) info.id else V1_SLOT', 'val slot = V1_SLOT'],
+    ['fenceThenCommit(info, slot, ticket, cb, answer) {', 'run {'],
+    [
+      'SelectionFence.check(target.first, slot,',
+      'SelectionFence.check(target.second.toString(), slot,',
+    ],
+    [
+      'SelectionFence.begin(V1_SLOT)\n          PrinterPool.removeDefault()',
+      'PrinterPool.removeDefault()',
+    ],
+    [
+      'SelectionFence.begin(printerId)\n          PrinterPool.remove(printerId)',
+      'PrinterPool.remove(printerId)',
+    ],
+    [
+      'PrinterIds.tcpOf(info.id)',
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+    ['TcpAddress.isForbidden(host)', 'false'],
+    ['old.lookup?.cancel(false)', 'old.lookup?.hashCode()'],
+    ['settled.compareAndSet(false, true)', 'true'],
+    ['return ++ticket', 'return ticket'],
+    ['if (pending.ticket != ticket) {', 'if (false) {'],
+    ['    inFlight = null\n    if (forbidden)', '    if (forbidden)'],
+    [
+      'if (forbidden) pending.settle(Reply.fail(BridgeCodes.BAD_REQUEST)) else commit()',
+      'commit()',
+    ],
+    ['      old.settle(Reply.Ok(PrinterManager.status()))\n', ''],
+    ['PrinterThreads.timer.execute(', 'PrinterThreads.io.execute('],
+  ]);
+  everyMutationCaught(run(selectionProblems, 'threads'), base.threads, [
+```
+
+Replace it with:
+
+```ts
+    ['TcpAddress.isForbidden(host)', 'false'],
+    ['old.lookup?.cancel(false)', 'old.lookup?.hashCode()'],
+    ['settled.compareAndSet(false, true)', 'true'],
+    ['tickets[slot] = next', 'tickets[slot] = 0'],
+    ['if (pending.ticket != tickets[slot]) {', 'if (false) {'],
+    ['    inFlight.remove(slot)\n    if (forbidden)', '    if (forbidden)'],
+    [
+      'if (forbidden) pending.settle(Reply.fail(BridgeCodes.BAD_REQUEST)) else commit()',
+      'commit()',
+    ],
+    ['      old.superseded()\n', ''],
+    ['PrinterThreads.timer.execute(', 'PrinterThreads.io.execute('],
+  ]);
+  everyMutationCaught(run(selectionProblems, 'threads'), base.threads, [
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+    ['"pos-printer-dns"', '"pos-printer-x"'],
+    ['val dns: ExecutorService =', 'val dnsX: ExecutorService ='],
+  ]);
+  everyMutationCaught(run(watchdogProblems, 'api'), base.api, [
+    ['if (watchdogFired(watchdog, timedOut)) {', 'if (false) {'],
+    ['!watchdog.cancel(false) || timedOut.get()', 'timedOut.get()'],
+    [
+      '        PrinterManager.onLinkLost(t)\n        Reply.fail(BridgeCodes.TIMEOUT)\n      } else {',
+      '        Reply.fail(BridgeCodes.TIMEOUT)\n      } else {',
+    ],
+    [
+```
+
+Replace it with:
+
+```ts
+    ['"pos-printer-dns"', '"pos-printer-x"'],
+    ['val dns: ExecutorService =', 'val dnsX: ExecutorService ='],
+  ]);
+  everyMutationCaught(run(watchdogProblems, 'manager'), base.manager, [
+    ['if (watchdogFired(watchdog, timedOut)) {', 'if (false) {'],
+    ['!watchdog.cancel() || timedOut.get()', 'timedOut.get()'],
+    [
+      '        onLinkLost(t)\n        Reply.fail(BridgeCodes.TIMEOUT)\n      } else {',
+      '        Reply.fail(BridgeCodes.TIMEOUT)\n      } else {',
+    ],
+    [
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  if (!manager.includes('if (e.needsForeground) usbWaitingForeground = true else usbPermissionPaused = true')) {
+    out.push('only a real denial may pause USB reconnects');
+  }
+  if (!manager.includes('if (usbWaitingForeground && appVisible) selected else null')) {
+    out.push('resumeIfPaused must ask again once the app is visible');
+  }
+  if (!manager.includes('usbPermissionPaused || usbWaitingForeground) return')) {
+```
+
+Replace it with:
+
+```ts
+  if (!manager.includes('if (e.needsForeground) usbWaitingForeground = true else usbPermissionPaused = true')) {
+    out.push('only a real denial may pause USB reconnects');
+  }
+  if (!manager.includes('val usbAsk = synchronized(lock) { !halted && usbWaitingForeground && env.visible() }')) {
+    out.push('resumeIfPaused must ask again once the app is visible');
+  }
+  if (!manager.includes('usbPermissionPaused || usbWaitingForeground) return')) {
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  }
+  // Cold start: initialize() starts the attempt just before onHostResume, so the app can turn
+  // visible between open()'s check and the flag. The attempt then asks for itself.
+  if (!manager.includes('if (e.needsForeground && appVisible) timer.execute(Runnable { resumeIfPaused() })')) {
+    out.push('a hidden refusal that lost the race with onHostResume must still ask once visible');
+  }
+  // begin() and halt() both clear the flag (a bare-assignment line; the field's own declaration
+```
+
+Replace it with:
+
+```ts
+  }
+  // Cold start: initialize() starts the attempt just before onHostResume, so the app can turn
+  // visible between open()'s check and the flag. The attempt then asks for itself.
+  if (!manager.includes('if (e.needsForeground && env.visible()) env.onTimer(Runnable { resumeIfPaused() })')) {
+    out.push('a hidden refusal that lost the race with onHostResume must still ask once visible');
+  }
+  // begin() and halt() both clear the flag (a bare-assignment line; the field's own declaration
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  ]);
+  everyMutationCaught(run('manager'), base.manager, [
+    ['if (e.needsForeground) usbWaitingForeground = true else usbPermissionPaused = true', 'usbPermissionPaused = true'],
+    ['if (usbWaitingForeground && appVisible) selected else null', 'if (false) selected else null'],
+    ['usbPermissionPaused || usbWaitingForeground) return', 'usbPermissionPaused) return'],
+    ['if (e.needsForeground && appVisible) timer.execute(Runnable { resumeIfPaused() })', ''],
+    ['usbWaitingForeground = false\n          ++generation', '++generation'],
+    ['usbWaitingForeground = false\n      generation++', 'generation++'],
+  ]);
+```
+
+Replace it with:
+
+```ts
+  ]);
+  everyMutationCaught(run('manager'), base.manager, [
+    ['if (e.needsForeground) usbWaitingForeground = true else usbPermissionPaused = true', 'usbPermissionPaused = true'],
+    ['!halted && usbWaitingForeground && env.visible()', 'false'],
+    ['usbPermissionPaused || usbWaitingForeground) return', 'usbPermissionPaused) return'],
+    ['if (e.needsForeground && env.visible()) env.onTimer(Runnable { resumeIfPaused() })', ''],
+    ['usbWaitingForeground = false\n          ++generation', '++generation'],
+    ['usbWaitingForeground = false\n      generation++', 'generation++'],
+  ]);
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  ]);
+});
+
+test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
+  const strings = readFileSync(join(MAIN, 'res', 'values', 'strings.xml'), 'utf8');
+  assert.ok(
+```
+
+Replace it with:
+
+```ts
+  ]);
+});
+
+// --------------------------------------------------------------- pin 19
+// Phase 2 Session 2F2 (spec §9.2, §13): the app's printers are a pool. One PrinterManager and one io thread per
+// printer (a blocked connect never stalls another), BUSY per printer (never device-wide), the list kept in Prefs
+// with the v1 keys naming its default, both bridge versions' status events from the pool's one publish, the
+// notification's worst state, and the state machine free of Android so JUnit 4 runs it on the JVM.
+interface PoolSources {
+  manager: string;
+  env: string;
+  pool: string;
+  api: string;
+  threads: string;
+  prefs: string;
+  service: string;
+  gradle: string;
+}
+function poolProblems(s: PoolSources): string[] {
+  const out: string[] = [];
+  const manager = strip(s.manager);
+  const need = (text: string, needle: string, why: string) => {
+    if (!text.includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(manager, 'class PrinterManager(val info: PrinterInfo, private val env: PrinterEnv, private val io: ExecutorService)', 'a printer is not a PrinterManager with its own io thread');
+  need(manager, 'private val printing = AtomicBoolean(false)', 'a printer has no busy flag of its own');
+  need(manager, 'if (!printing.compareAndSet(false, true)) {\n      cb(Reply.fail(BridgeCodes.BUSY))', 'BUSY is not answered per printer before any byte');
+  need(manager, 'io.shutdown()', 'a printer that left the list keeps its io thread');
+  for (const [name, text] of [['PrinterManager.kt', s.manager], ['PrinterEnv.kt', s.env]]) {
+    if (/^import android\./m.test(strip(text))) {
+      out.push(name + ' imports Android: the JVM tests cannot run it');
+    }
+  }
+  if (strip(s.api).includes('AtomicBoolean')) {
+    out.push('PrinterApi keeps a device-wide printing flag');
+  }
+  const pool = strip(s.pool);
+  need(pool, 'PrinterManager(info, env, PrinterThreads.newIo())', 'a printer does not get its own io thread');
+  need(pool, 'val changes = dedupe.next(one, all)', 'the publish is not de-duplicated per bridge version');
+  need(strip(s.threads), 'fun newIo(): ExecutorService', 'PrinterThreads makes no io thread per printer');
+  if (/val io:/.test(strip(s.threads))) {
+    out.push('a shared io thread is back');
+  }
+  const prefs = strip(s.prefs);
+  need(prefs, 'PoolList.restore(listed, p.getString(KEY_PRINTER_DEFAULT, null), savedPrinter(ctx))', 'the saved list does not migrate the v1 printer');
+  need(prefs, '.putString(KEY_PRINTER_ID, default.id)', 'the v1 keys do not name the default printer');
+  need(strip(s.service), 'HostTitle.of(PrinterPool.poolStatus())', 'the notification does not say the worst state across printers');
+  need(strip(s.gradle), 'testImplementation "junit:junit:4.13.2"', 'JUnit 4 is not a test dependency');
+  return out;
+}
+const poolSources = (): PoolSources => ({
+  manager: kt('PrinterManager.kt'),
+  env: kt('PrinterEnv.kt'),
+  pool: kt('PrinterPool.kt'),
+  api: kt('PrinterApi.kt'),
+  threads: kt('PrinterThreads.kt'),
+  prefs: kt('Prefs.kt'),
+  service: kt('PrintHostService.kt'),
+  gradle: read(GRADLE_APP),
+});
+const JVM_TESTS = join(ROOT, 'android', 'app', 'src', 'test', 'java', 'com', 'possoftware', 'pos', 'printer');
+
+test('pin 19: one PrinterManager and io thread per printer, BUSY per printer, the list in Prefs, JUnit on the JVM', () => {
+  assert.deepEqual(poolProblems(poolSources()), []);
+  for (const name of ['PrinterManagerTest.kt', 'PoolListTest.kt', 'PoolStatusTest.kt', 'PrinterFakes.kt']) {
+    assert.ok(existsSync(join(JVM_TESTS, name)), 'JVM test file missing: ' + name);
+  }
+});
+
+test('pin 19 mutation: every pool needle can fail', () => {
+  const base = poolSources();
+  const run = (key: keyof PoolSources) => (text: string) => poolProblems({ ...base, [key]: text });
+  everyMutationCaught(run('manager'), base.manager, [
+    ['private val io: ExecutorService)', 'private val ioX: ExecutorService)'],
+    ['private val printing = AtomicBoolean(false)', 'private val printing2 = AtomicBoolean(false)'],
+    ['cb(Reply.fail(BridgeCodes.BUSY))', 'cb(Reply.fail(BridgeCodes.NOT_CONNECTED))'],
+    ['io.shutdown()', 'io.hashCode()'],
+    ['import java.util.concurrent.ExecutorService', 'import android.os.Handler\nimport java.util.concurrent.ExecutorService'],
+  ]);
+  everyMutationCaught(run('env'), base.env, [['package com.possoftware.pos.printer', 'package com.possoftware.pos.printer\n\nimport android.content.Context']]);
+  everyMutationCaught(run('api'), base.api, [['import android.content.Context', 'import android.content.Context\nimport java.util.concurrent.atomic.AtomicBoolean']]);
+  everyMutationCaught(run('pool'), base.pool, [
+    ['PrinterManager(info, env, PrinterThreads.newIo())', 'PrinterManager(info, env, shared)'],
+    ['val changes = dedupe.next(one, all)', 'val changes = StatusDedupe.Changes(true, true)'],
+  ]);
+  everyMutationCaught(run('threads'), base.threads, [
+    ['fun newIo(): ExecutorService', 'fun newIoX(): ExecutorService'],
+    ['  private val ioCount', '  val io: ExecutorService = newIo()\n  private val ioCount'],
+  ]);
+  everyMutationCaught(run('prefs'), base.prefs, [
+    ['savedPrinter(ctx))\n', 'null)\n'],
+    ['.putString(KEY_PRINTER_ID, default.id)', '.remove(KEY_PRINTER_ID)'],
+  ]);
+  everyMutationCaught(run('service'), base.service, [['HostTitle.of(PrinterPool.poolStatus())', 'HostTitle.of(PoolSnapshot(emptyList(), null, "on"))']]);
+  everyMutationCaught(run('gradle'), base.gradle, [['testImplementation "junit:junit:4.13.2"', '// no tests']]);
+});
+
+test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
+  const strings = readFileSync(join(MAIN, 'res', 'values', 'strings.xml'), 'utf8');
+  assert.ok(
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/mobile && node --import tsx --test src/mobile-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 40`; `# pass 27`; `# fail 13`
+
+Run: `cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --no-daemon -Dorg.gradle.jvmargs="-Xmx1536m -XX:MaxMetaspaceSize=512m" -Pkotlin.compiler.execution.strategy=in-process 2>&1 | grep -E "^BUILD (SUCCESSFUL|FAILED)"`
+Expected: `BUILD FAILED (the time varies)`
+
+- [ ] **Step 3: The code**
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/BridgeCodes.kt`, find:
+
+```kotlin
+  const val PLATFORM = "android"
+  const val BRIDGE_VERSION = 1
+
+  val TRANSPORTS: List<String> =
+      listOf(TRANSPORT_BT_CLASSIC, TRANSPORT_BLE, TRANSPORT_TCP, TRANSPORT_USB)
+}
+```
+
+Replace it with:
+
+```kotlin
+  const val PLATFORM = "android"
+  const val BRIDGE_VERSION = 1
+
+  /** Phase 2 Session 2F2 (spec §9.2): bridge v2, beside v1 (apps/mobile/src/bridge/protocol-v2.ts; parity pinned). */
+  const val BRIDGE_V2 = 2
+
+  val TRANSPORTS: List<String> =
+      listOf(TRANSPORT_BT_CLASSIC, TRANSPORT_BLE, TRANSPORT_TCP, TRANSPORT_USB)
+}
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/HostController.kt`, find:
+
+```kotlin
+      return false
+    }
+    // A background start is refused by Android 12+; the page re-asks when the app is visible again.
+    if (!PrinterManager.appVisible) return false
+    return try {
+      PrintHostService.start(ctx.applicationContext, label)
+      active = true
+```
+
+Replace it with:
+
+```kotlin
+      return false
+    }
+    // A background start is refused by Android 12+; the page re-asks when the app is visible again.
+    if (!PrinterPool.appVisible) return false
+    return try {
+      PrintHostService.start(ctx.applicationContext, label)
+      active = true
+```
+
+Create `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PoolList.kt`:
+
+```kotlin
+package com.possoftware.pos.printer
+
+/**
+ * The app's printers in order and its default (Phase 2 Session 2F2, spec §9.2): what bridge v2 lists and every v1
+ * message acts on. Pure (no Android), so its rules are unit-tested: the first printer of an empty list becomes the
+ * default; the default leaving promotes the first remaining one; one entry per printer id; a v1 select of a new
+ * printer replaces the default in its place, as v1 always replaced its one printer. Not thread-safe: [PrinterPool]
+ * guards it.
+ */
+class PoolList<T>(private val idOf: (T) -> String) {
+  private val items = ArrayList<T>()
+
+  var defaultId: String? = null
+    private set
+
+  fun all(): List<T> = ArrayList(items)
+
+  fun find(id: String): T? = items.firstOrNull { idOf(it) == id }
+
+  fun default(): T? = defaultId?.let { find(it) }
+
+  /** v2 select: [item] joins the list (in the place of a listed one with its id, which is returned to retire). */
+  fun put(item: T): List<T> {
+    val at = items.indexOfFirst { idOf(it) == idOf(item) }
+    val retired = if (at >= 0) listOf(items.set(at, item)) else emptyList()
+    if (at < 0) items.add(item)
+    if (defaultId == null) defaultId = idOf(item)
+    return retired
+  }
+
+  /** v1 select: [item] becomes the default. A printer already listed is started anew in its own place and the old
+   *  default stays listed (a v2 page's "Change printer" to one of the app's other printers); a new one takes the
+   *  default's place and the old default leaves the list, as v1 always replaced its one printer. What leaves is
+   *  returned to retire. */
+  fun putDefault(item: T): List<T> {
+    if (find(idOf(item)) != null) {
+      val retired = put(item)
+      defaultId = idOf(item)
+      return retired
+    }
+    val current = defaultId?.let { id -> items.indexOfFirst { idOf(it) == id } } ?: -1
+    if (current < 0) {
+      val retired = put(item)
+      defaultId = idOf(item)
+      return retired
+    }
+    val retired = listOf(items.set(current, item))
+    defaultId = idOf(item)
+    return retired
+  }
+
+  /** Makes [id] the default when it is listed (a saved list's own default); false otherwise. */
+  fun makeDefault(id: String): Boolean {
+    if (find(id) == null) return false
+    defaultId = id
+    return true
+  }
+
+  /** Removes [id] (returned to retire); the default leaving promotes the first remaining printer. */
+  fun remove(id: String): T? {
+    val at = items.indexOfFirst { idOf(it) == id }
+    if (at < 0) return null
+    val gone = items.removeAt(at)
+    if (defaultId == id) defaultId = items.firstOrNull()?.let(idOf)
+    return gone
+  }
+
+  companion object {
+    /**
+     * The saved list as this app starts. [listed] and [listedDefault] are the saved list (null when none was ever
+     * saved: an app updated from v1, whose one printer [v1] becomes the list and its default). [v1] is the printer
+     * the v1 keys name, which always name the default (an older app reinstalled over this one keeps reading and
+     * writing them): when they name another printer, or none, an older app changed it, and this app follows as a
+     * v1 select or forget would.
+     */
+    fun restore(listed: List<PrinterInfo>?, listedDefault: String?, v1: PrinterInfo?): PoolList<PrinterInfo> {
+      val pool = PoolList<PrinterInfo> { it.id }
+      if (listed == null) {
+        if (v1 != null) pool.put(v1)
+        return pool
+      }
+      for (info in listed) if (pool.find(info.id) == null) pool.put(info)
+      if (listedDefault != null) pool.makeDefault(listedDefault)
+      if (v1 == null) {
+        pool.defaultId?.let { pool.remove(it) }
+      } else if (v1 != pool.default()) {
+        pool.putDefault(v1)
+      }
+      return pool
+    }
+  }
+}
+```
+
+Create `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PoolStatus.kt`:
+
+```kotlin
+package com.possoftware.pos.printer
+
+/**
+ * Publish de-duplication (Phase 2 Session 2F2; pure, unit-tested): each bridge version's printer.status event goes
+ * out only when what it carries changed, since every event nudges the page's print agent. The v1 event carries the
+ * default printer's status, so it follows every change of the default (a select into an empty list, a promotion
+ * after a forget, a v1 select or forget) and of its state; the v2 event carries every printer. The pool's publish
+ * lock guards it.
+ */
+class StatusDedupe {
+  private var lastV1: StatusSnapshot? = null
+  private var lastV2: PoolSnapshot? = null
+
+  /** Which events [v1] and [v2] need; both are remembered as published. */
+  fun next(v1: StatusSnapshot, v2: PoolSnapshot): Changes {
+    val changes = Changes(v1 != lastV1, v2 != lastV2)
+    lastV1 = v1
+    lastV2 = v2
+    return changes
+  }
+
+  data class Changes(val v1: Boolean, val v2: Boolean)
+}
+
+/** What the print-host notification's title says: the worst state across the app's printers (pure, unit-tested). */
+sealed class HostTitle {
+  /** No printer, or the only printer is not connected: the words of an app with one printer. */
+  object NotConnected : HostTitle()
+
+  /** The only printer, connected. */
+  data class Printer(val name: String) : HostTitle()
+
+  /** Every one of several printers is connected. */
+  data class AllConnected(val count: Int) : HostTitle()
+
+  /** One of several printers is not connected. */
+  data class OneDown(val name: String) : HostTitle()
+
+  /** Several printers are not connected. */
+  data class SomeDown(val count: Int) : HostTitle()
+
+  companion object {
+    fun of(pool: PoolSnapshot): HostTitle {
+      val down = pool.printers.filter { it.state != BridgeCodes.STATE_CONNECTED }
+      return when {
+        pool.printers.isEmpty() -> NotConnected
+        pool.printers.size == 1 -> if (down.isEmpty()) Printer(pool.printers[0].printer.name) else NotConnected
+        down.isEmpty() -> AllConnected(pool.printers.size)
+        down.size == 1 -> OneDown(down[0].printer.name)
+        else -> SomeDown(down.size)
+      }
+    }
+  }
+}
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PosPrinterModule.kt`, find:
+
+```kotlin
+  override fun getName(): String = NAME
+
+  override fun initialize() {
+    PrinterManager.init(reactContext)
+    reactContext.addLifecycleEventListener(this)
+    reactContext.addActivityEventListener(bluetoothEnabler.activityListener)
+  }
+```
+
+Replace it with:
+
+```kotlin
+  override fun getName(): String = NAME
+
+  override fun initialize() {
+    PrinterPool.init(reactContext)
+    reactContext.addLifecycleEventListener(this)
+    reactContext.addActivityEventListener(bluetoothEnabler.activityListener)
+  }
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PosPrinterModule.kt`, find:
+
+```kotlin
+  }
+
+  override fun onHostResume() {
+    PrinterManager.appVisible = true
+    PrinterApi.refreshStatus { }
+    host.onResume()
+  }
+
+  override fun onHostPause() {
+    PrinterManager.appVisible = false
+  }
+
+  override fun onHostDestroy() {
+    PrinterManager.appVisible = false
+    host.stopHost()
+  }
+
+```
+
+Replace it with:
+
+```kotlin
+  }
+
+  override fun onHostResume() {
+    PrinterPool.appVisible = true
+    PrinterApi.refreshStatus { }
+    host.onResume()
+  }
+
+  override fun onHostPause() {
+    PrinterPool.appVisible = false
+  }
+
+  override fun onHostDestroy() {
+    PrinterPool.appVisible = false
+    host.stopHost()
+  }
+
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PosPrinterModule.kt`, find:
+
+```kotlin
+
+  private fun settleStatus(promise: Promise, reply: Reply<StatusSnapshot>) {
+    settle(promise, reply) { StatusJson.toMap(it) }
+  }
+
+  @Suppress("DEPRECATION") // the flags-only overload is the one that exists on API 24..32
+```
+
+Replace it with:
+
+```kotlin
+
+  private fun settleStatus(promise: Promise, reply: Reply<StatusSnapshot>) {
+    settle(promise, reply) { StatusJson.toMap(it) }
+  }
+
+  private fun settlePool(promise: Promise, reply: Reply<PoolSnapshot>) {
+    settle(promise, reply) { StatusJson.poolMap(it) }
+  }
+
+  private fun settleBytes(promise: Promise, reply: Reply<Int>) {
+    settle(promise, reply) { count -> Arguments.createMap().apply { putInt("bytes", count) } }
+  }
+
+  @Suppress("DEPRECATION") // the flags-only overload is the one that exists on API 24..32
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PosPrinterModule.kt`, find:
+
+```kotlin
+  @ReactMethod
+  fun getStatus(promise: Promise) {
+    guarded(promise, BridgeCodes.UNSUPPORTED) {
+      promise.resolve(StatusJson.toMap(PrinterManager.status()))
+    }
+  }
+
+```
+
+Replace it with:
+
+```kotlin
+  @ReactMethod
+  fun getStatus(promise: Promise) {
+    guarded(promise, BridgeCodes.UNSUPPORTED) {
+      promise.resolve(StatusJson.toMap(PrinterPool.status()))
+    }
+  }
+
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PosPrinterModule.kt`, find:
+
+```kotlin
+
+  @ReactMethod
+  fun print(base64: String, promise: Promise) {
+    guarded(promise, BridgeCodes.WRITE_FAILED) {
+      PrinterApi.print(base64) { reply ->
+        settle(promise, reply) { count -> Arguments.createMap().apply { putInt("bytes", count) } }
+      }
+    }
+  }
+
+  @ReactMethod
+```
+
+Replace it with:
+
+```kotlin
+
+  @ReactMethod
+  fun print(base64: String, promise: Promise) {
+    guarded(promise, BridgeCodes.WRITE_FAILED) { PrinterApi.print(base64) { reply -> settleBytes(promise, reply) } }
+  }
+
+  // ---- the app's printers (bridge v2, Phase 2 Session 2F2): each names its printer, each answer but the print's is
+  // the whole list ----
+
+  @ReactMethod
+  fun poolStatus(promise: Promise) {
+    guarded(promise, BridgeCodes.UNSUPPORTED) { promise.resolve(StatusJson.poolMap(PrinterPool.poolStatus())) }
+  }
+
+  @ReactMethod
+  fun poolSelectPrinter(id: String, promise: Promise) {
+    guarded(promise, BridgeCodes.UNSUPPORTED) { PrinterApi.poolSelectPrinter(id) { reply -> settlePool(promise, reply) } }
+  }
+
+  @ReactMethod
+  fun poolSelectTcp(host: String, port: Int, promise: Promise) {
+    guarded(promise, BridgeCodes.UNSUPPORTED) { PrinterApi.poolSelectTcp(host, port) { reply -> settlePool(promise, reply) } }
+  }
+
+  @ReactMethod
+  fun poolReconnect(printerId: String, promise: Promise) {
+    guarded(promise, BridgeCodes.UNSUPPORTED) { PrinterApi.poolReconnect(printerId) { reply -> settlePool(promise, reply) } }
+  }
+
+  @ReactMethod
+  fun poolForget(printerId: String, promise: Promise) {
+    guarded(promise, BridgeCodes.UNSUPPORTED) { PrinterApi.poolForget(printerId) { reply -> settlePool(promise, reply) } }
+  }
+
+  @ReactMethod
+  fun poolPrint(printerId: String, base64: String, promise: Promise) {
+    guarded(promise, BridgeCodes.WRITE_FAILED) { PrinterApi.poolPrint(printerId, base64) { reply -> settleBytes(promise, reply) } }
+  }
+
+  @ReactMethod
+```
+
+Replace the whole of `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/Prefs.kt` with:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import android.content.Context
+import android.content.SharedPreferences
+import org.json.JSONArray
+import org.json.JSONException
+import org.json.JSONObject
+
+/**
+ * The only persisted state: the POS address, the app's printers and the one-time battery prompt flag.
+ *
+ * Phase 2 Session 2F2 (spec §9.2): the printers are a list with a default ([KEY_PRINTERS], [KEY_PRINTER_DEFAULT]). The
+ * v1 keys (the one printer of every app before it) always name the default printer: an app updated from v1 moves its
+ * one printer into the list as the default, and an older app reinstalled over this one still finds this device's
+ * printer ([PoolList.restore] follows any change it makes).
+ */
+object Prefs {
+  private const val FILE = "pos_software_prefs"
+  private const val KEY_ORIGIN = "posOrigin"
+  private const val KEY_PRINTER_ID = "printerId"
+  private const val KEY_PRINTER_NAME = "printerName"
+  private const val KEY_PRINTER_TRANSPORT = "printerTransport"
+  private const val KEY_PRINTER_ADDRESS = "printerAddress"
+  private const val KEY_PRINTERS = "printers"
+  private const val KEY_PRINTER_DEFAULT = "printerDefault"
+  private const val KEY_BATTERY_PROMPTED = "batteryPrompted"
+
+  private fun prefs(ctx: Context): SharedPreferences =
+      ctx.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+
+  fun origin(ctx: Context): String? = prefs(ctx).getString(KEY_ORIGIN, null)
+
+  fun saveOrigin(ctx: Context, origin: String) {
+    prefs(ctx).edit().putString(KEY_ORIGIN, origin).apply()
+  }
+
+  fun clearOrigin(ctx: Context) {
+    prefs(ctx).edit().remove(KEY_ORIGIN).apply()
+  }
+
+  /** The printer the v1 keys name (the default printer), or null. */
+  private fun savedPrinter(ctx: Context): PrinterInfo? {
+    val p = prefs(ctx)
+    val id = p.getString(KEY_PRINTER_ID, null) ?: return null
+    val name = p.getString(KEY_PRINTER_NAME, null) ?: return null
+    val transport = p.getString(KEY_PRINTER_TRANSPORT, null) ?: return null
+    return PrinterInfo(id, name, transport, p.getString(KEY_PRINTER_ADDRESS, null))
+  }
+
+  /** The app's printers as saved, the one v1 printer migrated into the list as the default. */
+  fun savedPrinters(ctx: Context): PoolList<PrinterInfo> {
+    val p = prefs(ctx)
+    val listed = p.getString(KEY_PRINTERS, null)?.let { parsePrinters(it) }
+    return PoolList.restore(listed, p.getString(KEY_PRINTER_DEFAULT, null), savedPrinter(ctx))
+  }
+
+  /** Saves the list and its default; the v1 keys name the default printer (or nothing, with no printer). */
+  fun savePrinters(ctx: Context, printers: List<PrinterInfo>, defaultId: String?) {
+    val array = JSONArray()
+    for (info in printers) {
+      val json = JSONObject().put("id", info.id).put("name", info.name).put("transport", info.transport)
+      if (info.address != null) json.put("address", info.address)
+      array.put(json)
+    }
+    val edit = prefs(ctx).edit().putString(KEY_PRINTERS, array.toString())
+    val default = printers.firstOrNull { it.id == defaultId }
+    if (default == null) {
+      edit
+          .remove(KEY_PRINTER_DEFAULT)
+          .remove(KEY_PRINTER_ID)
+          .remove(KEY_PRINTER_NAME)
+          .remove(KEY_PRINTER_TRANSPORT)
+          .remove(KEY_PRINTER_ADDRESS)
+    } else {
+      edit
+          .putString(KEY_PRINTER_DEFAULT, default.id)
+          .putString(KEY_PRINTER_ID, default.id)
+          .putString(KEY_PRINTER_NAME, default.name)
+          .putString(KEY_PRINTER_TRANSPORT, default.transport)
+          .putString(KEY_PRINTER_ADDRESS, default.address)
+    }
+    edit.apply()
+  }
+
+  /** The saved list, or null when it cannot be read (then the v1 keys alone say this device's printer). */
+  private fun parsePrinters(raw: String): List<PrinterInfo>? =
+      try {
+        val array = JSONArray(raw)
+        val out = ArrayList<PrinterInfo>(array.length())
+        for (i in 0 until array.length()) {
+          val json = array.optJSONObject(i) ?: continue
+          val id = json.optString("id", "")
+          val name = json.optString("name", "")
+          val transport = json.optString("transport", "")
+          if (id.isEmpty() || name.isEmpty() || PrinterIds.transportOf(id) != transport) continue
+          out.add(PrinterInfo(id, name, transport, if (json.has("address")) json.optString("address") else null))
+        }
+        out
+      } catch (e: JSONException) {
+        null
+      }
+
+  fun batteryPrompted(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_BATTERY_PROMPTED, false)
+
+  fun markBatteryPrompted(ctx: Context) {
+    prefs(ctx).edit().putBoolean(KEY_BATTERY_PROMPTED, true).apply()
+  }
+}
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt`, find:
+
+```kotlin
+      object : Runnable {
+        override fun run() {
+          renewWakeLock()
+          if (!PrinterManager.appVisible) {
+            WebViewDelivery.deliverEvent(BridgeCodes.EVENT_APP_WAKE, JSONObject())
+          }
+          probePage()
+```
+
+Replace it with:
+
+```kotlin
+      object : Runnable {
+        override fun run() {
+          renewWakeLock()
+          if (!PrinterPool.appVisible) {
+            WebViewDelivery.deliverEvent(BridgeCodes.EVENT_APP_WAKE, JSONObject())
+          }
+          probePage()
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt`, find:
+
+```kotlin
+  }
+
+  /** The page has stopped answering and nobody is looking at the app, so only a notification can say so. */
+  private fun alerting(): Boolean = deadTicks >= PAGE_DEAD_TICKS && !PrinterManager.appVisible
+
+  override fun onBind(intent: Intent?): IBinder? = null
+
+  override fun onCreate() {
+    super.onCreate()
+    ensureChannel()
+    PrinterManager.statusObserver = { handler.post { refreshNotification() } }
+  }
+
+  override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+```
+
+Replace it with:
+
+```kotlin
+  }
+
+  /** The page has stopped answering and nobody is looking at the app, so only a notification can say so. */
+  private fun alerting(): Boolean = deadTicks >= PAGE_DEAD_TICKS && !PrinterPool.appVisible
+
+  override fun onBind(intent: Intent?): IBinder? = null
+
+  override fun onCreate() {
+    super.onCreate()
+    ensureChannel()
+    PrinterPool.statusObserver = { handler.post { refreshNotification() } }
+  }
+
+  override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt`, find:
+
+```kotlin
+
+  override fun onDestroy() {
+    handler.removeCallbacksAndMessages(null)
+    PrinterManager.statusObserver = null
+    try {
+      wakeLock?.let { if (it.isHeld) it.release() }
+    } catch (e: RuntimeException) {
+```
+
+Replace it with:
+
+```kotlin
+
+  override fun onDestroy() {
+    handler.removeCallbacksAndMessages(null)
+    PrinterPool.statusObserver = null
+    try {
+      wakeLock?.let { if (it.isHeld) it.release() }
+    } catch (e: RuntimeException) {
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt`, find:
+
+```kotlin
+    manager.createNotificationChannel(alert)
+  }
+
+  private fun title(snapshot: StatusSnapshot): String {
+    val printer = snapshot.printer
+    return if (snapshot.state == BridgeCodes.STATE_CONNECTED && printer != null) {
+      getString(R.string.print_host_title_printer, printer.name)
+    } else {
+      getString(R.string.print_host_title_no_printer)
+    }
+  }
+
+  private fun text(): String =
+      getString(
+```
+
+Replace it with:
+
+```kotlin
+    manager.createNotificationChannel(alert)
+  }
+
+  /** Phase 2 Session 2F2 (spec §9.2): the worst state across the app's printers ([HostTitle]); one printer reads as
+   *  it always did. */
+  private fun title(): String =
+      when (val worst = HostTitle.of(PrinterPool.poolStatus())) {
+        HostTitle.NotConnected -> getString(R.string.print_host_title_no_printer)
+        is HostTitle.Printer -> getString(R.string.print_host_title_printer, worst.name)
+        is HostTitle.AllConnected -> getString(R.string.print_host_title_printers, worst.count)
+        is HostTitle.OneDown -> getString(R.string.print_host_title_printer_down, worst.name)
+        is HostTitle.SomeDown -> getString(R.string.print_host_title_printers_down, worst.count)
+      }
+
+  private fun text(): String =
+      getString(
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt`, find:
+
+```kotlin
+          .setPriority(NotificationCompat.PRIORITY_HIGH)
+    } else {
+      builder
+          .setContentTitle(title(PrinterManager.status()))
+          .setContentText(text())
+          .setOnlyAlertOnce(true)
+          .setCategory(NotificationCompat.CATEGORY_SERVICE)
+```
+
+Replace it with:
+
+```kotlin
+          .setPriority(NotificationCompat.PRIORITY_HIGH)
+    } else {
+      builder
+          .setContentTitle(title())
+          .setContentText(text())
+          .setOnlyAlertOnce(true)
+          .setCategory(NotificationCompat.CATEGORY_SERVICE)
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt`, find:
+
+```kotlin
+  /** Re-posts the notification only when its words changed. */
+  private fun refreshNotification() {
+    if (!canNotify()) return
+    val key = if (alerting()) ALERT_KEY else title(PrinterManager.status()) + "|" + text()
+    if (key == shownKey) return
+    try {
+      NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification())
+```
+
+Replace it with:
+
+```kotlin
+  /** Re-posts the notification only when its words changed. */
+  private fun refreshNotification() {
+    if (!canNotify()) return
+    val key = if (alerting()) ALERT_KEY else title() + "|" + text()
+    if (key == shownKey) return
+    try {
+      NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification())
+```
+
+Replace the whole of `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterApi.kt` with:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import android.content.Context
+
+/**
+ * Request entry points for the module and the system receivers. Every call returns at once and does its work on the
+ * timer thread (never blocks) or a printer's own io thread (connect, write).
+ *
+ * Phase 2 Session 2F2 (spec §9.2, bridge v2): a v1 call acts on the app's default printer exactly as v1 always acted on
+ * its one printer (a v1 select replaces it, a v1 forget removes it); a v2 call names its printer by the app's id and
+ * answers with every printer ([PrinterPool.poolStatus]); a v2 select adds a printer to the list.
+ */
+object PrinterApi {
+  /** The selection slot of v1 calls (the default printer); a v2 call's slot is its printer's id. */
+  private const val V1_SLOT = ""
+
+  private val timer = PrinterThreads.timer
+
+  fun listPrinters(scan: Boolean, cb: ReplyCallback<List<PrinterInfo>>) {
+    timer.execute(
+        Runnable {
+          val ctx = PrinterPool.app
+          if (ctx == null) {
+            cb(Reply.fail(BridgeCodes.UNSUPPORTED))
+          } else if (!scan) {
+            cb(Reply.Ok(PrinterPool.remember(PrinterDiscovery.known(ctx))))
+          } else if (!BtAccess.hasScan(ctx) || !BtAccess.hasConnect(ctx)) {
+            cb(Reply.fail(BridgeCodes.UNAUTHORIZED))
+          } else if (BtAccess.locationOff(ctx)) {
+            cb(Reply.fail(BridgeCodes.LOCATION_OFF))
+          } else {
+            val started =
+                PrinterDiscovery.scan(ctx) { list ->
+                  timer.execute(Runnable { cb(Reply.Ok(PrinterPool.remember(list))) })
+                }
+            if (!started) cb(Reply.fail(BridgeCodes.BUSY))
+          }
+        }
+    )
+  }
+
+  fun selectPrinter(id: String, cb: ReplyCallback<StatusSnapshot>) = selectById(id, false, cb) { PrinterPool.status() }
+
+  fun selectTcp(host: String, port: Int, cb: ReplyCallback<StatusSnapshot>) = selectByTcp(host, port, false, cb) { PrinterPool.status() }
+
+  fun poolSelectPrinter(id: String, cb: ReplyCallback<PoolSnapshot>) = selectById(id, true, cb) { PrinterPool.poolStatus() }
+
+  fun poolSelectTcp(host: String, port: Int, cb: ReplyCallback<PoolSnapshot>) = selectByTcp(host, port, true, cb) { PrinterPool.poolStatus() }
+
+  private fun <T> selectById(id: String, v2: Boolean, cb: ReplyCallback<T>, answer: () -> T) {
+    timer.execute(
+        Runnable {
+          val ctx = PrinterPool.app
+          if (ctx == null) {
+            cb(Reply.fail(BridgeCodes.UNSUPPORTED))
+            return@Runnable
+          }
+          val info = PrinterPool.lookup(id) ?: PrinterDiscovery.infoFromId(ctx, id)
+          if (info == null) cb(Reply.fail(BridgeCodes.BAD_REQUEST)) else select(ctx, info, v2, cb, answer)
+        }
+    )
+  }
+
+  private fun <T> selectByTcp(host: String, port: Int, v2: Boolean, cb: ReplyCallback<T>, answer: () -> T) {
+    timer.execute(
+        Runnable {
+          val ctx = PrinterPool.app
+          if (ctx == null) {
+            cb(Reply.fail(BridgeCodes.UNSUPPORTED))
+          } else if (!PrinterIds.validHost(host) || !PrinterIds.validPort(port)) {
+            cb(Reply.fail(BridgeCodes.BAD_REQUEST))
+          } else {
+            select(ctx, PrinterDiscovery.tcpInfo(ctx, host, port), v2, cb, answer)
+          }
+        }
+    )
+  }
+
+  /** Saves the choice, then settles after the first attempt (connected or disconnected). */
+  private fun <T> select(ctx: Context, info: PrinterInfo, v2: Boolean, cb: ReplyCallback<T>, answer: () -> T) {
+    // A newer selection for the same slot aborts the lookup of an older one before anything else happens.
+    val slot = if (v2) info.id else V1_SLOT
+    val ticket = SelectionFence.begin(slot)
+    if (PrinterManager.isBluetooth(info)) {
+      val failure =
+          when (BtAccess.state(ctx)) {
+            BridgeCodes.BT_UNSUPPORTED -> BridgeCodes.UNSUPPORTED
+            BridgeCodes.BT_UNAUTHORIZED -> BridgeCodes.UNAUTHORIZED
+            BridgeCodes.BT_OFF -> BridgeCodes.BLUETOOTH_OFF
+            else -> null
+          }
+      if (failure != null) {
+        cb(Reply.fail(failure))
+        return
+      }
+    }
+    if (info.transport == BridgeCodes.TRANSPORT_TCP) {
+      fenceThenCommit(info, slot, ticket, cb, answer) { commit(info, v2, cb, answer) }
+    } else {
+      commit(info, v2, cb, answer)
+    }
+  }
+
+  /**
+   * Checks a network host on the dns thread (DNS blocks; never an io thread). A non-private address is BAD_REQUEST,
+   * and a selection made newer for the same slot meanwhile is not committed.
+   */
+  private fun <T> fenceThenCommit(info: PrinterInfo, slot: String, ticket: Int, cb: ReplyCallback<T>, answer: () -> T, commit: () -> Unit) {
+    val target = PrinterIds.tcpOf(info.id)
+    if (target == null) {
+      cb(Reply.fail(BridgeCodes.BAD_REQUEST))
+      return
+    }
+    SelectionFence.check(target.first, slot, ticket, cb, answer, commit)
+  }
+
+  private fun <T> commit(info: PrinterInfo, v2: Boolean, cb: ReplyCallback<T>, answer: () -> T) {
+    val manager = if (v2) PrinterPool.add(info) else PrinterPool.replaceDefault(info)
+    manager.connectAsync(manager.begin()) { cb(Reply.Ok(answer())) }
+  }
+
+  fun reconnect(cb: ReplyCallback<StatusSnapshot>) =
+      timer.execute(Runnable { reconnectOf(PrinterPool.defaultManager(), cb) { PrinterPool.status() } })
+
+  fun poolReconnect(printerId: String, cb: ReplyCallback<PoolSnapshot>) =
+      timer.execute(Runnable { reconnectOf(PrinterPool.manager(printerId), cb) { PrinterPool.poolStatus() } })
+
+  private fun <T> reconnectOf(manager: PrinterManager?, cb: ReplyCallback<T>, answer: () -> T) {
+    if (manager == null) cb(Reply.Ok(answer())) else manager.connectAsync(manager.begin()) { cb(Reply.Ok(answer())) }
+  }
+
+  fun forget(cb: ReplyCallback<StatusSnapshot>) {
+    timer.execute(
+        Runnable {
+          SelectionFence.begin(V1_SLOT)
+          PrinterPool.removeDefault()
+          cb(Reply.Ok(PrinterPool.status()))
+        }
+    )
+  }
+
+  fun poolForget(printerId: String, cb: ReplyCallback<PoolSnapshot>) {
+    timer.execute(
+        Runnable {
+          SelectionFence.begin(printerId)
+          PrinterPool.remove(printerId)
+          cb(Reply.Ok(PrinterPool.poolStatus()))
+        }
+    )
+  }
+
+  /** Re-publishes (permissions may have changed) and resumes every printer that waited for Bluetooth or the screen. */
+  fun refreshStatus(cb: ReplyCallback<StatusSnapshot>) {
+    timer.execute(
+        Runnable {
+          PrinterPool.managers().forEach { it.resumeIfPaused() }
+          PrinterPool.publish()
+          cb(Reply.Ok(PrinterPool.status()))
+        }
+    )
+  }
+
+  fun onBluetoothStateChanged() {
+    timer.execute(
+        Runnable {
+          PrinterPool.managers().forEach { it.resumeIfPaused() }
+          PrinterPool.publish()
+        }
+    )
+  }
+
+  /** A USB device arrived: every USB printer of the list that is not connected tries again. */
+  fun onUsbAttached() {
+    timer.execute(
+        Runnable {
+          for (manager in PrinterPool.managers()) {
+            if (manager.info.transport == BridgeCodes.TRANSPORT_USB && manager.connectedTransport() == null) {
+              manager.connectAsync(manager.begin()) {}
+            }
+          }
+        }
+    )
+  }
+
+  /** A USB device left: the printer whose link it was loses it (two identical models are never both listed). */
+  fun onUsbDetached(vendorId: Int, productId: Int) {
+    timer.execute(
+        Runnable {
+          for (manager in PrinterPool.managers()) {
+            val t = manager.activeTransport()
+            if (t is UsbTransport && t.matches(vendorId, productId)) manager.onLinkLost(t)
+          }
+        }
+    )
+  }
+
+  /** v1: one print job on the default printer. */
+  fun print(base64: String, cb: ReplyCallback<Int>) {
+    val manager = PrinterPool.defaultManager()
+    if (manager == null) cb(Reply.fail(BridgeCodes.NOT_CONNECTED)) else manager.print(base64, cb)
+  }
+
+  /** v2: one print job on the named printer; a printer the app does not list is not connected (nothing sent). */
+  fun poolPrint(printerId: String, base64: String, cb: ReplyCallback<Int>) {
+    val manager = PrinterPool.manager(printerId)
+    if (manager == null) cb(Reply.fail(BridgeCodes.NOT_CONNECTED)) else manager.print(base64, cb)
+  }
+}
+```
+
+Create `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterEnv.kt`:
+
+```kotlin
+package com.possoftware.pos.printer
+
+/**
+ * What one printer's [PrinterManager] needs from the platform (Phase 2 Session 2F2, spec §13). The app's own is
+ * [PrinterPool]'s (Android: Bluetooth, the transports, the timer thread, the page); the JVM unit tests pass a fake,
+ * so the state machine (backoff, pause flags, per-printer busy) is tested with no device.
+ */
+interface PrinterEnv {
+  /** Bluetooth is on and this app may use it. */
+  fun bluetoothOn(): Boolean
+
+  /** The app is on screen (a USB permission dialog can show). */
+  fun visible(): Boolean
+
+  /** A new, unopened transport for [info]; throws [TransportException] BAD_REQUEST for a bad id. */
+  fun transport(info: PrinterInfo, listener: LinkListener): PrinterTransport
+
+  /** Runs [task] on the timer thread after [delayMs]. */
+  fun schedule(delayMs: Long, task: Runnable): Cancel
+
+  /** Runs [task] on the timer thread soon. */
+  fun onTimer(task: Runnable)
+
+  /** The bytes of a print job, or null when it is not base64. */
+  fun decode(base64: String): ByteArray?
+
+  /** Something a page reads about this printer changed: the pool publishes (it de-duplicates). */
+  fun changed()
+}
+
+/** A scheduled task. [cancel] is true only when it stopped the task before it started. */
+fun interface Cancel {
+  fun cancel(): Boolean
+}
+```
+
+Replace the whole of `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterManager.kt` with:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.atomic.AtomicBoolean
+
+/**
+ * One printer of the app's list: its state, its connect and reconnect loop, and its prints. Phase 2 Session 2F2
+ * (spec §9.2): every printer has a manager of its own with its own io executor ([io]), so a blocked Bluetooth
+ * Classic connect or a USB permission wait never stalls another printer, and BUSY is per printer. [PrinterPool]
+ * keeps the list and publishes; [PrinterApi] holds the request entry points.
+ *
+ * State is guarded by [lock], which is never held across I/O or while telling the pool something changed
+ * ([PrinterEnv.changed]). [generation] invalidates in-flight attempts when this printer is begun again (select,
+ * reconnect) or halted (it left the list). Nothing here touches Android: [env] carries every platform call, so this
+ * state machine runs in JVM unit tests (src/test).
+ */
+class PrinterManager(val info: PrinterInfo, private val env: PrinterEnv, private val io: ExecutorService) {
+  companion object {
+    const val RECONNECT_STEADY_MS = 30_000L
+    val RECONNECT_BACKOFF_MS: LongArray = longArrayOf(2_000L, 5_000L, 10_000L)
+    const val PRINT_JOB_TIMEOUT_MS = 60_000L
+
+    /** The wait before reconnect attempt number [attempts] (0-based): 2 s, 5 s, 10 s, then every 30 s. */
+    fun backoffMs(attempts: Int): Long =
+        if (attempts < RECONNECT_BACKOFF_MS.size) RECONNECT_BACKOFF_MS[attempts] else RECONNECT_STEADY_MS
+
+    fun isBluetooth(info: PrinterInfo): Boolean =
+        info.transport == BridgeCodes.TRANSPORT_BT_CLASSIC || info.transport == BridgeCodes.TRANSPORT_BLE
+
+    fun closeQuietly(t: PrinterTransport) {
+      try {
+        t.close()
+      } catch (e: RuntimeException) {
+        // Closing is best effort.
+      }
+    }
+  }
+
+  private val lock = Any()
+  private val printing = AtomicBoolean(false)
+  private val linkListener = LinkListener { source -> onLinkLost(source) }
+
+  private var transport: PrinterTransport? = null
+  private var pending: PrinterTransport? = null
+  private var pendingLost = false
+  // A manager is made only to be started at once (init, a select), and begin() is always followed by connectAsync():
+  // it reads as connecting until its first attempt settles, so a select's first event is {connecting} as on v1.
+  private var state: String = BridgeCodes.STATE_CONNECTING
+  private var generation = 0
+  private var attempts = 0
+  private var halted = false
+  private var btPaused = false
+  private var usbPermissionPaused = false
+  // This USB printer needs permission but the app was hidden (no dialog can show). resumeIfPaused() asks
+  // again once the app is visible; not a denial, so no explicit Reconnect is needed.
+  private var usbWaitingForeground = false
+  private var reconnectTask: Cancel? = null
+
+  val id: String
+    get() = info.id
+
+  /** This printer's state as the page reads it ("none" only once it left the list). */
+  fun state(): String = synchronized(lock) { state }
+
+  /** The transport of a CONNECTED printer, else null. */
+  fun connectedTransport(): PrinterTransport? =
+      synchronized(lock) { if (state == BridgeCodes.STATE_CONNECTED) transport else null }
+
+  fun activeTransport(): PrinterTransport? = synchronized(lock) { transport }
+
+  /** Lock held. Detaches every live transport into [into] and cancels the reconnect timer. */
+  private fun collect(into: MutableList<PrinterTransport>) {
+    transport?.let { into.add(it) }
+    pending?.let { into.add(it) }
+    transport = null
+    pending = null
+    pendingLost = false
+    reconnectTask?.cancel()
+    reconnectTask = null
+  }
+
+  /** Starts a new generation: aborts anything in flight and returns the generation. */
+  fun begin(): Int {
+    val old = ArrayList<PrinterTransport>(2)
+    val gen =
+        synchronized(lock) {
+          collect(old)
+          if (!halted) state = BridgeCodes.STATE_CONNECTING
+          attempts = 0
+          btPaused = false
+          usbPermissionPaused = false
+          usbWaitingForeground = false
+          ++generation
+        }
+    old.forEach { closeQuietly(it) }
+    return gen
+  }
+
+  /** This printer left the list: aborts everything, and its io executor takes no new work. */
+  fun halt() {
+    val old = ArrayList<PrinterTransport>(2)
+    synchronized(lock) {
+      collect(old)
+      halted = true
+      state = BridgeCodes.STATE_NONE
+      attempts = 0
+      btPaused = false
+      usbPermissionPaused = false
+      usbWaitingForeground = false
+      generation++
+    }
+    old.forEach { closeQuietly(it) }
+    io.shutdown()
+  }
+
+  /** Queues [task] on this printer's io thread; false once the printer was halted (nothing will run). */
+  private fun onIo(task: () -> Unit): Boolean =
+      try {
+        io.execute(Runnable { task() })
+        true
+      } catch (e: RejectedExecutionException) {
+        false
+      }
+
+  /** Runs one attempt for [gen] on the io thread; [after] runs once it settled (at once when halted). */
+  fun connectAsync(gen: Int, after: () -> Unit) {
+    val queued =
+        onIo {
+          attempt(gen)
+          after()
+        }
+    if (!queued) after()
+  }
+
+  /** One connect attempt for [gen] on the io thread (may block). Never throws: every failure (incl. a platform
+   *  SecurityException) reports disconnected and schedules a reconnect, so callers settle. */
+  private fun attempt(gen: Int) {
+    synchronized(lock) {
+      if (gen != generation || halted) return
+      state = BridgeCodes.STATE_CONNECTING
+    }
+    env.changed()
+    if (isBluetooth(info) && !env.bluetoothOn()) {
+      synchronized(lock) {
+        if (gen != generation) return
+        state = BridgeCodes.STATE_DISCONNECTED
+        btPaused = true
+      }
+      env.changed()
+      return
+    }
+    val t =
+        try {
+          env.transport(info, linkListener)
+        } catch (e: Exception) {
+          failed(gen, null)
+          return
+        }
+    synchronized(lock) {
+      if (gen != generation) return
+      pending = t
+      pendingLost = false
+    }
+    try {
+      t.open()
+    } catch (e: Exception) {
+      closeQuietly(t)
+      if (info.transport == BridgeCodes.TRANSPORT_USB && e is TransportException && e.code == BridgeCodes.UNAUTHORIZED) {
+        synchronized(lock) {
+          if (gen != generation) return
+          pending = null
+          state = BridgeCodes.STATE_DISCONNECTED
+          // Hidden app: ask again when visible. A real denial (the dialog was shown and refused)
+          // waits for an explicit Reconnect: never a prompt loop.
+          if (e.needsForeground) usbWaitingForeground = true else usbPermissionPaused = true
+        }
+        env.changed()
+        // Cold start: initialize() starts this attempt just before onHostResume, so the app can turn
+        // visible between open()'s check and the flag above; that resume found nothing to ask for.
+        // Ask now, on the timer thread every other resumeIfPaused() caller uses.
+        if (e.needsForeground && env.visible()) env.onTimer(Runnable { resumeIfPaused() })
+        return
+      }
+      failed(gen, t)
+      return
+    }
+    val outcome =
+        synchronized(lock) {
+          if (gen != generation) {
+            Outcome.STALE
+          } else if (pendingLost) {
+            pendingLost = false
+            Outcome.LOST
+          } else {
+            pending = null
+            transport = t
+            attempts = 0
+            state = BridgeCodes.STATE_CONNECTED
+            Outcome.CONNECTED
+          }
+        }
+    when (outcome) {
+      Outcome.CONNECTED -> env.changed()
+      Outcome.STALE -> closeQuietly(t)
+      // The link dropped between open() returning and the claim: not connected after all.
+      Outcome.LOST -> {
+        closeQuietly(t)
+        failed(gen, t)
+      }
+    }
+  }
+
+  private enum class Outcome { STALE, LOST, CONNECTED }
+
+  private fun failed(gen: Int, t: PrinterTransport?) {
+    synchronized(lock) {
+      if (gen != generation) return
+      if (pending === t) pending = null
+      state = BridgeCodes.STATE_DISCONNECTED
+    }
+    env.changed()
+    scheduleReconnect(gen)
+  }
+
+  private fun scheduleReconnect(gen: Int) {
+    synchronized(lock) {
+      if (gen != generation || halted || usbPermissionPaused || usbWaitingForeground) return
+      if (isBluetooth(info) && !env.bluetoothOn()) {
+        btPaused = true
+        return
+      }
+      val delay = backoffMs(attempts)
+      attempts++
+      reconnectTask?.cancel()
+      reconnectTask = env.schedule(delay, Runnable { onIo { attempt(gen) } })
+    }
+  }
+
+  /** An established link dropped (or a write failed): report honestly, then reconnect. */
+  fun onLinkLost(source: PrinterTransport) {
+    val gen =
+        synchronized(lock) {
+          if (source === pending) {
+            // Dropped before the attempt claimed it: the attempt marks itself failed.
+            pendingLost = true
+            return
+          }
+          if (source !== transport) return
+          transport = null
+          state = BridgeCodes.STATE_DISCONNECTED
+          generation
+        }
+    closeQuietly(source)
+    env.changed()
+    scheduleReconnect(gen)
+  }
+
+  /** Bluetooth came back (or permission was granted, or the app is visible again) while this printer waited. */
+  fun resumeIfPaused() {
+    // A USB printer that needed permission while the app was hidden asks once the app is visible.
+    val usbAsk = synchronized(lock) { !halted && usbWaitingForeground && env.visible() }
+    if (usbAsk) {
+      connectAsync(begin()) {}
+      return
+    }
+    val lost =
+        synchronized(lock) {
+          if (!halted && isBluetooth(info) && !env.bluetoothOn()) {
+            btPaused = true
+            transport
+          } else null
+        }
+    if (lost != null) onLinkLost(lost)
+    val resume = synchronized(lock) { !halted && btPaused }
+    if (resume && env.bluetoothOn()) connectAsync(begin()) {}
+  }
+
+  /**
+   * One print job at a time on THIS printer (BUSY is per printer, so a v1 and a v2 print aimed at it are
+   * serialized, never interleaved); a failed or partial write is never replayed here. BUSY and NOT_CONNECTED
+   * are answered before any byte is sent.
+   */
+  fun print(base64: String, cb: ReplyCallback<Int>) {
+    if (!printing.compareAndSet(false, true)) {
+      cb(Reply.fail(BridgeCodes.BUSY))
+      return
+    }
+    val t = connectedTransport()
+    if (t == null) {
+      printing.set(false)
+      cb(Reply.fail(BridgeCodes.NOT_CONNECTED))
+      return
+    }
+    val queued =
+        onIo {
+          val reply = runPrint(t, base64)
+          printing.set(false)
+          cb(reply)
+        }
+    if (!queued) {
+      printing.set(false)
+      cb(Reply.fail(BridgeCodes.NOT_CONNECTED))
+    }
+  }
+
+  /** True when the watchdog already started: cancel only wins while it has not run. */
+  private fun watchdogFired(watchdog: Cancel, timedOut: AtomicBoolean): Boolean = !watchdog.cancel() || timedOut.get()
+
+  private fun runPrint(t: PrinterTransport, base64: String): Reply<Int> {
+    val bytes = env.decode(base64) ?: return Reply.fail(BridgeCodes.BAD_REQUEST)
+    val timedOut = AtomicBoolean(false)
+    val watchdog =
+        env.schedule(
+            PRINT_JOB_TIMEOUT_MS,
+            Runnable {
+              timedOut.set(true)
+              closeQuietly(t)
+            },
+        )
+    return try {
+      t.write(bytes)
+      if (watchdogFired(watchdog, timedOut)) {
+        // The job ran into the watchdog: the link was closed under it, so it never counts as printed.
+        onLinkLost(t)
+        Reply.fail(BridgeCodes.TIMEOUT)
+      } else {
+        Reply.Ok(bytes.size)
+      }
+    } catch (e: TransportException) {
+      onLinkLost(t)
+      Reply.fail(if (timedOut.get()) BridgeCodes.TIMEOUT else e.code)
+    } catch (e: RuntimeException) {
+      onLinkLost(t)
+      Reply.fail(if (timedOut.get()) BridgeCodes.TIMEOUT else BridgeCodes.WRITE_FAILED)
+    } finally {
+      watchdog.cancel()
+    }
+  }
+}
+```
+
+Create `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterPool.kt`:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import android.content.Context
+import android.util.Base64
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
+
+/**
+ * The app's printers (Phase 2 Session 2F2, spec §9.2): one [PrinterManager] per printer, in a list kept in [Prefs]
+ * with a default printer that every v1 message acts on, and the one place that publishes printer.status to the
+ * page: the v1 event (the default printer's status) and the v2 event (every printer), each only when what it
+ * carries changed. Process-lifetime singleton; the request entry points live in [PrinterApi].
+ *
+ * [poolLock] guards the list; it is held to read the list and each listed printer's state, or to change the list,
+ * never while a manager works or while publishing. Lock order: [publishLock], then [poolLock], then a manager's own
+ * lock (no manager takes the pool's lock).
+ */
+object PrinterPool {
+  private val poolLock = Any()
+  private val publishLock = Any()
+  private val list = PoolList<PrinterManager> { it.id }
+  private val known = ConcurrentHashMap<String, PrinterInfo>()
+  private val dedupe = StatusDedupe()
+
+  /** The application context once [init] ran. */
+  @Volatile var app: Context? = null
+    private set
+
+  /** Set from the host activity lifecycle; gates USB prompts and the background wake tick. */
+  @Volatile var appVisible: Boolean = false
+
+  /** The foreground service watches status changes here (one observer at a time). */
+  @Volatile var statusObserver: (() -> Unit)? = null
+
+  private val env =
+      object : PrinterEnv {
+        override fun bluetoothOn(): Boolean = app?.let { BtAccess.state(it) == BridgeCodes.BT_ON } ?: false
+
+        override fun visible(): Boolean = appVisible
+
+        override fun transport(info: PrinterInfo, listener: LinkListener): PrinterTransport {
+          val ctx = app ?: throw TransportException(BridgeCodes.UNSUPPORTED, "Not started")
+          return TransportFactory.create(ctx, info, listener, PrinterThreads.timer) { appVisible }
+        }
+
+        override fun schedule(delayMs: Long, task: Runnable): Cancel {
+          val future = PrinterThreads.timer.schedule(task, delayMs, TimeUnit.MILLISECONDS)
+          return Cancel { future.cancel(false) }
+        }
+
+        override fun onTimer(task: Runnable) = PrinterThreads.timer.execute(task)
+
+        override fun decode(base64: String): ByteArray? =
+            try {
+              Base64.decode(base64, Base64.DEFAULT)
+            } catch (e: IllegalArgumentException) {
+              null
+            }
+
+        override fun changed() = publish()
+      }
+
+  private fun newManager(info: PrinterInfo): PrinterManager = PrinterManager(info, env, PrinterThreads.newIo())
+
+  /** Idempotent. Registers receivers and reconnects every saved printer. */
+  fun init(context: Context) {
+    val ctx = context.applicationContext
+    synchronized(poolLock) {
+      if (app != null) return
+      app = ctx
+    }
+    PrinterReceivers.register(ctx)
+    val saved = Prefs.savedPrinters(ctx)
+    val managers =
+        synchronized(poolLock) {
+          for (info in saved.all()) list.put(newManager(info))
+          saved.defaultId?.let { list.makeDefault(it) }
+          list.all()
+        }
+    // The list may have been migrated from the one v1 printer, or follow an older app's change of it.
+    save()
+    for (manager in managers) manager.connectAsync(manager.begin()) {}
+  }
+
+  private fun bluetooth(): String {
+    val ctx = app
+    return if (ctx == null) BridgeCodes.BT_UNSUPPORTED else BtAccess.state(ctx)
+  }
+
+  /** The v1 printer.status: the default printer's. Read under [poolLock], so a printer a forget or a select is
+   *  retiring is never read after its halt (a state v1 never sent: "none" with a printer). */
+  fun status(): StatusSnapshot {
+    val bluetooth = bluetooth()
+    return synchronized(poolLock) { list.default()?.let { StatusSnapshot(it.state(), it.info, bluetooth) } }
+        ?: StatusSnapshot(BridgeCodes.STATE_NONE, null, bluetooth)
+  }
+
+  /** The v2 printer.status: every printer in the app's order, and the default (read under [poolLock], as [status]). */
+  fun poolStatus(): PoolSnapshot {
+    val bluetooth = bluetooth()
+    return synchronized(poolLock) { PoolSnapshot(list.all().map { PoolEntry(it.state(), it.info) }, list.defaultId, bluetooth) }
+  }
+
+  fun manager(id: String): PrinterManager? = synchronized(poolLock) { list.find(id) }
+
+  fun defaultManager(): PrinterManager? = synchronized(poolLock) { list.default() }
+
+  fun managers(): List<PrinterManager> = synchronized(poolLock) { list.all() }
+
+  /** v2 select: [info] joins the list, its printer started anew (a listed one is replaced in its place). */
+  fun add(info: PrinterInfo): PrinterManager {
+    val manager = newManager(info)
+    change { it.put(manager) }
+    return manager
+  }
+
+  /** v1 select: [info] becomes the default printer in the default's place, as v1 always replaced its one printer. */
+  fun replaceDefault(info: PrinterInfo): PrinterManager {
+    val manager = newManager(info)
+    change { it.putDefault(manager) }
+    return manager
+  }
+
+  /** v2 forget: [id] leaves the list (the default leaving promotes the first remaining printer). */
+  fun remove(id: String) = change { listOfNotNull(it.remove(id)) }
+
+  /** v1 forget: the default printer leaves the list. */
+  fun removeDefault() = change { pool -> listOfNotNull(pool.defaultId?.let { pool.remove(it) }) }
+
+  /** Changes the list, retires the printers that left it, saves, then publishes (never under [poolLock]). */
+  private fun change(edit: (PoolList<PrinterManager>) -> List<PrinterManager>) {
+    val retired = synchronized(poolLock) { edit(list) }
+    retired.forEach { it.halt() }
+    save()
+    publish()
+  }
+
+  private fun save() {
+    val ctx = app ?: return
+    val (printers, defaultId) = synchronized(poolLock) { Pair(list.all().map { it.info }, list.defaultId) }
+    Prefs.savePrinters(ctx, printers, defaultId)
+  }
+
+  fun lookup(id: String): PrinterInfo? = known[id]
+
+  fun remember(found: List<PrinterInfo>): List<PrinterInfo> {
+    for (info in found) known[info.id] = info
+    return found
+  }
+
+  /**
+   * Emits printer.status to the page when what it carries changed since the last emit: v1 (the default printer)
+   * and v2 (every printer) apart. The snapshots, the de-dupe and every delivery happen under [publishLock], so two
+   * threads can never deliver an older state after a newer one. [poolLock] is only taken inside.
+   */
+  fun publish() {
+    synchronized(publishLock) {
+      val one = status()
+      val all = poolStatus()
+      val changes = dedupe.next(one, all)
+      if (changes.v1) WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.toJson(one))
+      if (changes.v2) WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.poolJson(all), BridgeCodes.BRIDGE_V2)
+      if (changes.v1 || changes.v2) statusObserver?.invoke()
+    }
+  }
+}
+```
+
+Replace the whole of `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterThreads.kt` with:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.atomic.AtomicInteger
+
+/**
+ * The worker threads. A printer's io thread ([newIo]) may block for a long time (connect, write); [timer] never
+ * blocks; [dns] only resolves host names for the network-printer fence, so a slow resolver can never hold up a
+ * print job or a reconnect. Phase 2 Session 2F2 (spec §9.2): every printer has an io thread of its own, so a blocked
+ * Bluetooth Classic connect or a USB permission wait on one printer never stalls another.
+ */
+object PrinterThreads {
+  private fun daemon(r: Runnable, name: String): Thread {
+    val thread = Thread(r, name)
+    thread.isDaemon = true
+    return thread
+  }
+
+  private val ioCount = AtomicInteger(0)
+
+  /** A new printer's own io thread (its [PrinterManager] shuts it down when the printer leaves the list). */
+  fun newIo(): ExecutorService =
+      Executors.newSingleThreadExecutor { r -> daemon(r, "pos-printer-io-" + ioCount.incrementAndGet()) }
+
+  val timer: ScheduledExecutorService =
+      Executors.newSingleThreadScheduledExecutor { r -> daemon(r, "pos-printer-timer") }
+  val dns: ExecutorService =
+      Executors.newSingleThreadExecutor { r -> daemon(r, "pos-printer-dns") }
+}
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterTypes.kt`, find:
+
+```kotlin
+
+/** The PrinterStatus map of the bridge. Data-class equality drives the change de-duplication. */
+data class StatusSnapshot(val state: String, val printer: PrinterInfo?, val bluetooth: String)
+
+/** Result of an asynchronous manager call; the module turns it into a promise settlement. */
+sealed class Reply<out T> {
+```
+
+Replace it with:
+
+```kotlin
+
+/** The PrinterStatus map of the bridge. Data-class equality drives the change de-duplication. */
+data class StatusSnapshot(val state: String, val printer: PrinterInfo?, val bluetooth: String)
+
+/** Phase 2 Session 2F2 (spec §9.2): one printer of the app's list as bridge v2 reports it. */
+data class PoolEntry(val state: String, val printer: PrinterInfo)
+
+/** Bridge v2's printer.status: every printer in the app's order, the default's id (null only for an empty list) and
+ *  Bluetooth. Data-class equality drives the change de-duplication. */
+data class PoolSnapshot(val printers: List<PoolEntry>, val defaultId: String?, val bluetooth: String)
+
+/** Result of an asynchronous manager call; the module turns it into a promise settlement. */
+sealed class Reply<out T> {
+```
+
+Replace the whole of `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/SelectionFence.kt` with:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import java.util.concurrent.Future
+import java.util.concurrent.atomic.AtomicBoolean
+
+/**
+ * Orders printer selections and runs the network-address fence. Every selection takes a ticket on the timer thread,
+ * which also aborts the lookup of an older selection for the same slot. A host name is resolved on the
+ * [PrinterThreads.dns] thread (never an io thread) and its choice is committed only while its ticket is still the
+ * newest, so a slow lookup can never overwrite a later choice.
+ *
+ * Phase 2 Session 2F2: one slot per thing a selection changes: the default printer for v1 calls (""), and each
+ * printer's id for v2 calls, so a page adding two network printers at once never cancels the first with the second.
+ * [tickets] and [inFlight] belong to the timer thread; only the lookup itself runs elsewhere.
+ */
+object SelectionFence {
+  private class Pending<T>(val ticket: Int, private val cb: ReplyCallback<T>, private val answer: () -> T) {
+    private val settled = AtomicBoolean(false)
+
+    @Volatile var lookup: Future<*>? = null
+
+    /** Answers the caller exactly once, whichever path gets here first. */
+    fun settle(reply: Reply<T>) {
+      if (settled.compareAndSet(false, true)) cb(reply)
+    }
+
+    /** A newer selection for this slot won: the caller gets the current status, in its own version's shape. */
+    fun superseded() = settle(Reply.Ok(answer()))
+  }
+
+  private val tickets = HashMap<String, Int>()
+  private val inFlight = HashMap<String, Pending<*>>()
+
+  /**
+   * Timer thread. Records a new selection (or a forget) for [slot]: the older selection's lookup is cancelled and its
+   * caller is answered with the current status. Returns the new ticket.
+   */
+  fun begin(slot: String): Int {
+    val old = inFlight.remove(slot)
+    if (old != null) {
+      old.lookup?.cancel(false)
+      old.superseded()
+    }
+    val next = (tickets[slot] ?: 0) + 1
+    tickets[slot] = next
+    return next
+  }
+
+  /**
+   * Timer thread. Resolves [host] off-thread. A host with no private address answers [cb] with BAD_REQUEST; otherwise
+   * [commit] runs (and answers [cb]) if [mine] is still the newest ticket of [slot], else [cb] gets [answer].
+   */
+  fun <T> check(host: String, slot: String, mine: Int, cb: ReplyCallback<T>, answer: () -> T, commit: () -> Unit) {
+    val pending = Pending(mine, cb, answer)
+    inFlight[slot] = pending
+    pending.lookup =
+        PrinterThreads.dns.submit(
+            Runnable {
+              val forbidden =
+                  try {
+                    TcpAddress.isForbidden(host)
+                  } catch (e: RuntimeException) {
+                    // The connect re-checks the address, so an odd resolver failure is not final here.
+                    false
+                  }
+              PrinterThreads.timer.execute(Runnable { finish(slot, pending, forbidden, commit) })
+            }
+        )
+  }
+
+  private fun <T> finish(slot: String, pending: Pending<T>, forbidden: Boolean, commit: () -> Unit) {
+    if (pending.ticket != tickets[slot]) {
+      pending.superseded()
+      return
+    }
+    inFlight.remove(slot)
+    if (forbidden) pending.settle(Reply.fail(BridgeCodes.BAD_REQUEST)) else commit()
+  }
+}
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/StatusJson.kt`, find:
+
+```kotlin
+
+import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.WritableMap
+import org.json.JSONObject
+
+/** PrinterStatus / NativePrinter in the two shapes the app needs: RN maps and page JSON. */
+object StatusJson {
+  fun printerJson(p: PrinterInfo): JSONObject {
+    val json = JSONObject()
+```
+
+Replace it with:
+
+```kotlin
+
+import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.WritableMap
+import org.json.JSONArray
+import org.json.JSONObject
+
+/** PrinterStatus / NativePrinter (and bridge v2's list of printers) in the two shapes the app needs: RN maps and page
+ *  JSON. */
+object StatusJson {
+  fun printerJson(p: PrinterInfo): JSONObject {
+    val json = JSONObject()
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/StatusJson.kt`, find:
+
+```kotlin
+    map.putString("bluetooth", s.bluetooth)
+    return map
+  }
+}
+
+```
+
+Replace it with:
+
+```kotlin
+    map.putString("bluetooth", s.bluetooth)
+    return map
+  }
+
+  /** Bridge v2's list: { printers: [{ state, printer }], defaultId, bluetooth }, every key always there. */
+  fun poolJson(s: PoolSnapshot): JSONObject {
+    val printers = JSONArray()
+    for (entry in s.printers) printers.put(JSONObject().put("state", entry.state).put("printer", printerJson(entry.printer)))
+    val json = JSONObject()
+    json.put("printers", printers)
+    json.put("defaultId", s.defaultId ?: JSONObject.NULL)
+    json.put("bluetooth", s.bluetooth)
+    return json
+  }
+
+  fun poolMap(s: PoolSnapshot): WritableMap {
+    val printers = Arguments.createArray()
+    for (entry in s.printers) {
+      val item = Arguments.createMap()
+      item.putString("state", entry.state)
+      item.putMap("printer", printerMap(entry.printer))
+      printers.pushMap(item)
+    }
+    val map = Arguments.createMap()
+    map.putArray("printers", printers)
+    if (s.defaultId != null) map.putString("defaultId", s.defaultId) else map.putNull("defaultId")
+    map.putString("bluetooth", s.bluetooth)
+    return map
+  }
+}
+
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/WebViewDelivery.kt`, find:
+
+```kotlin
+    )
+  }
+
+  /** Builds and delivers a {v,event,data} message; works while the app is backgrounded. */
+  fun deliverEvent(event: String, data: JSONObject) {
+    val message = JSONObject()
+    message.put("v", VERSION)
+    message.put("event", event)
+    message.put("data", data)
+    val call = "window.__posNativeDeliver && window.__posNativeDeliver(" + escapeForScript(message.toString()) + ");"
+```
+
+Replace it with:
+
+```kotlin
+    )
+  }
+
+  /** Builds and delivers a {v,event,data} message; works while the app is backgrounded. Session 2F2: [version] is the
+   *  bridge version whose listeners get it (the page's injected script routes by it). */
+  fun deliverEvent(event: String, data: JSONObject, version: Int = VERSION) {
+    val message = JSONObject()
+    message.put("v", version)
+    message.put("event", event)
+    message.put("data", data)
+    val call = "window.__posNativeDeliver && window.__posNativeDeliver(" + escapeForScript(message.toString()) + ");"
+```
+
+In `apps/mobile/android/app/src/main/res/values/strings.xml`, find:
+
+```xml
+    <string name="print_host_channel_name">Printing</string>
+    <string name="print_host_title_printer">Printing is on — %1$s</string>
+    <string name="print_host_title_no_printer">Printing is on — printer not connected</string>
+    <string name="print_host_alert_channel_name">Printing alerts</string>
+    <string name="print_host_alert_title">Printing stopped — tap to open the app</string>
+    <string name="print_host_alert_text">Slips will not print until the app is open again.</string>
+```
+
+Replace it with:
+
+```xml
+    <string name="print_host_channel_name">Printing</string>
+    <string name="print_host_title_printer">Printing is on — %1$s</string>
+    <string name="print_host_title_no_printer">Printing is on — printer not connected</string>
+    <string name="print_host_title_printers">Printing is on — %1$d printers</string>
+    <string name="print_host_title_printer_down">Printing is on — %1$s not connected</string>
+    <string name="print_host_title_printers_down">Printing is on — %1$d printers not connected</string>
+    <string name="print_host_alert_channel_name">Printing alerts</string>
+    <string name="print_host_alert_title">Printing stopped — tap to open the app</string>
+    <string name="print_host_alert_text">Slips will not print until the app is open again.</string>
+```
+
+Create `apps/mobile/src/bridge/protocol-v2.ts`:
+
+```ts
+// Native bridge contract v2 (Phase 2 Session 2F2, spec §9.2): one phone or tablet drives several printers. The
+// page's copy is apps/cafe/lib/printer/native-bridge-v2.ts (its header states the contract); a parity pin there
+// (native-bridge-v2-parity.test.ts) reads this file, the router, the validation and the injected script. v1
+// (./protocol.ts) is unchanged: a page that knows only v1 keeps printing on the app's default printer.
+
+import type {
+  NativeBluetoothState,
+  NativeErrorCode,
+  NativePrinter,
+  NativePrinterState,
+} from './protocol';
+
+export const BRIDGE_V2 = 2;
+
+/** What window.PosNative.versions says: every bridge version this app speaks. */
+export const BRIDGE_VERSIONS = [1, 2] as const;
+
+/** The methods a v2 envelope carries; every other method stays v1. */
+export const V2_METHODS = [
+  'printer.status',
+  'printer.select',
+  'printer.reconnect',
+  'printer.forget',
+  'printer.print',
+] as const;
+export type V2Method = (typeof V2_METHODS)[number];
+
+/** One printer of the app's list. */
+export type PoolEntry = { state: NativePrinterState; printer: NativePrinter };
+
+/** The app's printers in its order, the default's id (null only for an empty list) and Bluetooth. */
+export type PoolStatus = {
+  printers: PoolEntry[];
+  defaultId: string | null;
+  bluetooth: NativeBluetoothState;
+};
+
+/** A v2 reply carries the version of the request it answers. */
+export type BridgeReplyV2 =
+  | { v: 2; id: string; ok: true; result: unknown }
+  | {
+      v: 2;
+      id: string;
+      ok: false;
+      error: { code: NativeErrorCode; message: string };
+    };
+```
+
+In `apps/mobile/src/native/PosPrinter.ts`, find:
+
+```ts
+  NativePrinter,
+  PrinterStatus,
+} from '../bridge/protocol';
+import { requestPermission } from './permissions';
+
+export interface PosPrinterModule {
+```
+
+Replace it with:
+
+```ts
+  NativePrinter,
+  PrinterStatus,
+} from '../bridge/protocol';
+import type { PoolStatus } from '../bridge/protocol-v2';
+import { requestPermission } from './permissions';
+
+export interface PosPrinterModule {
+```
+
+In `apps/mobile/src/native/PosPrinter.ts`, find:
+
+```ts
+  reconnect(): Promise<PrinterStatus>;
+  forget(): Promise<PrinterStatus>;
+  print(base64: string): Promise<{ bytes: number }>;
+  refreshStatus(): Promise<PrinterStatus>;
+  enableBluetooth(): Promise<{ on: boolean }>;
+  setHostActive(active: boolean, label: string): Promise<{ active: boolean }>;
+```
+
+Replace it with:
+
+```ts
+  reconnect(): Promise<PrinterStatus>;
+  forget(): Promise<PrinterStatus>;
+  print(base64: string): Promise<{ bytes: number }>;
+  // Phase 2 Session 2F2 (spec §9.2): the app's printers, bridge v2.
+  poolStatus(): Promise<PoolStatus>;
+  poolSelectPrinter(id: string): Promise<PoolStatus>;
+  poolSelectTcp(host: string, port: number): Promise<PoolStatus>;
+  poolReconnect(printerId: string): Promise<PoolStatus>;
+  poolForget(printerId: string): Promise<PoolStatus>;
+  poolPrint(printerId: string, base64: string): Promise<{ bytes: number }>;
+  refreshStatus(): Promise<PrinterStatus>;
+  enableBluetooth(): Promise<{ on: boolean }>;
+  setHostActive(active: boolean, label: string): Promise<{ active: boolean }>;
+```
+
+In `apps/mobile/src/native/PosPrinter.ts`, find:
+
+```ts
+  reconnect: () => call('reconnect'),
+  forget: () => call('forget'),
+  print: base64 => call('print', base64),
+  refreshStatus: () => call('refreshStatus'),
+  enableBluetooth: () => call('enableBluetooth'),
+  setHostActive: (active, label) => call('setHostActive', active, label),
+```
+
+Replace it with:
+
+```ts
+  reconnect: () => call('reconnect'),
+  forget: () => call('forget'),
+  print: base64 => call('print', base64),
+  poolStatus: () => call('poolStatus'),
+  poolSelectPrinter: id => call('poolSelectPrinter', id),
+  poolSelectTcp: (host, port) => call('poolSelectTcp', host, port),
+  poolReconnect: printerId => call('poolReconnect', printerId),
+  poolForget: printerId => call('poolForget', printerId),
+  poolPrint: (printerId, base64) => call('poolPrint', printerId, base64),
+  refreshStatus: () => call('refreshStatus'),
+  enableBluetooth: () => call('enableBluetooth'),
+  setHostActive: (active, label) => call('setHostActive', active, label),
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK && npm run lint >/dev/null && echo LINT_OK`
+Expected: `# tests 119`; `# pass 119`; `# fail 0`; `TSC_OK`; `LINT_OK`
+
+Run: `cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --no-daemon -Dorg.gradle.jvmargs="-Xmx1536m -XX:MaxMetaspaceSize=512m" -Pkotlin.compiler.execution.strategy=in-process 2>&1 | grep -E "^BUILD (SUCCESSFUL|FAILED)"`
+Expected: `BUILD SUCCESSFUL (the time varies)`
+
+Run: `cd /d/kd/lucifer/apps/mobile/android/app/build/test-results/testDebugUnitTest && grep -ho 'testsuite name="[^"]*" tests="[0-9]*" skipped="[0-9]*" failures="[0-9]*" errors="[0-9]*"' *.xml`
+Expected: `testsuite name="com.possoftware.pos.printer.PoolListTest" tests="6" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PoolStatusTest" tests="2" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PrinterManagerTest" tests="13" skipped="0" failures="0" errors="0"`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/mobile/android/app/build.gradle apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/BridgeCodes.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/HostController.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PoolList.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PoolStatus.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PosPrinterModule.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/Prefs.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterApi.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterEnv.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterManager.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterPool.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterThreads.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterTypes.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/SelectionFence.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/StatusJson.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/WebViewDelivery.kt apps/mobile/android/app/src/main/res/values/strings.xml apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PoolListTest.kt apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PoolStatusTest.kt apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterFakes.kt apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterManagerTest.kt apps/mobile/src/bridge/protocol-v2.ts apps/mobile/src/mobile-paths.test.ts apps/mobile/src/native/PosPrinter.ts
+git commit -m "feat(print): Phase 2 the POS app's printer pool: one PrinterManager and one io thread per printer, BUSY per printer, the printers kept as a list in Prefs with the v1 printer migrated in as the default, the v1 and v2 printer.status from one publish, the print-host notification's worst state, and JUnit 4 tests of the state machine on the JVM"
+```
+
+---
+
+### Task P2: bridge v2 in the POS app: the injected versions, request and on with the version last, and the router's v2 envelopes
+
+**Files:**
+- Modify: `apps/mobile/src/bridge/injected.ts` (`versions`; a request carries its version; replies and events routed by version), `src/bridge/router.ts` (v2 envelopes; `NativePort`'s six v2 methods), `src/bridge/validate.ts` (`validateV2Params`), `src/native/PosPrinter.ts` (`nativePort`)
+- Tests: `apps/mobile/src/bridge/router.test.ts` (4 new tests; one changed pin), `src/bridge/injected.test.ts` (2 new tests; two changed pins)
+
+**Interfaces produced:** `validateV2Params(method, params)` in `src/bridge/validate.ts`; `NativePort.poolStatus`, `poolSelectPrinter`, `poolSelectTcp`, `poolReconnect`, `poolForget`, `poolPrint`; `buildDeliverScript(message: DeliverMessage | BridgeReplyV2)`; `window.PosNative.versions` (`[1, 2]`), `request(method, params?, version?)`, `on(event, fn, version?)`.
+
+**The injected script speaks both versions** (spec §9.2): `window.PosNative` keeps `version: 1` and adds `versions: [1, 2]` (frozen); `request` and `on` take the version last (absent: 1; a version the app does not speak is refused UNSUPPORTED and posts nothing, and its listener is a no-op). A request carries its version in the envelope, and only a reply of that version settles it (a v2 reply never resolves a v1 request with the same id, nor the reverse); an event reaches only the listeners of its version (the app sends the default printer's status as v1 and the list as v2). No backslash enters the injected source.
+
+**The router validates v2 envelopes** (`v: 2`, the same size, origin, JSON, shape and token checks first): only bridge v2's five printer methods (`printer.status`, `printer.select` `{ id }` or `{ tcp }` exactly as v1, `printer.reconnect` and `printer.forget` `{ printerId }`, `printer.print` `{ printerId, data }`; any other method, key or shape BAD_REQUEST, a payload over the cap TOO_LARGE), each through the port's pool methods, and answers in v2 (`{ v: 2, id, ok, … }`) with the curated text of each error code (an uncoded print failure WRITE_FAILED, any other UNSUPPORTED). A v1 envelope acts on the default printer exactly as before.
+
+**Changed existing pins:** `router.test.ts` "every drop path = zero native calls and zero deliveries" (the dropped version is now 3: v2 is a version the app speaks); `injected.test.ts` "PosNative is frozen, non-writable, non-configurable; platform and version set" and "the token is not reachable from the page" (the object now says `versions`).
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/mobile/src/bridge/injected.test.ts`, find:
+
+```ts
+      writable: false,
+      enumerable: false,
+      configurable: false,
+      value: { version: 1, platform: 'android' },
+    },
+  );
+  const deliverDesc = f.plain(
+```
+
+Replace it with:
+
+```ts
+      writable: false,
+      enumerable: false,
+      configurable: false,
+      value: { version: 1, versions: [1, 2], platform: 'android' },
+    },
+  );
+  const deliverDesc = f.plain(
+```
+
+In `apps/mobile/src/bridge/injected.test.ts`, find:
+
+```ts
+  f.inject();
+  assert.equal(
+    f.run('Object.keys(window.PosNative).join(",")'),
+    'version,platform,request,on',
+  );
+  assert.ok(!String(f.run('JSON.stringify(window.PosNative)')).includes(TOKEN));
+  assert.ok(!String(f.run('String(window.PosNative.request)')).includes(TOKEN));
+```
+
+Replace it with:
+
+```ts
+  f.inject();
+  assert.equal(
+    f.run('Object.keys(window.PosNative).join(",")'),
+    'version,versions,platform,request,on',
+  );
+  assert.ok(!String(f.run('JSON.stringify(window.PosNative)')).includes(TOKEN));
+  assert.ok(!String(f.run('String(window.PosNative.request)')).includes(TOKEN));
+```
+
+In `apps/mobile/src/bridge/injected.test.ts`, find:
+
+```ts
+  assert.equal(f.run('typeof window.PosNative.on(5, () => 1)'), 'function');
+});
+
+test('injecting twice is a no-op: first token wins, one ready event', () => {
+  const f = fakeWindow();
+  f.inject(TOKEN);
+```
+
+Replace it with:
+
+```ts
+  assert.equal(f.run('typeof window.PosNative.on(5, () => 1)'), 'function');
+});
+
+// Phase 2 Session 2F2 (spec §9.2): bridge v2 on the page. A request carries its version and only a reply of that
+// version settles it; an event reaches only the listeners of its version; a version the app does not speak is refused.
+test('v2: request and on take the version last; replies and events are routed by version', async () => {
+  const f = fakeWindow(true, FIXED_CRYPTO);
+  f.inject();
+  f.run('globalThis.out = []; globalThis.got = [];');
+  f.run('window.PosNative.request("printer.status", undefined, 2).then(r => out.push(["v2", r]), e => out.push(["err", e.code]));');
+  assert.deepEqual(lastPosted(f), { v: 2, token: TOKEN, id: idOf(1), method: 'printer.status' }, 'the envelope carries v: 2');
+  f.run('window.PosNative.request("printer.status").then(r => out.push(["v1", r]));');
+  assert.equal(lastPosted(f).v, 1, 'no version: v1');
+  f.run('window.__posNativeDeliver({ v: 1, id: "' + idOf(1) + '", ok: true, result: "wrong" })');
+  f.run('window.__posNativeDeliver({ v: 2, id: "' + idOf(2) + '", ok: true, result: "wrong" })');
+  await settle();
+  assert.deepEqual(f.plain('out'), [], 'a reply of another version settles nothing');
+  f.run('window.__posNativeDeliver({ v: 2, id: "' + idOf(1) + '", ok: true, result: { printers: [] } })');
+  f.run('window.__posNativeDeliver({ v: 1, id: "' + idOf(2) + '", ok: true, result: { state: "none" } })');
+  await settle();
+  assert.deepEqual(f.plain('out'), [['v2', { printers: [] }], ['v1', { state: 'none' }]]);
+  f.run('window.PosNative.on("printer.status", d => got.push(["one", d]));');
+  f.run('window.PosNative.on("printer.status", d => got.push(["all", d]), 2);');
+  f.run('window.__posNativeDeliver({ v: 1, event: "printer.status", data: { state: "connected" } })');
+  f.run('window.__posNativeDeliver({ v: 2, event: "printer.status", data: { printers: [] } })');
+  assert.deepEqual(f.plain('got'), [['one', { state: 'connected' }], ['all', { printers: [] }]], 'each event to its own version');
+});
+
+test('v2: a version the app does not speak is refused and posts nothing; its listener is a no-op', async () => {
+  const f = fakeWindow();
+  f.inject();
+  f.run('globalThis.out = [];');
+  f.run('window.PosNative.request("printer.status", undefined, 3).then(() => out.push("ok"), e => out.push(e.code));');
+  await settle();
+  assert.deepEqual(f.plain('out'), ['UNSUPPORTED']);
+  assert.equal(f.posted.length, 0, 'nothing posted');
+  assert.equal(f.run('typeof window.PosNative.on("printer.status", () => 1, 3)'), 'function');
+  f.run('window.__posNativeDeliver({ v: 3, event: "printer.status", data: 1 })');
+  assert.deepEqual(f.plain('window.PosNative.versions'), [1, 2], 'what the app says it speaks');
+});
+
+test('injecting twice is a no-op: first token wins, one ready event', () => {
+  const f = fakeWindow();
+  f.inject(TOKEN);
+```
+
+In `apps/mobile/src/bridge/router.test.ts`, find:
+
+```ts
+  PRINT_DATA_MAX_BASE64_CHARS,
+  type PrinterStatus,
+} from './protocol';
+
+const TOKEN = 'ab'.repeat(32);
+const ORIGIN = 'https://pos.example.com';
+```
+
+Replace it with:
+
+```ts
+  PRINT_DATA_MAX_BASE64_CHARS,
+  type PrinterStatus,
+} from './protocol';
+import type { PoolStatus } from './protocol-v2';
+
+const TOKEN = 'ab'.repeat(32);
+const ORIGIN = 'https://pos.example.com';
+```
+
+In `apps/mobile/src/bridge/router.test.ts`, find:
+
+```ts
+const STATUS: PrinterStatus = {
+  state: 'connected',
+  printer: { id: 'tcp:10.0.0.9:9100', name: 'Kitchen', transport: 'tcp' },
+  bluetooth: 'on',
+};
+
+```
+
+Replace it with:
+
+```ts
+const STATUS: PrinterStatus = {
+  state: 'connected',
+  printer: { id: 'tcp:10.0.0.9:9100', name: 'Kitchen', transport: 'tcp' },
+  bluetooth: 'on',
+};
+
+// Session 2F2: what the fake app's pool answers (bridge v2).
+const POOL_STATUS: PoolStatus = {
+  printers: [{ state: 'connected', printer: { id: 'tcp:10.0.0.9:9100', name: 'Kitchen', transport: 'tcp' } }],
+  defaultId: 'tcp:10.0.0.9:9100',
+  bluetooth: 'on',
+};
+
+```
+
+In `apps/mobile/src/bridge/router.test.ts`, find:
+
+```ts
+    requestPermission: record('requestPermission', true),
+    enableBluetooth: record('enableBluetooth', { on: true }),
+    setHostActive: record('setHostActive', { active: true }),
+  };
+  const router = createRouter({
+    port,
+```
+
+Replace it with:
+
+```ts
+    requestPermission: record('requestPermission', true),
+    enableBluetooth: record('enableBluetooth', { on: true }),
+    setHostActive: record('setHostActive', { active: true }),
+    poolStatus: record('poolStatus', POOL_STATUS),
+    poolSelectPrinter: record('poolSelectPrinter', POOL_STATUS),
+    poolSelectTcp: record('poolSelectTcp', POOL_STATUS),
+    poolReconnect: record('poolReconnect', POOL_STATUS),
+    poolForget: record('poolForget', POOL_STATUS),
+    poolPrint: record('poolPrint', { bytes: 12 }),
+  };
+  const router = createRouter({
+    port,
+```
+
+In `apps/mobile/src/bridge/router.test.ts`, find:
+
+```ts
+  await silent('[1,2]', FRAME, 'json array');
+  await silent('null', FRAME, 'json null');
+  await silent('"str"', FRAME, 'json string');
+  await silent(
+    msg('printer.status', undefined, { v: 2 }),
+    FRAME,
+    'wrong version',
+  );
+```
+
+Replace it with:
+
+```ts
+  await silent('[1,2]', FRAME, 'json array');
+  await silent('null', FRAME, 'json null');
+  await silent('"str"', FRAME, 'json string');
+  // Session 2F2 (deliberate change): v2 is a version the app speaks now; 3 is not.
+  await silent(
+    msg('printer.status', undefined, { v: 3 }),
+    FRAME,
+    'wrong version',
+  );
+```
+
+In `apps/mobile/src/bridge/router.test.ts`, find:
+
+```ts
+  assert.deepEqual(applied, [[false, '']], 'cancelled wish is not revived');
+});
+
+test('createHostGate: a failing apply on foreground is swallowed', async () => {
+  const gate = createHostGate(
+    async () => {
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual(applied, [[false, '']], 'cancelled wish is not revived');
+});
+
+// Phase 2 Session 2F2 (spec §9.2): bridge v2. A v2 envelope names its printer by the app's id, every answer but the
+// print's is the whole list, and the reply carries v: 2.
+function msg2(method: unknown, params?: unknown): string {
+  return JSON.stringify({ v: 2, token: TOKEN, id: 'q2', method, params });
+}
+
+test('v2: each printer method calls the pool port once and replies v2 with the list (the print with its bytes)', async () => {
+  const data = 'QUJD';
+  const cases: [string, unknown, unknown[], unknown][] = [
+    ['printer.status', undefined, ['poolStatus'], POOL_STATUS],
+    ['printer.select', { id: 'bt-classic:00:11:22:33:44:55' }, ['poolSelectPrinter', 'bt-classic:00:11:22:33:44:55'], POOL_STATUS],
+    ['printer.select', { tcp: { host: 'Printer.LOCAL', port: 9101 } }, ['poolSelectTcp', 'printer.local', 9101], POOL_STATUS],
+    ['printer.reconnect', { printerId: 'tcp:10.0.0.9:9100' }, ['poolReconnect', 'tcp:10.0.0.9:9100'], POOL_STATUS],
+    ['printer.forget', { printerId: 'tcp:10.0.0.9:9100' }, ['poolForget', 'tcp:10.0.0.9:9100'], POOL_STATUS],
+    ['printer.print', { printerId: 'tcp:10.0.0.9:9101', data }, ['poolPrint', 'tcp:10.0.0.9:9101', data], { bytes: 12 }],
+  ];
+  for (const [method, params, call, result] of cases) {
+    const s = setup();
+    await s.router.handle(msg2(method, params), FRAME);
+    assert.deepEqual(s.calls, [call], method + ': one call to the pool');
+    assert.deepEqual(s.replies(), [{ v: 2, id: 'q2', ok: true, result }], method + ': a v2 reply');
+  }
+});
+
+test('v2: a method v2 does not carry, or params it does not take, is BAD_REQUEST in a v2 reply with no native call', async () => {
+  const refused: [string, unknown, string][] = [
+    ['app.info', undefined, 'BAD_REQUEST'],
+    ['printer.list', { scan: true }, 'BAD_REQUEST'],
+    ['host.background', { active: true }, 'BAD_REQUEST'],
+    ['printer.status', { printerId: 'x' }, 'BAD_REQUEST'],
+    ['printer.reconnect', undefined, 'BAD_REQUEST'],
+    ['printer.reconnect', { printerId: '' }, 'BAD_REQUEST'],
+    ['printer.forget', { printerId: 'x'.repeat(201) }, 'BAD_REQUEST'],
+    ['printer.forget', { printerId: 'x', extra: 1 }, 'BAD_REQUEST'],
+    ['printer.select', { id: 'x', tcp: { host: 'a', port: 1 } }, 'BAD_REQUEST'],
+    ['printer.select', { printerId: 'x' }, 'BAD_REQUEST'],
+    ['printer.print', { data: 'QUJD' }, 'BAD_REQUEST'],
+    ['printer.print', { printerId: 'x' }, 'BAD_REQUEST'],
+    ['printer.print', { printerId: 'x', data: 'QUJ' }, 'BAD_REQUEST'],
+    ['printer.print', { printerId: 'x', data: 'QUJD', more: 1 }, 'BAD_REQUEST'],
+    ['printer.print', { printerId: 'x', data: 'A'.repeat(PRINT_DATA_MAX_BASE64_CHARS + 4) }, 'TOO_LARGE'],
+  ];
+  for (const [method, params, code] of refused) {
+    const s = setup();
+    await s.router.handle(msg2(method, params), FRAME);
+    const label = method + ' ' + String(JSON.stringify(params)).slice(0, 40);
+    assert.deepEqual(s.calls, [], label + ': no native call');
+    const [reply] = s.replies();
+    assert.deepEqual([reply.v, reply.ok, reply.error?.code], [2, false, code], label);
+    assert.equal(reply.error?.message, NATIVE_ERROR_MESSAGES[code as keyof typeof NATIVE_ERROR_MESSAGES], label + ': the curated text');
+  }
+});
+
+test('v2: native errors map to their code with curated text; an uncoded print failure is WRITE_FAILED, any other UNSUPPORTED', async () => {
+  for (const [rejection, method, params, code] of [
+    [Object.assign(new Error('raw device detail'), { code: 'BUSY' }), 'printer.print', { printerId: 'x', data: 'QUJD' }, 'BUSY'],
+    [Object.assign(new Error('raw'), { code: 'NOT_CONNECTED' }), 'printer.print', { printerId: 'x', data: 'QUJD' }, 'NOT_CONNECTED'],
+    [new Error('raw'), 'printer.print', { printerId: 'x', data: 'QUJD' }, 'WRITE_FAILED'],
+    [new Error('raw'), 'printer.reconnect', { printerId: 'x' }, 'UNSUPPORTED'],
+  ] as const) {
+    const s = setup({ reject: rejection });
+    await s.router.handle(msg2(method, params), FRAME);
+    const [reply] = s.replies();
+    assert.deepEqual([reply.v, reply.ok, reply.error?.code], [2, false, code], method + ' ' + code);
+    assert.ok(!JSON.stringify(reply).includes('raw'), 'the native message never leaks');
+  }
+});
+
+test('v2: a v1 envelope still acts on the default printer, and a version the app does not speak is dropped', async () => {
+  const s = setup();
+  await s.router.handle(msg('printer.status'), FRAME);
+  assert.deepEqual(s.calls, [['getStatus']], 'v1: the default printer');
+  assert.equal(s.replies()[0].v, 1, 'a v1 reply');
+  await silent(JSON.stringify({ v: 3, token: TOKEN, id: 'q3', method: 'printer.status' }), FRAME, 'version 3');
+  await silent(JSON.stringify({ v: 2, token: 'cd'.repeat(32), id: 'q3', method: 'printer.status' }), FRAME, 'v2 with a wrong token');
+});
+
+test('createHostGate: a failing apply on foreground is swallowed', async () => {
+  const gate = createHostGate(
+    async () => {
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/mobile && node --import tsx --test src/bridge/router.test.ts src/bridge/injected.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 47`; `# pass 40`; `# fail 7`
+
+- [ ] **Step 3: The code**
+
+In `apps/mobile/src/bridge/injected.ts`, find:
+
+```ts
+// The script that creates window.PosNative inside the POS page, and the script
+// that delivers a reply or event to it. Pure strings: no react-native import.
+// The injected source contains no backslashes on purpose (nothing to unescape).
+
+import { NATIVE_ERROR_MESSAGES } from './messages';
+import {
+  BRIDGE_MESSAGE_MAX_CHARS,
+  NATIVE_BRIDGE_VERSION,
+```
+
+Replace it with:
+
+```ts
+// The script that creates window.PosNative inside the POS page, and the script
+// that delivers a reply or event to it. Pure strings: no react-native import.
+// The injected source contains no backslashes on purpose (nothing to unescape).
+//
+// Phase 2 Session 2F2 (spec §9.2, bridge v2): window.PosNative keeps `version: 1`
+// and adds `versions: [1, 2]`; `request` and `on` take the version last (absent:
+// 1). A request carries its version and only a reply of that version settles it;
+// an event reaches only the listeners of its version (the app sends the default
+// printer's status as v1 and the list of every printer as v2).
+
+import { NATIVE_ERROR_MESSAGES } from './messages';
+import { BRIDGE_VERSIONS, type BridgeReplyV2 } from './protocol-v2';
+import {
+  BRIDGE_MESSAGE_MAX_CHARS,
+  NATIVE_BRIDGE_VERSION,
+```
+
+In `apps/mobile/src/bridge/injected.ts`, find:
+
+```ts
+  );
+}
+
+export function buildDeliverScript(message: DeliverMessage): string {
+  return (
+    'window.' + NATIVE_DELIVER_FN + '(' + safeJsonForScript(message) + ');true;'
+  );
+```
+
+Replace it with:
+
+```ts
+  );
+}
+
+export function buildDeliverScript(
+  message: DeliverMessage | BridgeReplyV2,
+): string {
+  return (
+    'window.' + NATIVE_DELIVER_FN + '(' + safeJsonForScript(message) + ');true;'
+  );
+```
+
+In `apps/mobile/src/bridge/injected.ts`, find:
+
+```ts
+    'var TOKEN = ' + safeJsonForScript(token) + ';',
+    'var PLATFORM = ' + safeJsonForScript(platform) + ';',
+    'var VERSION = ' + NATIVE_BRIDGE_VERSION + ';',
+    'var MAX_CHARS = ' + BRIDGE_MESSAGE_MAX_CHARS + ';',
+    'var MSG_TOO_LARGE = ' +
+      safeJsonForScript(NATIVE_ERROR_MESSAGES.TOO_LARGE) +
+```
+
+Replace it with:
+
+```ts
+    'var TOKEN = ' + safeJsonForScript(token) + ';',
+    'var PLATFORM = ' + safeJsonForScript(platform) + ';',
+    'var VERSION = ' + NATIVE_BRIDGE_VERSION + ';',
+    'var VERSIONS = ' + safeJsonForScript(BRIDGE_VERSIONS) + ';',
+    'var MAX_CHARS = ' + BRIDGE_MESSAGE_MAX_CHARS + ';',
+    'var MSG_TOO_LARGE = ' +
+      safeJsonForScript(NATIVE_ERROR_MESSAGES.TOO_LARGE) +
+```
+
+In `apps/mobile/src/bridge/injected.ts`, find:
+
+```ts
+      ';',
+    'var pending = new Map();',
+    'var listeners = new Map();',
+    'function makeNonce() {',
+    '  var bytes = new Uint8Array(' + NONCE_BYTES + ');',
+    '  try { window.crypto.getRandomValues(bytes); } catch (e) {',
+```
+
+Replace it with:
+
+```ts
+      ';',
+    'var pending = new Map();',
+    'var listeners = new Map();',
+    'function known(v) { return VERSIONS.indexOf(v) >= 0; }',
+    'function versionOf(version) { return version === undefined ? VERSION : version; }',
+    'function makeNonce() {',
+    '  var bytes = new Uint8Array(' + NONCE_BYTES + ');',
+    '  try { window.crypto.getRandomValues(bytes); } catch (e) {',
+```
+
+In `apps/mobile/src/bridge/injected.ts`, find:
+
+```ts
+    'var NONCE = makeNonce();',
+    'var seq = 0;',
+    'function fail(message, code) { return Object.assign(new Error(message), { code: code }); }',
+    'function request(method, params) {',
+    '  return new Promise(function (resolve, reject) {',
+    '    var bridge = window.ReactNativeWebView;',
+    "    if (!bridge || typeof bridge.postMessage !== 'function') {",
+    "      reject(fail(MSG_UNSUPPORTED, 'UNSUPPORTED'));",
+```
+
+Replace it with:
+
+```ts
+    'var NONCE = makeNonce();',
+    'var seq = 0;',
+    'function fail(message, code) { return Object.assign(new Error(message), { code: code }); }',
+    'function request(method, params, version) {',
+    '  return new Promise(function (resolve, reject) {',
+    '    var v = versionOf(version);',
+    '    if (!known(v)) {',
+    "      reject(fail(MSG_UNSUPPORTED, 'UNSUPPORTED'));",
+    '      return;',
+    '    }',
+    '    var bridge = window.ReactNativeWebView;',
+    "    if (!bridge || typeof bridge.postMessage !== 'function') {",
+    "      reject(fail(MSG_UNSUPPORTED, 'UNSUPPORTED'));",
+```
+
+In `apps/mobile/src/bridge/injected.ts`, find:
+
+```ts
+    '    var id = "r" + NONCE + "-" + (seq += 1);',
+    '    var text;',
+    '    try {',
+    '      text = JSON.stringify({ v: VERSION, token: TOKEN, id: id, method: String(method), params: params });',
+    '    } catch (e) {',
+    "      reject(fail(MSG_BAD_REQUEST, 'BAD_REQUEST'));",
+    '      return;',
+```
+
+Replace it with:
+
+```ts
+    '    var id = "r" + NONCE + "-" + (seq += 1);',
+    '    var text;',
+    '    try {',
+    '      text = JSON.stringify({ v: v, token: TOKEN, id: id, method: String(method), params: params });',
+    '    } catch (e) {',
+    "      reject(fail(MSG_BAD_REQUEST, 'BAD_REQUEST'));",
+    '      return;',
+```
+
+In `apps/mobile/src/bridge/injected.ts`, find:
+
+```ts
+    "      reject(fail(MSG_TOO_LARGE, 'TOO_LARGE'));",
+    '      return;',
+    '    }',
+    '    pending.set(id, { resolve: resolve, reject: reject });',
+    '    try {',
+    '      bridge.postMessage(text);',
+    '    } catch (e) {',
+```
+
+Replace it with:
+
+```ts
+    "      reject(fail(MSG_TOO_LARGE, 'TOO_LARGE'));",
+    '      return;',
+    '    }',
+    '    pending.set(id, { resolve: resolve, reject: reject, v: v });',
+    '    try {',
+    '      bridge.postMessage(text);',
+    '    } catch (e) {',
+```
+
+In `apps/mobile/src/bridge/injected.ts`, find:
+
+```ts
+    '    }',
+    '  });',
+    '}',
+    'function on(event, fn) {',
+    "  if (typeof event !== 'string' || typeof fn !== 'function') { return function () {}; }",
+    '  var set = listeners.get(event);',
+    '  if (!set) { set = new Set(); listeners.set(event, set); }',
+    '  var entry = { fn: fn };',
+    '  set.add(entry);',
+    '  return function () { set.delete(entry); };',
+    '}',
+    'function deliver(message) {',
+    '  if (!message || message.v !== VERSION) { return; }',
+    "  if (typeof message.event === 'string') {",
+    '    var set = listeners.get(message.event);',
+    '    if (!set) { return; }',
+    '    Array.from(set).forEach(function (entry) {',
+    '      try { entry.fn(message.data); } catch (e) { /* one listener never breaks another */ }',
+```
+
+Replace it with:
+
+```ts
+    '    }',
+    '  });',
+    '}',
+    'function on(event, fn, version) {',
+    '  var v = versionOf(version);',
+    "  if (typeof event !== 'string' || typeof fn !== 'function' || !known(v)) { return function () {}; }",
+    "  var key = v + ' ' + event;",
+    '  var set = listeners.get(key);',
+    '  if (!set) { set = new Set(); listeners.set(key, set); }',
+    '  var entry = { fn: fn };',
+    '  set.add(entry);',
+    '  return function () { set.delete(entry); };',
+    '}',
+    'function deliver(message) {',
+    '  if (!message || !known(message.v)) { return; }',
+    "  if (typeof message.event === 'string') {",
+    "    var set = listeners.get(message.v + ' ' + message.event);",
+    '    if (!set) { return; }',
+    '    Array.from(set).forEach(function (entry) {',
+    '      try { entry.fn(message.data); } catch (e) { /* one listener never breaks another */ }',
+```
+
+In `apps/mobile/src/bridge/injected.ts`, find:
+
+```ts
+    '  }',
+    "  if (typeof message.id !== 'string') { return; }",
+    '  var waiter = pending.get(message.id);',
+    '  if (!waiter) { return; }',
+    '  pending.delete(message.id);',
+    '  if (message.ok === true) { waiter.resolve(message.result); return; }',
+    '  var error = message.error || {};',
+    "  waiter.reject(fail(String(error.message || MSG_UNSUPPORTED), String(error.code || 'UNSUPPORTED')));",
+    '}',
+    'var api = Object.freeze({ version: VERSION, platform: PLATFORM, request: request, on: on });',
+    'Object.defineProperty(window, DELIVER, { value: deliver, writable: false, configurable: false });',
+    'Object.defineProperty(window, NAME, { value: api, writable: false, configurable: false });',
+    "try { window.dispatchEvent(new Event('" +
+```
+
+Replace it with:
+
+```ts
+    '  }',
+    "  if (typeof message.id !== 'string') { return; }",
+    '  var waiter = pending.get(message.id);',
+    '  if (!waiter || waiter.v !== message.v) { return; }',
+    '  pending.delete(message.id);',
+    '  if (message.ok === true) { waiter.resolve(message.result); return; }',
+    '  var error = message.error || {};',
+    "  waiter.reject(fail(String(error.message || MSG_UNSUPPORTED), String(error.code || 'UNSUPPORTED')));",
+    '}',
+    'var api = Object.freeze({ version: VERSION, versions: Object.freeze(VERSIONS.slice()), platform: PLATFORM, request: request, on: on });',
+    'Object.defineProperty(window, DELIVER, { value: deliver, writable: false, configurable: false });',
+    'Object.defineProperty(window, NAME, { value: api, writable: false, configurable: false });',
+    "try { window.dispatchEvent(new Event('" +
+```
+
+In `apps/mobile/src/bridge/router.ts`, find:
+
+```ts
+// Order (every drop in 1-5 is silent: no native call, no delivery):
+//  1 raw size  2 posting-frame origin  3 JSON  4 shape  5 token
+//  6 known method  7 params  8 native call  9 reply  10 app.changeUrl after reply
+
+import { buildDeliverScript } from './injected';
+import { NATIVE_ERROR_MESSAGES } from './messages';
+```
+
+Replace it with:
+
+```ts
+// Order (every drop in 1-5 is silent: no native call, no delivery):
+//  1 raw size  2 posting-frame origin  3 JSON  4 shape  5 token
+//  6 known method  7 params  8 native call  9 reply  10 app.changeUrl after reply
+//
+// Phase 2 Session 2F2 (spec §9.2): a v2 envelope (v: 2) carries one of bridge
+// v2's five printer methods, each naming its printer by the app's id; its reply
+// carries v: 2. A v1 envelope acts on the app's default printer, as before.
+
+import { buildDeliverScript } from './injected';
+import { NATIVE_ERROR_MESSAGES } from './messages';
+```
+
+In `apps/mobile/src/bridge/router.ts`, find:
+
+```ts
+  type NativePrinter,
+  type PrinterStatus,
+} from './protocol';
+import { originOf } from '../url';
+import { plainObject, validateParams } from './validate';
+
+export { NATIVE_ERROR_MESSAGES };
+export { validateParams };
+```
+
+Replace it with:
+
+```ts
+  type NativePrinter,
+  type PrinterStatus,
+} from './protocol';
+import {
+  BRIDGE_V2,
+  V2_METHODS,
+  type BridgeReplyV2,
+  type PoolStatus,
+  type V2Method,
+} from './protocol-v2';
+import { originOf } from '../url';
+import { plainObject, validateParams, validateV2Params } from './validate';
+
+export { NATIVE_ERROR_MESSAGES };
+export { validateParams };
+```
+
+In `apps/mobile/src/bridge/router.ts`, find:
+
+```ts
+  requestPermission(kind: NativePermissionKind): Promise<boolean>;
+  enableBluetooth(): Promise<{ on: boolean }>;
+  setHostActive(active: boolean, label: string): Promise<{ active: boolean }>;
+}
+
+export type RouterDeps = {
+```
+
+Replace it with:
+
+```ts
+  requestPermission(kind: NativePermissionKind): Promise<boolean>;
+  enableBluetooth(): Promise<{ on: boolean }>;
+  setHostActive(active: boolean, label: string): Promise<{ active: boolean }>;
+  // Bridge v2: the app's printers, each by its id.
+  poolStatus(): Promise<PoolStatus>;
+  poolSelectPrinter(id: string): Promise<PoolStatus>;
+  poolSelectTcp(host: string, port: number): Promise<PoolStatus>;
+  poolReconnect(printerId: string): Promise<PoolStatus>;
+  poolForget(printerId: string): Promise<PoolStatus>;
+  poolPrint(printerId: string, base64: string): Promise<{ bytes: number }>;
+}
+
+export type RouterDeps = {
+```
+
+In `apps/mobile/src/bridge/router.ts`, find:
+
+```ts
+  }
+}
+
+function isRequestShape(msg: Record<string, unknown>): msg is {
+  v: 1;
+  id: string;
+  method: string;
+  token?: unknown;
+  params?: unknown;
+} {
+  return (
+    msg.v === NATIVE_BRIDGE_VERSION &&
+    typeof msg.id === 'string' &&
+    msg.id.length > 0 &&
+    msg.id.length <= MAX_REQUEST_ID_CHARS &&
+```
+
+Replace it with:
+
+```ts
+  }
+}
+
+async function callPortV2(
+  port: NativePort,
+  method: V2Method,
+  params: Record<string, unknown>,
+): Promise<unknown> {
+  switch (method) {
+    case 'printer.status':
+      return port.poolStatus();
+    case 'printer.select':
+      return typeof params.id === 'string'
+        ? port.poolSelectPrinter(params.id)
+        : port.poolSelectTcp(params.host as string, params.port as number);
+    case 'printer.reconnect':
+      return port.poolReconnect(params.printerId as string);
+    case 'printer.forget':
+      return port.poolForget(params.printerId as string);
+    default: {
+      const { bytes } = await port.poolPrint(
+        params.printerId as string,
+        params.data as string,
+      );
+      return { bytes };
+    }
+  }
+}
+
+function isRequestShape(msg: Record<string, unknown>): msg is {
+  v: 1 | 2;
+  id: string;
+  method: string;
+  token?: unknown;
+  params?: unknown;
+} {
+  return (
+    (msg.v === NATIVE_BRIDGE_VERSION || msg.v === BRIDGE_V2) &&
+    typeof msg.id === 'string' &&
+    msg.id.length > 0 &&
+    msg.id.length <= MAX_REQUEST_ID_CHARS &&
+```
+
+In `apps/mobile/src/bridge/router.ts`, find:
+
+```ts
+}
+
+export function createRouter(deps: RouterDeps): Router {
+  async function send(reply: BridgeReply): Promise<void> {
+    try {
+      await deps.deliver(buildDeliverScript(reply));
+    } catch {
+```
+
+Replace it with:
+
+```ts
+}
+
+export function createRouter(deps: RouterDeps): Router {
+  async function send(reply: BridgeReply | BridgeReplyV2): Promise<void> {
+    try {
+      await deps.deliver(buildDeliverScript(reply));
+    } catch {
+```
+
+In `apps/mobile/src/bridge/router.ts`, find:
+
+```ts
+  function failure(id: string, code: NativeErrorCode): BridgeReply {
+    return {
+      v: 1,
+      id,
+      ok: false,
+      error: { code, message: NATIVE_ERROR_MESSAGES[code] },
+```
+
+Replace it with:
+
+```ts
+  function failure(id: string, code: NativeErrorCode): BridgeReply {
+    return {
+      v: 1,
+      id,
+      ok: false,
+      error: { code, message: NATIVE_ERROR_MESSAGES[code] },
+    };
+  }
+
+  function failureV2(id: string, code: NativeErrorCode): BridgeReplyV2 {
+    return {
+      v: 2,
+      id,
+      ok: false,
+      error: { code, message: NATIVE_ERROR_MESSAGES[code] },
+```
+
+In `apps/mobile/src/bridge/router.ts`, find:
+
+```ts
+      return;
+    }
+    const { id } = msg;
+    if (!(NATIVE_METHODS as readonly string[]).includes(msg.method)) {
+      await send(failure(id, 'BAD_REQUEST'));
+      return;
+```
+
+Replace it with:
+
+```ts
+      return;
+    }
+    const { id } = msg;
+    if (msg.v === BRIDGE_V2) {
+      await handleV2(id, msg.method, msg.params);
+      return;
+    }
+    if (!(NATIVE_METHODS as readonly string[]).includes(msg.method)) {
+      await send(failure(id, 'BAD_REQUEST'));
+      return;
+```
+
+In `apps/mobile/src/bridge/router.ts`, find:
+
+```ts
+    }
+  }
+
+  return { handle };
+}
+
+```
+
+Replace it with:
+
+```ts
+    }
+  }
+
+  async function handleV2(
+    id: string,
+    name: string,
+    params: unknown,
+  ): Promise<void> {
+    if (!(V2_METHODS as readonly string[]).includes(name)) {
+      await send(failureV2(id, 'BAD_REQUEST'));
+      return;
+    }
+    const method = name as V2Method;
+    const checked = validateV2Params(method, params);
+    if (!checked.ok) {
+      await send(failureV2(id, checked.code));
+      return;
+    }
+    let reply: BridgeReplyV2;
+    try {
+      const result = await callPortV2(deps.port, method, checked.params);
+      reply = { v: 2, id, ok: true, result };
+    } catch (error) {
+      reply = failureV2(id, errorCodeOf(error, method));
+    }
+    await send(reply);
+  }
+
+  return { handle };
+}
+
+```
+
+In `apps/mobile/src/bridge/validate.ts`, find:
+
+```ts
+  PRINT_DATA_MAX_BASE64_CHARS,
+  type NativeMethod,
+} from './protocol';
+import { MAX_PORT, MIN_PORT, isValidHost } from '../url';
+
+export const MAX_PRINTER_ID_CHARS = 200;
+```
+
+Replace it with:
+
+```ts
+  PRINT_DATA_MAX_BASE64_CHARS,
+  type NativeMethod,
+} from './protocol';
+import type { V2Method } from './protocol-v2';
+import { MAX_PORT, MIN_PORT, isValidHost } from '../url';
+
+export const MAX_PRINTER_ID_CHARS = 200;
+```
+
+In `apps/mobile/src/bridge/validate.ts`, find:
+
+```ts
+  return shapeOk ? { ok: true, params: { data } } : BAD;
+}
+
+export function validateParams(
+  method: NativeMethod,
+  params: unknown,
+```
+
+Replace it with:
+
+```ts
+  return shapeOk ? { ok: true, params: { data } } : BAD;
+}
+
+function validPrinterId(id: unknown): id is string {
+  return typeof id === 'string' && id.length > 0 && id.length <= MAX_PRINTER_ID_CHARS;
+}
+
+// Phase 2 Session 2F2 (spec §9.2): bridge v2's printer methods name their
+// printer by the app's id; select takes { id } or { tcp } exactly as v1.
+export function validateV2Params(
+  method: V2Method,
+  params: unknown,
+): Validated {
+  const obj =
+    params === undefined || params === null ? {} : plainObject(params);
+  if (obj === null) {
+    return BAD;
+  }
+  switch (method) {
+    case 'printer.select':
+      return validateSelect(obj);
+    case 'printer.reconnect':
+    case 'printer.forget':
+      return onlyKeys(obj, ['printerId']) && validPrinterId(obj.printerId)
+        ? { ok: true, params: { printerId: obj.printerId } }
+        : BAD;
+    case 'printer.print': {
+      if (!onlyKeys(obj, ['printerId', 'data']) || !validPrinterId(obj.printerId)) {
+        return BAD;
+      }
+      const checked = validatePrint({ data: obj.data });
+      return checked.ok
+        ? { ok: true, params: { printerId: obj.printerId, data: checked.params.data } }
+        : checked;
+    }
+    default:
+      return Object.keys(obj).length === 0 ? { ok: true, params: {} } : BAD;
+  }
+}
+
+export function validateParams(
+  method: NativeMethod,
+  params: unknown,
+```
+
+In `apps/mobile/src/native/PosPrinter.ts`, find:
+
+```ts
+  requestPermission: requestAndRefresh,
+  enableBluetooth: () => PosPrinter.enableBluetooth(),
+  setHostActive: (active, label) => PosPrinter.setHostActive(active, label),
+};
+
+```
+
+Replace it with:
+
+```ts
+  requestPermission: requestAndRefresh,
+  enableBluetooth: () => PosPrinter.enableBluetooth(),
+  setHostActive: (active, label) => PosPrinter.setHostActive(active, label),
+  poolStatus: () => PosPrinter.poolStatus(),
+  poolSelectPrinter: id => PosPrinter.poolSelectPrinter(id),
+  poolSelectTcp: (host, port) => PosPrinter.poolSelectTcp(host, port),
+  poolReconnect: printerId => PosPrinter.poolReconnect(printerId),
+  poolForget: printerId => PosPrinter.poolForget(printerId),
+  poolPrint: (printerId, base64) => PosPrinter.poolPrint(printerId, base64),
+};
+
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/mobile && node --import tsx --test src/bridge/router.test.ts src/bridge/injected.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 47`; `# pass 47`; `# fail 0`
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK && npm run lint >/dev/null && echo LINT_OK`
+Expected: `# tests 125`; `# pass 125`; `# fail 0`; `TSC_OK`; `LINT_OK`
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm run test:app 2>&1 | grep -E "^Tests:"`
+Expected: `Tests:       3 passed, 3 total`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/mobile/src/bridge/injected.test.ts apps/mobile/src/bridge/injected.ts apps/mobile/src/bridge/router.test.ts apps/mobile/src/bridge/router.ts apps/mobile/src/bridge/validate.ts apps/mobile/src/native/PosPrinter.ts
+git commit -m "feat(print): Phase 2 bridge v2 in the POS app: window.PosNative says it speaks versions 1 and 2, request and on take the version last, a reply settles only its own version's request and an event reaches only its version's listeners, and the router validates v2 envelopes (each printer method naming its printer by the app's id) and answers them in v2"
+```
+
+---
+
+### Task P3: the bridge v2 parity pin: the app's half against the page's native-bridge-v2.ts
+
+**Files:**
+- Create: `apps/cafe/lib/printer/native-bridge-v2-parity.test.ts`; modify `apps/cafe/package.json` (`testChain` gains it), `apps/cafe/scripts/run-test-chain.mjs` (an entry that names no file fails the run)
+
+**Interfaces produced:** None (a test).
+
+**The v2 parity pin**, as the v1 bridge (`native-bridge-protocol-parity.test.ts`) and the Windows app (`desktop-shell-paths.test.ts`) have one: the app's `V2_METHODS` against the page's `NATIVE_V2_METHODS` (in order), the version 2 on every side and the app's `versions` `[1, 2]`, the envelope of each method (what the page's pool sends is exactly what the app's validation takes), the version last in `request` and `on`, the reply's and the event's `v: 2` (router, `WebViewDelivery`, the pool's publish) and the list's keys (`printers`, `defaultId`, `bluetooth`; each printer `{ state, printer }`). Both halves are read as text; every checker also runs against 21 mutated copies it must catch.
+
+**The test chain refuses an entry that names no file** (the 2F1 gate's own finding, G-1): `testChain` is an array the runner passes to `node --test` one argument per entry, and an entry holding two paths in one string (the gate's first draft of this very task did that) ran neither file and passed; the one pin over the chain joins the entries with spaces, so it could not see it. The runner now exits 1 and names every entry that is not an existing file, before any test runs.
+
+- [ ] **Step 1: The change**
+
+Create `apps/cafe/lib/printer/native-bridge-v2-parity.test.ts`:
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+import { stripComments } from "../source-pin-utils";
+
+// Phase 2 Session 2F2 (spec §9.2): the bridge v2 parity pin, as the v1 bridge (native-bridge-protocol-parity.test.ts)
+// and the Windows app (desktop-shell-paths.test.ts) have one. The page's half (native-bridge-v2.ts, native-pool.ts)
+// against the POS app's half (apps/mobile/src/bridge: protocol-v2.ts, the router, the validation, the injected
+// script; and the Kotlin that sends the v2 event): the method names, the version, the envelope each method carries,
+// the reply's version and the list's keys. Both sides are read as TEXT; every checker returns its problems, and each
+// also runs against mutated copies that it must catch (a checker that cannot fail proves nothing).
+
+const REPO_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
+const readSrc = (rel: string): string => stripComments(readFileSync(path.join(REPO_ROOT, rel), "utf8"));
+
+const KT = "apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/";
+interface Sources {
+  web: string;
+  pool: string;
+  appProtocol: string;
+  router: string;
+  validate: string;
+  injected: string;
+  delivery: string;
+  publish: string;
+  json: string;
+  codes: string;
+}
+const sources = (): Sources => ({
+  web: readSrc("apps/cafe/lib/printer/native-bridge-v2.ts"),
+  pool: readSrc("apps/cafe/lib/printer/native-pool.ts"),
+  appProtocol: readSrc("apps/mobile/src/bridge/protocol-v2.ts"),
+  router: readSrc("apps/mobile/src/bridge/router.ts"),
+  validate: readSrc("apps/mobile/src/bridge/validate.ts"),
+  injected: readSrc("apps/mobile/src/bridge/injected.ts"),
+  delivery: readSrc(KT + "WebViewDelivery.kt"),
+  publish: readSrc(KT + "PrinterPool.kt"),
+  json: readSrc(KT + "StatusJson.kt"),
+  codes: readSrc(KT + "BridgeCodes.kt"),
+});
+
+const METHOD_ORACLE = ["printer.status", "printer.select", "printer.reconnect", "printer.forget", "printer.print"];
+
+/** The string literals of `export const NAME = [ ... ] as const;`, or null when it is not declared exactly once. */
+function listOf(code: string, name: string): string[] | null {
+  const open = "export const " + name + " = [";
+  if (code.split(open).length !== 2) return null;
+  const start = code.indexOf(open) + open.length;
+  const end = code.indexOf("] as const", start);
+  if (end < 0) return null;
+  return [...code.slice(start, end).matchAll(/'([^']*)'|"([^"]*)"/g)].map((m) => m[1] ?? m[2]);
+}
+
+function parityProblems(s: Sources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string): void => {
+    if (!text.includes(needle)) out.push(why);
+  };
+  // The methods, in order, on both sides.
+  const web = listOf(s.web, "NATIVE_V2_METHODS");
+  const app = listOf(s.appProtocol, "V2_METHODS");
+  if (JSON.stringify(web) !== JSON.stringify(METHOD_ORACLE)) out.push(`the page's v2 methods are ${JSON.stringify(web)}`);
+  if (JSON.stringify(app) !== JSON.stringify(METHOD_ORACLE)) out.push(`the app's v2 methods are ${JSON.stringify(app)}`);
+  // The version: 2 everywhere, and the app says it speaks 1 and 2.
+  need(s.web, "export const NATIVE_BRIDGE_V2 = 2;", "the page's v2 is not 2");
+  need(s.appProtocol, "export const BRIDGE_V2 = 2;", "the app's v2 is not 2");
+  need(s.appProtocol, "export const BRIDGE_VERSIONS = [1, 2] as const;", "the app does not say it speaks 1 and 2");
+  need(s.codes, "const val BRIDGE_V2 = 2", "the Kotlin v2 is not 2");
+  // The page sends the version last; the injected script takes it last and routes by it.
+  need(s.web, "bridge.request(method, params, NATIVE_BRIDGE_V2)", "the page does not send the version last");
+  need(s.web, "NATIVE_BRIDGE_V2,\n  );", "the page does not listen with the version last");
+  need(s.injected, "'function request(method, params, version) {',", "the app's request does not take the version last");
+  need(s.injected, "'function on(event, fn, version) {',", "the app's on does not take the version last");
+  need(s.injected, "'var VERSIONS = ' + safeJsonForScript(BRIDGE_VERSIONS) + ';',", "the injected script does not carry the app's versions");
+  need(s.injected, "versions: Object.freeze(VERSIONS.slice())", "window.PosNative does not say its versions");
+  need(s.injected, "'  if (!waiter || waiter.v !== message.v) { return; }',", "a reply of another version could settle a request");
+  need(s.injected, "\"    var set = listeners.get(message.v + ' ' + message.event);\",", "an event does not reach only its version's listeners");
+  // The envelope of each method: what the page sends is exactly what the app takes.
+  need(s.pool, 'client.request("printer.print", { printerId: id, data: bytesToBase64(bytes) })', "the page's print is not { printerId, data }");
+  need(s.pool, 'client.request("printer.reconnect", { printerId: id })', "the page's reconnect is not { printerId }");
+  need(s.pool, 'client.request("printer.forget", { printerId: id })', "the page's forget is not { printerId }");
+  need(s.pool, 'client.request("printer.select", target)', "the page's select is not its target ({ id } or { tcp })");
+  need(s.validate, "if (!onlyKeys(obj, ['printerId', 'data']) || !validPrinterId(obj.printerId)) {", "the app's print does not take exactly { printerId, data }");
+  need(s.validate, "return onlyKeys(obj, ['printerId']) && validPrinterId(obj.printerId)", "the app's reconnect and forget do not take exactly { printerId }");
+  need(s.validate, "case 'printer.select':\n      return validateSelect(obj);", "the app's v2 select is not v1's { id } or { tcp }");
+  // The reply and the event carry v: 2; the list's keys.
+  need(s.router, "(msg.v === NATIVE_BRIDGE_VERSION || msg.v === BRIDGE_V2) &&", "the router does not take a v2 envelope");
+  need(s.router, "reply = { v: 2, id, ok: true, result };", "a v2 answer is not a v2 reply");
+  need(s.router, "function failureV2(id: string, code: NativeErrorCode): BridgeReplyV2 {\n    return {\n      v: 2,", "a v2 refusal is not a v2 reply");
+  need(s.delivery, 'fun deliverEvent(event: String, data: JSONObject, version: Int = VERSION) {', "an app event carries no version of its own");
+  need(s.delivery, 'message.put("v", version)', "an app event is not sent with its version");
+  need(s.publish, "StatusJson.poolJson(all), BridgeCodes.BRIDGE_V2)", "the list of printers is not sent as a v2 event");
+  for (const key of ["printers", "defaultId", "bluetooth"]) {
+    need(s.web, `${key}: z.`, `the page does not read the list's ${key}`);
+    need(s.json, `json.put("${key}",`, `the app does not send the list's ${key}`);
+  }
+  need(s.json, 'JSONObject().put("state", entry.state).put("printer", printerJson(entry.printer))', "a listed printer is not { state, printer }");
+  return out;
+}
+
+type Mutation = [keyof Sources, string, string];
+const MUTATIONS: Mutation[] = [
+  ["web", '"printer.reconnect", "printer.forget"', '"printer.forget", "printer.reconnect"'],
+  ["appProtocol", "'printer.print',", "'printer.write',"],
+  ["appProtocol", "BRIDGE_V2 = 2;", "BRIDGE_V2 = 3;"],
+  ["appProtocol", "[1, 2] as const", "[1] as const"],
+  ["codes", "BRIDGE_V2 = 2", "BRIDGE_V2 = 1"],
+  ["web", "bridge.request(method, params, NATIVE_BRIDGE_V2)", "bridge.request(method, params)"],
+  ["injected", "'function request(method, params, version) {',", "'function request(method, params) {',"],
+  ["injected", "'function on(event, fn, version) {',", "'function on(event, fn) {',"],
+  ["injected", "versions: Object.freeze(VERSIONS.slice())", "versions: []"],
+  ["injected", "'  if (!waiter || waiter.v !== message.v) { return; }',", "'  if (!waiter) { return; }',"],
+  ["injected", "listeners.get(message.v + ' ' + message.event)", "listeners.get(message.event)"],
+  ["pool", "{ printerId: id, data: bytesToBase64(bytes) }", "{ id, data: bytesToBase64(bytes) }"],
+  ["pool", 'client.request("printer.reconnect", { printerId: id })', 'client.request("printer.reconnect", { id })'],
+  ["validate", "onlyKeys(obj, ['printerId', 'data'])", "onlyKeys(obj, ['id', 'data'])"],
+  ["validate", "return onlyKeys(obj, ['printerId']) &&", "return onlyKeys(obj, ['id']) &&"],
+  ["router", "|| msg.v === BRIDGE_V2) &&", ") &&"],
+  ["router", "reply = { v: 2, id, ok: true, result };", "reply = { v: 1, id, ok: true, result } as never;"],
+  ["delivery", 'message.put("v", version)', 'message.put("v", VERSION)'],
+  ["publish", "StatusJson.poolJson(all), BridgeCodes.BRIDGE_V2)", "StatusJson.poolJson(all))"],
+  ["json", 'json.put("defaultId",', 'json.put("default",'],
+  ["web", "defaultId: z.", "defaultPrinter: z."],
+];
+
+test("2F2: the app's bridge v2 and the page's agree: the methods, the version, each method's envelope, the reply's version and the list's keys", () => {
+  assert.deepEqual(parityProblems(sources()), [], "the two halves of bridge v2 agree");
+});
+
+test("2F2: the v2 parity pin catches every drift on either side", () => {
+  const base = sources();
+  for (const [key, from, to] of MUTATIONS) {
+    assert.ok(base[key].includes(from), `mutation anchor missing in ${key}: ${from}`);
+    const problems = parityProblems({ ...base, [key]: base[key].split(from).join(to) });
+    assert.ok(problems.length > 0, `mutation not caught in ${key}: ${from} -> ${to}`);
+  }
+});
+```
+
+In `apps/cafe/package.json`, find:
+
+```json
+    "lib/print-setup-ui-paths.test.ts",
+    "lib/print-setup-fields.test.ts",
+    "lib/print-windows-printers.test.ts",
+    "lib/printer/native-pool.test.ts"
+  ],
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+```
+
+Replace it with:
+
+```json
+    "lib/print-setup-ui-paths.test.ts",
+    "lib/print-setup-fields.test.ts",
+    "lib/print-windows-printers.test.ts",
+    "lib/printer/native-pool.test.ts",
+    "lib/printer/native-bridge-v2-parity.test.ts"
+  ],
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+```
+
+In `apps/cafe/scripts/run-test-chain.mjs`, find:
+
+```js
+// OS process API (no shell, no quoting; a 32 767-character limit on Windows), so the chain keeps its explicit,
+// reviewable list. Extra CLI flags pass through: `node scripts/run-test-chain.mjs --test-concurrency=1`.
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+```
+
+Replace it with:
+
+```js
+// OS process API (no shell, no quoting; a 32 767-character limit on Windows), so the chain keeps its explicit,
+// reviewable list. Extra CLI flags pass through: `node scripts/run-test-chain.mjs --test-concurrency=1`.
+import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+```
+
+In `apps/cafe/scripts/run-test-chain.mjs`, find:
+
+```js
+
+if (!Array.isArray(files) || files.length === 0 || files.some((f) => typeof f !== "string" || f.length === 0)) {
+  process.stderr.write('apps/cafe/package.json "testChain" must be a non-empty array of test file paths\n');
+  process.exit(1);
+}
+
+```
+
+Replace it with:
+
+```js
+
+if (!Array.isArray(files) || files.length === 0 || files.some((f) => typeof f !== "string" || f.length === 0)) {
+  process.stderr.write('apps/cafe/package.json "testChain" must be a non-empty array of test file paths\n');
+  process.exit(1);
+}
+// The 2F1 review gate: an entry that names no file (a typo, or two paths in one string) would run no test and pass.
+const missing = files.filter((f) => !existsSync(path.join(CAFE_ROOT, f)));
+if (missing.length > 0) {
+  process.stderr.write(`apps/cafe/package.json "testChain" names files that do not exist: ${missing.join(", ")}\n`);
+  process.exit(1);
+}
+
+```
+
+- [ ] **Step 2: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/printer/native-bridge-v2-parity.test.ts lib/printer/native-bridge-protocol-parity.test.ts lib/printer/device-printer-native-connect.test.ts lib/printer/network-address.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 50`; `# pass 50`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint lib/printer/native-bridge-v2-parity.test.ts scripts/run-test-chain.mjs && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 3: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/lib/printer/native-bridge-v2-parity.test.ts apps/cafe/package.json apps/cafe/scripts/run-test-chain.mjs
+git commit -m "test(print): Phase 2 the bridge v2 parity pin: the POS app's router, validation, injected script and Kotlin against the page's native-bridge-v2.ts (the methods, the version, each method's envelope, the reply's version and the list's keys)"
+```
+
+---
+
+### Task P4: full verification, the APKs, the exit check on the emulator, the fresh review, Results
+
+**Files:** this plan (a new "Session 2F2 Results" section at its end). The tools below go in this session's scratchpad, never in the repo.
+
+- [ ] **Step 1: Every suite**
+
+Run each from the repo (the totals the pre-validation saw on the golden tree):
+
+| Run | Expected |
+|---|---|
+| `cd /d/kd/lucifer/packages/shared && npm test && npx tsc --noEmit -p .` | `# tests 684`, `# pass 684`; tsc 0 (no shared change) |
+| `cd /d/kd/lucifer/apps/cafe && npm test` | `# tests 4457`, `# pass 4456`, `# fail 0`, `# skipped 1` (the skip is the `go-live-dl` pin) |
+| `cd /d/kd/lucifer/apps/cafe && npx tsc --noEmit && npm run lint` | tsc 0; lint 0 errors and the 2 old warnings |
+| `cd /d/kd/lucifer/apps/hub && npx tsc --noEmit` | 0 |
+| `cd /d/kd/lucifer/apps/mobile && npx tsc --noEmit && npm run lint && npm test && npm run test:app` | 0; 0; **125/125**; Jest 3/3 |
+| `cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest` (then the JUnit XML under `app/build/test-results/testDebugUnitTest`) | `BUILD SUCCESSFUL`; `PrinterManagerTest` 13, `PoolListTest` 6, `PoolStatusTest` 2: **21 tests, 0 failures, 0 errors** |
+| `cd /d/kd/lucifer/apps/desktop && npm test && npm run typecheck && npm run lint` | 192/192; typecheck 0; lint 0 |
+| `cd /d/kd/lucifer && npm run test:print-tools` | 8/8 |
+| `cd /d/kd/lucifer/apps/cafe && MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_print_host npm run verify:print:live` | `332 passed, 0 failed` (no leg changes) |
+
+- [ ] **Step 2: The Next production build**
+
+Run: `cd /d/kd/lucifer/apps/cafe && npm run build`
+Expected: the build succeeds with 129 routes (2F2 adds none).
+
+- [ ] **Step 3: The APKs (the app changed: new hashes, recorded)**
+
+`git diff <start>..HEAD --stat -- workers packages` (`<start>`: the commit this session started from) must list nothing: no Worker and no shared change. Check `df -h /d` (the debug unit-test build of Step 1 adds ≈ 450 MB under `apps/mobile/android/app/build`). Build the x86_64 APK (`gradlew.bat aR -PreactNativeArchitectures=x86_64`, output `app-release.apk`) and the ARM pair (`assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a`) with `GRADLE_USER_HOME='D:\gradle-home'`. Expected: `BUILD SUCCESSFUL` each; every hash **differs** from the 2026-10-03 release (`29115bdf…`, `0e0ec314…`, `e618900a…`: the first change of the app in Phase 2); the same package, version 1 and signing certificate (`fac61745…`), so it updates the installed app in place. Record the three hashes and sizes in Results. (The gate's own x86_64 build of the golden code, `f33937d8…` 7,435,473 B, came from a scratch clone built through a short drive path and is not comparable byte for byte.) The release folder `D:\kd\pos-apk-release\Sandbee-POS-final\` is not touched: these APKs reach a device only after the go-live run.
+
+- [ ] **Step 4: The exit check (spec §9.2, §13; the 2F2 exit)**
+
+**The harness** (as the gate ran it; check `netstat -ano | grep LISTEN` for 3110, 3111, 3200, 3201, 9100 and 9101 first):
+- the local POS from this branch's build on 3110 (`cd /d/kd/lucifer/apps/cafe && node --env-file=<scratchpad>/e2e.env ../../node_modules/next/dist/bin/next start -p 3110`, a background command with `timeout: 7200000`); `e2e.env` copied from the 2F1 gate's scratchpad (`C:\Users\KARTIK~1.DES\AppData\Local\Temp\claude\d--kd-lucifer\e90a4200-8e84-4f79-8d13-18c68a5fc857\scratchpad\e2e.env`: database `pos_scratch_e2e_p1final`, e2eadmin, tables and menu seeded). **As found at the gate:** stations Kitchen (default) and Bar, no printer, no station on any category or item, no print host;
+- **an old page (bridge v1)**: a scratchpad clone of the branch at `997f10c` (the 2E gate's commit, the last page before 2F1; `git clone --no-hardlinks` of the repo, `git checkout 997f10c`, the 2E gate's `link-modules.ps1`, then the `node_modules/next` junction replaced by a real copy of `D:\kd\lucifer\node_modules\next`), built (`npm run build` in its `apps/cafe`) and served the same way on 3111;
+- two counting proxies (`gate-proxy-2b.mjs`, saved exactly as in Task B7 Step 4): `--listen 3200 --target 3110 --log <scratchpad>/proxy-g2.jsonl` and `--listen 3201 --target 3111 --log <scratchpad>/proxy-g2-old.jsonl`;
+- two fake printers: `node scripts/fake-escpos-printer.mjs --port 9100 --out <scratchpad>\fake-g2-9100` and the same on `9101`, each `--out` a long Windows path (`C:\Users\Kartik.desai\…`, never the `KARTIK~1.DES` short form);
+- `p2d-tool.ts` saved exactly as in Task D8 Step 4 (Session 2D), run from `apps/cafe` as `P2C_BASE=http://localhost:3110 node --env-file=<scratchpad>/e2e.env --import tsx <scratchpad>/p2d-tool.ts <mode>` (`state`, `jobs`, `devices`, `reset2d`); `since-g2.sh` below, saved with the Write tool exactly as shown.
+
+`<scratchpad>/since-g2.sh`:
+
+```bash
+#!/usr/bin/env bash
+# since-g2.sh mark        remember the current length of the proxy log and both fake printers' jobs.log
+# since-g2.sh show [all]  print what each gained since the mark (proxy: print routes only, wake and pulse counted unless "all")
+# The fake printers run with --out <this folder>/fake-g2-9100 and fake-g2-9101 (long Windows paths). No header, body
+# or cookie is ever printed (the logs hold none).
+SP="$(cd "$(dirname "$0")" && pwd)"
+P="$SP/proxy-g2.jsonl"
+K="$SP/fake-g2-9100/jobs.log"
+B="$SP/fake-g2-9101/jobs.log"
+M="$SP/.since-g2-mark"
+count() { [ -f "$1" ] && wc -l < "$1" || echo 0; }
+if [ "$1" = "mark" ]; then
+  echo "$(count "$P") $(count "$K") $(count "$B")" > "$M"
+  exit 0
+fi
+read -r pn kn bn < "$M"
+echo "--- proxy (since mark)"
+if [ "$2" = "all" ]; then
+  tail -n +"$((pn + 1))" "$P"
+else
+  tail -n +"$((pn + 1))" "$P" | grep -vE '"r":"/api/(print-jobs/wake|order-requests/pulse)' | grep -E '"r":"/api/(print|orders|order|stations|printers)' | sed -E 's/^\{"t":([0-9]+),/\1 /'
+  echo "wake: $(tail -n +"$((pn + 1))" "$P" | grep -c '/api/print-jobs/wake')  pulse: $(tail -n +"$((pn + 1))" "$P" | grep -c '/api/order-requests/pulse')"
+fi
+echo "--- printer 9100 (since mark)"
+[ -f "$K" ] && tail -n +"$((kn + 1))" "$K" | grep -E '"bytes":[1-9]'
+echo "--- printer 9101 (since mark)"
+[ -f "$B" ] && tail -n +"$((bn + 1))" "$B" | grep -E '"bytes":[1-9]'
+exit 0
+```
+
+**The emulator** (`Pixel_7_API_33`, booted by this session with `-memory 4096 -no-audio -no-snapshot-save` and `timeout: 7200000`; `df -h /c` first, `-memory 2048` under ~2 GB). The owner's `"Bash(adb:*)"` rule is in `.claude/settings.local.json`. **The app must be on its start screen with no address** (as the 2F1 gate left it), never the live demo ("Olivea Pizza"): if it shows the demo, stop and ask the owner to switch it. Check "POS Software" and the seeded menu before any tap that writes. `adb logcat -b crash -d` empty before the app runs. The installed APK hashed on the device first: the release `29115bdf…`. Every tap below is on the app's own screens (uiautomator dumps for the coordinates).
+
+| # | Step | Expected (the gate's run, 2026-10-05) |
+|---|---|---|
+| 1 | Release APK: `adb reverse tcp:3100 tcp:3200`; on the start screen type `http://localhost:3100`, Open POS; the printer panel → Network printer `10.0.2.2`, port 9100 → Use this network printer | "POS Software", the seeded menu; "Network printer 10.0.2.2 · Network · 80 mm · Connected"; **no** "Other printers on this device" |
+| 2 | New Order: Cheesecake, Masala Chai → Send to Kitchen | one KOT, **44,454 B** on 9100; the order (`lease`, `agent`) and one ack |
+| 3 | **The new APK over the release APK**: `adb install -r` of this session's x86_64 APK; relaunch | the app opens on the local POS, signed in, "Printer connected" at once (the printer kept: the `Prefs` migration); the panel: "Printer on this device · Network printer 10.0.2.2 · Connected", **"Other printers on this device"**, "Add another printer"; crash buffer empty |
+| 4 | **The old page on the new APK**: `adb reverse tcp:3100 tcp:3201`, `am force-stop`, relaunch; the panel; Send to Kitchen (Cheesecake, Masala Chai); then Pay Now (Cheesecake, Cash, Place Order) | the panel "Network printer 10.0.2.2 · Connected", no "Other printers"; KOT **44,454 B**, the order and one ack; Pay Now: KOT **40,494 B** then bill **36,966 B**, the order, ack, lease, ack: exactly as on the release APK |
+| 5 | **The new page on the new APK**: `adb reverse tcp:3100 tcp:3200`, force-stop, relaunch; sidebar → Printer setup → **Set up printers** | Printer 1 "Network 10.0.2.2:9100 · printed by This device · Bill, Full KOT copy, Notices, End of day · Paper 80 mm"; the proxy: `POST /api/printers` 201, one printers read, one lease |
+| 6 | **Add printer**: Name "Bar printer", Network (LAN) `10.0.2.2` `9101`, the device "This device", Bar KOTs (Notices stays ticked), 58 mm, Save printer | "Bar printer · Prints on this device · Network 10.0.2.2:9101 · printed by This device · Bar KOTs, Notices · Paper 58 mm"; the panel's "Other printers on this device" lists "Network printer 10.0.2.2 · Network 10.0.2.2:9101" (the page added it to the app: a v2 `printer.select`); `POST /api/printers` 201, one read, one lease |
+| 7 | Sidebar → Menu → Categories → Beverages (Rename) → Kitchen station "Bar" → Save | `p2d-tool.ts state`: categories `Beverages -> Bar` |
+| 8 | New Order: Cheesecake, Masala Chai → Send to Kitchen | "BAR" **28,110 B** on 9101 (58 mm) and "ALL STATIONS" **48,198 B** on 9100 (80 mm), both `leased(direct)`, epoch 1; the order and two acks, **no lease after them** |
+| 9 | The same round → Pay Now (Cash) | "BAR" 28,110 B on 9101, "ALL STATIONS" 48,198 B and the bill **40,854 B** on 9100: the order, ack, ack, lease, ack |
+| 10 | Printer setup → Test print on Printer 1, then on Bar printer | **31,414 B** on 9100, **14,182 B** on 9101; each the test call (direct) and one ack |
+| 11 | 9101 stopped (by PID, its command line checked); Send to Kitchen (Cheesecake, Masala Chai); 45 s more with 9101 off; then 9101 started again | "ALL STATIONS" 48,198 B on 9100 (after the BAR slip's refusal, ≈ 11 s: slips print one at a time, F-R5); BAR `failed(not sent: The printer is not connected. …)`; one lease at the hold's end (≈ 30 s); **no lease in the next 45 s** while the app probes 9101 (N-1); 9101 back → within ≤ 30 s one lease, BAR printed **once, unlabelled** (`labels: []`, epoch 2, 28,110 B), one ack, no lease after |
+| 12 | The notification: `p2d-tool.ts reset2d` (simple mode), Refresh; the panel → Print all slips on this device; `adb shell pm grant com.possoftware.pos android.permission.POST_NOTIFICATIONS`; `adb shell dumpsys notification --noredact`; then 9101 stopped and the panel's Other printers → Reconnect on it | "Printing is on — 2 printers"; then "Printing is on — Network printer 10.0.2.2 not connected"; `adb shell pm revoke … POST_NOTIFICATIONS` (Android restarts the app); relaunch; the panel → Stop printing here → Yes, remove (`p2d-tool.ts devices`: host null) |
+| 13 | **Two printers, this device's one changed and removed** (simple mode still; 9101 started again; the app holds 10.0.2.2:9100, the default, and 10.0.2.2:9101): the panel's Change printer → Network printer `10.0.2.2` port `9101` (a printer the app already lists) → Use this network printer; Send to Kitchen (Cheesecake, Masala Chai); then this device's printer → Remove → Yes, remove; Send to Kitchen again | after Change printer, "Other printers on this device" still lists "Network 10.0.2.2:9100" (the old default stays listed: ruling G-R3 as changed); the KOT **44,454 B on 9101**; after Remove the panel shows the printer the app promoted ("Network printer 10.0.2.2 is connected.", no other printer: G-2) and the KOT **44,454 B on 9100** |
+| 14 | `adb logcat -b crash -d` | 0 lines |
+| 15 | Put back | the app's last printer removed (the panel's Remove → Yes, remove) → "No printer set up"; Printer setup → Kitchen stations → Add station "Bar"; `reset2d` already ran: as found (Kitchen default, Bar, no printer, no station on any category); More options → Change POS address → the start screen, "Clear POS address" (the placeholder shows); **the release APK reinstalled** (`adb install -r` of a `29115bdf…` build: Step 3 of Session 2F1's apk folder, or this gate's `apk-gate2f1`), hashed on the device, the start screen with no address; `adb reverse --remove-all`, then `adb reverse tcp:3100 tcp:3100`; both POS servers, both proxies and the fake printers stopped by PID after checking each command line; `adb emu kill` |
+
+Record every answer, the request counts per item and the prints per printer in Results.
+
+- [ ] **Step 5: The fresh review**
+
+A fresh reviewer subagent (the most capable model, read-only) reads `<start>..HEAD` against this plan (decisions 1–16; "2E review gate: rulings"; "2F1 review gate: rulings"; Session 2F2 and its Review Focus) and spec §9.1, §9.2, §13, and reports Critical / Important / Minor findings, each with a concrete failure scenario. Fix Critical and Important ones by TDD on the branch (each RED seen before its GREEN) and re-run Step 1 (and the APKs and the emulator steps a fix touches); list the rest in Results for the 2F2 gate.
+
+- [ ] **Step 6: Results, then push**
+
+Add "## Session 2F2 Results (filled in by the implementer)" at the end of this plan: every number from Steps 1–5, the new APK hashes, the exit check's answers, each changed pin, any deviation with its reason. Commit it, and push the branch with the token only: `GIT_TERMINAL_PROMPT=0 git push origin feat/printing-phase-2`.
+
+**Changed existing pins in 2F2** (each follows a deliberate change; name them in Results):
+- P0: `print-windows-printers.test.ts` "PIN (2E): the agent leases, offers for direct print and is kicked only for the printers no refusal holds"; `print-agent-paths.test.ts` "PIN (2B): the draining tab offers itself for direct print, every answer that carries a lease reaches its agent, and only it"; `print-agent-printers.test.ts` "PIN (2F1): the page follows the app's printers: the agent's lines, the dot, the drain, the wake's heartbeat, the network printers it writes"; `print-setup-ui-paths.test.ts` "PIN (2D): each printer row: its state in words, on/off, Test print only when it can print, edit, delete with a question"; `printer-ui-paths.test.ts` the hygiene table (`OtherDevicePrinters.tsx` added).
+- P1: `apps/mobile/src/mobile-paths.test.ts` pin 0 (the pool's files, `protocol-v2.ts`), pin 4 and its mutation (the oracle 18 → 24), pin 11 and its mutation (the pool publishes both versions; `PrinterPool.appVisible`), pin 14 and its mutation (the publish lock in `PrinterPool`, the per-slot fence, the watchdog in `PrinterManager`), pin 16 and its mutation (per printer); pin 19 is new.
+- P2: `router.test.ts` "every drop path = zero native calls and zero deliveries" (the dropped version 2 → 3); `injected.test.ts` "PosNative is frozen, non-writable, non-configurable; platform and version set", "the token is not reachable from the page" (`versions`).
+- P3: `apps/cafe/package.json` `testChain` gains `lib/printer/native-bridge-v2-parity.test.ts` (its own array entry); `scripts/run-test-chain.mjs` refuses an entry that names no file (no pin changes).
