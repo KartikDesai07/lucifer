@@ -41406,3 +41406,179 @@ Add "## Session 2F2 Results (filled in by the implementer)" at the end of this p
 - P1: `apps/mobile/src/mobile-paths.test.ts` pin 0 (the pool's files, `protocol-v2.ts`), pin 4 and its mutation (the oracle 18 → 24), pin 11 and its mutation (the pool publishes both versions; `PrinterPool.appVisible`), pin 14 and its mutation (the publish lock in `PrinterPool`, the per-slot fence, the watchdog in `PrinterManager`), pin 16 and its mutation (per printer); pin 19 is new.
 - P2: `router.test.ts` "every drop path = zero native calls and zero deliveries" (the dropped version 2 → 3); `injected.test.ts` "PosNative is frozen, non-writable, non-configurable; platform and version set", "the token is not reachable from the page" (`versions`).
 - P3: `apps/cafe/package.json` `testChain` gains `lib/printer/native-bridge-v2-parity.test.ts` (its own array entry); `scripts/run-test-chain.mjs` refuses an entry that names no file (no pin changes).
+
+---
+
+## Session 2F2 Results (filled in by the implementer)
+
+Executed on 2026-10-05 with superpowers:executing-plans, task by task, P0 → P4.
+
+### Commits (`7f6379e..HEAD`)
+
+| Commit | Task |
+|---|---|
+| `3b46bc0` | P0: the 2F1 review gate's page fixes: a printer job's refusal holds its own printer's line (M-1 with the 2E gate's M-9), a down printer's reconnect probes lease nothing (N-1), one kept retry of the app's first read (M-5), a printer with a state of its own is named (M-2), the contract header's sentences (M-3), Remove keeps the printer the app promotes (G-2), the `OtherDevicePrinters.tsx` hygiene pin (M-6) |
+| `d63fe89` | P1: the POS app's printer pool: one `PrinterManager` and io thread per printer, BUSY per printer, `Prefs` as a list with the v1 printer migrated in, the v1 and v2 `printer.status` from one publish, the notification's worst state, JUnit 4 on the JVM |
+| `8fecbcd` | P2: bridge v2 in the POS app (`versions: [1, 2]`, `request`/`on` with the version last, the router's and validation's v2 envelopes) |
+| `236c863` | P3: the bridge v2 parity pin; the test chain refuses an entry that names no file (G-1) |
+| (this commit) | Results |
+
+### Start
+
+- `git branch --show-current`: `feat/printing-phase-2`; HEAD `7f6379e` (= origin); working tree clean.
+- `GIT_TERMINAL_PROMPT=0 git fetch origin` (token credential): `origin/main` still `6ee2b1d`: nothing to merge or note.
+- The gate's applier (`apply_blocks_clone.py`) copied from the 2F1 gate's scratchpad into this session's; the whole P0–P3 range (plan lines 35606–41302) dry-run against `7f6379e`: **126 ops OK** (as the gate saw; no drift).
+- Disk at the start: C: 6.7 GB free, D: 2.0 GB free (`apps/mobile/android/app/build` already held 1.6 GB of earlier builds, so the debug unit-test build added almost nothing: D: stayed at 1.9–2.0 GB through the session).
+
+### How the code was applied
+
+Every block was applied verbatim to the real repo by the gate's applier, one step range at a time (each task's Step 1, then its Step 3; P3's one change step), so each RED was seen before its code went in: P0 12 + 19 ops, P1 32 + 31, P2 8 + 20, P3 4 (126). After P3, **every file outside `docs/` is blob-identical to the gate's golden branch `g2f2-v4`** (tree `bd42cce`; `git ls-tree -r` of both with `docs/` left out: 1,772 entries each, no difference). P0–P3: 50 files, **+2,205 / −471**, as the gate counted. Every commit has the plan's message plus the session's co-author line.
+
+### Per-task RED → GREEN (every Expected line compared; all matched)
+
+| Task | RED | GREEN |
+|---|---|---|
+| P0 | 9 cafe files: tests 184, pass 175, **fail 9** | **184/184**; tsc 0; `LINT_OK` |
+| P1 | `mobile-paths.test.ts`: tests 40, pass 27, **fail 13**; `gradlew :app:testDebugUnitTest`: **BUILD FAILED** (the JUnit files' `PoolList`, `PrinterManager(…)` etc. unresolved: 99 compile errors) | mobile `npm test` **119/119**, tsc 0, `LINT_OK`; Gradle **BUILD SUCCESSFUL** (31 s); JUnit `PoolListTest` 6, `PoolStatusTest` 2, `PrinterManagerTest` 13: 0 failures, 0 errors |
+| P2 | `router.test.ts` + `injected.test.ts`: tests 47, pass 40, **fail 7** | **47/47**; mobile **125/125**, tsc 0, `LINT_OK`; Jest **3 passed, 3 total** |
+| P3 | (one change step) | 4 cafe files **50/50**; tsc 0; `LINT_OK` |
+
+Line counts at the end (the files 2F2 touched most): `PrinterManager.kt` 340, `PosPrinterModule.kt` 311, `PrintHostService.kt` 255, `PrinterApi.kt` 208, `PrinterPool.kt` 166 (new), `Prefs.kt` 108, `PoolList.kt` 92 (new), `SelectionFence.kt` 79, `PoolStatus.kt` 54 (new), `PrinterEnv.kt` 34 (new); `router.ts` 304, `injected.ts` 173, `validate.ts` 168, `protocol-v2.ts` 46 (new); cafe `use-print-agent.ts` 260, `native-pool.ts` 226, `transport-native.ts` 205, `native-bridge-v2.ts` 156, `native-bridge-v2-parity.test.ts` 139 (new); JUnit `PrinterManagerTest.kt` 235, `PrinterFakes.kt` 148, `PoolListTest.kt` 93, `PoolStatusTest.kt` 45.
+
+### Task P4 Step 1: every suite (at `236c863`)
+
+| Suite | Result |
+|---|---|
+| shared `npm test`; `tsc` | **684/684**; 0 |
+| cafe `npm test` | **4457 tests, 4456 pass, 0 fail, 1 skipped** (the `go-live-dl` pin) |
+| cafe `tsc`; `npm run lint` | 0; 0 errors and the 2 old warnings (`lib/masters-blob.test.ts:331`) |
+| Hub `tsc` | 0 |
+| mobile `tsc`; lint; `npm test`; `test:app` | 0; 0; **125/125**; Jest **3/3** |
+| `gradlew :app:testDebugUnitTest` (`GRADLE_USER_HOME='D:\gradle-home'`) | `BUILD SUCCESSFUL`; `PrinterManagerTest` 13, `PoolListTest` 6, `PoolStatusTest` 2: **21 tests, 0 failures, 0 errors** |
+| desktop `npm test`; `typecheck`; `lint` | **192/192**; 0; 0 |
+| `npm run test:print-tools` | **8/8** |
+| live legs (local mongod, `pos_scratch_print_host`) | **`332 passed, 0 failed`** (no leg change) |
+
+Every row equals the plan's Expected (run once, in the background, one suite after another).
+
+### Changed existing pins (each follows a deliberate change)
+
+Exactly the ones the plan names (P4 "Changed existing pins in 2F2"): P0 `print-windows-printers.test.ts` "PIN (2E): the agent leases, offers for direct print and is kicked only for the printers no refusal holds" (the `lineOf` line); `print-agent-paths.test.ts` "PIN (2B): the draining tab offers itself for direct print, every answer that carries a lease reaches its agent, and only it" (the nudge effect's dependencies); `print-agent-printers.test.ts` "PIN (2F1): the page follows the app's printers: the agent's lines, the dot, the drain, the wake's heartbeat, the network printers it writes" (the nudge on what can print now); `print-setup-ui-paths.test.ts` "PIN (2D): each printer row: its state in words, on/off, Test print only when it can print, edit, delete with a question" (`ownState`); `printer-ui-paths.test.ts` the hygiene table (`OtherDevicePrinters.tsx`, 120 lines). P1 `apps/mobile/src/mobile-paths.test.ts` pin 0 (the pool's files, `protocol-v2.ts`), pin 4 and its mutation (the oracle 18 → 24), pin 11 and its mutation (the pool publishes both versions; `PrinterPool.appVisible`), pin 14 and its mutation (the publish lock in `PrinterPool`, the per-slot fence, the watchdog in `PrinterManager`), pin 16 and its mutation (per printer); pin 19 new. P2 `router.test.ts` "every drop path = zero native calls and zero deliveries" (the dropped version 2 → 3); `injected.test.ts` "PosNative is frozen, non-writable, non-configurable; platform and version set" and "the token is not reachable from the page" (`versions`). P3 `apps/cafe/package.json` `testChain` gains `lib/printer/native-bridge-v2-parity.test.ts` (its own array entry); `scripts/run-test-chain.mjs` refuses an entry that names no file (no pin changes).
+
+### Step 2: the Next production build
+
+Success, **129 routes** (2F2 adds none), at `236c863`; only the 2 old lint warnings.
+
+### Step 3: the APKs (the app changed: new hashes)
+
+`git diff 7f6379e..HEAD --stat -- workers packages` lists nothing: no Worker and no shared change. Built with `GRADLE_USER_HOME='D:\gradle-home'` (D: 1.9 GB free after): x86_64 with `gradlew aR -PreactNativeArchitectures=x86_64` (BUILD SUCCESSFUL 1 m 54 s), the ARM pair with `assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a` (1 m 1 s):
+
+| APK | SHA-256 | Size |
+|---|---|---|
+| x86_64 (`app-release.apk`, the emulator's) | `3736540bff2ab340f6c0a7ba104cd23381a42b858065794105c9b9ff4a3884a1` | 7,435,349 B |
+| arm64-v8a | `b10feedb175d6839317892caa070cfca7d21f88318a97ede97abd6a22c81333a` | 7,303,622 B |
+| armeabi-v7a | `86b7ff13ff68b8d4edc611d4112b0a9309f29c50365f0698ce038d8414d26cd8` | 6,711,460 B |
+
+Every hash **differs** from the 2026-10-03 release (`29115bdf…`, `0e0ec314…`, `e618900a…`): the first change of the app in Phase 2. Each is package `com.possoftware.pos`, versionCode 1 (`1.0`), signed by the same certificate (`fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`, `apksigner verify --print-certs`), so it updates an installed app in place. (The x86_64 size equals the gate's final golden APK's, 7,435,349 B; its hash differs because the gate built through a short drive path.) The APKs stay in this session's scratchpad (`apk-p4/`); `D:\kd\pos-apk-release\Sandbee-POS-final\` is untouched: they reach a device only after the go-live run.
+
+### Step 4: the exit check on the emulator (15 items: passed)
+
+**The harness**, exactly as the plan writes it: this branch's build (`236c863`) on 3110 and the old page (`997f10c`: a scratchpad clone, the 2E gate's `link-modules.ps1`, a real copy of `node_modules/next`, `npm run build`: 129 routes) on 3111, both with `e2e.env` copied from the 2F1 gate's scratchpad (database `pos_scratch_e2e_p1final`); the counting proxies (`gate-proxy-2b.mjs`, checked byte-identical to Task B7 Step 4's fence) on 3200 → 3110 and 3201 → 3111; fake printers on 9100 and 9101 with long `--out` paths (nothing vanished); `p2d-tool.ts` and `since-g2.sh` extracted from this plan's fences by a script (each byte-identical to its fence and to the gate's copy), plus `since-g2-old.sh` (the same script reading the 3201 proxy's log). Ports 3110, 3111, 3200, 3201, 9100 and 9101 were free. **As found:** stations Kitchen (default) and Bar, no printer, no station on any category or item, no print host.
+
+**The emulator:** `Pixel_7_API_33` booted by this session (`-memory 4096 -no-audio -no-snapshot-save`, `timeout: 7200000`; C: 5.8 GB free; a cold boot: the `default_boot` snapshot did not load), crash buffer 0 lines. **The app was not installed** (`pm path com.possoftware.pos` empty; the AVD's settings files were touched at 15:43, after the 2F1 gate): the release APK (`29115bdf…`, the 2F1 gate's `apk-gate2f1` copy, hashed before and on the device) was installed as the plan's baseline (ruling below). It opened on its start screen with no address (not the demo); `http://localhost:3100` typed there opened signed in (the WebView still held the local POS session: no secret typed); "POS Software" and the seeded menu were checked before any write. The owner's `"Bash(adb:*)"` rule: every `adb shell input` worked. Every tap was on the app's own screens.
+
+| # | Step | Result |
+|---|---|---|
+| 1 | Release APK; `adb reverse tcp:3100 tcp:3200`; the panel → Network printer `10.0.2.2` 9100 → Use this network printer | "Network printer 10.0.2.2 · Network · 80 mm · Connected"; **no** "Other printers on this device" |
+| 2 | Send to Kitchen (Cheesecake, Masala Chai) | one KOT **44,454 B** on 9100; `POST /api/orders` (`lease`, `agent`) and one ack |
+| 3 | `adb install -r` of this session's x86_64 APK (hashed on the device `3736540b…`); relaunch | opened signed in, **"Printer connected" at once** (the printer kept: the `Prefs` migration); the panel: "Printer on this device · Network printer 10.0.2.2 · Network · 80 mm · Connected", **"Other printers on this device"**, "Add another printer"; crash buffer 0 |
+| 4 | The old page: `adb reverse tcp:3100 tcp:3201`, force-stop, relaunch; the panel; Send to Kitchen; Pay Now (Cheesecake, Cash, Place Order) | the panel "Network printer 10.0.2.2 · Network · 80 mm · Connected", no "Other printers"; KOT **44,454 B**, the order and one ack; Pay Now: KOT **40,494 B** then bill **36,966 B**, the order, ack, lease, ack: **exactly as on the release APK** |
+| 5 | The new page (`tcp:3100 tcp:3200`, force-stop, relaunch); sidebar → Printer setup → **Set up printers** | Printer 1 "Prints on this device · Network 10.0.2.2:9100 · printed by This device · Bill, Full KOT copy, Notices, End of day · Paper 80 mm · KOT copies 1 · Bill copies 1"; `POST /api/printers` 201, one printers read, one lease |
+| 6 | **Add printer**: "Bar printer", Network (LAN) `10.0.2.2` `9101`, This device, Bar KOTs (Notices stayed ticked), 58 mm, Save printer | "Bar printer · Prints on this device · Network 10.0.2.2:9101 · printed by This device · Bar KOTs, Notices · Paper 58 mm · KOT copies 1 · Bill copies 1"; this device's section lists under "Other printers on this device" "Network printer 10.0.2.2 · Network 10.0.2.2:9101" (the page added it to the app: a v2 `printer.select`); Devices "Prints Printer 1, Bar printer"; `POST /api/printers` 201, one read, one lease |
+| 7 | Menu → Categories → Rename Beverages → Kitchen station "Bar" → Save | `p2d-tool.ts state`: categories `Beverages -> Bar` |
+| 8 | New Order: Cheesecake, Masala Chai → Send to Kitchen | **"BAR" 28,110 B on 9101** and **"ALL STATIONS" 48,198 B on 9100**, both `leased(direct)`, epoch 1, labels `[]`; the order and two acks, **no lease after them** (15 s watched) |
+| 9 | The same round → Pay Now (Cash) | BAR 28,110 B on 9101, ALL STATIONS 48,198 B and the **bill 40,854 B** on 9100: the order, ack, ack, lease, ack |
+| 10 | Printer setup → Test print on Printer 1, then on Bar printer | **31,414 B** on 9100, **14,182 B** on 9101; each the test call (`lease`, `agent`: direct) and one ack |
+| 11 | 9101 stopped (by PID, its command line checked); Send to Kitchen; 9101 off until +104 s; then started again | the order +0.1 s; BAR's ack `failed(not sent: The printer is not connected. …)` +10.9 s; **ALL STATIONS 48,198 B on 9100** +11.5 s (slips print one at a time, F-R5); **one lease at the hold's end** (+41.0 s); **no lease from +41 s to +104 s** (63 s while the app probed 9101: only the page's `GET /api/orders`, the wake and the pulse); 9101 back at +104 s → one lease +108.0 s, BAR printed **once, unlabelled** (`labels: []`, epoch 2, 28,110 B), one ack +108.6 s, no lease after (to +149 s) |
+| 12 | `p2d-tool.ts reset2d` (simple mode), Refresh; the panel → Print all slips on this device; `pm grant … POST_NOTIFICATIONS`; `dumpsys notification --noredact`; 9101 stopped, the panel's Other printers → Reconnect on it | **"Printing is on — 2 printers"**; the row "Not connected", then **"Printing is on — Network printer 10.0.2.2 not connected"**; `pm revoke …` (the app's process ended), relaunch; the panel → Stop printing here → Yes, remove ("Printing device removed — 0 waiting slips cancelled."); `p2d-tool.ts devices`: host null |
+| 13 | Simple mode; 9101 started again (the app lists 9100, the default, and 9101): the panel's Change printer → Network printer `10.0.2.2` `9101` → Use this network printer; Send to Kitchen; this device's printer → Remove → Yes, remove; Send to Kitchen again | after Change printer this device's printer is 9101 and **"Other printers on this device" still lists "Network printer 10.0.2.2 · Network 10.0.2.2:9100"** (G-R3 as changed); the KOT **44,454 B on 9101**; after Remove the panel shows **the printer the app promoted** ("Printing is on · Network printer 10.0.2.2 is connected.", "Network · 80 mm · Connected", no other printer listed: G-2) and the KOT **44,454 B on 9100** (each the order and one ack) |
+| 14 | `adb logcat -b crash -d` | **0 lines** (throughout) |
+| 15 | Put back | the app's last printer removed (Remove → Yes, remove → "No printer set up"); Printer setup → Kitchen stations → Add station "Bar"; `reset2d` had run: **as found** (Kitchen (default), Bar; no printer; no station on any category or item; host null); More options → Change POS address → the start screen, "Clear POS address" (the placeholder shows); **the release APK reinstalled** (`adb install -r`, hashed on the device `29115bdf…`), relaunched: the start screen with no address; notifications not granted (revoked in item 12); `adb reverse --remove-all`, then `adb reverse tcp:3100 tcp:3100`; both POS servers, both proxies and the fake printers stopped by PID after checking each command line; `adb emu kill` |
+
+Every result equals the plan's Expected column (the gate's run). **Paper over the run:** 9100 ten slips (44,454; 44,454 and 40,494 + 36,966 from the old page; 48,198; 48,198 + 40,854; 31,414; 48,198; 44,454 after Remove), 9101 five (28,110 three times, 14,182, 44,454 after Change printer); BAR's refusal never reached paper. **Requests:** the 3200 proxy saw 395 requests (print routes: 59 wakes, 79 pulses, 15 leases, 13 acks, 10 printers reads, 2 printers writes, 2 test calls, 6 orders, 10 host beats, 1 host set and 1 host clear), the 3201 proxy 89 (2 orders, 3 acks, 2 leases, 1 printers read). Leftovers, as earlier sessions': the app's device row and the test orders and jobs in `pos_scratch_e2e_p1final` (retention prunes the jobs; devices go after 7 days); the scratchpad clone `old/` (997f10c, built).
+
+### Step 5: the fresh review
+
+**The reviewer's model.** The review was dispatched first on Claude Fable 5.1 (as at every Phase 2 session and gate). It stopped at once with HTTP 429 ("session limit, resets 6:50 pm Asia/Kolkata") and returned no findings. Rather than wait about 1.5 h, the same read-only review ran on **Claude Opus 5.5**, the most capable model available then; it was a fresh context that wrote none of the code (ruling below; the 2F2 gate runs its own fresh review).
+
+**Scope.** It read `7f6379e..236c863` in five passes:
+1. Every Kotlin printer file, against the base's `PrinterManager`, `PrinterApi` and `SelectionFence` for v1 fidelity.
+2. The React Native bridge.
+3. The P0 page code.
+4. The JUnit tests, pin 19, the v2 parity pin and the changed pins.
+5. The plan, spec §9.2 and §13, and the ledger's rulings.
+
+It was given this plan's decisions 1–16, "2E review gate: rulings", "2F1 review gate: rulings", Session 2F2 and its Review Focus (passed verbatim), and spec §8.1, §9.1, §9.2, §13 and §17. It re-ran the mobile suite (125/125) and ran three scratch probes in this session's scratchpad (`review/g2-paper.test.ts`, `review/g2-order.test.ts`, 3/3; never in the repo). It ran no Gradle build, no `next build` and no emulator.
+
+**Verdict "Yes": no Critical, no Important.** It checked and found sound:
+- **The lock order.** `publishLock` → `poolLock` → a manager's lock, never taken in reverse. No `changed()` under a manager's lock. Transports are closed outside every lock. `halt()` runs after the list edit and outside `poolLock`. A printer's state is read under `poolLock`, so a retired manager's `none` is never published.
+- **Every promise settles.** All 24 `@ReactMethod`s were traced:
+  - `connectAsync` always runs `after()`;
+  - `io.shutdown()` (never `shutdownNow`) lets queued work answer;
+  - `SelectionFence` settles exactly once;
+  - every `RejectedExecutionException` path is caught.
+- **v1 fidelity.** An old page on the new APK sees the same events in the same order for a select of a new printer, a re-select, a forget, a reconnect and a cold start.
+- **NOT_CONNECTED only before any byte, per transport, and BUSY before it.** The page's write queue never reconnects on BUSY.
+- **The `Prefs` migration and reconcile.**
+- **The router's v2 validation.** Exact keys, a 200-character id, base64 shape and size; an unknown id is NOT_CONNECTED or a no-op.
+- **The budget.** No new server request.
+
+**Six minors.** Each was re-graded by its effect on a cafe. None loses, doubles or misplaces a slip, and none adds a request. None entered a fix pass, and no code changed after `236c863`.
+
+| # | Finding | For |
+|---|---|---|
+| m-1 | A printer the app promotes keeps the removed printer's paper (`transport-native.ts` `apply` falls back to the saved record's paper). This happens on the panel's Remove on a v2 app with two printers (the G-2 path), or when an older app's change is followed. A simple-mode slip or the panel's test then prints at the wrong width until staff set the paper toggle the panel shows. Printers-mode jobs carry their setup printer's paper. | Session 2G, with M-4. In simple mode the app reports no paper, so there is no right one to pick: ask, or show the paper, on a promotion. |
+| m-2 | Two network printers on one host share the name "Network printer ‹host›" (`PrinterDiscovery.kt`), so the notification's "‹name› not connected" cannot say which (the emulator run had exactly this). `PoolStatusTest`'s fixtures share one name, so its "one down" case cannot catch the wrong printer being named. | Name `host:port` when the port is not 9100; distinct fixture names |
+| m-3 | The app's list has no cap, and a LAN printer deleted or re-addressed in the setup stays in the app. It keeps probing every 30 s, and the notification reads "‹name› not connected" while the printers in use are fine. No server cost; staff can Remove it. | Session 2G, with M-4 (and a cap, e.g. 16) |
+| m-4 | `PoolList.restore`: a saved default that fails to parse while the v1 keys still name it makes `putDefault` overwrite the first listed printer (needs a damaged `Prefs` file) | `put(v1)` then `makeDefault` |
+| m-5 | The G-2 test in `device-printer-native.test.ts` says it covers both orders of the answer and the app's own event, but exercises only the answer first (the reviewer's probe proved both work) | Add the event-first case |
+| m-6 | The emulator's end state: the app was absent at the start, and the release APK is left installed (the ruling below) | The owner (undo: `adb uninstall com.possoftware.pos`) |
+
+**The reviewer's "declined to judge" list** has 11 lines, each ruled in the ledger:
+- TCP refusals of a hostname (BAD_REQUEST "Not a local address", UNSUPPORTED "Network not allowed") read as "maybe" though no byte left. This is v1's behaviour, untouched by 2F2; for Phase 3.
+- `cancelDiscovery()` on a Bluetooth Classic connect cuts a page scan short. Existing behaviour.
+- Two USB permission prompts at once share one request code. Rare; for 2G's TEST-CHECKLIST.
+- One physical printer under two ids gets two busy flags. The setup refuses the same printer twice.
+- A v1 select of a listed, connected printer restarts its link. Ruled at the gate (G-R3).
+- A v1 Change printer to a new printer drops a setup printer that was the default. G-R3 and M-4, 2G.
+- An old page after a web rollback, on a list built by v2. The pre-G-2 page; only after a rollback.
+- The moment between `init()` and the list's load. Existing; no WebView attached then.
+- A non-`RuntimeException` `Error` in `runPrint` leaves `printing` set. Existing pattern.
+- A Classic job closed before its first byte reads WRITE_FAILED. A microsecond window; existing.
+- One DNS thread for every network select. Existing design.
+
+Each stands. Its one recommendation, a JVM test of `PrinterPool`'s change → halt → save → publish chain behind an injected delivery and `Prefs`, is for the 2F2 gate.
+
+### Deviations and rulings
+
+- **No code deviation:** every block went in verbatim. No plan text was wrong, and nothing beyond the plan was committed except this Results section.
+- **Ruling: the emulator app was not installed at the start.** `pm path com.possoftware.pos` was empty; the AVD's settings files had been touched after the 2F1 gate. The release APK `29115bdf…` was installed as the baseline the plan expects, and its put-back state too. A fresh install has no address (no demo risk). The WebView still held the local session, so no secret was typed. Cost if wrong: the owner had removed the app on purpose, and it is back (one `adb uninstall`).
+- **Ruling: the fresh reviewer ran on Claude Opus 5.5, not Fable 5.1** (Fable's session limit; above). Cost if wrong: a less capable reviewer missed something; the 2F2 gate's own fresh review covers it.
+- **Item 4's Pay Now** was a new order, as in the gate's run: Cheesecake alone on a Walk-In after the Send to Kitchen order (KOT 40,494 B, bill 36,966 B, the same bytes).
+- **The skill's `task-start`** extracts only numeric "Task N" headings, so each P-task's brief was read from the plan by line range (as in 2D–2F1), and the ledger lines were written by hand.
+- **Ruling: the plan's workspace is kept.** `.superpowers/sdd/2026-10-03-phase-2-routing/` (git-ignored) is not deleted, though the skill says to delete it after a clean review: the plan continues (the 2F2 gate, 2G) and every gate reads its ledger.
+- Every decision is in that ledger.
+
+### Open for the 2F2 gate
+
+- **The six minors above.** m-1 and m-3 belong with M-4 in Session 2G: the app's list and the page's records drifting apart.
+- **The reviewer's recommendation** (a JVM test of `PrinterPool`'s publish chain).
+- **A Fable 5.1 review of `7f6379e..236c863`,** if the gate wants the usual model.
+- **Part C on the owner's counter PC** (TEST-CHECKLIST "Several printers on one Windows PC", Windows app 1.11.0).
+- **Session 2G,** the Phase 2 exit.
+
+**The new APKs reach devices only after the go-live run.** It deploys the Worker first, then the web, then reloads every POS screen; the hashes above are the ones to release. Nothing is deployed.
+
+### Pushed
+
+With the token only: `GIT_TERMINAL_PROMPT=0 git push origin feat/printing-phase-2`. `origin/main` was still `6ee2b1d` at the end (no merge). `main` untouched; nothing deployed. This session's POS servers, proxies and fake printers were stopped by PID after checking each command line; the emulator was stopped with `adb emu kill`.
