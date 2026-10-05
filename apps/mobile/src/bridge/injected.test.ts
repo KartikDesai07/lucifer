@@ -106,7 +106,7 @@ test('PosNative is frozen, non-writable, non-configurable; platform and version 
       writable: false,
       enumerable: false,
       configurable: false,
-      value: { version: 1, platform: 'android' },
+      value: { version: 1, versions: [1, 2], platform: 'android' },
     },
   );
   const deliverDesc = f.plain(
@@ -136,7 +136,7 @@ test('the token is not reachable from the page', () => {
   f.inject();
   assert.equal(
     f.run('Object.keys(window.PosNative).join(",")'),
-    'version,platform,request,on',
+    'version,versions,platform,request,on',
   );
   assert.ok(!String(f.run('JSON.stringify(window.PosNative)')).includes(TOKEN));
   assert.ok(!String(f.run('String(window.PosNative.request)')).includes(TOKEN));
@@ -326,6 +326,44 @@ test('events reach listeners; off stops them; a throwing listener does not block
   ]);
   assert.equal(f.run('typeof window.PosNative.on("x", 5)'), 'function');
   assert.equal(f.run('typeof window.PosNative.on(5, () => 1)'), 'function');
+});
+
+// Phase 2 Session 2F2 (spec §9.2): bridge v2 on the page. A request carries its version and only a reply of that
+// version settles it; an event reaches only the listeners of its version; a version the app does not speak is refused.
+test('v2: request and on take the version last; replies and events are routed by version', async () => {
+  const f = fakeWindow(true, FIXED_CRYPTO);
+  f.inject();
+  f.run('globalThis.out = []; globalThis.got = [];');
+  f.run('window.PosNative.request("printer.status", undefined, 2).then(r => out.push(["v2", r]), e => out.push(["err", e.code]));');
+  assert.deepEqual(lastPosted(f), { v: 2, token: TOKEN, id: idOf(1), method: 'printer.status' }, 'the envelope carries v: 2');
+  f.run('window.PosNative.request("printer.status").then(r => out.push(["v1", r]));');
+  assert.equal(lastPosted(f).v, 1, 'no version: v1');
+  f.run('window.__posNativeDeliver({ v: 1, id: "' + idOf(1) + '", ok: true, result: "wrong" })');
+  f.run('window.__posNativeDeliver({ v: 2, id: "' + idOf(2) + '", ok: true, result: "wrong" })');
+  await settle();
+  assert.deepEqual(f.plain('out'), [], 'a reply of another version settles nothing');
+  f.run('window.__posNativeDeliver({ v: 2, id: "' + idOf(1) + '", ok: true, result: { printers: [] } })');
+  f.run('window.__posNativeDeliver({ v: 1, id: "' + idOf(2) + '", ok: true, result: { state: "none" } })');
+  await settle();
+  assert.deepEqual(f.plain('out'), [['v2', { printers: [] }], ['v1', { state: 'none' }]]);
+  f.run('window.PosNative.on("printer.status", d => got.push(["one", d]));');
+  f.run('window.PosNative.on("printer.status", d => got.push(["all", d]), 2);');
+  f.run('window.__posNativeDeliver({ v: 1, event: "printer.status", data: { state: "connected" } })');
+  f.run('window.__posNativeDeliver({ v: 2, event: "printer.status", data: { printers: [] } })');
+  assert.deepEqual(f.plain('got'), [['one', { state: 'connected' }], ['all', { printers: [] }]], 'each event to its own version');
+});
+
+test('v2: a version the app does not speak is refused and posts nothing; its listener is a no-op', async () => {
+  const f = fakeWindow();
+  f.inject();
+  f.run('globalThis.out = [];');
+  f.run('window.PosNative.request("printer.status", undefined, 3).then(() => out.push("ok"), e => out.push(e.code));');
+  await settle();
+  assert.deepEqual(f.plain('out'), ['UNSUPPORTED']);
+  assert.equal(f.posted.length, 0, 'nothing posted');
+  assert.equal(f.run('typeof window.PosNative.on("printer.status", () => 1, 3)'), 'function');
+  f.run('window.__posNativeDeliver({ v: 3, event: "printer.status", data: 1 })');
+  assert.deepEqual(f.plain('window.PosNative.versions'), [1, 2], 'what the app says it speaks');
 });
 
 test('injecting twice is a no-op: first token wins, one ready event', () => {

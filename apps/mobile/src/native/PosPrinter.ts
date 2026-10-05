@@ -130,4 +130,10 @@ export const nativePort: NativePort = {
   requestPermission: requestAndRefresh,
   enableBluetooth: () => PosPrinter.enableBluetooth(),
   setHostActive: (active, label) => PosPrinter.setHostActive(active, label),
+  poolStatus: () => PosPrinter.poolStatus(),
+  poolSelectPrinter: id => PosPrinter.poolSelectPrinter(id),
+  poolSelectTcp: (host, port) => PosPrinter.poolSelectTcp(host, port),
+  poolReconnect: printerId => PosPrinter.poolReconnect(printerId),
+  poolForget: printerId => PosPrinter.poolForget(printerId),
+  poolPrint: (printerId, base64) => PosPrinter.poolPrint(printerId, base64),
 };
