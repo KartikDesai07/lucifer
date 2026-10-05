@@ -6,7 +6,19 @@ import path from "node:path";
 import type { PrinterConfig } from "@pos/shared/print-printers";
 import { stripComments } from "@/lib/source-pin-utils";
 import { PRINT_JOBS_FOR_ME_LIMIT } from "@pos/shared/print-agent-wire";
-import { PRINTER_NOT_LOCAL_MESSAGE, agentPrintersOf, dotPrintersOf, jobsForMeLeasable, printJobCopies, printerIsLocal, printerListLooksStale, type DesktopPrinters } from "@/lib/print-agent-printers";
+import {
+  PRINTER_NOT_LOCAL_MESSAGE,
+  agentPrintersOf,
+  dotPrintersOf,
+  jobsForMeLeasable,
+  lanPrintersToAdd,
+  nativeIdOf,
+  printJobCopies,
+  printerIsLocal,
+  printerListLooksStale,
+  readyPrinterIdsOf,
+  type DesktopPrinters,
+} from "@/lib/print-agent-printers";
 import type { PrintAgentResult } from "@/lib/print-agent-types";
 import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
 import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
@@ -160,6 +172,85 @@ test("2C gate (F-1): a full jobs-for-me answer may hide a job the agent can leas
   assert.equal(PRINT_JOBS_FOR_ME_LIMIT, 20, "the read's limit, shared by the server and the page");
 });
 
+// ── Phase 2 Session 2F1 (spec §9.2): the POS app on bridge v2 prints each of its printers ────────────────────────────
+
+const POOL = {
+  printers: [
+    { id: "tcp:10.0.2.2:9100", status: "connected" as const },
+    { id: "tcp:10.0.2.2:9101", status: "disconnected" as const },
+    { id: "bt-classic:00:11:22:33:44:55", status: "connected" as const },
+    { id: "usb:0416:5011", status: "connecting" as const },
+  ],
+};
+
+test("2F1: on bridge v2 every printer of the app is this device's, by the app's id (ignoring case); on v1 only the device's own", () => {
+  const kitchen = printer("kitchen", { kind: "lan", host: "10.0.2.2", port: 9100 }, { primaryDeviceId: "dev-a" });
+  const bar = printer("bar", { kind: "lan", host: "10.0.2.2", port: 9101 }, { primaryDeviceId: "dev-a" });
+  const elsewhere = printer("x", { kind: "lan", host: "10.0.2.2", port: 9102 }, { primaryDeviceId: "dev-a" });
+  const bt = printer("bt", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "00:11:22:33:44:55" });
+  const btWhole = printer("bt2", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "BT-CLASSIC:00:11:22:33:44:55" });
+  const usb = printer("usb", { kind: "device", deviceId: "dev-a", transport: "usb", address: "0416:5011" });
+  const ble = printer("ble", { kind: "device", deviceId: "dev-a", transport: "ble", address: "00:11:22:33:44:55" });
+  assert.deepEqual([kitchen, bar, bt, btWhole, usb].map((p) => nativeIdOf(p, POOL)), ["tcp:10.0.2.2:9100", "tcp:10.0.2.2:9101", "bt-classic:00:11:22:33:44:55", "bt-classic:00:11:22:33:44:55", "usb:0416:5011"], "each by the app's id");
+  assert.deepEqual([nativeIdOf(elsewhere, POOL), nativeIdOf(ble, POOL), nativeIdOf(bt, null)], [null, null, null], "not in the app's list, another transport, or no v2 app");
+  assert.deepEqual([kitchen, bar, bt, usb].map((p) => printerIsLocal(p, NATIVE_TCP, null, POOL)), [true, true, true, true], "every printer of the app prints here");
+  assert.equal(printerIsLocal(elsewhere, NATIVE_TCP, null, POOL), false, "a network printer the app does not have");
+  const stale = printer("stale", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "dev-a" });
+  assert.deepEqual([printerIsLocal(stale, NATIVE_TCP, null, POOL), printerIsLocal(stale, NATIVE_TCP, null)], [false, true], "on v2 the app's list decides: a device printer record the app no longer lists makes nothing local (the 2E gate's review, I-2)");
+  const upper = printer("upper", { kind: "lan", host: "PRINTER.LOCAL", port: 9100 }, { primaryDeviceId: "dev-a" });
+  const appLower: DevicePrinter = { ...NATIVE_TCP, printerId: "tcp:printer.local:9100" };
+  assert.equal(printerIsLocal(upper, appLower, null), true, "on v1 too a network printer's host is compared ignoring case (the 2D gate's note)");
+  assert.equal(printerIsLocal(bar, NATIVE_TCP, null), false, "on v1 the device prints its one printer only");
+});
+
+test("2F1: each printer of the app it prints carries its target (the app's id, its own paper); a Windows printer's stays", () => {
+  const kitchen = printer("kitchen", { kind: "lan", host: "10.0.2.2", port: 9100 }, { primaryDeviceId: "dev-a" });
+  const bar = printer("bar", { kind: "lan", host: "10.0.2.2", port: 9101 }, { primaryDeviceId: "dev-a", paper: 58 });
+  const other = printer("other", { kind: "lan", host: "10.0.2.2", port: 9100 }, { primaryDeviceId: "dev-b" });
+  const agent = agentPrintersOf([kitchen, bar, other], "dev-a", NATIVE_TCP, null, POOL);
+  assert.deepEqual(agent.localIds, ["bar", "kitchen"], "the printers it writes that the app has (in the setup's order)");
+  assert.deepEqual(agent.targets, { kitchen: { nativeId: "tcp:10.0.2.2:9100", paper: "80mm" }, bar: { nativeId: "tcp:10.0.2.2:9101", paper: "58mm" } }, "each at its own paper");
+  assert.deepEqual(agentPrintersOf([kitchen, bar], "dev-a", NATIVE_TCP, null).targets, {}, "on v1: no target, the device's one printer as before");
+  const win = printer("win", { kind: "device", deviceId: "dev-a", transport: "windows", address: "Kitchen TVS" });
+  assert.deepEqual(agentPrintersOf([win], "dev-a", null, WIN_NAMED, null).targets, { win: { printerName: "Kitchen TVS", paper: "80mm" } }, "the Windows app as in 2E");
+});
+
+test("2F1: a printer of the app is ready by its own state; any other only while this device's own printer can print", () => {
+  const targets = { kitchen: { nativeId: "tcp:10.0.2.2:9100", paper: "80mm" as const }, bar: { nativeId: "tcp:10.0.2.2:9101", paper: "58mm" as const } };
+  const statusOf = (id: string) => POOL.printers.find((p) => p.id === id)?.status ?? "none";
+  assert.deepEqual(readyPrinterIdsOf(["kitchen", "bar"], targets, false, statusOf), ["kitchen"], "the bar printer is down: only the kitchen's line, whatever the device printer says");
+  assert.deepEqual(readyPrinterIdsOf(["p1"], {}, true, statusOf), ["p1"], "the one printer of every other lane: as before");
+  assert.deepEqual(readyPrinterIdsOf(["p1"], {}, false, statusOf), [], "and not while it cannot print");
+  assert.deepEqual(readyPrinterIdsOf(["win"], { win: { printerName: "Kitchen TVS", paper: "80mm" } }, true, statusOf), ["win"], "a Windows printer as in 2E");
+});
+
+test("2F1: the dot shows the worst state among the app's printers this device prints; a network printer it writes but the app lacks is added", () => {
+  const kitchen = printer("kitchen", { kind: "lan", host: "10.0.2.2", port: 9100 }, { primaryDeviceId: "dev-a" });
+  const bar = printer("bar", { kind: "lan", host: "10.0.2.2", port: 9101 }, { primaryDeviceId: "dev-a" });
+  assert.deepEqual(dotPrintersOf([kitchen, bar], "dev-a", NATIVE_TCP, null, POOL), { printersMode: true, isWriter: true, allLocal: true, worst: "disconnected" }, "the bar printer is down");
+  assert.deepEqual(dotPrintersOf([kitchen], "dev-a", NATIVE_TCP, null, POOL), { printersMode: true, isWriter: true, allLocal: true, worst: "connected" });
+  const appKitchen: DevicePrinter = { ...NATIVE_TCP, printerId: "tcp:10.0.2.2:9100" };
+  assert.deepEqual(dotPrintersOf([kitchen], "dev-a", appKitchen, null), { printersMode: true, isWriter: true, allLocal: true }, "on v1: the device printer's own state, as before");
+  const third = printer("third", { kind: "lan", host: "10.0.2.3", port: 9100 }, { primaryDeviceId: "dev-a" });
+  const theirs = printer("theirs", { kind: "lan", host: "10.0.2.4", port: 9100 }, { primaryDeviceId: "dev-b" });
+  const off = printer("off", { kind: "lan", host: "10.0.2.5", port: 9100 }, { primaryDeviceId: "dev-a", enabled: false });
+  assert.deepEqual(lanPrintersToAdd([kitchen, third, theirs, off], "dev-a", POOL), [{ host: "10.0.2.3", port: 9100 }], "only a routable network printer this device writes that the app lacks");
+  assert.deepEqual(lanPrintersToAdd([third], "dev-a", null), [], "never on an app that speaks only v1");
+});
+
+test("PIN (2F1): the page follows the app's printers: the agent's lines, the dot, the drain, the wake's heartbeat, the network printers it writes", () => {
+  const hook = src("apps/cafe/hooks/use-agent-printers.ts");
+  assert.match(hook, /return useMemo\(\(\) => agentPrintersOf\(printers, deviceId, local, desktop, pool\), \[printers, deviceId, local, desktop, pool\]\);/);
+  assert.match(hook, /return useMemo\(\(\) => dotPrintersOf\(printers, deviceId, local, desktop, pool\), \[printers, deviceId, local, desktop, pool\]\);/);
+  assert.match(hook, /for \(const lan of lanPrintersToAdd\(printers, deviceId, pool\)\) \{/, "a network printer it writes is added to the app");
+  assert.match(hook, /void nativePool\(\)\.add\(\{ tcp: lan \}\)\.catch\(\(\) => undefined\);/, "a local call; once per page");
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, pool]);"), "a change of the app's printers is a nudge");
+  assert.ok(src("apps/cafe/components/layout/PrintHostProvider.tsx").includes("nativePool().init();"), "read once per page, beside the device printer");
+  assert.ok(src("apps/cafe/hooks/use-print-agent-wake.ts").includes("...(caps.native ? { nativeProtocol: nativeV2Bridge() !== null ? NATIVE_BRIDGE_V2 : 1 } : {}),"), "the wake says which app prints several printers");
+  assert.ok(src("apps/cafe/lib/printer/printer-dot.ts").includes("return noHostRow(lane, printers.worst ?? local, desktopChosen);"), "the dot's worst printer");
+});
+
 test("PIN (2C final review, I-2): the pulse and the wake kick the agent only on jobs it can lease", () => {
   const agent = src("apps/cafe/hooks/use-print-agent.ts");
   // Session 2E: on the printers it prints here that no refusal holds (agent.openPrinters()).
@@ -180,7 +271,8 @@ test("PIN (2C): the page reads the printers on mount, on a print-setup frame and
   const agent = src("apps/cafe/hooks/use-print-agent.ts");
   // Session 2E: the agent names the printers no refusal holds (lib/print-agent-holds.ts) to the lease and the headers.
   assert.match(agent, /lease: \(printerIds\) => apiSend<PrintLeaseData>\(LEASE_URL, "POST", \{ deviceId, tabId, \.\.\.printerIdsBody\(printerIds\) \}\),/, "it leases its ready printers' lines too");
-  assert.match(agent, /readyPrinters: \(\) => readyRef\.current,/);
+  // Session 2F1 (deliberate change): the ones of them that can print now.
+  assert.match(agent, /readyPrinters: readyNow,/);
   assert.match(agent, /const offReady = setReadyPrintersSource\(\(\) => agent\.openPrinters\(\)\);/);
   // The 2C gate's review (I-2) and its emulator run: a list that looks stale is read again.
   assert.match(agent, /if \(!printerListLooksStale\(\{ ready: readyRef\.current, isWriter: writerRef\.current, jobsForMe: jobs, writesPrinters \}\)\) return;/);

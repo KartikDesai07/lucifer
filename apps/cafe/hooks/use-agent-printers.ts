@@ -5,12 +5,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { PRINT_SETUP_STALE_MS } from "@pos/shared/print-budget";
 import type { PrinterConfig } from "@pos/shared/print-printers";
-import { useDesktopPrinterSnapshot, useDevicePrinter, usePrintLane } from "@/hooks/use-device-printer";
+import { useDesktopPrinterSnapshot, useDevicePrinter, useNativePool, usePrintLane } from "@/hooks/use-device-printer";
 import { apiGet } from "@/lib/api-client";
 import { isDesktopShell } from "@/lib/desktop-shell";
 import { desktopPrintsOnNamed } from "@/lib/desktop-shell-printer";
-import { agentPrintersOf, dotPrintersOf, type AgentPrinters, type DesktopPrinters } from "@/lib/print-agent-printers";
+import { agentPrintersOf, dotPrintersOf, lanPrintersToAdd, type AgentPrinters, type DesktopPrinters, type NativePoolView } from "@/lib/print-agent-printers";
 import { refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import { nativePool } from "@/lib/printer/native-pool";
 import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
 import { subscribeRealtime } from "@/lib/realtime-client";
 
@@ -62,19 +63,41 @@ export function useDesktopPrinters(): DesktopPrinters | null {
   return useMemo(() => (lane === "desktop" ? { selected: snapshot.selected, names: snapshot.names, named: desktopPrintsOnNamed() } : null), [lane, snapshot]);
 }
 
+/** Session 2F1 (spec §9.2): the POS app's printers on bridge v2; null on any other device, and on an app on v1. */
+export function usePoolView(): NativePoolView | null {
+  const pool = useNativePool();
+  return pool.active ? pool : null;
+}
+
 /** Session 2D (spec §10): the top-bar dot's view of printers mode. The same printers read as the agent's (one cache
  *  entry): no request of its own. */
 export function useDotPrinters(deviceId: string): PrinterDotPrinters {
   const { printers } = usePrintersRead(deviceId !== "");
   const local = useDevicePrinter().printer;
   const desktop = useDesktopPrinters();
-  return useMemo(() => dotPrintersOf(printers, deviceId, local, desktop), [printers, deviceId, local, desktop]);
+  const pool = usePoolView();
+  return useMemo(() => dotPrintersOf(printers, deviceId, local, desktop, pool), [printers, deviceId, local, desktop, pool]);
 }
 
-/** The printers this device writes, and which it prints here (lib/print-agent-printers.ts). */
+// The network printers this page already asked the app to add (once per page: one the app could not reach stays in
+// its list, down, and its own reconnect loop keeps trying).
+const lanAsked = new Set<string>();
+
+/** The printers this device writes, and which it prints here (lib/print-agent-printers.ts). Session 2F1: a network
+ *  printer this device writes is added to the POS app's printers on bridge v2 (a local call, no request). */
 export function useAgentPrinters(deviceId: string, enabled: boolean): AgentPrinters {
   const printers = usePrinters(enabled);
   const local = useDevicePrinter().printer;
   const desktop = useDesktopPrinters();
-  return useMemo(() => agentPrintersOf(printers, deviceId, local, desktop), [printers, deviceId, local, desktop]);
+  const pool = usePoolView();
+  useEffect(() => {
+    if (!enabled) return;
+    for (const lan of lanPrintersToAdd(printers, deviceId, pool)) {
+      const key = `${lan.host}:${lan.port}`;
+      if (lanAsked.has(key)) continue;
+      lanAsked.add(key);
+      void nativePool().add({ tcp: lan }).catch(() => undefined);
+    }
+  }, [enabled, printers, deviceId, pool]);
+  return useMemo(() => agentPrintersOf(printers, deviceId, local, desktop, pool), [printers, deviceId, local, desktop, pool]);
 }

@@ -9,6 +9,7 @@ import { isDesktopShell } from "@/lib/desktop-shell";
 import type { PrintAgent } from "@/lib/print-agent";
 import { jobsForMeLeasable, type AgentPrinters } from "@/lib/print-agent-printers";
 import { createPrintAgentWake } from "@/lib/print-agent-wake";
+import { NATIVE_BRIDGE_V2, nativeV2Bridge } from "@/lib/printer/native-bridge-v2";
 import { bumpPrintWakeBudget, mergePrintWakeBudget, readPrintWakeBudget, writePrintWakeBudget, type PrintWakeBudget } from "@/lib/print-wake-budget";
 import { currentLane, defaultDeviceLabel, printCapabilities } from "@/lib/printer/print-lane";
 import { isRealtimeHealthy } from "@/lib/realtime-client";
@@ -21,7 +22,8 @@ import { cafeDateString } from "@/lib/utils";
 
 const WAKE_URL = "/api/print-jobs/wake";
 
-/** The heartbeat the host's wake carries (spec §10). */
+/** The heartbeat the host's wake carries (spec §10). Session 2F1: the POS app's bridge version (2: it prints several
+ *  printers), so the setup knows which tablet prints one printer. */
 function wakeBody(deviceId: string) {
   const caps = printCapabilities();
   const desktop = isDesktopShell();
@@ -29,6 +31,7 @@ function wakeBody(deviceId: string) {
     deviceId,
     label: defaultDeviceLabel(currentLane()),
     shell: caps.native ? "android" : desktop ? "windows" : "browser",
+    ...(caps.native ? { nativeProtocol: nativeV2Bridge() !== null ? NATIVE_BRIDGE_V2 : 1 } : {}),
     capabilities: {
       lan: caps.native,
       bluetooth: caps.native || caps.bluetooth,

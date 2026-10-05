@@ -77,18 +77,20 @@ test("PIN (2E): each slip carries its printer's target from the agent to the Win
 test("PIN (2E): the agent leases, offers for direct print and is kicked only for the printers no refusal holds", () => {
   const hook = src("hooks/use-print-agent.ts");
   assert.match(hook, /lease: \(printerIds\) => apiSend<PrintLeaseData>\(LEASE_URL, "POST", \{ deviceId, tabId, \.\.\.printerIdsBody\(printerIds\) \}\),/, "the lease names what the agent says is open");
-  assert.match(hook, /readyPrinters: \(\) => readyRef\.current,/);
+  assert.match(hook, /readyPrinters: readyNow,/, "Session 2F1: those of them that can print now");
   assert.match(hook, /lineOf: \(job\) => \(job\.printerId !== undefined && targetsRef\.current\[job\.printerId\] !== undefined \? job\.printerId : PRINT_DEVICE_LINE\),/, "a named Windows printer is a line of its own");
   assert.match(hook, /const offReady = setReadyPrintersSource\(\(\) => agent\.openPrinters\(\)\);/, "direct print names only open printers");
   // The 2E review gate (M-5): the wake poll lives in its own hook.
   const both = hook + src("hooks/use-print-agent-wake.ts");
   assert.equal((both.match(/jobsForMeLeasable\([^)]*, agent\.openPrinters\(\)\)/g) ?? []).length, 2, "the pulse and the wake kick only for open printers");
-  assert.match(hook, /printerState: \(\) => \(isDesktopShell\(\) \? desktopPrinterSnapshot\(\) : devicePrinter\(\)\.getSnapshot\(\)\),/, "a Windows printer list read again releases a hold");
+  // Session 2F1 (deliberate change): elsewhere any change of this device's printers (printersState) releases one.
+  assert.match(hook, /printerState: \(\) => \(isDesktopShell\(\) \? desktopPrinterSnapshot\(\) : printersState\(\)\),/, "a Windows printer list read again releases a hold");
 });
 
 test("PIN (2E): a Windows printer that failed is looked up again, so one renamed or removed in Windows stops being this PC's", () => {
   const hook = src("hooks/use-print-agent.ts");
-  assert.match(hook, /if \(!result\.ok && job\.printerId !== undefined && targetsRef\.current\[job\.printerId\] !== undefined\) void refreshDesktopPrinterChosen\(\);/);
+  // Session 2F1 (deliberate change): only a Windows printer's target (a POS app printer's has no Windows list to read).
+  assert.match(hook, /if \(!result\.ok && job\.printerId !== undefined && targetsRef\.current\[job\.printerId\]\?\.printerName !== undefined\) void refreshDesktopPrinterChosen\(\);/);
 });
 
 test("PIN (2E): every job of a slip leased to this tab is handed to the agent, from an order answer and from an enqueue", () => {

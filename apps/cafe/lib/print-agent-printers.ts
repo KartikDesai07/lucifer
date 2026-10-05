@@ -1,15 +1,17 @@
 import { PRINT_JOBS_FOR_ME_LIMIT, type LeasedPrintJob, type PrintJobsForMe } from "@pos/shared/print-agent-wire";
 import { printerWriterDeviceId, printersModeOn, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
 import type { PrintAgentResult } from "@/lib/print-agent-types";
-import type { DesktopPrintTarget } from "@/lib/desktop-shell-printer";
+import type { SlipPrintTarget } from "@/lib/print-host-slips";
 import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
 import type { DevicePrinter } from "@/lib/printer/device-printer-store";
 import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
+import type { PrinterStatus } from "@/lib/printer/web-printer-types";
 
 // Printing redesign, Phase 2 Session 2C (spec §9.3, plan decision 1): the printers this device writes, and which of
 // them it prints here. Session 2E (spec §9.2): a phone, a tablet or a browser tab prints one printer, its own; the
 // Windows app prints each Windows printer it has, by name. Pure and client-safe; hooks/use-agent-printers.ts reads it
-// on every printers read and every change of this device's printer.
+// on every printers read and every change of this device's printer. Session 2F1 (spec §9.2): the POS app on bridge v2
+// prints each of its printers (nativePool()), by the app's id.
 
 /** The refusal a leased job gets when its printer is not this device's printer (sent:"no", never counted). */
 export const PRINTER_NOT_LOCAL_MESSAGE = "This printer is not connected to this device.";
@@ -23,13 +25,38 @@ export interface DesktopPrinters {
   named: boolean;
 }
 
+/** Session 2F1 (spec §9.2): the POS app's printers on bridge v2 (nativePool()): each one's id and state. null on any
+ *  other device, and on an app that speaks only v1 (the release APK), which prints its one printer as before. */
+export interface NativePoolView {
+  printers: readonly { id: string; status: PrinterStatus }[];
+}
+
+/** Session 2F1: the app's id a printer of the setup is, among the app's printers on bridge v2, or null. A LAN printer is
+ *  "tcp:<host>:<port>"; a Bluetooth, BLE or USB printer "<transport>:<address>" (its address the bare id or the app's
+ *  whole id, I-1 of 2C's final review), compared ignoring case (the app spells a MAC upper-case, the 2C gate's F-2). */
+export function nativeIdOf(printer: PrinterConfig, pool: NativePoolView | null): string | null {
+  if (pool === null) return null;
+  const connection = printer.connection;
+  let wanted: string[];
+  if (connection.kind === "lan") wanted = [`tcp:${connection.host}:${connection.port}`.toLowerCase()];
+  else if (connection.transport === "bt-classic" || connection.transport === "ble" || connection.transport === "usb") {
+    const address = connection.address.toLowerCase();
+    wanted = [`${connection.transport}:${address}`, address];
+  } else return null;
+  return pool.printers.find((entry) => wanted.includes(entry.id.toLowerCase()))?.id ?? null;
+}
+
 /** A printer this device writes is printed here only when it IS one of this device's printers: a LAN printer whose
  *  host:port is the app's selected network printer, a device printer whose transport and address match the
- *  saved one, a Windows printer this PC has. Anything else would put a bar's slips on the kitchen's paper. */
-export function printerIsLocal(printer: PrinterConfig, local: DevicePrinter | null, desktop: DesktopPrinters | null): boolean {
+ *  saved one, a Windows printer this PC has. Anything else would put a bar's slips on the kitchen's paper. Session
+ *  2F1: on bridge v2, any of the app's printers, and only those: the app's list is the record of this device's printers
+ *  (a stale device printer record never makes one local; the 2E gate's review, I-2). */
+export function printerIsLocal(printer: PrinterConfig, local: DevicePrinter | null, desktop: DesktopPrinters | null, pool: NativePoolView | null = null): boolean {
+  if (pool !== null) return nativeIdOf(printer, pool) !== null;
   const connection = printer.connection;
   if (connection.kind === "lan") {
-    return local?.kind === "native" && local.transport === "tcp" && local.printerId === `tcp:${connection.host}:${connection.port}`;
+    // Ignoring case (the 2D gate's note): the server lower-cases the host, and so does the app; a hand-typed one may not.
+    return local?.kind === "native" && local.transport === "tcp" && local.printerId.toLowerCase() === `tcp:${connection.host}:${connection.port}`.toLowerCase();
   }
   switch (connection.transport) {
     case "windows":
@@ -65,42 +92,82 @@ export interface AgentPrinters {
   isWriter: boolean;
   /** The routable printers this device writes that ARE its local printers: the lines it leases and prints. */
   localIds: string[];
-  /** Session 2E: each of them that prints on a named Windows printer, by id: its name and its paper. */
-  targets: Record<string, DesktopPrintTarget>;
+  /** Session 2E: each of them that prints on a named Windows printer, by id: its name and its paper. Session 2F1: each
+   *  that is one of the POS app's printers on bridge v2: the app's id and its paper. */
+  targets: Record<string, SlipPrintTarget>;
 }
 
 function printersWrittenBy(printers: readonly PrinterConfig[], deviceId: string): PrinterConfig[] {
   return deviceId === "" ? [] : routablePrinters(printers).filter((printer) => printerWriterDeviceId(printer) === deviceId);
 }
 
-/** Session 2E: a Windows printer this PC prints by name (only on an app that can), drawn for its own paper. */
-function targetsOf(printers: readonly PrinterConfig[], desktop: DesktopPrinters | null): Record<string, DesktopPrintTarget> {
-  const targets: Record<string, DesktopPrintTarget> = {};
-  if (desktop === null || !desktop.named) return targets;
+/** Session 2E: a Windows printer this PC prints by name (only on an app that can), drawn for its own paper. Session
+ *  2F1: one of the POS app's printers on bridge v2, by the app's id, drawn for its own paper. */
+function targetsOf(printers: readonly PrinterConfig[], desktop: DesktopPrinters | null, pool: NativePoolView | null): Record<string, SlipPrintTarget> {
+  const targets: Record<string, SlipPrintTarget> = {};
   for (const printer of printers) {
-    if (printer.connection.kind === "device" && printer.connection.transport === "windows") {
+    const nativeId = nativeIdOf(printer, pool);
+    if (nativeId !== null) targets[printer.id] = { nativeId, paper: `${printer.paper}mm` };
+    else if (desktop?.named === true && printer.connection.kind === "device" && printer.connection.transport === "windows") {
       targets[printer.id] = { printerName: printer.connection.address, paper: `${printer.paper}mm` };
     }
   }
   return targets;
 }
 
-export function agentPrintersOf(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, desktop: DesktopPrinters | null): AgentPrinters {
+export function agentPrintersOf(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, desktop: DesktopPrinters | null, pool: NativePoolView | null = null): AgentPrinters {
   const mine = printersWrittenBy(printers, deviceId);
-  const here = mine.filter((printer) => printerIsLocal(printer, local, desktop));
+  const here = mine.filter((printer) => printerIsLocal(printer, local, desktop, pool));
   return {
     printersMode: printersModeOn(printers),
     isWriter: mine.length > 0,
     localIds: here.map((printer) => printer.id),
-    targets: targetsOf(here, desktop),
+    targets: targetsOf(here, desktop, pool),
   };
 }
 
+/** Session 2F1 (spec §9.2): of the printers this device prints here, those that can print right now: one of the POS
+ *  app's printers (bridge v2) by its own state; any other (a Windows printer, the one printer of every other device)
+ *  when this device's own printer can print (canPrintNow), as before. */
+export function readyPrinterIdsOf(
+  localIds: readonly string[],
+  targets: Record<string, SlipPrintTarget>,
+  canPrint: boolean,
+  statusOf: (nativeId: string) => PrinterStatus,
+): string[] {
+  return localIds.filter((id) => {
+    const nativeId = targets[id]?.nativeId;
+    return nativeId === undefined ? canPrint : statusOf(nativeId) === "connected";
+  });
+}
+
+const STATUS_WORSE: readonly PrinterStatus[] = ["connected", "connecting", "needs-tap", "elsewhere", "disconnected", "none"];
+
 /** Session 2D (spec §10): what the top-bar dot needs: printers mode, whether this device writes a printer, and
- *  whether it prints every printer it writes (a printer it writes that is not its own never prints here). */
-export function dotPrintersOf(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, desktop: DesktopPrinters | null): PrinterDotPrinters {
-  const agent = agentPrintersOf(printers, deviceId, local, desktop);
-  return { printersMode: agent.printersMode, isWriter: agent.isWriter, allLocal: agent.localIds.length === printersWrittenBy(printers, deviceId).length };
+ *  whether it prints every printer it writes (a printer it writes that is not its own never prints here). Session
+ *  2F1: on bridge v2, the worst state among the app's printers it prints. */
+export function dotPrintersOf(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, desktop: DesktopPrinters | null, pool: NativePoolView | null = null): PrinterDotPrinters {
+  const agent = agentPrintersOf(printers, deviceId, local, desktop, pool);
+  const states = Object.values(agent.targets).flatMap((target) => pool?.printers.filter((entry) => entry.id === target.nativeId).map((entry) => entry.status) ?? []);
+  const worst = states.reduce<PrinterStatus | undefined>((acc, status) => (acc === undefined || STATUS_WORSE.indexOf(status) > STATUS_WORSE.indexOf(acc) ? status : acc), undefined);
+  return {
+    printersMode: agent.printersMode,
+    isWriter: agent.isWriter,
+    allLocal: agent.localIds.length === printersWrittenBy(printers, deviceId).length,
+    ...(worst !== undefined ? { worst } : {}),
+  };
+}
+
+/** Session 2F1 (spec §9.2): the network printers this device writes that the POS app (bridge v2) does not have yet: it
+ *  adds each (a local call to the app, no request), so naming a tablet a network printer's printing device is enough. */
+export function lanPrintersToAdd(printers: readonly PrinterConfig[], deviceId: string, pool: NativePoolView | null): Array<{ host: string; port: number }> {
+  if (pool === null) return [];
+  const out: Array<{ host: string; port: number }> = [];
+  for (const printer of printersWrittenBy(printers, deviceId)) {
+    const connection = printer.connection;
+    if (connection.kind === "lan" && nativeIdOf(printer, pool) === null) out.push({ host: connection.host.toLowerCase(), port: connection.port });
+  }
+  return out;
 }
 
 /** Session 2C (the 2C gate's review, I-2, and its emulator run): the device's printer list is stale when a missed

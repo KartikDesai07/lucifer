@@ -101,7 +101,10 @@ test("PIN: the agent leases on events aimed at it, names itself on the pulse (th
   assert.ok(agent.includes("if (agent === null || !enabled) return;\n    setPulsePrintDevice(deviceId);"), "every agent names itself on the existing pulse, the host too");
   assert.ok(!agent.includes("if (agent === null || !enabled || isHost) return;"), "the host is no longer left out");
   assert.ok(src("apps/cafe/hooks/use-pos-pulse.ts").includes("apiGet<PosPulseData>(`${POS_PULSE_ENDPOINT}${pulsePrintDeviceQuery()}`)"), "the pulse carries it: no new request");
-  assert.ok(agent.includes("printerReady: canPrintNow,"), "the agent's gate is the device's own can-print verdict");
+  // Session 2F1 (deliberate change): or one of the printers it prints here that can print now (a POS app printer on
+  // bridge v2 by its own state; any other only while canPrintNow, as before).
+  assert.ok(agent.includes("printerReady: () => canPrintNow() || readyNow().length > 0,"), "the agent's gate is the device's own can-print verdict");
+  assert.ok(agent.includes("const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf);"), "and its printers' own states");
   assert.ok(agent.includes("PRINT_AGENT_SLIP_DEADLINE_MS"), "its wait on one slip is bounded");
 });
 

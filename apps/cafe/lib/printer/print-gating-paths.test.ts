@@ -125,17 +125,19 @@ const CASES: PinCase[] = [
     file: "components/print/PrintHostDrain.tsx",
     pin: (s) => {
       const p: string[] = [];
-      check(p, ordered(s, ["const canPrint = useCanPrintNow();", LOCK_CALL, "const drains = isAgent && holdsLock;"]), "canPrint -> gated lock -> drains");
+      // Session 2F1 (deliberate change): any printer of this device (one of the POS app's printers that is off never
+      // stops the others, spec §9.2).
+      check(p, ordered(s, ["const canPrint = useCanPrintOnAny();", LOCK_CALL, "const drains = isAgent && holdsLock;"]), "canPrint -> gated lock -> drains");
       check(p, count(s, "usePrintHostDrainLock(") === 1 && !s.includes("usePrintHostDrainLock(enabled)"), "no ungated lock call");
       check(p, s.includes("usePrintHostWakeLock(enabled);") && s.includes("usePrintHostBeat({ enabled, deviceId, onDemoted });"), "wake lock and routine beat keep `enabled`");
       check(p, s.includes("usePrintHostPrinterBeat({ enabled, deviceId, onDemoted });"), "printer beat is wired with `enabled`");
       check(p, s.includes("useNativeHostBackground(enabled);"), "native host background is wired with `enabled`");
-      check(p, s.includes('import { useCanPrintNow } from "@/hooks/use-device-printer";'), "imports useCanPrintNow");
+      check(p, s.includes('import { useCanPrintOnAny } from "@/hooks/use-device-printer";'), "imports useCanPrintOnAny");
       return p;
     },
     mutations: [
       { name: "lock ungated", apply: sub(LOCK_CALL, "const holdsLock = usePrintHostDrainLock(enabled);") },
-      { name: "canPrint read after the lock", apply: sub(`const canPrint = useCanPrintNow();\n  ${LOCK_CALL}`, `${LOCK_CALL}\n  const canPrint = useCanPrintNow();`) },
+      { name: "canPrint read after the lock", apply: sub(`const canPrint = useCanPrintOnAny();\n  ${LOCK_CALL}`, `${LOCK_CALL}\n  const canPrint = useCanPrintOnAny();`) },
       { name: "printer beat armed by drains", apply: sub("usePrintHostPrinterBeat({ enabled,", "usePrintHostPrinterBeat({ enabled: drains,") },
       { name: "native background removed", apply: sub("  useNativeHostBackground(enabled);\n", "") },
       { name: "routine beat gated by canPrint", apply: sub("usePrintHostBeat({ enabled, deviceId, onDemoted });", "usePrintHostBeat({ enabled: enabled && canPrint, deviceId, onDemoted });") },

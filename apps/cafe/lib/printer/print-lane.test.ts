@@ -27,6 +27,7 @@ import {
   beatPrinterReport,
   beatSilentMode,
   canPrintNow,
+  canPrintOnAny,
   currentLane,
   defaultDeviceLabel,
   printBlockedMessage,
@@ -34,6 +35,7 @@ import {
   type PrintLane,
 } from "@/lib/printer/print-lane";
 import type { PrinterStatus } from "@/lib/printer/web-printer-types";
+import { setNativePoolInstance, type NativePool, type NativePoolSnapshot } from "@/lib/printer/native-pool";
 
 // The lane is resolved at call time from three capability signals (the desktop
 // shell, a saved device printer, the app bridge). Everything is faked on
@@ -145,6 +147,26 @@ test("canPrintNow: desktop and system always; raster only when connected HERE; n
     install(t, scene);
     assert.equal(canPrintNow(), expected, JSON.stringify(scene));
   }
+});
+
+// Phase 2 Session 2F1 (spec §9.2): the drain asks for its lock while any printer of this device can print, so one of
+// the POS app's printers that is off never stops the others; a slip with no printer of its own needs canPrintNow().
+test("2F1: canPrintOnAny: this device's own printer, or another of the app's printers (bridge v2) that is connected", (t) => {
+  let pool: NativePoolSnapshot = { active: true, printers: [], defaultId: null };
+  setNativePoolInstance({ getSnapshot: () => pool } as unknown as NativePool);
+  t.after(() => setNativePoolInstance(null));
+  install(t, { bridge: true, printer: "disconnected" });
+  assert.deepEqual([canPrintNow(), canPrintOnAny()], [false, false], "the device's printer is off and the app has no other");
+  const bar = { id: "tcp:10.0.2.2:9101", printer: { kind: "native" as const, name: "Bar", paper: "80mm" as const, printerId: "tcp:10.0.2.2:9101", transport: "tcp" as const }, message: null };
+  pool = { ...pool, printers: [{ ...bar, status: "connected" }] };
+  assert.deepEqual([canPrintNow(), canPrintOnAny()], [false, true], "the bar printer of the app can print");
+  pool = { ...pool, printers: [{ ...bar, status: "disconnected" }] };
+  assert.equal(canPrintOnAny(), false, "and not once it is down");
+  install(t, { bridge: true, printer: "connected" });
+  assert.equal(canPrintOnAny(), true, "the device's own printer");
+  install(t, { bridge: true });
+  pool = { ...pool, printers: [{ ...bar, status: "connected" }] };
+  assert.deepEqual([canPrintNow(), canPrintOnAny()], [false, true], "a tablet whose only printer came through the app's list (no device printer record) still drains (the 2E gate's review, I-2)");
 });
 
 test("printBlockedMessage: the app with no printer says set one up; another tab says so; anything else says reconnect", (t) => {

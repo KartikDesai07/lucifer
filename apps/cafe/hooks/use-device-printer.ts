@@ -15,7 +15,8 @@ import {
 } from "@/lib/printer/desktop-printer-state";
 import { NONE_SNAPSHOT, devicePrinter, type PrinterSnapshot } from "@/lib/printer/device-printer";
 import { NATIVE_READY_EVENT } from "@/lib/printer/native-bridge";
-import { canPrintNow, currentLane, printCapabilities, type PrintCapabilities, type PrintLane } from "@/lib/printer/print-lane";
+import { EMPTY_POOL, nativePool, type NativePoolSnapshot } from "@/lib/printer/native-pool";
+import { canPrintNow, canPrintOnAny, currentLane, printCapabilities, type PrintCapabilities, type PrintLane } from "@/lib/printer/print-lane";
 
 // Reactive views of the device printer and the print lane. Every hook is a
 // useSyncExternalStore with an explicit SERVER snapshot, so the server render
@@ -68,6 +69,29 @@ export function useDesktopPrinterSnapshot(): DesktopPrinterSnapshot {
 
 export function useCanPrintNow(): boolean {
   return useSyncExternalStore(subscribeLane, canPrintNow, () => false);
+}
+
+function subscribePool(onChange: () => void): () => void {
+  return nativePool().subscribe(onChange);
+}
+
+/** Phase 2 Session 2F1 (spec §9.2): the POS app's printers on bridge v2 (inactive everywhere else). */
+export function useNativePool(): NativePoolSnapshot {
+  return useSyncExternalStore(subscribePool, () => nativePool().getSnapshot(), () => EMPTY_POOL);
+}
+
+function subscribeAny(onChange: () => void): () => void {
+  const offLane = subscribeLane(onChange);
+  const offPool = subscribePool(onChange);
+  return () => {
+    offLane();
+    offPool();
+  };
+}
+
+/** Session 2F1: a printer here can print right now (this device's own, or another of the app's printers). */
+export function useCanPrintOnAny(): boolean {
+  return useSyncExternalStore(subscribeAny, canPrintOnAny, () => false);
 }
 
 export function useDeviceOnline(): boolean {

@@ -5,7 +5,7 @@ import { useCallback, useMemo, type MutableRefObject } from "react";
 import { PRINT_HOST_MAX_AGE_MS } from "@pos/shared/print-job";
 import { usePrintHostRouting } from "@/components/layout/PosPulseProvider";
 import { useAgentPrinters } from "@/hooks/use-agent-printers";
-import { useCanPrintNow } from "@/hooks/use-device-printer";
+import { useCanPrintOnAny } from "@/hooks/use-device-printer";
 import { useHostRouting } from "@/hooks/use-host-routing";
 import { useNativeHostBackground } from "@/hooks/use-native-host";
 import { usePrintAgent } from "@/hooks/use-print-agent";
@@ -51,8 +51,9 @@ export function PrintHostDrain({ enabled, surfacesMounted, deviceId, tabId, busy
   const isAgent = enabled || (surfacesMounted && deviceId !== "" && (printers.printersMode || (routing !== "host" && routing !== "unknown")));
   // Exactly one draining window per device (MERGED-23), asked for only by a window that can print right
   // now: a printer that is off, or open in another tab, hands the lock on, so a line is never leased
-  // for a printer that cannot print (the owner's rule after Session 1B).
-  const canPrint = useCanPrintNow();
+  // for a printer that cannot print (the owner's rule after Session 1B). Session 2F1: any printer of this device, so
+  // one of the POS app's printers that is off never stops the others (spec §9.2).
+  const canPrint = useCanPrintOnAny();
   const holdsLock = usePrintHostDrainLock(isAgent && canPrint);
   const drains = isAgent && holdsLock;
   const hostDrains = enabled && holdsLock;

@@ -7,7 +7,7 @@ import { PRINT_SETUP_REFRESH_MIN_MS } from "@pos/shared/print-budget";
 import type { LeasedPrintJob, PrintAckData, PrintJobsForMe, PrintLeaseData } from "@pos/shared/print-agent-wire";
 import { PRINTERS_KEYS } from "@/hooks/use-agent-printers";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
-import { useCanPrintNow, useDevicePrinter } from "@/hooks/use-device-printer";
+import { useCanPrintNow, useDevicePrinter, useNativePool } from "@/hooks/use-device-printer";
 import { usePrintAgentWake } from "@/hooks/use-print-agent-wake";
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
 import { apiSend } from "@/lib/api-client";
@@ -26,14 +26,14 @@ import {
   type PrintAgent,
   type PrintAgentResult,
 } from "@/lib/print-agent";
-import { jobsForMeLeasable, printJobCopies, printerListLooksStale, type AgentPrinters } from "@/lib/print-agent-printers";
+import { jobsForMeLeasable, printJobCopies, printerListLooksStale, readyPrinterIdsOf, type AgentPrinters } from "@/lib/print-agent-printers";
 import type { HostPrintDone } from "@/lib/print-host-outcomes";
 import { PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print-host-slips";
 import { PrintWriteError } from "@/lib/print-write-outcome";
 import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
 import { desktopPrinterSnapshot, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
-import { devicePrinter } from "@/lib/printer/device-printer";
 import { nativeBridge, nativeOn } from "@/lib/printer/native-bridge";
+import { printerStatusOf, printersState } from "@/lib/printer/printer-registry";
 import { canPrintNow } from "@/lib/printer/print-lane";
 import { subscribeRealtime } from "@/lib/realtime-client";
 import { cafeDateString } from "@/lib/utils";
@@ -84,6 +84,7 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
   const qc = useQueryClient();
   const printer = useDevicePrinter();
   const canPrint = useCanPrintNow();
+  const pool = useNativePool();
   const queueRef = useRef(queueSlip);
   useEffect(() => {
     queueRef.current = queueSlip;
@@ -146,18 +147,22 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
     // printer that failed is looked up again in the Windows app, so one renamed or removed there stops being this PC's.
     const print = async (job: LeasedPrintJob): Promise<PrintAgentResult> => {
       const result = await printJobCopies(job, readyRef.current, () => printOnce(job));
-      if (!result.ok && job.printerId !== undefined && targetsRef.current[job.printerId] !== undefined) void refreshDesktopPrinterChosen();
+      if (!result.ok && job.printerId !== undefined && targetsRef.current[job.printerId]?.printerName !== undefined) void refreshDesktopPrinterChosen();
       return result;
     };
+    // Session 2F1 (spec §9.2): of the printers it prints here, those that can print now: one of the POS app's printers
+    // (bridge v2) by its own state, any other while this device's own printer can print (as before).
+    const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf);
     const created = createPrintAgent({
       deviceId,
       lease: (printerIds) => apiSend<PrintLeaseData>(LEASE_URL, "POST", { deviceId, tabId, ...printerIdsBody(printerIds) }),
       ack: (id, body) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", body),
       print,
-      printerReady: canPrintNow,
-      // Session 2E: the Windows app's printer list read again (a printer added or removed) releases a refusal's hold.
-      printerState: () => (isDesktopShell() ? desktopPrinterSnapshot() : devicePrinter().getSnapshot()),
-      readyPrinters: () => readyRef.current,
+      printerReady: () => canPrintNow() || readyNow().length > 0,
+      // Session 2E: the Windows app's printer list read again (a printer added or removed) releases a refusal's hold;
+      // Session 2F1: so does any change of this device's printers (its own, or another of the app's).
+      printerState: () => (isDesktopShell() ? desktopPrinterSnapshot() : printersState()),
+      readyPrinters: readyNow,
       lineOf: (job) => (job.printerId !== undefined && targetsRef.current[job.printerId] !== undefined ? job.printerId : PRINT_DEVICE_LINE),
       readPending: readPendingAcks,
       writePending: writePendingAcks,
@@ -185,6 +190,11 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
   useEffect(() => {
     agent?.nudge();
   }, [agent, readyKey]);
+
+  // Session 2F1 (spec §9.2): one of the POS app's printers changed (connected, down, added, removed): look again.
+  useEffect(() => {
+    agent?.nudge();
+  }, [agent, pool]);
 
   useEffect(() => (agent === null ? undefined : onPrintAgentKick((printerId) => agent.kick(printerId))), [agent]);
 

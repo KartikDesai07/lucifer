@@ -1,3 +1,4 @@
+import { devicePrinter } from "@/lib/printer/device-printer";
 import { nativePool } from "@/lib/printer/native-pool";
 import type { PrinterStatus } from "@/lib/printer/web-printer-types";
 
@@ -9,6 +10,17 @@ import type { PrinterStatus } from "@/lib/printer/web-printer-types";
 /** Writes one finished job to the printer with this app id, through that printer's own queue. */
 export function printerWriter(nativeId: string): (bytes: Uint8Array) => Promise<void> {
   return (bytes) => nativePool().write(nativeId, bytes);
+}
+
+let lastState: { device: unknown; pool: unknown } | null = null;
+
+/** A value whose identity changes when any printer of this device changes (a refusal's hold is released then):
+ *  the device's own printer, or one of the app's other printers. */
+export function printersState(): object {
+  const device = devicePrinter().getSnapshot();
+  const pool = nativePool().getSnapshot();
+  if (lastState === null || lastState.device !== device || lastState.pool !== pool) lastState = { device, pool };
+  return lastState;
 }
 
 /** That printer's state as the app reports it: "none" when the app has no printer with that id. */

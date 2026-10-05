@@ -71,6 +71,8 @@ export interface PrinterDotPrinters {
   printersMode: boolean;
   isWriter: boolean;
   allLocal: boolean;
+  /** Session 2F1 (spec §9.2): on the POS app with bridge v2, the worst state among its printers this device prints. */
+  worst?: PrinterStatus;
 }
 
 const NO_DOT: PrinterDot = { show: false };
@@ -120,7 +122,7 @@ function thisDeviceHostRow(remote: PrintHostDot, lane: DotLane, local: PrinterSt
 function printersRow(printers: PrinterDotPrinters, lane: DotLane, local: PrinterStatus, desktopChosen: DesktopChosen): PrinterDot {
   if (!printers.isWriter) return dot("printers-elsewhere");
   if (!printers.allLocal) return dot("printer-not-here");
-  return noHostRow(lane, local, desktopChosen);
+  return noHostRow(lane, printers.worst ?? local, desktopChosen);
 }
 
 export function printerDotOf(input: PrinterDotInput): PrinterDot {

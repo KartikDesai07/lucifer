@@ -29,7 +29,7 @@ export interface PrintAgentDeps {
   ack(id: string, body: PrintAgentAckBody): Promise<PrintAckData>;
   /** Prints one leased job through the host bridge. Never rejects. */
   print(job: LeasedPrintJob): Promise<PrintAgentResult>;
-  /** canPrintNow(): a printer here that can print right now. */
+  /** canPrintNow(): a printer here that can print right now. Session 2F1: or a printer this device prints that can. */
   printerReady(): boolean;
   /** Any value whose identity changes when this device's printer changes (its snapshot). */
   printerState(): unknown;

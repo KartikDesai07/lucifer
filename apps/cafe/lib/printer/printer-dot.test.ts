@@ -397,6 +397,15 @@ test("2D: printers mode — a writer shows its own printer; one writing a printe
   assert.deepEqual(printerDotOf({ ...PRINTERS_BASE, remote: "offline", printers: { printersMode: false, isWriter: false, allLocal: true } }), { show: true, ok: false, reason: "host-offline" }, "simple mode is unchanged");
 });
 
+// Phase 2 Session 2F1 (spec §9.2, §10): on the POS app with bridge v2 the dot is the worst state among its printers this
+// device prints, not only the device's own.
+test("2F1: printers mode on bridge v2 — the dot is the worst state among the app's printers this device prints", () => {
+  const mode = { printersMode: true, isWriter: true, allLocal: true };
+  assert.deepEqual(printerDotOf({ ...PRINTERS_BASE, printers: { ...mode, worst: "disconnected" } }), { show: true, ok: false, reason: "printer-off" }, "the bar printer is down, the device's own connected");
+  assert.deepEqual(printerDotOf({ ...PRINTERS_BASE, local: "disconnected", printers: { ...mode, worst: "connected" } }), { show: true, ok: true, reason: "ok" }, "every printer it prints is connected");
+  assert.deepEqual(printerDotOf({ ...PRINTERS_BASE, printers: { ...mode, worst: "connecting" } }), { show: true, ok: false, reason: "checking" }, "one still connecting: checking");
+});
+
 test("2D: printers mode copy — plain words for the two new states", () => {
   const input: PrinterHeadlineInput = { hostLabel: null, printerName: "Kitchen printer", isHostDevice: false, canPrintHere: true, localStatus: "connected", desktopNoPrinter: false };
   assert.deepEqual(printerHeadlineOf({ show: true, ok: true, reason: "printers-elsewhere" }, input), { headline: "Printing is on", detail: "Each slip prints at its printer (Printer setup).", fix: null });
