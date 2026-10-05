@@ -41,6 +41,7 @@ import { legAK, legAL, legAM } from "./print-host-live/direct";
 import { legAN, legAO, legAP, legAQ } from "./print-host-live/printers-mode";
 import { legAR, legAS, legAT } from "./print-host-live/setup-2d";
 import { legAU, legAV } from "./print-host-live/setup-2e";
+import { legAW, legAX } from "./print-host-live/setup-2f";
 import { Station } from "@/models/Station";
 import { Printer } from "@/models/Printer";
 import { Category } from "@/models/Category";
@@ -129,6 +130,9 @@ async function main(): Promise<void> {
     // Phase 2 Session 2E legs (several printers on one Windows PC: the setup by name, a lease per named line).
     await legAU();
     await legAV(Date.now());
+    // Phase 2 Session 2F1 legs (several printers on one phone or tablet: the setup, the devices read, a lease per line).
+    await legAW();
+    await legAX(Date.now());
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();

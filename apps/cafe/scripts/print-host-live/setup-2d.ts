@@ -87,8 +87,10 @@ export async function legAS(): Promise<void> {
   check("(as) a rename onto a taken name (any case) is refused and the default stays where it was", !clash.ok && clash.status === 409 && after.length === 1 && String(after[0]?._id) === bar);
 
   const lan = await createPrinter(body("Kitchen", { primaryDeviceId: KITCHEN, slips: { ...NO_SLIPS, kotStations: [bar], notices: true } }));
-  const second = await createPrinter(body("Bar", { connection: { kind: "device", deviceId: KITCHEN, transport: "usb", address: "04b8:0e15" }, slips: { ...NO_SLIPS, bill: true } }));
-  check("(as) a second enabled printer for one device is refused (409), naming the first", lan.ok && !second.ok && second.status === 409 && second.error.includes("already prints Kitchen"));
+  // Session 2F1 (deliberate change): a POS app device may write several printers (bridge v2), each a different one
+  // (leg aw); the same printer a second time is still refused, naming the first.
+  const second = await createPrinter(body("Bar", { primaryDeviceId: KITCHEN, slips: { ...NO_SLIPS, bill: true } }));
+  check("(as) the same printer a second time for one device is refused (409), naming the first", lan.ok && !second.ok && second.status === 409 && second.error.startsWith("Kitchen already prints"));
   const spare = await createPrinter(body("Spare", { primaryDeviceId: KITCHEN, enabled: false, slips: { ...NO_SLIPS, bill: true } }));
   const spareId = spare.ok ? spare.data.id : "";
   const switchOn = await replacePrinter(spareId, body("Spare", { primaryDeviceId: KITCHEN, slips: { ...NO_SLIPS, bill: true } }));
