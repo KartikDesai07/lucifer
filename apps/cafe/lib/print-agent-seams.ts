@@ -6,14 +6,15 @@ import type { LeasedPrintJob } from "@pos/shared/print-agent-wire";
 // its own slips at once and the leased jobs its answers carry. Split out of print-agent.ts at the 2A review gate
 // to keep that file near its ~300-line budget; print-agent.ts re-exports every name.
 
-const kickListeners = new Set<() => void>();
+const kickListeners = new Set<(printerId?: string) => void>();
 
-/** An order answer named a job this device prints: lease it now, no poll (spec §9.1). */
-export function kickPrintAgent(): void {
-  for (const listener of [...kickListeners]) listener();
+/** An order answer named a job this device prints: lease it now, no poll (spec §9.1). The 2E review gate (M-1): with
+ *  its printer, so a job on a printer this tab does not lease now leases nothing. */
+export function kickPrintAgent(printerId?: string): void {
+  for (const listener of [...kickListeners]) listener(printerId);
 }
 
-export function onPrintAgentKick(listener: () => void): () => void {
+export function onPrintAgentKick(listener: (printerId?: string) => void): () => void {
   kickListeners.add(listener);
   return () => void kickListeners.delete(listener);
 }

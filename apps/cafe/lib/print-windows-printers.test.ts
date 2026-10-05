@@ -78,7 +78,9 @@ test("PIN (2E): the agent leases, offers for direct print and is kicked only for
   assert.match(hook, /readyPrinters: \(\) => readyRef\.current,/);
   assert.match(hook, /lineOf: \(job\) => \(job\.printerId !== undefined && targetsRef\.current\[job\.printerId\] !== undefined \? job\.printerId : PRINT_DEVICE_LINE\),/, "a named Windows printer is a line of its own");
   assert.match(hook, /const offReady = setReadyPrintersSource\(\(\) => agent\.openPrinters\(\)\);/, "direct print names only open printers");
-  assert.equal((hook.match(/jobsForMeLeasable\([^)]*, agent\.openPrinters\(\)\)/g) ?? []).length, 2, "the pulse and the wake kick only for open printers");
+  // The 2E review gate (M-5): the wake poll lives in its own hook.
+  const both = hook + src("hooks/use-print-agent-wake.ts");
+  assert.equal((both.match(/jobsForMeLeasable\([^)]*, agent\.openPrinters\(\)\)/g) ?? []).length, 2, "the pulse and the wake kick only for open printers");
   assert.match(hook, /printerState: \(\) => \(isDesktopShell\(\) \? desktopPrinterSnapshot\(\) : devicePrinter\(\)\.getSnapshot\(\)\),/, "a Windows printer list read again releases a hold");
 });
 

@@ -112,10 +112,11 @@ test("PIN (D7): a staff Retry or Print again announces its job to the device tha
   // Session 2C deliberately added printerId to the read (the 2B gate's ruling R2: a gone printer is refused).
   assert.match(s, /\.select\(`\$\{PRINT_LIFECYCLE_SELECT\} targetDeviceId printerId`\)/, "the row says where it prints");
   assert.match(s, /if \(plan\.patch\.status === "queued"\) publishCafeEvent\("print-job"\);/, "the host still hears the broadcast nudge");
-  // Session 2C deliberately aims it at the job's current writer (a printer job retried on a re-saved printer).
+  // Session 2C deliberately aims it at the job's current writer (a printer job retried on a re-saved printer); the 2E
+  // review gate (M-1) names its printer too.
   assert.match(
     s,
-    /if \(plan\.patch\.status === "queued"\) publishPrintStatus\(\{ id, status: "queued", \.\.\.\(target \? \{ target \} : \{\}\) \}\);/,
+    /if \(plan\.patch\.status === "queued"\) publishPrintStatus\(\{ id, status: "queued", \.\.\.\(target \? \{ target \} : \{\}\), \.\.\.\(row\.printerId !== undefined \? \{ printerId: row\.printerId \} : \{\}\) \}\);/,
     "aimed: with no host only that device's agent leases on it (it ignores the broadcast)",
   );
 });

@@ -39,7 +39,7 @@ async function act(id: string, decide: (job: PrintJobLifecycle) => PrintJobPlan)
       if (plan.patch.status === "queued") publishCafeEvent("print-job");
       // Session 1D (D7): also aimed at the device whose line holds it. With no host, agents never lease on
       // the broadcast above (1B M-c), so without this a tap would wait for that device's next pulse.
-      if (plan.patch.status === "queued") publishPrintStatus({ id, status: "queued", ...(target ? { target } : {}) });
+      if (plan.patch.status === "queued") publishPrintStatus({ id, status: "queued", ...(target ? { target } : {}), ...(row.printerId !== undefined ? { printerId: row.printerId } : {}) });
       return { applied: true, status: plan.patch.status };
     }
   }

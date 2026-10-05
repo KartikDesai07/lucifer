@@ -47,8 +47,9 @@ export interface PrintAgentDeps {
 export interface PrintAgent {
   setGate(gate: { enabled: boolean; busy: boolean }): void;
   /** A job may wait for this device (an answer, a frame, the pulse, the wake, a timer): lease now, or once
-   *  the running cycle ends. */
-  kick(): void;
+   *  the running cycle ends. The 2E review gate (M-1): a job's printer, when known; a printer this tab does not lease
+   *  now (held by a refusal, or not printed here) is no reason to lease the others. */
+  kick(printerId?: string): void;
   /** Session 2B: this device's state changed (its printer): lease now if idle, never queued behind a cycle. */
   nudge(): void;
   flushAcks(): Promise<void>;

@@ -61,11 +61,13 @@ export const CAFE_EVENT_KINDS = [
 export type CafeEventKind = (typeof CAFE_EVENT_KINDS)[number];
 
 /** The one thing a "print-status" envelope adds: which job, its status, and (on "queued") the device
- *  that must print it, so only that agent leases on it (no fan-out of empty leases). */
+ *  that must print it, so only that agent leases on it (no fan-out of empty leases). The 2E review gate (M-1): a
+ *  printer job's printer too, so a device whose printer is held by a refusal leases nothing for it. */
 export interface CafeEventJob {
   id: string;
   status: PrintJobStatus;
   target?: string;
+  printerId?: string;
 }
 
 /** Header + scheme literals. MIRROR of apps/hub/lib/heartbeat-hmac.ts's scheme

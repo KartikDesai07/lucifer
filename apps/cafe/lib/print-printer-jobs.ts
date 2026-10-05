@@ -88,7 +88,7 @@ export async function createRoutedPrintJobs(input: {
       if (made === null) continue;
       jobs.push(made);
       if (made.ref.leased !== undefined) directOn.add(job.printerId);
-      if (announcesQueuedJob(made, directOn.has(job.printerId))) publishPrintStatus({ id: made.ref.id, status: "queued", target: made.ref.targetDeviceId });
+      if (announcesQueuedJob(made, directOn.has(job.printerId))) publishPrintStatus({ id: made.ref.id, status: "queued", target: made.ref.targetDeviceId, printerId: job.printerId });
     }
   }
   return { jobs, routed };

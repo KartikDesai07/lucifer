@@ -4,18 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { hashKey, useQueryClient } from "@tanstack/react-query";
 
 import { PRINT_SETUP_REFRESH_MIN_MS } from "@pos/shared/print-budget";
-import { PRINT_WAKE_DAILY_CAP } from "@pos/shared/print-job";
-import {
-  printAgentPollsWake,
-  type LeasedPrintJob,
-  type PrintAckData,
-  type PrintJobsForMe,
-  type PrintLeaseData,
-  type PrintWakeBeatData,
-} from "@pos/shared/print-agent-wire";
+import type { LeasedPrintJob, PrintAckData, PrintJobsForMe, PrintLeaseData } from "@pos/shared/print-agent-wire";
 import { PRINTERS_KEYS } from "@/hooks/use-agent-printers";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
 import { useCanPrintNow, useDevicePrinter } from "@/hooks/use-device-printer";
+import { usePrintAgentWake } from "@/hooks/use-print-agent-wake";
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
 import { apiSend } from "@/lib/api-client";
 import { isDesktopShell } from "@/lib/desktop-shell";
@@ -34,17 +27,15 @@ import {
   type PrintAgentResult,
 } from "@/lib/print-agent";
 import { jobsForMeLeasable, printJobCopies, printerListLooksStale, type AgentPrinters } from "@/lib/print-agent-printers";
-import { createPrintAgentWake } from "@/lib/print-agent-wake";
 import type { HostPrintDone } from "@/lib/print-host-outcomes";
 import { PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print-host-slips";
-import { bumpPrintWakeBudget, mergePrintWakeBudget, readPrintWakeBudget, writePrintWakeBudget, type PrintWakeBudget } from "@/lib/print-wake-budget";
 import { PrintWriteError } from "@/lib/print-write-outcome";
 import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
 import { desktopPrinterSnapshot, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
 import { devicePrinter } from "@/lib/printer/device-printer";
 import { nativeBridge, nativeOn } from "@/lib/printer/native-bridge";
-import { canPrintNow, currentLane, defaultDeviceLabel, printCapabilities } from "@/lib/printer/print-lane";
-import { isRealtimeHealthy, subscribeRealtime } from "@/lib/realtime-client";
+import { canPrintNow } from "@/lib/printer/print-lane";
+import { subscribeRealtime } from "@/lib/realtime-client";
 import { cafeDateString } from "@/lib/utils";
 
 // Printing redesign, Phase 1 Session 1C (spec §9.1): the in-page print agent, wired to this page. The
@@ -54,13 +45,12 @@ import { cafeDateString } from "@/lib/utils";
 //   · a "print-status" frame aimed at this device (R7), or — the host only — the "print-job" nudge;
 //   · the existing 20 s pulse: every agent names itself there (?device=) and leases when its own line is
 //     not empty (the host too, since the Phase 1 final gate: a spent wake share must not stop it);
-//   · the host only: the wake POST at the spec §9.1 cadence (R6);
+//   · the host only: the wake POST at the spec §9.1 cadence (R6; hooks/use-print-agent-wake.ts since the 2E gate);
 //   · its printer coming back, the bridge freeing up, the app returning to the screen;
 //   · its one local timer (retryAt / nextAttemptAt from the server).
 // No ordering device gains a recurring request: only the host polls, and only the wake it always had.
 
 const LEASE_URL = "/api/print-jobs/lease";
-const WAKE_URL = "/api/print-jobs/wake";
 
 interface UsePrintAgentOptions {
   /** This tab drains this device's line: it is an agent (the host; with no host, every device), its
@@ -80,25 +70,6 @@ interface UsePrintAgentOptions {
 /** Session 2C: the printers a lease names, omitted when there are none (simple mode, an old server). */
 function printerIdsBody(ids: readonly string[]): { printerIds?: string[] } {
   return ids.length > 0 ? { printerIds: [...ids] } : {};
-}
-
-/** The heartbeat the host's wake carries (spec §10). */
-function wakeBody(deviceId: string) {
-  const caps = printCapabilities();
-  const desktop = isDesktopShell();
-  return {
-    deviceId,
-    label: defaultDeviceLabel(currentLane()),
-    shell: caps.native ? "android" : desktop ? "windows" : "browser",
-    capabilities: {
-      lan: caps.native,
-      bluetooth: caps.native || caps.bluetooth,
-      usb: caps.native,
-      windowsPrinters: desktop,
-      webSerial: caps.serial,
-      webBluetooth: caps.bluetooth,
-    },
-  };
 }
 
 function timers() {
@@ -215,7 +186,7 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
     agent?.nudge();
   }, [agent, readyKey]);
 
-  useEffect(() => (agent === null ? undefined : onPrintAgentKick(() => agent.kick())), [agent]);
+  useEffect(() => (agent === null ? undefined : onPrintAgentKick((printerId) => agent.kick(printerId))), [agent]);
 
   // Phase 2 Session 2B (spec §7.11): while this tab drains this device's slips and can print now, the requests
   // that make slips name it (directPrintTab → x-pos-print-lease), and a job an answer carries already leased
@@ -236,8 +207,9 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
     if (agent === null || !enabled) return;
     return subscribeRealtime((kind, message) => {
       if (kind === "print-status") {
-        const job = message.job as { status?: unknown; target?: unknown } | undefined;
-        if (job?.status === "queued" && job.target === deviceId) agent.kick();
+        // The 2E review gate (M-1): a printer job's frame names its printer.
+        const job = message.job as { status?: unknown; target?: unknown; printerId?: unknown } | undefined;
+        if (job?.status === "queued" && job.target === deviceId) agent.kick(typeof job.printerId === "string" ? job.printerId : undefined);
       } else if (kind === "print-job" && isHost) {
         agent.kick();
       }
@@ -265,36 +237,8 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
     };
   }, [agent, enabled, deviceId, qc, noteJobsForMe]);
 
-  // The wake poll (spec §9.1): the host in simple mode; in printers mode each writer, host or not (Session 2C, the
-  // 2A gate's Important 1). Each spends against its share: the smaller of the constant and the wake's answer.
-  const pollsWake = printAgentPollsWake({ hostConfigured: isHost, isHost, printersMode: printers.printersMode, isWriter: printers.isWriter });
-  const capRef = useRef(PRINT_WAKE_DAILY_CAP);
-  useEffect(() => {
-    if (agent === null || !enabled || !pollsWake) return;
-    let memory: PrintWakeBudget | null = null;
-    const wake = createPrintAgentWake({
-      wake: async () => {
-        const data = await apiSend<PrintWakeBeatData>(WAKE_URL, "POST", wakeBody(deviceId));
-        capRef.current = Math.min(PRINT_WAKE_DAILY_CAP, data.agentDailyCap);
-        noteJobsForMe(data.jobsForMe, data.writesPrinters);
-        return data;
-      },
-      socketHealthy: isRealtimeHealthy,
-      mayPoll: () => isDesktopShell() || document.visibilityState === "visible",
-      spendOne: () => {
-        const dayKey = cafeDateString();
-        const { record, allowed } = bumpPrintWakeBudget(mergePrintWakeBudget(readPrintWakeBudget(), memory, dayKey), dayKey, capRef.current);
-        memory = record;
-        writePrintWakeBudget(record);
-        return allowed;
-      },
-      leasable: (jobs) => jobsForMeLeasable(jobs, agent.openPrinters()),
-      onJobs: () => agent.kick(),
-      ...timers(),
-    });
-    wake.start();
-    return () => wake.stop();
-  }, [agent, enabled, pollsWake, deviceId, noteJobsForMe]);
+  // The wake poll (spec §9.1) and its heartbeat (spec §10): hooks/use-print-agent-wake.ts.
+  usePrintAgentWake({ agent, enabled, isHost, printers, deviceId, noteJobsForMe });
 
   // The POS app came back to the screen, or its network returned.
   useEffect(() => {

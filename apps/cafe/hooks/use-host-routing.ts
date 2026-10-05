@@ -175,7 +175,7 @@ export function useHostRouting(): PrintRoutingHost {
         // A builder throw changes nothing: the job exists and prints; only its chip is missing.
       }
       if (ref.leased !== undefined) deliverLeasedJob(ref.leased);
-      else if (ref.status === "queued") kickPrintAgent();
+      else if (ref.status === "queued") kickPrintAgent(ref.printerId);
       // Session 2E (spec §9.2): the slip's other jobs leased to this tab (another printer of this device) print here too.
       for (const job of ref.alsoLeased ?? []) deliverLeasedJob(job);
     },

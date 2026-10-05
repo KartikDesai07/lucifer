@@ -73,7 +73,7 @@ test("PIN: every print wrapper follows the job the order's answer made, and a de
   assert.ok(seam.indexOf("if (!shouldRoute) {") < seam.indexOf("if (ref) {"), "the local fast path stays first (a device with no identity)");
   assert.ok(seam.includes('agentDeviceId === "" ? job : { ...job, headers: printAgentEnqueueHeaders(agentDeviceId) }'), "a missing ref is enqueued as the agent, under today's key");
   assert.ok(seam.includes('if (agentDeviceId !== "" && result.outcome === "queued") kickPrintAgent();'), "an enqueued job is leased now, not on a poll");
-  assert.ok(seam.includes('if (ref.status === "queued") kickPrintAgent();'), "a ref to a resolved job is followed, never leased (M-d)");
+  assert.ok(seam.includes('if (ref.status === "queued") kickPrintAgent(ref.printerId);'), "a ref to a resolved job is followed, never leased (M-d); a queued one kicks with its printer (the 2E gate, M-1)");
   assert.ok(seam.includes('const ref = printJobRefOf(order, "moved");'), "the moved slip is followed by ref: its key has the server's movedAt");
   assert.ok(src("apps/cafe/hooks/use-print-host.ts").includes('({ headers, ...input }: EnqueuePrintJobInput) => apiSend<PrintJobEnqueueResult>("/api/print-jobs", "POST", input, { headers })'), "headers are never part of the enqueue body");
 });
@@ -90,7 +90,10 @@ test("PIN: the provider hands the drain its surfaces, and the bridge's own KOT p
 
 test("PIN: the agent leases on events aimed at it, names itself on the pulse (the host too), and only the host polls", () => {
   const agent = src("apps/cafe/hooks/use-print-agent.ts");
-  assert.ok(agent.includes('if (job?.status === "queued" && job.target === deviceId) agent.kick();'), "a print-status frame for another device never leases (R7)");
+  assert.ok(
+    agent.includes('if (job?.status === "queued" && job.target === deviceId) agent.kick(typeof job.printerId === "string" ? job.printerId : undefined);'),
+    "a print-status frame for another device never leases (R7); a printer job's frame names its printer (the 2E gate, M-1)",
+  );
   assert.ok(agent.includes('} else if (kind === "print-job" && isHost) {'), "the broadcast nudge wakes only the host (no fan-out, M-c)");
   // The Phase 1 final gate (I-2, deliberate change): the host names itself too. With its daily wake share spent and
   // the socket down it heard of other devices' slips from nothing at all (spec §7.10: "leasing then rides realtime
@@ -108,7 +111,7 @@ test("PIN (2B): the draining tab offers itself for direct print, every answer th
   assert.ok(agent.includes("const offSource = setDirectPrintSource(() => (agent.directReady() ? tabId : null));"), "the tab id only while this agent can print now");
   assert.ok(agent.includes("const offLeased = onLeasedJob((job) => agent.take(job));"), "a leased job is printed by this page's agent");
   const seam = src("apps/cafe/hooks/use-host-routing.ts");
-  assert.ok(seam.includes("if (ref.leased !== undefined) deliverLeasedJob(ref.leased);\n      else if (ref.status === \"queued\") kickPrintAgent();"), "an order answer's leased job prints with no lease request");
+  assert.ok(seam.includes("if (ref.leased !== undefined) deliverLeasedJob(ref.leased);\n      else if (ref.status === \"queued\") kickPrintAgent(ref.printerId);"), "an order answer's leased job prints with no lease request");
   assert.ok(
     seam.includes('if (result.outcome === "queued" && result.leased !== undefined) deliverLeasedJob(result.leased);\n      else if (agentDeviceId !== "" && result.outcome === "queued") kickPrintAgent();'),
     "an enqueue's leased job too (a re-sent slip whose first answer was lost)",
@@ -122,6 +125,19 @@ test("PIN (2B): the draining tab offers itself for direct print, every answer th
   assert.ok(core.includes("again = answers.get(key)?.more !== false;"), "the ack's more decides the next lease");
   assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, printer, canPrint]);"), "a printer state change is a nudge, never a lease queued behind a print");
   assert.ok(core.includes("if (opened) nudge();"), "so is the gate opening or the bridge freeing up");
+});
+
+// The 2E review gate (M-1): a queued printer job is announced with its printer, so a device whose printer a refusal
+// holds leases nothing for it. The Worker relays the frame byte for byte (its type follows, no redeploy needed).
+test("PIN (the 2E gate, M-1): a printer job's print-status frame and the order's ref name its printer; the agent kicks with it", () => {
+  assert.ok(
+    src("apps/cafe/lib/print-printer-jobs.ts").includes('publishPrintStatus({ id: made.ref.id, status: "queued", target: made.ref.targetDeviceId, printerId: job.printerId });'),
+    "a new printer job",
+  );
+  assert.ok(src("apps/cafe/lib/print-job-actions.ts").includes("...(row.printerId !== undefined ? { printerId: row.printerId } : {}) });"), "a retried printer job");
+  assert.ok(src("apps/cafe/lib/realtime-publish.ts").includes("  target?: string;\n  printerId?: string;\n}"), "the frame's job type");
+  assert.ok(src("workers/realtime/src/index.ts").includes("job?: { id: string; status: string; target?: string; printerId?: string };"), "the Worker's type, for parity");
+  assert.ok(src("apps/cafe/hooks/use-print-agent.ts").includes("onPrintAgentKick((printerId) => agent.kick(printerId))"), "an order answer's kick carries it to the agent");
 });
 
 test("PIN (spec §7.7): both receipts print the banner first, and every surface forwards it", () => {

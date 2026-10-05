@@ -8,6 +8,9 @@ import { PRINT_AGENT_REFUSED_RECHECK_MS } from "@pos/shared/print-agent-wire";
 
 /** The line of this device's own printer: its simple-mode line, and every printer job it prints on that printer. */
 export const PRINT_DEVICE_LINE = "";
+/** The 2E review gate (M-2): a hold's end is looked at this much after it, so a timer that fires a hair early (the
+ *  wall clock against the timer's own) never finds the hold still on and leases only the other printers' lines. */
+export const PRINT_AGENT_HOLD_END_MARGIN_MS = 50;
 
 export interface RefusalHolds {
   /** A refusal on this line now, under the printer state it was made in. */
@@ -51,7 +54,7 @@ export function createRefusalHolds(deps: { printerState(): unknown; now(): numbe
       for (const [line, hold] of [...holds]) {
         if (holding(line) && (soonest === null || hold.at < soonest)) soonest = hold.at;
       }
-      return soonest === null ? null : soonest + PRINT_AGENT_REFUSED_RECHECK_MS;
+      return soonest === null ? null : soonest + PRINT_AGENT_REFUSED_RECHECK_MS + PRINT_AGENT_HOLD_END_MARGIN_MS;
     },
   };
 }

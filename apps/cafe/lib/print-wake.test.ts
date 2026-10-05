@@ -407,7 +407,9 @@ test('INVENTORY: files containing the needle "usePrintHostWake(" under app/compo
 test("PIN (Session 1C, 2C): the agent polls the wake by printAgentPollsWake, through the POST beside the unchanged GET", () => {
   const drain = readSrc(PRINT_HOST_DRAIN);
   assert.ok(drain.includes("usePrintAgent({ enabled: drains, isHost: enabled,"), "the agent learns whether it is the host");
-  const agent = stripComments(readSrc("apps/cafe/hooks/use-print-agent.ts"));
+  // The 2E review gate (M-5): the wake poll moved, unchanged, into its own hook; the agent's hook still never polls the GET.
+  assert.ok(!stripComments(readSrc("apps/cafe/hooks/use-print-agent.ts")).includes("apiGet"), "the agent never polls the read-only GET");
+  const agent = stripComments(readSrc("apps/cafe/hooks/use-print-agent-wake.ts"));
   assert.ok(agent.includes("if (agent === null || !enabled || !pollsWake) return;"), "the wake poll is armed by printAgentPollsWake (simple mode: the host only, R6)");
   assert.ok(agent.includes('apiSend<PrintWakeBeatData>(WAKE_URL, "POST", wakeBody(deviceId))'), "the agent's wake is the POST heartbeat");
   assert.ok(agent.includes("bumpPrintWakeBudget("), "under the device's one daily cap");

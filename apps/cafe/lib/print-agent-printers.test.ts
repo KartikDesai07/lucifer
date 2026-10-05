@@ -164,7 +164,8 @@ test("PIN (2C final review, I-2): the pulse and the wake kick the agent only on 
   const agent = src("apps/cafe/hooks/use-print-agent.ts");
   // Session 2E: on the printers it prints here that no refusal holds (agent.openPrinters()).
   assert.match(agent, /if \(jobsForMeLeasable\(data\?\.printJobsForMe, agent\.openPrinters\(\)\)\) agent\.kick\(\);/, "the pulse");
-  assert.match(agent, /leasable: \(jobs\) => jobsForMeLeasable\(jobs, agent\.openPrinters\(\)\),/, "the wake");
+  // The 2E review gate (M-5): the wake poll lives in its own hook.
+  assert.match(src("apps/cafe/hooks/use-print-agent-wake.ts"), /leasable: \(jobs\) => jobsForMeLeasable\(jobs, agent\.openPrinters\(\)\),/, "the wake");
   assert.ok(agent.includes("noteJobsForMe(data?.printJobsForMe);"), "a stale list is still read again from the pulse");
 });
 
@@ -184,13 +185,15 @@ test("PIN (2C): the page reads the printers on mount, on a print-setup frame and
   // The 2C gate's review (I-2) and its emulator run: a list that looks stale is read again.
   assert.match(agent, /if \(!printerListLooksStale\(\{ ready: readyRef\.current, isWriter: writerRef\.current, jobsForMe: jobs, writesPrinters \}\)\) return;/);
   assert.match(agent, /void qc\.invalidateQueries\(\{ queryKey: PRINTERS_KEYS\.all \}\);/);
-  assert.ok(agent.includes("noteJobsForMe(data?.printJobsForMe);") && agent.includes("noteJobsForMe(data.jobsForMe, data.writesPrinters);"), "from the pulse and the wake");
+  assert.ok(agent.includes("noteJobsForMe(data?.printJobsForMe);") && src("apps/cafe/hooks/use-print-agent-wake.ts").includes("noteJobsForMe(data.jobsForMe, data.writesPrinters);"), "from the pulse and the wake");
 });
 
 // The 2A gate's Important 1, the client half: the wake poll ran only on the host and spent against the constant
 // 14,400 alone; in printers mode each writer polls, and every one spends against its share from the wake.
 test("PIN (2C, the 2A gate's Important 1): the agent polls the wake by printAgentPollsWake and spends against its share", () => {
-  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  // The 2E review gate (M-5): the wake poll moved, unchanged, into its own hook, which the agent's hook calls.
+  assert.ok(src("apps/cafe/hooks/use-print-agent.ts").includes("usePrintAgentWake({ agent, enabled, isHost, printers, deviceId, noteJobsForMe });"), "the agent's hook runs it");
+  const agent = src("apps/cafe/hooks/use-print-agent-wake.ts");
   assert.match(agent, /const pollsWake = printAgentPollsWake\(\{ hostConfigured: isHost, isHost, printersMode: printers\.printersMode, isWriter: printers\.isWriter \}\);/);
   assert.match(agent, /if \(agent === null \|\| !enabled \|\| !pollsWake\) return;/);
   assert.ok(!agent.includes("if (agent === null || !enabled || !isHost) return;"), "no longer the host alone");

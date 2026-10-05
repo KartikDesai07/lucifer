@@ -90,7 +90,11 @@ test("PIN: printers mode routes every slip an order request makes; simple mode (
   const lib = src("apps/cafe/lib/print-printer-jobs.ts");
   assert.match(lib, /const jobKey = routedJobKey\(baseKey, job\);/, "a routed job's key adds its printer and part (decision 3)");
   assert.match(lib, /line: \{ printerId: PRINT_JOB_NO_PRINTER, copies: 1 \},\s*failed: job\.error/, "a slip no printer takes is made failed at once");
-  assert.match(lib, /if \(announcesQueuedJob\(made, directOn\.has\(job\.printerId\)\)\) publishPrintStatus\(\{ id: made\.ref\.id, status: "queued", target: made\.ref\.targetDeviceId \}\);/, "each new queued job to its writer, never to yourself");
+  assert.match(
+    lib,
+    /if \(announcesQueuedJob\(made, directOn\.has\(job\.printerId\)\)\) publishPrintStatus\(\{ id: made\.ref\.id, status: "queued", target: made\.ref\.targetDeviceId, printerId: job\.printerId \}\);/,
+    "each new queued job to its writer, never to yourself, with its printer (the 2E gate, M-1)",
+  );
   assert.ok(!lib.includes('publishCafeEvent("print-job")'), "printers mode nudges no host");
   assert.equal(count(lib, "PrintJob.create("), 0, "one write point stays insertPrintJob");
   assert.ok(!lib.includes("console."), "no console.* in a server lib");
