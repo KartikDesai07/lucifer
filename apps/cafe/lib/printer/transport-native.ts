@@ -112,6 +112,8 @@ export interface NativeLinkHost {
 function targetId(target: NativeSelectTarget): string {
   return "id" in target ? target.id : `tcp:${target.tcp.host}:${target.tcp.port}`;
 }
+/** Phase 2 Session 2F1: the app's printers on bridge v2 (native-pool.ts) are named the same way. */
+export { targetId as nativeTargetId };
 
 export function createNativeLink(host: NativeLinkHost) {
   let off: (() => void) | null = null;

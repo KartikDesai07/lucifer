@@ -17,6 +17,7 @@ import { usePrintHostBridge, type HostPrintCurrent } from "@/hooks/use-print-hos
 import { mintTabId, readDeviceId } from "@/lib/pos-device-id";
 import { readDevicePrefs, writeDevicePrefs } from "@/lib/pos-device-prefs";
 import { devicePrinter } from "@/lib/printer/device-printer";
+import { nativePool } from "@/lib/printer/native-pool";
 
 // Print-host plan §B5 (PH-5) — the layout-level host provider. Mounted once,
 // inside <PosPulseProvider>, on EVERY dashboard screen (owner Q7). Owns this
@@ -82,6 +83,8 @@ export function PrintHostProvider({ children }: { children: ReactNode }) {
     setDeviceId(readDeviceId());
     setPrefHost(readDevicePrefs().printHost);
     void devicePrinter().init();
+    // Phase 2 Session 2F1 (spec §9.2): the POS app's printers on bridge v2 (nothing on any other device).
+    nativePool().init();
   }, []);
 
   const syncHostPref = useCallback(() => setPrefHost(readDevicePrefs().printHost), []);
