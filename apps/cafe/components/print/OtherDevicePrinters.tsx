@@ -12,7 +12,7 @@ import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
 import { usePrintersRead } from "@/hooks/use-agent-printers";
 import { useNativePool } from "@/hooks/use-device-printer";
 import type { PaperWidth } from "@/lib/constants";
-import { agentPrintersOf } from "@/lib/print-agent-printers";
+import { PRINTER_IN_SETUP_MESSAGE, agentPrintersOf } from "@/lib/print-agent-printers";
 import { PRINTER_CONNECT_FAILED_MESSAGE, type ConnectOutcome } from "@/lib/printer/device-printer";
 import { nativePool, type PoolPrinter } from "@/lib/printer/native-pool";
 import { cn } from "@/lib/utils";
@@ -23,7 +23,7 @@ const ADDED = "Printer added to this device.";
 const RECONNECTED = "Printer connected.";
 const NOT_YET = "The printer is added, but not connected yet. Check it is on, then tap Reconnect.";
 const REMOVE_FAILED = "Could not remove the printer. Try again.";
-const IN_SETUP = "Printer setup prints slips here: to remove it, change or delete that printer in Printer setup first.";
+const IN_SETUP = PRINTER_IN_SETUP_MESSAGE;
 const STATUS_WORDS: Record<PoolPrinter["status"], string> = { connected: "Connected", connecting: "Connecting…", disconnected: "Not connected" };
 
 // Printing redesign, Phase 2 Session 2F1 (spec §9.2, §11): on the POS app with bridge v2 one phone or tablet drives

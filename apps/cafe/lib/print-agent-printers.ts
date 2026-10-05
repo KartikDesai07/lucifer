@@ -15,6 +15,9 @@ import type { PrinterStatus } from "@/lib/printer/web-printer-types";
 
 /** The refusal a leased job gets when its printer is not this device's printer (sent:"no", never counted). */
 export const PRINTER_NOT_LOCAL_MESSAGE = "This printer is not connected to this device.";
+/** The 2E gate's review (I-3), and the 2F2 review gate (M-4) for this device's own printer: what the printer panel
+ *  shows instead of Remove for a printer the setup prints through this device. */
+export const PRINTER_IN_SETUP_MESSAGE = "Printer setup prints slips here: to remove it, change or delete that printer in Printer setup first.";
 
 /** Session 2E (spec §9.2): the Windows app's printers. `named`: the app prints a slip on a printer the page names
  *  (desktopPrintsOnNamed); `names`: every printer Windows reports on this PC (null until read); `selected`: the one
@@ -168,6 +171,33 @@ export function lanPrintersToAdd(printers: readonly PrinterConfig[], deviceId: s
     if (connection.kind === "lan" && nativeIdOf(printer, pool) === null) out.push({ host: connection.host.toLowerCase(), port: connection.port });
   }
   return out;
+}
+
+/** The 2F2 review gate (m-3): network printers the page added to the POS app by itself (`added`: the app's ids it
+ *  recorded when lanPrintersToAdd asked for them) that no printer of the setup this device writes names any more
+ *  (deleted, re-addressed, moved to another device, switched off): removed again, so the app stops probing them every
+ *  30 s and its notification never names a printer nothing prints on. Never one staff added (it was not recorded), and
+ *  never the app's default (this device's own printer prints the slips no printer of the setup takes). `record`: what
+ *  stays recorded, the ids the setup still names (added, or being added) and the app's default. */
+export function lanPrintersToRemove(printers: readonly PrinterConfig[], deviceId: string, pool: NativePoolView | null, defaultId: string | null, added: readonly string[]): { remove: string[]; record: string[] } {
+  if (pool === null) return { remove: [], record: [...added] };
+  const wanted = new Set(printersWrittenBy(printers, deviceId).flatMap((printer) => (printer.connection.kind === "lan" ? [`tcp:${printer.connection.host}:${printer.connection.port}`.toLowerCase()] : [])));
+  const recorded = new Set(added.map((id) => id.toLowerCase()));
+  const own = defaultId?.toLowerCase() ?? null;
+  return {
+    remove: pool.printers.filter((entry) => entry.id.toLowerCase() !== own && recorded.has(entry.id.toLowerCase()) && !wanted.has(entry.id.toLowerCase())).map((entry) => entry.id),
+    record: added.filter((id) => wanted.has(id.toLowerCase()) || id.toLowerCase() === own),
+  };
+}
+
+/** The 2F2 review gate (M-4): this device's own printer (the POS app's default on bridge v2; the one printer of any
+ *  other device) is a printer the setup prints through this device. The panel then offers no Remove for it, and on
+ *  bridge v2 its Change printer keeps it in the app, so a setup printer never leaves the app from the page (and the
+ *  network printers the page adds by itself are never re-added after a staff action: the 2E gate's I-3). */
+export function ownPrinterInSetup(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, pool: NativePoolView | null, defaultId: string | null): boolean {
+  const agent = agentPrintersOf(printers, deviceId, local, null, pool);
+  if (pool !== null) return defaultId !== null && Object.values(agent.targets).some((target) => target.nativeId === defaultId);
+  return agent.localIds.length > 0;
 }
 
 /** Session 2C (the 2C gate's review, I-2, and its emulator run): the device's printer list is stale when a missed

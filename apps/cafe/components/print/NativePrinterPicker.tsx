@@ -45,7 +45,8 @@ interface NativePrinterPickerProps {
   busy: boolean;
   /** Runs a connect attempt under the section's busy flag and toasts the outcome. */
   onAttempt: (attempt: Promise<ConnectOutcome>) => Promise<void>;
-  /** Phase 2 Session 2F1: adds the printer to the app's printers (bridge v2) instead of replacing this device's own. */
+  /** Phase 2 Session 2F1: adds the printer to the app's printers (bridge v2) instead of replacing this device's own. The 2F2
+   *  review gate (M-4): also Change printer of a printer the setup prints here (added, then made this device's printer). */
   add?: (target: NativeSelectTarget) => Promise<ConnectOutcome>;
 }
 

@@ -125,7 +125,10 @@ export function createNativeLink(host: NativeLinkHost) {
     const stored = host.readStore();
     const id = status.printer?.id;
     const wanted = paper ?? (id === undefined ? undefined : requestedPaper.get(id));
-    const next = nativeStatusToSnapshot(status, wanted ? { paper: wanted } : stored);
+    // The 2F2 review gate (m-1): the saved paper is that printer's own. A printer the app made this device's (the one it
+    // promotes when the default leaves, an older app's change) starts at the default paper, which the panel's toggle shows.
+    const same = stored?.kind === "native" && stored.printerId === id ? stored : null;
+    const next = nativeStatusToSnapshot(status, wanted ? { paper: wanted } : same);
     if (next.printer === null && stored !== null && stored.kind !== "native") return;
     if (JSON.stringify(next.printer) !== JSON.stringify(stored)) host.writeStore(next.printer);
     if (id !== undefined) requestedPaper.delete(id);

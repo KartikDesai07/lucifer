@@ -14,10 +14,15 @@ import { toastConnectOutcome } from "@/components/print/connect-outcome";
 import { PaperSizeToggle } from "@/components/print/PaperSizeToggle";
 import { InlineConfirm, PrinterRow } from "@/components/print/PrintHostCardParts";
 import { PrinterSection } from "@/components/print/PrinterSection";
-import { useDevicePrinter, usePrintCapabilities, usePrintLane } from "@/hooks/use-device-printer";
+import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
+import { useOwnPrinterInSetup } from "@/hooks/use-agent-printers";
+import { useDevicePrinter, useNativePool, usePrintCapabilities, usePrintLane } from "@/hooks/use-device-printer";
 import { useSettings } from "@/hooks/use-settings";
 import { printConfigOf } from "@/lib/print";
+import { PRINTER_IN_SETUP_MESSAGE } from "@/lib/print-agent-printers";
 import { PRINTER_ELSEWHERE_STATUS_MESSAGE, devicePrinter, type ConnectOutcome } from "@/lib/printer/device-printer";
+import { nativePool } from "@/lib/printer/native-pool";
+import { nativeTargetId, type NativeSelectTarget } from "@/lib/printer/transport-native";
 
 const REMOVED_MESSAGE = "Printer removed from this device.";
 const REMOVE_FAILED_MESSAGE = "Could not remove the printer. Try again.";
@@ -46,6 +51,19 @@ export function DevicePrinterSection() {
   const { printer, status } = snapshot;
   const elsewhere = status === "elsewhere";
   const locked = busy || elsewhere;
+  const { deviceId } = usePrintHostContext();
+  const { inSetup, known } = useOwnPrinterInSetup(deviceId);
+  const pool = useNativePool();
+  // The 2F2 review gate (M-4): Change printer of a printer the setup prints through this device keeps it in the POS app
+  // (bridge v2): a new printer is added first (one the app lists already is only chosen: an add would restart its link),
+  // then made this device's printer, and the old one stays among the app's other printers; also while the setup is not
+  // known yet (its review, m-F: a setup printer dropped there would wait; one kept costs a Remove). Anywhere else it is
+  // replaced, as before.
+  const listed = (target: NativeSelectTarget) => pool.printers.some((entry) => entry.id.toLowerCase() === nativeTargetId(target).toLowerCase());
+  const keepInApp = pool.active && (inSetup || !known) ? async (target: NativeSelectTarget) => {
+    if (!listed(target)) await nativePool().add(target);
+    return devicePrinter().selectNative(target, paperDefault);
+  } : undefined;
 
   // The attempt is STARTED by the click handler (its chooser is the first
   // await, which needs the tap's user activation); this only waits for it.
@@ -135,15 +153,19 @@ export function DevicePrinterSection() {
                   >
                     {changing ? "Keep this printer" : "Change printer"}
                   </Button>
-                  <Button className={PRINTER_ACTION_CLASS} variant="outline" onClick={() => setConfirmRemove(true)} disabled={locked}>
-                    Remove
-                  </Button>
+                  {inSetup ? (
+                    <p className="text-xs text-brand-muted">{PRINTER_IN_SETUP_MESSAGE}</p>
+                  ) : known ? (
+                    <Button className={PRINTER_ACTION_CLASS} variant="outline" onClick={() => setConfirmRemove(true)} disabled={locked}>
+                      Remove
+                    </Button>
+                  ) : null}
                 </div>
               )}
               <PaperSizeToggle value={printer.paper} disabled={locked} onChange={(paper) => devicePrinter().setPaper(paper)} />
             </div>
           )}
-          {choosing && caps.native && <NativePrinterPicker paper={paperDefault} busy={locked} onAttempt={settle} />}
+          {choosing && caps.native && <NativePrinterPicker paper={paperDefault} busy={locked} onAttempt={settle} add={keepInApp} />}
           {choosing && !caps.native && (caps.serial || caps.bluetooth) && (
             <BrowserPrinterConnect
               paired={caps.serial}
