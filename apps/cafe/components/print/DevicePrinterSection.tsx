@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { BrowserPrinterConnect } from "@/components/print/BrowserPrinterConnect";
 import { DesktopPrinterPicker } from "@/components/print/DesktopPrinterPicker";
 import { NativePrinterPicker } from "@/components/print/NativePrinterPicker";
+import { OtherDevicePrinters } from "@/components/print/OtherDevicePrinters";
 import { toastConnectOutcome } from "@/components/print/connect-outcome";
 import { PaperSizeToggle } from "@/components/print/PaperSizeToggle";
 import { InlineConfirm, PrinterRow } from "@/components/print/PrintHostCardParts";
@@ -154,6 +155,8 @@ export function DevicePrinterSection() {
             />
           )}
           {choosing && !caps.native && !caps.serial && !caps.bluetooth && <p className="text-brand-muted">{NO_CAPABILITY_MESSAGE}</p>}
+          {/* Phase 2 Session 2F1 (spec §9.2): the POS app on bridge v2 drives more printers beside this device's own. */}
+          {caps.native && <OtherDevicePrinters paper={paperDefault} locked={locked} />}
         </>
       )}
     </PrinterSection>

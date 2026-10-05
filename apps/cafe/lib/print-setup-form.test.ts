@@ -14,6 +14,9 @@ import {
   PRINTER_LOCAL_REQUIRED,
   PRINTER_WINDOWS_REQUIRED,
   PRINTER_NAME_REQUIRED,
+  appPrinterConnectionOf,
+  onePrinterAppMessage,
+  onePrinterDevicesOf,
   PRINTER_PORT_INVALID,
   SETUP_PRINTER_NAME,
   draftWithLocal,
@@ -126,12 +129,40 @@ test("2D: the form's body: what is missing in words; Full KOT copy clears the st
   assert.ok(full.ok && full.body.slips.kotStations.length === 0 && full.body.slips.kotAll, "a full copy takes every station already");
   const kitchenTab = printer("Counter", { connection: { kind: "lan", host: "10.0.0.5", port: 9100 }, primaryDeviceId: "kitchen-tab" });
   assert.equal(error({ ...base }) ?? "", "", "no clash with no printers");
-  const clash = printerBodyOf(base, [kitchenTab]);
+  // Session 2F1 (deliberate change): a tablet whose POS app speaks bridge v2 prints several printers; one on v1 (the
+  // form's `onePrinter`) still one, and no device prints the same printer twice.
+  const clash = printerBodyOf(base, [kitchenTab], undefined, undefined, ["kitchen-tab"]);
   assert.ok(!clash.ok && clash.error.includes("already prints Counter"), "that device already prints the Counter printer");
-  assert.ok(printerBodyOf({ ...base, enabled: false }, [kitchenTab]).ok, "saved switched off: no clash");
-  assert.ok(printerBodyOf(base, [kitchenTab], "Counter").ok, "editing that very printer");
+  assert.ok(printerBodyOf(base, [kitchenTab]).ok, "Session 2F1: a tablet whose app prints several printers prints both");
+  const same = printerBodyOf({ ...base, host: "10.0.0.5" }, [kitchenTab]);
+  assert.deepEqual(same, { ok: false, error: "Counter already prints on that printer. Choose another printer." }, "never the same printer twice");
+  assert.ok(printerBodyOf({ ...base, enabled: false }, [kitchenTab], undefined, undefined, ["kitchen-tab"]).ok, "saved switched off: no clash");
+  assert.ok(printerBodyOf(base, [kitchenTab], "Counter", undefined, ["kitchen-tab"]).ok, "editing that very printer");
   const copies = printerBodyOf({ ...base, copiesKot: 9, copiesBill: 0 }, []);
   assert.ok(copies.ok && copies.body.copies.kot === 3 && copies.body.copies.bill === 1, "copies kept within 1–3");
+});
+
+// Phase 2 Session 2F1 (spec §9.2, §11): the POS app on bridge v2 prints each of its printers; an app on v1 prints one.
+test("2F1: one of the app's printers as a connection, at the form's paper; a POS app on v1 prints one printer, said in words", () => {
+  const tcp = { kind: "native" as const, name: "Network printer", paper: "80mm" as const, printerId: "tcp:10.0.2.2:9101", transport: "tcp" as const };
+  assert.deepEqual(appPrinterConnectionOf(tcp, "dev-a", 58), { connection: { kind: "lan", host: "10.0.2.2", port: 9101 }, primaryDeviceId: "dev-a", paper: 58 }, "a network printer this device prints, at the form's paper");
+  const bt = { kind: "native" as const, name: "RPP02N", paper: "80mm" as const, printerId: "bt-classic:00:11:22:33:44:55", transport: "bt-classic" as const };
+  assert.deepEqual(appPrinterConnectionOf(bt, "dev-a", 80), { connection: { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "00:11:22:33:44:55" }, paper: 80 }, "a Bluetooth printer of this device");
+  const devices: PrintDeviceSummary[] = [
+    { deviceId: "tab-v2", label: "POS app", shell: "android", online: true, lastSeenAt: "2026-10-05T10:00:00.000Z", nativeProtocol: 2 },
+    { deviceId: "tab-v1", label: "POS app", shell: "android", online: true, lastSeenAt: "2026-10-05T10:00:00.000Z", nativeProtocol: 1 },
+    { deviceId: "tab-old", label: "POS app", shell: "android", online: false, lastSeenAt: "2026-10-04T10:00:00.000Z" },
+    { deviceId: "pc", label: "Counter PC", shell: "windows", online: true, lastSeenAt: "2026-10-05T10:00:00.000Z" },
+  ];
+  assert.deepEqual(onePrinterDevicesOf(devices, { deviceId: "me", native: true, v2: true }), ["tab-v1", "tab-old"], "a tablet whose wake said v1, or nothing yet");
+  assert.deepEqual(onePrinterDevicesOf(devices, { deviceId: "me", native: true, v2: false }), ["me", "tab-v1", "tab-old"], "this device too, on an app that speaks only v1");
+  assert.deepEqual(onePrinterDevicesOf(devices, { deviceId: "me", native: false, v2: false }), ["tab-v1", "tab-old"], "a browser or a PC is never in it");
+  const counter = printer("Counter", { connection: { kind: "lan", host: "10.0.0.5", port: 9100 }, primaryDeviceId: "tab-v1" });
+  const bar = { ...printerDraftOf(null, []), name: "Bar", host: "10.0.0.6", primaryDeviceId: "tab-v1", notices: true };
+  assert.deepEqual(printerBodyOf(bar, [counter], undefined, undefined, ["tab-v1"]), { ok: false, error: onePrinterAppMessage("Counter") });
+  assert.equal(onePrinterAppMessage("Counter"), "That device's POS app prints one printer (or has not checked in since it was updated), and it already prints Counter. Update the POS app on it to print several printers there.");
+  assert.ok(printerBodyOf({ ...bar, primaryDeviceId: "tab-v2" }, [{ ...counter, primaryDeviceId: "tab-v2" }]).ok, "a tablet on v2 prints both");
+  assert.ok(printerBodyOf({ ...bar, enabled: false }, [counter], undefined, undefined, ["tab-v1"]).ok, "saved switched off: never leased");
 });
 
 const DEVICES: PrintDeviceSummary[] = [

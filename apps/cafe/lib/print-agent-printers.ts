@@ -34,7 +34,7 @@ export interface NativePoolView {
 /** Session 2F1: the app's id a printer of the setup is, among the app's printers on bridge v2, or null. A LAN printer is
  *  "tcp:<host>:<port>"; a Bluetooth, BLE or USB printer "<transport>:<address>" (its address the bare id or the app's
  *  whole id, I-1 of 2C's final review), compared ignoring case (the app spells a MAC upper-case, the 2C gate's F-2). */
-export function nativeIdOf(printer: PrinterConfig, pool: NativePoolView | null): string | null {
+export function nativeIdOf(printer: Pick<PrinterConfig, "connection">, pool: NativePoolView | null): string | null {
   if (pool === null) return null;
   const connection = printer.connection;
   let wanted: string[];

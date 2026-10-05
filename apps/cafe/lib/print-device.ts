@@ -63,16 +63,18 @@ export async function countOnlineAgents(nowMs: number): Promise<number> {
  *  lead), for the Printer setup page and a network printer's printing device. One bounded read; no write. */
 export async function listPrintDevices(nowMs: number): Promise<PrintDeviceSummary[]> {
   const rows = await PrintDevice.find()
-    .select("deviceId label shell lastSeenAt")
+    .select("deviceId label shell lastSeenAt nativeProtocol")
     .sort({ lastSeenAt: -1 })
     .limit(PRINT_DEVICES_LIST_MAX)
-    .lean<Array<{ deviceId: string; label: string; shell: PrintDeviceShell; lastSeenAt: Date }>>();
+    .lean<Array<{ deviceId: string; label: string; shell: PrintDeviceShell; lastSeenAt: Date; nativeProtocol?: number }>>();
   return rows.map((row) => ({
     deviceId: row.deviceId,
     label: row.label,
     shell: row.shell,
     online: nowMs - row.lastSeenAt.getTime() <= PRINT_DEVICE_ONLINE_MS,
     lastSeenAt: row.lastSeenAt.toISOString(),
+    // Session 2F1 (spec §9.2): the POS app's bridge version (2: it prints several printers), for the printer form.
+    ...(row.nativeProtocol !== undefined ? { nativeProtocol: row.nativeProtocol } : {}),
   }));
 }
 

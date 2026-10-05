@@ -153,10 +153,12 @@ export function printerWriterDevices(printers: readonly PrinterConfig[]): string
 /** Session 2D: a device prints one printer, so at most one ROUTABLE printer (enabled, taking a slip) names it as its
  *  writer. A second would never print, or print on the first one's paper (the 2C review gate, F-3). Session 2E (spec
  *  §9.2): the Windows app prints each Windows printer it has by name, so a PC may write several Windows printers,
- *  each a different one (a Windows printer's name is the same printer whatever its case); any other device prints one
- *  printer until Session 2F (the Android app on bridge v1; a Chrome tab drives one, §9.7). The routable printer that
- *  clashes, or null; a printer switched off or taking no slip is never leased, so it never clashes (the 2D gate's
- *  review, M-4). */
+ *  each a different one (a Windows printer's name is the same printer whatever its case). Session 2F1: the POS app on
+ *  bridge v2 prints each of its printers, so a phone or tablet may write several network, Bluetooth, BLE and USB
+ *  printers, each a different one (by host:port or address, ignoring case); a Chrome tab still drives one (§9.7). An
+ *  app on bridge v1 prints one: the printer form refuses its second (print-setup-form.ts), and one saved otherwise
+ *  waits, visibly, never on the first one's paper. The routable printer that clashes, or null; a printer switched off
+ *  or taking no slip is never leased, so it never clashes (the 2D gate's review, M-4). */
 export function printerWriterClash(
   printers: readonly PrinterConfig[],
   draft: Pick<PrinterConfig, "connection" | "primaryDeviceId" | "enabled" | "slips">,
@@ -166,31 +168,46 @@ export function printerWriterClash(
   if (!draft.enabled || writer === null || !printerTakesSlips(draft.slips)) return null;
   return (
     routablePrinters(printers).find(
-      (printer) => printer.id !== exceptId && printerWriterDeviceId(printer) === writer && !differentWindowsPrinters(printer.connection, draft.connection),
+      (printer) => printer.id !== exceptId && printerWriterDeviceId(printer) === writer && !differentPrintersOfOneDevice(printer.connection, draft.connection),
     ) ?? null
   );
 }
 
-/** Session 2E: a Windows printer's name as the printer it is (Windows names ignore case); null for any other. */
-function windowsPrinterKey(connection: PrinterConnection): string | null {
-  return connection.kind === "device" && connection.transport === "windows" ? connection.address.toLowerCase() : null;
+/** Which printer a connection is, among one device's several printers (spec §9.2): a Windows printer by its name
+ *  (Session 2E); a network, Bluetooth, BLE or USB printer of the POS app by its address (Session 2F1; a Bluetooth or USB
+ *  address may be saved bare or as the app's whole id); null for a browser's serial or Bluetooth printer (one per tab). */
+function devicePrinterKey(connection: PrinterConnection): { family: "windows" | "app"; key: string } | null {
+  if (connection.kind === "lan") return { family: "app", key: `tcp:${connection.host}:${connection.port}`.toLowerCase() };
+  const address = connection.address.toLowerCase();
+  if (connection.transport === "windows") return { family: "windows", key: address };
+  if (connection.transport === "bt-classic" || connection.transport === "ble" || connection.transport === "usb") {
+    const prefix = `${connection.transport}:`;
+    return { family: "app", key: prefix + (address.startsWith(prefix) ? address.slice(prefix.length) : address) };
+  }
+  return null;
 }
 
-/** Two Windows printers of one PC that are not the same printer. */
-function differentWindowsPrinters(a: PrinterConnection, b: PrinterConnection): boolean {
-  const left = windowsPrinterKey(a);
-  const right = windowsPrinterKey(b);
-  return left !== null && right !== null && left !== right;
+/** Two printers one device may write side by side: of one kind (Windows printers of a PC, or the POS app's printers),
+ *  and not the same printer. */
+function differentPrintersOfOneDevice(a: PrinterConnection, b: PrinterConnection): boolean {
+  const left = devicePrinterKey(a);
+  const right = devicePrinterKey(b);
+  return left !== null && right !== null && left.family === right.family && left.key !== right.key;
 }
 
 export function printerWriterTakenMessage(name: string): string {
   return `That device already prints ${name}. For now one device prints one printer: switch ${name} off, or choose another device.`;
 }
 
-/** The words for a clash (Session 2E): the same Windows printer twice, else a second printer for a device that prints one. */
+/** The words for a clash: the same Windows printer twice (Session 2E), the same printer of the POS app twice (Session
+ *  2F1), else a second printer for a device that prints one. */
 export function printerClashMessage(clash: Pick<PrinterConfig, "name" | "connection">, draft: Pick<PrinterConfig, "connection">): string {
-  if (windowsPrinterKey(clash.connection) !== null && windowsPrinterKey(draft.connection) !== null) {
-    return `${clash.name} already prints on that Windows printer. Choose another Windows printer.`;
+  const left = devicePrinterKey(clash.connection);
+  const right = devicePrinterKey(draft.connection);
+  if (left !== null && right !== null && left.family === right.family && left.key === right.key) {
+    return left.family === "windows"
+      ? `${clash.name} already prints on that Windows printer. Choose another Windows printer.`
+      : `${clash.name} already prints on that printer. Choose another printer.`;
   }
   return printerWriterTakenMessage(clash.name);
 }

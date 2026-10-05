@@ -10,9 +10,11 @@ import {
   type PrinterPaperWidth,
   type StationConfig,
 } from "@pos/shared/print-printers";
+import type { PrintDeviceSummary } from "@pos/shared/print-agent-wire";
+import { printerTakesSlips, printerWriterDeviceId, routablePrinters } from "@pos/shared/print-printers";
 import type { PaperWidth } from "@/lib/constants";
 import type { PrinterBody } from "@/lib/print-printer-schemas";
-import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+import type { DevicePrinter, NativeDevicePrinter } from "@/lib/printer/device-printer-store";
 
 // Printing redesign, Phase 2 Session 2D (spec §11): the printer form's pure half. Its draft and the body it saves,
 // the connection this device's own printer gives (so the agent's printerIsLocal matches it: the address is copied
@@ -106,6 +108,25 @@ export function localPrinterConnectionOf(input: {
   return { connection: { kind: "device", deviceId, transport, address }, paper };
 }
 
+/** Phase 2 Session 2F1 (spec §9.2, §11): one of the POS app's printers on bridge v2 as a printer's connection, at the
+ *  paper the form holds: a network printer this device prints, or a Bluetooth, BLE or USB printer of this device. */
+export function appPrinterConnectionOf(printer: NativeDevicePrinter, deviceId: string, paper: PrinterPaperWidth): LocalPrinterConnection | null {
+  return localPrinterConnectionOf({ local: { ...printer, paper: paper === 58 ? "58mm" : "80mm" }, deviceId, desktop: null, defaultPaper: paper });
+}
+
+/** Session 2F1: a POS app that speaks only bridge v1 (the release APK) prints one printer. */
+export function onePrinterAppMessage(name: string): string {
+  // "or …": a tablet's version is known from its wake, which it sends only once it prints a printer (the 2E gate's review, M-7).
+  return `That device's POS app prints one printer (or has not checked in since it was updated), and it already prints ${name}. Update the POS app on it to print several printers there.`;
+}
+
+/** Session 2F1: the devices whose POS app prints one printer: this device when its app speaks only v1, and every other
+ *  Android app device whose wake has not said v2 (the go-live run reloads every page, so each says at its next wake). */
+export function onePrinterDevicesOf(devices: readonly PrintDeviceSummary[], here: { deviceId: string; native: boolean; v2: boolean }): string[] {
+  const others = devices.filter((device) => device.shell === "android" && device.deviceId !== here.deviceId && device.nativeProtocol !== 2).map((device) => device.deviceId);
+  return here.native && !here.v2 && here.deviceId !== "" ? [here.deviceId, ...others] : others;
+}
+
 /** A new printer: nothing chosen but Notices, on for any printer that ends up taking KOTs (the 2B gate's M-7: a
  *  void, moved or cancel notice reaches a printer only where Notices is on). A saved one: as saved, less any
  *  station that no longer exists (the 2A gate's M4: such an id could never be saved again). An empty list is a list
@@ -173,13 +194,15 @@ function copiesOf(n: number): number {
 
 /** The body the save sends, or what is missing in words. Full KOT copy clears the station boxes (a station on a
  *  full-copy printer adds nothing to its paper). One routable printer per printing device, except a Windows PC's
- *  Windows printers, each a different one (Session 2E). `localRequired`: the words for a device printer not chosen
- *  yet, when the form chooses it itself (the 2E review gate, M-4: "Choose the Windows printer."). */
+ *  Windows printers, each a different one (Session 2E), and the POS app's printers on bridge v2 (Session 2F1; an app on
+ *  v1, `onePrinter`, still one). `localRequired`: the words for a device printer not chosen yet, when the form chooses
+ *  it itself (the 2E review gate, M-4: "Choose the Windows printer."). */
 export function printerBodyOf(
   draft: PrinterDraft,
   printers: readonly PrinterConfig[],
   editingId?: string,
   localRequired: string = PRINTER_LOCAL_REQUIRED,
+  onePrinter: readonly string[] = [],
 ): { ok: true; body: PrinterBody } | { ok: false; error: string } {
   const name = draft.name.trim();
   if (name === "") return { ok: false, error: PRINTER_NAME_REQUIRED };
@@ -208,6 +231,11 @@ export function printerBodyOf(
   };
   const clash = printerWriterClash(printers, { connection, primaryDeviceId, enabled: draft.enabled, slips: body.slips }, editingId);
   if (clash !== null) return { ok: false, error: printerClashMessage(clash, { connection }) };
+  const writer = printerWriterDeviceId({ connection, primaryDeviceId });
+  if (writer !== null && onePrinter.includes(writer) && draft.enabled && printerTakesSlips(body.slips)) {
+    const other = routablePrinters(printers).find((printer) => printer.id !== editingId && printerWriterDeviceId(printer) === writer);
+    if (other !== undefined) return { ok: false, error: onePrinterAppMessage(other.name) };
+  }
   return { ok: true, body };
 }
 

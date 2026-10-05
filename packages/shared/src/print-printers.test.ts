@@ -197,7 +197,9 @@ test("2C: the wake allowance per agent: printers mode by the setup's writers, si
 // at most one enabled printer names it as its writer. A second would never print (or, for a Windows or browser
 // serial printer, print on the first one's paper: the 2C review gate, F-3).
 test("2D: one routable printer per printing device; one switched off or taking no slip, the printer itself or another device never clash", () => {
-  const kitchen = printer("kitchen");
+  // Session 2F1 (deliberate change): a POS app device may write several printers (the 2F1 test below); a browser tab's
+  // printer (one per tab, spec §9.7) keeps this rule.
+  const kitchen = printer("kitchen", { connection: { kind: "device", deviceId: "dev-kitchen", transport: "web-serial", address: "usb" } });
   const slips = { ...NO_SLIPS, notices: true };
   const lanSame = { connection: { kind: "lan" as const, host: "10.0.0.9", port: 9100 }, primaryDeviceId: "dev-kitchen", enabled: true, slips };
   assert.equal(printerWriterClash([kitchen], lanSame)?.id, "kitchen", "a LAN printer whose printing device already prints the kitchen's");
@@ -226,9 +228,30 @@ test("2E: a Windows PC may write several Windows printers, each a different one 
   assert.equal(printerWriterClash([counter], lan)?.id, "counter", "a network printer for that PC: one printer, as before");
   const phone = printer("phone", { connection: { kind: "device", deviceId: "dev-phone", transport: "bt-classic", address: "AA:BB" }, slips });
   const usb = { connection: { kind: "device" as const, deviceId: "dev-phone", transport: "usb" as const, address: "04b8:0e15" }, enabled: true, slips };
-  assert.equal(printerWriterClash([phone], usb)?.id, "phone", "an Android app device: one printer until Session 2F");
+  assert.equal(printerWriterClash([phone], usb), null, "Session 2F1 (deliberate change): a POS app device prints several printers (bridge v2)");
   assert.equal(printerClashMessage(counter, same), "Printer counter already prints on that Windows printer. Choose another Windows printer.");
   assert.equal(printerClashMessage(counter, lan), printerWriterTakenMessage("Printer counter"), "any other clash: the 2D words");
+});
+
+// Phase 2 Session 2F1 (spec §9.2): the POS app on bridge v2 prints each of its printers, so a phone or tablet may write
+// several network, Bluetooth, BLE and USB printers, each a different one; never the same printer twice.
+test("2F1: a POS app device may write several printers, each a different one (by host:port or address, ignoring case); a browser tab one", () => {
+  const slips = { ...NO_SLIPS, notices: true };
+  const bt = printer("bt", { connection: { kind: "device", deviceId: "dev-tab", transport: "bt-classic", address: "00:11:22:33:44:55" }, slips });
+  const lan = (host: string, port: number) => ({ connection: { kind: "lan" as const, host, port }, primaryDeviceId: "dev-tab", enabled: true, slips });
+  const device = (transport: "bt-classic" | "ble" | "usb", address: string) => ({ connection: { kind: "device" as const, deviceId: "dev-tab", transport, address }, enabled: true, slips });
+  assert.equal(printerWriterClash([bt], lan("10.0.0.9", 9100)), null, "a network printer beside the Bluetooth one");
+  assert.equal(printerWriterClash([bt], device("usb", "04b8:0e15")), null, "a USB printer too");
+  assert.equal(printerWriterClash([bt], device("ble", "00:11:22:33:44:55")), null, "the same address over BLE is another printer");
+  assert.equal(printerWriterClash([bt], device("bt-classic", "00:11:22:33:44:55"))?.id, "bt", "the same Bluetooth printer twice");
+  assert.equal(printerWriterClash([bt], device("bt-classic", "BT-CLASSIC:00:11:22:33:44:55"))?.id, "bt", "its whole app id, in another case, is the same printer");
+  const kitchen = printer("kitchen", { connection: { kind: "lan", host: "10.0.0.9", port: 9100 }, primaryDeviceId: "dev-tab", slips });
+  assert.equal(printerWriterClash([kitchen], lan("10.0.0.9", 9101)), null, "another port: another printer");
+  assert.equal(printerWriterClash([kitchen], lan("10.0.0.9", 9100))?.id, "kitchen", "the same network printer twice");
+  assert.equal(printerClashMessage(kitchen, lan("10.0.0.9", 9100)), "Printer kitchen already prints on that printer. Choose another printer.");
+  const serial = printer("serial", { connection: { kind: "device", deviceId: "dev-tab", transport: "web-serial", address: "usb" }, slips });
+  assert.equal(printerWriterClash([serial], lan("10.0.0.9", 9100))?.id, "serial", "a browser tab's printer beside anything: one printer");
+  assert.equal(printerClashMessage(serial, lan("10.0.0.9", 9100)), printerWriterTakenMessage("Printer serial"));
 });
 
 // Phase 2 Session 2D (spec §11): a printer's test slip. The server writes its lines from the stored printer, so

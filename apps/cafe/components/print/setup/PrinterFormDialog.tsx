@@ -14,13 +14,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { NativePrinterSelect } from "@/components/print/setup/NativePrinterSelect";
 import { WindowsPrinterSelect } from "@/components/print/setup/WindowsPrinterSelect";
-import { useDevicePrinter, usePrintCapabilities } from "@/hooks/use-device-printer";
+import { useDevicePrinter, useNativePool, usePrintCapabilities } from "@/hooks/use-device-printer";
 import { useDesktopPrinterChoices, useSavePrinter } from "@/hooks/use-print-setup";
 import { useSettings } from "@/hooks/use-settings";
 import { desktopPrintsOnNamed } from "@/lib/desktop-shell-printer";
 import { printConfigOf } from "@/lib/print";
-import { PRINTER_WINDOWS_REQUIRED, draftWithLocal, localPrinterConnectionOf, printerBodyOf, printerDraftOf, printerPaperOf, windowsPrinterConnectionOf, type PrinterDraft } from "@/lib/print-setup-form";
+import { nativeIdOf } from "@/lib/print-agent-printers";
+import { PRINTER_WINDOWS_REQUIRED, appPrinterConnectionOf, draftWithLocal, localPrinterConnectionOf, onePrinterDevicesOf, printerBodyOf, printerDraftOf, printerPaperOf, windowsPrinterConnectionOf, type PrinterDraft } from "@/lib/print-setup-form";
 import { deviceConnectionText, deviceName } from "@/lib/print-setup-text";
 
 interface PrinterFormDialogProps {
@@ -40,6 +42,7 @@ const FULL_COPY_NOTE = "A full copy already holds every station's items.";
 const NOTICES_NOTE = "Void, moved and cancel slips for the stations it prints.";
 const COPIES = ["1", "2", "3"];
 const ONE_WINDOWS_PRINTER = "This Windows app prints one printer, the one chosen for this PC. Install the Windows app 1.11 or later to print several printers here.";
+const ONE_APP_PRINTER = "This POS app prints one printer, the one on this device. Update the POS app to print several printers here.";
 
 // Printing redesign, Phase 2 Session 2D (spec §11 Add printer): one printer saved whole. 1. the connection: a
 // network printer and the Android app device that prints it, or a printer only its own device reaches (taken from
@@ -59,13 +62,18 @@ export function PrinterFormDialog({ printer, printers, stations, devices, device
   // printers, chosen by name; a printer of another device keeps its saved connection.
   const named = desktop !== null && desktopPrintsOnNamed();
   const windowsHere = named && (draft.device === null || (draft.device.transport === "windows" && draft.device.deviceId === deviceId));
+  // Phase 2 Session 2F1 (spec §9.2): on the POS app with bridge v2 a printer of this device is one of the app's printers.
+  const pool = useNativePool();
+  const appHere = pool.active && draft.kind === "device" && (draft.device === null || draft.device.deviceId === deviceId);
+  const appChoice = draft.device === null ? "" : (nativeIdOf({ connection: draft.device }, pool) ?? "");
+  const onePrinter = onePrinterDevicesOf(devices, { deviceId, native: caps.native, v2: pool.active });
   const android = devices.filter((device) => device.shell === "android" && device.deviceId !== deviceId).map((device) => device.deviceId);
   const choices = [...(caps.native && deviceId !== "" ? [deviceId] : []), ...android];
   if (draft.primaryDeviceId !== "" && !choices.includes(draft.primaryDeviceId)) choices.push(draft.primaryDeviceId);
   const shownDevice = draft.device === null ? null : `${deviceConnectionText(draft.device, devices, deviceId)} (${draft.device.address})`;
 
   const submit = async () => {
-    const result = printerBodyOf(draft, printers, printer?.id, windowsHere ? PRINTER_WINDOWS_REQUIRED : undefined);
+    const result = printerBodyOf(draft, printers, printer?.id, windowsHere ? PRINTER_WINDOWS_REQUIRED : undefined, onePrinter);
     if (!result.ok) {
       setError(result.error);
       return;
@@ -100,7 +108,7 @@ export function PrinterFormDialog({ printer, printers, stations, devices, device
               <Button type="button" variant={draft.kind === "device" ? "default" : "outline"} className={PRINTER_ACTION_CLASS} onClick={() => set({ kind: "device" })}>
                 Device printer
               </Button>
-              {here !== null && !named && (
+              {here !== null && !named && !pool.active && (
                 <Button type="button" variant="outline" className={PRINTER_ACTION_CLASS} onClick={() => setDraft((current) => draftWithLocal(current, here))}>
                   Use this device&apos;s printer
                 </Button>
@@ -133,10 +141,21 @@ export function PrinterFormDialog({ printer, printers, stations, devices, device
                 value={draft.device?.address ?? ""}
                 onChange={(name) => setDraft((current) => draftWithLocal(current, windowsPrinterConnectionOf(deviceId, name, current.paper)))}
               />
+            ) : appHere ? (
+              <NativePrinterSelect
+                printers={pool.printers}
+                value={appChoice}
+                onChange={(id) => {
+                  const chosen = pool.printers.find((entry) => entry.id === id);
+                  const local = chosen === undefined ? null : appPrinterConnectionOf(chosen.printer, deviceId, draft.paper);
+                  if (local !== null) setDraft((current) => draftWithLocal(current, local));
+                }}
+              />
             ) : (
               <p className="text-brand-muted">{shownDevice ?? "Connect a printer on this device (Printer on this device, above), then tap Use this device's printer."}</p>
             )}
             {desktop !== null && !named && <p className="text-xs text-brand-muted">{ONE_WINDOWS_PRINTER}</p>}
+            {caps.native && !pool.active && <p className="text-xs text-brand-muted">{ONE_APP_PRINTER}</p>}
           </div>
           <div className="space-y-2">
             <p className="font-medium">2. Slips</p>

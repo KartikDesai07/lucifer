@@ -98,6 +98,9 @@ export interface PrintDeviceSummary {
   shell: PrintDeviceShell;
   online: boolean;
   lastSeenAt: string;
+  /** Session 2F1 (spec §9.2): the POS app's bridge version from its wake (2: it prints several printers); absent for
+   *  any other device, and for an app whose page has not said yet. */
+  nativeProtocol?: number;
 }
 /** The devices list's one page: far above any cafe's devices (rows unseen for 7 days are pruned). */
 export const PRINT_DEVICES_LIST_MAX = 50;

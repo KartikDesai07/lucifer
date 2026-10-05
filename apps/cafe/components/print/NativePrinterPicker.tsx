@@ -25,7 +25,7 @@ import {
 } from "@/lib/printer/native-bridge-protocol";
 import { canScanBluetooth, createStatusOrder, loadPicker } from "@/lib/printer/native-picker-state";
 import { ADDRESS_MESSAGE, isValidPrinterHost, splitHostPort } from "@/lib/printer/network-address";
-import { NATIVE_BLUETOOTH_BLOCKED_MESSAGE, nativeErrorMessage } from "@/lib/printer/transport-native";
+import { NATIVE_BLUETOOTH_BLOCKED_MESSAGE, nativeErrorMessage, type NativeSelectTarget } from "@/lib/printer/transport-native";
 
 const ROW_BUTTON_CLASS = cn(PRINTER_ACTION_CLASS, "w-full sm:w-auto");
 const MS_PER_SECOND = 1_000;
@@ -45,10 +45,12 @@ interface NativePrinterPickerProps {
   busy: boolean;
   /** Runs a connect attempt under the section's busy flag and toasts the outcome. */
   onAttempt: (attempt: Promise<ConnectOutcome>) => Promise<void>;
+  /** Phase 2 Session 2F1: adds the printer to the app's printers (bridge v2) instead of replacing this device's own. */
+  add?: (target: NativeSelectTarget) => Promise<ConnectOutcome>;
 }
 
 // USB and paired devices are always available; Bluetooth scanning is separate.
-export function NativePrinterPicker({ paper, busy, onAttempt }: NativePrinterPickerProps) {
+export function NativePrinterPicker({ paper, busy, onAttempt, add }: NativePrinterPickerProps) {
   const [printers, setPrinters] = useState<NativePrinter[] | null>(null);
   const [bluetooth, setBluetooth] = useState<NativeBluetoothState | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -166,7 +168,7 @@ export function NativePrinterPicker({ paper, busy, onAttempt }: NativePrinterPic
     const portNumber = Number(portText);
     if (!/^\d+$/.test(portText) || portNumber < 1 || portNumber > TCP_PORT_MAX) return setFormError(PORT_MESSAGE);
     setFormError(null);
-    void onAttempt(devicePrinter().selectNative({ tcp: { host, port: portNumber } }, paper));
+    void onAttempt(add !== undefined ? add({ tcp: { host, port: portNumber } }) : devicePrinter().selectNative({ tcp: { host, port: portNumber } }, paper));
   };
 
   return (
@@ -214,7 +216,7 @@ export function NativePrinterPicker({ paper, busy, onAttempt }: NativePrinterPic
                     className={cn(PRINTER_ACTION_CLASS, "shrink-0")}
                     variant="outline"
                     aria-label={`Use this printer: ${printer.name}`}
-                    onClick={() => void onAttempt(devicePrinter().selectNative({ id: printer.id }, paper))}
+                    onClick={() => void onAttempt(add !== undefined ? add({ id: printer.id }) : devicePrinter().selectNative({ id: printer.id }, paper))}
                     disabled={locked}
                   >
                     Use

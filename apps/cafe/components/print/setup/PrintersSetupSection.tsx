@@ -15,8 +15,10 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useDesktopPrinters } from "@/hooks/use-agent-printers";
 import { useCanPrintNow, useDevicePrinter } from "@/hooks/use-device-printer";
+import { usePoolView } from "@/hooks/use-agent-printers";
 import { useDeletePrinter, useSavePrinter, useTestPrinter } from "@/hooks/use-print-setup";
-import { agentPrintersOf } from "@/lib/print-agent-printers";
+import { agentPrintersOf, readyPrinterIdsOf } from "@/lib/print-agent-printers";
+import { printerStatusOf } from "@/lib/printer/printer-registry";
 import { printerBodyOf, printerDraftOf } from "@/lib/print-setup-form";
 import { connectionText, printerRowState, setupGaps, slipsText, testPrintBlock, testPrintSentText } from "@/lib/print-setup-text";
 import { cn } from "@/lib/utils";
@@ -47,8 +49,11 @@ export function PrintersSetupSection({ printers, stations, devices, devicesFaile
   // The printers this device prints here, from the list this page already holds (no second read, no subscription).
   const local = useDevicePrinter().printer;
   const desktop = useDesktopPrinters();
-  const localIds = agentPrintersOf(printers, deviceId, local, desktop).localIds;
-  const canPrint = useCanPrintNow();
+  const pool = usePoolView();
+  const here = agentPrintersOf(printers, deviceId, local, desktop, pool);
+  const localIds = here.localIds;
+  // Session 2F1 (spec §9.2): each printer of the POS app by its own state; any other while this device's printer can print.
+  const readyIds = readyPrinterIdsOf(localIds, here.targets, useCanPrintNow(), printerStatusOf);
   const gaps = setupGaps(printers, stations);
   const busy = save.isPending || remove.isPending;
 
@@ -97,6 +102,7 @@ export function PrintersSetupSection({ printers, stations, devices, devicesFaile
             </p>
           ))}
           {printers.map((printer) => {
+            const canPrint = readyIds.includes(printer.id);
             const state = printerRowState(printer, devices, { deviceId, localIds, canPrint, devicesFailed });
             const blocked = testPrintBlock(printer, printers, { deviceId, localIds, canPrint });
             return (

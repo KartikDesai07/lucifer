@@ -269,7 +269,8 @@ function hygienePin(budget: number, usesAction: boolean): Pin {
 // F.native 280 (was 260): Phase 0 F0.4-F0.6 added the shared loader, the late-bridge subscription and
 // the separate Refresh flag; the pure rules live in lib/printer/native-picker-state.ts.
 const HYGIENE: [string, number, boolean][] = [
-  [F.panel, 90, true], [F.where, 150, true], [F.device, 220, true], [F.native, 280, true], [F.paper, 60, true],
+  // F.native 290 (was 280): Session 2F1's add (a printer joins the POS app's printers on bridge v2).
+  [F.panel, 90, true], [F.where, 150, true], [F.device, 220, true], [F.native, 290, true], [F.paper, 60, true],
   [F.tips, 50, false], [F.advanced, 100, true], [F.card, 260, true], [F.parts, 100, true], [F.picker, 160, false],
   [F.connect, 110, true], [F.section, 50, false], [F.type, 60, false],
   // Session 1D: the waiting-slips panel follows the same rules (44px controls, no jargon).

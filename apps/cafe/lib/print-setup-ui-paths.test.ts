@@ -53,7 +53,10 @@ test("PIN (2D, spec §6.6): with no printer, Set up printers comes first, makes 
 test("PIN (2D): each printer row: its state in words, on/off, Test print only when it can print, edit, delete with a question", () => {
   const section = src(`${SETUP}PrintersSetupSection.tsx`);
   assert.match(section, /const state = printerRowState\(printer, devices, \{ deviceId, localIds, canPrint, devicesFailed \}\);/);
-  assert.match(section, /const localIds = agentPrintersOf\(printers, deviceId, local, desktop\)\.localIds;/, "from the list the page holds (Session 2E: and this PC's Windows printers)");
+  // Session 2F1 (deliberate change): the POS app's printers too (bridge v2), each ready by its own state.
+  assert.match(section, /const here = agentPrintersOf\(printers, deviceId, local, desktop, pool\);\s*const localIds = here\.localIds;/, "from the list the page holds (Session 2E: and this PC's Windows printers)");
+  assert.match(section, /const readyIds = readyPrinterIdsOf\(localIds, here\.targets, useCanPrintNow\(\), printerStatusOf\);/);
+  assert.match(section, /const canPrint = readyIds\.includes\(printer\.id\);/, "each row by its own printer");
   // The 2D review gate (M-4): a printer its writer's lease would never take, or one this device writes but cannot print
   // right now, is not tested (the slip would only wait).
   assert.match(section, /const blocked = testPrintBlock\(printer, printers, \{ deviceId, localIds, canPrint \}\);/, "Test print only when its slip can print");
@@ -70,7 +73,9 @@ test("PIN (2D): each printer row: its state in words, on/off, Test print only wh
 test("PIN (2D, spec §11): the printer form: a network printer's printing device from the Android app devices, this device's printer never typed, Full KOT copy clears the stations", () => {
   const form = src(`${SETUP}PrinterFormDialog.tsx`);
   // The 2E review gate (M-4): a form choosing a Windows printer says "Choose the Windows printer." when none is chosen.
-  assert.match(form, /const result = printerBodyOf\(draft, printers, printer\?\.id, windowsHere \? PRINTER_WINDOWS_REQUIRED : undefined\);/, "the body and its rules from the pure lib");
+  // Session 2F1: a tablet whose POS app prints one printer (bridge v1) is refused a second, in words.
+  assert.match(form, /const result = printerBodyOf\(draft, printers, printer\?\.id, windowsHere \? PRINTER_WINDOWS_REQUIRED : undefined, onePrinter\);/, "the body and its rules from the pure lib");
+  assert.match(form, /const onePrinter = onePrinterDevicesOf\(devices, \{ deviceId, native: caps\.native, v2: pool\.active \}\);/);
   assert.match(form, /devices\.filter\(\(device\) => device\.shell === "android" && device\.deviceId !== deviceId\)/, "only Android app devices print to a LAN printer for now");
   assert.match(form, /\[\.\.\.\(caps\.native && deviceId !== "" \? \[deviceId\] : \[\]\), \.\.\.android\]/, "this device when it is the Android app");
   assert.match(form, /onClick=\{\(\) => setDraft\(\(current\) => draftWithLocal\(current, here\)\)\}/, "Use this device's printer copies its saved printer");
@@ -90,7 +95,7 @@ test("PIN (2E): the printer form chooses one of this PC's Windows printers by na
   assert.match(form, /onChange=\{\(name\) => setDraft\(\(current\) => draftWithLocal\(current, windowsPrinterConnectionOf\(deviceId, name, current\.paper\)\)\)\}/);
   assert.match(form, /useState<PrinterDraft>\(\(\) => \(printer === null \? \{ \.\.\.printerDraftOf\(null, stations\), paper \} : printerDraftOf\(printer, stations\)\)\)/);
   assert.match(src(`${SETUP}WindowsPrinterSelect.tsx`), /if \(names === null\) return <p className="text-brand-muted">\{READING\}<\/p>;/, "the list still being read is said so");
-  assert.match(form, /\{here !== null && !named && \(/, "Use this device's printer elsewhere, and on an older Windows app");
+  assert.match(form, /\{here !== null && !named && !pool\.active && \(/, "Use this device's printer elsewhere, and on an older Windows app (Session 2F1: not where the app's printers are listed)");
   assert.match(form, /\{desktop !== null && !named && <p className="text-xs text-brand-muted">\{ONE_WINDOWS_PRINTER\}<\/p>\}/);
   for (const file of [`${SETUP}PrinterFormDialog.tsx`, `${SETUP}SetUpPrintersCard.tsx`]) {
     assert.match(src(file), /const paper = printerPaperOf\(printConfigOf\(useSettings\(\)\.data\)\.kot\.paperWidth\);/, `${file}: the cafe's KOT paper, so Printer 1 changes nothing on paper`);
@@ -145,11 +150,33 @@ test("PIN (the 2D review gate, M-3): only the agent's printers read subscribes; 
   assert.match(hook, /return \{ devices: query\.data \?\? NO_DEVICES, loaded: query\.isSuccess, failed: query\.isError \};/, "the devices read says when it is in and when it failed");
 });
 
+// Phase 2 Session 2F1 (spec §9.2, §11): on the POS app with bridge v2 the form chooses one of the app's printers, and
+// the panel lists the app's other printers with Add another printer; an app on v1 says it prints one printer.
+test("PIN (2F1): the form chooses one of the POS app's printers; the panel lists the others and adds one; an app on v1 says it prints one", () => {
+  const form = src(`${SETUP}PrinterFormDialog.tsx`);
+  assert.match(form, /const appHere = pool\.active && draft\.kind === "device" && \(draft\.device === null \|\| draft\.device\.deviceId === deviceId\);/, "never over another device's printer");
+  assert.match(form, /const local = chosen === undefined \? null : appPrinterConnectionOf\(chosen\.printer, deviceId, draft\.paper\);/, "the app's spelling, at the form's paper");
+  assert.match(form, /\{caps\.native && !pool\.active && <p className="text-xs text-brand-muted">\{ONE_APP_PRINTER\}<\/p>\}/);
+  assert.match(src(`${SETUP}NativePrinterSelect.tsx`), /<SelectTrigger aria-label="Printer on this device"/);
+  const section = src("components/print/DevicePrinterSection.tsx");
+  assert.match(section, /\{caps\.native && <OtherDevicePrinters paper=\{paperDefault\} locked=\{locked\} \/>\}/);
+  const others = src("components/print/OtherDevicePrinters.tsx");
+  assert.match(others, /if \(!pool\.active\) return null;/, "nothing on an app that speaks only v1");
+  assert.match(others, /const others = pool\.printers\.filter\(\(entry\) => entry\.id !== pool\.defaultId\);/, "the app's own default is the device's printer above (M-6)");
+  assert.match(others, /\{inSetup\.has\(entry\.id\) \? \(\s*<p className="text-xs text-brand-muted">\{IN_SETUP\}<\/p>/, "a printer the setup names this device for is not removed here (I-3)");
+  assert.match(others, /add=\{\(target\) => nativePool\(\)\.add\(target\)\}/, "a printer chosen there joins the app's printers");
+  const picker = src("components/print/NativePrinterPicker.tsx");
+  assert.ok(picker.includes("add !== undefined ? add({ id: printer.id }) : devicePrinter().selectNative({ id: printer.id }, paper)"), "else it replaces this device's own, as before");
+  assert.match(src("lib/print-device.ts"), /\.\.\.\(row\.nativeProtocol !== undefined \? \{ nativeProtocol: row\.nativeProtocol \} : \{\}\),/, "the devices read says which app prints several printers");
+});
+
 test("PIN (2D): the setup screens are client components, stay small, never log, and keep every write's error at its hook", () => {
   for (const rel of FILES) {
     const text = raw(rel);
     assert.ok(text.startsWith('"use client";'), `${rel} is a client component`);
-    assert.ok(lines(text) <= 220, `${rel} stays <= 220 lines, got ${lines(text)}`);
+    // Session 2F1 (deliberate change): the printer form also lists the POS app's printers (bridge v2).
+    const budget = rel.endsWith("PrinterFormDialog.tsx") ? 240 : 220;
+    assert.ok(lines(text) <= budget, `${rel} stays <= ${budget} lines, got ${lines(text)}`);
     assert.ok(!/console\./.test(text), `${rel} never logs`);
     assert.ok(!/\.mutate\(/.test(src(rel)), `${rel} awaits mutateAsync (a per-call callback fires only for the latest call)`);
   }
