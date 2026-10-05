@@ -62,7 +62,9 @@ test("PIN (2E): each slip carries its printer's target from the agent to the Win
   assert.match(hook, /printAgentSlipOf\(job, cafeDateString\(\), job\.printerId === undefined \? undefined : targetsRef\.current\[job\.printerId\]\)/, "the job's printer's target rides its slip");
   const bridge = src("hooks/use-print-host-bridge.ts");
   assert.match(bridge, /const target = current\?\.kind === "slip" \? current\.slip\.target : undefined;/);
-  assert.equal((bridge.match(/, target\?\.printerName\)\);/g) ?? []).length, 3, "every surface prints on the slip's printer");
+  // Session 2F1 (deliberate change): one of the POS app's printers too (raster: the app's id and the printer's paper).
+  assert.match(bridge, /const raster = target\?\.nativeId === undefined \? undefined : \{ nativeId: target\.nativeId, paper: target\.paper \};/);
+  assert.equal((bridge.match(/, target\?\.printerName, raster\)\);/g) ?? []).length, 3, "every surface prints on the slip's printer");
   assert.match(bridge, /pageStyle: receiptPageStyle\(target\?\.paper \?\? printCfg\.kot\.paperWidth\),/, "its paper on the page");
   assert.match(bridge, /pageStyle: receiptPageStyle\(target\?\.paper \?\? printCfg\.bill\.paperWidth\),/);
   assert.match(bridge, /pageStyle: target === undefined \? RECEIPT_PAGE_STYLE : receiptPageStyle\(target\.paper\),/, "End of day: 80 mm as before, a Windows printer's own roll since 2E");

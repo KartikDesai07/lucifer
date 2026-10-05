@@ -11,6 +11,7 @@ import { LANE_PRINT_FAILED_MESSAGE, LANE_RASTER_DEADLINE_MS, NO_PRINTER_MESSAGE,
 import { nativeError } from "@/lib/printer/native-bridge";
 import { NATIVE_ERROR_CODES } from "@/lib/printer/native-bridge-protocol";
 import { RASTER_FAILED_MESSAGE, RASTER_TOO_LARGE_MESSAGE } from "@/lib/printer/raster";
+import { setNativePoolInstance, type NativePool } from "@/lib/printer/native-pool";
 import { nativeErrorMessage } from "@/lib/printer/transport-native";
 import { PRINTER_ELSEWHERE_MESSAGE, PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE, type PrinterSnapshot } from "@/lib/printer/web-printer-types";
 
@@ -187,6 +188,25 @@ test("58 mm paper draws 384 dots wide", async (t) => {
   const asked = installFakeSlip(t, { pixels: slipPixels(384, 2, [0]), width: 384, height: 2 });
   await slipPrintOptions<UseReactToPrintOptions>({}).print!(loggedIframe([]));
   assert.deepEqual(asked, [384]);
+});
+
+// Phase 2 Session 2F1 (spec §9.2): a printer job for one of the POS app's printers names it by the app's id: it is drawn
+// at that printer's paper and written to it through the app's list on bridge v2, the device's own printer included (the
+// 2E gate's review, I-2). A slip with no target goes to the device's own printer (devicePrinter(), v1), as before.
+test("2F1: a slip with a raster target is drawn at its paper and written to that printer of the app by its id; one with no target to the device's own", async (t) => {
+  installWindow(t, { PosNative: BRIDGE });
+  const own = installRuntime(t, { kind: "native", name: "Counter", paper: "80mm", printerId: "tcp:10.0.2.2:9100", transport: "tcp" });
+  const pool: Array<{ id: string; bytes: number }> = [];
+  setNativePoolInstance({ write: async (id: string, bytes: Uint8Array) => void pool.push({ id, bytes: bytes.length }), printerOf: () => null } as unknown as NativePool);
+  t.after(() => setNativePoolInstance(null));
+  const asked = installFakeSlip(t, { pixels: slipPixels(384, 2, [0]), width: 384, height: 2 });
+  await slipPrintOptions<UseReactToPrintOptions>({}, undefined, { nativeId: "tcp:10.0.2.2:9101", paper: "58mm" }).print!(loggedIframe([]));
+  assert.deepEqual(asked, [384], "drawn at the bar printer's 58 mm, not the device printer's 80 mm");
+  assert.deepEqual([pool.map((p) => p.id), own.writes.length], [["tcp:10.0.2.2:9101"], 0], "written to the bar printer of the app only");
+  await slipPrintOptions<UseReactToPrintOptions>({}, undefined, { nativeId: "tcp:10.0.2.2:9100", paper: "80mm" }).print!(loggedIframe([]));
+  assert.deepEqual([pool.map((p) => p.id), own.writes.length], [["tcp:10.0.2.2:9101", "tcp:10.0.2.2:9100"], 0], "the device's own printer too, by its id (never the app's default of the moment)");
+  await slipPrintOptions<UseReactToPrintOptions>({}).print!(loggedIframe([]));
+  assert.deepEqual([pool.length, own.writes.length], [2, 1], "no target: the device's own printer, as before");
 });
 
 test("a printer in another tab (status elsewhere): print() rejects with the elsewhere sentence and writes nothing", async (t) => {

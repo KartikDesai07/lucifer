@@ -14,7 +14,7 @@ import type {
 } from "@pos/shared/schemas/print-job.schema";
 import type { PrintOrderSnapshot } from "@pos/shared/print-job";
 import type { KotReceiptVariant } from "@/hooks/use-pos-print";
-import type { DesktopPrintTarget } from "@/lib/desktop-shell-printer";
+import type { PaperWidth } from "@/lib/constants";
 import type { Order, OrderItem } from "@/types";
 
 /** Web Locks name every window of the host PC contends for — the holder drains,
@@ -107,7 +107,15 @@ export interface HostTestSlip {
 
 /** Phase 2 Session 2E (spec §9.2): a printer job on the Windows app names its Windows printer and is drawn for its
  *  paper; absent everywhere else (the slip prints as before). */
-export type HostPrintSlip = (HostKotSlip | HostReceiptSlip | HostEodSlip | HostTestSlip) & { target?: DesktopPrintTarget };
+/** Phase 2 (spec §9.2): where a printer job prints, drawn for that printer's paper: a Windows printer by its name
+ *  (Session 2E), or one of the POS app's printers by the app's id (Session 2F1). */
+export interface SlipPrintTarget {
+  paper: PaperWidth;
+  printerName?: string;
+  nativeId?: string;
+}
+
+export type HostPrintSlip = (HostKotSlip | HostReceiptSlip | HostEodSlip | HostTestSlip) & { target?: SlipPrintTarget };
 
 export const ROUND_LABEL_PREFIX = "Round ";
 const KOT_TITLE_PREFIX = "KOT-";

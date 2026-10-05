@@ -130,8 +130,10 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
   const receiptRef = useRef<HTMLDivElement>(null);
   const eodRef = useRef<HTMLDivElement>(null);
   const documentTitle = current?.kind === "slip" ? current.slip.documentTitle : PRINT_HOST_TEST_TITLE;
-  // Phase 2 Session 2E (spec §9.2): a Windows printer job prints on its printer, drawn for its paper; else as before.
+  // Phase 2 Session 2E (spec §9.2): a Windows printer job prints on its printer, drawn for its paper; Session 2F1: one of
+  // the POS app's printers likewise (raster); else as before.
   const target = current?.kind === "slip" ? current.slip.target : undefined;
+  const raster = target?.nativeId === undefined ? undefined : { nativeId: target.nativeId, paper: target.paper };
 
   const printKot = useReactToPrint(slipPrintOptions({
     contentRef: kotRef,
@@ -139,14 +141,14 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
     pageStyle: receiptPageStyle(target?.paper ?? printCfg.kot.paperWidth),
     onAfterPrint: finish,
     onPrintError,
-  }, target?.printerName));
+  }, target?.printerName, raster));
   const printReceipt = useReactToPrint(slipPrintOptions({
     contentRef: receiptRef,
     documentTitle,
     pageStyle: receiptPageStyle(target?.paper ?? printCfg.bill.paperWidth),
     onAfterPrint: finish,
     onPrintError,
-  }, target?.printerName));
+  }, target?.printerName, raster));
   // Fixed 80mm like EndOfDayButton (EndOfDaySummary is hardcoded w-[300px]); a Windows printer's own roll (scaled).
   const printEod = useReactToPrint(slipPrintOptions({
     contentRef: eodRef,
@@ -154,7 +156,7 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
     pageStyle: target === undefined ? RECEIPT_PAGE_STYLE : receiptPageStyle(target.paper),
     onAfterPrint: finish,
     onPrintError,
-  }, target?.printerName));
+  }, target?.printerName, raster));
 
   // Dispatch: runs AFTER the commit that rendered the slip into its surface
   // (PrintHostPrintSources is a context consumer below this provider, so its
