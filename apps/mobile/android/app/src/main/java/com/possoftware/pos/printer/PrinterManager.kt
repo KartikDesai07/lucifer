@@ -1,120 +1,73 @@
 package com.possoftware.pos.printer
 
-import android.content.Context
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ScheduledFuture
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * The one active printer: state, connect and reconnect loop. Process-lifetime singleton; the
- * request entry points live in [PrinterApi].
+ * One printer of the app's list: its state, its connect and reconnect loop, and its prints. Phase 2 Session 2F2
+ * (spec §9.2): every printer has a manager of its own with its own io executor ([io]), so a blocked Bluetooth
+ * Classic connect or a USB permission wait never stalls another printer, and BUSY is per printer. [PrinterPool]
+ * keeps the list and publishes; [PrinterApi] holds the request entry points.
  *
- * State is guarded by [lock], which is never held across I/O. [generation] invalidates in-flight
- * attempts when the selection changes (select, reconnect, forget).
+ * State is guarded by [lock], which is never held across I/O or while telling the pool something changed
+ * ([PrinterEnv.changed]). [generation] invalidates in-flight attempts when this printer is begun again (select,
+ * reconnect) or halted (it left the list). Nothing here touches Android: [env] carries every platform call, so this
+ * state machine runs in JVM unit tests (src/test).
  */
-object PrinterManager {
-  const val RECONNECT_STEADY_MS = 30_000L
-  val RECONNECT_BACKOFF_MS: LongArray = longArrayOf(2_000L, 5_000L, 10_000L)
+class PrinterManager(val info: PrinterInfo, private val env: PrinterEnv, private val io: ExecutorService) {
+  companion object {
+    const val RECONNECT_STEADY_MS = 30_000L
+    val RECONNECT_BACKOFF_MS: LongArray = longArrayOf(2_000L, 5_000L, 10_000L)
+    const val PRINT_JOB_TIMEOUT_MS = 60_000L
 
-  private val io = PrinterThreads.io
-  private val timer = PrinterThreads.timer
+    /** The wait before reconnect attempt number [attempts] (0-based): 2 s, 5 s, 10 s, then every 30 s. */
+    fun backoffMs(attempts: Int): Long =
+        if (attempts < RECONNECT_BACKOFF_MS.size) RECONNECT_BACKOFF_MS[attempts] else RECONNECT_STEADY_MS
+
+    fun isBluetooth(info: PrinterInfo): Boolean =
+        info.transport == BridgeCodes.TRANSPORT_BT_CLASSIC || info.transport == BridgeCodes.TRANSPORT_BLE
+
+    fun closeQuietly(t: PrinterTransport) {
+      try {
+        t.close()
+      } catch (e: RuntimeException) {
+        // Closing is best effort.
+      }
+    }
+  }
+
   private val lock = Any()
-  private val publishLock = Any()
-  private val known = ConcurrentHashMap<String, PrinterInfo>()
+  private val printing = AtomicBoolean(false)
   private val linkListener = LinkListener { source -> onLinkLost(source) }
 
-  /** The application context once [init] ran. */
-  @Volatile var app: Context? = null
-    private set
-
-  /** Set from the host activity lifecycle; gates USB prompts and the background wake tick. */
-  @Volatile var appVisible: Boolean = false
-
-  /** The foreground service watches status changes here (one observer at a time). */
-  @Volatile var statusObserver: ((StatusSnapshot) -> Unit)? = null
-
-  private var selected: PrinterInfo? = null
   private var transport: PrinterTransport? = null
   private var pending: PrinterTransport? = null
   private var pendingLost = false
-  private var state: String = BridgeCodes.STATE_NONE
+  // A manager is made only to be started at once (init, a select), and begin() is always followed by connectAsync():
+  // it reads as connecting until its first attempt settles, so a select's first event is {connecting} as on v1.
+  private var state: String = BridgeCodes.STATE_CONNECTING
   private var generation = 0
   private var attempts = 0
+  private var halted = false
   private var btPaused = false
   private var usbPermissionPaused = false
-  // The selected USB printer needs permission but the app was hidden (no dialog can show).
-  // resumeIfPaused() asks again once the app is visible; not a denial, so no explicit Reconnect needed.
+  // This USB printer needs permission but the app was hidden (no dialog can show). resumeIfPaused() asks
+  // again once the app is visible; not a denial, so no explicit Reconnect is needed.
   private var usbWaitingForeground = false
-  private var reconnectTask: ScheduledFuture<*>? = null
-  private var lastPublished: StatusSnapshot? = null
+  private var reconnectTask: Cancel? = null
 
-  /** Idempotent. Registers receivers and reconnects the saved printer, if any. */
-  fun init(context: Context) {
-    val ctx = context.applicationContext
-    synchronized(lock) {
-      if (app != null) return
-      app = ctx
-    }
-    PrinterReceivers.register(ctx)
-    val saved = Prefs.savedPrinter(ctx) ?: return
-    val gen =
-        synchronized(lock) {
-          selected = saved
-          state = BridgeCodes.STATE_DISCONNECTED
-          ++generation
-        }
-    io.execute(Runnable { attempt(gen) })
-  }
+  val id: String
+    get() = info.id
 
-  fun status(): StatusSnapshot {
-    val ctx = app
-    val bluetooth = if (ctx == null) BridgeCodes.BT_UNSUPPORTED else BtAccess.state(ctx)
-    return synchronized(lock) { StatusSnapshot(state, selected, bluetooth) }
-  }
-
-  fun selectedPrinter(): PrinterInfo? = synchronized(lock) { selected }
+  /** This printer's state as the page reads it ("none" only once it left the list). */
+  fun state(): String = synchronized(lock) { state }
 
   /** The transport of a CONNECTED printer, else null. */
   fun connectedTransport(): PrinterTransport? =
       synchronized(lock) { if (state == BridgeCodes.STATE_CONNECTED) transport else null }
 
   fun activeTransport(): PrinterTransport? = synchronized(lock) { transport }
-
-  fun lookup(id: String): PrinterInfo? = known[id]
-
-  fun remember(list: List<PrinterInfo>): List<PrinterInfo> {
-    for (info in list) known[info.id] = info
-    return list
-  }
-
-  fun isBluetooth(info: PrinterInfo): Boolean =
-      info.transport == BridgeCodes.TRANSPORT_BT_CLASSIC ||
-          info.transport == BridgeCodes.TRANSPORT_BLE
-
-  fun closeQuietly(t: PrinterTransport) {
-    try {
-      t.close()
-    } catch (e: RuntimeException) {
-      // Closing is best effort.
-    }
-  }
-
-  /**
-   * Emits printer.status to the page when the snapshot changed since the last emit. The snapshot,
-   * the de-dupe and both deliveries happen under [publishLock], so two threads can never deliver
-   * an older state after a newer one. [lock] is only taken inside; nothing holding it publishes.
-   */
-  fun publish() {
-    synchronized(publishLock) {
-      val snapshot = status()
-      synchronized(lock) {
-        if (snapshot == lastPublished) return
-        lastPublished = snapshot
-      }
-      WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.toJson(snapshot))
-      statusObserver?.invoke(snapshot)
-    }
-  }
 
   /** Lock held. Detaches every live transport into [into] and cancels the reconnect timer. */
   private fun collect(into: MutableList<PrinterTransport>) {
@@ -123,18 +76,17 @@ object PrinterManager {
     transport = null
     pending = null
     pendingLost = false
-    reconnectTask?.cancel(false)
+    reconnectTask?.cancel()
     reconnectTask = null
   }
 
-  /** Starts a new generation for [info]: aborts anything in flight and returns the generation. */
-  fun begin(info: PrinterInfo): Int {
+  /** Starts a new generation: aborts anything in flight and returns the generation. */
+  fun begin(): Int {
     val old = ArrayList<PrinterTransport>(2)
     val gen =
         synchronized(lock) {
           collect(old)
-          selected = info
-          state = BridgeCodes.STATE_DISCONNECTED
+          if (!halted) state = BridgeCodes.STATE_CONNECTING
           attempts = 0
           btPaused = false
           usbPermissionPaused = false
@@ -145,12 +97,12 @@ object PrinterManager {
     return gen
   }
 
-  /** Forgets the printer: aborts everything, clears the saved choice. */
+  /** This printer left the list: aborts everything, and its io executor takes no new work. */
   fun halt() {
     val old = ArrayList<PrinterTransport>(2)
     synchronized(lock) {
       collect(old)
-      selected = null
+      halted = true
       state = BridgeCodes.STATE_NONE
       attempts = 0
       btPaused = false
@@ -159,44 +111,48 @@ object PrinterManager {
       generation++
     }
     old.forEach { closeQuietly(it) }
-    app?.let { Prefs.clearPrinter(it) }
-    publish()
+    io.shutdown()
   }
 
-  /** Runs one attempt for [gen] on the io thread; [after] runs once it settled. */
+  /** Queues [task] on this printer's io thread; false once the printer was halted (nothing will run). */
+  private fun onIo(task: () -> Unit): Boolean =
+      try {
+        io.execute(Runnable { task() })
+        true
+      } catch (e: RejectedExecutionException) {
+        false
+      }
+
+  /** Runs one attempt for [gen] on the io thread; [after] runs once it settled (at once when halted). */
   fun connectAsync(gen: Int, after: () -> Unit) {
-    io.execute(
-        Runnable {
+    val queued =
+        onIo {
           attempt(gen)
           after()
         }
-    )
+    if (!queued) after()
   }
 
-  /** One connect attempt for [gen] on the io thread (may block). Never throws: every failure
-   *  (incl. a platform SecurityException) reports disconnected, schedules a reconnect, so callers settle. */
+  /** One connect attempt for [gen] on the io thread (may block). Never throws: every failure (incl. a platform
+   *  SecurityException) reports disconnected and schedules a reconnect, so callers settle. */
   private fun attempt(gen: Int) {
-    val ctx = app ?: return
-    val info =
-        synchronized(lock) {
-          if (gen != generation) return
-          val current = selected ?: return
-          state = BridgeCodes.STATE_CONNECTING
-          current
-        }
-    publish()
-    if (isBluetooth(info) && BtAccess.state(ctx) != BridgeCodes.BT_ON) {
+    synchronized(lock) {
+      if (gen != generation || halted) return
+      state = BridgeCodes.STATE_CONNECTING
+    }
+    env.changed()
+    if (isBluetooth(info) && !env.bluetoothOn()) {
       synchronized(lock) {
         if (gen != generation) return
         state = BridgeCodes.STATE_DISCONNECTED
         btPaused = true
       }
-      publish()
+      env.changed()
       return
     }
     val t =
         try {
-          TransportFactory.create(ctx, info, linkListener, timer) { appVisible }
+          env.transport(info, linkListener)
         } catch (e: Exception) {
           failed(gen, null)
           return
@@ -219,11 +175,11 @@ object PrinterManager {
           // waits for an explicit Reconnect: never a prompt loop.
           if (e.needsForeground) usbWaitingForeground = true else usbPermissionPaused = true
         }
-        publish()
+        env.changed()
         // Cold start: initialize() starts this attempt just before onHostResume, so the app can turn
         // visible between open()'s check and the flag above; that resume found nothing to ask for.
         // Ask now, on the timer thread every other resumeIfPaused() caller uses.
-        if (e.needsForeground && appVisible) timer.execute(Runnable { resumeIfPaused() })
+        if (e.needsForeground && env.visible()) env.onTimer(Runnable { resumeIfPaused() })
         return
       }
       failed(gen, t)
@@ -245,7 +201,7 @@ object PrinterManager {
           }
         }
     when (outcome) {
-      Outcome.CONNECTED -> publish()
+      Outcome.CONNECTED -> env.changed()
       Outcome.STALE -> closeQuietly(t)
       // The link dropped between open() returning and the claim: not connected after all.
       Outcome.LOST -> {
@@ -263,33 +219,21 @@ object PrinterManager {
       if (pending === t) pending = null
       state = BridgeCodes.STATE_DISCONNECTED
     }
-    publish()
+    env.changed()
     scheduleReconnect(gen)
   }
 
   private fun scheduleReconnect(gen: Int) {
-    val ctx = app ?: return
     synchronized(lock) {
-      val info = selected
-      if (gen != generation || info == null || usbPermissionPaused || usbWaitingForeground) return
-      if (isBluetooth(info) && BtAccess.state(ctx) != BridgeCodes.BT_ON) {
+      if (gen != generation || halted || usbPermissionPaused || usbWaitingForeground) return
+      if (isBluetooth(info) && !env.bluetoothOn()) {
         btPaused = true
         return
       }
-      val delay =
-          if (attempts < RECONNECT_BACKOFF_MS.size) {
-            RECONNECT_BACKOFF_MS[attempts]
-          } else {
-            RECONNECT_STEADY_MS
-          }
+      val delay = backoffMs(attempts)
       attempts++
-      reconnectTask?.cancel(false)
-      reconnectTask =
-          timer.schedule(
-              Runnable { io.execute(Runnable { attempt(gen) }) },
-              delay,
-              TimeUnit.MILLISECONDS,
-          )
+      reconnectTask?.cancel()
+      reconnectTask = env.schedule(delay, Runnable { onIo { attempt(gen) } })
     }
   }
 
@@ -308,32 +252,89 @@ object PrinterManager {
           generation
         }
     closeQuietly(source)
-    publish()
+    env.changed()
     scheduleReconnect(gen)
   }
 
-  /** Bluetooth came back (or permission was granted) while a printer waited for it. */
+  /** Bluetooth came back (or permission was granted, or the app is visible again) while this printer waited. */
   fun resumeIfPaused() {
-    val ctx = app ?: return
     // A USB printer that needed permission while the app was hidden asks once the app is visible.
-    val usbInfo = synchronized(lock) { if (usbWaitingForeground && appVisible) selected else null }
-    if (usbInfo != null) {
-      val gen = begin(usbInfo)
-      connectAsync(gen) {}
+    val usbAsk = synchronized(lock) { !halted && usbWaitingForeground && env.visible() }
+    if (usbAsk) {
+      connectAsync(begin()) {}
       return
     }
-    val lost = synchronized(lock) {
-      val info = selected
-      if (info != null && isBluetooth(info) && BtAccess.state(ctx) != BridgeCodes.BT_ON) {
-        btPaused = true
-        transport
-      } else null
-    }
+    val lost =
+        synchronized(lock) {
+          if (!halted && isBluetooth(info) && !env.bluetoothOn()) {
+            btPaused = true
+            transport
+          } else null
+        }
     if (lost != null) onLinkLost(lost)
-    val info = synchronized(lock) { if (btPaused) selected else null } ?: return
-    if (BtAccess.state(ctx) == BridgeCodes.BT_ON) {
-      val gen = begin(info)
-      connectAsync(gen) {}
+    val resume = synchronized(lock) { !halted && btPaused }
+    if (resume && env.bluetoothOn()) connectAsync(begin()) {}
+  }
+
+  /**
+   * One print job at a time on THIS printer (BUSY is per printer, so a v1 and a v2 print aimed at it are
+   * serialized, never interleaved); a failed or partial write is never replayed here. BUSY and NOT_CONNECTED
+   * are answered before any byte is sent.
+   */
+  fun print(base64: String, cb: ReplyCallback<Int>) {
+    if (!printing.compareAndSet(false, true)) {
+      cb(Reply.fail(BridgeCodes.BUSY))
+      return
+    }
+    val t = connectedTransport()
+    if (t == null) {
+      printing.set(false)
+      cb(Reply.fail(BridgeCodes.NOT_CONNECTED))
+      return
+    }
+    val queued =
+        onIo {
+          val reply = runPrint(t, base64)
+          printing.set(false)
+          cb(reply)
+        }
+    if (!queued) {
+      printing.set(false)
+      cb(Reply.fail(BridgeCodes.NOT_CONNECTED))
+    }
+  }
+
+  /** True when the watchdog already started: cancel only wins while it has not run. */
+  private fun watchdogFired(watchdog: Cancel, timedOut: AtomicBoolean): Boolean = !watchdog.cancel() || timedOut.get()
+
+  private fun runPrint(t: PrinterTransport, base64: String): Reply<Int> {
+    val bytes = env.decode(base64) ?: return Reply.fail(BridgeCodes.BAD_REQUEST)
+    val timedOut = AtomicBoolean(false)
+    val watchdog =
+        env.schedule(
+            PRINT_JOB_TIMEOUT_MS,
+            Runnable {
+              timedOut.set(true)
+              closeQuietly(t)
+            },
+        )
+    return try {
+      t.write(bytes)
+      if (watchdogFired(watchdog, timedOut)) {
+        // The job ran into the watchdog: the link was closed under it, so it never counts as printed.
+        onLinkLost(t)
+        Reply.fail(BridgeCodes.TIMEOUT)
+      } else {
+        Reply.Ok(bytes.size)
+      }
+    } catch (e: TransportException) {
+      onLinkLost(t)
+      Reply.fail(if (timedOut.get()) BridgeCodes.TIMEOUT else e.code)
+    } catch (e: RuntimeException) {
+      onLinkLost(t)
+      Reply.fail(if (timedOut.get()) BridgeCodes.TIMEOUT else BridgeCodes.WRITE_FAILED)
+    } finally {
+      watchdog.cancel()
     }
   }
 }

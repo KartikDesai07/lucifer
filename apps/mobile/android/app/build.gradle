@@ -153,6 +153,8 @@ dependencies {
     implementation("com.facebook.react:react-android")
     // document-start script injection for the native bridge (same version react-native-webview resolves)
     implementation "androidx.webkit:webkit:1.14.0"
+    // Phase 2 Session 2F2 (spec §13): pure-JVM unit tests of the printer pool's state machine (src/test); no device.
+    testImplementation "junit:junit:4.13.2"
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")

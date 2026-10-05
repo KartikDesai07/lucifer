@@ -1,30 +1,29 @@
 package com.possoftware.pos.printer
 
 import android.content.Context
-import android.util.Base64
-import java.util.concurrent.ScheduledFuture
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Request entry points for the module and the system receivers. Every call returns at once and
- * does its work on the timer thread (never blocks) or the io thread (connect/write).
+ * Request entry points for the module and the system receivers. Every call returns at once and does its work on the
+ * timer thread (never blocks) or a printer's own io thread (connect, write).
+ *
+ * Phase 2 Session 2F2 (spec §9.2, bridge v2): a v1 call acts on the app's default printer exactly as v1 always acted on
+ * its one printer (a v1 select replaces it, a v1 forget removes it); a v2 call names its printer by the app's id and
+ * answers with every printer ([PrinterPool.poolStatus]); a v2 select adds a printer to the list.
  */
 object PrinterApi {
-  const val PRINT_JOB_TIMEOUT_MS = 60_000L
+  /** The selection slot of v1 calls (the default printer); a v2 call's slot is its printer's id. */
+  private const val V1_SLOT = ""
 
   private val timer = PrinterThreads.timer
-  private val io = PrinterThreads.io
-  private val printing = AtomicBoolean(false)
 
   fun listPrinters(scan: Boolean, cb: ReplyCallback<List<PrinterInfo>>) {
     timer.execute(
         Runnable {
-          val ctx = PrinterManager.app
+          val ctx = PrinterPool.app
           if (ctx == null) {
             cb(Reply.fail(BridgeCodes.UNSUPPORTED))
           } else if (!scan) {
-            cb(Reply.Ok(PrinterManager.remember(PrinterDiscovery.known(ctx))))
+            cb(Reply.Ok(PrinterPool.remember(PrinterDiscovery.known(ctx))))
           } else if (!BtAccess.hasScan(ctx) || !BtAccess.hasConnect(ctx)) {
             cb(Reply.fail(BridgeCodes.UNAUTHORIZED))
           } else if (BtAccess.locationOff(ctx)) {
@@ -32,7 +31,7 @@ object PrinterApi {
           } else {
             val started =
                 PrinterDiscovery.scan(ctx) { list ->
-                  timer.execute(Runnable { cb(Reply.Ok(PrinterManager.remember(list))) })
+                  timer.execute(Runnable { cb(Reply.Ok(PrinterPool.remember(list))) })
                 }
             if (!started) cb(Reply.fail(BridgeCodes.BUSY))
           }
@@ -40,39 +39,48 @@ object PrinterApi {
     )
   }
 
-  fun selectPrinter(id: String, cb: ReplyCallback<StatusSnapshot>) {
+  fun selectPrinter(id: String, cb: ReplyCallback<StatusSnapshot>) = selectById(id, false, cb) { PrinterPool.status() }
+
+  fun selectTcp(host: String, port: Int, cb: ReplyCallback<StatusSnapshot>) = selectByTcp(host, port, false, cb) { PrinterPool.status() }
+
+  fun poolSelectPrinter(id: String, cb: ReplyCallback<PoolSnapshot>) = selectById(id, true, cb) { PrinterPool.poolStatus() }
+
+  fun poolSelectTcp(host: String, port: Int, cb: ReplyCallback<PoolSnapshot>) = selectByTcp(host, port, true, cb) { PrinterPool.poolStatus() }
+
+  private fun <T> selectById(id: String, v2: Boolean, cb: ReplyCallback<T>, answer: () -> T) {
     timer.execute(
         Runnable {
-          val ctx = PrinterManager.app
+          val ctx = PrinterPool.app
           if (ctx == null) {
             cb(Reply.fail(BridgeCodes.UNSUPPORTED))
             return@Runnable
           }
-          val info = PrinterManager.lookup(id) ?: PrinterDiscovery.infoFromId(ctx, id)
-          if (info == null) cb(Reply.fail(BridgeCodes.BAD_REQUEST)) else select(ctx, info, cb)
+          val info = PrinterPool.lookup(id) ?: PrinterDiscovery.infoFromId(ctx, id)
+          if (info == null) cb(Reply.fail(BridgeCodes.BAD_REQUEST)) else select(ctx, info, v2, cb, answer)
         }
     )
   }
 
-  fun selectTcp(host: String, port: Int, cb: ReplyCallback<StatusSnapshot>) {
+  private fun <T> selectByTcp(host: String, port: Int, v2: Boolean, cb: ReplyCallback<T>, answer: () -> T) {
     timer.execute(
         Runnable {
-          val ctx = PrinterManager.app
+          val ctx = PrinterPool.app
           if (ctx == null) {
             cb(Reply.fail(BridgeCodes.UNSUPPORTED))
           } else if (!PrinterIds.validHost(host) || !PrinterIds.validPort(port)) {
             cb(Reply.fail(BridgeCodes.BAD_REQUEST))
           } else {
-            select(ctx, PrinterDiscovery.tcpInfo(ctx, host, port), cb)
+            select(ctx, PrinterDiscovery.tcpInfo(ctx, host, port), v2, cb, answer)
           }
         }
     )
   }
 
   /** Saves the choice, then settles after the first attempt (connected or disconnected). */
-  private fun select(ctx: Context, info: PrinterInfo, cb: ReplyCallback<StatusSnapshot>) {
-    // A newer selection aborts the lookup of an older one before anything else happens.
-    val ticket = SelectionFence.begin()
+  private fun <T> select(ctx: Context, info: PrinterInfo, v2: Boolean, cb: ReplyCallback<T>, answer: () -> T) {
+    // A newer selection for the same slot aborts the lookup of an older one before anything else happens.
+    val slot = if (v2) info.id else V1_SLOT
+    val ticket = SelectionFence.begin(slot)
     if (PrinterManager.isBluetooth(info)) {
       val failure =
           when (BtAccess.state(ctx)) {
@@ -87,67 +95,67 @@ object PrinterApi {
       }
     }
     if (info.transport == BridgeCodes.TRANSPORT_TCP) {
-      fenceThenCommit(ctx, info, ticket, cb)
+      fenceThenCommit(info, slot, ticket, cb, answer) { commit(info, v2, cb, answer) }
     } else {
-      commit(ctx, info, cb)
+      commit(info, v2, cb, answer)
     }
   }
 
   /**
-   * Checks a network host on the dns thread (DNS blocks; never the io thread). A non-private
-   * address is BAD_REQUEST, and a selection made newer meanwhile is not committed.
+   * Checks a network host on the dns thread (DNS blocks; never an io thread). A non-private address is BAD_REQUEST,
+   * and a selection made newer for the same slot meanwhile is not committed.
    */
-  private fun fenceThenCommit(
-      ctx: Context,
-      info: PrinterInfo,
-      ticket: Int,
-      cb: ReplyCallback<StatusSnapshot>,
-  ) {
+  private fun <T> fenceThenCommit(info: PrinterInfo, slot: String, ticket: Int, cb: ReplyCallback<T>, answer: () -> T, commit: () -> Unit) {
     val target = PrinterIds.tcpOf(info.id)
     if (target == null) {
       cb(Reply.fail(BridgeCodes.BAD_REQUEST))
       return
     }
-    SelectionFence.check(target.first, ticket, cb) { commit(ctx, info, cb) }
+    SelectionFence.check(target.first, slot, ticket, cb, answer, commit)
   }
 
-  private fun commit(ctx: Context, info: PrinterInfo, cb: ReplyCallback<StatusSnapshot>) {
-    Prefs.savePrinter(ctx, info)
-    val gen = PrinterManager.begin(info)
-    PrinterManager.connectAsync(gen) { cb(Reply.Ok(PrinterManager.status())) }
+  private fun <T> commit(info: PrinterInfo, v2: Boolean, cb: ReplyCallback<T>, answer: () -> T) {
+    val manager = if (v2) PrinterPool.add(info) else PrinterPool.replaceDefault(info)
+    manager.connectAsync(manager.begin()) { cb(Reply.Ok(answer())) }
   }
 
-  fun reconnect(cb: ReplyCallback<StatusSnapshot>) {
-    timer.execute(
-        Runnable {
-          val info = PrinterManager.selectedPrinter()
-          if (info == null) {
-            cb(Reply.Ok(PrinterManager.status()))
-          } else {
-            val gen = PrinterManager.begin(info)
-            PrinterManager.connectAsync(gen) { cb(Reply.Ok(PrinterManager.status())) }
-          }
-        }
-    )
+  fun reconnect(cb: ReplyCallback<StatusSnapshot>) =
+      timer.execute(Runnable { reconnectOf(PrinterPool.defaultManager(), cb) { PrinterPool.status() } })
+
+  fun poolReconnect(printerId: String, cb: ReplyCallback<PoolSnapshot>) =
+      timer.execute(Runnable { reconnectOf(PrinterPool.manager(printerId), cb) { PrinterPool.poolStatus() } })
+
+  private fun <T> reconnectOf(manager: PrinterManager?, cb: ReplyCallback<T>, answer: () -> T) {
+    if (manager == null) cb(Reply.Ok(answer())) else manager.connectAsync(manager.begin()) { cb(Reply.Ok(answer())) }
   }
 
   fun forget(cb: ReplyCallback<StatusSnapshot>) {
     timer.execute(
         Runnable {
-          SelectionFence.begin()
-          PrinterManager.halt()
-          cb(Reply.Ok(PrinterManager.status()))
+          SelectionFence.begin(V1_SLOT)
+          PrinterPool.removeDefault()
+          cb(Reply.Ok(PrinterPool.status()))
         }
     )
   }
 
-  /** Re-publishes (permissions may have changed) and resumes a Bluetooth-paused printer. */
+  fun poolForget(printerId: String, cb: ReplyCallback<PoolSnapshot>) {
+    timer.execute(
+        Runnable {
+          SelectionFence.begin(printerId)
+          PrinterPool.remove(printerId)
+          cb(Reply.Ok(PrinterPool.poolStatus()))
+        }
+    )
+  }
+
+  /** Re-publishes (permissions may have changed) and resumes every printer that waited for Bluetooth or the screen. */
   fun refreshStatus(cb: ReplyCallback<StatusSnapshot>) {
     timer.execute(
         Runnable {
-          PrinterManager.resumeIfPaused()
-          PrinterManager.publish()
-          cb(Reply.Ok(PrinterManager.status()))
+          PrinterPool.managers().forEach { it.resumeIfPaused() }
+          PrinterPool.publish()
+          cb(Reply.Ok(PrinterPool.status()))
         }
     )
   }
@@ -155,93 +163,46 @@ object PrinterApi {
   fun onBluetoothStateChanged() {
     timer.execute(
         Runnable {
-          PrinterManager.resumeIfPaused()
-          PrinterManager.publish()
+          PrinterPool.managers().forEach { it.resumeIfPaused() }
+          PrinterPool.publish()
         }
     )
   }
 
+  /** A USB device arrived: every USB printer of the list that is not connected tries again. */
   fun onUsbAttached() {
     timer.execute(
         Runnable {
-          val info = PrinterManager.selectedPrinter()
-          val idle = PrinterManager.connectedTransport() == null
-          if (idle && info != null && info.transport == BridgeCodes.TRANSPORT_USB) {
-            val gen = PrinterManager.begin(info)
-            PrinterManager.connectAsync(gen) {}
+          for (manager in PrinterPool.managers()) {
+            if (manager.info.transport == BridgeCodes.TRANSPORT_USB && manager.connectedTransport() == null) {
+              manager.connectAsync(manager.begin()) {}
+            }
           }
         }
     )
   }
 
+  /** A USB device left: the printer whose link it was loses it (two identical models are never both listed). */
   fun onUsbDetached(vendorId: Int, productId: Int) {
     timer.execute(
         Runnable {
-          val t = PrinterManager.activeTransport()
-          if (t is UsbTransport && t.matches(vendorId, productId)) PrinterManager.onLinkLost(t)
+          for (manager in PrinterPool.managers()) {
+            val t = manager.activeTransport()
+            if (t is UsbTransport && t.matches(vendorId, productId)) manager.onLinkLost(t)
+          }
         }
     )
   }
 
-  /** One print job at a time; a failed/partial write must never be replayed automatically. */
+  /** v1: one print job on the default printer. */
   fun print(base64: String, cb: ReplyCallback<Int>) {
-    if (!printing.compareAndSet(false, true)) {
-      cb(Reply.fail(BridgeCodes.BUSY))
-      return
-    }
-    val t = PrinterManager.connectedTransport()
-    if (t == null) {
-      printing.set(false)
-      cb(Reply.fail(BridgeCodes.NOT_CONNECTED))
-      return
-    }
-    io.execute(
-        Runnable {
-          val reply = runPrint(t, base64)
-          printing.set(false)
-          cb(reply)
-        }
-    )
+    val manager = PrinterPool.defaultManager()
+    if (manager == null) cb(Reply.fail(BridgeCodes.NOT_CONNECTED)) else manager.print(base64, cb)
   }
 
-  /** True when the watchdog already started: cancel only wins while it has not run. */
-  private fun watchdogFired(watchdog: ScheduledFuture<*>, timedOut: AtomicBoolean): Boolean =
-      !watchdog.cancel(false) || timedOut.get()
-
-  private fun runPrint(t: PrinterTransport, base64: String): Reply<Int> {
-    val bytes =
-        try {
-          Base64.decode(base64, Base64.DEFAULT)
-        } catch (e: IllegalArgumentException) {
-          return Reply.fail(BridgeCodes.BAD_REQUEST)
-        }
-    val timedOut = AtomicBoolean(false)
-    val watchdog =
-        timer.schedule(
-            Runnable {
-              timedOut.set(true)
-              PrinterManager.closeQuietly(t)
-            },
-            PRINT_JOB_TIMEOUT_MS,
-            TimeUnit.MILLISECONDS,
-        )
-    return try {
-      t.write(bytes)
-      if (watchdogFired(watchdog, timedOut)) {
-        // The job ran into the watchdog: the link was closed under it, so it never counts as printed.
-        PrinterManager.onLinkLost(t)
-        Reply.fail(BridgeCodes.TIMEOUT)
-      } else {
-        Reply.Ok(bytes.size)
-      }
-    } catch (e: TransportException) {
-      PrinterManager.onLinkLost(t)
-      Reply.fail(if (timedOut.get()) BridgeCodes.TIMEOUT else e.code)
-    } catch (e: RuntimeException) {
-      PrinterManager.onLinkLost(t)
-      Reply.fail(if (timedOut.get()) BridgeCodes.TIMEOUT else BridgeCodes.WRITE_FAILED)
-    } finally {
-      watchdog.cancel(false)
-    }
+  /** v2: one print job on the named printer; a printer the app does not list is not connected (nothing sent). */
+  fun poolPrint(printerId: String, base64: String, cb: ReplyCallback<Int>) {
+    val manager = PrinterPool.manager(printerId)
+    if (manager == null) cb(Reply.fail(BridgeCodes.NOT_CONNECTED)) else manager.print(base64, cb)
   }
 }

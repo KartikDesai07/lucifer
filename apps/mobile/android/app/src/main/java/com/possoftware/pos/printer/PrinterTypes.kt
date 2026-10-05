@@ -15,6 +15,13 @@ data class PrinterInfo(
 /** The PrinterStatus map of the bridge. Data-class equality drives the change de-duplication. */
 data class StatusSnapshot(val state: String, val printer: PrinterInfo?, val bluetooth: String)
 
+/** Phase 2 Session 2F2 (spec §9.2): one printer of the app's list as bridge v2 reports it. */
+data class PoolEntry(val state: String, val printer: PrinterInfo)
+
+/** Bridge v2's printer.status: every printer in the app's order, the default's id (null only for an empty list) and
+ *  Bluetooth. Data-class equality drives the change de-duplication. */
+data class PoolSnapshot(val printers: List<PoolEntry>, val defaultId: String?, val bluetooth: String)
+
 /** Result of an asynchronous manager call; the module turns it into a promise settlement. */
 sealed class Reply<out T> {
   class Ok<out T>(val value: T) : Reply<T>()

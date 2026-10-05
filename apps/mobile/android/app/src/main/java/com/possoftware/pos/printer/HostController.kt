@@ -21,7 +21,7 @@ class HostController(private val ctx: ReactApplicationContext) {
       return false
     }
     // A background start is refused by Android 12+; the page re-asks when the app is visible again.
-    if (!PrinterManager.appVisible) return false
+    if (!PrinterPool.appVisible) return false
     return try {
       PrintHostService.start(ctx.applicationContext, label)
       active = true

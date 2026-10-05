@@ -10,6 +10,7 @@ import type {
   NativePrinter,
   PrinterStatus,
 } from '../bridge/protocol';
+import type { PoolStatus } from '../bridge/protocol-v2';
 import { requestPermission } from './permissions';
 
 export interface PosPrinterModule {
@@ -29,6 +30,13 @@ export interface PosPrinterModule {
   reconnect(): Promise<PrinterStatus>;
   forget(): Promise<PrinterStatus>;
   print(base64: string): Promise<{ bytes: number }>;
+  // Phase 2 Session 2F2 (spec §9.2): the app's printers, bridge v2.
+  poolStatus(): Promise<PoolStatus>;
+  poolSelectPrinter(id: string): Promise<PoolStatus>;
+  poolSelectTcp(host: string, port: number): Promise<PoolStatus>;
+  poolReconnect(printerId: string): Promise<PoolStatus>;
+  poolForget(printerId: string): Promise<PoolStatus>;
+  poolPrint(printerId: string, base64: string): Promise<{ bytes: number }>;
   refreshStatus(): Promise<PrinterStatus>;
   enableBluetooth(): Promise<{ on: boolean }>;
   setHostActive(active: boolean, label: string): Promise<{ active: boolean }>;
@@ -84,6 +92,12 @@ export const PosPrinter: PosPrinterModule = {
   reconnect: () => call('reconnect'),
   forget: () => call('forget'),
   print: base64 => call('print', base64),
+  poolStatus: () => call('poolStatus'),
+  poolSelectPrinter: id => call('poolSelectPrinter', id),
+  poolSelectTcp: (host, port) => call('poolSelectTcp', host, port),
+  poolReconnect: printerId => call('poolReconnect', printerId),
+  poolForget: printerId => call('poolForget', printerId),
+  poolPrint: (printerId, base64) => call('poolPrint', printerId, base64),
   refreshStatus: () => call('refreshStatus'),
   enableBluetooth: () => call('enableBluetooth'),
   setHostActive: (active, label) => call('setHostActive', active, label),

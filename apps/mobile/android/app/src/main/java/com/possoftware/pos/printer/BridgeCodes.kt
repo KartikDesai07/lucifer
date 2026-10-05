@@ -42,6 +42,9 @@ object BridgeCodes {
   const val PLATFORM = "android"
   const val BRIDGE_VERSION = 1
 
+  /** Phase 2 Session 2F2 (spec §9.2): bridge v2, beside v1 (apps/mobile/src/bridge/protocol-v2.ts; parity pinned). */
+  const val BRIDGE_V2 = 2
+
   val TRANSPORTS: List<String> =
       listOf(TRANSPORT_BT_CLASSIC, TRANSPORT_BLE, TRANSPORT_TCP, TRANSPORT_USB)
 }
