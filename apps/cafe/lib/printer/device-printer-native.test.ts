@@ -276,6 +276,24 @@ test("native: forget tells the app, clears the record, and Reconnect asks the ap
   assert.equal(printer.getSnapshot().status, "none");
 });
 
+// The 2F1 review gate (G-2, seen on the emulator with Session 2F2's app): an app on bridge v2 makes the first of its
+// other printers the default when this device's printer leaves it (the contract's promotion), and answers the forget
+// with that printer's status. The page keeps it as this device's printer, whichever of the answer and the app's own
+// status event lands first; an app with no other printer answers "none" and the record is cleared as before.
+test("2F1 gate (G-2): forget on an app that makes another of its printers the default keeps that one as this device's", async () => {
+  const { printer, store, fake } = await nativeEnv();
+  const promoted = { id: "tcp:10.0.2.2:9100", name: "Network printer 10.0.2.2", transport: "tcp", address: "10.0.2.2:9100" };
+  fake.respond("printer.forget", () => nativeStatus("connected", promoted));
+  await printer.forget();
+  assert.equal(fake.count("printer.forget"), 1, "the app was told");
+  assert.equal(store.value?.kind === "native" ? store.value.printerId : null, promoted.id, "the promoted printer is this device's printer");
+  assert.equal(printer.getSnapshot().status, "connected", "and it reads as the app reports it");
+  fake.respond("printer.forget", () => nativeStatus("none", null));
+  await printer.forget();
+  assert.equal(store.value, null, "the last printer gone: no printer, as before");
+  assert.equal(printer.getSnapshot().status, "none");
+});
+
 test("the web reconnect backoff refuses to start for an app printer, even if asked (Kotlin owns that loop)", () => {
   const clock = makeClock();
   const link = createWebLink({

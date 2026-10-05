@@ -32,8 +32,9 @@ import {
 //     the print's is the whole list, like the v2 `printer.status` event the app sends on every change of any printer.
 //   · A printer is named by the app's own id (`tcp:host:port`, `bt-classic:<MAC>`, `ble:<MAC>`, `usb:<vendor>:<product>`).
 //     The default printer leaving the list (v1 or v2 forget) makes the first remaining printer the default.
-//   · The app sends a v1 `printer.status` (its default printer's) on every change of the default (a select into an empty
-//     list, a promotion after a forget, a v1 select or forget), so a page of either version knows this device's printer.
+//   · The app sends a v1 `printer.status` (its default printer's) whenever that status changes: its state, Bluetooth,
+//     and which printer is the default (a select into an empty list, a promotion after a forget, a v1 select or
+//     forget), so a page of either version knows this device's printer.
 //   · `printer.select` keeps the printer listed (down) when its first connect fails, and the app's own reconnect loop
 //     keeps trying, as v1 keeps its one printer.
 //   · No v2 status event when nothing a page reads changed (each event nudges the page's agent).
@@ -42,9 +43,20 @@ import {
 //   · The app's list always holds its default printer: an app updated from v1 moves its one printer into the list as
 //     the default, so a page on v2 (which trusts the list alone) still finds this device's printer.
 //   · A v1 and a v2 print aimed at the same printer are serialized in the app (one print at a time per printer: the
-//     other is refused BUSY before any byte and the page sends it again), never interleaved.
-// (These are the 2E review gate's ruling F-R2 and its review's M-4 and re-check; Session 2F2 implements them and pins
-// them.)
+//     other is refused BUSY before any byte), never interleaved: a print agent's job refused BUSY is sent again after
+//     its hold, and a print a person started says so.
+//   · A network (tcp) printer has no standing link: the app connects per job, and `printer.select` / `printer.reconnect`
+//     only probe it (connect, then close). Between jobs it reads `connected` from the last probe or job that reached
+//     it, and `disconnected` once a job's connect or write failed (a print whose connect failed is refused
+//     NOT_CONNECTED: no byte sent); the app's own loop then probes it (2 s, 5 s, 10 s, then every 30 s, each probe
+//     reported `connecting`) until it answers. On a tcp printer `connected` means "it answered last time".
+//   · An app with no printer answers `printer.status` (and every list answer and event) with
+//     `{ printers: [], defaultId: null, bluetooth }`: all three keys are always there (`defaultId` is null only for an
+//     empty list, else one of the listed ids), the printers in the app's own order (a v2 select adds one last; a v1
+//     select of a new printer puts it in the default's place, and of a listed one makes it the default where it is).
+//     The page reads such a list as a v2 app with no printer yet.
+// (These are the 2E review gate's ruling F-R2 and its review's M-4 and re-check, and the 2F1 review gate's M-3 and
+// its review's wording of the v1 status and BUSY; Session 2F2 implements them and pins them.)
 //   · Every other method (app.info, printer.list, permissions, bluetooth, host.background, app.changeUrl) stays v1.
 
 export const NATIVE_BRIDGE_V2 = 2;

@@ -195,6 +195,16 @@ test("2D: each printer in words: its connection, its slips and stations, and its
   assert.deepEqual(printerRowState({ ...mine, id: "Other" }, DEVICES, here), { tone: "bad", text: "Not this device's printer" });
 });
 
+// The 2F1 review gate (M-2): one of the POS app's printers (bridge v2) has a state of its own, so its words name it.
+test("2F1 gate (M-2): a printer with a state of its own is named when it is not ready, and in its Test print's reason", () => {
+  const here = { deviceId: "me", localIds: ["Mine"], canPrint: false, ownState: true };
+  const mine = printer("Mine", { connection: { kind: "device", deviceId: "me", transport: "bt-classic", address: "00:11:22:33:44:55" } });
+  assert.deepEqual(printerRowState(mine, DEVICES, here), { tone: "bad", text: "Mine is not ready on this device" });
+  assert.equal(testPrintBlock(mine, [mine], here), "Connect Mine on this device to test it.");
+  assert.deepEqual(printerRowState(mine, DEVICES, { ...here, ownState: false }), { tone: "bad", text: "This device's printer is not ready" }, "this device's own printer: as before");
+  assert.deepEqual(printerRowState(mine, DEVICES, { ...here, canPrint: true }), { tone: "ok", text: "Prints on this device" });
+});
+
 test("2D: what the setup leaves without a printer (printers mode only), and the printers a station's delete leaves empty (the 2A gate's M5)", () => {
   assert.deepEqual(setupGaps([], [KITCHEN]), [], "simple mode: nothing to say");
   const kitchen = printer("Kitchen", { slips: { ...NO_SLIPS, kotStations: ["s-kitchen"] } });

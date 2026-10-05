@@ -69,7 +69,7 @@ export type PrinterRowTone = "ok" | "bad" | "off";
 export function printerRowState(
   printer: PrinterConfig,
   devices: readonly PrintDeviceSummary[],
-  here: { deviceId: string; localIds: readonly string[]; canPrint: boolean; devicesFailed?: boolean },
+  here: { deviceId: string; localIds: readonly string[]; canPrint: boolean; devicesFailed?: boolean; ownState?: boolean },
 ): { tone: PrinterRowTone; text: string } {
   if (!printer.enabled) return { tone: "off", text: "Switched off" };
   if (!printerTakesSlips(printer.slips)) return { tone: "off", text: "Takes no slips" };
@@ -77,7 +77,9 @@ export function printerRowState(
   if (writer === null) return { tone: "bad", text: "No printing device" };
   if (writer === here.deviceId) {
     if (!here.localIds.includes(printer.id)) return { tone: "bad", text: "Not this device's printer" };
-    return here.canPrint ? { tone: "ok", text: "Prints on this device" } : { tone: "bad", text: "This device's printer is not ready" };
+    if (here.canPrint) return { tone: "ok", text: "Prints on this device" };
+    // The 2F1 review gate (M-2): a printer with a state of its own (one of the POS app's, bridge v2) is named.
+    return { tone: "bad", text: here.ownState === true ? `${printer.name} is not ready on this device` : "This device's printer is not ready" };
   }
   const row = devices.find((device) => device.deviceId === writer);
   // The 2E review gate (M-3): with the devices read failed, nothing is known of it (not "has not checked in").
@@ -93,12 +95,13 @@ export const TEST_UNAVAILABLE = "Switch it on, choose its slips and its printing
 export function testPrintBlock(
   printer: PrinterConfig,
   printers: readonly PrinterConfig[],
-  here: { deviceId: string; localIds: readonly string[]; canPrint: boolean },
+  here: { deviceId: string; localIds: readonly string[]; canPrint: boolean; ownState?: boolean },
 ): string | null {
   if (routablePrinterOf(printers, printer.id) === null) return TEST_UNAVAILABLE;
   if (printerWriterDeviceId(printer) !== here.deviceId) return null;
   if (!here.localIds.includes(printer.id)) return "This device prints it, but it is not this device's printer. Edit it first.";
-  return here.canPrint ? null : "Connect this device's printer to test it.";
+  if (here.canPrint) return null;
+  return here.ownState === true ? `Connect ${printer.name} on this device to test it.` : "Connect this device's printer to test it.";
 }
 
 /** The toast after a Test print: said plainly when its printing device is away (its slip waits for it). */

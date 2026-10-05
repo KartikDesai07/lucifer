@@ -35,7 +35,8 @@ export interface PrintAgentDeps {
   printerState(): unknown;
   /** Session 2E: the printers this device prints here (printers mode); absent: its own line only. */
   readyPrinters?(): readonly string[];
-  /** Session 2E: the line a job's refusal holds: its named Windows printer, else this device's own printer (""). */
+  /** Session 2E: the line a job's refusal holds: its printer, by id (the 2F1 review gate, M-1), else this device's own
+   *  printer (""). */
   lineOf?(job: LeasedPrintJob): string;
   readPending(): PendingPrintAck[];
   writePending(entries: PendingPrintAck[]): void;

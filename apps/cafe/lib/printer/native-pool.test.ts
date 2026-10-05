@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import { flush, makeClock } from "@/lib/printer/device-printer-fakes";
 import { NATIVE_REQUEST_TIMEOUT_MS, nativeError } from "@/lib/printer/native-bridge";
 import { NATIVE_BRIDGE_V2, nativeV2Bridge, nativeV2Client, nativeV2Request, type NativePoolStatus, type NativeV2Client } from "@/lib/printer/native-bridge-v2";
-import { EMPTY_POOL, createNativePool, poolSnapshotOf } from "@/lib/printer/native-pool";
+import { EMPTY_POOL, connectedPoolKey, createNativePool, poolSnapshotOf } from "@/lib/printer/native-pool";
+import { readFileSync } from "node:fs";
 import { PRINTER_CONNECT_FAILED_MESSAGE } from "@/lib/printer/device-printer-link";
 import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
 
@@ -147,6 +148,52 @@ test("2F1: a first read the app could not answer leaves the pool inactive and is
   fail = false;
   await clock.advance(NATIVE_REQUEST_TIMEOUT_MS);
   assert.deepEqual([pool.getSnapshot().active, pool.getSnapshot().printers.map((p) => p.id), reads.length], [true, [KITCHEN.id], 2], "read again, and active with the app's list");
+});
+
+// The 2F1 review gate (M-5): however many times the pool starts (init, a late bridge), an app that never answers is
+// asked once per request timeout.
+test("2F1 gate (M-5): init and a late bridge keep one retry of the first read, not two", async () => {
+  const reads: number[] = [];
+  const client: NativeV2Client = {
+    request: (async (method: string) => {
+      if (method === "printer.status") reads.push(1);
+      throw nativeError("TIMEOUT", "x");
+    }) as NativeV2Client["request"],
+    onStatus: () => () => undefined,
+  };
+  const clock = makeClock();
+  const late: { ready: (() => void) | null } = { ready: null };
+  const pool = createNativePool({ v2: () => client, now: clock.now, setTimer: clock.setTimer, clearTimer: clock.clearTimer, onNativeReady: (fn) => ((late.ready = fn), () => undefined) });
+  pool.init();
+  await flush();
+  late.ready?.();
+  await flush();
+  assert.equal(reads.length, 2, "a read at init and one when the bridge announces itself");
+  await clock.advance(NATIVE_REQUEST_TIMEOUT_MS);
+  await clock.advance(NATIVE_REQUEST_TIMEOUT_MS);
+  await clock.advance(NATIVE_REQUEST_TIMEOUT_MS);
+  assert.equal(reads.length, 5, "then one read per request timeout");
+  assert.equal(pool.getSnapshot().active, false, "inactive meanwhile");
+});
+
+// The 2F1 review gate (N-1): the agent is nudged by what can print now, never by a down printer's own probes.
+test("2F1 gate (N-1): a down printer's connecting <-> disconnected flip keeps the connected key; a printer connecting changes it", () => {
+  const key = (bar: "connecting" | "connected" | "disconnected") =>
+    connectedPoolKey(poolSnapshotOf({ printers: [{ state: "connected", printer: KITCHEN }, { state: bar, printer: BAR }], defaultId: KITCHEN.id, bluetooth: "on" }));
+  assert.equal(key("disconnected"), KITCHEN.id, "the kitchen printer alone");
+  assert.equal(key("connecting"), key("disconnected"), "a probe of the bar printer changes nothing that prints");
+  assert.equal(key("connected"), `${KITCHEN.id},${BAR.id}`, "the bar printer back: a new key, a nudge");
+  assert.equal(connectedPoolKey(EMPTY_POOL), "", "no app printers");
+});
+
+// The 2F1 review gate (M-3): the contract Session 2F2's app is written against says how a network printer reads
+// between jobs and what an empty list looks like.
+test("2F1 gate (M-3): the contract header states the network printer between jobs, the empty list, the v1 status and BUSY", () => {
+  const header = readFileSync(new URL("./native-bridge-v2.ts", import.meta.url), "utf8");
+  assert.ok(header.includes("A network (tcp) printer has no standing link: the app connects per job"), "a tcp printer between jobs");
+  assert.ok(header.includes("`{ printers: [], defaultId: null, bluetooth }`: all three keys are always there"), "the empty list");
+  assert.ok(header.includes("whenever that status changes: its state, Bluetooth,"), "the v1 status on every change of the default printer");
+  assert.ok(header.includes("a print agent's job refused BUSY is sent again after"), "BUSY, said for both callers");
 });
 
 test("2F1: a job for one of the app's printers is written to that printer in a v2 print; a printer not in the list is refused before any byte", async () => {

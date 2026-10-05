@@ -7,7 +7,7 @@ import { PRINT_SETUP_REFRESH_MIN_MS } from "@pos/shared/print-budget";
 import type { LeasedPrintJob, PrintAckData, PrintJobsForMe, PrintLeaseData } from "@pos/shared/print-agent-wire";
 import { PRINTERS_KEYS } from "@/hooks/use-agent-printers";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
-import { useCanPrintNow, useDevicePrinter, useNativePool } from "@/hooks/use-device-printer";
+import { useCanPrintNow, useNativePool } from "@/hooks/use-device-printer";
 import { usePrintAgentWake } from "@/hooks/use-print-agent-wake";
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
 import { apiSend } from "@/lib/api-client";
@@ -33,6 +33,7 @@ import { PrintWriteError } from "@/lib/print-write-outcome";
 import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
 import { desktopPrinterSnapshot, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
 import { nativeBridge, nativeOn } from "@/lib/printer/native-bridge";
+import { connectedPoolKey } from "@/lib/printer/native-pool";
 import { printerStatusOf, printersState } from "@/lib/printer/printer-registry";
 import { canPrintNow } from "@/lib/printer/print-lane";
 import { subscribeRealtime } from "@/lib/realtime-client";
@@ -82,9 +83,9 @@ function timers() {
 
 export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy, queueSlip }: UsePrintAgentOptions): void {
   const qc = useQueryClient();
-  const printer = useDevicePrinter();
   const canPrint = useCanPrintNow();
-  const pool = useNativePool();
+  // The 2F1 review gate (N-1): which of the POS app's printers can print now (bridge v2).
+  const poolReady = connectedPoolKey(useNativePool());
   const queueRef = useRef(queueSlip);
   useEffect(() => {
     queueRef.current = queueSlip;
@@ -163,7 +164,10 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
       // Session 2F1: so does any change of this device's printers (its own, or another of the app's).
       printerState: () => (isDesktopShell() ? desktopPrinterSnapshot() : printersState()),
       readyPrinters: readyNow,
-      lineOf: (job) => (job.printerId !== undefined && targetsRef.current[job.printerId] !== undefined ? job.printerId : PRINT_DEVICE_LINE),
+      // The 2F1 review gate (M-1, with the 2E gate's M-9): a printer job's refusal holds its own printer's line, whether
+      // or not this device still prints it (one that left the app's list between the request and the print), never the
+      // device line, which would pause every other printer. A job with no printer (simple mode) holds the device line.
+      lineOf: (job) => job.printerId ?? PRINT_DEVICE_LINE,
       readPending: readPendingAcks,
       writePending: writePendingAcks,
       ...timers(),
@@ -180,21 +184,19 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
     agent?.setGate({ enabled, busy });
   }, [agent, enabled, busy]);
 
-  // The printer reconnected or changed: look at the line (the gate decides). Session 2B: a nudge, so the
-  // printer's own status changes during the agent's print never queue an empty lease after it.
+  // The printer reconnected or went away: look at the line (the gate decides). Session 2B: a nudge, so the
+  // printer's own status changes during the agent's print never queue an empty lease after it. Session 2F1: one of
+  // the POS app's printers too. The 2F1 review gate (N-1): only a change of what can print now (this device's own
+  // printer, or which of the app's printers are connected): a down printer's own reconnect probes (connecting <->
+  // disconnected, every 30 s) lease nothing while another printer prints.
   useEffect(() => {
     agent?.nudge();
-  }, [agent, printer, canPrint]);
+  }, [agent, canPrint, poolReady]);
 
   // Session 2C: the printers it prints on changed (a setup save, its printer reconnected as another): look again.
   useEffect(() => {
     agent?.nudge();
   }, [agent, readyKey]);
-
-  // Session 2F1 (spec §9.2): one of the POS app's printers changed (connected, down, added, removed): look again.
-  useEffect(() => {
-    agent?.nudge();
-  }, [agent, pool]);
 
   useEffect(() => (agent === null ? undefined : onPrintAgentKick((printerId) => agent.kick(printerId))), [agent]);
 

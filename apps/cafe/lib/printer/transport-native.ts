@@ -11,7 +11,6 @@ import {
   PRINTER_TOO_LARGE_MESSAGE,
   PRINTER_WRITE_FAILED_MESSAGE,
   notConnectedError,
-  quiet,
   type PaperChoice,
   type PrinterSnapshot,
 } from "@/lib/printer/web-printer-types";
@@ -183,8 +182,20 @@ export function createNativeLink(host: NativeLinkHost) {
       const client = host.native();
       return client === null ? [] : (await client.request("printer.list", { scan })).printers;
     },
-    async forget(): Promise<void> {
-      await quiet(() => host.native()?.request("printer.forget"));
+    /** Forgets the app's default printer. The 2F1 review gate (G-2): an app on bridge v2 then makes the first of its
+     *  other printers the default and answers with its status; that printer is applied (true), so the page shows the
+     *  printer the app prints on. False when the app has none left, or did not answer. */
+    async forget(): Promise<boolean> {
+      const client = host.native();
+      if (client === null) return false;
+      try {
+        const status = await client.request("printer.forget");
+        if (status.printer === null) return false;
+        apply(status);
+        return true;
+      } catch {
+        return false;
+      }
     },
     write(bytes: Uint8Array): Promise<void> {
       const client = host.native();

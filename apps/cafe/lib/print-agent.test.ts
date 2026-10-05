@@ -30,7 +30,8 @@ import {
 } from "@/lib/print-agent";
 import { PRINT_AGENT_HOLD_END_MARGIN_MS, PRINT_DEVICE_LINE, createRefusalHolds } from "@/lib/print-agent-holds";
 import { PRINT_HOST_EOD_TIMEOUT_MESSAGE } from "@/lib/print-host-slips";
-import { PRINT_SLIP_REFUSALS_MAX, isSlipRefusal, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+import { PRINTER_NOT_LOCAL_MESSAGE } from "@/lib/print-agent-printers";
+import { PRINT_SLIP_REFUSALS_MAX, PrintWriteError, isSlipRefusal, printWriteOutcomeOf } from "@/lib/print-write-outcome";
 import { RASTER_FAILED_MESSAGE } from "@/lib/printer/raster";
 import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_TOO_LARGE_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
 
@@ -1314,5 +1315,25 @@ test("2E gate: a kick for a job on a held printer, or on a printer not printed h
   agent.kick();
   await settle();
   assert.equal(w.leaseCalls, 3, "a job with no printer named leases as before");
+  agent.stop();
+});
+
+// The 2F1 review gate (M-1, with the 2E gate's M-9): a job whose printer this tab no longer prints (it left the POS
+// app's list between the request and the print) is refused on that printer's own line, so the others keep printing.
+test("2F1 gate (M-1): a job whose printer this tab no longer prints is refused on that printer's own line; the others keep printing", async () => {
+  const { w, deps, asked } = printersWorld(["p-kitchen"], (j) => j.printerId ?? PRINT_DEVICE_LINE);
+  w.results.push({ ok: false, error: new PrintWriteError(PRINTER_NOT_LOCAL_MESSAGE, "no") });
+  w.ackAnswers.push({ applied: true, status: "queued", nextAttemptAt: new Date(T0 + 2_000).toISOString() });
+  const agent = createPrintAgent(deps);
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  agent.take({ ...job("b1"), printerId: "p-bar" });
+  await settle();
+  assert.equal(w.acks[0]?.body.sent, "no", "refused before any byte");
+  assert.deepEqual(agent.openPrinters(), ["p-kitchen"], "the kitchen printer stays open");
+  assert.equal(agent.directReady(), true, "and prints its slips at once");
+  agent.kick("p-kitchen");
+  await settle();
+  assert.deepEqual(asked.slice(1), [["p-kitchen"]], "a kitchen slip's kick leases the kitchen line");
   agent.stop();
 });

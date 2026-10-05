@@ -70,6 +70,12 @@ function poolKey(snapshot: NativePoolSnapshot): string {
   return JSON.stringify([snapshot.active, snapshot.defaultId, snapshot.printers.map((p) => [p.id, p.printer.name, p.printer.transport, p.status, p.message])]);
 }
 
+/** The 2F1 review gate (N-1): what the print agent can print on now, the app's connected printers in its order. A down
+ *  printer's own reconnect probes (connecting <-> disconnected) leave it unchanged, so they never nudge the agent. */
+export function connectedPoolKey(snapshot: NativePoolSnapshot): string {
+  return snapshot.printers.filter((entry) => entry.status === "connected").map((entry) => entry.id).join(",");
+}
+
 /** The app's list as the page's snapshot; a printer's state "none" (never sent for a listed printer) reads as down. */
 export function poolSnapshotOf(status: NativePoolStatus): NativePoolSnapshot {
   const printers: PoolPrinter[] = [];
@@ -90,6 +96,8 @@ export function createNativePool(deps: NativePoolDeps): NativePool {
   const queues = new Map<string, (bytes: Uint8Array) => Promise<void>>();
   let off: (() => void) | null = null;
   let started = false;
+  // The 2F1 review gate (M-5): one kept retry of the first read, however many times start() runs (init, a late bridge).
+  let retry: unknown = null;
 
   // Replaced only when something a reader sees changed, so a repeated status keeps every subscriber still.
   function publish(next: NativePoolSnapshot): void {
@@ -108,6 +116,8 @@ export function createNativePool(deps: NativePoolDeps): NativePool {
     const client = deps.v2();
     off?.();
     off = null;
+    if (retry !== null) deps.clearTimer(retry);
+    retry = null;
     if (client === null) {
       publish(EMPTY_POOL);
       return;
@@ -118,7 +128,10 @@ export function createNativePool(deps: NativePoolDeps): NativePool {
       .then((status) => publish(poolSnapshotOf(status)))
       // An app slow to answer at boot is asked again (the 2E gate's review, M-5); until a list arrives the page acts as
       // on v1, never as a v2 app with no printers (every printer of the setup would then wait).
-      .catch(() => void deps.setTimer(start, NATIVE_REQUEST_TIMEOUT_MS));
+      .catch(() => {
+        if (retry !== null) deps.clearTimer(retry);
+        retry = deps.setTimer(start, NATIVE_REQUEST_TIMEOUT_MS);
+      });
   }
 
   async function ask(id: string, run: (client: NativeV2Client) => Promise<NativePoolStatus>): Promise<ConnectOutcome> {

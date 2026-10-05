@@ -103,8 +103,10 @@ export function PrintersSetupSection({ printers, stations, devices, devicesFaile
           ))}
           {printers.map((printer) => {
             const canPrint = readyIds.includes(printer.id);
-            const state = printerRowState(printer, devices, { deviceId, localIds, canPrint, devicesFailed });
-            const blocked = testPrintBlock(printer, printers, { deviceId, localIds, canPrint });
+            // The 2F1 review gate (M-2): one of the POS app's printers has a state of its own, so its words name it.
+            const ownState = here.targets[printer.id]?.nativeId !== undefined;
+            const state = printerRowState(printer, devices, { deviceId, localIds, canPrint, devicesFailed, ownState });
+            const blocked = testPrintBlock(printer, printers, { deviceId, localIds, canPrint, ownState });
             return (
               <div key={printer.id} className="space-y-2 rounded-md border border-brand-rule p-3" data-printer-row={printer.id}>
                 <div className="flex flex-wrap items-center gap-2">

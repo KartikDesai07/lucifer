@@ -126,7 +126,8 @@ test("PIN (2B): the draining tab offers itself for direct print, every answer th
   assert.ok(core.includes("if (held.length > 0 && enabled && !busy) return void cycle(true);"), "a held job prints before any lease, past the printer gate (its attempt was made while ready)");
   assert.ok(core.includes("if (deps.now() - next.at < PRINT_DIRECT_HOLD_MS) return next.job;"), "but only well inside its lease (the fresh review, I-1)");
   assert.ok(core.includes("again = answers.get(key)?.more !== false;"), "the ack's more decides the next lease");
-  assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, printer, canPrint]);"), "a printer state change is a nudge, never a lease queued behind a print");
+  // The 2F1 review gate (N-1, deliberate change): only a change of what can print now is a nudge.
+  assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, canPrint, poolReady]);"), "a printer state change is a nudge, never a lease queued behind a print");
   assert.ok(core.includes("if (opened) nudge();"), "so is the gate opening or the bridge freeing up");
 });
 

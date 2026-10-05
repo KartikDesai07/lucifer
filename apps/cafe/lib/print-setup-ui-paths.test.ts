@@ -52,14 +52,16 @@ test("PIN (2D, spec §6.6): with no printer, Set up printers comes first, makes 
 
 test("PIN (2D): each printer row: its state in words, on/off, Test print only when it can print, edit, delete with a question", () => {
   const section = src(`${SETUP}PrintersSetupSection.tsx`);
-  assert.match(section, /const state = printerRowState\(printer, devices, \{ deviceId, localIds, canPrint, devicesFailed \}\);/);
+  // The 2F1 review gate (M-2, deliberate change): one of the POS app's printers is named in its row's words.
+  assert.match(section, /const ownState = here\.targets\[printer\.id\]\?\.nativeId !== undefined;/, "a printer with a state of its own");
+  assert.match(section, /const state = printerRowState\(printer, devices, \{ deviceId, localIds, canPrint, devicesFailed, ownState \}\);/);
   // Session 2F1 (deliberate change): the POS app's printers too (bridge v2), each ready by its own state.
   assert.match(section, /const here = agentPrintersOf\(printers, deviceId, local, desktop, pool\);\s*const localIds = here\.localIds;/, "from the list the page holds (Session 2E: and this PC's Windows printers)");
   assert.match(section, /const readyIds = readyPrinterIdsOf\(localIds, here\.targets, useCanPrintNow\(\), printerStatusOf\);/);
   assert.match(section, /const canPrint = readyIds\.includes\(printer\.id\);/, "each row by its own printer");
   // The 2D review gate (M-4): a printer its writer's lease would never take, or one this device writes but cannot print
   // right now, is not tested (the slip would only wait).
-  assert.match(section, /const blocked = testPrintBlock\(printer, printers, \{ deviceId, localIds, canPrint \}\);/, "Test print only when its slip can print");
+  assert.match(section, /const blocked = testPrintBlock\(printer, printers, \{ deviceId, localIds, canPrint, ownState \}\);/, "Test print only when its slip can print");
   assert.match(section, /disabled=\{blocked !== null \|\| testPrint\.isPending\}/);
   assert.match(section, /await testPrint\.mutateAsync\(printer\.id\);\s*toast\.success\(testPrintSentText\(printer, state\)\);/);
   assert.match(section, /printerBodyOf\(\{ \.\.\.printerDraftOf\(printer, stations\), enabled: !printer\.enabled \}, printers, printer\.id\)/, "on/off saves the printer whole, through the same rules as the form");

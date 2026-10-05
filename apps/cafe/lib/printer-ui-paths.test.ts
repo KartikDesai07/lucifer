@@ -26,6 +26,7 @@ const F = {
   where: `${PRINT}PrintWhereSection.tsx`,
   device: `${PRINT}DevicePrinterSection.tsx`,
   native: `${PRINT}NativePrinterPicker.tsx`,
+  others: `${PRINT}OtherDevicePrinters.tsx`,
   paper: `${PRINT}PaperSizeToggle.tsx`,
   tips: `${PRINT}PrinterTestTips.tsx`,
   advanced: `${PRINT}PrinterAdvanced.tsx`,
@@ -275,6 +276,8 @@ const HYGIENE: [string, number, boolean][] = [
   [F.connect, 110, true], [F.section, 50, false], [F.type, 60, false],
   // Session 1D: the waiting-slips panel follows the same rules (44px controls, no jargon).
   [F.waiting, 120, true],
+  // Session 2F1 (the 2F1 review gate, M-6): the POS app's other printers on bridge v2.
+  [F.others, 120, true],
 ];
 const hygieneMutations = [
   append("a console call", "// " + "console" + ".log(1)"),
