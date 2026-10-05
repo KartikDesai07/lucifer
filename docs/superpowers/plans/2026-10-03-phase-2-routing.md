@@ -43331,3 +43331,174 @@ Add "## Session 2G Results (filled in by the implementer)" at the end of this pl
 **Changed existing pins in 2G** (each follows a deliberate change; name them in Results):
 - G0: `print-agent-printers.test.ts` "PIN (2F1): the page follows the app's printers: the agent's lines, the dot, the drain, the wake's heartbeat, the network printers it writes" (the add line's message).
 - G1: `print-lifecycle-paths.test.ts` "PIN (the Phase 1 final gate, M8): the soak drives only a local POS on a local scratch database, and stops after its first order unless that order is in its own database" (its last line); `apps/cafe/package.json` `testChain` gains `scripts/print-soak-agent.test.ts` (its own array entry).
+
+---
+
+## Session 2G Results (filled in by the implementer)
+
+Executed on 2026-10-06 with superpowers:executing-plans, task by task, G0 → G3.
+
+### Commits (`2bd394f..HEAD`)
+
+| Commit | Task |
+|---|---|
+| `7ba755d` | G0: the 2F2 review gate's page fixes (M-4: no Remove on a printer the setup prints through this device, Change printer keeps it in the POS app, `lanAsked` forgets a printer once the app lists it; m-3: the page removes the network printers it added once the setup stops naming them; m-1: a promoted printer starts at the default paper; m-5: the G-2 test in both orders; the gold review's m-B, m-C, m-F) |
+| `a4c1928` | G1: the print soak measures Phase 2 (`--direct`, `--printer`, `--out` a list; printers mode decided as the server does; the jobs the answers named; a drain that leases only while a job is open) |
+| `9cf56ab` | G2: TEST-CHECKLIST "Stations and printers checks (Phase 2, added 2026-10-05)" |
+| (this commit) | Results |
+
+### Start
+
+- `git branch --show-current`: `feat/printing-phase-2`; HEAD `2bd394f` (= origin); working tree clean.
+- `GIT_TERMINAL_PROMPT=0 git fetch origin` (token credential): `origin/main` still `6ee2b1d`: nothing to merge or note.
+- The gate's applier (`apply_blocks_clone.py`) and `extract_fence.py` copied from the 2F2 gate's scratchpad into this session's; the whole G0–G2 range (plan lines 41733–43098) dry-run against `2bd394f`: **21 ops OK** (as the gate saw; no drift).
+- Disk at the start: C: 4.2 GB free, D: 1.7 GB free (D: 1.5 GB at the end, after the build and the APKs).
+
+### How the code was applied
+
+Every block was applied verbatim to the real repo by the gate's applier, one step range at a time (each task's Step 1, then its Step 3; G2's one change step), so each RED was seen before its code went in: G0 3 + 12 ops, G1 3 + 2, G2 1 (21). After G2, **every file outside `docs/` is blob-identical to the gate's golden branch `g2g-v3`** (tree `694ddd8`; `git ls-tree -r` of both with `docs/` left out: 1,774 entries each, no difference). G0–G2: 14 files, **+566 / −120**, as the gate counted. Every commit has the plan's message plus the session's co-author line.
+
+### Per-task RED → GREEN (every Expected line compared; all matched)
+
+| Task | RED | GREEN |
+|---|---|---|
+| G0 | `print-agent-printers.test.ts` + `device-printer-native.test.ts`: tests 46, pass 41, **fail 5** (`ownPrinterInSetup` and `lanPrintersToRemove` not functions; the 2F2 gate's PIN; the two m-5/m-1 tests) | the five files **99/99**; `TSC_OK`; `LINT_OK` |
+| G1 | `print-soak-agent.test.ts` + `print-lifecycle-paths.test.ts`: tests 23, pass 21, **fail 2** (the M8 pin's last line; `print-soak-agent.ts` missing) | **26/26**; `TSC_OK`; `LINT_OK` |
+| G2 | (one change step: the heading 0 before) | heading **1**; **14** unchecked items |
+
+Line counts at the end: `lib/print-agent-printers.ts` 246, `hooks/use-agent-printers.ts` 147, `components/print/DevicePrinterSection.tsx` 186, `components/print/OtherDevicePrinters.tsx` 115, `components/print/NativePrinterPicker.tsx` 282, `lib/printer/transport-native.ts` 208, `scripts/print-soak.ts` 288, `scripts/print-soak-agent.ts` 112 (new), `scripts/print-soak-agent.test.ts` 102 (new).
+
+### Task G3 Step 1: every suite (at `9cf56ab`)
+
+| Suite | Result |
+|---|---|
+| shared `npm test`; `tsc` | **684/684**; 0 |
+| cafe `npm test` | **4466 tests, 4465 pass, 0 fail, 1 skipped** (the `go-live-dl` pin; +9 over Session 2F2's 4457) |
+| cafe `tsc`; `npm run lint` | 0; 0 errors and the 2 old warnings (`lib/masters-blob.test.ts:331`) |
+| Hub `tsc` | 0 |
+| mobile `tsc`; lint; `npm test`; `test:app` | 0; 0; **125/125**; Jest **3/3** |
+| `gradlew :app:testDebugUnitTest --rerun` (`GRADLE_USER_HOME='D:\gradle-home'`) | the task executed (not UP-TO-DATE), `BUILD SUCCESSFUL`; `PrinterManagerTest` 13, `PoolListTest` 6, `PoolStatusTest` 2: **21 tests, 0 failures, 0 errors** |
+| desktop `npm test`; `typecheck`; `lint` | **192/192**; 0; 0 |
+| `npm run test:print-tools` | **8/8** |
+| live legs (local mongod, `pos_scratch_print_host`) | **`332 passed, 0 failed`** (no leg change) |
+
+Every row equals the plan's Expected (run once, in the background, one suite after another, then the build, then the APKs).
+
+### Changed existing pins (each follows a deliberate change)
+
+Exactly the ones the plan names: G0 `print-agent-printers.test.ts` "PIN (2F1): the page follows the app's printers: the agent's lines, the dot, the drain, the wake's heartbeat, the network printers it writes" (the add line's message); G1 `print-lifecycle-paths.test.ts` "PIN (the Phase 1 final gate, M8): the soak drives only a local POS on a local scratch database, and stops after its first order unless that order is in its own database" (its last line: `printLeased`); `apps/cafe/package.json` `testChain` gains `scripts/print-soak-agent.test.ts` (its own array entry).
+
+### Step 2: the Next production build
+
+Success, **129 routes** (2G adds none), at `9cf56ab`.
+
+### Step 3: the APKs (no app code: byte-identical to Session 2F2's)
+
+`git diff 936e791..HEAD --stat -- apps/mobile workers packages` lists only `apps/mobile/TEST-CHECKLIST.md` (+51). Built with `GRADLE_USER_HOME='D:\gradle-home'`: x86_64 with `gradlew aR -PreactNativeArchitectures=x86_64` (BUILD SUCCESSFUL 49 s), the ARM pair with `assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a` (39 s):
+
+| APK | SHA-256 | Size |
+|---|---|---|
+| x86_64 (`app-release.apk`, the emulator's) | `3736540bff2ab340f6c0a7ba104cd23381a42b858065794105c9b9ff4a3884a1` | 7,435,349 B |
+| arm64-v8a | `b10feedb175d6839317892caa070cfca7d21f88318a97ede97abd6a22c81333a` | 7,303,622 B |
+| armeabi-v7a | `86b7ff13ff68b8d4edc611d4112b0a9309f29c50365f0698ce038d8414d26cd8` | 6,711,460 B |
+
+Every hash **equals** Session 2F2's (and the 2F2 gate's re-build). They stay in this session's scratchpad (`apk-g3/`); `D:\kd\pos-apk-release\Sandbee-POS-final\` is untouched: they reach a device only after the go-live run.
+
+### Step 4: the Phase 2 exit on the harness and the emulator (items 1–12: passed)
+
+**The harness**, exactly as the plan writes it: this branch's build (`9cf56ab`) on 3110 (`e2e.env` copied from Session 2F2's scratchpad: database `pos_scratch_e2e_p1final`), the counting proxy on 3200 → 3110, five fake printers on 9100–9104 with long `--out` paths (nothing vanished); `gate-proxy-2b.mjs`, `p2d-tool.ts`, `p2g-tool.ts`, `since-g3.sh`, `e3/mongo-sampler.mjs` and `e3/report.mjs` extracted from the plans' fences by `extract_fence.py` (each byte-identical to the 2F2 gate's copy). Ports 3110, 3200 and 9100–9104 were free. **As found:** stations Kitchen (default) and Bar, no printer, no station on any category or item, no print host.
+
+**The emulator:** `Pixel_7_API_33` booted by this session (`-memory 4096 -no-audio -no-snapshot-save`, `timeout: 7200000`; C: 4.2 GB free), crash buffer 0 lines. **The app was installed** (the 2F2 gate's `adb shell sync` before its kill held): the release APK, hashed on the device `29115bdf…` (lastUpdateTime 2026-10-05 19:10:33, the gate's put-back), on its start screen with no address (not the demo), notifications not granted. `http://localhost:3100` typed on the start screen opened the local POS signed in (no secret typed); "POS Software" and the seeded menu were checked before any write. The owner's `"Bash(adb:*)"` rule: every `adb shell input` worked. Every tap was on the app's own screens (uiautomator dumps; where a dump left the Change printer form out, as the 2F2 gate found, a `screencap` gave the coordinates). The app's device id is `80cfb12d…`.
+
+| # | Step | Result |
+|---|---|---|
+| 1 | Release APK; `adb reverse tcp:3100 tcp:3200`; the panel → Network printer `10.0.2.2` 9100 → Use this network printer | "Network printer 10.0.2.2 · Network · 80 mm · Connected"; **no** "Other printers on this device" (0 in the dump) |
+| 2 | New Order: Cheesecake, Masala Chai → Send to Kitchen | one KOT **44,454 B** on 9100; `POST /api/orders` (`lease`, `agent`) 201 and one ack: **an old APK (bridge v1) still prints in simple mode** |
+| 3 | `adb install -r` of this session's x86_64 APK (hashed on the device `3736540b…`); relaunch | the local POS, signed in, **"Printer connected" at once**; crash buffer 0 |
+| 4 | Sidebar → Printer setup → **Set up printers** | Printer 1 "Prints on this device · Network 10.0.2.2:9100 · printed by This device · Bill, Full KOT copy, Notices, End of day · Paper 80 mm · KOT copies 1 · Bill copies 1"; `POST /api/printers` 201, one printers read, one lease |
+| 5 | `p2g-tool.ts writer 'Printer 1'` (`80cfb12d…`); `printer 'Bar printer' … 10.0.2.2 9101 58 station:Bar,notices` 201; `printer 'Kitchen printer' … 10.0.2.2 9102 80 station:Kitchen,bill,notices` 201; `category Beverages Bar` 200; Refresh; the panel | this device's printer (Network printer 10.0.2.2, 9100, Printer 1): **"Printer setup prints slips here: to remove it, change or delete that printer in Printer setup first." and no Remove** (no Remove node anywhere in the panel); "Other printers on this device": 10.0.2.2:9101 and 10.0.2.2:9102, each Connected, each with the same sentence (the page added both to the app); the Refresh cost one printers read and one lease |
+| 6 | New Order: Cheesecake, Masala Chai → Send to Kitchen | **KITCHEN 44,238 B on 9102, BAR 28,110 B on 9101, ALL STATIONS 48,198 B on 9100**, each `leased(direct)`, epoch 1 (`created`, `leased(direct)`, `printed`); the order and three acks, **no lease** |
+| 7 | The panel → Bill printer for this device (the select listed "Default (Printer 1)", "Printer 1", "Kitchen printer") → Kitchen printer; the same round → Pay Now (Cash, Place Order); then the bill printer back to Default (Printer 1) | the three KOTs as in item 6, then **the bill 40,854 B on 9102**: the order, ack, ack, ack, lease, ack |
+| 8 | Change printer (the button reads "Keep this printer" while the picker is open) → Network printer `10.0.2.2` `9103` → Use this network printer; Send to Kitchen | this device's printer is 10.0.2.2:9103, **with Remove**; "Other printers on this device": **9100 (the sentence: kept in the app, M-4)**, 9101 and 9102 (the sentence); two 0-byte connects on 9103 and two leases (the state changes); the three slips as in item 6 (9100 still prints the full copy), the order and three acks, no lease |
+| 9 | Change printer → `10.0.2.2` `9100`; then Change printer → `10.0.2.2` `9103`; Send to Kitchen; then Change printer → `10.0.2.2` `9100` | after the first (a plain select: 9103 is not a setup printer): this device's printer 9100 (the sentence, no Remove), Other printers 9101, 9102 (the sentence), 9103 (Remove); after the second (**only chosen**, the gold review's m-B: one 0-byte connect on 9103, one lease): this device's printer 9103 (Remove), Other printers **9100 (the sentence)**, 9101, 9102, and the three slips as in item 6 (the order and three acks, no lease); after the third: this device's printer 9100 again (the sentence) |
+| 10 | `p2g-tool.ts printer 'Kitchen printer' … 10.0.2.2 9104 80 station:Kitchen,bill,notices` (PUT 200); Refresh (a reload: one printers read, one lease); the panel; Send to Kitchen | "Other printers on this device": 9101 (the sentence), 9103 (Remove) and **9104 (the sentence)**; **9102 gone** (the page removed the printer it had added, its record surviving the reload: m-3); **KITCHEN 44,238 B on 9104**, BAR 28,110 B on 9101, ALL STATIONS 48,198 B on 9100; the order and three acks, no lease |
+| 11 | The measurement (Step 5) | below |
+| 12 | `adb logcat -b crash -d` | **0 lines** (throughout) |
+
+Every result equals the plan's Expected column (the gate's run); the order of the "Other printers" rows can differ from the plan's wording (the app lists them in its own order). **Paper over the exit:** 9100 six slips (44,454 from the release APK; ALL STATIONS 48,198 five times), 9101 five (BAR 28,110), 9102 five (KITCHEN 44,238 four times and the bill 40,854), 9104 one (KITCHEN 44,238), 9103 none (it only became this device's printer, never a slip's printer). **Requests through the proxy before the measurement:** 6 orders, 17 acks, 11 leases (on the app's state changes, its printers reads and reloads, and item 7's bill; none after a round printed direct), 51 wakes, 6 printers reads, 1 printers write, 2 stations reads, 2 print-devices reads.
+
+### Step 5: the free-tier measurement in both modes (four projections: `pass: true`)
+
+Run exactly as the plan writes it, in its order, after item 10, with nothing else on the local mongod (only the POS server held connections to it; the fresh reviewer was told not to touch it). Each run: the opcounter sampler started first (killed by its own script 15 s after `T1`), `T0` and the POS server's CPU (`(Get-Process -Id <pid>).TotalProcessorTime`), the run, `T1` and the CPU again, then `report.mjs run` (`--slips` = the soak's **jobs**). The soak was G1's `scripts/print-soak.ts` through the counting proxy (`--base http://localhost:3200`), 100 orders every 1.5 s (with a second round on every other order and a Pay Now bill on each: 250 slips).
+
+| Run | What | Soak | Requests in the window (by route) | Per job | CPU | Mongo |
+|---|---|---|---|---|---|---|
+| M5 | printers mode, the app writes Printer 1 (9100), Bar printer (9101), Kitchen printer (9104); the soak only orders | `"printers mode, the printers' writer prints"`, 250 slips → **400 jobs, all printed**, 400 full copies on paper, 0 labelled, `pass: true` | 1,019 in 4.6 min: orders 100, rounds 50, bills 100, **lease 250, ack 400**, wake 88, pulse 13, tables 9, orders reads 9 | **1.85** print requests (lease + ack 1.63) | 12,281 ms, **12.05 ms** per request | 15.11 ops; raw peak 27.84/s |
+| M6 | printers mode, idle 10 min, the app as writer on `/pos` | — | 119: **wake 50** (the 3 s tail after M5, then 15 s), pulse 29, tables 20, orders reads 20; **no lease** | — | 2,672 ms, 22.45 ms per request | 617 ops; peak 2.5/s |
+| M4 | printers mode, the three printers moved to `soak-device` (`127.0.0.1` 9100/9101/9104, PUT 200 each); the soak writes them `--direct` | `"printers mode, soak agent prints, direct"`, **400 jobs, all printed**, 400 full copies; the soak's print requests: **ack 400, no lease**; `pass: true` | 668 in 2.7 min: orders 100, rounds 50, bills 100, **ack 400**, pulse 8, tables 5, orders reads 5; **no lease, no wake** | **1.00** | 8,562 ms, 12.82 ms | 9.05 ops; raw peak 26.07/s |
+| M1 | simple mode, no host (`reset2d`, `station Bar`; host null); the soak prints its own slips `--agent 127.0.0.1:9103 --direct` | `"simple mode, soak agent prints, direct"`, **250 jobs printed**, 250 full copies; **ack 250, no lease**; `pass: true` | 518 in 2.6 min: orders 100, rounds 50, bills 100, **ack 250**, pulse 8, tables 5, orders reads 5; **no lease** | **1.00** | 6,797 ms, 13.12 ms | 9.46 ops; raw peak 18.07/s |
+| M2 | simple mode, the app as the print host (the panel → Print all slips on this device: "This device prints all slips."; no Android background prompt appeared; force-stop, relaunch); the soak only orders | `"simple mode, app host prints"`, **250 jobs printed on 9100**, 250 full copies, `pass: true` | 834 in 2.8 min: orders 100, rounds 50, bills 100, **lease 250, ack 250**, wake 54, host beat 9, pulse 9, tables 6, orders reads 6 | **2.22** (lease + ack **2.00**) | 9,203 ms, 11.03 ms | 13.44 ops; raw peak 22.48/s |
+| M3 | simple mode, idle 10 min, the app as host on `/pos`; then the panel → Stop printing here → Yes, remove ("Printing device removed — 0 waiting slips cancelled."; host null) | — | 158: **wake 58**, host beat 30, pulse 30, tables 20, orders reads 20; **no lease** | — | 2,656 ms, 16.81 ms | 635 ops; peak 2.9/s |
+
+**The projections** (`report.mjs project`, the busy day of spec §17.2: 1,200 slips, 12 h):
+
+| Projection | Soak + idle | Printing requests a day (share of the free 33,333) | Worst case (socket down) | Printing CPU a day (share of the free 480 s) | Mongo ops per job | Atlas at the busy rush (raw peak) | Pass |
+|---|---|---|---|---|---|---|---|
+| P1 simple mode, direct | M1 + M3 | 1,920 (**5.8 %**) | 5,376 | 27.8 s (**5.8 %**) | 9.46 | **0.80/s** (18.07) | **true** |
+| P2 simple mode, the host prints another device's slips | M2 + M3 | 3,384 (**10.2 %**) | 6,840 | 41.5 s (**8.6 %**) | 13.44 | **1.06/s** (22.48) | **true** |
+| P3 printers mode, direct | M4 + M6 | 1,920 (**5.8 %**) | 4,800 | 31.5 s (**6.6 %**) | 9.05 | **1.16/s** (26.07) | **true** |
+| P4 printers mode, the writer prints another device's slips | M5 + M6 | 2,940 (**8.8 %**) | 5,820 | 42.9 s (**8.9 %**) | 15.11 | **2.13/s** (27.84) | **true** |
+
+**Against the pins** (`packages/shared/src/print-budget.test.ts`): a slip the asking device prints itself costs **one request, its ack** (M1 and M4: 1.00 per job, no lease, decisions 15 and 9); a slip another device prints costs a lease and an ack (M2: 2.00 per job; M5: 1.63, since one lease hands the writer several printers' jobs); every normal day stays under A5's 5,790 (the highest is P2's 3,384) and every worst case under 17,628 (the highest is P2's 6,840) and §17.2's 17,040. Printing stays at most 10.2 % of the invocations and 8.9 % of the Active CPU (limits 20 % and 15 %), Atlas at most 2.13 operations a second at the busy rush (limit 10).
+
+**How to read it.** The local server's CPU per request stands in for Vercel's Active CPU. The local POS has no realtime Worker, so the wake polls at the socket-down cadence (3 s for 2 min after a job, then 15 s): the idle runs are §17.2's worst case, and the normal-day projection uses the socket-healthy 60 s cadence. The raw Mongo peaks are the soak's own rate (≈ 1,300–2,270 orders an hour, against the busy rush's 100), scaled to the rush by `report.mjs`. The soak's drain reads (a `countDocuments` every 2 s) and the sampler's `serverStatus` are harness load inside the measured Mongo operations, as in Session 1E. M1 and M4 have no wake of their own; pairing them with the host's or the writer's idle wake is the conservative case.
+
+### Step 6: put back
+
+`p2d-tool.ts reset2d`, then `p2g-tool.ts station Bar` (201): **as found** (Kitchen (default), Bar; no printer; no station on any category or item; host null). The page had already removed the printers it added (9101, 9102, 9104). The app's printers removed: this device's printer (9100) → Remove → Yes, remove (the app promoted 9103: G-2), then 9103 → Remove → Yes, remove → "No printer set up". More options → Change POS address → the start screen, "Clear POS address" (the placeholder shows). **The release APK reinstalled** (`adb install -r`, hashed on the device `29115bdf…`), relaunched: the start screen with no address; notifications not granted (never granted in this session); crash buffer 0. `adb reverse --remove-all`, then `adb reverse tcp:3100 tcp:3100`; **`adb shell sync`, then `adb emu kill`**; the POS server, the proxy and the five fake printers stopped by PID after checking each command line. Leftovers, as earlier sessions': the app's device row and the test orders and jobs in `pos_scratch_e2e_p1final` (retention prunes the jobs; devices go after 7 days).
+
+### Step 7: the owner's steps (open; not run by the session)
+
+- **TEST-CHECKLIST "Stations and printers checks (Phase 2, added 2026-10-05)"** on real printers (Task G2), with the Phase 1 checks above it.
+- **Part C:** TEST-CHECKLIST "Several printers on one Windows PC" with the Windows app 1.11.0 on the owner's counter PC (the 2E gate's ruling).
+
+### Step 8: the fresh review
+
+**Claude Fable 5.1** (no rate limit this time), a fresh read-only subagent that wrote none of the code, read `936e791..9cf56ab` against this plan (decisions 1–16, "2F1 review gate: rulings", "2F2 review gate: rulings", Session 2G and its Review Focus, passed verbatim) and spec §8.1, §9.2, §13, §14, §17. It was dispatched during the idle run M6, told not to touch the local mongod, the harness's ports, adb, the emulator, the build or Gradle while the measurement ran. It re-ran `tsc` (0), eslint on the 12 touched files (0) and the touched suites and their neighbours (`print-agent-printers`, `device-printer-native`, `print-soak-agent`, `print-lifecycle-paths`, `printer-ui-paths`, `print-setup-ui-paths`, `print-host-card-paths`, `native-pool`, `print-agent`: **195/195**), checked the soak's Create/Replace blocks byte-identical to the committed files, and wrote 17 scratch probes in this session's scratchpad (`review2g/`: `soak-agent-probes.test.ts`, `agent-printers-probes.test.ts`, `native-paper-probes.test.ts`; all pass; never in the repo).
+
+**Verdict "Ship": no Critical, no Important.** It found sound: `lanPrintersToRemove` keeps every id the setup still wants in the record even before the app lists it (no forgotten ask during a slow select; add and remove disjoint, so no flip-flop); the m-1 paper fix across the APK update (`PrinterIds` spelling unchanged since `7ac4bcf`, so a 58 mm cafe keeps its paper); the soak agent as a stand-in for the page (the same four headers, every copy in one lease, "maybe" after the first copy, `nextAttemptAt` honoured, an absent `more` leases); printers mode decided as the server does, so M4's "acks = jobs, no lease" is the server's property; every label the checklist quotes exists in the UI; the G0 PIN holds the load-bearing lines.
+
+**Six minors.** Each was re-graded by its effect on a cafe: none loses, doubles or misplaces a slip, none adds a request, and each needs a rare window or touches only a tool. None entered a fix pass; no code changed after `9cf56ab`.
+
+| # | Finding | For |
+|---|---|---|
+| m-1 | `OtherDevicePrinters.tsx` still offers Remove on a setup printer before the printers read has answered (m-C was applied to the device section only). A cold reload, the panel opened at once and Remove tapped in that moment: a network printer comes back by itself once, a Bluetooth one waits until staff add it again (its slips wait, visibly) | The final Phase 2 gate: Remove only once the read answered or failed, as `DevicePrinterSection` does (two lines) |
+| m-2 | A **failed** printers read counts as known (`use-agent-printers.ts:80`), so while the server is unreachable Change printer replaces a setup printer (m-F's own argument applies) | The final Phase 2 gate: keep in the app unless the setup is actually loaded (`inSetup \|\| !loaded`) |
+| m-3 | Change printer from a setup printer to a **new** Bluetooth/USB printer connects it twice (the v2 add, then the v1 select of the listed id makes a new manager): a misleading "could not connect" toast is possible on a printer that refuses an immediate reconnect; the app connects it seconds later | Phase 3 (app code): `putDefault` of a listed id only moves the default |
+| m-4 | The `pos.app-lan-added.v1` record drops an id before the app confirms its removal: a remove that times out leaves a dead printer the page never removes again (staff can Remove it: it is no longer a setup printer) | The final Phase 2 gate or Phase 4: prune only ids the app no longer lists |
+| m-5 | `print-soak.ts` accepts a malformed `--printer`/`--agent` value (no `=`, no port) until mid-run | A tool fix whenever the soak is next touched |
+| m-6 | In a `--drop-after` run the soak's drain leases up to every 5 s during a backoff (the page sets one timer): such a run overstates leases; not reached by M1–M5 (no drops) | A tool fix whenever the soak is next touched |
+
+**The reviewer's "declined to judge" list** (ten lines, each ruled in the ledger: each stands): a bridge v1 app's Change printer still replacing a setup printer (inherent to v1; M-4's keep is scoped to v2); the record being per origin (a changed POS address leaves page-added printers staff can Remove); a lost device id clearing the record with it; a setup printer re-addressed mid-print (inherent); the soak drain's `countDocuments` on the measured mongod (harness load, as in Session 1E); `lanAsked` asking once per page for a select the app refuses (as in 2F1); a one-render window with an empty device id (the panel opens long after); the projections' pairing of M1/M4 with an idle wake (the plan's conservative case); two Bluetooth links at once depending on the phone (hardware; the checklist says to note the model); the inline confirm race when the read lands in the same instant (the end state is correct).
+
+### Deviations and rulings
+
+- **No code deviation:** every block went in verbatim. No plan text was wrong, and nothing beyond the plan was committed except this Results section.
+- **The app was present at the start** (the release APK `29115bdf…`, on its start screen with no address): no reinstall was needed before item 1.
+- **Ruling: a Refresh before M2's panel step.** After `reset2d` (a direct database write, no admin save, so no `print-setup` frame; and no realtime Worker locally) the app's page still held its M4-era printers read, so the panel said "Printers are set up" and offered no "Print all slips on this device"; the top-bar Refresh (a reload, panel closed) showed simple mode. Harness only. Cost if wrong: none.
+- **Ruling: Step 5's "Afterwards: `adb reverse --remove-all; adb reverse tcp:3100 tcp:3100`"** ran at the end of Step 6 instead: the put-back's taps need the app on the local POS through the proxy, and Step 6 orders it that way. Cost if wrong: none.
+- **Ruling: the fresh review was dispatched during M6** (an idle run), read-only and told not to touch the local mongod, so the measurement stayed clean (only the POS server held Mongo connections). Cost if wrong: the reviewer's unit tests added CPU load on the PC; the server's own CPU time (what the measurement reads) is per process.
+- **Ruling: no fix pass.** Nothing graded Critical or Important after re-grading by effect; the six minors and the ten declined lines are listed for the final Phase 2 gate.
+- **The skill's `task-start`** extracts only numeric "Task N" headings, so each G-task's brief was read from the plan by line range (as in 2D–2F2), and the ledger lines were written by hand.
+- **Ruling: the plan's workspace is kept.** `.superpowers/sdd/2026-10-03-phase-2-routing/` (git-ignored) is not deleted: the final Phase 2 gate reads its ledger.
+- Every decision is in that ledger.
+
+### Open for the final Phase 2 gate
+
+- **The six minors above** (m-1, m-2 and m-4 are two-line page fixes; m-3 is Phase 3's app code; m-5 and m-6 are the soak's).
+- **The owner's steps:** the TEST-CHECKLIST stations and printers checks on real printers, and Part C on the counter PC (Windows app 1.11.0).
+- Then the owner's merge decision and the go-live run: the Worker first, then the web, then every POS screen reloaded; the Windows app 1.11.0 and the new APK (`3736540b…` x86_64 for the emulator; `b10feedb…` arm64 and `86b7ff13…` armv7 for devices) reach devices only then. Nothing is deployed.
+
+### Pushed
+
+With the token only: `GIT_TERMINAL_PROMPT=0 git push origin feat/printing-phase-2`. `origin/main` was still `6ee2b1d` at the end (no merge). `main` untouched; nothing deployed. The emulator was stopped with `adb emu kill` after `adb shell sync`, the release APK installed on its start screen.
