@@ -12,6 +12,7 @@ import {
   PRINTER_DEVICE_REQUIRED,
   PRINTER_HOST_REQUIRED,
   PRINTER_LOCAL_REQUIRED,
+  PRINTER_WINDOWS_REQUIRED,
   PRINTER_NAME_REQUIRED,
   PRINTER_PORT_INVALID,
   SETUP_PRINTER_NAME,
@@ -118,6 +119,9 @@ test("2D: the form's body: what is missing in words; Full KOT copy clears the st
   assert.equal(error({ ...base, port: "70000" }), PRINTER_PORT_INVALID);
   assert.equal(error({ ...base, primaryDeviceId: "" }), PRINTER_DEVICE_REQUIRED);
   assert.equal(error({ ...base, kind: "device", device: null }), PRINTER_LOCAL_REQUIRED);
+  // The 2E review gate (M-4): a form that chooses the printer itself (a Windows app's printers) says so.
+  const windows = printerBodyOf({ ...base, kind: "device", device: null }, [], undefined, PRINTER_WINDOWS_REQUIRED);
+  assert.deepEqual(windows, { ok: false, error: "Choose the Windows printer." }, "the Windows form's own words");
   const full = printerBodyOf({ ...base, kotAll: true }, []);
   assert.ok(full.ok && full.body.slips.kotStations.length === 0 && full.body.slips.kotAll, "a full copy takes every station already");
   const kitchenTab = printer("Counter", { connection: { kind: "lan", host: "10.0.0.5", port: 9100 }, primaryDeviceId: "kitchen-tab" });
@@ -149,6 +153,8 @@ test("2D: each printer in words: its connection, its slips and stations, and its
   assert.deepEqual(printerRowState(lan, DEVICES, here), { tone: "ok", text: "POS app is online" });
   assert.deepEqual(printerRowState({ ...lan, primaryDeviceId: "phone-0002" }, DEVICES, here), { tone: "bad", text: "POS app is offline" });
   assert.deepEqual(printerRowState({ ...lan, primaryDeviceId: "new-device" }, DEVICES, here), { tone: "bad", text: "Its printing device has not checked in" });
+  // The 2E review gate (M-3): with the devices read failed, nothing is claimed about it.
+  assert.deepEqual(printerRowState({ ...lan, primaryDeviceId: "new-device" }, [], { ...here, devicesFailed: true }), { tone: "off", text: "Its printing device is unknown (the devices did not load)" });
   assert.deepEqual(printerRowState({ ...lan, primaryDeviceId: undefined }, DEVICES, here), { tone: "bad", text: "No printing device" });
   assert.deepEqual(printerRowState({ ...lan, enabled: false }, DEVICES, here), { tone: "off", text: "Switched off" });
   assert.deepEqual(printerRowState({ ...lan, slips: NO_SLIPS }, DEVICES, here), { tone: "off", text: "Takes no slips" });

@@ -28,8 +28,11 @@ test("PIN (2D): the admin Printer setup page shows the outlet's sections after t
   assert.match(container, /void qc\.invalidateQueries\(\{ queryKey: PRINTERS_KEYS\.all \}\);/, "the printers are read again when the page opens");
   // The 2D gate's review (I-1, M-1): nothing shows, and so nothing saves, before both lists are in; the 2D review gate
   // (M-7): the devices too, or every remote printer reads "has not checked in" and the LAN form offers no device.
-  assert.match(container, /if \(!loaded \|\| !ready \|\| !devicesLoaded\) return <p role="status"/, "the sections wait for the printers, the stations and the devices");
-  assert.match(container, /if \(failed \|\| stationsFailed \|\| devicesFailed\) return <p role="alert"/, "and say so when any read failed");
+  // The 2E review gate (M-3): a failed devices read no longer hides the printers and the stations.
+  assert.match(container, /if \(!loaded \|\| !ready \|\| \(!devicesLoaded && !devicesFailed\)\) return <p role="status"/, "the sections wait for the printers, the stations and the devices");
+  assert.match(container, /if \(failed \|\| stationsFailed\) return <p role="alert"/, "and say so when the printers or the stations failed");
+  assert.match(container, /<DevicesSetupSection devices=\{devices\} failed=\{devicesFailed\}/, "a failed devices read is said in its own section");
+  assert.match(src(`${SETUP}DevicesSetupSection.tsx`), /const FAILED = "Couldn't load the devices\. Reload the page to try again\.";/);
   assert.match(container, /const \{ printers, loaded, failed \} = usePrintersRead\(true\);/, "the agent's entry, read without a second subscription");
 });
 
@@ -49,7 +52,7 @@ test("PIN (2D, spec §6.6): with no printer, Set up printers comes first, makes 
 
 test("PIN (2D): each printer row: its state in words, on/off, Test print only when it can print, edit, delete with a question", () => {
   const section = src(`${SETUP}PrintersSetupSection.tsx`);
-  assert.match(section, /const state = printerRowState\(printer, devices, \{ deviceId, localIds, canPrint \}\);/);
+  assert.match(section, /const state = printerRowState\(printer, devices, \{ deviceId, localIds, canPrint, devicesFailed \}\);/);
   assert.match(section, /const localIds = agentPrintersOf\(printers, deviceId, local, desktop\)\.localIds;/, "from the list the page holds (Session 2E: and this PC's Windows printers)");
   // The 2D review gate (M-4): a printer its writer's lease would never take, or one this device writes but cannot print
   // right now, is not tested (the slip would only wait).
@@ -66,7 +69,8 @@ test("PIN (2D): each printer row: its state in words, on/off, Test print only wh
 
 test("PIN (2D, spec §11): the printer form: a network printer's printing device from the Android app devices, this device's printer never typed, Full KOT copy clears the stations", () => {
   const form = src(`${SETUP}PrinterFormDialog.tsx`);
-  assert.match(form, /const result = printerBodyOf\(draft, printers, printer\?\.id\);/, "the body and its rules from the pure lib");
+  // The 2E review gate (M-4): a form choosing a Windows printer says "Choose the Windows printer." when none is chosen.
+  assert.match(form, /const result = printerBodyOf\(draft, printers, printer\?\.id, windowsHere \? PRINTER_WINDOWS_REQUIRED : undefined\);/, "the body and its rules from the pure lib");
   assert.match(form, /devices\.filter\(\(device\) => device\.shell === "android" && device\.deviceId !== deviceId\)/, "only Android app devices print to a LAN printer for now");
   assert.match(form, /\[\.\.\.\(caps\.native && deviceId !== "" \? \[deviceId\] : \[\]\), \.\.\.android\]/, "this device when it is the Android app");
   assert.match(form, /onClick=\{\(\) => setDraft\(\(current\) => draftWithLocal\(current, here\)\)\}/, "Use this device's printer copies its saved printer");

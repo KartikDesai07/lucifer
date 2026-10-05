@@ -69,7 +69,7 @@ export type PrinterRowTone = "ok" | "bad" | "off";
 export function printerRowState(
   printer: PrinterConfig,
   devices: readonly PrintDeviceSummary[],
-  here: { deviceId: string; localIds: readonly string[]; canPrint: boolean },
+  here: { deviceId: string; localIds: readonly string[]; canPrint: boolean; devicesFailed?: boolean },
 ): { tone: PrinterRowTone; text: string } {
   if (!printer.enabled) return { tone: "off", text: "Switched off" };
   if (!printerTakesSlips(printer.slips)) return { tone: "off", text: "Takes no slips" };
@@ -80,7 +80,8 @@ export function printerRowState(
     return here.canPrint ? { tone: "ok", text: "Prints on this device" } : { tone: "bad", text: "This device's printer is not ready" };
   }
   const row = devices.find((device) => device.deviceId === writer);
-  if (row === undefined) return { tone: "bad", text: "Its printing device has not checked in" };
+  // The 2E review gate (M-3): with the devices read failed, nothing is known of it (not "has not checked in").
+  if (row === undefined) return here.devicesFailed === true ? { tone: "off", text: "Its printing device is unknown (the devices did not load)" } : { tone: "bad", text: "Its printing device has not checked in" };
   return row.online ? { tone: "ok", text: `${row.label} is online` } : { tone: "bad", text: `${row.label} is offline` };
 }
 

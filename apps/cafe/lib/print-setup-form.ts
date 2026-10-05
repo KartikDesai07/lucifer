@@ -164,6 +164,8 @@ export const PRINTER_HOST_REQUIRED = "Type the printer's network address.";
 export const PRINTER_PORT_INVALID = "The port is a number from 1 to 65535 (usually 9100).";
 export const PRINTER_DEVICE_REQUIRED = "Choose the device that prints to this network printer.";
 export const PRINTER_LOCAL_REQUIRED = "Connect this device's printer first, then use it here.";
+/** The 2E review gate (M-4): on a Windows app that prints on a named printer, the printer is chosen in the form. */
+export const PRINTER_WINDOWS_REQUIRED = "Choose the Windows printer.";
 
 function copiesOf(n: number): number {
   return Math.min(PRINTER_COPIES_MAX, Math.max(PRINTER_COPIES_MIN, Math.round(n)));
@@ -171,11 +173,13 @@ function copiesOf(n: number): number {
 
 /** The body the save sends, or what is missing in words. Full KOT copy clears the station boxes (a station on a
  *  full-copy printer adds nothing to its paper). One routable printer per printing device, except a Windows PC's
- *  Windows printers, each a different one (Session 2E). */
+ *  Windows printers, each a different one (Session 2E). `localRequired`: the words for a device printer not chosen
+ *  yet, when the form chooses it itself (the 2E review gate, M-4: "Choose the Windows printer."). */
 export function printerBodyOf(
   draft: PrinterDraft,
   printers: readonly PrinterConfig[],
   editingId?: string,
+  localRequired: string = PRINTER_LOCAL_REQUIRED,
 ): { ok: true; body: PrinterBody } | { ok: false; error: string } {
   const name = draft.name.trim();
   if (name === "") return { ok: false, error: PRINTER_NAME_REQUIRED };
@@ -190,7 +194,7 @@ export function printerBodyOf(
     connection = { kind: "lan", host, port };
     primaryDeviceId = draft.primaryDeviceId;
   } else {
-    if (draft.device === null) return { ok: false, error: PRINTER_LOCAL_REQUIRED };
+    if (draft.device === null) return { ok: false, error: localRequired };
     connection = draft.device;
   }
   const body: PrinterBody = {

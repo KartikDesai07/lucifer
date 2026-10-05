@@ -20,7 +20,7 @@ import { useDesktopPrinterChoices, useSavePrinter } from "@/hooks/use-print-setu
 import { useSettings } from "@/hooks/use-settings";
 import { desktopPrintsOnNamed } from "@/lib/desktop-shell-printer";
 import { printConfigOf } from "@/lib/print";
-import { draftWithLocal, localPrinterConnectionOf, printerBodyOf, printerDraftOf, printerPaperOf, windowsPrinterConnectionOf, type PrinterDraft } from "@/lib/print-setup-form";
+import { PRINTER_WINDOWS_REQUIRED, draftWithLocal, localPrinterConnectionOf, printerBodyOf, printerDraftOf, printerPaperOf, windowsPrinterConnectionOf, type PrinterDraft } from "@/lib/print-setup-form";
 import { deviceConnectionText, deviceName } from "@/lib/print-setup-text";
 
 interface PrinterFormDialogProps {
@@ -65,7 +65,7 @@ export function PrinterFormDialog({ printer, printers, stations, devices, device
   const shownDevice = draft.device === null ? null : `${deviceConnectionText(draft.device, devices, deviceId)} (${draft.device.address})`;
 
   const submit = async () => {
-    const result = printerBodyOf(draft, printers, printer?.id);
+    const result = printerBodyOf(draft, printers, printer?.id, windowsHere ? PRINTER_WINDOWS_REQUIRED : undefined);
     if (!result.ok) {
       setError(result.error);
       return;

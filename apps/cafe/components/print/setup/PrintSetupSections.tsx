@@ -18,7 +18,8 @@ const FAILED = "Couldn't load the printer setup. Reload the page to try again.";
 // read the agent makes (one cache entry), read again when the page opens so an admin edits the setup as it is now.
 // Nothing shows until both the printers and the stations are in (the 2D gate's review, I-1 and M-1): an empty list
 // while loading would offer Set up printers to a cafe that has printers, or save a printer with its stations gone.
-// The devices too (the 2D review gate, M-7): without them every remote printer reads "has not checked in".
+// The devices too (the 2D review gate, M-7): without them every remote printer reads "has not checked in". A failed
+// devices read (the 2E review gate, M-3) hides nothing: the Devices section and the rows say the devices are unknown.
 export function PrintSetupSections() {
   const qc = useQueryClient();
   const { deviceId } = usePrintHostContext();
@@ -30,13 +31,13 @@ export function PrintSetupSections() {
     void qc.invalidateQueries({ queryKey: PRINTERS_KEYS.all });
   }, [qc]);
 
-  if (failed || stationsFailed || devicesFailed) return <p role="alert" className="text-destructive">{FAILED}</p>;
-  if (!loaded || !ready || !devicesLoaded) return <p role="status" className="text-brand-muted">{LOADING}</p>;
+  if (failed || stationsFailed) return <p role="alert" className="text-destructive">{FAILED}</p>;
+  if (!loaded || !ready || (!devicesLoaded && !devicesFailed)) return <p role="status" className="text-brand-muted">{LOADING}</p>;
   return (
     <div className="space-y-6" data-print-setup>
-      <PrintersSetupSection printers={printers} stations={stations} devices={devices} deviceId={deviceId} />
+      <PrintersSetupSection printers={printers} stations={stations} devices={devices} devicesFailed={devicesFailed} deviceId={deviceId} />
       <StationsSetupSection stations={stations} printers={printers} />
-      <DevicesSetupSection devices={devices} printers={printers} deviceId={deviceId} />
+      <DevicesSetupSection devices={devices} failed={devicesFailed} printers={printers} deviceId={deviceId} />
     </div>
   );
 }

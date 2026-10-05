@@ -25,6 +25,8 @@ interface PrintersSetupSectionProps {
   printers: readonly PrinterConfig[];
   stations: readonly StationConfig[];
   devices: readonly PrintDeviceSummary[];
+  /** The devices read failed (the 2E review gate, M-3): a remote printer's row says its device is unknown. */
+  devicesFailed: boolean;
   deviceId: string;
 }
 
@@ -34,7 +36,7 @@ const SECTION_DESCRIPTION = "Each printer, the slips it prints and the device th
 // device's heartbeat, or this device's own printer), its connection, slips, paper and copies; switch it on or off,
 // test it, edit it, delete it. With no printer yet, "Set up printers" comes first (a printer added before it
 // would switch the whole cafe to printers mode with only that printer, spec §6.6).
-export function PrintersSetupSection({ printers, stations, devices, deviceId }: PrintersSetupSectionProps) {
+export function PrintersSetupSection({ printers, stations, devices, devicesFailed, deviceId }: PrintersSetupSectionProps) {
   const [form, setForm] = useState<{ key: string; printer: PrinterConfig | null } | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   // The 2D review gate (M-5): switching a printer off fails its waiting slips, so it asks first, as Delete does.
@@ -95,7 +97,7 @@ export function PrintersSetupSection({ printers, stations, devices, deviceId }: 
             </p>
           ))}
           {printers.map((printer) => {
-            const state = printerRowState(printer, devices, { deviceId, localIds, canPrint });
+            const state = printerRowState(printer, devices, { deviceId, localIds, canPrint, devicesFailed });
             const blocked = testPrintBlock(printer, printers, { deviceId, localIds, canPrint });
             return (
               <div key={printer.id} className="space-y-2 rounded-md border border-brand-rule p-3" data-printer-row={printer.id}>

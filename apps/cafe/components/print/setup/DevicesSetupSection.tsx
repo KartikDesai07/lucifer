@@ -12,6 +12,8 @@ import { cn } from "@/lib/utils";
 
 interface DevicesSetupSectionProps {
   devices: readonly PrintDeviceSummary[];
+  /** The devices read failed (the 2E review gate, M-3): said here, the rest of the setup still shown. */
+  failed: boolean;
   printers: readonly PrinterConfig[];
   deviceId: string;
 }
@@ -19,6 +21,7 @@ interface DevicesSetupSectionProps {
 const SECTION_DESCRIPTION = "The devices that print, whether they are online, and the printers they print.";
 const EMPTY =
   "No device has checked in yet. A device shows here once it prints: the printing device, or a printer's device. To make a tablet a printer's device, open Printer setup on it.";
+const FAILED = "Couldn't load the devices. Reload the page to try again.";
 const SHELL_WORDS: Record<PrintDeviceShell, string> = { android: "POS app (Android)", windows: "Windows app", browser: "Browser" };
 
 function seenAt(iso: string): string {
@@ -27,10 +30,16 @@ function seenAt(iso: string): string {
 
 // Printing redesign, Phase 2 Session 2D (spec §11 Devices): each device that prints or leases, its kind, whether it
 // is online (seen within 90 s, the server's verdict) and the printers it prints. Read when the page opens.
-export function DevicesSetupSection({ devices, printers, deviceId }: DevicesSetupSectionProps) {
+export function DevicesSetupSection({ devices, failed, printers, deviceId }: DevicesSetupSectionProps) {
   return (
     <PrinterSection icon={MonitorSmartphone} title="Devices" description={SECTION_DESCRIPTION}>
-      {devices.length === 0 && <p className="text-brand-muted">{EMPTY}</p>}
+      {failed ? (
+        <p role="alert" className="text-destructive">
+          {FAILED}
+        </p>
+      ) : (
+        devices.length === 0 && <p className="text-brand-muted">{EMPTY}</p>
+      )}
       {devices.map((device) => {
         // Only printers routing sends slips to (the 2D review gate, M-8): switched on and taking a slip.
         const writes = routablePrinters(printers).filter((printer) => printerWriterDeviceId(printer) === device.deviceId).map((printer) => printer.name);
