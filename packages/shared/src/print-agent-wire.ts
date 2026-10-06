@@ -11,6 +11,7 @@ import {
   type PrintJobKind,
   type PrintJobStatus,
 } from "./print-job";
+import type { PrinterProblem } from "./print-failover";
 import type { PrintJobLabel, PrintJobRefusal } from "./print-lifecycle";
 import { printerWriterDevices, printersModeOn, type PrinterConfig } from "./print-printers";
 import type { PrintJobPayload } from "./schemas/print-job.schema";
@@ -85,6 +86,9 @@ export interface PrintAttentionRow {
   approved?: true;
   /** Session 2C (printers mode): the job's printer, so the panel can name it. */
   printerId?: string;
+  /** Phase 3 (spec §9.4, §10): why that printer cannot print now (its device is offline, it is out of paper, ...), so
+   *  every device's panel says it beside the slip; absent when none is known. */
+  problem?: PrinterProblem;
 }
 
 /** The feed is one bounded read on the hottest poll, within the queued retention (§7.8): the NEWEST rows
@@ -118,6 +122,10 @@ export interface PrintDeviceCapabilities {
   windowsPrinters: boolean;
   webSerial: boolean;
   webBluetooth: boolean;
+  /** Phase 3 (spec §9.3): this page can write any network printer the setup names, not only its own (the POS app on
+   *  bridge v2; the Windows app from 1.12.0), so it may take one over while its primary is offline. A page from before
+   *  Phase 3 never says it, and is never chosen. */
+  lanFailover?: boolean;
 }
 
 /** Without a healthy socket an agent polls fast only this long after it last saw a job (spec §9.1). */
@@ -226,6 +234,10 @@ export interface PrintLeaseData {
 /** "printer-gone" (Session 2C): a Retry or Print again on a job whose printer was removed or switched off; it is
  *  never guessed onto another printer (staff print the slip again from its order). */
 export type PrintJobActionRefusal = PrintJobRefusal | "not-found" | "raced" | "printer-gone";
+
+/** Phase 3 (spec §9.3): the ack's `reason` when a writer could not reach a network printer before any byte (a failed
+ *  connect): the server skips that writer for that printer for 5 minutes, so another writer gets the next lease. */
+export const PRINT_ACK_UNREACHABLE = "unreachable";
 
 export interface PrintAckData {
   applied: boolean;

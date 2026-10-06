@@ -1,0 +1,123 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  PRINTER_BACKUP_SELF_MESSAGE,
+  PRINTER_HEALTH_REFRESH_MS,
+  PRINTER_HEALTH_STALE_MS,
+  PRINTER_PROBLEMS,
+  PRINTER_UNREACHABLE_SKIP_MS,
+  printerActiveWriter,
+  printerBackupOf,
+  printerProblemOf,
+  printerProblemText,
+  printerSkippedWriters,
+  printerWriterOnline,
+  type PrinterFailover,
+} from "./print-failover";
+import type { PrinterConfig } from "./print-printers";
+
+// Printing Phase 3 Session 3A (spec §9.3, §9.4, §10): the shared rules of failover, the backup printer and printer
+// health. The server's use of them is proven live (npm run verify:print:live, legs ba–bc).
+
+const T0 = Date.parse("2026-10-07T12:00:00.000Z");
+const NO_SLIPS = { bill: false, kotStations: [], kotAll: false, notices: false, eod: false };
+const at = (ms: number): string => new Date(T0 + ms).toISOString();
+
+function lan(id: string, primary: string, over: Partial<PrinterConfig> = {}): PrinterConfig {
+  return { id, name: `Printer ${id}`, connection: { kind: "lan", host: "10.0.0.9", port: 9100 }, primaryDeviceId: primary, order: 0, paper: 80, slips: { ...NO_SLIPS, kotAll: true }, copies: { kot: 1, bill: 1 }, enabled: true, ...over };
+}
+
+function bt(id: string, device: string, over: Partial<PrinterConfig> = {}): PrinterConfig {
+  return { ...lan(id, "", over), connection: { kind: "device", deviceId: device, transport: "bt-classic", address: "AA:BB" }, primaryDeviceId: undefined, ...over };
+}
+
+function failover(online: Array<[string, boolean]>, nowMs = T0): PrinterFailover {
+  return { online: online.map(([deviceId, lanFailover]) => ({ deviceId, lanFailover })), nowMs };
+}
+
+test("constants: a skip lasts 5 minutes; health is refreshed every 5 minutes and stale after 10", () => {
+  assert.equal(PRINTER_UNREACHABLE_SKIP_MS, 300_000);
+  assert.equal(PRINTER_HEALTH_REFRESH_MS, 300_000);
+  assert.equal(PRINTER_HEALTH_STALE_MS, 600_000);
+  assert.deepEqual([...PRINTER_PROBLEMS], ["device-offline", "paper-out", "cover-open", "error", "offline", "paper-low"], "worst first");
+});
+
+test("printerActiveWriter: a device printer is its own device's, whoever is online", () => {
+  assert.equal(printerActiveWriter(bt("b", "bar"), null), "bar");
+  assert.equal(printerActiveWriter(bt("b", "bar"), failover([["counter", true]])), "bar", "never failed over");
+});
+
+test("printerActiveWriter: a network printer's primary while it is online; with no failover read, the primary as in Phase 2", () => {
+  const kitchen = lan("k", "kitchen");
+  assert.equal(printerActiveWriter(kitchen, null), "kitchen");
+  assert.equal(printerActiveWriter(kitchen, failover([["kitchen", true], ["counter", true]])), "kitchen");
+});
+
+test("printerActiveWriter: with its primary offline, the first online device that can write network printers, by id; never one that cannot", () => {
+  const kitchen = lan("k", "kitchen");
+  assert.equal(printerActiveWriter(kitchen, failover([["zz-counter", true], ["aa-bar", true]])), "aa-bar", "the same pick on every instance");
+  assert.equal(printerActiveWriter(kitchen, failover([["old-page", false]])), "kitchen", "a page from before Phase 3 never takes it over: the slips wait for the primary");
+  assert.equal(printerActiveWriter(kitchen, failover([])), "kitchen", "nobody online: the primary still");
+});
+
+test("printerActiveWriter: a writer that could not reach it is skipped for 5 minutes, primary or not", () => {
+  const skipKitchen = lan("k", "kitchen", { unreachable: [{ deviceId: "kitchen", until: at(PRINTER_UNREACHABLE_SKIP_MS) }] });
+  const both = failover([["kitchen", true], ["counter", true]]);
+  assert.equal(printerActiveWriter(skipKitchen, both), "counter", "the primary skipped, the counter takes it");
+  assert.equal(printerActiveWriter(skipKitchen, failover([["kitchen", true], ["counter", true]], T0 + PRINTER_UNREACHABLE_SKIP_MS)), "kitchen", "back to the primary when its 5 minutes are up");
+  assert.equal(printerActiveWriter(skipKitchen, failover([["kitchen", true]])), "kitchen", "no one else: the primary keeps it");
+  const skipCounter = lan("k", "kitchen", { unreachable: [{ deviceId: "counter", until: at(60_000) }] });
+  assert.equal(printerActiveWriter(skipCounter, failover([["counter", true], ["bar", true]])), "bar", "the skipped candidate is passed over");
+  assert.equal(printerActiveWriter(skipCounter, failover([["counter", true]])), "kitchen", "every candidate skipped: the primary keeps it");
+});
+
+test("printerSkippedWriters / printerWriterOnline", () => {
+  const printer = lan("k", "kitchen", { unreachable: [{ deviceId: "a", until: at(1) }, { deviceId: "b", until: at(0) }] });
+  assert.deepEqual(printerSkippedWriters(printer, T0), ["a"], "a skip that ran out is gone");
+  assert.equal(printerWriterOnline(lan("k", "kitchen"), failover([["kitchen", true]])), true);
+  assert.equal(printerWriterOnline(lan("k", "kitchen"), failover([["old-page", false]])), false, "its writer now is the offline primary");
+  assert.equal(printerWriterOnline(bt("b", "bar"), failover([["counter", true]])), false);
+});
+
+test("printerBackupOf: a routable other printer, or null", () => {
+  const counter = lan("c", "counter", { slips: { ...NO_SLIPS, bill: true } });
+  const off = lan("o", "counter", { enabled: false });
+  const printers = [counter, off];
+  assert.equal(printerBackupOf(printers, bt("b", "bar", { backupPrinterId: "c" }))?.id, "c");
+  assert.equal(printerBackupOf(printers, bt("b", "bar")), null, "none set");
+  assert.equal(printerBackupOf(printers, { id: "c", backupPrinterId: "c" }), null, "never itself");
+  assert.equal(printerBackupOf(printers, bt("b", "bar", { backupPrinterId: "o" })), null, "switched off");
+  assert.equal(printerBackupOf(printers, bt("b", "bar", { backupPrinterId: "gone" })), null, "deleted");
+  assert.match(PRINTER_BACKUP_SELF_MESSAGE, /own backup/);
+});
+
+test("printerProblemOf: the device offline first; then what its writer reported, while fresh and from that writer", () => {
+  const health = (over: Partial<NonNullable<PrinterConfig["health"]>>) => ({ link: "connected" as const, deviceId: "bar", at: at(0), ...over });
+  const online = failover([["bar", true]]);
+  assert.equal(printerProblemOf(bt("b", "bar"), failover([["counter", true]])), "device-offline");
+  assert.equal(printerProblemOf(bt("b", "bar"), online), null, "online, nothing reported");
+  assert.equal(printerProblemOf(bt("b", "bar", { health: health({ paper: "out", cover: "open" }) }), online), "paper-out", "worst first");
+  assert.equal(printerProblemOf(bt("b", "bar", { health: health({ cover: "open", link: "disconnected" }) }), online), "cover-open");
+  assert.equal(printerProblemOf(bt("b", "bar", { health: health({ error: true }) }), online), "error");
+  assert.equal(printerProblemOf(bt("b", "bar", { health: health({ link: "disconnected" }) }), online), "offline");
+  assert.equal(printerProblemOf(bt("b", "bar", { health: health({ paper: "low" }) }), online), "paper-low");
+  assert.equal(printerProblemOf(bt("b", "bar", { health: health({ link: "connecting" }) }), online), null, "connecting is not a problem yet");
+  assert.equal(printerProblemOf(bt("b", "bar", { health: health({ paper: "out", at: at(-PRINTER_HEALTH_STALE_MS - 1) }) }), online), null, "a stale report says nothing");
+  assert.equal(printerProblemOf(bt("b", "bar", { health: health({ paper: "out", deviceId: "old-writer" }) }), online), null, "a report from another device says nothing");
+  const kitchen = lan("k", "kitchen", { health: { link: "connected", paper: "out", deviceId: "kitchen", at: at(0) } });
+  assert.equal(printerProblemOf(kitchen, failover([["counter", true]])), null, "a network printer the counter took over: the primary's old report says nothing");
+});
+
+test("printerProblemText: the words every device shows", () => {
+  assert.deepEqual(
+    PRINTER_PROBLEMS.map((problem) => printerProblemText("Kitchen", problem)),
+    [
+      "The device that prints Kitchen is offline.",
+      "Kitchen is out of paper.",
+      "Kitchen has its cover open.",
+      "Kitchen reports an error. Check it, then switch it off and on.",
+      "Kitchen is not connected.",
+      "Kitchen is low on paper.",
+    ],
+  );
+});
