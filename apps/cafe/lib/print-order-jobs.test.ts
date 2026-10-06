@@ -90,7 +90,10 @@ test("PIN: createOrderPrintJobs never throws, announces each new job to its devi
   // first slip there, only when the line is free; and a job printed by the asking tab is never announced.
   assert.match(fn, /const leaseTabId = target === input\.originDeviceId \? input\.leaseTabId : undefined;/, "never for a slip another device prints");
   assert.match(fn, /const lineFree = leaseTabId !== undefined && \(await printLineIsFree\(target, input\.nowMs\)\);/, "one read of the line, only when it can matter");
-  assert.match(fn, /const tab = leaseTabId === undefined \|\| refs\.length > 0 \? \{\} : \{ tab: \{ tabId: leaseTabId, direct: lineFree \} \};/, "only the first slip of the request on the line");
+  // The token fix (2026-10-06) deliberately changed this pin: a token is never that first slip made leased.
+  assert.match(fn, /const tab = leaseTabId === undefined \|\| refs\.length > 0 \|\| tokenForTab \? \{\} : \{ tab: \{ tabId: leaseTabId, direct: lineFree \} \};/, "only the first slip of the request on the line");
+  assert.match(fn, /const tokenForTab = leaseTabId !== undefined && refs\.length === 0 && !printsDirectAtCreation\(request\.payload\.kind\);/, "never a token (print-direct.ts printsDirectAtCreation)");
+  assert.match(fn, /if \(job\.ref\.leased !== undefined \|\| tokenForTab\) directOnLine = true;/, "a token left for the asking tab is its own: nothing on the line is announced to it");
   assert.match(fn, /if \(announcesQueuedJob\(job, directOnLine\)\) \{/, "no realtime message to yourself");
   assert.match(insert, /\.\.\.\(failed \?\? direct \?\? \{ \.\.\.printJobLifecycleInit\(input\.nowMs, labels\), log: \[printJobCreatedLog\(input\.nowMs, input\.originDeviceId\)\] \}\),/, "made leased (or failed, 2C) in the same write that creates it");
   assert.ok(!s.includes("console."), "no console.* in a server lib");

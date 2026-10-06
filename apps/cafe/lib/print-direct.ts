@@ -20,6 +20,15 @@ export interface PrintJobAskingTab {
   direct: boolean;
 }
 
+/** The token fix (after the print-customization merge): whether a job of this kind may be made leased to the asking
+ *  tab at creation. A "token" never is: only a page from S7 on can draw it, and the lease's kind fence
+ *  (leaseKindFence) never sees a job made leased, so an older page would fail it as "maybe" and print it late with
+ *  DUPLICATE. It is made queued, and a page that can draw it leases it at once (the answer's queued ref, or the
+ *  KOT ack's `more`): it prints once, unlabelled. Every other kind keeps direct print exactly as it is. */
+export function printsDirectAtCreation(kind: PrintJobKind): boolean {
+  return kind !== "token";
+}
+
 /** Nothing waits on this device's line ahead of a slip made now (§7.6): no job leased, and no queued job that
  *  is fresh or approved (a parked one never blocks the line). One read on the line index. */
 export async function printLineIsFree(deviceId: string, nowMs: number): Promise<boolean> {

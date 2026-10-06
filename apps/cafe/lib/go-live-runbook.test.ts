@@ -79,6 +79,7 @@ import { PRINT_WAKE_PRINTERS_DAILY_CAP } from "@pos/shared/print-agent-wire";
 import { PRINT_SETUP_REFRESH_MIN_MS, PRINT_SETUP_STALE_MS } from "@pos/shared/print-budget";
 import { PRINTERS_MAX, PRINTER_COPIES_MAX, PRINTER_COPIES_MIN, STATIONS_MAX } from "@pos/shared/print-printers";
 import { SESSION_MAX_AGE_SECONDS, SESSION_REVALIDATE_MS } from "@pos/shared/constants";
+import { TOKENS_RELOAD_HINT } from "@/lib/token-settings-notes";
 
 // Doc<->source parity for docs/GO-LIVE-CHECKLIST.md §A "Pinned facts" — an
 // operator following a stale runbook does the wrong thing on a client's live
@@ -1403,4 +1404,22 @@ test("PIN §A (printing Phase 2): the printers-mode wake cap, the printer list's
   assert.equal(factRowIn(section, "Copies per printer (KOT, bill)"), `${PRINTER_COPIES_MIN}–${PRINTER_COPIES_MAX}`, "PRINTER_COPIES_MIN/MAX drifted from the doc");
   const step = norm(sectionSlice("### Self-order alerts and auto-print (CR2.3 + print host, per device)"));
   assert.match(step, new RegExp(`sharing ${PRINT_WAKE_PRINTERS_DAILY_CAP.toLocaleString("en-US")} quick checks a day`), "the §7 device step states the printers-mode cap in plain English");
+});
+
+// ── The token fix (plan 2026-10-06-token-direct-fix.md, T2) ──────────────────
+// A page from before the token slip leases no token job (lib/print-lease.ts leaseKindFence), so the runbook turns
+// tokens on only after every open POS screen is reloaded and every Windows app restarted, in the Tokens page's words.
+
+test("PIN §1 (the token fix): turning token slips on comes after every POS screen is reloaded and every Windows app restarted, quoting the Tokens page's hint verbatim", () => {
+  const step = norm(sectionSlice("### Existing cafes: turning token slips on"));
+  assert.ok(step.includes(norm(TOKENS_RELOAD_HINT)), "the step quotes TOKENS_RELOAD_HINT verbatim");
+  let at = -1;
+  for (const landmark of ["Reload first", "restart the Windows app", "Give every order a token"]) {
+    const next = step.indexOf(landmark, at + 1);
+    assert.ok(next > at, `the step names "${landmark}" after the step before it`);
+    at = next;
+  }
+  assert.ok(step.includes("Admin → Printer setup") && step.includes("tick **Bill**"), "printers mode: a printer must take bills, and where to tick it");
+  assert.ok(step.includes("No printer is set up for bills."), "the reason staff see when none does");
+  assert.ok(step.includes("change it outside service hours"), "the restart time note");
 });

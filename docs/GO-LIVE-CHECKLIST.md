@@ -261,6 +261,30 @@ screen, then the apps; Set up printers last, and only if the cafe wants stations
       cafe's real printers (and "Several printers on one Windows PC" on a
       counter PC with the 1.11.0 app), with the Phase 1 checks above them.
 
+### Existing cafes: turning token slips on
+
+Tokens (**Settings → Tokens & numbering**) give every order a token number and
+print a token slip with its first kitchen ticket. Only a POS page from the
+release that added tokens can print that slip. An older page still open never
+prints one: the slip waits, visibly, in the waiting-slips panel until a
+reloaded page prints it (once, with no DUPLICATE). Nothing is lost, but the
+customer gets no slip until then.
+
+- [ ] **Reload first.** The hint under the tokens switch says it: "Before
+      turning tokens on, reload every POS screen and restart the Windows app on
+      every counter PC (an older page never prints token slips; they wait in the
+      panel)." Refresh in the POS app, reload each browser tab, then quit and
+      restart the Windows app on every counter PC.
+- [ ] **Then turn it on:** **Give every order a token**, and Save.
+- [ ] **A cafe with printers set up** (§7 "Stations and printers"): the token
+      slip prints at the bill printer, so a printer must take bills: tick
+      **Bill** on one in **Admin → Printer setup**. With none, the Tokens page
+      warns, and every token (and bill) shows under **Couldn't print**: "No
+      printer is set up for bills."
+- [ ] **The daily restart time** (same page): change it outside service hours.
+      A change during service can repeat or skip tonight's token, kitchen
+      ticket and bill numbers.
+
 ---
 
 ## §2 First run, and the admin handover (DEPLOYER → CAFE ADMIN)

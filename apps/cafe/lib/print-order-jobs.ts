@@ -13,7 +13,7 @@ import { printerIdsOf } from "@pos/shared/print-printers";
 import type { PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 import { PrintHost } from "@/models/PrintHost";
 import { PRINT_HOST_DEVICE_ID_MAX_CHARS } from "@/lib/print-host";
-import { announcesQueuedJob, printLineIsFree, type PrintJobAskingTab } from "@/lib/print-direct";
+import { announcesQueuedJob, printLineIsFree, printsDirectAtCreation, type PrintJobAskingTab } from "@/lib/print-direct";
 import { insertPrintJob } from "@/lib/print-job-insert";
 import { createRoutedPrintJobs, printPayloadProductIds } from "@/lib/print-printer-jobs";
 import { printJobKeyOf } from "@/lib/print-queue";
@@ -139,7 +139,9 @@ function requestOf(order: Order, slip: OrderPrintSlip): PrintJobRequest | null {
  *  tab can print now (`leaseTabId`), the first one is made leased to that tab if nothing older waits on its
  *  line; the rest follow it through the ack's `more`, so none of them is announced to the device printing.
  *  Session 2C (spec §8): in printers mode every slip is routed to printers (lib/print-printer-jobs.ts), the
- *  host plays no part, and the same rules apply per printer line. */
+ *  host plays no part, and the same rules apply per printer line.
+ *  The token fix (print-direct.ts): a token is never the slip made leased; it is made queued, and the asking tab
+ *  leases it from the answer (or the KOT ack's `more`). */
 export async function createOrderPrintJobs(input: {
   order: unknown;
   slips: OrderPrintSlip[];
@@ -187,11 +189,14 @@ export async function createOrderPrintJobs(input: {
     for (const request of requests) {
       // Only the first slip of this request on the line may be leased now (§7.6: one writer, oldest first);
       // the rest are made as in Phase 1, so a collision on them never reads a payload (the 2B review, M-1).
-      const tab = leaseTabId === undefined || refs.length > 0 ? {} : { tab: { tabId: leaseTabId, direct: lineFree } };
+      // The token fix (print-direct.ts): a token is never made leased; still the asking tab's, it leases it from the
+      // answer, so nothing on the line is announced to it (decision 16).
+      const tokenForTab = leaseTabId !== undefined && refs.length === 0 && !printsDirectAtCreation(request.payload.kind);
+      const tab = leaseTabId === undefined || refs.length > 0 || tokenForTab ? {} : { tab: { tabId: leaseTabId, direct: lineFree } };
       const job = await insertPrintJob({ request, targetDeviceId: target, originDeviceId: input.originDeviceId, queuedBy: input.queuedBy, ...tab, nowMs: input.nowMs });
       if (job === null) continue;
       refs.push(job.ref);
-      if (job.ref.leased !== undefined) directOnLine = true;
+      if (job.ref.leased !== undefined || tokenForTab) directOnLine = true;
       if (announcesQueuedJob(job, directOnLine)) {
         made += 1;
         publishPrintStatus({ id: job.ref.id, status: "queued", target });
@@ -239,10 +244,13 @@ export async function enqueueOwnPrintJob(input: {
 /** POST /api/print-jobs from the tab that drains the asking device's slips and can print now (Session 2B,
  *  spec §7.11). When the slip prints on the asking device (no host, or the asking device is the host), it is
  *  made leased to that tab if nothing older waits on its line, and a slip still leased to that tab (its first
- *  answer was lost) is handed back. null: another device is the host, so Phase 1's enqueue makes it for it. */
+ *  answer was lost) is handed back. null: another device is the host, so Phase 1's enqueue makes it for it; or the
+ *  slip is a token, never made leased at creation (the token fix, print-direct.ts), so Phase 1's enqueue makes it
+ *  queued (for the host, else this device's own) and the asking tab leases it from the answer. */
 export async function enqueueDirectPrintJob(
   input: Omit<Parameters<typeof enqueueOwnPrintJob>[0], "tab"> & { leaseTabId: string },
 ): Promise<PrintJobEnqueueResult | null> {
+  if (!printsDirectAtCreation(input.payload.kind)) return null;
   const host = await PrintHost.findOne({ key: PRINT_HOST_KEY }).select("deviceId").lean();
   if (host !== null && host.deviceId !== input.originDeviceId) return null;
   const { leaseTabId, ...own } = input;
