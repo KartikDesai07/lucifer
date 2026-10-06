@@ -1,4 +1,5 @@
 import mongoose, { Schema, type Document, type Model } from "mongoose";
+import { PRINTER_COVER_STATES, PRINTER_LINK_STATES, PRINTER_PAPER_STATES, type PrinterCoverState, type PrinterLinkState, type PrinterPaperState } from "@pos/shared/print-failover";
 import {
   PRINTER_ADDRESS_MAX_CHARS,
   PRINTER_COPIES_MAX,
@@ -21,7 +22,8 @@ import {
 //
 // Deliberately NOT in the federated registry, like models/PrintJob.ts: a plain default-bound model of a
 // few rows of print setup. Phase 3 adds the backup printer (`backupPrinterId`, §9.4: saved with the setup) and
-// what the server keeps beside the setup: `unreachable` (§9.3, the writers skipped for 5 minutes).
+// what the server keeps beside the setup: `unreachable` (§9.3, the writers skipped for 5 minutes) and `health` (§10,
+// what its writer last reported on the wake).
 
 /** The stored connection: one flat subdocument for both kinds, so it stays one Mongoose path. */
 export interface IPrinterConnection {
@@ -44,8 +46,19 @@ export interface IPrinter extends Document {
   enabled: boolean;
   backupPrinterId?: string; // Phase 3 (§9.4): another printer's id; omit-empty
   unreachable?: Array<{ deviceId: string; until: Date }>; // Phase 3 (§9.3): server-kept, never saved by the setup
+  health?: IPrinterHealth; // Phase 3 (§10): server-kept, never saved by the setup
   createdAt: Date;
   updatedAt: Date;
+}
+
+/** Phase 3 (spec §10): a printer's health as its writer last reported it (lib/print-health.ts). */
+export interface IPrinterHealth {
+  link: PrinterLinkState;
+  paper?: PrinterPaperState;
+  cover?: PrinterCoverState;
+  error?: boolean;
+  deviceId: string;
+  at: Date;
 }
 
 /** A LAN connection has a host and a port and nothing else; a device connection has a device, a transport
@@ -92,6 +105,19 @@ const unreachableSchema = new Schema<{ deviceId: string; until: Date }>(
   { _id: false },
 );
 
+// Phase 3 (spec §10): replaced whole by each report that changed something; omit-empty inside.
+const healthSchema = new Schema<IPrinterHealth>(
+  {
+    link: { type: String, enum: [...PRINTER_LINK_STATES], required: true },
+    paper: { type: String, enum: [...PRINTER_PAPER_STATES] },
+    cover: { type: String, enum: [...PRINTER_COVER_STATES] },
+    error: { type: Boolean },
+    deviceId: { type: String, required: true, maxlength: PRINTER_DEVICE_ID_MAX_CHARS },
+    at: { type: Date, required: true },
+  },
+  { _id: false },
+);
+
 const copiesSchema = new Schema<PrinterCopies>(
   {
     kot: { type: Number, required: true, min: PRINTER_COPIES_MIN, max: PRINTER_COPIES_MAX },
@@ -120,6 +146,7 @@ export const printerSchema = new Schema<IPrinter>(
     backupPrinterId: { type: String, maxlength: 24 },
     // Omit-empty (no [] default): written only by an ack that could not reach the printer (lib/print-failover.ts).
     unreachable: { type: [unreachableSchema], default: undefined },
+    health: { type: healthSchema },
   },
   { timestamps: true },
 );

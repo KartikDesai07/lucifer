@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { PRINT_ACK_UNREACHABLE, PRINT_DEVICE_SHELLS } from "@pos/shared/print-agent-wire";
 import { PRINTERS_MAX, PRINTER_DEVICE_ID_MAX_CHARS } from "@pos/shared/print-printers";
+import { PRINTER_COVER_STATES, PRINTER_LINK_STATES, PRINTER_PAPER_STATES } from "@pos/shared/print-failover";
 import { PRINT_ACK_ERROR_MAX_CHARS } from "@pos/shared/print-lifecycle";
 import { PRINT_HOST_DEVICE_ID_MAX_CHARS, PRINT_HOST_LABEL_MAX_CHARS } from "@/lib/print-host";
 import { PRINT_HOST_TAB_ID_MAX_CHARS } from "@/lib/print-queue-claim";
@@ -36,6 +37,22 @@ export const wakeBeatBodySchema = z
     nativeProtocol: z.number().int().min(1).max(99).optional(),
     /** Phase 3 (the token fix's M-2): this page prints "token" jobs (PRINT_PULSE_TOKENS_PARAM). */
     tokenSlips: z.literal(true).optional(),
+    /** Phase 3 (spec §10): the health of each printer this device writes (the heartbeat carries it; no request of its
+     *  own). The lib keeps only the reports for printers this device writes now. */
+    printers: z
+      .array(
+        z
+          .object({
+            printerId: z.string().trim().min(1).max(PRINTER_DEVICE_ID_MAX_CHARS),
+            link: z.enum(PRINTER_LINK_STATES),
+            paper: z.enum(PRINTER_PAPER_STATES).optional(),
+            cover: z.enum(PRINTER_COVER_STATES).optional(),
+            error: z.literal(true).optional(),
+          })
+          .strict(),
+      )
+      .max(PRINTERS_MAX)
+      .optional(),
   })
   .strict();
 

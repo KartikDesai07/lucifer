@@ -91,7 +91,7 @@ test("wire shapes: ids are strings; a device printer carries no primaryDeviceId 
   });
   assert.equal(wire.id, String(id));
   assert.ok(!("primaryDeviceId" in wire), "omit-empty on the wire too");
-  assert.ok(!("backupPrinterId" in wire) && !("unreachable" in wire), "Phase 3: omit-empty, the backup and the skips");
+  assert.ok(!("backupPrinterId" in wire) && !("unreachable" in wire) && !("health" in wire), "Phase 3: omit-empty, the backup, the skips and the health");
   assert.deepEqual(wire.connection, { kind: "device", deviceId: "counter-pc", transport: "windows", address: "EPSON" });
 });
 

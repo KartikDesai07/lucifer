@@ -179,6 +179,12 @@ test("lease, confirm and wake bodies: required fields, enums and strictness", ()
   assert.equal(wakeBeatBodySchema.safeParse({ ...beat, tokenSlips: true }).success, true, "Phase 3 (M-2): a page that prints token slips");
   assert.equal(wakeBeatBodySchema.safeParse({ ...beat, tokenSlips: false }).success, false, "absent, never false");
   assert.equal(wakeBeatBodySchema.safeParse({ ...beat, capabilities: { ...beat.capabilities, lanFailover: true } }).success, true, "Phase 3 (§9.3): it may take a network printer over");
+  // Phase 3 (§10): the health of the printers it writes rides the heartbeat.
+  const health = { printerId: "a".repeat(24), link: "connected", paper: "out", cover: "open", error: true };
+  assert.equal(wakeBeatBodySchema.safeParse({ ...beat, printers: [health] }).success, true);
+  assert.equal(wakeBeatBodySchema.safeParse({ ...beat, printers: [{ ...health, paper: "empty" }] }).success, false, "known paper states only");
+  assert.equal(wakeBeatBodySchema.safeParse({ ...beat, printers: [{ ...health, error: false }] }).success, false, "an error is said, never denied");
+  assert.equal(wakeBeatBodySchema.safeParse({ ...beat, printers: Array.from({ length: 13 }, () => health) }).success, false, "never more than a cafe can have");
 });
 
 const ROUTES = {
@@ -259,7 +265,11 @@ test("PIN: POST /api/print-jobs/wake beats, reads the device's line and the agen
       "await beatPrintDevice(parsed.data, nowMs);",
       "const tokens = parsed.data.tokenSlips === true || (await printDeviceDrawsTokens(parsed.data.deviceId));",
       "readJobsForDevice(parsed.data.deviceId, nowMs, tokens)",
-      "countOnlineAgents(nowMs)",
+      // Phase 3 (§9.3, §10) deliberately changed the count: who is online, read once, counts the agents and says who
+      // writes each printer now for the health this device reports (kept only on a change).
+      "readOnlinePrintDevices(nowMs)",
+      "await recordPrinterHealth({ deviceId: parsed.data.deviceId, reports: parsed.data.printers, printers, failover: { online, nowMs }, nowMs }).catch(() => 0);",
+      "const agents = Math.max(1, online.length);",
       "after(() => sweepPrintJobsThrottled(nowMs))",
       "return noStore(success(data));",
     ],
@@ -333,6 +343,25 @@ test("PIN (2B): an ack that takes a job off the line answers `more` from one rea
   // Phase 3 (the token fix's M-2) deliberately added the lease's kind fence to both reads.
   assert.match(s, /return \(await PrintJob\.findOne\(\{ \.\.\.printJobLineFilter\(deviceId, nowMs\), \.\.\.leaseKindFence\(tokens\), status: "queued" \}\)\.select\("_id"\)\.lean\(\)\) !== null;/, "one read on the line index");
   assert.match(s, /return \(await PrintJob\.findOne\(\{ \.\.\.printerLineFilter\(printerId, nowMs\), \.\.\.leaseKindFence\(tokens\), status: "queued" \}\)\.select\("_id"\)\.lean\(\)\) !== null;/, "Session 2C: a printer job asks its own printer's line");
+});
+
+// Phase 3 Session 3A (spec §10): a printer's health is kept only from the device that writes it now, and written only
+// when it says something new (or a steady one is due its 5-minute refresh): no request of its own, few writes.
+test("PIN (Phase 3, §10): health is kept only from the printer's writer now, and only on a change or a due refresh", () => {
+  const s = src("apps/cafe/lib/print-health.ts");
+  inOrder(
+    s,
+    [
+      "const printer = routablePrinterOf(input.printers, report.printerId);",
+      "if (printer === null || printerActiveWriter(printer, input.failover) !== input.deviceId) return [];",
+      "if (!printerHealthNeedsWrite(printer.health, input.deviceId, report, input.nowMs)) return [];",
+      "return [Printer.updateOne(printerHealthChangedFilter(printer.id, input.deviceId, report, input.nowMs), { $set: { health } })];",
+      "const results = await Promise.all(writes);",
+    ],
+    "the health write",
+  );
+  assert.match(s, /\{ "health\.at": \{ \$lt: new Date\(nowMs - PRINTER_HEALTH_REFRESH_MS\) \} \},/, "a steady state is refreshed every 5 minutes, never more often");
+  assert.ok(!s.includes("connectDB(") && !s.includes("console."), "never connects, never logs");
 });
 
 // Phase 3 Session 3A (spec §9.4): only a slip that never reached paper moves to the backup printer, labelled; a slip that

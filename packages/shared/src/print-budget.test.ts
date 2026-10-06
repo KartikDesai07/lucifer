@@ -60,8 +60,10 @@ import {
   PRINT_BUDGET_TOKEN_WORST_MAX_PER_DAY,
   VERCEL_HOBBY_INVOCATIONS_PER_DAY,
   printUnreachableRequestsPerWriterPerDay,
+  printHealthRefreshWritesPerPrinterPerDay,
 } from "./print-budget";
-import { PRINTER_UNREACHABLE_SKIP_MS } from "./print-failover";
+import { PRINTER_HEALTH_REFRESH_MS, PRINTER_UNREACHABLE_SKIP_MS } from "./print-failover";
+import { PRINTERS_MAX } from "./print-printers";
 
 // Spec §17.3 item 4: recompute §17.2's two "Vercel invocations" totals from the exported constants
 // and the agents' REAL cadence function. A cadence or cap change that could outgrow a cafe's free
@@ -451,6 +453,15 @@ test("Phase 3 failover: a writer that could not reach a network printer is passe
   assert.ok(PRINTER_UNREACHABLE_SKIP_MS >= 10 * PRINT_AGENT_REFUSED_RECHECK_MS, "never shorter than ten of Phase 1's refusal rechecks");
   assert.equal(printUnreachableRequestsPerWriterPerDay(), 288, "144 skips over the busy day's 12 h, a lease and an ack each");
   assert.ok(printUnreachableRequestsPerWriterPerDay() <= 2 * Math.ceil(OPEN_MS / PRINT_AGENT_REFUSED_RECHECK_MS) / 10, "a tenth of a refusing printer's cost");
+});
+
+// Phase 3 Session 3A (spec §10): printer health rides the wake, so it adds no request; its Mongo writes are bounded.
+test("Phase 3 health: no request of its own; at most 144 refresh writes a printer a day, 1,728 for a cafe's twelve printers (0.04 a second)", () => {
+  assert.equal(PRINTER_HEALTH_REFRESH_MS, 5 * 60 * 1000);
+  assert.equal(printHealthRefreshWritesPerPrinterPerDay(), 144);
+  const cafe = printHealthRefreshWritesPerPrinterPerDay() * PRINTERS_MAX;
+  assert.equal(cafe, 1_728);
+  assert.ok(cafe / (OPEN_MS / 1000) < 0.05, "far under Atlas M0's 100 operations a second");
 });
 
 test("the owner's token ruling: a token cafe's ceilings sit just above the accepted days, the normal one inside 20 % of the free daily invocations as a figure, and a cafe without tokens keeps 6,000 / 18,000", () => {

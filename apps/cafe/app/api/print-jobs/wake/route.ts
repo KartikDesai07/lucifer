@@ -2,7 +2,8 @@ import { after } from "next/server";
 import { connectDB } from "@/lib/db";
 import { printJobDrainHead } from "@/lib/print-queue-feeds";
 import { readJobsForDevice } from "@/lib/print-lease";
-import { beatPrintDevice, countOnlineAgents, printDeviceDrawsTokens } from "@/lib/print-device";
+import { beatPrintDevice, printDeviceDrawsTokens, readOnlinePrintDevices } from "@/lib/print-device";
+import { recordPrinterHealth } from "@/lib/print-health";
 import { listPrinters } from "@/lib/print-printers";
 import { sweepPrintJobsThrottled } from "@/lib/print-sweep";
 import { wakeBeatBodySchema } from "@/lib/print-lifecycle-schemas";
@@ -28,7 +29,8 @@ export const dynamic = "force-dynamic";
 // POST (Phase 1, spec §9.1, §10) is the new agent's wake. It carries the device heartbeat (at most one
 // PrintDevice write per 30 s), answers jobsForMe + the online agent count (each agent's share of the
 // cafe's one daily wake cap), and runs the sweep AFTER the response at most once per 60 s. That is
-// the "sweep rides wake/pulse, never Cron" rule of spec §17.3, so it adds no request.
+// the "sweep rides wake/pulse, never Cron" rule of spec §17.3, so it adds no request. Phase 3 (§10): it also
+// carries the health of the printers the device writes, kept on each printer only when it changed.
 //
 // Body is exactly one query: printJobDrainHead's index-backed read (rides
 // {status:1,createdAt:1,_id:1}), sharing printJobDrainFilter with the D1
@@ -60,7 +62,13 @@ export async function POST(req: Request) {
     // Phase 3 (the token fix's M-2): token jobs count only for a page that prints them; one that says nothing (a page
     // from before Phase 3) is answered from what its device's last lease said.
     const tokens = parsed.data.tokenSlips === true || (await printDeviceDrawsTokens(parsed.data.deviceId));
-    const [jobsForMe, agents, printers] = await Promise.all([readJobsForDevice(parsed.data.deviceId, nowMs, tokens), countOnlineAgents(nowMs), listPrinters()]);
+    const [jobsForMe, online, printers] = await Promise.all([readJobsForDevice(parsed.data.deviceId, nowMs, tokens), readOnlinePrintDevices(nowMs), listPrinters()]);
+    // Phase 3 (spec §10): the health of the printers this device writes now rides its heartbeat (best-effort: a failed
+    // write only ages the kept health).
+    if (parsed.data.printers !== undefined && parsed.data.printers.length > 0) {
+      await recordPrinterHealth({ deviceId: parsed.data.deviceId, reports: parsed.data.printers, printers, failover: { online, nowMs }, nowMs }).catch(() => 0);
+    }
+    const agents = Math.max(1, online.length);
     try {
       after(() => sweepPrintJobsThrottled(nowMs));
     } catch {

@@ -24,7 +24,7 @@ async function nameTaken(name: string, exceptId?: string): Promise<boolean> {
   return (await Printer.findOne({ name, ...(exceptId !== undefined ? { _id: { $ne: exceptId } } : {}) }).collation(NAME_IGNORING_CASE).select("_id").lean()) !== null;
 }
 
-type PrinterRow = Pick<IPrinter, "name" | "connection" | "primaryDeviceId" | "order" | "paper" | "slips" | "copies" | "enabled" | "backupPrinterId" | "unreachable"> & {
+type PrinterRow = Pick<IPrinter, "name" | "connection" | "primaryDeviceId" | "order" | "paper" | "slips" | "copies" | "enabled" | "backupPrinterId" | "unreachable" | "health"> & {
   _id: Types.ObjectId;
 };
 
@@ -58,10 +58,23 @@ export function printerWireOf(row: PrinterRow): PrinterConfig {
     ...(row.unreachable !== undefined && row.unreachable.length > 0
       ? { unreachable: row.unreachable.map((skip) => ({ deviceId: skip.deviceId, until: skip.until.toISOString() })) }
       : {}),
+    // Phase 3 (spec §10): what its writer last reported (every device reads it with the printers).
+    ...(row.health !== undefined && row.health !== null
+      ? {
+          health: {
+            link: row.health.link,
+            ...(row.health.paper !== undefined ? { paper: row.health.paper } : {}),
+            ...(row.health.cover !== undefined ? { cover: row.health.cover } : {}),
+            ...(row.health.error === true ? { error: true as const } : {}),
+            deviceId: row.health.deviceId,
+            at: row.health.at.toISOString(),
+          },
+        }
+      : {}),
   };
 }
 
-const PRINTER_SELECT = "name connection primaryDeviceId order paper slips copies enabled backupPrinterId unreachable";
+const PRINTER_SELECT = "name connection primaryDeviceId order paper slips copies enabled backupPrinterId unreachable health";
 
 /** Every printer in display order (disabled ones too: the setup screen lists them). */
 export async function listPrinters(): Promise<PrinterConfig[]> {

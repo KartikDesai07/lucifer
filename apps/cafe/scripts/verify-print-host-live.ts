@@ -50,6 +50,7 @@ import { legAY } from "./print-host-live/token-jobs";
 import { legAZ } from "./print-host-live/token-fence";
 import { legBA } from "./print-host-live/failover";
 import { legBB } from "./print-host-live/backup";
+import { legBC } from "./print-host-live/health";
 
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
@@ -143,6 +144,7 @@ async function main(): Promise<void> {
     await legAZ(Date.now());
     await legBA(Date.now());
     await legBB(Date.now());
+    await legBC(Date.now());
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
