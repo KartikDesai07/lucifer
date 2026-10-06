@@ -749,6 +749,9 @@ export async function POST(req: Request) {
           order: numbered.value ?? landed,
           slips: [...openingSlipsOf(numbered.value ?? landed, 1), ...(printsBillNow ? [{ kind: "bill" as const }] : [])],
           originDeviceId: intent.deviceId,
+          leaseTabId: intent.leaseTabId,
+          readyPrinterIds: intent.readyPrinterIds,
+          billPrinterId: intent.billPrinterId,
           queuedBy: authed.session.user.name ?? "",
           nowMs: Date.now(),
         })

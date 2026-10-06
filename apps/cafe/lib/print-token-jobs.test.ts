@@ -8,6 +8,7 @@ import { stripComments } from "@/lib/source-pin-utils";
 import { openingSlipsOf, createOrderPrintJobs, type OrderPrintSlip } from "@/lib/print-order-jobs";
 import { PrintHost } from "@/models/PrintHost";
 import { PrintJob } from "@/models/PrintJob";
+import { Printer } from "@/models/Printer";
 import type { Order } from "@/types";
 
 // Print customization S7, Slice A: the server half of the token slip. DB-free: the REAL openingSlipsOf and
@@ -79,6 +80,8 @@ function stub(target: object, key: string, impl: unknown): () => void {
 function withFakeQueue<T>(run: (created: Stored[]) => Promise<T>): Promise<T> {
   const created: Stored[] = [];
   const restores = [
+    // Simple mode (printing Phase 2): no printers, so readPrintRouting answers null and the slips take the host lane.
+    stub(Printer, "find", () => ({ select: () => ({ sort: () => ({ lean: async () => [] }) }) })),
     stub(PrintHost, "findOne", () => ({ select: () => ({ lean: async () => ({ deviceId: "host-1" }) }) })),
     stub(PrintJob, "create", async (doc: Omit<Stored, "_id">) => {
       if (doc.jobKey !== undefined && created.some((c) => c.jobKey === doc.jobKey)) throw Object.assign(new Error("dup"), { code: 11000 });

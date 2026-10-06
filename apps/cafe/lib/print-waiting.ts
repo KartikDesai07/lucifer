@@ -196,8 +196,15 @@ export function printAlarmStep(
 }
 
 /** What a Retry / Print now tap says when the server did not apply it (null: done). */
+/** Session 2C (printers mode): the name of the printer a waiting slip is for, from this device's printer list;
+ *  null in simple mode, for a printer no longer listed, and for a slip no printer took (its reason says so). */
+export function printerNameOf(printers: ReadonlyArray<{ id: string; name: string }>, printerId: string | undefined): string | null {
+  return printerId === undefined ? null : (printers.find((printer) => printer.id === printerId)?.name ?? null);
+}
+
 export function printRetryNotice(answer: PrintActionData): string | null {
   if (answer.applied) return null;
+  if (answer.reason === "printer-gone") return "No printer takes this slip now (removed, switched off, or none set up). Print it again from its order.";
   if (answer.status === "queued" && answer.reason === "wrong-status") return "It prints by itself as soon as the printer is ready.";
   return "Already handled.";
 }

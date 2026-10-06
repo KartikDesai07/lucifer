@@ -65,8 +65,8 @@ export const BILL_BLOCK_TYPES = [
 ] as const;
 export type BillBlockType = (typeof BILL_BLOCK_TYPES)[number];
 
-// KOT: title prints "KITCHEN ORDER", or the VOID / TABLE MOVED banner in those variants. station is the empty
-// slot the office PC's Phase 2 fills (stationLine).
+// KOT: title prints "KITCHEN ORDER", or the VOID / TABLE MOVED banner in those variants. station prints printing
+// Phase 2's stationLine (a routed KOT's "BAR" / "ALL STATIONS"); nothing in simple mode.
 export const KOT_BLOCK_TYPES = [
   "logo", "name", "title", "station", "kotNo", "token", "roundLabel", "orderId", "table", "time", "staff",
   "voidReason", "items", "notes", "itemCount", "roundTotal", "qr", "divider", "customText",

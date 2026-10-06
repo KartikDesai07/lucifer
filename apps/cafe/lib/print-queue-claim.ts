@@ -94,6 +94,9 @@ export function printJobEligibility(
       // F11) — the CAS runs UNCONDITIONALLY here; the skip-predicate lives in
       // PH-5's drain, not in server-side eligibility.
       return { eligible: true };
+    case "test":
+      // Phase 2 Session 2D: a printer's test slip has no order to stop it.
+      return { eligible: true };
   }
 }
 

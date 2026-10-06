@@ -33,7 +33,7 @@ class PosPrinterModule(private val reactContext: ReactApplicationContext) :
   override fun getName(): String = NAME
 
   override fun initialize() {
-    PrinterManager.init(reactContext)
+    PrinterPool.init(reactContext)
     reactContext.addLifecycleEventListener(this)
     reactContext.addActivityEventListener(bluetoothEnabler.activityListener)
   }
@@ -45,17 +45,17 @@ class PosPrinterModule(private val reactContext: ReactApplicationContext) :
   }
 
   override fun onHostResume() {
-    PrinterManager.appVisible = true
+    PrinterPool.appVisible = true
     PrinterApi.refreshStatus { }
     host.onResume()
   }
 
   override fun onHostPause() {
-    PrinterManager.appVisible = false
+    PrinterPool.appVisible = false
   }
 
   override fun onHostDestroy() {
-    PrinterManager.appVisible = false
+    PrinterPool.appVisible = false
     host.stopHost()
   }
 
@@ -82,6 +82,14 @@ class PosPrinterModule(private val reactContext: ReactApplicationContext) :
 
   private fun settleStatus(promise: Promise, reply: Reply<StatusSnapshot>) {
     settle(promise, reply) { StatusJson.toMap(it) }
+  }
+
+  private fun settlePool(promise: Promise, reply: Reply<PoolSnapshot>) {
+    settle(promise, reply) { StatusJson.poolMap(it) }
+  }
+
+  private fun settleBytes(promise: Promise, reply: Reply<Int>) {
+    settle(promise, reply) { count -> Arguments.createMap().apply { putInt("bytes", count) } }
   }
 
   @Suppress("DEPRECATION") // the flags-only overload is the one that exists on API 24..32
@@ -151,7 +159,7 @@ class PosPrinterModule(private val reactContext: ReactApplicationContext) :
   @ReactMethod
   fun getStatus(promise: Promise) {
     guarded(promise, BridgeCodes.UNSUPPORTED) {
-      promise.resolve(StatusJson.toMap(PrinterManager.status()))
+      promise.resolve(StatusJson.toMap(PrinterPool.status()))
     }
   }
 
@@ -205,11 +213,40 @@ class PosPrinterModule(private val reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun print(base64: String, promise: Promise) {
-    guarded(promise, BridgeCodes.WRITE_FAILED) {
-      PrinterApi.print(base64) { reply ->
-        settle(promise, reply) { count -> Arguments.createMap().apply { putInt("bytes", count) } }
-      }
-    }
+    guarded(promise, BridgeCodes.WRITE_FAILED) { PrinterApi.print(base64) { reply -> settleBytes(promise, reply) } }
+  }
+
+  // ---- the app's printers (bridge v2, Phase 2 Session 2F2): each names its printer, each answer but the print's is
+  // the whole list ----
+
+  @ReactMethod
+  fun poolStatus(promise: Promise) {
+    guarded(promise, BridgeCodes.UNSUPPORTED) { promise.resolve(StatusJson.poolMap(PrinterPool.poolStatus())) }
+  }
+
+  @ReactMethod
+  fun poolSelectPrinter(id: String, promise: Promise) {
+    guarded(promise, BridgeCodes.UNSUPPORTED) { PrinterApi.poolSelectPrinter(id) { reply -> settlePool(promise, reply) } }
+  }
+
+  @ReactMethod
+  fun poolSelectTcp(host: String, port: Int, promise: Promise) {
+    guarded(promise, BridgeCodes.UNSUPPORTED) { PrinterApi.poolSelectTcp(host, port) { reply -> settlePool(promise, reply) } }
+  }
+
+  @ReactMethod
+  fun poolReconnect(printerId: String, promise: Promise) {
+    guarded(promise, BridgeCodes.UNSUPPORTED) { PrinterApi.poolReconnect(printerId) { reply -> settlePool(promise, reply) } }
+  }
+
+  @ReactMethod
+  fun poolForget(printerId: String, promise: Promise) {
+    guarded(promise, BridgeCodes.UNSUPPORTED) { PrinterApi.poolForget(printerId) { reply -> settlePool(promise, reply) } }
+  }
+
+  @ReactMethod
+  fun poolPrint(printerId: String, base64: String, promise: Promise) {
+    guarded(promise, BridgeCodes.WRITE_FAILED) { PrinterApi.poolPrint(printerId, base64) { reply -> settleBytes(promise, reply) } }
   }
 
   @ReactMethod

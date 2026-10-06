@@ -43,6 +43,13 @@ export function receiptPageStyle(width: PaperWidth): string {
   return `@page { size: ${width} ${PAGE_HEIGHT}; margin: 4mm; } @media print { body { margin: 0; } }`;
 }
 
+/** Phase 2 Session 2E (spec §9.2): the cafe's settings as if both slips' paper were this printer's, so a slip for a
+ *  Windows printer is drawn, and its page sized, for that printer's roll. Settings not read yet stay unread (the
+ *  defaults, as before). */
+export function settingsForPaper(settings: Settings | null | undefined, width: PaperWidth): Settings | null | undefined {
+  return settings ? { ...settings, billPaperWidth: width, kotPaperWidth: width } : settings;
+}
+
 // Written as whole literal class names, never built by interpolation: Tailwind
 // scans source text, so a class assembled at runtime is never emitted.
 export const PAPER_WIDTH_CLASS: Record<PaperWidth, string> = {

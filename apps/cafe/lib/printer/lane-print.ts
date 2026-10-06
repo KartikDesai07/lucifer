@@ -2,6 +2,7 @@ import type { UseReactToPrintOptions } from "react-to-print";
 import { toast } from "sonner";
 
 import { DESKTOP_PRINT_EMPTY_MESSAGE } from "@/lib/desktop-shell-document";
+import type { PaperWidth } from "@/lib/constants";
 import { inAppWebView, rasterCapable } from "@/lib/printer/capabilities";
 import { devicePrinter } from "@/lib/printer/device-printer";
 import type { DevicePrinter } from "@/lib/printer/device-printer-store";
@@ -14,6 +15,7 @@ import {
   rasterizePrintIframe,
   type RasterPixels,
 } from "@/lib/printer/raster";
+import { printerWriter } from "@/lib/printer/printer-registry";
 import { nativeErrorMessage } from "@/lib/printer/transport-native";
 import {
   PRINTER_ELSEWHERE_MESSAGE,
@@ -38,6 +40,13 @@ export const SYSTEM_PRINT_SETTLE_MS = 500;
 export const LANE_RASTER_DEADLINE_MS = 12_000;
 
 export const NO_PRINTER_MESSAGE = "No printer is set up on this device. Tap the printer icon to set one up.";
+
+/** Phase 2 Session 2F1 (spec §9.2): a printer job for one of the POS app's printers, by the app's id: drawn at that
+ *  printer's paper and written to it (the device's own printer, or another of the app's printers on bridge v2). */
+export interface RasterPrintTarget {
+  nativeId: string;
+  paper: PaperWidth;
+}
 export const LANE_PRINT_FAILED_MESSAGE = "Could not print the slip. Check the printer, then print it again.";
 
 // Every sentence this lane (or the device printer under it) may show an
@@ -123,13 +132,15 @@ async function drawSlip(iframe: HTMLIFrameElement, dots: number): Promise<Raster
   }
 }
 
-async function rasterPrint(iframe: HTMLIFrameElement, printer: DevicePrinter): Promise<void> {
+async function rasterPrint(iframe: HTMLIFrameElement, printer: Pick<DevicePrinter, "paper">, nativeId?: string): Promise<void> {
   const dots = dotsForPaper(printer.paper);
   const drawn = await drawSlip(iframe, dots);
   const bitmap = rasterizeRgba(drawn.pixels, drawn.width, drawn.height, dots);
   // No ink at all is a blank slip; never feed blank paper (owner rule 2026-09-11).
   if (bitmap.rows === 0) throw new Error(DESKTOP_PRINT_EMPTY_MESSAGE);
   if (bitmap.rows > RASTER_MAX_ROWS) throw new Error(RASTER_TOO_LARGE_MESSAGE);
+  // Phase 2 Session 2F1: a printer job names its printer (the app's id); every other slip goes to this device's own.
+  if (nativeId !== undefined) return printerWriter(nativeId)(escposJob(bitmap));
   await devicePrinter().write(escposJob(bitmap));
 }
 
@@ -160,13 +171,14 @@ function laneOnPrintError(
 /**
  * Wraps a useReactToPrint options object for the no-shell case: the SAME
  * reference when this runtime has no way to reach a printer other than the
- * print window; otherwise a copy whose `print` picks the lane per job.
+ * print window; otherwise a copy whose `print` picks the lane per job. Phase 2
+ * Session 2F1: a printer job for one of the POS app's printers prints there.
  */
-export function laneSlipPrintOptions<T extends UseReactToPrintOptions>(options: T): T {
+export function laneSlipPrintOptions<T extends UseReactToPrintOptions>(options: T, raster?: RasterPrintTarget): T {
   if (!rasterCapable()) return options;
   return {
     ...options,
-    print: (iframe: HTMLIFrameElement) => lanePrint(iframe, options.documentTitle),
+    print: (iframe: HTMLIFrameElement) => (raster === undefined ? lanePrint(iframe, options.documentTitle) : rasterPrint(iframe, raster, raster.nativeId)),
     onPrintError: options.onPrintError ?? laneOnPrintError(options),
   };
 }

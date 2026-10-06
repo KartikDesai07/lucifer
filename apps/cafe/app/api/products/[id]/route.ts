@@ -33,6 +33,7 @@ export const { GET, PUT, DELETE } = createItemRoute({
   // icon works the same way: "Remove icon" sends null so the field goes back
   // to ABSENT — a stored explicit value here would defeat the catalogue's
   // append-only, omit-empty discipline (product-icons.ts).
-  nullClearsFields: ["variations", "publicVisible", "icon"],
+  // Printing Phase 2: "Use the category's station" sends stationId: null, back to ABSENT the same way.
+  nullClearsFields: ["variations", "publicVisible", "icon", "stationId"],
   softDelete: true,
 });

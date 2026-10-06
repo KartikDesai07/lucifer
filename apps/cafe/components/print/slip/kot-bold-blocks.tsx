@@ -65,8 +65,12 @@ const KOT_BOLD_BLOCKS: KotRenderers = {
     ) : (
       <div className="text-center text-[1.1em] font-bold tracking-widest">KITCHEN ORDER</div>
     ),
-  // Phase 2 prints the station line here (stationLine).
-  station: () => null,
+  // Phase 2's station line (a routed KOT: "BAR", "ALL STATIONS"), big enough to read across a kitchen; nothing in
+  // simple mode.
+  station: (_block, { stationLine }) =>
+    stationLine !== undefined && stationLine !== "" && (
+      <div className="text-center text-[1.4em] font-black tracking-widest">{stationLine}</div>
+    ),
   // The order's token (S6), beside the KOT box (it joins kotMeta), on every variant.
   token: (_block, { order }) =>
     order.tokenNumber !== undefined && (

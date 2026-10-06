@@ -4,6 +4,10 @@
 // Order (every drop in 1-5 is silent: no native call, no delivery):
 //  1 raw size  2 posting-frame origin  3 JSON  4 shape  5 token
 //  6 known method  7 params  8 native call  9 reply  10 app.changeUrl after reply
+//
+// Phase 2 Session 2F2 (spec §9.2): a v2 envelope (v: 2) carries one of bridge
+// v2's five printer methods, each naming its printer by the app's id; its reply
+// carries v: 2. A v1 envelope acts on the app's default printer, as before.
 
 import { buildDeliverScript } from './injected';
 import { NATIVE_ERROR_MESSAGES } from './messages';
@@ -21,8 +25,15 @@ import {
   type NativePrinter,
   type PrinterStatus,
 } from './protocol';
+import {
+  BRIDGE_V2,
+  V2_METHODS,
+  type BridgeReplyV2,
+  type PoolStatus,
+  type V2Method,
+} from './protocol-v2';
 import { originOf } from '../url';
-import { plainObject, validateParams } from './validate';
+import { plainObject, validateParams, validateV2Params } from './validate';
 
 export { NATIVE_ERROR_MESSAGES };
 export { validateParams };
@@ -45,6 +56,13 @@ export interface NativePort {
   requestPermission(kind: NativePermissionKind): Promise<boolean>;
   enableBluetooth(): Promise<{ on: boolean }>;
   setHostActive(active: boolean, label: string): Promise<{ active: boolean }>;
+  // Bridge v2: the app's printers, each by its id.
+  poolStatus(): Promise<PoolStatus>;
+  poolSelectPrinter(id: string): Promise<PoolStatus>;
+  poolSelectTcp(host: string, port: number): Promise<PoolStatus>;
+  poolReconnect(printerId: string): Promise<PoolStatus>;
+  poolForget(printerId: string): Promise<PoolStatus>;
+  poolPrint(printerId: string, base64: string): Promise<{ bytes: number }>;
 }
 
 export type RouterDeps = {
@@ -125,15 +143,41 @@ async function callPort(
   }
 }
 
+async function callPortV2(
+  port: NativePort,
+  method: V2Method,
+  params: Record<string, unknown>,
+): Promise<unknown> {
+  switch (method) {
+    case 'printer.status':
+      return port.poolStatus();
+    case 'printer.select':
+      return typeof params.id === 'string'
+        ? port.poolSelectPrinter(params.id)
+        : port.poolSelectTcp(params.host as string, params.port as number);
+    case 'printer.reconnect':
+      return port.poolReconnect(params.printerId as string);
+    case 'printer.forget':
+      return port.poolForget(params.printerId as string);
+    default: {
+      const { bytes } = await port.poolPrint(
+        params.printerId as string,
+        params.data as string,
+      );
+      return { bytes };
+    }
+  }
+}
+
 function isRequestShape(msg: Record<string, unknown>): msg is {
-  v: 1;
+  v: 1 | 2;
   id: string;
   method: string;
   token?: unknown;
   params?: unknown;
 } {
   return (
-    msg.v === NATIVE_BRIDGE_VERSION &&
+    (msg.v === NATIVE_BRIDGE_VERSION || msg.v === BRIDGE_V2) &&
     typeof msg.id === 'string' &&
     msg.id.length > 0 &&
     msg.id.length <= MAX_REQUEST_ID_CHARS &&
@@ -162,7 +206,7 @@ function parseMessage(raw: string): Record<string, unknown> | null {
 }
 
 export function createRouter(deps: RouterDeps): Router {
-  async function send(reply: BridgeReply): Promise<void> {
+  async function send(reply: BridgeReply | BridgeReplyV2): Promise<void> {
     try {
       await deps.deliver(buildDeliverScript(reply));
     } catch {
@@ -173,6 +217,15 @@ export function createRouter(deps: RouterDeps): Router {
   function failure(id: string, code: NativeErrorCode): BridgeReply {
     return {
       v: 1,
+      id,
+      ok: false,
+      error: { code, message: NATIVE_ERROR_MESSAGES[code] },
+    };
+  }
+
+  function failureV2(id: string, code: NativeErrorCode): BridgeReplyV2 {
+    return {
+      v: 2,
       id,
       ok: false,
       error: { code, message: NATIVE_ERROR_MESSAGES[code] },
@@ -195,6 +248,10 @@ export function createRouter(deps: RouterDeps): Router {
       return;
     }
     const { id } = msg;
+    if (msg.v === BRIDGE_V2) {
+      await handleV2(id, msg.method, msg.params);
+      return;
+    }
     if (!(NATIVE_METHODS as readonly string[]).includes(msg.method)) {
       await send(failure(id, 'BAD_REQUEST'));
       return;
@@ -216,6 +273,31 @@ export function createRouter(deps: RouterDeps): Router {
     if (method === 'app.changeUrl' && reply.ok) {
       deps.onChangeUrl();
     }
+  }
+
+  async function handleV2(
+    id: string,
+    name: string,
+    params: unknown,
+  ): Promise<void> {
+    if (!(V2_METHODS as readonly string[]).includes(name)) {
+      await send(failureV2(id, 'BAD_REQUEST'));
+      return;
+    }
+    const method = name as V2Method;
+    const checked = validateV2Params(method, params);
+    if (!checked.ok) {
+      await send(failureV2(id, checked.code));
+      return;
+    }
+    let reply: BridgeReplyV2;
+    try {
+      const result = await callPortV2(deps.port, method, checked.params);
+      reply = { v: 2, id, ok: true, result };
+    } catch (error) {
+      reply = failureV2(id, errorCodeOf(error, method));
+    }
+    await send(reply);
   }
 
   return { handle };

@@ -6,6 +6,7 @@
 // (kotRoundSlip ↔ queueKotRound/reprintKot, void ↔ queueVoidSlip), and the
 // unit suite pins the pair.
 
+import { printKotStationHeader } from "@pos/shared/print-printers";
 import type {
   KotPrintJobPayload,
   PrintJobPayload,
@@ -13,6 +14,7 @@ import type {
 } from "@pos/shared/schemas/print-job.schema";
 import type { PrintOrderSnapshot } from "@pos/shared/print-job";
 import type { KotReceiptVariant } from "@/hooks/use-pos-print";
+import type { PaperWidth } from "@/lib/constants";
 import type { Order, OrderItem } from "@/types";
 
 /** Web Locks name every window of the host PC contends for — the holder drains,
@@ -52,6 +54,9 @@ export type HostPrintSurface = "kot" | "receipt" | "token" | "eod";
 export interface HostKotSlip {
   surface: "kot";
   order: Order;
+  /** Phase 2 Session 2C (spec §8): the station a routed KOT is for, under its title ("BAR", "ALL STATIONS",
+   *  "BAR (NO PRINTER SET)"); absent on today's KOT and every other slip. */
+  stationLine?: string;
   kotRoundItems?: OrderItem[];
   kotRoundLabel?: string;
   kotRoundNumber?: number;
@@ -97,12 +102,34 @@ export interface HostEodSlip {
   documentTitle: string;
 }
 
-export type HostPrintSlip = HostKotSlip | HostReceiptSlip | HostTokenSlip | HostEodSlip;
+/** Phase 2 Session 2D (spec §11): a printer's Test print. The server wrote its lines from the stored printer;
+ *  the bridge prints it on the KOT surface (PrinterTestSlip), like the host's own test slip. */
+export interface HostTestSlip {
+  surface: "test";
+  printerName: string;
+  lines: string[];
+  requestedBy: string;
+  requestedAt: string;
+  documentTitle: string;
+  /** "REPRINT" when a lost ack made it print again (spec §7.7); absent for none. */
+  banner?: string;
+}
+
+/** Phase 2 (spec §9.2): where a printer job prints, drawn for that printer's paper: a Windows printer by its name
+ *  (Session 2E), or one of the POS app's printers by the app's id (Session 2F1). */
+export interface SlipPrintTarget {
+  paper: PaperWidth;
+  printerName?: string;
+  nativeId?: string;
+}
+
+export type HostPrintSlip = (HostKotSlip | HostReceiptSlip | HostTokenSlip | HostEodSlip | HostTestSlip) & { target?: SlipPrintTarget };
 
 export const ROUND_LABEL_PREFIX = "Round ";
 const KOT_TITLE_PREFIX = "KOT-";
 const TOKEN_TITLE_PREFIX = "TOKEN-";
 const EOD_TITLE_PREFIX = "EOD-";
+const TEST_TITLE_PREFIX = "TEST-";
 
 /** Widens a payload snapshot back into the `Order` the receipts render. The
  *  snapshot carries every field they read (§B1); `updatedAt` is the one
@@ -139,7 +166,8 @@ export function kotRoundSlip(order: Order, round: number | null): HostKotSlip {
 }
 
 function kotSlipOf(payload: KotPrintJobPayload): HostKotSlip {
-  return kotRoundSlip(orderFromSnapshot(payload.snapshot), payload.round);
+  const slip = kotRoundSlip(orderFromSnapshot(payload.snapshot), payload.round);
+  return payload.station === undefined ? slip : { ...slip, stationLine: printKotStationHeader(payload.station) };
 }
 
 /** `queueVoidSlip` verbatim: the synthesized single line (voided qty, the
@@ -218,6 +246,15 @@ export function hostPrintSlipOf(payload: PrintJobPayload, todayKey: string): Hos
         dateLabel: payload.dateLabel,
         isToday: payload.dateKey === todayKey,
         documentTitle: `${EOD_TITLE_PREFIX}${payload.dateKey}`,
+      };
+    case "test":
+      return {
+        surface: "test",
+        printerName: payload.printerName,
+        lines: [...payload.lines],
+        requestedBy: payload.requestedBy,
+        requestedAt: payload.requestedAt,
+        documentTitle: `${TEST_TITLE_PREFIX}${payload.printerName}`,
       };
   }
 }

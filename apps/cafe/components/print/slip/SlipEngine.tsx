@@ -64,6 +64,8 @@ export interface KotSlipProps {
   movedFrom?: string;
   movedBy?: string;
   movedAt?: string | Date;
+  /** Phase 2: the routed station's name; the design's station block prints it. */
+  stationLine?: string;
   banner?: string;
   template: KotTemplate;
   ref?: Ref<HTMLDivElement>;

@@ -12,6 +12,8 @@ export const DESKTOP_SHELL_REFUSALS: readonly string[] = [
   "No server address is set.",
   "Direct printing is not available on this PC. Open Settings, then Printing, and choose the Windows driver method.",
   "The chosen printer was not found on this PC. Open Settings, then Printing, and pick it again.",
+  // Phase 2 Session 2E: a named Windows printer this PC no longer has.
+  "That printer is not on this PC. Open Printer setup in the POS and choose a printer this PC has.",
 ];
 /** Refused before any byte left because of the slip itself: it did not finish drawing (owner, 1C gate I3). */
 export const DESKTOP_SHELL_NOT_READY_MESSAGE = "The slip did not finish drawing. Print it again.";

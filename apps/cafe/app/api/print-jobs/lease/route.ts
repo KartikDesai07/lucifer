@@ -1,4 +1,5 @@
 import { connectDB } from "@/lib/db";
+import { printerIdsOf } from "@pos/shared/print-printers";
 import { leasePrintJobs } from "@/lib/print-lease";
 import { touchPrintDevice } from "@/lib/print-device";
 import { leaseBodySchema } from "@/lib/print-lifecycle-schemas";
@@ -28,6 +29,8 @@ export async function POST(req: Request) {
         deviceId: parsed.data.deviceId,
         tabId: parsed.data.tabId,
         tokenSlips: parsed.data.tokenSlips === true,
+        // Session 2C: the printers this tab can print on now; the lib keeps those this device really writes.
+        printerIds: printerIdsOf(parsed.data.printerIds),
         dismissedBy: authed.session.user.name ?? UNNAMED_STAFF,
         nowMs,
       }),

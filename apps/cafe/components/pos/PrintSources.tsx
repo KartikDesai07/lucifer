@@ -37,6 +37,8 @@ interface PrintSourcesProps {
   tokenRef?: Ref<HTMLDivElement>;
   // Session 1C (spec §7.7): the print job's banner, set only by the print agent's slips.
   banner?: string;
+  // Session 2C (spec §8): a routed KOT's station line, set only by the print agent's slips.
+  kotStationLine?: string;
 }
 
 // Off-screen print sources cloned by react-to-print — lifted out of
@@ -59,6 +61,7 @@ export function PrintSources({
   receiptRef,
   tokenRef,
   banner,
+  kotStationLine,
 }: PrintSourcesProps) {
   usePrintFontsPreload(settings);
   // "test" is the provider-owned test slip (PH-5), which renders its own
@@ -90,6 +93,7 @@ export function PrintSources({
         movedFrom={movedFrom}
         movedBy={movedBy}
         movedAt={movedAt}
+        stationLine={kotStationLine}
         banner={banner}
         ref={kotRef}
       />

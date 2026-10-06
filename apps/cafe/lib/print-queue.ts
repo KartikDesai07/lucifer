@@ -28,7 +28,7 @@ import { publishCafeEvent, publishPrintStatus } from "@/lib/realtime-publish";
  *  pre-CAS eligibility looks the live Order up by `_id`. `undefined` for eod
  *  (§B1 — the one payload kind with no order to point at). */
 export function printJobOrderIdOf(payload: PrintJobPayload): string | undefined {
-  return payload.kind === "eod" ? undefined : payload.snapshot._id;
+  return payload.kind === "eod" || payload.kind === "test" ? undefined : payload.snapshot._id;
 }
 
 /** Pure. Deterministic dedupe key so a retried enqueue collapses to one doc;
@@ -70,6 +70,9 @@ export function printJobKeyOf(payload: PrintJobPayload): string | undefined {
       return undefined;
     case "cancel-notice":
       // The stop-instruction itself; a re-notify is deliberately repeatable.
+      return undefined;
+    case "test":
+      // Phase 2 Session 2D: a printer's Test print; every tap is one slip.
       return undefined;
   }
 }
@@ -261,8 +264,7 @@ export async function dismissPrintJob(input: {
     { new: true },
   );
   if (dismissed) {
-    // Phase 1 (spec §10): the ordering device's readback hears it at once; the pulse is the fallback.
-    publishPrintStatus({ id: input.id, status: "dismissed" });
+    // No print-status (the Phase 2B gate, G-1): no device listens for a final state; the pulse carries it.
     return { dismissed: true };
   }
 
@@ -285,7 +287,8 @@ export async function dismissPrintJob(input: {
  *  so routeWaitingPrintJobs (print-sweep.ts) sends it back there instead. */
 export async function dismissQueuedPrintJobsForClearedHost(dismissedBy: string): Promise<number> {
   const res = await PrintJob.updateMany(
-    { status: { $in: ["queued", "needs-confirm", "failed"] }, claimedAt: { $exists: false }, originDeviceId: { $exists: false } },
+    // Session 2C: never a printer job; its printer, not the host, prints it.
+    { printerId: { $exists: false }, status: { $in: ["queued", "needs-confirm", "failed"] }, claimedAt: { $exists: false }, originDeviceId: { $exists: false } },
     { $set: { status: "dismissed", dismissedAt: new Date(), dismissReason: "host-cleared", dismissedBy } },
   );
   return res.modifiedCount ?? 0;

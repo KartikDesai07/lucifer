@@ -275,6 +275,9 @@ export async function POST(req: Request, { params }: Params) {
             },
           ],
           originDeviceId: intent.deviceId,
+          leaseTabId: intent.leaseTabId,
+          readyPrinterIds: intent.readyPrinterIds,
+          billPrinterId: intent.billPrinterId,
           queuedBy: authed.session.user.name ?? "",
           nowMs: Date.now(),
         })

@@ -46,6 +46,13 @@ const NATIVE_METHOD_ORACLE = [
   'reconnect',
   'forget',
   'print',
+  // Phase 2 Session 2F2 (deliberate change): the app's printers, bridge v2.
+  'poolStatus',
+  'poolSelectPrinter',
+  'poolSelectTcp',
+  'poolReconnect',
+  'poolForget',
+  'poolPrint',
   'refreshStatus',
   'enableBluetooth',
   'setHostActive',
@@ -169,6 +176,7 @@ test('pin 0: every pinned source file exists', () => {
     join(MAIN, 'res', 'xml', 'usb_printer_filter.xml'),
     join(JAVA, 'com', 'possoftware', 'pos', 'MainApplication.kt'),
     join(SRC, 'bridge', 'protocol.ts'),
+    join(SRC, 'bridge', 'protocol-v2.ts'),
     join(SRC, 'native', 'PosPrinter.ts'),
     join(SRC, 'screens', 'PosScreen.tsx'),
     ...[
@@ -187,6 +195,11 @@ test('pin 0: every pinned source file exists', () => {
       'PrinterReceivers.kt',
       'PrinterThreads.kt',
       'PrinterTypes.kt',
+      // Phase 2 Session 2F2: the printer pool.
+      'PrinterPool.kt',
+      'PrinterEnv.kt',
+      'PoolList.kt',
+      'PoolStatus.kt',
     ].map(name => join(KT_DIR, name)),
   ];
   for (const path of paths) {
@@ -431,7 +444,7 @@ function moduleNameProblems(ktModule: string, jsWrapper: string): string[] {
 test('pin 4: JS wrapper and Kotlin @ReactMethod list equal the oracle', () => {
   const module = kt('PosPrinterModule.kt');
   const js = read(join(SRC, 'native', 'PosPrinter.ts'));
-  assert.equal(NATIVE_METHOD_ORACLE.length, 18);
+  assert.equal(NATIVE_METHOD_ORACLE.length, 24, '18 v1 methods and 6 of bridge v2');
   assert.ok(strip(module).includes('@ReactMethod'), 'landmark');
   assert.deepEqual(methodProblems(module, js), []);
   assert.deepEqual(moduleNameProblems(module, js), []);
@@ -932,7 +945,7 @@ test('pin 10 mutation: every prop, the withheld source and the guard can fail', 
 // --------------------------------------------------------------- pin 11
 interface DeliverySources {
   delivery: string;
-  manager: string;
+  pool: string;
   api: string;
   service: string;
 }
@@ -972,20 +985,26 @@ function deliveryProblems(s: DeliverySources): string[] {
   if (!d.includes('ESCAPED_CODES.contains(ch.code)')) {
     out.push('escapeForScript does not use ESCAPED_CODES');
   }
+  // Session 2F2 (deliberate change): the printer pool publishes, for both bridge versions.
   const publish =
-    /fun publish\(\)[\s\S]*?\n {2}\}\n/.exec(strip(s.manager))?.[0] ?? '';
+    /fun publish\(\)[\s\S]*?\n {2}\}\n/.exec(strip(s.pool))?.[0] ?? '';
   if (
     !publish.includes(
-      'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS,',
+      'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.toJson(one))',
     )
   ) {
-    out.push(
-      'PrinterManager.publish() does not deliver printer.status natively',
-    );
+    out.push('PrinterPool.publish() does not deliver the v1 printer.status natively');
+  }
+  if (
+    !publish.includes(
+      'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.poolJson(all), BridgeCodes.BRIDGE_V2)',
+    )
+  ) {
+    out.push('PrinterPool.publish() does not deliver the v2 printer.status natively');
   }
   const api = strip(s.api);
-  if (!api.includes('PrinterManager.publish()')) {
-    out.push('PrinterApi never publishes through PrinterManager');
+  if (!api.includes('PrinterPool.publish()')) {
+    out.push('PrinterApi never publishes through PrinterPool');
   }
   for (const banned of ['DeviceEventManagerModule', 'sendEvent', 'emit(']) {
     if (api.includes(banned)) {
@@ -994,9 +1013,9 @@ function deliveryProblems(s: DeliverySources): string[] {
   }
   const svc = strip(s.service);
   const wake =
-    /if\s*\(\s*!PrinterManager\.appVisible\s*\)\s*\{\s*WebViewDelivery\.deliverEvent\(BridgeCodes\.EVENT_APP_WAKE,/;
+    /if\s*\(\s*!PrinterPool\.appVisible\s*\)\s*\{\s*WebViewDelivery\.deliverEvent\(BridgeCodes\.EVENT_APP_WAKE,/;
   if (!wake.test(svc)) {
-    out.push('app.wake is not gated on !PrinterManager.appVisible');
+    out.push('app.wake is not gated on !PrinterPool.appVisible');
   }
   if ((svc.match(/EVENT_APP_WAKE/g) ?? []).length !== 1) {
     out.push('app.wake must be delivered from exactly one place');
@@ -1005,7 +1024,7 @@ function deliveryProblems(s: DeliverySources): string[] {
 }
 const deliverySources = (): DeliverySources => ({
   delivery: kt('WebViewDelivery.kt'),
-  manager: kt('PrinterManager.kt'),
+  pool: kt('PrinterPool.kt'),
   api: kt('PrinterApi.kt'),
   service: kt('PrintHostService.kt'),
 });
@@ -1037,7 +1056,7 @@ test('pin 11 mutation: React routes, weaker escapes and ungated wake are caught'
     ],
     ['ESCAPED_CODES.contains(ch.code)', 'false'],
   ]);
-  everyMutationCaught(run('manager'), base.manager, [
+  everyMutationCaught(run('pool'), base.pool, [
     [
       'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS,',
       'sendEvent(BridgeCodes.EVENT_PRINTER_STATUS,',
@@ -1046,17 +1065,18 @@ test('pin 11 mutation: React routes, weaker escapes and ungated wake are caught'
       'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS,',
       'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_APP_WAKE,',
     ],
+    ['StatusJson.poolJson(all), BridgeCodes.BRIDGE_V2)', 'StatusJson.poolJson(all))'],
   ]);
   everyMutationCaught(run('api'), base.api, [
-    ['PrinterManager.publish()', 'PrinterManager.status()'],
+    ['PrinterPool.publish()', 'PrinterPool.status()'],
     [
       'fun onBluetoothStateChanged() {',
       'fun onBluetoothStateChanged() {\n    DeviceEventManagerModule.noop()',
     ],
   ]);
   everyMutationCaught(run('service'), base.service, [
-    ['if (!PrinterManager.appVisible) {', 'if (PrinterManager.appVisible) {'],
-    ['if (!PrinterManager.appVisible) {', 'run {'],
+    ['if (!PrinterPool.appVisible) {', 'if (PrinterPool.appVisible) {'],
+    ['if (!PrinterPool.appVisible) {', 'run {'],
   ]);
 });
 
@@ -1274,6 +1294,7 @@ interface KtSources {
   ble: string;
   host: string;
   manager: string;
+  pool: string;
   tcp: string;
   tcpAddress: string;
   fence: string;
@@ -1375,7 +1396,7 @@ function serviceProblems(s: KtSources): string[] {
   if (svc.includes('stopSelf()')) {
     out.push('a bare stopSelf() drops a newer start command');
   }
-  if (count(svc, 'if (!PrinterManager.appVisible) {') !== 1) {
+  if (count(svc, 'if (!PrinterPool.appVisible) {') !== 1) {
     out.push('the app.wake gate must appear exactly once');
   }
   return out;
@@ -1383,15 +1404,17 @@ function serviceProblems(s: KtSources): string[] {
 function managerProblems(s: KtSources): string[] {
   const out: string[] = [];
   const mgr = strip(s.manager);
-  if (!mgr.includes('private val publishLock = Any()')) {
-    out.push('PrinterManager has no publishLock');
+  // Session 2F2 (deliberate change): the pool publishes for every printer, de-duplicated per bridge version.
+  const pool = strip(s.pool);
+  if (!pool.includes('private val publishLock = Any()')) {
+    out.push('PrinterPool has no publishLock');
   }
-  const publish = /fun publish\(\)[\s\S]*?\n {2}\}\n/.exec(mgr)?.[0] ?? '';
+  const publish = /fun publish\(\)[\s\S]*?\n {2}\}\n/.exec(pool)?.[0] ?? '';
   const underLock = [
     'synchronized(publishLock) {',
-    'lastPublished = snapshot',
+    'val changes = dedupe.next(one, all)',
     'WebViewDelivery.deliverEvent(',
-    'statusObserver?.invoke(snapshot)',
+    'statusObserver?.invoke()',
   ];
   if (!inOrder(publish, underLock)) {
     out.push('publish does not deliver under publishLock');
@@ -1500,20 +1523,24 @@ function selectionProblems(s: KtSources): string[] {
   const out: string[] = [];
   const api = strip(s.api);
   const fence = strip(s.fence);
+  // Session 2F2 (deliberate change): one ticket per slot (the default for v1, each printer for v2).
   const ticketed = [
-    'val ticket = SelectionFence.begin()',
-    'fenceThenCommit(ctx, info, ticket, cb)',
+    'val slot = if (v2) info.id else V1_SLOT',
+    'val ticket = SelectionFence.begin(slot)',
+    'fenceThenCommit(info, slot, ticket, cb, answer) { commit(info, v2, cb, answer) }',
   ];
   if (!inOrder(api, ticketed)) {
     out.push('select does not take a ticket before the fence');
   }
-  const check =
-    'SelectionFence.check(target.first, ticket, cb) { commit(ctx, info, cb) }';
+  const check = 'SelectionFence.check(target.first, slot, ticket, cb, answer, commit)';
   if (!api.includes(check)) {
     out.push('selecting a tcp: id skips the address fence');
   }
-  if (!/SelectionFence\.begin\(\)\s*PrinterManager\.halt\(\)/.test(api)) {
+  if (!/SelectionFence\.begin\(V1_SLOT\)\s*PrinterPool\.removeDefault\(\)/.test(api)) {
     out.push('forget does not supersede a pending selection');
+  }
+  if (!/SelectionFence\.begin\(printerId\)\s*PrinterPool\.remove\(printerId\)/.test(api)) {
+    out.push('a v2 forget does not supersede a pending selection of that printer');
   }
   if (api.includes('TcpAddress.')) {
     out.push('PrinterApi resolves a host itself');
@@ -1523,7 +1550,7 @@ function selectionProblems(s: KtSources): string[] {
     'TcpAddress.isForbidden(host)',
     'old.lookup?.cancel(false)',
     'settled.compareAndSet(false, true)',
-    'return ++ticket',
+    'tickets[slot] = next',
   ]) {
     if (!fence.includes(needle)) {
       out.push('SelectionFence lacks ' + needle);
@@ -1533,20 +1560,20 @@ function selectionProblems(s: KtSources): string[] {
     out.push('the DNS fence runs on the io thread');
   }
   const finish = [
-    'if (pending.ticket != ticket) {',
-    'pending.settle(Reply.Ok(PrinterManager.status()))',
+    'if (pending.ticket != tickets[slot]) {',
+    'pending.superseded()',
     'return',
-    'inFlight = null',
+    'inFlight.remove(slot)',
     'if (forbidden) pending.settle(Reply.fail(BridgeCodes.BAD_REQUEST)) else commit()',
   ];
-  if (!inOrder(tail(fence, 'private fun finish('), finish)) {
+  if (!inOrder(tail(fence, 'private fun <T> finish('), finish)) {
     out.push('a stale selection can still commit');
   }
   const begin = [
-    'val old = inFlight',
-    'inFlight = null',
-    'old.settle(Reply.Ok(',
-    'return ++ticket',
+    'val old = inFlight.remove(slot)',
+    'old.superseded()',
+    'tickets[slot] = next',
+    'return next',
   ];
   if (!inOrder(fence, begin)) {
     out.push('a superseded selection is not answered');
@@ -1564,13 +1591,14 @@ function selectionProblems(s: KtSources): string[] {
 // A job that hit the watchdog never reports success: it is TIMEOUT and the link is lost.
 function watchdogProblems(s: KtSources): string[] {
   const out: string[] = [];
-  const run = tail(strip(s.api), 'private fun runPrint(');
+  // Session 2F2 (deliberate change): every printer's print runs in its own PrinterManager.
+  const run = tail(strip(s.manager), 'private fun runPrint(');
   const verdict =
-    /t\.write\(bytes\)\s*if \(watchdogFired\(watchdog, timedOut\)\) \{\s*PrinterManager\.onLinkLost\(t\)\s*Reply\.fail\(BridgeCodes\.TIMEOUT\)\s*\} else \{\s*Reply\.Ok\(bytes\.size\)/;
+    /t\.write\(bytes\)\s*if \(watchdogFired\(watchdog, timedOut\)\) \{\s*onLinkLost\(t\)\s*Reply\.fail\(BridgeCodes\.TIMEOUT\)\s*\} else \{\s*Reply\.Ok\(bytes\.size\)/;
   if (!verdict.test(run)) {
     out.push('a write that returns after the watchdog still counts as printed');
   }
-  if (!strip(s.api).includes('!watchdog.cancel(false) || timedOut.get()')) {
+  if (!strip(s.manager).includes('!watchdog.cancel() || timedOut.get()')) {
     out.push('watchdogFired ignores a watchdog that is already running');
   }
   if (count(run, 'Reply.Ok(bytes.size)') !== 1) {
@@ -1635,6 +1663,7 @@ const ktSources = (): KtSources => ({
   ble: kt('BleTransport.kt'),
   host: kt('PrintHostService.kt'),
   manager: kt('PrinterManager.kt'),
+  pool: kt('PrinterPool.kt'),
   tcp: kt('TcpTransport.kt'),
   tcpAddress: kt('TcpAddress.kt'),
   fence: kt('SelectionFence.kt'),
@@ -1714,7 +1743,7 @@ test('pin 14 mutation: every needle can fail', () => {
     ['if (foregroundReached) {', 'if (true) {'],
     ['if (stopWanted) {', 'if (false) {'],
     ['foregroundReached = true', 'foregroundReached = false'],
-    ['if (!PrinterManager.appVisible) {', 'if (PrinterManager.appVisible) {'],
+    ['if (!PrinterPool.appVisible) {', 'if (PrinterPool.appVisible) {'],
     [inner('stopService'), 'stopSelf()'],
     ['stopSelf(startId)', 'stopSelf()'],
     [
@@ -1727,14 +1756,17 @@ test('pin 14 mutation: every needle can fail', () => {
     ],
     ['R.string.print_host_alert_title', 'R.string.print_host_title_printer'],
   ]);
-  everyMutationCaught(run(managerProblems, 'manager'), base.manager, [
+  everyMutationCaught(run(managerProblems, 'pool'), base.pool, [
     ['private val publishLock = Any()', 'private val publishLock2 = Any()'],
     ['synchronized(publishLock) {', 'run {'],
+    ['statusObserver?.invoke()', 'statusObserver?.hashCode()'],
+  ]);
+  everyMutationCaught(run(managerProblems, 'manager'), base.manager, [
     ['pendingLost = true', 'pendingLost = false'],
     ['else if (pendingLost) {', 'else if (false) {'],
     [
-      'object PrinterManager {',
-      'object PrinterThreads {}\nobject PrinterManager {',
+      'class PrinterManager(',
+      'object PrinterThreads {}\nclass PrinterManager(',
     ],
   ]);
   everyMutationCaught(run(managerProblems, 'threads'), base.threads, [
@@ -1785,15 +1817,20 @@ test('pin 14 mutation: every needle can fail', () => {
     ['    return local\n  }', '    return local.take(1)\n  }'],
   ]);
   everyMutationCaught(run(selectionProblems, 'api'), base.api, [
-    ['val ticket = SelectionFence.begin()', 'val ticket = 0'],
-    ['fenceThenCommit(ctx, info, ticket, cb)', 'commit(ctx, info, cb)'],
+    ['val ticket = SelectionFence.begin(slot)', 'val ticket = 0'],
+    ['val slot = if (v2) info.id else V1_SLOT', 'val slot = V1_SLOT'],
+    ['fenceThenCommit(info, slot, ticket, cb, answer) {', 'run {'],
     [
-      'SelectionFence.check(target.first, ticket, cb)',
-      'SelectionFence.check(target.second.toString(), ticket, cb)',
+      'SelectionFence.check(target.first, slot,',
+      'SelectionFence.check(target.second.toString(), slot,',
     ],
     [
-      'SelectionFence.begin()\n          PrinterManager.halt()',
-      'PrinterManager.halt()',
+      'SelectionFence.begin(V1_SLOT)\n          PrinterPool.removeDefault()',
+      'PrinterPool.removeDefault()',
+    ],
+    [
+      'SelectionFence.begin(printerId)\n          PrinterPool.remove(printerId)',
+      'PrinterPool.remove(printerId)',
     ],
     [
       'PrinterIds.tcpOf(info.id)',
@@ -1805,14 +1842,14 @@ test('pin 14 mutation: every needle can fail', () => {
     ['TcpAddress.isForbidden(host)', 'false'],
     ['old.lookup?.cancel(false)', 'old.lookup?.hashCode()'],
     ['settled.compareAndSet(false, true)', 'true'],
-    ['return ++ticket', 'return ticket'],
-    ['if (pending.ticket != ticket) {', 'if (false) {'],
-    ['    inFlight = null\n    if (forbidden)', '    if (forbidden)'],
+    ['tickets[slot] = next', 'tickets[slot] = 0'],
+    ['if (pending.ticket != tickets[slot]) {', 'if (false) {'],
+    ['    inFlight.remove(slot)\n    if (forbidden)', '    if (forbidden)'],
     [
       'if (forbidden) pending.settle(Reply.fail(BridgeCodes.BAD_REQUEST)) else commit()',
       'commit()',
     ],
-    ['      old.settle(Reply.Ok(PrinterManager.status()))\n', ''],
+    ['      old.superseded()\n', ''],
     ['PrinterThreads.timer.execute(', 'PrinterThreads.io.execute('],
   ]);
   everyMutationCaught(run(selectionProblems, 'threads'), base.threads, [
@@ -1823,11 +1860,11 @@ test('pin 14 mutation: every needle can fail', () => {
     ['"pos-printer-dns"', '"pos-printer-x"'],
     ['val dns: ExecutorService =', 'val dnsX: ExecutorService ='],
   ]);
-  everyMutationCaught(run(watchdogProblems, 'api'), base.api, [
+  everyMutationCaught(run(watchdogProblems, 'manager'), base.manager, [
     ['if (watchdogFired(watchdog, timedOut)) {', 'if (false) {'],
-    ['!watchdog.cancel(false) || timedOut.get()', 'timedOut.get()'],
+    ['!watchdog.cancel() || timedOut.get()', 'timedOut.get()'],
     [
-      '        PrinterManager.onLinkLost(t)\n        Reply.fail(BridgeCodes.TIMEOUT)\n      } else {',
+      '        onLinkLost(t)\n        Reply.fail(BridgeCodes.TIMEOUT)\n      } else {',
       '        Reply.fail(BridgeCodes.TIMEOUT)\n      } else {',
     ],
     [
@@ -2008,7 +2045,7 @@ function usbPermissionProblems(s: KtSources): string[] {
   if (!manager.includes('if (e.needsForeground) usbWaitingForeground = true else usbPermissionPaused = true')) {
     out.push('only a real denial may pause USB reconnects');
   }
-  if (!manager.includes('if (usbWaitingForeground && appVisible) selected else null')) {
+  if (!manager.includes('val usbAsk = synchronized(lock) { !halted && usbWaitingForeground && env.visible() }')) {
     out.push('resumeIfPaused must ask again once the app is visible');
   }
   if (!manager.includes('usbPermissionPaused || usbWaitingForeground) return')) {
@@ -2016,7 +2053,7 @@ function usbPermissionProblems(s: KtSources): string[] {
   }
   // Cold start: initialize() starts the attempt just before onHostResume, so the app can turn
   // visible between open()'s check and the flag. The attempt then asks for itself.
-  if (!manager.includes('if (e.needsForeground && appVisible) timer.execute(Runnable { resumeIfPaused() })')) {
+  if (!manager.includes('if (e.needsForeground && env.visible()) env.onTimer(Runnable { resumeIfPaused() })')) {
     out.push('a hidden refusal that lost the race with onHostResume must still ask once visible');
   }
   // begin() and halt() both clear the flag (a bare-assignment line; the field's own declaration
@@ -2041,9 +2078,9 @@ test('pin 16 mutation: every USB permission needle can fail', () => {
   ]);
   everyMutationCaught(run('manager'), base.manager, [
     ['if (e.needsForeground) usbWaitingForeground = true else usbPermissionPaused = true', 'usbPermissionPaused = true'],
-    ['if (usbWaitingForeground && appVisible) selected else null', 'if (false) selected else null'],
+    ['!halted && usbWaitingForeground && env.visible()', 'false'],
     ['usbPermissionPaused || usbWaitingForeground) return', 'usbPermissionPaused) return'],
-    ['if (e.needsForeground && appVisible) timer.execute(Runnable { resumeIfPaused() })', ''],
+    ['if (e.needsForeground && env.visible()) env.onTimer(Runnable { resumeIfPaused() })', ''],
     ['usbWaitingForeground = false\n          ++generation', '++generation'],
     ['usbWaitingForeground = false\n      generation++', 'generation++'],
   ]);
@@ -2100,6 +2137,102 @@ test('pin 18 mutation: the owner check can be cut', () => {
     ['scriptOwner = WeakReference(found)', 'scriptOwner = null'],
     ['removeScript(found)', 'removeScript(null)'],
   ]);
+});
+
+// --------------------------------------------------------------- pin 19
+// Phase 2 Session 2F2 (spec §9.2, §13): the app's printers are a pool. One PrinterManager and one io thread per
+// printer (a blocked connect never stalls another), BUSY per printer (never device-wide), the list kept in Prefs
+// with the v1 keys naming its default, both bridge versions' status events from the pool's one publish, the
+// notification's worst state, and the state machine free of Android so JUnit 4 runs it on the JVM.
+interface PoolSources {
+  manager: string;
+  env: string;
+  pool: string;
+  api: string;
+  threads: string;
+  prefs: string;
+  service: string;
+  gradle: string;
+}
+function poolProblems(s: PoolSources): string[] {
+  const out: string[] = [];
+  const manager = strip(s.manager);
+  const need = (text: string, needle: string, why: string) => {
+    if (!text.includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(manager, 'class PrinterManager(val info: PrinterInfo, private val env: PrinterEnv, private val io: ExecutorService)', 'a printer is not a PrinterManager with its own io thread');
+  need(manager, 'private val printing = AtomicBoolean(false)', 'a printer has no busy flag of its own');
+  need(manager, 'if (!printing.compareAndSet(false, true)) {\n      cb(Reply.fail(BridgeCodes.BUSY))', 'BUSY is not answered per printer before any byte');
+  need(manager, 'io.shutdown()', 'a printer that left the list keeps its io thread');
+  for (const [name, text] of [['PrinterManager.kt', s.manager], ['PrinterEnv.kt', s.env]]) {
+    if (/^import android\./m.test(strip(text))) {
+      out.push(name + ' imports Android: the JVM tests cannot run it');
+    }
+  }
+  if (strip(s.api).includes('AtomicBoolean')) {
+    out.push('PrinterApi keeps a device-wide printing flag');
+  }
+  const pool = strip(s.pool);
+  need(pool, 'PrinterManager(info, env, PrinterThreads.newIo())', 'a printer does not get its own io thread');
+  need(pool, 'val changes = dedupe.next(one, all)', 'the publish is not de-duplicated per bridge version');
+  need(strip(s.threads), 'fun newIo(): ExecutorService', 'PrinterThreads makes no io thread per printer');
+  if (/val io:/.test(strip(s.threads))) {
+    out.push('a shared io thread is back');
+  }
+  const prefs = strip(s.prefs);
+  need(prefs, 'PoolList.restore(listed, p.getString(KEY_PRINTER_DEFAULT, null), savedPrinter(ctx))', 'the saved list does not migrate the v1 printer');
+  need(prefs, '.putString(KEY_PRINTER_ID, default.id)', 'the v1 keys do not name the default printer');
+  need(strip(s.service), 'HostTitle.of(PrinterPool.poolStatus())', 'the notification does not say the worst state across printers');
+  need(strip(s.gradle), 'testImplementation "junit:junit:4.13.2"', 'JUnit 4 is not a test dependency');
+  return out;
+}
+const poolSources = (): PoolSources => ({
+  manager: kt('PrinterManager.kt'),
+  env: kt('PrinterEnv.kt'),
+  pool: kt('PrinterPool.kt'),
+  api: kt('PrinterApi.kt'),
+  threads: kt('PrinterThreads.kt'),
+  prefs: kt('Prefs.kt'),
+  service: kt('PrintHostService.kt'),
+  gradle: read(GRADLE_APP),
+});
+const JVM_TESTS = join(ROOT, 'android', 'app', 'src', 'test', 'java', 'com', 'possoftware', 'pos', 'printer');
+
+test('pin 19: one PrinterManager and io thread per printer, BUSY per printer, the list in Prefs, JUnit on the JVM', () => {
+  assert.deepEqual(poolProblems(poolSources()), []);
+  for (const name of ['PrinterManagerTest.kt', 'PoolListTest.kt', 'PoolStatusTest.kt', 'PrinterFakes.kt']) {
+    assert.ok(existsSync(join(JVM_TESTS, name)), 'JVM test file missing: ' + name);
+  }
+});
+
+test('pin 19 mutation: every pool needle can fail', () => {
+  const base = poolSources();
+  const run = (key: keyof PoolSources) => (text: string) => poolProblems({ ...base, [key]: text });
+  everyMutationCaught(run('manager'), base.manager, [
+    ['private val io: ExecutorService)', 'private val ioX: ExecutorService)'],
+    ['private val printing = AtomicBoolean(false)', 'private val printing2 = AtomicBoolean(false)'],
+    ['cb(Reply.fail(BridgeCodes.BUSY))', 'cb(Reply.fail(BridgeCodes.NOT_CONNECTED))'],
+    ['io.shutdown()', 'io.hashCode()'],
+    ['import java.util.concurrent.ExecutorService', 'import android.os.Handler\nimport java.util.concurrent.ExecutorService'],
+  ]);
+  everyMutationCaught(run('env'), base.env, [['package com.possoftware.pos.printer', 'package com.possoftware.pos.printer\n\nimport android.content.Context']]);
+  everyMutationCaught(run('api'), base.api, [['import android.content.Context', 'import android.content.Context\nimport java.util.concurrent.atomic.AtomicBoolean']]);
+  everyMutationCaught(run('pool'), base.pool, [
+    ['PrinterManager(info, env, PrinterThreads.newIo())', 'PrinterManager(info, env, shared)'],
+    ['val changes = dedupe.next(one, all)', 'val changes = StatusDedupe.Changes(true, true)'],
+  ]);
+  everyMutationCaught(run('threads'), base.threads, [
+    ['fun newIo(): ExecutorService', 'fun newIoX(): ExecutorService'],
+    ['  private val ioCount', '  val io: ExecutorService = newIo()\n  private val ioCount'],
+  ]);
+  everyMutationCaught(run('prefs'), base.prefs, [
+    ['savedPrinter(ctx))\n', 'null)\n'],
+    ['.putString(KEY_PRINTER_ID, default.id)', '.remove(KEY_PRINTER_ID)'],
+  ]);
+  everyMutationCaught(run('service'), base.service, [['HostTitle.of(PrinterPool.poolStatus())', 'HostTitle.of(PoolSnapshot(emptyList(), null, "on"))']]);
+  everyMutationCaught(run('gradle'), base.gradle, [['testImplementation "junit:junit:4.13.2"', '// no tests']]);
 });
 
 test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {

@@ -116,7 +116,7 @@ test("matrix (kot): 2 designs x every block type x 58/80 mm: ON prints what OFF 
         const off = kot(`${cell} (absent)`, ctx, settings, { ...base, blocks: priced(base.blocks.filter((b) => b.type !== type)) });
         assert.ok(on.includes(PAPER_WIDTH_CLASS[paper]), `${cell}: the slip is laid out at ${paper}`);
         if (SILENT.kot.includes(type)) {
-          assert.equal(on, off, `${cell}: the documented silent block prints nothing (Phase 2 updates this pin)`);
+          assert.equal(on, off, `${cell}: the documented silent block prints nothing (no stationLine in this fixture; print-template-station.test.ts pins it with one)`);
           silent++;
         } else {
           assert.notEqual(on, off, `${cell}: turning the block on changes the slip`);

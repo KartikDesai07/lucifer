@@ -11,6 +11,7 @@ const PRINT_CHANNEL = "pos-desktop:print-html";
 const PRINTERS_CHANNEL = "pos-desktop:printers";
 const PRINTER_SAVE_CHANNEL = "pos-desktop:printer-save";
 const PRINT_MODE_SAVE_CHANNEL = "pos-desktop:print-mode-save";
+const PRINT_ON_CHANNEL = "pos-desktop:print-html-on";
 const VERSION_ARG_PREFIX = "--pos-desktop-version=";
 
 const versionArg = process.argv.find((arg: string) => arg.startsWith(VERSION_ARG_PREFIX));
@@ -19,6 +20,9 @@ const version = versionArg ? versionArg.slice(VERSION_ARG_PREFIX.length) : "";
 contextBridge.exposeInMainWorld("posDesktop", {
   version,
   printHtml: (html: string): Promise<void> => electron.ipcRenderer.invoke(PRINT_CHANNEL, html),
+  // Phase 2 Session 2E: the same slip on the Windows printer named; the main process vets the name.
+  printHtmlOn: (html: string, printerName: string): Promise<void> =>
+    electron.ipcRenderer.invoke(PRINT_ON_CHANNEL, html, printerName),
   listPrinters: (): Promise<unknown> => electron.ipcRenderer.invoke(PRINTERS_CHANNEL),
   savePrinter: (name: string | null): Promise<unknown> =>
     electron.ipcRenderer.invoke(PRINTER_SAVE_CHANNEL, name),

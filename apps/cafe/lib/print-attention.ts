@@ -39,6 +39,7 @@ export function printAttentionRowOf(doc: {
   originDeviceId?: string;
   targetDeviceId?: string;
   approvedAt?: Date;
+  printerId?: string;
 }): PrintAttentionRow | null {
   // A status this panel never shows (deploy skew, a row that moved mid-read) degrades one row, never the pulse.
   if (!ATTENTION_STATUSES.has(doc.status)) return null;
@@ -53,12 +54,14 @@ export function printAttentionRowOf(doc: {
     ...(doc.originDeviceId ? { originDeviceId: doc.originDeviceId } : {}),
     ...(doc.targetDeviceId ? { targetDeviceId: doc.targetDeviceId } : {}),
     ...(doc.approvedAt ? { approved: true as const } : {}),
+    // Session 2C: printers mode names the printer the slip waits on.
+    ...(doc.printerId ? { printerId: doc.printerId } : {}),
   };
 }
 
 export async function readPrintAttention(nowMs: number): Promise<{ rows: PrintAttentionRow[]; truncated: boolean }> {
   const docs = await PrintJob.find(printAttentionFilter(nowMs))
-    .select("kind label status labels createdAt lastError originDeviceId targetDeviceId approvedAt")
+    .select("kind label status labels createdAt lastError originDeviceId targetDeviceId printerId approvedAt")
     // The newest rows, on the same index (a merge of its scans, no in-memory sort: the 1D gate's explain()).
     .sort({ createdAt: -1, _id: -1 })
     // One row more than it shows, so a cut is a real cut: exactly 20 waiting reads "20", not "20+", and the

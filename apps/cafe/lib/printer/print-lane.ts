@@ -4,6 +4,7 @@ import { desktopChosen } from "@/lib/printer/desktop-printer-state";
 import { PRINTER_ELSEWHERE_MESSAGE, PRINTER_NOT_CONNECTED_MESSAGE, devicePrinter } from "@/lib/printer/device-printer";
 import { NO_PRINTER_MESSAGE } from "@/lib/printer/lane-print";
 import { nativeBridge } from "@/lib/printer/native-bridge";
+import { nativePool } from "@/lib/printer/native-pool";
 
 // Which way a slip leaves THIS device, resolved at call time (never cached, so
 // a setup change or a late-arriving bridge takes effect without a re-render):
@@ -53,6 +54,16 @@ export function canPrintNow(): boolean {
   if (lane === "desktop") return desktopChosen() !== "none";
   if (lane === "system") return true;
   return lane === "raster" && devicePrinter().getSnapshot().status === "connected";
+}
+
+/** Phase 2 Session 2F1 (spec §9.2): a printer here can print right now, this device's own or (bridge v2) another of
+ *  the POS app's printers. The drain asks for its lock by it, so one printer of the app that is off never stops the
+ *  others; a slip with no printer of its own still needs canPrintNow(). */
+export function canPrintOnAny(): boolean {
+  if (canPrintNow()) return true;
+  // Not by the lane (the 2E gate's review, I-2): a tablet whose only printers came through the app's list has no device
+  // printer record yet, and still drains.
+  return nativeBridge() !== null && nativePool().getSnapshot().printers.some((printer) => printer.status === "connected");
 }
 
 // The sentence for a print this device cannot run right now (the band's manual

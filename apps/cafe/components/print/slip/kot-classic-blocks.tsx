@@ -208,8 +208,12 @@ export const KOT_CLASSIC_BLOCKS: ClassicKotRenderers = {
         Round total: {inr(roundTotal)}
       </div>
     ),
-  // Station is Phase 2's slot (stationLine).
-  station: () => null,
+  // Phase 2's station line (a routed KOT: "BAR", "ALL STATIONS"), exactly as the legacy ticket prints it; nothing in
+  // simple mode.
+  station: (_block, { stationLine }) =>
+    stationLine !== undefined && stationLine !== "" && (
+      <div className="text-center text-[1.29em] font-bold tracking-widest">{stationLine}</div>
+    ),
   // The order's token (S6): the legacy KOT's own line (slip-token-lines.tsx), on every variant.
   token: (_block, { order }) => order.tokenNumber !== undefined && <KotTokenLine tokenNumber={order.tokenNumber} />,
   qr: genericKotQr(CLASSIC_GENERIC),

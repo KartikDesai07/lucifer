@@ -378,3 +378,42 @@ test("copy is plain English: no banned words and no cafe name in any headline, d
     assert.ok(!lower.includes(CAFE_NAME), `"${text}" must not name the cafe`);
   }
 });
+
+// ── Phase 2 Session 2D (spec §10): the dot in printers mode ─────────────────
+// No host plays a part: a device that writes printers shows its own printer, red when a printer it writes is not
+// its printer; any other device's slips print at the cafe's printers (the waiting count and the alarm speak).
+const PRINTERS_BASE: PrinterDotInput = { remote: "none", isHostDevice: false, lane: "raster", local: "connected", deviceOffline: false, desktopChosen: "unknown" };
+
+test("2D: printers mode — a writer shows its own printer; one writing a printer that is not its own is red; any other device is green", () => {
+  const mode = (isWriter: boolean, allLocal: boolean) => ({ printersMode: true, isWriter, allLocal });
+  assert.deepEqual(printerDotOf({ ...PRINTERS_BASE, printers: mode(true, true) }), { show: true, ok: true, reason: "ok" }, "its printer is connected");
+  assert.deepEqual(printerDotOf({ ...PRINTERS_BASE, local: "disconnected", printers: mode(true, true) }), { show: true, ok: false, reason: "printer-off" }, "its printer is off");
+  assert.deepEqual(printerDotOf({ ...PRINTERS_BASE, printers: mode(true, false) }), { show: true, ok: false, reason: "printer-not-here" }, "a printer it writes is not its printer");
+  assert.deepEqual(printerDotOf({ ...PRINTERS_BASE, local: "none", lane: "system", printers: mode(false, true) }), { show: true, ok: true, reason: "printers-elsewhere" }, "an ordering device needs no printer");
+  assert.deepEqual(printerDotOf({ ...PRINTERS_BASE, remote: "offline", isHostDevice: true, printers: mode(false, true) }), { show: true, ok: true, reason: "printers-elsewhere" }, "a former host's record plays no part");
+  assert.deepEqual(printerDotOf({ ...PRINTERS_BASE, lane: "desktop", desktopChosen: "none", printers: mode(true, true) }), { show: true, ok: false, reason: "no-printer" }, "a Windows writer with no printer chosen");
+  assert.deepEqual(printerDotOf({ ...PRINTERS_BASE, deviceOffline: true, printers: mode(true, true) }), { show: true, ok: false, reason: "device-offline" }, "offline still wins");
+  assert.deepEqual(printerDotOf({ ...PRINTERS_BASE, lane: "pending", printers: mode(true, true) }), { show: false }, "no dot before the lane is known");
+  assert.deepEqual(printerDotOf({ ...PRINTERS_BASE, remote: "offline", printers: { printersMode: false, isWriter: false, allLocal: true } }), { show: true, ok: false, reason: "host-offline" }, "simple mode is unchanged");
+});
+
+// Phase 2 Session 2F1 (spec §9.2, §10): on the POS app with bridge v2 the dot is the worst state among its printers this
+// device prints, not only the device's own.
+test("2F1: printers mode on bridge v2 — the dot is the worst state among the app's printers this device prints", () => {
+  const mode = { printersMode: true, isWriter: true, allLocal: true };
+  assert.deepEqual(printerDotOf({ ...PRINTERS_BASE, printers: { ...mode, worst: "disconnected" } }), { show: true, ok: false, reason: "printer-off" }, "the bar printer is down, the device's own connected");
+  assert.deepEqual(printerDotOf({ ...PRINTERS_BASE, local: "disconnected", printers: { ...mode, worst: "connected" } }), { show: true, ok: true, reason: "ok" }, "every printer it prints is connected");
+  assert.deepEqual(printerDotOf({ ...PRINTERS_BASE, printers: { ...mode, worst: "connecting" } }), { show: true, ok: false, reason: "checking" }, "one still connecting: checking");
+});
+
+test("2D: printers mode copy — plain words for the two new states", () => {
+  const input: PrinterHeadlineInput = { hostLabel: null, printerName: "Kitchen printer", isHostDevice: false, canPrintHere: true, localStatus: "connected", desktopNoPrinter: false };
+  assert.deepEqual(printerHeadlineOf({ show: true, ok: true, reason: "printers-elsewhere" }, input), { headline: "Printing is on", detail: "Each slip prints at its printer (Printer setup).", fix: null });
+  assert.deepEqual(printerHeadlineOf({ show: true, ok: false, reason: "printer-not-here" }, input), {
+    headline: "A printer is not on this device",
+    detail: "This device is set to print a printer that is not its own printer. Check it in Printer setup.",
+    fix: "setup",
+  });
+  assert.equal(printerButtonName({ show: true, ok: true, reason: "printers-elsewhere" }), PRINTER_BUTTON_NAME_OK);
+  assert.equal(printerDotTone({ show: true, ok: false, reason: "printer-not-here" }), "red");
+});

@@ -16,6 +16,7 @@ import {
   printAlarmSummary,
   printAlarmWanted,
   printRetryNotice,
+  printerNameOf,
   printWaitingAge,
   printWaitingBadgeOf,
   printWaitingGroups,
@@ -231,6 +232,8 @@ test("a tap's answer in plain words: done, already handled, or it prints by itse
   assert.equal(printRetryNotice({ applied: false, status: "queued", reason: "wrong-status" }), "It prints by itself as soon as the printer is ready.");
   assert.equal(printRetryNotice({ applied: false, status: "printed", reason: "wrong-status" }), "Already handled.");
   assert.equal(printRetryNotice({ applied: false, status: null, reason: "not-found" }), "Already handled.");
+  // Session 2C (the 2B gate's ruling R2): never guessed onto another printer.
+  assert.equal(printRetryNotice({ applied: false, status: "failed", reason: "printer-gone" }), "No printer takes this slip now (removed, switched off, or none set up). Print it again from its order.");
 });
 
 test("PIN: the panel shows the waiting slips, the button shows their count, and both stay within their budgets", () => {
@@ -299,4 +302,13 @@ test("PIN: the alarm rides the pulse already polled (no request), and only the p
   assert.match(alarm, /return \(\) => \{\s*unsubscribe\(\);\s*toast\.dismiss\(SUMMARY_ID\);/, "an unmount takes its notices down (M-1)");
   assert.match(src("apps/cafe/components/print/PrinterStatusButton.tsx"), /useEffect\(\(\) => onOpenPrinterPanel\(\(\) => setOpen\(true\)\), \[\]\);/, "the printer button opens its sheet when asked");
   assert.match(src("apps/cafe/components/print/PrintHostDrain.tsx"), /usePrintSlipAlarm\(deviceId\);/, "every device with an identity");
+});
+
+// Session 2C (printers mode): the panel names a waiting slip's printer from this device's printer list.
+test("2C: a waiting slip's printer by name; none for simple mode, a printer no longer listed, or no printer at all", () => {
+  const printers = [{ id: "p-bar", name: "Bar printer" }];
+  assert.equal(printerNameOf(printers, "p-bar"), "Bar printer");
+  assert.equal(printerNameOf(printers, undefined), null, "simple mode");
+  assert.equal(printerNameOf(printers, "p-gone"), null, "removed since");
+  assert.equal(printerNameOf(printers, "none"), null, "no printer took it (its reason says so)");
 });

@@ -11,7 +11,7 @@
 // the same predicates run identically wherever the provider mounts.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { PrintAttentionRow } from "./print-agent-wire";
+import type { PrintAttentionRow, PrintJobsForMe } from "./print-agent-wire";
 import type { PrintHostState, PrintJobFeedRow, PrintJobResolvedRow } from "./print-job";
 
 /** Server-side scan bound when counting/paging OPEN self-order requests — a
@@ -99,7 +99,7 @@ export interface PosPulseData {
   resolvedPrintJobsTruncated: boolean;
   // Printing Phase 1 Session 1C (spec §9.1): present only when the tab named itself (?device=): how
   // many jobs wait in this device's own line, and the oldest. Absent on a failed read.
-  printJobsForMe?: { count: number; oldestCreatedAt: string | null };
+  printJobsForMe?: PrintJobsForMe;
   // Printing Phase 1 Session 1D (spec §10): every slip that waits for people, cafe-wide: the one
   // waiting-slips panel, its count on the printer button, and the 20 s KOT alarm. Absent on a failed read.
   printAttention?: PrintAttentionRow[];

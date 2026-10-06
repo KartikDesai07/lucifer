@@ -43,7 +43,8 @@ function check(problems: string[], ok: boolean, message: string): void {
   if (!ok) problems.push(message);
 }
 
-const DELEGATE = "if (!shell) return laneSlipPrintOptions(options);";
+// Phase 2 Session 2F1 (deliberate change): a printer job of one of the POS app's printers names it (raster).
+const DELEGATE = "if (!shell) return laneSlipPrintOptions(options, raster);";
 // The final release check (2026-10-03, deliberate change): the routine beat also says whether this host is
 // silent by construction (beatSilentMode), so an app host never reads "a dialog for every slip".
 const BEAT_CALL = "beat({ deviceId, printer: beatPrinterReport(), silentMode: beatSilentMode() });";
@@ -57,7 +58,7 @@ const CASES: PinCase[] = [
     file: "lib/desktop-shell.ts",
     pin: (s, r) => {
       const p: string[] = [];
-      check(p, s.includes('import { laneSlipPrintOptions } from "@/lib/printer/lane-print";'), "imports laneSlipPrintOptions from lane-print");
+      check(p, s.includes('import { laneSlipPrintOptions, type RasterPrintTarget } from "@/lib/printer/lane-print";'), "imports laneSlipPrintOptions from lane-print");
       check(p, count(s, DELEGATE) === 1, "the delegate line appears exactly once");
       check(p, ordered(s, ["const shell = desktopShell();", DELEGATE, "print: async (iframe"]), "order: const shell -> delegate -> the shell's print override");
       check(p, !s.includes("if (!shell) return options;"), "the old same-reference line is gone");
@@ -69,7 +70,7 @@ const CASES: PinCase[] = [
       { name: "delegate removed", apply: sub(DELEGATE, "if (!shell) return options;") },
       { name: "delegate only in a comment", apply: sub(DELEGATE, `// ${DELEGATE}\n  if (!shell) return options;`) },
       { name: "delegate before the shell check", apply: sub(`const shell = desktopShell();\n  ${DELEGATE}`, `if (!desktopShell()) return laneSlipPrintOptions(options);\n  const shell = desktopShell();\n  if (!shell) return options;`) },
-      { name: "import dropped", apply: sub('import { laneSlipPrintOptions } from "@/lib/printer/lane-print";\n', "") },
+      { name: "import dropped", apply: sub('import { laneSlipPrintOptions, type RasterPrintTarget } from "@/lib/printer/lane-print";\n', "") },
       { name: "lane logic leaks into the seam", apply: sub("const shell = desktopShell();", "const shell = desktopShell(); void navigator;") },
     ],
   },
@@ -124,17 +125,19 @@ const CASES: PinCase[] = [
     file: "components/print/PrintHostDrain.tsx",
     pin: (s) => {
       const p: string[] = [];
-      check(p, ordered(s, ["const canPrint = useCanPrintNow();", LOCK_CALL, "const drains = isAgent && holdsLock;"]), "canPrint -> gated lock -> drains");
+      // Session 2F1 (deliberate change): any printer of this device (one of the POS app's printers that is off never
+      // stops the others, spec §9.2).
+      check(p, ordered(s, ["const canPrint = useCanPrintOnAny();", LOCK_CALL, "const drains = isAgent && holdsLock;"]), "canPrint -> gated lock -> drains");
       check(p, count(s, "usePrintHostDrainLock(") === 1 && !s.includes("usePrintHostDrainLock(enabled)"), "no ungated lock call");
       check(p, s.includes("usePrintHostWakeLock(enabled);") && s.includes("usePrintHostBeat({ enabled, deviceId, onDemoted });"), "wake lock and routine beat keep `enabled`");
       check(p, s.includes("usePrintHostPrinterBeat({ enabled, deviceId, onDemoted });"), "printer beat is wired with `enabled`");
       check(p, s.includes("useNativeHostBackground(enabled);"), "native host background is wired with `enabled`");
-      check(p, s.includes('import { useCanPrintNow } from "@/hooks/use-device-printer";'), "imports useCanPrintNow");
+      check(p, s.includes('import { useCanPrintOnAny } from "@/hooks/use-device-printer";'), "imports useCanPrintOnAny");
       return p;
     },
     mutations: [
       { name: "lock ungated", apply: sub(LOCK_CALL, "const holdsLock = usePrintHostDrainLock(enabled);") },
-      { name: "canPrint read after the lock", apply: sub(`const canPrint = useCanPrintNow();\n  ${LOCK_CALL}`, `${LOCK_CALL}\n  const canPrint = useCanPrintNow();`) },
+      { name: "canPrint read after the lock", apply: sub(`const canPrint = useCanPrintOnAny();\n  ${LOCK_CALL}`, `${LOCK_CALL}\n  const canPrint = useCanPrintOnAny();`) },
       { name: "printer beat armed by drains", apply: sub("usePrintHostPrinterBeat({ enabled,", "usePrintHostPrinterBeat({ enabled: drains,") },
       { name: "native background removed", apply: sub("  useNativeHostBackground(enabled);\n", "") },
       { name: "routine beat gated by canPrint", apply: sub("usePrintHostBeat({ enabled, deviceId, onDemoted });", "usePrintHostBeat({ enabled: enabled && canPrint, deviceId, onDemoted });") },

@@ -1,8 +1,11 @@
-import mongoose, { Schema, type Document, type Model } from "mongoose";
+import mongoose, { Schema, Types, type Document, type Model } from "mongoose";
 
 export interface ICategory extends Document {
   name: string;
   order: number; // display order in POS
+  // Printing Phase 2 (spec §6.2): the kitchen station this category's items print at. ABSENT means the
+  // default station (omit-empty, no default below: every category made before Phase 2 keeps meaning that).
+  stationId?: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -14,6 +17,7 @@ export const categorySchema = new Schema<ICategory>(
     // unique:true creates the index — no separate index() needed for name.
     name: { type: String, required: true, unique: true, trim: true },
     order: { type: Number, default: 0 },
+    stationId: { type: Schema.Types.ObjectId },
   },
   { timestamps: true },
 );

@@ -15,7 +15,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { desktopPrinterApi, type DesktopPrinter, type DesktopPrintMode } from "@/lib/desktop-shell-printer";
+import { desktopPrinterApi, desktopPrinterSavesToFile, type DesktopPrinter, type DesktopPrintMode } from "@/lib/desktop-shell-printer";
 import { publishDesktopPrinterSelection, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
 import { DesktopPrintMethod } from "@/components/print/DesktopPrintMethod";
 
@@ -24,22 +24,8 @@ const SAVE_FAILED_MESSAGE = "Could not save the printer — pick it again.";
 const SAVED_MESSAGE = "Printer saved — slips will print on it from now on.";
 const CLEARED_MESSAGE = "Printer cleared — slips will not print until you pick one.";
 const NOT_CHOSEN_VALUE = "";
-// Mirrors NON_PAPER_PRINTER_PATTERNS in apps/desktop/src/shared.ts, which is
-// the ENFORCING copy — the shell refuses these whatever this list says. Here
-// they are only greyed out with a reason, so the operator understands why.
-const NON_PAPER_PATTERNS = [
-  "print to pdf",
-  "xps document writer",
-  "onenote",
-  "fax",
-  "adobe pdf",
-  "pdfcreator",
-];
-
-function savesToFile(name: string): boolean {
-  const lower = name.toLowerCase();
-  return NON_PAPER_PATTERNS.some((p) => lower.includes(p));
-}
+// The file-writing devices: one list in the page since Phase 2 Session 2E (lib/desktop-shell-printer.ts).
+const savesToFile = desktopPrinterSavesToFile;
 
 export function DesktopPrinterPicker() {
   // undefined = still deciding; null = this shell has no picker.

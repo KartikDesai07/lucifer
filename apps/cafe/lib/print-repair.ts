@@ -55,8 +55,21 @@ export function expectedKotJobs(orders: readonly RepairCandidate[], nowMs: numbe
   return out;
 }
 
+/** Session 2C (printers mode): the round a job's key names. A routed job's key adds its printer and part
+ *  (`kot:<order>:<round>:<printer>:<part>`), so its first three parts name the round. */
+export function kotRoundKeyOf(jobKey: string | undefined): string | undefined {
+  return jobKey === undefined ? undefined : jobKey.split(":").slice(0, 3).join(":");
+}
+
+/** One read on the jobKey index: each expected round's job under today's key or any routed key (an anchored
+ *  prefix, so round 1 never finds round 10). Order ids are hex and rounds digits: nothing to escape. */
+export function presentKotRoundsFilter(keys: readonly string[]): { $or: Array<{ jobKey: { $regex: string } }> } {
+  return { $or: keys.map((key) => ({ jobKey: { $regex: `^${key}(:|$)` } })) };
+}
+
 /** Re-creates the missing jobs of server-owned KOT rounds fired in the last 30 min. Returns how many it
- *  made. Indexed on createdAt: orders opened in the last 12 h (its own window since the 1D review gate,
+ *  made. Session 2C: a round with no job at all is routed again with today's setup (createOrderPrintJobs); a
+ *  round with some of its jobs is left alone (one request made them together). Indexed on createdAt: orders opened in the last 12 h (its own window since the 1D review gate,
  *  so the 3 h queued retention never stops a long-sitting table's new round from being repaired). */
 export async function repairMissingKotJobs(nowMs: number): Promise<number> {
   const since = new Date(nowMs - PRINT_REPAIR_WINDOW_MS);
@@ -72,10 +85,10 @@ export async function repairMissingKotJobs(nowMs: number): Promise<number> {
     .lean<RepairCandidate[]>();
   const expected = expectedKotJobs(candidates, nowMs);
   if (expected.length === 0) return 0;
-  const present = await PrintJob.find({ jobKey: { $in: expected.map((job) => job.jobKey) } })
+  const present = await PrintJob.find(presentKotRoundsFilter(expected.map((job) => job.jobKey)))
     .select("jobKey")
     .lean<Array<{ jobKey?: string }>>();
-  const have = new Set(present.map((row) => row.jobKey));
+  const have = new Set(present.map((row) => kotRoundKeyOf(row.jobKey)));
   let repaired = 0;
   for (const missing of expected) {
     if (have.has(missing.jobKey)) continue;

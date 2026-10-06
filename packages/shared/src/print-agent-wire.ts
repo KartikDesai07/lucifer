@@ -12,6 +12,7 @@ import {
   type PrintJobStatus,
 } from "./print-job";
 import type { PrintJobLabel, PrintJobRefusal } from "./print-lifecycle";
+import { printerWriterDevices, printersModeOn, type PrinterConfig } from "./print-printers";
 import type { PrintJobPayload } from "./schemas/print-job.schema";
 
 /** The header a device names itself with on print requests (spec §6.5 originDeviceId). */
@@ -27,6 +28,19 @@ export const PRINT_AGENT_HEADER = "x-pos-print-agent";
 export const PRINT_BILL_HEADER = "x-pos-print-bill";
 /** The one value that switches either header on. */
 export const PRINT_HEADER_ON = "1";
+/** Phase 2 Session 2B (spec §7.11, plan decision 15): the tab that drains this device's slips and can print
+ *  right now names itself (its tab id) on every request that makes slips. When a slip prints on the asking
+ *  device, the server may then make it already leased to that tab, and the answer carries the lease
+ *  (PrintJobRef.leased): the tab prints at once, with no lease request and no realtime message. Optional like
+ *  every print header: an absent or unusable one only means the slip is made queued, as in Phase 1. */
+export const PRINT_LEASE_HEADER = "x-pos-print-lease";
+/** Phase 2 Session 2C (printers mode, spec §8, plan decision 15): beside PRINT_LEASE_HEADER, the printers this
+ *  tab can print on right now ("id,id"). A slip routed to one of them, on a printer this device writes, may be
+ *  made already leased to the tab. Unusable ids are dropped (printerIdsOf), never a refused request. */
+export const PRINT_READY_HEADER = "x-pos-print-ready";
+/** Session 2C (plan decision 7): this device's own bill printer (an id), chosen on the device (Session 2D). An
+ *  unknown, switched-off or unusable one means the default bill printer; it never refuses the order write. */
+export const PRINT_BILL_PRINTER_HEADER = "x-pos-bill-printer";
 
 /** One job the server created for a request (spec §7.4 `printJobs`): the asking device leases the ones
  *  aimed at it straight away and follows each one's readback by id. */
@@ -38,6 +52,12 @@ export interface PrintJobRef {
   /** The job's state when the answer was built (1B final review M-d): a deduped ref to a job that
    *  already printed (or was dismissed) is followed, never leased or re-sent as if it were fresh. */
   status: PrintJobStatus;
+  /** Session 2B (spec §7.11): the job is leased to the asking tab (made so now, or still so from a request
+   *  whose answer was lost). The tab prints it at once and acks it; no lease request. */
+  leased?: LeasedPrintJob;
+  /** Session 2C (printers mode): the printer the job prints on; PRINT_JOB_NO_PRINTER when none takes it (the
+   *  job is failed at creation). Absent in simple mode. */
+  printerId?: string;
 }
 
 /** Session 1D (spec §10): one row of the one waiting-slips panel. Every device reads the same feed on the
@@ -57,6 +77,8 @@ export interface PrintAttentionRow {
   targetDeviceId?: string;
   /** Staff already tapped Print now / Retry / Print again on it (approvedAt): it waits for its printer. */
   approved?: true;
+  /** Session 2C (printers mode): the job's printer, so the panel can name it. */
+  printerId?: string;
 }
 
 /** The feed is one bounded read on the hottest poll, within the queued retention (§7.8): the NEWEST rows
@@ -68,6 +90,21 @@ export const PRINT_ATTENTION_WINDOW_MS = PRINT_JOB_QUEUED_RETENTION_MS + PRINT_J
 
 export const PRINT_DEVICE_SHELLS = ["android", "windows", "browser"] as const;
 export type PrintDeviceShell = (typeof PRINT_DEVICE_SHELLS)[number];
+/** Session 2D (spec §11 Devices): one device as GET /api/print-devices lists it. `online` is the server's verdict
+ *  (seen within PRINT_DEVICE_ONLINE_MS); a device has a row once it has polled the wake (a host, a printer's writer). */
+export interface PrintDeviceSummary {
+  deviceId: string;
+  label: string;
+  shell: PrintDeviceShell;
+  online: boolean;
+  lastSeenAt: string;
+  /** Session 2F1 (spec §9.2): the POS app's bridge version from its wake (2: it prints several printers); absent for
+   *  any other device, and for an app whose page has not said yet. */
+  nativeProtocol?: number;
+}
+/** The devices list's one page: far above any cafe's devices (rows unseen for 7 days are pruned). */
+export const PRINT_DEVICES_LIST_MAX = 50;
+
 export interface PrintDeviceCapabilities {
   lan: boolean;
   bluetooth: boolean;
@@ -83,14 +120,35 @@ export const PRINT_AGENT_ACTIVE_WINDOW_MS = 2 * 60 * 1000;
 /** Whether this device polls the wake at all (spec §9.1, §17.3 rule 1; 1A review gate, I3). In simple
  *  mode only the host polls. With no host every device prints its own slips from its own order
  *  responses, targeted print-status events, local retry timers and the pulse, so no ordering device
- *  adds a recurring request, and one poller keeps the shared daily cap exact. */
-export function printAgentPollsWake(input: { hostConfigured: boolean; isHost: boolean }): boolean {
+ *  adds a recurring request, and one poller keeps the shared daily cap exact.
+ *  Phase 2, printers mode: the devices that write to a printer poll (each is its printers' only writer,
+ *  spec §9.3), and no other device does, host or not. They share PRINT_WAKE_PRINTERS_DAILY_CAP. */
+export function printAgentPollsWake(input: { hostConfigured: boolean; isHost: boolean; printersMode?: boolean; isWriter?: boolean }): boolean {
+  if (input.printersMode === true) return input.isWriter === true;
   return input.hostConfigured && input.isHost;
 }
 
 /** Each agent's share of the cafe's one daily wake cap (spec §9.1): more agents never mean more hits. */
 export function printWakeAgentCap(agents: number): number {
   return Math.floor(PRINT_WAKE_DAILY_CAP / Math.max(1, Math.floor(agents)));
+}
+
+/** Phase 2: the wake hits a day all printer writers share in printers mode. A little under the host's
+ *  14,400, so the heavy setup's worst case (a full copy per round, the socket down all day) still fits the
+ *  18,000 ceiling (print-budget.test.ts). The split is by the writers the SETUP names
+ *  (printerWriterDevices), never by who is online, so a writer that starts late never raises the total. */
+export const PRINT_WAKE_PRINTERS_DAILY_CAP = 14_000;
+
+export function printWakeWriterCap(writers: number): number {
+  return Math.floor(PRINT_WAKE_PRINTERS_DAILY_CAP / Math.max(1, Math.floor(writers)));
+}
+
+/** Session 2C (the 2A gate's Important 1): the share of the wake allowance the wake answers each agent
+ *  (agentDailyCap). Printers mode: PRINT_WAKE_PRINTERS_DAILY_CAP by the writers the setup names; simple mode:
+ *  PRINT_WAKE_DAILY_CAP by the agents online, as in Phase 1. The agent spends against the smaller of this and
+ *  its own constant, so the cafe's total never grows with its devices. */
+export function printAgentDailyCap(printers: readonly PrinterConfig[], onlineAgents: number): number {
+  return printersModeOn(printers) ? printWakeWriterCap(printerWriterDevices(printers).length) : printWakeAgentCap(onlineAgents);
 }
 
 /** The agent's wake cadence (spec §9.1). false: the daily share is spent, so stop polling until the
@@ -146,6 +204,10 @@ export interface LeasedPrintJob {
   copyIndex: number;
   /** 1 for the first lease of this job. */
   attempt: number;
+  /** Session 2C (printers mode): the printer this job is for, and how many copies to write in this one lease
+   *  (absent: 1). Absent printerId: the device's own simple-mode line. */
+  printerId?: string;
+  copies?: number;
 }
 
 /** retryAt: when the head of this device's line can next be leased (backoff, or another tab's live
@@ -155,7 +217,9 @@ export interface PrintLeaseData {
   retryAt: string | null;
 }
 
-export type PrintJobActionRefusal = PrintJobRefusal | "not-found" | "raced";
+/** "printer-gone" (Session 2C): a Retry or Print again on a job whose printer was removed or switched off; it is
+ *  never guessed onto another printer (staff print the slip again from its order). */
+export type PrintJobActionRefusal = PrintJobRefusal | "not-found" | "raced" | "printer-gone";
 
 export interface PrintAckData {
   applied: boolean;
@@ -163,6 +227,11 @@ export interface PrintAckData {
   /** Set when the job went back to the queue: the agent's local retry timer. */
   nextAttemptAt: string | null;
   reason?: PrintJobActionRefusal;
+  /** Session 2B (plan decision 9): set when the acked job left the line. true: the acking device's line still
+   *  holds a queued job, so the agent leases again; false: it waits for a nudge, its timer or a new slip, so a
+   *  burst no longer ends with an empty lease. Absent (an older server, an ack that changed nothing, a job
+   *  back in the queue): the agent leases again, as in Phase 1. */
+  more?: boolean;
 }
 
 export interface PrintActionData {
@@ -171,10 +240,30 @@ export interface PrintActionData {
   reason?: PrintJobActionRefusal;
 }
 
+/** The pulse's and the wake's jobs-for-me read counts at most this many jobs, the oldest first: an agent needs only
+ *  "some" and the oldest age. A full answer may hold more than it names (the 2C review gate, F-1). */
+export const PRINT_JOBS_FOR_ME_LIMIT = 20;
+
+/** The jobs waiting for this device (spec §7.3; the wake's and the pulse's): how many, the oldest, and since
+ *  Session 2C the printers of the printer jobs among them, so an agent whose printer list is stale reads it again
+ *  (the 2C gate's fresh review, I-2). */
+export interface PrintJobsForMe {
+  count: number;
+  oldestCreatedAt: string | null;
+  printerIds?: string[];
+  /** Session 2C's final review (I-2): beside printer jobs, a counted job waits on the device's own simple-mode
+   *  line, so an agent that cannot lease the named printers still leases for it. Absent: no such job named. */
+  ownLine?: boolean;
+}
+
 /** POST /api/print-jobs/wake. serverNow lets an agent run timers on server time (spec §15 clock skew). */
 export interface PrintWakeBeatData {
-  jobsForMe: { count: number; oldestCreatedAt: string | null };
+  jobsForMe: PrintJobsForMe;
   agents: number;
   agentDailyCap: number;
   serverNow: string;
+  /** Session 2C (the 2C gate's emulator run): whether the setup names this device a routable printer's writer. A
+   *  writer told false has a stale printer list (its printer removed or moved while the print-setup frame was
+   *  missed): it reads the list again and stops polling. Absent from an older server. */
+  writesPrinters?: boolean;
 }

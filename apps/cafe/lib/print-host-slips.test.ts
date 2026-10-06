@@ -274,14 +274,14 @@ test("PIN: tokenNumber survives the stored-payload round trip (schema parse) and
     // The queue stores JSON and re-parses on claim: a strict schema that did not know the key would reject or strip it.
     const reparsed = printJobPayloadSchema.parse(JSON.parse(JSON.stringify(payload)));
     const slip = hostPrintSlipOf(reparsed, "2026-09-06");
-    if (slip.surface === "eod") throw new Error("unreachable: no eod payload in this list");
+    if (slip.surface === "eod" || slip.surface === "test") throw new Error("unreachable: no eod or test payload in this list");
     assert.equal(slip.order.tokenNumber, TOKEN, `${payload.kind}: the token reaches the renderer's order`);
   }
   assert.equal(orderFromSnapshot(tokened).tokenNumber, TOKEN);
   // Absent stays absent (omit-empty): no `tokenNumber: undefined` key invented by the spread.
   assert.equal("tokenNumber" in orderFromSnapshot(SNAPSHOT), false);
   const plain = hostPrintSlipOf({ kind: "bill", snapshot: SNAPSHOT }, "2026-09-06");
-  if (plain.surface === "eod") throw new Error("unreachable");
+  if (plain.surface === "eod" || plain.surface === "test") throw new Error("unreachable");
   assert.equal("tokenNumber" in plain.order, false);
 });
 
@@ -356,24 +356,37 @@ function minimalPayloadOf(kind: PrintJobPayload["kind"]): PrintJobPayload {
       return { kind: "eod", dateKey: "2026-09-06", dateLabel: "Sun" };
     case "cancel-notice":
       return { kind: "cancel-notice", snapshot: SNAPSHOT, reason: "r" };
+    case "test":
+      return { kind: "test", printerName: "Kitchen printer", lines: ["Connection: Network 192.168.1.60:9100"], requestedBy: "Asha", requestedAt: "2026-09-06T00:00:00.000Z" };
   }
 }
 
-test("UNIT: hostPrintSlipOf is exhaustive over PRINT_JOB_KINDS — every kind (minimal payload) resolves to a slip whose surface is one of kot|receipt|token|eod", () => {
+test("UNIT: hostPrintSlipOf is exhaustive over PRINT_JOB_KINDS — every kind (minimal payload) resolves to a slip whose surface is one of kot|receipt|token|eod|test", () => {
   assert.ok(PRINT_JOB_KINDS.length > 0, "positive landmark: PRINT_JOB_KINDS must be non-empty");
   const seenSurfaces = new Set<string>();
   for (const kind of PRINT_JOB_KINDS) {
     const payload = minimalPayloadOf(kind);
     const slip = hostPrintSlipOf(payload, "2026-09-06");
     assert.ok(
-      slip.surface === "kot" || slip.surface === "receipt" || slip.surface === "token" || slip.surface === "eod",
-      `hostPrintSlipOf(${kind}) must resolve to a kot|receipt|token|eod surface, got ${slip.surface}`,
+      slip.surface === "kot" || slip.surface === "receipt" || slip.surface === "token" || slip.surface === "eod" || slip.surface === "test",
+      `hostPrintSlipOf(${kind}) must resolve to a kot|receipt|token|eod|test surface, got ${slip.surface}`,
     );
     seenSurfaces.add(slip.surface);
   }
-  // Positive landmark that this loop is not vacuous: at least the four known
-  // surfaces were actually produced across the seven kinds (S7: the token is its own surface).
-  assert.deepEqual([...seenSurfaces].sort(), ["eod", "kot", "receipt", "token"]);
+  // Positive landmark that this loop is not vacuous: every known surface was
+  // actually produced across the eight kinds (S7: the token is its own surface; 2D: the test slip).
+  assert.deepEqual([...seenSurfaces].sort(), ["eod", "kot", "receipt", "test", "token"]);
+});
+
+test("2D: a printer's test job prints its test slip: the printer's name, the server's lines, who asked and when", () => {
+  const slip = hostPrintSlipOf(minimalPayloadOf("test"), "2026-09-06");
+  assert.equal(slip.surface, "test");
+  if (slip.surface !== "test") throw new Error("unreachable");
+  assert.equal(slip.printerName, "Kitchen printer");
+  assert.deepEqual(slip.lines, ["Connection: Network 192.168.1.60:9100"]);
+  assert.equal(slip.requestedBy, "Asha");
+  assert.equal(slip.requestedAt, "2026-09-06T00:00:00.000Z");
+  assert.equal(slip.documentTitle, "TEST-Kitchen printer");
 });
 
 // ── 11. constants ─────────────────────────────────────────────────────────
@@ -451,4 +464,19 @@ test('PARITY: lib/print-host-slips.ts and hooks/use-pos-print.ts both build the 
   // rather than assume one shared template shape.
   assert.ok(slipsSrc.includes('"Round "'), 'print-host-slips.ts must build the label from the literal "Round " prefix');
   assert.match(posPrintSrc, /`Round \$\{/, "use-pos-print.ts must build the label via a literal `Round ${...}` template");
+});
+
+// Phase 2 Session 2C (spec §8, plan decision 5): a station KOT names its station under its title; a full copy
+// beside station slips says ALL STATIONS; today's KOT (no station on the payload) carries none.
+test("2C: a routed KOT's station line; today's KOT carries none", () => {
+  const kot = { kind: "kot", snapshot: SNAPSHOT, round: 1 } as PrintJobPayload;
+  assert.equal((hostPrintSlipOf(kot, "2026-09-06") as HostKotSlip).stationLine, undefined, "simple mode: the slip is today's");
+  const cases = [
+    [{ name: "Bar", mode: "station" }, "BAR"],
+    [{ name: "All stations", mode: "all" }, "ALL STATIONS"],
+    [{ name: "Bar", mode: "no-printer" }, "BAR (NO PRINTER SET)"],
+  ] as const;
+  for (const [station, line] of cases) {
+    assert.equal((hostPrintSlipOf({ ...kot, station } as PrintJobPayload, "2026-09-06") as HostKotSlip).stationLine, line, station.mode);
+  }
 });

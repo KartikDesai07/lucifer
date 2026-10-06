@@ -162,7 +162,9 @@ export function createDevicePrinter(deps: DevicePrinterDeps): DevicePrinterRunti
       requireOwner();
       const wasNative = isNative();
       await link.release();
-      if (wasNative) await nativeLink.forget();
+      // The 2F1 review gate (G-2): an app on bridge v2 makes another of its printers this device's printer when this one
+      // leaves it; the link has applied that one.
+      if (wasNative && (await nativeLink.forget())) return;
       deps.writeStore(null);
       publish(NONE_SNAPSHOT);
     },

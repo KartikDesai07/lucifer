@@ -100,7 +100,8 @@ test("PrintSources renders the token only for a tokenRef AND a token number; the
   const token = at(host, 'if (slip.surface === "token") {');
   const receipt = at(host, 'if (slip.surface === "receipt") {');
   assert.ok(token < receipt, "the token branch precedes the receipt's");
-  assert.ok(host.includes('<PrintSources order={slip.order} settings={settings.data} kotRef={kotRef} kotVariant="kot" tokenRef={receiptRef} banner={slip.banner} />'), "token: tokenRef={receiptRef}, banner passed");
+  // Merged with printing Phase 2: printSettings (a printer's own paper sizes the token), like the receipt.
+  assert.ok(host.includes('<PrintSources order={slip.order} settings={printSettings} kotRef={kotRef} kotVariant="kot" tokenRef={receiptRef} banner={slip.banner} />'), "token: tokenRef={receiptRef}, banner passed, the printer's paper");
   assert.equal(count(host, "tokenRef="), 1, "landmark: one token branch");
 });
 
@@ -138,10 +139,14 @@ test("lease skew fence: tokenSlips is literal true or absent; leaseKindFence is 
   assert.equal(leaseBodySchema.safeParse({ ...base, other: 1 }).success, false, "landmark: the body is still strict");
   const lease = code("lib/print-lease.ts");
   assert.ok(lease.includes('return tokenSlips ? {} : { kind: { $ne: "token" } };'), "the fence source");
-  assert.equal(count(lease, "...leaseKindFence(input.tokenSlips)"), 1);
-  assert.ok(lease.includes("await PrintJob.findOne({ ...printJobLineFilter(input.deviceId, input.nowMs), ...leaseKindFence(input.tokenSlips) })"), "spread into the head findOne beside the line filter");
+  // Merged with printing Phase 2 (one lease = the device line + each printer line it writes): the fence is built once
+  // and spread into EVERY line, so an old page steps over token jobs on printer lines too.
+  assert.equal(count(lease, "leaseKindFence(input.tokenSlips)"), 1);
+  assert.ok(lease.includes("const kindFence = leaseKindFence(input.tokenSlips);"), "built once per lease");
+  assert.ok(lease.includes("line: { ...printJobLineFilter(input.deviceId, input.nowMs), ...kindFence }"), "spread into the device line");
+  assert.ok(lease.includes("line: { ...printerLineFilter(printer.id, input.nowMs), ...kindFence }"), "spread into every printer line");
   assert.ok(code("app/api/print-jobs/lease/route.ts").includes("tokenSlips: parsed.data.tokenSlips === true,"), "the route passes === true");
-  assert.ok(code("hooks/use-print-agent.ts").includes('{ deviceId, tabId, tokenSlips: true }'), "the agent says it can print tokens");
+  assert.ok(code("hooks/use-print-agent.ts").includes('{ deviceId, tabId, tokenSlips: true, ...printerIdsBody(printerIds) }'), "the agent says it can print tokens, beside its printers");
 });
 
 test("lease skew fence, through the real leasePrintJobs: the head query carries the kind filter for an old page only", async () => {

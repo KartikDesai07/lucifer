@@ -53,15 +53,21 @@ export const CAFE_EVENT_KINDS = [
   // ordering device's readback and the agent the job is aimed at. It names the job, its status and
   // its device; never order content. The readback's pulse fallback stays.
   "print-status",
+  // Phase 2 Session 2C: a printer was added, changed or removed, so every agent reads its printers again
+  // (GET /api/printers). Carries nothing; the fallbacks are the agent's focus read (every 30 min at most,
+  // PRINT_SETUP_STALE_MS) and a list the pulse or the wake shows stale (the 2C review gate, M-7).
+  "print-setup",
 ] as const;
 export type CafeEventKind = (typeof CAFE_EVENT_KINDS)[number];
 
 /** The one thing a "print-status" envelope adds: which job, its status, and (on "queued") the device
- *  that must print it, so only that agent leases on it (no fan-out of empty leases). */
+ *  that must print it, so only that agent leases on it (no fan-out of empty leases). The 2E review gate (M-1): a
+ *  printer job's printer too, so a device whose printer is held by a refusal leases nothing for it. */
 export interface CafeEventJob {
   id: string;
   status: PrintJobStatus;
   target?: string;
+  printerId?: string;
 }
 
 /** Header + scheme literals. MIRROR of apps/hub/lib/heartbeat-hmac.ts's scheme

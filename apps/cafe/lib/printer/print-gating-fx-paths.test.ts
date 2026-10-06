@@ -73,7 +73,7 @@ const CASES: PinCase[] = [
       check(p, ordered(abandon, ["toast.error(PRINT_HOST_PRINT_FAILED_MESSAGE);", "testRef.current?.reject(", "testRef.current = null;", "lateGuard.abandon(() => settle(null));"]), "abandon: announce, reject a waiting test slip, then hold the slot");
       check(p, s.includes("window.setTimeout(abandon, PRINT_HOST_DISPATCH_TIMEOUT_MS)"), "the watchdog abandons (it no longer settles)");
       check(p, !abandon.includes("occupiedRef") && !abandon.includes("setCurrent"), "abandon must NOT free the slot itself");
-      check(p, lines(r) <= 250, "stays <= 250 lines");
+      check(p, lines(r) <= 255, "stays <= 255 lines (Phase 2 Session 2E: a slip's own Windows printer and paper)");
       return p;
     },
     mutations: [

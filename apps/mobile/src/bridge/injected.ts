@@ -1,8 +1,15 @@
 // The script that creates window.PosNative inside the POS page, and the script
 // that delivers a reply or event to it. Pure strings: no react-native import.
 // The injected source contains no backslashes on purpose (nothing to unescape).
+//
+// Phase 2 Session 2F2 (spec §9.2, bridge v2): window.PosNative keeps `version: 1`
+// and adds `versions: [1, 2]`; `request` and `on` take the version last (absent:
+// 1). A request carries its version and only a reply of that version settles it;
+// an event reaches only the listeners of its version (the app sends the default
+// printer's status as v1 and the list of every printer as v2).
 
 import { NATIVE_ERROR_MESSAGES } from './messages';
+import { BRIDGE_VERSIONS, type BridgeReplyV2 } from './protocol-v2';
 import {
   BRIDGE_MESSAGE_MAX_CHARS,
   NATIVE_BRIDGE_VERSION,
@@ -40,7 +47,9 @@ export function safeJsonForScript(value: unknown): string {
   );
 }
 
-export function buildDeliverScript(message: DeliverMessage): string {
+export function buildDeliverScript(
+  message: DeliverMessage | BridgeReplyV2,
+): string {
   return (
     'window.' + NATIVE_DELIVER_FN + '(' + safeJsonForScript(message) + ');true;'
   );
@@ -61,6 +70,7 @@ export function buildInjectedScript({
     'var TOKEN = ' + safeJsonForScript(token) + ';',
     'var PLATFORM = ' + safeJsonForScript(platform) + ';',
     'var VERSION = ' + NATIVE_BRIDGE_VERSION + ';',
+    'var VERSIONS = ' + safeJsonForScript(BRIDGE_VERSIONS) + ';',
     'var MAX_CHARS = ' + BRIDGE_MESSAGE_MAX_CHARS + ';',
     'var MSG_TOO_LARGE = ' +
       safeJsonForScript(NATIVE_ERROR_MESSAGES.TOO_LARGE) +
@@ -73,6 +83,8 @@ export function buildInjectedScript({
       ';',
     'var pending = new Map();',
     'var listeners = new Map();',
+    'function known(v) { return VERSIONS.indexOf(v) >= 0; }',
+    'function versionOf(version) { return version === undefined ? VERSION : version; }',
     'function makeNonce() {',
     '  var bytes = new Uint8Array(' + NONCE_BYTES + ');',
     '  try { window.crypto.getRandomValues(bytes); } catch (e) {',
@@ -87,8 +99,13 @@ export function buildInjectedScript({
     'var NONCE = makeNonce();',
     'var seq = 0;',
     'function fail(message, code) { return Object.assign(new Error(message), { code: code }); }',
-    'function request(method, params) {',
+    'function request(method, params, version) {',
     '  return new Promise(function (resolve, reject) {',
+    '    var v = versionOf(version);',
+    '    if (!known(v)) {',
+    "      reject(fail(MSG_UNSUPPORTED, 'UNSUPPORTED'));",
+    '      return;',
+    '    }',
     '    var bridge = window.ReactNativeWebView;',
     "    if (!bridge || typeof bridge.postMessage !== 'function') {",
     "      reject(fail(MSG_UNSUPPORTED, 'UNSUPPORTED'));",
@@ -97,7 +114,7 @@ export function buildInjectedScript({
     '    var id = "r" + NONCE + "-" + (seq += 1);',
     '    var text;',
     '    try {',
-    '      text = JSON.stringify({ v: VERSION, token: TOKEN, id: id, method: String(method), params: params });',
+    '      text = JSON.stringify({ v: v, token: TOKEN, id: id, method: String(method), params: params });',
     '    } catch (e) {',
     "      reject(fail(MSG_BAD_REQUEST, 'BAD_REQUEST'));",
     '      return;',
@@ -106,7 +123,7 @@ export function buildInjectedScript({
     "      reject(fail(MSG_TOO_LARGE, 'TOO_LARGE'));",
     '      return;',
     '    }',
-    '    pending.set(id, { resolve: resolve, reject: reject });',
+    '    pending.set(id, { resolve: resolve, reject: reject, v: v });',
     '    try {',
     '      bridge.postMessage(text);',
     '    } catch (e) {',
@@ -115,18 +132,20 @@ export function buildInjectedScript({
     '    }',
     '  });',
     '}',
-    'function on(event, fn) {',
-    "  if (typeof event !== 'string' || typeof fn !== 'function') { return function () {}; }",
-    '  var set = listeners.get(event);',
-    '  if (!set) { set = new Set(); listeners.set(event, set); }',
+    'function on(event, fn, version) {',
+    '  var v = versionOf(version);',
+    "  if (typeof event !== 'string' || typeof fn !== 'function' || !known(v)) { return function () {}; }",
+    "  var key = v + ' ' + event;",
+    '  var set = listeners.get(key);',
+    '  if (!set) { set = new Set(); listeners.set(key, set); }',
     '  var entry = { fn: fn };',
     '  set.add(entry);',
     '  return function () { set.delete(entry); };',
     '}',
     'function deliver(message) {',
-    '  if (!message || message.v !== VERSION) { return; }',
+    '  if (!message || !known(message.v)) { return; }',
     "  if (typeof message.event === 'string') {",
-    '    var set = listeners.get(message.event);',
+    "    var set = listeners.get(message.v + ' ' + message.event);",
     '    if (!set) { return; }',
     '    Array.from(set).forEach(function (entry) {',
     '      try { entry.fn(message.data); } catch (e) { /* one listener never breaks another */ }',
@@ -135,13 +154,13 @@ export function buildInjectedScript({
     '  }',
     "  if (typeof message.id !== 'string') { return; }",
     '  var waiter = pending.get(message.id);',
-    '  if (!waiter) { return; }',
+    '  if (!waiter || waiter.v !== message.v) { return; }',
     '  pending.delete(message.id);',
     '  if (message.ok === true) { waiter.resolve(message.result); return; }',
     '  var error = message.error || {};',
     "  waiter.reject(fail(String(error.message || MSG_UNSUPPORTED), String(error.code || 'UNSUPPORTED')));",
     '}',
-    'var api = Object.freeze({ version: VERSION, platform: PLATFORM, request: request, on: on });',
+    'var api = Object.freeze({ version: VERSION, versions: Object.freeze(VERSIONS.slice()), platform: PLATFORM, request: request, on: on });',
     'Object.defineProperty(window, DELIVER, { value: deliver, writable: false, configurable: false });',
     'Object.defineProperty(window, NAME, { value: api, writable: false, configurable: false });',
     "try { window.dispatchEvent(new Event('" +

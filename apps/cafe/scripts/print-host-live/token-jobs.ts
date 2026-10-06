@@ -44,8 +44,8 @@ async function queue(job: { payload: Parameters<typeof enqueuePrintJob>[0]["payl
   return res.id;
 }
 
-export async function legAH(nowMs: number): Promise<void> {
-  console.log("\n(ah) the token slip: jobs, keys, lease order, eligibility, DUPLICATE, and the deploy-skew fence");
+export async function legAY(nowMs: number): Promise<void> {
+  console.log("\n(ay) the token slip: jobs, keys, lease order, eligibility, DUPLICATE, and the deploy-skew fence");
 
   // Tokens off: no number on the order, so the opening slips are the KOT alone and no token key exists.
   await freshHost(nowMs);

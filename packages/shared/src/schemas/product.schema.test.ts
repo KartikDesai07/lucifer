@@ -238,3 +238,31 @@ test("updateProductSchema: a valid catalogue key still parses on update, and an 
   assert.equal(updateProductSchema.safeParse({ icon: "pizza" }).success, true);
   assert.equal(updateProductSchema.safeParse({ icon: "not-a-real-icon" }).success, false);
 });
+
+// ── Printing Phase 2 (spec §6.2): the item's own kitchen station ────────────
+
+const STATION = "64f000000000000000000001";
+
+test("createProductSchema: stationId is optional with no default (absent = the category's station)", () => {
+  const r = createProductSchema.safeParse(BASE);
+  assert.equal(r.success, true);
+  assert.ok(r.success && !("stationId" in r.data), "an item made without a station has no stationId key");
+  assert.equal(createProductSchema.safeParse({ ...BASE, stationId: STATION }).success, true);
+  assert.equal(createProductSchema.safeParse({ ...BASE, stationId: "bar" }).success, false, "only a station id");
+  assert.equal(createProductSchema.safeParse({ ...BASE, stationId: null }).success, false, "null is an update sentinel only");
+});
+
+test("updateProductSchema: stationId:null is the sentinel the route turns into an $unset; absent leaves it alone", () => {
+  const cleared = updateProductSchema.safeParse({ stationId: null });
+  assert.equal(cleared.success && cleared.data.stationId, null);
+  const untouched = updateProductSchema.safeParse({ price: 130 });
+  assert.ok(untouched.success && !("stationId" in untouched.data));
+  assert.equal(updateProductSchema.safeParse({ stationId: STATION }).success, true);
+});
+
+test("the CSV import never sets a station: coerceProductRow has no station column", () => {
+  const row = coerceProductRow({ name: "Tea", category: "Drinks", price: "20", stationId: STATION });
+  assert.ok(!("stationId" in row), "an extra CSV column never reaches the product");
+  const parsed = importProductRowSchema.safeParse({ name: "Tea", category: "Drinks", price: "20", stationId: STATION });
+  assert.ok(parsed.success && !("stationId" in parsed.data), "the import row schema never carries one");
+});

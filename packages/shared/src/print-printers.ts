@@ -1,0 +1,259 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Printing redesign, Phase 2 (docs/superpowers/specs/2026-10-02-printing-
+// reliability-design.md §6.1–6.3, §8, §9.3): kitchen stations and printers, the
+// shared contract. A cafe stays in simple mode (§6.6: today's one print host, or
+// each device printing its own slips) until an enabled printer takes a slip;
+// from then on every slip is routed to printers (§8). The server's routing, the
+// setup screens and the agent read these same shapes and rules. Pure and
+// client-safe: no Node, DB or zod imports.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A station's name prints on every KOT it gets (§8, D7), so it stays short. */
+export const STATION_NAME_MAX_CHARS = 32;
+export const STATIONS_MAX = 20;
+/** The station the first read seeds (§6.1); every category without a station uses the default one. */
+export const DEFAULT_STATION_NAME = "Kitchen";
+
+/** A KOT routed to printers says which station it is for (§8, D7), under its title. "station": only that
+ *  station's items; "all": the round's full copy while other printers got station slips; "no-printer": the
+ *  station has no printer and no printer takes a full copy, so it went to the default bill printer. */
+export const PRINT_KOT_STATION_MODES = ["station", "all", "no-printer"] as const;
+export type PrintKotStationMode = (typeof PRINT_KOT_STATION_MODES)[number];
+/** The name a full copy carries (its label and its header). */
+export const PRINT_FULL_KOT_NAME = "All stations";
+
+/** The line a station KOT prints under its title (§8): "BAR", "ALL STATIONS", "BAR (NO PRINTER SET)". */
+export function printKotStationHeader(station: { name: string; mode: PrintKotStationMode }): string {
+  const name = station.name.toUpperCase();
+  return station.mode === "no-printer" ? `${name} (NO PRINTER SET)` : name;
+}
+
+/** Why a slip has no printer (§8: a KOT is never dropped; it fails at once, visibly, instead). */
+export function printNoPrinterMessage(what: string): string {
+  return `No printer is set up for ${what}.`;
+}
+
+/** Session 2C: the printerId of a job made failed at creation (no printer takes its slip). It marks the job
+ *  as a printers-mode job, so simple mode's sweep never moves it to a host, and it is never a printer's id. */
+export const PRINT_JOB_NO_PRINTER = "none";
+/** Session 2C (the sweep): why a waiting job failed when its printer was deleted, switched off or left with
+ *  no printing device. It is never guessed onto another printer. */
+export const PRINTER_GONE_MESSAGE = "This printer was removed or switched off.";
+
+export const PRINTER_NAME_MAX_CHARS = 40;
+export const PRINTERS_MAX = 12;
+export const PRINTER_PAPER_WIDTHS = [58, 80] as const;
+export type PrinterPaperWidth = (typeof PRINTER_PAPER_WIDTHS)[number];
+export const PRINTER_COPIES_MIN = 1;
+export const PRINTER_COPIES_MAX = 3;
+export const PRINTER_LAN_DEFAULT_PORT = 9100;
+/** A device printer's transport-specific id (a Bluetooth address, a USB id, a Windows printer name). The Android
+ *  app reports its printer as "<transport>:<id>" ("bt-classic:<MAC>", "ble:<MAC>", "usb:<vendor>:<product>"); either
+ *  form matches it (the cafe's printerIsLocal, Session 2C's final review). */
+export const PRINTER_ADDRESS_MAX_CHARS = 256;
+/** Equal to the cafe's PRINT_HOST_DEVICE_ID_MAX_CHARS (pinned there): a device id is the same value everywhere. */
+export const PRINTER_DEVICE_ID_MAX_CHARS = 64;
+/** Session 2D (spec §11): a printer's test slip prints its name, then at most this many short lines the server
+ *  writes from the stored printer (its connection, slips, stations, paper and copies). */
+export const PRINT_TEST_LINES_MAX = 10;
+export const PRINT_TEST_LINE_MAX_CHARS = 64;
+
+/** How the owning device reaches a device printer (§6.3). A Chrome tab drives at most one Web Serial or
+ *  Web Bluetooth printer (§9.7). */
+export const PRINTER_DEVICE_TRANSPORTS = ["bt-classic", "ble", "usb", "windows", "web-serial", "web-bluetooth"] as const;
+export type PrinterDeviceTransport = (typeof PRINTER_DEVICE_TRANSPORTS)[number];
+
+export interface StationConfig {
+  id: string;
+  name: string;
+  order: number;
+  isDefault: boolean;
+}
+
+export type PrinterConnection =
+  | { kind: "lan"; host: string; port: number }
+  | { kind: "device"; deviceId: string; transport: PrinterDeviceTransport; address: string };
+
+/** Which slips a printer takes (§6.3). kotStations: the stations whose KOTs it prints; kotAll: a full copy
+ *  of every KOT (a counter or expo printer); notices: void, moved and cancel notices for the stations it
+ *  serves; eod: End of day. */
+export interface PrinterSlips {
+  bill: boolean;
+  kotStations: string[];
+  kotAll: boolean;
+  notices: boolean;
+  eod: boolean;
+}
+
+/** Copies of each KOT and each bill. All copies of one slip are ONE job (Phase 2 decision: a copy never
+ *  costs another lease and ack, spec §17). */
+export interface PrinterCopies {
+  kot: number;
+  bill: number;
+}
+
+/** A printer as the API sends it and the routing reads it. */
+export interface PrinterConfig {
+  id: string;
+  name: string;
+  connection: PrinterConnection;
+  /** LAN only: the device that writes to it (Phase 2 requires one; failover to other devices is Phase 3, §9.4). */
+  primaryDeviceId?: string;
+  /** Display order on Settings → Printers; the first bill printer in this order is the default one. */
+  order: number;
+  paper: PrinterPaperWidth;
+  slips: PrinterSlips;
+  copies: PrinterCopies;
+  enabled: boolean;
+}
+
+/** The one device that writes to this printer (§9.3): a device printer's own device, or a LAN printer's
+ *  primary. null: a LAN printer nobody writes to yet, so nothing is routed to it. */
+export function printerWriterDeviceId(printer: Pick<PrinterConfig, "connection" | "primaryDeviceId">): string | null {
+  if (printer.connection.kind === "device") return printer.connection.deviceId;
+  return printer.primaryDeviceId ?? null;
+}
+
+/** True when the printer takes at least one kind of slip. */
+export function printerTakesSlips(slips: PrinterSlips): boolean {
+  return slips.bill || slips.kotAll || slips.kotStations.length > 0 || slips.notices || slips.eod;
+}
+
+/** The printers routing may send slips to: enabled, with a writer, taking some slip, in display order
+ *  (ties broken by id, so the default bill printer never depends on a read's order). */
+export function routablePrinters(printers: readonly PrinterConfig[]): PrinterConfig[] {
+  return printers
+    .filter((printer) => printer.enabled && printerWriterDeviceId(printer) !== null && printerTakesSlips(printer.slips))
+    .sort((a, b) => a.order - b.order || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+/** Spec §6.6: simple mode applies while no enabled printer takes a slip. One routable printer switches the
+ *  whole cafe to printers mode. */
+export function printersModeOn(printers: readonly PrinterConfig[]): boolean {
+  return routablePrinters(printers).length > 0;
+}
+
+/** The default bill printer (§8): the first routable printer that takes bills. */
+export function defaultBillPrinterOf(printers: readonly PrinterConfig[]): PrinterConfig | null {
+  return routablePrinters(printers).find((printer) => printer.slips.bill) ?? null;
+}
+
+/** The devices that write to a routable printer, each once. In printers mode these are the agents that
+ *  share the cafe's one daily wake allowance (§9.1): a fixed set from the setup, so a device that joins
+ *  late never raises the total. */
+export function printerWriterDevices(printers: readonly PrinterConfig[]): string[] {
+  const out: string[] = [];
+  for (const printer of routablePrinters(printers)) {
+    const writer = printerWriterDeviceId(printer);
+    if (writer !== null && !out.includes(writer)) out.push(writer);
+  }
+  return out;
+}
+
+/** Session 2D: a device prints one printer, so at most one ROUTABLE printer (enabled, taking a slip) names it as its
+ *  writer. A second would never print, or print on the first one's paper (the 2C review gate, F-3). Session 2E (spec
+ *  §9.2): the Windows app prints each Windows printer it has by name, so a PC may write several Windows printers,
+ *  each a different one (a Windows printer's name is the same printer whatever its case). Session 2F1: the POS app on
+ *  bridge v2 prints each of its printers, so a phone or tablet may write several network, Bluetooth, BLE and USB
+ *  printers, each a different one (by host:port or address, ignoring case); a Chrome tab still drives one (§9.7). An
+ *  app on bridge v1 prints one: the printer form refuses its second (print-setup-form.ts), and one saved otherwise
+ *  waits, visibly, never on the first one's paper. The routable printer that clashes, or null; a printer switched off
+ *  or taking no slip is never leased, so it never clashes (the 2D gate's review, M-4). */
+export function printerWriterClash(
+  printers: readonly PrinterConfig[],
+  draft: Pick<PrinterConfig, "connection" | "primaryDeviceId" | "enabled" | "slips">,
+  exceptId?: string,
+): PrinterConfig | null {
+  const writer = printerWriterDeviceId(draft);
+  if (!draft.enabled || writer === null || !printerTakesSlips(draft.slips)) return null;
+  return (
+    routablePrinters(printers).find(
+      (printer) => printer.id !== exceptId && printerWriterDeviceId(printer) === writer && !differentPrintersOfOneDevice(printer.connection, draft.connection),
+    ) ?? null
+  );
+}
+
+/** Which printer a connection is, among one device's several printers (spec §9.2): a Windows printer by its name
+ *  (Session 2E); a network, Bluetooth, BLE or USB printer of the POS app by its address (Session 2F1; a Bluetooth or USB
+ *  address may be saved bare or as the app's whole id); null for a browser's serial or Bluetooth printer (one per tab). */
+function devicePrinterKey(connection: PrinterConnection): { family: "windows" | "app"; key: string } | null {
+  if (connection.kind === "lan") return { family: "app", key: `tcp:${connection.host}:${connection.port}`.toLowerCase() };
+  const address = connection.address.toLowerCase();
+  if (connection.transport === "windows") return { family: "windows", key: address };
+  if (connection.transport === "bt-classic" || connection.transport === "ble" || connection.transport === "usb") {
+    const prefix = `${connection.transport}:`;
+    return { family: "app", key: prefix + (address.startsWith(prefix) ? address.slice(prefix.length) : address) };
+  }
+  return null;
+}
+
+/** Two printers one device may write side by side: of one kind (Windows printers of a PC, or the POS app's printers),
+ *  and not the same printer. */
+function differentPrintersOfOneDevice(a: PrinterConnection, b: PrinterConnection): boolean {
+  const left = devicePrinterKey(a);
+  const right = devicePrinterKey(b);
+  return left !== null && right !== null && left.family === right.family && left.key !== right.key;
+}
+
+export function printerWriterTakenMessage(name: string): string {
+  return `That device already prints ${name}. For now one device prints one printer: switch ${name} off, or choose another device.`;
+}
+
+/** The words for a clash: the same Windows printer twice (Session 2E), the same printer of the POS app twice (Session
+ *  2F1), else a second printer for a device that prints one. */
+export function printerClashMessage(clash: Pick<PrinterConfig, "name" | "connection">, draft: Pick<PrinterConfig, "connection">): string {
+  const left = devicePrinterKey(clash.connection);
+  const right = devicePrinterKey(draft.connection);
+  if (left !== null && right !== null && left.family === right.family && left.key === right.key) {
+    return left.family === "windows"
+      ? `${clash.name} already prints on that Windows printer. Choose another Windows printer.`
+      : `${clash.name} already prints on that printer. Choose another printer.`;
+  }
+  return printerWriterTakenMessage(clash.name);
+}
+
+/** Session 2C: a waiting job's printer, if routing may still send it slips (enabled, with a writer, taking a
+ *  slip); null when it was deleted, switched off or left with no writer (and for PRINT_JOB_NO_PRINTER). */
+export function routablePrinterOf(printers: readonly PrinterConfig[], printerId: string): PrinterConfig | null {
+  return routablePrinters(printers).find((printer) => printer.id === printerId) ?? null;
+}
+
+const PRINTER_ID_PATTERN = /^[0-9a-f]{24}$/i;
+
+/** Session 2C: the printers a device names (the ready header "id,id", the lease body, the pulse): printer ids
+ *  only, each once, in order, at most PRINTERS_MAX. Anything else is dropped, so a bad value only means fewer
+ *  printers, never a refused request. */
+export function printerIdsOf(raw: string | readonly string[] | null | undefined): string[] {
+  const parts = typeof raw === "string" ? raw.split(",") : (raw ?? []);
+  const out: string[] = [];
+  for (const part of parts) {
+    const id = part.trim();
+    if (PRINTER_ID_PATTERN.test(id) && !out.includes(id)) out.push(id);
+    if (out.length === PRINTERS_MAX) break;
+  }
+  return out;
+}
+
+function byOrder(a: StationConfig, b: StationConfig): number {
+  return a.order - b.order || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+
+/** The default station (§6.1): the one marked default, else the first in display order (a moment between
+ *  "make default" writes, or a database edited by hand, never leaves routing without one). null only when
+ *  there are no stations at all. */
+export function defaultStationOf(stations: readonly StationConfig[]): StationConfig | null {
+  const sorted = [...stations].sort(byOrder);
+  return sorted.find((station) => station.isDefault) ?? sorted[0] ?? null;
+}
+
+/** Spec §6.2: product.stationId ?? category.stationId ?? the default station. A station that no longer
+ *  exists is skipped, so a deleted station falls back the same way. null only when there are no stations. */
+export function resolveStationId(
+  ids: { productStationId?: string; categoryStationId?: string },
+  stations: readonly StationConfig[],
+): string | null {
+  const known = new Set(stations.map((station) => station.id));
+  if (ids.productStationId !== undefined && known.has(ids.productStationId)) return ids.productStationId;
+  if (ids.categoryStationId !== undefined && known.has(ids.categoryStationId)) return ids.categoryStationId;
+  return defaultStationOf(stations)?.id ?? null;
+}

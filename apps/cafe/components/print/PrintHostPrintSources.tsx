@@ -6,7 +6,9 @@ import dynamic from "next/dynamic";
 import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
 import { PrintSources } from "@/components/pos/PrintSources";
 import { PrintHostTestSlip } from "@/components/print/PrintHostTestSlip";
+import { PrinterTestSlip } from "@/components/print/PrinterTestSlip";
 import { useSettings } from "@/hooks/use-settings";
+import { settingsForPaper } from "@/lib/print";
 
 // MODULE scope (RR-13): declared inside the component it would be a NEW
 // component type on every render, remounting the eod queries mid-load.
@@ -29,7 +31,8 @@ const OFFSCREEN_CLASS = "pointer-events-none absolute left-[-9999px] top-0";
 //   · a claimed bill or token → PrintSources' OrderReceipt / TokenSlip (receiptRef);
 //   · a claimed eod → PrintHostEodSource inside the eodRef wrapper (the ref
 //     stays on a plain div, never threaded through the dynamic boundary);
-//   · PH-7's test slip → PrintHostTestSlip on the KOT surface.
+//   · PH-7's test slip → PrintHostTestSlip on the KOT surface;
+//   · a printer's Test print (Phase 2 Session 2D) → PrinterTestSlip on the KOT surface.
 export function PrintHostPrintSources() {
   const { current, kotRef, receiptRef, eodRef, setEodReady, reportSurfacesMounted } = usePrintHostContext();
   const settings = useSettings();
@@ -45,15 +48,15 @@ export function PrintHostPrintSources() {
 
   if (!current) return null;
 
-  if (current.kind === "test") {
+  const slip = current.kind === "slip" ? current.slip : null;
+  const printSettings = slip?.target === undefined ? settings.data : settingsForPaper(settings.data, slip.target.paper);
+  if (slip === null || slip.surface === "test") {
     return (
       <div className={OFFSCREEN_CLASS} aria-hidden>
-        <PrintHostTestSlip settings={settings.data} ref={kotRef} />
+        {slip === null ? <PrintHostTestSlip settings={settings.data} ref={kotRef} /> : <PrinterTestSlip slip={slip} settings={printSettings} ref={kotRef} />}
       </div>
     );
   }
-
-  const { slip } = current;
   if (slip.surface === "eod") {
     return (
       <div className={OFFSCREEN_CLASS} aria-hidden>
@@ -70,19 +73,20 @@ export function PrintHostPrintSources() {
   }
 
   if (slip.surface === "token") {
-    return <PrintSources order={slip.order} settings={settings.data} kotRef={kotRef} kotVariant="kot" tokenRef={receiptRef} banner={slip.banner} />;
+    // printSettings, like the receipt below: a printer's own paper (Phase 2) sizes the token it prints.
+    return <PrintSources order={slip.order} settings={printSettings} kotRef={kotRef} kotVariant="kot" tokenRef={receiptRef} banner={slip.banner} />;
   }
 
   if (slip.surface === "receipt") {
     return (
-      <PrintSources order={slip.order} settings={settings.data} kotRef={kotRef} kotVariant="kot" receiptRef={receiptRef} banner={slip.banner} />
+      <PrintSources order={slip.order} settings={printSettings} kotRef={kotRef} kotVariant="kot" receiptRef={receiptRef} banner={slip.banner} />
     );
   }
 
   return (
     <PrintSources
       order={slip.order}
-      settings={settings.data}
+      settings={printSettings}
       kotRef={kotRef}
       kotRoundItems={slip.kotRoundItems}
       kotRoundLabel={slip.kotRoundLabel}
@@ -95,6 +99,7 @@ export function PrintHostPrintSources() {
       movedBy={slip.movedBy}
       movedAt={slip.movedAt}
       banner={slip.banner}
+      kotStationLine={slip.stationLine}
     />
   );
 }

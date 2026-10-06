@@ -56,6 +56,9 @@ export async function POST(req: Request, { params }: Params) {
             order: result.order,
             slips: openingSlipsOf(result.order, result.order.kotRounds),
             originDeviceId: intent.deviceId,
+            leaseTabId: intent.leaseTabId,
+            readyPrinterIds: intent.readyPrinterIds,
+            billPrinterId: intent.billPrinterId,
             queuedBy: authed.session.user.name ?? "",
             nowMs: Date.now(),
           })

@@ -6,7 +6,7 @@ import path from "node:path";
 import { stripComments } from "@/lib/source-pin-utils";
 import { PRINT_BUDGET_BUSY_DAY } from "@pos/shared/print-budget";
 import { PRINT_REPAIR_WINDOW_MS } from "@pos/shared/print-lifecycle";
-import { PRINT_REPAIR_BATCH, expectedKotJobs } from "@/lib/print-repair";
+import { PRINT_REPAIR_BATCH, expectedKotJobs, kotRoundKeyOf, presentKotRoundsFilter } from "@/lib/print-repair";
 import { printJobKeyOf } from "@/lib/print-queue";
 import { kotPrintJob } from "@/lib/print-routing";
 import type { Order } from "@/types";
@@ -90,4 +90,18 @@ test("the repair batch covers a rush: a busy day's half hour at four times the a
   const perWindow = (PRINT_BUDGET_BUSY_DAY.orders / PRINT_BUDGET_BUSY_DAY.openHours) * (PRINT_REPAIR_WINDOW_MS / 3_600_000);
   assert.ok(PRINT_REPAIR_BATCH >= 2 * 4 * perWindow, `batch ${PRINT_REPAIR_BATCH} vs a rush half hour of ${4 * perWindow} orders`);
   assert.ok(PRINT_REPAIR_BATCH <= 100, `batch ${PRINT_REPAIR_BATCH}: one small indexed read per sweep (spec §17)`);
+});
+
+// Session 2C (printers mode): a routed round's jobs carry `kot:<order>:<round>:<printer>:<part>`. A round with
+// none of them is routed again with today's setup; a round with some is left alone (one request made them).
+test("2C: the repair sees a round's jobs under today's key or any routed key, and only that round's", () => {
+  assert.equal(kotRoundKeyOf("kot:o1:2"), "kot:o1:2", "simple mode");
+  assert.equal(kotRoundKeyOf("kot:o1:2:p1:st-kitchen"), "kot:o1:2", "a routed station slip");
+  assert.equal(kotRoundKeyOf("kot:o1:2:none:all"), "kot:o1:2", "a routed job no printer took");
+  assert.equal(kotRoundKeyOf(undefined), undefined);
+  const filter = presentKotRoundsFilter(["kot:o1:1", "kot:o1:2"]);
+  assert.deepEqual(filter, { $or: [{ jobKey: { $regex: "^kot:o1:1(:|$)" } }, { jobKey: { $regex: "^kot:o1:2(:|$)" } }] }, "anchored prefixes on the jobKey index");
+  const re = new RegExp(filter.$or[0]?.jobKey.$regex ?? "");
+  assert.equal(re.test("kot:o1:10"), false, "round 1 never finds round 10's jobs");
+  assert.equal(re.test("kot:o1:1:p1:all"), true);
 });

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   printHostOffline,
   printJobDrainCandidate,
+  printJobEnqueueAllowsLocalPrint,
   printJobPayloadWithinCap,
   printOrderSnapshot,
   PRINT_HOST_OFFLINE_MS,
@@ -376,4 +377,11 @@ test("printOrderSnapshotSchema: tokenNumber accepts an integer, rejects 1.5 and 
   assert.equal(parse(1.5).success, false);
   assert.equal(parse("42").success, false);
   assert.equal(printOrderSnapshotSchema.safeParse(snapshot).success, true, "absent stays valid: only a tokened order carries the key");
+});
+// Phase 2 Session 2C: a slip no printer takes for a reason staff chose (Notices off) is answered "not-routed".
+test("2C: only no-host lets a caller print a slip itself; not-routed never does", () => {
+  assert.equal(printJobEnqueueAllowsLocalPrint("no-host"), true, "simple mode with no host: today's local print");
+  for (const outcome of ["queued", "already-resolved", "too-large", "not-routed"] as const) {
+    assert.equal(printJobEnqueueAllowsLocalPrint(outcome), false, outcome);
+  }
 });

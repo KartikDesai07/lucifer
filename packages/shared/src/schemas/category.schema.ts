@@ -5,9 +5,16 @@ import { objectIdString } from "./object-id.schema";
 export const createCategorySchema = z.object({
   name: z.string().trim().min(1, "Category name is required"),
   order: z.number().int().min(0).default(0), // display order in POS
+  // Printing Phase 2 (spec §6.2): the kitchen station its items print at. Optional with NO default:
+  // absent means the default station, so every existing category keeps printing where it does.
+  stationId: objectIdString.optional(),
 });
 
-export const updateCategorySchema = createCategorySchema.partial();
+// `stationId: null` is the explicit "back to the default station" (the product icon precedent): JSON
+// cannot carry undefined, and an absent key means "leave it alone".
+export const updateCategorySchema = createCategorySchema.partial().extend({
+  stationId: objectIdString.nullable().optional(),
+});
 
 // PATCH /api/categories (admin) — the drag-and-drop arrangement. The WHOLE
 // ordered id list is sent (the Tables reorderTablesSchema precedent): positions

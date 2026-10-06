@@ -16,6 +16,7 @@ import {
   PRINT_DATA_MAX_BASE64_CHARS,
   type PrinterStatus,
 } from './protocol';
+import type { PoolStatus } from './protocol-v2';
 
 const TOKEN = 'ab'.repeat(32);
 const ORIGIN = 'https://pos.example.com';
@@ -23,6 +24,13 @@ const FRAME = ORIGIN + '/pos/orders';
 const STATUS: PrinterStatus = {
   state: 'connected',
   printer: { id: 'tcp:10.0.0.9:9100', name: 'Kitchen', transport: 'tcp' },
+  bluetooth: 'on',
+};
+
+// Session 2F2: what the fake app's pool answers (bridge v2).
+const POOL_STATUS: PoolStatus = {
+  printers: [{ state: 'connected', printer: { id: 'tcp:10.0.0.9:9100', name: 'Kitchen', transport: 'tcp' } }],
+  defaultId: 'tcp:10.0.0.9:9100',
   bluetooth: 'on',
 };
 
@@ -74,6 +82,12 @@ function setup(
     requestPermission: record('requestPermission', true),
     enableBluetooth: record('enableBluetooth', { on: true }),
     setHostActive: record('setHostActive', { active: true }),
+    poolStatus: record('poolStatus', POOL_STATUS),
+    poolSelectPrinter: record('poolSelectPrinter', POOL_STATUS),
+    poolSelectTcp: record('poolSelectTcp', POOL_STATUS),
+    poolReconnect: record('poolReconnect', POOL_STATUS),
+    poolForget: record('poolForget', POOL_STATUS),
+    poolPrint: record('poolPrint', { bytes: 12 }),
   };
   const router = createRouter({
     port,
@@ -171,8 +185,9 @@ test('every drop path = zero native calls and zero deliveries', async () => {
   await silent('[1,2]', FRAME, 'json array');
   await silent('null', FRAME, 'json null');
   await silent('"str"', FRAME, 'json string');
+  // Session 2F2 (deliberate change): v2 is a version the app speaks now; 3 is not.
   await silent(
-    msg('printer.status', undefined, { v: 2 }),
+    msg('printer.status', undefined, { v: 3 }),
     FRAME,
     'wrong version',
   );
@@ -651,6 +666,83 @@ test('createHostGate: turning the host off is applied even in the background and
   foreground = true;
   await gate.onForeground();
   assert.deepEqual(applied, [[false, '']], 'cancelled wish is not revived');
+});
+
+// Phase 2 Session 2F2 (spec §9.2): bridge v2. A v2 envelope names its printer by the app's id, every answer but the
+// print's is the whole list, and the reply carries v: 2.
+function msg2(method: unknown, params?: unknown): string {
+  return JSON.stringify({ v: 2, token: TOKEN, id: 'q2', method, params });
+}
+
+test('v2: each printer method calls the pool port once and replies v2 with the list (the print with its bytes)', async () => {
+  const data = 'QUJD';
+  const cases: [string, unknown, unknown[], unknown][] = [
+    ['printer.status', undefined, ['poolStatus'], POOL_STATUS],
+    ['printer.select', { id: 'bt-classic:00:11:22:33:44:55' }, ['poolSelectPrinter', 'bt-classic:00:11:22:33:44:55'], POOL_STATUS],
+    ['printer.select', { tcp: { host: 'Printer.LOCAL', port: 9101 } }, ['poolSelectTcp', 'printer.local', 9101], POOL_STATUS],
+    ['printer.reconnect', { printerId: 'tcp:10.0.0.9:9100' }, ['poolReconnect', 'tcp:10.0.0.9:9100'], POOL_STATUS],
+    ['printer.forget', { printerId: 'tcp:10.0.0.9:9100' }, ['poolForget', 'tcp:10.0.0.9:9100'], POOL_STATUS],
+    ['printer.print', { printerId: 'tcp:10.0.0.9:9101', data }, ['poolPrint', 'tcp:10.0.0.9:9101', data], { bytes: 12 }],
+  ];
+  for (const [method, params, call, result] of cases) {
+    const s = setup();
+    await s.router.handle(msg2(method, params), FRAME);
+    assert.deepEqual(s.calls, [call], method + ': one call to the pool');
+    assert.deepEqual(s.replies(), [{ v: 2, id: 'q2', ok: true, result }], method + ': a v2 reply');
+  }
+});
+
+test('v2: a method v2 does not carry, or params it does not take, is BAD_REQUEST in a v2 reply with no native call', async () => {
+  const refused: [string, unknown, string][] = [
+    ['app.info', undefined, 'BAD_REQUEST'],
+    ['printer.list', { scan: true }, 'BAD_REQUEST'],
+    ['host.background', { active: true }, 'BAD_REQUEST'],
+    ['printer.status', { printerId: 'x' }, 'BAD_REQUEST'],
+    ['printer.reconnect', undefined, 'BAD_REQUEST'],
+    ['printer.reconnect', { printerId: '' }, 'BAD_REQUEST'],
+    ['printer.forget', { printerId: 'x'.repeat(201) }, 'BAD_REQUEST'],
+    ['printer.forget', { printerId: 'x', extra: 1 }, 'BAD_REQUEST'],
+    ['printer.select', { id: 'x', tcp: { host: 'a', port: 1 } }, 'BAD_REQUEST'],
+    ['printer.select', { printerId: 'x' }, 'BAD_REQUEST'],
+    ['printer.print', { data: 'QUJD' }, 'BAD_REQUEST'],
+    ['printer.print', { printerId: 'x' }, 'BAD_REQUEST'],
+    ['printer.print', { printerId: 'x', data: 'QUJ' }, 'BAD_REQUEST'],
+    ['printer.print', { printerId: 'x', data: 'QUJD', more: 1 }, 'BAD_REQUEST'],
+    ['printer.print', { printerId: 'x', data: 'A'.repeat(PRINT_DATA_MAX_BASE64_CHARS + 4) }, 'TOO_LARGE'],
+  ];
+  for (const [method, params, code] of refused) {
+    const s = setup();
+    await s.router.handle(msg2(method, params), FRAME);
+    const label = method + ' ' + String(JSON.stringify(params)).slice(0, 40);
+    assert.deepEqual(s.calls, [], label + ': no native call');
+    const [reply] = s.replies();
+    assert.deepEqual([reply.v, reply.ok, reply.error?.code], [2, false, code], label);
+    assert.equal(reply.error?.message, NATIVE_ERROR_MESSAGES[code as keyof typeof NATIVE_ERROR_MESSAGES], label + ': the curated text');
+  }
+});
+
+test('v2: native errors map to their code with curated text; an uncoded print failure is WRITE_FAILED, any other UNSUPPORTED', async () => {
+  for (const [rejection, method, params, code] of [
+    [Object.assign(new Error('raw device detail'), { code: 'BUSY' }), 'printer.print', { printerId: 'x', data: 'QUJD' }, 'BUSY'],
+    [Object.assign(new Error('raw'), { code: 'NOT_CONNECTED' }), 'printer.print', { printerId: 'x', data: 'QUJD' }, 'NOT_CONNECTED'],
+    [new Error('raw'), 'printer.print', { printerId: 'x', data: 'QUJD' }, 'WRITE_FAILED'],
+    [new Error('raw'), 'printer.reconnect', { printerId: 'x' }, 'UNSUPPORTED'],
+  ] as const) {
+    const s = setup({ reject: rejection });
+    await s.router.handle(msg2(method, params), FRAME);
+    const [reply] = s.replies();
+    assert.deepEqual([reply.v, reply.ok, reply.error?.code], [2, false, code], method + ' ' + code);
+    assert.ok(!JSON.stringify(reply).includes('raw'), 'the native message never leaks');
+  }
+});
+
+test('v2: a v1 envelope still acts on the default printer, and a version the app does not speak is dropped', async () => {
+  const s = setup();
+  await s.router.handle(msg('printer.status'), FRAME);
+  assert.deepEqual(s.calls, [['getStatus']], 'v1: the default printer');
+  assert.equal(s.replies()[0].v, 1, 'a v1 reply');
+  await silent(JSON.stringify({ v: 3, token: TOKEN, id: 'q3', method: 'printer.status' }), FRAME, 'version 3');
+  await silent(JSON.stringify({ v: 2, token: 'cd'.repeat(32), id: 'q3', method: 'printer.status' }), FRAME, 'v2 with a wrong token');
 });
 
 test('createHostGate: a failing apply on foreground is swallowed', async () => {

@@ -71,6 +71,9 @@ interface KOTReceiptProps {
   // Session 1C (spec §7.7): the print job's labels as one inverted banner on top ("REPRINT"). Absent on
   // every first print, so every existing call site prints exactly as before.
   banner?: string;
+  // Phase 2 Session 2C (spec §8): the station a routed KOT is for ("BAR", "ALL STATIONS"), under the title.
+  // Absent on today's KOT, so every existing call site prints exactly as before.
+  stationLine?: string;
   ref?: Ref<HTMLDivElement>;
 }
 
@@ -92,6 +95,7 @@ export function KOTReceipt({
   movedBy,
   movedAt,
   banner,
+  stationLine,
   ref,
 }: KOTReceiptProps) {
   // Print customization S2: a saved kitchen-ticket design prints through the block engine; none (or unreadable)
@@ -116,6 +120,7 @@ export function KOTReceipt({
         movedBy={movedBy}
         movedAt={movedAt}
         banner={banner}
+        stationLine={stationLine}
         template={template}
         ref={ref}
       />
@@ -191,6 +196,10 @@ export function KOTReceipt({
             <div className="text-center text-[1.29em] font-bold tracking-widest">
               KITCHEN ORDER
             </div>
+          )}
+          {/* Which station's slip this is: a cook at the bar knows it is theirs at a glance. */}
+          {stationLine && (
+            <div className="text-center text-[1.29em] font-bold tracking-widest">{stationLine}</div>
           )}
           {/* The number a cook calls out — large, directly under the title.
               A moved slip consumes no ticket number: it is not a round. */}

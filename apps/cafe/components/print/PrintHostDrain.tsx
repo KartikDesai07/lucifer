@@ -4,7 +4,8 @@ import { useCallback, useMemo, type MutableRefObject } from "react";
 
 import { PRINT_HOST_MAX_AGE_MS } from "@pos/shared/print-job";
 import { usePrintHostRouting } from "@/components/layout/PosPulseProvider";
-import { useCanPrintNow } from "@/hooks/use-device-printer";
+import { useAgentPrinters } from "@/hooks/use-agent-printers";
+import { useCanPrintOnAny } from "@/hooks/use-device-printer";
 import { useHostRouting } from "@/hooks/use-host-routing";
 import { useNativeHostBackground } from "@/hooks/use-native-host";
 import { usePrintAgent } from "@/hooks/use-print-agent";
@@ -43,11 +44,16 @@ interface PrintHostDrainProps {
 export function PrintHostDrain({ enabled, surfacesMounted, deviceId, tabId, busy, claimLockRef, onSlip, onDemoted }: PrintHostDrainProps) {
   // Written as host/unknown checks (D-11): an unknown lane waits for the pulse rather than guess.
   const routing = usePrintHostRouting();
-  const isAgent = enabled || (surfacesMounted && deviceId !== "" && routing !== "host" && routing !== "unknown");
+  // Session 2C (printers mode): no host plays a part, so every device whose surfaces exist is an agent, as with no
+  // host (spec §9.3): a printer's writer drains it, and every device names itself on the pulse, so one that became a
+  // writer hears of its slips even before its printer list knows (the 2C gate's review, I-2).
+  const printers = useAgentPrinters(deviceId, surfacesMounted && deviceId !== "");
+  const isAgent = enabled || (surfacesMounted && deviceId !== "" && (printers.printersMode || (routing !== "host" && routing !== "unknown")));
   // Exactly one draining window per device (MERGED-23), asked for only by a window that can print right
   // now: a printer that is off, or open in another tab, hands the lock on, so a line is never leased
-  // for a printer that cannot print (the owner's rule after Session 1B).
-  const canPrint = useCanPrintNow();
+  // for a printer that cannot print (the owner's rule after Session 1B). Session 2F1: any printer of this device, so
+  // one of the POS app's printers that is off never stops the others (spec §9.2).
+  const canPrint = useCanPrintOnAny();
   const holdsLock = usePrintHostDrainLock(isAgent && canPrint);
   const drains = isAgent && holdsLock;
   const hostDrains = enabled && holdsLock;
@@ -74,7 +80,7 @@ export function PrintHostDrain({ enabled, surfacesMounted, deviceId, tabId, busy
   const hostLane = useMemo(() => ({ claimLock: claimLockRef, maxAgeMs: PRINT_HOST_MAX_AGE_MS }), [claimLockRef]);
   useSelfOrderAutoPrint({ enabled: hostDrains, busy, queueKotRound, hostLane });
 
-  usePrintAgent({ enabled: drains, isHost: enabled, deviceId, tabId, busy, queueSlip: onSlip });
+  usePrintAgent({ enabled: drains, isHost: enabled, printers, deviceId, tabId, busy, queueSlip: onSlip });
   // Session 1D: the 20 s alarm on every device with an identity (the asking one and the printing one).
   usePrintSlipAlarm(deviceId);
 

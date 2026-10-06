@@ -35,6 +35,29 @@ test("printIntentOf: only an agent request with a usable device id opts in; a ba
   assert.deepEqual(printIntentOf(reqWith({ "x-pos-print-agent": "1", "x-pos-device-id": "dev-1", "x-pos-print-bill": "1" })), { deviceId: "dev-1", bill: true });
 });
 
+// Phase 2 Session 2B (spec §7.11): the draining tab that can print now names itself; an unusable name only
+// means no direct print (the slips are made queued, as in Phase 1), never a refused order.
+test("printIntentOf: the asking tab's lease header joins the intent only with an agent opt-in and a usable tab id", () => {
+  const agent = { "x-pos-print-agent": "1", "x-pos-device-id": "dev-1" };
+  assert.deepEqual(printIntentOf(reqWith({ ...agent, "x-pos-print-lease": " tab-1 " })), { deviceId: "dev-1", bill: false, leaseTabId: "tab-1" });
+  assert.deepEqual(printIntentOf(reqWith({ ...agent, "x-pos-print-lease": "  " })), { deviceId: "dev-1", bill: false }, "a blank tab id is no tab");
+  assert.deepEqual(printIntentOf(reqWith({ ...agent, "x-pos-print-lease": "t".repeat(65) })), { deviceId: "dev-1", bill: false }, "an over-long tab id is ignored, not a 400");
+  assert.equal(printIntentOf(reqWith({ "x-pos-device-id": "dev-1", "x-pos-print-lease": "tab-1" })), null, "the lease header alone is not an opt-in");
+});
+
+// Phase 2 Session 2C (printers mode): the printers the draining tab can print on now, and this device's bill
+// printer. Unusable values only mean fewer printers or the default bill printer, never a refused order.
+test("printIntentOf: the ready printers and the device's bill printer join the intent; anything unusable is dropped", () => {
+  const agent = { "x-pos-print-agent": "1", "x-pos-device-id": "dev-1" };
+  const a = "a".repeat(24);
+  const b = "b".repeat(24);
+  assert.deepEqual(printIntentOf(reqWith({ ...agent, "x-pos-print-ready": `${a}, nope,${b}` })), { deviceId: "dev-1", bill: false, readyPrinterIds: [a, b] });
+  assert.deepEqual(printIntentOf(reqWith({ ...agent, "x-pos-print-ready": "nope" })), { deviceId: "dev-1", bill: false }, "no usable id: no ready printers");
+  assert.deepEqual(printIntentOf(reqWith({ ...agent, "x-pos-bill-printer": ` ${a} ` })), { deviceId: "dev-1", bill: false, billPrinterId: a });
+  assert.deepEqual(printIntentOf(reqWith({ ...agent, "x-pos-bill-printer": "Counter" })), { deviceId: "dev-1", bill: false }, "not a printer id: the default bill printer");
+  assert.equal(printIntentOf(reqWith({ "x-pos-print-ready": a, "x-pos-bill-printer": a })), null, "neither header is an opt-in");
+});
+
 test("buildKotPrintDevices: positional like kotIdemKeys; a round its tab printed stays empty; no device writes nothing", () => {
   assert.equal(buildKotPrintDevices(undefined, 1, undefined), undefined);
   assert.deepEqual(buildKotPrintDevices(undefined, 1, "dev-1"), ["dev-1"]);
@@ -59,8 +82,17 @@ test("PIN: createOrderPrintJobs never throws, announces each new job to its devi
   inOrder(fn, ["try {", "const target = host?.deviceId ?? input.originDeviceId;", "await insertPrintJob({", "} catch {", "return refs;"], "createOrderPrintJobs");
   assert.match(fn, /publishPrintStatus\(\{ id: job\.ref\.id, status: "queued", target \}\);/);
   assert.match(fn, /if \(made > 0 && host !== null\) publishCafeEvent\("print-job"\);/);
-  assert.match(s, /const jobKey = input\.jobKey \?\? printJobKeyOf\(payload\);/, "today's keys: a server job and an old tab's enqueue of one slip collide");
-  assert.equal(count(s, "PrintJob.create("), 1, "one write point");
+  // Session 2C moved insertPrintJob to lib/print-job-insert.ts (this file stays under its ~300-line budget).
+  const insert = src("apps/cafe/lib/print-job-insert.ts");
+  assert.match(insert, /const jobKey = input\.jobKey \?\? printJobKeyOf\(payload\);/, "today's keys: a server job and an old tab's enqueue of one slip collide");
+  assert.equal(count(insert, "PrintJob.create(") + count(s, "PrintJob.create("), 1, "one write point");
+  // Session 2B (spec §7.11): a job is made leased only on the asking device's own line, only the request's
+  // first slip there, only when the line is free; and a job printed by the asking tab is never announced.
+  assert.match(fn, /const leaseTabId = target === input\.originDeviceId \? input\.leaseTabId : undefined;/, "never for a slip another device prints");
+  assert.match(fn, /const lineFree = leaseTabId !== undefined && \(await printLineIsFree\(target, input\.nowMs\)\);/, "one read of the line, only when it can matter");
+  assert.match(fn, /const tab = leaseTabId === undefined \|\| refs\.length > 0 \? \{\} : \{ tab: \{ tabId: leaseTabId, direct: lineFree \} \};/, "only the first slip of the request on the line");
+  assert.match(fn, /if \(announcesQueuedJob\(job, directOnLine\)\) \{/, "no realtime message to yourself");
+  assert.match(insert, /\.\.\.\(failed \?\? direct \?\? \{ \.\.\.printJobLifecycleInit\(input\.nowMs, labels\), log: \[printJobCreatedLog\(input\.nowMs, input\.originDeviceId\)\] \}\),/, "made leased (or failed, 2C) in the same write that creates it");
   assert.ok(!s.includes("console."), "no console.* in a server lib");
 });
 
@@ -135,6 +167,23 @@ test("PIN: POST /api/print-jobs falls back to the asking device only for an agen
   assert.match(s, /if \(result\.outcome === "no-host" && intent !== null\) \{\s*result = await enqueueOwnPrintJob\(\{/);
 });
 
+// Session 2B (spec §7.11): every request that makes slips carries the asking tab to job creation.
+test("PIN (2B): every order route and the self-order claim pass the asking tab; the enqueue tries direct print first", () => {
+  for (const rel of [...ROUTES.map(([r]) => r), "apps/cafe/lib/print-agent-server.ts"]) {
+    const s = src(rel);
+    assert.equal(count(s, "leaseTabId: intent.leaseTabId,"), 1, `${rel}: the asking tab reaches createOrderPrintJobs`);
+    assert.ok(s.indexOf("originDeviceId: intent.deviceId,") < s.indexOf("leaseTabId: intent.leaseTabId,"), `${rel}: beside the asking device`);
+  }
+  const route = src("apps/cafe/app/api/print-jobs/route.ts");
+  inOrder(route, ["const intent = printIntentOf(req);", "intent?.leaseTabId !== undefined", "await enqueueDirectPrintJob({", "direct ??", "(await enqueuePrintJob({"], "the enqueue");
+  const lib = src("apps/cafe/lib/print-order-jobs.ts");
+  const direct = lib.slice(lib.indexOf("export async function enqueueDirectPrintJob("), lib.indexOf("export function withPrintJobs<T>("));
+  assert.match(direct, /if \(host !== null && host\.deviceId !== input\.originDeviceId\) return null;/, "another device's host: Phase 1's enqueue");
+  assert.match(direct, /tab: \{ tabId: leaseTabId, direct: await printLineIsFree\(input\.originDeviceId, input\.nowMs\) \}/, "made leased only on a free line");
+  const own = lib.slice(lib.indexOf("export async function enqueueOwnPrintJob("), lib.indexOf("export async function enqueueDirectPrintJob("));
+  inOrder(own, ["if (job.ref.leased !== undefined) return {", "leased: job.ref.leased };", "if (!job.created && job.status !== \"queued\")", "if (job.created) publishPrintStatus("], "a leased job is answered with its lease before any announcement");
+});
+
 // ── Session 1C, the server half (the 1B gate rulings: M-a, M-d, M-e, M-f, R4 job-aware lane, the pulse) ──
 
 test("printPulseDeviceOf: only a usable ?device= names the agent; anything else is ignored, never a 400", () => {
@@ -145,9 +194,15 @@ test("printPulseDeviceOf: only a usable ?device= names the agent; anything else 
 });
 
 test("PIN (M-d): every ref says what state its job is in, made now or found under its key", () => {
-  const s = src("apps/cafe/lib/print-order-jobs.ts");
-  assert.match(s, /label: input\.request\.label,\s*status: "queued",\s*\};\s*return \{ ref, created: true, status: "queued" \};/, "a new job is queued");
-  assert.match(s, /label: existing\.label,\s*status: existing\.status,\s*\};/, "a found job keeps its own state");
+  const s = src("apps/cafe/lib/print-job-insert.ts");
+  // Session 2B deliberately changed the first two: a new job is queued, or leased to the asking tab and
+  // carrying its lease; a found job keeps its own state, plus its lease when it is still the asking tab's.
+  assert.match(
+    s,
+    /label: input\.request\.label,\s*status: failed !== null \? "failed" : direct === null \? "queued" : "leased",\s*\.\.\.\(direct !== null \? \{ leased: leasedJobOf\(created, direct, payload\) \} : \{\}\),\s*\.\.\.\(input\.line !== undefined \? \{ printerId: input\.line\.printerId \} : \{\}\),\s*\};\s*return \{ ref, created: true, status: ref\.status \};/,
+    "a new job is queued, or made leased to the asking tab",
+  );
+  assert.match(s, /label: existing\.label,\s*status: existing\.status,\s*\.\.\.\(again !== null \? \{ leased: again \} : \{\}\),\s*\.\.\.\(existing\.printerId !== undefined \? \{ printerId: existing\.printerId \} : \{\}\),\s*\};/, "a found job keeps its own state");
   assert.match(src("packages/shared/src/print-agent-wire.ts"), /export interface PrintJobRef \{[^}]*status: PrintJobStatus;/, "the wire type carries it");
 });
 

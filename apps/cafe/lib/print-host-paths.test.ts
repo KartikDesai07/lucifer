@@ -309,14 +309,15 @@ test("PIN (D): PrintHostDrain.tsx runs the print agent (the host for the cafe; w
     assert.ok(src.includes(call), `PrintHostDrain.tsx must call ${call}`);
   }
   assert.ok(!src.includes("usePrintHostDrain(") && !src.includes("usePrintHostWake("), "the claim drain and the GET wake poll are no longer run here (Session 1C)");
+  // Session 2C deliberately added printers mode: no host plays a part there, so every device is an agent (a writer drains its printers).
   assert.match(
     src,
-    /const isAgent = enabled \|\| \(surfacesMounted && deviceId !== "" && routing !== "host" && routing !== "unknown"\);/,
-    "the agent: the host, or with no host every device whose surfaces exist; an unknown lane waits",
+    /const isAgent = enabled \|\| \(surfacesMounted && deviceId !== "" && \(printers\.printersMode \|\| \(routing !== "host" && routing !== "unknown"\)\)\);/,
+    "the agent: the host, every device in printers mode, or with no host every device whose surfaces exist; an unknown lane waits",
   );
   assert.match(src, /const drains = isAgent && holdsLock;/, "the agent drains only under the lock");
   assert.match(src, /const hostDrains = enabled && holdsLock;/, "the host's self-order lane keeps the host gate");
-  assert.match(src, /usePrintAgent\(\{ enabled: drains, isHost: enabled, deviceId, tabId, busy, queueSlip: onSlip \}\);/, "the agent prints through the provider's bridge");
+  assert.match(src, /usePrintAgent\(\{ enabled: drains, isHost: enabled, printers, deviceId, tabId, busy, queueSlip: onSlip \}\);/, "the agent prints through the provider's bridge");
   assert.match(src, /useSelfOrderAutoPrint\(\{ enabled: hostDrains, busy, queueKotRound, hostLane \}\);/, "the host lane hands a claimed KOT to the agent (job-aware lane)");
   assert.ok(src.includes("PRINT_HOST_MAX_AGE_MS"), "hostLane must reference PRINT_HOST_MAX_AGE_MS");
   assert.match(src, /return null;/, "PrintHostDrain must return null — a null-rendering child");
@@ -430,7 +431,8 @@ test("PIN (I): use-print-host-bridge.ts declares exactly THREE useReactToPrint( 
   const onPrintErrorCalls = countOccurrences(src, "onPrintError,");
   assert.equal(onPrintErrorCalls, 3, `expected onPrintError, exactly 3 times, found ${onPrintErrorCalls}`);
 
-  assert.match(src, /pageStyle: RECEIPT_PAGE_STYLE,/, "the eod surface must use pageStyle: RECEIPT_PAGE_STYLE");
+  // Phase 2 Session 2E: on a Windows printer its own paper (the direct lane scales the 300 px summary to its roll).
+  assert.match(src, /pageStyle: target === undefined \? RECEIPT_PAGE_STYLE : receiptPageStyle\(target\.paper\),/, "the eod surface must use pageStyle: RECEIPT_PAGE_STYLE");
   assert.match(
     src,
     /window\.setTimeout\(\(\) => \{[\s\S]*?\}, PRINT_HOST_EOD_READY_TIMEOUT_MS\)/,
@@ -654,13 +656,14 @@ test("INVENTORY: files containing the needle useReactToPrint( under app/componen
 // PrintHostPrintSources.tsx (95) still fit their existing budgets unchanged.
 // s63 fix round: use-print-host-beat.ts 80 -> 90 (measured 86) -- the shared mutation scope (W-H) and the
 // onHost hook that lets a host answer trigger the offline follow-up (W-O) are 7 unavoidable lines.
-test("PIN (P): line budgets — PrintHostProvider.tsx <= 200, use-print-host-bridge.ts <= 250, use-print-host-drain.ts <= 150, use-print-host-beat.ts <= 90, PrintHostPrintSources.tsx <= 100, PrintHostEodSource.tsx <= 90, PosPulseProvider.tsx <= 300, use-self-order-auto-print.ts <= 300", () => {
+// Phase 2 Session 2E: use-print-host-bridge.ts 250 -> 255 (measured 252): a slip's own Windows printer and paper.
+test("PIN (P): line budgets — PrintHostProvider.tsx <= 200, use-print-host-bridge.ts <= 255, use-print-host-drain.ts <= 150, use-print-host-beat.ts <= 90, PrintHostPrintSources.tsx <= 110, PrintHostEodSource.tsx <= 90, PosPulseProvider.tsx <= 300, use-self-order-auto-print.ts <= 300", () => {
   const budgets: [string, number][] = [
     [PRINT_HOST_PROVIDER, 200],
-    [USE_PRINT_HOST_BRIDGE, 250],
+    [USE_PRINT_HOST_BRIDGE, 255],
     [USE_PRINT_HOST_DRAIN, 150],
     [USE_PRINT_HOST_BEAT, 90],
-    [PRINT_HOST_PRINT_SOURCES, 100],
+    [PRINT_HOST_PRINT_SOURCES, 110],
     [PRINT_HOST_EOD_SOURCE, 90],
     [POS_PULSE_PROVIDER, 300],
     [USE_SELF_ORDER_AUTO_PRINT, 300],

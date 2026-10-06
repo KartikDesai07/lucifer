@@ -37,7 +37,12 @@ export async function PUT(req: Request, { params }: Params) {
     const existing = await Category.findById(id);
     if (!existing) return notFound("Category not found");
 
-    existing.set(parsed.data);
+    // Printing Phase 2 (spec §6.2): stationId null sends the category back to the default station by
+    // removing the field (omit-empty); a plain set would STORE null.
+    const { stationId, ...rest } = parsed.data;
+    existing.set(rest);
+    if (stationId === null) existing.set("stationId", undefined);
+    else if (stationId !== undefined) existing.set("stationId", stationId);
     await existing.save();
 
     cache.del("categories");

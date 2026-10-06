@@ -82,6 +82,8 @@ export interface KotSlipInput {
   movedFrom?: string;
   movedBy?: string;
   movedAt?: string | Date;
+  /** Phase 2 (spec §8): the station a routed KOT is for ("BAR", "ALL STATIONS"); absent in simple mode. */
+  stationLine?: string;
 }
 
 export interface KotSlipContext {
@@ -98,6 +100,7 @@ export interface KotSlipContext {
   roundNumber: number | undefined;
   reason: string | undefined;
   movedFrom: string | undefined;
+  stationLine: string | undefined;
 }
 
 // The legacy kitchen ticket's derivations (KOTReceipt.tsx:93-105).
@@ -128,6 +131,7 @@ export function kotSlipContext(
     roundNumber: props.roundNumber,
     reason: props.reason,
     movedFrom: props.movedFrom,
+    stationLine: props.stationLine,
   };
 }
 

@@ -32,8 +32,8 @@ import { hostPrintFailureMessage } from "@/lib/print-write-outcome";
 import { createHostSlipOutcomes, type HostPrintDone } from "@/lib/print-host-outcomes";
 import type { Order } from "@/types";
 
-/** What the bridge is printing: a claimed job's slip, or PH-7's attestation
- *  test slip (`PrintHostTestSlip`, rendered through the KOT surface). */
+/** What the bridge is printing: a claimed job's slip, or PH-7's attestation test slip
+ *  (`PrintHostTestSlip`); it and a printer's Test print (Session 2D) use the KOT surface. */
 export type HostPrintCurrent = { kind: "slip"; slip: HostPrintSlip } | { kind: "test" };
 
 interface TestSlipWaiter {
@@ -43,7 +43,7 @@ interface TestSlipWaiter {
 }
 
 function surfaceOf(current: HostPrintCurrent): HostPrintSurface {
-  return current.kind === "test" ? "kot" : current.slip.surface;
+  return current.kind === "test" || current.slip.surface === "test" ? "kot" : current.slip.surface;
 }
 
 interface UsePrintHostBridgeOptions {
@@ -132,29 +132,33 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
   const eodRef = useRef<HTMLDivElement>(null);
   const documentTitle = current?.kind === "slip" ? current.slip.documentTitle : PRINT_HOST_TEST_TITLE;
   const slipCodePending = useSlipCodePending(); // R6: a saved design's lazy code is still on its way
+  // Phase 2 Session 2E (spec §9.2): a Windows printer job prints on its printer, drawn for its paper; Session 2F1: one of
+  // the POS app's printers likewise (raster); else as before.
+  const target = current?.kind === "slip" ? current.slip.target : undefined;
+  const raster = target?.nativeId === undefined ? undefined : { nativeId: target.nativeId, paper: target.paper };
 
   const printKot = useReactToPrint(slipPrintOptions({
     contentRef: kotRef,
     documentTitle,
-    pageStyle: receiptPageStyle(printCfg.kot.paperWidth),
+    pageStyle: receiptPageStyle(target?.paper ?? printCfg.kot.paperWidth),
     onAfterPrint: finish,
     onPrintError,
-  }));
+  }, target?.printerName, raster));
   const printReceipt = useReactToPrint(slipPrintOptions({
     contentRef: receiptRef,
     documentTitle,
-    pageStyle: receiptPageStyle(printCfg.bill.paperWidth),
+    pageStyle: receiptPageStyle(target?.paper ?? printCfg.bill.paperWidth),
     onAfterPrint: finish,
     onPrintError,
-  }));
-  // Fixed 80mm like EndOfDayButton (EndOfDaySummary is hardcoded w-[300px]).
+  }, target?.printerName, raster));
+  // Fixed 80mm like EndOfDayButton (EndOfDaySummary is hardcoded w-[300px]); a Windows printer's own roll (scaled).
   const printEod = useReactToPrint(slipPrintOptions({
     contentRef: eodRef,
     documentTitle,
-    pageStyle: RECEIPT_PAGE_STYLE,
+    pageStyle: target === undefined ? RECEIPT_PAGE_STYLE : receiptPageStyle(target.paper),
     onAfterPrint: finish,
     onPrintError,
-  }));
+  }, target?.printerName, raster));
 
   // Dispatch: runs AFTER the commit that rendered the slip into its surface (PrintHostPrintSources is a context
   // consumer below this provider, so its effects — and DOM — land before this parent effect), exactly the page
