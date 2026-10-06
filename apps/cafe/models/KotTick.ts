@@ -22,6 +22,14 @@ export interface IKotTick extends Document<string> {
   // boolean, so a round fired AFTER the tap brings the card back instead of
   // being hidden forever (lib/kitchen-cards.ts — the lost-ticket rule).
   readyAt?: Date;
+  // Print customization S8 — token state. readyAt is stamped at the newest fire
+  // instant the cook SAW (often minutes before the tap), so it cannot time a
+  // token's stay on the Ready list: readyMarkedAt is the SERVER instant of the
+  // Ready mark, written in the same $set and unset with it. collectedAt is when
+  // staff handed the order over. Both are absent = not marked; token status is
+  // derived from them at read time (lib/token-board.ts), never stored.
+  readyMarkedAt?: Date;
+  collectedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -33,6 +41,9 @@ const kotTickSchema = new Schema<IKotTick>(
     // No default and no index: absent means "not cleared", and the board reads
     // it per-order off docs it already fetched by _id.
     readyAt: { type: Date },
+    // S8 — same rule: no default, no index (read per-order by _id).
+    readyMarkedAt: { type: Date },
+    collectedAt: { type: Date },
   },
   { timestamps: true },
 );

@@ -45,9 +45,10 @@ export const PRINT_HOST_EMPTY_SLIP_MESSAGE =
 export const PRINT_HOST_BUSY_MESSAGE = "The print host is busy with another slip — try again in a moment.";
 export const PRINT_HOST_TEST_TITLE = "print-host-test";
 
-/** The three provider-owned print surfaces (§B5): the KOT/void/moved surface,
- *  the customer bill, and the fixed-80mm end-of-day summary. */
-export type HostPrintSurface = "kot" | "receipt" | "eod";
+/** The provider-owned print surfaces (§B5): the KOT/void/moved surface, the
+ *  customer bill, the token slip (at the bill's width), and the fixed-80mm
+ *  end-of-day summary. */
+export type HostPrintSurface = "kot" | "receipt" | "token" | "eod";
 
 /** A KOT-surface slip — every prop `PrintSources` forwards to `KOTReceipt`. */
 export interface HostKotSlip {
@@ -76,6 +77,15 @@ export interface HostReceiptSlip {
   order: Order;
   documentTitle: string;
   /** Session 1C (spec §7.7): "DUPLICATE" on a bill printed again; absent for none. */
+  banner?: string;
+}
+
+/** The customer's token slip: rides the receipt line at the bill's paper width. */
+export interface HostTokenSlip {
+  surface: "token";
+  order: Order;
+  documentTitle: string;
+  /** "DUPLICATE" on a token printed again; absent for none. */
   banner?: string;
 }
 
@@ -113,10 +123,11 @@ export interface SlipPrintTarget {
   nativeId?: string;
 }
 
-export type HostPrintSlip = (HostKotSlip | HostReceiptSlip | HostEodSlip | HostTestSlip) & { target?: SlipPrintTarget };
+export type HostPrintSlip = (HostKotSlip | HostReceiptSlip | HostTokenSlip | HostEodSlip | HostTestSlip) & { target?: SlipPrintTarget };
 
 export const ROUND_LABEL_PREFIX = "Round ";
 const KOT_TITLE_PREFIX = "KOT-";
+const TOKEN_TITLE_PREFIX = "TOKEN-";
 const EOD_TITLE_PREFIX = "EOD-";
 const TEST_TITLE_PREFIX = "TEST-";
 
@@ -194,6 +205,10 @@ export function hostPrintSlipOf(payload: PrintJobPayload, todayKey: string): Hos
     case "bill": {
       const order = orderFromSnapshot(payload.snapshot);
       return { surface: "receipt", order, documentTitle: order.orderId };
+    }
+    case "token": {
+      const order = orderFromSnapshot(payload.snapshot);
+      return { surface: "token", order, documentTitle: `${TOKEN_TITLE_PREFIX}${order.orderId}` };
     }
     case "moved": {
       // KOTReceipt's "moved" banner suppresses the item list itself; the three

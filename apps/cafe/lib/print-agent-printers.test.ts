@@ -344,7 +344,7 @@ test("PIN (2C): the page reads the printers on mount, on a print-setup frame and
   assert.match(drain, /const printers = useAgentPrinters\(deviceId, surfacesMounted && deviceId !== ""\);/);
   const agent = src("apps/cafe/hooks/use-print-agent.ts");
   // Session 2E: the agent names the printers no refusal holds (lib/print-agent-holds.ts) to the lease and the headers.
-  assert.match(agent, /lease: \(printerIds\) => apiSend<PrintLeaseData>\(LEASE_URL, "POST", \{ deviceId, tabId, \.\.\.printerIdsBody\(printerIds\) \}\),/, "it leases its ready printers' lines too");
+  assert.match(agent, /lease: \(printerIds\) => apiSend<PrintLeaseData>\(LEASE_URL, "POST", \{ deviceId, tabId, tokenSlips: true, \.\.\.printerIdsBody\(printerIds\) \}\),/, "it leases its ready printers' lines too");
   // Session 2F1 (deliberate change): the ones of them that can print now.
   assert.match(agent, /readyPrinters: readyNow,/);
   assert.match(agent, /const offReady = setReadyPrintersSource\(\(\) => agent\.openPrinters\(\)\);/);

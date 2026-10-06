@@ -1,0 +1,110 @@
+/*
+ * Self-hosted slip faces (print customization S3, 01-PLAN §2.5). Plain CSS, no Tailwind directives.
+ *
+ * Why url() and not /public: a url() in CSS makes Next emit each file to /_next/static/media, which is public and
+ * immutable-cached. /public is blocked for a cookie-less print window by the middleware matcher (middleware.ts),
+ * so a slip printed from the desktop shell or the react-to-print iframe would never get its face from there.
+ * The raster lane inlines a face only when some element's computed font-family names it, so every family below is
+ * named by an inline font-family stack (packages/shared/src/print-fonts.ts), never a CSS variable: no slip uses
+ * var(--...) for these faces, because a variable does not survive the print iframe or the raster lane's SVG.
+ *
+ * An @font-face downloads nothing until a glyph needs it; hooks/use-print-fonts-preload.ts warms the files of the
+ * saved templates. Family names are EXACTLY PRINT_FONT_CATALOG's (pinned by lib/print-fonts-paths.test.ts).
+ *
+ * Subset recipe (fontTools pyftsubset from the Google Fonts static TTFs, --flavor=woff2, layout features kept):
+ *   Latin faces:  U+0020-007E, U+00A0-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2010-2027,
+ *                 U+2030-203A, U+2044, U+20B9 (rupee), U+2122, U+2190-2193, U+2212, U+25C6, U+25CF, U+2605;
+ *                 features: the default layout set plus tnum and lnum.
+ *   Devanagari:   U+0900-097F, U+1CD0-1CF9, U+200C-200D, U+20B9, U+25CC, U+A830-A839, U+A8E0-A8FF,
+ *                 U+0020-0040; all layout features.
+ * Licences sit beside the files in assets/print-fonts/.
+ */
+
+/* Inter: Sans */
+@font-face {
+  font-family: "POS Print Sans";
+  src: url("../assets/print-fonts/inter-500.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "POS Print Sans";
+  src: url("../assets/print-fonts/inter-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Barlow Condensed: Condensed */
+@font-face {
+  font-family: "POS Print Condensed";
+  src: url("../assets/print-fonts/barlow-condensed-500.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "POS Print Condensed";
+  src: url("../assets/print-fonts/barlow-condensed-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Roboto Slab: Slab */
+@font-face {
+  font-family: "POS Print Slab";
+  src: url("../assets/print-fonts/roboto-slab-500.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "POS Print Slab";
+  src: url("../assets/print-fonts/roboto-slab-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* IBM Plex Mono: Mono */
+@font-face {
+  font-family: "POS Print Mono";
+  src: url("../assets/print-fonts/ibm-plex-mono-500.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "POS Print Mono";
+  src: url("../assets/print-fonts/ibm-plex-mono-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Archivo Black: Display (one weight) */
+@font-face {
+  font-family: "POS Print Display";
+  src: url("../assets/print-fonts/archivo-black-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Noto Sans Devanagari: loads on demand only (never preloaded) */
+@font-face {
+  font-family: "POS Print Devanagari";
+  src: url("../assets/print-fonts/noto-sans-devanagari-500.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "POS Print Devanagari";
+  src: url("../assets/print-fonts/noto-sans-devanagari-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}

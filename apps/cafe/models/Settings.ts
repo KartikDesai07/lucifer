@@ -12,6 +12,13 @@ import {
 } from "@/lib/constants";
 import { SELF_ORDER_MODES } from "@pos/shared/public";
 import { LOYALTY_REWARD_KINDS } from "@pos/shared/public-diner";
+import {
+  PAY_QR_MINUTES_DEFAULT,
+  PAY_QR_MODES,
+  PAY_QR_MODE_DEFAULT,
+  isPayQrMinutes,
+} from "@pos/shared/print-qr";
+import { isNumberResetMinutes, isTokenReadyClearMinutes } from "@pos/shared/slip-day";
 import type { ISettings } from "./settings.types";
 import {
   promoCodeSchema,
@@ -42,6 +49,19 @@ export const settingsSchema = new Schema<ISettings>(
     // product's built-in default mark, so the tab is never blank.
     productLogo: { type: String, default: "", trim: true },
     fssai: { type: String, default: "", trim: true },
+    upiId: { type: String, default: "", trim: true },
+    // When the bill's pay QR prints, and how long it stays valid after the bill's
+    // FIRST print (0 = no limit). The validator is the shared predicate so the PUT
+    // (runValidators) and the Zod schema can never disagree on the allowed set.
+    payQrMode: { type: String, enum: PAY_QR_MODES, default: PAY_QR_MODE_DEFAULT },
+    payQrValidMinutes: {
+      type: Number,
+      default: PAY_QR_MINUTES_DEFAULT,
+      validate: {
+        validator: isPayQrMinutes,
+        message: "payQrValidMinutes must be 0 (no limit) or a whole number of minutes in range",
+      },
+    },
 
     // Bill defaults reproduce exactly what the receipt printed before these
     // toggles existed, so an upgrade changes nothing until someone opts in.
@@ -78,6 +98,23 @@ export const settingsSchema = new Schema<ISettings>(
     kotShowNotes: { type: Boolean, default: true },
     kotPaperWidth: { type: String, enum: [...PAPER_WIDTHS], default: "80mm" },
     kotFontSize: { type: String, enum: [...PRINT_FONT_SIZES], default: "normal" },
+
+    // Print customization S6 — tokens and the daily restart time. NO defaults (omit-empty, CB-4 precedent below):
+    // absent means tokens off / start 1 / restart at midnight, supplied by printConfigOf on read.
+    tokenEnabled: { type: Boolean },
+    tokenNumberStart: { type: Number, min: PRINT_NUMBER_START_MIN },
+    numberResetMinutes: { type: Number, validate: isNumberResetMinutes },
+    // S8 — no default either: absent = 10 minutes (tokenReadyClearMinutesOf on read).
+    tokenReadyClearMinutes: { type: Number, validate: isTokenReadyClearMinutes },
+
+    // Print customization S2 — a saved bill / kitchen-ticket design. Mixed, not a subschema: block options
+    // differ per block type and strict mode would silently drop the keys it does not declare. The strict Zod
+    // WRITE gate (updateSettingsSchema) is the validator; lib/print-template-resolve.ts re-parses on read. No
+    // `default:` (omit-empty): absent means today's legacy slip, and a null PUT $unsets it.
+    billTemplate: { type: Schema.Types.Mixed, default: undefined },
+    kotTemplate: { type: Schema.Types.Mixed, default: undefined },
+    // S7: the token slip's design (absent = Big Number, the default design).
+    tokenTemplate: { type: Schema.Types.Mixed, default: undefined },
 
     // Self-order (QR) — CR2. "approve" is the safer default: a cafe that
     // never touches this still has staff accept every order before the

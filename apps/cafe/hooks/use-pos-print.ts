@@ -39,6 +39,7 @@ export function usePosPrint() {
   const [voidedAt, setVoidedAt] = useState<string | undefined>();
   const [shouldPrintReceipt, setShouldPrintReceipt] = useState(false);
   const [shouldPrintKot, setShouldPrintKot] = useState(false);
+  const [shouldPrintToken, setShouldPrintToken] = useState(false);
 
   // Queue the kitchen ticket for one fired round of an order — used both after
   // a fresh fire (applyTabUpdate) and after a counter sale (confirmPayment's
@@ -140,9 +141,17 @@ export function usePosPrint() {
     setShouldPrintReceipt(true);
   }, []);
 
+  // The customer's token slip: like the bill, it only records the order and
+  // raises a flag; the kot bridge prints it after the round-1 KOT.
+  const queueTokenSlip = useCallback((order: Order) => {
+    setLastOrder(order);
+    setShouldPrintToken(true);
+  }, []);
+
   // Stable so the page's print effects only re-run when a print signal flips.
   const clearPrintReceipt = useCallback(() => setShouldPrintReceipt(false), []);
   const clearPrintKot = useCallback(() => setShouldPrintKot(false), []);
+  const clearPrintToken = useCallback(() => setShouldPrintToken(false), []);
 
   // Every queue function above is the LOCAL path. When a print host owns
   // printing, these enqueue instead — same signatures, so no call site changes.
@@ -151,7 +160,7 @@ export function usePosPrint() {
     // functions above, and `lastOrder` is not a print signal — PosHeader gates
     // the KOT reprint button on it and `reprintKot` needs it to build a
     // payload, so a host-configured device must still record the tab.
-    local: { queueKotRound, queueVoidSlip, reprintKot, queueReceipt, setLastOrder },
+    local: { queueKotRound, queueVoidSlip, reprintKot, queueReceipt, queueTokenSlip, setLastOrder },
     lastOrder,
   });
 
@@ -172,6 +181,8 @@ export function usePosPrint() {
     clearPrintReceipt,
     shouldPrintKot,
     clearPrintKot,
+    shouldPrintToken,
+    clearPrintToken,
     reprintKot: routed.reprintKot,
     queueReceipt: routed.queueReceipt,
     queueMovedSlip: routed.queueMovedSlip,

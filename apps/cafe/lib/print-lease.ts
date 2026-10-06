@@ -164,7 +164,17 @@ async function leaseEligibility(head: LeaseHead, dismissedBy: string): Promise<P
   return payload;
 }
 
-type LeaseInput = { deviceId: string; tabId: string; dismissedBy: string; nowMs: number };
+/** Deploy skew (print-customization S7): a tab still running a page from before the token slip turns a
+ *  leased "token" job into no slip at all and its print bridge throws while rendering it. Such a tab never
+ *  says `tokenSlips`, so its lease steps over token jobs: they wait queued, behind nothing, for a page
+ *  that can print them (a reload), and every other slip in the line still prints in order. */
+export function leaseKindFence(tokenSlips: boolean): FilterQuery<IPrintJob> {
+  return tokenSlips ? {} : { kind: { $ne: "token" } };
+}
+
+// tokenSlips (print-customization S7): this page can print a "token" job; every line's lease is fenced with
+// leaseKindFence, so a page from before S7 steps over token jobs on its own line AND on the printer lines it writes.
+type LeaseInput = { deviceId: string; tabId: string; dismissedBy: string; nowMs: number; tokenSlips: boolean };
 
 /** Leases the head of one line (spec §7.6: at most one job per line). An expired lease at the head is
  *  applied lazily here, so a dead writer never blocks the line past 90 s. `claim`: fields the lease also sets
@@ -215,11 +225,12 @@ async function leaseLineHead(
  *  retryAt: the soonest moment a line that gave no job can be leased again. */
 export async function leasePrintJobs(input: LeaseInput & { printerIds?: readonly string[] }): Promise<PrintLeaseData> {
   type Line = { line: FilterQuery<IPrintJob>; fence: FilterQuery<IPrintJob>; claim?: PrintJobSet };
-  const lines: Line[] = [{ line: printJobLineFilter(input.deviceId, input.nowMs), fence: { targetDeviceId: input.deviceId } }];
+  const kindFence = leaseKindFence(input.tokenSlips);
+  const lines: Line[] = [{ line: { ...printJobLineFilter(input.deviceId, input.nowMs), ...kindFence }, fence: { targetDeviceId: input.deviceId } }];
   if (input.printerIds !== undefined && input.printerIds.length > 0) {
     for (const printer of routablePrinters(await listPrinters())) {
       if (input.printerIds.includes(printer.id) && printerWriterDeviceId(printer) === input.deviceId) {
-        lines.push({ line: printerLineFilter(printer.id, input.nowMs), fence: { printerId: printer.id }, claim: { targetDeviceId: input.deviceId } });
+        lines.push({ line: { ...printerLineFilter(printer.id, input.nowMs), ...kindFence }, fence: { printerId: printer.id }, claim: { targetDeviceId: input.deviceId } });
       }
     }
   }

@@ -78,6 +78,9 @@ function payload(kind: PrintJobPayload["kind"], overrides: PayloadOverrides = {}
     case "bill":
       draft = { kind, snapshot: BASE_SNAPSHOT, ...overrides };
       break;
+    case "token":
+      draft = { kind, snapshot: BASE_SNAPSHOT, ...overrides };
+      break;
     case "void":
       draft = {
         kind,
@@ -150,6 +153,17 @@ test("printJobKeyOf: bill -> bill:<snapshot._id>", () => {
   assert.equal(printJobKeyOf(p), `bill:${BASE_SNAPSHOT._id}`);
 });
 
+test("printJobKeyOf: token -> token:<snapshot._id> (one slip per order: a replay or an old tab's re-send collides on the key)", () => {
+  assert.equal(printJobKeyOf(payload("token")), `token:${BASE_SNAPSHOT._id}`);
+  assert.notEqual(printJobKeyOf(payload("token")), printJobKeyOf(payload("bill")), "landmark: bill keeps its own key, the two never collide");
+});
+
+test("printJobKeyOf: token reprint:true -> undefined (a staff reprint is a deliberate duplicate, never deduped)", () => {
+  // Landmark first: the non-reprint token DOES carry a key, so the undefined below is the reprint rule.
+  assert.equal(typeof printJobKeyOf(payload("token")), "string");
+  assert.equal(printJobKeyOf(payload("token", { reprint: true })), undefined);
+});
+
 test("printJobKeyOf: void -> void:<_id>:<voidedAt>:<line.productId>, and the key CHANGES when line.productId changes while voidedAt is held fixed (the dedupe-poisoning fence: two different lines voided in the same instant must never collapse to one print job)", () => {
   const voidedAt = "2026-01-01T00:01:00.000Z";
   const p1 = payload("void", { voidedAt, line: { ...BASE_ITEM, productId: "p1" } });
@@ -187,7 +201,7 @@ test("printJobOrderIdOf: eod -> undefined (no order to point at)", () => {
 });
 
 test("printJobOrderIdOf: every non-eod kind returns snapshot._id EXACTLY — never snapshot.orderId (the claim looks the live Order up by _id; returning the human order number would break every eligibility read)", () => {
-  for (const kind of ["kot", "bill", "void", "moved", "cancel-notice"] as const) {
+  for (const kind of ["kot", "bill", "token", "void", "moved", "cancel-notice"] as const) {
     const p = payload(kind);
     assert.equal(printJobOrderIdOf(p), BASE_SNAPSHOT._id);
     assert.notEqual(printJobOrderIdOf(p), BASE_SNAPSHOT.orderId);
@@ -289,6 +303,24 @@ test("printJobEligibility: bill, order live and not cancelled -> eligible", () =
   assert.deepEqual(printJobEligibility(payload("bill"), order), { eligible: true });
 });
 
+test("printJobEligibility: token, order null or Cancelled -> order-cancelled (a first-time token of a cancelled order is never handed out)", () => {
+  assert.deepEqual(printJobEligibility(payload("token"), null), { eligible: false, reason: "order-cancelled" });
+  assert.deepEqual(printJobEligibility(payload("token"), { status: "Cancelled", items: [] }), { eligible: false, reason: "order-cancelled" });
+});
+
+test("printJobEligibility: token on a live order -> eligible (the Cancelled legs above are not a blanket refusal)", () => {
+  assert.deepEqual(printJobEligibility(payload("token"), { status: "Pending", items: [] }), { eligible: true });
+  assert.deepEqual(printJobEligibility(payload("token"), { status: "Completed", items: [] }), { eligible: true });
+});
+
+test("printJobEligibility: token reprint:true is eligible FIRST, before the cancelled gate (null order and Cancelled order both)", () => {
+  const reprint = payload("token", { reprint: true });
+  assert.deepEqual(printJobEligibility(reprint, null), { eligible: true });
+  assert.deepEqual(printJobEligibility(reprint, { status: "Cancelled", items: [] }), { eligible: true });
+  // Landmark: the same order refuses the non-reprint token, so the pass above is the reprint check, not a missing gate.
+  assert.equal(printJobEligibility(payload("token"), { status: "Cancelled", items: [] }).eligible, false);
+});
+
 test("printJobEligibility: void -> ALWAYS eligible, even on a Cancelled order (a void slip IS a stop-instruction, unlike a bill)", () => {
   assert.deepEqual(printJobEligibility(payload("void"), { status: "Cancelled", items: [] }), { eligible: true });
   assert.deepEqual(printJobEligibility(payload("void"), null), { eligible: true });
@@ -308,8 +340,10 @@ test("printJobEligibility: eod -> always eligible (the CAS runs unconditionally 
 
 // ── 6. printJobNeedsOrderRead ────────────────────────────────────────────────
 
-test("printJobNeedsOrderRead: true ONLY for bill and kot(round non-null); false for kot(round:null), void, moved, eod, cancel-notice", () => {
+test("printJobNeedsOrderRead: true ONLY for bill, kot(round non-null) and a non-reprint token; false for kot(round:null), a token reprint, void, moved, eod, cancel-notice", () => {
   assert.equal(printJobNeedsOrderRead(payload("bill")), true);
+  assert.equal(printJobNeedsOrderRead(payload("token")), true);
+  assert.equal(printJobNeedsOrderRead(payload("token", { reprint: true })), false);
   assert.equal(printJobNeedsOrderRead(payload("kot", { round: 2 })), true);
   assert.equal(printJobNeedsOrderRead(payload("kot", { round: null })), false);
   assert.equal(printJobNeedsOrderRead(payload("void")), false);

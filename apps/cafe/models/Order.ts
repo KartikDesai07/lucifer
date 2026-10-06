@@ -170,6 +170,14 @@ export interface IOrder extends Document {
   // Absent on every order no agent tab fired.
   kotPrintDevices?: string[];
   billNumber?: number;
+  // Print customization S6: the order's token number, drawn once at create when tokens are on. Never set on an
+  // add-round. Absent on every order created while tokens were off.
+  tokenNumber?: number;
+  // The moment the bill FIRST printed — the UPI pay QR's "Valid till" counts from
+  // it — and the total it was printed for. Written only by lib/bill-first-print.ts
+  // (CAS): once per bill; a print after the total changed starts a new window.
+  billFirstPrintedAt?: Date;
+  billFirstPrintedTotal?: number;
   voids?: IOrderVoid[]; // absent until the first void ($push creates it)
   cancelReason?: string; // set together, only by POST /api/orders/[id]/cancel
   cancelledBy?: string;
@@ -348,6 +356,14 @@ const orderSchema = new Schema<IOrder>(
     // Printing Phase 1 — declared for the same strict:true reason; omit-empty.
     kotPrintDevices: { type: [String], default: undefined },
     billNumber: { type: Number },
+    // S6 — declared for the strict:true reason (an undeclared path is silently dropped on insert); NO default, so
+    // an order created with tokens off carries no key at all.
+    tokenNumber: { type: Number },
+    // Declared for the strict:true reason; NO default (omit-empty) so the CAS
+    // filter `$exists:false` means "never printed". Written only by
+    // lib/bill-first-print.ts, always together with the total it was printed for.
+    billFirstPrintedAt: { type: Date },
+    billFirstPrintedTotal: { type: Number },
     // No `default: []` — the overwhelming majority of orders never get a void, and
     // an empty array on every row is pure waste on a 512MB M0. `$push` creates it.
     voids: { type: [orderVoidSchema], default: undefined },

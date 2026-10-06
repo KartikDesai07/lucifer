@@ -151,9 +151,9 @@ export async function legAB(nowMs: number): Promise<void> {
     await PrintJob.collection.insertOne({ kind: "kot", status: "queued", payload: "not json", label: `bad ${i}`, queuedBy: STAFF, targetDeviceId: HOST, createdAt: new Date(nowMs - 10_000 + i), updatedAt: new Date(nowMs) });
   }
   const good = await enqueuePrintJob({ ...kotPrintJob(JSON.parse(JSON.stringify(await orderOf(orderId))), 1), queuedBy: STAFF, nowMs });
-  const firstCall = await leasePrintJobs({ deviceId: HOST, tabId: "tab-a", dismissedBy: STAFF, nowMs });
+  const firstCall = await leasePrintJobs({ deviceId: HOST, tabId: "tab-a", dismissedBy: STAFF, nowMs, tokenSlips: true });
   check("(ab) four bad heads in one call: nothing leased, look again in 2 s (M2)", firstCall.jobs.length === 0 && firstCall.retryAt === new Date(nowMs + 2_000).toISOString());
-  const secondCall = await leasePrintJobs({ deviceId: HOST, tabId: "tab-a", dismissedBy: STAFF, nowMs: nowMs + 2_000 });
+  const secondCall = await leasePrintJobs({ deviceId: HOST, tabId: "tab-a", dismissedBy: STAFF, nowMs: nowMs + 2_000, tokenSlips: true });
   check("(ab) … and the next call leases the good job behind them", good.outcome === "queued" && secondCall.jobs[0]?.id === good.id);
 }
 

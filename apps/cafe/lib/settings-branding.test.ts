@@ -13,7 +13,7 @@ import {
   SETTINGS_FSSAI_MAX_LEN,
   ORDER_NOTES_MAX_LEN,
 } from "@pos/shared/constants";
-import { settingsSchema as settingsMongooseSchema } from "@/models/Settings";
+import { Settings, settingsSchema as settingsMongooseSchema } from "@/models/Settings";
 import { printSettingsFields } from "@/lib/print";
 
 // CR1.5 Slice 0 — foundation contracts for cafe branding (logo/FSSAI on
@@ -49,6 +49,7 @@ test("settingsSchema accepts logo/fssai within their length limits", () => {
     gstRate: 5,
     gstMode: "inclusive" as const,
     productLogo: "",
+    upiId: "",
     selfOrderMode: "approve" as const,
     allowTableChange: true,
     showPastOrdersToDiner: true,
@@ -78,6 +79,7 @@ test("settingsSchema rejects a logo ref over IMAGE_REF_MAX_LEN", () => {
     logo: "x".repeat(IMAGE_REF_MAX_LEN + 1),
     productLogo: "",
     fssai: "",
+    upiId: "",
   });
   assert.equal(r.success, false);
 });
@@ -98,6 +100,7 @@ test("settingsSchema rejects an fssai number over SETTINGS_FSSAI_MAX_LEN", () =>
     logo: "",
     productLogo: "",
     fssai: "x".repeat(SETTINGS_FSSAI_MAX_LEN + 1),
+    upiId: "",
   });
   assert.equal(r.success, false);
 });
@@ -119,6 +122,28 @@ test("Settings model: logo/fssai paths exist and default to empty string", () =>
   assert.ok(settingsMongooseSchema.path("fssai"), "fssai path must exist");
   assert.equal(defaultOf(settingsMongooseSchema, "logo"), "");
   assert.equal(defaultOf(settingsMongooseSchema, "fssai"), "");
+});
+
+test("Settings model: upiId path exists and defaults to empty string", () => {
+  assert.ok(settingsMongooseSchema.path("upiId"), "upiId path must exist");
+  assert.equal(defaultOf(settingsMongooseSchema, "upiId"), "");
+});
+
+// S3b: the pay QR's policy fields. The model's own enum / validator use the shared constants, so a lean read of an
+// older document (no model default applies) and a runValidators update both agree with the Zod gate.
+test("Settings model: payQrMode is an enum of the three modes defaulting to always; payQrValidMinutes defaults to 60", () => {
+  const mode = settingsMongooseSchema.path("payQrMode") as unknown as { enumValues: string[] };
+  assert.deepEqual([...mode.enumValues], ["always", "owed", "never"]);
+  assert.equal(defaultOf(settingsMongooseSchema, "payQrMode"), "always");
+  assert.equal(defaultOf(settingsMongooseSchema, "payQrValidMinutes"), 60);
+  assert.equal(new Settings({ payQrMode: "sometimes" }).validateSync()?.errors.payQrMode !== undefined, true, "a foreign mode is refused");
+  assert.equal(new Settings({ payQrMode: "never" }).validateSync()?.errors.payQrMode, undefined, "landmark: a real mode passes");
+});
+
+test("Settings model: payQrValidMinutes validates - 0 (No limit), 5 and 1440 pass; 3, 1441, 5.5 and -1 are refused", () => {
+  const errorFor = (payQrValidMinutes: number) => new Settings({ payQrValidMinutes }).validateSync()?.errors.payQrValidMinutes;
+  for (const ok of [0, 5, 60, 1440]) assert.equal(errorFor(ok), undefined, `${ok} must pass`);
+  for (const bad of [3, 4, 1441, 5.5, -1]) assert.notEqual(errorFor(bad), undefined, `${bad} must be refused`);
 });
 
 test("Settings model: productLogo path exists and defaults to empty string", () => {

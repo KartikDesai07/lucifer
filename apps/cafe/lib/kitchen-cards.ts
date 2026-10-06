@@ -39,6 +39,8 @@ export interface KitchenOrderCard {
    *  plating it, which is a different physical action and so must be a distinct
    *  channel on the card, never inferred from a missing table. */
   parcel: boolean;
+  /** S8 — the order's token number, when it has one (omit-empty). */
+  tokenNumber?: number;
   selfOrder: boolean;
   /** Printed ticket numbers across this card's rounds, in round order, for
    *  matching the paper slips in hand. Empty when the cafe prints no numbers. */
@@ -70,11 +72,15 @@ export interface BuildKitchenCardsInput {
   readyAtByOrder?: Record<string, Date | string | undefined>;
 }
 
+/** The two fields the fire-time helpers read — so the token board (S8), which
+ *  selects no lines, can share THE lost-ticket rule instead of copying it. */
+export type FiredOrder = Pick<KitchenOrderInput, "createdAt" | "kotFiredAt">;
+
 /** The newest round-fire instant on an order, as ms. Falls back to createdAt for
  *  a tab fired before age tracking existed (kotFiredAt is `?`-optional and can
  *  be short — the /items route backfills positionally, but an old doc may carry
  *  nothing at all). */
-function newestFiredAtMs(order: KitchenOrderInput): number {
+export function newestFiredAtMs(order: FiredOrder): number {
   let newest = new Date(order.createdAt).getTime();
   for (const stamp of order.kotFiredAt ?? []) {
     const ms = new Date(stamp).getTime();
@@ -99,7 +105,7 @@ function newestFiredAtMs(order: KitchenOrderInput): number {
  * the alternative would resurrect a card the cook just cleared on every
  * same-instant tie, and the round is still visible on the printed slip.
  */
-function isHiddenByReady(order: KitchenOrderInput, readyAt: Date | string | undefined): boolean {
+export function isHiddenByReady(order: FiredOrder, readyAt: Date | string | undefined): boolean {
   if (!readyAt) return false;
   const readyMs = new Date(readyAt).getTime();
   if (!Number.isFinite(readyMs)) return false; // unparseable stamp never hides work
@@ -175,6 +181,7 @@ export function buildKitchenCards({
       orderNo: order.orderId,
       tableLabel: lines[0].tableLabel,
       parcel: order.parcel === true,
+      ...(typeof order.tokenNumber === "number" ? { tokenNumber: order.tokenNumber } : {}),
       selfOrder: lines[0].selfOrder,
       ticketNumbers,
       lines,

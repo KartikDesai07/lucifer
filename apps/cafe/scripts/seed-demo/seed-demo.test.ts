@@ -135,6 +135,7 @@ function buildCtx(opts: {
         showFssai: true,
         paperWidth: "80mm",
         fontSize: "small",
+        resetMinutes: 0,
       },
       kot: {
         showPrices: true,
@@ -150,7 +151,9 @@ function buildCtx(opts: {
         showNotes: true,
         paperWidth: "80mm",
         fontSize: "normal",
+        resetMinutes: 0,
       },
+      token: { enabled: false, numberStart: 1, resetMinutes: 0 },
     },
     days: dayKeysEndingToday(now, opts.days ?? DAYS_COUNT),
     now,

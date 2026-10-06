@@ -4,10 +4,11 @@ import { useState } from "react";
 import { useWatch } from "react-hook-form";
 import type { Control } from "react-hook-form";
 
-import { sampleBillOrder } from "@/lib/bill-print-sample";
+import { sampleBillOrder, withSampleToken } from "@/lib/bill-print-sample";
 import { printConfigOf } from "@/lib/print";
 import type { GstConfig } from "@/lib/receipt";
 import { OrderReceipt } from "@/components/pos/OrderReceipt";
+import { SlipPreview } from "@/components/print/slip/SlipSkeleton";
 import type { SettingsInput } from "@/schemas";
 import type { Settings } from "@/types";
 
@@ -79,12 +80,14 @@ export function BillPrintPreview({
   };
   // Fixed once per mount so the sample's date does not tick while editing.
   const [createdAt] = useState(() => new Date().toISOString());
-  const order = sampleBillOrder(gstCfg, cfg.numberStart, createdAt);
+  const order = withSampleToken(sampleBillOrder(gstCfg, cfg.numberStart, createdAt), live);
 
   return (
     <div className="overflow-x-auto">
       <div className="mx-auto w-fit shadow-sm ring-1 ring-black/5">
-        <OrderReceipt order={order} settings={live} />
+        <SlipPreview>
+          <OrderReceipt order={order} settings={live} />
+        </SlipPreview>
       </div>
     </div>
   );

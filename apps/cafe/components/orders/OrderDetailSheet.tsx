@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useReactToPrint } from "react-to-print";
-import { Printer, ChefHat, MessageCircle, HandCoins, Replace } from "lucide-react";
+import { Printer, ChefHat, MessageCircle, HandCoins, Replace, Ticket } from "lucide-react";
 import { toast } from "sonner";
 
 import { orderItemLabel, orderItemModifierLines, discountLineLabel } from "@pos/shared/utils";
@@ -17,6 +17,7 @@ import { billPrintJob, cancelNoticePrintJob, kotPrintJob } from "@/lib/print-rou
 import { useSettings } from "@/hooks/use-settings";
 import { useSettleFlow } from "@/hooks/use-settle-flow";
 import { useHostRouting } from "@/hooks/use-print-routing";
+import { useTokenPrint } from "@/hooks/use-token-print";
 import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,10 +32,12 @@ import {
 } from "@/components/ui/sheet";
 import { OrderReceipt } from "@/components/pos/OrderReceipt";
 import { KOTReceipt } from "@/components/pos/KOTReceipt";
+import { TokenSlip } from "@/components/print/slip/TokenSlip";
 import { OrderVoidTrail } from "@/components/orders/OrderVoidTrail";
 import { MoveTableDialog } from "@/components/orders/MoveTableDialog";
 import type { PaymentResult } from "@/components/pos/PaymentModal";
 import { collectedAmount } from "@/lib/payment-result";
+import { tokenLabelOf } from "@/lib/token-view";
 import type { Customer, Order, SettleOrderInput } from "@/types";
 
 const PaymentModal = dynamic(
@@ -225,6 +228,9 @@ export function OrderDetailSheet({
     toast.error(PRINT_ORDER_CHANGED_MESSAGE);
   };
 
+  const { tokenRef, printToken } = useTokenPrint({ order, routePrint, localPrintOf, billPaperWidth: printCfg.bill.paperWidth });
+  const hasToken = order?.tokenNumber !== undefined && !isCancelled;
+
   // Staff asked for this bill by tapping Print, so it is always a duplicate:
   // `reprint: true` (D-10). Without the flag the job carries the same dedupe
   // key as the bill the POS already printed, the enqueue answers "that one is
@@ -281,6 +287,7 @@ export function OrderDetailSheet({
                   hour: "2-digit",
                   minute: "2-digit",
                 })}
+                {typeof order.tokenNumber === "number" && ` · ${tokenLabelOf(order.tokenNumber)}`}
               </>
             )}
           </SheetDescription>
@@ -434,6 +441,11 @@ export function OrderDetailSheet({
                 <MessageCircle className="mr-2 h-4 w-4" /> Share
               </a>
             </Button>
+            {hasToken && (
+              <Button variant="outline" onClick={printToken} disabled={enqueuePending} aria-label="Print token again" className={BRAND_CONTROL_CLASS}>
+                <Ticket className="mr-2 h-4 w-4" /> Token
+              </Button>
+            )}
             {/* Same live-tab gate as Settle & Pay. A walk-in open tab still
                 gets this entry point — MoveTableDialog now serves ASSIGN
                 (claim a table) for a tab with none, same as it serves MOVE
@@ -462,6 +474,7 @@ export function OrderDetailSheet({
             reason={isCancelled ? order?.cancelReason : undefined}
             ref={kotRef}
           />
+          {hasToken && <TokenSlip order={order} settings={settings.data} ref={tokenRef} />}
         </div>
       </SheetContent>
 

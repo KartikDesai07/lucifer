@@ -14,6 +14,11 @@ import {
 } from "@/lib/print";
 import { productImageUrl } from "@/lib/images";
 import { PrintBanner } from "@/components/pos/PrintBanner";
+import { KotTokenLine } from "@/components/pos/slip-token-lines";
+import { KotSlip } from "@/components/print/slip/SlipEngine";
+import { SlipSkeleton } from "@/components/print/slip/SlipSkeleton";
+import { useSlipView } from "@/components/print/slip/slip-view";
+import { kotTemplateOf } from "@/lib/print-template-resolve";
 import type { Order, OrderItem, Settings } from "@/types";
 
 // A kitchen ticket never needs a large logo — pinned to next/image's intrinsic
@@ -93,6 +98,34 @@ export function KOTReceipt({
   stationLine,
   ref,
 }: KOTReceiptProps) {
+  // Print customization S2: a saved kitchen-ticket design prints through the block engine; none (or unreadable)
+  // = this slip. Every prop is forwarded (the golden's stored-template leg fails on a dropped one). R6: until the
+  // design's lazy code is in, this slip prints (a preview shows a skeleton instead).
+  const template = kotTemplateOf(settings);
+  const view = useSlipView(template);
+  if (view === "skeleton") return <SlipSkeleton paperWidth={printConfigOf(settings).kot.paperWidth} ref={ref} />;
+  if (template && view === "slip") {
+    return (
+      <KotSlip
+        order={order}
+        settings={settings}
+        roundItems={roundItems}
+        roundLabel={roundLabel}
+        roundNumber={roundNumber}
+        variant={variant}
+        reason={reason}
+        voidedBy={voidedBy}
+        voidedAt={voidedAt}
+        movedFrom={movedFrom}
+        movedBy={movedBy}
+        movedAt={movedAt}
+        banner={banner}
+        stationLine={stationLine}
+        template={template}
+        ref={ref}
+      />
+    );
+  }
   const cfg = printConfigOf(settings).kot;
   const items = roundItems ?? order?.items ?? [];
   const isVoid = variant === "void";
@@ -173,6 +206,7 @@ export function KOTReceipt({
           {!isMoved && cfg.showNumber && roundNumber !== undefined && (
             <div className="text-center text-[1.6em] font-bold">#{roundNumber}</div>
           )}
+          {order.tokenNumber !== undefined && <KotTokenLine tokenNumber={order.tokenNumber} />}
           {roundLabel && (
             <div className="text-center text-[0.93em] font-semibold">{roundLabel}</div>
           )}

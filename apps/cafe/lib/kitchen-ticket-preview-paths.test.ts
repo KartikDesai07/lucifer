@@ -34,6 +34,7 @@ const RECEIPT = "apps/cafe/components/pos/KOTReceipt.tsx";
 const KNOWN_EDITORS = [
   "apps/cafe/components/settings/KotPrintCard.tsx",
   "apps/cafe/components/settings/KotPaperFields.tsx",
+  "apps/cafe/components/settings/KotNumberingCard.tsx",
 ];
 const SETTINGS_IMPORT = /from "@\/components\/settings\/([A-Za-z]+)"/g;
 
@@ -121,11 +122,9 @@ test("PIN: the preview renders the real KOTReceipt with the sample order and the
   );
   assert.match(previewSrc, /<KOTReceipt\b[^>]*\border=\{order\}/, "the preview must render <KOTReceipt order={order}");
   assert.match(previewSrc, /<KOTReceipt\b[^>]*\bsettings=\{live\}/, "the preview must render <KOTReceipt settings={live}");
-  assert.match(
-    previewSrc,
-    /<KOTReceipt\b[^>]*\broundNumber=\{cfg\.numberStart\}/,
-    "the ticket number must follow the live start number",
-  );
+  assert.match(previewSrc, /<KOTReceipt\b[^>]*\{\.\.\.slip\}/, "the ticket's round props (number, label, void / moved) come from the sample slip");
+  assert.match(previewSrc, /\bsampleKitchenSlip\(chip, order, cfg\)/, "the slip is built from the live config (cfg = printConfigOf(live).kot)");
+  assert.match(stripComments(readSrc(HELPER)), /roundNumber: cfg\.numberStart,/, "the ticket number follows the live start number");
   assert.match(previewSrc, /\bsampleKitchenOrder\(/, "the preview must build the order with sampleKitchenOrder(");
 });
 
@@ -138,17 +137,10 @@ test("PIN: the preview's ticket config is read from the live settings, not the s
 });
 
 test("PIN: the round line is built from the print host's prefix and the sample's round count", () => {
-  assert.match(
-    previewSrc,
-    /import \{ ROUND_LABEL_PREFIX \} from "@\/lib\/print-host-slips";/,
-    "the preview must import the print host's round prefix",
-  );
-  assert.match(
-    previewSrc,
-    /\broundLabel = `\$\{ROUND_LABEL_PREFIX\}\$\{order\.kotRounds\}`;/,
-    "the label must be the prefix + order.kotRounds, like the print host",
-  );
-  assert.match(previewSrc, /<KOTReceipt\b[^>]*\broundLabel=\{roundLabel\}/, "the ticket must be given the round label");
+  const helperSrc = stripComments(readSrc(HELPER));
+  assert.match(helperSrc, /import \{ ROUND_LABEL_PREFIX \} from "@\/lib\/print-host-slips";/, "the sample slip imports the print host's round prefix");
+  assert.match(helperSrc, /\bconst roundLabel = `\$\{ROUND_LABEL_PREFIX\}\$\{order\.kotRounds\}`;/, "the label is the prefix + order.kotRounds, like the print host");
+  assert.ok(!previewSrc.includes("ROUND_LABEL_PREFIX") && /<KOTReceipt\b[^>]*\{\.\.\.slip\}/.test(previewSrc), "the preview holds no copy of it and spreads the slip");
   assert.ok(
     stripComments(readSrc("apps/cafe/lib/print-host-slips.ts")).includes('export const ROUND_LABEL_PREFIX = "Round ";'),
     "landmark: the print host exports the prefix with the exact text",

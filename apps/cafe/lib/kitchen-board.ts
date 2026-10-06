@@ -43,6 +43,8 @@ export interface KitchenOrderInput {
   // board must say so outright; a missing tableNo cannot carry that meaning,
   // since a dine-in walk-in has no table either.
   parcel?: boolean;
+  // S8 — a token order's number (only read by the token arm: kitchenSelectOf).
+  tokenNumber?: number;
   source?: string;
   createdAt: Date;
 }

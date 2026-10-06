@@ -1653,7 +1653,7 @@ async function leg16(): Promise<void> {
   );
   const numbering = printCfg.bill.showNumber && settledCas?.billNumber === undefined;
   check("c) the route's numbering condition holds on the landed settle", numbering);
-  const settled = numbering ? await issueBillNumber(order._id, printCfg.bill.numberStart) : settledCas;
+  const settled = numbering ? await issueBillNumber(order._id, printCfg.bill) : settledCas;
   const billNumber1 = settled?.billNumber;
   check(
     "c) the day's FIRST bill gets exactly the configured start number",
@@ -1689,7 +1689,7 @@ async function leg16(): Promise<void> {
     "e) the re-settle guard computes NO new bill number for an order that already carries one",
     !(printCfg.bill.showNumber && settled?.billNumber === undefined),
   );
-  const probed = await issueBillNumber(order._id, printCfg.bill.numberStart, {
+  const probed = await issueBillNumber(order._id, printCfg.bill, {
     ...SLIP_NUMBER_DEPS,
     nextSequence: async () => RENUMBER_PROBE_SEQUENCE,
   });
@@ -1724,7 +1724,7 @@ async function leg16(): Promise<void> {
     receiver: "Verifier",
     kotRounds: 1,
   });
-  const numbered2 = await issueBillNumber(order2._id, printCfg.bill.numberStart);
+  const numbered2 = await issueBillNumber(order2._id, printCfg.bill);
   check(
     "control: the same day's SECOND settled order gets the NEXT bill number, not a repeat of the first (series genuinely advances)",
     billNumber1 !== undefined && numbered2?.billNumber === billNumber1 + 1,
@@ -2190,7 +2190,7 @@ async function leg21(): Promise<void> {
   if (!write.ok) throw new Error("leg21: settle should resolve cleanly");
   const landed = await Order.findOneAndUpdate(write.filter, write.update, { new: true, runValidators: true }).lean();
   if (!landed) throw new Error("leg21: our settle should land");
-  await issueBillNumber(landed._id, printConfigOf(undefined).bill.numberStart);
+  await issueBillNumber(landed._id, printConfigOf(undefined).bill);
   const oursChecked = overTheWire(await readLean(ours._id));
   check(
     "Check on our landed settle → settled (adopt: one bill, no second payment)",

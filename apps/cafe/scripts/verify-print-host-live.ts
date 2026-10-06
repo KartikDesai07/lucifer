@@ -46,6 +46,7 @@ import { Station } from "@/models/Station";
 import { Printer } from "@/models/Printer";
 import { Category } from "@/models/Category";
 import { Product } from "@/models/Product";
+import { legAY } from "./print-host-live/token-jobs";
 
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
@@ -133,6 +134,8 @@ async function main(): Promise<void> {
     // Phase 2 Session 2F1 legs (several printers on one phone or tablet: the setup, the devices read, a lease per line).
     await legAW();
     await legAX(Date.now());
+    // Print customization S7 leg (the customer's token slip: jobs, keys, lease order, eligibility, skew fence).
+    await legAY(Date.now());
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();

@@ -38,6 +38,7 @@ import { encode } from "next-auth/jwt";
 import { PrintHost } from "@/models/PrintHost";
 import { PrintJob } from "@/models/PrintJob";
 import { printerWriterDeviceId, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
+import { printRepeatLabel } from "@pos/shared/print-lifecycle";
 import { leaseLines, printLeased, soakHeaders, type SoakAddress, type SoakAgent, type SoakCall, type SoakJson } from "./print-soak-agent";
 
 const COOKIE = "authjs.session-token";
@@ -248,7 +249,7 @@ async function main(): Promise<void> {
         const want = job.status === "printed" ? copiesOf(job) : 0;
         if (t.complete !== want) problems.push(`${job.kind} ${String(job._id)}: ${t.complete} full copies on paper, status ${job.status}`);
         if (t.dropped !== (job.uncertainAttempts ?? 0)) problems.push(`${job.kind} ${String(job._id)}: ${t.dropped} cut copies, ${job.uncertainAttempts ?? 0} counted`);
-        if (job.status === "printed" && (job.uncertainAttempts ?? 0) > 0 && !(job.labels ?? []).includes(job.kind === "bill" ? "DUPLICATE" : "REPRINT")) {
+        if (job.status === "printed" && (job.uncertainAttempts ?? 0) > 0 && !(job.labels ?? []).includes(printRepeatLabel(job.kind))) {
           problems.push(`${job.kind} ${String(job._id)}: a repeat without its label`);
         }
       }

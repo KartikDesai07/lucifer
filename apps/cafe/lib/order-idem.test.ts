@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { Order } from "@/models/Order";
 import { orderSchema as ledgerOrderSchema } from "@/models/order.ledger";
 import { IDEM_KEY_MISMATCH_ERROR, IDEM_REPLAY_CANCELLED_ERROR } from "@pos/shared/order-idem";
-import { BILL_NUMBER_UNCONFIRMED } from "./slip-numbers";
+import { BILL_NUMBER_UNCONFIRMED, type SeriesNumbering } from "./slip-numbers";
 import {
   BILL_NUMBER_PENDING_ERROR,
   BILL_NUMBER_SETTLE_MS,
@@ -112,18 +112,18 @@ const at = (ageMs: number) => new Date(T0 - ageMs);
 const SALE = { _id: "665f0000000000000000ab01", status: "Completed", items: [{ productId: TEA, qty: 1, kotRound: 1 }], voids: [], createdAt: at(0) };
 const SENT = [{ productId: TEA, qty: 1 }];
 const BILL_NO = 42;
-const NUMBERING = { showNumber: true, numberStart: 1 };
-const UNNUMBERED = { showNumber: false, numberStart: 1 };
+const NUMBERING = { showNumber: true, numberStart: 1, resetMinutes: 0 };
+const UNNUMBERED = { showNumber: false, numberStart: 1, resetMinutes: 0 };
 
 /** Fake numbering deps on a fixed server clock; records every issueBillNumber call. */
 function numberingDeps(result: "numbered" | "null" | "throw" = "numbered") {
-  const calls: Array<[unknown, number]> = [];
+  const calls: Array<[unknown, SeriesNumbering]> = [];
   return {
     calls,
     deps: {
       now: () => T0,
-      issueBillNumber: async (id: unknown, start: number) => {
-        calls.push([id, start]);
+      issueBillNumber: async (id: unknown, bill: SeriesNumbering) => {
+        calls.push([id, bill]);
         if (result === "throw") throw new Error("counter down");
         return result === "null" ? null : { ...SALE, billNumber: BILL_NO };
       },
@@ -156,12 +156,16 @@ test("createReplayVerdict: an OLD unnumbered Completed sale is numbered by the r
   for (const age of [BILL_NUMBER_SETTLE_MS, BILL_NUMBER_SETTLE_MS * 10]) {
     const { calls, deps } = numberingDeps();
     const old = { ...SALE, createdAt: at(age) };
-    const reply = await createReplayVerdict(old, SENT, { showNumber: true, numberStart: 500 }, deps);
+    const reply = await createReplayVerdict(old, SENT, { showNumber: true, numberStart: 500, resetMinutes: 240 }, deps);
     assert.equal(reply.status, 200, `age ${age}ms`);
     const body = (await reply.json()) as { success: boolean; data: { billNumber?: number } };
     assert.equal(body.success, true);
     assert.equal(body.data.billNumber, BILL_NO, "the answer is the NUMBERED order");
-    assert.deepEqual(calls, [[old._id, 500]], "one guarded issueBillNumber on this order, with the cafe's start");
+    assert.deepEqual(
+      calls,
+      [[old._id, { showNumber: true, numberStart: 500, resetMinutes: 240 }]],
+      "one guarded issueBillNumber on this order, handed the cafe's start AND its restart time",
+    );
   }
 });
 

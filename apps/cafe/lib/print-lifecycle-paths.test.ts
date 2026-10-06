@@ -321,10 +321,10 @@ test("PIN (2C): a lease takes the head of the device's line and of each printer 
   inOrder(
     lease,
     [
-      "[{ line: printJobLineFilter(input.deviceId, input.nowMs), fence: { targetDeviceId: input.deviceId } }];",
+      "[{ line: { ...printJobLineFilter(input.deviceId, input.nowMs), ...kindFence }, fence: { targetDeviceId: input.deviceId } }];",
       "for (const printer of routablePrinters(await listPrinters())) {",
       "if (input.printerIds.includes(printer.id) && printerWriterDeviceId(printer) === input.deviceId) {",
-      "lines.push({ line: printerLineFilter(printer.id, input.nowMs), fence: { printerId: printer.id }, claim: { targetDeviceId: input.deviceId } });",
+      "lines.push({ line: { ...printerLineFilter(printer.id, input.nowMs), ...kindFence }, fence: { printerId: printer.id }, claim: { targetDeviceId: input.deviceId } });",
       "const result = await leaseLineHead(line, fence, input, claim);",
     ],
     "the lease",

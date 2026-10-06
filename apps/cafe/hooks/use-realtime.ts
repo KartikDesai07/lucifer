@@ -8,6 +8,7 @@ import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
 import { ORDER_KEYS } from "@/hooks/use-orders";
 import { TABLE_KEYS } from "@/hooks/use-tables";
 import { DASHBOARD_KEYS } from "@/hooks/use-dashboard";
+import { TOKEN_KEYS } from "@/hooks/use-tokens";
 import { subscribeRealtime } from "@/lib/realtime-client";
 import { onePageAtMost } from "@/lib/order-query";
 import { createRealtimeInvalidator, type RealtimeInvalidateSpec } from "@/lib/realtime-invalidate";
@@ -32,6 +33,11 @@ import { createRealtimeInvalidator, type RealtimeInvalidateSpec } from "@/lib/re
  *  lib/realtime-publish.ts and EVENT_KINDS in workers/realtime/src/index.ts;
  *  realtime-paths.test.ts parity-pins all three. */
 export const KITCHEN_EVENT_KINDS = ["kot-fired", "kot-ticked", "order-changed"] as const;
+
+/** Print customization S8 — kinds that change the token board (POS token sheet; S9's Now Serving screen). A SUBSET
+ *  of CAFE_EVENT_KINDS (pinned), so no Worker redeploy: a fired round (a QR accept, or a new round sending a Ready
+ *  held tab back to Preparing), a Ready / Collected mark, or any tab change (settle, cancel). */
+export const NOW_SERVING_EVENT_KINDS = ["kot-fired", "kot-ticked", "order-changed"] as const;
 
 /** Kinds that mean a print job may be waiting. */
 export const PRINT_EVENT_KINDS = ["print-job"] as const;
@@ -61,6 +67,12 @@ export const TABLES_LATE_REFETCH_MS = 6000;
 export const KITCHEN_REALTIME: RealtimeInvalidateSpec = {
   targets: [{ queryKey: KITCHEN_KEYS.all }],
   holdWhileMutating: KITCHEN_KEYS.all,
+};
+// The token board's own key, held while a token mark is in flight (TOKEN_KEYS.action sits under TOKEN_KEYS.all) —
+// the Kitchen board's rule, for the same reason.
+export const TOKEN_REALTIME: RealtimeInvalidateSpec = {
+  targets: [{ queryKey: TOKEN_KEYS.all }],
+  holdWhileMutating: TOKEN_KEYS.all,
 };
 export const PRINT_REALTIME: RealtimeInvalidateSpec = { targets: [{ queryKey: PRINT_WAKE_KEYS.all }] };
 export const PULSE_REALTIME: RealtimeInvalidateSpec = { targets: [{ queryKey: POS_PULSE_KEYS.all }] };
@@ -103,6 +115,11 @@ function useRealtimeInvalidate(kinds: readonly string[], spec: RealtimeInvalidat
 /** Kitchen board — a fired round, a tick, or any tab change refreshes it. */
 export function useKitchenRealtime(): void {
   useRealtimeInvalidate(KITCHEN_EVENT_KINDS, KITCHEN_REALTIME);
+}
+
+/** Token board (S8) — mounted only while a board is on screen (the POS token sheet's open body). */
+export function useTokenRealtime(): void {
+  useRealtimeInvalidate(NOW_SERVING_EVENT_KINDS, TOKEN_REALTIME);
 }
 
 /**

@@ -35,6 +35,15 @@ test("printPayloadProductIds: a slip's stations are resolved for its own lines; 
   assert.deepEqual(printPayloadProductIds({ kind: "eod", dateKey: "2026-10-04", dateLabel: "4 Oct" } as never), []);
 });
 
+test("printPayloadProductIds: a token slip reads no catalog (no station: it goes where the bill does); a kot still yields its lines", () => {
+  const snapshot = { items: SNAPSHOT_ITEMS } as never;
+  assert.deepEqual(printPayloadProductIds({ kind: "token", snapshot } as never), [], "a token has lines in its snapshot but resolves no station");
+  assert.deepEqual(printPayloadProductIds({ kind: "token", snapshot, reprint: true } as never), []);
+  // positive landmark: the same snapshot DOES yield its product ids for a kot and a bill, so [] above is the token rule
+  assert.deepEqual(printPayloadProductIds({ kind: "kot", snapshot, round: 1 } as never), ["p-chai", "p-cake"]);
+  assert.deepEqual(printPayloadProductIds({ kind: "bill", snapshot } as never), ["p-chai", "p-cake"]);
+});
+
 function routed(printerId: string | null, writerDeviceId: string | null): RoutedPrintJob {
   return { printerId, writerDeviceId, request: { payload: {} as never, label: "KOT" }, copies: 1, part: "-" };
 }

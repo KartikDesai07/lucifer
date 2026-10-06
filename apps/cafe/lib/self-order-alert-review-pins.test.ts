@@ -110,7 +110,7 @@ test("C3: the bridge tracks the receipt through onAfterPrint and both pages gate
   );
   const receiptEffectIdx = mustIndexOf(
     bridge,
-    "if (shouldPrintReceipt && lastOrder && !shouldPrintKot)",
+    "if (shouldPrintReceipt && lastOrder && !shouldPrintKot && !shouldPrintToken)",
     "the receipt dispatch guard",
   );
   const receiptEffectEnd = matchingBraceEnd(bridge, bridge.indexOf("{", receiptEffectIdx));
@@ -121,15 +121,15 @@ test("C3: the bridge tracks the receipt through onAfterPrint and both pages gate
   );
   assert.match(
     bridge,
-    /const printBusy = shouldPrintKot \|\| shouldPrintReceipt \|\| receiptInFlight/,
+    /const printBusy = shouldPrintKot \|\| shouldPrintToken \|\| shouldPrintReceipt \|\| receiptInFlight/,
     "printBusy must cover queued AND physically-in-flight jobs",
   );
-  assert.match(bridge, /return \{ receiptRef, kotRef, printBusy \}/, "printBusy must be exported");
+  assert.match(bridge, /return \{ receiptRef, kotRef, tokenRef, printBusy \}/, "printBusy must be exported");
 
   // Reachability: both pages must actually gate on it — an exported flag with
   // no consumer would leave C3 open (dead-wiring lesson).
   const pos = stripComments(readSrc(POS_PAGE));
-  assert.match(pos, /const \{ receiptRef, kotRef, printBusy \} = useKotPrintBridge\(/, "pos page must take printBusy");
+  assert.match(pos, /const \{ receiptRef, kotRef, tokenRef, printBusy \} = useKotPrintBridge\(/, "pos page must take printBusy");
   assert.match(pos, /busy=\{printBusy \|\| pos\.isBusy\}/, "pos page must gate auto-print on printBusy (a JSX prop since CB-1d.3b — the hook runs in the SelfOrderAutoPrint child)");
   const selfOrderAutoPrint = stripComments(readSrc(SELF_ORDER_AUTO_PRINT));
   assert.match(
@@ -138,7 +138,7 @@ test("C3: the bridge tracks the receipt through onAfterPrint and both pages gate
     "the child must hand busy straight to the hook — a gate that stops at the prop is not a gate",
   );
   const requests = stripComments(readSrc(REQUESTS_PAGE));
-  assert.match(requests, /const \{ kotRef, printBusy \} = useKotPrintBridge\(/, "requests page must take printBusy");
+  assert.match(requests, /const \{ kotRef, tokenRef, printBusy \} = useKotPrintBridge\(/, "requests page must take printBusy");
   assert.match(requests, /busy:\s*printBusy \|\| acceptingId !== null/, "requests page must gate auto-print on printBusy");
 });
 

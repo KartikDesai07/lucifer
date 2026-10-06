@@ -8,6 +8,7 @@ import {
 } from "@/lib/constants";
 import { type SelfOrderMode, type PromoCodeConfig } from "@pos/shared/public";
 import { type LoyaltyRewardKind } from "@pos/shared/public-diner";
+import { type PayQrMode } from "@pos/shared/print-qr";
 import { type AppearanceInput } from "@pos/shared/appearance";
 import type { LoyaltyRulesInput } from "@pos/shared/schemas/settings-loyalty.schema";
 import type { DinerBannerInput } from "@pos/shared/schemas/settings-diner.schema";
@@ -35,6 +36,9 @@ export interface ISettings extends Document {
   logo: string; // opaque image ref — the RESTAURANT's mark (bills, KOT, sidebar)
   productLogo: string; // opaque image ref — the PRODUCT's mark (browser tab, login)
   fssai: string; // FSSAI license number, shown on the receipt when set
+  upiId: string; // UPI ID for the bill's "Scan to pay" QR; "" = not set
+  payQrMode: PayQrMode; // when the pay QR prints: always | owed | never
+  payQrValidMinutes: number; // "Valid till" window from the first print; 0 = no limit
 
   // Print customization — one block per printed surface. Flat, not nested:
   // PUT /api/settings applies a partial $set, and a nested object would be
@@ -67,6 +71,15 @@ export interface ISettings extends Document {
   kotShowNotes: boolean;
   kotPaperWidth: PaperWidth;
   kotFontSize: PrintFontSize;
+  // Print customization S6 — optional (omit-empty): read through printConfigOf, never raw.
+  tokenEnabled?: boolean;
+  tokenNumberStart?: number;
+  numberResetMinutes?: number;
+  tokenReadyClearMinutes?: number; // S8 — read via tokenReadyClearMinutesOf, never raw
+  // Print customization S2 — Mixed, so whatever was stored; read only via lib/print-template-resolve.ts.
+  billTemplate?: unknown;
+  kotTemplate?: unknown;
+  tokenTemplate?: unknown;
 
   // Self-order (QR) — CR2. See settingsSchema (packages/shared) for the field
   // semantics; the defaults below are what a NEW cafe gets and what a lean

@@ -11,6 +11,11 @@ import { inr } from "@/lib/utils";
 import { receiptGst, type GstConfig } from "@/lib/receipt";
 import { productImageUrl } from "@/lib/images";
 import { PrintBanner } from "@/components/pos/PrintBanner";
+import { BillTokenRow } from "@/components/pos/slip-token-lines";
+import { BillSlip } from "@/components/print/slip/SlipEngine";
+import { SlipSkeleton } from "@/components/print/slip/SlipSkeleton";
+import { useSlipView } from "@/components/print/slip/slip-view";
+import { billTemplateOf } from "@/lib/print-template-resolve";
 import {
   printConfigOf,
   PAPER_WIDTH_CLASS,
@@ -53,6 +58,12 @@ interface OrderReceiptProps {
 // so the name/footer lines are omitted entirely when Settings hasn't set them
 // (CR1.5).
 export function OrderReceipt({ order, settings, banner, ref }: OrderReceiptProps) {
+  // Print customization S2: a saved bill design prints through the block engine; none (or unreadable) = this slip.
+  // R6: until the design's lazy code is in, this slip prints (a preview shows a skeleton instead).
+  const template = billTemplateOf(settings);
+  const view = useSlipView(template);
+  if (template && view === "slip") return <BillSlip order={order} settings={settings} banner={banner} template={template} ref={ref} />;
+  if (view === "skeleton") return <SlipSkeleton paperWidth={printConfigOf(settings).bill.paperWidth} ref={ref} />;
   const cfg = printConfigOf(settings).bill;
   const name = settings?.restaurantName?.trim();
   const tagline = settings?.tagline?.trim();
@@ -142,16 +153,15 @@ export function OrderReceipt({ order, settings, banner, ref }: OrderReceiptProps
           )}
 
           <div className="space-y-0.5">
-            {/* Prominent — this is the number a guest reads back at the counter.
-                Rendered only when the order actually HAS one: an order that
-                hasn't been paid yet carries no bill number, and a blank label
-                is worse than printing nothing. */}
+            {/* Prominent: the number a guest reads back. Only when the order HAS one (an unpaid order has no
+                bill number; a blank label is worse than nothing). The token likewise (tokens on at create). */}
             {cfg.showNumber && order.billNumber !== undefined && (
               <div className="flex justify-between gap-2 font-bold">
                 <span>Bill No.</span>
                 <span className="text-right">{order.billNumber}</span>
               </div>
             )}
+            {order.tokenNumber !== undefined && <BillTokenRow tokenNumber={order.tokenNumber} />}
             <Line label="Order" value={order.orderId} />
             <Line label="Date" value={fmtDateTime(order.createdAt)} />
             <Line label="Table" value={order.tableNo ?? "Walk-In"} />

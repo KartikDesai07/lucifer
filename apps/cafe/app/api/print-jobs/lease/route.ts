@@ -28,6 +28,7 @@ export async function POST(req: Request) {
       leasePrintJobs({
         deviceId: parsed.data.deviceId,
         tabId: parsed.data.tabId,
+        tokenSlips: parsed.data.tokenSlips === true,
         // Session 2C: the printers this tab can print on now; the lib keeps those this device really writes.
         printerIds: printerIdsOf(parsed.data.printerIds),
         dismissedBy: authed.session.user.name ?? UNNAMED_STAFF,

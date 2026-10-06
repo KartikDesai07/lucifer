@@ -236,18 +236,20 @@ export function printBannerText(labels: readonly string[]): string {
   return PRINT_JOB_LABELS.filter((known) => labels.includes(known)).join(" · ");
 }
 
-/** A repeat of a bill says DUPLICATE; a repeat of anything else says REPRINT (§7.7). */
+/** A repeat of a customer's slip (a bill or a token, S7) says DUPLICATE; a repeat of anything else says
+ *  REPRINT (§7.7). */
 export function printRepeatLabel(kind: PrintJobKind): PrintJobLabel {
-  return kind === "bill" ? "DUPLICATE" : "REPRINT";
+  return kind === "bill" || kind === "token" ? "DUPLICATE" : "REPRINT";
 }
 
 /** A client-started print that repeats paper carries its label from the start (§7.7): a whole-tab
- *  KOT reprint (round null), and every reprint:true bill, void or moved slip. */
+ *  KOT reprint (round null), and every reprint:true bill, token, void or moved slip. */
 export function printJobInitialLabels(payload: PrintJobPayload): PrintJobLabel[] {
   switch (payload.kind) {
     case "kot":
       return payload.round === null ? ["REPRINT"] : [];
     case "bill":
+    case "token":
       return payload.reprint === true ? ["DUPLICATE"] : [];
     case "void":
     case "moved":
@@ -297,7 +299,7 @@ function afterUncertain(
     set: {
       status: "queued",
       uncertainAttempts,
-      labels: addPrintLabel(job.labels, "REPRINT"),
+      labels: addPrintLabel(job.labels, printRepeatLabel(job.kind)),
       nextAttemptAt: new Date(nowMs + printBackoffMs(job.attempts)),
       lastError: detail,
     },

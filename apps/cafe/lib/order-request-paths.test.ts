@@ -132,8 +132,8 @@ test("PIN: order-request-accept.ts + order-request-accept-core.ts + order-reques
     stripComments(readSrc(ACCEPT_LIB)) +
     "\n" +
     // CB-5B S7 — the FIFTH sibling. The add-round branch's own helper calls
-    // (computeOrderTotals, buildKotNumbers, mergedNote, printedSlipNumber,
-    // nextSlipSequence) moved with it, so the combined text must include this
+    // (computeOrderTotals, buildKotNumbers, mergedNote, nextPrintedNumber,
+    // the KOT draw) moved with it, so the combined text must include this
     // file or the invariant below would silently stop being proved.
     stripComments(readSrc(ACCEPT_ADDROUND)) +
     "\n" +
@@ -153,8 +153,8 @@ test("PIN: order-request-accept.ts + order-request-accept-core.ts + order-reques
     "derivePayment(",
     "nextOrderSequence(",
     "bumpOrderSequenceTo(",
-    "nextSlipSequence(",
-    "printedSlipNumber(",
+    "allocateOpeningSlips(", // the new-order accept: opening KOT number + token, the routes' own helper
+    "nextPrintedNumber(", // the add-round accept: the KOT number, the items route's own helper
     "voidGuardFilter(",
     "FREE_TABLE_FILTER",
     "priceRequestItems(",

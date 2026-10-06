@@ -1,5 +1,6 @@
 import mongoose, { Schema, type Connection, type Model } from "mongoose";
 import { cafeDateString } from "@/lib/utils";
+import { slipDayKey } from "@pos/shared/slip-day";
 
 // Atomic sequence counters. Each document is one named sequence whose `seq` is
 // advanced with a single $inc — no read-then-write race, so concurrent order
@@ -81,11 +82,13 @@ export async function nextOrderSequence(
 }
 
 // ── Printed-slip series ──────────────────────────────────────────────────────
-// The kitchen ticket and the customer bill each carry their own daily number,
-// independent of the order sequence above: a tab that runs four rounds issues
-// four kitchen tickets but exactly one bill, so the three series cannot share a
-// counter. Distinct key PREFIXES on the same collection keep them apart, and
-// each still resets at the IST midnight boundary for free.
+// The kitchen ticket, the customer bill and the order's token each carry their
+// own daily number, independent of the order sequence above: a tab that runs
+// four rounds issues four kitchen tickets but exactly one bill, so the series
+// cannot share a counter. Distinct key PREFIXES on the same collection keep
+// them apart, and each restarts at the cafe's restart time (slipDayKey): the
+// default 0 is IST midnight, which names the very same keys as before the
+// setting existed. The ORDER id above deliberately stays on the midnight key.
 //
 // The stored counter always counts 1, 2, 3…; the cafe's chosen starting number
 // is applied ONCE, when the slip is issued (lib/print.printedSlipNumber), and
@@ -93,13 +96,13 @@ export async function nextOrderSequence(
 // re-derived at print time: an admin who raises tomorrow's start would
 // otherwise renumber every slip already in a customer's hand the next time one
 // was reprinted.
-export const SLIP_SERIES = ["kot", "bill"] as const;
+export const SLIP_SERIES = ["kot", "bill", "token"] as const;
 export type SlipSeries = (typeof SLIP_SERIES)[number];
 
 // Exported for the slip-number live leg, which must read the REAL day key
 // rather than re-deriving it (no behaviour change).
-export function slipCounterKey(series: SlipSeries, date: Date): string {
-  return `${series}-${cafeDateString(date).replace(/-/g, "")}`;
+export function slipCounterKey(series: SlipSeries, date: Date, resetMinutes = 0): string {
+  return `${series}-${slipDayKey(date, resetMinutes)}`;
 }
 
 // Same single atomic $inc as the order sequence — no read-then-write, so two
@@ -108,10 +111,11 @@ export async function nextSlipSequence(
   series: SlipSeries,
   conn?: Connection | null,
   date: Date = new Date(),
+  resetMinutes = 0,
 ): Promise<number> {
   const doc = await resolveCounter(conn)
     .findOneAndUpdate(
-      { _id: slipCounterKey(series, date) },
+      { _id: slipCounterKey(series, date, resetMinutes) },
       { $inc: { seq: 1 } },
       { upsert: true, new: true, setDefaultsOnInsert: true },
     )

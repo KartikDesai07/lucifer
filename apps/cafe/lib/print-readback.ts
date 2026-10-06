@@ -61,6 +61,7 @@ const KIND_NAMES: Record<PrintJobKind, string> = {
   moved: "Move",
   eod: "Closing slip",
   "cancel-notice": "Cancel notice",
+  token: "Token",
   test: "Test print",
 };
 

@@ -17,6 +17,7 @@ import { ImageUpload } from "@/components/shared/ImageUpload";
 import { Field, SettingsGroup } from "@/components/settings/SettingsFields";
 import { BillHeaderPreview } from "@/components/settings/BillHeaderPreview";
 import { PosLayoutPicker } from "@/components/settings/PosLayoutPicker";
+import { PayQrFields } from "@/components/settings/PayQrFields";
 import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 
 interface BusinessDetailsFieldsProps {
@@ -90,6 +91,22 @@ export function BusinessDetailsFields({
             <Input id="settings-fssai" className={BRAND_CONTROL_CLASS} {...register("fssai")} />
           </Field>
         </div>
+        <Field
+          label="UPI ID"
+          htmlFor="settings-upiId"
+          error={errors.upiId?.message}
+          hint="For the Scan to pay QR on bills. Example: yourshop@okaxis"
+        >
+          <Input
+            id="settings-upiId"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            className={BRAND_CONTROL_CLASS}
+            {...register("upiId")}
+          />
+        </Field>
+        <PayQrFields control={control} errors={errors} />
       </SettingsGroup>
 
       <SettingsGroup

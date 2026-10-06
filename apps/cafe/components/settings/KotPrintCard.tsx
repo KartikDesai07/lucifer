@@ -1,50 +1,27 @@
 "use client";
 
 import { Controller } from "react-hook-form";
-import type {
-  Control,
-  FieldErrors,
-  UseFormRegister,
-  UseFormSetValue,
-  UseFormWatch,
-} from "react-hook-form";
+import type { Control, UseFormWatch } from "react-hook-form";
 
 import type { SettingsInput } from "@/schemas";
-import { PRINT_NUMBER_START_MIN, PRINT_NUMBER_START_MAX } from "@/lib/constants";
-import { cn } from "@/lib/utils";
-import { Input } from "@/components/ui/input";
 import {
-  Field,
   HINT_CLASS,
   SectionLink,
   SettingsGroup,
   ToggleRow,
 } from "@/components/settings/SettingsFields";
-import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
-import {
-  blankToMinStart,
-  makeNumberStartBlurHandler,
-} from "@/components/settings/print-form-utils";
 
-const KOT_NUMBER_START_ID = "settings-kot-number-start";
 const TOTAL_DESCRIPTION = "Prints the total of the dishes on this ticket, not the whole bill.";
 const TOTAL_NEEDS_PRICES = " Turn on Show prices to print the total.";
 
-type KotSwitchName =
-  | "kotShowPrices"
-  | "kotShowTotal"
-  | "kotShowNumber"
-  | "kotNumberVoidSlips"
-  | "kotShowLogo"
-  | "kotShowRestaurantName"
-  | "kotShowTable"
-  | "kotShowStaff"
-  | "kotShowTime"
-  | "kotShowNotes";
+// Every on/off field of the kitchen ticket (the numbering card uses this switch too).
+type KotSwitchName = {
+  [K in keyof SettingsInput & `kot${string}`]: SettingsInput[K] extends boolean ? K : never;
+}[keyof SettingsInput & `kot${string}`];
 
 // A toggle with an optional hint under it (a pointer to the section that sets
 // the value this toggle prints, or the reason the toggle is switched off).
-function KotSwitch({
+export function KotSwitch({
   control,
   name,
   label,
@@ -81,21 +58,16 @@ function KotSwitch({
 
 interface KotPrintCardProps {
   control: Control<SettingsInput>;
-  register: UseFormRegister<SettingsInput>;
-  setValue: UseFormSetValue<SettingsInput>;
   watch: UseFormWatch<SettingsInput>;
-  errors: FieldErrors<SettingsInput>;
 }
 
-// The kitchen's slip (settings pass slice 6, s68): the ticket number, the top
-// of the ticket, the order details, then the prices. Paper and text size live
-// in KotPaperFields; the live sample ticket is KitchenTicketPreview. Same
-// registered names and the same print-form-utils wiring as before the redesign.
-export function KotPrintCard({ control, register, setValue, watch, errors }: KotPrintCardProps) {
-  const showNumber = watch("kotShowNumber");
+// The kitchen's slip (settings pass slice 6, s68): the top of the ticket, the
+// order details, then the prices. The ticket number lives in KotNumberingCard,
+// paper and text size in KotPaperFields; the live sample ticket is
+// KitchenTicketPreview. The page hides this card while a ticket design is being
+// edited (the design's own lines replace these toggles).
+export function KotPrintCard({ control, watch }: KotPrintCardProps) {
   const showPrices = watch("kotShowPrices");
-  const kotNumberStartRegistration = register("kotNumberStart", { setValueAs: blankToMinStart });
-  const handleKotNumberStartBlur = makeNumberStartBlurHandler(setValue, "kotNumberStart");
 
   // Cross-section hints (audit hazards 1-3): a toggle here prints a value
   // that only Business details can set. Read from the form's own loaded
@@ -105,64 +77,6 @@ export function KotPrintCard({ control, register, setValue, watch, errors }: Kot
 
   return (
     <div className="space-y-6">
-      <SettingsGroup
-        stacked
-        title="Ticket number"
-        description="A number the kitchen can call out. It starts again every day."
-      >
-        <Controller
-          control={control}
-          name="kotShowNumber"
-          render={({ field }) => (
-            <ToggleRow
-              label="Show ticket number"
-              description="Prints a number on each kitchen ticket."
-              checked={field.value}
-              onChange={(v) => {
-                field.onChange(v);
-                // Turning the reveal off unmounts the field below without
-                // shouldUnregister — a stale invalid value would otherwise
-                // survive in form state where the operator can no longer
-                // see or fix it, permanently blocking Save.
-                if (!v) {
-                  setValue("kotNumberStart", PRINT_NUMBER_START_MIN, { shouldValidate: true });
-                }
-              }}
-            />
-          )}
-        />
-        {showNumber && (
-          <>
-            <Field
-              label="Ticket number starts at"
-              htmlFor={KOT_NUMBER_START_ID}
-              error={errors.kotNumberStart?.message}
-              hint="Applies from the next ticket onward; the counter resets every day."
-            >
-              <Input
-                id={KOT_NUMBER_START_ID}
-                className={cn(BRAND_CONTROL_CLASS, "w-32")}
-                type="number"
-                inputMode="numeric"
-                min={PRINT_NUMBER_START_MIN}
-                max={PRINT_NUMBER_START_MAX}
-                {...kotNumberStartRegistration}
-                onBlur={(e) => {
-                  void kotNumberStartRegistration.onBlur(e);
-                  handleKotNumberStartBlur(e);
-                }}
-              />
-            </Field>
-            <KotSwitch
-              control={control}
-              name="kotNumberVoidSlips"
-              label="Number cancelled-item slips"
-              description="When a dish is cancelled, its slip to the kitchen takes the next number too."
-            />
-          </>
-        )}
-      </SettingsGroup>
-
       <SettingsGroup stacked title="Top of the ticket" description="What prints above the order.">
         <KotSwitch
           control={control}

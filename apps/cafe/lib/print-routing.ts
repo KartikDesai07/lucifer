@@ -73,6 +73,8 @@ const KOT_ROUND_LABEL_PREFIX = "KOT round ";
 const KOT_REPRINT_LABEL = "KOT reprint";
 const BILL_LABEL = "Bill";
 const BILL_REPRINT_LABEL = "Bill reprint";
+const TOKEN_LABEL = "Token";
+const TOKEN_REPRINT_LABEL = "Token reprint";
 const VOID_LABEL = "VOID";
 const VOID_REPRINT_LABEL = "VOID reprint";
 const MOVED_LABEL = "Moved";
@@ -216,6 +218,27 @@ export function billPrintJob(order: Order, opts: { reprint: boolean }): PrintJob
     payload: { kind: "bill", snapshot: printOrderSnapshot(order), ...(opts.reprint ? { reprint: true as const } : {}) },
     label: printJobLabel(`${prefix}${LABEL_SEPARATOR}${order.orderId}`, order.orderId),
   };
+}
+
+/** The customer's token slip (print-customization S7). Same required `opts.reprint` reasoning as
+ *  `billPrintJob`: a staff "Token" reprint must be a fresh, unkeyed job. */
+export function tokenPrintJob(order: Order, opts: { reprint: boolean }): PrintJobRequest {
+  const prefix = opts.reprint ? TOKEN_REPRINT_LABEL : TOKEN_LABEL;
+  return {
+    payload: { kind: "token", snapshot: printOrderSnapshot(order), ...(opts.reprint ? { reprint: true as const } : {}) },
+    label: printJobLabel(`${prefix} ${order.tokenNumber ?? ""}${orderSuffix(order)}`, order.orderId),
+  };
+}
+
+/** The KOT round a token slip prints with: the order's first. */
+export const TOKEN_SLIP_ROUND = 1;
+
+/** THE token-slip rule (S7), shared by the server's job creation and every client lane: an order
+ *  carries a token number only when tokens were on as it was created (S6), and its slip prints once,
+ *  right after the round-1 KOT. No Settings read — tokens turned off later still print the number the
+ *  customer was given; an order made with tokens off never gets one. */
+export function opensWithToken(order: { tokenNumber?: unknown }, round: number): boolean {
+  return round === TOKEN_SLIP_ROUND && typeof order.tokenNumber === "number";
 }
 
 /** The table slip, for all three verbs. `meta.from` is the table the food was

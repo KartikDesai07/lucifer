@@ -15,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { tokenLabelOf } from "@/lib/token-view";
 import type { Order } from "@/types";
 
 interface OrderTableProps {
@@ -122,6 +123,7 @@ function OrderRowCard({
           <div className="font-medium">{order.orderId}</div>
           <div className="break-words text-xs text-muted-foreground">
             {formatDate(order.createdAt)} · {order.tableNo ?? "Walk-In"}
+            {typeof order.tokenNumber === "number" && ` · ${tokenLabelOf(order.tokenNumber)}`}
           </div>
         </div>
         <Badge
@@ -196,6 +198,7 @@ export function OrderTable({
                       <div className="text-xs text-muted-foreground">
                         {formatDate(order.createdAt)} ·{" "}
                         {order.tableNo ?? "Walk-In"}
+                        {typeof order.tokenNumber === "number" && ` · ${tokenLabelOf(order.tokenNumber)}`}
                       </div>
                     </TableCell>
                     <TableCell>{order.customerName}</TableCell>

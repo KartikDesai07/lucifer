@@ -149,18 +149,18 @@ export async function legAO(nowMs: number): Promise<void> {
   console.log("\n(ao) a lease per printer line, only by its writer; a stuck bar job never blocks the kitchen");
   const o = await outlet();
   await payNow(await order(o), COUNTER, nowMs);
-  const wrong = await leasePrintJobs({ deviceId: BAR, tabId: "bar-tab", printerIds: [o.kitchen], dismissedBy: STAFF, nowMs });
+  const wrong = await leasePrintJobs({ deviceId: BAR, tabId: "bar-tab", tokenSlips: true, printerIds: [o.kitchen], dismissedBy: STAFF, nowMs });
   check("(ao) a device naming a printer it does not write gets nothing from it", wrong.jobs.length === 0);
-  const kitchen = await leasePrintJobs({ deviceId: KITCHEN, tabId: "kitchen-tab", printerIds: [o.kitchen, o.bar], dismissedBy: STAFF, nowMs });
+  const kitchen = await leasePrintJobs({ deviceId: KITCHEN, tabId: "kitchen-tab", tokenSlips: true, printerIds: [o.kitchen, o.bar], dismissedBy: STAFF, nowMs });
   check("(ao) the kitchen tablet leases its own printer's slip only", kitchen.jobs.length === 1 && kitchen.jobs[0]?.printerId === o.kitchen);
-  const barJob = await leasePrintJobs({ deviceId: BAR, tabId: "bar-tab", printerIds: [o.bar], dismissedBy: STAFF, nowMs });
+  const barJob = await leasePrintJobs({ deviceId: BAR, tabId: "bar-tab", tokenSlips: true, printerIds: [o.bar], dismissedBy: STAFF, nowMs });
   check("(ao) the bar phone leases the bar's", barJob.jobs.length === 1 && barJob.jobs[0]?.printerId === o.bar);
   const acked = await ackPrintJob({ id: kitchen.jobs[0]?.id ?? "", deviceId: KITCHEN, epoch: 1, outcome: "printed", nowMs: nowMs + 1_000 });
   check("(ao) the kitchen's ack: printed, and more:false (its own line is empty, whatever waits elsewhere)", acked.status === "printed" && acked.more === false);
   await payNow(await order(o), COUNTER, nowMs + 2_000);
-  const next = await leasePrintJobs({ deviceId: BAR, tabId: "bar-tab", printerIds: [o.bar], dismissedBy: STAFF, nowMs: nowMs + 3_000 });
+  const next = await leasePrintJobs({ deviceId: BAR, tabId: "bar-tab", tokenSlips: true, printerIds: [o.bar], dismissedBy: STAFF, nowMs: nowMs + 3_000 });
   check("(ao) the bar's next slip waits behind its leased one (head of line per printer)", next.jobs.length === 0 && next.retryAt !== null);
-  const kitchen2 = await leasePrintJobs({ deviceId: KITCHEN, tabId: "kitchen-tab", printerIds: [o.kitchen], dismissedBy: STAFF, nowMs: nowMs + 3_000 });
+  const kitchen2 = await leasePrintJobs({ deviceId: KITCHEN, tabId: "kitchen-tab", tokenSlips: true, printerIds: [o.kitchen], dismissedBy: STAFF, nowMs: nowMs + 3_000 });
   check("(ao) ... and never blocks the kitchen's", kitchen2.jobs.length === 1 && kitchen2.jobs[0]?.printerId === o.kitchen);
   // A fresh outlet where the kitchen tablet writes both the kitchen and the bar printer. Session 2D's save refuses a
   // second enabled printer for one device (until 2E), so the row is written with the model: the server still leases
@@ -169,7 +169,7 @@ export async function legAO(nowMs: number): Promise<void> {
   await Printer.updateOne({ _id: two.bar }, { $set: { connection: { kind: "device", deviceId: KITCHEN, transport: "bt-classic", address: "AA:BB" } } });
   await payNow(await order(two), COUNTER, nowMs);
   const counted = await readJobsForDevice(KITCHEN, nowMs + 1_000);
-  const both = await leasePrintJobs({ deviceId: KITCHEN, tabId: "kitchen-tab", printerIds: [two.kitchen, two.bar], dismissedBy: STAFF, nowMs: nowMs + 1_000 });
+  const both = await leasePrintJobs({ deviceId: KITCHEN, tabId: "kitchen-tab", tokenSlips: true, printerIds: [two.kitchen, two.bar], dismissedBy: STAFF, nowMs: nowMs + 1_000 });
   const pair = [two.kitchen, two.bar].sort().join();
   check("(ao) a device writing two printers counts and leases both lines in one call, one job each", counted.count === 2 && both.jobs.map((job) => job.printerId).sort().join() === pair);
   check("(ao) its jobs-for-me names both printers, so a stale printer list reads itself again (the 2C review, I-2)", [...(counted.printerIds ?? [])].sort().join() === pair);
@@ -199,8 +199,8 @@ export async function legAP(nowMs: number): Promise<void> {
   const retriedRow = await rowOf(kitchenId);
   check("(ap) a Retry on a printer that still takes slips puts the job on its current writer's line, in the same write (the 2C review, I-3)", retried.applied && retriedRow?.status === "queued" && retriedRow.targetDeviceId === "live-new-kitchen");
   await setRaw(kitchenId, { targetDeviceId: KITCHEN });
-  const old = await leasePrintJobs({ deviceId: KITCHEN, tabId: "kitchen-tab", printerIds: [o.kitchen], dismissedBy: STAFF, nowMs: nowMs + 3_000 });
-  const claimed = await leasePrintJobs({ deviceId: "live-new-kitchen", tabId: "new-tab", printerIds: [o.kitchen], dismissedBy: STAFF, nowMs: nowMs + 3_000 });
+  const old = await leasePrintJobs({ deviceId: KITCHEN, tabId: "kitchen-tab", tokenSlips: true, printerIds: [o.kitchen], dismissedBy: STAFF, nowMs: nowMs + 3_000 });
+  const claimed = await leasePrintJobs({ deviceId: "live-new-kitchen", tabId: "new-tab", tokenSlips: true, printerIds: [o.kitchen], dismissedBy: STAFF, nowMs: nowMs + 3_000 });
   check("(ap) a job still aimed at the old writer: the old one gets nothing, the printer's writer leases it and claims it (I-3)", old.jobs.length === 0 && claimed.jobs[0]?.id === kitchenId && (await rowOf(kitchenId))?.targetDeviceId === "live-new-kitchen");
   const orphanId = new mongoose.Types.ObjectId();
   await PrintJob.collection.insertOne({ _id: orphanId, kind: "eod", payload: JSON.stringify({ kind: "eod", dateKey: "2026-10-04", dateLabel: "4 Oct" }), label: "End of day", queuedBy: STAFF, status: "queued", targetDeviceId: COUNTER, printerId: o.counter, createdAt: new Date(nowMs), updatedAt: new Date(nowMs) });
@@ -228,7 +228,7 @@ export async function legAQ(nowMs: number): Promise<void> {
   const simple = await order(o);
   const wire = JSON.parse(JSON.stringify(await Order.findById(simple).lean())) as Parameters<typeof kotPrintJob>[0];
   await createOrderPrintJobs({ order: await Order.findById(simple).lean(), slips: [{ kind: "kot", round: 1 }], originDeviceId: HOST, queuedBy: STAFF, nowMs });
-  const leased = await leasePrintJobs({ deviceId: HOST, tabId: TAB, dismissedBy: STAFF, nowMs });
+  const leased = await leasePrintJobs({ deviceId: HOST, tabId: TAB, tokenSlips: true, dismissedBy: STAFF, nowMs });
   const kot = kotPrintJob(wire, 1);
   const resend = (at: number) => enqueueDirectPrintJob({ payload: kot.payload, label: kot.label, queuedBy: STAFF, originDeviceId: HOST, leaseTabId: TAB, nowMs: at });
   const soon = await resend(nowMs + 10_000);

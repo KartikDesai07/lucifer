@@ -15,8 +15,8 @@ import {
 import { orderSummaryCacheKey } from "@/lib/utils";
 import { getSettings, gstConfigOf } from "@/lib/settings";
 import { computeOrderTotals, gstConfigFromOrder, resolveDiscountKind } from "@/lib/receipt";
-import { printConfigOf, printedSlipNumber } from "@/lib/print";
-import { nextSlipSequence } from "@/models/Counter";
+import { printConfigOf } from "@/lib/print";
+import { nextPrintedNumber } from "@/lib/slip-numbers";
 import { voidGuardFilter } from "@/lib/order-void";
 import { addItemsSchema } from "@/schemas";
 import { checkItemVariations, checkItemRemovedModifiers } from "@/lib/variations";
@@ -279,7 +279,7 @@ export async function POST(req: Request, { params }: Params) {
     // the series — strictly better than two rounds sharing one ticket number.
     const printCfg = printConfigOf(settings);
     const ticket = printCfg.kot.showNumber
-      ? printedSlipNumber(await nextSlipSequence("kot"), printCfg.kot.numberStart)
+      ? await nextPrintedNumber("kot", printCfg.kot)
       : undefined;
     // P4-A — this round's fire instant, stamped ONCE and reused for the whole
     // write so kotFiredAt[round-1] below and any other reader of "now" in this

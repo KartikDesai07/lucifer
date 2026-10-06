@@ -59,7 +59,7 @@ export async function legAR(nowMs: number): Promise<void> {
     "(ar) the slip says what the setup says",
     payload !== null && payload.success && payload.data.kind === "test" && payload.data.printerName === "Kitchen" && payload.data.lines[0] === "Connection: Network 10.0.0.61:9100" && payload.data.requestedBy === "Asha",
   );
-  const leased = await leasePrintJobs({ deviceId: KITCHEN, tabId: "kitchen-tab", printerIds: [kitchen], dismissedBy: STAFF, nowMs: nowMs + 2_000 });
+  const leased = await leasePrintJobs({ deviceId: KITCHEN, tabId: "kitchen-tab", tokenSlips: true, printerIds: [kitchen], dismissedBy: STAFF, nowMs: nowMs + 2_000 });
   check("(ar) its writer leases it on that printer's line", leased.jobs.length === 1 && leased.jobs[0]?.payload.kind === "test" && leased.jobs[0]?.printerId === kitchen);
   const direct = await createPrinterTestJob({ printerId: counter, queuedBy: "Asha", originDeviceId: COUNTER, leaseTabId: "counter-tab", readyPrinterIds: [counter], nowMs: nowMs + 3_000 });
   const directRow = direct.ok ? await PrintJob.findById(direct.data.id).lean() : null;

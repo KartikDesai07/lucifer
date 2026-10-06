@@ -6,6 +6,8 @@ import {
   counterModelFor,
   nextOrderSequence,
   nextSlipSequence,
+  slipCounterKey,
+  SLIP_SERIES,
   bumpOrderSequenceTo,
   __setCounterModelResolverForTests,
 } from "./Counter";
@@ -254,4 +256,164 @@ test("nextSlipSequence falls back to seq 1 when the upsert returns no doc (same 
   __setCounterModelResolverForTests(() => fake.model);
   assert.equal(await nextSlipSequence("kot", null), 1);
   assert.equal(await nextSlipSequence("bill", null), 1);
+});
+
+// ── Print customization S6: the token series + the daily restart time ───────
+// `resetMinutes` shifts the business day the key names; 0 (the default, and what
+// every pre-S6 caller passes implicitly) must name byte-identical keys to before.
+
+const IST_OFFSET_MS = 330 * 60_000;
+const MS_PER_MINUTE = 60_000;
+const SEEDED_INSTANTS = 2_000;
+const FIRST_INSTANT_MS = Date.UTC(2020, 0, 1);
+const LAST_INSTANT_MS = Date.UTC(2030, 11, 31);
+
+// mulberry32 — a tiny seeded PRNG so a failing instant reproduces.
+function seeded(seed: number): () => number {
+  let a = seed;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const randomInstants = (seed: number, n: number): Date[] => {
+  const next = seeded(seed);
+  return Array.from({ length: n }, () => new Date(FIRST_INSTANT_MS + Math.floor(next() * (LAST_INSTANT_MS - FIRST_INSTANT_MS))));
+};
+
+// Independent of slip-day.ts: the IST calendar date by plain arithmetic on the +05:30 offset.
+const istDay = (ms: number) => new Date(ms + IST_OFFSET_MS).toISOString().slice(0, 10).replace(/-/g, "");
+
+/** A fake counter collection: ONE atomic find-and-$inc per call, state kept per `_id`, every filter recorded. */
+function makeInMemoryCounter(): { model: Model<ICounter>; store: Map<string, number>; filters: string[] } {
+  const store = new Map<string, number>();
+  const filters: string[] = [];
+  const model = {
+    findOneAndUpdate(filter: { _id: string }) {
+      filters.push(filter._id);
+      const seq = (store.get(filter._id) ?? 0) + 1;
+      store.set(filter._id, seq);
+      const p = Promise.resolve({ _id: filter._id, seq }) as Promise<ICounter> & { lean: () => Promise<ICounter> };
+      p.lean = () => Promise.resolve({ _id: filter._id, seq });
+      return p;
+    },
+  } as unknown as Model<ICounter>;
+  return { model, store, filters };
+}
+
+test("SLIP_SERIES is exactly kot, bill, token (landmark for the key-shape pins below)", () => {
+  assert.deepEqual([...SLIP_SERIES], ["kot", "bill", "token"]);
+});
+
+test("slipCounterKey: the token series is token-<IST day>, a third distinct prefix next to kot/bill/order", () => {
+  assert.equal(slipCounterKey("token", FIXED), "token-20260715");
+  const keys = new Set([slipCounterKey("kot", FIXED), slipCounterKey("bill", FIXED), slipCounterKey("token", FIXED), dayKey(FIXED)]);
+  assert.equal(keys.size, 4, "token never shares a counter document with kot, bill or the order id");
+});
+
+test("slipCounterKey(series, d) === slipCounterKey(series, d, 0) === <series>-<cafeDateString(d)> for all 3 series over seeded instants", () => {
+  const instants = [new Date("2026-07-15T18:29:59.999Z"), new Date("2026-07-15T18:30:00.000Z"), ...randomInstants(61, SEEDED_INSTANTS)];
+  for (const d of instants) {
+    for (const series of SLIP_SERIES) {
+      const legacy = `${series}-${cafeDateString(d).replace(/-/g, "")}`;
+      assert.equal(slipCounterKey(series, d), legacy, `${series} @ ${d.toISOString()}: the default is the pre-S6 key`);
+      assert.equal(slipCounterKey(series, d, 0), legacy, `${series} @ ${d.toISOString()}: an explicit 0 is the same key`);
+    }
+  }
+});
+
+test("slipCounterKey with reset 240: 22:29:59.999Z is still the previous IST day's key, 22:30:00.000Z is the new one", () => {
+  const before = new Date("2026-07-15T22:29:59.999Z"); // 03:59:59.999 IST on the 16th
+  const after = new Date("2026-07-15T22:30:00.000Z"); // 04:00:00.000 IST on the 16th
+  for (const series of SLIP_SERIES) {
+    assert.equal(slipCounterKey(series, before, 240), `${series}-20260715`);
+    assert.equal(slipCounterKey(series, after, 240), `${series}-20260716`);
+    assert.equal(slipCounterKey(series, before, 0), `${series}-20260716`, "vision guard: the SAME instant is the 16th at reset 0");
+  }
+  for (const d of randomInstants(62, SEEDED_INSTANTS)) {
+    assert.equal(slipCounterKey("token", d, 240), `token-${istDay(d.getTime() - 240 * MS_PER_MINUTE)}`, d.toISOString());
+  }
+});
+
+test("nextSlipSequence: resetMinutes reaches the $inc filter _id (token reset 240 and kot reset 0 name different days)", async () => {
+  const instant = new Date("2026-07-15T22:00:00Z"); // 03:30 IST on the 16th
+  const fake = makeFakeCounter({ _id: "irrelevant", seq: 5 });
+  __setCounterModelResolverForTests(() => fake.model);
+
+  assert.equal(await nextSlipSequence("token", null, instant, 240), 5);
+  await nextSlipSequence("kot", null, instant, 0);
+  await nextSlipSequence("bill", null, instant);
+  assert.deepEqual(
+    fake.calls.map((c) => c.filter._id),
+    ["token-20260715", "kot-20260716", "bill-20260716"],
+    "240 -> the shifted (previous) day; 0 and omitted -> the plain IST day",
+  );
+  assert.deepEqual(fake.calls[0].update, { $inc: { seq: 1 } }, "restart time changes the key, never the one-$inc op shape");
+  assert.deepEqual(fake.calls[0].options, { upsert: true, new: true, setDefaultsOnInsert: true });
+});
+
+test("the ORDER id key ignores the restart time: it stays on the IST midnight key while the slip series shift", async () => {
+  const instant = new Date("2026-07-15T22:00:00Z"); // 03:30 IST on the 16th: reset-240 slips are still on the 15th
+  const fake = makeFakeCounter({ _id: "x", seq: 1 });
+  __setCounterModelResolverForTests(() => fake.model);
+  await nextOrderSequence(null, instant);
+  await nextSlipSequence("kot", null, instant, 240);
+  assert.equal(fake.calls[0].filter._id, "order-20260716", "order ids change at midnight whatever the restart time");
+  assert.equal(fake.calls[1].filter._id, "kot-20260715", "vision guard: the slip series DID move to the shifted day");
+});
+
+// 2026-07-15 is the IST day D below; 01:00 IST on D is 19:30Z the evening before.
+const AT_0100_IST = new Date("2026-07-14T19:30:00Z");
+const AT_0200_IST = new Date("2026-07-14T20:30:00Z");
+const AT_0230_IST = new Date("2026-07-14T21:00:00Z");
+const AT_0430_IST = new Date("2026-07-14T23:00:00Z");
+
+function assertNeverRepeats(drawn: Array<{ key: string; seq: number }>): void {
+  const seen = new Set<string>();
+  for (const { key, seq } of drawn) {
+    const pair = `${key}#${seq}`;
+    assert.equal(seen.has(pair), false, `(key, seq) pair ${pair} was handed out twice`);
+    seen.add(pair);
+  }
+}
+
+test("restart time changed 00:00 -> 04:00 at 02:00: continues yesterday's key at N+1, then today's key at k+1 after 04:00; no (key, seq) repeats", async () => {
+  const fake = makeInMemoryCounter();
+  __setCounterModelResolverForTests(() => fake.model);
+  const drawn: Array<{ key: string; seq: number }> = [];
+  const draw = async (at: Date, reset: number) => {
+    const seq = await nextSlipSequence("token", null, at, reset);
+    drawn.push({ key: fake.filters[fake.filters.length - 1], seq });
+    return seq;
+  };
+  fake.store.set("token-20260714", 40); // yesterday's day ended on 40 tokens
+  const k = 3;
+  for (let i = 0; i < k; i += 1) await draw(AT_0100_IST, 0); // 00:00-02:00 under the old midnight restart
+
+  assert.equal(await draw(AT_0230_IST, 240), 41, "after the change, 02:30 is still yesterday's business day: N+1");
+  assert.equal(drawn[drawn.length - 1].key, "token-20260714");
+  assert.equal(await draw(AT_0430_IST, 240), k + 1, "after 04:00 today's key resumes where the pre-change draws left it: k+1");
+  assert.equal(drawn[drawn.length - 1].key, "token-20260715");
+  assertNeverRepeats(drawn);
+});
+
+test("restart time changed 04:00 -> 00:00 at 02:00: today's key is fresh and starts at 1; no (key, seq) repeats", async () => {
+  const fake = makeInMemoryCounter();
+  __setCounterModelResolverForTests(() => fake.model);
+  const drawn: Array<{ key: string; seq: number }> = [];
+  const draw = async (at: Date, reset: number) => {
+    const seq = await nextSlipSequence("token", null, at, reset);
+    drawn.push({ key: fake.filters[fake.filters.length - 1], seq });
+    return seq;
+  };
+  const before = 3;
+  for (let i = 0; i < before; i += 1) assert.equal(await draw(AT_0100_IST, 240), i + 1); // still yesterday's day under 04:00
+  assert.deepEqual(drawn.map((d) => d.key), Array(before).fill("token-20260714"));
+
+  assert.equal(await draw(AT_0200_IST, 0), 1, "the change makes 02:00 'today': a day with no counter yet starts at 1");
+  assert.equal(drawn[drawn.length - 1].key, "token-20260715");
+  assert.equal(await draw(AT_0430_IST, 0), 2);
+  assertNeverRepeats(drawn);
 });

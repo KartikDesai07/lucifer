@@ -48,6 +48,10 @@ export function printJobKeyOf(payload: PrintJobPayload): string | undefined {
     // every reprint path.
     case "bill":
       return payload.reprint === true ? undefined : `bill:${payload.snapshot._id}`;
+    case "token":
+      // One token slip per order (S7), printed with its round-1 KOT; a staff
+      // "Token" reprint is a deliberate duplicate, like bill's.
+      return payload.reprint === true ? undefined : `token:${payload.snapshot._id}`;
     case "void":
       // §B1 originally wrote this key as `void:<orderId>:<voidsLength>`, but
       // the voids-trail length is NOT in the (.strict()) snapshot and so

@@ -43,6 +43,7 @@ const DEFAULT_CONFIG = {
     // surfaces differ on purpose; this is the oracle for "an upgrade changes
     // nothing until someone opts in".
     fontSize: "small",
+    resetMinutes: 0,
   },
   kot: {
     showPrices: true,
@@ -58,7 +59,9 @@ const DEFAULT_CONFIG = {
     showNotes: true,
     paperWidth: "80mm",
     fontSize: "normal",
+    resetMinutes: 0,
   },
+  token: { enabled: false, numberStart: PRINT_NUMBER_START_MIN, resetMinutes: 0 },
 };
 
 test("printConfigOf(undefined) returns the documented defaults — a pre-feature Settings document (no keys at all) keeps printing exactly what it printed before", () => {
@@ -103,6 +106,9 @@ test("printConfigOf: explicit stored values win over defaults across every bill/
     kotShowNotes: false,
     kotPaperWidth: "58mm" as const,
     kotFontSize: "large" as const,
+    tokenEnabled: true,
+    tokenNumberStart: 300,
+    numberResetMinutes: 240,
   };
   assert.deepEqual(printConfigOf(stored), {
     bill: {
@@ -116,6 +122,7 @@ test("printConfigOf: explicit stored values win over defaults across every bill/
       showFssai: false,
       paperWidth: "58mm",
       fontSize: "small",
+      resetMinutes: 240,
     },
     kot: {
       showPrices: false,
@@ -131,7 +138,9 @@ test("printConfigOf: explicit stored values win over defaults across every bill/
       showNotes: false,
       paperWidth: "58mm",
       fontSize: "large",
+      resetMinutes: 240,
     },
+    token: { enabled: true, numberStart: 300, resetMinutes: 240 },
   });
 });
 
@@ -187,6 +196,59 @@ test("printConfigOf: a valid numberStart at or above the minimum is preserved ex
 test("printConfigOf: kotShowPrices (the one pre-existing field) — a stored false stays false, not the true default", () => {
   assert.equal(printConfigOf({ kotShowPrices: false }).kot.showPrices, false);
   assert.equal(printConfigOf({}).kot.showPrices, true, "control: absent still defaults to true");
+});
+
+// ── S6 — the token config + the shared restart time ─────────────────────────
+
+test("printConfigOf: tokens are OFF unless stored on; a stored false and a stored true both survive (?? false, never ||)", () => {
+  assert.equal(printConfigOf(undefined).token.enabled, false, "absent -> off: no cafe gets tokens by an upgrade");
+  assert.equal(printConfigOf({}).token.enabled, false);
+  assert.equal(printConfigOf({ tokenEnabled: true }).token.enabled, true);
+  assert.equal(printConfigOf({ tokenEnabled: false }).token.enabled, false);
+  assert.equal(printConfigOf({ tokenEnabled: true }).bill.showNumber, true, "vision guard: turning tokens on touches no bill/kot flag");
+});
+
+test("printConfigOf: tokenNumberStart is floored/rounded exactly like the kot and bill starts", () => {
+  const cases: Array<[number | undefined, number]> = [
+    [undefined, PRINT_NUMBER_START_MIN],
+    [0, PRINT_NUMBER_START_MIN],
+    [-5, PRINT_NUMBER_START_MIN],
+    [Number.NaN, PRINT_NUMBER_START_MIN],
+    [Number.POSITIVE_INFINITY, PRINT_NUMBER_START_MIN],
+    [500.5, 501],
+    [500.4, 500],
+    [101, 101],
+    [PRINT_NUMBER_START_MIN, PRINT_NUMBER_START_MIN],
+  ];
+  for (const [stored, want] of cases) {
+    assert.equal(printConfigOf({ tokenNumberStart: stored }).token.numberStart, want, `token ${String(stored)}`);
+    assert.equal(
+      printConfigOf({ tokenNumberStart: stored }).token.numberStart,
+      printConfigOf({ kotNumberStart: stored }).kot.numberStart,
+      `token follows kot for ${String(stored)}`,
+    );
+  }
+});
+
+test("printConfigOf: ONE stored numberResetMinutes is shared by bill, kot and token; unusable values clamp to 0 (midnight)", () => {
+  for (const m of [0, 1, 240, 1439]) {
+    const cfg = printConfigOf({ numberResetMinutes: m });
+    assert.deepEqual([cfg.bill.resetMinutes, cfg.kot.resetMinutes, cfg.token.resetMinutes], [m, m, m], `m=${m}`);
+  }
+  const unusable: unknown[] = [undefined, null, Number.NaN, -1, 1440, 1.5, "240", Number.POSITIVE_INFINITY];
+  for (const bad of unusable) {
+    const cfg = printConfigOf({ numberResetMinutes: bad as number });
+    assert.deepEqual([cfg.bill.resetMinutes, cfg.kot.resetMinutes, cfg.token.resetMinutes], [0, 0, 0], `bad ${String(bad)}`);
+  }
+  assert.equal(printConfigOf({ numberResetMinutes: 240 }).token.resetMinutes, 240, "vision guard: a valid value is NOT clamped away");
+});
+
+test("printSettingsFields: the keys stay bill*/kot* only — the token and restart-time settings are NOT in the print-form field set", () => {
+  const keys = Object.keys(printSettingsFields());
+  assert.ok(keys.length > 0 && keys.includes("billNumberStart") && keys.includes("kotNumberStart"), "landmark: the bill/kot keys are there");
+  assert.ok(keys.every((k) => k.startsWith("bill") || k.startsWith("kot")), "only bill*/kot* keys");
+  assert.equal(keys.some((k) => k.startsWith("token") || k === "numberResetMinutes"), false);
+  assert.equal(keys.length, 23, "the flat 23 print fields are unchanged");
 });
 
 // ── B — printSettingsFields ──────────────────────────────────────────────────

@@ -9,7 +9,7 @@
 import type { IndexDefinition, IndexOptions, Types, mongo } from "mongoose";
 import { Order } from "@/models/Order";
 import { success, failure, serverError } from "@pos/shared/api";
-import { issueBillNumber, BILL_NUMBER_UNCONFIRMED } from "@/lib/slip-numbers";
+import { issueBillNumber, BILL_NUMBER_UNCONFIRMED, type SeriesNumbering } from "@/lib/slip-numbers";
 import type { PrintConfig } from "@/lib/print";
 import { idemReplayVerdict, kotRoundOfIdemKey, type IdemLine, type IdemStoredLine } from "@pos/shared/order-idem";
 
@@ -135,11 +135,11 @@ interface CreateReplayableOrder extends ReplayableOrder {
 }
 
 /** The two bill settings the rule reads — `printConfigOf(settings).bill`, as the insert winner reads them. */
-type BillNumbering = Pick<PrintConfig["bill"], "showNumber" | "numberStart">;
+type BillNumbering = Pick<PrintConfig["bill"], "showNumber" | "numberStart" | "resetMinutes">;
 
 export interface ReplayNumberingDeps {
   now(): number;
-  issueBillNumber(id: Types.ObjectId | string, start: number): Promise<unknown>;
+  issueBillNumber(id: Types.ObjectId | string, bill: SeriesNumbering): Promise<unknown>;
 }
 
 const REPLAY_NUMBERING_DEPS: ReplayNumberingDeps = { now: () => Date.now(), issueBillNumber };
@@ -176,7 +176,7 @@ export async function createReplayVerdict(
   if (!settled(order.createdAt, deps.now())) return failure(BILL_NUMBER_PENDING_ERROR, REPLAY_PENDING_STATUS);
   let numbered: unknown;
   try {
-    numbered = await deps.issueBillNumber(order._id, bill.numberStart);
+    numbered = await deps.issueBillNumber(order._id, bill);
   } catch (error) {
     return serverError(BILL_NUMBER_UNCONFIRMED, error);
   }

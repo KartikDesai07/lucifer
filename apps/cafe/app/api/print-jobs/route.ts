@@ -7,6 +7,7 @@ import { PRINT_DEVICE_ID_HEADER, PRINT_IDEMPOTENCY_HEADER, PRINT_IDEMPOTENCY_KEY
 import { enqueuePrintJob, prunePrintJobsThrottled } from "@/lib/print-queue";
 import { enqueueDirectPrintJob, enqueueOwnPrintJob, printIntentOf } from "@/lib/print-order-jobs";
 import { enqueueRoutedPrintJob } from "@/lib/print-printer-jobs";
+import { billPayloadWithFirstPrint } from "@/lib/bill-first-print";
 import { PRINT_HOST_DEVICE_ID_MAX_CHARS } from "@/lib/print-host";
 import { success, failure, requireAuth, serverError, validateBody } from "@/lib/api-helpers";
 import { noStore } from "@/lib/order-request-tray";
@@ -77,10 +78,14 @@ export async function POST(req: Request) {
 
   try {
     await connectDB();
+    // A bill's pay QR counts "Valid till" from its FIRST print: the server stamps that
+    // moment once and every enqueue (reprints too, every lane below) stores it in the payload.
+    // Never throws, so it cannot fail the enqueue; any client-sent stamp is dropped inside.
+    const payload = await billPayloadWithFirstPrint(parsed.data.payload, nowMs);
     const intent = printIntentOf(req);
     // Session 2C (spec §8): printers mode routes the slip to its printers, whoever asks. null: simple mode.
     const routed = await enqueueRoutedPrintJob({
-      payload: parsed.data.payload,
+      payload,
       label: parsed.data.label,
       queuedBy,
       ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
@@ -96,7 +101,7 @@ export async function POST(req: Request) {
     const direct =
       routed === null && intent?.leaseTabId !== undefined
         ? await enqueueDirectPrintJob({
-            payload: parsed.data.payload,
+            payload,
             label: parsed.data.label,
             queuedBy,
             ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
@@ -109,7 +114,7 @@ export async function POST(req: Request) {
       routed ??
       direct ??
       (await enqueuePrintJob({
-        payload: parsed.data.payload,
+        payload,
         label: parsed.data.label,
         queuedBy,
         ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
@@ -120,7 +125,7 @@ export async function POST(req: Request) {
     // lifecycle. A tab from before Phase 1 sends no agent header and still gets "no-host" (print here).
     if (result.outcome === "no-host" && intent !== null) {
       result = await enqueueOwnPrintJob({
-        payload: parsed.data.payload,
+        payload,
         label: parsed.data.label,
         queuedBy,
         ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),

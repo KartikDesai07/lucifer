@@ -13,6 +13,10 @@ export const PRINT_BUDGET_BUSY_DAY = {
   retryShare: 0.1,
 } as const;
 
+/** A token cafe in simple mode (print-customization S7): 1.5 KOT rounds + 1 bill + 1 token slip per order
+ *  (no 2-station doubling). print-budget.test.ts holds it under the same ceilings as the busy day. */
+export const PRINT_BUDGET_TOKEN_SLIPS_PER_ORDER = 3.5;
+
 /** Requests one slip costs: a lease and an ack. Job creation rides the order request (spec §7.4). */
 export const PRINT_REQUESTS_PER_SLIP = 2;
 /** Spec §17.3 item 4. */

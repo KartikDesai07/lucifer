@@ -23,7 +23,7 @@ import type { Order } from "@/types";
 // of the POS page's print bridge: KOT only, never the customer receipt (an
 // accept never collects money) — the ref/effect pair below mirrors
 // pos/page.tsx's own KOT sequencing (see its print-effects comment) for the
-// one job this page needs.
+// jobs this page needs: the KOT, then the token slip when the order holds one.
 export default function RequestsPage() {
   return (
     <MenuPageShell>
@@ -45,18 +45,19 @@ function RequestsContent() {
   const acceptRequest = useAcceptOrderRequest({ onSettled: () => setAcceptingId(null) });
 
   const print = usePosPrint();
-  const { lastOrder, shouldPrintKot, clearPrintKot, queueKotRound } = print;
+  const { lastOrder, shouldPrintKot, clearPrintKot, shouldPrintToken, clearPrintToken, queueKotRound } = print;
   const printCfg = printConfigOf(settings.data);
 
   // Same guard-ref/fixed-id-iframe discipline as pos/page.tsx's own (lib/
   // print.ts's print-chain note, CR1.2) — collapsed onto the shared hook.
   // This page never fires a receipt job (an accept never collects money), so
-  // `receipt` is omitted entirely.
-  const { kotRef, printBusy } = useKotPrintBridge({
+  // `receipt` is omitted entirely; an accepted self-order prints its token slip (R13).
+  const { kotRef, tokenRef, printBusy } = useKotPrintBridge({
     lastOrder,
     shouldPrintKot,
     clearPrintKot,
     kotPaperWidth: printCfg.kot.paperWidth,
+    token: { shouldPrintToken, clearPrintToken, billPaperWidth: printCfg.bill.paperWidth },
   });
 
   // CR2.3 §20 — this page owns the print bridge whenever it's mounted (the
@@ -123,7 +124,7 @@ function RequestsContent() {
         onAccepted={handleAccepted}
         acceptingId={acceptingId}
         onAcceptingChange={setAcceptingId}
-        printBusy={shouldPrintKot}
+        printBusy={shouldPrintKot || shouldPrintToken}
         acceptMutate={acceptRequest.mutate}
       />
 
@@ -138,6 +139,7 @@ function RequestsContent() {
         voidReason={print.voidReason}
         voidedBy={print.voidedBy}
         voidedAt={print.voidedAt}
+        tokenRef={tokenRef}
       />
     </>
   );

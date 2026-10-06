@@ -43,7 +43,7 @@ export async function queueBill(nowMs: number): Promise<string> {
 }
 
 export function lease(nowMs: number, tabId = "tab-a") {
-  return leasePrintJobs({ deviceId: HOST, tabId, dismissedBy: STAFF, nowMs });
+  return leasePrintJobs({ deviceId: HOST, tabId, dismissedBy: STAFF, nowMs, tokenSlips: true });
 }
 
 export function rowOf(id: string) {

@@ -1,6 +1,9 @@
+import { printConfigOf, type KotPrintConfig } from "@/lib/print";
+import { ROUND_LABEL_PREFIX } from "@/lib/print-host-slips";
 import { computeOrderTotals } from "@/lib/receipt";
 import type { GstConfig } from "@/lib/receipt";
-import type { Order, OrderItem } from "@/types";
+import type { KitchenPreviewChip } from "@/lib/print-design-labels";
+import type { Order, OrderItem, Settings } from "@/types";
 
 // The Bill print page shows a sample bill through the REAL bill renderer
 // (components/pos/OrderReceipt.tsx), so it needs a real, fully priced Order.
@@ -110,4 +113,67 @@ export function sampleKitchenOrder(createdAt: string): Order {
     createdAt,
     updatedAt: createdAt,
   };
+}
+
+// With tokens on in the saved settings, every preview and thumbnail shows the number the next order would get (the
+// start number), so the bill and the ticket look the way they will print. With tokens off the order is unchanged.
+export function withSampleToken(order: Order, settings: Settings): Order {
+  const { token } = printConfigOf(settings);
+  return token.enabled ? { ...order, tokenNumber: token.numberStart } : order;
+}
+
+// The token slip page sample (components/print/slip/TokenSlip.tsx renders it): the kitchen sample's two dishes with the
+// number the next order would get (the start number, shown whether tokens are on or off so the slip can be set up
+// first) and, with bill numbering on, the bill number a Pay Now order carries. No money is printed on a token slip.
+export function sampleTokenOrder(createdAt: string, settings: Settings): Order {
+  const { token, bill } = printConfigOf(settings);
+  return {
+    ...sampleKitchenOrder(createdAt),
+    tokenNumber: token.numberStart,
+    ...(bill.showNumber ? { billNumber: bill.numberStart } : {}),
+  };
+}
+
+// The three tickets a kitchen gets, as the props KOTReceipt takes: the shapes lib/print-host-slips.ts builds for a
+// fired round (kotRoundSlip), a cancelled item (voidSlipOf) and a table move (the "moved" job). No arithmetic here.
+export const SAMPLE_VOID_REASON = "Customer changed their mind";
+export const SAMPLE_MOVED_FROM = "T2";
+
+export interface KitchenSlipProps {
+  variant?: "void" | "moved";
+  roundItems?: OrderItem[];
+  roundLabel?: string;
+  roundNumber?: number;
+  reason?: string;
+  voidedBy?: string;
+  voidedAt?: string;
+  movedFrom?: string;
+  movedBy?: string;
+  movedAt?: string;
+}
+
+export function sampleKitchenSlip(
+  chip: KitchenPreviewChip,
+  order: Order,
+  cfg: Pick<KotPrintConfig, "numberStart" | "numberVoidSlips">,
+): KitchenSlipProps {
+  // A fired round always carries its round line.
+  const roundLabel = `${ROUND_LABEL_PREFIX}${order.kotRounds}`;
+  switch (chip) {
+    case "kot":
+      return { roundNumber: cfg.numberStart, roundLabel };
+    case "void":
+      return {
+        variant: "void",
+        roundItems: [{ ...order.items[0], qty: 1 }],
+        roundLabel,
+        roundNumber: cfg.numberVoidSlips ? cfg.numberStart : undefined,
+        reason: SAMPLE_VOID_REASON,
+        voidedBy: order.receiver,
+        voidedAt: order.createdAt,
+      };
+    case "moved":
+      // No round line and no number: a moved slip matches no single ticket the kitchen holds.
+      return { variant: "moved", movedFrom: SAMPLE_MOVED_FROM, movedBy: order.receiver, movedAt: order.createdAt };
+  }
 }

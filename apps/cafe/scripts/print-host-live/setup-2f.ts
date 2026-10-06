@@ -79,7 +79,7 @@ export async function legAX(nowMs: number): Promise<void> {
   const one = await createPrinterTestJob({ printerId: counterId, queuedBy: "Asha", nowMs });
   const two = await createPrinterTestJob({ printerId: barId, queuedBy: "Asha", nowMs: nowMs + 1 });
   check("(ax) a slip on each of the tablet's printers, both aimed at it", one.ok && two.ok && (await PrintJob.countDocuments({ targetDeviceId: TAB, status: "queued" })) === 2);
-  const both = await leasePrintJobs({ deviceId: TAB, tabId: "tab-1", printerIds: [counterId, barId], dismissedBy: STAFF, nowMs: nowMs + 1_000 });
+  const both = await leasePrintJobs({ deviceId: TAB, tabId: "tab-1", tokenSlips: true, printerIds: [counterId, barId], dismissedBy: STAFF, nowMs: nowMs + 1_000 });
   check("(ax) one lease naming both lines takes one slip of each", both.jobs.length === 2 && new Set(both.jobs.map((j) => j.printerId)).size === 2);
   const acks = await Promise.all(both.jobs.map((j) => ackPrintJob({ id: j.id, deviceId: TAB, epoch: 1, outcome: "printed", nowMs: nowMs + 2_000 })));
   check("(ax) each ack: printed, and more:false for its own line", acks.every((a) => a.status === "printed" && a.more === false));

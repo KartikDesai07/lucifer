@@ -25,6 +25,8 @@ export function printPayloadProductIds(payload: PrintJobPayload): string[] {
       return [payload.line.productId];
     case "eod":
     case "test":
+    // A token goes where the bill goes (print-printer-routing.ts): no station, so no catalog read.
+    case "token":
       return [];
     default:
       return payload.snapshot.items.map((item) => item.productId);

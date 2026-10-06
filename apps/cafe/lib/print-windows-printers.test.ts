@@ -76,7 +76,7 @@ test("PIN (2E): each slip carries its printer's target from the agent to the Win
 
 test("PIN (2E): the agent leases, offers for direct print and is kicked only for the printers no refusal holds", () => {
   const hook = src("hooks/use-print-agent.ts");
-  assert.match(hook, /lease: \(printerIds\) => apiSend<PrintLeaseData>\(LEASE_URL, "POST", \{ deviceId, tabId, \.\.\.printerIdsBody\(printerIds\) \}\),/, "the lease names what the agent says is open");
+  assert.match(hook, /lease: \(printerIds\) => apiSend<PrintLeaseData>\(LEASE_URL, "POST", \{ deviceId, tabId, tokenSlips: true, \.\.\.printerIdsBody\(printerIds\) \}\),/, "the lease names what the agent says is open");
   assert.match(hook, /readyPrinters: readyNow,/, "Session 2F1: those of them that can print now");
   // The 2F1 review gate (M-1, deliberate change): every printer job, named here or not, holds its own printer's line.
   assert.match(hook, /lineOf: \(job\) => job\.printerId \?\? PRINT_DEVICE_LINE,/, "a printer job's refusal holds its own printer's line, never the device line");

@@ -27,7 +27,11 @@ export type PrintJobEligibility = { eligible: true } | { eligible: false; reason
  * Order read on them (M0 read budget).
  */
 export function printJobNeedsOrderRead(payload: PrintJobPayload): boolean {
-  return payload.kind === "bill" || (payload.kind === "kot" && payload.round !== null);
+  return (
+    payload.kind === "bill" ||
+    (payload.kind === "kot" && payload.round !== null) ||
+    (payload.kind === "token" && payload.reprint !== true)
+  );
 }
 
 /**
@@ -69,6 +73,12 @@ export function printJobEligibility(
       // says "Completed" for a first-time bill, so a post-enqueue cancel
       // could never surface on the paper. Recovery is the reprint branch
       // above, not this one.
+      if (order === null || order.status === "Cancelled") return { eligible: false, reason: "order-cancelled" };
+      return { eligible: true };
+    case "token":
+      // S7: bill's rule. A reprint prints regardless (checked FIRST); a
+      // first-time token of an order cancelled since is never handed out.
+      if (payload.reprint === true) return { eligible: true };
       if (order === null || order.status === "Cancelled") return { eligible: false, reason: "order-cancelled" };
       return { eligible: true };
     case "void":

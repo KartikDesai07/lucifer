@@ -16,7 +16,22 @@ import {
   sectionForField,
   type SettingsSection,
 } from "@/lib/settings-sections";
-import type { Settings } from "@/types";
+import type { Settings, UpdateSettingsInput } from "@/types";
+
+// A second, non-form part of a settings page that shares its ONE Save bar and ONE PUT (the Bill print page's
+// design draft, print customization S4). Absent on every other page, which then behave exactly as before.
+export interface SectionFormExtra {
+  /** The extra part has unsaved changes: counts toward the page's dirty flag and puts `body()` in the PUT. */
+  dirty: boolean;
+  /** A plain sentence when the extra part cannot be saved yet, else null. Checked before anything is sent. */
+  problem(): string | null;
+  /** What the extra part adds to the PUT body. Called only while `dirty`. */
+  body(): UpdateSettingsInput;
+  /** Discard drops the extra part's changes with the form's. */
+  discard(): void;
+  /** The saved document the PUT returned, after the form re-baselined. */
+  saved(settings: Settings): void;
+}
 
 interface UseSettingsSectionFormResult {
   form: ReturnType<typeof useForm<SettingsInput>>;
@@ -34,6 +49,7 @@ interface UseSettingsSectionFormResult {
 export function useSettingsSectionForm(
   settings: Settings,
   section: SettingsSection,
+  extra?: SectionFormExtra,
 ): UseSettingsSectionFormResult {
   const updateSettings = useUpdateSettings();
 
@@ -43,23 +59,40 @@ export function useSettingsSectionForm(
   });
 
   const { handleSubmit, formState, reset, setFocus } = form;
-  const isDirty = formState.isDirty;
+  const isDirty = formState.isDirty || (extra?.dirty ?? false);
   const isSaving = updateSettings.isPending;
 
-  const discard = () => reset();
+  const discard = () => {
+    reset();
+    extra?.discard();
+  };
 
   useUnsavedGuard(isDirty);
   // A save already in flight still lands, so no leave prompt while saving.
   const leaveGuard = useInAppLeaveGuard(isDirty && !isSaving, discard);
 
   const onValid = async (values: SettingsInput) => {
+    // The extra part is checked first and on its own: a problem there stops the save before anything is sent, and
+    // nothing is reset, so the person can fix it and press Save again.
+    if (extra?.dirty) {
+      const problem = extra.problem();
+      if (problem) {
+        toast.error(problem);
+        return;
+      }
+    }
     try {
-      await updateSettings.mutateAsync(pickSectionValues(values, section));
+      // The extra part rides along ONLY while it has changes: a save that touched nothing in it never resends it.
+      const saved = await updateSettings.mutateAsync({
+        ...pickSectionValues(values, section),
+        ...(extra?.dirty ? extra.body() : {}),
+      });
       // Plain reset(values) — arbitration R1: rhf 7.80.0's `_reset` sets both
       // `_defaultValues` and `_formValues` off `values` unless told to keep
       // one of them, so this alone re-baselines the dirty flag with no extra
       // options. (Not `keepValues: true` — that option is superseded here.)
       reset(values);
+      extra?.saved(saved);
     } catch {
       // useUpdateSettings already toasts the failure (hooks/use-settings.ts)
       // — do not reset on a rejected save, and no second toast here.

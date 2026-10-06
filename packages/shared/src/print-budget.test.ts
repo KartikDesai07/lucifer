@@ -36,6 +36,7 @@ import {
   PRINT_AGENT_MIN_CADENCE_MS,
   PRINT_BUDGET_BUSY_DAY,
   PRINT_BUDGET_NORMAL_MAX_PER_DAY,
+  PRINT_BUDGET_TOKEN_SLIPS_PER_ORDER,
   PRINT_BUDGET_WORST_MAX_PER_DAY,
   PRINT_REALTIME_BASE_PER_DAY,
   PRINT_REALTIME_PER_SLIP,
@@ -189,6 +190,51 @@ test("1C gate: Phase 1's busy day, with one trailing empty lease per burst, stil
   const perDay = Math.round(slips * 2 * (1 + PRINT_BUDGET_BUSY_DAY.retryShare) + bursts);
   assert.equal(perDay, 2_400);
   assert.ok(perDay <= printSlipRequestsPerDay(), `${perDay}/day within the 2,640 estimate`);
+});
+
+// Print customization S7: a token cafe prints one more slip per order. Simple mode has no 2-station doubling, so
+// it is 1.5 KOT rounds + 1 bill + 1 token = 3.5 slips an order (the busy day's 1,200 is 4 an order). Every figure
+// below is computed from the exported constants and the agents' real cadence function, never typed in; the
+// literals are landmarks that the arithmetic still lands where the plan says. NOTE the 1C gate above compares its
+// bursts to the 2,640 no-host estimate, which a token cafe's trailing leases (3,360) exceed by design: the honest
+// ceilings for those are the normal and worst day maxima, held here.
+test("S7 token cafe: 3.5 slips an order stays inside the busy day's slips, and lease + ack (with retries) inside the 2,640 estimate", () => {
+  const slips = PRINT_BUDGET_BUSY_DAY.orders * PRINT_BUDGET_TOKEN_SLIPS_PER_ORDER;
+  assert.equal(slips, 1_050);
+  assert.ok(slips <= PRINT_BUDGET_BUSY_DAY.slips, `${slips} slips within the busy day's ${PRINT_BUDGET_BUSY_DAY.slips}`);
+  const leaseAndAck = Math.round(slips * 2 * (1 + PRINT_BUDGET_BUSY_DAY.retryShare));
+  assert.equal(leaseAndAck, 2_310);
+  assert.ok(leaseAndAck <= printSlipRequestsPerDay(), `${leaseAndAck}/day within the ${printSlipRequestsPerDay()} no-host estimate`);
+});
+
+test("S7 token cafe: with one trailing empty lease per slip (every slip its own burst) the day stays under the normal ceiling; with a host's wake polls, under it still", () => {
+  const slips = PRINT_BUDGET_BUSY_DAY.orders * PRINT_BUDGET_TOKEN_SLIPS_PER_ORDER;
+  const trailing = Math.round(slips * 2 * (1 + PRINT_BUDGET_BUSY_DAY.retryShare) + slips);
+  assert.equal(trailing, 3_360);
+  assert.ok(trailing <= PRINT_BUDGET_NORMAL_MAX_PER_DAY, `${trailing}/day within ${PRINT_BUDGET_NORMAL_MAX_PER_DAY}`);
+  // Host mode, socket healthy, the same three agents the normal-day pin above uses (conservative: Phase 1 lets one device poll).
+  const wakePerAgent = OPEN_MS / cadence({ socketHealthy: true, msSinceLastJob: 0, capSpent: false });
+  const hostDay = trailing + PRINT_BUDGET_BUSY_DAY.agents * wakePerAgent;
+  assert.equal(hostDay, 5_520);
+  assert.ok(hostDay <= PRINT_BUDGET_NORMAL_MAX_PER_DAY, `${hostDay}/day within ${PRINT_BUDGET_NORMAL_MAX_PER_DAY}`);
+});
+
+test("S7 token cafe: the worst day (socket down, agents always busy, the shared cap spent) stays under 18,000", () => {
+  const slips = PRINT_BUDGET_BUSY_DAY.orders * PRINT_BUDGET_TOKEN_SLIPS_PER_ORDER;
+  const trailing = Math.round(slips * 2 * (1 + PRINT_BUDGET_BUSY_DAY.retryShare) + slips);
+  const fastest = cadence({ socketHealthy: false, msSinceLastJob: 0, capSpent: false });
+  for (const agents of [1, 2, 3, 5, 8, 16]) {
+    const perAgent = Math.min(OPEN_MS / fastest, printWakeAgentCap(agents));
+    assert.ok(trailing + agents * perAgent <= PRINT_BUDGET_WORST_MAX_PER_DAY, `${agents} agents: ${trailing + agents * perAgent}/day`);
+  }
+  const three = trailing + 3 * Math.min(OPEN_MS / fastest, printWakeAgentCap(3));
+  assert.equal(three, 17_760);
+});
+
+test("S7 token cafe: realtime (2 Worker requests a slip since printing Phase 2, plus today's base) stays under 5 % of the free 100,000", () => {
+  const perDay = PRINT_BUDGET_BUSY_DAY.orders * PRINT_BUDGET_TOKEN_SLIPS_PER_ORDER * PRINT_REALTIME_PER_SLIP + PRINT_REALTIME_BASE_PER_DAY;
+  assert.equal(perDay, 2_435); // 3,485 before printing Phase 2 cut PRINT_REALTIME_PER_SLIP from 3 to 2
+  assert.ok(perDay <= REALTIME_FREE_REQUESTS_PER_DAY * 0.05, `${perDay}/day`);
 });
 
 test("1C gate: a printer that says ready but keeps refusing costs at most 2 requests per 30 s per device: 2,880 over the day", () => {

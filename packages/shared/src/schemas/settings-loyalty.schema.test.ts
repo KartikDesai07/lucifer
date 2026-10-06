@@ -38,6 +38,7 @@ function validPrintPayload() {
     logo: "",
     productLogo: "",
     fssai: "",
+    upiId: "",
 
     billShowNumber: true,
     billNumberStart: 1,

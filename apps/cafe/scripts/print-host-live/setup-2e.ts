@@ -64,10 +64,10 @@ export async function legAV(nowMs: number): Promise<void> {
   const one = await createPrinterTestJob({ printerId: counterId, queuedBy: "Asha", nowMs });
   const two = await createPrinterTestJob({ printerId: kitchenId, queuedBy: "Asha", nowMs: nowMs + 1 });
   check("(av) a slip on each printer, both aimed at the PC", one.ok && two.ok && (await PrintJob.countDocuments({ targetDeviceId: PC, status: "queued" })) === 2);
-  const onlyCounter = await leasePrintJobs({ deviceId: PC, tabId: "pc-tab", printerIds: [counterId], dismissedBy: STAFF, nowMs: nowMs + 1_000 });
+  const onlyCounter = await leasePrintJobs({ deviceId: PC, tabId: "pc-tab", tokenSlips: true, printerIds: [counterId], dismissedBy: STAFF, nowMs: nowMs + 1_000 });
   const waiting = await PrintJob.findOne({ printerId: kitchenId }).lean();
   check("(av) a lease naming the counter only (the kitchen printer held) takes the counter's slip; the kitchen's waits", onlyCounter.jobs.length === 1 && onlyCounter.jobs[0]?.printerId === counterId && waiting?.status === "queued");
-  const both = await leasePrintJobs({ deviceId: PC, tabId: "pc-tab", printerIds: [counterId, kitchenId], dismissedBy: STAFF, nowMs: nowMs + 2_000 });
+  const both = await leasePrintJobs({ deviceId: PC, tabId: "pc-tab", tokenSlips: true, printerIds: [counterId, kitchenId], dismissedBy: STAFF, nowMs: nowMs + 2_000 });
   check("(av) named again, its line gives its slip; the counter's line holds its leased one (head of line per printer)", both.jobs.length === 1 && both.jobs[0]?.printerId === kitchenId);
   const acked = await ackPrintJob({ id: both.jobs[0]?.id ?? "", deviceId: PC, epoch: 1, outcome: "printed", nowMs: nowMs + 3_000 });
   check("(av) its ack: printed, and more:false for its own line, whatever the counter's holds", acked.status === "printed" && acked.more === false);

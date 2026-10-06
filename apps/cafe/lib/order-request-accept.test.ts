@@ -34,7 +34,7 @@ import { resolveAcceptPromo, decidePromoRedemption, promoIsClaimable, PROMO_USED
 import { PUBLIC_REQUEST_PENDING_TTL_MS } from "./order-request-intake";
 import { voidGuardFilter } from "./order-void";
 import type { IOrder } from "@/models/Order";
-import type { GstConfig } from "@/lib/receipt";
+import { computeOrderTotals, gstConfigFromOrder, type GstConfig } from "@/lib/receipt";
 
 // buildAddRoundFilter only reads _id/kotRounds/voids off its `old` param —
 // this fixture builder casts a plain fixture to that Pick<IOrder, ...> shape
@@ -228,10 +228,43 @@ test("gstConfigDrifted: identical configs → false", () => {
   assert.equal(gstConfigDrifted(GST_BASE, { ...GST_BASE }), false);
 });
 
-test("gstConfigDrifted: true when gstEnabled, gstRate, or gstMode individually differ", () => {
+test("gstConfigDrifted: true when gstEnabled, gstRate, or gstMode individually differ (GST on)", () => {
   assert.equal(gstConfigDrifted(GST_BASE, { ...GST_BASE, gstEnabled: false }), true);
   assert.equal(gstConfigDrifted(GST_BASE, { ...GST_BASE, gstRate: 12 }), true);
   assert.equal(gstConfigDrifted(GST_BASE, { ...GST_BASE, gstMode: "inclusive" }), true);
+});
+
+// The QR add-round bug (s82): a GST-off cafe keeps the model default
+// gstRate 5, a QR tab is stamped gstRate 0, so gstConfigFromOrder gives
+// {false, 0} against live {false, 5} — the same tax (none) — and every QR
+// add-round was rejected as drift. Effective GST is compared instead.
+test("gstConfigDrifted: GST off on both sides is no drift, whatever rate/mode either side stores", () => {
+  const tabOff = gstConfigFromOrder({ gstRate: 0, gstMode: "inclusive" }, GST_BASE);
+  assert.equal(gstConfigDrifted(tabOff, { gstEnabled: false, gstRate: 5, gstMode: "inclusive" }), false);
+  assert.equal(gstConfigDrifted(tabOff, { gstEnabled: false, gstRate: 5, gstMode: "exclusive" }), false);
+  assert.equal(gstConfigDrifted(tabOff, { gstEnabled: true, gstRate: 0, gstMode: "exclusive" }), false);
+});
+
+test("gstConfigDrifted: GST turned on or off between the quote and the accept is still drift", () => {
+  const tabOff = gstConfigFromOrder({ gstRate: 0, gstMode: "inclusive" }, GST_BASE);
+  assert.equal(gstConfigDrifted(tabOff, { gstEnabled: true, gstRate: 5, gstMode: "inclusive" }), true);
+  assert.equal(gstConfigDrifted(GST_BASE, { gstEnabled: false, gstRate: 5, gstMode: "exclusive" }), true);
+  assert.equal(gstConfigDrifted(GST_BASE, { ...GST_BASE, gstRate: 0 }), true);
+});
+
+test("gstConfigDrifted false ⇒ the two configs price every basket identically", () => {
+  const configs: GstConfig[] = [];
+  for (const gstEnabled of [false, true])
+    for (const gstRate of [0, 5, 18])
+      for (const gstMode of ["inclusive", "exclusive"] as const) configs.push({ gstEnabled, gstRate, gstMode });
+  const items = [{ price: 237, qty: 3 }, { price: 99, qty: 1 }];
+  for (const a of configs)
+    for (const b of configs) {
+      if (gstConfigDrifted(a, b)) continue;
+      const ta = computeOrderTotals({ items, discount: 0, discountKind: undefined, charge: 0, cfg: a });
+      const tb = computeOrderTotals({ items, discount: 0, discountKind: undefined, charge: 0, cfg: b });
+      assert.deepEqual(ta, tb, `${JSON.stringify(a)} vs ${JSON.stringify(b)}`);
+    }
 });
 
 test("mergedNote: no request note → the existing note (or absence of one) passes through unchanged", () => {

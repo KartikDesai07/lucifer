@@ -6,9 +6,14 @@
 //
 // The rule: the BILL number is taken only by the request whose write already
 // landed (the settle CAS hit, the Pay Now insert won), in a second guarded
-// update that sets it only if the bill has none. The opening KOT number is
-// still taken just before the insert — losing one there to a refused insert is
-// an accepted burn (kitchen tickets, like the add-round's pre-CAS ticket).
+// update that sets it only if the bill has none. The opening KOT number and the
+// order's TOKEN are still taken just before the insert — losing one there to a
+// refused insert is an accepted burn (kitchen tickets, like the add-round's
+// pre-CAS ticket). The duplicate-key retry reuses the same `doc`, so it reuses
+// the token too; an add-round never takes one (a token belongs to the order).
+//
+// Every series restarts at the cafe's restart time, so each draw carries the
+// series' { numberStart, resetMinutes } (PrintConfig.bill / .kot / .token).
 import type { Types } from "mongoose";
 import { Order } from "@/models/Order";
 import { nextSlipSequence, type SlipSeries } from "@/models/Counter";
@@ -35,20 +40,32 @@ function setBillNumberIfAbsent(id: OrderRef, billNumber: number) {
   ).lean();
 }
 
+/** What one series needs to number a slip: its start number and the daily restart time. */
+export type SeriesNumbering = { numberStart: number; resetMinutes: number };
+
 /** The lean order doc the numbering returns (what the bill prints from). */
 export type NumberedOrder = Awaited<ReturnType<typeof setBillNumberIfAbsent>>;
 
 export interface SlipNumberDeps<T> {
-  nextSequence(series: SlipSeries): Promise<number>;
+  nextSequence(series: SlipSeries, resetMinutes: number): Promise<number>;
   setIfAbsent(id: OrderRef, billNumber: number): Promise<T | null>;
   readOrder(id: OrderRef): Promise<T | null>;
 }
 
 export const SLIP_NUMBER_DEPS: SlipNumberDeps<NonNullable<NumberedOrder>> = {
-  nextSequence: (series) => nextSlipSequence(series),
+  nextSequence: (series, resetMinutes) => nextSlipSequence(series, undefined, undefined, resetMinutes),
   setIfAbsent: setBillNumberIfAbsent,
   readOrder: (id) => Order.findById(id).lean(),
 };
+
+/** The next printed number of a series: one atomic draw, the start number applied once. */
+export async function nextPrintedNumber(
+  series: SlipSeries,
+  numbering: SeriesNumbering,
+  deps: Pick<SlipNumberDeps<unknown>, "nextSequence"> = SLIP_NUMBER_DEPS,
+): Promise<number> {
+  return printedSlipNumber(await deps.nextSequence(series, numbering.resetMinutes), numbering.numberStart);
+}
 
 /**
  * Number the bill of an order whose write has ALREADY landed: one bill
@@ -57,14 +74,14 @@ export const SLIP_NUMBER_DEPS: SlipNumberDeps<NonNullable<NumberedOrder>> = {
  * the paper matches what the customer holds. Rejects when the sequence throws
  * or every set attempt throws; the caller answers BILL_NUMBER_UNCONFIRMED.
  */
-export function issueBillNumber(id: OrderRef, start: number): Promise<NumberedOrder>;
-export function issueBillNumber<T>(id: OrderRef, start: number, deps: SlipNumberDeps<T>): Promise<T | null>;
+export function issueBillNumber(id: OrderRef, bill: SeriesNumbering): Promise<NumberedOrder>;
+export function issueBillNumber<T>(id: OrderRef, bill: SeriesNumbering, deps: SlipNumberDeps<T>): Promise<T | null>;
 export async function issueBillNumber(
   id: OrderRef,
-  start: number,
+  bill: SeriesNumbering,
   deps: SlipNumberDeps<unknown> = SLIP_NUMBER_DEPS,
 ): Promise<unknown> {
-  const billNumber = printedSlipNumber(await deps.nextSequence("bill"), start);
+  const billNumber = await nextPrintedNumber("bill", bill, deps);
   let lastError: unknown;
   for (let attempt = 0; attempt < BILL_NUMBER_SET_ATTEMPTS; attempt += 1) {
     try {
@@ -77,14 +94,22 @@ export async function issueBillNumber(
 }
 
 /**
- * The opening round's KOT number for a new order, omit-empty: `{}` when the
- * cafe does not number its tickets. Never a bill number — that is the insert
- * winner's job (issueBillNumber), so a refused twin cannot burn one.
+ * The numbers a NEW order takes before its insert, omit-empty: the opening
+ * round's KOT number when the cafe numbers its tickets, and the order's token
+ * when tokens are on. `{}` (and no draw at all) when both are off. Never a bill
+ * number — that is the insert winner's job (issueBillNumber), so a refused twin
+ * cannot burn one. Both draws are independent counters, so they run together.
  */
-export async function allocateOpeningKot<T>(
+export async function allocateOpeningSlips<T>(
   cfg: PrintConfig,
   deps: Pick<SlipNumberDeps<T>, "nextSequence"> = SLIP_NUMBER_DEPS,
-): Promise<{ kotNumbers?: number[] }> {
-  if (!cfg.kot.showNumber) return {};
-  return { kotNumbers: [printedSlipNumber(await deps.nextSequence("kot"), cfg.kot.numberStart)] };
+): Promise<{ kotNumbers?: number[]; tokenNumber?: number }> {
+  const [kotNumber, tokenNumber] = await Promise.all([
+    cfg.kot.showNumber ? nextPrintedNumber("kot", cfg.kot, deps) : undefined,
+    cfg.token.enabled ? nextPrintedNumber("token", cfg.token, deps) : undefined,
+  ]);
+  return {
+    ...(kotNumber !== undefined ? { kotNumbers: [kotNumber] } : {}),
+    ...(tokenNumber !== undefined ? { tokenNumber } : {}),
+  };
 }

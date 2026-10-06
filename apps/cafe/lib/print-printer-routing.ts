@@ -178,6 +178,13 @@ export function routePrintRequest(request: PrintJobRequest, routing: PrintRoutin
       const stationIds = [...new Set(fired.map((item) => setup.stationOf(item.productId).id))];
       return noticeTargets(setup, stationIds.length > 0 ? stationIds : [setup.stationOf("").id]).map((printer) => job(printer, request, 1, NO_PART));
     }
+    case "token": {
+      // Print customization S7 (01-PLAN §8.2): the customer's token slip prints where the bill does: the asking
+      // device's bill printer, else the default bill printer (no printer has a token box yet). One copy. Never
+      // dropped: with no bill printer it is made failed, visibly, like a bill.
+      const printer = chosenBillPrinter(routing) ?? defaultBillPrinterOf(setup.printers);
+      return printer === null ? [failed(request, NO_PART, "bills")] : [job(printer, request, 1, NO_PART)];
+    }
     case "test":
       // Session 2D: a printer's test slip is made on its own printer's line by its Test print, never by slip type.
       return [];

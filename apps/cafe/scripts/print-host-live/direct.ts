@@ -53,7 +53,7 @@ export async function legAK(nowMs: number): Promise<void> {
   );
   check("(ak) its log says created, then leased directly; it was ONE write (updatedAt is its createdAt)", JSON.stringify(kot?.log?.map((e) => [e.event, e.detail ?? null])) === JSON.stringify([["created", null], ["leased", PRINT_DIRECT_LEASE_DETAIL]]) && kot?.updatedAt.getTime() === kot?.createdAt.getTime());
   check("(ak) the bill waits queued behind it (epoch 0)", bill?.status === "queued" && bill.epoch === 0 && bill.lease === undefined);
-  const blocked = await leasePrintJobs({ deviceId: HOST, tabId: TAB, dismissedBy: STAFF, nowMs: nowMs + 1_000 });
+  const blocked = await leasePrintJobs({ deviceId: HOST, tabId: TAB, tokenSlips: true, dismissedBy: STAFF, nowMs: nowMs + 1_000 });
   check("(ak) the line waits for that lease: a lease call gets nothing, and when to look again (KOT before bill, §7.6)", blocked.jobs.length === 0 && blocked.retryAt === new Date(nowMs + PRINT_LEASE_MS).toISOString());
 
   await freshHost(nowMs);
@@ -106,7 +106,7 @@ export async function legAM(nowMs: number): Promise<void> {
   const [kotRef, billRef] = refs;
   const kotAck = await ackPrintJob({ id: kotRef?.id ?? "", deviceId: HOST, epoch: 1, outcome: "printed", nowMs: nowMs + 3_000 });
   check("(am) the KOT's ack: printed, and more:true (the bill waits on the line)", kotAck.applied && kotAck.status === "printed" && kotAck.more === true);
-  const billLease = await leasePrintJobs({ deviceId: HOST, tabId: TAB, dismissedBy: STAFF, nowMs: nowMs + 3_100 });
+  const billLease = await leasePrintJobs({ deviceId: HOST, tabId: TAB, tokenSlips: true, dismissedBy: STAFF, nowMs: nowMs + 3_100 });
   check("(am) the bill is leased next", billLease.jobs[0]?.id === billRef?.id);
   const billAck = await ackPrintJob({ id: billRef?.id ?? "", deviceId: HOST, epoch: 1, outcome: "printed", nowMs: nowMs + 6_000 });
   check("(am) the bill's ack: more:false, so the agent leases nothing more", billAck.applied && billAck.status === "printed" && billAck.more === false);
@@ -118,13 +118,13 @@ export async function legAM(nowMs: number): Promise<void> {
   const later = nowMs + PRINT_LEASE_MS + 1_000;
   const [running, ranOut] = [await readJobsForDevice(HOST, nowMs + 1_000), await readJobsForDevice(HOST, later)];
   check("(am) the pulse and the wake count what a lease can act on: never a running lease (the bill only), but one that ran out", running.count === 1 && ranOut.count === 2);
-  await leasePrintJobs({ deviceId: HOST, tabId: "live-direct-tab-new", dismissedBy: STAFF, nowMs: later });
+  await leasePrintJobs({ deviceId: HOST, tabId: "live-direct-tab-new", tokenSlips: true, dismissedBy: STAFF, nowMs: later });
   const kot = await rowOf(dead.refs[0]?.id ?? "");
   check("(am) the tab died before printing: its KOT's lease expires into REPRINT, counted once", kot?.status === "queued" && JSON.stringify(kot.labels) === '["REPRINT"]' && kot.uncertainAttempts === 1);
   await freshHost(nowMs);
   const orderId = await seedRealOrder({ status: "Completed", kotRound: 1 });
   const billOnly = await createOrderPrintJobs({ order: await Order.findById(orderId).lean(), slips: [{ kind: "bill" }], originDeviceId: HOST, leaseTabId: TAB, queuedBy: STAFF, nowMs });
-  await leasePrintJobs({ deviceId: HOST, tabId: "live-direct-tab-new", dismissedBy: STAFF, nowMs: later });
+  await leasePrintJobs({ deviceId: HOST, tabId: "live-direct-tab-new", tokenSlips: true, dismissedBy: STAFF, nowMs: later });
   check("(am) a bill made leased whose tab died asks the cashier (needs-confirm)", billOnly[0]?.status === "leased" && (await rowOf(billOnly[0].id))?.status === "needs-confirm");
   const refused = await payNow(HOST, nowMs, TAB);
   const no = await ackPrintJob({ id: refused.refs[0]?.id ?? "", deviceId: HOST, epoch: 1, outcome: "failed", sent: "no", error: "Printer not connected", nowMs: nowMs + 2_000 });

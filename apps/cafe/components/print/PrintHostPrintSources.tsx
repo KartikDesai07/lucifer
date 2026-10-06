@@ -28,7 +28,7 @@ const OFFSCREEN_CLASS = "pointer-events-none absolute left-[-9999px] top-0";
 // the surface that slip prints on, into the provider's ref for that surface:
 //   · a claimed kot/void/moved/cancel-notice → PrintSources' KOTReceipt
 //     (kotRef) — the moved slip's three meta props travel too (PH-4 MUST);
-//   · a claimed bill → PrintSources' OrderReceipt (receiptRef);
+//   · a claimed bill or token → PrintSources' OrderReceipt / TokenSlip (receiptRef);
 //   · a claimed eod → PrintHostEodSource inside the eodRef wrapper (the ref
 //     stays on a plain div, never threaded through the dynamic boundary);
 //   · PH-7's test slip → PrintHostTestSlip on the KOT surface;
@@ -70,6 +70,11 @@ export function PrintHostPrintSources() {
         </div>
       </div>
     );
+  }
+
+  if (slip.surface === "token") {
+    // printSettings, like the receipt below: a printer's own paper (Phase 2) sizes the token it prints.
+    return <PrintSources order={slip.order} settings={printSettings} kotRef={kotRef} kotVariant="kot" tokenRef={receiptRef} banner={slip.banner} />;
   }
 
   if (slip.surface === "receipt") {

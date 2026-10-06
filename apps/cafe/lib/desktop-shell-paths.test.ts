@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 // CB-D1 Slice C2 (plan §3, C2) — source-text pins over the desktop-shell seam:
-// the INVENTORY of the nine useReactToPrint(slipPrintOptions( call sites, the
+// the INVENTORY of the eleven useReactToPrint(slipPrintOptions( call sites, the
 // QR page's deliberate non-wrap, use-print-host-wake.ts's capability check,
 // desktop-shell.ts's own capability-keyed-only raw bytes, and the PARITY pin
 // against apps/desktop/src/preload.ts's real bridge surface. Same readSrc +
@@ -27,6 +27,7 @@ const DESKTOP_SHELL_PRINTER = "apps/cafe/lib/desktop-shell-printer.ts";
 const DESKTOP_PRINTER_PICKER = "apps/cafe/components/print/DesktopPrinterPicker.tsx";
 const USE_PRINT_HOST_BRIDGE = "apps/cafe/hooks/use-print-host-bridge.ts";
 const USE_KOT_PRINT_BRIDGE = "apps/cafe/hooks/use-kot-print-bridge.ts";
+const USE_TOKEN_PRINT = "apps/cafe/hooks/use-token-print.ts";
 const ORDER_DETAIL_SHEET = "apps/cafe/components/orders/OrderDetailSheet.tsx";
 const END_OF_DAY_BUTTON = "apps/cafe/components/reports/EndOfDayButton.tsx";
 const MOVE_TABLE_DIALOG = "apps/cafe/components/orders/MoveTableDialog.tsx";
@@ -41,10 +42,11 @@ const WRAP_NEEDLE = "useReactToPrint" + "(" + "slipPrintOptions" + "(";
 
 // ── A. INVENTORY: the five wrapped files, with their per-file counts ───────
 
-test("INVENTORY: useReactToPrint(slipPrintOptions( appears with counts 3/2/2/1/1 across exactly the five known wrapped files, each importing slipPrintOptions from @/lib/desktop-shell", () => {
+test("INVENTORY: useReactToPrint(slipPrintOptions( appears with counts 3/3/2/1/1/1 across exactly the six known wrapped files (S7: the kot bridge prints the local token, use-token-print.ts the Orders reprint), each importing slipPrintOptions from @/lib/desktop-shell", () => {
   const expectedCounts: Record<string, number> = {
     [USE_PRINT_HOST_BRIDGE]: 3,
-    [USE_KOT_PRINT_BRIDGE]: 2,
+    [USE_KOT_PRINT_BRIDGE]: 3,
+    [USE_TOKEN_PRINT]: 1,
     [ORDER_DETAIL_SHEET]: 2,
     [END_OF_DAY_BUTTON]: 1,
     [MOVE_TABLE_DIALOG]: 1,
@@ -62,7 +64,7 @@ test("INVENTORY: useReactToPrint(slipPrintOptions( appears with counts 3/2/2/1/1
   }
 });
 
-test("INVENTORY WALK: files under app/components/hooks containing useReactToPrint(slipPrintOptions( are EXACTLY the five known wrapped files — no more, no fewer", () => {
+test("INVENTORY WALK: files under app/components/hooks containing useReactToPrint(slipPrintOptions( are EXACTLY the six known wrapped files — no more, no fewer", () => {
   const roots = ["app", "components", "hooks"].map((d) => path.join(REPO_ROOT, "apps/cafe", d));
   const hits: string[] = [];
 
@@ -91,9 +93,10 @@ test("INVENTORY WALK: files under app/components/hooks containing useReactToPrin
     "components/reports/EndOfDayButton.tsx",
     "hooks/use-kot-print-bridge.ts",
     "hooks/use-print-host-bridge.ts",
+    "hooks/use-token-print.ts",
   ].sort();
 
-  assert.deepEqual(hits, expected, `useReactToPrint(slipPrintOptions( call sites must be exactly the five known files; found: ${hits.join(", ")}`);
+  assert.deepEqual(hits, expected, `useReactToPrint(slipPrintOptions( call sites must be exactly the six known files; found: ${hits.join(", ")}`);
 });
 
 // ── B. The QR page is deliberately NOT wrapped ──────────────────────────────

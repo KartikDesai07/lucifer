@@ -20,6 +20,10 @@ import {
 // cancelledBy/At) must never ride in as a "snapshot" past the write/claim gates.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Ceiling for `billFirstPrintedAt` — an ISO-8601 instant is 24 chars; 40 leaves
+ *  headroom without letting a client park a blob in the stored payload. */
+const BILL_FIRST_PRINTED_AT_MAX_LENGTH = 40;
+
 /** One item line, render-complete: every field a receipt/KOT line, a void
  *  trail entry, or `orderItemLabel` needs (name, variation, modifiers,
  *  instructions, qty, price, kotRound — the round a job's `round` filters
@@ -102,12 +106,21 @@ export const printOrderSnapshotSchema = z.object({
   billNumber: z.number().int().optional(),
   kotRounds: z.number().int(),
   kotNumbers: z.array(z.number().int()).optional(),
+  // S6: the order's token number — omit-empty, only an order that has one carries the key.
+  tokenNumber: z.number().int().optional(),
   // Read by OrderReceipt's *** CANCELLED *** banner and KOTReceipt's
   // cancel-notice whole-order void render.
   cancelReason: z.string().optional(),
   // KOTReceipt's default-on kitchen note (`cfg.showNotes ?? true`) — an allergy
   // note must reach a host-printed KOT exactly like the local path prints it.
   notes: z.string().optional(),
+  // ISO moment the bill FIRST printed (server-stamped; the pay QR's "Valid
+  // till" counts from it). A bounded plain string, deliberately NOT
+  // `.datetime()`: apps/cafe/lib/print-lease.ts and print-queue-claim.ts
+  // re-parse STORED payloads and dismiss a failure as invalid-payload, so a
+  // stricter check could lose a bill. The renderer reads it through
+  // `payQrPlan`, which treats an unparseable value as "no stamp".
+  billFirstPrintedAt: z.string().max(BILL_FIRST_PRINTED_AT_MAX_LENGTH).optional(),
   createdAt: z.string(),
 }).strict();
 
@@ -139,6 +152,14 @@ const kotPayloadSchema = z
 // PH-4/PH-6's routing wrapper MUST set this on every reprint path.
 const billPayloadSchema = z
   .object({ kind: z.literal("bill"), snapshot: printOrderSnapshotSchema, reprint: z.literal(true).optional() })
+  .strict();
+
+// The customer's token slip (print-customization S7): printed once, after the
+// order's round-1 KOT, wherever the bill prints. `reprint` = bill's: a staff
+// "Token" reprint from Orders is a fresh, unkeyed job with a DUPLICATE banner.
+// FROZEN for Phase 2's printers mode (01-PLAN §8.3).
+const tokenPayloadSchema = z
+  .object({ kind: z.literal("token"), snapshot: printOrderSnapshotSchema, reprint: z.literal(true).optional() })
   .strict();
 
 // The synthesized single line, VERBATIM as `use-pos-print.ts:70-98`'s
@@ -234,6 +255,7 @@ const testPayloadSchema = z
 export const printJobPayloadSchema = z.discriminatedUnion("kind", [
   kotPayloadSchema,
   billPayloadSchema,
+  tokenPayloadSchema,
   voidPayloadSchema,
   movedPayloadSchema,
   eodPayloadSchema,
@@ -245,6 +267,7 @@ export type PrintOrderSnapshotInput = z.infer<typeof printOrderSnapshotSchema>;
 export type PrintJobPayload = z.infer<typeof printJobPayloadSchema>;
 export type KotPrintJobPayload = z.infer<typeof kotPayloadSchema>;
 export type BillPrintJobPayload = z.infer<typeof billPayloadSchema>;
+export type TokenPrintJobPayload = z.infer<typeof tokenPayloadSchema>;
 export type VoidPrintJobPayload = z.infer<typeof voidPayloadSchema>;
 export type MovedPrintJobPayload = z.infer<typeof movedPayloadSchema>;
 export type EodPrintJobPayload = z.infer<typeof eodPayloadSchema>;

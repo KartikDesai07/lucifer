@@ -18,7 +18,7 @@ import { useSelfOrderAutoPrint } from "@/hooks/use-self-order-auto-print";
 import { printJobRefOf } from "@/lib/print-agent-calls";
 import type { HostPrintDone } from "@/lib/print-host-outcomes";
 import type { HostPrintSlip } from "@/lib/print-host-slips";
-import { kotPrintJob } from "@/lib/print-routing";
+import { kotPrintJob, opensWithToken, tokenPrintJob } from "@/lib/print-routing";
 import type { Order } from "@/types";
 
 interface PrintHostDrainProps {
@@ -65,11 +65,16 @@ export function PrintHostDrain({ enabled, surfacesMounted, deviceId, tabId, busy
 
   // The host's self-order lane hands a claimed KOT to the agent (ruling R4, job-aware lane): the claim
   // made it a print job, or, when the answer names none, the routed enqueue makes it one under the
-  // same key. Never a local print outside the queue, so it can never print twice.
+  // same key. Never a local print outside the queue, so it can never print twice. The round-1 KOT of a
+  // numbered order is followed by its token slip, by the same rule the server makes the job with.
   const { routePrint } = useHostRouting();
   const queueKotRound = useCallback(
-    (order: Order, round: number = order.kotRounds) =>
-      routePrint(() => kotPrintJob(order, round), () => undefined, printJobRefOf(order, "kot")),
+    (order: Order, round: number = order.kotRounds) => {
+      routePrint(() => kotPrintJob(order, round), () => undefined, printJobRefOf(order, "kot"));
+      if (opensWithToken(order, round)) {
+        routePrint(() => tokenPrintJob(order, { reprint: false }), () => undefined, printJobRefOf(order, "token"));
+      }
+    },
     [routePrint],
   );
   const hostLane = useMemo(() => ({ claimLock: claimLockRef, maxAgeMs: PRINT_HOST_MAX_AGE_MS }), [claimLockRef]);

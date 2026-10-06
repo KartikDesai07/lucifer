@@ -593,7 +593,7 @@ test("PIN (N): use-host-routing.ts calls invalidateQueries({ queryKey: POS_PULSE
 // with zero call sites. Concatenate the needle so this test's OWN text can
 // never trip its own grep.
 
-test("INVENTORY: files containing the needle useReactToPrint( under app/components/hooks are exactly the six known call sites, with the per-file counts print-host-bridge=3, kot-print-bridge=2, OrderDetailSheet=2, and 1 each elsewhere", () => {
+test("INVENTORY: files containing the needle useReactToPrint( under app/components/hooks are exactly the seven known call sites, with the per-file counts print-host-bridge=3, kot-print-bridge=3 (S7: the local token), OrderDetailSheet=2, and 1 each elsewhere (use-token-print included)", () => {
   const NEEDLE = "useReactToPrint" + "(";
   const roots = ["app", "components", "hooks"].map((d) => path.join(REPO_ROOT, "apps/cafe", d));
   const hits: string[] = [];
@@ -626,13 +626,15 @@ test("INVENTORY: files containing the needle useReactToPrint( under app/componen
     "components/reports/EndOfDayButton.tsx",
     "hooks/use-kot-print-bridge.ts",
     "hooks/use-print-host-bridge.ts",
+    "hooks/use-token-print.ts",
   ].sort();
 
-  assert.deepEqual(hits, expected, `useReactToPrint( call sites must be exactly the six known files; found: ${hits.join(", ")}`);
+  assert.deepEqual(hits, expected, `useReactToPrint( call sites must be exactly the seven known files; found: ${hits.join(", ")}`);
 
   const expectedCounts: Record<string, number> = {
     "hooks/use-print-host-bridge.ts": 3,
-    "hooks/use-kot-print-bridge.ts": 2,
+    "hooks/use-kot-print-bridge.ts": 3,
+    "hooks/use-token-print.ts": 1,
     "components/orders/OrderDetailSheet.tsx": 2,
     "app/(dashboard)/tables/qr/page.tsx": 1,
     "components/orders/MoveTableDialog.tsx": 1,
@@ -655,13 +657,13 @@ test("INVENTORY: files containing the needle useReactToPrint( under app/componen
 // s63 fix round: use-print-host-beat.ts 80 -> 90 (measured 86) -- the shared mutation scope (W-H) and the
 // onHost hook that lets a host answer trigger the offline follow-up (W-O) are 7 unavoidable lines.
 // Phase 2 Session 2E: use-print-host-bridge.ts 250 -> 255 (measured 252): a slip's own Windows printer and paper.
-test("PIN (P): line budgets — PrintHostProvider.tsx <= 200, use-print-host-bridge.ts <= 255, use-print-host-drain.ts <= 150, use-print-host-beat.ts <= 90, PrintHostPrintSources.tsx <= 100, PrintHostEodSource.tsx <= 90, PosPulseProvider.tsx <= 300, use-self-order-auto-print.ts <= 300", () => {
+test("PIN (P): line budgets — PrintHostProvider.tsx <= 200, use-print-host-bridge.ts <= 255, use-print-host-drain.ts <= 150, use-print-host-beat.ts <= 90, PrintHostPrintSources.tsx <= 110, PrintHostEodSource.tsx <= 90, PosPulseProvider.tsx <= 300, use-self-order-auto-print.ts <= 300", () => {
   const budgets: [string, number][] = [
     [PRINT_HOST_PROVIDER, 200],
     [USE_PRINT_HOST_BRIDGE, 255],
     [USE_PRINT_HOST_DRAIN, 150],
     [USE_PRINT_HOST_BEAT, 90],
-    [PRINT_HOST_PRINT_SOURCES, 100],
+    [PRINT_HOST_PRINT_SOURCES, 110],
     [PRINT_HOST_EOD_SOURCE, 90],
     [POS_PULSE_PROVIDER, 300],
     [USE_SELF_ORDER_AUTO_PRINT, 300],

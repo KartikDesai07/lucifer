@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { billPrintJob, cancelNoticePrintJob, eodPrintJob, kotPrintJob, movedPrintJob, voidPrintJob } from "@/lib/print-routing";
+import { billPrintJob, cancelNoticePrintJob, eodPrintJob, kotPrintJob, movedPrintJob, tokenPrintJob, voidPrintJob } from "@/lib/print-routing";
 import { printJobKeyOf } from "@/lib/print-queue";
 import { routePrintRequest, routedJobKey, type PrintRouting } from "@/lib/print-printer-routing";
 import { printJobPayloadSchema, type PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
@@ -269,4 +269,72 @@ test("job keys: the slip's key, then the printer and the part; no key stays no k
   assert.equal(routedJobKey(undefined, jobs[0]), undefined, "End of day and the like stay keyless");
   const keys = routePrintRequest(request, routing([COUNTER_P, KITCHEN_P, BAR_P])).map((j) => routedJobKey(base, j));
   assert.equal(new Set(keys).size, keys.length, "every job of one slip has its own key");
+});
+
+// Print customization S7 (01-PLAN §8.2), the merge seam: the customer's token slip prints where the bill does.
+// No printer has a token box, so a token is never a station or kitchen slip.
+const tokenOrder = () => order({ status: "Completed", tokenNumber: 7 });
+const tokenRequest = () => tokenPrintJob(tokenOrder(), { reprint: false });
+
+test("token: the asking device's bill printer that takes bills wins; one copy even when that printer prints two bills", () => {
+  const second = printer("counter-2", { bill: true }, { order: 4, copies: { kot: 3, bill: 2 } });
+  const request = tokenRequest();
+  assert.equal(request.payload.kind, "token", "landmark: it is a token slip");
+  const chosen = routePrintRequest(request, routing([COUNTER_P, second], { billPrinterId: "counter-2" }));
+  assert.deepEqual(chosen.map((j) => [j.printerId, j.writerDeviceId, j.copies, j.part, j.error]), [["counter-2", "counter-2-device", 1, "-", undefined]]);
+  assert.equal(chosen[0].request, request, "the very same request: today's token slip, unchanged");
+  assert.equal(second.copies.bill, 2, "landmark: the chosen printer's bill copies really are 2");
+  // vision guard: the same choice for a BILL does take the 2 copies, so the 1 above is the token rule, not a default
+  const bill = routePrintRequest(billPrintJob(tokenOrder(), { reprint: false }), routing([COUNTER_P, second], { billPrinterId: "counter-2" }));
+  assert.deepEqual(bill.map((j) => [j.printerId, j.copies]), [["counter-2", 2]]);
+  // no choice: the default bill printer, one copy
+  assert.deepEqual(routePrintRequest(request, routing([COUNTER_P, second])).map((j) => [j.printerId, j.copies]), [["counter", 1]]);
+  assert.equal(printJobPayloadSchema.safeParse(chosen[0].request.payload).success, true, "the payload parses");
+});
+
+test("token: a chosen printer that does not take bills (a station, unticked, disabled, idle) falls back to the default bill printer", () => {
+  const request = tokenRequest();
+  const second = printer("counter-2", { bill: true }, { order: 4 });
+  const idsFor = (printers: PrinterConfig[], billPrinterId: string) => routePrintRequest(request, routing(printers, { billPrinterId })).map((j) => j.printerId);
+  assert.deepEqual(idsFor([COUNTER_P, KITCHEN_P], "kitchen"), ["counter"], "a kitchen printer was chosen: the default bill printer");
+  const unticked = { ...second, slips: { ...second.slips, bill: false, notices: true } };
+  assert.deepEqual(idsFor([COUNTER_P, unticked], "counter-2"), ["counter"], "Bill unticked there");
+  assert.deepEqual(idsFor([COUNTER_P, { ...second, enabled: false }], "counter-2"), ["counter"], "disabled");
+  assert.deepEqual(idsFor([COUNTER_P, printer("idle", {}, { order: 7 })], "idle"), ["counter"], "a printer that takes no slip");
+  assert.deepEqual(idsFor([COUNTER_P, second], "counter-2"), ["counter-2"], "landmark: a printer that does take bills IS honoured");
+});
+
+test("token: with no bill printer at all the slip is made failed, never dropped, saying 'No printer is set up for bills.'", () => {
+  const request = tokenRequest();
+  for (const printers of [[KITCHEN_P, BAR_P], [], [printer("office", { eod: true })], [printer("all", { kotAll: true, notices: true })]]) {
+    const jobs = routePrintRequest(request, routing(printers));
+    assert.equal(jobs.length, 1, "exactly one job");
+    assert.deepEqual([jobs[0].printerId, jobs[0].writerDeviceId, jobs[0].part, jobs[0].error, jobs[0].copies], [null, null, "-", "No printer is set up for bills.", 1]);
+    assert.equal(jobs[0].request, request, "the failed job holds the slip, for Retry after setup");
+  }
+  // the failed job's message is the bill's, word for word
+  const bill = routePrintRequest(billPrintJob(tokenOrder(), { reprint: false }), routing([KITCHEN_P]));
+  assert.equal(bill[0].error, "No printer is set up for bills.");
+});
+
+test("token: never routed to a station or kitchen printer, whatever its stations, full-copy box or notices say", () => {
+  const request = tokenRequest();
+  const everythingButBill = [KITCHEN_P, BAR_P, printer("kot-all", { kotAll: true, notices: true, eod: true }, { order: 3 })];
+  const nowhere = routePrintRequest(request, routing(everythingButBill));
+  assert.deepEqual(nowhere.map((j) => j.printerId), [null], "none of the station / full-copy printers takes it");
+  const withBill = routePrintRequest(request, routing([...everythingButBill, COUNTER_P]));
+  assert.deepEqual(withBill.map((j) => j.printerId), ["counter"], "only the bill printer, once");
+  assert.ok(!withBill.some((j) => ["kitchen", "bar", "kot-all"].includes(j.printerId ?? "")));
+  // the bill-printer choice cannot send it to a printer that takes no bills, even the one that asked
+  assert.deepEqual(routePrintRequest(request, routing([KITCHEN_P, COUNTER_P], { billPrinterId: "kitchen" })).map((j) => j.printerId), ["counter"]);
+});
+
+test("token: its routed job key is the slip's key, then the printer and the (empty) part", () => {
+  const request = tokenRequest();
+  const base = printJobKeyOf(request.payload);
+  assert.equal(typeof base, "string", "landmark: a fresh token slip carries a key");
+  const jobs = routePrintRequest(request, routing([COUNTER_P]));
+  assert.equal(routedJobKey(base, jobs[0]), `${base}:counter:-`);
+  const reprint = tokenPrintJob(tokenOrder(), { reprint: true });
+  assert.equal(printJobKeyOf(reprint.payload), undefined, "a staff reprint stays keyless (a fresh job)");
 });

@@ -814,6 +814,7 @@ const BASE_SETTINGS = {
   logo: "",
   productLogo: "",
   fssai: "",
+  upiId: "",
   selfOrderMode: "approve" as const,
   allowTableChange: true,
   showPastOrdersToDiner: true,

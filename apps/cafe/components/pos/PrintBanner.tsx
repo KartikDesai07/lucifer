@@ -3,7 +3,7 @@
 // labels live on the print job, never in the payload, so the snapshot a slip prints from is unchanged.
 // Thermal printers are monochrome: white on black survives rasterizing, the desktop app prints
 // backgrounds, and print-color-adjust keeps a browser's own print dialog from dropping the black.
-const BANNER_STYLE = { WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" } as const;
+export const BANNER_STYLE = { WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" } as const;
 
 export function PrintBanner({ text }: { text?: string }) {
   if (!text) return null;
