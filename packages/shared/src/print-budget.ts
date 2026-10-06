@@ -59,6 +59,18 @@ export function printTokenRequestsPerDay(): number {
   return Math.round(PRINT_BUDGET_BUSY_DAY.orders * PRINT_REQUESTS_PER_TOKEN_SLIP * (1 + PRINT_BUDGET_BUSY_DAY.retryShare));
 }
 
+/** The owner's ruling (2026-10-06, the Phase 3 planning session, option A: accept and measure). A cafe in printers mode
+ *  with a token per order may go over the 6,000 / 18,000 ceilings by its tokens, up to these: the two days that do
+ *  (the 2C counter day and the heavy setup, with every printer-list read) are pinned exactly in print-budget.test.ts.
+ *  A cafe without tokens is still held to the 6,000 / 18,000 ceilings. The pins count every slip at its own lease and
+ *  ack (Session 2G measured 1.63 requests a job in printers mode), so the measured day is the gate: Phase 3's exit
+ *  measures a token cafe in both modes against spec §17.3 item 5 (at most 20 % of the invocations and 15 % of the
+ *  Active CPU on the busy day). */
+export const PRINT_BUDGET_TOKEN_NORMAL_MAX_PER_DAY = 6_700;
+export const PRINT_BUDGET_TOKEN_WORST_MAX_PER_DAY = 18_500;
+/** Vercel Hobby's monthly function invocations (spec §17.1), as a day's share over 30 days: 33,333. */
+export const VERCEL_HOBBY_INVOCATIONS_PER_DAY = Math.floor(1_000_000 / 30);
+
 /** The busy day (spec §17.2's 300 orders) of a cafe whose one device takes and prints every order, at its
  *  worst: every bill rides with its KOT (Pay Now), so each bill costs a lease and an ack; every other KOT
  *  round is made leased. A retried slip costs a lease and an ack. The ack's `more` leaves no empty lease. */
