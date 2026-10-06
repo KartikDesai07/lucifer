@@ -105,8 +105,6 @@ export interface HostTestSlip {
   banner?: string;
 }
 
-/** Phase 2 Session 2E (spec §9.2): a printer job on the Windows app names its Windows printer and is drawn for its
- *  paper; absent everywhere else (the slip prints as before). */
 /** Phase 2 (spec §9.2): where a printer job prints, drawn for that printer's paper: a Windows printer by its name
  *  (Session 2E), or one of the POS app's printers by the app's id (Session 2F1). */
 export interface SlipPrintTarget {

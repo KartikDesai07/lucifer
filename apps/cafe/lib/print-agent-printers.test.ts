@@ -260,12 +260,36 @@ test("2F2 gate (M-4): this device's own printer is in the setup when the setup p
 test("2F2 gate (m-3): a network printer the page added goes again once no printer of the setup this device writes names it; never one staff added, never the default", () => {
   const kitchen = printer("kitchen", { kind: "lan", host: "10.0.2.2", port: 9100 }, { primaryDeviceId: "dev-a" });
   const added = ["tcp:10.0.2.2:9100", "tcp:10.0.2.2:9101"];
-  assert.deepEqual(lanPrintersToRemove([kitchen], "dev-a", POOL, "bt-classic:00:11:22:33:44:55", added), { remove: ["tcp:10.0.2.2:9101"], record: ["tcp:10.0.2.2:9100"] }, "9101 no longer named: removed and forgotten");
+  // The final Phase 2 gate (m-4, deliberate change): asked to go, and kept in the record until the app no longer lists it.
+  assert.deepEqual(lanPrintersToRemove([kitchen], "dev-a", POOL, "bt-classic:00:11:22:33:44:55", added), { remove: ["tcp:10.0.2.2:9101"], record: added }, "9101 no longer named: removed, still recorded while the app lists it");
   assert.deepEqual(lanPrintersToRemove([kitchen], "dev-a", POOL, "tcp:10.0.2.2:9101", added), { remove: [], record: added }, "the app's default is never removed");
   assert.deepEqual(lanPrintersToRemove([kitchen], "dev-a", POOL, null, ["tcp:10.0.2.2:9100"]), { remove: [], record: ["tcp:10.0.2.2:9100"] }, "9101 was added by staff (not recorded): kept");
   assert.deepEqual(lanPrintersToRemove([{ ...kitchen, primaryDeviceId: "dev-b" }], "dev-a", POOL, null, ["TCP:10.0.2.2:9100"]).remove, ["tcp:10.0.2.2:9100"], "moved to another device: removed (ids compared ignoring case)");
   assert.deepEqual(lanPrintersToRemove([], "dev-a", POOL, null, ["tcp:10.0.2.3:9100"]), { remove: [], record: [] }, "one the app no longer lists and the setup no longer names is forgotten");
   assert.deepEqual(lanPrintersToRemove([kitchen], "dev-a", null, null, added), { remove: [], record: added }, "never on an app that speaks only v1");
+});
+
+// The final Phase 2 gate (Session 2G's review, m-4): a removal the app never confirmed (it failed or timed out) is asked
+// again on the next change, so the record forgets a page-added printer only once the app no longer lists it.
+test("final Phase 2 gate (m-4): a network printer the page asked the app to remove is forgotten only once the app no longer lists it", () => {
+  const added = ["tcp:10.0.2.2:9101"];
+  assert.deepEqual(lanPrintersToRemove([], "dev-a", POOL, null, added), { remove: ["tcp:10.0.2.2:9101"], record: added }, "still listed: asked to go and kept in the record");
+  const gone = { ...POOL, printers: POOL.printers.filter((entry) => entry.id !== "tcp:10.0.2.2:9101") };
+  assert.deepEqual(lanPrintersToRemove([], "dev-a", gone, null, added), { remove: [], record: [] }, "no longer listed: forgotten");
+  assert.deepEqual(lanPrintersToRemove([], "dev-a", POOL, null, ["TCP:10.0.2.2:9101"]).record, ["TCP:10.0.2.2:9101"], "listed ids compared ignoring case");
+});
+
+// The final Phase 2 gate (Session 2G's review, m-1 and m-2): the setup is known once the printers read has answered at
+// least once (data in hand; a failed refetch keeps it), never on a failure with nothing read: until then Other printers
+// offers no Remove either, and Change printer keeps this device's printer in the app.
+test("PIN (the final Phase 2 gate, m-1, m-2): Remove and Change printer wait for a printers read that has answered, in both sections", () => {
+  const hook = src("apps/cafe/hooks/use-agent-printers.ts");
+  assert.ok(hook.includes("answered: query.data !== undefined"), "the read says whether it ever answered");
+  assert.ok(hook.includes('known: deviceId === "" || answered'), "known only once answered (a failed first read is not known: m-2)");
+  const others = src("apps/cafe/components/print/OtherDevicePrinters.tsx");
+  assert.ok(others.includes('const { printers, answered } = usePrintersRead(deviceId !== "");'), "Other printers reads the same entry, with its state");
+  assert.ok(others.includes('const known = deviceId === "" || answered;'), "known as the device section knows it");
+  assert.match(others, /\{inSetup\.has\(entry\.id\) \? \(\s*<p className="text-xs text-brand-muted">\{IN_SETUP\}<\/p>\s*\) : known \? \(\s*<Button className=\{PRINTER_ACTION_CLASS\} variant="outline" disabled=\{disabled\} onClick=\{\(\) => setRemoving\(entry\.id\)\}>/, "no Remove under Other printers before the setup is known (m-1)");
 });
 
 test("PIN (the 2F2 review gate, M-4, m-3): a setup printer never leaves the app from the page; an ask is forgotten once the app lists the printer; the page removes only what it added", () => {
@@ -278,7 +302,8 @@ test("PIN (the 2F2 review gate, M-4, m-3): a setup printer never leaves the app 
   assert.match(section, /\{inSetup \? \(\s*<p className="text-xs text-brand-muted">\{PRINTER_IN_SETUP_MESSAGE\}<\/p>\s*\) : known \? \(\s*<Button className=\{PRINTER_ACTION_CLASS\} variant="outline" onClick=\{\(\) => setConfirmRemove\(true\)\} disabled=\{locked\}>/, "no Remove on a setup printer (the 2E gate's I-3 sentence), and none before the setup is known");
   assert.ok(section.includes("if (!listed(target)) await nativePool().add(target);\n    return devicePrinter().selectNative(target, paperDefault);"), "Change printer keeps a setup printer in the app; a listed printer is only chosen");
   assert.ok(section.includes("const keepInApp = pool.active && (inSetup || !known) ?"), "kept also while the setup is not known yet");
-  assert.ok(src("apps/cafe/hooks/use-agent-printers.ts").includes("known: deviceId === \"\" || loaded || failed"), "known once the printers read answered or failed");
+  // The final Phase 2 gate (m-2, deliberate change): a failed read with nothing read is no longer "known".
+  assert.ok(src("apps/cafe/hooks/use-agent-printers.ts").includes("known: deviceId === \"\" || answered"), "known once the printers read has answered");
   assert.ok(src("apps/cafe/hooks/use-agent-printers.ts").includes('if (!enabled || pool === null || deviceId === "") return;'), "no add or removal without a device id");
   assert.ok(section.includes("<NativePrinterPicker paper={paperDefault} busy={locked} onAttempt={settle} add={keepInApp} />"), "the picker applies it");
   assert.ok(src("apps/cafe/components/print/OtherDevicePrinters.tsx").includes("const IN_SETUP = PRINTER_IN_SETUP_MESSAGE;"), "one sentence for both sections");

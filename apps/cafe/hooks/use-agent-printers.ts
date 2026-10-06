@@ -26,8 +26,9 @@ const NO_PRINTERS: PrinterConfig[] = [];
 
 /** Session 2D: the printers read for a screen that only shows them (the dot, the bill printer, the setup page): the
  *  same cache entry as the agent's, without a print-setup subscription of its own, so an admin save costs one read
- *  per device, never one per screen (the 2D gate's review, M-5). `loaded` is false until the first answer. */
-export function usePrintersRead(enabled: boolean): { printers: PrinterConfig[]; loaded: boolean; failed: boolean } {
+ *  per device, never one per screen (the 2D gate's review, M-5). `loaded` is false until the first answer (and again
+ *  while a refetch has failed); `answered`: some answer is in hand (a failed refetch keeps it; the final Phase 2 gate). */
+export function usePrintersRead(enabled: boolean): { printers: PrinterConfig[]; loaded: boolean; failed: boolean; answered: boolean } {
   const query = useQuery({
     queryKey: PRINTERS_KEYS.all,
     queryFn: () => apiGet<PrinterConfig[]>("/api/printers"),
@@ -35,7 +36,7 @@ export function usePrintersRead(enabled: boolean): { printers: PrinterConfig[]; 
     staleTime: PRINTERS_STALE_MS,
     refetchOnWindowFocus: true,
   });
-  return { printers: query.data ?? NO_PRINTERS, loaded: query.isSuccess, failed: query.isError };
+  return { printers: query.data ?? NO_PRINTERS, loaded: query.isSuccess, failed: query.isError, answered: query.data !== undefined };
 }
 
 /** The agent's read: the same query, plus the one print-setup subscription. Session 2E: the Windows app's own printer
@@ -70,14 +71,15 @@ export function usePoolView(): NativePoolSnapshot | null {
 }
 
 /** The 2F2 review gate (M-4): this device's own printer is one the setup prints through this device (ownPrinterInSetup):
- *  the printer panel then offers no Remove for it. `known`: the printers read has answered (or failed, or this device
- *  has no id), so the panel offers Remove only once it knows (its review, m-C). The same printers read as the agent's:
- *  no request of its own. */
+ *  the printer panel then offers no Remove for it. `known`: the printers read has answered (or this device has no id),
+ *  so the panel offers Remove only once it knows (its review, m-C); a failed read with nothing in hand is not known (the
+ *  final Phase 2 gate, m-2: Change printer then keeps this device's printer in the app). The same printers read as the
+ *  agent's: no request of its own. */
 export function useOwnPrinterInSetup(deviceId: string): { inSetup: boolean; known: boolean } {
-  const { printers, loaded, failed } = usePrintersRead(deviceId !== "");
+  const { printers, answered } = usePrintersRead(deviceId !== "");
   const local = useDevicePrinter().printer;
   const pool = usePoolView();
-  return useMemo(() => ({ inSetup: ownPrinterInSetup(printers, deviceId, local, pool, pool?.defaultId ?? null), known: deviceId === "" || loaded || failed }), [printers, loaded, failed, deviceId, local, pool]);
+  return useMemo(() => ({ inSetup: ownPrinterInSetup(printers, deviceId, local, pool, pool?.defaultId ?? null), known: deviceId === "" || answered }), [printers, answered, deviceId, local, pool]);
 }
 
 /** Session 2D (spec §10): the top-bar dot's view of printers mode. The same printers read as the agent's (one cache

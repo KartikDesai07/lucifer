@@ -11,8 +11,8 @@ type Params = { params: Promise<{ id: string }> };
 
 // Printing redesign, Phase 2 (spec §6.3, §11). Admin only.
 // PUT /api/printers/[id] — save a printer whole (the setup form's one unit).
-// DELETE /api/printers/[id] — remove a printer. (Session 2C decides what happens to slips still waiting for
-//   it; until then nothing makes a job for a printer.)
+// DELETE /api/printers/[id] — remove a printer. Its queued slips fail visibly at the next sweep
+//   (PRINTER_GONE_MESSAGE, under "Couldn't print"), never moved to another printer (Session 2C).
 export async function PUT(req: Request, { params }: Params) {
   const authed = await requireAdmin();
   if ("error" in authed) return authed.error;

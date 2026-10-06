@@ -178,15 +178,17 @@ export function lanPrintersToAdd(printers: readonly PrinterConfig[], deviceId: s
  *  (deleted, re-addressed, moved to another device, switched off): removed again, so the app stops probing them every
  *  30 s and its notification never names a printer nothing prints on. Never one staff added (it was not recorded), and
  *  never the app's default (this device's own printer prints the slips no printer of the setup takes). `record`: what
- *  stays recorded, the ids the setup still names (added, or being added) and the app's default. */
+ *  stays recorded, the ids the setup still names (added, or being added), the app's default, and one asked to go that
+ *  the app still lists (the final Phase 2 gate, m-4: a removal that failed or timed out is asked again next time). */
 export function lanPrintersToRemove(printers: readonly PrinterConfig[], deviceId: string, pool: NativePoolView | null, defaultId: string | null, added: readonly string[]): { remove: string[]; record: string[] } {
   if (pool === null) return { remove: [], record: [...added] };
   const wanted = new Set(printersWrittenBy(printers, deviceId).flatMap((printer) => (printer.connection.kind === "lan" ? [`tcp:${printer.connection.host}:${printer.connection.port}`.toLowerCase()] : [])));
   const recorded = new Set(added.map((id) => id.toLowerCase()));
+  const listed = new Set(pool.printers.map((entry) => entry.id.toLowerCase()));
   const own = defaultId?.toLowerCase() ?? null;
   return {
     remove: pool.printers.filter((entry) => entry.id.toLowerCase() !== own && recorded.has(entry.id.toLowerCase()) && !wanted.has(entry.id.toLowerCase())).map((entry) => entry.id),
-    record: added.filter((id) => wanted.has(id.toLowerCase()) || id.toLowerCase() === own),
+    record: added.filter((id) => wanted.has(id.toLowerCase()) || id.toLowerCase() === own || listed.has(id.toLowerCase())),
   };
 }
 

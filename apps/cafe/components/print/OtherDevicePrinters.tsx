@@ -33,7 +33,7 @@ const STATUS_WORDS: Record<PoolPrinter["status"], string> = { connected: "Connec
 export function OtherDevicePrinters({ paper, locked }: { paper: PaperWidth; locked: boolean }) {
   const pool = useNativePool();
   const { deviceId } = usePrintHostContext();
-  const { printers } = usePrintersRead(deviceId !== "");
+  const { printers, answered } = usePrintersRead(deviceId !== "");
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
@@ -43,6 +43,8 @@ export function OtherDevicePrinters({ paper, locked }: { paper: PaperWidth; lock
   // A printer the setup names this device for is added back by itself (a network printer), so it is not removed here
   // (the 2E gate's review, I-3): the words say where to change it.
   const inSetup = new Set(Object.values(agentPrintersOf(printers, deviceId, null, null, pool).targets).flatMap((target) => (target.nativeId === undefined ? [] : [target.nativeId])));
+  // Remove only once the setup is known, as the device section (the final Phase 2 gate, m-1: before, every printer looks unnamed).
+  const known = deviceId === "" || answered;
   const disabled = locked || busy;
 
   const settle = async (attempt: Promise<ConnectOutcome>, connected: string, failed: string) => {
@@ -96,11 +98,11 @@ export function OtherDevicePrinters({ paper, locked }: { paper: PaperWidth; lock
               </Button>
               {inSetup.has(entry.id) ? (
                 <p className="text-xs text-brand-muted">{IN_SETUP}</p>
-              ) : (
+              ) : known ? (
                 <Button className={PRINTER_ACTION_CLASS} variant="outline" disabled={disabled} onClick={() => setRemoving(entry.id)}>
                   Remove
                 </Button>
-              )}
+              ) : null}
             </div>
           )}
         </div>
