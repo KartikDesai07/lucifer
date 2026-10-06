@@ -9,13 +9,23 @@
 // Pure and client-safe: no Node, DB or zod imports.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { PRINT_JOB_QUEUED_RETENTION_MS } from "./print-job";
 import { printerWriterDeviceId, routablePrinterOf, type PrinterConfig } from "./print-printers";
 
-/** §9.3: a writer that could not reach a network printer is skipped for it this long, so another writer gets its next
- *  lease (and the skipped one tries again after it, the same 5 minutes Phase 1's refusal rules allow a dead printer). */
+/** §9.3: a writer that could not reach a network printer is skipped for it at least this long, so another writer gets
+ *  its next lease (and the skipped one tries again after it, the same 5 minutes Phase 1's refusal rules allow a dead
+ *  printer). */
 export const PRINTER_UNREACHABLE_SKIP_MS = 5 * 60 * 1000;
+/** §9.3 (Session 3A's final review, I-1): after its first 5 minutes a skip holds until the skipped device's own lease
+ *  names the printer again, and at most this long after it began. A page never leases a printer it cannot reach
+ *  (holds.open(ready())), so a skip that ran out on time alone would send the printer back to a writer that still
+ *  cannot reach it and never says so again, while another device that can sits idle. Beyond 3 hours a waiting slip
+ *  is pruned anyway (PRINT_JOB_QUEUED_RETENTION_MS). */
+export const PRINTER_UNREACHABLE_HOLD_MS = PRINT_JOB_QUEUED_RETENTION_MS;
 
-/** §9.3: one writer that could not reach a network printer, and until when (ISO, server time) it is skipped for it. */
+/** §9.3: one writer that could not reach a network printer, and when (ISO, server time) its first 5 minutes end: from
+ *  then on its own lease that names the printer ends the skip (printerSkipEndsFor), which holds at most
+ *  PRINTER_UNREACHABLE_HOLD_MS from when it began. */
 export interface PrinterUnreachable {
   deviceId: string;
   until: string;
@@ -65,14 +75,27 @@ export interface PrinterFailover {
 
 type WriterOf = Pick<PrinterConfig, "connection" | "primaryDeviceId" | "unreachable">;
 
-/** The writers a network printer skips now (§9.3): those whose 5 minutes have not run out. */
+/** Whether a skip still holds at `nowMs`: within PRINTER_UNREACHABLE_HOLD_MS of when it began (its `until` minus its
+ *  first 5 minutes), unless the skipped device's lease ended it before. */
+export function printerSkipHolds(skip: PrinterUnreachable, nowMs: number): boolean {
+  return Date.parse(skip.until) - PRINTER_UNREACHABLE_SKIP_MS + PRINTER_UNREACHABLE_HOLD_MS > nowMs;
+}
+
+/** The writers a network printer skips now (§9.3): those whose skip still holds. */
 export function printerSkippedWriters(printer: Pick<PrinterConfig, "unreachable">, nowMs: number): string[] {
-  return (printer.unreachable ?? []).filter((skip) => Date.parse(skip.until) > nowMs).map((skip) => skip.deviceId);
+  return (printer.unreachable ?? []).filter((skip) => printerSkipHolds(skip, nowMs)).map((skip) => skip.deviceId);
+}
+
+/** §9.3 (Session 3A's final review, I-1): whether this device's lease that names the printer ends its skip now: it holds
+ *  one, and the first 5 minutes are up (so a writer that cannot reach the printer pays at most a lease and an ack per 5
+ *  minutes). A page names only a printer it can print to now, so naming it means its app reaches the printer again. */
+export function printerSkipEndsFor(printer: Pick<PrinterConfig, "unreachable">, deviceId: string, nowMs: number): boolean {
+  return (printer.unreachable ?? []).some((skip) => skip.deviceId === deviceId && Date.parse(skip.until) <= nowMs && printerSkipHolds(skip, nowMs));
 }
 
 /** The device that writes this printer NOW (§9.3). A device printer: its own device, always. A network printer: its
  *  primary while that device is online and has reached it; otherwise the first online device that can write network
- *  printers and has not failed to reach this one in the last 5 minutes (by device id, so every server instance and
+ *  printers and is not skipped for this one (printerSkippedWriters) (by device id, so every server instance and
  *  every request picks the same one); with none, its primary still (its slips wait for it, visibly). Without a
  *  failover read (null), the setup's writer, exactly as in Phase 2. */
 export function printerActiveWriter(printer: WriterOf, failover: PrinterFailover | null): string | null {

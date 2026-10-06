@@ -416,7 +416,9 @@ test("PIN (2C): a lease takes the head of the device's line and of each printer 
       // Phase 3 (§9.3) deliberately changed the writer check: the device that writes it now, with one read of who is
       // online only when this device names a network printer it is not the primary of, or one a writer could not reach.
       "const printers = routablePrinters(await listPrinters());",
-      "const asked = printers.filter((printer) => named.includes(printer.id));",
+      // Session 3A's final review (I-1): a lease that names a network printer its device was skipped for ends that skip
+      // (once its first 5 minutes are up): a page never names a printer it cannot reach.
+      "const asked = await Promise.all(printers.filter((printer) => named.includes(printer.id)).map((printer) => endPrinterSkipOf(printer, input.deviceId, input.nowMs)));",
       'printer.connection.kind === "lan" && (printer.primaryDeviceId !== input.deviceId || printerSkippedWriters(printer, input.nowMs).length > 0),',
       "? await readPrinterFailover(printers, input.nowMs)",
       ": null;",

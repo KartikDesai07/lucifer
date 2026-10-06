@@ -2,9 +2,9 @@
  * Phase 3 Session 3A live leg (ba) — failover (spec §9.3) against a REAL MongoDB: a network printer whose primary is
  * offline is written by an online device that may take it over, and job creation, the lease, a staff Retry, a Test
  * print and the sweep all agree on who; a page from before Phase 3 never takes one over; a device printer never moves;
- * a writer that could not reach the printer is skipped for it for 5 minutes and the waiting slip moves to the next
- * writer at once. The outlet helpers are shared with legs bb and bc. Run by scripts/verify-print-host-live.ts after
- * leg az.
+ * a writer that could not reach the printer is skipped for it and the waiting slip moves to the next writer at once;
+ * the skip holds past its 5 minutes until that writer's own lease names the printer again (Session 3A's final review,
+ * I-1). The outlet helpers are shared with legs bb and bc. Run by scripts/verify-print-host-live.ts after leg az.
  *
  * (console output is intentional — this is an ops CLI script, not app code.)
  */
@@ -120,7 +120,7 @@ const lease = (deviceId: string, printerIds: string[], nowMs: number) => leasePr
 const skipsOf = async (printerId: string) => (await listPrinters()).find((printer) => printer.id === printerId)?.unreachable ?? [];
 
 export async function legBA(nowMs: number): Promise<void> {
-  console.log("\n(ba) failover (§9.3): a network printer whose primary is offline is written by a device that may take it over; one that cannot reach it is skipped for 5 minutes");
+  console.log("\n(ba) failover (§9.3): a network printer whose primary is offline is written by a device that may take it over; one that cannot reach it is skipped until it can");
   const o = await failoverOutlet();
   await Promise.all([online(KITCHEN, nowMs), online(COUNTER, nowMs), online(BAR, nowMs)]);
   const first = await kotOf(o, nowMs);
@@ -174,8 +174,29 @@ export async function legBA(nowMs: number): Promise<void> {
   check("(ba) a device that does not write it now changes nothing", late === KITCHEN && (await skipsOf(o.kitchen)).length === 2);
   check("(ba) a device printer is never skipped (only network printers fail over)", (await recordPrinterUnreachable({ printerId: o.bar, deviceId: BAR, nowMs: nowMs + 13_000 })) === null && (await skipsOf(o.bar)).length === 0);
 
+  // Session 3A's final review (I-1): a page never leases a printer it cannot reach, so a skip cannot run out on time
+  // alone (the slips would go back to a tablet that never again says it cannot reach the printer). It holds past its
+  // 5 minutes until the skipped device's own lease names the printer again (its app reaches it), at most 3 hours.
   const later = nowMs + 12_000 + PRINTER_UNREACHABLE_SKIP_MS + 1_000;
   await Promise.all([online(KITCHEN, later), online(COUNTER, later)]);
-  check("(ba) five minutes on, the skips have run out: a new kitchen slip is the tablet's again", (await kotOf(o, later)).kitchen?.targetDeviceId === KITCHEN);
+  const back = await lease(COUNTER, [o.kitchen], later);
+  check(
+    "(ba) five minutes on, the counter's lease names the kitchen printer again (it reaches it): its skip ends and it takes the waiting slip; the tablet, still unable to reach it, stays skipped",
+    back.jobs[0]?.id === u.kitchen?.id && (await skipsOf(o.kitchen)).map((skip) => skip.deviceId).join() === KITCHEN,
+  );
+  check("(ba) ... and a new kitchen slip is the counter's, not the blind tablet's", (await kotOf(o, later)).kitchen?.targetDeviceId === COUNTER);
+  const backJob = back.jobs[0];
+  if (backJob !== undefined) await ackPrintJob({ id: backJob.id, deviceId: COUNTER, epoch: backJob.epoch, outcome: "failed", sent: "no", reason: "unreachable", nowMs: later + 1_000 });
+  check(
+    "(ba) the counter cannot reach it again: its refusal keeps the tablet's skip (held past its 5 minutes), and the slip waits for the primary",
+    (await skipsOf(o.kitchen)).map((skip) => skip.deviceId).sort().join() === [COUNTER, KITCHEN].sort().join() && (await rowOf(u.kitchen?.id ?? ""))?.targetDeviceId === KITCHEN,
+  );
+  check("(ba) ... while the counter's new 5 minutes run, its lease naming the printer does not end its skip", (await lease(COUNTER, [o.kitchen], later + 5_000)).jobs.length === 0);
+  // The slip's third refusal waits its 10 s backoff (PRINT_BACKOFF_MS) before any lease takes it.
+  const home = await lease(KITCHEN, [o.kitchen], later + 12_000);
+  check(
+    "(ba) the tablet's lease names its printer again (its app reaches it): its skip ends and it takes its line back; the counter's fresh skip stands",
+    home.jobs[0]?.id === u.kitchen?.id && (await skipsOf(o.kitchen)).map((skip) => skip.deviceId).join() === COUNTER,
+  );
   await Promise.all([Printer.deleteMany({}), PrintDevice.deleteMany({})]);
 }

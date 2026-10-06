@@ -24,7 +24,7 @@ import { printJobPayloadSchema, type PrintJobPayload } from "@pos/shared/schemas
 import { Order } from "@/models/Order";
 import { PrintJob, type IPrintJob } from "@/models/PrintJob";
 import { printDeviceDrawsTokens } from "./print-device";
-import { readPrinterFailover, recordPrinterUnreachable } from "./print-failover";
+import { endPrinterSkipOf, readPrinterFailover, recordPrinterUnreachable } from "./print-failover";
 import { listPrinters } from "./print-printers";
 import { dismissPrintJob, drainAgeCutoff } from "./print-queue";
 import { printJobEligibility, printJobNeedsOrderRead } from "./print-queue-claim";
@@ -238,7 +238,9 @@ export async function leasePrintJobs(input: LeaseInput & { printerIds?: readonly
   if (input.printerIds !== undefined && input.printerIds.length > 0) {
     const named = input.printerIds;
     const printers = routablePrinters(await listPrinters());
-    const asked = printers.filter((printer) => named.includes(printer.id));
+    // Session 3A's final review (I-1): naming a network printer this device was skipped for ends that skip (once its
+    // first 5 minutes are up): a page names only a printer it can print to now. One write, only then.
+    const asked = await Promise.all(printers.filter((printer) => named.includes(printer.id)).map((printer) => endPrinterSkipOf(printer, input.deviceId, input.nowMs)));
     const failover = asked.some(
       (printer) => printer.connection.kind === "lan" && (printer.primaryDeviceId !== input.deviceId || printerSkippedWriters(printer, input.nowMs).length > 0),
     )
@@ -286,8 +288,9 @@ export async function ackPrintJob(
       // the hint (the agent then leases, as in Phase 1): the ack itself has landed. Session 2C: a printer job
       // asks its own printer's line (the 2B gate's ruling R3).
       if (plan.patch.status === "queued") {
-        // Phase 3 (§9.3): its writer could not reach this network printer: skipped for it for 5 minutes, and the slip
-        // moves to the device that takes the printer over. Best-effort: the refusal itself has landed.
+        // Phase 3 (§9.3): its writer could not reach this network printer: skipped for it (at least 5 minutes, then until
+        // its lease names the printer again), and the slip moves to the device that takes the printer over.
+        // Best-effort: the refusal itself has landed.
         if (input.reason === PRINT_ACK_UNREACHABLE && input.sent === "no" && row.printerId !== undefined) {
           await recordPrinterUnreachable({ printerId: row.printerId, deviceId: input.deviceId, nowMs: input.nowMs }).catch(() => null);
         }

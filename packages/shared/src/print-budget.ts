@@ -71,9 +71,10 @@ export function printTokenRequestsPerDay(): number {
 export const PRINT_BUDGET_TOKEN_NORMAL_MAX_PER_DAY = 6_700;
 export const PRINT_BUDGET_TOKEN_WORST_MAX_PER_DAY = 18_500;
 /** Phase 3 (spec §9.3, §17): failover adds no request; who is online rides the wake's heartbeat. A writer that could not
- *  reach a network printer is passed over for it for PRINTER_UNREACHABLE_SKIP_MS while another device can take it, so
- *  such a printer costs that writer at most one lease and one ack per 5 minutes (a device that knows its printer is
- *  down never leases for it at all: Phase 1's rule). */
+ *  reach a network printer is passed over for it for at least PRINTER_UNREACHABLE_SKIP_MS while another device can take
+ *  it (then until its own lease names the printer again: Session 3A's final review, I-1), so such a printer costs that
+ *  writer at most one lease and one ack per 5 minutes (a device that knows its printer is down never leases for it at
+ *  all: Phase 1's rule). */
 export function printUnreachableRequestsPerWriterPerDay(): number {
   return Math.round((PRINT_BUDGET_BUSY_DAY.openHours * 60 * 60 * 1000) / PRINTER_UNREACHABLE_SKIP_MS) * PRINT_REQUESTS_PER_SLIP;
 }
