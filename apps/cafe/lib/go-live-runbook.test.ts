@@ -75,6 +75,9 @@ import {
   PRINT_WAKE_ACTIVE_WINDOW_MS,
   PRINT_WAKE_DAILY_CAP,
 } from "@pos/shared/print-job";
+import { PRINT_WAKE_PRINTERS_DAILY_CAP } from "@pos/shared/print-agent-wire";
+import { PRINT_SETUP_REFRESH_MIN_MS, PRINT_SETUP_STALE_MS } from "@pos/shared/print-budget";
+import { PRINTERS_MAX, PRINTER_COPIES_MAX, PRINTER_COPIES_MIN, STATIONS_MAX } from "@pos/shared/print-printers";
 import { SESSION_MAX_AGE_SECONDS, SESSION_REVALIDATE_MS } from "@pos/shared/constants";
 
 // Doc<->source parity for docs/GO-LIVE-CHECKLIST.md §A "Pinned facts" — an
@@ -1367,4 +1370,36 @@ test("PIN §6: the doc's role summary lists Categories, Tables Setup, Tables QR 
     ["/categories", "/printers", "/reports", "/settings", "/staff", "/tables/qr", "/tables/setup"],
     "ADMIN_ROUTES must still be exactly these seven routes for the doc's role summary to stay true",
   );
+});
+
+// ── Printing Phase 2 (the final Phase 2 gate, 2026-10-06) ───────────────────
+// The release reaches a live cafe only through this runbook: its go-live order (the Worker's new print-setup kind
+// first, then the web, then every open POS screen reloaded, then the apps) and its limits are pinned like §A's.
+
+test("PIN §1 (printing Phase 2): the existing-cafe release step keeps the go-live order and names this release's desktop installer", () => {
+  assert.match(norm(doc), /printing Phase 1 adds `print-status`, Phase 2 adds `print-setup`/, "the Worker box names Phase 2's event kind");
+  const worker = readFileSync(path.join(REPO_ROOT, "workers/realtime/src/index.ts"), "utf8");
+  assert.ok(worker.includes('"print-setup"'), "the Worker still knows print-setup, as the runbook says");
+  const step = norm(sectionSlice("### Existing cafes: the printing Phase 2 release"));
+  let at = -1;
+  for (const landmark of ["the Worker first", "then the web", "reload every open POS screen", "then the apps", "Set up printers"]) {
+    const next = step.indexOf(landmark);
+    assert.ok(next > at, `the Phase 2 release step names "${landmark}" after the step before it`);
+    at = next;
+  }
+  const desktop = JSON.parse(readFileSync(path.join(REPO_ROOT, "apps/desktop/package.json"), "utf8")) as { version: string };
+  assert.ok(step.includes(`POS-Software-Setup-${desktop.version}.exe`), "the step names this release's desktop installer");
+  assert.ok(step.includes("apps/mobile/TEST-CHECKLIST.md"), "the step sends the deployer to the real-printer checks");
+});
+
+test("PIN §A (printing Phase 2): the printers-mode wake cap, the printer list's reads, and the setup's limits match the code", () => {
+  const section = SECTION_A_HEADING;
+  assert.ok(factRowIn(section, "Printers-mode wake poll daily cap (all printing devices together)").includes(PRINT_WAKE_PRINTERS_DAILY_CAP.toLocaleString("en-US")), "PRINT_WAKE_PRINTERS_DAILY_CAP drifted from the doc");
+  assert.ok(factRowIn(section, "Printer list read again on focus").includes(`${PRINT_SETUP_STALE_MS / 60_000} minutes`), "PRINT_SETUP_STALE_MS drifted from the doc");
+  assert.ok(factRowIn(section, "Printer list read again when a slip shows it stale").includes(PRINT_SETUP_REFRESH_MIN_MS === 60_000 ? "once a minute" : "?"), "PRINT_SETUP_REFRESH_MIN_MS must stay one minute for the doc's words");
+  assert.equal(factRowIn(section, "Printers per cafe"), String(PRINTERS_MAX), "PRINTERS_MAX drifted from the doc");
+  assert.equal(factRowIn(section, "Kitchen stations per cafe"), String(STATIONS_MAX), "STATIONS_MAX drifted from the doc");
+  assert.equal(factRowIn(section, "Copies per printer (KOT, bill)"), `${PRINTER_COPIES_MIN}–${PRINTER_COPIES_MAX}`, "PRINTER_COPIES_MIN/MAX drifted from the doc");
+  const step = norm(sectionSlice("### Self-order alerts and auto-print (CR2.3 + print host, per device)"));
+  assert.match(step, new RegExp(`sharing ${PRINT_WAKE_PRINTERS_DAILY_CAP.toLocaleString("en-US")} quick checks a day`), "the §7 device step states the printers-mode cap in plain English");
 });

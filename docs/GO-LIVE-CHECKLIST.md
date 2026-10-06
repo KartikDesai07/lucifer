@@ -196,10 +196,12 @@ Nothing in §1 can start until all of these exist.
       its poll. Left empty (the default), the cafe polls exactly as before —
       nothing to verify here.
 - [ ] **Realtime, existing cafes — redeploy the Worker with each release that adds
-      an event kind** (printing Phase 1 adds `print-status`). An older Worker
+      an event kind** (printing Phase 1 adds `print-status`, Phase 2 adds `print-setup`). An older Worker
       answers 400 to a kind it does not know; the cafe swallows that, so nothing
       breaks, but the new frames never arrive and the print readback waits for
-      its 20 s pulse instead. Re-run the go-live run for the cafe: its Realtime
+      its 20 s pulse instead (for `print-setup`: a printer change reaches each
+      device only when it reads the printer list again — see "Existing cafes:
+      the printing Phase 2 release" below). Re-run the go-live run for the cafe: its Realtime
       step sees the changed Worker source (`sourceHash`) and redeploys it, BEFORE
       the app's deploy. For such a release use the go-live run, not
       `npm run deploy -- --profile <slug>` alone: that deploys only the app.
@@ -207,6 +209,57 @@ Nothing in §1 can start until all of these exist.
       carrying `db: "down"` means the app is running but cannot reach the
       cluster — check the Atlas allowlist and `MONGODB_URI` before continuing.
 - [ ] The login page loads over the real domain.
+
+### Existing cafes: the printing Phase 2 release
+
+Printing Phase 2 adds kitchen stations and printers: each KOT is split by station
+and printed at that station's printer, a printer can also take a full copy of every
+KOT, the bills, the notices and End of day, a slip the ordering device prints itself
+goes out with one request, and one Windows PC or one phone or tablet can drive
+several printers. A cafe that never sets printers up keeps printing exactly as
+before ("simple mode"). No data migration: the new `stations` and `printers`
+collections and the print jobs' new index appear by themselves on first use, and
+the old print jobs and devices keep working.
+
+The order matters: the Worker first, then the web, then reload every open POS
+screen, then the apps; Set up printers last, and only if the cafe wants stations.
+
+- [ ] **Worker.** Re-run the go-live run for the cafe (not `npm run deploy`
+      alone): its Realtime step redeploys the Worker, which now knows
+      `print-setup`, before it deploys the app. A cafe with Realtime left empty
+      has no Worker: nothing to do. Skipped or late, nothing is lost, but a
+      printer change reaches a device only when it reads the printer list again
+      (a page load, a focus after 30 minutes, or within about a minute once a
+      slip is aimed at a printer it does not know yet); slips aimed at it wait
+      in the waiting-slips panel meanwhile.
+- [ ] **Web.** The same go-live run deploys it after the Worker. `GET
+      /api/health` answers 200, and `/printers` opens for an admin.
+- [ ] **Reload every POS screen that was open before the deploy:** Refresh in
+      the POS app, reload each browser tab, quit and reopen the Windows app. A
+      page from before the deploy keeps the old print code: in simple mode it
+      prints as before, but once printers are set up it never prints a
+      printer's slips (they wait, visibly, for a reloaded page).
+- [ ] **Apps** (each works with the old web too, and the old apps keep working
+      with the new web):
+      - Windows counter PC: `POS-Software-Setup-1.11.0.exe`, installed over the
+        old one. Needed for several Windows printers on one PC: an older app
+        prints only the printer chosen for this PC, and a second Windows
+        printer's slips wait visibly.
+      - Android phones and tablets: the Phase 2 POS app, installed over the old
+        one (no uninstall: it keeps its printer). Built from this release:
+        64-bit (arm64-v8a) SHA-256
+        `b10feedb175d6839317892caa070cfca7d21f88318a97ede97abd6a22c81333a`
+        (7,303,622 bytes); old 32-bit phones (armeabi-v7a)
+        `86b7ff13ff68b8d4edc611d4112b0a9309f29c50365f0698ce038d8414d26cd8`
+        (6,711,460 bytes). Check the hash before you send it. Needed for
+        several printers on one phone or tablet: the old app prints one printer
+        per device.
+- [ ] **Set up printers** (optional, when the cafe wants stations): §7
+      "Stations and printers".
+- [ ] **Before telling the client it is live:** run
+      `apps/mobile/TEST-CHECKLIST.md` → "Stations and printers checks" on the
+      cafe's real printers (and "Several printers on one Windows PC" on a
+      counter PC with the 1.11.0 app), with the Phase 1 checks above them.
 
 ---
 
@@ -616,7 +669,7 @@ another program is in front.
       example `https://your-pos.example.com`) and choose **Use this address**.
 - [ ] Log in once as a real staff account. The sign-in lasts 30 days and renews
       with use, so the PC stays signed in.
-- [ ] **Admin → Printer setup** → **Use this PC** (this PC becomes the print
+- [ ] **Admin → Printer setup** → **Print all slips on this device** (this PC becomes the print
       host), then pick the thermal printer under **Printer for this PC**, then
       **Test print**. The card must confirm silent printing is on. If nothing
       comes out, no printer was picked, or a file-saving device (Microsoft
@@ -739,7 +792,9 @@ tap. How it prints depends on whether a print host is set
       14,400 quick checks a day), so a bill sent from a phone prints within a
       few seconds while the counter is busy; if the counter is a browser tab
       and that tab is hidden it falls back to the 20-second refresh. The
-      desktop app keeps the 3-second cadence in the tray.
+      desktop app keeps the 3-second cadence in the tray. Once printers are
+      set up (printing Phase 2), the devices that print the printers check
+      instead, sharing 14,000 quick checks a day between them.
 
 ### QR self-ordering — the diner device leg
 
@@ -796,6 +851,42 @@ one list, run once.
       on `max-age` with no `s-maxage`, and is not proven either way.
 - [ ] Record: date, phone model, Android/Chrome version, WiFi network, who
       witnessed it.
+
+### Stations and printers (printing Phase 2, optional)
+
+Only for a cafe that wants each kitchen station's KOT at its own printer, or
+more than one printer. Until **Set up printers** is used, the cafe prints in
+simple mode, exactly as above. Run `apps/mobile/TEST-CHECKLIST.md` → "Stations
+and printers checks" on the real printers afterwards.
+
+- [ ] On the device that prints today (the print host; with no host, the
+      device whose printer should become Printer 1): **Admin → Printer setup**
+      → **Set up printers**. Printer 1 is that device's printer with Bill, Full
+      KOT copy, Notices and End of day: its paper does not change, and other
+      devices' slips print there too. On any other device the card says "Do
+      this on the device that prints all slips today". **Add printer** appears
+      only after Printer 1 exists.
+- [ ] Stations next (Kitchen is the default; add Bar and the rest), then each
+      category's station (an item can choose its own), then **Add printer** for
+      each station's printer (its KOT stations, copies 1–3, paper 58 or 80 mm).
+      A station no printer takes is printed in the full copy; with no full
+      copy, at the default bill printer as "‹STATION› (NO PRINTER SET)".
+- [ ] A network (LAN) printer is printed by one device you choose. The list
+      offers only devices the server has already heard from (a print host, or
+      a device that already prints for the setup); if a tablet is missing, add
+      the printer from that tablet itself and choose **This device**.
+- [ ] Several printers on one device need the Windows app 1.11.0 (Windows
+      printers) or the Phase 2 POS app (Bluetooth, USB and network printers);
+      a browser tab drives one printer.
+- [ ] **Test print** on every printer; then each device's **Bill printer for
+      this device** in its printer panel, if its bills belong at another
+      printer than the default.
+- [ ] Tell the admin: a printer switched off (or deleted) in Printer setup
+      moves its waiting slips to **Couldn't print** within a minute; once it is
+      on again, **Retry** prints them there (they are never moved to another
+      printer). Deleting every printer goes back to simple mode; a printer's
+      slips still waiting then also move to **Couldn't print**, to be printed
+      again from their order.
 
 ### Hazards to check for, and what to tell the client
 
@@ -1131,7 +1222,10 @@ Not bugs. Say them before the client discovers them mid-service.
   prints from ANY dashboard screen it has open and no other device
   auto-prints or prints locally. Without a host, self-order alerts and
   auto-print only work on a device with a POS or Order requests tab open —
-  nothing pings or prints on a device with neither screen open.
+  nothing pings or prints on a device with neither screen open. Once printers
+  are set up (printing Phase 2), the print host plays no part: each slip prints
+  at the printer its station or slip type names, written by that printer's
+  printing device, which must have the POS open to print.
 
 ---
 
@@ -1206,6 +1300,12 @@ the test fails — fix the code or this file, never just this file.
 | Staff session lifetime | 30 days, rolling with use | `SESSION_MAX_AGE_SECONDS` |
 | Print-job wake poll (counter PC) | every 3 seconds while busy, every 15 seconds when idle | `PRINT_WAKE_FAST_MS` / `PRINT_WAKE_SLOW_MS` |
 | Print-job wake poll daily cap (per counter PC) | 14,400 quick checks per cafe-day, then every 15 seconds until the next day | `PRINT_WAKE_DAILY_CAP` |
+| Printers-mode wake poll daily cap (all printing devices together) | 14,000 quick checks per cafe-day, split by the printing devices Printer setup names | `PRINT_WAKE_PRINTERS_DAILY_CAP` |
+| Printer list read again on focus | at most every 30 minutes (at once on a `print-setup` frame) | `PRINT_SETUP_STALE_MS` |
+| Printer list read again when a slip shows it stale | at most once a minute | `PRINT_SETUP_REFRESH_MIN_MS` |
+| Printers per cafe | 12 | `PRINTERS_MAX` |
+| Kitchen stations per cafe | 20 | `STATIONS_MAX` |
+| Copies per printer (KOT, bill) | 1–3 | `PRINTER_COPIES_MIN` / `PRINTER_COPIES_MAX` |
 
 ---
 

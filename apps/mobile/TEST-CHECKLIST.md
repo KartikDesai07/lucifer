@@ -285,7 +285,9 @@ above first. The Windows counter PC has its own section below.
 - [ ] **A deleted station.** Delete **Desserts** while the desserts category uses it: the category goes back to the
       default station, and the next dessert round prints as a kitchen item.
 - [ ] **A printer switched off in the setup.** Switch the bar printer off in Printer setup: the next drinks round
-      prints only in the full copy. Switch it on again: BAR slips print again.
+      prints only in the full copy. Switch it on again: BAR slips print again. A BAR slip that was still waiting when
+      the printer was switched off moves to **Couldn't print** ("This printer was removed or switched off.") within a
+      minute; once the printer is on again, its **Retry** prints it there (it is never moved to another printer).
 - [ ] **A printer powered off.** Power the second Bluetooth printer off and send a round with drinks: the full copy
       prints at once; the BAR slip waits in the printer panel under **Waiting for the printer**, naming the bar
       printer; other slips keep printing. Power it on: the BAR slip prints **once, without a banner**.
@@ -303,7 +305,9 @@ above first. The Windows counter PC has its own section below.
 - [ ] **A network printer moved to a new address.** Change the LAN printer's address in Printer setup: the tablet
       adds the new address to Other printers on this device by itself, prints the next kitchen slip there, and drops
       the old address from the list. If the old address was this device's own printer (the one at the top), the panel
-      now offers **Remove** on it: remove it there, and the new address becomes this device's printer.
+      now offers **Remove** on it: remove it there. The app then makes the first printer left in its list this
+      device's printer, which may be another printer (a Bluetooth one, say); if it is not the new address, tap
+      **Change printer** and choose the new address (it is already listed, so it is only chosen).
 - [ ] **Two USB printers asking for permission at once** (a USB hub with two printers, plugged in together): allow
       each prompt; both printers connect. If only one prompt shows, tap **Reconnect** on the other and note it.
 
