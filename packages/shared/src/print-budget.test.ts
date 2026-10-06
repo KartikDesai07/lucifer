@@ -59,7 +59,9 @@ import {
   PRINT_BUDGET_TOKEN_NORMAL_MAX_PER_DAY,
   PRINT_BUDGET_TOKEN_WORST_MAX_PER_DAY,
   VERCEL_HOBBY_INVOCATIONS_PER_DAY,
+  printUnreachableRequestsPerWriterPerDay,
 } from "./print-budget";
+import { PRINTER_UNREACHABLE_SKIP_MS } from "./print-failover";
 
 // Spec §17.3 item 4: recompute §17.2's two "Vercel invocations" totals from the exported constants
 // and the agents' REAL cadence function. A cadence or cap change that could outgrow a cafe's free
@@ -440,6 +442,15 @@ test("ACCEPTED by the owner (2026-10-06, option A; pre-existing since S7): the h
   assert.equal(worst + printSetupReadsWorstPerDay(), 18_480, "with every printer-list read");
   assert.ok(worst > PRINT_BUDGET_WORST_MAX_PER_DAY, `${worst}/day is over the ${PRINT_BUDGET_WORST_MAX_PER_DAY} worst-case ceiling a cafe without tokens is held to`);
   assert.ok(worst + printSetupReadsWorstPerDay() <= PRINT_BUDGET_TOKEN_WORST_MAX_PER_DAY, `${worst + printSetupReadsWorstPerDay()}/day within a token cafe's ${PRINT_BUDGET_TOKEN_WORST_MAX_PER_DAY}`);
+});
+
+// Phase 3 Session 3A (spec §9.3): failover adds no request. The skip is ten refusal rechecks long, so a writer that
+// cannot reach a network printer another device can print costs at most a lease and an ack per 5 minutes.
+test("Phase 3 failover: a writer that could not reach a network printer is passed over for 5 minutes (ten 30 s rechecks): at most 288 requests a day", () => {
+  assert.equal(PRINTER_UNREACHABLE_SKIP_MS, 5 * 60 * 1000);
+  assert.ok(PRINTER_UNREACHABLE_SKIP_MS >= 10 * PRINT_AGENT_REFUSED_RECHECK_MS, "never shorter than ten of Phase 1's refusal rechecks");
+  assert.equal(printUnreachableRequestsPerWriterPerDay(), 288, "144 skips over the busy day's 12 h, a lease and an ack each");
+  assert.ok(printUnreachableRequestsPerWriterPerDay() <= 2 * Math.ceil(OPEN_MS / PRINT_AGENT_REFUSED_RECHECK_MS) / 10, "a tenth of a refusing printer's cost");
 });
 
 test("the owner's token ruling: a token cafe's ceilings sit just above the accepted days, the normal one inside 20 % of the free daily invocations as a figure, and a cafe without tokens keeps 6,000 / 18,000", () => {

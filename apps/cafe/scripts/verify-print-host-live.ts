@@ -48,6 +48,7 @@ import { Category } from "@/models/Category";
 import { Product } from "@/models/Product";
 import { legAY } from "./print-host-live/token-jobs";
 import { legAZ } from "./print-host-live/token-fence";
+import { legBA } from "./print-host-live/failover";
 
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
@@ -139,6 +140,7 @@ async function main(): Promise<void> {
     await legAY(Date.now());
     // Phase 3 Session 3A legs (the token fix's M-2 fence; failover, the backup printer, printer health).
     await legAZ(Date.now());
+    await legBA(Date.now());
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();

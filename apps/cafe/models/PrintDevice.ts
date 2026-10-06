@@ -30,6 +30,8 @@ const capabilitiesSchema = new Schema<PrintDeviceCapabilities>(
     windowsPrinters: { type: Boolean, required: true },
     webSerial: { type: Boolean, required: true },
     webBluetooth: { type: Boolean, required: true },
+    // Phase 3 (spec §9.3): it may write any network printer the setup names; absent from a page before Phase 3.
+    lanFailover: { type: Boolean },
   },
   { _id: false },
 );

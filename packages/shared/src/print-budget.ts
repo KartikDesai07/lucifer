@@ -1,3 +1,5 @@
+import { PRINTER_UNREACHABLE_SKIP_MS } from "./print-failover";
+
 // Printing redesign, spec §17.2: the busy day the printing budget is sized for. print-budget.test.ts
 // recomputes the "Vercel invocations" totals from these and from the agents' real cadence function
 // (print-agent-wire.ts), and fails when printing could outgrow a cafe's free Vercel Hobby allowance.
@@ -68,6 +70,14 @@ export function printTokenRequestsPerDay(): number {
  *  Active CPU on the busy day). */
 export const PRINT_BUDGET_TOKEN_NORMAL_MAX_PER_DAY = 6_700;
 export const PRINT_BUDGET_TOKEN_WORST_MAX_PER_DAY = 18_500;
+/** Phase 3 (spec §9.3, §17): failover adds no request; who is online rides the wake's heartbeat. A writer that could not
+ *  reach a network printer is passed over for it for PRINTER_UNREACHABLE_SKIP_MS while another device can take it, so
+ *  such a printer costs that writer at most one lease and one ack per 5 minutes (a device that knows its printer is
+ *  down never leases for it at all: Phase 1's rule). */
+export function printUnreachableRequestsPerWriterPerDay(): number {
+  return Math.round((PRINT_BUDGET_BUSY_DAY.openHours * 60 * 60 * 1000) / PRINTER_UNREACHABLE_SKIP_MS) * PRINT_REQUESTS_PER_SLIP;
+}
+
 /** Vercel Hobby's monthly function invocations (spec §17.1), as a day's share over 30 days: 33,333. */
 export const VERCEL_HOBBY_INVOCATIONS_PER_DAY = Math.floor(1_000_000 / 30);
 

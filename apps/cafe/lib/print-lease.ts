@@ -17,11 +17,14 @@ import {
   type PrintJobPatch,
   type PrintJobSet,
 } from "@pos/shared/print-lifecycle";
-import { PRINT_JOB_NO_PRINTER, printerWriterDeviceId, routablePrinters } from "@pos/shared/print-printers";
+import { PRINT_ACK_UNREACHABLE } from "@pos/shared/print-agent-wire";
+import { printerActiveWriter, printerSkippedWriters } from "@pos/shared/print-failover";
+import { PRINT_JOB_NO_PRINTER, routablePrinters } from "@pos/shared/print-printers";
 import { printJobPayloadSchema, type PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 import { Order } from "@/models/Order";
 import { PrintJob, type IPrintJob } from "@/models/PrintJob";
 import { printDeviceDrawsTokens } from "./print-device";
+import { readPrinterFailover, recordPrinterUnreachable } from "./print-failover";
 import { listPrinters } from "./print-printers";
 import { dismissPrintJob, drainAgeCutoff } from "./print-queue";
 import { printJobEligibility, printJobNeedsOrderRead } from "./print-queue-claim";
@@ -224,14 +227,25 @@ async function leaseLineHead(
 /** Leases the head of this device's line, and (Session 2C, printers mode) the head of each printer line it names
  *  that it really writes: routable (as the sweep sees it), with this device as its writer, read fresh (§9.3,
  *  decision 1: one writer per printer). At most one job per line, so a stuck bar job never blocks the kitchen.
+ *  Phase 3 (§9.3): "its writer" is the device that writes it NOW: a network printer's primary, or the device that took
+ *  it over while the primary is offline or cannot reach it (one read of who is online, only when this device names a
+ *  network printer it is not the primary of, or one a writer could not reach lately).
  *  retryAt: the soonest moment a line that gave no job can be leased again. */
 export async function leasePrintJobs(input: LeaseInput & { printerIds?: readonly string[] }): Promise<PrintLeaseData> {
   type Line = { line: FilterQuery<IPrintJob>; fence: FilterQuery<IPrintJob>; claim?: PrintJobSet };
   const kindFence = leaseKindFence(input.tokenSlips);
   const lines: Line[] = [{ line: { ...printJobLineFilter(input.deviceId, input.nowMs), ...kindFence }, fence: { targetDeviceId: input.deviceId } }];
   if (input.printerIds !== undefined && input.printerIds.length > 0) {
-    for (const printer of routablePrinters(await listPrinters())) {
-      if (input.printerIds.includes(printer.id) && printerWriterDeviceId(printer) === input.deviceId) {
+    const named = input.printerIds;
+    const printers = routablePrinters(await listPrinters());
+    const asked = printers.filter((printer) => named.includes(printer.id));
+    const failover = asked.some(
+      (printer) => printer.connection.kind === "lan" && (printer.primaryDeviceId !== input.deviceId || printerSkippedWriters(printer, input.nowMs).length > 0),
+    )
+      ? await readPrinterFailover(printers, input.nowMs)
+      : null;
+    for (const printer of asked) {
+      if (printerActiveWriter(printer, failover) === input.deviceId) {
         lines.push({ line: { ...printerLineFilter(printer.id, input.nowMs), ...kindFence }, fence: { printerId: printer.id }, claim: { targetDeviceId: input.deviceId } });
       }
     }
@@ -248,8 +262,11 @@ export async function leasePrintJobs(input: LeaseInput & { printerIds?: readonly
 
 /** The writer's report on one attempt (spec §7.2, §7.9). Idempotent per (job, epoch): a repeat of
  *  an applied "printed" ack answers status "printed", applied:false, reason "resolved". Phase 3 (the token fix's M-2):
- *  `tokenSlips` is the page's word that it prints token jobs (absent: what the device's last lease said). */
-export async function ackPrintJob(input: PrintJobAck & { id: string; nowMs: number; tokenSlips?: true }): Promise<PrintAckData> {
+ *  `tokenSlips` is the page's word that it prints token jobs (absent: what the device's last lease said). Phase 3
+ *  (§9.3): `reason` "unreachable" on a refusal (sent "no") skips that writer for the job's network printer. */
+export async function ackPrintJob(
+  input: PrintJobAck & { id: string; nowMs: number; tokenSlips?: true; reason?: typeof PRINT_ACK_UNREACHABLE },
+): Promise<PrintAckData> {
   for (let step = 0; step < ACK_MAX_STEPS; step++) {
     const row = await PrintJob.findById(input.id).select(`${PRINT_LIFECYCLE_SELECT} printerId`).lean<PrintLifecycleRow & { printerId?: string }>();
     if (row === null) return { applied: false, status: null, nextAttemptAt: null, reason: "not-found" };
@@ -268,7 +285,14 @@ export async function ackPrintJob(input: PrintJobAck & { id: string; nowMs: numb
       // job back in the queue is that line's head, and its nextAttemptAt says when. A failed read only drops
       // the hint (the agent then leases, as in Phase 1): the ack itself has landed. Session 2C: a printer job
       // asks its own printer's line (the 2B gate's ruling R3).
-      if (plan.patch.status === "queued") return { applied: true, status: plan.patch.status, nextAttemptAt };
+      if (plan.patch.status === "queued") {
+        // Phase 3 (§9.3): its writer could not reach this network printer: skipped for it for 5 minutes, and the slip
+        // moves to the device that takes the printer over. Best-effort: the refusal itself has landed.
+        if (input.reason === PRINT_ACK_UNREACHABLE && input.sent === "no" && row.printerId !== undefined) {
+          await recordPrinterUnreachable({ printerId: row.printerId, deviceId: input.deviceId, nowMs: input.nowMs }).catch(() => null);
+        }
+        return { applied: true, status: plan.patch.status, nextAttemptAt };
+      }
       // Phase 3 (the token fix's M-2): a page that cannot print a token job is never told `more` for one.
       const tokens = input.tokenSlips === true || (await printDeviceDrawsTokens(input.deviceId).catch(() => true));
       const more = await (row.printerId !== undefined ? printerLineHasMore(row.printerId, input.nowMs, tokens) : printLineHasMore(input.deviceId, input.nowMs, tokens)).catch(

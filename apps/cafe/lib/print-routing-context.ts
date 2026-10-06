@@ -4,14 +4,16 @@ import { Category } from "@/models/Category";
 import { Product } from "@/models/Product";
 import { Station } from "@/models/Station";
 import type { PrintRouting } from "@/lib/print-printer-routing";
+import { readPrinterFailover } from "@/lib/print-failover";
 import { listPrinters } from "@/lib/print-printers";
 import { stationWireOf } from "@/lib/print-stations";
 
 // Printing redesign, Phase 2 (spec §6.2, §8): what one order request routes its slips with, read fresh
 // (never cached: a printer switched off must stop getting slips at once). Simple mode costs ONE small read
 // (the printers) and answers null; printers mode adds the stations and the stations of this request's items
-// (two reads by id: the items, then their categories). Session 2C calls it from job creation. Never calls
-// connectDB(). No console.*.
+// (two reads by id: the items, then their categories). Session 2C calls it from job creation. Phase 3 (§9.3): with a
+// network printer in the setup, also who is online (one small read, beside the stations), so a slip goes to the device
+// that writes its printer now. Never calls connectDB(). No console.*.
 
 interface ProductStationRow {
   _id: Types.ObjectId;
@@ -25,13 +27,14 @@ interface CategoryStationRow {
 }
 
 /** null in simple mode (spec §6.6): no enabled printer takes a slip, so routing is today's. */
-export async function readPrintRouting(input: { productIds: readonly string[]; billPrinterId?: string }): Promise<PrintRouting | null> {
+export async function readPrintRouting(input: { productIds: readonly string[]; billPrinterId?: string; nowMs?: number }): Promise<PrintRouting | null> {
   const printers = await listPrinters();
   if (!printersModeOn(printers)) return null;
   const ids = [...new Set(input.productIds)].filter((id) => mongoose.isValidObjectId(id));
-  const [stationRows, products] = await Promise.all([
+  const [stationRows, products, failover] = await Promise.all([
     Station.find().select("name order isDefault").lean<Array<{ _id: Types.ObjectId; name: string; order: number; isDefault: boolean }>>(),
     ids.length === 0 ? Promise.resolve([]) : Product.find({ _id: { $in: ids } }).select("categoryId stationId").lean<ProductStationRow[]>(),
+    readPrinterFailover(printers, input.nowMs ?? Date.now()),
   ]);
   const stations = stationRows.map(stationWireOf);
   const categoryIds = [...new Set(products.map((product) => String(product.categoryId)))];
@@ -50,5 +53,11 @@ export async function readPrintRouting(input: { productIds: readonly string[]; b
     );
     if (resolved !== null) itemStations.set(String(product._id), resolved);
   }
-  return { printers, stations, itemStations, ...(input.billPrinterId !== undefined ? { billPrinterId: input.billPrinterId } : {}) };
+  return {
+    printers,
+    stations,
+    itemStations,
+    ...(input.billPrinterId !== undefined ? { billPrinterId: input.billPrinterId } : {}),
+    ...(failover !== null ? { failover } : {}),
+  };
 }

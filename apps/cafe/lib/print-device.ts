@@ -1,6 +1,7 @@
 import { isDuplicateKeyError } from "@pos/shared/api";
 import { PRINT_DEVICES_LIST_MAX, type PrintDeviceCapabilities, type PrintDeviceShell, type PrintDeviceSummary } from "@pos/shared/print-agent-wire";
 import { PRINT_DEVICE_HEARTBEAT_WRITE_MS, PRINT_DEVICE_ONLINE_MS, PRINT_DEVICE_PRUNE_MS } from "@pos/shared/print-lifecycle";
+import type { PrinterFailover } from "@pos/shared/print-failover";
 import { PrintDevice } from "@/models/PrintDevice";
 
 // Printing redesign, Phase 1 (spec §6.4, §10): the device heartbeat. It rides the agent's existing
@@ -67,6 +68,16 @@ export async function printDeviceDrawsTokens(deviceId: string): Promise<boolean>
 export async function countOnlineAgents(nowMs: number): Promise<number> {
   const online = await PrintDevice.countDocuments({ lastSeenAt: { $gte: new Date(nowMs - PRINT_DEVICE_ONLINE_MS) } });
   return Math.max(1, online);
+}
+
+/** Phase 3 (spec §9.3): the devices seen in the last 90 s, and whether each may write any network printer the setup names
+ *  (its wake said `lanFailover`). One bounded read of a collection of a few rows (the wake's heartbeat keeps it). */
+export async function readOnlinePrintDevices(nowMs: number): Promise<PrinterFailover["online"]> {
+  const rows = await PrintDevice.find({ lastSeenAt: { $gte: new Date(nowMs - PRINT_DEVICE_ONLINE_MS) } })
+    .select("deviceId capabilities.lanFailover")
+    .limit(PRINT_DEVICES_LIST_MAX)
+    .lean<Array<{ deviceId: string; capabilities?: { lanFailover?: boolean } }>>();
+  return rows.map((row) => ({ deviceId: row.deviceId, lanFailover: row.capabilities?.lanFailover === true }));
 }
 
 /** Session 2D (spec §11 Devices): the devices that print or lease, the most recently seen first (so the online ones

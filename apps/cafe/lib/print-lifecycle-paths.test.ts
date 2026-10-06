@@ -99,7 +99,9 @@ test("PIN (2C): the sweep moves a waiting printer job only with its printer, and
       'status: { $in: ["queued", "needs-confirm"] } })',
       "if (waiting === null) return { retargeted: 0, failed: 0 };",
       "const printers = routablePrinters(await listPrinters());",
-      "{ printerId: printer.id, status: { $in: WAITING }, targetDeviceId: { $ne: writer } }",
+      // Phase 3 (§9.3) deliberately changed the move: the writer now (failover), through print-failover.ts's one write.
+      "const failover = await readPrinterFailover(printers, nowMs);",
+      'retargeted += await retargetPrinterJobs(printer.id, printerActiveWriter(printer, failover) ?? "", nowMs);',
       "{ printerId: { $exists: true, $nin: [...printers.map((printer) => printer.id), PRINT_JOB_NO_PRINTER] }, status: \"queued\" }",
       "$set: { status: \"failed\", lastError: PRINTER_GONE_MESSAGE }",
     ],
@@ -117,9 +119,11 @@ test("PIN (2C ruling R2): Retry or Print again on a job whose printer is gone is
     s,
     [
       'if (plan.patch.status === "queued" && row.printerId !== undefined) {',
-      "const printer = routablePrinterOf(await listPrinters(), row.printerId);",
+      "const printers = await listPrinters();",
+      "const printer = routablePrinterOf(printers, row.printerId);",
       'if (printer === null) return { applied: false, status: job.status, reason: "printer-gone" };',
-      "target = printerWriterDeviceId(printer) ?? target;",
+      // Phase 3 (§9.3) deliberately changed it: the printer's writer now (a network printer taken over).
+      "target = printerActiveWriter(printer, await readPrinterFailover([printer], nowMs)) ?? target;",
       "patch = { ...plan.patch, set: { ...plan.patch.set, ...(target !== undefined ? { targetDeviceId: target } : {}) } };",
       "if (await applyPrintJobPlan(row._id, job, patch)) {",
     ],
@@ -144,6 +148,12 @@ test("ackBodySchema: a printed ack carries no failure fields; a failed one must 
   assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "printed", tokenSlips: true }), true);
   assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "failed", sent: "no", tokenSlips: true }), true);
   assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "printed", tokenSlips: false }), false, "absent, never false");
+  // Phase 3 (§9.3): "unreachable" is only a refusal before any byte (a failed connect).
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "failed", sent: "no", reason: "unreachable" }), true);
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "failed", sent: "maybe", reason: "unreachable" }), false, "a byte may have gone: not unreachable");
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "failed", sent: "no", permanent: true, reason: "unreachable" }), false, "a permanent failure is not about reaching it");
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "printed", reason: "unreachable" }), false);
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "failed", sent: "no", reason: "offline" }), false, "the one reason only");
 });
 
 test("lease, confirm and wake bodies: required fields, enums and strictness", () => {
@@ -166,6 +176,7 @@ test("lease, confirm and wake bodies: required fields, enums and strictness", ()
   assert.equal(wakeBeatBodySchema.safeParse({ ...beat, capabilities: { ...beat.capabilities, fax: true } }).success, false, "strict capabilities");
   assert.equal(wakeBeatBodySchema.safeParse({ ...beat, tokenSlips: true }).success, true, "Phase 3 (M-2): a page that prints token slips");
   assert.equal(wakeBeatBodySchema.safeParse({ ...beat, tokenSlips: false }).success, false, "absent, never false");
+  assert.equal(wakeBeatBodySchema.safeParse({ ...beat, capabilities: { ...beat.capabilities, lanFailover: true } }).success, true, "Phase 3 (§9.3): it may take a network printer over");
 });
 
 const ROUTES = {
@@ -306,7 +317,10 @@ test("PIN (2B): an ack that takes a job off the line answers `more` from one rea
     ack,
     [
       "if (await applyPrintJobPlan(row._id, job, plan.patch)) {",
-      'if (plan.patch.status === "queued") return { applied: true, status: plan.patch.status, nextAttemptAt };',
+      'if (plan.patch.status === "queued") {',
+      "if (input.reason === PRINT_ACK_UNREACHABLE && input.sent === \"no\" && row.printerId !== undefined) {",
+      "await recordPrinterUnreachable({ printerId: row.printerId, deviceId: input.deviceId, nowMs: input.nowMs }).catch(() => null);",
+      "return { applied: true, status: plan.patch.status, nextAttemptAt };",
       "const tokens = input.tokenSlips === true || (await printDeviceDrawsTokens(input.deviceId).catch(() => true));",
       "const more = await (row.printerId !== undefined ? printerLineHasMore(row.printerId, input.nowMs, tokens) : printLineHasMore(input.deviceId, input.nowMs, tokens)).catch(",
       "() => undefined,",
@@ -346,8 +360,14 @@ test("PIN (2C): a lease takes the head of the device's line and of each printer 
     lease,
     [
       "[{ line: { ...printJobLineFilter(input.deviceId, input.nowMs), ...kindFence }, fence: { targetDeviceId: input.deviceId } }];",
-      "for (const printer of routablePrinters(await listPrinters())) {",
-      "if (input.printerIds.includes(printer.id) && printerWriterDeviceId(printer) === input.deviceId) {",
+      // Phase 3 (§9.3) deliberately changed the writer check: the device that writes it now, with one read of who is
+      // online only when this device names a network printer it is not the primary of, or one a writer could not reach.
+      "const printers = routablePrinters(await listPrinters());",
+      "const asked = printers.filter((printer) => named.includes(printer.id));",
+      'printer.connection.kind === "lan" && (printer.primaryDeviceId !== input.deviceId || printerSkippedWriters(printer, input.nowMs).length > 0),',
+      "? await readPrinterFailover(printers, input.nowMs)",
+      ": null;",
+      "if (printerActiveWriter(printer, failover) === input.deviceId) {",
       "lines.push({ line: { ...printerLineFilter(printer.id, input.nowMs), ...kindFence }, fence: { printerId: printer.id }, claim: { targetDeviceId: input.deviceId } });",
       "const result = await leaseLineHead(line, fence, input, claim);",
     ],

@@ -23,7 +23,7 @@ async function nameTaken(name: string, exceptId?: string): Promise<boolean> {
   return (await Printer.findOne({ name, ...(exceptId !== undefined ? { _id: { $ne: exceptId } } : {}) }).collation(NAME_IGNORING_CASE).select("_id").lean()) !== null;
 }
 
-type PrinterRow = Pick<IPrinter, "name" | "connection" | "primaryDeviceId" | "order" | "paper" | "slips" | "copies" | "enabled"> & {
+type PrinterRow = Pick<IPrinter, "name" | "connection" | "primaryDeviceId" | "order" | "paper" | "slips" | "copies" | "enabled" | "unreachable"> & {
   _id: Types.ObjectId;
 };
 
@@ -52,10 +52,14 @@ export function printerWireOf(row: PrinterRow): PrinterConfig {
     },
     copies: { kot: row.copies.kot, bill: row.copies.bill },
     enabled: row.enabled,
+    // Phase 3 (spec §9.3): the writers skipped for this network printer, as the server keeps them.
+    ...(row.unreachable !== undefined && row.unreachable.length > 0
+      ? { unreachable: row.unreachable.map((skip) => ({ deviceId: skip.deviceId, until: skip.until.toISOString() })) }
+      : {}),
   };
 }
 
-const PRINTER_SELECT = "name connection primaryDeviceId order paper slips copies enabled";
+const PRINTER_SELECT = "name connection primaryDeviceId order paper slips copies enabled unreachable";
 
 /** Every printer in display order (disabled ones too: the setup screen lists them). */
 export async function listPrinters(): Promise<PrinterConfig[]> {

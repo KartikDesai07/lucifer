@@ -88,7 +88,8 @@ test("PIN (2D): a test slip goes on its printer's line for its writer, or straig
   const lib = src("lib/print-printer-test.ts");
   assert.match(lib, /line: \{ printerId: printer\.id, copies: 1 \}/, "on the printer's own line, one copy");
   assert.match(lib, /targetDeviceId: writer,/, "aimed at the printer's one writer");
-  assert.match(lib, /const writer = routable === null \? null : printerWriterDeviceId\(routable\);/, "only a printer routing may send slips to: its lease takes only those");
+  // Phase 3 (§9.3) deliberately changed the writer: the device that writes it now (a network printer taken over).
+  assert.match(lib, /const writer = routable === null \? null : printerActiveWriter\(routable, await readPrinterFailover\(\[routable\], input\.nowMs\)\);/, "only a printer routing may send slips to: its lease takes only those");
   assert.match(lib, /publishPrintStatus\(\{ id: made\.ref\.id, status: "queued", target: writer \}\)/, "the writer hears of it as of any slip");
   assert.ok(!/connectDB\(|console\./.test(lib), "never connects, never logs");
   const routing = src("lib/print-printer-routing.ts");

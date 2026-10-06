@@ -14,14 +14,14 @@ import {
 } from "@pos/shared/print-printers";
 
 // Printing redesign, Phase 2 (spec §6.3): one printer of the outlet and the slips it takes. A LAN printer
-// is reached over the network by its primary device (Phase 2; failover to other devices is Phase 3); a
-// device printer (Bluetooth, USB, a Windows printer, Web Serial or Web Bluetooth) only by the one device
-// that owns it. The request bodies are checked whole by lib/print-printer-schemas.ts; this schema keeps
+// is reached over the network by its primary device, and from Phase 3 (§9.3) by another device that can write
+// network printers while its primary is offline or cannot reach it; a device printer (Bluetooth, USB, a Windows
+// printer, Web Serial or Web Bluetooth) only by the one device that owns it. The request bodies are checked whole by lib/print-printer-schemas.ts; this schema keeps
 // the stored shape honest on its own.
 //
 // Deliberately NOT in the federated registry, like models/PrintJob.ts: a plain default-bound model of a
-// few rows of print setup. backupPrinterId and health (spec §6.3) arrive with Phase 3's failover and
-// paper status, not before: nothing would read them.
+// few rows of print setup. Phase 3 adds what the server keeps beside the setup: `unreachable` (§9.3, the
+// writers skipped for 5 minutes).
 
 /** The stored connection: one flat subdocument for both kinds, so it stays one Mongoose path. */
 export interface IPrinterConnection {
@@ -42,6 +42,7 @@ export interface IPrinter extends Document {
   slips: PrinterSlips;
   copies: PrinterCopies;
   enabled: boolean;
+  unreachable?: Array<{ deviceId: string; until: Date }>; // Phase 3 (§9.3): server-kept, never saved by the setup
   createdAt: Date;
   updatedAt: Date;
 }
@@ -81,6 +82,15 @@ const slipsSchema = new Schema<PrinterSlips>(
   { _id: false },
 );
 
+// Phase 3 (spec §9.3): a writer that could not reach this network printer, skipped for it until `until`.
+const unreachableSchema = new Schema<{ deviceId: string; until: Date }>(
+  {
+    deviceId: { type: String, required: true, maxlength: PRINTER_DEVICE_ID_MAX_CHARS },
+    until: { type: Date, required: true },
+  },
+  { _id: false },
+);
+
 const copiesSchema = new Schema<PrinterCopies>(
   {
     kot: { type: Number, required: true, min: PRINTER_COPIES_MIN, max: PRINTER_COPIES_MAX },
@@ -104,6 +114,8 @@ export const printerSchema = new Schema<IPrinter>(
     slips: { type: slipsSchema, required: true },
     copies: { type: copiesSchema, required: true },
     enabled: { type: Boolean, required: true },
+    // Omit-empty (no [] default): written only by an ack that could not reach the printer (lib/print-failover.ts).
+    unreachable: { type: [unreachableSchema], default: undefined },
   },
   { timestamps: true },
 );
