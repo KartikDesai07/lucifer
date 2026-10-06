@@ -179,11 +179,12 @@ test("PIN: MENU_SECTIONS' adminOnly set is exactly ADMIN_ROUTES intersected with
 // Create uses nextCategoryOrder (max + 1), not list.length.
 // ══════════════════════════════════════════════════════════════════════════
 
+// Changed in Phase 2 Session 2D: a new category may carry its kitchen station after its order.
 test("PIN: a new category's order comes from nextCategoryOrder(list), not list.length", () => {
   const src = readStripped(CATEGORIES_PAGE);
   assert.match(
     src,
-    /createCategory\.mutateAsync\(\{\s*name:\s*trimmed,\s*order:\s*nextCategoryOrder\(list\)\s*\}\)/,
+    /createCategory\.mutateAsync\(\{\s*name:\s*trimmed,\s*order:\s*nextCategoryOrder\(list\)(,\s*\.\.\.\(stationId !== "" \? \{ stationId \} : \{\}\))?\s*\}\)/,
     "create must send order: nextCategoryOrder(list)",
   );
   assert.ok(!/order:\s*list\.length/.test(src), "create must not send order: list.length (collides after a delete)");

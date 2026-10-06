@@ -36,6 +36,16 @@ import { legV, legW, legX } from "./print-host-live/lifecycle-actions";
 import { legAA, legAB, legAC, legY, legZ } from "./print-host-live/order-jobs";
 import { legAD, legAE } from "./print-host-live/agent";
 import { legAF, legAG } from "./print-host-live/attention";
+import { legAH, legAI, legAJ } from "./print-host-live/printers";
+import { legAK, legAL, legAM } from "./print-host-live/direct";
+import { legAN, legAO, legAP, legAQ } from "./print-host-live/printers-mode";
+import { legAR, legAS, legAT } from "./print-host-live/setup-2d";
+import { legAU, legAV } from "./print-host-live/setup-2e";
+import { legAW, legAX } from "./print-host-live/setup-2f";
+import { Station } from "@/models/Station";
+import { Printer } from "@/models/Printer";
+import { Category } from "@/models/Category";
+import { Product } from "@/models/Product";
 
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
@@ -48,6 +58,8 @@ async function main(): Promise<void> {
   await connectDB();
   await mongoose.connection.dropDatabase(); // clean slate even after a crashed prior run
   await Promise.all([PrintJob.createIndexes(), PrintHost.createIndexes(), Order.createIndexes(), PrintDevice.createIndexes()]);
+  // Phase 2: the unique station and printer names are what the setup legs (ah, ai) lean on.
+  await Promise.all([Station.createIndexes(), Printer.createIndexes(), Category.createIndexes(), Product.createIndexes()]);
 
   console.log(`\nPH-10 print-host live legs — live against ${dbName}\n`);
 
@@ -97,6 +109,30 @@ async function main(): Promise<void> {
     await legAF(Date.now());
     // Phase 1 Session 1E leg (the owner's retention after Session 1D).
     await legAG(Date.now());
+    // Phase 2 Session 2A legs (stations, printers, the routing read over a real catalog).
+    await legAH();
+    await legAI();
+    await legAJ();
+    // Phase 2 Session 2B legs (direct print on the asking device; the ack's more).
+    await legAK(Date.now());
+    await legAL(Date.now());
+    await legAM(Date.now());
+    // Phase 2 Session 2C legs (printers mode: creation, a lease per printer line, the sweep, the repair).
+    await legAN(Date.now());
+    await legAO(Date.now());
+    await legAP(Date.now());
+    await legAQ(Date.now());
+    // Phase 2 Session 2D legs (the setup screens' server half: Test print, station writes, one printer per device,
+    // the devices list).
+    await legAR(Date.now());
+    await legAS();
+    await legAT(Date.now());
+    // Phase 2 Session 2E legs (several printers on one Windows PC: the setup by name, a lease per named line).
+    await legAU();
+    await legAV(Date.now());
+    // Phase 2 Session 2F1 legs (several printers on one phone or tablet: the setup, the devices read, a lease per line).
+    await legAW();
+    await legAX(Date.now());
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();

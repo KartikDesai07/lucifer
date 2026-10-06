@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { PRINT_DEVICE_SHELLS } from "@pos/shared/print-agent-wire";
+import { PRINTERS_MAX, PRINTER_DEVICE_ID_MAX_CHARS } from "@pos/shared/print-printers";
 import { PRINT_ACK_ERROR_MAX_CHARS } from "@pos/shared/print-lifecycle";
 import { PRINT_HOST_DEVICE_ID_MAX_CHARS, PRINT_HOST_LABEL_MAX_CHARS } from "@/lib/print-host";
 import { PRINT_HOST_TAB_ID_MAX_CHARS } from "@/lib/print-queue-claim";
@@ -9,6 +10,9 @@ import { PRINT_HOST_TAB_ID_MAX_CHARS } from "@/lib/print-queue-claim";
 
 const deviceId = z.string().trim().min(1).max(PRINT_HOST_DEVICE_ID_MAX_CHARS);
 const tabId = z.string().trim().min(1).max(PRINT_HOST_TAB_ID_MAX_CHARS);
+/** Session 2C (printers mode): the printers this tab can print on now (the lease body). The lib keeps only
+ *  real printer ids (printerIdsOf), so an odd value only means fewer printers. */
+const printerIds = z.array(z.string().trim().max(PRINTER_DEVICE_ID_MAX_CHARS)).max(PRINTERS_MAX).optional();
 
 /** POST /api/print-jobs/wake: the heartbeat (spec §10). */
 export const wakeBeatBodySchema = z
@@ -32,7 +36,7 @@ export const wakeBeatBodySchema = z
   .strict();
 
 /** POST /api/print-jobs/lease. */
-export const leaseBodySchema = z.object({ deviceId, tabId }).strict();
+export const leaseBodySchema = z.object({ deviceId, tabId, printerIds }).strict();
 
 /** POST /api/print-jobs/[id]/ack. A printed ack says nothing else; a failed one must say whether
  *  any byte was sent (spec §7.5: "no" only when the writer KNOWS nothing reached the printer). */

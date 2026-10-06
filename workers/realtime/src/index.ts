@@ -73,7 +73,7 @@ function roomName(tenantId: string): string {
 
 /** The event kinds slice 1 carries. A device subscribes to the whole room and
  *  ignores kinds it does not care about — adding a kind needs no room change. */
-const EVENT_KINDS = ["kot-fired", "kot-ticked", "order-changed", "self-order", "print-job", "print-status"] as const;
+const EVENT_KINDS = ["kot-fired", "kot-ticked", "order-changed", "self-order", "print-job", "print-status", "print-setup"] as const;
 type EventKind = (typeof EVENT_KINDS)[number];
 
 function isEventKind(value: unknown): value is EventKind {
@@ -85,12 +85,13 @@ function isEventKind(value: unknown): value is EventKind {
  *  the single source of truth. That is what keeps this Worker out of the trust
  *  path entirely — it never sees a price, a customer, or a bill. A "print-status"
  *  envelope (printing Phase 1) also names one print job: its id, its status and the
- *  device that prints it. That is still no order content; the room relays it as is. */
+ *  device that prints it (since Phase 2's 2E review gate, a printer job's printer too). That is still no order
+ *  content; the room relays it as is, byte for byte, so a new field needs no redeploy of this Worker. */
 interface PublishEnvelope {
   tenant: string;
   kind: EventKind;
   at: string;
-  job?: { id: string; status: string; target?: string };
+  job?: { id: string; status: string; target?: string; printerId?: string };
 }
 
 /** Bound the signed body. `content-length` is only a hint (it is absent on a

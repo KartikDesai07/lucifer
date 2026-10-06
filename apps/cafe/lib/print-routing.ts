@@ -24,6 +24,11 @@ import type { Order, OrderVoid } from "@/types";
 export const PRINT_JOB_TOO_LARGE_MESSAGE =
   "This slip is too large to send to the print host — print it from the host device.";
 
+/** Phase 2 Session 2D (the 2C review gate's M-5): printers mode answered that no printer takes this slip (a
+ *  notice where Notices are off everywhere). Nothing will print, and staff must hear why. */
+export const PRINT_JOB_NOT_ROUTED_MESSAGE =
+  "No printer takes this slip. To print notices, switch Notices on for a printer in Printer setup.";
+
 /** A payload the renderer's own snapshot could not be built from. Nothing was
  *  enqueued and nothing printed locally, so this must be said out loud. */
 export const PRINT_JOB_BUILD_FAILED_MESSAGE =

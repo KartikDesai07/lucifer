@@ -225,8 +225,8 @@ test("PIN: the exact set of apps/cafe production files that write PrintJob (.cre
   // Session 1B adds print-order-jobs.ts: server-side creation, one PrintJob.create per slip under
   // today's unique jobKey, so it races the legacy enqueue and the claim exactly as a second enqueue would.
   const EXPECTED_PRINT_JOB_WRITERS = [
+    "apps/cafe/lib/print-job-insert.ts",
     "apps/cafe/lib/print-lease.ts",
-    "apps/cafe/lib/print-order-jobs.ts",
     "apps/cafe/lib/print-queue-claim.ts",
     "apps/cafe/lib/print-queue.ts",
     "apps/cafe/lib/print-sweep.ts",

@@ -18,6 +18,7 @@ import {
   PRINT_NO_ORIGIN_MESSAGE,
   PRINT_NO_PRINTER_MESSAGE,
   PRINT_NOT_A_PRINTER_MESSAGE,
+  PRINT_PRINTER_NOT_HERE_MESSAGE,
   PRINT_REJECTED_MESSAGE,
 } from "./print-messages";
 import { isSameOrigin } from "./server-url";
@@ -26,6 +27,7 @@ import {
   PRINT_CHANNEL,
   PRINT_HTML_MAX_CHARS,
   PRINT_MODE_SAVE_CHANNEL,
+  PRINT_ON_CHANNEL,
   PRINTER_NAME_MAX_CHARS,
   PRINTER_SAVE_CHANNEL,
   PRINTERS_CHANNEL,
@@ -52,6 +54,8 @@ interface PrintHandlerDeps {
 export function registerPrintHandler(deps: PrintHandlerDeps): void {
   // One print job at a time: each call chains onto this promise so a second
   // slip never opens a second offscreen window while the first is printing.
+  // Both print channels share it (Phase 2 Session 2E): a slip on a named
+  // printer waits its turn like any other; the spooler takes each in a second.
   let queue: Promise<unknown> = Promise.resolve();
 
   const effectiveMode = (): PrintMode => deps.getPrintMode() ?? DEFAULT_PRINT_MODE;
@@ -120,7 +124,9 @@ export function registerPrintHandler(deps: PrintHandlerDeps): void {
     return { printMode: mode };
   });
 
-  ipcMain.handle(PRINT_CHANNEL, async (event: IpcMainInvokeEvent, html: unknown) => {
+  // The gate every print request passes, whichever channel: only the main
+  // window, only a frame actually on the saved origin, a slip of a sane size.
+  const vetPrintRequest = (event: IpcMainInvokeEvent, html: unknown): { html: string; origin: string } => {
     if (event.sender.id !== deps.getMainWebContentsId()) {
       throw new Error(PRINT_REJECTED_MESSAGE);
     }
@@ -137,23 +143,29 @@ export function registerPrintHandler(deps: PrintHandlerDeps): void {
     if (typeof html !== "string" || html.length === 0 || html.length > PRINT_HTML_MAX_CHARS) {
       throw new Error(PRINT_REJECTED_MESSAGE);
     }
+    return { html, origin };
+  };
 
+  // One slip on one printer, for both channels. `onThisPc`: the named printer
+  // is one Windows reports right now (the chosen printer was vetted when saved).
+  const printOn = async (html: string, origin: string, chosen: string | null, onThisPc: boolean): Promise<void> => {
     // The printer is decided BEFORE any window opens: an unchosen or
     // file-writing device must fail loudly, not silently eat the slip. No
     // implicit "system default" any more — that default WAS the bug. These
-    // two refusals go through the SAME job promise as every other failure, so
+    // refusals go through the SAME job promise as every other failure, so
     // they reach the tray notification and the log; thrown straight from here
     // they would bypass the catch below and the operator would see nothing —
     // which is the exact silence this whole fix exists to remove.
-    const chosen = deps.getDeviceName();
     const refusal =
       chosen === null || chosen.length === 0
         ? PRINT_NO_PRINTER_MESSAGE
         : isNonPaperPrinter(chosen)
           ? PRINT_NOT_A_PRINTER_MESSAGE
-          : null;
+          : !onThisPc
+            ? PRINT_PRINTER_NOT_HERE_MESSAGE
+            : null;
     // `chosen` is a real, printable device on this branch — the refusal above
-    // is the only way past the two null/virtual cases.
+    // is the only way past the null/virtual/missing cases.
     const deviceName = chosen ?? "";
     // Read once per job, so a mode saved mid-queue applies from the next slip.
     const mode = effectiveMode();
@@ -187,5 +199,21 @@ export function registerPrintHandler(deps: PrintHandlerDeps): void {
       deps.onJobFailed(message);
       throw new Error(message);
     }
+  };
+
+  ipcMain.handle(PRINT_CHANNEL, async (event: IpcMainInvokeEvent, html: unknown) => {
+    const request = vetPrintRequest(event, html);
+    await printOn(request.html, request.origin, deps.getDeviceName(), true);
+  });
+
+  // Phase 2 Session 2E (spec §9.2): a printer job names its Windows printer, so
+  // one PC prints several printers. The name must be a device Windows reports
+  // at this moment (read per job: one removed or renamed in Windows is refused,
+  // never sent to a stale name), and never a virtual one.
+  ipcMain.handle(PRINT_ON_CHANNEL, async (event: IpcMainInvokeEvent, html: unknown, name: unknown) => {
+    const request = vetPrintRequest(event, html);
+    if (typeof name !== "string" || name.length === 0 || name.length > PRINTER_NAME_MAX_CHARS) throw new Error(PRINT_REJECTED_MESSAGE);
+    const printers = await event.sender.getPrintersAsync();
+    await printOn(request.html, request.origin, name, printers.some((p) => p.name === name));
   });
 }

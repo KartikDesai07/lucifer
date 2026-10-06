@@ -4,7 +4,7 @@
 // OS process API (no shell, no quoting; a 32 767-character limit on Windows), so the chain keeps its explicit,
 // reviewable list. Extra CLI flags pass through: `node scripts/run-test-chain.mjs --test-concurrency=1`.
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,6 +14,12 @@ const files = pkg.testChain;
 
 if (!Array.isArray(files) || files.length === 0 || files.some((f) => typeof f !== "string" || f.length === 0)) {
   process.stderr.write('apps/cafe/package.json "testChain" must be a non-empty array of test file paths\n');
+  process.exit(1);
+}
+// The 2F1 review gate: an entry that names no file (a typo, or two paths in one string) would run no test and pass.
+const missing = files.filter((f) => !existsSync(path.join(CAFE_ROOT, f)));
+if (missing.length > 0) {
+  process.stderr.write(`apps/cafe/package.json "testChain" names files that do not exist: ${missing.join(", ")}\n`);
   process.exit(1);
 }
 

@@ -106,6 +106,10 @@ function payload(kind: PrintJobPayload["kind"], overrides: PayloadOverrides = {}
     case "cancel-notice":
       draft = { kind, snapshot: BASE_SNAPSHOT, reason: "Customer left", ...overrides };
       break;
+    case "test":
+      // Phase 2 Session 2D: a printer's test slip, no order and no snapshot either.
+      draft = { kind, printerName: "Kitchen printer", lines: [], requestedBy: "Staff", requestedAt: "2026-01-01T00:03:00.000Z", ...overrides };
+      break;
   }
   const result = printJobPayloadSchema.safeParse(draft);
   if (!result.success) {
@@ -121,6 +125,12 @@ test("payload() factory: a minimal payload for every PRINT_JOB_KINDS entry PARSE
     assert.equal(result.success, true, `payload(${kind}) must parse`);
     assert.equal(built.kind, kind);
   }
+});
+
+test("2D: a printer's test slip has no key (every tap is one slip) and points at no order", () => {
+  assert.equal(printJobKeyOf(payload("test")), undefined, "keyless");
+  assert.equal(printJobOrderIdOf(payload("test")), undefined, "no order");
+  assert.deepEqual(printJobEligibility(payload("test"), null), { eligible: true }, "nothing about an order can stop it");
 });
 
 // ── 1. printJobKeyOf ─────────────────────────────────────────────────────────

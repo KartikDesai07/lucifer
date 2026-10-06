@@ -4,7 +4,7 @@ import mongoose from "mongoose";
 import { PRINT_HOST_MAX_AGE_MS } from "@pos/shared/print-job";
 import { PRINT_JOB_LOG_MAX, PRINT_LEASE_MS, lifecycleOf, planExpiry, planLease, type PrintJobPlan, type PrintJobPatch } from "@pos/shared/print-lifecycle";
 import type { PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
-import { leasedPrintJobOf, printJobCasFilter, printJobLineFilter, printJobUpdateOf } from "./print-lease";
+import { jobsForMeOf, leasedPrintJobOf, printJobCasFilter, printJobLineFilter, printJobsForMeFilter, printJobUpdateOf, printerLineFilter } from "./print-lease";
 
 // Phase 1 Session 1A — DB-free tests of print-lease.ts's pure exports. The DB paths are proven live
 // (npm run verify:print:live, legs q–x) and pinned in print-lifecycle-paths.test.ts.
@@ -17,12 +17,49 @@ function patchOf(plan: PrintJobPlan): PrintJobPatch {
   return plan.patch;
 }
 
-test("printJobLineFilter: this device's leased job, plus its queued jobs that are fresh or approved", () => {
+// Session 2C deliberately added printerId: { $exists: false }: a printers-mode job is aimed at its printer's
+// writer too (targetDeviceId), but it waits on its printer's line, never on the device's simple line.
+test("printJobLineFilter: this device's leased job, plus its queued jobs that are fresh or approved (simple mode only)", () => {
   assert.deepEqual(printJobLineFilter("dev-a", T0), {
     targetDeviceId: "dev-a",
+    printerId: { $exists: false },
     status: { $in: ["queued", "leased"] },
     $or: [{ status: "leased" }, { createdAt: { $gte: new Date(T0 - PRINT_HOST_MAX_AGE_MS) } }, { approvedAt: { $exists: true } }],
   });
+});
+
+// Session 2C (spec §7.6, plan decision 1): in printers mode each printer is a line of its own, oldest first.
+test("printerLineFilter: one printer's leased job, plus its queued jobs that are fresh or approved", () => {
+  assert.deepEqual(printerLineFilter("p1", T0), {
+    printerId: "p1",
+    status: { $in: ["queued", "leased"] },
+    $or: [{ status: "leased" }, { createdAt: { $gte: new Date(T0 - PRINT_HOST_MAX_AGE_MS) } }, { approvedAt: { $exists: true } }],
+  });
+});
+
+// Session 2B (found on the emulator at the 2A gate): the pulse and the wake counted this device's own running
+// lease, so one landing mid-print kicked the agent into an empty lease after its ack.
+// Session 2C deliberately widened it to every line job aimed at the device: its own line AND the lines of the
+// printers it writes (a printer job is aimed at its writer), whether or not its printer list knows them yet (the
+// 2C gate's fresh review, I-2: a stale list must not hide a writer's own slips from its pulse and wake).
+test("printJobsForMeFilter: every line job aimed at it, less a lease still running; a lease that ran out still counts (its lease call expires it)", () => {
+  const { printerId: _simpleOnly, ...line } = printJobLineFilter("dev-a", T0);
+  assert.deepEqual(printJobsForMeFilter("dev-a", T0), {
+    ...line,
+    $nor: [{ status: "leased", "lease.expiresAt": { $gte: new Date(T0) } }],
+  });
+});
+
+// Session 2C's final review (I-2): the answer says whether a counted job waits on the device's own simple-mode line,
+// so an agent that cannot lease the named printers still hears of its own line's job; simple mode answers as before.
+test("jobsForMeOf: the count, the oldest, the printers of the printer jobs, and whether its own line holds one", () => {
+  const at = (s: number) => new Date(T0 + s * 1000);
+  const a = "a".repeat(24);
+  const b = "b".repeat(24);
+  assert.deepEqual(jobsForMeOf([]), { count: 0, oldestCreatedAt: null }, "nothing waits");
+  assert.deepEqual(jobsForMeOf([{ createdAt: at(1) }, { createdAt: at(2) }]), { count: 2, oldestCreatedAt: at(1).toISOString() }, "simple mode: unchanged");
+  assert.deepEqual(jobsForMeOf([{ createdAt: at(1), printerId: a }, { createdAt: at(2), printerId: b }, { createdAt: at(3), printerId: a }]), { count: 3, oldestCreatedAt: at(1).toISOString(), printerIds: [a, b] }, "printer jobs only");
+  assert.deepEqual(jobsForMeOf([{ createdAt: at(1), printerId: b }, { createdAt: at(2) }]), { count: 2, oldestCreatedAt: at(1).toISOString(), printerIds: [b], ownLine: true }, "a printer job beside its own line's job");
 });
 
 test("printJobCasFilter: fences on the status and epoch the plan read; epoch 0 also matches a row with no epoch", () => {

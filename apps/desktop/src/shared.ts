@@ -28,6 +28,10 @@ export const PRINTER_SAVE_CHANNEL = "pos-desktop:printer-save";
 // 32-item bill was cut short on a Letter page. No per-client driver
 // configuration can make that lane dynamic; the direct lane needs none.
 export const PRINT_MODE_SAVE_CHANNEL = "pos-desktop:print-mode-save";
+// Phase 2 Session 2E (spec §9.2, several printers per PC): one slip printed on the Windows printer the page NAMES.
+// A cafe with stations sets up one printer per Windows printer (Printer setup in the POS), each with its own slips;
+// the chosen printer above stays this PC's own printer for everything that names none.
+export const PRINT_ON_CHANNEL = "pos-desktop:print-html-on";
 export const PRINT_MODES = ["direct", "driver"] as const;
 export type PrintMode = (typeof PRINT_MODES)[number];
 export const DEFAULT_PRINT_MODE: PrintMode = "direct";

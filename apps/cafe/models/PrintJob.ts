@@ -14,6 +14,7 @@ import {
   type PrintJobLease,
   type PrintJobLogEntry,
 } from "@pos/shared/print-lifecycle";
+import { PRINTER_COPIES_MAX, PRINTER_COPIES_MIN } from "@pos/shared/print-printers";
 
 // Print-host plan (.claude/plan/v2/print-host-plan.md §B1) — a durable queued
 // print job for the browser print host: any dashboard screen enqueues one of
@@ -63,6 +64,11 @@ export interface IPrintJob extends Document {
   printedBy?: string; // the writing device's id, or the staff name
   lastError?: string;
   log?: PrintJobLogEntry[]; // the newest PRINT_JOB_LOG_MAX entries
+  // Phase 2 (spec §6.5, §8): the printer this slip prints on, in printers mode. Absent in simple mode,
+  // where targetDeviceId alone names the line. copies: how many times the writer prints it (1–3), ONE job
+  // so a copy never costs another lease and ack (spec §17); absent means 1.
+  printerId?: string;
+  copies?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -123,6 +129,9 @@ export const printJobSchema = new Schema<IPrintJob>(
     printedBy: { type: String },
     lastError: { type: String },
     log: { type: [printJobLogSchema], default: undefined },
+    // Phase 2. Omit-empty: a simple-mode row carries neither.
+    printerId: { type: String },
+    copies: { type: Number, min: PRINTER_COPIES_MIN, max: PRINTER_COPIES_MAX },
   },
   { timestamps: true },
 );
@@ -142,6 +151,13 @@ printJobSchema.index({ jobKey: 1 }, { unique: true, sparse: true });
 printJobSchema.index({ targetDeviceId: 1, status: 1, createdAt: 1, _id: 1 });
 // No {originDeviceId, createdAt} index (the Phase 1 final gate, m-1): it served myRecentJobs, which the
 // 1C gate dropped for the one attention feed; nothing reads by it.
+// Phase 2 (spec §6.5, §7.6): one printer's line, oldest first. PARTIAL on printerId, so the simple-mode
+// rows (no printerId) cost it nothing on M0; every query of a printer's line names its printerId, which
+// satisfies the filter, so the planner can use it.
+printJobSchema.index(
+  { printerId: 1, status: 1, createdAt: 1, _id: 1 },
+  { partialFilterExpression: { printerId: { $exists: true } } },
+);
 
 // NO TTL index: ttl-guard's default-deny (packages/shared/src/ttl-guard.ts)
 // allows exactly one registry TTL index platform-wide (Heartbeat) —

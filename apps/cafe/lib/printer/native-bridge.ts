@@ -45,6 +45,8 @@ const printerSchema = z.object({
   address: z.string().nullish().transform((v) => v ?? undefined),
   paired: z.boolean().nullish().transform((v) => v ?? undefined),
 });
+/** Phase 2 Session 2F1: bridge v2 (native-bridge-v2.ts) reads the app's printers with the same shape. */
+export const nativePrinterSchema = printerSchema;
 const statusSchema = z.object({
   state: z.enum(NATIVE_PRINTER_STATES),
   printer: printerSchema.nullable(),

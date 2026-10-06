@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   printHostOffline,
   printJobDrainCandidate,
+  printJobEnqueueAllowsLocalPrint,
   printJobPayloadWithinCap,
   printOrderSnapshot,
   PRINT_HOST_OFFLINE_MS,
@@ -298,4 +299,12 @@ test("printOrderSnapshotSchema: item sub-schema exposes modifiers/instructions/v
   assert.ok("instructions" in itemShape, "item schema must expose instructions");
   assert.ok("variation" in itemShape, "item schema must expose variation");
   assert.ok("name" in itemShape, "item schema must expose name");
+});
+
+// Phase 2 Session 2C: a slip no printer takes for a reason staff chose (Notices off) is answered "not-routed".
+test("2C: only no-host lets a caller print a slip itself; not-routed never does", () => {
+  assert.equal(printJobEnqueueAllowsLocalPrint("no-host"), true, "simple mode with no host: today's local print");
+  for (const outcome of ["queued", "already-resolved", "too-large", "not-routed"] as const) {
+    assert.equal(printJobEnqueueAllowsLocalPrint(outcome), false, outcome);
+  }
 });

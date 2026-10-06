@@ -39,6 +39,10 @@ export interface IProduct extends Document {
   // chosen icon. A stored key may predate a catalogue change — every renderer
   // narrows with isProductIconKey and treats anything else as "no icon".
   icon?: string;
+  // Printing Phase 2 (spec §6.2): this item's own kitchen station, overriding its category's. ABSENT means
+  // "use the category's station" — no `default:` below, the publicVisible precedent: the CSV import has
+  // no column for it, so a re-import can never clear a chosen station.
+  stationId?: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -79,6 +83,8 @@ export const productSchema = new Schema<IProduct>(
     publicVisible: { type: Boolean },
     // No `default:` — see the IProduct comment above: absent means no icon.
     icon: { type: String },
+    // No `default:` — see the IProduct comment above: absent means the category's station.
+    stationId: { type: Schema.Types.ObjectId },
   },
   { timestamps: true },
 );

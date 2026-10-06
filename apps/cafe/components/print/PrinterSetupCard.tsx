@@ -22,6 +22,8 @@ import { PrintWhereSection } from "@/components/print/PrintWhereSection";
 import { PrinterSection } from "@/components/print/PrinterSection";
 import { PrinterAdvanced } from "@/components/print/PrinterAdvanced";
 import { PrinterTestTips } from "@/components/print/PrinterTestTips";
+import { printersModeOn } from "@pos/shared/print-printers";
+import { usePrintersRead } from "@/hooks/use-agent-printers";
 import { useDeviceOnline, usePrintLane } from "@/hooks/use-device-printer";
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
 import { useClearPrintHost, useDesignatePrintHost } from "@/hooks/use-print-host";
@@ -57,7 +59,9 @@ type TestPhase = "idle" | "printing" | "confirm";
 
 export function PrinterSetupCard() {
   const { pulse } = usePosPulseContext();
-  const { queueTestSlip, syncHostPref, isHostDevice, current } = usePrintHostContext();
+  const { queueTestSlip, syncHostPref, isHostDevice, current, deviceId } = usePrintHostContext();
+  // Session 2D: printers mode (the agent's printers read, one cache entry) changes what "Where slips print" says.
+  const printersMode = printersModeOn(usePrintersRead(deviceId !== "").printers);
   const qc = useQueryClient();
   const lane = usePrintLane();
   const online = useDeviceOnline();
@@ -207,6 +211,7 @@ export function PrinterSetupCard() {
         onDesignate={() => void handleDesignate()}
         designating={designate.isPending}
         stopControl={isHostDevice ? clearControl : null}
+        printersMode={printersMode}
       />
       <DevicePrinterSection />
 

@@ -70,6 +70,8 @@ test("printAttentionRowOf: a panel row says what, when, why, who asked and where
     originDeviceId: "dev-2",
     targetDeviceId: "dev-1",
   });
+  // Session 2C: a printers-mode row names its printer, so the panel can say which one waits.
+  assert.equal(printAttentionRowOf({ _id: "j7", kind: "kot", label: "KOT", status: "queued", createdAt: at(T0), printerId: "p-bar" })?.printerId, "p-bar");
   const bare = printAttentionRowOf({ _id: "j2", kind: "bill", label: "Bill · ORD-1", status: "needs-confirm", createdAt: at(T0) });
   assert.deepEqual(bare, { id: "j2", kind: "bill", label: "Bill · ORD-1", status: "needs-confirm", labels: [], createdAt: "2026-10-03T12:00:00.000Z" }, "omit-empty");
   assert.equal(printAttentionRowOf({ _id: "j3", kind: "kot", label: "x", status: "printed", createdAt: at(T0) }), null, "a status the panel never shows is dropped, never thrown");
@@ -107,11 +109,14 @@ test("PIN (D2): the pulse sweeps after its answer, throttled, and the route itse
 
 test("PIN (D7): a staff Retry or Print again announces its job to the device that prints it", () => {
   const s = src("apps/cafe/lib/print-job-actions.ts");
-  assert.match(s, /\.select\(`\$\{PRINT_LIFECYCLE_SELECT\} targetDeviceId`\)/, "the row says where it prints");
+  // Session 2C deliberately added printerId to the read (the 2B gate's ruling R2: a gone printer is refused).
+  assert.match(s, /\.select\(`\$\{PRINT_LIFECYCLE_SELECT\} targetDeviceId printerId`\)/, "the row says where it prints");
   assert.match(s, /if \(plan\.patch\.status === "queued"\) publishCafeEvent\("print-job"\);/, "the host still hears the broadcast nudge");
+  // Session 2C deliberately aims it at the job's current writer (a printer job retried on a re-saved printer); the 2E
+  // review gate (M-1) names its printer too.
   assert.match(
     s,
-    /if \(plan\.patch\.status === "queued"\) publishPrintStatus\(\{ id, status: "queued", \.\.\.\(row\.targetDeviceId \? \{ target: row\.targetDeviceId \} : \{\}\) \}\);/,
+    /if \(plan\.patch\.status === "queued"\) publishPrintStatus\(\{ id, status: "queued", \.\.\.\(target \? \{ target \} : \{\}\), \.\.\.\(row\.printerId !== undefined \? \{ printerId: row\.printerId \} : \{\}\) \}\);/,
     "aimed: with no host only that device's agent leases on it (it ignores the broadcast)",
   );
 });

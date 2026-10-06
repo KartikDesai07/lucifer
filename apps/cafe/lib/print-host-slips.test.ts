@@ -277,24 +277,39 @@ function minimalPayloadOf(kind: PrintJobPayload["kind"]): PrintJobPayload {
       return { kind: "eod", dateKey: "2026-09-06", dateLabel: "Sun" };
     case "cancel-notice":
       return { kind: "cancel-notice", snapshot: SNAPSHOT, reason: "r" };
+    case "test":
+      return { kind: "test", printerName: "Kitchen printer", lines: ["Connection: Network 192.168.1.60:9100"], requestedBy: "Asha", requestedAt: "2026-09-06T00:00:00.000Z" };
   }
 }
 
-test("UNIT: hostPrintSlipOf is exhaustive over PRINT_JOB_KINDS — every kind (minimal payload) resolves to a slip whose surface is one of kot|receipt|eod", () => {
+// Changed in Phase 2 Session 2D (a printer's Test print is a kind of its own): the test slip's own surface
+// joins the three, printed through the KOT surface by the bridge.
+test("UNIT: hostPrintSlipOf is exhaustive over PRINT_JOB_KINDS — every kind (minimal payload) resolves to a slip whose surface is one of kot|receipt|eod|test", () => {
   assert.ok(PRINT_JOB_KINDS.length > 0, "positive landmark: PRINT_JOB_KINDS must be non-empty");
   const seenSurfaces = new Set<string>();
   for (const kind of PRINT_JOB_KINDS) {
     const payload = minimalPayloadOf(kind);
     const slip = hostPrintSlipOf(payload, "2026-09-06");
     assert.ok(
-      slip.surface === "kot" || slip.surface === "receipt" || slip.surface === "eod",
-      `hostPrintSlipOf(${kind}) must resolve to a kot|receipt|eod surface, got ${slip.surface}`,
+      slip.surface === "kot" || slip.surface === "receipt" || slip.surface === "eod" || slip.surface === "test",
+      `hostPrintSlipOf(${kind}) must resolve to a kot|receipt|eod|test surface, got ${slip.surface}`,
     );
     seenSurfaces.add(slip.surface);
   }
-  // Positive landmark that this loop is not vacuous: at least the three known
-  // surfaces were actually produced across the six kinds.
-  assert.deepEqual([...seenSurfaces].sort(), ["eod", "kot", "receipt"]);
+  // Positive landmark that this loop is not vacuous: every known surface was
+  // actually produced across the seven kinds.
+  assert.deepEqual([...seenSurfaces].sort(), ["eod", "kot", "receipt", "test"]);
+});
+
+test("2D: a printer's test job prints its test slip: the printer's name, the server's lines, who asked and when", () => {
+  const slip = hostPrintSlipOf(minimalPayloadOf("test"), "2026-09-06");
+  assert.equal(slip.surface, "test");
+  if (slip.surface !== "test") throw new Error("unreachable");
+  assert.equal(slip.printerName, "Kitchen printer");
+  assert.deepEqual(slip.lines, ["Connection: Network 192.168.1.60:9100"]);
+  assert.equal(slip.requestedBy, "Asha");
+  assert.equal(slip.requestedAt, "2026-09-06T00:00:00.000Z");
+  assert.equal(slip.documentTitle, "TEST-Kitchen printer");
 });
 
 // ── 11. constants ─────────────────────────────────────────────────────────
@@ -372,4 +387,19 @@ test('PARITY: lib/print-host-slips.ts and hooks/use-pos-print.ts both build the 
   // rather than assume one shared template shape.
   assert.ok(slipsSrc.includes('"Round "'), 'print-host-slips.ts must build the label from the literal "Round " prefix');
   assert.match(posPrintSrc, /`Round \$\{/, "use-pos-print.ts must build the label via a literal `Round ${...}` template");
+});
+
+// Phase 2 Session 2C (spec §8, plan decision 5): a station KOT names its station under its title; a full copy
+// beside station slips says ALL STATIONS; today's KOT (no station on the payload) carries none.
+test("2C: a routed KOT's station line; today's KOT carries none", () => {
+  const kot = { kind: "kot", snapshot: SNAPSHOT, round: 1 } as PrintJobPayload;
+  assert.equal((hostPrintSlipOf(kot, "2026-09-06") as HostKotSlip).stationLine, undefined, "simple mode: the slip is today's");
+  const cases = [
+    [{ name: "Bar", mode: "station" }, "BAR"],
+    [{ name: "All stations", mode: "all" }, "ALL STATIONS"],
+    [{ name: "Bar", mode: "no-printer" }, "BAR (NO PRINTER SET)"],
+  ] as const;
+  for (const [station, line] of cases) {
+    assert.equal((hostPrintSlipOf({ ...kot, station } as PrintJobPayload, "2026-09-06") as HostKotSlip).stationLine, line, station.mode);
+  }
 });

@@ -126,10 +126,11 @@ object WebViewDelivery {
     )
   }
 
-  /** Builds and delivers a {v,event,data} message; works while the app is backgrounded. */
-  fun deliverEvent(event: String, data: JSONObject) {
+  /** Builds and delivers a {v,event,data} message; works while the app is backgrounded. Session 2F2: [version] is the
+   *  bridge version whose listeners get it (the page's injected script routes by it). */
+  fun deliverEvent(event: String, data: JSONObject, version: Int = VERSION) {
     val message = JSONObject()
-    message.put("v", VERSION)
+    message.put("v", version)
     message.put("event", event)
     message.put("data", data)
     val call = "window.__posNativeDeliver && window.__posNativeDeliver(" + escapeForScript(message.toString()) + ");"

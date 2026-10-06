@@ -30,12 +30,15 @@ const SWEEP = "apps/cafe/lib/print-sweep.ts";
 
 test("PIN: every lifecycle transition is ONE compare-and-set on {_id, status, epoch}, and a lease call is bounded", () => {
   const s = src(LEASE);
-  // Session 1B: the CAS may carry an extra fence (a lease: still this device's job, 1A review M5),
-  // and a landed final transition publishes its print-status (spec §10).
+  // Session 1B: the CAS may carry an extra fence (a lease: still this device's job, 1A review M5).
+  // The Phase 2B gate (G-1) deliberately changed the rest: a landed transition publishes nothing, since no
+  // device listened for a final state.
   assert.match(s, /PrintJob\.updateOne\(\{ \.\.\.printJobCasFilter\(id, job\), \.\.\.fence \}, printJobUpdateOf\(patch\)/);
-  assert.match(s, /const applied = res\.modifiedCount === 1;/);
-  assert.match(s, /if \(applied && PRINT_STATUS_PUBLISHED\.has\(patch\.status\)\) publishPrintStatus\(\{ id: String\(id\), status: patch\.status \}\);/);
-  assert.match(s, /applyPrintJobPlan\(head\._id, job, plan\.patch, \{ targetDeviceId: input\.deviceId \}\)/, "the lease CAS is fenced on the device");
+  assert.match(s, /return res\.modifiedCount === 1;/);
+  assert.ok(!s.includes("publishPrintStatus") && !s.includes("realtime-publish"), "the lifecycle's transitions publish nothing");
+  // Session 2C deliberately moved the fence into each line: the device's own line is fenced on the device; a
+  // printer line on its printer, and the lease claims the job for its verified writer (the 2C lease pin below).
+  assert.match(s, /applyPrintJobPlan\(head\._id, job, claimed, fence\)/, "the lease CAS is fenced on its line");
   assert.match(s, /for \(let step = 0; step < LEASE_MAX_STEPS; step\+\+\)/);
   assert.match(s, /printJobEligibility\(payload, order\)/, "the claim path's live-order gate still applies to a lease");
   assert.ok(!s.includes("console."), "no console.* in a server lib");
@@ -53,7 +56,8 @@ test("PIN: staff actions go through applyPrintJobPlan and nudge the printer only
   const s = src(ACTIONS);
   assert.match(s, /planConfirm\(job, input\.decision, input\.staff, input\.nowMs\)/);
   assert.match(s, /planRetry\(job, input\.nowMs\)/);
-  assert.match(s, /await applyPrintJobPlan\(row\._id, job, plan\.patch\)/);
+  // Session 2C: the plan, plus a printer job's current writer (the R2 pin below).
+  assert.match(s, /await applyPrintJobPlan\(row\._id, job, patch\)/);
   assert.equal(count(s, 'publishCafeEvent("print-job")'), 1);
   assert.match(s, /if \(plan\.patch\.status === "queued"\) publishCafeEvent\("print-job"\);/);
   assert.ok(!/PrintJob\.(create|updateOne|findOneAndUpdate|updateMany|deleteMany)\(/.test(s), "no direct PrintJob write");
@@ -80,6 +84,49 @@ test("PIN: the sweep expires leases, routes waiting jobs to the device that prin
   assert.ok(!s.includes("console."));
 });
 
+// Session 2C (printers mode): a printer job waits on its printer's line. Simple mode's moves (to the host, or
+// back to the asking device) and the host teardown's dismissal never touch it; it follows its printer's writer,
+// and fails visibly when its printer is gone (deleted, switched off, no writer), never guessed onto another.
+test("PIN (2C): the sweep moves a waiting printer job only with its printer, and fails it when its printer is gone", () => {
+  const s = src(SWEEP);
+  inOrder(s, ["await routeWaitingPrintJobs(host?.deviceId ?? null, nowMs);", "routePrinterJobs(nowMs)", "await repairMissingKotJobs(nowMs);"], "sweep order");
+  const simple = s.slice(s.indexOf("export async function routeWaitingPrintJobs("), s.indexOf("export async function returnPrintJobsToOrigins("));
+  assert.equal(count(simple, "printerId: { $exists: false }"), 3, "neither move nor the dismissal reaches a printer job");
+  const printers = s.slice(s.indexOf("export async function routePrinterJobs("), s.indexOf("export async function sweepPrintJobs("));
+  inOrder(
+    printers,
+    [
+      'status: { $in: ["queued", "needs-confirm"] } })',
+      "if (waiting === null) return { retargeted: 0, failed: 0 };",
+      "const printers = routablePrinters(await listPrinters());",
+      "{ printerId: printer.id, status: { $in: WAITING }, targetDeviceId: { $ne: writer } }",
+      "{ printerId: { $exists: true, $nin: [...printers.map((printer) => printer.id), PRINT_JOB_NO_PRINTER] }, status: \"queued\" }",
+      "$set: { status: \"failed\", lastError: PRINTER_GONE_MESSAGE }",
+    ],
+    "routePrinterJobs",
+  );
+  const queue = src("apps/cafe/lib/print-queue.ts");
+  const bulk = queue.slice(queue.indexOf("export async function dismissQueuedPrintJobsForClearedHost("), queue.indexOf("export async function prunePrintJobs("));
+  assert.match(bulk, /printerId: \{ \$exists: false \},/, "Stop printing here never cancels a printer's slips");
+});
+
+test("PIN (2C ruling R2): Retry or Print again on a job whose printer is gone is refused; on a printer that still takes slips it goes to its current writer", () => {
+  const s = src(ACTIONS);
+  assert.match(s, /\.select\(`\$\{PRINT_LIFECYCLE_SELECT\} targetDeviceId printerId`\)/, "the row says which printer it is for");
+  inOrder(
+    s,
+    [
+      'if (plan.patch.status === "queued" && row.printerId !== undefined) {',
+      "const printer = routablePrinterOf(await listPrinters(), row.printerId);",
+      'if (printer === null) return { applied: false, status: job.status, reason: "printer-gone" };',
+      "target = printerWriterDeviceId(printer) ?? target;",
+      "patch = { ...plan.patch, set: { ...plan.patch.set, ...(target !== undefined ? { targetDeviceId: target } : {}) } };",
+      "if (await applyPrintJobPlan(row._id, job, patch)) {",
+    ],
+    "the retry (the 2C gate's review, I-3: retargeted in the same write)",
+  );
+});
+
 // ── Task 6: request bodies and routes ────────────────────────────────────────
 
 test("ackBodySchema: a printed ack carries no failure fields; a failed one must say whether anything was sent", () => {
@@ -98,6 +145,9 @@ test("ackBodySchema: a printed ack carries no failure fields; a failed one must 
 test("lease, confirm and wake bodies: required fields, enums and strictness", () => {
   assert.equal(leaseBodySchema.safeParse({ deviceId: "d", tabId: "t" }).success, true);
   assert.equal(leaseBodySchema.safeParse({ deviceId: "d" }).success, false, "a tab id makes two windows on one PC distinguishable");
+  // Session 2C: the printers this tab can print on now; at most a cafe's twelve (the lib drops anything else).
+  assert.equal(leaseBodySchema.safeParse({ deviceId: "d", tabId: "t", printerIds: ["a".repeat(24)] }).success, true);
+  assert.equal(leaseBodySchema.safeParse({ deviceId: "d", tabId: "t", printerIds: Array.from({ length: 13 }, () => "a".repeat(24)) }).success, false, "never more than a cafe can have");
   for (const decision of ["reprint", "printed", "dismiss"]) assert.equal(confirmBodySchema.safeParse({ decision }).success, true, decision);
   assert.equal(confirmBodySchema.safeParse({ decision: "maybe" }).success, false);
   const beat = {
@@ -221,19 +271,71 @@ test("PIN: the heartbeat awaits the PrintDevice unique-index build before its fi
 
 test("PIN: the lease route's heartbeat is best-effort (M1), and a lease call that cleared four bad heads says when to look again (M2)", () => {
   assert.match(src("apps/cafe/app/api/print-jobs/lease/route.ts"), /touchPrintDevice\(parsed\.data\.deviceId, nowMs\)\.catch\(\(\) => undefined\),/);
-  assert.match(src(LEASE), /return \{ jobs: \[\], retryAt: new Date\(input\.nowMs \+ PRINT_BACKOFF_MS\[0\]\)\.toISOString\(\) \};/);
+  // Session 2C: per line now (leaseLineHead), so a line that cleared four bad heads gives no job and a retry time.
+  assert.match(src(LEASE), /return \{ job: null, retryAt: new Date\(input\.nowMs \+ PRINT_BACKOFF_MS\[0\]\)\.toISOString\(\) \};/);
 });
 
-test("PIN: the lifecycle publishes exactly the final statuses, and a dismissed job announces itself", () => {
-  assert.match(src(LEASE), /new Set<PrintJobStatus>\(\["printed", "needs-confirm", "failed", "dismissed"\]\)/);
+// The Phase 2B gate (G-1, deliberate change): a final state ("printed", "needs-confirm", "failed",
+// "dismissed") had no listener on any device, so it is no longer published. Only "queued", aimed at the
+// device that prints, is: the one frame an agent leases on.
+test("PIN (G-1): no final state is published, from the lifecycle or a dismiss; only a queued job is announced to its printer", () => {
+  assert.ok(!src(LEASE).includes("PRINT_STATUS_PUBLISHED"), "no final-status set");
   const queue = src("apps/cafe/lib/print-queue.ts");
   const single = queue.slice(queue.indexOf("export async function dismissPrintJob("), queue.indexOf("export async function dismissQueuedPrintJobsForClearedHost("));
-  assert.match(single, /if \(dismissed\) \{\s*publishPrintStatus\(\{ id: input\.id, status: "dismissed" \}\);\s*return \{ dismissed: true \};\s*\}/);
+  assert.match(single, /if \(dismissed\) \{\s*return \{ dismissed: true \};\s*\}/);
+  for (const rel of ["apps/cafe/lib/print-queue.ts", "apps/cafe/lib/print-order-jobs.ts", "apps/cafe/lib/print-job-actions.ts"]) {
+    for (const call of src(rel).match(/publishPrintStatus\(\{[^}]*\}\)/g) ?? []) {
+      assert.match(call, /status: "queued"/, `${rel}: ${call} announces a queued job only`);
+    }
+  }
+});
+
+// Session 2B (plan decision 9): the ack answers whether the acking device's line holds more, so a burst ends
+// with no empty lease. The hint never costs the ack itself.
+test("PIN (2B): an ack that takes a job off the line answers `more` from one read of the acking device's line", () => {
+  const s = src(LEASE);
+  const ack = s.slice(s.indexOf("export async function ackPrintJob("), s.indexOf("export async function readJobsForDevice("));
+  inOrder(
+    ack,
+    [
+      "if (await applyPrintJobPlan(row._id, job, plan.patch)) {",
+      'if (plan.patch.status === "queued") return { applied: true, status: plan.patch.status, nextAttemptAt };',
+      "const more = await (row.printerId !== undefined ? printerLineHasMore(row.printerId, input.nowMs) : printLineHasMore(input.deviceId, input.nowMs)).catch(",
+      "() => undefined,",
+      "...(more !== undefined ? { more } : {})",
+    ],
+    "the ack",
+  );
+  assert.match(s, /return \(await PrintJob\.findOne\(\{ \.\.\.printJobLineFilter\(deviceId, nowMs\), status: "queued" \}\)\.select\("_id"\)\.lean\(\)\) !== null;/, "one read on the line index");
+  assert.match(s, /return \(await PrintJob\.findOne\(\{ \.\.\.printerLineFilter\(printerId, nowMs\), status: "queued" \}\)\.select\("_id"\)\.lean\(\)\) !== null;/, "Session 2C: a printer job asks its own printer's line");
+});
+
+// Session 2C (spec §7.6, §9.3; plan decision 1): a device leases its simple line and the line of each printer it
+// names that it really writes (one read of the printers: routable, this device its writer), each fenced on its
+// line, so a printer never has two writers and a stuck bar job never blocks the kitchen. A printer line's lease
+// claims the job for its verified writer (the 2C gate's review, I-3: a re-saved printer's new writer takes its
+// waiting job at once).
+test("PIN (2C): a lease takes the head of the device's line and of each printer line it writes, one job per line", () => {
+  const s = src(LEASE);
+  const lease = s.slice(s.indexOf("export async function leasePrintJobs("), s.indexOf("export async function ackPrintJob("));
+  inOrder(
+    lease,
+    [
+      "[{ line: printJobLineFilter(input.deviceId, input.nowMs), fence: { targetDeviceId: input.deviceId } }];",
+      "for (const printer of routablePrinters(await listPrinters())) {",
+      "if (input.printerIds.includes(printer.id) && printerWriterDeviceId(printer) === input.deviceId) {",
+      "lines.push({ line: printerLineFilter(printer.id, input.nowMs), fence: { printerId: printer.id }, claim: { targetDeviceId: input.deviceId } });",
+      "const result = await leaseLineHead(line, fence, input, claim);",
+    ],
+    "the lease",
+  );
+  assert.match(src(ROUTES.lease), /printerIds: printerIdsOf\(parsed\.data\.printerIds\),/, "the route passes only real printer ids");
 });
 
 test("PIN (the Phase 1 final gate, M8): the soak drives only a local POS on a local scratch database, and stops after its first order unless that order is in its own database", () => {
   const soak = src("apps/cafe/scripts/print-soak.ts");
   assert.ok(soak.includes(String.raw`if (!/^mongodb:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/pos_scratch_[a-z0-9_]+$/.test(uri)) throw new Error("refusing: not a local pos_scratch_* database");`), "a local pos_scratch_* database only");
   assert.ok(soak.includes('throw new Error("refusing: the POS at --base writes to another database than MONGODB_URI");'), "the first order must be in the soak's own database");
-  assert.ok(soak.indexOf("refusing: the POS at --base writes") < soak.indexOf("await drainLine(args, cookie);"), "checked before anything else is driven");
+  // Session 2G (the 2F2 review gate): the first print or lease after an order is the soak agent's (scripts/print-soak-agent.ts).
+  assert.ok(soak.indexOf("refusing: the POS at --base writes") < soak.indexOf("if (await printLeased(agent, soakCall, created)) await leaseLines(agent, soakCall);"), "checked before anything else is driven");
 });

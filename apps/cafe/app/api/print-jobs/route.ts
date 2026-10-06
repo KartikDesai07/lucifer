@@ -5,7 +5,8 @@ import { printJobPayloadSchema } from "@pos/shared/schemas/print-job.schema";
 import { PRINT_JOB_LABEL_MAX_CHARS, printJobPayloadWithinCap } from "@pos/shared/print-job";
 import { PRINT_DEVICE_ID_HEADER, PRINT_IDEMPOTENCY_HEADER, PRINT_IDEMPOTENCY_KEY_PATTERN } from "@pos/shared/print-agent-wire";
 import { enqueuePrintJob, prunePrintJobsThrottled } from "@/lib/print-queue";
-import { enqueueOwnPrintJob, printIntentOf } from "@/lib/print-order-jobs";
+import { enqueueDirectPrintJob, enqueueOwnPrintJob, printIntentOf } from "@/lib/print-order-jobs";
+import { enqueueRoutedPrintJob } from "@/lib/print-printer-jobs";
 import { PRINT_HOST_DEVICE_ID_MAX_CHARS } from "@/lib/print-host";
 import { success, failure, requireAuth, serverError, validateBody } from "@/lib/api-helpers";
 import { noStore } from "@/lib/order-request-tray";
@@ -16,6 +17,9 @@ export const dynamic = "force-dynamic";
 // `required:true` and a "" would 500 the save — repo memory
 // mongoose-required-rejects-empty-string).
 const UNNAMED_STAFF = "Staff";
+
+// Phase 2 Session 2D: a printer's test slip is made only by its printer's Test print, on that printer's line.
+const PRINT_TEST_ENQUEUE_MESSAGE = "A test slip is printed from its printer's Test print.";
 
 // A header that is absent or blank reads as not sent. An expression body on purpose:
 // print-queue.test.ts requires every `return` in this file to go through noStore(.
@@ -48,6 +52,7 @@ export async function POST(req: Request) {
 
   const parsed = await validateBody(req, enqueueBodySchema);
   if ("error" in parsed) return parsed.error;
+  if (parsed.data.payload.kind === "test") return noStore(failure(PRINT_TEST_ENQUEUE_MESSAGE, 400));
 
   // 64KB M0 fence, checked here at the edge as well as inside the lib.
   if (!printJobPayloadWithinCap(JSON.stringify(parsed.data.payload))) {
@@ -72,17 +77,47 @@ export async function POST(req: Request) {
 
   try {
     await connectDB();
-    let result = await enqueuePrintJob({
+    const intent = printIntentOf(req);
+    // Session 2C (spec §8): printers mode routes the slip to its printers, whoever asks. null: simple mode.
+    const routed = await enqueueRoutedPrintJob({
       payload: parsed.data.payload,
       label: parsed.data.label,
       queuedBy,
       ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
-      ...(originDeviceId !== undefined ? { originDeviceId } : {}),
+      originDeviceId: intent?.deviceId ?? originDeviceId,
+      leaseTabId: intent?.leaseTabId,
+      readyPrinterIds: intent?.readyPrinterIds,
+      ...(intent?.billPrinterId !== undefined ? { billPrinterId: intent.billPrinterId } : {}),
       nowMs,
     });
+    // Session 2B (spec §7.11): the tab that drains the asking device's slips and can print now prints its
+    // own slip at once (made leased to it), and gets back a slip still leased to it whose first answer was
+    // lost. null: another device is the host, and the enqueue below makes the slip for it.
+    const direct =
+      routed === null && intent?.leaseTabId !== undefined
+        ? await enqueueDirectPrintJob({
+            payload: parsed.data.payload,
+            label: parsed.data.label,
+            queuedBy,
+            ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+            originDeviceId: intent.deviceId,
+            leaseTabId: intent.leaseTabId,
+            nowMs,
+          })
+        : null;
+    let result =
+      routed ??
+      direct ??
+      (await enqueuePrintJob({
+        payload: parsed.data.payload,
+        label: parsed.data.label,
+        queuedBy,
+        ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+        ...(originDeviceId !== undefined ? { originDeviceId } : {}),
+        nowMs,
+      }));
     // Phase 1 (spec §6.6): with no host, an agent tab prints its own client-started slip through the
     // lifecycle. A tab from before Phase 1 sends no agent header and still gets "no-host" (print here).
-    const intent = printIntentOf(req);
     if (result.outcome === "no-host" && intent !== null) {
       result = await enqueueOwnPrintJob({
         payload: parsed.data.payload,

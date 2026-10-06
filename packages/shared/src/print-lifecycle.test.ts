@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 import { PRINT_HOST_MAX_AGE_MS, PRINT_JOB_KINDS } from "./print-job";
 import {
   PRINT_BACKOFF_MS,
+  PRINT_DIRECT_LEASE_DETAIL,
   PRINT_LEASE_MS,
   PRINT_MAX_PAPER_ATTEMPTS,
   addPrintLabel,
+  directLeaseOf,
   lifecycleOf,
   planAck,
   planConfirm,
@@ -15,9 +17,11 @@ import {
   planRetry,
   printBackoffMs,
   printBannerText,
+  printJobFailedAtCreation,
   printJobInitialLabels,
   printJobLifecycleInit,
   printJobStale,
+  printRepeatLabel,
   type PrintJobLifecycle,
   type PrintJobLogEntry,
   type PrintJobPatch,
@@ -285,6 +289,13 @@ test("a client-started repeat carries its label from the start (spec §7.7)", ()
   for (const [payload, labels] of cases) assert.deepEqual(printJobInitialLabels(payload), labels, JSON.stringify(payload).slice(0, 40));
 });
 
+test("2D: a printer's test slip is a kind of its own, starts with no label, and a repeat of it says REPRINT", () => {
+  assert.ok(PRINT_JOB_KINDS.includes("test"), "the test kind is listed (the model's enum reads this list)");
+  const payload: PrintJobPayload = { kind: "test", printerName: "Bar", lines: [], requestedBy: "Asha", requestedAt: "2026-10-04T10:00:00.000Z" };
+  assert.deepEqual(printJobInitialLabels(payload), [], "a first test slip carries no banner");
+  assert.equal(printRepeatLabel("test"), "REPRINT", "only a bill says DUPLICATE");
+});
+
 test("lifecycleOf: a row from before Phase 1 reads as a fresh job due since it was created", () => {
   const legacy = lifecycleOf({ kind: "kot", status: "queued", createdAt: new Date(T0 - 1_000), labels: ["REPRINT", "BOGUS"] });
   assert.equal(legacy.epoch, 0);
@@ -293,4 +304,71 @@ test("lifecycleOf: a row from before Phase 1 reads as a fresh job due since it w
   assert.deepEqual(legacy.nextAttemptAt, new Date(T0 - 1_000));
   assert.deepEqual(legacy.labels, ["REPRINT"], "an unknown label is dropped, never printed");
   assert.ok(planLease(legacy, WHO, T0).ok);
+});
+
+// Phase 2 Session 2B (spec §7.11, plan decision 15): a slip the asking tab prints itself is made already
+// leased to it, in the one write that creates it.
+function directRow(kind: PrintJobLifecycle["kind"], labels: PrintJobLifecycle["labels"] = []): PrintJobLifecycle {
+  const direct = directLeaseOf({ labels, who: WHO, originDeviceId: "dev-a", nowMs: T0 });
+  return lifecycleOf({
+    kind,
+    status: direct.status,
+    createdAt: new Date(T0),
+    epoch: direct.epoch,
+    attempts: direct.attempts,
+    uncertainAttempts: direct.uncertainAttempts,
+    nextAttemptAt: direct.nextAttemptAt,
+    labels: direct.labels,
+    lease: direct.lease,
+  });
+}
+
+test("direct lease: a job made leased to the asking tab is exactly what a lease request would make of it", () => {
+  const direct = directLeaseOf({ labels: ["DUPLICATE"], who: WHO, originDeviceId: "dev-a", nowMs: T0 });
+  const viaLease = patchOf(planLease(job({ labels: ["DUPLICATE"] }), WHO, T0));
+  assert.equal(direct.status, viaLease.status, "leased");
+  assert.equal(direct.epoch, viaLease.set.epoch, "epoch 1");
+  assert.equal(direct.attempts, viaLease.set.attempts, "one attempt");
+  assert.deepEqual(direct.lease, viaLease.set.lease, "the same 90 s lease, for the same tab");
+  assert.deepEqual(
+    { uncertainAttempts: direct.uncertainAttempts, nextAttemptAt: direct.nextAttemptAt, labels: direct.labels },
+    { uncertainAttempts: 0, nextAttemptAt: new Date(T0), labels: ["DUPLICATE"] },
+    "the create row's own fields, and its first label",
+  );
+  assert.deepEqual(
+    direct.log.map((entry) => [entry.event, entry.deviceId, entry.detail]),
+    [["created", "dev-a", undefined], ["leased", "dev-a", PRINT_DIRECT_LEASE_DETAIL]],
+    "its history says it was leased when it was made",
+  );
+  assert.deepEqual(directLeaseOf({ labels: [], who: WHO, nowMs: T0 }).log[0], { at: new Date(T0), event: "created" }, "no asking device: the created entry names none");
+});
+
+test("direct lease: its tab's ack prints it; a tab that dies lets it expire into REPRINT, or the cashier's question for a bill", () => {
+  assert.equal(patchOf(planAck(directRow("kot"), { deviceId: "dev-a", epoch: 1, outcome: "printed" }, T0 + 5_000)).status, "printed");
+  assert.equal(refusalOf(planExpiry(directRow("kot"), T0 + PRINT_LEASE_MS)).reason, "lease-held", "a live lease is never expired");
+  const kot = patchOf(planExpiry(directRow("kot"), T0 + PRINT_LEASE_MS + 1));
+  assert.deepEqual([kot.status, kot.set.labels, kot.set.uncertainAttempts], ["queued", ["REPRINT"], 1], "the KOT prints again, labelled");
+  assert.equal(patchOf(planExpiry(directRow("bill"), T0 + PRINT_LEASE_MS + 1)).status, "needs-confirm", "a bill that may have printed asks the cashier");
+  const late = patchOf(planAck({ ...directRow("kot"), status: "queued" }, { deviceId: "dev-a", epoch: 1, outcome: "printed" }, T0 + PRINT_LEASE_MS + 5_000));
+  assert.equal(late.log.event, "late-ack", "a late ack from its tab still resolves it (spec §7.9)");
+});
+
+// Phase 2 Session 2C (spec §8: a KOT is never dropped): a slip no printer takes is made failed at once, in the
+// write that creates it, so staff see it under "Couldn't print".
+test("failed at creation: never attempted, its reason kept and logged, and a staff Retry queues it unlabelled", () => {
+  const made = printJobFailedAtCreation({ labels: [], error: "No printer is set up for bills.", originDeviceId: "dev-a", nowMs: T0 });
+  assert.deepEqual(
+    [made.status, made.epoch, made.attempts, made.uncertainAttempts, made.lastError, made.labels],
+    ["failed", 0, 0, 0, "No printer is set up for bills.", []],
+    "nothing was attempted, so nothing can be on paper",
+  );
+  assert.deepEqual(
+    made.log.map((entry) => [entry.event, entry.deviceId, entry.detail]),
+    [["created", "dev-a", undefined], ["failed", undefined, "no printer: No printer is set up for bills."]],
+    "its history says why",
+  );
+  const row = lifecycleOf({ kind: "bill", status: made.status, createdAt: new Date(T0), epoch: made.epoch, attempts: made.attempts, uncertainAttempts: made.uncertainAttempts, nextAttemptAt: made.nextAttemptAt, labels: made.labels });
+  const retried = patchOf(planRetry(row, T0 + 1_000));
+  assert.deepEqual([retried.status, retried.set.labels], ["queued", []], "a Retry queues it with no DUPLICATE: it never printed");
+  assert.deepEqual(printJobFailedAtCreation({ labels: ["REPRINT"], error: "x", nowMs: T0 }).labels, ["REPRINT"], "a staff reprint keeps its label");
 });

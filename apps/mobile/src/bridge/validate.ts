@@ -6,6 +6,7 @@ import {
   PRINT_DATA_MAX_BASE64_CHARS,
   type NativeMethod,
 } from './protocol';
+import type { V2Method } from './protocol-v2';
 import { MAX_PORT, MIN_PORT, isValidHost } from '../url';
 
 export const MAX_PRINTER_ID_CHARS = 200;
@@ -77,6 +78,43 @@ function validatePrint(obj: Record<string, unknown>): Validated {
   }
   const shapeOk = data.length % BASE64_QUANTUM === 0 && BASE64_BODY.test(data);
   return shapeOk ? { ok: true, params: { data } } : BAD;
+}
+
+function validPrinterId(id: unknown): id is string {
+  return typeof id === 'string' && id.length > 0 && id.length <= MAX_PRINTER_ID_CHARS;
+}
+
+// Phase 2 Session 2F2 (spec §9.2): bridge v2's printer methods name their
+// printer by the app's id; select takes { id } or { tcp } exactly as v1.
+export function validateV2Params(
+  method: V2Method,
+  params: unknown,
+): Validated {
+  const obj =
+    params === undefined || params === null ? {} : plainObject(params);
+  if (obj === null) {
+    return BAD;
+  }
+  switch (method) {
+    case 'printer.select':
+      return validateSelect(obj);
+    case 'printer.reconnect':
+    case 'printer.forget':
+      return onlyKeys(obj, ['printerId']) && validPrinterId(obj.printerId)
+        ? { ok: true, params: { printerId: obj.printerId } }
+        : BAD;
+    case 'printer.print': {
+      if (!onlyKeys(obj, ['printerId', 'data']) || !validPrinterId(obj.printerId)) {
+        return BAD;
+      }
+      const checked = validatePrint({ data: obj.data });
+      return checked.ok
+        ? { ok: true, params: { printerId: obj.printerId, data: checked.params.data } }
+        : checked;
+    }
+    default:
+      return Object.keys(obj).length === 0 ? { ok: true, params: {} } : BAD;
+  }
 }
 
 export function validateParams(

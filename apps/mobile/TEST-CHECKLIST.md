@@ -256,6 +256,80 @@ Pair the Bluetooth printer in the device's own Bluetooth settings first.
       before; choose **Not chosen — slips will not print** in the picker: the dot
       turns red with "No printer chosen"; choose the printer again: green.
 
+## Stations and printers checks (Phase 2, added 2026-10-05)
+
+Needs the Phase 2 APK on a phone or tablet, the POS with Phase 2 (the go-live run: the Worker first, then the web,
+then every POS screen reloaded), two Bluetooth printers paired with that phone or tablet, one network (LAN) printer
+with a fixed address (a DHCP reservation in the router), and a second device to order from. Do the Phase 1 checks
+above first. The Windows counter PC has its own section below.
+
+- [ ] **The new APK over the old one.** On a device that already prints, install the Phase 2 APK over the installed
+      one (no uninstall): it opens on the POS with **Printer connected** at once, no re-pairing, and **Send to
+      Kitchen** prints one KOT exactly as before. Do this once before the web update reaches that device too: the
+      new APK prints the old POS's slips exactly as before.
+- [ ] **Set up printers.** On the device that prints today: Printer setup → **Set up printers**. Printer 1 is that
+      device's printer with Bill, Full KOT copy, Notices and End of day; **Send to Kitchen** still prints one KOT,
+      exactly as before.
+- [ ] **A LAN kitchen printer.** **Add printer** → Network (LAN) → its address and port, printed by the phone or
+      tablet → **Kitchen KOTs**. A round with food: the KITCHEN slip at the LAN printer and the full copy (ALL
+      STATIONS) at Printer 1, once each.
+- [ ] **Two Bluetooth printers on one phone or tablet.** Printer panel → **Other printers on this device** → **Add
+      another printer** → the second paired printer. Add a station **Bar**, put the drinks category on it, then
+      **Add printer** → Device printer → that printer → **Bar KOTs**, 58 mm if it is a 58 mm printer. A round with
+      food and drinks: the BAR slip on the second Bluetooth printer, the full copy on Printer 1, each as wide as its
+      own roll, nothing on the wrong printer. Note the phone model (two Bluetooth links at once depend on the phone).
+- [ ] **A station with no printer.** Add a station **Desserts** with no printer and put the desserts category on it:
+      a dessert round prints only inside the full copy at Printer 1 (no slip of its own).
+- [ ] **Copies.** Set Printer 1's bill copies to 2: **Pay Now** prints the bill twice, back to back; nothing else
+      prints twice.
+- [ ] **A deleted station.** Delete **Desserts** while the desserts category uses it: the category goes back to the
+      default station, and the next dessert round prints as a kitchen item.
+- [ ] **A printer switched off in the setup.** Switch the bar printer off in Printer setup: the next drinks round
+      prints only in the full copy. Switch it on again: BAR slips print again. A BAR slip that was still waiting when
+      the printer was switched off moves to **Couldn't print** ("This printer was removed or switched off.") within a
+      minute; once the printer is on again, its **Retry** prints it there (it is never moved to another printer).
+- [ ] **A printer powered off.** Power the second Bluetooth printer off and send a round with drinks: the full copy
+      prints at once; the BAR slip waits in the printer panel under **Waiting for the printer**, naming the bar
+      printer; other slips keep printing. Power it on: the BAR slip prints **once, without a banner**.
+- [ ] **The notification** (simple mode, **Print all slips on this device**, notifications allowed for the POS app,
+      two printers in the app): "Printing is on — 2 printers"; with one printer off, "Printing is on — ‹name› not
+      connected".
+- [ ] **An order lost in the network on the device that prints it.** On the tablet that prints its own KOTs, switch
+      Wi-Fi off just as you tap **Send to Kitchen**, then on again: the POS sends it again by itself (or offers Send
+      again); the KOT prints **once, without a banner**, never twice. (A device killed mid-print gives one
+      **REPRINT** copy, as in Phase 1.)
+- [ ] **A printer Printer setup prints through this device.** In the printer panel it shows "Printer setup prints
+      slips here: to remove it, change or delete that printer in Printer setup first." instead of **Remove** (as this
+      device's printer and under Other printers). **Change printer** on it adds the new printer and keeps the old one
+      under Other printers, and the old one's slips still print.
+- [ ] **A network printer moved to a new address.** Change the LAN printer's address in Printer setup: the tablet
+      adds the new address to Other printers on this device by itself, prints the next kitchen slip there, and drops
+      the old address from the list. If the old address was this device's own printer (the one at the top), the panel
+      now offers **Remove** on it: remove it there. The app then makes the first printer left in its list this
+      device's printer, which may be another printer (a Bluetooth one, say); if it is not the new address, tap
+      **Change printer** and choose the new address (it is already listed, so it is only chosen).
+- [ ] **Two USB printers asking for permission at once** (a USB hub with two printers, plugged in together): allow
+      each prompt; both printers connect. If only one prompt shows, tap **Reconnect** on the other and note it.
+
+## Several printers on one Windows PC (Phase 2, added 2026-10-05)
+
+Needs the Windows app 1.11.0 or later on the counter PC, two thermal printers installed in Windows, and the
+POS with Phase 2. An older Windows app prints one printer, the one chosen for the PC: the printer form says so.
+
+- [ ] Printer setup in the Windows app: **Set up printers** makes Printer 1 from the printer chosen for this PC,
+      on the cafe's KOT paper. **Send to Kitchen**: one KOT on it, exactly as before.
+- [ ] Add a station **Bar** and put the drinks category on it. **Add printer** → **Device printer** → choose the
+      second printer under **Windows printer** → tick **Bar KOTs** → save. The same Windows printer as Printer 1 is
+      refused: "… already prints on that Windows printer."
+- [ ] A round with food and drinks: the full copy (ALL STATIONS) at Printer 1 and the BAR slip at the second printer,
+      once each, each as wide as its own roll (try one 58 mm and one 80 mm printer if you have them).
+- [ ] **Test print** on each printer: each slip comes out of its own printer.
+- [ ] Rename the second printer in Windows (Settings → Printers): its next slip waits under the printer icon with
+      "That printer is not on this PC…", while Printer 1 keeps printing at once. Edit the printer in Printer setup,
+      choose it again under **Windows printer**: the waiting slip prints once.
+- [ ] An unplugged printer: Windows keeps its slips in its own print queue and prints them when it is back; the POS
+      cannot see that queue (spec §9.6), so check the paper.
+
 ## Result
 
 Date: ________  Device and Android version: ________________________

@@ -18,6 +18,8 @@ import {
   printAgentTimerDelayMs,
   printAgentWakeIntervalMs,
   printWakeAgentCap,
+  printWakeWriterCap,
+  PRINT_WAKE_PRINTERS_DAILY_CAP,
 } from "./print-agent-wire";
 import {
   PRINT_ACK_PENDING_MAX_MS,
@@ -38,7 +40,19 @@ import {
   PRINT_REALTIME_BASE_PER_DAY,
   PRINT_REALTIME_PER_SLIP,
   REALTIME_FREE_REQUESTS_PER_DAY,
+  PRINT_BUDGET_STATIONS_DAY,
+  PRINT_REALTIME_PER_PRINTER_SLIP,
+  PRINT_REALTIME_PER_DIRECT_SLIP,
+  PRINT_REQUESTS_PER_DIRECT_SLIP,
+  PRINT_REQUESTS_PER_SLIP,
+  printOneDeviceRequestsPerDay,
+  printRequestsForSlips,
   printSlipRequestsPerDay,
+  printStationSlipsPerDay,
+  PRINT_SETUP_REFRESH_MIN_MS,
+  PRINT_SETUP_STALE_MS,
+  printHeavyCounterDayRequests,
+  printSetupReadsWorstPerDay,
 } from "./print-budget";
 
 // Spec §17.3 item 4: recompute §17.2's two "Vercel invocations" totals from the exported constants
@@ -120,9 +134,12 @@ test("no host: printing costs only a lease and an ack per slip, never a poll (sp
   assert.ok(printSlipRequestsPerDay() <= PRINT_BUDGET_NORMAL_MAX_PER_DAY, "inside the normal-day ceiling");
 });
 
-test("realtime: three Worker requests per slip stay under 5 % of the free 100,000 a day", () => {
+// The Phase 2B gate (G-1) deliberately changed this pin: a slip's final state is no longer published (no
+// device listened for it), so a slip another device prints costs 2 Worker requests, not 3 (was 3,935/day).
+test("realtime: two Worker requests per slip another device prints stay under 5 % of the free 100,000 a day", () => {
   const perDay = PRINT_BUDGET_BUSY_DAY.slips * PRINT_REALTIME_PER_SLIP + PRINT_REALTIME_BASE_PER_DAY;
-  assert.equal(perDay, 3_935);
+  assert.equal(PRINT_REALTIME_PER_SLIP, 2, "its queued print-status and the host's nudge");
+  assert.equal(perDay, 2_735);
   assert.ok(perDay <= REALTIME_FREE_REQUESTS_PER_DAY * 0.05, `${perDay}/day`);
 });
 
@@ -205,4 +222,113 @@ test("1D gate retention: the prune rides the existing throttle, and stale device
   assert.equal(PRINT_JOB_PRUNE_MIN_INTERVAL_MS, 5 * 60 * 1000, "at most one prune per 5 min per instance");
   assert.equal(PRINT_DEVICE_PRUNE_MS, 7 * 24 * 60 * 60 * 1000);
   assert.ok(PRINT_DEVICE_PRUNE_MS > 1000 * PRINT_DEVICE_ONLINE_MS, "only a device gone for days, never one that is merely offline");
+});
+
+// Phase 2 Session 2A (plan 2026-10-03-phase-2-routing.md, Task A5): the stations recount the 1C gate asked
+// for. Printers mode routes each KOT round to its stations' printers (spec §8), and each printer's writer
+// leases its own line. These pins hold the cafe under the same ceilings with stations, with the heavy setup
+// (a full copy per round too), and with any number of writers.
+test("Phase 2 busy day with stations: spec §17.2's 1,200 slips; a full copy per round makes 1,650", () => {
+  assert.equal(printStationSlipsPerDay({ fullCopy: false }), 1_200, "1.5 rounds x 2 stations + 1 bill, 300 orders");
+  assert.equal(printStationSlipsPerDay({ fullCopy: true }), 1_650, "and a full copy of each round");
+  assert.equal(printRequestsForSlips(1_200), printSlipRequestsPerDay(), "the same lease-and-ack price per slip as Phase 1");
+});
+
+test("Phase 2 normal day (socket healthy): stations stay at 4,800; the heavy setup at 5,790, under 6,000", () => {
+  const wakePerWriter = OPEN_MS / cadence({ socketHealthy: true, msSinceLastJob: 0, capSpent: false });
+  const writers = PRINT_BUDGET_STATIONS_DAY.writers;
+  const stations = printRequestsForSlips(printStationSlipsPerDay({ fullCopy: false })) + writers * wakePerWriter;
+  const heavy = printRequestsForSlips(printStationSlipsPerDay({ fullCopy: true })) + writers * wakePerWriter;
+  assert.equal(stations, 4_800);
+  assert.equal(heavy, 5_790);
+  assert.ok(heavy <= PRINT_BUDGET_NORMAL_MAX_PER_DAY, `${heavy}/day`);
+});
+
+test("Phase 2 worst case (socket down all day, every writer always busy): the writers' shared cap holds even the heavy setup under 18,000", () => {
+  const fastest = cadence({ socketHealthy: false, msSinceLastJob: 0, capSpent: false });
+  const heavySlips = printRequestsForSlips(printStationSlipsPerDay({ fullCopy: true }));
+  for (const writers of [1, 2, 3, 5, 8, 12]) {
+    const wake = writers * Math.min(OPEN_MS / fastest, printWakeWriterCap(writers));
+    assert.ok(wake <= PRINT_WAKE_PRINTERS_DAILY_CAP, `${writers} writers: ${wake} wake hits`);
+    assert.ok(heavySlips + wake <= PRINT_BUDGET_WORST_MAX_PER_DAY, `${writers} writers: ${heavySlips + wake}/day`);
+  }
+  assert.equal(heavySlips + 3 * Math.min(OPEN_MS / fastest, printWakeWriterCap(3)), 17_628, "the heavy day's worst case");
+});
+
+test("Phase 2: in printers mode only writers poll; ordering devices and a leftover host never do", () => {
+  assert.equal(printAgentPollsWake({ hostConfigured: true, isHost: true, printersMode: true, isWriter: false }), false, "a host that writes to no printer stops polling");
+  assert.equal(printAgentPollsWake({ hostConfigured: false, isHost: false, printersMode: true, isWriter: true }), true, "a writer polls");
+  assert.equal(printAgentPollsWake({ hostConfigured: false, isHost: false, printersMode: true }), false, "an ordering device never polls");
+  assert.equal(printAgentPollsWake({ hostConfigured: true, isHost: true }), true, "simple mode is unchanged");
+  assert.ok(PRINT_WAKE_PRINTERS_DAILY_CAP <= PRINT_WAKE_DAILY_CAP, "printers mode never polls more than a host did");
+});
+
+// The Phase 2B gate (G-1) deliberately changed this pin: no final state, so one Worker request per slip in
+// printers mode, at most (a slip its writer asked for publishes none; was 2 per slip, 3,635/day).
+test("Phase 2 realtime: at most one Worker request per slip in printers mode, the heavy day under 5 %", () => {
+  const perDay = printStationSlipsPerDay({ fullCopy: true }) * PRINT_REALTIME_PER_PRINTER_SLIP + PRINT_REALTIME_BASE_PER_DAY;
+  assert.equal(PRINT_REALTIME_PER_PRINTER_SLIP, 1, "its queued print-status aimed at its writer");
+  assert.equal(perDay, 1_985);
+  assert.ok(perDay <= REALTIME_FREE_REQUESTS_PER_DAY * 0.05, `${perDay}/day`);
+});
+
+// Phase 2 Session 2B (spec §7.11, plan decisions 15, 16 and 9; the owner's ask of 2026-10-04): a slip the
+// asking device prints itself, with the fewest requests and no realtime message.
+test("2B: a slip the asking device prints itself costs one request (its ack) and no realtime request; another device's slip keeps a lease and an ack", () => {
+  assert.equal(PRINT_REQUESTS_PER_DIRECT_SLIP, 1, "made leased with the order request: only its ack");
+  assert.equal(PRINT_REALTIME_PER_DIRECT_SLIP, 0, "nothing is published to the device printing it");
+  assert.equal(PRINT_REQUESTS_PER_SLIP, 2, "a slip another device prints: one lease and one ack");
+  assert.equal(PRINT_REALTIME_PER_SLIP, 2, "its queued print-status and the host's nudge");
+  const payNow = PRINT_REQUESTS_PER_DIRECT_SLIP + PRINT_REQUESTS_PER_SLIP;
+  assert.equal(payNow, 3, "Pay Now on one printer: the KOT's ack, then the bill's lease and ack (Phase 1: 5, with its empty lease)");
+});
+
+test("2B: the ack's more ends a burst with no empty lease: Phase 1's busy day (2,400 with a trailing lease) costs 1,650", () => {
+  const slips = PRINT_BUDGET_BUSY_DAY.orders * (PRINT_BUDGET_STATIONS_DAY.roundsPerOrder + PRINT_BUDGET_STATIONS_DAY.billsPerOrder);
+  assert.equal(printRequestsForSlips(slips), 1_650, "a lease and an ack per slip, plus the retried share, nothing more");
+});
+
+test("2B: the busy day of a cafe whose one device takes and prints its orders: 1,200 requests and no realtime request for printing", () => {
+  const requests = printOneDeviceRequestsPerDay();
+  assert.equal(requests, 1_200, "every round's KOT made leased; every bill behind its KOT (Pay Now), the worst case");
+  assert.ok(requests < printRequestsForSlips(750), "less than the same day's slips leased one by one (1,650)");
+  const wakePerHost = OPEN_MS / cadence({ socketHealthy: true, msSinceLastJob: 0, capSpent: false });
+  assert.equal(requests + wakePerHost, 1_920, "the device as the host also polls the wake on a healthy socket");
+  assert.ok(requests + wakePerHost <= PRINT_BUDGET_NORMAL_MAX_PER_DAY, "well inside the normal-day ceiling");
+  const realtime = 750 * PRINT_REALTIME_PER_DIRECT_SLIP + PRINT_REALTIME_BASE_PER_DAY;
+  assert.equal(realtime, PRINT_REALTIME_BASE_PER_DAY, "printing adds no Worker request at all");
+});
+
+// Phase 2 Session 2C: each device reads the outlet's printers on mount, on a print-setup frame (an admin save:
+// two Worker requests, then one read per device) and on a focus at most every 30 min. Never per slip, never on a
+// timer. 30 min, not 5: at 5 min a focus-happy day would push the heavy worst case past 18,000 (the 2B gate).
+test("2C: reading the printers costs at most 192 requests a day, and the heavy setup still fits both ceilings", () => {
+  assert.equal(PRINT_SETUP_STALE_MS, 30 * 60 * 1000);
+  const reads = printSetupReadsWorstPerDay();
+  assert.equal(reads, 192, "8 devices, a focus read at most twice an hour, 12 h");
+  const wakePerWriter = Math.round(OPEN_MS / cadence({ socketHealthy: true, msSinceLastJob: null, capSpent: false }));
+  const heavy = printRequestsForSlips(printStationSlipsPerDay({ fullCopy: true })) + PRINT_BUDGET_STATIONS_DAY.writers * wakePerWriter;
+  assert.ok(heavy + reads <= PRINT_BUDGET_NORMAL_MAX_PER_DAY, `normal heavy day ${heavy + reads}/day`);
+  const fastest = cadence({ socketHealthy: false, msSinceLastJob: 0, capSpent: false });
+  const worst = printRequestsForSlips(printStationSlipsPerDay({ fullCopy: true })) + 3 * Math.min(OPEN_MS / fastest, printWakeWriterCap(3));
+  assert.equal(worst + reads, 17_820, "the heavy worst case with every focus read");
+  assert.ok(worst + reads <= PRINT_BUDGET_WORST_MAX_PER_DAY, `${worst + reads}/day`);
+});
+
+// Session 2C (decision 15 per printer line): the counter device writes the full copy and the bills; when it takes
+// every order, each round's full copy is made leased to it (one request), its bill follows through the ack's
+// more, and each station slip costs its writer a lease and an ack.
+test("2C: the heavy day when the counter takes every order: its full copies cost one request each (5,340 with the wake)", () => {
+  const wakePerWriter = Math.round(OPEN_MS / cadence({ socketHealthy: true, msSinceLastJob: null, capSpent: false }));
+  assert.equal(printHeavyCounterDayRequests(), 3_180, "450 full copies at one request instead of two");
+  assert.equal(printHeavyCounterDayRequests() + PRINT_BUDGET_STATIONS_DAY.writers * wakePerWriter, 5_340);
+});
+
+// The 2C gate's review (I-2): a stale printer list heals from the pulse or the wake within a minute, and the read
+// is bounded: at most one a minute, only while a printer job aimed at the device is not among its ready printers,
+// and such a job goes stale (out of the count) after 30 min.
+test("2C: a stale printer list is read again at most once a minute, and at most 30 times for one waiting slip", () => {
+  assert.equal(PRINT_SETUP_REFRESH_MIN_MS, 60_000);
+  assert.ok(PRINT_SETUP_REFRESH_MIN_MS >= 3 * 20_000, "never more often than every third pulse");
+  assert.equal(Math.ceil(PRINT_HOST_MAX_AGE_MS / PRINT_SETUP_REFRESH_MIN_MS), 30, "a slip leaves the count when it goes stale (30 min)");
 });

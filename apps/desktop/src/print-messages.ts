@@ -26,6 +26,10 @@ export const PRINT_NO_PRINTER_MESSAGE =
   "No printer is chosen for this PC. Open Settings, then Printing, and pick the printer.";
 export const PRINT_NOT_A_PRINTER_MESSAGE =
   "The chosen printer saves files instead of printing. Open Settings, then Printing, and pick the real printer.";
+// Phase 2 Session 2E: a slip for a named Windows printer this PC no longer has (removed or renamed in Windows). Refused
+// before any window opens, so nothing printed: the slip waits, and the POS shows the printer as not on this PC.
+export const PRINT_PRINTER_NOT_HERE_MESSAGE =
+  "That printer is not on this PC. Open Printer setup in the POS and choose a printer this PC has.";
 
 // Chromium's failure reasons are short English strings ("Invalid deviceName
 // provided", "Print job canceled"). Anything else is not forwarded verbatim —

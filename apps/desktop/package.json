@@ -1,7 +1,7 @@
 {
   "name": "pos-desktop",
   "productName": "POS Software by sandbee",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "author": "sandbee",
   "private": true,
   "description": "Windows desktop shell for the counter PC: loads the cafe's POS web app from one saved address, stays in the tray, starts with Windows, and prints slips silently. Outside the npm workspace (own node_modules); built locally with electron-builder, the installer is hand-copied, never uploaded.",

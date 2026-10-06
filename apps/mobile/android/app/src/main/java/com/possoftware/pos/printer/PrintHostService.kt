@@ -82,7 +82,7 @@ class PrintHostService : Service() {
       object : Runnable {
         override fun run() {
           renewWakeLock()
-          if (!PrinterManager.appVisible) {
+          if (!PrinterPool.appVisible) {
             WebViewDelivery.deliverEvent(BridgeCodes.EVENT_APP_WAKE, JSONObject())
           }
           probePage()
@@ -101,14 +101,14 @@ class PrintHostService : Service() {
   }
 
   /** The page has stopped answering and nobody is looking at the app, so only a notification can say so. */
-  private fun alerting(): Boolean = deadTicks >= PAGE_DEAD_TICKS && !PrinterManager.appVisible
+  private fun alerting(): Boolean = deadTicks >= PAGE_DEAD_TICKS && !PrinterPool.appVisible
 
   override fun onBind(intent: Intent?): IBinder? = null
 
   override fun onCreate() {
     super.onCreate()
     ensureChannel()
-    PrinterManager.statusObserver = { handler.post { refreshNotification() } }
+    PrinterPool.statusObserver = { handler.post { refreshNotification() } }
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -137,7 +137,7 @@ class PrintHostService : Service() {
 
   override fun onDestroy() {
     handler.removeCallbacksAndMessages(null)
-    PrinterManager.statusObserver = null
+    PrinterPool.statusObserver = null
     try {
       wakeLock?.let { if (it.isHeld) it.release() }
     } catch (e: RuntimeException) {
@@ -181,14 +181,16 @@ class PrintHostService : Service() {
     manager.createNotificationChannel(alert)
   }
 
-  private fun title(snapshot: StatusSnapshot): String {
-    val printer = snapshot.printer
-    return if (snapshot.state == BridgeCodes.STATE_CONNECTED && printer != null) {
-      getString(R.string.print_host_title_printer, printer.name)
-    } else {
-      getString(R.string.print_host_title_no_printer)
-    }
-  }
+  /** Phase 2 Session 2F2 (spec §9.2): the worst state across the app's printers ([HostTitle]); one printer reads as
+   *  it always did. */
+  private fun title(): String =
+      when (val worst = HostTitle.of(PrinterPool.poolStatus())) {
+        HostTitle.NotConnected -> getString(R.string.print_host_title_no_printer)
+        is HostTitle.Printer -> getString(R.string.print_host_title_printer, worst.name)
+        is HostTitle.AllConnected -> getString(R.string.print_host_title_printers, worst.count)
+        is HostTitle.OneDown -> getString(R.string.print_host_title_printer_down, worst.name)
+        is HostTitle.SomeDown -> getString(R.string.print_host_title_printers_down, worst.count)
+      }
 
   private fun text(): String =
       getString(
@@ -211,7 +213,7 @@ class PrintHostService : Service() {
           .setPriority(NotificationCompat.PRIORITY_HIGH)
     } else {
       builder
-          .setContentTitle(title(PrinterManager.status()))
+          .setContentTitle(title())
           .setContentText(text())
           .setOnlyAlertOnce(true)
           .setCategory(NotificationCompat.CATEGORY_SERVICE)
@@ -241,7 +243,7 @@ class PrintHostService : Service() {
   /** Re-posts the notification only when its words changed. */
   private fun refreshNotification() {
     if (!canNotify()) return
-    val key = if (alerting()) ALERT_KEY else title(PrinterManager.status()) + "|" + text()
+    val key = if (alerting()) ALERT_KEY else title() + "|" + text()
     if (key == shownKey) return
     try {
       NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification())
