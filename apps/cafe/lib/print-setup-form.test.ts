@@ -81,11 +81,16 @@ test("2D: Set up printers makes Printer 1 from this device's printer with every 
     assert.equal(body.name, SETUP_PRINTER_NAME);
     assert.deepEqual(body.slips, { bill: true, kotStations: [], kotAll: true, notices: true, eod: true }, "nothing changes on paper (decision 5)");
     assert.deepEqual(body.copies, { kot: 1, bill: 1 });
-    const config: PrinterConfig = { id: "p1", order: 0, ...body };
+    // Phase 3 (the planning review, I-1): a body may say `backupPrinterId: null` (clear it); a config never holds null.
+    const config: PrinterConfig = { id: "p1", order: 0, ...body, backupPrinterId: body.backupPrinterId ?? undefined };
     assert.equal(printerIsLocal(config, local ?? null, null), true, `the agent recognises it as this device's printer (${local?.kind})`);
   }
   const windows = localPrinterConnectionOf({ local: null, deviceId: "dev-a", desktop: { printerName: "EPSON" }, defaultPaper: 58 });
-  assert.ok(windows !== null && printerIsLocal({ id: "w", order: 0, ...setUpPrintersBody(windows) }, null, { selected: "EPSON", names: ["EPSON"], named: false }), "the Windows app's printer");
+  const windowsBody = windows === null ? null : setUpPrintersBody(windows);
+  assert.ok(
+    windowsBody !== null && printerIsLocal({ id: "w", order: 0, ...windowsBody, backupPrinterId: windowsBody.backupPrinterId ?? undefined }, null, { selected: "EPSON", names: ["EPSON"], named: false }),
+    "the Windows app's printer",
+  );
 });
 
 test("2D: a new printer's form starts with Notices on (the 2B gate's M-7); an edit drops a station that is gone (the 2A gate's M4)", () => {

@@ -100,7 +100,9 @@ test("PIN (2C): the sweep moves a waiting printer job only with its printer, and
       "if (waiting === null) return { retargeted: 0, failed: 0 };",
       "const printers = routablePrinters(await listPrinters());",
       // Phase 3 (§9.3) deliberately changed the move: the writer now (failover), through print-failover.ts's one write.
-      "const failover = await readPrinterFailover(printers, nowMs);",
+      "const failover = await readPrinterFailover(printers, nowMs, true);",
+      // Phase 3 (§9.4): first the slips of a printer whose device is offline go to its backup.
+      "let retargeted = failover === null ? 0 : await moveToBackupPrinters(printers, failover, nowMs);",
       'retargeted += await retargetPrinterJobs(printer.id, printerActiveWriter(printer, failover) ?? "", nowMs);',
       "{ printerId: { $exists: true, $nin: [...printers.map((printer) => printer.id), PRINT_JOB_NO_PRINTER] }, status: \"queued\" }",
       "$set: { status: \"failed\", lastError: PRINTER_GONE_MESSAGE }",
@@ -331,6 +333,28 @@ test("PIN (2B): an ack that takes a job off the line answers `more` from one rea
   // Phase 3 (the token fix's M-2) deliberately added the lease's kind fence to both reads.
   assert.match(s, /return \(await PrintJob\.findOne\(\{ \.\.\.printJobLineFilter\(deviceId, nowMs\), \.\.\.leaseKindFence\(tokens\), status: "queued" \}\)\.select\("_id"\)\.lean\(\)\) !== null;/, "one read on the line index");
   assert.match(s, /return \(await PrintJob\.findOne\(\{ \.\.\.printerLineFilter\(printerId, nowMs\), \.\.\.leaseKindFence\(tokens\), status: "queued" \}\)\.select\("_id"\)\.lean\(\)\) !== null;/, "Session 2C: a printer job asks its own printer's line");
+});
+
+// Phase 3 Session 3A (spec §9.4): only a slip that never reached paper moves to the backup printer, labelled; a slip that
+// may have printed, a bill waiting for the cashier and a slip being printed stay with their own printer.
+test("PIN (Phase 3, §9.4): the backup move takes only queued slips with no uncertain attempt, puts BACKUP PRINTER first, logs it, and tells the backup's writer", () => {
+  const s = src("apps/cafe/lib/print-failover.ts");
+  const move = s.slice(s.indexOf("export async function moveToBackupPrinters("));
+  inOrder(
+    move,
+    [
+      "const backup = printerBackupOf(printers, printer);",
+      "if (backup === null || printerWriterOnline(printer, failover) || !printerWriterOnline(backup, failover)) continue;",
+      '{ printerId: printer.id, status: "queued", uncertainAttempts: { $in: [0, null] } }',
+      "printerId: backup.id,",
+      "labels: { $concatArrays: [[BACKUP_LABEL], { $filter:",
+      'event: "retargeted"',
+      "if (count > 0) await announcePrinterHead(backup.id, writer);",
+    ],
+    "the backup move",
+  );
+  assert.ok(!move.includes('"needs-confirm"') && !move.includes('"leased"'), "a bill waiting for the cashier and a slip being printed never move");
+  assert.match(src("apps/cafe/lib/print-printers.ts"), /await Printer\.updateMany\(\{ backupPrinterId: id \}, \{ \$unset: \{ backupPrinterId: 1 \} \}\);/, "a deleted printer is nobody's backup");
 });
 
 // Phase 3 (the token fix's review, M-2): a page from before print-customization S7 cannot print a token job and its lease

@@ -20,8 +20,8 @@ import {
 // the stored shape honest on its own.
 //
 // Deliberately NOT in the federated registry, like models/PrintJob.ts: a plain default-bound model of a
-// few rows of print setup. Phase 3 adds what the server keeps beside the setup: `unreachable` (§9.3, the
-// writers skipped for 5 minutes).
+// few rows of print setup. Phase 3 adds the backup printer (`backupPrinterId`, §9.4: saved with the setup) and
+// what the server keeps beside the setup: `unreachable` (§9.3, the writers skipped for 5 minutes).
 
 /** The stored connection: one flat subdocument for both kinds, so it stays one Mongoose path. */
 export interface IPrinterConnection {
@@ -42,6 +42,7 @@ export interface IPrinter extends Document {
   slips: PrinterSlips;
   copies: PrinterCopies;
   enabled: boolean;
+  backupPrinterId?: string; // Phase 3 (§9.4): another printer's id; omit-empty
   unreachable?: Array<{ deviceId: string; until: Date }>; // Phase 3 (§9.3): server-kept, never saved by the setup
   createdAt: Date;
   updatedAt: Date;
@@ -114,6 +115,9 @@ export const printerSchema = new Schema<IPrinter>(
     slips: { type: slipsSchema, required: true },
     copies: { type: copiesSchema, required: true },
     enabled: { type: Boolean, required: true },
+    // Phase 3 (spec §9.4): where this printer's waiting slips go while its device is offline. A printer deleted is
+    // cleared from every printer that named it (lib/print-printers.ts deletePrinter).
+    backupPrinterId: { type: String, maxlength: 24 },
     // Omit-empty (no [] default): written only by an ack that could not reach the printer (lib/print-failover.ts).
     unreachable: { type: [unreachableSchema], default: undefined },
   },

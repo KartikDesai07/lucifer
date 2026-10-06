@@ -67,7 +67,12 @@ test("printer body: paper 58/80, 1–3 copies, station ids once each, every slip
   assert.equal(printerBodySchema.safeParse(lanBody({ slips: { bill: true, kotStations: [STATION, STATION], kotAll: false, notices: true, eod: false } })).success, false);
   assert.equal(printerBodySchema.safeParse(lanBody({ slips: { bill: true, kotStations: ["bar"], kotAll: false, notices: true, eod: false } })).success, false);
   assert.equal(printerBodySchema.safeParse(lanBody({ slips: { bill: true, kotStations: [], kotAll: false, notices: true } })).success, false, "eod must be stated");
-  assert.equal(printerBodySchema.safeParse(lanBody({ health: { state: "online" } })).success, false, "strict: Phase 3 fields are refused");
+  assert.equal(printerBodySchema.safeParse(lanBody({ health: { state: "online" } })).success, false, "strict: what the server keeps is never saved by the form");
+  // Phase 3 (spec §9.4): a backup printer by id; anything else is refused.
+  assert.equal(printerBodySchema.safeParse(lanBody({ backupPrinterId: STATION })).success, true, "a printer id");
+  assert.equal(printerBodySchema.safeParse(lanBody({ backupPrinterId: "counter" })).success, false, "an id only");
+  assert.equal(printerBodySchema.safeParse(lanBody({ backupPrinterId: null })).success, true, "null clears it (absent keeps it: the planning review, I-1)");
+  assert.equal(printerBodySchema.safeParse(lanBody({ unreachable: [] })).success, false, "the skips are the server's");
   assert.equal(printerBodySchema.safeParse(lanBody({ name: "x".repeat(41) })).success, false);
 });
 
@@ -86,6 +91,7 @@ test("wire shapes: ids are strings; a device printer carries no primaryDeviceId 
   });
   assert.equal(wire.id, String(id));
   assert.ok(!("primaryDeviceId" in wire), "omit-empty on the wire too");
+  assert.ok(!("backupPrinterId" in wire) && !("unreachable" in wire), "Phase 3: omit-empty, the backup and the skips");
   assert.deepEqual(wire.connection, { kind: "device", deviceId: "counter-pc", transport: "windows", address: "EPSON" });
 });
 
