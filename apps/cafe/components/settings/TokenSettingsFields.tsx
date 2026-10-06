@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Controller, useFormState } from "react-hook-form";
 import type { Control, FieldErrors, UseFormRegister, UseFormSetValue } from "react-hook-form";
 
@@ -16,9 +17,11 @@ import { PRINT_NUMBER_START_MIN, PRINT_NUMBER_START_MAX } from "@/lib/constants"
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Field, SettingsGroup, ToggleRow } from "@/components/settings/SettingsFields";
+import { Field, HINT_CLASS, HINT_LINK_CLASS, SettingsGroup, ToggleRow } from "@/components/settings/SettingsFields";
 import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 import { blankToMinStart, makeNumberStartBlurHandler } from "@/components/settings/print-form-utils";
+import { usePrintersRead } from "@/hooks/use-agent-printers";
+import { NUMBER_RESET_HINT, TOKENS_NO_BILL_PRINTER_WARNING, TOKENS_RELOAD_HINT, tokensHaveNoBillPrinter } from "@/lib/token-settings-notes";
 
 const TOKEN_NUMBER_START_ID = "settings-token-number-start";
 const RESET_TIME_ID = "settings-number-reset-minutes";
@@ -40,6 +43,8 @@ export function TokenSettingsFields({ control, register, setValue, errors }: Tok
   // off-step time (say 25 minutes) must stay pickable after the owner tries another (auto-memory
   // options-from-live-value-strand-stored-value).
   const { defaultValues: saved } = useFormState({ control });
+  // The token fix (T3): tokens print at the bill printer; the same cached printers read as the agent's (no new request).
+  const noBillPrinter = tokensHaveNoBillPrinter(usePrintersRead(true).printers);
 
   return (
     <div className="space-y-6">
@@ -56,6 +61,15 @@ export function TokenSettingsFields({ control, register, setValue, errors }: Tok
             />
           )}
         />
+        <p className={HINT_CLASS}>{TOKENS_RELOAD_HINT}</p>
+        {noBillPrinter && (
+          <p role="alert" className="rounded-lg border border-destructive p-3 text-sm text-brand-ink">
+            {TOKENS_NO_BILL_PRINTER_WARNING}{" "}
+            <Link href="/printers" className={HINT_LINK_CLASS}>
+              Open Printer setup
+            </Link>
+          </p>
+        )}
         <Field
           label="Token numbers start at"
           htmlFor={TOKEN_NUMBER_START_ID}
@@ -85,7 +99,7 @@ export function TokenSettingsFields({ control, register, setValue, errors }: Tok
           label="Numbers start again at"
           htmlFor={RESET_TIME_ID}
           error={errors.numberResetMinutes?.message}
-          hint="A new time takes full effect from the next day. On the day you change it, a few numbers can repeat. Order IDs still change at midnight."
+          hint={NUMBER_RESET_HINT}
         >
           <Controller
             control={control}

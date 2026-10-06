@@ -9,6 +9,8 @@ import { SETTINGS_SECTIONS, VISIBLE_SETTINGS_SECTIONS, isSettingsSectionHidden, 
 import { sampleBillOrder, withSampleToken } from "@/lib/bill-print-sample";
 import { settingsOf } from "@/lib/print-template-golden.fixtures";
 import type { GstConfig } from "@/lib/receipt";
+import type { PrinterConfig, PrinterSlips } from "@pos/shared/print-printers";
+import { NUMBER_RESET_HINT, TOKENS_NO_BILL_PRINTER_WARNING, TOKENS_RELOAD_HINT, tokensHaveNoBillPrinter } from "@/lib/token-settings-notes";
 
 // Print customization S6: the Tokens & numbering page, its wiring, the links into it, the "no setting flips by itself"
 // rule, and the four preview sites that show the sample token. Source-read pins over COMMENT-STRIPPED source.
@@ -74,7 +76,6 @@ test("fields: registers the three names, builds the picker from numberResetOptio
     "Numbers start again at",
     "Token, kitchen ticket and bill numbers all start again from their start number at this time.",
     "A short number for each order, so the customer can be called when it is ready.",
-    "A new time takes full effect from the next day. On the day you change it, a few numbers can repeat. Order IDs still change at midnight.",
     "Daily restart time",
   ]) assert.ok(src.includes(copy), `copy: ${copy}`);
   assert.ok(!/tokenNumberStart[^\n]*(disabled|watch)/.test(src), "the start box is always shown, whatever the switch says");
@@ -179,4 +180,73 @@ test("withSampleToken: tokens off (or absent) returns the SAME order; on shows t
   assert.equal(withSampleToken(order, settingsOf({ tokenEnabled: true, tokenNumberStart: 101 })).tokenNumber, 101);
   assert.equal(withSampleToken(order, settingsOf({ tokenEnabled: true })).tokenNumber, 1, "on with no start: the minimum");
   assert.equal(order.tokenNumber, undefined, "the input is not mutated");
+});
+
+// ── The token fix (plan 2026-10-06-token-direct-fix.md, T2–T4) ───────────────────────────────────────────────────
+// The page's three notes live in lib/token-settings-notes.ts, so the page and docs/GO-LIVE-CHECKLIST.md say the same
+// words (go-live-runbook.test.ts pins the doc's quote).
+
+test("T2: the hint right under the tokens switch says to reload every POS screen and restart the Windows app first, in the owner's words", () => {
+  assert.equal(
+    TOKENS_RELOAD_HINT,
+    "Before turning tokens on, reload every POS screen and restart the Windows app on every counter PC (an older page never prints token slips; they wait in the panel).",
+    "the owner's words, verbatim",
+  );
+  const src = read(FIELDS);
+  assert.match(src, /import \{[^}]*\bTOKENS_RELOAD_HINT\b[^}]*\} from "@\/lib\/token-settings-notes";/, "the page imports the one copy");
+  assert.equal(count(src, "{TOKENS_RELOAD_HINT}"), 1, "shown once");
+  const at = { toggle: src.indexOf('name="tokenEnabled"'), hint: src.indexOf("{TOKENS_RELOAD_HINT}"), start: src.indexOf("Token numbers start at") };
+  assert.ok(at.toggle >= 0 && at.toggle < at.hint && at.hint < at.start, "under the tokens switch, before the start box");
+  assert.match(src, /<p className=\{HINT_CLASS\}>\{TOKENS_RELOAD_HINT\}<\/p>/, "a hint line, styled like the page's other hints");
+});
+
+const NO_SLIPS: PrinterSlips = { bill: false, kotStations: [], kotAll: false, notices: false, eod: false };
+function printerOf(name: string, slips: Partial<PrinterSlips>, over: { enabled?: boolean; writer?: string | null } = {}): PrinterConfig {
+  const writer = over.writer === undefined ? "dev-a" : over.writer;
+  return {
+    id: `665f0a00000000000000${String(name.length).padStart(4, "0")}`,
+    name,
+    connection: { kind: "lan", host: "10.0.0.9", port: 9100 },
+    ...(writer !== null ? { primaryDeviceId: writer } : {}),
+    order: 0,
+    paper: 80,
+    slips: { ...NO_SLIPS, ...slips },
+    copies: { kot: 1, bill: 1 },
+    enabled: over.enabled ?? true,
+  };
+}
+
+test("T3 tokensHaveNoBillPrinter: only in printers mode with no routable printer that takes bills", () => {
+  const kitchen = printerOf("Kitchen", { kotStations: ["st-k"] });
+  assert.equal(tokensHaveNoBillPrinter([]), false, "simple mode: a token prints where the bill prints today");
+  assert.equal(tokensHaveNoBillPrinter([kitchen, printerOf("Counter", { bill: true })]), false, "a routable bill printer takes the tokens");
+  assert.equal(tokensHaveNoBillPrinter([kitchen]), true, "printers mode, and no printer takes bills");
+  assert.equal(tokensHaveNoBillPrinter([kitchen, printerOf("Counter", { bill: true }, { enabled: false })]), true, "a switched-off bill printer takes none");
+  assert.equal(tokensHaveNoBillPrinter([kitchen, printerOf("Counter", { bill: true }, { writer: null })]), true, "a LAN bill printer no device writes takes none");
+  assert.equal(tokensHaveNoBillPrinter([printerOf("Counter", { bill: true }, { enabled: false })]), false, "landmark: with only a switched-off printer the cafe is back in simple mode");
+});
+
+test("T3: the Tokens page warns when printers mode has no bill printer, from the shared printers read (no new request), with the way to Printer setup", () => {
+  assert.equal(TOKENS_NO_BILL_PRINTER_WARNING, "Token slips print at the bill printer, and none is set up. Tick Bill on a printer in Printer setup.", "the warning's words");
+  const src = read(FIELDS);
+  assert.match(src, /import \{ usePrintersRead \} from "@\/hooks\/use-agent-printers";/, "the same cached printers read as the agent and the printer dot");
+  assert.equal(count(src, "usePrintersRead("), 1, "one read");
+  assert.ok(src.includes("const noBillPrinter = tokensHaveNoBillPrinter(usePrintersRead(true).printers);"), "the pure rule decides, from the read's printers");
+  assert.match(src, /\{noBillPrinter && \(\s*<p role="alert"/, "shown only then, as an alert");
+  assert.ok(src.includes("{TOKENS_NO_BILL_PRINTER_WARNING}") && src.includes('href="/printers"'), "its words, and a link to Printer setup");
+  const at = { hint: src.indexOf("{TOKENS_RELOAD_HINT}"), warning: src.indexOf("{TOKENS_NO_BILL_PRINTER_WARNING}"), start: src.indexOf("Token numbers start at") };
+  assert.ok(at.hint < at.warning && at.warning < at.start, "in the Tokens group, under the reload hint");
+});
+
+test("T4: the restart time's hint says to change it outside service hours, as a change during service can repeat or skip tonight's numbers", () => {
+  assert.equal(
+    NUMBER_RESET_HINT,
+    "A new time takes full effect from the next day. Changing it during service can repeat or skip tonight's token, kitchen ticket and bill numbers, so change it outside service hours. Order IDs still change at midnight.",
+    "the note, word for word",
+  );
+  const src = read(FIELDS);
+  assert.match(src, /import \{[^}]*\bNUMBER_RESET_HINT\b[^}]*\} from "@\/lib\/token-settings-notes";/, "the page imports it");
+  const field = src.slice(src.indexOf('label="Numbers start again at"'), src.indexOf('name="numberResetMinutes"'));
+  assert.ok(field.includes("hint={NUMBER_RESET_HINT}"), "the restart time's own field shows it");
+  assert.ok(!src.includes("On the day you change it, a few numbers can repeat."), "the old, softer words are gone");
 });
