@@ -43502,3 +43502,153 @@ Run exactly as the plan writes it, in its order, after item 10, with nothing els
 ### Pushed
 
 With the token only: `GIT_TERMINAL_PROMPT=0 git push origin feat/printing-phase-2`. `origin/main` was still `6ee2b1d` at the end (no merge). `main` untouched; nothing deployed. The emulator was stopped with `adb emu kill` after `adb shell sync`, the release APK installed on its start screen.
+
+---
+
+## Phase 2 final review (gate, 2026-10-06)
+
+**Verdict: PASS, with fixes (two commits on the branch).** Phase 2 (`6ee2b1d..bb88cf6`, Sessions 2A–2G and their gates) is complete and correct for its scope, and merge-ready once the owner agrees. Two fresh reviewers on Claude Fable 5.1 found no Critical finding. The one Important finding was outside the code: the owner's deploy runbook (`docs/GO-LIVE-CHECKLIST.md`) had not been touched by Phase 2. The gate wrote the runbook's Phase 2 parts, with pins (`07d2b40`), and fixed Session 2G's three page minors by TDD (`bc34337`). An emulator spot-check of the final build passed (exit items 5, 6, 7 and 10).
+
+**How this gate stayed independent.** The gate ran in a session of its own and repeated the checks rather than reading reports:
+- every suite, the Gradle JUnit run (`--rerun`), the Next build and the three APKs, re-run on the repo at `bb88cf6`;
+- the non-docs tree at `9cf56ab` compared with the 2F2 gate's golden branch;
+- the whole Phase 2 range scanned for secrets;
+- two fresh reviewer subagents (Claude Fable 5.1, read-only; neither wrote any of this code) read the range, with scratch tests kept in the gate's scratchpad and never in the repo;
+- the final build checked on the emulator.
+
+### Step 1: everything re-run at `bb88cf6`
+
+| Check | Re-run at the gate (`bb88cf6`) | Session 2G Results |
+|---|---|---|
+| shared `npm test`; `tsc` | 684/684; 0 | same |
+| cafe `npm test` | 4466 tests, 4465 pass, 0 fail, 1 skipped (the `go-live-dl` pin) | same |
+| cafe `tsc`; `npm run lint` | 0; 0 errors, plus the 2 old warnings (`lib/masters-blob.test.ts:331`) | same |
+| Hub `tsc` | 0 | same |
+| mobile `tsc`; lint; `npm test`; `test:app` | 0; 0; 125/125; Jest 3/3 | same |
+| `gradlew :app:testDebugUnitTest --rerun` | the task executed (not UP-TO-DATE), `BUILD SUCCESSFUL` in 46 s; `PrinterManagerTest` 13, `PoolListTest` 6, `PoolStatusTest` 2: 21 tests, 0 failures, 0 errors | 21/21 |
+| desktop `npm test`; `typecheck`; `lint` | 192/192; 0; 0 | same |
+| `npm run test:print-tools` | 8/8 | same |
+| live legs (local mongod, `pos_scratch_print_host`) | `332 passed, 0 failed` | same |
+| Next build | 129 routes (second attempt; see below) | same |
+| APKs (`GRADLE_USER_HOME='D:\gradle-home'`; x86_64 with `aR`) | x86_64 `3736540b…` (7,435,349 B), arm64-v8a `b10feedb…` (7,303,622 B), armeabi-v7a `86b7ff13…` (6,711,460 B): byte-identical | same |
+
+**Deviation: the first build ran out of disk.** D: started the gate at 1.5 GB free. The first Next build failed with `ENOSPC`: webpack's server cache wrote a 1.34 GB `index.pack_` next to its 1.47 GB `index.pack` and a stale 1.40 GB `index.pack.old`, left over from an interrupted build on 2026-10-05. The APK builds that followed failed in 3–4 s for the same reason. The fix:
+- The gate removed only the partial `index.pack_` its own build had written.
+- It **moved** (did not delete) the stale backup into its scratchpad (`moved-from-next-cache/`; the owner may delete it).
+- With D: at 2.55 GB, the build (129 routes) and the three APKs (byte-identical) passed.
+
+Each build leaves the previous index behind as `index.pack.old`, and webpack deletes it only at the next build. So before the build after the fixes, the gate deleted the `.old` that its own second build had created. **Any later build on this PC (on `main` after a merge, too) needs about 1.5 GB free on D:.**
+
+### Step 2: integrity
+
+- The non-docs tree at `9cf56ab` is **blob-identical** to the 2F2 gate's gold `g2g-v3` (`9d3b89a`, tree `694ddd8`; `git ls-tree -r` with `docs/` left out, 1,774 entries each).
+- `9cf56ab..bb88cf6` changes the plan alone (+171).
+- **Secrets in `6ee2b1d..bb88cf6`:** none. The scan covered 57,191 added lines in 214 files, looking for PATs, AWS keys, private keys, MongoDB URIs with credentials, `sk-`/`xox`/`AIza` keys, JWTs, Bearer tokens and quoted secret assignments. The only matches are env var *names* (in the scratch tools' fences) and credential-less `mongodb://127.0.0.1` URIs, and no env, key or keystore file was added.
+- `origin/main` was fetched at the start (token credential) and is still `6ee2b1d`.
+
+### Step 3: the fresh reviews (Claude Fable 5.1, no rate limit)
+
+**(a) `936e791..bb88cf6` again, in a fresh context, with Session 2G's Review Focus verbatim.** Verdict: **ship**, no Critical, no Important.
+- It re-ran the touched suites (72/72), `tsc` (0) and eslint on the 12 touched files (0).
+- It confirmed both soak files are byte-identical to the plan's blocks.
+- It wrote 12 scratch probes (`review-a/`: the page effect over real event orders, the paper fix, the soak agent; all pass).
+- It found sound:
+  - G0's add/remove effect under every event order (a re-address is one add and one remove, then quiet; nothing removed before the read loads; staff's printers and the app's default untouched);
+  - `lanAsked` forgetting by list membership (N-1 stands);
+  - the paper fix across a timed-out select and a reload;
+  - the soak as the page's stand-in (the same headers, lease body and ack shape).
+- It re-judged Session 2G's six minors (it agrees with every grade and ruling) and its ten declined lines (they stand).
+- New items: a wrong sentence in the TEST-CHECKLIST; a refinement to m-2 (see the rulings); a page removal cutting a slip's write; two soak-tool lines.
+
+**(b) A whole-Phase-2 merge-readiness pass over `6ee2b1d..bb88cf6`.** Verdict: **with fixes**, no Critical, one Important (the runbook).
+- It re-ran 36/36 of the routing, direct, printer-jobs, repair and parity suites and 74/74 of the shared budget, printers and lifecycle suites.
+- It wrote 18 scratch tests (`review-b/`: routing row by row, direct print, the agent; all pass).
+- Its answers to the seven questions:
+  1. **Simple mode prints exactly as today**: the same jobs, keys, targets and paper. Every printers-mode filter leaves old rows alone (`printerId: {$exists: false}`). A simple-mode order request costs one more small read (`Printer.find`), plus a line read when the lease header is present, and one invocation less per direct slip.
+  2. **Mixed versions are safe in all four pairings**: the old APK on the new web, the new APK on the old web (`version: 1` kept), the desktop app 1.10.x or 1.11.0 on either web, and old or new tabs on old or new servers.
+  3. **The go-live order** matters for freshness only. An old Worker refuses `print-setup` and the publish is swallowed. A page not reloaded never prints a printer's slips; they wait, visibly.
+  4. **No migration.** The new collections and the partial index are created on first use, and old jobs and devices keep working.
+  5. **The budget holds.** No new timer or poll; the focus-bound printers read on ordering devices is the bend the 2B gate ruled. `print-budget.ts` matches the code.
+  6. **Nothing is half-done.** Three stale comments and one wording issue (minors).
+  7. **Route security is adequate**: admin-only writes, strict Zod bodies, `noStore`, and tenant isolation by deployment.
+- **Verified by the gate:** a page from before the deploy can never take a printer's job and print it on the wrong paper. `leasePrintJobs` opens printer lines only for the `printerIds` a request names (`print-lease.ts:219`), and an old page never sends them. `GET /api/printers` is `requireAuth` (every staff device gets an answer), and the query client retries once.
+
+### Step 4: Session 2G's minors, fixed by TDD
+
+- **`bc34337`**: m-1, m-2 (with reviewer (a)'s refinement) and m-4, plus two stale comments that reviewer (b) found.
+  - RED: `print-agent-printers.test.ts` 24 tests, 20 pass, **4 fail**. The four were: the m-3 test's record expectation (a deliberate change), the new m-4 test, the new m-1/m-2 PIN, and the 2F2 PIN's `known` line (a deliberate change).
+  - GREEN: 24/24. The touched files and their neighbours: 125/125. `tsc` 0, eslint 0.
+  - `OtherDevicePrinters.tsx` is 117 lines (its budget is 120).
+- **`07d2b40`**: the runbook, the checklist and the spec.
+  - The pins in `go-live-runbook.test.ts`: RED 93 tests, 91 pass, **2 fail**; GREEN 93/93. The cadence assert was added after its doc text, so it was shown to fail against `bb88cf6`'s doc instead.
+- **After both commits** (the working tree as committed):
+
+| Check | Result |
+|---|---|
+| cafe `npm test` | **4470 tests, 4469 pass, 0 fail, 1 skipped** (+4: the m-4 test, the m-1/m-2 PIN, the two runbook pins) |
+| cafe `tsc`; lint | 0; 0 errors and the 2 old warnings |
+| shared; mobile | 684/684; 125/125 |
+| Next build | 129 routes |
+| live legs, hub, desktop, JUnit | not re-run: no server, hub, desktop or app code changed (the one route file change is a comment) |
+| APKs | still byte-identical: `git diff --stat bb88cf6..HEAD -- apps/mobile workers packages` lists only `apps/mobile/TEST-CHECKLIST.md` (+6/−2), so no app code changed |
+
+### Step 5: the emulator spot-check of the final build
+
+**Set-up.**
+- `Pixel_7_API_33`, booted by the gate with `-memory 4096 -no-audio -no-snapshot-save` (C: had 4.9 GB free).
+- **The app was installed**: the release APK, hashed on the device as `29115bdf…` (lastUpdateTime 02:27:08, Session 2G's put-back). It was on its start screen with no address (not the demo), notifications not granted, and the crash buffer empty.
+- The repo's final build ran on 3110 behind the counting proxy on 3200, with fake printers on 9100, 9101, 9102 and 9104 (long `--out` paths).
+- "POS Software" and the seeded menu were checked before the first write. The owner's `Bash(adb:*)` rule held: every `adb shell input` worked.
+
+| # | Step | Result |
+|---|---|---|
+| — | The final APK installed over the release one (hashed on the device as `3736540b…`); `adb reverse tcp:3100 tcp:3200`; `http://localhost:3100` opened signed in; the panel → Network printer `10.0.2.2` 9100 | "Network printer 10.0.2.2 · Network · 80 mm · Connected", **with Remove** (simple mode: the read answered `[]`, so the m-2 fix does not hide Remove where it belongs); one lease (a state change) |
+| 4 | Printer setup → **Set up printers** | `POST /api/printers` 201, one printers read, one lease |
+| 5 | `p2g-tool.ts`: Bar printer (9101, 58 mm, Bar KOTs, Notices) 201, Kitchen printer (9102, 80 mm, Kitchen KOTs, Bill, Notices) 201, Beverages → Bar 200, both written by the app (`80cfb12d…`); Refresh; the panel | this device's printer (9100, Printer 1): the "Printer setup prints slips here…" sentence and **no Remove**; under Other printers, 10.0.2.2:9101 and 10.0.2.2:9102 are Connected, each with the sentence (no Remove button anywhere); the Refresh cost one read each of printers, stations and print-devices, plus one lease |
+| 6 | Send to Kitchen (Cheesecake, Masala Chai) | **KITCHEN 44,238 B on 9102, BAR 28,110 B on 9101, ALL STATIONS 48,198 B on 9100**, each `created`, `leased(direct)`, `printed`, epoch 1; the order and three acks, **no lease** |
+| 7 | Bill printer for this device → Kitchen printer; Pay Now (Cash); then back to Default (Printer 1) | the three KOTs as in item 6, then **the bill, 40,854 B, on 9102**; requests: the order, ack, ack, ack, lease, ack |
+| 10 | Kitchen printer moved to 10.0.2.2:9104 (PUT 200); Refresh (one read, one lease); the panel; Send to Kitchen | Other printers: 9101 and **9104** (each with the sentence); **9102 gone** (the page removed the printer it had added, the m-4 path); **KITCHEN 44,238 B on 9104**, BAR on 9101, ALL STATIONS on 9100; the order and three acks, no lease |
+| 12 | `adb logcat -b crash -d` | 0 lines throughout |
+
+**Put back as found:**
+- `reset2d`, then `station Bar` (201): Kitchen (default), Bar, no printer, no station on any category or item, host null.
+- Refresh: the page removed the printers it had added (9101 and 9104; Other printers was empty).
+- This device's printer 9100 → Remove → "Printer removed from this device." → "No printer set up".
+- More options → Change POS address → Clear POS address (the placeholder shows).
+- **The release APK reinstalled** (hashed on the device as `29115bdf…`); after a relaunch, the start screen with no address. Notifications not granted; crash buffer empty.
+- `adb reverse --remove-all`, then `adb reverse tcp:3100 tcp:3100`; **`adb shell sync`, then `adb emu kill`**.
+- The POS server (7528), the proxy (26976) and the fake printers (37392, 4316, 20816, 19072) stopped by PID after checking each command line.
+
+## Phase 2 final gate: rulings (2026-10-06)
+
+Each ruling that changes the spec is written into spec §8.1 ("As built at the final Phase 2 gate") and §14 (the Phase 2 row). §17 does not change: no ruling adds a request (the fixes are page logic, the docs and their pins).
+
+**Session 2G's six minors, its ten declined lines, and the two fresh reviews:**
+
+| # | Finding | Ruling |
+|---|---|---|
+| m-1 (2G) | Other printers on this device offered Remove on a setup printer before the printers read answered | **Fixed in `bc34337`:** Remove shows only once the setup is known, the same rule as the device section. Cost if wrong: a staff Remove in the first second after a reload drops a Bluetooth setup printer until it is added again (its slips wait, visibly) |
+| m-2 (2G) | A failed printers read counted as known, so Change printer replaced a setup printer while the server was unreachable | **Fixed in `bc34337`, with reviewer (a)'s refinement:** `usePrintersRead` gains `answered` (an answer is in hand: `query.data !== undefined`), and known means `deviceId === "" \|\| answered`. A failed refetch keeps its data, but TanStack's `isSuccess` turns false, so the 2G reviewer's `inSetup \|\| !loaded` would have hidden Remove after any brief network failure. Until an answer is in hand, neither section offers Remove and Change printer keeps this device's printer in the app. Cost if wrong: one printer kept by mistake costs a Remove |
+| m-3 (2G) | Change printer to a new Bluetooth or USB printer connects it twice | **Phase 3 (app code).** Both reviewers confirmed it: `putDefault` of a listed id goes through `put`, and `replaceDefault` always builds a new manager; the page has no v2 "make default" to avoid it. Cost if wrong: a misleading "could not connect" toast on a printer that refuses an immediate reconnect; the app connects it seconds later |
+| m-4 (2G) | The `pos.app-lan-added.v1` record dropped an id before the app confirmed its removal | **Fixed in `bc34337`:** an id leaves the record only once the app no longer lists it, so a removal that failed or timed out is asked again at the next change. In the app, a second forget of an id already gone changes nothing (`PoolList.remove` returns null; it publishes only on a change). Cost if wrong: a printer staff add back by hand while a failed removal is pending is removed again (this needs a failed forget first) |
+| m-5, m-6 (2G); (a) items 5, 6 | Soak tool: a malformed `--printer`/`--agent` value is accepted until mid-run; the drain's cadence in a drop run; printers mode checks only the jobs the answers named; after a refused ack it leases again at once | **Accepted (tool only).** Fix them when the soak is next touched (Phase 3's failover measurement). No effect on a cafe; every Phase 2 measured run used valid values and no drops, and M5 and M4 counted every job on the fake printers' paper. Cost if wrong: a later measurement overstates leases or misses a missing job until then |
+| 2G's ten declined lines | (Session 2G Results → Step 8) | **Stand** (both fresh reviewers agree). Line 4 is reviewer (a)'s item 4, ruled below. Line 10's Bluetooth case is a window of one read after a reload, and the never-answered case is now closed by m-1 and m-2 |
+| (a) item 1 | TEST-CHECKLIST "A network printer moved to a new address" promised that after a Remove the new address becomes this device's printer; the app promotes the first remaining printer, and a v2 add goes last (`PoolList.kt`) | **Fixed in `07d2b40`** (words): the app makes the first printer left in its list this device's printer; if that is not the new address, Change printer → the new address (it is only chosen). Cost if wrong: the owner reads a correct promotion as a failure |
+| (a) item 4 | The page removes a network printer it added while a slip may be mid-write on it (an admin re-addresses it or switches it off at that very moment) | **Accepted for Phase 2.** Phase 3's Android hardening may defer such a removal while that printer writes. It needs an admin save that lands during a write on that very printer, and the outcome is labelled, never silent: a KOT prints again as REPRINT, a bill asks the cashier. Deferring needs a busy signal and a re-run trigger that the page lacks. Cost if wrong: one labelled REPRINT (or bill question) per such coincidence |
+| (b) I-1 (Important) | `docs/GO-LIVE-CHECKLIST.md` had not been touched by Phase 2 | **Fixed in `07d2b40`.** The changes: <br>• the Worker box names `print-setup` and what degrades without it; <br>• a new **"Existing cafes: the printing Phase 2 release"** section: no migration; the order (the Worker first, then the web, then reload every open POS screen, then the apps, then Set up printers); `POS-Software-Setup-1.11.0.exe`; the new APK's SHA-256 hashes and sizes; TEST-CHECKLIST before the cafe goes live; <br>• a new §7 **"Stations and printers (printing Phase 2, optional)"**: Set up printers on the device that prints today; stations, categories and printers; a station with no printer; the printing-device picker for a LAN printer; several printers per device; Test print; the bill printer per device; a printer switched off or deleted; going back to simple mode; <br>• §7's desktop step names today's "Print all slips on this device" (it said "Use this PC", Phase 1 drift); <br>• a printers-mode sentence in §11's print-host bullet and in the self-order cadence bullet; <br>• six §A rows. <br>Pinned by two new tests in `go-live-runbook.test.ts` (the order of the landmarks; the installer name from `apps/desktop/package.json`; the Worker's kind; the six constants). Cost if wrong: a go-live run without the Worker or the reload (slow setup changes; old tabs never print a printer's slips), and no 1.11.0 or new APK on the devices |
+| (b) m-4, m-9 | A stale comment on the DELETE route; two stacked doc blocks on `SlipPrintTarget` | **Fixed in `bc34337`** (comments only; the pins strip comments). Cost if wrong: none |
+| (b) m-5 | The not-routed toast suggests switching Notices on, even for a KOT round with no lines (a reprint of a wholly voided round) | **Phase 4 setup polish** (staff-visible words only; pinned by `print-bill-printer.test.ts`; nothing prints either way). Cost if wrong: a confusing toast in a rare reprint |
+| (b) m-6, m-7 | A printer switched off in the setup fails its waiting slips (Retry once it is on); a LAN printer's printing device is offered only once the server knows it | **In the docs** (`07d2b40`): the TEST-CHECKLIST's "switched off" check and the runbook's §7. The gate verified that `routePrinterJobs` runs in every mode. Cost if wrong: a "my bar slips vanished" call |
+| (b) m-8 | `GET /api/stations` seeds the default station on a GET | **Accepted** (the 2A design: idempotent and race-safe through the unique index, leg ah). Cost if wrong: none |
+| (b) m-10 | §A lacked Phase 2's constants | **Fixed with I-1** (six pinned rows) |
+| (b)'s declined lines | End of day follows the chosen bill printer; E-R4 paper; system-dialog hosts cannot enter printers mode; M-13; `directReady`; 2B's M-2 and M-4; M-9; M-11; 2F2's m-4; Phase 3 items | **Stand**: each was ruled at an earlier gate, or is the spec's own text |
+
+**Gate decisions:**
+- **Phase 2 is merge-ready.** The code is ready now; the runbook is now part of the branch.
+- **No app code changed at this gate**: the APKs stay `3736540b…` (x86_64, emulator only), `b10feedb…` (arm64-v8a) and `86b7ff13…` (armeabi-v7a).
+- **No new request; no Worker change** since Session 2F1's `print-setup` kind.
+- **Open, and the owner's to do:**
+  - the TEST-CHECKLIST "Stations and printers checks" on real printers, and Part C (the Windows app 1.11.0 on the counter PC);
+  - the merge decision;
+  - the go-live run, in the order the runbook now gives.
+- Nothing is deployed and nothing is merged by this gate.
