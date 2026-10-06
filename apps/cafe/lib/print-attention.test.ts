@@ -81,7 +81,7 @@ test("printAttentionRowOf: a panel row says what, when, why, who asked and where
 test("PIN: the pulse reads the waiting-slips feed for every tab, fail-soft; printJobsForMe stays the named agent's", () => {
   const s = src("apps/cafe/app/api/order-requests/pulse/route.ts");
   assert.match(s, /readPrintAttention\(nowMs\)\.catch\(\(\) => null\)/, "every device shows the panel and its count");
-  assert.match(s, /device === null \? Promise\.resolve\(null\) : readJobsForDevice\(device, nowMs\)\.catch\(\(\) => null\)/, "1C's printJobsForMe is kept");
+  assert.match(s, /device === null \? Promise\.resolve\(null\) : readPulseJobsForDevice\(device, saysTokens, nowMs\)\.catch\(\(\) => null\)/, "1C's printJobsForMe is kept (Phase 3: token-fenced)");
   assert.ok(s.includes("...(printJobsForMe === null ? {} : { printJobsForMe }),"), "printJobsForMe is omitted on a failed read");
   assert.ok(
     s.includes("...(attention === null ? {} : { printAttention: attention.rows, printAttentionTruncated: attention.truncated }),"),

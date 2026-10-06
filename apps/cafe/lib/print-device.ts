@@ -45,12 +45,22 @@ export async function beatPrintDevice(beat: PrintDeviceBeat, nowMs: number): Pro
 }
 
 /** A lease counts as a heartbeat (spec §7.3) for a device the wake already knows. It never creates
- *  a row: label, shell and capabilities come only from the wake. */
-export async function touchPrintDevice(deviceId: string, nowMs: number): Promise<void> {
+ *  a row: label, shell and capabilities come only from the wake. Phase 3 (the token fix's M-2): it also keeps what the
+ *  lease said about token slips, in the same write, made only when that changed (or the heartbeat is due). */
+export async function touchPrintDevice(deviceId: string, nowMs: number, tokenSlips?: boolean): Promise<void> {
+  const due = { lastSeenAt: { $lt: new Date(nowMs - PRINT_DEVICE_HEARTBEAT_WRITE_MS) } };
   await PrintDevice.updateOne(
-    { deviceId, lastSeenAt: { $lt: new Date(nowMs - PRINT_DEVICE_HEARTBEAT_WRITE_MS) } },
-    { $set: { lastSeenAt: new Date(nowMs) } },
+    tokenSlips === undefined ? { deviceId, ...due } : { deviceId, $or: [due, { tokenSlips: { $ne: tokenSlips } }] },
+    { $set: { lastSeenAt: new Date(nowMs), ...(tokenSlips === undefined ? {} : { tokenSlips }) } },
   );
+}
+
+/** Phase 3 (the token fix's M-2): whether this device's page can print a "token" job, for a pulse, a wake or an ack that
+ *  did not say (a page from before Phase 3). false only when its last lease said it cannot (a page from before
+ *  print-customization S7); with no row, or no such lease yet, true: the count as before. One read by the unique deviceId. */
+export async function printDeviceDrawsTokens(deviceId: string): Promise<boolean> {
+  const row = await PrintDevice.findOne({ deviceId }).select("tokenSlips").lean<{ tokenSlips?: boolean } | null>();
+  return row?.tokenSlips !== false;
 }
 
 /** Devices seen in the last 90 s. Never 0: it divides the cafe's one daily wake cap (spec §9.1). */

@@ -43,7 +43,8 @@ export function TokenSettingsFields({ control, register, setValue, errors }: Tok
   // off-step time (say 25 minutes) must stay pickable after the owner tries another (auto-memory
   // options-from-live-value-strand-stored-value).
   const { defaultValues: saved } = useFormState({ control });
-  // The token fix (T3): tokens print at the bill printer; the same cached printers read as the agent's (no new request).
+  // The token fix (T3): tokens print at the bill printer; the same cached printers read as the agent's (at most one
+  // GET /api/printers when a tab opens this page without the cached list; never a recurring request).
   const noBillPrinter = tokensHaveNoBillPrinter(usePrintersRead(true).printers);
 
   return (

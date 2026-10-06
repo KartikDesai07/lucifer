@@ -17,6 +17,7 @@ export interface IPrintDevice extends Document {
   lastSeenAt: Date;
   appVersion?: string;
   nativeProtocol?: number; // the Android bridge version; 1 = one printer only
+  tokenSlips?: boolean; // Phase 3 (the token fix's M-2): what its last lease said: its page prints "token" jobs
   createdAt: Date;
   updatedAt: Date;
 }
@@ -45,6 +46,8 @@ export const printDeviceSchema = new Schema<IPrintDevice>(
     // Omit-empty: absent until a shell reports it.
     appVersion: { type: String },
     nativeProtocol: { type: Number },
+    // Phase 3 (the token fix's M-2): written by the lease's touch, and only when it changes.
+    tokenSlips: { type: Boolean },
   },
   { timestamps: true },
 );

@@ -41,6 +41,12 @@ export const PRINT_READY_HEADER = "x-pos-print-ready";
 /** Session 2C (plan decision 7): this device's own bill printer (an id), chosen on the device (Session 2D). An
  *  unknown, switched-off or unusable one means the default bill printer; it never refuses the order write. */
 export const PRINT_BILL_PRINTER_HEADER = "x-pos-bill-printer";
+/** Phase 3 (the token fix's review, M-2): a page that can print a "token" job says so on the pulse (`?tokens=1`), and as
+ *  `tokenSlips: true` on the wake and the ack, as its lease already does. The jobs-for-me count and the ack's `more`
+ *  then skip token jobs only for a page that cannot print them (one from before print-customization S7, whose lease
+ *  steps over them), so it no longer pays an empty lease per ack and per pulse while a token waits. A request that does
+ *  not say (any page from before Phase 3) is answered by what the device's last lease said (PrintDevice.tokenSlips). */
+export const PRINT_PULSE_TOKENS_PARAM = "tokens";
 
 /** One job the server created for a request (spec §7.4 `printJobs`): the asking device leases the ones
  *  aimed at it straight away and follows each one's readback by id. */

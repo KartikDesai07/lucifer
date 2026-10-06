@@ -2,7 +2,7 @@ import { after } from "next/server";
 import { connectDB } from "@/lib/db";
 import { printJobDrainHead } from "@/lib/print-queue-feeds";
 import { readJobsForDevice } from "@/lib/print-lease";
-import { beatPrintDevice, countOnlineAgents } from "@/lib/print-device";
+import { beatPrintDevice, countOnlineAgents, printDeviceDrawsTokens } from "@/lib/print-device";
 import { listPrinters } from "@/lib/print-printers";
 import { sweepPrintJobsThrottled } from "@/lib/print-sweep";
 import { wakeBeatBodySchema } from "@/lib/print-lifecycle-schemas";
@@ -57,7 +57,10 @@ export async function POST(req: Request) {
   try {
     await connectDB();
     await beatPrintDevice(parsed.data, nowMs);
-    const [jobsForMe, agents, printers] = await Promise.all([readJobsForDevice(parsed.data.deviceId, nowMs), countOnlineAgents(nowMs), listPrinters()]);
+    // Phase 3 (the token fix's M-2): token jobs count only for a page that prints them; one that says nothing (a page
+    // from before Phase 3) is answered from what its device's last lease said.
+    const tokens = parsed.data.tokenSlips === true || (await printDeviceDrawsTokens(parsed.data.deviceId));
+    const [jobsForMe, agents, printers] = await Promise.all([readJobsForDevice(parsed.data.deviceId, nowMs, tokens), countOnlineAgents(nowMs), listPrinters()]);
     try {
       after(() => sweepPrintJobsThrottled(nowMs));
     } catch {

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { stripComments } from "@/lib/source-pin-utils";
 import { buildKotPrintDevices, printIntentOf, wireOrderOf, withPrintJobs } from "@/lib/print-order-jobs";
-import { printPulseDeviceOf } from "@/lib/print-agent-server";
+import { printPulseDeviceOf, printPulseTokensOf } from "@/lib/print-agent-server";
 
 // Printing redesign Phase 1, Session 1B (plan docs/superpowers/plans/2026-10-02-phase-1-lifecycle.md):
 // server-side job creation. DB behaviour is proven live (npm run verify:print:live, legs y–ab); these
@@ -196,6 +196,13 @@ test("printPulseDeviceOf: only a usable ?device= names the agent; anything else 
   assert.equal(printPulseDeviceOf("http://localhost/api/order-requests/pulse?device=%20dev-1%20"), "dev-1");
 });
 
+// Phase 3 (the token fix's review, M-2): a page that prints token slips says so on the pulse.
+test("printPulseTokensOf: only ?tokens=1 says the page prints token slips; anything else, or nothing, does not", () => {
+  assert.equal(printPulseTokensOf("http://localhost/api/order-requests/pulse?device=d&tokens=1"), true);
+  assert.equal(printPulseTokensOf("http://localhost/api/order-requests/pulse?device=d"), false, "a page from before Phase 3 says nothing");
+  assert.equal(printPulseTokensOf("http://localhost/api/order-requests/pulse?device=d&tokens=true"), false, "only the one value");
+});
+
 test("PIN (M-d): every ref says what state its job is in, made now or found under its key", () => {
   const s = src("apps/cafe/lib/print-job-insert.ts");
   // Session 2B deliberately changed the first two: a new job is queued, or leased to the asking tab and
@@ -252,7 +259,8 @@ test("PIN (M-f): a staff accept the server prints records the asking device in t
 test("PIN: the pulse adds printJobsForMe only for a tab that named itself, fail-soft, and the route itself writes nothing", () => {
   const s = src("apps/cafe/app/api/order-requests/pulse/route.ts");
   assert.match(s, /const device = printPulseDeviceOf\(req\.url\);/);
-  assert.match(s, /device === null \? Promise\.resolve\(null\) : readJobsForDevice\(device, nowMs\)\.catch\(\(\) => null\)/);
+  // Phase 3 (the token fix's M-2) deliberately changed the read: a token job counts only for a page that prints them.
+  assert.match(s, /device === null \? Promise\.resolve\(null\) : readPulseJobsForDevice\(device, saysTokens, nowMs\)\.catch\(\(\) => null\)/);
   assert.ok(s.includes("...(printJobsForMe === null ? {} : { printJobsForMe }),"), "omitted on a failed read");
   for (const write of ["updateOne(", "updateMany(", "create(", "findOneAndUpdate("]) {
     assert.ok(!s.includes(write), `the pulse route itself writes nothing: no ${write}`);

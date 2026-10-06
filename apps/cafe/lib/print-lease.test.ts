@@ -62,6 +62,14 @@ test("jobsForMeOf: the count, the oldest, the printers of the printer jobs, and 
   assert.deepEqual(jobsForMeOf([{ createdAt: at(1), printerId: b }, { createdAt: at(2) }]), { count: 2, oldestCreatedAt: at(1).toISOString(), printerIds: [b], ownLine: true }, "a printer job beside its own line's job");
 });
 
+// Phase 3 (the token fix's review, M-2): a page that cannot print token slips (one from before print-customization S7)
+// leases with the kind fence, so its jobs-for-me count leaves token jobs out too; every other page counts them, as before.
+test("printJobsForMeFilter: tokens false leaves token jobs out (the lease's own kind fence); the default counts every kind", () => {
+  assert.deepEqual(printJobsForMeFilter("dev-a", T0, false), { ...printJobsForMeFilter("dev-a", T0), kind: { $ne: "token" } }, "fenced like the lease");
+  assert.deepEqual(printJobsForMeFilter("dev-a", T0, true), printJobsForMeFilter("dev-a", T0), "a page that prints tokens: unchanged");
+  assert.deepEqual(Object.keys(printJobsForMeFilter("dev-a", T0, false)).sort(), ["$nor", "$or", "kind", "status", "targetDeviceId"], "one more term, nothing else");
+});
+
 test("printJobCasFilter: fences on the status and epoch the plan read; epoch 0 also matches a row with no epoch", () => {
   const id = new mongoose.Types.ObjectId();
   assert.deepEqual(printJobCasFilter(id, { status: "queued", epoch: 0 }), { _id: id, status: "queued", epoch: { $in: [0, null] } });

@@ -267,8 +267,9 @@ Tokens (**Settings → Tokens & numbering**) give every order a token number and
 print a token slip with its first kitchen ticket. Only a POS page from the
 release that added tokens can print that slip. An older page still open never
 prints one: the slip waits, visibly, in the waiting-slips panel until a
-reloaded page prints it (once, with no DUPLICATE). Nothing is lost, but the
-customer gets no slip until then.
+reloaded page prints it within 30 minutes (once, with no DUPLICATE); after
+that, Print now in the panel prints it. Nothing is lost, but the customer gets
+no slip until then.
 
 - [ ] **Reload first.** The hint under the tokens switch says it: "Before
       turning tokens on, reload every POS screen and restart the Windows app on

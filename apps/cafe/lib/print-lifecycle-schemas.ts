@@ -32,6 +32,8 @@ export const wakeBeatBodySchema = z
       .strict(),
     appVersion: z.string().trim().min(1).max(40).optional(),
     nativeProtocol: z.number().int().min(1).max(99).optional(),
+    /** Phase 3 (the token fix's M-2): this page prints "token" jobs (PRINT_PULSE_TOKENS_PARAM). */
+    tokenSlips: z.literal(true).optional(),
   })
   .strict();
 
@@ -49,6 +51,8 @@ export const ackBodySchema = z
     sent: z.enum(["no", "maybe"]).optional(),
     permanent: z.literal(true).optional(),
     error: z.string().trim().max(PRINT_ACK_ERROR_MAX_CHARS).optional(),
+    /** Phase 3 (the token fix's M-2): this page prints "token" jobs, so the answer's `more` counts them. */
+    tokenSlips: z.literal(true).optional(),
   })
   .strict()
   .refine(

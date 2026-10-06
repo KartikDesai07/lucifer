@@ -140,6 +140,10 @@ test("ackBodySchema: a printed ack carries no failure fields; a failed one must 
   assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "printed", extra: 1 }), false, "strict");
   assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "failed", sent: "maybe", error: "x".repeat(201) }), false);
   assert.equal(ok({ deviceId: "", epoch: 1, outcome: "printed" }), false);
+  // Phase 3 (the token fix's M-2): a page that prints token slips says so; only true is a word.
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "printed", tokenSlips: true }), true);
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "failed", sent: "no", tokenSlips: true }), true);
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "printed", tokenSlips: false }), false, "absent, never false");
 });
 
 test("lease, confirm and wake bodies: required fields, enums and strictness", () => {
@@ -160,6 +164,8 @@ test("lease, confirm and wake bodies: required fields, enums and strictness", ()
   assert.equal(wakeBeatBodySchema.safeParse({ ...beat, appVersion: "1.2.0", nativeProtocol: 1 }).success, true);
   assert.equal(wakeBeatBodySchema.safeParse({ ...beat, shell: "ios" }).success, false);
   assert.equal(wakeBeatBodySchema.safeParse({ ...beat, capabilities: { ...beat.capabilities, fax: true } }).success, false, "strict capabilities");
+  assert.equal(wakeBeatBodySchema.safeParse({ ...beat, tokenSlips: true }).success, true, "Phase 3 (M-2): a page that prints token slips");
+  assert.equal(wakeBeatBodySchema.safeParse({ ...beat, tokenSlips: false }).success, false, "absent, never false");
 });
 
 const ROUTES = {
@@ -187,7 +193,7 @@ test("PIN: every Phase 1 print route authenticates, is force-dynamic and no-stor
 
 test("PIN: each route calls its one lib, and a staff decision is stamped with the SESSION name, never a body field", () => {
   assert.match(src(ROUTES.lease), /leasePrintJobs\(\{/);
-  assert.match(src(ROUTES.lease), /touchPrintDevice\(parsed\.data\.deviceId, nowMs\)/);
+  assert.match(src(ROUTES.lease), /touchPrintDevice\(parsed\.data\.deviceId, nowMs, parsed\.data\.tokenSlips === true\)/);
   assert.match(src(ROUTES.ack), /ackPrintJob\(\{ id, \.\.\.parsed\.data, nowMs: Date\.now\(\) \}\)/);
   assert.match(src(ROUTES.confirm), /staff: authed\.session\.user\.name \?\? UNNAMED_STAFF/);
   assert.match(src(ROUTES.retry), /retryPrintJob\(\{ id, nowMs: Date\.now\(\) \}\)/);
@@ -238,7 +244,8 @@ test("PIN: POST /api/print-jobs/wake beats, reads the device's line and the agen
       "validateBody(req, wakeBeatBodySchema)",
       "await connectDB();",
       "await beatPrintDevice(parsed.data, nowMs);",
-      "readJobsForDevice(parsed.data.deviceId, nowMs)",
+      "const tokens = parsed.data.tokenSlips === true || (await printDeviceDrawsTokens(parsed.data.deviceId));",
+      "readJobsForDevice(parsed.data.deviceId, nowMs, tokens)",
       "countOnlineAgents(nowMs)",
       "after(() => sweepPrintJobsThrottled(nowMs))",
       "return noStore(success(data));",
@@ -270,7 +277,7 @@ test("PIN: the heartbeat awaits the PrintDevice unique-index build before its fi
 // ── Session 1B: the 1A review's lease rulings and the print-status publishes ───────────────────────
 
 test("PIN: the lease route's heartbeat is best-effort (M1), and a lease call that cleared four bad heads says when to look again (M2)", () => {
-  assert.match(src("apps/cafe/app/api/print-jobs/lease/route.ts"), /touchPrintDevice\(parsed\.data\.deviceId, nowMs\)\.catch\(\(\) => undefined\),/);
+  assert.match(src("apps/cafe/app/api/print-jobs/lease/route.ts"), /touchPrintDevice\(parsed\.data\.deviceId, nowMs, parsed\.data\.tokenSlips === true\)\.catch\(\(\) => undefined\),/);
   // Session 2C: per line now (leaseLineHead), so a line that cleared four bad heads gives no job and a retry time.
   assert.match(src(LEASE), /return \{ job: null, retryAt: new Date\(input\.nowMs \+ PRINT_BACKOFF_MS\[0\]\)\.toISOString\(\) \};/);
 });
@@ -300,14 +307,31 @@ test("PIN (2B): an ack that takes a job off the line answers `more` from one rea
     [
       "if (await applyPrintJobPlan(row._id, job, plan.patch)) {",
       'if (plan.patch.status === "queued") return { applied: true, status: plan.patch.status, nextAttemptAt };',
-      "const more = await (row.printerId !== undefined ? printerLineHasMore(row.printerId, input.nowMs) : printLineHasMore(input.deviceId, input.nowMs)).catch(",
+      "const tokens = input.tokenSlips === true || (await printDeviceDrawsTokens(input.deviceId).catch(() => true));",
+      "const more = await (row.printerId !== undefined ? printerLineHasMore(row.printerId, input.nowMs, tokens) : printLineHasMore(input.deviceId, input.nowMs, tokens)).catch(",
       "() => undefined,",
       "...(more !== undefined ? { more } : {})",
     ],
     "the ack",
   );
-  assert.match(s, /return \(await PrintJob\.findOne\(\{ \.\.\.printJobLineFilter\(deviceId, nowMs\), status: "queued" \}\)\.select\("_id"\)\.lean\(\)\) !== null;/, "one read on the line index");
-  assert.match(s, /return \(await PrintJob\.findOne\(\{ \.\.\.printerLineFilter\(printerId, nowMs\), status: "queued" \}\)\.select\("_id"\)\.lean\(\)\) !== null;/, "Session 2C: a printer job asks its own printer's line");
+  // Phase 3 (the token fix's M-2) deliberately added the lease's kind fence to both reads.
+  assert.match(s, /return \(await PrintJob\.findOne\(\{ \.\.\.printJobLineFilter\(deviceId, nowMs\), \.\.\.leaseKindFence\(tokens\), status: "queued" \}\)\.select\("_id"\)\.lean\(\)\) !== null;/, "one read on the line index");
+  assert.match(s, /return \(await PrintJob\.findOne\(\{ \.\.\.printerLineFilter\(printerId, nowMs\), \.\.\.leaseKindFence\(tokens\), status: "queued" \}\)\.select\("_id"\)\.lean\(\)\) !== null;/, "Session 2C: a printer job asks its own printer's line");
+});
+
+// Phase 3 (the token fix's review, M-2): a page from before print-customization S7 cannot print a token job and its lease
+// steps over one, so neither the ack's `more` nor the jobs-for-me count of the pulse and the wake may count one for it,
+// or it pays an empty lease per ack and per pulse until the token goes stale. A page says so itself (Phase 3's page);
+// one that does not say is answered from its device's last lease, kept on the device row by the lease's own touch.
+test("PIN (Phase 3, M-2): the ack, the pulse and the wake count a token job only for a page that prints them, by its word or its device's last lease", () => {
+  const device = src(DEVICE);
+  assert.match(device, /tokenSlips === undefined \? \{ deviceId, \.\.\.due \} : \{ deviceId, \$or: \[due, \{ tokenSlips: \{ \$ne: tokenSlips \} \}\] \}/, "the touch writes the word only when it changed, in the one write it already makes");
+  assert.match(device, /return row\?\.tokenSlips !== false;/, "unknown counts tokens, as before");
+  const lease = src(LEASE);
+  assert.match(lease, /\.\.\.lineJobs\(nowMs\),\s*\.\.\.leaseKindFence\(tokens\),/, "jobs-for-me: the lease's own kind fence");
+  const server = src("apps/cafe/lib/print-agent-server.ts");
+  assert.match(server, /return readJobsForDevice\(deviceId, nowMs, saysTokens \|\| \(await printDeviceDrawsTokens\(deviceId\)\)\);/, "the pulse reads the device row only when the page did not say");
+  assert.match(src("apps/cafe/app/api/order-requests/pulse/route.ts"), /device === null \? Promise\.resolve\(null\) : readPulseJobsForDevice\(device, saysTokens, nowMs\)\.catch\(\(\) => null\)/);
 });
 
 // Session 2C (spec §7.6, §9.3; plan decision 1): a device leases its simple line and the line of each printer it
