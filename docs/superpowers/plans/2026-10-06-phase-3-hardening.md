@@ -5602,4 +5602,163 @@ Commit, then push with the token only: `GIT_TERMINAL_PROMPT=0 git push origin fe
 
 ## Session 3A Results (filled in by the implementer)
 
-_Not run yet._
+Executed on 2026-10-06 with superpowers:executing-plans, task by task, A0 → A5.
+
+### Commits (`f23d84c..HEAD`)
+
+| Commit | Task |
+|---|---|
+| `ef6c658` | A0: the token fix's M-2 kind fence on the ack's `more` and on jobs-for-me (`PrintDevice.tokenSlips`, `printDeviceDrawsTokens`, `PRINT_PULSE_TOKENS_PARAM`); the runbook's "within 30 minutes; after that, Print now"; the TokenSettingsFields comment (leg az) |
+| `4e83f19` | A1: `@pos/shared/print-failover` (who writes a printer now, the 5-minute skip, the backup printer's rules, health, a printer's problem and its words) |
+| `8165a75` | A2: failover on the server: the writer now at creation, the lease, the "unreachable" ack, the sweep, a staff Retry and a Test print (leg ba) |
+| `114c48c` | A3: the backup printer (absent keeps, `null` clears) and the sweep's backup move (leg bb) |
+| `9341e24` | A4: printer health on the wake (no operation when nothing changed) and each printer's problem in the waiting-slips feed (leg bc) |
+| `cf4499e` | The final review's I-1, by TDD: a writer skipped for a network printer stays skipped until its own lease names the printer again (at least 5 minutes, at most 3 hours); shared tests, leg ba's I-1 checks, the lease PIN; spec §9.3, §9.8 and P3-3 notes |
+| (this commit) | Results |
+
+### Start
+
+- `GIT_TERMINAL_PROMPT=0 git fetch origin` (the repo-local token store): `feat/printing-phase-3` = `origin/feat/printing-phase-3` = `f23d84c`, working tree clean; `origin/main` still `7f8ed31` (nothing to merge or note).
+- Disk at the start: D: 13 GB free, C: 2.9 GB free.
+- The planning session's applier (`apply_blocks_clone.py`) was copied into this session's scratchpad. A dry run of the whole Session 3A range (plan lines 309–5544) against `f23d84c`: **148 ops OK** (no drift).
+
+### How the code was applied
+
+Every block went verbatim into the real repo through the applier, one step range at a time (each task's Step 1, then its Step 3), so each RED was seen before its code went in: A0 11 + 23 ops, A1 2 + 7, A2 11 + 38, A3 5 + 20, A4 10 + 21 (**148**). After A4, **every file outside `docs/` is blob-identical to the planning session's gold `g3a-v2`** (tree `35204f2`): `git ls-tree -r` of both differs only in the plan (added by `f23d84c`) and the spec (changed by `f23d84c`). `f23d84c..9341e24`: 46 files, **+1,482 / −94**. Every commit has the plan's message plus the repo's co-author line.
+
+### Per-task RED → GREEN (every Expected line compared; all matched)
+
+| Task | RED | GREEN |
+|---|---|---|
+| A0 | `print-lease` + `print-lifecycle-paths` + `print-order-jobs` + `print-attention` tests: tests 56, pass 45, **fail 11** | the six files **163/163**; `TSC_OK`; `LINT_OK`; live **373 passed, 0 failed** |
+| A1 | `print-failover.test.ts`: tests 1, pass 0, **fail 1** (the module did not exist) | **63/63**; `SHARED_TSC_OK`; shared `npm test` **813/813** |
+| A2 | shared `print-budget.test.ts`: 1 / 0 / **1**; cafe four files: tests 62, pass 53, **fail 9** | shared **38/38** + `SHARED_TSC_OK`; cafe ten files **141/141**; `TSC_OK`; `LINT_OK`; live **392 passed, 0 failed** |
+| A3 | three files: tests 54, pass 51, **fail 3** | four files **64/64**; `TSC_OK`; `LINT_OK`; live **405 passed, 0 failed** |
+| A4 | shared `print-budget.test.ts`: 1 / 0 / **1**; cafe four files: tests 52, pass 47, **fail 5** | shared **39/39** + `SHARED_TSC_OK`; cafe seven files **147/147**; `TSC_OK`; `LINT_OK`; live **415 passed, 0 failed** |
+
+Line counts at the end: `packages/shared/src/print-failover.ts` 144 (new), `apps/cafe/lib/print-failover.ts` 120 (new), `lib/print-health.ts` 71 (new), `lib/print-lease.ts` 340, `lib/print-attention.ts` 106, `lib/print-sweep.ts` 189; the legs `scripts/print-host-live/token-fence.ts` 72, `failover.ts` 181, `backup.ts` 88, `health.ts` 55 (all new).
+
+### Task A5 Step 1: every suite (at `9341e24`; once each, in the background, one after another)
+
+| Suite | Result |
+|---|---|
+| shared `npm test`; `tsc` | **815/815**; 0 |
+| cafe `npm test` | **4990 tests, 4989 pass, 0 fail, 1 skipped** (go-live-dl) |
+| cafe `tsc`; `npm run lint` | 0; 0 errors and the 2 old warnings (`lib/masters-blob.test.ts:331`) |
+| hub `tsc`; lint | 0; 0 |
+| mobile `tsc`; lint; `npm test`; `test:app` | 0; 0; **125/125**; Jest **3/3** |
+| desktop `npm test`; `typecheck`; lint | **192/192**; 0; 0 |
+| `npm run test:print-tools` | **8/8** |
+| live legs (local mongod, `pos_scratch_print_host_3a`) | **`415 passed, 0 failed`** = 362 + az 11 + ba 19 + bb 13 + bc 10 |
+
+Every row equals the plan's Expected.
+
+### Step 2: the Next production build (the repo, D:)
+
+`npm run build`: exit 0, **132 routes** (D: 13 GB free before it).
+
+### Step 3: no app, desktop or Worker change
+
+`git diff --stat aae162c..HEAD -- apps/mobile apps/desktop workers`: **empty**. The APKs (arm64 `b10feedb…`, armv7 `86b7ff13…`, x86_64 `3736540b…`) and `POS-Software-Setup-1.11.0.exe` (`348aebe1…`) stay as Phase 2 built them; nothing rebuilt.
+
+### Step 4: the dormant check on the emulator (items 1–4: passed)
+
+**The harness:** this branch's build (`9341e24`) served by `next start -p 3110` with a scratchpad env on a fresh database `pos_scratch_e2e_3a` (the admin, 8 tables and the sample menu seeded with `scripts/seed-admin.ts`, `seed-tables.ts`, `seed-menu.ts`); the counting proxy on 3200 → 3110 (a copy of the Phase 2 gates' `gate-proxy-2b.mjs` that also logs the pulse's `tokens=` value, never a header, body or cookie); fake printers on 9100 and 9101 with long `--out` paths; `adb reverse tcp:3100 tcp:3200`. Ports 3110, 3200, 9100 and 9101 were free; no other session's server was touched.
+
+**The emulator:** `Pixel_7_API_33` booted by this session at **`-memory 2048`** (C: had 3.0 GB free, under ~4 GB: recorded), `-no-audio -no-snapshot-save`, `timeout: 7200000`. **As found:** the app installed, the **release APK** (hashed on the device `29115bdf…`), on its start screen with no address (not the demo). Because item 2 (two network printers written by one device) needs bridge v2, the **Phase 2 x86_64 APK** (`3736540b…`, hashed before the install) went over it with `adb install -r` for the check (ruling below), and the release APK went back at the end. `http://localhost:3100` typed on the start screen showed the local POS's sign-in page ("POS Software", not the demo); signed in as the scratch admin (the password typed by `type-secret.py` from the env file into a field checked to be a password field, never printed). Every tap was on the app's own screens. The app's device id is `80cfb12d…`.
+
+| # | Step | Result |
+|---|---|---|
+| 1 | Simple mode; the app's own network printer `10.0.2.2:9100` (the panel → Use this network printer → "Printing is on · Network printer 10.0.2.2 is connected."); New Order: Cheesecake, Masala Chai → Send to Kitchen, then Pay Now → Cash → Place Order | Send to Kitchen: one KOT **44,454 B** on 9100; `POST /api/orders` (`lease`, `agent`) 201 and one ack (direct print). Pay Now: KOT **44,454 B** + bill **40,854 B**, once each; order, ack, lease, ack (Phase 2's Pay Now, spec §17.2). Every job unlabelled, epoch 1, printed. **Every pulse said `tokens` = null (17/17)**: the page is Phase 2's. **PASS** |
+| 2 | Printers mode through the API (`p2g-tool.ts`): station Bar, Beverages → Bar; Kitchen printer LAN 9100 (Kitchen station, bill, notices, end of day) and Bar printer LAN 9101 (Bar station), both printed by the app's device; top-bar Refresh → the panel says "Printers are set up", and the app lists 9101 under "Other printers on this device" (Connected); Send to Kitchen | KITCHEN slip (Cheesecake) **44,238 B** on 9100 and BAR slip (Masala Chai) **44,238 B** on 9101 (both 80 mm); order + two acks, **no lease** (direct, Phase 2's item 6); both unlabelled, epoch 1. **PASS** |
+| 3 | `PUT /api/printers/<Kitchen>` with `backupPrinterId` = Bar (the whole printer, `p3a-tool.ts backup`): 200; Send to Kitchen; then 75 s (one sweep at least) | the KITCHEN slip on 9100 and the BAR slip on 9101 as before (order + two acks, no lease); after 75 s no new paper, **0 `retargeted` / backup log entries**, no job moved; `GET /api/printers` shows Kitchen's backup (Bar) and **no `unreachable` and no `health`** on either printer. **PASS** |
+| 4 | `adb logcat -b crash -d` | **0 lines** (at the start, after the run, and after the put-back). **PASS** |
+
+The whole run's leases (3): one after Use this network printer, the Pay Now bill's, and a fresh page's mount lease after Refresh (all Phase 2's known ones); none after a direct print.
+
+**Put back:** the setup reset (`p2d-tool.ts reset2d`: simple mode, only the default station, no printer, host null); the app's printers removed (9101 by the page after a Refresh, as Session 2G's rule does; 9100 by Remove → "No printer set up"); More options → Change POS address → the field cleared (start screen, no address); the **release APK** reinstalled (`29115bdf…` on the device; start screen empty; crash 0); `adb reverse --remove-all`, then `adb reverse tcp:3100 tcp:3100`; `adb shell sync`, then `adb emu kill`; this session's four servers stopped by PID after checking each command line. The scratch database `pos_scratch_e2e_3a` is left (its env file is in this session's scratchpad).
+
+### Step 5: the fresh review (Claude Fable 5.1)
+
+**How it ran.** A fresh reviewer on **Claude Fable 5.1** (no 429 this time), read-only, its probes only in this session's scratchpad (`review3a/`), reviewed `f23d84c..9341e24` against this plan (P3-1 to P3-10, Session 3A and both Review Focus lists, verbatim) and spec §9.3, §9.4, §9.8, §10, §14, §17. Its own runs on the landed tree: shared 65/65 (the three failover, printers and budget files), cafe 400/400 (21 suites), `tsc --incremental false` 0, eslint 0 on the 25 changed files, the live legs on its own database 415/0, and live probes P1–P9 on a scratch database (one lease per printer line across the primary's return; a network printer with a backup and a takeover candidate; mutual backups' label; the ack's `more` for a page between S7 and Phase 3; and more).
+
+**Verdict: "With fixes (or I-1 ruled to the 3A gate)".** No Critical finding, one Important, eight minors. The sound list: one writer question everywhere; one lease per printer line through a failover flip; the backup move cannot double paper; fail-soft after every committed write; deploy skew (every new field optional in and ignored out; a Phase 2 page is never a candidate); the token fence for every page generation; the budget; tests that assert database state.
+
+| # | Finding | Ruling |
+|---|---|---|
+| I-1 (Important) | A network printer the primary cannot reach but another device can: failover lasted exactly 5 minutes. Then the skip ran out, the primary (online, not skipped) became the writer again, new slips and the sweep went back to it, and its page, which never leases a printer it cannot reach, never acked "unreachable" again to renew the skip. The slips waited while a device that could print sat idle; staff's only remedy was re-saving the printer. Dormant until 3B. | **Fixed by TDD in `cf4499e`.** The 5 minutes are now the skip's floor. After them the skip holds until the skipped device's own lease names the printer again (`endPrinterSkipOf`, called by the lease: one write, only then; a page names only a printer it can print to now, `holds.open(ready())`), and at most 3 hours (`PRINTER_UNREACHABLE_HOLD_MS` = `PRINT_JOB_QUEUED_RETENTION_MS`; `printerSkipHolds`). `recordPrinterUnreachable` keeps the skips that still hold. A writer that cannot reach the printer still costs at most a lease and an ack per 5 minutes (the budget pin is unchanged). RED → GREEN below. Spec §9.3 and §9.8 and P3-3 carry the change. |
+| m-1 | A backup that is not routable (no slip box ticked, or switched off) is accepted at save and is silently inert. | **3A gate / 3B form.** API only until 3B; 3B's form offers routable printers only. Recommended at the gate: refuse it at save in words, and show "(not in use)" when a backup stops being routable. |
+| m-2 | The Worker budget pins do not count `announcePrinterHead` (P3-3 ruled it inside 5 %). | **3A gate:** add the term to the realtime pins. |
+| m-3 | The 288-a-day pin is the skip's floor; on a flaky link (probe succeeds, print connect fails) the ceiling is Phase 1's 2 requests per 30 s. Not a new cost. | **3A gate:** the pin's title and comment wording. |
+| m-4 | The token fence reaches devices with a `PrintDevice` row (wake pollers). A no-host simple-mode page from before S7 keeps today's cost (at most an empty lease per pulse while a token waits). | **3A gate:** P3-8's text; the runbook's "reload every device first" already covers it. |
+| m-5 | `printerProblemOf` treats `connecting` as no problem: a dead TCP printer's 30 s probe could flicker the words and re-write health. | **3B/3C:** report the settled link, never a transient probe. |
+| m-6 | Until 3B ships and every screen reloads, each ack, pulse and wake of a page that does not say `tokenSlips` pays one small read (bounded, by design, not pinned). | **3G:** the runbook's "reload every screen" and the measurement's note. |
+| m-7 | The wire's `unreachable` carries skips that no longer hold (every reader filters by time). | **3B:** the setup page filters, or `printerWireOf` does. |
+| m-8 | Spec §10's heartbeat shape still says `state`; §9.8 and the code say `link`. | **3A gate:** spec text. |
+
+**Declined to judge (each ruled):**
+- The by-id pick can choose a Bluetooth bar phone over the counter PC for a network takeover: P3-1 rules "by device id"; the reviewer's R-1 (prefer devices that are the primary of some network printer) goes to the 3A gate with 3B. *Cost if wrong:* a takeover by a device on a worse link, with the same paper.
+- Direct print at creation follows a takeover only when the asking page sends the ready header for a taken-over printer: deferred to the 3B gate by the plan (M-8 c); dormant in 3A.
+- The instant race between a lease and a direct-print creation on one printer line: pre-existing since Phase 2; it widens to two devices only with 3B's header (M-8 c), so the 3B gate.
+- P3-9 (a writer whose wake cap is spent looks offline): already ruled; the 3A gate may revisit it with 3B's cap behaviour.
+- A retarget log entry per sweep for failed or needs-confirm rows: pre-existing 2C behaviour, unchanged.
+- `Printer.health` holds one report: by design (P3-6); the I-1 fix does not need per-device health.
+- A network printer made by "Set up printers" from the app's own TCP printer: the reviewer checked it maps to `kind: "lan"` with a primary, so failover applies (no gap).
+
+**Recommendations for the gates:** R-1 above; R-2 (3B: a taken-over printer enters the page's `ready` list and lease body, the page reports the settled link, and **a page must keep leaving a printer it cannot reach out of its lease: with I-1's fix that is the recovery signal, so 3B should pin it**); R-3 (3G: measure with at least one page that does not say `tokenSlips`, or say none was present); R-4 (done: leg ba pins the behaviour after the 5 minutes).
+
+**The I-1 fix, RED → GREEN (`cf4499e`).**
+- Shared `print-failover.test.ts`: the missing exports first (1 / 0 / 1), then with a stub (the constant, `printerSkipEndsFor` returning false, the old time rule) **10 tests, 7 pass, 3 fail**, exactly the three new assertions ("still the counter's when the 5 minutes are up", "a skip holds past its 5 minutes, and is gone after 3 hours", "after them, naming the printer ends it"). GREEN: the three shared files **66/66**, `SHARED_TSC_OK`.
+- The lease PIN (`print-lifecycle-paths.test.ts`, "PIN (2C): a lease takes the head…", the `asked` line): RED 25 / 24 / **1** → GREEN.
+- Leg ba: its last check ("five minutes on, the skips have run out: a new kitchen slip is the tablet's again") pinned the old behaviour, and is replaced by five checks: the counter's lease naming the printer past its 5 minutes ends its skip and takes the waiting slip while the blind tablet stays skipped; a new kitchen slip is the counter's; the counter's next refusal keeps the tablet's held skip, and the slip waits for the primary; within the counter's new 5 minutes its lease does not end its skip; the tablet's lease naming its printer ends its skip and takes its line back. RED: **416 passed, 3 failed** (the first, second and fifth; the third passed vacuously, as the counter never got the slip). GREEN: **419 passed, 0 failed** (ba 23). One test-timing slip on the way: the tablet's lease first ran 5 s after the slip's third refusal, inside its 10 s backoff; it runs at +12 s now (code unchanged).
+- A mutation check of the third check: with `recordPrinterUnreachable`'s filter put back to the old "until > now", the live run read **418 passed, 1 failed** (exactly that check); restored.
+- Cafe `print-lifecycle-paths`, `print-lease`, `print-printer-routing`, `self-order-alert-paths`: **67/67**; `TSC_OK`; `LINT_OK`.
+
+### After the fix: every suite again (at `cf4499e`; once each, in the background, one after another, then the build)
+
+| Suite | Result |
+|---|---|
+| shared `npm test`; `tsc` | **816/816** (+1: the `printerSkipEndsFor` test); 0 |
+| cafe `npm test` | **4990 tests, 4989 pass, 0 fail, 1 skipped** (go-live-dl) |
+| cafe, hub, mobile, desktop `tsc` / typecheck and lint | 0, and 0 errors (the 2 old warnings, `lib/masters-blob.test.ts:331`) |
+| mobile `npm test`; `test:app` | **125/125**; Jest **3/3** |
+| desktop `npm test` | **192/192** |
+| `npm run test:print-tools` | **8/8** |
+| live legs (`pos_scratch_print_host_3a`) | **`419 passed, 0 failed`** = 362 + az 11 + ba 23 + bb 13 + bc 10 |
+| the Next build (the repo, D:) | exit 0, **132 routes** |
+
+`git diff --stat aae162c..HEAD -- apps/mobile apps/desktop workers` is still **empty**: no APK or installer change. `f23d84c..cf4499e`: 48 files, +1,583 / −97 (the fix: 9 files, +134 / −36, docs included).
+
+The dormant emulator check was not run again after `cf4499e` (ruling below): the fix acts only on a lease from a device that holds a skip, and only an "unreachable" ack, which no Phase 2 page sends, makes one.
+
+### Deviations and rulings
+
+- **Commit messages:** the plan's message for each task, plus the repo's `Co-Authored-By` trailer, as every earlier commit has.
+- **The skill's `task-done` helper:** its first form (`bash -c '<test command>'`) was refused by the harness's safety check, so each task's test command ran through a small wrapper script in the scratchpad (`cafe-tests.sh`, `shared-tests.sh`). Nothing in the repo changed for it.
+- **The emulator ran at `-memory 2048`:** C: had 3.0 GB free when it booted, which is under the ~4 GB the plan asks for (as the plan allows; recorded).
+- **The APK for the check (ruling):** the app on the emulator was the release APK (`29115bdf…`, bridge v1), not empty and not the Phase 2 APK. Item 2 (two network printers written by one device) needs bridge v2, so the Phase 2 APK (`3736540b…`) went over it with `install -r` for the check. The release APK went back at the end, as found. *Cost if wrong:* none (put back, hash checked).
+- **The proxy:** a copy of `gate-proxy-2b.mjs` that also logs the pulse's `tokens=` value (the plan's item 1 asks for it). It never logs a header, a body or a cookie. It was restarted once, before the first order.
+- **Item 1's wording (ruling):** the plan's Expected says "the orders and acks only". On Pay Now the bill takes one lease (order, ack, lease, ack), exactly as in Phase 2 (spec §17.2: "Pay Now on one printer costs 3 print requests"), so the item was judged equal to Phase 2: **PASS**. *Cost if wrong:* none (3A changes no page code).
+- **The harness's env (ruling):** the final Phase 2 gate's env file was copied with only the database name changed to the fresh `pos_scratch_e2e_3a`. The secrets were never printed.
+- **The emulator was not run again after the I-1 fix (ruling):** see above. *Cost if wrong:* none for a Phase 2 page; the path does nothing without a skip.
+- **I-1 fixed in this session, not ruled to the gate:** the plan and the prompt both say to fix every Important finding by TDD. The fix is server-only and dormant, and the 3A gate re-reviews it (below).
+
+### Open for the 3A review gate
+
+- **Re-review `cf4499e`:** it is new code outside the pre-validated gold, and a design change to P3-3, now written into the spec (§9.3, §9.8) and P3-3. **3B must pin that a page leaves a printer it cannot reach out of its lease** (`holds.open(ready())`), including a printer it takes over (M-8 d). With this fix, that is the signal that ends a skip.
+- **The minors as ruled above:** m-1, m-2, m-3, m-4 and m-8 at the gate; m-5 and m-7 in 3B/3C; m-6 in 3G. Plus the reviewer's R-1 (which device to prefer) and R-3 (the measurement note).
+- **P3-9** (a writer whose wake cap is spent) with 3B's cap behaviour; M-8 (a)–(d) for 3B, as the plan says.
+- **The owner's real-printer checks** (Step 0 (a)) are still not run.
+- **Leftovers:**
+  - the scratch database `pos_scratch_e2e_3a` (its env and tools are in this session's scratchpad);
+  - the live-leg databases dropped by their own runs;
+  - the emulator app as found (the release APK, start screen, no address), with `adb reverse tcp:3100 tcp:3100`.
+
+**Totals at `cf4499e`:**
+- shared 816;
+- cafe 4990 / 4989 / 0 / 1;
+- live 419/0;
+- mobile 125 + Jest 3, desktop 192, print tools 8;
+- tsc and lint clean;
+- the build: 132 routes;
+- the APKs and the Windows installer unchanged since Phase 2.
