@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { stripComments } from "@/lib/source-pin-utils";
-import { openingSlipsOf, createOrderPrintJobs, type OrderPrintSlip } from "@/lib/print-order-jobs";
+import { openingSlipsOf, createOrderPrintJobs, enqueueDirectPrintJob, type OrderPrintSlip } from "@/lib/print-order-jobs";
+import { kotPrintJob, tokenPrintJob } from "@/lib/print-routing";
 import { PrintHost } from "@/models/PrintHost";
 import { PrintJob } from "@/models/PrintJob";
 import { Printer } from "@/models/Printer";
@@ -160,6 +161,95 @@ test("createOrderPrintJobs: round 2 of a tokened order makes the KOT only, and a
   });
 });
 
+// ── The token fix (plan 2026-10-06-token-direct-fix.md, T1): simple mode never makes a token leased at creation ──
+// The asking tab drains its device's slips and can print now (x-pos-print-lease), and its line is free, so the
+// request's first slip would be made leased to it. A token never is: an older page cannot draw it. The REAL
+// createOrderPrintJobs runs over a fake PrintHost / PrintJob / Printer, and the realtime publish is read from its fetch.
+
+type SimpleRow = { kind: string; status?: string; lease?: unknown; targetDeviceId?: string };
+type Frame = { kind?: string; job?: { status?: string; target?: string } };
+
+async function withFreeLine(host: string | null, run: (made: SimpleRow[], frames: Frame[]) => Promise<void>): Promise<void> {
+  const made: SimpleRow[] = [];
+  const frames: Frame[] = [];
+  const realFetch = globalThis.fetch;
+  const env = { url: process.env.REALTIME_PUBLISH_URL, secret: process.env.REALTIME_PUBLISH_SECRET };
+  const restores = [
+    stub(Printer, "find", () => ({ select: () => ({ sort: () => ({ lean: async () => [] }) }) })),
+    stub(PrintHost, "findOne", () => ({ select: () => ({ lean: async () => (host === null ? null : { deviceId: host }) }) })),
+    stub(PrintJob, "create", async (doc: SimpleRow) => {
+      made.push({ ...doc, status: doc.status ?? "queued" });
+      return { ...doc, _id: `job-${made.length}`, createdAt: new Date(Date.UTC(2026, 9, 6, 12)) };
+    }),
+    // printLineIsFree: nothing waits on the line.
+    stub(PrintJob, "findOne", () => ({ select: () => ({ lean: async () => null }) })),
+  ];
+  process.env.REALTIME_PUBLISH_URL = "https://realtime.invalid/publish";
+  process.env.REALTIME_PUBLISH_SECRET = "test-secret";
+  globalThis.fetch = (async (_url: unknown, init?: { body?: unknown }) => {
+    frames.push(JSON.parse(String(init?.body)) as Frame);
+    return new Response(null, { status: 204 });
+  }) as typeof fetch;
+  try {
+    await run(made, frames);
+  } finally {
+    restores.reverse().forEach((restore) => restore());
+    globalThis.fetch = realFetch;
+    for (const [key, value] of [["REALTIME_PUBLISH_URL", env.url], ["REALTIME_PUBLISH_SECRET", env.secret]] as const) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+const askAsTab = (device: string, order: Order, slips: OrderPrintSlip[]) =>
+  createOrderPrintJobs({ order, slips, originDeviceId: device, leaseTabId: "tab-1", queuedBy: "Asha", nowMs: Date.UTC(2026, 9, 6, 12) });
+const madeShape = (made: SimpleRow[]): string[] => made.map((row) => `${row.kind}:${row.status}`);
+
+test("createOrderPrintJobs (the token fix): simple mode, a token that is the request's first slip on the asking tab's free line is made queued, never leased, and not announced to it", async () => {
+  await withFreeLine("host-1", async (made, frames) => {
+    const refs = await askAsTab("host-1", orderOf({ tokenNumber: 7 }), [{ kind: "token" }]);
+    assert.deepEqual(madeShape(made), ["token:queued"], "the token is made queued for the host's own tab");
+    assert.equal(made[0]?.lease, undefined, "no lease is written at creation");
+    assert.ok(refs.length === 1 && refs[0]?.status === "queued" && refs[0]?.leased === undefined, "the answer names it queued: the page that can draw it leases it next");
+    assert.deepEqual(frames, [], "nothing is published: the asking tab is the one that prints it (no print-status to itself, no print-job nudge)");
+  });
+  await withFreeLine(null, async (made, frames) => {
+    const refs = await askAsTab("phone-1", orderOf({ tokenNumber: 7 }), [{ kind: "token" }, { kind: "bill" }]);
+    assert.deepEqual(madeShape(made), ["token:queued", "bill:queued"], "no host: the asking device's own line; the bill waits behind the token, as a second slip always did");
+    assert.ok(refs.every((ref) => ref.leased === undefined && ref.targetDeviceId === "phone-1"), "both are the asking device's, neither handed over leased");
+    assert.deepEqual(frames, [], "and neither is announced to the device that asked");
+  });
+});
+
+test("createOrderPrintJobs (the token fix): landmark, the same free line still makes a KOT leased to the asking tab, and the token behind it waits as before", async () => {
+  await withFreeLine("host-1", async (made, frames) => {
+    const order = orderOf({ tokenNumber: 7 });
+    const refs = await askAsTab("host-1", order, openingSlipsOf(order, 1));
+    assert.deepEqual(madeShape(made), ["kot:leased", "token:queued"], "kot direct print is unchanged; the token follows through the KOT ack's more");
+    assert.ok(refs[0]?.leased !== undefined && refs[1]?.leased === undefined, "only the KOT's ref carries a lease");
+    assert.deepEqual(frames, [], "nothing is announced to the tab printing the line");
+  });
+});
+
+test("enqueueDirectPrintJob (the token fix): a token sent to POST /api/print-jobs is never made leased: null, so the enqueue makes it queued in Phase 1's lanes", async () => {
+  await withFreeLine(null, async (made) => {
+    const order = orderOf({ tokenNumber: 7 });
+    const nowMs = Date.UTC(2026, 9, 6, 12);
+    const asking = { queuedBy: "Asha", originDeviceId: "phone-1", leaseTabId: "tab-1", nowMs };
+    for (const reprint of [true, false]) {
+      const token = tokenPrintJob(order, { reprint });
+      const result = await enqueueDirectPrintJob({ payload: token.payload, label: token.label, ...asking });
+      assert.equal(result, null, `a token (reprint ${reprint}) takes the next lane: the host's, else this device's own (enqueueOwnPrintJob, queued)`);
+    }
+    assert.deepEqual(made, [], "the direct lane wrote nothing for it");
+    const kot = kotPrintJob(order, 1);
+    const direct = await enqueueDirectPrintJob({ payload: kot.payload, label: kot.label, ...asking });
+    assert.ok(direct?.outcome === "queued" && direct.leased !== undefined, "landmark: a KOT on the same free line is still made leased to the asking tab");
+    assert.deepEqual(madeShape(made), ["kot:leased"], "landmark: one write, leased");
+  });
+});
+
 // ── call-site pins: exactly the three round-opening sites build the opening slips ──
 
 const OPENING_SITES = [
@@ -220,4 +310,21 @@ test("PIN: repo-wide, openingSlipsOf( is called from exactly the three opening-s
   roots.forEach(walk);
   assert.deepEqual(callers.sort(), [...OPENING_SITES].sort());
   assert.ok(src("apps/cafe/lib/print-order-jobs.ts").includes("export function openingSlipsOf("), "landmark: the definition is where the scan skipped");
+});
+
+// ── The token fix (plan 2026-10-06-token-direct-fix.md, T5) ──────────────────────────────────────────────────────
+
+test("PIN (T5): print-repair.ts says why it never re-creates a token: only the client lane's enqueue (token:<id>) does", () => {
+  const repair = raw("apps/cafe/lib/print-repair.ts");
+  assert.ok(/a missing token is re-created only by the client lane's enqueue \(token:<id>\), never by the repair/i.test(repair.replace(/\s*\/\/\s*/g, " ")), "the comment states the rule");
+  assert.ok(!src("apps/cafe/lib/print-repair.ts").includes("tokenPrintJob("), "landmark: and the code still builds no token");
+});
+
+test("PIN (T5): the token live leg labels every check with its own letter, (ay), never the pre-merge (ah)", () => {
+  const leg = raw("apps/cafe/scripts/print-host-live/token-jobs.ts");
+  const labels = [...leg.matchAll(/check\(\s*"([^"]*)"/g)].map((m) => m[1] ?? "");
+  assert.ok(labels.length >= 30, `landmark: the scan reads the leg's checks (found ${labels.length})`);
+  assert.deepEqual(labels.filter((label) => !label.startsWith("(ay)")), [], "every check says (ay)");
+  assert.ok(!leg.includes("(ah)"), "no (ah) left, in a label or in the header");
+  assert.match(leg, /export async function legAY\(/, "landmark: the leg is AY");
 });

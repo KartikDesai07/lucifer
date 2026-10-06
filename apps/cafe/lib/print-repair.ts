@@ -9,7 +9,9 @@ import { createOrderPrintJobs } from "./print-order-jobs";
 // re-created with the same key, so a racing create is a no-op and the slip never prints twice. A
 // round its tab printed itself ("" or no marker) is never touched. Bills, voids and moves are not
 // repaired: the cashier is at the counter, and the client re-sends any slip its answer did not name
-// (Session 1C). Never calls connectDB(). No console.*.
+// (Session 1C). Nor is a token (print customization S7; the token fix, 2026-10-06): a missing token is
+// re-created only by the client lane's enqueue (token:<id>), never by the repair. Never calls connectDB().
+// No console.*.
 
 /** Each sweep reads at most this many orders, newest first. It covers a rush's half hour (a busy day's
  *  average at 4x, twice over: print-repair.test.ts), because most candidates already have their jobs

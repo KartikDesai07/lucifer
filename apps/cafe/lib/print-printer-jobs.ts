@@ -1,7 +1,7 @@
 import { PRINT_JOB_NO_PRINTER } from "@pos/shared/print-printers";
 import type { PrintJobEnqueueResult } from "@pos/shared/print-job";
 import type { PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
-import { announcesQueuedJob, printerLineIsFree } from "@/lib/print-direct";
+import { announcesQueuedJob, printerLineIsFree, printsDirectAtCreation } from "@/lib/print-direct";
 import { insertPrintJob, type InsertedPrintJob } from "@/lib/print-job-insert";
 import { routePrintRequest, routedJobKey, type PrintRouting, type RoutedPrintJob } from "@/lib/print-printer-routing";
 import { printJobKeyOf } from "@/lib/print-queue";
@@ -14,8 +14,9 @@ import { publishPrintStatus } from "@/lib/realtime-publish";
 // line, aimed at its writer (targetDeviceId), with its copies, under routedJobKey (a replay or a repair collides
 // instead of printing twice). A slip no printer takes is made failed at once, so it shows under "Couldn't print".
 // The first job a request puts on a printer the asking tab writes and can print now is made already leased to it
-// (decision 15); every other new queued job is announced to its writer, and nothing to yourself (decision 16).
-// Printers mode makes no "print-job" nudge: no host plays a part. Never calls connectDB(). No console.*.
+// (decision 15), unless it is a token (the token fix: made queued, and that tab leases it from the answer); every
+// other new queued job is announced to its writer, and nothing to yourself (decision 16). Printers mode makes
+// no "print-job" nudge: no host plays a part. Never calls connectDB(). No console.*.
 
 /** The products a slip's stations are resolved for (spec §6.2): its lines; a void, its voided line (which may
  *  have left the order); End of day, none. */
@@ -85,11 +86,15 @@ export async function createRoutedPrintJobs(input: {
         continue;
       }
       const tabId = askingTabOf(job, asking, seen);
-      const tab = tabId === undefined ? {} : { tab: { tabId, direct: await printerLineIsFree(job.printerId, input.nowMs) } };
+      // The token fix (print-direct.ts): a token on the asking tab's line is made queued, never leased to it. It is
+      // still that tab's: the answer names it and the tab leases it, so, like a slip made leased, nothing on this line
+      // is announced to it (decision 16).
+      const tokenForTab = tabId !== undefined && !printsDirectAtCreation(job.request.payload.kind);
+      const tab = tabId === undefined || tokenForTab ? {} : { tab: { tabId, direct: await printerLineIsFree(job.printerId, input.nowMs) } };
       const made = await insertPrintJob({ ...common, targetDeviceId: job.writerDeviceId ?? "", line: { printerId: job.printerId, copies: job.copies }, ...tab });
       if (made === null) continue;
       jobs.push(made);
-      if (made.ref.leased !== undefined) directOn.add(job.printerId);
+      if (made.ref.leased !== undefined || tokenForTab) directOn.add(job.printerId);
       if (announcesQueuedJob(made, directOn.has(job.printerId))) publishPrintStatus({ id: made.ref.id, status: "queued", target: made.ref.targetDeviceId, printerId: job.printerId });
     }
   }

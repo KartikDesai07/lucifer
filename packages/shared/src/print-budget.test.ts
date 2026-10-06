@@ -46,6 +46,7 @@ import {
   PRINT_REALTIME_PER_DIRECT_SLIP,
   PRINT_REQUESTS_PER_DIRECT_SLIP,
   PRINT_REQUESTS_PER_SLIP,
+  PRINT_REQUESTS_PER_TOKEN_SLIP,
   printOneDeviceRequestsPerDay,
   printRequestsForSlips,
   printSlipRequestsPerDay,
@@ -377,4 +378,26 @@ test("2C: a stale printer list is read again at most once a minute, and at most 
   assert.equal(PRINT_SETUP_REFRESH_MIN_MS, 60_000);
   assert.ok(PRINT_SETUP_REFRESH_MIN_MS >= 3 * 20_000, "never more often than every third pulse");
   assert.equal(Math.ceil(PRINT_HOST_MAX_AGE_MS / PRINT_SETUP_REFRESH_MIN_MS), 30, "a slip leaves the count when it goes stale (30 min)");
+});
+
+// The token fix (plan 2026-10-06-token-direct-fix.md, T1): a token is never made leased at creation (an older page
+// cannot draw it), so it always costs a lease and an ack. The S7 pins above already price every token slip so (2 per
+// slip, simple mode), and no pin above priced a token as made leased: none changes. The one day it moves is printers
+// mode on the counter that writes the bill printer (and so the tokens): there a token was made leased (1 request) and
+// is now leased by the counter's page (2). Recounted here on the heavy counter day of the 2C pin (5,340).
+test("token fix: a token always costs a lease and an ack; the heavy counter day with a token per order is 6,000, inside the normal ceiling", () => {
+  assert.equal(PRINT_REQUESTS_PER_TOKEN_SLIP, PRINT_REQUESTS_PER_SLIP, "a lease and an ack, like a slip another device prints");
+  assert.notEqual(PRINT_REQUESTS_PER_TOKEN_SLIP, PRINT_REQUESTS_PER_DIRECT_SLIP, "never the one request of a slip made leased at creation");
+  const tokensPerDay = PRINT_BUDGET_BUSY_DAY.orders;
+  const tokenRequests = Math.round(tokensPerDay * PRINT_REQUESTS_PER_TOKEN_SLIP * (1 + PRINT_BUDGET_BUSY_DAY.retryShare));
+  assert.equal(tokenRequests, 660, "300 tokens, a lease and an ack each, plus the retried share");
+  const wasMadeLeased = Math.round(tokensPerDay * (PRINT_REQUESTS_PER_DIRECT_SLIP + PRINT_BUDGET_BUSY_DAY.retryShare * PRINT_REQUESTS_PER_SLIP));
+  assert.equal(tokenRequests - wasMadeLeased, 300, "the fix costs the counter one lease per token: 300 a day");
+  const wakePerWriter = Math.round(OPEN_MS / cadence({ socketHealthy: true, msSinceLastJob: null, capSpent: false }));
+  const counterDay = printHeavyCounterDayRequests() + tokenRequests + PRINT_BUDGET_STATIONS_DAY.writers * wakePerWriter;
+  assert.equal(counterDay, 6_000, "the 2C pin's 5,340 plus the tokens");
+  assert.ok(counterDay <= PRINT_BUDGET_NORMAL_MAX_PER_DAY, `${counterDay}/day within ${PRINT_BUDGET_NORMAL_MAX_PER_DAY}`);
+  const realtime = (printStationSlipsPerDay({ fullCopy: true }) + tokensPerDay) * PRINT_REALTIME_PER_PRINTER_SLIP + PRINT_REALTIME_BASE_PER_DAY;
+  assert.equal(realtime, 2_285, "at most one Worker request a token (none when the asking tab prints it), the heavy day under 5 %");
+  assert.ok(realtime <= REALTIME_FREE_REQUESTS_PER_DAY * 0.05, `${realtime}/day`);
 });

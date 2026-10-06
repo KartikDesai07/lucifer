@@ -7,7 +7,8 @@ import mongoose from "mongoose";
 import { REQUEST_TIMEOUT_MS } from "@pos/shared/api-client";
 import { PRINT_LEASE_MS, directLeaseOf } from "@pos/shared/print-lifecycle";
 import { stripComments } from "@/lib/source-pin-utils";
-import { announcesQueuedJob, redeliveryOf, type PrintRedeliveryRow } from "@/lib/print-direct";
+import { PRINT_JOB_KINDS } from "@pos/shared/print-job";
+import { announcesQueuedJob, printsDirectAtCreation, redeliveryOf, type PrintRedeliveryRow } from "@/lib/print-direct";
 
 // Phase 2 Session 2B (spec §7.11, plan decisions 15 and 16): direct print on the asking device. The rules are
 // pure here; the creation itself is proven live (npm run verify:print:live, legs ak–am).
@@ -92,4 +93,15 @@ test("PIN: the line is free only when nothing is leased or waiting on it (the le
   assert.match(s, /return \(await PrintJob\.findOne\(printJobLineFilter\(deviceId, nowMs\)\)\.select\("_id"\)\.lean\(\)\) === null;/);
   assert.ok(!/PrintJob\.(create|updateOne|updateMany|deleteMany|findOneAndUpdate)\(/.test(s), "the rules write nothing");
   assert.ok(!s.includes("console."), "no console.* in a server lib");
+});
+
+// The token fix (plan 2026-10-06-token-direct-fix.md, T1): the lease fence (leaseKindFence) keeps a page from before
+// S7 from leasing a token, but a slip made leased at creation never passes a lease. A token is therefore never made
+// leased at creation: it is made queued, and a page that can draw it leases it at once.
+test("printsDirectAtCreation: every kind but the token may be made leased at creation; a token never is", () => {
+  assert.equal(printsDirectAtCreation("token"), false, "a token is made queued: the asking tab may run a page from before S7");
+  for (const kind of PRINT_JOB_KINDS.filter((k) => k !== "token")) {
+    assert.equal(printsDirectAtCreation(kind), true, `${kind}: direct print stays exactly as it is`);
+  }
+  assert.ok(PRINT_JOB_KINDS.includes("kot") && PRINT_JOB_KINDS.includes("bill"), "landmark: the kinds list still holds kot and bill");
 });
