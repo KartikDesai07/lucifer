@@ -591,7 +591,7 @@ test("PIN (N): use-host-routing.ts calls invalidateQueries({ queryKey: POS_PULSE
 // with zero call sites. Concatenate the needle so this test's OWN text can
 // never trip its own grep.
 
-test("INVENTORY: files containing the needle useReactToPrint( under app/components/hooks are exactly the six known call sites, with the per-file counts print-host-bridge=3, kot-print-bridge=2, OrderDetailSheet=2, and 1 each elsewhere", () => {
+test("INVENTORY: files containing the needle useReactToPrint( under app/components/hooks are exactly the seven known call sites, with the per-file counts print-host-bridge=3, kot-print-bridge=3 (S7: the local token), OrderDetailSheet=2, and 1 each elsewhere (use-token-print included)", () => {
   const NEEDLE = "useReactToPrint" + "(";
   const roots = ["app", "components", "hooks"].map((d) => path.join(REPO_ROOT, "apps/cafe", d));
   const hits: string[] = [];
@@ -624,13 +624,15 @@ test("INVENTORY: files containing the needle useReactToPrint( under app/componen
     "components/reports/EndOfDayButton.tsx",
     "hooks/use-kot-print-bridge.ts",
     "hooks/use-print-host-bridge.ts",
+    "hooks/use-token-print.ts",
   ].sort();
 
-  assert.deepEqual(hits, expected, `useReactToPrint( call sites must be exactly the six known files; found: ${hits.join(", ")}`);
+  assert.deepEqual(hits, expected, `useReactToPrint( call sites must be exactly the seven known files; found: ${hits.join(", ")}`);
 
   const expectedCounts: Record<string, number> = {
     "hooks/use-print-host-bridge.ts": 3,
-    "hooks/use-kot-print-bridge.ts": 2,
+    "hooks/use-kot-print-bridge.ts": 3,
+    "hooks/use-token-print.ts": 1,
     "components/orders/OrderDetailSheet.tsx": 2,
     "app/(dashboard)/tables/qr/page.tsx": 1,
     "components/orders/MoveTableDialog.tsx": 1,

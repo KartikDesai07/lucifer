@@ -2,7 +2,7 @@ import { SELF_ORDER_RECEIVER } from "@pos/shared/public";
 import type { PrintJobRef } from "@pos/shared/print-agent-wire";
 import { claimKotPrint } from "@/lib/pos-pulse";
 import { PRINT_HOST_DEVICE_ID_MAX_CHARS } from "@/lib/print-host";
-import { createOrderPrintJobs, wireOrderOf, type PrintIntent } from "@/lib/print-order-jobs";
+import { createOrderPrintJobs, openingSlipsOf, wireOrderOf, type PrintIntent } from "@/lib/print-order-jobs";
 import type { Order } from "@/types";
 
 // Printing redesign, Phase 1 Session 1C: the server half of the in-page agent that is not a lifecycle
@@ -27,7 +27,7 @@ export async function claimKotPrintForAgent(id: string, intent: PrintIntent, now
   if (!result.claimed) return result;
   const printJobs = await createOrderPrintJobs({
     order: result.order,
-    slips: [{ kind: "kot", round: result.kotRound }],
+    slips: openingSlipsOf(result.order, result.kotRound),
     originDeviceId: intent.deviceId,
     queuedBy: SELF_ORDER_RECEIVER,
     nowMs,

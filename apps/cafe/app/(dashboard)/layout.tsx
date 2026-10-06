@@ -17,6 +17,7 @@ import { SessionKeepalive } from "@/components/layout/SessionKeepalive";
 import { RequestAlertBar } from "@/components/orders/RequestAlertBar";
 import { PrintHostPrintSources } from "@/components/print/PrintHostPrintSources";
 import { TouchFeel } from "@/components/shared/TouchFeel";
+import "../print-fonts.css";
 
 // Tab title mirrors the cafe's own branding once Settings is configured,
 // falling back to the generic product name (never a hardcoded cafe name).

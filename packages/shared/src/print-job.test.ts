@@ -7,6 +7,7 @@ import {
   printOrderSnapshot,
   PRINT_HOST_OFFLINE_MS,
   PRINT_JOB_DISMISS_REASONS,
+  PRINT_JOB_KINDS,
   PRINT_JOB_PAYLOAD_MAX_BYTES,
   type PrintJobFeedRow,
 } from "./print-job";
@@ -187,6 +188,35 @@ test("printJobPayloadSchema: wrong kind-shape is rejected (bill payload tagged a
   assert.equal(parsed.success, false);
 });
 
+// -- the token slip (print-customization S7) ----------------------------------
+
+test("PRINT_JOB_KINDS carries token, and printJobPayloadSchema parses a token payload with and without reprint:true", () => {
+  assert.ok(PRINT_JOB_KINDS.includes("token"));
+  const snapshot = printOrderSnapshot(order({ tokenNumber: 7 }));
+  const first = printJobPayloadSchema.safeParse({ kind: "token", snapshot });
+  assert.equal(first.success, true, "a first token (no reprint key) parses");
+  const reprint = printJobPayloadSchema.safeParse({ kind: "token", snapshot, reprint: true });
+  assert.equal(reprint.success, true, "a staff reprint parses");
+  if (reprint.success && reprint.data.kind === "token") assert.equal(reprint.data.reprint, true, "landmark: the parsed member is the token one and keeps reprint");
+  if (first.success && first.data.kind === "token") assert.equal(first.data.snapshot.tokenNumber, 7, "the snapshot's number survives the parse");
+});
+
+test("printJobPayloadSchema: a token rejects reprint:false and reprint:\"yes\" (z.literal(true): no third state), an unknown key, and a missing snapshot", () => {
+  const snapshot = printOrderSnapshot(order({ tokenNumber: 7 }));
+  assert.equal(printJobPayloadSchema.safeParse({ kind: "token", snapshot }).success, true, "landmark: the base shape parses, so each rejection below is its own change");
+  assert.equal(printJobPayloadSchema.safeParse({ kind: "token", snapshot, reprint: false }).success, false);
+  assert.equal(printJobPayloadSchema.safeParse({ kind: "token", snapshot, reprint: "yes" }).success, false);
+  assert.equal(printJobPayloadSchema.safeParse({ kind: "token", snapshot, extra: 1 }).success, false, "strict: no extra key");
+  assert.equal(printJobPayloadSchema.safeParse({ kind: "token", snapshot, round: 1 }).success, false, "a token has no round (that is the KOT's key)");
+  assert.equal(printJobPayloadSchema.safeParse({ kind: "token" }).success, false, "a token carries its order");
+});
+
+test("printJobPayloadSchema: an order that has no token still parses as a token payload (the number is the snapshot's optional field, not the payload's)", () => {
+  const snapshot = printOrderSnapshot(order());
+  assert.equal("tokenNumber" in snapshot, false, "landmark: this snapshot really has no number");
+  assert.equal(printJobPayloadSchema.safeParse({ kind: "token", snapshot }).success, true);
+});
+
 test("printJobPayloadSchema: eod rejects an extra snapshot field (no snapshot allowed)", () => {
   const snapshot = printOrderSnapshot(order());
   const parsed = printJobPayloadSchema.safeParse({
@@ -298,4 +328,52 @@ test("printOrderSnapshotSchema: item sub-schema exposes modifiers/instructions/v
   assert.ok("instructions" in itemShape, "item schema must expose instructions");
   assert.ok("variation" in itemShape, "item schema must expose variation");
   assert.ok("name" in itemShape, "item schema must expose name");
+});
+
+// -- billFirstPrintedAt (S3b: the pay QR's "Valid till" anchor) ---------------
+
+// The longest value the snapshot schema takes (an ISO instant is 24 characters; the cap leaves room to spare).
+const FIRST_PRINT_CAP = 40;
+
+test("printOrderSnapshot: billFirstPrintedAt rides along when stamped, and leaves NO key when absent or empty (omit-empty)", () => {
+  const stamp = "2026-08-22T10:00:00.000Z";
+  // Positive landmark first: a picker that never copied the field would pass both absence asserts below.
+  const stamped = printOrderSnapshot(order({ billFirstPrintedAt: stamp }));
+  assert.equal(stamped.billFirstPrintedAt, stamp);
+  assert.equal(printOrderSnapshotSchema.safeParse(stamped).success, true);
+  assert.equal("billFirstPrintedAt" in printOrderSnapshot(order()), false);
+  assert.equal("billFirstPrintedAt" in printOrderSnapshot(order({ billFirstPrintedAt: "" })), false);
+});
+
+test("printOrderSnapshotSchema: billFirstPrintedAt takes 40 characters and rejects 41", () => {
+  const snapshot = printOrderSnapshot(order());
+  const at = (n: number) => printOrderSnapshotSchema.safeParse({ ...snapshot, billFirstPrintedAt: "x".repeat(n) });
+  assert.equal(at(FIRST_PRINT_CAP).success, true);
+  assert.equal(at(FIRST_PRINT_CAP + 1).success, false);
+  // Absent stays valid: only a stamped bill carries the key.
+  assert.equal(printOrderSnapshotSchema.safeParse(snapshot).success, true);
+});
+
+// -- tokenNumber (S6: the order's token) --------------------------------------
+
+test("printOrderSnapshot: tokenNumber is copied when it is a number (0 included) and leaves NO key otherwise (omit-empty)", () => {
+  // Positive landmark first: a picker that never copied the field would pass the absence asserts below.
+  const withToken = printOrderSnapshot(order({ tokenNumber: 42 }));
+  assert.equal(withToken.tokenNumber, 42);
+  assert.equal(printOrderSnapshotSchema.safeParse(withToken).success, true);
+  assert.equal(printOrderSnapshot(order({ tokenNumber: 0 })).tokenNumber, 0, "typeof gate, not truthiness: a stored 0 is a number");
+  assert.equal("tokenNumber" in printOrderSnapshot(order()), false);
+  const notNumbers: unknown[] = [undefined, null, "42"];
+  for (const bad of notNumbers) {
+    assert.equal("tokenNumber" in printOrderSnapshot(order({ tokenNumber: bad as number })), false, `${String(bad)} is not copied`);
+  }
+});
+
+test("printOrderSnapshotSchema: tokenNumber accepts an integer, rejects 1.5 and the string \"42\", and stays optional", () => {
+  const snapshot = printOrderSnapshot(order());
+  const parse = (tokenNumber: unknown) => printOrderSnapshotSchema.safeParse({ ...snapshot, tokenNumber });
+  assert.equal(parse(42).success, true);
+  assert.equal(parse(1.5).success, false);
+  assert.equal(parse("42").success, false);
+  assert.equal(printOrderSnapshotSchema.safeParse(snapshot).success, true, "absent stays valid: only a tokened order carries the key");
 });

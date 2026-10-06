@@ -27,6 +27,7 @@ export async function POST(req: Request) {
       leasePrintJobs({
         deviceId: parsed.data.deviceId,
         tabId: parsed.data.tabId,
+        tokenSlips: parsed.data.tokenSlips === true,
         dismissedBy: authed.session.user.name ?? UNNAMED_STAFF,
         nowMs,
       }),

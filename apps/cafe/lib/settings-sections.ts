@@ -1,4 +1,4 @@
-// Single source of truth for the Settings redesign (CB-UI1): the 8 form
+// Single source of truth for the Settings redesign (CB-UI1): the 9 form
 // sections (Printer setup left Settings for its own /printers page, owner
 // 2026-10-02), their registered fields, and the helpers that
 // route/split/attribute values against them. NO React/lucide import here —
@@ -14,6 +14,7 @@ export type SettingsSectionSlug =
   | "taxes"
   | "bill-print"
   | "kitchen-ticket"
+  | "tokens"
   | "qr-ordering"
   | "loyalty"
   | "appearance"
@@ -45,6 +46,9 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
       "address",
       "productLogo",
       "fssai",
+      "upiId",
+      "payQrMode",
+      "payQrValidMinutes",
       "posLayout",
       "tableLongStayMinutes",
     ],
@@ -93,6 +97,12 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
       "kotPaperWidth",
       "kotFontSize",
     ],
+  },
+  {
+    slug: "tokens",
+    title: "Tokens & numbering",
+    description: "Token numbers for every order, and the time every number starts again each day.",
+    fields: ["tokenEnabled", "tokenNumberStart", "numberResetMinutes", "tokenReadyClearMinutes"],
   },
   {
     slug: "qr-ordering",

@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   buildKitchenCards,
   readyToastMessage,
+  newestFiredAtMs,
+  isHiddenByReady,
   KITCHEN_CARD_LIMIT,
   type KitchenOrderCard,
 } from "./kitchen-cards";
@@ -599,4 +601,70 @@ test("N3: newestFiredAt still reports the newest round when every line is ticked
   // stamping r1 would leave round 2 "newer" forever and the card could never
   // be cleared at all.
   assert.equal(cards[0].newestFiredAt, r2.toISOString());
+});
+
+// ── S8 — the token number on the card (omit-empty) ──────────────────────────
+
+test("S8-1: an order with a tokenNumber puts it on the card; an order without one has NO tokenNumber key at all", () => {
+  const fired = [new Date("2026-09-23T10:00:00.000Z")];
+  const withToken = order({ _id: "1".repeat(24), orderId: "ORD-TOK", tokenNumber: 42, kotFiredAt: fired });
+  const without = order({ _id: "2".repeat(24), orderId: "ORD-NOTOK", kotFiredAt: [new Date("2026-09-23T10:05:00.000Z")] });
+  const cards = buildKitchenCards({ orders: [withToken, without], ticksByOrder: {} });
+  const tokenCard = cards.find((c) => c.orderNo === "ORD-TOK");
+  const plainCard = cards.find((c) => c.orderNo === "ORD-NOTOK");
+  assert.ok(tokenCard && plainCard, "landmark: both cards were built");
+  assert.equal(tokenCard.tokenNumber, 42);
+  assert.equal("tokenNumber" in plainCard, false, "omit-empty: the key is not present, not even as undefined");
+  assert.ok(!Object.keys(plainCard).includes("tokenNumber"));
+  assert.ok(!JSON.stringify(plainCard).includes("tokenNumber"), "and nothing of it crosses the wire");
+  assert.equal(JSON.parse(JSON.stringify(tokenCard)).tokenNumber, 42, "the number survives the wire");
+});
+
+test("S8-2: only a NUMERIC tokenNumber reaches the card (null, a string, undefined are omitted); the rest of the card is unchanged by it", () => {
+  const fired = [new Date("2026-09-23T10:00:00.000Z")];
+  for (const bad of [undefined, null, "7"]) {
+    const ord = { ...order({ kotFiredAt: fired }), tokenNumber: bad } as unknown as KitchenOrderInput;
+    const [card] = buildKitchenCards({ orders: [ord], ticksByOrder: {} });
+    assert.ok(card, "landmark: a card was built");
+    assert.equal("tokenNumber" in card, false, String(bad));
+  }
+  const [plain] = buildKitchenCards({ orders: [order({ kotFiredAt: fired })], ticksByOrder: {} });
+  const [tokened] = buildKitchenCards({ orders: [order({ kotFiredAt: fired, tokenNumber: 9 })], ticksByOrder: {} });
+  const { tokenNumber, ...rest } = tokened;
+  assert.equal(tokenNumber, 9);
+  assert.deepStrictEqual(rest, plain, "a token number adds exactly one key and changes nothing else");
+});
+
+test("S8-3: a tokenNumber does not change which cards show — the Ready filter and the FIFO order are the same", () => {
+  const firedAt = new Date("2026-09-23T10:00:00.000Z");
+  const ord = order({ kotFiredAt: [firedAt], createdAt: firedAt, tokenNumber: 5 });
+  assert.equal(buildKitchenCards({ orders: [ord], ticksByOrder: {}, readyAtByOrder: { [String(ord._id)]: new Date("2026-09-23T10:05:00.000Z") } }).length, 0, "Ready still hides it");
+  assert.equal(buildKitchenCards({ orders: [ord], ticksByOrder: {} }).length, 1, "vision guard: without the Ready it shows");
+});
+
+// ── S8 — the two helpers the token board shares are exported, behaviour unchanged ──
+
+test("S8-4: newestFiredAtMs — the newest kotFiredAt, createdAt when it is later or when nothing was fired, unparseable stamps ignored", () => {
+  const created = new Date("2026-09-23T10:00:00.000Z");
+  const r2 = new Date("2026-09-23T10:30:00.000Z");
+  assert.equal(newestFiredAtMs({ createdAt: created, kotFiredAt: [created, r2] }), r2.getTime());
+  assert.equal(newestFiredAtMs({ createdAt: created, kotFiredAt: [r2, created] }), r2.getTime(), "order of the array is irrelevant");
+  assert.equal(newestFiredAtMs({ createdAt: created }), created.getTime(), "no kotFiredAt: round one is createdAt");
+  assert.equal(newestFiredAtMs({ createdAt: created, kotFiredAt: [] }), created.getTime());
+  assert.equal(newestFiredAtMs({ createdAt: r2, kotFiredAt: [created] }), r2.getTime(), "createdAt later than every stamp wins");
+  assert.equal(newestFiredAtMs({ createdAt: created, kotFiredAt: [new Date(Number.NaN), r2] }), r2.getTime(), "an Invalid Date is skipped");
+  assert.equal(newestFiredAtMs({ createdAt: created, kotFiredAt: [new Date(Number.NaN)] }), created.getTime());
+});
+
+test("S8-5: isHiddenByReady — the lost-ticket comparison (>=), absent and unparseable stamps never hide", () => {
+  const created = new Date("2026-09-23T10:00:00.000Z");
+  const r2 = new Date("2026-09-23T10:30:00.000Z");
+  const held = { createdAt: created, kotFiredAt: [created, r2] };
+  assert.equal(isHiddenByReady(held, new Date("2026-09-23T10:30:00.001Z")), true, "after the newest round");
+  assert.equal(isHiddenByReady(held, r2), true, "the same millisecond is treated as seen (>=)");
+  assert.equal(isHiddenByReady(held, new Date("2026-09-23T10:29:59.999Z")), false, "one ms before the newest round");
+  assert.equal(isHiddenByReady(held, r2.toISOString()), true, "an ISO string reads like a Date");
+  assert.equal(isHiddenByReady(held, undefined), false);
+  assert.equal(isHiddenByReady(held, "garbage"), false);
+  assert.equal(isHiddenByReady(held, new Date(Number.NaN)), false);
 });

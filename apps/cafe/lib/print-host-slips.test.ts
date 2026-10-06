@@ -27,9 +27,12 @@ import {
   PRINT_HOST_PRINT_FAILED_MESSAGE,
   type HostKotSlip,
 } from "./print-host-slips";
+import { printAgentSlipOf } from "@/lib/print-agent";
 import { DESKTOP_PRINT_TIMEOUT_MS } from "@/lib/desktop-shell";
 import { PRINT_JOB_KINDS } from "@pos/shared/print-job";
-import type { PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
+import { printJobInitialLabels } from "@pos/shared/print-lifecycle";
+import type { LeasedPrintJob } from "@pos/shared/print-agent-wire";
+import { printJobPayloadSchema, type PrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 import type { PrintOrderSnapshot } from "@pos/shared/print-job";
 import type { Order } from "@/types";
 
@@ -246,6 +249,80 @@ test('PIN: hostPrintSlipOf eod payload — surface "eod"; isToday true when toda
   assert.equal(pastSlip.isToday, false);
 });
 
+// ── 9b. S6: the order's token survives snapshot -> order for every slip kind ─
+
+test("PIN: tokenNumber survives the stored-payload round trip (schema parse) and orderFromSnapshot on the kot / bill / token / void / moved / cancel-notice payloads", () => {
+  const TOKEN = 42;
+  const tokened: PrintOrderSnapshot = { ...SNAPSHOT, tokenNumber: TOKEN };
+  const payloads: PrintJobPayload[] = [
+    { kind: "kot", snapshot: tokened, round: 1 },
+    { kind: "bill", snapshot: tokened },
+    { kind: "token", snapshot: tokened },
+    {
+      kind: "void",
+      snapshot: tokened,
+      line: { productId: "p1", name: "Filter Coffee", price: 4000, qty: 1, modifiers: [], instructions: "", kotRound: 1, kotNumber: 101 },
+      reason: "Wrong order",
+      voidedBy: "Manager",
+      voidedAt: "2026-09-06T11:00:00.000Z",
+    },
+    { kind: "moved", snapshot: tokened, from: "T-1", movedBy: "Staff", movedAt: "2026-09-06T11:30:00.000Z" },
+    { kind: "cancel-notice", snapshot: tokened, reason: "Customer left" },
+  ];
+  assert.equal(payloads.length, 6);
+  for (const payload of payloads) {
+    // The queue stores JSON and re-parses on claim: a strict schema that did not know the key would reject or strip it.
+    const reparsed = printJobPayloadSchema.parse(JSON.parse(JSON.stringify(payload)));
+    const slip = hostPrintSlipOf(reparsed, "2026-09-06");
+    if (slip.surface === "eod") throw new Error("unreachable: no eod payload in this list");
+    assert.equal(slip.order.tokenNumber, TOKEN, `${payload.kind}: the token reaches the renderer's order`);
+  }
+  assert.equal(orderFromSnapshot(tokened).tokenNumber, TOKEN);
+  // Absent stays absent (omit-empty): no `tokenNumber: undefined` key invented by the spread.
+  assert.equal("tokenNumber" in orderFromSnapshot(SNAPSHOT), false);
+  const plain = hostPrintSlipOf({ kind: "bill", snapshot: SNAPSHOT }, "2026-09-06");
+  if (plain.surface === "eod") throw new Error("unreachable");
+  assert.equal("tokenNumber" in plain.order, false);
+});
+
+// ── 9c. S7: the token slip ────────────────────────────────────────────────
+
+const TOKEN_SNAPSHOT: PrintOrderSnapshot = { ...SNAPSHOT, tokenNumber: 7 };
+
+test('PIN: a token payload resolves to surface "token" (NOT receipt or kot), documentTitle TOKEN-<orderId>, the order carried whole, and no banner of its own', () => {
+  const slip = hostPrintSlipOf({ kind: "token", snapshot: TOKEN_SNAPSHOT }, "2026-09-06");
+  assert.equal(slip.surface, "token");
+  if (slip.surface !== "token") throw new Error("unreachable");
+  assert.equal(slip.documentTitle, `TOKEN-${SNAPSHOT.orderId}`);
+  assert.equal(slip.order.tokenNumber, 7);
+  assert.equal(slip.order.orderId, SNAPSHOT.orderId);
+  assert.equal("banner" in slip, false, "a first token carries no banner key");
+  // Landmark: the bill beside it keeps its own surface and title, so the token branch did not capture it.
+  const bill = hostPrintSlipOf({ kind: "bill", snapshot: TOKEN_SNAPSHOT }, "2026-09-06");
+  assert.equal(bill.surface, "receipt");
+  assert.equal(bill.documentTitle, SNAPSHOT.orderId);
+});
+
+function leasedOf(payload: PrintJobPayload, labels: LeasedPrintJob["labels"]): LeasedPrintJob {
+  return { id: "j1", epoch: 1, kind: payload.kind, label: "Token 7 · T-4", createdAt: "2026-09-06T10:00:00.000Z", payload, labels, copyIndex: 0, attempt: 1 };
+}
+
+test("PIN: through the agent path a token REPRINT prints with the DUPLICATE banner (like a bill), a first token prints with none, and the banner comes from the job's own initial labels", () => {
+  const reprint: PrintJobPayload = { kind: "token", snapshot: TOKEN_SNAPSHOT, reprint: true };
+  const labels = printJobInitialLabels(reprint);
+  assert.deepEqual(labels, ["DUPLICATE"], "landmark: the lifecycle labels a token reprint DUPLICATE");
+  const slip = printAgentSlipOf(leasedOf(reprint, labels), "2026-09-06");
+  assert.equal(slip.surface, "token");
+  assert.equal("banner" in slip ? slip.banner : undefined, "DUPLICATE");
+  const first: PrintJobPayload = { kind: "token", snapshot: TOKEN_SNAPSHOT };
+  const firstSlip = printAgentSlipOf(leasedOf(first, printJobInitialLabels(first)), "2026-09-06");
+  assert.equal(firstSlip.surface, "token");
+  assert.equal("banner" in firstSlip, false, "a first print has no banner at all");
+  // An auto-retried token (labelled by the lifecycle on an uncertain result) also reads DUPLICATE, never REPRINT.
+  const retried = printAgentSlipOf(leasedOf(first, ["DUPLICATE"]), "2026-09-06");
+  assert.equal("banner" in retried ? retried.banner : undefined, "DUPLICATE");
+});
+
 // ── 10. exhaustiveness over PRINT_JOB_KINDS ──────────────────────────────
 
 function minimalPayloadOf(kind: PrintJobPayload["kind"]): PrintJobPayload {
@@ -254,6 +331,8 @@ function minimalPayloadOf(kind: PrintJobPayload["kind"]): PrintJobPayload {
       return { kind: "kot", snapshot: SNAPSHOT, round: 1 };
     case "bill":
       return { kind: "bill", snapshot: SNAPSHOT };
+    case "token":
+      return { kind: "token", snapshot: SNAPSHOT };
     case "void":
       return {
         kind: "void",
@@ -280,21 +359,21 @@ function minimalPayloadOf(kind: PrintJobPayload["kind"]): PrintJobPayload {
   }
 }
 
-test("UNIT: hostPrintSlipOf is exhaustive over PRINT_JOB_KINDS — every kind (minimal payload) resolves to a slip whose surface is one of kot|receipt|eod", () => {
+test("UNIT: hostPrintSlipOf is exhaustive over PRINT_JOB_KINDS — every kind (minimal payload) resolves to a slip whose surface is one of kot|receipt|token|eod", () => {
   assert.ok(PRINT_JOB_KINDS.length > 0, "positive landmark: PRINT_JOB_KINDS must be non-empty");
   const seenSurfaces = new Set<string>();
   for (const kind of PRINT_JOB_KINDS) {
     const payload = minimalPayloadOf(kind);
     const slip = hostPrintSlipOf(payload, "2026-09-06");
     assert.ok(
-      slip.surface === "kot" || slip.surface === "receipt" || slip.surface === "eod",
-      `hostPrintSlipOf(${kind}) must resolve to a kot|receipt|eod surface, got ${slip.surface}`,
+      slip.surface === "kot" || slip.surface === "receipt" || slip.surface === "token" || slip.surface === "eod",
+      `hostPrintSlipOf(${kind}) must resolve to a kot|receipt|token|eod surface, got ${slip.surface}`,
     );
     seenSurfaces.add(slip.surface);
   }
-  // Positive landmark that this loop is not vacuous: at least the three known
-  // surfaces were actually produced across the six kinds.
-  assert.deepEqual([...seenSurfaces].sort(), ["eod", "kot", "receipt"]);
+  // Positive landmark that this loop is not vacuous: at least the four known
+  // surfaces were actually produced across the seven kinds (S7: the token is its own surface).
+  assert.deepEqual([...seenSurfaces].sort(), ["eod", "kot", "receipt", "token"]);
 });
 
 // ── 11. constants ─────────────────────────────────────────────────────────

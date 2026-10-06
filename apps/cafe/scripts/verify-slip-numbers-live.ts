@@ -32,6 +32,8 @@ import { runSettleFollowUps, SETTLE_FOLLOW_UP_DEPS } from "@/lib/settle-followup
 import { claimPromoRedemption, PROMO_USED_ERROR } from "@/lib/order-request-accept-promo";
 import { LOYALTY_RULES_SCHEMA_VERSION } from "@pos/shared/loyalty-rules";
 import { generateOrderId } from "@pos/shared/utils";
+import { runTokenLegs } from "./verify-slip-numbers-live-token";
+import { runTokenPrintLegs } from "./verify-slip-numbers-live-token-print";
 
 const SCRATCH_PREFIX = "pos_scratch_";
 const DEFAULT_URI = `mongodb://127.0.0.1:27017/${SCRATCH_PREFIX}slip_numbers`;
@@ -146,7 +148,7 @@ async function leg4(): Promise<void> {
   const before = await seqOf(billKey());
   let first = true;
   let reads = 0;
-  const doc = await issueBillNumber(id, 1, {
+  const doc = await issueBillNumber(id, { numberStart: 1, resetMinutes: 0 }, {
     ...SLIP_NUMBER_DEPS,
     setIfAbsent: async (oid, n) => {
       const r = await SLIP_NUMBER_DEPS.setIfAbsent(oid, n);
@@ -274,6 +276,10 @@ async function main(): Promise<void> {
     await leg6();
     await leg7();
     await endOfRun();
+    console.log("T — tokens and the restart time (print customization S6)");
+    await runTokenLegs(check);
+    console.log("P - the token slip through the real routes (print customization S7)");
+    await runTokenPrintLegs(check);
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();

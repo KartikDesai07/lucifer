@@ -6,6 +6,7 @@ import { PRINT_JOB_LABEL_MAX_CHARS, printJobPayloadWithinCap } from "@pos/shared
 import { PRINT_DEVICE_ID_HEADER, PRINT_IDEMPOTENCY_HEADER, PRINT_IDEMPOTENCY_KEY_PATTERN } from "@pos/shared/print-agent-wire";
 import { enqueuePrintJob, prunePrintJobsThrottled } from "@/lib/print-queue";
 import { enqueueOwnPrintJob, printIntentOf } from "@/lib/print-order-jobs";
+import { billPayloadWithFirstPrint } from "@/lib/bill-first-print";
 import { PRINT_HOST_DEVICE_ID_MAX_CHARS } from "@/lib/print-host";
 import { success, failure, requireAuth, serverError, validateBody } from "@/lib/api-helpers";
 import { noStore } from "@/lib/order-request-tray";
@@ -72,8 +73,12 @@ export async function POST(req: Request) {
 
   try {
     await connectDB();
+    // A bill's pay QR counts "Valid till" from its FIRST print: the server stamps that
+    // moment once and every enqueue (reprints too) stores it in the payload. Never throws,
+    // so it cannot fail the enqueue; any client-sent stamp is dropped inside.
+    const payload = await billPayloadWithFirstPrint(parsed.data.payload, nowMs);
     let result = await enqueuePrintJob({
-      payload: parsed.data.payload,
+      payload,
       label: parsed.data.label,
       queuedBy,
       ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
@@ -85,7 +90,7 @@ export async function POST(req: Request) {
     const intent = printIntentOf(req);
     if (result.outcome === "no-host" && intent !== null) {
       result = await enqueueOwnPrintJob({
-        payload: parsed.data.payload,
+        payload,
         label: parsed.data.label,
         queuedBy,
         ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),

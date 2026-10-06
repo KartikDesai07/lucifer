@@ -15,6 +15,12 @@ import {
   TABLE_LONG_STAY_DEFAULT_MINUTES,
 } from "../constants";
 import { PROMO_CODE_MAX } from "../public";
+import { PAY_QR_MODES, UPI_ID_MAX_LEN } from "../print-qr";
+import {
+  TOKEN_READY_CLEAR_MINUTES_MAX,
+  TOKEN_READY_CLEAR_MINUTES_MIN,
+  isTokenReadyClearMinutes,
+} from "../slip-day";
 import { DEFAULT_APPEARANCE, APPEARANCE_SCHEMA_VERSION } from "../appearance";
 import { accentProblemText } from "../appearance-contrast";
 
@@ -43,6 +49,7 @@ function validPrintPayload() {
     logo: "",
     productLogo: "",
     fssai: "",
+    upiId: "",
 
     billShowNumber: true,
     billNumberStart: PRINT_NUMBER_START_MIN,
@@ -452,4 +459,212 @@ test("a cleared GST rate box (NaN) gets the plain-English type message, not zod'
 test("updateSettingsSchema (the PUT partial) accepts a patch carrying only tableLongStayMinutes", () => {
   const r = updateSettingsSchema.safeParse({ tableLongStayMinutes: 45 });
   assert.equal(r.success, true);
+});
+
+// ── upiId (print customization S3: the bill's "Scan to pay" QR) ─────────────
+
+test("settingsSchema: upiId accepts \"\" (not set) and a valid UPI ID", () => {
+  for (const upiId of ["", "samplecafe@okaxis", "sample.cafe-1_x@ybl"]) {
+    const r = settingsSchema.safeParse({ ...validPrintPayload(), upiId });
+    assert.equal(r.success, true, `"${upiId}" should be accepted`);
+  }
+});
+
+test("settingsSchema: upiId is trimmed before it is checked and saved", () => {
+  const r = settingsSchema.safeParse({ ...validPrintPayload(), upiId: "  samplecafe@okaxis  " });
+  assert.equal(r.success, true);
+  if (r.success) assert.equal(r.data.upiId, "samplecafe@okaxis");
+});
+
+test("settingsSchema: upiId rejects a malformed ID with the plain-English message", () => {
+  const tooLong = `${"a".repeat(UPI_ID_MAX_LEN)}@okaxis`;
+  for (const upiId of ["no-at-sign", "a@1", "with space@okaxis", tooLong]) {
+    const r = settingsSchema.safeParse({ ...validPrintPayload(), upiId });
+    assert.equal(r.success, false, `"${upiId}" should be rejected`);
+    if (r.success) continue;
+    assert.ok(r.error.issues.some((i) => i.path[0] === "upiId"), "the issue is on upiId");
+  }
+  const r = settingsSchema.safeParse({ ...validPrintPayload(), upiId: "no-at-sign" });
+  assert.equal(r.success ? "" : r.error.issues.find((i) => i.path[0] === "upiId")?.message, "Enter a UPI ID like yourshop@okaxis");
+});
+
+test("updateSettingsSchema (the PUT partial) still builds with the upiId refine: a patch of only upiId passes, a bad one fails", () => {
+  assert.equal(updateSettingsSchema.safeParse({ upiId: "samplecafe@okaxis" }).success, true);
+  assert.equal(updateSettingsSchema.safeParse({ upiId: "" }).success, true);
+  assert.equal(updateSettingsSchema.safeParse({ upiId: "nope" }).success, false);
+});
+
+// ── payQrMode / payQrValidMinutes (S3b: when the pay QR prints, and for how long after the first print) ─────
+// Both are OPTIONAL: documents written before S3b carry neither, and every reader goes through payQrModeOf /
+// payQrMinutesOf (print-qr.ts) for the defaults. The range check sits on the field, so the PUT partial enforces it too.
+const PAY_QR_MINUTES_RANGE_MESSAGE = "Use 5 to 1440 minutes, or No limit";
+
+function payQrIssue(r: ReturnType<typeof settingsSchema.safeParse>, field: string): string | undefined {
+  return r.success ? undefined : r.error.issues.find((i) => i.path[0] === field)?.message;
+}
+
+test("settingsSchema: payQrMode accepts every PAY_QR_MODES member and a payload with no payQrMode at all", () => {
+  for (const payQrMode of PAY_QR_MODES) {
+    const r = settingsSchema.safeParse({ ...validPrintPayload(), payQrMode });
+    assert.equal(r.success, true, `must accept ${payQrMode}`);
+    if (r.success) assert.equal(r.data.payQrMode, payQrMode);
+  }
+  // Absent stays absent: the schema supplies no default, the readers do.
+  const absent = settingsSchema.safeParse(validPrintPayload());
+  assert.equal(absent.success, true);
+  if (absent.success) assert.equal(absent.data.payQrMode, undefined);
+});
+
+test("settingsSchema: payQrMode rejects an unknown value", () => {
+  for (const bad of ["sometimes", "ALWAYS", ""]) {
+    const r = settingsSchema.safeParse({ ...validPrintPayload(), payQrMode: bad });
+    assert.equal(r.success, false, `must reject ${JSON.stringify(bad)}`);
+    assert.ok(!r.success && r.error.issues.some((i) => i.path[0] === "payQrMode"), "the issue is on payQrMode");
+  }
+});
+
+test("settingsSchema: payQrValidMinutes accepts 0 (No limit), the 5 and 1440 ends, the default, and an absent key", () => {
+  for (const payQrValidMinutes of [0, 5, 60, 1440]) {
+    const r = settingsSchema.safeParse({ ...validPrintPayload(), payQrValidMinutes });
+    assert.equal(r.success, true, `must accept ${payQrValidMinutes}`);
+    // 0 survives parsing: it is a real value, not "unset".
+    if (r.success) assert.equal(r.data.payQrValidMinutes, payQrValidMinutes);
+  }
+  const absent = settingsSchema.safeParse(validPrintPayload());
+  assert.equal(absent.success, true);
+  if (absent.success) assert.equal(absent.data.payQrValidMinutes, undefined);
+});
+
+test("settingsSchema: payQrValidMinutes rejects out-of-range and fractional numbers with the plain-English range message", () => {
+  for (const bad of [1, 4, 1441, 5.5, -1]) {
+    const r = settingsSchema.safeParse({ ...validPrintPayload(), payQrValidMinutes: bad });
+    assert.equal(r.success, false, `must reject ${bad}`);
+    assert.equal(payQrIssue(r, "payQrValidMinutes"), PAY_QR_MINUTES_RANGE_MESSAGE, String(bad));
+  }
+});
+
+test("settingsSchema: payQrValidMinutes rejects NaN (a cleared box) and a numeric string with the type message", () => {
+  for (const bad of [Number.NaN, "60"]) {
+    const r = settingsSchema.safeParse({ ...validPrintPayload(), payQrValidMinutes: bad });
+    assert.equal(r.success, false, `must reject ${String(bad)}`);
+    assert.equal(payQrIssue(r, "payQrValidMinutes"), "Enter the minutes as a whole number", String(bad));
+  }
+});
+
+test("updateSettingsSchema (the PUT partial) accepts a patch of only payQrMode, and of only payQrValidMinutes", () => {
+  for (const payQrMode of PAY_QR_MODES) {
+    assert.equal(updateSettingsSchema.safeParse({ payQrMode }).success, true, payQrMode);
+  }
+  for (const payQrValidMinutes of [0, 5, 60, 1440]) {
+    assert.equal(updateSettingsSchema.safeParse({ payQrValidMinutes }).success, true, String(payQrValidMinutes));
+  }
+});
+
+test("updateSettingsSchema still enforces the pay QR rules on the field it IS given", () => {
+  assert.equal(updateSettingsSchema.safeParse({ payQrMode: "sometimes" }).success, false);
+  assert.equal(updateSettingsSchema.safeParse({ payQrValidMinutes: 4 }).success, false);
+  assert.equal(updateSettingsSchema.safeParse({ payQrValidMinutes: 1441 }).success, false);
+  assert.equal(updateSettingsSchema.safeParse({ payQrValidMinutes: Number.NaN }).success, false);
+});
+
+// ── tokens + the daily restart time (print customization S6) ─────────────────
+// All three are OPTIONAL (older documents have none; printConfigOf supplies the defaults) with their ranges on the
+// FIELD, so the full settingsSchema and the PUT partial both keep working.
+
+const TOKEN_FIELDS = ["tokenEnabled", "tokenNumberStart", "numberResetMinutes"] as const;
+
+test("settingsSchema: tokenEnabled / tokenNumberStart / numberResetMinutes are optional (absent is valid) and valid values parse", () => {
+  const full = validPrintPayload();
+  for (const key of TOKEN_FIELDS) assert.equal(key in full, false, `landmark: the base payload carries no ${key}`);
+  assert.equal(settingsSchema.safeParse(full).success, true, "a payload without the three fields still parses");
+  const r = settingsSchema.safeParse({ ...full, tokenEnabled: true, tokenNumberStart: 101, numberResetMinutes: 240 });
+  assert.equal(r.success, true);
+  if (r.success) assert.deepEqual([r.data.tokenEnabled, r.data.tokenNumberStart, r.data.numberResetMinutes], [true, 101, 240]);
+});
+
+test("settingsSchema: numberResetMinutes is a whole number 0..1439", () => {
+  const parse = (numberResetMinutes: unknown) => settingsSchema.safeParse({ ...validPrintPayload(), numberResetMinutes });
+  for (const ok of [0, 1, 240, 1439]) assert.equal(parse(ok).success, true, String(ok));
+  for (const bad of [-1, 1440, 1.5, "240", null, Number.NaN]) assert.equal(parse(bad).success, false, String(bad));
+  const issue = parse(1440);
+  assert.ok(!issue.success && issue.error.issues.some((i) => i.path[0] === "numberResetMinutes"), "the issue is on numberResetMinutes");
+});
+
+test("settingsSchema: tokenNumberStart has exactly the kotNumberStart bounds", () => {
+  const parse = (key: "tokenNumberStart" | "kotNumberStart", v: unknown) => settingsSchema.safeParse({ ...validPrintPayload(), [key]: v }).success;
+  for (const v of [PRINT_NUMBER_START_MIN, 101, PRINT_NUMBER_START_MAX, 0, PRINT_NUMBER_START_MIN - 1, PRINT_NUMBER_START_MAX + 1, 1.5, "7", Number.NaN, null]) {
+    assert.equal(parse("tokenNumberStart", v), parse("kotNumberStart", v), `token follows kot for ${String(v)}`);
+  }
+  assert.equal(parse("tokenNumberStart", PRINT_NUMBER_START_MAX), true, "landmark: the top of the range is accepted");
+  assert.equal(parse("tokenNumberStart", PRINT_NUMBER_START_MAX + 1), false, "landmark: one past it is refused");
+  assert.equal(parse("tokenNumberStart", 0), false);
+});
+
+test("settingsSchema: tokenEnabled must be a boolean", () => {
+  const parse = (tokenEnabled: unknown) => settingsSchema.safeParse({ ...validPrintPayload(), tokenEnabled }).success;
+  assert.equal(parse(true), true);
+  assert.equal(parse(false), true);
+  for (const bad of ["true", 1, null]) assert.equal(parse(bad), false, String(bad));
+});
+
+test("updateSettingsSchema (the PUT partial) accepts each of the three token fields ALONE, and still enforces their ranges", () => {
+  assert.equal(updateSettingsSchema.safeParse({ tokenEnabled: true }).success, true);
+  assert.equal(updateSettingsSchema.safeParse({ tokenNumberStart: 101 }).success, true);
+  assert.equal(updateSettingsSchema.safeParse({ numberResetMinutes: 240 }).success, true);
+  assert.equal(updateSettingsSchema.safeParse({ numberResetMinutes: 0 }).success, true, "a 0 (midnight) is a real value, not 'absent'");
+  assert.equal(updateSettingsSchema.safeParse({ numberResetMinutes: 1440 }).success, false);
+  assert.equal(updateSettingsSchema.safeParse({ tokenNumberStart: 0 }).success, false);
+  assert.equal(updateSettingsSchema.safeParse({ tokenEnabled: "yes" }).success, false);
+  const kept = updateSettingsSchema.safeParse({ numberResetMinutes: 0 });
+  assert.ok(kept.success && kept.data.numberResetMinutes === 0, "the 0 survives parsing");
+});
+
+// ── tokenReadyClearMinutes (print customization S8) ──────────────────────────
+// How long a Ready token stays on the token list. A scalar SECTION field like numberResetMinutes: optional (absent
+// reads as 10 via tokenReadyClearMinutesOf), its range on the FIELD so the PUT partial keeps working.
+
+test("settingsSchema: tokenReadyClearMinutes is optional (absent is valid) and a valid value parses and survives", () => {
+  const full = validPrintPayload();
+  assert.equal("tokenReadyClearMinutes" in full, false, "landmark: the base payload carries no tokenReadyClearMinutes");
+  assert.equal(settingsSchema.safeParse(full).success, true, "a payload without it still parses");
+  const r = settingsSchema.safeParse({ ...full, tokenReadyClearMinutes: 25 });
+  assert.ok(r.success && r.data.tokenReadyClearMinutes === 25, "the value survives parsing");
+  const absent = settingsSchema.safeParse(full);
+  assert.ok(absent.success && !("tokenReadyClearMinutes" in absent.data), "absent stays absent (no default injected)");
+});
+
+test("settingsSchema: tokenReadyClearMinutes is a whole number 1..120 (0 and 121 refused, 1 and 120 accepted)", () => {
+  const parse = (tokenReadyClearMinutes: unknown) => settingsSchema.safeParse({ ...validPrintPayload(), tokenReadyClearMinutes });
+  for (const ok of [1, 2, 10, 60, 119, 120]) assert.equal(parse(ok).success, true, String(ok));
+  for (const bad of [0, -1, 121, 1.5, "10", "", null, Number.NaN, Infinity, true]) assert.equal(parse(bad).success, false, String(bad));
+  const issue = parse(121);
+  assert.ok(!issue.success && issue.error.issues.some((i) => i.path[0] === "tokenReadyClearMinutes"), "the issue is on tokenReadyClearMinutes");
+  const typed = parse("10");
+  assert.ok(!typed.success && typed.error.issues.some((i) => i.path[0] === "tokenReadyClearMinutes" && i.message === "Choose a time"), "a non-number reads 'Choose a time'");
+});
+
+test("tokenReadyClearMinutes: the schema's range IS the shared validator's range (no second source of truth)", () => {
+  const parse = (v: number) => settingsSchema.safeParse({ ...validPrintPayload(), tokenReadyClearMinutes: v }).success;
+  for (const v of [TOKEN_READY_CLEAR_MINUTES_MIN - 1, TOKEN_READY_CLEAR_MINUTES_MIN, 7, TOKEN_READY_CLEAR_MINUTES_MAX, TOKEN_READY_CLEAR_MINUTES_MAX + 1, 1.5, 0]) {
+    assert.equal(parse(v), isTokenReadyClearMinutes(v), String(v));
+  }
+  assert.equal(parse(TOKEN_READY_CLEAR_MINUTES_MAX), true, "landmark: the top is accepted");
+  assert.equal(parse(TOKEN_READY_CLEAR_MINUTES_MAX + 1), false, "landmark: one past it is refused");
+});
+
+test("updateSettingsSchema (the PUT partial) accepts tokenReadyClearMinutes ALONE and still enforces its range on it", () => {
+  assert.equal(updateSettingsSchema.safeParse({ tokenReadyClearMinutes: 20 }).success, true);
+  assert.equal(updateSettingsSchema.safeParse({ tokenReadyClearMinutes: 1 }).success, true);
+  assert.equal(updateSettingsSchema.safeParse({ tokenReadyClearMinutes: 120 }).success, true);
+  assert.equal(updateSettingsSchema.safeParse({ tokenReadyClearMinutes: 0 }).success, false, "0 would hide every Ready token at once");
+  assert.equal(updateSettingsSchema.safeParse({ tokenReadyClearMinutes: 121 }).success, false);
+  assert.equal(updateSettingsSchema.safeParse({ tokenReadyClearMinutes: 1.5 }).success, false);
+  assert.equal(updateSettingsSchema.safeParse({ tokenReadyClearMinutes: "20" }).success, false);
+  assert.equal(updateSettingsSchema.safeParse({ tokenReadyClearMinutes: Number.NaN }).success, false);
+  const kept = updateSettingsSchema.safeParse({ tokenReadyClearMinutes: 20 });
+  assert.ok(kept.success && kept.data.tokenReadyClearMinutes === 20, "the value survives parsing");
+  assert.equal(Object.keys(kept.success ? kept.data : {}).length, 1, "a one-field patch parses to exactly one field");
+  // alongside the other token fields (the whole tokens section PUT)
+  const section = updateSettingsSchema.safeParse({ tokenEnabled: true, tokenNumberStart: 101, numberResetMinutes: 240, tokenReadyClearMinutes: 30 });
+  assert.ok(section.success && section.data.tokenReadyClearMinutes === 30, "the tokens section's four fields parse together");
 });

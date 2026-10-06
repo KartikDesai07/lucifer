@@ -35,7 +35,7 @@ export function capitalizePrintOption(word: string): string {
 // after it. Shared by BillPrintCard and KotPrintCard.
 export function makeNumberStartBlurHandler(
   setValue: UseFormSetValue<SettingsInput>,
-  name: "billNumberStart" | "kotNumberStart",
+  name: "billNumberStart" | "kotNumberStart" | "tokenNumberStart",
 ) {
   return (e: FocusEvent<HTMLInputElement>) => {
     setValue(name, blankToMinStart(e.target.value), {

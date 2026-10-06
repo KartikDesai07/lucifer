@@ -94,8 +94,14 @@ test("PIN: the create and add-round CAS writes mark a round as the server's only
   assert.match(create, /\.\.\.\(intent \? \{ kotPrintDevices: \[intent\.deviceId\] \} : \{\}\),/);
   assert.match(
     create,
-    /\[\{ kind: "kot", round: 1 \}, \.\.\.\(intent\.bill && data\.status === "Completed" \? \[\{ kind: "bill" as const \}\] : \[\]\)\]/,
-    "Pay Now prints its bill only when asked",
+    /slips: \[\.\.\.openingSlipsOf\(numbered\.value \?\? landed, 1\), \.\.\.\(printsBillNow \? \[\{ kind: "bill" as const \}\] : \[\]\)\]/,
+    "the opening slips (KOT, then the S7 token) come first; Pay Now prints its bill only when asked",
+  );
+  // S3b: the condition is named once (printsBillNow) and the first-print stamp rides the same flag.
+  assert.match(
+    create,
+    /const printsBillNow = intent\?\.bill === true && data\.status === "Completed";/,
+    "the Pay Now bill condition lives in one named const",
   );
   const items = src("apps/cafe/app/api/orders/[id]/items/route.ts");
   assert.match(items, /const kotPrintDevices = buildKotPrintDevices\(old\.kotPrintDevices, round, intent\?\.deviceId\);/);
@@ -168,7 +174,7 @@ test("PIN (R4, job-aware lane): an agent's kot-claim makes the KOT a job in the 
   const route = src("apps/cafe/app/api/order-requests/[id]/kot-claim/route.ts");
   assert.match(route, /const intent = printIntentOf\(req\);\s*const result = intent \? await claimKotPrintForAgent\(id, intent, Date\.now\(\)\) : await claimKotPrint\(id\);/);
   const lib = src("apps/cafe/lib/print-agent-server.ts");
-  inOrder(lib, ["const result = await claimKotPrint(id);", "if (!result.claimed) return result;", "await createOrderPrintJobs({", 'slips: [{ kind: "kot", round: result.kotRound }]'], "the claim, then the job");
+  inOrder(lib, ["const result = await claimKotPrint(id);", "if (!result.claimed) return result;", "await createOrderPrintJobs({", "slips: openingSlipsOf(result.order, result.kotRound)"], "the claim, then the job (the KOT, and the token slip when the order opens with one)");
   assert.ok(!/\$unset/.test(lib) && !/kotPrintedAt/.test(lib), "a failed create never reopens the claim: the lane enqueues the KOT itself");
   assert.match(lib, /printJobs\.length > 0 \? \{ \.\.\.order, printJobs \} : order/, "no job: the answer names none, so the lane re-sends it under the same key");
   assert.match(src("apps/cafe/lib/order-request-create.ts"), /return "error" in result \? "pending" : "accepted";/, "the public auto-accept stays exactly as live today");

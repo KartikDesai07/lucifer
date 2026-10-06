@@ -1,9 +1,10 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, Clock, PackageCheck, QrCode } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, PackageCheck, QrCode, Ticket } from "lucide-react";
 
 import { kitchenAgeBand, type KitchenRow } from "@/lib/kitchen-board";
 import type { KitchenOrderCard as KitchenOrderCardData } from "@/lib/kitchen-cards";
+import { tokenLabelOf } from "@/lib/token-view";
 import { Button } from "@/components/ui/button";
 import { KitchenLineCard } from "@/components/kitchen/KitchenLineCard";
 import { cn } from "@/lib/utils";
@@ -48,14 +49,24 @@ export function KitchenOrderCard({
       {/* HEADER — destination is the biggest thing on the card: a cook needs
           to know WHERE before WHAT. Parcel and table are mutually exclusive,
           never colour alone. */}
-      {card.parcel ? (
-        <div className="flex items-center gap-1.5 text-lg font-black text-orange-600 xl:text-xl">
-          <PackageCheck className="h-5 w-5 shrink-0" />
-          PARCEL
-        </div>
-      ) : (
-        <div className="text-lg font-black xl:text-xl">{card.tableLabel}</div>
-      )}
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+        {card.parcel ? (
+          <div className="flex items-center gap-1.5 text-lg font-black text-orange-600 xl:text-xl">
+            <PackageCheck className="h-5 w-5 shrink-0" />
+            PARCEL
+          </div>
+        ) : (
+          <div className="min-w-0 break-words text-lg font-black xl:text-xl">{card.tableLabel}</div>
+        )}
+        {/* Print customization S8: the order's token (tokens on only) so the cook can match a paid order to its
+            customer. No chip at all when the order has none. */}
+        {card.tokenNumber !== undefined && (
+          <div className="flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-0.5 text-lg font-black">
+            <Ticket className="h-4 w-4 shrink-0" aria-hidden="true" />
+            {tokenLabelOf(card.tokenNumber)}
+          </div>
+        )}
+      </div>
 
       {/* Secondary header row */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">

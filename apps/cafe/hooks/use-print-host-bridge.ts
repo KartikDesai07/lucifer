@@ -12,6 +12,7 @@ import { useReactToPrint } from "react-to-print";
 import { toast } from "sonner";
 
 import { useSettings } from "@/hooks/use-settings";
+import { useSlipCodePending } from "@/hooks/use-slip-code-pending";
 import { slipPrintOptions } from "@/lib/desktop-shell";
 import { RECEIPT_PAGE_STYLE, printConfigOf, receiptPageStyle } from "@/lib/print";
 import {
@@ -130,6 +131,7 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
   const receiptRef = useRef<HTMLDivElement>(null);
   const eodRef = useRef<HTMLDivElement>(null);
   const documentTitle = current?.kind === "slip" ? current.slip.documentTitle : PRINT_HOST_TEST_TITLE;
+  const slipCodePending = useSlipCodePending(); // R6: a saved design's lazy code is still on its way
 
   const printKot = useReactToPrint(slipPrintOptions({
     contentRef: kotRef,
@@ -154,24 +156,21 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
     onPrintError,
   }));
 
-  // Dispatch: runs AFTER the commit that rendered the slip into its surface
-  // (PrintHostPrintSources is a context consumer below this provider, so its
-  // effects — and DOM — land before this parent effect), exactly the page
-  // bridge's shouldPrintKot-then-print ordering. Three guards stand between a
-  // claimed job and the printer (2026-09-11): the sources must be MOUNTED (a
-  // job claimed while they were not — behind MasterDataProvider's first-load
-  // placeholder — used to fire react-to-print at a null ref, which returns
-  // silently with neither onAfterPrint nor onPrintError and wedged this bridge
-  // until reload; `surfacesMounted` re-runs this effect the moment they mount),
-  // the surface's node must EXIST (a null one is failed loud, never waited on
-  // blindly), and a kot/receipt node must carry TEXT — an empty node is a blank
-  // slip, refused with a message instead of printed. The watchdog then bounds
-  // the in-flight window itself.
+  // Dispatch: runs AFTER the commit that rendered the slip into its surface (PrintHostPrintSources is a context
+  // consumer below this provider, so its effects — and DOM — land before this parent effect), exactly the page
+  // bridge's shouldPrintKot-then-print ordering. Three guards stand between a claimed job and the printer
+  // (2026-09-11): the sources must be MOUNTED (a job claimed while they were not — behind MasterDataProvider's
+  // first-load placeholder — used to fire react-to-print at a null ref, which returns silently with neither
+  // onAfterPrint nor onPrintError and wedged this bridge until reload; `surfacesMounted` re-runs this effect the
+  // moment they mount), the surface's node must EXIST (a null one is failed loud, never waited on blindly), and a
+  // kot/receipt node must carry TEXT — an empty node is a blank slip, refused with a message instead of printed.
+  // R6: before them, a bill or kitchen ticket waits (at most SLIP_CODE_WAIT_MAX_MS) while a saved design's lazy
+  // code is on its way, so they see the finished slip. The watchdog then bounds the in-flight window itself.
   useEffect(() => {
     if (!current || dispatchedRef.current || !surfacesMounted) return;
     const surface = surfaceOf(current);
-    if (surface === "eod" && !eodReady) return;
-    const node = surface === "receipt" ? receiptRef.current : surface === "eod" ? eodRef.current : kotRef.current;
+    if (surface === "eod" ? !eodReady : current.kind === "slip" && slipCodePending) return;
+    const node = surface === "receipt" || surface === "token" ? receiptRef.current : surface === "eod" ? eodRef.current : kotRef.current;
     if (!node) {
       settle(PRINT_HOST_PRINT_FAILED_MESSAGE);
       return;
@@ -182,10 +181,10 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
     }
     dispatchedRef.current = true;
     watchdogRef.current = window.setTimeout(abandon, PRINT_HOST_DISPATCH_TIMEOUT_MS);
-    if (surface === "receipt") printReceipt();
+    if (surface === "receipt" || surface === "token") printReceipt();
     else if (surface === "eod") printEod();
     else printKot();
-  }, [current, eodReady, surfacesMounted, printKot, printReceipt, printEod, settle, abandon]);
+  }, [current, eodReady, slipCodePending, surfacesMounted, printKot, printReceipt, printEod, settle, abandon]);
 
   // The eod wait is bounded: an aggregate that never loads (host offline from
   // the API, a deploy in flight) must not hold every KOT behind it. The claim

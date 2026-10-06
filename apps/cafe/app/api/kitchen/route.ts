@@ -13,6 +13,16 @@ import {
 } from "@/lib/api-helpers";
 import type { KitchenOrderInput } from "@/lib/kitchen-board";
 import { buildKitchenCards } from "@/lib/kitchen-cards";
+import { getSettings } from "@/lib/settings";
+import {
+  TOKENS_OFF,
+  filterModeOf,
+  kitchenOrderFilter,
+  kitchenSelectOf,
+  mergeKitchenArms,
+  tokenModeOf,
+} from "@/lib/token-board";
+import { readKitchenTokenArm, writeKotReady } from "@/lib/token-board-server";
 
 export const dynamic = "force-dynamic";
 
@@ -64,15 +74,15 @@ export async function GET() {
   try {
     await connectDB();
 
-    const orders = await Order.find({
-      status: "Pending",
-      payment: "Unpaid",
-      kotRounds: { $gte: 1 },
-    })
-      .select("orderId items kotRounds kotNumbers kotFiredAt tableNo notes source createdAt")
+    // S8 — tokens on adds today's PAID token orders as a second arm; tokens off is exactly the open-tab query.
+    const mode = tokenModeOf(await getSettings(), new Date());
+    const open = await Order.find({ ...kitchenOrderFilter(TOKENS_OFF), kotRounds: { $gte: 1 } })
+      .select(kitchenSelectOf(filterModeOf(mode)))
       .sort({ createdAt: 1 })
       .limit(OPEN_TAB_LIMIT)
       .lean();
+    const tokenArm = mode.enabled ? await readKitchenTokenArm(mode.dayStart) : [];
+    const orders = mergeKitchenArms(open as unknown as KitchenOrderInput[], tokenArm);
 
     const ids = orders.map((order) => String(order._id));
     const ticks = await KotTick.find({ _id: { $in: ids } }).select("refs readyAt").lean();
@@ -85,12 +95,12 @@ export async function GET() {
 
     const now = new Date();
     const cards = buildKitchenCards({
-      orders: orders as KitchenOrderInput[],
+      orders,
       ticksByOrder,
       readyAtByOrder,
     });
 
-    return success({ cards, tabCount: orders.length, generatedAt: now.toISOString() });
+    return success({ cards, tabCount: open.length, generatedAt: now.toISOString() });
   } catch (error) {
     return serverError("Failed to load the kitchen board", error);
   }
@@ -113,6 +123,7 @@ export async function POST(req: Request) {
 
   try {
     await connectDB();
+    const mode = tokenModeOf(await getSettings(), new Date());
 
     // EVERY verb is gated on the tab still being OPEN. That is deliberate for
     // the un-tick too: a settled tab never returns to the board, so its refs
@@ -120,7 +131,8 @@ export async function POST(req: Request) {
     // closed tab's record. The only cost is the message below — an Undo tapped
     // after someone else settled the tab is told plainly what happened rather
     // than being shown a "not found" that reads like the line vanished.
-    const open = await Order.exists({ _id: orderId, status: "Pending", payment: "Unpaid" });
+    // S8: with tokens on, "open" also covers today's paid token orders (kitchenOrderFilter).
+    const open = await Order.exists({ _id: orderId, ...kitchenOrderFilter(filterModeOf(mode)) });
     if (!open) {
       return notFound(
         body.action === "ready"
@@ -137,26 +149,9 @@ export async function POST(req: Request) {
       // clear a card whose last open line the POS just voided. A UI disable is
       // never a fence, and this is the one place where the permissive answer is
       // the correct one — the alternative strands a card on the wall forever.
-      // P4-C — stamp the instant the cook could SEE, not the instant the
-      // request landed. isHiddenByReady hides an order while
-      // readyAt >= newest kotFiredAt, so a `now` stamp also buries any round
-      // fired in the gap between the board's last refresh and the tap — food
-      // nobody cooked, with nothing on any screen reporting it. Stamping the
-      // card's own newest fire instant keeps that newer round strictly later
-      // than the stamp, so the card returns on the next read.
-      // Clamped to now: a client clock running fast (or a hand-made body) must
-      // not be able to park a stamp in the future and suppress rounds that have
-      // not happened yet. Falls back to now when absent — the old behaviour.
-      const seen = body.seenFiredAt ? new Date(body.seenFiredAt) : null;
-      const nowMs = Date.now();
-      const stampMs =
-        seen && Number.isFinite(seen.getTime()) ? Math.min(seen.getTime(), nowMs) : nowMs;
-      // $unset, never null: the board reads readiness as field PRESENCE.
-      await KotTick.updateOne(
-        { _id: orderId },
-        body.ready ? { $set: { readyAt: new Date(stampMs) } } : { $unset: { readyAt: "" } },
-        { upsert: true },
-      );
+      // The stamp rules (P4-C seenFiredAt clamp, readyMarkedAt, $unset never null) live in
+      // readyStampMs / readyUpdateOf (lib/token-board.ts); writeKotReady is the one Ready writer.
+      await writeKotReady(orderId, body.ready, body.seenFiredAt);
     } else if (body.done) {
       await KotTick.updateOne({ _id: orderId }, { $addToSet: { refs: body.ref } }, { upsert: true });
     } else {

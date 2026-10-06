@@ -67,3 +67,44 @@ test("KotTick: refs defaults to an empty array on a minimal doc", () => {
   const doc = new KotTick({ _id: "b".repeat(24) });
   assert.deepEqual(doc.refs, [], "refs must default to []");
 });
+
+// Print customization S8 — token state rides the same per-order doc: readyMarkedAt (the SERVER instant of the Ready
+// mark, written in the same $set as readyAt) and collectedAt (when staff handed the order over). Both are absent =
+// not marked, so both follow readyAt's rules: a Date path, optional, NO default, NO index.
+for (const field of ["readyMarkedAt", "collectedAt"] as const) {
+  test(`KotTick: ${field} path is a Date, optional (not required), with NO default`, () => {
+    const path = kotTickSchema.path(field);
+    assert.ok(path, `${field} path must exist`);
+    assert.equal(path.instance, "Date", `${field} must be declared as a Date path`);
+    const options = (path as unknown as { options: Record<string, unknown> }).options;
+    assert.notEqual(options.required, true, `${field} must not be required`);
+    assert.equal(options.default, undefined, `${field} must carry NO default — absent means not marked`);
+    assert.ok(!options.index && !options.unique && !options.sparse, `${field} must carry no index option`);
+  });
+
+  test(`KotTick: a minimal doc leaves ${field} undefined (omit-empty), and a Date value round-trips through validation`, () => {
+    const doc = new KotTick({ _id: "c".repeat(24) });
+    assert.equal(doc.validateSync(), undefined, "a minimal doc must validate cleanly");
+    assert.equal(doc[field], undefined, `${field} must be absent, not defaulted`);
+    assert.ok(!doc.toObject().hasOwnProperty(field), `${field} is not materialised on the object`);
+    const when = new Date("2026-10-06T10:00:00.000Z");
+    const marked = new KotTick({ _id: "d".repeat(24), [field]: when });
+    assert.equal(marked.validateSync(), undefined);
+    assert.equal(marked[field]?.getTime(), when.getTime(), "positive landmark: the path really stores a Date");
+  });
+
+  test(`KotTick: no index key mentions ${field} (read per-order by _id, never scanned)`, () => {
+    const indexes = kotTickSchema.indexes();
+    for (const [key] of indexes) {
+      assert.ok(!(field in (key as Record<string, unknown>)), `index ${JSON.stringify(key)} must not cover ${field}`);
+    }
+    // positive landmark: the indexed-paths walk sees the schema's real path set, so an empty indexes() cannot pass this vacuously
+    assert.ok(kotTickSchema.path(field), `landmark: ${field} exists on the inspected schema`);
+    assert.ok(kotTickSchema.path("readyAt") && kotTickSchema.path("refs"), "landmark: the sibling paths are there too");
+  });
+}
+
+test("KotTick: the three token-state paths are the only Date fields besides timestamps (no stray stamp slipped in)", () => {
+  const datePaths = Object.keys(kotTickSchema.paths).filter((p) => kotTickSchema.path(p).instance === "Date").sort();
+  assert.deepEqual(datePaths, ["collectedAt", "createdAt", "readyAt", "readyMarkedAt", "updatedAt"]);
+});

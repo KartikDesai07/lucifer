@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { PRINT_JOB_DISMISS_REASONS, PRINT_JOB_STATUSES } from "@pos/shared/print-job";
+import { PRINT_JOB_DISMISS_REASONS, PRINT_JOB_KINDS, PRINT_JOB_STATUSES } from "@pos/shared/print-job";
 
 import { printJobSchema, PrintJob } from "../models/PrintJob";
 import { printHostSchema, PrintHost } from "../models/PrintHost";
@@ -70,6 +70,21 @@ test("PrintJob: kind enum accepts \"cancel-notice\" (MERGED-04, the 6th kind)", 
   });
   const err = doc.validateSync();
   assert.equal(err, undefined, "a minimal cancel-notice doc must validate cleanly");
+});
+
+test("PrintJob: kind enum accepts \"token\" (print customization S7) and still rejects an unknown kind beside it; the model enum is the shared PRINT_JOB_KINDS", () => {
+  const doc = new PrintJob({
+    kind: "token",
+    payload: "{}",
+    label: "Token 7 · T-4",
+    queuedBy: "Staff",
+  });
+  assert.equal(doc.validateSync(), undefined, "a minimal token doc must validate cleanly (no model edit was needed: the enum IS PRINT_JOB_KINDS)");
+  assert.ok(PRINT_JOB_KINDS.includes("token"), "landmark: the shared list carries token");
+  // Landmark for the absence side: the same builder with a bogus kind fails, so the accept above is not a validator that never runs.
+  assert.ok(new PrintJob({ kind: "tokens", payload: "{}", label: "x", queuedBy: "Staff" }).validateSync()?.errors.kind);
+  const kindEnum = (printJobSchema.path("kind") as unknown as { enumValues: string[] }).enumValues;
+  assert.deepEqual([...kindEnum].sort(), [...PRINT_JOB_KINDS].sort());
 });
 
 test("PrintJob: status enum rejects an unknown value", () => {

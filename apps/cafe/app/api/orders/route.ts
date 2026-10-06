@@ -7,10 +7,10 @@ import { Product } from "@/models/Product";
 import { Table } from "@/models/Table";
 import { nextOrderSequence, bumpOrderSequenceTo } from "@/models/Counter";
 import { printConfigOf } from "@/lib/print";
-import { allocateOpeningKot, issueBillNumber, BILL_NUMBER_UNCONFIRMED } from "@/lib/slip-numbers";
+import { allocateOpeningSlips, issueBillNumber, BILL_NUMBER_UNCONFIRMED } from "@/lib/slip-numbers";
 import { settledValue } from "@/lib/settled";
 import { createReplayResponse, createReplayVerdict, findCreateReplay, isIdemKeyDuplicate } from "@/lib/order-idem";
-import { createOrderPrintJobs, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
+import { createOrderPrintJobs, openingSlipsOf, printIntentOf, withPrintJobs } from "@/lib/print-order-jobs";
 import cache from "@/lib/cache";
 import {
   success,
@@ -45,6 +45,7 @@ import {
   type RewardResolution,
 } from "@/lib/reward-claim";
 import { buildRewardAssignment } from "@/lib/reward-assignment";
+import { firstBillPrintInsertFields } from "@/lib/bill-first-print";
 import { shouldStoreDiscountKind } from "@pos/shared/reward-redemption";
 import {
   resolveAcceptPromo,
@@ -464,6 +465,9 @@ export async function POST(req: Request) {
       }
     }
 
+    // Pay Now's bill: the SAME condition under which this route makes the server's bill job
+    // below, named once so the stamp and the job can never drift apart.
+    const printsBillNow = intent?.bill === true && data.status === "Completed";
     const unnumberedDoc = {
       customerName: data.customerName,
       customerId,
@@ -519,6 +523,11 @@ export async function POST(req: Request) {
       ...(data.idemKey ? { idemKey: data.idemKey } : {}),
       // Printing Phase 1 — round 1 is the server's to print, so the repair sweep may re-create it.
       ...(intent ? { kotPrintDevices: [intent.deviceId] } : {}),
+      // The bill's first print is NOW (the server prints it below), so the pay QR's
+      // "Valid till" anchor rides the insert itself — no extra write, and the
+      // duplicate-key retry re-sends this same doc, stamp included. A bill this
+      // call does not print is stamped later by settle / the print-jobs enqueue.
+      ...firstBillPrintInsertFields(printsBillNow, Date.now(), totals.total),
     };
 
     // Order number from an atomic per-day counter (no read-max race). On the
@@ -588,13 +597,15 @@ export async function POST(req: Request) {
     // tickets, exactly one bill), each a single atomic $inc. The opening KOT
     // number is taken HERE — after every refusal above, so a refused create
     // costs the ticket series nothing — and reused by the duplicate-key retry.
-    // Losing it to a failed insert is an accepted burn. The BILL number is not
+    // Losing it to a failed insert is an accepted burn. The order's TOKEN (when
+    // tokens are on) is drawn right here with it, on the same terms: one token
+    // per order, reused by the retry through `doc`, burned by a refused insert. The BILL number is not
     // taken here at all: only the insert that WON takes it (below), so a Pay
     // Now twin that loses on the send key can never leave a gap in the bills.
     const issuesBill = printCfg.bill.showNumber && data.status === "Completed";
-    let slips: Awaited<ReturnType<typeof allocateOpeningKot>>;
+    let slips: Awaited<ReturnType<typeof allocateOpeningSlips>>;
     try {
-      slips = await allocateOpeningKot(printCfg);
+      slips = await allocateOpeningSlips(printCfg);
     } catch (slipError) {
       // No insert has run, so this is a DEFINITE no-order: both claims go back.
       await Promise.allSettled([unclaimFor(orderId), unfencePromoFor(orderId)]);
@@ -705,7 +716,7 @@ export async function POST(req: Request) {
     const [numbered] = await Promise.allSettled([
       // This insert WON, so a Pay Now bill takes its number now — exactly once
       // per order: a twin that lost on the send key adopted above, unnumbered.
-      issuesBill ? issueBillNumber(landed._id, printCfg.bill.numberStart) : Promise.resolve(null),
+      issuesBill ? issueBillNumber(landed._id, printCfg.bill) : Promise.resolve(null),
       // CB-5D part 2 — the fence's trace (which order consumed this code). The
       // claim above IS the fence; this only makes it readable to staff/ops.
       promoFenceMobile && promoIsClaimable(promoDiscount, data.promoCode, promoKind)
@@ -731,12 +742,12 @@ export async function POST(req: Request) {
     // "still saving" (503); after it, the replay issues the number itself
     // (guarded, never a second one) and answers with the numbered order.
     if (numbered.status === "rejected") return serverError(BILL_NUMBER_UNCONFIRMED, numbered.reason);
-    // Printing Phase 1 (spec §7.4): the opening round's KOT, and Pay Now's bill when this call site
-    // prints it, made from the order exactly as answered. Never throws.
+    // Printing Phase 1 (spec §7.4): the opening round's KOT (+ its token slip, S7), and Pay Now's bill when
+    // this call site prints it, made from the order exactly as answered. Never throws.
     const printJobs = intent
       ? await createOrderPrintJobs({
           order: numbered.value ?? landed,
-          slips: [{ kind: "kot", round: 1 }, ...(intent.bill && data.status === "Completed" ? [{ kind: "bill" as const }] : [])],
+          slips: [...openingSlipsOf(numbered.value ?? landed, 1), ...(printsBillNow ? [{ kind: "bill" as const }] : [])],
           originDeviceId: intent.deviceId,
           queuedBy: authed.session.user.name ?? "",
           nowMs: Date.now(),

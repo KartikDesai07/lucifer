@@ -141,11 +141,25 @@ async function leaseEligibility(head: LeaseHead, dismissedBy: string): Promise<P
   return payload;
 }
 
+/** Deploy skew (print-customization S7): a tab still running a page from before the token slip turns a
+ *  leased "token" job into no slip at all and its print bridge throws while rendering it. Such a tab never
+ *  says `tokenSlips`, so its lease steps over token jobs: they wait queued, behind nothing, for a page
+ *  that can print them (a reload), and every other slip in the line still prints in order. */
+export function leaseKindFence(tokenSlips: boolean): FilterQuery<IPrintJob> {
+  return tokenSlips ? {} : { kind: { $ne: "token" } };
+}
+
 /** Leases the head of this device's line (spec §7.6: at most one job per printer). An expired lease
  *  at the head is applied lazily here, so a dead writer never blocks the line past 90 s. */
-export async function leasePrintJobs(input: { deviceId: string; tabId: string; dismissedBy: string; nowMs: number }): Promise<PrintLeaseData> {
+export async function leasePrintJobs(input: {
+  deviceId: string;
+  tabId: string;
+  dismissedBy: string;
+  nowMs: number;
+  tokenSlips: boolean;
+}): Promise<PrintLeaseData> {
   for (let step = 0; step < LEASE_MAX_STEPS; step++) {
-    const head = await PrintJob.findOne(printJobLineFilter(input.deviceId, input.nowMs))
+    const head = await PrintJob.findOne({ ...printJobLineFilter(input.deviceId, input.nowMs), ...leaseKindFence(input.tokenSlips) })
       .sort({ createdAt: 1, _id: 1 })
       .select(LEASE_SELECT)
       .lean<LeaseHead>();

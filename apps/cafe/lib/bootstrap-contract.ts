@@ -19,7 +19,21 @@ import type { Area, Category, Product, Settings, Staff, Table } from "@/types";
 // areas, so its tables would all read as unassigned until the next bootstrap -
 // the bump is rule-following (the rule above is unconditional), and v5 blobs
 // are discarded.
-export const BOOTSTRAP_VERSION = 6; // Tables B2: new `areas` part + Table.areaId; v5 tab blobs are discarded
+// Print customization S2 (2026-10-04): Settings gained `billTemplate` / `kotTemplate`. A v6 blob has none, so
+// a device would print the legacy slip from it until the next bootstrap although a design is saved — v6 blobs
+// are discarded.
+// Print customization S3 (2026-10-04): Settings gained `upiId` (the bill's "Scan to pay" QR). A v7 blob has none, so a
+// device would print no pay QR from it until the next bootstrap although the owner saved an ID — v7 blobs are discarded.
+// Print customization S3b (2026-10-04): Settings gained `payQrMode` / `payQrValidMinutes` (when the pay QR prints, how long it
+// is valid). A v8 blob has neither, so a bill printed from it would follow the default after the owner chose Never — v8 blobs
+// are discarded.
+// Print customization S6 (2026-10-05): Settings gained `tokenEnabled` / `tokenNumberStart` / `numberResetMinutes`. A v9 blob has none, so a
+// device would read tokens as off and numbers as restarting at midnight from it although the owner changed them — v9 blobs are discarded.
+// Print customization S7 (2026-10-06): Settings gained `tokenTemplate`. A v10 blob has none, so a device would print the default
+// token design from it after the owner saved another — v10 blobs are discarded.
+// Print customization S8 (2026-10-06): Settings gained `tokenReadyClearMinutes`. A v11 blob has none, so the Tokens settings form
+// would show (and a section save would write back) 10 minutes after the owner chose another — v11 blobs are discarded.
+export const BOOTSTRAP_VERSION = 12;
 
 // Device storage key (the browser's persistent per-origin store — survives a
 // reload, a closed tab and a restart of the app shell; cleared on logout and

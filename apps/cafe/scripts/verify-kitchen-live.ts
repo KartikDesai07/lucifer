@@ -20,9 +20,12 @@
  * scratch prefix, and drops what it touches. Prints pass/fail only.
  */
 import assert from "node:assert/strict";
+import Module from "node:module";
+import path from "node:path";
 import mongoose from "mongoose";
 import { Types } from "mongoose";
 
+import { connectDB } from "@/lib/db";
 import { Order } from "@/models/Order";
 import { KotTick } from "@/models/KotTick";
 import { buildKitchenRows, type KitchenOrderInput } from "@/lib/kitchen-board";
@@ -38,6 +41,24 @@ const DEFAULT_URI = `mongodb://127.0.0.1:27017/${SCRATCH_PREFIX}kitchen`;
 // used to sit on this call suppressed a genuine mismatch; without it the
 // compiler checks the live leg against the writer's actual signature.
 const GST_OFF: GstConfig = { gstEnabled: false, gstRate: 0, gstMode: "exclusive" };
+
+// The real GET /api/kitchen runs behind requireAuth(); a stubbed lib/auth (the
+// verify-slip-numbers-live.ts idiom) lets scenario 7 call the route handler
+// itself instead of a copy of its query.
+function stubAuth(): void {
+  const file = path.join(__dirname, "..", "lib", "auth.ts");
+  const stub = new Module(file);
+  stub.filename = file;
+  stub.loaded = true;
+  stub.exports = {
+    auth: async () => ({ user: { id: "665f0000000000000000beef", name: "Live leg", role: "staff" } }),
+    handlers: {},
+    signIn: async () => undefined,
+    signOut: async () => undefined,
+  };
+  require.cache[file] = stub;
+}
+stubAuth();
 
 const PRODUCT_A = new Types.ObjectId();
 const PRODUCT_B = new Types.ObjectId();
@@ -79,7 +100,7 @@ async function seedTab(orderId: string): Promise<string> {
 
 async function boardOf(id: string): Promise<ReturnType<typeof buildKitchenRows>> {
   const orders = await Order.find({ _id: id, status: "Pending", payment: "Unpaid", kotRounds: { $gte: 1 } })
-    .select("orderId items kotRounds kotNumbers kotFiredAt tableNo notes source createdAt")
+    .select("orderId items kotRounds kotNumbers kotFiredAt tableNo parcel notes source createdAt")
     .lean();
   const ticks = await KotTick.find({ _id: { $in: [id] } }).select("refs").lean();
   const ticksByOrder: Record<string, string[]> = {};
@@ -93,7 +114,7 @@ async function boardOf(id: string): Promise<ReturnType<typeof buildKitchenRows>>
  *  staying/leaving the board, not just individual lines. */
 async function cardsOf(id: string): Promise<ReturnType<typeof buildKitchenCards>> {
   const orders = await Order.find({ _id: id, status: "Pending", payment: "Unpaid", kotRounds: { $gte: 1 } })
-    .select("orderId items kotRounds kotNumbers kotFiredAt tableNo notes source createdAt")
+    .select("orderId items kotRounds kotNumbers kotFiredAt tableNo parcel notes source createdAt")
     .lean();
   const ticks = await KotTick.find({ _id: { $in: [id] } }).select("refs readyAt").lean();
   const ticksByOrder: Record<string, string[]> = {};
@@ -113,7 +134,10 @@ async function main(): Promise<void> {
     `refusing to run against "${dbName}" — the database name must start with ${SCRATCH_PREFIX}`,
   );
 
-  await mongoose.connect(uri);
+  // Through connectDB (not a bare mongoose.connect) so the real route handler
+  // in scenario 7 shares this one connection.
+  process.env.MONGODB_URI = uri;
+  await connectDB();
   console.log(`\nKitchen board live leg — ${dbName}\n`);
 
   try {
@@ -307,6 +331,23 @@ async function main(): Promise<void> {
       const newRoundLine = cards[0].lines.find((l) => l.round === round);
       assert.ok(newRoundLine, "the new round's line must be among the card's lines");
       assert.equal(cards[0].allDone, false, "the newly-fired line is not done — the card is genuinely back to work, not just visually present");
+    });
+
+    await scenario(7, "a parcel order's card says PARCEL — through the REAL GET /api/kitchen (its select must read parcel)", async () => {
+      const id = await seedTab("ORD-LIVE-0007");
+      await Order.updateOne({ _id: id }, { $set: { parcel: true } });
+      const plainId = await seedTab("ORD-LIVE-0008");
+      const route = await import("@/app/api/kitchen/route");
+      const body = (await (await route.GET()).json()) as {
+        success: boolean;
+        data?: { cards: Array<{ orderId: string; parcel: boolean }> };
+      };
+      assert.equal(body.success, true, "the kitchen GET answers success");
+      const parcelCard = body.data?.cards.find((c) => c.orderId === id);
+      const plainCard = body.data?.cards.find((c) => c.orderId === plainId);
+      assert.ok(parcelCard && plainCard, "both open tabs are on the board");
+      assert.equal(parcelCard.parcel, true, "the parcel tab's card carries parcel: true (the PARCEL header renders)");
+      assert.equal(plainCard.parcel, false, "a dine-in tab's card stays parcel: false");
     });
   } finally {
     await Order.deleteMany({});

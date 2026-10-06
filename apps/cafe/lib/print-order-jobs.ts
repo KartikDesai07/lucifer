@@ -21,6 +21,7 @@ import { printJobKeyOf, printJobOrderIdOf } from "@/lib/print-queue";
 import { billPrintJob, kotPrintJob, movedPrintJob, voidPrintJob, type PrintJobRequest } from "@/lib/print-routing";
 import { publishCafeEvent, publishPrintStatus } from "@/lib/realtime-publish";
 import type { Order } from "@/types";
+import { opensWithToken, tokenPrintJob } from "@/lib/print-routing";
 
 // Printing redesign, Phase 1 Session 1B (spec §7.4): server-side job creation. An order route whose
 // call site opts in (PRINT_AGENT_HEADER) creates, in the same request and right after its order write
@@ -68,13 +69,23 @@ export function buildKotPrintDevices(
 export type OrderPrintSlip =
   | { kind: "kot"; round: number }
   | { kind: "bill" }
+  | { kind: "token" }
   | { kind: "void" }
   | { kind: "moved"; meta: { from?: string; movedBy: string; movedAt: string } };
 
 const UNNAMED_STAFF = "Staff";
 
 /** Kind order inside one request (§7.6 "KOT before bill"); creates run in this order, so createdAt does too. */
-const SLIP_ORDER: Record<OrderPrintSlip["kind"], number> = { kot: 0, void: 1, moved: 2, bill: 3 };
+const SLIP_ORDER: Record<OrderPrintSlip["kind"], number> = { kot: 0, token: 1, void: 2, moved: 3, bill: 4 };
+
+/** The slips a new round opens with: its KOT, then (round 1 of an order with a token number, S7) the
+ *  customer's token slip. The ONE list for every round-opening job site (order create, request accept,
+ *  the self-order kot-claim), so the token can never print with one and not another. */
+export function openingSlipsOf(order: unknown, round: number): OrderPrintSlip[] {
+  const kot: OrderPrintSlip = { kind: "kot", round };
+  const tokenOf = typeof order === "object" && order !== null ? (order as { tokenNumber?: unknown }) : {};
+  return opensWithToken(tokenOf, round) ? [kot, { kind: "token" }] : [kot];
+}
 
 /** A lean or hydrated Order as the wire Order the client builders read: through JSON, exactly as the
  *  response sends it, so a server-made slip is the slip the device would have built (§7.4). */
@@ -89,6 +100,8 @@ function requestOf(order: Order, slip: OrderPrintSlip): PrintJobRequest | null {
         return kotPrintJob(order, slip.round);
       case "bill":
         return billPrintJob(order, { reprint: false });
+      case "token":
+        return tokenPrintJob(order, { reprint: false });
       case "void": {
         const entry = order.voids?.at(-1);
         return entry === undefined ? null : voidPrintJob(order, entry, { reprint: false });

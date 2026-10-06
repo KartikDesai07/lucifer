@@ -18,6 +18,7 @@ import {
   printJobInitialLabels,
   printJobLifecycleInit,
   printJobStale,
+  printRepeatLabel,
   type PrintJobLifecycle,
   type PrintJobLogEntry,
   type PrintJobPatch,
@@ -97,12 +98,13 @@ test("lease: exactly 30 minutes old is still leasable; a stale job staff approve
   assert.equal(printJobStale(approved, T0), false);
 });
 
-test("expiry: a KOT, notice or EOD whose lease ran out is queued again with REPRINT (it may have printed)", () => {
+test("expiry: a KOT, notice, EOD or token whose lease ran out is queued again with its repeat label (REPRINT; a token says DUPLICATE) - it may have printed", () => {
   const after = T0 + PRINT_LEASE_MS + 1;
   for (const kind of PRINT_JOB_KINDS.filter((k) => k !== "bill")) {
     const patch = patchOf(planExpiry(leased({ kind }), after));
     assert.equal(patch.status, "queued", kind);
-    assert.deepEqual(patch.set.labels, ["REPRINT"], kind);
+    assert.deepEqual(patch.set.labels, [printRepeatLabel(kind)], kind);
+    assert.deepEqual(patch.set.labels, [kind === "token" ? "DUPLICATE" : "REPRINT"], `${kind}: the label is spelled out, not just derived`);
     assert.equal(patch.set.uncertainAttempts, 1, kind);
     assert.deepEqual(patch.set.nextAttemptAt, new Date(after + printBackoffMs(1)), kind);
     assert.deepEqual(patch.unset, ["lease"], kind);
@@ -280,9 +282,41 @@ test("a client-started repeat carries its label from the start (spec §7.7)", ()
     [{ kind: "kot", snapshot, round: 2 }, []],
     [{ kind: "bill", snapshot, reprint: true }, ["DUPLICATE"]],
     [{ kind: "bill", snapshot }, []],
+    [{ kind: "token", snapshot, reprint: true }, ["DUPLICATE"]],
+    [{ kind: "token", snapshot }, []],
     [{ kind: "eod", dateKey: "2026-10-02", dateLabel: "2 Oct" }, []],
   ];
   for (const [payload, labels] of cases) assert.deepEqual(printJobInitialLabels(payload), labels, JSON.stringify(payload).slice(0, 40));
+});
+
+// S7: the token is the customer's slip (like the bill: DUPLICATE) but is retried like a KOT (never parked for the cashier).
+test("printRepeatLabel: a bill and a token say DUPLICATE, every other kind says REPRINT", () => {
+  assert.equal(printRepeatLabel("token"), "DUPLICATE");
+  assert.equal(printRepeatLabel("bill"), "DUPLICATE");
+  for (const kind of PRINT_JOB_KINDS.filter((k) => k !== "bill" && k !== "token")) assert.equal(printRepeatLabel(kind), "REPRINT", kind);
+  assert.ok(PRINT_JOB_KINDS.includes("token") && PRINT_JOB_KINDS.includes("kot"), "landmark: both sides of the split exist");
+});
+
+test("token, ack failed maybe sent: queued again with DUPLICATE (never needs-confirm, never REPRINT); the second maybe is failed", () => {
+  const first = patchOf(planAck(leased({ kind: "token" }), { deviceId: "dev-a", epoch: 1, outcome: "failed", sent: "maybe" }, T0));
+  assert.equal(first.status, "queued", "a token retries by itself: no cashier question");
+  assert.deepEqual(first.set.labels, ["DUPLICATE"]);
+  assert.equal(first.set.uncertainAttempts, 1);
+  // Landmark: the bill beside it still parks for the cashier, so the token behaviour is the token's, not a loosened gate.
+  assert.equal(patchOf(planAck(leased({ kind: "bill" }), { deviceId: "dev-a", epoch: 1, outcome: "failed", sent: "maybe" }, T0)).status, "needs-confirm");
+  const second = patchOf(planAck(leased({ kind: "token", uncertainAttempts: 1, labels: ["DUPLICATE"] }), { deviceId: "dev-a", epoch: 1, outcome: "failed", sent: "maybe" }, T0));
+  assert.equal(second.status, "failed", "the owner's two-attempt rule holds for a token too");
+});
+
+test("token, expiry: queued with DUPLICATE and never needs-confirm; a failed token retried by staff after a maybe is labelled DUPLICATE", () => {
+  const expired = patchOf(planExpiry(leased({ kind: "token" }), T0 + PRINT_LEASE_MS + 1));
+  assert.equal(expired.status, "queued");
+  assert.notEqual(expired.status, "needs-confirm");
+  assert.deepEqual(expired.set.labels, ["DUPLICATE"]);
+  const retry = patchOf(planRetry(job({ kind: "token", status: "failed", uncertainAttempts: 2 }), T0));
+  assert.deepEqual(retry.set.labels, ["DUPLICATE"]);
+  const never = patchOf(planRetry(job({ kind: "token", status: "failed", attempts: 8 }), T0));
+  assert.deepEqual(never.set.labels, [], "nothing ever reached paper: no label");
 });
 
 test("lifecycleOf: a row from before Phase 1 reads as a fresh job due since it was created", () => {

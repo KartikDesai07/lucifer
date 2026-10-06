@@ -6,8 +6,9 @@ import { Product } from "@/models/Product";
 import { Customer } from "@/models/Customer";
 import { Table } from "@/models/Table";
 import type { ISettings } from "@/models/Settings";
-import { nextOrderSequence, nextSlipSequence } from "@/models/Counter";
-import { printConfigOf, printedSlipNumber } from "@/lib/print";
+import { nextOrderSequence } from "@/models/Counter";
+import { printConfigOf } from "@/lib/print";
+import { allocateOpeningSlips } from "@/lib/slip-numbers";
 import cache from "@/lib/cache";
 import { generateOrderId } from "@/lib/utils";
 import { computeOrderTotals, gstConfigFromOrder, gstConfigOfSettings } from "@/lib/receipt";
@@ -319,9 +320,9 @@ export async function acceptOrderRequest(
   const pay = derivePayment("Unpaid", totals.total);
   const paidAmount = "error" in pay ? 0 : pay.paidAmount; // Unpaid never errors
 
-  const kotNumber = printCfg.kot.showNumber
-    ? printedSlipNumber(await nextSlipSequence("kot"), printCfg.kot.numberStart)
-    : 0;
+  // The opening KOT number and the order's token, omit-empty; spread into `doc` below so the duplicate-key
+  // retry (order-request-accept-write) reuses both. A refused insert burns them (accepted).
+  const slips = await allocateOpeningSlips(printCfg);
   // FIX6 — the diner's note plus a staff-actionable promo line (CR2.2c),
   // through the EXISTING mergedNote helper so it composes, never replaces.
   const promoLine = promoNoteLine(request.promoCode, promo.discount);
@@ -350,7 +351,7 @@ export async function acceptOrderRequest(
     chargeAmount: totals.charge > 0 ? totals.charge : undefined,
     chargeLabel: totals.charge > 0 ? tableResolved.charge.label : undefined,
     total: totals.total,
-    kotNumbers: printCfg.kot.showNumber ? [kotNumber] : undefined,
+    ...slips,
     notes: mergedNote(mergedNote(undefined, request.note), promoLine),
     paidAmount,
     payment: "Unpaid" as const,

@@ -4,6 +4,8 @@ import type { Ref } from "react";
 
 import { OrderReceipt } from "@/components/pos/OrderReceipt";
 import { KOTReceipt } from "@/components/pos/KOTReceipt";
+import { TokenSlip } from "@/components/print/slip/TokenSlip";
+import { usePrintFontsPreload } from "@/hooks/use-print-fonts-preload";
 import type { KotVariant, KotReceiptVariant } from "@/hooks/use-pos-print";
 import type { Order, OrderItem, Settings } from "@/types";
 
@@ -31,6 +33,8 @@ interface PrintSourcesProps {
   // Omitted for a KOT-only page (requests/page.tsx) — an accept never
   // collects money, so there is no customer receipt to render off-screen.
   receiptRef?: Ref<HTMLDivElement>;
+  // The customer's token slip: rendered only with a ref AND an order that holds a token number.
+  tokenRef?: Ref<HTMLDivElement>;
   // Session 1C (spec §7.7): the print job's banner, set only by the print agent's slips.
   banner?: string;
 }
@@ -53,8 +57,10 @@ export function PrintSources({
   movedBy,
   movedAt,
   receiptRef,
+  tokenRef,
   banner,
 }: PrintSourcesProps) {
+  usePrintFontsPreload(settings);
   // "test" is the provider-owned test slip (PH-5), which renders its own
   // component — it never reaches KOTReceipt. Narrowed explicitly rather than
   // widening KOTReceipt's union with a variant it has no render for.
@@ -67,6 +73,9 @@ export function PrintSources({
     >
       {receiptRef && (
         <OrderReceipt order={order} settings={settings} banner={banner} ref={receiptRef} />
+      )}
+      {tokenRef && order?.tokenNumber !== undefined && (
+        <TokenSlip order={order} settings={settings} banner={banner} ref={tokenRef} />
       )}
       <KOTReceipt
         order={order}

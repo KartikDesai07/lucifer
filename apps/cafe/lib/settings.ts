@@ -1,7 +1,10 @@
+import type { UpdateQuery } from "mongoose";
+
 import cache, { TTL } from "@/lib/cache";
 import { connectDB } from "@/lib/db";
 import { Settings, type ISettings } from "@/models/Settings";
 import { gstConfigOfSettings, type GstConfig } from "@/lib/receipt";
+import type { UpdateSettingsInput } from "@/schemas";
 
 // Shared cache key — the settings route GET/PUT use the same key so a settings
 // edit invalidates this getter too.
@@ -84,4 +87,24 @@ export function gstConfigOf(settings: ISettings): GstConfig {
 
 export function invalidateSettingsCache() {
   cache.del(SETTINGS_CACHE_KEY);
+}
+
+// The PUT-only slip-template keys of updateSettingsSchema (print customization S2).
+const SLIP_TEMPLATE_KEYS = ["billTemplate", "kotTemplate", "tokenTemplate"] as const;
+
+// PUT /api/settings' update document. A template is cleared by sending null: undefined never survives JSON, so
+// it can never clear a field (and a stored null would be one more shape for every reader). A null template
+// therefore becomes $unset — the key absent is today's legacy slip. With no null template the parsed body is
+// returned untouched, so every other save keeps its partial-$set exactly as before.
+export function settingsUpdateOf(data: UpdateSettingsInput): UpdateQuery<ISettings> {
+  const set: Record<string, unknown> = { ...data };
+  const unset: Record<string, 1> = {};
+  for (const key of SLIP_TEMPLATE_KEYS) {
+    if (set[key] === null) {
+      delete set[key];
+      unset[key] = 1;
+    }
+  }
+  if (Object.keys(unset).length === 0) return data;
+  return Object.keys(set).length === 0 ? { $unset: unset } : { $set: set, $unset: unset };
 }

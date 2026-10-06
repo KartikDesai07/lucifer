@@ -31,8 +31,9 @@ export const wakeBeatBodySchema = z
   })
   .strict();
 
-/** POST /api/print-jobs/lease. */
-export const leaseBodySchema = z.object({ deviceId, tabId }).strict();
+/** POST /api/print-jobs/lease. `tokenSlips: true` = this page can print a "token" job (print-customization S7);
+ *  a page built before S7 never sends it, so its lease skips token jobs (lib/print-lease.ts leaseKindFence). */
+export const leaseBodySchema = z.object({ deviceId, tabId, tokenSlips: z.literal(true).optional() }).strict();
 
 /** POST /api/print-jobs/[id]/ack. A printed ack says nothing else; a failed one must say whether
  *  any byte was sent (spec §7.5: "no" only when the writer KNOWS nothing reached the printer). */

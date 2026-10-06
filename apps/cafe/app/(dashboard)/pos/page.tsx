@@ -99,16 +99,14 @@ export default function PosPage() {
     clearPrintKot,
   } = pos;
 
-  // The two print jobs can legitimately use different paper widths (a cafe
-  // may run a wider bill roll than its kitchen printer), so each job's page
-  // setup is derived from its OWN resolved config rather than one shared
-  // constant.
+  // The print jobs can use different paper widths (a wider bill roll than the
+  // kitchen printer), so each job's page setup comes from its OWN resolved config.
   const printCfg = printConfigOf(pos.settings.data);
 
   // Both useReactToPrint jobs, the guard ref, and the chaining effects live in
   // this shared hook now — see its own file for why (CR1.2's fixed-id-iframe
   // note carries over unchanged).
-  const { receiptRef, kotRef, printBusy } = useKotPrintBridge({
+  const { receiptRef, kotRef, tokenRef, printBusy } = useKotPrintBridge({
     lastOrder,
     shouldPrintKot,
     clearPrintKot,
@@ -118,6 +116,7 @@ export default function PosPage() {
       clearPrintReceipt,
       billPaperWidth: printCfg.bill.paperWidth,
     },
+    token: { shouldPrintToken: pos.shouldPrintToken, clearPrintToken: pos.clearPrintToken, billPaperWidth: printCfg.bill.paperWidth },
   });
 
   const { addToCart } = pos;
@@ -293,6 +292,7 @@ export default function PosPage() {
         voidedBy={pos.voidedBy}
         voidedAt={pos.voidedAt}
         receiptRef={receiptRef}
+        tokenRef={tokenRef}
       />
     </div>
   );

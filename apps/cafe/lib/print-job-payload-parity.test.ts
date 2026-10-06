@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { stripComments } from "@/lib/source-pin-utils";
@@ -30,6 +30,7 @@ const ORDER_RECEIPT_PATH = "components/pos/OrderReceipt.tsx";
 const KOT_RECEIPT_PATH = "components/pos/KOTReceipt.tsx";
 const RECEIPT_LIB_PATH = "lib/receipt.ts";
 const SHARED_UTILS_PATH = path.join("..", "..", "packages", "shared", "src", "utils.ts");
+const SHARED_PRINT_JOB_PATH = path.join("..", "..", "packages", "shared", "src", "print-job.ts");
 
 function readCafeSrc(relPath: string): string {
   return readFileSync(path.join(process.cwd(), relPath), "utf8");
@@ -49,15 +50,29 @@ function harvest(src: string, re: RegExp): Set<string> {
 const orderReceiptSrc = stripComments(readCafeSrc(ORDER_RECEIPT_PATH));
 const kotReceiptSrc = stripComments(readCafeSrc(KOT_RECEIPT_PATH));
 
+// Print customization S2: a stored bill / kitchen-ticket template prints through the block engine
+// (components/print/slip/), which reads the order WITHOUT going through OrderReceipt / KOTReceipt. Every non-test
+// .ts/.tsx file in that directory is harvested (readdirSync, so a new engine file is covered automatically): a
+// field the engine reads that the snapshot schema lacks would print blank on a host-printed slip.
+const SLIP_ENGINE_DIR = path.join("components", "print", "slip");
+const slipEngineFiles = readdirSync(path.join(process.cwd(), SLIP_ENGINE_DIR))
+  .filter((f) => /.tsx?$/.test(f) && !/.test.tsx?$/.test(f))
+  .sort();
+const slipSrc = slipEngineFiles.map((f) => stripComments(readCafeSrc(path.join(SLIP_ENGINE_DIR, f))));
+const slipOrderKeys = new Set<string>(slipSrc.flatMap((src) => [...harvest(src, ORDER_KEY_RE)]));
+const slipItemKeys = new Set<string>(slipSrc.flatMap((src) => [...harvest(src, ITEM_KEY_RE)]));
+
 // Direct-accessor harvest, per renderer, before any helper union — the basis
 // for the item 5 "direct-accessor portion" landmark counts below.
 const directOrderKeys = new Set<string>([
   ...harvest(orderReceiptSrc, ORDER_KEY_RE),
   ...harvest(kotReceiptSrc, ORDER_KEY_RE),
+  ...slipOrderKeys,
 ]);
 const directItemKeys = new Set<string>([
   ...harvest(orderReceiptSrc, ITEM_KEY_RE),
   ...harvest(kotReceiptSrc, ITEM_KEY_RE),
+  ...slipItemKeys,
 ]);
 
 // `receiptGst` (lib/receipt.ts:139-196) reads its `order`-shaped parameter for
@@ -235,4 +250,44 @@ test("PIN (CB-CHG): `charges` survives the whole print lane — snapshot picker,
     /chargesFromOrder\(/,
     "landmark: OrderReceipt must render charges via chargesFromOrder(order)",
   );
+});
+
+// ── Print customization S2 — the block engine is harvested too ──────────────
+test("PIN (S2): every slip-engine file is harvested, and what the engine reads off an order / item is in the snapshot schema", () => {
+  // Positive landmarks: the directory listing found the engine, and the harvest is non-vacuous.
+  for (const f of ["SlipEngine.tsx", "bill-classic-blocks.tsx", "kot-classic-blocks.tsx", "slip-context.ts"]) {
+    assert.ok(slipEngineFiles.includes(f), `landmark: ${f} is in the harvested slip-engine set`);
+  }
+  assert.ok(slipOrderKeys.has("billNumber") && slipOrderKeys.has("cancelReason") && slipOrderKeys.has("notes"), "landmark: engine order reads harvested");
+  assert.ok(slipItemKeys.has("instructions") && slipItemKeys.has("reward") && slipItemKeys.has("price"), "landmark: engine item reads harvested");
+  const missingOrder = [...slipOrderKeys].filter((k) => !schemaOrderKeys.has(k));
+  const missingItem = [...slipItemKeys].filter((k) => !schemaItemKeys.has(k));
+  assert.deepEqual(missingOrder, [], `order keys read by the slip engine but absent from printOrderSnapshotSchema: ${missingOrder.join(", ")}`);
+  assert.deepEqual(missingItem, [], `item keys read by the slip engine but absent from printOrderSnapshotItemSchema: ${missingItem.join(", ")}`);
+});
+
+// ── Print customization S3b — the pay QR's first-print anchor must reach the HOST lane ─────────────────────────
+// The slip engine reads `order.billFirstPrintedAt` (genericBillQr -> payQrPlan) for the "Valid till" line. The
+// snapshot picker is a whitelist and the schema is strict, so either side omitting the key would print a host slip
+// whose QR window restarts at every reprint while the counter's own print counts from the first one.
+test("PIN (S3b): the slip engine's harvested order keys include billFirstPrintedAt, and the snapshot picker and schema carry it", () => {
+  assert.ok(slipOrderKeys.has("billFirstPrintedAt"), "the engine reads order.billFirstPrintedAt (harvested from the slip sources)");
+  assert.ok(orderKeys.has("billFirstPrintedAt"), "so it is in the full harvested set the subset pin above checks");
+  assert.ok(schemaOrderKeys.has("billFirstPrintedAt"), "printOrderSnapshotSchema declares it, or the strict shape rejects the payload");
+  const snapshotSrc = stripComments(readFileSync(path.join(process.cwd(), SHARED_PRINT_JOB_PATH), "utf8"));
+  const pickerStart = snapshotSrc.indexOf("export function printOrderSnapshot(");
+  assert.ok(pickerStart >= 0, "landmark: printOrderSnapshot must exist");
+  assert.match(snapshotSrc.slice(pickerStart), /\bbillFirstPrintedAt\b/, "printOrderSnapshot's body carries billFirstPrintedAt");
+});
+
+// Print customization S6: the order's token is read by both legacy receipts and the block engine, so the snapshot
+// schema MUST carry it (positive landmark: the harvest really sees the key, so the subset test above is not blind to it).
+test("PIN (S6): tokenNumber is harvested from OrderReceipt, KOTReceipt and the slip engine, and the snapshot schema carries it", () => {
+  assert.ok(harvest(orderReceiptSrc, ORDER_KEY_RE).has("tokenNumber"), "OrderReceipt reads order.tokenNumber");
+  assert.ok(harvest(kotReceiptSrc, ORDER_KEY_RE).has("tokenNumber"), "KOTReceipt reads order.tokenNumber");
+  assert.ok(slipOrderKeys.has("tokenNumber"), "the slip engine reads order.tokenNumber");
+  assert.ok(directOrderKeys.has("tokenNumber"));
+  assert.ok("tokenNumber" in printOrderSnapshotSchema.shape, "the snapshot schema declares tokenNumber");
+  const snapshotBuilder = stripComments(readFileSync(path.join(process.cwd(), SHARED_PRINT_JOB_PATH), "utf8"));
+  assert.ok(snapshotBuilder.includes("order.tokenNumber"), "printOrderSnapshot copies it from the live order");
 });

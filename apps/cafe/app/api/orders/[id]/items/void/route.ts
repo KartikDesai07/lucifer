@@ -16,8 +16,8 @@ import { getSettings, gstConfigOf } from "@/lib/settings";
 import { gstConfigFromOrder } from "@/lib/receipt";
 import { rewardFromOrderSnapshot } from "@pos/shared/reward-redemption";
 import { resolveItemVoid, voidGuardFilter } from "@/lib/order-void";
-import { printConfigOf, printedSlipNumber } from "@/lib/print";
-import { nextSlipSequence } from "@/models/Counter";
+import { printConfigOf } from "@/lib/print";
+import { nextPrintedNumber } from "@/lib/slip-numbers";
 import { voidItemSchema } from "@/schemas";
 import { shouldStoreDiscountKind } from "@pos/shared/reward-redemption";
 import { chargesFromOrder, splitChargeTotals } from "@pos/shared/order-charges";
@@ -91,7 +91,7 @@ export async function POST(req: Request, { params }: Params) {
     const printCfg = printConfigOf(settings);
     const voidTicket =
       printCfg.kot.showNumber && printCfg.kot.numberVoidSlips
-        ? printedSlipNumber(await nextSlipSequence("kot"), printCfg.kot.numberStart)
+        ? await nextPrintedNumber("kot", printCfg.kot)
         : undefined;
 
     // Guarded on still-open, the round we read (a void never bumps kotRounds — it

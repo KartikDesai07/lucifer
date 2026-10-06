@@ -22,8 +22,8 @@ const readSrc = (rel: string): string => readFileSync(path.join(REPO_ROOT, rel),
 
 const USE_SETTINGS_SECTION_FORM = "apps/cafe/hooks/use-settings-section-form.ts";
 const SETTINGS_SECTIONS_TEST = "apps/cafe/lib/settings-sections.test.ts";
-const BILL_PRINT_CARD = "apps/cafe/components/settings/BillPrintCard.tsx";
-const KOT_PRINT_CARD = "apps/cafe/components/settings/KotPrintCard.tsx";
+const BILL_NUMBERING_CARD = "apps/cafe/components/settings/BillNumberingCard.tsx";
+const KOT_NUMBERING_CARD = "apps/cafe/components/settings/KotNumberingCard.tsx";
 const SETTINGS_COMPONENTS_DIR = "apps/cafe/components/settings";
 const SETTINGS_APP_DIR = "apps/cafe/app/(dashboard)/settings";
 
@@ -189,16 +189,15 @@ test('PIN: no file under components/settings/ or app/(dashboard)/settings/ conta
 
 // ── C — Defect 4 (second half): turning a number toggle off resets its start ─
 
-test("PIN: BillPrintCard.tsx resets billNumberStart to PRINT_NUMBER_START_MIN, with shouldValidate, when its toggle goes off", () => {
-  const src = stripComments(readSrc(BILL_PRINT_CARD));
+test("PIN: BillNumberingCard.tsx resets billNumberStart to PRINT_NUMBER_START_MIN, with shouldValidate, when its toggle goes off", () => {
+  const src = stripComments(readSrc(BILL_NUMBERING_CARD));
   const toggleIdx = src.indexOf('name="billShowNumber"');
   assert.ok(toggleIdx >= 0, "the billShowNumber toggle must exist");
   const onChangeIdx = src.indexOf("onChange=", toggleIdx);
   assert.ok(onChangeIdx > toggleIdx, "billShowNumber's Controller must define an onChange");
-  // Ends at the conditional reveal, as the KOT twin below does: the s66 regroup
-  // left no BillSwitch after this Controller, so the old end marker ran the
-  // scope to the end of the file.
-  const scopeEnd = src.indexOf("showNumber &&", onChangeIdx);
+  // Ends at the conditional reveal "{showNumber &&", as the KOT twin below does. The needle carries the brace so the
+  // GST hint line before it ("!showNumber &&", BillNumberingCard s78) cannot end the scope early.
+  const scopeEnd = src.indexOf("{showNumber &&", onChangeIdx);
   assert.ok(scopeEnd > onChangeIdx, "the conditional reveal must follow the toggle's onChange");
   const scope = src.slice(onChangeIdx, scopeEnd);
   assert.match(scope, /if \(!v\) \{/, "the reset must be gated on the toggle turning OFF");
@@ -209,8 +208,8 @@ test("PIN: BillPrintCard.tsx resets billNumberStart to PRINT_NUMBER_START_MIN, w
   );
 });
 
-test("PIN: KotPrintCard.tsx resets kotNumberStart to PRINT_NUMBER_START_MIN, with shouldValidate, when its toggle goes off", () => {
-  const src = stripComments(readSrc(KOT_PRINT_CARD));
+test("PIN: KotNumberingCard.tsx resets kotNumberStart to PRINT_NUMBER_START_MIN, with shouldValidate, when its toggle goes off", () => {
+  const src = stripComments(readSrc(KOT_NUMBERING_CARD));
   const toggleIdx = src.indexOf('name="kotShowNumber"');
   assert.ok(toggleIdx >= 0, "the kotShowNumber toggle must exist");
   const onChangeIdx = src.indexOf("onChange=", toggleIdx);
@@ -233,12 +232,12 @@ test("PIN: KotPrintCard.tsx resets kotNumberStart to PRINT_NUMBER_START_MIN, wit
 // the box visibly becomes PRINT_NUMBER_START_MIN before the operator ever hits
 // Save.
 
-test('PIN: BillPrintCard.tsx wires its number-start Input\'s onBlur through makeNumberStartBlurHandler(setValue, "billNumberStart")', () => {
-  const src = stripComments(readSrc(BILL_PRINT_CARD));
+test('PIN: BillNumberingCard.tsx wires its number-start Input\'s onBlur through makeNumberStartBlurHandler(setValue, "billNumberStart")', () => {
+  const src = stripComments(readSrc(BILL_NUMBERING_CARD));
   assert.match(
     src,
     /makeNumberStartBlurHandler\(setValue,\s*"billNumberStart"\)/,
-    "BillPrintCard must build its blur handler from the shared factory, bound to its OWN field name",
+    "BillNumberingCard must build its blur handler from the shared factory, bound to its OWN field name",
   );
   assert.match(
     src,
@@ -247,12 +246,12 @@ test('PIN: BillPrintCard.tsx wires its number-start Input\'s onBlur through make
   );
 });
 
-test('PIN: KotPrintCard.tsx wires its number-start Input\'s onBlur through makeNumberStartBlurHandler(setValue, "kotNumberStart")', () => {
-  const src = stripComments(readSrc(KOT_PRINT_CARD));
+test('PIN: KotNumberingCard.tsx wires its number-start Input\'s onBlur through makeNumberStartBlurHandler(setValue, "kotNumberStart")', () => {
+  const src = stripComments(readSrc(KOT_NUMBERING_CARD));
   assert.match(
     src,
     /makeNumberStartBlurHandler\(setValue,\s*"kotNumberStart"\)/,
-    "KotPrintCard must build its blur handler from the shared factory, bound to its OWN field name",
+    "KotNumberingCard must build its blur handler from the shared factory, bound to its OWN field name",
   );
   assert.match(
     src,

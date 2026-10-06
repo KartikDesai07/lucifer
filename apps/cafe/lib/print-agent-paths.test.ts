@@ -102,14 +102,15 @@ test("PIN: the agent leases on events aimed at it, names itself on the pulse (th
   assert.ok(agent.includes("PRINT_AGENT_SLIP_DEADLINE_MS"), "its wait on one slip is bounded");
 });
 
-test("PIN (spec §7.7): both receipts print the banner first, and every surface forwards it", () => {
+test("PIN (spec §7.7): both receipts print the banner first, and every surface (the S7 token included) forwards it", () => {
   for (const file of ["apps/cafe/components/pos/KOTReceipt.tsx", "apps/cafe/components/pos/OrderReceipt.tsx"]) {
     const s = src(file);
     assert.ok(s.includes("{order && (\n        <>\n          <PrintBanner text={banner} />"), `${file}: the banner is the first thing on the slip`);
   }
   const sources = src("apps/cafe/components/pos/PrintSources.tsx");
   assert.ok(sources.includes("banner={banner} ref={receiptRef}") && sources.includes("banner={banner}\n        ref={kotRef}"), "PrintSources forwards it to both");
-  assert.equal(count(src("apps/cafe/components/print/PrintHostPrintSources.tsx"), "banner={slip.banner}"), 2, "the host surfaces pass the slip's banner");
+  assert.ok(sources.includes("<TokenSlip order={order} settings={settings} banner={banner} ref={tokenRef} />"), "and to the S7 token slip (a reprinted token says DUPLICATE)");
+  assert.equal(count(src("apps/cafe/components/print/PrintHostPrintSources.tsx"), "banner={slip.banner}"), 3, "the host surfaces (kot, S7 token, receipt) pass the slip's banner");
   const banner = src("apps/cafe/components/pos/PrintBanner.tsx");
   assert.ok(banner.includes("if (!text) return null;"), "no banner on a first print");
   assert.ok(banner.includes('printColorAdjust: "exact"'), "a browser print keeps the black");

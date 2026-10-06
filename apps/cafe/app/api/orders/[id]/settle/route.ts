@@ -21,6 +21,7 @@ import { getSettings, gstConfigOf } from "@/lib/settings";
 import { printConfigOf } from "@/lib/print";
 import { issueBillNumber, BILL_NUMBER_UNCONFIRMED } from "@/lib/slip-numbers";
 import { runSettleFollowUps } from "@/lib/settle-followups";
+import { billFirstPrintFresh, stampFirstBillPrint, withFirstBillPrint } from "@/lib/bill-first-print";
 import { settledValue } from "@/lib/settled";
 import { settleOrderSchema } from "@/schemas";
 import {
@@ -303,9 +304,17 @@ export async function POST(req: Request, { params }: Params) {
     // alongside; allSettled, so neither can turn this landed settle into a throw.
     const printCfg = printConfigOf(settings);
     const numbering = printCfg.bill.showNumber && updated.billNumber === undefined;
-    const [numbered, followUps] = await Promise.allSettled([
-      numbering ? issueBillNumber(id, printCfg.bill.numberStart) : Promise.resolve(updated),
+    // The bill's first print is this settle when the call prints it and the stored
+    // stamp is not for this bill's total (never printed, or the total changed since):
+    // stamp the moment the pay QR's "Valid till" counts from. A SEPARATE guarded write on purpose
+    // (lib/bill-first-print.ts): folding it into the settle CAS above could overwrite
+    // a stamp a racing print-jobs enqueue just wrote, or let a print 409 a settle that
+    // is otherwise valid. allSettled keeps a stamp failure from touching the settle.
+    const stamping = intent?.bill === true && !billFirstPrintFresh(updated);
+    const [numbered, followUps, stamped] = await Promise.allSettled([
+      numbering ? issueBillNumber(id, printCfg.bill) : Promise.resolve(updated),
       runSettleFollowUps(old, updated, settings),
+      stamping ? stampFirstBillPrint(id, Date.now()) : Promise.resolve(null),
     ]);
     if (followUps.status === "rejected" || followUps.value.customersTouched) cache.del("customers");
     if (updated.tableNo) cache.del("tables");
@@ -321,17 +330,22 @@ export async function POST(req: Request, { params }: Params) {
     // Paid, but the number is unknown (the counter or the set failed): a 5xx
     // sends the client to Check, which prints from the stored doc.
     if (numbered.status === "rejected") return serverError(BILL_NUMBER_UNCONFIRMED, numbered.reason);
+    // The order exactly as answered: numbered, and carrying the first-print stamp. When this
+    // settle stamped, a failed stamp is "no stamp" (the slip counts from its own print time),
+    // never the stale stamp of another total, which would leave the QR off the paid bill.
+    const base = numbered.value ?? updated;
+    const answer = stamping ? withFirstBillPrint(base, stamped.status === "fulfilled" ? stamped.value : null) : base;
     // Printing Phase 1 (spec §7.4): the numbered bill, made from the order exactly as answered.
     const printJobs = intent
       ? await createOrderPrintJobs({
-          order: numbered.value ?? updated,
+          order: answer,
           slips: intent.bill ? [{ kind: "bill" }] : [],
           originDeviceId: intent.deviceId,
           queuedBy: authed.session.user.name ?? "",
           nowMs: Date.now(),
         })
       : null;
-    return success(withPrintJobs(numbered.value ?? updated, printJobs));
+    return success(withPrintJobs(answer, printJobs));
   } catch (error) {
     return serverError("Failed to settle order", error);
   }

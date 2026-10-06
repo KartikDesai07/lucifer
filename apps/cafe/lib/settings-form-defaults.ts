@@ -9,6 +9,8 @@ import {
   LOYALTY_REWARD_VALUE_DEFAULT,
 } from "@pos/shared/public-diner";
 import { TABLE_LONG_STAY_DEFAULT_MINUTES } from "@/lib/constants";
+import { payQrMinutesOf, payQrModeOf } from "@pos/shared/print-qr";
+import { tokenReadyClearMinutesOf } from "@pos/shared/slip-day";
 import type { Settings } from "@/types";
 
 // The single `defaultValues` builder every settings section form seeds from
@@ -63,6 +65,10 @@ export function settingsFormDefaults(settings: Settings): SettingsInput {
     // silently on Save for any doc written before this field existed.
     productLogo: settings.productLogo ?? "",
     fssai: settings.fssai ?? "",
+    upiId: settings.upiId ?? "",
+    // Never `||`: a stored 0 (= No limit) must survive the seed.
+    payQrMode: payQrModeOf(settings.payQrMode),
+    payQrValidMinutes: payQrMinutesOf(settings.payQrValidMinutes),
 
     billShowNumber: printConfig.bill.showNumber,
     billNumberStart: printConfig.bill.numberStart,
@@ -88,6 +94,12 @@ export function settingsFormDefaults(settings: Settings): SettingsInput {
     kotShowNotes: printConfig.kot.showNotes,
     kotPaperWidth: printConfig.kot.paperWidth,
     kotFontSize: printConfig.kot.fontSize,
+
+    // Tokens & numbering (S6): read through printConfigOf like the bill and ticket fields above.
+    tokenEnabled: printConfig.token.enabled,
+    tokenNumberStart: printConfig.token.numberStart,
+    numberResetMinutes: printConfig.token.resetMinutes,
+    tokenReadyClearMinutes: tokenReadyClearMinutesOf(settings.tokenReadyClearMinutes),
 
     // Same lean-doc hazard as productLogo above: a pre-CR2 Settings
     // document carries none of these three, so defaultValues must supply

@@ -1,8 +1,8 @@
 import type { IOrder, IOrderItem } from "@/models/Order";
 import type { IOrderRequest } from "@/models/OrderRequest";
 import { computeOrderTotals, type GstConfig } from "@/lib/receipt";
-import { printedSlipNumber, type PrintConfig } from "@/lib/print";
-import { nextSlipSequence } from "@/models/Counter";
+import type { PrintConfig } from "@/lib/print";
+import { nextPrintedNumber } from "@/lib/slip-numbers";
 import { SELF_ORDER_SOURCE } from "@pos/shared/public";
 import type { DiscountKind } from "@pos/shared/constants";
 import {
@@ -234,7 +234,7 @@ export async function acceptAddRoundBranch(
     ...(rewardForTotals ? { reward: rewardForTotals } : {}),
   });
   const ticket = printCfg.kot.showNumber
-    ? printedSlipNumber(await nextSlipSequence("kot"), printCfg.kot.numberStart)
+    ? await nextPrintedNumber("kot", printCfg.kot)
     : undefined;
   const kotNumbers = buildKotNumbers(openTab.kotNumbers, round, ticket);
   // P4-A — this path is the SECOND writer of kotRounds (a diner's QR round,

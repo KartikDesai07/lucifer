@@ -183,8 +183,8 @@ test("PIN: useKotPrintBridge sequences KOT then receipt via a guard ref — onAf
 
   assert.match(
     src,
-    /if \(shouldPrintReceipt && lastOrder && !shouldPrintKot\) \{/,
-    "the receipt effect must be gated on shouldPrintKot being clear — it fires on the NEXT effect flush, safely after the KOT's own teardown",
+    /if \(shouldPrintReceipt && lastOrder && !shouldPrintKot && !shouldPrintToken\) \{/,
+    "the receipt effect must be gated on shouldPrintKot AND shouldPrintToken (S7: KOT -> token -> receipt) being clear — it fires on the NEXT effect flush, safely after the KOT's own teardown",
   );
   assert.match(
     src,
@@ -242,7 +242,12 @@ test("PIN: RECEIPT_PAGE_STYLE carries the 80mm/4mm page setup, and every print t
   // the right hook parameter.
   const bridgeSrc = readSrc(USE_KOT_PRINT_BRIDGE);
   const bridgeMatches = bridgeSrc.match(/pageStyle:\s*receiptPageStyle\(/g) ?? [];
-  assert.equal(bridgeMatches.length, 2, "useKotPrintBridge must build a page style for both the receipt AND the KOT print hooks");
+  assert.equal(bridgeMatches.length, 3, "useKotPrintBridge must build a page style for the receipt, the KOT AND (S7) the token print hooks");
+  assert.match(
+    bridgeSrc,
+    /pageStyle:\s*receiptPageStyle\(token\?\.billPaperWidth \?\? kotPaperWidth\)/,
+    "the token job must use the BILL paper width (it prints where the bill prints); the kotPaperWidth filler is only for callers that never queue a token",
+  );
   assert.match(
     bridgeSrc,
     /pageStyle:\s*receiptPageStyle\(receipt\?\.billPaperWidth \?\? kotPaperWidth\)/,

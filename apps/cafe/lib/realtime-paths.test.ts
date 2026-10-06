@@ -78,6 +78,9 @@ const AREAS_ROUTE = "apps/cafe/app/api/areas/route.ts";
 const AREA_ID_ROUTE = "apps/cafe/app/api/areas/[id]/route.ts";
 const TABLE_TOKEN_ROUTE = "apps/cafe/app/api/tables/[tableNo]/token/route.ts";
 const REJECT_ROUTE = "apps/cafe/app/api/order-requests/[id]/reject/route.ts";
+// Print customization S8 — the POS token sheet's write: a Ready / Collected mark nudges every other device (kot-ticked).
+const TOKEN_ID_ROUTE = "apps/cafe/app/api/tokens/[id]/route.ts";
+const TOKENS_ROUTE = "apps/cafe/app/api/tokens/route.ts";
 
 // ── (1) PURE LOGIC: signRealtime / buildRealtimeRequest ────────────────────
 
@@ -401,7 +404,7 @@ test("PIN: the room key shape is `cafe:${tenantId}`", () => {
 
 // ── (5) CALL-SITE PINS ──────────────────────────────────────────────────────
 
-test("PIN: exactly the FOURTEEN intended write sites call publishCafeEvent with the right kind (NOT broadcastCafeEvent, NOT wrapped in a route-local after()", () => {
+test("PIN: exactly the FIFTEEN intended write sites call publishCafeEvent with the right kind (NOT broadcastCafeEvent, NOT wrapped in a route-local after()", () => {
   // Each entry may list MORE THAN ONE expected kind for the same file (the
   // order-request route fires both self-order and, conditionally, kot-fired).
   const expectations: Array<[string, CafeEventKind[]]> = [
@@ -416,6 +419,7 @@ test("PIN: exactly the FOURTEEN intended write sites call publishCafeEvent with 
     [MOVE_ROUTE, ["order-changed"]],
     [ORDER_ID_ROUTE, ["order-changed"]],
     [TABLE_ROUTE, ["order-changed"]],
+    [TOKEN_ID_ROUTE, ["kot-ticked"]],
   ];
 
   let totalCalls = 0;
@@ -439,9 +443,11 @@ test("PIN: exactly the FOURTEEN intended write sites call publishCafeEvent with 
       totalCalls += (stripped.match(new RegExp(callRe.source, "g")) ?? []).length;
     }
   }
-  // 14 = one per landed write, plus the table move's uncertain-write catch
-  // (a nudge only triggers refetches, so a write that MAY have landed gets one).
-  assert.equal(totalCalls, 14, `expected exactly 14 publish calls across the 11 files, counted ${totalCalls}`);
+  // 15 = one per landed write, plus the table move's uncertain-write catch
+  // (a nudge only triggers refetches, so a write that MAY have landed gets one),
+  // plus S8's token route (one kot-ticked after a Ready / Collected mark).
+  assert.equal(totalCalls, 15, `expected exactly 15 publish calls across the 12 files, counted ${totalCalls}`);
+  assert.equal(expectations.length, 12, "twelve files");
 
   // The deferral itself has MOVED: it is no longer a per-call-site after(...)
   // wrapper — it now lives ONCE inside publishCafeEvent. Pin that a route file
@@ -455,6 +461,26 @@ test("PIN: exactly the FOURTEEN intended write sites call publishCafeEvent with 
       `${rel} must call publishCafeEvent(...) directly — never re-wrap it in a route-local after(() => ...)`,
     );
   }
+});
+
+test("PIN (S8): the token route publishes kot-ticked exactly once, AFTER both KotTick writers and before the success return; the token list GET publishes nothing", () => {
+  const src = stripComments(readSrc(TOKEN_ID_ROUTE));
+  assert.match(src, /export async function POST\(/, "positive landmark: the token route has a POST");
+  const calls = src.match(/publishCafeEvent\(\s*"[a-z-]+"\s*\)/g) ?? [];
+  assert.deepEqual(calls.map((c) => c.replace(/\s+/g, "")), ['publishCafeEvent("kot-ticked")'], "exactly one publish, of the kitchen kind");
+  const publishAt = src.indexOf("publishCafeEvent(");
+  const readyWriteAt = src.indexOf("writeKotReady(");
+  const collectedWriteAt = src.indexOf("writeTokenCollected(");
+  const successAt = src.indexOf("success({ id, action");
+  assert.ok(readyWriteAt > 0 && collectedWriteAt > 0 && successAt > 0, "landmarks: both writers and the success return exist");
+  assert.ok(publishAt > readyWriteAt && publishAt > collectedWriteAt, "the nudge goes out only after the write");
+  assert.ok(publishAt < successAt, "and before the success return");
+  assert.ok(!src.includes("broadcastCafeEvent"), "only publishCafeEvent, never the raw broadcaster");
+  assert.ok(!/after\(\s*\(\)\s*=>\s*publishCafeEvent/.test(src), "no route-local after() wrapper");
+  assert.ok(!/publishCafeEvent\(\s*"(self-order|print-job|print-status)"/.test(src), "no kind beyond the ones the Worker already carries");
+  const listSrc = stripComments(readSrc(TOKENS_ROUTE));
+  assert.match(listSrc, /export async function GET\(/, "positive landmark: the token list route has a GET");
+  assert.ok(!listSrc.includes("publishCafeEvent"), "a read publishes nothing");
 });
 
 test("NEGATIVE PIN: no file under app/api/print* or lib/print-queue-claim.ts calls broadcastCafeEvent (print lane untouched)", () => {
@@ -636,6 +662,41 @@ test("parity: PULSE_EVENT_KINDS is exactly [\"self-order\"] and LIVE_STATE_EVENT
   for (const k of ["print-job", "kot-ticked", "self-order"]) {
     assert.ok(!live.includes(k), `LIVE_STATE_EVENT_KINDS must not contain "${k}"`);
   }
+});
+
+test("parity (S8): NOW_SERVING_EVENT_KINDS is exactly the literal [kot-fired, kot-ticked, order-changed], every member in CAFE_EVENT_KINDS (source AND runtime), no self-order / print-job — so no Worker redeploy", () => {
+  const hookSrc = stripComments(readSrc(USE_REALTIME));
+  const match = hookSrc.match(/const NOW_SERVING_EVENT_KINDS = \[([^\]]*)\] as const;/);
+  assert.ok(match, "positive landmark: use-realtime.ts must declare `const NOW_SERVING_EVENT_KINDS = [...] as const;` as a literal array");
+  const kinds = Array.from(match![1].matchAll(/"([^"]+)"/g)).map((m) => m[1]);
+  assert.deepEqual(kinds, ["kot-fired", "kot-ticked", "order-changed"], "the exact kinds, in this order");
+  // the kind list as the PUBLISH side's source declares it (stripped of its comments, which hold arrows and kind names)
+  const publishSrc = stripComments(readSrc(REALTIME_PUBLISH));
+  const declared = publishSrc.match(/export const CAFE_EVENT_KINDS = \[([^\]]*)\] as const;/);
+  assert.ok(declared, "positive landmark: realtime-publish.ts declares CAFE_EVENT_KINDS as a literal array");
+  const published = Array.from(declared![1].matchAll(/"([^"]+)"/g)).map((m) => m[1]);
+  assert.ok(published.includes("self-order") && published.includes("print-job"), "landmark: the publish list really carries the kinds the token board must not follow");
+  for (const k of kinds) {
+    assert.ok(published.includes(k), `NOW_SERVING_EVENT_KINDS entry "${k}" must be in the source's CAFE_EVENT_KINDS`);
+    assert.ok((CAFE_EVENT_KINDS as readonly string[]).includes(k), `NOW_SERVING_EVENT_KINDS entry "${k}" must be in the imported CAFE_EVENT_KINDS`);
+  }
+  assert.ok(kinds.length < published.length, "a STRICT subset, not the full set");
+  for (const banned of ["self-order", "print-job", "print-status"]) {
+    assert.ok(!kinds.includes(banned), `the token board must not react to "${banned}"`);
+  }
+  // the token hook is wired to exactly this list and its own spec, once
+  assert.match(hookSrc, /export function useTokenRealtime\(\): void \{\s*useRealtimeInvalidate\(NOW_SERVING_EVENT_KINDS, TOKEN_REALTIME\);\s*\}/, "useTokenRealtime subscribes NOW_SERVING_EVENT_KINDS with TOKEN_REALTIME");
+});
+
+test("parity (S8): the Worker's EVENT_KINDS still contains every NOW_SERVING_EVENT_KINDS member (the token board needs no Worker change), and the CAFE/Worker lists are untouched by S8", () => {
+  const workerSrc = readSrc(WORKER_SRC);
+  const match = workerSrc.match(/const EVENT_KINDS = \[([^\]]*)\] as const;/);
+  assert.ok(match, "positive landmark: the Worker declares `const EVENT_KINDS = [...] as const;`");
+  const workerKinds = Array.from(match![1].matchAll(/"([^"]+)"/g)).map((m) => m[1]);
+  const hookSrc = stripComments(readSrc(USE_REALTIME));
+  const kinds = Array.from(hookSrc.match(/const NOW_SERVING_EVENT_KINDS = \[([^\]]*)\] as const;/)![1].matchAll(/"([^"]+)"/g)).map((m) => m[1]);
+  for (const k of kinds) assert.ok(workerKinds.includes(k), `the Worker must already carry "${k}"`);
+  assert.deepEqual([...CAFE_EVENT_KINDS], workerKinds, "S8 added no kind: the two lists are still identical");
 });
 
 test("PIN: hooks/use-realtime.ts is actually imported by the Kitchen page", () => {

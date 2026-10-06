@@ -1,6 +1,6 @@
 import { connectDB } from "@/lib/db";
 import { Settings } from "@/models/Settings";
-import { getSettings, invalidateSettingsCache } from "@/lib/settings";
+import { getSettings, invalidateSettingsCache, settingsUpdateOf } from "@/lib/settings";
 import cache from "@/lib/cache";
 import { PUBLIC_MENU_CACHE_KEY } from "@/lib/public-menu";
 import { invalidateTelegramConfigCache } from "@/lib/telegram/config";
@@ -40,7 +40,8 @@ export async function PUT(req: Request) {
 
   try {
     await connectDB();
-    const settings = await Settings.findOneAndUpdate({}, parsed.data, {
+    // A null slip template is cleared ($unset); see settingsUpdateOf.
+    const settings = await Settings.findOneAndUpdate({}, settingsUpdateOf(parsed.data), {
       new: true,
       upsert: true,
       setDefaultsOnInsert: true,

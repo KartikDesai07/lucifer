@@ -8,7 +8,14 @@
 
 import { useCallback } from "react";
 
-import { billPrintJob, kotPrintJob, voidPrintJob, type PrintHostRouting } from "@/lib/print-routing";
+import {
+  billPrintJob,
+  kotPrintJob,
+  opensWithToken,
+  tokenPrintJob,
+  voidPrintJob,
+  type PrintHostRouting,
+} from "@/lib/print-routing";
 import { printJobRefOf } from "@/lib/print-agent-calls";
 import type { Order, OrderVoid } from "@/types";
 import { useHostRouting, type PrintRoutingHost } from "@/hooks/use-host-routing";
@@ -20,6 +27,7 @@ export interface PrintRoutingLocal {
   queueVoidSlip: (order: Order, entry: OrderVoid) => void;
   reprintKot: () => void;
   queueReceipt: (order: Order) => void;
+  queueTokenSlip: (order: Order) => void;
   /** Records "this is the tab a reprint would act on" WITHOUT queueing a print.
    *  Separate from the four above because the routed lane never runs them, and
    *  `lastOrder` is not a print signal: `PosHeader.tsx:57` gates the KOT
@@ -29,8 +37,9 @@ export interface PrintRoutingLocal {
 
 // `setLastOrder` is deliberately NOT re-exported: it is an INPUT to the seam
 // (the recorder the wrappers call on both lanes), not part of the routed print
-// surface — `usePosPrint` already exposes its own.
-export interface PrintRouting extends Omit<PrintRoutingLocal, "setLastOrder"> {
+// surface — `usePosPrint` already exposes its own. `queueTokenSlip` is an input
+// too: the token routes only through `queueKotRound`.
+export interface PrintRouting extends Omit<PrintRoutingLocal, "setLastOrder" | "queueTokenSlip"> {
   routing: PrintHostRouting;
   hostConfigured: boolean;
   queueMovedSlip: PrintRoutingHost["queueMovedSlip"];
@@ -61,6 +70,7 @@ export function usePrintRouting(args: {
     queueVoidSlip: localVoid,
     reprintKot: localReprint,
     queueReceipt: localBill,
+    queueTokenSlip: localToken,
     setLastOrder: noteOrder,
   } = local;
 
@@ -71,7 +81,11 @@ export function usePrintRouting(args: {
     const resolved = round ?? order.kotRounds;
     noteOrder(order);
     routePrint(() => kotPrintJob(order, resolved), () => localKot(order, resolved), printJobRefOf(order, "kot"));
-  }, [routePrint, localKot, noteOrder]);
+    // The token slip follows the opening KOT (opensWithToken is the one rule the server's job creation shares).
+    if (opensWithToken(order, resolved)) {
+      routePrint(() => tokenPrintJob(order, { reprint: false }), () => localToken(order), printJobRefOf(order, "token"));
+    }
+  }, [routePrint, localKot, localToken, noteOrder]);
 
   const queueVoidSlip = useCallback((order: Order, entry: OrderVoid) => {
     noteOrder(order);

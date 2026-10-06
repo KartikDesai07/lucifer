@@ -5,6 +5,8 @@
 //   npm run deploy -- --profile <name>      → a named profile (another cafe / account)
 //   npm run deploy -- --preview             → preview deploy instead of production
 //   npm run deploy -- --list                → show configured profiles
+//   npm run deploy -- --no-cache            → build WITHOUT restoring Vercel's build cache (`vercel --force`;
+//                                             the documented first fix when a build is OOM-killed)
 //
 // Profiles live in deploy.profiles.json (repo root, GITIGNORED — may hold tokens).
 // Copy deploy.profiles.example.json to start. Each profile targets one Vercel
@@ -46,12 +48,14 @@ const args = process.argv.slice(2);
 let profileName = "default";
 let preview = false;
 let list = false;
+let noCache = false;
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
   if (a === "--profile") profileName = args[++i] ?? fail("--profile needs a name");
   else if (a === "--preview") preview = true;
   else if (a === "--list") list = true;
-  else fail(`unknown option "${a}" (valid: --profile <name>, --preview, --list)`);
+  else if (a === "--no-cache") noCache = true;
+  else fail(`unknown option "${a}" (valid: --profile <name>, --preview, --list, --no-cache)`);
 }
 
 // ── profiles ─────────────────────────────────────────────────────────────────
@@ -201,6 +205,7 @@ if (profile.tokenEnv && !token && !profile.token) {
 // ── deploy (and nothing else) ────────────────────────────────────────────────
 const vercelArgs = ["vercel", "deploy", "--yes"];
 if (!preview) vercelArgs.push("--prod");
+if (noCache) vercelArgs.push("--force");
 if (profile.scope) vercelArgs.push("--scope", profile.scope);
 if (token) vercelArgs.push("--token", token);
 

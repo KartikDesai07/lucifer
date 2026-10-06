@@ -11,6 +11,9 @@ import {
   kotPrintJob,
   voidPrintJob,
   billPrintJob,
+  tokenPrintJob,
+  opensWithToken,
+  TOKEN_SLIP_ROUND,
   movedPrintJob,
   cancelNoticePrintJob,
   eodPrintJob,
@@ -277,6 +280,71 @@ test("billPrintJob + printJobKeyOf: a reprint has NO jobKey (undefined, can neve
   const firstKey = printJobKeyOf(billPrintJob(orderFixture(), { reprint: false }).payload);
   assert.equal(typeof firstKey, "string");
   assert.ok(firstKey !== undefined && firstKey.length > 0);
+});
+
+// ── (f2) the token slip (print-customization S7) ─────────────────────────
+
+test("tokenPrintJob: the payload parses printJobPayloadSchema, is kind token, carries the snapshot (tokenNumber included) and the label names the number and where", () => {
+  const order = orderFixture({ tokenNumber: 7 });
+  const job = tokenPrintJob(order, { reprint: false });
+  assertPayloadParses("token", job.payload);
+  assertKind(job.payload, "token");
+  assert.equal(job.payload.snapshot._id, order._id);
+  assert.equal(job.payload.snapshot.tokenNumber, 7, "the snapshot must carry the number the slip prints");
+  assert.equal(job.label, "Token 7 · T-4");
+  assert.ok(job.label.length <= PRINT_JOB_LABEL_MAX_CHARS);
+  assert.equal(tokenPrintJob(orderFixture({ tokenNumber: 7, tableNo: undefined }), { reprint: false }).label, "Token 7 · ORD-0001", "an unseated tab is named by its orderId");
+});
+
+test("tokenPrintJob: reprint:true sets payload.reprint === true and the label says reprint; reprint:false OMITS the key (never a literal false)", () => {
+  const order = orderFixture({ tokenNumber: 7 });
+  const withReprint = tokenPrintJob(order, { reprint: true });
+  assertKind(withReprint.payload, "token");
+  assert.equal(withReprint.payload.reprint, true);
+  assert.equal(withReprint.label, "Token reprint 7 · T-4");
+  assertPayloadParses("token reprint", withReprint.payload);
+
+  const first = tokenPrintJob(order, { reprint: false });
+  assert.equal(Object.hasOwn(first.payload, "reprint"), false, "reprint must be omitted, not set to false");
+});
+
+test("tokenPrintJob + printJobKeyOf/printJobOrderIdOf: a first token keys to token:<_id>, a reprint has NO key, and the claim looks the order up by _id", () => {
+  const order = orderFixture({ tokenNumber: 7 });
+  assert.equal(printJobKeyOf(tokenPrintJob(order, { reprint: false }).payload), `token:${order._id}`);
+  assert.equal(printJobKeyOf(tokenPrintJob(order, { reprint: true }).payload), undefined);
+  assert.equal(printJobOrderIdOf(tokenPrintJob(order, { reprint: false }).payload), order._id);
+});
+
+test("tokenPrintJob: an order with no tokenNumber still builds a valid, non-empty label (the number is simply absent, never the word undefined)", () => {
+  const job = tokenPrintJob(orderFixture(), { reprint: true });
+  assertPayloadParses("token (no number)", job.payload);
+  assert.equal(job.label, "Token reprint · T-4");
+  assert.ok(!job.label.includes("undefined"));
+  assert.equal(Object.hasOwn(job.payload.kind === "token" ? job.payload.snapshot : {}, "tokenNumber"), false, "omit-empty: no key on the snapshot either");
+});
+
+test("TOKEN_SLIP_ROUND is 1 (the round-1 KOT's slip), and opensWithToken is true ONLY for round 1 with a numeric tokenNumber", () => {
+  assert.equal(TOKEN_SLIP_ROUND, 1);
+  // Landmark: the one true cell is reachable, so the false cells below are not an always-false function.
+  assert.equal(opensWithToken({ tokenNumber: 7 }, 1), true);
+  assert.equal(opensWithToken({ tokenNumber: 0 }, 1), true, "typeof gate, not truthiness: token 0 is a number");
+  assert.equal(opensWithToken({ tokenNumber: 7 }, 2), false, "an add-round never prints a token");
+  assert.equal(opensWithToken({ tokenNumber: 7 }, 0), false);
+  const notNumbers: unknown[] = [undefined, null, "7", "", {}, [], true];
+  for (const bad of notNumbers) {
+    assert.equal(opensWithToken({ tokenNumber: bad }, 1), false, `${JSON.stringify(bad)} is not a token number`);
+  }
+  assert.equal(opensWithToken({}, 1), false, "no tokenNumber key (tokens were off at creation)");
+  assert.equal(opensWithToken({ tokenNumber: 7, source: "self-order" } as { tokenNumber: number }, 1), true, "R13(a): QR self-orders print the token too, there is no source check");
+});
+
+test("PIN: opensWithToken has NO source check in print-routing.ts (owner R13 answer: QR self-orders print the token slip), with the function itself as the landmark", () => {
+  const src = readSrc("apps/cafe/lib/print-routing.ts");
+  const start = src.indexOf("export function opensWithToken(");
+  assert.ok(start >= 0, "landmark: opensWithToken is defined here");
+  const body = src.slice(start, src.indexOf("\n}\n", start));
+  assert.ok(body.includes("TOKEN_SLIP_ROUND") && body.includes('typeof order.tokenNumber === "number"'), "landmark: the body holds the round and typeof gates");
+  assert.ok(!/source|SELF_ORDER/.test(body), "no source/self-order condition may gate the token");
 });
 
 test("voidPrintJob: reprint:true sets payload.reprint === true; reprint:false OMITS the key entirely", () => {

@@ -50,6 +50,7 @@ import type { PromoCodeConfig, SelfOrderMode } from "./public";
 import type { LoyaltyRewardKind } from "./public-diner";
 import type { DinerBannerInput } from "./schemas/settings-diner.schema";
 import type { OrderCharge } from "./order-charges";
+import type { PayQrMode } from "./print-qr";
 
 import type {
   PaymentMode,
@@ -309,6 +310,13 @@ export interface Order {
   idemKey?: string;
   kotIdemKeys?: string[];
   billNumber?: number;
+  // Print customization S6: the order's token number, drawn once at create when tokens are on (Pay Now, a held tab,
+  // an accepted QR order). Never set on an add-round, never re-drawn on a retry. Absent = no token.
+  tokenNumber?: number;
+  // Print customization S3b: when this bill was FIRST printed (ISO). Set once by the server (lib/bill-first-print.ts,
+  // a first-write CAS), never by a client; a bill's pay QR counts its "Valid till" from it. Absent = never printed
+  // through the server.
+  billFirstPrintedAt?: string;
   // Absent until the first void / the cancel — an order that never had either
   // carries none of these fields (nothing to show, nothing stored).
   voids?: OrderVoid[];
@@ -401,6 +409,14 @@ export interface Settings {
   // case — never assume a string is there.
   productLogo?: string;
 
+  // Print customization S3: the cafe's UPI ID ("yourshop@okaxis"), encoded by a bill's "Scan to pay" QR line.
+  // Optional for the same lean-read reason as productLogo: older documents have none. "" = not set.
+  upiId?: string;
+  // S3b: when a bill prints the pay QR (PAY_QR_MODES) and for how many minutes after its first print; 0 = No limit.
+  // Optional for the same lean-read reason: read through payQrModeOf / payQrMinutesOf, never raw.
+  payQrMode?: PayQrMode;
+  payQrValidMinutes?: number;
+
   // Print customization. Every one of these carries the same hazard as
   // logo/fssai above and then some: they are NEW, so every Settings document
   // written before this feature has none of them, and a lean read returns
@@ -432,6 +448,21 @@ export interface Settings {
   kotShowNotes?: boolean;
   kotPaperWidth?: PaperWidth;
   kotFontSize?: PrintFontSize;
+  // Print customization S6: tokens + the daily restart time of token/KOT/bill numbers. Optional: documents written
+  // before S6 have none — read via printConfigOf (lib/print.ts), never raw.
+  tokenEnabled?: boolean;
+  tokenNumberStart?: number;
+  numberResetMinutes?: number;
+  // S8: minutes a Ready token stays on the token list; read via tokenReadyClearMinutesOf (slip-day.ts), never raw.
+  tokenReadyClearMinutes?: number;
+
+  // Print customization S2 — a saved bill / kitchen-ticket design (S7: and token slip) (print-template.ts). `unknown` on purpose:
+  // the document stores it as Mongoose Mixed, so it is whatever was written. Read it ONLY through the cafe's
+  // lib/print-template-resolve.ts (READ schema; anything unreadable prints the legacy slip). Absent = today's
+  // slip. Written only by PUT /api/settings (null clears it); no settings form carries it.
+  billTemplate?: unknown;
+  kotTemplate?: unknown;
+  tokenTemplate?: unknown;
 
   // Self-order (QR) — CR2. Same lean-read hazard as the print block above:
   // these are NEW, so a pre-CR2 Settings document has none of them. Read as

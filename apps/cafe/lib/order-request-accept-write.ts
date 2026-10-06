@@ -166,12 +166,16 @@ export async function recoverOrderCreate(
 // consented total is simply wrong, and no per-line price compare can catch
 // it (GST is not a line field). Moved here from -core.ts (CR2.2d split)
 // purely for the line budget — order-request-accept.ts is its only caller.
+// Compares EFFECTIVE GST: a config that taxes nothing (off, or a 0% rate —
+// the gate every lib/receipt.ts GST function uses) equals any other such
+// config whatever rate/mode it stores. A GST-off cafe keeps the model default
+// gstRate 5 while its QR tabs are stamped gstRate 0; a raw compare rejected
+// every QR add-round on such a cafe.
+const taxesNothing = (cfg: GstConfig): boolean => !cfg.gstEnabled || cfg.gstRate <= 0;
+
 export function gstConfigDrifted(tabCfg: GstConfig, liveCfg: GstConfig): boolean {
-  return (
-    tabCfg.gstEnabled !== liveCfg.gstEnabled ||
-    tabCfg.gstRate !== liveCfg.gstRate ||
-    tabCfg.gstMode !== liveCfg.gstMode
-  );
+  if (taxesNothing(tabCfg) || taxesNothing(liveCfg)) return taxesNothing(tabCfg) !== taxesNothing(liveCfg);
+  return tabCfg.gstRate !== liveCfg.gstRate || tabCfg.gstMode !== liveCfg.gstMode;
 }
 
 // Distinguishes a sourceRequestIds collision (a concurrent accept already

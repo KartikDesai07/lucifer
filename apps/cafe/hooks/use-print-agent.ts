@@ -120,7 +120,8 @@ export function usePrintAgent({ enabled, isHost, deviceId, tabId, busy, queueSli
       });
     const created = createPrintAgent({
       deviceId,
-      lease: () => apiSend<PrintLeaseData>(LEASE_URL, "POST", { deviceId, tabId }),
+      // tokenSlips: this page prints "token" jobs (S7); a page from before S7 leases none (print-lease.ts).
+      lease: () => apiSend<PrintLeaseData>(LEASE_URL, "POST", { deviceId, tabId, tokenSlips: true }),
       ack: (id, body) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", body),
       print,
       printerReady: canPrintNow,

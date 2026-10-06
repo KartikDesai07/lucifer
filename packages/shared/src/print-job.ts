@@ -15,7 +15,7 @@ import type { PrintHostPrinterState } from "./print-host-printer";
 /** The five thermal documents + reprint/notice paths a `PrintJob` can carry.
  *  `"cancel-notice"` is the "Notify Kitchen" stop for an already-cancelled
  *  order — distinct from a line-level `"void"`. */
-export const PRINT_JOB_KINDS = ["kot", "bill", "void", "moved", "eod", "cancel-notice"] as const;
+export const PRINT_JOB_KINDS = ["kot", "bill", "void", "moved", "eod", "cancel-notice", "token"] as const;
 export type PrintJobKind = (typeof PRINT_JOB_KINDS)[number];
 
 /** Phase 1 lifecycle (docs/superpowers/specs/2026-10-02-printing-reliability-design.md §7.1).
@@ -275,6 +275,11 @@ export function printOrderSnapshot(order: Order): PrintOrderSnapshot {
     // order with no array carries no key, and chargesFromOrder falls back to
     // the scalars exactly as it does for a pre-CB-CHG order.
     ...(charges && charges.length > 0 ? { charges } : {}),
+    // The pay QR's "Valid till" anchor — omit-empty like `charges`: a bill not
+    // yet stamped carries no key, so every other snapshot stays byte-identical.
+    ...(order.billFirstPrintedAt ? { billFirstPrintedAt: order.billFirstPrintedAt } : {}),
+    // S6: the token the customer holds — omit-empty, so an order without one snapshots byte-identically.
+    ...(typeof order.tokenNumber === "number" ? { tokenNumber: order.tokenNumber } : {}),
     items: order.items.map((item) => {
       const { productId, name, price, qty, variation, modifiers, instructions, kotRound } = item;
       // CB-5B S14 — `reward`/`note` ride along so a host-printed slip is the

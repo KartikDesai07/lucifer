@@ -490,7 +490,8 @@ test('PIN: print-queue-claim.ts\'s printJobEligibility bill branch checks payloa
   const fnBody = claimSrc.slice(fnStart, fnEnd);
 
   const billCaseStart = mustIndexOf(fnBody, 'case "bill":', "the bill case");
-  const voidCaseStart = mustIndexOf(fnBody, 'case "void":', "the void case (marks the end of the bill case)");
+  // S7 put the token case between bill and void: the bill case now ends where the token case starts.
+  const voidCaseStart = mustIndexOf(fnBody, 'case "token":', "the token case (marks the end of the bill case)");
   const billBody = fnBody.slice(billCaseStart, voidCaseStart);
 
   const reprintCheckIdx = mustIndexOf(billBody, "payload.reprint === true", "the reprint early-return check");
@@ -501,6 +502,27 @@ test('PIN: print-queue-claim.ts\'s printJobEligibility bill branch checks payloa
   );
 
   assert.match(billBody, /reason:\s*"order-cancelled"/, "positive landmark: the ordinary cancelled-order gate must still dismiss with order-cancelled for the no-reprint path");
+});
+
+test('PIN (S7): the token branch of printJobEligibility checks payload.reprint === true STRICTLY BEFORE the order === null || order.status === "Cancelled" gate, and keeps that gate for the first-time token (landmarks: both strings sit INSIDE the token case, which ends at the void case)', () => {
+  const claimSrc = stripComments(readSrc(PRINT_QUEUE_CLAIM_LIB));
+  const fnStart = mustIndexOf(claimSrc, "export function printJobEligibility", "printJobEligibility");
+  const fnEnd = mustIndexOf(claimSrc, "export interface ClaimedPrintJob", "the boundary after printJobEligibility");
+  const fnBody = claimSrc.slice(fnStart, fnEnd);
+  const tokenStart = mustIndexOf(fnBody, 'case "token":', "the token case");
+  const tokenBody = fnBody.slice(tokenStart, mustIndexOf(fnBody, 'case "void":', "the void case (marks the end of the token case)"));
+  const reprintIdx = mustIndexOf(tokenBody, "payload.reprint === true", "the reprint early-return");
+  const cancelledIdx = mustIndexOf(tokenBody, 'order === null || order.status === "Cancelled"', "the cancelled-order gate");
+  assert.ok(reprintIdx < cancelledIdx, "the reprint early-return must run STRICTLY BEFORE the cancelled gate in the token branch");
+  assert.match(tokenBody, /reason:\s*"order-cancelled"/, "positive landmark: the first-time token is still dismissed as order-cancelled");
+});
+
+test('PIN (S7): printJobNeedsOrderRead names the token as a read ONLY when it is not a reprint (the eligibility gate needs the live order; a reprint is eligible without it)', () => {
+  const claimSrc = stripComments(readSrc(PRINT_QUEUE_CLAIM_LIB));
+  const start = mustIndexOf(claimSrc, "export function printJobNeedsOrderRead", "printJobNeedsOrderRead");
+  const body = claimSrc.slice(start, mustIndexOf(claimSrc, "export function printJobEligibility", "the next export"));
+  assert.ok(body.includes('payload.kind === "bill"'), "landmark: bill still reads the order");
+  assert.ok(/payload\.kind === "token" && payload\.reprint !== true/.test(body), "the token needs a read only when it is not a reprint");
 });
 
 // ═════════════════════════════════════════════════════════════════════════

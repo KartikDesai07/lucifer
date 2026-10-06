@@ -3,7 +3,7 @@ import { connectDB } from "@/lib/db";
 import { getSettings } from "@/lib/settings";
 import { acceptOrderRequest } from "@/lib/order-request-accept";
 import { publishCafeEvent } from "@/lib/realtime-publish";
-import { createOrderPrintJobs, printIntentOf } from "@/lib/print-order-jobs";
+import { createOrderPrintJobs, openingSlipsOf, printIntentOf } from "@/lib/print-order-jobs";
 import { success, failure, notFound, requireAuth, serverError } from "@/lib/api-helpers";
 import { toTrayRequest, noStore } from "@/lib/order-request-tray";
 
@@ -54,7 +54,7 @@ export async function POST(req: Request, { params }: Params) {
       intent && !result.replayed
         ? await createOrderPrintJobs({
             order: result.order,
-            slips: [{ kind: "kot", round: result.order.kotRounds }],
+            slips: openingSlipsOf(result.order, result.order.kotRounds),
             originDeviceId: intent.deviceId,
             queuedBy: authed.session.user.name ?? "",
             nowMs: Date.now(),

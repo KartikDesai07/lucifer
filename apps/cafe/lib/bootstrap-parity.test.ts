@@ -457,11 +457,24 @@ test("PIN: mastersVersionOf folds count + max updatedAt per part, in MASTERS_PAR
   assert.deepEqual([...MASTERS_PART_KEYS], ["settings", "categories", "products", "tables", "areas", "staff"]);
 });
 
-test("PIN: BOOTSTRAP_VERSION is at least 6 and the masters blob carries the areas part", () => {
+test("PIN: BOOTSTRAP_VERSION is at least 12 and the masters blob carries the areas part", () => {
   // Tables B2 added the `areas` part and Table.areaId to the stored blob, so the
   // version moved 5 -> 6: a device holding a v5 blob must discard it instead of
-  // serving a floor with no areas. Lowering it below 6 would revive those blobs.
-  assert.ok(BOOTSTRAP_VERSION >= 6, `BOOTSTRAP_VERSION is ${BOOTSTRAP_VERSION} - the areas part needs at least 6`);
+  // serving a floor with no areas. Print customization S2 then made Settings carry
+  // billTemplate / kotTemplate (6 -> 7): a v6 blob has no template, so a device
+  // holding one would keep printing the legacy slip after the owner saved a design.
+  // Print customization S3 then added Settings.upiId (7 -> 8): a v7 blob has no UPI ID, so a device holding one
+  // would print no pay QR after the owner saved an ID.
+  // Print customization S3b then added Settings.payQrMode / payQrValidMinutes (8 -> 9): a v8 blob has neither, so a bill
+  // printed from one would follow the default after the owner chose Never.
+  // Print customization S6 then added Settings.tokenEnabled / tokenNumberStart / numberResetMinutes (9 -> 10): a v9 blob has
+  // none, so a device holding one would read tokens as off and numbers as restarting at midnight after the owner changed them.
+  // Print customization S7 then added Settings.tokenTemplate (10 -> 11): a v10 blob has none, so a device holding one would
+  // print the default token design after the owner saved another.
+  // Print customization S8 then added Settings.tokenReadyClearMinutes (11 -> 12): a v11 blob has none, so a device holding one
+  // would clear Ready tokens after the default 10 minutes whatever the owner chose on the token settings.
+  // Lowering it below 12 would revive those blobs.
+  assert.ok(BOOTSTRAP_VERSION >= 12, `BOOTSTRAP_VERSION is ${BOOTSTRAP_VERSION} - Settings carrying tokenReadyClearMinutes (print customization S8) needs at least 12`);
   // Positive landmark: the part the version bump was for is really in the key list.
   assert.ok((MASTERS_PART_KEYS as readonly string[]).includes("areas"), "MASTERS_PART_KEYS includes areas");
 });

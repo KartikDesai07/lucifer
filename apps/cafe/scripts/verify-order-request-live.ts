@@ -82,6 +82,7 @@ import {
   type PromoCodeConfig,
 } from "@pos/shared/public";
 import type { CreatePublicOrderRequestInput } from "@pos/shared/schemas/public-order.schema";
+import { runTokenAcceptLegs, runTokenAcceptPrintLegs } from "./verify-order-request-live-token";
 
 const SCRATCH_PREFIX = "pos_scratch_";
 const DEFAULT_URI = `mongodb://127.0.0.1:27017/${SCRATCH_PREFIX}order_request`;
@@ -2364,6 +2365,9 @@ async function main(): Promise<void> {
     await leg32();
     await leg33();
     await leg34();
+    const tokenDeps = { check, stage: async (tableNo: string, mobile: string) => String((await stageRequest({ targetKind: "table", tableNo, items: [{ productId: teaId, qty: 1 }], name: "Token leg", mobile }))._id) };
+    await runTokenAcceptLegs(tokenDeps);
+    await runTokenAcceptPrintLegs(tokenDeps);
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();

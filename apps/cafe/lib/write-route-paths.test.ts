@@ -88,7 +88,7 @@ test("PIN (settle): exactly one issueBillNumber, after the CAS-miss 409, gated o
       ["await Order.findOneAndUpdate(filter, update, {", "the settle CAS"],
       ['return failure("Tab changed or already settled — reopen it and try again", 409);', "the CAS-miss 409"],
       ["const numbering = printCfg.bill.showNumber && updated.billNumber === undefined;", "the no-renumber gate"],
-      ["numbering ? issueBillNumber(id, printCfg.bill.numberStart) : Promise.resolve(updated),", "the numbering call"],
+      ["numbering ? issueBillNumber(id, printCfg.bill) : Promise.resolve(updated),", "the numbering call (the bill config carries start AND restart time)"],
       ["return success(", "the success return"],
     ],
     "only a settle that WON its CAS may take a number, and a held bill is never renumbered",
@@ -102,7 +102,7 @@ test("PIN (settle): follow-ups live in lib/settle-followups.ts and run alongside
   }
   assert.match(
     src,
-    /const \[numbered, followUps\] = await Promise\.allSettled\(\[\s*numbering \? issueBillNumber\([^)]*\) : Promise\.resolve\(updated\),\s*runSettleFollowUps\(old, updated, settings\),\s*\]\);/,
+    /const \[numbered, followUps, stamped\] = await Promise\.allSettled\(\[\s*numbering \? issueBillNumber\([^)]*\) : Promise\.resolve\(updated\),\s*runSettleFollowUps\(old, updated, settings\),\s*stamping \? stampFirstBillPrint\(id, Date\.now\(\)\) : Promise\.resolve\(null\),\s*\]\);/,
     "numbering and follow-ups settle together: neither can turn a landed settle into a throw",
   );
   assert.equal(count(src, "publishCafeEvent("), 1, "exactly one publish");
@@ -110,7 +110,7 @@ test("PIN (settle): follow-ups live in lib/settle-followups.ts and run alongside
   const publish = mustIndexOf(src, 'publishCafeEvent("order-changed");', "the publish");
   const unconfirmed = mustIndexOf(src, "return serverError(BILL_NUMBER_UNCONFIRMED, numbered.reason);", "the numbering-failure answer");
   // Printing Phase 1 (Session 1B): the answer carries printJobs when the request opted in.
-  const ok = mustIndexOf(src, "return success(withPrintJobs(numbered.value ?? updated, printJobs));", "the success answer");
+  const ok = mustIndexOf(src, "return success(withPrintJobs(answer, printJobs));", "the success answer");
   assert.ok(wave < publish && publish < unconfirmed && publish < ok, "the tab changed either way: publish before both answers");
 });
 
@@ -175,7 +175,7 @@ test("PIN (create): the KOT number is taken after every refusal and the fence, a
       ['if ("error" in pay) return failure(pay.error, 400);', "the payment 400"],
       ['"Select a customer — the unpaid remainder becomes their due"', "the carrier refusal"],
       ["if (!(await fencePromoFor(orderId))) {", "the promo fence"],
-      ["slips = await allocateOpeningKot(printCfg);", "the KOT allocation"],
+      ["slips = await allocateOpeningSlips(printCfg);", "the KOT number + token allocation"],
       ["} catch (slipError) {", "the slip catch"],
       ["const doc = { ...unnumberedDoc, ...slips };", "the numbered doc"],
       ["Order.create({ ...doc, orderId });", "the insert"],
@@ -189,7 +189,7 @@ test("PIN (create): the KOT number is taken after every refusal and the fence, a
   const firstCatchE = mustIndexOf(src, "} catch (e) {", "the create catch");
   assert.ok(firstCatchE > mustIndexOf(src, "Order.create({ ...doc, orderId });", "the insert"), "the first catch (e) stays the create catch");
   assert.equal(count(src, "nextSlipSequence("), 0, "the route draws no slip number itself");
-  assert.equal(count(src, "allocateOpeningKot("), 1, "exactly one KOT allocation — a second, earlier one would burn a ticket on every refusal");
+  assert.equal(count(src, "allocateOpeningSlips("), 1, "exactly one opening-slip allocation — a second, earlier one would burn a ticket (and a token) on every refusal");
 });
 
 test("PIN (create): the insert carries no bill number; only the winner numbers it, after the insert, once", () => {
@@ -197,14 +197,18 @@ test("PIN (create): the insert carries no bill number; only the winner numbers i
   const docStart = mustIndexOf(src, "const unnumberedDoc = {", "the unnumbered doc literal");
   const docEnd = mustIndexOf(src, "const claimFor = async", "the end of the doc literal", docStart);
   const doc = src.slice(docStart, docEnd);
-  assert.ok(!/\bbillNumber\b/.test(doc) && !/\bkotNumbers\b/.test(doc), "the doc literal carries no slip numbers");
+  assert.ok(doc.includes("idemKey"), "landmark: the literal scanned is the real doc (it stores the send key)");
+  assert.ok(
+    !/\bbillNumber\b/.test(doc) && !/\bkotNumbers\b/.test(doc) && !/\btokenNumber\b/.test(doc),
+    "the doc literal carries no slip numbers and no token: allocateOpeningSlips adds them just before the insert",
+  );
   assert.match(doc, /\.\.\.\(data\.idemKey \? \{ idemKey: data\.idemKey \} : \{\}\),/, "the key is stored, omit-empty (never null)");
   assert.equal(count(src, "issueBillNumber("), 1, "exactly one bill numbering call");
   assertChain(
     src,
     [
       ["order = await Order.create({ ...doc, orderId: retryOrderId });", "the retry insert"],
-      ["issuesBill ? issueBillNumber(landed._id, printCfg.bill.numberStart) : Promise.resolve(null),", "the winner's numbering"],
+      ["issuesBill ? issueBillNumber(landed._id, printCfg.bill) : Promise.resolve(null),", "the winner's numbering"],
       ['publishCafeEvent("order-changed");', "the publish"],
       ["return serverError(BILL_NUMBER_UNCONFIRMED, numbered.reason);", "the numbering-failure answer"],
       // Printing Phase 1 (Session 1B): the answer carries printJobs when the request opted in.
@@ -270,7 +274,7 @@ test("PIN (items): read wave, then old → 404 → replay → variation 400 → 
       ["if (bad) return failure(bad, 400);", "the variation 400"],
       ['"Can only add items to an open tab"', "the open-tab 409"],
       ["const settings = settledValue(settingsR);", "the settings unwrap"],
-      ["nextSlipSequence(", "the KOT number"],
+      ["nextPrintedNumber(\"kot\", printCfg.kot)", "the KOT number"],
     ],
     "a landed round must replay even if a product was edited since, and never draw a ticket",
   );
@@ -306,7 +310,7 @@ test("PIN (items): the key is fenced in the CAS, stored positionally, and a CAS 
 test('PIN (registry): only lib/slip-numbers.ts (and the script-only lib/order-create.ts) draw a BILL number', () => {
   // The needle is split so this file never matches itself.
   const needle = "nextSlipSequence(" + '"bill"';
-  mustIndexOf(read("lib/slip-numbers.ts"), 'await deps.nextSequence("bill")', "landmark: issueBillNumber draws the bill sequence");
+  mustIndexOf(read("lib/slip-numbers.ts"), 'nextPrintedNumber("bill", bill, deps)', "landmark: issueBillNumber draws the bill sequence");
   const files: string[] = [];
   const walk = (dir: string): void => {
     for (const name of readdirSync(dir)) {
@@ -325,4 +329,91 @@ test('PIN (registry): only lib/slip-numbers.ts (and the script-only lib/order-cr
     .map((f) => path.relative(CAFE_ROOT, f).split(path.sep).join("/"))
     .sort();
   assert.deepEqual(holders, ["lib/order-create.ts"], "no route or other lib may call the bill sequence directly");
+  // The helper form of the same draw: after S6 the bill sequence is drawn through nextPrintedNumber, so the scan
+  // above alone would no longer see a second caller. Needle split like the first.
+  const viaHelper = "nextPrintedNumber(" + '"bill"';
+  const helperHolders = files
+    .filter((f) => readFileSync(f, "utf8").includes(viaHelper))
+    .map((f) => path.relative(CAFE_ROOT, f).split(path.sep).join("/"))
+    .sort();
+  assert.deepEqual(helperHolders, ["lib/slip-numbers.ts"], "only issueBillNumber draws the bill series through the helper");
+});
+
+// ── Print customization S6: who may draw the opening slips and the token ─────
+
+const ACCEPT_LIB = "lib/order-request-accept.ts";
+const ACCEPT_ADDROUND = "lib/order-request-accept-addround.ts";
+const VOID_ROUTE = "app/api/orders/[id]/items/void/route.ts";
+
+function sourceFilesUnder(dirs: readonly string[]): string[] {
+  const files: string[] = [];
+  const walk = (dir: string): void => {
+    for (const name of readdirSync(dir)) {
+      const full = path.join(dir, name);
+      if (statSync(full).isDirectory()) walk(full);
+      else if (/\.(ts|tsx)$/.test(name) && !/\.test\.tsx?$/.test(name)) files.push(full);
+    }
+  };
+  for (const dir of dirs) walk(path.join(CAFE_ROOT, dir));
+  return files;
+}
+const relOf = (file: string) => path.relative(CAFE_ROOT, file).split(path.sep).join("/");
+
+test("PIN (S6): allocateOpeningSlips is called exactly once by each NEW-order path and by no add-round, void or settle path", () => {
+  const landmark = mustIndexOf(read("lib/slip-numbers.ts"), "export async function allocateOpeningSlips", "landmark: the helper exists");
+  assert.ok(landmark > 0);
+  // The per-file counts: two new-order writers (create + accept), the rest none.
+  const expected: ReadonlyArray<[string, number]> = [
+    [ORDERS_ROUTE, 1],
+    [ACCEPT_LIB, 1],
+    [ITEMS_ROUTE, 0],
+    [VOID_ROUTE, 0],
+    [SETTLE_ROUTE, 0],
+    [ACCEPT_ADDROUND, 0],
+  ];
+  for (const [file, want] of expected) {
+    assert.equal(count(read(file), "allocateOpeningSlips("), want, `${file}: allocateOpeningSlips( call count`);
+  }
+  // Vision guard for the zeros: the add-round paths DO draw their KOT number, through the other helper.
+  for (const file of [ITEMS_ROUTE, VOID_ROUTE, ACCEPT_ADDROUND]) {
+    assert.equal(count(read(file), 'nextPrintedNumber("kot", printCfg.kot)'), 1, `${file}: the KOT draw is there (a token never is)`);
+    assert.ok(!/\btokenNumber\b/.test(read(file)), `${file}: an add-round / void never carries a token`);
+  }
+  // The new-order writers carry the token ONLY through the helper's omit-empty spread: a literal `tokenNumber` key
+  // there (an override, an `undefined`) would drop or fake the number the helper drew (mutation M16, s80).
+  for (const file of [ORDERS_ROUTE, ACCEPT_LIB]) {
+    assert.ok(read(file).includes("...slips"), `${file}: landmark, the drawn numbers are spread into the insert doc`);
+    assert.ok(!/\btokenNumber\b/.test(read(file)), `${file}: the token reaches the order only via ...slips`);
+  }
+});
+
+test('PIN (S6): the "token" series is drawn only inside lib/slip-numbers.ts - through nextPrintedNumber, never nextSlipSequence', () => {
+  // Needles are split so this file never matches itself.
+  const viaHelper = "nextPrintedNumber(" + '"token"';
+  const viaCounter = "nextSlipSequence(" + '"token"';
+  const slipNumbers = read("lib/slip-numbers.ts");
+  mustIndexOf(slipNumbers, viaHelper, "landmark: allocateOpeningSlips draws the token series");
+  const files = sourceFilesUnder(["app", "lib", "components", "hooks"]);
+  assert.ok(files.length >= 200, `vision guard: the scan must read the tree (read ${files.length})`);
+  const holdersOf = (needle: string) =>
+    files
+      .filter((f) => readFileSync(f, "utf8").includes(needle))
+      .map(relOf)
+      .sort();
+  assert.deepEqual(holdersOf(viaHelper), ["lib/slip-numbers.ts"], "only the allocation helper draws a token");
+  assert.deepEqual(holdersOf(viaCounter), [], "nobody draws a token straight off the counter");
+});
+
+test("PIN (S6): no route under app/api and no lib/order-request-accept*.ts calls nextSlipSequence( - every draw goes through lib/slip-numbers.ts", () => {
+  const routes = sourceFilesUnder(["app/api"]);
+  const accept = readdirSync(path.join(CAFE_ROOT, "lib"))
+    .filter((name) => /^order-request-accept.*\.ts$/.test(name) && !name.endsWith(".test.ts"))
+    .map((name) => path.join(CAFE_ROOT, "lib", name));
+  assert.ok(routes.length >= 50, `vision guard: the route scan must read the tree (read ${routes.length})`);
+  assert.ok(accept.length >= 5, `vision guard: the accept-bridge scan must read its siblings (read ${accept.length})`);
+  assert.ok(routes.some((f) => relOf(f) === ITEMS_ROUTE) && accept.some((f) => relOf(f) === ACCEPT_LIB), "landmark: the real draw sites are in the scan");
+  const callers = [...routes, ...accept]
+    .filter((f) => stripComments(readFileSync(f, "utf8")).includes("nextSlipSequence("))
+    .map(relOf);
+  assert.deepEqual(callers, [], "a route or accept file drawing a slip number itself would skip the restart time");
 });

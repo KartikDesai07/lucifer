@@ -4,6 +4,7 @@ import {
   type PrintFontSize,
   type PrintLogoSize,
 } from "@/lib/constants";
+import { numberResetMinutesOf } from "@pos/shared/slip-day";
 import type { Settings } from "@/types";
 
 // The page height is `auto`, and it MUST stay `auto`.
@@ -82,6 +83,8 @@ export interface BillPrintConfig {
   showFssai: boolean;
   paperWidth: PaperWidth;
   fontSize: PrintFontSize;
+  // The daily restart time (minutes after IST midnight) for the bill series; 0 = midnight, the old keys.
+  resetMinutes: number;
 }
 
 export interface KotPrintConfig {
@@ -98,11 +101,20 @@ export interface KotPrintConfig {
   showNotes: boolean;
   paperWidth: PaperWidth;
   fontSize: PrintFontSize;
+  resetMinutes: number;
+}
+
+// S6: the order's token. Off by default and never switched on for a cafe — an admin turns it on.
+export interface TokenPrintConfig {
+  enabled: boolean;
+  numberStart: number;
+  resetMinutes: number;
 }
 
 export interface PrintConfig {
   bill: BillPrintConfig;
   kot: KotPrintConfig;
+  token: TokenPrintConfig;
 }
 
 // A stored start of 0 or a negative would print a nonsense number on every slip
@@ -118,10 +130,16 @@ function startOf(value: number | undefined): number {
 // Only the print fields, never the whole Settings object. The server reads a
 // Mongoose document (ObjectId `_id`) and the client reads the DTO (string
 // `_id`); binding this resolver to either shape would force the other to cast.
-// Every print setting is prefixed `bill`/`kot` by convention, which is exactly
-// what this selects — so a new one is picked up by naming it correctly.
+// Every print setting is prefixed `bill`/`kot`/`token` by convention, which is
+// exactly what this selects — so a new one is picked up by naming it correctly.
+// `numberResetMinutes` is shared by all three series, so it has no prefix and is
+// named explicitly.
 type PrintSettingsSource = {
-  [K in keyof Settings as K extends `bill${string}` | `kot${string}`
+  [K in keyof Settings as K extends
+    | `bill${string}`
+    | `kot${string}`
+    | `token${string}`
+    | "numberResetMinutes"
     ? K
     : never]?: Settings[K];
 };
@@ -129,6 +147,8 @@ type PrintSettingsSource = {
 export function printConfigOf(
   settings: PrintSettingsSource | undefined | null,
 ): PrintConfig {
+  // One restart time for token, KOT and bill numbers; an unusable stored value is midnight (the old keys).
+  const resetMinutes = numberResetMinutesOf(settings?.numberResetMinutes);
   return {
     bill: {
       showNumber: settings?.billShowNumber ?? true,
@@ -147,6 +167,7 @@ export function printConfigOf(
       // and wrapping item names that used to fit. The KOT is the control: its
       // base has always been 14px, so its default IS "normal".
       fontSize: settings?.billFontSize ?? "small",
+      resetMinutes,
     },
     kot: {
       // The one pre-existing field. Its stored value wins; only a cafe with no
@@ -165,6 +186,12 @@ export function printConfigOf(
       showNotes: settings?.kotShowNotes ?? true,
       paperWidth: settings?.kotPaperWidth ?? "80mm",
       fontSize: settings?.kotFontSize ?? "normal",
+      resetMinutes,
+    },
+    token: {
+      enabled: settings?.tokenEnabled ?? false,
+      numberStart: startOf(settings?.tokenNumberStart),
+      resetMinutes,
     },
   };
 }

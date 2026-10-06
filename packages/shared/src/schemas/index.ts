@@ -15,3 +15,4 @@ export * from "./settings.schema";
 export * from "./public-order.schema";
 export * from "./report.schema";
 export * from "./due-payment.schema";
+export * from "./print-template.schema";

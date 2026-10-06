@@ -10,7 +10,14 @@ import {
   TABLE_LONG_STAY_MIN_MINUTES,
   TABLE_LONG_STAY_MAX_MINUTES,
 } from "../constants";
+import { PAY_QR_MODES, UPI_ID_MAX_LEN, isPayQrMinutes, isValidUpiId } from "../print-qr";
 import { SELF_ORDER_MODES } from "../public";
+import {
+  NUMBER_RESET_MINUTES_MAX,
+  NUMBER_RESET_MINUTES_MIN,
+  TOKEN_READY_CLEAR_MINUTES_MAX,
+  TOKEN_READY_CLEAR_MINUTES_MIN,
+} from "../slip-day";
 import {
   LOYALTY_STAMPS_MIN,
   LOYALTY_STAMPS_MAX,
@@ -22,6 +29,7 @@ import {
 import { numberStartSchema, promoCodesSchema, appearanceSchema } from "./settings-print.schema";
 import { loyaltyRulesSchema, refineLoyaltyReward } from "./settings-loyalty.schema";
 import { dinerBannersSchema } from "./settings-diner.schema";
+import { billTemplateSchema, kotTemplateSchema, tokenTemplateSchema } from "./print-template.schema";
 
 // Restaurant + receipt settings (singleton) — CORE fields only. The print
 // (bill/kot) block, promo codes, and Appearance moved to
@@ -58,6 +66,21 @@ export const settingsSchema = z.object({
   // by lib/images.ts.
   productLogo: z.string().trim().max(IMAGE_REF_MAX_LEN),
   fssai: z.string().trim().max(SETTINGS_FSSAI_MAX_LEN),
+  // The cafe's UPI ID for the "Scan to pay" QR on bills with money still to pay; "" = not set. The refine sits on
+  // the FIELD (a refine on the object would break settingsSchema.partial() in the PUT schema).
+  upiId: z
+    .string()
+    .trim()
+    .max(UPI_ID_MAX_LEN)
+    .refine((v) => v === "" || isValidUpiId(v), "Enter a UPI ID like yourshop@okaxis"),
+  // S3b: when a bill prints the pay QR, and for how many minutes after its first print (0 = No limit). OPTIONAL:
+  // documents written before S3b have neither, and every reader goes through payQrModeOf / payQrMinutesOf
+  // (print-qr.ts), which supply the defaults. The range check sits on the FIELD, for the same .partial() reason.
+  payQrMode: z.enum(PAY_QR_MODES).optional(),
+  payQrValidMinutes: z
+    .number({ invalid_type_error: "Enter the minutes as a whole number" })
+    .refine(isPayQrMinutes, "Use 5 to 1440 minutes, or No limit")
+    .optional(),
 
   // ── Bill (the customer's slip) ──────────────────────────────────────────
   billShowNumber: z.boolean(),
@@ -88,6 +111,25 @@ export const settingsSchema = z.object({
   kotShowNotes: z.boolean(),
   kotPaperWidth: z.enum(PAPER_WIDTHS),
   kotFontSize: z.enum(PRINT_FONT_SIZES),
+
+  // ── Tokens + daily restart time (S6) ────────────────────────────────────
+  // OPTIONAL like payQr*: older documents have none and printConfigOf supplies the defaults (tokens off, start 1,
+  // restart at midnight). The range sits on the FIELD so settingsSchema.partial() keeps working.
+  tokenEnabled: z.boolean().optional(),
+  tokenNumberStart: numberStartSchema.optional(),
+  numberResetMinutes: z
+    .number({ invalid_type_error: "Choose a time" })
+    .int()
+    .min(NUMBER_RESET_MINUTES_MIN)
+    .max(NUMBER_RESET_MINUTES_MAX)
+    .optional(),
+  // S8: how long a Ready token stays on the token list (absent = 10 minutes, tokenReadyClearMinutesOf).
+  tokenReadyClearMinutes: z
+    .number({ invalid_type_error: "Choose a time" })
+    .int()
+    .min(TOKEN_READY_CLEAR_MINUTES_MIN)
+    .max(TOKEN_READY_CLEAR_MINUTES_MAX)
+    .optional(),
 
   // ── Self-order (QR) — CR2 ────────────────────────────────────────────────
   // "approve": a diner-placed order lands as a pending request the staff must
@@ -188,7 +230,20 @@ export const settingsSchema = z.object({
 });
 
 // PUT accepts any subset; the form sends the full object.
-export const updateSettingsSchema = settingsSchema.partial().superRefine(refineLoyaltyReward);
+//
+// Print customization S2: the slip templates are PUT-only keys, deliberately NOT in settingsSchema. A section
+// form validates against settingsSchema and sends its section's keys on every save, so a template there would
+// either be re-sent through the write gate on each toggle save (a stored template that a later, stricter gate
+// rejects would block the page) or, defaulted to null, wipe the design. Each is saved whole and strictly
+// (the WRITE schema); null clears it (the route turns null into $unset — undefined never clears over JSON).
+export const updateSettingsSchema = settingsSchema
+  .partial()
+  .extend({
+    billTemplate: billTemplateSchema.nullable().optional(),
+    kotTemplate: kotTemplateSchema.nullable().optional(),
+    tokenTemplate: tokenTemplateSchema.nullable().optional(),
+  })
+  .superRefine(refineLoyaltyReward);
 
 export type SettingsInput = z.infer<typeof settingsSchema>;
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;

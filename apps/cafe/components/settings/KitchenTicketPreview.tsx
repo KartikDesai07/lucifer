@@ -4,10 +4,17 @@ import { useState } from "react";
 import { useWatch } from "react-hook-form";
 import type { Control } from "react-hook-form";
 
-import { sampleKitchenOrder } from "@/lib/bill-print-sample";
+import { sampleKitchenOrder, sampleKitchenSlip, withSampleToken } from "@/lib/bill-print-sample";
 import { printConfigOf } from "@/lib/print";
-import { ROUND_LABEL_PREFIX } from "@/lib/print-host-slips";
+import {
+  KITCHEN_CHIP_LABEL,
+  KITCHEN_CHIP_LEGEND,
+  KITCHEN_PREVIEW_CHIPS,
+  type KitchenPreviewChip,
+} from "@/lib/print-design-labels";
 import { KOTReceipt } from "@/components/pos/KOTReceipt";
+import { SlipPreview } from "@/components/print/slip/SlipSkeleton";
+import { ChoiceChips } from "@/components/settings/print-design/ChoiceChips";
 import type { SettingsInput } from "@/schemas";
 import type { Settings } from "@/types";
 
@@ -76,15 +83,27 @@ export function KitchenTicketPreview({
   const cfg = printConfigOf(live).kot;
   // Fixed once per mount so the sample's time does not tick while editing.
   const [createdAt] = useState(() => new Date().toISOString());
-  const order = sampleKitchenOrder(createdAt);
-
-  // A normal ticket is a fired round, which always carries its round line.
-  const roundLabel = `${ROUND_LABEL_PREFIX}${order.kotRounds}`;
+  const order = withSampleToken(sampleKitchenOrder(createdAt), live);
+  // Which of the kitchen's three tickets the sample shows (not a setting; nothing here is ever saved).
+  const [chip, setChip] = useState<KitchenPreviewChip>("kot");
+  const slip = sampleKitchenSlip(chip, order, cfg);
 
   return (
-    <div className="overflow-x-auto">
-      <div className="mx-auto w-fit shadow-sm ring-1 ring-black/5">
-        <KOTReceipt order={order} settings={live} roundNumber={cfg.numberStart} roundLabel={roundLabel} />
+    <div className="space-y-3">
+      <ChoiceChips
+        legend="Show the ticket for"
+        options={KITCHEN_PREVIEW_CHIPS}
+        value={chip}
+        onChange={setChip}
+        labelOf={(value) => KITCHEN_CHIP_LABEL[value]}
+        hint={KITCHEN_CHIP_LEGEND}
+      />
+      <div className="overflow-x-auto">
+        <div className="mx-auto w-fit shadow-sm ring-1 ring-black/5">
+          <SlipPreview>
+            <KOTReceipt order={order} settings={live} {...slip} />
+          </SlipPreview>
+        </div>
       </div>
     </div>
   );

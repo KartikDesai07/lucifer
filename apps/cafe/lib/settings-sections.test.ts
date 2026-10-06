@@ -287,3 +287,69 @@ test("PIN: every hidden section's route has a server layout.tsx that redirects t
   }
   assert.equal(SETTINGS_BASE_PATH, "/settings");
 });
+
+// ── S3b: the pay QR policy fields on the Business section ───────────────────
+// getSettings() reads with .lean(), so a document written before S3b has neither field and the form must still seed
+// valid values (the resolvers payQrModeOf / payQrMinutesOf). A stored 0 is "No limit" and must survive the seed.
+const settingsDoc = (over: Record<string, unknown>) =>
+  ({ restaurantName: "Test Cafe", gstEnabled: false, gstRate: 0, gstMode: "exclusive", ...over }) as unknown as Parameters<typeof settingsFormDefaults>[0];
+const businessSection = SETTINGS_SECTIONS.find((s) => s.slug === "business");
+
+test("PIN (S3b): a settings doc without the pay QR fields seeds always / 60, and the Business section carries both", () => {
+  assert.ok(businessSection, "landmark: the Business section exists");
+  assert.ok(businessSection.fields.includes("upiId"), "landmark: it is the section that owns the UPI id");
+  const values = settingsFormDefaults(settingsDoc({}));
+  assert.equal(values.payQrMode, "always");
+  assert.equal(values.payQrValidMinutes, 60);
+  const picked = pickSectionValues(values, businessSection);
+  assert.ok(Object.hasOwn(picked, "payQrMode") && Object.hasOwn(picked, "payQrValidMinutes"), "both ride the Business save");
+  assert.equal(picked.payQrMode, "always");
+  assert.equal(picked.payQrValidMinutes, 60);
+});
+
+test("PIN (S3b): a stored 0 stays 0 (No limit is not defaulted), and stored in-range values are kept", () => {
+  assert.equal(settingsFormDefaults(settingsDoc({ payQrValidMinutes: 0 })).payQrValidMinutes, 0);
+  assert.equal(settingsFormDefaults(settingsDoc({ payQrValidMinutes: 1440 })).payQrValidMinutes, 1440);
+  assert.equal(settingsFormDefaults(settingsDoc({ payQrValidMinutes: 5 })).payQrValidMinutes, 5);
+  for (const payQrMode of ["owed", "never"] as const) assert.equal(settingsFormDefaults(settingsDoc({ payQrMode })).payQrMode, payQrMode);
+});
+
+test("PIN (S3b): a stale out-of-range stored value is reseeded to the default, so Save is never blocked by it", () => {
+  assert.equal(settingsFormDefaults(settingsDoc({ payQrValidMinutes: 3 })).payQrValidMinutes, 60);
+  assert.equal(settingsFormDefaults(settingsDoc({ payQrValidMinutes: 9999 })).payQrValidMinutes, 60);
+  assert.equal(settingsFormDefaults(settingsDoc({ payQrMode: "sometimes" })).payQrMode, "always");
+});
+
+// ── S8: tokenReadyClearMinutes on the Tokens section ────────────────────────
+// A scalar SECTION field like numberResetMinutes (not a whole-object blob), so it rides the tokens save with the
+// other three. getSettings() reads .lean(): a document written before S8 has none, and the form must still seed a
+// valid value (tokenReadyClearMinutesOf) — a blank would block Save on a field the owner never touched.
+const tokensSection = SETTINGS_SECTIONS.find((s) => s.slug === "tokens");
+
+test("PIN (S8): the tokens section owns tokenReadyClearMinutes (no other section does), beside the other three token fields", () => {
+  assert.ok(tokensSection, "landmark: the tokens section exists");
+  assert.deepEqual([...tokensSection.fields], ["tokenEnabled", "tokenNumberStart", "numberResetMinutes", "tokenReadyClearMinutes"]);
+  const owners = SETTINGS_SECTIONS.filter((s) => s.fields.includes("tokenReadyClearMinutes")).map((s) => s.slug);
+  assert.deepEqual(owners, ["tokens"], "exactly one section claims it");
+  assert.ok(Object.keys(settingsSchema.shape).includes("tokenReadyClearMinutes"), "landmark: it is a real settingsSchema field");
+});
+
+test("PIN (S8): a settings doc without it seeds 10; a stored in-range value is kept; a stale unusable one is reseeded to 10", () => {
+  assert.equal(settingsFormDefaults(settingsDoc({})).tokenReadyClearMinutes, 10);
+  for (const ok of [1, 2, 25, 60, 120]) assert.equal(settingsFormDefaults(settingsDoc({ tokenReadyClearMinutes: ok })).tokenReadyClearMinutes, ok, String(ok));
+  for (const bad of [0, 121, 1.5, -3, "20", null]) {
+    assert.equal(settingsFormDefaults(settingsDoc({ tokenReadyClearMinutes: bad })).tokenReadyClearMinutes, 10, String(bad));
+  }
+});
+
+test("PIN (S8): the tokens save carries tokenReadyClearMinutes — pickSectionValues returns it with the other three token fields", () => {
+  assert.ok(tokensSection, "landmark: the tokens section exists");
+  const values = settingsFormDefaults(settingsDoc({ tokenEnabled: true, tokenReadyClearMinutes: 25 }));
+  const picked = pickSectionValues(values, tokensSection);
+  assert.deepEqual(Object.keys(picked).sort(), ["numberResetMinutes", "tokenEnabled", "tokenNumberStart", "tokenReadyClearMinutes"]);
+  assert.equal(picked.tokenReadyClearMinutes, 25);
+  assert.equal(picked.tokenEnabled, true);
+  // and the value the form seeds is one the schema accepts, so a fresh form is never born invalid
+  assert.equal(settingsSchema.shape.tokenReadyClearMinutes.safeParse(picked.tokenReadyClearMinutes).success, true);
+  assert.equal(settingsSchema.shape.tokenReadyClearMinutes.safeParse(settingsFormDefaults(settingsDoc({})).tokenReadyClearMinutes).success, true, "the seeded default passes the schema");
+});

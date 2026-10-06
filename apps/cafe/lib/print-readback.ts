@@ -61,6 +61,7 @@ const KIND_NAMES: Record<PrintJobKind, string> = {
   moved: "Move",
   eod: "Closing slip",
   "cancel-notice": "Cancel notice",
+  token: "Token",
 };
 
 /** The four readback states of §B7 (MERGED-10, fresh-eyes F13). Ranked worst-

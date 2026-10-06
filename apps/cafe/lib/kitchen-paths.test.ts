@@ -300,21 +300,45 @@ test("PIN (22b): readyToastMessage distinguishes a finished card from one cleare
 });
 
 test("PIN (23): P4-C — the ready write stamps the instant the cook SAW, clamped to now, so a round fired since the last refresh is never buried", () => {
+  // S8 MOVED this pin: the stamp rules left the route for lib/token-board.ts (readyStampMs / readyUpdateOf) so the
+  // kitchen POST and the token route share ONE Ready writer (writeKotReady). Every rule it pinned is still pinned,
+  // now where the code lives; the route is pinned to hold no Ready write of its own.
   const routeSrc = stripComments(readSrc("apps/cafe/app/api/kitchen/route.ts"));
+  const boardSrc = stripComments(readSrc("apps/cafe/lib/token-board.ts"));
+  const serverSrc = stripComments(readSrc("apps/cafe/lib/token-board-server.ts"));
 
+  // Unchanged, still in the route: the ready body accepts an optional ISO seenFiredAt.
   assert.match(routeSrc, /seenFiredAt:\s*z\.string\(\)\.datetime\(\)\.optional\(\)/,
     "the ready body must accept an optional ISO seenFiredAt");
-  // The stamp must come from seenFiredAt, never unconditionally from `now`.
-  assert.match(routeSrc, /Math\.min\(seen\.getTime\(\),\s*nowMs\)/,
+
+  // MOVED to token-board.ts: the stamp must come from seenFiredAt, never unconditionally from `now`.
+  assert.match(boardSrc, /export function readyStampMs\(/, "landmark: the stamp helper lives in token-board.ts");
+  assert.match(boardSrc, /Math\.min\(seen\.getTime\(\),\s*nowMs\)/,
     "the stamp must be clamped to now — a fast client clock must not park readyAt in the future and suppress rounds that have not happened");
-  assert.match(routeSrc, /readyAt:\s*new Date\(stampMs\)/,
-    "the ready write must use the derived stampMs, not a bare new Date()");
+  assert.match(boardSrc, /readyAt:\s*new Date\(readyStampMs\(seenFiredAt,\s*nowMs\)\)/,
+    "the ready write must use the derived readyStampMs, not a bare now");
   assert.ok(
-    !/readyAt:\s*new Date\(\)\s*\}/.test(routeSrc),
-    "the ready write must NOT stamp a bare new Date() — that buries any round fired in the refresh gap",
+    !/readyAt:\s*new Date\((?:nowMs|\))\s*[,}]/.test(boardSrc),
+    "the ready write must NOT stamp readyAt at now — that buries any round fired in the refresh gap",
   );
-  // $unset survives (the un-ready path is unchanged).
-  assert.match(routeSrc, /\$unset:\s*\{\s*readyAt:\s*""\s*\}/, "landmark: un-ready must still $unset, never null");
+  // MOVED + WIDENED: un-ready $unsets BOTH keys (readyMarkedAt joined readyAt in S8) — never null.
+  assert.match(boardSrc, /\$unset:\s*\{\s*readyAt:\s*"",\s*readyMarkedAt:\s*""\s*\}/,
+    "landmark: un-ready must still $unset (both readyAt and readyMarkedAt), never null");
+
+  // The route holds NO Ready write of its own: it hands off to writeKotReady, passing seenFiredAt through.
+  assert.match(routeSrc, /await writeKotReady\(orderId,\s*body\.ready,\s*body\.seenFiredAt\)/,
+    "the route's ready branch must go through writeKotReady with the body's seenFiredAt");
+  assert.match(routeSrc, /\$addToSet:\s*\{\s*refs:\s*body\.ref\s*\}/, "landmark: the tick writes the scan must still see are in the route");
+  assert.match(routeSrc, /readyAtByOrder/, "landmark: the route still READS readyAt for the cards");
+  assert.ok(!/readyAt\s*:\s*new Date/.test(routeSrc), "no readyAt $set is left in the route");
+  assert.ok(!/readyMarkedAt/.test(routeSrc), "readyMarkedAt is never written by the route");
+  assert.ok(!routeSrc.includes("$unset"), "no $unset is left in the route — un-ready goes through writeKotReady");
+  assert.ok(!/Math\.min\(/.test(routeSrc), "the clamp is not re-implemented in the route");
+
+  // The writer feeds readyUpdateOf the real clock and a single upsert (one writer for both routes).
+  assert.match(serverSrc, /export async function writeKotReady\(/, "landmark: the one Ready writer");
+  assert.match(serverSrc, /readyUpdateOf\(ready,\s*seenFiredAt,\s*Date\.now\(\)\)/, "the writer passes the caller's seenFiredAt and the server clock");
+  assert.match(serverSrc, /\{\s*upsert:\s*true\s*\}/, "ready upserts the tick doc");
 
   // The client must actually SEND it, keyed on the card's newest instant.
   const pageSrc = stripComments(readSrc(KITCHEN_PAGE));
