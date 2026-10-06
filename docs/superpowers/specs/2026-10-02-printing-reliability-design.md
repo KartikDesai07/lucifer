@@ -620,10 +620,10 @@ The Phase 2 plan ([2026-10-03-phase-2-routing.md](../plans/2026-10-03-phase-2-ro
 | Printer | Eligible writer |
 |---|---|
 | `device` connection | Only `connection.deviceId`. |
-| `lan` connection | `primaryDeviceId` while that device is online. Otherwise any online device with `capabilities.lan` (the Android or Windows app). |
+| `lan` connection | `primaryDeviceId` while that device is online. Otherwise any online device with `capabilities.lan` (the Android or Windows app). *As planned for Phase 3 (§9.8):* the first online device that says `capabilities.lanFailover` (by device id), because a Phase 2 POS-app page says `lan: true` but cannot take a printer over. |
 | Simple mode | Only `targetDeviceId`. |
 
-- **Unreachable LAN printer:** a writer that cannot reach the printer acks `failed, sent:"no", error:"unreachable"`. The server then skips that device for that printer for 5 minutes, so another writer gets the next lease.
+- **Unreachable LAN printer:** a writer that cannot reach the printer acks `failed, sent:"no", error:"unreachable"`. The server then skips that device for that printer for 5 minutes, so another writer gets the next lease. *As planned (§9.8):* the ack says `reason: "unreachable"` (a field of its own; `error` stays the writer's free text).
 
 ### 9.4 Failover
 
@@ -655,6 +655,24 @@ The Phase 2 plan ([2026-10-03-phase-2-routing.md](../plans/2026-10-03-phase-2-ro
 - It drives at most one Web Serial or Web Bluetooth printer.
 - It shows "Keep this tab open, or use the POS app" while it owns a printer, because hidden tabs throttle timers. *(Session 2E: "Keep this tab open, or use the POS app: a hidden or closed tab prints late or not at all.", under this device's printer.)*
 - A plain browser cannot drive a LAN printer. Chrome's Local Network Access rules and the lack of raw sockets prevent it.
+
+### 9.8 Phase 3 decisions (implementation plan, 2026-10-06)
+
+The plan `docs/superpowers/plans/2026-10-06-phase-3-hardening.md` holds each decision with what it costs if wrong (P3-1 to P3-10). In short:
+
+- **Who writes a printer now** (§9.3, `printerActiveWriter` in `@pos/shared/print-failover`):
+  - a device printer is always its own device's;
+  - a network printer is its primary's while the primary is online and has not failed to reach it in the last 5 minutes;
+  - otherwise it goes to the first online device that says `capabilities.lanFailover`, by device id;
+  - with none, it stays the primary's.
+  
+  Job creation, the lease, a staff Retry, a Test print and the sweep all ask this one question. "Online" is the heartbeat on the writers' wake, so only the setup's writer devices can take a printer over, and no device starts polling to become able to.
+- **The 5-minute skip.** An ack `failed, sent:"no", reason:"unreachable"` from the printer's writer now records `{ deviceId, until }` on the printer (`Printer.unreachable`). The waiting slips move at once to the device that takes it over.
+- **Failover timing.** The primary is seen offline 30–90 s after it stops (60 s heartbeat, 90 s window). From then on every new slip is made for the second device. A slip already waiting moves on the next sweep (≤ 60 s more). Detecting it faster would need new requests (§17).
+- **The backup printer** (§9.4, `Printer.backupPrinterId`). On the sweep, a printer whose writer now is offline sends its queued slips that never reached paper to its backup, while the backup's writer is online. They print with BACKUP PRINTER first among their labels. A network printer moves only when no device is left to take it over. A slip that may have printed, a bill waiting for the cashier and a slip being printed never move.
+- **Health rides the heartbeat** (§10). The wake carries `printers: [{ printerId, link, paper?, cover?, error? }]`. The server keeps it (`Printer.health`) only from the printer's writer now, and only when it changed or a steady one is due its 5-minute refresh. A report says nothing after 10 minutes, or from another device.
+- **Every device sees a printer's problem** with no new poll. Each slip waiting on a printer carries that printer's problem in the pulse's waiting-slips feed: device offline, out of paper, cover open, an error, not connected, low on paper. The words are `printerProblemText`.
+- **The token fix's M-2.** A page from before print-customization S7 is never told `more` for a token, nor counted one by the pulse or the wake. A Phase 3 page says `tokenSlips`; an older one is answered from its device's last lease (`PrintDevice.tokenSlips`).
 
 ## 10. Health, status and alerts
 
@@ -768,7 +786,7 @@ Each phase gets its own implementation plan and ships on its own. The first plan
 | **0** | §12 fixes | All suites pass; the new tests for F0.1 and F0.2 pass; WebView 109 tints look right on the emulator. |
 | **1** | Lifecycle (§7), `PrintDevice` heartbeat, server-side creation and sweep, readback statuses, 20 s alarm, the one waiting-slips panel, labels, and simple mode for existing outlets | With the fake printer: an attempt that may have printed (a lost ack, a mid-job drop on a lane that can see it) prints a REPRINT copy; on a bill it raises the cashier prompt; killing the host mid-job re-queues it after 90 s; a printer that is off costs no attempt; a missing job is repaired by the sweep; no silent loss in a 200-order soak test; the locally measured free-tier budget in §17.3 passes. (Android's TCP lane cannot see a mid-slip cut: §7.10, Phase 3.) |
 | **2** | `Station`, `Printer`, station fields on `Category`/`Product`, routing (§8), the setup UI (§11), several printers per device (§9.2) including bridge v2 and the Kotlin pool; direct print on the asking device (§7.11) | One round with kitchen and bar items prints two station KOTs plus the full copy; bills go to the device's bill printer; an old APK (bridge v1) still prints in simple mode; a slip the asking device prints itself costs one request and no realtime message. *Met:* Session 2G's exit on the emulator and its measurement in both modes (§17.2), re-checked at the final Phase 2 gate (2026-10-06); real printers (`TEST-CHECKLIST.md`) are the owner's before release. |
-| **3** | Failover (§9.3–9.4), `DLE EOT` health, Windows raw TCP, Android hardening (§9.5), Telegram alerts | Stopping the primary LAN writer moves printing to the second device within 90 s; paper-out shows on every device; a killed service restarts; the boot notification appears. |
+| **3** | Failover (§9.3–9.4), `DLE EOT` health, Windows raw TCP, Android hardening (§9.5), Telegram alerts | Stopping the primary LAN writer moves printing to the second device within 90 s; paper-out shows on every device; a killed service restarts; the boot notification appears. *As planned (2026-10-06, §9.8):* "within 90 s" is measured as "every slip made 90 s or more after the primary stops prints on the second device; one already waiting prints within 60 s more", and the exit adds the owner's measured free-tier check of both modes with tokens on (§17.2). Sessions 3A–3G. |
 | **4** | Fast text-mode ESC/POS for KOTs whose text is all Latin (raster stays for Indian scripts and logos), printer discovery, setup polish | A KOT payload is about 10× smaller than raster; Bluetooth KOT time is measured before and after. |
 | Later | Offline billing, native print agent, CloudPRNT / Epson Server Direct Print printers | Separate specs. |
 
