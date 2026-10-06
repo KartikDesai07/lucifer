@@ -22,15 +22,18 @@ No paper is lost or doubled.
 - **A token on the asking tab's own line is the asking tab's to lease.** It is made queued and, like a slip made
   leased to that tab (decision 16), it is not announced to the device that asked: the answer names it (a queued
   ref, which `followPrintJob` turns into `kickPrintAgent`), or the KOT's ack says `more`. So a slip behind it on the
-  same line (Pay Now's bill) is not announced either, exactly as before the fix. A realtime frame to yourself would
-  only cost a Worker request and, arriving mid-cycle, one more lease.
+  same line (Pay Now's bill) is not announced either, as before the fix on a free line. (On a busy line, a request
+  whose first slip there is a token now announces nothing, where its first slip used to be announced: not a strand,
+  the answer's refs kick the agent; the review's M-1.) A realtime frame to yourself would only cost a Worker request
+  and, arriving mid-cycle, one more lease.
 - **The enqueue** (a token reprint, or a token slip an order answer did not name) skips `enqueueDirectPrintJob`
   for a token and takes the Phase 1 lanes (made queued for the host, or the device's own). Rare, so it keeps
   Phase 1's announce there.
-- **Budget.** The S7 token pins already price a token at a lease and an ack (2 requests); only printers mode, on
-  the device that writes the bill printer, moves from 1 request to 2. No existing pin changes; a new pin prices
-  that day.
-- **T3** shows its warning from the printers list (the same cached read as the agent's: no new request), whatever
+- **Budget.** The S7 token pins already price a token at a lease and an ack (2 requests); only printers mode, on a
+  counter that writes the bill printer but no full copy, moves from 1 request to 2. No existing pin changes; new pins
+  price that day and (after the review) hold the printers-mode token days S7 never priced, as OPEN for the owner.
+- **T3** shows its warning from the printers list (the agent's cached query: at most one read when a tab opens the
+  page without it, never recurring), whatever
   the tokens switch says: `tokens-settings-paths.test.ts` pins that the page reads no other field (`useWatch`).
 
 ## Tasks (TDD: every RED seen before its GREEN; every new assert has a message)

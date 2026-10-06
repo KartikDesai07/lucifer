@@ -55,6 +55,7 @@ import {
   PRINT_SETUP_STALE_MS,
   printHeavyCounterDayRequests,
   printSetupReadsWorstPerDay,
+  printTokenRequestsPerDay,
 } from "./print-budget";
 
 // Spec §17.3 item 4: recompute §17.2's two "Vercel invocations" totals from the exported constants
@@ -382,22 +383,52 @@ test("2C: a stale printer list is read again at most once a minute, and at most 
 
 // The token fix (plan 2026-10-06-token-direct-fix.md, T1): a token is never made leased at creation (an older page
 // cannot draw it), so it always costs a lease and an ack. The S7 pins above already price every token slip so (2 per
-// slip, simple mode), and no pin above priced a token as made leased: none changes. The one day it moves is printers
-// mode on the counter that writes the bill printer (and so the tokens): there a token was made leased (1 request) and
-// is now leased by the counter's page (2). Recounted here on the heavy counter day of the 2C pin (5,340).
-test("token fix: a token always costs a lease and an ack; the heavy counter day with a token per order is 6,000, inside the normal ceiling", () => {
+// slip, simple mode), and no pin above priced a token as made leased: none changes. The fix moves one day only:
+// printers mode, a counter that writes the bill printer but no full copy takes every order, so the token was the
+// request's first job on the counter's line (made leased: 1 request) and is now leased by the counter's page (2).
+// Its review (Fable 5.1, I-1) also recounted the printers-mode days a token cafe adds to, which S7 never priced: the
+// two OPEN pins below hold those figures for the owner to rule; the token fix does not change them.
+const fastestWake = (): number => cadence({ socketHealthy: false, msSinceLastJob: 0, capSpent: false });
+const healthyWakePerWriter = (): number => Math.round(OPEN_MS / cadence({ socketHealthy: true, msSinceLastJob: null, capSpent: false }));
+
+test("token fix: a token always costs a lease and an ack; the day it moves (a counter that writes the bills only) goes 5,160 -> 5,460, 5,652 with the printer-list reads, inside the normal ceiling", () => {
   assert.equal(PRINT_REQUESTS_PER_TOKEN_SLIP, PRINT_REQUESTS_PER_SLIP, "a lease and an ack, like a slip another device prints");
   assert.notEqual(PRINT_REQUESTS_PER_TOKEN_SLIP, PRINT_REQUESTS_PER_DIRECT_SLIP, "never the one request of a slip made leased at creation");
-  const tokensPerDay = PRINT_BUDGET_BUSY_DAY.orders;
-  const tokenRequests = Math.round(tokensPerDay * PRINT_REQUESTS_PER_TOKEN_SLIP * (1 + PRINT_BUDGET_BUSY_DAY.retryShare));
-  assert.equal(tokenRequests, 660, "300 tokens, a lease and an ack each, plus the retried share");
-  const wasMadeLeased = Math.round(tokensPerDay * (PRINT_REQUESTS_PER_DIRECT_SLIP + PRINT_BUDGET_BUSY_DAY.retryShare * PRINT_REQUESTS_PER_SLIP));
-  assert.equal(tokenRequests - wasMadeLeased, 300, "the fix costs the counter one lease per token: 300 a day");
-  const wakePerWriter = Math.round(OPEN_MS / cadence({ socketHealthy: true, msSinceLastJob: null, capSpent: false }));
-  const counterDay = printHeavyCounterDayRequests() + tokenRequests + PRINT_BUDGET_STATIONS_DAY.writers * wakePerWriter;
-  assert.equal(counterDay, 6_000, "the 2C pin's 5,340 plus the tokens");
-  assert.ok(counterDay <= PRINT_BUDGET_NORMAL_MAX_PER_DAY, `${counterDay}/day within ${PRINT_BUDGET_NORMAL_MAX_PER_DAY}`);
-  const realtime = (printStationSlipsPerDay({ fullCopy: true }) + tokensPerDay) * PRINT_REALTIME_PER_PRINTER_SLIP + PRINT_REALTIME_BASE_PER_DAY;
+  const tokens = printTokenRequestsPerDay();
+  assert.equal(tokens, 660, "300 tokens, a lease and an ack each, plus the retried share");
+  const orders = PRINT_BUDGET_BUSY_DAY.orders;
+  const wasMadeLeased = Math.round(orders * (PRINT_REQUESTS_PER_DIRECT_SLIP + PRINT_BUDGET_BUSY_DAY.retryShare * PRINT_REQUESTS_PER_SLIP));
+  assert.equal(tokens - wasMadeLeased, 300, "on that counter the fix costs one lease per token: 300 a day");
+  // Each round's station slips at their writers and each bill behind its token: a lease and an ack apiece.
+  const slips = printRequestsForSlips(printStationSlipsPerDay({ fullCopy: false }));
+  const wake = PRINT_BUDGET_STATIONS_DAY.writers * healthyWakePerWriter();
+  assert.equal(slips + wasMadeLeased + wake, 5_160, "before the fix");
+  const after = slips + tokens + wake;
+  assert.equal(after, 5_460, "after the fix");
+  assert.equal(after + printSetupReadsWorstPerDay(), 5_652, "with every printer-list read");
+  assert.ok(after + printSetupReadsWorstPerDay() <= PRINT_BUDGET_NORMAL_MAX_PER_DAY, `${after + printSetupReadsWorstPerDay()}/day within ${PRINT_BUDGET_NORMAL_MAX_PER_DAY}`);
+  const realtime = (printStationSlipsPerDay({ fullCopy: true }) + orders) * PRINT_REALTIME_PER_PRINTER_SLIP + PRINT_REALTIME_BASE_PER_DAY;
   assert.equal(realtime, 2_285, "at most one Worker request a token (none when the asking tab prints it), the heavy day under 5 %");
   assert.ok(realtime <= REALTIME_FREE_REQUESTS_PER_DAY * 0.05, `${realtime}/day`);
+});
+
+test("OPEN for the owner (pre-existing since S7; the token fix does not move it): the 2C heavy counter day with a token per order is 6,000, and 6,192 with the printer-list reads, over the normal ceiling", () => {
+  // The counter writes the full copy too: each round's full copy heads its line, so the token always waited behind it.
+  const day = printHeavyCounterDayRequests() + printTokenRequestsPerDay() + PRINT_BUDGET_STATIONS_DAY.writers * healthyWakePerWriter();
+  assert.equal(day, 6_000, "the 2C pin's 5,340 plus the tokens, before and after the fix alike");
+  const withReads = day + printSetupReadsWorstPerDay();
+  assert.equal(withReads, 6_192, "with every printer-list read");
+  assert.ok(withReads > PRINT_BUDGET_NORMAL_MAX_PER_DAY, `OPEN: ${withReads}/day is over the ${PRINT_BUDGET_NORMAL_MAX_PER_DAY} normal ceiling; the owner rules it (no pin was loosened)`);
+});
+
+test("OPEN for the owner (pre-existing since S7; the token fix does not move it): the heavy setup with a token per order, taken on devices that print nothing, is 6,450 a day (6,642 with reads) and 18,288 at worst (18,480 with reads), over both ceilings", () => {
+  const slips = printRequestsForSlips(printStationSlipsPerDay({ fullCopy: true })) + printTokenRequestsPerDay();
+  const normal = slips + PRINT_BUDGET_STATIONS_DAY.writers * healthyWakePerWriter();
+  assert.equal(normal, 6_450, "the 2A heavy day's 5,790 plus the tokens");
+  assert.equal(normal + printSetupReadsWorstPerDay(), 6_642, "with every printer-list read");
+  assert.ok(normal > PRINT_BUDGET_NORMAL_MAX_PER_DAY, `OPEN: ${normal}/day is over the ${PRINT_BUDGET_NORMAL_MAX_PER_DAY} normal ceiling`);
+  const worst = slips + 3 * Math.min(OPEN_MS / fastestWake(), printWakeWriterCap(3));
+  assert.equal(worst, 18_288, "the 2A heavy worst case's 17,628 plus the tokens");
+  assert.equal(worst + printSetupReadsWorstPerDay(), 18_480, "with every printer-list read");
+  assert.ok(worst > PRINT_BUDGET_WORST_MAX_PER_DAY, `OPEN: ${worst}/day is over the ${PRINT_BUDGET_WORST_MAX_PER_DAY} worst-case ceiling`);
 });

@@ -53,6 +53,12 @@ export const PRINT_REALTIME_PER_DIRECT_SLIP = 0;
  *  before S7 cannot draw it), so even on the device that prints it, it costs a lease and an ack. */
 export const PRINT_REQUESTS_PER_TOKEN_SLIP = PRINT_REQUESTS_PER_SLIP;
 
+/** The busy day's token slips (one per order) at a lease and an ack each, plus the retried share: what a token cafe
+ *  adds to any day above (print-budget.test.ts holds the printers-mode days it moves, and those left OPEN). */
+export function printTokenRequestsPerDay(): number {
+  return Math.round(PRINT_BUDGET_BUSY_DAY.orders * PRINT_REQUESTS_PER_TOKEN_SLIP * (1 + PRINT_BUDGET_BUSY_DAY.retryShare));
+}
+
 /** The busy day (spec §17.2's 300 orders) of a cafe whose one device takes and prints every order, at its
  *  worst: every bill rides with its KOT (Pay Now), so each bill costs a lease and an ack; every other KOT
  *  round is made leased. A retried slip costs a lease and an ack. The ack's `more` leaves no empty lease. */
