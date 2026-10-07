@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { BackupPrinterSelect } from "@/components/print/setup/BackupPrinterSelect";
 import { NativePrinterSelect } from "@/components/print/setup/NativePrinterSelect";
 import { WindowsPrinterSelect } from "@/components/print/setup/WindowsPrinterSelect";
 import { useDevicePrinter, useNativePool, usePrintCapabilities } from "@/hooks/use-device-printer";
@@ -187,6 +188,10 @@ export function PrinterFormDialog({ printer, printers, stations, devices, device
               <Copies label="KOT copies" value={draft.copiesKot} onChange={(copiesKot) => set({ copiesKot })} />
               <Copies label="Bill copies" value={draft.copiesBill} onChange={(copiesBill) => set({ copiesBill })} />
             </div>
+          </div>
+          <div className="space-y-2">
+            <p className="font-medium">4. Backup printer</p>
+            <BackupPrinterSelect printerId={printer?.id ?? null} value={draft.backupPrinterId} printers={printers} onChange={(backupPrinterId) => set({ backupPrinterId })} />
           </div>
           <label className="flex items-center justify-between gap-3 rounded-md border border-brand-rule p-3">
             <span className="font-medium">Printer on</span>

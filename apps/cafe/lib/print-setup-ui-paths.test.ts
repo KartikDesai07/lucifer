@@ -14,7 +14,7 @@ const raw = (rel: string): string => readFileSync(path.join(CAFE, rel), "utf8").
 const src = (rel: string): string => stripComments(raw(rel));
 const lines = (text: string): number => text.replace(/\n$/, "").split("\n").length;
 const SETUP = "components/print/setup/";
-const FILES = ["PrintSetupSections.tsx", "PrintersSetupSection.tsx", "PrinterFormDialog.tsx", "SetUpPrintersCard.tsx", "StationsSetupSection.tsx", "DevicesSetupSection.tsx"].map((f) => `${SETUP}${f}`);
+const FILES = ["PrintSetupSections.tsx", "PrintersSetupSection.tsx", "PrinterFormDialog.tsx", "SetUpPrintersCard.tsx", "StationsSetupSection.tsx", "DevicesSetupSection.tsx", "BackupPrinterSelect.tsx"].map((f) => `${SETUP}${f}`);
 
 test("PIN (2D): the admin Printer setup page shows the outlet's sections after this device's panel", () => {
   const page = src("app/(dashboard)/printers/page.tsx");
@@ -176,10 +176,24 @@ test("PIN (2D): the setup screens are client components, stay small, never log, 
   for (const rel of FILES) {
     const text = raw(rel);
     assert.ok(text.startsWith('"use client";'), `${rel} is a client component`);
-    // Session 2F1 (deliberate change): the printer form also lists the POS app's printers (bridge v2).
-    const budget = rel.endsWith("PrinterFormDialog.tsx") ? 240 : 220;
+    // Session 2F1 (deliberate change): the printer form also lists the POS app's printers (bridge v2). Session 3B: 250
+    // (was 240), its backup printer.
+    const budget = rel.endsWith("PrinterFormDialog.tsx") ? 250 : 220;
     assert.ok(lines(text) <= budget, `${rel} stays <= ${budget} lines, got ${lines(text)}`);
     assert.ok(!/console\./.test(text), `${rel} never logs`);
     assert.ok(!/\.mutate\(/.test(src(rel)), `${rel} awaits mutateAsync (a per-call callback fires only for the latest call)`);
   }
+});
+
+// Phase 3 Session 3B (spec §9.3, §9.4, §11): the setup page's failover words and the backup printer in the form.
+test("PIN (3B): each printer row shows its failover lines, each device whether it can take a printer over, and the form saves a backup printer", () => {
+  const section = src(`${SETUP}PrintersSetupSection.tsx`);
+  assert.ok(section.includes("printerFailoverLines(printer, printers, devices, deviceId, Date.now()).map((line) => ("), "the row's backup, who prints it now, its problem, no takeover");
+  const devices = src(`${SETUP}DevicesSetupSection.tsx`);
+  assert.ok(devices.includes("{device.lanFailover === true && <p className=\"text-brand-muted\">{DEVICE_TAKES_OVER_TEXT}</p>}"), "a device that can take a network printer over says so");
+  const form = src(`${SETUP}PrinterFormDialog.tsx`);
+  assert.ok(form.includes("<BackupPrinterSelect printerId={printer?.id ?? null} value={draft.backupPrinterId} printers={printers} onChange={(backupPrinterId) => set({ backupPrinterId })} />"), "the backup printer, chosen in the form");
+  const select = src(`${SETUP}BackupPrinterSelect.tsx`);
+  assert.ok(select.includes("const choices = backupChoicesOf(printers, printerId, value);"), "the choices from the pure lib");
+  assert.ok(select.includes("value={choices.some((choice) => choice.id === value) ? value : NONE}"), "a saved backup it cannot find shows as none");
 });

@@ -79,6 +79,8 @@ import { PRINT_WAKE_PRINTERS_DAILY_CAP } from "@pos/shared/print-agent-wire";
 import { PRINT_SETUP_REFRESH_MIN_MS, PRINT_SETUP_STALE_MS } from "@pos/shared/print-budget";
 import { PRINTERS_MAX, PRINTER_COPIES_MAX, PRINTER_COPIES_MIN, STATIONS_MAX } from "@pos/shared/print-printers";
 import { SESSION_MAX_AGE_SECONDS, SESSION_REVALIDATE_MS } from "@pos/shared/constants";
+import { DEVICE_TAKES_OVER_TEXT, PRINTER_NO_TAKEOVER_TEXT } from "@/lib/print-setup-text";
+import { BACKUP_PRINTER_NOTE } from "@/lib/print-setup-form";
 import { TOKENS_RELOAD_HINT } from "@/lib/token-settings-notes";
 
 // Doc<->source parity for docs/GO-LIVE-CHECKLIST.md §A "Pinned facts" — an
@@ -1422,4 +1424,13 @@ test("PIN §1 (the token fix): turning token slips on comes after every POS scre
   assert.ok(step.includes("Admin → Printer setup") && step.includes("tick **Bill**"), "printers mode: a printer must take bills, and where to tick it");
   assert.ok(step.includes("No printer is set up for bills."), "the reason staff see when none does");
   assert.ok(step.includes("change it outside service hours"), "the restart time note");
+});
+
+// ── Printing Phase 3 Session 3B: the page's failover, the backup printer ─────────
+test("PIN §1 (printing Phase 3, Session 3B): failover and the backup printer: reload every screen, a second device that can take a printer over, the setup's words verbatim", () => {
+  const step = norm(sectionSlice("### Existing cafes: printing failover and the backup printer (printing Phase 3)"));
+  assert.ok(step.includes("Reload every POS screen"), "every screen reloaded after the deploy");
+  assert.ok(step.includes(norm(DEVICE_TAKES_OVER_TEXT)) && step.includes(norm(PRINTER_NO_TAKEOVER_TEXT)), "the Devices and Printers words, verbatim");
+  assert.ok(step.includes(norm(BACKUP_PRINTER_NOTE)), "the form's backup note, verbatim");
+  assert.ok(step.includes("Phase 2 POS app") && step.includes("1.12.0"), "which apps can take a network printer over");
 });

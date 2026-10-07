@@ -1,4 +1,5 @@
 import type { PrintDeviceSummary } from "@pos/shared/print-agent-wire";
+import { printerActiveWriter, printerProblemOf, printerProblemText, type PrinterFailover } from "@pos/shared/print-failover";
 import {
   defaultBillPrinterOf,
   printerTakesSlips,
@@ -102,6 +103,35 @@ export function testPrintBlock(
   if (!here.localIds.includes(printer.id)) return "This device prints it, but it is not this device's printer. Edit it first.";
   if (here.canPrint) return null;
   return here.ownState === true ? `Connect ${printer.name} on this device to test it.` : "Connect this device's printer to test it.";
+}
+
+/** Session 3B (spec §9.3, §11): what the Devices section says of a device that can take a network printer over. */
+export const DEVICE_TAKES_OVER_TEXT = "Can take over network printers";
+/** Session 3B: a network printer row with no other device online that could take it over. */
+export const PRINTER_NO_TAKEOVER_TEXT = "No other device online can take it over while its printing device is offline.";
+
+/** Session 3B: who is online, from the devices read the page already made (no request of its own). */
+function setupFailoverOf(devices: readonly PrintDeviceSummary[], nowMs: number): PrinterFailover {
+  return { online: devices.filter((device) => device.online).map((device) => ({ deviceId: device.deviceId, lanFailover: device.lanFailover === true })), nowMs };
+}
+
+/** Session 3B (spec §9.3, §9.4, §10): a printer row's failover lines: its backup ("(not in use)" once it stops taking
+ *  slips), and for a printer routing sends slips to, who prints it now when another device took it over, the problem
+ *  its writer reported (its device offline is the row's own state), and a network printer no other device online could
+ *  take over. */
+export function printerFailoverLines(printer: PrinterConfig, printers: readonly PrinterConfig[], devices: readonly PrintDeviceSummary[], thisDeviceId: string, nowMs: number): string[] {
+  const lines: string[] = [];
+  const backup = printer.backupPrinterId === undefined ? undefined : printers.find((row) => row.id === printer.backupPrinterId);
+  if (backup !== undefined) lines.push(`Backup: ${backup.name}${routablePrinterOf(printers, backup.id) === null ? " (not in use)" : ""}`);
+  if (routablePrinterOf(printers, printer.id) === null) return lines;
+  const failover = setupFailoverOf(devices, nowMs);
+  const writer = printerActiveWriter(printer, failover);
+  if (writer !== null && writer !== printerWriterDeviceId(printer)) lines.push(`Printed now by ${deviceName(writer, devices, thisDeviceId)}`);
+  const problem = printerProblemOf(printer, failover);
+  if (problem !== null && problem !== "device-offline") lines.push(printerProblemText(printer.name, problem));
+  const others = failover.online.some((device) => device.lanFailover && device.deviceId !== printer.primaryDeviceId);
+  if (printer.connection.kind === "lan" && !others) lines.push(PRINTER_NO_TAKEOVER_TEXT);
+  return lines;
 }
 
 /** The toast after a Test print: said plainly when its printing device is away (its slip waits for it). */

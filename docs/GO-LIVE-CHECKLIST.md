@@ -286,6 +286,33 @@ no slip until then.
       A change during service can repeat or skip tonight's token, kitchen
       ticket and bill numbers.
 
+### Existing cafes: printing failover and the backup printer (printing Phase 3)
+
+From this release a phone or tablet can print another device's network printer
+while that device is offline or cannot reach it, every device says why a slip
+waits ("Kitchen is out of paper."), and a printer can have a backup printer. The
+full Phase 3 release step (the new apps, the real-printer checks) comes with the
+Phase 3 release; these notes cover the web part.
+
+- [ ] **Reload every POS screen** after the deploy: Refresh in the POS app,
+      reload each browser tab, quit and reopen the Windows app. A page from
+      before it prints exactly as before, but never takes another device's
+      printer over and never reports a printer's state; until it reloads, its
+      acks, pulse and wake each cost one small extra database read.
+- [ ] **Who can take a network printer over:** a phone or tablet with the
+      Phase 2 POS app (or later) that prints at least one printer of the setup
+      (the Windows app from 1.12.0). **Admin → Printer setup → Devices** shows
+      "Can take over network printers" under each one. A network printer with
+      none online says "No other device online can take it over while its
+      printing device is offline." Each such device adds every network printer
+      to its POS app by itself (Other printers on this device says why); there is
+      nothing to set up.
+- [ ] **A backup printer** (optional): **Admin → Printer setup → Edit** a
+      printer → **4. Backup printer**. The form says it: "Its waiting slips
+      print there, marked BACKUP PRINTER, while its own device is offline or no
+      device can reach it." The backup must be switched on and take slips; the
+      row then shows "Backup: ‹name›".
+
 ---
 
 ## §2 First run, and the admin handover (DEPLOYER → CAFE ADMIN)

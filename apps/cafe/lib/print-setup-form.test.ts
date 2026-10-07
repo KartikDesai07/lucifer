@@ -26,6 +26,8 @@ import {
   setUpPrintersBody,
 } from "@/lib/print-setup-form";
 import { connectionText, deviceName, printerRowState, printersLeftEmptyBy, setupGaps, slipsText, testPrintBlock, testPrintSentText } from "@/lib/print-setup-text";
+import { DEVICE_TAKES_OVER_TEXT, PRINTER_NO_TAKEOVER_TEXT, printerFailoverLines } from "@/lib/print-setup-text";
+import { backupChoicesOf } from "@/lib/print-setup-form";
 import type { DevicePrinter } from "@/lib/printer/device-printer-store";
 
 // Printing redesign, Phase 2 Session 2D (spec §11): the Printer setup page's pure half: the form, "Set up printers"
@@ -278,4 +280,46 @@ test("PIN (2D): the setup page's reads are on that page only (never polled); eve
   assert.equal((hooks.match(/onSuccess: \(\) => qc\.invalidateQueries\(\{ queryKey: PRINTERS_KEYS\.all \}\)/g) ?? []).length, 2, "a printer save or delete refreshes the printers this device (and its agent) reads");
   assert.match(hooks, /headers: printAgentHeaders\(readDeviceId\(\)\)/, "a test print names this device and tab");
   assert.match(hooks, /if \(ref\.leased !== undefined\) deliverLeasedJob\(ref\.leased\);/, "a test slip leased to this tab prints here at once");
+});
+
+// Phase 3 Session 3B (spec §9.4, §11): the backup printer in the printer form. "None", or another printer routing sends
+// slips to; a saved backup that stopped taking slips stays offered, marked "(not in use)", so a save keeps it; a saved
+// id the form cannot find (deleted in the instant before a save) shows as none and is sent as null, never an error.
+const B_SLIPS = { bill: true, kotStations: [], kotAll: false, notices: false, eod: false };
+function cfg(id: string, over: Partial<PrinterConfig> = {}): PrinterConfig {
+  return { id, name: id.toUpperCase(), connection: { kind: "lan", host: `10.0.0.${id.length}`, port: 9100 }, primaryDeviceId: `dev-${id}`, order: 0, paper: 80, slips: B_SLIPS, copies: { kot: 1, bill: 1 }, enabled: true, ...over };
+}
+
+test("3B: the form's backup printer: none, or another printer that takes slips; a saved one that stopped is '(not in use)'; one it cannot find is none, sent as null", () => {
+  const printers = [cfg("bar"), cfg("counter"), cfg("off", { enabled: false }), cfg("idle", { slips: { ...B_SLIPS, bill: false } })];
+  assert.deepEqual(backupChoicesOf(printers, "bar", ""), [{ id: "counter", label: "COUNTER" }], "never itself, never a printer that takes no slips");
+  assert.deepEqual(backupChoicesOf(printers, null, ""), [{ id: "bar", label: "BAR" }, { id: "counter", label: "COUNTER" }], "a new printer may pick any");
+  assert.deepEqual(backupChoicesOf(printers, "bar", "off"), [{ id: "counter", label: "COUNTER" }, { id: "off", label: "OFF (not in use)" }], "the saved one, switched off since, stays offered so a save keeps it");
+  const saved = printerDraftOf({ ...cfg("bar"), backupPrinterId: "counter" }, []);
+  assert.equal(saved.backupPrinterId, "counter");
+  assert.equal(printerDraftOf(null, []).backupPrinterId, "", "a new printer: none");
+  const body = (draft: typeof saved, list: PrinterConfig[] = printers) => {
+    const result = printerBodyOf(draft, list, "bar");
+    return result.ok ? result.body.backupPrinterId : "refused";
+  };
+  assert.equal(body(saved), "counter");
+  assert.equal(body({ ...saved, backupPrinterId: "" }), null, "none is sent as null (absent would keep a saved backup: A3)");
+  assert.equal(body({ ...saved, backupPrinterId: "gone" }), null, "one the form cannot find: none, never an error");
+});
+
+test("3B: a printer row says its backup, who prints it now, its problem in its words, and that no device can take it over", () => {
+  const NOW = Date.parse("2026-10-07T12:00:00.000Z");
+  const devices: PrintDeviceSummary[] = [
+    { deviceId: "dev-kitchen", label: "Kitchen tablet", shell: "android", online: false, lastSeenAt: new Date(NOW - 300_000).toISOString(), nativeProtocol: 2, lanFailover: true },
+    { deviceId: "dev-counter", label: "Counter tablet", shell: "android", online: true, lastSeenAt: new Date(NOW).toISOString(), nativeProtocol: 2, lanFailover: true },
+  ];
+  const counter = cfg("counter", { primaryDeviceId: "dev-counter", health: { link: "connected", paper: "out", deviceId: "dev-counter", at: new Date(NOW - 60_000).toISOString() } });
+  const kitchen = cfg("kitchen", { primaryDeviceId: "dev-kitchen", backupPrinterId: "counter" });
+  const printers = [kitchen, counter];
+  assert.deepEqual(printerFailoverLines(kitchen, printers, devices, "me", NOW), ["Backup: COUNTER", "Printed now by Counter tablet …nter"], "the kitchen tablet offline: the counter took its network printer over");
+  assert.deepEqual(printerFailoverLines(counter, printers, devices, "me", NOW), ["COUNTER is out of paper.", PRINTER_NO_TAKEOVER_TEXT], "its writer's fresh report; the kitchen tablet, offline, cannot take it over now");
+  assert.deepEqual(printerFailoverLines(kitchen, [kitchen, { ...counter, enabled: false }], devices, "me", NOW)[0], "Backup: COUNTER (not in use)", "a backup that stopped taking slips");
+  const off = { ...kitchen, enabled: false };
+  assert.deepEqual(printerFailoverLines(off, [off, counter], devices, "me", NOW), ["Backup: COUNTER"], "a printer switched off says only its backup");
+  assert.equal(DEVICE_TAKES_OVER_TEXT, "Can take over network printers");
 });
