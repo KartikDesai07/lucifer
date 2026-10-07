@@ -339,7 +339,8 @@ test("PIN (2F1): the page follows the app's printers: the agent's lines, the dot
   assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, canPrint, poolReady]);"), "a change of the app's printers that can print now is a nudge");
   assert.ok(src("apps/cafe/components/layout/PrintHostProvider.tsx").includes("nativePool().init();"), "read once per page, beside the device printer");
   assert.ok(src("apps/cafe/hooks/use-print-agent-wake.ts").includes("...(caps.native ? { nativeProtocol: nativeV2Bridge() !== null ? NATIVE_BRIDGE_V2 : 1 } : {}),"), "the wake says which app prints several printers");
-  assert.ok(src("apps/cafe/lib/printer/printer-dot.ts").includes("return noHostRow(lane, printers.worst ?? local, desktopChosen);"), "the dot's worst printer");
+  // Session 3B (deliberate change): then a printer problem the app says, when every printer answers.
+  assert.ok(src("apps/cafe/lib/printer/printer-dot.ts").includes("const row = noHostRow(lane, printers.worst ?? local, desktopChosen);"), "the dot's worst printer");
 });
 
 test("PIN (2C final review, I-2): the pulse and the wake kick the agent only on jobs it can lease", () => {
@@ -465,6 +466,16 @@ test("PIN (3B, Session 3A's I-1): a page names in its lease only a printer it ca
   assert.ok(hook.includes("readyPrinters: readyNow,"), "the agent's ready list is that");
   const lib = src("apps/cafe/lib/print-agent-printers.ts");
   assert.ok(lib.includes('return nativeId === undefined ? canPrint : statusOf(nativeId) === "connected";'), "an app printer is ready only while the app says connected");
+});
+
+test("3B: the dot carries the worst paper, cover or error the app says of a printer it counts, by that printer's name", () => {
+  const mine = printer("mine", { kind: "lan", host: "10.0.2.2", port: 9100 }, { primaryDeviceId: "dev-a", name: "Kitchen" });
+  const theirs = printer("theirs", { kind: "lan", host: "10.0.2.2", port: 9101 }, { primaryDeviceId: "dev-b", name: "Bar" });
+  const pool = { printers: [{ id: "tcp:10.0.2.2:9100", status: "connected" as const, paper: "low" as const, cover: "open" as const }, { id: "tcp:10.0.2.2:9101", status: "connected" as const, paper: "out" as const }] };
+  assert.deepEqual(dotPrintersOf([mine, theirs], "dev-a", NATIVE_TCP, null, pool).problem, { name: "Kitchen", problem: "cover-open" }, "its own printer's cover; the other device's printer does not count");
+  assert.deepEqual(dotPrintersOf([mine, theirs], "dev-a", NATIVE_TCP, null, pool, ["theirs"]).problem, { name: "Bar", problem: "paper-out" }, "while it writes the Bar printer, its paper out is worse");
+  const low = { printers: [{ id: "tcp:10.0.2.2:9100", status: "connected" as const, paper: "low" as const }] };
+  assert.equal(dotPrintersOf([mine], "dev-a", NATIVE_TCP, null, low).problem, undefined, "low paper still prints: no red dot");
 });
 
 test("3B: the dot counts a printer it may take over only while the wake says it writes it", () => {

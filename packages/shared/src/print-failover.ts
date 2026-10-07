@@ -171,6 +171,11 @@ export function printerProblemOf(printer: WriterOf & Pick<PrinterConfig, "health
   if (!failover.online.some((device) => device.deviceId === writer)) return "device-offline";
   const health = printer.health;
   if (health === undefined || health.deviceId !== writer || failover.nowMs - Date.parse(health.at) > PRINTER_HEALTH_STALE_MS) return null;
+  return printerHealthProblem(health);
+}
+
+/** The worst thing one report says, worst first (Session 3B: also the top-bar dot, from the POS app's own status). */
+export function printerHealthProblem(health: Pick<PrinterHealthReport, "link" | "paper" | "cover" | "error">): PrinterProblem | null {
   if (health.paper === "out") return "paper-out";
   if (health.cover === "open") return "cover-open";
   if (health.error === true) return "error";

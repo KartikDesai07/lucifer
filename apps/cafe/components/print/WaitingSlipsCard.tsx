@@ -36,7 +36,7 @@ export function WaitingSlipsCard({ pulse }: { pulse: PosPulseData | undefined })
     });
   }, [rows]);
 
-  const groups = printWaitingGroups(rows ?? [], Date.now());
+  const groups = printWaitingGroups(rows ?? [], Date.now(), printers);
   if (groups.length === 0) return null;
   const release = (id: string) =>
     setTapped((prev) => {

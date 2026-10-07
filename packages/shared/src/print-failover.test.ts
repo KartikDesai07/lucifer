@@ -12,6 +12,7 @@ import {
   printerActiveWriter,
   printerBackupOf,
   printerBackupRefusal,
+  printerHealthProblem,
   printerProblemOf,
   printerProblemText,
   printerSkipEndsFor,
@@ -172,6 +173,16 @@ test("printerProblemOf: the device offline first; then what its writer reported,
   assert.equal(printerProblemOf(bt("b", "bar", { health: health({ paper: "out", deviceId: "old-writer" }) }), online), null, "a report from another device says nothing");
   const kitchen = lan("k", "kitchen", { health: { link: "connected", paper: "out", deviceId: "kitchen", at: at(0) } });
   assert.equal(printerProblemOf(kitchen, failover([["counter", true]])), null, "a network printer the counter took over: the primary's old report says nothing");
+});
+
+test("printerHealthProblem: the worst thing a report says, worst first; nothing when all is well (Session 3B: the dot reads it)", () => {
+  assert.equal(printerHealthProblem({ link: "connected", paper: "out", cover: "open", error: true }), "paper-out");
+  assert.equal(printerHealthProblem({ link: "connected", cover: "open", error: true }), "cover-open");
+  assert.equal(printerHealthProblem({ link: "connected", error: true }), "error");
+  assert.equal(printerHealthProblem({ link: "disconnected", paper: "low" }), "offline");
+  assert.equal(printerHealthProblem({ link: "connected", paper: "low" }), "paper-low");
+  assert.equal(printerHealthProblem({ link: "connected", paper: "ok", cover: "closed" }), null);
+  assert.equal(printerHealthProblem({ link: "connecting" }), null, "a probe in between says nothing");
 });
 
 test("printerProblemText: the words every device shows", () => {

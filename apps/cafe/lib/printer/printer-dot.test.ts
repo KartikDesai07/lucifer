@@ -233,7 +233,7 @@ test("R2-W7: over every input combination the button tone and name follow the or
 
 const REASONS: PrinterDotReason[] = [
   "ok", "device-offline", "checking", "no-printer", "printer-off", "printer-needs-tap",
-  "printer-elsewhere", "host-offline", "host-printer-off", "host-print-window",
+  "printer-elsewhere", "host-offline", "host-printer-off", "host-print-window", "printer-problem",
 ];
 
 function dotFor(reason: PrinterDotReason): PrinterDot {
@@ -416,4 +416,21 @@ test("2D: printers mode copy — plain words for the two new states", () => {
   });
   assert.equal(printerButtonName({ show: true, ok: true, reason: "printers-elsewhere" }), PRINTER_BUTTON_NAME_OK);
   assert.equal(printerDotTone({ show: true, ok: false, reason: "printer-not-here" }), "red");
+});
+
+// Phase 3 Session 3B (spec §10): a printer this device prints (writes by the setup, or took over) that its POS app says is
+// out of paper, has its cover open or reports an error turns the dot red, in that printer's words. Low paper still
+// prints, so it never does; a link that is down says so first (its Reconnect fix).
+test("3B: a printer of this device out of paper, its cover open or in error is red with its words; low paper is not; a down link first", () => {
+  const base = { remote: "none" as const, isHostDevice: false, lane: "raster" as const, local: "connected" as const, deviceOffline: false, desktopChosen: "unknown" as const };
+  const printers = { printersMode: true, isWriter: true, allLocal: true, worst: "connected" as const };
+  const out = printerDotOf({ ...base, printers: { ...printers, problem: { name: "Kitchen", problem: "paper-out" } } });
+  assert.deepEqual(out, { show: true, ok: false, reason: "printer-problem", problem: "Kitchen is out of paper." });
+  const hi = { hostLabel: null, printerName: null, isHostDevice: false, canPrintHere: true, localStatus: "connected" as const, desktopNoPrinter: false };
+  assert.deepEqual(printerHeadlineOf(out, hi), { headline: "Printer needs attention", detail: "Kitchen is out of paper.", fix: null });
+  assert.equal(printerButtonName(out), "Printer needs attention — open printer setup");
+  assert.equal(printerDotTone(out), "red");
+  const down = printerDotOf({ ...base, printers: { ...printers, worst: "disconnected", problem: { name: "Kitchen", problem: "cover-open" } } });
+  assert.equal(down.show && down.reason, "printer-off", "a printer that does not answer: reconnect it first");
+  assert.deepEqual(printerDotOf({ ...base, printers }), { show: true, ok: true, reason: "ok" }, "nothing known: green as before");
 });

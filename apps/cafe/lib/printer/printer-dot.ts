@@ -1,3 +1,4 @@
+import { printerProblemText, type PrinterProblem } from "@pos/shared/print-failover";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
 import type { DesktopChosen } from "@/lib/printer/desktop-printer-state";
 import type { PrinterStatus } from "@/lib/printer/web-printer-types";
@@ -46,9 +47,12 @@ export type PrinterDotReason =
   // Phase 2 Session 2D (spec §10), printers mode: this device writes a printer that is not its own printer; or it
   // writes none, and its slips print at the cafe's printers.
   | "printer-not-here"
-  | "printers-elsewhere";
+  | "printers-elsewhere"
+  // Phase 3 Session 3B (spec §10): a printer of this device out of paper, with its cover open or in error.
+  | "printer-problem";
 
-export type PrinterDot = { show: false } | { show: true; ok: boolean; reason: PrinterDotReason };
+/** Session 3B: `problem`, a printer-problem dot's words (printerProblemText). */
+export type PrinterDot = { show: false } | { show: true; ok: boolean; reason: PrinterDotReason; problem?: string };
 
 export interface PrinterDotInput {
   remote: PrintHostDot;
@@ -73,6 +77,8 @@ export interface PrinterDotPrinters {
   allLocal: boolean;
   /** Session 2F1 (spec §9.2): on the POS app with bridge v2, the worst state among its printers this device prints. */
   worst?: PrinterStatus;
+  /** Session 3B (spec §10): the worst problem the app says of one of them (out of paper, cover open, an error), by name. */
+  problem?: { name: string; problem: PrinterProblem };
 }
 
 const NO_DOT: PrinterDot = { show: false };
@@ -122,7 +128,10 @@ function thisDeviceHostRow(remote: PrintHostDot, lane: DotLane, local: PrinterSt
 function printersRow(printers: PrinterDotPrinters, lane: DotLane, local: PrinterStatus, desktopChosen: DesktopChosen): PrinterDot {
   if (!printers.isWriter) return dot("printers-elsewhere");
   if (!printers.allLocal) return dot("printer-not-here");
-  return noHostRow(lane, printers.worst ?? local, desktopChosen);
+  const row = noHostRow(lane, printers.worst ?? local, desktopChosen);
+  // Session 3B (spec §10): every printer answers, but one is out of paper, has its cover open or reports an error.
+  if (printers.problem !== undefined && row.show && row.ok) return { show: true, ok: false, reason: "printer-problem", problem: printerProblemText(printers.problem.name, printers.problem.problem) };
+  return row;
 }
 
 export function printerDotOf(input: PrinterDotInput): PrinterDot {
@@ -143,12 +152,15 @@ export const PRINTER_BUTTON_NAME_OK = "Printer connected — open printer setup"
 export const PRINTER_BUTTON_NAME_BAD = "Printer not connected — open printer setup";
 export const PRINTER_BUTTON_NAME_NONE = "Open printer setup";
 export const PRINTER_BUTTON_NAME_CHECKING = "Checking the printer — open printer setup";
+export const PRINTER_BUTTON_NAME_PROBLEM = "Printer needs attention — open printer setup";
+const PROBLEM_HEADLINE = "Printer needs attention";
 
 // "Checking" is neither good nor bad yet (a printer that is only connecting): the
 // header button gets its own name and no dot, so it never reads red or "not connected".
 export function printerButtonName(dotState: PrinterDot): string {
   if (!dotState.show) return PRINTER_BUTTON_NAME_NONE;
   if (dotState.reason === "checking") return PRINTER_BUTTON_NAME_CHECKING;
+  if (dotState.reason === "printer-problem") return PRINTER_BUTTON_NAME_PROBLEM;
   return dotState.ok ? PRINTER_BUTTON_NAME_OK : PRINTER_BUTTON_NAME_BAD;
 }
 
@@ -273,11 +285,14 @@ function copyFor(reason: PrinterDotReason, i: PrinterHeadlineInput, label: strin
       };
     case "printers-elsewhere":
       return { headline: "Printing is on", detail: "Each slip prints at its printer (Printer setup).", fix: null };
+    case "printer-problem":
+      return { headline: PROBLEM_HEADLINE, detail: "", fix: null };
   }
 }
 
 export function printerHeadlineOf(dotState: PrinterDot, input: PrinterHeadlineInput): PrinterHeadline {
   if (!dotState.show) return CHECKING_COPY;
+  if (dotState.reason === "printer-problem") return { headline: PROBLEM_HEADLINE, detail: dotState.problem ?? "", fix: null };
   const label = input.hostLabel !== null && input.hostLabel.trim() !== "" ? input.hostLabel.trim() : null;
   return copyFor(dotState.reason, input, label);
 }

@@ -1,4 +1,5 @@
 import type { PrintActionData, PrintAttentionRow } from "@pos/shared/print-agent-wire";
+import { printerProblemText, type PrinterProblem } from "@pos/shared/print-failover";
 import { PRINT_HOST_MAX_AGE_MS } from "@pos/shared/print-job";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
 import { isDesktopShellRefusal, isSlipRefusal, printWriteOutcomeOf } from "@/lib/print-write-outcome";
@@ -31,7 +32,8 @@ export function printWaitingAge(createdAt: string, nowMs: number): string {
   return minutes % 60 === 0 ? `${hours} h` : `${hours} h ${minutes % 60} min`;
 }
 
-export function printWaitingReason(row: PrintAttentionRow, nowMs: number): string {
+/** Session 3B (spec §9.4, §10): `printerName`, the slip's printer as this device's list names it, says its problem. */
+export function printWaitingReason(row: PrintAttentionRow, nowMs: number, printerName: string | null = null): string {
   if (row.status === "needs-confirm") return "It may already have printed. Check the printer.";
   if (row.status === "failed") {
     return row.lastError && !SERVER_WORDS.test(row.lastError) ? row.lastError : "Tried twice. Check the printer, then retry.";
@@ -39,6 +41,8 @@ export function printWaitingReason(row: PrintAttentionRow, nowMs: number): strin
   // Queued: a stale slip needs a tap whatever its printer does (the agent never leases it by itself),
   // unless staff already tapped it (1D gate M-6: then it only waits for its printer).
   if (!row.approved && nowMs - Date.parse(row.createdAt) > PRINT_HOST_MAX_AGE_MS) return "Waiting over 30 minutes: print it now, or clear it.";
+  // Session 3B (spec §9.4, §10, P3-7): its printer cannot print now: in that printer's words, on every device.
+  if (row.problem !== undefined && printerName !== null) return printerProblemText(printerName, row.problem);
   if (row.lastError) {
     const outcome = printWriteOutcomeOf(new Error(row.lastError));
     // The slip itself was refused once (owner, 1C gate I3): not the printer's fault (1D gate M-6).
@@ -57,11 +61,13 @@ export interface PrintWaitingSection {
   rows: Array<{ row: PrintAttentionRow; reason: string; age: string }>;
 }
 
-export function printWaitingGroups(rows: readonly PrintAttentionRow[], nowMs: number): PrintWaitingSection[] {
+export function printWaitingGroups(rows: readonly PrintAttentionRow[], nowMs: number, printers: ReadonlyArray<{ id: string; name: string }> = []): PrintWaitingSection[] {
   return GROUP_ORDER.map((group) => ({
     group,
     title: PRINT_WAITING_TITLES[group],
-    rows: rows.filter((row) => groupOf(row) === group).map((row) => ({ row, reason: printWaitingReason(row, nowMs), age: printWaitingAge(row.createdAt, nowMs) })),
+    rows: rows
+      .filter((row) => groupOf(row) === group)
+      .map((row) => ({ row, reason: printWaitingReason(row, nowMs, printerNameOf(printers, row.printerId)), age: printWaitingAge(row.createdAt, nowMs) })),
   })).filter((section) => section.rows.length > 0);
 }
 
@@ -86,10 +92,12 @@ export function printAlarmWanted(row: PrintAttentionRow, deviceId: string): bool
   return row.kind === "kot" || row.status !== "queued";
 }
 
-export function printAlarmMessage(row: PrintAttentionRow): string {
+export function printAlarmMessage(row: PrintAttentionRow, printerName: string | null = null): string {
   if (row.status === "needs-confirm") return `${row.label} may not have printed.`;
   if (row.status === "failed") return `${row.label} could not print.`;
-  return `${row.label} has not printed yet.`;
+  // Session 3B (spec §10): a slip that waits because its printer cannot print says why.
+  const why = row.problem !== undefined && printerName !== null ? ` ${printerProblemText(printerName, row.problem)}` : "";
+  return `${row.label} has not printed yet.${why}`;
 }
 
 /** A page that opens while slips already wait shows one notice for them, not one per slip (1D gate N-5). */
@@ -116,6 +124,8 @@ export interface PrintAlarmMemory {
   /** It already waited when the page opened: the one summary notice stands for it until it leaves the feed or
    *  gets a notice of its own (the Phase 1 final gate, M4). */
   summary?: true;
+  /** Session 3B: its printer's problem when last seen; a shown notice is re-worded, quietly, when it changes. */
+  problem?: PrinterProblem;
 }
 
 export interface PrintAlarmStep {
@@ -163,7 +173,7 @@ export function printAlarmStep(
       // A notice of its own: the summary no longer stands for it.
       step.ring = true;
       step.show.push(row);
-      next.set(row.id, { group, createdAt: row.createdAt, seenAt: nowMs, shown: true, ...approved });
+      next.set(row.id, { group, createdAt: row.createdAt, seenAt: nowMs, shown: true, ...approved, problem: row.problem });
     } else if (group !== was.group || (row.approved === true && was.approved !== true)) {
       // Staff acted on it: quietly.
       if (was.shown) step.dismiss.push(row.id);
@@ -172,9 +182,11 @@ export function printAlarmStep(
       // Back from a moment's lease (a refused attempt) and still waiting: its notice comes back, without a
       // second ring. A gap must never read as "printed".
       step.show.push(row);
-      next.set(row.id, { group, createdAt: was.createdAt, seenAt: nowMs, shown: true, ...approved });
+      next.set(row.id, { group, createdAt: was.createdAt, seenAt: nowMs, shown: true, ...approved, problem: row.problem });
     } else {
-      next.set(row.id, { ...was, seenAt: nowMs });
+      // Session 3B: its printer's problem changed: the notice is re-worded (same id), with no second ring.
+      if (was.shown && was.problem !== row.problem) step.show.push(row);
+      next.set(row.id, { ...was, seenAt: nowMs, problem: row.problem });
     }
   }
   const oldest = feed.rows.length > 0 ? Date.parse(feed.rows[0]?.createdAt ?? "") : Number.NaN;

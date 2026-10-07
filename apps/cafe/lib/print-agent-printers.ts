@@ -1,4 +1,5 @@
 import { PRINT_JOBS_FOR_ME_LIMIT, type LeasedPrintJob, type PrintJobsForMe } from "@pos/shared/print-agent-wire";
+import { PRINTER_PROBLEMS, printerHealthProblem, type PrinterCoverState, type PrinterPaperState, type PrinterProblem } from "@pos/shared/print-failover";
 import { printerWriterDeviceId, printersModeOn, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
 import type { PrintAgentResult } from "@/lib/print-agent-types";
 import type { SlipPrintTarget } from "@/lib/print-host-slips";
@@ -33,7 +34,7 @@ export interface DesktopPrinters {
 /** Session 2F1 (spec §9.2): the POS app's printers on bridge v2 (nativePool()): each one's id and state. null on any
  *  other device, and on an app that speaks only v1 (the release APK), which prints its one printer as before. */
 export interface NativePoolView {
-  printers: readonly { id: string; status: PrinterStatus }[];
+  printers: readonly { id: string; status: PrinterStatus; paper?: PrinterPaperState; cover?: PrinterCoverState; error?: true }[];
 }
 
 /** Session 2F1: the app's id a printer of the setup is, among the app's printers on bridge v2, or null. A LAN printer is
@@ -167,6 +168,8 @@ export function readyPrinterIdsOf(
 }
 
 const STATUS_WORSE: readonly PrinterStatus[] = ["connected", "connecting", "needs-tap", "elsewhere", "disconnected", "none"];
+/** Session 3B (spec §10): what turns the dot red although every printer answers. Low paper still prints. */
+const DOT_PROBLEMS: readonly PrinterProblem[] = ["paper-out", "cover-open", "error"];
 
 /** Session 2D (spec §10): what the top-bar dot needs: printers mode, whether this device writes a printer, and
  *  whether it prints every printer it writes (a printer it writes that is not its own never prints here). Session
@@ -184,11 +187,20 @@ export function dotPrintersOf(
   const counted = Object.entries(agent.targets).filter(([id]) => !agent.takeoverIds.includes(id) || takenOver.includes(id));
   const states = counted.flatMap(([, target]) => pool?.printers.filter((entry) => entry.id === target.nativeId).map((entry) => entry.status) ?? []);
   const worst = states.reduce<PrinterStatus | undefined>((acc, status) => (acc === undefined || STATUS_WORSE.indexOf(status) > STATUS_WORSE.indexOf(acc) ? status : acc), undefined);
+  // Session 3B (spec §10): the worst paper, cover or error the app says of a printer it counts, by that printer's name.
+  const problems = counted.flatMap(([id, target]) => {
+    const entry = pool?.printers.find((candidate) => candidate.id === target.nativeId);
+    const problem = entry === undefined ? null : printerHealthProblem({ link: "connected", paper: entry.paper, cover: entry.cover, error: entry.error });
+    const name = printers.find((printer) => printer.id === id)?.name;
+    return problem !== null && DOT_PROBLEMS.includes(problem) && name !== undefined ? [{ name, problem }] : [];
+  });
+  const problem = problems.sort((a, b) => PRINTER_PROBLEMS.indexOf(a.problem) - PRINTER_PROBLEMS.indexOf(b.problem))[0];
   return {
     printersMode: agent.printersMode,
     isWriter: agent.isWriter,
     allLocal: agent.localIds.filter((id) => !agent.takeoverIds.includes(id)).length === printersWrittenBy(printers, deviceId).length,
     ...(worst !== undefined ? { worst } : {}),
+    ...(problem !== undefined ? { problem } : {}),
   };
 }
 
