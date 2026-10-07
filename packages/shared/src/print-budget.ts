@@ -74,9 +74,20 @@ export const PRINT_BUDGET_TOKEN_WORST_MAX_PER_DAY = 18_500;
  *  reach a network printer is passed over for it for at least PRINTER_UNREACHABLE_SKIP_MS while another device can take
  *  it (then until its own lease names the printer again: Session 3A's final review, I-1), so such a printer costs that
  *  writer at most one lease and one ack per 5 minutes (a device that knows its printer is down never leases for it at
- *  all: Phase 1's rule). */
+ *  all: Phase 1's rule). That is the cost at the skip's floor; on a flaky link (the app's probe answers, its print's
+ *  connect does not) the ceiling stays Phase 1's refusal recheck, 2 requests per 30 s (the 3A review gate, m-3). */
 export function printUnreachableRequestsPerWriterPerDay(): number {
   return Math.round((PRINT_BUDGET_BUSY_DAY.openHours * 60 * 60 * 1000) / PRINTER_UNREACHABLE_SKIP_MS) * PRINT_REQUESTS_PER_SLIP;
+}
+
+/** Phase 3 (spec §9.3, §9.4; the 3A review gate, m-2): a slip moved to the device that took its printer over, or to
+ *  its backup printer, costs at most one more Worker request: its line's head announced to the new writer
+ *  (announcePrinterHead, at most once per move). */
+export const PRINT_REALTIME_PER_MOVED_SLIP = 1;
+
+/** The head announcements one writer's 5-minute skips cause over the busy day: at most one per skip. */
+export function printUnreachableAnnouncesPerWriterPerDay(): number {
+  return Math.round((PRINT_BUDGET_BUSY_DAY.openHours * 60 * 60 * 1000) / PRINTER_UNREACHABLE_SKIP_MS);
 }
 
 /** Phase 3 (spec §10, §17): printer health rides the wake (no request). A printer's health is written when it changes,

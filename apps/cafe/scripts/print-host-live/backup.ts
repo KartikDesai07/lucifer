@@ -7,13 +7,13 @@
  *
  * (console output is intentional — this is an ops CLI script, not app code.)
  */
-import { PRINTER_BACKUP_SELF_MESSAGE, PRINTER_BACKUP_UNKNOWN_MESSAGE } from "@pos/shared/print-failover";
+import { PRINTER_BACKUP_SELF_MESSAGE, PRINTER_BACKUP_UNKNOWN_MESSAGE, PRINTER_BACKUP_UNUSABLE_MESSAGE } from "@pos/shared/print-failover";
 import { PrintDevice } from "@/models/PrintDevice";
 import { Printer } from "@/models/Printer";
 import { Station } from "@/models/Station";
 import type { PrinterBody } from "@/lib/print-printer-schemas";
 import { leasePrintJobs } from "@/lib/print-lease";
-import { deletePrinter, listPrinters, replacePrinter } from "@/lib/print-printers";
+import { createPrinter, deletePrinter, listPrinters, replacePrinter } from "@/lib/print-printers";
 import { routePrinterJobs } from "@/lib/print-sweep";
 import { check } from "./harness";
 import { STAFF, rowOf, setRaw } from "./lifecycle";
@@ -37,6 +37,15 @@ export async function legBB(nowMs: number): Promise<void> {
   const self = await replacePrinter(o.bar, bar({ backupPrinterId: o.bar }));
   const unknown = await replacePrinter(o.bar, bar({ backupPrinterId: "aaaaaaaaaaaaaaaaaaaaaaaa" }));
   check("(bb) a printer is never its own backup, and a backup must exist (400s, in words)", !self.ok && self.error === PRINTER_BACKUP_SELF_MESSAGE && !unknown.ok && unknown.error === PRINTER_BACKUP_UNKNOWN_MESSAGE);
+  // The 3A review gate (m-1): a printer that takes no slip would be an inert backup.
+  const spareMade = await createPrinter({ ...bar({}), name: "Spare", connection: { kind: "lan", host: "10.0.0.73", port: 9100 }, primaryDeviceId: COUNTER, slips: NO_SLIPS });
+  const spare = spareMade.ok ? spareMade.data.id : "";
+  const inert = await replacePrinter(o.bar, bar({ backupPrinterId: spare }));
+  const inertNew = await createPrinter({ ...bar({ backupPrinterId: spare }), name: "Bar 2", connection: { kind: "device", deviceId: "live-fo-bar2", transport: "bt-classic", address: "AA:BB:DD" } });
+  check("(bb) a backup that takes no slips is refused at save, on an edit and on a new printer (400, in words)", !inert.ok && inert.error === PRINTER_BACKUP_UNUSABLE_MESSAGE && !inertNew.ok && inertNew.error === PRINTER_BACKUP_UNUSABLE_MESSAGE);
+  await Printer.updateOne({ _id: o.bar }, { $set: { backupPrinterId: spare } });
+  const keptInert = await replacePrinter(o.bar, bar({ backupPrinterId: spare }));
+  check("(bb) ... but a backup already saved that stopped taking slips never fails a save that keeps it", keptInert.ok && keptInert.data.backupPrinterId === spare);
   const saved = await replacePrinter(o.bar, bar({ backupPrinterId: o.counter }));
   check("(bb) the bar printer saved with the counter printer as its backup", saved.ok && saved.data.backupPrinterId === o.counter);
 

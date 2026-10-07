@@ -7,8 +7,11 @@ import {
   PRINTER_PROBLEMS,
   PRINTER_UNREACHABLE_HOLD_MS,
   PRINTER_UNREACHABLE_SKIP_MS,
+  PRINTER_BACKUP_UNKNOWN_MESSAGE,
+  PRINTER_BACKUP_UNUSABLE_MESSAGE,
   printerActiveWriter,
   printerBackupOf,
+  printerBackupRefusal,
   printerProblemOf,
   printerProblemText,
   printerSkipEndsFor,
@@ -113,6 +116,21 @@ test("printerBackupOf: a routable other printer, or null", () => {
   assert.equal(printerBackupOf(printers, bt("b", "bar", { backupPrinterId: "o" })), null, "switched off");
   assert.equal(printerBackupOf(printers, bt("b", "bar", { backupPrinterId: "gone" })), null, "deleted");
   assert.match(PRINTER_BACKUP_SELF_MESSAGE, /own backup/);
+});
+
+test("printerBackupRefusal: never itself, one that exists, and one routing still sends slips to, unless it is the one already saved (the 3A review gate, m-1)", () => {
+  const counter = lan("c", "counter", { slips: { ...NO_SLIPS, bill: true } });
+  const off = lan("o", "spare", { enabled: false });
+  const idle = lan("i", "spare2", { slips: NO_SLIPS });
+  const printers = [counter, off, idle];
+  assert.equal(printerBackupRefusal(printers, { id: "b", backupPrinterId: "c" }), null, "a printer that takes slips");
+  assert.equal(printerBackupRefusal(printers, { backupPrinterId: "c" }), null, "a new printer (no id yet)");
+  assert.equal(printerBackupRefusal(printers, { id: "c", backupPrinterId: "c" }), PRINTER_BACKUP_SELF_MESSAGE);
+  assert.equal(printerBackupRefusal(printers, { id: "b", backupPrinterId: "gone" }), PRINTER_BACKUP_UNKNOWN_MESSAGE);
+  assert.equal(printerBackupRefusal(printers, { id: "b", backupPrinterId: "o" }), PRINTER_BACKUP_UNUSABLE_MESSAGE, "switched off: it would never print a slip");
+  assert.equal(printerBackupRefusal(printers, { id: "b", backupPrinterId: "i" }), PRINTER_BACKUP_UNUSABLE_MESSAGE, "takes no slips");
+  assert.equal(printerBackupRefusal(printers, { id: "b", backupPrinterId: "o", saved: "o" }), null, "the backup already saved stays saved when it stops taking slips (the row says it is not in use)");
+  assert.match(PRINTER_BACKUP_UNUSABLE_MESSAGE, /switched on/, "in words");
 });
 
 test("printerProblemOf: the device offline first; then what its writer reported, while fresh and from that writer", () => {

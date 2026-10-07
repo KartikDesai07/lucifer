@@ -119,6 +119,19 @@ export function printerWriterOnline(printer: WriterOf, failover: PrinterFailover
 
 export const PRINTER_BACKUP_SELF_MESSAGE = "A printer cannot be its own backup. Choose another printer.";
 export const PRINTER_BACKUP_UNKNOWN_MESSAGE = "The backup printer no longer exists. Reload and choose again.";
+/** The 3A review gate (m-1): a backup that routing never sends a slip to would be saved silently inert. */
+export const PRINTER_BACKUP_UNUSABLE_MESSAGE = "The backup printer must be switched on, with its printing device and its slips chosen. Choose another printer.";
+
+/** §9.4 (the 3A review gate, m-1): why a printer cannot take `backupPrinterId` as its backup, in words, or null. Never
+ *  itself; one that exists; and one routing still sends slips to (switched on, with a writer, taking a slip), unless it
+ *  is the backup already `saved`: a save that keeps a backup which has since stopped taking slips never fails for it
+ *  (an older page re-saves whole printers; the setup row says the backup is not in use). */
+export function printerBackupRefusal(printers: readonly PrinterConfig[], input: { id?: string; backupPrinterId: string; saved?: string }): string | null {
+  if (input.backupPrinterId === input.id) return PRINTER_BACKUP_SELF_MESSAGE;
+  if (!printers.some((printer) => printer.id === input.backupPrinterId)) return PRINTER_BACKUP_UNKNOWN_MESSAGE;
+  if (input.backupPrinterId !== input.saved && routablePrinterOf(printers, input.backupPrinterId) === null) return PRINTER_BACKUP_UNUSABLE_MESSAGE;
+  return null;
+}
 
 /** §9.4: this printer's backup, while routing may still send it slips (enabled, with a writer, taking a slip); null
  *  with none, with itself, or with one deleted or switched off. */

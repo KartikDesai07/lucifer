@@ -61,6 +61,8 @@ import {
   VERCEL_HOBBY_INVOCATIONS_PER_DAY,
   printUnreachableRequestsPerWriterPerDay,
   printHealthRefreshWritesPerPrinterPerDay,
+  PRINT_REALTIME_PER_MOVED_SLIP,
+  printUnreachableAnnouncesPerWriterPerDay,
 } from "./print-budget";
 import { PRINTER_HEALTH_REFRESH_MS, PRINTER_UNREACHABLE_SKIP_MS } from "./print-failover";
 import { PRINTERS_MAX } from "./print-printers";
@@ -447,8 +449,10 @@ test("ACCEPTED by the owner (2026-10-06, option A; pre-existing since S7): the h
 });
 
 // Phase 3 Session 3A (spec §9.3): failover adds no request. The skip is ten refusal rechecks long, so a writer that
-// cannot reach a network printer another device can print costs at most a lease and an ack per 5 minutes.
-test("Phase 3 failover: a writer that could not reach a network printer is passed over for 5 minutes (ten 30 s rechecks): at most 288 requests a day", () => {
+// cannot reach a network printer another device can print costs at most a lease and an ack per 5 minutes. The 3A review
+// gate (m-3) deliberately re-worded this pin: 288 is the cost at the skip's floor; on a flaky link (the app's probe
+// answers, its print's connect does not) the ceiling stays Phase 1's refusal recheck, 2 requests per 30 s, not new.
+test("Phase 3 failover: a writer that could not reach a network printer costs at most 288 requests a day at the skip's 5-minute floor (ten 30 s rechecks); Phase 1's 2 requests per 30 s stays the ceiling", () => {
   assert.equal(PRINTER_UNREACHABLE_SKIP_MS, 5 * 60 * 1000);
   assert.ok(PRINTER_UNREACHABLE_SKIP_MS >= 10 * PRINT_AGENT_REFUSED_RECHECK_MS, "never shorter than ten of Phase 1's refusal rechecks");
   assert.equal(printUnreachableRequestsPerWriterPerDay(), 288, "144 skips over the busy day's 12 h, a lease and an ack each");
@@ -462,6 +466,21 @@ test("Phase 3 health: no request of its own; at most 144 refresh writes a printe
   const cafe = printHealthRefreshWritesPerPrinterPerDay() * PRINTERS_MAX;
   assert.equal(cafe, 1_728);
   assert.ok(cafe / (OPEN_MS / 1000) < 0.05, "far under Atlas M0's 100 operations a second");
+});
+
+// The 3A review gate (m-2): the head announcements failover adds (announcePrinterHead: a printer's waiting slips moved
+// to the device that took it over, or to its backup printer) were inside P3-3's 5 % ruling but not pinned. A moved slip
+// costs at most one more Worker request; at the heavy token day's figure with EVERY printer slip and token moved once,
+// plus a head announced per 5-minute skip for each of the three writers, realtime printing stays under 5 %.
+test("Phase 3 realtime: a slip moved by failover or to its backup costs at most one more Worker request; the heavy token day with every slip moved once and every writer skipped all day stays under 5 %", () => {
+  assert.equal(PRINT_REALTIME_PER_MOVED_SLIP, 1, "its line's head announced to its new writer");
+  assert.equal(printUnreachableAnnouncesPerWriterPerDay(), 144, "one head announced per 5-minute skip over the busy day's 12 h");
+  const slips = printStationSlipsPerDay({ fullCopy: true }) + PRINT_BUDGET_BUSY_DAY.orders;
+  const heavy = slips * PRINT_REALTIME_PER_PRINTER_SLIP + PRINT_REALTIME_BASE_PER_DAY;
+  assert.equal(heavy, 2_285, "the S7 heavy token day (one Worker request a slip or token)");
+  const perDay = heavy + slips * PRINT_REALTIME_PER_MOVED_SLIP + PRINT_BUDGET_STATIONS_DAY.writers * printUnreachableAnnouncesPerWriterPerDay();
+  assert.equal(perDay, 4_667, "plus every slip moved once and each writer skipped all day");
+  assert.ok(perDay <= REALTIME_FREE_REQUESTS_PER_DAY * 0.05, `${perDay}/day`);
 });
 
 test("the owner's token ruling: a token cafe's ceilings sit just above the accepted days, the normal one inside 20 % of the free daily invocations as a figure, and a cafe without tokens keeps 6,000 / 18,000", () => {

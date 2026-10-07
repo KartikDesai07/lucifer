@@ -1,6 +1,6 @@
 import type { Types } from "mongoose";
 import { isDuplicateKeyError } from "@pos/shared/api";
-import { PRINTER_BACKUP_SELF_MESSAGE, PRINTER_BACKUP_UNKNOWN_MESSAGE } from "@pos/shared/print-failover";
+import { printerBackupRefusal } from "@pos/shared/print-failover";
 import { PRINTERS_MAX, printerClashMessage, printerWriterClash, type PrinterConfig, type PrinterConnection } from "@pos/shared/print-printers";
 import { Printer, type IPrinter, type IPrinterConnection } from "@/models/Printer";
 import { Station } from "@/models/Station";
@@ -96,10 +96,10 @@ export async function createPrinter(body: PrinterBody): Promise<PrintSetupResult
   if (existing.length >= PRINTERS_MAX) return { ok: false, status: 400, error: PRINTERS_FULL_MESSAGE };
   const last = existing.length === 0 ? -1 : Math.max(...existing.map((row) => row.order));
   if (await nameTaken(stored.name)) return { ok: false, status: 409, error: PRINTER_EXISTS_MESSAGE };
-  // Phase 3 (spec §9.4): a backup is another printer that exists now (a stale form never saves a dead id).
-  if (stored.backupPrinterId !== undefined && !existing.some((row) => row.id === stored.backupPrinterId)) {
-    return { ok: false, status: 400, error: PRINTER_BACKUP_UNKNOWN_MESSAGE };
-  }
+  // Phase 3 (spec §9.4): a backup is another printer that exists now (a stale form never saves a dead id), and one
+  // routing sends slips to (the 3A review gate, m-1).
+  const backupRefused = stored.backupPrinterId === undefined ? null : printerBackupRefusal(existing, { backupPrinterId: stored.backupPrinterId });
+  if (backupRefused !== null) return { ok: false, status: 400, error: backupRefused };
   // Session 2D (the 2C review gate, F-3): one routable printer per printing device; Session 2E: a Windows PC may
   // print several Windows printers, each a different one.
   const clash = printerWriterClash(existing, stored);
@@ -127,11 +127,10 @@ export async function replacePrinter(id: string, body: PrinterBody): Promise<Pri
   if (!(await stationsExist(stored.slips.kotStations))) return { ok: false, status: 400, error: PRINTER_UNKNOWN_STATION_MESSAGE };
   if (await nameTaken(stored.name, id)) return { ok: false, status: 409, error: PRINTER_EXISTS_MESSAGE };
   const printers = await listPrinters();
-  // Phase 3 (spec §9.4): never itself, and one that exists now.
-  if (backupPrinterId === id) return { ok: false, status: 400, error: PRINTER_BACKUP_SELF_MESSAGE };
-  if (typeof backupPrinterId === "string" && !printers.some((row) => row.id === backupPrinterId)) {
-    return { ok: false, status: 400, error: PRINTER_BACKUP_UNKNOWN_MESSAGE };
-  }
+  // Phase 3 (spec §9.4): never itself, one that exists now, and one routing sends slips to unless it is the one already
+  // saved (the 3A review gate, m-1).
+  const backupRefused = typeof backupPrinterId === "string" ? printerBackupRefusal(printers, { id, backupPrinterId, saved: printer.backupPrinterId }) : null;
+  if (backupRefused !== null) return { ok: false, status: 400, error: backupRefused };
   const clash = printerWriterClash(printers, stored, id);
   if (clash !== null) return { ok: false, status: 409, error: printerClashMessage(clash, stored) };
   printer.set("connection", stored.connection);
