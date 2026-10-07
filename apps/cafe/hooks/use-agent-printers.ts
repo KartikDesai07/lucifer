@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { PRINT_SETUP_STALE_MS } from "@pos/shared/print-budget";
@@ -10,6 +10,7 @@ import { apiGet } from "@/lib/api-client";
 import { isDesktopShell } from "@/lib/desktop-shell";
 import { desktopPrintsOnNamed } from "@/lib/desktop-shell-printer";
 import { agentPrintersOf, dotPrintersOf, lanPrintersToAdd, lanPrintersToRemove, ownPrinterInSetup, type AgentPrinters, type DesktopPrinters } from "@/lib/print-agent-printers";
+import { onPrintersWritingChange, onTakenOverChange, printersBeingWritten, takenOverPrinterIds } from "@/lib/print-agent-seams";
 import { refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
 import { nativePool, type NativePoolSnapshot } from "@/lib/printer/native-pool";
 import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
@@ -23,6 +24,7 @@ import { subscribeRealtime } from "@/lib/realtime-client";
 export const PRINTERS_KEYS = { all: ["printers"] as const };
 const PRINTERS_STALE_MS = PRINT_SETUP_STALE_MS;
 const NO_PRINTERS: PrinterConfig[] = [];
+const NO_IDS: readonly string[] = [];
 
 /** Session 2D: the printers read for a screen that only shows them (the dot, the bill printer, the setup page): the
  *  same cache entry as the agent's, without a print-setup subscription of its own, so an admin save costs one read
@@ -83,13 +85,14 @@ export function useOwnPrinterInSetup(deviceId: string): { inSetup: boolean; know
 }
 
 /** Session 2D (spec §10): the top-bar dot's view of printers mode. The same printers read as the agent's (one cache
- *  entry): no request of its own. */
+ *  entry): no request of its own. Session 3B: with the network printers the wake says this device took over. */
 export function useDotPrinters(deviceId: string): PrinterDotPrinters {
   const { printers } = usePrintersRead(deviceId !== "");
   const local = useDevicePrinter().printer;
   const desktop = useDesktopPrinters();
   const pool = usePoolView();
-  return useMemo(() => dotPrintersOf(printers, deviceId, local, desktop, pool), [printers, deviceId, local, desktop, pool]);
+  const takenOver = useSyncExternalStore(onTakenOverChange, takenOverPrinterIds, () => NO_IDS);
+  return useMemo(() => dotPrintersOf(printers, deviceId, local, desktop, pool, takenOver), [printers, deviceId, local, desktop, pool, takenOver]);
 }
 
 // The network printers this page asked the app to add that the app does not list yet: one ask per printer (one the app
@@ -122,13 +125,15 @@ function writeLanAdded(ids: readonly string[]): void {
 }
 
 /** The printers this device writes, and which it prints here (lib/print-agent-printers.ts). Session 2F1: a network
- *  printer this device writes is added to the POS app's printers on bridge v2 (a local call, no request). */
+ *  printer this device writes is added to the POS app's printers on bridge v2 (a local call, no request). Session 3B:
+ *  every network printer it may take over too, ahead of time; a removal waits while a job is being written to it. */
 export function useAgentPrinters(deviceId: string, enabled: boolean): AgentPrinters {
   const printers = usePrinters(enabled);
   const { loaded } = usePrintersRead(enabled);
   const local = useDevicePrinter().printer;
   const desktop = useDesktopPrinters();
   const pool = usePoolView();
+  const writing = useSyncExternalStore(onPrintersWritingChange, printersBeingWritten, () => "");
   useEffect(() => {
     if (!enabled || pool === null || deviceId === "") return;
     for (const key of [...lanAsked]) if (pool.printers.some((entry) => entry.id.toLowerCase() === `tcp:${key}`)) lanAsked.delete(key);
@@ -141,9 +146,10 @@ export function useAgentPrinters(deviceId: string, enabled: boolean): AgentPrint
       void nativePool().add({ tcp: lan }).catch(() => undefined);
     }
     // Only against a printers read that has loaded: before it, every printer the page added would look unnamed.
-    const { remove, record } = loaded ? lanPrintersToRemove(printers, deviceId, pool, pool.defaultId, added) : { remove: [], record: added };
+    const busy = writing === "" ? [] : writing.split(",");
+    const { remove, record } = loaded ? lanPrintersToRemove(printers, deviceId, pool, pool.defaultId, added, busy) : { remove: [], record: added };
     for (const id of remove) void nativePool().remove(id).catch(() => undefined);
     if (JSON.stringify(record) !== JSON.stringify(readLanAdded())) writeLanAdded(record);
-  }, [enabled, loaded, printers, deviceId, pool]);
+  }, [enabled, loaded, printers, deviceId, pool, writing]);
   return useMemo(() => agentPrintersOf(printers, deviceId, local, desktop, pool), [printers, deviceId, local, desktop, pool]);
 }

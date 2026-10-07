@@ -22,6 +22,7 @@ import {
   printAgentSlipOf,
   readPendingAcks,
   setDirectPrintSource,
+  markPrinterWriting,
   setPrinterHealthSource,
   setPulsePrintDevice,
   setReadyPrintersSource,
@@ -156,10 +157,18 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
       });
     // Session 2C: a printer job only on this device's own printer, every copy inside its one lease. Session 2E: a Windows
     // printer that failed is looked up again in the Windows app, so one renamed or removed there stops being this PC's.
+    // Session 3B (the final Phase 2 gate, (a) item 4): the POS app printer it writes to is marked meanwhile, so the page's
+    // removal of a network printer it added waits for the print (hooks/use-agent-printers.ts).
     const print = async (job: LeasedPrintJob): Promise<PrintAgentResult> => {
-      const result = await printJobCopies(job, readyRef.current, () => printOnce(job));
-      if (!result.ok && job.printerId !== undefined && targetsRef.current[job.printerId]?.printerName !== undefined) void refreshDesktopPrinterChosen();
-      return result;
+      const nativeId = job.printerId === undefined ? undefined : targetsRef.current[job.printerId]?.nativeId;
+      if (nativeId !== undefined) markPrinterWriting(nativeId, true);
+      try {
+        const result = await printJobCopies(job, readyRef.current, () => printOnce(job));
+        if (!result.ok && job.printerId !== undefined && targetsRef.current[job.printerId]?.printerName !== undefined) void refreshDesktopPrinterChosen();
+        return result;
+      } finally {
+        if (nativeId !== undefined) markPrinterWriting(nativeId, false);
+      }
     };
     // Session 2F1 (spec §9.2): of the printers it prints here, those that can print now: one of the POS app's printers
     // (bridge v2) by its own state, any other while this device's own printer can print (as before).

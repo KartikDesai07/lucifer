@@ -15,10 +15,12 @@ import {
   lanPrintersToRemove,
   nativeIdOf,
   ownPrinterInSetup,
+  PRINTER_TAKEOVER_MESSAGE,
   printJobCopies,
   printerIsLocal,
   printerListLooksStale,
   readyPrinterIdsOf,
+  takeoverPrintersOf,
   type DesktopPrinters,
 } from "@/lib/print-agent-printers";
 import type { PrintAgentResult } from "@/lib/print-agent-types";
@@ -90,10 +92,10 @@ test("agentPrintersOf: printers mode, whether this device writes one, and the on
   const kitchen = printer("kitchen", { kind: "lan", host: "192.168.1.61", port: 9100 }, { primaryDeviceId: "dev-k" });
   const bar = printer("bar", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "AA:BB" });
   const off = printer("off", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "dev-a", enabled: false });
-  assert.deepEqual(agentPrintersOf([counter, kitchen, bar, off], "dev-a", NATIVE_TCP, null), { printersMode: true, isWriter: true, localIds: ["counter"], lanIds: ["counter"], targets: {} }, "it writes the counter and the bar; only the counter is its printer (a network printer: Session 3B's lanIds)");
-  assert.deepEqual(agentPrintersOf([counter, kitchen], "dev-p", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], lanIds: [], targets: {} }, "an ordering phone writes nothing");
-  assert.deepEqual(agentPrintersOf([], "dev-a", NATIVE_TCP, null), { printersMode: false, isWriter: false, localIds: [], lanIds: [], targets: {} }, "simple mode");
-  assert.deepEqual(agentPrintersOf([counter], "", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], lanIds: [], targets: {} }, "no device identity");
+  assert.deepEqual(agentPrintersOf([counter, kitchen, bar, off], "dev-a", NATIVE_TCP, null), { printersMode: true, isWriter: true, localIds: ["counter"], lanIds: ["counter"], takeoverIds: [], targets: {} }, "it writes the counter and the bar; only the counter is its printer (a network printer: Session 3B's lanIds)");
+  assert.deepEqual(agentPrintersOf([counter, kitchen], "dev-p", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], targets: {} }, "an ordering phone writes nothing");
+  assert.deepEqual(agentPrintersOf([], "dev-a", NATIVE_TCP, null), { printersMode: false, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], targets: {} }, "simple mode");
+  assert.deepEqual(agentPrintersOf([counter], "", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], targets: {} }, "no device identity");
 });
 
 // Phase 2 Session 2E (spec §9.2): one Windows PC prints several printers, each by its own Windows name. An older app
@@ -208,7 +210,9 @@ test("2F1: on bridge v2 every printer of the app is this device's, by the app's 
 test("2F1: each printer of the app it prints carries its target (the app's id, its own paper); a Windows printer's stays", () => {
   const kitchen = printer("kitchen", { kind: "lan", host: "10.0.2.2", port: 9100 }, { primaryDeviceId: "dev-a" });
   const bar = printer("bar", { kind: "lan", host: "10.0.2.2", port: 9101 }, { primaryDeviceId: "dev-a", paper: 58 });
-  const other = printer("other", { kind: "lan", host: "10.0.2.2", port: 9100 }, { primaryDeviceId: "dev-b" });
+  // Session 3B (deliberate change): another device's printer at an address the app does not list; one the app lists is a
+  // printer this device may take over (its own test below).
+  const other = printer("other", { kind: "lan", host: "10.0.2.9", port: 9100 }, { primaryDeviceId: "dev-b" });
   const agent = agentPrintersOf([kitchen, bar, other], "dev-a", NATIVE_TCP, null, POOL);
   assert.deepEqual(agent.localIds, ["bar", "kitchen"], "the printers it writes that the app has (in the setup's order)");
   assert.deepEqual(agent.targets, { kitchen: { nativeId: "tcp:10.0.2.2:9100", paper: "80mm" }, bar: { nativeId: "tcp:10.0.2.2:9101", paper: "58mm" } }, "each at its own paper");
@@ -236,7 +240,8 @@ test("2F1: the dot shows the worst state among the app's printers this device pr
   const third = printer("third", { kind: "lan", host: "10.0.2.3", port: 9100 }, { primaryDeviceId: "dev-a" });
   const theirs = printer("theirs", { kind: "lan", host: "10.0.2.4", port: 9100 }, { primaryDeviceId: "dev-b" });
   const off = printer("off", { kind: "lan", host: "10.0.2.5", port: 9100 }, { primaryDeviceId: "dev-a", enabled: false });
-  assert.deepEqual(lanPrintersToAdd([kitchen, third, theirs, off], "dev-a", POOL), [{ host: "10.0.2.3", port: 9100 }], "only a routable network printer this device writes that the app lacks");
+  // Session 3B (deliberate change): also one another device writes, which this device may take over (added ahead of time).
+  assert.deepEqual(lanPrintersToAdd([kitchen, third, theirs, off], "dev-a", POOL), [{ host: "10.0.2.3", port: 9100 }, { host: "10.0.2.4", port: 9100 }], "every routable network printer the app lacks: its own, then those it may take over; never one switched off");
   assert.deepEqual(lanPrintersToAdd([third], "dev-a", null), [], "never on an app that speaks only v1");
 });
 
@@ -246,7 +251,12 @@ test("2F2 gate (M-4): this device's own printer is in the setup when the setup p
   const kitchen = printer("kitchen", { kind: "lan", host: "10.0.2.2", port: 9100 }, { primaryDeviceId: "dev-a" });
   assert.equal(ownPrinterInSetup([kitchen], "dev-a", null, POOL, "tcp:10.0.2.2:9100"), true, "v2: the app's default is a setup printer this device writes");
   assert.equal(ownPrinterInSetup([kitchen], "dev-a", null, POOL, "tcp:10.0.2.2:9101"), false, "v2: the default is another of the app's printers");
-  assert.equal(ownPrinterInSetup([kitchen], "dev-b", null, POOL, "tcp:10.0.2.2:9100"), false, "another device writes it");
+  assert.equal(ownPrinterInSetup([kitchen], "dev-b", null, POOL, "tcp:10.0.2.2:9100"), false, "another device writes it (and this one writes nothing)");
+  // Session 3B (deliberate change): on bridge v2, for a device that writes a printer too, another device's network printer
+  // is one it may take over, so the page keeps it in the app (removing it would only see it added back).
+  const barB = printer("bar-b", { kind: "device", deviceId: "dev-b", transport: "bt-classic", address: "00:11:22:33:44:55" });
+  assert.equal(ownPrinterInSetup([kitchen, barB], "dev-b", null, POOL, "tcp:10.0.2.2:9100"), true, "a writer that may take it over keeps it");
+  assert.equal(ownPrinterInSetup([kitchen, barB], "dev-b", null, null, null), false, "on v1 another device's printer is never this device's");
   assert.equal(ownPrinterInSetup([{ ...kitchen, enabled: false }], "dev-a", null, POOL, "tcp:10.0.2.2:9100"), false, "a printer switched off prints nothing here");
   assert.equal(ownPrinterInSetup([], "dev-a", null, POOL, "tcp:10.0.2.2:9100"), false, "simple mode: nothing in the setup");
   assert.equal(ownPrinterInSetup([kitchen], "dev-a", null, POOL, null), false, "v2: an app with no default");
@@ -264,7 +274,11 @@ test("2F2 gate (m-3): a network printer the page added goes again once no printe
   assert.deepEqual(lanPrintersToRemove([kitchen], "dev-a", POOL, "bt-classic:00:11:22:33:44:55", added), { remove: ["tcp:10.0.2.2:9101"], record: added }, "9101 no longer named: removed, still recorded while the app lists it");
   assert.deepEqual(lanPrintersToRemove([kitchen], "dev-a", POOL, "tcp:10.0.2.2:9101", added), { remove: [], record: added }, "the app's default is never removed");
   assert.deepEqual(lanPrintersToRemove([kitchen], "dev-a", POOL, null, ["tcp:10.0.2.2:9100"]), { remove: [], record: ["tcp:10.0.2.2:9100"] }, "9101 was added by staff (not recorded): kept");
-  assert.deepEqual(lanPrintersToRemove([{ ...kitchen, primaryDeviceId: "dev-b" }], "dev-a", POOL, null, ["TCP:10.0.2.2:9100"]).remove, ["tcp:10.0.2.2:9100"], "moved to another device: removed (ids compared ignoring case)");
+  assert.deepEqual(lanPrintersToRemove([{ ...kitchen, primaryDeviceId: "dev-b" }], "dev-a", POOL, null, ["TCP:10.0.2.2:9100"]).remove, ["tcp:10.0.2.2:9100"], "moved to another device, and this one writes nothing else: removed (ids compared ignoring case)");
+  // Session 3B (deliberate change): a device that still writes a printer may take the moved one over, so it stays.
+  const own = printer("own", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "00:11:22:33:44:55" });
+  assert.deepEqual(lanPrintersToRemove([{ ...kitchen, primaryDeviceId: "dev-b" }, own], "dev-a", POOL, null, ["TCP:10.0.2.2:9100"]).remove, [], "moved to another device while this one writes another: kept, to take it over");
+  assert.deepEqual(lanPrintersToRemove([{ ...kitchen, enabled: false }, own], "dev-a", POOL, null, ["TCP:10.0.2.2:9100"]).remove, ["tcp:10.0.2.2:9100"], "switched off: removed");
   assert.deepEqual(lanPrintersToRemove([], "dev-a", POOL, null, ["tcp:10.0.2.3:9100"]), { remove: [], record: [] }, "one the app no longer lists and the setup no longer names is forgotten");
   assert.deepEqual(lanPrintersToRemove([kitchen], "dev-a", null, null, added), { remove: [], record: added }, "never on an app that speaks only v1");
 });
@@ -289,13 +303,15 @@ test("PIN (the final Phase 2 gate, m-1, m-2): Remove and Change printer wait for
   const others = src("apps/cafe/components/print/OtherDevicePrinters.tsx");
   assert.ok(others.includes('const { printers, answered } = usePrintersRead(deviceId !== "");'), "Other printers reads the same entry, with its state");
   assert.ok(others.includes('const known = deviceId === "" || answered;'), "known as the device section knows it");
-  assert.match(others, /\{inSetup\.has\(entry\.id\) \? \(\s*<p className="text-xs text-brand-muted">\{IN_SETUP\}<\/p>\s*\) : known \? \(\s*<Button className=\{PRINTER_ACTION_CLASS\} variant="outline" disabled=\{disabled\} onClick=\{\(\) => setRemoving\(entry\.id\)\}>/, "no Remove under Other printers before the setup is known (m-1)");
+  // Session 3B (deliberate change): a printer this device may take over says so instead of offering Remove.
+  assert.match(others, /\{inSetup\.has\(entry\.id\) \? \(\s*<p className="text-xs text-brand-muted">\{IN_SETUP\}<\/p>\s*\) : takeover\.has\(entry\.id\) \? \(\s*<p className="text-xs text-brand-muted">\{TAKEOVER\}<\/p>\s*\) : known \? \(\s*<Button className=\{PRINTER_ACTION_CLASS\} variant="outline" disabled=\{disabled\} onClick=\{\(\) => setRemoving\(entry\.id\)\}>/, "no Remove under Other printers before the setup is known (m-1)");
 });
 
 test("PIN (the 2F2 review gate, M-4, m-3): a setup printer never leaves the app from the page; an ask is forgotten once the app lists the printer; the page removes only what it added", () => {
   const hook = src("apps/cafe/hooks/use-agent-printers.ts");
   assert.ok(hook.includes("for (const key of [...lanAsked]) if (pool.printers.some((entry) => entry.id.toLowerCase() === `tcp:${key}`)) lanAsked.delete(key);"), "an ask is forgotten once the app lists the printer");
-  assert.ok(hook.includes("const { remove, record } = loaded ? lanPrintersToRemove(printers, deviceId, pool, pool.defaultId, added) : { remove: [], record: added };"), "removals only against a printers read that has loaded");
+  // Session 3B (deliberate change): never a printer a job is being written to now (the final Phase 2 gate, (a) item 4).
+  assert.ok(hook.includes("const { remove, record } = loaded ? lanPrintersToRemove(printers, deviceId, pool, pool.defaultId, added, busy) : { remove: [], record: added };"), "removals only against a printers read that has loaded");
   assert.ok(hook.includes('const LAN_ADDED_KEY = "pos.app-lan-added.v1";'), "the record is kept on the device");
   assert.ok(hook.indexOf("added.push(`tcp:${key}`)") > 0 && hook.indexOf("added.push(`tcp:${key}`)") < hook.indexOf("void nativePool().add({ tcp: lan })"), "recorded before it is asked for");
   const section = src("apps/cafe/components/print/DevicePrinterSection.tsx");
@@ -312,7 +328,8 @@ test("PIN (the 2F2 review gate, M-4, m-3): a setup printer never leaves the app 
 test("PIN (2F1): the page follows the app's printers: the agent's lines, the dot, the drain, the wake's heartbeat, the network printers it writes", () => {
   const hook = src("apps/cafe/hooks/use-agent-printers.ts");
   assert.match(hook, /return useMemo\(\(\) => agentPrintersOf\(printers, deviceId, local, desktop, pool\), \[printers, deviceId, local, desktop, pool\]\);/);
-  assert.match(hook, /return useMemo\(\(\) => dotPrintersOf\(printers, deviceId, local, desktop, pool\), \[printers, deviceId, local, desktop, pool\]\);/);
+  // Session 3B (deliberate change): with the printers the wake says it took over.
+  assert.match(hook, /return useMemo\(\(\) => dotPrintersOf\(printers, deviceId, local, desktop, pool, takenOver\), \[printers, deviceId, local, desktop, pool, takenOver\]\);/);
   assert.match(hook, /for \(const lan of lanPrintersToAdd\(printers, deviceId, pool\)\) \{/, "a network printer it writes is added to the app");
   // The 2F2 review gate (M-4, deliberate change): asked again once the app has listed it and lost it, not once per page.
   assert.match(hook, /void nativePool\(\)\.add\(\{ tcp: lan \}\)\.catch\(\(\) => undefined\);/, "a local call");
@@ -396,7 +413,8 @@ test("printJobCopies: only this device's printer; every copy in one lease; a fai
 test("PIN (2C): the agent prints a leased job through printJobCopies on this device's printers; the station line reaches the paper", () => {
   const agent = src("apps/cafe/hooks/use-print-agent.ts");
   // Session 2E: the same call, inside a body that looks a failed Windows printer up again.
-  assert.match(agent, /const print = async \(job: LeasedPrintJob\): Promise<PrintAgentResult> => \{\s*const result = await printJobCopies\(job, readyRef\.current, \(\) => printOnce\(job\)\);/);
+  // Session 3B (deliberate change): the app printer it writes to is marked meanwhile, so the page never removes it mid-print.
+  assert.match(agent, /const print = async \(job: LeasedPrintJob\): Promise<PrintAgentResult> => \{[\s\S]*?const result = await printJobCopies\(job, readyRef\.current, \(\) => printOnce\(job\)\);/);
   const kot = src("apps/cafe/components/pos/KOTReceipt.tsx");
   const title = kot.indexOf("KITCHEN ORDER");
   const line = kot.indexOf("{stationLine && (");
@@ -404,4 +422,72 @@ test("PIN (2C): the agent prints a leased job through printJobCopies on this dev
   assert.ok(title > 0 && line > title && number > line, "under the title, above the number a cook calls out");
   assert.ok(src("apps/cafe/components/pos/PrintSources.tsx").includes("stationLine={kotStationLine}"), "PrintSources forwards it");
   assert.ok(src("apps/cafe/components/print/PrintHostPrintSources.tsx").includes("kotStationLine={slip.stationLine}"), "the agent's slip carries it");
+});
+
+// Phase 3 Session 3B (spec §9.3; the planning review's M-8 a, d; the 3A review gate): a POS app on bridge v2 says
+// lanFailover, so the server may give it any network printer of the setup while that printer's primary is offline or
+// cannot reach it. The page adds every such printer to the app ahead of time, prints it once the app has it, names it in
+// a lease only while the app reaches it (the signal that ends a skip: Session 3A's I-1), and its dot counts one only while
+// the wake says it writes it.
+test("3B: on bridge v2 every routable network printer another device writes is one this device may take over; on v1 none", () => {
+  const mine = printer("mine", { kind: "lan", host: "10.0.2.2", port: 9100 }, { primaryDeviceId: "dev-a" });
+  const theirs = printer("theirs", { kind: "lan", host: "10.0.2.2", port: 9101 }, { primaryDeviceId: "dev-b" });
+  const away = printer("away", { kind: "lan", host: "10.0.2.9", port: 9100 }, { primaryDeviceId: "dev-b" });
+  const bt = printer("bt", { kind: "device", deviceId: "dev-b", transport: "bt-classic", address: "AA:BB" });
+  const off = printer("off", { kind: "lan", host: "10.0.2.8", port: 9100 }, { primaryDeviceId: "dev-b", enabled: false });
+  const all = [mine, theirs, away, bt, off];
+  assert.deepEqual(takeoverPrintersOf(all, "dev-a", POOL).map((p) => p.id).sort(), ["away", "theirs"], "network printers only, routable, another device's");
+  assert.deepEqual(takeoverPrintersOf(all, "dev-a", null), [], "the release APK (v1) never takes one over");
+  assert.deepEqual(takeoverPrintersOf(all, "", POOL), [], "no device identity");
+  const agent = agentPrintersOf(all, "dev-a", NATIVE_TCP, null, POOL);
+  assert.deepEqual(agent.localIds, ["mine", "theirs"], "its own printer, then the one it may take over that the app has (not the one the app lacks yet)");
+  assert.deepEqual(agent.takeoverIds, ["theirs"]);
+  assert.deepEqual(agent.lanIds, ["mine", "theirs"], "both network printers: a refusal before any byte is unreachable");
+  assert.deepEqual(agent.targets.theirs, { nativeId: "tcp:10.0.2.2:9101", paper: "80mm" }, "printed through the app by its id");
+  assert.equal(agent.isWriter, true, "a writer by the setup alone");
+  // The gate's emulator pre-run (E-1): a device that writes no printer takes none over (it never polls the wake, so it is
+  // never online for one: P3-2), and so never adds them to its app, where the first would become its own printer.
+  assert.deepEqual(takeoverPrintersOf([theirs], "dev-a", POOL), [], "a device that writes nothing takes nothing over");
+  assert.deepEqual(agentPrintersOf([theirs], "dev-a", NATIVE_TCP, null, POOL).takeoverIds, [], "and lists none");
+  const empty = { printers: [] };
+  assert.deepEqual(lanPrintersToAdd([mine, theirs], "dev-a", empty).map((p) => p.port), [9100, 9101], "an app with no printer gets its own first (its default), then the one it may take over");
+  assert.deepEqual(lanPrintersToAdd([bt, { ...theirs, primaryDeviceId: "dev-b" }, printer("btA", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "FF:EE" })], "dev-a", empty), [], "an app with no printer and none of its own to add: never seeded with another device's printer");
+});
+
+test("PIN (3B, Session 3A's I-1): a page names in its lease only a printer it can print to now; the one it may take over too", () => {
+  const statusOf = (id: string) => POOL.printers.find((p) => p.id === id)?.status ?? "none";
+  const targets = { theirs: { nativeId: "tcp:10.0.2.2:9100", paper: "80mm" as const }, down: { nativeId: "tcp:10.0.2.2:9101", paper: "80mm" as const } };
+  assert.deepEqual(readyPrinterIdsOf(["theirs", "down"], targets, true, statusOf), ["theirs"], "the app reaches one and not the other: only that one is ever named");
+  const agent = src("apps/cafe/lib/print-agent.ts");
+  assert.ok(agent.includes("const data = await deps.lease(holds.open(ready()));"), "the lease names only the ready printers no refusal holds");
+  const hook = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.ok(hook.includes("const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf);"), "ready: the app's own state per printer");
+  assert.ok(hook.includes("readyPrinters: readyNow,"), "the agent's ready list is that");
+  const lib = src("apps/cafe/lib/print-agent-printers.ts");
+  assert.ok(lib.includes('return nativeId === undefined ? canPrint : statusOf(nativeId) === "connected";'), "an app printer is ready only while the app says connected");
+});
+
+test("3B: the dot counts a printer it may take over only while the wake says it writes it", () => {
+  const mine = printer("mine", { kind: "lan", host: "10.0.2.2", port: 9100 }, { primaryDeviceId: "dev-a" });
+  const theirs = printer("theirs", { kind: "lan", host: "10.0.2.2", port: 9101 }, { primaryDeviceId: "dev-b" });
+  assert.deepEqual(dotPrintersOf([mine, theirs], "dev-a", NATIVE_TCP, null, POOL), { printersMode: true, isWriter: true, allLocal: true, worst: "connected" }, "the other device's printer is down for this app, but it does not write it now: green");
+  assert.deepEqual(dotPrintersOf([mine, theirs], "dev-a", NATIVE_TCP, null, POOL, ["theirs"]), { printersMode: true, isWriter: true, allLocal: true, worst: "disconnected" }, "while the wake says it writes it, its state counts");
+});
+
+test("3B: a removal waits while a job is being written to that printer (the final Phase 2 gate, (a) item 4)", () => {
+  const added = ["tcp:10.0.2.2:9101"];
+  assert.deepEqual(lanPrintersToRemove([], "dev-a", POOL, null, added, ["TCP:10.0.2.2:9101"]), { remove: [], record: added }, "being written: kept for now, and still recorded");
+  assert.deepEqual(lanPrintersToRemove([], "dev-a", POOL, null, added, []), { remove: ["tcp:10.0.2.2:9101"], record: added }, "done: asked to go");
+  assert.match(PRINTER_TAKEOVER_MESSAGE, /offline/, "the words under Other printers for a printer it may take over");
+});
+
+test("PIN (3B): the page marks the app printer each job is written to, a removal waits for it, and Other printers says why a takeover printer stays", () => {
+  const hook = src("apps/cafe/hooks/use-agent-printers.ts");
+  assert.ok(hook.includes('const writing = useSyncExternalStore(onPrintersWritingChange, printersBeingWritten, () => "");'), "the printers being written, followed");
+  assert.ok(hook.includes("}, [enabled, loaded, printers, deviceId, pool, writing]);"), "a removal runs again once the print is done");
+  assert.ok(hook.includes("const takenOver = useSyncExternalStore(onTakenOverChange, takenOverPrinterIds, () => NO_IDS);"), "the dot follows what the wake says it took over");
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.ok(agent.includes("if (nativeId !== undefined) markPrinterWriting(nativeId, true);") && agent.includes("if (nativeId !== undefined) markPrinterWriting(nativeId, false);"), "marked while it prints, unmarked after");
+  const others = src("apps/cafe/components/print/OtherDevicePrinters.tsx");
+  assert.ok(others.includes("const TAKEOVER = PRINTER_TAKEOVER_MESSAGE;"), "the takeover words");
 });

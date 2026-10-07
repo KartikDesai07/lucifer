@@ -74,6 +74,32 @@ export function onTakenOverChange(listener: () => void): () => void {
   return () => void takenOverListeners.delete(listener);
 }
 
+const writing = new Map<string, number>();
+const writingListeners = new Set<() => void>();
+let writingKey = "";
+
+/** Session 3B (the final Phase 2 gate, (a) item 4): a job is being written to this POS app printer (its app id) now, or
+ *  no longer, so the page's removal of a network printer it added waits until that print is done. */
+export function markPrinterWriting(nativeId: string, on: boolean): void {
+  const count = (writing.get(nativeId) ?? 0) + (on ? 1 : -1);
+  if (count > 0) writing.set(nativeId, count);
+  else writing.delete(nativeId);
+  const key = [...writing.keys()].sort().join(",");
+  if (key === writingKey) return;
+  writingKey = key;
+  for (const listener of [...writingListeners]) listener();
+}
+
+/** The app printers being written to now, as one key ("" for none). */
+export function printersBeingWritten(): string {
+  return writingKey;
+}
+
+export function onPrintersWritingChange(listener: () => void): () => void {
+  writingListeners.add(listener);
+  return () => void writingListeners.delete(listener);
+}
+
 let readySource: (() => readonly string[]) | null = null;
 
 /** Session 2C: the agent of the tab that drains this device's slips registers the printers it prints on (the
