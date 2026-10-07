@@ -12,6 +12,8 @@ import { usePrintAgentWake } from "@/hooks/use-print-agent-wake";
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
 import { apiSend } from "@/lib/api-client";
 import { isDesktopShell } from "@/lib/desktop-shell";
+import type { PrinterLinkState } from "@pos/shared/print-failover";
+import { printerHealthReportsOf } from "@/lib/print-agent-health";
 import {
   PRINT_AGENT_SLIP_DEADLINE_MS,
   createPrintAgent,
@@ -20,6 +22,7 @@ import {
   printAgentSlipOf,
   readPendingAcks,
   setDirectPrintSource,
+  setPrinterHealthSource,
   setPulsePrintDevice,
   setReadyPrintersSource,
   writePendingAcks,
@@ -32,8 +35,9 @@ import { PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print
 import { PrintWriteError } from "@/lib/print-write-outcome";
 import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
 import { desktopPrinterSnapshot, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import { devicePrinter } from "@/lib/printer/device-printer";
 import { nativeBridge, nativeOn } from "@/lib/printer/native-bridge";
-import { connectedPoolKey } from "@/lib/printer/native-pool";
+import { connectedPoolKey, nativePool } from "@/lib/printer/native-pool";
 import { printerStatusOf, printersState } from "@/lib/printer/printer-registry";
 import { canPrintNow } from "@/lib/printer/print-lane";
 import { subscribeRealtime } from "@/lib/realtime-client";
@@ -97,6 +101,12 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
   useEffect(() => {
     readyRef.current = readyKey === "" ? [] : readyKey.split(",");
   }, [readyKey]);
+  // Session 3B (spec §9.3): the network printers among them (a refusal before any byte is acked "unreachable").
+  const lanRef = useRef<readonly string[]>(printers.lanIds);
+  const lanKey = printers.lanIds.join(",");
+  useEffect(() => {
+    lanRef.current = lanKey === "" ? [] : lanKey.split(",");
+  }, [lanKey]);
   const writerRef = useRef(printers.isWriter);
   useEffect(() => {
     writerRef.current = printers.isWriter;
@@ -158,7 +168,8 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
       deviceId,
       // tokenSlips: this page prints "token" jobs (S7); a page from before S7 leases none, on any line (print-lease.ts).
       lease: (printerIds) => apiSend<PrintLeaseData>(LEASE_URL, "POST", { deviceId, tabId, tokenSlips: true, ...printerIdsBody(printerIds) }),
-      ack: (id, body) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", body),
+      // Session 3B (the token fix's M-2): every ack says this page prints token slips, so its `more` counts them.
+      ack: (id, body) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", { ...body, tokenSlips: true }),
       print,
       printerReady: () => canPrintNow() || readyNow().length > 0,
       // Session 2E: the Windows app's printer list read again (a printer added or removed) releases a refusal's hold;
@@ -169,6 +180,7 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
       // or not this device still prints it (one that left the app's list between the request and the print), never the
       // device line, which would pause every other printer. A job with no printer (simple mode) holds the device line.
       lineOf: (job) => job.printerId ?? PRINT_DEVICE_LINE,
+      networkPrinter: (job) => job.printerId !== undefined && lanRef.current.includes(job.printerId),
       readPending: readPendingAcks,
       writePending: writePendingAcks,
       ...timers(),
@@ -200,6 +212,20 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
   }, [agent, readyKey]);
 
   useEffect(() => (agent === null ? undefined : onPrintAgentKick((printerId) => agent.kick(printerId))), [agent]);
+
+  // Session 3B (spec §10): the health of the printers it prints here rides the wake's beat (hooks/use-print-agent-wake.ts):
+  // each of the POS app's printers by its own settled state, any other by this device's printer.
+  useEffect(() => {
+    if (agent === null) return;
+    const memory = new Map<string, PrinterLinkState>();
+    return setPrinterHealthSource(() => {
+      const pool = nativePool().getSnapshot();
+      return printerHealthReportsOf(
+        { localIds: readyRef.current, targets: targetsRef.current, pool: pool.active ? pool.printers : null, device: devicePrinter().getSnapshot().status, windows: isDesktopShell() },
+        memory,
+      );
+    });
+  }, [agent]);
 
   // Phase 2 Session 2B (spec §7.11): while this tab drains this device's slips and can print now, the requests
   // that make slips name it (directPrintTab → x-pos-print-lease), and a job an answer carries already leased

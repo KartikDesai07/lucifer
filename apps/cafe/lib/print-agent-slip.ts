@@ -1,8 +1,9 @@
 import { PRINT_ACK_ERROR_MAX_CHARS, printBannerText } from "@pos/shared/print-lifecycle";
-import type { LeasedPrintJob } from "@pos/shared/print-agent-wire";
+import { PRINT_ACK_UNREACHABLE, type LeasedPrintJob } from "@pos/shared/print-agent-wire";
 import type { PrintAgentAckBody } from "@/lib/print-agent-types";
 import { PRINT_HOST_DISPATCH_TIMEOUT_MS, PRINT_HOST_EOD_READY_TIMEOUT_MS, hostPrintSlipOf, type HostPrintSlip, type SlipPrintTarget } from "@/lib/print-host-slips";
 import type { PrintWriteOutcome } from "@/lib/print-write-outcome";
+import { PRINTER_NOT_CONNECTED_MESSAGE } from "@/lib/printer/web-printer-types";
 
 // Printing redesign, Phase 1 Session 1C (spec §7.5, §7.7): what the in-page agent prints for one leased job,
 // and what it reports when that fails. Split out of print-agent.ts at the 2A review gate to keep that file
@@ -13,8 +14,13 @@ import type { PrintWriteOutcome } from "@/lib/print-write-outcome";
  *  slip may have printed, so it is acked "maybe". */
 export const PRINT_AGENT_SLIP_DEADLINE_MS = PRINT_HOST_EOD_READY_TIMEOUT_MS + PRINT_HOST_DISPATCH_TIMEOUT_MS + 5_000;
 
-export function failedAckBody(deviceId: string, epoch: number, outcome: PrintWriteOutcome): PrintAgentAckBody {
+/** Session 3B (spec §9.3, P3-3): `network` is true when the job's printer is a network printer this device prints. Its
+ *  refusal made before any byte because the printer did not answer (not connected) says "unreachable", so the server
+ *  skips this device for it and another device takes the printer over. Nothing that may be on paper, nothing permanent,
+ *  and no other refusal (busy, Bluetooth off, not this device's printer) ever says it. */
+export function failedAckBody(deviceId: string, epoch: number, outcome: PrintWriteOutcome, network = false): PrintAgentAckBody {
   const error = outcome.message.trim().slice(0, PRINT_ACK_ERROR_MAX_CHARS).trim();
+  const unreachable = network && outcome.sent === "no" && !outcome.permanent && outcome.message === PRINTER_NOT_CONNECTED_MESSAGE;
   return {
     deviceId,
     epoch,
@@ -22,6 +28,7 @@ export function failedAckBody(deviceId: string, epoch: number, outcome: PrintWri
     sent: outcome.sent,
     ...(outcome.permanent ? { permanent: true as const } : {}),
     ...(error !== "" ? { error } : {}),
+    ...(unreachable ? { reason: PRINT_ACK_UNREACHABLE } : {}),
   };
 }
 

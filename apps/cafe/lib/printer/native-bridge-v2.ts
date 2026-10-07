@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { PRINTER_COVER_STATES, PRINTER_PAPER_STATES } from "@pos/shared/print-failover";
+
 import {
   NATIVE_CONNECT_TIMEOUT_MS,
   NATIVE_PRINT_TIMEOUT_MS,
@@ -58,6 +60,9 @@ import {
 // (These are the 2E review gate's ruling F-R2 and its review's M-4 and re-check, and the 2F1 review gate's M-3 and
 // its review's wording of the v1 status and BUSY; Session 2F2 implements them and pins them.)
 //   · Every other method (app.info, printer.list, permissions, bluetooth, host.background, app.changeUrl) stays v1.
+//   · Phase 3 (spec §10; the page from Session 3B, the app from Session 3C): each listed printer may also carry `paper`
+//     ("ok" | "low" | "out"), `cover` ("closed" | "open") and `error` (true), from DLE EOT where the printer answers it.
+//     Absent says nothing (an app before 3C, a BLE printer); the page reports them in its wake's beat, and its dot.
 
 export const NATIVE_BRIDGE_V2 = 2;
 
@@ -73,7 +78,15 @@ interface PosNativeV2Api extends PosNativeApi {
 }
 
 const poolSchema = z.object({
-  printers: z.array(z.object({ state: z.enum(NATIVE_PRINTER_STATES), printer: nativePrinterSchema })),
+  printers: z.array(
+    z.object({
+      state: z.enum(NATIVE_PRINTER_STATES),
+      printer: nativePrinterSchema,
+      paper: z.enum(PRINTER_PAPER_STATES).optional(),
+      cover: z.enum(PRINTER_COVER_STATES).optional(),
+      error: z.boolean().optional(),
+    }),
+  ),
   defaultId: z.string().nullable(),
   bluetooth: z.enum(NATIVE_BLUETOOTH_STATES),
 });

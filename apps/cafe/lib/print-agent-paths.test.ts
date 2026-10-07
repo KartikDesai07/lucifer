@@ -157,3 +157,21 @@ test("PIN (spec §7.7): both receipts print the banner first, and every surface 
   assert.ok(banner.includes("if (!text) return null;"), "no banner on a first print");
   assert.ok(banner.includes('printColorAdjust: "exact"'), "a browser print keeps the black");
 });
+
+// Session 3B (spec §9.3, §10; the token fix's M-2): the page's half of Phase 3's wire. Its wake says it can take a
+// network printer over (bridge v2), that it prints token slips, and the health of the printers it prints here; its acks
+// and its pulse say tokens; a network printer it cannot reach is acked "unreachable"; the printers the wake says it took
+// over are kept for its top-bar dot.
+test("PIN (3B): the wake says lanFailover on bridge v2, tokenSlips and the printers' health; the ack and the pulse say tokens; the agent knows its network printers", () => {
+  const wake = src("apps/cafe/hooks/use-print-agent-wake.ts");
+  assert.ok(wake.includes("lanFailover: caps.native && nativeV2Bridge() !== null,"), "only the POS app on bridge v2 takes a network printer over (the Windows app from 1.12.0, Session 3E)");
+  assert.ok(wake.includes("tokenSlips: true,"), "the wake says this page prints token slips");
+  assert.ok(wake.includes("...(health.length > 0 ? { printers: health } : {}),"), "the health of the printers it prints here rides the beat");
+  assert.ok(wake.includes("setTakenOverPrinters(data.takenOver ?? []);"), "the printers it took over, kept for its dot");
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.ok(agent.includes('ack: (id, body) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", { ...body, tokenSlips: true }),'), "every ack says tokens");
+  assert.ok(agent.includes("networkPrinter: (job) => job.printerId !== undefined && lanRef.current.includes(job.printerId),"), "a network printer it prints here");
+  assert.ok(agent.includes("setPrinterHealthSource(() =>"), "the beat reads its printers' health from the agent's own lists");
+  assert.ok(src("apps/cafe/lib/print-agent-seams.ts").includes("`?device=${encodeURIComponent(pulseDevice)}&${PRINT_PULSE_TOKENS_PARAM}=${PRINT_HEADER_ON}`"), "the pulse says tokens");
+  assert.ok(src("apps/cafe/lib/print-agent.ts").includes("const body = failedAckBody(deps.deviceId, job.epoch, outcome, deps.networkPrinter?.(job) === true);"), "the agent's refusal says unreachable for a network printer");
+});

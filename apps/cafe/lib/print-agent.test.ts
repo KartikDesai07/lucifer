@@ -1181,7 +1181,7 @@ test("2C: a lease that answers several lines' jobs prints them one by one, and a
   second.stop();
 });
 
-test("2C: the ready printers ride the direct-print header; the pulse names the device only; a slip routed to several printers is followed by its leased ref", () => {
+test("2C: the ready printers ride the direct-print header; the pulse names the device (3B: and says tokens); a slip routed to several printers is followed by its leased ref", () => {
   const a = "a".repeat(24);
   const b = "b".repeat(24);
   assert.deepEqual(printAgentHeaders("dev-a", false, "tab-1", [a, b]), { "x-pos-print-agent": "1", "x-pos-device-id": "dev-a", "x-pos-print-lease": "tab-1", "x-pos-print-ready": `${a},${b}` });
@@ -1190,7 +1190,8 @@ test("2C: the ready printers ride the direct-print header; the pulse names the d
   setPulsePrintDevice("dev-a");
   const off = setReadyPrintersSource(() => [a]);
   assert.equal(printAgentHeaders("dev-a", false, "tab-1")["x-pos-print-ready"], a, "the default reads the ready seam");
-  assert.equal(pulsePrintDeviceQuery(), "?device=dev-a", "the pulse counts every job aimed at the device (the 2C gate's review, I-2): it names only the device");
+  // Session 3B (the token fence's half, deliberate change): the pulse also says this page prints token slips.
+  assert.equal(pulsePrintDeviceQuery(), "?device=dev-a&tokens=1", "the pulse counts every job aimed at the device (the 2C gate's review, I-2): it names the device, and says it prints tokens");
   off();
   setPulsePrintDevice(null);
   assert.equal(pulsePrintDeviceQuery(), "");
@@ -1336,4 +1337,41 @@ test("2F1 gate (M-1): a job whose printer this tab no longer prints is refused o
   await settle();
   assert.deepEqual(asked.slice(1), [["p-kitchen"]], "a kitchen slip's kick leases the kitchen line");
   agent.stop();
+});
+
+// Session 3B (spec §9.3, P3-3): a network printer this device could not reach before any byte (not connected) is acked
+// "unreachable", so the server skips this device for it and another device takes it over. Anything else is acked as
+// before: a device printer, a refusal that may have printed, the printer busy, a slip that cannot print.
+test("3B: a network printer refused before any byte acks 'unreachable'; a device printer, a busy printer or a 'maybe' never does", async () => {
+  const { w, deps } = printersWorld(["p-kitchen", "p-bar"], (j) => j.printerId ?? PRINT_DEVICE_LINE);
+  const agent = createPrintAgent({ ...deps, networkPrinter: (j: LeasedPrintJob) => j.printerId === "p-kitchen" });
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  const queued = { applied: true, status: "queued" as const, nextAttemptAt: new Date(T0 + 2_000).toISOString() };
+  w.results.push(
+    { ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) },
+    { ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) },
+    { ok: false, error: new Error(PRINTER_WRITE_FAILED_MESSAGE) },
+  );
+  w.ackAnswers.push(queued, queued, queued);
+  agent.take({ ...job("k1"), printerId: "p-kitchen" });
+  await settle();
+  agent.take({ ...job("b1"), printerId: "p-bar" });
+  await settle();
+  agent.take({ ...job("k2"), printerId: "p-kitchen" });
+  await settle();
+  assert.deepEqual(
+    w.acks.map((a) => [a.id, a.body.sent, a.body.reason ?? null]),
+    [
+      ["k1", "no", "unreachable"],
+      ["b1", "no", null],
+      ["k2", "maybe", null],
+    ],
+    "only the network printer's 'not connected' says unreachable",
+  );
+  agent.stop();
+  assert.equal(failedAckBody("d", 1, { sent: "no", permanent: false, message: PRINTER_NOT_CONNECTED_MESSAGE }, true).reason, "unreachable");
+  assert.equal(failedAckBody("d", 1, { sent: "no", permanent: true, message: PRINTER_NOT_CONNECTED_MESSAGE }, true).reason, undefined, "a permanent refusal is never 'unreachable'");
+  assert.equal(failedAckBody("d", 1, { sent: "maybe", permanent: false, message: PRINTER_NOT_CONNECTED_MESSAGE }, true).reason, undefined, "nor anything that may be on paper");
+  assert.equal(failedAckBody("d", 1, { sent: "no", permanent: false, message: PRINTER_NOT_LOCAL_MESSAGE }, true).reason, undefined, "nor a printer that is not this device's");
 });

@@ -90,10 +90,10 @@ test("agentPrintersOf: printers mode, whether this device writes one, and the on
   const kitchen = printer("kitchen", { kind: "lan", host: "192.168.1.61", port: 9100 }, { primaryDeviceId: "dev-k" });
   const bar = printer("bar", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "AA:BB" });
   const off = printer("off", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "dev-a", enabled: false });
-  assert.deepEqual(agentPrintersOf([counter, kitchen, bar, off], "dev-a", NATIVE_TCP, null), { printersMode: true, isWriter: true, localIds: ["counter"], targets: {} }, "it writes the counter and the bar; only the counter is its printer");
-  assert.deepEqual(agentPrintersOf([counter, kitchen], "dev-p", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], targets: {} }, "an ordering phone writes nothing");
-  assert.deepEqual(agentPrintersOf([], "dev-a", NATIVE_TCP, null), { printersMode: false, isWriter: false, localIds: [], targets: {} }, "simple mode");
-  assert.deepEqual(agentPrintersOf([counter], "", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], targets: {} }, "no device identity");
+  assert.deepEqual(agentPrintersOf([counter, kitchen, bar, off], "dev-a", NATIVE_TCP, null), { printersMode: true, isWriter: true, localIds: ["counter"], lanIds: ["counter"], targets: {} }, "it writes the counter and the bar; only the counter is its printer (a network printer: Session 3B's lanIds)");
+  assert.deepEqual(agentPrintersOf([counter, kitchen], "dev-p", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], lanIds: [], targets: {} }, "an ordering phone writes nothing");
+  assert.deepEqual(agentPrintersOf([], "dev-a", NATIVE_TCP, null), { printersMode: false, isWriter: false, localIds: [], lanIds: [], targets: {} }, "simple mode");
+  assert.deepEqual(agentPrintersOf([counter], "", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], lanIds: [], targets: {} }, "no device identity");
 });
 
 // Phase 2 Session 2E (spec §9.2): one Windows PC prints several printers, each by its own Windows name. An older app

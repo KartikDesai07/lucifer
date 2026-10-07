@@ -95,6 +95,8 @@ export interface AgentPrinters {
   isWriter: boolean;
   /** The routable printers this device writes that ARE its local printers: the lines it leases and prints. */
   localIds: string[];
+  /** Session 3B (spec §9.3): those of them that are network printers (a refusal before any byte is "unreachable"). */
+  lanIds: string[];
   /** Session 2E: each of them that prints on a named Windows printer, by id: its name and its paper. Session 2F1: each
    *  that is one of the POS app's printers on bridge v2: the app's id and its paper. */
   targets: Record<string, SlipPrintTarget>;
@@ -125,6 +127,7 @@ export function agentPrintersOf(printers: readonly PrinterConfig[], deviceId: st
     printersMode: printersModeOn(printers),
     isWriter: mine.length > 0,
     localIds: here.map((printer) => printer.id),
+    lanIds: here.filter((printer) => printer.connection.kind === "lan").map((printer) => printer.id),
     targets: targetsOf(here, desktop, pool),
   };
 }

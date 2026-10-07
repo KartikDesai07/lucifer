@@ -1,3 +1,4 @@
+import type { PrinterCoverState, PrinterPaperState } from "@pos/shared/print-failover";
 import { onWindowEvent } from "@/lib/printer/capabilities";
 import { PRINTER_CONNECT_FAILED_MESSAGE } from "@/lib/printer/device-printer-link";
 import { createWriteQueue } from "@/lib/printer/device-printer-write";
@@ -30,6 +31,10 @@ export interface PoolPrinter {
   printer: NativeDevicePrinter;
   status: "connecting" | "connected" | "disconnected";
   message: string | null;
+  /** Session 3B (spec §10): what the app says of its paper, cover and error (DLE EOT, Session 3C); absent until then. */
+  paper?: PrinterPaperState;
+  cover?: PrinterCoverState;
+  error?: true;
 }
 
 export interface NativePoolSnapshot {
@@ -67,7 +72,7 @@ export interface NativePool {
 }
 
 function poolKey(snapshot: NativePoolSnapshot): string {
-  return JSON.stringify([snapshot.active, snapshot.defaultId, snapshot.printers.map((p) => [p.id, p.printer.name, p.printer.transport, p.status, p.message])]);
+  return JSON.stringify([snapshot.active, snapshot.defaultId, snapshot.printers.map((p) => [p.id, p.printer.name, p.printer.transport, p.status, p.message, p.paper, p.cover, p.error])]);
 }
 
 /** The 2F1 review gate (N-1): what the print agent can print on now, the app's connected printers in its order. A down
@@ -83,7 +88,15 @@ export function poolSnapshotOf(status: NativePoolStatus): NativePoolSnapshot {
     const view = nativeStatusToSnapshot({ state: entry.state, printer: entry.printer, bluetooth: status.bluetooth }, null);
     if (view.printer === null || view.printer.kind !== "native" || printers.some((p) => p.id === entry.printer.id)) continue;
     const state = view.status === "connecting" || view.status === "connected" ? view.status : "disconnected";
-    printers.push({ id: entry.printer.id, printer: view.printer, status: state, message: view.message });
+    printers.push({
+      id: entry.printer.id,
+      printer: view.printer,
+      status: state,
+      message: view.message,
+      ...(entry.paper !== undefined ? { paper: entry.paper } : {}),
+      ...(entry.cover !== undefined ? { cover: entry.cover } : {}),
+      ...(entry.error === true ? { error: true as const } : {}),
+    });
   }
   const defaultId = status.defaultId !== null && printers.some((p) => p.id === status.defaultId) ? status.defaultId : null;
   return { active: true, printers, defaultId };

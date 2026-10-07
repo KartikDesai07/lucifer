@@ -9,6 +9,7 @@ import { isDesktopShell } from "@/lib/desktop-shell";
 import type { PrintAgent } from "@/lib/print-agent";
 import { jobsForMeLeasable, type AgentPrinters } from "@/lib/print-agent-printers";
 import { createPrintAgentWake } from "@/lib/print-agent-wake";
+import { printerHealthReports, setTakenOverPrinters } from "@/lib/print-agent-seams";
 import { NATIVE_BRIDGE_V2, nativeV2Bridge } from "@/lib/printer/native-bridge-v2";
 import { bumpPrintWakeBudget, mergePrintWakeBudget, readPrintWakeBudget, writePrintWakeBudget, type PrintWakeBudget } from "@/lib/print-wake-budget";
 import { currentLane, defaultDeviceLabel, printCapabilities } from "@/lib/printer/print-lane";
@@ -23,10 +24,12 @@ import { cafeDateString } from "@/lib/utils";
 const WAKE_URL = "/api/print-jobs/wake";
 
 /** The heartbeat the host's wake carries (spec §10). Session 2F1: the POS app's bridge version (2: it prints several
- *  printers), so the setup knows which tablet prints one printer. */
+ *  printers), so the setup knows which tablet prints one printer. Session 3B: whether it can take a network printer
+ *  over, that it prints token slips, and the health of the printers it prints here. */
 function wakeBody(deviceId: string) {
   const caps = printCapabilities();
   const desktop = isDesktopShell();
+  const health = printerHealthReports();
   return {
     deviceId,
     label: defaultDeviceLabel(currentLane()),
@@ -39,7 +42,14 @@ function wakeBody(deviceId: string) {
       windowsPrinters: desktop,
       webSerial: caps.serial,
       webBluetooth: caps.bluetooth,
+      // Session 3B (spec §9.3): it can write any network printer the setup names: the POS app on bridge v2 (the Windows app
+      // from 1.12.0, Session 3E). A page that cannot never takes a printer over.
+      lanFailover: caps.native && nativeV2Bridge() !== null,
     },
+    // Session 3B (the token fix's M-2): this page prints token slips, so the wake's count includes them.
+    tokenSlips: true,
+    // Session 3B (spec §10): kept by the server only from the device that writes each printer now, and only on a change.
+    ...(health.length > 0 ? { printers: health } : {}),
   };
 }
 
@@ -64,6 +74,7 @@ export function usePrintAgentWake({ agent, enabled, isHost, printers, deviceId, 
         const data = await apiSend<PrintWakeBeatData>(WAKE_URL, "POST", wakeBody(deviceId));
         capRef.current = Math.min(PRINT_WAKE_DAILY_CAP, data.agentDailyCap);
         noteJobsForMe(data.jobsForMe, data.writesPrinters);
+        setTakenOverPrinters(data.takenOver ?? []);
         return data;
       },
       socketHealthy: isRealtimeHealthy,
@@ -82,6 +93,9 @@ export function usePrintAgentWake({ agent, enabled, isHost, printers, deviceId, 
       clearTimer: (handle: unknown): void => window.clearTimeout(handle as number),
     });
     wake.start();
-    return () => wake.stop();
+    return () => {
+      wake.stop();
+      setTakenOverPrinters([]);
+    };
   }, [agent, enabled, pollsWake, deviceId, noteJobsForMe]);
 }
