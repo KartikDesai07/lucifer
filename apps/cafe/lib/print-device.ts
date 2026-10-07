@@ -84,10 +84,10 @@ export async function readOnlinePrintDevices(nowMs: number): Promise<PrinterFail
  *  lead), for the Printer setup page and a network printer's printing device. One bounded read; no write. */
 export async function listPrintDevices(nowMs: number): Promise<PrintDeviceSummary[]> {
   const rows = await PrintDevice.find()
-    .select("deviceId label shell lastSeenAt nativeProtocol")
+    .select("deviceId label shell lastSeenAt nativeProtocol capabilities.lanFailover")
     .sort({ lastSeenAt: -1 })
     .limit(PRINT_DEVICES_LIST_MAX)
-    .lean<Array<{ deviceId: string; label: string; shell: PrintDeviceShell; lastSeenAt: Date; nativeProtocol?: number }>>();
+    .lean<Array<{ deviceId: string; label: string; shell: PrintDeviceShell; lastSeenAt: Date; nativeProtocol?: number; capabilities?: { lanFailover?: boolean } }>>();
   return rows.map((row) => ({
     deviceId: row.deviceId,
     label: row.label,
@@ -96,6 +96,8 @@ export async function listPrintDevices(nowMs: number): Promise<PrintDeviceSummar
     lastSeenAt: row.lastSeenAt.toISOString(),
     // Session 2F1 (spec §9.2): the POS app's bridge version (2: it prints several printers), for the printer form.
     ...(row.nativeProtocol !== undefined ? { nativeProtocol: row.nativeProtocol } : {}),
+    // Session 3B (spec §9.3): it can take a network printer over, for the setup page's words.
+    ...(row.capabilities?.lanFailover === true ? { lanFailover: true as const } : {}),
   }));
 }
 

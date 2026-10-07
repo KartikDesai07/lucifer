@@ -16,10 +16,12 @@ import {
   printerProblemText,
   printerSkipEndsFor,
   printerSkippedWriters,
+  printerWriterCanPrint,
   printerWriterOnline,
+  printersTakenOverBy,
   type PrinterFailover,
 } from "./print-failover";
-import { PRINT_JOB_QUEUED_RETENTION_MS } from "./print-job";
+import { PRINT_DEVICE_PRUNE_MS } from "./print-lifecycle";
 import type { PrinterConfig } from "./print-printers";
 
 // Printing Phase 3 Session 3A (spec §9.3, §9.4, §10): the shared rules of failover, the backup printer and printer
@@ -41,10 +43,11 @@ function failover(online: Array<[string, boolean]>, nowMs = T0): PrinterFailover
   return { online: online.map(([deviceId, lanFailover]) => ({ deviceId, lanFailover })), nowMs };
 }
 
-test("constants: a skip lasts at least 5 minutes and at most 3 hours; health is refreshed every 5 minutes and stale after 10", () => {
+test("constants: a skip lasts at least 5 minutes and holds while the device's record lives; health is refreshed every 5 minutes and stale after 10", () => {
   assert.equal(PRINTER_UNREACHABLE_SKIP_MS, 300_000);
-  // Session 3A's final review (I-1): beyond 3 hours a waiting slip is pruned anyway (PRINT_JOB_QUEUED_RETENTION_MS).
-  assert.equal(PRINTER_UNREACHABLE_HOLD_MS, PRINT_JOB_QUEUED_RETENTION_MS, "a skip holds at most as long as a waiting slip is kept");
+  // The 3A review gate (I-B, deliberate change): a 3-hour bound sent the printer back to a writer that still could not
+  // reach it after a long outage; a skip now ends only when the device says it reaches the printer, or with its record.
+  assert.equal(PRINTER_UNREACHABLE_HOLD_MS, PRINT_DEVICE_PRUNE_MS, "a skip holds as long as the device's own record lives (7 days)");
   assert.equal(PRINTER_HEALTH_REFRESH_MS, 300_000);
   assert.equal(PRINTER_HEALTH_STALE_MS, 600_000);
   assert.deepEqual([...PRINTER_PROBLEMS], ["device-offline", "paper-out", "cover-open", "error", "offline", "paper-low"], "worst first");
@@ -73,9 +76,9 @@ test("printerActiveWriter: a writer that could not reach it is skipped for at le
   const both = failover([["kitchen", true], ["counter", true]]);
   assert.equal(printerActiveWriter(skipKitchen, both), "counter", "the primary skipped, the counter takes it");
   // Session 3A's final review (I-1): a page never leases a printer it cannot reach, so the skip cannot run out on time
-  // alone: the counter keeps the printer until the tablet's own lease names it again (lib/print-failover.ts), or 3 hours.
+  // alone: the counter keeps the printer until the tablet says it reaches it again (lib/print-failover.ts), or 7 days.
   assert.equal(printerActiveWriter(skipKitchen, failover([["kitchen", true], ["counter", true]], T0 + PRINTER_UNREACHABLE_SKIP_MS)), "counter", "still the counter's when the 5 minutes are up");
-  assert.equal(printerActiveWriter(skipKitchen, failover([["kitchen", true], ["counter", true]], T0 + PRINTER_UNREACHABLE_HOLD_MS)), "kitchen", "back to the primary after 3 hours at most");
+  assert.equal(printerActiveWriter(skipKitchen, failover([["kitchen", true], ["counter", true]], T0 + PRINTER_UNREACHABLE_HOLD_MS)), "kitchen", "back to the primary once the device's record would be pruned");
   assert.equal(printerActiveWriter(skipKitchen, failover([["kitchen", true]])), "kitchen", "no one else: the primary keeps it");
   const skipCounter = lan("k", "kitchen", { unreachable: [{ deviceId: "counter", until: at(60_000) }] });
   assert.equal(printerActiveWriter(skipCounter, failover([["counter", true], ["bar", true]])), "bar", "the skipped candidate is passed over");
@@ -83,13 +86,13 @@ test("printerActiveWriter: a writer that could not reach it is skipped for at le
 });
 
 test("printerSkippedWriters / printerWriterOnline", () => {
-  // `until` is the end of a skip's first 5 minutes: a recorded at T0 - 1 min, b at T0 - 10 min, c 3 hours ago.
+  // `until` is the end of a skip's first 5 minutes: a recorded at T0 - 1 min, b at T0 - 10 min, c 7 days ago.
   const skips = [
     { deviceId: "a", until: at(PRINTER_UNREACHABLE_SKIP_MS - 60_000) },
     { deviceId: "b", until: at(PRINTER_UNREACHABLE_SKIP_MS - 600_000) },
     { deviceId: "c", until: at(PRINTER_UNREACHABLE_SKIP_MS - PRINTER_UNREACHABLE_HOLD_MS) },
   ];
-  assert.deepEqual(printerSkippedWriters(lan("k", "kitchen", { unreachable: skips }), T0), ["a", "b"], "a skip holds past its 5 minutes, and is gone after 3 hours");
+  assert.deepEqual(printerSkippedWriters(lan("k", "kitchen", { unreachable: skips }), T0), ["a", "b"], "a skip holds past its 5 minutes, and is gone with the device's record");
   assert.equal(printerWriterOnline(lan("k", "kitchen"), failover([["kitchen", true]])), true);
   assert.equal(printerWriterOnline(lan("k", "kitchen"), failover([["old-page", false]])), false, "its writer now is the offline primary");
   assert.equal(printerWriterOnline(bt("b", "bar"), failover([["counter", true]])), false);
@@ -102,8 +105,29 @@ test("printerSkipEndsFor: a skipped device's lease that names the printer ends i
   assert.equal(printerSkipEndsFor(printer, "kitchen", T0), false, "within its 5 minutes the skip stands (at most a lease and an ack per 5 minutes)");
   assert.equal(printerSkipEndsFor(printer, "kitchen", T0 + PRINTER_UNREACHABLE_SKIP_MS), true, "after them, naming the printer ends it");
   assert.equal(printerSkipEndsFor(printer, "counter", T0 + PRINTER_UNREACHABLE_SKIP_MS), false, "only the skipped device's own skip");
-  assert.equal(printerSkipEndsFor(printer, "kitchen", T0 + PRINTER_UNREACHABLE_HOLD_MS), false, "after 3 hours it is gone already: nothing to end");
+  assert.equal(printerSkipEndsFor(printer, "kitchen", T0 + PRINTER_UNREACHABLE_HOLD_MS), false, "after 7 days it is gone already: nothing to end");
   assert.equal(printerSkipEndsFor(lan("k", "kitchen"), "kitchen", T0), false, "no skip: nothing to end");
+});
+
+test("printerWriterCanPrint: online and not skipped; a network printer every writer is skipped for cannot print (its slips go to its backup: the 3A gate, m-D)", () => {
+  const skipAll = lan("k", "kitchen", { unreachable: [{ deviceId: "kitchen", until: at(PRINTER_UNREACHABLE_SKIP_MS) }, { deviceId: "counter", until: at(PRINTER_UNREACHABLE_SKIP_MS) }] });
+  assert.equal(printerWriterCanPrint(lan("k", "kitchen"), failover([["kitchen", true]])), true);
+  assert.equal(printerWriterCanPrint(lan("k", "kitchen"), failover([["counter", false]])), false, "its device offline");
+  assert.equal(printerWriterCanPrint(skipAll, failover([["kitchen", true], ["counter", true]])), false, "every writer skipped: the primary, skipped too, cannot");
+  assert.equal(printerWriterCanPrint(skipAll, failover([["kitchen", true], ["counter", true], ["bar", true]])), true, "the bar phone, not skipped, takes it over");
+  assert.equal(printerWriterCanPrint(bt("b", "bar"), failover([["bar", true]])), true, "a device printer: its device online");
+});
+
+test("printersTakenOverBy: the printers a device writes now that the setup names another device for (Session 3B: the wake says so)", () => {
+  const kitchen = lan("k", "kitchen");
+  const counter = lan("c", "counter");
+  const bar = bt("b", "bar");
+  const printers = [kitchen, counter, bar];
+  assert.deepEqual(printersTakenOverBy(printers, "counter", failover([["kitchen", true], ["counter", true], ["bar", true]])), [], "every primary online: nothing taken over");
+  assert.deepEqual(printersTakenOverBy(printers, "counter", failover([["counter", true], ["bar", true]])), [], "the kitchen offline: the bar phone takes it (first by id), not the counter");
+  assert.deepEqual(printersTakenOverBy(printers, "bar", failover([["counter", true], ["bar", true]])), ["k"], "... so the bar phone is told");
+  assert.deepEqual(printersTakenOverBy(printers, "kitchen", failover([["counter", true], ["bar", true]])), [], "a device's own printer is never 'taken over' by it");
+  assert.deepEqual(printersTakenOverBy([lan("k", "kitchen", { enabled: false }), counter], "bar", failover([["bar", true], ["counter", true]])), [], "only printers routing sends slips to");
 });
 
 test("printerBackupOf: a routable other printer, or null", () => {

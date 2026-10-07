@@ -51,6 +51,7 @@ import { legAZ } from "./print-host-live/token-fence";
 import { legBA } from "./print-host-live/failover";
 import { legBB } from "./print-host-live/backup";
 import { legBC } from "./print-host-live/health";
+import { legBD } from "./print-host-live/takeover";
 
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
@@ -145,6 +146,7 @@ async function main(): Promise<void> {
     await legBA(Date.now());
     await legBB(Date.now());
     await legBC(Date.now());
+    await legBD(Date.now());
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();

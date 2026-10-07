@@ -5,8 +5,10 @@ import {
   printerActiveWriter,
   printerBackupOf,
   printerSkipEndsFor,
-  printerWriterOnline,
+  printerSkippedWriters,
+  printerWriterCanPrint,
   type PrinterFailover,
+  type PrinterHealthReport,
 } from "@pos/shared/print-failover";
 import { routablePrinterOf, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
 import { Printer } from "@/models/Printer";
@@ -62,7 +64,8 @@ async function announcePrinterHead(printerId: string, writer: string): Promise<v
 }
 
 /** §9.4: a printer whose device is offline (no heartbeat for 90 s; a network printer with no online device left to take
- *  it over) sends its waiting slips to its backup printer, when the backup's device is online: each queued slip that was
+ *  it over), or, since the 3A review gate (m-D), a network printer that every writer could not reach (printerWriterCanPrint),
+ *  sends its waiting slips to its backup printer, when the backup's device can print it: each queued slip that was
  *  never tried, or only refused before any byte (no uncertain attempt), moves with BACKUP PRINTER first among its
  *  labels and a 'retargeted' log, and the backup's writer is told of its head. A slip that may have printed, a bill
  *  waiting for the cashier and a slip being printed stay; so does every slip of a printer with no backup (every device's
@@ -73,7 +76,7 @@ export async function moveToBackupPrinters(printers: readonly PrinterConfig[], f
   let moved = 0;
   for (const printer of printers) {
     const backup = printerBackupOf(printers, printer);
-    if (backup === null || printerWriterOnline(printer, failover) || !printerWriterOnline(backup, failover)) continue;
+    if (backup === null || printerWriterCanPrint(printer, failover) || !printerWriterCanPrint(backup, failover)) continue;
     const writer = printerActiveWriter(backup, failover) ?? "";
     const res = await PrintJob.updateMany({ printerId: printer.id, status: "queued", uncertainAttempts: { $in: [0, null] } }, [
       {
@@ -127,6 +130,39 @@ export async function recordPrinterUnreachable(input: { printerId: string; devic
   const writer = printerActiveWriter({ ...printer, unreachable: skips }, failover);
   if (writer !== null && writer !== input.deviceId) await retargetPrinterJobs(printer.id, writer, input.nowMs);
   return writer;
+}
+
+/** Session 3B (the 3A review gate, I-A and M-8 d): a beat's settled link for a network printer starts or ends this
+ *  device's skip for it. "disconnected" from its writer now skips it, exactly as an "unreachable" ack does: a page never
+ *  leases a printer it knows is down (Phase 1's rule), so without this a writer that learned it cannot reach a printer
+ *  without a print (its app's probe), or a device that took one over but cannot reach it, would hold its slips, never
+ *  leased and never acked, while another device could print them. "connected" from a device skipped for it ends its skip
+ *  once the first 5 minutes are up, exactly as its lease naming the printer does, so the primary gets its printer back
+ *  at its next beat. Only a network printer; a skip already held, or one not yet past its 5 minutes, writes nothing.
+ *  Returns how many skips it started or ended (one write each). */
+export async function skipUnreachableFromBeat(input: {
+  deviceId: string;
+  reports: readonly PrinterHealthReport[];
+  printers: readonly PrinterConfig[];
+  failover: PrinterFailover;
+  nowMs: number;
+}): Promise<number> {
+  let writes = 0;
+  for (const report of input.reports) {
+    const printer = routablePrinterOf(input.printers, report.printerId);
+    if (printer === null || printer.connection.kind !== "lan") continue;
+    if (report.link === "connected") {
+      if (!printerSkipEndsFor(printer, input.deviceId, input.nowMs)) continue;
+      await endPrinterSkipOf(printer, input.deviceId, input.nowMs);
+      writes += 1;
+      continue;
+    }
+    if (report.link !== "disconnected" || printerActiveWriter(printer, input.failover) !== input.deviceId) continue;
+    if (printerSkippedWriters(printer, input.nowMs).includes(input.deviceId)) continue;
+    await recordPrinterUnreachable({ printerId: printer.id, deviceId: input.deviceId, nowMs: input.nowMs });
+    writes += 1;
+  }
+  return writes;
 }
 
 /** §9.3 (Session 3A's final review, I-1): a device's lease that names a network printer it is skipped for ends that skip

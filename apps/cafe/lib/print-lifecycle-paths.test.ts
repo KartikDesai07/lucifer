@@ -269,13 +269,44 @@ test("PIN: POST /api/print-jobs/wake beats, reads the device's line and the agen
       // writes each printer now for the health this device reports (kept only on a change).
       "readOnlinePrintDevices(nowMs)",
       "await recordPrinterHealth({ deviceId: parsed.data.deviceId, reports: parsed.data.printers, printers, failover: { online, nowMs }, nowMs }).catch(() => 0);",
+      // Session 3B (the 3A review gate, M-8 d) deliberately added: a beat that says this device cannot reach a network
+      // printer it writes now skips it, as an "unreachable" ack does; and the answer says which printers it took over.
+      "await skipUnreachableFromBeat({ deviceId: parsed.data.deviceId, reports: parsed.data.printers, printers, failover: { online, nowMs }, nowMs }).catch(() => 0);",
       "const agents = Math.max(1, online.length);",
       "after(() => sweepPrintJobsThrottled(nowMs))",
+      "const takenOver = printersTakenOverBy(printers, parsed.data.deviceId, { online, nowMs });",
+      "...(takenOver.length > 0 ? { takenOver } : {}),",
       "return noStore(success(data));",
     ],
     "wake POST",
   );
   assert.ok(!/PrintJob\.|PrintDevice\./.test(s), "the route writes only through the libs");
+});
+
+// Session 3B (the 3A review gate, M-8 d): the beat's link is the signal for a printer a device cannot reach without a
+// print; only the writer now, only a network printer, and once per skip.
+test("PIN (3B): a beat's settled link starts its device's skip for a network printer it writes now and cannot reach, once, and ends it once it reaches it again", () => {
+  const s = src("apps/cafe/lib/print-failover.ts");
+  const start = s.indexOf("export async function skipUnreachableFromBeat(");
+  assert.ok(start >= 0, "declared in lib/print-failover.ts");
+  inOrder(
+    s.slice(start),
+    [
+      "const printer = routablePrinterOf(input.printers, report.printerId);",
+      'if (printer === null || printer.connection.kind !== "lan") continue;',
+      'if (report.link === "connected") {',
+      "if (!printerSkipEndsFor(printer, input.deviceId, input.nowMs)) continue;",
+      "await endPrinterSkipOf(printer, input.deviceId, input.nowMs);",
+      'if (report.link !== "disconnected" || printerActiveWriter(printer, input.failover) !== input.deviceId) continue;',
+      "if (printerSkippedWriters(printer, input.nowMs).includes(input.deviceId)) continue;",
+      "await recordPrinterUnreachable({ printerId: printer.id, deviceId: input.deviceId, nowMs: input.nowMs });",
+    ],
+    "skipUnreachableFromBeat",
+  );
+  // The 3A review gate (m-D): a network printer every writer is skipped for moves its slips to its backup.
+  assert.ok(s.includes("if (backup === null || printerWriterCanPrint(printer, failover) || !printerWriterCanPrint(backup, failover)) continue;"), "the backup move asks who can print, not only who is online");
+  // The devices read says which device can take a network printer over (the setup page's words).
+  assert.ok(src(DEVICE).includes('...(row.capabilities?.lanFailover === true ? { lanFailover: true as const } : {}),'), "the devices read carries lanFailover");
 });
 
 // Session 1A final-review fixes (plan "Session 1A Results", findings I1 and I4).
@@ -373,7 +404,8 @@ test("PIN (Phase 3, §9.4): the backup move takes only queued slips with no unce
     move,
     [
       "const backup = printerBackupOf(printers, printer);",
-      "if (backup === null || printerWriterOnline(printer, failover) || !printerWriterOnline(backup, failover)) continue;",
+      // The 3A review gate (m-D) deliberately changed the test: who can print it (online, and not skipped for it).
+      "if (backup === null || printerWriterCanPrint(printer, failover) || !printerWriterCanPrint(backup, failover)) continue;",
       '{ printerId: printer.id, status: "queued", uncertainAttempts: { $in: [0, null] } }',
       "printerId: backup.id,",
       "labels: { $concatArrays: [[BACKUP_LABEL], { $filter:",

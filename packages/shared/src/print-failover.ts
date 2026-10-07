@@ -9,19 +9,21 @@
 // Pure and client-safe: no Node, DB or zod imports.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { PRINT_JOB_QUEUED_RETENTION_MS } from "./print-job";
-import { printerWriterDeviceId, routablePrinterOf, type PrinterConfig } from "./print-printers";
+import { PRINT_DEVICE_PRUNE_MS } from "./print-lifecycle";
+import { printerWriterDeviceId, routablePrinterOf, routablePrinters, type PrinterConfig } from "./print-printers";
 
 /** §9.3: a writer that could not reach a network printer is skipped for it at least this long, so another writer gets
  *  its next lease (and the skipped one tries again after it, the same 5 minutes Phase 1's refusal rules allow a dead
  *  printer). */
 export const PRINTER_UNREACHABLE_SKIP_MS = 5 * 60 * 1000;
-/** §9.3 (Session 3A's final review, I-1): after its first 5 minutes a skip holds until the skipped device's own lease
- *  names the printer again, and at most this long after it began. A page never leases a printer it cannot reach
- *  (holds.open(ready())), so a skip that ran out on time alone would send the printer back to a writer that still
- *  cannot reach it and never says so again, while another device that can sits idle. Beyond 3 hours a waiting slip
- *  is pruned anyway (PRINT_JOB_QUEUED_RETENTION_MS). */
-export const PRINTER_UNREACHABLE_HOLD_MS = PRINT_JOB_QUEUED_RETENTION_MS;
+/** §9.3 (Session 3A's final review, I-1): after its first 5 minutes a skip holds until the skipped device itself says
+ *  it reaches the printer again (its lease names the printer, or, from Session 3B, its beat says "connected"). A page
+ *  never leases a printer it cannot reach (holds.open(ready())), so a skip that ran out on time alone would send the
+ *  printer back to a writer that still cannot reach it, while another device that can sits idle. The 3A review gate
+ *  (I-B): a 3-hour bound did exactly that for an outage longer than 3 hours, so a skip now holds as long as the
+ *  device's own record lives (PRINT_DEVICE_PRUNE_MS, 7 days): one entry per device, and a device that never comes back
+ *  is never online, so never a writer. */
+export const PRINTER_UNREACHABLE_HOLD_MS = PRINT_DEVICE_PRUNE_MS;
 
 /** §9.3: one writer that could not reach a network printer, and when (ISO, server time) its first 5 minutes end: from
  *  then on its own lease that names the printer ends the skip (printerSkipEndsFor), which holds at most
@@ -111,10 +113,26 @@ export function printerActiveWriter(printer: WriterOf, failover: PrinterFailover
   return others[0] ?? configured;
 }
 
+/** Session 3B: the printers `deviceId` writes now that the setup names another device for (a network printer taken over
+ *  while its primary is offline or cannot reach it), by id. The wake tells the device, so its top-bar dot counts them. */
+export function printersTakenOverBy(printers: readonly PrinterConfig[], deviceId: string, failover: PrinterFailover): string[] {
+  return routablePrinters(printers)
+    .filter((printer) => printerWriterDeviceId(printer) !== deviceId && printerActiveWriter(printer, failover) === deviceId)
+    .map((printer) => printer.id);
+}
+
 /** §9.4: whether the device that writes this printer now is online (a heartbeat within 90 s). */
 export function printerWriterOnline(printer: WriterOf, failover: PrinterFailover): boolean {
   const writer = printerActiveWriter(printer, failover);
   return writer !== null && failover.online.some((device) => device.deviceId === writer);
+}
+
+/** §9.4 (the 3A review gate, m-D): whether the device that writes this printer now can print it: it is online, and it is
+ *  not skipped for it. A network printer that every writer could not reach falls back to its primary, skipped too, so
+ *  its slips go to its backup printer exactly like those of a printer whose device is offline. */
+export function printerWriterCanPrint(printer: WriterOf, failover: PrinterFailover): boolean {
+  const writer = printerActiveWriter(printer, failover);
+  return writer !== null && printerWriterOnline(printer, failover) && !printerSkippedWriters(printer, failover.nowMs).includes(writer);
 }
 
 export const PRINTER_BACKUP_SELF_MESSAGE = "A printer cannot be its own backup. Choose another printer.";

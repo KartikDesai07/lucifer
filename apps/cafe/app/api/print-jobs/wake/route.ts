@@ -3,11 +3,13 @@ import { connectDB } from "@/lib/db";
 import { printJobDrainHead } from "@/lib/print-queue-feeds";
 import { readJobsForDevice } from "@/lib/print-lease";
 import { beatPrintDevice, printDeviceDrawsTokens, readOnlinePrintDevices } from "@/lib/print-device";
+import { skipUnreachableFromBeat } from "@/lib/print-failover";
 import { recordPrinterHealth } from "@/lib/print-health";
 import { listPrinters } from "@/lib/print-printers";
 import { sweepPrintJobsThrottled } from "@/lib/print-sweep";
 import { wakeBeatBodySchema } from "@/lib/print-lifecycle-schemas";
 import { printAgentDailyCap, type PrintWakeBeatData } from "@pos/shared/print-agent-wire";
+import { printersTakenOverBy } from "@pos/shared/print-failover";
 import { printerWriterDevices } from "@pos/shared/print-printers";
 import { success, requireAuth, serverError, validateBody } from "@/lib/api-helpers";
 import { noStore } from "@/lib/order-request-tray";
@@ -67,6 +69,9 @@ export async function POST(req: Request) {
     // write only ages the kept health).
     if (parsed.data.printers !== undefined && parsed.data.printers.length > 0) {
       await recordPrinterHealth({ deviceId: parsed.data.deviceId, reports: parsed.data.printers, printers, failover: { online, nowMs }, nowMs }).catch(() => 0);
+      // Session 3B (the 3A review gate, M-8 d): a network printer it writes now and says it cannot reach skips it, as an
+      // "unreachable" ack does (one write per skip; best-effort).
+      await skipUnreachableFromBeat({ deviceId: parsed.data.deviceId, reports: parsed.data.printers, printers, failover: { online, nowMs }, nowMs }).catch(() => 0);
     }
     const agents = Math.max(1, online.length);
     try {
@@ -74,6 +79,8 @@ export async function POST(req: Request) {
     } catch {
       // no after() in this runtime — skip the sweep, keep the wake
     }
+    // Session 3B: the network printers it took over (its top-bar dot counts them while it writes them).
+    const takenOver = printersTakenOverBy(printers, parsed.data.deviceId, { online, nowMs });
     const data: PrintWakeBeatData = {
       jobsForMe,
       agents,
@@ -82,6 +89,7 @@ export async function POST(req: Request) {
       serverNow: new Date(nowMs).toISOString(),
       // The 2C gate's emulator run: a writer whose printer list missed a print-setup frame learns it here.
       writesPrinters: printerWriterDevices(printers).includes(parsed.data.deviceId),
+      ...(takenOver.length > 0 ? { takenOver } : {}),
     };
     return noStore(success(data));
   } catch (error) {

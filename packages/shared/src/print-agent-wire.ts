@@ -111,6 +111,8 @@ export interface PrintDeviceSummary {
   /** Session 2F1 (spec §9.2): the POS app's bridge version from its wake (2: it prints several printers); absent for
    *  any other device, and for an app whose page has not said yet. */
   nativeProtocol?: number;
+  /** Session 3B (spec §9.3): its wake said it can take a network printer over (PrintDeviceCapabilities.lanFailover). */
+  lanFailover?: true;
 }
 /** The devices list's one page: far above any cafe's devices (rows unseen for 7 days are pruned). */
 export const PRINT_DEVICES_LIST_MAX = 50;
@@ -284,4 +286,7 @@ export interface PrintWakeBeatData {
    *  writer told false has a stale printer list (its printer removed or moved while the print-setup frame was
    *  missed): it reads the list again and stops polling. Absent from an older server. */
   writesPrinters?: boolean;
+  /** Session 3B (spec §9.3): the network printers this device writes now that the setup names another device for (taken
+   *  over while their primary is offline or cannot reach them); absent when none, and from an older server. */
+  takenOver?: string[];
 }

@@ -176,7 +176,7 @@ export async function legBA(nowMs: number): Promise<void> {
 
   // Session 3A's final review (I-1): a page never leases a printer it cannot reach, so a skip cannot run out on time
   // alone (the slips would go back to a tablet that never again says it cannot reach the printer). It holds past its
-  // 5 minutes until the skipped device's own lease names the printer again (its app reaches it), at most 3 hours.
+  // 5 minutes until the skipped device's own lease names the printer again (its app reaches it), or its record is pruned.
   const later = nowMs + 12_000 + PRINTER_UNREACHABLE_SKIP_MS + 1_000;
   await Promise.all([online(KITCHEN, later), online(COUNTER, later)]);
   const back = await lease(COUNTER, [o.kitchen], later);
