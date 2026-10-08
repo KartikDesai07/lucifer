@@ -32,7 +32,7 @@ const LIST_ORACLE: Record<string, readonly string[]> = {
   NATIVE_METHODS: [
     "app.info", "printer.status", "printer.list", "printer.select", "printer.reconnect",
     "printer.forget", "printer.print", "permissions.request", "bluetooth.enable",
-    "host.background", "app.changeUrl",
+    "host.background", "app.changeUrl", "app.battery",
   ],
   NATIVE_EVENTS: ["printer.status", "app.wake"],
   NATIVE_TRANSPORTS: ["bt-classic", "ble", "tcp", "usb"],
@@ -44,6 +44,7 @@ const LIST_ORACLE: Record<string, readonly string[]> = {
   ],
   NATIVE_PERMISSION_KINDS: ["bluetooth", "notifications"],
   NATIVE_PLATFORMS: ["android", "ios"],
+  NATIVE_FEATURES: ["battery"],
 };
 const LIST_NAMES = Object.keys(LIST_ORACLE);
 
@@ -240,11 +241,12 @@ for (const name of LIST_NAMES) {
   });
 }
 
-test("lists pin: the oracle covers exactly the eight lists both files declare", () => {
-  assert.equal(LIST_NAMES.length, 8);
+// Phase 3 Session 3D deliberately changed: a ninth list, NATIVE_FEATURES (what window.PosNative says it can do).
+test("lists pin: the oracle covers exactly the nine lists both files declare", () => {
+  assert.equal(LIST_NAMES.length, 9);
   for (const src of [webProtocol, appProtocol]) {
     const declared = countOccurrences(stripComments(src), DECL + "NATIVE_");
-    // 8 lists + NATIVE_BRIDGE_VERSION/APP_ID/GLOBAL/DELIVER_FN scalars.
+    // 9 lists + NATIVE_BRIDGE_VERSION/APP_ID/GLOBAL/DELIVER_FN scalars.
     assert.equal(declared, LIST_NAMES.length + 4, "no undeclared NATIVE_ list slipped in");
   }
 });
@@ -335,7 +337,8 @@ test("injected names mutation: literal swap, dropped import, or renamed define f
   const run = (src: string): void => checkInjectedNames(src, appProtocol);
   rejects(() => run(mutate(injected, "safeJsonForScript(NATIVE_GLOBAL)", "safeJsonForScript('PosNativ')")));
   rejects(() => run(mutate(injected, "'window.' + NATIVE_DELIVER_FN", "'window.' + 'deliver'")));
-  rejects(() => run(mutate(injected, "NATIVE_DELIVER_FN,\n  NATIVE_GLOBAL,", "NATIVE_GLOBAL,")));
+  // Phase 3 Session 3D deliberately changed: NATIVE_FEATURES sits between them in the import.
+  rejects(() => run(mutate(injected, "NATIVE_DELIVER_FN,\n  NATIVE_FEATURES,", "NATIVE_FEATURES,")));
   rejects(() => run(mutate(injected, "defineProperty(window, DELIVER,", "defineProperty(window, DELIVERY,")));
   rejects(() => checkInjectedNames(injected, mutateScalar(appProtocol, "NATIVE_GLOBAL")));
 });

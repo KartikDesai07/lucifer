@@ -391,9 +391,12 @@ const CASES: PinCase[] = [
     mut("another tab reads not connected", 'elsewhere: "In another tab"', 'elsewhere: "Not connected"'),
     mut("the sub-line dropped", "{printerTypeLabel(printer)} · ", ""),
   ] },
-  { file: F.advanced, pin: pinNeedles(['nativeRequest("app.changeUrl")', "More options", "Change POS address", "<Collapsible", "usePrintCapabilities()"]), mutations: [
+  // Phase 3 Session 3D: the POS app's battery checklist, only on an app that says it has one.
+  { file: F.advanced, pin: pinNeedles(['nativeRequest("app.changeUrl")', "More options", "Change POS address", "<Collapsible", "usePrintCapabilities()", 'const battery = native && nativeHasFeature("battery");', 'nativeRequest("app.battery")', "Battery settings for printing"]), mutations: [
     mut("change-address renamed", 'nativeRequest("app.changeUrl")', 'nativeRequest("app.changeAddress")'),
     mut("label changed", "More options", "Advanced"),
+    mut("battery shown on every app", 'native && nativeHasFeature("battery")', "native"),
+    mut("battery asks nothing", 'nativeRequest("app.battery")', "Promise.resolve()"),
   ] },
   { file: F.paper, pin: pinNeedles(["aria-pressed", "grid-cols-2", "PAPER_WIDTHS.map"]), mutations: [mut("grid dropped", "grid-cols-2", "flex")] },
   { file: F.card, pin: cardPin, mutations: [

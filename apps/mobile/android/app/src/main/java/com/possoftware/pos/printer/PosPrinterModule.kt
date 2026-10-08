@@ -319,4 +319,29 @@ class PosPrinterModule(private val reactContext: ReactApplicationContext) :
     BackgroundMount.start(reactContext)
     promise.resolve(null)
   }
+
+  // ---- the battery checklist (Session 3D, spec §9.5): local only, no request ----
+
+  @ReactMethod
+  fun batteryInfo(promise: Promise) {
+    guarded(promise, BridgeCodes.UNSUPPORTED) {
+      promise.resolve(
+          Arguments.createMap().apply {
+            putString("brand", BatterySettings.brand())
+            putBoolean("unrestricted", BatterySettings.unrestricted(reactContext))
+          }
+      )
+    }
+  }
+
+  @ReactMethod
+  fun openBatterySettings(kind: String, promise: Promise) {
+    UiThreadUtil.runOnUiThread(
+        Runnable {
+          val activity = reactContext.currentActivity
+          val opened = activity != null && BatterySettings.open(activity, kind)
+          promise.resolve(Arguments.createMap().apply { putBoolean("opened", opened) })
+        }
+    )
+  }
 }

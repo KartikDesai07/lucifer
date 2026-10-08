@@ -30,6 +30,7 @@ import { PAGE_DEAD_EVENT, PosPrinter } from '../native/PosPrinter';
 import { classifyNavigation, isSameOrigin, startUrl } from '../url';
 import { usedAfterFailure } from './auto-retry';
 import { CRASH_URL } from './backstop';
+import { BatteryScreen } from './BatteryScreen';
 import { LoadErrorScreen } from './LoadErrorScreen';
 import { colors } from './theme';
 import { useLoadGuards } from './use-load-guards';
@@ -58,7 +59,12 @@ function addDevMenuOnce() {
   }
 }
 
-type WebProps = Props & { onLoadError: () => void; onRenderGone: () => void; onRetryTap: () => void };
+type WebProps = Props & {
+  onLoadError: () => void;
+  onRenderGone: () => void;
+  onRetryTap: () => void;
+  onBattery: () => void;
+};
 
 function PosWebView({
   origin,
@@ -66,12 +72,13 @@ function PosWebView({
   onLoadError,
   onRenderGone,
   onRetryTap,
+  onBattery,
 }: WebProps) {
   const hostRef = useRef<ComponentRef<typeof View>>(null);
   const webRef = useRef<WebView<unknown>>(null);
   const canGoBackRef = useRef(false);
   const crashNavRef = useRef(false);
-  const bridge = useNativeBridge({ origin, onChangeUrl });
+  const bridge = useNativeBridge({ origin, onChangeUrl, onBattery });
   const [documentStart, setDocumentStart] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   // True once native delivery holds THIS WebView (a resolved attachWebView).
@@ -309,6 +316,11 @@ export function PosScreen({ origin, onChangeUrl }: Props) {
     PosPrinter.mountWhileHidden().catch(noop);
     remount();
   }, [remount]);
+  // Phase 3 Session 3D (spec §9.5): the page's More options asks for the battery checklist; it shows over the POS,
+  // which keeps printing underneath.
+  const [battery, setBattery] = useState(false);
+  const openBattery = useCallback(() => setBattery(true), []);
+  const closeBattery = useCallback(() => setBattery(false), []);
 
   if (failed) {
     return (
@@ -321,14 +333,18 @@ export function PosScreen({ origin, onChangeUrl }: Props) {
     );
   }
   return (
-    <PosWebView
-      key={generation}
-      origin={origin}
-      onChangeUrl={onChangeUrl}
-      onLoadError={showError}
-      onRenderGone={remountAfterDeath}
-      onRetryTap={retryByTap}
-    />
+    <View style={styles.root}>
+      <PosWebView
+        key={generation}
+        origin={origin}
+        onChangeUrl={onChangeUrl}
+        onLoadError={showError}
+        onRenderGone={remountAfterDeath}
+        onRetryTap={retryByTap}
+        onBattery={openBattery}
+      />
+      {battery && <BatteryScreen onDone={closeBattery} />}
+    </View>
   );
 }
 

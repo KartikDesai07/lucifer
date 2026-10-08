@@ -106,7 +106,8 @@ test('PosNative is frozen, non-writable, non-configurable; platform and version 
       writable: false,
       enumerable: false,
       configurable: false,
-      value: { version: 1, versions: [1, 2], platform: 'android' },
+      // Phase 3 Session 3D deliberately changed: + features.
+      value: { version: 1, versions: [1, 2], features: ['battery'], platform: 'android' },
     },
   );
   const deliverDesc = f.plain(
@@ -136,7 +137,8 @@ test('the token is not reachable from the page', () => {
   f.inject();
   assert.equal(
     f.run('Object.keys(window.PosNative).join(",")'),
-    'version,versions,platform,request,on',
+    // Phase 3 Session 3D deliberately changed: + features.
+    'version,versions,features,platform,request,on',
   );
   assert.ok(!String(f.run('JSON.stringify(window.PosNative)')).includes(TOKEN));
   assert.ok(!String(f.run('String(window.PosNative.request)')).includes(TOKEN));

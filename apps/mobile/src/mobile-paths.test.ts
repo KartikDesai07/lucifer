@@ -61,6 +61,9 @@ const NATIVE_METHOD_ORACLE = [
   'deliverScript',
   // Phase 3 Session 3D (deliberate change): a WebView remounted after its page died mounts while the app is hidden.
   'mountWhileHidden',
+  // Phase 3 Session 3D (deliberate change): the battery checklist.
+  'batteryInfo',
+  'openBatterySettings',
 ];
 
 type Files = Record<string, string>;
@@ -448,8 +451,8 @@ function moduleNameProblems(ktModule: string, jsWrapper: string): string[] {
 test('pin 4: JS wrapper and Kotlin @ReactMethod list equal the oracle', () => {
   const module = kt('PosPrinterModule.kt');
   const js = read(join(SRC, 'native', 'PosPrinter.ts'));
-  // Phase 3 Session 3D deliberately changed: + mountWhileHidden.
-  assert.equal(NATIVE_METHOD_ORACLE.length, 25, '18 v1 methods, 6 of bridge v2 and the hidden mount');
+  // Phase 3 Session 3D deliberately changed: + mountWhileHidden, batteryInfo, openBatterySettings.
+  assert.equal(NATIVE_METHOD_ORACLE.length, 27, '18 v1 methods, 6 of bridge v2, the hidden mount and the battery checklist');
   assert.ok(strip(module).includes('@ReactMethod'), 'landmark');
   assert.deepEqual(methodProblems(module, js), []);
   assert.deepEqual(moduleNameProblems(module, js), []);
@@ -2612,6 +2615,77 @@ test('pin 23 mutation: every remount needle can fail', () => {
     ['alerting(visible) && lived && sinceRemount', 'alerting(visible) && sinceRemount'],
     ['const val DEAD_EVENT = "PosPageDead"', 'const val DEAD_EVENT = "PageDead"'],
   ]);
+});
+
+// ── pin 24: Session 3D, the battery checklist (spec §9.5) ──────────────────
+// The page's More options asks (app.battery, only on an app whose window.PosNative says "battery"); the shell shows its
+// checklist over the POS, this phone's brand first, with links into the phone's settings where Android allows them,
+// each falling back to the app's own settings screen. Local only.
+interface BatterySources {
+  injected: string;
+  screen: string;
+  checklist: string;
+  module: string;
+  settings: string;
+  manifest: string;
+}
+function batteryProblems(s: BatterySources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!strip(text).includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(s.injected, "features: Object.freeze(FEATURES.slice())", 'window.PosNative does not say its features');
+  need(s.screen, '{battery && <BatteryScreen onDone={closeBattery} />}', 'the checklist never shows');
+  need(s.screen, 'onBattery={openBattery}', 'the page\'s ask does not open the checklist');
+  need(s.checklist, 'batterySectionsFor(brand).map(section => (', 'the checklist does not list the steps, this phone\'s first');
+  need(s.checklist, "BackHandler.addEventListener(\n      'hardwareBackPress',\n      () => {\n        onDone();\n        return true;", 'Back does not close the checklist');
+  need(s.module, 'putString("brand", BatterySettings.brand())', 'the shell is not told this phone\'s brand');
+  need(s.module, 'BatterySettings.open(activity, kind)', 'a link opens nothing');
+  need(s.settings, '} + Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg"))', 'a link has no fallback to the app\'s settings');
+  need(s.settings, 'Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$pkg"))', 'the battery link does not ask Android\'s own question');
+  need(s.manifest, '<package android:name="com.miui.securitycenter" />', 'the autostart screens are not named (Android 11+)');
+  if (/fetch\(|XMLHttpRequest|https?:\/\//.test(strip(s.screen) + strip(s.checklist))) {
+    out.push('the checklist makes a request');
+  }
+  return out;
+}
+const batterySources = (): BatterySources => ({
+  injected: read(join(SRC, 'bridge', 'injected.ts')),
+  screen: posScreen(),
+  checklist: read(join(SRC, 'screens', 'BatteryScreen.tsx')),
+  module: kt('PosPrinterModule.kt'),
+  settings: kt('BatterySettings.kt'),
+  manifest: manifest(),
+});
+
+test('pin 24: Session 3D, the battery checklist: asked by the page, this phone first, links with a fallback, local only', () => {
+  assert.deepEqual(batteryProblems(batterySources()), []);
+});
+
+test('pin 24 mutation: every battery needle can fail', () => {
+  const base = batterySources();
+  const run = (key: keyof BatterySources) => (text: string) => batteryProblems({ ...base, [key]: text });
+  everyMutationCaught(run('injected'), base.injected, [['features: Object.freeze(FEATURES.slice()), ', '']]);
+  everyMutationCaught(run('screen'), base.screen, [
+    ['{battery && <BatteryScreen onDone={closeBattery} />}', '{null}'],
+    ['onBattery={openBattery}', 'onBattery={noop}'],
+  ]);
+  everyMutationCaught(run('checklist'), base.checklist, [
+    ['batterySectionsFor(brand).map(section => (', 'BATTERY_SECTIONS.map(section => ('],
+    ['        onDone();\n        return true;', '        return true;'],
+    ['    PosPrinter.openBatterySettings(kind).catch(noop);', "    fetch('https://x').catch(noop);"],
+  ]);
+  everyMutationCaught(run('module'), base.module, [
+    ['putString("brand", BatterySettings.brand())', 'putString("brand", "other")'],
+    ['BatterySettings.open(activity, kind)', 'false'],
+  ]);
+  everyMutationCaught(run('settings'), base.settings, [
+    ['} + Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg"))', '}'],
+    ['Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$pkg"))', 'Intent()'],
+  ]);
+  everyMutationCaught(run('manifest'), base.manifest, [['<package android:name="com.miui.securitycenter" />', '']]);
 });
 
 test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {

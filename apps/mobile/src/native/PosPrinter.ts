@@ -49,7 +49,13 @@ export interface PosPrinterModule {
   deliverScript(script: string): Promise<null>;
   // Phase 3 Session 3D (spec §9.5): a WebView remounted after its page died mounts even while the app is hidden.
   mountWhileHidden(): Promise<null>;
+  // Phase 3 Session 3D (spec §9.5): the battery checklist: this phone's brand, whether Android already lets the app
+  // run with no battery limit, and a link into the settings.
+  batteryInfo(): Promise<{ brand: string; unrestricted: boolean }>;
+  openBatterySettings(kind: BatterySettingsKind): Promise<{ opened: boolean }>;
 }
+
+export type BatterySettingsKind = 'battery' | 'autostart' | 'app';
 
 /** Phase 3 Session 3D (spec §9.5): the print host's watchdog asks the POS screen to remount a page that stopped answering
  *  (the Kotlin side's HostPage.DEAD_EVENT). */
@@ -112,6 +118,8 @@ export const PosPrinter: PosPrinterModule = {
     call('attachWebView', tag, script, origin),
   deliverScript: script => call('deliverScript', script),
   mountWhileHidden: () => call('mountWhileHidden'),
+  batteryInfo: () => call('batteryInfo'),
+  openBatterySettings: kind => call('openBatterySettings', kind),
 };
 
 // Asks Android for the permission, then has the module re-read its status.

@@ -169,12 +169,13 @@ test("every method's well-formed answer passes; a mismatched one is BAD_REQUEST"
     "bluetooth.enable": { on: false },
     "host.background": { active: true },
     "app.changeUrl": undefined,
+    "app.battery": undefined,
   };
   installWindow(t, { PosNative: makeBridge(async (method) => answers[method]).bridge });
   for (const method of protocol.NATIVE_METHODS) {
     await assert.doesNotReject(nativeRequest(method, {}), method);
   }
-  const wrong: Record<Exclude<NativeMethod, "app.changeUrl">, unknown> = {
+  const wrong: Record<Exclude<NativeMethod, "app.changeUrl" | "app.battery">, unknown> = {
     "app.info": { app: "other-app", appVersion: "1", platform: "android", transports: [] },
     "printer.status": { state: "weird", printer: null, bluetooth: "on" },
     "printer.list": { printers: [{ id: 1 }] },
