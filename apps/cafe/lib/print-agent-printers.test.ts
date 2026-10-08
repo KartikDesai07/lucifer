@@ -470,10 +470,13 @@ test("PIN (3B, Session 3A's I-1): a page names in its lease only a printer it ca
   const agent = src("apps/cafe/lib/print-agent.ts");
   assert.ok(agent.includes("const data = await deps.lease(holds.open(ready()));"), "the lease names only the ready printers no refusal holds");
   const hook = src("apps/cafe/hooks/use-print-agent.ts");
-  assert.ok(hook.includes("const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf);"), "ready: the app's own state per printer");
+  // Session 3C (spec §10) deliberately changed: and not while the app says it cannot print (out of paper, cover open).
+  assert.ok(hook.includes("const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf, printerCannotPrintOf);"), "ready: the app's own state per printer");
   assert.ok(hook.includes("readyPrinters: readyNow,"), "the agent's ready list is that");
   const lib = src("apps/cafe/lib/print-agent-printers.ts");
-  assert.ok(lib.includes('return nativeId === undefined ? canPrint : statusOf(nativeId) === "connected";'), "an app printer is ready only while the app says connected");
+  assert.ok(lib.includes('return nativeId === undefined ? canPrint : statusOf(nativeId) === "connected" && !cannotPrint(nativeId);'), "an app printer is ready only while the app says connected");
+  // Session 3C: a printer the app says cannot print is never named in a lease: its slips wait, with no request.
+  assert.deepEqual(readyPrinterIdsOf(["theirs"], targets, true, statusOf, (nativeId) => nativeId === "tcp:10.0.2.2:9100"), [], "out of paper: not ready");
 });
 
 test("3B: the dot carries the worst paper, cover or error the app says of a printer it counts, by that printer's name", () => {

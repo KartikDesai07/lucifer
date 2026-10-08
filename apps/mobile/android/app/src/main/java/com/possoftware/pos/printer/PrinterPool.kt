@@ -112,10 +112,11 @@ object PrinterPool {
         ?: StatusSnapshot(BridgeCodes.STATE_NONE, null, bluetooth)
   }
 
-  /** The v2 printer.status: every printer in the app's order, and the default (read under [poolLock], as [status]). */
+  /** The v2 printer.status: every printer in the app's order, and the default (read under [poolLock], as [status]).
+   *  Session 3C (spec §10): each with what it last said of itself while connected (DLE EOT). */
   fun poolStatus(): PoolSnapshot {
     val bluetooth = bluetooth()
-    return synchronized(poolLock) { PoolSnapshot(list.all().map { PoolEntry(it.state(), it.info) }, list.defaultId, bluetooth) }
+    return synchronized(poolLock) { PoolSnapshot(list.all().map { PoolEntry(it.state(), it.info, it.health()) }, list.defaultId, bluetooth) }
   }
 
   fun manager(id: String): PrinterManager? = synchronized(poolLock) { list.find(id) }

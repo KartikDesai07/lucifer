@@ -15,8 +15,9 @@ data class PrinterInfo(
 /** The PrinterStatus map of the bridge. Data-class equality drives the change de-duplication. */
 data class StatusSnapshot(val state: String, val printer: PrinterInfo?, val bluetooth: String)
 
-/** Phase 2 Session 2F2 (spec §9.2): one printer of the app's list as bridge v2 reports it. */
-data class PoolEntry(val state: String, val printer: PrinterInfo)
+/** Phase 2 Session 2F2 (spec §9.2): one printer of the app's list as bridge v2 reports it. Session 3C (spec §10): with
+ *  what the printer last said of itself while connected (DLE EOT), or null. */
+data class PoolEntry(val state: String, val printer: PrinterInfo, val health: PrinterHealth? = null)
 
 /** Bridge v2's printer.status: every printer in the app's order, the default's id (null only for an empty list) and
  *  Bluetooth. Data-class equality drives the change de-duplication. */
@@ -37,8 +38,9 @@ typealias ReplyCallback<T> = (Reply<T>) -> Unit
 
 /** Failure of a transport call, carrying the bridge code it maps to. [needsForeground]: refused
  *  only because the app is hidden, so a system dialog cannot show yet. Not a denial: the manager
- *  asks again once the app is visible. */
-class TransportException(val code: String, message: String, val needsForeground: Boolean = false) : IOException(message)
+ *  asks again once the app is visible. [linkKept] (Session 3C, G5): the link is fine, the printer said
+ *  it cannot print the job now (out of paper, cover open, an error), so it is not a lost link. */
+class TransportException(val code: String, message: String, val needsForeground: Boolean = false, val linkKept: Boolean = false) : IOException(message)
 
 /** A byte pipe to one printer. open/write run on the io thread; close may run on any thread. */
 interface PrinterTransport {
@@ -50,6 +52,13 @@ interface PrinterTransport {
 
   /** Idempotent and safe from any thread; also aborts a blocked open/write. */
   fun close()
+
+  /**
+   * Phase 3 Session 3C (spec §10): what the printer says of itself now (DLE EOT), or null when it does not answer or this
+   * link cannot ask (BLE: link state only). Runs on the printer's io thread, never during a write; throws
+   * [TransportException] when the link is gone (a network printer: its connect is the idle check of its link).
+   */
+  fun status(): PrinterHealth? = null
 }
 
 /** Called when a link that was established drops without close() having been requested. */

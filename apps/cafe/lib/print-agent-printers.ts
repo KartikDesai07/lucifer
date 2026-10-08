@@ -161,16 +161,18 @@ export function agentPrintersOf(printers: readonly PrinterConfig[], deviceId: st
 
 /** Session 2F1 (spec §9.2): of the printers this device prints here, those that can print right now: one of the POS
  *  app's printers (bridge v2) by its own state; any other (a Windows printer, the one printer of every other device)
- *  when this device's own printer can print (canPrintNow), as before. */
+ *  when this device's own printer can print (canPrintNow), as before. Session 3C (spec §10): not one the app says cannot
+ *  print (`cannotPrint`: out of paper, cover open, an error), so its slips wait with no lease or ack until it can. */
 export function readyPrinterIdsOf(
   localIds: readonly string[],
   targets: Record<string, SlipPrintTarget>,
   canPrint: boolean,
   statusOf: (nativeId: string) => PrinterStatus,
+  cannotPrint: (nativeId: string) => boolean = () => false,
 ): string[] {
   return localIds.filter((id) => {
     const nativeId = targets[id]?.nativeId;
-    return nativeId === undefined ? canPrint : statusOf(nativeId) === "connected";
+    return nativeId === undefined ? canPrint : statusOf(nativeId) === "connected" && !cannotPrint(nativeId);
   });
 }
 

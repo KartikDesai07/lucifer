@@ -200,6 +200,8 @@ test('pin 0: every pinned source file exists', () => {
       'PrinterEnv.kt',
       'PoolList.kt',
       'PoolStatus.kt',
+      // Phase 3 Session 3C: DLE EOT.
+      'PrinterStatus.kt',
     ].map(name => join(KT_DIR, name)),
   ];
   for (const path of paths) {
@@ -2041,7 +2043,8 @@ function usbPermissionProblems(s: KtSources): string[] {
   const types = strip(s.types);
   const usb = strip(s.usb);
   const manager = strip(s.manager);
-  if (!types.includes('class TransportException(val code: String, message: String, val needsForeground: Boolean = false)')) {
+  // Session 3C (deliberate change): a further flag (linkKept, G5) follows it.
+  if (!types.includes('class TransportException(val code: String, message: String, val needsForeground: Boolean = false, val linkKept: Boolean = false)')) {
     out.push('TransportException must say when a refusal only needs the foreground');
   }
   if (!usb.includes('throw TransportException(BridgeCodes.UNAUTHORIZED, "USB permission needed", needsForeground = true)')) {
@@ -2215,7 +2218,7 @@ const JVM_TESTS = join(ROOT, 'android', 'app', 'src', 'test', 'java', 'com', 'po
 
 test('pin 19: one PrinterManager and io thread per printer, BUSY per printer, the list in Prefs, JUnit on the JVM', () => {
   assert.deepEqual(poolProblems(poolSources()), []);
-  for (const name of ['PrinterManagerTest.kt', 'PoolListTest.kt', 'PoolStatusTest.kt', 'PrinterFakes.kt', 'PrinterPoolTest.kt']) {
+  for (const name of ['PrinterManagerTest.kt', 'PoolListTest.kt', 'PoolStatusTest.kt', 'PrinterFakes.kt', 'DleEotTest.kt', 'TcpTransportTest.kt', 'PrinterPoolTest.kt']) {
     assert.ok(existsSync(join(JVM_TESTS, name)), 'JVM test file missing: ' + name);
   }
 });
@@ -2251,6 +2254,85 @@ test('pin 19 mutation: every pool needle can fail', () => {
   ]);
   everyMutationCaught(run('service'), base.service, [['HostTitle.of(PrinterPool.poolStatus())', 'HostTitle.of(PoolSnapshot(emptyList(), null, "on"))']]);
   everyMutationCaught(run('gradle'), base.gradle, [['testImplementation "junit:junit:4.13.2"', '// no tests']]);
+});
+
+// --------------------------------------------------------------- pin 20
+// Phase 3 Session 3C (spec §10, G5): each printer says its paper, cover and error (DLE EOT) after a job and while idle,
+// and a printer that says it cannot print refuses a job BUSY before any byte; a network printer's job reads printed only
+// once the printer answered on that job's own connection (or never answers DLE EOT at all), and its idle check is a
+// connect; the notification says out of paper.
+interface StatusSources {
+  manager: string;
+  tcp: string;
+  classic: string;
+  usb: string;
+  ble: string;
+  pool: string;
+  service: string;
+  strings: string;
+}
+function statusProblems(s: StatusSources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!strip(text).includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(s.manager, 'const val STATUS_PROBE_MS = 60_000L', 'the idle status check is not every minute');
+  need(s.manager, 'const val STATUS_PROBE_PROBLEM_MS = 10_000L', 'a printer that cannot print is not checked every 10 s');
+  need(s.manager, 'if (synchronized(lock) { health?.cannotPrint() == true }) {\n      printing.set(false)\n      cb(Reply.fail(BridgeCodes.BUSY))', 'a printer that cannot print is not refused BUSY before any byte');
+  need(s.manager, 'synchronized(lock) { if (transport === t) generation else null }?.let { probe(it) }', 'a job is not followed by its status');
+  need(s.manager, 'if (timedOut || !e.linkKept) onLinkLost(t)', 'a printer that took the job in but cannot print loses its link');
+  need(s.manager, 'Runnable { if (printing.get()) scheduleProbe(gen) else onIo { probe(gen) } }', 'the idle check runs while a job waits');
+  need(s.tcp, 'afterJob(s, data.size)\n      s.shutdownOutput()', 'a network job does not ask DLE EOT on its own connection before it half-closes');
+  need(s.tcp, 'if (first < 0) {\n      if (answers) throw TransportException(BridgeCodes.WRITE_FAILED,', 'a slip cut off mid-way, or not answered, on a printer that answers reads printed');
+  need(s.tcp, 'val wait = if (silent.contains(key)) replyMs else', 'a printer known to be silent pays the long wait on every slip');
+  need(s.tcp, 'if (health?.cannotPrint() == true) throw TransportException(BridgeCodes.WRITE_FAILED, "The printer cannot print now", linkKept = true)', 'a printer that cannot print reads printed');
+  for (const [name, text] of [['ClassicTransport.kt', s.classic], ['UsbTransport.kt', s.usb], ['TcpTransport.kt', s.tcp]] as const) {
+    need(text, 'override fun status(): PrinterHealth? {', name + ' does not say its printer\'s status');
+  }
+  if (strip(s.ble).includes('override fun status()')) {
+    out.push('BLE says more than its link');
+  }
+  need(s.pool, 'PoolEntry(it.state(), it.info, it.health())', 'the v2 list does not carry what each printer said');
+  need(s.service, 'is HostTitle.PaperOut -> getString(R.string.print_host_title_paper_out, worst.name)', 'the notification does not say out of paper');
+  need(s.strings, '<string name="print_host_title_paper_out">', 'strings.xml lacks the out-of-paper title');
+  return out;
+}
+const statusSources = (): StatusSources => ({
+  manager: kt('PrinterManager.kt'),
+  tcp: kt('TcpTransport.kt'),
+  classic: kt('ClassicTransport.kt'),
+  usb: kt('UsbTransport.kt'),
+  ble: kt('BleTransport.kt'),
+  pool: kt('PrinterPool.kt'),
+  service: kt('PrintHostService.kt'),
+  strings: read(join(MAIN, 'res', 'values', 'strings.xml')),
+});
+
+test('pin 20: DLE EOT after each job and while idle, BUSY while a printer cannot print, G5 on a network job, the out-of-paper title', () => {
+  assert.deepEqual(statusProblems(statusSources()), []);
+});
+
+test('pin 20 mutation: every status needle can fail', () => {
+  const base = statusSources();
+  const run = (key: keyof StatusSources) => (text: string) => statusProblems({ ...base, [key]: text });
+  everyMutationCaught(run('manager'), base.manager, [
+    ['const val STATUS_PROBE_MS = 60_000L', 'const val STATUS_PROBE_MS = 5_000L'],
+    ['if (synchronized(lock) { health?.cannotPrint() == true }) {', 'if (false) {'],
+    ['?.let { probe(it) }', '?.let { it }'],
+    ['if (timedOut || !e.linkKept) onLinkLost(t)', 'onLinkLost(t)'],
+    ['if (printing.get()) scheduleProbe(gen) else onIo { probe(gen) }', 'onIo { probe(gen) }'],
+  ]);
+  everyMutationCaught(run('tcp'), base.tcp, [
+    ['afterJob(s, data.size)\n', ''],
+    ['if (answers) throw', 'if (false) throw'],
+    ['val wait = if (silent.contains(key)) replyMs else', 'val wait = if (false) replyMs else'],
+    ['"The printer cannot print now", linkKept = true)', '"The printer cannot print now")'],
+  ]);
+  everyMutationCaught(run('ble'), base.ble, [['  override fun close() {', '  override fun status(): PrinterHealth? = null\n\n  override fun close() {']]);
+  everyMutationCaught(run('pool'), base.pool, [['PoolEntry(it.state(), it.info, it.health())', 'PoolEntry(it.state(), it.info)']]);
+  everyMutationCaught(run('service'), base.service, [['R.string.print_host_title_paper_out', 'R.string.print_host_title_no_printer']]);
 });
 
 test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {

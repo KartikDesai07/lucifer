@@ -1,6 +1,7 @@
 package com.possoftware.pos.printer
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -42,7 +43,8 @@ class PrinterManagerTest {
     env.advance(env.waiting().single())
     io.runAll()
     assertEquals("the printer answered", BridgeCodes.STATE_CONNECTED, manager.state())
-    assertTrue("no reconnect waits while connected", env.waiting().isEmpty())
+    // Session 3C (spec §10) deliberately changed: only the idle status check waits while connected (no reconnect).
+    assertEquals("no reconnect waits while connected; the idle status check does", listOf(PrinterManager.STATUS_PROBE_MS), env.waiting())
     env.made.last().listener.onLinkLost(env.made.last())
     assertEquals("a dropped link reads as down at once", BridgeCodes.STATE_DISCONNECTED, manager.state())
     assertEquals("and the backoff starts again from 2 s", listOf(2_000L), env.waiting())
@@ -251,5 +253,95 @@ class PrinterManagerTest {
     env.scheduled[before].run()
     assertEquals("the link stays open", 0, link.closed)
     assertEquals(BridgeCodes.STATE_CONNECTED, manager.state())
+  }
+
+  // ── Phase 3 Session 3C (spec §10, G5): what each printer says of itself ──────────────────────────────────────────
+
+  private val paperOut = PrinterHealth(DleEot.PAPER_OUT, DleEot.COVER_CLOSED, error = false, offline = true)
+  private val ready = PrinterHealth(DleEot.PAPER_OK, DleEot.COVER_CLOSED, error = false, offline = false)
+
+  @Test
+  fun aConnectedPrinterSaysItsStatusAtOnceThenEveryMinuteWhileIdle() {
+    val env = FakeEnv()
+    env.nextStatus = { ready }
+    val (manager, io) = started(tcpPrinter(), env)
+    val link = env.made.last()
+    assertEquals("asked once it connected", 1, link.statusCalls)
+    assertEquals(ready, manager.health())
+    assertEquals("then every minute", listOf(PrinterManager.STATUS_PROBE_MS), env.waiting())
+    env.advance(PrinterManager.STATUS_PROBE_MS)
+    io.runAll()
+    assertEquals(2, link.statusCalls)
+    val before = env.changes
+    link.onStatus = { paperOut }
+    env.advance(PrinterManager.STATUS_PROBE_MS)
+    io.runAll()
+    assertEquals("out of paper: published", before + 1, env.changes)
+    assertEquals(paperOut, manager.health())
+    assertEquals("asked every 10 s while it cannot print", listOf(PrinterManager.STATUS_PROBE_PROBLEM_MS), env.waiting())
+  }
+
+  @Test
+  fun aPrinterThatSaysItCannotPrintRefusesAJobBusyBeforeAnyByteAndPrintsOnceItIsReady() {
+    val env = FakeEnv()
+    env.nextStatus = { paperOut }
+    val (manager, io) = started(tcpPrinter(), env)
+    val link = env.made.last()
+    val refused = Replies<Int>()
+    manager.print("AAAA", refused.cb)
+    assertEquals("BUSY: nothing sent, the slip waits", listOf(BridgeCodes.BUSY), refused.codes())
+    assertTrue(link.written.isEmpty())
+    link.onStatus = { ready }
+    env.advance(PrinterManager.STATUS_PROBE_PROBLEM_MS)
+    io.runAll()
+    val printed = Replies<Int>()
+    manager.print("AAAA", printed.cb)
+    io.runAll()
+    assertEquals("paper back: it prints", listOf("OK"), printed.codes())
+  }
+
+  @Test
+  fun afterAJobItsStatusIsAskedAndAnIdleCheckThatFailsLosesTheLink() {
+    val env = FakeEnv()
+    val (manager, io) = started(tcpPrinter(), env)
+    val link = env.made.last()
+    val done = Replies<Int>()
+    manager.print("AAAA", done.cb)
+    io.runAll()
+    assertEquals(listOf("OK"), done.codes())
+    assertEquals("once at the connect, once after the job", 2, link.statusCalls)
+    link.onStatus = { throw TransportException(BridgeCodes.NOT_CONNECTED, "Could not connect") }
+    env.advance(PrinterManager.STATUS_PROBE_MS)
+    io.runAll()
+    assertEquals("a network printer switched off between jobs reads down (the 3A gate's m-B)", BridgeCodes.STATE_DISCONNECTED, manager.state())
+    assertEquals("and its reconnect loop starts", listOf(2_000L), env.waiting())
+    assertNull("nothing said of a printer that is down", manager.health())
+  }
+
+  @Test
+  fun noStatusIsAskedWhileAJobWaits() {
+    val env = FakeEnv()
+    val (manager, io) = started(tcpPrinter(), env)
+    val link = env.made.last()
+    manager.print("AAAA", Replies<Int>().cb)
+    env.advance(PrinterManager.STATUS_PROBE_MS)
+    assertEquals("the idle check waits behind the queued job", 1, link.statusCalls)
+    io.runAll()
+    assertEquals("only the job's own check: the idle one, due while the job waited, waited too", 2, link.statusCalls)
+  }
+
+  @Test
+  fun aJobThePrinterTookInButCannotPrintIsMaybeAndItsLinkIsKept() {
+    val env = FakeEnv()
+    val (manager, io) = started(tcpPrinter(), env)
+    val link = env.made.last()
+    link.onWrite = { throw TransportException(BridgeCodes.WRITE_FAILED, "The printer cannot print now", linkKept = true) }
+    link.onStatus = { paperOut }
+    val maybe = Replies<Int>()
+    manager.print("AAAA", maybe.cb)
+    io.runAll()
+    assertEquals("may be on paper: WRITE_FAILED (REPRINT)", listOf(BridgeCodes.WRITE_FAILED), maybe.codes())
+    assertEquals("the link is fine", BridgeCodes.STATE_CONNECTED, manager.state())
+    assertEquals("and it says why", paperOut, manager.health())
   }
 }

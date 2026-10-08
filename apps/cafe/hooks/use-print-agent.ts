@@ -39,7 +39,7 @@ import { desktopPrinterSnapshot, refreshDesktopPrinterChosen } from "@/lib/print
 import { devicePrinter } from "@/lib/printer/device-printer";
 import { nativeBridge, nativeOn } from "@/lib/printer/native-bridge";
 import { connectedPoolKey, nativePool } from "@/lib/printer/native-pool";
-import { printerStatusOf, printersState } from "@/lib/printer/printer-registry";
+import { printerCannotPrintOf, printerStatusOf, printersState } from "@/lib/printer/printer-registry";
 import { canPrintNow } from "@/lib/printer/print-lane";
 import { subscribeRealtime } from "@/lib/realtime-client";
 import { cafeDateString } from "@/lib/utils";
@@ -178,7 +178,7 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
     };
     // Session 2F1 (spec §9.2): of the printers it prints here, those that can print now: one of the POS app's printers
     // (bridge v2) by its own state, any other while this device's own printer can print (as before).
-    const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf);
+    const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf, printerCannotPrintOf);
     const created = createPrintAgent({
       deviceId,
       // tokenSlips: this page prints "token" jobs (S7); a page from before S7 leases none, on any line (print-lease.ts).
@@ -188,7 +188,9 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
       // ack goes once more without them (lib/print-agent-skew.ts), never read as answered and lost.
       ack: (id, body) => printAgentSkew.send({ ...body, tokenSlips: true }, olderAckBody, (sent) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", sent)),
       print,
-      printerReady: () => canPrintNow() || readyNow().length > 0,
+      // Session 3C (the gate's review, m-2): a device that prints printers is ready only by their own states (its app's
+      // default printer out of paper must not let a kick lease an empty line).
+      printerReady: () => (readyRef.current.length === 0 ? canPrintNow() : readyNow().length > 0),
       // Session 2E: the Windows app's printer list read again (a printer added or removed) releases a refusal's hold;
       // Session 2F1: so does any change of this device's printers (its own, or another of the app's).
       printerState: () => (isDesktopShell() ? desktopPrinterSnapshot() : printersState()),

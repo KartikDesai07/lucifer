@@ -281,6 +281,13 @@ test("2F1: the bridge speaks v2 only when the app says so; a v2 request carries 
   }
 });
 
+test("3C: a printer the app says cannot print is not in the ready key, so paper put back nudges the agent", () => {
+  const ready = poolSnapshotOf({ printers: [{ state: "connected", printer: KITCHEN }, { state: "connected", printer: BAR }], defaultId: KITCHEN.id, bluetooth: "on" });
+  const empty = poolSnapshotOf({ printers: [{ state: "connected", printer: KITCHEN, paper: "out" }, { state: "connected", printer: BAR, cover: "closed", paper: "low" }], defaultId: KITCHEN.id, bluetooth: "on" } as NativePoolStatus);
+  assert.equal(connectedPoolKey(ready), `${KITCHEN.id},${BAR.id}`);
+  assert.equal(connectedPoolKey(empty), BAR.id, "out of paper: not ready; low paper still prints");
+});
+
 test("3B: the app's v2 list may say each printer's paper, cover and error (Session 3C's app); the page keeps them, and a change of them is a change", () => {
   const plain = poolSnapshotOf({ printers: [{ state: "connected", printer: KITCHEN }], defaultId: KITCHEN.id, bluetooth: "on" });
   assert.equal(plain.printers[0]?.paper, undefined, "an app that says nothing (2F2's): nothing");

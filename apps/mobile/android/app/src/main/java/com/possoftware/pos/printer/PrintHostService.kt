@@ -185,6 +185,7 @@ class PrintHostService : Service() {
    *  it always did. */
   private fun title(): String =
       when (val worst = HostTitle.of(PrinterPool.poolStatus())) {
+        is HostTitle.PaperOut -> getString(R.string.print_host_title_paper_out, worst.name)
         HostTitle.NotConnected -> getString(R.string.print_host_title_no_printer)
         is HostTitle.Printer -> getString(R.string.print_host_title_printer, worst.name)
         is HostTitle.AllConnected -> getString(R.string.print_host_title_printers, worst.count)

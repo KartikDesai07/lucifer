@@ -25,8 +25,19 @@ export const V2_METHODS = [
 ] as const;
 export type V2Method = (typeof V2_METHODS)[number];
 
-/** One printer of the app's list. */
-export type PoolEntry = { state: NativePrinterState; printer: NativePrinter };
+/** Phase 3 Session 3C (spec §10): what a printer says of its paper and cover (DLE EOT); the page's lists are
+ *  PRINTER_PAPER_STATES and PRINTER_COVER_STATES (@pos/shared/print-failover), pinned in its parity test. */
+export const PAPER_STATES = ['ok', 'low', 'out'] as const;
+export const COVER_STATES = ['closed', 'open'] as const;
+
+/** One printer of the app's list. Session 3C: with its paper, cover and error when it said them (absent: nothing). */
+export type PoolEntry = {
+  state: NativePrinterState;
+  printer: NativePrinter;
+  paper?: (typeof PAPER_STATES)[number];
+  cover?: (typeof COVER_STATES)[number];
+  error?: true;
+};
 
 /** The app's printers in its order, the default's id (null only for an empty list) and Bluetooth. */
 export type PoolStatus = {

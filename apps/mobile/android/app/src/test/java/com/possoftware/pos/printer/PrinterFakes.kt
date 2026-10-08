@@ -47,8 +47,11 @@ class ManualIo : AbstractExecutorService() {
 class FakeTransport(val listener: LinkListener) : PrinterTransport {
   var onOpen: () -> Unit = {}
   var onWrite: (ByteArray) -> Unit = {}
+  /** Session 3C: what the printer says of itself (DLE EOT); throw to lose the link. */
+  var onStatus: () -> PrinterHealth? = { null }
   val written = ArrayList<ByteArray>()
   var closed = 0
+  var statusCalls = 0
 
   override fun open() = onOpen()
 
@@ -59,6 +62,11 @@ class FakeTransport(val listener: LinkListener) : PrinterTransport {
 
   override fun close() {
     closed++
+  }
+
+  override fun status(): PrinterHealth? {
+    statusCalls++
+    return onStatus()
   }
 }
 
@@ -76,6 +84,7 @@ class FakeEnv : PrinterEnv {
   /** What the next transport's open does (throw to fail it); every transport made, in order. */
   var nextOpen: () -> Unit = {}
   var nextWrite: (ByteArray) -> Unit = {}
+  var nextStatus: () -> PrinterHealth? = { null }
   val made = ArrayList<FakeTransport>()
   /** Session 3C (M-5): every task ever scheduled, so a test can run one as if the timer had started it already. */
   val scheduled = ArrayList<Runnable>()
@@ -90,6 +99,7 @@ class FakeEnv : PrinterEnv {
     val t = FakeTransport(listener)
     t.onOpen = nextOpen
     t.onWrite = nextWrite
+    t.onStatus = nextStatus
     made.add(t)
     return t
   }

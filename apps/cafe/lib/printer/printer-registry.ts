@@ -1,5 +1,5 @@
 import { devicePrinter } from "@/lib/printer/device-printer";
-import { nativePool } from "@/lib/printer/native-pool";
+import { nativePool, poolPrinterCannotPrint } from "@/lib/printer/native-pool";
 import type { PrinterStatus } from "@/lib/printer/web-printer-types";
 
 // Phase 2 Session 2F1 (spec §9.2): this device's printers by the POS app's id. On bridge v2 a printer job names its
@@ -26,4 +26,10 @@ export function printersState(): object {
 /** That printer's state as the app reports it: "none" when the app has no printer with that id. */
 export function printerStatusOf(nativeId: string): PrinterStatus {
   return nativePool().printerOf(nativeId)?.status ?? "none";
+}
+
+/** Session 3C (spec §10): the app says that printer cannot print now (out of paper, cover open, an error). */
+export function printerCannotPrintOf(nativeId: string): boolean {
+  const printer = nativePool().printerOf(nativeId);
+  return printer !== null && poolPrinterCannotPrint(printer);
 }

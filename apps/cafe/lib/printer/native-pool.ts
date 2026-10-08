@@ -78,7 +78,14 @@ function poolKey(snapshot: NativePoolSnapshot): string {
 /** The 2F1 review gate (N-1): what the print agent can print on now, the app's connected printers in its order. A down
  *  printer's own reconnect probes (connecting <-> disconnected) leave it unchanged, so they never nudge the agent. */
 export function connectedPoolKey(snapshot: NativePoolSnapshot): string {
-  return snapshot.printers.filter((entry) => entry.status === "connected").map((entry) => entry.id).join(",");
+  // Session 3C (spec §10): one the app says cannot print is not ready either, so paper put back nudges the agent.
+  return snapshot.printers.filter((entry) => entry.status === "connected" && !poolPrinterCannotPrint(entry)).map((entry) => entry.id).join(",");
+}
+
+/** Session 3C (spec §10): the POS app says this printer cannot print now (out of paper, its cover open, an error: DLE EOT);
+ *  its slips wait, with no lease, until it says it can. */
+export function poolPrinterCannotPrint(entry: Pick<PoolPrinter, "paper" | "cover" | "error">): boolean {
+  return entry.paper === "out" || entry.cover === "open" || entry.error === true;
 }
 
 /** The app's list as the page's snapshot; a printer's state "none" (never sent for a listed printer) reads as down. */

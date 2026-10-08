@@ -14,12 +14,24 @@ import java.util.concurrent.atomic.AtomicBoolean
  * ([PrinterEnv.changed]). [generation] invalidates in-flight attempts when this printer is begun again (select,
  * reconnect) or halted (it left the list). Nothing here touches Android: [env] carries every platform call, so this
  * state machine runs in JVM unit tests (src/test).
+ *
+ * Phase 3 Session 3C (spec §10): while connected it asks the printer's own status (DLE EOT, [PrinterTransport.status])
+ * after each job and every [STATUS_PROBE_MS] while idle ([STATUS_PROBE_PROBLEM_MS] while the printer says it cannot
+ * print), on its io thread, so never during a job. A network printer's idle check is a connect too, so one switched off
+ * between jobs reads disconnected within a minute. A printer that says it cannot print refuses a job BUSY before any byte.
  */
 class PrinterManager(val info: PrinterInfo, private val env: PrinterEnv, private val io: ExecutorService) {
   companion object {
     const val RECONNECT_STEADY_MS = 30_000L
     val RECONNECT_BACKOFF_MS: LongArray = longArrayOf(2_000L, 5_000L, 10_000L)
     const val PRINT_JOB_TIMEOUT_MS = 60_000L
+
+    /** Session 3C (spec §10): an idle printer's status is asked this often (a network printer: one connect and close). */
+    const val STATUS_PROBE_MS = 60_000L
+
+    /** ...and this often while it says it cannot print (out of paper, cover open, an error), so it prints again soon after
+     *  staff fix it. */
+    const val STATUS_PROBE_PROBLEM_MS = 10_000L
 
     /** The wait before reconnect attempt number [attempts] (0-based): 2 s, 5 s, 10 s, then every 30 s. */
     fun backoffMs(attempts: Int): Long =
@@ -56,6 +68,9 @@ class PrinterManager(val info: PrinterInfo, private val env: PrinterEnv, private
   // again once the app is visible; not a denial, so no explicit Reconnect is needed.
   private var usbWaitingForeground = false
   private var reconnectTask: Cancel? = null
+  private var probeTask: Cancel? = null
+  // Session 3C: what the printer last said of itself on this link (DLE EOT), or null.
+  private var health: PrinterHealth? = null
 
   val id: String
     get() = info.id
@@ -69,6 +84,9 @@ class PrinterManager(val info: PrinterInfo, private val env: PrinterEnv, private
 
   fun activeTransport(): PrinterTransport? = synchronized(lock) { transport }
 
+  /** Session 3C (spec §10): what a CONNECTED printer last said of itself (DLE EOT), else null. */
+  fun health(): PrinterHealth? = synchronized(lock) { if (state == BridgeCodes.STATE_CONNECTED) health else null }
+
   /** Lock held. Detaches every live transport into [into] and cancels the reconnect timer. */
   private fun collect(into: MutableList<PrinterTransport>) {
     transport?.let { into.add(it) }
@@ -78,6 +96,9 @@ class PrinterManager(val info: PrinterInfo, private val env: PrinterEnv, private
     pendingLost = false
     reconnectTask?.cancel()
     reconnectTask = null
+    probeTask?.cancel()
+    probeTask = null
+    health = null
   }
 
   /** Starts a new generation: aborts anything in flight and returns the generation. */
@@ -207,7 +228,11 @@ class PrinterManager(val info: PrinterInfo, private val env: PrinterEnv, private
           }
         }
     when (outcome) {
-      Outcome.CONNECTED -> env.changed()
+      Outcome.CONNECTED -> {
+        env.changed()
+        // Session 3C: what the printer says of itself, once connected (then on the idle timer).
+        probe(gen)
+      }
       Outcome.STALE -> closeQuietly(t)
       // The link dropped between open() returning and the claim: not connected after all.
       Outcome.LOST -> {
@@ -255,6 +280,9 @@ class PrinterManager(val info: PrinterInfo, private val env: PrinterEnv, private
           if (source !== transport) return
           transport = null
           state = BridgeCodes.STATE_DISCONNECTED
+          health = null
+          probeTask?.cancel()
+          probeTask = null
           generation
         }
     closeQuietly(source)
@@ -298,11 +326,21 @@ class PrinterManager(val info: PrinterInfo, private val env: PrinterEnv, private
       cb(Reply.fail(BridgeCodes.NOT_CONNECTED))
       return
     }
+    // Session 3C (spec §10): a printer that says it cannot print (out of paper, cover open, an error) refuses before any
+    // byte, as BUSY: the slip waits, every device says why, and it prints once the printer says it is ready again.
+    if (synchronized(lock) { health?.cannotPrint() == true }) {
+      printing.set(false)
+      cb(Reply.fail(BridgeCodes.BUSY))
+      return
+    }
     val queued =
         onIo {
           val reply = runPrint(t, base64)
           printing.set(false)
           cb(reply)
+          // Session 3C (spec §10): what the printer says after the job (a network printer: what the job's own connection
+          // read, G5), before the next job.
+          synchronized(lock) { if (transport === t) generation else null }?.let { probe(it) }
         }
     if (!queued) {
       printing.set(false)
@@ -334,7 +372,8 @@ class PrinterManager(val info: PrinterInfo, private val env: PrinterEnv, private
       }
     } catch (e: TransportException) {
       val timedOut = !claim.compareAndSet(false, true)
-      onLinkLost(t)
+      // Session 3C (G5): a printer that took the job in but says it cannot print keeps its link; anything else lost it.
+      if (timedOut || !e.linkKept) onLinkLost(t)
       Reply.fail(if (timedOut) BridgeCodes.TIMEOUT else e.code)
     } catch (e: RuntimeException) {
       val timedOut = !claim.compareAndSet(false, true)
@@ -342,6 +381,48 @@ class PrinterManager(val info: PrinterInfo, private val env: PrinterEnv, private
       Reply.fail(if (timedOut) BridgeCodes.TIMEOUT else BridgeCodes.WRITE_FAILED)
     } finally {
       watchdog.cancel()
+    }
+  }
+
+  /**
+   * Session 3C (spec §10): asks the printer's status on the io thread (called there), keeps what it said (published when
+   * it changed), then asks again after [STATUS_PROBE_MS], or [STATUS_PROBE_PROBLEM_MS] while it says it cannot print.
+   * Skipped while a job waits or prints (that job's own status answers it). A link that no longer answers is lost (the
+   * reconnect loop takes over). A stale [gen] does nothing.
+   */
+  private fun probe(gen: Int) {
+    val t = synchronized(lock) { if (gen != generation || halted || state != BridgeCodes.STATE_CONNECTED) null else transport } ?: return
+    if (printing.get()) {
+      scheduleProbe(gen)
+      return
+    }
+    val said =
+        try {
+          t.status()
+        } catch (e: TransportException) {
+          onLinkLost(t)
+          return
+        } catch (e: RuntimeException) {
+          null
+        }
+    val changed =
+        synchronized(lock) {
+          if (gen != generation || transport !== t) return
+          val was = health
+          health = said
+          was != said
+        }
+    if (changed) env.changed()
+    scheduleProbe(gen)
+  }
+
+  private fun scheduleProbe(gen: Int) {
+    synchronized(lock) {
+      if (gen != generation || halted || state != BridgeCodes.STATE_CONNECTED) return
+      probeTask?.cancel()
+      val wait = if (health?.cannotPrint() == true) STATUS_PROBE_PROBLEM_MS else STATUS_PROBE_MS
+      // A job that waits now asks its own status after it; the idle check waits a full period again.
+      probeTask = env.schedule(wait, Runnable { if (printing.get()) scheduleProbe(gen) else onIo { probe(gen) } })
     }
   }
 }
