@@ -42,6 +42,9 @@ class PrintHostService : Service() {
 
     /** Consecutive ticks with an unanswered or wrong page probe before the alert replaces the notification. */
     const val PAGE_DEAD_TICKS = 2
+
+    /** Session 3D (spec §9.5): at most one remount of a dead page every 10 minutes (40 ticks of 15 s). */
+    const val PAGE_REMOUNT_GAP_TICKS = 40
     private const val WAKE_LOCK_TAG = "PosSoftware:PrintHost"
     private const val NO_FOREGROUND_TYPE = 0
     private const val ALERT_KEY = "page-dead"
@@ -79,15 +82,14 @@ class PrintHostService : Service() {
 
   // Page liveness (main thread only): each tick scores the previous tick's probe, then sends one.
   private var probeSeq = 0
-  private var probeIssued = false
-  private var probeAnswered = false
-  private var deadTicks = 0
+  private val watch = PageWatch(PAGE_DEAD_TICKS, PAGE_REMOUNT_GAP_TICKS)
 
   private val tick =
       object : Runnable {
         override fun run() {
           renewWakeLock()
           if (!PrinterPool.appVisible) {
+            WebViewDelivery.keepPageRunning()
             WebViewDelivery.deliverEvent(BridgeCodes.EVENT_APP_WAKE, JSONObject())
           }
           probePage()
@@ -97,16 +99,15 @@ class PrintHostService : Service() {
       }
 
   private fun probePage() {
-    if (probeIssued) deadTicks = if (probeAnswered) 0 else deadTicks + 1
-    probeAnswered = false
-    probeIssued = true
+    // Session 3D (spec §9.5): a page that stopped answering while nobody looks at the app is remounted ([PageWatch]).
+    if (watch.tick(PrinterPool.appVisible)) HostPage.remount?.invoke()
     val id = ++probeSeq
     // A late answer to an older probe must not vouch for this one.
-    WebViewDelivery.probePage { alive -> if (alive && id == probeSeq) probeAnswered = true }
+    WebViewDelivery.probePage { alive -> if (alive && id == probeSeq) watch.answered() }
   }
 
   /** The page has stopped answering and nobody is looking at the app, so only a notification can say so. */
-  private fun alerting(): Boolean = deadTicks >= PAGE_DEAD_TICKS && !PrinterPool.appVisible
+  private fun alerting(): Boolean = watch.alerting(PrinterPool.appVisible)
 
   override fun onBind(intent: Intent?): IBinder? = null
 
@@ -146,8 +147,7 @@ class PrintHostService : Service() {
     }
     running = true
     PrintingOffNotice.cancel(this)
-    probeIssued = false
-    deadTicks = 0
+    watch.start()
     renewWakeLock()
     handler.removeCallbacks(tick)
     handler.postDelayed(tick, APP_WAKE_TICK_MS)

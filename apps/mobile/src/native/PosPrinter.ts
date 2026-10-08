@@ -47,7 +47,13 @@ export interface PosPrinterModule {
     origin: string,
   ): Promise<{ documentStart: boolean }>;
   deliverScript(script: string): Promise<null>;
+  // Phase 3 Session 3D (spec §9.5): a WebView remounted after its page died mounts even while the app is hidden.
+  mountWhileHidden(): Promise<null>;
 }
+
+/** Phase 3 Session 3D (spec §9.5): the print host's watchdog asks the POS screen to remount a page that stopped answering
+ *  (the Kotlin side's HostPage.DEAD_EVENT). */
+export const PAGE_DEAD_EVENT = 'PosPageDead';
 
 type MethodName = keyof PosPrinterModule;
 
@@ -105,6 +111,7 @@ export const PosPrinter: PosPrinterModule = {
   attachWebView: (tag, script, origin) =>
     call('attachWebView', tag, script, origin),
   deliverScript: script => call('deliverScript', script),
+  mountWhileHidden: () => call('mountWhileHidden'),
 };
 
 // Asks Android for the permission, then has the module re-read its status.

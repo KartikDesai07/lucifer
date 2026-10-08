@@ -16,6 +16,7 @@ import {
 } from 'react';
 import {
   BackHandler,
+  DeviceEventEmitter,
   DevSettings,
   findNodeHandle,
   StyleSheet,
@@ -25,7 +26,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import type { ShouldStartLoadRequest } from 'react-native-webview/lib/WebViewTypes';
 import { useNativeBridge } from '../bridge/use-native-bridge';
-import { PosPrinter } from '../native/PosPrinter';
+import { PAGE_DEAD_EVENT, PosPrinter } from '../native/PosPrinter';
 import { classifyNavigation, isSameOrigin, startUrl } from '../url';
 import { usedAfterFailure } from './auto-retry';
 import { CRASH_URL } from './backstop';
@@ -140,6 +141,16 @@ function PosWebView({
     );
     return () => subscription.remove();
   }, []);
+
+  // Phase 3 Session 3D (spec §9.5): the print host's watchdog says this page stopped answering while the app is hidden:
+  // remount it, as when its renderer dies.
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener(
+      PAGE_DEAD_EVENT,
+      onRenderGone,
+    );
+    return () => subscription.remove();
+  }, [onRenderGone]);
 
   useEffect(() => {
     addDevMenuOnce();
@@ -292,6 +303,12 @@ export function PosScreen({ origin, onChangeUrl }: Props) {
     setAutoRetries(n => usedAfterFailure(n, ranMs));
     setFailed(true);
   }, []);
+  // Phase 3 Session 3D (spec §9.5): a page that died (its renderer gone, or the watchdog's word) is remounted, and the
+  // new WebView mounts at once even while the app is hidden, so its page loads and prints with nobody at the screen.
+  const remountAfterDeath = useCallback(() => {
+    PosPrinter.mountWhileHidden().catch(noop);
+    remount();
+  }, [remount]);
 
   if (failed) {
     return (
@@ -309,7 +326,7 @@ export function PosScreen({ origin, onChangeUrl }: Props) {
       origin={origin}
       onChangeUrl={onChangeUrl}
       onLoadError={showError}
-      onRenderGone={remount}
+      onRenderGone={remountAfterDeath}
       onRetryTap={retryByTap}
     />
   );

@@ -36,9 +36,12 @@ class PosPrinterModule(private val reactContext: ReactApplicationContext) :
     PrinterPool.init(reactContext)
     reactContext.addLifecycleEventListener(this)
     reactContext.addActivityEventListener(bluetoothEnabler.activityListener)
+    // Session 3D (spec §9.5): the print host's watchdog asks the POS screen to remount a page that stopped answering.
+    HostPage.remount = { reactContext.emitDeviceEvent(HostPage.DEAD_EVENT, null) }
   }
 
   override fun invalidate() {
+    HostPage.remount = null
     reactContext.removeLifecycleEventListener(this)
     reactContext.removeActivityEventListener(bluetoothEnabler.activityListener)
     WebViewDelivery.detach()
@@ -306,6 +309,14 @@ class PosPrinterModule(private val reactContext: ReactApplicationContext) :
   @ReactMethod
   fun deliverScript(script: String, promise: Promise) {
     WebViewDelivery.deliverScript(script)
+    promise.resolve(null)
+  }
+
+  /** Session 3D (spec §9.5): the POS screen is remounting its WebView after its page died; while the app is hidden, let
+   *  React Native mount it now ([BackgroundMount]), so the new page loads and prints without anyone opening the app. */
+  @ReactMethod
+  fun mountWhileHidden(promise: Promise) {
+    BackgroundMount.start(reactContext)
     promise.resolve(null)
   }
 }

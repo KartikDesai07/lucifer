@@ -59,6 +59,8 @@ const NATIVE_METHOD_ORACLE = [
   'moveTaskToBack',
   'attachWebView',
   'deliverScript',
+  // Phase 3 Session 3D (deliberate change): a WebView remounted after its page died mounts while the app is hidden.
+  'mountWhileHidden',
 ];
 
 type Files = Record<string, string>;
@@ -446,7 +448,8 @@ function moduleNameProblems(ktModule: string, jsWrapper: string): string[] {
 test('pin 4: JS wrapper and Kotlin @ReactMethod list equal the oracle', () => {
   const module = kt('PosPrinterModule.kt');
   const js = read(join(SRC, 'native', 'PosPrinter.ts'));
-  assert.equal(NATIVE_METHOD_ORACLE.length, 24, '18 v1 methods and 6 of bridge v2');
+  // Phase 3 Session 3D deliberately changed: + mountWhileHidden.
+  assert.equal(NATIVE_METHOD_ORACLE.length, 25, '18 v1 methods, 6 of bridge v2 and the hidden mount');
   assert.ok(strip(module).includes('@ReactMethod'), 'landmark');
   assert.deepEqual(methodProblems(module, js), []);
   assert.deepEqual(moduleNameProblems(module, js), []);
@@ -1059,8 +1062,9 @@ function deliveryProblems(s: DeliverySources): string[] {
     }
   }
   const svc = strip(s.service);
+  // Session 3D (deliberate change): the hidden tick first keeps the page running (pin 23), then wakes it.
   const wake =
-    /if\s*\(\s*!PrinterPool\.appVisible\s*\)\s*\{\s*WebViewDelivery\.deliverEvent\(BridgeCodes\.EVENT_APP_WAKE,/;
+    /if\s*\(\s*!PrinterPool\.appVisible\s*\)\s*\{\s*(?:WebViewDelivery\.keepPageRunning\(\)\s*)?WebViewDelivery\.deliverEvent\(BridgeCodes\.EVENT_APP_WAKE,/;
   if (!wake.test(svc)) {
     out.push('app.wake is not gated on !PrinterPool.appVisible');
   }
@@ -2512,6 +2516,101 @@ test('pin 22 mutation: every printing-state needle can fail', () => {
   everyMutationCaught(run('strings'), base.strings, [
     ['POS printing is off. Tap to start.', 'Printing stopped.'],
     ['%1$s keeps printing with the screen off.', '%1$s prints all slips.'],
+  ]);
+});
+
+// ── pin 23: Session 3D, a page that died is remounted, even while the app is hidden (spec §9.5) ──
+// Its renderer gone, or the print host's watchdog's word (once per page life, at most once per 10 minutes): the POS
+// screen remounts the WebView, and the native side lets React Native mount it while the app is hidden (bounded), so the
+// new page loads and prints with nobody at the screen. And a hidden page keeps running: the WebView froze it within a
+// minute (the 3C review gate's emulator run), so the print host's tick tells its WebView the window is visible.
+interface RemountSources {
+  delivery: string;
+  screen: string;
+  wrapper: string;
+  module: string;
+  mount: string;
+  service: string;
+  watch: string;
+}
+function remountProblems(s: RemountSources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!strip(text).includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(s.screen, 'PosPrinter.mountWhileHidden().catch(noop);\n    remount();', 'a page death does not mount the new WebView while the app is hidden');
+  need(s.screen, 'onRenderGone={remountAfterDeath}', 'a dead renderer does not remount through remountAfterDeath');
+  need(s.screen, 'DeviceEventEmitter.addListener(\n      PAGE_DEAD_EVENT,\n      onRenderGone,\n    );', 'the watchdog\'s word does not remount');
+  need(s.wrapper, "export const PAGE_DEAD_EVENT = 'PosPageDead';", 'the shell\'s event name changed');
+  need(s.watch, 'const val DEAD_EVENT = "PosPageDead"', 'the app\'s event name changed');
+  need(s.module, 'HostPage.remount = { reactContext.emitDeviceEvent(HostPage.DEAD_EVENT, null) }', 'the watchdog cannot reach the POS screen');
+  need(s.module, 'HostPage.remount = null', 'the watchdog keeps a dead React context');
+  need(s.module, 'BackgroundMount.start(reactContext)', 'mountWhileHidden does nothing');
+  need(s.mount, 'fabric.onHostResume()', 'Fabric never mounts while the app is hidden');
+  need(s.mount, 'if (!PrinterPool.appVisible) fabric.onHostPause()', 'Fabric is paused under a visible app, or never paused again');
+  need(s.mount, 'const val WINDOW_MS = 30_000L', 'the hidden mount is not bounded');
+  need(s.mount, 'WebViewDelivery.detach()', 'the dead page\'s WebView is still driven');
+  // The gold's review (I-2): at most one hidden mount per 10 minutes; the renderer keeps the app's importance.
+  need(s.mount, 'if (!gap.allow(SystemClock.elapsedRealtime())) return@Runnable', 'a renderer killed again and again reloads in a loop');
+  need(s.mount, 'const val GAP_MS = 600_000L', 'the hidden mounts are not 10 minutes apart');
+  need(s.delivery, 'found.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)', 'a hidden page\'s renderer is killed first');
+  need(s.delivery, 'webView?.get()?.dispatchWindowVisibilityChanged(View.VISIBLE)', 'the WebView freezes a hidden page');
+  need(s.service, 'if (!PrinterPool.appVisible) {\n            WebViewDelivery.keepPageRunning()\n            WebViewDelivery.deliverEvent(BridgeCodes.EVENT_APP_WAKE, JSONObject())', 'the print host\'s tick does not keep the hidden page running');
+  need(s.service, 'if (watch.tick(PrinterPool.appVisible)) HostPage.remount?.invoke()', 'the watchdog only alerts');
+  need(s.service, 'const val PAGE_REMOUNT_GAP_TICKS = 40', 'the watchdog may remount more than once every 10 minutes');
+  need(s.watch, 'val remount = alerting(visible) && lived && sinceRemount >= remountGapTicks', 'the watchdog remounts a page that never came back');
+  return out;
+}
+const remountSources = (): RemountSources => ({
+  delivery: kt('WebViewDelivery.kt'),
+  screen: posScreen(),
+  wrapper: read(join(SRC, 'native', 'PosPrinter.ts')),
+  module: kt('PosPrinterModule.kt'),
+  mount: kt('BackgroundMount.kt'),
+  service: kt('PrintHostService.kt'),
+  watch: kt('PageWatch.kt'),
+});
+
+test('pin 23: Session 3D, a dead page is remounted, and mounts while the app is hidden (bounded); a hidden page keeps running', () => {
+  assert.deepEqual(remountProblems(remountSources()), []);
+});
+
+test('pin 23 mutation: every remount needle can fail', () => {
+  const base = remountSources();
+  const run = (key: keyof RemountSources) => (text: string) => remountProblems({ ...base, [key]: text });
+  everyMutationCaught(run('screen'), base.screen, [
+    ['    PosPrinter.mountWhileHidden().catch(noop);\n', ''],
+    ['onRenderGone={remountAfterDeath}', 'onRenderGone={remount}'],
+    ['      PAGE_DEAD_EVENT,\n', "      'other',\n"],
+  ]);
+  everyMutationCaught(run('wrapper'), base.wrapper, [["'PosPageDead'", "'PageDead'"]]);
+  everyMutationCaught(run('module'), base.module, [
+    ['HostPage.remount = { reactContext.emitDeviceEvent(HostPage.DEAD_EVENT, null) }', 'Unit'],
+    ['HostPage.remount = null', 'Unit'],
+    ['BackgroundMount.start(reactContext)', 'Unit'],
+  ]);
+  everyMutationCaught(run('mount'), base.mount, [
+    ['fabric.onHostResume()', 'Unit'],
+    ['if (!PrinterPool.appVisible) fabric.onHostPause()', 'fabric.onHostPause()'],
+    ['const val WINDOW_MS = 30_000L', 'const val WINDOW_MS = 3_600_000L'],
+    ['WebViewDelivery.detach()', 'Unit'],
+    ['if (!gap.allow(SystemClock.elapsedRealtime())) return@Runnable', 'Unit'],
+    ['const val GAP_MS = 600_000L', 'const val GAP_MS = 0L'],
+  ]);
+  everyMutationCaught(run('delivery'), base.delivery, [
+    ['RENDERER_PRIORITY_IMPORTANT, false', 'RENDERER_PRIORITY_WAIVED, true'],
+    ['dispatchWindowVisibilityChanged(View.VISIBLE)', 'dispatchWindowVisibilityChanged(View.GONE)'],
+  ]);
+  everyMutationCaught(run('service'), base.service, [
+    ['if (watch.tick(PrinterPool.appVisible)) HostPage.remount?.invoke()', 'watch.tick(PrinterPool.appVisible)'],
+    ['const val PAGE_REMOUNT_GAP_TICKS = 40', 'const val PAGE_REMOUNT_GAP_TICKS = 1'],
+    ['            WebViewDelivery.keepPageRunning()\n', ''],
+  ]);
+  everyMutationCaught(run('watch'), base.watch, [
+    ['alerting(visible) && lived && sinceRemount', 'alerting(visible) && sinceRemount'],
+    ['const val DEAD_EVENT = "PosPageDead"', 'const val DEAD_EVENT = "PageDead"'],
   ]);
 });
 
