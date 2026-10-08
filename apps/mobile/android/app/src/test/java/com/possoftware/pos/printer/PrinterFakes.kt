@@ -77,6 +77,8 @@ class FakeEnv : PrinterEnv {
   var nextOpen: () -> Unit = {}
   var nextWrite: (ByteArray) -> Unit = {}
   val made = ArrayList<FakeTransport>()
+  /** Session 3C (M-5): every task ever scheduled, so a test can run one as if the timer had started it already. */
+  val scheduled = ArrayList<Runnable>()
   val onTimerRuns = ArrayList<Runnable>()
   private val tasks = ArrayList<Task>()
 
@@ -95,6 +97,7 @@ class FakeEnv : PrinterEnv {
   override fun schedule(delayMs: Long, task: Runnable): Cancel {
     val entry = Task(now + delayMs, task)
     tasks.add(entry)
+    scheduled.add(task)
     return Cancel {
       if (entry.ran || entry.cancelled) {
         false

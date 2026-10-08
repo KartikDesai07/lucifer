@@ -133,6 +133,12 @@ class PrinterManager(val info: PrinterInfo, private val env: PrinterEnv, private
     if (!queued) after()
   }
 
+  /** Session 3C (the 2G review's m-3): runs [after] once the work queued on this printer's io thread so far has run (an
+   *  attempt in flight settles first); at once when the printer was halted. */
+  fun afterIo(after: () -> Unit) {
+    if (!onIo { after() }) after()
+  }
+
   /** One connect attempt for [gen] on the io thread (may block). Never throws: every failure (incl. a platform
    *  SecurityException) reports disconnected and schedules a reconnect, so callers settle. */
   private fun attempt(gen: Int) {
@@ -304,23 +310,22 @@ class PrinterManager(val info: PrinterInfo, private val env: PrinterEnv, private
     }
   }
 
-  /** True when the watchdog already started: cancel only wins while it has not run. */
-  private fun watchdogFired(watchdog: Cancel, timedOut: AtomicBoolean): Boolean = !watchdog.cancel() || timedOut.get()
-
+  /**
+   * The job and its watchdog race for one claim (Session 3C: the 2F2 gold review's M-5), so exactly one of them decides:
+   * a job that finished first is never closed under, and a watchdog that fired first always makes it a TIMEOUT. A timer's
+   * cancel() can still win while the watchdog's task runs; the claim, not cancel(), decides.
+   */
   private fun runPrint(t: PrinterTransport, base64: String): Reply<Int> {
     val bytes = env.decode(base64) ?: return Reply.fail(BridgeCodes.BAD_REQUEST)
-    val timedOut = AtomicBoolean(false)
+    val claim = AtomicBoolean(false)
     val watchdog =
         env.schedule(
             PRINT_JOB_TIMEOUT_MS,
-            Runnable {
-              timedOut.set(true)
-              closeQuietly(t)
-            },
+            Runnable { if (claim.compareAndSet(false, true)) closeQuietly(t) },
         )
     return try {
       t.write(bytes)
-      if (watchdogFired(watchdog, timedOut)) {
+      if (!claim.compareAndSet(false, true)) {
         // The job ran into the watchdog: the link was closed under it, so it never counts as printed.
         onLinkLost(t)
         Reply.fail(BridgeCodes.TIMEOUT)
@@ -328,11 +333,13 @@ class PrinterManager(val info: PrinterInfo, private val env: PrinterEnv, private
         Reply.Ok(bytes.size)
       }
     } catch (e: TransportException) {
+      val timedOut = !claim.compareAndSet(false, true)
       onLinkLost(t)
-      Reply.fail(if (timedOut.get()) BridgeCodes.TIMEOUT else e.code)
+      Reply.fail(if (timedOut) BridgeCodes.TIMEOUT else e.code)
     } catch (e: RuntimeException) {
+      val timedOut = !claim.compareAndSet(false, true)
       onLinkLost(t)
-      Reply.fail(if (timedOut.get()) BridgeCodes.TIMEOUT else BridgeCodes.WRITE_FAILED)
+      Reply.fail(if (timedOut) BridgeCodes.TIMEOUT else BridgeCodes.WRITE_FAILED)
     } finally {
       watchdog.cancel()
     }

@@ -232,4 +232,24 @@ class PrinterManagerTest {
     manager.print("AAAA", refused.cb)
     assertEquals("a late print: not connected", listOf(BridgeCodes.NOT_CONNECTED), refused.codes())
   }
+
+  // ── Phase 3 Session 3C (the 2F2 gold review's M-5) ────────────────────────────────────────────────────────────────
+
+  @Test
+  fun aJobThatFinishedFirstIsNeverClosedUnderByItsWatchdog() {
+    // The 2F2 gold review's M-5: a timer's cancel() can win while the watchdog's task already runs. Running that task
+    // after the job finished is that race: it must neither close the link nor turn the job into a timeout.
+    val env = FakeEnv()
+    val (manager, io) = started(tcpPrinter(), env)
+    val link = env.made.last()
+    val done = Replies<Int>()
+    val before = env.scheduled.size
+    manager.print("AAAA", done.cb)
+    io.runAll()
+    assertEquals(listOf("OK"), done.codes())
+    // The job's watchdog is the first task scheduled after the print.
+    env.scheduled[before].run()
+    assertEquals("the link stays open", 0, link.closed)
+    assertEquals(BridgeCodes.STATE_CONNECTED, manager.state())
+  }
 }

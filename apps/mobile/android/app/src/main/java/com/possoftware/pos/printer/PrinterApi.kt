@@ -115,8 +115,20 @@ object PrinterApi {
   }
 
   private fun <T> commit(info: PrinterInfo, v2: Boolean, cb: ReplyCallback<T>, answer: () -> T) {
-    val manager = if (v2) PrinterPool.add(info) else PrinterPool.replaceDefault(info)
-    manager.connectAsync(manager.begin()) { cb(Reply.Ok(answer())) }
+    if (v2) {
+      val manager = PrinterPool.add(info)
+      manager.connectAsync(manager.begin()) { cb(Reply.Ok(answer())) }
+      return
+    }
+    // Session 3C (the 2G review's m-3): a printer already listed keeps its link and only becomes the default; it answers
+    // once its own attempt in flight settled (one connect, never two). Only a new one, or one that is down, connects now.
+    val selected = PrinterPool.replaceDefault(info)
+    val manager = selected.manager
+    if (selected.fresh || manager.state() == BridgeCodes.STATE_DISCONNECTED) {
+      manager.connectAsync(manager.begin()) { cb(Reply.Ok(answer())) }
+    } else {
+      manager.afterIo { cb(Reply.Ok(answer())) }
+    }
   }
 
   fun reconnect(cb: ReplyCallback<StatusSnapshot>) =

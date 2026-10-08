@@ -985,18 +985,24 @@ function deliveryProblems(s: DeliverySources): string[] {
   if (!d.includes('ESCAPED_CODES.contains(ch.code)')) {
     out.push('escapeForScript does not use ESCAPED_CODES');
   }
-  // Session 2F2 (deliberate change): the printer pool publishes, for both bridge versions.
-  const publish =
-    /fun publish\(\)[\s\S]*?\n {2}\}\n/.exec(strip(s.pool))?.[0] ?? '';
+  // Session 2F2 (deliberate change): the printer pool publishes, for both bridge versions. Session 3C (deliberate
+  // change: the publish-chain test's seam): publish() hands what changed to the pool's publisher, whose default delivers.
+  const poolText = strip(s.pool);
+  const publish = /fun publish\(\)[\s\S]*?\n {2}\}\n/.exec(poolText)?.[0] ?? '';
+  const publisherAt = poolText.indexOf('internal var publisher:');
+  const publisher = publisherAt < 0 ? '' : poolText.slice(publisherAt, poolText.indexOf('\n  }\n', publisherAt));
+  if (!publish.includes('publisher(if (changes.v1) one else null, if (changes.v2) all else null)')) {
+    out.push('PrinterPool.publish() does not publish through its publisher');
+  }
   if (
-    !publish.includes(
+    !publisher.includes(
       'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.toJson(one))',
     )
   ) {
     out.push('PrinterPool.publish() does not deliver the v1 printer.status natively');
   }
   if (
-    !publish.includes(
+    !publisher.includes(
       'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.poolJson(all), BridgeCodes.BRIDGE_V2)',
     )
   ) {
@@ -1413,7 +1419,8 @@ function managerProblems(s: KtSources): string[] {
   const underLock = [
     'synchronized(publishLock) {',
     'val changes = dedupe.next(one, all)',
-    'WebViewDelivery.deliverEvent(',
+    // Session 3C (deliberate change): the publisher seam delivers (its default: WebViewDelivery, pin 11).
+    'publisher(if (changes.v1) one else null, if (changes.v2) all else null)',
     'statusObserver?.invoke()',
   ];
   if (!inOrder(publish, underLock)) {
@@ -1593,13 +1600,14 @@ function watchdogProblems(s: KtSources): string[] {
   const out: string[] = [];
   // Session 2F2 (deliberate change): every printer's print runs in its own PrinterManager.
   const run = tail(strip(s.manager), 'private fun runPrint(');
+  // Session 3C (deliberate change: the 2F2 gold review's M-5): the job and its watchdog race for one claim.
   const verdict =
-    /t\.write\(bytes\)\s*if \(watchdogFired\(watchdog, timedOut\)\) \{\s*onLinkLost\(t\)\s*Reply\.fail\(BridgeCodes\.TIMEOUT\)\s*\} else \{\s*Reply\.Ok\(bytes\.size\)/;
+    /t\.write\(bytes\)\s*if \(!claim\.compareAndSet\(false, true\)\) \{\s*onLinkLost\(t\)\s*Reply\.fail\(BridgeCodes\.TIMEOUT\)\s*\} else \{\s*Reply\.Ok\(bytes\.size\)/;
   if (!verdict.test(run)) {
     out.push('a write that returns after the watchdog still counts as printed');
   }
-  if (!strip(s.manager).includes('!watchdog.cancel() || timedOut.get()')) {
-    out.push('watchdogFired ignores a watchdog that is already running');
+  if (!strip(s.manager).includes('Runnable { if (claim.compareAndSet(false, true)) closeQuietly(t) }')) {
+    out.push('the watchdog closes the link without winning the claim');
   }
   if (count(run, 'Reply.Ok(bytes.size)') !== 1) {
     out.push('the print job has more than one success path');
@@ -1861,8 +1869,8 @@ test('pin 14 mutation: every needle can fail', () => {
     ['val dns: ExecutorService =', 'val dnsX: ExecutorService ='],
   ]);
   everyMutationCaught(run(watchdogProblems, 'manager'), base.manager, [
-    ['if (watchdogFired(watchdog, timedOut)) {', 'if (false) {'],
-    ['!watchdog.cancel() || timedOut.get()', 'timedOut.get()'],
+    ['if (!claim.compareAndSet(false, true)) {\n        // The job', 'if (false) {\n        // The job'],
+    ['Runnable { if (claim.compareAndSet(false, true)) closeQuietly(t) }', 'Runnable { closeQuietly(t) }'],
     [
       '        onLinkLost(t)\n        Reply.fail(BridgeCodes.TIMEOUT)\n      } else {',
       '        Reply.fail(BridgeCodes.TIMEOUT)\n      } else {',
@@ -2185,6 +2193,11 @@ function poolProblems(s: PoolSources): string[] {
   need(prefs, 'PoolList.restore(listed, p.getString(KEY_PRINTER_DEFAULT, null), savedPrinter(ctx))', 'the saved list does not migrate the v1 printer');
   need(prefs, '.putString(KEY_PRINTER_ID, default.id)', 'the v1 keys do not name the default printer');
   need(strip(s.service), 'HostTitle.of(PrinterPool.poolStatus())', 'the notification does not say the worst state across printers');
+  // Session 3C (the 2G review's m-3): a v1 select of a printer already listed only moves the default, and waits for the
+  // attempt in flight instead of connecting it again.
+  need(pool, 'pool.makeDefault(info.id)\n        selected = Selected(listed, false)', 'a v1 select of a listed printer makes a new manager');
+  need(strip(s.api), 'if (selected.fresh || manager.state() == BridgeCodes.STATE_DISCONNECTED) {', 'a v1 select of a listed printer connects it again');
+  need(strip(s.api), 'manager.afterIo { cb(Reply.Ok(answer())) }', 'a v1 select of a listed printer does not wait for its attempt in flight');
   need(strip(s.gradle), 'testImplementation "junit:junit:4.13.2"', 'JUnit 4 is not a test dependency');
   return out;
 }
@@ -2202,7 +2215,7 @@ const JVM_TESTS = join(ROOT, 'android', 'app', 'src', 'test', 'java', 'com', 'po
 
 test('pin 19: one PrinterManager and io thread per printer, BUSY per printer, the list in Prefs, JUnit on the JVM', () => {
   assert.deepEqual(poolProblems(poolSources()), []);
-  for (const name of ['PrinterManagerTest.kt', 'PoolListTest.kt', 'PoolStatusTest.kt', 'PrinterFakes.kt']) {
+  for (const name of ['PrinterManagerTest.kt', 'PoolListTest.kt', 'PoolStatusTest.kt', 'PrinterFakes.kt', 'PrinterPoolTest.kt']) {
     assert.ok(existsSync(join(JVM_TESTS, name)), 'JVM test file missing: ' + name);
   }
 });
@@ -2218,7 +2231,12 @@ test('pin 19 mutation: every pool needle can fail', () => {
     ['import java.util.concurrent.ExecutorService', 'import android.os.Handler\nimport java.util.concurrent.ExecutorService'],
   ]);
   everyMutationCaught(run('env'), base.env, [['package com.possoftware.pos.printer', 'package com.possoftware.pos.printer\n\nimport android.content.Context']]);
-  everyMutationCaught(run('api'), base.api, [['import android.content.Context', 'import android.content.Context\nimport java.util.concurrent.atomic.AtomicBoolean']]);
+  everyMutationCaught(run('api'), base.api, [
+    ['import android.content.Context', 'import android.content.Context\nimport java.util.concurrent.atomic.AtomicBoolean'],
+    ['manager.afterIo { cb(Reply.Ok(answer())) }', 'manager.connectAsync(manager.begin()) { cb(Reply.Ok(answer())) }'],
+    ['selected.fresh || manager', 'true || manager'],
+  ]);
+  everyMutationCaught(run('pool'), base.pool, [['pool.makeDefault(info.id)\n', 'pool.putDefault(newManager(info))\n']]);
   everyMutationCaught(run('pool'), base.pool, [
     ['PrinterManager(info, env, PrinterThreads.newIo())', 'PrinterManager(info, env, shared)'],
     ['val changes = dedupe.next(one, all)', 'val changes = StatusDedupe.Changes(true, true)'],
