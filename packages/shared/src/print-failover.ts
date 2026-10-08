@@ -67,6 +67,11 @@ export interface PrinterHealth {
 export const PRINTER_HEALTH_REFRESH_MS = 5 * 60 * 1000;
 export const PRINTER_HEALTH_STALE_MS = 2 * PRINTER_HEALTH_REFRESH_MS;
 
+/** Session 3C (the 3B review's m-3): a page reports a printer disconnected in its beat only once it stayed down this long
+ *  (no "connected" in between), so a blip (one failed idle probe that the app's 2 s retry answers) never starts a skip
+ *  that would hold its 5-minute floor and move a slip to a backup. An "unreachable" ack still skips at once. */
+export const PRINTER_DOWN_SETTLE_MS = 20_000;
+
 /** §9.3: the devices online now (a heartbeat within PRINT_DEVICE_ONLINE_MS) and whether each can write any network
  *  printer the setup names (PrintDeviceCapabilities.lanFailover: the POS app on bridge v2, the Windows app from 1.12.0),
  *  at server time `nowMs`. */

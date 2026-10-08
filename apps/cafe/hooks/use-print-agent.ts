@@ -12,8 +12,8 @@ import { usePrintAgentWake } from "@/hooks/use-print-agent-wake";
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
 import { apiSend } from "@/lib/api-client";
 import { isDesktopShell } from "@/lib/desktop-shell";
-import type { PrinterLinkState } from "@pos/shared/print-failover";
-import { printerHealthReportsOf } from "@/lib/print-agent-health";
+import { printerHealthReportsOf, type SettledLink } from "@/lib/print-agent-health";
+import { olderAckBody, printAgentSkew } from "@/lib/print-agent-skew";
 import {
   PRINT_AGENT_SLIP_DEADLINE_MS,
   createPrintAgent,
@@ -108,6 +108,12 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
   useEffect(() => {
     lanRef.current = lanKey === "" ? [] : lanKey.split(",");
   }, [lanKey]);
+  // Session 3C (the 3B review's m-1): the network printers it may take over that its app does not list (its beat says so).
+  const missingRef = useRef<readonly string[]>(printers.takeoverMissingIds);
+  const missingKey = printers.takeoverMissingIds.join(",");
+  useEffect(() => {
+    missingRef.current = missingKey === "" ? [] : missingKey.split(",");
+  }, [missingKey]);
   const writerRef = useRef(printers.isWriter);
   useEffect(() => {
     writerRef.current = printers.isWriter;
@@ -178,7 +184,9 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
       // tokenSlips: this page prints "token" jobs (S7); a page from before S7 leases none, on any line (print-lease.ts).
       lease: (printerIds) => apiSend<PrintLeaseData>(LEASE_URL, "POST", { deviceId, tabId, tokenSlips: true, ...printerIdsBody(printerIds) }),
       // Session 3B (the token fix's M-2): every ack says this page prints token slips, so its `more` counts them.
-      ack: (id, body) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", { ...body, tokenSlips: true }),
+      // Session 3C (the 3B review gate's I-1): a server from before Phase 3 (a rollback) refuses tokenSlips and reason: the
+      // ack goes once more without them (lib/print-agent-skew.ts), never read as answered and lost.
+      ack: (id, body) => printAgentSkew.send({ ...body, tokenSlips: true }, olderAckBody, (sent) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", sent)),
       print,
       printerReady: () => canPrintNow() || readyNow().length > 0,
       // Session 2E: the Windows app's printer list read again (a printer added or removed) releases a refusal's hold;
@@ -226,11 +234,19 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
   // each of the POS app's printers by its own settled state, any other by this device's printer.
   useEffect(() => {
     if (agent === null) return;
-    const memory = new Map<string, PrinterLinkState>();
+    const memory = new Map<string, SettledLink>();
     return setPrinterHealthSource(() => {
       const pool = nativePool().getSnapshot();
       return printerHealthReportsOf(
-        { localIds: readyRef.current, targets: targetsRef.current, pool: pool.active ? pool.printers : null, device: devicePrinter().getSnapshot().status, windows: isDesktopShell() },
+        {
+          localIds: readyRef.current,
+          targets: targetsRef.current,
+          pool: pool.active ? pool.printers : null,
+          device: devicePrinter().getSnapshot().status,
+          windows: isDesktopShell(),
+          missing: missingRef.current,
+          nowMs: Date.now(),
+        },
         memory,
       );
     });

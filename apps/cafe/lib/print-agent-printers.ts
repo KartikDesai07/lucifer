@@ -102,6 +102,9 @@ export interface AgentPrinters {
   lanIds: string[];
   /** Session 3B (spec §9.3): those of them it may take over (another device writes them by the setup; on bridge v2). */
   takeoverIds: string[];
+  /** Session 3C (the 3B review's m-1): the network printers it may take over that its app does not list (yet): its beat
+   *  says it cannot print them (lib/print-agent-health.ts), so the server never picks it for one of them. */
+  takeoverMissingIds: string[];
   /** Session 2E: each of them that prints on a named Windows printer, by id: its name and its paper. Session 2F1: each
    *  that is one of the POS app's printers on bridge v2: the app's id and its paper. */
   targets: Record<string, SlipPrintTarget>;
@@ -140,7 +143,8 @@ function targetsOf(printers: readonly PrinterConfig[], desktop: DesktopPrinters 
 export function agentPrintersOf(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, desktop: DesktopPrinters | null, pool: NativePoolView | null = null): AgentPrinters {
   const mine = printersWrittenBy(printers, deviceId);
   // Session 3B: a network printer it may take over prints here once the app has it.
-  const takeover = takeoverPrintersOf(printers, deviceId, pool).filter((printer) => nativeIdOf(printer, pool) !== null);
+  const candidates = takeoverPrintersOf(printers, deviceId, pool);
+  const takeover = candidates.filter((printer) => nativeIdOf(printer, pool) !== null);
   const here = [...mine.filter((printer) => printerIsLocal(printer, local, desktop, pool)), ...takeover];
   return {
     printersMode: printersModeOn(printers),
@@ -148,6 +152,7 @@ export function agentPrintersOf(printers: readonly PrinterConfig[], deviceId: st
     localIds: here.map((printer) => printer.id),
     lanIds: here.filter((printer) => printer.connection.kind === "lan").map((printer) => printer.id),
     takeoverIds: takeover.map((printer) => printer.id),
+    takeoverMissingIds: candidates.filter((printer) => nativeIdOf(printer, pool) === null).map((printer) => printer.id),
     targets: targetsOf(here, desktop, pool),
   };
 }
@@ -214,9 +219,10 @@ export function lanPrintersToAdd(printers: readonly PrinterConfig[], deviceId: s
     const connection = printer.connection;
     if (connection.kind === "lan" && nativeIdOf(printer, pool) === null) out.push({ host: connection.host.toLowerCase(), port: connection.port });
   }
-  // The gate's emulator pre-run (E-1): never into an app with no printer, unless its own goes in first (the first printer
-  // of an empty app becomes its default, this device's own printer: never another device's).
-  if (pool.printers.length === 0 && out.length === 0) return out;
+  // The gate's emulator pre-run (E-1): never into an app with no printer (the first printer of an empty app becomes its
+  // default, this device's own printer: never another device's). Session 3C (the 3B gate review's m-A): its own goes in
+  // alone, and the ones it may take over follow once the app lists it, so a refused select of its own lets none in first.
+  if (pool.printers.length === 0) return out;
   for (const printer of takeoverPrintersOf(printers, deviceId, pool)) {
     const connection = printer.connection;
     if (connection.kind === "lan" && nativeIdOf(printer, pool) === null) out.push({ host: connection.host.toLowerCase(), port: connection.port });

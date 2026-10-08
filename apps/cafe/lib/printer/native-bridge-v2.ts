@@ -63,6 +63,8 @@ import {
 //   · Phase 3 (spec §10; the page from Session 3B, the app from Session 3C): each listed printer may also carry `paper`
 //     ("ok" | "low" | "out"), `cover` ("closed" | "open") and `error` (true), from DLE EOT where the printer answers it.
 //     Absent says nothing (an app before 3C, a BLE printer); the page reports them in its wake's beat, and its dot.
+//     Session 3C (the 3B review's m-4): a value this page does not know says nothing too (a later app's), never the whole
+//     list refused; the app's values are pinned to these in native-bridge-v2-parity.test.ts.
 
 export const NATIVE_BRIDGE_V2 = 2;
 
@@ -82,9 +84,9 @@ const poolSchema = z.object({
     z.object({
       state: z.enum(NATIVE_PRINTER_STATES),
       printer: nativePrinterSchema,
-      paper: z.enum(PRINTER_PAPER_STATES).optional(),
-      cover: z.enum(PRINTER_COVER_STATES).optional(),
-      error: z.boolean().optional(),
+      paper: z.enum(PRINTER_PAPER_STATES).optional().catch(undefined),
+      cover: z.enum(PRINTER_COVER_STATES).optional().catch(undefined),
+      error: z.boolean().optional().catch(undefined),
     }),
   ),
   defaultId: z.string().nullable(),

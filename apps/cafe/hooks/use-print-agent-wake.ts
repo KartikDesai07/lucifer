@@ -10,6 +10,7 @@ import type { PrintAgent } from "@/lib/print-agent";
 import { jobsForMeLeasable, type AgentPrinters } from "@/lib/print-agent-printers";
 import { createPrintAgentWake } from "@/lib/print-agent-wake";
 import { printerHealthReports, setTakenOverPrinters } from "@/lib/print-agent-seams";
+import { olderWakeBody, printAgentSkew } from "@/lib/print-agent-skew";
 import { NATIVE_BRIDGE_V2, nativeV2Bridge } from "@/lib/printer/native-bridge-v2";
 import { bumpPrintWakeBudget, mergePrintWakeBudget, readPrintWakeBudget, writePrintWakeBudget, type PrintWakeBudget } from "@/lib/print-wake-budget";
 import { currentLane, defaultDeviceLabel, printCapabilities } from "@/lib/printer/print-lane";
@@ -71,7 +72,9 @@ export function usePrintAgentWake({ agent, enabled, isHost, printers, deviceId, 
     let memory: PrintWakeBudget | null = null;
     const wake = createPrintAgentWake({
       wake: async () => {
-        const data = await apiSend<PrintWakeBeatData>(WAKE_URL, "POST", wakeBody(deviceId));
+        // Session 3C (the 3B review gate's I-1): a server from before Phase 3 (a rollback) refuses the beat's new fields: the
+        // wake goes once more without them (lib/print-agent-skew.ts), so the device keeps its heartbeat there.
+        const data = await printAgentSkew.send(wakeBody(deviceId), olderWakeBody, (body) => apiSend<PrintWakeBeatData>(WAKE_URL, "POST", body));
         capRef.current = Math.min(PRINT_WAKE_DAILY_CAP, data.agentDailyCap);
         noteJobsForMe(data.jobsForMe, data.writesPrinters);
         setTakenOverPrinters(data.takenOver ?? []);

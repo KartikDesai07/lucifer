@@ -169,9 +169,25 @@ test("PIN (3B): the wake says lanFailover on bridge v2, tokenSlips and the print
   assert.ok(wake.includes("...(health.length > 0 ? { printers: health } : {}),"), "the health of the printers it prints here rides the beat");
   assert.ok(wake.includes("setTakenOverPrinters(data.takenOver ?? []);"), "the printers it took over, kept for its dot");
   const agent = src("apps/cafe/hooks/use-print-agent.ts");
-  assert.ok(agent.includes('ack: (id, body) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", { ...body, tokenSlips: true }),'), "every ack says tokens");
+  // Session 3C (the 3B review gate's I-1) deliberately changed: through the older-server fallback (pinned below).
+  assert.ok(agent.includes('printAgentSkew.send({ ...body, tokenSlips: true }, olderAckBody, (sent) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", sent)),'), "every ack says tokens");
   assert.ok(agent.includes("networkPrinter: (job) => job.printerId !== undefined && lanRef.current.includes(job.printerId),"), "a network printer it prints here");
   assert.ok(agent.includes("setPrinterHealthSource(() =>"), "the beat reads its printers' health from the agent's own lists");
   assert.ok(src("apps/cafe/lib/print-agent-seams.ts").includes("`?device=${encodeURIComponent(pulseDevice)}&${PRINT_PULSE_TOKENS_PARAM}=${PRINT_HEADER_ON}`"), "the pulse says tokens");
   assert.ok(src("apps/cafe/lib/print-agent.ts").includes("const body = failedAckBody(deps.deviceId, job.epoch, outcome, deps.networkPrinter?.(job) === true);"), "the agent's refusal says unreachable for a network printer");
+});
+
+// Session 3C (the 3B review gate's I-1; the 3B review's m-1 and m-3): after a rollback of the web, a server from before
+// Phase 3 refuses the ack's and the wake's new fields; the page sends them once more without them, and from then on the
+// older body. The beat reads a printer down only once it stayed so 20 s, and names down a printer it may take over that
+// its app does not list.
+test("PIN (3C): the ack and the wake go through the older-server fallback; the beat's health reads the clock and the takeover printers the app lacks", () => {
+  const wake = src("apps/cafe/hooks/use-print-agent-wake.ts");
+  assert.ok(wake.includes("const data = await printAgentSkew.send(wakeBody(deviceId), olderWakeBody, (body) => apiSend<PrintWakeBeatData>(WAKE_URL, \"POST\", body));"), "the wake falls back once to the older body");
+  const skew = src("apps/cafe/lib/print-agent-skew.ts");
+  assert.ok(skew.includes("export const printAgentSkew = createOlderServerFallback();"), "one fallback for the page: the ack and the wake learn it together");
+  assert.ok(skew.includes('if (!(error instanceof ApiError) || error.status !== 400 || error.message !== OLDER_SERVER_REFUSAL) throw error;'), "only a refused body is sent again");
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.ok(agent.includes("missing: missingRef.current,"), "the takeover printers the app lacks ride the beat as down");
+  assert.ok(agent.includes("nowMs: Date.now(),"), "the beat's health reads the clock (a printer reads down only once it stayed so)");
 });

@@ -92,10 +92,10 @@ test("agentPrintersOf: printers mode, whether this device writes one, and the on
   const kitchen = printer("kitchen", { kind: "lan", host: "192.168.1.61", port: 9100 }, { primaryDeviceId: "dev-k" });
   const bar = printer("bar", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "AA:BB" });
   const off = printer("off", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "dev-a", enabled: false });
-  assert.deepEqual(agentPrintersOf([counter, kitchen, bar, off], "dev-a", NATIVE_TCP, null), { printersMode: true, isWriter: true, localIds: ["counter"], lanIds: ["counter"], takeoverIds: [], targets: {} }, "it writes the counter and the bar; only the counter is its printer (a network printer: Session 3B's lanIds)");
-  assert.deepEqual(agentPrintersOf([counter, kitchen], "dev-p", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], targets: {} }, "an ordering phone writes nothing");
-  assert.deepEqual(agentPrintersOf([], "dev-a", NATIVE_TCP, null), { printersMode: false, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], targets: {} }, "simple mode");
-  assert.deepEqual(agentPrintersOf([counter], "", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], targets: {} }, "no device identity");
+  assert.deepEqual(agentPrintersOf([counter, kitchen, bar, off], "dev-a", NATIVE_TCP, null), { printersMode: true, isWriter: true, localIds: ["counter"], lanIds: ["counter"], takeoverIds: [], takeoverMissingIds: [], targets: {} }, "it writes the counter and the bar; only the counter is its printer (a network printer: Session 3B's lanIds)");
+  assert.deepEqual(agentPrintersOf([counter, kitchen], "dev-p", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], takeoverMissingIds: [], targets: {} }, "an ordering phone writes nothing");
+  assert.deepEqual(agentPrintersOf([], "dev-a", NATIVE_TCP, null), { printersMode: false, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], takeoverMissingIds: [], targets: {} }, "simple mode");
+  assert.deepEqual(agentPrintersOf([counter], "", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], takeoverMissingIds: [], targets: {} }, "no device identity");
 });
 
 // Phase 2 Session 2E (spec §9.2): one Windows PC prints several printers, each by its own Windows name. An older app
@@ -451,7 +451,15 @@ test("3B: on bridge v2 every routable network printer another device writes is o
   assert.deepEqual(takeoverPrintersOf([theirs], "dev-a", POOL), [], "a device that writes nothing takes nothing over");
   assert.deepEqual(agentPrintersOf([theirs], "dev-a", NATIVE_TCP, null, POOL).takeoverIds, [], "and lists none");
   const empty = { printers: [] };
-  assert.deepEqual(lanPrintersToAdd([mine, theirs], "dev-a", empty).map((p) => p.port), [9100, 9101], "an app with no printer gets its own first (its default), then the one it may take over");
+  // Session 3C (the 3B gate review's m-A, deliberately changed): an app with no printer gets only its own; the one it may
+  // take over follows once the app lists its own (one status event later), so a refused select of its own can never let
+  // another device's printer become its default.
+  assert.deepEqual(lanPrintersToAdd([mine, theirs], "dev-a", empty).map((p) => p.port), [9100], "an app with no printer gets its own first (its default), and nothing else yet");
+  assert.deepEqual(lanPrintersToAdd([mine, theirs], "dev-a", { printers: [{ id: "tcp:10.0.2.2:9100", status: "connecting" as const }] }).map((p) => p.port), [9101], "then the one it may take over");
+  // Session 3C (the 3B review's m-1): one it may take over that its app does not list is named, so its beat says it
+  // cannot print it (lib/print-agent-health.ts); an app with no printer lists none of them.
+  assert.deepEqual(agentPrintersOf([mine, theirs], "dev-a", NATIVE_TCP, null, empty).takeoverMissingIds, ["theirs"], "the empty app cannot print the printer it may take over");
+  assert.deepEqual(agentPrintersOf([mine, theirs], "dev-a", NATIVE_TCP, null, POOL).takeoverMissingIds, [], "an app that lists it prints it");
   assert.deepEqual(lanPrintersToAdd([bt, { ...theirs, primaryDeviceId: "dev-b" }, printer("btA", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "FF:EE" })], "dev-a", empty), [], "an app with no printer and none of its own to add: never seeded with another device's printer");
 });
 

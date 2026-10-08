@@ -287,3 +287,23 @@ test("3B: the app's v2 list may say each printer's paper, cover and error (Sessi
   const out = poolSnapshotOf({ printers: [{ state: "connected", printer: KITCHEN, paper: "out", cover: "open", error: true }], defaultId: KITCHEN.id, bluetooth: "on" } as NativePoolStatus);
   assert.deepEqual([out.printers[0]?.paper, out.printers[0]?.cover, out.printers[0]?.error], ["out", "open", true]);
 });
+
+test("3C (the 3B review's m-4): a paper, cover or error value this page does not know says nothing, and the rest of the app's list still reads", async () => {
+  const g = globalThis as unknown as { window?: unknown };
+  const before = g.window;
+  try {
+    const later = { printers: [{ state: "connected", printer: KITCHEN, paper: "near-end", cover: "ajar", error: "yes" }, { state: "connected", printer: BAR, paper: "out" }], defaultId: KITCHEN.id, bluetooth: "on" };
+    g.window = { PosNative: { version: 1, versions: [1, 2], platform: "android", request: async () => later, on: () => () => undefined } };
+    const read = await nativeV2Request("printer.status");
+    assert.deepEqual(
+      read.printers.map((entry) => [entry.printer.id, entry.paper, entry.cover, entry.error]),
+      [
+        [KITCHEN.id, undefined, undefined, undefined],
+        [BAR.id, "out", undefined, undefined],
+      ],
+      "a later app's unknown value is dropped; the list and every value this page knows are kept",
+    );
+  } finally {
+    g.window = before;
+  }
+});

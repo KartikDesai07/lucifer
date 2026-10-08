@@ -1,32 +1,46 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import type { PrinterLinkState } from "@pos/shared/print-failover";
-import { printerHealthReportsOf, settledLinkOf } from "@/lib/print-agent-health";
+import { PRINTER_DOWN_SETTLE_MS } from "@pos/shared/print-failover";
+import { printerHealthReportsOf, settledLinkOf, type SettledLink } from "@/lib/print-agent-health";
 import type { PoolPrinter } from "@/lib/printer/native-pool";
 
 // Phase 3 Session 3B (spec §10, P3-6): the health this page reports on its wake, for the printers it prints here. The
-// server keeps a report only from the device that writes the printer now, and only when it changed.
+// server keeps a report only from the device that writes the printer now, and only when it changed. Session 3C (the 3B
+// review's m-3): a printer reads disconnected only once it stayed down PRINTER_DOWN_SETTLE_MS, so a blip (one failed
+// probe the app's 2 s retry answers) never starts a skip; and (m-1) a network printer this device may take over that its
+// app does not list reads as down, so the server never picks it for one it cannot print.
 
 const TCP = { kind: "native" as const, transport: "tcp" as const, printerId: "tcp:10.0.2.2:9100", name: "Network printer 10.0.2.2", paper: "80mm" as const };
+const T0 = Date.parse("2026-10-08T12:00:00Z");
 
 function poolPrinter(id: string, status: PoolPrinter["status"], over: Partial<PoolPrinter> = {}): PoolPrinter {
   return { id, printer: { ...TCP, printerId: id }, status, message: null, ...over };
 }
 
-test("settledLinkOf: connected and disconnected settle; a probe in between keeps the last settled link; nothing settled says nothing (the 3A gate, m-5)", () => {
-  const memory = new Map<string, PrinterLinkState>();
-  assert.equal(settledLinkOf(memory, "a", "connecting"), null, "nothing settled yet");
-  assert.equal(settledLinkOf(memory, "a", "disconnected"), "disconnected");
-  assert.equal(settledLinkOf(memory, "a", "connecting"), "disconnected", "the app's 30 s probe of a down printer never flickers it");
-  assert.equal(settledLinkOf(memory, "a", "connected"), "connected");
-  assert.equal(settledLinkOf(memory, "a", "needs-tap"), "disconnected", "a Bluetooth printer waiting for a tap cannot print");
-  assert.equal(settledLinkOf(memory, "b", "elsewhere"), null, "another tab owns it: this tab says nothing");
-  assert.equal(settledLinkOf(memory, "b", "none"), null);
+test("3C (m-3): settledLinkOf: connected settles at once; a printer reads disconnected only once it stayed down 20 s; a probe in between keeps the clock", () => {
+  assert.equal(PRINTER_DOWN_SETTLE_MS, 20_000);
+  const memory = new Map<string, SettledLink>();
+  assert.equal(settledLinkOf(memory, "a", "connecting", T0), null, "nothing settled yet");
+  assert.equal(settledLinkOf(memory, "a", "disconnected", T0), null, "down a moment: nothing yet");
+  assert.equal(settledLinkOf(memory, "a", "connecting", T0 + 5_000), null, "the app's reconnect probe keeps the clock");
+  assert.equal(settledLinkOf(memory, "a", "disconnected", T0 + PRINTER_DOWN_SETTLE_MS - 1), null);
+  assert.equal(settledLinkOf(memory, "a", "disconnected", T0 + PRINTER_DOWN_SETTLE_MS), "disconnected", "down 20 s: disconnected");
+  assert.equal(settledLinkOf(memory, "a", "connecting", T0 + 30_000), "disconnected", "the app's 30 s probe of a down printer never flickers it");
+  assert.equal(settledLinkOf(memory, "a", "connected", T0 + 40_000), "connected", "back: connected at once");
+  assert.equal(settledLinkOf(memory, "a", "disconnected", T0 + 50_000), "connected", "a blip: still connected");
+  assert.equal(settledLinkOf(memory, "a", "connecting", T0 + 52_000), "connected");
+  assert.equal(settledLinkOf(memory, "a", "connected", T0 + 55_000), "connected", "answered within 20 s: never reported down");
+  assert.equal(settledLinkOf(memory, "a", "disconnected", T0 + 80_000), "connected", "a new spell starts its own clock");
+  assert.equal(settledLinkOf(memory, "a", "disconnected", T0 + 100_000), "disconnected");
+  assert.equal(settledLinkOf(memory, "t", "needs-tap", T0), null, "a Bluetooth printer waiting for a tap…");
+  assert.equal(settledLinkOf(memory, "t", "needs-tap", T0 + PRINTER_DOWN_SETTLE_MS), "disconnected", "…cannot print: down once it stays so");
+  assert.equal(settledLinkOf(memory, "b", "elsewhere", T0), null, "another tab owns it: this tab says nothing");
+  assert.equal(settledLinkOf(memory, "b", "none", T0), null);
 });
 
 test("printerHealthReportsOf: each of the app's printers by its own state and status; the device's one printer; nothing from the Windows spooler", () => {
-  const memory = new Map<string, PrinterLinkState>();
+  const memory = new Map<string, SettledLink>();
   const pool = [
     poolPrinter("tcp:10.0.2.2:9100", "connected", { paper: "out" }),
     poolPrinter("tcp:10.0.2.2:9101", "disconnected", { cover: "open", error: true }),
@@ -38,14 +52,25 @@ test("printerHealthReportsOf: each of the app's printers by its own state and st
     "p-new": { nativeId: "tcp:10.0.2.2:9102", paper: "80mm" as const },
     "p-gone": { nativeId: "tcp:10.0.2.2:9199", paper: "80mm" as const },
   };
+  const input = { localIds: ["p-kitchen", "p-bar", "p-new", "p-gone"], targets, pool, device: "none" as const, windows: false, missing: [] };
+  assert.deepEqual(printerHealthReportsOf({ ...input, nowMs: T0 }, memory), [{ printerId: "p-kitchen", link: "connected", paper: "out" }], "the bar printer only just went down: nothing for it yet");
   assert.deepEqual(
-    printerHealthReportsOf({ localIds: ["p-kitchen", "p-bar", "p-new", "p-gone"], targets, pool, device: "none", windows: false }, memory),
+    printerHealthReportsOf({ ...input, nowMs: T0 + PRINTER_DOWN_SETTLE_MS }, memory),
     [
       { printerId: "p-kitchen", link: "connected", paper: "out" },
       { printerId: "p-bar", link: "disconnected", cover: "open", error: true },
     ],
     "a printer still connecting, or one the app does not list, says nothing",
   );
-  assert.deepEqual(printerHealthReportsOf({ localIds: ["p-own"], targets: {}, pool: null, device: "connected", windows: false }, memory), [{ printerId: "p-own", link: "connected" }], "the release APK or a browser: its one printer");
-  assert.deepEqual(printerHealthReportsOf({ localIds: ["p-win"], targets: { "p-win": { printerName: "EPSON", paper: "80mm" } }, pool: null, device: "connected", windows: true }, memory), [], "the Windows app reports nothing until 1.12.0 (Session 3E)");
+  assert.deepEqual(printerHealthReportsOf({ localIds: ["p-own"], targets: {}, pool: null, device: "connected", windows: false, missing: [], nowMs: T0 }, memory), [{ printerId: "p-own", link: "connected" }], "the release APK or a browser: its one printer");
+  assert.deepEqual(printerHealthReportsOf({ localIds: ["p-win"], targets: { "p-win": { printerName: "EPSON", paper: "80mm" } }, pool: null, device: "connected", windows: true, missing: [], nowMs: T0 }, memory), [], "the Windows app reports nothing until 1.12.0 (Session 3E)");
+});
+
+test("3C (m-1): a network printer this device may take over that its app does not list reads down once it stays missing 20 s", () => {
+  const memory = new Map<string, SettledLink>();
+  const input = { localIds: [], targets: {}, pool: [], device: "none" as const, windows: false, missing: ["p-theirs"] };
+  assert.deepEqual(printerHealthReportsOf({ ...input, nowMs: T0 }, memory), [], "just loaded: the page is still adding it to the app");
+  assert.deepEqual(printerHealthReportsOf({ ...input, nowMs: T0 + PRINTER_DOWN_SETTLE_MS }, memory), [{ printerId: "p-theirs", link: "disconnected" }], "still missing: this device cannot print it");
+  assert.deepEqual(printerHealthReportsOf({ ...input, missing: [], nowMs: T0 + 30_000 }, memory), [], "once the app lists it, its own state speaks for it");
+  assert.deepEqual(printerHealthReportsOf({ ...input, nowMs: T0 + 31_000 }, memory), [], "missing again later: a fresh 20 s");
 });
