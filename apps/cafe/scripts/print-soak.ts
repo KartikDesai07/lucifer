@@ -107,7 +107,7 @@ async function call(args: Args, cookie: string, method: string, url: string, bod
   }
 }
 
-interface PrinterRecord { bytes: number; dropped: boolean; file: string | null; at: string; out: string }
+interface PrinterRecord { bytes: number; dropped: boolean; file: string | null; at: string; out: string; statusOnly?: boolean }
 
 function printerRecords(outs: readonly string[], since: Date): PrinterRecord[] {
   return outs.flatMap((out) => {
@@ -117,7 +117,8 @@ function printerRecords(outs: readonly string[], since: Date): PrinterRecord[] {
       .split("\n")
       .filter((line) => line.trim() !== "")
       .map((line) => ({ ...(JSON.parse(line) as Omit<PrinterRecord, "out">), out }))
-      .filter((r) => r.bytes > 0 && Date.parse(r.at) >= since.getTime());
+      // Phase 3 Session 3C: a POS app's idle status check (DLE EOT only) is not a slip.
+      .filter((r) => r.bytes > 0 && r.statusOnly !== true && Date.parse(r.at) >= since.getTime());
   });
 }
 
