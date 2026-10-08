@@ -17911,3 +17911,154 @@ Dispatch a fresh reviewer subagent on **Claude Fable 5.1** (`model: fable`). It 
 Fill "Session 3C Results" below: the commits; each task's RED and GREEN against the Expected lines; every suite's numbers; JUnit; the APK hashes; the build; the exit table; the review and its fixes; deviations and rulings; what is open for the 3C gate.
 
 Commit, then push with the token only: `GIT_TERMINAL_PROMPT=0 git push origin feat/printing-phase-3`. Do not merge, do not deploy, do not release the APKs.
+
+## Session 3C Results (filled in by the implementer)
+
+Executed on 2026-10-08 in one Claude session with superpowers:executing-plans, task by task, C0 → C6. The ledger is `.superpowers/sdd/2026-10-06-phase-3-hardening/progress.md` (section "Session 3C").
+
+### Commits (`1ab7d98..HEAD`)
+
+| Commit | Task |
+|---|---|
+| `f30e1b0` | C0: only a device whose own wake is fresh may take a network printer over (`PrintDevice.beatAt`, the wake's heartbeat write due on either clock, `lanFailoverNow`: G-1); a candidate that cannot reach a printer is skipped ahead of time (m-2); leg be |
+| `f33947c` | C1: the page's beat: a printer reads down only after 20 s (`PRINTER_DOWN_SETTLE_MS`, m-3); a takeover printer the app lacks reads down (m-1); a lenient paper/cover/error read (m-4); the older-server fallback after a rollback of the web (`lib/print-agent-skew.ts`, the gate review's I-1); an empty app gets its own printer first (m-A) |
+| `64afe1e` | C2: the dot's printer problem in simple mode (m-7); no takeover words when the devices read failed (m-B); GO-LIVE-CHECKLIST's rollback line |
+| `c9916b7` | C3: the fake printer's `--paper-low`, `--silent` and `statusOnly` |
+| `f99dd2c` | C4: Change printer to a listed printer only moves the default (2G's m-3); the watchdog's one claim (M-5); `PrinterPool`'s `saver`/`publisher` seams and `PrinterPoolTest` |
+| `f5d1d7c` | C5: DLE EOT after each job and while idle (`PrinterStatus.kt`), a network printer's idle check is a connect, BUSY while a printer cannot print, G5 on a network job, bridge v2's paper/cover/error, the page leases no printer its app says cannot print, the notification's "out of paper" |
+| `361c4c4` | The fresh review's I-1 (and m-8): the beat's 20 s settle clock starts when the printers' status changes, not at the next wake (`printerHealthClock`) |
+| (this commit) | Results |
+
+### Start
+
+- `GIT_TERMINAL_PROMPT=0 git fetch origin` (the repo-local token store) worked: `feat/printing-phase-3` = `origin/feat/printing-phase-3` = `1ab7d98`, working tree clean; `origin/main` still `7f8ed31` (nothing to merge or note).
+- Disk at the start: D: 12 GB free, C: 5.6 GB free.
+- The owner was asked once about the real-printer checks (`apps/mobile/TEST-CHECKLIST.md` "Stations and printers checks", and Part C on the Windows app 1.11.0); no answer during the session, which did not block on it. They stay open (Step 0 (a)).
+- The 3B gate's applier (`apply_blocks_clone.py`), `link-modules.ps1`, `pw-3c.mjs`, `suites.sh` and the 3B scratchpad's tools were copied into this session's scratchpad. A dry run of the whole Session 3C range (plan lines 11922–17913) against `1ab7d98`: **148 ops OK** (no drift).
+
+### How the code was applied
+
+Every block went verbatim into the real repo through the applier, one step range at a time (each task's Step 1, then its Step 3), so each RED was seen before its code went in: C0 5 + 12 ops, C1 8 + 15, C2 5 + 7, C3 3 + 8, C4 11 + 9, C5 22 + 43 (**148**). After C5, **every file outside `docs/` is blob-identical to the gate's gold `g3c-v7`** (tree `a93c9d9`): `git ls-tree -r` of both differs only in the plan and the spec (both changed by `1ab7d98`). `1ab7d98..f5d1d7c`: 55 files, **+1,753 / −164**. Every commit has the plan's message plus the repo's co-author line.
+
+### Per-task RED → GREEN (every Expected line compared; all matched)
+
+| Task | RED | GREEN |
+|---|---|---|
+| C0 | `print-lifecycle-paths.test.ts`: tests 27, pass 24, **fail 3**; live: the six `(be)` FAIL lines, **438 passed, 6 failed** | three files **57/57**; `TSC_OK`; `LINT_OK`; live **444 passed, 0 failed** |
+| C1 | six files: tests 85, pass 75, **fail 10** | ten files **191/191** + `TSC_OK`; shared `print-failover.test.ts` **14/14** + `SHARED_TSC_OK`; `LINT_OK` |
+| C2 | five files: tests 169, pass 164, **fail 5** | eight files **244/244** + `TSC_OK`; `LINT_OK` |
+| C3 | `test:print-tools`: tests 11, pass 6, **fail 5** | tools **11/11**; soak-agent + lifecycle paths **31/31** + `TSC_OK`; `LINT_OK` |
+| C4 | mobile: tests 125, pass 119, **fail 6**; JUnit `> Task :app:compileDebugUnitTestKotlin FAILED`, `BUILD FAILED` (unresolved `saver`, `publisher`) | mobile **125/125**; JUnit `BUILD SUCCESSFUL` (ruling 1): PoolList 6, PoolStatus 2, PrinterManager 14, PrinterPool 3; `MOBILE_TSC_OK`; `MOBILE_LINT_OK` |
+| C5 | mobile: tests 127, pass 122, **fail 5**; cafe four files: tests 58, pass 53, **fail 5**; JUnit `compileDebugUnitTestKotlin FAILED`, `BUILD FAILED` (unresolved `DleEot`) | mobile **127/127** + Jest **3/3**; JUnit `BUILD SUCCESSFUL`: DleEot 6, PoolList 6, PoolStatus 3, PrinterManager 19, PrinterPool 3, TcpTransport 8 (**45**); `MOBILE_TSC_OK`; `MOBILE_LINT_OK`; cafe seven files **162/162** + `TSC_OK`; `LINT_OK` |
+
+Line counts at the end: `apps/cafe/lib/print-agent-skew.ts` 50 (new), `lib/print-agent-health.ts` 93, `hooks/use-print-agent.ts` 319, `lib/printer/printer-dot.ts` 300 (its budget), `scripts/print-host-live/candidates.ts` 75 (new), `…/printer/PrinterStatus.kt` 78 (new), `TcpTransport.kt` 294.
+
+### Task C6 Step 1: every suite (at `f5d1d7c`; once each, in the background, one after another)
+
+| Suite | Result |
+|---|---|
+| shared `npm test`; `tsc` | **821/821**; 0 |
+| cafe `npm test` | **5021 tests, 5020 pass, 0 fail, 1 skipped** (go-live-dl) |
+| cafe `tsc`; `npm run lint` | 0; 0 errors and the 2 old warnings (`lib/masters-blob.test.ts:331`) |
+| hub `tsc`; lint | 0; 0 |
+| mobile `tsc`; lint; `npm test`; `test:app` | 0; 0; **127/127**; Jest **3/3** |
+| desktop `npm test`; `typecheck`; lint | **192/192**; 0; 0 |
+| `npm run test:print-tools` | **11/11** |
+| live legs (local mongod, `pos_scratch_print_host_3c`) | **`444 passed, 0 failed`** = 435 + be 9 (C0) |
+
+Every row equals the plan's Expected.
+
+### Step 2: JUnit, and the APKs
+
+- `:app:testDebugUnitTest --rerun`: `BUILD SUCCESSFUL`, **45 tests, 0 failures** (DleEotTest 6, PoolListTest 6, PoolStatusTest 3, PrinterManagerTest 19, PrinterPoolTest 3, TcpTransportTest 8).
+- **The first APK set was broken by the build, not by the code** (ruling 2): its x86_64 APK crashed on the emulator at once (`NoSuchMethodError: No direct method <init>(Ljava/lang/String;I)V in class rw0` on `pos-printer-io`; R8's mapping: `rw0` = `TcpTransport`, the caller `lz0` = `TransportFactory`). `javap` showed why: the release variant's `TransportFactory.class` was still the one compiled on 2026-10-05 (Phase 2), calling `TcpTransport`'s old `(String, int)` constructor; C5 gave `TcpTransport` default parameters, and the release variant's incremental Kotlin compile did not recompile that unchanged caller. The debug variant's class was correct (so the JUnit runs stand). The gate's golden APKs came from a fresh clone (a full compile), which is why its pre-run passed. Those APKs (x86_64 `7232e98a…`, arm64 `d6d65ecc…`, armv7 `190e14fb…`) are void.
+- **The APKs, rebuilt with a full release compile** (`:app:compileReleaseKotlin --rerun`: all 86 release classes rewritten; `javap`: `TransportFactory` now calls `TcpTransport.<init>(String,int,int,int,int,DefaultConstructorMarker)`), in the scratchpad `apk-3c-v2/`, **not released**:
+
+| APK | SHA-256 |
+|---|---|
+| x86_64 (the emulator; `aR -PreactNativeArchitectures=x86_64`) | `2bdceacc0d9f1f237a452310d897c6a19dd5d240aa7e87ddacbe1009122c79fc` |
+| arm64-v8a (`assembleRelease`) | `1d740fc6714b91d9cec141a7f58f1e8d8245ea9072a05f90447adc13b0efc7c8` |
+| armeabi-v7a (`assembleRelease`) | `d52cfeb5ddc9086fb4d92c7202ccfbf56e778f3d6ee778e79ef23663d57d9a7a` |
+
+  They differ from the gate's build-copy hashes (`c812741f…`, `10f2ca79…`, `e04be78d…`), as the plan says a repo build will.
+
+### Step 3: the Next production build (the repo, D:)
+
+`npm run build`: exit 0, **132 routes** (D: 12 GB free before it). Again after the review fix: exit 0, 132 routes.
+
+### Step 4: what changed outside the web
+
+`git diff --stat 459daa8..HEAD -- apps/desktop workers`: **empty** (the Windows installer `1.11.0` and the Worker stay as Phase 2 built them). `-- apps/mobile`: 20 files, the Kotlin, the RN bridge type (`src/bridge/protocol-v2.ts`) and the pins (`src/mobile-paths.test.ts`) of C4 and C5 only.
+
+### Step 5: the exit on the emulator (E0–E5 and E3b: passed)
+
+**The harness**, as the plan's Step 5 says: a fresh database `pos_scratch_e2e_3cs` (ruling 3; Session 3B's env file copied with only `MONGODB_URI` changed by a Python script that prints no value; seeded with `scripts/seed-admin.ts`, `seed-tables.ts`, `seed-menu.ts`); this branch's Step 3 build on `next start -p 3110`; `p3a-proxy.mjs` on 3200 and `p3b-proxy.mjs` on 3201; `pw-3c.mjs` extracted from the plan by a script (byte-identical to the gate's copy); its fake printers as its own child processes with a `keep.txt` in each `--out` folder. Ports 3110, 3200, 3201, 9100 and 9101 were free; no other session's server was touched. **The emulator:** C: 5.4 GB free, so `Pixel_7_API_33` booted at **`-memory 2048`** (`-no-audio -no-snapshot-save`, `timeout: 7200000`), crash buffer 0. **As found:** the release APK (`29115bdf…` hashed on the device), on its start screen with no address (not the demo).
+
+| # | Step | Result |
+|---|---|---|
+| E0 | the Phase 2 APK set up | `3736540b…` (hashed before and on the device) over the release APK; `adb reverse tcp:3100 tcp:3201`; `http://localhost:3100`: the WebView's session from another database answered 401 → Account Staff → Sign out → signed in as `e2eadmin` (`type-secret.py`, the field checked to be a password field). Network printer `10.0.2.2:9100` → "Network printer 10.0.2.2 is connected."; its pulses' `device=` `80cfb12d…d5f2`; `emu-setup`: Beverages → Bar 200, Kitchen 201, Bar 201. Done, Refresh: **the panel: 9100 Connected, "Other printers on this device": `Network 10.0.2.2:9101` Connected.** **PASS** |
+| E1 | the new x86_64 APK (`2bdceacc…`, hashed on the device; after ruling 2), relaunch, `emu-print` | **The app kept both printers** (this device's 9100 and, under Other printers, 9101: the Prefs list; Not connected while the fakes were down, Connected ≈12 s after they started). C's kitchen slip **printed by the emulator in 4.0 s** (log created, leased, printed by the emulator), **44,250 B** on 9100; a `statusOnly` line for the idle check; Kitchen's health **`connected/ok/closed`** from the emulator. **PASS** |
+| E2 | `emu-paper`; at its HOLD the emulator's dot and panel | 9100 `--paper-out`: Kitchen's health **`connected/out/closed`** from the emulator 36.1 s after; C's slip **never leased** (its log only `created`; 0 slips on 9100 meanwhile); the feed's `problem: "paper-out"` 21.2 s after the order; **C's panel: "Slips waiting · Waiting for the printer (1) · KOT round 1 · ORD-20261008-002 · Kitchen · just now · Kitchen is out of paper. · Kitchen · Print now · Clear"**; **the emulator's dot "1 slip waiting · Printer needs attention", its panel "Printer needs attention · Kitchen is out of paper." and the same row** (`shots3c/e2-emu-dot.png`, `e2-emu-panel.png`, `emu-paper-c-panel.png`); paper back: **printed 6 s later**, one slip, 44,250 B, health `connected/ok/closed`. **PASS** |
+| E3 | `emu-drop` | 9100 `--drop-after 20000`: the first attempt **cut at 20,000 B**; the job `failed` "The printer stopped answering. Check the paper first…" (maybe, never `printed`); the printer whole again, the retry printed labelled **REPRINT, 49,722 B**; the log `created, leased, failed, leased, printed`. **PASS** |
+| E3b | `emu-silent` | 9100 `--silent`: after the 70 s idle period the slip **printed once, no REPRINT**; **leased to printed 1.7 s**; **44,241 B** (the slip and one 3-byte DLE EOT 1); Kitchen's health `connected` (no paper or cover). **PASS** |
+| E4 | the release page: `main` `7f8ed31` built in a cache-off build copy (`bmain` in the scratchpad: 132 routes, 27 MB `.next`; the first build attempt failed on Google Fonts, `connect ETIMEDOUT`, and the retry passed) served on 3110 after this branch's server was stopped; `simple`, `release-v1 300`; on the emulator Refresh, Masala Chai, Send to Kitchen | simple mode, the release page: the KOT **`leased (direct)` then `printed` by the emulator on 9100, 40,506 B**; its pulses carry no `tokens=`. **PASS** |
+| E5 | `adb logcat -b crash -d` | **0 lines** with the rebuilt APK (after E1, E4, the post-fix check and the release APK's return). The void first APK's 21 crash lines were recorded (ruling 2), then the buffer cleared before the rebuilt APK went on. **PASS** |
+
+**After the review fix** (this branch's rebuilt `.next` at `361c4c4` on 3110; the same APK): `emu-setup`, Refresh, `emu-print`: printed by the emulator **12.1 s** after the order (right after a Refresh: the plan allows ≈20 s), 44,250 B, health `connected/ok/closed`. A down/up check (`watch-health.mjs`): the 9100 fake stopped at 10:57:54Z; the app's status lost its paper at 10:58:15 (the settle kept `connected`); **`disconnected` at 10:58:36** (21 s later); 9100 back: `connected/ok` at 10:59:23; crash 0. Locally the wake runs every 3 s (no Worker socket), so this proves the clock end to end, not the 60 s healthy-socket gap (the unit test does).
+
+**Put back:** the setup cleared (`pw-3c.mjs clear`; the scratch database `pos_scratch_e2e_3cs` is left, its env file in this session's scratchpad); on the emulator a Refresh let the page remove the takeover printer it had added, and the panel's Remove took its own 10.0.2.2 printer ("No printer set up"); More options → Change POS address → Clear POS address (the start screen, no address); the **release APK** reinstalled (`adb install -r -d`; `29115bdf…` on the device; start screen empty; crash 0); `adb reverse --remove-all`, then `adb reverse tcp:3100 tcp:3100`; `adb shell sync`, `adb emu kill`; every server and harness process this session started stopped by PID after checking its command line (ports 3110, 3200, 3201, 9100, 9101 free).
+
+### Step 6: the fresh review (Claude Fable 5.1)
+
+**How it ran.** A fresh reviewer on **Claude Fable 5.1** (no HTTP 429), read-only, its scratch only in this session's scratchpad (`review3c/`), reviewed `1ab7d98..f5d1d7c` (the code of `459daa8..HEAD`; `1ab7d98` is docs only) against P3-1 to P3-10 as the gates changed them, the 3B review gate's rulings, Session 3C and its Review Focus (passed verbatim), and spec §9.3, §9.5, §9.8, §10, §13, §17; it ran in the background during Steps 2 and 5, told to keep off Gradle, adb, builds, servers and the harness's ports and databases. Its own runs: shared 821/821; cafe's full chain **5021 / 5020 / 0 / 1**; `tsc --noEmit --incremental false` 0; eslint on every changed cafe file 0; mobile 127/127; print tools 11/11; the live legs on its own database **444/0** (be 9/9). It checked deploy skew against `623f12c` (a Phase 2 page's pool schema is not strict: the new keys are ignored) and `7f8ed31` (strict ack and wake schemas: the fallback strips exactly the Phase 3 fields).
+
+**Verdict: "With fixes".** No Critical; one Important; eight minors. Its sound list: G-1's `$or` filter and upsert (no migration needed: a row without `beatAt` becomes a candidate at its next wake; `lanFailoverNow` gates both reads); m-2's candidate skip (narrow; nothing moves when only a candidate is skipped); the settle state machine as a pure function; the rollback fallback's narrow trigger and its place before `ackAnswered()`; the Kotlin concurrency (one io thread per printer serialises probe and job; lock order kept; M-5's single claim); the DLE EOT parse against Epson's bits; one `cannotPrint()` rule on both sides; G5 for the three printer classes with real loopback sockets in `TcpTransportTest`; 2G's m-3 through `replaceDefault`/`afterIo`; the page's ready gate; the tools.
+
+| # | Finding (the reviewer's) | Re-graded / what was done |
+|---|---|---|
+| I-1 (Important) | The beat's 20 s settle clock advanced only when the wake built its beat (`printerHealthReports()` is called only by the wake), so `downSince` was the first *wake* that saw the printer down: on a healthy socket a printer the app saw down read `disconnected` one wake (60 s) later than in 3B, every time; the beat-started skip, the takeover and the backup move came ≈60 s later than the m-3 ruling's stated 20 s. | **Important (kept)**: a KOT for a printer already known down waited ≈2 min instead of ≈1 before another device or the backup took it. **Fixed in `361c4c4`** by TDD: `printerHealthClock` (`lib/print-agent-health.ts`) runs the clock on every status change of the POS app's pool and this device's printer; the hook subscribes it and stops it with the agent. RED: `print-agent-health.test.ts` "3C review (I-1): the settle clock runs on every status change…" and the pin "PIN (3C review): the beat's health clock…" (15 tests, 13 pass, **2 fail**: `printerHealthClock is not a function`; the pin). GREEN: ten files **194/194**, `TSC_OK`, `LINT_OK` (the 3B pin's `setPrinterHealthSource(() =>` deliberately changed to the clock). Then every suite again (below) and the emulator check above. The honest cost now: a printer reads down at the first wake at least 20 s after the app said so (one wake interval more only when a wake lands inside those 20 s). Page only: no APK change. |
+| m-8 | The same wake-sampled clock for the `device:` key (a Web Bluetooth/Serial printer, the release APK's one printer). | **Fixed with I-1** (the clock subscribes to `devicePrinter()` too). |
+| m-1 | Two jobs queued as the paper runs out can both end "maybe" (`probe` runs after `cb`; the next job claims `printing` first). Both become labelled REPRINTs; nothing lost. | Minor → the 3C gate (read `t.status()` into `health` on a `linkKept` failure). |
+| m-2 | "Offline with no cause" (FEED pressed) reads as an error for up to 10 s and refuses a job BUSY. | Minor → the 3C gate (n=2 bit 3 as a non-error cause, or softer words). |
+| m-3 | Two connects back to back at every TCP attempt could flap a single-session LAN module. | Minor → the real-printer checks (5 minutes idle on the real LAN printer) and the gate. |
+| m-4 | Simple mode on bridge v2 still leases a paper-out default printer every 30 s (BUSY; inside Phase 1's pinned ceiling). | Minor → the gate (a one-line `canPrintNow()` gate). |
+| m-5 | No `silent` memory for USB and Bluetooth Classic (1 s per slip and per minute on a printer that never answers). | Minor (latency only) → the gate. |
+| m-6 | A select's reply waits for the connect probe (Add printer up to ~2 s longer). | Minor (UX only) → the gate. |
+| m-7 | The words of the m-3 cost (plan, spec §9.3) and `print-agent-health.ts`'s header. | The header fixed with I-1; the honest cost is above for the gate (the plan's gate text and spec §9.3 left as written; §9.3's sentence stays true). |
+
+**The reviewer's "declined to judge" lines, ruled:** the golden-copy review's m-4 (a probe colliding with a job connect on a single-session printer) stays with the real-printer checks and 3G; a printer out of paper keeps its slips (spec §9.4 moves slips only for a device offline or a printer nobody can reach); the `$or` filter's extra `PrintDevice` write, the rollback latch for the page's life, the v1 Change printer to the same printer, `hooks/use-print-agent.ts` over ~300 lines (now 319: 3D may split it), "Can take over" for a device whose app lists none, `PoolList.putDefault` unchanged and the idle check while the app runs all stand as ruled; the exit items rest on this session's emulator evidence (the reviewer ran no adb or Gradle).
+
+**Its recommendations for the real-printer checks** (for the owner's TEST-CHECKLIST run with the 3C APK): 5 minutes idle on the real LAN printer (no flapping: m-3); two devices listing it for 10 minutes (no "unreachable" notes: the gate's m-4); FEED while idle (the words: m-2); a Pay Now pair on a Bluetooth printer that does not answer DLE EOT (m-5); paper out mid-slip (one labelled REPRINT). For 3G's soak: count `statusOnly` connections per printer per minute and any `unreachable` acks with two writers.
+
+### After the fix: every suite again (at `361c4c4`; once each, in the background, one after another, then the build)
+
+| Suite | Result |
+|---|---|
+| shared; `tsc` | **821/821**; 0 |
+| cafe `npm test` | **5023 tests, 5022 pass, 0 fail, 1 skipped** (5021 + the fix's 2) |
+| cafe, hub, mobile, desktop `tsc` / typecheck and lint | 0, and 0 errors (the 2 old warnings) |
+| mobile; `test:app` | **127/127**; Jest **3/3** |
+| desktop | **192/192** |
+| print tools | **11/11** |
+| live legs (`pos_scratch_print_host_3cfix`) | **`444 passed, 0 failed`** |
+| the Next build (the repo) | exit 0, **132 routes** |
+
+JUnit and the APKs were not rebuilt for the fix (no `apps/mobile` change).
+
+### Deviations and rulings
+
+1. **C4's first GREEN JUnit run failed in 2 s** at `:app:compileDebugKotlin` (`Unresolved reference 'cb'`, `'ReplyCallback'` in `PrinterApi.kt` and `PrinterManager.kt`), though `PrinterTypes.kt`'s typealias was unchanged and every touched file was blob-identical to the gold's C4. A stale incremental-compile state after the RED's failed build: the same command re-run at once gave `BUILD SUCCESSFUL` with main and test compiled, and the expected XMLs. Judged = Expected. Cost if wrong: none (no code changed between the runs).
+2. **The first APK set was void** (Step 2): the release variant's incremental Kotlin compile left a stale `TransportFactory.class`. Rebuilt with `:app:compileReleaseKotlin --rerun`, proved with `javap`, re-hashed, then the exit. Two build notes for the gate and the owner: **a release build in the repo after a Kotlin signature change needs a full compile** (`--rerun` on `compileReleaseKotlin`, or a clean), else the client APK can crash on its printer thread; and `app/build.gradle`'s `isReleaseBuild` turns the ABI split on for any task name containing "release" (`:app:compileReleaseKotlin --rerun aR` built only arm64/armv7, so the x86_64 APK came from a second, plain `aR -PreactNativeArchitectures=x86_64` on the fresh classes). Cost if wrong: none for the code.
+3. **The exit's database** is a fresh `pos_scratch_e2e_3cs`, not `pos_scratch_e2e_3c`: the 3B gate left that one with its own setup and device ids, and the plan asks for a fresh one (`pw-3c.mjs`'s guard accepts the name). Cost if wrong: none.
+4. **The fresh review ran during Steps 2 and 5**, not after them: it is read-only on code no later step changes, and it was kept off Gradle, adb, builds, servers and the harness. Cost if wrong: its test runs slowed the exit a little (its times are within the gate's).
+5. **The emulator's memory:** C: had 5.4 GB free, so `-memory 2048` (as the gate ran it).
+6. **E4's build copy** needed a second build attempt (Google Fonts timed out on the first). Cost if wrong: none.
+7. **The review fix** (I-1, with m-8) is its own commit `361c4c4`, page only; after it every suite and the Next build ran again, and E1 plus a printer down/up check ran on the emulator with the rebuilt page.
+
+### Open for the 3C review gate
+
+- The minors m-1 to m-7 above (m-7's honest cost for the plan's m-3 line and, if the gate wants it, spec §9.3).
+- The build notes (ruling 2): a full release compile for any client APK built from the repo; the ABI split's task-name trigger.
+- Carried, unchanged: the golden-copy review's m-4 and the reviewer's real-printer list (the real-printer checks, Step 0 (a): still not reported by the owner); m-8 of the 3B gate (the beat, lease and ack interplay) → 3G's soak; `hooks/use-print-agent.ts` at 319 lines → 3D may split it.
+- The APKs (`apk-3c-v2/` in this session's scratchpad) are recorded, **not released**; the client release folder is unchanged.
+- Left in this session's scratchpad: `e2e3cs.env` (database `pos_scratch_e2e_3cs`, left), `pw-3c.mjs`, `watch-health.mjs`, the proxies' logs, `emu-*.log`, `shots3c/`, `suites-c6/`, `suites-fix/`, `apk-3c/` (void), `apk-3c-v2/`, `bmain/` (the cache-off build copy of `7f8ed31`), `review3c/` (the code diff and the reviewer's logs). The live legs and the reviewer's runs dropped their own databases (the only 3C databases left on the local mongod are the gate's `pos_scratch_e2e_3c` and this session's `pos_scratch_e2e_3cs`).
