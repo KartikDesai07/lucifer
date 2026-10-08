@@ -37,7 +37,6 @@ import { PrintWriteError } from "@/lib/print-write-outcome";
 import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
 import { desktopPrinterSnapshot, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
 import { devicePrinter } from "@/lib/printer/device-printer";
-import { nativeBridge, nativeOn } from "@/lib/printer/native-bridge";
 import { connectedPoolKey, nativePool, poolDefaultCannotPrint } from "@/lib/printer/native-pool";
 import { printerCannotPrintOf, printerStatusOf, printersState } from "@/lib/printer/printer-registry";
 import { canPrintNow } from "@/lib/printer/print-lane";
@@ -314,12 +313,8 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
     };
   }, [agent, enabled, deviceId, qc, noteJobsForMe]);
 
-  // The wake poll (spec §9.1) and its heartbeat (spec §10): hooks/use-print-agent-wake.ts.
+  // The wake poll (spec §9.1) and its heartbeat (spec §10): hooks/use-print-agent-wake.ts. Phase 3 Session 3D (the gold's
+  // review, I-3): the POS app's hidden tick (app.wake, every 15 s) no longer leases: it refreshed the pulse already
+  // (hooks/use-native-host.ts, whose jobs for this device kick the agent), and the hidden page's wake is the heartbeat.
   usePrintAgentWake({ agent, enabled, isHost, printers, deviceId, noteJobsForMe });
-
-  // The POS app came back to the screen, or its network returned.
-  useEffect(() => {
-    if (agent === null || !enabled || nativeBridge() === null) return;
-    return nativeOn("app.wake", () => agent.kick());
-  }, [agent, enabled]);
 }

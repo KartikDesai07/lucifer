@@ -162,9 +162,13 @@ npm run test:app        # Jest smoke test of the app shell
   background (it never closes, because closing would stop printing).
 - To use a different address, open the printer panel in the POS and choose
   **Change POS address** (under More options).
-- When you turn on "Print all slips on this device", the app shows a
-  **Printing is on** notification and keeps running with the screen off. Android
-  may also ask once to let the app run without battery limits: choose **Allow**.
+- When you turn on "Print all slips on this device", or Printer setup names this
+  device for a printer, the app shows a **Printing is on** notification and
+  keeps running with the screen off. While it is in front its screen stays on
+  (the power button still turns it off; printing goes on). Android may also ask
+  once to let the app run without battery limits: choose **Allow**. Close the
+  app on printing devices at closing time: its notice **POS printing is off.
+  Tap to start.** then shows, as expected; tap it when you open.
 - The app does not start by itself after the phone restarts. A device that was
   printing shows **POS printing is off. Tap to start.** after a restart, an app
   update, or when Android stopped the app: tap it, and the app prints again.

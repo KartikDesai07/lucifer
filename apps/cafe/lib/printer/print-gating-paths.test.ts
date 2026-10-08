@@ -131,7 +131,9 @@ const CASES: PinCase[] = [
       check(p, count(s, "usePrintHostDrainLock(") === 1 && !s.includes("usePrintHostDrainLock(enabled)"), "no ungated lock call");
       check(p, s.includes("usePrintHostWakeLock(enabled);") && s.includes("usePrintHostBeat({ enabled, deviceId, onDemoted });"), "wake lock and routine beat keep `enabled`");
       check(p, s.includes("usePrintHostPrinterBeat({ enabled, deviceId, onDemoted });"), "printer beat is wired with `enabled`");
-      check(p, s.includes("useNativeHostBackground(enabled);"), "native host background is wired with `enabled`");
+      // Phase 3 Session 3D (spec §9.5) deliberately changed: the host, and in printers mode a device that writes a printer.
+      check(p, s.includes("const printsForCafe = enabled || (surfacesMounted && printers.printersMode && printers.isWriter);"), "native host background: the host and every printers-mode writer");
+      check(p, s.includes("const decided = surfacesMounted && deviceId !== \"\" && routing !== \"unknown\" && printersRead.loaded;\n  useNativeHostBackground(printsForCafe, decided);"), "and it tells the app no only once it knows");
       check(p, s.includes('import { useCanPrintOnAny } from "@/hooks/use-device-printer";'), "imports useCanPrintOnAny");
       return p;
     },
@@ -139,7 +141,10 @@ const CASES: PinCase[] = [
       { name: "lock ungated", apply: sub(LOCK_CALL, "const holdsLock = usePrintHostDrainLock(enabled);") },
       { name: "canPrint read after the lock", apply: sub(`const canPrint = useCanPrintOnAny();\n  ${LOCK_CALL}`, `${LOCK_CALL}\n  const canPrint = useCanPrintOnAny();`) },
       { name: "printer beat armed by drains", apply: sub("usePrintHostPrinterBeat({ enabled,", "usePrintHostPrinterBeat({ enabled: drains,") },
-      { name: "native background removed", apply: sub("  useNativeHostBackground(enabled);\n", "") },
+      { name: "native background removed", apply: sub("  useNativeHostBackground(printsForCafe, decided);\n", "") },
+      { name: "the no told before the role is known", apply: sub(' && routing !== "unknown" && printersRead.loaded;', ";") },
+      { name: "native background for the host only", apply: sub("const printsForCafe = enabled || (surfacesMounted && printers.printersMode && printers.isWriter);", "const printsForCafe = enabled;") },
+      { name: "native background for every agent", apply: sub("printers.printersMode && printers.isWriter", "printers.printersMode") },
       { name: "routine beat gated by canPrint", apply: sub("usePrintHostBeat({ enabled, deviceId, onDemoted });", "usePrintHostBeat({ enabled: enabled && canPrint, deviceId, onDemoted });") },
     ],
   },
@@ -234,9 +239,12 @@ const CASES: PinCase[] = [
       // s63 W-Z: a wake right after a poll would only stack a second fetch -- refresh only when the pulse is older than one poll.
       check(p, ordered(s, ['nativeOn("app.wake", () => {', "qc.getQueryState(POS_PULSE_KEYS.all)?.dataUpdatedAt ?? 0;", "if (Date.now() - updatedAt <= REFETCH_INTERVALS.POS_PULSE) return;", "void qc.invalidateQueries({ queryKey: POS_PULSE_KEYS.all });"]), "app.wake invalidates the pulse once, and only when it is older than one poll interval");
       check(p, s.includes('import { REFETCH_INTERVALS } from "@/lib/query";'), "imports REFETCH_INTERVALS");
-      check(p, ordered(s, ["const announce = (): void => {", "announce();", "return () => {", "offWake();", "tell(false);"]), "cleanup unhooks then sends active:false");
+      // Phase 3 Session 3D deliberately changed: the cleanup's own tell(false) (a second one tells a page that knows it prints nothing).
+      check(p, ordered(s, ["const announce = (): void => {", "announce();", "return () => {", "offWake();\n      tell(false);"]), "cleanup unhooks then sends active:false");
       check(p, s.includes("if (!enabled || !hasBridge) return;") && s.includes("usePrintCapabilities().native"), "only while enabled with the app bridge present");
       check(p, s.includes("nativeRequest(\"host.background\", params).catch(() => undefined);"), "a failed request is swallowed");
+      // Phase 3 Session 3D: a page that knows this device prints nothing says so once (the app keeps a wish across restarts).
+      check(p, s.includes("if (!hasBridge || enabled || !decided) return;\n    tell(false);"), "a page that knows this device prints nothing tells the app once");
       check(p, !/setInterval|refetchInterval/.test(s), "no new poll (ruling 5)");
       return p;
     },

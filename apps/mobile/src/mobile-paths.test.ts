@@ -2473,6 +2473,8 @@ function printingProblems(s: PrintingSources): string[] {
     out.push('the notice starts something by itself');
   }
   need(s.strings, '<string name="printing_off_title">POS printing is off. Tap to start.</string>', 'the notice\'s words changed');
+  // Session 3D (D2): the host and a printers-mode writer both run the service; its words fit both.
+  need(s.strings, '<string name="print_host_text">%1$s keeps printing with the screen off.</string>', 'the notification still says this device prints all slips');
   return out;
 }
 const printingSources = (): PrintingSources => ({
@@ -2507,7 +2509,10 @@ test('pin 22 mutation: every printing-state needle can fail', () => {
     ['if (HostLife.noticeOnBroadcast(intent.action, Prefs.printing(context))) PrintingOffNotice.post(context)', 'context.startActivity(intent)'],
   ]);
   everyMutationCaught(run('notice'), base.notice, [['getLaunchIntentForPackage(app.packageName)', 'getLaunchIntentForPackage("x")']]);
-  everyMutationCaught(run('strings'), base.strings, [['POS printing is off. Tap to start.', 'Printing stopped.']]);
+  everyMutationCaught(run('strings'), base.strings, [
+    ['POS printing is off. Tap to start.', 'Printing stopped.'],
+    ['%1$s keeps printing with the screen off.', '%1$s prints all slips.'],
+  ]);
 });
 
 test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {

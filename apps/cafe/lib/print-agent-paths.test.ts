@@ -207,6 +207,14 @@ test("PIN (3C review): the beat's health clock runs on every change of the POS a
   assert.ok(agent.includes("clock.stop();"), "released with the agent");
 });
 
+// Phase 3 Session 3D (the gold's review, I-3): a hidden page in the POS app polls the wake (the heartbeat of a device that
+// prints with the screen off), and the app's 15 s hidden tick never leases (it was 4 empty leases a minute per device).
+test("PIN (3D): in the POS app a hidden page polls the wake; the app's hidden tick does not kick the agent", () => {
+  const wake = src("apps/cafe/hooks/use-print-agent-wake.ts");
+  assert.ok(wake.includes('mayPoll: () => isDesktopShell() || nativeBridge() !== null || document.visibilityState === "visible",'), "the POS app's hidden page keeps its heartbeat; a hidden browser tab does not poll");
+  assert.ok(!src("apps/cafe/hooks/use-print-agent.ts").includes('nativeOn("app.wake"'), "the hidden tick is no reason to lease");
+});
+
 // The 3C review gate (its review's m-2): the takeover printers the app lacks change with the setup or a refused select,
 // not with a status event, so the clock samples the new list the moment the hook sees it.
 test("PIN (3C gate): a new list of takeover printers the app lacks starts the beat's 20 s clock at once", () => {
