@@ -165,7 +165,11 @@ npm run test:app        # Jest smoke test of the app shell
 - When you turn on "Print all slips on this device", the app shows a
   **Printing is on** notification and keeps running with the screen off. Android
   may also ask once to let the app run without battery limits: choose **Allow**.
-- The app does not start by itself after the phone restarts. Open it once.
+- The app does not start by itself after the phone restarts. A device that was
+  printing shows **POS printing is off. Tap to start.** after a restart, an app
+  update, or when Android stopped the app: tap it, and the app prints again.
+  Android 13 and newer ask once for notifications when printing first starts:
+  choose **Allow**, or that notice cannot show.
 
 ## Where things are
 

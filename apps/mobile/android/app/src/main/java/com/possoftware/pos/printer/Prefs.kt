@@ -13,6 +13,9 @@ import org.json.JSONObject
  * v1 keys (the one printer of every app before it) always name the default printer: an app updated from v1 moves its
  * one printer into the list as the default, and an older app reinstalled over this one still finds this device's
  * printer ([PoolList.restore] follows any change it makes).
+ *
+ * Phase 3 Session 3D (spec §9.5): whether this device prints for the cafe in the background ([KEY_PRINTING], the page's
+ * own wish: [HostLife]) and whether the notification permission was asked once.
  */
 object Prefs {
   private const val FILE = "pos_software_prefs"
@@ -24,6 +27,8 @@ object Prefs {
   private const val KEY_PRINTERS = "printers"
   private const val KEY_PRINTER_DEFAULT = "printerDefault"
   private const val KEY_BATTERY_PROMPTED = "batteryPrompted"
+  private const val KEY_PRINTING = "printing"
+  private const val KEY_NOTIFICATIONS_ASKED = "notificationsAsked"
 
   private fun prefs(ctx: Context): SharedPreferences =
       ctx.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -104,5 +109,19 @@ object Prefs {
 
   fun markBatteryPrompted(ctx: Context) {
     prefs(ctx).edit().putBoolean(KEY_BATTERY_PROMPTED, true).apply()
+  }
+
+  /** Session 3D: the page wants this device to print in the background ([HostLife]). */
+  fun printing(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_PRINTING, false)
+
+  /** Written at once (commit, off the main thread: the module's thread): a process killed right after still knows. */
+  fun setPrinting(ctx: Context, on: Boolean) {
+    prefs(ctx).edit().putBoolean(KEY_PRINTING, on).commit()
+  }
+
+  fun notificationsAsked(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_NOTIFICATIONS_ASKED, false)
+
+  fun markNotificationsAsked(ctx: Context) {
+    prefs(ctx).edit().putBoolean(KEY_NOTIFICATIONS_ASKED, true).apply()
   }
 }

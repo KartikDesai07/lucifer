@@ -599,14 +599,38 @@ function manifestProblems(xml: string): string[] {
   if (!meta?.includes('android:resource="@xml/usb_printer_filter"')) {
     out.push('USB meta-data does not point at @xml/usb_printer_filter');
   }
-  if (/<receiver\b/.test(x)) {
-    out.push('a <receiver> element exists');
+  // Session 3D (spec §9.5) deliberately changed: one receiver, the reboot and update notice ("POS printing is off. Tap to
+  // start."), which hears only those two system broadcasts and never starts the app.
+  const receivers = [
+    ...x.matchAll(/<receiver\b[\s\S]*?<\/receiver>|<receiver\b[^>]*\/>/g),
+  ].map(m => m[0]);
+  if (
+    receivers.length !== 1 ||
+    !receivers[0].includes('android:name=".printer.PrintingOffReceiver"')
+  ) {
+    out.push('the one <receiver> is not PrintingOffReceiver');
+  } else {
+    for (const need of [
+      'android:exported="true"',
+      '<action android:name="android.intent.action.BOOT_COMPLETED" />',
+      '<action android:name="android.intent.action.MY_PACKAGE_REPLACED" />',
+    ]) {
+      if (!receivers[0].includes(need)) {
+        out.push('PrintingOffReceiver lacks ' + need);
+      }
+    }
+    if ((receivers[0].match(/<action\b/g) ?? []).length !== 2) {
+      out.push('PrintingOffReceiver hears more than a reboot and an update');
+    }
+  }
+  if (!perms.has('RECEIVE_BOOT_COMPLETED')) {
+    out.push('RECEIVE_BOOT_COMPLETED missing');
   }
   return out;
 }
 const manifest = () => read(join(MAIN, 'AndroidManifest.xml'));
 
-test('pin 6: AndroidManifest permissions, service, USB and no receiver', () => {
+test('pin 6: AndroidManifest permissions, service, USB and one receiver (Session 3D)', () => {
   assert.deepEqual(manifestProblems(manifest()), []);
   const raw = manifest();
   assert.ok(
@@ -664,6 +688,21 @@ test('pin 6 mutation: every manifest needle can fail', () => {
       '</application>',
       '<receiver android:name=".BootReceiver" android:exported="false" /></application>',
     ],
+    // Session 3D: the one receiver, its two actions, and the boot permission.
+    [
+      'android:name=".printer.PrintingOffReceiver"',
+      'android:name=".printer.OtherReceiver"',
+    ],
+    [
+      'android:name=".printer.PrintingOffReceiver"\n        android:exported="true"',
+      'android:name=".printer.PrintingOffReceiver"\n        android:exported="false"',
+    ],
+    ['<action android:name="android.intent.action.BOOT_COMPLETED" />', ''],
+    [
+      '<action android:name="android.intent.action.MY_PACKAGE_REPLACED" />',
+      '<action android:name="android.intent.action.MY_PACKAGE_REPLACED" />\n            <action android:name="android.intent.action.TIME_SET" />',
+    ],
+    [perm('RECEIVE_BOOT_COMPLETED'), perm('RECEIVE_BOOT_COMPLETEDX')],
   ];
   everyMutationCaught(manifestProblems, manifest(), table);
   const hidden = mutated(
@@ -1397,9 +1436,10 @@ function serviceProblems(s: KtSources): string[] {
   if (!afterForeground.test(svc)) {
     out.push('onStartCommand does not check stopWanted after startForeground');
   }
-  // both stop branches stop only their own start command (a newer restart survives)
-  if (count(svc, 'stopSelf(startId)') !== 2) {
-    out.push('both stop branches must call stopSelf(startId)');
+  // both stop branches stop only their own start command (a newer restart survives). Session 3D deliberately changed:
+  // so do the two branches of a restart after the process died (the notice, a silent stop).
+  if (count(svc, 'stopSelf(startId)') !== 4) {
+    out.push('every stop branch must call stopSelf(startId)');
   }
   if (svc.includes('stopSelf()')) {
     out.push('a bare stopSelf() drops a newer start command');
@@ -1760,9 +1800,10 @@ test('pin 14 mutation: every needle can fail', () => {
       'stopSelf(startId)\n      return START_NOT_STICKY\n    }\n    foregroundReached',
       'stopSelf()\n      return START_NOT_STICKY\n    }\n    foregroundReached',
     ],
+    // Session 3D deliberately changed: the stopWanted branch is followed by the run's own start (running, the notice).
     [
-      'stopSelf(startId)\n      return START_NOT_STICKY\n    }\n    probeIssued',
-      'stopSelf()\n      return START_NOT_STICKY\n    }\n    probeIssued',
+      'stopSelf(startId)\n      return START_NOT_STICKY\n    }\n    running = true',
+      'stopSelf()\n      return START_NOT_STICKY\n    }\n    running = true',
     ],
     ['R.string.print_host_alert_title', 'R.string.print_host_title_printer'],
   ]);
@@ -2397,6 +2438,76 @@ test('pin 21 mutation: every gate-fix needle can fail', () => {
     ['incremental = false', 'incremental = true'],
     ['doFirst { incremental = false }', 'incremental = false'],
   ]);
+});
+
+// ── pin 22: Session 3D, the printing state (spec §9.5) ─────────────────────
+// The page's wish is kept (Prefs), the service is sticky, and a restart after its process died, a stop the page did not
+// ask for, a reboot or an update says "POS printing is off. Tap to start." (never starting the app); the page's own "no"
+// clears the wish first; the notification permission is asked once.
+interface PrintingSources {
+  service: string;
+  host: string;
+  prefs: string;
+  receiver: string;
+  notice: string;
+  strings: string;
+}
+function printingProblems(s: PrintingSources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!strip(text).includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(s.service, 'when (HostLife.onStart(intent?.action, Prefs.printing(this))) {\n      HostLife.Start.NOTICE_THEN_STOP -> {\n        PrintingOffNotice.post(this)\n        stopSelf(startId)', 'a restart after the process died does not say printing is off');
+  need(s.service, 'return START_STICKY', 'the service is not sticky');
+  need(s.service, 'if (running && HostLife.noticeOnStop(Prefs.printing(this))) PrintingOffNotice.post(this)', 'a stop the page did not ask for says nothing');
+  need(s.service, 'PrintingOffNotice.cancel(this)', 'printing on again leaves the notice up');
+  need(s.host, 'Prefs.setPrinting(ctx.applicationContext, false)\n      stopHost()', 'the page\'s own stop does not clear the wish before the stop');
+  need(s.host, 'PrintHostService.start(ctx.applicationContext, label)\n      Prefs.setPrinting(ctx.applicationContext, true)', 'printing on is not kept');
+  need(s.host, 'if (!askNotificationsOnce()) promptBatteryOnce()', 'the notification permission is not asked');
+  need(s.prefs, 'prefs(ctx).edit().putBoolean(KEY_PRINTING, on).commit()', 'the wish is not written at once');
+  need(s.receiver, 'if (HostLife.noticeOnBroadcast(intent.action, Prefs.printing(context))) PrintingOffNotice.post(context)', 'a reboot or an update says nothing');
+  need(s.notice, 'getLaunchIntentForPackage(app.packageName)', 'a tap does not open the app');
+  if (/startActivity|startForegroundService|startService/.test(strip(s.receiver) + strip(s.notice))) {
+    out.push('the notice starts something by itself');
+  }
+  need(s.strings, '<string name="printing_off_title">POS printing is off. Tap to start.</string>', 'the notice\'s words changed');
+  return out;
+}
+const printingSources = (): PrintingSources => ({
+  service: kt('PrintHostService.kt'),
+  host: kt('HostController.kt'),
+  prefs: kt('Prefs.kt'),
+  receiver: kt('PrintingOffReceiver.kt'),
+  notice: kt('PrintingOffNotice.kt'),
+  strings: read(join(MAIN, 'res', 'values', 'strings.xml')),
+});
+
+test('pin 22: Session 3D, the printing state: sticky, "POS printing is off. Tap to start." after a restart, an unasked stop, a reboot or an update', () => {
+  assert.deepEqual(printingProblems(printingSources()), []);
+});
+
+test('pin 22 mutation: every printing-state needle can fail', () => {
+  const base = printingSources();
+  const run = (key: keyof PrintingSources) => (text: string) => printingProblems({ ...base, [key]: text });
+  everyMutationCaught(run('service'), base.service, [
+    ['        PrintingOffNotice.post(this)\n        stopSelf(startId)', '        stopSelf(startId)'],
+    ['return START_STICKY', 'return START_NOT_STICKY'],
+    ['if (running && HostLife.noticeOnStop(Prefs.printing(this))) PrintingOffNotice.post(this)', 'Unit'],
+    ['PrintingOffNotice.cancel(this)', 'Unit'],
+  ]);
+  everyMutationCaught(run('host'), base.host, [
+    ['Prefs.setPrinting(ctx.applicationContext, false)\n      stopHost()', 'stopHost()'],
+    ['      Prefs.setPrinting(ctx.applicationContext, true)\n', ''],
+    ['if (!askNotificationsOnce()) promptBatteryOnce()', 'promptBatteryOnce()'],
+  ]);
+  everyMutationCaught(run('prefs'), base.prefs, [['putBoolean(KEY_PRINTING, on).commit()', 'putBoolean(KEY_PRINTING, on).apply()']]);
+  everyMutationCaught(run('receiver'), base.receiver, [
+    ['if (HostLife.noticeOnBroadcast(intent.action, Prefs.printing(context))) PrintingOffNotice.post(context)', 'context.startActivity(intent)'],
+  ]);
+  everyMutationCaught(run('notice'), base.notice, [['getLaunchIntentForPackage(app.packageName)', 'getLaunchIntentForPackage("x")']]);
+  everyMutationCaught(run('strings'), base.strings, [['POS printing is off. Tap to start.', 'Printing stopped.']]);
 });
 
 test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {

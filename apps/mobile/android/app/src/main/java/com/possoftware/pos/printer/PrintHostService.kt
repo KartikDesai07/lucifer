@@ -25,11 +25,14 @@ import org.json.JSONObject
 /**
  * Foreground service (type connectedDevice) that keeps the process, the printer link and the page
  * alive while the screen is off. Started only from the foreground; the tick wakes the page.
+ *
+ * Phase 3 Session 3D (spec §9.5): sticky. When Android restarts it after its process died, the page died too, so it says
+ * "POS printing is off. Tap to start." and stops; so does a stop the page did not ask for ([HostLife]).
  */
 class PrintHostService : Service() {
 
   companion object {
-    const val ACTION_START = "com.possoftware.pos.printer.action.START_HOST"
+    const val ACTION_START = HostLife.ACTION_START
     const val EXTRA_LABEL = "label"
     const val CHANNEL_ID = "print_host"
     const val ALERT_CHANNEL_ID = "print_host_alert"
@@ -71,6 +74,8 @@ class PrintHostService : Service() {
   private var wakeLock: PowerManager.WakeLock? = null
   private var label = ""
   private var shownKey = ""
+  // Session 3D: it ran in the foreground for the page (so its stop may need the "printing is off" notice).
+  private var running = false
 
   // Page liveness (main thread only): each tick scores the previous tick's probe, then sends one.
   private var probeSeq = 0
@@ -112,6 +117,18 @@ class PrintHostService : Service() {
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    when (HostLife.onStart(intent?.action, Prefs.printing(this))) {
+      HostLife.Start.NOTICE_THEN_STOP -> {
+        PrintingOffNotice.post(this)
+        stopSelf(startId)
+        return START_NOT_STICKY
+      }
+      HostLife.Start.STOP -> {
+        stopSelf(startId)
+        return START_NOT_STICKY
+      }
+      HostLife.Start.RUN -> Unit
+    }
     label = intent?.getStringExtra(EXTRA_LABEL).orEmpty()
     try {
       ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), foregroundType())
@@ -127,12 +144,14 @@ class PrintHostService : Service() {
       stopSelf(startId)
       return START_NOT_STICKY
     }
+    running = true
+    PrintingOffNotice.cancel(this)
     probeIssued = false
     deadTicks = 0
     renewWakeLock()
     handler.removeCallbacks(tick)
     handler.postDelayed(tick, APP_WAKE_TICK_MS)
-    return START_NOT_STICKY
+    return START_STICKY
   }
 
   override fun onDestroy() {
@@ -144,6 +163,8 @@ class PrintHostService : Service() {
       // Already released.
     }
     wakeLock = null
+    // Session 3D: stopped while the page still wants this device to print (its task swiped away, its screen destroyed).
+    if (running && HostLife.noticeOnStop(Prefs.printing(this))) PrintingOffNotice.post(this)
     super.onDestroy()
   }
 
