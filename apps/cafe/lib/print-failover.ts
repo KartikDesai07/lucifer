@@ -10,7 +10,7 @@ import {
   type PrinterFailover,
   type PrinterHealthReport,
 } from "@pos/shared/print-failover";
-import { routablePrinterOf, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
+import { printerWriterDeviceId, routablePrinterOf, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
 import { Printer } from "@/models/Printer";
 import { PrintJob } from "@/models/PrintJob";
 import { readOnlinePrintDevices } from "@/lib/print-device";
@@ -103,14 +103,16 @@ export async function moveToBackupPrinters(printers: readonly PrinterConfig[], f
 /** §9.3: a writer that could not reach a network printer (its ack: failed, sent "no", reason "unreachable") is skipped
  *  for it (at least 5 minutes, then until its own lease names the printer again: endPrinterSkipOf), so another device
  *  that can write network printers takes it over. Only the printer's writer now is skipped: an ack from a device that
- *  no longer writes it changes nothing. One write to the printer (the skips that still hold, this device's renewed);
- *  when the writer changes, the waiting slips move to the new one at once. Returns who writes it now. */
-export async function recordPrinterUnreachable(input: { printerId: string; deviceId: string; nowMs: number }): Promise<string | null> {
+ *  no longer writes it changes nothing. Session 3C (the 3B review's m-2): or a `candidate`, a device that may take the
+ *  printer over and whose beat says it cannot reach it, skipped ahead of time. One write to the printer (the skips that
+ *  still hold, this device's renewed); when the writer changes, the waiting slips move to the new one at once. Returns
+ *  who writes it now. */
+export async function recordPrinterUnreachable(input: { printerId: string; deviceId: string; nowMs: number; candidate?: boolean }): Promise<string | null> {
   const printer = routablePrinterOf(await listPrinters(), input.printerId);
   if (printer === null || printer.connection.kind !== "lan") return null;
   const failover = { online: await readOnlinePrintDevices(input.nowMs), nowMs: input.nowMs };
   const before = printerActiveWriter(printer, failover);
-  if (before !== input.deviceId) return before;
+  if (before !== input.deviceId && input.candidate !== true) return before;
   // A skip holds while its `until` (the end of its first 5 minutes) is later than this (printerSkipHolds).
   const heldFrom = new Date(input.nowMs + PRINTER_UNREACHABLE_SKIP_MS - PRINTER_UNREACHABLE_HOLD_MS);
   const until = new Date(input.nowMs + PRINTER_UNREACHABLE_SKIP_MS);
@@ -128,7 +130,7 @@ export async function recordPrinterUnreachable(input: { printerId: string; devic
   ]);
   const skips = [...(printer.unreachable ?? []).filter((skip) => skip.deviceId !== input.deviceId), { deviceId: input.deviceId, until: until.toISOString() }];
   const writer = printerActiveWriter({ ...printer, unreachable: skips }, failover);
-  if (writer !== null && writer !== input.deviceId) await retargetPrinterJobs(printer.id, writer, input.nowMs);
+  if (writer !== null && writer !== before) await retargetPrinterJobs(printer.id, writer, input.nowMs);
   return writer;
 }
 
@@ -139,9 +141,13 @@ export async function recordPrinterUnreachable(input: { printerId: string; devic
  *  leased and never acked, while another device could print them. "connected" from a device skipped for it ends its skip
  *  once the first 5 minutes are up, exactly as its lease naming the printer does, so the primary gets its printer back
  *  at its next beat. Only a network printer; a skip already held, or one not yet past its 5 minutes, writes nothing.
- *  Returns how many skips it started or ended (one write each). */
+ *  Session 3C (the 3B review's m-2): "disconnected" from a device that may take the printer over (its beat says
+ *  `lanFailover`; the setup names another device) skips it too, ahead of time, so a failover never picks a candidate that
+ *  cannot print it and waits for that device's first beat as the writer. Returns how many skips it started or ended (one
+ *  write each). */
 export async function skipUnreachableFromBeat(input: {
   deviceId: string;
+  lanFailover?: boolean;
   reports: readonly PrinterHealthReport[];
   printers: readonly PrinterConfig[];
   failover: PrinterFailover;
@@ -157,9 +163,11 @@ export async function skipUnreachableFromBeat(input: {
       writes += 1;
       continue;
     }
-    if (report.link !== "disconnected" || printerActiveWriter(printer, input.failover) !== input.deviceId) continue;
+    if (report.link !== "disconnected") continue;
+    const candidate = input.lanFailover === true && printerWriterDeviceId(printer) !== input.deviceId;
+    if (!candidate && printerActiveWriter(printer, input.failover) !== input.deviceId) continue;
     if (printerSkippedWriters(printer, input.nowMs).includes(input.deviceId)) continue;
-    await recordPrinterUnreachable({ printerId: printer.id, deviceId: input.deviceId, nowMs: input.nowMs });
+    await recordPrinterUnreachable({ printerId: printer.id, deviceId: input.deviceId, nowMs: input.nowMs, candidate });
     writes += 1;
   }
   return writes;

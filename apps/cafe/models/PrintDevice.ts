@@ -18,6 +18,7 @@ export interface IPrintDevice extends Document {
   appVersion?: string;
   nativeProtocol?: number; // the Android bridge version; 1 = one printer only
   tokenSlips?: boolean; // Phase 3 (the token fix's M-2): what its last lease said: its page prints "token" jobs
+  beatAt?: Date; // Phase 3 Session 3C (G-1): its own wake's last heartbeat write (a lease never writes it)
   createdAt: Date;
   updatedAt: Date;
 }
@@ -50,6 +51,9 @@ export const printDeviceSchema = new Schema<IPrintDevice>(
     nativeProtocol: { type: Number },
     // Phase 3 (the token fix's M-2): written by the lease's touch, and only when it changes.
     tokenSlips: { type: Boolean },
+    // Phase 3 Session 3C (G-1): only the wake writes it, so a device whose leases keep it online but whose page no longer
+    // polls the wake never counts as one that can take a network printer over (lib/print-device.ts lanFailoverNow).
+    beatAt: { type: Date },
   },
   { timestamps: true },
 );

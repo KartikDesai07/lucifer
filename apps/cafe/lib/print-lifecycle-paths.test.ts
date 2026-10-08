@@ -271,7 +271,9 @@ test("PIN: POST /api/print-jobs/wake beats, reads the device's line and the agen
       "await recordPrinterHealth({ deviceId: parsed.data.deviceId, reports: parsed.data.printers, printers, failover: { online, nowMs }, nowMs }).catch(() => 0);",
       // Session 3B (the 3A review gate, M-8 d) deliberately added: a beat that says this device cannot reach a network
       // printer it writes now skips it, as an "unreachable" ack does; and the answer says which printers it took over.
-      "await skipUnreachableFromBeat({ deviceId: parsed.data.deviceId, reports: parsed.data.printers, printers, failover: { online, nowMs }, nowMs }).catch(() => 0);",
+      // Session 3C (the 3B review's m-2) deliberately added: the beat says whether this device may take a printer over,
+      // so a candidate that cannot reach one is skipped ahead of time.
+      "await skipUnreachableFromBeat({ deviceId: parsed.data.deviceId, lanFailover: parsed.data.capabilities.lanFailover === true, reports: parsed.data.printers, printers, failover: { online, nowMs }, nowMs }).catch(() => 0);",
       "const agents = Math.max(1, online.length);",
       "after(() => sweepPrintJobsThrottled(nowMs))",
       "const takenOver = printersTakenOverBy(printers, parsed.data.deviceId, { online, nowMs });",
@@ -297,16 +299,37 @@ test("PIN (3B): a beat's settled link starts its device's skip for a network pri
       'if (report.link === "connected") {',
       "if (!printerSkipEndsFor(printer, input.deviceId, input.nowMs)) continue;",
       "await endPrinterSkipOf(printer, input.deviceId, input.nowMs);",
-      'if (report.link !== "disconnected" || printerActiveWriter(printer, input.failover) !== input.deviceId) continue;',
+      'if (report.link !== "disconnected") continue;',
+      // Session 3C (the 3B review's m-2) deliberately changed: a device that may take the printer over is skipped ahead
+      // of time too; otherwise only the printer's writer now.
+      "const candidate = input.lanFailover === true && printerWriterDeviceId(printer) !== input.deviceId;",
+      "if (!candidate && printerActiveWriter(printer, input.failover) !== input.deviceId) continue;",
       "if (printerSkippedWriters(printer, input.nowMs).includes(input.deviceId)) continue;",
-      "await recordPrinterUnreachable({ printerId: printer.id, deviceId: input.deviceId, nowMs: input.nowMs });",
+      "await recordPrinterUnreachable({ printerId: printer.id, deviceId: input.deviceId, nowMs: input.nowMs, candidate });",
     ],
     "skipUnreachableFromBeat",
   );
   // The 3A review gate (m-D): a network printer every writer is skipped for moves its slips to its backup.
   assert.ok(s.includes("if (backup === null || printerWriterCanPrint(printer, failover) || !printerWriterCanPrint(backup, failover)) continue;"), "the backup move asks who can print, not only who is online");
-  // The devices read says which device can take a network printer over (the setup page's words).
-  assert.ok(src(DEVICE).includes('...(row.capabilities?.lanFailover === true ? { lanFailover: true as const } : {}),'), "the devices read carries lanFailover");
+  // The devices read says which device can take a network printer over (the setup page's words); Session 3C (G-1): only
+  // while its own wake is fresh.
+  assert.ok(src(DEVICE).includes("...(lanFailoverNow(row, nowMs) ? { lanFailover: true as const } : {}),"), "the devices read carries lanFailover");
+});
+
+// Session 3C (G-1, the 3A review gate's exit pre-run): a lease refreshes lastSeenAt, but only the wake says lanFailover. A
+// device counts as able to take a printer over only while its own wake is fresh (PrintDevice.beatAt, written in the wake's
+// heartbeat write), and that write is due whenever beatAt is 30 s old, even right after a lease touched the device.
+test("PIN (3C, G-1): only a device whose own wake is fresh may take a printer over; the wake's write is never starved by a lease's touch", () => {
+  const s = src(DEVICE);
+  const beat = s.slice(s.indexOf("export async function beatPrintDevice("), s.indexOf("export async function touchPrintDevice("));
+  assert.ok(beat.includes("{ deviceId: beat.deviceId, $or: [{ lastSeenAt: { $lt: new Date(nowMs - PRINT_DEVICE_HEARTBEAT_WRITE_MS) } }, { beatAt: { $not: { $gte: due } } }] },"), "the wake's write is due on either clock");
+  assert.ok(beat.includes("beatAt: new Date(nowMs),"), "the wake's write stamps beatAt");
+  const touch = s.slice(s.indexOf("export async function touchPrintDevice("), s.indexOf("export async function printDeviceDrawsTokens("));
+  assert.ok(touch.includes("lastSeenAt: new Date(nowMs)") && !touch.includes("beatAt"), "a lease's touch refreshes lastSeenAt, never beatAt");
+  assert.ok(s.includes('.select("deviceId capabilities.lanFailover beatAt")'), "who is online reads beatAt");
+  assert.ok(s.includes("lanFailover: lanFailoverNow(row, nowMs)"), "who is online counts lanFailover only from a fresh wake");
+  assert.ok(s.includes("return row.capabilities?.lanFailover === true && row.beatAt !== undefined && row.beatAt.getTime() >= nowMs - PRINT_DEVICE_ONLINE_MS;"), "fresh = within the online window");
+  assert.ok(src("apps/cafe/models/PrintDevice.ts").includes("beatAt: { type: Date },"), "the model keeps beatAt");
 });
 
 // Session 1A final-review fixes (plan "Session 1A Results", findings I1 and I4).

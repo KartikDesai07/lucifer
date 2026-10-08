@@ -70,8 +70,9 @@ export async function POST(req: Request) {
     if (parsed.data.printers !== undefined && parsed.data.printers.length > 0) {
       await recordPrinterHealth({ deviceId: parsed.data.deviceId, reports: parsed.data.printers, printers, failover: { online, nowMs }, nowMs }).catch(() => 0);
       // Session 3B (the 3A review gate, M-8 d): a network printer it writes now and says it cannot reach skips it, as an
-      // "unreachable" ack does (one write per skip; best-effort).
-      await skipUnreachableFromBeat({ deviceId: parsed.data.deviceId, reports: parsed.data.printers, printers, failover: { online, nowMs }, nowMs }).catch(() => 0);
+      // "unreachable" ack does (one write per skip; best-effort). Session 3C (the 3B review's m-2): so does one it may take
+      // over, ahead of time.
+      await skipUnreachableFromBeat({ deviceId: parsed.data.deviceId, lanFailover: parsed.data.capabilities.lanFailover === true, reports: parsed.data.printers, printers, failover: { online, nowMs }, nowMs }).catch(() => 0);
     }
     const agents = Math.max(1, online.length);
     try {
