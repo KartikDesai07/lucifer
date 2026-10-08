@@ -119,11 +119,13 @@ function setupFailoverOf(devices: readonly PrintDeviceSummary[], nowMs: number):
  *  slips), and for a printer routing sends slips to, who prints it now when another device took it over, the problem
  *  its writer reported (its device offline is the row's own state), and a network printer no other device online could
  *  take over. */
-export function printerFailoverLines(printer: PrinterConfig, printers: readonly PrinterConfig[], devices: readonly PrintDeviceSummary[], thisDeviceId: string, nowMs: number): string[] {
+export function printerFailoverLines(printer: PrinterConfig, printers: readonly PrinterConfig[], devices: readonly PrintDeviceSummary[], thisDeviceId: string, nowMs: number, devicesFailed = false): string[] {
   const lines: string[] = [];
   const backup = printer.backupPrinterId === undefined ? undefined : printers.find((row) => row.id === printer.backupPrinterId);
   if (backup !== undefined) lines.push(`Backup: ${backup.name}${routablePrinterOf(printers, backup.id) === null ? " (not in use)" : ""}`);
-  if (routablePrinterOf(printers, printer.id) === null) return lines;
+  // Session 3C (the 3B gate review's m-B): with the devices read failed nothing is known of who prints it now, its
+  // writer's report or who could take it over: only its backup (the row's own state already says the read failed).
+  if (routablePrinterOf(printers, printer.id) === null || devicesFailed) return lines;
   const failover = setupFailoverOf(devices, nowMs);
   const writer = printerActiveWriter(printer, failover);
   if (writer !== null && writer !== printerWriterDeviceId(printer)) lines.push(`Printed now by ${deviceName(writer, devices, thisDeviceId)}`);

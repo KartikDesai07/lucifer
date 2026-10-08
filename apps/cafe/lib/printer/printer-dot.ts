@@ -123,15 +123,18 @@ function thisDeviceHostRow(remote: PrintHostDot, lane: DotLane, local: PrinterSt
   return dot("no-printer");
 }
 
+// Session 3B (spec §10): it answers but is out of paper, cover open or in error; 3C (m-7): in simple mode too.
+function withProblem(row: PrinterDot, printers?: PrinterDotPrinters): PrinterDot {
+  return printers?.problem === undefined || !row.show || !row.ok ? row : { show: true, ok: false, reason: "printer-problem", problem: printerProblemText(printers.problem.name, printers.problem.problem) };
+}
+
 // Session 2D (spec §10): the worst state among the printers this device writes; with none, its slips print at the
 // cafe's printers (the waiting count and the alarm speak for those). A former host's record plays no part.
 function printersRow(printers: PrinterDotPrinters, lane: DotLane, local: PrinterStatus, desktopChosen: DesktopChosen): PrinterDot {
   if (!printers.isWriter) return dot("printers-elsewhere");
   if (!printers.allLocal) return dot("printer-not-here");
   const row = noHostRow(lane, printers.worst ?? local, desktopChosen);
-  // Session 3B (spec §10): every printer answers, but one is out of paper, has its cover open or reports an error.
-  if (printers.problem !== undefined && row.show && row.ok) return { show: true, ok: false, reason: "printer-problem", problem: printerProblemText(printers.problem.name, printers.problem.problem) };
-  return row;
+  return withProblem(row, printers);
 }
 
 export function printerDotOf(input: PrinterDotInput): PrinterDot {
@@ -140,9 +143,8 @@ export function printerDotOf(input: PrinterDotInput): PrinterDot {
   if (lane === "pending" || remote === "loading") return NO_DOT;
   if (input.printers?.printersMode === true) return printersRow(input.printers, lane, local, desktopChosen);
   if (remote === "unknown") return dot("checking");
-  if (remote === "none") return noHostRow(lane, local, desktopChosen);
-  if (isHostDevice) return thisDeviceHostRow(remote, lane, local, desktopChosen);
-  return remoteRow(remote);
+  const own = remote === "none" ? noHostRow(lane, local, desktopChosen) : isHostDevice ? thisDeviceHostRow(remote, lane, local, desktopChosen) : null;
+  return own === null ? remoteRow(remote) : withProblem(own, input.printers);
 }
 
 // ── Copy ─────────────────────────────────────────────────────────────────────

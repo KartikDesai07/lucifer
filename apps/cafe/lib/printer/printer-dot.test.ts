@@ -434,3 +434,14 @@ test("3B: a printer of this device out of paper, its cover open or in error is r
   assert.equal(down.show && down.reason, "printer-off", "a printer that does not answer: reconnect it first");
   assert.deepEqual(printerDotOf({ ...base, printers }), { show: true, ok: true, reason: "ok" }, "nothing known: green as before");
 });
+
+// Phase 3 Session 3C (the 3B golden-copy review's m-7): in simple mode the device that prints on its POS app's own printer
+// turns its dot red with that printer's words too; a device whose slips print at another device keeps that device's row.
+test("3C (m-7): simple mode: this device's own printer out of paper, its cover open or in error is red with its words", () => {
+  const base = { lane: "raster" as const, local: "connected" as const, deviceOffline: false, desktopChosen: "unknown" as const };
+  const printers = { printersMode: false, isWriter: false, allLocal: true, problem: { name: "RPP02N", problem: "cover-open" as const } };
+  assert.deepEqual(printerDotOf({ ...base, remote: "none", isHostDevice: false, printers }), { show: true, ok: false, reason: "printer-problem", problem: "RPP02N has its cover open." }, "no print host: this device prints its own slips");
+  assert.deepEqual(printerDotOf({ ...base, remote: "ok", isHostDevice: true, printers }), { show: true, ok: false, reason: "printer-problem", problem: "RPP02N has its cover open." }, "the print host itself");
+  assert.deepEqual(printerDotOf({ ...base, remote: "ok", isHostDevice: false, printers }), { show: true, ok: true, reason: "ok" }, "another device prints all slips: its row, as before");
+  assert.deepEqual(printerDotOf({ ...base, remote: "none", isHostDevice: false, local: "disconnected", printers }), { show: true, ok: false, reason: "printer-off" }, "a printer that does not answer: reconnect it first");
+});

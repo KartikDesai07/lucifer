@@ -322,4 +322,8 @@ test("3B: a printer row says its backup, who prints it now, its problem in its w
   const off = { ...kitchen, enabled: false };
   assert.deepEqual(printerFailoverLines(off, [off, counter], devices, "me", NOW), ["Backup: COUNTER"], "a printer switched off says only its backup");
   assert.equal(DEVICE_TAKES_OVER_TEXT, "Can take over network printers");
+  // Session 3C (the 3B gate review's m-B): with the devices read failed, nothing is known of who prints it now or who could
+  // take it over, so the row says only its backup (never "No other device online can take it over").
+  assert.deepEqual(printerFailoverLines(counter, printers, [], "me", NOW, true), [], "the devices read failed: no takeover words");
+  assert.deepEqual(printerFailoverLines(kitchen, printers, [], "me", NOW, true), ["Backup: COUNTER"], "… only the backup, which the printers read says");
 });

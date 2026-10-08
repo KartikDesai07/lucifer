@@ -34,7 +34,9 @@ export interface DesktopPrinters {
 /** Session 2F1 (spec §9.2): the POS app's printers on bridge v2 (nativePool()): each one's id and state. null on any
  *  other device, and on an app that speaks only v1 (the release APK), which prints its one printer as before. */
 export interface NativePoolView {
-  printers: readonly { id: string; status: PrinterStatus; paper?: PrinterPaperState; cover?: PrinterCoverState; error?: true }[];
+  printers: readonly { id: string; status: PrinterStatus; paper?: PrinterPaperState; cover?: PrinterCoverState; error?: true; printer?: { name: string } }[];
+  /** Session 3C (the 3B golden-copy review's m-7): the app's default printer, the one simple mode prints on. */
+  defaultId?: string | null;
 }
 
 /** Session 2F1: the app's id a printer of the setup is, among the app's printers on bridge v2, or null. A LAN printer is
@@ -199,6 +201,11 @@ export function dotPrintersOf(
     const name = printers.find((printer) => printer.id === id)?.name;
     return problem !== null && DOT_PROBLEMS.includes(problem) && name !== undefined ? [{ name, problem }] : [];
   });
+  // Session 3C (the 3B golden-copy review's m-7): in simple mode this device prints on its POS app's own printer (the
+  // app's default), so that printer's paper, cover or error turns the dot red too, by the app's name for it.
+  const own = agent.printersMode ? undefined : pool?.printers.find((entry) => entry.id === pool.defaultId);
+  const ownProblem = own === undefined ? null : printerHealthProblem({ link: "connected", paper: own.paper, cover: own.cover, error: own.error });
+  if (own !== undefined && ownProblem !== null && DOT_PROBLEMS.includes(ownProblem)) problems.push({ name: own.printer?.name ?? "The printer", problem: ownProblem });
   const problem = problems.sort((a, b) => PRINTER_PROBLEMS.indexOf(a.problem) - PRINTER_PROBLEMS.indexOf(b.problem))[0];
   return {
     printersMode: agent.printersMode,

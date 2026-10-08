@@ -128,7 +128,7 @@ export function PrintersSetupSection({ printers, stations, devices, devicesFaile
                   Paper {printer.paper} mm · KOT copies {printer.copies.kot} · Bill copies {printer.copies.bill}
                 </p>
                 {/* Session 3B (spec §9.3, §9.4, §10): its backup, who prints it now, its problem, no takeover. */}
-                {printerFailoverLines(printer, printers, devices, deviceId, Date.now()).map((line) => (
+                {printerFailoverLines(printer, printers, devices, deviceId, Date.now(), devicesFailed).map((line) => (
                   <p key={line} className="text-brand-muted">
                     {line}
                   </p>

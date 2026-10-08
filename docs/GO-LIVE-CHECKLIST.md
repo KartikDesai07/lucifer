@@ -312,6 +312,11 @@ Phase 3 release; these notes cover the web part.
       print there, marked BACKUP PRINTER, while its own device is offline or no
       device can reach it." The backup must be switched on and take slips; the
       row then shows "Backup: ‹name›".
+- [ ] **If you roll the web back** to a release from before printing Phase 3,
+      reload every POS screen again afterwards. A page from this release keeps
+      printing against the older release (it sends its answers once more the
+      way that release takes them), but only a reloaded page works exactly as
+      that release did.
 
 ---
 

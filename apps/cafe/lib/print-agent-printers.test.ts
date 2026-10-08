@@ -484,6 +484,11 @@ test("3B: the dot carries the worst paper, cover or error the app says of a prin
   assert.deepEqual(dotPrintersOf([mine, theirs], "dev-a", NATIVE_TCP, null, pool, ["theirs"]).problem, { name: "Bar", problem: "paper-out" }, "while it writes the Bar printer, its paper out is worse");
   const low = { printers: [{ id: "tcp:10.0.2.2:9100", status: "connected" as const, paper: "low" as const }] };
   assert.equal(dotPrintersOf([mine], "dev-a", NATIVE_TCP, null, low).problem, undefined, "low paper still prints: no red dot");
+  // Session 3C (the 3B golden-copy review's m-7): simple mode prints on the app's default printer: its problem, by its name.
+  const own = { printers: [{ id: "bt-classic:00:11:22:33:44:55", status: "connected" as const, paper: "out" as const, printer: { name: "RPP02N" } }, { id: "tcp:10.0.2.2:9100", status: "connected" as const, cover: "open" as const }], defaultId: "bt-classic:00:11:22:33:44:55" };
+  assert.deepEqual(dotPrintersOf([], "dev-a", NATIVE_TCP, null, own).problem, { name: "RPP02N", problem: "paper-out" }, "simple mode: the app's own printer");
+  assert.equal(dotPrintersOf([], "dev-a", NATIVE_TCP, null, { ...own, defaultId: "tcp:10.0.2.2:9100" }).problem?.problem, "cover-open", "whichever is the default");
+  assert.equal(dotPrintersOf([], "dev-a", NATIVE_TCP, null, low).problem, undefined, "no default known: nothing");
 });
 
 test("3B: the dot counts a printer it may take over only while the wake says it writes it", () => {

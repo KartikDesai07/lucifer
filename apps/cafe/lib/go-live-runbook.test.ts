@@ -1433,4 +1433,6 @@ test("PIN §1 (printing Phase 3, Session 3B): failover and the backup printer: r
   assert.ok(step.includes(norm(DEVICE_TAKES_OVER_TEXT)) && step.includes(norm(PRINTER_NO_TAKEOVER_TEXT)), "the Devices and Printers words, verbatim");
   assert.ok(step.includes(norm(BACKUP_PRINTER_NOTE)), "the form's backup note, verbatim");
   assert.ok(step.includes("Phase 2 POS app") && step.includes("1.12.0"), "which apps can take a network printer over");
+  // Session 3C (the 3B review gate's I-1): a rollback of the web is a reload of every screen too.
+  assert.ok(step.includes("If you roll the web back") && step.includes("reload every POS screen again"), "a rollback reloads every screen");
 });
