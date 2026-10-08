@@ -75,7 +75,7 @@ Each decision says what it costs if wrong.
 
 **P3-2. Who can take a printer over.** "Online" is the heartbeat on the wake. In printers mode only the setup's writers poll the wake (Phase 2), so the devices that can take a network printer over are the cafe's writer devices that say `lanFailover`. A waiter phone that writes nothing never takes one over, and never starts polling to become able to. No new recurring request. *Cost if wrong:* a cafe with only one writer device has no failover. Its slips wait, visibly, as in Phase 2. The setup page says so (3B). *The 3B review gate (G-1; built in 3C's C0):* "online and able to take a printer over" means the device's own wake is fresh (`PrintDevice.beatAt` within 90 s), not only a recent lease.
 
-**P3-3. The 5-minute skip** (spec §9.3). The page acks a refusal made before any byte with `reason: "unreachable"`; on Android TCP that is NOT_CONNECTED from a failed connect. That writer is then skipped for that network printer for 5 minutes. The waiting slips move at once to the device that takes it over, and that device is told of the head (one realtime request). Only the printer's writer *now* can be skipped: a late ack from another device changes nothing. When every candidate is skipped, the primary keeps the printer. *Cost if wrong:* a writer that could reach the printer sits out 5 minutes while another prints, which is harmless. Each move that changes a printer's writer (on a skip, or on the sweep) tells the new writer of the line's head: one Worker request, at most once a minute per printer per instance, and at most 144 a day per skipped writer (the planning review, M-7: within the Worker's 5 % pin). After a skip, the head's `nextAttemptAt` is its 2 s refusal backoff, so the new writer's first lease can come back "not due" and it leases again 2 s later (one extra lease per skip). *Changed by Session 3A's final review (I-1):* the 5 minutes are the skip's floor. After them it holds until the skipped device's own lease names the printer again (a page names only a printer it can print to now), and at most 3 hours. A skip that ran out on time alone sent the printer back to a writer that still could not reach it, whose page never leased it to say so again. *Changed by the 3A review gate (I-A, I-B; built in 3B's B1):* the writer's beat is the second signal: its settled link `disconnected` for a network printer it writes now starts the skip (once), and its `connected` ends it past the first 5 minutes, like its lease naming the printer; and a skip holds as long as the device's record lives (7 days, `PRINT_DEVICE_PRUNE_MS`), not 3 hours. *Changed by the 3B review gate (built in 3C's C0, C1):* a device that may take the printer over is skipped ahead of time when its beat says it cannot reach it (m-2), and a page's beat says `disconnected` only once the printer stayed down 20 s (m-3: a blip never starts a skip).
+**P3-3. The 5-minute skip** (spec §9.3). The page acks a refusal made before any byte with `reason: "unreachable"`; on Android TCP that is NOT_CONNECTED from a failed connect. That writer is then skipped for that network printer for 5 minutes. The waiting slips move at once to the device that takes it over, and that device is told of the head (one realtime request). Only the printer's writer *now* can be skipped: a late ack from another device changes nothing. When every candidate is skipped, the primary keeps the printer. *Cost if wrong:* a writer that could reach the printer sits out 5 minutes while another prints, which is harmless. Each move that changes a printer's writer (on a skip, or on the sweep) tells the new writer of the line's head: one Worker request, at most once a minute per printer per instance, and at most 144 a day per skipped writer (the planning review, M-7: within the Worker's 5 % pin). After a skip, the head's `nextAttemptAt` is its 2 s refusal backoff, so the new writer's first lease can come back "not due" and it leases again 2 s later (one extra lease per skip). *Changed by Session 3A's final review (I-1):* the 5 minutes are the skip's floor. After them it holds until the skipped device's own lease names the printer again (a page names only a printer it can print to now), and at most 3 hours. A skip that ran out on time alone sent the printer back to a writer that still could not reach it, whose page never leased it to say so again. *Changed by the 3A review gate (I-A, I-B; built in 3B's B1):* the writer's beat is the second signal: its settled link `disconnected` for a network printer it writes now starts the skip (once), and its `connected` ends it past the first 5 minutes, like its lease naming the printer; and a skip holds as long as the device's record lives (7 days, `PRINT_DEVICE_PRUNE_MS`), not 3 hours. *Changed by the 3B review gate (built in 3C's C0, C1):* a device that may take the printer over is skipped ahead of time when its beat says it cannot reach it (m-2), and a page's beat says `disconnected` only once the printer stayed down 20 s (m-3: a blip never starts a skip). *The 3C review gate (m-7):* since Session 3C's review fix (`printerHealthClock`) the 20 s start at the app's own status change, so a printer reads down at the first wake at least 20 s after the app said so (one wake more only when a wake lands inside those 20 s); a printer that left the app's list starts a fresh 20 s, and a new list of takeover printers the app lacks starts its clock at once (3D's D0).
 
 **P3-4. Failover timing (the exit's "within 90 s").** The primary is seen offline 30–90 s after it stops: it beats every 60 s on a healthy socket, and the online window is 90 s. From that moment every new slip is made for the second device: job creation reads who is online, one small read beside the stations, only when a network printer is set up. The second device prints it at once, by direct print or its `print-status`. A slip that already waited for the primary moves on the next sweep (at most 60 s later), and its new writer is told of it. A slip the primary was printing expires with its 90 s lease into one labelled REPRINT (Phase 1). Exit item 1 is therefore measured as: **every slip made 90 s or more after the primary stops prints on the second device; one already waiting prints within 60 s more.** Detecting a dead device faster would need a faster heartbeat, which means new requests, so it was rejected under §17. *Cost if wrong:* up to 150 s for a slip that was already waiting at the moment of the stop.
 
@@ -197,14 +197,16 @@ Order: 3A → 3B → 3C → 3D → 3E → 3F → 3G. 3B comes before 3C (the pag
 
 **Scope** (`apps/mobile`; the APKs change):
 - **Foreground service type `connectedDevice`** (spec §9.5). This needs `FOREGROUND_SERVICE_CONNECTED_DEVICE` plus one of its runtime prerequisites; `CHANGE_NETWORK_STATE`, a normal permission, covers a network-printer-only device. Android 14's rules are checked on the emulator (API 33) and written for 34+.
-- **`START_STICKY`.** On a restart with a null intent the service comes back in the "printing" state it had (Prefs), and the activity re-creates the WebView on the next open.
+- **`START_STICKY`.** On a restart with a null intent the service comes back in the "printing" state it had (Prefs), and the activity re-creates the WebView on the next open. *As built (the 3C review gate):* the page died with the process, so the restarted service posts "POS printing is off. Tap to start." and stops; the tap opens the app, which prints again.
 - **Page death.** `onRenderProcessGone`, or the existing page-dead watchdog, remounts the WebView by itself (the WebView remount fix of `7edf7aa` stays), instead of only posting a notification.
 - **After a reboot.** A `BOOT_COMPLETED` receiver (`RECEIVE_BOOT_COMPLETED`) posts "POS printing is off. Tap to start." when this device was printing before. It never launches the activity: Android blocks that from the background, and a native agent is out of scope.
 - **The battery checklist.** A screen in the app (More options) lists the battery restrictions for Xiaomi, Oppo, Vivo and Samsung (from dontkillmyapp.com), with direct links into the settings where Android allows them (`ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS`; the OEM autostart screens best-effort).
 - **mobile-paths pins** for each of these.
 
+- **Made exact at the 3C review gate** (below, "Session 3D", Tasks D0–D5), with its rulings ("3C review gate: rulings"): D0 the gate's fixes (a refused connect asked again a second later; the connect's status check first; BUSY behind a printer that said it cannot print; FEED; a connected printer's select at once; a full release compile; simple mode leases no default printer that cannot print; the beat's clock); D1 the printing state (sticky; "POS printing is off. Tap to start." after a restart, an unasked stop, a reboot or an update; notifications asked once); D2 the service on a printers-mode writer too, a page that knows its device prints nothing says so, and the hidden tick no longer leases; D3 a printing device's page keeps running while the app is hidden (the WebView froze it within a minute: the gate's run), and a dead page is remounted also while hidden (React Native's Fabric is paused then); D4 the battery checklist from More options. The exit's `am kill` cannot kill an app whose service runs (that is shown); a real process death is `am crash <the app's pid>`.
+
 **Exit (3D):**
-- On the emulator: printing on, then `adb shell am kill com.possoftware.pos` with the app in the background → the service is back within a minute and prints the next slip.
+- On the emulator: printing on, then `adb shell am kill com.possoftware.pos` with the app in the background → the service is back within a minute and prints the next slip. *Re-worded at the 3C review gate:* with its service the app is a foreground process, so `am kill` leaves it and it prints the next slip while hidden; a real process death (`am crash <the app's pid>`) → Android restarts the sticky service, which posts "POS printing is off. Tap to start." within a minute and stops; tapping it opens the app, which prints. And a printing device hidden for minutes, or with its screen off, prints in seconds (the gate found the WebView freezing a hidden page within a minute).
 - `adb reboot` → the notification is in `dumpsys notification`, and tapping it opens the app, which prints.
 - A forced page death (`chrome://crash` in a debug build, or the watchdog's test hook) → the WebView remounts and the page drains again.
 - The release and the 3C APK: the update in place keeps everything.
@@ -271,6 +273,9 @@ Order: 3A → 3B → 3C → 3D → 3E → 3F → 3G. 3B comes before 3C (the pag
 | Token M-2: the kind fence on `more` and jobs-for-me | the token fix's review | **3A (A0)** |
 | Token M-2: the runbook's "within 30 minutes; after that, Print now in the panel" | the token fix's review | **3A (A0)** |
 | Token M-3: the TokenSettingsFields comment "(no new request)" | the token fix's review | **3A (A0)** |
+| 3C's m-1, m-2, m-4, m-6; its gate review's I-1, m-1, m-2, m-3, m-5; the build notes | the 3C review gate | **3D (D0)** |
+| 3C's m-3, m-5; its gate review's m-4; the reviewer's real-printer list; 3D's real-printer items (the 30-minute screen-off test on each printing device) | the 3C review gate | 3G (TEST-CHECKLIST) and the owner's real-printer run |
+| 3D's golden reviews: m-8 (update printing devices' APK first), m-9 (open the app once after installing 3D), I-3 (close the app on printing devices at closing time; a night's idle measured), m-5 (three code comments), m-6 (a behavioural case for the hidden wake) | the 3C review gate | 3G (GO-LIVE, the measurement) |
 | m-2: two network printers on one host share a name in the notification | 2F2 | Phase 4 |
 | The not-routed toast's wording | the final Phase 2 gate, (b) m-5 | Phase 4 |
 
@@ -18062,3 +18067,6148 @@ JUnit and the APKs were not rebuilt for the fix (no `apps/mobile` change).
 - Carried, unchanged: the golden-copy review's m-4 and the reviewer's real-printer list (the real-printer checks, Step 0 (a): still not reported by the owner); m-8 of the 3B gate (the beat, lease and ack interplay) → 3G's soak; `hooks/use-print-agent.ts` at 319 lines → 3D may split it.
 - The APKs (`apk-3c-v2/` in this session's scratchpad) are recorded, **not released**; the client release folder is unchanged.
 - Left in this session's scratchpad: `e2e3cs.env` (database `pos_scratch_e2e_3cs`, left), `pw-3c.mjs`, `watch-health.mjs`, the proxies' logs, `emu-*.log`, `shots3c/`, `suites-c6/`, `suites-fix/`, `apk-3c/` (void), `apk-3c-v2/`, `bmain/` (the cache-off build copy of `7f8ed31`), `review3c/` (the code diff and the reviewer's logs). The live legs and the reviewer's runs dropped their own databases (the only 3C databases left on the local mongod are the gate's `pos_scratch_e2e_3c` and this session's `pos_scratch_e2e_3cs`).
+
+## Session 3C review (gate)
+
+Run on 2026-10-08 in its own session (the 3C review gate), on `feat/printing-phase-3` at `6bc8d73`.
+
+**Start.**
+- `GIT_TERMINAL_PROMPT=0 git fetch origin` (the repo-local token store) worked: `feat/printing-phase-3` = `origin/feat/printing-phase-3` = `6bc8d73`, working tree clean; `origin/main` still `7f8ed31` (nothing to merge or note).
+- Disk: D: 12 GB free, C: 5.3 GB free (later 3.1–4.7 GB: the gate's clones, builds and the emulator).
+- Real printers: none on hand. The owner ruled (2026-10-08) that the real-printer checks run once, after all of Phase 3 (3D–3G and the final Phase 3 gate), before the merge decision; this gate did not ask, and carries every real-printer item to 3G's TEST-CHECKLIST (below).
+
+**The commits, read one by one** (`1ab7d98..6bc8d73`: C0 `f30e1b0`, C1 `f33947c`, C2 `64afe1e`, C3 `c9916b7`, C4 `f99dd2c`, C5 `f5d1d7c`, the review fix `361c4c4`, Results `6bc8d73`).
+- **Same code as the gold.** `git ls-tree -r` of `f5d1d7c` against the 3B review gate's gold `g3c-v7` (tree `a93c9d9`) differs only in the plan and the spec (both changed by `1ab7d98`): every file outside `docs/` is blob-identical.
+- **`361c4c4`, read in full against its finding** (the 3C review's I-1: the beat's 20 s settle clock advanced only when the wake built its beat). Sound: `printerHealthClock` runs `printerHealthReportsOf` on every change of the POS app's pool and of this device's printer, and both stores replace their snapshot before they notify, so `downSince` is the change's own time for a pool printer and for the `device:` key; a blip between two wakes still never reads down (its `connected` resets the clock at its own event); the clock is one per agent and released with it. Two gaps the gate's review found next to it (its m-1, m-2: a printer that left the app keeps its old clock; the takeover `missing` list is sampled, not watched) are fixed in 3D's D0.
+- **No secret** in the range (a search of `git log -p 1ab7d98..6bc8d73` for token, URI-with-password, key and secret patterns: none).
+- **No desktop or Worker change:** `git diff --stat 459daa8..HEAD -- apps/desktop workers` is empty.
+
+**Every suite at `6bc8d73`** (once each, in the background, one after another; the gate's scratchpad `suites-gate3c/`):
+
+| Suite | Result |
+|---|---|
+| shared `npm test`; `tsc` | **821/821**; 0 |
+| cafe `npm test` | **5023 tests, 5022 pass, 0 fail, 1 skipped** (go-live-dl) |
+| cafe, hub, mobile, desktop `tsc` / typecheck and lint | 0, and 0 errors (the 2 old warnings, `lib/masters-blob.test.ts:331`) |
+| mobile `npm test`; `test:app` | **127/127**; Jest **3/3** |
+| desktop `npm test` | **192/192** |
+| `npm run test:print-tools` | **11/11** |
+| live legs (`pos_scratch_print_host_3cgate`) | **`444 passed, 0 failed`** |
+| JUnit (`:app:testDebugUnitTest --rerun`) | BUILD SUCCESSFUL, **45** (DleEot 6, PoolList 6, PoolStatus 3, PrinterManager 19, PrinterPool 3, TcpTransport 8) |
+| the Next build (the repo, D:, 12 GB free) | exit 0, **132 routes** |
+
+Every row equals Session 3C's Results.
+
+**`361c4c4`'s RED → GREEN in a clone** (`r361`, a scratchpad clone of `6bc8d73`): `git reset --soft f5d1d7c`, `git stash push` of `lib/print-agent-health.ts` and `hooks/use-print-agent.ts` → `print-agent-health.test.ts` + `print-agent-paths.test.ts`: 15 tests, 12 pass, **3 fail**: the two new tests and the 3B pin's line that `361c4c4` deliberately rewrote (it now expects `setPrinterHealthSource(clock.reports)`; with its old line, exactly the two new tests fail, as the Results say); `git stash pop` → **15/15**.
+
+**The 3C APKs.**
+- In the repo, `javap -c -p app/build/tmp/kotlin-classes/release/…/TransportFactory.class` (dated 16:10, the full release compile) calls `TcpTransport."<init>":(Ljava/lang/String;IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V`.
+- **Exit E1–E3 re-run on the emulator** (Pixel_7_API_33 at `-memory 2048`, C: 5.2 GB; a fresh `pos_scratch_e2e_3cg`, this branch's build on 3110, the proxies on 3200/3201, `pw-3c.mjs` as the plan shows it). As found: the release APK `29115bdf…` on its start screen, no address. E0: the Phase 2 APK (`3736540b…`), signed in (Sign out first: a session from another database), 9100 connected, `emu-setup`: "Other printers on this device: Network 10.0.2.2:9101". **E1:** the 3C APK `2bdceacc…` (hashed before and on the device) over it: both printers kept (the Prefs list; Not connected while the fakes were down); `emu-print`: printed by the emulator **12.1 s** after the order (the 20 s window after a start), **44,250 B**, health `connected/ok/closed`, one `statusOnly` line. **E2:** `--paper-out`: health `connected/out` 48.2 s after, the slip never leased (log only `created`), the feed's `paper-out` 21.2 s after the order, C's panel "… · Kitchen is out of paper. · Kitchen", the emulator's dot "1 slip waiting · Printer needs attention" and its panel "Printer needs attention · Kitchen is out of paper."; paper back: printed **10.1 s** later, 44,250 B. **E3:** `--drop-after 20000`: cut at 20,000 B, `failed` ("The printer stopped answering…", maybe), the retry labelled **REPRINT**, **49,722 B**; log `created, leased, failed, leased, printed`. `adb logcat -b crash -d`: **0** lines. **All PASS.**
+- **What the same run showed for 3D** (on the 3C APK, in printers mode): with the app hidden, `am kill com.possoftware.pos` killed the writer (the app and its renderer: no service ran in printers mode); a renderer crashed with the app hidden (`am crash <renderer pid>`) was remounted in JavaScript, but no request reached the server until the app was opened 2.5 minutes later (React Native's Fabric mounts nothing while the screen is paused), and a slip ordered meanwhile did not print within 90 s; a healthy page that was simply hidden printed in 4 s. These shaped D2 and D3.
+- **Put back:** the setup cleared (`pw-3c.mjs clear`; `pos_scratch_e2e_3cg` left), the page-added 9101 gone by itself, the app's printer removed, the address cleared, the **release APK** reinstalled (`29115bdf…` on the device, start screen empty, crash 0; the renderer's induced crash lines saved, then the crash buffer cleared), `adb reverse --remove-all` then `tcp:3100 tcp:3100`, `adb shell sync`, `adb emu kill`; the gate's servers and printers stopped by PID.
+
+**The fresh review (Claude Fable 5.1; no HTTP 429).** Read-only, its probes only in the gate's scratchpad (`review3cg/`). It read every non-docs line of `1ab7d98..6bc8d73` (56 files) with the current files, and `main`'s (`7f8ed31`) and Phase 2's (`623f12c`) schemas for skew. Its own runs: shared 821/821; cafe **5023 / 5022 / 0 / 1**; mobile 127/127; print tools 11/11; the live legs on its own database **444/0**; cafe `tsc --noEmit --incremental false` 0; eslint on the touched cafe files 0; two probe tests (a pool printer that left the app and comes back `connecting` reads down at once; the `missing:` clock starts at the next sample).
+
+**Verdict: "ship with fixes".** No Critical. One Important finding (hardware-conditional, the golden review's m-4 carried) and six minors of its own; its opinions on the 3C session's m-1 to m-7 and on the two build notes. Each is ruled in "3C review gate: rulings" below.
+
+| # | Finding | Ruling |
+|---|---|---|
+| I-1 (Important; the golden review's m-4) | Every writer app on bridge v2 checks each network printer of the setup once a minute; on a module that takes one TCP session at a time a job's connect can be refused while another device's check holds it → NOT_CONNECTED before any byte → `unreachable` → a 5-minute flip (≈2–20 a day at 1,200 slips, by the module). | **Fixed (D0):** a refused connect (`ConnectException`, not a timeout) is asked once more a second later inside the 5 s budget. The real-printer check stays (two devices listing one printer for 10 minutes: no `unreachable` notes). |
+| m-1 | The settle memory keeps a pool printer that left the app's list: added back, its first `connecting` reads `disconnected` at once (a 5-minute flip). | **Fixed (D0).** |
+| m-2 | The `missing:` clock starts at the next sample (≤ one wake late), not when the list changes. | **Fixed (D0):** the hook calls the clock when the list changes. |
+| m-3 | A v1 "Change printer" to a CONNECTED listed printer answers behind a print in flight (the page gives up at 10 s: "could not connect", though the default moved). | **Fixed (D0):** answers at once; waits only while CONNECTING. |
+| m-4 | A printer that RESETS (not closes) after each job and never answers status: `shutdownOutput()` could throw → "maybe" → a REPRINT per slip. | **Not taken:** the gate's JUnit probe on the loopback (the fake resets with `SO_LINGER 0` after the slip) reads printed once on the JVM, so no RED can be shown; the real-printer list carries it (a module that resets after each job: count REPRINTs). Cost if wrong: a labelled REPRINT per slip on such a module, visible at once in the real-printer run. |
+| m-5 | The connect-time check is skipped when a job is already queued (`printing` claimed), so a silent printer's first slip after a reconnect pays the long wait once. | **Fixed (D0)** with the 3C session's m-6 (the check is its own io task, queued before anyone hears "connected", and forced). |
+| m-6 | Words: the plan's m-3 ruling line and P3-3 do not say the honest cost after `361c4c4`. | **Written** (P3-3's note and spec §9.3, this gate). |
+| Build note 1 | A stale release class is silent at build time and crashes a client APK: a guard in the build, not only a doc line (`configureEach { incremental = false }` for release). | **Built (D0), changed:** the gate's probe showed the Kotlin plugin sets the flag again after the script's `configureEach` (configured false, executed true); `doFirst { incremental = false }` holds (a one-line change recompiled all 99 release classes). README line. D5 Step 2 proves it on the repo's own build. |
+| Build note 2 | Let the ABI split's `include` follow `reactNativeArchitectures`, so `assembleRelease -PreactNativeArchitectures=x86_64` yields an x86_64 split APK. | **Not taken:** `gradle.properties` lists all four ABIs, so every client build would grow x86 APKs, and the README's client command already names the two; a README line says the emulator APK is `aR -PreactNativeArchitectures=x86_64` with no other "release" task on that line (D0). |
+
+Its opinions on the 3C session's minors: m-1 real but narrower than stated (the right fix stores the job's own status even when the next job claimed the printer, and re-checks before any byte: D0 does both); m-2 real (D0); m-3 real, minor (a module that minds shows in the 5-minute idle real-printer check); m-4 real (D0: `poolDefaultCannotPrint`); m-5 real, latency only, low priority; m-6 real, UX only (D0); m-7 doc only. Its sound list: C0's `$or` heartbeat filter and upsert, `lanFailoverNow` in both reads, the candidate skip (one write, no move when only a candidate is skipped); C1's fallback trigger (exactly 400 "Validation failed", latched only after the older body succeeded) and `olderAckBody`/`olderWakeBody` stripping exactly what `main`'s strict schemas lack; C2's words; C3's flags; C4's claim and seams; C5's DLE EOT parse against Epson's bits, `cannotPrint()` one rule on both sides, G5 only for a printer that answered before, the job's own answer handed to the next `status()`, no probe during a job, BUSY before any byte, the page's ready gate, the parity pin; deploy skew (Phase 2 page, release APK, a 3C page after a rollback); the budget (no new request; Atlas writes bounded).
+
+**Recommended next:** Session 3D as exact code, below, pre-validated at this gate.
+
+## 3C review gate: rulings
+
+Each says what it costs if wrong.
+
+| Item | Ruling | Where |
+|---|---|---|
+| m-1 (the 3C session's review) two jobs both "maybe" as the paper runs out | **Fixed:** the status after a job is read even when the next job already claimed the printer (`probe(gen, force = true)`, after the job's answer: the ack is never delayed), and a job's io task checks the printer again before any byte (BUSY). *Cost if wrong:* a second labelled REPRINT (or a second cashier question) when the paper runs out between two queued jobs. | D0 |
+| m-2 FEED reads as an error | **Fixed:** DLE EOT 2 bit 3 ("paper being fed by the FEED button") is a cause, not an error; the printer takes a job meanwhile. *Cost if wrong:* "reports an error" and BUSY for up to 10 s while staff hold FEED. | D0 |
+| m-3 two TCP connects per attempt | **Not taken:** only at a (re)connect, never per slip; moving the check into `open()` would put it back into a select's answer (m-6). **To the real-printer checks** (5 minutes idle on the real LAN printer: no flapping). *Cost if wrong:* a module that minds back-to-back connects flaps at a reconnect. | real printers, 3G |
+| m-4 simple mode leases a paper-out default every 30 s | **Fixed (the page):** `printerReady` for a device with no printer of its own also needs the app's default printer not to say it cannot print (`poolDefaultCannotPrint`); paper back nudges the agent (the ready key). *Cost if wrong:* a lease and an ack per 30 s while it is out of paper (inside Phase 1's pinned ceiling), as before. | D0 |
+| m-5 no silent memory for USB and Bluetooth Classic | **Not taken:** latency only (≤ 1 s on the next queued slip; the after-job check runs after the ack), and USB/Classic have no JVM seam to prove it. **To the real-printer checks** (a Pay Now pair on a Bluetooth printer that never answers DLE EOT: the bill ≤ 1 s later) and 3G. *Cost if wrong:* ≤ 1 s per slip on such a printer. | real printers, 3G |
+| m-6 a select waits for the connect's check | **Fixed** with its review's m-5: the check is its own io task, queued before anyone hears "connected", and forced (it still runs before any job). *Cost if wrong:* Add printer up to ~2 s slower. | D0 |
+| m-7 the words of m-3's cost | **Written:** P3-3's note and spec §9.3 (since `361c4c4` a printer reads down at the first wake at least 20 s after the app said so; one wake more only when a wake lands inside those 20 s). | this gate |
+| Its review's I-1, m-1 to m-6 | As its table says: I-1, m-1, m-2, m-3, m-5 **fixed** (D0); m-4 **not taken** (no RED on the JVM; real-printer list); m-6 **written**. | D0, real printers |
+| The build notes (the 3C Results' ruling 2) | **A guard in the build, not only a doc line:** `app/build.gradle` compiles the app's release Kotlin in full (`doFirst { incremental = false }`; the reviewer's `configureEach` form is undone by the Kotlin plugin, the gate's probe), pinned (pin 21), with a README line; D5 Step 2 proves it on the repo's build (no class older than the build's marker; no "Using Kotlin/JVM incremental compilation" line). The ABI split's task-name trigger stays (a README line; D5 says never another "release" task on the `aR` line). *Cost if wrong:* a release build takes the full Kotlin compile (seconds), never a stale class. | D0, D5 |
+| The reviewer's real-printer list (the 3C Results) and the gate's additions | **Carried to 3G's TEST-CHECKLIST and the owner's one real-printer run after Phase 3:** 5 minutes idle on the real LAN printer (no flapping: m-3); two devices listing it for 10 minutes (no `unreachable` notes: its review's I-1, D0's retry); FEED while idle (no error words: D0); a Pay Now pair on a Bluetooth printer that does not answer DLE EOT (m-5); paper out mid-slip (one labelled REPRINT); a module that resets its socket after each job and never answers status (its review's m-4: count REPRINTs); and 3D's own: "POS printing is off. Tap to start." after a reboot on each printing tablet; the notification prompt allowed; the battery checklist's steps done once on each Xiaomi, OPPO, vivo or Samsung printing device; the TEST-CHECKLIST's 30-minute screen-off test on each printing device (the print host and a printers-mode writer: three orders ten minutes apart, each printed once, the latency noted), first with the app in the background and the screen on, then with the screen off (the gate saw the emulator's WebView freeze a hidden page within a minute: D3 keeps it running; a real phone's WebView is the proof); the app closed at closing time shows "POS printing is off. Tap to start." (expected) and the tap in the morning prints. | 3G |
+| The 3D exit's `am kill` (the spec) | **Changed:** with the service running, `adb shell am kill` cannot kill the app (it kills only background processes: the app's `oom adj` is 50 with the service), and that is the result to show (X3; on the 3C APK the same command killed a printers-mode writer). A real process death is `am crash <the app's pid>` (X5: `am crash com.possoftware.pos` picks the renderer). *Cost if wrong:* none (both are run). | D5 |
+| After a process death | **The service posts "POS printing is off. Tap to start." and stops**, never back in the foreground: the page died with the process, nothing would print (a native agent is out of scope, spec §9.5), and a sticky restart needs no `startForeground`. The tap opens the app, whose page prints again by itself. *Cost if wrong:* the slips wait until someone taps the notice (the cafe sees it at once). | D1 |
+| The notice after an update and after a swipe | **Added beyond the spec's reboot:** `MY_PACKAGE_REPLACED` (an update stops printing too) and a stop the page did not ask for (the task swiped away: `stopWithTask` stays). *Cost if wrong:* one extra notice when staff close the app on purpose (it can be swiped away). | D1 |
+| Notifications (Android 13+) | **Asked once per install** the first time printing starts (the page never asked; without it no notice can show), the battery prompt then waiting for the next start. *Cost if wrong:* one system question on a device that prints. | D1 |
+| The service in printers mode (the 3B gate: "Session 3D brings one") | **Built:** the page asks for it on the host and on every printers-mode writer (`printsForCafe`); keep-screen-on applies as for the host. *Cost if wrong:* a phone that writes a printer keeps its screen on while the POS is in front (the power button still turns it off; printing goes on with the screen off). | D2 |
+| A wish that outlives its reason (found by the gate's pre-run) | **Fixed:** a page that knows its device prints nothing (the pulse said who prints, the printers read answered) tells the app so once; one that does not know yet says nothing (a page reloading hidden on a writer keeps its service). *Cost if wrong:* a device that stopped printing keeps the service, "Printing is on" and a wrong notice after a reboot. | D2 |
+| A remount while the app is hidden (found by the gate) | **Built:** the shell lets React Native mount for at most 30 s while hidden, until the new page answers, at most once every 10 minutes (the golden review's I-2, with the renderer kept as important as the app); the watchdog's remount once per page life and at most every 10 minutes. *Cost if wrong:* 30 s of UI frames on a hidden device after a page death (no request), or, if Fabric would not mount, the slips wait until the app is opened (as before 3D, with the alert notice). | D3 |
+| A hidden page frozen (found by the gate's emulator run of the golden copy) | **Fixed in D3:** the WebView froze the page of a hidden app within about a minute (no timer, no request, the renderer's CPU time still; a slip ordered 4 minutes after HOME stayed `queued` for 120 s and printed the moment the app was opened). The earlier golden copy's hidden leases stopped the same way, so the simple-mode print host has stalled like this since Phase 2 on this emulator's WebView (109). Each tick of the print host while the app is hidden now tells the page's WebView its window is visible (`dispatchWindowVisibilityChanged(View.VISIBLE)`), as the Windows app keeps its page running in the tray (`backgroundThrottling: false`): hidden 200 s, and with the screen off for 3 minutes, the slip printed in ≤ 4 s. *Cost if wrong:* a printing device whose app is hidden costs what it costs on screen (its pulse, the POS lists every 30 s, the wake at a writer's cadence), the cost the budget counts for a printing device on screen; overnight only if nobody closes it (README, 3G's GO-LIVE, 3G's night measurement). A WebView that ignored the call would freeze as before (the real-device test in 3G shows it). | D3, 3G |
+| The hidden tick's leases (found by the gate's proxy log; the golden review's I-3) | **Fixed in D2:** the app's 15 s hidden tick kicked the print agent, so every hidden printing device leased every 15 s with nothing to print, while its wake never ran hidden (its `beatAt` went stale: no takeover, no health beat). The tick no longer leases (it refreshes a pulse older than 20 s, whose jobs for this device kick the agent), and a hidden page in the POS app polls the wake. The second review's m-1 (a 60 s floor for a hidden page's wake) is not taken: with D3 the page runs as on screen, at a writer's on-screen cadence, inside the wake's daily cap. *Cost if wrong:* on a day the realtime socket is down, a hidden writer spends its wake cap as an on-screen one does. | D2 |
+| The battery checklist's door | **A native screen opened by the page's More options** (`app.battery`), shown only on an app that says it has it (`window.PosNative.features`): the spec's "a screen in the app (More options)". *Cost if wrong:* an older app never shows the button (correct), and the steps live in the APK (a change needs a new APK). | D4 |
+| `hooks/use-print-agent.ts` at 325 lines (3C's m-11) | **Not split:** D0 adds 6 lines and D2 removes the hidden tick's kick (320 lines at the end of 3D); a split would rewrite a 300-line hook in the plan's diff for no behaviour. *Cost if wrong:* a longer file. | — |
+| The stray file `C:\Users\Kartik.desai\AppData\Local\x` | The gate's own (a `git ls-tree` listing of the 3B gate's gold written by a mistyped redirect; no secret); its removal was refused by the permission classifier. **The owner may delete it.** | owner |
+
+### The fresh review of Session 3D's golden copy (Claude Fable 5.1)
+
+A fresh reviewer on **Claude Fable 5.1** (read-only; scratch files in the gate's scratchpad only) reviewed the golden copy `g3d-v2` (`6bc8d73..1cb010d`, D0–D4) against this plan, the 3C review gate's rulings, the 3D spec and spec §9.5, §10, §13, §14, §17. It ran mobile 139/139, the cafe chain 5028/5027/0/1, tsc and eslint 0 on the changed files, the live legs 444/0 (`pos_scratch_print_host_3drev`), and read every new JVM test. No usage limit was hit.
+
+**Verdict: ship after fixes** (0 Critical, 3 Important, 11 minors). Each ruling says what it costs if wrong.
+
+| # | Finding | Ruling |
+|---|---|---|
+| I-1 | A page that never was printing never cleared a wish an earlier page left: a device that stopped printing while its page was closed or dead would post "POS printing is off. Tap to start." after every reboot and update, and a page remounted hidden as a non-printer never stopped the service. | **Fixed** (the gate's own pre-run had found it, `g3d-v3`): a page that knows its device prints nothing (`decided`: the pulse said who prints, the printers read answered) tells the app so once (D2). The reviewer checked the invariant (`decided && !enabled` cannot flip for a moment on a device that prints: a wrong "no" while hidden would stop the service until the app is opened); pinned in `print-gating-paths.test.ts`. |
+| I-2 | A renderer that dies while hidden was remounted at once with no limit: React Native's WebView leaves the renderer killable while the page is not visible, so on a weak phone each new page could be killed again (a reload loop, each load the page's start-up requests). | **Fixed** (D3): the shell keeps the page's renderer as important as the app while hidden (`setRendererPriorityPolicy(RENDERER_PRIORITY_IMPORTANT, false)`), and React Native mounts while hidden at most once every 10 minutes (`HiddenMountGap`; a fifth `PageWatchTest` case; pin 23). *Cost if wrong:* a page that dies twice within 10 minutes while hidden waits for the app to be opened (the alert says so). |
+| I-3 | (the owner's ruling) D2 multiplies the host's around-the-clock polling by the writers: a hidden printing page refreshes its pulse about 3 times a minute all night while the app is left open (the heavy setup's three writers ≈ +95 s of Active CPU a night, a fifth of a day's 480 s). | **Ruled and fixed at this gate** (D2, D3). The gate's proxy log showed a larger cost on the same path: the app's 15 s hidden tick kicked the print agent, so every hidden printing device leased every 15 s with nothing to print (the simple-mode host since Phase 2; every writer with D2), while its wake never ran hidden and its heartbeat (`beatAt`) went stale. Now the tick never leases, and a hidden page inside the POS app polls the wake (D2). And the gate's emulator run then found the WebView freezing a hidden page within a minute (below), so D3 keeps a printing device's hidden page running: it costs what it costs on screen. The README says to close the app on printing devices at closing time (its notice is then expected, and is the tap to start in the morning); **3G** carries the GO-LIVE line and measures a night's idle. *Cost if wrong:* a cafe that leaves printing devices open overnight pays an on-screen device's polling all night (inside the wake's daily cap for the wake). |
+| m-1 | Every printers-mode writer now keeps its screen on while the POS is in front (`FLAG_KEEP_SCREEN_ON`), not said anywhere. | **Accepted, written:** the README says so (D2); the power button still turns it off and printing goes on. |
+| m-2 | Notifications were marked asked before the system's question: no screen to ask on meant never asking again. | **Fixed** (D1): marked once the question was put. |
+| m-3 | The refused retry's `Thread.sleep` let an interrupt escape the printer's io thread (none interrupts it today). | **Fixed** (D0): an interrupt ends the connect as NOT_CONNECTED. |
+| m-4 | Android throws `ConnectException` for "host unreachable" too, so the refused retry also covers a printer that is off and answers at once. | **Words fixed** (D0's KDoc): ≤ 1 s more inside the same 5 s budget. |
+| m-5 | The load-error screen's automatic retry remounts without `mountWhileHidden`. | **Not taken:** that retry's timer runs only while the app is visible (React Native's timers pause with its screen); a hidden page that fails to load keeps the alert "Printing stopped — tap to open the app". *Cost if wrong:* a reload after a network blip waits for a tap. |
+| m-6 | Samsung's usual One UI battery screen (`com.samsung.android.lool` + `…sm.ui.battery.BatteryActivity`) was missing from the autostart link. | **Fixed** (D4): tried first. |
+| m-7 | The boot receiver is `exported="true"`. | **Not taken:** the system's broadcasts need it on some builds, and the action check makes an explicit intent from another app harmless (it can only post the notice when the wish is on). |
+| m-8 | A 3D page on an older APK (release, Phase 2, 3C) as a printers-mode writer gets that app's non-sticky service and its words "This device prints all slips.". | **To 3G's GO-LIVE:** update the printing devices' APK first. *Cost if wrong:* the old words until the APK is updated. |
+| m-9 | The first update to 3D posts no notice (the 3C app never wrote the wish). | **To 3G's GO-LIVE and the README's update line:** open the app once after installing 3D. *Cost if wrong:* one missed print window on update day. |
+| m-10 | The 3D exit said "the service is back within a minute and prints the next slip"; spec §9.5 that "the service restarts". The golden copy (rightly) posts "POS printing is off. Tap to start." and stops after a process death. | **Re-worded at this gate:** the plan's 3D exit and spec §9.5. |
+| m-11 | After a sticky restart the service stops without `startForeground`: safe (the restart re-delivers only the null start item), with one sub-second window at the very first start; the pre-run did not say it read the crash buffer after the restart. | **D5's X5 reads `adb logcat -b crash -d` 12 s after the restart:** the gate's run on the last golden copy held only the induced crash (`CrashedByAdbException`), no `ForegroundServiceDidNotStartInTimeException`. |
+
+Also noted: `hooks/use-print-agent.ts` was 325 lines (3C's m-11 allowed it); with I-3's fix it is 320.
+
+**After the fold-ins (`g3d-v4`), the gate's emulator run found a gap no review could see.** With the v4 APK and page in printers mode, the hidden writer's page went silent about a minute after HOME: its wake, its pulse, every request stopped, the WebView renderer's CPU time stood still, and a slip ordered 4 minutes later was still `queued` after 120 s (it printed the moment the app was opened; the service, the network and the probe were all fine). The WebView freezes the page of a window that stays hidden; the earlier golden copy's hidden leases stopped the same way (runs of at most a minute in the gate's log), so the simple-mode print host has stalled like this since Phase 2 on this emulator's WebView (109). An experiment build proved the fix: each tick of the print host while the app is hidden tells the page's WebView its window is visible, as the Windows app keeps its page running in the tray (`backgroundThrottling: false`). That became **`g3d-v5`**: D3's `WebViewDelivery.keepPageRunning()` on the hidden tick, pin 23 (and pin 11's wake gate, deliberately changed), with the second review's m-3 (D1) and m-2 (D2's README words) folded in.
+
+**The last golden copy (`g3d-v5`):** every suite on `g3d-v4` (shared 821; cafe 5030 / 5029 / 0 / 1; tsc 0 and lint 0 errors for cafe, hub, mobile and desktop; mobile 139 + Jest 3; desktop 192; print tools 11; live 444/0), and on `g3d-v5`, which changes only `apps/mobile`, the mobile ones again (139 + Jest 3, tsc and lint 0), JUnit 63, the Next build 132, the APKs again (x86_64 `298d9479…`, arm64 `1720fd70…`, armv7 `06d893ba…`; a full release compile: no incremental line, 0 of 100 release classes older than the marker, the javap call), and the emulator on its x86_64 APK (Pixel_7_API_33 at `-memory 2048`, C: at 2.3 GB): the update in place posted the notice 1 s after the install; hidden 200 s the page kept its polls (wake every 15 s, pulse 20 s, the POS lists 30 s), **no lease without a job**, `beatAt` 4 s old, and the slip printed 2 s after the order; with the screen off for 3 minutes (the experiment build, the same call) it printed at once; `am kill` left the process (`prcp F/S/FGS`) and the slip printed 2 s after the order; a renderer crash while hidden → `GET /pos` 3.8 s later with the launcher on top, printed 3 s after the order; `am crash` of the app → the notice 1 s later, the crash buffer only the induced crash, the tap → printed 2 s after the order; `adb reboot` → the notice 27 s after `sys.boot_completed`, the tap → printed ≈6 s after the order; the setup cleared and Refreshed → no service and no notice; crash 0 after every install. Put back as D5 says (the release APK `29115bdf…` on its start screen with no address, notifications not allowed, `adb reverse tcp:3100 tcp:3100`, `adb shell sync`, the emulator stopped; the gate's servers stopped by PID). The section below was regenerated from it and validated verbatim on a fresh clone: **IDENTICAL**.
+
+**A second fresh review on Claude Fable 5.1** (read-only) of the fold-ins `1cb010d..38ea11b` (`g3d-v4`): **ship as written** (0 Critical, 0 Important, 6 minors). It traced the removed tick-kick (the tick is the only `app.wake`, so nothing on the app's return or the network's return depended on it), the hidden wake (only on a printing device: `printAgentPollsWake`; a hidden browser tab and the Windows app unchanged), I-1's invariant and I-2's safety. It ran cafe 148/148 on the touched tests, tsc and eslint 0, mobile 139/139. Its minors:
+
+| # | Finding | Ruling |
+|---|---|---|
+| m-1 | A hidden page in the POS app polls the wake at the visible cadence (3 s after a job without a socket); a floor of 60 s while hidden would do as the heartbeat. | **Not taken:** with D3 (after this review) a hidden printing page runs as on screen anyway, inside the wake's daily cap, at the cadence the budget counts for a writer on screen. *Cost if wrong:* on a socket-down day a hidden writer spends its cap as an on-screen one does. |
+| m-2 | "Close the app at closing time" makes the swipe notice ("POS printing is off") sound every night. | **Words fixed** (D2's README: the notice is then expected; tap it when you open). The alert channel stays (the notice after a reboot or a crash must be heard). |
+| m-3 | Two `host.background` true within one hop to the UI thread both pass the asked check. | **Fixed** (D1): re-checked inside the runnable. |
+| m-4 | The 10-minute hidden-mount gap is not reset when the app is opened in between. | **Not taken:** one tap where a mount would have done, with the alert. |
+| m-5 | Comments that still say "a hidden tab never polls" / "only the host polls" (`print-agent-wake.ts`, `print-job.ts`, `use-print-agent.ts`), and spec §9.1/§9.5. | **Spec words at this gate** (§9.5, §17.2); the three comments **to 3G**. |
+| m-6 | The cadence fix is pinned by source text only, no behavioural case. | **To 3G** (with the night measurement). |
+
+---
+## Session 3D (exact code, written and pre-validated at the 3C review gate)
+
+**Pre-validation (the 3C review gate, 2026-10-08).**
+- **Verbatim apply.** Every block of Tasks D0–D4 (**159 operations**) went verbatim, task by task, onto a fresh clone of `feat/printing-phase-3` at `6bc8d73`. Every find matched exactly once.
+- **RED, then GREEN.** Each task's RED was seen before its code went in (D0's JUnit RED is test failures; D1's, D3's and D4's a compile failure of the JVM tests), and each GREEN gave the Expected lines below.
+- **Same tree.** The clone's tree came out IDENTICAL to the golden copy's (branch `g3d-v5`, tree `a7b4bb6`). Validated on a fresh clone after each fold-in; the last after the last fold-in.
+- **Every suite on the golden copy:**
+  - shared 821/821; cafe **5030 / 5029 pass / 0 fail / 1 skipped**;
+  - tsc 0 and lint 0 errors (+2 old warnings) for cafe, hub, mobile and desktop;
+  - mobile **139** + Jest 3; desktop 192; print tools 11; live legs 444/0 (3D adds no leg);
+  - JUnit **63/63** (`:app:testDebugUnitTest --rerun`, `GRADLE_USER_HOME=D:\gradle-home`: BatteryTargetsTest 3, DleEotTest 7, HostLifeTest 4, PageWatchTest 5, PoolListTest 6, PoolStatusTest 3, PrinterManagerTest 22, PrinterPoolTest 3, TcpTransportTest 10);
+  - the Next build: 132 routes, in a separate build copy with webpack's persistent cache off (a config line in that copy only);
+  - the APKs from that build copy (a scratchpad clone mapped to `V:`, with a real `apps/mobile/node_modules` and Metro's `watchFolders` in that copy only): x86_64 `298d9479…`, arm64 `1720fd70…`, armv7 `06d893ba…` (the repo's builds will hash differently), each a full release compile (no "Using Kotlin/JVM incremental compilation" line, 0 of 100 release classes older than the marker, `javap` shows the `TcpTransport` constructor D5 names).
+- **The exit, pre-run** on the emulator (D5 Step 5's harness; Pixel_7_API_33 at `-memory 2048`, C: between 2.2 and 4.6 GB). The earlier golden copies ran X0–X11 and found three gaps, each fixed here: a wish an earlier page left (D2's `decided`), the hidden tick's empty leases every 15 s (D2), and, on the fourth golden copy, a hidden page frozen by the WebView about a minute after HOME (a slip ordered 4 minutes later never printed: D3's keep-running tick). The last golden copy's APK then ran X3 (hidden 200 s: polls kept, no lease without a job, printed 2 s after the order; the screen off for 3 minutes, on the experiment build with the same call: printed at once), X3b (`am kill`: not killed, printed 2 s after the order), X4 (`GET /pos` 3.8 s after the renderer's crash, the launcher on top), X5 (the notice 1 s after the app's crash; only the induced crash in the buffer), X6 (the notice 27 s after the boot; printed after the tap), the update notice 1 s after `install -r`, X9 (no service, no notice) and X11 (crash 0): **all PASS**. Put back as D5 says (the release APK `29115bdf…` on its start screen with no address, notifications not allowed; `adb reverse tcp:3100 tcp:3100`; the emulator stopped after `adb shell sync`).
+- **Fresh reviews on Claude Fable 5.1:** "ship after fixes" (three Important findings: a wish that outlived its reason, a hidden reload loop, the hidden polling; folded into D2 and D3 with the minors m-2, m-3, m-4, m-6), then, on the fold-ins, **"ship as written"** (its m-2 and m-3 folded in). Details and rulings: "The fresh review of Session 3D's golden copy" in the 3C review gate's section.
+
+A failure while executing therefore points to drift since then, or to a typo while copying. Compare with the plan first.
+
+**What 3D delivers.** Session 3D is the POS app's service for Phase 3 (spec §9.5), plus the 3C review gate's fixes:
+- the gate's fixes: a refused connect asked again a second later (its review's I-1); the connect's status check first and never inside a select's answer (m-6, its review's m-5); BUSY behind a printer that said it cannot print (m-1); FEED is not an error (m-2); a connected printer's v1 select answers at once (its review's m-3); a release build compiles the app's Kotlin in full (the 3C build note); simple mode leases no default printer that cannot print (m-4); the beat's clock forgets a printer that left the app and starts at once for a new takeover list (its review's m-1, m-2) (Task D0);
+- the printing state: the service is sticky, and a device that prints for the cafe says "POS printing is off. Tap to start." after Android restarted the service, a stop the page did not ask for, a reboot or an update; the page's own stop clears it; notifications asked once (D1);
+- the service on a printers-mode writer too, and a page that knows its device prints nothing tells the app so; the app's hidden tick no longer leases, and a hidden page in the POS app keeps its wake (its heartbeat) (D2);
+- a printing device's page keeps running while the app is hidden (the WebView froze it within a minute: the gate's emulator run), and a page that died is remounted by itself, also while hidden (its renderer gone, or the watchdog's word) (D3);
+- the battery checklist, from the page's More options (D4);
+- then the verification, JUnit, the APKs (recorded, not released), the exit on the emulator, the fresh review and Results (D5).
+
+**The APKs change** (D0, D1, D2's words, D3, D4): `apps/mobile` Kotlin, the manifest, the RN shell and the pins. The Windows installer and the Worker do not (`git diff --stat 6bc8d73..HEAD -- apps/desktop workers` stays empty). No new request kind: the service, the notice, the remount, the battery screen and the status checks are local; a page that knows its device prints nothing tells the app with a local bridge call. A printing device whose app is hidden now costs what it costs on screen (D3: its page keeps running, as the Windows app's does in the tray), and its hidden tick no longer leases (D2: it leased every 15 s).
+
+**Decisions this section implements:** P3-1 to P3-9 (above), as changed by the 3A, 3B and 3C review gates' rulings ("3A review gate: rulings", "3B review gate: rulings", "3C review gate: rulings"), and the 3D spec above.
+
+**Not in 3D:** the Windows app 1.12.0 (3E), Telegram (3F), the Phase 3 exit, the measurement and TEST-CHECKLIST's Phase 3 real-printer section (3G).
+
+### Review Focus (Session 3D)
+
+The inputs most likely to bite a cafe that the unit tests alone would not exercise; each has a test, a pin or an exit item.
+1. **A hidden page that stops.** The WebView froze a hidden app's page within about a minute (the gate's run: no request, no slip until the app was opened). The print host's tick keeps it running; a slip ordered minutes after HOME, and with the screen off, prints in seconds, and the hidden tick never leases. → pins 11 and 23, the 3D pin in `print-agent-paths.test.ts`, exit X3.
+2. **A writer whose app Android kills.** In printers mode no device ran the service before 3D; a hidden writer was a cached app. Now it runs the sticky service: `am kill` cannot kill it, and a real process death says "POS printing is off. Tap to start." within a minute. → `HostLifeTest`, pins 22 and the gating pin, exit X3b, X5.
+3. **A page that dies while nobody looks.** The remount must reach the screen while the app is hidden (Fabric is paused then), be bounded (30 s of frames, at most once every 10 minutes while hidden, once per page life from the watchdog), and never loop. → `PageWatchTest`, pin 23, exit X4.
+4. **A wish that outlives its reason.** The app keeps the wish across restarts; a device that stopped printing must drop it (a page that knows says so), and a page reloading in the background on a writer must never drop it. → the hooks test, the gating pin, exit X9, X4.
+5. **Deploy skew.** The 3D APK under the release page (bridge v1) and a 3C page; a 3D page with an older app (no battery button; `host.background` false is v1); the update in place over the release and the 3C APK keeps the address, the session and the printers. → the parity pins, exit X0, X8, X10.
+6. **A release APK that is not what was tested.** The release Kotlin compile is non-incremental (D0); D5 Step 2 proves it on the repo's build (no class older than the build). → pin 21, Step 2.
+
+### File map (Session 3D)
+
+| File | Change | Task |
+|---|---|---|
+| `apps/mobile/…/printer/TcpTransport.kt`, `PrinterManager.kt`, `PrinterStatus.kt`, `PrinterApi.kt`, `apps/mobile/android/app/build.gradle`, `apps/mobile/README.md`; `apps/cafe/lib/printer/native-pool.ts`, `hooks/use-print-agent.ts`, `lib/print-agent-health.ts`; the JVM tests (`DleEotTest.kt`, `TcpTransportTest.kt`, `PrinterManagerTest.kt`, `PrinterFakes.kt`), the pins | the 3C review gate's fixes | D0 |
+| `apps/mobile/…/printer/HostLife.kt`, `PrintingOffNotice.kt`, `PrintingOffReceiver.kt` (create), `PrintHostService.kt`, `HostController.kt`, `Prefs.kt`, `AndroidManifest.xml`, `res/values/strings.xml`, `README.md`; `HostLifeTest.kt` (create), the pins | the printing state | D1 |
+| `apps/cafe/components/print/PrintHostDrain.tsx`, `hooks/use-native-host.ts`, `hooks/use-print-agent-wake.ts`, `hooks/use-print-agent.ts`; `strings.xml`, `README.md`; the hooks test, the pins | the service on a writer; the page's no; no lease on the hidden tick | D2 |
+| `apps/mobile/…/printer/PageWatch.kt`, `BackgroundMount.kt` (create), `PrintHostService.kt`, `PosPrinterModule.kt`, `WebViewDelivery.kt`; `apps/mobile/src/native/PosPrinter.ts`, `src/screens/PosScreen.tsx`; `PageWatchTest.kt` (create), the pins | a hidden page keeps running; the remount, also hidden | D3 |
+| both protocol files, `apps/cafe/lib/printer/native-bridge.ts`, `components/print/PrinterAdvanced.tsx`; `apps/mobile/src/bridge/injected.ts`, `router.ts`, `use-native-bridge.ts`, `src/native/PosPrinter.ts`, `src/screens/PosScreen.tsx`, `src/battery-steps.ts`, `src/screens/BatteryScreen.tsx` (create), `…/printer/BatteryTargets.kt`, `BatterySettings.kt` (create), `PosPrinterModule.kt`, `AndroidManifest.xml`, `package.json`; the tests and pins | the battery checklist | D4 |
+| this plan | Session 3D Results | D5 |
+
+Each task is one commit, in this order: D0 → D4. Then D5 (verification, the APKs, the exit, the fresh review, Results). **JUnit** runs from the repo (`cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun`); a RED there is a test failure (D0) or a compile failure of the JVM tests (D1, D3, D4: they name what the code adds).
+
+---
+
+### Task D0: the 3C review gate's fixes: a refused connect asked again a second later; the connect's status check first and never in a select's answer; BUSY behind a printer that said it cannot print; FEED is not an error; a connected printer's select answers at once; a full release compile; simple mode leases no default printer that cannot print; the beat's clock forgets a printer that left the app and starts at once for a new takeover list
+
+**Files:**
+- Modify: `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/TcpTransport.kt` (a refused connect, `ConnectException`, is asked once more after `CONNECT_REFUSED_RETRY_MS` inside the 5 s budget)
+- Modify: `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterManager.kt` (`probe(gen, force)`; the connect's check queued before `env.changed()`; the job's io task re-checks `health`; the status after a job is forced)
+- Modify: `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterStatus.kt` (DLE EOT 2 bit 3, paper fed by FEED, is not an error)
+- Modify: `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterApi.kt` (a v1 select of a CONNECTED listed printer answers at once; `afterIo` only while CONNECTING)
+- Modify: `apps/mobile/android/app/build.gradle` (release Kotlin compiles in full: `doFirst { incremental = false }`), `apps/mobile/README.md` (the emulator APK's `aR`, the full release compile)
+- Modify: `apps/cafe/lib/printer/native-pool.ts` (`poolDefaultCannotPrint`), `hooks/use-print-agent.ts` (`printerReady` in simple mode; `clockRef`), `lib/print-agent-health.ts` (the memory forgets a printer that left the app's list)
+- Tests: `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/DleEotTest.kt` (1 more), `TcpTransportTest.kt` (2 more; `FakePrinter` takes a server), `PrinterManagerTest.kt` (3 more), `PrinterFakes.kt` (`FakeEnv.onChanged`); `apps/mobile/src/mobile-paths.test.ts` (pin 20's after-job needle deliberately changed; pin 21 new); `apps/cafe/lib/print-agent-health.test.ts`, `lib/printer/native-pool.test.ts`, `lib/print-agent-paths.test.ts` (the agent's gate deliberately changed; a 3C-gate pin)
+
+**Interfaces produced:** `TcpTransport.CONNECT_REFUSED_RETRY_MS`; `PrinterManager.probe(gen, force = false)` (private); `poolDefaultCannotPrint(snapshot)` (`lib/printer/native-pool.ts`).
+
+**Its review's I-1 (the golden review's m-4, carried): a printer that takes one connection at a time.** Every writer app on bridge v2 checks each network printer of the setup once a minute (3C), so on a LAN module that accepts one TCP session at a time a job's connect can land while another device's check holds the printer, and be refused: NOT_CONNECTED before any byte, acked `unreachable`, the writer skipped 5 minutes. A refused connect (`ConnectException`, not a timeout) is now asked once more a second later, inside the same 5 s budget. A printer that is off times out as before (no retry); one whose port refuses for good reads down after about one second more, and so does one whose network answers "host unreachable" at once (Android throws `ConnectException` for both: the golden copy's review, m-4, words only). An interrupt during that second ends the connect as NOT_CONNECTED, never the printer's thread (its m-3: nothing interrupts it today).
+
+**m-1 (the 3C session's review), two jobs that both read "maybe" as the paper runs out.** The status a job's own connection read was stored by a probe that skipped itself when the next job had already claimed the printer, so that job was written to an empty printer (a second labelled REPRINT, or a second cashier question). Now the status after a job is read even then (`probe(gen, force = true)`, on the printer's own io thread, after the job's answer: it never delays the ack), and a job's io task checks the printer's state again before any byte: BUSY.
+
+**m-6 (the 3C session's review) and its review's m-5.** The connect's status check ran inside the attempt, so Add printer waited for it (up to ~2 s on a printer that does not answer), and a job that claimed the printer in that moment skipped it (a silent printer's first slip then paid the long wait once). It is now its own io task, queued before anyone hears "connected", and forced: the select answers first, and the check still runs before any job.
+
+**m-2 (the 3C session's review), FEED.** A printer whose FEED button is held says offline with "paper is being fed" (DLE EOT 2, bit 3) as the cause; that read as an error (BUSY, "reports an error" on every device for up to 10 s). Feeding is now a cause, not an error.
+
+**Its review's m-3.** A v1 "Change printer" to a printer already listed and CONNECTED answered behind a slip it was printing (up to the 60 s watchdog; the page gives up at 10 s and says it could not connect, though the default had moved). It answers at once now; only one still connecting waits for its attempt.
+
+**The build notes (the 3C Results' ruling 2).** A release APK built in the repo after a Kotlin signature change kept a stale class (NoSuchMethodError on the printer thread). `app/build.gradle` now compiles the app's release Kotlin in full: `doFirst { incremental = false }`. It is set when the task runs because the Kotlin plugin sets the flag again after the build script's `configureEach` (the gate's probe: configured false, executed true); with `doFirst` a one-line change recompiled all 99 release classes. Debug builds and JUnit stay incremental. The ABI split's task-name trigger stays, with a README line: the emulator APK is `aR -PreactNativeArchitectures=x86_64` with no other "release" task on that command line.
+
+**m-4 (the 3C session's review), the page.** In simple mode on bridge v2 a default printer out of paper was leased every 30 s (refused BUSY each time). The agent's gate for a device with no printer of its own (`printerReady`) now also needs the app's default printer not to say it cannot print (`poolDefaultCannotPrint`); paper back nudges the agent as before (the ready key).
+
+**Its review's m-1 and m-2, the beat's settle clock.** The settle memory kept a pool printer that left the app's list, so one added back later read down at once by its old clock (a 5-minute flip); it now forgets it. The takeover printers the app lacks (`missing`) change with the setup or a refused select, not with a status event, so the clock now samples a new list the moment the hook sees it (`clockRef`).
+
+**RED**: the JVM tests fail (they use only what exists: a test failure, not a compile failure), the mobile pins 20 and 21, and the cafe tests' four new cases (`poolDefaultCannotPrint` is not there yet, the health memory, the agent's gate and the 3C-gate clock pin).
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/print-agent-health.test.ts`, find:
+
+```ts
+  assert.deepEqual(printerHealthReportsOf({ ...input, nowMs: T0 + 31_000 }, memory), [], "missing again later: a fresh 20 s");
+});
+
+test("3C review (I-1): the settle clock runs on every status change, not only when the wake samples it: a printer down 20 s reads disconnected at the next wake", () => {
+  let status: PoolPrinter["status"] = "connected";
+  let now = T0;
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual(printerHealthReportsOf({ ...input, nowMs: T0 + 31_000 }, memory), [], "missing again later: a fresh 20 s");
+});
+
+test("3C review gate (its review's m-1): a printer that left the app's list and is added back starts a fresh 20 s, never its old clock", () => {
+  const memory = new Map<string, SettledLink>();
+  const targets = { "p-kitchen": { nativeId: "tcp:10.0.2.2:9100", paper: "80mm" as const } };
+  const input = { localIds: ["p-kitchen"], targets, device: "none" as const, windows: false, missing: [] };
+  const down = [poolPrinter("tcp:10.0.2.2:9100", "disconnected")];
+  printerHealthReportsOf({ ...input, pool: down, nowMs: T0 }, memory);
+  assert.deepEqual(printerHealthReportsOf({ ...input, pool: down, nowMs: T0 + PRINTER_DOWN_SETTLE_MS }, memory), [{ printerId: "p-kitchen", link: "disconnected" }], "down 20 s");
+  assert.deepEqual(printerHealthReportsOf({ ...input, pool: [], nowMs: T0 + 30_000 }, memory), [], "removed from the app");
+  assert.deepEqual(printerHealthReportsOf({ ...input, pool: [poolPrinter("tcp:10.0.2.2:9100", "connecting")], nowMs: T0 + 60_000 }, memory), [], "added back, still connecting: nothing yet (not down at once by its old clock)");
+});
+
+test("3C review (I-1): the settle clock runs on every status change, not only when the wake samples it: a printer down 20 s reads disconnected at the next wake", () => {
+  let status: PoolPrinter["status"] = "connected";
+  let now = T0;
+```
+
+In `apps/cafe/lib/print-agent-paths.test.ts`, find:
+
+```ts
+  // bridge v2 by its own state; any other only while canPrintNow, as before).
+  // Session 3C (the 3B gate's review of the golden copy, m-2) deliberately changed: a device that prints printers is ready
+  // only by their own states.
+  assert.ok(agent.includes("printerReady: () => (readyRef.current.length === 0 ? canPrintNow() : readyNow().length > 0),"), "the agent's gate is the device's own can-print verdict");
+  // Session 3C (spec §10) deliberately changed: and not one the app says cannot print.
+  assert.ok(agent.includes("const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf, printerCannotPrintOf);"), "and its printers' own states");
+  assert.ok(agent.includes("PRINT_AGENT_SLIP_DEADLINE_MS"), "its wait on one slip is bounded");
+```
+
+Replace it with:
+
+```ts
+  // bridge v2 by its own state; any other only while canPrintNow, as before).
+  // Session 3C (the 3B gate's review of the golden copy, m-2) deliberately changed: a device that prints printers is ready
+  // only by their own states.
+  // The 3C review gate (m-4) deliberately changed: in simple mode the app's default printer by its own state too.
+  assert.ok(agent.includes("printerReady: () => (readyRef.current.length === 0 ? canPrintNow() && !poolDefaultCannotPrint(nativePool().getSnapshot()) : readyNow().length > 0),"), "the agent's gate is the device's own can-print verdict");
+  // Session 3C (spec §10) deliberately changed: and not one the app says cannot print.
+  assert.ok(agent.includes("const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf, printerCannotPrintOf);"), "and its printers' own states");
+  assert.ok(agent.includes("PRINT_AGENT_SLIP_DEADLINE_MS"), "its wait on one slip is bounded");
+```
+
+In `apps/cafe/lib/print-agent-paths.test.ts`, find:
+
+```ts
+  assert.ok(agent.includes("clock.stop();"), "released with the agent");
+});
+```
+
+Replace it with:
+
+```ts
+  assert.ok(agent.includes("clock.stop();"), "released with the agent");
+});
+
+// The 3C review gate (its review's m-2): the takeover printers the app lacks change with the setup or a refused select,
+// not with a status event, so the clock samples the new list the moment the hook sees it.
+test("PIN (3C gate): a new list of takeover printers the app lacks starts the beat's 20 s clock at once", () => {
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.ok(agent.includes("missingRef.current = missingKey === \"\" ? [] : missingKey.split(\",\");\n    clockRef.current?.reports();"), "the list is sampled when it changes");
+  assert.ok(agent.includes("clockRef.current = clock;") && agent.includes("clockRef.current = null;"), "the hook holds the agent's clock, and lets it go with the agent");
+});
+```
+
+In `apps/cafe/lib/printer/native-pool.test.ts`, find:
+
+```ts
+import { flush, makeClock } from "@/lib/printer/device-printer-fakes";
+import { NATIVE_REQUEST_TIMEOUT_MS, nativeError } from "@/lib/printer/native-bridge";
+import { NATIVE_BRIDGE_V2, nativeV2Bridge, nativeV2Client, nativeV2Request, type NativePoolStatus, type NativeV2Client } from "@/lib/printer/native-bridge-v2";
+import { EMPTY_POOL, connectedPoolKey, createNativePool, poolSnapshotOf } from "@/lib/printer/native-pool";
+import { readFileSync } from "node:fs";
+import { PRINTER_CONNECT_FAILED_MESSAGE } from "@/lib/printer/device-printer-link";
+import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
+```
+
+Replace it with:
+
+```ts
+import { flush, makeClock } from "@/lib/printer/device-printer-fakes";
+import { NATIVE_REQUEST_TIMEOUT_MS, nativeError } from "@/lib/printer/native-bridge";
+import { NATIVE_BRIDGE_V2, nativeV2Bridge, nativeV2Client, nativeV2Request, type NativePoolStatus, type NativeV2Client } from "@/lib/printer/native-bridge-v2";
+import { EMPTY_POOL, connectedPoolKey, createNativePool, poolDefaultCannotPrint, poolSnapshotOf } from "@/lib/printer/native-pool";
+import { readFileSync } from "node:fs";
+import { PRINTER_CONNECT_FAILED_MESSAGE } from "@/lib/printer/device-printer-link";
+import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
+```
+
+In `apps/cafe/lib/printer/native-pool.test.ts`, find:
+
+```ts
+  assert.equal(connectedPoolKey(empty), BAR.id, "out of paper: not ready; low paper still prints");
+});
+
+test("3B: the app's v2 list may say each printer's paper, cover and error (Session 3C's app); the page keeps them, and a change of them is a change", () => {
+  const plain = poolSnapshotOf({ printers: [{ state: "connected", printer: KITCHEN }], defaultId: KITCHEN.id, bluetooth: "on" });
+  assert.equal(plain.printers[0]?.paper, undefined, "an app that says nothing (2F2's): nothing");
+```
+
+Replace it with:
+
+```ts
+  assert.equal(connectedPoolKey(empty), BAR.id, "out of paper: not ready; low paper still prints");
+});
+
+test("3C review gate (m-4): the app's default printer that says it cannot print makes a device with no printer of its own not ready", () => {
+  const out = poolSnapshotOf({ printers: [{ state: "connected", printer: KITCHEN, paper: "out" }, { state: "connected", printer: BAR }], defaultId: KITCHEN.id, bluetooth: "on" } as NativePoolStatus);
+  assert.equal(poolDefaultCannotPrint(out), true, "simple mode prints on the default: out of paper, so not ready");
+  assert.equal(poolDefaultCannotPrint({ ...out, defaultId: BAR.id }), false, "another printer out of paper says nothing of the default");
+  assert.equal(poolDefaultCannotPrint(EMPTY_POOL), false, "no app list (bridge v1, the Windows app, a browser): as before");
+});
+
+test("3B: the app's v2 list may say each printer's paper, cover and error (Session 3C's app); the page keeps them, and a change of them is a change", () => {
+  const plain = poolSnapshotOf({ printers: [{ state: "connected", printer: KITCHEN }], defaultId: KITCHEN.id, bluetooth: "on" });
+  assert.equal(plain.printers[0]?.paper, undefined, "an app that says nothing (2F2's): nothing");
+```
+
+In `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/DleEotTest.kt`, find:
+
+```kotlin
+    assertEquals("only DLE EOT 1: ready, nothing about paper or cover", PrinterHealth(null, null, error = false, offline = false), DleEot.healthOf(mapOf(1 to 0x12)))
+    assertEquals("no DLE EOT 1, paper end in n=4: it cannot print", true, DleEot.healthOf(mapOf(4 to 0x72))?.offline)
+  }
+}
+```
+
+Replace it with:
+
+```kotlin
+    assertEquals("only DLE EOT 1: ready, nothing about paper or cover", PrinterHealth(null, null, error = false, offline = false), DleEot.healthOf(mapOf(1 to 0x12)))
+    assertEquals("no DLE EOT 1, paper end in n=4: it cannot print", true, DleEot.healthOf(mapOf(4 to 0x72))?.offline)
+  }
+
+  @Test
+  fun paperFedByTheFeedButtonIsNotAnError() {
+    // The 3C review gate (m-2): FEED held down reads offline (n=1, bit 3) with "paper is being fed by the FEED button"
+    // (n=2, bit 3) as its cause; the printer takes a job meanwhile and prints it after the feed.
+    val feeding = DleEot.healthOf(mapOf(1 to 0x1a, 2 to 0x1a, 3 to 0x12, 4 to 0x12))
+    assertEquals(PrinterHealth(DleEot.PAPER_OK, DleEot.COVER_CLOSED, error = false, offline = true), feeding)
+    assertFalse("so it is never refused BUSY, nor shown as an error", feeding!!.cannotPrint())
+  }
+}
+```
+
+In `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterFakes.kt`, find:
+
+```kotlin
+  var bluetooth = true
+  var shown = true
+  var changes = 0
+  /** What the next transport's open does (throw to fail it); every transport made, in order. */
+  var nextOpen: () -> Unit = {}
+  var nextWrite: (ByteArray) -> Unit = {}
+```
+
+Replace it with:
+
+```kotlin
+  var bluetooth = true
+  var shown = true
+  var changes = 0
+  /** The 3C review gate: runs at every [changed], as the page hears it (a test may print from it). */
+  var onChanged: () -> Unit = {}
+  /** What the next transport's open does (throw to fail it); every transport made, in order. */
+  var nextOpen: () -> Unit = {}
+  var nextWrite: (ByteArray) -> Unit = {}
+```
+
+In `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterFakes.kt`, find:
+
+```kotlin
+
+  override fun changed() {
+    changes++
+  }
+
+  /** The delays (from now) of the timer tasks still waiting. */
+```
+
+Replace it with:
+
+```kotlin
+
+  override fun changed() {
+    changes++
+    onChanged()
+  }
+
+  /** The delays (from now) of the timer tasks still waiting. */
+```
+
+In `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterManagerTest.kt`, find:
+
+```kotlin
+    assertEquals("the link is fine", BridgeCodes.STATE_CONNECTED, manager.state())
+    assertEquals("and it says why", paperOut, manager.health())
+  }
+}
+```
+
+Replace it with:
+
+```kotlin
+    assertEquals("the link is fine", BridgeCodes.STATE_CONNECTED, manager.state())
+    assertEquals("and it says why", paperOut, manager.health())
+  }
+
+  // ── The 3C review gate (m-1, m-6, its review's m-5) ─────────────────────────────────────────────────────────────
+
+  @Test
+  fun aSelectIsAnsweredBeforeTheStatusCheckOfItsConnect() {
+    // m-6: Add printer answers once the printer connected, not after its DLE EOT questions too.
+    val env = FakeEnv()
+    env.nextStatus = { ready }
+    val io = ManualIo()
+    val manager = PrinterManager(tcpPrinter(), env, io)
+    var askedWhenAnswered = -1
+    manager.connectAsync(manager.begin()) { askedWhenAnswered = env.made.last().statusCalls }
+    io.runAll()
+    assertEquals("the answer did not wait for the status check", 0, askedWhenAnswered)
+    assertEquals("which ran right after it, on the printer's io thread", 1, env.made.last().statusCalls)
+    assertEquals(ready, manager.health())
+  }
+
+  @Test
+  fun theStatusCheckOfAConnectRunsBeforeAJobThatClaimedThePrinterMeanwhile() {
+    // Its review's m-5: the page hears "connected" and sends a slip at once; the connect's check still runs first, so a
+    // printer that never answers is known before its first slip (never the long wait after it).
+    val env = FakeEnv()
+    val io = ManualIo()
+    val manager = PrinterManager(tcpPrinter(), env, io)
+    var askedBeforeTheSlip = -1
+    env.nextWrite = { askedBeforeTheSlip = env.made.last().statusCalls }
+    var sent = false
+    env.onChanged = {
+      if (!sent && manager.state() == BridgeCodes.STATE_CONNECTED) {
+        sent = true
+        manager.print("AAAA", Replies<Int>().cb)
+      }
+    }
+    manager.connectAsync(manager.begin()) {}
+    io.runAll()
+    assertTrue("the slip was sent", sent)
+    assertEquals("the connect's status check ran before the slip was written", 1, askedBeforeTheSlip)
+  }
+
+  @Test
+  fun aJobQueuedBehindOneThatFoundThePrinterOutOfPaperIsRefusedBusyBeforeAnyByte() {
+    // m-1: the page sends the next slip the moment the first is answered; the first's own status (out of paper) is read
+    // before the second runs, so the second is refused BUSY, not written to an empty printer (a second "maybe").
+    val env = FakeEnv()
+    val (manager, io) = started(tcpPrinter(), env)
+    val link = env.made.last()
+    var writes = 0
+    link.onWrite = {
+      writes++
+      throw TransportException(BridgeCodes.WRITE_FAILED, "The printer cannot print now", linkKept = true)
+    }
+    link.onStatus = { paperOut }
+    val first = Replies<Int>()
+    val second = Replies<Int>()
+    manager.print("AAAA") { reply ->
+      first.cb(reply)
+      manager.print("BBBB", second.cb)
+    }
+    io.runAll()
+    assertEquals("the first may be on paper (REPRINT)", listOf(BridgeCodes.WRITE_FAILED), first.codes())
+    assertEquals("the second waits: BUSY", listOf(BridgeCodes.BUSY), second.codes())
+    assertEquals("only the first reached the printer", 1, writes)
+  }
+}
+```
+
+In `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/TcpTransportTest.kt`, find:
+
+```kotlin
+ */
+class TcpTransportTest {
+  /** One fake printer: what it does with each connection; every byte it received, per connection. */
+  private class FakePrinter(val behave: (Socket, ByteArrayOutputStream) -> Unit) {
+    val server = ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"))
+    val jobs = LinkedBlockingQueue<ByteArray>()
+    @Volatile var connections = 0
+    private val thread =
+```
+
+Replace it with:
+
+```kotlin
+ */
+class TcpTransportTest {
+  /** One fake printer: what it does with each connection; every byte it received, per connection. */
+  private class FakePrinter(val behave: (Socket, ByteArrayOutputStream) -> Unit, val server: ServerSocket = ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"))) {
+    val jobs = LinkedBlockingQueue<ByteArray>()
+    @Volatile var connections = 0
+    private val thread =
+```
+
+In `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/TcpTransportTest.kt`, find:
+
+```kotlin
+  }
+
+  @Test
+  fun theIdleCheckOfAPrinterThatIsGoneIsNotConnected() {
+    val p = printer(answering(healthy))
+    val port = p.port
+```
+
+Replace it with:
+
+```kotlin
+  }
+
+  @Test
+  fun aConnectRefusedWhileAnotherDeviceHoldsThePrinterIsTriedOnceMoreASecondLater() {
+    // The 3C review gate (its review's I-1): a printer that takes one connection at a time refuses a job's connect while
+    // another device's status check holds it; the job asks again a second later instead of reading "unreachable".
+    val port = ServerSocket(0, 50, InetAddress.getByName("127.0.0.1")).use { it.localPort }
+    val late =
+        Thread {
+          Thread.sleep(300)
+          val server = ServerSocket(port, 50, InetAddress.getByName("127.0.0.1"))
+          printers.add(FakePrinter(answering(healthy), server))
+        }
+    late.start()
+    TcpTransport("127.0.0.1", port, afterJobMinMs = 600, replyMs = 300).open()
+    late.join()
+  }
+
+  @Test
+  fun aPortThatKeepsRefusingIsNotConnectedAfterOneMoreTry() {
+    val port = ServerSocket(0, 50, InetAddress.getByName("127.0.0.1")).use { it.localPort }
+    val start = System.nanoTime()
+    try {
+      TcpTransport("127.0.0.1", port, afterJobMinMs = 600, replyMs = 300).open()
+      fail("nothing listens: not connected")
+    } catch (e: TransportException) {
+      assertEquals(BridgeCodes.NOT_CONNECTED, e.code)
+    }
+    val ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start)
+    assertTrue("asked twice, a second apart (${ms} ms), well inside the 5 s connect budget", ms in 900..3_000)
+  }
+
+  @Test
+  fun theIdleCheckOfAPrinterThatIsGoneIsNotConnected() {
+    val p = printer(answering(healthy))
+    val port = p.port
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  need(s.manager, 'const val STATUS_PROBE_MS = 60_000L', 'the idle status check is not every minute');
+  need(s.manager, 'const val STATUS_PROBE_PROBLEM_MS = 10_000L', 'a printer that cannot print is not checked every 10 s');
+  need(s.manager, 'if (synchronized(lock) { health?.cannotPrint() == true }) {\n      printing.set(false)\n      cb(Reply.fail(BridgeCodes.BUSY))', 'a printer that cannot print is not refused BUSY before any byte');
+  need(s.manager, 'synchronized(lock) { if (transport === t) generation else null }?.let { probe(it) }', 'a job is not followed by its status');
+  need(s.manager, 'if (timedOut || !e.linkKept) onLinkLost(t)', 'a printer that took the job in but cannot print loses its link');
+  need(s.manager, 'Runnable { if (printing.get()) scheduleProbe(gen) else onIo { probe(gen) } }', 'the idle check runs while a job waits');
+  need(s.tcp, 'afterJob(s, data.size)\n      s.shutdownOutput()', 'a network job does not ask DLE EOT on its own connection before it half-closes');
+```
+
+Replace it with:
+
+```ts
+  need(s.manager, 'const val STATUS_PROBE_MS = 60_000L', 'the idle status check is not every minute');
+  need(s.manager, 'const val STATUS_PROBE_PROBLEM_MS = 10_000L', 'a printer that cannot print is not checked every 10 s');
+  need(s.manager, 'if (synchronized(lock) { health?.cannotPrint() == true }) {\n      printing.set(false)\n      cb(Reply.fail(BridgeCodes.BUSY))', 'a printer that cannot print is not refused BUSY before any byte');
+  // The 3C review gate (m-1) deliberately changed: the status after a job is read even when the next job claimed the printer.
+  need(s.manager, 'synchronized(lock) { if (transport === t) generation else null }?.let { probe(it, force = true) }', 'a job is not followed by its status');
+  need(s.manager, 'if (timedOut || !e.linkKept) onLinkLost(t)', 'a printer that took the job in but cannot print loses its link');
+  need(s.manager, 'Runnable { if (printing.get()) scheduleProbe(gen) else onIo { probe(gen) } }', 'the idle check runs while a job waits');
+  need(s.tcp, 'afterJob(s, data.size)\n      s.shutdownOutput()', 'a network job does not ask DLE EOT on its own connection before it half-closes');
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  everyMutationCaught(run('manager'), base.manager, [
+    ['const val STATUS_PROBE_MS = 60_000L', 'const val STATUS_PROBE_MS = 5_000L'],
+    ['if (synchronized(lock) { health?.cannotPrint() == true }) {', 'if (false) {'],
+    ['?.let { probe(it) }', '?.let { it }'],
+    ['if (timedOut || !e.linkKept) onLinkLost(t)', 'onLinkLost(t)'],
+    ['if (printing.get()) scheduleProbe(gen) else onIo { probe(gen) }', 'onIo { probe(gen) }'],
+  ]);
+```
+
+Replace it with:
+
+```ts
+  everyMutationCaught(run('manager'), base.manager, [
+    ['const val STATUS_PROBE_MS = 60_000L', 'const val STATUS_PROBE_MS = 5_000L'],
+    ['if (synchronized(lock) { health?.cannotPrint() == true }) {', 'if (false) {'],
+    ['?.let { probe(it, force = true) }', '?.let { it }'],
+    ['if (timedOut || !e.linkKept) onLinkLost(t)', 'onLinkLost(t)'],
+    ['if (printing.get()) scheduleProbe(gen) else onIo { probe(gen) }', 'onIo { probe(gen) }'],
+  ]);
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  everyMutationCaught(run('service'), base.service, [['R.string.print_host_title_paper_out', 'R.string.print_host_title_no_printer']]);
+});
+
+test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
+  const strings = readFileSync(join(MAIN, 'res', 'values', 'strings.xml'), 'utf8');
+  assert.ok(
+```
+
+Replace it with:
+
+```ts
+  everyMutationCaught(run('service'), base.service, [['R.string.print_host_title_paper_out', 'R.string.print_host_title_no_printer']]);
+});
+
+// ── pin 21: the 3C review gate's app fixes ─────────────────────────────────
+// A refused connect is asked again once a second later (its review's I-1); the connect's status check is its own io
+// task, queued before anyone hears "connected", and a job queued behind one whose printer said it cannot print is
+// refused BUSY (m-1, m-6, its review's m-5); FEED is not an error (m-2); a v1 select of a connected printer answers at
+// once (its review's m-3); a release build compiles the app's Kotlin in full (the 3C build note).
+interface GateFixSources {
+  manager: string;
+  tcp: string;
+  status: string;
+  api: string;
+  gradle: string;
+}
+function gateFixProblems(s: GateFixSources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!strip(text).includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(s.tcp, '} catch (e: ConnectException) {\n      closeSocket(s)\n      throw TransportException(BridgeCodes.NOT_CONNECTED, REFUSED)', 'a refused connect is not told apart');
+  need(s.tcp, 'Thread.sleep(CONNECT_REFUSED_RETRY_MS.toLong())', 'a refused connect is not asked again');
+  need(s.tcp, 'const val CONNECT_REFUSED_RETRY_MS = 1_000', 'the second ask is not a second later');
+  need(s.manager, 'onIo { probe(gen, force = true) }\n        env.changed()', 'the connect\'s status check waits in the select\'s answer, or runs after a job');
+  need(s.manager, 'cb(Reply.fail(BridgeCodes.BUSY))\n            return@onIo', 'a job queued behind a printer that cannot print is written');
+  need(s.manager, 'if (!force && printing.get()) {', 'a forced status check is skipped');
+  need(s.status, '!paperOut && !coverOpen && !feeding', 'paper fed by the FEED button reads as an error');
+  need(s.api, '} else if (manager.state() == BridgeCodes.STATE_CONNECTING) {\n      manager.afterIo', 'a connected printer\'s select waits behind a slip');
+  need(s.gradle, 'tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {\n    if (name.toLowerCase().contains("release")) {\n        doFirst { incremental = false }', 'a release build compiles Kotlin incrementally');
+  return out;
+}
+const gateFixSources = (): GateFixSources => ({
+  manager: kt('PrinterManager.kt'),
+  tcp: kt('TcpTransport.kt'),
+  status: kt('PrinterStatus.kt'),
+  api: kt('PrinterApi.kt'),
+  gradle: read(GRADLE_APP),
+});
+
+test('pin 21: the 3C review gate\'s app fixes (a refused connect asked again, the connect check first, BUSY behind a printer that cannot print, FEED, a full release compile)', () => {
+  assert.deepEqual(gateFixProblems(gateFixSources()), []);
+});
+
+test('pin 21 mutation: every gate-fix needle can fail', () => {
+  const base = gateFixSources();
+  const run = (key: keyof GateFixSources) => (text: string) => gateFixProblems({ ...base, [key]: text });
+  everyMutationCaught(run('tcp'), base.tcp, [
+    ['throw TransportException(BridgeCodes.NOT_CONNECTED, REFUSED)', 'throw TransportException(BridgeCodes.NOT_CONNECTED, "Could not connect")'],
+    ['Thread.sleep(CONNECT_REFUSED_RETRY_MS.toLong())', 'Unit'],
+    ['const val CONNECT_REFUSED_RETRY_MS = 1_000', 'const val CONNECT_REFUSED_RETRY_MS = 0'],
+  ]);
+  everyMutationCaught(run('manager'), base.manager, [
+    ['onIo { probe(gen, force = true) }\n        env.changed()', 'env.changed()\n        probe(gen)'],
+    ['            return@onIo\n', ''],
+    ['if (!force && printing.get()) {', 'if (printing.get()) {'],
+  ]);
+  everyMutationCaught(run('status'), base.status, [['!paperOut && !coverOpen && !feeding', '!paperOut && !coverOpen']]);
+  everyMutationCaught(run('api'), base.api, [['} else if (manager.state() == BridgeCodes.STATE_CONNECTING) {\n', '} else if (true) {\n']]);
+  everyMutationCaught(run('gradle'), base.gradle, [
+    ['incremental = false', 'incremental = true'],
+    ['doFirst { incremental = false }', 'incremental = false'],
+  ]);
+});
+
+test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
+  const strings = readFileSync(join(MAIN, 'res', 'values', 'strings.xml'), 'utf8');
+  assert.ok(
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 129`; `# pass 125`; `# fail 4`
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-agent-health.test.ts lib/printer/native-pool.test.ts lib/print-agent-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 34`; `# pass 30`; `# fail 4`
+
+Run: `cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun --console=plain 2>&1 | grep -E "^BUILD|compileDebugUnitTestKotlin FAILED|testDebugUnitTest FAILED" | sed -E 's/ in [0-9hms ]+$//'`
+Expected: `> Task :app:testDebugUnitTest FAILED`; `BUILD FAILED`
+
+Run: `cat /d/kd/lucifer/apps/mobile/android/app/build/test-results/testDebugUnitTest/*.xml | grep -oE 'testsuite name="[^"]+" tests="[0-9]+" skipped="[0-9]+" failures="[0-9]+" errors="[0-9]+"'`
+Expected: `testsuite name="com.possoftware.pos.printer.DleEotTest" tests="7" skipped="0" failures="1" errors="0"`; `testsuite name="com.possoftware.pos.printer.PoolListTest" tests="6" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PoolStatusTest" tests="3" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PrinterManagerTest" tests="22" skipped="0" failures="3" errors="0"`; `testsuite name="com.possoftware.pos.printer.PrinterPoolTest" tests="3" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.TcpTransportTest" tests="10" skipped="0" failures="2" errors="0"`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+import { desktopPrinterSnapshot, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import { devicePrinter } from "@/lib/printer/device-printer";
+import { nativeBridge, nativeOn } from "@/lib/printer/native-bridge";
+import { connectedPoolKey, nativePool } from "@/lib/printer/native-pool";
+import { printerCannotPrintOf, printerStatusOf, printersState } from "@/lib/printer/printer-registry";
+import { canPrintNow } from "@/lib/printer/print-lane";
+import { subscribeRealtime } from "@/lib/realtime-client";
+```
+
+Replace it with:
+
+```ts
+import { desktopPrinterSnapshot, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import { devicePrinter } from "@/lib/printer/device-printer";
+import { nativeBridge, nativeOn } from "@/lib/printer/native-bridge";
+import { connectedPoolKey, nativePool, poolDefaultCannotPrint } from "@/lib/printer/native-pool";
+import { printerCannotPrintOf, printerStatusOf, printersState } from "@/lib/printer/printer-registry";
+import { canPrintNow } from "@/lib/printer/print-lane";
+import { subscribeRealtime } from "@/lib/realtime-client";
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+  // Session 3C (the 3B review's m-1): the network printers it may take over that its app does not list (its beat says so).
+  const missingRef = useRef<readonly string[]>(printers.takeoverMissingIds);
+  const missingKey = printers.takeoverMissingIds.join(",");
+  useEffect(() => {
+    missingRef.current = missingKey === "" ? [] : missingKey.split(",");
+  }, [missingKey]);
+  const writerRef = useRef(printers.isWriter);
+  useEffect(() => {
+```
+
+Replace it with:
+
+```ts
+  // Session 3C (the 3B review's m-1): the network printers it may take over that its app does not list (its beat says so).
+  const missingRef = useRef<readonly string[]>(printers.takeoverMissingIds);
+  const missingKey = printers.takeoverMissingIds.join(",");
+  // The 3C review gate (its review's m-2): the beat's health clock (below) samples a new list at once, so its 20 s start now.
+  const clockRef = useRef<{ reports: () => unknown } | null>(null);
+  useEffect(() => {
+    missingRef.current = missingKey === "" ? [] : missingKey.split(",");
+    clockRef.current?.reports();
+  }, [missingKey]);
+  const writerRef = useRef(printers.isWriter);
+  useEffect(() => {
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+      print,
+      // Session 3C (the gate's review, m-2): a device that prints printers is ready only by their own states (its app's
+      // default printer out of paper must not let a kick lease an empty line).
+      printerReady: () => (readyRef.current.length === 0 ? canPrintNow() : readyNow().length > 0),
+      // Session 2E: the Windows app's printer list read again (a printer added or removed) releases a refusal's hold;
+      // Session 2F1: so does any change of this device's printers (its own, or another of the app's).
+      printerState: () => (isDesktopShell() ? desktopPrinterSnapshot() : printersState()),
+```
+
+Replace it with:
+
+```ts
+      print,
+      // Session 3C (the gate's review, m-2): a device that prints printers is ready only by their own states (its app's
+      // default printer out of paper must not let a kick lease an empty line).
+      // The 3C review gate (m-4): in simple mode the app's default printer (this device's) by its own state too.
+      printerReady: () => (readyRef.current.length === 0 ? canPrintNow() && !poolDefaultCannotPrint(nativePool().getSnapshot()) : readyNow().length > 0),
+      // Session 2E: the Windows app's printer list read again (a printer added or removed) releases a refusal's hold;
+      // Session 2F1: so does any change of this device's printers (its own, or another of the app's).
+      printerState: () => (isDesktopShell() ? desktopPrinterSnapshot() : printersState()),
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+      [(listener) => nativePool().subscribe(listener), (listener) => devicePrinter().subscribe(listener)],
+    );
+    const offSource = setPrinterHealthSource(clock.reports);
+    return () => {
+      offSource();
+      clock.stop();
+    };
+```
+
+Replace it with:
+
+```ts
+      [(listener) => nativePool().subscribe(listener), (listener) => devicePrinter().subscribe(listener)],
+    );
+    const offSource = setPrinterHealthSource(clock.reports);
+    clockRef.current = clock;
+    return () => {
+      clockRef.current = null;
+      offSource();
+      clock.stop();
+    };
+```
+
+In `apps/cafe/lib/print-agent-health.ts`, find:
+
+```ts
+    }
+  }
+  for (const key of [...memory.keys()]) if (key.startsWith("missing:") && !input.missing.includes(key.slice("missing:".length))) memory.delete(key);
+  for (const printerId of input.missing) {
+    if (settledLinkOf(memory, `missing:${printerId}`, "disconnected", input.nowMs) === "disconnected") out.push({ printerId, link: "disconnected" });
+  }
+```
+
+Replace it with:
+
+```ts
+    }
+  }
+  for (const key of [...memory.keys()]) if (key.startsWith("missing:") && !input.missing.includes(key.slice("missing:".length))) memory.delete(key);
+  // The 3C review gate (its review's m-1): a printer that left the app's list is forgotten, so one added back later starts
+  // a fresh 20 s, never its old clock.
+  const pool = input.pool;
+  if (pool !== null) for (const key of [...memory.keys()]) if (!key.startsWith("missing:") && !key.startsWith("device:") && !pool.some((entry) => entry.id === key)) memory.delete(key);
+  for (const printerId of input.missing) {
+    if (settledLinkOf(memory, `missing:${printerId}`, "disconnected", input.nowMs) === "disconnected") out.push({ printerId, link: "disconnected" });
+  }
+```
+
+In `apps/cafe/lib/printer/native-pool.ts`, find:
+
+```ts
+ *  its slips wait, with no lease, until it says it can. */
+export function poolPrinterCannotPrint(entry: Pick<PoolPrinter, "paper" | "cover" | "error">): boolean {
+  return entry.paper === "out" || entry.cover === "open" || entry.error === true;
+}
+
+/** The app's list as the page's snapshot; a printer's state "none" (never sent for a listed printer) reads as down. */
+```
+
+Replace it with:
+
+```ts
+ *  its slips wait, with no lease, until it says it can. */
+export function poolPrinterCannotPrint(entry: Pick<PoolPrinter, "paper" | "cover" | "error">): boolean {
+  return entry.paper === "out" || entry.cover === "open" || entry.error === true;
+}
+
+/** The 3C review gate (m-4): the app's default printer (this device's own, the one simple mode prints on) says it cannot
+ *  print, so a device whose slips have no printer of their own is not ready either (no lease while it says so). */
+export function poolDefaultCannotPrint(snapshot: NativePoolSnapshot): boolean {
+  const entry = snapshot.defaultId === null ? undefined : snapshot.printers.find((printer) => printer.id === snapshot.defaultId);
+  return entry !== undefined && poolPrinterCannotPrint(entry);
+}
+
+/** The app's list as the page's snapshot; a printer's state "none" (never sent for a listed printer) reads as down. */
+```
+
+In `apps/mobile/README.md`, find:
+
+```markdown
+Use exactly this command: the one-APK-per-phone split switches on only for task
+names with "release" in them, and both ARM types must be built for both APKs.
+
+The release build is made small and hard to read back:
+
+- **One APK per phone CPU type** in `android\app\build\outputs\apk\release\`:
+```
+
+Replace it with:
+
+```markdown
+Use exactly this command: the one-APK-per-phone split switches on only for task
+names with "release" in them, and both ARM types must be built for both APKs.
+
+For the emulator, `.\gradlew.bat aR -PreactNativeArchitectures=x86_64` builds one
+x86_64 `app-release.apk`: `aR` (short for assembleRelease) has no "release" in
+its name, so the split stays off. Put no other task with "release" in its name
+on that command line, or the split turns on and no x86_64 APK comes out.
+
+A release build always compiles the app's Kotlin in full (`app/build.gradle`):
+an incremental release compile once kept a stale class, and that APK crashed on
+its printer thread although every test passed.
+
+The release build is made small and hard to read back:
+
+- **One APK per phone CPU type** in `android\app\build\outputs\apk\release\`:
+```
+
+In `apps/mobile/android/app/build.gradle`, find:
+
+```groovy
+    }
+}
+
+dependencies {
+    // The version of react-native is set by the React Native Gradle Plugin
+    implementation("com.facebook.react:react-android")
+```
+
+Replace it with:
+
+```groovy
+    }
+}
+
+/**
+ * Release builds compile the app's Kotlin in full, never incrementally (the 3C review gate, 2026-10-08): an incremental
+ * release compile kept a class that still called a constructor a later change had replaced, and that APK crashed on its
+ * printer thread (NoSuchMethodError) though every test passed. Debug builds and the JVM tests stay incremental. It is set
+ * when the task runs: the Kotlin plugin sets the task's incremental flag again after this script configures it.
+ */
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    if (name.toLowerCase().contains("release")) {
+        doFirst { incremental = false }
+    }
+}
+
+dependencies {
+    // The version of react-native is set by the React Native Gradle Plugin
+    implementation("com.facebook.react:react-android")
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterApi.kt`, find:
+
+```kotlin
+    val manager = selected.manager
+    if (selected.fresh || manager.state() == BridgeCodes.STATE_DISCONNECTED) {
+      manager.connectAsync(manager.begin()) { cb(Reply.Ok(answer())) }
+    } else {
+      manager.afterIo { cb(Reply.Ok(answer())) }
+    }
+  }
+```
+
+Replace it with:
+
+```kotlin
+    val manager = selected.manager
+    if (selected.fresh || manager.state() == BridgeCodes.STATE_DISCONNECTED) {
+      manager.connectAsync(manager.begin()) { cb(Reply.Ok(answer())) }
+    } else if (manager.state() == BridgeCodes.STATE_CONNECTING) {
+      manager.afterIo { cb(Reply.Ok(answer())) }
+    } else {
+      // The 3C review gate (its review's m-3): a connected one answers at once, never behind a slip it is printing.
+      cb(Reply.Ok(answer()))
+    }
+  }
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterManager.kt`, find:
+
+```kotlin
+        }
+    when (outcome) {
+      Outcome.CONNECTED -> {
+        env.changed()
+        // Session 3C: what the printer says of itself, once connected (then on the idle timer).
+        probe(gen)
+      }
+      Outcome.STALE -> closeQuietly(t)
+      // The link dropped between open() returning and the claim: not connected after all.
+```
+
+Replace it with:
+
+```kotlin
+        }
+    when (outcome) {
+      Outcome.CONNECTED -> {
+        // Session 3C: what the printer says of itself, once connected (then on the idle timer). The 3C review gate (m-6,
+        // and its review's m-5): its own io task, queued before anyone hears "connected", so a select's answer never
+        // waits for it and it runs before any job, even one that claimed this printer meanwhile.
+        onIo { probe(gen, force = true) }
+        env.changed()
+      }
+      Outcome.STALE -> closeQuietly(t)
+      // The link dropped between open() returning and the claim: not connected after all.
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterManager.kt`, find:
+
+```kotlin
+    }
+    val queued =
+        onIo {
+          val reply = runPrint(t, base64)
+          printing.set(false)
+          cb(reply)
+          // Session 3C (spec §10): what the printer says after the job (a network printer: what the job's own connection
+          // read, G5), before the next job.
+          synchronized(lock) { if (transport === t) generation else null }?.let { probe(it) }
+        }
+    if (!queued) {
+      printing.set(false)
+```
+
+Replace it with:
+
+```kotlin
+    }
+    val queued =
+        onIo {
+          // The 3C review gate (m-1): a job queued behind one whose printer said it cannot print (its status, read
+          // below) is refused here, still before any byte.
+          if (synchronized(lock) { health?.cannotPrint() == true }) {
+            printing.set(false)
+            cb(Reply.fail(BridgeCodes.BUSY))
+            return@onIo
+          }
+          val reply = runPrint(t, base64)
+          printing.set(false)
+          cb(reply)
+          // Session 3C (spec §10): what the printer says after the job (a network printer: what the job's own connection
+          // read, G5), before the next job: read even when the next job already claimed this printer (m-1).
+          synchronized(lock) { if (transport === t) generation else null }?.let { probe(it, force = true) }
+        }
+    if (!queued) {
+      printing.set(false)
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterManager.kt`, find:
+
+```kotlin
+  /**
+   * Session 3C (spec §10): asks the printer's status on the io thread (called there), keeps what it said (published when
+   * it changed), then asks again after [STATUS_PROBE_MS], or [STATUS_PROBE_PROBLEM_MS] while it says it cannot print.
+   * Skipped while a job waits or prints (that job's own status answers it). A link that no longer answers is lost (the
+   * reconnect loop takes over). A stale [gen] does nothing.
+   */
+  private fun probe(gen: Int) {
+    val t = synchronized(lock) { if (gen != generation || halted || state != BridgeCodes.STATE_CONNECTED) null else transport } ?: return
+    if (printing.get()) {
+      scheduleProbe(gen)
+      return
+    }
+```
+
+Replace it with:
+
+```kotlin
+  /**
+   * Session 3C (spec §10): asks the printer's status on the io thread (called there), keeps what it said (published when
+   * it changed), then asks again after [STATUS_PROBE_MS], or [STATUS_PROBE_PROBLEM_MS] while it says it cannot print.
+   * Skipped while a job waits or prints (that job's own status answers it), unless [force]d: the check at the connect
+   * and the one right after a job, which run on the io thread ahead of any job that claimed the printer meanwhile (the 3C
+   * review gate, m-1, m-6). A link that no longer answers is lost (the reconnect loop takes over). A stale [gen] does
+   * nothing.
+   */
+  private fun probe(gen: Int, force: Boolean = false) {
+    val t = synchronized(lock) { if (gen != generation || halted || state != BridgeCodes.STATE_CONNECTED) null else transport } ?: return
+    if (!force && printing.get()) {
+      scheduleProbe(gen)
+      return
+    }
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterStatus.kt`, find:
+
+```kotlin
+    /** [DleEot.COVER_CLOSED] or [DleEot.COVER_OPEN]; null when the printer did not say. */
+    val cover: String? = null,
+    /** It says it cannot print and names an error, or names no cause at all (an error bit while it says it can print
+     *  says nothing). */
+    val error: Boolean = false,
+    /** It says it cannot print now (DLE EOT 1, bit 3; or paper out or the cover open when it did not answer that). */
+    val offline: Boolean = false,
+```
+
+Replace it with:
+
+```kotlin
+    /** [DleEot.COVER_CLOSED] or [DleEot.COVER_OPEN]; null when the printer did not say. */
+    val cover: String? = null,
+    /** It says it cannot print and names an error, or names no cause at all (an error bit while it says it can print
+     *  says nothing; the 3C review gate, m-2: paper fed by the FEED button is a cause, not an error). */
+    val error: Boolean = false,
+    /** It says it cannot print now (DLE EOT 1, bit 3; or paper out or the cover open when it did not answer that). */
+    val offline: Boolean = false,
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterStatus.kt`, find:
+
+```kotlin
+  private const val FIXED_BITS = 0x12
+  private const val ONE_OFFLINE = 0x08
+  private const val TWO_COVER_OPEN = 0x04
+  private const val TWO_PAPER_END = 0x20
+  private const val TWO_ERROR = 0x40
+  private const val THREE_ERRORS = 0x68
+```
+
+Replace it with:
+
+```kotlin
+  private const val FIXED_BITS = 0x12
+  private const val ONE_OFFLINE = 0x08
+  private const val TWO_COVER_OPEN = 0x04
+  private const val TWO_FEEDING = 0x08
+  private const val TWO_PAPER_END = 0x20
+  private const val TWO_ERROR = 0x40
+  private const val THREE_ERRORS = 0x68
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterStatus.kt`, find:
+
+```kotlin
+    val cover = if (two == null) null else if (coverOpen) COVER_OPEN else COVER_CLOSED
+    val offline = if (one != null) (one and ONE_OFFLINE) != 0 else paperOut || coverOpen
+    val named = (three != null && (three and THREE_ERRORS) != 0) || (two != null && (two and TWO_ERROR) != 0)
+    return PrinterHealth(paper, cover, offline && (named || (!paperOut && !coverOpen)), offline)
+  }
+}
+```
+
+Replace it with:
+
+```kotlin
+    val cover = if (two == null) null else if (coverOpen) COVER_OPEN else COVER_CLOSED
+    val offline = if (one != null) (one and ONE_OFFLINE) != 0 else paperOut || coverOpen
+    val named = (three != null && (three and THREE_ERRORS) != 0) || (two != null && (two and TWO_ERROR) != 0)
+    // The 3C review gate (m-2): FEED held down says offline with this cause; the printer prints a job sent meanwhile.
+    val feeding = two != null && (two and TWO_FEEDING) != 0
+    return PrinterHealth(paper, cover, offline && (named || (!paperOut && !coverOpen && !feeding)), offline)
+  }
+}
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/TcpTransport.kt`, find:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import java.io.IOException
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Socket
+```
+
+Replace it with:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import java.io.IOException
+import java.net.ConnectException
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Socket
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/TcpTransport.kt`, find:
+
+```kotlin
+
+    /** A socket timeout of 0 means "wait forever", so no wait is ever shorter than this. */
+    const val MIN_WAIT_MS = 1
+
+    /** Session 3C (G5): the wait for the printer's first DLE EOT answer after a job: at least this, plus the job's own
+     *  printing time at a slow [STATUS_BYTES_PER_MS], at most [STATUS_AFTER_JOB_MAX_MS] (inside the 60 s watchdog). */
+```
+
+Replace it with:
+
+```kotlin
+
+    /** A socket timeout of 0 means "wait forever", so no wait is ever shorter than this. */
+    const val MIN_WAIT_MS = 1
+
+    /** The 3C review gate (its review's I-1): a connect that failed at once (refused, or its host unreachable: Android
+     *  reports both as ConnectException) is tried once more this much later, inside [CONNECT_TIMEOUT_MS]. A printer that
+     *  takes one connection at a time refuses a second one while another device's status check holds it (a fraction of
+     *  a second); a job must not read that as "unreachable". A printer that is off times out instead: no retry. */
+    const val CONNECT_REFUSED_RETRY_MS = 1_000
+    private const val REFUSED = "Refused"
+
+    /** Session 3C (G5): the wait for the printer's first DLE EOT answer after a job: at least this, plus the job's own
+     *  printing time at a slow [STATUS_BYTES_PER_MS], at most [STATUS_AFTER_JOB_MAX_MS] (inside the 60 s watchdog). */
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/TcpTransport.kt`, find:
+
+```kotlin
+  /**
+   * A fresh connection to a checked private address, trying each of the host's private addresses
+   * in order (IPv4 first). All attempts share one [CONNECT_TIMEOUT_MS] budget, split evenly over the
+   * addresses still to try, so a dead first address cannot use up the time the next one needs.
+   */
+  private fun connect(): Socket {
+    if (closing.get()) throw closed()
+```
+
+Replace it with:
+
+```kotlin
+  /**
+   * A fresh connection to a checked private address, trying each of the host's private addresses
+   * in order (IPv4 first). All attempts share one [CONNECT_TIMEOUT_MS] budget, split evenly over the
+   * addresses still to try, so a dead first address cannot use up the time the next one needs. The 3C review gate (its
+   * review's I-1): an address that refused the connect is asked once more [CONNECT_REFUSED_RETRY_MS] later.
+   */
+  private fun connect(): Socket {
+    if (closing.get()) throw closed()
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/TcpTransport.kt`, find:
+
+```kotlin
+    val endNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(CONNECT_TIMEOUT_MS.toLong())
+    var failure = TransportException(BridgeCodes.NOT_CONNECTED, "Could not connect")
+    for ((index, address) in addresses.withIndex()) {
+      val left = remainingMs(endNanos)
+      if (left <= 0) break
+      try {
+        return connectTo(address, maxOf(MIN_WAIT_MS, left / (addresses.size - index)))
+      } catch (e: TransportException) {
+        // Only "no answer" moves on to the next address; a closed link or a bad setup is final.
+        if (e.code != BridgeCodes.NOT_CONNECTED || closing.get()) throw e
+        failure = e
+      }
+    }
+    throw failure
+```
+
+Replace it with:
+
+```kotlin
+    val endNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(CONNECT_TIMEOUT_MS.toLong())
+    var failure = TransportException(BridgeCodes.NOT_CONNECTED, "Could not connect")
+    for ((index, address) in addresses.withIndex()) {
+      var refusedBefore = false
+      while (true) {
+        val left = remainingMs(endNanos)
+        if (left <= 0) break
+        try {
+          return connectTo(address, maxOf(MIN_WAIT_MS, left / (addresses.size - index)))
+        } catch (e: TransportException) {
+          // Only "no answer" moves on to the next address; a closed link or a bad setup is final.
+          if (e.code != BridgeCodes.NOT_CONNECTED || closing.get()) throw e
+          failure = e
+          if (e.message != REFUSED || refusedBefore || remainingMs(endNanos) <= CONNECT_REFUSED_RETRY_MS) break
+          refusedBefore = true
+          try {
+            Thread.sleep(CONNECT_REFUSED_RETRY_MS.toLong())
+          } catch (e: InterruptedException) {
+            // The 3D gold's review (m-3): never an uncaught exception on the printer's io thread.
+            Thread.currentThread().interrupt()
+            throw TransportException(BridgeCodes.NOT_CONNECTED, "Interrupted")
+          }
+        }
+      }
+    }
+    throw failure
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/TcpTransport.kt`, find:
+
+```kotlin
+      s.tcpNoDelay = true
+      s.connect(InetSocketAddress(address, port), timeoutMs)
+      return s
+    } catch (e: IOException) {
+      closeSocket(s)
+      throw TransportException(BridgeCodes.NOT_CONNECTED, "Could not connect")
+```
+
+Replace it with:
+
+```kotlin
+      s.tcpNoDelay = true
+      s.connect(InetSocketAddress(address, port), timeoutMs)
+      return s
+    } catch (e: ConnectException) {
+      closeSocket(s)
+      throw TransportException(BridgeCodes.NOT_CONNECTED, REFUSED)
+    } catch (e: IOException) {
+      closeSocket(s)
+      throw TransportException(BridgeCodes.NOT_CONNECTED, "Could not connect")
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 129`; `# pass 129`; `# fail 0`
+
+Run: `cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun --console=plain 2>&1 | grep -E "^BUILD|compileDebugUnitTestKotlin FAILED|testDebugUnitTest FAILED" | sed -E 's/ in [0-9hms ]+$//'`
+Expected: `BUILD SUCCESSFUL`
+
+Run: `cat /d/kd/lucifer/apps/mobile/android/app/build/test-results/testDebugUnitTest/*.xml | grep -oE 'testsuite name="[^"]+" tests="[0-9]+" skipped="[0-9]+" failures="[0-9]+" errors="[0-9]+"'`
+Expected: `testsuite name="com.possoftware.pos.printer.DleEotTest" tests="7" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PoolListTest" tests="6" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PoolStatusTest" tests="3" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PrinterManagerTest" tests="22" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PrinterPoolTest" tests="3" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.TcpTransportTest" tests="10" skipped="0" failures="0" errors="0"`
+
+Run: `cd /d/kd/lucifer/apps/mobile && npx tsc --noEmit && echo MOBILE_TSC_OK && npm run lint >/dev/null 2>&1 && echo MOBILE_LINT_OK`
+Expected: `MOBILE_TSC_OK`; `MOBILE_LINT_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-agent-health.test.ts lib/printer/native-pool.test.ts lib/print-agent-paths.test.ts lib/print-agent-printers.test.ts lib/print-agent.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 122`; `# pass 122`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint lib/print-agent-health.ts lib/printer/native-pool.ts hooks/use-print-agent.ts lib/print-agent-health.test.ts lib/printer/native-pool.test.ts lib/print-agent-paths.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/hooks/use-print-agent.ts apps/cafe/lib/print-agent-health.test.ts apps/cafe/lib/print-agent-health.ts apps/cafe/lib/print-agent-paths.test.ts apps/cafe/lib/printer/native-pool.test.ts apps/cafe/lib/printer/native-pool.ts apps/mobile/README.md apps/mobile/android/app/build.gradle apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterApi.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterManager.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterStatus.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/TcpTransport.kt apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/DleEotTest.kt apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterFakes.kt apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterManagerTest.kt apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/TcpTransportTest.kt apps/mobile/src/mobile-paths.test.ts
+git commit -m "fix(app): a printer that refused a connect is asked again a second later, the connect's status check never delays a select and runs before any job, a job queued behind a printer that says it cannot print is refused BUSY, FEED is not an error, a connected printer's v1 select answers at once, and a release build compiles the app's Kotlin in full; the page: simple mode leases no default printer that cannot print, and the beat's clock forgets a printer that left the app and starts at once for a new takeover list (Phase 3 Session 3D, D0: the 3C review gate)"
+```
+
+---
+
+### Task D1: the printing state: the service is sticky, and a device that prints for the cafe says "POS printing is off. Tap to start." after Android restarted the service, after a stop the page did not ask for, after a reboot and after an update; the page's own stop clears it; notifications asked once
+
+**Files:**
+- Create: `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/HostLife.kt` (pure: `onStart`, `noticeOnStop`, `noticeOnBroadcast`), `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintingOffNotice.kt`, `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintingOffReceiver.kt`
+- Modify: `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt` (`START_STICKY`; a null-intent restart posts the notice and stops; `onDestroy` of a service that ran posts it while the wish is on; a start cancels it), `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/HostController.kt` (the wish kept; notifications asked once), `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/Prefs.kt` (`printing`, `setPrinting`, `notificationsAsked`)
+- Modify: `apps/mobile/android/app/src/main/AndroidManifest.xml` (`RECEIVE_BOOT_COMPLETED`; the receiver for `BOOT_COMPLETED` and `MY_PACKAGE_REPLACED`), `res/values/strings.xml` (`printing_off_title`, `printing_off_text`), `apps/mobile/README.md`
+- Tests: `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/HostLifeTest.kt` (create, 4); `apps/mobile/src/mobile-paths.test.ts` (pin 6 deliberately changed: one receiver; pin 14 deliberately changed: four `stopSelf(startId)`, its stopWanted mutation's anchor; pin 22 new)
+
+**Interfaces produced:** `HostLife.ACTION_START`, `HostLife.Start` (`RUN`, `NOTICE_THEN_STOP`, `STOP`), `HostLife.onStart(action, printing)`, `HostLife.noticeOnStop(printing)`, `HostLife.noticeOnBroadcast(action, printing)`; `PrintingOffNotice.post(ctx)`, `cancel(ctx)`, `NOTIFICATION_ID` 4102; `Prefs.printing(ctx)`, `Prefs.setPrinting(ctx, on)`.
+
+**The wish (spec §9.5).** `Prefs.printing` is on when the page asks this device to print in the background (`host.background` true: the print host, and from D2 a printers-mode writer) and off only when the page itself says stop (cleared, with `commit`, before the stop, so that stop posts nothing). A stop the page did not ask for leaves it on.
+
+**START_STICKY.** The service returns `START_STICKY` when it runs for the page. When its process dies (Android's memory killer, a phone maker's battery manager, a crash), Android re-creates the service with no intent; the page died with the process, so nothing prints until the app is open. The service then posts "POS printing is off. Tap to start." and stops (it never reaches the foreground: a sticky restart has no `startForeground` deadline). Tapping it opens the app, whose page prints again by itself. The gate's emulator pre-run: `am crash` of the app's process, the service restarted 1 s later, the notice 2 s after the crash, the tap opened the app and the next slip printed 4 s after the order.
+
+**A stop the page did not ask for.** The app's task swiped away (the manifest keeps `stopWithTask`), or its screen destroyed: the service's `onDestroy` posts the same notice while the wish is on (the pre-run: swiping the app away from Recents).
+
+**After a reboot or an update** (`BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`), the receiver posts the notice when the wish is on. It never starts the app (Android blocks starting an activity from the background) and makes no request. The pre-run: the notice about 30 s after `adb reboot`; 4 s after the 3C APK was updated to 3D.
+
+**Notifications (Android 13+).** No notification of the app shows (not "Printing is on", not this notice) until it may post them; the page never asked. The first time printing starts the app asks once per install, marked asked only once the question was put (the golden copy's review, m-2: a screen that was not there asks next time; its second review, m-3: two starts within one hop to the UI thread ask once); the battery prompt waits for the next start (never two system screens at once).
+
+**RED** is a compile failure of the JVM tests (`HostLife`), and the mobile pins 6, 14 and 22.
+
+- [ ] **Step 1: The failing tests first**
+
+Create `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/HostLifeTest.kt`:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * Phase 3 Session 3D (spec §9.5): when the print host service runs, and when a device that prints for the cafe says "POS
+ * printing is off. Tap to start." (after Android restarted the service, a stop the page did not ask for, a reboot or an
+ * update of the app).
+ */
+class HostLifeTest {
+  @Test
+  fun aStartThePageAskedForRunsWhateverWasSaved() {
+    assertEquals(HostLife.Start.RUN, HostLife.onStart(HostLife.ACTION_START, printing = false))
+    assertEquals(HostLife.Start.RUN, HostLife.onStart(HostLife.ACTION_START, printing = true))
+  }
+
+  @Test
+  fun aRestartAfterTheProcessDiedSaysPrintingIsOffThenStops() {
+    // START_STICKY: Android re-creates the service with no intent; the page died with the process, so nothing prints.
+    assertEquals(HostLife.Start.NOTICE_THEN_STOP, HostLife.onStart(null, printing = true))
+    assertEquals("a device the page no longer prints on stops silently", HostLife.Start.STOP, HostLife.onStart(null, printing = false))
+  }
+
+  @Test
+  fun aStopThePageDidNotAskForSaysPrintingIsOff() {
+    assertTrue("the task swiped away, the screen destroyed", HostLife.noticeOnStop(printing = true))
+    assertFalse("the page said stop (it cleared the wish first)", HostLife.noticeOnStop(printing = false))
+  }
+
+  @Test
+  fun aRebootOrAnUpdateSaysPrintingIsOffOnlyOnADeviceThatPrinted() {
+    assertTrue(HostLife.noticeOnBroadcast(HostLife.ACTION_BOOT_COMPLETED, printing = true))
+    assertTrue(HostLife.noticeOnBroadcast(HostLife.ACTION_MY_PACKAGE_REPLACED, printing = true))
+    assertFalse("a device that does not print for the cafe stays quiet", HostLife.noticeOnBroadcast(HostLife.ACTION_BOOT_COMPLETED, printing = false))
+    assertFalse("nothing else", HostLife.noticeOnBroadcast("android.intent.action.TIME_SET", printing = true))
+    assertEquals("the system's own actions", "android.intent.action.BOOT_COMPLETED", HostLife.ACTION_BOOT_COMPLETED)
+    assertEquals("android.intent.action.MY_PACKAGE_REPLACED", HostLife.ACTION_MY_PACKAGE_REPLACED)
+  }
+}
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  if (!meta?.includes('android:resource="@xml/usb_printer_filter"')) {
+    out.push('USB meta-data does not point at @xml/usb_printer_filter');
+  }
+  if (/<receiver\b/.test(x)) {
+    out.push('a <receiver> element exists');
+  }
+  return out;
+}
+const manifest = () => read(join(MAIN, 'AndroidManifest.xml'));
+
+test('pin 6: AndroidManifest permissions, service, USB and no receiver', () => {
+  assert.deepEqual(manifestProblems(manifest()), []);
+  const raw = manifest();
+  assert.ok(
+```
+
+Replace it with:
+
+```ts
+  if (!meta?.includes('android:resource="@xml/usb_printer_filter"')) {
+    out.push('USB meta-data does not point at @xml/usb_printer_filter');
+  }
+  // Session 3D (spec §9.5) deliberately changed: one receiver, the reboot and update notice ("POS printing is off. Tap to
+  // start."), which hears only those two system broadcasts and never starts the app.
+  const receivers = [
+    ...x.matchAll(/<receiver\b[\s\S]*?<\/receiver>|<receiver\b[^>]*\/>/g),
+  ].map(m => m[0]);
+  if (
+    receivers.length !== 1 ||
+    !receivers[0].includes('android:name=".printer.PrintingOffReceiver"')
+  ) {
+    out.push('the one <receiver> is not PrintingOffReceiver');
+  } else {
+    for (const need of [
+      'android:exported="true"',
+      '<action android:name="android.intent.action.BOOT_COMPLETED" />',
+      '<action android:name="android.intent.action.MY_PACKAGE_REPLACED" />',
+    ]) {
+      if (!receivers[0].includes(need)) {
+        out.push('PrintingOffReceiver lacks ' + need);
+      }
+    }
+    if ((receivers[0].match(/<action\b/g) ?? []).length !== 2) {
+      out.push('PrintingOffReceiver hears more than a reboot and an update');
+    }
+  }
+  if (!perms.has('RECEIVE_BOOT_COMPLETED')) {
+    out.push('RECEIVE_BOOT_COMPLETED missing');
+  }
+  return out;
+}
+const manifest = () => read(join(MAIN, 'AndroidManifest.xml'));
+
+test('pin 6: AndroidManifest permissions, service, USB and one receiver (Session 3D)', () => {
+  assert.deepEqual(manifestProblems(manifest()), []);
+  const raw = manifest();
+  assert.ok(
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+      '</application>',
+      '<receiver android:name=".BootReceiver" android:exported="false" /></application>',
+    ],
+  ];
+  everyMutationCaught(manifestProblems, manifest(), table);
+  const hidden = mutated(
+```
+
+Replace it with:
+
+```ts
+      '</application>',
+      '<receiver android:name=".BootReceiver" android:exported="false" /></application>',
+    ],
+    // Session 3D: the one receiver, its two actions, and the boot permission.
+    [
+      'android:name=".printer.PrintingOffReceiver"',
+      'android:name=".printer.OtherReceiver"',
+    ],
+    [
+      'android:name=".printer.PrintingOffReceiver"\n        android:exported="true"',
+      'android:name=".printer.PrintingOffReceiver"\n        android:exported="false"',
+    ],
+    ['<action android:name="android.intent.action.BOOT_COMPLETED" />', ''],
+    [
+      '<action android:name="android.intent.action.MY_PACKAGE_REPLACED" />',
+      '<action android:name="android.intent.action.MY_PACKAGE_REPLACED" />\n            <action android:name="android.intent.action.TIME_SET" />',
+    ],
+    [perm('RECEIVE_BOOT_COMPLETED'), perm('RECEIVE_BOOT_COMPLETEDX')],
+  ];
+  everyMutationCaught(manifestProblems, manifest(), table);
+  const hidden = mutated(
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  if (!afterForeground.test(svc)) {
+    out.push('onStartCommand does not check stopWanted after startForeground');
+  }
+  // both stop branches stop only their own start command (a newer restart survives)
+  if (count(svc, 'stopSelf(startId)') !== 2) {
+    out.push('both stop branches must call stopSelf(startId)');
+  }
+  if (svc.includes('stopSelf()')) {
+    out.push('a bare stopSelf() drops a newer start command');
+```
+
+Replace it with:
+
+```ts
+  if (!afterForeground.test(svc)) {
+    out.push('onStartCommand does not check stopWanted after startForeground');
+  }
+  // both stop branches stop only their own start command (a newer restart survives). Session 3D deliberately changed:
+  // so do the two branches of a restart after the process died (the notice, a silent stop).
+  if (count(svc, 'stopSelf(startId)') !== 4) {
+    out.push('every stop branch must call stopSelf(startId)');
+  }
+  if (svc.includes('stopSelf()')) {
+    out.push('a bare stopSelf() drops a newer start command');
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+      'stopSelf(startId)\n      return START_NOT_STICKY\n    }\n    foregroundReached',
+      'stopSelf()\n      return START_NOT_STICKY\n    }\n    foregroundReached',
+    ],
+    [
+      'stopSelf(startId)\n      return START_NOT_STICKY\n    }\n    probeIssued',
+      'stopSelf()\n      return START_NOT_STICKY\n    }\n    probeIssued',
+    ],
+    ['R.string.print_host_alert_title', 'R.string.print_host_title_printer'],
+  ]);
+```
+
+Replace it with:
+
+```ts
+      'stopSelf(startId)\n      return START_NOT_STICKY\n    }\n    foregroundReached',
+      'stopSelf()\n      return START_NOT_STICKY\n    }\n    foregroundReached',
+    ],
+    // Session 3D deliberately changed: the stopWanted branch is followed by the run's own start (running, the notice).
+    [
+      'stopSelf(startId)\n      return START_NOT_STICKY\n    }\n    running = true',
+      'stopSelf()\n      return START_NOT_STICKY\n    }\n    running = true',
+    ],
+    ['R.string.print_host_alert_title', 'R.string.print_host_title_printer'],
+  ]);
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  ]);
+});
+
+test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
+  const strings = readFileSync(join(MAIN, 'res', 'values', 'strings.xml'), 'utf8');
+  assert.ok(
+```
+
+Replace it with:
+
+```ts
+  ]);
+});
+
+// ── pin 22: Session 3D, the printing state (spec §9.5) ─────────────────────
+// The page's wish is kept (Prefs), the service is sticky, and a restart after its process died, a stop the page did not
+// ask for, a reboot or an update says "POS printing is off. Tap to start." (never starting the app); the page's own "no"
+// clears the wish first; the notification permission is asked once.
+interface PrintingSources {
+  service: string;
+  host: string;
+  prefs: string;
+  receiver: string;
+  notice: string;
+  strings: string;
+}
+function printingProblems(s: PrintingSources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!strip(text).includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(s.service, 'when (HostLife.onStart(intent?.action, Prefs.printing(this))) {\n      HostLife.Start.NOTICE_THEN_STOP -> {\n        PrintingOffNotice.post(this)\n        stopSelf(startId)', 'a restart after the process died does not say printing is off');
+  need(s.service, 'return START_STICKY', 'the service is not sticky');
+  need(s.service, 'if (running && HostLife.noticeOnStop(Prefs.printing(this))) PrintingOffNotice.post(this)', 'a stop the page did not ask for says nothing');
+  need(s.service, 'PrintingOffNotice.cancel(this)', 'printing on again leaves the notice up');
+  need(s.host, 'Prefs.setPrinting(ctx.applicationContext, false)\n      stopHost()', 'the page\'s own stop does not clear the wish before the stop');
+  need(s.host, 'PrintHostService.start(ctx.applicationContext, label)\n      Prefs.setPrinting(ctx.applicationContext, true)', 'printing on is not kept');
+  need(s.host, 'if (!askNotificationsOnce()) promptBatteryOnce()', 'the notification permission is not asked');
+  need(s.prefs, 'prefs(ctx).edit().putBoolean(KEY_PRINTING, on).commit()', 'the wish is not written at once');
+  need(s.receiver, 'if (HostLife.noticeOnBroadcast(intent.action, Prefs.printing(context))) PrintingOffNotice.post(context)', 'a reboot or an update says nothing');
+  need(s.notice, 'getLaunchIntentForPackage(app.packageName)', 'a tap does not open the app');
+  if (/startActivity|startForegroundService|startService/.test(strip(s.receiver) + strip(s.notice))) {
+    out.push('the notice starts something by itself');
+  }
+  need(s.strings, '<string name="printing_off_title">POS printing is off. Tap to start.</string>', 'the notice\'s words changed');
+  return out;
+}
+const printingSources = (): PrintingSources => ({
+  service: kt('PrintHostService.kt'),
+  host: kt('HostController.kt'),
+  prefs: kt('Prefs.kt'),
+  receiver: kt('PrintingOffReceiver.kt'),
+  notice: kt('PrintingOffNotice.kt'),
+  strings: read(join(MAIN, 'res', 'values', 'strings.xml')),
+});
+
+test('pin 22: Session 3D, the printing state: sticky, "POS printing is off. Tap to start." after a restart, an unasked stop, a reboot or an update', () => {
+  assert.deepEqual(printingProblems(printingSources()), []);
+});
+
+test('pin 22 mutation: every printing-state needle can fail', () => {
+  const base = printingSources();
+  const run = (key: keyof PrintingSources) => (text: string) => printingProblems({ ...base, [key]: text });
+  everyMutationCaught(run('service'), base.service, [
+    ['        PrintingOffNotice.post(this)\n        stopSelf(startId)', '        stopSelf(startId)'],
+    ['return START_STICKY', 'return START_NOT_STICKY'],
+    ['if (running && HostLife.noticeOnStop(Prefs.printing(this))) PrintingOffNotice.post(this)', 'Unit'],
+    ['PrintingOffNotice.cancel(this)', 'Unit'],
+  ]);
+  everyMutationCaught(run('host'), base.host, [
+    ['Prefs.setPrinting(ctx.applicationContext, false)\n      stopHost()', 'stopHost()'],
+    ['      Prefs.setPrinting(ctx.applicationContext, true)\n', ''],
+    ['if (!askNotificationsOnce()) promptBatteryOnce()', 'promptBatteryOnce()'],
+  ]);
+  everyMutationCaught(run('prefs'), base.prefs, [['putBoolean(KEY_PRINTING, on).commit()', 'putBoolean(KEY_PRINTING, on).apply()']]);
+  everyMutationCaught(run('receiver'), base.receiver, [
+    ['if (HostLife.noticeOnBroadcast(intent.action, Prefs.printing(context))) PrintingOffNotice.post(context)', 'context.startActivity(intent)'],
+  ]);
+  everyMutationCaught(run('notice'), base.notice, [['getLaunchIntentForPackage(app.packageName)', 'getLaunchIntentForPackage("x")']]);
+  everyMutationCaught(run('strings'), base.strings, [['POS printing is off. Tap to start.', 'Printing stopped.']]);
+});
+
+test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
+  const strings = readFileSync(join(MAIN, 'res', 'values', 'strings.xml'), 'utf8');
+  assert.ok(
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 131`; `# pass 125`; `# fail 6`
+
+Run: `cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun --console=plain 2>&1 | grep -E "^BUILD|compileDebugUnitTestKotlin FAILED|testDebugUnitTest FAILED" | sed -E 's/ in [0-9hms ]+$//'`
+Expected: `> Task :app:compileDebugUnitTestKotlin FAILED`; `BUILD FAILED`
+
+- [ ] **Step 3: The code**
+
+In `apps/mobile/README.md`, find:
+
+```markdown
+- When you turn on "Print all slips on this device", the app shows a
+  **Printing is on** notification and keeps running with the screen off. Android
+  may also ask once to let the app run without battery limits: choose **Allow**.
+- The app does not start by itself after the phone restarts. Open it once.
+
+## Where things are
+```
+
+Replace it with:
+
+```markdown
+- When you turn on "Print all slips on this device", the app shows a
+  **Printing is on** notification and keeps running with the screen off. Android
+  may also ask once to let the app run without battery limits: choose **Allow**.
+- The app does not start by itself after the phone restarts. A device that was
+  printing shows **POS printing is off. Tap to start.** after a restart, an app
+  update, or when Android stopped the app: tap it, and the app prints again.
+  Android 13 and newer ask once for notifications when printing first starts:
+  choose **Allow**, or that notice cannot show.
+
+## Where things are
+```
+
+In `apps/mobile/android/app/src/main/AndroidManifest.xml`, find:
+
+```xml
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission
+        android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+        tools:ignore="BatteryLife" />
+```
+
+Replace it with:
+
+```xml
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- After a reboot: "POS printing is off. Tap to start." (never starts the app). -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission
+        android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+        tools:ignore="BatteryLife" />
+```
+
+In `apps/mobile/android/app/src/main/AndroidManifest.xml`, find:
+
+```xml
+        android:exported="false"
+        android:foregroundServiceType="connectedDevice"
+        android:stopWithTask="true" />
+    </application>
+</manifest>
+```
+
+Replace it with:
+
+```xml
+        android:exported="false"
+        android:foregroundServiceType="connectedDevice"
+        android:stopWithTask="true" />
+      <!-- A reboot or an app update stops printing until the app is open: a device that printed says so. -->
+      <receiver
+        android:name=".printer.PrintingOffReceiver"
+        android:exported="true">
+        <intent-filter>
+            <action android:name="android.intent.action.BOOT_COMPLETED" />
+            <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+        </intent-filter>
+      </receiver>
+    </application>
+</manifest>
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/HostController.kt`, find:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings
+import android.view.WindowManager
+import com.facebook.react.bridge.ReactApplicationContext
+import com.facebook.react.bridge.UiThreadUtil
+
+/** "Print all slips here": the foreground service, keep-screen-on and the one-time battery prompt. */
+class HostController(private val ctx: ReactApplicationContext) {
+  @Volatile private var active = false
+
+  /** Returns whether the host is active after the call. */
+  fun setActive(wanted: Boolean, label: String): Boolean {
+    if (!wanted) {
+      stopHost()
+      return false
+    }
+```
+
+Replace it with:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
+import android.view.WindowManager
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import com.facebook.react.bridge.ReactApplicationContext
+import com.facebook.react.bridge.UiThreadUtil
+
+/** "Print all slips here": the foreground service, keep-screen-on and the one-time battery prompt. Phase 3 Session 3D
+ *  (spec §9.5): the page's wish is kept ([Prefs.printing]) so a restart, a reboot or an update says printing is off, and
+ *  the notification permission (Android 13+) is asked once, the first time printing starts. */
+class HostController(private val ctx: ReactApplicationContext) {
+  companion object {
+    private const val NOTIFICATIONS_REQUEST = 4103
+  }
+
+  @Volatile private var active = false
+
+  /** Returns whether the host is active after the call. */
+  fun setActive(wanted: Boolean, label: String): Boolean {
+    if (!wanted) {
+      // The page's own "no": this device no longer prints for the cafe (cleared before the stop, so no notice).
+      Prefs.setPrinting(ctx.applicationContext, false)
+      stopHost()
+      return false
+    }
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/HostController.kt`, find:
+
+```kotlin
+    if (!PrinterPool.appVisible) return false
+    return try {
+      PrintHostService.start(ctx.applicationContext, label)
+      active = true
+      applyScreenFlag(true)
+      promptBatteryOnce()
+      true
+    } catch (e: IllegalStateException) {
+      false
+```
+
+Replace it with:
+
+```kotlin
+    if (!PrinterPool.appVisible) return false
+    return try {
+      PrintHostService.start(ctx.applicationContext, label)
+      Prefs.setPrinting(ctx.applicationContext, true)
+      active = true
+      applyScreenFlag(true)
+      if (!askNotificationsOnce()) promptBatteryOnce()
+      true
+    } catch (e: IllegalStateException) {
+      false
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/HostController.kt`, find:
+
+```kotlin
+        }
+    )
+  }
+}
+```
+
+Replace it with:
+
+```kotlin
+        }
+    )
+  }
+
+  /** Session 3D: Android 13+ shows no notification of this app (not "Printing is on", not "POS printing is off. Tap to
+   *  start.") until it may post them; asked once per install, so staff who say no are not asked again. True when asked
+   *  now (the battery prompt then waits for the next start: never two system screens at once). */
+  private fun askNotificationsOnce(): Boolean {
+    val app = ctx.applicationContext
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
+    if (ContextCompat.checkSelfPermission(app, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return false
+    if (Prefs.notificationsAsked(app)) return false
+    UiThreadUtil.runOnUiThread(
+        Runnable {
+          // Two starts within one hop to the UI thread ask once (the 3D gold's second review, m-3).
+          if (Prefs.notificationsAsked(app)) return@Runnable
+          val activity = ctx.currentActivity
+          if (activity != null) {
+            try {
+              ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATIONS_REQUEST)
+              // Marked once Android was asked (the 3D gold's review, m-2): with no screen to ask on, it asks next time.
+              Prefs.markNotificationsAsked(app)
+            } catch (e: RuntimeException) {
+              // No permission screen on this device.
+            }
+          }
+        }
+    )
+    return true
+  }
+}
+```
+
+Create `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/HostLife.kt`:
+
+```kotlin
+package com.possoftware.pos.printer
+
+/**
+ * Phase 3 Session 3D (spec §9.5): what the print host service and the boot receiver do when Android starts or stops them,
+ * and when a device that prints for the cafe says "POS printing is off. Tap to start.". Pure (no Android), so the JVM
+ * tests (src/test) pin it.
+ *
+ * "Printing" is the page's own wish, kept in [Prefs]: on when the page asks this device to print in the background (the
+ * print host in simple mode, or a device that writes printers), off only when the page itself says stop. A stop the page
+ * did not ask for (the app's task swiped away, its screen destroyed, its process killed, a reboot, an update) leaves it on,
+ * so the device says printing is off until the app is open again. Nothing here starts the app: Android blocks starting an
+ * activity from the background.
+ */
+object HostLife {
+  /** The start the app asks for (the page said print here); any other start is Android's. */
+  const val ACTION_START = "com.possoftware.pos.printer.action.START_HOST"
+
+  /** The broadcasts after which this device's printing is off until the app is opened. */
+  const val ACTION_BOOT_COMPLETED = "android.intent.action.BOOT_COMPLETED"
+  const val ACTION_MY_PACKAGE_REPLACED = "android.intent.action.MY_PACKAGE_REPLACED"
+
+  enum class Start {
+    /** The page asked: run in the foreground with the "Printing is on" notification (sticky: Android restarts it). */
+    RUN,
+
+    /** Android restarted the service after its process died (START_STICKY, no intent): the page died with it, so say
+     *  printing is off, and stop. */
+    NOTICE_THEN_STOP,
+
+    /** A restart for a device that no longer prints for the cafe: stop, silently. */
+    STOP,
+  }
+
+  /** [action] is the start's intent action (null when Android restarted the service); [printing] is the page's wish. */
+  fun onStart(action: String?, printing: Boolean): Start =
+      when {
+        action == ACTION_START -> Start.RUN
+        printing -> Start.NOTICE_THEN_STOP
+        else -> Start.STOP
+      }
+
+  /** The service stopped (or never ran): the notice while the page still wants this device to print. */
+  fun noticeOnStop(printing: Boolean): Boolean = printing
+
+  /** A reboot or an update of the app ended the page: the notice while this device printed for the cafe before. */
+  fun noticeOnBroadcast(action: String?, printing: Boolean): Boolean =
+      printing && (action == ACTION_BOOT_COMPLETED || action == ACTION_MY_PACKAGE_REPLACED)
+}
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/Prefs.kt`, find:
+
+```kotlin
+ * v1 keys (the one printer of every app before it) always name the default printer: an app updated from v1 moves its
+ * one printer into the list as the default, and an older app reinstalled over this one still finds this device's
+ * printer ([PoolList.restore] follows any change it makes).
+ */
+object Prefs {
+  private const val FILE = "pos_software_prefs"
+```
+
+Replace it with:
+
+```kotlin
+ * v1 keys (the one printer of every app before it) always name the default printer: an app updated from v1 moves its
+ * one printer into the list as the default, and an older app reinstalled over this one still finds this device's
+ * printer ([PoolList.restore] follows any change it makes).
+ *
+ * Phase 3 Session 3D (spec §9.5): whether this device prints for the cafe in the background ([KEY_PRINTING], the page's
+ * own wish: [HostLife]) and whether the notification permission was asked once.
+ */
+object Prefs {
+  private const val FILE = "pos_software_prefs"
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/Prefs.kt`, find:
+
+```kotlin
+  private const val KEY_PRINTERS = "printers"
+  private const val KEY_PRINTER_DEFAULT = "printerDefault"
+  private const val KEY_BATTERY_PROMPTED = "batteryPrompted"
+
+  private fun prefs(ctx: Context): SharedPreferences =
+      ctx.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+```
+
+Replace it with:
+
+```kotlin
+  private const val KEY_PRINTERS = "printers"
+  private const val KEY_PRINTER_DEFAULT = "printerDefault"
+  private const val KEY_BATTERY_PROMPTED = "batteryPrompted"
+  private const val KEY_PRINTING = "printing"
+  private const val KEY_NOTIFICATIONS_ASKED = "notificationsAsked"
+
+  private fun prefs(ctx: Context): SharedPreferences =
+      ctx.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/Prefs.kt`, find:
+
+```kotlin
+  fun markBatteryPrompted(ctx: Context) {
+    prefs(ctx).edit().putBoolean(KEY_BATTERY_PROMPTED, true).apply()
+  }
+}
+```
+
+Replace it with:
+
+```kotlin
+  fun markBatteryPrompted(ctx: Context) {
+    prefs(ctx).edit().putBoolean(KEY_BATTERY_PROMPTED, true).apply()
+  }
+
+  /** Session 3D: the page wants this device to print in the background ([HostLife]). */
+  fun printing(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_PRINTING, false)
+
+  /** Written at once (commit, off the main thread: the module's thread): a process killed right after still knows. */
+  fun setPrinting(ctx: Context, on: Boolean) {
+    prefs(ctx).edit().putBoolean(KEY_PRINTING, on).commit()
+  }
+
+  fun notificationsAsked(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_NOTIFICATIONS_ASKED, false)
+
+  fun markNotificationsAsked(ctx: Context) {
+    prefs(ctx).edit().putBoolean(KEY_NOTIFICATIONS_ASKED, true).apply()
+  }
+}
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt`, find:
+
+```kotlin
+/**
+ * Foreground service (type connectedDevice) that keeps the process, the printer link and the page
+ * alive while the screen is off. Started only from the foreground; the tick wakes the page.
+ */
+class PrintHostService : Service() {
+
+  companion object {
+    const val ACTION_START = "com.possoftware.pos.printer.action.START_HOST"
+    const val EXTRA_LABEL = "label"
+    const val CHANNEL_ID = "print_host"
+    const val ALERT_CHANNEL_ID = "print_host_alert"
+```
+
+Replace it with:
+
+```kotlin
+/**
+ * Foreground service (type connectedDevice) that keeps the process, the printer link and the page
+ * alive while the screen is off. Started only from the foreground; the tick wakes the page.
+ *
+ * Phase 3 Session 3D (spec §9.5): sticky. When Android restarts it after its process died, the page died too, so it says
+ * "POS printing is off. Tap to start." and stops; so does a stop the page did not ask for ([HostLife]).
+ */
+class PrintHostService : Service() {
+
+  companion object {
+    const val ACTION_START = HostLife.ACTION_START
+    const val EXTRA_LABEL = "label"
+    const val CHANNEL_ID = "print_host"
+    const val ALERT_CHANNEL_ID = "print_host_alert"
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt`, find:
+
+```kotlin
+  private var wakeLock: PowerManager.WakeLock? = null
+  private var label = ""
+  private var shownKey = ""
+
+  // Page liveness (main thread only): each tick scores the previous tick's probe, then sends one.
+  private var probeSeq = 0
+```
+
+Replace it with:
+
+```kotlin
+  private var wakeLock: PowerManager.WakeLock? = null
+  private var label = ""
+  private var shownKey = ""
+  // Session 3D: it ran in the foreground for the page (so its stop may need the "printing is off" notice).
+  private var running = false
+
+  // Page liveness (main thread only): each tick scores the previous tick's probe, then sends one.
+  private var probeSeq = 0
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt`, find:
+
+```kotlin
+  }
+
+  override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    label = intent?.getStringExtra(EXTRA_LABEL).orEmpty()
+    try {
+      ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), foregroundType())
+```
+
+Replace it with:
+
+```kotlin
+  }
+
+  override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    when (HostLife.onStart(intent?.action, Prefs.printing(this))) {
+      HostLife.Start.NOTICE_THEN_STOP -> {
+        PrintingOffNotice.post(this)
+        stopSelf(startId)
+        return START_NOT_STICKY
+      }
+      HostLife.Start.STOP -> {
+        stopSelf(startId)
+        return START_NOT_STICKY
+      }
+      HostLife.Start.RUN -> Unit
+    }
+    label = intent?.getStringExtra(EXTRA_LABEL).orEmpty()
+    try {
+      ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), foregroundType())
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt`, find:
+
+```kotlin
+      stopSelf(startId)
+      return START_NOT_STICKY
+    }
+    probeIssued = false
+    deadTicks = 0
+    renewWakeLock()
+    handler.removeCallbacks(tick)
+    handler.postDelayed(tick, APP_WAKE_TICK_MS)
+    return START_NOT_STICKY
+  }
+
+  override fun onDestroy() {
+```
+
+Replace it with:
+
+```kotlin
+      stopSelf(startId)
+      return START_NOT_STICKY
+    }
+    running = true
+    PrintingOffNotice.cancel(this)
+    probeIssued = false
+    deadTicks = 0
+    renewWakeLock()
+    handler.removeCallbacks(tick)
+    handler.postDelayed(tick, APP_WAKE_TICK_MS)
+    return START_STICKY
+  }
+
+  override fun onDestroy() {
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt`, find:
+
+```kotlin
+      // Already released.
+    }
+    wakeLock = null
+    super.onDestroy()
+  }
+```
+
+Replace it with:
+
+```kotlin
+      // Already released.
+    }
+    wakeLock = null
+    // Session 3D: stopped while the page still wants this device to print (its task swiped away, its screen destroyed).
+    if (running && HostLife.noticeOnStop(Prefs.printing(this))) PrintingOffNotice.post(this)
+    super.onDestroy()
+  }
+```
+
+Create `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintingOffNotice.kt`:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import com.possoftware.pos.R
+
+/**
+ * Phase 3 Session 3D (spec §9.5): "POS printing is off. Tap to start." on a device that prints for the cafe once its page
+ * is gone without the page saying stop ([HostLife]): Android restarted the print host service after its process died, the
+ * phone restarted, the app was updated, or its task was swiped away. A tap opens the app, whose page then prints again by
+ * itself. It is on the alert channel (it may sound), can be swiped away, and goes when printing is on again.
+ */
+object PrintingOffNotice {
+  const val NOTIFICATION_ID = 4102
+
+  fun post(ctx: Context) {
+    val app = ctx.applicationContext
+    if (!canNotify(app)) return
+    ensureChannel(app)
+    val builder =
+        NotificationCompat.Builder(app, PrintHostService.ALERT_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_printer)
+            .setContentTitle(app.getString(R.string.printing_off_title))
+            .setContentText(app.getString(R.string.printing_off_text))
+            .setCategory(NotificationCompat.CATEGORY_ERROR)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+    val launch = app.packageManager.getLaunchIntentForPackage(app.packageName)
+    if (launch != null) {
+      builder.setContentIntent(
+          PendingIntent.getActivity(app, 0, launch, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+      )
+    }
+    try {
+      NotificationManagerCompat.from(app).notify(NOTIFICATION_ID, builder.build())
+    } catch (e: SecurityException) {
+      // Notifications not allowed: nothing to show.
+    }
+  }
+
+  fun cancel(ctx: Context) {
+    NotificationManagerCompat.from(ctx.applicationContext).cancel(NOTIFICATION_ID)
+  }
+
+  private fun canNotify(ctx: Context): Boolean {
+    if (!NotificationManagerCompat.from(ctx).areNotificationsEnabled()) return false
+    return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+  }
+
+  /** The print host's alert channel; after a reboot this can run before the service ever made it. */
+  private fun ensureChannel(ctx: Context) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+    val manager = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+    manager.createNotificationChannel(
+        NotificationChannel(
+            PrintHostService.ALERT_CHANNEL_ID,
+            ctx.getString(R.string.print_host_alert_channel_name),
+            NotificationManager.IMPORTANCE_HIGH,
+        )
+    )
+  }
+}
+```
+
+Create `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintingOffReceiver.kt`:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+
+/**
+ * Phase 3 Session 3D (spec §9.5): after a reboot (BOOT_COMPLETED) or an update of the app (MY_PACKAGE_REPLACED) nothing
+ * prints until the app is opened, so a device that printed for the cafe before says "POS printing is off. Tap to start."
+ * It never starts the app (Android blocks that from the background) and makes no request.
+ */
+class PrintingOffReceiver : BroadcastReceiver() {
+  override fun onReceive(context: Context, intent: Intent) {
+    if (HostLife.noticeOnBroadcast(intent.action, Prefs.printing(context))) PrintingOffNotice.post(context)
+  }
+}
+```
+
+In `apps/mobile/android/app/src/main/res/values/strings.xml`, find:
+
+```xml
+    <string name="print_host_alert_channel_name">Printing alerts</string>
+    <string name="print_host_alert_title">Printing stopped — tap to open the app</string>
+    <string name="print_host_alert_text">Slips will not print until the app is open again.</string>
+    <string name="print_host_text">%1$s prints all slips.</string>
+    <string name="print_host_default_label">This device</string>
+    <string name="printer_name_bluetooth">Bluetooth device %1$s</string>
+```
+
+Replace it with:
+
+```xml
+    <string name="print_host_alert_channel_name">Printing alerts</string>
+    <string name="print_host_alert_title">Printing stopped — tap to open the app</string>
+    <string name="print_host_alert_text">Slips will not print until the app is open again.</string>
+    <string name="printing_off_title">POS printing is off. Tap to start.</string>
+    <string name="printing_off_text">Slips will not print until the POS app is open.</string>
+    <string name="print_host_text">%1$s prints all slips.</string>
+    <string name="print_host_default_label">This device</string>
+    <string name="printer_name_bluetooth">Bluetooth device %1$s</string>
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 131`; `# pass 131`; `# fail 0`
+
+Run: `cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun --console=plain 2>&1 | grep -E "^BUILD|compileDebugUnitTestKotlin FAILED|testDebugUnitTest FAILED" | sed -E 's/ in [0-9hms ]+$//'`
+Expected: `BUILD SUCCESSFUL`
+
+Run: `cat /d/kd/lucifer/apps/mobile/android/app/build/test-results/testDebugUnitTest/*.xml | grep -oE 'testsuite name="[^"]+" tests="[0-9]+" skipped="[0-9]+" failures="[0-9]+" errors="[0-9]+"'`
+Expected: `testsuite name="com.possoftware.pos.printer.DleEotTest" tests="7" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.HostLifeTest" tests="4" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PoolListTest" tests="6" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PoolStatusTest" tests="3" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PrinterManagerTest" tests="22" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PrinterPoolTest" tests="3" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.TcpTransportTest" tests="10" skipped="0" failures="0" errors="0"`
+
+Run: `cd /d/kd/lucifer/apps/mobile && npx tsc --noEmit && echo MOBILE_TSC_OK && npm run lint >/dev/null 2>&1 && echo MOBILE_LINT_OK`
+Expected: `MOBILE_TSC_OK`; `MOBILE_LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/mobile/README.md apps/mobile/android/app/src/main/AndroidManifest.xml apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/HostController.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/HostLife.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/Prefs.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintingOffNotice.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintingOffReceiver.kt apps/mobile/android/app/src/main/res/values/strings.xml apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/HostLifeTest.kt apps/mobile/src/mobile-paths.test.ts
+git commit -m "feat(app): the print host service is sticky, and a device that prints for the cafe says "POS printing is off. Tap to start." when Android restarted the service after its process died, when the service stopped without the page saying so, after a reboot and after an app update (never starting the app); the page's own stop clears that, and Android 13+ asks once for notifications (Phase 3 Session 3D, D1)"
+```
+
+---
+
+### Task D2: a printers-mode writer keeps printing with the screen off (the app's sticky service); a page that knows its device prints nothing tells the app so once; the notification's words
+
+**Files:**
+- Modify: `apps/cafe/components/print/PrintHostDrain.tsx` (`printsForCafe`: the host, or a printers-mode writer; `decided`), `apps/cafe/hooks/use-native-host.ts` (`useNativeHostBackground(enabled, decided)`: a page that knows its device prints nothing says so once)
+- Modify: `apps/cafe/hooks/use-print-agent-wake.ts` (`mayPoll`: in the POS app a hidden page polls too), `apps/cafe/hooks/use-print-agent.ts` (the app's hidden tick no longer kicks the agent)
+- Modify: `apps/mobile/android/app/src/main/res/values/strings.xml` (`print_host_text`), `apps/mobile/README.md`
+- Tests: `apps/cafe/lib/print-host-hooks.test.ts` (the native stub records; a new test), `apps/cafe/lib/printer/print-gating-paths.test.ts` (the drain's and the hook's pins deliberately changed), `apps/cafe/lib/print-agent-paths.test.ts` (a 3D pin), `apps/mobile/src/mobile-paths.test.ts` (pin 22: the words)
+
+**Interfaces produced:** `useNativeHostBackground(enabled: boolean, decided: boolean)` (`hooks/use-native-host.ts`).
+
+**The service on a writer (spec §9.5; the 3B review gate: "no host service runs in printers mode before 3D").** In printers mode no device is the host, so no device ran the app's background service: a writer tablet in the background was an ordinary cached app (the gate's run on the 3C APK: `am kill` with the app hidden killed the writer, renderer and all, and its printing stopped silently). The page now asks for the service on the host and on every device that writes a printer (`printsForCafe`), exactly as the host asks (only while visible; the app applies a hidden wish when it is visible again). The pre-run: the writer got the service and "Printing is on — Network printer 10.0.2.2"; `am kill` with the app hidden left it alive (`oom adj` 50) and the next slip printed 6 s after the order.
+
+**A wish an earlier page left (the gate's pre-run).** D1 keeps the wish across restarts, and a page only said stop from its effect's cleanup, which never runs when a page reloads. A device that stopped being a writer (its printer deleted on another device) and reloaded kept the service and "Printing is on", and would have said "POS printing is off" after a reboot. Now a page that knows this device prints nothing for the cafe (`decided`: the pulse said who prints, and the printers read answered; the same read, no request of its own) tells the app so once. A page that does not know yet says nothing, so a page reloading in the background on a writer (D3) never drops its service. Turning off is a local call and always safe.
+
+**The words.** The notification said "This device prints all slips.", wrong for a writer: "This device keeps printing with the screen off." While the app is in front its screen stays on, as on the print host (the golden copy's review, m-1: the README says so; the power button still turns it off and printing goes on).
+
+**A hidden printing page's requests (the golden copy's review, I-3, and the gate's proxy log).** The app's 15 s tick (`app.wake`) kicked the print agent, so a hidden device with the service leased every 15 s with nothing to print (4 empty leases a minute; the simple-mode host since Phase 2, every writer with D2), while its wake poll never ran hidden (`mayPoll`: visible only), so its heartbeat went stale (`PrintDevice.beatAt`: it could take no printer over, and its printers' health went unreported) while those leases kept it online. Now the tick only refreshes the pulse when it is older than one poll (20 s; its jobs for this device kick the agent), and in the POS app a hidden page polls the wake as a visible writer does (a hidden browser tab still never polls). The same request kinds, inside the wake's daily cap; nothing new for a device that does not print (its page has no wake: `printAgentPollsWake`). D3 keeps a hidden printing page running (the WebView froze it within a minute), so such a device costs what it costs on screen; overnight that is real, so the README and 3G's GO-LIVE say to close the app on printing devices at closing time (its notice is then expected, and is the tap to start in the morning), and 3G measures a night's idle.
+
+**RED**: the cafe hook test (no `host.background` false yet), the gating pins and the 3D pin; the mobile pin 22 (the words).
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/print-agent-paths.test.ts`, find:
+
+```ts
+  assert.ok(agent.includes("clock.stop();"), "released with the agent");
+});
+
+// The 3C review gate (its review's m-2): the takeover printers the app lacks change with the setup or a refused select,
+// not with a status event, so the clock samples the new list the moment the hook sees it.
+test("PIN (3C gate): a new list of takeover printers the app lacks starts the beat's 20 s clock at once", () => {
+```
+
+Replace it with:
+
+```ts
+  assert.ok(agent.includes("clock.stop();"), "released with the agent");
+});
+
+// Phase 3 Session 3D (the gold's review, I-3): a hidden page in the POS app polls the wake (the heartbeat of a device that
+// prints with the screen off), and the app's 15 s hidden tick never leases (it was 4 empty leases a minute per device).
+test("PIN (3D): in the POS app a hidden page polls the wake; the app's hidden tick does not kick the agent", () => {
+  const wake = src("apps/cafe/hooks/use-print-agent-wake.ts");
+  assert.ok(wake.includes('mayPoll: () => isDesktopShell() || nativeBridge() !== null || document.visibilityState === "visible",'), "the POS app's hidden page keeps its heartbeat; a hidden browser tab does not poll");
+  assert.ok(!src("apps/cafe/hooks/use-print-agent.ts").includes('nativeOn("app.wake"'), "the hidden tick is no reason to lease");
+});
+
+// The 3C review gate (its review's m-2): the takeover printers the app lacks change with the setup or a refused select,
+// not with a status event, so the clock samples the new list the moment the hook sees it.
+test("PIN (3C gate): a new list of takeover printers the app lacks starts the beat's 20 s clock at once", () => {
+```
+
+In `apps/cafe/lib/print-host-hooks.test.ts`, find:
+
+```ts
+  cachedState: undefined as { dataUpdatedAt: number } | undefined,
+  wake: null as null | (() => void),
+  handler: null as null | ((requestId: string) => void),
+};
+function resetWorld(): void {
+  Object.assign(world, { report: "unknown", canPrint: true, routing: "no-host", pulse: undefined, invalidations: 0, cached: undefined, cachedState: undefined, wake: null, handler: null });
+  world.prefs = { autoPrintSelfOrders: true, printHost: false, printHostSeen: false };
+  world.recorded.length = 0;
+  world.declared.length = 0;
+  world.printerListeners.clear();
+  world.desktopListeners.clear();
+  resetStubs();
+```
+
+Replace it with:
+
+```ts
+  cachedState: undefined as { dataUpdatedAt: number } | undefined,
+  wake: null as null | (() => void),
+  handler: null as null | ((requestId: string) => void),
+  native: [] as [string, unknown][],
+};
+function resetWorld(): void {
+  Object.assign(world, { report: "unknown", canPrint: true, routing: "no-host", pulse: undefined, invalidations: 0, cached: undefined, cachedState: undefined, wake: null, handler: null });
+  world.prefs = { autoPrintSelfOrders: true, printHost: false, printHostSeen: false };
+  world.recorded.length = 0;
+  world.declared.length = 0;
+  world.native.length = 0;
+  world.printerListeners.clear();
+  world.desktopListeners.clear();
+  resetStubs();
+```
+
+In `apps/cafe/lib/print-host-hooks.test.ts`, find:
+
+```ts
+stubModule("@/lib/printer/native-bridge", {
+  NATIVE_READY_EVENT: "posnative:ready",
+  nativeOn: (_event: string, fn: () => void) => ((world.wake = fn), () => undefined),
+  nativeRequest: async () => ({}),
+});
+stubModule("@/hooks/use-device-printer", { usePrintCapabilities: () => ({ native: true }), useCanPrintNow: () => world.canPrint });
+stubModule("@/lib/pos-device-prefs", { readDevicePrefs: () => world.prefs });
+```
+
+Replace it with:
+
+```ts
+stubModule("@/lib/printer/native-bridge", {
+  NATIVE_READY_EVENT: "posnative:ready",
+  nativeOn: (_event: string, fn: () => void) => ((world.wake = fn), () => undefined),
+  nativeRequest: async (method: string, params: unknown) => (world.native.push([method, params]), {}),
+});
+stubModule("@/hooks/use-device-printer", { usePrintCapabilities: () => ({ native: true }), useCanPrintNow: () => world.canPrint });
+stubModule("@/lib/pos-device-prefs", { readDevicePrefs: () => world.prefs });
+```
+
+In `apps/cafe/lib/print-host-hooks.test.ts`, find:
+
+```ts
+test("W-Z: app.wake refreshes the pulse only when it is OLDER than one poll interval", (t: TestContext) => {
+  resetWorld();
+  t.mock.method(Date, "now", () => NOW);
+  const hook = mountHook(() => useNativeHostBackground(true));
+  assert.ok(world.wake, "positive landmark: the wake listener is registered");
+  const wake = (ageMs: number | null): number => {
+    world.cachedState = ageMs === null ? undefined : { dataUpdatedAt: NOW - ageMs };
+```
+
+Replace it with:
+
+```ts
+test("W-Z: app.wake refreshes the pulse only when it is OLDER than one poll interval", (t: TestContext) => {
+  resetWorld();
+  t.mock.method(Date, "now", () => NOW);
+  const hook = mountHook(() => useNativeHostBackground(true, true));
+  assert.ok(world.wake, "positive landmark: the wake listener is registered");
+  const wake = (ageMs: number | null): number => {
+    world.cachedState = ageMs === null ? undefined : { dataUpdatedAt: NOW - ageMs };
+```
+
+In `apps/cafe/lib/print-host-hooks.test.ts`, find:
+
+```ts
+  assert.equal(wake(REFETCH_INTERVALS.POS_PULSE + 1), 1);
+  assert.equal(wake(null), 1, "no pulse data yet: refresh");
+  hook.unmount();
+});
+
+// ---- W-D ------------------------------------------------------------------------------------------
+```
+
+Replace it with:
+
+```ts
+  assert.equal(wake(REFETCH_INTERVALS.POS_PULSE + 1), 1);
+  assert.equal(wake(null), 1, "no pulse data yet: refresh");
+  hook.unmount();
+});
+
+test("Session 3D: a page that knows this device prints nothing tells the POS app so once; one that does not know yet says nothing", () => {
+  resetWorld();
+  const unknown = mountHook(() => useNativeHostBackground(false, false));
+  assert.deepEqual(world.native, [], "its role or the printers are not known yet: nothing (a page reloading in the background keeps the app's wish)");
+  unknown.unmount();
+  const known = mountHook(() => useNativeHostBackground(false, true));
+  assert.deepEqual(world.native, [["host.background", { active: false }]], "it prints nothing for the cafe: the app drops a wish an earlier page left");
+  known.unmount();
+  world.native.length = 0;
+  const printing = mountHook(() => useNativeHostBackground(true, true));
+  assert.deepEqual(world.native, [["host.background", { active: true, label: "This device" }]], "a device that prints asks for the service as before");
+  printing.unmount();
+});
+
+// ---- W-D ------------------------------------------------------------------------------------------
+```
+
+In `apps/cafe/lib/printer/print-gating-paths.test.ts`, find:
+
+```ts
+      check(p, count(s, "usePrintHostDrainLock(") === 1 && !s.includes("usePrintHostDrainLock(enabled)"), "no ungated lock call");
+      check(p, s.includes("usePrintHostWakeLock(enabled);") && s.includes("usePrintHostBeat({ enabled, deviceId, onDemoted });"), "wake lock and routine beat keep `enabled`");
+      check(p, s.includes("usePrintHostPrinterBeat({ enabled, deviceId, onDemoted });"), "printer beat is wired with `enabled`");
+      check(p, s.includes("useNativeHostBackground(enabled);"), "native host background is wired with `enabled`");
+      check(p, s.includes('import { useCanPrintOnAny } from "@/hooks/use-device-printer";'), "imports useCanPrintOnAny");
+      return p;
+    },
+```
+
+Replace it with:
+
+```ts
+      check(p, count(s, "usePrintHostDrainLock(") === 1 && !s.includes("usePrintHostDrainLock(enabled)"), "no ungated lock call");
+      check(p, s.includes("usePrintHostWakeLock(enabled);") && s.includes("usePrintHostBeat({ enabled, deviceId, onDemoted });"), "wake lock and routine beat keep `enabled`");
+      check(p, s.includes("usePrintHostPrinterBeat({ enabled, deviceId, onDemoted });"), "printer beat is wired with `enabled`");
+      // Phase 3 Session 3D (spec §9.5) deliberately changed: the host, and in printers mode a device that writes a printer.
+      check(p, s.includes("const printsForCafe = enabled || (surfacesMounted && printers.printersMode && printers.isWriter);"), "native host background: the host and every printers-mode writer");
+      check(p, s.includes("const decided = surfacesMounted && deviceId !== \"\" && routing !== \"unknown\" && printersRead.loaded;\n  useNativeHostBackground(printsForCafe, decided);"), "and it tells the app no only once it knows");
+      check(p, s.includes('import { useCanPrintOnAny } from "@/hooks/use-device-printer";'), "imports useCanPrintOnAny");
+      return p;
+    },
+```
+
+In `apps/cafe/lib/printer/print-gating-paths.test.ts`, find:
+
+```ts
+      { name: "lock ungated", apply: sub(LOCK_CALL, "const holdsLock = usePrintHostDrainLock(enabled);") },
+      { name: "canPrint read after the lock", apply: sub(`const canPrint = useCanPrintOnAny();\n  ${LOCK_CALL}`, `${LOCK_CALL}\n  const canPrint = useCanPrintOnAny();`) },
+      { name: "printer beat armed by drains", apply: sub("usePrintHostPrinterBeat({ enabled,", "usePrintHostPrinterBeat({ enabled: drains,") },
+      { name: "native background removed", apply: sub("  useNativeHostBackground(enabled);\n", "") },
+      { name: "routine beat gated by canPrint", apply: sub("usePrintHostBeat({ enabled, deviceId, onDemoted });", "usePrintHostBeat({ enabled: enabled && canPrint, deviceId, onDemoted });") },
+    ],
+  },
+```
+
+Replace it with:
+
+```ts
+      { name: "lock ungated", apply: sub(LOCK_CALL, "const holdsLock = usePrintHostDrainLock(enabled);") },
+      { name: "canPrint read after the lock", apply: sub(`const canPrint = useCanPrintOnAny();\n  ${LOCK_CALL}`, `${LOCK_CALL}\n  const canPrint = useCanPrintOnAny();`) },
+      { name: "printer beat armed by drains", apply: sub("usePrintHostPrinterBeat({ enabled,", "usePrintHostPrinterBeat({ enabled: drains,") },
+      { name: "native background removed", apply: sub("  useNativeHostBackground(printsForCafe, decided);\n", "") },
+      { name: "the no told before the role is known", apply: sub(' && routing !== "unknown" && printersRead.loaded;', ";") },
+      { name: "native background for the host only", apply: sub("const printsForCafe = enabled || (surfacesMounted && printers.printersMode && printers.isWriter);", "const printsForCafe = enabled;") },
+      { name: "native background for every agent", apply: sub("printers.printersMode && printers.isWriter", "printers.printersMode") },
+      { name: "routine beat gated by canPrint", apply: sub("usePrintHostBeat({ enabled, deviceId, onDemoted });", "usePrintHostBeat({ enabled: enabled && canPrint, deviceId, onDemoted });") },
+    ],
+  },
+```
+
+In `apps/cafe/lib/printer/print-gating-paths.test.ts`, find:
+
+```ts
+      // s63 W-Z: a wake right after a poll would only stack a second fetch -- refresh only when the pulse is older than one poll.
+      check(p, ordered(s, ['nativeOn("app.wake", () => {', "qc.getQueryState(POS_PULSE_KEYS.all)?.dataUpdatedAt ?? 0;", "if (Date.now() - updatedAt <= REFETCH_INTERVALS.POS_PULSE) return;", "void qc.invalidateQueries({ queryKey: POS_PULSE_KEYS.all });"]), "app.wake invalidates the pulse once, and only when it is older than one poll interval");
+      check(p, s.includes('import { REFETCH_INTERVALS } from "@/lib/query";'), "imports REFETCH_INTERVALS");
+      check(p, ordered(s, ["const announce = (): void => {", "announce();", "return () => {", "offWake();", "tell(false);"]), "cleanup unhooks then sends active:false");
+      check(p, s.includes("if (!enabled || !hasBridge) return;") && s.includes("usePrintCapabilities().native"), "only while enabled with the app bridge present");
+      check(p, s.includes("nativeRequest(\"host.background\", params).catch(() => undefined);"), "a failed request is swallowed");
+      check(p, !/setInterval|refetchInterval/.test(s), "no new poll (ruling 5)");
+      return p;
+    },
+```
+
+Replace it with:
+
+```ts
+      // s63 W-Z: a wake right after a poll would only stack a second fetch -- refresh only when the pulse is older than one poll.
+      check(p, ordered(s, ['nativeOn("app.wake", () => {', "qc.getQueryState(POS_PULSE_KEYS.all)?.dataUpdatedAt ?? 0;", "if (Date.now() - updatedAt <= REFETCH_INTERVALS.POS_PULSE) return;", "void qc.invalidateQueries({ queryKey: POS_PULSE_KEYS.all });"]), "app.wake invalidates the pulse once, and only when it is older than one poll interval");
+      check(p, s.includes('import { REFETCH_INTERVALS } from "@/lib/query";'), "imports REFETCH_INTERVALS");
+      // Phase 3 Session 3D deliberately changed: the cleanup's own tell(false) (a second one tells a page that knows it prints nothing).
+      check(p, ordered(s, ["const announce = (): void => {", "announce();", "return () => {", "offWake();\n      tell(false);"]), "cleanup unhooks then sends active:false");
+      check(p, s.includes("if (!enabled || !hasBridge) return;") && s.includes("usePrintCapabilities().native"), "only while enabled with the app bridge present");
+      check(p, s.includes("nativeRequest(\"host.background\", params).catch(() => undefined);"), "a failed request is swallowed");
+      // Phase 3 Session 3D: a page that knows this device prints nothing says so once (the app keeps a wish across restarts).
+      check(p, s.includes("if (!hasBridge || enabled || !decided) return;\n    tell(false);"), "a page that knows this device prints nothing tells the app once");
+      check(p, !/setInterval|refetchInterval/.test(s), "no new poll (ruling 5)");
+      return p;
+    },
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+    out.push('the notice starts something by itself');
+  }
+  need(s.strings, '<string name="printing_off_title">POS printing is off. Tap to start.</string>', 'the notice\'s words changed');
+  return out;
+}
+const printingSources = (): PrintingSources => ({
+```
+
+Replace it with:
+
+```ts
+    out.push('the notice starts something by itself');
+  }
+  need(s.strings, '<string name="printing_off_title">POS printing is off. Tap to start.</string>', 'the notice\'s words changed');
+  // Session 3D (D2): the host and a printers-mode writer both run the service; its words fit both.
+  need(s.strings, '<string name="print_host_text">%1$s keeps printing with the screen off.</string>', 'the notification still says this device prints all slips');
+  return out;
+}
+const printingSources = (): PrintingSources => ({
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+    ['if (HostLife.noticeOnBroadcast(intent.action, Prefs.printing(context))) PrintingOffNotice.post(context)', 'context.startActivity(intent)'],
+  ]);
+  everyMutationCaught(run('notice'), base.notice, [['getLaunchIntentForPackage(app.packageName)', 'getLaunchIntentForPackage("x")']]);
+  everyMutationCaught(run('strings'), base.strings, [['POS printing is off. Tap to start.', 'Printing stopped.']]);
+});
+
+test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
+```
+
+Replace it with:
+
+```ts
+    ['if (HostLife.noticeOnBroadcast(intent.action, Prefs.printing(context))) PrintingOffNotice.post(context)', 'context.startActivity(intent)'],
+  ]);
+  everyMutationCaught(run('notice'), base.notice, [['getLaunchIntentForPackage(app.packageName)', 'getLaunchIntentForPackage("x")']]);
+  everyMutationCaught(run('strings'), base.strings, [
+    ['POS printing is off. Tap to start.', 'Printing stopped.'],
+    ['%1$s keeps printing with the screen off.', '%1$s prints all slips.'],
+  ]);
+});
+
+test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-host-hooks.test.ts lib/printer/print-gating-paths.test.ts lib/print-agent-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 38`; `# pass 33`; `# fail 5`
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 131`; `# pass 129`; `# fail 2`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/components/print/PrintHostDrain.tsx`, find:
+
+```tsx
+
+import { PRINT_HOST_MAX_AGE_MS } from "@pos/shared/print-job";
+import { usePrintHostRouting } from "@/components/layout/PosPulseProvider";
+import { useAgentPrinters } from "@/hooks/use-agent-printers";
+import { useCanPrintOnAny } from "@/hooks/use-device-printer";
+import { useHostRouting } from "@/hooks/use-host-routing";
+import { useNativeHostBackground } from "@/hooks/use-native-host";
+```
+
+Replace it with:
+
+```tsx
+
+import { PRINT_HOST_MAX_AGE_MS } from "@pos/shared/print-job";
+import { usePrintHostRouting } from "@/components/layout/PosPulseProvider";
+import { useAgentPrinters, usePrintersRead } from "@/hooks/use-agent-printers";
+import { useCanPrintOnAny } from "@/hooks/use-device-printer";
+import { useHostRouting } from "@/hooks/use-host-routing";
+import { useNativeHostBackground } from "@/hooks/use-native-host";
+```
+
+In `apps/cafe/components/print/PrintHostDrain.tsx`, find:
+
+```tsx
+  usePrintHostWakeLock(enabled);
+  usePrintHostBeat({ enabled, deviceId, onDemoted });
+  usePrintHostPrinterBeat({ enabled, deviceId, onDemoted });
+  useNativeHostBackground(enabled);
+
+  // The host's self-order lane hands a claimed KOT to the agent (ruling R4, job-aware lane): the claim
+  // made it a print job, or, when the answer names none, the routed enqueue makes it one under the
+```
+
+Replace it with:
+
+```tsx
+  usePrintHostWakeLock(enabled);
+  usePrintHostBeat({ enabled, deviceId, onDemoted });
+  usePrintHostPrinterBeat({ enabled, deviceId, onDemoted });
+  // Phase 3 Session 3D (spec §9.5): the POS app keeps printing with the screen off (its sticky service) on every device
+  // that prints for the cafe: the host, and in printers mode a device that writes a printer. No request of its own.
+  const printsForCafe = enabled || (surfacesMounted && printers.printersMode && printers.isWriter);
+  // Known once the pulse said who prints and the printers read answered (the same read: no request of its own).
+  const printersRead = usePrintersRead(surfacesMounted && deviceId !== "");
+  const decided = surfacesMounted && deviceId !== "" && routing !== "unknown" && printersRead.loaded;
+  useNativeHostBackground(printsForCafe, decided);
+
+  // The host's self-order lane hands a claimed KOT to the agent (ruling R4, job-aware lane): the claim
+  // made it a print job, or, when the answer names none, the routed enqueue makes it one under the
+```
+
+In `apps/cafe/hooks/use-native-host.ts`, find:
+
+```ts
+  nativeRequest("host.background", params).catch(() => undefined);
+}
+
+export function useNativeHostBackground(enabled: boolean): void {
+  const qc = useQueryClient();
+  // Reactive: an old WebView can get its bridge after the first scripts ran.
+  const hasBridge = usePrintCapabilities().native;
+```
+
+Replace it with:
+
+```ts
+  nativeRequest("host.background", params).catch(() => undefined);
+}
+
+// Phase 3 Session 3D (spec §9.5): the POS app keeps this device's wish to print across restarts, so a page that KNOWS
+// this device prints nothing for the cafe (`decided`: its role and the printers are known) says so once: a wish an
+// earlier page left (the device stopped printing while its page reloaded) is dropped, with no notice and no service.
+// Turning it off is a local call and always safe, even while hidden; a page that does not know yet says nothing.
+export function useNativeHostBackground(enabled: boolean, decided: boolean): void {
+  const qc = useQueryClient();
+  // Reactive: an old WebView can get its bridge after the first scripts ran.
+  const hasBridge = usePrintCapabilities().native;
+```
+
+In `apps/cafe/hooks/use-native-host.ts`, find:
+
+```ts
+      tell(false);
+    };
+  }, [enabled, hasBridge, qc]);
+}
+```
+
+Replace it with:
+
+```ts
+      tell(false);
+    };
+  }, [enabled, hasBridge, qc]);
+
+  useEffect(() => {
+    if (!hasBridge || enabled || !decided) return;
+    tell(false);
+  }, [enabled, hasBridge, decided]);
+}
+```
+
+In `apps/cafe/hooks/use-print-agent-wake.ts`, find:
+
+```ts
+import { createPrintAgentWake } from "@/lib/print-agent-wake";
+import { printerHealthReports, setTakenOverPrinters } from "@/lib/print-agent-seams";
+import { olderWakeBody, printAgentSkew } from "@/lib/print-agent-skew";
+import { NATIVE_BRIDGE_V2, nativeV2Bridge } from "@/lib/printer/native-bridge-v2";
+import { bumpPrintWakeBudget, mergePrintWakeBudget, readPrintWakeBudget, writePrintWakeBudget, type PrintWakeBudget } from "@/lib/print-wake-budget";
+import { currentLane, defaultDeviceLabel, printCapabilities } from "@/lib/printer/print-lane";
+```
+
+Replace it with:
+
+```ts
+import { createPrintAgentWake } from "@/lib/print-agent-wake";
+import { printerHealthReports, setTakenOverPrinters } from "@/lib/print-agent-seams";
+import { olderWakeBody, printAgentSkew } from "@/lib/print-agent-skew";
+import { nativeBridge } from "@/lib/printer/native-bridge";
+import { NATIVE_BRIDGE_V2, nativeV2Bridge } from "@/lib/printer/native-bridge-v2";
+import { bumpPrintWakeBudget, mergePrintWakeBudget, readPrintWakeBudget, writePrintWakeBudget, type PrintWakeBudget } from "@/lib/print-wake-budget";
+import { currentLane, defaultDeviceLabel, printCapabilities } from "@/lib/printer/print-lane";
+```
+
+In `apps/cafe/hooks/use-print-agent-wake.ts`, find:
+
+```ts
+        return data;
+      },
+      socketHealthy: isRealtimeHealthy,
+      mayPoll: () => isDesktopShell() || document.visibilityState === "visible",
+      spendOne: () => {
+        const dayKey = cafeDateString();
+        const { record, allowed } = bumpPrintWakeBudget(mergePrintWakeBudget(readPrintWakeBudget(), memory, dayKey), dayKey, capRef.current);
+```
+
+Replace it with:
+
+```ts
+        return data;
+      },
+      socketHealthy: isRealtimeHealthy,
+      // Phase 3 Session 3D (the gold's review, I-3): in the POS app a hidden page polls too: it is the device's
+      // heartbeat and health beat while it prints with the screen off (the app's service runs it), at the cadence a
+      // visible writer has; a hidden browser tab still never polls.
+      mayPoll: () => isDesktopShell() || nativeBridge() !== null || document.visibilityState === "visible",
+      spendOne: () => {
+        const dayKey = cafeDateString();
+        const { record, allowed } = bumpPrintWakeBudget(mergePrintWakeBudget(readPrintWakeBudget(), memory, dayKey), dayKey, capRef.current);
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
+import { desktopPrinterSnapshot, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import { devicePrinter } from "@/lib/printer/device-printer";
+import { nativeBridge, nativeOn } from "@/lib/printer/native-bridge";
+import { connectedPoolKey, nativePool, poolDefaultCannotPrint } from "@/lib/printer/native-pool";
+import { printerCannotPrintOf, printerStatusOf, printersState } from "@/lib/printer/printer-registry";
+import { canPrintNow } from "@/lib/printer/print-lane";
+```
+
+Replace it with:
+
+```ts
+import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
+import { desktopPrinterSnapshot, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import { devicePrinter } from "@/lib/printer/device-printer";
+import { connectedPoolKey, nativePool, poolDefaultCannotPrint } from "@/lib/printer/native-pool";
+import { printerCannotPrintOf, printerStatusOf, printersState } from "@/lib/printer/printer-registry";
+import { canPrintNow } from "@/lib/printer/print-lane";
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+    };
+  }, [agent, enabled, deviceId, qc, noteJobsForMe]);
+
+  // The wake poll (spec §9.1) and its heartbeat (spec §10): hooks/use-print-agent-wake.ts.
+  usePrintAgentWake({ agent, enabled, isHost, printers, deviceId, noteJobsForMe });
+
+  // The POS app came back to the screen, or its network returned.
+  useEffect(() => {
+    if (agent === null || !enabled || nativeBridge() === null) return;
+    return nativeOn("app.wake", () => agent.kick());
+  }, [agent, enabled]);
+}
+```
+
+Replace it with:
+
+```ts
+    };
+  }, [agent, enabled, deviceId, qc, noteJobsForMe]);
+
+  // The wake poll (spec §9.1) and its heartbeat (spec §10): hooks/use-print-agent-wake.ts. Phase 3 Session 3D (the gold's
+  // review, I-3): the POS app's hidden tick (app.wake, every 15 s) no longer leases: it refreshed the pulse already
+  // (hooks/use-native-host.ts, whose jobs for this device kick the agent), and the hidden page's wake is the heartbeat.
+  usePrintAgentWake({ agent, enabled, isHost, printers, deviceId, noteJobsForMe });
+}
+```
+
+In `apps/mobile/README.md`, find:
+
+```markdown
+  background (it never closes, because closing would stop printing).
+- To use a different address, open the printer panel in the POS and choose
+  **Change POS address** (under More options).
+- When you turn on "Print all slips on this device", the app shows a
+  **Printing is on** notification and keeps running with the screen off. Android
+  may also ask once to let the app run without battery limits: choose **Allow**.
+- The app does not start by itself after the phone restarts. A device that was
+  printing shows **POS printing is off. Tap to start.** after a restart, an app
+  update, or when Android stopped the app: tap it, and the app prints again.
+```
+
+Replace it with:
+
+```markdown
+  background (it never closes, because closing would stop printing).
+- To use a different address, open the printer panel in the POS and choose
+  **Change POS address** (under More options).
+- When you turn on "Print all slips on this device", or Printer setup names this
+  device for a printer, the app shows a **Printing is on** notification and
+  keeps running with the screen off. While it is in front its screen stays on
+  (the power button still turns it off; printing goes on). Android may also ask
+  once to let the app run without battery limits: choose **Allow**. Close the
+  app on printing devices at closing time: its notice **POS printing is off.
+  Tap to start.** then shows, as expected; tap it when you open.
+- The app does not start by itself after the phone restarts. A device that was
+  printing shows **POS printing is off. Tap to start.** after a restart, an app
+  update, or when Android stopped the app: tap it, and the app prints again.
+```
+
+In `apps/mobile/android/app/src/main/res/values/strings.xml`, find:
+
+```xml
+    <string name="print_host_alert_text">Slips will not print until the app is open again.</string>
+    <string name="printing_off_title">POS printing is off. Tap to start.</string>
+    <string name="printing_off_text">Slips will not print until the POS app is open.</string>
+    <string name="print_host_text">%1$s prints all slips.</string>
+    <string name="print_host_default_label">This device</string>
+    <string name="printer_name_bluetooth">Bluetooth device %1$s</string>
+    <string name="printer_name_usb">USB printer</string>
+```
+
+Replace it with:
+
+```xml
+    <string name="print_host_alert_text">Slips will not print until the app is open again.</string>
+    <string name="printing_off_title">POS printing is off. Tap to start.</string>
+    <string name="printing_off_text">Slips will not print until the POS app is open.</string>
+    <string name="print_host_text">%1$s keeps printing with the screen off.</string>
+    <string name="print_host_default_label">This device</string>
+    <string name="printer_name_bluetooth">Bluetooth device %1$s</string>
+    <string name="printer_name_usb">USB printer</string>
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-host-hooks.test.ts lib/printer/print-gating-paths.test.ts lib/print-agent-paths.test.ts lib/print-host-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 58`; `# pass 58`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint components/print/PrintHostDrain.tsx hooks/use-native-host.ts lib/print-host-hooks.test.ts lib/printer/print-gating-paths.test.ts lib/print-agent-paths.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 131`; `# pass 131`; `# fail 0`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/components/print/PrintHostDrain.tsx apps/cafe/hooks/use-native-host.ts apps/cafe/hooks/use-print-agent-wake.ts apps/cafe/hooks/use-print-agent.ts apps/cafe/lib/print-agent-paths.test.ts apps/cafe/lib/print-host-hooks.test.ts apps/cafe/lib/printer/print-gating-paths.test.ts apps/mobile/README.md apps/mobile/android/app/src/main/res/values/strings.xml apps/mobile/src/mobile-paths.test.ts
+git commit -m "feat(print): in printers mode a device that writes a printer keeps printing with the screen off, as the print host does (the POS app's sticky service, no request of its own), and a page that knows its device prints nothing for the cafe tells the app so once; the notification says "This device keeps printing with the screen off." (Phase 3 Session 3D, D2)"
+```
+
+---
+
+### Task D3: a printing device's page keeps running while the app is hidden, and a page that died is remounted by itself, also while hidden: its renderer gone or the watchdog's word; React Native mounts the new WebView at once while hidden (bounded)
+
+**Files:**
+- Create: `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PageWatch.kt` (pure: `PageWatch`, `HiddenMountGap`; `HostPage.DEAD_EVENT`, `HostPage.remount`), `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/BackgroundMount.kt`
+- Modify: `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt` (the hidden tick keeps the page running; the watchdog through `PageWatch`; `PAGE_REMOUNT_GAP_TICKS`), `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PosPrinterModule.kt` (`HostPage.remount`; `@ReactMethod mountWhileHidden`), `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/WebViewDelivery.kt` (`keepPageRunning`; the page's renderer stays important while hidden)
+- Modify: `apps/mobile/src/native/PosPrinter.ts` (`mountWhileHidden`, `PAGE_DEAD_EVENT`), `apps/mobile/src/screens/PosScreen.tsx` (`remountAfterDeath`; the watchdog's event)
+- Tests: `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PageWatchTest.kt` (create, 5); `apps/mobile/src/mobile-paths.test.ts` (pin 4's oracle deliberately changed: + `mountWhileHidden`; pin 11's wake gate deliberately changed: the keep-running call first; pin 23 new)
+
+**Interfaces produced:** `WebViewDelivery.keepPageRunning()`; `PageWatch(deadTicks, remountGapTicks)`: `start()`, `answered()`, `tick(visible): Boolean`, `alerting(visible)`; `HiddenMountGap(gapMs).allow(nowMs)`; `HostPage.DEAD_EVENT` ("PosPageDead"), `HostPage.remount`; `BackgroundMount.start(context)`, `WINDOW_MS` 30 s, `GAP_MS` 10 minutes; `PosPrinter.mountWhileHidden()`, `PAGE_DEAD_EVENT`.
+
+**A hidden page is frozen (the gate's emulator run of the golden copy).** The WebView froze the page of a hidden app within about a minute: no timer, no request, no slip (the renderer's CPU time stood still; a slip ordered 4 minutes after HOME was still `queued` 120 s later, and printed the moment the app was opened). The earlier golden copy's tick-driven leases stopped the same way (runs of at most a minute), so a hidden print host has stalled like this since Phase 2 on this emulator's WebView (109); the real-device 30-minute screen-off test (`TEST-CHECKLIST.md`) goes to 3G. Now each tick of the print host while the app is hidden tells the page's WebView its window is visible (`WebViewDelivery.keepPageRunning()`: `dispatchWindowVisibilityChanged(View.VISIBLE)`): the page runs as on screen, as the Windows app's page does in the tray (`backgroundThrottling: false`); nothing is drawn, and Android hides it again whenever the activity stops (the next tick, ≤ 15 s, shows it again). The gate's run: hidden 200 s, and then with the screen off for 3 minutes, the page kept its polls and the slip printed ≤ 4 s after the order.
+
+**Its cost.** A printing device whose app is hidden costs what it costs on screen: its pulse (20 s), the POS screen's lists (30 s), the wake at a visible writer's cadence. That is the cost the budget counts for a printing device on screen and for the Windows app in the tray; only a device nobody closes at night adds to it (README and 3G's GO-LIVE: close the app at closing time; 3G measures a night's idle). A device that does not print has no service, so its hidden page is frozen as before.
+
+**What the gate found.** The shell already remounted the WebView when its renderer died (`onRenderProcessGone`, the 2026-10-03 fix), but React Native mounts nothing while its screen is paused: Fabric's frame callback stops with the activity, so the new WebView, and its page, existed only once someone opened the app. The gate's run on the 3C APK: a renderer crashed with the app hidden; no request reached the server until the app was opened 2.5 minutes later, and a slip ordered meanwhile was not printed (90 s).
+
+**The fix (spec §9.5).** The POS screen's remount after a page death (`remountAfterDeath`) first asks the app to let React Native mount while hidden (`PosPrinter.mountWhileHidden()`): `BackgroundMount` lets go of the dead page's WebView at once (nothing drives it again), resumes Fabric's frame callback (`FabricUIManager.onHostResume`) while the app is hidden, and pauses it again (only if the app is still hidden) once the new page answers the probe, or after 30 s at most. Once the app is visible React Native's own lifecycle runs it. The pre-run: a renderer crash with the app hidden; the page was loaded again 5 s later with the app still hidden, and the next slip printed 6 s after the order (with the service on: a printers-mode writer, D2).
+
+**The watchdog's word.** A page that stops answering the print host's probe (a renderer that hangs instead of dying) for two ticks while nobody looks at the app is now remounted too: the service sends the device event `PosPageDead` (`HostPage.remount`), and the POS screen remounts as for a dead renderer. Once per page life (a page that never answers again is not remounted again: no reload loop, no requests while it stays dead) and at most once every 40 ticks (10 minutes). The alert notification stays until a page answers, as before.
+
+**A renderer that dies again and again (the golden copy's review, I-2).** React Native's WebView sets no renderer priority, so Android's default (important, waived while the page is not visible) let it kill a hidden page's renderer while the app lived on as a foreground service; with a hidden remount each load could be killed again, a reload loop at the kill rate on a weak phone. Now the page's renderer keeps the app's importance while hidden (`setRendererPriorityPolicy(RENDERER_PRIORITY_IMPORTANT, false)`, when the shell attaches to the WebView), and React Native mounts while hidden at most once every 10 minutes (`HiddenMountGap`, `BackgroundMount.GAP_MS`); a page that dies again sooner is remounted when the app is opened (the alert says so). The LoadErrorScreen's own retry stays as it was (its timer runs only while the app is visible: the review's m-5).
+
+**Cost.** A remount loads the page once (its usual start-up requests) per page death, while hidden at most once every 10 minutes; Fabric's frame callback runs for at most 30 s while hidden. No new recurring request.
+
+**RED** is a compile failure of the JVM tests (`PageWatch`), and the mobile pins 4 and 23 (pin 11 is only loosened: it passes before and after).
+
+- [ ] **Step 1: The failing tests first**
+
+Create `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PageWatchTest.kt`:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * Phase 3 Session 3D (spec §9.5): the print host's page watchdog. Two dead ticks while nobody looks at the app: the alert,
+ * and a remount of the WebView, once per page life and at most once every 40 ticks (10 minutes at 15 s).
+ */
+class PageWatchTest {
+  private fun watch() = PageWatch(deadTicks = 2, remountGapTicks = 40).also { it.start() }
+
+  /** [n] ticks whose probes the page did not answer; the remounts asked on the way. */
+  private fun dead(w: PageWatch, n: Int, visible: Boolean = false): Int = (1..n).count { w.tick(visible) }
+
+  private fun alive(w: PageWatch, visible: Boolean = false): Boolean {
+    w.answered()
+    return w.tick(visible)
+  }
+
+  @Test
+  fun aPageThatStopsAnsweringWhileHiddenIsRemountedOnceAndAlerted() {
+    val w = watch()
+    assertFalse("the first tick only sends a probe", w.tick(false))
+    assertFalse("one dead tick: nothing yet", w.tick(false))
+    assertTrue("two dead ticks while hidden: remount", w.tick(false))
+    assertTrue("and the alert shows", w.alerting(false))
+    assertEquals("a page that never answers again is not remounted again", 0, dead(w, 100))
+    assertTrue("the alert stays", w.alerting(false))
+  }
+
+  @Test
+  fun aPageThatAnswersAgainIsAliveAndADeathLaterIsRemountedAfterTenMinutes() {
+    val w = watch()
+    w.tick(false)
+    assertEquals(1, dead(w, 2))
+    assertFalse("the new page answers: alive", alive(w))
+    assertFalse("the alert goes", w.alerting(false))
+    assertEquals("it dies again within 10 minutes: no second remount yet", 0, dead(w, 10))
+    assertEquals("10 minutes after the last remount: once more", 1, dead(w, 30))
+  }
+
+  @Test
+  fun aVisibleAppIsNeverRemountedByTheWatchdog() {
+    val w = watch()
+    w.tick(true)
+    assertEquals("staff are looking at the app: it is theirs to reload", 0, dead(w, 10, visible = true))
+    assertFalse(w.alerting(true))
+  }
+
+  @Test
+  fun aHiddenMountIsAllowedAtMostOnceEveryTenMinutes() {
+    // The gold's review (I-2): a renderer killed again and again while hidden never becomes a reload loop.
+    val gap = HiddenMountGap(gapMs = 600_000L)
+    assertTrue("the first page death mounts at once", gap.allow(1_000L))
+    assertFalse("another within 10 minutes waits for the app to be opened", gap.allow(1_000L + 599_999L))
+    assertTrue("10 minutes after the last one: once more", gap.allow(1_000L + 600_000L))
+  }
+
+  @Test
+  fun aNewRunStartsClean() {
+    val w = watch()
+    w.tick(false)
+    assertEquals(1, dead(w, 2))
+    w.start()
+    assertFalse("the first tick after a start only sends a probe", w.tick(false))
+    assertFalse(w.alerting(false))
+    assertEquals("a death in the new run is remounted at once (it is a new page life)", 1, dead(w, 2))
+  }
+}
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  'moveTaskToBack',
+  'attachWebView',
+  'deliverScript',
+];
+
+type Files = Record<string, string>;
+```
+
+Replace it with:
+
+```ts
+  'moveTaskToBack',
+  'attachWebView',
+  'deliverScript',
+  // Phase 3 Session 3D (deliberate change): a WebView remounted after its page died mounts while the app is hidden.
+  'mountWhileHidden',
+];
+
+type Files = Record<string, string>;
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+test('pin 4: JS wrapper and Kotlin @ReactMethod list equal the oracle', () => {
+  const module = kt('PosPrinterModule.kt');
+  const js = read(join(SRC, 'native', 'PosPrinter.ts'));
+  assert.equal(NATIVE_METHOD_ORACLE.length, 24, '18 v1 methods and 6 of bridge v2');
+  assert.ok(strip(module).includes('@ReactMethod'), 'landmark');
+  assert.deepEqual(methodProblems(module, js), []);
+  assert.deepEqual(moduleNameProblems(module, js), []);
+```
+
+Replace it with:
+
+```ts
+test('pin 4: JS wrapper and Kotlin @ReactMethod list equal the oracle', () => {
+  const module = kt('PosPrinterModule.kt');
+  const js = read(join(SRC, 'native', 'PosPrinter.ts'));
+  // Phase 3 Session 3D deliberately changed: + mountWhileHidden.
+  assert.equal(NATIVE_METHOD_ORACLE.length, 25, '18 v1 methods, 6 of bridge v2 and the hidden mount');
+  assert.ok(strip(module).includes('@ReactMethod'), 'landmark');
+  assert.deepEqual(methodProblems(module, js), []);
+  assert.deepEqual(moduleNameProblems(module, js), []);
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+    }
+  }
+  const svc = strip(s.service);
+  const wake =
+    /if\s*\(\s*!PrinterPool\.appVisible\s*\)\s*\{\s*WebViewDelivery\.deliverEvent\(BridgeCodes\.EVENT_APP_WAKE,/;
+  if (!wake.test(svc)) {
+    out.push('app.wake is not gated on !PrinterPool.appVisible');
+  }
+```
+
+Replace it with:
+
+```ts
+    }
+  }
+  const svc = strip(s.service);
+  // Session 3D (deliberate change): the hidden tick first keeps the page running (pin 23), then wakes it.
+  const wake =
+    /if\s*\(\s*!PrinterPool\.appVisible\s*\)\s*\{\s*(?:WebViewDelivery\.keepPageRunning\(\)\s*)?WebViewDelivery\.deliverEvent\(BridgeCodes\.EVENT_APP_WAKE,/;
+  if (!wake.test(svc)) {
+    out.push('app.wake is not gated on !PrinterPool.appVisible');
+  }
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  ]);
+});
+
+test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
+  const strings = readFileSync(join(MAIN, 'res', 'values', 'strings.xml'), 'utf8');
+  assert.ok(
+```
+
+Replace it with:
+
+```ts
+  ]);
+});
+
+// ── pin 23: Session 3D, a page that died is remounted, even while the app is hidden (spec §9.5) ──
+// Its renderer gone, or the print host's watchdog's word (once per page life, at most once per 10 minutes): the POS
+// screen remounts the WebView, and the native side lets React Native mount it while the app is hidden (bounded), so the
+// new page loads and prints with nobody at the screen. And a hidden page keeps running: the WebView froze it within a
+// minute (the 3C review gate's emulator run), so the print host's tick tells its WebView the window is visible.
+interface RemountSources {
+  delivery: string;
+  screen: string;
+  wrapper: string;
+  module: string;
+  mount: string;
+  service: string;
+  watch: string;
+}
+function remountProblems(s: RemountSources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!strip(text).includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(s.screen, 'PosPrinter.mountWhileHidden().catch(noop);\n    remount();', 'a page death does not mount the new WebView while the app is hidden');
+  need(s.screen, 'onRenderGone={remountAfterDeath}', 'a dead renderer does not remount through remountAfterDeath');
+  need(s.screen, 'DeviceEventEmitter.addListener(\n      PAGE_DEAD_EVENT,\n      onRenderGone,\n    );', 'the watchdog\'s word does not remount');
+  need(s.wrapper, "export const PAGE_DEAD_EVENT = 'PosPageDead';", 'the shell\'s event name changed');
+  need(s.watch, 'const val DEAD_EVENT = "PosPageDead"', 'the app\'s event name changed');
+  need(s.module, 'HostPage.remount = { reactContext.emitDeviceEvent(HostPage.DEAD_EVENT, null) }', 'the watchdog cannot reach the POS screen');
+  need(s.module, 'HostPage.remount = null', 'the watchdog keeps a dead React context');
+  need(s.module, 'BackgroundMount.start(reactContext)', 'mountWhileHidden does nothing');
+  need(s.mount, 'fabric.onHostResume()', 'Fabric never mounts while the app is hidden');
+  need(s.mount, 'if (!PrinterPool.appVisible) fabric.onHostPause()', 'Fabric is paused under a visible app, or never paused again');
+  need(s.mount, 'const val WINDOW_MS = 30_000L', 'the hidden mount is not bounded');
+  need(s.mount, 'WebViewDelivery.detach()', 'the dead page\'s WebView is still driven');
+  // The gold's review (I-2): at most one hidden mount per 10 minutes; the renderer keeps the app's importance.
+  need(s.mount, 'if (!gap.allow(SystemClock.elapsedRealtime())) return@Runnable', 'a renderer killed again and again reloads in a loop');
+  need(s.mount, 'const val GAP_MS = 600_000L', 'the hidden mounts are not 10 minutes apart');
+  need(s.delivery, 'found.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)', 'a hidden page\'s renderer is killed first');
+  need(s.delivery, 'webView?.get()?.dispatchWindowVisibilityChanged(View.VISIBLE)', 'the WebView freezes a hidden page');
+  need(s.service, 'if (!PrinterPool.appVisible) {\n            WebViewDelivery.keepPageRunning()\n            WebViewDelivery.deliverEvent(BridgeCodes.EVENT_APP_WAKE, JSONObject())', 'the print host\'s tick does not keep the hidden page running');
+  need(s.service, 'if (watch.tick(PrinterPool.appVisible)) HostPage.remount?.invoke()', 'the watchdog only alerts');
+  need(s.service, 'const val PAGE_REMOUNT_GAP_TICKS = 40', 'the watchdog may remount more than once every 10 minutes');
+  need(s.watch, 'val remount = alerting(visible) && lived && sinceRemount >= remountGapTicks', 'the watchdog remounts a page that never came back');
+  return out;
+}
+const remountSources = (): RemountSources => ({
+  delivery: kt('WebViewDelivery.kt'),
+  screen: posScreen(),
+  wrapper: read(join(SRC, 'native', 'PosPrinter.ts')),
+  module: kt('PosPrinterModule.kt'),
+  mount: kt('BackgroundMount.kt'),
+  service: kt('PrintHostService.kt'),
+  watch: kt('PageWatch.kt'),
+});
+
+test('pin 23: Session 3D, a dead page is remounted, and mounts while the app is hidden (bounded); a hidden page keeps running', () => {
+  assert.deepEqual(remountProblems(remountSources()), []);
+});
+
+test('pin 23 mutation: every remount needle can fail', () => {
+  const base = remountSources();
+  const run = (key: keyof RemountSources) => (text: string) => remountProblems({ ...base, [key]: text });
+  everyMutationCaught(run('screen'), base.screen, [
+    ['    PosPrinter.mountWhileHidden().catch(noop);\n', ''],
+    ['onRenderGone={remountAfterDeath}', 'onRenderGone={remount}'],
+    ['      PAGE_DEAD_EVENT,\n', "      'other',\n"],
+  ]);
+  everyMutationCaught(run('wrapper'), base.wrapper, [["'PosPageDead'", "'PageDead'"]]);
+  everyMutationCaught(run('module'), base.module, [
+    ['HostPage.remount = { reactContext.emitDeviceEvent(HostPage.DEAD_EVENT, null) }', 'Unit'],
+    ['HostPage.remount = null', 'Unit'],
+    ['BackgroundMount.start(reactContext)', 'Unit'],
+  ]);
+  everyMutationCaught(run('mount'), base.mount, [
+    ['fabric.onHostResume()', 'Unit'],
+    ['if (!PrinterPool.appVisible) fabric.onHostPause()', 'fabric.onHostPause()'],
+    ['const val WINDOW_MS = 30_000L', 'const val WINDOW_MS = 3_600_000L'],
+    ['WebViewDelivery.detach()', 'Unit'],
+    ['if (!gap.allow(SystemClock.elapsedRealtime())) return@Runnable', 'Unit'],
+    ['const val GAP_MS = 600_000L', 'const val GAP_MS = 0L'],
+  ]);
+  everyMutationCaught(run('delivery'), base.delivery, [
+    ['RENDERER_PRIORITY_IMPORTANT, false', 'RENDERER_PRIORITY_WAIVED, true'],
+    ['dispatchWindowVisibilityChanged(View.VISIBLE)', 'dispatchWindowVisibilityChanged(View.GONE)'],
+  ]);
+  everyMutationCaught(run('service'), base.service, [
+    ['if (watch.tick(PrinterPool.appVisible)) HostPage.remount?.invoke()', 'watch.tick(PrinterPool.appVisible)'],
+    ['const val PAGE_REMOUNT_GAP_TICKS = 40', 'const val PAGE_REMOUNT_GAP_TICKS = 1'],
+    ['            WebViewDelivery.keepPageRunning()\n', ''],
+  ]);
+  everyMutationCaught(run('watch'), base.watch, [
+    ['alerting(visible) && lived && sinceRemount', 'alerting(visible) && sinceRemount'],
+    ['const val DEAD_EVENT = "PosPageDead"', 'const val DEAD_EVENT = "PageDead"'],
+  ]);
+});
+
+test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
+  const strings = readFileSync(join(MAIN, 'res', 'values', 'strings.xml'), 'utf8');
+  assert.ok(
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 133`; `# pass 129`; `# fail 4`
+
+Run: `cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun --console=plain 2>&1 | grep -E "^BUILD|compileDebugUnitTestKotlin FAILED|testDebugUnitTest FAILED" | sed -E 's/ in [0-9hms ]+$//'`
+Expected: `> Task :app:compileDebugUnitTestKotlin FAILED`; `BUILD FAILED`
+
+- [ ] **Step 3: The code**
+
+Create `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/BackgroundMount.kt`:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import com.facebook.react.bridge.LifecycleEventListener
+import com.facebook.react.bridge.ReactContext
+import com.facebook.react.uimanager.UIManagerHelper
+import com.facebook.react.uimanager.common.UIManagerType
+
+/**
+ * Phase 3 Session 3D (spec §9.5): a WebView remounted while the app is hidden must load now, not when someone next opens
+ * the app. React Native mounts nothing while its screen is paused (Fabric's frame callback stops with the activity), so the
+ * new WebView would only exist, and its page only load, at the next open. While the app is hidden this lets Fabric mount
+ * for a moment ([WINDOW_MS] at most), until the new page answers, then pauses it again; once the app is visible React
+ * Native's own lifecycle runs it. The dead page's WebView is let go at once, so nothing drives it again. Main thread only.
+ */
+object BackgroundMount {
+  const val WINDOW_MS = 30_000L
+  const val CHECK_MS = 1_000L
+
+  /** The gold's review (I-2): at most one hidden mount per 10 minutes. */
+  const val GAP_MS = 600_000L
+
+  private val main = Handler(Looper.getMainLooper())
+  private var resumed: LifecycleEventListener? = null
+  private var until = 0L
+  private val gap = HiddenMountGap(GAP_MS)
+
+  fun start(context: ReactContext) {
+    main.post(
+        Runnable {
+          WebViewDelivery.detach()
+          if (PrinterPool.appVisible) return@Runnable
+          if (!gap.allow(SystemClock.elapsedRealtime())) return@Runnable
+          val fabric = UIManagerHelper.getUIManager(context, UIManagerType.FABRIC) as? LifecycleEventListener ?: return@Runnable
+          until = SystemClock.uptimeMillis() + WINDOW_MS
+          if (resumed == null) {
+            resumed = fabric
+            fabric.onHostResume()
+            main.postDelayed(check, CHECK_MS)
+          }
+        }
+    )
+  }
+
+  private val check =
+      object : Runnable {
+        override fun run() {
+          if (resumed == null) return
+          if (PrinterPool.appVisible) {
+            // The app is open: React Native's own lifecycle runs Fabric now.
+            resumed = null
+            return
+          }
+          if (SystemClock.uptimeMillis() >= until) {
+            stop()
+            return
+          }
+          WebViewDelivery.probePage { alive -> if (alive) stop() }
+          main.postDelayed(this, CHECK_MS)
+        }
+      }
+
+  private fun stop() {
+    val fabric = resumed ?: return
+    resumed = null
+    main.removeCallbacks(check)
+    if (!PrinterPool.appVisible) fabric.onHostPause()
+  }
+}
+```
+
+Create `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PageWatch.kt`:
+
+```kotlin
+package com.possoftware.pos.printer
+
+/**
+ * The print host's page watchdog (main thread only). Every tick scores the previous tick's probe (the page still answers),
+ * then the service sends the next. [deadTicks] dead ticks while nobody looks at the app: the alert notification.
+ *
+ * Phase 3 Session 3D (spec §9.5): and the WebView is remounted instead of only being reported, once per page life (a page
+ * that never answers again is not remounted again: no reload loop, no requests while it stays dead) and at most once
+ * every [remountGapTicks] ticks. The alert stays until a page answers. Pure, so the JVM tests (src/test) pin it.
+ */
+class PageWatch(private val deadTicks: Int, private val remountGapTicks: Int) {
+  private var issued = false
+  private var answered = false
+  private var dead = 0
+  // The page answered since the last remount (or none was asked yet).
+  private var lived = true
+  private var sinceRemount = NEVER
+
+  private companion object {
+    const val NEVER = Int.MAX_VALUE
+  }
+
+  /** The service (re)started: nothing scored yet. */
+  fun start() {
+    issued = false
+    answered = false
+    dead = 0
+    lived = true
+    sinceRemount = NEVER
+  }
+
+  /** The page answered the probe this tick sent. */
+  fun answered() {
+    answered = true
+  }
+
+  /** One tick: scores the previous probe (when one went out); the service then sends the next. True: remount now. */
+  fun tick(visible: Boolean): Boolean {
+    if (issued) dead = if (answered) 0 else dead + 1
+    if (answered) lived = true
+    answered = false
+    issued = true
+    if (sinceRemount != NEVER) sinceRemount++
+    val remount = alerting(visible) && lived && sinceRemount >= remountGapTicks
+    if (remount) {
+      lived = false
+      sinceRemount = 0
+    }
+    return remount
+  }
+
+  /** The page stopped answering and nobody is looking at the app, so only a notification can say so. */
+  fun alerting(visible: Boolean): Boolean = dead >= deadTicks && !visible
+}
+
+/** Phase 3 Session 3D (the gold's review, I-2): React Native mounts a remounted page while the app is hidden at most once
+ *  per [gapMs], so a renderer the system keeps killing under memory pressure never turns into a reload loop on a device
+ *  nobody looks at (the page then loads when the app is next opened, and the print host's alert says so). Pure. */
+class HiddenMountGap(private val gapMs: Long) {
+  private var lastAt: Long? = null
+
+  fun allow(nowMs: Long): Boolean {
+    val last = lastAt
+    if (last != null && nowMs - last < gapMs) return false
+    lastAt = nowMs
+    return true
+  }
+}
+
+/** Phase 3 Session 3D: the shell's side of a remount the watchdog asks for (set by the module while React Native runs). */
+object HostPage {
+  /** The device event the shell's POS screen remounts its WebView on (src/native/PosPrinter.ts PAGE_DEAD_EVENT). */
+  const val DEAD_EVENT = "PosPageDead"
+
+  @Volatile var remount: (() -> Unit)? = null
+}
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PosPrinterModule.kt`, find:
+
+```kotlin
+    PrinterPool.init(reactContext)
+    reactContext.addLifecycleEventListener(this)
+    reactContext.addActivityEventListener(bluetoothEnabler.activityListener)
+  }
+
+  override fun invalidate() {
+    reactContext.removeLifecycleEventListener(this)
+    reactContext.removeActivityEventListener(bluetoothEnabler.activityListener)
+    WebViewDelivery.detach()
+```
+
+Replace it with:
+
+```kotlin
+    PrinterPool.init(reactContext)
+    reactContext.addLifecycleEventListener(this)
+    reactContext.addActivityEventListener(bluetoothEnabler.activityListener)
+    // Session 3D (spec §9.5): the print host's watchdog asks the POS screen to remount a page that stopped answering.
+    HostPage.remount = { reactContext.emitDeviceEvent(HostPage.DEAD_EVENT, null) }
+  }
+
+  override fun invalidate() {
+    HostPage.remount = null
+    reactContext.removeLifecycleEventListener(this)
+    reactContext.removeActivityEventListener(bluetoothEnabler.activityListener)
+    WebViewDelivery.detach()
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PosPrinterModule.kt`, find:
+
+```kotlin
+    WebViewDelivery.deliverScript(script)
+    promise.resolve(null)
+  }
+}
+```
+
+Replace it with:
+
+```kotlin
+    WebViewDelivery.deliverScript(script)
+    promise.resolve(null)
+  }
+
+  /** Session 3D (spec §9.5): the POS screen is remounting its WebView after its page died; while the app is hidden, let
+   *  React Native mount it now ([BackgroundMount]), so the new page loads and prints without anyone opening the app. */
+  @ReactMethod
+  fun mountWhileHidden(promise: Promise) {
+    BackgroundMount.start(reactContext)
+    promise.resolve(null)
+  }
+}
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt`, find:
+
+```kotlin
+
+    /** Consecutive ticks with an unanswered or wrong page probe before the alert replaces the notification. */
+    const val PAGE_DEAD_TICKS = 2
+    private const val WAKE_LOCK_TAG = "PosSoftware:PrintHost"
+    private const val NO_FOREGROUND_TYPE = 0
+    private const val ALERT_KEY = "page-dead"
+```
+
+Replace it with:
+
+```kotlin
+
+    /** Consecutive ticks with an unanswered or wrong page probe before the alert replaces the notification. */
+    const val PAGE_DEAD_TICKS = 2
+
+    /** Session 3D (spec §9.5): at most one remount of a dead page every 10 minutes (40 ticks of 15 s). */
+    const val PAGE_REMOUNT_GAP_TICKS = 40
+    private const val WAKE_LOCK_TAG = "PosSoftware:PrintHost"
+    private const val NO_FOREGROUND_TYPE = 0
+    private const val ALERT_KEY = "page-dead"
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt`, find:
+
+```kotlin
+
+  // Page liveness (main thread only): each tick scores the previous tick's probe, then sends one.
+  private var probeSeq = 0
+  private var probeIssued = false
+  private var probeAnswered = false
+  private var deadTicks = 0
+
+  private val tick =
+      object : Runnable {
+        override fun run() {
+          renewWakeLock()
+          if (!PrinterPool.appVisible) {
+            WebViewDelivery.deliverEvent(BridgeCodes.EVENT_APP_WAKE, JSONObject())
+          }
+          probePage()
+```
+
+Replace it with:
+
+```kotlin
+
+  // Page liveness (main thread only): each tick scores the previous tick's probe, then sends one.
+  private var probeSeq = 0
+  private val watch = PageWatch(PAGE_DEAD_TICKS, PAGE_REMOUNT_GAP_TICKS)
+
+  private val tick =
+      object : Runnable {
+        override fun run() {
+          renewWakeLock()
+          if (!PrinterPool.appVisible) {
+            WebViewDelivery.keepPageRunning()
+            WebViewDelivery.deliverEvent(BridgeCodes.EVENT_APP_WAKE, JSONObject())
+          }
+          probePage()
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt`, find:
+
+```kotlin
+      }
+
+  private fun probePage() {
+    if (probeIssued) deadTicks = if (probeAnswered) 0 else deadTicks + 1
+    probeAnswered = false
+    probeIssued = true
+    val id = ++probeSeq
+    // A late answer to an older probe must not vouch for this one.
+    WebViewDelivery.probePage { alive -> if (alive && id == probeSeq) probeAnswered = true }
+  }
+
+  /** The page has stopped answering and nobody is looking at the app, so only a notification can say so. */
+  private fun alerting(): Boolean = deadTicks >= PAGE_DEAD_TICKS && !PrinterPool.appVisible
+
+  override fun onBind(intent: Intent?): IBinder? = null
+```
+
+Replace it with:
+
+```kotlin
+      }
+
+  private fun probePage() {
+    // Session 3D (spec §9.5): a page that stopped answering while nobody looks at the app is remounted ([PageWatch]).
+    if (watch.tick(PrinterPool.appVisible)) HostPage.remount?.invoke()
+    val id = ++probeSeq
+    // A late answer to an older probe must not vouch for this one.
+    WebViewDelivery.probePage { alive -> if (alive && id == probeSeq) watch.answered() }
+  }
+
+  /** The page has stopped answering and nobody is looking at the app, so only a notification can say so. */
+  private fun alerting(): Boolean = watch.alerting(PrinterPool.appVisible)
+
+  override fun onBind(intent: Intent?): IBinder? = null
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt`, find:
+
+```kotlin
+    }
+    running = true
+    PrintingOffNotice.cancel(this)
+    probeIssued = false
+    deadTicks = 0
+    renewWakeLock()
+    handler.removeCallbacks(tick)
+    handler.postDelayed(tick, APP_WAKE_TICK_MS)
+```
+
+Replace it with:
+
+```kotlin
+    }
+    running = true
+    PrintingOffNotice.cancel(this)
+    watch.start()
+    renewWakeLock()
+    handler.removeCallbacks(tick)
+    handler.postDelayed(tick, APP_WAKE_TICK_MS)
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/WebViewDelivery.kt`, find:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import android.os.Handler
+import android.os.Looper
+import android.view.View
+```
+
+Replace it with:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.view.View
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/WebViewDelivery.kt`, find:
+
+```kotlin
+          null
+        }
+    val found = findWebView(root) ?: return null
+    webView = WeakReference(found)
+    removeScript(found)
+    if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return false
+```
+
+Replace it with:
+
+```kotlin
+          null
+        }
+    val found = findWebView(root) ?: return null
+    // Phase 3 Session 3D (the gold's review, I-2): the page's renderer keeps the app's importance while hidden (the app
+    // runs a foreground service while it prints), so Android does not kill it before the app itself.
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) found.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
+    webView = WeakReference(found)
+    removeScript(found)
+    if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return false
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/WebViewDelivery.kt`, find:
+
+```kotlin
+    } catch (e: RuntimeException) {
+      false
+    }
+  }
+
+  fun detach() {
+```
+
+Replace it with:
+
+```kotlin
+    } catch (e: RuntimeException) {
+      false
+    }
+  }
+
+  /**
+   * Phase 3 Session 3D (the 3C review gate's emulator run): the WebView freezes the page of a window that stays hidden
+   * (within about a minute: no timer, no request, no slip until the app is opened again). While the app is hidden the
+   * print host's tick tells the page's WebView its window is visible, so the page keeps running as it does on screen,
+   * as the Windows app's page does in the tray; nothing is drawn, and Android hides it again whenever the activity stops.
+   */
+  fun keepPageRunning() {
+    main.post(Runnable { webView?.get()?.dispatchWindowVisibilityChanged(View.VISIBLE) })
+  }
+
+  fun detach() {
+```
+
+In `apps/mobile/src/native/PosPrinter.ts`, find:
+
+```ts
+    origin: string,
+  ): Promise<{ documentStart: boolean }>;
+  deliverScript(script: string): Promise<null>;
+}
+
+type MethodName = keyof PosPrinterModule;
+```
+
+Replace it with:
+
+```ts
+    origin: string,
+  ): Promise<{ documentStart: boolean }>;
+  deliverScript(script: string): Promise<null>;
+  // Phase 3 Session 3D (spec §9.5): a WebView remounted after its page died mounts even while the app is hidden.
+  mountWhileHidden(): Promise<null>;
+}
+
+/** Phase 3 Session 3D (spec §9.5): the print host's watchdog asks the POS screen to remount a page that stopped answering
+ *  (the Kotlin side's HostPage.DEAD_EVENT). */
+export const PAGE_DEAD_EVENT = 'PosPageDead';
+
+type MethodName = keyof PosPrinterModule;
+```
+
+In `apps/mobile/src/native/PosPrinter.ts`, find:
+
+```ts
+  attachWebView: (tag, script, origin) =>
+    call('attachWebView', tag, script, origin),
+  deliverScript: script => call('deliverScript', script),
+};
+
+// Asks Android for the permission, then has the module re-read its status.
+```
+
+Replace it with:
+
+```ts
+  attachWebView: (tag, script, origin) =>
+    call('attachWebView', tag, script, origin),
+  deliverScript: script => call('deliverScript', script),
+  mountWhileHidden: () => call('mountWhileHidden'),
+};
+
+// Asks Android for the permission, then has the module re-read its status.
+```
+
+In `apps/mobile/src/screens/PosScreen.tsx`, find:
+
+```tsx
+} from 'react';
+import {
+  BackHandler,
+  DevSettings,
+  findNodeHandle,
+  StyleSheet,
+```
+
+Replace it with:
+
+```tsx
+} from 'react';
+import {
+  BackHandler,
+  DeviceEventEmitter,
+  DevSettings,
+  findNodeHandle,
+  StyleSheet,
+```
+
+In `apps/mobile/src/screens/PosScreen.tsx`, find:
+
+```tsx
+import { WebView, type WebViewMessageEvent } from 'react-native-webview';
+import type { ShouldStartLoadRequest } from 'react-native-webview/lib/WebViewTypes';
+import { useNativeBridge } from '../bridge/use-native-bridge';
+import { PosPrinter } from '../native/PosPrinter';
+import { classifyNavigation, isSameOrigin, startUrl } from '../url';
+import { usedAfterFailure } from './auto-retry';
+import { CRASH_URL } from './backstop';
+```
+
+Replace it with:
+
+```tsx
+import { WebView, type WebViewMessageEvent } from 'react-native-webview';
+import type { ShouldStartLoadRequest } from 'react-native-webview/lib/WebViewTypes';
+import { useNativeBridge } from '../bridge/use-native-bridge';
+import { PAGE_DEAD_EVENT, PosPrinter } from '../native/PosPrinter';
+import { classifyNavigation, isSameOrigin, startUrl } from '../url';
+import { usedAfterFailure } from './auto-retry';
+import { CRASH_URL } from './backstop';
+```
+
+In `apps/mobile/src/screens/PosScreen.tsx`, find:
+
+```tsx
+    );
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    addDevMenuOnce();
+```
+
+Replace it with:
+
+```tsx
+    );
+    return () => subscription.remove();
+  }, []);
+
+  // Phase 3 Session 3D (spec §9.5): the print host's watchdog says this page stopped answering while the app is hidden:
+  // remount it, as when its renderer dies.
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener(
+      PAGE_DEAD_EVENT,
+      onRenderGone,
+    );
+    return () => subscription.remove();
+  }, [onRenderGone]);
+
+  useEffect(() => {
+    addDevMenuOnce();
+```
+
+In `apps/mobile/src/screens/PosScreen.tsx`, find:
+
+```tsx
+    setAutoRetries(n => usedAfterFailure(n, ranMs));
+    setFailed(true);
+  }, []);
+
+  if (failed) {
+    return (
+```
+
+Replace it with:
+
+```tsx
+    setAutoRetries(n => usedAfterFailure(n, ranMs));
+    setFailed(true);
+  }, []);
+  // Phase 3 Session 3D (spec §9.5): a page that died (its renderer gone, or the watchdog's word) is remounted, and the
+  // new WebView mounts at once even while the app is hidden, so its page loads and prints with nobody at the screen.
+  const remountAfterDeath = useCallback(() => {
+    PosPrinter.mountWhileHidden().catch(noop);
+    remount();
+  }, [remount]);
+
+  if (failed) {
+    return (
+```
+
+In `apps/mobile/src/screens/PosScreen.tsx`, find:
+
+```tsx
+      origin={origin}
+      onChangeUrl={onChangeUrl}
+      onLoadError={showError}
+      onRenderGone={remount}
+      onRetryTap={retryByTap}
+    />
+  );
+```
+
+Replace it with:
+
+```tsx
+      origin={origin}
+      onChangeUrl={onChangeUrl}
+      onLoadError={showError}
+      onRenderGone={remountAfterDeath}
+      onRetryTap={retryByTap}
+    />
+  );
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)" && cd /d/kd/lucifer/apps/mobile && npm run test:app 2>&1 | grep -E "^Tests:"`
+Expected: `# tests 133`; `# pass 133`; `# fail 0`; `Tests:       3 passed, 3 total`
+
+Run: `cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun --console=plain 2>&1 | grep -E "^BUILD|compileDebugUnitTestKotlin FAILED|testDebugUnitTest FAILED" | sed -E 's/ in [0-9hms ]+$//'`
+Expected: `BUILD SUCCESSFUL`
+
+Run: `cat /d/kd/lucifer/apps/mobile/android/app/build/test-results/testDebugUnitTest/*.xml | grep -oE 'testsuite name="[^"]+" tests="[0-9]+" skipped="[0-9]+" failures="[0-9]+" errors="[0-9]+"'`
+Expected: `testsuite name="com.possoftware.pos.printer.DleEotTest" tests="7" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.HostLifeTest" tests="4" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PageWatchTest" tests="5" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PoolListTest" tests="6" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PoolStatusTest" tests="3" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PrinterManagerTest" tests="22" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PrinterPoolTest" tests="3" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.TcpTransportTest" tests="10" skipped="0" failures="0" errors="0"`
+
+Run: `cd /d/kd/lucifer/apps/mobile && npx tsc --noEmit && echo MOBILE_TSC_OK && npm run lint >/dev/null 2>&1 && echo MOBILE_LINT_OK`
+Expected: `MOBILE_TSC_OK`; `MOBILE_LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/BackgroundMount.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PageWatch.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PosPrinterModule.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/WebViewDelivery.kt apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PageWatchTest.kt apps/mobile/src/mobile-paths.test.ts apps/mobile/src/native/PosPrinter.ts apps/mobile/src/screens/PosScreen.tsx
+git commit -m "feat(app): a printing device's page keeps running while the app is hidden (the WebView froze it within a minute), and a page that died is remounted by itself, also while the app is hidden: its renderer gone, or the print host's watchdog's word (once per page life, at most once every 10 minutes; the alert stays until a page answers), and React Native mounts the new WebView at once while the app is hidden (bounded), so it loads and prints with nobody at the screen (Phase 3 Session 3D, D3)"
+```
+
+---
+
+### Task D4: the battery checklist: the page's More options opens the app's own screen (on an app that says it has one), this phone's steps first, with links into its settings
+
+**Files:**
+- Modify: `apps/cafe/lib/printer/native-bridge-protocol.ts` and `apps/mobile/src/bridge/protocol.ts` (the method `app.battery`; the list `NATIVE_FEATURES`), `apps/cafe/lib/printer/native-bridge.ts` (its answer and wait; `nativeHasFeature`), `apps/cafe/components/print/PrinterAdvanced.tsx` ("Battery settings for printing")
+- Modify: `apps/mobile/src/bridge/injected.ts` (`window.PosNative.features`), `router.ts` (`onBattery` after the reply), `use-native-bridge.ts`, `apps/mobile/src/native/PosPrinter.ts` (`batteryInfo`, `openBatterySettings`), `apps/mobile/src/screens/PosScreen.tsx` (the checklist over the POS)
+- Create: `apps/mobile/src/battery-steps.ts`, `apps/mobile/src/screens/BatteryScreen.tsx`, `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/BatteryTargets.kt` (pure), `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/BatterySettings.kt`
+- Modify: `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PosPrinterModule.kt` (`batteryInfo`, `openBatterySettings`), `apps/mobile/android/app/src/main/AndroidManifest.xml` (`<queries>` for the phone makers' screens)
+- Tests: `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/BatteryTargetsTest.kt` (create, 3); `apps/mobile/src/battery-steps.test.ts` (create; added to `apps/mobile/package.json`'s test chain); `router.test.ts`, `protocol.test.ts`, `injected.test.ts` (deliberately changed: the new method, list and key); `mobile-paths.test.ts` (pin 4's oracle: + 2; pin 24 new); `apps/cafe/lib/printer/native-bridge.test.ts`, `native-bridge-protocol-parity.test.ts`, `native-bridge-protocol.test.ts` (the contract's ninth list), `lib/printer-ui-paths.test.ts`
+
+**Interfaces produced:** `NATIVE_FEATURES` / `NativeFeature` (both protocol files); `nativeHasFeature(feature)` (`lib/printer/native-bridge.ts`); `RouterDeps.onBattery`; `PosPrinter.batteryInfo(): { brand, unrestricted }`, `PosPrinter.openBatterySettings(kind: 'battery' | 'autostart' | 'app'): { opened }`; `BatteryTargets.brandOf(manufacturer)`, `BatteryTargets.autostartScreens(brand)`; `BatterySettings.open(activity, kind)`.
+
+**The battery checklist (spec §9.5).** Phones from Xiaomi, OPPO, vivo and Samsung stop apps in the background beyond Android's own rules (dontkillmyapp.com). The printer panel's More options gains "Battery settings for printing" (with a line saying why) on a POS app that says it has the checklist (`window.PosNative.features` includes `battery`; an older app says nothing, so the release, Phase 2 and 3C APKs never show it). It asks the app (`app.battery`, a v1 method with no parameters: the reply first, then the shell shows the screen, as `app.changeUrl` does).
+
+**The screen** (`BatteryScreen`, over the POS, which keeps printing underneath): a title, why, this phone's brand's steps first (the app reads the maker: `BatteryTargets.brandOf`; Redmi and POCO are Xiaomi's, realme and OnePlus run OPPO's ColorOS, iQOO is vivo's; the emulator and others read "Other phones"), then every other brand's. Links: "Battery settings for this app" (Android's own question, or its list once the app is allowed), "Autostart settings" (the brand's own screen, best effort, tried in order: Android 11+ needs the packages named in `<queries>`; on a Samsung One UI's usual battery screen first, the golden copy's review m-6), "App info". Every link falls back to the app's settings screen. Back or Done closes it. Local only: no request.
+
+**The contract.** A ninth list in both protocol files (`NATIVE_FEATURES`), byte for byte equal, pinned by the parity tests. The page parses `window.PosNative` leniently, so an older page ignores the new key.
+
+**RED**: the mobile tests (the new test file cannot load; the router's new test; the protocol and injected tests; pins 4 and 24), the cafe contract and UI pins, and the JVM tests (`BatteryTargets`: a compile failure).
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/printer-ui-paths.test.ts`, find:
+
+```ts
+    mut("another tab reads not connected", 'elsewhere: "In another tab"', 'elsewhere: "Not connected"'),
+    mut("the sub-line dropped", "{printerTypeLabel(printer)} · ", ""),
+  ] },
+  { file: F.advanced, pin: pinNeedles(['nativeRequest("app.changeUrl")', "More options", "Change POS address", "<Collapsible", "usePrintCapabilities()"]), mutations: [
+    mut("change-address renamed", 'nativeRequest("app.changeUrl")', 'nativeRequest("app.changeAddress")'),
+    mut("label changed", "More options", "Advanced"),
+  ] },
+  { file: F.paper, pin: pinNeedles(["aria-pressed", "grid-cols-2", "PAPER_WIDTHS.map"]), mutations: [mut("grid dropped", "grid-cols-2", "flex")] },
+  { file: F.card, pin: cardPin, mutations: [
+```
+
+Replace it with:
+
+```ts
+    mut("another tab reads not connected", 'elsewhere: "In another tab"', 'elsewhere: "Not connected"'),
+    mut("the sub-line dropped", "{printerTypeLabel(printer)} · ", ""),
+  ] },
+  // Phase 3 Session 3D: the POS app's battery checklist, only on an app that says it has one.
+  { file: F.advanced, pin: pinNeedles(['nativeRequest("app.changeUrl")', "More options", "Change POS address", "<Collapsible", "usePrintCapabilities()", 'const battery = native && nativeHasFeature("battery");', 'nativeRequest("app.battery")', "Battery settings for printing"]), mutations: [
+    mut("change-address renamed", 'nativeRequest("app.changeUrl")', 'nativeRequest("app.changeAddress")'),
+    mut("label changed", "More options", "Advanced"),
+    mut("battery shown on every app", 'native && nativeHasFeature("battery")', "native"),
+    mut("battery asks nothing", 'nativeRequest("app.battery")', "Promise.resolve()"),
+  ] },
+  { file: F.paper, pin: pinNeedles(["aria-pressed", "grid-cols-2", "PAPER_WIDTHS.map"]), mutations: [mut("grid dropped", "grid-cols-2", "flex")] },
+  { file: F.card, pin: cardPin, mutations: [
+```
+
+In `apps/cafe/lib/printer/native-bridge-protocol-parity.test.ts`, find:
+
+```ts
+  NATIVE_METHODS: [
+    "app.info", "printer.status", "printer.list", "printer.select", "printer.reconnect",
+    "printer.forget", "printer.print", "permissions.request", "bluetooth.enable",
+    "host.background", "app.changeUrl",
+  ],
+  NATIVE_EVENTS: ["printer.status", "app.wake"],
+  NATIVE_TRANSPORTS: ["bt-classic", "ble", "tcp", "usb"],
+```
+
+Replace it with:
+
+```ts
+  NATIVE_METHODS: [
+    "app.info", "printer.status", "printer.list", "printer.select", "printer.reconnect",
+    "printer.forget", "printer.print", "permissions.request", "bluetooth.enable",
+    "host.background", "app.changeUrl", "app.battery",
+  ],
+  NATIVE_EVENTS: ["printer.status", "app.wake"],
+  NATIVE_TRANSPORTS: ["bt-classic", "ble", "tcp", "usb"],
+```
+
+In `apps/cafe/lib/printer/native-bridge-protocol-parity.test.ts`, find:
+
+```ts
+  ],
+  NATIVE_PERMISSION_KINDS: ["bluetooth", "notifications"],
+  NATIVE_PLATFORMS: ["android", "ios"],
+};
+const LIST_NAMES = Object.keys(LIST_ORACLE);
+```
+
+Replace it with:
+
+```ts
+  ],
+  NATIVE_PERMISSION_KINDS: ["bluetooth", "notifications"],
+  NATIVE_PLATFORMS: ["android", "ios"],
+  NATIVE_FEATURES: ["battery"],
+};
+const LIST_NAMES = Object.keys(LIST_ORACLE);
+```
+
+In `apps/cafe/lib/printer/native-bridge-protocol-parity.test.ts`, find:
+
+```ts
+  });
+}
+
+test("lists pin: the oracle covers exactly the eight lists both files declare", () => {
+  assert.equal(LIST_NAMES.length, 8);
+  for (const src of [webProtocol, appProtocol]) {
+    const declared = countOccurrences(stripComments(src), DECL + "NATIVE_");
+    // 8 lists + NATIVE_BRIDGE_VERSION/APP_ID/GLOBAL/DELIVER_FN scalars.
+    assert.equal(declared, LIST_NAMES.length + 4, "no undeclared NATIVE_ list slipped in");
+  }
+});
+```
+
+Replace it with:
+
+```ts
+  });
+}
+
+// Phase 3 Session 3D deliberately changed: a ninth list, NATIVE_FEATURES (what window.PosNative says it can do).
+test("lists pin: the oracle covers exactly the nine lists both files declare", () => {
+  assert.equal(LIST_NAMES.length, 9);
+  for (const src of [webProtocol, appProtocol]) {
+    const declared = countOccurrences(stripComments(src), DECL + "NATIVE_");
+    // 9 lists + NATIVE_BRIDGE_VERSION/APP_ID/GLOBAL/DELIVER_FN scalars.
+    assert.equal(declared, LIST_NAMES.length + 4, "no undeclared NATIVE_ list slipped in");
+  }
+});
+```
+
+In `apps/cafe/lib/printer/native-bridge-protocol-parity.test.ts`, find:
+
+```ts
+  const run = (src: string): void => checkInjectedNames(src, appProtocol);
+  rejects(() => run(mutate(injected, "safeJsonForScript(NATIVE_GLOBAL)", "safeJsonForScript('PosNativ')")));
+  rejects(() => run(mutate(injected, "'window.' + NATIVE_DELIVER_FN", "'window.' + 'deliver'")));
+  rejects(() => run(mutate(injected, "NATIVE_DELIVER_FN,\n  NATIVE_GLOBAL,", "NATIVE_GLOBAL,")));
+  rejects(() => run(mutate(injected, "defineProperty(window, DELIVER,", "defineProperty(window, DELIVERY,")));
+  rejects(() => checkInjectedNames(injected, mutateScalar(appProtocol, "NATIVE_GLOBAL")));
+});
+```
+
+Replace it with:
+
+```ts
+  const run = (src: string): void => checkInjectedNames(src, appProtocol);
+  rejects(() => run(mutate(injected, "safeJsonForScript(NATIVE_GLOBAL)", "safeJsonForScript('PosNativ')")));
+  rejects(() => run(mutate(injected, "'window.' + NATIVE_DELIVER_FN", "'window.' + 'deliver'")));
+  // Phase 3 Session 3D deliberately changed: NATIVE_FEATURES sits between them in the import.
+  rejects(() => run(mutate(injected, "NATIVE_DELIVER_FN,\n  NATIVE_FEATURES,", "NATIVE_FEATURES,")));
+  rejects(() => run(mutate(injected, "defineProperty(window, DELIVER,", "defineProperty(window, DELIVERY,")));
+  rejects(() => checkInjectedNames(injected, mutateScalar(appProtocol, "NATIVE_GLOBAL")));
+});
+```
+
+In `apps/cafe/lib/printer/native-bridge-protocol.test.ts`, find:
+
+```ts
+// ---- the protocol file ------------------------------------------------------
+
+test("protocol: every list and scalar is exactly the contract (the Android file mirrors these)", () => {
+  assert.deepEqual([...protocol.NATIVE_METHODS], ["app.info", "printer.status", "printer.list", "printer.select", "printer.reconnect", "printer.forget", "printer.print", "permissions.request", "bluetooth.enable", "host.background", "app.changeUrl"]);
+  assert.deepEqual([...protocol.NATIVE_EVENTS], ["printer.status", "app.wake"]);
+  assert.deepEqual([...protocol.NATIVE_TRANSPORTS], ["bt-classic", "ble", "tcp", "usb"]);
+  assert.deepEqual([...protocol.NATIVE_PRINTER_STATES], ["none", "connecting", "connected", "disconnected"]);
+```
+
+Replace it with:
+
+```ts
+// ---- the protocol file ------------------------------------------------------
+
+test("protocol: every list and scalar is exactly the contract (the Android file mirrors these)", () => {
+  assert.deepEqual([...protocol.NATIVE_METHODS], ["app.info", "printer.status", "printer.list", "printer.select", "printer.reconnect", "printer.forget", "printer.print", "permissions.request", "bluetooth.enable", "host.background", "app.changeUrl", "app.battery"]);
+  assert.deepEqual([...protocol.NATIVE_EVENTS], ["printer.status", "app.wake"]);
+  assert.deepEqual([...protocol.NATIVE_TRANSPORTS], ["bt-classic", "ble", "tcp", "usb"]);
+  assert.deepEqual([...protocol.NATIVE_PRINTER_STATES], ["none", "connecting", "connected", "disconnected"]);
+```
+
+In `apps/cafe/lib/printer/native-bridge-protocol.test.ts`, find:
+
+```ts
+  assert.deepEqual([...protocol.NATIVE_ERROR_CODES], ["NOT_CONNECTED", "WRITE_FAILED", "TOO_LARGE", "BUSY", "TIMEOUT", "UNAUTHORIZED", "BLUETOOTH_OFF", "UNSUPPORTED", "BAD_REQUEST", "LOCATION_OFF"]);
+  assert.deepEqual([...protocol.NATIVE_PERMISSION_KINDS], ["bluetooth", "notifications"]);
+  assert.deepEqual([...protocol.NATIVE_PLATFORMS], ["android", "ios"]);
+  assert.equal(protocol.NATIVE_BRIDGE_VERSION, 1);
+  assert.equal(protocol.PRINTER_SCAN_MS, 8_000);
+  assert.equal(protocol.PRINT_DATA_MAX_BASE64_CHARS, 2_000_000);
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual([...protocol.NATIVE_ERROR_CODES], ["NOT_CONNECTED", "WRITE_FAILED", "TOO_LARGE", "BUSY", "TIMEOUT", "UNAUTHORIZED", "BLUETOOTH_OFF", "UNSUPPORTED", "BAD_REQUEST", "LOCATION_OFF"]);
+  assert.deepEqual([...protocol.NATIVE_PERMISSION_KINDS], ["bluetooth", "notifications"]);
+  assert.deepEqual([...protocol.NATIVE_PLATFORMS], ["android", "ios"]);
+  assert.deepEqual([...protocol.NATIVE_FEATURES], ["battery"]);
+  assert.equal(protocol.NATIVE_BRIDGE_VERSION, 1);
+  assert.equal(protocol.PRINTER_SCAN_MS, 8_000);
+  assert.equal(protocol.PRINT_DATA_MAX_BASE64_CHARS, 2_000_000);
+```
+
+In `apps/cafe/lib/printer/native-bridge-protocol.test.ts`, find:
+
+```ts
+  ["NATIVE_ERROR_CODES", "NativeErrorCode"],
+  ["NATIVE_PERMISSION_KINDS", "NativePermissionKind"],
+  ["NATIVE_PLATFORMS", "NativePlatform"],
+];
+
+function protocolSource(): string {
+```
+
+Replace it with:
+
+```ts
+  ["NATIVE_ERROR_CODES", "NativeErrorCode"],
+  ["NATIVE_PERMISSION_KINDS", "NativePermissionKind"],
+  ["NATIVE_PLATFORMS", "NativePlatform"],
+  // Phase 3 Session 3D: what the POS app can do beyond the method list.
+  ["NATIVE_FEATURES", "NativeFeature"],
+];
+
+function protocolSource(): string {
+```
+
+In `apps/cafe/lib/printer/native-bridge.test.ts`, find:
+
+```ts
+    "bluetooth.enable": { on: false },
+    "host.background": { active: true },
+    "app.changeUrl": undefined,
+  };
+  installWindow(t, { PosNative: makeBridge(async (method) => answers[method]).bridge });
+  for (const method of protocol.NATIVE_METHODS) {
+    await assert.doesNotReject(nativeRequest(method, {}), method);
+  }
+  const wrong: Record<Exclude<NativeMethod, "app.changeUrl">, unknown> = {
+    "app.info": { app: "other-app", appVersion: "1", platform: "android", transports: [] },
+    "printer.status": { state: "weird", printer: null, bluetooth: "on" },
+    "printer.list": { printers: [{ id: 1 }] },
+```
+
+Replace it with:
+
+```ts
+    "bluetooth.enable": { on: false },
+    "host.background": { active: true },
+    "app.changeUrl": undefined,
+    "app.battery": undefined,
+  };
+  installWindow(t, { PosNative: makeBridge(async (method) => answers[method]).bridge });
+  for (const method of protocol.NATIVE_METHODS) {
+    await assert.doesNotReject(nativeRequest(method, {}), method);
+  }
+  const wrong: Record<Exclude<NativeMethod, "app.changeUrl" | "app.battery">, unknown> = {
+    "app.info": { app: "other-app", appVersion: "1", platform: "android", transports: [] },
+    "printer.status": { state: "weird", printer: null, bluetooth: "on" },
+    "printer.list": { printers: [{ id: 1 }] },
+```
+
+Create `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/BatteryTargetsTest.kt`:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * Phase 3 Session 3D (spec §9.5): the battery checklist's brand (from Build.MANUFACTURER) and each brand's own
+ * autostart screen, tried in order (the app's settings screen is the fallback everywhere).
+ */
+class BatteryTargetsTest {
+  @Test
+  fun eachMakerReadsAsTheBrandWhoseStepsApply() {
+    assertEquals(BatteryTargets.XIAOMI, BatteryTargets.brandOf("Xiaomi"))
+    assertEquals("Redmi and POCO are Xiaomi's", BatteryTargets.XIAOMI, BatteryTargets.brandOf("Redmi"))
+    assertEquals(BatteryTargets.XIAOMI, BatteryTargets.brandOf("POCO"))
+    assertEquals(BatteryTargets.OPPO, BatteryTargets.brandOf("OPPO"))
+    assertEquals("realme and OnePlus run ColorOS", BatteryTargets.OPPO, BatteryTargets.brandOf("realme"))
+    assertEquals(BatteryTargets.OPPO, BatteryTargets.brandOf("OnePlus"))
+    assertEquals(BatteryTargets.VIVO, BatteryTargets.brandOf(" vivo "))
+    assertEquals(BatteryTargets.VIVO, BatteryTargets.brandOf("iQOO"))
+    assertEquals(BatteryTargets.SAMSUNG, BatteryTargets.brandOf("samsung"))
+    assertEquals("the emulator and every other phone", BatteryTargets.OTHER, BatteryTargets.brandOf("Google"))
+    assertEquals(BatteryTargets.OTHER, BatteryTargets.brandOf(""))
+  }
+
+  @Test
+  fun everyBrandButOtherHasItsOwnAutostartScreen() {
+    assertEquals(
+        listOf("com.miui.securitycenter" to "com.miui.permcenter.autostart.AutoStartManagementActivity"),
+        BatteryTargets.autostartScreens(BatteryTargets.XIAOMI),
+    )
+    for (brand in listOf(BatteryTargets.OPPO, BatteryTargets.VIVO, BatteryTargets.SAMSUNG)) {
+      assertTrue(brand + " has screens to try", BatteryTargets.autostartScreens(brand).isNotEmpty())
+    }
+    assertTrue("another phone has none: its settings screen opens", BatteryTargets.autostartScreens(BatteryTargets.OTHER).isEmpty())
+  }
+
+  @Test
+  fun theBrandsAreThePagesWords() {
+    // The shell's checklist (src/battery-steps.ts BATTERY_BRANDS) is keyed by these.
+    assertEquals(listOf("xiaomi", "oppo", "vivo", "samsung", "other"), listOf(BatteryTargets.XIAOMI, BatteryTargets.OPPO, BatteryTargets.VIVO, BatteryTargets.SAMSUNG, BatteryTargets.OTHER))
+  }
+}
+```
+
+In `apps/mobile/package.json`, find:
+
+```json
+    "lint": "eslint .",
+    "start": "react-native start",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test src/url.test.ts src/bridge/protocol.test.ts src/bridge/injected.test.ts src/bridge/router.test.ts src/screens/auto-retry.test.ts src/mobile-paths.test.ts",
+    "test:app": "jest"
+  },
+  "dependencies": {
+```
+
+Replace it with:
+
+```json
+    "lint": "eslint .",
+    "start": "react-native start",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test src/url.test.ts src/bridge/protocol.test.ts src/bridge/injected.test.ts src/bridge/router.test.ts src/screens/auto-retry.test.ts src/battery-steps.test.ts src/mobile-paths.test.ts",
+    "test:app": "jest"
+  },
+  "dependencies": {
+```
+
+Create `apps/mobile/src/battery-steps.test.ts`:
+
+```ts
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  BATTERY_BRANDS,
+  BATTERY_SECTIONS,
+  batteryBrandOf,
+  batterySectionsFor,
+  hasAutostartScreen,
+} from './battery-steps';
+
+// Phase 3 Session 3D (spec §9.5): the battery checklist's words, this phone's brand first.
+
+test('every brand the app reports has its steps, once', () => {
+  assert.deepEqual(
+    BATTERY_SECTIONS.map(s => s.brand),
+    [...BATTERY_BRANDS],
+  );
+  for (const section of BATTERY_SECTIONS) {
+    assert.ok(section.steps.length >= 2, section.brand + ' has steps');
+    for (const step of section.steps) {
+      assert.ok(step.endsWith('.'), 'a step is a sentence: ' + step);
+    }
+  }
+});
+
+test("this phone's steps come first; an unknown brand reads as other", () => {
+  assert.equal(batterySectionsFor('vivo')[0]?.brand, 'vivo');
+  assert.equal(batterySectionsFor('vivo').length, BATTERY_SECTIONS.length);
+  assert.equal(batteryBrandOf('samsung'), 'samsung');
+  assert.equal(batteryBrandOf('Huawei'), 'other');
+  assert.equal(batteryBrandOf(undefined), 'other');
+  assert.equal(batterySectionsFor(batteryBrandOf('nokia'))[0]?.brand, 'other');
+});
+
+test('only the four brands with their own screen offer the autostart link', () => {
+  assert.deepEqual(
+    BATTERY_BRANDS.filter(hasAutostartScreen),
+    ['xiaomi', 'oppo', 'vivo', 'samsung'],
+  );
+});
+```
+
+In `apps/mobile/src/bridge/injected.test.ts`, find:
+
+```ts
+      writable: false,
+      enumerable: false,
+      configurable: false,
+      value: { version: 1, versions: [1, 2], platform: 'android' },
+    },
+  );
+  const deliverDesc = f.plain(
+```
+
+Replace it with:
+
+```ts
+      writable: false,
+      enumerable: false,
+      configurable: false,
+      // Phase 3 Session 3D deliberately changed: + features.
+      value: { version: 1, versions: [1, 2], features: ['battery'], platform: 'android' },
+    },
+  );
+  const deliverDesc = f.plain(
+```
+
+In `apps/mobile/src/bridge/injected.test.ts`, find:
+
+```ts
+  f.inject();
+  assert.equal(
+    f.run('Object.keys(window.PosNative).join(",")'),
+    'version,versions,platform,request,on',
+  );
+  assert.ok(!String(f.run('JSON.stringify(window.PosNative)')).includes(TOKEN));
+  assert.ok(!String(f.run('String(window.PosNative.request)')).includes(TOKEN));
+```
+
+Replace it with:
+
+```ts
+  f.inject();
+  assert.equal(
+    f.run('Object.keys(window.PosNative).join(",")'),
+    // Phase 3 Session 3D deliberately changed: + features.
+    'version,versions,features,platform,request,on',
+  );
+  assert.ok(!String(f.run('JSON.stringify(window.PosNative)')).includes(TOKEN));
+  assert.ok(!String(f.run('String(window.PosNative.request)')).includes(TOKEN));
+```
+
+In `apps/mobile/src/bridge/protocol.test.ts`, find:
+
+```ts
+    'bluetooth.enable',
+    'host.background',
+    'app.changeUrl',
+  ],
+  NATIVE_EVENTS: ['printer.status', 'app.wake'],
+  NATIVE_TRANSPORTS: ['bt-classic', 'ble', 'tcp', 'usb'],
+```
+
+Replace it with:
+
+```ts
+    'bluetooth.enable',
+    'host.background',
+    'app.changeUrl',
+    'app.battery',
+  ],
+  NATIVE_EVENTS: ['printer.status', 'app.wake'],
+  NATIVE_TRANSPORTS: ['bt-classic', 'ble', 'tcp', 'usb'],
+```
+
+In `apps/mobile/src/bridge/protocol.test.ts`, find:
+
+```ts
+  ],
+  NATIVE_PERMISSION_KINDS: ['bluetooth', 'notifications'],
+  NATIVE_PLATFORMS: ['android', 'ios'],
+};
+
+const SCALARS: Record<string, string | number> = {
+```
+
+Replace it with:
+
+```ts
+  ],
+  NATIVE_PERMISSION_KINDS: ['bluetooth', 'notifications'],
+  NATIVE_PLATFORMS: ['android', 'ios'],
+  NATIVE_FEATURES: ['battery'],
+};
+
+const SCALARS: Record<string, string | number> = {
+```
+
+In `apps/mobile/src/bridge/protocol.test.ts`, find:
+
+```ts
+});
+
+test('lists are non-empty, unique, and declared exactly once', () => {
+  assert.equal(Object.keys(LISTS).length, 8);
+  for (const name of Object.keys(LISTS)) {
+    const values = parseList(name);
+    assert.ok(values.length > 0, name + ' is empty');
+```
+
+Replace it with:
+
+```ts
+});
+
+test('lists are non-empty, unique, and declared exactly once', () => {
+  // Phase 3 Session 3D deliberately changed: + NATIVE_FEATURES.
+  assert.equal(Object.keys(LISTS).length, 9);
+  for (const name of Object.keys(LISTS)) {
+    const values = parseList(name);
+    assert.ok(values.length > 0, name + ' is empty');
+```
+
+In `apps/mobile/src/bridge/router.test.ts`, find:
+
+```ts
+      return options.deliver ? options.deliver(script) : undefined;
+    },
+    onChangeUrl: () => log.push('changeUrl'),
+  });
+  const replies = (): Reply[] =>
+    deliveries.map(s =>
+```
+
+Replace it with:
+
+```ts
+      return options.deliver ? options.deliver(script) : undefined;
+    },
+    onChangeUrl: () => log.push('changeUrl'),
+    onBattery: () => log.push('battery'),
+  });
+  const replies = (): Reply[] =>
+    deliveries.map(s =>
+```
+
+In `apps/mobile/src/bridge/router.test.ts`, find:
+
+```ts
+  }
+  assert.equal(
+    new Set(cases.map(c => c[0])).size,
+    NATIVE_METHODS.length - 1,
+    'all methods but app.changeUrl covered',
+  );
+});
+```
+
+Replace it with:
+
+```ts
+  }
+  assert.equal(
+    new Set(cases.map(c => c[0])).size,
+    // Phase 3 Session 3D deliberately changed: app.battery, like app.changeUrl, calls no port.
+    NATIVE_METHODS.length - 2,
+    'all methods but app.changeUrl and app.battery covered',
+  );
+});
+```
+
+In `apps/mobile/src/bridge/router.test.ts`, find:
+
+```ts
+    'printer.forget',
+    'bluetooth.enable',
+    'app.changeUrl',
+  ]) {
+    await bad(method, { x: 1 });
+    await bad(method, [1]);
+```
+
+Replace it with:
+
+```ts
+    'printer.forget',
+    'bluetooth.enable',
+    'app.changeUrl',
+    'app.battery',
+  ]) {
+    await bad(method, { x: 1 });
+    await bad(method, [1]);
+```
+
+In `apps/mobile/src/bridge/router.test.ts`, find:
+
+```ts
+  });
+  await broken.router.handle(msg('app.changeUrl'), FRAME);
+  assert.deepEqual(broken.log, ['deliver', 'changeUrl']);
+});
+
+test('other methods never trigger onChangeUrl; a throwing deliver never throws out of handle', async () => {
+```
+
+Replace it with:
+
+```ts
+  });
+  await broken.router.handle(msg('app.changeUrl'), FRAME);
+  assert.deepEqual(broken.log, ['deliver', 'changeUrl']);
+});
+
+test('app.battery (Session 3D): reply first, then onBattery; never onChangeUrl', async () => {
+  const s = setup();
+  await s.router.handle(msg('app.battery'), FRAME);
+  assert.deepEqual(s.log, ['deliver', 'battery']);
+  assert.deepEqual(s.calls, []);
+  assert.deepEqual(s.replies(), [{ v: 1, id: 'q1', ok: true, result: null }]);
+});
+
+test('other methods never trigger onChangeUrl; a throwing deliver never throws out of handle', async () => {
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  'deliverScript',
+  // Phase 3 Session 3D (deliberate change): a WebView remounted after its page died mounts while the app is hidden.
+  'mountWhileHidden',
+];
+
+type Files = Record<string, string>;
+```
+
+Replace it with:
+
+```ts
+  'deliverScript',
+  // Phase 3 Session 3D (deliberate change): a WebView remounted after its page died mounts while the app is hidden.
+  'mountWhileHidden',
+  // Phase 3 Session 3D (deliberate change): the battery checklist.
+  'batteryInfo',
+  'openBatterySettings',
+];
+
+type Files = Record<string, string>;
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+test('pin 4: JS wrapper and Kotlin @ReactMethod list equal the oracle', () => {
+  const module = kt('PosPrinterModule.kt');
+  const js = read(join(SRC, 'native', 'PosPrinter.ts'));
+  // Phase 3 Session 3D deliberately changed: + mountWhileHidden.
+  assert.equal(NATIVE_METHOD_ORACLE.length, 25, '18 v1 methods, 6 of bridge v2 and the hidden mount');
+  assert.ok(strip(module).includes('@ReactMethod'), 'landmark');
+  assert.deepEqual(methodProblems(module, js), []);
+  assert.deepEqual(moduleNameProblems(module, js), []);
+```
+
+Replace it with:
+
+```ts
+test('pin 4: JS wrapper and Kotlin @ReactMethod list equal the oracle', () => {
+  const module = kt('PosPrinterModule.kt');
+  const js = read(join(SRC, 'native', 'PosPrinter.ts'));
+  // Phase 3 Session 3D deliberately changed: + mountWhileHidden, batteryInfo, openBatterySettings.
+  assert.equal(NATIVE_METHOD_ORACLE.length, 27, '18 v1 methods, 6 of bridge v2, the hidden mount and the battery checklist');
+  assert.ok(strip(module).includes('@ReactMethod'), 'landmark');
+  assert.deepEqual(methodProblems(module, js), []);
+  assert.deepEqual(moduleNameProblems(module, js), []);
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  ]);
+});
+
+test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
+  const strings = readFileSync(join(MAIN, 'res', 'values', 'strings.xml'), 'utf8');
+  assert.ok(
+```
+
+Replace it with:
+
+```ts
+  ]);
+});
+
+// ── pin 24: Session 3D, the battery checklist (spec §9.5) ──────────────────
+// The page's More options asks (app.battery, only on an app whose window.PosNative says "battery"); the shell shows its
+// checklist over the POS, this phone's brand first, with links into the phone's settings where Android allows them,
+// each falling back to the app's own settings screen. Local only.
+interface BatterySources {
+  injected: string;
+  screen: string;
+  checklist: string;
+  module: string;
+  settings: string;
+  manifest: string;
+}
+function batteryProblems(s: BatterySources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!strip(text).includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(s.injected, "features: Object.freeze(FEATURES.slice())", 'window.PosNative does not say its features');
+  need(s.screen, '{battery && <BatteryScreen onDone={closeBattery} />}', 'the checklist never shows');
+  need(s.screen, 'onBattery={openBattery}', 'the page\'s ask does not open the checklist');
+  need(s.checklist, 'batterySectionsFor(brand).map(section => (', 'the checklist does not list the steps, this phone\'s first');
+  need(s.checklist, "BackHandler.addEventListener(\n      'hardwareBackPress',\n      () => {\n        onDone();\n        return true;", 'Back does not close the checklist');
+  need(s.module, 'putString("brand", BatterySettings.brand())', 'the shell is not told this phone\'s brand');
+  need(s.module, 'BatterySettings.open(activity, kind)', 'a link opens nothing');
+  need(s.settings, '} + Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg"))', 'a link has no fallback to the app\'s settings');
+  need(s.settings, 'Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$pkg"))', 'the battery link does not ask Android\'s own question');
+  need(s.manifest, '<package android:name="com.miui.securitycenter" />', 'the autostart screens are not named (Android 11+)');
+  if (/fetch\(|XMLHttpRequest|https?:\/\//.test(strip(s.screen) + strip(s.checklist))) {
+    out.push('the checklist makes a request');
+  }
+  return out;
+}
+const batterySources = (): BatterySources => ({
+  injected: read(join(SRC, 'bridge', 'injected.ts')),
+  screen: posScreen(),
+  checklist: read(join(SRC, 'screens', 'BatteryScreen.tsx')),
+  module: kt('PosPrinterModule.kt'),
+  settings: kt('BatterySettings.kt'),
+  manifest: manifest(),
+});
+
+test('pin 24: Session 3D, the battery checklist: asked by the page, this phone first, links with a fallback, local only', () => {
+  assert.deepEqual(batteryProblems(batterySources()), []);
+});
+
+test('pin 24 mutation: every battery needle can fail', () => {
+  const base = batterySources();
+  const run = (key: keyof BatterySources) => (text: string) => batteryProblems({ ...base, [key]: text });
+  everyMutationCaught(run('injected'), base.injected, [['features: Object.freeze(FEATURES.slice()), ', '']]);
+  everyMutationCaught(run('screen'), base.screen, [
+    ['{battery && <BatteryScreen onDone={closeBattery} />}', '{null}'],
+    ['onBattery={openBattery}', 'onBattery={noop}'],
+  ]);
+  everyMutationCaught(run('checklist'), base.checklist, [
+    ['batterySectionsFor(brand).map(section => (', 'BATTERY_SECTIONS.map(section => ('],
+    ['        onDone();\n        return true;', '        return true;'],
+    ['    PosPrinter.openBatterySettings(kind).catch(noop);', "    fetch('https://x').catch(noop);"],
+  ]);
+  everyMutationCaught(run('module'), base.module, [
+    ['putString("brand", BatterySettings.brand())', 'putString("brand", "other")'],
+    ['BatterySettings.open(activity, kind)', 'false'],
+  ]);
+  everyMutationCaught(run('settings'), base.settings, [
+    ['} + Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg"))', '}'],
+    ['Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$pkg"))', 'Intent()'],
+  ]);
+  everyMutationCaught(run('manifest'), base.manifest, [['<package android:name="com.miui.securitycenter" />', '']]);
+});
+
+test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
+  const strings = readFileSync(join(MAIN, 'res', 'values', 'strings.xml'), 'utf8');
+  assert.ok(
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 137`; `# pass 125`; `# fail 12`
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/printer/native-bridge.test.ts lib/printer/native-bridge-protocol-parity.test.ts lib/printer/native-bridge-protocol.test.ts lib/printer-ui-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 88`; `# pass 77`; `# fail 11`
+
+Run: `cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun --console=plain 2>&1 | grep -E "^BUILD|compileDebugUnitTestKotlin FAILED|testDebugUnitTest FAILED" | sed -E 's/ in [0-9hms ]+$//'`
+Expected: `> Task :app:compileDebugUnitTestKotlin FAILED`; `BUILD FAILED`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/components/print/PrinterAdvanced.tsx`, find:
+
+```tsx
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { BRAND_PANEL_CLASS } from "@/components/brand/brand-classes";
+import { usePrintCapabilities } from "@/hooks/use-device-printer";
+import { nativeRequest } from "@/lib/printer/native-bridge";
+import { cn } from "@/lib/utils";
+
+const CHANGE_ADDRESS_FAILED_MESSAGE = "Could not open the address screen. Try again.";
+const CLEAR_HELP = "If the printing device is down, remove it from any device, even a phone. Waiting slips are cancelled and every device prints its own slips again.";
+
+interface PrinterAdvancedProps {
+```
+
+Replace it with:
+
+```tsx
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { BRAND_PANEL_CLASS } from "@/components/brand/brand-classes";
+import { usePrintCapabilities } from "@/hooks/use-device-printer";
+import { nativeHasFeature, nativeRequest } from "@/lib/printer/native-bridge";
+import { cn } from "@/lib/utils";
+
+const CHANGE_ADDRESS_FAILED_MESSAGE = "Could not open the address screen. Try again.";
+const BATTERY_FAILED_MESSAGE = "Could not open the battery steps. Try again.";
+const BATTERY_HELP = "Some phones stop the POS app when the screen is off. These steps keep slips printing.";
+const CLEAR_HELP = "If the printing device is down, remove it from any device, even a phone. Waiting slips are cancelled and every device prints its own slips again.";
+
+interface PrinterAdvancedProps {
+```
+
+In `apps/cafe/components/print/PrinterAdvanced.tsx`, find:
+
+```tsx
+}
+
+// Rarely needed controls, folded away: removing the printing device from a
+// device that is not it, and (inside the POS app) changing the POS address.
+export function PrinterAdvanced({ clearControl }: PrinterAdvancedProps) {
+  const { native } = usePrintCapabilities();
+  if (clearControl === null && !native) return null;
+```
+
+Replace it with:
+
+```tsx
+}
+
+// Rarely needed controls, folded away: removing the printing device from a
+// device that is not it, and (inside the POS app) changing the POS address. Phase 3 Session 3D (spec §9.5): and the
+// POS app's battery checklist, on an app that says it has one.
+export function PrinterAdvanced({ clearControl }: PrinterAdvancedProps) {
+  const { native } = usePrintCapabilities();
+  if (clearControl === null && !native) return null;
+```
+
+In `apps/cafe/components/print/PrinterAdvanced.tsx`, find:
+
+```tsx
+  // Fire and forget: the app may leave this page at once, so there is no result to wait for.
+  const changeAddress = () => {
+    nativeRequest("app.changeUrl").catch(() => toast.error(CHANGE_ADDRESS_FAILED_MESSAGE));
+  };
+
+  return (
+```
+
+Replace it with:
+
+```tsx
+  // Fire and forget: the app may leave this page at once, so there is no result to wait for.
+  const changeAddress = () => {
+    nativeRequest("app.changeUrl").catch(() => toast.error(CHANGE_ADDRESS_FAILED_MESSAGE));
+  };
+  const battery = native && nativeHasFeature("battery");
+  const openBattery = () => {
+    nativeRequest("app.battery").catch(() => toast.error(BATTERY_FAILED_MESSAGE));
+  };
+
+  return (
+```
+
+In `apps/cafe/components/print/PrinterAdvanced.tsx`, find:
+
+```tsx
+            Change POS address
+          </Button>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+```
+
+Replace it with:
+
+```tsx
+            Change POS address
+          </Button>
+        )}
+        {battery && (
+          <div className="space-y-2">
+            <Button variant="outline" className={PRINTER_ACTION_CLASS} onClick={openBattery}>
+              Battery settings for printing
+            </Button>
+            <p className="text-xs text-brand-muted">{BATTERY_HELP}</p>
+          </div>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+```
+
+In `apps/cafe/lib/printer/native-bridge-protocol.ts`, find:
+
+```ts
+  "bluetooth.enable",
+  "host.background",
+  "app.changeUrl",
+] as const;
+export type NativeMethod = (typeof NATIVE_METHODS)[number];
+```
+
+Replace it with:
+
+```ts
+  "bluetooth.enable",
+  "host.background",
+  "app.changeUrl",
+  "app.battery",
+] as const;
+export type NativeMethod = (typeof NATIVE_METHODS)[number];
+```
+
+In `apps/cafe/lib/printer/native-bridge-protocol.ts`, find:
+
+```ts
+export const NATIVE_PLATFORMS = ["android", "ios"] as const;
+export type NativePlatform = (typeof NATIVE_PLATFORMS)[number];
+
+export const NATIVE_BRIDGE_VERSION = 1;
+// How long the app scans for nearby printers when asked to (printer.list scan).
+export const PRINTER_SCAN_MS = 8_000;
+```
+
+Replace it with:
+
+```ts
+export const NATIVE_PLATFORMS = ["android", "ios"] as const;
+export type NativePlatform = (typeof NATIVE_PLATFORMS)[number];
+
+// Phase 3 Session 3D: what the POS app can do beyond the method list (window.PosNative.features); a control is shown
+// only when the app says it (an older app says nothing).
+export const NATIVE_FEATURES = ["battery"] as const;
+export type NativeFeature = (typeof NATIVE_FEATURES)[number];
+
+export const NATIVE_BRIDGE_VERSION = 1;
+// How long the app scans for nearby printers when asked to (printer.list scan).
+export const PRINTER_SCAN_MS = 8_000;
+```
+
+In `apps/cafe/lib/printer/native-bridge-protocol.ts`, find:
+
+```ts
+export interface PosNativeApi {
+  readonly version: number;
+  readonly platform: NativePlatform;
+  request(method: NativeMethod, params?: unknown): Promise<unknown>;
+  on(event: NativeEvent, fn: (data: unknown) => void): () => void;
+}
+```
+
+Replace it with:
+
+```ts
+export interface PosNativeApi {
+  readonly version: number;
+  readonly platform: NativePlatform;
+  /** Phase 3 Session 3D: absent on an app from before it. */
+  readonly features?: readonly string[];
+  request(method: NativeMethod, params?: unknown): Promise<unknown>;
+  on(event: NativeEvent, fn: (data: unknown) => void): () => void;
+}
+```
+
+In `apps/cafe/lib/printer/native-bridge.ts`, find:
+
+```ts
+  PRINTER_SCAN_MS,
+  type NativeErrorCode,
+  type NativeEvent,
+  type NativeMethod,
+  type PosNativeApi,
+} from "@/lib/printer/native-bridge-protocol";
+```
+
+Replace it with:
+
+```ts
+  PRINTER_SCAN_MS,
+  type NativeErrorCode,
+  type NativeEvent,
+  type NativeFeature,
+  type NativeMethod,
+  type PosNativeApi,
+} from "@/lib/printer/native-bridge-protocol";
+```
+
+In `apps/cafe/lib/printer/native-bridge.ts`, find:
+
+```ts
+  "host.background": z.object({ active: z.boolean() }),
+  // Fire-and-forget: the app may answer with anything (or navigate away).
+  "app.changeUrl": z.unknown(),
+} as const satisfies Record<NativeMethod, z.ZodTypeAny>;
+
+const EVENT_SCHEMAS = {
+```
+
+Replace it with:
+
+```ts
+  "host.background": z.object({ active: z.boolean() }),
+  // Fire-and-forget: the app may answer with anything (or navigate away).
+  "app.changeUrl": z.unknown(),
+  // Phase 3 Session 3D: the app shows its battery checklist after the answer.
+  "app.battery": z.unknown(),
+} as const satisfies Record<NativeMethod, z.ZodTypeAny>;
+
+const EVENT_SCHEMAS = {
+```
+
+In `apps/cafe/lib/printer/native-bridge.ts`, find:
+
+```ts
+  "bluetooth.enable": NATIVE_PROMPT_TIMEOUT_MS,
+  "host.background": NATIVE_REQUEST_TIMEOUT_MS,
+  "app.changeUrl": NATIVE_REQUEST_TIMEOUT_MS,
+};
+
+function timeoutOf(method: NativeMethod, params: unknown): number {
+```
+
+Replace it with:
+
+```ts
+  "bluetooth.enable": NATIVE_PROMPT_TIMEOUT_MS,
+  "host.background": NATIVE_REQUEST_TIMEOUT_MS,
+  "app.changeUrl": NATIVE_REQUEST_TIMEOUT_MS,
+  "app.battery": NATIVE_REQUEST_TIMEOUT_MS,
+};
+
+function timeoutOf(method: NativeMethod, params: unknown): number {
+```
+
+In `apps/cafe/lib/printer/native-bridge.ts`, find:
+
+```ts
+  if (!bridge || bridge.version !== NATIVE_BRIDGE_VERSION) return null;
+  if (typeof bridge.request !== "function" || typeof bridge.on !== "function") return null;
+  return bridge;
+}
+
+export async function nativeRequest<M extends NativeMethod>(method: M, params?: unknown): Promise<NativeResult<M>> {
+```
+
+Replace it with:
+
+```ts
+  if (!bridge || bridge.version !== NATIVE_BRIDGE_VERSION) return null;
+  if (typeof bridge.request !== "function" || typeof bridge.on !== "function") return null;
+  return bridge;
+}
+
+/** Phase 3 Session 3D: the POS app says it can do [feature] (window.PosNative.features); an older app says nothing. */
+export function nativeHasFeature(feature: NativeFeature): boolean {
+  const features = nativeBridge()?.features;
+  return Array.isArray(features) && features.includes(feature);
+}
+
+export async function nativeRequest<M extends NativeMethod>(method: M, params?: unknown): Promise<NativeResult<M>> {
+```
+
+In `apps/mobile/android/app/src/main/AndroidManifest.xml`, find:
+
+```xml
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+
+    <application
+      android:name=".MainApplication"
+```
+
+Replace it with:
+
+```xml
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+
+    <!-- The battery checklist opens these phone makers' own autostart screens (Android 11+ needs them named). -->
+    <queries>
+        <package android:name="com.miui.securitycenter" />
+        <package android:name="com.coloros.safecenter" />
+        <package android:name="com.oppo.safe" />
+        <package android:name="com.vivo.permissionmanager" />
+        <package android:name="com.iqoo.secure" />
+        <package android:name="com.samsung.android.lool" />
+        <package android:name="com.samsung.android.sm" />
+    </queries>
+
+    <application
+      android:name=".MainApplication"
+```
+
+Create `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/BatterySettings.kt`:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
+
+/**
+ * Phase 3 Session 3D (spec §9.5): the battery checklist's links into the phone's settings, where Android allows them:
+ * this app's battery optimisation (Android's own question, or its list once answered), the brand's autostart screen
+ * ([BatteryTargets], best effort), and this app's settings screen (always there: every other link falls back to it).
+ * Local only: no request.
+ */
+object BatterySettings {
+  const val BATTERY = "battery"
+  const val AUTOSTART = "autostart"
+  const val APP = "app"
+
+  fun brand(): String = BatteryTargets.brandOf(Build.MANUFACTURER ?: "")
+
+  /** Android already lets this app run in the background with no battery limit. */
+  fun unrestricted(ctx: Context): Boolean {
+    val power = ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return false
+    return power.isIgnoringBatteryOptimizations(ctx.packageName)
+  }
+
+  /** Opens the screen for [kind]; false when none could open. */
+  fun open(activity: Activity, kind: String): Boolean {
+    val pkg = activity.packageName
+    val tries =
+        when (kind) {
+          BATTERY ->
+              if (unrestricted(activity)) listOf(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+              else listOf(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$pkg")))
+          AUTOSTART -> BatteryTargets.autostartScreens(brand()).map { (p, c) -> Intent().setComponent(ComponentName(p, c)) }
+          else -> emptyList()
+        } + Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg"))
+    for (intent in tries) {
+      try {
+        activity.startActivity(intent)
+        return true
+      } catch (e: ActivityNotFoundException) {
+        // Not on this phone: the next one.
+      } catch (e: SecurityException) {
+        // Not open to other apps on this phone: the next one.
+      }
+    }
+    return false
+  }
+}
+```
+
+Create `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/BatteryTargets.kt`:
+
+```kotlin
+package com.possoftware.pos.printer
+
+/**
+ * Phase 3 Session 3D (spec §9.5): the battery checklist's facts about this phone. Phones from Xiaomi, OPPO, vivo and
+ * Samsung stop apps in the background beyond what Android itself does (dontkillmyapp.com); each has its own screens.
+ * Pure (no Android), so the JVM tests (src/test) pin it.
+ */
+object BatteryTargets {
+  const val XIAOMI = "xiaomi"
+  const val OPPO = "oppo"
+  const val VIVO = "vivo"
+  const val SAMSUNG = "samsung"
+  const val OTHER = "other"
+
+  /** The brand whose steps apply, from Build.MANUFACTURER (Redmi and POCO are Xiaomi's; realme and OnePlus run OPPO's
+   *  ColorOS; iQOO is vivo's). */
+  fun brandOf(manufacturer: String): String =
+      when (manufacturer.trim().lowercase()) {
+        "xiaomi", "redmi", "poco" -> XIAOMI
+        "oppo", "realme", "oneplus" -> OPPO
+        "vivo", "iqoo" -> VIVO
+        "samsung" -> SAMSUNG
+        else -> OTHER
+      }
+
+  /** The brand's own screen where apps may start and run in the background (package, activity), tried in order; none
+   *  opens on another phone, or one that changed them, so the app's own settings screen is the fallback. */
+  fun autostartScreens(brand: String): List<Pair<String, String>> =
+      when (brand) {
+        XIAOMI -> listOf("com.miui.securitycenter" to "com.miui.permcenter.autostart.AutoStartManagementActivity")
+        OPPO ->
+            listOf(
+                "com.coloros.safecenter" to "com.coloros.safecenter.permission.startup.StartupAppListActivity",
+                "com.coloros.safecenter" to "com.coloros.safecenter.startupapp.StartupAppListActivity",
+                "com.oppo.safe" to "com.oppo.safe.permission.startup.StartupAppListActivity",
+            )
+        VIVO ->
+            listOf(
+                "com.vivo.permissionmanager" to "com.vivo.permissionmanager.activity.BgStartUpManagerActivity",
+                "com.iqoo.secure" to "com.iqoo.secure.ui.phoneoptimize.AddWhiteListActivity",
+            )
+        SAMSUNG ->
+            listOf(
+                "com.samsung.android.lool" to "com.samsung.android.sm.ui.battery.BatteryActivity",
+                "com.samsung.android.lool" to "com.samsung.android.sm.battery.ui.BatteryActivity",
+                "com.samsung.android.sm" to "com.samsung.android.sm.ui.battery.BatteryActivity",
+            )
+        else -> emptyList()
+      }
+}
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PosPrinterModule.kt`, find:
+
+```kotlin
+    BackgroundMount.start(reactContext)
+    promise.resolve(null)
+  }
+}
+```
+
+Replace it with:
+
+```kotlin
+    BackgroundMount.start(reactContext)
+    promise.resolve(null)
+  }
+
+  // ---- the battery checklist (Session 3D, spec §9.5): local only, no request ----
+
+  @ReactMethod
+  fun batteryInfo(promise: Promise) {
+    guarded(promise, BridgeCodes.UNSUPPORTED) {
+      promise.resolve(
+          Arguments.createMap().apply {
+            putString("brand", BatterySettings.brand())
+            putBoolean("unrestricted", BatterySettings.unrestricted(reactContext))
+          }
+      )
+    }
+  }
+
+  @ReactMethod
+  fun openBatterySettings(kind: String, promise: Promise) {
+    UiThreadUtil.runOnUiThread(
+        Runnable {
+          val activity = reactContext.currentActivity
+          val opened = activity != null && BatterySettings.open(activity, kind)
+          promise.resolve(Arguments.createMap().apply { putBoolean("opened", opened) })
+        }
+    )
+  }
+}
+```
+
+Create `apps/mobile/src/battery-steps.ts`:
+
+```ts
+// Phase 3 Session 3D (spec §9.5): the battery checklist's words. Phones from Xiaomi, OPPO, vivo and Samsung stop apps in
+// the background beyond Android's own rules (dontkillmyapp.com); a printing device must be told not to. The brand comes
+// from the app (BatteryTargets.kt reads the phone's maker), so this phone's steps come first. Pure: no react-native.
+
+export const BATTERY_BRANDS = ['xiaomi', 'oppo', 'vivo', 'samsung', 'other'] as const;
+export type BatteryBrand = (typeof BATTERY_BRANDS)[number];
+
+export type BatterySection = { brand: BatteryBrand; title: string; steps: readonly string[] };
+
+export const BATTERY_INTRO =
+  'Some phones stop apps that run with the screen off. On a device that prints for the cafe, do these steps once, so slips keep printing.';
+
+export const BATTERY_SECTIONS: readonly BatterySection[] = [
+  {
+    brand: 'xiaomi',
+    title: 'Xiaomi, Redmi, POCO',
+    steps: [
+      'Settings > Apps > Manage apps > Sandbee POS > Autostart: on.',
+      'On the same screen: Battery saver > No restrictions.',
+      'Open recent apps, press and hold Sandbee POS, and tap the lock.',
+    ],
+  },
+  {
+    brand: 'oppo',
+    title: 'OPPO, realme, OnePlus',
+    steps: [
+      'Settings > Battery > Sandbee POS: allow background activity and auto launch.',
+      'Settings > Apps > Auto launch: Sandbee POS on.',
+      'Open recent apps, tap the menu on Sandbee POS, and choose Lock.',
+    ],
+  },
+  {
+    brand: 'vivo',
+    title: 'vivo, iQOO',
+    steps: [
+      'Settings > Battery > Background power consumption: allow it for Sandbee POS.',
+      'i Manager > App manager > Autostart: Sandbee POS on.',
+      'Open recent apps and pull Sandbee POS down to lock it.',
+    ],
+  },
+  {
+    brand: 'samsung',
+    title: 'Samsung',
+    steps: [
+      'Settings > Apps > Sandbee POS > Battery: Unrestricted.',
+      'Settings > Battery > Background usage limits > Never sleeping apps: add Sandbee POS.',
+      'Make sure Sandbee POS is not under Sleeping apps or Deep sleeping apps.',
+    ],
+  },
+  {
+    brand: 'other',
+    title: 'Other phones',
+    steps: [
+      'Settings > Apps > Sandbee POS > Battery: Unrestricted (or "Don\'t optimise").',
+      'If slips still stop with the screen off, keep the POS app open on this device.',
+    ],
+  },
+];
+
+/** The brand the app reported, or "other" for anything this list does not know. */
+export function batteryBrandOf(reported: unknown): BatteryBrand {
+  return (BATTERY_BRANDS as readonly unknown[]).includes(reported)
+    ? (reported as BatteryBrand)
+    : 'other';
+}
+
+/** Every section, this phone's first. */
+export function batterySectionsFor(brand: BatteryBrand): BatterySection[] {
+  const own = BATTERY_SECTIONS.filter(s => s.brand === brand);
+  return [...own, ...BATTERY_SECTIONS.filter(s => s.brand !== brand)];
+}
+
+/** Only these brands have their own autostart screen to open (the app falls back to its settings screen). */
+export function hasAutostartScreen(brand: BatteryBrand): boolean {
+  return brand !== 'other';
+}
+```
+
+In `apps/mobile/src/bridge/injected.ts`, find:
+
+```ts
+  BRIDGE_MESSAGE_MAX_CHARS,
+  NATIVE_BRIDGE_VERSION,
+  NATIVE_DELIVER_FN,
+  NATIVE_GLOBAL,
+  type DeliverMessage,
+  type NativePlatform,
+```
+
+Replace it with:
+
+```ts
+  BRIDGE_MESSAGE_MAX_CHARS,
+  NATIVE_BRIDGE_VERSION,
+  NATIVE_DELIVER_FN,
+  NATIVE_FEATURES,
+  NATIVE_GLOBAL,
+  type DeliverMessage,
+  type NativePlatform,
+```
+
+In `apps/mobile/src/bridge/injected.ts`, find:
+
+```ts
+    'var PLATFORM = ' + safeJsonForScript(platform) + ';',
+    'var VERSION = ' + NATIVE_BRIDGE_VERSION + ';',
+    'var VERSIONS = ' + safeJsonForScript(BRIDGE_VERSIONS) + ';',
+    'var MAX_CHARS = ' + BRIDGE_MESSAGE_MAX_CHARS + ';',
+    'var MSG_TOO_LARGE = ' +
+      safeJsonForScript(NATIVE_ERROR_MESSAGES.TOO_LARGE) +
+```
+
+Replace it with:
+
+```ts
+    'var PLATFORM = ' + safeJsonForScript(platform) + ';',
+    'var VERSION = ' + NATIVE_BRIDGE_VERSION + ';',
+    'var VERSIONS = ' + safeJsonForScript(BRIDGE_VERSIONS) + ';',
+    'var FEATURES = ' + safeJsonForScript(NATIVE_FEATURES) + ';',
+    'var MAX_CHARS = ' + BRIDGE_MESSAGE_MAX_CHARS + ';',
+    'var MSG_TOO_LARGE = ' +
+      safeJsonForScript(NATIVE_ERROR_MESSAGES.TOO_LARGE) +
+```
+
+In `apps/mobile/src/bridge/injected.ts`, find:
+
+```ts
+    '  var error = message.error || {};',
+    "  waiter.reject(fail(String(error.message || MSG_UNSUPPORTED), String(error.code || 'UNSUPPORTED')));",
+    '}',
+    'var api = Object.freeze({ version: VERSION, versions: Object.freeze(VERSIONS.slice()), platform: PLATFORM, request: request, on: on });',
+    'Object.defineProperty(window, DELIVER, { value: deliver, writable: false, configurable: false });',
+    'Object.defineProperty(window, NAME, { value: api, writable: false, configurable: false });',
+    "try { window.dispatchEvent(new Event('" +
+```
+
+Replace it with:
+
+```ts
+    '  var error = message.error || {};',
+    "  waiter.reject(fail(String(error.message || MSG_UNSUPPORTED), String(error.code || 'UNSUPPORTED')));",
+    '}',
+    'var api = Object.freeze({ version: VERSION, versions: Object.freeze(VERSIONS.slice()), features: Object.freeze(FEATURES.slice()), platform: PLATFORM, request: request, on: on });',
+    'Object.defineProperty(window, DELIVER, { value: deliver, writable: false, configurable: false });',
+    'Object.defineProperty(window, NAME, { value: api, writable: false, configurable: false });',
+    "try { window.dispatchEvent(new Event('" +
+```
+
+In `apps/mobile/src/bridge/protocol.ts`, find:
+
+```ts
+  'bluetooth.enable',
+  'host.background',
+  'app.changeUrl',
+] as const;
+export type NativeMethod = (typeof NATIVE_METHODS)[number];
+```
+
+Replace it with:
+
+```ts
+  'bluetooth.enable',
+  'host.background',
+  'app.changeUrl',
+  'app.battery',
+] as const;
+export type NativeMethod = (typeof NATIVE_METHODS)[number];
+```
+
+In `apps/mobile/src/bridge/protocol.ts`, find:
+
+```ts
+export const NATIVE_PLATFORMS = ['android', 'ios'] as const;
+export type NativePlatform = (typeof NATIVE_PLATFORMS)[number];
+
+export const NATIVE_BRIDGE_VERSION = 1;
+export const PRINTER_SCAN_MS = 8_000;
+export const PRINT_DATA_MAX_BASE64_CHARS = 2_000_000;
+```
+
+Replace it with:
+
+```ts
+export const NATIVE_PLATFORMS = ['android', 'ios'] as const;
+export type NativePlatform = (typeof NATIVE_PLATFORMS)[number];
+
+// Phase 3 Session 3D: what this app can do beyond the method list (window.PosNative.features); a page shows a control
+// only when the app says it (an older app says nothing).
+export const NATIVE_FEATURES = ['battery'] as const;
+export type NativeFeature = (typeof NATIVE_FEATURES)[number];
+
+export const NATIVE_BRIDGE_VERSION = 1;
+export const PRINTER_SCAN_MS = 8_000;
+export const PRINT_DATA_MAX_BASE64_CHARS = 2_000_000;
+```
+
+In `apps/mobile/src/bridge/router.ts`, find:
+
+```ts
+  // Hands a finished script to the native side (evaluateJavascript).
+  deliver: (script: string) => void | Promise<unknown>;
+  onChangeUrl: () => void;
+};
+
+export type Router = { handle(raw: unknown, frameUrl: unknown): Promise<void> };
+```
+
+Replace it with:
+
+```ts
+  // Hands a finished script to the native side (evaluateJavascript).
+  deliver: (script: string) => void | Promise<unknown>;
+  onChangeUrl: () => void;
+  // Phase 3 Session 3D: app.battery, after its reply: the shell shows its battery checklist.
+  onBattery: () => void;
+};
+
+export type Router = { handle(raw: unknown, frameUrl: unknown): Promise<void> };
+```
+
+In `apps/mobile/src/bridge/router.ts`, find:
+
+```ts
+      return { active };
+    }
+    default:
+      return null; // app.changeUrl: the router itself acts after the reply
+  }
+}
+```
+
+Replace it with:
+
+```ts
+      return { active };
+    }
+    default:
+      return null; // app.changeUrl, app.battery: the router itself acts after the reply
+  }
+}
+```
+
+In `apps/mobile/src/bridge/router.ts`, find:
+
+```ts
+    if (method === 'app.changeUrl' && reply.ok) {
+      deps.onChangeUrl();
+    }
+  }
+
+  async function handleV2(
+```
+
+Replace it with:
+
+```ts
+    if (method === 'app.changeUrl' && reply.ok) {
+      deps.onChangeUrl();
+    }
+    if (method === 'app.battery' && reply.ok) {
+      deps.onBattery();
+    }
+  }
+
+  async function handleV2(
+```
+
+In `apps/mobile/src/bridge/use-native-bridge.ts`, find:
+
+```ts
+  failed: boolean;
+};
+
+type Args = { origin: string; onChangeUrl: () => void };
+
+export function useNativeBridge({ origin, onChangeUrl }: Args): NativeBridge {
+  const [token, setToken] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const changeUrlRef = useRef(onChangeUrl);
+  useEffect(() => {
+    changeUrlRef.current = onChangeUrl;
+  }, [onChangeUrl]);
+
+  useEffect(() => {
+    let cancelled = false;
+```
+
+Replace it with:
+
+```ts
+  failed: boolean;
+};
+
+type Args = { origin: string; onChangeUrl: () => void; onBattery: () => void };
+
+export function useNativeBridge({
+  origin,
+  onChangeUrl,
+  onBattery,
+}: Args): NativeBridge {
+  const [token, setToken] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const changeUrlRef = useRef(onChangeUrl);
+  useEffect(() => {
+    changeUrlRef.current = onChangeUrl;
+  }, [onChangeUrl]);
+  const batteryRef = useRef(onBattery);
+  useEffect(() => {
+    batteryRef.current = onBattery;
+  }, [onBattery]);
+
+  useEffect(() => {
+    let cancelled = false;
+```
+
+In `apps/mobile/src/bridge/use-native-bridge.ts`, find:
+
+```ts
+      origin,
+      deliver: reply => PosPrinter.deliverScript(reply),
+      onChangeUrl: () => changeUrlRef.current(),
+    });
+  }, [token, origin, gate]);
+```
+
+Replace it with:
+
+```ts
+      origin,
+      deliver: reply => PosPrinter.deliverScript(reply),
+      onChangeUrl: () => changeUrlRef.current(),
+      onBattery: () => batteryRef.current(),
+    });
+  }, [token, origin, gate]);
+```
+
+In `apps/mobile/src/native/PosPrinter.ts`, find:
+
+```ts
+  deliverScript(script: string): Promise<null>;
+  // Phase 3 Session 3D (spec §9.5): a WebView remounted after its page died mounts even while the app is hidden.
+  mountWhileHidden(): Promise<null>;
+}
+
+/** Phase 3 Session 3D (spec §9.5): the print host's watchdog asks the POS screen to remount a page that stopped answering
+ *  (the Kotlin side's HostPage.DEAD_EVENT). */
+```
+
+Replace it with:
+
+```ts
+  deliverScript(script: string): Promise<null>;
+  // Phase 3 Session 3D (spec §9.5): a WebView remounted after its page died mounts even while the app is hidden.
+  mountWhileHidden(): Promise<null>;
+  // Phase 3 Session 3D (spec §9.5): the battery checklist: this phone's brand, whether Android already lets the app
+  // run with no battery limit, and a link into the settings.
+  batteryInfo(): Promise<{ brand: string; unrestricted: boolean }>;
+  openBatterySettings(kind: BatterySettingsKind): Promise<{ opened: boolean }>;
+}
+
+export type BatterySettingsKind = 'battery' | 'autostart' | 'app';
+
+/** Phase 3 Session 3D (spec §9.5): the print host's watchdog asks the POS screen to remount a page that stopped answering
+ *  (the Kotlin side's HostPage.DEAD_EVENT). */
+```
+
+In `apps/mobile/src/native/PosPrinter.ts`, find:
+
+```ts
+    call('attachWebView', tag, script, origin),
+  deliverScript: script => call('deliverScript', script),
+  mountWhileHidden: () => call('mountWhileHidden'),
+};
+
+// Asks Android for the permission, then has the module re-read its status.
+```
+
+Replace it with:
+
+```ts
+    call('attachWebView', tag, script, origin),
+  deliverScript: script => call('deliverScript', script),
+  mountWhileHidden: () => call('mountWhileHidden'),
+  batteryInfo: () => call('batteryInfo'),
+  openBatterySettings: kind => call('openBatterySettings', kind),
+};
+
+// Asks Android for the permission, then has the module re-read its status.
+```
+
+Create `apps/mobile/src/screens/BatteryScreen.tsx`:
+
+```tsx
+// Phase 3 Session 3D (spec §9.5): the battery checklist, opened from the POS page's More options (app.battery). It
+// shows over the POS (which keeps printing underneath): this phone's steps first, and links into the phone's settings
+// where Android allows them. Local only: no request. Back or Done closes it.
+
+import { useEffect, useState } from 'react';
+import {
+  BackHandler,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  BATTERY_INTRO,
+  batteryBrandOf,
+  batterySectionsFor,
+  hasAutostartScreen,
+  type BatteryBrand,
+} from '../battery-steps';
+import { PosPrinter, type BatterySettingsKind } from '../native/PosPrinter';
+import { PrimaryButton } from './Brand';
+import { colors, MIN_TOUCH_TARGET, SCREEN_PADDING } from './theme';
+
+const noop = () => undefined;
+
+type Props = { onDone: () => void };
+
+export function BatteryScreen({ onDone }: Props) {
+  const [brand, setBrand] = useState<BatteryBrand>('other');
+  const [unrestricted, setUnrestricted] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    PosPrinter.batteryInfo().then(info => {
+      if (!cancelled) {
+        setBrand(batteryBrandOf(info.brand));
+        setUnrestricted(info.unrestricted === true);
+      }
+    }, noop);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        onDone();
+        return true;
+      },
+    );
+    return () => subscription.remove();
+  }, [onDone]);
+
+  const open = (kind: BatterySettingsKind) => {
+    PosPrinter.openBatterySettings(kind).catch(noop);
+  };
+
+  return (
+    <SafeAreaView style={styles.root}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.title} accessibilityRole="header">
+          Keep printing on with the screen off
+        </Text>
+        <Text style={styles.help}>{BATTERY_INTRO}</Text>
+        {unrestricted === true ? (
+          <Text style={styles.ok}>
+            Android lets this app run with no battery limit.
+          </Text>
+        ) : null}
+        <PrimaryButton
+          title="Battery settings for this app"
+          onPress={() => open('battery')}
+        />
+        {hasAutostartScreen(brand) ? (
+          <LinkButton
+            title="Autostart settings"
+            onPress={() => open('autostart')}
+          />
+        ) : null}
+        <LinkButton title="App info" onPress={() => open('app')} />
+        {batterySectionsFor(brand).map(section => (
+          <View key={section.brand} style={styles.section}>
+            <Text style={styles.sectionTitle}>{section.title}</Text>
+            {section.steps.map((step, index) => (
+              <Text key={step} style={styles.step}>
+                {index + 1 + '. ' + step}
+              </Text>
+            ))}
+          </View>
+        ))}
+        <PrimaryButton title="Done" onPress={onDone} />
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function LinkButton({
+  title,
+  onPress,
+}: {
+  title: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      style={styles.link}
+      onPress={onPress}
+      accessibilityRole="button"
+    >
+      <Text style={styles.linkText}>{title}</Text>
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: colors.background,
+  },
+  content: { padding: SCREEN_PADDING },
+  title: { fontSize: 24, fontWeight: '600', color: colors.text },
+  help: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: colors.muted,
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  ok: { fontSize: 15, color: colors.text, marginBottom: 12 },
+  link: {
+    minHeight: MIN_TOUCH_TARGET,
+    marginTop: 8,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  linkText: { fontSize: 16, fontWeight: '600', color: colors.primary },
+  section: {
+    marginTop: 20,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  step: { fontSize: 15, lineHeight: 22, color: colors.text, marginTop: 4 },
+});
+```
+
+In `apps/mobile/src/screens/PosScreen.tsx`, find:
+
+```tsx
+import { classifyNavigation, isSameOrigin, startUrl } from '../url';
+import { usedAfterFailure } from './auto-retry';
+import { CRASH_URL } from './backstop';
+import { LoadErrorScreen } from './LoadErrorScreen';
+import { colors } from './theme';
+import { useLoadGuards } from './use-load-guards';
+```
+
+Replace it with:
+
+```tsx
+import { classifyNavigation, isSameOrigin, startUrl } from '../url';
+import { usedAfterFailure } from './auto-retry';
+import { CRASH_URL } from './backstop';
+import { BatteryScreen } from './BatteryScreen';
+import { LoadErrorScreen } from './LoadErrorScreen';
+import { colors } from './theme';
+import { useLoadGuards } from './use-load-guards';
+```
+
+In `apps/mobile/src/screens/PosScreen.tsx`, find:
+
+```tsx
+  }
+}
+
+type WebProps = Props & { onLoadError: () => void; onRenderGone: () => void; onRetryTap: () => void };
+
+function PosWebView({
+  origin,
+```
+
+Replace it with:
+
+```tsx
+  }
+}
+
+type WebProps = Props & {
+  onLoadError: () => void;
+  onRenderGone: () => void;
+  onRetryTap: () => void;
+  onBattery: () => void;
+};
+
+function PosWebView({
+  origin,
+```
+
+In `apps/mobile/src/screens/PosScreen.tsx`, find:
+
+```tsx
+  onLoadError,
+  onRenderGone,
+  onRetryTap,
+}: WebProps) {
+  const hostRef = useRef<ComponentRef<typeof View>>(null);
+  const webRef = useRef<WebView<unknown>>(null);
+  const canGoBackRef = useRef(false);
+  const crashNavRef = useRef(false);
+  const bridge = useNativeBridge({ origin, onChangeUrl });
+  const [documentStart, setDocumentStart] = useState<boolean | null>(null);
+  const [loading, setLoading] = useState(true);
+  // True once native delivery holds THIS WebView (a resolved attachWebView).
+```
+
+Replace it with:
+
+```tsx
+  onLoadError,
+  onRenderGone,
+  onRetryTap,
+  onBattery,
+}: WebProps) {
+  const hostRef = useRef<ComponentRef<typeof View>>(null);
+  const webRef = useRef<WebView<unknown>>(null);
+  const canGoBackRef = useRef(false);
+  const crashNavRef = useRef(false);
+  const bridge = useNativeBridge({ origin, onChangeUrl, onBattery });
+  const [documentStart, setDocumentStart] = useState<boolean | null>(null);
+  const [loading, setLoading] = useState(true);
+  // True once native delivery holds THIS WebView (a resolved attachWebView).
+```
+
+In `apps/mobile/src/screens/PosScreen.tsx`, find:
+
+```tsx
+    PosPrinter.mountWhileHidden().catch(noop);
+    remount();
+  }, [remount]);
+
+  if (failed) {
+    return (
+```
+
+Replace it with:
+
+```tsx
+    PosPrinter.mountWhileHidden().catch(noop);
+    remount();
+  }, [remount]);
+  // Phase 3 Session 3D (spec §9.5): the page's More options asks for the battery checklist; it shows over the POS,
+  // which keeps printing underneath.
+  const [battery, setBattery] = useState(false);
+  const openBattery = useCallback(() => setBattery(true), []);
+  const closeBattery = useCallback(() => setBattery(false), []);
+
+  if (failed) {
+    return (
+```
+
+In `apps/mobile/src/screens/PosScreen.tsx`, find:
+
+```tsx
+    );
+  }
+  return (
+    <PosWebView
+      key={generation}
+      origin={origin}
+      onChangeUrl={onChangeUrl}
+      onLoadError={showError}
+      onRenderGone={remountAfterDeath}
+      onRetryTap={retryByTap}
+    />
+  );
+}
+```
+
+Replace it with:
+
+```tsx
+    );
+  }
+  return (
+    <View style={styles.root}>
+      <PosWebView
+        key={generation}
+        origin={origin}
+        onChangeUrl={onChangeUrl}
+        onLoadError={showError}
+        onRenderGone={remountAfterDeath}
+        onRetryTap={retryByTap}
+        onBattery={openBattery}
+      />
+      {battery && <BatteryScreen onDone={closeBattery} />}
+    </View>
+  );
+}
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)" && cd /d/kd/lucifer/apps/mobile && npm run test:app 2>&1 | grep -E "^Tests:"`
+Expected: `# tests 139`; `# pass 139`; `# fail 0`; `Tests:       3 passed, 3 total`
+
+Run: `cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun --console=plain 2>&1 | grep -E "^BUILD|compileDebugUnitTestKotlin FAILED|testDebugUnitTest FAILED" | sed -E 's/ in [0-9hms ]+$//'`
+Expected: `BUILD SUCCESSFUL`
+
+Run: `cat /d/kd/lucifer/apps/mobile/android/app/build/test-results/testDebugUnitTest/*.xml | grep -oE 'testsuite name="[^"]+" tests="[0-9]+" skipped="[0-9]+" failures="[0-9]+" errors="[0-9]+"'`
+Expected: `testsuite name="com.possoftware.pos.printer.BatteryTargetsTest" tests="3" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.DleEotTest" tests="7" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.HostLifeTest" tests="4" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PageWatchTest" tests="5" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PoolListTest" tests="6" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PoolStatusTest" tests="3" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PrinterManagerTest" tests="22" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PrinterPoolTest" tests="3" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.TcpTransportTest" tests="10" skipped="0" failures="0" errors="0"`
+
+Run: `cd /d/kd/lucifer/apps/mobile && npx tsc --noEmit && echo MOBILE_TSC_OK && npm run lint >/dev/null 2>&1 && echo MOBILE_LINT_OK`
+Expected: `MOBILE_TSC_OK`; `MOBILE_LINT_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/printer/native-bridge.test.ts lib/printer/native-bridge-protocol-parity.test.ts lib/printer/native-bridge-protocol.test.ts lib/printer-ui-paths.test.ts lib/printer/native-bridge-v2-parity.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 90`; `# pass 90`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint components/print/PrinterAdvanced.tsx lib/printer/native-bridge.ts lib/printer/native-bridge-protocol.ts lib/printer/native-bridge.test.ts lib/printer/native-bridge-protocol-parity.test.ts lib/printer/native-bridge-protocol.test.ts lib/printer-ui-paths.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/components/print/PrinterAdvanced.tsx apps/cafe/lib/printer-ui-paths.test.ts apps/cafe/lib/printer/native-bridge-protocol-parity.test.ts apps/cafe/lib/printer/native-bridge-protocol.test.ts apps/cafe/lib/printer/native-bridge-protocol.ts apps/cafe/lib/printer/native-bridge.test.ts apps/cafe/lib/printer/native-bridge.ts apps/mobile/android/app/src/main/AndroidManifest.xml apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/BatterySettings.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/BatteryTargets.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PosPrinterModule.kt apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/BatteryTargetsTest.kt apps/mobile/package.json apps/mobile/src/battery-steps.test.ts apps/mobile/src/battery-steps.ts apps/mobile/src/bridge/injected.test.ts apps/mobile/src/bridge/injected.ts apps/mobile/src/bridge/protocol.test.ts apps/mobile/src/bridge/protocol.ts apps/mobile/src/bridge/router.test.ts apps/mobile/src/bridge/router.ts apps/mobile/src/bridge/use-native-bridge.ts apps/mobile/src/mobile-paths.test.ts apps/mobile/src/native/PosPrinter.ts apps/mobile/src/screens/BatteryScreen.tsx apps/mobile/src/screens/PosScreen.tsx
+git commit -m "feat(app): the battery checklist: the page's More options opens the POS app's own screen (on an app that says it has one) with the steps for Xiaomi, OPPO, vivo, Samsung and other phones, this phone's first, and links into its battery, autostart and app settings, each falling back to the app's settings screen; local only (Phase 3 Session 3D, D4)"
+```
+
+---
+
+### Task D5: full verification, the APKs, the exit on the emulator, the fresh review, Results
+
+**Files:** this plan (a new "Session 3D Results" section at its end), nothing else. Every tool below goes in this session's scratchpad, never in the repo.
+
+- [ ] **Step 1: every suite, once each, in the background, one after another** (run `df -h /d /c` first)
+
+Run, from `/d/kd/lucifer` (the totals the pre-validation saw on the golden tree):
+
+| Run | Expected |
+|---|---|
+| `cd packages/shared && npm test && npx tsc --noEmit` | `# tests 821`, `# pass 821`, `# fail 0`; tsc 0 |
+| `cd apps/cafe && npm test` | `# tests 5030`, `# pass 5029`, `# fail 0`, `# skipped 1` (go-live-dl) |
+| `npx tsc --noEmit` and `npm run lint` in each of `apps/cafe`, `apps/hub`, `apps/mobile`; `npm run typecheck` and `npm run lint` in `apps/desktop` | 0, and 0 errors (the 2 old warnings, `lib/masters-blob.test.ts:331`) |
+| `cd apps/mobile && npm test && npm run test:app` | **139/139**; Jest 3/3 (a Jest test can time out at 5 s under load: run it again alone before calling it a failure) |
+| `cd apps/desktop && npm test` | 192/192 |
+| `npm run test:print-tools` | 11/11 |
+| `cd apps/cafe && MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_print_host_3d npm run verify:print:live` | `444 passed, 0 failed` (3D adds no leg) |
+
+- [ ] **Step 2: JUnit, and the APKs (a full release compile)**
+
+Run (D: needs ~1.5 GB free; `GRADLE_USER_HOME` always on D:):
+- `cd apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun` → BUILD SUCCESSFUL; **63 tests, 0 failures** (BatteryTargetsTest 3, DleEotTest 7, HostLifeTest 4, PageWatchTest 5, PoolListTest 6, PoolStatusTest 3, PrinterManagerTest 22, PrinterPoolTest 3, TcpTransportTest 10).
+- Write a marker file in the scratchpad, then the emulator's APK: `GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat aR -PreactNativeArchitectures=x86_64 --info` (output `app/build/outputs/apk/release/app-release.apk`; copy it into the scratchpad as `pos-emulator-x86_64-3d.apk` and hash it). D0's guard compiles the release Kotlin in full: its log has **no** line `Using Kotlin/JVM incremental compilation` for `:app:compileReleaseKotlin`, `find app/build/tmp/kotlin-classes/release -name '*.class' ! -newer <marker> | wc -l` is **0**, and `javap -c -p app/build/tmp/kotlin-classes/release/com/possoftware/pos/printer/TransportFactory.class` calls `TcpTransport."<init>":(Ljava/lang/String;IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V`. Never put another task with "release" in its name on this command line (the ABI split would turn on: no x86_64 APK).
+- The client pair (recorded, **not released**): `GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a` (the README's command; `app-arm64-v8a-release.apk`, `app-armeabi-v7a-release.apk`); copy both into the scratchpad and hash them. The gate's build copy (a scratchpad clone, so its hashes differ from the repo's) gave x86_64 `298d9479…`, arm64 `1720fd70…`, armv7 `06d893ba…`.
+- Run `adb logcat -b crash -d` right after every install in Step 5.
+
+- [ ] **Step 3: the Next production build on the repo (D:)**
+
+Run: `df -h /d` (a build needs ~1.5 GB free), then `cd apps/cafe && npm run build`.
+Expected: exit 0, 132 routes (3D adds none; count the lines between "Route (app)" and "First Load JS shared" with awk).
+
+- [ ] **Step 4: what changed outside the web**
+
+Run: `git diff --stat 6bc8d73..HEAD -- apps/desktop workers` → empty (the Windows installer and the Worker stay as Phase 2 built them). `git diff --stat 6bc8d73..HEAD -- apps/mobile` → D0–D4's app files only: the APKs change (Step 2).
+
+- [ ] **Step 5: the exit on the emulator (spec §14's Phase 3 row: "a killed service restarts; the boot notification appears"; the 3D spec's exit)**
+
+**The harness** (as the 3C review gate ran it; check `netstat -ano | grep LISTEN` for 3110, 3200, 3201 and 9100–9101 first, and never stop another session's server):
+- **The database:** a fresh `pos_scratch_e2e_3d`. Copy Session 3B's env file (`C:\Users\KARTIK~1.DES\AppData\Local\Temp\claude\d--kd-lucifer\a0581b85-1d76-4fd6-b09f-6f32a4b9db56\scratchpad\e2e.env`) into this session's scratchpad as `e2e.env` (for `type-secret.py`) and as `e2e3d.env` with only `MONGODB_URI` changed to `mongodb://127.0.0.1:27017/pos_scratch_e2e_3d` (a Python script that never prints a value; the 3C session's `mkenv3c.py` with `3c` read as `3d`). Seed it from `apps/cafe`: `node --env-file=<scratchpad>/e2e3d.env --import tsx scripts/seed-admin.ts`, then `seed-tables.ts`, then `seed-menu.ts`. Copy `ui.py`, `type-secret.py`, `p3a-proxy.mjs` and `p3b-proxy.mjs` from the 3C session's scratchpad (`88d49cae…`). Run `ui.py` as `python -X utf8 -I ui.py …`.
+- **The servers** (each a background command with `timeout: 7200000`): this branch's Step 3 build, `cd /d/kd/lucifer/apps/cafe && node --env-file=<scratchpad>/e2e3d.env ../../node_modules/next/dist/bin/next start -p 3110`; `node <scratchpad>/p3a-proxy.mjs --listen 3200 --target 3110 --log <scratchpad>/proxy3d.jsonl` (the harness's API calls); `node <scratchpad>/p3b-proxy.mjs --listen 3201 --target 3110 --log <scratchpad>/proxy3d-emu.jsonl` (the emulator: it logs each request's `device`, and its times show a page loading while the app is hidden).
+- **The tool**, saved with the Write tool exactly as shown (or extracted byte for byte from this fenced block by a script): `pw-3d.mjs`. It runs from `apps/cafe` as `MSYS_NO_PATHCONV=1 node --env-file=<scratchpad>/e2e3d.env <scratchpad>/pw-3d.mjs <scenario> [arg]`, where `<scratchpad>` is the Windows form (`pwd -W`). `pw-3d.mjs printers 3500` runs the fake printers 9100 and 9101 in the background for the whole exit (they keep printing while the app is killed or the emulator reboots; a `keep.txt` goes into each `--out` folder at once: the %TEMP% cleaner deletes empty folders); `emu-order [s]` orders a kitchen slip from a plain Chrome tab (device C) and waits for the emulator to print it; `hidden [s]` waits [s] seconds (press HOME first), then counts the emulator's requests in `proxy3d-emu.jsonl` by route with their gaps, and reads its device's `beatAt` and `lastSeenAt`. Locally there is no realtime Worker, so a device hears of a slip by its wake or its pulse: the times are the harness's.
+
+`<scratchpad>/pw-3d.mjs`:
+
+```js
+// The 3C review gate's pre-run of Session 3D's exit (scratchpad only; never in the repo; grown from pw-3c.mjs). The POS
+// app on the emulator (the 3D APK) writes the kitchen's network printer (10.0.2.2:9100, this PC's 127.0.0.1:9100) in
+// printers mode; a plain headless Chrome tab (device C) orders. The fake ESC/POS printers run as this script's child
+// processes in their own long-lived run (`printers`), so they keep printing while the emulator app is killed, restarted
+// or rebooted; their jobs.log is the paper (a statusOnly line is the app's idle status check, not a slip). Signs in as the
+// e2e admin with a session minted from the env file's AUTH_SECRET (never printed); never prints a secret, a token or a
+// payload. Run from apps/cafe:
+//   MSYS_NO_PATHCONV=1 node --env-file=<scratchpad>/e2e3d.env <scratchpad>/pw-3d.mjs <scenario> [arg]
+// PW_BASE (default http://localhost:3200, the counting proxy) is where the page and the API calls go; PW_REPO (default
+// D:/kd/lucifer) is where the fake printer script is.
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(path.join(process.cwd(), "package.json"));
+const mongoose = require("mongoose");
+const { encode } = require("next-auth/jwt");
+const pwRequire = createRequire("C:/Users/Kartik.desai/AppData/Local/npm-cache/_npx/9833c18b2d85bc59/node_modules/playwright-core/package.json");
+const { chromium } = pwRequire("playwright-core");
+
+const BASE = process.env.PW_BASE ?? "http://localhost:3200";
+const REPO = process.env.PW_REPO ?? "D:/kd/lucifer";
+const COOKIE = "authjs.session-token";
+const DEVICES = path.join(HERE, "pw-3d-devices.json");
+const t0 = Date.now();
+const ts = () => `${((Date.now() - t0) / 1000).toFixed(1)}s`;
+const say = (...parts) => console.log(`[${ts()}]`, ...parts);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const uri = process.env.MONGODB_URI ?? "";
+if (!/\/pos_scratch_e2e_3d[a-z0-9_]*$/.test(uri)) throw new Error("refusing: not pos_scratch_e2e_3d");
+await mongoose.connect(uri);
+const db = mongoose.connection.db;
+const staff = await db.collection("staffs").findOne({ username: "e2eadmin" }, { projection: { name: 1, role: 1 } });
+if (staff === null) throw new Error("e2eadmin not found");
+const token = await encode({ token: { name: staff.name, id: String(staff._id), role: staff.role, lastValidated: Date.now() }, secret: process.env.AUTH_SECRET, salt: COOKIE });
+const api = async (method, url, body) => {
+  const res = await fetch(`${BASE}${url}`, { method, headers: { "content-type": "application/json", cookie: `${COOKIE}=${token}` }, body: body === undefined ? undefined : JSON.stringify(body) });
+  return { status: res.status, json: await res.json().catch(() => ({})) };
+};
+const jobs = () => db.collection("printjobs").find({}).sort({ createdAt: 1, _id: 1 }).toArray();
+const printerByName = (name) => db.collection("printers").findOne({ name });
+const short = (id) => (id ?? "").slice(-4);
+const clock = (d) => (d instanceof Date ? d.toISOString().slice(11, 19) : "?");
+const describe = (j) => ({ kind: j.kind, status: j.status, target: short(j.targetDeviceId), labels: j.labels ?? [], log: (j.log ?? []).map((l) => `${l.event}${l.deviceId ? `@${short(l.deviceId)}` : ""}@${clock(l.at)}${l.detail ? `(${l.detail.slice(0, 60)})` : ""}`) });
+const jobAfter = async (sinceMs, printerName) => {
+  const printer = await printerByName(printerName);
+  return (await jobs()).filter((j) => j.createdAt.getTime() >= sinceMs - 2000 && String(j.printerId) === String(printer?._id ?? ""));
+};
+
+// ── the fake printers, as child processes ──
+const printers = new Map();
+const outOf = (port) => path.join(HERE, `fake3d-${port}`);
+function startPrinter(port, flags = []) {
+  stopPrinter(port);
+  const out = outOf(port);
+  mkdirSync(out, { recursive: true });
+  writeFileSync(path.join(out, "keep.txt"), "keep");
+  const child = spawn(process.execPath, [path.join(REPO, "scripts", "fake-escpos-printer.mjs"), "--port", String(port), "--out", out, ...flags], { stdio: "ignore" });
+  printers.set(port, child);
+  say(`fake printer ${port} ${flags.join(" ") || "(normal)"}`);
+}
+function stopPrinter(port) {
+  const child = printers.get(port);
+  if (child !== undefined) child.kill();
+  printers.delete(port);
+}
+const records = (port) => {
+  const file = path.join(outOf(port), "jobs.log");
+  if (!existsSync(file)) return [];
+  return readFileSync(file, "utf8").split("\n").filter((l) => l.trim() !== "").map((l) => JSON.parse(l));
+};
+const slips = (port) => records(port).filter((r) => r.bytes > 0 && r.statusOnly !== true);
+
+// ── a plain browser tab (device C): it orders ──
+async function openPlain(name, profile) {
+  const context = await chromium.launchPersistentContext(path.join(HERE, `pw-3d-${profile}`), {
+    executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    headless: true,
+    viewport: { width: 1280, height: 1000 },
+  });
+  await context.addCookies([{ name: COOKIE, value: token, domain: "localhost", path: "/", httpOnly: true, sameSite: "Lax" }]);
+  const page = context.pages()[0] ?? (await context.newPage());
+  await page.goto(`${BASE}/pos`, { waitUntil: "networkidle" });
+  const tab = { name, page, context, deviceId: await page.evaluate(() => window.localStorage.getItem("pos.device-id.v1")) };
+  say(`${name} (a plain browser tab) open as device …${short(tab.deviceId)}`);
+  return tab;
+}
+
+async function order(tab, items) {
+  const page = tab.page;
+  if (!page.url().endsWith("/pos")) await page.goto(`${BASE}/pos`, { waitUntil: "networkidle" });
+  for (const item of items) {
+    await page.getByRole("button", { name: new RegExp(`^${item}`) }).first().click();
+    await page.waitForTimeout(500);
+    const add = page.getByRole("dialog").getByRole("button", { name: /^Add \d/ });
+    if ((await add.count()) > 0) await add.first().click();
+    await page.waitForTimeout(300);
+  }
+  await page.getByRole("button", { name: "Send to Kitchen" }).click();
+  const at = Date.now();
+  say(`${tab.name} sent ${items.join(" + ")} to the kitchen`);
+  await page.waitForTimeout(1500);
+  await page.keyboard.press("Escape").catch(() => undefined);
+  return at;
+}
+
+async function until(label, check, timeoutMs, everyMs = 1000) {
+  const start = Date.now();
+  for (;;) {
+    const got = await check();
+    if (got) {
+      say(`${label}: yes after ${((Date.now() - start) / 1000).toFixed(1)} s`);
+      return got;
+    }
+    if (Date.now() - start > timeoutMs) {
+      say(`${label}: NO within ${timeoutMs / 1000} s`);
+      return null;
+    }
+    await sleep(everyMs);
+  }
+}
+
+const NO_SLIPS = { bill: false, kotStations: [], kotAll: false, notices: false, eod: false };
+async function stations() {
+  return (await api("GET", "/api/stations")).json.data ?? [];
+}
+async function savePrinter(body) {
+  const existing = ((await api("GET", "/api/printers")).json.data ?? []).find((p) => p.name === body.name);
+  const res = existing === undefined ? await api("POST", "/api/printers", body) : await api("PUT", `/api/printers/${existing.id}`, body);
+  say(`printer ${body.name}: ${res.status}${res.json.error ? ` ${res.json.error}` : ""}`);
+}
+async function clearPrinters() {
+  for (const p of (await api("GET", "/api/printers")).json.data ?? []) say(`printer ${p.name} deleted: ${(await api("DELETE", `/api/printers/${p.id}`)).status}`);
+}
+const devicesFile = () => (existsSync(DEVICES) ? JSON.parse(readFileSync(DEVICES, "utf8")) : {});
+const hold = async (label, file, ms) => {
+  say(`HOLD: ${label} (${ms / 1000} s; ${file})`);
+  writeFileSync(path.join(HERE, file), label);
+  await sleep(ms);
+};
+
+const [scenario, arg] = process.argv.slice(2);
+try {
+  if (scenario === "printers") {
+    // Only the fake printers (normal), for [arg] s: they keep printing while the emulator app is killed or rebooted.
+    startPrinter(9100);
+    startPrinter(9101);
+    await hold("fake printers 9100 and 9101 up", "pw-3d-printers-up", Number(arg ?? "600") * 1000);
+  } else if (scenario === "emu-setup") {
+    // Printers mode: the kitchen's network printer (10.0.2.2:9100), written by the emulator app (its id from its pulse's
+    // device=). It writes a printer, so the page asks the app to keep printing with the screen off (Session 3D, D2).
+    const emu = arg;
+    if (!/^[0-9a-f-]{8,}$/.test(emu ?? "")) throw new Error("emu-setup <the emulator app's device id>");
+    const kitchen = (await stations()).find((s) => s.isDefault);
+    await savePrinter({ name: "Kitchen", connection: { kind: "lan", host: "10.0.2.2", port: 9100 }, primaryDeviceId: emu, paper: 80, slips: { ...NO_SLIPS, bill: true, kotStations: [kitchen.id], notices: true, eod: true }, copies: { kot: 1, bill: 1 }, enabled: true });
+    writeFileSync(DEVICES, JSON.stringify({ EMU: emu }));
+  } else if (scenario === "emu-order") {
+    // Session 3D's exit: C orders a kitchen slip; it must print on the emulator within [arg] s (120 by default),
+    // whatever the app went through (the background, a kill, a crash, a reboot, a page death). The printers run in
+    // their own `printers` run.
+    const { EMU } = devicesFile();
+    const C = await openPlain("C", "c");
+    const before = slips(9100).length;
+    const at = await order(C, ["Margherita Pizza"]);
+    const done = await until("the kitchen slip printed by the emulator", async () => (await jobAfter(at, "Kitchen")).find((j) => j.status === "printed" && j.targetDeviceId === EMU), Number(arg ?? "120") * 1000, 2000);
+    const made = await jobAfter(at, "Kitchen");
+    say(`  ${JSON.stringify(done === null ? made.map(describe) : describe(done))}`);
+    say(`paper on 9100: ${slips(9100).length - before} new slip(s), ${JSON.stringify(slips(9100).slice(before).map((r) => r.bytes))} B`);
+    await C.context.close();
+  } else if (scenario === "simple") {
+    // Simple mode for the release page (bridge v1): every printer deleted.
+    await clearPrinters();
+  } else if (scenario === "release-v1") {
+    // The release page in simple mode: a slip the emulator orders prints on its own printer (bridge v1).
+    startPrinter(9100);
+    startPrinter(9101);
+    const since = Date.now();
+    const before = slips(9100).length + slips(9101).length;
+    await hold("order on the emulator now (a KOT)", "pw-3d-hold-release", Number(arg ?? "180") * 1000);
+    const made = (await jobs()).filter((j) => j.createdAt.getTime() >= since - 2000);
+    for (const j of made) say(`  ${JSON.stringify(describe(j))}`);
+    say(`new slips on the app's printers: ${slips(9100).length + slips(9101).length - before}; 9100 ${JSON.stringify(slips(9100).slice(-1).map((r) => r.bytes))}, 9101 ${JSON.stringify(slips(9101).slice(-1).map((r) => r.bytes))}`);
+  } else if (scenario === "clear") {
+    await clearPrinters();
+  } else if (scenario === "hidden") {
+    // The emulator app hidden for [arg] s (180 by default; press HOME first): its requests in the emulator proxy's log
+    // (PW_EMU_LOG, default proxy3d-emu.jsonl here) by route with their gaps, then its device's heartbeat (beatAt: the
+    // wake's write) and lastSeenAt. A hidden printing page polls the wake and never leases without a job (3D, D2).
+    const log = process.env.PW_EMU_LOG ?? path.join(HERE, "proxy3d-emu.jsonl");
+    const since = Date.now();
+    await sleep(Number(arg ?? "180") * 1000);
+    const by = new Map();
+    for (const line of readFileSync(log, "utf8").split("\n")) {
+      const row = line.trim() === "" ? null : JSON.parse(line);
+      if (row === null || row.t < since) continue;
+      const key = `${row.m} ${row.r}`;
+      by.set(key, [...(by.get(key) ?? []), row.t]);
+    }
+    for (const [key, times] of [...by].sort((a, b) => b[1].length - a[1].length)) say(`${times.length} × ${key}, gaps ${JSON.stringify(times.slice(1).map((t, i) => Math.round((t - times[i]) / 1000)))} s`);
+    const { EMU } = devicesFile();
+    const device = await db.collection("printdevices").findOne({ deviceId: EMU });
+    const ago = (d) => (d instanceof Date ? `${Math.round((Date.now() - d.getTime()) / 1000)} s ago` : "never");
+    say(`the emulator's device: beatAt ${ago(device?.beatAt)}, lastSeenAt ${ago(device?.lastSeenAt)}`);
+  } else {
+    throw new Error("scenario: printers [s] | emu-setup <id> | emu-order [s] | hidden [s] | simple | release-v1 [s] | clear");
+  }
+} finally {
+  for (const port of [...printers.keys()]) stopPrinter(port);
+  await mongoose.disconnect();
+}
+```
+
+**The emulator** (`df -h /c /d` first; boot `Pixel_7_API_33` yourself with a 2 h background timeout: `-memory 4096 -no-audio -no-snapshot-save`, 2048 when C: has under ~5 GB free, recorded; the gate booted at 2048 with C: at 3.7 GB):
+- `adb shell pm path com.possoftware.pos` and hash the APK on the device. As left by this gate: the **release APK** (`29115bdf…`), on its start screen with no address, notifications not allowed. **Check which POS the app shows before any tap that writes: never the demo.**
+- `adb reverse tcp:3100 tcp:3201`; start `pw-3d.mjs printers 3500` in the background.
+- On the start screen type `http://localhost:3100`, Open POS. A session the WebView kept from another database answers 401 (the proxy log shows `"s":401`): sidebar → Account Staff → Sign out, then sign in as `e2eadmin` (the password by `type-secret.py` into a field checked to be a password field; never printed).
+- The release app's printer panel → Network printer `10.0.2.2`, port `9100` → Use this network printer ("Network printer 10.0.2.2 is connected."); close the panel (Done).
+
+| # | Step | Expected (the gate's runs) |
+|---|---|---|
+| X0 | `adb install -r` the **new x86_64 APK** (Step 2; hashed) over the release APK; launch it | the update keeps everything: the POS opens at once (the address), signed in (the session), "Printer connected" with "Network printer 10.0.2.2 · Connected" in the panel (the v1 printer in the list); no notice (printing was not on); crash 0 |
+| X1 | the battery checklist: the panel → More options → **Battery settings for printing** (with its line "Some phones stop the POS app when the screen is off…"); in the screen tap "Battery settings for this app"; Back; Back | the screen "Keep printing on with the screen off", "Other phones" first on the emulator, then Xiaomi, OPPO…; the link opens Android's battery screen (`topResumedActivity` `com.android.settings/.Settings$HighPowerApplicationsActivity`); Back returns to the checklist; Back closes it (the POS panel again) |
+| X2 | printers mode: its device id is the `device` of its pulses in `proxy3d-emu.jsonl`; `pw-3d.mjs emu-setup <that id>` (Kitchen at `10.0.2.2:9100`, written by the emulator); close the panel, Refresh | Android asks "Allow Sandbee POS to send you notifications?" (once per app data: the gate's runs asked on this emulator already and the app keeps that across updates, so no question shows; then `adb shell pm grant com.possoftware.pos android.permission.POST_NOTIFICATIONS`, recorded; when it does ask, tap **Allow** by its coordinates: `ui.py tap Allow` hits the title); `dumpsys activity services com.possoftware.pos`: `PrintHostService` `isForeground=true`, `stopIfKilled=false` (sticky); `dumpsys notification --noredact`: "Printing is on — Network printer 10.0.2.2" / "This device keeps printing with the screen off." |
+| X3 | HOME; `pw-3d.mjs hidden 200` (the app hidden for 200 s); then `emu-order 120`; then `adb shell input keyevent 223` (the screen off), wait 3 minutes, `emu-order 120`, `adb shell input keyevent 224` | **the hidden page keeps running** (D3): its wake every 15 s (no realtime Worker here; 3 s for a while after a job), its pulse every 20 s, the POS lists every 30 s, **no `POST /api/print-jobs/lease` without a job**, the device's `beatAt` ≤ 15 s old; the slip **printed ≈2 s after the order**, and again with the screen off (≤ 4 s). (Before D3's keep-running tick the page went silent about a minute after HOME, and a slip ordered 4 minutes later was still `queued` after 120 s.) |
+| X3b | app hidden: `adb shell am kill com.possoftware.pos`; `ps -A`; `emu-order 120` | the process is **not** killed (the same pid; `dumpsys activity processes`: `prcp F/S/FGS`, the foreground service); the slip **printed ≈2 s after the order** with the app hidden, 44,250 B. (On the 3C APK the same `am kill` killed the writer, renderer and all.) |
+| X4 | app hidden: `adb shell am crash <the renderer's pid>` (`ps -A`: `com.google.android.webview:sandboxed_process0…`); then `emu-order 120` | a new renderer at once; the proxy log shows **`GET /pos` ≈4 s after the crash while the launcher is on top** (the page loaded again with the app hidden); the slip printed ≈3 s after the order, the app still hidden. (On the 3C APK nothing reached the server until the app was opened.) |
+| X5 | `adb logcat -b crash -c`; `adb shell am crash <the app's pid>` (`ps -A`: `com.possoftware.pos`; `am crash com.possoftware.pos` hits the renderer, not the app); poll `dumpsys notification --noredact` for up to 60 s; 12 s later `adb logcat -b crash -d` | logcat: `Scheduling restart of crashed service com.possoftware.pos/.printer.PrintHostService in 1000ms`; **"POS printing is off. Tap to start."** within a minute (the gate: 1 s); the crash buffer holds **only the induced crash** (`CrashedByAdbException`; no `ForegroundServiceDidNotStartInTimeException`); `adb shell cmd statusbar expand-notifications`, tap it: the app opens (`topResumedActivity` MainActivity), "Printing is on" again; HOME, `emu-order 120`: printed ≈2 s after the order |
+| X6 | HOME; `adb shell sync`; `adb reboot`; wait for `sys.boot_completed`; `adb reverse tcp:3100 tcp:3201` again; poll `dumpsys notification` | **"POS printing is off. Tap to start."** within a minute of the boot (the gate: 27 s); tap it: the app opens; HOME, `emu-order 120`: printed ≈6 s after the order |
+| X7 | Recents (`keyevent 187`), swipe the app away (`input swipe 540 1300 540 150`) | the service stops and **"POS printing is off. Tap to start."** shows (the task removed without the page saying stop) |
+| X8 | the update in place over the 3C APK: `adb install -r` the 3C x86_64 APK (`…\88d49cae…\scratchpad\apk-3c-v2\pos-emulator-x86_64-3c.apk`, `2bdceacc…`), open it, `emu-order 90`; then `adb install -r` the new 3D APK again | the 3C app prints (≈1 s); after the update to 3D: the notice **4 s** after the install (printing was on); open the app: signed in, the printer kept ("Network printer 10.0.2.2 · Connected"), "Printing is on"; HOME, `emu-order 90`: printed with the app hidden; crash 0 after each install |
+| X9 | the page's own stop: `pw-3d.mjs clear`, then Refresh in the app | the page knows this device prints nothing (D2): the service stops and **no** notice shows (`dumpsys`: no `PrintHostService`; neither "Printing is on" nor "POS printing is off") |
+| X10 | the release page (bridge v1): serve `main` (`7f8ed31`) on 3110 from a cache-off build copy (the 3C session's `bmain` in `…\88d49cae…\scratchpad\bmain`: re-run `link-modules.ps1` on it first, its junctions may be gone; stop this branch's server first), `pw-3d.mjs simple`; on the emulator Refresh, Masala Chai, View cart, Send to Kitchen | simple mode, the release page on the 3D APK: the KOT `created`, `leased` (direct) and `printed` by the emulator within ≈1 s, **40,506 B** on 9100 |
+| X11 | `adb logcat -b crash -d \| grep -c possoftware` | 0 after every install (X5's `am crash` is an induced crash; X6's reboot clears the buffer) |
+
+Put back:
+- the setup cleared (`pw-3d.mjs clear`; the scratch database is left), this branch's server back on 3110 and the app Refreshed once (X9: the wish cleared);
+- the app's printer removed (the panel's Remove → "Yes, remove": "No printer set up");
+- the app's address cleared (More options → Change POS address → Clear POS address: its start screen, no address);
+- the **release APK** reinstalled (`adb install -r -d` of `C:\Users\KARTIK~1.DES\AppData\Local\Temp\claude\d--kd-lucifer\980d3189-10f0-4165-bdad-ae814b95278b\scratchpad\apk-release\pos-emulator-x86_64-release.apk`; `29115bdf…` on the device), as found;
+- notifications as found: `adb shell pm revoke com.possoftware.pos android.permission.POST_NOTIFICATIONS`;
+- `adb reverse --remove-all`, then `adb reverse tcp:3100 tcp:3100`;
+- `adb shell sync`, then `adb emu kill`;
+- your servers, the proxies and `pw-3d.mjs printers` (and its two fake printers) stopped by PID after checking each command line.
+
+- [ ] **Step 6: the fresh review**
+
+Dispatch a fresh reviewer subagent on **Claude Fable 5.1** (`model: fable`). It is read-only, with scratch tests only in this session's scratchpad (never in the repo). It reviews `6bc8d73..HEAD` against this plan (P3-1 to P3-10 as the gates changed them, the 3C review gate's rulings, Session 3D and its Review Focus, passed verbatim) and spec §9.5, §10, §13, §14, §17. If Fable is rate-limited (HTTP 429), wait for its reset and say so; never switch models silently. It may run in the background during Steps 2 and 5 if it is told to keep off Gradle, adb, builds, servers and the harness's ports and databases. Fix every Critical and Important finding by TDD (RED seen first) in its own commit. List the minors in Results for the 3D review gate.
+
+- [ ] **Step 7: Results, commit, push**
+
+Fill "Session 3D Results" below: the commits; each task's RED and GREEN against the Expected lines; every suite's numbers; JUnit; the APK hashes and the full-compile proof; the build; the exit table; the review and its fixes; deviations and rulings; what is open for the 3D review gate (and the real-printer items for 3G's TEST-CHECKLIST).
+
+Commit, then push with the token only: `GIT_TERMINAL_PROMPT=0 git push origin feat/printing-phase-3`. Do not merge, do not deploy, do not release the APKs.
+
+## Session 3D Results (filled in by the implementer)
+
+(Not yet executed.)
