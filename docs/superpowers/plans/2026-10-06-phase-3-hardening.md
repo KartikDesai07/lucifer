@@ -73,9 +73,9 @@ Each decision says what it costs if wrong.
 - The pick is by id, so every server instance and every request agrees. The primary is preferred the moment it is back.
 - *Cost if wrong:* a printer moves between writers. That is harmless for a network printer (the same paper comes out of the same printer, and one lease per line means one writer at a time). Each move costs one write and one realtime request (P3-4).
 
-**P3-2. Who can take a printer over.** "Online" is the heartbeat on the wake. In printers mode only the setup's writers poll the wake (Phase 2), so the devices that can take a network printer over are the cafe's writer devices that say `lanFailover`. A waiter phone that writes nothing never takes one over, and never starts polling to become able to. No new recurring request. *Cost if wrong:* a cafe with only one writer device has no failover. Its slips wait, visibly, as in Phase 2. The setup page says so (3B).
+**P3-2. Who can take a printer over.** "Online" is the heartbeat on the wake. In printers mode only the setup's writers poll the wake (Phase 2), so the devices that can take a network printer over are the cafe's writer devices that say `lanFailover`. A waiter phone that writes nothing never takes one over, and never starts polling to become able to. No new recurring request. *Cost if wrong:* a cafe with only one writer device has no failover. Its slips wait, visibly, as in Phase 2. The setup page says so (3B). *The 3B review gate (G-1; built in 3C's C0):* "online and able to take a printer over" means the device's own wake is fresh (`PrintDevice.beatAt` within 90 s), not only a recent lease.
 
-**P3-3. The 5-minute skip** (spec §9.3). The page acks a refusal made before any byte with `reason: "unreachable"`; on Android TCP that is NOT_CONNECTED from a failed connect. That writer is then skipped for that network printer for 5 minutes. The waiting slips move at once to the device that takes it over, and that device is told of the head (one realtime request). Only the printer's writer *now* can be skipped: a late ack from another device changes nothing. When every candidate is skipped, the primary keeps the printer. *Cost if wrong:* a writer that could reach the printer sits out 5 minutes while another prints, which is harmless. Each move that changes a printer's writer (on a skip, or on the sweep) tells the new writer of the line's head: one Worker request, at most once a minute per printer per instance, and at most 144 a day per skipped writer (the planning review, M-7: within the Worker's 5 % pin). After a skip, the head's `nextAttemptAt` is its 2 s refusal backoff, so the new writer's first lease can come back "not due" and it leases again 2 s later (one extra lease per skip). *Changed by Session 3A's final review (I-1):* the 5 minutes are the skip's floor. After them it holds until the skipped device's own lease names the printer again (a page names only a printer it can print to now), and at most 3 hours. A skip that ran out on time alone sent the printer back to a writer that still could not reach it, whose page never leased it to say so again. *Changed by the 3A review gate (I-A, I-B; built in 3B's B1):* the writer's beat is the second signal: its settled link `disconnected` for a network printer it writes now starts the skip (once), and its `connected` ends it past the first 5 minutes, like its lease naming the printer; and a skip holds as long as the device's record lives (7 days, `PRINT_DEVICE_PRUNE_MS`), not 3 hours.
+**P3-3. The 5-minute skip** (spec §9.3). The page acks a refusal made before any byte with `reason: "unreachable"`; on Android TCP that is NOT_CONNECTED from a failed connect. That writer is then skipped for that network printer for 5 minutes. The waiting slips move at once to the device that takes it over, and that device is told of the head (one realtime request). Only the printer's writer *now* can be skipped: a late ack from another device changes nothing. When every candidate is skipped, the primary keeps the printer. *Cost if wrong:* a writer that could reach the printer sits out 5 minutes while another prints, which is harmless. Each move that changes a printer's writer (on a skip, or on the sweep) tells the new writer of the line's head: one Worker request, at most once a minute per printer per instance, and at most 144 a day per skipped writer (the planning review, M-7: within the Worker's 5 % pin). After a skip, the head's `nextAttemptAt` is its 2 s refusal backoff, so the new writer's first lease can come back "not due" and it leases again 2 s later (one extra lease per skip). *Changed by Session 3A's final review (I-1):* the 5 minutes are the skip's floor. After them it holds until the skipped device's own lease names the printer again (a page names only a printer it can print to now), and at most 3 hours. A skip that ran out on time alone sent the printer back to a writer that still could not reach it, whose page never leased it to say so again. *Changed by the 3A review gate (I-A, I-B; built in 3B's B1):* the writer's beat is the second signal: its settled link `disconnected` for a network printer it writes now starts the skip (once), and its `connected` ends it past the first 5 minutes, like its lease naming the printer; and a skip holds as long as the device's record lives (7 days, `PRINT_DEVICE_PRUNE_MS`), not 3 hours. *Changed by the 3B review gate (built in 3C's C0, C1):* a device that may take the printer over is skipped ahead of time when its beat says it cannot reach it (m-2), and a page's beat says `disconnected` only once the printer stayed down 20 s (m-3: a blip never starts a skip).
 
 **P3-4. Failover timing (the exit's "within 90 s").** The primary is seen offline 30–90 s after it stops: it beats every 60 s on a healthy socket, and the online window is 90 s. From that moment every new slip is made for the second device: job creation reads who is online, one small read beside the stations, only when a network printer is set up. The second device prints it at once, by direct print or its `print-status`. A slip that already waited for the primary moves on the next sweep (at most 60 s later), and its new writer is told of it. A slip the primary was printing expires with its 90 s lease into one labelled REPRINT (Phase 1). Exit item 1 is therefore measured as: **every slip made 90 s or more after the primary stops prints on the second device; one already waiting prints within 60 s more.** Detecting a dead device faster would need a faster heartbeat, which means new requests, so it was rejected under §17. *Cost if wrong:* up to 150 s for a slip that was already waiting at the moment of the stop.
 
@@ -97,6 +97,7 @@ Each decision says what it costs if wrong.
 - A report says nothing once it is older than 10 minutes, or comes from another device.
 - Paper, cover and error come from DLE EOT: the POS app in Session 3C, the Windows app's network printers in Session 3E. BLE and the Windows spooler report the link only.
 - *Cost if wrong:* a stale problem shows for at most 10 minutes after a writer stops reporting.
+- *The 3B review gate (built in 3C's C5):* the POS app asks DLE EOT after each job and every 60 s while idle (10 s while the printer cannot print), while the app runs; a printer that says it cannot print is refused BUSY by the app and not leased by the page (its slips wait with no request).
 
 **P3-7. "Shows on every device" with no new poll.**
 - A slip waiting on a printer carries that printer's problem in the existing 20 s pulse's waiting-slips feed: "The device that prints Bar is offline.", "Bar is out of paper.", "Bar has its cover open.", "Bar reports an error…", "Bar is not connected.", "Bar is low on paper." Every device's panel, its count and its 20 s alarm already carry that feed.
@@ -183,6 +184,7 @@ Order: 3A → 3B → 3C → 3D → 3E → 3F → 3G. 3B comes before 3C (the pag
 - **The fake printer.** `--paper-out`, `--cover-open` and `--paper-low` answer DLE EOT, if not there yet (spec §13 lists them), with `test:print-tools` tests.
 
 - **From the 3A review gate:** the idle DLE EOT probe also settles a TCP printer's link (an idle printer otherwise reads `connected` from its last job until a print fails: its review's m-B); the top-bar dot's printer problem (3B's `printer-problem`) in simple mode too, once the app reports paper, cover and error there (3B's review, m-7); and a small server task, **G-1**: `lanFailover` counts only from a wake seen within the online window (`PrintDevice.beatAt`, written in the wake's existing heartbeat write), so a former writer whose leases keep it online is never picked for a takeover its page cannot print (the gate's section "The fresh review of Session 3B's golden copy").
+- **Made exact at the 3B review gate** (below, "Session 3C", Tasks C0–C6), with its rulings ("3B review gate: rulings"): G-1 with a heartbeat write due on either clock (a lease never starves it); the 3B review's m-1 (a takeover printer the app lacks reads down), m-2 (a candidate skipped ahead of time), m-3 (a printer reads down only after 20 s), m-4 (a lenient read); the gate review's I-1 (a page falls back to the older ack and wake after a rollback of the web) and m-A, m-B; the idle check runs while the app runs (no host service runs in printers mode before 3D); a printer that says it cannot print is refused BUSY by the app and not leased by the page; m-3 of 2G in `PrinterPool.replaceDefault` (`PoolList.putDefault` unchanged: the saved list's restore uses it); the fake printer's `--paper-low`, `--silent` and `statusOnly`.
 
 **Exit (3C):**
 - JUnit, with every new test seen RED first.
@@ -259,9 +261,11 @@ Order: 3A → 3B → 3C → 3D → 3E → 3F → 3G. 3B comes before 3C (the pag
 
 | Item | From | Session |
 |---|---|---|
-| m-3: a new BT/USB printer connects twice on Change printer | 2G | 3C |
-| The PrinterPool publish-chain JVM test (seams) | the 2F2 gate | 3C |
-| M-5: the watchdog cancel race (v1-identical) | the 2F2 gold review | 3C |
+| m-3: a new BT/USB printer connects twice on Change printer | 2G | **3C (C4)** |
+| The PrinterPool publish-chain JVM test (seams) | the 2F2 gate | **3C (C4)** |
+| M-5: the watchdog cancel race (v1-identical) | the 2F2 gold review | **3C (C4, fixed)** |
+| G-1: `lanFailover` only from a fresh wake | the 3A review gate | **3C (C0)** |
+| 3B's m-1 to m-4, the gate review's I-1, m-A, m-B; m-7 | the 3B review gate | **3C (C0–C2, C5)** |
 | A removal deferred while that printer writes | the final Phase 2 gate, (a) item 4 | 3B |
 | The soak's m-5, m-6 and reviewer (a)'s two soak items | 2G, the final Phase 2 gate | 3G |
 | Token M-2: the kind fence on `more` and jobs-for-me | the token fix's review | **3A (A0)** |
@@ -11814,3 +11818,6096 @@ So no fix pass: every finding is a minor for the 3B gate.
 - The reviewer's rollback note: one GO-LIVE-CHECKLIST line.
 - Carried, unchanged: G-1 (3C's server task), the golden-copy review's m-7 (the dot's printer problem in simple mode → 3C) and m-8 (the beat, lease and ack interplay → 3G's soak), the real-printer checks (Step 0 (a): still not reported by the owner).
 - Left in this session's scratchpad: `e2e3b.env` (database `pos_scratch_e2e_3bx`, left), `pw-3b.mjs`, `jobs3b.mjs`, `joblog3b.mjs`, `clear3b.mjs`, `p3b-proxy.mjs`, the exit and emulator logs (`exit1-v1.log` … `exit5-v1.log`, `exit4-v2.log`, `emu1-v1.log`, `emu3-v1.log`), `shots3b/`, `suites-b6/`, `build-b6.log`, `build-c08/` (the cache-off build copy of `c08abfc`), `review3b/` (the reviewer's package, logs and probes). The live legs and the reviewer's probes left no database behind (the only `3b` databases on the local mongod are the gate's `pos_scratch_e2e_3b` and this session's `pos_scratch_e2e_3bx`).
+
+## Session 3B review (gate)
+
+Run on 2026-10-08 in its own session (the 3B review gate), on `feat/printing-phase-3` at `459daa8`.
+
+**Start.**
+- `GIT_TERMINAL_PROMPT=0 git fetch origin` (the repo-local token store) could not reach github.com at the start ("Failed to connect to github.com port 443", twice); the local refs said `feat/printing-phase-3` = `origin/feat/printing-phase-3` = `459daa8` and `origin/main` = `7f8ed31`, working tree clean. A retry at 14:17 IST reached it: `origin/feat/printing-phase-3` still `459daa8` and `origin/main` still `7f8ed31` (nothing to merge or note).
+- Disk: D: 13 GB free, C: 6.2 GB free.
+- The owner was asked once whether the real-printer checks are done (`apps/mobile/TEST-CHECKLIST.md` "Stations and printers checks", and Part C on the Windows app 1.11.0); no answer during the gate, which did not block on it. They are still open (Step 0 (a)): a real-printer failure is fixed first, on its own hotfix branch from `main`.
+
+**The commits, read one by one** (`5cfee7f..459daa8`: B0 `f36e2f4`, B1 `0c34197`, B2 `3b90c76`, B3 `5ee87df`, B4 `2dc26d1`, B5 `e46c1c1`, Results `459daa8`; `5cfee7f..e46c1c1`: 49 files, +1,188 / −110).
+- **Same code as the gold.** `git ls-tree -r` of `e46c1c1` against the 3A review gate's gold `g3b-v2` (tree `e297f0f`) differs only in the plan and the spec (both changed by `5cfee7f`): every file outside `docs/` is blob-identical. `459daa8` changes only this plan.
+- **No secret** in the range (a search of `git log -p 5cfee7f..459daa8` for token, URI-with-password, key and secret patterns: none).
+- **No app, desktop or Worker change:** `git diff --stat c08abfc..HEAD -- apps/mobile apps/desktop workers` is empty.
+
+**Every suite at `459daa8`** (once each, in the background, one after another; the gate's scratchpad `suites-gate3b/`):
+
+| Suite | Result |
+|---|---|
+| shared `npm test`; `tsc` | **821/821**; 0 |
+| cafe `npm test` | **5010 tests, 5009 pass, 0 fail, 1 skipped** (go-live-dl) |
+| cafe, hub, mobile, desktop `tsc` / typecheck and lint | 0, and 0 errors (the 2 old warnings, `lib/masters-blob.test.ts:331`) |
+| mobile `npm test`; `test:app` | **125/125**; Jest **3/3** |
+| desktop `npm test` | **192/192** |
+| `npm run test:print-tools` | **8/8** |
+| live legs (`pos_scratch_print_host_gate3b`) | **`435 passed, 0 failed`** |
+| the Next build (the repo, D:, 13 GB free) | exit 0, **132 routes** |
+
+Every row equals Session 3B's Results.
+
+**The exit evidence** (the 3B session's scratchpad `a0581b85…`): `exit1-v1.log` … `exit5-v1.log`, `exit4-v2.log`, `emu1-v1.log`, `emu3-v1.log` and `shots3b/` say exactly what the Results tables say (exit 1 printed by B 91 s after A stopped, the next at once; exit 2 B in 18.3 s with Kitchen's `unreachable` = [A]; exit 3 the notice and the panel row "Bar is out of paper."; exit 4 at the backup 111 s after the stop, 49,854 B, labelled; exit 5 the old page never takes a printer over; the emulator's step 1 at 149 s and step 3's panel `emu3-panel2.png` "Kitchen is out of paper."). **Re-run by the gate:** exit items 2 and 3 on a fresh `pos_scratch_e2e_3bg` (`pw-3b.mjs` as the plan shows it; the repo's build on 3110): item 2, B printed the kitchen slip **18.2 s** after the order (log `created, leased@A, failed@A (not sent…), retargeted@B, leased@B, printed@B`; Kitchen's `unreachable` = [A], 20 s later still [A] and the health B's); item 3, "**KOT round 1 · ORD-20261008-002 · Bar has not printed yet. Bar is out of paper.**" on A's notice and "**… · Bar is out of paper. · Bar**" in A's panel, printed by B 6.0 s after the paper came back. Both equal the Results.
+
+**The fresh review (Claude Fable 5.1; no HTTP 429).** Read-only, its probes only in the gate's scratchpad (`review-gate3b/`). It read every non-docs line of `c08abfc..459daa8` against the plan and spec §9.3, §9.4, §9.8, §10, §13, §14, §17. Its own runs: shared 821/821; cafe's 15 touched and neighbouring files 351/351 and the full chain **5010 / 5009 / 0 / 1**; `tsc --noEmit --incremental false` 0; the live legs on its own database **435/0**; a probe of the wake's heartbeat filter on a scratch database (`probe-g1-beat-filter.ts`: a wake 10 s after a lease's touch wrote nothing; with leases every 25 s, 3 of 5 wakes at 60 s wrote).
+
+**Verdict: "ship"** for the 3B server and page. No Critical. One Important item, on a rollback only, and five minors.
+
+| # | Finding | Ruling |
+|---|---|---|
+| I-1 (Important, a rollback only) | Every 3B ack carries `tokenSlips` (and a refusal its `reason`). A server from before Phase 3 (`main` `7f8ed31`: its `ackBodySchema` is strict, checked) answers 400 to every such ack; the ack store reads a 400 as answered and forgets it, so each printed KOT's lease expires into a REPRINT that prints again (and its ack is refused again: `failed`); every bill asks the cashier. The wake's new fields are refused too (bounded: the slow cadence). New in 3B (a Phase 2 page sent no new field), and silent: a runbook line alone is not enough. | **Fixed in 3C (C1)**: a body refused with exactly 400 "Validation failed" is sent once more without the Phase 3 fields, and from then on the older body until the page reloads (one more request per page after a rollback; none against a Phase 3 server); C2 adds GO-LIVE-CHECKLIST's rollback line. *Cost if wrong:* after a rollback, open 3B pages print every KOT twice. |
+| m-A | `lanPrintersToAdd` let the takeover printers into an empty app when its own network printer was in the same list; a refused select of its own would let another device's printer become its default (E-1 by another door). | **Fixed in 3C (C1)**: an empty app gets only its own; the others follow one status event later. |
+| m-B | With the devices read failed, every network row said "No other device online can take it over…". | **Fixed in 3C (C2)**: such a row says only its backup. |
+| m-C | = the 3B session's m-4 (an unknown paper or cover value refuses the whole list: the pool never becomes active, the page acts as on v1). | **Fixed in 3C (C1)**, pinned in C5's parity test. |
+| m-D | A capability change on a wake within 30 s of a lease's touch is dropped until a later wake: harmless today, but it decides G-1's design. | **Built into G-1 (C0)**: the wake's write is due on its own clock too. |
+| m-E | The setup's "Can take over" words follow a stale row; `takenOver` is computed before the beat's skip (≤ 1 wake). | G-1 fixes the first (C0); the second stands as ruled at the 3A gate (m-1 there). |
+
+Its opinions on the open items (m-1 to m-4, G-1, the rollback line) are in the rulings below; on G-1 it set out what a correct fix must do (write `beatAt` in the wake's write, make that write due on `beatAt`'s own staleness, count `lanFailover` only from a fresh `beatAt` in both reads, accept a row without `beatAt` until its next wake), which C0 does. Its sound list: one writer per printer line through every flip (the lease's CAS is fenced on `printerId`; retargets touch only waiting jobs; the backup move only queued ones with no uncertain attempt); the beat's skip is narrow and written once; the 7-day hold never outlives a device's record; the backup's save rules; the settled link; E-1's guard; "unreachable" exactly `PRINTER_NOT_CONNECTED_MESSAGE`; the token fence's page half; deploy skew from a Phase 2 page; the budget (one new Worker cost, pinned).
+
+**Recommended next:** Session 3C as exact code, below, pre-validated at this gate.
+
+## 3B review gate: rulings
+
+Each says what it costs if wrong.
+
+| Item | Ruling | Where |
+|---|---|---|
+| m-1 (3B's review) a bridge-v2 setup writer whose app lists no printer still says `lanFailover` | **Fixed:** a network printer this device may take over that its app does not list reads `disconnected` in its beat (after the 20 s clock below), so with m-2's candidate skip the server never picks it for that printer and its backup applies. Chosen over "`lanFailover` only when the app lists a printer" (the gate review's preference): it also covers a select the app refused. *Cost if wrong:* the slips of a printer it was picked for wait until its primary returns (as before 3C). | C1, C0 |
+| m-2 a candidate already `disconnected` is skipped only at its first beat as the writer (≈210 s worst) | **Fixed:** a device that may take a printer over (its beat says `lanFailover`; the setup names another device) is skipped for it ahead of time when its beat says it cannot reach it (one write per skip). *Cost if wrong:* up to 60 s more per unreachable candidate, as before. | C0 |
+| m-3 one `disconnected` beat holds the 5-minute floor | **Fixed:** the page reports a printer `disconnected` only once it has stayed down 20 s (`PRINTER_DOWN_SETTLE_MS`; its probes keep the clock), so a blip never starts a skip. The "unreachable" ack still skips at once. *Cost if wrong:* a real outage reaches the beat's skip up to 20 s later. | C1 |
+| m-4 an unknown paper or cover value refuses a whole status | **Fixed:** read leniently; the app's values pinned to the page's. | C1, C5 |
+| The rollback note | **Not enough alone (the gate review's I-1):** the page falls back to the older body (C1), and the runbook says to reload every screen after a rollback (C2). | C1, C2 |
+| The 3B session's rulings: the tools extracted by a script; 111 s and 149 s against P3-4; exit 4 run twice | **Accepted.** Extraction byte for byte is stronger than retyping. P3-4 bounds a waiting slip at 150 s (seen offline 30–90 s after the stop, the next sweep ≤ 60 s later); 149 s is its edge because A's last lease touched `lastSeenAt` 2 s before the stop (the timeline was checked). The %TEMP% cleaner's deleted `--out` folder is the harness's, not the code's (3C's tool writes `keep.txt` at once). | — |
+| G-1 (carried) a former writer kept online by its leases is picked for a takeover | **Fixed:** `PrintDevice.beatAt`, stamped by the wake's heartbeat write, which is due on either clock (`lastSeenAt` or `beatAt` 30 s old: a lease never starves it); `lanFailover` counts only from a fresh `beatAt` (90 s), for the pick and the setup's words. At most one more `PrintDevice` write a minute per busy writer; no request. *Cost if wrong:* a former writer's slips wait ≤ ~150 s (as before). | C0 |
+| m-7 (carried) the dot's printer problem in simple mode | **Fixed:** the app's default printer's problem, by its app name, on the device that prints its own slips. | C2 |
+| m-8 (carried) the beat, lease and ack interplay of a skip | **To 3G** (its `probe-flap.ts` timeline becomes soak checks), unchanged. | 3G |
+| m-B (carried) the idle probe settles a TCP printer's link | **Fixed:** the idle check of a network printer is a connect (C5), once a minute; a printer switched off between jobs reads down within a minute. | C5 |
+| The idle check while the host service runs (the 3C spec) | **Changed:** it runs while the app runs. In printers mode no host service runs (Session 3D brings one), and the writers are the devices whose printers' paper and link the cafe needs to see. Cost: a local connect a minute per network printer; no request. *Cost if wrong:* a little battery. | C5 |
+| A printer that says it cannot print | **The app refuses BUSY before any byte, and the page (bridge v2) does not lease it** (the gate's emulator pre-run found the page leasing a printer out of paper every 30 s: a lease and an ack each time, though inside Phase 1's pinned refusal ceiling). Now such a slip waits with no request and prints as soon as the app says the printer is ready (the ready key changes then). A page on bridge v1 is refused BUSY (Phase 1's ceiling, not new). *Cost if wrong:* a printer with a wrong DLE EOT parse never prints from the page until staff fix or replace it; the parse counts only the printer's own offline bit for the refusal (DLE EOT 1) and needs the Epson fixed bits. | C5 |
+| G5's rules | A slip reads printed only after the printer answered DLE EOT 1 on that job's connection. For a printer that answered DLE EOT before, a connection it closed first (a cut) or no answer is "maybe"; for one that never did, neither says anything (it prints as before 3C: one without real-time status, or one that closes after every job, never gets a false REPRINT; a cut there stays Phase 2's known limit). An idle check with no answer forgets the printer and marks it silent: a job then asks it for 1 s only. An answer that it cannot print is "maybe" with the link kept. The wait: 5 s plus the slip's printing time at 8 bytes a ms, at most 30 s; DLE EOT 2 to 4 300 ms each. (The golden copy's review, I-1 and I-2, below.) *Cost if wrong:* a slow printer that answered before could read "maybe" and print a labelled REPRINT. | C5 |
+| M-5 (the 2F2 gold review) the watchdog cancel race | **Fixed:** one claim decides; a JUnit test runs the race. | C4 |
+| m-3 (Session 2G) Change printer connects twice | **Fixed** in `PrinterPool.replaceDefault` (a listed printer only becomes the default; the select waits for its attempt in flight). `PoolList.putDefault` itself is unchanged: the saved list's restore still relies on it. | C4 |
+| The PrinterPool publish-chain JVM test (the 2F2 gate) | **Built:** `saver` and `publisher` seams; `PrinterPoolTest`. | C4 |
+| The fake printer's flags | `--paper-out`, `--cover-open` were there; **`--paper-low`, `--silent`** added, and **`statusOnly`** on an idle check's connection (the soak never counts it). | C3 |
+
+### The fresh review of Session 3C's golden copy (Claude Fable 5.1)
+
+Dispatched by the gate on the golden copy `g3c-v5` (six commits on `459daa8`), read-only, its probes only in the gate's scratchpad (`review-g3c\`) and two scratch databases it dropped. The first dispatch hit Fable's weekly limit (HTTP 429, "resets 2:30pm"); the gate waited for the reset and ran it again on Fable at 14:31 IST (no model switch). Its own runs on `g3c-v5`: shared 821/821; cafe **5021 / 5020 / 0 / 1**; `tsc` 0; eslint on the 30 changed files 0; the live legs **444/0** (be 9); mobile 127 and Jest 3; print tools 11; JUnit 43/43; a probe of the wake's heartbeat filter (`probe-beat.ts`, 10/10: an old row without `beatAt` is no candidate; its first wake writes though `lastSeenAt` is fresh; a wake 10 s later writes nothing; a lease's touch refreshes only `lastSeenAt`; a wake right after writes `beatAt`; a new device's upsert gives one row with `beatAt`).
+
+**Verdict: "ship after fixes".** No Critical. Two Important findings, both in `TcpTransport.afterJob`, both about a network printer that never answers DLE EOT; twelve minors.
+
+| # | Finding | Ruling |
+|---|---|---|
+| I-1 (Important) | A printer that never answers DLE EOT but closes the connection after each job (a "disconnect after job" LAN option, a Wi-Fi bridge's idle timeout) read "maybe" on every slip: a REPRINT per KOT, a cashier question per bill. The `answering` memory guarded only no answer, not a close. | **Fixed (C5):** a close or no answer is "maybe" only for a printer that answered DLE EOT before; for one that never did, its close says nothing (the slip reads printed, once: Phase 2's known limit, G5 cannot see a cut there). JUnit `aPrinterThatNeverAnswersAndClosesAfterEachSlipPrintsOnce`; the cut test now has its printer answer the idle check first. |
+| I-2 (Important) | Every slip to a printer that never answers waited 5 s plus its printing time (up to 30 s) for nothing: +10 s on a 44 KB KOT, so a long KOT on such a printer rang the 20 s KOT alarm on every order. | **Fixed (C5):** the app remembers a printer whose last idle check got no answer (`silent`; any answer clears it) and asks it after a job for `replyMs` (1 s) only. The connect's idle check runs before any job, so a silent printer is known before its first slip. JUnit `aPrinterWhoseIdleCheckGotNoAnswerIsAskedOnlyBrieflyAfterASlip`; exit E3b on the emulator. |
+| m-1 | With the `$or` filter a busy writer can cost two `PrintDevice` writes per 30 s (its lease's touch and its wake), not one; `print-device.ts`'s header and spec §10 said "one". | **Fixed in words:** the header says "at most one write per device per 30 s by each path" (C0), and spec §10 likewise (this gate). At most +1,400 Atlas writes a day for 3 writers over 12 h, far under the free tier's limits; no request. |
+| m-2 | While this device's own default printer was out of paper, `printerReady` (`canPrintNow() \|\| …`) let a kick lease an empty line (one empty lease per new slip aimed at the device). | **Fixed (C5):** a device that prints printers is ready only by their own states (`readyRef.current.length === 0 ? canPrintNow() : readyNow().length > 0`); simple mode, the release APK and the Windows app unchanged. Pin updated. |
+| m-3 | The rollback fallback latches on any 400 "Validation failed", for the page's life: a future body bug would silently strip the Phase 3 fields. | **Not taken:** against a Phase 3 server no body the page builds can be refused (the reviewer checked every constraint), and against `main` it is exactly the rollback it is for. Per-endpoint latching is a hardening for a later body change. |
+| m-4 | 3C's idle check connects to every network printer a candidate may take over, once a minute: on a printer that serialises connections, a probe can collide with the primary's job connect (NOT_CONNECTED → "unreachable" → a 5-minute flip; the m-9 class accepted at 3B). | **To the real-printer checks and 3G:** count REPRINT and takeover notes on a single-connection printer; the fake accepts many connections, so the soak cannot see it. |
+| m-5 | The app refused on `offline`, the page on paper/cover/error: two predicates. | **Fixed (C5):** one rule, `PrinterHealth.cannotPrint()` = paper out, cover open or an error, with `error` only while the printer says it cannot print; the page's `poolPrinterCannotPrint` is the same test. |
+| m-6 | A late answer to DLE EOT 2 can be read as the answer to 3 (and so on); it heals at the next check (≤ 10 s). | **Note only** (low likelihood on a LAN; m-7's shorter follow-ups shrink the window). |
+| m-7 | A printer that answers only DLE EOT 1 paid 3 s per job and per idle check (1 s for each of 2, 3, 4). | **Fixed (C5):** DLE EOT 2 to 4 are asked 300 ms each on TCP, Bluetooth Classic and USB; DLE EOT 1 keeps 1 s. |
+| m-8 | A v1 "Change printer" to the same connected printer now only makes it the default (no fresh connect). | **Accepted** (the gate's m-3 ruling; Reconnect stays); a TEST-CHECKLIST line in **3G**. |
+| m-9 | `TEST-CHECKLIST.md` and spec §7.10 still said the Android TCP cut is "a known limit, fixed in Phase 3". | Spec §7.10 says "fixed in Phase 3 Session 3C for a printer that answers DLE EOT" (this gate); the checklist lines (paper out mid-slip: the rest prints when paper is loaded, then a labelled REPRINT, by design; a REPRINT after every slip means the printer closes early or never answers) in **3G**. |
+| m-10 | Two connects per TCP attempt (`open()` then the probe's). | **Harmless**; left. |
+| m-11 | `hooks/use-print-agent.ts` is 312 lines (the ~300 budget); `printer-dot.ts` exactly 300. | **3D may split** the hook when it next grows it. |
+| m-12 | The cafe count is 5021 / 5020 / 0 / 1, one more than the first golden Expected. | **Corrected** in C6 and the prompt: the first Expected undercounted by one; the gate's own full run on the golden copy also gives 5021 / 5020 / 0 / 1. |
+
+Its opinions on the gate's rulings (G-1 via `beatAt`; m-2's candidate skip; m-1 by missing takeover printers reported down; m-3's 20 s settle; m-4 lenient; the rollback fallback and runbook line; the idle check while the app runs; BUSY plus no lease for a printer that cannot print; G5; M-5; 2G's m-3 in `replaceDefault`): **all sound**. On m-3's settle it added that a beat-started skip keeps its 5-minute floor (accepted at 3B; 3G's soak watches it). Its sound list covers every task (C0's filter and upsert semantics by probe; C1's settle state machine, the pruned `missing:` keys, m-A and the fallback's narrow trigger; C2's words; C3's flags; C4's claim, seams and pool test; C5's probe threading, link loss, `health()` only while connected, the parity pin, deploy skew from the release APK, a Phase 2 APK and a `main` page) and the free tier (no new request; m-1's write the only new server cost).
+
+**The re-check of `g3c-v7`** (the fixes above; 11 files, +112 / −40, nothing else moved), by the same reviewer: **"ship as written"**, no new finding. I-1 and I-2 closed (a printer that answered before still gets "maybe" on a cut; `silent` only shortens the wait and never blocks a real answer; the two sets stay disjoint on the printer's own thread, and a cross-thread close heals at the next check); m-7, m-2 and m-5 correct (m-5's single rule "better than the suggested direction"); m-1's header. Its runs on v7: mobile 127; JUnit **45/45** (TcpTransportTest 8); the six touched cafe test files 144/144; eslint and `tsc` 0; cafe **5021 / 5020 / 0 / 1**.
+
+---
+## Session 3C (exact code, written and pre-validated at the 3B review gate)
+
+**Pre-validation (the 3B review gate, 2026-10-08).**
+- **Verbatim apply.** Every block of Tasks C0–C5 (**148 operations**) went verbatim, task by task, onto a fresh clone of `feat/printing-phase-3` at `459daa8`. Every find matched exactly once.
+- **RED, then GREEN.** Each task's RED was seen before its code went in (C4's and C5's JUnit RED is a compile failure of the JVM tests), and each GREEN gave the Expected lines below.
+- **Same tree.** The clone's tree came out IDENTICAL to the golden copy's (branch `g3c-v7`, tree `a93c9d9`). Validated three times, each on a fresh clone; the last after the last fold-in.
+- **Every suite on the golden copy:**
+  - shared 821/821; cafe **5021 / 5020 pass / 0 fail / 1 skipped**;
+  - tsc 0 and lint 0 errors (+2 old warnings) for cafe, hub, mobile and desktop;
+  - mobile 127 + Jest 3; desktop 192; print tools 11; live legs 444/0 (be 9);
+  - JUnit **45/45** (`:app:testDebugUnitTest --rerun`, `GRADLE_USER_HOME=D:\gradle-home`; TcpTransportTest 8). Without the review's fold-in in `TcpTransport.kt`, exactly its two new cases fail (RED seen);
+  - the Next build: 132 routes, in a separate build copy with webpack's persistent cache off (a config line in that copy only);
+  - the APKs from that build copy (a scratchpad clone mapped to `W:`, with a real `apps/mobile/node_modules` and Metro's `watchFolders` in that copy only): x86_64 `c812741f…`, arm64 `10f2ca79…`, armv7 `e04be78d…` (the repo's builds will hash differently).
+- **The exit, pre-run** on the emulator (C6 Step 5's harness, exactly as below; Pixel_7_API_33 at `-memory 2048`, C: at 4.6 GB, then 5.8 GB). The first run (the first golden APK) found one gap: a printer out of paper was leased by the page every 30 s (a lease and an ack each time, refused BUSY by the app: inside Phase 1's pinned refusal ceiling, but new churn). The fix is in C5 (the page leases no printer its app says cannot print; paper back nudges the agent). The last golden copy's APK then ran every row: E0 the Phase 2 APK set up (9100 connected, 9101 under Other printers); E1 the new APK kept both, C's slip printed by the emulator ≈4 s after the order (18 s on the first try, right after a Refresh), 44,250 B, health `connected/ok/closed`; E2 health `connected/out` 57 s after the paper went out, the slip never leased (its log only `created`), the feed's `paper-out` 21 s after the order, C's panel and the emulator's panel "Kitchen is out of paper." (the emulator's: "Printer needs attention"), printed 8 s after the paper came back, 44,250 B; E3 cut at 20,000 B, `failed` (maybe, never printed), the REPRINT 49,722 B; E3b the silent printer printed once, no REPRINT, leased to printed 1.7 s, 44,241 B; E4 the release page (a build of `main`) in simple mode: the KOT `leased (direct)` and printed on 9100, 40,506 B; E5 0 crash lines. **All PASS.** Put back as C6 says (the release APK `29115bdf…` on its start screen with no address; `adb reverse tcp:3100 tcp:3100`; the emulator stopped after `adb shell sync`).
+- **A fresh review on Claude Fable 5.1** (after a wait for its weekly limit's reset): "ship after fixes" (two Important findings, both on a network printer that never answers DLE EOT; folded into C5 with the minors m-2, m-5 and m-7), then, on the last golden copy, **"ship as written"**. Details and rulings: "The fresh review of Session 3C's golden copy" in the 3B review gate's section.
+
+A failure while executing therefore points to drift since then, or to a typo while copying. Compare with the plan first.
+
+**What 3C delivers.** Session 3C is the POS app's printer layer for Phase 3 (spec §9.5, §10, §13), plus the 3B review gate's server and page fixes:
+- who may take a network printer over: only a device whose own wake is fresh (G-1), and a candidate that cannot reach a printer is skipped ahead of time (m-2) (Task C0);
+- the page's beat: a printer reads down only once it stayed so 20 s (m-3); a printer it may take over that its app lacks reads down (m-1); a later app's unknown value reads as nothing (m-4); a rollback of the web costs one resend per page, never a doubled KOT (the gate review's I-1); an empty app gets its own printer first (m-A) (C1);
+- the words: the dot's printer problem in simple mode (m-7), no takeover words on a failed devices read (m-B), the runbook's rollback line (C2);
+- the fake printer: `--paper-low`, `--silent`, `statusOnly` (C3);
+- the app: Change printer connects once (m-3 of 2G), the watchdog's one claim (M-5), the printer pool's seams and their JVM test (C4);
+- the app: DLE EOT after each job and while idle, a network printer's idle check that settles its link (m-B), BUSY while a printer cannot print and a page that leases no such printer, G5 on a network job, bridge v2's paper, cover and error, the notification's "out of paper" (C5);
+- then the verification, JUnit, the APKs (recorded, not released), the exit on the emulator, the fresh review and Results (C6).
+
+**The APKs change** (C4, C5): `apps/mobile` Kotlin, the RN bridge's types and the pins. The Windows installer and the Worker do not (`git diff --stat 459daa8..HEAD -- apps/desktop workers` stays empty). No new request: the app's status checks are local (a connect a minute per network printer, Bluetooth and USB questions on the open link); the server's new work rides the wake (at most one more `PrintDevice` write a minute per busy writer; one `Printer` write per candidate skip).
+
+**Decisions this section implements:** P3-1 to P3-9 (above), as changed by the 3A and 3B review gates' rulings ("3A review gate: rulings", "3B review gate: rulings"), and the 3C spec above.
+
+**Not in 3C:** the app's service (`connectedDevice`, `START_STICKY`, the remount, the boot notice, the battery screen: 3D), the Windows app 1.12.0 (3E), Telegram (3F), the Phase 3 exit and the measurement (3G).
+
+### Review Focus (Session 3C)
+
+The inputs most likely to bite a cafe that the unit tests alone would not exercise; each has a test, a pin or an exit item.
+1. **A slip cut mid-way, and a printer without real-time status.** A network job must never read printed when the printer closed the connection before answering (G5), and a printer that never answers DLE EOT must never produce a false REPRINT. → `TcpTransportTest` (a cut slip, a silent printer, one that answered before and then not), exit E3, the fake printer's `--silent`.
+2. **A printer out of paper.** The app refuses before any byte, the page leases nothing while the app says so, every device says why, and the slip prints once, as soon as the paper is back. → `PrinterManagerTest` (BUSY, the 10 s cadence), `print-agent-printers.test.ts` and `native-pool.test.ts` (not ready; the ready key), exit E2.
+3. **The idle check on a network printer** (a connect a minute from every app that lists it): it must never run during a job, a failure must read the printer down (and reconnect), and it must never count as a slip. → `PrinterManagerTest` (`noStatusIsAskedWhileAJobWaits`, the idle check that fails), the fake printer's `statusOnly`.
+4. **Deploy skew.** The 3C APK under the release page (bridge v1), a Phase 2 page and a 3B page; a 3C page after a rollback of the web to a server from before Phase 3; the Phase 2 APK's printer list kept by the update. → exit E1 and E4, `print-agent-skew.test.ts`, the parity pin.
+5. **Who may take a printer over.** Never a device whose wake stopped (its leases keep it online), never a candidate that cannot reach the printer, and the wake's heartbeat write never starved by a lease. → leg be, the 3C pin in `print-lifecycle-paths.test.ts`.
+
+### File map (Session 3C)
+
+| File | Change | Task |
+|---|---|---|
+| `apps/cafe/models/PrintDevice.ts`, `lib/print-device.ts`, `lib/print-failover.ts`, the wake route, `scripts/print-host-live/candidates.ts` (create), `scripts/verify-print-host-live.ts` | `beatAt`, `lanFailoverNow`, the candidate skip, leg be | C0 |
+| `packages/shared/src/print-failover.ts`, `apps/cafe/lib/print-agent-health.ts`, `lib/print-agent-skew.ts` (create), `lib/printer/native-bridge-v2.ts`, `lib/print-agent-printers.ts`, `hooks/use-print-agent.ts`, `hooks/use-print-agent-wake.ts`, `package.json` | the beat's clock and missing printers, the lenient read, the older-server fallback, m-A | C1 |
+| `apps/cafe/lib/printer/printer-dot.ts`, `lib/print-agent-printers.ts`, `lib/print-setup-text.ts`, `components/print/setup/PrintersSetupSection.tsx`, `docs/GO-LIVE-CHECKLIST.md` | the words | C2 |
+| `scripts/fake-escpos-printer.mjs`, `apps/cafe/scripts/print-soak.ts` | the fake printer | C3 |
+| `apps/mobile/…/printer/PrinterPool.kt`, `PrinterApi.kt`, `PrinterManager.kt`; `…/src/test/…/PrinterPoolTest.kt` (create), `PrinterFakes.kt`, `PrinterManagerTest.kt`; `apps/mobile/src/mobile-paths.test.ts` | m-3, M-5, the seams | C4 |
+| `apps/mobile/…/printer/PrinterStatus.kt` (create), `PrinterTypes.kt`, `TcpTransport.kt`, `UsbTransport.kt`, `ClassicTransport.kt`, `PrinterManager.kt`, `PrinterPool.kt`, `StatusJson.kt`, `PoolStatus.kt`, `PrintHostService.kt`, `res/values/strings.xml`; `apps/mobile/src/bridge/protocol-v2.ts`; `apps/cafe/lib/printer/native-pool.ts`, `printer-registry.ts`, `lib/print-agent-printers.ts`, `hooks/use-print-agent.ts`; the JVM tests (`DleEotTest.kt`, `TcpTransportTest.kt` created), the pins | DLE EOT, G5, BUSY, the contract | C5 |
+| this plan | Session 3C Results | C6 |
+
+Each task is one commit, in this order: C0 → C5. Then C6 (verification, the APKs, the exit, the fresh review, Results). **JUnit** runs from the repo (`cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun`); a RED there is a compile failure of the JVM tests (they name what the code adds).
+
+---
+
+### Task C0: only a device whose own wake is fresh may take a network printer over (G-1); a device that may take one over but cannot reach it is skipped ahead of time (the 3B review's m-2)
+
+**Files:**
+- Modify: `apps/cafe/models/PrintDevice.ts` (`beatAt`)
+- Modify: `apps/cafe/lib/print-device.ts` (`beatPrintDevice` stamps `beatAt` and is due on either clock; `lanFailoverNow`; `readOnlinePrintDevices` and `listPrintDevices` count `lanFailover` only from a fresh wake)
+- Modify: `apps/cafe/lib/print-failover.ts` (`skipUnreachableFromBeat` takes the beat's `lanFailover` and skips a candidate ahead of time; `recordPrinterUnreachable` takes `candidate` and retargets only when the writer changed)
+- Modify: `apps/cafe/app/api/print-jobs/wake/route.ts` (passes the beat's `lanFailover`)
+- Create: `apps/cafe/scripts/print-host-live/candidates.ts` (leg be, 9 checks); modify `apps/cafe/scripts/verify-print-host-live.ts` (runs it after bd)
+- Tests: `apps/cafe/lib/print-lifecycle-paths.test.ts` (the wake and 3B pins deliberately changed; a new 3C pin)
+
+**Interfaces produced:** `PrintDevice.beatAt?: Date`; `skipUnreachableFromBeat({ deviceId, lanFailover?, reports, printers, failover, nowMs })`; `recordPrinterUnreachable({ printerId, deviceId, nowMs, candidate? })` (`lib/print-failover.ts`).
+
+**G-1 (the 3A review gate's exit pre-run; the 3B gate review's opinion on the write filter).** A lease refreshes `lastSeenAt` but only the wake says `lanFailover`, so a former writer whose page no longer polls the wake (its printers moved) but still leases now and then kept its last `lanFailover: true` and could be picked to take a printer over that its page would not print. Now the wake's heartbeat write also stamps `beatAt`, and `lanFailover` counts only while `beatAt` is within the 90 s online window (`lanFailoverNow`), for the server's pick and for the setup page's "Can take over network printers". The wake's write was filtered on `lastSeenAt` older than 30 s, which a lease's touch also refreshes, so a busy writer's leases could starve exactly that write (the reviewer probed it: a wake 10 s after a lease wrote nothing). The filter is now `$or` of the two clocks: the wake writes at most once per 30 s by its own clock, and a lease at most once per 30 s by `lastSeenAt` (at most one more `PrintDevice` write a minute per busy writer; no request). A row from before 3C has no `beatAt` and is not a candidate until its next wake (at most 60 s).
+
+**m-2 (the 3B session's review).** A candidate that already reported a network printer `disconnected` was still picked when the primary went offline, and skipped only at its first beat as the writer (up to 60 s per such candidate). Now a beat's `disconnected` from a device that may take the printer over (it says `lanFailover`, and the setup names another device for it) records its skip ahead of time: one write per skip, nothing more while it holds, ended by its own `connected` past the 5-minute floor or its lease naming the printer, exactly as for the writer. Nothing moves when only a candidate is skipped (the writer is unchanged).
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/print-lifecycle-paths.test.ts`, find:
+
+```ts
+      "await recordPrinterHealth({ deviceId: parsed.data.deviceId, reports: parsed.data.printers, printers, failover: { online, nowMs }, nowMs }).catch(() => 0);",
+      // Session 3B (the 3A review gate, M-8 d) deliberately added: a beat that says this device cannot reach a network
+      // printer it writes now skips it, as an "unreachable" ack does; and the answer says which printers it took over.
+      "await skipUnreachableFromBeat({ deviceId: parsed.data.deviceId, reports: parsed.data.printers, printers, failover: { online, nowMs }, nowMs }).catch(() => 0);",
+      "const agents = Math.max(1, online.length);",
+      "after(() => sweepPrintJobsThrottled(nowMs))",
+      "const takenOver = printersTakenOverBy(printers, parsed.data.deviceId, { online, nowMs });",
+```
+
+Replace it with:
+
+```ts
+      "await recordPrinterHealth({ deviceId: parsed.data.deviceId, reports: parsed.data.printers, printers, failover: { online, nowMs }, nowMs }).catch(() => 0);",
+      // Session 3B (the 3A review gate, M-8 d) deliberately added: a beat that says this device cannot reach a network
+      // printer it writes now skips it, as an "unreachable" ack does; and the answer says which printers it took over.
+      // Session 3C (the 3B review's m-2) deliberately added: the beat says whether this device may take a printer over,
+      // so a candidate that cannot reach one is skipped ahead of time.
+      "await skipUnreachableFromBeat({ deviceId: parsed.data.deviceId, lanFailover: parsed.data.capabilities.lanFailover === true, reports: parsed.data.printers, printers, failover: { online, nowMs }, nowMs }).catch(() => 0);",
+      "const agents = Math.max(1, online.length);",
+      "after(() => sweepPrintJobsThrottled(nowMs))",
+      "const takenOver = printersTakenOverBy(printers, parsed.data.deviceId, { online, nowMs });",
+```
+
+In `apps/cafe/lib/print-lifecycle-paths.test.ts`, find:
+
+```ts
+      'if (report.link === "connected") {',
+      "if (!printerSkipEndsFor(printer, input.deviceId, input.nowMs)) continue;",
+      "await endPrinterSkipOf(printer, input.deviceId, input.nowMs);",
+      'if (report.link !== "disconnected" || printerActiveWriter(printer, input.failover) !== input.deviceId) continue;',
+      "if (printerSkippedWriters(printer, input.nowMs).includes(input.deviceId)) continue;",
+      "await recordPrinterUnreachable({ printerId: printer.id, deviceId: input.deviceId, nowMs: input.nowMs });",
+    ],
+    "skipUnreachableFromBeat",
+  );
+  // The 3A review gate (m-D): a network printer every writer is skipped for moves its slips to its backup.
+  assert.ok(s.includes("if (backup === null || printerWriterCanPrint(printer, failover) || !printerWriterCanPrint(backup, failover)) continue;"), "the backup move asks who can print, not only who is online");
+  // The devices read says which device can take a network printer over (the setup page's words).
+  assert.ok(src(DEVICE).includes('...(row.capabilities?.lanFailover === true ? { lanFailover: true as const } : {}),'), "the devices read carries lanFailover");
+});
+
+// Session 1A final-review fixes (plan "Session 1A Results", findings I1 and I4).
+```
+
+Replace it with:
+
+```ts
+      'if (report.link === "connected") {',
+      "if (!printerSkipEndsFor(printer, input.deviceId, input.nowMs)) continue;",
+      "await endPrinterSkipOf(printer, input.deviceId, input.nowMs);",
+      'if (report.link !== "disconnected") continue;',
+      // Session 3C (the 3B review's m-2) deliberately changed: a device that may take the printer over is skipped ahead
+      // of time too; otherwise only the printer's writer now.
+      "const candidate = input.lanFailover === true && printerWriterDeviceId(printer) !== input.deviceId;",
+      "if (!candidate && printerActiveWriter(printer, input.failover) !== input.deviceId) continue;",
+      "if (printerSkippedWriters(printer, input.nowMs).includes(input.deviceId)) continue;",
+      "await recordPrinterUnreachable({ printerId: printer.id, deviceId: input.deviceId, nowMs: input.nowMs, candidate });",
+    ],
+    "skipUnreachableFromBeat",
+  );
+  // The 3A review gate (m-D): a network printer every writer is skipped for moves its slips to its backup.
+  assert.ok(s.includes("if (backup === null || printerWriterCanPrint(printer, failover) || !printerWriterCanPrint(backup, failover)) continue;"), "the backup move asks who can print, not only who is online");
+  // The devices read says which device can take a network printer over (the setup page's words); Session 3C (G-1): only
+  // while its own wake is fresh.
+  assert.ok(src(DEVICE).includes("...(lanFailoverNow(row, nowMs) ? { lanFailover: true as const } : {}),"), "the devices read carries lanFailover");
+});
+
+// Session 3C (G-1, the 3A review gate's exit pre-run): a lease refreshes lastSeenAt, but only the wake says lanFailover. A
+// device counts as able to take a printer over only while its own wake is fresh (PrintDevice.beatAt, written in the wake's
+// heartbeat write), and that write is due whenever beatAt is 30 s old, even right after a lease touched the device.
+test("PIN (3C, G-1): only a device whose own wake is fresh may take a printer over; the wake's write is never starved by a lease's touch", () => {
+  const s = src(DEVICE);
+  const beat = s.slice(s.indexOf("export async function beatPrintDevice("), s.indexOf("export async function touchPrintDevice("));
+  assert.ok(beat.includes("{ deviceId: beat.deviceId, $or: [{ lastSeenAt: { $lt: new Date(nowMs - PRINT_DEVICE_HEARTBEAT_WRITE_MS) } }, { beatAt: { $not: { $gte: due } } }] },"), "the wake's write is due on either clock");
+  assert.ok(beat.includes("beatAt: new Date(nowMs),"), "the wake's write stamps beatAt");
+  const touch = s.slice(s.indexOf("export async function touchPrintDevice("), s.indexOf("export async function printDeviceDrawsTokens("));
+  assert.ok(touch.includes("lastSeenAt: new Date(nowMs)") && !touch.includes("beatAt"), "a lease's touch refreshes lastSeenAt, never beatAt");
+  assert.ok(s.includes('.select("deviceId capabilities.lanFailover beatAt")'), "who is online reads beatAt");
+  assert.ok(s.includes("lanFailover: lanFailoverNow(row, nowMs)"), "who is online counts lanFailover only from a fresh wake");
+  assert.ok(s.includes("return row.capabilities?.lanFailover === true && row.beatAt !== undefined && row.beatAt.getTime() >= nowMs - PRINT_DEVICE_ONLINE_MS;"), "fresh = within the online window");
+  assert.ok(src("apps/cafe/models/PrintDevice.ts").includes("beatAt: { type: Date },"), "the model keeps beatAt");
+});
+
+// Session 1A final-review fixes (plan "Session 1A Results", findings I1 and I4).
+```
+
+Create `apps/cafe/scripts/print-host-live/candidates.ts`:
+
+```ts
+/**
+ * Phase 3 Session 3C live leg (be) — who may take a network printer over (spec §9.3; the 3A review gate's G-1 and the
+ * 3B review's m-2) against a REAL MongoDB: a device counts as able to take one over only while its own wake is fresh
+ * (PrintDevice.beatAt), never because its leases keep it online; the wake's heartbeat write is due again even right after
+ * a lease touched the device; and a device that may take a printer over, whose beat says it cannot reach it, is skipped
+ * for it ahead of time (once), so a failover never picks it first. Run by scripts/verify-print-host-live.ts after leg bd.
+ *
+ * (console output is intentional — this is an ops CLI script, not app code.)
+ */
+import type { PrinterHealthReport } from "@pos/shared/print-failover";
+import { PrintDevice } from "@/models/PrintDevice";
+import { Printer } from "@/models/Printer";
+import { beatPrintDevice, listPrintDevices, readOnlinePrintDevices, touchPrintDevice } from "@/lib/print-device";
+import { skipUnreachableFromBeat } from "@/lib/print-failover";
+import { listPrinters } from "@/lib/print-printers";
+import { routePrinterJobs } from "@/lib/print-sweep";
+import { check } from "./harness";
+import { rowOf } from "./lifecycle";
+import { BAR, COUNTER, KITCHEN, failoverOutlet, kotOf, offline, online } from "./failover";
+
+const CAPS = { lan: true, bluetooth: true, usb: true, windowsPrinters: false, webSerial: false, webBluetooth: false, lanFailover: true };
+
+/** What the wake does with a beat's printers after the health, for a device that says (or not) it may take one over. */
+async function beat(deviceId: string, lanFailover: boolean, reports: PrinterHealthReport[], nowMs: number): Promise<number> {
+  return skipUnreachableFromBeat({ deviceId, lanFailover, reports, printers: await listPrinters(), failover: { online: await readOnlinePrintDevices(nowMs), nowMs }, nowMs });
+}
+
+const skipsOf = async (printerId: string) => ((await listPrinters()).find((printer) => printer.id === printerId)?.unreachable ?? []).map((skip) => skip.deviceId).sort().join();
+const takesOver = async (deviceId: string, nowMs: number) => (await readOnlinePrintDevices(nowMs)).find((device) => device.deviceId === deviceId)?.lanFailover === true;
+
+export async function legBE(nowMs: number): Promise<void> {
+  console.log("\n(be) who may take a printer over (§9.3; G-1, m-2): only a device whose own wake is fresh; a candidate that cannot reach a printer is skipped ahead of time");
+  const o = await failoverOutlet();
+  await Promise.all([online(KITCHEN, nowMs), online(COUNTER, nowMs), online(BAR, nowMs)]);
+  check("(be) every device's wake fresh: each may take a printer over", (await takesOver(BAR, nowMs)) && (await takesOver(COUNTER, nowMs)));
+
+  // G-1: the bar phone's printer moved to another device, so its page stopped polling the wake two minutes ago; a lease
+  // of its own keeps it online. The bar phone's id sorts first, so without G-1 it would take the kitchen printer over.
+  await PrintDevice.updateOne({ deviceId: BAR }, { $set: { lastSeenAt: new Date(nowMs - 120_000), beatAt: new Date(nowMs - 120_000) } });
+  await touchPrintDevice(BAR, nowMs + 1_000);
+  const seen = (await readOnlinePrintDevices(nowMs + 1_000)).find((device) => device.deviceId === BAR);
+  check("(be) a device online only by its lease (its wake stopped) is online, yet may not take a printer over (G-1)", seen !== undefined && seen.lanFailover === false);
+  check("(be) ... and the devices read does not say it can", (await listPrintDevices(nowMs + 1_000)).find((device) => device.deviceId === BAR)?.lanFailover === undefined);
+  await offline(KITCHEN, nowMs + 2_000);
+  const first = await kotOf(o, nowMs + 2_000);
+  check("(be) the kitchen tablet offline: the counter, whose wake is fresh, takes the kitchen printer over, never the bar phone", (await rowOf(first.kitchen?.id ?? ""))?.targetDeviceId === COUNTER);
+
+  // The wake's own write is due once beatAt is 30 s old, even though the lease touched lastSeenAt a second ago.
+  await beatPrintDevice({ deviceId: BAR, label: BAR, shell: "android", capabilities: CAPS }, nowMs + 2_500);
+  check("(be) the bar phone's wake again, a moment after its lease: the heartbeat writes, and it may take a printer over again", await takesOver(BAR, nowMs + 2_500));
+
+  // m-2: the kitchen tablet back, the bar phone (a candidate: it says lanFailover, the setup names the tablet) beats that
+  // it cannot reach the kitchen printer: it is skipped ahead of time, once, and nothing moves.
+  await online(KITCHEN, nowMs + 3_000);
+  await routePrinterJobs(nowMs + 3_000);
+  const ahead = await beat(BAR, true, [{ printerId: o.kitchen, link: "disconnected" }], nowMs + 3_500);
+  check(
+    "(be) a candidate's beat that cannot reach a network printer skips it ahead of time (one write); the slip stays with its primary",
+    ahead === 1 && (await skipsOf(o.kitchen)) === BAR && (await rowOf(first.kitchen?.id ?? ""))?.targetDeviceId === KITCHEN,
+  );
+  const before = await Printer.findById(o.kitchen).select("updatedAt").lean<{ updatedAt: Date }>();
+  check(
+    "(be) ... once: its next beats, still down, write nothing",
+    (await beat(BAR, true, [{ printerId: o.kitchen, link: "disconnected" }], nowMs + 4_000)) === 0 &&
+      (await Printer.findById(o.kitchen).select("updatedAt").lean<{ updatedAt: Date }>())?.updatedAt.getTime() === before?.updatedAt.getTime(),
+  );
+  check(
+    "(be) a page from before 3C (no lanFailover) that does not write the printer skips nothing",
+    (await beat(COUNTER, false, [{ printerId: o.kitchen, link: "disconnected" }], nowMs + 4_000)) === 0 && (await skipsOf(o.kitchen)) === BAR,
+  );
+  await offline(KITCHEN, nowMs + 5_000);
+  const second = await kotOf(o, nowMs + 5_000);
+  check("(be) the kitchen tablet offline again: the counter takes the printer over at once, never the skipped bar phone (m-2)", (await rowOf(second.kitchen?.id ?? ""))?.targetDeviceId === COUNTER);
+  await Promise.all([Printer.deleteMany({}), PrintDevice.deleteMany({})]);
+}
+```
+
+In `apps/cafe/scripts/verify-print-host-live.ts`, find:
+
+```ts
+import { legBB } from "./print-host-live/backup";
+import { legBC } from "./print-host-live/health";
+import { legBD } from "./print-host-live/takeover";
+
+async function main(): Promise<void> {
+  const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
+```
+
+Replace it with:
+
+```ts
+import { legBB } from "./print-host-live/backup";
+import { legBC } from "./print-host-live/health";
+import { legBD } from "./print-host-live/takeover";
+import { legBE } from "./print-host-live/candidates";
+
+async function main(): Promise<void> {
+  const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
+```
+
+In `apps/cafe/scripts/verify-print-host-live.ts`, find:
+
+```ts
+    await legBB(Date.now());
+    await legBC(Date.now());
+    await legBD(Date.now());
+  } finally {
+    await mongoose.connection.dropDatabase();
+    await mongoose.disconnect();
+```
+
+Replace it with:
+
+```ts
+    await legBB(Date.now());
+    await legBC(Date.now());
+    await legBD(Date.now());
+    // Phase 3 Session 3C leg (G-1 and the 3B review's m-2: who may take a printer over).
+    await legBE(Date.now());
+  } finally {
+    await mongoose.connection.dropDatabase();
+    await mongoose.disconnect();
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-lifecycle-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 27`; `# pass 24`; `# fail 3`
+
+Run: `cd /d/kd/lucifer/apps/cafe && MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_print_host_3c npm run verify:print:live 2>&1 | grep -E "passed,|FAIL"`
+Expected: `FAIL (be) a device online only by its lease (its wake stopped) is online, yet may not take a printer over (G-1)`; `  FAIL (be) ... and the devices read does not say it can`; `  FAIL (be) the kitchen tablet offline: the counter, whose wake is fresh, takes the kitchen printer over, never the bar phone`; `  FAIL (be) a candidate's beat that cannot reach a network printer skips it ahead of time (one write); the slip stays with its primary`; `  FAIL (be) a page from before 3C (no lanFailover) that does not write the printer skips nothing`; `  FAIL (be) the kitchen tablet offline again: the counter takes the printer over at once, never the skipped bar phone (m-2)`; `438 passed, 6 failed`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/app/api/print-jobs/wake/route.ts`, find:
+
+```ts
+    if (parsed.data.printers !== undefined && parsed.data.printers.length > 0) {
+      await recordPrinterHealth({ deviceId: parsed.data.deviceId, reports: parsed.data.printers, printers, failover: { online, nowMs }, nowMs }).catch(() => 0);
+      // Session 3B (the 3A review gate, M-8 d): a network printer it writes now and says it cannot reach skips it, as an
+      // "unreachable" ack does (one write per skip; best-effort).
+      await skipUnreachableFromBeat({ deviceId: parsed.data.deviceId, reports: parsed.data.printers, printers, failover: { online, nowMs }, nowMs }).catch(() => 0);
+    }
+    const agents = Math.max(1, online.length);
+    try {
+```
+
+Replace it with:
+
+```ts
+    if (parsed.data.printers !== undefined && parsed.data.printers.length > 0) {
+      await recordPrinterHealth({ deviceId: parsed.data.deviceId, reports: parsed.data.printers, printers, failover: { online, nowMs }, nowMs }).catch(() => 0);
+      // Session 3B (the 3A review gate, M-8 d): a network printer it writes now and says it cannot reach skips it, as an
+      // "unreachable" ack does (one write per skip; best-effort). Session 3C (the 3B review's m-2): so does one it may take
+      // over, ahead of time.
+      await skipUnreachableFromBeat({ deviceId: parsed.data.deviceId, lanFailover: parsed.data.capabilities.lanFailover === true, reports: parsed.data.printers, printers, failover: { online, nowMs }, nowMs }).catch(() => 0);
+    }
+    const agents = Math.max(1, online.length);
+    try {
+```
+
+In `apps/cafe/lib/print-device.ts`, find:
+
+```ts
+import { PrintDevice } from "@/models/PrintDevice";
+
+// Printing redesign, Phase 1 (spec §6.4, §10): the device heartbeat. It rides the agent's existing
+// wake poll, and lease calls refresh it too, so it adds no request. Atlas M0 budget: at most ONE
+// write per device per 30 s, however often the agent polls. Never calls connectDB(). No console.*.
+
+export interface PrintDeviceBeat {
+  deviceId: string;
+```
+
+Replace it with:
+
+```ts
+import { PrintDevice } from "@/models/PrintDevice";
+
+// Printing redesign, Phase 1 (spec §6.4, §10): the device heartbeat. It rides the agent's existing
+// wake poll, and lease calls refresh it too, so it adds no request. Atlas M0 budget: at most one
+// write per device per 30 s by each path (its wake's, by beatAt's own clock since Session 3C, and its
+// leases'), however often the agent polls. Never calls connectDB(). No console.*.
+
+export interface PrintDeviceBeat {
+  deviceId: string;
+```
+
+In `apps/cafe/lib/print-device.ts`, find:
+
+```ts
+  nativeProtocol?: number;
+}
+
+/** The wake's heartbeat: creates the row on first sight, refreshes it at most every 30 s. */
+export async function beatPrintDevice(beat: PrintDeviceBeat, nowMs: number): Promise<void> {
+  // The upsert's "one row per device" rests on the unique deviceId index, and connectDB()'s autoIndex
+  // build is not awaited. Without this, a cold-start wake could insert a second row before the index
+  // exists; the build then fails for good and countOnlineAgents over-counts, shrinking every agent's
+  // wake share. .init() is memoized per process (house rule: due-payment.ts, crud-route.ts).
+  await PrintDevice.init();
+  try {
+    await PrintDevice.updateOne(
+      { deviceId: beat.deviceId, lastSeenAt: { $lt: new Date(nowMs - PRINT_DEVICE_HEARTBEAT_WRITE_MS) } },
+      {
+        $set: {
+          label: beat.label,
+          shell: beat.shell,
+          capabilities: beat.capabilities,
+          lastSeenAt: new Date(nowMs),
+          ...(beat.appVersion !== undefined ? { appVersion: beat.appVersion } : {}),
+          ...(beat.nativeProtocol !== undefined ? { nativeProtocol: beat.nativeProtocol } : {}),
+        },
+```
+
+Replace it with:
+
+```ts
+  nativeProtocol?: number;
+}
+
+/** The wake's heartbeat: creates the row on first sight, refreshes it at most every 30 s. Session 3C (G-1): it also stamps
+ *  `beatAt`, the wake's own clock (a lease's touch refreshes lastSeenAt only), and is due whenever either clock is 30 s
+ *  old, so a writer whose leases keep touching its row can never starve the write that says it may take a printer over. */
+export async function beatPrintDevice(beat: PrintDeviceBeat, nowMs: number): Promise<void> {
+  // The upsert's "one row per device" rests on the unique deviceId index, and connectDB()'s autoIndex
+  // build is not awaited. Without this, a cold-start wake could insert a second row before the index
+  // exists; the build then fails for good and countOnlineAgents over-counts, shrinking every agent's
+  // wake share. .init() is memoized per process (house rule: due-payment.ts, crud-route.ts).
+  await PrintDevice.init();
+  const due = new Date(nowMs - PRINT_DEVICE_HEARTBEAT_WRITE_MS);
+  try {
+    await PrintDevice.updateOne(
+      { deviceId: beat.deviceId, $or: [{ lastSeenAt: { $lt: new Date(nowMs - PRINT_DEVICE_HEARTBEAT_WRITE_MS) } }, { beatAt: { $not: { $gte: due } } }] },
+      {
+        $set: {
+          label: beat.label,
+          shell: beat.shell,
+          capabilities: beat.capabilities,
+          lastSeenAt: new Date(nowMs),
+          beatAt: new Date(nowMs),
+          ...(beat.appVersion !== undefined ? { appVersion: beat.appVersion } : {}),
+          ...(beat.nativeProtocol !== undefined ? { nativeProtocol: beat.nativeProtocol } : {}),
+        },
+```
+
+In `apps/cafe/lib/print-device.ts`, find:
+
+```ts
+  return Math.max(1, online);
+}
+
+/** Phase 3 (spec §9.3): the devices seen in the last 90 s, and whether each may write any network printer the setup names
+ *  (its wake said `lanFailover`). One bounded read of a collection of a few rows (the wake's heartbeat keeps it). */
+export async function readOnlinePrintDevices(nowMs: number): Promise<PrinterFailover["online"]> {
+  const rows = await PrintDevice.find({ lastSeenAt: { $gte: new Date(nowMs - PRINT_DEVICE_ONLINE_MS) } })
+    .select("deviceId capabilities.lanFailover")
+    .limit(PRINT_DEVICES_LIST_MAX)
+    .lean<Array<{ deviceId: string; capabilities?: { lanFailover?: boolean } }>>();
+  return rows.map((row) => ({ deviceId: row.deviceId, lanFailover: row.capabilities?.lanFailover === true }));
+}
+
+/** Session 2D (spec §11 Devices): the devices that print or lease, the most recently seen first (so the online ones
+ *  lead), for the Printer setup page and a network printer's printing device. One bounded read; no write. */
+export async function listPrintDevices(nowMs: number): Promise<PrintDeviceSummary[]> {
+  const rows = await PrintDevice.find()
+    .select("deviceId label shell lastSeenAt nativeProtocol capabilities.lanFailover")
+    .sort({ lastSeenAt: -1 })
+    .limit(PRINT_DEVICES_LIST_MAX)
+    .lean<Array<{ deviceId: string; label: string; shell: PrintDeviceShell; lastSeenAt: Date; nativeProtocol?: number; capabilities?: { lanFailover?: boolean } }>>();
+  return rows.map((row) => ({
+    deviceId: row.deviceId,
+    label: row.label,
+```
+
+Replace it with:
+
+```ts
+  return Math.max(1, online);
+}
+
+/** Session 3C (G-1, the 3A review gate's exit pre-run): a device may take a network printer over only while its own wake
+ *  is fresh (it said lanFailover within the online window). A lease refreshes lastSeenAt but never beatAt, so a former
+ *  writer whose leases keep it online, but whose page no longer polls the wake (its printers moved), is never picked for a
+ *  takeover its page would not print. */
+function lanFailoverNow(row: { capabilities?: { lanFailover?: boolean }; beatAt?: Date }, nowMs: number): boolean {
+  return row.capabilities?.lanFailover === true && row.beatAt !== undefined && row.beatAt.getTime() >= nowMs - PRINT_DEVICE_ONLINE_MS;
+}
+
+/** Phase 3 (spec §9.3): the devices seen in the last 90 s, and whether each may write any network printer the setup names
+ *  (its wake said `lanFailover`, and that wake is fresh: lanFailoverNow). One bounded read of a collection of a few rows
+ *  (the wake's heartbeat keeps it). */
+export async function readOnlinePrintDevices(nowMs: number): Promise<PrinterFailover["online"]> {
+  const rows = await PrintDevice.find({ lastSeenAt: { $gte: new Date(nowMs - PRINT_DEVICE_ONLINE_MS) } })
+    .select("deviceId capabilities.lanFailover beatAt")
+    .limit(PRINT_DEVICES_LIST_MAX)
+    .lean<Array<{ deviceId: string; capabilities?: { lanFailover?: boolean }; beatAt?: Date }>>();
+  return rows.map((row) => ({ deviceId: row.deviceId, lanFailover: lanFailoverNow(row, nowMs) }));
+}
+
+/** Session 2D (spec §11 Devices): the devices that print or lease, the most recently seen first (so the online ones
+ *  lead), for the Printer setup page and a network printer's printing device. One bounded read; no write. */
+export async function listPrintDevices(nowMs: number): Promise<PrintDeviceSummary[]> {
+  const rows = await PrintDevice.find()
+    .select("deviceId label shell lastSeenAt nativeProtocol capabilities.lanFailover beatAt")
+    .sort({ lastSeenAt: -1 })
+    .limit(PRINT_DEVICES_LIST_MAX)
+    .lean<Array<{ deviceId: string; label: string; shell: PrintDeviceShell; lastSeenAt: Date; nativeProtocol?: number; capabilities?: { lanFailover?: boolean }; beatAt?: Date }>>();
+  return rows.map((row) => ({
+    deviceId: row.deviceId,
+    label: row.label,
+```
+
+In `apps/cafe/lib/print-device.ts`, find:
+
+```ts
+    lastSeenAt: row.lastSeenAt.toISOString(),
+    // Session 2F1 (spec §9.2): the POS app's bridge version (2: it prints several printers), for the printer form.
+    ...(row.nativeProtocol !== undefined ? { nativeProtocol: row.nativeProtocol } : {}),
+    // Session 3B (spec §9.3): it can take a network printer over, for the setup page's words.
+    ...(row.capabilities?.lanFailover === true ? { lanFailover: true as const } : {}),
+  }));
+}
+```
+
+Replace it with:
+
+```ts
+    lastSeenAt: row.lastSeenAt.toISOString(),
+    // Session 2F1 (spec §9.2): the POS app's bridge version (2: it prints several printers), for the printer form.
+    ...(row.nativeProtocol !== undefined ? { nativeProtocol: row.nativeProtocol } : {}),
+    // Session 3B (spec §9.3): it can take a network printer over, for the setup page's words; Session 3C (G-1): only while
+    // its own wake is fresh, as the server decides.
+    ...(lanFailoverNow(row, nowMs) ? { lanFailover: true as const } : {}),
+  }));
+}
+```
+
+In `apps/cafe/lib/print-failover.ts`, find:
+
+```ts
+  type PrinterFailover,
+  type PrinterHealthReport,
+} from "@pos/shared/print-failover";
+import { routablePrinterOf, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
+import { Printer } from "@/models/Printer";
+import { PrintJob } from "@/models/PrintJob";
+import { readOnlinePrintDevices } from "@/lib/print-device";
+```
+
+Replace it with:
+
+```ts
+  type PrinterFailover,
+  type PrinterHealthReport,
+} from "@pos/shared/print-failover";
+import { printerWriterDeviceId, routablePrinterOf, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
+import { Printer } from "@/models/Printer";
+import { PrintJob } from "@/models/PrintJob";
+import { readOnlinePrintDevices } from "@/lib/print-device";
+```
+
+In `apps/cafe/lib/print-failover.ts`, find:
+
+```ts
+/** §9.3: a writer that could not reach a network printer (its ack: failed, sent "no", reason "unreachable") is skipped
+ *  for it (at least 5 minutes, then until its own lease names the printer again: endPrinterSkipOf), so another device
+ *  that can write network printers takes it over. Only the printer's writer now is skipped: an ack from a device that
+ *  no longer writes it changes nothing. One write to the printer (the skips that still hold, this device's renewed);
+ *  when the writer changes, the waiting slips move to the new one at once. Returns who writes it now. */
+export async function recordPrinterUnreachable(input: { printerId: string; deviceId: string; nowMs: number }): Promise<string | null> {
+  const printer = routablePrinterOf(await listPrinters(), input.printerId);
+  if (printer === null || printer.connection.kind !== "lan") return null;
+  const failover = { online: await readOnlinePrintDevices(input.nowMs), nowMs: input.nowMs };
+  const before = printerActiveWriter(printer, failover);
+  if (before !== input.deviceId) return before;
+  // A skip holds while its `until` (the end of its first 5 minutes) is later than this (printerSkipHolds).
+  const heldFrom = new Date(input.nowMs + PRINTER_UNREACHABLE_SKIP_MS - PRINTER_UNREACHABLE_HOLD_MS);
+  const until = new Date(input.nowMs + PRINTER_UNREACHABLE_SKIP_MS);
+```
+
+Replace it with:
+
+```ts
+/** §9.3: a writer that could not reach a network printer (its ack: failed, sent "no", reason "unreachable") is skipped
+ *  for it (at least 5 minutes, then until its own lease names the printer again: endPrinterSkipOf), so another device
+ *  that can write network printers takes it over. Only the printer's writer now is skipped: an ack from a device that
+ *  no longer writes it changes nothing. Session 3C (the 3B review's m-2): or a `candidate`, a device that may take the
+ *  printer over and whose beat says it cannot reach it, skipped ahead of time. One write to the printer (the skips that
+ *  still hold, this device's renewed); when the writer changes, the waiting slips move to the new one at once. Returns
+ *  who writes it now. */
+export async function recordPrinterUnreachable(input: { printerId: string; deviceId: string; nowMs: number; candidate?: boolean }): Promise<string | null> {
+  const printer = routablePrinterOf(await listPrinters(), input.printerId);
+  if (printer === null || printer.connection.kind !== "lan") return null;
+  const failover = { online: await readOnlinePrintDevices(input.nowMs), nowMs: input.nowMs };
+  const before = printerActiveWriter(printer, failover);
+  if (before !== input.deviceId && input.candidate !== true) return before;
+  // A skip holds while its `until` (the end of its first 5 minutes) is later than this (printerSkipHolds).
+  const heldFrom = new Date(input.nowMs + PRINTER_UNREACHABLE_SKIP_MS - PRINTER_UNREACHABLE_HOLD_MS);
+  const until = new Date(input.nowMs + PRINTER_UNREACHABLE_SKIP_MS);
+```
+
+In `apps/cafe/lib/print-failover.ts`, find:
+
+```ts
+  ]);
+  const skips = [...(printer.unreachable ?? []).filter((skip) => skip.deviceId !== input.deviceId), { deviceId: input.deviceId, until: until.toISOString() }];
+  const writer = printerActiveWriter({ ...printer, unreachable: skips }, failover);
+  if (writer !== null && writer !== input.deviceId) await retargetPrinterJobs(printer.id, writer, input.nowMs);
+  return writer;
+}
+```
+
+Replace it with:
+
+```ts
+  ]);
+  const skips = [...(printer.unreachable ?? []).filter((skip) => skip.deviceId !== input.deviceId), { deviceId: input.deviceId, until: until.toISOString() }];
+  const writer = printerActiveWriter({ ...printer, unreachable: skips }, failover);
+  if (writer !== null && writer !== before) await retargetPrinterJobs(printer.id, writer, input.nowMs);
+  return writer;
+}
+```
+
+In `apps/cafe/lib/print-failover.ts`, find:
+
+```ts
+ *  leased and never acked, while another device could print them. "connected" from a device skipped for it ends its skip
+ *  once the first 5 minutes are up, exactly as its lease naming the printer does, so the primary gets its printer back
+ *  at its next beat. Only a network printer; a skip already held, or one not yet past its 5 minutes, writes nothing.
+ *  Returns how many skips it started or ended (one write each). */
+export async function skipUnreachableFromBeat(input: {
+  deviceId: string;
+  reports: readonly PrinterHealthReport[];
+  printers: readonly PrinterConfig[];
+  failover: PrinterFailover;
+```
+
+Replace it with:
+
+```ts
+ *  leased and never acked, while another device could print them. "connected" from a device skipped for it ends its skip
+ *  once the first 5 minutes are up, exactly as its lease naming the printer does, so the primary gets its printer back
+ *  at its next beat. Only a network printer; a skip already held, or one not yet past its 5 minutes, writes nothing.
+ *  Session 3C (the 3B review's m-2): "disconnected" from a device that may take the printer over (its beat says
+ *  `lanFailover`; the setup names another device) skips it too, ahead of time, so a failover never picks a candidate that
+ *  cannot print it and waits for that device's first beat as the writer. Returns how many skips it started or ended (one
+ *  write each). */
+export async function skipUnreachableFromBeat(input: {
+  deviceId: string;
+  lanFailover?: boolean;
+  reports: readonly PrinterHealthReport[];
+  printers: readonly PrinterConfig[];
+  failover: PrinterFailover;
+```
+
+In `apps/cafe/lib/print-failover.ts`, find:
+
+```ts
+      writes += 1;
+      continue;
+    }
+    if (report.link !== "disconnected" || printerActiveWriter(printer, input.failover) !== input.deviceId) continue;
+    if (printerSkippedWriters(printer, input.nowMs).includes(input.deviceId)) continue;
+    await recordPrinterUnreachable({ printerId: printer.id, deviceId: input.deviceId, nowMs: input.nowMs });
+    writes += 1;
+  }
+  return writes;
+```
+
+Replace it with:
+
+```ts
+      writes += 1;
+      continue;
+    }
+    if (report.link !== "disconnected") continue;
+    const candidate = input.lanFailover === true && printerWriterDeviceId(printer) !== input.deviceId;
+    if (!candidate && printerActiveWriter(printer, input.failover) !== input.deviceId) continue;
+    if (printerSkippedWriters(printer, input.nowMs).includes(input.deviceId)) continue;
+    await recordPrinterUnreachable({ printerId: printer.id, deviceId: input.deviceId, nowMs: input.nowMs, candidate });
+    writes += 1;
+  }
+  return writes;
+```
+
+In `apps/cafe/models/PrintDevice.ts`, find:
+
+```ts
+  appVersion?: string;
+  nativeProtocol?: number; // the Android bridge version; 1 = one printer only
+  tokenSlips?: boolean; // Phase 3 (the token fix's M-2): what its last lease said: its page prints "token" jobs
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+Replace it with:
+
+```ts
+  appVersion?: string;
+  nativeProtocol?: number; // the Android bridge version; 1 = one printer only
+  tokenSlips?: boolean; // Phase 3 (the token fix's M-2): what its last lease said: its page prints "token" jobs
+  beatAt?: Date; // Phase 3 Session 3C (G-1): its own wake's last heartbeat write (a lease never writes it)
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+In `apps/cafe/models/PrintDevice.ts`, find:
+
+```ts
+    nativeProtocol: { type: Number },
+    // Phase 3 (the token fix's M-2): written by the lease's touch, and only when it changes.
+    tokenSlips: { type: Boolean },
+  },
+  { timestamps: true },
+);
+```
+
+Replace it with:
+
+```ts
+    nativeProtocol: { type: Number },
+    // Phase 3 (the token fix's M-2): written by the lease's touch, and only when it changes.
+    tokenSlips: { type: Boolean },
+    // Phase 3 Session 3C (G-1): only the wake writes it, so a device whose leases keep it online but whose page no longer
+    // polls the wake never counts as one that can take a network printer over (lib/print-device.ts lanFailoverNow).
+    beatAt: { type: Date },
+  },
+  { timestamps: true },
+);
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-lifecycle-paths.test.ts lib/print-setup-paths.test.ts lib/print-setup-ui-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 57`; `# pass 57`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint lib/print-failover.ts lib/print-device.ts models/PrintDevice.ts app/api/print-jobs/wake/route.ts scripts/print-host-live/candidates.ts scripts/verify-print-host-live.ts lib/print-lifecycle-paths.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_print_host_3c npm run verify:print:live 2>&1 | grep -E "passed,|FAIL"`
+Expected: `444 passed, 0 failed`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/app/api/print-jobs/wake/route.ts apps/cafe/lib/print-device.ts apps/cafe/lib/print-failover.ts apps/cafe/lib/print-lifecycle-paths.test.ts apps/cafe/models/PrintDevice.ts apps/cafe/scripts/print-host-live/candidates.ts apps/cafe/scripts/verify-print-host-live.ts
+git commit -m "fix(print): only a device whose own wake is fresh may take a network printer over (PrintDevice.beatAt, never starved by a lease's touch), and a device that may take one over but cannot reach it is skipped ahead of time (Phase 3 Session 3C, C0: the 3A gate's G-1, the 3B review's m-2)"
+```
+
+---
+
+### Task C1: the page's beat: a printer reads down only once it stayed so 20 s (m-3); a printer it may take over that its app lacks reads down (m-1); a later app's unknown paper or cover reads as nothing (m-4); after a rollback of the web the ack and the wake go once more as an older server takes them (the gate review's I-1); an empty app gets its own printer first, alone (m-A)
+
+**Files:**
+- Modify: `packages/shared/src/print-failover.ts` (`PRINTER_DOWN_SETTLE_MS`)
+- Modify: `apps/cafe/lib/print-agent-health.ts` (`SettledLink`; `settledLinkOf(memory, key, status, nowMs)`; `printerHealthReportsOf` takes `missing` and `nowMs`)
+- Create: `apps/cafe/lib/print-agent-skew.ts` (`createOlderServerFallback`, `printAgentSkew`, `olderAckBody`, `olderWakeBody`)
+- Modify: `apps/cafe/lib/printer/native-bridge-v2.ts` (lenient paper, cover and error)
+- Modify: `apps/cafe/lib/print-agent-printers.ts` (`AgentPrinters.takeoverMissingIds`; `lanPrintersToAdd` puts only its own printer into an empty app)
+- Modify: `apps/cafe/hooks/use-print-agent.ts`, `hooks/use-print-agent-wake.ts` (the ack and the wake through `printAgentSkew`; the beat's health reads `missing` and the clock)
+- Tests: `apps/cafe/lib/print-agent-health.test.ts` (rewritten for the clock), `lib/print-agent-skew.test.ts` (new), `lib/printer/native-pool.test.ts`, `lib/print-agent-printers.test.ts`, `lib/print-agent-paths.test.ts`, `lib/print-wake.test.ts`; `apps/cafe/package.json` (the new test file in the chain)
+
+**Interfaces produced:** `PRINTER_DOWN_SETTLE_MS` (`@pos/shared/print-failover`); `SettledLink`, `settledLinkOf(memory, key, status, nowMs)`, `printerHealthReportsOf({ …, missing, nowMs }, memory)` (`lib/print-agent-health.ts`); `OLDER_SERVER_REFUSAL`, `createOlderServerFallback()`, `printAgentSkew`, `olderAckBody(body)`, `olderWakeBody(body)` (`lib/print-agent-skew.ts`); `AgentPrinters.takeoverMissingIds`.
+
+**m-3 (the 3B session's review).** One settled `disconnected` beat started a skip that held its 5-minute floor, so in a one-writer cafe with a backup, a slip queued at a sweep tick after a blip moved to the backup, labelled, though its own printer printed again. 3C's idle probe (C5) makes a short `disconnected` spell likelier (one failed probe that the app's 2 s retry answers). Now the page reports a printer `disconnected` in its beat only once it has stayed down `PRINTER_DOWN_SETTLE_MS` (20 s, no `connected` in between; the app's own probes while it is down keep the clock). An `unreachable` ack still skips at once. Cost: a real outage reaches the server's skip up to 20 s later than before (the ack path is unchanged).
+
+**m-1 (the 3B session's review; ruled with the gate review's preferred fix).** A setup writer on bridge v2 whose POS app lists no printer said `lanFailover`, so it could be picked to take over a network printer it never adds (E-1's guard), and the slips waited. Now a network printer this device may take over that its app does not list is reported `disconnected` (through the same 20 s clock, so the moment after a reload while the page adds them costs nothing); with C0's candidate skip the server never picks it for that printer, and its backup applies. This also covers a select the app refused, which a `lanFailover` gated on the app's printer count would not.
+
+**m-4 (the 3B session's review).** An unknown `paper` or `cover` value from a later app made the whole `printer.status` answer BAD_REQUEST, so the page's pool never became active. Each optional field now reads leniently (`.catch(undefined)`): an unknown value says nothing. C5's parity pin pins the app's values to the page's.
+
+**I-1 (the 3B review gate's fresh review).** Every ack of a 3B page carries `tokenSlips`, and a refusal `reason`; a server from before Phase 3 (a rollback of the web to `main`) refuses them (its schemas are strict: 400 "Validation failed"), and the ack store reads a 400 as answered, so each printed KOT's lease would expire into a REPRINT and print twice. The wake's `lanFailover`, `tokenSlips` and `printers` are refused the same way. Now a body refused with exactly that answer is sent once more without the Phase 3 fields (they mean nothing to that server), and once that works the page sends the older body until it reloads: one more request per page after a rollback, none against a Phase 3 server. A body the older form does not cure is thrown as before. C2 adds the runbook's rollback line.
+
+**m-A (the gate review).** `lanPrintersToAdd` let the takeover printers through into an empty app when the device's own network printer was in the same list; if the app refused that one select, another device's printer could become the app's default. An empty app now gets only its own; the takeover printers follow one status event later.
+
+- [ ] **Step 1: The failing tests first**
+
+Replace the whole of `apps/cafe/lib/print-agent-health.test.ts` with:
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+import { PRINTER_DOWN_SETTLE_MS } from "@pos/shared/print-failover";
+import { printerHealthReportsOf, settledLinkOf, type SettledLink } from "@/lib/print-agent-health";
+import type { PoolPrinter } from "@/lib/printer/native-pool";
+
+// Phase 3 Session 3B (spec §10, P3-6): the health this page reports on its wake, for the printers it prints here. The
+// server keeps a report only from the device that writes the printer now, and only when it changed. Session 3C (the 3B
+// review's m-3): a printer reads disconnected only once it stayed down PRINTER_DOWN_SETTLE_MS, so a blip (one failed
+// probe the app's 2 s retry answers) never starts a skip; and (m-1) a network printer this device may take over that its
+// app does not list reads as down, so the server never picks it for one it cannot print.
+
+const TCP = { kind: "native" as const, transport: "tcp" as const, printerId: "tcp:10.0.2.2:9100", name: "Network printer 10.0.2.2", paper: "80mm" as const };
+const T0 = Date.parse("2026-10-08T12:00:00Z");
+
+function poolPrinter(id: string, status: PoolPrinter["status"], over: Partial<PoolPrinter> = {}): PoolPrinter {
+  return { id, printer: { ...TCP, printerId: id }, status, message: null, ...over };
+}
+
+test("3C (m-3): settledLinkOf: connected settles at once; a printer reads disconnected only once it stayed down 20 s; a probe in between keeps the clock", () => {
+  assert.equal(PRINTER_DOWN_SETTLE_MS, 20_000);
+  const memory = new Map<string, SettledLink>();
+  assert.equal(settledLinkOf(memory, "a", "connecting", T0), null, "nothing settled yet");
+  assert.equal(settledLinkOf(memory, "a", "disconnected", T0), null, "down a moment: nothing yet");
+  assert.equal(settledLinkOf(memory, "a", "connecting", T0 + 5_000), null, "the app's reconnect probe keeps the clock");
+  assert.equal(settledLinkOf(memory, "a", "disconnected", T0 + PRINTER_DOWN_SETTLE_MS - 1), null);
+  assert.equal(settledLinkOf(memory, "a", "disconnected", T0 + PRINTER_DOWN_SETTLE_MS), "disconnected", "down 20 s: disconnected");
+  assert.equal(settledLinkOf(memory, "a", "connecting", T0 + 30_000), "disconnected", "the app's 30 s probe of a down printer never flickers it");
+  assert.equal(settledLinkOf(memory, "a", "connected", T0 + 40_000), "connected", "back: connected at once");
+  assert.equal(settledLinkOf(memory, "a", "disconnected", T0 + 50_000), "connected", "a blip: still connected");
+  assert.equal(settledLinkOf(memory, "a", "connecting", T0 + 52_000), "connected");
+  assert.equal(settledLinkOf(memory, "a", "connected", T0 + 55_000), "connected", "answered within 20 s: never reported down");
+  assert.equal(settledLinkOf(memory, "a", "disconnected", T0 + 80_000), "connected", "a new spell starts its own clock");
+  assert.equal(settledLinkOf(memory, "a", "disconnected", T0 + 100_000), "disconnected");
+  assert.equal(settledLinkOf(memory, "t", "needs-tap", T0), null, "a Bluetooth printer waiting for a tap…");
+  assert.equal(settledLinkOf(memory, "t", "needs-tap", T0 + PRINTER_DOWN_SETTLE_MS), "disconnected", "…cannot print: down once it stays so");
+  assert.equal(settledLinkOf(memory, "b", "elsewhere", T0), null, "another tab owns it: this tab says nothing");
+  assert.equal(settledLinkOf(memory, "b", "none", T0), null);
+});
+
+test("printerHealthReportsOf: each of the app's printers by its own state and status; the device's one printer; nothing from the Windows spooler", () => {
+  const memory = new Map<string, SettledLink>();
+  const pool = [
+    poolPrinter("tcp:10.0.2.2:9100", "connected", { paper: "out" }),
+    poolPrinter("tcp:10.0.2.2:9101", "disconnected", { cover: "open", error: true }),
+    poolPrinter("tcp:10.0.2.2:9102", "connecting"),
+  ];
+  const targets = {
+    "p-kitchen": { nativeId: "tcp:10.0.2.2:9100", paper: "80mm" as const },
+    "p-bar": { nativeId: "tcp:10.0.2.2:9101", paper: "80mm" as const },
+    "p-new": { nativeId: "tcp:10.0.2.2:9102", paper: "80mm" as const },
+    "p-gone": { nativeId: "tcp:10.0.2.2:9199", paper: "80mm" as const },
+  };
+  const input = { localIds: ["p-kitchen", "p-bar", "p-new", "p-gone"], targets, pool, device: "none" as const, windows: false, missing: [] };
+  assert.deepEqual(printerHealthReportsOf({ ...input, nowMs: T0 }, memory), [{ printerId: "p-kitchen", link: "connected", paper: "out" }], "the bar printer only just went down: nothing for it yet");
+  assert.deepEqual(
+    printerHealthReportsOf({ ...input, nowMs: T0 + PRINTER_DOWN_SETTLE_MS }, memory),
+    [
+      { printerId: "p-kitchen", link: "connected", paper: "out" },
+      { printerId: "p-bar", link: "disconnected", cover: "open", error: true },
+    ],
+    "a printer still connecting, or one the app does not list, says nothing",
+  );
+  assert.deepEqual(printerHealthReportsOf({ localIds: ["p-own"], targets: {}, pool: null, device: "connected", windows: false, missing: [], nowMs: T0 }, memory), [{ printerId: "p-own", link: "connected" }], "the release APK or a browser: its one printer");
+  assert.deepEqual(printerHealthReportsOf({ localIds: ["p-win"], targets: { "p-win": { printerName: "EPSON", paper: "80mm" } }, pool: null, device: "connected", windows: true, missing: [], nowMs: T0 }, memory), [], "the Windows app reports nothing until 1.12.0 (Session 3E)");
+});
+
+test("3C (m-1): a network printer this device may take over that its app does not list reads down once it stays missing 20 s", () => {
+  const memory = new Map<string, SettledLink>();
+  const input = { localIds: [], targets: {}, pool: [], device: "none" as const, windows: false, missing: ["p-theirs"] };
+  assert.deepEqual(printerHealthReportsOf({ ...input, nowMs: T0 }, memory), [], "just loaded: the page is still adding it to the app");
+  assert.deepEqual(printerHealthReportsOf({ ...input, nowMs: T0 + PRINTER_DOWN_SETTLE_MS }, memory), [{ printerId: "p-theirs", link: "disconnected" }], "still missing: this device cannot print it");
+  assert.deepEqual(printerHealthReportsOf({ ...input, missing: [], nowMs: T0 + 30_000 }, memory), [], "once the app lists it, its own state speaks for it");
+  assert.deepEqual(printerHealthReportsOf({ ...input, nowMs: T0 + 31_000 }, memory), [], "missing again later: a fresh 20 s");
+});
+```
+
+In `apps/cafe/lib/print-agent-paths.test.ts`, find:
+
+```ts
+  assert.ok(wake.includes("...(health.length > 0 ? { printers: health } : {}),"), "the health of the printers it prints here rides the beat");
+  assert.ok(wake.includes("setTakenOverPrinters(data.takenOver ?? []);"), "the printers it took over, kept for its dot");
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.ok(agent.includes('ack: (id, body) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", { ...body, tokenSlips: true }),'), "every ack says tokens");
+  assert.ok(agent.includes("networkPrinter: (job) => job.printerId !== undefined && lanRef.current.includes(job.printerId),"), "a network printer it prints here");
+  assert.ok(agent.includes("setPrinterHealthSource(() =>"), "the beat reads its printers' health from the agent's own lists");
+  assert.ok(src("apps/cafe/lib/print-agent-seams.ts").includes("`?device=${encodeURIComponent(pulseDevice)}&${PRINT_PULSE_TOKENS_PARAM}=${PRINT_HEADER_ON}`"), "the pulse says tokens");
+  assert.ok(src("apps/cafe/lib/print-agent.ts").includes("const body = failedAckBody(deps.deviceId, job.epoch, outcome, deps.networkPrinter?.(job) === true);"), "the agent's refusal says unreachable for a network printer");
+});
+```
+
+Replace it with:
+
+```ts
+  assert.ok(wake.includes("...(health.length > 0 ? { printers: health } : {}),"), "the health of the printers it prints here rides the beat");
+  assert.ok(wake.includes("setTakenOverPrinters(data.takenOver ?? []);"), "the printers it took over, kept for its dot");
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  // Session 3C (the 3B review gate's I-1) deliberately changed: through the older-server fallback (pinned below).
+  assert.ok(agent.includes('printAgentSkew.send({ ...body, tokenSlips: true }, olderAckBody, (sent) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", sent)),'), "every ack says tokens");
+  assert.ok(agent.includes("networkPrinter: (job) => job.printerId !== undefined && lanRef.current.includes(job.printerId),"), "a network printer it prints here");
+  assert.ok(agent.includes("setPrinterHealthSource(() =>"), "the beat reads its printers' health from the agent's own lists");
+  assert.ok(src("apps/cafe/lib/print-agent-seams.ts").includes("`?device=${encodeURIComponent(pulseDevice)}&${PRINT_PULSE_TOKENS_PARAM}=${PRINT_HEADER_ON}`"), "the pulse says tokens");
+  assert.ok(src("apps/cafe/lib/print-agent.ts").includes("const body = failedAckBody(deps.deviceId, job.epoch, outcome, deps.networkPrinter?.(job) === true);"), "the agent's refusal says unreachable for a network printer");
+});
+
+// Session 3C (the 3B review gate's I-1; the 3B review's m-1 and m-3): after a rollback of the web, a server from before
+// Phase 3 refuses the ack's and the wake's new fields; the page sends them once more without them, and from then on the
+// older body. The beat reads a printer down only once it stayed so 20 s, and names down a printer it may take over that
+// its app does not list.
+test("PIN (3C): the ack and the wake go through the older-server fallback; the beat's health reads the clock and the takeover printers the app lacks", () => {
+  const wake = src("apps/cafe/hooks/use-print-agent-wake.ts");
+  assert.ok(wake.includes("const data = await printAgentSkew.send(wakeBody(deviceId), olderWakeBody, (body) => apiSend<PrintWakeBeatData>(WAKE_URL, \"POST\", body));"), "the wake falls back once to the older body");
+  const skew = src("apps/cafe/lib/print-agent-skew.ts");
+  assert.ok(skew.includes("export const printAgentSkew = createOlderServerFallback();"), "one fallback for the page: the ack and the wake learn it together");
+  assert.ok(skew.includes('if (!(error instanceof ApiError) || error.status !== 400 || error.message !== OLDER_SERVER_REFUSAL) throw error;'), "only a refused body is sent again");
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.ok(agent.includes("missing: missingRef.current,"), "the takeover printers the app lacks ride the beat as down");
+  assert.ok(agent.includes("nowMs: Date.now(),"), "the beat's health reads the clock (a printer reads down only once it stayed so)");
+});
+```
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+  const kitchen = printer("kitchen", { kind: "lan", host: "192.168.1.61", port: 9100 }, { primaryDeviceId: "dev-k" });
+  const bar = printer("bar", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "AA:BB" });
+  const off = printer("off", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "dev-a", enabled: false });
+  assert.deepEqual(agentPrintersOf([counter, kitchen, bar, off], "dev-a", NATIVE_TCP, null), { printersMode: true, isWriter: true, localIds: ["counter"], lanIds: ["counter"], takeoverIds: [], targets: {} }, "it writes the counter and the bar; only the counter is its printer (a network printer: Session 3B's lanIds)");
+  assert.deepEqual(agentPrintersOf([counter, kitchen], "dev-p", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], targets: {} }, "an ordering phone writes nothing");
+  assert.deepEqual(agentPrintersOf([], "dev-a", NATIVE_TCP, null), { printersMode: false, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], targets: {} }, "simple mode");
+  assert.deepEqual(agentPrintersOf([counter], "", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], targets: {} }, "no device identity");
+});
+
+// Phase 2 Session 2E (spec §9.2): one Windows PC prints several printers, each by its own Windows name. An older app
+```
+
+Replace it with:
+
+```ts
+  const kitchen = printer("kitchen", { kind: "lan", host: "192.168.1.61", port: 9100 }, { primaryDeviceId: "dev-k" });
+  const bar = printer("bar", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "AA:BB" });
+  const off = printer("off", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "dev-a", enabled: false });
+  assert.deepEqual(agentPrintersOf([counter, kitchen, bar, off], "dev-a", NATIVE_TCP, null), { printersMode: true, isWriter: true, localIds: ["counter"], lanIds: ["counter"], takeoverIds: [], takeoverMissingIds: [], targets: {} }, "it writes the counter and the bar; only the counter is its printer (a network printer: Session 3B's lanIds)");
+  assert.deepEqual(agentPrintersOf([counter, kitchen], "dev-p", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], takeoverMissingIds: [], targets: {} }, "an ordering phone writes nothing");
+  assert.deepEqual(agentPrintersOf([], "dev-a", NATIVE_TCP, null), { printersMode: false, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], takeoverMissingIds: [], targets: {} }, "simple mode");
+  assert.deepEqual(agentPrintersOf([counter], "", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], takeoverMissingIds: [], targets: {} }, "no device identity");
+});
+
+// Phase 2 Session 2E (spec §9.2): one Windows PC prints several printers, each by its own Windows name. An older app
+```
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+  assert.deepEqual(takeoverPrintersOf([theirs], "dev-a", POOL), [], "a device that writes nothing takes nothing over");
+  assert.deepEqual(agentPrintersOf([theirs], "dev-a", NATIVE_TCP, null, POOL).takeoverIds, [], "and lists none");
+  const empty = { printers: [] };
+  assert.deepEqual(lanPrintersToAdd([mine, theirs], "dev-a", empty).map((p) => p.port), [9100, 9101], "an app with no printer gets its own first (its default), then the one it may take over");
+  assert.deepEqual(lanPrintersToAdd([bt, { ...theirs, primaryDeviceId: "dev-b" }, printer("btA", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "FF:EE" })], "dev-a", empty), [], "an app with no printer and none of its own to add: never seeded with another device's printer");
+});
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual(takeoverPrintersOf([theirs], "dev-a", POOL), [], "a device that writes nothing takes nothing over");
+  assert.deepEqual(agentPrintersOf([theirs], "dev-a", NATIVE_TCP, null, POOL).takeoverIds, [], "and lists none");
+  const empty = { printers: [] };
+  // Session 3C (the 3B gate review's m-A, deliberately changed): an app with no printer gets only its own; the one it may
+  // take over follows once the app lists its own (one status event later), so a refused select of its own can never let
+  // another device's printer become its default.
+  assert.deepEqual(lanPrintersToAdd([mine, theirs], "dev-a", empty).map((p) => p.port), [9100], "an app with no printer gets its own first (its default), and nothing else yet");
+  assert.deepEqual(lanPrintersToAdd([mine, theirs], "dev-a", { printers: [{ id: "tcp:10.0.2.2:9100", status: "connecting" as const }] }).map((p) => p.port), [9101], "then the one it may take over");
+  // Session 3C (the 3B review's m-1): one it may take over that its app does not list is named, so its beat says it
+  // cannot print it (lib/print-agent-health.ts); an app with no printer lists none of them.
+  assert.deepEqual(agentPrintersOf([mine, theirs], "dev-a", NATIVE_TCP, null, empty).takeoverMissingIds, ["theirs"], "the empty app cannot print the printer it may take over");
+  assert.deepEqual(agentPrintersOf([mine, theirs], "dev-a", NATIVE_TCP, null, POOL).takeoverMissingIds, [], "an app that lists it prints it");
+  assert.deepEqual(lanPrintersToAdd([bt, { ...theirs, primaryDeviceId: "dev-b" }, printer("btA", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "FF:EE" })], "dev-a", empty), [], "an app with no printer and none of its own to add: never seeded with another device's printer");
+});
+```
+
+Create `apps/cafe/lib/print-agent-skew.test.ts`:
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+import { ApiError } from "@/lib/api-client";
+import { createOlderServerFallback, olderAckBody, olderWakeBody } from "@/lib/print-agent-skew";
+
+// Phase 3 Session 3C (the 3B review gate's I-1): a server from before Phase 3 refuses the fields a Phase 3 page adds to
+// its ack and its wake (its schemas are strict: 400 "Validation failed"), and the ack store reads a 400 as answered, so
+// after a rollback of the web every slip such a page printed would expire into a REPRINT. The page sends the body once
+// more without them; once that works, it sends the older body until it reloads.
+
+const refused = () => new ApiError("Validation failed", "http", 400);
+
+test("3C (I-1): a body the server takes goes once, as it is", async () => {
+  const fallback = createOlderServerFallback();
+  const sent: unknown[] = [];
+  const answer = await fallback.send({ a: 1, tokenSlips: true }, (body) => ({ a: body.a }), async (body) => {
+    sent.push(body);
+    return "ok";
+  });
+  assert.equal(answer, "ok");
+  assert.deepEqual(sent, [{ a: 1, tokenSlips: true }]);
+});
+
+test("3C (I-1): a server from before Phase 3 refuses the new fields: the body goes once more without them, and from then on only the older body", async () => {
+  const fallback = createOlderServerFallback();
+  const sent: unknown[] = [];
+  const send = async (body: Record<string, unknown>) => {
+    sent.push(body);
+    if ("tokenSlips" in body) throw refused();
+    return "ok";
+  };
+  assert.equal(await fallback.send({ a: 1, tokenSlips: true }, (body) => ({ a: body.a }), send), "ok");
+  assert.deepEqual(sent, [{ a: 1, tokenSlips: true }, { a: 1 }], "one refusal, one resend");
+  assert.equal(await fallback.send({ a: 2, tokenSlips: true }, (body) => ({ a: body.a }), send), "ok");
+  assert.deepEqual(sent.slice(2), [{ a: 2 }], "the next body goes as the older server takes it, in one request");
+});
+
+test("3C (I-1): a refusal the older body does not cure is thrown, and the page keeps sending its own body", async () => {
+  const fallback = createOlderServerFallback();
+  const sent: unknown[] = [];
+  const send = async (body: Record<string, unknown>) => {
+    sent.push(body);
+    throw refused();
+  };
+  await assert.rejects(fallback.send({ a: 1, tokenSlips: true }, (body) => ({ a: body.a }), send), (error: ApiError) => error.status === 400);
+  await assert.rejects(fallback.send({ a: 2, tokenSlips: true }, (body) => ({ a: body.a }), send), (error: ApiError) => error.status === 400);
+  assert.deepEqual(sent, [{ a: 1, tokenSlips: true }, { a: 1 }, { a: 2, tokenSlips: true }, { a: 2 }], "never sticks to the older body");
+});
+
+test("3C (I-1): any other failure (a 5xx, a 409, no answer) is thrown at once, never sent again here", async () => {
+  for (const error of [new ApiError("Failed", "http", 500), new ApiError("Conflict", "http", 409), new ApiError("Could not reach the server.", "network", null), new ApiError("Other", "http", 400)]) {
+    const fallback = createOlderServerFallback();
+    let calls = 0;
+    await assert.rejects(
+      fallback.send({ a: 1 }, (body) => body, async () => {
+        calls += 1;
+        throw error;
+      }),
+    );
+    assert.equal(calls, 1, `${error.status ?? error.kind}: once`);
+  }
+});
+
+test("3C (I-1): the older ack drops tokenSlips and reason; the older wake drops lanFailover, tokenSlips and printers", () => {
+  assert.deepEqual(olderAckBody({ deviceId: "d", epoch: 2, outcome: "failed", sent: "no", reason: "unreachable", error: "x", tokenSlips: true }), { deviceId: "d", epoch: 2, outcome: "failed", sent: "no", error: "x" });
+  const caps = { lan: true, bluetooth: true, usb: true, windowsPrinters: false, webSerial: false, webBluetooth: false };
+  assert.deepEqual(
+    olderWakeBody({ deviceId: "d", label: "L", shell: "android", nativeProtocol: 2, capabilities: { ...caps, lanFailover: true }, tokenSlips: true, printers: [{ printerId: "p", link: "connected" }] }),
+    { deviceId: "d", label: "L", shell: "android", nativeProtocol: 2, capabilities: caps },
+  );
+});
+```
+
+In `apps/cafe/lib/print-wake.test.ts`, find:
+
+```ts
+  assert.ok(!stripComments(readSrc("apps/cafe/hooks/use-print-agent.ts")).includes("apiGet"), "the agent never polls the read-only GET");
+  const agent = stripComments(readSrc("apps/cafe/hooks/use-print-agent-wake.ts"));
+  assert.ok(agent.includes("if (agent === null || !enabled || !pollsWake) return;"), "the wake poll is armed by printAgentPollsWake (simple mode: the host only, R6)");
+  assert.ok(agent.includes('apiSend<PrintWakeBeatData>(WAKE_URL, "POST", wakeBody(deviceId))'), "the agent's wake is the POST heartbeat");
+  assert.ok(agent.includes("bumpPrintWakeBudget("), "under the device's one daily cap");
+  assert.ok(!agent.includes("apiGet"), "the agent never polls the read-only GET");
+});
+```
+
+Replace it with:
+
+```ts
+  assert.ok(!stripComments(readSrc("apps/cafe/hooks/use-print-agent.ts")).includes("apiGet"), "the agent never polls the read-only GET");
+  const agent = stripComments(readSrc("apps/cafe/hooks/use-print-agent-wake.ts"));
+  assert.ok(agent.includes("if (agent === null || !enabled || !pollsWake) return;"), "the wake poll is armed by printAgentPollsWake (simple mode: the host only, R6)");
+  // Session 3C (the 3B review gate's I-1) deliberately changed: through the older-server fallback (print-agent-paths.test.ts).
+  assert.ok(agent.includes('printAgentSkew.send(wakeBody(deviceId), olderWakeBody, (body) => apiSend<PrintWakeBeatData>(WAKE_URL, "POST", body))'), "the agent's wake is the POST heartbeat");
+  assert.ok(agent.includes("bumpPrintWakeBudget("), "under the device's one daily cap");
+  assert.ok(!agent.includes("apiGet"), "the agent never polls the read-only GET");
+});
+```
+
+In `apps/cafe/lib/printer/native-pool.test.ts`, find:
+
+```ts
+  assert.deepEqual([out.printers[0]?.paper, out.printers[0]?.cover, out.printers[0]?.error], ["out", "open", true]);
+});
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual([out.printers[0]?.paper, out.printers[0]?.cover, out.printers[0]?.error], ["out", "open", true]);
+});
+
+test("3C (the 3B review's m-4): a paper, cover or error value this page does not know says nothing, and the rest of the app's list still reads", async () => {
+  const g = globalThis as unknown as { window?: unknown };
+  const before = g.window;
+  try {
+    const later = { printers: [{ state: "connected", printer: KITCHEN, paper: "near-end", cover: "ajar", error: "yes" }, { state: "connected", printer: BAR, paper: "out" }], defaultId: KITCHEN.id, bluetooth: "on" };
+    g.window = { PosNative: { version: 1, versions: [1, 2], platform: "android", request: async () => later, on: () => () => undefined } };
+    const read = await nativeV2Request("printer.status");
+    assert.deepEqual(
+      read.printers.map((entry) => [entry.printer.id, entry.paper, entry.cover, entry.error]),
+      [
+        [KITCHEN.id, undefined, undefined, undefined],
+        [BAR.id, "out", undefined, undefined],
+      ],
+      "a later app's unknown value is dropped; the list and every value this page knows are kept",
+    );
+  } finally {
+    g.window = before;
+  }
+});
+```
+
+In `apps/cafe/package.json`, find:
+
+```json
+    "lib/print-attention.test.ts",
+    "lib/print-health.test.ts",
+    "lib/print-agent-health.test.ts",
+    "lib/print-waiting.test.ts",
+    "lib/print-routing.test.ts",
+    "lib/pos-install.test.ts",
+```
+
+Replace it with:
+
+```json
+    "lib/print-attention.test.ts",
+    "lib/print-health.test.ts",
+    "lib/print-agent-health.test.ts",
+    "lib/print-agent-skew.test.ts",
+    "lib/print-waiting.test.ts",
+    "lib/print-routing.test.ts",
+    "lib/pos-install.test.ts",
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-agent-health.test.ts lib/print-agent-skew.test.ts lib/printer/native-pool.test.ts lib/print-agent-printers.test.ts lib/print-agent-paths.test.ts lib/print-wake.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 85`; `# pass 75`; `# fail 10`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/hooks/use-print-agent-wake.ts`, find:
+
+```ts
+import { jobsForMeLeasable, type AgentPrinters } from "@/lib/print-agent-printers";
+import { createPrintAgentWake } from "@/lib/print-agent-wake";
+import { printerHealthReports, setTakenOverPrinters } from "@/lib/print-agent-seams";
+import { NATIVE_BRIDGE_V2, nativeV2Bridge } from "@/lib/printer/native-bridge-v2";
+import { bumpPrintWakeBudget, mergePrintWakeBudget, readPrintWakeBudget, writePrintWakeBudget, type PrintWakeBudget } from "@/lib/print-wake-budget";
+import { currentLane, defaultDeviceLabel, printCapabilities } from "@/lib/printer/print-lane";
+```
+
+Replace it with:
+
+```ts
+import { jobsForMeLeasable, type AgentPrinters } from "@/lib/print-agent-printers";
+import { createPrintAgentWake } from "@/lib/print-agent-wake";
+import { printerHealthReports, setTakenOverPrinters } from "@/lib/print-agent-seams";
+import { olderWakeBody, printAgentSkew } from "@/lib/print-agent-skew";
+import { NATIVE_BRIDGE_V2, nativeV2Bridge } from "@/lib/printer/native-bridge-v2";
+import { bumpPrintWakeBudget, mergePrintWakeBudget, readPrintWakeBudget, writePrintWakeBudget, type PrintWakeBudget } from "@/lib/print-wake-budget";
+import { currentLane, defaultDeviceLabel, printCapabilities } from "@/lib/printer/print-lane";
+```
+
+In `apps/cafe/hooks/use-print-agent-wake.ts`, find:
+
+```ts
+    let memory: PrintWakeBudget | null = null;
+    const wake = createPrintAgentWake({
+      wake: async () => {
+        const data = await apiSend<PrintWakeBeatData>(WAKE_URL, "POST", wakeBody(deviceId));
+        capRef.current = Math.min(PRINT_WAKE_DAILY_CAP, data.agentDailyCap);
+        noteJobsForMe(data.jobsForMe, data.writesPrinters);
+        setTakenOverPrinters(data.takenOver ?? []);
+```
+
+Replace it with:
+
+```ts
+    let memory: PrintWakeBudget | null = null;
+    const wake = createPrintAgentWake({
+      wake: async () => {
+        // Session 3C (the 3B review gate's I-1): a server from before Phase 3 (a rollback) refuses the beat's new fields: the
+        // wake goes once more without them (lib/print-agent-skew.ts), so the device keeps its heartbeat there.
+        const data = await printAgentSkew.send(wakeBody(deviceId), olderWakeBody, (body) => apiSend<PrintWakeBeatData>(WAKE_URL, "POST", body));
+        capRef.current = Math.min(PRINT_WAKE_DAILY_CAP, data.agentDailyCap);
+        noteJobsForMe(data.jobsForMe, data.writesPrinters);
+        setTakenOverPrinters(data.takenOver ?? []);
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
+import { apiSend } from "@/lib/api-client";
+import { isDesktopShell } from "@/lib/desktop-shell";
+import type { PrinterLinkState } from "@pos/shared/print-failover";
+import { printerHealthReportsOf } from "@/lib/print-agent-health";
+import {
+  PRINT_AGENT_SLIP_DEADLINE_MS,
+  createPrintAgent,
+```
+
+Replace it with:
+
+```ts
+import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
+import { apiSend } from "@/lib/api-client";
+import { isDesktopShell } from "@/lib/desktop-shell";
+import { printerHealthReportsOf, type SettledLink } from "@/lib/print-agent-health";
+import { olderAckBody, printAgentSkew } from "@/lib/print-agent-skew";
+import {
+  PRINT_AGENT_SLIP_DEADLINE_MS,
+  createPrintAgent,
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+  useEffect(() => {
+    lanRef.current = lanKey === "" ? [] : lanKey.split(",");
+  }, [lanKey]);
+  const writerRef = useRef(printers.isWriter);
+  useEffect(() => {
+    writerRef.current = printers.isWriter;
+```
+
+Replace it with:
+
+```ts
+  useEffect(() => {
+    lanRef.current = lanKey === "" ? [] : lanKey.split(",");
+  }, [lanKey]);
+  // Session 3C (the 3B review's m-1): the network printers it may take over that its app does not list (its beat says so).
+  const missingRef = useRef<readonly string[]>(printers.takeoverMissingIds);
+  const missingKey = printers.takeoverMissingIds.join(",");
+  useEffect(() => {
+    missingRef.current = missingKey === "" ? [] : missingKey.split(",");
+  }, [missingKey]);
+  const writerRef = useRef(printers.isWriter);
+  useEffect(() => {
+    writerRef.current = printers.isWriter;
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+      // tokenSlips: this page prints "token" jobs (S7); a page from before S7 leases none, on any line (print-lease.ts).
+      lease: (printerIds) => apiSend<PrintLeaseData>(LEASE_URL, "POST", { deviceId, tabId, tokenSlips: true, ...printerIdsBody(printerIds) }),
+      // Session 3B (the token fix's M-2): every ack says this page prints token slips, so its `more` counts them.
+      ack: (id, body) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", { ...body, tokenSlips: true }),
+      print,
+      printerReady: () => canPrintNow() || readyNow().length > 0,
+      // Session 2E: the Windows app's printer list read again (a printer added or removed) releases a refusal's hold;
+```
+
+Replace it with:
+
+```ts
+      // tokenSlips: this page prints "token" jobs (S7); a page from before S7 leases none, on any line (print-lease.ts).
+      lease: (printerIds) => apiSend<PrintLeaseData>(LEASE_URL, "POST", { deviceId, tabId, tokenSlips: true, ...printerIdsBody(printerIds) }),
+      // Session 3B (the token fix's M-2): every ack says this page prints token slips, so its `more` counts them.
+      // Session 3C (the 3B review gate's I-1): a server from before Phase 3 (a rollback) refuses tokenSlips and reason: the
+      // ack goes once more without them (lib/print-agent-skew.ts), never read as answered and lost.
+      ack: (id, body) => printAgentSkew.send({ ...body, tokenSlips: true }, olderAckBody, (sent) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", sent)),
+      print,
+      printerReady: () => canPrintNow() || readyNow().length > 0,
+      // Session 2E: the Windows app's printer list read again (a printer added or removed) releases a refusal's hold;
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+  // each of the POS app's printers by its own settled state, any other by this device's printer.
+  useEffect(() => {
+    if (agent === null) return;
+    const memory = new Map<string, PrinterLinkState>();
+    return setPrinterHealthSource(() => {
+      const pool = nativePool().getSnapshot();
+      return printerHealthReportsOf(
+        { localIds: readyRef.current, targets: targetsRef.current, pool: pool.active ? pool.printers : null, device: devicePrinter().getSnapshot().status, windows: isDesktopShell() },
+        memory,
+      );
+    });
+```
+
+Replace it with:
+
+```ts
+  // each of the POS app's printers by its own settled state, any other by this device's printer.
+  useEffect(() => {
+    if (agent === null) return;
+    const memory = new Map<string, SettledLink>();
+    return setPrinterHealthSource(() => {
+      const pool = nativePool().getSnapshot();
+      return printerHealthReportsOf(
+        {
+          localIds: readyRef.current,
+          targets: targetsRef.current,
+          pool: pool.active ? pool.printers : null,
+          device: devicePrinter().getSnapshot().status,
+          windows: isDesktopShell(),
+          missing: missingRef.current,
+          nowMs: Date.now(),
+        },
+        memory,
+      );
+    });
+```
+
+Replace the whole of `apps/cafe/lib/print-agent-health.ts` with:
+
+```ts
+import { PRINTER_DOWN_SETTLE_MS, type PrinterHealthReport, type PrinterLinkState } from "@pos/shared/print-failover";
+import type { SlipPrintTarget } from "@/lib/print-host-slips";
+import type { PoolPrinter } from "@/lib/printer/native-pool";
+import type { PrinterStatus } from "@/lib/printer/web-printer-types";
+
+// Printing redesign, Phase 3 Session 3B (spec §10, P3-6): the health this page reports on its wake (the heartbeat; no
+// request of its own) for the printers it prints here. The server keeps a report only from the device that writes that
+// printer now, and only when it changed (lib/print-health.ts); a writer's "disconnected" for a network printer also skips
+// it there, and its "connected" ends that skip (lib/print-failover.ts). Pure and client-safe.
+
+/** What the page remembers of one printer's link: the link it last settled on, and since when it is down (null while it
+ *  is up). */
+export interface SettledLink {
+  link: PrinterLinkState | null;
+  downSince: number | null;
+}
+
+/** The link a printer settled on. Connected settles at once. Session 3C (the 3B review's m-3): a printer reads
+ *  disconnected only once it stayed down PRINTER_DOWN_SETTLE_MS (a blip, such as one failed idle probe that the app's
+ *  2 s retry answers, keeps the last settled link, so it never starts a skip or moves a slip to a backup). A printer
+ *  still connecting while down keeps that clock (the POS app's probe of a down network printer, every 30 s); one
+ *  connecting while up keeps the last settled link (the 3A review gate, m-5); with none settled yet it says nothing. A
+ *  printer another tab owns, or none, says nothing. */
+export function settledLinkOf(memory: Map<string, SettledLink>, key: string, status: PrinterStatus, nowMs: number): PrinterLinkState | null {
+  const kept = memory.get(key);
+  if (status === "connected") {
+    memory.set(key, { link: "connected", downSince: null });
+    return "connected";
+  }
+  const down = status === "disconnected" || status === "needs-tap" || (status === "connecting" && kept?.downSince != null);
+  if (!down) return status === "connecting" ? (kept?.link ?? null) : null;
+  const downSince = kept?.downSince ?? nowMs;
+  const link = nowMs - downSince >= PRINTER_DOWN_SETTLE_MS ? "disconnected" : (kept?.link ?? null);
+  memory.set(key, { link, downSince });
+  return link;
+}
+
+/** One report per printer this device prints here: one of the POS app's printers (bridge v2) by its own state, with the
+ *  paper, cover and error the app says (Session 3C's DLE EOT; absent from an older app); on every other device its one
+ *  printer by the device printer's state. The Windows app reports nothing until it can tell (1.12.0, Session 3E).
+ *  Session 3C (the 3B review's m-1): `missing`, the network printers this device may take over that its app does not
+ *  list, read as down (by the same clock), so the server never picks it for a printer it cannot print. */
+export function printerHealthReportsOf(
+  input: {
+    localIds: readonly string[];
+    targets: Readonly<Record<string, SlipPrintTarget>>;
+    pool: readonly PoolPrinter[] | null;
+    device: PrinterStatus;
+    windows: boolean;
+    missing: readonly string[];
+    nowMs: number;
+  },
+  memory: Map<string, SettledLink>,
+): PrinterHealthReport[] {
+  const out: PrinterHealthReport[] = [];
+  for (const printerId of input.localIds) {
+    const target = input.targets[printerId];
+    if (target?.nativeId !== undefined) {
+      const entry = input.pool?.find((printer) => printer.id === target.nativeId);
+      const link = entry === undefined ? null : settledLinkOf(memory, entry.id, entry.status, input.nowMs);
+      if (entry === undefined || link === null) continue;
+      out.push({
+        printerId,
+        link,
+        ...(entry.paper !== undefined ? { paper: entry.paper } : {}),
+        ...(entry.cover !== undefined ? { cover: entry.cover } : {}),
+        ...(entry.error === true ? { error: true as const } : {}),
+      });
+    } else if (target === undefined && !input.windows) {
+      const link = settledLinkOf(memory, `device:${printerId}`, input.device, input.nowMs);
+      if (link !== null) out.push({ printerId, link });
+    }
+  }
+  for (const key of [...memory.keys()]) if (key.startsWith("missing:") && !input.missing.includes(key.slice("missing:".length))) memory.delete(key);
+  for (const printerId of input.missing) {
+    if (settledLinkOf(memory, `missing:${printerId}`, "disconnected", input.nowMs) === "disconnected") out.push({ printerId, link: "disconnected" });
+  }
+  return out;
+}
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+  lanIds: string[];
+  /** Session 3B (spec §9.3): those of them it may take over (another device writes them by the setup; on bridge v2). */
+  takeoverIds: string[];
+  /** Session 2E: each of them that prints on a named Windows printer, by id: its name and its paper. Session 2F1: each
+   *  that is one of the POS app's printers on bridge v2: the app's id and its paper. */
+  targets: Record<string, SlipPrintTarget>;
+```
+
+Replace it with:
+
+```ts
+  lanIds: string[];
+  /** Session 3B (spec §9.3): those of them it may take over (another device writes them by the setup; on bridge v2). */
+  takeoverIds: string[];
+  /** Session 3C (the 3B review's m-1): the network printers it may take over that its app does not list (yet): its beat
+   *  says it cannot print them (lib/print-agent-health.ts), so the server never picks it for one of them. */
+  takeoverMissingIds: string[];
+  /** Session 2E: each of them that prints on a named Windows printer, by id: its name and its paper. Session 2F1: each
+   *  that is one of the POS app's printers on bridge v2: the app's id and its paper. */
+  targets: Record<string, SlipPrintTarget>;
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+export function agentPrintersOf(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, desktop: DesktopPrinters | null, pool: NativePoolView | null = null): AgentPrinters {
+  const mine = printersWrittenBy(printers, deviceId);
+  // Session 3B: a network printer it may take over prints here once the app has it.
+  const takeover = takeoverPrintersOf(printers, deviceId, pool).filter((printer) => nativeIdOf(printer, pool) !== null);
+  const here = [...mine.filter((printer) => printerIsLocal(printer, local, desktop, pool)), ...takeover];
+  return {
+    printersMode: printersModeOn(printers),
+```
+
+Replace it with:
+
+```ts
+export function agentPrintersOf(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, desktop: DesktopPrinters | null, pool: NativePoolView | null = null): AgentPrinters {
+  const mine = printersWrittenBy(printers, deviceId);
+  // Session 3B: a network printer it may take over prints here once the app has it.
+  const candidates = takeoverPrintersOf(printers, deviceId, pool);
+  const takeover = candidates.filter((printer) => nativeIdOf(printer, pool) !== null);
+  const here = [...mine.filter((printer) => printerIsLocal(printer, local, desktop, pool)), ...takeover];
+  return {
+    printersMode: printersModeOn(printers),
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+    localIds: here.map((printer) => printer.id),
+    lanIds: here.filter((printer) => printer.connection.kind === "lan").map((printer) => printer.id),
+    takeoverIds: takeover.map((printer) => printer.id),
+    targets: targetsOf(here, desktop, pool),
+  };
+}
+```
+
+Replace it with:
+
+```ts
+    localIds: here.map((printer) => printer.id),
+    lanIds: here.filter((printer) => printer.connection.kind === "lan").map((printer) => printer.id),
+    takeoverIds: takeover.map((printer) => printer.id),
+    takeoverMissingIds: candidates.filter((printer) => nativeIdOf(printer, pool) === null).map((printer) => printer.id),
+    targets: targetsOf(here, desktop, pool),
+  };
+}
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+    const connection = printer.connection;
+    if (connection.kind === "lan" && nativeIdOf(printer, pool) === null) out.push({ host: connection.host.toLowerCase(), port: connection.port });
+  }
+  // The gate's emulator pre-run (E-1): never into an app with no printer, unless its own goes in first (the first printer
+  // of an empty app becomes its default, this device's own printer: never another device's).
+  if (pool.printers.length === 0 && out.length === 0) return out;
+  for (const printer of takeoverPrintersOf(printers, deviceId, pool)) {
+    const connection = printer.connection;
+    if (connection.kind === "lan" && nativeIdOf(printer, pool) === null) out.push({ host: connection.host.toLowerCase(), port: connection.port });
+```
+
+Replace it with:
+
+```ts
+    const connection = printer.connection;
+    if (connection.kind === "lan" && nativeIdOf(printer, pool) === null) out.push({ host: connection.host.toLowerCase(), port: connection.port });
+  }
+  // The gate's emulator pre-run (E-1): never into an app with no printer (the first printer of an empty app becomes its
+  // default, this device's own printer: never another device's). Session 3C (the 3B gate review's m-A): its own goes in
+  // alone, and the ones it may take over follow once the app lists it, so a refused select of its own lets none in first.
+  if (pool.printers.length === 0) return out;
+  for (const printer of takeoverPrintersOf(printers, deviceId, pool)) {
+    const connection = printer.connection;
+    if (connection.kind === "lan" && nativeIdOf(printer, pool) === null) out.push({ host: connection.host.toLowerCase(), port: connection.port });
+```
+
+Create `apps/cafe/lib/print-agent-skew.ts`:
+
+```ts
+import { ApiError } from "@/lib/api-client";
+
+// Printing redesign, Phase 3 Session 3C (the 3B review gate's I-1): a page from Phase 3 adds fields to its ack (tokenSlips,
+// reason) and to its wake (capabilities.lanFailover, tokenSlips, printers) that a server from before Phase 3 refuses: its
+// schemas are strict, so it answers 400 "Validation failed", and the ack store reads a 400 as answered. After a rollback of
+// the web, while such a page stays open, every slip it printed would then expire into a REPRINT. So a refused body is sent
+// once more without those fields (they mean nothing to that server: it has neither the token fence nor the skip), and once
+// that works the page sends the older body until it reloads: a rollback costs one more request per page, not one per ack.
+// Nothing changes against a Phase 3 server, which takes the fields. Client-safe.
+
+/** What the shared body validation answers (packages/shared/src/api.ts validationError), on every server version. */
+export const OLDER_SERVER_REFUSAL = "Validation failed";
+
+export interface OlderServerFallback {
+  send<B, O, T>(body: B, older: (body: B) => O, post: (body: B | O) => Promise<T>): Promise<T>;
+}
+
+export function createOlderServerFallback(): OlderServerFallback {
+  let olderServer = false;
+  return {
+    async send(body, older, post) {
+      if (olderServer) return post(older(body));
+      try {
+        return await post(body);
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 400 || error.message !== OLDER_SERVER_REFUSAL) throw error;
+        const answer = await post(older(body));
+        olderServer = true;
+        return answer;
+      }
+    },
+  };
+}
+
+/** The page's one fallback: the ack and the wake learn together that the server is older. */
+export const printAgentSkew = createOlderServerFallback();
+
+function withoutKeys<T extends object>(body: T, keys: readonly string[]): Partial<T> {
+  return Object.fromEntries(Object.entries(body).filter(([key]) => !keys.includes(key))) as Partial<T>;
+}
+
+/** An ack as a server from before Phase 3 takes it: no tokenSlips, no reason. */
+export function olderAckBody<T extends object>(body: T): Partial<T> {
+  return withoutKeys(body, ["tokenSlips", "reason"]);
+}
+
+/** A wake as a server from before Phase 3 takes it: no tokenSlips, no printers, and no capabilities.lanFailover. */
+export function olderWakeBody<T extends { capabilities: object }>(body: T): Partial<T> {
+  return { ...withoutKeys(body, ["tokenSlips", "printers"]), capabilities: withoutKeys(body.capabilities, ["lanFailover"]) } as Partial<T>;
+}
+```
+
+In `apps/cafe/lib/printer/native-bridge-v2.ts`, find:
+
+```ts
+//   · Phase 3 (spec §10; the page from Session 3B, the app from Session 3C): each listed printer may also carry `paper`
+//     ("ok" | "low" | "out"), `cover` ("closed" | "open") and `error` (true), from DLE EOT where the printer answers it.
+//     Absent says nothing (an app before 3C, a BLE printer); the page reports them in its wake's beat, and its dot.
+
+export const NATIVE_BRIDGE_V2 = 2;
+```
+
+Replace it with:
+
+```ts
+//   · Phase 3 (spec §10; the page from Session 3B, the app from Session 3C): each listed printer may also carry `paper`
+//     ("ok" | "low" | "out"), `cover` ("closed" | "open") and `error` (true), from DLE EOT where the printer answers it.
+//     Absent says nothing (an app before 3C, a BLE printer); the page reports them in its wake's beat, and its dot.
+//     Session 3C (the 3B review's m-4): a value this page does not know says nothing too (a later app's), never the whole
+//     list refused; the app's values are pinned to these in native-bridge-v2-parity.test.ts.
+
+export const NATIVE_BRIDGE_V2 = 2;
+```
+
+In `apps/cafe/lib/printer/native-bridge-v2.ts`, find:
+
+```ts
+    z.object({
+      state: z.enum(NATIVE_PRINTER_STATES),
+      printer: nativePrinterSchema,
+      paper: z.enum(PRINTER_PAPER_STATES).optional(),
+      cover: z.enum(PRINTER_COVER_STATES).optional(),
+      error: z.boolean().optional(),
+    }),
+  ),
+  defaultId: z.string().nullable(),
+```
+
+Replace it with:
+
+```ts
+    z.object({
+      state: z.enum(NATIVE_PRINTER_STATES),
+      printer: nativePrinterSchema,
+      paper: z.enum(PRINTER_PAPER_STATES).optional().catch(undefined),
+      cover: z.enum(PRINTER_COVER_STATES).optional().catch(undefined),
+      error: z.boolean().optional().catch(undefined),
+    }),
+  ),
+  defaultId: z.string().nullable(),
+```
+
+In `packages/shared/src/print-failover.ts`, find:
+
+```ts
+ *  from a device that no longer writes the printer, says nothing. */
+export const PRINTER_HEALTH_REFRESH_MS = 5 * 60 * 1000;
+export const PRINTER_HEALTH_STALE_MS = 2 * PRINTER_HEALTH_REFRESH_MS;
+
+/** §9.3: the devices online now (a heartbeat within PRINT_DEVICE_ONLINE_MS) and whether each can write any network
+ *  printer the setup names (PrintDeviceCapabilities.lanFailover: the POS app on bridge v2, the Windows app from 1.12.0),
+```
+
+Replace it with:
+
+```ts
+ *  from a device that no longer writes the printer, says nothing. */
+export const PRINTER_HEALTH_REFRESH_MS = 5 * 60 * 1000;
+export const PRINTER_HEALTH_STALE_MS = 2 * PRINTER_HEALTH_REFRESH_MS;
+
+/** Session 3C (the 3B review's m-3): a page reports a printer disconnected in its beat only once it stayed down this long
+ *  (no "connected" in between), so a blip (one failed idle probe that the app's 2 s retry answers) never starts a skip
+ *  that would hold its 5-minute floor and move a slip to a backup. An "unreachable" ack still skips at once. */
+export const PRINTER_DOWN_SETTLE_MS = 20_000;
+
+/** §9.3: the devices online now (a heartbeat within PRINT_DEVICE_ONLINE_MS) and whether each can write any network
+ *  printer the setup names (PrintDeviceCapabilities.lanFailover: the POS app on bridge v2, the Windows app from 1.12.0),
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-agent-health.test.ts lib/print-agent-skew.test.ts lib/printer/native-pool.test.ts lib/print-agent-printers.test.ts lib/print-agent-paths.test.ts lib/print-wake.test.ts lib/print-agent.test.ts lib/printer/native-bridge-v2-parity.test.ts lib/printer-ui-paths.test.ts lib/print-windows-printers.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 191`; `# pass 191`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/packages/shared && node --import tsx --test src/print-failover.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && cd /d/kd/lucifer/packages/shared && npx tsc --noEmit && echo SHARED_TSC_OK`
+Expected: `# tests 14`; `# pass 14`; `# fail 0`; `SHARED_TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint lib/print-agent-health.ts lib/print-agent-skew.ts lib/printer/native-bridge-v2.ts lib/print-agent-printers.ts hooks/use-print-agent.ts hooks/use-print-agent-wake.ts lib/print-agent-health.test.ts lib/print-agent-skew.test.ts lib/printer/native-pool.test.ts lib/print-agent-printers.test.ts lib/print-agent-paths.test.ts lib/print-wake.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/hooks/use-print-agent-wake.ts apps/cafe/hooks/use-print-agent.ts apps/cafe/lib/print-agent-health.test.ts apps/cafe/lib/print-agent-health.ts apps/cafe/lib/print-agent-paths.test.ts apps/cafe/lib/print-agent-printers.test.ts apps/cafe/lib/print-agent-printers.ts apps/cafe/lib/print-agent-skew.test.ts apps/cafe/lib/print-agent-skew.ts apps/cafe/lib/print-wake.test.ts apps/cafe/lib/printer/native-bridge-v2.ts apps/cafe/lib/printer/native-pool.test.ts apps/cafe/package.json packages/shared/src/print-failover.ts
+git commit -m "fix(print): the page's beat reads a printer down only once it stayed so 20 s, names down a printer it may take over that its app lacks, reads a later app's unknown paper or cover as nothing, and after a rollback of the web sends its ack and wake once more as an older server takes them (Phase 3 Session 3C, C1: the 3B review's m-1, m-3, m-4, the gate review's I-1 and m-A)"
+```
+
+---
+
+### Task C2: the words: the dot's printer problem in simple mode too (m-7); no takeover words when the devices read failed (m-B); GO-LIVE-CHECKLIST's rollback line (I-1)
+
+**Files:**
+- Modify: `apps/cafe/lib/printer/printer-dot.ts` (`withProblem`, both modes; the file stays within its 300-line budget)
+- Modify: `apps/cafe/lib/print-agent-printers.ts` (`NativePoolView.defaultId`, an entry's `printer.name`; `dotPrintersOf` says the app default's problem in simple mode)
+- Modify: `apps/cafe/lib/print-setup-text.ts` (`printerFailoverLines(…, devicesFailed = false)`), `components/print/setup/PrintersSetupSection.tsx`
+- Modify: `docs/GO-LIVE-CHECKLIST.md` ("If you roll the web back")
+- Tests: `apps/cafe/lib/print-setup-form.test.ts`, `lib/print-setup-ui-paths.test.ts`, `lib/printer/printer-dot.test.ts`, `lib/print-agent-printers.test.ts`, `lib/go-live-runbook.test.ts`
+
+**Interfaces produced:** `printerFailoverLines(printer, printers, devices, thisDeviceId, nowMs, devicesFailed = false)`; `NativePoolView.defaultId?`.
+
+**m-7 (the 3B golden-copy review).** The top-bar dot's printer problem existed only in printers mode. In simple mode the device that prints its own slips (no print host, or it is the host) prints on its POS app's own printer, the app's default: when the app says that printer is out of paper, has its cover open or reports an error, the dot is red with those words too ("Printer needs attention", "RPP02N has its cover open."). A device whose slips print at another device keeps that device's row.
+
+**m-B (the gate review).** With the devices read failed, every network printer row said "No other device online can take it over…" and no writer line. Such a row now says only its backup (the row's own state already says the read failed).
+
+**The rollback line (the gate review's I-1).** GO-LIVE-CHECKLIST's Phase 3 page notes gain: if you roll the web back to a release from before printing Phase 3, reload every POS screen again afterwards.
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/go-live-runbook.test.ts`, find:
+
+```ts
+  assert.ok(step.includes(norm(DEVICE_TAKES_OVER_TEXT)) && step.includes(norm(PRINTER_NO_TAKEOVER_TEXT)), "the Devices and Printers words, verbatim");
+  assert.ok(step.includes(norm(BACKUP_PRINTER_NOTE)), "the form's backup note, verbatim");
+  assert.ok(step.includes("Phase 2 POS app") && step.includes("1.12.0"), "which apps can take a network printer over");
+});
+```
+
+Replace it with:
+
+```ts
+  assert.ok(step.includes(norm(DEVICE_TAKES_OVER_TEXT)) && step.includes(norm(PRINTER_NO_TAKEOVER_TEXT)), "the Devices and Printers words, verbatim");
+  assert.ok(step.includes(norm(BACKUP_PRINTER_NOTE)), "the form's backup note, verbatim");
+  assert.ok(step.includes("Phase 2 POS app") && step.includes("1.12.0"), "which apps can take a network printer over");
+  // Session 3C (the 3B review gate's I-1): a rollback of the web is a reload of every screen too.
+  assert.ok(step.includes("If you roll the web back") && step.includes("reload every POS screen again"), "a rollback reloads every screen");
+});
+```
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+  assert.deepEqual(dotPrintersOf([mine, theirs], "dev-a", NATIVE_TCP, null, pool, ["theirs"]).problem, { name: "Bar", problem: "paper-out" }, "while it writes the Bar printer, its paper out is worse");
+  const low = { printers: [{ id: "tcp:10.0.2.2:9100", status: "connected" as const, paper: "low" as const }] };
+  assert.equal(dotPrintersOf([mine], "dev-a", NATIVE_TCP, null, low).problem, undefined, "low paper still prints: no red dot");
+});
+
+test("3B: the dot counts a printer it may take over only while the wake says it writes it", () => {
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual(dotPrintersOf([mine, theirs], "dev-a", NATIVE_TCP, null, pool, ["theirs"]).problem, { name: "Bar", problem: "paper-out" }, "while it writes the Bar printer, its paper out is worse");
+  const low = { printers: [{ id: "tcp:10.0.2.2:9100", status: "connected" as const, paper: "low" as const }] };
+  assert.equal(dotPrintersOf([mine], "dev-a", NATIVE_TCP, null, low).problem, undefined, "low paper still prints: no red dot");
+  // Session 3C (the 3B golden-copy review's m-7): simple mode prints on the app's default printer: its problem, by its name.
+  const own = { printers: [{ id: "bt-classic:00:11:22:33:44:55", status: "connected" as const, paper: "out" as const, printer: { name: "RPP02N" } }, { id: "tcp:10.0.2.2:9100", status: "connected" as const, cover: "open" as const }], defaultId: "bt-classic:00:11:22:33:44:55" };
+  assert.deepEqual(dotPrintersOf([], "dev-a", NATIVE_TCP, null, own).problem, { name: "RPP02N", problem: "paper-out" }, "simple mode: the app's own printer");
+  assert.equal(dotPrintersOf([], "dev-a", NATIVE_TCP, null, { ...own, defaultId: "tcp:10.0.2.2:9100" }).problem?.problem, "cover-open", "whichever is the default");
+  assert.equal(dotPrintersOf([], "dev-a", NATIVE_TCP, null, low).problem, undefined, "no default known: nothing");
+});
+
+test("3B: the dot counts a printer it may take over only while the wake says it writes it", () => {
+```
+
+In `apps/cafe/lib/print-setup-form.test.ts`, find:
+
+```ts
+  const off = { ...kitchen, enabled: false };
+  assert.deepEqual(printerFailoverLines(off, [off, counter], devices, "me", NOW), ["Backup: COUNTER"], "a printer switched off says only its backup");
+  assert.equal(DEVICE_TAKES_OVER_TEXT, "Can take over network printers");
+});
+```
+
+Replace it with:
+
+```ts
+  const off = { ...kitchen, enabled: false };
+  assert.deepEqual(printerFailoverLines(off, [off, counter], devices, "me", NOW), ["Backup: COUNTER"], "a printer switched off says only its backup");
+  assert.equal(DEVICE_TAKES_OVER_TEXT, "Can take over network printers");
+  // Session 3C (the 3B gate review's m-B): with the devices read failed, nothing is known of who prints it now or who could
+  // take it over, so the row says only its backup (never "No other device online can take it over").
+  assert.deepEqual(printerFailoverLines(counter, printers, [], "me", NOW, true), [], "the devices read failed: no takeover words");
+  assert.deepEqual(printerFailoverLines(kitchen, printers, [], "me", NOW, true), ["Backup: COUNTER"], "… only the backup, which the printers read says");
+});
+```
+
+In `apps/cafe/lib/print-setup-ui-paths.test.ts`, find:
+
+```ts
+// Phase 3 Session 3B (spec §9.3, §9.4, §11): the setup page's failover words and the backup printer in the form.
+test("PIN (3B): each printer row shows its failover lines, each device whether it can take a printer over, and the form saves a backup printer", () => {
+  const section = src(`${SETUP}PrintersSetupSection.tsx`);
+  assert.ok(section.includes("printerFailoverLines(printer, printers, devices, deviceId, Date.now()).map((line) => ("), "the row's backup, who prints it now, its problem, no takeover");
+  const devices = src(`${SETUP}DevicesSetupSection.tsx`);
+  assert.ok(devices.includes("{device.lanFailover === true && <p className=\"text-brand-muted\">{DEVICE_TAKES_OVER_TEXT}</p>}"), "a device that can take a network printer over says so");
+  const form = src(`${SETUP}PrinterFormDialog.tsx`);
+```
+
+Replace it with:
+
+```ts
+// Phase 3 Session 3B (spec §9.3, §9.4, §11): the setup page's failover words and the backup printer in the form.
+test("PIN (3B): each printer row shows its failover lines, each device whether it can take a printer over, and the form saves a backup printer", () => {
+  const section = src(`${SETUP}PrintersSetupSection.tsx`);
+  // Session 3C (the 3B gate review's m-B) deliberately changed: a failed devices read says no takeover words.
+  assert.ok(section.includes("printerFailoverLines(printer, printers, devices, deviceId, Date.now(), devicesFailed).map((line) => ("), "the row's backup, who prints it now, its problem, no takeover");
+  const devices = src(`${SETUP}DevicesSetupSection.tsx`);
+  assert.ok(devices.includes("{device.lanFailover === true && <p className=\"text-brand-muted\">{DEVICE_TAKES_OVER_TEXT}</p>}"), "a device that can take a network printer over says so");
+  const form = src(`${SETUP}PrinterFormDialog.tsx`);
+```
+
+In `apps/cafe/lib/printer/printer-dot.test.ts`, find:
+
+```ts
+  assert.deepEqual(printerDotOf({ ...base, printers }), { show: true, ok: true, reason: "ok" }, "nothing known: green as before");
+});
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual(printerDotOf({ ...base, printers }), { show: true, ok: true, reason: "ok" }, "nothing known: green as before");
+});
+
+// Phase 3 Session 3C (the 3B golden-copy review's m-7): in simple mode the device that prints on its POS app's own printer
+// turns its dot red with that printer's words too; a device whose slips print at another device keeps that device's row.
+test("3C (m-7): simple mode: this device's own printer out of paper, its cover open or in error is red with its words", () => {
+  const base = { lane: "raster" as const, local: "connected" as const, deviceOffline: false, desktopChosen: "unknown" as const };
+  const printers = { printersMode: false, isWriter: false, allLocal: true, problem: { name: "RPP02N", problem: "cover-open" as const } };
+  assert.deepEqual(printerDotOf({ ...base, remote: "none", isHostDevice: false, printers }), { show: true, ok: false, reason: "printer-problem", problem: "RPP02N has its cover open." }, "no print host: this device prints its own slips");
+  assert.deepEqual(printerDotOf({ ...base, remote: "ok", isHostDevice: true, printers }), { show: true, ok: false, reason: "printer-problem", problem: "RPP02N has its cover open." }, "the print host itself");
+  assert.deepEqual(printerDotOf({ ...base, remote: "ok", isHostDevice: false, printers }), { show: true, ok: true, reason: "ok" }, "another device prints all slips: its row, as before");
+  assert.deepEqual(printerDotOf({ ...base, remote: "none", isHostDevice: false, local: "disconnected", printers }), { show: true, ok: false, reason: "printer-off" }, "a printer that does not answer: reconnect it first");
+});
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-setup-form.test.ts lib/print-setup-ui-paths.test.ts lib/printer/printer-dot.test.ts lib/print-agent-printers.test.ts lib/go-live-runbook.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 169`; `# pass 164`; `# fail 5`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/components/print/setup/PrintersSetupSection.tsx`, find:
+
+```tsx
+                  Paper {printer.paper} mm · KOT copies {printer.copies.kot} · Bill copies {printer.copies.bill}
+                </p>
+                {/* Session 3B (spec §9.3, §9.4, §10): its backup, who prints it now, its problem, no takeover. */}
+                {printerFailoverLines(printer, printers, devices, deviceId, Date.now()).map((line) => (
+                  <p key={line} className="text-brand-muted">
+                    {line}
+                  </p>
+```
+
+Replace it with:
+
+```tsx
+                  Paper {printer.paper} mm · KOT copies {printer.copies.kot} · Bill copies {printer.copies.bill}
+                </p>
+                {/* Session 3B (spec §9.3, §9.4, §10): its backup, who prints it now, its problem, no takeover. */}
+                {printerFailoverLines(printer, printers, devices, deviceId, Date.now(), devicesFailed).map((line) => (
+                  <p key={line} className="text-brand-muted">
+                    {line}
+                  </p>
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+/** Session 2F1 (spec §9.2): the POS app's printers on bridge v2 (nativePool()): each one's id and state. null on any
+ *  other device, and on an app that speaks only v1 (the release APK), which prints its one printer as before. */
+export interface NativePoolView {
+  printers: readonly { id: string; status: PrinterStatus; paper?: PrinterPaperState; cover?: PrinterCoverState; error?: true }[];
+}
+
+/** Session 2F1: the app's id a printer of the setup is, among the app's printers on bridge v2, or null. A LAN printer is
+```
+
+Replace it with:
+
+```ts
+/** Session 2F1 (spec §9.2): the POS app's printers on bridge v2 (nativePool()): each one's id and state. null on any
+ *  other device, and on an app that speaks only v1 (the release APK), which prints its one printer as before. */
+export interface NativePoolView {
+  printers: readonly { id: string; status: PrinterStatus; paper?: PrinterPaperState; cover?: PrinterCoverState; error?: true; printer?: { name: string } }[];
+  /** Session 3C (the 3B golden-copy review's m-7): the app's default printer, the one simple mode prints on. */
+  defaultId?: string | null;
+}
+
+/** Session 2F1: the app's id a printer of the setup is, among the app's printers on bridge v2, or null. A LAN printer is
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+    const name = printers.find((printer) => printer.id === id)?.name;
+    return problem !== null && DOT_PROBLEMS.includes(problem) && name !== undefined ? [{ name, problem }] : [];
+  });
+  const problem = problems.sort((a, b) => PRINTER_PROBLEMS.indexOf(a.problem) - PRINTER_PROBLEMS.indexOf(b.problem))[0];
+  return {
+    printersMode: agent.printersMode,
+```
+
+Replace it with:
+
+```ts
+    const name = printers.find((printer) => printer.id === id)?.name;
+    return problem !== null && DOT_PROBLEMS.includes(problem) && name !== undefined ? [{ name, problem }] : [];
+  });
+  // Session 3C (the 3B golden-copy review's m-7): in simple mode this device prints on its POS app's own printer (the
+  // app's default), so that printer's paper, cover or error turns the dot red too, by the app's name for it.
+  const own = agent.printersMode ? undefined : pool?.printers.find((entry) => entry.id === pool.defaultId);
+  const ownProblem = own === undefined ? null : printerHealthProblem({ link: "connected", paper: own.paper, cover: own.cover, error: own.error });
+  if (own !== undefined && ownProblem !== null && DOT_PROBLEMS.includes(ownProblem)) problems.push({ name: own.printer?.name ?? "The printer", problem: ownProblem });
+  const problem = problems.sort((a, b) => PRINTER_PROBLEMS.indexOf(a.problem) - PRINTER_PROBLEMS.indexOf(b.problem))[0];
+  return {
+    printersMode: agent.printersMode,
+```
+
+In `apps/cafe/lib/print-setup-text.ts`, find:
+
+```ts
+ *  slips), and for a printer routing sends slips to, who prints it now when another device took it over, the problem
+ *  its writer reported (its device offline is the row's own state), and a network printer no other device online could
+ *  take over. */
+export function printerFailoverLines(printer: PrinterConfig, printers: readonly PrinterConfig[], devices: readonly PrintDeviceSummary[], thisDeviceId: string, nowMs: number): string[] {
+  const lines: string[] = [];
+  const backup = printer.backupPrinterId === undefined ? undefined : printers.find((row) => row.id === printer.backupPrinterId);
+  if (backup !== undefined) lines.push(`Backup: ${backup.name}${routablePrinterOf(printers, backup.id) === null ? " (not in use)" : ""}`);
+  if (routablePrinterOf(printers, printer.id) === null) return lines;
+  const failover = setupFailoverOf(devices, nowMs);
+  const writer = printerActiveWriter(printer, failover);
+  if (writer !== null && writer !== printerWriterDeviceId(printer)) lines.push(`Printed now by ${deviceName(writer, devices, thisDeviceId)}`);
+```
+
+Replace it with:
+
+```ts
+ *  slips), and for a printer routing sends slips to, who prints it now when another device took it over, the problem
+ *  its writer reported (its device offline is the row's own state), and a network printer no other device online could
+ *  take over. */
+export function printerFailoverLines(printer: PrinterConfig, printers: readonly PrinterConfig[], devices: readonly PrintDeviceSummary[], thisDeviceId: string, nowMs: number, devicesFailed = false): string[] {
+  const lines: string[] = [];
+  const backup = printer.backupPrinterId === undefined ? undefined : printers.find((row) => row.id === printer.backupPrinterId);
+  if (backup !== undefined) lines.push(`Backup: ${backup.name}${routablePrinterOf(printers, backup.id) === null ? " (not in use)" : ""}`);
+  // Session 3C (the 3B gate review's m-B): with the devices read failed nothing is known of who prints it now, its
+  // writer's report or who could take it over: only its backup (the row's own state already says the read failed).
+  if (routablePrinterOf(printers, printer.id) === null || devicesFailed) return lines;
+  const failover = setupFailoverOf(devices, nowMs);
+  const writer = printerActiveWriter(printer, failover);
+  if (writer !== null && writer !== printerWriterDeviceId(printer)) lines.push(`Printed now by ${deviceName(writer, devices, thisDeviceId)}`);
+```
+
+In `apps/cafe/lib/printer/printer-dot.ts`, find:
+
+```ts
+  return dot("no-printer");
+}
+
+// Session 2D (spec §10): the worst state among the printers this device writes; with none, its slips print at the
+// cafe's printers (the waiting count and the alarm speak for those). A former host's record plays no part.
+function printersRow(printers: PrinterDotPrinters, lane: DotLane, local: PrinterStatus, desktopChosen: DesktopChosen): PrinterDot {
+  if (!printers.isWriter) return dot("printers-elsewhere");
+  if (!printers.allLocal) return dot("printer-not-here");
+  const row = noHostRow(lane, printers.worst ?? local, desktopChosen);
+  // Session 3B (spec §10): every printer answers, but one is out of paper, has its cover open or reports an error.
+  if (printers.problem !== undefined && row.show && row.ok) return { show: true, ok: false, reason: "printer-problem", problem: printerProblemText(printers.problem.name, printers.problem.problem) };
+  return row;
+}
+
+export function printerDotOf(input: PrinterDotInput): PrinterDot {
+```
+
+Replace it with:
+
+```ts
+  return dot("no-printer");
+}
+
+// Session 3B (spec §10): it answers but is out of paper, cover open or in error; 3C (m-7): in simple mode too.
+function withProblem(row: PrinterDot, printers?: PrinterDotPrinters): PrinterDot {
+  return printers?.problem === undefined || !row.show || !row.ok ? row : { show: true, ok: false, reason: "printer-problem", problem: printerProblemText(printers.problem.name, printers.problem.problem) };
+}
+
+// Session 2D (spec §10): the worst state among the printers this device writes; with none, its slips print at the
+// cafe's printers (the waiting count and the alarm speak for those). A former host's record plays no part.
+function printersRow(printers: PrinterDotPrinters, lane: DotLane, local: PrinterStatus, desktopChosen: DesktopChosen): PrinterDot {
+  if (!printers.isWriter) return dot("printers-elsewhere");
+  if (!printers.allLocal) return dot("printer-not-here");
+  const row = noHostRow(lane, printers.worst ?? local, desktopChosen);
+  return withProblem(row, printers);
+}
+
+export function printerDotOf(input: PrinterDotInput): PrinterDot {
+```
+
+In `apps/cafe/lib/printer/printer-dot.ts`, find:
+
+```ts
+  if (lane === "pending" || remote === "loading") return NO_DOT;
+  if (input.printers?.printersMode === true) return printersRow(input.printers, lane, local, desktopChosen);
+  if (remote === "unknown") return dot("checking");
+  if (remote === "none") return noHostRow(lane, local, desktopChosen);
+  if (isHostDevice) return thisDeviceHostRow(remote, lane, local, desktopChosen);
+  return remoteRow(remote);
+}
+
+// ── Copy ─────────────────────────────────────────────────────────────────────
+```
+
+Replace it with:
+
+```ts
+  if (lane === "pending" || remote === "loading") return NO_DOT;
+  if (input.printers?.printersMode === true) return printersRow(input.printers, lane, local, desktopChosen);
+  if (remote === "unknown") return dot("checking");
+  const own = remote === "none" ? noHostRow(lane, local, desktopChosen) : isHostDevice ? thisDeviceHostRow(remote, lane, local, desktopChosen) : null;
+  return own === null ? remoteRow(remote) : withProblem(own, input.printers);
+}
+
+// ── Copy ─────────────────────────────────────────────────────────────────────
+```
+
+In `docs/GO-LIVE-CHECKLIST.md`, find:
+
+```markdown
+      print there, marked BACKUP PRINTER, while its own device is offline or no
+      device can reach it." The backup must be switched on and take slips; the
+      row then shows "Backup: ‹name›".
+
+---
+```
+
+Replace it with:
+
+```markdown
+      print there, marked BACKUP PRINTER, while its own device is offline or no
+      device can reach it." The backup must be switched on and take slips; the
+      row then shows "Backup: ‹name›".
+- [ ] **If you roll the web back** to a release from before printing Phase 3,
+      reload every POS screen again afterwards. A page from this release keeps
+      printing against the older release (it sends its answers once more the
+      way that release takes them), but only a reloaded page works exactly as
+      that release did.
+
+---
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-setup-form.test.ts lib/print-setup-ui-paths.test.ts lib/printer/printer-dot.test.ts lib/print-agent-printers.test.ts lib/go-live-runbook.test.ts lib/printer-ui-paths.test.ts lib/print-setup-paths.test.ts lib/printer-dot-ui-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 244`; `# pass 244`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint lib/printer/printer-dot.ts lib/print-agent-printers.ts lib/print-setup-text.ts components/print/setup/PrintersSetupSection.tsx lib/print-setup-form.test.ts lib/print-setup-ui-paths.test.ts lib/printer/printer-dot.test.ts lib/print-agent-printers.test.ts lib/go-live-runbook.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/components/print/setup/PrintersSetupSection.tsx apps/cafe/lib/go-live-runbook.test.ts apps/cafe/lib/print-agent-printers.test.ts apps/cafe/lib/print-agent-printers.ts apps/cafe/lib/print-setup-form.test.ts apps/cafe/lib/print-setup-text.ts apps/cafe/lib/print-setup-ui-paths.test.ts apps/cafe/lib/printer/printer-dot.test.ts apps/cafe/lib/printer/printer-dot.ts docs/GO-LIVE-CHECKLIST.md
+git commit -m "fix(print): in simple mode the top-bar dot says the POS app's own printer is out of paper, has its cover open or reports an error; a printer row says no takeover words when the devices read failed; GO-LIVE-CHECKLIST says a rollback of the web reloads every screen too (Phase 3 Session 3C, C2: the 3B reviews' m-7 and m-B, the gate review's I-1)"
+```
+
+---
+
+### Task C3: the fake printer: `--paper-low`, `--silent`, and `statusOnly` for an app's idle status check
+
+**Files:**
+- Modify: `scripts/fake-escpos-printer.mjs` (`--paper-low`, `--silent`, `statusOnly`)
+- Modify: `apps/cafe/scripts/print-soak.ts` (a `statusOnly` line is not a slip)
+- Tests: `scripts/fake-escpos-printer.test.mjs` (three new tests)
+
+**Interfaces produced:** `parseArgs` gains `paperLow`, `silent`; a jobs.log line gains `statusOnly`.
+
+**The fake printer (spec §13).** `--paper-out` and `--cover-open` were already there. `--paper-low` answers DLE EOT 4 with the near-end bits (still online); `--silent` answers no DLE EOT at all (a printer without real-time status: C5 must then never report a false problem or a false "maybe"). From C5 the POS app checks each idle network printer once a minute (one connect, DLE EOT 1 to 4, close): such a connection carries only DLE EOT requests and is logged `"statusOnly": true`, which the soak (and every exit tool) never counts as a slip.
+
+- [ ] **Step 1: The failing tests first**
+
+In `scripts/fake-escpos-printer.test.mjs`, find:
+
+```js
+  assert.equal(d.port, 9100);
+  assert.equal(d.host, "127.0.0.1", "never listens on the LAN unless asked");
+  assert.ok(d.out.startsWith(os.tmpdir()), "jobs never land in the repo by default");
+  const f = parseArgs(["--port", "9101", "--drop-after", "100", "--drop-every", "3", "--delay", "50", "--paper-out", "--cover-open", "--refuse"]);
+  assert.deepEqual([f.port, f.dropAfter, f.dropEvery, f.delay, f.paperOut, f.coverOpen, f.refuse], [9101, 100, 3, 50, true, true, true]);
+  assert.equal(d.dropEvery, 1, "--drop-after alone cuts every job, as before");
+  assert.throws(() => parseArgs(["--bogus"]), /unknown option/);
+  assert.throws(() => parseArgs(["--drop-after", "-1"]), /whole number/);
+```
+
+Replace it with:
+
+```js
+  assert.equal(d.port, 9100);
+  assert.equal(d.host, "127.0.0.1", "never listens on the LAN unless asked");
+  assert.ok(d.out.startsWith(os.tmpdir()), "jobs never land in the repo by default");
+  const f = parseArgs(["--port", "9101", "--drop-after", "100", "--drop-every", "3", "--delay", "50", "--paper-out", "--cover-open", "--refuse", "--paper-low", "--silent"]);
+  assert.deepEqual([f.port, f.dropAfter, f.dropEvery, f.delay, f.paperOut, f.coverOpen, f.refuse, f.paperLow, f.silent], [9101, 100, 3, 50, true, true, true, true, true]);
+  assert.deepEqual([d.paperLow, d.silent], [false, false], "a printer that answers, with paper, by default");
+  assert.equal(d.dropEvery, 1, "--drop-after alone cuts every job, as before");
+  assert.throws(() => parseArgs(["--bogus"]), /unknown option/);
+  assert.throws(() => parseArgs(["--drop-after", "-1"]), /whole number/);
+```
+
+In `scripts/fake-escpos-printer.test.mjs`, find:
+
+```js
+  assert.equal(statusByte(2, { paperOut: false, coverOpen: true }), 0x16, "n=2: cover open");
+  assert.equal(statusByte(1, { paperOut: true, coverOpen: false }), 0x1a, "n=1: offline");
+  assert.equal(statusByte(9, ok), null);
+});
+
+test("statusRequests: finds DLE EOT n, including one split across two chunks", () => {
+```
+
+Replace it with:
+
+```js
+  assert.equal(statusByte(2, { paperOut: false, coverOpen: true }), 0x16, "n=2: cover open");
+  assert.equal(statusByte(1, { paperOut: true, coverOpen: false }), 0x1a, "n=1: offline");
+  assert.equal(statusByte(9, ok), null);
+  // Session 3C (spec §13): low paper sets the near-end bits of n=4 and the printer stays online.
+  assert.equal(statusByte(4, { paperOut: false, coverOpen: false, paperLow: true }), 0x1e, "n=4: roll paper near end");
+  assert.equal(statusByte(1, { paperOut: false, coverOpen: false, paperLow: true }), 0x12, "n=1: still online");
+});
+
+test("statusRequests: finds DLE EOT n, including one split across two chunks", () => {
+```
+
+In `scripts/fake-escpos-printer.test.mjs`, find:
+
+```js
+  });
+});
+
+test("--refuse: every connection is reset as it opens, and nothing is saved", async () => {
+  await withPrinter(["--refuse"], async ({ port, nextJob }) => {
+    const job = nextJob();
+```
+
+Replace it with:
+
+```js
+  });
+});
+
+test("3C: --silent answers no DLE EOT (a printer without real-time status), and the job is still saved", async () => {
+  await withPrinter(["--silent"], async ({ port, nextJob }) => {
+    const job = nextJob();
+    const { received } = await send(port, Buffer.from([0x41, DLE, EOT, 1, DLE, EOT, 4]));
+    assert.equal(received.length, 0, "no answer at all");
+    const record = await job;
+    assert.equal(record.bytes, 7);
+    assert.equal(record.statusRequests, 2, "it saw both requests");
+  });
+});
+
+test("3C: a connection that carried only DLE EOT requests (an app's idle status check) is logged statusOnly; a slip is not", async () => {
+  await withPrinter([], async ({ port, nextJob }) => {
+    const check = nextJob();
+    await send(port, Buffer.from([DLE, EOT, 1, DLE, EOT, 2, DLE, EOT, 3, DLE, EOT, 4]));
+    assert.equal((await check).statusOnly, true);
+    const slip = nextJob();
+    await send(port, Buffer.concat([Buffer.alloc(500, 0x55), Buffer.from([DLE, EOT, 1])]));
+    assert.equal((await slip).statusOnly, false, "a slip followed by its status question is a slip");
+  });
+});
+
+test("3C: --paper-low answers DLE EOT 4 with 'near end' and DLE EOT 1 with online", async () => {
+  await withPrinter(["--paper-low"], async ({ port }) => {
+    const { received } = await send(port, Buffer.from([DLE, EOT, 1, DLE, EOT, 4]));
+    assert.deepEqual([...received], [0x12, 0x1e]);
+  });
+});
+
+test("--refuse: every connection is reset as it opens, and nothing is saved", async () => {
+  await withPrinter(["--refuse"], async ({ port, nextJob }) => {
+    const job = nextJob();
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer && npm run test:print-tools 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 11`; `# pass 6`; `# fail 5`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/scripts/print-soak.ts`, find:
+
+```ts
+  }
+}
+
+interface PrinterRecord { bytes: number; dropped: boolean; file: string | null; at: string; out: string }
+
+function printerRecords(outs: readonly string[], since: Date): PrinterRecord[] {
+  return outs.flatMap((out) => {
+```
+
+Replace it with:
+
+```ts
+  }
+}
+
+interface PrinterRecord { bytes: number; dropped: boolean; file: string | null; at: string; out: string; statusOnly?: boolean }
+
+function printerRecords(outs: readonly string[], since: Date): PrinterRecord[] {
+  return outs.flatMap((out) => {
+```
+
+In `apps/cafe/scripts/print-soak.ts`, find:
+
+```ts
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .map((line) => ({ ...(JSON.parse(line) as Omit<PrinterRecord, "out">), out }))
+      .filter((r) => r.bytes > 0 && Date.parse(r.at) >= since.getTime());
+  });
+}
+```
+
+Replace it with:
+
+```ts
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .map((line) => ({ ...(JSON.parse(line) as Omit<PrinterRecord, "out">), out }))
+      // Phase 3 Session 3C: a POS app's idle status check (DLE EOT only) is not a slip.
+      .filter((r) => r.bytes > 0 && r.statusOnly !== true && Date.parse(r.at) >= since.getTime());
+  });
+}
+```
+
+In `scripts/fake-escpos-printer.mjs`, find:
+
+```js
+//
+//   node scripts/fake-escpos-printer.mjs [--port 9100] [--host 127.0.0.1] [--out <dir>]
+//                                        [--drop-after <bytes>] [--drop-every <n>] [--delay <ms>]
+//                                        [--paper-out] [--cover-open] [--refuse]
+//
+// The Android emulator reaches it at 10.0.2.2:<port>, the Windows app at 127.0.0.1:<port>. A phone on
+// the shop Wi-Fi needs --host 0.0.0.0. Every connection is one job: its bytes go to
+// <out>/<time>-<n>.bin and one JSON line to <out>/jobs.log. DLE EOT n (0x10 0x04 n) is answered at
+// once, as a real printer answers its real-time status command.
+//
+//   --drop-after N  cut the connection after N bytes of a job (a slip cut off mid-way: "maybe sent")
+//   --drop-every N  with --drop-after, cut only every N-th connection (the soak's drops; default 1: every one)
+//   --delay MS      read nothing for MS after a connection opens (a slow or busy printer)
+//   --paper-out     DLE EOT reports "paper end"      --cover-open  DLE EOT reports "cover open"
+//   --refuse        reset every connection as it opens (the printer accepts nothing)
+// To test "cannot connect" (nothing listening at all), stop this script.
+```
+
+Replace it with:
+
+```js
+//
+//   node scripts/fake-escpos-printer.mjs [--port 9100] [--host 127.0.0.1] [--out <dir>]
+//                                        [--drop-after <bytes>] [--drop-every <n>] [--delay <ms>]
+//                                        [--paper-out] [--cover-open] [--paper-low] [--silent] [--refuse]
+//
+// The Android emulator reaches it at 10.0.2.2:<port>, the Windows app at 127.0.0.1:<port>. A phone on
+// the shop Wi-Fi needs --host 0.0.0.0. Every connection is one job: its bytes go to
+// <out>/<time>-<n>.bin and one JSON line to <out>/jobs.log. DLE EOT n (0x10 0x04 n) is answered at
+// once, as a real printer answers its real-time status command. Phase 3 Session 3C: a connection that carried only
+// DLE EOT requests (the POS app's idle status check, once a minute per network printer) is logged with
+// "statusOnly": true; it is not a slip.
+//
+//   --drop-after N  cut the connection after N bytes of a job (a slip cut off mid-way: "maybe sent")
+//   --drop-every N  with --drop-after, cut only every N-th connection (the soak's drops; default 1: every one)
+//   --delay MS      read nothing for MS after a connection opens (a slow or busy printer)
+//   --paper-out     DLE EOT reports "paper end"      --cover-open  DLE EOT reports "cover open"
+//   --paper-low     DLE EOT reports "paper near end" (still online)
+//   --silent        answers no DLE EOT at all (a printer without real-time status)
+//   --refuse        reset every connection as it opens (the printer accepts nothing)
+// To test "cannot connect" (nothing listening at all), stop this script.
+```
+
+In `scripts/fake-escpos-printer.mjs`, find:
+
+```js
+    delay: 0,
+    paperOut: false,
+    coverOpen: false,
+    refuse: false,
+  };
+  for (let i = 0; i < argv.length; i++) {
+```
+
+Replace it with:
+
+```js
+    delay: 0,
+    paperOut: false,
+    coverOpen: false,
+    paperLow: false,
+    silent: false,
+    refuse: false,
+  };
+  for (let i = 0; i < argv.length; i++) {
+```
+
+In `scripts/fake-escpos-printer.mjs`, find:
+
+```js
+      case "--delay": opts.delay = whole(); break;
+      case "--paper-out": opts.paperOut = true; break;
+      case "--cover-open": opts.coverOpen = true; break;
+      case "--refuse": opts.refuse = true; break;
+      default: throw new Error(`unknown option ${flag}`);
+    }
+```
+
+Replace it with:
+
+```js
+      case "--delay": opts.delay = whole(); break;
+      case "--paper-out": opts.paperOut = true; break;
+      case "--cover-open": opts.coverOpen = true; break;
+      case "--paper-low": opts.paperLow = true; break;
+      case "--silent": opts.silent = true; break;
+      case "--refuse": opts.refuse = true; break;
+      default: throw new Error(`unknown option ${flag}`);
+    }
+```
+
+In `scripts/fake-escpos-printer.mjs`, find:
+
+```js
+    case 1: return BASE | (state.paperOut || state.coverOpen ? 0x08 : 0); // bit 3: offline
+    case 2: return BASE | (state.coverOpen ? 0x04 : 0) | (state.paperOut ? 0x20 : 0); // bit 2: cover open; bit 5: paper end
+    case 3: return BASE; // no error
+    case 4: return BASE | (state.paperOut ? 0x60 : 0); // bits 5–6: roll paper end
+    default: return null;
+  }
+}
+```
+
+Replace it with:
+
+```js
+    case 1: return BASE | (state.paperOut || state.coverOpen ? 0x08 : 0); // bit 3: offline
+    case 2: return BASE | (state.coverOpen ? 0x04 : 0) | (state.paperOut ? 0x20 : 0); // bit 2: cover open; bit 5: paper end
+    case 3: return BASE; // no error
+    case 4: return BASE | (state.paperOut ? 0x60 : 0) | (state.paperLow ? 0x0c : 0); // bits 5–6: roll paper end; bits 2–3: near end
+    default: return null;
+  }
+}
+```
+
+In `scripts/fake-escpos-printer.mjs`, find:
+
+```js
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      const name = `${at.toISOString().replace(/[:.]/g, "-")}-${n}.bin`;
+      const file = record.refused ? null : path.join(opts.out, name);
+      if (file !== null) writeFileSync(file, Buffer.concat(chunks));
+```
+
+Replace it with:
+
+```js
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      record.statusOnly = record.bytes > 0 && record.bytes === record.statusRequests * 3;
+      const name = `${at.toISOString().replace(/[:.]/g, "-")}-${n}.bin`;
+      const file = record.refused ? null : path.join(opts.out, name);
+      if (file !== null) writeFileSync(file, Buffer.concat(chunks));
+```
+
+In `scripts/fake-escpos-printer.mjs`, find:
+
+```js
+      carry = scan.carry;
+      for (const request of scan.requests) {
+        record.statusRequests += 1;
+        const reply = statusByte(request, opts);
+        if (reply !== null && !socket.destroyed) socket.write(Buffer.from([reply]));
+      }
+      if (record.dropped) socket.destroy();
+```
+
+Replace it with:
+
+```js
+      carry = scan.carry;
+      for (const request of scan.requests) {
+        record.statusRequests += 1;
+        const reply = opts.silent ? null : statusByte(request, opts);
+        if (reply !== null && !socket.destroyed) socket.write(Buffer.from([reply]));
+      }
+      if (record.dropped) socket.destroy();
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer && npm run test:print-tools 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 11`; `# pass 11`; `# fail 0`
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test scripts/print-soak-agent.test.ts lib/print-lifecycle-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 31`; `# pass 31`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint scripts/print-soak.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/scripts/print-soak.ts scripts/fake-escpos-printer.mjs scripts/fake-escpos-printer.test.mjs
+git commit -m "test(print): the fake ESC/POS printer answers DLE EOT 4 with paper near end (--paper-low) or answers no DLE EOT at all (--silent), and logs an app's idle status check as statusOnly, which the soak never counts as a slip (Phase 3 Session 3C, C3)"
+```
+
+---
+
+### Task C4: the app: Change printer connects a printer the page just added once (m-3); a print and its watchdog race for one claim (M-5); the printer pool's save and publish are seams, with a JVM test of the chain
+
+**Files:**
+- Modify: `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterPool.kt` (`saver`, `publisher`; `Selected`; `replaceDefault` of a listed printer only moves the default)
+- Modify: `…/printer/PrinterApi.kt` (`commit`: a listed printer waits for its attempt in flight, `afterIo`; a new or a down one connects)
+- Modify: `…/printer/PrinterManager.kt` (`afterIo`; `runPrint` claims once)
+- Create: `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterPoolTest.kt` (3 tests); modify `PrinterFakes.kt` (`FakeEnv.scheduled`), `PrinterManagerTest.kt` (M-5's test)
+- Tests: `apps/mobile/src/mobile-paths.test.ts` (pins 11, 14 and 19 deliberately changed: the publisher seam, the claim, m-3)
+
+**Interfaces produced:** `PrinterPool.saver: (List<PrinterInfo>, String?) -> Unit`, `PrinterPool.publisher: (StatusSnapshot?, PoolSnapshot?) -> Unit` (internal); `PrinterPool.Selected(manager, fresh)`, `PrinterPool.replaceDefault(info): Selected`; `PrinterManager.afterIo(after)`.
+
+**m-3 (Session 2G's review).** Change printer from a setup printer to a new Bluetooth or USB printer connected it twice: the page's v2 add started a connect, then its v1 select of the listed id made a new `PrinterManager`, closing the first link in flight (a printer that refuses an immediate reconnect could show "could not connect"). A v1 select of a printer already listed now only moves the default: the same manager, its link and loop stay; the select answers once that printer's attempt in flight settled (`afterIo`); only a new printer, or one that is down, connects now. `PoolList.putDefault` is unchanged (the saved list's restore still uses it).
+
+**M-5 (the 2F2 gold review).** A timer's `cancel()` returns true while the watchdog's task is already running (a `FutureTask` stays NEW until it completes), so at exactly 60 s a print could read printed while the watchdog then closed its link (the next print refused). The job and its watchdog now race for one `AtomicBoolean` claim: whoever claims first decides (the job: printed, the link kept; the watchdog: TIMEOUT, the link closed). The JUnit test runs the watchdog's task after the job finished (that race): the link stays open.
+
+**The publish-chain test (the 2F2 gate).** `PrinterPool` saves through `saver` and delivers through `publisher` (the app's defaults: `Prefs` and the page's `printer.status` events), so `PrinterPoolTest` proves on the JVM: a change halts the printers that left, then saves, then publishes the v1 and the v2 event, each once and only when it changed.
+
+**RED** is a compile failure (the tests name `PrinterPool.saver`, `Selected`), plus the mobile pins.
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterFakes.kt`, find:
+
+```kotlin
+  var nextOpen: () -> Unit = {}
+  var nextWrite: (ByteArray) -> Unit = {}
+  val made = ArrayList<FakeTransport>()
+  val onTimerRuns = ArrayList<Runnable>()
+  private val tasks = ArrayList<Task>()
+```
+
+Replace it with:
+
+```kotlin
+  var nextOpen: () -> Unit = {}
+  var nextWrite: (ByteArray) -> Unit = {}
+  val made = ArrayList<FakeTransport>()
+  /** Session 3C (M-5): every task ever scheduled, so a test can run one as if the timer had started it already. */
+  val scheduled = ArrayList<Runnable>()
+  val onTimerRuns = ArrayList<Runnable>()
+  private val tasks = ArrayList<Task>()
+```
+
+In `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterFakes.kt`, find:
+
+```kotlin
+  override fun schedule(delayMs: Long, task: Runnable): Cancel {
+    val entry = Task(now + delayMs, task)
+    tasks.add(entry)
+    return Cancel {
+      if (entry.ran || entry.cancelled) {
+        false
+```
+
+Replace it with:
+
+```kotlin
+  override fun schedule(delayMs: Long, task: Runnable): Cancel {
+    val entry = Task(now + delayMs, task)
+    tasks.add(entry)
+    scheduled.add(task)
+    return Cancel {
+      if (entry.ran || entry.cancelled) {
+        false
+```
+
+In `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterManagerTest.kt`, find:
+
+```kotlin
+    manager.print("AAAA", refused.cb)
+    assertEquals("a late print: not connected", listOf(BridgeCodes.NOT_CONNECTED), refused.codes())
+  }
+}
+```
+
+Replace it with:
+
+```kotlin
+    manager.print("AAAA", refused.cb)
+    assertEquals("a late print: not connected", listOf(BridgeCodes.NOT_CONNECTED), refused.codes())
+  }
+
+  // ── Phase 3 Session 3C (the 2F2 gold review's M-5) ────────────────────────────────────────────────────────────────
+
+  @Test
+  fun aJobThatFinishedFirstIsNeverClosedUnderByItsWatchdog() {
+    // The 2F2 gold review's M-5: a timer's cancel() can win while the watchdog's task already runs. Running that task
+    // after the job finished is that race: it must neither close the link nor turn the job into a timeout.
+    val env = FakeEnv()
+    val (manager, io) = started(tcpPrinter(), env)
+    val link = env.made.last()
+    val done = Replies<Int>()
+    val before = env.scheduled.size
+    manager.print("AAAA", done.cb)
+    io.runAll()
+    assertEquals(listOf("OK"), done.codes())
+    // The job's watchdog is the first task scheduled after the print.
+    env.scheduled[before].run()
+    assertEquals("the link stays open", 0, link.closed)
+    assertEquals(BridgeCodes.STATE_CONNECTED, manager.state())
+  }
+}
+```
+
+Create `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterPoolTest.kt`:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+
+/**
+ * Phase 3 Session 3C: the app's printer list end to end on the JVM, through [PrinterPool]'s seams (the 2F2 gate's
+ * publish-chain test): a change halts the printers that left, then saves, then publishes the v1 and the v2 event, each
+ * once and only when it changed; and the 2G review's m-3: a v1 select of a printer already listed only moves the default.
+ */
+class PrinterPoolTest {
+  private val events = ArrayList<String>()
+  private val savedSaver = PrinterPool.saver
+  private val savedPublisher = PrinterPool.publisher
+  private val kitchen = tcpPrinter(9100)
+  private val bar = tcpPrinter(9101)
+
+  @Before
+  fun seams() {
+    PrinterPool.saver = { printers, defaultId -> events.add("save " + printers.joinToString(",") { it.id } + " default " + defaultId) }
+    PrinterPool.publisher = { one, all ->
+      if (one != null) events.add("v1 " + (one.printer?.id ?: "none"))
+      if (all != null) events.add("v2 " + all.printers.joinToString(",") { it.printer.id } + " default " + all.defaultId)
+    }
+    PrinterPool.managers().forEach { PrinterPool.remove(it.id) }
+    events.clear()
+  }
+
+  @After
+  fun restore() {
+    PrinterPool.managers().forEach { PrinterPool.remove(it.id) }
+    PrinterPool.saver = savedSaver
+    PrinterPool.publisher = savedPublisher
+  }
+
+  @Test
+  fun aChangeSavesThenPublishesEachVersionOnceInOrder() {
+    PrinterPool.add(kitchen)
+    assertEquals(
+        "the first printer: saved as the default, then v1 and v2",
+        listOf("save ${kitchen.id} default ${kitchen.id}", "v1 ${kitchen.id}", "v2 ${kitchen.id} default ${kitchen.id}"),
+        events,
+    )
+    events.clear()
+    PrinterPool.add(bar)
+    assertEquals(
+        "another printer: the default did not change, so v2 only",
+        listOf("save ${kitchen.id},${bar.id} default ${kitchen.id}", "v2 ${kitchen.id},${bar.id} default ${kitchen.id}"),
+        events,
+    )
+    events.clear()
+    PrinterPool.publish()
+    assertTrue("nothing changed: no event", events.isEmpty())
+  }
+
+  @Test
+  fun aPrinterThatLeftIsHaltedBeforeTheSaveAndTheDefaultMovesInOneV1Event() {
+    val gone = PrinterPool.add(kitchen)
+    PrinterPool.add(bar)
+    var haltedAtSave = false
+    PrinterPool.saver = { printers, defaultId ->
+      haltedAtSave = gone.state() == BridgeCodes.STATE_NONE
+      events.add("save " + printers.joinToString(",") { it.id } + " default " + defaultId)
+    }
+    events.clear()
+    PrinterPool.remove(kitchen.id)
+    assertTrue("halted before it was saved away", haltedAtSave)
+    assertEquals(listOf("save ${bar.id} default ${bar.id}", "v1 ${bar.id}", "v2 ${bar.id} default ${bar.id}"), events)
+  }
+
+  @Test
+  fun aV1SelectOfAListedPrinterOnlyMovesTheDefault() {
+    PrinterPool.add(kitchen)
+    val added = PrinterPool.add(bar)
+    events.clear()
+    val selected = PrinterPool.replaceDefault(bar)
+    assertFalse("no new manager (m-3: it connects once, never twice)", selected.fresh)
+    assertSame("the printer the page just added keeps its manager", added, selected.manager)
+    assertSame(added, PrinterPool.defaultManager())
+    assertTrue("never halted", added.state() != BridgeCodes.STATE_NONE)
+    assertEquals("both stay listed", 2, PrinterPool.managers().size)
+    assertEquals(listOf("save ${kitchen.id},${bar.id} default ${bar.id}", "v1 ${bar.id}", "v2 ${kitchen.id},${bar.id} default ${bar.id}"), events)
+    val usb = usbPrinter()
+    val fresh = PrinterPool.replaceDefault(usb)
+    assertTrue("a printer not listed is new", fresh.fresh)
+    assertEquals("it takes the default's place, as v1 always replaced its one printer", listOf(kitchen.id, usb.id), PrinterPool.managers().map { it.id })
+    assertEquals(BridgeCodes.STATE_NONE, added.state())
+  }
+}
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  if (!d.includes('ESCAPED_CODES.contains(ch.code)')) {
+    out.push('escapeForScript does not use ESCAPED_CODES');
+  }
+  // Session 2F2 (deliberate change): the printer pool publishes, for both bridge versions.
+  const publish =
+    /fun publish\(\)[\s\S]*?\n {2}\}\n/.exec(strip(s.pool))?.[0] ?? '';
+  if (
+    !publish.includes(
+      'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.toJson(one))',
+    )
+  ) {
+    out.push('PrinterPool.publish() does not deliver the v1 printer.status natively');
+  }
+  if (
+    !publish.includes(
+      'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.poolJson(all), BridgeCodes.BRIDGE_V2)',
+    )
+  ) {
+```
+
+Replace it with:
+
+```ts
+  if (!d.includes('ESCAPED_CODES.contains(ch.code)')) {
+    out.push('escapeForScript does not use ESCAPED_CODES');
+  }
+  // Session 2F2 (deliberate change): the printer pool publishes, for both bridge versions. Session 3C (deliberate
+  // change: the publish-chain test's seam): publish() hands what changed to the pool's publisher, whose default delivers.
+  const poolText = strip(s.pool);
+  const publish = /fun publish\(\)[\s\S]*?\n {2}\}\n/.exec(poolText)?.[0] ?? '';
+  const publisherAt = poolText.indexOf('internal var publisher:');
+  const publisher = publisherAt < 0 ? '' : poolText.slice(publisherAt, poolText.indexOf('\n  }\n', publisherAt));
+  if (!publish.includes('publisher(if (changes.v1) one else null, if (changes.v2) all else null)')) {
+    out.push('PrinterPool.publish() does not publish through its publisher');
+  }
+  if (
+    !publisher.includes(
+      'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.toJson(one))',
+    )
+  ) {
+    out.push('PrinterPool.publish() does not deliver the v1 printer.status natively');
+  }
+  if (
+    !publisher.includes(
+      'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.poolJson(all), BridgeCodes.BRIDGE_V2)',
+    )
+  ) {
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  const underLock = [
+    'synchronized(publishLock) {',
+    'val changes = dedupe.next(one, all)',
+    'WebViewDelivery.deliverEvent(',
+    'statusObserver?.invoke()',
+  ];
+  if (!inOrder(publish, underLock)) {
+```
+
+Replace it with:
+
+```ts
+  const underLock = [
+    'synchronized(publishLock) {',
+    'val changes = dedupe.next(one, all)',
+    // Session 3C (deliberate change): the publisher seam delivers (its default: WebViewDelivery, pin 11).
+    'publisher(if (changes.v1) one else null, if (changes.v2) all else null)',
+    'statusObserver?.invoke()',
+  ];
+  if (!inOrder(publish, underLock)) {
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  const out: string[] = [];
+  // Session 2F2 (deliberate change): every printer's print runs in its own PrinterManager.
+  const run = tail(strip(s.manager), 'private fun runPrint(');
+  const verdict =
+    /t\.write\(bytes\)\s*if \(watchdogFired\(watchdog, timedOut\)\) \{\s*onLinkLost\(t\)\s*Reply\.fail\(BridgeCodes\.TIMEOUT\)\s*\} else \{\s*Reply\.Ok\(bytes\.size\)/;
+  if (!verdict.test(run)) {
+    out.push('a write that returns after the watchdog still counts as printed');
+  }
+  if (!strip(s.manager).includes('!watchdog.cancel() || timedOut.get()')) {
+    out.push('watchdogFired ignores a watchdog that is already running');
+  }
+  if (count(run, 'Reply.Ok(bytes.size)') !== 1) {
+    out.push('the print job has more than one success path');
+```
+
+Replace it with:
+
+```ts
+  const out: string[] = [];
+  // Session 2F2 (deliberate change): every printer's print runs in its own PrinterManager.
+  const run = tail(strip(s.manager), 'private fun runPrint(');
+  // Session 3C (deliberate change: the 2F2 gold review's M-5): the job and its watchdog race for one claim.
+  const verdict =
+    /t\.write\(bytes\)\s*if \(!claim\.compareAndSet\(false, true\)\) \{\s*onLinkLost\(t\)\s*Reply\.fail\(BridgeCodes\.TIMEOUT\)\s*\} else \{\s*Reply\.Ok\(bytes\.size\)/;
+  if (!verdict.test(run)) {
+    out.push('a write that returns after the watchdog still counts as printed');
+  }
+  if (!strip(s.manager).includes('Runnable { if (claim.compareAndSet(false, true)) closeQuietly(t) }')) {
+    out.push('the watchdog closes the link without winning the claim');
+  }
+  if (count(run, 'Reply.Ok(bytes.size)') !== 1) {
+    out.push('the print job has more than one success path');
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+    ['val dns: ExecutorService =', 'val dnsX: ExecutorService ='],
+  ]);
+  everyMutationCaught(run(watchdogProblems, 'manager'), base.manager, [
+    ['if (watchdogFired(watchdog, timedOut)) {', 'if (false) {'],
+    ['!watchdog.cancel() || timedOut.get()', 'timedOut.get()'],
+    [
+      '        onLinkLost(t)\n        Reply.fail(BridgeCodes.TIMEOUT)\n      } else {',
+      '        Reply.fail(BridgeCodes.TIMEOUT)\n      } else {',
+```
+
+Replace it with:
+
+```ts
+    ['val dns: ExecutorService =', 'val dnsX: ExecutorService ='],
+  ]);
+  everyMutationCaught(run(watchdogProblems, 'manager'), base.manager, [
+    ['if (!claim.compareAndSet(false, true)) {\n        // The job', 'if (false) {\n        // The job'],
+    ['Runnable { if (claim.compareAndSet(false, true)) closeQuietly(t) }', 'Runnable { closeQuietly(t) }'],
+    [
+      '        onLinkLost(t)\n        Reply.fail(BridgeCodes.TIMEOUT)\n      } else {',
+      '        Reply.fail(BridgeCodes.TIMEOUT)\n      } else {',
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  need(prefs, 'PoolList.restore(listed, p.getString(KEY_PRINTER_DEFAULT, null), savedPrinter(ctx))', 'the saved list does not migrate the v1 printer');
+  need(prefs, '.putString(KEY_PRINTER_ID, default.id)', 'the v1 keys do not name the default printer');
+  need(strip(s.service), 'HostTitle.of(PrinterPool.poolStatus())', 'the notification does not say the worst state across printers');
+  need(strip(s.gradle), 'testImplementation "junit:junit:4.13.2"', 'JUnit 4 is not a test dependency');
+  return out;
+}
+```
+
+Replace it with:
+
+```ts
+  need(prefs, 'PoolList.restore(listed, p.getString(KEY_PRINTER_DEFAULT, null), savedPrinter(ctx))', 'the saved list does not migrate the v1 printer');
+  need(prefs, '.putString(KEY_PRINTER_ID, default.id)', 'the v1 keys do not name the default printer');
+  need(strip(s.service), 'HostTitle.of(PrinterPool.poolStatus())', 'the notification does not say the worst state across printers');
+  // Session 3C (the 2G review's m-3): a v1 select of a printer already listed only moves the default, and waits for the
+  // attempt in flight instead of connecting it again.
+  need(pool, 'pool.makeDefault(info.id)\n        selected = Selected(listed, false)', 'a v1 select of a listed printer makes a new manager');
+  need(strip(s.api), 'if (selected.fresh || manager.state() == BridgeCodes.STATE_DISCONNECTED) {', 'a v1 select of a listed printer connects it again');
+  need(strip(s.api), 'manager.afterIo { cb(Reply.Ok(answer())) }', 'a v1 select of a listed printer does not wait for its attempt in flight');
+  need(strip(s.gradle), 'testImplementation "junit:junit:4.13.2"', 'JUnit 4 is not a test dependency');
+  return out;
+}
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+
+test('pin 19: one PrinterManager and io thread per printer, BUSY per printer, the list in Prefs, JUnit on the JVM', () => {
+  assert.deepEqual(poolProblems(poolSources()), []);
+  for (const name of ['PrinterManagerTest.kt', 'PoolListTest.kt', 'PoolStatusTest.kt', 'PrinterFakes.kt']) {
+    assert.ok(existsSync(join(JVM_TESTS, name)), 'JVM test file missing: ' + name);
+  }
+});
+```
+
+Replace it with:
+
+```ts
+
+test('pin 19: one PrinterManager and io thread per printer, BUSY per printer, the list in Prefs, JUnit on the JVM', () => {
+  assert.deepEqual(poolProblems(poolSources()), []);
+  for (const name of ['PrinterManagerTest.kt', 'PoolListTest.kt', 'PoolStatusTest.kt', 'PrinterFakes.kt', 'PrinterPoolTest.kt']) {
+    assert.ok(existsSync(join(JVM_TESTS, name)), 'JVM test file missing: ' + name);
+  }
+});
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+    ['import java.util.concurrent.ExecutorService', 'import android.os.Handler\nimport java.util.concurrent.ExecutorService'],
+  ]);
+  everyMutationCaught(run('env'), base.env, [['package com.possoftware.pos.printer', 'package com.possoftware.pos.printer\n\nimport android.content.Context']]);
+  everyMutationCaught(run('api'), base.api, [['import android.content.Context', 'import android.content.Context\nimport java.util.concurrent.atomic.AtomicBoolean']]);
+  everyMutationCaught(run('pool'), base.pool, [
+    ['PrinterManager(info, env, PrinterThreads.newIo())', 'PrinterManager(info, env, shared)'],
+    ['val changes = dedupe.next(one, all)', 'val changes = StatusDedupe.Changes(true, true)'],
+```
+
+Replace it with:
+
+```ts
+    ['import java.util.concurrent.ExecutorService', 'import android.os.Handler\nimport java.util.concurrent.ExecutorService'],
+  ]);
+  everyMutationCaught(run('env'), base.env, [['package com.possoftware.pos.printer', 'package com.possoftware.pos.printer\n\nimport android.content.Context']]);
+  everyMutationCaught(run('api'), base.api, [
+    ['import android.content.Context', 'import android.content.Context\nimport java.util.concurrent.atomic.AtomicBoolean'],
+    ['manager.afterIo { cb(Reply.Ok(answer())) }', 'manager.connectAsync(manager.begin()) { cb(Reply.Ok(answer())) }'],
+    ['selected.fresh || manager', 'true || manager'],
+  ]);
+  everyMutationCaught(run('pool'), base.pool, [['pool.makeDefault(info.id)\n', 'pool.putDefault(newManager(info))\n']]);
+  everyMutationCaught(run('pool'), base.pool, [
+    ['PrinterManager(info, env, PrinterThreads.newIo())', 'PrinterManager(info, env, shared)'],
+    ['val changes = dedupe.next(one, all)', 'val changes = StatusDedupe.Changes(true, true)'],
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 125`; `# pass 119`; `# fail 6`
+
+Run: `cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun --console=plain 2>&1 | grep -E "^BUILD|compileDebugUnitTestKotlin FAILED" | sed -E 's/ in [0-9hms ]+$//'`
+Expected: `> Task :app:compileDebugUnitTestKotlin FAILED`; `BUILD FAILED`
+
+- [ ] **Step 3: The code**
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterApi.kt`, find:
+
+```kotlin
+  }
+
+  private fun <T> commit(info: PrinterInfo, v2: Boolean, cb: ReplyCallback<T>, answer: () -> T) {
+    val manager = if (v2) PrinterPool.add(info) else PrinterPool.replaceDefault(info)
+    manager.connectAsync(manager.begin()) { cb(Reply.Ok(answer())) }
+  }
+
+  fun reconnect(cb: ReplyCallback<StatusSnapshot>) =
+```
+
+Replace it with:
+
+```kotlin
+  }
+
+  private fun <T> commit(info: PrinterInfo, v2: Boolean, cb: ReplyCallback<T>, answer: () -> T) {
+    if (v2) {
+      val manager = PrinterPool.add(info)
+      manager.connectAsync(manager.begin()) { cb(Reply.Ok(answer())) }
+      return
+    }
+    // Session 3C (the 2G review's m-3): a printer already listed keeps its link and only becomes the default; it answers
+    // once its own attempt in flight settled (one connect, never two). Only a new one, or one that is down, connects now.
+    val selected = PrinterPool.replaceDefault(info)
+    val manager = selected.manager
+    if (selected.fresh || manager.state() == BridgeCodes.STATE_DISCONNECTED) {
+      manager.connectAsync(manager.begin()) { cb(Reply.Ok(answer())) }
+    } else {
+      manager.afterIo { cb(Reply.Ok(answer())) }
+    }
+  }
+
+  fun reconnect(cb: ReplyCallback<StatusSnapshot>) =
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterManager.kt`, find:
+
+```kotlin
+          after()
+        }
+    if (!queued) after()
+  }
+
+  /** One connect attempt for [gen] on the io thread (may block). Never throws: every failure (incl. a platform
+```
+
+Replace it with:
+
+```kotlin
+          after()
+        }
+    if (!queued) after()
+  }
+
+  /** Session 3C (the 2G review's m-3): runs [after] once the work queued on this printer's io thread so far has run (an
+   *  attempt in flight settles first); at once when the printer was halted. */
+  fun afterIo(after: () -> Unit) {
+    if (!onIo { after() }) after()
+  }
+
+  /** One connect attempt for [gen] on the io thread (may block). Never throws: every failure (incl. a platform
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterManager.kt`, find:
+
+```kotlin
+    }
+  }
+
+  /** True when the watchdog already started: cancel only wins while it has not run. */
+  private fun watchdogFired(watchdog: Cancel, timedOut: AtomicBoolean): Boolean = !watchdog.cancel() || timedOut.get()
+
+  private fun runPrint(t: PrinterTransport, base64: String): Reply<Int> {
+    val bytes = env.decode(base64) ?: return Reply.fail(BridgeCodes.BAD_REQUEST)
+    val timedOut = AtomicBoolean(false)
+    val watchdog =
+        env.schedule(
+            PRINT_JOB_TIMEOUT_MS,
+            Runnable {
+              timedOut.set(true)
+              closeQuietly(t)
+            },
+        )
+    return try {
+      t.write(bytes)
+      if (watchdogFired(watchdog, timedOut)) {
+        // The job ran into the watchdog: the link was closed under it, so it never counts as printed.
+        onLinkLost(t)
+        Reply.fail(BridgeCodes.TIMEOUT)
+```
+
+Replace it with:
+
+```kotlin
+    }
+  }
+
+  /**
+   * The job and its watchdog race for one claim (Session 3C: the 2F2 gold review's M-5), so exactly one of them decides:
+   * a job that finished first is never closed under, and a watchdog that fired first always makes it a TIMEOUT. A timer's
+   * cancel() can still win while the watchdog's task runs; the claim, not cancel(), decides.
+   */
+  private fun runPrint(t: PrinterTransport, base64: String): Reply<Int> {
+    val bytes = env.decode(base64) ?: return Reply.fail(BridgeCodes.BAD_REQUEST)
+    val claim = AtomicBoolean(false)
+    val watchdog =
+        env.schedule(
+            PRINT_JOB_TIMEOUT_MS,
+            Runnable { if (claim.compareAndSet(false, true)) closeQuietly(t) },
+        )
+    return try {
+      t.write(bytes)
+      if (!claim.compareAndSet(false, true)) {
+        // The job ran into the watchdog: the link was closed under it, so it never counts as printed.
+        onLinkLost(t)
+        Reply.fail(BridgeCodes.TIMEOUT)
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterManager.kt`, find:
+
+```kotlin
+        Reply.Ok(bytes.size)
+      }
+    } catch (e: TransportException) {
+      onLinkLost(t)
+      Reply.fail(if (timedOut.get()) BridgeCodes.TIMEOUT else e.code)
+    } catch (e: RuntimeException) {
+      onLinkLost(t)
+      Reply.fail(if (timedOut.get()) BridgeCodes.TIMEOUT else BridgeCodes.WRITE_FAILED)
+    } finally {
+      watchdog.cancel()
+    }
+```
+
+Replace it with:
+
+```kotlin
+        Reply.Ok(bytes.size)
+      }
+    } catch (e: TransportException) {
+      val timedOut = !claim.compareAndSet(false, true)
+      onLinkLost(t)
+      Reply.fail(if (timedOut) BridgeCodes.TIMEOUT else e.code)
+    } catch (e: RuntimeException) {
+      val timedOut = !claim.compareAndSet(false, true)
+      onLinkLost(t)
+      Reply.fail(if (timedOut) BridgeCodes.TIMEOUT else BridgeCodes.WRITE_FAILED)
+    } finally {
+      watchdog.cancel()
+    }
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterPool.kt`, find:
+
+```kotlin
+ * [poolLock] guards the list; it is held to read the list and each listed printer's state, or to change the list,
+ * never while a manager works or while publishing. Lock order: [publishLock], then [poolLock], then a manager's own
+ * lock (no manager takes the pool's lock).
+ */
+object PrinterPool {
+  private val poolLock = Any()
+```
+
+Replace it with:
+
+```kotlin
+ * [poolLock] guards the list; it is held to read the list and each listed printer's state, or to change the list,
+ * never while a manager works or while publishing. Lock order: [publishLock], then [poolLock], then a manager's own
+ * lock (no manager takes the pool's lock).
+ *
+ * Session 3C (the 2F2 gate's publish-chain test): where a change is saved ([saver]) and where a status event goes
+ * ([publisher]) are seams, the app's own by default, so a JVM test (src/test) proves change, halt, save, then publish.
+ */
+object PrinterPool {
+  private val poolLock = Any()
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterPool.kt`, find:
+
+```kotlin
+
+  /** The foreground service watches status changes here (one observer at a time). */
+  @Volatile var statusObserver: (() -> Unit)? = null
+
+  private val env =
+      object : PrinterEnv {
+```
+
+Replace it with:
+
+```kotlin
+
+  /** The foreground service watches status changes here (one observer at a time). */
+  @Volatile var statusObserver: (() -> Unit)? = null
+
+  /** Session 3C: saves the list and its default (the app's: [Prefs], once [init] ran). */
+  @Volatile
+  internal var saver: (List<PrinterInfo>, String?) -> Unit = { printers, defaultId ->
+    app?.let { Prefs.savePrinters(it, printers, defaultId) }
+  }
+
+  /** Session 3C: delivers what changed: the v1 event (the default printer) and the v2 event (every printer), each only
+   *  when it changed (null otherwise). The app's: the page's printer.status events. */
+  @Volatile
+  internal var publisher: (StatusSnapshot?, PoolSnapshot?) -> Unit = { one, all ->
+    if (one != null) WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.toJson(one))
+    if (all != null) WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.poolJson(all), BridgeCodes.BRIDGE_V2)
+  }
+
+  private val env =
+      object : PrinterEnv {
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterPool.kt`, find:
+
+```kotlin
+    return manager
+  }
+
+  /** v1 select: [info] becomes the default printer in the default's place, as v1 always replaced its one printer. */
+  fun replaceDefault(info: PrinterInfo): PrinterManager {
+    val manager = newManager(info)
+    change { it.putDefault(manager) }
+    return manager
+  }
+
+  /** v2 forget: [id] leaves the list (the default leaving promotes the first remaining printer). */
+```
+
+Replace it with:
+
+```kotlin
+    return manager
+  }
+
+  /** A printer a select names, and whether its manager is new (only a new one is connected by the caller). */
+  data class Selected(val manager: PrinterManager, val fresh: Boolean)
+
+  /** v1 select: [info] becomes the default printer in the default's place, as v1 always replaced its one printer.
+   *  Session 3C (the 2G review's m-3): a printer already listed only becomes the default: its manager, its link and its
+   *  loop stay, so Change printer to a printer the page has just added connects it once, never twice. */
+  fun replaceDefault(info: PrinterInfo): Selected {
+    var selected: Selected? = null
+    change { pool ->
+      val listed = pool.find(info.id)
+      if (listed != null) {
+        pool.makeDefault(info.id)
+        selected = Selected(listed, false)
+        emptyList()
+      } else {
+        val manager = newManager(info)
+        selected = Selected(manager, true)
+        pool.putDefault(manager)
+      }
+    }
+    return selected ?: throw IllegalStateException("no selection")
+  }
+
+  /** v2 forget: [id] leaves the list (the default leaving promotes the first remaining printer). */
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterPool.kt`, find:
+
+```kotlin
+  }
+
+  private fun save() {
+    val ctx = app ?: return
+    val (printers, defaultId) = synchronized(poolLock) { Pair(list.all().map { it.info }, list.defaultId) }
+    Prefs.savePrinters(ctx, printers, defaultId)
+  }
+
+  fun lookup(id: String): PrinterInfo? = known[id]
+```
+
+Replace it with:
+
+```kotlin
+  }
+
+  private fun save() {
+    val (printers, defaultId) = synchronized(poolLock) { Pair(list.all().map { it.info }, list.defaultId) }
+    saver(printers, defaultId)
+  }
+
+  fun lookup(id: String): PrinterInfo? = known[id]
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterPool.kt`, find:
+
+```kotlin
+      val one = status()
+      val all = poolStatus()
+      val changes = dedupe.next(one, all)
+      if (changes.v1) WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.toJson(one))
+      if (changes.v2) WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.poolJson(all), BridgeCodes.BRIDGE_V2)
+      if (changes.v1 || changes.v2) statusObserver?.invoke()
+    }
+  }
+```
+
+Replace it with:
+
+```kotlin
+      val one = status()
+      val all = poolStatus()
+      val changes = dedupe.next(one, all)
+      if (changes.v1 || changes.v2) publisher(if (changes.v1) one else null, if (changes.v2) all else null)
+      if (changes.v1 || changes.v2) statusObserver?.invoke()
+    }
+  }
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 125`; `# pass 125`; `# fail 0`
+
+Run: `cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun --console=plain 2>&1 | grep -E "^BUILD|compileDebugUnitTestKotlin FAILED" | sed -E 's/ in [0-9hms ]+$//'`
+Expected: `BUILD SUCCESSFUL`
+
+Run: `cat /d/kd/lucifer/apps/mobile/android/app/build/test-results/testDebugUnitTest/*.xml | grep -oE 'testsuite name="[^"]+" tests="[0-9]+" skipped="[0-9]+" failures="[0-9]+" errors="[0-9]+"'`
+Expected: `testsuite name="com.possoftware.pos.printer.PoolListTest" tests="6" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PoolStatusTest" tests="2" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PrinterManagerTest" tests="14" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PrinterPoolTest" tests="3" skipped="0" failures="0" errors="0"`
+
+Run: `cd /d/kd/lucifer/apps/mobile && npx tsc --noEmit && echo MOBILE_TSC_OK && npm run lint >/dev/null 2>&1 && echo MOBILE_LINT_OK`
+Expected: `MOBILE_TSC_OK`; `MOBILE_LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterApi.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterManager.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterPool.kt apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterFakes.kt apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterManagerTest.kt apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterPoolTest.kt apps/mobile/src/mobile-paths.test.ts
+git commit -m "fix(app): Change printer to a printer the page just added connects it once (a v1 select of a listed printer only moves the default), a print and its watchdog race for one claim, and the printer pool's save and publish are seams with a JVM test of the chain (Phase 3 Session 3C, C4: the 2G review's m-3, the 2F2 gold review's M-5, the 2F2 gate's publish-chain test)"
+```
+
+---
+
+### Task C5: DLE EOT: each printer says its paper, cover and error after a job and while idle; BUSY while it cannot print; G5 on a network job; bridge v2 carries them; the page leases no printer its app says cannot print; the notification says out of paper
+
+**Files:**
+- Create: `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterStatus.kt` (`PrinterHealth`, `DleEot`)
+- Modify: `…/printer/PrinterTypes.kt` (`PrinterTransport.status()`, `TransportException.linkKept`, `PoolEntry.health`)
+- Modify: `…/printer/TcpTransport.kt` (G5 in `write`; `status()`, the idle check), `UsbTransport.kt` (bulk IN), `ClassicTransport.kt` (the reader keeps the printer's bytes)
+- Modify: `…/printer/PrinterManager.kt` (`health()`, `probe`, `scheduleProbe`, BUSY while it cannot print, `linkKept`), `PrinterPool.kt` (the entry's health), `StatusJson.kt`, `PoolStatus.kt` (`HostTitle.PaperOut`), `PrintHostService.kt`, `res/values/strings.xml`
+- Modify: `apps/mobile/src/bridge/protocol-v2.ts` (`PAPER_STATES`, `COVER_STATES`, `PoolEntry`)
+- Modify: `apps/cafe/lib/printer/native-pool.ts` (`poolPrinterCannotPrint`; the ready key), `lib/printer/printer-registry.ts` (`printerCannotPrintOf`), `lib/print-agent-printers.ts` (`readyPrinterIdsOf(…, cannotPrint)`), `hooks/use-print-agent.ts`
+- Create: `…/src/test/…/printer/DleEotTest.kt` (6), `TcpTransportTest.kt` (6, against a fake printer on the loopback); modify `PrinterFakes.kt`, `PrinterManagerTest.kt` (5 more), `PoolStatusTest.kt` (1 more)
+- Tests: `apps/mobile/src/mobile-paths.test.ts` (pin 0, 16 deliberately changed; pin 20 new), `apps/cafe/lib/printer/native-bridge-v2-parity.test.ts` (paper, cover, error), `lib/printer/native-pool.test.ts`, `lib/print-agent-printers.test.ts`, `lib/print-agent-paths.test.ts`
+
+**Interfaces produced:** `PrinterHealth(paper, cover, error, offline)`, `DleEot.request(n)`, `DleEot.isAnswer(b)`, `DleEot.healthOf(answers)`, `DleEot.PAPER_*`/`COVER_*`; `PrinterTransport.status(): PrinterHealth?`; `PrinterManager.health()`, `STATUS_PROBE_MS`, `STATUS_PROBE_PROBLEM_MS`; `HostTitle.PaperOut(name)`; `poolPrinterCannotPrint(entry)`, `printerCannotPrintOf(nativeId)`, `readyPrinterIdsOf(…, cannotPrint = () => false)`.
+
+**DLE EOT (spec §10).** Each transport answers `status()`: DLE EOT 1 to 4 (printer, offline cause, error cause, roll paper sensor), one byte each, a byte counting only when bits 1 and 4 are set and bits 0 and 7 clear (an automatic status block or XON/XOFF never reads as an answer). A printer that does not answer DLE EOT 1 says nothing more: no false problem. TCP: one connect, the four questions, close; that connect is also the idle check of the link, so a network printer switched off between jobs reads disconnected within a minute instead of at the next slip (the 3A gate's m-B). USB: the claimed interface's bulk IN endpoint (none: nothing). Bluetooth Classic: the link's reader thread keeps the bytes the printer sends. BLE: link only. The manager asks at once when a printer connects, after every job (before the next one, on the printer's own io thread), and every 60 s while idle (10 s while the printer says it cannot print); never while a job waits or prints. `paper` (`ok`/`low`/`out`), `cover` (`closed`/`open`) and `error` (true: the printer names an error, or says it is offline with no cause) ride bridge v2's list (only while connected); the notification's title says "Printing is on — ‹name› is out of paper" as its worst state. The idle check runs while the app runs, not only with the host service (no host service runs in printers mode until Session 3D); it costs a local connect a minute per network printer and no request.
+
+**BUSY while it cannot print.** A printer that says it cannot print (DLE EOT 1's offline bit: out of paper, cover open, an error) refuses a job BUSY before any byte, and the page (bridge v2) does not lease a printer its app says is out of paper, has its cover open or reports an error (`readyPrinterIdsOf`'s `cannotPrint`; the ready key changes when the app says it can print again, so the agent looks at once). So such a slip waits with no lease and no ack, every device says why (3B's words), and it prints as soon as the printer is ready (the gate's emulator pre-run: 10 s after the paper went back). A page on bridge v1 (simple mode, an older page) is refused BUSY instead: Phase 1's refusal recheck, 2 requests per 30 s at most, not new.
+
+**G5 (Phase 1's open item).** A network job writes the slip, then asks DLE EOT 1 on its own connection before it reads printed (the printer answers once it took the job in). A connection the printer closed first (a slip cut mid-way, the fake printer's `--drop-after`) is WRITE_FAILED: "maybe", so the server retries it once labelled REPRINT. No answer within the wait (5 s plus the slip's own printing time at 8 bytes a ms, at most 30 s, inside the 60 s watchdog) is "maybe" only for a printer that answered DLE EOT before (an idle check with no answer forgets it); one that never answers prints exactly as before (no false REPRINT). An answer that says it cannot print is "maybe" too, with its link kept (`linkKept`: not a lost link).
+
+**Bridge v2 contract.** The app's `PAPER_STATES`/`COVER_STATES` (TypeScript and Kotlin) equal the page's `PRINTER_PAPER_STATES`/`PRINTER_COVER_STATES`, pinned in `native-bridge-v2-parity.test.ts` with mutations. A page from before 3B ignores the new keys (its list schema is not strict); a 3C APK under a 3B page, a Phase 2 page or the release page prints as before (the gate's emulator pre-run).
+
+**RED** is a compile failure of the JVM tests (`DleEot`, `PrinterHealth`), plus the mobile pins and the parity pin.
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/print-agent-paths.test.ts`, find:
+
+```ts
+  assert.ok(src("apps/cafe/hooks/use-pos-pulse.ts").includes("apiGet<PosPulseData>(`${POS_PULSE_ENDPOINT}${pulsePrintDeviceQuery()}`)"), "the pulse carries it: no new request");
+  // Session 2F1 (deliberate change): or one of the printers it prints here that can print now (a POS app printer on
+  // bridge v2 by its own state; any other only while canPrintNow, as before).
+  assert.ok(agent.includes("printerReady: () => canPrintNow() || readyNow().length > 0,"), "the agent's gate is the device's own can-print verdict");
+  assert.ok(agent.includes("const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf);"), "and its printers' own states");
+  assert.ok(agent.includes("PRINT_AGENT_SLIP_DEADLINE_MS"), "its wait on one slip is bounded");
+});
+```
+
+Replace it with:
+
+```ts
+  assert.ok(src("apps/cafe/hooks/use-pos-pulse.ts").includes("apiGet<PosPulseData>(`${POS_PULSE_ENDPOINT}${pulsePrintDeviceQuery()}`)"), "the pulse carries it: no new request");
+  // Session 2F1 (deliberate change): or one of the printers it prints here that can print now (a POS app printer on
+  // bridge v2 by its own state; any other only while canPrintNow, as before).
+  // Session 3C (the 3B gate's review of the golden copy, m-2) deliberately changed: a device that prints printers is ready
+  // only by their own states.
+  assert.ok(agent.includes("printerReady: () => (readyRef.current.length === 0 ? canPrintNow() : readyNow().length > 0),"), "the agent's gate is the device's own can-print verdict");
+  // Session 3C (spec §10) deliberately changed: and not one the app says cannot print.
+  assert.ok(agent.includes("const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf, printerCannotPrintOf);"), "and its printers' own states");
+  assert.ok(agent.includes("PRINT_AGENT_SLIP_DEADLINE_MS"), "its wait on one slip is bounded");
+});
+```
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+  const agent = src("apps/cafe/lib/print-agent.ts");
+  assert.ok(agent.includes("const data = await deps.lease(holds.open(ready()));"), "the lease names only the ready printers no refusal holds");
+  const hook = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.ok(hook.includes("const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf);"), "ready: the app's own state per printer");
+  assert.ok(hook.includes("readyPrinters: readyNow,"), "the agent's ready list is that");
+  const lib = src("apps/cafe/lib/print-agent-printers.ts");
+  assert.ok(lib.includes('return nativeId === undefined ? canPrint : statusOf(nativeId) === "connected";'), "an app printer is ready only while the app says connected");
+});
+
+test("3B: the dot carries the worst paper, cover or error the app says of a printer it counts, by that printer's name", () => {
+```
+
+Replace it with:
+
+```ts
+  const agent = src("apps/cafe/lib/print-agent.ts");
+  assert.ok(agent.includes("const data = await deps.lease(holds.open(ready()));"), "the lease names only the ready printers no refusal holds");
+  const hook = src("apps/cafe/hooks/use-print-agent.ts");
+  // Session 3C (spec §10) deliberately changed: and not while the app says it cannot print (out of paper, cover open).
+  assert.ok(hook.includes("const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf, printerCannotPrintOf);"), "ready: the app's own state per printer");
+  assert.ok(hook.includes("readyPrinters: readyNow,"), "the agent's ready list is that");
+  const lib = src("apps/cafe/lib/print-agent-printers.ts");
+  assert.ok(lib.includes('return nativeId === undefined ? canPrint : statusOf(nativeId) === "connected" && !cannotPrint(nativeId);'), "an app printer is ready only while the app says connected");
+  // Session 3C: a printer the app says cannot print is never named in a lease: its slips wait, with no request.
+  assert.deepEqual(readyPrinterIdsOf(["theirs"], targets, true, statusOf, (nativeId) => nativeId === "tcp:10.0.2.2:9100"), [], "out of paper: not ready");
+});
+
+test("3B: the dot carries the worst paper, cover or error the app says of a printer it counts, by that printer's name", () => {
+```
+
+In `apps/cafe/lib/printer/native-bridge-v2-parity.test.ts`, find:
+
+```ts
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+import { stripComments } from "../source-pin-utils";
+
+// Phase 2 Session 2F2 (spec §9.2): the bridge v2 parity pin, as the v1 bridge (native-bridge-protocol-parity.test.ts)
+// and the Windows app (desktop-shell-paths.test.ts) have one. The page's half (native-bridge-v2.ts, native-pool.ts)
+```
+
+Replace it with:
+
+```ts
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+import { stripComments } from "../source-pin-utils";
+import { PRINTER_COVER_STATES, PRINTER_PAPER_STATES } from "@pos/shared/print-failover";
+
+// Phase 2 Session 2F2 (spec §9.2): the bridge v2 parity pin, as the v1 bridge (native-bridge-protocol-parity.test.ts)
+// and the Windows app (desktop-shell-paths.test.ts) have one. The page's half (native-bridge-v2.ts, native-pool.ts)
+```
+
+In `apps/cafe/lib/printer/native-bridge-v2-parity.test.ts`, find:
+
+```ts
+  publish: string;
+  json: string;
+  codes: string;
+}
+const sources = (): Sources => ({
+  web: readSrc("apps/cafe/lib/printer/native-bridge-v2.ts"),
+```
+
+Replace it with:
+
+```ts
+  publish: string;
+  json: string;
+  codes: string;
+  status: string;
+}
+const sources = (): Sources => ({
+  web: readSrc("apps/cafe/lib/printer/native-bridge-v2.ts"),
+```
+
+In `apps/cafe/lib/printer/native-bridge-v2-parity.test.ts`, find:
+
+```ts
+  publish: readSrc(KT + "PrinterPool.kt"),
+  json: readSrc(KT + "StatusJson.kt"),
+  codes: readSrc(KT + "BridgeCodes.kt"),
+});
+
+const METHOD_ORACLE = ["printer.status", "printer.select", "printer.reconnect", "printer.forget", "printer.print"];
+```
+
+Replace it with:
+
+```ts
+  publish: readSrc(KT + "PrinterPool.kt"),
+  json: readSrc(KT + "StatusJson.kt"),
+  codes: readSrc(KT + "BridgeCodes.kt"),
+  status: readSrc(KT + "PrinterStatus.kt"),
+});
+
+const METHOD_ORACLE = ["printer.status", "printer.select", "printer.reconnect", "printer.forget", "printer.print"];
+```
+
+In `apps/cafe/lib/printer/native-bridge-v2-parity.test.ts`, find:
+
+```ts
+    need(s.json, `json.put("${key}",`, `the app does not send the list's ${key}`);
+  }
+  need(s.json, 'JSONObject().put("state", entry.state).put("printer", printerJson(entry.printer))', "a listed printer is not { state, printer }");
+  return out;
+}
+```
+
+Replace it with:
+
+```ts
+    need(s.json, `json.put("${key}",`, `the app does not send the list's ${key}`);
+  }
+  need(s.json, 'JSONObject().put("state", entry.state).put("printer", printerJson(entry.printer))', "a listed printer is not { state, printer }");
+  // Session 3C (spec §10; the 3B review's m-4): a listed printer's paper, cover and error, the same values on both sides,
+  // and the page reads an unknown one as nothing.
+  for (const key of ["paper", "cover", "error"]) {
+    need(s.web, `${key}: z.`, `the page does not read a printer's ${key}`);
+    need(s.json, `item.put("${key}",`, `the app does not send a printer's ${key}`);
+  }
+  need(s.web, "paper: z.enum(PRINTER_PAPER_STATES).optional().catch(undefined),", "an unknown paper value refuses the whole list");
+  need(s.web, "cover: z.enum(PRINTER_COVER_STATES).optional().catch(undefined),", "an unknown cover value refuses the whole list");
+  const appValues = (prefix: string) => [...s.status.matchAll(/const val (\w+) = "([^"]*)"/g)].filter((m) => m[1].startsWith(prefix)).map((m) => m[2]);
+  if (JSON.stringify(appValues("PAPER_")) !== JSON.stringify([...PRINTER_PAPER_STATES])) out.push(`the app's paper values are ${JSON.stringify(appValues("PAPER_"))}`);
+  if (JSON.stringify(appValues("COVER_")) !== JSON.stringify([...PRINTER_COVER_STATES])) out.push(`the app's cover values are ${JSON.stringify(appValues("COVER_"))}`);
+  if (JSON.stringify(listOf(s.appProtocol, "PAPER_STATES")) !== JSON.stringify([...PRINTER_PAPER_STATES])) out.push("the app's TypeScript paper values differ");
+  if (JSON.stringify(listOf(s.appProtocol, "COVER_STATES")) !== JSON.stringify([...PRINTER_COVER_STATES])) out.push("the app's TypeScript cover values differ");
+  return out;
+}
+```
+
+In `apps/cafe/lib/printer/native-bridge-v2-parity.test.ts`, find:
+
+```ts
+  ["publish", "StatusJson.poolJson(all), BridgeCodes.BRIDGE_V2)", "StatusJson.poolJson(all))"],
+  ["json", 'json.put("defaultId",', 'json.put("default",'],
+  ["web", "defaultId: z.", "defaultPrinter: z."],
+];
+
+test("2F2: the app's bridge v2 and the page's agree: the methods, the version, each method's envelope, the reply's version and the list's keys", () => {
+```
+
+Replace it with:
+
+```ts
+  ["publish", "StatusJson.poolJson(all), BridgeCodes.BRIDGE_V2)", "StatusJson.poolJson(all))"],
+  ["json", 'json.put("defaultId",', 'json.put("default",'],
+  ["web", "defaultId: z.", "defaultPrinter: z."],
+  ["json", 'item.put("paper",', 'item.put("paperState",'],
+  ["status", 'const val PAPER_OUT = "out"', 'const val PAPER_OUT = "empty"'],
+  ["status", 'const val COVER_OPEN = "open"', 'const val COVER_OPEN = "opened"'],
+  ["appProtocol", "['ok', 'low', 'out'] as const", "['ok', 'low', 'empty'] as const"],
+  ["web", "paper: z.enum(PRINTER_PAPER_STATES).optional().catch(undefined),", "paper: z.enum(PRINTER_PAPER_STATES).optional(),"],
+];
+
+test("2F2: the app's bridge v2 and the page's agree: the methods, the version, each method's envelope, the reply's version and the list's keys", () => {
+```
+
+In `apps/cafe/lib/printer/native-pool.test.ts`, find:
+
+```ts
+  }
+});
+
+test("3B: the app's v2 list may say each printer's paper, cover and error (Session 3C's app); the page keeps them, and a change of them is a change", () => {
+  const plain = poolSnapshotOf({ printers: [{ state: "connected", printer: KITCHEN }], defaultId: KITCHEN.id, bluetooth: "on" });
+  assert.equal(plain.printers[0]?.paper, undefined, "an app that says nothing (2F2's): nothing");
+```
+
+Replace it with:
+
+```ts
+  }
+});
+
+test("3C: a printer the app says cannot print is not in the ready key, so paper put back nudges the agent", () => {
+  const ready = poolSnapshotOf({ printers: [{ state: "connected", printer: KITCHEN }, { state: "connected", printer: BAR }], defaultId: KITCHEN.id, bluetooth: "on" });
+  const empty = poolSnapshotOf({ printers: [{ state: "connected", printer: KITCHEN, paper: "out" }, { state: "connected", printer: BAR, cover: "closed", paper: "low" }], defaultId: KITCHEN.id, bluetooth: "on" } as NativePoolStatus);
+  assert.equal(connectedPoolKey(ready), `${KITCHEN.id},${BAR.id}`);
+  assert.equal(connectedPoolKey(empty), BAR.id, "out of paper: not ready; low paper still prints");
+});
+
+test("3B: the app's v2 list may say each printer's paper, cover and error (Session 3C's app); the page keeps them, and a change of them is a change", () => {
+  const plain = poolSnapshotOf({ printers: [{ state: "connected", printer: KITCHEN }], defaultId: KITCHEN.id, bluetooth: "on" });
+  assert.equal(plain.printers[0]?.paper, undefined, "an app that says nothing (2F2's): nothing");
+```
+
+Create `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/DleEotTest.kt`:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * Phase 3 Session 3C (spec §10): a printer's DLE EOT answers read as paper, cover, error and whether it can print. The
+ * bytes are the Epson bits scripts/fake-escpos-printer.mjs answers with (and real printers send).
+ */
+class DleEotTest {
+  @Test
+  fun aRequestIsDleEotN() {
+    assertEquals(listOf(0x10, 0x04, 0x02), DleEot.request(2).map { it.toInt() })
+    assertEquals("printer, offline cause, error cause, roll paper", listOf(1, 2, 3, 4), DleEot.QUERIES.toList())
+  }
+
+  @Test
+  fun onlyAStatusByteIsAnAnswer() {
+    assertTrue("a healthy printer", DleEot.isAnswer(0x12))
+    assertTrue("roll paper end", DleEot.isAnswer(0x72))
+    assertFalse("an automatic status block's first byte", DleEot.isAnswer(0x10))
+    assertFalse("XON", DleEot.isAnswer(0x11))
+    assertFalse("XOFF", DleEot.isAnswer(0x13))
+    assertFalse("bit 7 set", DleEot.isAnswer(0x92))
+  }
+
+  @Test
+  fun aHealthyPrinterIsReadyWithPaperAndItsCoverClosed() {
+    assertEquals(PrinterHealth(DleEot.PAPER_OK, DleEot.COVER_CLOSED, error = false, offline = false), DleEot.healthOf(mapOf(1 to 0x12, 2 to 0x12, 3 to 0x12, 4 to 0x12)))
+  }
+
+  @Test
+  fun paperOutCoverOpenAndLowPaperAreRead() {
+    val out = DleEot.healthOf(mapOf(1 to 0x1a, 2 to 0x32, 3 to 0x12, 4 to 0x72))
+    assertEquals("the fake printer's --paper-out", PrinterHealth(DleEot.PAPER_OUT, DleEot.COVER_CLOSED, error = false, offline = true), out)
+    val open = DleEot.healthOf(mapOf(1 to 0x1a, 2 to 0x16, 3 to 0x12, 4 to 0x12))
+    assertEquals("--cover-open", PrinterHealth(DleEot.PAPER_OK, DleEot.COVER_OPEN, error = false, offline = true), open)
+    val low = DleEot.healthOf(mapOf(1 to 0x12, 2 to 0x12, 3 to 0x12, 4 to 0x1e))
+    assertEquals("--paper-low: still prints", PrinterHealth(DleEot.PAPER_LOW, DleEot.COVER_CLOSED, error = false, offline = false), low)
+  }
+
+  @Test
+  fun anErrorIsWhatThePrinterNamesOrAnOfflineWithNoCauseAndOnlyWhileItCannotPrint() {
+    assertEquals("offline with an autocutter error (n=3, bit 3)", true, DleEot.healthOf(mapOf(1 to 0x1a, 3 to 0x1a))?.error)
+    assertEquals("an error bit while it says it can print says nothing", false, DleEot.healthOf(mapOf(1 to 0x12, 3 to 0x1a))?.error)
+    val unnamed = DleEot.healthOf(mapOf(1 to 0x1a, 2 to 0x12, 4 to 0x12))
+    assertEquals("offline with its paper in and its cover closed: an error, so the words say why", PrinterHealth(DleEot.PAPER_OK, DleEot.COVER_CLOSED, error = true, offline = true), unnamed)
+    assertTrue("so it cannot print", unnamed!!.cannotPrint())
+    assertFalse("low paper still prints", PrinterHealth(DleEot.PAPER_LOW, DleEot.COVER_CLOSED).cannotPrint())
+  }
+
+  @Test
+  fun aPrinterThatAnswersNothingSaysNothingAndOneThatAnswersPartlySaysOnlyThat() {
+    assertNull("no answer: no false problem", DleEot.healthOf(emptyMap()))
+    assertEquals("only DLE EOT 1: ready, nothing about paper or cover", PrinterHealth(null, null, error = false, offline = false), DleEot.healthOf(mapOf(1 to 0x12)))
+    assertEquals("no DLE EOT 1, paper end in n=4: it cannot print", true, DleEot.healthOf(mapOf(4 to 0x72))?.offline)
+  }
+}
+```
+
+In `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PoolStatusTest.kt`, find:
+
+```kotlin
+    assertEquals("one of several down, connecting counted as down", HostTitle.OneDown(bar.name), HostTitle.of(all(kitchen.id, kitchen to c, bar to k)))
+    assertEquals("several down", HostTitle.SomeDown(2), HostTitle.of(all(kitchen.id, kitchen to d, bar to c, third to d)))
+  }
+}
+```
+
+Replace it with:
+
+```kotlin
+    assertEquals("one of several down, connecting counted as down", HostTitle.OneDown(bar.name), HostTitle.of(all(kitchen.id, kitchen to c, bar to k)))
+    assertEquals("several down", HostTitle.SomeDown(2), HostTitle.of(all(kitchen.id, kitchen to d, bar to c, third to d)))
+  }
+
+  // Phase 3 Session 3C (spec §10): a printer's paper, cover or error changes the v2 event only, and out of paper is the
+  // notification's worst state.
+  @Test
+  fun aPrintersStatusChangesTheV2EventOnlyAndOutOfPaperIsTheWorstTitle() {
+    val c = BridgeCodes.STATE_CONNECTED
+    val out = PrinterHealth(DleEot.PAPER_OUT, DleEot.COVER_CLOSED, error = false, offline = true)
+    val dedupe = StatusDedupe()
+    dedupe.next(one(c, kitchen), all(kitchen.id, kitchen to c))
+    val empty = PoolSnapshot(listOf(PoolEntry(c, kitchen, out)), kitchen.id, BridgeCodes.BT_ON)
+    assertEquals("paper out: v2 only", StatusDedupe.Changes(v1 = false, v2 = true), dedupe.next(one(c, kitchen), empty))
+    assertEquals("the only printer, out of paper", HostTitle.PaperOut(kitchen.name), HostTitle.of(empty))
+    val two = PoolSnapshot(listOf(PoolEntry(BridgeCodes.STATE_DISCONNECTED, bar), PoolEntry(c, kitchen, out)), kitchen.id, BridgeCodes.BT_ON)
+    assertEquals("worse than a printer down", HostTitle.PaperOut(kitchen.name), HostTitle.of(two))
+  }
+}
+```
+
+In `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterFakes.kt`, find:
+
+```kotlin
+class FakeTransport(val listener: LinkListener) : PrinterTransport {
+  var onOpen: () -> Unit = {}
+  var onWrite: (ByteArray) -> Unit = {}
+  val written = ArrayList<ByteArray>()
+  var closed = 0
+
+  override fun open() = onOpen()
+```
+
+Replace it with:
+
+```kotlin
+class FakeTransport(val listener: LinkListener) : PrinterTransport {
+  var onOpen: () -> Unit = {}
+  var onWrite: (ByteArray) -> Unit = {}
+  /** Session 3C: what the printer says of itself (DLE EOT); throw to lose the link. */
+  var onStatus: () -> PrinterHealth? = { null }
+  val written = ArrayList<ByteArray>()
+  var closed = 0
+  var statusCalls = 0
+
+  override fun open() = onOpen()
+```
+
+In `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterFakes.kt`, find:
+
+```kotlin
+
+  override fun close() {
+    closed++
+  }
+}
+```
+
+Replace it with:
+
+```kotlin
+
+  override fun close() {
+    closed++
+  }
+
+  override fun status(): PrinterHealth? {
+    statusCalls++
+    return onStatus()
+  }
+}
+```
+
+In `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterFakes.kt`, find:
+
+```kotlin
+  /** What the next transport's open does (throw to fail it); every transport made, in order. */
+  var nextOpen: () -> Unit = {}
+  var nextWrite: (ByteArray) -> Unit = {}
+  val made = ArrayList<FakeTransport>()
+  /** Session 3C (M-5): every task ever scheduled, so a test can run one as if the timer had started it already. */
+  val scheduled = ArrayList<Runnable>()
+```
+
+Replace it with:
+
+```kotlin
+  /** What the next transport's open does (throw to fail it); every transport made, in order. */
+  var nextOpen: () -> Unit = {}
+  var nextWrite: (ByteArray) -> Unit = {}
+  var nextStatus: () -> PrinterHealth? = { null }
+  val made = ArrayList<FakeTransport>()
+  /** Session 3C (M-5): every task ever scheduled, so a test can run one as if the timer had started it already. */
+  val scheduled = ArrayList<Runnable>()
+```
+
+In `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterFakes.kt`, find:
+
+```kotlin
+    val t = FakeTransport(listener)
+    t.onOpen = nextOpen
+    t.onWrite = nextWrite
+    made.add(t)
+    return t
+  }
+```
+
+Replace it with:
+
+```kotlin
+    val t = FakeTransport(listener)
+    t.onOpen = nextOpen
+    t.onWrite = nextWrite
+    t.onStatus = nextStatus
+    made.add(t)
+    return t
+  }
+```
+
+In `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterManagerTest.kt`, find:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+```
+
+Replace it with:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+```
+
+In `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterManagerTest.kt`, find:
+
+```kotlin
+    env.advance(env.waiting().single())
+    io.runAll()
+    assertEquals("the printer answered", BridgeCodes.STATE_CONNECTED, manager.state())
+    assertTrue("no reconnect waits while connected", env.waiting().isEmpty())
+    env.made.last().listener.onLinkLost(env.made.last())
+    assertEquals("a dropped link reads as down at once", BridgeCodes.STATE_DISCONNECTED, manager.state())
+    assertEquals("and the backoff starts again from 2 s", listOf(2_000L), env.waiting())
+```
+
+Replace it with:
+
+```kotlin
+    env.advance(env.waiting().single())
+    io.runAll()
+    assertEquals("the printer answered", BridgeCodes.STATE_CONNECTED, manager.state())
+    // Session 3C (spec §10) deliberately changed: only the idle status check waits while connected (no reconnect).
+    assertEquals("no reconnect waits while connected; the idle status check does", listOf(PrinterManager.STATUS_PROBE_MS), env.waiting())
+    env.made.last().listener.onLinkLost(env.made.last())
+    assertEquals("a dropped link reads as down at once", BridgeCodes.STATE_DISCONNECTED, manager.state())
+    assertEquals("and the backoff starts again from 2 s", listOf(2_000L), env.waiting())
+```
+
+In `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterManagerTest.kt`, find:
+
+```kotlin
+    assertEquals("the link stays open", 0, link.closed)
+    assertEquals(BridgeCodes.STATE_CONNECTED, manager.state())
+  }
+}
+```
+
+Replace it with:
+
+```kotlin
+    assertEquals("the link stays open", 0, link.closed)
+    assertEquals(BridgeCodes.STATE_CONNECTED, manager.state())
+  }
+
+  // ── Phase 3 Session 3C (spec §10, G5): what each printer says of itself ──────────────────────────────────────────
+
+  private val paperOut = PrinterHealth(DleEot.PAPER_OUT, DleEot.COVER_CLOSED, error = false, offline = true)
+  private val ready = PrinterHealth(DleEot.PAPER_OK, DleEot.COVER_CLOSED, error = false, offline = false)
+
+  @Test
+  fun aConnectedPrinterSaysItsStatusAtOnceThenEveryMinuteWhileIdle() {
+    val env = FakeEnv()
+    env.nextStatus = { ready }
+    val (manager, io) = started(tcpPrinter(), env)
+    val link = env.made.last()
+    assertEquals("asked once it connected", 1, link.statusCalls)
+    assertEquals(ready, manager.health())
+    assertEquals("then every minute", listOf(PrinterManager.STATUS_PROBE_MS), env.waiting())
+    env.advance(PrinterManager.STATUS_PROBE_MS)
+    io.runAll()
+    assertEquals(2, link.statusCalls)
+    val before = env.changes
+    link.onStatus = { paperOut }
+    env.advance(PrinterManager.STATUS_PROBE_MS)
+    io.runAll()
+    assertEquals("out of paper: published", before + 1, env.changes)
+    assertEquals(paperOut, manager.health())
+    assertEquals("asked every 10 s while it cannot print", listOf(PrinterManager.STATUS_PROBE_PROBLEM_MS), env.waiting())
+  }
+
+  @Test
+  fun aPrinterThatSaysItCannotPrintRefusesAJobBusyBeforeAnyByteAndPrintsOnceItIsReady() {
+    val env = FakeEnv()
+    env.nextStatus = { paperOut }
+    val (manager, io) = started(tcpPrinter(), env)
+    val link = env.made.last()
+    val refused = Replies<Int>()
+    manager.print("AAAA", refused.cb)
+    assertEquals("BUSY: nothing sent, the slip waits", listOf(BridgeCodes.BUSY), refused.codes())
+    assertTrue(link.written.isEmpty())
+    link.onStatus = { ready }
+    env.advance(PrinterManager.STATUS_PROBE_PROBLEM_MS)
+    io.runAll()
+    val printed = Replies<Int>()
+    manager.print("AAAA", printed.cb)
+    io.runAll()
+    assertEquals("paper back: it prints", listOf("OK"), printed.codes())
+  }
+
+  @Test
+  fun afterAJobItsStatusIsAskedAndAnIdleCheckThatFailsLosesTheLink() {
+    val env = FakeEnv()
+    val (manager, io) = started(tcpPrinter(), env)
+    val link = env.made.last()
+    val done = Replies<Int>()
+    manager.print("AAAA", done.cb)
+    io.runAll()
+    assertEquals(listOf("OK"), done.codes())
+    assertEquals("once at the connect, once after the job", 2, link.statusCalls)
+    link.onStatus = { throw TransportException(BridgeCodes.NOT_CONNECTED, "Could not connect") }
+    env.advance(PrinterManager.STATUS_PROBE_MS)
+    io.runAll()
+    assertEquals("a network printer switched off between jobs reads down (the 3A gate's m-B)", BridgeCodes.STATE_DISCONNECTED, manager.state())
+    assertEquals("and its reconnect loop starts", listOf(2_000L), env.waiting())
+    assertNull("nothing said of a printer that is down", manager.health())
+  }
+
+  @Test
+  fun noStatusIsAskedWhileAJobWaits() {
+    val env = FakeEnv()
+    val (manager, io) = started(tcpPrinter(), env)
+    val link = env.made.last()
+    manager.print("AAAA", Replies<Int>().cb)
+    env.advance(PrinterManager.STATUS_PROBE_MS)
+    assertEquals("the idle check waits behind the queued job", 1, link.statusCalls)
+    io.runAll()
+    assertEquals("only the job's own check: the idle one, due while the job waited, waited too", 2, link.statusCalls)
+  }
+
+  @Test
+  fun aJobThePrinterTookInButCannotPrintIsMaybeAndItsLinkIsKept() {
+    val env = FakeEnv()
+    val (manager, io) = started(tcpPrinter(), env)
+    val link = env.made.last()
+    link.onWrite = { throw TransportException(BridgeCodes.WRITE_FAILED, "The printer cannot print now", linkKept = true) }
+    link.onStatus = { paperOut }
+    val maybe = Replies<Int>()
+    manager.print("AAAA", maybe.cb)
+    io.runAll()
+    assertEquals("may be on paper: WRITE_FAILED (REPRINT)", listOf(BridgeCodes.WRITE_FAILED), maybe.codes())
+    assertEquals("the link is fine", BridgeCodes.STATE_CONNECTED, manager.state())
+    assertEquals("and it says why", paperOut, manager.health())
+  }
+}
+```
+
+Create `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/TcpTransportTest.kt`:
+
+```kotlin
+package com.possoftware.pos.printer
+
+import java.io.ByteArrayOutputStream
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.Socket
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
+import org.junit.Test
+
+/**
+ * Phase 3 Session 3C (spec §10, G5): a network printer's job asks DLE EOT on its own connection before it reads printed,
+ * and the idle check is one connect and DLE EOT. Against a fake ESC/POS printer on the loopback (as
+ * scripts/fake-escpos-printer.mjs answers), with short waits.
+ */
+class TcpTransportTest {
+  /** One fake printer: what it does with each connection; every byte it received, per connection. */
+  private class FakePrinter(val behave: (Socket, ByteArrayOutputStream) -> Unit) {
+    val server = ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"))
+    val jobs = LinkedBlockingQueue<ByteArray>()
+    @Volatile var connections = 0
+    private val thread =
+        Thread {
+          while (!server.isClosed) {
+            val s = try { server.accept() } catch (e: Exception) { break }
+            connections++
+            Thread {
+              val got = ByteArrayOutputStream()
+              try {
+                behave(s, got)
+              } catch (e: Exception) {
+                // the test's client went away
+              } finally {
+                jobs.offer(got.toByteArray())
+                try { s.close() } catch (e: Exception) {}
+              }
+            }.start()
+          }
+        }.apply { isDaemon = true; start() }
+
+    val port: Int get() = server.localPort
+
+    fun close() = server.close()
+  }
+
+  /** A printer that reads everything, answering each DLE EOT n with [answer] (null: no answer). */
+  private fun answering(answer: (Int) -> Int?): (Socket, ByteArrayOutputStream) -> Unit = { s, got ->
+    val input = s.getInputStream()
+    val out = s.getOutputStream()
+    var last = ArrayList<Int>()
+    while (true) {
+      val b = input.read()
+      if (b < 0) break
+      got.write(b)
+      last.add(b)
+      if (last.size > 3) last = ArrayList(last.subList(last.size - 3, last.size))
+      if (last.size == 3 && last[0] == 0x10 && last[1] == 0x04) {
+        answer(last[2])?.let { out.write(it); out.flush() }
+        last = ArrayList()
+      }
+    }
+  }
+
+  private val healthy: (Int) -> Int? = { 0x12 }
+  private val printers = ArrayList<FakePrinter>()
+
+  private fun printer(behave: (Socket, ByteArrayOutputStream) -> Unit): FakePrinter = FakePrinter(behave).also { printers.add(it) }
+
+  private fun link(p: FakePrinter) = TcpTransport("127.0.0.1", p.port, afterJobMinMs = 600, replyMs = 300)
+
+  @After
+  fun closeAll() {
+    printers.forEach { it.close() }
+  }
+
+  private fun slip(size: Int = 2_000): ByteArray = ByteArray(size) { 0x55 }
+
+  @Test
+  fun aJobAsksDleEotOnItsOwnConnectionAndTheNextStatusIsWhatItRead() {
+    val p = printer(answering(healthy))
+    val t = link(p)
+    t.write(slip())
+    val got = p.jobs.poll(5, TimeUnit.SECONDS)!!
+    assertEquals("the slip, then DLE EOT 1 to 4", listOf(0x10, 0x04, 0x01), got.toList().subList(2_000, 2_003).map { it.toInt() })
+    assertEquals(2_000 + 12, got.size)
+    assertEquals("the job's own answers", PrinterHealth(DleEot.PAPER_OK, DleEot.COVER_CLOSED, false, false), t.status())
+    assertNull("no second connection for it", p.jobs.poll(500, TimeUnit.MILLISECONDS))
+    assertEquals(1, p.connections)
+  }
+
+  @Test
+  fun aPrinterThatNeverAnswersDleEotPrintsAsBefore() {
+    val p = printer(answering { null })
+    val t = link(p)
+    t.write(slip())
+    assertNull("nothing said: no false problem", t.status())
+    assertNull("its idle check says nothing either", t.status())
+    assertTrue("the job's connection and the idle check's", p.jobs.poll(5, TimeUnit.SECONDS) != null && p.jobs.poll(5, TimeUnit.SECONDS) != null)
+    assertEquals(2, p.connections)
+  }
+
+  @Test
+  fun aPrinterThatNeverAnswersAndClosesAfterEachSlipPrintsOnce() {
+    // The gate's review (I-1): some printers (or Wi-Fi bridges) close the connection after a job and never answer DLE EOT:
+    // their close says nothing, so the slip reads printed, once, never a REPRINT.
+    val p =
+        printer { s, got ->
+          s.soTimeout = 300
+          val input = s.getInputStream()
+          val buffer = ByteArray(4_096)
+          try {
+            while (true) {
+              val n = input.read(buffer)
+              if (n < 0) break
+              got.write(buffer, 0, n)
+            }
+          } catch (e: java.net.SocketTimeoutException) {
+            // The slip is in: the printer closes the link without a word.
+          }
+        }
+    link(p).write(slip())
+    assertEquals("the slip and its one question reached the printer", 2_003, p.jobs.poll(5, TimeUnit.SECONDS)!!.size)
+  }
+
+  @Test
+  fun aPrinterWhoseIdleCheckGotNoAnswerIsAskedOnlyBrieflyAfterASlip() {
+    // The gate's review (I-2): a silent printer known by its idle check never costs a slip the long wait.
+    val p = printer(answering { null })
+    val t = TcpTransport("127.0.0.1", p.port, afterJobMinMs = 4_000, replyMs = 300)
+    assertNull("its idle check: no answer", t.status())
+    val start = System.nanoTime()
+    t.write(slip())
+    val ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start)
+    assertTrue("asked for ${ms} ms, not the 4 s a printer that may answer gets", ms < 2_000)
+  }
+
+  @Test
+  fun aSlipCutOffMidWayIsMaybeNeverPrinted() {
+    var connection = 0
+    val p =
+        printer { s, got ->
+          connection++
+          if (connection == 1) {
+            // Its idle check: the printer answers DLE EOT.
+            answering(healthy)(s, got)
+          } else {
+            val input = s.getInputStream()
+            val buffer = ByteArray(100)
+            val n = input.read(buffer)
+            got.write(buffer, 0, maxOf(n, 0))
+            // The printer drops the job after its first bytes (the fake printer's --drop-after).
+          }
+        }
+    val t = link(p)
+    assertEquals("its idle check answered", DleEot.PAPER_OK, t.status()?.paper)
+    try {
+      t.write(slip(64_000))
+      fail("a cut slip never reads printed")
+    } catch (e: TransportException) {
+      assertEquals(BridgeCodes.WRITE_FAILED, e.code)
+      assertEquals("a lost link", false, e.linkKept)
+    }
+  }
+
+  @Test
+  fun aPrinterThatAnsweredBeforeAndThenSaysNothingAfterASlipIsMaybe() {
+    var silent = false
+    val p = printer(answering { if (silent) null else 0x12 })
+    val t = link(p)
+    assertEquals("its idle check answered", DleEot.PAPER_OK, t.status()?.paper)
+    silent = true
+    try {
+      t.write(slip())
+      fail("no answer after the slip from a printer that answers: maybe")
+    } catch (e: TransportException) {
+      assertEquals(BridgeCodes.WRITE_FAILED, e.code)
+    }
+  }
+
+  @Test
+  fun aPrinterThatSaysItCannotPrintAfterTheSlipIsMaybeButItsLinkIsKept() {
+    val p = printer(answering { n -> if (n == 1) 0x1a else if (n == 2) 0x32 else if (n == 4) 0x72 else 0x12 })
+    val t = link(p)
+    try {
+      t.write(slip())
+      fail("out of paper: not printed")
+    } catch (e: TransportException) {
+      assertEquals(BridgeCodes.WRITE_FAILED, e.code)
+      assertTrue("the link is fine", e.linkKept)
+    }
+    assertEquals("what it said", DleEot.PAPER_OUT, t.status()?.paper)
+  }
+
+  @Test
+  fun theIdleCheckOfAPrinterThatIsGoneIsNotConnected() {
+    val p = printer(answering(healthy))
+    val port = p.port
+    p.close()
+    try {
+      TcpTransport("127.0.0.1", port, afterJobMinMs = 600, replyMs = 300).status()
+      fail("nothing listens: not connected (the 3A gate's m-B)")
+    } catch (e: TransportException) {
+      assertEquals(BridgeCodes.NOT_CONNECTED, e.code)
+    }
+  }
+}
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+      'PrinterEnv.kt',
+      'PoolList.kt',
+      'PoolStatus.kt',
+    ].map(name => join(KT_DIR, name)),
+  ];
+  for (const path of paths) {
+```
+
+Replace it with:
+
+```ts
+      'PrinterEnv.kt',
+      'PoolList.kt',
+      'PoolStatus.kt',
+      // Phase 3 Session 3C: DLE EOT.
+      'PrinterStatus.kt',
+    ].map(name => join(KT_DIR, name)),
+  ];
+  for (const path of paths) {
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  const types = strip(s.types);
+  const usb = strip(s.usb);
+  const manager = strip(s.manager);
+  if (!types.includes('class TransportException(val code: String, message: String, val needsForeground: Boolean = false)')) {
+    out.push('TransportException must say when a refusal only needs the foreground');
+  }
+  if (!usb.includes('throw TransportException(BridgeCodes.UNAUTHORIZED, "USB permission needed", needsForeground = true)')) {
+```
+
+Replace it with:
+
+```ts
+  const types = strip(s.types);
+  const usb = strip(s.usb);
+  const manager = strip(s.manager);
+  // Session 3C (deliberate change): a further flag (linkKept, G5) follows it.
+  if (!types.includes('class TransportException(val code: String, message: String, val needsForeground: Boolean = false, val linkKept: Boolean = false)')) {
+    out.push('TransportException must say when a refusal only needs the foreground');
+  }
+  if (!usb.includes('throw TransportException(BridgeCodes.UNAUTHORIZED, "USB permission needed", needsForeground = true)')) {
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+
+test('pin 19: one PrinterManager and io thread per printer, BUSY per printer, the list in Prefs, JUnit on the JVM', () => {
+  assert.deepEqual(poolProblems(poolSources()), []);
+  for (const name of ['PrinterManagerTest.kt', 'PoolListTest.kt', 'PoolStatusTest.kt', 'PrinterFakes.kt', 'PrinterPoolTest.kt']) {
+    assert.ok(existsSync(join(JVM_TESTS, name)), 'JVM test file missing: ' + name);
+  }
+});
+```
+
+Replace it with:
+
+```ts
+
+test('pin 19: one PrinterManager and io thread per printer, BUSY per printer, the list in Prefs, JUnit on the JVM', () => {
+  assert.deepEqual(poolProblems(poolSources()), []);
+  for (const name of ['PrinterManagerTest.kt', 'PoolListTest.kt', 'PoolStatusTest.kt', 'PrinterFakes.kt', 'DleEotTest.kt', 'TcpTransportTest.kt', 'PrinterPoolTest.kt']) {
+    assert.ok(existsSync(join(JVM_TESTS, name)), 'JVM test file missing: ' + name);
+  }
+});
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  everyMutationCaught(run('gradle'), base.gradle, [['testImplementation "junit:junit:4.13.2"', '// no tests']]);
+});
+
+test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
+  const strings = readFileSync(join(MAIN, 'res', 'values', 'strings.xml'), 'utf8');
+  assert.ok(
+```
+
+Replace it with:
+
+```ts
+  everyMutationCaught(run('gradle'), base.gradle, [['testImplementation "junit:junit:4.13.2"', '// no tests']]);
+});
+
+// --------------------------------------------------------------- pin 20
+// Phase 3 Session 3C (spec §10, G5): each printer says its paper, cover and error (DLE EOT) after a job and while idle,
+// and a printer that says it cannot print refuses a job BUSY before any byte; a network printer's job reads printed only
+// once the printer answered on that job's own connection (or never answers DLE EOT at all), and its idle check is a
+// connect; the notification says out of paper.
+interface StatusSources {
+  manager: string;
+  tcp: string;
+  classic: string;
+  usb: string;
+  ble: string;
+  pool: string;
+  service: string;
+  strings: string;
+}
+function statusProblems(s: StatusSources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!strip(text).includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(s.manager, 'const val STATUS_PROBE_MS = 60_000L', 'the idle status check is not every minute');
+  need(s.manager, 'const val STATUS_PROBE_PROBLEM_MS = 10_000L', 'a printer that cannot print is not checked every 10 s');
+  need(s.manager, 'if (synchronized(lock) { health?.cannotPrint() == true }) {\n      printing.set(false)\n      cb(Reply.fail(BridgeCodes.BUSY))', 'a printer that cannot print is not refused BUSY before any byte');
+  need(s.manager, 'synchronized(lock) { if (transport === t) generation else null }?.let { probe(it) }', 'a job is not followed by its status');
+  need(s.manager, 'if (timedOut || !e.linkKept) onLinkLost(t)', 'a printer that took the job in but cannot print loses its link');
+  need(s.manager, 'Runnable { if (printing.get()) scheduleProbe(gen) else onIo { probe(gen) } }', 'the idle check runs while a job waits');
+  need(s.tcp, 'afterJob(s, data.size)\n      s.shutdownOutput()', 'a network job does not ask DLE EOT on its own connection before it half-closes');
+  need(s.tcp, 'if (first < 0) {\n      if (answers) throw TransportException(BridgeCodes.WRITE_FAILED,', 'a slip cut off mid-way, or not answered, on a printer that answers reads printed');
+  need(s.tcp, 'val wait = if (silent.contains(key)) replyMs else', 'a printer known to be silent pays the long wait on every slip');
+  need(s.tcp, 'if (health?.cannotPrint() == true) throw TransportException(BridgeCodes.WRITE_FAILED, "The printer cannot print now", linkKept = true)', 'a printer that cannot print reads printed');
+  for (const [name, text] of [['ClassicTransport.kt', s.classic], ['UsbTransport.kt', s.usb], ['TcpTransport.kt', s.tcp]] as const) {
+    need(text, 'override fun status(): PrinterHealth? {', name + ' does not say its printer\'s status');
+  }
+  if (strip(s.ble).includes('override fun status()')) {
+    out.push('BLE says more than its link');
+  }
+  need(s.pool, 'PoolEntry(it.state(), it.info, it.health())', 'the v2 list does not carry what each printer said');
+  need(s.service, 'is HostTitle.PaperOut -> getString(R.string.print_host_title_paper_out, worst.name)', 'the notification does not say out of paper');
+  need(s.strings, '<string name="print_host_title_paper_out">', 'strings.xml lacks the out-of-paper title');
+  return out;
+}
+const statusSources = (): StatusSources => ({
+  manager: kt('PrinterManager.kt'),
+  tcp: kt('TcpTransport.kt'),
+  classic: kt('ClassicTransport.kt'),
+  usb: kt('UsbTransport.kt'),
+  ble: kt('BleTransport.kt'),
+  pool: kt('PrinterPool.kt'),
+  service: kt('PrintHostService.kt'),
+  strings: read(join(MAIN, 'res', 'values', 'strings.xml')),
+});
+
+test('pin 20: DLE EOT after each job and while idle, BUSY while a printer cannot print, G5 on a network job, the out-of-paper title', () => {
+  assert.deepEqual(statusProblems(statusSources()), []);
+});
+
+test('pin 20 mutation: every status needle can fail', () => {
+  const base = statusSources();
+  const run = (key: keyof StatusSources) => (text: string) => statusProblems({ ...base, [key]: text });
+  everyMutationCaught(run('manager'), base.manager, [
+    ['const val STATUS_PROBE_MS = 60_000L', 'const val STATUS_PROBE_MS = 5_000L'],
+    ['if (synchronized(lock) { health?.cannotPrint() == true }) {', 'if (false) {'],
+    ['?.let { probe(it) }', '?.let { it }'],
+    ['if (timedOut || !e.linkKept) onLinkLost(t)', 'onLinkLost(t)'],
+    ['if (printing.get()) scheduleProbe(gen) else onIo { probe(gen) }', 'onIo { probe(gen) }'],
+  ]);
+  everyMutationCaught(run('tcp'), base.tcp, [
+    ['afterJob(s, data.size)\n', ''],
+    ['if (answers) throw', 'if (false) throw'],
+    ['val wait = if (silent.contains(key)) replyMs else', 'val wait = if (false) replyMs else'],
+    ['"The printer cannot print now", linkKept = true)', '"The printer cannot print now")'],
+  ]);
+  everyMutationCaught(run('ble'), base.ble, [['  override fun close() {', '  override fun status(): PrinterHealth? = null\n\n  override fun close() {']]);
+  everyMutationCaught(run('pool'), base.pool, [['PoolEntry(it.state(), it.info, it.health())', 'PoolEntry(it.state(), it.info)']]);
+  everyMutationCaught(run('service'), base.service, [['R.string.print_host_title_paper_out', 'R.string.print_host_title_no_printer']]);
+});
+
+test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
+  const strings = readFileSync(join(MAIN, 'res', 'values', 'strings.xml'), 'utf8');
+  assert.ok(
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 127`; `# pass 122`; `# fail 5`
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/printer/native-bridge-v2-parity.test.ts lib/printer/native-pool.test.ts lib/print-agent-printers.test.ts lib/print-agent-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 58`; `# pass 53`; `# fail 5`
+
+Run: `cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun --console=plain 2>&1 | grep -E "^BUILD|compileDebugUnitTestKotlin FAILED" | sed -E 's/ in [0-9hms ]+$//'`
+Expected: `> Task :app:compileDebugUnitTestKotlin FAILED`; `BUILD FAILED`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+import { devicePrinter } from "@/lib/printer/device-printer";
+import { nativeBridge, nativeOn } from "@/lib/printer/native-bridge";
+import { connectedPoolKey, nativePool } from "@/lib/printer/native-pool";
+import { printerStatusOf, printersState } from "@/lib/printer/printer-registry";
+import { canPrintNow } from "@/lib/printer/print-lane";
+import { subscribeRealtime } from "@/lib/realtime-client";
+import { cafeDateString } from "@/lib/utils";
+```
+
+Replace it with:
+
+```ts
+import { devicePrinter } from "@/lib/printer/device-printer";
+import { nativeBridge, nativeOn } from "@/lib/printer/native-bridge";
+import { connectedPoolKey, nativePool } from "@/lib/printer/native-pool";
+import { printerCannotPrintOf, printerStatusOf, printersState } from "@/lib/printer/printer-registry";
+import { canPrintNow } from "@/lib/printer/print-lane";
+import { subscribeRealtime } from "@/lib/realtime-client";
+import { cafeDateString } from "@/lib/utils";
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+    };
+    // Session 2F1 (spec §9.2): of the printers it prints here, those that can print now: one of the POS app's printers
+    // (bridge v2) by its own state, any other while this device's own printer can print (as before).
+    const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf);
+    const created = createPrintAgent({
+      deviceId,
+      // tokenSlips: this page prints "token" jobs (S7); a page from before S7 leases none, on any line (print-lease.ts).
+```
+
+Replace it with:
+
+```ts
+    };
+    // Session 2F1 (spec §9.2): of the printers it prints here, those that can print now: one of the POS app's printers
+    // (bridge v2) by its own state, any other while this device's own printer can print (as before).
+    const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf, printerCannotPrintOf);
+    const created = createPrintAgent({
+      deviceId,
+      // tokenSlips: this page prints "token" jobs (S7); a page from before S7 leases none, on any line (print-lease.ts).
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+      // ack goes once more without them (lib/print-agent-skew.ts), never read as answered and lost.
+      ack: (id, body) => printAgentSkew.send({ ...body, tokenSlips: true }, olderAckBody, (sent) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", sent)),
+      print,
+      printerReady: () => canPrintNow() || readyNow().length > 0,
+      // Session 2E: the Windows app's printer list read again (a printer added or removed) releases a refusal's hold;
+      // Session 2F1: so does any change of this device's printers (its own, or another of the app's).
+      printerState: () => (isDesktopShell() ? desktopPrinterSnapshot() : printersState()),
+```
+
+Replace it with:
+
+```ts
+      // ack goes once more without them (lib/print-agent-skew.ts), never read as answered and lost.
+      ack: (id, body) => printAgentSkew.send({ ...body, tokenSlips: true }, olderAckBody, (sent) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", sent)),
+      print,
+      // Session 3C (the gate's review, m-2): a device that prints printers is ready only by their own states (its app's
+      // default printer out of paper must not let a kick lease an empty line).
+      printerReady: () => (readyRef.current.length === 0 ? canPrintNow() : readyNow().length > 0),
+      // Session 2E: the Windows app's printer list read again (a printer added or removed) releases a refusal's hold;
+      // Session 2F1: so does any change of this device's printers (its own, or another of the app's).
+      printerState: () => (isDesktopShell() ? desktopPrinterSnapshot() : printersState()),
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+
+/** Session 2F1 (spec §9.2): of the printers this device prints here, those that can print right now: one of the POS
+ *  app's printers (bridge v2) by its own state; any other (a Windows printer, the one printer of every other device)
+ *  when this device's own printer can print (canPrintNow), as before. */
+export function readyPrinterIdsOf(
+  localIds: readonly string[],
+  targets: Record<string, SlipPrintTarget>,
+  canPrint: boolean,
+  statusOf: (nativeId: string) => PrinterStatus,
+): string[] {
+  return localIds.filter((id) => {
+    const nativeId = targets[id]?.nativeId;
+    return nativeId === undefined ? canPrint : statusOf(nativeId) === "connected";
+  });
+}
+```
+
+Replace it with:
+
+```ts
+
+/** Session 2F1 (spec §9.2): of the printers this device prints here, those that can print right now: one of the POS
+ *  app's printers (bridge v2) by its own state; any other (a Windows printer, the one printer of every other device)
+ *  when this device's own printer can print (canPrintNow), as before. Session 3C (spec §10): not one the app says cannot
+ *  print (`cannotPrint`: out of paper, cover open, an error), so its slips wait with no lease or ack until it can. */
+export function readyPrinterIdsOf(
+  localIds: readonly string[],
+  targets: Record<string, SlipPrintTarget>,
+  canPrint: boolean,
+  statusOf: (nativeId: string) => PrinterStatus,
+  cannotPrint: (nativeId: string) => boolean = () => false,
+): string[] {
+  return localIds.filter((id) => {
+    const nativeId = targets[id]?.nativeId;
+    return nativeId === undefined ? canPrint : statusOf(nativeId) === "connected" && !cannotPrint(nativeId);
+  });
+}
+```
+
+In `apps/cafe/lib/printer/native-pool.ts`, find:
+
+```ts
+/** The 2F1 review gate (N-1): what the print agent can print on now, the app's connected printers in its order. A down
+ *  printer's own reconnect probes (connecting <-> disconnected) leave it unchanged, so they never nudge the agent. */
+export function connectedPoolKey(snapshot: NativePoolSnapshot): string {
+  return snapshot.printers.filter((entry) => entry.status === "connected").map((entry) => entry.id).join(",");
+}
+
+/** The app's list as the page's snapshot; a printer's state "none" (never sent for a listed printer) reads as down. */
+```
+
+Replace it with:
+
+```ts
+/** The 2F1 review gate (N-1): what the print agent can print on now, the app's connected printers in its order. A down
+ *  printer's own reconnect probes (connecting <-> disconnected) leave it unchanged, so they never nudge the agent. */
+export function connectedPoolKey(snapshot: NativePoolSnapshot): string {
+  // Session 3C (spec §10): one the app says cannot print is not ready either, so paper put back nudges the agent.
+  return snapshot.printers.filter((entry) => entry.status === "connected" && !poolPrinterCannotPrint(entry)).map((entry) => entry.id).join(",");
+}
+
+/** Session 3C (spec §10): the POS app says this printer cannot print now (out of paper, its cover open, an error: DLE EOT);
+ *  its slips wait, with no lease, until it says it can. */
+export function poolPrinterCannotPrint(entry: Pick<PoolPrinter, "paper" | "cover" | "error">): boolean {
+  return entry.paper === "out" || entry.cover === "open" || entry.error === true;
+}
+
+/** The app's list as the page's snapshot; a printer's state "none" (never sent for a listed printer) reads as down. */
+```
+
+In `apps/cafe/lib/printer/printer-registry.ts`, find:
+
+```ts
+import { devicePrinter } from "@/lib/printer/device-printer";
+import { nativePool } from "@/lib/printer/native-pool";
+import type { PrinterStatus } from "@/lib/printer/web-printer-types";
+
+// Phase 2 Session 2F1 (spec §9.2): this device's printers by the POS app's id. On bridge v2 a printer job names its
+```
+
+Replace it with:
+
+```ts
+import { devicePrinter } from "@/lib/printer/device-printer";
+import { nativePool, poolPrinterCannotPrint } from "@/lib/printer/native-pool";
+import type { PrinterStatus } from "@/lib/printer/web-printer-types";
+
+// Phase 2 Session 2F1 (spec §9.2): this device's printers by the POS app's id. On bridge v2 a printer job names its
+```
+
+In `apps/cafe/lib/printer/printer-registry.ts`, find:
+
+```ts
+  return nativePool().printerOf(nativeId)?.status ?? "none";
+}
+```
+
+Replace it with:
+
+```ts
+  return nativePool().printerOf(nativeId)?.status ?? "none";
+}
+
+/** Session 3C (spec §10): the app says that printer cannot print now (out of paper, cover open, an error). */
+export function printerCannotPrintOf(nativeId: string): boolean {
+  const printer = nativePool().printerOf(nativeId);
+  return printer !== null && poolPrinterCannotPrint(printer);
+}
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/ClassicTransport.kt`, find:
+
+```kotlin
+import java.io.IOException
+import java.io.OutputStream
+import java.util.UUID
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+
+/** Bluetooth Classic RFCOMM (SPP) link: secure first, insecure retry, paced chunked writes. */
+class ClassicTransport(
+    private val ctx: Context,
+    private val address: String,
+```
+
+Replace it with:
+
+```kotlin
+import java.io.IOException
+import java.io.OutputStream
+import java.util.UUID
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+
+/** Bluetooth Classic RFCOMM (SPP) link: secure first, insecure retry, paced chunked writes. Session 3C (spec §10): the
+ *  printer's DLE EOT answers arrive on the link's input stream. */
+class ClassicTransport(
+    private val ctx: Context,
+    private val address: String,
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/ClassicTransport.kt`, find:
+
+```kotlin
+    const val CHUNK_BYTES = 512
+    const val CHUNK_PAUSE_MS = 10L
+    const val RX_BUFFER_BYTES = 64
+  }
+
+  private val closing = AtomicBoolean(false)
+  @Volatile private var socket: BluetoothSocket? = null
+  @Volatile private var out: OutputStream? = null
+
+  override fun open() {
+    if (closing.get()) throw TransportException(BridgeCodes.NOT_CONNECTED, "Closed")
+```
+
+Replace it with:
+
+```kotlin
+    const val CHUNK_BYTES = 512
+    const val CHUNK_PAUSE_MS = 10L
+    const val RX_BUFFER_BYTES = 64
+    /** Session 3C: one DLE EOT answer; at most this many bytes the printer sent are kept for the next status. */
+    const val STATUS_REPLY_MS = 1_000L
+    const val STATUS_FOLLOW_UP_MS = 300L
+    const val RX_KEPT_BYTES = 256
+  }
+
+  private val closing = AtomicBoolean(false)
+  @Volatile private var socket: BluetoothSocket? = null
+  @Volatile private var out: OutputStream? = null
+  private val received = LinkedBlockingQueue<Int>(RX_KEPT_BYTES)
+
+  override fun open() {
+    if (closing.get()) throw TransportException(BridgeCodes.NOT_CONNECTED, "Closed")
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/ClassicTransport.kt`, find:
+
+```kotlin
+    return s
+  }
+
+  /** Discards inbound bytes; an end-of-stream or error without close() means the printer dropped. */
+  private fun startReader(s: BluetoothSocket) {
+    val input = s.inputStream
+    startDaemon("pos-printer-rx") {
+      val buffer = ByteArray(RX_BUFFER_BYTES)
+      try {
+        while (input.read(buffer) >= 0) {
+          // Printer status bytes are not used.
+        }
+      } catch (e: IOException) {
+        // Falls through to the lost-link report below.
+```
+
+Replace it with:
+
+```kotlin
+    return s
+  }
+
+  /** Keeps the bytes the printer sends (its DLE EOT answers; the oldest are dropped once RX_KEPT_BYTES wait); an
+   *  end-of-stream or error without close() means the printer dropped. */
+  private fun startReader(s: BluetoothSocket) {
+    val input = s.inputStream
+    startDaemon("pos-printer-rx") {
+      val buffer = ByteArray(RX_BUFFER_BYTES)
+      try {
+        while (true) {
+          val count = input.read(buffer)
+          if (count < 0) break
+          for (i in 0 until count) received.offer(buffer[i].toInt() and 0xFF)
+        }
+      } catch (e: IOException) {
+        // Falls through to the lost-link report below.
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/ClassicTransport.kt`, find:
+
+```kotlin
+    }
+  }
+
+  override fun close() {
+    closing.set(true)
+    socket?.let { closeSocket(it) }
+```
+
+Replace it with:
+
+```kotlin
+    }
+  }
+
+  /** Session 3C (spec §10): DLE EOT 1 to 4, each answer read from the link; null when it does not answer DLE EOT 1. */
+  override fun status(): PrinterHealth? {
+    val stream = out ?: throw TransportException(BridgeCodes.NOT_CONNECTED, "Not connected")
+    received.clear()
+    val answers = HashMap<Int, Int>()
+    for (n in DleEot.QUERIES) {
+      try {
+        stream.write(DleEot.request(n))
+        stream.flush()
+      } catch (e: IOException) {
+        throw TransportException(BridgeCodes.NOT_CONNECTED, "Write failed")
+      }
+      val answer = awaitAnswer(if (n == 1) STATUS_REPLY_MS else STATUS_FOLLOW_UP_MS)
+      if (answer == null && n == 1) return null
+      if (answer != null) answers[n] = answer
+    }
+    return DleEot.healthOf(answers)
+  }
+
+  private fun awaitAnswer(waitMs: Long): Int? {
+    val endNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(waitMs)
+    while (true) {
+      val left = endNanos - System.nanoTime()
+      if (left <= 0) return null
+      val b =
+          try {
+            received.poll(left, TimeUnit.NANOSECONDS)
+          } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            return null
+          } ?: return null
+      if (DleEot.isAnswer(b)) return b
+    }
+  }
+
+  override fun close() {
+    closing.set(true)
+    socket?.let { closeSocket(it) }
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PoolStatus.kt`, find:
+
+```kotlin
+  data class Changes(val v1: Boolean, val v2: Boolean)
+}
+
+/** What the print-host notification's title says: the worst state across the app's printers (pure, unit-tested). */
+sealed class HostTitle {
+  /** No printer, or the only printer is not connected: the words of an app with one printer. */
+  object NotConnected : HostTitle()
+```
+
+Replace it with:
+
+```kotlin
+  data class Changes(val v1: Boolean, val v2: Boolean)
+}
+
+/** What the print-host notification's title says: the worst state across the app's printers (pure, unit-tested).
+ *  Session 3C (spec §10): a connected printer that says it is out of paper is the worst of all. */
+sealed class HostTitle {
+  /** A connected printer says it is out of paper (DLE EOT). */
+  data class PaperOut(val name: String) : HostTitle()
+
+  /** No printer, or the only printer is not connected: the words of an app with one printer. */
+  object NotConnected : HostTitle()
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PoolStatus.kt`, find:
+
+```kotlin
+  companion object {
+    fun of(pool: PoolSnapshot): HostTitle {
+      val down = pool.printers.filter { it.state != BridgeCodes.STATE_CONNECTED }
+      return when {
+        pool.printers.isEmpty() -> NotConnected
+        pool.printers.size == 1 -> if (down.isEmpty()) Printer(pool.printers[0].printer.name) else NotConnected
+        down.isEmpty() -> AllConnected(pool.printers.size)
+```
+
+Replace it with:
+
+```kotlin
+  companion object {
+    fun of(pool: PoolSnapshot): HostTitle {
+      val down = pool.printers.filter { it.state != BridgeCodes.STATE_CONNECTED }
+      val empty = pool.printers.firstOrNull { it.state == BridgeCodes.STATE_CONNECTED && it.health?.paper == DleEot.PAPER_OUT }
+      return when {
+        empty != null -> PaperOut(empty.printer.name)
+        pool.printers.isEmpty() -> NotConnected
+        pool.printers.size == 1 -> if (down.isEmpty()) Printer(pool.printers[0].printer.name) else NotConnected
+        down.isEmpty() -> AllConnected(pool.printers.size)
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt`, find:
+
+```kotlin
+   *  it always did. */
+  private fun title(): String =
+      when (val worst = HostTitle.of(PrinterPool.poolStatus())) {
+        HostTitle.NotConnected -> getString(R.string.print_host_title_no_printer)
+        is HostTitle.Printer -> getString(R.string.print_host_title_printer, worst.name)
+        is HostTitle.AllConnected -> getString(R.string.print_host_title_printers, worst.count)
+```
+
+Replace it with:
+
+```kotlin
+   *  it always did. */
+  private fun title(): String =
+      when (val worst = HostTitle.of(PrinterPool.poolStatus())) {
+        is HostTitle.PaperOut -> getString(R.string.print_host_title_paper_out, worst.name)
+        HostTitle.NotConnected -> getString(R.string.print_host_title_no_printer)
+        is HostTitle.Printer -> getString(R.string.print_host_title_printer, worst.name)
+        is HostTitle.AllConnected -> getString(R.string.print_host_title_printers, worst.count)
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterManager.kt`, find:
+
+```kotlin
+ * ([PrinterEnv.changed]). [generation] invalidates in-flight attempts when this printer is begun again (select,
+ * reconnect) or halted (it left the list). Nothing here touches Android: [env] carries every platform call, so this
+ * state machine runs in JVM unit tests (src/test).
+ */
+class PrinterManager(val info: PrinterInfo, private val env: PrinterEnv, private val io: ExecutorService) {
+  companion object {
+    const val RECONNECT_STEADY_MS = 30_000L
+    val RECONNECT_BACKOFF_MS: LongArray = longArrayOf(2_000L, 5_000L, 10_000L)
+    const val PRINT_JOB_TIMEOUT_MS = 60_000L
+
+    /** The wait before reconnect attempt number [attempts] (0-based): 2 s, 5 s, 10 s, then every 30 s. */
+    fun backoffMs(attempts: Int): Long =
+```
+
+Replace it with:
+
+```kotlin
+ * ([PrinterEnv.changed]). [generation] invalidates in-flight attempts when this printer is begun again (select,
+ * reconnect) or halted (it left the list). Nothing here touches Android: [env] carries every platform call, so this
+ * state machine runs in JVM unit tests (src/test).
+ *
+ * Phase 3 Session 3C (spec §10): while connected it asks the printer's own status (DLE EOT, [PrinterTransport.status])
+ * after each job and every [STATUS_PROBE_MS] while idle ([STATUS_PROBE_PROBLEM_MS] while the printer says it cannot
+ * print), on its io thread, so never during a job. A network printer's idle check is a connect too, so one switched off
+ * between jobs reads disconnected within a minute. A printer that says it cannot print refuses a job BUSY before any byte.
+ */
+class PrinterManager(val info: PrinterInfo, private val env: PrinterEnv, private val io: ExecutorService) {
+  companion object {
+    const val RECONNECT_STEADY_MS = 30_000L
+    val RECONNECT_BACKOFF_MS: LongArray = longArrayOf(2_000L, 5_000L, 10_000L)
+    const val PRINT_JOB_TIMEOUT_MS = 60_000L
+
+    /** Session 3C (spec §10): an idle printer's status is asked this often (a network printer: one connect and close). */
+    const val STATUS_PROBE_MS = 60_000L
+
+    /** ...and this often while it says it cannot print (out of paper, cover open, an error), so it prints again soon after
+     *  staff fix it. */
+    const val STATUS_PROBE_PROBLEM_MS = 10_000L
+
+    /** The wait before reconnect attempt number [attempts] (0-based): 2 s, 5 s, 10 s, then every 30 s. */
+    fun backoffMs(attempts: Int): Long =
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterManager.kt`, find:
+
+```kotlin
+  // again once the app is visible; not a denial, so no explicit Reconnect is needed.
+  private var usbWaitingForeground = false
+  private var reconnectTask: Cancel? = null
+
+  val id: String
+    get() = info.id
+```
+
+Replace it with:
+
+```kotlin
+  // again once the app is visible; not a denial, so no explicit Reconnect is needed.
+  private var usbWaitingForeground = false
+  private var reconnectTask: Cancel? = null
+  private var probeTask: Cancel? = null
+  // Session 3C: what the printer last said of itself on this link (DLE EOT), or null.
+  private var health: PrinterHealth? = null
+
+  val id: String
+    get() = info.id
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterManager.kt`, find:
+
+```kotlin
+
+  fun activeTransport(): PrinterTransport? = synchronized(lock) { transport }
+
+  /** Lock held. Detaches every live transport into [into] and cancels the reconnect timer. */
+  private fun collect(into: MutableList<PrinterTransport>) {
+    transport?.let { into.add(it) }
+```
+
+Replace it with:
+
+```kotlin
+
+  fun activeTransport(): PrinterTransport? = synchronized(lock) { transport }
+
+  /** Session 3C (spec §10): what a CONNECTED printer last said of itself (DLE EOT), else null. */
+  fun health(): PrinterHealth? = synchronized(lock) { if (state == BridgeCodes.STATE_CONNECTED) health else null }
+
+  /** Lock held. Detaches every live transport into [into] and cancels the reconnect timer. */
+  private fun collect(into: MutableList<PrinterTransport>) {
+    transport?.let { into.add(it) }
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterManager.kt`, find:
+
+```kotlin
+    pendingLost = false
+    reconnectTask?.cancel()
+    reconnectTask = null
+  }
+
+  /** Starts a new generation: aborts anything in flight and returns the generation. */
+```
+
+Replace it with:
+
+```kotlin
+    pendingLost = false
+    reconnectTask?.cancel()
+    reconnectTask = null
+    probeTask?.cancel()
+    probeTask = null
+    health = null
+  }
+
+  /** Starts a new generation: aborts anything in flight and returns the generation. */
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterManager.kt`, find:
+
+```kotlin
+          }
+        }
+    when (outcome) {
+      Outcome.CONNECTED -> env.changed()
+      Outcome.STALE -> closeQuietly(t)
+      // The link dropped between open() returning and the claim: not connected after all.
+      Outcome.LOST -> {
+```
+
+Replace it with:
+
+```kotlin
+          }
+        }
+    when (outcome) {
+      Outcome.CONNECTED -> {
+        env.changed()
+        // Session 3C: what the printer says of itself, once connected (then on the idle timer).
+        probe(gen)
+      }
+      Outcome.STALE -> closeQuietly(t)
+      // The link dropped between open() returning and the claim: not connected after all.
+      Outcome.LOST -> {
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterManager.kt`, find:
+
+```kotlin
+          if (source !== transport) return
+          transport = null
+          state = BridgeCodes.STATE_DISCONNECTED
+          generation
+        }
+    closeQuietly(source)
+```
+
+Replace it with:
+
+```kotlin
+          if (source !== transport) return
+          transport = null
+          state = BridgeCodes.STATE_DISCONNECTED
+          health = null
+          probeTask?.cancel()
+          probeTask = null
+          generation
+        }
+    closeQuietly(source)
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterManager.kt`, find:
+
+```kotlin
+      cb(Reply.fail(BridgeCodes.NOT_CONNECTED))
+      return
+    }
+    val queued =
+        onIo {
+          val reply = runPrint(t, base64)
+          printing.set(false)
+          cb(reply)
+        }
+    if (!queued) {
+      printing.set(false)
+```
+
+Replace it with:
+
+```kotlin
+      cb(Reply.fail(BridgeCodes.NOT_CONNECTED))
+      return
+    }
+    // Session 3C (spec §10): a printer that says it cannot print (out of paper, cover open, an error) refuses before any
+    // byte, as BUSY: the slip waits, every device says why, and it prints once the printer says it is ready again.
+    if (synchronized(lock) { health?.cannotPrint() == true }) {
+      printing.set(false)
+      cb(Reply.fail(BridgeCodes.BUSY))
+      return
+    }
+    val queued =
+        onIo {
+          val reply = runPrint(t, base64)
+          printing.set(false)
+          cb(reply)
+          // Session 3C (spec §10): what the printer says after the job (a network printer: what the job's own connection
+          // read, G5), before the next job.
+          synchronized(lock) { if (transport === t) generation else null }?.let { probe(it) }
+        }
+    if (!queued) {
+      printing.set(false)
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterManager.kt`, find:
+
+```kotlin
+      }
+    } catch (e: TransportException) {
+      val timedOut = !claim.compareAndSet(false, true)
+      onLinkLost(t)
+      Reply.fail(if (timedOut) BridgeCodes.TIMEOUT else e.code)
+    } catch (e: RuntimeException) {
+      val timedOut = !claim.compareAndSet(false, true)
+```
+
+Replace it with:
+
+```kotlin
+      }
+    } catch (e: TransportException) {
+      val timedOut = !claim.compareAndSet(false, true)
+      // Session 3C (G5): a printer that took the job in but says it cannot print keeps its link; anything else lost it.
+      if (timedOut || !e.linkKept) onLinkLost(t)
+      Reply.fail(if (timedOut) BridgeCodes.TIMEOUT else e.code)
+    } catch (e: RuntimeException) {
+      val timedOut = !claim.compareAndSet(false, true)
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterManager.kt`, find:
+
+```kotlin
+      watchdog.cancel()
+    }
+  }
+}
+```
+
+Replace it with:
+
+```kotlin
+      watchdog.cancel()
+    }
+  }
+
+  /**
+   * Session 3C (spec §10): asks the printer's status on the io thread (called there), keeps what it said (published when
+   * it changed), then asks again after [STATUS_PROBE_MS], or [STATUS_PROBE_PROBLEM_MS] while it says it cannot print.
+   * Skipped while a job waits or prints (that job's own status answers it). A link that no longer answers is lost (the
+   * reconnect loop takes over). A stale [gen] does nothing.
+   */
+  private fun probe(gen: Int) {
+    val t = synchronized(lock) { if (gen != generation || halted || state != BridgeCodes.STATE_CONNECTED) null else transport } ?: return
+    if (printing.get()) {
+      scheduleProbe(gen)
+      return
+    }
+    val said =
+        try {
+          t.status()
+        } catch (e: TransportException) {
+          onLinkLost(t)
+          return
+        } catch (e: RuntimeException) {
+          null
+        }
+    val changed =
+        synchronized(lock) {
+          if (gen != generation || transport !== t) return
+          val was = health
+          health = said
+          was != said
+        }
+    if (changed) env.changed()
+    scheduleProbe(gen)
+  }
+
+  private fun scheduleProbe(gen: Int) {
+    synchronized(lock) {
+      if (gen != generation || halted || state != BridgeCodes.STATE_CONNECTED) return
+      probeTask?.cancel()
+      val wait = if (health?.cannotPrint() == true) STATUS_PROBE_PROBLEM_MS else STATUS_PROBE_MS
+      // A job that waits now asks its own status after it; the idle check waits a full period again.
+      probeTask = env.schedule(wait, Runnable { if (printing.get()) scheduleProbe(gen) else onIo { probe(gen) } })
+    }
+  }
+}
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterPool.kt`, find:
+
+```kotlin
+        ?: StatusSnapshot(BridgeCodes.STATE_NONE, null, bluetooth)
+  }
+
+  /** The v2 printer.status: every printer in the app's order, and the default (read under [poolLock], as [status]). */
+  fun poolStatus(): PoolSnapshot {
+    val bluetooth = bluetooth()
+    return synchronized(poolLock) { PoolSnapshot(list.all().map { PoolEntry(it.state(), it.info) }, list.defaultId, bluetooth) }
+  }
+
+  fun manager(id: String): PrinterManager? = synchronized(poolLock) { list.find(id) }
+```
+
+Replace it with:
+
+```kotlin
+        ?: StatusSnapshot(BridgeCodes.STATE_NONE, null, bluetooth)
+  }
+
+  /** The v2 printer.status: every printer in the app's order, and the default (read under [poolLock], as [status]).
+   *  Session 3C (spec §10): each with what it last said of itself while connected (DLE EOT). */
+  fun poolStatus(): PoolSnapshot {
+    val bluetooth = bluetooth()
+    return synchronized(poolLock) { PoolSnapshot(list.all().map { PoolEntry(it.state(), it.info, it.health()) }, list.defaultId, bluetooth) }
+  }
+
+  fun manager(id: String): PrinterManager? = synchronized(poolLock) { list.find(id) }
+```
+
+Create `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterStatus.kt`:
+
+```kotlin
+package com.possoftware.pos.printer
+
+/**
+ * Phase 3 Session 3C (spec §10): what a printer says of itself, read with ESC/POS real-time status (DLE EOT n) after each
+ * job and while it is idle. Pure (no Android), so the parsing is unit-tested on the JVM. A printer that does not answer
+ * reports nothing more: no false problem.
+ */
+data class PrinterHealth(
+    /** [DleEot.PAPER_OK], [DleEot.PAPER_LOW] or [DleEot.PAPER_OUT]; null when the printer did not say. */
+    val paper: String? = null,
+    /** [DleEot.COVER_CLOSED] or [DleEot.COVER_OPEN]; null when the printer did not say. */
+    val cover: String? = null,
+    /** It says it cannot print and names an error, or names no cause at all (an error bit while it says it can print
+     *  says nothing). */
+    val error: Boolean = false,
+    /** It says it cannot print now (DLE EOT 1, bit 3; or paper out or the cover open when it did not answer that). */
+    val offline: Boolean = false,
+) {
+  /** It cannot print now: out of paper, its cover open, or an error. The page's rule is the same
+   *  (apps/cafe/lib/printer/native-pool.ts poolPrinterCannotPrint), so neither holds a slip the other would print. */
+  fun cannotPrint(): Boolean = paper == DleEot.PAPER_OUT || cover == DleEot.COVER_OPEN || error
+}
+
+/** ESC/POS real-time status: DLE EOT n, one status byte back (Epson's bits; most thermal printers follow them). */
+object DleEot {
+  // The values bridge v2 sends for a listed printer's paper and cover (pinned to the page's in
+  // apps/cafe/lib/printer/native-bridge-v2-parity.test.ts).
+  const val PAPER_OK = "ok"
+  const val PAPER_LOW = "low"
+  const val PAPER_OUT = "out"
+  const val COVER_CLOSED = "closed"
+  const val COVER_OPEN = "open"
+
+  private const val DLE = 0x10
+  private const val EOT = 0x04
+
+  /** Printer status, offline cause, error cause, roll paper sensor: asked in this order. */
+  val QUERIES: IntArray = intArrayOf(1, 2, 3, 4)
+
+  // Every status byte has bits 1 and 4 set and bits 0 and 7 clear.
+  private const val FIXED_MASK = 0x93
+  private const val FIXED_BITS = 0x12
+  private const val ONE_OFFLINE = 0x08
+  private const val TWO_COVER_OPEN = 0x04
+  private const val TWO_PAPER_END = 0x20
+  private const val TWO_ERROR = 0x40
+  private const val THREE_ERRORS = 0x68
+  private const val FOUR_NEAR_END = 0x0C
+  private const val FOUR_END = 0x60
+
+  fun request(n: Int): ByteArray = byteArrayOf(DLE.toByte(), EOT.toByte(), n.toByte())
+
+  /** Whether [b] (0..255) can be a status byte; anything else (an automatic status block, XON/XOFF, noise) is not one. */
+  fun isAnswer(b: Int): Boolean = (b and FIXED_MASK) == FIXED_BITS
+
+  /** What the printer said: [answers] maps each n it answered to its byte. Null when it answered none. */
+  fun healthOf(answers: Map<Int, Int>): PrinterHealth? {
+    if (answers.isEmpty()) return null
+    val one = answers[1]
+    val two = answers[2]
+    val three = answers[3]
+    val four = answers[4]
+    val paperOut = (two != null && (two and TWO_PAPER_END) != 0) || (four != null && (four and FOUR_END) == FOUR_END)
+    val paperLow = four != null && (four and FOUR_NEAR_END) == FOUR_NEAR_END
+    val paper =
+        when {
+          paperOut -> PAPER_OUT
+          paperLow -> PAPER_LOW
+          two != null || four != null -> PAPER_OK
+          else -> null
+        }
+    val coverOpen = two != null && (two and TWO_COVER_OPEN) != 0
+    val cover = if (two == null) null else if (coverOpen) COVER_OPEN else COVER_CLOSED
+    val offline = if (one != null) (one and ONE_OFFLINE) != 0 else paperOut || coverOpen
+    val named = (three != null && (three and THREE_ERRORS) != 0) || (two != null && (two and TWO_ERROR) != 0)
+    return PrinterHealth(paper, cover, offline && (named || (!paperOut && !coverOpen)), offline)
+  }
+}
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterTypes.kt`, find:
+
+```kotlin
+/** The PrinterStatus map of the bridge. Data-class equality drives the change de-duplication. */
+data class StatusSnapshot(val state: String, val printer: PrinterInfo?, val bluetooth: String)
+
+/** Phase 2 Session 2F2 (spec §9.2): one printer of the app's list as bridge v2 reports it. */
+data class PoolEntry(val state: String, val printer: PrinterInfo)
+
+/** Bridge v2's printer.status: every printer in the app's order, the default's id (null only for an empty list) and
+ *  Bluetooth. Data-class equality drives the change de-duplication. */
+```
+
+Replace it with:
+
+```kotlin
+/** The PrinterStatus map of the bridge. Data-class equality drives the change de-duplication. */
+data class StatusSnapshot(val state: String, val printer: PrinterInfo?, val bluetooth: String)
+
+/** Phase 2 Session 2F2 (spec §9.2): one printer of the app's list as bridge v2 reports it. Session 3C (spec §10): with
+ *  what the printer last said of itself while connected (DLE EOT), or null. */
+data class PoolEntry(val state: String, val printer: PrinterInfo, val health: PrinterHealth? = null)
+
+/** Bridge v2's printer.status: every printer in the app's order, the default's id (null only for an empty list) and
+ *  Bluetooth. Data-class equality drives the change de-duplication. */
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterTypes.kt`, find:
+
+```kotlin
+
+/** Failure of a transport call, carrying the bridge code it maps to. [needsForeground]: refused
+ *  only because the app is hidden, so a system dialog cannot show yet. Not a denial: the manager
+ *  asks again once the app is visible. */
+class TransportException(val code: String, message: String, val needsForeground: Boolean = false) : IOException(message)
+
+/** A byte pipe to one printer. open/write run on the io thread; close may run on any thread. */
+interface PrinterTransport {
+```
+
+Replace it with:
+
+```kotlin
+
+/** Failure of a transport call, carrying the bridge code it maps to. [needsForeground]: refused
+ *  only because the app is hidden, so a system dialog cannot show yet. Not a denial: the manager
+ *  asks again once the app is visible. [linkKept] (Session 3C, G5): the link is fine, the printer said
+ *  it cannot print the job now (out of paper, cover open, an error), so it is not a lost link. */
+class TransportException(val code: String, message: String, val needsForeground: Boolean = false, val linkKept: Boolean = false) : IOException(message)
+
+/** A byte pipe to one printer. open/write run on the io thread; close may run on any thread. */
+interface PrinterTransport {
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterTypes.kt`, find:
+
+```kotlin
+
+  /** Idempotent and safe from any thread; also aborts a blocked open/write. */
+  fun close()
+}
+
+/** Called when a link that was established drops without close() having been requested. */
+```
+
+Replace it with:
+
+```kotlin
+
+  /** Idempotent and safe from any thread; also aborts a blocked open/write. */
+  fun close()
+
+  /**
+   * Phase 3 Session 3C (spec §10): what the printer says of itself now (DLE EOT), or null when it does not answer or this
+   * link cannot ask (BLE: link state only). Runs on the printer's io thread, never during a write; throws
+   * [TransportException] when the link is gone (a network printer: its connect is the idle check of its link).
+   */
+  fun status(): PrinterHealth? = null
+}
+
+/** Called when a link that was established drops without close() having been requested. */
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/StatusJson.kt`, find:
+
+```kotlin
+    return map
+  }
+
+  /** Bridge v2's list: { printers: [{ state, printer }], defaultId, bluetooth }, every key always there. */
+  fun poolJson(s: PoolSnapshot): JSONObject {
+    val printers = JSONArray()
+    for (entry in s.printers) printers.put(JSONObject().put("state", entry.state).put("printer", printerJson(entry.printer)))
+    val json = JSONObject()
+    json.put("printers", printers)
+    json.put("defaultId", s.defaultId ?: JSONObject.NULL)
+```
+
+Replace it with:
+
+```kotlin
+    return map
+  }
+
+  /** Bridge v2's list: { printers: [{ state, printer }], defaultId, bluetooth }, every key always there. Session 3C (spec
+   *  §10): a listed printer also carries `paper`, `cover` and `error` (true) when it said them (DLE EOT); absent says
+   *  nothing. */
+  fun poolJson(s: PoolSnapshot): JSONObject {
+    val printers = JSONArray()
+    for (entry in s.printers) {
+      val item = JSONObject().put("state", entry.state).put("printer", printerJson(entry.printer))
+      entry.health?.paper?.let { item.put("paper", it) }
+      entry.health?.cover?.let { item.put("cover", it) }
+      if (entry.health?.error == true) item.put("error", true)
+      printers.put(item)
+    }
+    val json = JSONObject()
+    json.put("printers", printers)
+    json.put("defaultId", s.defaultId ?: JSONObject.NULL)
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/StatusJson.kt`, find:
+
+```kotlin
+      val item = Arguments.createMap()
+      item.putString("state", entry.state)
+      item.putMap("printer", printerMap(entry.printer))
+      printers.pushMap(item)
+    }
+    val map = Arguments.createMap()
+```
+
+Replace it with:
+
+```kotlin
+      val item = Arguments.createMap()
+      item.putString("state", entry.state)
+      item.putMap("printer", printerMap(entry.printer))
+      entry.health?.paper?.let { item.putString("paper", it) }
+      entry.health?.cover?.let { item.putString("cover", it) }
+      if (entry.health?.error == true) item.putBoolean("error", true)
+      printers.pushMap(item)
+    }
+    val map = Arguments.createMap()
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/TcpTransport.kt`, find:
+
+```kotlin
+import java.net.InetSocketAddress
+import java.net.Socket
+import java.net.SocketTimeoutException
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+```
+
+Replace it with:
+
+```kotlin
+import java.net.InetSocketAddress
+import java.net.Socket
+import java.net.SocketTimeoutException
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/TcpTransport.kt`, find:
+
+```kotlin
+ * Raw TCP link to a network printer (normally port 9100). There is no standing connection: every
+ * job connects, writes, half-closes and closes, so a printer that was switched off or lost its
+ * address can never swallow a slip. [open] is only a connect probe that makes the status honest.
+ */
+class TcpTransport(
+    private val host: String,
+    private val port: Int,
+) : PrinterTransport {
+
+  companion object {
+```
+
+Replace it with:
+
+```kotlin
+ * Raw TCP link to a network printer (normally port 9100). There is no standing connection: every
+ * job connects, writes, half-closes and closes, so a printer that was switched off or lost its
+ * address can never swallow a slip. [open] is only a connect probe that makes the status honest.
+ *
+ * Phase 3 Session 3C (spec §10, G5): a job asks DLE EOT on its own connection before it reads printed,
+ * and [status] is the idle check (one connect, DLE EOT, close). [afterJobMinMs] and [replyMs] are the
+ * waits; the JVM tests pass short ones.
+ */
+class TcpTransport(
+    private val host: String,
+    private val port: Int,
+    private val afterJobMinMs: Int = STATUS_AFTER_JOB_MIN_MS,
+    private val replyMs: Int = STATUS_REPLY_MS,
+) : PrinterTransport {
+
+  companion object {
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/TcpTransport.kt`, find:
+
+```kotlin
+
+    /** A socket timeout of 0 means "wait forever", so no wait is ever shorter than this. */
+    const val MIN_WAIT_MS = 1
+  }
+
+  private val closing = AtomicBoolean(false)
+  @Volatile private var active: Socket? = null
+
+  /** Connect probe: the printer answers now, or this throws NOT_CONNECTED. */
+  override fun open() {
+```
+
+Replace it with:
+
+```kotlin
+
+    /** A socket timeout of 0 means "wait forever", so no wait is ever shorter than this. */
+    const val MIN_WAIT_MS = 1
+
+    /** Session 3C (G5): the wait for the printer's first DLE EOT answer after a job: at least this, plus the job's own
+     *  printing time at a slow [STATUS_BYTES_PER_MS], at most [STATUS_AFTER_JOB_MAX_MS] (inside the 60 s watchdog). */
+    const val STATUS_AFTER_JOB_MIN_MS = 5_000
+    const val STATUS_AFTER_JOB_MAX_MS = 30_000
+    const val STATUS_BYTES_PER_MS = 8
+
+    /** Session 3C: a DLE EOT answer from a printer with nothing to print. */
+    const val STATUS_REPLY_MS = 1_000
+
+    /** Session 3C (the gate's review, m-7): DLE EOT 2 to 4, once the printer answered DLE EOT 1 (it answers in ms). */
+    const val STATUS_FOLLOW_UP_MS = 300
+
+    private const val NO_ANSWER = -1
+    private const val CLOSED = -2
+
+    /** The printers (host:port) that answered DLE EOT since the app started. Only for such a printer is a job with no
+     *  answer, or a connection closed before the answer, "maybe" (G5); one that never answers prints as before (no false
+     *  problem, no false REPRINT: some close the connection after every job). An idle check with no answer forgets it
+     *  (a printer replaced by one that does not answer). */
+    private val answering: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
+    /** The printers whose last idle check got no answer: a job asks them briefly ([replyMs]), never the long wait (the
+     *  gate's review, I-2: a silent printer would add seconds to every slip and ring the KOT alarm). */
+    private val silent: MutableSet<String> = ConcurrentHashMap.newKeySet()
+  }
+
+  private val closing = AtomicBoolean(false)
+  @Volatile private var active: Socket? = null
+  private val key = "$host:$port"
+
+  // What the last job's own connection read (G5), handed to the next status() instead of a second connection.
+  @Volatile private var jobAsked = false
+  @Volatile private var jobHealth: PrinterHealth? = null
+
+  /** Connect probe: the printer answers now, or this throws NOT_CONNECTED. */
+  override fun open() {
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/TcpTransport.kt`, find:
+
+```kotlin
+        offset += count
+      }
+      stream.flush()
+      s.shutdownOutput()
+      drain(s)
+    } catch (e: IOException) {
+      throw TransportException(BridgeCodes.WRITE_FAILED, "Write failed")
+    } finally {
+```
+
+Replace it with:
+
+```kotlin
+        offset += count
+      }
+      stream.flush()
+      afterJob(s, data.size)
+      s.shutdownOutput()
+      drain(s)
+    } catch (e: TransportException) {
+      throw e
+    } catch (e: IOException) {
+      throw TransportException(BridgeCodes.WRITE_FAILED, "Write failed")
+    } finally {
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/TcpTransport.kt`, find:
+
+```kotlin
+    if (nanos <= 0) return 0
+    val ms = TimeUnit.NANOSECONDS.toMillis(nanos + TimeUnit.MILLISECONDS.toNanos(1) - 1)
+    return maxOf(MIN_WAIT_MS.toLong(), ms).toInt()
+  }
+
+  /**
+```
+
+Replace it with:
+
+```kotlin
+    if (nanos <= 0) return 0
+    val ms = TimeUnit.NANOSECONDS.toMillis(nanos + TimeUnit.MILLISECONDS.toNanos(1) - 1)
+    return maxOf(MIN_WAIT_MS.toLong(), ms).toInt()
+  }
+
+  /**
+   * Session 3C (G5, spec §10): the printer's own answer, on the job's connection, before the job reads printed. It
+   * answers once it has taken the job in. For a printer that answers DLE EOT, a connection it closed first (a slip cut
+   * off mid-way), or no answer, means part of the slip may be missing: WRITE_FAILED, "maybe" (the server labels the
+   * retry REPRINT). A printer that says it cannot print (out of paper, cover open, an error) has not printed it either,
+   * but its link is fine. One that never answered DLE EOT prints as before: its silence or its close says nothing (G5
+   * cannot see a cut there, Phase 2's limit), and one whose last idle check got no answer is asked briefly.
+   */
+  private fun afterJob(s: Socket, bytes: Int) {
+    jobAsked = true
+    jobHealth = null
+    val answers = answering.contains(key)
+    val wait = if (silent.contains(key)) replyMs else minOf(STATUS_AFTER_JOB_MAX_MS, afterJobMinMs + bytes / STATUS_BYTES_PER_MS)
+    val first = ask(s, 1, wait)
+    if (first < 0) {
+      if (answers) throw TransportException(BridgeCodes.WRITE_FAILED, if (first == CLOSED) "The printer closed the link before it answered" else "The printer did not answer after the slip")
+      return
+    }
+    answering.add(key)
+    silent.remove(key)
+    val health = DleEot.healthOf(answersAfter(s, first))
+    jobHealth = health
+    if (health?.cannotPrint() == true) throw TransportException(BridgeCodes.WRITE_FAILED, "The printer cannot print now", linkKept = true)
+  }
+
+  /** DLE EOT 2, 3 and 4 after [first] answered DLE EOT 1 (one the printer does not answer is left out). */
+  private fun answersAfter(s: Socket, first: Int): Map<Int, Int> {
+    val answers = HashMap<Int, Int>()
+    answers[1] = first
+    for (n in DleEot.QUERIES) {
+      if (n == 1) continue
+      val b = ask(s, n, minOf(replyMs, STATUS_FOLLOW_UP_MS))
+      if (b == CLOSED) break
+      if (b != NO_ANSWER) answers[n] = b
+    }
+    return answers
+  }
+
+  /**
+   * Session 3C (spec §10; the 3A review gate's m-B): right after a job, what that job's own connection read (no second
+   * connection); otherwise one connect, DLE EOT, close, which is also the idle check of the link: a printer switched off
+   * between jobs throws NOT_CONNECTED here within a minute, not at the next slip.
+   */
+  override fun status(): PrinterHealth? {
+    if (jobAsked) {
+      jobAsked = false
+      return jobHealth
+    }
+    val s = connect()
+    try {
+      val first = ask(s, 1, replyMs)
+      if (first < 0) {
+        answering.remove(key)
+        silent.add(key)
+        return null
+      }
+      answering.add(key)
+      silent.remove(key)
+      val answers = answersAfter(s, first)
+      s.shutdownOutput()
+      return DleEot.healthOf(answers)
+    } catch (e: IOException) {
+      return null
+    } finally {
+      closeSocket(s)
+    }
+  }
+
+  /** Sends DLE EOT [n] and reads until a status byte arrives (any other byte is skipped), [waitMs] in all: the byte,
+   *  NO_ANSWER, or CLOSED (the printer closed or reset the connection). */
+  private fun ask(s: Socket, n: Int, waitMs: Int): Int {
+    try {
+      val out = s.getOutputStream()
+      out.write(DleEot.request(n))
+      out.flush()
+    } catch (e: IOException) {
+      return CLOSED
+    }
+    val endNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(waitMs.toLong())
+    return try {
+      val input = s.getInputStream()
+      var answer = NO_ANSWER
+      while (answer == NO_ANSWER) {
+        val left = remainingMs(endNanos)
+        if (left <= 0) break
+        s.soTimeout = left
+        val b = input.read()
+        if (b < 0) {
+          answer = CLOSED
+        } else if (DleEot.isAnswer(b)) {
+          answer = b
+        }
+      }
+      answer
+    } catch (e: SocketTimeoutException) {
+      NO_ANSWER
+    } catch (e: IOException) {
+      CLOSED
+    }
+  }
+
+  /**
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/UsbTransport.kt`, find:
+
+```kotlin
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+
+/** USB printer-class link: bulk OUT transfers. The permission prompt only ever shows while visible. */
+class UsbTransport(
+    private val ctx: Context,
+    private val vendorId: Int,
+```
+
+Replace it with:
+
+```kotlin
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+
+/** USB printer-class link: bulk OUT transfers. The permission prompt only ever shows while visible. Session 3C (spec
+ *  §10): DLE EOT is answered on the interface's bulk IN endpoint, when it has one. */
+class UsbTransport(
+    private val ctx: Context,
+    private val vendorId: Int,
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/UsbTransport.kt`, find:
+
+```kotlin
+    const val PERMISSION_TIMEOUT_MS = 60_000L
+    const val TRANSFER_TIMEOUT_MS = 5_000
+    const val CHUNK_BYTES = 4_096
+
+    /** The printer-class interface and its bulk OUT endpoint, or null when the device has none. */
+    fun findBulkOut(device: UsbDevice): Pair<UsbInterface, UsbEndpoint>? {
+```
+
+Replace it with:
+
+```kotlin
+    const val PERMISSION_TIMEOUT_MS = 60_000L
+    const val TRANSFER_TIMEOUT_MS = 5_000
+    const val CHUNK_BYTES = 4_096
+    /** Session 3C: one DLE EOT answer on bulk IN. */
+    const val STATUS_REPLY_MS = 1_000
+    const val STATUS_FOLLOW_UP_MS = 300
+    const val STATUS_READ_BYTES = 64
+
+    /** The printer-class interface and its bulk OUT endpoint, or null when the device has none. */
+    fun findBulkOut(device: UsbDevice): Pair<UsbInterface, UsbEndpoint>? {
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/UsbTransport.kt`, find:
+
+```kotlin
+      }
+      return null
+    }
+  }
+
+  @Volatile private var connection: UsbDeviceConnection? = null
+  @Volatile private var claimed: UsbInterface? = null
+  @Volatile private var endpoint: UsbEndpoint? = null
+  private val lifecycleLock = Any()
+  @Volatile private var closed = false
+  @Volatile private var permissionAnswer: CountDownLatch? = null
+```
+
+Replace it with:
+
+```kotlin
+      }
+      return null
+    }
+
+    /** Session 3C (spec §10): the interface's bulk IN endpoint (the printer's answers), or null when it has none. */
+    fun findBulkIn(intf: UsbInterface): UsbEndpoint? {
+      for (j in 0 until intf.endpointCount) {
+        val ep = intf.getEndpoint(j)
+        if (ep.type == UsbConstants.USB_ENDPOINT_XFER_BULK && ep.direction == UsbConstants.USB_DIR_IN) return ep
+      }
+      return null
+    }
+  }
+
+  @Volatile private var connection: UsbDeviceConnection? = null
+  @Volatile private var claimed: UsbInterface? = null
+  @Volatile private var endpoint: UsbEndpoint? = null
+  @Volatile private var endpointIn: UsbEndpoint? = null
+  private val lifecycleLock = Any()
+  @Volatile private var closed = false
+  @Volatile private var permissionAnswer: CountDownLatch? = null
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/UsbTransport.kt`, find:
+
+```kotlin
+      }
+      claimed = intf
+      endpoint = ep
+      connection = conn
+    }
+  }
+```
+
+Replace it with:
+
+```kotlin
+      }
+      claimed = intf
+      endpoint = ep
+      endpointIn = findBulkIn(intf)
+      connection = conn
+    }
+  }
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/UsbTransport.kt`, find:
+
+```kotlin
+    }
+  }
+
+  override fun close() {
+    val (conn, intf) = synchronized(lifecycleLock) {
+      closed = true
+```
+
+Replace it with:
+
+```kotlin
+    }
+  }
+
+  /** Session 3C (spec §10): DLE EOT 1 to 4 on bulk OUT, each answer on bulk IN; null when it has no IN endpoint or does
+   *  not answer DLE EOT 1. */
+  override fun status(): PrinterHealth? {
+    val conn = connection ?: throw TransportException(BridgeCodes.NOT_CONNECTED, "Not connected")
+    val out = endpoint ?: throw TransportException(BridgeCodes.NOT_CONNECTED, "Not connected")
+    val input = endpointIn ?: return null
+    val answers = HashMap<Int, Int>()
+    val buffer = ByteArray(STATUS_READ_BYTES)
+    for (n in DleEot.QUERIES) {
+      val request = DleEot.request(n)
+      if (conn.bulkTransfer(out, request, request.size, TRANSFER_TIMEOUT_MS) != request.size) {
+        throw TransportException(BridgeCodes.NOT_CONNECTED, "USB write failed")
+      }
+      val read = conn.bulkTransfer(input, buffer, buffer.size, if (n == 1) STATUS_REPLY_MS else STATUS_FOLLOW_UP_MS)
+      val answer = (0 until maxOf(read, 0)).map { buffer[it].toInt() and 0xFF }.firstOrNull { DleEot.isAnswer(it) }
+      if (answer == null && n == 1) return null
+      if (answer != null) answers[n] = answer
+    }
+    return DleEot.healthOf(answers)
+  }
+
+  override fun close() {
+    val (conn, intf) = synchronized(lifecycleLock) {
+      closed = true
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/UsbTransport.kt`, find:
+
+```kotlin
+      connection = null
+      claimed = null
+      endpoint = null
+      owned
+    }
+    if (conn == null) return
+```
+
+Replace it with:
+
+```kotlin
+      connection = null
+      claimed = null
+      endpoint = null
+      endpointIn = null
+      owned
+    }
+    if (conn == null) return
+```
+
+In `apps/mobile/android/app/src/main/res/values/strings.xml`, find:
+
+```xml
+    <string name="print_host_title_printers">Printing is on — %1$d printers</string>
+    <string name="print_host_title_printer_down">Printing is on — %1$s not connected</string>
+    <string name="print_host_title_printers_down">Printing is on — %1$d printers not connected</string>
+    <string name="print_host_alert_channel_name">Printing alerts</string>
+    <string name="print_host_alert_title">Printing stopped — tap to open the app</string>
+    <string name="print_host_alert_text">Slips will not print until the app is open again.</string>
+```
+
+Replace it with:
+
+```xml
+    <string name="print_host_title_printers">Printing is on — %1$d printers</string>
+    <string name="print_host_title_printer_down">Printing is on — %1$s not connected</string>
+    <string name="print_host_title_printers_down">Printing is on — %1$d printers not connected</string>
+    <string name="print_host_title_paper_out">Printing is on — %1$s is out of paper</string>
+    <string name="print_host_alert_channel_name">Printing alerts</string>
+    <string name="print_host_alert_title">Printing stopped — tap to open the app</string>
+    <string name="print_host_alert_text">Slips will not print until the app is open again.</string>
+```
+
+In `apps/mobile/src/bridge/protocol-v2.ts`, find:
+
+```ts
+] as const;
+export type V2Method = (typeof V2_METHODS)[number];
+
+/** One printer of the app's list. */
+export type PoolEntry = { state: NativePrinterState; printer: NativePrinter };
+
+/** The app's printers in its order, the default's id (null only for an empty list) and Bluetooth. */
+export type PoolStatus = {
+```
+
+Replace it with:
+
+```ts
+] as const;
+export type V2Method = (typeof V2_METHODS)[number];
+
+/** Phase 3 Session 3C (spec §10): what a printer says of its paper and cover (DLE EOT); the page's lists are
+ *  PRINTER_PAPER_STATES and PRINTER_COVER_STATES (@pos/shared/print-failover), pinned in its parity test. */
+export const PAPER_STATES = ['ok', 'low', 'out'] as const;
+export const COVER_STATES = ['closed', 'open'] as const;
+
+/** One printer of the app's list. Session 3C: with its paper, cover and error when it said them (absent: nothing). */
+export type PoolEntry = {
+  state: NativePrinterState;
+  printer: NativePrinter;
+  paper?: (typeof PAPER_STATES)[number];
+  cover?: (typeof COVER_STATES)[number];
+  error?: true;
+};
+
+/** The app's printers in its order, the default's id (null only for an empty list) and Bluetooth. */
+export type PoolStatus = {
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)" && cd /d/kd/lucifer/apps/mobile && npm run test:app 2>&1 | grep -E "^Tests:"`
+Expected: `# tests 127`; `# pass 127`; `# fail 0`; `Tests:       3 passed, 3 total`
+
+Run: `cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun --console=plain 2>&1 | grep -E "^BUILD|compileDebugUnitTestKotlin FAILED" | sed -E 's/ in [0-9hms ]+$//'`
+Expected: `BUILD SUCCESSFUL`
+
+Run: `cat /d/kd/lucifer/apps/mobile/android/app/build/test-results/testDebugUnitTest/*.xml | grep -oE 'testsuite name="[^"]+" tests="[0-9]+" skipped="[0-9]+" failures="[0-9]+" errors="[0-9]+"'`
+Expected: `testsuite name="com.possoftware.pos.printer.DleEotTest" tests="6" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PoolListTest" tests="6" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PoolStatusTest" tests="3" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PrinterManagerTest" tests="19" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PrinterPoolTest" tests="3" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.TcpTransportTest" tests="8" skipped="0" failures="0" errors="0"`
+
+Run: `cd /d/kd/lucifer/apps/mobile && npx tsc --noEmit && echo MOBILE_TSC_OK && npm run lint >/dev/null 2>&1 && echo MOBILE_LINT_OK`
+Expected: `MOBILE_TSC_OK`; `MOBILE_LINT_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/printer/native-bridge-v2-parity.test.ts lib/printer/native-pool.test.ts lib/print-agent-printers.test.ts lib/print-agent-paths.test.ts lib/print-setup-ui-paths.test.ts lib/print-agent.test.ts lib/printer-ui-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 162`; `# pass 162`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint lib/printer/native-pool.ts lib/printer/printer-registry.ts lib/print-agent-printers.ts hooks/use-print-agent.ts lib/printer/native-bridge-v2-parity.test.ts lib/printer/native-pool.test.ts lib/print-agent-printers.test.ts lib/print-agent-paths.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/hooks/use-print-agent.ts apps/cafe/lib/print-agent-paths.test.ts apps/cafe/lib/print-agent-printers.test.ts apps/cafe/lib/print-agent-printers.ts apps/cafe/lib/printer/native-bridge-v2-parity.test.ts apps/cafe/lib/printer/native-pool.test.ts apps/cafe/lib/printer/native-pool.ts apps/cafe/lib/printer/printer-registry.ts apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/ClassicTransport.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PoolStatus.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterManager.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterPool.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterStatus.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrinterTypes.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/StatusJson.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/TcpTransport.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/UsbTransport.kt apps/mobile/android/app/src/main/res/values/strings.xml apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/DleEotTest.kt apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PoolStatusTest.kt apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterFakes.kt apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PrinterManagerTest.kt apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/TcpTransportTest.kt apps/mobile/src/bridge/protocol-v2.ts apps/mobile/src/mobile-paths.test.ts
+git commit -m "feat(app): each printer says its paper, cover and error (DLE EOT) after a job and while idle (a network printer's idle check is a connect, so one switched off reads down within a minute), refuses a job BUSY while it says it cannot print, and a network job reads printed only once the printer answered on its own connection (G5: a cut slip is maybe); bridge v2 carries them, the page leases no printer its app says cannot print, the notification says out of paper (Phase 3 Session 3C, C5)"
+```
+
+---
+
+### Task C6: full verification, the APKs, the exit on the emulator, the fresh review, Results
+
+**Files:** this plan (a new "Session 3C Results" section at its end), nothing else. Every tool below goes in this session's scratchpad, never in the repo.
+
+- [ ] **Step 1: every suite, once each, in the background, one after another** (run `df -h /d /c` first)
+
+Run, from `/d/kd/lucifer` (the totals the pre-validation saw on the golden tree):
+
+| Run | Expected |
+|---|---|
+| `cd packages/shared && npm test && npx tsc --noEmit` | `# tests 821`, `# pass 821`, `# fail 0`; tsc 0 |
+| `cd apps/cafe && npm test` | `# tests 5021`, `# pass 5020`, `# fail 0`, `# skipped 1` (go-live-dl) |
+| `npx tsc --noEmit` and `npm run lint` in each of `apps/cafe`, `apps/hub`, `apps/mobile`; `npm run typecheck` and `npm run lint` in `apps/desktop` | 0, and 0 errors (the 2 old warnings, `lib/masters-blob.test.ts:331`) |
+| `cd apps/mobile && npm test && npm run test:app` | **127/127** (125 + pin 20's two); Jest 3/3 (a Jest test can time out at 5 s under load: run it again alone before calling it a failure) |
+| `cd apps/desktop && npm test` | 192/192 |
+| `npm run test:print-tools` | **11/11** |
+| `cd apps/cafe && MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_print_host_3c npm run verify:print:live` | `444 passed, 0 failed` = 435 + be 9 (C0) |
+
+- [ ] **Step 2: JUnit, and the APKs**
+
+Run (D: needs ~1.5 GB free; `GRADLE_USER_HOME` always on D:):
+- `cd apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun` → BUILD SUCCESSFUL; **45 tests, 0 failures** (DleEotTest 6, PoolListTest 6, PoolStatusTest 3, PrinterManagerTest 19, PrinterPoolTest 3, TcpTransportTest 8).
+- The emulator's APK: `GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat aR -PreactNativeArchitectures=x86_64` (output `app/build/outputs/apk/release/app-release.apk`; copy it into the scratchpad as `pos-emulator-x86_64-3c.apk` and hash it).
+- The client pair (recorded, **not released**): `GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat assembleRelease` (the ABI split: `app-arm64-v8a-release.apk`, `app-armeabi-v7a-release.apk`); copy both into the scratchpad and hash them. The gate's build copy (a scratchpad clone, so its hashes differ from the repo's) gave arm64 `10f2ca79…`, armv7 `e04be78d…`, x86_64 `c812741f…`.
+
+- [ ] **Step 3: the Next production build on the repo (D:)**
+
+Run: `df -h /d` (a build needs ~1.5 GB free), then `cd apps/cafe && npm run build`.
+Expected: exit 0, 132 routes (3C adds none; count the lines between "Route (app)" and "First Load JS shared" with awk).
+
+- [ ] **Step 4: what changed outside the web**
+
+Run: `git diff --stat 459daa8..HEAD -- apps/desktop workers` → empty (the Windows installer and the Worker stay as Phase 2 built them). `git diff --stat 459daa8..HEAD -- apps/mobile` → the Kotlin, the RN bridge type and the pins of C4 and C5 only: the APKs change (Step 2).
+
+- [ ] **Step 5: the exit on the emulator (spec §14's Phase 3 row, the app's part)**
+
+**The harness** (as the 3B review gate ran it; check `netstat -ano | grep LISTEN` for 3110, 3200, 3201 and 9100–9101 first, and never stop another session's server):
+- **The database:** a fresh `pos_scratch_e2e_3c`. Copy Session 3B's env file (`C:\Users\KARTIK~1.DES\AppData\Local\Temp\claude\d--kd-lucifer\a0581b85-1d76-4fd6-b09f-6f32a4b9db56\scratchpad\e2e.env`) into this session's scratchpad as `e2e.env` (for `type-secret.py`) and as `e2e3c.env` with only `MONGODB_URI` changed to `mongodb://127.0.0.1:27017/pos_scratch_e2e_3c` (a Python script that never prints a value). Seed it from `apps/cafe`: `node --env-file=<scratchpad>/e2e3c.env --import tsx scripts/seed-admin.ts`, then `seed-tables.ts`, then `seed-menu.ts`. Copy `ui.py`, `type-secret.py`, `p3a-proxy.mjs` and `p3b-proxy.mjs` from the 3B scratchpad (`a0581b85…`).
+- **The servers** (each a background command with `timeout: 7200000`): this branch's Step 3 build, `cd /d/kd/lucifer/apps/cafe && node --env-file=<scratchpad>/e2e3c.env ../../node_modules/next/dist/bin/next start -p 3110`; `node <scratchpad>/p3a-proxy.mjs --listen 3200 --target 3110 --log <scratchpad>/proxy3c.jsonl` (the harness's API calls); `node <scratchpad>/p3b-proxy.mjs --listen 3201 --target 3110 --log <scratchpad>/proxy3c-emu.jsonl` (the emulator: it logs the pulse's whole `device=`). The fake printers are the tool's own child processes (the repo's `scripts/fake-escpos-printer.mjs`, restarted with each step's flags; a `keep.txt` goes into each `--out` folder at once: the %TEMP% cleaner deletes empty folders).
+- **The tool**, saved with the Write tool exactly as shown (or extracted byte for byte from this fenced block by a script): `pw-3c.mjs`. It runs from `apps/cafe` as `MSYS_NO_PATHCONV=1 node --env-file=<scratchpad>/e2e3c.env <scratchpad>/pw-3c.mjs <scenario> [arg]`, where `<scratchpad>` is the Windows form (`pwd -W`). Locally there is no realtime Worker, so a device hears of a slip by its wake or its pulse: the times are the harness's.
+
+`<scratchpad>/pw-3c.mjs`:
+
+```js
+// The 3B review gate's pre-run of Session 3C's exit (scratchpad only; never in the repo; grown from pw-3b.mjs). The POS
+// app on the emulator (the 3C APK) writes the kitchen's network printer (10.0.2.2:9100, this PC's 127.0.0.1:9100); a
+// plain headless Chrome tab (device C) orders and reads its own panel. The fake ESC/POS printers are this script's child
+// processes (scripts/fake-escpos-printer.mjs from the repo), restarted with the flags each step needs; their jobs.log is
+// the paper (a statusOnly line is the app's idle status check, not a slip). Signs in as the e2e admin with a session
+// minted from the env file's AUTH_SECRET (never printed); never prints a secret, a token or a payload. Run from apps/cafe:
+//   MSYS_NO_PATHCONV=1 node --env-file=<scratchpad>/e2e3c.env <scratchpad>/pw-3c.mjs <scenario> [args]
+// PW_BASE (default http://localhost:3200, the counting proxy) is where the page and the API calls go; PW_REPO (default
+// D:/kd/lucifer) is where the fake printer script is.
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(path.join(process.cwd(), "package.json"));
+const mongoose = require("mongoose");
+const { encode } = require("next-auth/jwt");
+const pwRequire = createRequire("C:/Users/Kartik.desai/AppData/Local/npm-cache/_npx/9833c18b2d85bc59/node_modules/playwright-core/package.json");
+const { chromium } = pwRequire("playwright-core");
+
+const BASE = process.env.PW_BASE ?? "http://localhost:3200";
+const REPO = process.env.PW_REPO ?? "D:/kd/lucifer";
+const COOKIE = "authjs.session-token";
+const DEVICES = path.join(HERE, "pw-3c-devices.json");
+const SHOTS = path.join(HERE, "shots3c");
+const t0 = Date.now();
+const ts = () => `${((Date.now() - t0) / 1000).toFixed(1)}s`;
+const say = (...parts) => console.log(`[${ts()}]`, ...parts);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const uri = process.env.MONGODB_URI ?? "";
+if (!/\/pos_scratch_e2e_3c[a-z0-9_]*$/.test(uri)) throw new Error("refusing: not pos_scratch_e2e_3c");
+await mongoose.connect(uri);
+const db = mongoose.connection.db;
+const staff = await db.collection("staffs").findOne({ username: "e2eadmin" }, { projection: { name: 1, role: 1 } });
+if (staff === null) throw new Error("e2eadmin not found");
+const token = await encode({ token: { name: staff.name, id: String(staff._id), role: staff.role, lastValidated: Date.now() }, secret: process.env.AUTH_SECRET, salt: COOKIE });
+const api = async (method, url, body) => {
+  const res = await fetch(`${BASE}${url}`, { method, headers: { "content-type": "application/json", cookie: `${COOKIE}=${token}` }, body: body === undefined ? undefined : JSON.stringify(body) });
+  return { status: res.status, json: await res.json().catch(() => ({})) };
+};
+const jobs = () => db.collection("printjobs").find({}).sort({ createdAt: 1, _id: 1 }).toArray();
+const printerByName = (name) => db.collection("printers").findOne({ name });
+const short = (id) => (id ?? "").slice(-4);
+const describe = (j) => ({ kind: j.kind, status: j.status, target: short(j.targetDeviceId), labels: j.labels ?? [], log: (j.log ?? []).map((l) => `${l.event}${l.deviceId ? `@${short(l.deviceId)}` : ""}${l.detail ? `(${l.detail.slice(0, 60)})` : ""}`) });
+const jobAfter = async (sinceMs, printerName) => {
+  const printer = await printerByName(printerName);
+  return (await jobs()).filter((j) => j.createdAt.getTime() >= sinceMs - 2000 && String(j.printerId) === String(printer?._id ?? ""));
+};
+
+// ── the fake printers, as child processes ──
+const printers = new Map();
+const outOf = (port) => path.join(HERE, `fake3c-${port}`);
+function startPrinter(port, flags = []) {
+  stopPrinter(port);
+  const out = outOf(port);
+  mkdirSync(out, { recursive: true });
+  writeFileSync(path.join(out, "keep.txt"), "keep");
+  const child = spawn(process.execPath, [path.join(REPO, "scripts", "fake-escpos-printer.mjs"), "--port", String(port), "--out", out, ...flags], { stdio: "ignore" });
+  printers.set(port, child);
+  say(`fake printer ${port} ${flags.join(" ") || "(normal)"}`);
+}
+function stopPrinter(port) {
+  const child = printers.get(port);
+  if (child !== undefined) child.kill();
+  printers.delete(port);
+}
+const records = (port) => {
+  const file = path.join(outOf(port), "jobs.log");
+  if (!existsSync(file)) return [];
+  return readFileSync(file, "utf8").split("\n").filter((l) => l.trim() !== "").map((l) => JSON.parse(l));
+};
+const slips = (port) => records(port).filter((r) => r.bytes > 0 && r.statusOnly !== true);
+
+// ── a plain browser tab (device C): it orders, and reads its own panel ──
+async function openPlain(name, profile) {
+  const context = await chromium.launchPersistentContext(path.join(HERE, `pw-3c-${profile}`), {
+    executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    headless: true,
+    viewport: { width: 1280, height: 1000 },
+  });
+  await context.addCookies([{ name: COOKIE, value: token, domain: "localhost", path: "/", httpOnly: true, sameSite: "Lax" }]);
+  const page = context.pages()[0] ?? (await context.newPage());
+  await page.goto(`${BASE}/pos`, { waitUntil: "networkidle" });
+  const tab = { name, page, context, deviceId: await page.evaluate(() => window.localStorage.getItem("pos.device-id.v1")) };
+  say(`${name} (a plain browser tab) open as device …${short(tab.deviceId)}`);
+  return tab;
+}
+
+async function order(tab, items) {
+  const page = tab.page;
+  if (!page.url().endsWith("/pos")) await page.goto(`${BASE}/pos`, { waitUntil: "networkidle" });
+  for (const item of items) {
+    await page.getByRole("button", { name: new RegExp(`^${item}`) }).first().click();
+    await page.waitForTimeout(500);
+    const add = page.getByRole("dialog").getByRole("button", { name: /^Add \d/ });
+    if ((await add.count()) > 0) await add.first().click();
+    await page.waitForTimeout(300);
+  }
+  await page.getByRole("button", { name: "Send to Kitchen" }).click();
+  const at = Date.now();
+  say(`${tab.name} sent ${items.join(" + ")} to the kitchen`);
+  await page.waitForTimeout(1500);
+  await page.keyboard.press("Escape").catch(() => undefined);
+  return at;
+}
+
+async function until(label, check, timeoutMs, everyMs = 1000) {
+  const start = Date.now();
+  for (;;) {
+    const got = await check();
+    if (got) {
+      say(`${label}: yes after ${((Date.now() - start) / 1000).toFixed(1)} s`);
+      return got;
+    }
+    if (Date.now() - start > timeoutMs) {
+      say(`${label}: NO within ${timeoutMs / 1000} s`);
+      return null;
+    }
+    await sleep(everyMs);
+  }
+}
+
+const NO_SLIPS = { bill: false, kotStations: [], kotAll: false, notices: false, eod: false };
+async function stations() {
+  return (await api("GET", "/api/stations")).json.data ?? [];
+}
+async function ensureStation(name) {
+  if (!(await stations()).some((s) => s.name === name)) await api("POST", "/api/stations", { name });
+  return (await stations()).find((s) => s.name === name);
+}
+async function savePrinter(body) {
+  const existing = ((await api("GET", "/api/printers")).json.data ?? []).find((p) => p.name === body.name);
+  const res = existing === undefined ? await api("POST", "/api/printers", body) : await api("PUT", `/api/printers/${existing.id}`, body);
+  say(`printer ${body.name}: ${res.status}${res.json.error ? ` ${res.json.error}` : ""}`);
+}
+async function clearPrinters() {
+  for (const p of (await api("GET", "/api/printers")).json.data ?? []) say(`printer ${p.name} deleted: ${(await api("DELETE", `/api/printers/${p.id}`)).status}`);
+}
+const devicesFile = () => (existsSync(DEVICES) ? JSON.parse(readFileSync(DEVICES, "utf8")) : {});
+const health = async (name) => {
+  const p = await printerByName(name);
+  return p?.health ? `${p.health.link}${p.health.paper ? `/${p.health.paper}` : ""}${p.health.cover ? `/${p.health.cover}` : ""}${p.health.error ? "/error" : ""}@${short(p.health.deviceId)}` : "-";
+};
+const hold = async (label, file, ms) => {
+  say(`HOLD: ${label} (${ms / 1000} s; ${file})`);
+  writeFileSync(path.join(HERE, file), label);
+  await sleep(ms);
+};
+
+const [scenario, arg] = process.argv.slice(2);
+try {
+  mkdirSync(SHOTS, { recursive: true });
+  if (scenario === "printers") {
+    // Only the fake printers (normal), until killed: for the steps the emulator is set up in by hand.
+    startPrinter(9100);
+    startPrinter(9101);
+    await hold("fake printers 9100 and 9101 up", "pw-3c-printers-up", Number(arg ?? "600") * 1000);
+  } else if (scenario === "emu-setup") {
+    // Printers mode: the kitchen's network printer (10.0.2.2:9100) and the bar's (10.0.2.2:9101), both written by the
+    // emulator app (its id from its pulse's device=).
+    const emu = arg;
+    if (!/^[0-9a-f-]{8,}$/.test(emu ?? "")) throw new Error("emu-setup <the emulator app's device id>");
+    const kitchen = (await stations()).find((s) => s.isDefault);
+    const bar = await ensureStation("Bar");
+    const beverages = await db.collection("categories").findOne({ name: "Beverages" });
+    say(`Beverages -> Bar: ${(await api("PUT", `/api/categories/${String(beverages._id)}`, { name: beverages.name, stationId: bar.id })).status}`);
+    await savePrinter({ name: "Kitchen", connection: { kind: "lan", host: "10.0.2.2", port: 9100 }, primaryDeviceId: emu, paper: 80, slips: { ...NO_SLIPS, bill: true, kotStations: [kitchen.id], notices: true, eod: true }, copies: { kot: 1, bill: 1 }, enabled: true });
+    await savePrinter({ name: "Bar", connection: { kind: "lan", host: "10.0.2.2", port: 9101 }, primaryDeviceId: emu, paper: 80, slips: { ...NO_SLIPS, kotStations: [bar.id] }, copies: { kot: 1, bill: 1 }, enabled: true });
+    writeFileSync(DEVICES, JSON.stringify({ EMU: emu }));
+  } else if (scenario === "emu-print") {
+    // A kitchen slip ordered by C prints on 9100 through the emulator app (after the APK update: its printers kept).
+    startPrinter(9100);
+    startPrinter(9101);
+    const { EMU } = devicesFile();
+    const C = await openPlain("C", "c");
+    await sleep(20_000);
+    const before = slips(9100).length;
+    const at = await order(C, ["Margherita Pizza"]);
+    const done = await until("the kitchen slip printed by the emulator", async () => (await jobAfter(at, "Kitchen")).find((j) => j.status === "printed" && j.targetDeviceId === EMU), 90_000, 2000);
+    say(`  ${JSON.stringify(done === null ? null : describe(done))}`);
+    say(`paper on 9100: ${slips(9100).length - before} new slip(s), ${JSON.stringify(slips(9100).slice(before).map((r) => r.bytes))} B; idle status checks so far: ${records(9100).filter((r) => r.statusOnly).length}`);
+    // Its health comes with the emulator's next beat (the page's wake), so give it one.
+    await until("Kitchen's health from the emulator (its beat)", async () => (await health("Kitchen")).startsWith("connected/ok"), 60_000, 3000);
+    say(`Kitchen health: ${await health("Kitchen")}`);
+    await C.context.close();
+  } else if (scenario === "emu-paper") {
+    // Exit (3C): the kitchen printer out of paper (fake --paper-out): the app's DLE EOT says so, its beat carries it, a
+    // slip waits (the app refuses it BUSY before any byte), and C's panel says "Kitchen is out of paper.". Paper back in:
+    // it prints.
+    const { EMU } = devicesFile();
+    startPrinter(9101);
+    startPrinter(9100, ["--paper-out"]);
+    const C = await openPlain("C", "c");
+    await until("Kitchen's health says out of paper (the app's idle check, then its beat)", async () => (await health("Kitchen")).includes("/out"), 150_000, 3000);
+    say(`Kitchen health: ${await health("Kitchen")}`);
+    const before = slips(9100).length;
+    const at = await order(C, ["Margherita Pizza"]);
+    await until("the kitchen slip in the feed with problem paper-out", async () => ((await api("GET", "/api/order-requests/pulse")).json.data?.printAttention ?? []).find((r) => r.problem === "paper-out"), 90_000, 3000);
+    await C.page.goto(`${BASE}/printers`, { waitUntil: "networkidle" });
+    await C.page.waitForTimeout(25_000);
+    const panel = await C.page.locator("section[aria-label='Slips waiting']").first().innerText().catch(() => "(no panel)");
+    say(`C's panel: ${panel.replace(/\s+/g, " ").slice(0, 300)}`);
+    await C.page.screenshot({ path: path.join(SHOTS, "emu-paper-c-panel.png"), fullPage: true });
+    const waiting = (await jobAfter(at, "Kitchen"))[0];
+    say(`  the slip while out of paper: ${JSON.stringify(waiting === undefined ? null : describe(waiting))}; slips on 9100 meanwhile: ${slips(9100).length - before}`);
+    await hold("screencap the emulator now (its dot and panel)", "pw-3c-hold-paper", 60_000);
+    startPrinter(9100);
+    const back = Date.now();
+    const done = await until("paper back: the kitchen slip printed by the emulator", async () => (await jobAfter(at, "Kitchen")).find((j) => j.status === "printed" && j.targetDeviceId === EMU), 180_000, 2000);
+    say(`  printed ${((Date.now() - back) / 1000).toFixed(0)} s after the paper came back: ${JSON.stringify(done === null ? null : describe(done))}`);
+    say(`paper on 9100: ${slips(9100).length - before} slip(s), ${JSON.stringify(slips(9100).slice(before).map((r) => r.bytes))} B; Kitchen health: ${await health("Kitchen")}`);
+    await C.context.close();
+  } else if (scenario === "emu-drop") {
+    // Exit (3C, G5): the kitchen printer cuts the slip mid-way (fake --drop-after 20000): the app's job never reads
+    // printed; the server retries it once, labelled REPRINT, and that copy prints whole (the printer back to normal).
+    const { EMU } = devicesFile();
+    startPrinter(9101);
+    startPrinter(9100, ["--drop-after", "20000"]);
+    const C = await openPlain("C", "c");
+    await sleep(20_000);
+    const before = records(9100).length;
+    const at = await order(C, ["Margherita Pizza"]);
+    const cut = await until("the slip cut mid-way on 9100", async () => records(9100).slice(before).find((r) => r.dropped === true), 60_000, 500);
+    startPrinter(9100);
+    say(`  cut after ${cut?.bytes ?? "?"} B; the printer is whole again`);
+    const done = await until("the kitchen slip printed by the emulator", async () => (await jobAfter(at, "Kitchen")).find((j) => j.status === "printed" && j.targetDeviceId === EMU), 180_000, 2000);
+    say(`  ${JSON.stringify(done === null ? null : describe(done))}`);
+    const after = records(9100).slice(before).filter((r) => r.bytes > 0 && r.statusOnly !== true);
+    say(`paper on 9100: ${JSON.stringify(after.map((r) => ({ bytes: r.bytes, dropped: r.dropped })))}`);
+    await C.context.close();
+  } else if (scenario === "emu-silent") {
+    // Exit (3C; the gate's review, I-1 and I-2): a printer without real-time status (fake --silent). The app learns it at
+    // its connect check, so a slip prints once (never a REPRINT) and is asked only briefly (no long wait after it).
+    const { EMU } = devicesFile();
+    startPrinter(9101);
+    startPrinter(9100, ["--silent"]);
+    const C = await openPlain("C", "c");
+    // One idle check period (60 s) and a margin: the app has asked the silent printer at least once.
+    await sleep(70_000);
+    const before = slips(9100).length;
+    const at = await order(C, ["Margherita Pizza"]);
+    const done = await until("the kitchen slip printed by the emulator", async () => (await jobAfter(at, "Kitchen")).find((j) => j.status === "printed" && j.targetDeviceId === EMU), 90_000, 1000);
+    say(`  ${JSON.stringify(done === null ? null : describe(done))}`);
+    const leased = done?.log?.find((l) => l.event === "leased")?.at;
+    const printed = done?.log?.find((l) => l.event === "printed")?.at;
+    say(`  leased to printed: ${leased && printed ? ((printed.getTime() - leased.getTime()) / 1000).toFixed(1) : "?"} s (a long wait would be over 10 s)`);
+    await sleep(15_000);
+    say(`paper on 9100: ${slips(9100).length - before} slip(s), ${JSON.stringify(slips(9100).slice(before).map((r) => r.bytes))} B; Kitchen health: ${await health("Kitchen")}`);
+    await C.context.close();
+  } else if (scenario === "simple") {
+    // Simple mode for the release page (bridge v1): every printer deleted.
+    await clearPrinters();
+  } else if (scenario === "release-v1") {
+    // The release page in simple mode: a slip the emulator orders prints on its own printer (bridge v1).
+    startPrinter(9100);
+    startPrinter(9101);
+    const since = Date.now();
+    const before = slips(9100).length + slips(9101).length;
+    await hold("order on the emulator now (a KOT)", "pw-3c-hold-release", Number(arg ?? "180") * 1000);
+    const made = (await jobs()).filter((j) => j.createdAt.getTime() >= since - 2000);
+    for (const j of made) say(`  ${JSON.stringify(describe(j))}`);
+    say(`new slips on the app's printers: ${slips(9100).length + slips(9101).length - before}; 9100 ${JSON.stringify(slips(9100).slice(-1).map((r) => r.bytes))}, 9101 ${JSON.stringify(slips(9101).slice(-1).map((r) => r.bytes))}`);
+  } else if (scenario === "clear") {
+    await clearPrinters();
+  } else {
+    throw new Error("scenario: printers | emu-setup <id> | emu-print | emu-paper | emu-drop | emu-silent | simple | release-v1 | clear");
+  }
+} finally {
+  for (const port of [...printers.keys()]) stopPrinter(port);
+  await mongoose.disconnect();
+}
+```
+
+**The emulator** (`df -h /c /d` first; boot `Pixel_7_API_33` yourself with a 2 h background timeout: `-memory 4096 -no-audio -no-snapshot-save`, 2048 when C: has under ~5 GB free, recorded; the gate booted at 2048 with C: at 4.6 GB, and at 5.8 GB for its last run):
+- `adb shell pm path com.possoftware.pos` and hash the APK on the device. As left by this gate: the **release APK** (`29115bdf…`), on its start screen with no address. **Check which POS the app shows before any tap that writes: never the demo.**
+- Install the **Phase 2 x86_64 APK** (`C:\Users\KARTIK~1.DES\AppData\Local\Temp\claude\d--kd-lucifer\980d3189-10f0-4165-bdad-ae814b95278b\scratchpad\apk-gate2\pos-emulator-x86_64-release.apk`, hashed `3736540b…` first) with `adb install -r`; `adb reverse tcp:3100 tcp:3201`.
+- On the start screen type `http://localhost:3100`, Open POS. A session the WebView kept from another database answers 401 (the proxy log shows `"s":401`): sidebar → Account → Sign out, then sign in as `e2eadmin` (the password by `type-secret.py` into a field checked to be a password field; never printed).
+- `pw-3c.mjs printers 1500` (background: 9100 and 9101 up); the printer panel → Network printer `10.0.2.2`, port `9100` → Use this network printer; its device id is the `device=` of its pulses in `proxy3c-emu.jsonl`. Then `pw-3c.mjs emu-setup <that id>`: Kitchen at `10.0.2.2:9100` and Bar at `10.0.2.2:9101`, both written by the emulator (printers mode; Beverages → Bar). Close the panel (Done; Back on the POS's main screen exits the app), Refresh: the panel lists 9100 (this device's printer) and 9101 under "Other printers on this device". Stop `pw-3c.mjs printers` and its two printers by PID (check each command line).
+
+| # | Step | Expected (the gate's run) |
+|---|---|---|
+| E0 | the Phase 2 APK set up as above | the panel: 9100 connected, "Other printers on this device": 9101 |
+| E1 | `adb install -r` the **new x86_64 APK** (Step 2; hashed); relaunch; `emu-print` | the app keeps both printers (the panel lists 9101 under Other printers, Connected: the Prefs list); C's kitchen slip **printed by the emulator in ≈4 s** (up to ≈20 s right after a Refresh: the device hears by its pulse), **44,250 B** on 9100 (the slip, then its 12 bytes of DLE EOT questions: G5 on the real app); Kitchen's health `connected/ok/closed` from the emulator; a `statusOnly` line for the app's idle check |
+| E2 | `emu-paper`; at its HOLD screencap the emulator's panel | 9100 with `--paper-out`: Kitchen's health **`connected/out`** from the emulator (≈6–36 s: the app's idle check, then its beat); C's slip waits, **never leased** (its log only `created`); ≈21 s later the feed has `problem: "paper-out"`; **C's panel: "Waiting for the printer (1) · KOT round 1 · ORD-… · Kitchen · just now · Kitchen is out of paper. · Kitchen"**; the emulator's panel: "Printer needs attention · Kitchen is out of paper." and the same row; paper back (9100 normal): **printed ≈10 s later**, one slip, 44,250 B |
+| E3 | `emu-drop` | 9100 with `--drop-after 20000`: the first attempt is cut at **20,000 B**; the app reports it may be on paper (`failed` "The printer stopped answering…", never `printed`); the printer whole again, the retry prints labelled **REPRINT**, **49,722 B** (the banner); the log `created, leased, failed, leased, printed` |
+| E3b | `emu-silent` | 9100 with `--silent` (it never answers DLE EOT, like a printer without real-time status): the app's idle check learns it, so the slip **prints once, never a REPRINT**, and is asked only briefly: **leased to printed ≈2 s** (under 10 s: no long wait after the slip), **44,241 B** (the slip and one 3-byte DLE EOT 1, no follow-ups); Kitchen's health `connected` (no paper or cover: the printer says nothing) |
+| E4 | the release page (bridge v1): serve a build of `main` (`7f8ed31`) on 3110 (a build copy with webpack's cache off, as Session 3B's exit 5; stop this branch's server first, and stop that one before you rebuild anything), `pw-3c.mjs simple`, then `pw-3c.mjs release-v1 300` and, on the emulator, Refresh, then order a Masala Chai and Send to Kitchen | simple mode, the release page: the KOT **printed by the emulator** on its own printer (9100), `leased (direct)` then `printed`, ≈40,500 B |
+| E5 | `adb logcat -b crash -d` | 0 lines |
+
+Put back:
+- the setup cleared (`pw-3c.mjs clear`; the scratch database is left);
+- the app's printers removed (the panel's Remove on its own printer; a page-added one leaves by itself once the setup stops naming it);
+- the app's address cleared (More options → Change POS address → Clear POS address: its start screen, no address);
+- the **release APK** reinstalled (`adb install -r -d` of `…\980d3189…\scratchpad\apk-release\pos-emulator-x86_64-release.apk`; `29115bdf…` on the device), as found;
+- `adb reverse --remove-all`, then `adb reverse tcp:3100 tcp:3100`;
+- `adb shell sync`, then `adb emu kill`;
+- your servers stopped by PID after checking each command line.
+
+- [ ] **Step 6: the fresh review**
+
+Dispatch a fresh reviewer subagent on **Claude Fable 5.1** (`model: fable`). It is read-only, with scratch tests only in this session's scratchpad (never in the repo). It reviews `459daa8..HEAD` against this plan (P3-1 to P3-10 as the gates changed them, the 3B review gate's rulings, Session 3C and its Review Focus, passed verbatim) and spec §9.3, §9.5, §9.8, §10, §13, §17. If Fable is rate-limited (HTTP 429), wait for its reset and say so; never switch models silently. Fix every Critical and Important finding by TDD (RED seen first) in its own commit. List the minors in Results for the 3C review gate.
+
+- [ ] **Step 7: Results, commit, push**
+
+Fill "Session 3C Results" below: the commits; each task's RED and GREEN against the Expected lines; every suite's numbers; JUnit; the APK hashes; the build; the exit table; the review and its fixes; deviations and rulings; what is open for the 3C gate.
+
+Commit, then push with the token only: `GIT_TERMINAL_PROMPT=0 git push origin feat/printing-phase-3`. Do not merge, do not deploy, do not release the APKs.
