@@ -24211,4 +24211,139 @@ Commit, then push with the token only: `GIT_TERMINAL_PROMPT=0 git push origin fe
 
 ## Session 3D Results (filled in by the implementer)
 
-(Not yet executed.)
+Executed on 2026-10-08/09 in one Claude session with superpowers:executing-plans, task by task, D0 → D5. The ledger is `.superpowers/sdd/2026-10-06-phase-3-hardening/progress.md` (section "Session 3D").
+
+### Commits (`8751b49..HEAD`)
+
+| Commit | Task |
+|---|---|
+| `9848e76` | D0: the 3C review gate's fixes: a refused connect asked again a second later (`CONNECT_REFUSED_RETRY_MS`); the connect's status check its own forced io task, before anyone hears "connected"; BUSY behind a printer that says it cannot print; the status after a job forced; FEED is not an error; a CONNECTED printer's v1 select answers at once; the release Kotlin compiled in full (`doFirst { incremental = false }`, pin 21); the page: `poolDefaultCannotPrint`, the clock forgets a printer that left the app, `clockRef` |
+| `b9a550e` | D1: the printing state: `Prefs.printing`, `START_STICKY`, a null-intent restart posts "POS printing is off. Tap to start." and stops, `onDestroy` while the wish is on, the `BOOT_COMPLETED` / `MY_PACKAGE_REPLACED` receiver, notifications asked once (`HostLife`, `PrintingOffNotice`, `PrintingOffReceiver`) |
+| `dc9bd2b` | D2: the service on a printers-mode writer (`printsForCafe`), `decided` → `host.background` false once, the notification's words, no lease on the app's hidden tick, a hidden page in the POS app polls the wake |
+| `4acdf0c` | D3: `keepPageRunning()` on each hidden tick, the dead-page remount also while hidden (`BackgroundMount`, `HiddenMountGap`, renderer priority IMPORTANT), the watchdog's word through `PageWatch` (`PosPageDead`) |
+| `451e371` | D4: the battery checklist (`app.battery`, `NATIVE_FEATURES`, `BatteryScreen`, `battery-steps.ts`, `BatteryTargets`, `BatterySettings`) |
+| (this commit) | Results |
+
+### Start
+
+- `GIT_TERMINAL_PROMPT=0 git fetch origin` (the repo-local token store) worked: `feat/printing-phase-3` = `origin/feat/printing-phase-3` = `8751b49`, working tree clean; `origin/main` still `7f8ed31` (nothing to merge or note).
+- Disk at the start: D: 12 GB free, **C: 1.8 GB free** (see Step 5).
+- Real printers: none on hand. The owner's ruling (2026-10-08) stands: the real-printer checks run once, after all of Phase 3, before the merge decision; this session did not ask, and carries every real-printer item to 3G (below).
+- The 3C review gate's applier (`apply_blocks_clone.py`), `link-modules.ps1`, `pw-3d.mjs`, `mkenv3d.py`, `suites.sh`, `cafe-tests.sh`, `ui.py`, `type-secret.py`, `p3a-proxy.mjs`, `p3b-proxy.mjs` and `gen3d/` were copied into this session's scratchpad. `pw-3d.mjs` is byte-identical (LF) to the fenced block in D5. A dry run of the whole Session 3D range (plan lines 18200–24214) against `8751b49`: **159 ops OK** (no drift).
+
+### How the code was applied
+
+Every block went verbatim into the real repo through the applier, one step range at a time (each task's Step 1, then its Step 3), so each RED was seen before its code went in: D0 14 + 20 ops, D1 6 + 18, D2 10 + 10, D3 5 + 18, D4 24 + 34 (**159**). After D4, **every file outside `docs/` is blob-identical to the gate's golden copy `g3d-v5`** (tree `a7b4bb6`, in the gate's scratchpad clone `g3d`): the `git ls-tree -r` listings of both, without `docs/`, are equal. `6bc8d73..451e371` outside `docs/`: 59 files, **+1,830 / −105** (`apps/mobile` 41 files +1,666 / −74; `apps/cafe` 18 files +164 / −31). Every commit has the plan's message plus the repo's co-author line (D1 and D2 through `git commit -F`: ruling 1).
+
+### Per-task RED → GREEN (every Expected line compared; all matched)
+
+| Task | RED | GREEN |
+|---|---|---|
+| D0 | mobile: tests 129, pass 125, **fail 4**; cafe three files: tests 34, pass 30, **fail 4**; JUnit `> Task :app:testDebugUnitTest FAILED`, `BUILD FAILED`: DleEot 7 (**1 failure**), PoolList 6, PoolStatus 3, PrinterManager 22 (**3**), PrinterPool 3, TcpTransport 10 (**2**) | mobile **129/129**; JUnit `BUILD SUCCESSFUL`, the same suites with 0 failures; `MOBILE_TSC_OK`; `MOBILE_LINT_OK`; cafe five files **122/122** + `TSC_OK`; `LINT_OK` |
+| D1 | mobile: tests 131, pass 125, **fail 6**; JUnit `> Task :app:compileDebugUnitTestKotlin FAILED`, `BUILD FAILED` (unresolved `HostLife`) | mobile **131/131**; JUnit `BUILD SUCCESSFUL`: DleEot 7, HostLife 4, PoolList 6, PoolStatus 3, PrinterManager 22, PrinterPool 3, TcpTransport 10; `MOBILE_TSC_OK`; `MOBILE_LINT_OK` |
+| D2 | cafe three files: tests 38, pass 33, **fail 5**; mobile: tests 131, pass 129, **fail 2** | cafe four files **58/58** + `TSC_OK`; `LINT_OK`; mobile **131/131** |
+| D3 | mobile: tests 133, pass 129, **fail 4**; JUnit `compileDebugUnitTestKotlin FAILED`, `BUILD FAILED` (unresolved `PageWatch`) | mobile **133/133** + Jest **3/3**; JUnit `BUILD SUCCESSFUL` (+ PageWatch 5); `MOBILE_TSC_OK`; `MOBILE_LINT_OK` |
+| D4 | mobile: tests 137, pass 125, **fail 12**; cafe four files: tests 88, pass 77, **fail 11**; JUnit `compileDebugUnitTestKotlin FAILED`, `BUILD FAILED` (unresolved `BatteryTargets`) | mobile **139/139** + Jest **3/3**; JUnit `BUILD SUCCESSFUL`: BatteryTargets 3, DleEot 7, HostLife 4, PageWatch 5, PoolList 6, PoolStatus 3, PrinterManager 22, PrinterPool 3, TcpTransport 10 (**63**); `MOBILE_TSC_OK`; `MOBILE_LINT_OK`; cafe five files **90/90** + `TSC_OK`; `LINT_OK` |
+
+Line counts at the end: `apps/cafe/hooks/use-print-agent.ts` 320, `lib/print-agent-health.ts` 97; `…/printer/PrintHostService.kt` 277, `PageWatch.kt` 76 (new), `BackgroundMount.kt` 71 (new), `HostLife.kt` 48 (new), `TcpTransport.kt` 318, `PrinterManager.kt` 439, `BatteryTargets.kt` 50 (new), `BatterySettings.kt` 55 (new); `src/screens/PosScreen.tsx` 354, `BatteryScreen.tsx` 161 (new).
+
+### Task D5 Step 1: every suite (at `451e371`; once each, in the background, one after another)
+
+| Suite | Result |
+|---|---|
+| shared `npm test`; `tsc` | **821/821**; 0 |
+| cafe `npm test` | **5030 tests, 5029 pass, 0 fail, 1 skipped** (go-live-dl) |
+| cafe `tsc`; `npm run lint` | 0; 0 errors and the 2 old warnings (`lib/masters-blob.test.ts:331`) |
+| hub `tsc`; lint | 0; 0 |
+| mobile `tsc`; lint; `npm test`; `test:app` | 0; 0; **139/139**; Jest **3/3** |
+| desktop `npm test`; `typecheck`; lint | **192/192**; 0; 0 |
+| `npm run test:print-tools` | **11/11** |
+| live legs (local mongod, `pos_scratch_print_host_3d`) | **`444 passed, 0 failed`** (3D adds no leg) |
+
+Every row equals the plan's Expected.
+
+### Step 2: JUnit, and the APKs (a full release compile)
+
+- `:app:testDebugUnitTest --rerun`: `BUILD SUCCESSFUL`, **63 tests, 0 failures** (BatteryTargetsTest 3, DleEotTest 7, HostLifeTest 4, PageWatchTest 5, PoolListTest 6, PoolStatusTest 3, PrinterManagerTest 22, PrinterPoolTest 3, TcpTransportTest 10).
+- A marker file in the scratchpad, then `aR -PreactNativeArchitectures=x86_64 --info` (nothing else on that line): `BUILD SUCCESSFUL` (39 s). **The full release compile, proved:** `> Task :app:compileReleaseKotlin` ran; the log has **0** lines `Using Kotlin/JVM incremental compilation`; **0 of 100** release classes are older than the marker; `javap -c -p …/release/…/TransportFactory.class` calls `TcpTransport."<init>":(Ljava/lang/String;IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V`.
+- Then the README's client pair, `assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a`: `BUILD SUCCESSFUL` (32 s). Each APK copied into the scratchpad right after its own build (`apk-3d/`) and hashed, **not released**:
+
+| APK | SHA-256 |
+|---|---|
+| x86_64 (the emulator) | `8bed1a5e032387b21c85c0d77c9e9f5ea2553a8baefae2d0986557b5d594aedc` |
+| arm64-v8a | `4509324fa798523491faa1b415fc726c9682e070902984abe8cf75abb682e879` |
+| armeabi-v7a | `737f62ce69639aa394512c13c7c4275cc2e4417117a69ce85549f5002e525567` |
+
+  They differ from the gate's build-copy hashes (`298d9479…`, `1720fd70…`, `06d893ba…`), as the plan says a repo build will.
+
+### Step 3: the Next production build (the repo, D:)
+
+`npm run build` (D: 12 GB free): exit 0, **132 routes**.
+
+### Step 4: what changed outside the web
+
+`git diff --stat 6bc8d73..HEAD -- apps/desktop workers`: **empty** (the Windows installer `1.11.0` and the Worker stay as Phase 2 built them). `-- apps/mobile`: 41 files, D0–D4's app files only.
+
+### Step 5: the exit on the emulator (X0–X11 and X3b: passed)
+
+**The harness**, as the plan's Step 5 says: a fresh database `pos_scratch_e2e_3d` (Session 3B's env file copied by `mkenv3d.py` with only `MONGODB_URI` changed, no value printed; seeded with `scripts/seed-admin.ts`, `seed-tables.ts`, `seed-menu.ts`); this branch's Step 3 build on `next start -p 3110`; `p3a-proxy.mjs` on 3200, `p3b-proxy.mjs` on 3201 (`proxy3d-emu.jsonl`); `pw-3d.mjs printers 3500` running the fake printers 9100 and 9101 (a `keep.txt` in each `--out` folder). Ports 3110, 3200, 3201, 9100 and 9101 were free; no other session's server was touched.
+
+**The emulator** (ruling 2): with C: at 1.8–1.9 GB, `Pixel_7_API_33`'s qemu exited at once with code 21 (crash dumps, no message) at `-memory 2048`, at 1536, with `-no-snapshot` and with `-gpu swiftshader_indirect`: the ~2 GB floor the 1D gate saw. Nothing of this session's on C: could be removed, so the AVD's stale quickboot snapshot (`snapshots/default_boot/ram.img`, 2 GB, all zeros, its `hardware.ini` from August) was **NTFS-compressed in place** (`compact /c`: stored in 0 bytes; transparent; `compact /u` undoes it; nothing deleted): C: 3.9 GB. It then booted at **`-memory 2048 -no-audio -no-snapshot`** (neither loads nor saves that snapshot) in ~25 s; crash buffer 0. **As found:** the release APK (`29115bdf…` hashed on the device), its start screen with no address (not the demo), notifications not allowed (`granted=false`, `USER_SET`). `adb reverse tcp:3100 tcp:3201`; `http://localhost:3100` answered 401 (a session from another database) → Account Staff → Sign out → signed in as `e2eadmin` (`type-secret.py`, the field checked to be a password field) → "POS Software"; the release app's panel: Network printer `10.0.2.2`, port 9100 → "Network printer 10.0.2.2 is connected."; Done.
+
+Locally there is no realtime Worker, so a device hears of a slip at its next wake (3 s for about two minutes after a job, then 15 s) or pulse (20 s): the "after the order" times below are the harness's (ruling 3).
+
+| # | Result |
+|---|---|
+| X0 | `adb install -r` of the 3D x86_64 APK (`8bed1a5e…`, hashed before and on the device) over the release APK; launched: **the POS at once** (the address), **signed in** (the session), the top bar "Printer connected", the panel "Network printer 10.0.2.2 is connected." and "Network printer 10.0.2.2 · Connected" (the v1 printer kept); **no notice** (printing was not on); crash 0. **PASS** |
+| X1 | the panel → More options → **"Battery settings for printing"** with "Some phones stop the POS app when the screen is off. These steps keep slips printing."; the screen **"Keep printing on with the screen off"**, "Android lets this app run with no battery limit.", **"Other phones" first**, then "Xiaomi, Redmi, POCO", "OPPO, realme, OnePlus"…; "Battery settings for this app" → `topResumedActivity` **`com.android.settings/.Settings$HighPowerApplicationsActivity`**; Back → the checklist; Back → the POS panel. **PASS** |
+| X2 | the emulator's device `80cfb12d…d5f2` (its pulses' `device=`); `emu-setup` → Kitchen 201 (`10.0.2.2:9100`, the emulator its primary); Done, Refresh: no notification question (this emulator's app data had been asked before; kept across updates) → `pm grant … POST_NOTIFICATIONS` (recorded); `dumpsys activity services`: `PrintHostService` **`isForeground=true`** (`foregroundId=4101`), **`stopIfKilled=false`** (sticky); the notice posted before the grant was dropped, so HOME and open once (ruling 4) → `dumpsys notification`: **"Printing is on — Network printer 10.0.2.2" / "This device keeps printing with the screen off."** **PASS** |
+| X3 | HOME, `hidden 200`: **13 × wake (every 15 s), 10 × pulse (20 s), 7 × orders and 7 × tables (30 s), no `POST /api/print-jobs/lease`**; `beatAt` 8 s old; `emu-order`: created 18:55:33, leased and **printed 18:55:36 (3 s)**, 44,250 B. Then the screen off (`keyevent 223`, `mWakefulness=Asleep`), `hidden 180`: 40 × wake (3 s for two minutes after the job, then 15 s), 9 × pulse, 6 × orders, 6 × tables, **no lease**; `beatAt` 2 s old; `emu-order`: **printed 5 s after the order** (the next wake), 44,250 B; `keyevent 224`. **PASS** |
+| X3b | app hidden: `am kill com.possoftware.pos` → **the same pid** (4944) and its renderer; `dumpsys activity processes`: **`prcp F/S/FGS` … (fg-service)**; `emu-order`: printed **9 s** after the order (it landed between two 15 s wakes; the lease came with the next wake), 44,250 B, the app hidden. **PASS** |
+| X4 | app hidden: `am crash 5078` (the renderer) → a new renderer (5808); **`GET /pos` 3.8 s after the crash with the launcher on top**, then the page's start-up requests; `emu-order`: **printed 2 s after the order**, the app still hidden. The crash buffer then held only the renderer's induced crash (`CrashedByAdbException`, 125 lines, none naming `possoftware`). **PASS** |
+| X5 | `logcat -b crash -c`; `am crash 4944` (the app): logcat **"Scheduling restart of crashed service com.possoftware.pos/.printer.PrintHostService in 1000ms"**, a new process for the service; **"POS printing is off. Tap to start."** / "Slips will not print until the POS app is open." **≈3 s** after the crash; 12 s later the crash buffer: **only the induced crash** (14 lines, `CrashedByAdbException`), **no `ForegroundServiceDidNotStartInTimeException`**; the service gone. The tap → `topResumedActivity` MainActivity, the POS, "Printing is on" again; HOME, `emu-order`: printed 8 s after the order, 44,250 B. **PASS** |
+| X6 | HOME, `adb shell sync`, `adb reboot`: `sys.boot_completed` 28 s later; `adb reverse tcp:3100 tcp:3201` again; **"POS printing is off. Tap to start." 24 s after `sys.boot_completed`**; the tap → the app (MainActivity), "Printing is on"; HOME, `emu-order`: **printed 1 s after the order**, 44,250 B. **PASS** |
+| X7 | Recents, the app swiped away → **no `PrintHostService`**, **"POS printing is off. Tap to start."** shown. **PASS** |
+| X8 | `install -r` of the 3C APK (`2bdceacc…`, hashed on the device): crash 0; opened: the 3C app's "Printing is on"; `emu-order 90` printed (9 s, the next wake), 44,250 B. `install -r` of the 3D APK again (`8bed1a5e…` on the device): **the notice 2 s after the install returned** (printing was on); open: **signed in**, the panel "Printing is on", **"Network printer 10.0.2.2 · Connected"** (kept); HOME, `emu-order 90`: printed 5 s after the order with the app hidden, 44,250 B; crash 0 after each install. **PASS** |
+| X9 | `pw-3d.mjs clear` (Kitchen deleted 200), the app opened, Refresh: **no `PrintHostService`**, **no notice** (neither "Printing is on" nor "POS printing is off"). **PASS** |
+| X10 | `main` (`7f8ed31`) from the 3C session's cache-off build copy `bmain` (`link-modules.ps1` re-run: 377 entries) on 3110, after this branch's server was stopped; `simple`; on the emulator Refresh, Masala Chai, "1 item · ₹40 View cart →", Send to Kitchen: the KOT **`created`, `leased (direct)`, `printed` by the emulator within the same second**, **40,506 B** on 9100. **PASS** |
+| X11 | `adb logcat -b crash -d \| grep -c possoftware`: **0** after every install (X0, X8's two, the release APK's return); X4's and X5's lines were only the induced crashes; X6's reboot cleared the buffer. **PASS** |
+
+**Put back:** the setup cleared (`pw-3d.mjs clear`; the scratch database `pos_scratch_e2e_3d` is left, its env file in this session's scratchpad); this branch's build back on 3110 and the app Refreshed (no service, no notice); the app's printer removed (Remove → "Yes, remove" → "No printer set up"); More options → Change POS address → Clear POS address (the placeholder); the **release APK** reinstalled (`adb install -r -d`; `29115bdf…` on the device; its start screen, no address; crash 0); notifications revoked (`granted=false`); `adb reverse --remove-all`, then `adb reverse tcp:3100 tcp:3100`; HOME; `adb shell sync`; `adb emu kill`; every server and harness process this session started stopped by PID after checking its command line (ports 3110, 3200, 3201, 9100, 9101 free). The AVD's `ram.img` stays NTFS-compressed (ruling 2).
+
+### Step 6: the fresh review (Claude Fable 5.1)
+
+**How it ran.** A fresh reviewer on **Claude Fable 5.1** (no HTTP 429), read-only, its scratch only in this session's scratchpad (`review3d/`), reviewed `6bc8d73..451e371` (the code; `8751b49` in that range is the gate's docs) against the plan head (P3-1 to P3-10 as the gates changed them), the 3D spec, the 3C review gate's rulings and both earlier golden-copy reviews, Session 3D and its Review Focus (passed verbatim), and spec §9.3, §9.5, §9.8, §10, §13, §14, §17; it read React Native 0.87's `FabricUIManager` and `ReactChoreographer` for D3. It ran in the background during Steps 1–3 and the emulator's start, told to keep off Gradle, adb, builds, servers and the harness's ports and databases. Its own runs: mobile 139/139, tsc 0, eslint 0; shared 821/821, tsc 0; cafe's full chain **5030 / 5029 / 0 / 1**; cafe `tsc --noEmit --incremental false` 0, eslint on the 18 touched cafe files 0; print tools 11/11; the live legs on its own database (`pos_scratch_print_host_3drev`) **444/0**; `apps/desktop` and `workers` unchanged.
+
+**Verdict: "Ready to ship: Yes".** **0 Critical, 0 Important**, five minors. Its sound list: D0 exactly the gate's rulings (the retry only for `ConnectException`, once per address, inside the budget; the connect's check queued behind the attempt and ahead of any print; the BUSY re-check after the forced probe; FEED; the CONNECTED-only v1 answer); D1's small pure state machine (`commit()` before `stopHost()`, `stopSelf(startId)`, a sticky null-intent start that stops at once cannot hit the foreground timeout, notifications marked asked only after the question); D2's invariant (`decided && !printsForCafe` cannot flash on a device that prints; nothing depended on the removed tick kick; no device gains a request kind); D3 bounded and leak-free on RN 0.87 (`resume()`/`pause()` guards; the detach before the attach on one queue; the gap checked before Fabric is touched); D4 local and skew-safe; threading consistent; no secret; no new request kind.
+
+| # | Finding (the reviewer's) | Re-graded / what was done |
+|---|---|---|
+| m-1 | Change POS address (`App.tsx` `changeUrl` → `clearOrigin`) leaves the wish on and the service running with no page: a retired or re-pointed tablet alerts "Printing stopped" and says "POS printing is off" after each reboot until a page decides. | **Minor (kept)** → the 3D gate (`setHostActive(false)` before `clearOrigin()`). |
+| m-2 | A configuration change outside `configChanges` (density, font scale, locale, layout direction) relaunches the activity → `onHostDestroy` → one spurious "POS printing is off" with sound, cancelled seconds later. | **Minor (kept)** → the 3D gate (add them to `configChanges`, or skip the notice while `isChangingConfigurations`). |
+| m-3 | After a self-healed hidden page death the "Printing stopped — tap to open the app" alert stays ≤ 30 s (the remount tick's probe goes to the dead WebView). | **Minor (kept, cosmetic)** → the 3D gate. |
+| m-4 | The watchdog's remount link (`HostPage.remount` → `PosPageDead` → the POS screen) is pinned by text only; the exit crashes a renderer, never hangs a page. | **Minor (kept)** → the 3D gate (a debug "Freeze web page" item and one exit item), or 3G. |
+| m-5 | Deploy skew: D3's keep-running tick un-freezes an older page (Phase 2, 3C, `main`) whose `app.wake` still kicks the agent, so a hidden printing device on an old page on the 3D APK leases every 15 s (up to 5,760 a day) until it reloads. | **Minor (kept)** → 3G's GO-LIVE: install the 3D APK and deploy the web and reload every screen in the same shift (m-8's "APK first" must not leave an old page hidden overnight). |
+
+**Its "declined to judge" lines, ruled** (ledger): the night cost (I-3), the hidden-mount gap reset, the LoadErrorScreen retry, the exported receiver, the older-APK words and the first-update notice, keep-screen-on, the two TCP connects and the single-session collision, the USB/Classic second: all stand as the 3C gate ruled them; `setActive(true)` answering before `startForeground` is known (a Phase 2 shape), the renderer priority on non-printing pages, a kept-running page reading "visible" and Android 14+/15's service rules (not testable on API 33) stand; the JUnit, APK hashes, full-compile proof and exit rest on this session's evidence.
+
+No fix pass (no Critical or Important finding). JUnit, the APKs and the build were not rebuilt.
+
+### Deviations and rulings
+
+1. **D1's and D2's commit lines** nest double quotes inside `-m "…"`, which a shell splits into pathspecs; they were committed with `git commit -F` from a scratchpad file holding the plan's message text verbatim (the literal quotes kept, as the gold's commits have them) plus the co-author line. Cost if wrong: none.
+2. **The emulator and C:** qemu exited with code 21 at C: 1.8–1.9 GB free (`-memory` 2048 and 1536, `-no-snapshot`, `-gpu swiftshader_indirect`). The AVD's stale quickboot snapshot `ram.img` (2 GB, all zeros) was NTFS-compressed in place (reversible: `compact /u`; nothing deleted) → C: 3.9 GB; the exit booted with `-no-snapshot` (that snapshot neither loaded nor saved) at `-memory 2048`. Cost if wrong: a later quickboot load reads a compressed file (the AVD cold-booted in earlier sessions anyway).
+3. **Slip latency on the emulator** (X3 screen off 5 s, X3b 9 s, X5 8 s, X8 9 s, where the gate's runs saw ≈1–4 s): locally there is no realtime Worker, so a device hears of a slip at its next wake (15 s) or pulse (20 s); the proxy log shows each lease right at the next wake. What each item proves (alive, sticky, the notice, the update keeps everything) is unchanged. Cost if wrong: none for a real cafe (the Worker tells the device at once).
+4. **X2's notice:** no notification question showed (this emulator's app data was asked before), so `POST_NOTIFICATIONS` was granted with `pm grant` as the plan says; the service's notice had been posted before the grant (Android dropped it), so the app was sent HOME and opened once (the page re-asks on a visibility change; the service re-posts) before `dumpsys` was read. Cost if wrong: none.
+5. **The fresh review ran during Steps 1–3 and the emulator's start**, not after them: it is read-only on code no later step changes, and it was kept off Gradle, adb, builds, servers and the harness. Cost if wrong: its test runs slowed the suites a little.
+
+### Open for the 3D review gate
+
+- The review's minors m-1 to m-5 above (m-1 and m-2 one-line app fixes; m-3 cosmetic; m-4 a test gap; m-5 a GO-LIVE line for 3G).
+- Carried unchanged from the 3C gate: m-5 and m-6 of the second golden-copy review (the three comments, the behavioural cadence test) → 3G; m-8 and m-9 (update the printing devices' APK first; open the app once after installing 3D) → 3G's GO-LIVE, now read with m-5 above.
+- The APKs (`apk-3d/` in this session's scratchpad) are recorded, **not released**; the client release folder is unchanged.
+- The AVD's `snapshots/default_boot/ram.img` stays NTFS-compressed (ruling 2); C: was 1.8 GB free at the start of this session, below the emulator's floor: the next session with an emulator step needs ~2 GB free on C: (the owner may free space there).
+- Left in this session's scratchpad: `e2e3d.env` (database `pos_scratch_e2e_3d`, left), `pw-3d.mjs` / `pw-3d-plan.mjs`, `last-job.cjs`, `junit-apks-3d.sh`, `exit-log.md`, the proxies' logs, `crash-x4.txt`, `crash-x5.txt`, `shots/`, `suites-d5/`, `apk-3d/`, `build-3d.log`, `review3d/`. The live legs and the reviewer's runs dropped their own databases.
+
+### The real-printer items for 3G's TEST-CHECKLIST (the owner's one run after Phase 3)
+
+Carried from the 3C review gate's rulings, unchanged: 5 minutes idle on the real LAN printer (no flapping: m-3); two devices listing it for 10 minutes (no `unreachable` notes: D0's retry); FEED while idle (no error words: D0); a Pay Now pair on a Bluetooth printer that does not answer DLE EOT (the bill ≤ 1 s later: m-5); paper out mid-slip (one labelled REPRINT); a module that resets its socket after each job and never answers status (count REPRINTs); "POS printing is off. Tap to start." after a reboot on each printing tablet; the notification question allowed; the battery checklist's steps done once on each Xiaomi, OPPO, vivo or Samsung printing device; the 30-minute screen-off test on each printing device (the print host and a printers-mode writer: three orders ten minutes apart, each printed once, the latency noted), first with the app in the background and the screen on, then with the screen off; the app closed at closing time shows "POS printing is off. Tap to start." (expected) and the tap in the morning prints. Added by this session: on an Android 14 or later printing device, "Printing is on" shows and the service keeps running with the screen off (the `connectedDevice` service type cannot be checked on this API 33 emulator).
