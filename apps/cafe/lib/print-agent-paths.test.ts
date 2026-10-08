@@ -175,7 +175,8 @@ test("PIN (3B): the wake says lanFailover on bridge v2, tokenSlips and the print
   // Session 3C (the 3B review gate's I-1) deliberately changed: through the older-server fallback (pinned below).
   assert.ok(agent.includes('printAgentSkew.send({ ...body, tokenSlips: true }, olderAckBody, (sent) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", sent)),'), "every ack says tokens");
   assert.ok(agent.includes("networkPrinter: (job) => job.printerId !== undefined && lanRef.current.includes(job.printerId),"), "a network printer it prints here");
-  assert.ok(agent.includes("setPrinterHealthSource(() =>"), "the beat reads its printers' health from the agent's own lists");
+  // Session 3C's review (I-1) deliberately changed: through the health clock (pinned below), from the agent's own lists.
+  assert.ok(agent.includes("setPrinterHealthSource(clock.reports)") && agent.includes("localIds: readyRef.current,"), "the beat reads its printers' health from the agent's own lists");
   assert.ok(src("apps/cafe/lib/print-agent-seams.ts").includes("`?device=${encodeURIComponent(pulseDevice)}&${PRINT_PULSE_TOKENS_PARAM}=${PRINT_HEADER_ON}`"), "the pulse says tokens");
   assert.ok(src("apps/cafe/lib/print-agent.ts").includes("const body = failedAckBody(deps.deviceId, job.epoch, outcome, deps.networkPrinter?.(job) === true);"), "the agent's refusal says unreachable for a network printer");
 });
@@ -193,4 +194,14 @@ test("PIN (3C): the ack and the wake go through the older-server fallback; the b
   const agent = src("apps/cafe/hooks/use-print-agent.ts");
   assert.ok(agent.includes("missing: missingRef.current,"), "the takeover printers the app lacks ride the beat as down");
   assert.ok(agent.includes("nowMs: Date.now(),"), "the beat's health reads the clock (a printer reads down only once it stayed so)");
+});
+
+// Session 3C's review (I-1): the 20 s clock starts when the app's printer status changes, not at the next wake (once a
+// minute on a healthy socket), so a printer down 20 s is reported down at the very next wake.
+test("PIN (3C review): the beat's health clock runs on every change of the POS app's printers and this device's printer, and stops with the agent", () => {
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.ok(agent.includes("const clock = printerHealthClock("), "the health source is a clock, not a read at the wake only");
+  assert.ok(agent.includes("[(listener) => nativePool().subscribe(listener), (listener) => devicePrinter().subscribe(listener)],"), "it runs on every status change of the app's printers and of this device's printer");
+  assert.ok(agent.includes("const offSource = setPrinterHealthSource(clock.reports);"), "the wake's beat reads the clock's reports");
+  assert.ok(agent.includes("clock.stop();"), "released with the agent");
 });

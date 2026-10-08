@@ -12,7 +12,7 @@ import { usePrintAgentWake } from "@/hooks/use-print-agent-wake";
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
 import { apiSend } from "@/lib/api-client";
 import { isDesktopShell } from "@/lib/desktop-shell";
-import { printerHealthReportsOf, type SettledLink } from "@/lib/print-agent-health";
+import { printerHealthClock } from "@/lib/print-agent-health";
 import { olderAckBody, printAgentSkew } from "@/lib/print-agent-skew";
 import {
   PRINT_AGENT_SLIP_DEADLINE_MS,
@@ -233,14 +233,14 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
   useEffect(() => (agent === null ? undefined : onPrintAgentKick((printerId) => agent.kick(printerId))), [agent]);
 
   // Session 3B (spec §10): the health of the printers it prints here rides the wake's beat (hooks/use-print-agent-wake.ts):
-  // each of the POS app's printers by its own settled state, any other by this device's printer.
+  // each of the POS app's printers by its own settled state, any other by this device's printer. Session 3C's review
+  // (I-1): its 20 s clock runs on every status change, so a printer down 20 s reads down at the very next wake.
   useEffect(() => {
     if (agent === null) return;
-    const memory = new Map<string, SettledLink>();
-    return setPrinterHealthSource(() => {
-      const pool = nativePool().getSnapshot();
-      return printerHealthReportsOf(
-        {
+    const clock = printerHealthClock(
+      () => {
+        const pool = nativePool().getSnapshot();
+        return {
           localIds: readyRef.current,
           targets: targetsRef.current,
           pool: pool.active ? pool.printers : null,
@@ -248,10 +248,15 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
           windows: isDesktopShell(),
           missing: missingRef.current,
           nowMs: Date.now(),
-        },
-        memory,
-      );
-    });
+        };
+      },
+      [(listener) => nativePool().subscribe(listener), (listener) => devicePrinter().subscribe(listener)],
+    );
+    const offSource = setPrinterHealthSource(clock.reports);
+    return () => {
+      offSource();
+      clock.stop();
+    };
   }, [agent]);
 
   // Phase 2 Session 2B (spec §7.11): while this tab drains this device's slips and can print now, the requests

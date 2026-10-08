@@ -17,7 +17,8 @@ export interface SettledLink {
 
 /** The link a printer settled on. Connected settles at once. Session 3C (the 3B review's m-3): a printer reads
  *  disconnected only once it stayed down PRINTER_DOWN_SETTLE_MS (a blip, such as one failed idle probe that the app's
- *  2 s retry answers, keeps the last settled link, so it never starts a skip or moves a slip to a backup). A printer
+ *  2 s retry answers, keeps the last settled link, so it never starts a skip or moves a slip to a backup); the clock
+ *  starts when the status changes (printerHealthClock, below), not at the wake that next reads it. A printer
  *  still connecting while down keeps that clock (the POS app's probe of a down network printer, every 30 s); one
  *  connecting while up keeps the last settled link (the 3A review gate, m-5); with none settled yet it says nothing. A
  *  printer another tab owns, or none, says nothing. */
@@ -40,18 +41,17 @@ export function settledLinkOf(memory: Map<string, SettledLink>, key: string, sta
  *  printer by the device printer's state. The Windows app reports nothing until it can tell (1.12.0, Session 3E).
  *  Session 3C (the 3B review's m-1): `missing`, the network printers this device may take over that its app does not
  *  list, read as down (by the same clock), so the server never picks it for a printer it cannot print. */
-export function printerHealthReportsOf(
-  input: {
-    localIds: readonly string[];
-    targets: Readonly<Record<string, SlipPrintTarget>>;
-    pool: readonly PoolPrinter[] | null;
-    device: PrinterStatus;
-    windows: boolean;
-    missing: readonly string[];
-    nowMs: number;
-  },
-  memory: Map<string, SettledLink>,
-): PrinterHealthReport[] {
+export interface PrinterHealthInput {
+  localIds: readonly string[];
+  targets: Readonly<Record<string, SlipPrintTarget>>;
+  pool: readonly PoolPrinter[] | null;
+  device: PrinterStatus;
+  windows: boolean;
+  missing: readonly string[];
+  nowMs: number;
+}
+
+export function printerHealthReportsOf(input: PrinterHealthInput, memory: Map<string, SettledLink>): PrinterHealthReport[] {
   const out: PrinterHealthReport[] = [];
   for (const printerId of input.localIds) {
     const target = input.targets[printerId];
@@ -76,4 +76,18 @@ export function printerHealthReportsOf(
     if (settledLinkOf(memory, `missing:${printerId}`, "disconnected", input.nowMs) === "disconnected") out.push({ printerId, link: "disconnected" });
   }
   return out;
+}
+
+/** Session 3C's review (I-1): the beat's health with its settle clock run on every status change of the printers
+ *  (`subscribe`: the POS app's pool, this device's printer), not only when the wake samples it (once a minute on a
+ *  healthy socket), so a printer that stayed down 20 s reads disconnected at the very next wake. `reports` is the wake's
+ *  source; `stop` releases the stores. */
+export function printerHealthClock(
+  read: () => PrinterHealthInput,
+  subscribe: readonly ((listener: () => void) => () => void)[],
+): { reports: () => PrinterHealthReport[]; stop: () => void } {
+  const memory = new Map<string, SettledLink>();
+  const reports = () => printerHealthReportsOf(read(), memory);
+  const offs = subscribe.map((on) => on(() => void reports()));
+  return { reports, stop: () => offs.forEach((off) => off()) };
 }

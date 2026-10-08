@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { PRINTER_DOWN_SETTLE_MS } from "@pos/shared/print-failover";
-import { printerHealthReportsOf, settledLinkOf, type SettledLink } from "@/lib/print-agent-health";
+import { printerHealthClock, printerHealthReportsOf, settledLinkOf, type SettledLink } from "@/lib/print-agent-health";
 import type { PoolPrinter } from "@/lib/printer/native-pool";
 
 // Phase 3 Session 3B (spec §10, P3-6): the health this page reports on its wake, for the printers it prints here. The
@@ -73,4 +73,35 @@ test("3C (m-1): a network printer this device may take over that its app does no
   assert.deepEqual(printerHealthReportsOf({ ...input, nowMs: T0 + PRINTER_DOWN_SETTLE_MS }, memory), [{ printerId: "p-theirs", link: "disconnected" }], "still missing: this device cannot print it");
   assert.deepEqual(printerHealthReportsOf({ ...input, missing: [], nowMs: T0 + 30_000 }, memory), [], "once the app lists it, its own state speaks for it");
   assert.deepEqual(printerHealthReportsOf({ ...input, nowMs: T0 + 31_000 }, memory), [], "missing again later: a fresh 20 s");
+});
+
+test("3C review (I-1): the settle clock runs on every status change, not only when the wake samples it: a printer down 20 s reads disconnected at the next wake", () => {
+  let status: PoolPrinter["status"] = "connected";
+  let now = T0;
+  const listeners = new Set<() => void>();
+  const store = (listener: () => void) => {
+    listeners.add(listener);
+    return () => void listeners.delete(listener);
+  };
+  const change = (next: PoolPrinter["status"], at: number) => {
+    status = next;
+    now = at;
+    for (const listener of listeners) listener();
+  };
+  const clock = printerHealthClock(
+    () => ({ localIds: ["p-kitchen"], targets: { "p-kitchen": { nativeId: "tcp:10.0.2.2:9100", paper: "80mm" as const } }, pool: [poolPrinter("tcp:10.0.2.2:9100", status)], device: "none" as const, windows: false, missing: [], nowMs: now }),
+    [store],
+  );
+  assert.equal(listeners.size, 1, "it listens to the status store");
+  assert.deepEqual(clock.reports(), [{ printerId: "p-kitchen", link: "connected" }], "a wake while it is up");
+  change("disconnected", T0 + 1_000);
+  now = T0 + 1_000 + PRINTER_DOWN_SETTLE_MS;
+  assert.deepEqual(clock.reports(), [{ printerId: "p-kitchen", link: "disconnected" }], "the first wake 20 s after the app said it is down already says so (the clock started at the change, not at this wake)");
+  change("connected", T0 + 40_000);
+  change("disconnected", T0 + 50_000);
+  change("connected", T0 + 52_000);
+  now = T0 + 80_000;
+  assert.deepEqual(clock.reports(), [{ printerId: "p-kitchen", link: "connected" }], "a blip between two wakes never reads down");
+  clock.stop();
+  assert.equal(listeners.size, 0, "stop releases the store");
 });
