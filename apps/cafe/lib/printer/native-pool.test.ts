@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { flush, makeClock } from "@/lib/printer/device-printer-fakes";
 import { NATIVE_REQUEST_TIMEOUT_MS, nativeError } from "@/lib/printer/native-bridge";
 import { NATIVE_BRIDGE_V2, nativeV2Bridge, nativeV2Client, nativeV2Request, type NativePoolStatus, type NativeV2Client } from "@/lib/printer/native-bridge-v2";
-import { EMPTY_POOL, connectedPoolKey, createNativePool, poolSnapshotOf } from "@/lib/printer/native-pool";
+import { EMPTY_POOL, connectedPoolKey, createNativePool, poolDefaultCannotPrint, poolSnapshotOf } from "@/lib/printer/native-pool";
 import { readFileSync } from "node:fs";
 import { PRINTER_CONNECT_FAILED_MESSAGE } from "@/lib/printer/device-printer-link";
 import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
@@ -286,6 +286,13 @@ test("3C: a printer the app says cannot print is not in the ready key, so paper 
   const empty = poolSnapshotOf({ printers: [{ state: "connected", printer: KITCHEN, paper: "out" }, { state: "connected", printer: BAR, cover: "closed", paper: "low" }], defaultId: KITCHEN.id, bluetooth: "on" } as NativePoolStatus);
   assert.equal(connectedPoolKey(ready), `${KITCHEN.id},${BAR.id}`);
   assert.equal(connectedPoolKey(empty), BAR.id, "out of paper: not ready; low paper still prints");
+});
+
+test("3C review gate (m-4): the app's default printer that says it cannot print makes a device with no printer of its own not ready", () => {
+  const out = poolSnapshotOf({ printers: [{ state: "connected", printer: KITCHEN, paper: "out" }, { state: "connected", printer: BAR }], defaultId: KITCHEN.id, bluetooth: "on" } as NativePoolStatus);
+  assert.equal(poolDefaultCannotPrint(out), true, "simple mode prints on the default: out of paper, so not ready");
+  assert.equal(poolDefaultCannotPrint({ ...out, defaultId: BAR.id }), false, "another printer out of paper says nothing of the default");
+  assert.equal(poolDefaultCannotPrint(EMPTY_POOL), false, "no app list (bridge v1, the Windows app, a browser): as before");
 });
 
 test("3B: the app's v2 list may say each printer's paper, cover and error (Session 3C's app); the page keeps them, and a change of them is a change", () => {

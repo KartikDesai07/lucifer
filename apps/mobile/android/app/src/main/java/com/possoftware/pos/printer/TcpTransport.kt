@@ -1,6 +1,7 @@
 package com.possoftware.pos.printer
 
 import java.io.IOException
+import java.net.ConnectException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -33,6 +34,13 @@ class TcpTransport(
 
     /** A socket timeout of 0 means "wait forever", so no wait is ever shorter than this. */
     const val MIN_WAIT_MS = 1
+
+    /** The 3C review gate (its review's I-1): a connect that failed at once (refused, or its host unreachable: Android
+     *  reports both as ConnectException) is tried once more this much later, inside [CONNECT_TIMEOUT_MS]. A printer that
+     *  takes one connection at a time refuses a second one while another device's status check holds it (a fraction of
+     *  a second); a job must not read that as "unreachable". A printer that is off times out instead: no retry. */
+    const val CONNECT_REFUSED_RETRY_MS = 1_000
+    private const val REFUSED = "Refused"
 
     /** Session 3C (G5): the wait for the printer's first DLE EOT answer after a job: at least this, plus the job's own
      *  printing time at a slow [STATUS_BYTES_PER_MS], at most [STATUS_AFTER_JOB_MAX_MS] (inside the 60 s watchdog). */
@@ -231,7 +239,8 @@ class TcpTransport(
   /**
    * A fresh connection to a checked private address, trying each of the host's private addresses
    * in order (IPv4 first). All attempts share one [CONNECT_TIMEOUT_MS] budget, split evenly over the
-   * addresses still to try, so a dead first address cannot use up the time the next one needs.
+   * addresses still to try, so a dead first address cannot use up the time the next one needs. The 3C review gate (its
+   * review's I-1): an address that refused the connect is asked once more [CONNECT_REFUSED_RETRY_MS] later.
    */
   private fun connect(): Socket {
     if (closing.get()) throw closed()
@@ -239,14 +248,26 @@ class TcpTransport(
     val endNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(CONNECT_TIMEOUT_MS.toLong())
     var failure = TransportException(BridgeCodes.NOT_CONNECTED, "Could not connect")
     for ((index, address) in addresses.withIndex()) {
-      val left = remainingMs(endNanos)
-      if (left <= 0) break
-      try {
-        return connectTo(address, maxOf(MIN_WAIT_MS, left / (addresses.size - index)))
-      } catch (e: TransportException) {
-        // Only "no answer" moves on to the next address; a closed link or a bad setup is final.
-        if (e.code != BridgeCodes.NOT_CONNECTED || closing.get()) throw e
-        failure = e
+      var refusedBefore = false
+      while (true) {
+        val left = remainingMs(endNanos)
+        if (left <= 0) break
+        try {
+          return connectTo(address, maxOf(MIN_WAIT_MS, left / (addresses.size - index)))
+        } catch (e: TransportException) {
+          // Only "no answer" moves on to the next address; a closed link or a bad setup is final.
+          if (e.code != BridgeCodes.NOT_CONNECTED || closing.get()) throw e
+          failure = e
+          if (e.message != REFUSED || refusedBefore || remainingMs(endNanos) <= CONNECT_REFUSED_RETRY_MS) break
+          refusedBefore = true
+          try {
+            Thread.sleep(CONNECT_REFUSED_RETRY_MS.toLong())
+          } catch (e: InterruptedException) {
+            // The 3D gold's review (m-3): never an uncaught exception on the printer's io thread.
+            Thread.currentThread().interrupt()
+            throw TransportException(BridgeCodes.NOT_CONNECTED, "Interrupted")
+          }
+        }
       }
     }
     throw failure
@@ -264,6 +285,9 @@ class TcpTransport(
       s.tcpNoDelay = true
       s.connect(InetSocketAddress(address, port), timeoutMs)
       return s
+    } catch (e: ConnectException) {
+      closeSocket(s)
+      throw TransportException(BridgeCodes.NOT_CONNECTED, REFUSED)
     } catch (e: IOException) {
       closeSocket(s)
       throw TransportException(BridgeCodes.NOT_CONNECTED, "Could not connect")

@@ -11,7 +11,7 @@ data class PrinterHealth(
     /** [DleEot.COVER_CLOSED] or [DleEot.COVER_OPEN]; null when the printer did not say. */
     val cover: String? = null,
     /** It says it cannot print and names an error, or names no cause at all (an error bit while it says it can print
-     *  says nothing). */
+     *  says nothing; the 3C review gate, m-2: paper fed by the FEED button is a cause, not an error). */
     val error: Boolean = false,
     /** It says it cannot print now (DLE EOT 1, bit 3; or paper out or the cover open when it did not answer that). */
     val offline: Boolean = false,
@@ -42,6 +42,7 @@ object DleEot {
   private const val FIXED_BITS = 0x12
   private const val ONE_OFFLINE = 0x08
   private const val TWO_COVER_OPEN = 0x04
+  private const val TWO_FEEDING = 0x08
   private const val TWO_PAPER_END = 0x20
   private const val TWO_ERROR = 0x40
   private const val THREE_ERRORS = 0x68
@@ -73,6 +74,8 @@ object DleEot {
     val cover = if (two == null) null else if (coverOpen) COVER_OPEN else COVER_CLOSED
     val offline = if (one != null) (one and ONE_OFFLINE) != 0 else paperOut || coverOpen
     val named = (three != null && (three and THREE_ERRORS) != 0) || (two != null && (two and TWO_ERROR) != 0)
-    return PrinterHealth(paper, cover, offline && (named || (!paperOut && !coverOpen)), offline)
+    // The 3C review gate (m-2): FEED held down says offline with this cause; the printer prints a job sent meanwhile.
+    val feeding = two != null && (two and TWO_FEEDING) != 0
+    return PrinterHealth(paper, cover, offline && (named || (!paperOut && !coverOpen && !feeding)), offline)
   }
 }

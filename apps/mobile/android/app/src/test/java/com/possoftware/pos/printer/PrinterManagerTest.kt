@@ -344,4 +344,68 @@ class PrinterManagerTest {
     assertEquals("the link is fine", BridgeCodes.STATE_CONNECTED, manager.state())
     assertEquals("and it says why", paperOut, manager.health())
   }
+
+  // ── The 3C review gate (m-1, m-6, its review's m-5) ─────────────────────────────────────────────────────────────
+
+  @Test
+  fun aSelectIsAnsweredBeforeTheStatusCheckOfItsConnect() {
+    // m-6: Add printer answers once the printer connected, not after its DLE EOT questions too.
+    val env = FakeEnv()
+    env.nextStatus = { ready }
+    val io = ManualIo()
+    val manager = PrinterManager(tcpPrinter(), env, io)
+    var askedWhenAnswered = -1
+    manager.connectAsync(manager.begin()) { askedWhenAnswered = env.made.last().statusCalls }
+    io.runAll()
+    assertEquals("the answer did not wait for the status check", 0, askedWhenAnswered)
+    assertEquals("which ran right after it, on the printer's io thread", 1, env.made.last().statusCalls)
+    assertEquals(ready, manager.health())
+  }
+
+  @Test
+  fun theStatusCheckOfAConnectRunsBeforeAJobThatClaimedThePrinterMeanwhile() {
+    // Its review's m-5: the page hears "connected" and sends a slip at once; the connect's check still runs first, so a
+    // printer that never answers is known before its first slip (never the long wait after it).
+    val env = FakeEnv()
+    val io = ManualIo()
+    val manager = PrinterManager(tcpPrinter(), env, io)
+    var askedBeforeTheSlip = -1
+    env.nextWrite = { askedBeforeTheSlip = env.made.last().statusCalls }
+    var sent = false
+    env.onChanged = {
+      if (!sent && manager.state() == BridgeCodes.STATE_CONNECTED) {
+        sent = true
+        manager.print("AAAA", Replies<Int>().cb)
+      }
+    }
+    manager.connectAsync(manager.begin()) {}
+    io.runAll()
+    assertTrue("the slip was sent", sent)
+    assertEquals("the connect's status check ran before the slip was written", 1, askedBeforeTheSlip)
+  }
+
+  @Test
+  fun aJobQueuedBehindOneThatFoundThePrinterOutOfPaperIsRefusedBusyBeforeAnyByte() {
+    // m-1: the page sends the next slip the moment the first is answered; the first's own status (out of paper) is read
+    // before the second runs, so the second is refused BUSY, not written to an empty printer (a second "maybe").
+    val env = FakeEnv()
+    val (manager, io) = started(tcpPrinter(), env)
+    val link = env.made.last()
+    var writes = 0
+    link.onWrite = {
+      writes++
+      throw TransportException(BridgeCodes.WRITE_FAILED, "The printer cannot print now", linkKept = true)
+    }
+    link.onStatus = { paperOut }
+    val first = Replies<Int>()
+    val second = Replies<Int>()
+    manager.print("AAAA") { reply ->
+      first.cb(reply)
+      manager.print("BBBB", second.cb)
+    }
+    io.runAll()
+    assertEquals("the first may be on paper (REPRINT)", listOf(BridgeCodes.WRITE_FAILED), first.codes())
+    assertEquals("the second waits: BUSY", listOf(BridgeCodes.BUSY), second.codes())
+    assertEquals("only the first reached the printer", 1, writes)
+  }
 }

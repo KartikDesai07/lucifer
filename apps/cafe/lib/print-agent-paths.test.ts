@@ -105,7 +105,8 @@ test("PIN: the agent leases on events aimed at it, names itself on the pulse (th
   // bridge v2 by its own state; any other only while canPrintNow, as before).
   // Session 3C (the 3B gate's review of the golden copy, m-2) deliberately changed: a device that prints printers is ready
   // only by their own states.
-  assert.ok(agent.includes("printerReady: () => (readyRef.current.length === 0 ? canPrintNow() : readyNow().length > 0),"), "the agent's gate is the device's own can-print verdict");
+  // The 3C review gate (m-4) deliberately changed: in simple mode the app's default printer by its own state too.
+  assert.ok(agent.includes("printerReady: () => (readyRef.current.length === 0 ? canPrintNow() && !poolDefaultCannotPrint(nativePool().getSnapshot()) : readyNow().length > 0),"), "the agent's gate is the device's own can-print verdict");
   // Session 3C (spec §10) deliberately changed: and not one the app says cannot print.
   assert.ok(agent.includes("const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf, printerCannotPrintOf);"), "and its printers' own states");
   assert.ok(agent.includes("PRINT_AGENT_SLIP_DEADLINE_MS"), "its wait on one slip is bounded");
@@ -204,4 +205,12 @@ test("PIN (3C review): the beat's health clock runs on every change of the POS a
   assert.ok(agent.includes("[(listener) => nativePool().subscribe(listener), (listener) => devicePrinter().subscribe(listener)],"), "it runs on every status change of the app's printers and of this device's printer");
   assert.ok(agent.includes("const offSource = setPrinterHealthSource(clock.reports);"), "the wake's beat reads the clock's reports");
   assert.ok(agent.includes("clock.stop();"), "released with the agent");
+});
+
+// The 3C review gate (its review's m-2): the takeover printers the app lacks change with the setup or a refused select,
+// not with a status event, so the clock samples the new list the moment the hook sees it.
+test("PIN (3C gate): a new list of takeover printers the app lacks starts the beat's 20 s clock at once", () => {
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.ok(agent.includes("missingRef.current = missingKey === \"\" ? [] : missingKey.split(\",\");\n    clockRef.current?.reports();"), "the list is sampled when it changes");
+  assert.ok(agent.includes("clockRef.current = clock;") && agent.includes("clockRef.current = null;"), "the hook holds the agent's clock, and lets it go with the agent");
 });

@@ -102,6 +102,15 @@ cd android
 Use exactly this command: the one-APK-per-phone split switches on only for task
 names with "release" in them, and both ARM types must be built for both APKs.
 
+For the emulator, `.\gradlew.bat aR -PreactNativeArchitectures=x86_64` builds one
+x86_64 `app-release.apk`: `aR` (short for assembleRelease) has no "release" in
+its name, so the split stays off. Put no other task with "release" in its name
+on that command line, or the split turns on and no x86_64 APK comes out.
+
+A release build always compiles the app's Kotlin in full (`app/build.gradle`):
+an incremental release compile once kept a stale class, and that APK crashed on
+its printer thread although every test passed.
+
 The release build is made small and hard to read back:
 
 - **One APK per phone CPU type** in `android\app\build\outputs\apk\release\`:

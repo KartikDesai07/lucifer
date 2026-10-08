@@ -81,6 +81,8 @@ class FakeEnv : PrinterEnv {
   var bluetooth = true
   var shown = true
   var changes = 0
+  /** The 3C review gate: runs at every [changed], as the page hears it (a test may print from it). */
+  var onChanged: () -> Unit = {}
   /** What the next transport's open does (throw to fail it); every transport made, in order. */
   var nextOpen: () -> Unit = {}
   var nextWrite: (ByteArray) -> Unit = {}
@@ -126,6 +128,7 @@ class FakeEnv : PrinterEnv {
 
   override fun changed() {
     changes++
+    onChanged()
   }
 
   /** The delays (from now) of the timer tasks still waiting. */

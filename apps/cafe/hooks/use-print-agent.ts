@@ -38,7 +38,7 @@ import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
 import { desktopPrinterSnapshot, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
 import { devicePrinter } from "@/lib/printer/device-printer";
 import { nativeBridge, nativeOn } from "@/lib/printer/native-bridge";
-import { connectedPoolKey, nativePool } from "@/lib/printer/native-pool";
+import { connectedPoolKey, nativePool, poolDefaultCannotPrint } from "@/lib/printer/native-pool";
 import { printerCannotPrintOf, printerStatusOf, printersState } from "@/lib/printer/printer-registry";
 import { canPrintNow } from "@/lib/printer/print-lane";
 import { subscribeRealtime } from "@/lib/realtime-client";
@@ -111,8 +111,11 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
   // Session 3C (the 3B review's m-1): the network printers it may take over that its app does not list (its beat says so).
   const missingRef = useRef<readonly string[]>(printers.takeoverMissingIds);
   const missingKey = printers.takeoverMissingIds.join(",");
+  // The 3C review gate (its review's m-2): the beat's health clock (below) samples a new list at once, so its 20 s start now.
+  const clockRef = useRef<{ reports: () => unknown } | null>(null);
   useEffect(() => {
     missingRef.current = missingKey === "" ? [] : missingKey.split(",");
+    clockRef.current?.reports();
   }, [missingKey]);
   const writerRef = useRef(printers.isWriter);
   useEffect(() => {
@@ -190,7 +193,8 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
       print,
       // Session 3C (the gate's review, m-2): a device that prints printers is ready only by their own states (its app's
       // default printer out of paper must not let a kick lease an empty line).
-      printerReady: () => (readyRef.current.length === 0 ? canPrintNow() : readyNow().length > 0),
+      // The 3C review gate (m-4): in simple mode the app's default printer (this device's) by its own state too.
+      printerReady: () => (readyRef.current.length === 0 ? canPrintNow() && !poolDefaultCannotPrint(nativePool().getSnapshot()) : readyNow().length > 0),
       // Session 2E: the Windows app's printer list read again (a printer added or removed) releases a refusal's hold;
       // Session 2F1: so does any change of this device's printers (its own, or another of the app's).
       printerState: () => (isDesktopShell() ? desktopPrinterSnapshot() : printersState()),
@@ -253,7 +257,9 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
       [(listener) => nativePool().subscribe(listener), (listener) => devicePrinter().subscribe(listener)],
     );
     const offSource = setPrinterHealthSource(clock.reports);
+    clockRef.current = clock;
     return () => {
+      clockRef.current = null;
       offSource();
       clock.stop();
     };

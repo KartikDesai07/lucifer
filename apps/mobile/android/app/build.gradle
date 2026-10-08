@@ -148,6 +148,18 @@ android {
     }
 }
 
+/**
+ * Release builds compile the app's Kotlin in full, never incrementally (the 3C review gate, 2026-10-08): an incremental
+ * release compile kept a class that still called a constructor a later change had replaced, and that APK crashed on its
+ * printer thread (NoSuchMethodError) though every test passed. Debug builds and the JVM tests stay incremental. It is set
+ * when the task runs: the Kotlin plugin sets the task's incremental flag again after this script configures it.
+ */
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    if (name.toLowerCase().contains("release")) {
+        doFirst { incremental = false }
+    }
+}
+
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")

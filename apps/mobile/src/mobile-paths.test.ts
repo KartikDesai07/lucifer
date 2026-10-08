@@ -2281,7 +2281,8 @@ function statusProblems(s: StatusSources): string[] {
   need(s.manager, 'const val STATUS_PROBE_MS = 60_000L', 'the idle status check is not every minute');
   need(s.manager, 'const val STATUS_PROBE_PROBLEM_MS = 10_000L', 'a printer that cannot print is not checked every 10 s');
   need(s.manager, 'if (synchronized(lock) { health?.cannotPrint() == true }) {\n      printing.set(false)\n      cb(Reply.fail(BridgeCodes.BUSY))', 'a printer that cannot print is not refused BUSY before any byte');
-  need(s.manager, 'synchronized(lock) { if (transport === t) generation else null }?.let { probe(it) }', 'a job is not followed by its status');
+  // The 3C review gate (m-1) deliberately changed: the status after a job is read even when the next job claimed the printer.
+  need(s.manager, 'synchronized(lock) { if (transport === t) generation else null }?.let { probe(it, force = true) }', 'a job is not followed by its status');
   need(s.manager, 'if (timedOut || !e.linkKept) onLinkLost(t)', 'a printer that took the job in but cannot print loses its link');
   need(s.manager, 'Runnable { if (printing.get()) scheduleProbe(gen) else onIo { probe(gen) } }', 'the idle check runs while a job waits');
   need(s.tcp, 'afterJob(s, data.size)\n      s.shutdownOutput()', 'a network job does not ask DLE EOT on its own connection before it half-closes');
@@ -2320,7 +2321,7 @@ test('pin 20 mutation: every status needle can fail', () => {
   everyMutationCaught(run('manager'), base.manager, [
     ['const val STATUS_PROBE_MS = 60_000L', 'const val STATUS_PROBE_MS = 5_000L'],
     ['if (synchronized(lock) { health?.cannotPrint() == true }) {', 'if (false) {'],
-    ['?.let { probe(it) }', '?.let { it }'],
+    ['?.let { probe(it, force = true) }', '?.let { it }'],
     ['if (timedOut || !e.linkKept) onLinkLost(t)', 'onLinkLost(t)'],
     ['if (printing.get()) scheduleProbe(gen) else onIo { probe(gen) }', 'onIo { probe(gen) }'],
   ]);
@@ -2333,6 +2334,69 @@ test('pin 20 mutation: every status needle can fail', () => {
   everyMutationCaught(run('ble'), base.ble, [['  override fun close() {', '  override fun status(): PrinterHealth? = null\n\n  override fun close() {']]);
   everyMutationCaught(run('pool'), base.pool, [['PoolEntry(it.state(), it.info, it.health())', 'PoolEntry(it.state(), it.info)']]);
   everyMutationCaught(run('service'), base.service, [['R.string.print_host_title_paper_out', 'R.string.print_host_title_no_printer']]);
+});
+
+// ── pin 21: the 3C review gate's app fixes ─────────────────────────────────
+// A refused connect is asked again once a second later (its review's I-1); the connect's status check is its own io
+// task, queued before anyone hears "connected", and a job queued behind one whose printer said it cannot print is
+// refused BUSY (m-1, m-6, its review's m-5); FEED is not an error (m-2); a v1 select of a connected printer answers at
+// once (its review's m-3); a release build compiles the app's Kotlin in full (the 3C build note).
+interface GateFixSources {
+  manager: string;
+  tcp: string;
+  status: string;
+  api: string;
+  gradle: string;
+}
+function gateFixProblems(s: GateFixSources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!strip(text).includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(s.tcp, '} catch (e: ConnectException) {\n      closeSocket(s)\n      throw TransportException(BridgeCodes.NOT_CONNECTED, REFUSED)', 'a refused connect is not told apart');
+  need(s.tcp, 'Thread.sleep(CONNECT_REFUSED_RETRY_MS.toLong())', 'a refused connect is not asked again');
+  need(s.tcp, 'const val CONNECT_REFUSED_RETRY_MS = 1_000', 'the second ask is not a second later');
+  need(s.manager, 'onIo { probe(gen, force = true) }\n        env.changed()', 'the connect\'s status check waits in the select\'s answer, or runs after a job');
+  need(s.manager, 'cb(Reply.fail(BridgeCodes.BUSY))\n            return@onIo', 'a job queued behind a printer that cannot print is written');
+  need(s.manager, 'if (!force && printing.get()) {', 'a forced status check is skipped');
+  need(s.status, '!paperOut && !coverOpen && !feeding', 'paper fed by the FEED button reads as an error');
+  need(s.api, '} else if (manager.state() == BridgeCodes.STATE_CONNECTING) {\n      manager.afterIo', 'a connected printer\'s select waits behind a slip');
+  need(s.gradle, 'tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {\n    if (name.toLowerCase().contains("release")) {\n        doFirst { incremental = false }', 'a release build compiles Kotlin incrementally');
+  return out;
+}
+const gateFixSources = (): GateFixSources => ({
+  manager: kt('PrinterManager.kt'),
+  tcp: kt('TcpTransport.kt'),
+  status: kt('PrinterStatus.kt'),
+  api: kt('PrinterApi.kt'),
+  gradle: read(GRADLE_APP),
+});
+
+test('pin 21: the 3C review gate\'s app fixes (a refused connect asked again, the connect check first, BUSY behind a printer that cannot print, FEED, a full release compile)', () => {
+  assert.deepEqual(gateFixProblems(gateFixSources()), []);
+});
+
+test('pin 21 mutation: every gate-fix needle can fail', () => {
+  const base = gateFixSources();
+  const run = (key: keyof GateFixSources) => (text: string) => gateFixProblems({ ...base, [key]: text });
+  everyMutationCaught(run('tcp'), base.tcp, [
+    ['throw TransportException(BridgeCodes.NOT_CONNECTED, REFUSED)', 'throw TransportException(BridgeCodes.NOT_CONNECTED, "Could not connect")'],
+    ['Thread.sleep(CONNECT_REFUSED_RETRY_MS.toLong())', 'Unit'],
+    ['const val CONNECT_REFUSED_RETRY_MS = 1_000', 'const val CONNECT_REFUSED_RETRY_MS = 0'],
+  ]);
+  everyMutationCaught(run('manager'), base.manager, [
+    ['onIo { probe(gen, force = true) }\n        env.changed()', 'env.changed()\n        probe(gen)'],
+    ['            return@onIo\n', ''],
+    ['if (!force && printing.get()) {', 'if (printing.get()) {'],
+  ]);
+  everyMutationCaught(run('status'), base.status, [['!paperOut && !coverOpen && !feeding', '!paperOut && !coverOpen']]);
+  everyMutationCaught(run('api'), base.api, [['} else if (manager.state() == BridgeCodes.STATE_CONNECTING) {\n', '} else if (true) {\n']]);
+  everyMutationCaught(run('gradle'), base.gradle, [
+    ['incremental = false', 'incremental = true'],
+    ['doFirst { incremental = false }', 'incremental = false'],
+  ]);
 });
 
 test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {

@@ -20,8 +20,7 @@ import org.junit.Test
  */
 class TcpTransportTest {
   /** One fake printer: what it does with each connection; every byte it received, per connection. */
-  private class FakePrinter(val behave: (Socket, ByteArrayOutputStream) -> Unit) {
-    val server = ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"))
+  private class FakePrinter(val behave: (Socket, ByteArrayOutputStream) -> Unit, val server: ServerSocket = ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"))) {
     val jobs = LinkedBlockingQueue<ByteArray>()
     @Volatile var connections = 0
     private val thread =
@@ -194,6 +193,36 @@ class TcpTransportTest {
       assertTrue("the link is fine", e.linkKept)
     }
     assertEquals("what it said", DleEot.PAPER_OUT, t.status()?.paper)
+  }
+
+  @Test
+  fun aConnectRefusedWhileAnotherDeviceHoldsThePrinterIsTriedOnceMoreASecondLater() {
+    // The 3C review gate (its review's I-1): a printer that takes one connection at a time refuses a job's connect while
+    // another device's status check holds it; the job asks again a second later instead of reading "unreachable".
+    val port = ServerSocket(0, 50, InetAddress.getByName("127.0.0.1")).use { it.localPort }
+    val late =
+        Thread {
+          Thread.sleep(300)
+          val server = ServerSocket(port, 50, InetAddress.getByName("127.0.0.1"))
+          printers.add(FakePrinter(answering(healthy), server))
+        }
+    late.start()
+    TcpTransport("127.0.0.1", port, afterJobMinMs = 600, replyMs = 300).open()
+    late.join()
+  }
+
+  @Test
+  fun aPortThatKeepsRefusingIsNotConnectedAfterOneMoreTry() {
+    val port = ServerSocket(0, 50, InetAddress.getByName("127.0.0.1")).use { it.localPort }
+    val start = System.nanoTime()
+    try {
+      TcpTransport("127.0.0.1", port, afterJobMinMs = 600, replyMs = 300).open()
+      fail("nothing listens: not connected")
+    } catch (e: TransportException) {
+      assertEquals(BridgeCodes.NOT_CONNECTED, e.code)
+    }
+    val ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start)
+    assertTrue("asked twice, a second apart (${ms} ms), well inside the 5 s connect budget", ms in 900..3_000)
   }
 
   @Test

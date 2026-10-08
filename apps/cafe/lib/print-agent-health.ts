@@ -72,6 +72,10 @@ export function printerHealthReportsOf(input: PrinterHealthInput, memory: Map<st
     }
   }
   for (const key of [...memory.keys()]) if (key.startsWith("missing:") && !input.missing.includes(key.slice("missing:".length))) memory.delete(key);
+  // The 3C review gate (its review's m-1): a printer that left the app's list is forgotten, so one added back later starts
+  // a fresh 20 s, never its old clock.
+  const pool = input.pool;
+  if (pool !== null) for (const key of [...memory.keys()]) if (!key.startsWith("missing:") && !key.startsWith("device:") && !pool.some((entry) => entry.id === key)) memory.delete(key);
   for (const printerId of input.missing) {
     if (settledLinkOf(memory, `missing:${printerId}`, "disconnected", input.nowMs) === "disconnected") out.push({ printerId, link: "disconnected" });
   }

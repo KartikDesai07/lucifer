@@ -58,4 +58,13 @@ class DleEotTest {
     assertEquals("only DLE EOT 1: ready, nothing about paper or cover", PrinterHealth(null, null, error = false, offline = false), DleEot.healthOf(mapOf(1 to 0x12)))
     assertEquals("no DLE EOT 1, paper end in n=4: it cannot print", true, DleEot.healthOf(mapOf(4 to 0x72))?.offline)
   }
+
+  @Test
+  fun paperFedByTheFeedButtonIsNotAnError() {
+    // The 3C review gate (m-2): FEED held down reads offline (n=1, bit 3) with "paper is being fed by the FEED button"
+    // (n=2, bit 3) as its cause; the printer takes a job meanwhile and prints it after the feed.
+    val feeding = DleEot.healthOf(mapOf(1 to 0x1a, 2 to 0x1a, 3 to 0x12, 4 to 0x12))
+    assertEquals(PrinterHealth(DleEot.PAPER_OK, DleEot.COVER_CLOSED, error = false, offline = true), feeding)
+    assertFalse("so it is never refused BUSY, nor shown as an error", feeding!!.cannotPrint())
+  }
 }

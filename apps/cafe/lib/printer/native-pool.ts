@@ -88,6 +88,13 @@ export function poolPrinterCannotPrint(entry: Pick<PoolPrinter, "paper" | "cover
   return entry.paper === "out" || entry.cover === "open" || entry.error === true;
 }
 
+/** The 3C review gate (m-4): the app's default printer (this device's own, the one simple mode prints on) says it cannot
+ *  print, so a device whose slips have no printer of their own is not ready either (no lease while it says so). */
+export function poolDefaultCannotPrint(snapshot: NativePoolSnapshot): boolean {
+  const entry = snapshot.defaultId === null ? undefined : snapshot.printers.find((printer) => printer.id === snapshot.defaultId);
+  return entry !== undefined && poolPrinterCannotPrint(entry);
+}
+
 /** The app's list as the page's snapshot; a printer's state "none" (never sent for a listed printer) reads as down. */
 export function poolSnapshotOf(status: NativePoolStatus): NativePoolSnapshot {
   const printers: PoolPrinter[] = [];

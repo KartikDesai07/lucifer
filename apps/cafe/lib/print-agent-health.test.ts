@@ -75,6 +75,17 @@ test("3C (m-1): a network printer this device may take over that its app does no
   assert.deepEqual(printerHealthReportsOf({ ...input, nowMs: T0 + 31_000 }, memory), [], "missing again later: a fresh 20 s");
 });
 
+test("3C review gate (its review's m-1): a printer that left the app's list and is added back starts a fresh 20 s, never its old clock", () => {
+  const memory = new Map<string, SettledLink>();
+  const targets = { "p-kitchen": { nativeId: "tcp:10.0.2.2:9100", paper: "80mm" as const } };
+  const input = { localIds: ["p-kitchen"], targets, device: "none" as const, windows: false, missing: [] };
+  const down = [poolPrinter("tcp:10.0.2.2:9100", "disconnected")];
+  printerHealthReportsOf({ ...input, pool: down, nowMs: T0 }, memory);
+  assert.deepEqual(printerHealthReportsOf({ ...input, pool: down, nowMs: T0 + PRINTER_DOWN_SETTLE_MS }, memory), [{ printerId: "p-kitchen", link: "disconnected" }], "down 20 s");
+  assert.deepEqual(printerHealthReportsOf({ ...input, pool: [], nowMs: T0 + 30_000 }, memory), [], "removed from the app");
+  assert.deepEqual(printerHealthReportsOf({ ...input, pool: [poolPrinter("tcp:10.0.2.2:9100", "connecting")], nowMs: T0 + 60_000 }, memory), [], "added back, still connecting: nothing yet (not down at once by its old clock)");
+});
+
 test("3C review (I-1): the settle clock runs on every status change, not only when the wake samples it: a printer down 20 s reads disconnected at the next wake", () => {
   let status: PoolPrinter["status"] = "connected";
   let now = T0;

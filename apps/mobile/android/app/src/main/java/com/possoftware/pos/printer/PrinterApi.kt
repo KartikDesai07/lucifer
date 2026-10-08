@@ -126,8 +126,11 @@ object PrinterApi {
     val manager = selected.manager
     if (selected.fresh || manager.state() == BridgeCodes.STATE_DISCONNECTED) {
       manager.connectAsync(manager.begin()) { cb(Reply.Ok(answer())) }
-    } else {
+    } else if (manager.state() == BridgeCodes.STATE_CONNECTING) {
       manager.afterIo { cb(Reply.Ok(answer())) }
+    } else {
+      // The 3C review gate (its review's m-3): a connected one answers at once, never behind a slip it is printing.
+      cb(Reply.Ok(answer()))
     }
   }
 
