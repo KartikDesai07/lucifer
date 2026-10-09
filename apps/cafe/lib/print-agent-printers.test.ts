@@ -95,10 +95,10 @@ test("agentPrintersOf: printers mode, whether this device writes one, and the on
   const kitchen = printer("kitchen", { kind: "lan", host: "192.168.1.61", port: 9100 }, { primaryDeviceId: "dev-k" });
   const bar = printer("bar", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "AA:BB" });
   const off = printer("off", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "dev-a", enabled: false });
-  assert.deepEqual(agentPrintersOf([counter, kitchen, bar, off], "dev-a", NATIVE_TCP, null), { printersMode: true, isWriter: true, localIds: ["counter"], lanIds: ["counter"], takeoverIds: [], takeoverMissingIds: [], targets: {} }, "it writes the counter and the bar; only the counter is its printer (a network printer: Session 3B's lanIds)");
-  assert.deepEqual(agentPrintersOf([counter, kitchen], "dev-p", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], takeoverMissingIds: [], targets: {} }, "an ordering phone writes nothing");
-  assert.deepEqual(agentPrintersOf([], "dev-a", NATIVE_TCP, null), { printersMode: false, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], takeoverMissingIds: [], targets: {} }, "simple mode");
-  assert.deepEqual(agentPrintersOf([counter], "", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], takeoverMissingIds: [], targets: {} }, "no device identity");
+  assert.deepEqual(agentPrintersOf([counter, kitchen, bar, off], "dev-a", NATIVE_TCP, null), { printersMode: true, isWriter: true, localIds: ["counter"], lanIds: ["counter"], takeoverIds: [], takeoverMissingIds: [], windowsMissingIds: [], targets: {} }, "it writes the counter and the bar; only the counter is its printer (a network printer: Session 3B's lanIds)");
+  assert.deepEqual(agentPrintersOf([counter, kitchen], "dev-p", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], takeoverMissingIds: [], windowsMissingIds: [], targets: {} }, "an ordering phone writes nothing");
+  assert.deepEqual(agentPrintersOf([], "dev-a", NATIVE_TCP, null), { printersMode: false, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], takeoverMissingIds: [], windowsMissingIds: [], targets: {} }, "simple mode");
+  assert.deepEqual(agentPrintersOf([counter], "", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], takeoverMissingIds: [], windowsMissingIds: [], targets: {} }, "no device identity");
 });
 
 // Phase 2 Session 2E (spec §9.2): one Windows PC prints several printers, each by its own Windows name. An older app
@@ -333,7 +333,8 @@ test("PIN (2F1): the page follows the app's printers: the agent's lines, the dot
   // Phase 3 Session 3E deliberately changed: the hook keeps the agent's printers to watch the Windows app's network ones.
   assert.match(hook, /const agent = useMemo\(\(\) => agentPrintersOf\(printers, deviceId, local, desktop, pool\), \[printers, deviceId, local, desktop, pool\]\);/);
   // Session 3B (deliberate change): with the printers the wake says it took over.
-  assert.match(hook, /return useMemo\(\(\) => dotPrintersOf\(printers, deviceId, local, desktop, pool, takenOver\), \[printers, deviceId, local, desktop, pool, takenOver\]\);/);
+  // Phase 3 Session 3E deliberately changed: the dot reads the Windows app's network printers too (`lan`).
+  assert.match(hook, /return useMemo\(\(\) => dotPrintersOf\(printers, deviceId, local, desktop, pool, takenOver, lan\), \[printers, deviceId, local, desktop, pool, takenOver, lan\]\);/);
   assert.match(hook, /for \(const lan of lanPrintersToAdd\(printers, deviceId, pool\)\) \{/, "a network printer it writes is added to the app");
   // The 2F2 review gate (M-4, deliberate change): asked again once the app has listed it and lost it, not once per page.
   assert.match(hook, /void nativePool\(\)\.add\(\{ tcp: lan \}\)\.catch\(\(\) => undefined\);/, "a local call");
@@ -344,8 +345,10 @@ test("PIN (2F1): the page follows the app's printers: the agent's lines, the dot
   assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, canPrint, poolReady, lanReady]);"), "a change of the app's printers that can print now is a nudge");
   assert.ok(src("apps/cafe/components/layout/PrintHostProvider.tsx").includes("nativePool().init();"), "read once per page, beside the device printer");
   assert.ok(src("apps/cafe/hooks/use-print-agent-wake.ts").includes("...(caps.native ? { nativeProtocol: nativeV2Bridge() !== null ? NATIVE_BRIDGE_V2 : 1 } : {}),"), "the wake says which app prints several printers");
-  // Session 3B (deliberate change): then a printer problem the app says, when every printer answers.
-  assert.ok(src("apps/cafe/lib/printer/printer-dot.ts").includes("const row = noHostRow(lane, printers.worst ?? local, desktopChosen);"), "the dot's worst printer");
+  // Session 3B (deliberate change): then a printer problem the app says, when every printer answers. Session 3E
+  // (deliberate change): on the Windows app a network printer that does not answer reads as on the POS app.
+  assert.ok(src("apps/cafe/lib/printer/printer-dot.ts").includes(': noHostRow(lane, printers.worst ?? local, desktopChosen);'), "the dot's worst printer");
+  assert.ok(src("apps/cafe/lib/printer/printer-dot.ts").includes('const row = lane === "desktop" && printers.worst !== undefined ? (localRaster(printers.worst) ?? dot("ok"))'), "the Windows app's network printers");
 });
 
 test("PIN (2C final review, I-2): the pulse and the wake kick the agent only on jobs it can lease", () => {
@@ -498,14 +501,31 @@ test("3E: the Windows app 1.12.0 may take over every network printer another dev
   assert.deepEqual(readyPrinterIdsOf(agent.localIds, agent.targets, true, (id) => status[id] ?? "none", (id) => id === "tcp:192.168.1.61:9100"), ["own"], "nor one that says it cannot print");
 });
 
+test("3E: the Windows app 1.12.0 names the Windows printers it writes that Windows no longer reports; the dot reads its network printers' links and words", () => {
+  const own = printer("own", { kind: "device", deviceId: "pc", transport: "windows", address: "EPSON TM-T82" });
+  const gone = printer("gone", { kind: "device", deviceId: "pc", transport: "windows", address: "Old TVS" });
+  const kitchen = printer("kitchen", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "pc", name: "Kitchen" });
+  assert.deepEqual(agentPrintersOf([own, gone, kitchen], "pc", null, WIN_LAN).windowsMissingIds, ["gone"], "Windows does not report it now");
+  assert.deepEqual(agentPrintersOf([own, gone, kitchen], "pc", null, WIN_NAMED).windowsMissingIds, [], "1.11.0: nothing, as before");
+  assert.deepEqual(agentPrintersOf([own, gone], "pc", null, { ...WIN_LAN, names: null }).windowsMissingIds, [], "not read yet: nothing");
+  const down = [{ id: "tcp:192.168.1.60:9100", host: "192.168.1.60", port: 9100, status: "disconnected" as const }];
+  assert.equal(dotPrintersOf([own, kitchen], "pc", null, WIN_LAN, null, [], down).worst, "disconnected", "the kitchen does not answer");
+  const empty = [{ id: "tcp:192.168.1.60:9100", host: "192.168.1.60", port: 9100, status: "connected" as const, paper: "out" as const }];
+  assert.deepEqual(dotPrintersOf([own, kitchen], "pc", null, WIN_LAN, null, [], empty).problem, { name: "Kitchen", problem: "paper-out" }, "out of paper, by its name");
+  assert.equal(dotPrintersOf([own, kitchen], "pc", null, WIN_LAN).worst, undefined, "no check yet: nothing known");
+});
+
 test("PIN (3E): the Windows app's network printers are checked while this device prints, their links nudge the agent and release a hold, and the registry reads them", () => {
   const hook = src("apps/cafe/hooks/use-agent-printers.ts");
   assert.ok(hook.includes("desktopLan().watch(JSON.parse(lanTargets) as DesktopLanTarget[]);"), "the printers it prints, its own and the ones it may take over");
-  assert.ok(hook.includes("const timer = window.setInterval(() => void desktopLan().check(), DESKTOP_LAN_CHECK_MS);"), "and every minute, while it prints");
+  assert.ok(hook.includes("const timer = window.setInterval(() => {\n      void desktopLan().check();\n      void refreshDesktopPrinterChosen();\n    }, DESKTOP_LAN_CHECK_MS);"), "and every minute while it prints, with the Windows printers' presence");
+  assert.ok(hook.includes("return useMemo(() => dotPrintersOf(printers, deviceId, local, desktop, pool, takenOver, lan), [printers, deviceId, local, desktop, pool, takenOver, lan]);"), "the dot reads them");
   assert.ok(hook.includes("named: desktopPrintsOnNamed(), lan: desktopLanApi() !== null"), "1.12.0 says it writes network printers");
   const agent = src("apps/cafe/hooks/use-print-agent.ts");
   assert.ok(agent.includes("const lanReady = connectedLanKey(useDesktopLan());") && agent.includes("}, [agent, canPrint, poolReady, lanReady]);"), "a network printer that answers again nudges the agent");
   assert.ok(agent.includes("printerState: () => (isDesktopShell() ? desktopPrintersState(desktopPrinterSnapshot()) : printersState()),"), "and releases a refusal's hold");
+  assert.ok(agent.includes("const missingKey = [...printers.takeoverMissingIds, ...printers.windowsMissingIds].join(\",\");"), "a Windows printer gone from Windows reads down in the beat");
+  assert.ok(agent.includes("presence: isDesktopShell() && desktopLanApi() !== null,") && agent.includes("(listener) => desktopLan().subscribe(listener)]"), "the beat's clock follows the network printers' checks");
   const registry = src("apps/cafe/lib/printer/printer-registry.ts");
   assert.ok(registry.includes('return nativePool().printerOf(nativeId)?.status ?? desktopLan().printerOf(nativeId)?.status ?? "none";'), "its state by the same id");
   assert.equal(DESKTOP_LAN_CHECK_MS, 60_000, "the POS app's cadence");

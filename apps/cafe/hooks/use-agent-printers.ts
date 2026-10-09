@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { PRINT_SETUP_STALE_MS } from "@pos/shared/print-budget";
 import type { PrinterConfig } from "@pos/shared/print-printers";
-import { useDesktopPrinterSnapshot, useDevicePrinter, useNativePool, usePrintLane } from "@/hooks/use-device-printer";
+import { useDesktopLan, useDesktopPrinterSnapshot, useDevicePrinter, useNativePool, usePrintLane } from "@/hooks/use-device-printer";
 import { apiGet } from "@/lib/api-client";
 import { isDesktopShell } from "@/lib/desktop-shell";
 import { desktopPrintsOnNamed } from "@/lib/desktop-shell-printer";
@@ -94,7 +94,10 @@ export function useDotPrinters(deviceId: string): PrinterDotPrinters {
   const desktop = useDesktopPrinters();
   const pool = usePoolView();
   const takenOver = useSyncExternalStore(onTakenOverChange, takenOverPrinterIds, () => NO_IDS);
-  return useMemo(() => dotPrintersOf(printers, deviceId, local, desktop, pool, takenOver), [printers, deviceId, local, desktop, pool, takenOver]);
+  // Session 3E: the Windows app's network printers (1.12.0).
+  const lanSnapshot = useDesktopLan();
+  const lan = lanSnapshot.active ? lanSnapshot.printers : null;
+  return useMemo(() => dotPrintersOf(printers, deviceId, local, desktop, pool, takenOver, lan), [printers, deviceId, local, desktop, pool, takenOver, lan]);
 }
 
 // The network printers this page asked the app to add that the app does not list yet: one ask per printer (one the app
@@ -156,7 +159,8 @@ export function useAgentPrinters(deviceId: string, enabled: boolean): AgentPrint
   const agent = useMemo(() => agentPrintersOf(printers, deviceId, local, desktop, pool), [printers, deviceId, local, desktop, pool]);
   // Phase 3 Session 3E (spec §9.6): on the Windows app 1.12.0 the network printers it prints (its own and the ones it may
   // take over) are checked by the app at once and every DESKTOP_LAN_CHECK_MS (a connect and DLE EOT from the app: no
-  // request), so a printer is named in a lease only while the app reaches it.
+  // request), so a printer is named in a lease only while the app reaches it; and every DESKTOP_LAN_CHECK_MS the app's
+  // Windows printers are read again (presence: one Windows no longer reports reads down in the beat).
   const desktopLanOn = enabled && desktop?.lan === true;
   const lanTargets = JSON.stringify(Object.values(agent.targets).flatMap((target) => (target.lan === undefined ? [] : [target.lan])));
   useEffect(() => {
@@ -165,7 +169,10 @@ export function useAgentPrinters(deviceId: string, enabled: boolean): AgentPrint
   }, [desktopLanOn, lanTargets]);
   useEffect(() => {
     if (!desktopLanOn) return;
-    const timer = window.setInterval(() => void desktopLan().check(), DESKTOP_LAN_CHECK_MS);
+    const timer = window.setInterval(() => {
+      void desktopLan().check();
+      void refreshDesktopPrinterChosen();
+    }, DESKTOP_LAN_CHECK_MS);
     return () => window.clearInterval(timer);
   }, [desktopLanOn]);
   return agent;

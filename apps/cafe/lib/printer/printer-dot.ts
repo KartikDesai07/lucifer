@@ -128,12 +128,12 @@ function withProblem(row: PrinterDot, printers?: PrinterDotPrinters): PrinterDot
   return printers?.problem === undefined || !row.show || !row.ok ? row : { show: true, ok: false, reason: "printer-problem", problem: printerProblemText(printers.problem.name, printers.problem.problem) };
 }
 
-// Session 2D (spec §10): the worst state among the printers this device writes; with none, its slips print at the
-// cafe's printers (the waiting count and the alarm speak for those). A former host's record plays no part.
+// Session 2D (spec §10): the worst state among the printers this device writes (Session 3E: on the Windows app too); with
+// none, its slips print at the cafe's printers (the waiting count and the alarm speak for those). A former host plays no part.
 function printersRow(printers: PrinterDotPrinters, lane: DotLane, local: PrinterStatus, desktopChosen: DesktopChosen): PrinterDot {
   if (!printers.isWriter) return dot("printers-elsewhere");
   if (!printers.allLocal) return dot("printer-not-here");
-  const row = noHostRow(lane, printers.worst ?? local, desktopChosen);
+  const row = lane === "desktop" && printers.worst !== undefined ? (localRaster(printers.worst) ?? dot("ok")) : noHostRow(lane, printers.worst ?? local, desktopChosen);
   return withProblem(row, printers);
 }
 

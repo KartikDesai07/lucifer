@@ -1,5 +1,6 @@
 import { PRINTER_DOWN_SETTLE_MS, type PrinterHealthReport, type PrinterLinkState } from "@pos/shared/print-failover";
 import type { SlipPrintTarget } from "@/lib/print-host-slips";
+import { desktopLanId, type DesktopLanPrinter } from "@/lib/printer/desktop-lan";
 import type { PoolPrinter } from "@/lib/printer/native-pool";
 import type { PrinterStatus } from "@/lib/printer/web-printer-types";
 
@@ -49,6 +50,10 @@ export interface PrinterHealthInput {
   windows: boolean;
   missing: readonly string[];
   nowMs: number;
+  /** Phase 3 Session 3E (spec §9.6, §10): the network printers the Windows app 1.12.0 writes (desktopLan), by its checks. */
+  lan?: readonly DesktopLanPrinter[] | null;
+  /** Phase 3 Session 3E: the Windows app checks every minute that each Windows printer is still reported (1.12.0). */
+  presence?: boolean;
 }
 
 export function printerHealthReportsOf(input: PrinterHealthInput, memory: Map<string, SettledLink>): PrinterHealthReport[] {
@@ -66,6 +71,23 @@ export function printerHealthReportsOf(input: PrinterHealthInput, memory: Map<st
         ...(entry.cover !== undefined ? { cover: entry.cover } : {}),
         ...(entry.error === true ? { error: true as const } : {}),
       });
+    } else if (target?.lan !== undefined) {
+      // Phase 3 Session 3E: a network printer of the Windows app 1.12.0 by the app's check or last slip, with what it says.
+      const id = desktopLanId(target.lan);
+      const entry = input.lan?.find((printer) => printer.id === id);
+      const link = entry === undefined ? null : settledLinkOf(memory, entry.id, entry.status, input.nowMs);
+      if (entry === undefined || link === null) continue;
+      out.push({
+        printerId,
+        link,
+        ...(entry.paper !== undefined ? { paper: entry.paper } : {}),
+        ...(entry.cover !== undefined ? { cover: entry.cover } : {}),
+        ...(entry.error === true ? { error: true as const } : {}),
+      });
+    } else if (target?.printerName !== undefined) {
+      // Phase 3 Session 3E: a Windows printer this PC prints is connected while Windows reports it (one it no longer
+      // reports leaves this list and reads down by `missing`, below). The spooler says nothing of its paper.
+      if (input.presence === true) out.push({ printerId, link: "connected" });
     } else if (target === undefined && !input.windows) {
       const link = settledLinkOf(memory, `device:${printerId}`, input.device, input.nowMs);
       if (link !== null) out.push({ printerId, link });
@@ -76,6 +98,9 @@ export function printerHealthReportsOf(input: PrinterHealthInput, memory: Map<st
   // a fresh 20 s, never its old clock.
   const pool = input.pool;
   if (pool !== null) for (const key of [...memory.keys()]) if (!key.startsWith("missing:") && !key.startsWith("device:") && !pool.some((entry) => entry.id === key)) memory.delete(key);
+  // Phase 3 Session 3E: likewise a network printer the Windows app no longer checks.
+  const lan = input.lan;
+  if (lan != null) for (const key of [...memory.keys()]) if (key.startsWith("tcp:") && !lan.some((entry) => entry.id === key)) memory.delete(key);
   for (const printerId of input.missing) {
     if (settledLinkOf(memory, `missing:${printerId}`, "disconnected", input.nowMs) === "disconnected") out.push({ printerId, link: "disconnected" });
   }

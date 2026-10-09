@@ -4,7 +4,7 @@ import { printerWriterDeviceId, printersModeOn, routablePrinters, type PrinterCo
 import type { PrintAgentResult } from "@/lib/print-agent-types";
 import type { SlipPrintTarget } from "@/lib/print-host-slips";
 import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
-import { desktopLanId } from "@/lib/printer/desktop-lan";
+import { desktopLanId, type DesktopLanPrinter } from "@/lib/printer/desktop-lan";
 import type { DevicePrinter } from "@/lib/printer/device-printer-store";
 import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
 import type { PrinterStatus } from "@/lib/printer/web-printer-types";
@@ -113,6 +113,9 @@ export interface AgentPrinters {
   /** Session 3C (the 3B review's m-1): the network printers it may take over that its app does not list (yet): its beat
    *  says it cannot print them (lib/print-agent-health.ts), so the server never picks it for one of them. */
   takeoverMissingIds: string[];
+  /** Phase 3 Session 3E (spec §9.6): the Windows printers it writes that Windows does not report now (the app's presence
+   *  check every minute, 1.12.0): its beat says they are not connected, so every device sees why their slips wait. */
+  windowsMissingIds: string[];
   /** Session 2E: each of them that prints on a named Windows printer, by id: its name and its paper. Session 2F1: each
    *  that is one of the POS app's printers on bridge v2: the app's id and its paper. */
   targets: Record<string, SlipPrintTarget>;
@@ -160,6 +163,7 @@ export function agentPrintersOf(printers: readonly PrinterConfig[], deviceId: st
   const candidates = takeoverPrintersOf(printers, deviceId, pool, desktopLan);
   const takeover = candidates.filter((printer) => desktopLan || nativeIdOf(printer, pool) !== null);
   const here = [...mine.filter((printer) => printerIsLocal(printer, local, desktop, pool)), ...takeover];
+  const names = desktopLan && desktop?.named === true ? desktop.names : null;
   return {
     printersMode: printersModeOn(printers),
     isWriter: mine.length > 0,
@@ -167,6 +171,7 @@ export function agentPrintersOf(printers: readonly PrinterConfig[], deviceId: st
     lanIds: here.filter((printer) => printer.connection.kind === "lan").map((printer) => printer.id),
     takeoverIds: takeover.map((printer) => printer.id),
     takeoverMissingIds: candidates.filter((printer) => !takeover.includes(printer)).map((printer) => printer.id),
+    windowsMissingIds: names === null ? [] : mine.filter((printer) => printer.connection.kind === "device" && printer.connection.transport === "windows" && !names.includes(printer.connection.address)).map((printer) => printer.id),
     targets: targetsOf(here, desktop, pool),
   };
 }
@@ -205,14 +210,25 @@ export function dotPrintersOf(
   desktop: DesktopPrinters | null,
   pool: NativePoolView | null = null,
   takenOver: readonly string[] = [],
+  lan: readonly DesktopLanPrinter[] | null = null,
 ): PrinterDotPrinters {
   const agent = agentPrintersOf(printers, deviceId, local, desktop, pool);
   const counted = Object.entries(agent.targets).filter(([id]) => !agent.takeoverIds.includes(id) || takenOver.includes(id));
-  const states = counted.flatMap(([, target]) => pool?.printers.filter((entry) => entry.id === target.nativeId).map((entry) => entry.status) ?? []);
+  // Phase 3 Session 3E: a network printer of the Windows app by its own link and words, like one of the POS app's.
+  const entryOf = (target: SlipPrintTarget) => {
+    if (target.nativeId !== undefined) return pool?.printers.find((entry) => entry.id === target.nativeId);
+    if (target.lan === undefined) return undefined;
+    const id = desktopLanId(target.lan);
+    return lan?.find((entry) => entry.id === id);
+  };
+  const states = counted.flatMap(([, target]) => {
+    const entry = entryOf(target);
+    return entry === undefined ? [] : [entry.status];
+  });
   const worst = states.reduce<PrinterStatus | undefined>((acc, status) => (acc === undefined || STATUS_WORSE.indexOf(status) > STATUS_WORSE.indexOf(acc) ? status : acc), undefined);
   // Session 3B (spec §10): the worst paper, cover or error the app says of a printer it counts, by that printer's name.
   const problems = counted.flatMap(([id, target]) => {
-    const entry = pool?.printers.find((candidate) => candidate.id === target.nativeId);
+    const entry = entryOf(target);
     const problem = entry === undefined ? null : printerHealthProblem({ link: "connected", paper: entry.paper, cover: entry.cover, error: entry.error });
     const name = printers.find((printer) => printer.id === id)?.name;
     return problem !== null && DOT_PROBLEMS.includes(problem) && name !== undefined ? [{ name, problem }] : [];

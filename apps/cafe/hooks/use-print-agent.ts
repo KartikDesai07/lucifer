@@ -35,7 +35,7 @@ import type { HostPrintDone } from "@/lib/print-host-outcomes";
 import { PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print-host-slips";
 import { PrintWriteError } from "@/lib/print-write-outcome";
 import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
-import { connectedLanKey, desktopPrintersState } from "@/lib/printer/desktop-lan";
+import { connectedLanKey, desktopLan, desktopLanApi, desktopPrintersState } from "@/lib/printer/desktop-lan";
 import { desktopPrinterSnapshot, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
 import { devicePrinter } from "@/lib/printer/device-printer";
 import { connectedPoolKey, nativePool, poolDefaultCannotPrint } from "@/lib/printer/native-pool";
@@ -111,8 +111,9 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
     lanRef.current = lanKey === "" ? [] : lanKey.split(",");
   }, [lanKey]);
   // Session 3C (the 3B review's m-1): the network printers it may take over that its app does not list (its beat says so).
-  const missingRef = useRef<readonly string[]>(printers.takeoverMissingIds);
-  const missingKey = printers.takeoverMissingIds.join(",");
+  // Session 3E (spec §9.6): and the Windows printers it writes that Windows no longer reports (1.12.0's presence check).
+  const missingKey = [...printers.takeoverMissingIds, ...printers.windowsMissingIds].join(",");
+  const missingRef = useRef<readonly string[]>(missingKey === "" ? [] : missingKey.split(","));
   // The 3C review gate (its review's m-2): the beat's health clock (below) samples a new list at once, so its 20 s start now.
   const clockRef = useRef<{ reports: () => unknown } | null>(null);
   useEffect(() => {
@@ -255,9 +256,12 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
           windows: isDesktopShell(),
           missing: missingRef.current,
           nowMs: Date.now(),
+          // Session 3E: the Windows app's network printers and its presence check (1.12.0).
+          lan: desktopLan().getSnapshot().active ? desktopLan().getSnapshot().printers : null,
+          presence: isDesktopShell() && desktopLanApi() !== null,
         };
       },
-      [(listener) => nativePool().subscribe(listener), (listener) => devicePrinter().subscribe(listener)],
+      [(listener) => nativePool().subscribe(listener), (listener) => devicePrinter().subscribe(listener), (listener) => desktopLan().subscribe(listener)],
     );
     const offSource = setPrinterHealthSource(clock.reports);
     clockRef.current = clock;

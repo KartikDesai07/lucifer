@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { PRINTER_DOWN_SETTLE_MS } from "@pos/shared/print-failover";
 import { printerHealthClock, printerHealthReportsOf, settledLinkOf, type SettledLink } from "@/lib/print-agent-health";
 import type { PoolPrinter } from "@/lib/printer/native-pool";
+import type { DesktopLanPrinter } from "@/lib/printer/desktop-lan";
 
 // Phase 3 Session 3B (spec §10, P3-6): the health this page reports on its wake, for the printers it prints here. The
 // server keeps a report only from the device that writes the printer now, and only when it changed. Session 3C (the 3B
@@ -64,6 +65,39 @@ test("printerHealthReportsOf: each of the app's printers by its own state and st
   );
   assert.deepEqual(printerHealthReportsOf({ localIds: ["p-own"], targets: {}, pool: null, device: "connected", windows: false, missing: [], nowMs: T0 }, memory), [{ printerId: "p-own", link: "connected" }], "the release APK or a browser: its one printer");
   assert.deepEqual(printerHealthReportsOf({ localIds: ["p-win"], targets: { "p-win": { printerName: "EPSON", paper: "80mm" } }, pool: null, device: "connected", windows: true, missing: [], nowMs: T0 }, memory), [], "the Windows app reports nothing until 1.12.0 (Session 3E)");
+});
+
+test("3E: the Windows app 1.12.0: a network printer by the app's check (its link and words); a Windows printer connected while Windows reports it; one it no longer reports reads down after 20 s", () => {
+  const memory = new Map<string, SettledLink>();
+  const kitchen: DesktopLanPrinter = { id: "tcp:192.168.1.60:9100", host: "192.168.1.60", port: 9100, status: "connected", paper: "low", cover: "closed" };
+  const targets = {
+    "p-kitchen": { lan: { host: "192.168.1.60", port: 9100 }, paper: "80mm" as const },
+    "p-bar": { lan: { host: "192.168.1.61", port: 9100 }, paper: "80mm" as const },
+    "p-win": { printerName: "EPSON TM-T82", paper: "80mm" as const },
+  };
+  const bar: DesktopLanPrinter = { id: "tcp:192.168.1.61:9100", host: "192.168.1.61", port: 9100, status: "connecting" };
+  const input = { localIds: ["p-kitchen", "p-bar", "p-win"], targets, pool: null, device: "none" as const, windows: true, lan: [kitchen, bar], presence: true, missing: ["p-gone"] };
+  assert.deepEqual(
+    printerHealthReportsOf({ ...input, nowMs: T0 }, memory),
+    [
+      { printerId: "p-kitchen", link: "connected", paper: "low", cover: "closed" },
+      { printerId: "p-win", link: "connected" },
+    ],
+    "the kitchen by the app's check; the bar still being checked says nothing; the Windows printer is there",
+  );
+  assert.deepEqual(
+    printerHealthReportsOf({ ...input, lan: [kitchen, { ...bar, status: "disconnected" }], nowMs: T0 + 1_000 }, memory).map((r) => [r.printerId, r.link]),
+    [["p-kitchen", "connected"], ["p-win", "connected"]],
+    "the bar just went down: nothing yet",
+  );
+  assert.deepEqual(
+    printerHealthReportsOf({ ...input, lan: [kitchen, { ...bar, status: "disconnected" }], nowMs: T0 + 1_000 + PRINTER_DOWN_SETTLE_MS }, memory).map((r) => [r.printerId, r.link]),
+    [["p-kitchen", "connected"], ["p-bar", "disconnected"], ["p-win", "connected"], ["p-gone", "disconnected"]],
+    "down 20 s: the bar, and the Windows printer Windows no longer reports (missing)",
+  );
+  assert.deepEqual(printerHealthReportsOf({ ...input, presence: false, lan: null, missing: [], nowMs: T0 + 60_000 }, memory), [], "1.11.0: the Windows app reports nothing, as before");
+  printerHealthReportsOf({ ...input, lan: [kitchen], missing: [], nowMs: T0 + 70_000 }, memory);
+  assert.equal(memory.has("tcp:192.168.1.61:9100"), false, "a network printer the app no longer checks is forgotten (a fresh 20 s if it comes back)");
 });
 
 test("3C (m-1): a network printer this device may take over that its app does not list reads down once it stays missing 20 s", () => {

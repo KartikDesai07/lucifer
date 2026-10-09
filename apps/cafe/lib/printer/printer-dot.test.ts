@@ -435,6 +435,19 @@ test("3B: a printer of this device out of paper, its cover open or in error is r
   assert.deepEqual(printerDotOf({ ...base, printers }), { show: true, ok: true, reason: "ok" }, "nothing known: green as before");
 });
 
+// Phase 3 Session 3E (spec §9.6): on the Windows app 1.12.0 a network printer it writes that does not answer turns the dot
+// red as it would on the POS app; with every one connected, or none known yet, the Windows rows stay as before.
+test("3E: on the Windows app a network printer it writes that does not answer is red; otherwise as before", () => {
+  const desktop = { remote: "none" as const, isHostDevice: false, lane: "desktop" as const, local: "none" as const, deviceOffline: false, desktopChosen: "chosen" as const };
+  const mode = { printersMode: true, isWriter: true, allLocal: true };
+  assert.deepEqual(printerDotOf({ ...desktop, printers: { ...mode, worst: "disconnected" } }), { show: true, ok: false, reason: "printer-off" }, "the kitchen does not answer");
+  assert.deepEqual(printerDotOf({ ...desktop, printers: { ...mode, worst: "connecting" } }), { show: true, ok: false, reason: "checking" }, "being checked");
+  assert.deepEqual(printerDotOf({ ...desktop, printers: { ...mode, worst: "connected" } }), { show: true, ok: true, reason: "ok" }, "it answers");
+  assert.deepEqual(printerDotOf({ ...desktop, desktopChosen: "none", printers: { ...mode, worst: "connected" } }), { show: true, ok: true, reason: "ok" }, "a PC whose only printer is a network printer: no Windows printer needs choosing (the gold's review, m-1)");
+  assert.deepEqual(printerDotOf({ ...desktop, printers: mode }), { show: true, ok: true, reason: "ok" }, "Windows printers only: as before");
+  assert.deepEqual(printerDotOf({ ...desktop, desktopChosen: "none", printers: mode }), { show: true, ok: false, reason: "no-printer" }, "no printer chosen: as before");
+});
+
 // Phase 3 Session 3C (the 3B golden-copy review's m-7): in simple mode the device that prints on its POS app's own printer
 // turns its dot red with that printer's words too; a device whose slips print at another device keeps that device's row.
 test("3C (m-7): simple mode: this device's own printer out of paper, its cover open or in error is red with its words", () => {

@@ -205,7 +205,8 @@ test("PIN (3C): the ack and the wake go through the older-server fallback; the b
 test("PIN (3C review): the beat's health clock runs on every change of the POS app's printers and this device's printer, and stops with the agent", () => {
   const agent = src("apps/cafe/hooks/use-print-agent.ts");
   assert.ok(agent.includes("const clock = printerHealthClock("), "the health source is a clock, not a read at the wake only");
-  assert.ok(agent.includes("[(listener) => nativePool().subscribe(listener), (listener) => devicePrinter().subscribe(listener)],"), "it runs on every status change of the app's printers and of this device's printer");
+  // Phase 3 Session 3E deliberately changed: and of the Windows app's network printers (desktopLan).
+  assert.ok(agent.includes("[(listener) => nativePool().subscribe(listener), (listener) => devicePrinter().subscribe(listener), (listener) => desktopLan().subscribe(listener)],"), "it runs on every status change of the app's printers and of this device's printer");
   assert.ok(agent.includes("const offSource = setPrinterHealthSource(clock.reports);"), "the wake's beat reads the clock's reports");
   assert.ok(agent.includes("clock.stop();"), "released with the agent");
 });
