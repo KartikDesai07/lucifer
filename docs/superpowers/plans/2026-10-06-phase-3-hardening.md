@@ -34837,3 +34837,188 @@ Fill "Session 3G Results" below: the commits; each task's RED and GREEN against 
 Commit, then push with the token only: `GIT_TERMINAL_PROMPT=0 git push origin feat/printing-phase-3`. Do not merge, do not deploy, do not release the APKs or the installer.
 
 ## Session 3G Results (filled in by the implementer)
+
+Executed on 2026-10-10 in one Claude session with superpowers:executing-plans, task by task, G0 → G6. The ledger is `.superpowers/sdd/2026-10-06-phase-3-hardening/progress.md` (section "Session 3G").
+
+### Commits (`31d19f3..HEAD`)
+
+| Commit | Task |
+|---|---|
+| `f448c94` | G0: the 3E review gate's app fixes: a renderer-gone remount is the page life's remount (`PageWatch.remounted()`, `HostPage.remounted` set by the print service, called by the module's `mountWhileHidden`: the 3D gate's N-1); no notification after the service stopped (`destroyed`: 3E's m-1); the mobile lint `no-void`; `PageWatchTest` (+1), pin 26 and its mutation test |
+| `af7b95e` | G1: the 3E review gate's page fixes: an empty Windows printer list says nothing (m-2); every network printer of a Windows app 1.12.0 checked, sixteen to a call, a follow-up after every check (m-4, m-5); `printAgentWakeMayPoll` and a behavioural test of the hidden wake (the 3D gate's m-6); three comments (m-5) |
+| `6e583c2` | G2: the print soak's tool fixes: `scripts/print-soak-rules.ts` (a malformed `--agent`/`--printer` refused before the first order; every slip checked against its orders' jobs), the agent's one timer, `--tokens page\|lease` |
+| `e7b9a9b` | G3: the soak's `--failover` mode (`scripts/print-soak-writer.ts`: two soak writers polling the wake as a printers-mode page does, the soak's writer stopped after `--stop-after` orders, P3-4's measure in `failoverProblems`; `closed`) |
+| `a5cf61b` | G4: live leg (bf): a skip's ack, beat and lease together, every step's writes to the printers counted |
+| `fea5871` | G5: GO-LIVE-CHECKLIST "Existing cafes: the printing Phase 3 release", TEST-CHECKLIST "Phase 3 checks (failover, health, the service)", the runbook pin |
+| (this commit) | Results |
+
+### Start
+
+- `GIT_TERMINAL_PROMPT=0 git fetch origin` (the repo-local token store) worked: `feat/printing-phase-3` = `origin/feat/printing-phase-3` = `31d19f3`, working tree clean; `origin/main` still `7f8ed31` (nothing to merge or note).
+- Disk at the start: D: 12 GB free, C: 9.7 GB free (C: 7.9–9.7 GB through the session: the emulator ran at `-memory 4096`).
+- Real printers: none on hand. The owner's ruling (2026-10-08) stands: the real-printer checks run once, after 3G and the final Phase 3 gate, before the merge decision; this session did not ask. TEST-CHECKLIST's "Phase 3 checks (failover, health, the service)" (G5) holds them all.
+- Telegram: nothing (the owner's ruling, 2026-10-09). `models/TelegramChat.ts` and the existing integration are untouched.
+- The 3E review gate's applier (`apply_blocks_clone.py`), `link-modules.ps1`, `ui.py`, `type-secret.py`, `p3a-proxy.mjs`, `p3b-proxy.mjs` and `mkmsg.py` were copied into this session's scratchpad (fresh timestamps; each `cmp`-identical to the gate's copy). A dry run of the whole Session 3G range (plan lines 30495–34838) against `31d19f3`: **68 ops OK** (no drift).
+
+### How the code was applied
+
+Every block went verbatim into the real repo through the applier, one step range at a time (each task's Step 1, then its Step 3), so each RED was seen before its code went in: G0 3 + 7 ops, G1 6 + 9, G2 4 + 14, G3 3 + 16, G4 3, G5 1 + 2 (**68**). After G5, **every file outside the plan and the spec is blob-identical to the gate's golden copy `g3g-v4`** (tree `c781841`, in the gate's scratchpad clone `g3g`): the two `git ls-tree -r` listings (1,980 entries each) differ only in `docs/superpowers/plans/2026-10-06-phase-3-hardening.md` and `docs/superpowers/specs/2026-10-02-printing-reliability-design.md` (the gate's docs commit `31d19f3`). `31d19f3..fea5871` outside `docs/`: 28 files, **+1,027 / −104** (`apps/cafe` 20 files +885 / −99; `apps/mobile` 7 files +140 / −4; `packages/shared` 1 file +2 / −1); `docs/GO-LIVE-CHECKLIST.md` +44. Every commit has the plan's message, verbatim, plus the repo's co-author line, through `git commit -F` (a scratchpad script copies the plan's line).
+
+### Per-task RED → GREEN (every Expected line compared; all matched)
+
+| Task | RED | GREEN |
+|---|---|---|
+| G0 | mobile: tests 143, pass 141, **fail 2**; JUnit `> Task :app:compileDebugUnitTestKotlin FAILED` (`Unresolved reference 'remounted'`), `BUILD FAILED` | mobile **143/143**; Jest **5/5**; JUnit `BUILD SUCCESSFUL`: BatteryTargets 3, DleEot 7, HostLife 4, PageWatch **7**, PoolList 6, PoolStatus 3, PrinterManager 22, PrinterPool 3, TcpTransport 10 (**65**, 0 failures); `MOBILE_TSC_OK`; `MOBILE_LINT_CLEAN` |
+| G1 | cafe four files: tests 112, pass 108, **fail 4** | cafe six files **150/150** + `TSC_OK`; `LINT_OK`; `SHARED_TSC_OK` |
+| G2 | tests 7, pass 4, **fail 3** (`Cannot find module './print-soak-rules'`, the agent's two new tests) | **36/36** + `TSC_OK`; `LINT_OK` |
+| G3 | tests 5, pass 3, **fail 2** (`Cannot find module './print-soak-writer'`, the rules' new test) | **40/40** + `TSC_OK`; `LINT_OK` |
+| G4 | none by design (it pins behaviour that exists) | live (`pos_scratch_print_host_3g`): the `(bf)` line and **`467 passed, 0 failed`**; `TSC_OK`; `LINT_OK`. **The gate's mutation check, repeated** (ruling 2): with `skipUnreachableFromBeat`'s "already skipped" guard removed by a scratchpad script, leg bf read **18 passed, 2 failed** (the gate's figure; the whole run 464/3, leg be's "next beats, still down, write nothing" too); the source restored byte for byte (`git diff` empty) |
+| G5 | `go-live-runbook.test.ts`: tests 96, pass 95, **fail 1** (the new pin) | **96/96** |
+
+Line counts at the end: `apps/cafe/scripts/print-soak.ts` 345, `print-soak-agent.ts` 148, `print-soak-rules.ts` 109 (new), `print-soak-writer.ts` 115 (new), `print-host-live/skip-interplay.ts` 117 (new); `lib/printer/desktop-lan.ts` 299; `lib/print-agent-wake.ts` 80.
+
+### Task G6 Step 1: every suite (at `fea5871`; once each, in the background, one after another)
+
+| Suite | Result |
+|---|---|
+| shared `npm test`; `tsc` | **821/821**; 0 |
+| cafe `npm test` | **5056 tests, 5055 pass, 0 fail, 1 skipped** (go-live-dl) |
+| cafe `tsc`; `npm run lint` | 0; 0 errors and the 2 old warnings (`lib/masters-blob.test.ts:331`) |
+| hub `tsc`; lint | 0; 0 |
+| mobile `tsc`; lint; `npm test`; `test:app` | 0; **clean** (G0); **143/143**; Jest **5/5** |
+| desktop `npm test`; `typecheck`; lint | **205/205** (unchanged since 3E); 0; 0 |
+| `npm run test:print-tools` | **11/11** |
+| live legs (local mongod, `pos_scratch_print_host_3g`) | **`467 passed, 0 failed`** (leg bf: 20) |
+
+Every row equals the plan's Expected.
+
+### Step 2: JUnit, and the APKs (a full release compile)
+
+- `:app:testDebugUnitTest --rerun`: `BUILD SUCCESSFUL`, **65 tests, 0 failures** (BatteryTargetsTest 3, DleEotTest 7, HostLifeTest 4, PageWatchTest 7, PoolListTest 6, PoolStatusTest 3, PrinterManagerTest 22, PrinterPoolTest 3, TcpTransportTest 10).
+- A marker file in the scratchpad, then `aR -PreactNativeArchitectures=x86_64 --info` (nothing else on that line): `BUILD SUCCESSFUL` (47 s). **The full release compile, proved:** the log has **0** lines `Using Kotlin/JVM incremental compilation`; **0 of 100** release classes are older than the marker; `javap -c -p …/release/…/TransportFactory.class` calls `TcpTransport."<init>":(Ljava/lang/String;IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V`.
+- Then the client pair, `assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a`: `BUILD SUCCESSFUL` (34 s). Each APK copied into the scratchpad (`apk-3g/`) and hashed, **not released**:
+
+| APK | SHA-256 |
+|---|---|
+| x86_64 (the emulator) | `c45e1d8d45132bf231a54250a18e2824252d9d57f8fd8bb96e4ae12ed19d1928` |
+| arm64-v8a | `8a1458c6ff5fe32ff397a90dab05e5665f73111aa089f9d2369774e2c2b8adf1` |
+| armeabi-v7a | `37d1ea38f9da9b6e90e158cd0b335e658aa5de97a0a7acce3eaa57dd43f4ff0b` |
+
+  They differ from the gate's build-copy hashes (`8af43760…`, `aca6df9c…`, `44811dc8…`), as the plan says a repo build will. `adb logcat -b crash -d` after every install: 0.
+
+### Step 3: the Next production build (the repo, D:)
+
+`npm run build` (D: 12 GB free before, 11 GB after): exit 0, **132 routes**.
+
+### Step 4: what changed outside the web
+
+`git diff --stat 95fee6d..HEAD -- workers apps/desktop`: **empty** (no Worker change; no installer rebuild: `POS-Software-Setup-1.12.0.exe` stays Session 3E's). `-- apps/mobile`: G0's six files and TEST-CHECKLIST (the APKs change: G0).
+
+### Step 5: the harness
+
+A fresh database **`pos_scratch_e2e_3g`** (absent before; Session 3B's env file copied by `mkenv3g.py` with only `MONGODB_URI` changed, no value printed; seeded with `seed-admin.ts`, `seed-tables.ts` (8 tables), `seed-menu.ts` (4 categories, 8 products)). This branch's Step 3 build on `next start -p 3110`; `p3a-proxy.mjs` on 3200 (`proxy3g.jsonl`), `p3b-proxy.mjs` on 3201 (`proxy3g-emu.jsonl`); `/login` 200 through both; `pw3g.sh tokens on` → `200`. The tools (`mkenv3g.py`, `pw3g.sh`, `pw-3g.mjs`, `xg-reboot.sh`, `e3/mongo-sampler.mjs`, `e3/report-3g.mjs`, `m-run-3g.sh`, `m-report.sh`, `p2g-tool.ts`, `p2d-tool.ts`) were extracted byte for byte from G6's fenced blocks by a script (each `cmp`-identical to the gate's copy). Ports 3110, 3200, 3201 and 9100–9104 were free; no other session's server was touched. Other sessions' processes (another project's test runs with their own in-memory databases) were running on this PC during the session: not on the local mongod (before every measured run only the POS server was connected to it), but sharing the CPU.
+
+### Step 7: the exit on the emulator and a second device (XG0–XG6: passed)
+
+**The emulator:** `df -h` right before: C: 8.0 GB, D: 11 GB → `Pixel_7_API_33 -memory 4096 -no-audio -no-snapshot` (booted in about 40 s). **As found:** the release APK (`29115bdf…` hashed on the device), its start screen "Connect to your workspace" with no address (the placeholder; **not the demo**), notifications not allowed (`granted=false`, `USER_SET`), `font_scale` `null`. `adb reverse tcp:3100 tcp:3201` and **`adb reverse tcp:9100 tcp:9100`**: the kitchen's network printer had ONE address, `127.0.0.1:9100`, for the emulator app and for the fake Windows app PC2.
+
+| # | Result |
+|---|---|
+| XG0 | `pw3g.sh init`: PC1 `…56bb`, PC2 `…8814` (fake 1.12.0), PC3 `…4818` (fake 1.11.0), the plain tab C `…3a83`; `pw3g.sh printers 900` (a fake printer on 9100); `adb install -r` of the Step 2 x86_64 APK (`c45e1d8d…` on the device), crash 0; its start screen → `http://localhost:3100` (Gboard's clipboard panel covered the button: the keyboard hidden first) → Open POS: "POS Software" with the seeded menu and API answers 401 (a session from another database) → Account Staff → Sign out → signed in as `e2eadmin` (`type-secret.py`, the focused field checked to be a password field) → the Dashboard; `pw3g.sh clear`, Refresh; the panel "No printer set up" → Network printer `127.0.0.1`, 9100 → Use: **"Network printer 127.0.0.1 is connected."**, Connected; Done. The app's device id from its pulses in `proxy3g-emu.jsonl`: **`80cfb12d…d5f2`**. **PASS** |
+| XG1 | `pw3g.sh exit-setup …d5f2`: Kitchen (network `127.0.0.1:9100`, primary the app: Kitchen KOTs, bills and so the tokens, notices, End of day) and Back (PC2's Windows printer with the Bar KOTs) `201`; the `printers` run stopped by PID (and its fake printer); then `pw3g.sh second 5400`: `HOLD` (PC2 `lanStatus 127.0.0.1:9100=connected/ok`); the app: Refresh → `PrintHostService` **`isForeground=true`** (`foregroundId=4101`), **`stopIfKilled=false`**; `pm grant … POST_NOTIFICATIONS` (recorded), HOME and open once, HOME → **"Printing is on — Network printer 127.0.0.1"** / "This device keeps printing with the screen off."; with the launcher on top `exit-order`: **printed by the app (`…d5f2`) 7.4 s after the order** (the gate: 3.0 s; locally the writer hears of a slip at its next wake: no Worker). **PASS** |
+| XG2 (exit item 2) | `exit-paper`: the health **"out of paper" from the app's own check after 57.2 s** (the gate: 33–57 s, its 60 s idle check); C's slip and its token **queued, never leased** after 45 s; C's notice "KOT round 1 · ORD-20261010-502 · Kitchen has not printed yet. Kitchen is out of paper."; **C's and D's panels "Kitchen is out of paper.": yes, yes**; on `READ` the app's own dot **"2 slips waiting · Printer needs attention"** and its panel rows "1 min · Kitchen is out of paper. · Kitchen" and "Printer needs attention / Kitchen is out of paper." (a screencap kept); paper back: **printed once by the app 2.1 s later**, and its token right after (the fake printer's log: the KOT 47,778 B at 19:52:26.3Z and the token 31,354 B at 19:52:26.9Z, two acks; the scenario's "new slips on 9100: 1" was read between the two; its `showPrinters` in that same second still read `connected/out/closed@d5f2`, not re-read then; XG3's read later shows `connected/ok/closed`). **PASS** |
+| XG3 (exit item 1, P3-4) | HOME, 20 s, `am force-stop` at 01:23:01 and `exit-failover` in one command: the slip made **3.5 s after the stop** was retargeted to PC2 and **printed by PC2 (`…8814`) 99.9 s after the stop** (P3-4's bound: 150 s; the gate: 106.6 s); the slip made **96.0 s after the stop** printed by PC2 **5.4 s after its order** (the gate: 12.2 s); the Kitchen health then `connected/ok/closed` from PC2. Both jobs' logs say `printed@8814` (the review's m-4: the scenario's own wait accepts any device). **PASS** |
+| XG4 (exit item 3) | the app opened (monkey): "Printing is on"; HOME; `am crash 5338`: **"POS printing is off. Tap to start." 1 s later** ("Slips will not print until the POS app is open."); the crash buffer holds only the induced `CrashedByAdbException`, **0** `ForegroundServiceDidNotStartInTimeException`; the tap opened `MainActivity`: "Printing is on"; HOME; **printed by the app 5.1 s after the order**. **PASS** |
+| XG5 (exit item 4) | `xg-reboot.sh 70`: reboot 01:25:52, `sys.boot_completed` 01:26:22, **the notice at 01:26:40 (18 s; the gate: 18 s)**, both reverses back; the tap opened `MainActivity`: "Printing is on"; HOME; **printed 3.4 s after the order**. **PASS** |
+| XG6 | `adb logcat -b crash -d \| grep -c possoftware`: **0** after the install and at the end (the reboot clears the buffer; XG4's induced crash aside). **PASS** |
+
+Then the `second` run stopped by PID (with its Chrome and the fake printer).
+
+### Steps 6 and 8: the measured free-tier check with a token per order
+
+The method is Session 2G's (the counting proxy, the POS server's process CPU, Mongo's opcounters with the sampler), with `pw3g.sh tokens on`. Before every measured run only the POS server was connected to the local mongod. Steps 6's runs ran with the emulator off; Step 8's with the app's traffic through the counting proxy (`adb reverse tcp:3100 tcp:3200`, then force-stop and relaunch). Every soak printed every job and said `pass: true`, `problems: []`.
+
+| Run | What | Jobs (orders 100) | Requests (print) | Print requests a job | CPU ms a request | Mongo ops a job | Raw peak ops/s |
+|---|---|---|---|---|---|---|---|
+| T4 | printers mode, the soak writes 3 printers, direct, `--tokens page` | 500 | 850 (600: ack 500, lease 100) | 1.20 | 13.27 | 10.13 | 35.2 |
+| T4L | as T4 with `--tokens lease` (an older page) | 500 | 850 (600) | 1.20 | 10.33 | **11.16** (one more: the ack's read) | 39.8 |
+| T1 | simple mode, the soak's agent prints, direct | 350 | 700 (450: ack 350, lease 100) | 1.29 | 9.84 | 9.09 | 22.5 |
+| TF | failover: soak-a (Kitchen) stopped after 20 orders, soak-b (Bar) takes over; every 3 s | 350 | 1,031 (781: wake 111, lease 320, ack 350) | 2.23 | 13.62 | 18.15 | 87.2 |
+| TW | the Windows app 1.12.0 writes (PC1: Kitchen and Bar over raw TCP; PC2: Back) | 350 | 1,063 (751: wake 101, lease 300, ack 350) | 2.15 | 14.14 | 18.01 | 33.8 |
+| TWI | idle 600 s, PC1 and PC2 up | – | 243 (wake 103; pulse 60, lists 40 + 40) | – | 19.03 | – | 5.0 |
+| T5 | printers mode, the emulator app writes 3 printers (`10.0.2.2:9100/9101/9104`) | 500 | 1,239 (953: wake 103, lease 350, ack 500) | 1.91 | 12.83 | 15.51 | 33.6 |
+| T6 | idle 600 s, the app on `/pos` on screen | – | 129 (wake 59; pulse 30, lists 20 + 20) | – | 19.74 | – | 2.9 |
+| TN | idle 1,800 s, the app hidden, screen off (`mWakefulness=Asleep`, the service foreground) | – | 336 (wake 120; pulse 89, lists 60 + 59, one page load: ruling 6) | – | 19.86 | – | 2.4 |
+| T2 | simple mode, the app as the print host | 350 | 1,060 (772: lease 350, ack 350, wake 72) | 2.21 | 11.11 | 12.50 | 23.4 |
+| T3 | idle 600 s, the app host on screen | – | 162 (wake 62; beat 30, pulse 30, lists 20 + 20) | – | 13.60 | – | 2.4 |
+
+TF's failover report: 90 slips waited through the stop, the slowest **88.9 s** (≤ 150), 153 made 90 s or more after it (every one printed by `soak-b`), the second writer's first print 66.1 s after the stop, 243 printed by it. No idle run leased.
+
+**The projections** (the busy day with a token per order: `--busy-slips 1500`), in three readings (ruling 1): **(a)** the plan's tool verbatim (`report-3g.mjs`; its normal-day wake counts one writer); **(b)** the fresh review's I-1: the day's **measured** writers (`report-3g-w.mjs --writers N`: P1, P2, P3, P3 old, P4 one writer; the failover and Windows days two); **(c)** spec §17.2's three printer devices for the printers-mode days (context for the gate). Each cell: invocations / Active CPU, % of the free allowance; the limits are 20 % / 15 % (spec §17.3 item 5).
+
+| Day (soak + idle) | (a) the plan's tool | (a) with the night | (b) measured writers | (b) with the night | (c) three writers | (c) with the night | Atlas: raw / at the rush | Worst case (a day) |
+|---|---|---|---|---|---|---|---|---|
+| P1 (T1 + T3) | 8.0 / 6.0 ✓ | 10.1 / 9.0 ✓ | same (1) | same | – | – | 22.5 / 1.0 | 6,399 |
+| P2 (T2 + T3) | 12.1 / 9.7 ✓ | 14.3 / 12.7 ✓ | same (1) | same | – | – | 23.4 / 1.48 | 7,779 |
+| P3 (T4 + T6) | 7.6 / 7.9 ✓ | 9.7 / 10.9 ✓ | same (1) | same | 11.9 / 13.9 ✓ | 14.0 / **16.8** ✗ | 35.2 / 1.61 | 6,048 |
+| P3 old page (T4L + T6) | 7.6 / 6.8 ✓ | 9.7 / 9.8 ✓ | same (1) | same | 11.9 / 12.8 ✓ | 14.0 / **15.7** ✗ | 39.8 / 1.80 | 6,048 |
+| P4 (T5 + T6) | 10.8 / 10.6 ✓ | 12.9 / 13.6 ✓ | same (1) | same | 15.1 / **16.5** ✗ | 17.2 / **19.5** ✗ | 33.6 / 3.01 | 7,113 |
+| Failover (TF + T6) | 12.2 / 12.5 ✓ | 14.4 / **15.4** ✗ | 14.4 / **15.4** ✗ (2) | 16.5 / **18.4** ✗ | 16.5 / **18.4** ✗ | 18.7 / **21.4** ✗ | 87.2 / **7.44** | 7,593 |
+| Windows 1.12.0 (TW + TWI) | 11.8 / 12.4 ✓ | 14.0 / **15.3** ✗ | 14.0 / **15.2** ✗ (2) | 16.2 / **18.2** ✗ | 16.2 / **18.1** ✗ | 18.3 / **21.0** ✗ | 33.8 / 2.49 | 10,641 |
+
+Every worst case is within §17.2's 17,040 and every rush within Atlas's 10 operations a second (the failover day's 7.44 the tightest). **The night** (TN, one hidden printing device over 12 closed hours): its printing 720 requests (2,880 at worst), 14.3 s CPU (57.2 s at worst); the page's own polls 5,184 requests, 103 s CPU; all routes at worst 24.2 % of a day's invocations and 33.4 % of a day's CPU (why GO-LIVE closes the apps at closing time).
+
+**The verdict, as the plan asks: tune nothing, record, and the final Phase 3 gate rules.**
+- By the plan's verbatim tool **every day passes**; with the night the **failover day (14.4 % / 15.4 %) and the Windows day (14.0 % / 15.3 %) fail** on CPU, their days passing: the plan's "a day-with-the-night figure fails" case (option C does not touch the night; the closing-time rule does).
+- With each day's writers counted (the review's I-1, which the code's own cadence and `print-budget.test.ts` support: every writer polls the wake every 60 s on a healthy socket), **the failover day (15.4 %) and the Windows day (15.2 %) fail on their own**, by 0.4 and 0.2 points of CPU: the plan's "a projection fails" case (option C, decided at the final Phase 3 gate).
+- With §17.2's three printer devices, P4 fails too (16.5 %), and every printers-mode day fails with the night. These rows reuse a one-writer idle run's CPU per request: the spec's reading as context, not a measured day.
+- **Every failing line fails on CPU only; the invocations pass everywhere** (the worst 18.7 %: the failover day with three writers and the night).
+- On the failover day only one writer polls after the stop, so its honest writer count lies between one and two: 12.5–15.4 % CPU (the fresh review's second look).
+- The smallest margin among the passing lines is P4 with the night by the plan's tool: 13.6 % CPU (1.4 points).
+- **How to read it:** the local server's CPU per request stands in for Vercel's Active CPU; with no realtime Worker locally the wakes poll at the socket-down cadence, so the idle runs are §17.2's worst case and the normal-day projection uses the socket-healthy 60 s cadence; the soak's own rate is far above the busy rush, so `report-3g.mjs` scales the raw Mongo peak to it. This session's idle runs read **~19–20 ms of CPU a request** (T6 19.74, TN 19.86, TWI 19.03) against the gate's short runs' ~13 ms, while the proxy's wall time per route equals the gate's (the wake 8.3–8.7 ms here, 7.9–8.1 ms there): the method charges all of the server's CPU in a window to that window's requests. T3 (simple mode, the same database of ~700 orders, the same route mix) read 13.6 ms (the gate's 14.2): the high figures are the printers-mode idle windows run inside the 45-minute retention of a soak's jobs (T6 and TN after T5's 500, TWI after TW's 350), where, by the fresh review's reading (not profiled here), the wake's once-a-minute sweep, with network printers set up, walks the retained jobs, plus the heap's housekeeping after the soaks (ruling 5). A real cafe's idle hours rarely hold that many retained jobs (about 100 finished jobs in 45 minutes of a busy day), so every idle-driven figure (the extra writer's wake, the night) is probably on the high side: the two-writer day-alone fails (0.2–0.4 points) and the one-writer night fails (0.3–0.4 points) are marginal, within this method's noise between like-for-like idle windows; the two-writer-with-the-night figures (18.2 %, 18.4 %) are not, and that cafe (two printing devices, one left open at night) is what GO-LIVE's closing-time rule addresses.
+
+### Step 9: put back
+
+The setup as found (`p2d-tool.ts reset2d`; `pw3g.sh tokens off` → `200`; the scratch database `pos_scratch_e2e_3g` left); Refresh (the page removed its three setup printers from the app); this device's printer → Remove → "Yes, remove": "No printer set up"; More options → Change POS address → Clear POS address (the placeholder); HOME, force-stop; the **release APK** reinstalled (`adb install -r -d`; `29115bdf…` on the device); notifications revoked (`granted=false`); `font_scale` `null`; the release app opens on "Connect to your workspace" with no address, crash 0, no printing notice; `adb reverse --remove-all`, then `adb reverse tcp:3100 tcp:3100`; HOME; `adb shell sync`; `adb emu kill`. Every server, proxy, fake printer and `pw-3g.mjs` run (with its Chrome) this session started was stopped by PID after checking its command line; ports 3110, 3200, 3201 and 9100–9104 free. Disk at the end: C: 8.4 GB, D: 11 GB.
+
+### Step 10: the fresh review (Claude Fable 5.1)
+
+**How it ran.** A fresh reviewer on **Claude Fable 5.1** (no HTTP 429), read-only, its scratch only in this session's scratchpad (`review3g/`), reviewed `95fee6d..fea5871` (the 3E review gate's docs commit, then G0–G5) against the plan head (P3-1 to P3-10 as the gates changed them), the 3E review gate's rulings, Session 3G and its Review Focus (passed verbatim), the golden copy's review, and spec §9.3–§9.8, §10, §13, §14, §17, with G6's harness and measurement tools read as text. It ran in the background during Steps 1–5, told to keep off Gradle, adb, the emulator, builds, servers and the harness's ports and databases; when the measured runs began it was told to stay off the local mongod altogether (it had not run the live legs yet, and did not). Its own runs (no database): shared **821/821**, tsc 0; the ten touched DB-free cafe test files **260/260**, cafe tsc 0, eslint on the 19 touched cafe files 0; mobile **143/143**, Jest **5/5**, tsc 0, lint clean; desktop **205/205**, typecheck 0; an arithmetic script over the gate's pre-run files. (Its report was saved to `review3g/report.md` by the executor: the harness refused a subagent writing a report file.)
+
+**Verdict: "Ready to merge: With fixes".** **0 Critical; the code of G0–G5 ships as written; one Important finding, in G6's scratch measurement tool; six minors.** Its sound list: G0 small, exact and thread-safe (the hook always through the service's handler; the watchdog's own remount and the module's post idempotent; the JVM test tick-exact by hand; `destroyed` covers the one path `removeCallbacksAndMessages` cannot cancel); G1's m-2 as narrow as the ruling (only `windowsMissingIds`; a Windows printer still not leased during a spooler restart), m-4/m-5 (`written` snapshotted once across batches; a refused batch falls to the follow-up), the hidden wake's rule as a function with a five-case behavioural test; the soak standing for the page (one timer, `tokenSlips` exactly as each page kind says it, every slip checked by key, malformed addresses refused, `failoverProblems` = P3-4's measure with the in-flight rule, the stop's time after the in-flight request, `closed` before every lease); leg bf honest (operations sent, counted; the mutation 18/2); G5's words true to the code and pinned; deploy skew unchanged; no new request kind.
+
+| # | Finding (the reviewer's) | Re-graded / what was done |
+|---|---|---|
+| I-1 (Important) | `report-3g.mjs project` counts the idle wake for ONE writer whatever the day's writers (`Math.min(idle.perMinute.print, 1)`), while each writer polls every 60 s on a healthy socket (`printAgentWakeIntervalMs`; spec §17.2's 3 × 720; `print-budget.test.ts` pins writers × wakePerWriter); the failover and Windows days have two writers, so their pass and the plan's "0.4-point smallest margin" were overstated (it reproduced the gate's seven figures exactly, then the two-writer ones). | **Important (kept)**, verified against the code. Not repo code (a scratch tool), so no repo commit: fixed as `e3/report-3g-w.mjs` (`--writers N` in `project` only; writers = 1 reproduces `report-3g.mjs` exactly on the gate's pre-run files; writers = 2 reproduces the reviewer's table), and the projections above are reported in all three readings (ruling 1). The failing lines are recorded for the final Phase 3 gate (nothing tuned). |
+| m-1 | `print-soak-agent.ts:105–109`: a refusal before any byte is acked `sent: "no"` without `reason: "unreachable"`: a soak writer whose network line refuses is never skipped like a 3B page. Not exercised by the measured runs. | **Minor** → the final Phase 3 gate. |
+| m-2 | `print-soak-agent.ts:40–43`: `noteTimer` keeps the server's time unclamped; the page clamps its timer to 2–30 s (`printAgentTimerDelayMs`), so for a backoff over 30 s the soak leases less than a page. Not in the measured runs. | **Minor** → the final gate. |
+| m-3 | `print-soak.ts:262–269`: printers mode lost the "no unnamed extra job" count; a job no answer named (a sweep repair, a duplicate) passes silently there. | **Minor** → the final gate. |
+| m-4 | `pw-3g.mjs` `exit-failover` (plan lines 34202, 34204): both waits accept a print by any device; "printed by PC2" rests on the printed `by …` line. | **Minor** (harness text) → the final gate. XG3's job logs above say `printed@8814` for both slips. |
+| m-5 | `docs/GO-LIVE-CHECKLIST.md:343`: "The install itself shows 'POS printing is off. Tap to start.'" holds only over a 3D-or-later app (one that kept the page's wish to print); over the Phase 2 or release APK no notice shows. "may show … either way, open the app once". | **Minor** (words) → the final gate. |
+| m-6 | `skip-interplay.ts:29–39`: `mongoose.set("debug", …)` is process-global; a comment would stop anyone running legs in parallel. | **Minor** → the final gate. |
+
+**Its "declined to judge" lines, ruled** (ledger): JUnit, the APKs, the emulator exit and the live legs (the executor's runs stand: JUnit 65, the full compile proven, live 467/0, bf 20, the mutation 18/2); the full cafe suite (the executor's 5056/5055/0/1); the local CPU standing in for Vercel's and the Atlas peak's linear scaling (the method since 1E; the raw peaks are recorded beside the rush figures); Electron's empty printer list during a spooler restart (documented by the app's main process); TEST-CHECKLIST's real-printer timings (the owner's run); 3E's m-3 and n-1 (not taken by the gate); `desktop-lan.ts` batches overlapping a 30 s follow-up (3E behaviour); the two 10-minute gaps (aligned). All stand as designed or as ruled.
+
+No fix pass on repo code (no Critical or Important finding in it). JUnit, the APKs and the build were not rebuilt; the measurement is not voided.
+
+**Its second look at the exit and the measurement** (asked after Step 9; read-only; no HTTP 429): (1) the readings and the projections are sound: it recomputed the headline days by hand from the run files (to the decimal), confirmed the `--writers` change is that one term, every soak `pass: true` with its jobs on paper, TF inside P3-4, the rush peak 7.44 the tightest; two nuances (the failover day's writer count lies between one and two; the three-writer rows reuse a one-writer idle run's CPU) and one note (every failing line fails on CPU only) are in the measurement section above. (2) The higher idle CPU a request is not in the request path (the proxy's wall times equal the gate's); T3 on the same database read 13.6 ms, so it sits in the printers-mode idle windows inside a soak's 45-minute retention: the day-alone and one-writer-night fails are marginal and probably pessimistic, the two-writer-with-the-night ones are not; it proposes the cheap confirmation in "Open for the final Phase 3 gate". (3) Nothing in the exit logs contradicts a PASS (XG3's retarget at +91 s, then PC2 at 99.9 s, the second slip created for PC2 directly; XG2's health from the app's own check, the slips with only a `created` entry at 45 s, the panels). Its two one-liners (XG2's `showPrinters` in the same second as the print; the token's print after paper came back) are answered in XG2's row from the fake printer's log.
+
+### Deviations and rulings
+
+1. **The review's I-1 handled in the scratch tool, three readings reported.** `report-3g.mjs` lives only in the scratchpad (G6's fenced block), so its fix is a scratch copy, `e3/report-3g-w.mjs` (one changed term: `--writers N` in `project`), checked like a RED/GREEN on the gate's pre-run files (writers = 1 identical to the plan's tool; writers = 2 the reviewer's figures). The plan's G6 block is left verbatim (history); the projections table gives the plan's reading, the measured writers' and §17.2's three writers'. Cost if wrong: the final gate reads a stricter figure than the plan's tool (the safe side).
+2. **G4's "no RED" was checked anyway:** the gate's mutation (the "already skipped" guard removed from `skipUnreachableFromBeat` by a scratchpad script) made leg bf read 18 passed, 2 failed; the file was restored byte for byte (`git diff` empty) before the commit. Cost if wrong: none.
+3. **Commit messages through `git commit -F`** (each copied verbatim from its plan line by `mkmsg.py`, plus the co-author line). Cost if wrong: none.
+4. **The measurement went on after the first failing line.** "Tune nothing, record it and stop" was read as: change nothing (no code, no cadence, no tool beyond I-1's reading) and leave the ruling to the final Phase 3 gate; the remaining runs (TN, T2, T3) only record the numbers that gate needs (P1, P2 and the night), and the exit, the put-back and Results followed. Cost if wrong: about an hour of runs the gate may not need.
+5. **The idle runs' CPU per request is higher than the gate's** (T6 19.74, TN 19.86, TWI 19.03 ms against ~13 ms), while the proxy's wall time per route equals the gate's: the method charges all the server's CPU in a window to that window's requests. T3 on the same database read 13.6 ms, so the extra sits in the printers-mode idle windows run inside the 45-minute retention of a soak's 500 jobs (the wake's minute sweep walking them, the heap after the soaks); other sessions' test processes on this PC add contention at most (the fresh review's second look). Recorded as measured, not corrected. Cost if wrong: every idle-driven figure (the extra writer's wake, the night) reads about 2 points of CPU high, which is exactly the margin of the marginal fails.
+6. **TN's one page load** (01:58: `GET /api/auth/session`, `GET /pos`, then the sidebar's six page prefetches, 8 requests in 30 minutes): no remount, renderer or watchdog line in the app's logs; counted with the page's own requests (not printing). Cost if wrong: none for the printing figures.
+7. **XG1 printed 7.4 s after the order** (the gate: 3.0 s): locally there is no realtime Worker, so the writer hears of a slip at its next wake; as 3E's ruling 3. XG0's Open POS was hidden by Gboard's clipboard panel: the keyboard was closed first. Cost if wrong: none.
+8. **The fresh review ran during Steps 1–5**, as the plan allows, and was told to stay off the local mongod once the measured runs began (it had not run the live legs and did not: its runs needed no database). Its report was saved by the executor (the harness refused a subagent's report file). After the measurement it was asked for a short second look at the numbers (above). Cost if wrong: its review has no live-leg run of its own (the executor's 467/0 and the mutation stand).
+
+### Open for the final Phase 3 gate
+
+- **The measurement's failing lines** (the owner's token ruling, option A: measure; option C if a projection fails): with each day's measured writers the **failover day (14.4 % / 15.4 %) and the Windows day (14.0 % / 15.2 %) are over 15 % of the Active CPU**; by the plan's tool they pass alone and fail with the night (15.4 %, 15.3 %); with §17.2's three printer devices P4 fails too and every printers-mode day fails with the night. Every failing line fails on CPU only (invocations pass everywhere); the day-alone and one-writer-night fails are 0.2–0.4 points over and rest on the idle term (ruling 5); the two-writer-with-the-night lines (18.2 %, 18.4 %) are not marginal. To rule: option C (the slips one request puts on one printer line ride one lease or one direct answer), the closing-time rule for the night (option C does not touch the wake), and — the fresh review's cheap confirmation — one 10-minute printers-mode idle on a quiet database (fresh, or 3 h after the last soak) and a re-projection before deciding: at ~14 ms a request the two-writer days land near 14.0–14.2 % alone; if it still reads ~19 ms, the printers-mode minute sweep's cost with network printers set up is worth a look (option C would not touch it).
+- The review's minors m-1 to m-6 (three soak details, a harness wait, a GO-LIVE sentence, a comment); and the G6 tool block's one-writer term (`report-3g.mjs`) for the gate's own re-measure.
+- **The owner's one real-printer run:** TEST-CHECKLIST "Phase 3 checks (failover, health, the service)" and "Network printers on the Windows app (Phase 3)", then the merge decision.
+- The APKs (`apk-3g/`) in this session's scratchpad are recorded, **not released**; the installer stays Session 3E's 1.12.0 (not released); the final Phase 3 gate builds the release set and its `SHA256SUMS.txt`.
+- C: on this PC: 8.4 GB free at the end (7.9 GB at the lowest, during the emulator run); the AVD's quickboot `ram.img` (4 GB, written 2026-10-09 19:01) was not touched by this session's `-no-snapshot` boot.
+- Left in this session's scratchpad: `e2e.env`, `e2e3g.env` (database `pos_scratch_e2e_3g`, left), the extracted tools, `report-3g-w.mjs` and `make-report-w.py`, `proj-3g.sh`, `e3/` (runs, samples, soaks, projections, nights), `suites-3g/`, `apk-3g/`, `build-3g.log`, the proxies' logs, `xg*.log`, `pw-*.log`, `shots/`, `review3g/` (the report), `review-brief-3g.md`. The live legs dropped their own database (`pos_scratch_print_host_3g`).
