@@ -71,6 +71,21 @@ class PageWatchTest {
   }
 
   @Test
+  fun aRemountAfterTheRendererWentIsThePageLifesRemount() {
+    // The 3D review gate (N-1): a page remounted because its renderer died, and slow to load while the app is hidden, was
+    // remounted again by the watchdog (which unmounted the loading page: one tap). That remount is this page life's.
+    val w = watch()
+    assertFalse("the page answers: alive", alive(w))
+    w.remounted()
+    assertEquals("the new page loads slowly: never remounted again before it answers", 0, dead(w, 20))
+    assertTrue("the alert says so", w.alerting(false))
+    assertFalse("it answers: alive", alive(w))
+    assertFalse("the alert goes", w.alerting(false))
+    assertEquals("it dies within 10 minutes of the renderer's remount: none yet", 0, dead(w, 10))
+    assertEquals("10 minutes after it: once more", 1, dead(w, 30))
+  }
+
+  @Test
   fun aNewRunStartsClean() {
     val w = watch()
     w.tick(false)

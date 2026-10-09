@@ -319,6 +319,8 @@ class PosPrinterModule(private val reactContext: ReactApplicationContext) :
    *  React Native mount it now ([BackgroundMount]), so the new page loads and prints without anyone opening the app. */
   @ReactMethod
   fun mountWhileHidden(promise: Promise) {
+    // The 3D review gate (N-1): this remount is the page life's; the watchdog never remounts the loading page again.
+    HostPage.remounted?.invoke()
     BackgroundMount.start(reactContext)
     promise.resolve(null)
   }

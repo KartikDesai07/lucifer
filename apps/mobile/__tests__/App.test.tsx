@@ -62,7 +62,9 @@ test(
     const calls: string[] = [];
     const stub: Stub = {
       getSavedOrigin: jest.fn().mockResolvedValue('https://cafe.example.com'),
-      clearOrigin: jest.fn(async () => void calls.push('clearOrigin')),
+      clearOrigin: jest.fn(async () => {
+        calls.push('clearOrigin');
+      }),
       setHostActive: jest.fn(async (active: boolean, label: string) => {
         calls.push(`setHostActive(${active}, ${JSON.stringify(label)})`);
         return { active: false };

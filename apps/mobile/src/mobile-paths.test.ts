@@ -2735,6 +2735,51 @@ test('pin 25 mutation: every gate-fix needle can fail', () => {
   everyMutationCaught(run('host'), base.host, [['      PrintingOffNotice.cancel(ctx.applicationContext)\n', '']]);
 });
 
+// ── pin 26: the 3E review gate's app fixes (2026-10-09) ─────────────────────
+// A remount after the page's renderer died is the page life's remount: the watchdog never remounts the loading page
+// again (the 3D gate's N-1); a probe answer that lands after the service stopped posts no notification (3E's m-1).
+interface LifeRemountSources {
+  watch: string;
+  service: string;
+  module: string;
+}
+function lifeRemountProblems(s: LifeRemountSources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!strip(text).includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(s.watch, 'fun remounted() {\n    lived = false\n    sinceRemount = 0\n  }', 'a renderer-gone remount leaves the watchdog free to remount the loading page');
+  need(s.watch, '@Volatile var remounted: (() -> Unit)? = null', 'the module cannot tell the watchdog of a remount');
+  need(s.module, 'HostPage.remounted?.invoke()\n    BackgroundMount.start(reactContext)', 'a page remounted after a death is not counted as its life\'s remount');
+  need(s.service, 'HostPage.remounted = { handler.post { watch.remounted() } }', 'the print host does not hear of a remount');
+  need(s.service, 'destroyed = true\n    handler.removeCallbacksAndMessages(null)', 'a stopped service does not know it stopped');
+  need(s.service, 'if (destroyed || !canNotify()) return', 'a late probe answer can post a notification after the service stopped');
+  return out;
+}
+const lifeRemountSources = (): LifeRemountSources => ({
+  watch: kt('PageWatch.kt'),
+  service: kt('PrintHostService.kt'),
+  module: kt('PosPrinterModule.kt'),
+});
+
+test("pin 26: the 3E review gate's app fixes (a renderer-gone remount is the page life's; no notification after the service stopped)", () => {
+  assert.deepEqual(lifeRemountProblems(lifeRemountSources()), []);
+});
+
+test('pin 26 mutation: every remount and stop needle can fail', () => {
+  const base = lifeRemountSources();
+  const run = (key: keyof LifeRemountSources) => (text: string) => lifeRemountProblems({ ...base, [key]: text });
+  everyMutationCaught(run('watch'), base.watch, [['    lived = false\n    sinceRemount = 0\n  }', '    sinceRemount = 0\n  }']]);
+  everyMutationCaught(run('module'), base.module, [['    HostPage.remounted?.invoke()\n', '']]);
+  everyMutationCaught(run('service'), base.service, [
+    ['handler.post { watch.remounted() }', 'handler.post { }'],
+    ['    destroyed = true\n', ''],
+    ['if (destroyed || !canNotify()) return', 'if (!canNotify()) return'],
+  ]);
+});
+
 test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
   const strings = readFileSync(join(MAIN, 'res', 'values', 'strings.xml'), 'utf8');
   assert.ok(

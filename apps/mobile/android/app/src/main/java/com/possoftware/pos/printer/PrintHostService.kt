@@ -79,6 +79,9 @@ class PrintHostService : Service() {
   private var shownKey = ""
   // Session 3D: it ran in the foreground for the page (so its stop may need the "printing is off" notice).
   private var running = false
+  // The 3E review gate (m-1): onDestroy ran. A probe answer that lands later (the WebView's callback, not the handler's)
+  // then posts nothing: it would leave an orphan "Printing is on" with no service behind it.
+  private var destroyed = false
 
   // Page liveness (main thread only): each tick scores the previous tick's probe, then sends one.
   private var probeSeq = 0
@@ -121,6 +124,8 @@ class PrintHostService : Service() {
     super.onCreate()
     ensureChannel()
     PrinterPool.statusObserver = { handler.post { refreshNotification() } }
+    // The 3D review gate (N-1): a remount after the page's renderer died is the page life's remount ([PageWatch]).
+    HostPage.remounted = { handler.post { watch.remounted() } }
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -161,8 +166,10 @@ class PrintHostService : Service() {
   }
 
   override fun onDestroy() {
+    destroyed = true
     handler.removeCallbacksAndMessages(null)
     PrinterPool.statusObserver = null
+    HostPage.remounted = null
     try {
       wakeLock?.let { if (it.isHeld) it.release() }
     } catch (e: RuntimeException) {
@@ -270,7 +277,7 @@ class PrintHostService : Service() {
 
   /** Re-posts the notification only when its words changed. */
   private fun refreshNotification() {
-    if (!canNotify()) return
+    if (destroyed || !canNotify()) return
     val key = if (alerting()) ALERT_KEY else title() + "|" + text()
     if (key == shownKey) return
     try {

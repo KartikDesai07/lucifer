@@ -35,6 +35,14 @@ class PageWatch(private val deadTicks: Int, private val remountGapTicks: Int) {
     dead = 0
   }
 
+  /** The 3D review gate (N-1): the page was remounted from elsewhere (its renderer died). That is this page life's
+   *  remount: the watchdog waits for the new page to answer once (a slow load is never unmounted by a second remount),
+   *  and remounts again at most once every [remountGapTicks] ticks. */
+  fun remounted() {
+    lived = false
+    sinceRemount = 0
+  }
+
   /** One tick: scores the previous probe (when one went out); the service then sends the next. True: remount now. */
   fun tick(visible: Boolean): Boolean {
     if (issued) dead = if (answered) 0 else dead + 1
@@ -74,4 +82,8 @@ object HostPage {
   const val DEAD_EVENT = "PosPageDead"
 
   @Volatile var remount: (() -> Unit)? = null
+
+  /** The 3D review gate (N-1): set by the print host while it runs; the module calls it on every remount of a dead page
+   *  (its renderer gone, or the watchdog's word), so that remount counts as the page life's ([PageWatch.remounted]). */
+  @Volatile var remounted: (() -> Unit)? = null
 }
