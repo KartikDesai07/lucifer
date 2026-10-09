@@ -63,7 +63,8 @@ test("PIN (2E): each slip carries its printer's target from the agent to the Win
   const bridge = src("hooks/use-print-host-bridge.ts");
   assert.match(bridge, /const target = current\?\.kind === "slip" \? current\.slip\.target : undefined;/);
   // Session 2F1 (deliberate change): one of the POS app's printers too (raster: the app's id and the printer's paper).
-  assert.match(bridge, /const raster = target\?\.nativeId === undefined \? undefined : \{ nativeId: target\.nativeId, paper: target\.paper \};/);
+  // Phase 3 Session 3E deliberately changed: a network printer of the Windows app 1.12.0 is drawn here too (raster).
+  assert.match(bridge, /const raster = target\?\.nativeId !== undefined \? \{ nativeId: target\.nativeId, paper: target\.paper \} : target\?\.lan !== undefined \? \{ lan: target\.lan, paper: target\.paper \} : undefined;/);
   assert.equal((bridge.match(/, target\?\.printerName, raster\)\);/g) ?? []).length, 3, "every surface prints on the slip's printer");
   assert.match(bridge, /pageStyle: receiptPageStyle\(target\?\.paper \?\? printCfg\.kot\.paperWidth\),/, "its paper on the page");
   assert.match(bridge, /pageStyle: receiptPageStyle\(target\?\.paper \?\? printCfg\.bill\.paperWidth\),/);

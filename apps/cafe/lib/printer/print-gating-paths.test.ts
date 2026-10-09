@@ -43,8 +43,9 @@ function check(problems: string[], ok: boolean, message: string): void {
   if (!ok) problems.push(message);
 }
 
-// Phase 2 Session 2F1 (deliberate change): a printer job of one of the POS app's printers names it (raster).
-const DELEGATE = "if (!shell) return laneSlipPrintOptions(options, raster);";
+// Phase 2 Session 2F1 (deliberate change): a printer job of one of the POS app's printers names it (raster). Phase 3
+// Session 3E (deliberate change): so does a network printer the Windows app writes over raw TCP, even inside the app.
+const DELEGATE = "if (!shell || raster?.lan !== undefined) return laneSlipPrintOptions(options, raster);";
 // The final release check (2026-10-03, deliberate change): the routine beat also says whether this host is
 // silent by construction (beatSilentMode), so an app host never reads "a dialog for every slip".
 const BEAT_CALL = "beat({ deviceId, printer: beatPrinterReport(), silentMode: beatSilentMode() });";
@@ -81,7 +82,8 @@ const CASES: PinCase[] = [
       const p: string[] = [];
       check(p, !/from\s+["']@\/lib\/desktop-shell["']/.test(s), "must not import the desktop-shell seam (import cycle)");
       check(p, !/from\s+["']@\/lib\/printer\/print-lane["']/.test(s), "must not import print-lane (it imports the seam)");
-      check(p, s.includes("if (!rasterCapable()) return options;"), "no capability -> the SAME options reference");
+      // Phase 3 Session 3E (deliberate change): a network printer of the Windows app is drawn whatever the runtime's APIs.
+      check(p, s.includes("if (raster?.lan === undefined && !rasterCapable()) return options;"), "no capability -> the SAME options reference");
       const wrap = between(s, "export function laneSlipPrintOptions", "\n}\n");
       check(p, wrap.includes("lanePrint(iframe, options.documentTitle)"), "print() delegates to lanePrint at call time");
       check(p, !/devicePrinter|nativeBridge|getSnapshot/.test(wrap), "the lane is NOT decided when the options are wrapped");
@@ -111,7 +113,7 @@ const CASES: PinCase[] = [
       { name: "settle wait unconditional again", apply: sub("if (!blocked) await laneSleep", "await laneSleep") },
       { name: "an await sneaks in before print()", apply: sub("  let blocked = false;", "  await laneSleep(0);\n  let blocked = false;") },
       { name: "print() no longer timed", apply: sub("blocked = performance.now() - startedAt >= SYSTEM_PRINT_SETTLE_MS;", "blocked = false;") },
-      { name: "lane decided at wrap time", apply: sub("  if (!rasterCapable()) return options;\n", "  if (!rasterCapable()) return options;\n  const decided = devicePrinter().getSnapshot();\n") },
+      { name: "lane decided at wrap time", apply: sub("  if (raster?.lan === undefined && !rasterCapable()) return options;\n", "  if (raster?.lan === undefined && !rasterCapable()) return options;\n  const decided = devicePrinter().getSnapshot();\n") },
       { name: "settle wait 500 -> 50", apply: sub("SYSTEM_PRINT_SETTLE_MS = 500", "SYSTEM_PRINT_SETTLE_MS = 50") },
       { name: "deadline 12 s -> 18 s", apply: sub("LANE_RASTER_DEADLINE_MS = 12_000", "LANE_RASTER_DEADLINE_MS = 18_000") },
       { name: "write before the blank check", apply: sub("  if (bitmap.rows === 0) throw new Error(DESKTOP_PRINT_EMPTY_MESSAGE);", "  await devicePrinter().write(escposJob(bitmap));\n  if (bitmap.rows === 0) throw new Error(DESKTOP_PRINT_EMPTY_MESSAGE);") },

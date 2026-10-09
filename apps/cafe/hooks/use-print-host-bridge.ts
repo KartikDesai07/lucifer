@@ -135,7 +135,8 @@ export function usePrintHostBridge({ surfacesMounted }: UsePrintHostBridgeOption
   // Phase 2 Session 2E (spec §9.2): a Windows printer job prints on its printer, drawn for its paper; Session 2F1: one of
   // the POS app's printers likewise (raster); else as before.
   const target = current?.kind === "slip" ? current.slip.target : undefined;
-  const raster = target?.nativeId === undefined ? undefined : { nativeId: target.nativeId, paper: target.paper };
+  // Phase 3 Session 3E (spec §9.6): a network printer of the Windows app likewise (raster, through its raw TCP).
+  const raster = target?.nativeId !== undefined ? { nativeId: target.nativeId, paper: target.paper } : target?.lan !== undefined ? { lan: target.lan, paper: target.paper } : undefined;
 
   const printKot = useReactToPrint(slipPrintOptions({
     contentRef: kotRef,

@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { DESKTOP_PRINT_EMPTY_MESSAGE } from "@/lib/desktop-shell-document";
 import type { PaperWidth } from "@/lib/constants";
 import { inAppWebView, rasterCapable } from "@/lib/printer/capabilities";
+import { desktopLan, type DesktopLanTarget } from "@/lib/printer/desktop-lan";
 import { devicePrinter } from "@/lib/printer/device-printer";
 import type { DevicePrinter } from "@/lib/printer/device-printer-store";
 import { RASTER_MAX_ROWS, dotsForPaper, escposJob, rasterizeRgba } from "@/lib/printer/escpos";
@@ -42,9 +43,11 @@ export const LANE_RASTER_DEADLINE_MS = 12_000;
 export const NO_PRINTER_MESSAGE = "No printer is set up on this device. Tap the printer icon to set one up.";
 
 /** Phase 2 Session 2F1 (spec §9.2): a printer job for one of the POS app's printers, by the app's id: drawn at that
- *  printer's paper and written to it (the device's own printer, or another of the app's printers on bridge v2). */
+ *  printer's paper and written to it (the device's own printer, or another of the app's printers on bridge v2). Phase 3
+ *  Session 3E (spec §9.6): or a network printer the Windows app 1.12.0 writes over raw TCP, by its address. */
 export interface RasterPrintTarget {
-  nativeId: string;
+  nativeId?: string;
+  lan?: DesktopLanTarget;
   paper: PaperWidth;
 }
 export const LANE_PRINT_FAILED_MESSAGE = "Could not print the slip. Check the printer, then print it again.";
@@ -132,7 +135,7 @@ async function drawSlip(iframe: HTMLIFrameElement, dots: number): Promise<Raster
   }
 }
 
-async function rasterPrint(iframe: HTMLIFrameElement, printer: Pick<DevicePrinter, "paper">, nativeId?: string): Promise<void> {
+async function rasterPrint(iframe: HTMLIFrameElement, printer: Pick<DevicePrinter, "paper">, target?: Pick<RasterPrintTarget, "nativeId" | "lan">): Promise<void> {
   const dots = dotsForPaper(printer.paper);
   const drawn = await drawSlip(iframe, dots);
   const bitmap = rasterizeRgba(drawn.pixels, drawn.width, drawn.height, dots);
@@ -140,7 +143,9 @@ async function rasterPrint(iframe: HTMLIFrameElement, printer: Pick<DevicePrinte
   if (bitmap.rows === 0) throw new Error(DESKTOP_PRINT_EMPTY_MESSAGE);
   if (bitmap.rows > RASTER_MAX_ROWS) throw new Error(RASTER_TOO_LARGE_MESSAGE);
   // Phase 2 Session 2F1: a printer job names its printer (the app's id); every other slip goes to this device's own.
-  if (nativeId !== undefined) return printerWriter(nativeId)(escposJob(bitmap));
+  // Phase 3 Session 3E: a network printer on the Windows app, through the app's raw TCP (the same bytes).
+  if (target?.lan !== undefined) return desktopLan().write(target.lan, escposJob(bitmap));
+  if (target?.nativeId !== undefined) return printerWriter(target.nativeId)(escposJob(bitmap));
   await devicePrinter().write(escposJob(bitmap));
 }
 
@@ -175,10 +180,11 @@ function laneOnPrintError(
  * Session 2F1: a printer job for one of the POS app's printers prints there.
  */
 export function laneSlipPrintOptions<T extends UseReactToPrintOptions>(options: T, raster?: RasterPrintTarget): T {
-  if (!rasterCapable()) return options;
+  // Phase 3 Session 3E: a network printer of the Windows app is drawn here whatever printer APIs this runtime has.
+  if (raster?.lan === undefined && !rasterCapable()) return options;
   return {
     ...options,
-    print: (iframe: HTMLIFrameElement) => (raster === undefined ? lanePrint(iframe, options.documentTitle) : rasterPrint(iframe, raster, raster.nativeId)),
+    print: (iframe: HTMLIFrameElement) => (raster === undefined ? lanePrint(iframe, options.documentTitle) : rasterPrint(iframe, raster, raster)),
     onPrintError: options.onPrintError ?? laneOnPrintError(options),
   };
 }

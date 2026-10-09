@@ -134,12 +134,12 @@ async function printThroughShell(shell: PosDesktopBridge, html: string, printerN
   }
 }
 
-// Wraps a useReactToPrint options object so it prints through the desktop
-// shell when one is present; without one it defers to the printer lanes
-// (lib/printer/lane-print.ts), which return the SAME reference on a plain browser.
+// Wraps a useReactToPrint options object so it prints through the desktop shell when one is present; without one, or for
+// a network printer the shell writes over raw TCP (Phase 3 Session 3E: drawn here, lib/printer/desktop-lan.ts), it defers
+// to the printer lanes (lib/printer/lane-print.ts), which return the SAME reference on a plain browser.
 export function slipPrintOptions<T extends UseReactToPrintOptions>(options: T, printerName?: string, raster?: RasterPrintTarget): T {
   const shell = desktopShell();
-  if (!shell) return laneSlipPrintOptions(options, raster);
+  if (!shell || raster?.lan !== undefined) return laneSlipPrintOptions(options, raster);
   return {
     ...options,
     print: async (iframe: HTMLIFrameElement) => {
