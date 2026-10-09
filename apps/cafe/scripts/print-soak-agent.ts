@@ -11,7 +11,7 @@
  * it prints token slips as the page it stands for does (`tokens`).
  */
 import net from "node:net";
-import { PRINT_ACK_UNREACHABLE, type LeasedPrintJob, type PrintJobRef } from "@pos/shared/print-agent-wire";
+import { PRINT_ACK_UNREACHABLE, printAgentTimerDelayMs, type LeasedPrintJob, type PrintJobRef } from "@pos/shared/print-agent-wire";
 
 export const SOAK_TAB = "soak-tab";
 const SLIP_BYTES = 4_096;
@@ -41,9 +41,13 @@ export interface SoakAgent {
   network?: ReadonlySet<string>;
 }
 
-function noteTimer(agent: SoakAgent, iso: unknown): void {
-  const at = typeof iso === "string" ? Date.parse(iso) : Number.NaN;
-  if (Number.isFinite(at)) agent.timerAt = agent.timerAt === null || agent.timerAt === undefined ? at : Math.min(agent.timerAt, at);
+/** The final Phase 3 gate (the 3G review's m-2): the server's time sets the timer as the page sets its own, 2 s to 30 s
+ *  ahead (printAgentTimerDelayMs), so a far backoff or "not due yet" is asked again after 30 s, as a page asks. */
+function noteTimer(agent: SoakAgent, iso: unknown, now = Date.now()): void {
+  const server = typeof iso === "string" ? Date.parse(iso) : Number.NaN;
+  if (!Number.isFinite(server)) return;
+  const at = now + printAgentTimerDelayMs(server, now);
+  agent.timerAt = agent.timerAt === null || agent.timerAt === undefined ? at : Math.min(agent.timerAt, at);
 }
 
 /** The page's timer is due: the soak leases now (between its orders, as the page's timer fires between taps). */

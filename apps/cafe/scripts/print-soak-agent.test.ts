@@ -179,3 +179,17 @@ test("a refusal before any byte on a network printer's line says unreachable; a 
     await new Promise<void>((resolve) => cutter.close(() => resolve()));
   }
 });
+
+// The final Phase 3 gate (the 3G review's m-2): the soak's one timer takes the server's time as the page's does
+// (printAgentTimerDelayMs: 2 s to 30 s ahead), so a far retryAt or backoff is asked again after 30 s, as a page asks.
+test("the server's times set the soak's timer as the page clamps them: at most 30 s ahead, at least 2 s", async () => {
+  for (const [ahead, low, high] of [[120_000, 29_000, 30_000], [500, 1_900, 2_000], [-5_000, 1_900, 2_000]] as const) {
+    const agent: SoakAgent = { lines: new Map([["p-bar", { host: "127.0.0.1", port: 1 }]]), device: "soak-device", direct: false, timerAt: null };
+    const call: SoakCall = async () => ({ status: 200, json: { data: { jobs: [], retryAt: new Date(Date.now() + ahead).toISOString() } } });
+    const before = Date.now();
+    await leaseLines(agent, call);
+    const after = Date.now();
+    const at = agent.timerAt ?? 0;
+    assert.ok(at >= before + low && at <= after + high, `a retryAt ${ahead} ms ahead: the timer ${at - before} ms ahead (${low}–${high})`);
+  }
+});
