@@ -10,7 +10,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
-    "test": "node --import tsx --test src/server-url.test.ts src/store.test.ts src/window-state.test.ts src/escpos.test.ts src/raw-spool.test.ts src/printer-check.test.ts src/desktop-paths.test.ts",
+    "test": "node --import tsx --test src/server-url.test.ts src/store.test.ts src/window-state.test.ts src/escpos.test.ts src/raw-spool.test.ts src/raw-tcp.test.ts src/printer-check.test.ts src/desktop-paths.test.ts",
     "start": "npm run build && electron .",
     "dist": "npm run build && electron-builder --win nsis --publish never"
   },
