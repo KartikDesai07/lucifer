@@ -340,10 +340,11 @@ and the app opened once there, then the Windows app.
       the old one (no uninstall: it keeps its printers). 64-bit (arm64-v8a) for most phones, the 32-bit
       (armeabi-v7a) one for old phones. Check its SHA-256 against the release's `SHA256SUMS.txt` before you send
       it.
-- [ ] **Then open the app once** on that device. The install itself shows "POS printing is off. Tap to start.":
-      tap it (or open the app). The new app keeps its page running while it is hidden, so the page must be this
-      release's: installed before the web was updated and not opened since, it would keep an older page running
-      in the background, and that page asks the server every 15 seconds.
+- [ ] **Then open the app once** on that device. An update over a POS app from printing Phase 3 on may show
+      "POS printing is off. Tap to start." (tap it); the Phase 2 app it replaces shows nothing, so open the app
+      from its icon. The new app keeps its page running while it is hidden, so the page must be this release's:
+      installed before the web was updated and not opened since, it would keep an older page running in the
+      background, and that page asks the server every 15 seconds.
 - [ ] **Allow notifications** when the app asks (Android 13 and later), so "POS printing is off. Tap to start." can
       show after a restart or a reboot.
 - [ ] **Battery settings** on a Xiaomi, OPPO, vivo or Samsung printing device: the printer panel → **More

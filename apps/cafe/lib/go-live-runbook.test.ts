@@ -1460,3 +1460,15 @@ test("PIN §1 (printing Phase 3, Session 3G): the Phase 3 release step keeps its
   assert.ok(step.includes("Phase 3 checks (failover, health, the service)"), "the step sends the deployer to the Phase 3 real-printer checks");
   assert.ok(checklist.includes("## Phase 3 checks (failover, health, the service)"), "... which TEST-CHECKLIST holds");
 });
+
+// The final Phase 3 gate (the 3G review's m-5): only a POS app from printing Phase 3 on keeps the page's wish to print, so
+// only an update over such an app shows "POS printing is off. Tap to start."; over the Phase 2 app this release replaces
+// nothing shows. The step must not promise the notice: the deployer opens the app once either way.
+test("PIN §1 (printing Phase 3, the final gate's m-5): opening the app once does not wait for a notice the Phase 2 app it replaces never shows", () => {
+  const step = norm(sectionSlice("### Existing cafes: the printing Phase 3 release"));
+  const open = step.slice(step.indexOf("**Then open the app once**"), step.indexOf("**Allow notifications**"));
+  assert.ok(open.length > 0, "landmark: the step that opens the app once, before the notifications step");
+  assert.ok(!open.includes("The install itself shows"), "no promise that every install shows the notice");
+  assert.ok(open.includes("the Phase 2 app it replaces shows nothing"), "over the Phase 2 app nothing shows");
+  assert.ok(open.includes("open the app from its icon"), "... so the deployer opens the app either way");
+});
