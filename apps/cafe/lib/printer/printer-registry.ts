@@ -1,3 +1,4 @@
+import { desktopLan, desktopLanCannotPrint } from "@/lib/printer/desktop-lan";
 import { devicePrinter } from "@/lib/printer/device-printer";
 import { nativePool, poolPrinterCannotPrint } from "@/lib/printer/native-pool";
 import type { PrinterStatus } from "@/lib/printer/web-printer-types";
@@ -23,13 +24,16 @@ export function printersState(): object {
   return lastState;
 }
 
-/** That printer's state as the app reports it: "none" when the app has no printer with that id. */
+/** That printer's state as the app reports it: "none" when the app has no printer with that id. Phase 3 Session 3E: a
+ *  network printer of the Windows app 1.12.0 by the same id ("tcp:<host>:<port>"), as its check or last slip said. */
 export function printerStatusOf(nativeId: string): PrinterStatus {
-  return nativePool().printerOf(nativeId)?.status ?? "none";
+  return nativePool().printerOf(nativeId)?.status ?? desktopLan().printerOf(nativeId)?.status ?? "none";
 }
 
 /** Session 3C (spec §10): the app says that printer cannot print now (out of paper, cover open, an error). */
 export function printerCannotPrintOf(nativeId: string): boolean {
   const printer = nativePool().printerOf(nativeId);
-  return printer !== null && poolPrinterCannotPrint(printer);
+  if (printer !== null) return poolPrinterCannotPrint(printer);
+  const lan = desktopLan().printerOf(nativeId);
+  return lan !== null && desktopLanCannotPrint(lan);
 }

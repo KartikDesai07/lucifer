@@ -11,6 +11,7 @@ import { isDesktopShell } from "@/lib/desktop-shell";
 import { desktopPrintsOnNamed } from "@/lib/desktop-shell-printer";
 import { agentPrintersOf, dotPrintersOf, lanPrintersToAdd, lanPrintersToRemove, ownPrinterInSetup, type AgentPrinters, type DesktopPrinters } from "@/lib/print-agent-printers";
 import { onPrintersWritingChange, onTakenOverChange, printersBeingWritten, takenOverPrinterIds } from "@/lib/print-agent-seams";
+import { DESKTOP_LAN_CHECK_MS, desktopLan, desktopLanApi, type DesktopLanTarget } from "@/lib/printer/desktop-lan";
 import { refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
 import { nativePool, type NativePoolSnapshot } from "@/lib/printer/native-pool";
 import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
@@ -63,7 +64,8 @@ export function usePrinters(enabled: boolean): PrinterConfig[] {
 export function useDesktopPrinters(): DesktopPrinters | null {
   const snapshot = useDesktopPrinterSnapshot();
   const lane = usePrintLane();
-  return useMemo(() => (lane === "desktop" ? { selected: snapshot.selected, names: snapshot.names, named: desktopPrintsOnNamed() } : null), [lane, snapshot]);
+  // Phase 3 Session 3E: `lan`, the app writes network printers itself (1.12.0).
+  return useMemo(() => (lane === "desktop" ? { selected: snapshot.selected, names: snapshot.names, named: desktopPrintsOnNamed(), lan: desktopLanApi() !== null } : null), [lane, snapshot]);
 }
 
 /** Session 2F1 (spec §9.2): the POS app's printers on bridge v2; null on any other device, and on an app on v1. */
@@ -151,5 +153,20 @@ export function useAgentPrinters(deviceId: string, enabled: boolean): AgentPrint
     for (const id of remove) void nativePool().remove(id).catch(() => undefined);
     if (JSON.stringify(record) !== JSON.stringify(readLanAdded())) writeLanAdded(record);
   }, [enabled, loaded, printers, deviceId, pool, writing]);
-  return useMemo(() => agentPrintersOf(printers, deviceId, local, desktop, pool), [printers, deviceId, local, desktop, pool]);
+  const agent = useMemo(() => agentPrintersOf(printers, deviceId, local, desktop, pool), [printers, deviceId, local, desktop, pool]);
+  // Phase 3 Session 3E (spec §9.6): on the Windows app 1.12.0 the network printers it prints (its own and the ones it may
+  // take over) are checked by the app at once and every DESKTOP_LAN_CHECK_MS (a connect and DLE EOT from the app: no
+  // request), so a printer is named in a lease only while the app reaches it.
+  const desktopLanOn = enabled && desktop?.lan === true;
+  const lanTargets = JSON.stringify(Object.values(agent.targets).flatMap((target) => (target.lan === undefined ? [] : [target.lan])));
+  useEffect(() => {
+    if (!desktopLanOn) return;
+    desktopLan().watch(JSON.parse(lanTargets) as DesktopLanTarget[]);
+  }, [desktopLanOn, lanTargets]);
+  useEffect(() => {
+    if (!desktopLanOn) return;
+    const timer = window.setInterval(() => void desktopLan().check(), DESKTOP_LAN_CHECK_MS);
+    return () => window.clearInterval(timer);
+  }, [desktopLanOn]);
+  return agent;
 }

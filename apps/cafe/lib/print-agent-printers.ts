@@ -4,6 +4,7 @@ import { printerWriterDeviceId, printersModeOn, routablePrinters, type PrinterCo
 import type { PrintAgentResult } from "@/lib/print-agent-types";
 import type { SlipPrintTarget } from "@/lib/print-host-slips";
 import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+import { desktopLanId } from "@/lib/printer/desktop-lan";
 import type { DevicePrinter } from "@/lib/printer/device-printer-store";
 import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
 import type { PrinterStatus } from "@/lib/printer/web-printer-types";
@@ -29,6 +30,8 @@ export interface DesktopPrinters {
   selected: string | null;
   names: readonly string[] | null;
   named: boolean;
+  /** Phase 3 Session 3E (spec §9.6): the app writes network printers itself over raw TCP (1.12.0: printRaw, lanStatus). */
+  lan?: boolean;
 }
 
 /** Session 2F1 (spec §9.2): the POS app's printers on bridge v2 (nativePool()): each one's id and state. null on any
@@ -63,6 +66,9 @@ export function printerIsLocal(printer: PrinterConfig, local: DevicePrinter | nu
   if (pool !== null) return nativeIdOf(printer, pool) !== null;
   const connection = printer.connection;
   if (connection.kind === "lan") {
+    // Phase 3 Session 3E (spec §9.6): the Windows app 1.12.0 writes any network printer itself; its link (desktopLan, the
+    // app's check) decides when it prints one.
+    if (desktop?.lan === true) return true;
     // Ignoring case (the 2D gate's note): the server lower-cases the host, and so does the app; a hand-typed one may not.
     return local?.kind === "native" && local.transport === "tcp" && local.printerId.toLowerCase() === `tcp:${connection.host}:${connection.port}`.toLowerCase();
   }
@@ -121,10 +127,11 @@ function printersWrittenBy(printers: readonly PrinterConfig[], deviceId: string)
  *  request; the app probes a down one every 30 s), so its link is known before any takeover, it is named in a lease only
  *  while the app reaches it, and a takeover prints at once. The server grants its line only while this device writes it
  *  now (printerActiveWriter); it never makes this device a writer by the setup. */
-export function takeoverPrintersOf(printers: readonly PrinterConfig[], deviceId: string, pool: NativePoolView | null): PrinterConfig[] {
+export function takeoverPrintersOf(printers: readonly PrinterConfig[], deviceId: string, pool: NativePoolView | null, desktopLan = false): PrinterConfig[] {
   // The gate's emulator pre-run (E-1): only a device that writes a printer by the setup (P3-2: it polls the wake, so it
-  // can be online for one); a device that writes nothing never adds another device's printers to its app.
-  if (pool === null || printersWrittenBy(printers, deviceId).length === 0) return [];
+  // can be online for one); a device that writes nothing never adds another device's printers to its app. Phase 3
+  // Session 3E (spec §9.6): the Windows app 1.12.0 (`desktopLan`) takes them over too, by the same rule.
+  if ((pool === null && !desktopLan) || printersWrittenBy(printers, deviceId).length === 0) return [];
   return routablePrinters(printers).filter((printer) => printer.connection.kind === "lan" && printerWriterDeviceId(printer) !== deviceId);
 }
 
@@ -137,6 +144,9 @@ function targetsOf(printers: readonly PrinterConfig[], desktop: DesktopPrinters 
     if (nativeId !== null) targets[printer.id] = { nativeId, paper: `${printer.paper}mm` };
     else if (desktop?.named === true && printer.connection.kind === "device" && printer.connection.transport === "windows") {
       targets[printer.id] = { printerName: printer.connection.address, paper: `${printer.paper}mm` };
+    } else if (desktop?.lan === true && printer.connection.kind === "lan") {
+      // Phase 3 Session 3E (spec §9.6): a network printer of the Windows app 1.12.0, by its address, drawn for its paper.
+      targets[printer.id] = { lan: { host: printer.connection.host, port: printer.connection.port }, paper: `${printer.paper}mm` };
     }
   }
   return targets;
@@ -144,9 +154,11 @@ function targetsOf(printers: readonly PrinterConfig[], desktop: DesktopPrinters 
 
 export function agentPrintersOf(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, desktop: DesktopPrinters | null, pool: NativePoolView | null = null): AgentPrinters {
   const mine = printersWrittenBy(printers, deviceId);
-  // Session 3B: a network printer it may take over prints here once the app has it.
-  const candidates = takeoverPrintersOf(printers, deviceId, pool);
-  const takeover = candidates.filter((printer) => nativeIdOf(printer, pool) !== null);
+  // Session 3B: a network printer it may take over prints here once the app has it. Session 3E: the Windows app 1.12.0
+  // writes any of them (its link decides when).
+  const desktopLan = desktop?.lan === true;
+  const candidates = takeoverPrintersOf(printers, deviceId, pool, desktopLan);
+  const takeover = candidates.filter((printer) => desktopLan || nativeIdOf(printer, pool) !== null);
   const here = [...mine.filter((printer) => printerIsLocal(printer, local, desktop, pool)), ...takeover];
   return {
     printersMode: printersModeOn(printers),
@@ -154,7 +166,7 @@ export function agentPrintersOf(printers: readonly PrinterConfig[], deviceId: st
     localIds: here.map((printer) => printer.id),
     lanIds: here.filter((printer) => printer.connection.kind === "lan").map((printer) => printer.id),
     takeoverIds: takeover.map((printer) => printer.id),
-    takeoverMissingIds: candidates.filter((printer) => nativeIdOf(printer, pool) === null).map((printer) => printer.id),
+    takeoverMissingIds: candidates.filter((printer) => !takeover.includes(printer)).map((printer) => printer.id),
     targets: targetsOf(here, desktop, pool),
   };
 }
@@ -171,8 +183,10 @@ export function readyPrinterIdsOf(
   cannotPrint: (nativeId: string) => boolean = () => false,
 ): string[] {
   return localIds.filter((id) => {
-    const nativeId = targets[id]?.nativeId;
-    return nativeId === undefined ? canPrint : statusOf(nativeId) === "connected" && !cannotPrint(nativeId);
+    const target = targets[id];
+    // Phase 3 Session 3E: a network printer of the Windows app by its own link too (desktopLan, by the same id).
+    const key = target?.nativeId ?? (target?.lan === undefined ? undefined : desktopLanId(target.lan));
+    return key === undefined ? canPrint : statusOf(key) === "connected" && !cannotPrint(key);
   });
 }
 

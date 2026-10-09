@@ -130,8 +130,9 @@ test("PIN (2B): the draining tab offers itself for direct print, every answer th
   assert.ok(core.includes("if (held.length > 0 && enabled && !busy) return void cycle(true);"), "a held job prints before any lease, past the printer gate (its attempt was made while ready)");
   assert.ok(core.includes("if (deps.now() - next.at < PRINT_DIRECT_HOLD_MS) return next.job;"), "but only well inside its lease (the fresh review, I-1)");
   assert.ok(core.includes("again = answers.get(key)?.more !== false;"), "the ack's more decides the next lease");
-  // The 2F1 review gate (N-1, deliberate change): only a change of what can print now is a nudge.
-  assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, canPrint, poolReady]);"), "a printer state change is a nudge, never a lease queued behind a print");
+  // The 2F1 review gate (N-1, deliberate change): only a change of what can print now is a nudge. Phase 3 Session 3E
+  // deliberately changed: a network printer of the Windows app too.
+  assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, canPrint, poolReady, lanReady]);"), "a printer state change is a nudge, never a lease queued behind a print");
   assert.ok(core.includes("if (opened) nudge();"), "so is the gate opening or the bridge freeing up");
 });
 
@@ -168,7 +169,9 @@ test("PIN (spec §7.7): both receipts print the banner first, and every surface 
 // over are kept for its top-bar dot.
 test("PIN (3B): the wake says lanFailover on bridge v2, tokenSlips and the printers' health; the ack and the pulse say tokens; the agent knows its network printers", () => {
   const wake = src("apps/cafe/hooks/use-print-agent-wake.ts");
-  assert.ok(wake.includes("lanFailover: caps.native && nativeV2Bridge() !== null,"), "only the POS app on bridge v2 takes a network printer over (the Windows app from 1.12.0, Session 3E)");
+  // Phase 3 Session 3E deliberately changed: the Windows app 1.12.0 too (it writes network printers itself, raw TCP).
+  assert.ok(wake.includes("lanFailover: (caps.native && nativeV2Bridge() !== null) || desktopLan,"), "the POS app on bridge v2 and the Windows app 1.12.0 take a network printer over");
+  assert.ok(wake.includes("const desktopLan = desktop && desktopLanApi() !== null;") && wake.includes("lan: caps.native || desktopLan,"), "the Windows app 1.12.0 says it writes network printers");
   assert.ok(wake.includes("tokenSlips: true,"), "the wake says this page prints token slips");
   assert.ok(wake.includes("...(health.length > 0 ? { printers: health } : {}),"), "the health of the printers it prints here rides the beat");
   assert.ok(wake.includes("setTakenOverPrinters(data.takenOver ?? []);"), "the printers it took over, kept for its dot");

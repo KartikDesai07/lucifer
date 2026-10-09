@@ -13,6 +13,7 @@ import { printerHealthReports, setTakenOverPrinters } from "@/lib/print-agent-se
 import { olderWakeBody, printAgentSkew } from "@/lib/print-agent-skew";
 import { nativeBridge } from "@/lib/printer/native-bridge";
 import { NATIVE_BRIDGE_V2, nativeV2Bridge } from "@/lib/printer/native-bridge-v2";
+import { desktopLanApi } from "@/lib/printer/desktop-lan";
 import { bumpPrintWakeBudget, mergePrintWakeBudget, readPrintWakeBudget, writePrintWakeBudget, type PrintWakeBudget } from "@/lib/print-wake-budget";
 import { currentLane, defaultDeviceLabel, printCapabilities } from "@/lib/printer/print-lane";
 import { isRealtimeHealthy } from "@/lib/realtime-client";
@@ -31,6 +32,8 @@ const WAKE_URL = "/api/print-jobs/wake";
 function wakeBody(deviceId: string) {
   const caps = printCapabilities();
   const desktop = isDesktopShell();
+  // Phase 3 Session 3E (spec §9.6): the Windows app 1.12.0 writes network printers itself (raw TCP).
+  const desktopLan = desktop && desktopLanApi() !== null;
   const health = printerHealthReports();
   return {
     deviceId,
@@ -38,15 +41,15 @@ function wakeBody(deviceId: string) {
     shell: caps.native ? "android" : desktop ? "windows" : "browser",
     ...(caps.native ? { nativeProtocol: nativeV2Bridge() !== null ? NATIVE_BRIDGE_V2 : 1 } : {}),
     capabilities: {
-      lan: caps.native,
+      lan: caps.native || desktopLan,
       bluetooth: caps.native || caps.bluetooth,
       usb: caps.native,
       windowsPrinters: desktop,
       webSerial: caps.serial,
       webBluetooth: caps.bluetooth,
-      // Session 3B (spec §9.3): it can write any network printer the setup names: the POS app on bridge v2 (the Windows app
-      // from 1.12.0, Session 3E). A page that cannot never takes a printer over.
-      lanFailover: caps.native && nativeV2Bridge() !== null,
+      // Session 3B (spec §9.3): it can write any network printer the setup names: the POS app on bridge v2, and the Windows
+      // app from 1.12.0 (Session 3E). A page that cannot never takes a printer over.
+      lanFailover: (caps.native && nativeV2Bridge() !== null) || desktopLan,
     },
     // Session 3B (the token fix's M-2): this page prints token slips, so the wake's count includes them.
     tokenSlips: true,

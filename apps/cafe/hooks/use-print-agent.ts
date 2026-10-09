@@ -7,7 +7,7 @@ import { PRINT_SETUP_REFRESH_MIN_MS } from "@pos/shared/print-budget";
 import type { LeasedPrintJob, PrintAckData, PrintJobsForMe, PrintLeaseData } from "@pos/shared/print-agent-wire";
 import { PRINTERS_KEYS } from "@/hooks/use-agent-printers";
 import type { PosPulseData } from "@pos/shared/self-order-alert";
-import { useCanPrintNow, useNativePool } from "@/hooks/use-device-printer";
+import { useCanPrintNow, useDesktopLan, useNativePool } from "@/hooks/use-device-printer";
 import { usePrintAgentWake } from "@/hooks/use-print-agent-wake";
 import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
 import { apiSend } from "@/lib/api-client";
@@ -35,6 +35,7 @@ import type { HostPrintDone } from "@/lib/print-host-outcomes";
 import { PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print-host-slips";
 import { PrintWriteError } from "@/lib/print-write-outcome";
 import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
+import { connectedLanKey, desktopPrintersState } from "@/lib/printer/desktop-lan";
 import { desktopPrinterSnapshot, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
 import { devicePrinter } from "@/lib/printer/device-printer";
 import { connectedPoolKey, nativePool, poolDefaultCannotPrint } from "@/lib/printer/native-pool";
@@ -90,6 +91,8 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
   const canPrint = useCanPrintNow();
   // The 2F1 review gate (N-1): which of the POS app's printers can print now (bridge v2).
   const poolReady = connectedPoolKey(useNativePool());
+  // Phase 3 Session 3E: which of the Windows app's network printers can print now (1.12.0).
+  const lanReady = connectedLanKey(useDesktopLan());
   const queueRef = useRef(queueSlip);
   useEffect(() => {
     queueRef.current = queueSlip;
@@ -196,7 +199,8 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
       printerReady: () => (readyRef.current.length === 0 ? canPrintNow() && !poolDefaultCannotPrint(nativePool().getSnapshot()) : readyNow().length > 0),
       // Session 2E: the Windows app's printer list read again (a printer added or removed) releases a refusal's hold;
       // Session 2F1: so does any change of this device's printers (its own, or another of the app's).
-      printerState: () => (isDesktopShell() ? desktopPrinterSnapshot() : printersState()),
+      // Session 3E: on the Windows app a network printer's link too.
+      printerState: () => (isDesktopShell() ? desktopPrintersState(desktopPrinterSnapshot()) : printersState()),
       readyPrinters: readyNow,
       // The 2F1 review gate (M-1, with the 2E gate's M-9): a printer job's refusal holds its own printer's line, whether
       // or not this device still prints it (one that left the app's list between the request and the print), never the
@@ -226,7 +230,7 @@ export function usePrintAgent({ enabled, isHost, printers, deviceId, tabId, busy
   // disconnected, every 30 s) lease nothing while another printer prints.
   useEffect(() => {
     agent?.nudge();
-  }, [agent, canPrint, poolReady]);
+  }, [agent, canPrint, poolReady, lanReady]);
 
   // Session 2C: the printers it prints on changed (a setup save, its printer reconnected as another): look again.
   useEffect(() => {

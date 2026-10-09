@@ -13,6 +13,7 @@ import {
   type DesktopChosen,
   type DesktopPrinterSnapshot,
 } from "@/lib/printer/desktop-printer-state";
+import { EMPTY_DESKTOP_LAN, desktopLan, type DesktopLanSnapshot } from "@/lib/printer/desktop-lan";
 import { NONE_SNAPSHOT, devicePrinter, type PrinterSnapshot } from "@/lib/printer/device-printer";
 import { NATIVE_READY_EVENT } from "@/lib/printer/native-bridge";
 import { EMPTY_POOL, nativePool, type NativePoolSnapshot } from "@/lib/printer/native-pool";
@@ -78,6 +79,15 @@ function subscribePool(onChange: () => void): () => void {
 /** Phase 2 Session 2F1 (spec §9.2): the POS app's printers on bridge v2 (inactive everywhere else). */
 export function useNativePool(): NativePoolSnapshot {
   return useSyncExternalStore(subscribePool, () => nativePool().getSnapshot(), () => EMPTY_POOL);
+}
+
+function subscribeDesktopLan(onChange: () => void): () => void {
+  return desktopLan().subscribe(onChange);
+}
+
+/** Phase 3 Session 3E (spec §9.6): the network printers the Windows app 1.12.0 writes for this page (none elsewhere). */
+export function useDesktopLan(): DesktopLanSnapshot {
+  return useSyncExternalStore(subscribeDesktopLan, () => desktopLan().getSnapshot(), () => EMPTY_DESKTOP_LAN);
 }
 
 function subscribeAny(onChange: () => void): () => void {
