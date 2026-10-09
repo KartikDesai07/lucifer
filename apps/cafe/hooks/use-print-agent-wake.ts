@@ -8,7 +8,7 @@ import { apiSend } from "@/lib/api-client";
 import { isDesktopShell } from "@/lib/desktop-shell";
 import type { PrintAgent } from "@/lib/print-agent";
 import { jobsForMeLeasable, type AgentPrinters } from "@/lib/print-agent-printers";
-import { createPrintAgentWake } from "@/lib/print-agent-wake";
+import { createPrintAgentWake, printAgentWakeMayPoll } from "@/lib/print-agent-wake";
 import { printerHealthReports, setTakenOverPrinters } from "@/lib/print-agent-seams";
 import { olderWakeBody, printAgentSkew } from "@/lib/print-agent-skew";
 import { nativeBridge } from "@/lib/printer/native-bridge";
@@ -88,7 +88,7 @@ export function usePrintAgentWake({ agent, enabled, isHost, printers, deviceId, 
       // Phase 3 Session 3D (the gold's review, I-3): in the POS app a hidden page polls too: it is the device's
       // heartbeat and health beat while it prints with the screen off (the app's service runs it), at the cadence a
       // visible writer has; a hidden browser tab still never polls.
-      mayPoll: () => isDesktopShell() || nativeBridge() !== null || document.visibilityState === "visible",
+      mayPoll: () => printAgentWakeMayPoll({ desktopShell: isDesktopShell(), posApp: nativeBridge() !== null, visible: document.visibilityState === "visible" }),
       spendOne: () => {
         const dayKey = cafeDateString();
         const { record, allowed } = bumpPrintWakeBudget(mergePrintWakeBudget(readPrintWakeBudget(), memory, dayKey), dayKey, capRef.current);

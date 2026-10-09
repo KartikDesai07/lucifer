@@ -215,7 +215,9 @@ test("PIN (3C review): the beat's health clock runs on every change of the POS a
 // prints with the screen off), and the app's 15 s hidden tick never leases (it was 4 empty leases a minute per device).
 test("PIN (3D): in the POS app a hidden page polls the wake; the app's hidden tick does not kick the agent", () => {
   const wake = src("apps/cafe/hooks/use-print-agent-wake.ts");
-  assert.ok(wake.includes('mayPoll: () => isDesktopShell() || nativeBridge() !== null || document.visibilityState === "visible",'), "the POS app's hidden page keeps its heartbeat; a hidden browser tab does not poll");
+  // Phase 3 Session 3G deliberately changed (the second golden review's m-6): the rule is printAgentWakeMayPoll, tested by
+  // behaviour in lib/print-agent.test.ts; the hook gives it the same three facts.
+  assert.ok(wake.includes('mayPoll: () => printAgentWakeMayPoll({ desktopShell: isDesktopShell(), posApp: nativeBridge() !== null, visible: document.visibilityState === "visible" }),'), "the POS app's hidden page keeps its heartbeat; a hidden browser tab does not poll");
   assert.ok(!src("apps/cafe/hooks/use-print-agent.ts").includes('nativeOn("app.wake"'), "the hidden tick is no reason to lease");
 });
 

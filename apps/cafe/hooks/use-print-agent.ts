@@ -51,10 +51,11 @@ import { cafeDateString } from "@/lib/utils";
 //   · a "print-status" frame aimed at this device (R7), or — the host only — the "print-job" nudge;
 //   · the existing 20 s pulse: every agent names itself there (?device=) and leases when its own line is
 //     not empty (the host too, since the Phase 1 final gate: a spent wake share must not stop it);
-//   · the host only: the wake POST at the spec §9.1 cadence (R6; hooks/use-print-agent-wake.ts since the 2E gate);
+//   · a device that prints for others (the host; in printers mode each printer's writer): the wake POST at the spec §9.1
+//     cadence (R6, printAgentPollsWake; hooks/use-print-agent-wake.ts since the 2E gate);
 //   · its printer coming back, the bridge freeing up, the app returning to the screen;
 //   · its one local timer (retryAt / nextAttemptAt from the server).
-// No ordering device gains a recurring request: only the host polls, and only the wake it always had.
+// No ordering device gains a recurring request: only a device that prints for others polls, and only the wake.
 
 const LEASE_URL = "/api/print-jobs/lease";
 

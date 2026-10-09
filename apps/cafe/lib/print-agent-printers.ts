@@ -163,7 +163,8 @@ export function agentPrintersOf(printers: readonly PrinterConfig[], deviceId: st
   const candidates = takeoverPrintersOf(printers, deviceId, pool, desktopLan);
   const takeover = candidates.filter((printer) => desktopLan || nativeIdOf(printer, pool) !== null);
   const here = [...mine.filter((printer) => printerIsLocal(printer, local, desktop, pool)), ...takeover];
-  const names = desktopLan && desktop?.named === true ? desktop.names : null;
+  // The 3E review gate (m-2): an empty list is Windows saying nothing (its spooler restarting), not every printer gone.
+  const names = desktopLan && desktop?.named === true && desktop.names !== null && desktop.names.length > 0 ? desktop.names : null;
   return {
     printersMode: printersModeOn(printers),
     isWriter: mine.length > 0,

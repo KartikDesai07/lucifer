@@ -5,7 +5,7 @@ import { ApiError } from "@/lib/api-client";
 import { PRINT_ACK_PENDING_MAX_MS, PRINT_ACK_RETRY_MS } from "@pos/shared/print-lifecycle";
 import { PRINT_WAKE_FAST_MS, PRINT_WAKE_SLOW_MS, PRINT_WAKE_SOCKET_MS } from "@pos/shared/print-job";
 import { PRINT_AGENT_REFUSED_RECHECK_MS, type LeasedPrintJob, type PrintAckData, type PrintLeaseData } from "@pos/shared/print-agent-wire";
-import { createPrintAgentWake } from "@/lib/print-agent-wake";
+import { createPrintAgentWake, printAgentWakeMayPoll } from "@/lib/print-agent-wake";
 import { leasedJobsOf, printAgentEnqueueHeaders, printAgentHeaders, printJobRefOf } from "@/lib/print-agent-calls";
 import { createHostSlipOutcomes } from "@/lib/print-host-outcomes";
 import {
@@ -335,6 +335,52 @@ test("the host's wake polls at the spec §9.1 cadence, never while hidden or pas
   await advance(w, 10 * PRINT_WAKE_SLOW_MS);
   assert.equal(wakes, 3, "a hidden tab never polls");
   wake.stop();
+});
+
+// The 3C review gate's second golden review (m-6; Session 3D's I-3 fix was pinned by its text only): a hidden page in the
+// POS app keeps its wake, the heartbeat of a device that prints with the screen off, at a visible writer's cadence; the
+// Windows app polls in the tray; a hidden browser tab never polls.
+test("3G: a hidden page in the POS app, and the Windows app, poll the wake at a visible writer's cadence; a hidden browser tab never does", async () => {
+  const run = async (where: { desktopShell: boolean; posApp: boolean; visible: boolean }) => {
+    const { w } = world();
+    let wakes = 0;
+    let waiting = 0;
+    const wake = createPrintAgentWake({
+      wake: async () => {
+        wakes += 1;
+        return { jobsForMe: { count: waiting, oldestCreatedAt: null }, agents: 1, agentDailyCap: 14_400, serverNow: new Date(w.now).toISOString() };
+      },
+      socketHealthy: () => false,
+      mayPoll: () => printAgentWakeMayPoll(where),
+      spendOne: () => true,
+      onJobs: () => undefined,
+      now: () => w.now,
+      setTimer: (fn, ms) => {
+        const id = w.nextId++;
+        w.timers.push({ at: w.now + ms, fn, id });
+        return id;
+      },
+      clearTimer: (handle) => void (w.timers = w.timers.filter((t) => t.id !== handle)),
+    });
+    wake.start();
+    await settle();
+    const first = wakes;
+    await advance(w, PRINT_WAKE_SLOW_MS);
+    const idle = wakes - first;
+    waiting = 1;
+    await advance(w, PRINT_WAKE_SLOW_MS);
+    waiting = 0;
+    const before = wakes;
+    await advance(w, 10 * PRINT_WAKE_FAST_MS);
+    const busy = wakes - before;
+    wake.stop();
+    return { first, idle, busy };
+  };
+  assert.deepEqual(await run({ desktopShell: false, posApp: true, visible: false }), { first: 1, idle: 1, busy: 10 }, "the POS app hidden: at once, every 15 s idle, every 3 s after a job");
+  assert.deepEqual(await run({ desktopShell: false, posApp: true, visible: true }), { first: 1, idle: 1, busy: 10 }, "the same as on screen");
+  assert.deepEqual(await run({ desktopShell: true, posApp: false, visible: false }), { first: 1, idle: 1, busy: 10 }, "the Windows app in the tray");
+  assert.deepEqual(await run({ desktopShell: false, posApp: false, visible: false }), { first: 0, idle: 0, busy: 0 }, "a hidden browser tab never polls");
+  assert.deepEqual(await run({ desktopShell: false, posApp: false, visible: true }), { first: 1, idle: 1, busy: 10 }, "a browser tab on screen");
 });
 
 // Session 2C's final review (I-2): a writer whose counted jobs sit on a printer it does not print on (a second

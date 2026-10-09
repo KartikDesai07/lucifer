@@ -508,6 +508,8 @@ test("3E: the Windows app 1.12.0 names the Windows printers it writes that Windo
   assert.deepEqual(agentPrintersOf([own, gone, kitchen], "pc", null, WIN_LAN).windowsMissingIds, ["gone"], "Windows does not report it now");
   assert.deepEqual(agentPrintersOf([own, gone, kitchen], "pc", null, WIN_NAMED).windowsMissingIds, [], "1.11.0: nothing, as before");
   assert.deepEqual(agentPrintersOf([own, gone], "pc", null, { ...WIN_LAN, names: null }).windowsMissingIds, [], "not read yet: nothing");
+  // The 3E review gate (m-2): an empty list is Windows saying nothing (its spooler restarting), not every printer gone.
+  assert.deepEqual(agentPrintersOf([own, gone], "pc", null, { ...WIN_LAN, names: [] }).windowsMissingIds, [], "an empty list: nothing known");
   const down = [{ id: "tcp:192.168.1.60:9100", host: "192.168.1.60", port: 9100, status: "disconnected" as const }];
   assert.equal(dotPrintersOf([own, kitchen], "pc", null, WIN_LAN, null, [], down).worst, "disconnected", "the kitchen does not answer");
   const empty = [{ id: "tcp:192.168.1.60:9100", host: "192.168.1.60", port: 9100, status: "connected" as const, paper: "out" as const }];

@@ -20,7 +20,8 @@ export const DESKTOP_LAN_DOWN_CHECK_MS = 30_000;
 /** The Windows app answers a slip within its own 60 s job deadline after the connect (5 s) and a check ahead of it (the
  *  gold's review, m-2: never give up before the app does); past this the page gives up waiting. */
 export const DESKTOP_LAN_PRINT_TIMEOUT_MS = 75_000;
-/** One check asks at most this many printers (the app's LAN_STATUS_MAX_PRINTERS). */
+/** One call to the app asks at most this many printers (the app's LAN_STATUS_MAX_PRINTERS); a check of more makes more
+ *  calls (the 3E review gate, m-5). */
 export const DESKTOP_LAN_MAX_PRINTERS = 16;
 
 export interface DesktopLanTarget {
@@ -161,15 +162,21 @@ export function createDesktopLan(deps: DesktopLanDeps): DesktopLan {
     const api = deps.api();
     if (api === null || snapshot.printers.length === 0) return;
     const before = new Map(written);
-    let answer: unknown;
-    try {
-      answer = await api.lanStatus(snapshot.printers.slice(0, DESKTOP_LAN_MAX_PRINTERS).map((entry) => ({ host: entry.host, port: entry.port })));
-    } catch {
-      return;
+    // The 3E review gate (m-5): every watched printer, at most DESKTOP_LAN_MAX_PRINTERS to a call (the app's limit).
+    const targets = snapshot.printers.map((entry) => ({ host: entry.host, port: entry.port }));
+    const rows: unknown[] = [];
+    for (let at = 0; at < targets.length; at += DESKTOP_LAN_MAX_PRINTERS) {
+      let answer: unknown;
+      try {
+        answer = await api.lanStatus(targets.slice(at, at + DESKTOP_LAN_MAX_PRINTERS));
+      } catch {
+        answer = null;
+      }
+      // A refused or odd answer says nothing of those printers (m-4: the follow-up below still runs).
+      if (Array.isArray(answer)) rows.push(...answer);
     }
-    if (!Array.isArray(answer)) return;
     let printers = snapshot.printers;
-    for (const row of answer) {
+    for (const row of rows) {
       if (typeof row !== "object" || row === null) continue;
       const { host, port, link, health } = row as Record<string, unknown>;
       if (typeof host !== "string" || typeof port !== "number" || (link !== "connected" && link !== "disconnected")) continue;

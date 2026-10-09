@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   DESKTOP_LAN_DOWN_CHECK_MS,
+  DESKTOP_LAN_MAX_PRINTERS,
   DESKTOP_LAN_PRINT_TIMEOUT_MS,
   DESKTOP_LAN_PROBLEM_CHECK_MS,
   DESKTOP_LAN_RECHECK_MS,
@@ -192,6 +193,28 @@ test("3E: a printer out of paper is asked again every 10 s, one that does not an
   release([{ host: KITCHEN.host, port: 9100, link: "connected", health: null }]);
   await slow;
   assert.equal(lan.printerOf("tcp:192.168.1.60:9100")?.status, "disconnected", "the check began before the slip's answer: never a stale connected");
+});
+
+test("the 3E review gate (m-4, m-5): every watched printer is checked, at most sixteen to a call; one not answered yet is asked again in 30 s even when the app refused the check", async () => {
+  const app = fakeApp();
+  const timers = fakeTimers();
+  const lan = createDesktopLan({ api: () => app.api, ...timers });
+  const many = Array.from({ length: 17 }, (_, i): DesktopLanTarget => ({ host: `192.168.1.${100 + i}`, port: 9100 }));
+  app.api.lanStatus = async (printers) => {
+    app.checks.push(printers);
+    return printers.map((printer) => ({ host: printer.host, port: printer.port, link: "connected", health: null }));
+  };
+  lan.watch(many);
+  await flush();
+  assert.deepEqual(app.checks.map((asked) => asked.length), [DESKTOP_LAN_MAX_PRINTERS, 1], "two calls: the app takes sixteen at a time");
+  assert.equal(lan.printerOf("tcp:192.168.1.116:9100")?.status, "connected", "the seventeenth is checked too");
+  app.api.lanStatus = async () => {
+    throw new Error("refused");
+  };
+  lan.watch([KITCHEN]);
+  await flush();
+  assert.equal(lan.printerOf("tcp:192.168.1.60:9100")?.status, "connecting", "the app refused: nothing known yet");
+  assert.equal(timers.pending.filter((t) => t.live && t.ms === DESKTOP_LAN_DOWN_CHECK_MS).length, 1, "asked again in 30 s, not only at the minute's check");
 });
 
 test("3E: the agent's key counts only connected printers that can print, and the hold's state changes with either list", () => {
