@@ -318,6 +318,50 @@ Phase 3 release; these notes cover the web part.
       way that release takes them), but only a reloaded page works exactly as
       that release did.
 
+### Existing cafes: the printing Phase 3 release
+
+Printing Phase 3 keeps a cafe printing when a device or a printer fails: another device takes a network printer
+over while its own device is offline or cannot reach it, a printer's waiting slips can move to its backup printer,
+every device says why a slip waits ("Kitchen is out of paper."), the POS app keeps printing with the screen off
+and says "POS printing is off. Tap to start." when its printing stopped (a restart, a reboot, an update), and the
+Windows app prints network printers itself. No data migration. **No Worker change:** the Realtime Worker stays the
+Phase 2 one.
+
+The order matters: the web first, then every open POS screen reloaded, then the POS app on each printing device
+and the app opened once there, then the Windows app.
+
+- [ ] **The web first.** Re-run the go-live run for the cafe (not `npm run deploy` alone). `GET /api/health`
+      answers 200.
+- [ ] **Reload every POS screen** that was open before the deploy: Refresh in the POS app, reload each browser
+      tab, quit and reopen the Windows app ("printing failover and the backup printer" above says what an older
+      page does until then).
+- [ ] **Then the POS app on each printing device** (a phone or tablet that prints for the cafe: the one that prints
+      all slips, or one that prints a printer in **Admin → Printer setup**): the Phase 3 POS app, installed over
+      the old one (no uninstall: it keeps its printers). 64-bit (arm64-v8a) for most phones, the 32-bit
+      (armeabi-v7a) one for old phones. Check its SHA-256 against the release's `SHA256SUMS.txt` before you send
+      it.
+- [ ] **Then open the app once** on that device. The install itself shows "POS printing is off. Tap to start.":
+      tap it (or open the app). The new app keeps its page running while it is hidden, so the page must be this
+      release's: installed before the web was updated and not opened since, it would keep an older page running
+      in the background, and that page asks the server every 15 seconds.
+- [ ] **Allow notifications** when the app asks (Android 13 and later), so "POS printing is off. Tap to start." can
+      show after a restart or a reboot.
+- [ ] **Battery settings** on a Xiaomi, OPPO, vivo or Samsung printing device: the printer panel → **More
+      options** → **Battery settings for printing**; do each step it lists once.
+- [ ] **Windows counter PC:** `POS-Software-Setup-1.12.0.exe`, installed over the old one; check its SHA-256
+      against `SHA256SUMS.txt`. Needed for a network printer printed by the PC (the PC writes it itself) and for a
+      PC that takes a network printer over; the Windows app 1.11.0 keeps printing its Windows printers as before.
+- [ ] **At closing time, close the POS app** on each printing device (swipe it away from the recent apps). Its
+      notice "POS printing is off. Tap to start." then shows: that is expected; tap it when you open. A printing
+      device left open all night keeps asking the server as it does on screen, a large share of the cafe's free
+      daily allowance every night. A counter PC whose Windows app stays in the tray polls all night the same way (as
+      it has since Phase 1): quit it from the tray at closing time too, or leave it running knowingly.
+- [ ] **If you roll the web back** to a release from before printing Phase 3, reload every POS screen again
+      afterwards (as above).
+- [ ] **Before telling the client it is live:** run `apps/mobile/TEST-CHECKLIST.md` → "Phase 3 checks (failover,
+      health, the service)" on the cafe's real printers, with the earlier checks and "Network printers on the
+      Windows app (Phase 3)" on a counter PC with the 1.12.0 app.
+
 ---
 
 ## §2 First run, and the admin handover (DEPLOYER → CAFE ADMIN)

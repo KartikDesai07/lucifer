@@ -1439,3 +1439,24 @@ test("PIN §1 (printing Phase 3, Session 3B): failover and the backup printer: r
   // Session 3C (the 3B review gate's I-1): a rollback of the web is a reload of every screen too.
   assert.ok(step.includes("If you roll the web back") && step.includes("reload every POS screen again"), "a rollback reloads every screen");
 });
+
+// ── Printing Phase 3 Session 3G: the Phase 3 release step ───────────────────────────────────────────────────────
+// The 3D review gate (its review's m-5): the web first, then the POS app on each printing device, then the app opened
+// once (an older page never runs hidden on the new app's keep-running tick); the 3C gate (I-3): close the app on
+// printing devices at closing time; no Worker change; the owner's ruling (2026-10-09): no Telegram step.
+test("PIN §1 (printing Phase 3, Session 3G): the Phase 3 release step keeps its order (the web, every screen, the POS app on each printing device, open it once, the Windows app 1.12.0), closes the app at closing time, changes no Worker and sends the deployer to the Phase 3 checks", () => {
+  const step = norm(sectionSlice("### Existing cafes: the printing Phase 3 release"));
+  let at = -1;
+  for (const landmark of ["**The web first.**", "**Reload every POS screen**", "**Then the POS app on each printing device**", "**Then open the app once**", "POS-Software-Setup-1.12.0.exe", "**At closing time, close the POS app**"]) {
+    const next = step.indexOf(landmark);
+    assert.ok(next > at, `the Phase 3 release step names "${landmark}" after the step before it`);
+    at = next;
+  }
+  assert.ok(step.includes("No Worker change"), "this release changes no Worker");
+  assert.ok(step.includes("SHA256SUMS.txt"), "each app's hash is checked before it is sent");
+  assert.ok(step.includes("If you roll the web back"), "a rollback reloads every screen again");
+  assert.ok(!/telegram/i.test(step), "the Phase 3 release adds no Telegram step (the owner's ruling, 2026-10-09)");
+  const checklist = readFileSync(path.join(REPO_ROOT, "apps/mobile/TEST-CHECKLIST.md"), "utf8");
+  assert.ok(step.includes("Phase 3 checks (failover, health, the service)"), "the step sends the deployer to the Phase 3 real-printer checks");
+  assert.ok(checklist.includes("## Phase 3 checks (failover, health, the service)"), "... which TEST-CHECKLIST holds");
+});
