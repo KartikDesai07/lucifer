@@ -5,12 +5,18 @@
  * Like the page's agent it prints a job an answer carried already leased to it before any lease (decision 15), and
  * leases again only when an ack says `more`, or says nothing, as an older server would (decision 9). A local test
  * tool: console-free, every request through `call`.
+ *
+ * Phase 3 Session 3G (Session 2G's m-6, the final Phase 2 gate's (a) item 6): it keeps the page's one local timer (a
+ * job's backoff, a lease's "not due yet") and leases again only when it is due, or at the page's next pulse; and it says
+ * it prints token slips as the page it stands for does (`tokens`).
  */
 import net from "node:net";
 import type { LeasedPrintJob, PrintJobRef } from "@pos/shared/print-agent-wire";
 
 export const SOAK_TAB = "soak-tab";
 const SLIP_BYTES = 4_096;
+/** The page's pulse (the POS lists' 20 s poll): a page whose line waits with no timer of its own leases at its pulse. */
+export const SOAK_PULSE_MS = 20_000;
 
 export type SoakJson = { data?: Record<string, unknown>; error?: string };
 export type SoakCall = (method: string, url: string, body: unknown) => Promise<{ status: number; json: SoakJson }>;
@@ -22,6 +28,28 @@ export interface SoakAgent {
   device: string;
   /** --direct: the soak names its tab (and its printers) on every request that makes slips. */
   direct: boolean;
+  /** --tokens: "page" says tokenSlips on its lease and its ack (a Phase 3 page), "lease" on its lease only (a page from
+   *  print-customization S7 to before Phase 3: the server reads its device's last word on each ack); absent: never. */
+  tokens?: "page" | "lease";
+  /** The page's one local timer: the soonest nextAttemptAt or retryAt the server gave it (ms), spent when it leases. */
+  timerAt?: number | null;
+}
+
+function noteTimer(agent: SoakAgent, iso: unknown): void {
+  const at = typeof iso === "string" ? Date.parse(iso) : Number.NaN;
+  if (Number.isFinite(at)) agent.timerAt = agent.timerAt === null || agent.timerAt === undefined ? at : Math.min(agent.timerAt, at);
+}
+
+/** The page's timer is due: the soak leases now (between its orders, as the page's timer fires between taps). */
+export function soakTimerDue(agent: SoakAgent, now: number): boolean {
+  return agent.timerAt !== null && agent.timerAt !== undefined && agent.timerAt <= now;
+}
+
+/** When the soak, waiting for its line to empty, leases next: its timer when it has one (then spent), else its next pulse. */
+export function soakNextLeaseAt(agent: SoakAgent, now: number): number {
+  const at = agent.timerAt ?? now + SOAK_PULSE_MS;
+  agent.timerAt = null;
+  return at;
 }
 
 /** One write of a job's slip: its id first, then DLE EOT 1. The answer comes only after every byte before it was
@@ -72,12 +100,17 @@ export async function printAndAck(agent: SoakAgent, call: SoakCall, job: LeasedP
     const written = await writeSlip(address, job);
     if (written !== "printed") result = copy === 0 ? written : "maybe";
   }
+  const said = agent.tokens === "page" ? { tokenSlips: true } : {};
   const body =
     result === "printed"
-      ? { deviceId: agent.device, epoch: job.epoch, outcome: "printed" }
-      : { deviceId: agent.device, epoch: job.epoch, outcome: "failed", sent: result, error: result === "no" ? "The printer is not connected." : "The printer cut the connection mid-slip." };
+      ? { deviceId: agent.device, epoch: job.epoch, outcome: "printed", ...said }
+      : { deviceId: agent.device, epoch: job.epoch, outcome: "failed", sent: result, error: result === "no" ? "The printer is not connected." : "The printer cut the connection mid-slip.", ...said };
   const ack = await call("POST", `/api/print-jobs/${job.id}/ack`, body);
-  if (result !== "printed" && typeof ack.json.data?.nextAttemptAt === "string") return false;
+  if (result !== "printed" && typeof ack.json.data?.nextAttemptAt === "string") {
+    // Back in line with its backoff: the page's one timer, not a lease now.
+    noteTimer(agent, ack.json.data.nextAttemptAt);
+    return false;
+  }
   return ack.json.data?.more !== false;
 }
 
@@ -94,19 +127,19 @@ export async function printLeased(agent: SoakAgent, call: SoakCall, res: { json:
 }
 
 /** Leases this soak's lines (each printer it writes, one job per line) and prints what it gets, until an ack says the
- *  lines are empty. Returns when the server says to look again (retryAt), or null. */
-export async function leaseLines(agent: SoakAgent, call: SoakCall): Promise<number | null> {
-  if (agent.lines.size === 0) return null;
+ *  lines are empty. A lease answered "not due yet" (retryAt) sets the page's one timer. */
+export async function leaseLines(agent: SoakAgent, call: SoakCall): Promise<void> {
+  if (agent.lines.size === 0) return;
   const printerIds = [...agent.lines.keys()].filter((line) => line !== "");
   for (;;) {
-    const lease = await call("POST", "/api/print-jobs/lease", { deviceId: agent.device, tabId: SOAK_TAB, ...(printerIds.length > 0 ? { printerIds } : {}) });
+    const lease = await call("POST", "/api/print-jobs/lease", { deviceId: agent.device, tabId: SOAK_TAB, ...(printerIds.length > 0 ? { printerIds } : {}), ...(agent.tokens !== undefined ? { tokenSlips: true } : {}) });
     const jobs = (lease.json.data?.jobs as LeasedPrintJob[] | undefined) ?? [];
     if (jobs.length === 0) {
-      const retryAt = lease.json.data?.retryAt;
-      return typeof retryAt === "string" ? Date.parse(retryAt) : null;
+      noteTimer(agent, lease.json.data?.retryAt);
+      return;
     }
     let more = false;
     for (const job of jobs) more = (await printAndAck(agent, call, job)) || more;
-    if (!more) return null;
+    if (!more) return;
   }
 }

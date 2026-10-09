@@ -407,7 +407,8 @@
     "lib/printer/native-pool.test.ts",
     "lib/printer/desktop-lan.test.ts",
     "lib/printer/native-bridge-v2-parity.test.ts",
-    "scripts/print-soak-agent.test.ts"
+    "scripts/print-soak-agent.test.ts",
+    "scripts/print-soak-rules.test.ts"
   ],
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

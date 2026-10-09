@@ -15,6 +15,7 @@
  *   node --env-file=<env> --import tsx scripts/print-soak.ts --out <folder>[,<folder>]
  *        [--orders 200] [--base http://localhost:3100] [--every-ms 1500] [--drain-s 300]
  *        [--agent 127.0.0.1:9100 | --printer "<name>=127.0.0.1:9100" ...] [--direct] [--device soak-device]
+ *        [--tokens page|lease]
  *
  * --agent HOST:PORT   simple mode, no host: the soak is its own device's print agent. It leases, writes each job to
  *                     the fake printer over TCP and asks DLE EOT 1 at the end, so a connection the printer cut
@@ -23,12 +24,20 @@
  * --printer NAME=H:P  printers mode (repeatable): the soak writes that printer (its printing device must be
  *                     --device) on the fake printer at H:P.
  * --direct            with --agent or --printer: the lease header (and the printers it writes) on every request.
+ * --tokens page|lease with --agent or --printer, when the cafe prints a token per order (print-customization S7): the
+ *                     soak's page says so on its lease and its ack (page: Phase 3), or on its lease only (lease: a page
+ *                     from S7 to before Phase 3, whose acks cost the server a read of its device's last word).
  * neither             another device prints: the host (simple mode) or the printers' writer (the emulator app);
  *                     the soak only orders, then waits.
  * --out               every fake printer's --out folder, comma separated (the check reads each jobs.log).
  *
  * It mints a staff session from the env file's AUTH_SECRET (never printed) and prints counts only: no
  * secret, no payload. (console output is intentional — this is an ops CLI script, not app code.)
+ *
+ * Phase 3 Session 3G (Session 2G's m-5 and m-6, the final Phase 2 gate's (a) items 5 and 6): a malformed address stops it
+ * before its first order (scripts/print-soak-rules.ts); its agent keeps the page's one timer, so a backoff is waited out,
+ * not leased through; and every slip it made is checked against the jobs its orders hold, not only the ones its answers
+ * named.
  */
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -39,63 +48,15 @@ import { PrintHost } from "@/models/PrintHost";
 import { PrintJob } from "@/models/PrintJob";
 import { printerWriterDeviceId, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
 import { printRepeatLabel } from "@pos/shared/print-lifecycle";
-import { leaseLines, printLeased, soakHeaders, type SoakAddress, type SoakAgent, type SoakCall, type SoakJson } from "./print-soak-agent";
+import { leaseLines, printLeased, soakHeaders, soakNextLeaseAt, soakTimerDue, type SoakAddress, type SoakAgent, type SoakCall, type SoakJson } from "./print-soak-agent";
+import { missingSlips, parseSoakArgs, type SoakArgs } from "./print-soak-rules";
 
 const COOKIE = "authjs.session-token";
-
-interface Args {
-  orders: number;
-  base: string;
-  everyMs: number;
-  drainS: number;
-  agent: SoakAddress | null;
-  printers: Array<{ name: string } & SoakAddress>;
-  direct: boolean;
-  outs: string[];
-  device: string;
-}
-
-function addressOf(value: string): SoakAddress {
-  const [host, port] = value.split(":");
-  return { host: host ?? "", port: Number(port) };
-}
-
-function parseArgs(argv: string[]): Args {
-  const args: Args = { orders: 200, base: "http://localhost:3100", everyMs: 1_500, drainS: 300, agent: null, printers: [], direct: false, outs: [], device: "soak-device" };
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === "--direct") {
-      args.direct = true;
-      continue;
-    }
-    const value = argv[++i] ?? "";
-    switch (argv[i - 1]) {
-      case "--orders": args.orders = Number(value); break;
-      case "--base": args.base = value; break;
-      case "--every-ms": args.everyMs = Number(value); break;
-      case "--drain-s": args.drainS = Number(value); break;
-      case "--out": args.outs = value.split(",").filter((out) => out !== ""); break;
-      case "--device": args.device = value; break;
-      case "--agent": args.agent = addressOf(value); break;
-      case "--printer": {
-        const at = value.lastIndexOf("=");
-        args.printers.push({ name: value.slice(0, at), ...addressOf(value.slice(at + 1)) });
-        break;
-      }
-      default: throw new Error(`unknown option ${argv[i - 1]}`);
-    }
-  }
-  if (!Number.isInteger(args.orders) || args.orders < 1) throw new Error("--orders needs a whole number");
-  if (!/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(args.base)) throw new Error("refusing: --base must be a local POS");
-  if (args.outs.length === 0 || args.outs.some((out) => !existsSync(out))) throw new Error("--out must be the fake printers' --out folders");
-  if (args.agent !== null && args.printers.length > 0) throw new Error("--agent (simple mode) or --printer (printers mode), not both");
-  if (args.direct && args.agent === null && args.printers.length === 0) throw new Error("--direct needs --agent or --printer");
-  return args;
-}
 
 const requests = new Map<string, number>();
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function call(args: Args, cookie: string, method: string, url: string, body: unknown, headers: Record<string, string> = {}): Promise<{ status: number; json: SoakJson }> {
+async function call(args: SoakArgs, cookie: string, method: string, url: string, body: unknown, headers: Record<string, string> = {}): Promise<{ status: number; json: SoakJson }> {
   const route = `${method} ${url.replace(/[0-9a-f]{24}/g, ":id")}`;
   requests.set(route, (requests.get(route) ?? 0) + 1);
   const res = await fetch(`${args.base}${url}`, { method, headers: { "content-type": "application/json", cookie, ...headers }, body: JSON.stringify(body), redirect: "manual" });
@@ -123,7 +84,7 @@ function printerRecords(outs: readonly string[], since: Date): PrinterRecord[] {
 }
 
 async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
+  const args = parseSoakArgs(process.argv.slice(2), existsSync);
   const uri = process.env.MONGODB_URI ?? "";
   // A local scratch database only, and (below) the first order must land in it: the POS at --base might use
   // another database (the Phase 1 final gate, M8).
@@ -153,7 +114,12 @@ async function main(): Promise<void> {
       if (args.agent === null && host === null) throw new Error("without --agent a host must print: designate the app first");
       if (args.agent !== null) lines.set("", args.agent);
     }
-    const agent: SoakAgent = { lines, device: args.device, direct: args.direct };
+    const agent: SoakAgent = { lines, device: args.device, direct: args.direct, ...(args.tokens !== null ? { tokens: args.tokens } : {}), timerAt: null };
+    // Session 3G: with tokens on (print-customization S7) every order makes a token slip, which is never printed at once
+    // (it waits for a lease that says tokenSlips): a soak that prints must say how its page says so.
+    const settings = await db.collection("settings").findOne({}, { projection: { tokenEnabled: 1 } });
+    const tokensOn = settings?.tokenEnabled === true;
+    if (tokensOn && lines.size > 0 && args.tokens === null) throw new Error("tokens are on: say how the soak's page prints them (--tokens page or --tokens lease)");
     const staff = await db.collection("staffs").findOne({ role: "admin", isActive: { $ne: false } }, { projection: { name: 1, role: 1 } });
     if (staff === null) throw new Error("no admin to act as");
     const token = await encode({ token: { name: staff.name, id: String(staff._id), role: staff.role, lastValidated: Date.now() }, secret, salt: COOKIE });
@@ -172,6 +138,9 @@ async function main(): Promise<void> {
     };
     const startedAt = new Date(Date.now() - 1_000);
     const named = new Set<string>();
+    // Session 3G ((a) item 5): every slip the soak made, by its key, and the orders it made them for.
+    const made: string[] = [];
+    const orderIds: string[] = [];
     const refuse: string[] = [];
     const counts = { orders: 0, rounds: 0, bills: 0 };
     const note = (res: { status: number; json: SoakJson }, what: string) => {
@@ -180,6 +149,11 @@ async function main(): Promise<void> {
     };
 
     for (let i = 0; i < args.orders; i++) {
+      // The page's one timer fires between taps: a slip back in line is leased when its backoff is up, not before.
+      if (soakTimerDue(agent, Date.now())) {
+        agent.timerAt = null;
+        await leaseLines(agent, soakCall);
+      }
       const item = line(i);
       const created = await call(args, cookie, "POST", "/api/orders", { customerName: "Soak", items: [item], subtotal: item.price, discount: 0, total: item.price, payment: "Unpaid", status: "Pending", receiver: "Soak", idemKey: randomUUID() }, soakHeaders(agent, false));
       note(created, `order ${i + 1}`);
@@ -189,42 +163,58 @@ async function main(): Promise<void> {
         throw new Error("refusing: the POS at --base writes to another database than MONGODB_URI");
       }
       counts.orders += 1;
+      orderIds.push(orderId);
+      made.push(`kot:${orderId}:1`, ...(tokensOn ? [`token:${orderId}`] : []));
       if (await printLeased(agent, soakCall, created)) await leaseLines(agent, soakCall);
       if (i % 2 === 1) {
         const round = await call(args, cookie, "POST", `/api/orders/${orderId}/items`, { items: [line(i + 1)], idemKey: randomUUID() }, soakHeaders(agent, false));
         note(round, `round ${i + 1}`);
-        if (round.status < 300) counts.rounds += 1;
+        if (round.status < 300) {
+          counts.rounds += 1;
+          made.push(`kot:${orderId}:2`);
+        }
         if (await printLeased(agent, soakCall, round)) await leaseLines(agent, soakCall);
       }
       const settled = await call(args, cookie, "POST", `/api/orders/${orderId}/settle`, { payment: "Cash" }, soakHeaders(agent, true));
       note(settled, `bill ${i + 1}`);
-      if (settled.status < 300) counts.bills += 1;
+      if (settled.status < 300) {
+        counts.bills += 1;
+        made.push(`bill:${orderId}`);
+      }
       if (await printLeased(agent, soakCall, settled)) await leaseLines(agent, soakCall);
       if ((i + 1) % 20 === 0) console.log(`  ${i + 1}/${args.orders} orders`);
       await sleep(args.everyMs);
     }
 
     // Drain: wait until no slip of this soak is still queued or leased (a REPRINT waits for its backoff). Session 2G: a
-    // lease only while one is open, so the measured run holds no request the page would not make.
+    // lease only while one is open, so the measured run holds no request the page would not make. Session 3G (m-6): at
+    // the page's cadence: its one timer (a backoff, a "not due yet"), else its next pulse; another device's slips are
+    // only watched (a database read, no request).
     const deadline = Date.now() + args.drainS * 1_000;
-    const mine = { originDeviceId: args.device, createdAt: { $gte: startedAt } };
+    const mine = { orderId: { $in: orderIds } };
     for (;;) {
       const open = await PrintJob.countDocuments({ ...mine, status: { $in: ["queued", "leased"] } });
       if (open === 0 || Date.now() > deadline) break;
-      const next = await leaseLines(agent, soakCall);
-      await sleep(Math.min(5_000, Math.max(1_000, (next ?? Date.now() + 2_000) - Date.now())));
+      if (lines.size === 0) {
+        await sleep(2_000);
+        continue;
+      }
+      await sleep(Math.max(0, Math.min(soakNextLeaseAt(agent, Date.now()), deadline) - Date.now()));
+      await leaseLines(agent, soakCall);
     }
 
-    const jobs = await PrintJob.find(mine).select("kind status labels uncertainAttempts copies").lean();
+    const jobs = await PrintJob.find(mine).select("kind status labels uncertainAttempts copies jobKey").lean();
     const byStatus: Record<string, number> = {};
     for (const job of jobs) byStatus[job.status] = (byStatus[job.status] ?? 0) + 1;
     const problems: string[] = [...refuse];
     const ids = new Set(jobs.map((job) => String(job._id)));
     const missing = [...named].filter((id) => !ids.has(id));
     if (missing.length > 0) problems.push(`${missing.length} slip(s) an answer named are missing`);
-    // Simple mode: one job per slip. Printers mode: a slip is one job per printer line, each named in its answer.
-    const expected = printersMode ? named.size : counts.orders + counts.rounds + counts.bills;
-    if (jobs.length !== expected) problems.push(`${jobs.length} jobs for ${expected} expected (${printersMode ? "the jobs the answers named" : "orders + rounds + bills"})`);
+    // Session 3G ((a) item 5): every slip the soak made has its jobs, read from its orders (a printers-mode slip is a job
+    // per printer line), whatever the answers named; simple mode makes one job per slip.
+    const unmade = missingSlips(made, jobs);
+    if (unmade.length > 0) problems.push(`${unmade.length} slip(s) the soak made have no job (${unmade.slice(0, 3).join(", ")})`);
+    if (!printersMode && jobs.length !== made.length) problems.push(`${jobs.length} jobs for ${made.length} slips (simple mode: one job per slip)`);
     const silent = jobs.filter((job) => job.status === "queued" || job.status === "leased" || job.status === "dismissed");
     if (silent.length > 0) problems.push(`${silent.length} slip(s) neither printed nor visibly waiting`);
 
@@ -262,9 +252,10 @@ async function main(): Promise<void> {
     console.log(
       JSON.stringify(
         {
-          mode: `${printersMode ? "printers mode" : "simple mode"}, ${lines.size > 0 ? "soak agent prints" : printersMode ? "the printers' writer prints" : "app host prints"}${args.direct ? ", direct" : ""}`,
+          mode: `${printersMode ? "printers mode" : "simple mode"}, ${lines.size > 0 ? "soak agent prints" : printersMode ? "the printers' writer prints" : "app host prints"}${args.direct ? ", direct" : ""}${tokensOn ? `, a token per order${args.tokens !== null ? ` (says it: ${args.tokens})` : ""}` : ""}`,
           ...counts,
-          slips: counts.orders + counts.rounds + counts.bills,
+          tokens: tokensOn ? counts.orders : 0,
+          slips: made.length,
           jobs: jobs.length,
           byStatus,
           labelled: jobs.filter((job) => (job.labels ?? []).length > 0).length,

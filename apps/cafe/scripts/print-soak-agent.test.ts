@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import net from "node:net";
 
 import type { LeasedPrintJob } from "@pos/shared/print-agent-wire";
-import { leaseLines, printLeased, soakHeaders, type SoakAgent, type SoakCall, type SoakJson } from "./print-soak-agent";
+import { SOAK_PULSE_MS, leaseLines, printLeased, soakHeaders, soakNextLeaseAt, soakTimerDue, type SoakAgent, type SoakCall, type SoakJson } from "./print-soak-agent";
 
 // Phase 2 Session 2G (the 2F2 review gate): the print soak's agent prints a job an answer carried leased to it before
 // any lease, writes each printer's jobs to that printer, and leases again only when an ack says `more`, so the soak
@@ -92,11 +92,58 @@ test("a lease of two printers' lines prints each job on its printer and stops wh
   try {
     const agent: SoakAgent = { lines: new Map([["p-kitchen", { host: "127.0.0.1", port: kitchen.port }], ["p-bar", { host: "127.0.0.1", port: bar.port }]]), device: "soak-device", direct: false };
     const server = fakeServer([false, false], [[leased("k1", "p-kitchen"), leased("b1", "p-bar")]]);
-    assert.equal(await leaseLines(agent, server.call), null, "no retryAt: the lines are empty");
+    await leaseLines(agent, server.call);
+    assert.equal(agent.timerAt ?? null, null, "no retryAt: the lines are empty, no timer");
     assert.deepEqual(server.seen, ["POST /api/print-jobs/lease", "POST /api/print-jobs/k1/ack printed", "POST /api/print-jobs/b1/ack printed"], "one lease, two acks, no trailing lease");
     assert.deepEqual([kitchen.jobs, bar.jobs], [["JOB k1 1 kot"], ["JOB b1 1 kot"]], "each job on its own printer");
   } finally {
     await kitchen.close();
     await bar.close();
+  }
+});
+
+// Phase 3 Session 3G (Session 2G's m-6, the final Phase 2 gate's (a) item 6): the soak keeps the page's one local timer.
+// A job back in line after a refusal or a cut, and a lease answered "not due yet", set it; the soak leases again only when
+// it is due (or at its next pulse), never every few seconds during a backoff.
+test("a refused job's backoff and a lease's retryAt are the soak's one timer; the drain waits for it, else for its pulse", async () => {
+  const agent: SoakAgent = { lines: new Map([["p-bar", { host: "127.0.0.1", port: 1 }]]), device: "soak-device", direct: true };
+  const at = Date.now() + 30_000;
+  const call: SoakCall = async (_method, url) => {
+    if (url.endsWith("/ack")) return { status: 200, json: { data: { applied: true, nextAttemptAt: new Date(at).toISOString() } } };
+    return { status: 200, json: { data: { jobs: [], retryAt: new Date(at - 10_000).toISOString() } } };
+  };
+  const res = { json: { data: { printJobs: [{ id: "x1", status: "leased", targetDeviceId: "soak-device", leased: leased("x1", "p-bar") }] } } };
+  assert.equal(await printLeased(agent, call, res), false, "back in line with a backoff: no lease now");
+  assert.equal(agent.timerAt, at, "the ack's nextAttemptAt is the timer");
+  assert.equal(soakTimerDue(agent, at - 1), false, "not before it");
+  assert.equal(soakTimerDue(agent, at), true, "due at it");
+  await leaseLines(agent, call);
+  assert.equal(agent.timerAt, at - 10_000, "a lease's retryAt that comes sooner moves it");
+  const now = Date.now();
+  assert.equal(soakNextLeaseAt(agent, now), at - 10_000, "the drain waits for the timer");
+  assert.equal(agent.timerAt, null, "and spends it");
+  assert.equal(soakNextLeaseAt(agent, now), now + SOAK_PULSE_MS, "no timer: the next pulse");
+});
+
+// Phase 3 Session 3G (the owner's token ruling, option A: the measurement runs with a token per order): the soak's page
+// says it prints token slips as a page does (print-customization S7: on its lease; Phase 3: on its ack too).
+test("the soak's lease and ack say tokenSlips as its page would: page on both, lease on its lease only, none on neither", async () => {
+  const printer = await fakePrinter();
+  try {
+    for (const tokens of ["page", "lease", undefined] as const) {
+      const bodies: Array<{ url: string; body: Record<string, unknown> }> = [];
+      const call: SoakCall = async (_method, url, body) => {
+        bodies.push({ url, body: body as Record<string, unknown> });
+        return url.endsWith("/ack") ? { status: 200, json: { data: { applied: true, more: false } } } : { status: 200, json: { data: { jobs: bodies.length === 1 ? [leased("t1", "p-counter")] : [], retryAt: null } } };
+      };
+      const agent: SoakAgent = { lines: new Map([["p-counter", { host: "127.0.0.1", port: printer.port }]]), device: "soak-device", direct: false, ...(tokens === undefined ? {} : { tokens }) };
+      await leaseLines(agent, call);
+      const lease = bodies.find((b) => b.url.endsWith("/lease"))?.body;
+      const ack = bodies.find((b) => b.url.endsWith("/ack"))?.body;
+      assert.equal(lease?.tokenSlips, tokens === undefined ? undefined : true, `the lease (${tokens ?? "none"})`);
+      assert.equal(ack?.tokenSlips, tokens === "page" ? true : undefined, `the ack (${tokens ?? "none"})`);
+    }
+  } finally {
+    await printer.close();
   }
 });
