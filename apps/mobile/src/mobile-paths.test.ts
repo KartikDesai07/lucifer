@@ -2688,6 +2688,53 @@ test('pin 24 mutation: every battery needle can fail', () => {
   everyMutationCaught(run('manifest'), base.manifest, [['<package android:name="com.miui.securitycenter" />', '']]);
 });
 
+// ── pin 25: the 3D review gate's app fixes (2026-10-09) ─────────────────────
+// Change POS address stops this device printing for the POS it leaves (m-1); a screen recreated for a configuration
+// change keeps the service (m-2); a page that answers again ends the alert at once (m-3); the page's own "no" also takes
+// down a "POS printing is off" notice a reboot left (N-2).
+interface AppFixSources {
+  app: string;
+  module: string;
+  watch: string;
+  service: string;
+  host: string;
+}
+function appFixProblems(s: AppFixSources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!strip(text).includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(s.app, "PosPrinter.setHostActive(false, '')\n      .catch(noop)\n      .then(() => PosPrinter.clearOrigin())", 'Change POS address leaves this device printing for the POS it left');
+  need(s.module, 'if (reactContext.currentActivity?.isChangingConfigurations == true) return\n    host.stopHost()', 'a configuration change stops printing for a moment');
+  need(s.watch, 'answered = true\n    dead = 0', 'a page that answers again keeps the alert one tick more');
+  need(s.service, 'watch.answered()\n        refreshNotification()', 'the notification waits for the next tick');
+  need(s.host, 'stopHost()\n      PrintingOffNotice.cancel(ctx.applicationContext)', 'the page\'s own stop leaves an old notice up');
+  return out;
+}
+const appFixSources = (): AppFixSources => ({
+  app: read(join(ROOT, 'App.tsx')),
+  module: kt('PosPrinterModule.kt'),
+  watch: kt('PageWatch.kt'),
+  service: kt('PrintHostService.kt'),
+  host: kt('HostController.kt'),
+});
+
+test("pin 25: the 3D review gate's app fixes (Change POS address, a configuration change, the alert after a healed page, an old notice)", () => {
+  assert.deepEqual(appFixProblems(appFixSources()), []);
+});
+
+test('pin 25 mutation: every gate-fix needle can fail', () => {
+  const base = appFixSources();
+  const run = (key: keyof AppFixSources) => (text: string) => appFixProblems({ ...base, [key]: text });
+  everyMutationCaught(run('app'), base.app, [["PosPrinter.setHostActive(false, '')", "PosPrinter.setHostActive(true, '')"]]);
+  everyMutationCaught(run('module'), base.module, [['isChangingConfigurations == true) return', 'isChangingConfigurations == false) return']]);
+  everyMutationCaught(run('watch'), base.watch, [['    dead = 0\n  }', '  }']]);
+  everyMutationCaught(run('service'), base.service, [['        refreshNotification()\n      }', '      }']]);
+  everyMutationCaught(run('host'), base.host, [['      PrintingOffNotice.cancel(ctx.applicationContext)\n', '']]);
+});
+
 test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
   const strings = readFileSync(join(MAIN, 'res', 'values', 'strings.xml'), 'utf8');
   assert.ok(

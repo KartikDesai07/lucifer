@@ -103,7 +103,13 @@ class PrintHostService : Service() {
     if (watch.tick(PrinterPool.appVisible)) HostPage.remount?.invoke()
     val id = ++probeSeq
     // A late answer to an older probe must not vouch for this one.
-    WebViewDelivery.probePage { alive -> if (alive && id == probeSeq) watch.answered() }
+    // The 3D review gate (m-3): an answer puts "Printing is on" back at once (a page that healed after a remount).
+    WebViewDelivery.probePage { alive ->
+      if (alive && id == probeSeq) {
+        watch.answered()
+        refreshNotification()
+      }
+    }
   }
 
   /** The page has stopped answering and nobody is looking at the app, so only a notification can say so. */

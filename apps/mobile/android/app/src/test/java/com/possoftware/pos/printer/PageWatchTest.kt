@@ -60,6 +60,17 @@ class PageWatchTest {
   }
 
   @Test
+  fun anAnswerEndsTheAlertAtOnce() {
+    // The 3D review gate (m-3): a page that heals after a remount puts "Printing is on" back when it answers, not a tick later.
+    val w = watch()
+    w.tick(false)
+    assertEquals(1, dead(w, 2))
+    assertTrue("two dead ticks while hidden: the alert", w.alerting(false))
+    w.answered()
+    assertFalse("the new page answered: the alert goes at once", w.alerting(false))
+  }
+
+  @Test
   fun aNewRunStartsClean() {
     val w = watch()
     w.tick(false)

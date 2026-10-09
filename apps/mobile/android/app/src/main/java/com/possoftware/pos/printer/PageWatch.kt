@@ -29,9 +29,10 @@ class PageWatch(private val deadTicks: Int, private val remountGapTicks: Int) {
     sinceRemount = NEVER
   }
 
-  /** The page answered the probe this tick sent. */
+  /** The page answered the probe this tick sent. The 3D review gate (m-3): it is alive now, so the alert goes at once. */
   fun answered() {
     answered = true
+    dead = 0
   }
 
   /** One tick: scores the previous probe (when one went out); the service then sends the next. True: remount now. */

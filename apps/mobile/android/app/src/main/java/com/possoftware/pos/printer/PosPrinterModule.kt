@@ -59,6 +59,9 @@ class PosPrinterModule(private val reactContext: ReactApplicationContext) :
 
   override fun onHostDestroy() {
     PrinterPool.appVisible = false
+    // The 3D review gate (m-2): a screen recreated for a configuration change (font size, language, display size) is not
+    // a stop: the service keeps running (no "POS printing is off" for a moment) and the new screen's page asks again.
+    if (reactContext.currentActivity?.isChangingConfigurations == true) return
     host.stopHost()
   }
 

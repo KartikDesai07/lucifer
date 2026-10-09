@@ -28,9 +28,11 @@ class HostController(private val ctx: ReactApplicationContext) {
   /** Returns whether the host is active after the call. */
   fun setActive(wanted: Boolean, label: String): Boolean {
     if (!wanted) {
-      // The page's own "no": this device no longer prints for the cafe (cleared before the stop, so no notice).
+      // The page's own "no": this device no longer prints for the cafe (cleared before the stop, so no notice). The 3D
+      // review gate (N-2): a "POS printing is off" notice a reboot or an update left goes too.
       Prefs.setPrinting(ctx.applicationContext, false)
       stopHost()
+      PrintingOffNotice.cancel(ctx.applicationContext)
       return false
     }
     // A background start is refused by Android 12+; the page re-asks when the app is visible again.
