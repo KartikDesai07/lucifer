@@ -221,6 +221,7 @@ Order: 3A → 3B → 3C → 3D → 3E → 3F → 3G. 3B comes before 3C (the pag
 - **The installer.** `POS-Software-Setup-1.12.0.exe` (`npm run dist`, Electron cached, offline); TEST-CHECKLIST's Windows part gains network printers and presence.
 
 - **From the 3A review gate (its review's m-B):** the Windows app keeps a per-network-printer link and names a network printer in its lease only while it reaches it (the signal that ends a skip, Session 3A's I-1), and reports that link in its beat.
+- **Made exact at the 3D review gate** (below, "Session 3E", Tasks E0–E7), with its rulings ("3D review gate: rulings"): E0 the 3D review's app fixes (Change POS address, a configuration change, the alert after a healed page, an old notice; the watchdog's remount tested); E1 raw TCP from the main process (`apps/desktop/src/raw-tcp.ts`: G5, "no" and "maybe", the refused retry, a 60 s job, the idle check); E2 the app's `printRaw` and `lanStatus`, 1.12.0; E3 the page writes a network printer through them (`desktopLan()`); E4 on 1.12.0 a network printer is the PC's and a PC may take one over; E5 health and Windows printer presence on the beat, the dot; E6 the setup (a Windows app 1.12.0 as a network printer's printing device; a network printer beside a PC's Windows printers) and TEST-CHECKLIST. The presence check is the page's, every minute (a local call). APKs change (E0).
 
 **Exit (3E):** desktop tests (raw TCP against a fake printer in node; presence); headless Chrome with a fake `window.posDesktop` 1.12.0 (pw script) printing to fake printers; the installer built and hashed; 1.11.0 keeps working against the 3E page.
 
@@ -256,6 +257,7 @@ Order: 3A → 3B → 3C → 3D → 3E → 3F → 3G. 3B comes before 3C (the pag
 - **Review and Results.** A fresh Fable review and Results.
 
 - **From the 3A review gate:** the measurement includes a page that does not say `tokenSlips` (one from before 3B) or says none was present (R-3, m-6: such a page costs one small read per ack, pulse and wake); the soak gains the beat/lease/ack interplay of a skip as checks (3B's review, m-8: its `probe-flap.ts` timeline, with each step's Printer writes counted).
+- **From the 3D review gate:** GO-LIVE's order for the Phase 3 release is the web first, then the APK on each printing device, then open the app once (its review's m-5, replacing the 3C gate's m-8 "APK first"); the watchdog's remount after a renderer-gone remount that needs > 30 s (its review's N-1: count it as the page life's remount), with the second golden review's m-5 and m-6; the measurement includes a Windows app 1.12.0 that writes a network printer (its checks are local; its health writes are P3-6's); TEST-CHECKLIST's real-printer run includes 3E's section ("Network printers on the Windows app").
 
 **Exit (3G):** spec §14's Phase 3 row met; the measurement `pass: true` in both modes with tokens on; the owner's real-printer checklist and the merge decision stay the owner's.
 
@@ -276,6 +278,9 @@ Order: 3A → 3B → 3C → 3D → 3E → 3F → 3G. 3B comes before 3C (the pag
 | 3C's m-1, m-2, m-4, m-6; its gate review's I-1, m-1, m-2, m-3, m-5; the build notes | the 3C review gate | **3D (D0)** |
 | 3C's m-3, m-5; its gate review's m-4; the reviewer's real-printer list; 3D's real-printer items (the 30-minute screen-off test on each printing device) | the 3C review gate | 3G (TEST-CHECKLIST) and the owner's real-printer run |
 | 3D's golden reviews: m-8 (update printing devices' APK first), m-9 (open the app once after installing 3D), I-3 (close the app on printing devices at closing time; a night's idle measured), m-5 (three code comments), m-6 (a behavioural case for the hidden wake) | the 3C review gate | 3G (GO-LIVE, the measurement) |
+| 3D's review: m-1, m-2, m-3, m-4, N-2 | the 3D review gate | **3E (E0)** |
+| 3D's review: m-5 (GO-LIVE: web first, then the APK, then open once), N-1 (a second remount after a slow renderer-gone remount) | the 3D review gate | 3G |
+| 3E's Windows real-printer items (TEST-CHECKLIST "Network printers on the Windows app") and an Android 14+ device | the 3D review gate | 3G and the owner's real-printer run |
 | m-2: two network printers on one host share a name in the notification | 2F2 | Phase 4 |
 | The not-routed toast's wording | the final Phase 2 gate, (b) m-5 | Phase 4 |
 
@@ -24347,3 +24352,5885 @@ No fix pass (no Critical or Important finding). JUnit, the APKs and the build we
 ### The real-printer items for 3G's TEST-CHECKLIST (the owner's one run after Phase 3)
 
 Carried from the 3C review gate's rulings, unchanged: 5 minutes idle on the real LAN printer (no flapping: m-3); two devices listing it for 10 minutes (no `unreachable` notes: D0's retry); FEED while idle (no error words: D0); a Pay Now pair on a Bluetooth printer that does not answer DLE EOT (the bill ≤ 1 s later: m-5); paper out mid-slip (one labelled REPRINT); a module that resets its socket after each job and never answers status (count REPRINTs); "POS printing is off. Tap to start." after a reboot on each printing tablet; the notification question allowed; the battery checklist's steps done once on each Xiaomi, OPPO, vivo or Samsung printing device; the 30-minute screen-off test on each printing device (the print host and a printers-mode writer: three orders ten minutes apart, each printed once, the latency noted), first with the app in the background and the screen on, then with the screen off; the app closed at closing time shows "POS printing is off. Tap to start." (expected) and the tap in the morning prints. Added by this session: on an Android 14 or later printing device, "Printing is on" shows and the service keeps running with the screen off (the `connectedDevice` service type cannot be checked on this API 33 emulator).
+
+## Session 3D review (gate)
+
+Run on 2026-10-09 in its own session (the 3D review gate), on `feat/printing-phase-3` at `978459c`.
+
+**Start.**
+- `GIT_TERMINAL_PROMPT=0 git fetch origin` (the repo-local token store) worked: `feat/printing-phase-3` = `origin/feat/printing-phase-3` = `978459c`, working tree clean; `origin/main` still `7f8ed31` (nothing to merge or note).
+- Disk: D: 12 GB free, C: 23 GB free (after the owner's 2026-10-09 scratchpad cleanup; 15–16 GB later, with the gate's clones, builds and the emulator).
+- Real printers: none on hand. The owner's ruling (2026-10-08) stands: the real-printer checks run once, after all of Phase 3 (3E–3G and the final Phase 3 gate), before the merge decision; this gate did not ask, and carries every real-printer item to 3G's TEST-CHECKLIST (3E's Windows items too: "3D review gate: rulings").
+
+**The commits, read one by one** (`8751b49..978459c`: D0 `9848e76`, D1 `b9a550e`, D2 `dc9bd2b`, D3 `4acdf0c`, D4 `451e371`, Results `978459c`).
+- **Same code as the gold.** `git ls-tree -r` of `451e371` against the 3C review gate's gold `g3d-v5` (tree `a7b4bb6`) differs only in the plan and the spec (both changed by `8751b49`): every file outside `docs/` is blob-identical.
+- Each task does what the 3C gate's rulings say: D0 the refused-connect retry (only `ConnectException`, once, inside the 5 s; an interrupt ends it as NOT_CONNECTED), the connect's check queued before `env.changed()`, BUSY behind a printer that says it cannot print, FEED not an error, a CONNECTED v1 select answered at once, `doFirst { incremental = false }`, `poolDefaultCannotPrint`, the clock's memory and `clockRef`; D1 the pure `HostLife`, the wish written with `commit()` before the stop, `START_STICKY`, the notice on a null-intent restart, an unasked stop, a reboot and an update; D2 `printsForCafe`, `decided`, no lease on the hidden tick, the hidden wake; D3 `keepPageRunning()`, `PageWatch`, `HiddenMountGap`, `BackgroundMount` and the renderer priority; D4 the battery checklist, local only.
+- **No secret** in the range (a search of `git log -p 8751b49..978459c` for token, URI-with-password, key and secret patterns: none).
+- **No desktop or Worker change:** `git diff --stat 6bc8d73..HEAD -- apps/desktop workers` is empty.
+
+**Every suite at `978459c`** (once each, in the background, one after another; the gate's scratchpad `suites-gate3d-b/`):
+
+| Suite | Result |
+|---|---|
+| shared `npm test`; `tsc` | **821/821**; 0 |
+| cafe `npm test` | **5030 tests, 5029 pass, 0 fail, 1 skipped** (go-live-dl) |
+| cafe, hub, mobile, desktop `tsc` / typecheck and lint | 0, and 0 errors (the 2 old warnings, `lib/masters-blob.test.ts:331`) |
+| mobile `npm test`; `test:app` | **139/139**; Jest **3/3** |
+| desktop `npm test` | **192/192** |
+| `npm run test:print-tools` | **11/11** |
+| live legs (`pos_scratch_print_host_3dgate`) | **`444 passed, 0 failed`** |
+| JUnit (`:app:testDebugUnitTest --rerun`) | BUILD SUCCESSFUL, **63** (BatteryTargets 3, DleEot 7, HostLife 4, PageWatch 5, PoolList 6, PoolStatus 3, PrinterManager 22, PrinterPool 3, TcpTransport 10) |
+| the Next build (the repo, D:, 12 GB free) | exit 0, **132 routes** |
+
+Every row equals Session 3D's Results. (A first attempt overlapped itself: stopping its background task left the script's child running, so two runs wrote the same logs; both were stopped by PID and one clean run gave this table.)
+
+**The 3D APKs.**
+- In the repo, `javap -c -p app/build/tmp/kotlin-classes/release/…/TransportFactory.class` (dated 2026-10-09 00:05, D5's full release compile) calls `TcpTransport."<init>":(Ljava/lang/String;IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V`.
+- **The exit re-run on the emulator** with the session's recorded x86_64 APK (`8bed1a5e…`, hashed in `1babf0bd…/apk-3d/` and on the device): Pixel_7_API_33 at `-memory 4096` (C: 21 GB; the stale quickboot snapshot did not load: a cold boot); a fresh `pos_scratch_e2e_3d_gate` (`pos_scratch_e2e_3dg` was the 3C gate's: left); this branch's build (the suites' Step) on 3110, the proxies on 3200/3201, `pw-3d.mjs printers`. As found: the release APK `29115bdf…` on its start screen with no address (not the demo), notifications not allowed. The release app signed in (Sign out first: a session from another database answered 401) with its printer `10.0.2.2:9100` connected.
+  - **X0:** `install -r` of the 3D APK over the release APK: the POS at once, signed in, "Printer connected", the panel "Network printer 10.0.2.2 · Connected", no notice; crash 0. **X2's setup:** `emu-setup` (Kitchen at `10.0.2.2:9100`, the emulator's device `80cfb12d…d5f2`), Refresh: `PrintHostService` `isForeground=true`, `stopIfKilled=false`; no notification question (asked before on this app data) → `pm grant`, HOME and open once: "Printing is on — Network printer 10.0.2.2".
+  - **X3:** HOME, hidden 200 s: **13 × wake (15 s), 10 × pulse (20 s), 7 × orders and 6 × tables (30 s), no lease**; `beatAt` 22 s old (the beat's write clock is 30 s); the slip printed **6 s** after the order (the next wake: no Worker locally), 44,250 B. Then the screen off (`mWakefulness=Asleep`) 180 s: 43 × wake (3 s for two minutes after the job, then 15 s), 9 × pulse, no lease, `beatAt` 4 s old; printed **8 s** after the order, 44,250 B.
+  - **X3b:** `am kill` → the same pid (6032), `prcp F/S/FGS … (fg-service)`; printed 8 s after the order with the app hidden.
+  - **X5:** `am crash 6032` → `Scheduling restart of crashed service com.possoftware.pos/.printer.PrintHostService in 1000ms`; **"POS printing is off. Tap to start."** 2–4 s after the crash; the crash buffer 14 lines, the one induced `CrashedByAdbException`, **0** `ForegroundServiceDidNotStartInTimeException`; the service gone; the tap → `topResumedActivity` MainActivity, "Printing is on"; HOME: printed 4 s after the order.
+  - **X6:** `adb reboot` → the notice **26 s** after `sys.boot_completed`; the tap → MainActivity, "Printing is on"; printed 2 s after the order.
+  - **X9:** `pw-3d.mjs clear`, Refresh (`GET /pos`): no `PrintHostService`, no notice.
+  - `adb logcat -b crash -d | grep -c possoftware`: **0** after every install. **All PASS.**
+  - **Put back:** the setup cleared, the app's printer removed, the address cleared, the **release APK** reinstalled (`29115bdf…`, crash 0), notifications revoked, `adb reverse --remove-all` then `tcp:3100 tcp:3100`, `adb shell sync`, `adb emu kill`; the gate's servers stopped by PID.
+
+**The fresh review (Claude Fable 5.1; no HTTP 429).** Read-only, its scratch only in the gate's scratchpad (`review3dg/`). It read every non-docs hunk of `8751b49..978459c` (59 files) with `App.tsx`, `PrintHostService.kt`, `HostController.kt`, `WebViewDelivery.kt`, `PosScreen.tsx` and the other touched files in full, and React Native 0.87.1's `FabricUIManager.java`, `ReactChoreographer.kt` and `ReactHostImpl.kt`. Its own runs: mobile 139/139 and Jest 3/3, mobile tsc 0; shared 821/821; desktop 192/192; twelve touched cafe test files 262/262, cafe tsc 0; the live legs on its own database (`pos_scratch_print_host_3dgrev`) **444/0**; `git diff --stat 8751b49..978459c -- apps/desktop workers packages` empty.
+
+**Verdict: "ship"** (0 Critical, 0 Important, 8 minors). Each is ruled in "3D review gate: rulings" below.
+
+| # | Finding | Ruling |
+|---|---|---|
+| m-1 | Change POS address (`App.tsx` `changeUrl` → `clearOrigin`) leaves the wish on and the service running with no page: the alert within 30 s while staff type, and a retired tablet keeps a foreground service and a wake lock and says "POS printing is off" after every reboot. | **Fixed (E0):** `setHostActive(false, '')` before `clearOrigin()`. |
+| m-2 | A configuration change outside `configChanges` (font size, language, layout direction, display size) recreates the activity → `onHostDestroy` → `stopHost()` → one "POS printing is off" with sound for the seconds the page takes to reload. | **Fixed (E0)** the other way it offered: `onHostDestroy` skips the stop while the activity `isChangingConfigurations` (React Native runs the listeners before it drops its activity); `configChanges` unchanged (the shell's screens keep picking up a new font size). |
+| m-3 | The alert "Printing stopped" stays ≤ 30 s after a self-healed hidden death (an answer is scored only at the next tick). | **Fixed (E0):** an answer clears the dead count and refreshes the notification at once. Its optional grace after a remount not taken. |
+| m-4 | The watchdog's `PosPageDead` path is pinned by text only. | **Fixed (E0):** a Jest test of the POS screen (the event remounts and asks `mountWhileHidden`). Its `kill -STOP` exit item needs `adb root`, which this Play image has not: not taken. |
+| m-5 | Deploy skew: the 3D APK's keep-running tick un-freezes an older page whose `app.wake` still kicks the agent (a lease every 15 s, ≤ 5,760 a day per hidden printing device until it reloads). | **To 3G's GO-LIVE, with the order changed:** deploy the web first, then install the APK on each printing device, then open the app once (the install posts the notice; its tap loads the 3D page). This replaces the 3C gate's m-8 ("APK first"): m-8's cost is cosmetic, m-5's is budget. |
+| N-1 | The watchdog can remount again a page whose renderer-gone remount takes > 30 s to load (the second remount is refused by the 10-minute gap after it unmounted the loading WebView): one tap. | **To 3G** (with m-6 of the second golden review): the right fix counts a renderer-gone remount as the page life's remount (a hook from the module into `PageWatch`), not the reviewer's `mayRemount` alone (it covers only the 30 s window). *Cost if wrong:* one tap after a page that needs > 30 s to load, with the alert. |
+| N-2 | The page's own "no" does not take down a "POS printing is off" notice a reboot left (staff opened the app from the launcher). | **Fixed (E0):** `PrintingOffNotice.cancel` with the stop. |
+| N-3 | `TcpTransportTest.aPortThatKeepsRefusingIsNotConnectedAfterOneMoreTry` is timing-bound (900–3,000 ms). | **Noted:** a flake there is read as timing first. |
+
+Its sound list (verified, not trusted): D0 exactly the 3C gate's rulings; the release-compile guard set at execution time; D1's state machine (the wish committed before the stop; `running` only after `startForeground`; no `startForeground` on a sticky restart, so no foreground-service timeout; four `stopSelf(startId)` branches); the exported receiver (protected broadcasts); Android 14–16 reasoned from AOSP (the `connectedDevice` prerequisites declared; the service started only while visible); D2's invariant (`decided && !printsForCafe` never flashes on a device that prints); the hidden wake only for a printing device inside the POS app; D3 leak-free on RN 0.87.1 (`FabricUIManager.onHostResume/onHostPause` idempotent); `PageWatch` a faithful extraction; threading; D4 local and skew-safe; the deploy-skew matrix; no new request kind.
+
+**Recommended next:** Session 3E as exact code, below, pre-validated at this gate, with the app fixes as its first task (E0).
+
+## 3D review gate: rulings
+
+Each says what it costs if wrong.
+
+| Item | Ruling | Where |
+|---|---|---|
+| m-1 to m-4, N-2 (its review) | **Fixed in 3E's first task (E0), not left to 3G.** 3G measures the final code (the night's idle, both modes with tokens): an app change after its measurement would void it, so app fixes land before it. They are small and the review is fresh. 3E therefore also rebuilds the APKs (a full release compile) and runs the affected items on the emulator (XE0–XE5). *Cost if wrong:* one more APK build and emulator pass in 3E. | E0, E7 |
+| m-2's way | **`isChangingConfigurations` in `onHostDestroy`**, not more `configChanges`: listing font size, language and display size there would stop the shell's own screens from picking them up until a restart; the page reload on such a change is as before 3D. *Cost if wrong:* the reload's few seconds (a slip in flight is re-leased as before). | E0 |
+| m-5, with the 3C gate's m-8 and m-9 | **3G's GO-LIVE order: the web first, then the APK on each printing device, then open the app once** (the install posts "POS printing is off"; its tap loads the 3D page). An older page never runs on the 3D APK's keep-running tick, and the 3D page's words on an older APK last only minutes. *Cost if wrong:* empty leases every 15 s per hidden printing device on an old page (bounded by the rollout). | 3G |
+| N-1 | **To 3G** (with the second golden review's m-6, the hidden wake's behavioural case): count a renderer-gone remount as the page life's remount. *Cost if wrong:* one tap after a page that needed > 30 s to load while hidden, with the alert. | 3G |
+| N-3 | **Noted** (a timing-bound JVM test). | — |
+| The 3D session's rulings 1–5 | **Accepted as ruled:** the `git commit -F` for quoted messages; the AVD's NTFS-compressed stale `ram.img` (it stays; this gate booted with `-no-snapshot-save`: the snapshot did not load, a cold boot); the slip latency of 5–9 s locally (no Worker: a device hears of a slip at its next wake); X2's `pm grant` and the HOME-and-open; the review in the background of Steps 1–3. | — |
+| Carried (the second golden review's m-5, m-6; the 3C gate's m-8, m-9) | **Unchanged to 3G**, m-8 now read with m-5 (above). | 3G |
+| **3E: the slip's bytes** | **The page's ESC/POS raster through `printRaw`** (the spec): the same bytes as the POS app's, one raster in the code; the app's main process only connects, writes and reads the status. Not the app's own HTML raster (its direct lane) over TCP. *Cost if wrong:* a network printer's slip looks like the POS app's, not like the PC's Windows printer's (both proven on real printers). | E1–E3 |
+| **3E: "no" and "maybe"** | `sent: "no"` only when the connect failed or the address is not on the local network; after any byte "maybe" (G5 as the POS app does it: a printer that answered DLE EOT before and now closes first or says nothing; a printer that says it cannot print). A connect refused at once is asked again a second later (the 3C gate's I-1). A job has 60 s (the POS app's watchdog). *Cost if wrong:* a needless REPRINT (never a silent double). | E1 |
+| **3E: the checks** | The app checks each network printer this PC prints at once, then every minute while this device prints, every 10 s while one says it cannot print and every 30 s while one does not answer (the POS app's cadence); a local connect and DLE EOT, no request. *Cost if wrong:* a TCP connect a minute per printer on the cafe's LAN. | E3, E4 |
+| **3E: printer presence** (spec §9.6) | **Page-side, on 1.12.0 only:** every minute while this device prints, the page reads the app's Windows printers again (the existing local `listPrinters`); a Windows printer it writes that Windows no longer reports reads `disconnected` after the 20 s settle; a present one `connected`. 1.11.0 reports nothing, as in Phase 2. *Cost if wrong:* a Windows printer's health write when it changes or every 5 minutes (P3-6's ≤ 144 a printer a day, now also for Windows printers). | E5 |
+| **3E: a PC that takes a printer over** | By the POS app's rule (P3-2, E-1): only a PC that writes a printer by the setup; every other device's network printer is a candidate (the app can try any address, so none is "missing"); named in a lease only while the app's check or last slip says it answers. *Cost if wrong:* a PC with no printer of its own never takes one over (as a waiter phone). | E4 |
+| **3E: a network printer beside a PC's Windows printers** (found by the gate's exit pre-run) | The server allowed a device several printers only of one kind; a PC's network printer was refused next to its Windows printer. Now allowed (`differentPrintersOfOneDevice`); the same printer twice and a browser tab's second printer stay refused; leg (au) deliberately changed. *Cost if wrong:* none for a POS app (its printers were one kind already). | E6 |
+| **3E: the tray notice** | A failed raw print raises the Windows notification like every failed print (the window may be in the tray); a refusal holds the line until the printer's state changes, so it does not repeat. *Cost if wrong:* a notice per failed network slip. | E2 |
+| **3E: the Windows app 1.11.0** | Unchanged on the 3E page: no network printer, `lan` false, no presence, no health; every new path is feature-detected on `printRaw` and `lanStatus`. *Cost if wrong:* none (proven by W6). | E3–E5 |
+| **3E: the installer** | `POS-Software-Setup-1.12.0.exe` built with `npm run dist` (Electron 44.2.0 cached), recorded, **not released**; `package-lock.json`'s old version field left as it was (never synced). | E7 |
+| The real-printer items | **Carried to 3G's TEST-CHECKLIST and the owner's one run**, plus 3E's own section (E6): a network printer on the Windows app 1.12.0 (a KOT; off, paper out, cover open; a cut mid-bill; two printing devices; a PC and a tablet listing one printer for 10 minutes; a Windows printer removed in Windows), and 3D's own (an Android 14+ device: "Printing is on" and the service with the screen off). | 3G |
+
+### The fresh review of Session 3E's golden copy (Claude Fable 5.1)
+
+A fresh reviewer on **Claude Fable 5.1** (read-only; scratch files in the gate's scratchpad only; no HTTP 429) reviewed the golden copy `g3e-v3` (`978459c..a429afd`, E0–E6, 53 files) against this plan's head, the 3E spec, the carried items and spec §9.3, §9.6, §9.8, §10, §13, §14, §17, with the POS app's `TcpTransport.kt` and `PrinterStatus.kt` as the model. Its own runs on the gold: desktop 205/205, tsc and eslint 0; shared 821/821; mobile 141/141 and Jest 5/5; the cafe chain 5043 / 5042 / 0 / 1, cafe tsc 0, eslint on the touched files 0; the live legs on its own database (`pos_scratch_print_host_3erev`) 446/0; print tools 11/11; a probe of its own (an idle check holds a silent printer's one connection 1,011 ms, an answering one 2 ms).
+
+**Verdict: "ship as written"** (0 Critical, 0 Important, 7 minors). Each ruling says what it costs if wrong.
+
+| # | Finding | Ruling |
+|---|---|---|
+| m-1 | A 1.12.0 PC whose only printer is a network printer read "no printer" (red) while it printed: on the desktop lane a connected network printer fell into the old Windows row (no Windows printer chosen). | **Fixed (E5):** on the Windows app a network printer's state decides the row (`localRaster(worst)`); the dot test gains that case. |
+| m-2 | The page's 65 s wait could expire before the app's own worst case (its 60 s job deadline starts after the connect, a name lookup and a check ahead of it): a needless REPRINT. | **Fixed (E3):** the page waits 75 s. |
+| m-3 | A check's whole-list answer (it waits for the slowest printer, ≤ 5 s for one that is off) could overwrite a newer slip's answer for the same printer: one extra lease, ack and tray notice. | **Fixed (E3):** each printer's slips are counted; a check that began before a slip's answer leaves that printer as the slip said (a new store test). |
+| m-4 | A connected socket had no `error` listener for a few promise hops in the main process (practically unreachable; an uncaught exception would stop the whole Windows app). | **Fixed (E1):** a no-op listener from creation to destroy (pinned in L2). |
+| m-5 | TEST-CHECKLIST's timing words ("within about two minutes" is up to ~2 min 40 s), and the form's note (another device's form lists a PC only once that PC has woken: one that prints something). | **Fixed (E6):** "within about three minutes" (and the faster re-checks' times); the note says "a PC that prints nothing yet, say". |
+| m-6 | The idle check of a silent printer holds a single-connection printer for ~1 s, the POS app's refused-retry delay: a needless 5-minute skip is possible. | **Not taken:** the POS app's own idle check waits the same 1 s (parity; the window exists between two tablets already); a skip is harmless (P3-3: another device prints). The real-printer item "a PC and a tablet listing one printer for 10 minutes" covers it. *Cost if wrong:* a 5-minute skip now and then on such a module. |
+| m-7 | The IPC's own refusal (a bad address or size) reads "maybe"; unreachable from the real page, and the comment overstated it. | **Comment fixed (E3);** "maybe" kept (the safe reading). |
+
+Its sound list (verified, not trusted): G5 parity with `TcpTransport.kt` (the waits, the `answering`/`silent` memory, DLE EOT 2–4, `healthOfAnswers` bit for bit, the drain, the refused retry); "no" raised only before a socket exists, so a wrong "no" is not reachable; every timer and chain entry released; the private-address rule (resolved once, connected by IP: no rebinding window; IPv4-mapped IPv6 checked as IPv4); the IPC gate exactly `print.ts`'s, then the address and the size before any socket (a hostile page on the saved origin gets the surface the POS app's bridge already gives its page); deploy skew (1.11.0 with the 3E page exactly Phase 2's; the 3E app with an older page; every APK; a rollback server ignores `capabilities.lan`); the failover rules (E-1 kept, readiness `connecting` until the first check, `unreachable` only for a network printer's "not connected", health only from the writer now); the setup form; E0 on RN 0.87.1 bridgeless (`onHostDestroy` listeners run before the current activity is dropped); every new test RED-able. Its budget note: no new request kind; each Windows printer and network printer of a 1.12.0 PC now writes `Printer.health` on a change or every 5 minutes (≤ 144 a printer a day: P3-6's figure).
+
+**The gate's own exit pre-run found one more** (before the review returned): the server refused a network printer whose printing device is a PC that already prints a Windows printer ("That device already prints…": one kind of printer per device). **Fixed (E6):** a network printer goes beside a PC's Windows printers; leg (au) deliberately changed (+1 check: the same network printer twice is still refused).
+
+**The last golden copy (`g3e-v4`, every fix folded into its task):** every suite again (shared 821; cafe 5044 / 5043 / 0 / 1; tsc 0 and lint 0 errors for cafe, hub, mobile and desktop; mobile 141 + Jest 5; desktop 205; print tools 11; live 447/0), JUnit 64 and the APKs (`apps/mobile` is the same in `g3e-v3` and `g3e-v4`: x86_64 `397612a8…`, arm64 `9e4525b7…`, armv7 `c6c436f6…`), the Next build 132, the installer again (`b73e6143…`), the probe in the real Electron, and the headless exit W1–W6 again on its build (paper back printed 4 s later: the 10 s re-check). The section below was generated from it and validated verbatim on a fresh clone, task by task with every RED and GREEN: **IDENTICAL**.
+
+---
+## Session 3E (exact code, written and pre-validated at the 3D review gate)
+
+**Pre-validation (the 3D review gate, 2026-10-09).**
+- **Verbatim apply.** Every block of Tasks E0–E6 (**125 operations**) went verbatim, task by task, onto a fresh clone of `feat/printing-phase-3` at `978459c`. Every find matched exactly once.
+- **RED, then GREEN.** Each task's RED was seen before its code went in (E0's JUnit RED is a test failure; E1's and E3's a test file that cannot import its new module), and each GREEN gave the Expected lines below.
+- **Same tree.** The clone's tree came out IDENTICAL to the golden copy's (branch `g3e-v4`, tree `746edd8`).
+- **Every suite on the golden copy:**
+  - shared 821/821; cafe **5044 / 5043 pass / 0 fail / 1 skipped**;
+  - tsc 0 and lint 0 errors (+2 old warnings) for cafe, hub, mobile and desktop;
+  - mobile **141** + Jest **5**; desktop **205**; print tools 11; live legs **447/0** (leg at +2, leg au +1);
+  - JUnit **64/64** (`:app:testDebugUnitTest --rerun`, `GRADLE_USER_HOME=D:\gradle-home`: BatteryTargetsTest 3, DleEotTest 7, HostLifeTest 4, PageWatchTest 6, PoolListTest 6, PoolStatusTest 3, PrinterManagerTest 22, PrinterPoolTest 3, TcpTransportTest 10);
+  - the Next build: 132 routes, in a separate build copy with webpack's persistent cache off (a config line in that copy only);
+  - the APKs from that build copy (a scratchpad clone mapped to `V:`): x86_64 `397612a8…`, arm64 `9e4525b7…`, armv7 `c6c436f6…` (the repo's builds will hash differently), each a full release compile (no incremental line, 0 of 100 release classes older than the marker, `javap` shows the `TcpTransport` constructor E7 names);
+  - the installer from the golden clone (`npm run dist`): `POS-Software-Setup-1.12.0.exe`, 112,216,794 B, `b73e6143…` (the repo's build will hash differently);
+  - a probe in the real Electron 44.2.0 (scratchpad only): a sandboxed, context-isolated page sends a `Uint8Array` through a preload's `ipcRenderer.invoke`, as the 1.12.0 page does with `printRaw`; it reaches the main process as a `Uint8Array`, and the golden copy's compiled `raw-tcp.js` writes it to a fake printer (5,000 bytes and the 12 DLE EOT bytes; `paper ok, cover closed`); a closed port answers `no / not-connected`, a public address `no / bad-address`.
+- **The exit, pre-run** (E7's harness):
+  - headless (`pw-3e.mjs` as E7 shows it, over the golden copy's build): W1 the kitchen KOT printed by the fake 1.12.0 PC over raw TCP within a second (44,382 B), the bar KOT on its Windows printer, health `connected/ok/closed`; W2 paper out: never leased, "Kitchen is out of paper." in the other device's panel, printed 4 s after the paper was back; W3 the PC that printed the kitchen stopped: the slip made right after printed by the second PC 83 s after the stop (P3-4's bound: 150 s), the next one at once; W4 a PC that cannot reach the printer: skipped 30 s after its check, the slip printed by the second PC; W5 a Windows printer gone from Windows: "Front is not connected." (81 s), printed once when it was back; W6 the 1.11.0 fake: its Windows printer as in Phase 2, `lan` false. **All PASS.** (The first golden copy's run found the server refusing a network printer beside a PC's Windows printer: fixed in E6.)
+  - the emulator (Pixel_7_API_33 at `-memory 4096`, C: 15 GB; the golden copy's x86_64 APK over the release APK): XE0 the update kept everything, crash 0; XE1 printers mode, the service sticky, printed hidden 4 s after the order; XE2 two relaunches for `font_scale` 1.15 and 1.0, the same service record, no "POS printing is off" in 40 polls; XE3 Change POS address: the service gone at once, no notice in 45 s, and none after a reboot; XE4 the notice after a reboot with printing on (20 s after boot), the setup cleared, the app opened from the launcher: the notice gone 6 s later; XE5 crash 0. **All PASS.** Put back as E7 says (the release APK `29115bdf…` on its start screen with no address, notifications not allowed, `font_scale` unset; `adb reverse tcp:3100 tcp:3100`; the emulator stopped after `adb shell sync`).
+- **Fresh review on Claude Fable 5.1:** "ship as written" (0 Critical, 0 Important); six of its seven minors folded in (`g3e-v4`), the seventh ruled. Details and rulings: "The fresh review of Session 3E's golden copy" in the 3D review gate's section.
+
+A failure while executing therefore points to drift since then, or to a typo while copying. Compare with the plan first.
+
+**What 3E delivers.** Session 3E is the Windows app 1.12.0 for Phase 3 (spec §9.6), plus the 3D review gate's app fixes:
+- the gate's app fixes: Change POS address stops this device printing for the POS it leaves (m-1); a screen recreated for a configuration change keeps the print service (m-2); a page that answers again ends the alert at once (m-3); the page's own stop also takes down an old "POS printing is off" notice (its review's N-2); the watchdog's remount tested end to end (m-4) (Task E0);
+- the Windows app writes a network printer itself, over raw TCP from its main process, the way the POS app does: the page's ESC/POS bytes, the printer's own DLE EOT answer before the slip reads printed (G5), "no" and "maybe" told apart, a refused connect asked again a second later, and an idle check (E1);
+- the app's two new calls (`printRaw`, `lanStatus`), vetted like every print channel, and the version 1.12.0 (E2);
+- the page writes a network printer through them: the slip drawn in the page as ESC/POS, each printer's link and paper kept (E3);
+- on 1.12.0 a network printer is this PC's: it prints every one it writes, may take one over (P3-1, P3-2), names one in a lease only while the app reaches it, and its wake says `lan` and `lanFailover` (E4);
+- the health of its printers rides the beat: each network printer's link, paper, cover and errors, and a Windows printer's presence, checked every minute (E5);
+- Printer setup offers a Windows app 1.12.0 as a network printer's printing device, and TEST-CHECKLIST gains its checks (E6);
+- then the verification, JUnit, the APKs and the installer (recorded, not released), the exit (headless Chrome with a fake Windows app over the real raw TCP module, and the emulator for E0), the fresh review and Results (E7).
+
+**What changes outside the web.** The Windows installer changes (`POS-Software-Setup-1.12.0.exe`, E1, E2) and so do the APKs (E0: `App.tsx` and four Kotlin files). The Worker does not (`git diff --stat 978459c..HEAD -- workers` stays empty). **No new request kind:** the network printer's slip, its checks and the Windows printers' presence are local (the app's IPC and the cafe's LAN); the beat, the lease and the ack carry what they carried. A Windows PC that writes printers now polls the wake and beats as a POS app writer does (it already did since Phase 2), and may take a network printer over.
+
+**Old and new together.** The Windows app 1.11.0 on the 3E page prints exactly as in Phase 2 (no network printer, `lan` false, no presence report: every new path is feature-detected on `printRaw` and `lanStatus`). The 1.12.0 app on a page from before 3E prints its Windows printers as 1.11.0 did (the two calls are new; nothing else changed for the page). Every POS app (release, Phase 2, 3C, 3D, 3E APKs) and every page keep working against the 3E server.
+
+**Decisions this section implements:** P3-1 to P3-9 (above), as changed by the 3A to 3C review gates' rulings and the 3D review gate's ("3D review gate: rulings", below), and the 3E spec above.
+
+**Not in 3E:** Telegram (3F), the Phase 3 exit, the measurement and TEST-CHECKLIST's Phase 3 real-printer section (3G).
+
+### Review Focus (Session 3E)
+
+The inputs most likely to bite a cafe that the unit tests alone would not exercise; each has a test, a pin or an exit item.
+1. **"No" that was not "no".** A slip acked `sent: "no"` is retried with no label; one that had reached the paper prints twice, unlabelled. Raw TCP says "no" only when the connect failed (or the address is not on the local network); after any byte it is "maybe" (G5: a printer that answered before and now closes first or says nothing). → `raw-tcp.test.ts`, `desktop-lan.test.ts`, the outcome test, exit W1 and W4.
+2. **A takeover that a PC cannot print.** A Windows PC takes a network printer over only once it writes a printer by the setup (E-1) and names one in a lease only while its app's check or last slip says it answers (the signal that ends a skip). → `print-agent-printers.test.ts`, exit W3, W4.
+3. **Deploy skew.** 1.11.0 on the 3E page must print exactly as before; a 3E PC beside POS app tablets of every APK. → the 1.11.0 cases in the agent printers' and the store's tests, exit W6.
+4. **A printer that is out.** Paper out (DLE EOT) on a network printer of the Windows app: no lease while it says so, the words on every device, printed once when paper is back; a Windows printer removed in Windows: "not connected" on every device. → `print-agent-health.test.ts`, exit W2, W5.
+5. **The gate's app fixes.** Change POS address leaves no service and no notice behind; a font-size change posts no notice. → pin 25, the Jest tests, exit X-items on the emulator.
+
+### File map (Session 3E)
+
+| File | Change | Task |
+|---|---|---|
+| `apps/mobile/App.tsx`; `apps/mobile/…/printer/PosPrinterModule.kt`, `PageWatch.kt`, `PrintHostService.kt`, `HostController.kt`; `PageWatchTest.kt`, `__tests__/PosScreen.test.tsx` (create), `__tests__/App.test.tsx`, pin 25 | the 3D review gate's app fixes | E0 |
+| `apps/desktop/src/raw-tcp.ts`, `raw-tcp.test.ts` (create), `package.json` (the test chain) | raw TCP from the main process | E1 |
+| `apps/desktop/src/print-raw.ts` (create), `shared.ts`, `preload.ts`, `main.ts`, `package.json` (1.12.0); `apps/cafe/lib/desktop-shell-printer.ts`, `desktop-shell.ts`; the pins | the app's two calls | E2 |
+| `apps/cafe/lib/printer/desktop-lan.ts`, `desktop-lan.test.ts` (create), `lib/printer/lane-print.ts`, `lib/desktop-shell.ts`, `lib/print-host-slips.ts`, `hooks/use-print-host-bridge.ts`, `lib/print-write-outcome.ts`; tests and pins | the page writes a network printer through the app | E3 |
+| `apps/cafe/lib/print-agent-printers.ts`, `lib/printer/printer-registry.ts`, `hooks/use-device-printer.ts`, `hooks/use-agent-printers.ts`, `hooks/use-print-agent.ts`, `hooks/use-print-agent-wake.ts`; tests and pins | a network printer is the PC's; takeover | E4 |
+| `apps/cafe/lib/print-agent-health.ts`, `lib/print-agent-printers.ts`, `lib/printer/printer-dot.ts`, `hooks/use-print-agent.ts`, `hooks/use-agent-printers.ts`; tests and pins | health and presence | E5 |
+| `packages/shared/src/print-agent-wire.ts`, `src/print-printers.ts` (a network printer beside a PC's Windows printers), `apps/cafe/lib/print-device.ts`, `lib/print-setup-form.ts`, `components/print/setup/PrinterFormDialog.tsx`, `apps/mobile/TEST-CHECKLIST.md`; tests and the live leg | the setup | E6 |
+| this plan | Session 3E Results | E7 |
+
+Each task is one commit, in this order: E0 → E6. Then E7 (verification, the APKs and the installer, the exit, the fresh review, Results). **JUnit** runs from the repo (`cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun`); E0's RED there is a test failure.
+
+---
+
+### Task E0: the 3D review gate's app fixes: Change POS address stops this device printing for the POS it leaves; a configuration change keeps the print service; a page that answers again ends the alert at once; the page's own stop takes down an old notice; the watchdog's remount tested end to end
+
+**Files:**
+- Modify: `apps/mobile/App.tsx` (`changeUrl`: `setHostActive(false, '')` before `clearOrigin()`: m-1)
+- Modify: `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PosPrinterModule.kt` (`onHostDestroy`: no stop while the activity `isChangingConfigurations`: m-2), `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PageWatch.kt` (`answered()` resets the dead count: m-3), `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt` (an answer refreshes the notification: m-3), `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/HostController.kt` (the page's own stop cancels the notice: N-2)
+- Tests: `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PageWatchTest.kt` (1 more); `apps/mobile/__tests__/PosScreen.test.tsx` (create: the watchdog's word remounts, m-4), `apps/mobile/__tests__/App.test.tsx` (1 more: Change POS address); `apps/mobile/src/mobile-paths.test.ts` (pin 25 and its mutation, new)
+
+**Interfaces produced:** none new: `PageWatch.answered()` now also clears the dead count.
+
+**m-1, Change POS address.** `App.tsx` cleared the address and left the POS screen, so the page (the only one that could say "no") went away and the app kept the wish (`Prefs.printing`) and the sticky service: within 30 s the alert "Printing stopped" sounded while staff typed the new address, and a retired or re-pointed tablet kept a foreground service and a wake lock and said "POS printing is off. Tap to start." after every reboot. It now tells the app first that this device prints nothing (`setHostActive(false, '')`: the wish cleared, then the stop, so no notice); a new address's page asks again if its device prints.
+
+**m-2, a configuration change.** A change outside the manifest's `configChanges` (font size, language, layout direction, display size) recreates the activity; React Native's `onHostDestroy` stopped the host and the service's `onDestroy` posted "POS printing is off" (with sound) until the new page asked again a few seconds later. The module now skips the stop while the activity `isChangingConfigurations` (React Native calls the listeners before it drops its current activity); the service keeps running and the new screen's page asks again. The reload itself is as before (`configChanges` unchanged: the shell's screens still pick up a new font size).
+
+**m-3, the alert after a healed page.** The watchdog scored a probe's answer only at the next tick, so after a remount the alert "Printing stopped — tap to open the app" stayed up to 30 s with the new page already printing. An answer now clears the dead count and puts "Printing is on" back at once.
+
+**N-2 (the gate's review).** The page's own "no" (this device prints nothing now) left a "POS printing is off" notice a reboot had posted (staff opened the app from the launcher instead): it now goes with the stop.
+
+**m-4, the watchdog's remount path.** `PageWatch` is JVM-tested and the Kotlin half is one line (`HostPage.remount` → `PosPageDead`); the screen's half was pinned by text only. A Jest test now renders the POS screen with a stand-in WebView, emits `PosPageDead` and sees `mountWhileHidden` called and a fresh WebView mounted (a removed listener, a misnamed event or a dropped `mountWhileHidden` fails it). It passes before the code (the behaviour is 3D's); the m-1 Jest test is its RED.
+
+**RED**: mobile pin 25 and its mutation; the Jest m-1 test (the calls are only `clearOrigin`); JUnit `PageWatchTest.anAnswerEndsTheAlertAtOnce` (a test failure, not a compile failure).
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/mobile/__tests__/App.test.tsx`, find:
+
+```tsx
+import { AccessibilityInfo, NativeModules, Text } from 'react-native';
+import ReactTestRenderer from 'react-test-renderer';
+import App, { FIRST_RUN_SPLASH_MS } from '../App';
+
+// The real library is ESM-only and needs a native view; the address screen never mounts it.
+jest.mock('react-native-webview', () => ({ WebView: () => null }));
+```
+
+Replace it with:
+
+```tsx
+import { AccessibilityInfo, NativeModules, Text } from 'react-native';
+import ReactTestRenderer from 'react-test-renderer';
+import App, { FIRST_RUN_SPLASH_MS } from '../App';
+import { PosScreen } from '../src/screens/PosScreen';
+
+// The real library is ESM-only and needs a native view; the address screen never mounts it.
+jest.mock('react-native-webview', () => ({ WebView: () => null }));
+```
+
+In `apps/mobile/__tests__/App.test.tsx`, find:
+
+```tsx
+// A cold Babel/Jest cache can take longer than the 5 s default on this machine.
+const COLD_START_TIMEOUT_MS = 60_000;
+
+type Stub = { getSavedOrigin: jest.Mock; clearOrigin: jest.Mock };
+
+function textOf(root: ReactTestRenderer.ReactTestRenderer): string[] {
+  return root.root
+```
+
+Replace it with:
+
+```tsx
+// A cold Babel/Jest cache can take longer than the 5 s default on this machine.
+const COLD_START_TIMEOUT_MS = 60_000;
+
+type Stub = { getSavedOrigin: jest.Mock; clearOrigin: jest.Mock; setHostActive?: jest.Mock; newToken?: jest.Mock };
+
+function textOf(root: ReactTestRenderer.ReactTestRenderer): string[] {
+  return root.root
+```
+
+In `apps/mobile/__tests__/App.test.tsx`, find:
+
+```tsx
+  COLD_START_TIMEOUT_MS,
+);
+```
+
+Replace it with:
+
+```tsx
+  COLD_START_TIMEOUT_MS,
+);
+
+test(
+  'Change POS address stops this device printing for the POS it leaves, then asks for the address (the 3D review gate, m-1)',
+  async () => {
+    const calls: string[] = [];
+    const stub: Stub = {
+      getSavedOrigin: jest.fn().mockResolvedValue('https://cafe.example.com'),
+      clearOrigin: jest.fn(async () => void calls.push('clearOrigin')),
+      setHostActive: jest.fn(async (active: boolean, label: string) => {
+        calls.push(`setHostActive(${active}, ${JSON.stringify(label)})`);
+        return { active: false };
+      }),
+      newToken: jest.fn(() => new Promise(() => undefined)),
+    };
+    (NativeModules as { PosPrinter?: Stub }).PosPrinter = stub;
+
+    let renderer!: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(<App />);
+    });
+    const pos = renderer.root.findByType(PosScreen);
+    await ReactTestRenderer.act(async () => {
+      pos.props.onChangeUrl();
+    });
+    expect(calls).toEqual(['setHostActive(false, "")', 'clearOrigin']);
+    expect(textOf(renderer)).toContain('POS address');
+  },
+  COLD_START_TIMEOUT_MS,
+);
+```
+
+Create `apps/mobile/__tests__/PosScreen.test.tsx`:
+
+```tsx
+/**
+ * @format
+ */
+
+import React from 'react';
+import { AccessibilityInfo, DeviceEventEmitter, NativeModules } from 'react-native';
+import ReactTestRenderer from 'react-test-renderer';
+import { PAGE_DEAD_EVENT } from '../src/native/PosPrinter';
+import { PosScreen } from '../src/screens/PosScreen';
+
+// The 3D review gate (m-4): the print host's watchdog says a hidden page stopped answering (Kotlin's HostPage.DEAD_EVENT,
+// emitted by the module); the POS screen must remount its WebView and ask the app to mount it while hidden. The real
+// WebView needs a native view: a stand-in counts its mounts (a remount is a fresh one, by its key).
+const mockWebView = { mounts: 0 };
+jest.mock('react-native-webview', () => {
+  const ReactActual = jest.requireActual('react');
+  return {
+    WebView: ReactActual.forwardRef(function FakeWebView() {
+      ReactActual.useEffect(() => {
+        mockWebView.mounts += 1;
+      }, []);
+      return null;
+    }),
+  };
+});
+jest.mock(
+  'react-native-safe-area-context',
+  () => jest.requireActual('react-native-safe-area-context/jest/mock').default,
+);
+jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(true);
+
+const COLD_START_TIMEOUT_MS = 60_000;
+
+test(
+  "the watchdog's word remounts the page: a fresh WebView, mounted at once even while the app is hidden",
+  async () => {
+    const stub = {
+      // The bridge token never arrives here: the page itself is not needed to prove the remount.
+      newToken: jest.fn(() => new Promise(() => undefined)),
+      mountWhileHidden: jest.fn().mockResolvedValue(null),
+    };
+    (NativeModules as { PosPrinter?: unknown }).PosPrinter = stub;
+    let screen!: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      screen = ReactTestRenderer.create(
+        <PosScreen origin="https://cafe.example.com" onChangeUrl={() => undefined} />,
+      );
+    });
+    expect(mockWebView.mounts).toBe(1);
+    expect(PAGE_DEAD_EVENT).toBe('PosPageDead');
+    await ReactTestRenderer.act(async () => {
+      DeviceEventEmitter.emit(PAGE_DEAD_EVENT);
+    });
+    expect(stub.mountWhileHidden).toHaveBeenCalledTimes(1);
+    expect(mockWebView.mounts).toBe(2);
+    await ReactTestRenderer.act(async () => {
+      screen.unmount();
+    });
+    DeviceEventEmitter.emit(PAGE_DEAD_EVENT);
+    expect(stub.mountWhileHidden).toHaveBeenCalledTimes(1);
+  },
+  COLD_START_TIMEOUT_MS,
+);
+```
+
+In `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PageWatchTest.kt`, find:
+
+```kotlin
+  }
+
+  @Test
+  fun aNewRunStartsClean() {
+    val w = watch()
+    w.tick(false)
+```
+
+Replace it with:
+
+```kotlin
+  }
+
+  @Test
+  fun anAnswerEndsTheAlertAtOnce() {
+    // The 3D review gate (m-3): a page that heals after a remount puts "Printing is on" back when it answers, not a tick later.
+    val w = watch()
+    w.tick(false)
+    assertEquals(1, dead(w, 2))
+    assertTrue("two dead ticks while hidden: the alert", w.alerting(false))
+    w.answered()
+    assertFalse("the new page answered: the alert goes at once", w.alerting(false))
+  }
+
+  @Test
+  fun aNewRunStartsClean() {
+    val w = watch()
+    w.tick(false)
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  everyMutationCaught(run('manifest'), base.manifest, [['<package android:name="com.miui.securitycenter" />', '']]);
+});
+
+test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
+  const strings = readFileSync(join(MAIN, 'res', 'values', 'strings.xml'), 'utf8');
+  assert.ok(
+```
+
+Replace it with:
+
+```ts
+  everyMutationCaught(run('manifest'), base.manifest, [['<package android:name="com.miui.securitycenter" />', '']]);
+});
+
+// ── pin 25: the 3D review gate's app fixes (2026-10-09) ─────────────────────
+// Change POS address stops this device printing for the POS it leaves (m-1); a screen recreated for a configuration
+// change keeps the service (m-2); a page that answers again ends the alert at once (m-3); the page's own "no" also takes
+// down a "POS printing is off" notice a reboot left (N-2).
+interface AppFixSources {
+  app: string;
+  module: string;
+  watch: string;
+  service: string;
+  host: string;
+}
+function appFixProblems(s: AppFixSources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!strip(text).includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(s.app, "PosPrinter.setHostActive(false, '')\n      .catch(noop)\n      .then(() => PosPrinter.clearOrigin())", 'Change POS address leaves this device printing for the POS it left');
+  need(s.module, 'if (reactContext.currentActivity?.isChangingConfigurations == true) return\n    host.stopHost()', 'a configuration change stops printing for a moment');
+  need(s.watch, 'answered = true\n    dead = 0', 'a page that answers again keeps the alert one tick more');
+  need(s.service, 'watch.answered()\n        refreshNotification()', 'the notification waits for the next tick');
+  need(s.host, 'stopHost()\n      PrintingOffNotice.cancel(ctx.applicationContext)', 'the page\'s own stop leaves an old notice up');
+  return out;
+}
+const appFixSources = (): AppFixSources => ({
+  app: read(join(ROOT, 'App.tsx')),
+  module: kt('PosPrinterModule.kt'),
+  watch: kt('PageWatch.kt'),
+  service: kt('PrintHostService.kt'),
+  host: kt('HostController.kt'),
+});
+
+test("pin 25: the 3D review gate's app fixes (Change POS address, a configuration change, the alert after a healed page, an old notice)", () => {
+  assert.deepEqual(appFixProblems(appFixSources()), []);
+});
+
+test('pin 25 mutation: every gate-fix needle can fail', () => {
+  const base = appFixSources();
+  const run = (key: keyof AppFixSources) => (text: string) => appFixProblems({ ...base, [key]: text });
+  everyMutationCaught(run('app'), base.app, [["PosPrinter.setHostActive(false, '')", "PosPrinter.setHostActive(true, '')"]]);
+  everyMutationCaught(run('module'), base.module, [['isChangingConfigurations == true) return', 'isChangingConfigurations == false) return']]);
+  everyMutationCaught(run('watch'), base.watch, [['    dead = 0\n  }', '  }']]);
+  everyMutationCaught(run('service'), base.service, [['        refreshNotification()\n      }', '      }']]);
+  everyMutationCaught(run('host'), base.host, [['      PrintingOffNotice.cancel(ctx.applicationContext)\n', '']]);
+});
+
+test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
+  const strings = readFileSync(join(MAIN, 'res', 'values', 'strings.xml'), 'utf8');
+  assert.ok(
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 141`; `# pass 139`; `# fail 2`
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm run test:app 2>&1 | grep -E "^Tests:"`
+Expected: `Tests:       1 failed, 4 passed, 5 total`
+
+Run: `cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun --console=plain 2>&1 | grep -E "^BUILD|compileDebugUnitTestKotlin FAILED|testDebugUnitTest FAILED" | sed -E 's/ in [0-9hms ]+$//'`
+Expected: `> Task :app:testDebugUnitTest FAILED`; `BUILD FAILED`
+
+Run: `cat /d/kd/lucifer/apps/mobile/android/app/build/test-results/testDebugUnitTest/*.xml | grep -oE 'testsuite name="[^"]+" tests="[0-9]+" skipped="[0-9]+" failures="[0-9]+" errors="[0-9]+"'`
+Expected: `testsuite name="com.possoftware.pos.printer.BatteryTargetsTest" tests="3" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.DleEotTest" tests="7" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.HostLifeTest" tests="4" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PageWatchTest" tests="6" skipped="0" failures="1" errors="0"`; `testsuite name="com.possoftware.pos.printer.PoolListTest" tests="6" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PoolStatusTest" tests="3" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PrinterManagerTest" tests="22" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PrinterPoolTest" tests="3" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.TcpTransportTest" tests="10" skipped="0" failures="0" errors="0"`
+
+- [ ] **Step 3: The code**
+
+In `apps/mobile/App.tsx`, find:
+
+```tsx
+
+  const changeUrl = useCallback(() => {
+    const initial = boot.kind === 'pos' ? boot.origin : '';
+    PosPrinter.clearOrigin()
+      .catch(noop)
+      .then(() => setBoot({ kind: 'url', initial }));
+  }, [boot]);
+```
+
+Replace it with:
+
+```tsx
+
+  const changeUrl = useCallback(() => {
+    const initial = boot.kind === 'pos' ? boot.origin : '';
+    // Phase 3 (the 3D review gate, m-1): this device stops printing for the POS it leaves (its page goes with it and can
+    // never say so): no service, no "POS printing is off" after a reboot; a new address's page asks again if it prints.
+    PosPrinter.setHostActive(false, '')
+      .catch(noop)
+      .then(() => PosPrinter.clearOrigin())
+      .catch(noop)
+      .then(() => setBoot({ kind: 'url', initial }));
+  }, [boot]);
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/HostController.kt`, find:
+
+```kotlin
+  /** Returns whether the host is active after the call. */
+  fun setActive(wanted: Boolean, label: String): Boolean {
+    if (!wanted) {
+      // The page's own "no": this device no longer prints for the cafe (cleared before the stop, so no notice).
+      Prefs.setPrinting(ctx.applicationContext, false)
+      stopHost()
+      return false
+    }
+    // A background start is refused by Android 12+; the page re-asks when the app is visible again.
+```
+
+Replace it with:
+
+```kotlin
+  /** Returns whether the host is active after the call. */
+  fun setActive(wanted: Boolean, label: String): Boolean {
+    if (!wanted) {
+      // The page's own "no": this device no longer prints for the cafe (cleared before the stop, so no notice). The 3D
+      // review gate (N-2): a "POS printing is off" notice a reboot or an update left goes too.
+      Prefs.setPrinting(ctx.applicationContext, false)
+      stopHost()
+      PrintingOffNotice.cancel(ctx.applicationContext)
+      return false
+    }
+    // A background start is refused by Android 12+; the page re-asks when the app is visible again.
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PageWatch.kt`, find:
+
+```kotlin
+    sinceRemount = NEVER
+  }
+
+  /** The page answered the probe this tick sent. */
+  fun answered() {
+    answered = true
+  }
+
+  /** One tick: scores the previous probe (when one went out); the service then sends the next. True: remount now. */
+```
+
+Replace it with:
+
+```kotlin
+    sinceRemount = NEVER
+  }
+
+  /** The page answered the probe this tick sent. The 3D review gate (m-3): it is alive now, so the alert goes at once. */
+  fun answered() {
+    answered = true
+    dead = 0
+  }
+
+  /** One tick: scores the previous probe (when one went out); the service then sends the next. True: remount now. */
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PosPrinterModule.kt`, find:
+
+```kotlin
+
+  override fun onHostDestroy() {
+    PrinterPool.appVisible = false
+    host.stopHost()
+  }
+```
+
+Replace it with:
+
+```kotlin
+
+  override fun onHostDestroy() {
+    PrinterPool.appVisible = false
+    // The 3D review gate (m-2): a screen recreated for a configuration change (font size, language, display size) is not
+    // a stop: the service keeps running (no "POS printing is off" for a moment) and the new screen's page asks again.
+    if (reactContext.currentActivity?.isChangingConfigurations == true) return
+    host.stopHost()
+  }
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt`, find:
+
+```kotlin
+    if (watch.tick(PrinterPool.appVisible)) HostPage.remount?.invoke()
+    val id = ++probeSeq
+    // A late answer to an older probe must not vouch for this one.
+    WebViewDelivery.probePage { alive -> if (alive && id == probeSeq) watch.answered() }
+  }
+
+  /** The page has stopped answering and nobody is looking at the app, so only a notification can say so. */
+```
+
+Replace it with:
+
+```kotlin
+    if (watch.tick(PrinterPool.appVisible)) HostPage.remount?.invoke()
+    val id = ++probeSeq
+    // A late answer to an older probe must not vouch for this one.
+    // The 3D review gate (m-3): an answer puts "Printing is on" back at once (a page that healed after a remount).
+    WebViewDelivery.probePage { alive ->
+      if (alive && id == probeSeq) {
+        watch.answered()
+        refreshNotification()
+      }
+    }
+  }
+
+  /** The page has stopped answering and nobody is looking at the app, so only a notification can say so. */
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 141`; `# pass 141`; `# fail 0`
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm run test:app 2>&1 | grep -E "^Tests:"`
+Expected: `Tests:       5 passed, 5 total`
+
+Run: `cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun --console=plain 2>&1 | grep -E "^BUILD|compileDebugUnitTestKotlin FAILED|testDebugUnitTest FAILED" | sed -E 's/ in [0-9hms ]+$//'`
+Expected: `BUILD SUCCESSFUL`
+
+Run: `cat /d/kd/lucifer/apps/mobile/android/app/build/test-results/testDebugUnitTest/*.xml | grep -oE 'testsuite name="[^"]+" tests="[0-9]+" skipped="[0-9]+" failures="[0-9]+" errors="[0-9]+"'`
+Expected: `testsuite name="com.possoftware.pos.printer.BatteryTargetsTest" tests="3" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.DleEotTest" tests="7" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.HostLifeTest" tests="4" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PageWatchTest" tests="6" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PoolListTest" tests="6" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PoolStatusTest" tests="3" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PrinterManagerTest" tests="22" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PrinterPoolTest" tests="3" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.TcpTransportTest" tests="10" skipped="0" failures="0" errors="0"`
+
+Run: `cd /d/kd/lucifer/apps/mobile && npx tsc --noEmit && echo MOBILE_TSC_OK && npm run lint >/dev/null 2>&1 && echo MOBILE_LINT_OK`
+Expected: `MOBILE_TSC_OK`; `MOBILE_LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/mobile/App.tsx apps/mobile/__tests__/App.test.tsx apps/mobile/__tests__/PosScreen.test.tsx apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/HostController.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PageWatch.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PosPrinterModule.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PageWatchTest.kt apps/mobile/src/mobile-paths.test.ts
+git commit -m "fix(app): the 3D review gate's app fixes: Change POS address stops this device printing for the POS it leaves, a screen recreated for a configuration change keeps the print service (no spurious notice), a page that answers again ends the alert at once, the page's own stop also takes down an old notice, and the watchdog's remount is tested end to end (Phase 3 Session 3E, E0)"
+```
+
+---
+
+### Task E1: the Windows app writes a network printer itself over raw TCP, the way the POS app does: one connection per job to a private address, the printer's own DLE EOT answer before the slip reads printed, "no" and "maybe" told apart, and an idle check
+
+**Files:**
+- Create: `apps/desktop/src/raw-tcp.ts` (pure node: `printRawTcp`, `probeRawTcp`, `healthOfAnswers`, `isPrivateAddress`, `validTarget`, `RawTcpError`)
+- Tests: `apps/desktop/src/raw-tcp.test.ts` (create, 11, against a fake printer on the loopback; added to `apps/desktop/package.json`'s test chain)
+
+**Interfaces produced:** `printRawTcp(target, data, waits?): Promise<{ health }>` (throws `RawTcpError`: `sent` "no" | "maybe", `failure` "not-connected" | "bad-address" | "write-failed" | "cannot-print", `health`); `probeRawTcp(target, waits?): Promise<{ link, health } | null>`; `healthOfAnswers(answers)`, `healthCannotPrint(health)`, `isPrivateAddress(address)`, `validTarget(value)`, `keyOf(target)`, `RAW_TCP_WAITS`, `RAW_TCP_DATA_MAX_BYTES`.
+
+**What it copies** (spec §9.6; the POS app's `TcpTransport.kt` and `DleEot`, the same numbers): one TCP connection per job to the printer's port on a private address (10/8, 172.16/12, 192.168/16, 169.254/16, loopback; IPv6 fc00::/7, fe80::/10, ::1; a name is resolved and only its private addresses are tried, IPv4 first, the 5 s shared out); the page's ESC/POS bytes unchanged; then DLE EOT 1 to 4 on the same connection, read with Epson's fixed bits. **G5:** a printer that answered DLE EOT before and now closes first or says nothing after the slip is "maybe" (REPRINT); one that never answers prints as before (no false REPRINT); one whose last idle check got no answer is asked only briefly. A printer that says it cannot print (paper out, cover open, an error) is "maybe" with its link kept. A connect refused at once (or host unreachable) is asked once more a second later, inside the 5 s (a printer that takes one connection at a time: the 3C review gate's I-1). A connect that fails sends nothing: "no", which the page acks as unreachable. A whole job has 60 s (the POS app's watchdog): a printer that takes the connection and never reads cannot hold its line; it is then "maybe".
+
+**One job or check at a time per printer**, and a check never runs while a job holds the printer (that job's answer says it). `probeRawTcp` is the idle check: one connect, DLE EOT, close: `disconnected` when it does not answer the connect, else what it said. The socket has an `error` listener from its creation to its destroy (the gate's golden-copy review, m-4: an error with none would be an uncaught exception in the Windows app's main process, every printer of the PC stopped).
+
+**Pure node** (`net`, `dns`): no `electron` import, so node:test drives it against a fake printer (a `net` server) on the loopback, with every wait shortened.
+
+**RED**: the new test file cannot import `./raw-tcp` (one failing test).
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/desktop/package.json`, find:
+
+```json
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "node --import tsx --test src/server-url.test.ts src/store.test.ts src/window-state.test.ts src/escpos.test.ts src/raw-spool.test.ts src/printer-check.test.ts src/desktop-paths.test.ts",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && electron-builder --win nsis --publish never"
+  },
+```
+
+Replace it with:
+
+```json
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "node --import tsx --test src/server-url.test.ts src/store.test.ts src/window-state.test.ts src/escpos.test.ts src/raw-spool.test.ts src/raw-tcp.test.ts src/printer-check.test.ts src/desktop-paths.test.ts",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && electron-builder --win nsis --publish never"
+  },
+```
+
+Create `apps/desktop/src/raw-tcp.test.ts`:
+
+```ts
+// Phase 3 Session 3E (spec §9.6, §13): the Windows app's raw TCP writer against a fake network printer on the
+// loopback (a node:net server that answers DLE EOT like an Epson printer, or not at all, and can cut a job off). Every
+// wait is shortened (RawTcpWaits); nothing here touches a real printer or the network beyond 127.0.0.1.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import net from "node:net";
+import {
+  BAD_ADDRESS_MESSAGE,
+  NOT_CONNECTED_MESSAGE,
+  RAW_TCP_WAITS,
+  RawTcpError,
+  healthCannotPrint,
+  healthOfAnswers,
+  isPrivateAddress,
+  printRawTcp,
+  probeRawTcp,
+  resetRawTcpMemory,
+  validTarget,
+  type RawTcpWaits,
+} from "./raw-tcp";
+
+const FAST: RawTcpWaits = { connectMs: 1_500, refusedRetryMs: 300, afterJobMinMs: 600, afterJobMaxMs: 1_200, replyMs: 250, followUpMs: 100, drainMs: 100, jobMs: 5_000 };
+const ONLINE = 0x12;
+const OFFLINE = 0x1a;
+const SLIP = Uint8Array.from({ length: 3_000 }, (_, i) => 0x20 + (i % 90));
+
+interface Fake {
+  port: number;
+  /** The bytes each connection received, in order. */
+  connections: number[][];
+  /** Connections open at once, at most. */
+  maxOpen: number;
+  close(): Promise<void>;
+}
+
+/** A fake ESC/POS printer: `status` answers DLE EOT n (absent n: no answer; null: answers nothing at all), `dropAfter`
+ *  resets a connection once it has received that many bytes. */
+async function fakePrinter(status: Partial<Record<1 | 2 | 3 | 4, number>> | null, dropAfter?: number): Promise<Fake> {
+  const fake: Fake = { port: 0, connections: [], maxOpen: 0, close: async () => undefined };
+  let open = 0;
+  const server = net.createServer((socket) => {
+    const got: number[] = [];
+    fake.connections.push(got);
+    open += 1;
+    fake.maxOpen = Math.max(fake.maxOpen, open);
+    socket.on("close", () => {
+      open -= 1;
+    });
+    socket.on("error", () => undefined);
+    socket.on("data", (chunk: Buffer) => {
+      for (const b of chunk) {
+        got.push(b);
+        const n = got.length;
+        if (n >= 3 && got[n - 3] === 0x10 && got[n - 2] === 0x04 && status !== null) {
+          const answer = status[b as 1 | 2 | 3 | 4];
+          if (answer !== undefined) socket.write(Uint8Array.of(answer));
+        }
+        if (dropAfter !== undefined && got.length >= dropAfter) {
+          socket.destroy();
+          return;
+        }
+      }
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  fake.port = (server.address() as net.AddressInfo).port;
+  fake.close = () => new Promise<void>((resolve) => server.close(() => resolve()));
+  return fake;
+}
+
+/** A loopback port nobody listens on (a printer that is off and says so at once). */
+async function closedPort(): Promise<number> {
+  const server = net.createServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as net.AddressInfo).port;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  return port;
+}
+
+const printer = (port: number) => ({ host: "127.0.0.1", port });
+
+async function rejection(promise: Promise<unknown>): Promise<RawTcpError> {
+  try {
+    await promise;
+  } catch (error) {
+    assert.ok(error instanceof RawTcpError, `a RawTcpError, got ${String(error)}`);
+    return error;
+  }
+  assert.fail("the job should have failed");
+}
+
+test("DLE EOT: the POS app's reading of the status bytes, bit for bit", () => {
+  assert.equal(healthOfAnswers(new Map()), null, "no answer says nothing");
+  assert.deepEqual(healthOfAnswers(new Map([[1, ONLINE], [2, ONLINE], [3, ONLINE], [4, ONLINE]])), { paper: "ok", cover: "closed" }, "all clear");
+  assert.deepEqual(healthOfAnswers(new Map([[1, OFFLINE], [2, ONLINE | 0x20], [3, ONLINE], [4, ONLINE | 0x60]])), { paper: "out", cover: "closed" }, "paper out is not an error");
+  assert.deepEqual(healthOfAnswers(new Map([[1, OFFLINE], [2, ONLINE | 0x04], [3, ONLINE], [4, ONLINE]])), { paper: "ok", cover: "open" }, "the cover open");
+  assert.deepEqual(healthOfAnswers(new Map([[1, ONLINE], [2, ONLINE], [3, ONLINE], [4, ONLINE | 0x0c]])), { paper: "low", cover: "closed" }, "paper low still prints");
+  assert.deepEqual(healthOfAnswers(new Map([[1, OFFLINE], [2, ONLINE], [3, ONLINE | 0x20], [4, ONLINE]])), { paper: "ok", cover: "closed", error: true }, "an error it names");
+  assert.deepEqual(healthOfAnswers(new Map([[1, OFFLINE], [2, ONLINE | 0x08], [3, ONLINE], [4, ONLINE]])), { paper: "ok", cover: "closed" }, "FEED held down is not an error (the 3C review gate, m-2)");
+  assert.deepEqual(healthOfAnswers(new Map([[1, OFFLINE]])), { error: true }, "offline with no cause");
+  assert.equal(healthCannotPrint({ paper: "out" }), true, "out of paper cannot print");
+  assert.equal(healthCannotPrint({ cover: "open" }), true, "the cover open cannot print");
+  assert.equal(healthCannotPrint({ paper: "low", cover: "closed" }), false, "low paper prints");
+  assert.equal(healthCannotPrint(null), false, "a silent printer prints");
+});
+
+test("only a printer on the local network is ever connected to", () => {
+  for (const address of ["10.1.2.3", "172.16.0.9", "172.31.255.1", "192.168.1.60", "169.254.10.2", "127.0.0.1", "::1", "fd12:3456::1", "fe80::1", "::ffff:192.168.1.5"]) {
+    assert.equal(isPrivateAddress(address), true, `${address} is local`);
+  }
+  for (const address of ["8.8.8.8", "172.32.0.1", "192.169.0.1", "1.1.1.1", "2001:db8::1", "::ffff:8.8.8.8", "not-an-ip"]) {
+    assert.equal(isPrivateAddress(address), false, `${address} is not local`);
+  }
+  assert.equal(validTarget({ host: "192.168.1.60", port: 9100 }), true, "an address and port");
+  assert.equal(validTarget({ host: "kitchen-printer.lan", port: 9100 }), true, "a short name");
+  for (const target of [null, {}, { host: "", port: 9100 }, { host: "a b", port: 9100 }, { host: "x".repeat(254), port: 9100 }, { host: "10.0.0.1", port: 0 }, { host: "10.0.0.1", port: 65_536 }, { host: "10.0.0.1", port: 91.5 }, { host: "10.0.0.1", port: "9100" }]) {
+    assert.equal(validTarget(target), false, `refused: ${JSON.stringify(target)}`);
+  }
+});
+
+test("a slip goes out whole, then the printer's own answer on the same connection, then the link closes", async () => {
+  resetRawTcpMemory();
+  const fake = await fakePrinter({ 1: ONLINE, 2: ONLINE, 3: ONLINE, 4: ONLINE });
+  try {
+    const result = await printRawTcp(printer(fake.port), SLIP, FAST);
+    assert.deepEqual(result.health, { paper: "ok", cover: "closed" }, "what the printer said of itself");
+    assert.equal(fake.connections.length, 1, "one connection per job");
+    const got = fake.connections[0] ?? [];
+    assert.deepEqual(got.slice(0, SLIP.length), [...SLIP], "every byte of the slip, unchanged, first");
+    assert.deepEqual(got.slice(SLIP.length), [0x10, 0x04, 1, 0x10, 0x04, 2, 0x10, 0x04, 3, 0x10, 0x04, 4], "then DLE EOT 1 to 4");
+  } finally {
+    await fake.close();
+  }
+});
+
+test("a printer that refuses the connect: nothing sent, asked once more a moment later, and a slip it then takes prints", async () => {
+  resetRawTcpMemory();
+  const port = await closedPort();
+  const started = Date.now();
+  const error = await rejection(printRawTcp(printer(port), SLIP, FAST));
+  assert.equal(error.sent, "no", "nothing reached the printer");
+  assert.equal(error.failure, "not-connected", "the page acks it unreachable");
+  assert.equal(error.message, NOT_CONNECTED_MESSAGE, "its words");
+  assert.ok(Date.now() - started >= FAST.refusedRetryMs, "the refused connect was asked once more");
+
+  // It refuses the first connect (another device's check holds it), then listens: the retry prints the slip.
+  const server = net.createServer((socket) => {
+    socket.on("error", () => undefined);
+    socket.resume();
+  });
+  setTimeout(() => server.listen(port, "127.0.0.1"), 100);
+  try {
+    const result = await printRawTcp(printer(port), SLIP, FAST);
+    assert.equal(result.health, null, "a printer that answers no status prints as before");
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("a public address is never connected to (nothing sent)", async () => {
+  resetRawTcpMemory();
+  const error = await rejection(printRawTcp({ host: "8.8.8.8", port: 9100 }, SLIP, FAST));
+  assert.equal(error.sent, "no", "nothing sent");
+  assert.equal(error.failure, "bad-address", "not on the local network");
+  assert.equal(error.message, BAD_ADDRESS_MESSAGE, "its words");
+});
+
+test("G5: a printer that answered before and cuts a slip off mid-way is 'maybe'; one that never answers prints as before", async () => {
+  resetRawTcpMemory();
+  const talks = await fakePrinter({ 1: ONLINE, 2: ONLINE, 3: ONLINE, 4: ONLINE }, 1_000);
+  try {
+    const probe = await probeRawTcp(printer(talks.port), FAST);
+    assert.deepEqual(probe, { link: "connected", health: { paper: "ok", cover: "closed" } }, "its idle check: it answers DLE EOT");
+    const error = await rejection(printRawTcp(printer(talks.port), SLIP, FAST));
+    assert.equal(error.sent, "maybe", "part of the slip may be on paper: the retry says REPRINT");
+    assert.equal(error.failure, "write-failed", "a write that failed after bytes went out");
+  } finally {
+    await talks.close();
+  }
+  const mute = await fakePrinter(null);
+  try {
+    const result = await printRawTcp(printer(mute.port), SLIP, FAST);
+    assert.equal(result.health, null, "no status, no false REPRINT");
+  } finally {
+    await mute.close();
+  }
+});
+
+test("a printer out of paper: the slip is 'maybe' with the link kept, and its paper says out", async () => {
+  resetRawTcpMemory();
+  const fake = await fakePrinter({ 1: OFFLINE, 2: ONLINE | 0x20, 3: ONLINE, 4: ONLINE | 0x60 });
+  try {
+    const error = await rejection(printRawTcp(printer(fake.port), SLIP, FAST));
+    assert.equal(error.sent, "maybe", "it took the bytes: a REPRINT when it can print again");
+    assert.equal(error.failure, "cannot-print", "it says it cannot print");
+    assert.deepEqual(error.health, { paper: "out", cover: "closed" }, "what it said");
+  } finally {
+    await fake.close();
+  }
+});
+
+test("the idle check: connected with what it says, disconnected when off, connected and silent when it answers no status", async () => {
+  resetRawTcpMemory();
+  const port = await closedPort();
+  assert.deepEqual(await probeRawTcp(printer(port), FAST), { link: "disconnected", health: null }, "off");
+  const paperLow = await fakePrinter({ 1: ONLINE, 2: ONLINE, 3: ONLINE, 4: ONLINE | 0x0c });
+  try {
+    assert.deepEqual(await probeRawTcp(printer(paperLow.port), FAST), { link: "connected", health: { paper: "low", cover: "closed" } }, "low paper");
+    assert.equal(paperLow.connections[0]?.length, 12, "the check sends only DLE EOT 1 to 4");
+  } finally {
+    await paperLow.close();
+  }
+  const mute = await fakePrinter(null);
+  try {
+    assert.deepEqual(await probeRawTcp(printer(mute.port), FAST), { link: "connected", health: null }, "it answers the connect, not DLE EOT");
+    const started = Date.now();
+    await printRawTcp(printer(mute.port), SLIP, FAST);
+    assert.ok(Date.now() - started < FAST.afterJobMinMs, "a printer whose last check got no answer is asked briefly after a slip");
+  } finally {
+    await mute.close();
+  }
+});
+
+test("one job at a time per printer: a second slip waits for the first to close", async () => {
+  resetRawTcpMemory();
+  const fake = await fakePrinter({ 1: ONLINE, 2: ONLINE, 3: ONLINE, 4: ONLINE });
+  try {
+    await Promise.all([printRawTcp(printer(fake.port), SLIP, FAST), printRawTcp(printer(fake.port), SLIP, FAST), probeRawTcp(printer(fake.port), FAST)]);
+    assert.equal(fake.maxOpen, 1, "never two connections at once");
+    assert.ok(fake.connections.length >= 2, "both slips went out");
+  } finally {
+    await fake.close();
+  }
+});
+
+test("a job that outlives its deadline is 'maybe' and frees the printer's line", async () => {
+  resetRawTcpMemory();
+  const mute = await fakePrinter(null);
+  try {
+    const slow: RawTcpWaits = { ...FAST, afterJobMinMs: 10_000, afterJobMaxMs: 10_000, jobMs: 300 };
+    const started = Date.now();
+    const error = await rejection(printRawTcp(printer(mute.port), SLIP, slow));
+    assert.equal(error.sent, "maybe", "bytes went out");
+    assert.ok(Date.now() - started < 6_000, "the deadline, not the long wait");
+    const next = await printRawTcp(printer(mute.port), SLIP, FAST);
+    assert.equal(next.health, null, "the next slip prints");
+  } finally {
+    await mute.close();
+  }
+});
+
+test("the real waits are the POS app's", () => {
+  assert.deepEqual(RAW_TCP_WAITS, { connectMs: 5_000, refusedRetryMs: 1_000, afterJobMinMs: 5_000, afterJobMaxMs: 30_000, replyMs: 1_000, followUpMs: 300, drainMs: 750, jobMs: 60_000 }, "TcpTransport.kt's numbers and its 60 s watchdog");
+});
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/desktop && node --import tsx --test src/raw-tcp.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 1`; `# pass 0`; `# fail 1`
+
+- [ ] **Step 3: The code**
+
+Create `apps/desktop/src/raw-tcp.ts`:
+
+```ts
+// Phase 3 Session 3E (spec §9.6): a network printer written straight from the Windows app's main process, the way the
+// POS app writes one (apps/mobile/.../printer/TcpTransport.kt): one TCP connection per job to the printer's port (9100)
+// on a private address, the page's ESC/POS bytes unchanged, then the printer's own status (DLE EOT 1 to 4) on that
+// same connection before the job reads printed (G5), then close. A connect that fails sends nothing ("no": the page
+// acks "unreachable", so another device may take the printer over); a failure after any byte is "maybe" (the server
+// labels the retry REPRINT). The idle check (probeRawTcp) is one connect, DLE EOT, close: it says whether the printer
+// answers, and what it says of its paper, cover and errors.
+//
+// Pure node (net, dns): no electron import, so node:test drives it against a fake printer on the loopback.
+import { lookup } from "node:dns/promises";
+import net from "node:net";
+
+export const RAW_TCP_CONNECT_TIMEOUT_MS = 5_000;
+/** A connect refused at once (or its host unreachable) is tried once more this much later, inside the 5 s: a printer
+ *  that takes one connection at a time refuses a second one while another device's status check holds it (the POS
+ *  app's rule since the 3C review gate). A printer that is off times out instead: no retry. */
+export const RAW_TCP_REFUSED_RETRY_MS = 1_000;
+/** G5: the wait for the first DLE EOT answer after a job: at least this, plus the job's own printing time at a slow
+ *  RAW_TCP_STATUS_BYTES_PER_MS, at most RAW_TCP_STATUS_AFTER_JOB_MAX_MS. */
+export const RAW_TCP_STATUS_AFTER_JOB_MIN_MS = 5_000;
+export const RAW_TCP_STATUS_AFTER_JOB_MAX_MS = 30_000;
+export const RAW_TCP_STATUS_BYTES_PER_MS = 8;
+/** A DLE EOT answer from a printer with nothing to print, and DLE EOT 2 to 4 once it answered DLE EOT 1. */
+export const RAW_TCP_STATUS_REPLY_MS = 1_000;
+export const RAW_TCP_STATUS_FOLLOW_UP_MS = 300;
+/** Reading what the printer still sends after the job, so unread bytes never reset the link. */
+export const RAW_TCP_DRAIN_MS = 750;
+/** A whole job, at most (the POS app's 60 s watchdog): a printer that takes the connection but never reads cannot hold
+ *  its line for ever; the job is then "maybe". */
+export const RAW_TCP_JOB_MAX_MS = 60_000;
+/** The largest job: the page's longest raster slip (16,000 rows of 72 bytes) with room to spare. */
+export const RAW_TCP_DATA_MAX_BYTES = 1_500_000;
+export const RAW_TCP_HOST_MAX_CHARS = 253;
+const HOST_PATTERN = /^[A-Za-z0-9._-]+$/;
+
+export const PAPER_OK = "ok";
+export const PAPER_LOW = "low";
+export const PAPER_OUT = "out";
+export const COVER_CLOSED = "closed";
+export const COVER_OPEN = "open";
+
+/** What a printer says of itself (DLE EOT); a field it did not say is absent. The POS app's PrinterHealth, the same rule. */
+export interface RawTcpHealth {
+  paper?: typeof PAPER_OK | typeof PAPER_LOW | typeof PAPER_OUT;
+  cover?: typeof COVER_CLOSED | typeof COVER_OPEN;
+  error?: true;
+}
+
+export interface RawTcpTarget {
+  host: string;
+  port: number;
+}
+
+/** Why a job did not read printed: "not-connected" before any byte (sent "no"), "bad-address" a host that is not on
+ *  the local network (sent "no"), "write-failed" or "cannot-print" after bytes went out (sent "maybe"). */
+export type RawTcpFailure = "not-connected" | "bad-address" | "write-failed" | "cannot-print";
+
+export class RawTcpError extends Error {
+  readonly sent: "no" | "maybe";
+  readonly failure: RawTcpFailure;
+  /** What the printer said when it said it cannot print (paper out, cover open, an error). */
+  readonly health: RawTcpHealth | null;
+  constructor(message: string, failure: RawTcpFailure, health: RawTcpHealth | null = null) {
+    super(message);
+    this.name = "RawTcpError";
+    this.failure = failure;
+    this.sent = failure === "not-connected" || failure === "bad-address" ? "no" : "maybe";
+    this.health = health;
+  }
+}
+
+export const NOT_CONNECTED_MESSAGE = "The printer did not answer.";
+export const BAD_ADDRESS_MESSAGE = "That printer address is not on this network.";
+export const WRITE_FAILED_MESSAGE = "The printer stopped answering while the slip was sent.";
+export const NO_ANSWER_AFTER_MESSAGE = "The printer did not answer after the slip.";
+export const CLOSED_BEFORE_ANSWER_MESSAGE = "The printer closed the link before it answered.";
+export const CANNOT_PRINT_MESSAGE = "The printer cannot print now.";
+
+/** The waits, shortened by the tests. */
+export interface RawTcpWaits {
+  connectMs: number;
+  refusedRetryMs: number;
+  afterJobMinMs: number;
+  afterJobMaxMs: number;
+  replyMs: number;
+  followUpMs: number;
+  drainMs: number;
+  jobMs: number;
+}
+
+export const RAW_TCP_WAITS: RawTcpWaits = {
+  connectMs: RAW_TCP_CONNECT_TIMEOUT_MS,
+  refusedRetryMs: RAW_TCP_REFUSED_RETRY_MS,
+  afterJobMinMs: RAW_TCP_STATUS_AFTER_JOB_MIN_MS,
+  afterJobMaxMs: RAW_TCP_STATUS_AFTER_JOB_MAX_MS,
+  replyMs: RAW_TCP_STATUS_REPLY_MS,
+  followUpMs: RAW_TCP_STATUS_FOLLOW_UP_MS,
+  drainMs: RAW_TCP_DRAIN_MS,
+  jobMs: RAW_TCP_JOB_MAX_MS,
+};
+
+// ── DLE EOT (ESC/POS real-time status; Epson's bits, the POS app's DleEot) ──
+const DLE = 0x10;
+const EOT = 0x04;
+const QUERIES = [1, 2, 3, 4] as const;
+// Every status byte has bits 1 and 4 set and bits 0 and 7 clear.
+const FIXED_MASK = 0x93;
+const FIXED_BITS = 0x12;
+const ONE_OFFLINE = 0x08;
+const TWO_COVER_OPEN = 0x04;
+const TWO_FEEDING = 0x08;
+const TWO_PAPER_END = 0x20;
+const TWO_ERROR = 0x40;
+const THREE_ERRORS = 0x68;
+const FOUR_NEAR_END = 0x0c;
+const FOUR_END = 0x60;
+const NO_ANSWER = -1;
+const CLOSED = -2;
+
+/** Whether `b` can be a status byte; anything else (an automatic status block, XON/XOFF, noise) is not one. */
+export function isStatusAnswer(b: number): boolean {
+  return (b & FIXED_MASK) === FIXED_BITS;
+}
+
+/** What the printer said: `answers` maps each n it answered to its byte. null when it answered none. The POS app's
+ *  DleEot.healthOf, bit for bit (FEED held down is a cause, not an error: the 3C review gate's m-2). */
+export function healthOfAnswers(answers: ReadonlyMap<number, number>): RawTcpHealth | null {
+  if (answers.size === 0) return null;
+  const one = answers.get(1);
+  const two = answers.get(2);
+  const three = answers.get(3);
+  const four = answers.get(4);
+  const paperOut = (two !== undefined && (two & TWO_PAPER_END) !== 0) || (four !== undefined && (four & FOUR_END) === FOUR_END);
+  const paperLow = four !== undefined && (four & FOUR_NEAR_END) === FOUR_NEAR_END;
+  const paper = paperOut ? PAPER_OUT : paperLow ? PAPER_LOW : two !== undefined || four !== undefined ? PAPER_OK : undefined;
+  const coverOpen = two !== undefined && (two & TWO_COVER_OPEN) !== 0;
+  const cover = two === undefined ? undefined : coverOpen ? COVER_OPEN : COVER_CLOSED;
+  const offline = one !== undefined ? (one & ONE_OFFLINE) !== 0 : paperOut || coverOpen;
+  const named = (three !== undefined && (three & THREE_ERRORS) !== 0) || (two !== undefined && (two & TWO_ERROR) !== 0);
+  const feeding = two !== undefined && (two & TWO_FEEDING) !== 0;
+  const error = offline && (named || (!paperOut && !coverOpen && !feeding));
+  return { ...(paper !== undefined ? { paper } : {}), ...(cover !== undefined ? { cover } : {}), ...(error ? { error: true as const } : {}) };
+}
+
+/** It cannot print now: out of paper, its cover open, or an error (the POS app's and the page's one rule). */
+export function healthCannotPrint(health: RawTcpHealth | null): boolean {
+  return health !== null && (health.paper === PAPER_OUT || health.cover === COVER_OPEN || health.error === true);
+}
+
+// ── the printer's address: on the local network only ──
+
+/** 10/8, 172.16/12, 192.168/16, link-local 169.254/16, loopback 127/8; IPv6 fc00::/7, fe80::/10 and ::1. A typed
+ *  public host can never become a way to send bytes out of the cafe (the POS app's TcpAddress rule). */
+export function isPrivateAddress(address: string): boolean {
+  if (net.isIPv4(address)) {
+    const [a = -1, b = -1] = address.split(".").map(Number);
+    return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
+  }
+  if (net.isIPv6(address)) {
+    const lower = address.toLowerCase();
+    if (lower === "::1") return true;
+    const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(lower);
+    if (mapped !== null) return isPrivateAddress(mapped[1] ?? "");
+    return /^f[cd][0-9a-f]{0,2}:/.test(lower) || /^fe[89ab][0-9a-f]?:/.test(lower);
+  }
+  return false;
+}
+
+/** A host and port the app may write: a short name or address, port 1 to 65535. */
+export function validTarget(target: unknown): target is RawTcpTarget {
+  if (typeof target !== "object" || target === null) return false;
+  const { host, port } = target as Record<string, unknown>;
+  return typeof host === "string" && host.length > 0 && host.length <= RAW_TCP_HOST_MAX_CHARS && HOST_PATTERN.test(host) && Number.isInteger(port) && (port as number) >= 1 && (port as number) <= 65_535;
+}
+
+/** Every private address of the host, IPv4 first (printers listen on IPv4). bad-address when it has none. */
+async function privateAddressesOf(host: string): Promise<string[]> {
+  let all: Array<{ address: string; family: number }>;
+  try {
+    all = await lookup(host, { all: true, verbatim: true });
+  } catch {
+    throw new RawTcpError(NOT_CONNECTED_MESSAGE, "not-connected");
+  }
+  const local = all.filter((entry) => isPrivateAddress(entry.address));
+  if (local.length === 0) throw new RawTcpError(BAD_ADDRESS_MESSAGE, "bad-address");
+  return [...local.filter((entry) => entry.family === 4), ...local.filter((entry) => entry.family !== 4)].map((entry) => entry.address);
+}
+
+const REFUSED_CODES: ReadonlySet<string> = new Set(["ECONNREFUSED", "EHOSTUNREACH", "ENETUNREACH"]);
+
+/** One connect to one address within `timeoutMs`: the socket, or "refused" (it said no at once), or "timeout". */
+function connectTo(address: string, port: number, timeoutMs: number): Promise<net.Socket | "refused" | "timeout"> {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host: address, port, noDelay: true });
+    // The 3D review gate's review of the gold (m-4): never a moment without an "error" listener (an error with none is
+    // an uncaught exception in the Windows app's main process); the Link adds its own once connected.
+    socket.on("error", () => undefined);
+    const timer = setTimeout(() => {
+      socket.destroy();
+      resolve("timeout");
+    }, Math.max(1, timeoutMs));
+    const failed = (error: NodeJS.ErrnoException): void => {
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(REFUSED_CODES.has(error.code ?? "") ? "refused" : "timeout");
+    };
+    socket.once("error", failed);
+    socket.once("connect", () => {
+      clearTimeout(timer);
+      socket.off("error", failed);
+      resolve(socket);
+    });
+  });
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** A fresh connection to the printer: each private address in turn, the 5 s shared out over the ones still to try; an
+ *  address that refused is asked once more a second later. not-connected when none answers. */
+async function connect(target: RawTcpTarget, waits: RawTcpWaits): Promise<net.Socket> {
+  const addresses = await privateAddressesOf(target.host);
+  const end = Date.now() + waits.connectMs;
+  for (const [index, address] of addresses.entries()) {
+    let refusedBefore = false;
+    for (;;) {
+      const left = end - Date.now();
+      if (left <= 0) break;
+      const got = await connectTo(address, target.port, Math.max(1, Math.floor(left / (addresses.length - index))));
+      if (typeof got !== "string") return got;
+      if (got !== "refused" || refusedBefore || end - Date.now() <= waits.refusedRetryMs) break;
+      refusedBefore = true;
+      await sleep(waits.refusedRetryMs);
+    }
+  }
+  throw new RawTcpError(NOT_CONNECTED_MESSAGE, "not-connected");
+}
+
+/** The bytes the printer sends back on one connection, read one status answer at a time. */
+class Link {
+  private readonly queue: number[] = [];
+  private ended = false;
+  private wake: (() => void) | null = null;
+
+  constructor(readonly socket: net.Socket) {
+    socket.on("data", (chunk: Buffer) => {
+      for (const b of chunk) this.queue.push(b);
+      this.poke();
+    });
+    const end = (): void => {
+      this.ended = true;
+      this.poke();
+    };
+    socket.on("end", end);
+    socket.on("close", end);
+    socket.on("error", end);
+  }
+
+  private poke(): void {
+    const wake = this.wake;
+    this.wake = null;
+    wake?.();
+  }
+
+  private waitFor(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.wake = null;
+        resolve();
+      }, Math.max(1, ms));
+      this.wake = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
+  }
+
+  write(data: Uint8Array): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (this.ended) {
+        reject(new Error("closed"));
+        return;
+      }
+      this.socket.write(data, (error) => (error ? reject(error) : resolve()));
+    });
+  }
+
+  /** Sends DLE EOT n and reads until a status byte arrives (any other byte is skipped), `waitMs` in all: the byte,
+   *  NO_ANSWER, or CLOSED (the printer closed or reset the connection). */
+  async ask(n: number, waitMs: number): Promise<number> {
+    try {
+      await this.write(Uint8Array.of(DLE, EOT, n));
+    } catch {
+      return CLOSED;
+    }
+    const end = Date.now() + waitMs;
+    for (;;) {
+      while (this.queue.length > 0) {
+        const b = this.queue.shift() ?? 0;
+        if (isStatusAnswer(b)) return b;
+      }
+      if (this.ended) return CLOSED;
+      const left = end - Date.now();
+      if (left <= 0) return NO_ANSWER;
+      await this.waitFor(left);
+    }
+  }
+
+  /** Half-closes, then reads until the printer closes or `ms` has passed. */
+  async finish(ms: number): Promise<void> {
+    this.socket.end();
+    const end = Date.now() + ms;
+    while (!this.ended) {
+      const left = end - Date.now();
+      if (left <= 0) break;
+      this.queue.length = 0;
+      await this.waitFor(left);
+    }
+  }
+}
+
+// The printers (host:port) that answered DLE EOT since the app started: only for such a printer is a job with no answer,
+// or a connection closed before the answer, "maybe" (G5); one that never answers prints as before (no false REPRINT).
+// An idle check with no answer forgets it. The ones whose last idle check got no answer are asked briefly after a job.
+const answering = new Set<string>();
+const silent = new Set<string>();
+// One job or check at a time per printer.
+const chains = new Map<string, Promise<unknown>>();
+const busy = new Set<string>();
+
+export function keyOf(target: RawTcpTarget): string {
+  return `${target.host.toLowerCase()}:${target.port}`;
+}
+
+/** Test seam: the app just started. */
+export function resetRawTcpMemory(): void {
+  answering.clear();
+  silent.clear();
+  chains.clear();
+  busy.clear();
+}
+
+function exclusive<T>(key: string, run: () => Promise<T>): Promise<T> {
+  const before = chains.get(key) ?? Promise.resolve();
+  const next = before.then(run, run);
+  const settled = next.catch(() => undefined);
+  chains.set(key, settled);
+  void settled.then(() => {
+    if (chains.get(key) === settled) chains.delete(key);
+  });
+  return next;
+}
+
+async function answersAfter(link: Link, first: number, waits: RawTcpWaits): Promise<Map<number, number>> {
+  const answers = new Map<number, number>([[1, first]]);
+  for (const n of QUERIES) {
+    if (n === 1) continue;
+    const b = await link.ask(n, Math.min(waits.replyMs, waits.followUpMs));
+    if (b === CLOSED) break;
+    if (b !== NO_ANSWER) answers.set(n, b);
+  }
+  return answers;
+}
+
+/** G5: the printer's own answer on the job's connection, before the job reads printed. */
+async function afterJob(link: Link, key: string, bytes: number, waits: RawTcpWaits): Promise<RawTcpHealth | null> {
+  const answers = answering.has(key);
+  const wait = silent.has(key) ? waits.replyMs : Math.min(waits.afterJobMaxMs, waits.afterJobMinMs + Math.floor(bytes / RAW_TCP_STATUS_BYTES_PER_MS));
+  const first = await link.ask(1, wait);
+  if (first < 0) {
+    if (answers) throw new RawTcpError(first === CLOSED ? CLOSED_BEFORE_ANSWER_MESSAGE : NO_ANSWER_AFTER_MESSAGE, "write-failed");
+    return null;
+  }
+  answering.add(key);
+  silent.delete(key);
+  const health = healthOfAnswers(await answersAfter(link, first, waits));
+  if (healthCannotPrint(health)) throw new RawTcpError(CANNOT_PRINT_MESSAGE, "cannot-print", health);
+  return health;
+}
+
+/** One job: connect, write every byte, the printer's answer (G5), close. Resolves with what the printer said of itself
+ *  (null when it answers no DLE EOT); throws RawTcpError ("no" before any byte, "maybe" after). */
+export function printRawTcp(target: RawTcpTarget, data: Uint8Array, waits: RawTcpWaits = RAW_TCP_WAITS): Promise<{ health: RawTcpHealth | null }> {
+  const key = keyOf(target);
+  return exclusive(key, async () => {
+    busy.add(key);
+    try {
+      const socket = await connect(target, waits);
+      const link = new Link(socket);
+      let expired = false;
+      const deadline = setTimeout(() => {
+        expired = true;
+        socket.destroy();
+      }, waits.jobMs);
+      try {
+        try {
+          await link.write(data);
+        } catch {
+          throw new RawTcpError(WRITE_FAILED_MESSAGE, "write-failed");
+        }
+        const health = await afterJob(link, key, data.length, waits);
+        await link.finish(waits.drainMs);
+        if (expired) throw new RawTcpError(WRITE_FAILED_MESSAGE, "write-failed");
+        return { health };
+      } catch (error) {
+        throw expired ? new RawTcpError(WRITE_FAILED_MESSAGE, "write-failed") : error;
+      } finally {
+        clearTimeout(deadline);
+        socket.destroy();
+      }
+    } finally {
+      busy.delete(key);
+    }
+  });
+}
+
+/** The idle check: one connect, DLE EOT, close. "disconnected" when it does not answer the connect; else what it said
+ *  (health null: it answers no DLE EOT). null when a job holds the printer now (that job's answer says it). */
+export async function probeRawTcp(
+  target: RawTcpTarget,
+  waits: RawTcpWaits = RAW_TCP_WAITS,
+): Promise<{ link: "connected" | "disconnected"; health: RawTcpHealth | null } | null> {
+  const key = keyOf(target);
+  if (busy.has(key)) return null;
+  return exclusive(key, async () => {
+    let socket: net.Socket;
+    try {
+      socket = await connect(target, waits);
+    } catch {
+      return { link: "disconnected" as const, health: null };
+    }
+    const link = new Link(socket);
+    try {
+      const first = await link.ask(1, waits.replyMs);
+      if (first < 0) {
+        answering.delete(key);
+        silent.add(key);
+        return { link: "connected" as const, health: null };
+      }
+      answering.add(key);
+      silent.delete(key);
+      const health = healthOfAnswers(await answersAfter(link, first, waits));
+      await link.finish(Math.min(waits.drainMs, waits.followUpMs));
+      return { link: "connected" as const, health };
+    } finally {
+      socket.destroy();
+    }
+  });
+}
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/desktop && node --import tsx --test src/raw-tcp.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 11`; `# pass 11`; `# fail 0`
+
+Run: `cd /d/kd/lucifer/apps/desktop && npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 203`; `# pass 203`; `# fail 0`
+
+Run: `cd /d/kd/lucifer/apps/desktop && npm run typecheck >/dev/null 2>&1 && echo DESKTOP_TSC_OK && npm run lint >/dev/null 2>&1 && echo DESKTOP_LINT_OK`
+Expected: `DESKTOP_TSC_OK`; `DESKTOP_LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/desktop/package.json apps/desktop/src/raw-tcp.test.ts apps/desktop/src/raw-tcp.ts
+git commit -m "feat(desktop): the Windows app writes a network printer itself over raw TCP, the way the POS app does: one connection per job to a private address, the page's ESC/POS bytes, the printer's own DLE EOT answer before the slip reads printed (G5), a refused connect asked again a second later, nothing sent ('no') or 'maybe' told apart, and an idle check of whether it answers and its paper, cover and errors (Phase 3 Session 3E, E1)"
+```
+
+---
+
+### Task E2: the Windows app 1.12.0 takes a network printer's slip from the page (printRaw) and checks the network printers the page prints (lanStatus), vetted like every print channel and answered with a plain result; the page's bridge type gains both
+
+**Files:**
+- Create: `apps/desktop/src/print-raw.ts` (`registerRawPrintHandler`: the two IPC channels)
+- Modify: `apps/desktop/src/shared.ts` (`PRINT_RAW_CHANNEL`, `LAN_STATUS_CHANNEL`, `LAN_STATUS_MAX_PRINTERS`), `src/preload.ts` (`printRaw`, `lanStatus`), `src/main.ts` (the wiring), `package.json` (version 1.12.0)
+- Modify: `apps/cafe/lib/desktop-shell-printer.ts` (`DesktopLanBridge`), `apps/cafe/lib/desktop-shell.ts` (`PosDesktopBridge extends DesktopLanBridge`: no new line, the file's 150-line budget)
+- Tests: `apps/desktop/src/desktop-paths.test.ts` (pins 6 and 7 deliberately widened; L1, L2 and the cafe parity pin 13 new); `apps/cafe/lib/desktop-shell-paths.test.ts` (the seam's import, deliberately changed), `apps/cafe/lib/go-live-runbook.test.ts` (the Phase 2 release step keeps naming its own installer, 1.11.0, deliberately changed)
+
+**Interfaces produced:** `posDesktop.printRaw(printer: { host, port }, data: Uint8Array): Promise<RawPrintResult>` (`{ ok: true, health }` or `{ ok: false, sent, failure, message, health }`); `posDesktop.lanStatus(printers): Promise<LanStatus[]>` (`{ host, port, link: "connected" | "disconnected" | null, health }`, null: a job holds it); `DesktopLanBridge` (`lib/desktop-shell-printer.ts`).
+
+**The gate** (`print-raw.ts`) is every print channel's: only the main window, only a frame on the saved origin; then a valid address (`validTarget`: a short name or address, port 1–65535) and a size (1 to 1,500,000 bytes) before any socket; `raw-tcp.ts` then connects only to a private address. A refused request throws as before (PRINT_REJECTED_MESSAGE); a job that ran answers a plain result, never a thrown error: a thrown IPC error reaches the page wrapped in Electron's own words, and the page must read "no" and "maybe" exactly. The log names the size and the printer, never the bytes; a failure also raises the tray notification, as for every print.
+
+**The idle check** (`lanStatus`): at most 16 printers per call, each through `probeRawTcp` (a connect and DLE EOT, local: no request to the server).
+
+**1.12.0.** The page feature-detects both (an older app has neither and prints no network printer: Phase 2 exactly). `apps/desktop/package-lock.json` keeps its old version field (it was never synced).
+
+**RED**: the desktop pins (6, 7, L1, L2, 13) and the two cafe pins.
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/desktop-shell-paths.test.ts`, find:
+
+```ts
+    "listPrinters?'s resolved object must carry an OPTIONAL printMode? field",
+  );
+
+  assert.match(
+    src,
+    /import type \{ DesktopPrintMode \} from "@\/lib\/desktop-shell-printer";/,
+    "desktop-shell.ts must import the DesktopPrintMode type from lib/desktop-shell-printer.ts (the 150-line budget left no room to declare it here)",
+  );
+});
+```
+
+Replace it with:
+
+```ts
+    "listPrinters?'s resolved object must carry an OPTIONAL printMode? field",
+  );
+
+  // Phase 3 Session 3E deliberately changed: the network printer's two members (DesktopLanBridge) come from there too.
+  assert.match(
+    src,
+    /import type \{ DesktopLanBridge, DesktopPrintMode \} from "@\/lib\/desktop-shell-printer";/,
+    "desktop-shell.ts must import the DesktopPrintMode type from lib/desktop-shell-printer.ts (the 150-line budget left no room to declare it here)",
+  );
+});
+```
+
+In `apps/cafe/lib/go-live-runbook.test.ts`, find:
+
+```ts
+    assert.ok(next > at, `the Phase 2 release step names "${landmark}" after the step before it`);
+    at = next;
+  }
+  const desktop = JSON.parse(readFileSync(path.join(REPO_ROOT, "apps/desktop/package.json"), "utf8")) as { version: string };
+  assert.ok(step.includes(`POS-Software-Setup-${desktop.version}.exe`), "the step names this release's desktop installer");
+  assert.ok(step.includes("apps/mobile/TEST-CHECKLIST.md"), "the step sends the deployer to the real-printer checks");
+});
+```
+
+Replace it with:
+
+```ts
+    assert.ok(next > at, `the Phase 2 release step names "${landmark}" after the step before it`);
+    at = next;
+  }
+  // Phase 3 Session 3E deliberately changed: the Windows app is 1.12.0 now, and this step stays the Phase 2 release's
+  // (its installer, 1.11.0); the Phase 3 release step (Session 3G) names 1.12.0.
+  const desktop = JSON.parse(readFileSync(path.join(REPO_ROOT, "apps/desktop/package.json"), "utf8")) as { version: string };
+  assert.equal(desktop.version, "1.12.0", "the Windows app of Phase 3");
+  assert.ok(step.includes("POS-Software-Setup-1.11.0.exe"), "the step names the Phase 2 release's desktop installer");
+  assert.ok(step.includes("apps/mobile/TEST-CHECKLIST.md"), "the step sends the deployer to the real-printer checks");
+});
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+  PRINTER_SAVE_CHANNEL,
+  PRINT_MODE_SAVE_CHANNEL,
+  PRINT_ON_CHANNEL,
+  PRINT_MODES,
+  DEFAULT_PRINT_MODE,
+  isNonPaperPrinter,
+```
+
+Replace it with:
+
+```ts
+  PRINTER_SAVE_CHANNEL,
+  PRINT_MODE_SAVE_CHANNEL,
+  PRINT_ON_CHANNEL,
+  PRINT_RAW_CHANNEL,
+  LAN_STATUS_CHANNEL,
+  LAN_STATUS_MAX_PRINTERS,
+  PRINT_MODES,
+  DEFAULT_PRINT_MODE,
+  isNonPaperPrinter,
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+const messagesSrc = read("src/print-messages.ts");
+const escposSrc = read("src/escpos.ts");
+const rawSpoolSrc = read("src/raw-spool.ts");
+const preloadSrc = read("src/preload.ts");
+const urlPreloadSrc = read("src/url-preload.ts");
+const urlWindowHtml = read("assets/url-window.html");
+```
+
+Replace it with:
+
+```ts
+const messagesSrc = read("src/print-messages.ts");
+const escposSrc = read("src/escpos.ts");
+const rawSpoolSrc = read("src/raw-spool.ts");
+// Phase 3 Session 3E (spec §9.6): network printers over raw TCP from the main process.
+const rawTcpSrc = read("src/raw-tcp.ts");
+const printRawSrc = read("src/print-raw.ts");
+const preloadSrc = read("src/preload.ts");
+const urlPreloadSrc = read("src/url-preload.ts");
+const urlWindowHtml = read("assets/url-window.html");
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+  return keys;
+}
+
+test("(6) preload.ts exposes exactly ['version', 'printHtml', 'printHtmlOn', 'listPrinters', 'savePrinter', 'savePrintMode'] on posDesktop", () => {
+  // WIDENED 2026-09-17 and again 2026-09-19, deliberately — this stays a
+  // CLOSED set, which is the point of the pin: the renderer's whole privileged
+  // surface is these five and nothing else (never ipcRenderer, never a node
+```
+
+Replace it with:
+
+```ts
+  return keys;
+}
+
+test("(6) preload.ts exposes exactly ['version', 'printHtml', 'printHtmlOn', 'listPrinters', 'savePrinter', 'savePrintMode', 'printRaw', 'lanStatus'] on posDesktop", () => {
+  // WIDENED 2026-09-17 and again 2026-09-19, deliberately — this stays a
+  // CLOSED set, which is the point of the pin: the renderer's whole privileged
+  // surface is these five and nothing else (never ipcRenderer, never a node
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+  // WIDENED again in Phase 2 Session 2E (spec §9.2, several printers per PC): printHtmlOn prints one slip on a
+  // Windows printer the page NAMES. Name-only like the picker: the main process prints only on a device Windows
+  // reports at that moment, never a virtual one, and hands nothing privileged back.
+  const keys = extractExposedKeys(preloadSrc, '"posDesktop"');
+  assert.deepEqual(keys.sort(), ["listPrinters", "printHtml", "printHtmlOn", "savePrintMode", "savePrinter", "version"]);
+});
+
+test("(6) preload.ts: exactly one require('electron'), no other require, no ipcRenderer exposure, no posDesktopSetup", () => {
+```
+
+Replace it with:
+
+```ts
+  // WIDENED again in Phase 2 Session 2E (spec §9.2, several printers per PC): printHtmlOn prints one slip on a
+  // Windows printer the page NAMES. Name-only like the picker: the main process prints only on a device Windows
+  // reports at that moment, never a virtual one, and hands nothing privileged back.
+  //
+  // WIDENED again in Phase 3 Session 3E (spec §9.6): printRaw sends a network printer's slip as ESC/POS bytes to its
+  // address, and lanStatus asks the network printers the page prints whether they answer. The main process vets the
+  // caller, the address (a private one only) and the size, and answers with a plain result: no socket, no handle.
+  const keys = extractExposedKeys(preloadSrc, '"posDesktop"');
+  assert.deepEqual(keys.sort(), ["lanStatus", "listPrinters", "printHtml", "printHtmlOn", "printRaw", "savePrintMode", "savePrinter", "version"]);
+});
+
+test("(6) preload.ts: exactly one require('electron'), no other require, no ipcRenderer exposure, no posDesktopSetup", () => {
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+  assert.ok(preloadSrc.includes(JSON.stringify(PRINT_ON_CHANNEL)));
+  assert.match(preloadSrc, /printHtmlOn: \(html: string, printerName: string\): Promise<void> =>\s*electron\.ipcRenderer\.invoke\(PRINT_ON_CHANNEL, html, printerName\)/);
+  assert.equal(PRINT_ON_CHANNEL, "pos-desktop:print-html-on");
+});
+
+// -- Phase 2 Session 2E (spec §9.2): several printers per PC ------------------
+```
+
+Replace it with:
+
+```ts
+  assert.ok(preloadSrc.includes(JSON.stringify(PRINT_ON_CHANNEL)));
+  assert.match(preloadSrc, /printHtmlOn: \(html: string, printerName: string\): Promise<void> =>\s*electron\.ipcRenderer\.invoke\(PRINT_ON_CHANNEL, html, printerName\)/);
+  assert.equal(PRINT_ON_CHANNEL, "pos-desktop:print-html-on");
+  // Phase 3 Session 3E: the printer's address and the bytes; the printers to check.
+  assert.ok(preloadSrc.includes(JSON.stringify(PRINT_RAW_CHANNEL)));
+  assert.ok(preloadSrc.includes(JSON.stringify(LAN_STATUS_CHANNEL)));
+  assert.match(preloadSrc, /printRaw: \(printer: unknown, data: unknown\): Promise<unknown> =>\s*electron\.ipcRenderer\.invoke\(PRINT_RAW_CHANNEL, printer, data\)/);
+  assert.match(preloadSrc, /lanStatus: \(printers: unknown\): Promise<unknown> =>\s*electron\.ipcRenderer\.invoke\(LAN_STATUS_CHANNEL, printers\)/);
+  assert.equal(PRINT_RAW_CHANNEL, "pos-desktop:print-raw");
+  assert.equal(LAN_STATUS_CHANNEL, "pos-desktop:lan-status");
+});
+
+// -- Phase 3 Session 3E (spec §9.6): network printers over raw TCP ------------
+// The page's ESC/POS bytes to a network printer's private address, from the main process: the same caller gate as every
+// print channel, a plain result (never a thrown error, so "no" and "maybe" reach the page exactly), a log line that names
+// the size and the printer but never the bytes, and the tray notice on a failure like every other print.
+test("(L1) print-raw.ts: the caller gate, a vetted address and size, a plain result, and no bytes in the log", () => {
+  assert.match(printRawSrc, /if \(event\.sender\.id !== deps\.getMainWebContentsId\(\)\) throw new Error\(PRINT_REJECTED_MESSAGE\);/, "only the main window");
+  assert.match(printRawSrc, /if \(origin === null \|\| !isSameOrigin\(event\.senderFrame\?\.url \?\? "", origin\)\) throw new Error\(PRINT_REJECTED_MESSAGE\);/, "only a frame on the saved origin");
+  const printHandler = printRawSrc.slice(printRawSrc.indexOf("ipcMain.handle(PRINT_RAW_CHANNEL"), printRawSrc.indexOf("ipcMain.handle(LAN_STATUS_CHANNEL"));
+  assert.match(printHandler, /rejectForeignCaller\(event\);\s*if \(!validTarget\(printer\)\) throw new Error\(PRINT_REJECTED_MESSAGE\);\s*if \(!\(data instanceof Uint8Array\) \|\| data\.length === 0 \|\| data\.length > RAW_TCP_DATA_MAX_BYTES\) throw new Error\(PRINT_REJECTED_MESSAGE\);/, "the gate, then the address, then the size, before any socket");
+  assert.match(printHandler, /return \{ ok: false, sent: failed\.sent, failure: failed\.failure, message: failed\.message, health: failed\.health \};/, "a failure is an answer, not a thrown error");
+  assert.match(printHandler, /deps\.onJobFailed\(`Network printer \$\{target\.host\}: \$\{failed\.message\}`\);/, "the tray says it, as for every print");
+  const logCalls = printRawSrc.match(/log\.(info|error)\(`[^`]*`\)/g) ?? [];
+  assert.equal(logCalls.length, 2, "one line for a sent slip, one for a failed one");
+  for (const call of logCalls) {
+    assert.match(call, /\$\{data\.length\} bytes, printer=\$\{keyOf\(target\)\}/, `the size and the printer: ${call}`);
+    assert.ok(!/\$\{data\}/.test(call), `never the bytes: ${call}`);
+  }
+  const statusHandler = printRawSrc.slice(printRawSrc.indexOf("ipcMain.handle(LAN_STATUS_CHANNEL"));
+  assert.match(statusHandler, /rejectForeignCaller\(event\);\s*if \(!Array\.isArray\(printers\) \|\| printers\.length > LAN_STATUS_MAX_PRINTERS \|\| !printers\.every\(validTarget\)\) throw new Error\(PRINT_REJECTED_MESSAGE\);/, "the check's list is vetted too");
+  assert.equal(LAN_STATUS_MAX_PRINTERS, 16);
+  assert.match(mainSrc, /registerRawPrintHandler\(\{\s*getMainWebContentsId: \(\) =>\s*mainWindow && !mainWindow\.isDestroyed\(\) \? mainWindow\.webContents\.id : null,\s*getOrigin: \(\) => store\.serverOrigin,\s*log,\s*onJobFailed: notifyPrintFailure,\s*\}\);/, "main.ts wires it like the print handler");
+});
+
+test("(L2) purity: raw-tcp.ts never imports electron, and connects only to a private address", () => {
+  assert.ok(!/from "electron"/.test(rawTcpSrc) && !/require\("electron"\)/.test(rawTcpSrc), "raw-tcp.ts must stay electron-free");
+  assert.match(rawTcpSrc, /const local = all\.filter\(\(entry\) => isPrivateAddress\(entry\.address\)\);\s*if \(local\.length === 0\) throw new RawTcpError\(BAD_ADDRESS_MESSAGE, "bad-address"\);/, "a public address is never connected to");
+  assert.equal((rawTcpSrc.match(/net\.createConnection\(/g) ?? []).length, 1, "one place opens a connection");
+  assert.match(rawTcpSrc, /const socket = net\.createConnection\(\{ host: address, port, noDelay: true \}\);\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*socket\.on\("error", \(\) => undefined\);/, "the socket always has an error listener (never an uncaught exception in the main process)");
+  assert.ok(!rawTcpSrc.includes('removeAllListeners("error")'), "and it is never removed");
+  assert.match(rawTcpSrc, /const addresses = await privateAddressesOf\(target\.host\);/, "and it connects only to the private addresses");
+  // Landmarks.
+  assert.ok(rawTcpSrc.includes("export function printRawTcp("));
+  assert.ok(rawTcpSrc.includes("export async function probeRawTcp("));
+});
+
+// -- Phase 2 Session 2E (spec §9.2): several printers per PC ------------------
+```
+
+In `apps/desktop/src/desktop-paths.test.ts`, find:
+
+```ts
+  assert.ok(cafeDesktopShellSrc.includes("export function isDesktopShell("));
+  // Phase 2 Session 2E: the page names a slip's Windows printer only through printHtmlOn, which it feature-detects.
+  assert.ok(cafeDesktopShellSrc.includes("printHtmlOn?(html: string, printerName: string): Promise<void>;"));
+});
+
+test("(13) vision-guard: cafe/lib/desktop-shell.ts stays capability-keyed (no UA sniffing)", () => {
+```
+
+Replace it with:
+
+```ts
+  assert.ok(cafeDesktopShellSrc.includes("export function isDesktopShell("));
+  // Phase 2 Session 2E: the page names a slip's Windows printer only through printHtmlOn, which it feature-detects.
+  assert.ok(cafeDesktopShellSrc.includes("printHtmlOn?(html: string, printerName: string): Promise<void>;"));
+  // Phase 3 Session 3E: a network printer through printRaw and lanStatus (1.12.0), feature-detected the same way; the two
+  // members live beside the picker's types (desktop-shell.ts is at its 150-line budget).
+  assert.ok(cafeDesktopShellSrc.includes("export interface PosDesktopBridge extends DesktopLanBridge {"));
+  const cafePrinterSeamSrc = readFileSync(path.join(ROOT, "..", "cafe", "lib", "desktop-shell-printer.ts"), "utf8");
+  assert.ok(cafePrinterSeamSrc.includes("printRaw?(printer: { host: string; port: number }, data: Uint8Array): Promise<unknown>;"));
+  assert.ok(cafePrinterSeamSrc.includes("lanStatus?(printers: { host: string; port: number }[]): Promise<unknown>;"));
+});
+
+test("(13) vision-guard: cafe/lib/desktop-shell.ts stays capability-keyed (no UA sniffing)", () => {
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/desktop && node --import tsx --test src/desktop-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 1`; `# pass 0`; `# fail 1`
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/desktop-shell-paths.test.ts lib/go-live-runbook.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 110`; `# pass 108`; `# fail 2`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/lib/desktop-shell-printer.ts`, find:
+
+```ts
+  return typeof desktopShell()?.printHtmlOn === "function";
+}
+
+/** Phase 2 Session 2E: where a printer job prints on the Windows app: its Windows printer, drawn for its paper. */
+export interface DesktopPrintTarget {
+  printerName: string;
+```
+
+Replace it with:
+
+```ts
+  return typeof desktopShell()?.printHtmlOn === "function";
+}
+
+/** Phase 3 Session 3E (spec §9.6): the Windows app 1.12.0 writes a network printer itself, over raw TCP from its main
+ *  process: the slip's ESC/POS bytes to the printer's address (`printRaw`, the same bytes as the POS app's), and the idle
+ *  check of the network printers this PC prints (`lanStatus`). Optional and feature-detected like the picker: an older
+ *  app has neither, and prints no network printer. Both answer plain results the page checks (lib/printer/desktop-lan.ts). */
+export interface DesktopLanBridge {
+  printRaw?(printer: { host: string; port: number }, data: Uint8Array): Promise<unknown>;
+  lanStatus?(printers: { host: string; port: number }[]): Promise<unknown>;
+}
+
+/** Phase 2 Session 2E: where a printer job prints on the Windows app: its Windows printer, drawn for its paper. */
+export interface DesktopPrintTarget {
+  printerName: string;
+```
+
+In `apps/cafe/lib/desktop-shell.ts`, find:
+
+```ts
+import { toast } from "sonner";
+
+import { DESKTOP_PRINT_EMPTY_MESSAGE, printDocumentHasText, serializePrintDocument } from "@/lib/desktop-shell-document";
+import type { DesktopPrintMode } from "@/lib/desktop-shell-printer";
+import { laneSlipPrintOptions, type RasterPrintTarget } from "@/lib/printer/lane-print";
+
+// The document half (serialization, stylesheet inlining, the blank-slip fence)
+```
+
+Replace it with:
+
+```ts
+import { toast } from "sonner";
+
+import { DESKTOP_PRINT_EMPTY_MESSAGE, printDocumentHasText, serializePrintDocument } from "@/lib/desktop-shell-document";
+import type { DesktopLanBridge, DesktopPrintMode } from "@/lib/desktop-shell-printer";
+import { laneSlipPrintOptions, type RasterPrintTarget } from "@/lib/printer/lane-print";
+
+// The document half (serialization, stylesheet inlining, the blank-slip fence)
+```
+
+In `apps/cafe/lib/desktop-shell.ts`, find:
+
+```ts
+// shell's runtime: the bridge's mere presence on `window` is the only signal
+// it trusts (device-agnostic-is-the-product-bar).
+
+export interface PosDesktopBridge {
+  readonly version: string;
+  printHtml(html: string): Promise<void>;
+  // Phase 2 Session 2E: the slip on its own Windows printer (slipPrintOptions' printerName). Feature-detect: an older shell lacks it.
+```
+
+Replace it with:
+
+```ts
+// shell's runtime: the bridge's mere presence on `window` is the only signal
+// it trusts (device-agnostic-is-the-product-bar).
+
+export interface PosDesktopBridge extends DesktopLanBridge {
+  readonly version: string;
+  printHtml(html: string): Promise<void>;
+  // Phase 2 Session 2E: the slip on its own Windows printer (slipPrintOptions' printerName). Feature-detect: an older shell lacks it.
+```
+
+In `apps/desktop/package.json`, find:
+
+```json
+{
+  "name": "pos-desktop",
+  "productName": "POS Software by sandbee",
+  "version": "1.11.0",
+  "author": "sandbee",
+  "private": true,
+  "description": "Windows desktop shell for the counter PC: loads the cafe's POS web app from one saved address, stays in the tray, starts with Windows, and prints slips silently. Outside the npm workspace (own node_modules); built locally with electron-builder, the installer is hand-copied, never uploaded.",
+```
+
+Replace it with:
+
+```json
+{
+  "name": "pos-desktop",
+  "productName": "POS Software by sandbee",
+  "version": "1.12.0",
+  "author": "sandbee",
+  "private": true,
+  "description": "Windows desktop shell for the counter PC: loads the cafe's POS web app from one saved address, stays in the tray, starts with Windows, and prints slips silently. Outside the npm workspace (own node_modules); built locally with electron-builder, the installer is hand-copied, never uploaded.",
+```
+
+In `apps/desktop/src/main.ts`, find:
+
+```ts
+import { schedulePrinterCheck } from "./printer-check";
+import { installPermissionHandlers } from "./permissions";
+import { registerPrintHandler } from "./print";
+import { createMainWindow } from "./shell-window";
+import { openUrlWindow, registerUrlHandlers } from "./url-window";
+import { buildAppMenu, createTray, showAboutDialog } from "./menu";
+```
+
+Replace it with:
+
+```ts
+import { schedulePrinterCheck } from "./printer-check";
+import { installPermissionHandlers } from "./permissions";
+import { registerPrintHandler } from "./print";
+import { registerRawPrintHandler } from "./print-raw";
+import { createMainWindow } from "./shell-window";
+import { openUrlWindow, registerUrlHandlers } from "./url-window";
+import { buildAppMenu, createTray, showAboutDialog } from "./menu";
+```
+
+In `apps/desktop/src/main.ts`, find:
+
+```ts
+          log.error(`store write failed: ${error instanceof Error ? error.name : "unknown"}`);
+        }
+      },
+      log,
+      onJobFailed: notifyPrintFailure,
+    });
+```
+
+Replace it with:
+
+```ts
+          log.error(`store write failed: ${error instanceof Error ? error.name : "unknown"}`);
+        }
+      },
+      log,
+      onJobFailed: notifyPrintFailure,
+    });
+
+    // Phase 3 Session 3E (spec §9.6): network printers over raw TCP from this process, vetted the same way.
+    registerRawPrintHandler({
+      getMainWebContentsId: () =>
+        mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.id : null,
+      getOrigin: () => store.serverOrigin,
+      log,
+      onJobFailed: notifyPrintFailure,
+    });
+```
+
+In `apps/desktop/src/preload.ts`, find:
+
+```ts
+const PRINTER_SAVE_CHANNEL = "pos-desktop:printer-save";
+const PRINT_MODE_SAVE_CHANNEL = "pos-desktop:print-mode-save";
+const PRINT_ON_CHANNEL = "pos-desktop:print-html-on";
+const VERSION_ARG_PREFIX = "--pos-desktop-version=";
+
+const versionArg = process.argv.find((arg: string) => arg.startsWith(VERSION_ARG_PREFIX));
+```
+
+Replace it with:
+
+```ts
+const PRINTER_SAVE_CHANNEL = "pos-desktop:printer-save";
+const PRINT_MODE_SAVE_CHANNEL = "pos-desktop:print-mode-save";
+const PRINT_ON_CHANNEL = "pos-desktop:print-html-on";
+const PRINT_RAW_CHANNEL = "pos-desktop:print-raw";
+const LAN_STATUS_CHANNEL = "pos-desktop:lan-status";
+const VERSION_ARG_PREFIX = "--pos-desktop-version=";
+
+const versionArg = process.argv.find((arg: string) => arg.startsWith(VERSION_ARG_PREFIX));
+```
+
+In `apps/desktop/src/preload.ts`, find:
+
+```ts
+  // process validates the value — this only forwards it.
+  savePrintMode: (mode: string): Promise<unknown> =>
+    electron.ipcRenderer.invoke(PRINT_MODE_SAVE_CHANNEL, mode),
+});
+
+// Forces module scope so this file's top-level names never collide with
+```
+
+Replace it with:
+
+```ts
+  // process validates the value — this only forwards it.
+  savePrintMode: (mode: string): Promise<unknown> =>
+    electron.ipcRenderer.invoke(PRINT_MODE_SAVE_CHANNEL, mode),
+  // Phase 3 Session 3E (spec §9.6): a network printer's slip as ESC/POS bytes and the idle check of the network printers
+  // the page prints. The main process vets the addresses and the size and answers with a plain result.
+  printRaw: (printer: unknown, data: unknown): Promise<unknown> =>
+    electron.ipcRenderer.invoke(PRINT_RAW_CHANNEL, printer, data),
+  lanStatus: (printers: unknown): Promise<unknown> =>
+    electron.ipcRenderer.invoke(LAN_STATUS_CHANNEL, printers),
+});
+
+// Forces module scope so this file's top-level names never collide with
+```
+
+Create `apps/desktop/src/print-raw.ts`:
+
+```ts
+// Phase 3 Session 3E (spec §9.6): the IPC side of a network printer. The page sends the slip's ESC/POS bytes (the same
+// bytes the POS app sends) and the printer's address; this checks the caller like every print channel here (only the
+// main window, only a frame on the saved origin, a sane address and size), then writes them over raw TCP (raw-tcp.ts).
+// It answers with a plain result, never a thrown error, so the page reads "no" (nothing sent) and "maybe" exactly: a
+// thrown IPC error reaches the page wrapped in Electron's own words. The idle check (lanStatus) asks each network
+// printer the page prints whether it answers, and what it says of its paper, cover and errors: a local check, no request.
+import { ipcMain, type IpcMainInvokeEvent } from "electron";
+import type { Logger } from "./log";
+import { PRINT_REJECTED_MESSAGE } from "./print-messages";
+import { RAW_TCP_DATA_MAX_BYTES, RawTcpError, keyOf, printRawTcp, probeRawTcp, validTarget, type RawTcpFailure, type RawTcpHealth, type RawTcpTarget } from "./raw-tcp";
+import { isSameOrigin } from "./server-url";
+import { LAN_STATUS_CHANNEL, LAN_STATUS_MAX_PRINTERS, PRINT_RAW_CHANNEL } from "./shared";
+
+/** What one raw print answers: printed (with what the printer said of itself), or not, and whether any byte went out. */
+export type RawPrintResult =
+  | { ok: true; health: RawTcpHealth | null }
+  | { ok: false; sent: "no" | "maybe"; failure: RawTcpFailure; message: string; health: RawTcpHealth | null };
+
+/** One network printer's idle check; `link` null: a job holds it now (its own answer says it). */
+export interface LanStatus {
+  host: string;
+  port: number;
+  link: "connected" | "disconnected" | null;
+  health: RawTcpHealth | null;
+}
+
+interface RawPrintDeps {
+  getMainWebContentsId(): number | null;
+  getOrigin(): string | null;
+  log: Logger;
+  // A failed slip in a tray-hidden window has no visible surface (its toast is inside the hidden window).
+  onJobFailed(message: string): void;
+}
+
+export function registerRawPrintHandler(deps: RawPrintDeps): void {
+  // The same gate every print channel uses: only the main window, only a frame actually on the saved origin.
+  const rejectForeignCaller = (event: IpcMainInvokeEvent): void => {
+    if (event.sender.id !== deps.getMainWebContentsId()) throw new Error(PRINT_REJECTED_MESSAGE);
+    const origin = deps.getOrigin();
+    if (origin === null || !isSameOrigin(event.senderFrame?.url ?? "", origin)) throw new Error(PRINT_REJECTED_MESSAGE);
+  };
+
+  ipcMain.handle(PRINT_RAW_CHANNEL, async (event: IpcMainInvokeEvent, printer: unknown, data: unknown): Promise<RawPrintResult> => {
+    rejectForeignCaller(event);
+    if (!validTarget(printer)) throw new Error(PRINT_REJECTED_MESSAGE);
+    if (!(data instanceof Uint8Array) || data.length === 0 || data.length > RAW_TCP_DATA_MAX_BYTES) throw new Error(PRINT_REJECTED_MESSAGE);
+    const target: RawTcpTarget = { host: printer.host, port: printer.port };
+    try {
+      const { health } = await printRawTcp(target, data);
+      // What went to paper, for the field log: never the bytes themselves.
+      deps.log.info(`raw print sent (${data.length} bytes, printer=${keyOf(target)})`);
+      return { ok: true, health };
+    } catch (error) {
+      const failed = error instanceof RawTcpError ? error : new RawTcpError(PRINT_REJECTED_MESSAGE, "write-failed");
+      deps.log.error(`raw print failed (${data.length} bytes, printer=${keyOf(target)}, sent=${failed.sent}): ${failed.message}`);
+      deps.onJobFailed(`Network printer ${target.host}: ${failed.message}`);
+      return { ok: false, sent: failed.sent, failure: failed.failure, message: failed.message, health: failed.health };
+    }
+  });
+
+  ipcMain.handle(LAN_STATUS_CHANNEL, async (event: IpcMainInvokeEvent, printers: unknown): Promise<LanStatus[]> => {
+    rejectForeignCaller(event);
+    if (!Array.isArray(printers) || printers.length > LAN_STATUS_MAX_PRINTERS || !printers.every(validTarget)) throw new Error(PRINT_REJECTED_MESSAGE);
+    return Promise.all(
+      printers.map(async (printer: RawTcpTarget): Promise<LanStatus> => {
+        const status = await probeRawTcp({ host: printer.host, port: printer.port });
+        return { host: printer.host, port: printer.port, link: status?.link ?? null, health: status?.health ?? null };
+      }),
+    );
+  });
+}
+```
+
+In `apps/desktop/src/shared.ts`, find:
+
+```ts
+// A cafe with stations sets up one printer per Windows printer (Printer setup in the POS), each with its own slips;
+// the chosen printer above stays this PC's own printer for everything that names none.
+export const PRINT_ON_CHANNEL = "pos-desktop:print-html-on";
+export const PRINT_MODES = ["direct", "driver"] as const;
+export type PrintMode = (typeof PRINT_MODES)[number];
+export const DEFAULT_PRINT_MODE: PrintMode = "direct";
+```
+
+Replace it with:
+
+```ts
+// A cafe with stations sets up one printer per Windows printer (Printer setup in the POS), each with its own slips;
+// the chosen printer above stays this PC's own printer for everything that names none.
+export const PRINT_ON_CHANNEL = "pos-desktop:print-html-on";
+// Phase 3 Session 3E (spec §9.6): a network printer written from the main process over raw TCP (raw-tcp.ts): the page's
+// ESC/POS bytes to the printer's private address; and the idle check of the network printers the page prints (whether
+// each answers, and its paper, cover and errors). One check asks at most this many printers.
+export const PRINT_RAW_CHANNEL = "pos-desktop:print-raw";
+export const LAN_STATUS_CHANNEL = "pos-desktop:lan-status";
+export const LAN_STATUS_MAX_PRINTERS = 16;
+export const PRINT_MODES = ["direct", "driver"] as const;
+export type PrintMode = (typeof PRINT_MODES)[number];
+export const DEFAULT_PRINT_MODE: PrintMode = "direct";
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/desktop && npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 205`; `# pass 205`; `# fail 0`
+
+Run: `cd /d/kd/lucifer/apps/desktop && npm run typecheck >/dev/null 2>&1 && echo DESKTOP_TSC_OK && npm run lint >/dev/null 2>&1 && echo DESKTOP_LINT_OK`
+Expected: `DESKTOP_TSC_OK`; `DESKTOP_LINT_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/desktop-shell-paths.test.ts lib/go-live-runbook.test.ts lib/desktop-shell.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 139`; `# pass 139`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint lib/desktop-shell.ts lib/desktop-shell-printer.ts lib/desktop-shell-paths.test.ts lib/go-live-runbook.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/lib/desktop-shell-paths.test.ts apps/cafe/lib/desktop-shell-printer.ts apps/cafe/lib/desktop-shell.ts apps/cafe/lib/go-live-runbook.test.ts apps/desktop/package.json apps/desktop/src/desktop-paths.test.ts apps/desktop/src/main.ts apps/desktop/src/preload.ts apps/desktop/src/print-raw.ts apps/desktop/src/shared.ts
+git commit -m "feat(desktop): the Windows app 1.12.0 takes a network printer's slip from the page (printRaw: the printer's address and the ESC/POS bytes) and checks the network printers the page prints (lanStatus), each vetted like every print channel (the main window, the saved origin, a private address, a sane size) and answered with a plain result; the page's bridge type gains both, feature-detected (Phase 3 Session 3E, E2)"
+```
+
+---
+
+### Task E3: on the Windows app 1.12.0 the page writes a network printer through the app's raw TCP: the slip drawn here as ESC/POS, its link and paper kept per printer, not connected read as nothing sent and a write that failed as maybe
+
+**Files:**
+- Create: `apps/cafe/lib/printer/desktop-lan.ts` (`desktopLan()`: the store of the Windows app's network printers; `desktopLanApi`, `desktopLanId`, `connectedLanKey`, `desktopLanCannotPrint`, `desktopPrintersState`)
+- Modify: `apps/cafe/lib/printer/lane-print.ts` (`RasterPrintTarget.lan`; `rasterPrint` writes it through `desktopLan()`), `apps/cafe/lib/desktop-shell.ts` (a `raster.lan` target goes to the lanes even inside the Windows app), `lib/print-host-slips.ts` (`SlipPrintTarget.lan`), `hooks/use-print-host-bridge.ts` (the raster target for it), `lib/print-write-outcome.ts` (on the Windows app a lane sentence is kept)
+- Tests: `apps/cafe/lib/printer/desktop-lan.test.ts` (create; added to `apps/cafe/package.json`'s test chain), `lib/printer/lane-print.test.ts`, `lib/print-write-outcome.test.ts`, `lib/printer/print-gating-paths.test.ts` (the seam's delegate line and the lane's capability line, deliberately changed), `lib/print-windows-printers.test.ts` (the bridge's raster line, deliberately changed)
+
+**Interfaces produced:** `desktopLan(): DesktopLan` (`subscribe`, `getSnapshot`, `watch(targets)`, `check()`, `write(target, bytes)`, `printerOf(id)`); `DesktopLanPrinter` (`id` "tcp:<host>:<port>", `host`, `port`, `status`, `paper?`, `cover?`, `error?`); `DESKTOP_LAN_CHECK_MS` 60 s, `DESKTOP_LAN_RECHECK_MS` 5 s, `DESKTOP_LAN_PROBLEM_CHECK_MS` 10 s, `DESKTOP_LAN_DOWN_CHECK_MS` 30 s, `DESKTOP_LAN_PRINT_TIMEOUT_MS` 75 s; `RasterPrintTarget.lan?`, `SlipPrintTarget.lan?`.
+
+**The slip** of a network printer on the Windows app is drawn in the page as ESC/POS (the lanes' raster: the same bytes as the POS app's) and sent with `printRaw`; a Windows printer's slip still goes to the app as a page (`printHtmlOn`, Phase 2). `slipPrintOptions` sends a `raster.lan` target to the lanes even when the shell is there, and `laneSlipPrintOptions` draws it whatever printer APIs the runtime has.
+
+**The store** (`desktopLan()`, like `nativePool()` for the POS app's printers) keeps each watched network printer's link and what it says (paper, cover, error), by the POS app's id for the same printer (`tcp:<host>:<port>`, lower-case): a new one is checked at once (`lanStatus`), a slip updates it (printed: connected and what it said; nothing sent: disconnected; "maybe": connected with what it said when it says it cannot print, else connecting), and after a failure it is asked again 5 s later. While a printer says it cannot print it is asked every 10 s, while it does not answer every 30 s (the POS app's cadence since the 3B gate: paper put back prints within seconds, not at the next minute). A check that began before a slip's answer never overwrites it (the gate's golden-copy review, m-3: a slow check of another printer that is off). A slip that gets no answer from the app in 75 s is "maybe" (its m-2: never before the app's own 60 s deadline, which starts after the connect and after a check ahead of it). Only an app with both calls is active.
+
+**The sentences.** Nothing sent is `PRINTER_NOT_CONNECTED_MESSAGE` (the agent acks a network printer "unreachable"); bytes that may be on paper are `PRINTER_WRITE_FAILED_MESSAGE` ("maybe": REPRINT). In the Windows app the host bridge read every failure as the shell's wrapped sentence, so a lane's own sentence became "may have printed": `hostPrintFailureMessage` now keeps a lane sentence first.
+
+**RED**: the store's test cannot import its module; the lane, outcome and pin tests fail on the new behaviour.
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/print-windows-printers.test.ts`, find:
+
+```ts
+  const bridge = src("hooks/use-print-host-bridge.ts");
+  assert.match(bridge, /const target = current\?\.kind === "slip" \? current\.slip\.target : undefined;/);
+  // Session 2F1 (deliberate change): one of the POS app's printers too (raster: the app's id and the printer's paper).
+  assert.match(bridge, /const raster = target\?\.nativeId === undefined \? undefined : \{ nativeId: target\.nativeId, paper: target\.paper \};/);
+  assert.equal((bridge.match(/, target\?\.printerName, raster\)\);/g) ?? []).length, 3, "every surface prints on the slip's printer");
+  assert.match(bridge, /pageStyle: receiptPageStyle\(target\?\.paper \?\? printCfg\.kot\.paperWidth\),/, "its paper on the page");
+  assert.match(bridge, /pageStyle: receiptPageStyle\(target\?\.paper \?\? printCfg\.bill\.paperWidth\),/);
+```
+
+Replace it with:
+
+```ts
+  const bridge = src("hooks/use-print-host-bridge.ts");
+  assert.match(bridge, /const target = current\?\.kind === "slip" \? current\.slip\.target : undefined;/);
+  // Session 2F1 (deliberate change): one of the POS app's printers too (raster: the app's id and the printer's paper).
+  // Phase 3 Session 3E deliberately changed: a network printer of the Windows app 1.12.0 is drawn here too (raster).
+  assert.match(bridge, /const raster = target\?\.nativeId !== undefined \? \{ nativeId: target\.nativeId, paper: target\.paper \} : target\?\.lan !== undefined \? \{ lan: target\.lan, paper: target\.paper \} : undefined;/);
+  assert.equal((bridge.match(/, target\?\.printerName, raster\)\);/g) ?? []).length, 3, "every surface prints on the slip's printer");
+  assert.match(bridge, /pageStyle: receiptPageStyle\(target\?\.paper \?\? printCfg\.kot\.paperWidth\),/, "its paper on the page");
+  assert.match(bridge, /pageStyle: receiptPageStyle\(target\?\.paper \?\? printCfg\.bill\.paperWidth\),/);
+```
+
+In `apps/cafe/lib/print-write-outcome.test.ts`, find:
+
+```ts
+
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+
+test("PIN (I-3): the Windows app's sentences here are the shell's own, word for word", () => {
+  const shell = ["print-messages.ts", "raw-spool.ts"].map((file) => readFileSync(path.join(REPO_ROOT, "apps/desktop/src", file), "utf8")).join("\n");
+  for (const sentence of [...DESKTOP_SHELL_REFUSALS, DESKTOP_SHELL_NOT_READY_MESSAGE, ...DESKTOP_SHELL_NEVER_PRINTS]) {
+```
+
+Replace it with:
+
+```ts
+
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+
+test("3E: a network printer on the Windows app fails with the lane's own sentence: not connected is nothing sent, a write that failed may be on paper", () => {
+  assert.equal(hostPrintFailureMessage(new Error(PRINTER_NOT_CONNECTED_MESSAGE), true), PRINTER_NOT_CONNECTED_MESSAGE, "kept as it is in the Windows app");
+  assert.equal(outcome(hostPrintFailureMessage(new Error(PRINTER_NOT_CONNECTED_MESSAGE), true)), "no", "nothing sent: acked unreachable for a network printer");
+  assert.equal(outcome(hostPrintFailureMessage(new Error(PRINTER_WRITE_FAILED_MESSAGE), true)), "maybe", "part of it may be on paper: REPRINT");
+  assert.equal(hostPrintFailureMessage(new Error("Error invoking remote method 'pos-desktop:print-html': Error: This print request was refused."), true), "This print request was refused.", "a page slip's shell sentence still unwrapped");
+});
+
+test("PIN (I-3): the Windows app's sentences here are the shell's own, word for word", () => {
+  const shell = ["print-messages.ts", "raw-spool.ts"].map((file) => readFileSync(path.join(REPO_ROOT, "apps/desktop/src", file), "utf8")).join("\n");
+  for (const sentence of [...DESKTOP_SHELL_REFUSALS, DESKTOP_SHELL_NOT_READY_MESSAGE, ...DESKTOP_SHELL_NEVER_PRINTS]) {
+```
+
+Create `apps/cafe/lib/printer/desktop-lan.test.ts`:
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  DESKTOP_LAN_DOWN_CHECK_MS,
+  DESKTOP_LAN_PRINT_TIMEOUT_MS,
+  DESKTOP_LAN_PROBLEM_CHECK_MS,
+  DESKTOP_LAN_RECHECK_MS,
+  connectedLanKey,
+  createDesktopLan,
+  desktopLanApi,
+  desktopLanCannotPrint,
+  desktopLanId,
+  desktopPrintersState,
+  setDesktopLanInstance,
+  type DesktopLanApi,
+  type DesktopLanTarget,
+} from "@/lib/printer/desktop-lan";
+import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
+
+// Printing redesign, Phase 3 Session 3E (spec §9.6): the page's store of the network printers the Windows app 1.12.0
+// writes over raw TCP, driven through a fake app (printRaw, lanStatus) and fake timers.
+
+const KITCHEN: DesktopLanTarget = { host: "192.168.1.60", port: 9100 };
+const BAR: DesktopLanTarget = { host: "192.168.1.61", port: 9100 };
+
+interface FakeApp {
+  api: DesktopLanApi;
+  checks: DesktopLanTarget[][];
+  prints: Array<{ printer: DesktopLanTarget; bytes: number }>;
+  status: unknown;
+  printAnswer: () => Promise<unknown>;
+}
+
+function fakeApp(): FakeApp {
+  const app: FakeApp = {
+    checks: [],
+    prints: [],
+    status: [],
+    printAnswer: async () => ({ ok: true, health: null }),
+    api: {
+      lanStatus: async (printers) => {
+        app.checks.push(printers);
+        return app.status;
+      },
+      printRaw: async (printer, data) => {
+        app.prints.push({ printer, bytes: data.length });
+        return app.printAnswer();
+      },
+    },
+  };
+  return app;
+}
+
+function fakeTimers() {
+  const pending: Array<{ fn: () => void; ms: number; live: boolean }> = [];
+  return {
+    pending,
+    setTimer: (fn: () => void, ms: number): unknown => {
+      const handle = { fn, ms, live: true };
+      pending.push(handle);
+      return handle;
+    },
+    clearTimer: (handle: unknown): void => {
+      (handle as { live: boolean }).live = false;
+    },
+    fire(ms: number): void {
+      for (const timer of pending.filter((t) => t.live && t.ms === ms)) {
+        timer.live = false;
+        timer.fn();
+      }
+    },
+  };
+}
+
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+test("3E: only a Windows app that has printRaw and lanStatus (1.12.0) writes network printers", () => {
+  const holder = globalThis as unknown as { window?: unknown };
+  const before = holder.window;
+  try {
+    holder.window = {};
+    assert.equal(desktopLanApi(), null, "no Windows app");
+    holder.window = { posDesktop: { version: "1.11.0", printHtml: async () => undefined, printHtmlOn: async () => undefined } };
+    assert.equal(desktopLanApi(), null, "1.11.0 prints no network printer (as before)");
+    holder.window = { posDesktop: { version: "1.12.0", printHtml: async () => undefined, printRaw: async () => ({ ok: true }), lanStatus: async () => [] } };
+    assert.notEqual(desktopLanApi(), null, "1.12.0 does");
+  } finally {
+    holder.window = before;
+  }
+  assert.equal(desktopLanId({ host: "Kitchen-Printer.LAN", port: 9100 }), "tcp:kitchen-printer.lan:9100", "the POS app's id for the same printer, lower-case");
+});
+
+test("3E: a printer the page starts to print is checked at once; its link and paper come from the app; one it stops naming is forgotten", async () => {
+  const app = fakeApp();
+  const timers = fakeTimers();
+  const lan = createDesktopLan({ api: () => app.api, ...timers });
+  let changes = 0;
+  lan.subscribe(() => void (changes += 1));
+  app.status = [{ host: KITCHEN.host, port: 9100, link: "connected", health: { paper: "low", cover: "closed" } }];
+  lan.watch([KITCHEN]);
+  assert.deepEqual(lan.getSnapshot().printers.map((p) => [p.id, p.status]), [["tcp:192.168.1.60:9100", "connecting"]], "connecting until the app says");
+  await flush();
+  assert.deepEqual(app.checks, [[KITCHEN]], "checked at once");
+  assert.deepEqual(lan.printerOf("tcp:192.168.1.60:9100"), { id: "tcp:192.168.1.60:9100", host: "192.168.1.60", port: 9100, status: "connected", paper: "low", cover: "closed" }, "what the printer says of itself");
+  assert.equal(lan.getSnapshot().active, true, "the app writes network printers");
+  lan.watch([KITCHEN]);
+  await flush();
+  assert.equal(app.checks.length, 1, "the same list again asks nothing");
+  app.status = [
+    { host: KITCHEN.host, port: 9100, link: "disconnected", health: null },
+    { host: BAR.host, port: 9100, link: null, health: null },
+  ];
+  lan.watch([KITCHEN, BAR]);
+  await flush();
+  assert.deepEqual(app.checks[1], [KITCHEN, BAR], "a new printer: every watched one is checked");
+  assert.deepEqual(lan.getSnapshot().printers.map((p) => [p.id, p.status, p.paper ?? "-"]), [["tcp:192.168.1.60:9100", "disconnected", "-"], ["tcp:192.168.1.61:9100", "connecting", "-"]], "down drops what it said before; a printer a job holds keeps its state");
+  lan.watch([BAR]);
+  assert.deepEqual(lan.getSnapshot().printers.map((p) => p.id), ["tcp:192.168.1.61:9100"], "the kitchen is no longer named: forgotten");
+  assert.ok(changes >= 3, "each change is published");
+  const before = lan.getSnapshot();
+  app.status = "not a list";
+  await lan.check();
+  assert.strictEqual(lan.getSnapshot(), before, "an odd answer changes nothing");
+});
+
+test("3E: a slip: printed (connected, what it said); nothing sent is 'not connected' and asked again soon; 'maybe' is a write that failed", async () => {
+  const app = fakeApp();
+  const timers = fakeTimers();
+  const lan = createDesktopLan({ api: () => app.api, ...timers });
+  app.status = [{ host: KITCHEN.host, port: 9100, link: "connected", health: null }];
+  lan.watch([KITCHEN]);
+  await flush();
+
+  app.printAnswer = async () => ({ ok: true, health: { paper: "ok", cover: "closed" } });
+  await lan.write(KITCHEN, new Uint8Array(40));
+  assert.deepEqual(app.prints, [{ printer: KITCHEN, bytes: 40 }], "the bytes to the printer's address");
+  assert.deepEqual([lan.printerOf("tcp:192.168.1.60:9100")?.status, lan.printerOf("tcp:192.168.1.60:9100")?.paper], ["connected", "ok"]);
+
+  app.printAnswer = async () => ({ ok: false, sent: "no", failure: "not-connected", message: "The printer did not answer.", health: null });
+  await assert.rejects(lan.write(KITCHEN, new Uint8Array(40)), { message: PRINTER_NOT_CONNECTED_MESSAGE }, "nothing sent: the agent acks it unreachable");
+  assert.equal(lan.printerOf("tcp:192.168.1.60:9100")?.status, "disconnected");
+  assert.equal(timers.pending.filter((t) => t.live && t.ms === DESKTOP_LAN_RECHECK_MS).length, 1, "asked again soon");
+  app.status = [{ host: KITCHEN.host, port: 9100, link: "connected", health: null }];
+  timers.fire(DESKTOP_LAN_RECHECK_MS);
+  await flush();
+  assert.equal(lan.printerOf("tcp:192.168.1.60:9100")?.status, "connected", "back by the re-check");
+
+  app.printAnswer = async () => ({ ok: false, sent: "maybe", failure: "cannot-print", message: "The printer cannot print now.", health: { paper: "out", cover: "closed" } });
+  await assert.rejects(lan.write(KITCHEN, new Uint8Array(40)), { message: PRINTER_WRITE_FAILED_MESSAGE }, "it took bytes: 'maybe'");
+  const out = lan.printerOf("tcp:192.168.1.60:9100");
+  assert.deepEqual([out?.status, out?.paper, out !== null && desktopLanCannotPrint(out)], ["connected", "out", true], "its link is fine; it cannot print");
+  assert.equal(connectedLanKey(lan.getSnapshot()), "", "not ready for the agent while out of paper");
+
+  app.printAnswer = async () => ({ ok: false, sent: "maybe", failure: "write-failed", message: "The printer stopped answering while the slip was sent.", health: null });
+  await assert.rejects(lan.write(KITCHEN, new Uint8Array(40)), { message: PRINTER_WRITE_FAILED_MESSAGE });
+  assert.equal(lan.printerOf("tcp:192.168.1.60:9100")?.status, "connecting", "the link broke mid-slip: asked again");
+
+  app.printAnswer = () => new Promise(() => undefined);
+  const hanging = lan.write(KITCHEN, new Uint8Array(40));
+  timers.fire(DESKTOP_LAN_PRINT_TIMEOUT_MS);
+  await assert.rejects(hanging, { message: PRINTER_WRITE_FAILED_MESSAGE }, "no answer from the app in time: it may be on paper");
+
+  const none = createDesktopLan({ api: () => null, ...fakeTimers() });
+  await assert.rejects(none.write(KITCHEN, new Uint8Array(40)), { message: PRINTER_NOT_CONNECTED_MESSAGE }, "an app from before 1.12.0 sends nothing");
+});
+
+test("3E: a printer out of paper is asked again every 10 s, one that does not answer every 30 s; a check that began before a slip's answer never overwrites it", async () => {
+  const app = fakeApp();
+  const timers = fakeTimers();
+  const lan = createDesktopLan({ api: () => app.api, ...timers });
+  app.status = [{ host: KITCHEN.host, port: 9100, link: "connected", health: { paper: "out" } }];
+  lan.watch([KITCHEN]);
+  await flush();
+  assert.equal(timers.pending.filter((t) => t.live && t.ms === DESKTOP_LAN_PROBLEM_CHECK_MS).length, 1, "out of paper: asked again in 10 s");
+  app.status = [{ host: KITCHEN.host, port: 9100, link: "disconnected", health: null }];
+  timers.fire(DESKTOP_LAN_PROBLEM_CHECK_MS);
+  await flush();
+  assert.equal(lan.printerOf("tcp:192.168.1.60:9100")?.status, "disconnected");
+  assert.equal(timers.pending.filter((t) => t.live && t.ms === DESKTOP_LAN_DOWN_CHECK_MS).length, 1, "down: asked again in 30 s");
+  app.status = [{ host: KITCHEN.host, port: 9100, link: "connected", health: { paper: "ok" } }];
+  timers.fire(DESKTOP_LAN_DOWN_CHECK_MS);
+  await flush();
+  assert.equal(timers.pending.filter((t) => t.live && (t.ms === DESKTOP_LAN_PROBLEM_CHECK_MS || t.ms === DESKTOP_LAN_DOWN_CHECK_MS)).length, 0, "fine again: the minute's check only");
+
+  // A slow check (another printer that is off) answers after a slip that failed "no": the slip's answer stands.
+  let release: (rows: unknown) => void = () => undefined;
+  app.api.lanStatus = () => new Promise((resolve) => void (release = resolve));
+  const slow = lan.check();
+  app.printAnswer = async () => ({ ok: false, sent: "no", failure: "not-connected", message: "The printer did not answer.", health: null });
+  await assert.rejects(lan.write(KITCHEN, new Uint8Array(40)), { message: PRINTER_NOT_CONNECTED_MESSAGE });
+  release([{ host: KITCHEN.host, port: 9100, link: "connected", health: null }]);
+  await slow;
+  assert.equal(lan.printerOf("tcp:192.168.1.60:9100")?.status, "disconnected", "the check began before the slip's answer: never a stale connected");
+});
+
+test("3E: the agent's key counts only connected printers that can print, and the hold's state changes with either list", () => {
+  assert.equal(
+    connectedLanKey({
+      active: true,
+      printers: [
+        { id: "tcp:a:9100", host: "a", port: 9100, status: "connected" },
+        { id: "tcp:b:9100", host: "b", port: 9100, status: "connected", cover: "open" },
+        { id: "tcp:c:9100", host: "c", port: 9100, status: "disconnected" },
+        { id: "tcp:d:9100", host: "d", port: 9100, status: "connected", paper: "low" },
+      ],
+    }),
+    "tcp:a:9100,tcp:d:9100",
+    "low paper still prints",
+  );
+  const app = fakeApp();
+  setDesktopLanInstance(createDesktopLan({ api: () => app.api, ...fakeTimers() }));
+  try {
+    const windows = { names: ["EPSON"] };
+    const first = desktopPrintersState(windows);
+    assert.strictEqual(desktopPrintersState(windows), first, "nothing changed: the same value");
+    assert.notStrictEqual(desktopPrintersState({ names: [] }), first, "a Windows printer list read again");
+  } finally {
+    setDesktopLanInstance(null);
+  }
+});
+```
+
+In `apps/cafe/lib/printer/lane-print.test.ts`, find:
+
+```ts
+
+import { DESKTOP_PRINT_EMPTY_MESSAGE, slipPrintOptions } from "@/lib/desktop-shell";
+import { rasterCapable } from "@/lib/printer/capabilities";
+import { setDevicePrinterInstance, type DevicePrinterRuntime } from "@/lib/printer/device-printer";
+import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+import { CUT_PARTIAL_WITH_FEED, ESC_INIT, GS_RASTER_HEADER, RASTER_MAX_ROWS, escposJob, rasterizeRgba } from "@/lib/printer/escpos";
+```
+
+Replace it with:
+
+```ts
+
+import { DESKTOP_PRINT_EMPTY_MESSAGE, slipPrintOptions } from "@/lib/desktop-shell";
+import { rasterCapable } from "@/lib/printer/capabilities";
+import { setDesktopLanInstance } from "@/lib/printer/desktop-lan";
+import { setDevicePrinterInstance, type DevicePrinterRuntime } from "@/lib/printer/device-printer";
+import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+import { CUT_PARTIAL_WITH_FEED, ESC_INIT, GS_RASTER_HEADER, RASTER_MAX_ROWS, escposJob, rasterizeRgba } from "@/lib/printer/escpos";
+```
+
+In `apps/cafe/lib/printer/lane-print.test.ts`, find:
+
+```ts
+  assert.equal(state.writes.length, 0);
+});
+
+test("the default onPrintError toasts the lane sentence (or the generic one) and then calls onAfterPrint", (t) => {
+  installWindow(t, { PosNative: BRIDGE });
+  installRuntime(t, null);
+```
+
+Replace it with:
+
+```ts
+  assert.equal(state.writes.length, 0);
+});
+
+test("3E: on the Windows app 1.12.0 a network printer's slip is drawn here and sent through the app's raw TCP, never as a page; its refusal keeps the lane's sentence", async (t) => {
+  const pages: string[] = [];
+  const raw: Array<{ printer: unknown; head: number[] }> = [];
+  let answer: unknown = { ok: true, health: null };
+  installWindow(t, {
+    posDesktop: {
+      version: "1.12.0",
+      printHtml: async (html: string) => void pages.push(html),
+      printRaw: async (printer: unknown, data: Uint8Array) => {
+        raw.push({ printer, head: [...data.slice(0, 2)] });
+        return answer;
+      },
+      lanStatus: async () => [],
+    },
+  });
+  withNavigator(t, {});
+  installRuntime(t, null);
+  setDesktopLanInstance(null);
+  t.after(() => setDesktopLanInstance(null));
+  const asked = installFakeSlip(t, { pixels: slipPixels(576, 2, [0]), width: 576, height: 2 });
+
+  await slipPrintOptions<UseReactToPrintOptions>({}, undefined, { lan: { host: "192.168.1.60", port: 9100 }, paper: "80mm" }).print!(loggedIframe([]));
+  assert.deepEqual(asked, [576], "drawn here, at the printer's 80 mm");
+  assert.deepEqual(raw, [{ printer: { host: "192.168.1.60", port: 9100 }, head: [...ESC_INIT] }], "the ESC/POS job, to the printer's address");
+  assert.deepEqual(pages, [], "never the page's HTML");
+
+  answer = { ok: false, sent: "no", failure: "not-connected", message: "The printer did not answer.", health: null };
+  await assert.rejects(
+    () => slipPrintOptions<UseReactToPrintOptions>({}, undefined, { lan: { host: "192.168.1.60", port: 9100 }, paper: "80mm" }).print!(loggedIframe([])),
+    { message: PRINTER_NOT_CONNECTED_MESSAGE },
+  );
+  assert.equal(laneFailureMessage(new Error(PRINTER_NOT_CONNECTED_MESSAGE)), PRINTER_NOT_CONNECTED_MESSAGE, "the lane's own sentence: nothing sent");
+
+  const iframe = { contentDocument: { title: "", documentElement: { outerHTML: `<html><head></head><body>${SHELL_MARKER}</body></html>` } } } as unknown as HTMLIFrameElement;
+  await slipPrintOptions<UseReactToPrintOptions>({ documentTitle: "Slip" }).print!(iframe);
+  assert.equal(pages.length, 1, "a slip with no network printer still prints through the app as a page, as before");
+});
+
+test("the default onPrintError toasts the lane sentence (or the generic one) and then calls onAfterPrint", (t) => {
+  installWindow(t, { PosNative: BRIDGE });
+  installRuntime(t, null);
+```
+
+In `apps/cafe/lib/printer/print-gating-paths.test.ts`, find:
+
+```ts
+  if (!ok) problems.push(message);
+}
+
+// Phase 2 Session 2F1 (deliberate change): a printer job of one of the POS app's printers names it (raster).
+const DELEGATE = "if (!shell) return laneSlipPrintOptions(options, raster);";
+// The final release check (2026-10-03, deliberate change): the routine beat also says whether this host is
+// silent by construction (beatSilentMode), so an app host never reads "a dialog for every slip".
+const BEAT_CALL = "beat({ deviceId, printer: beatPrinterReport(), silentMode: beatSilentMode() });";
+```
+
+Replace it with:
+
+```ts
+  if (!ok) problems.push(message);
+}
+
+// Phase 2 Session 2F1 (deliberate change): a printer job of one of the POS app's printers names it (raster). Phase 3
+// Session 3E (deliberate change): so does a network printer the Windows app writes over raw TCP, even inside the app.
+const DELEGATE = "if (!shell || raster?.lan !== undefined) return laneSlipPrintOptions(options, raster);";
+// The final release check (2026-10-03, deliberate change): the routine beat also says whether this host is
+// silent by construction (beatSilentMode), so an app host never reads "a dialog for every slip".
+const BEAT_CALL = "beat({ deviceId, printer: beatPrinterReport(), silentMode: beatSilentMode() });";
+```
+
+In `apps/cafe/lib/printer/print-gating-paths.test.ts`, find:
+
+```ts
+      const p: string[] = [];
+      check(p, !/from\s+["']@\/lib\/desktop-shell["']/.test(s), "must not import the desktop-shell seam (import cycle)");
+      check(p, !/from\s+["']@\/lib\/printer\/print-lane["']/.test(s), "must not import print-lane (it imports the seam)");
+      check(p, s.includes("if (!rasterCapable()) return options;"), "no capability -> the SAME options reference");
+      const wrap = between(s, "export function laneSlipPrintOptions", "\n}\n");
+      check(p, wrap.includes("lanePrint(iframe, options.documentTitle)"), "print() delegates to lanePrint at call time");
+      check(p, !/devicePrinter|nativeBridge|getSnapshot/.test(wrap), "the lane is NOT decided when the options are wrapped");
+```
+
+Replace it with:
+
+```ts
+      const p: string[] = [];
+      check(p, !/from\s+["']@\/lib\/desktop-shell["']/.test(s), "must not import the desktop-shell seam (import cycle)");
+      check(p, !/from\s+["']@\/lib\/printer\/print-lane["']/.test(s), "must not import print-lane (it imports the seam)");
+      // Phase 3 Session 3E (deliberate change): a network printer of the Windows app is drawn whatever the runtime's APIs.
+      check(p, s.includes("if (raster?.lan === undefined && !rasterCapable()) return options;"), "no capability -> the SAME options reference");
+      const wrap = between(s, "export function laneSlipPrintOptions", "\n}\n");
+      check(p, wrap.includes("lanePrint(iframe, options.documentTitle)"), "print() delegates to lanePrint at call time");
+      check(p, !/devicePrinter|nativeBridge|getSnapshot/.test(wrap), "the lane is NOT decided when the options are wrapped");
+```
+
+In `apps/cafe/lib/printer/print-gating-paths.test.ts`, find:
+
+```ts
+      { name: "settle wait unconditional again", apply: sub("if (!blocked) await laneSleep", "await laneSleep") },
+      { name: "an await sneaks in before print()", apply: sub("  let blocked = false;", "  await laneSleep(0);\n  let blocked = false;") },
+      { name: "print() no longer timed", apply: sub("blocked = performance.now() - startedAt >= SYSTEM_PRINT_SETTLE_MS;", "blocked = false;") },
+      { name: "lane decided at wrap time", apply: sub("  if (!rasterCapable()) return options;\n", "  if (!rasterCapable()) return options;\n  const decided = devicePrinter().getSnapshot();\n") },
+      { name: "settle wait 500 -> 50", apply: sub("SYSTEM_PRINT_SETTLE_MS = 500", "SYSTEM_PRINT_SETTLE_MS = 50") },
+      { name: "deadline 12 s -> 18 s", apply: sub("LANE_RASTER_DEADLINE_MS = 12_000", "LANE_RASTER_DEADLINE_MS = 18_000") },
+      { name: "write before the blank check", apply: sub("  if (bitmap.rows === 0) throw new Error(DESKTOP_PRINT_EMPTY_MESSAGE);", "  await devicePrinter().write(escposJob(bitmap));\n  if (bitmap.rows === 0) throw new Error(DESKTOP_PRINT_EMPTY_MESSAGE);") },
+```
+
+Replace it with:
+
+```ts
+      { name: "settle wait unconditional again", apply: sub("if (!blocked) await laneSleep", "await laneSleep") },
+      { name: "an await sneaks in before print()", apply: sub("  let blocked = false;", "  await laneSleep(0);\n  let blocked = false;") },
+      { name: "print() no longer timed", apply: sub("blocked = performance.now() - startedAt >= SYSTEM_PRINT_SETTLE_MS;", "blocked = false;") },
+      { name: "lane decided at wrap time", apply: sub("  if (raster?.lan === undefined && !rasterCapable()) return options;\n", "  if (raster?.lan === undefined && !rasterCapable()) return options;\n  const decided = devicePrinter().getSnapshot();\n") },
+      { name: "settle wait 500 -> 50", apply: sub("SYSTEM_PRINT_SETTLE_MS = 500", "SYSTEM_PRINT_SETTLE_MS = 50") },
+      { name: "deadline 12 s -> 18 s", apply: sub("LANE_RASTER_DEADLINE_MS = 12_000", "LANE_RASTER_DEADLINE_MS = 18_000") },
+      { name: "write before the blank check", apply: sub("  if (bitmap.rows === 0) throw new Error(DESKTOP_PRINT_EMPTY_MESSAGE);", "  await devicePrinter().write(escposJob(bitmap));\n  if (bitmap.rows === 0) throw new Error(DESKTOP_PRINT_EMPTY_MESSAGE);") },
+```
+
+In `apps/cafe/package.json`, find:
+
+```json
+    "lib/print-setup-fields.test.ts",
+    "lib/print-windows-printers.test.ts",
+    "lib/printer/native-pool.test.ts",
+    "lib/printer/native-bridge-v2-parity.test.ts",
+    "scripts/print-soak-agent.test.ts"
+  ],
+```
+
+Replace it with:
+
+```json
+    "lib/print-setup-fields.test.ts",
+    "lib/print-windows-printers.test.ts",
+    "lib/printer/native-pool.test.ts",
+    "lib/printer/desktop-lan.test.ts",
+    "lib/printer/native-bridge-v2-parity.test.ts",
+    "scripts/print-soak-agent.test.ts"
+  ],
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/printer/desktop-lan.test.ts lib/printer/lane-print.test.ts lib/print-write-outcome.test.ts lib/printer/print-gating-paths.test.ts lib/print-windows-printers.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 31`; `# pass 24`; `# fail 7`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/hooks/use-print-host-bridge.ts`, find:
+
+```ts
+  // Phase 2 Session 2E (spec §9.2): a Windows printer job prints on its printer, drawn for its paper; Session 2F1: one of
+  // the POS app's printers likewise (raster); else as before.
+  const target = current?.kind === "slip" ? current.slip.target : undefined;
+  const raster = target?.nativeId === undefined ? undefined : { nativeId: target.nativeId, paper: target.paper };
+
+  const printKot = useReactToPrint(slipPrintOptions({
+    contentRef: kotRef,
+```
+
+Replace it with:
+
+```ts
+  // Phase 2 Session 2E (spec §9.2): a Windows printer job prints on its printer, drawn for its paper; Session 2F1: one of
+  // the POS app's printers likewise (raster); else as before.
+  const target = current?.kind === "slip" ? current.slip.target : undefined;
+  // Phase 3 Session 3E (spec §9.6): a network printer of the Windows app likewise (raster, through its raw TCP).
+  const raster = target?.nativeId !== undefined ? { nativeId: target.nativeId, paper: target.paper } : target?.lan !== undefined ? { lan: target.lan, paper: target.paper } : undefined;
+
+  const printKot = useReactToPrint(slipPrintOptions({
+    contentRef: kotRef,
+```
+
+In `apps/cafe/lib/desktop-shell.ts`, find:
+
+```ts
+  }
+}
+
+// Wraps a useReactToPrint options object so it prints through the desktop
+// shell when one is present; without one it defers to the printer lanes
+// (lib/printer/lane-print.ts), which return the SAME reference on a plain browser.
+export function slipPrintOptions<T extends UseReactToPrintOptions>(options: T, printerName?: string, raster?: RasterPrintTarget): T {
+  const shell = desktopShell();
+  if (!shell) return laneSlipPrintOptions(options, raster);
+  return {
+    ...options,
+    print: async (iframe: HTMLIFrameElement) => {
+```
+
+Replace it with:
+
+```ts
+  }
+}
+
+// Wraps a useReactToPrint options object so it prints through the desktop shell when one is present; without one, or for
+// a network printer the shell writes over raw TCP (Phase 3 Session 3E: drawn here, lib/printer/desktop-lan.ts), it defers
+// to the printer lanes (lib/printer/lane-print.ts), which return the SAME reference on a plain browser.
+export function slipPrintOptions<T extends UseReactToPrintOptions>(options: T, printerName?: string, raster?: RasterPrintTarget): T {
+  const shell = desktopShell();
+  if (!shell || raster?.lan !== undefined) return laneSlipPrintOptions(options, raster);
+  return {
+    ...options,
+    print: async (iframe: HTMLIFrameElement) => {
+```
+
+In `apps/cafe/lib/print-host-slips.ts`, find:
+
+```ts
+  paper: PaperWidth;
+  printerName?: string;
+  nativeId?: string;
+}
+
+export type HostPrintSlip = (HostKotSlip | HostReceiptSlip | HostTokenSlip | HostEodSlip | HostTestSlip) & { target?: SlipPrintTarget };
+```
+
+Replace it with:
+
+```ts
+  paper: PaperWidth;
+  printerName?: string;
+  nativeId?: string;
+  /** Phase 3 Session 3E (spec §9.6): a network printer the Windows app 1.12.0 writes over raw TCP. */
+  lan?: { host: string; port: number };
+}
+
+export type HostPrintSlip = (HostKotSlip | HostReceiptSlip | HostTokenSlip | HostEodSlip | HostTestSlip) & { target?: SlipPrintTarget };
+```
+
+In `apps/cafe/lib/print-write-outcome.ts`, find:
+
+```ts
+/** The sentence a failed slip carries to its caller (the agent) and the toast. In the Windows app, the shell's own
+ *  curated sentence, unwrapped from the IPC layer's "Error invoking remote method …: Error: …": wrapped, every
+ *  Windows failure read as an unknown "may have printed" (the Phase 1 final gate, I-3). Elsewhere a lane's own
+ *  sentence, else the bridge's generic one (unchanged). */
+export function hostPrintFailureMessage(error: unknown, desktop: boolean = isDesktopShell()): string {
+  if (desktop) return shellErrorMessage(error);
+  return laneFailureMessage(error) ?? PRINT_HOST_PRINT_FAILED_MESSAGE;
+}
+export const PRINT_SLIP_REFUSALS_MAX = 2;
+```
+
+Replace it with:
+
+```ts
+/** The sentence a failed slip carries to its caller (the agent) and the toast. In the Windows app, the shell's own
+ *  curated sentence, unwrapped from the IPC layer's "Error invoking remote method …: Error: …": wrapped, every
+ *  Windows failure read as an unknown "may have printed" (the Phase 1 final gate, I-3). Elsewhere a lane's own
+ *  sentence, else the bridge's generic one (unchanged). Phase 3 Session 3E: a network printer on the Windows app fails
+ *  with the lane's own sentence (lib/printer/desktop-lan.ts), kept as it is, so "not connected" stays "nothing sent". */
+export function hostPrintFailureMessage(error: unknown, desktop: boolean = isDesktopShell()): string {
+  if (desktop) return laneFailureMessage(error) ?? shellErrorMessage(error);
+  return laneFailureMessage(error) ?? PRINT_HOST_PRINT_FAILED_MESSAGE;
+}
+export const PRINT_SLIP_REFUSALS_MAX = 2;
+```
+
+Create `apps/cafe/lib/printer/desktop-lan.ts`:
+
+```ts
+import type { PrinterCoverState, PrinterPaperState } from "@pos/shared/print-failover";
+import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE, type PrinterStatus } from "@/lib/printer/web-printer-types";
+
+// Printing redesign, Phase 3 Session 3E (spec §9.6): the network printers the Windows app 1.12.0 writes for this page,
+// over raw TCP from its main process (apps/desktop/src/raw-tcp.ts): each one's link and what it says of its paper, cover
+// and errors, from its last job or its idle check (lanStatus, every DESKTOP_LAN_CHECK_MS while this device prints;
+// hooks/use-agent-printers.ts). A module store (subscribe / snapshot) like nativePool() for the POS app's printers, keyed
+// by the POS app's id for the same printer ("tcp:<host>:<port>"). Capability-keyed: only an app that has printRaw and
+// lanStatus is active; an older Windows app, or none, prints no network printer. This file never imports the
+// desktop-shell seam (lib/printer/lane-print.ts imports it, and the seam imports lane-print.ts).
+
+/** The idle check's cadence: the POS app's own (it asks an idle printer once a minute). */
+export const DESKTOP_LAN_CHECK_MS = 60_000;
+/** A printer that just failed a slip is asked again this much later (the POS app probes a down printer at 2 s, 5 s…). */
+export const DESKTOP_LAN_RECHECK_MS = 5_000;
+/** The 3D review gate (the POS app's cadence since the 3B gate): a printer that says it cannot print is asked again
+ *  every 10 s (paper put back prints at once), one that does not answer every 30 s, until it is fine. */
+export const DESKTOP_LAN_PROBLEM_CHECK_MS = 10_000;
+export const DESKTOP_LAN_DOWN_CHECK_MS = 30_000;
+/** The Windows app answers a slip within its own 60 s job deadline after the connect (5 s) and a check ahead of it (the
+ *  gold's review, m-2: never give up before the app does); past this the page gives up waiting. */
+export const DESKTOP_LAN_PRINT_TIMEOUT_MS = 75_000;
+/** One check asks at most this many printers (the app's LAN_STATUS_MAX_PRINTERS). */
+export const DESKTOP_LAN_MAX_PRINTERS = 16;
+
+export interface DesktopLanTarget {
+  host: string;
+  port: number;
+}
+
+/** One network printer the Windows app writes, as the page sees it. */
+export interface DesktopLanPrinter {
+  /** "tcp:<host>:<port>", lower-case: the POS app's id for the same printer. */
+  id: string;
+  host: string;
+  port: number;
+  status: Extract<PrinterStatus, "connecting" | "connected" | "disconnected">;
+  paper?: PrinterPaperState;
+  cover?: PrinterCoverState;
+  error?: true;
+}
+
+export interface DesktopLanSnapshot {
+  /** The Windows app writes network printers (1.12.0). */
+  active: boolean;
+  /** The printers this page watches, in the order it named them. */
+  printers: readonly DesktopLanPrinter[];
+}
+
+export const EMPTY_DESKTOP_LAN: DesktopLanSnapshot = { active: false, printers: [] };
+
+/** The two bridge calls, bound; null on any other runtime and on an app from before 1.12.0. */
+export interface DesktopLanApi {
+  printRaw(printer: DesktopLanTarget, data: Uint8Array): Promise<unknown>;
+  lanStatus(printers: DesktopLanTarget[]): Promise<unknown>;
+}
+
+export function desktopLanApi(): DesktopLanApi | null {
+  if (typeof window === "undefined") return null;
+  const bridge = window.posDesktop;
+  if (bridge === undefined || typeof bridge.printRaw !== "function" || typeof bridge.lanStatus !== "function") return null;
+  return { printRaw: bridge.printRaw.bind(bridge), lanStatus: bridge.lanStatus.bind(bridge) };
+}
+
+export function desktopLanId(target: DesktopLanTarget): string {
+  return `tcp:${target.host}:${target.port}`.toLowerCase();
+}
+
+type Health = Pick<DesktopLanPrinter, "paper" | "cover" | "error">;
+
+/** What the app says a printer says of itself; anything it does not know is left out (an older or odd answer). */
+function healthOf(value: unknown): Health {
+  if (typeof value !== "object" || value === null) return {};
+  const { paper, cover, error } = value as Record<string, unknown>;
+  return {
+    ...(paper === "ok" || paper === "low" || paper === "out" ? { paper } : {}),
+    ...(cover === "closed" || cover === "open" ? { cover } : {}),
+    ...(error === true ? { error: true as const } : {}),
+  };
+}
+
+/** The same rule as the POS app's printers (native-pool.ts poolPrinterCannotPrint): out of paper, its cover open, an error. */
+export function desktopLanCannotPrint(entry: Health): boolean {
+  return entry.paper === "out" || entry.cover === "open" || entry.error === true;
+}
+
+/** What the print agent can print on now: the connected printers that can print. A down printer's checks leave it
+ *  unchanged, so they never nudge the agent. */
+export function connectedLanKey(snapshot: DesktopLanSnapshot): string {
+  return snapshot.printers.filter((entry) => entry.status === "connected" && !desktopLanCannotPrint(entry)).map((entry) => entry.id).join(",");
+}
+
+export interface DesktopLanDeps {
+  api(): DesktopLanApi | null;
+  setTimer(fn: () => void, ms: number): unknown;
+  clearTimer(handle: unknown): void;
+}
+
+export interface DesktopLan {
+  subscribe(listener: () => void): () => void;
+  getSnapshot(): DesktopLanSnapshot;
+  /** The network printers this page prints: a new one is checked at once, one no longer named is forgotten. */
+  watch(targets: readonly DesktopLanTarget[]): void;
+  /** The idle check of every watched printer (one call to the app). */
+  check(): Promise<void>;
+  /** One finished job to that printer. Rejects with PRINTER_NOT_CONNECTED_MESSAGE when nothing was sent (the page acks a
+   *  network printer "unreachable"), PRINTER_WRITE_FAILED_MESSAGE when part of it may be on paper ("maybe"). */
+  write(target: DesktopLanTarget, bytes: Uint8Array): Promise<void>;
+  printerOf(id: string): DesktopLanPrinter | null;
+}
+
+function sameHealth(a: Health, b: Health): boolean {
+  return a.paper === b.paper && a.cover === b.cover && a.error === b.error;
+}
+
+export function createDesktopLan(deps: DesktopLanDeps): DesktopLan {
+  let snapshot: DesktopLanSnapshot = EMPTY_DESKTOP_LAN;
+  const listeners = new Set<() => void>();
+  let recheck: unknown = null;
+  let followUp: unknown = null;
+  // The gold's review (m-3): each printer's slips, counted; a check that began before a slip's answer never overwrites it.
+  const written = new Map<string, number>();
+
+  const publish = (printers: readonly DesktopLanPrinter[]): void => {
+    const active = deps.api() !== null;
+    const same =
+      active === snapshot.active &&
+      printers.length === snapshot.printers.length &&
+      printers.every((entry, i) => {
+        const was = snapshot.printers[i];
+        return was !== undefined && was.id === entry.id && was.status === entry.status && sameHealth(was, entry);
+      });
+    if (same) return;
+    snapshot = { active, printers };
+    for (const listener of [...listeners]) listener();
+  };
+
+  const update = (id: string, status: DesktopLanPrinter["status"], health: Health): void => {
+    written.set(id, (written.get(id) ?? 0) + 1);
+    publish(snapshot.printers.map((entry) => (entry.id === id ? { id: entry.id, host: entry.host, port: entry.port, status, ...health } : entry)));
+    scheduleFollowUp();
+  };
+
+  // The 3D review gate: while a printer cannot print it is asked again every 10 s, while it does not answer every 30 s.
+  const scheduleFollowUp = (): void => {
+    if (followUp !== null) deps.clearTimer(followUp);
+    followUp = null;
+    const problem = snapshot.printers.some((entry) => entry.status === "connected" && desktopLanCannotPrint(entry));
+    const down = snapshot.printers.some((entry) => entry.status !== "connected");
+    if (!problem && !down) return;
+    followUp = deps.setTimer(
+      () => {
+        followUp = null;
+        void check();
+      },
+      problem ? DESKTOP_LAN_PROBLEM_CHECK_MS : DESKTOP_LAN_DOWN_CHECK_MS,
+    );
+  };
+
+  const check = async (): Promise<void> => {
+    const api = deps.api();
+    if (api === null || snapshot.printers.length === 0) return;
+    const before = new Map(written);
+    let answer: unknown;
+    try {
+      answer = await api.lanStatus(snapshot.printers.slice(0, DESKTOP_LAN_MAX_PRINTERS).map((entry) => ({ host: entry.host, port: entry.port })));
+    } catch {
+      return;
+    }
+    if (!Array.isArray(answer)) return;
+    let printers = snapshot.printers;
+    for (const row of answer) {
+      if (typeof row !== "object" || row === null) continue;
+      const { host, port, link, health } = row as Record<string, unknown>;
+      if (typeof host !== "string" || typeof port !== "number" || (link !== "connected" && link !== "disconnected")) continue;
+      const id = desktopLanId({ host, port });
+      // A slip's answer that came after this check began is newer than it (the gold's review, m-3): keep that.
+      if ((written.get(id) ?? 0) !== (before.get(id) ?? 0)) continue;
+      // A job holds the printer now (link null): its own answer says it. Disconnected: nothing it said before stands.
+      printers = printers.map((entry) => (entry.id === id ? { id, host: entry.host, port: entry.port, status: link, ...(link === "connected" ? healthOf(health) : {}) } : entry));
+    }
+    publish(printers);
+    scheduleFollowUp();
+  };
+
+  const scheduleRecheck = (): void => {
+    if (recheck !== null) return;
+    recheck = deps.setTimer(() => {
+      recheck = null;
+      void check();
+    }, DESKTOP_LAN_RECHECK_MS);
+  };
+
+  return {
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    getSnapshot: () => snapshot,
+    watch(targets) {
+      const seen = new Set<string>();
+      const fresh: DesktopLanPrinter[] = [];
+      const printers: DesktopLanPrinter[] = [];
+      for (const target of targets) {
+        const id = desktopLanId(target);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const kept = snapshot.printers.find((entry) => entry.id === id);
+        if (kept !== undefined) printers.push(kept);
+        else {
+          const entry: DesktopLanPrinter = { id, host: target.host.toLowerCase(), port: target.port, status: "connecting" };
+          printers.push(entry);
+          fresh.push(entry);
+        }
+      }
+      publish(printers);
+      if (fresh.length > 0) void check();
+    },
+    check,
+    async write(target, bytes) {
+      const api = deps.api();
+      if (api === null) throw new Error(PRINTER_NOT_CONNECTED_MESSAGE);
+      const id = desktopLanId(target);
+      let timer: unknown = null;
+      const noReply = new Promise<never>((_resolve, reject) => {
+        timer = deps.setTimer(() => reject(new Error(PRINTER_WRITE_FAILED_MESSAGE)), DESKTOP_LAN_PRINT_TIMEOUT_MS);
+      });
+      let answer: unknown;
+      try {
+        answer = await Promise.race([api.printRaw({ host: target.host, port: target.port }, bytes), noReply]);
+      } catch (error) {
+        // No answer in time (the bytes may have gone out), or the app refused the request itself (a bad address or size:
+        // the page never sends one; "maybe" is the safe reading of either).
+        update(id, "connecting", {});
+        scheduleRecheck();
+        throw error instanceof Error && error.message === PRINTER_WRITE_FAILED_MESSAGE ? error : new Error(PRINTER_WRITE_FAILED_MESSAGE);
+      } finally {
+        if (timer !== null) deps.clearTimer(timer);
+      }
+      const result = (typeof answer === "object" && answer !== null ? answer : {}) as Record<string, unknown>;
+      if (result.ok === true) {
+        update(id, "connected", healthOf(result.health));
+        return;
+      }
+      if (result.sent === "no") {
+        update(id, "disconnected", {});
+        scheduleRecheck();
+        throw new Error(PRINTER_NOT_CONNECTED_MESSAGE);
+      }
+      // "maybe": the printer said it cannot print (its link is fine), or the link broke after bytes went out.
+      if (result.failure === "cannot-print") update(id, "connected", healthOf(result.health));
+      else {
+        update(id, "connecting", {});
+        scheduleRecheck();
+      }
+      throw new Error(PRINTER_WRITE_FAILED_MESSAGE);
+    },
+    printerOf: (id) => snapshot.printers.find((entry) => entry.id === id.toLowerCase()) ?? null,
+  };
+}
+
+let instance: DesktopLan | null = null;
+
+/** The page's one store of the Windows app's network printers. */
+export function desktopLan(): DesktopLan {
+  if (instance === null) {
+    instance = createDesktopLan({
+      api: desktopLanApi,
+      setTimer: (fn, ms) => setTimeout(fn, ms),
+      clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+    });
+  }
+  return instance;
+}
+
+/** Test seam: the page's store replaced (null: a fresh one on the next call). */
+export function setDesktopLanInstance(next: DesktopLan | null): void {
+  instance = next;
+  lastState = null;
+}
+
+let lastState: { windows: object; lan: DesktopLanSnapshot } | null = null;
+
+/** A value whose identity changes when the Windows app's printers change: its Windows printers (`windows`, the
+ *  desktop printer store's snapshot) or a network printer's state. A refusal's hold is released then. */
+export function desktopPrintersState(windows: object): object {
+  const lan = desktopLan().getSnapshot();
+  if (lastState === null || lastState.windows !== windows || lastState.lan !== lan) lastState = { windows, lan };
+  return lastState;
+}
+```
+
+In `apps/cafe/lib/printer/lane-print.ts`, find:
+
+```ts
+import { DESKTOP_PRINT_EMPTY_MESSAGE } from "@/lib/desktop-shell-document";
+import type { PaperWidth } from "@/lib/constants";
+import { inAppWebView, rasterCapable } from "@/lib/printer/capabilities";
+import { devicePrinter } from "@/lib/printer/device-printer";
+import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+import { RASTER_MAX_ROWS, dotsForPaper, escposJob, rasterizeRgba } from "@/lib/printer/escpos";
+```
+
+Replace it with:
+
+```ts
+import { DESKTOP_PRINT_EMPTY_MESSAGE } from "@/lib/desktop-shell-document";
+import type { PaperWidth } from "@/lib/constants";
+import { inAppWebView, rasterCapable } from "@/lib/printer/capabilities";
+import { desktopLan, type DesktopLanTarget } from "@/lib/printer/desktop-lan";
+import { devicePrinter } from "@/lib/printer/device-printer";
+import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+import { RASTER_MAX_ROWS, dotsForPaper, escposJob, rasterizeRgba } from "@/lib/printer/escpos";
+```
+
+In `apps/cafe/lib/printer/lane-print.ts`, find:
+
+```ts
+export const NO_PRINTER_MESSAGE = "No printer is set up on this device. Tap the printer icon to set one up.";
+
+/** Phase 2 Session 2F1 (spec §9.2): a printer job for one of the POS app's printers, by the app's id: drawn at that
+ *  printer's paper and written to it (the device's own printer, or another of the app's printers on bridge v2). */
+export interface RasterPrintTarget {
+  nativeId: string;
+  paper: PaperWidth;
+}
+export const LANE_PRINT_FAILED_MESSAGE = "Could not print the slip. Check the printer, then print it again.";
+```
+
+Replace it with:
+
+```ts
+export const NO_PRINTER_MESSAGE = "No printer is set up on this device. Tap the printer icon to set one up.";
+
+/** Phase 2 Session 2F1 (spec §9.2): a printer job for one of the POS app's printers, by the app's id: drawn at that
+ *  printer's paper and written to it (the device's own printer, or another of the app's printers on bridge v2). Phase 3
+ *  Session 3E (spec §9.6): or a network printer the Windows app 1.12.0 writes over raw TCP, by its address. */
+export interface RasterPrintTarget {
+  nativeId?: string;
+  lan?: DesktopLanTarget;
+  paper: PaperWidth;
+}
+export const LANE_PRINT_FAILED_MESSAGE = "Could not print the slip. Check the printer, then print it again.";
+```
+
+In `apps/cafe/lib/printer/lane-print.ts`, find:
+
+```ts
+  }
+}
+
+async function rasterPrint(iframe: HTMLIFrameElement, printer: Pick<DevicePrinter, "paper">, nativeId?: string): Promise<void> {
+  const dots = dotsForPaper(printer.paper);
+  const drawn = await drawSlip(iframe, dots);
+  const bitmap = rasterizeRgba(drawn.pixels, drawn.width, drawn.height, dots);
+```
+
+Replace it with:
+
+```ts
+  }
+}
+
+async function rasterPrint(iframe: HTMLIFrameElement, printer: Pick<DevicePrinter, "paper">, target?: Pick<RasterPrintTarget, "nativeId" | "lan">): Promise<void> {
+  const dots = dotsForPaper(printer.paper);
+  const drawn = await drawSlip(iframe, dots);
+  const bitmap = rasterizeRgba(drawn.pixels, drawn.width, drawn.height, dots);
+```
+
+In `apps/cafe/lib/printer/lane-print.ts`, find:
+
+```ts
+  if (bitmap.rows === 0) throw new Error(DESKTOP_PRINT_EMPTY_MESSAGE);
+  if (bitmap.rows > RASTER_MAX_ROWS) throw new Error(RASTER_TOO_LARGE_MESSAGE);
+  // Phase 2 Session 2F1: a printer job names its printer (the app's id); every other slip goes to this device's own.
+  if (nativeId !== undefined) return printerWriter(nativeId)(escposJob(bitmap));
+  await devicePrinter().write(escposJob(bitmap));
+}
+```
+
+Replace it with:
+
+```ts
+  if (bitmap.rows === 0) throw new Error(DESKTOP_PRINT_EMPTY_MESSAGE);
+  if (bitmap.rows > RASTER_MAX_ROWS) throw new Error(RASTER_TOO_LARGE_MESSAGE);
+  // Phase 2 Session 2F1: a printer job names its printer (the app's id); every other slip goes to this device's own.
+  // Phase 3 Session 3E: a network printer on the Windows app, through the app's raw TCP (the same bytes).
+  if (target?.lan !== undefined) return desktopLan().write(target.lan, escposJob(bitmap));
+  if (target?.nativeId !== undefined) return printerWriter(target.nativeId)(escposJob(bitmap));
+  await devicePrinter().write(escposJob(bitmap));
+}
+```
+
+In `apps/cafe/lib/printer/lane-print.ts`, find:
+
+```ts
+ * Session 2F1: a printer job for one of the POS app's printers prints there.
+ */
+export function laneSlipPrintOptions<T extends UseReactToPrintOptions>(options: T, raster?: RasterPrintTarget): T {
+  if (!rasterCapable()) return options;
+  return {
+    ...options,
+    print: (iframe: HTMLIFrameElement) => (raster === undefined ? lanePrint(iframe, options.documentTitle) : rasterPrint(iframe, raster, raster.nativeId)),
+    onPrintError: options.onPrintError ?? laneOnPrintError(options),
+  };
+}
+```
+
+Replace it with:
+
+```ts
+ * Session 2F1: a printer job for one of the POS app's printers prints there.
+ */
+export function laneSlipPrintOptions<T extends UseReactToPrintOptions>(options: T, raster?: RasterPrintTarget): T {
+  // Phase 3 Session 3E: a network printer of the Windows app is drawn here whatever printer APIs this runtime has.
+  if (raster?.lan === undefined && !rasterCapable()) return options;
+  return {
+    ...options,
+    print: (iframe: HTMLIFrameElement) => (raster === undefined ? lanePrint(iframe, options.documentTitle) : rasterPrint(iframe, raster, raster)),
+    onPrintError: options.onPrintError ?? laneOnPrintError(options),
+  };
+}
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/printer/desktop-lan.test.ts lib/printer/lane-print.test.ts lib/print-write-outcome.test.ts lib/printer/print-gating-paths.test.ts lib/print-windows-printers.test.ts lib/desktop-shell-paths.test.ts lib/desktop-shell.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 98`; `# pass 98`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint lib/printer/desktop-lan.ts lib/printer/lane-print.ts lib/desktop-shell.ts lib/print-write-outcome.ts lib/print-host-slips.ts hooks/use-print-host-bridge.ts lib/printer/desktop-lan.test.ts lib/printer/lane-print.test.ts lib/print-write-outcome.test.ts lib/printer/print-gating-paths.test.ts lib/print-windows-printers.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/hooks/use-print-host-bridge.ts apps/cafe/lib/desktop-shell.ts apps/cafe/lib/print-host-slips.ts apps/cafe/lib/print-windows-printers.test.ts apps/cafe/lib/print-write-outcome.test.ts apps/cafe/lib/print-write-outcome.ts apps/cafe/lib/printer/desktop-lan.test.ts apps/cafe/lib/printer/desktop-lan.ts apps/cafe/lib/printer/lane-print.test.ts apps/cafe/lib/printer/lane-print.ts apps/cafe/lib/printer/print-gating-paths.test.ts apps/cafe/package.json
+git commit -m "feat(print): on the Windows app 1.12.0 the page writes a network printer through the app's raw TCP: the slip drawn here as ESC/POS (the same bytes as the POS app), its link and paper kept per printer (desktopLan, the app's idle check), not connected read as nothing sent (unreachable) and a write that failed as maybe (Phase 3 Session 3E, E3)"
+```
+
+---
+
+### Task E4: the Windows app 1.12.0 prints every network printer it writes and may take one over: by its address, named in a lease only while the app reaches it; its link nudges the agent and releases a hold; the app checks each one every minute; the wake says lan and lanFailover
+
+**Files:**
+- Modify: `apps/cafe/lib/print-agent-printers.ts` (`DesktopPrinters.lan`; a network printer is local on 1.12.0, its target `{ lan }`; `takeoverPrintersOf(…, desktopLan)`; `readyPrinterIdsOf` by the printer's link), `lib/printer/printer-registry.ts` (`printerStatusOf`, `printerCannotPrintOf` also read `desktopLan()`)
+- Modify: `apps/cafe/hooks/use-device-printer.ts` (`useDesktopLan`), `hooks/use-agent-printers.ts` (`lan` in `useDesktopPrinters`; the watch and the minute's check), `hooks/use-print-agent.ts` (`lanReady` nudges; `desktopPrintersState` releases a hold), `hooks/use-print-agent-wake.ts` (`lan`, `lanFailover` on 1.12.0)
+- Tests: `apps/cafe/lib/print-agent-printers.test.ts` (2 new and a pin; three pins deliberately changed), `lib/print-agent-paths.test.ts` (the wake's and the nudge's pins deliberately changed), `lib/print-windows-printers.test.ts` (the hold's and the hook's lines, deliberately changed)
+
+**Interfaces produced:** `DesktopPrinters.lan?: boolean`; `takeoverPrintersOf(printers, deviceId, pool, desktopLan = false)`; `useDesktopLan(): DesktopLanSnapshot`.
+
+**A network printer is this PC's** on the Windows app 1.12.0 (`printerIsLocal`: the app can try any address; its link decides when it prints), with the target `{ lan: { host, port }, paper }`. 1.11.0 prints none, as in Phase 2.
+
+**Taking a printer over** (P3-1, P3-2): the PC may take over every routable network printer another device writes, by the same rule as the POS app on bridge v2: only once it writes a printer by the setup (E-1: so it polls the wake and can be online for one). The app can try any address, so none is missing (`takeoverMissingIds` stays empty); a printer is named in a lease only while the app's check or last slip says it answers and can print (`readyPrinterIdsOf` by `desktopLanId`), which is the signal that ends a skip (Session 3A's I-1). Before its first check a printer is `connecting`: not ready, not reported.
+
+**The agent** is nudged when a network printer starts or stops being able to print (`connectedLanKey`) and a refusal's hold is released when its state changes (`desktopPrintersState`); the registry reads its state by the same id. The watch (`desktopLan().watch`) follows the printers this PC prints, its own and the ones it may take over, and the app checks each one every minute while this device prints (`DESKTOP_LAN_CHECK_MS`): a connect and DLE EOT from the app, no request.
+
+**The wake** says `lan: true` and `lanFailover: true` on 1.12.0 (until now only the POS app on bridge v2 said `lanFailover`).
+
+**RED**: the agent printers' new tests, its pins and the wake's.
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/print-agent-paths.test.ts`, find:
+
+```ts
+  assert.ok(core.includes("if (held.length > 0 && enabled && !busy) return void cycle(true);"), "a held job prints before any lease, past the printer gate (its attempt was made while ready)");
+  assert.ok(core.includes("if (deps.now() - next.at < PRINT_DIRECT_HOLD_MS) return next.job;"), "but only well inside its lease (the fresh review, I-1)");
+  assert.ok(core.includes("again = answers.get(key)?.more !== false;"), "the ack's more decides the next lease");
+  // The 2F1 review gate (N-1, deliberate change): only a change of what can print now is a nudge.
+  assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, canPrint, poolReady]);"), "a printer state change is a nudge, never a lease queued behind a print");
+  assert.ok(core.includes("if (opened) nudge();"), "so is the gate opening or the bridge freeing up");
+});
+```
+
+Replace it with:
+
+```ts
+  assert.ok(core.includes("if (held.length > 0 && enabled && !busy) return void cycle(true);"), "a held job prints before any lease, past the printer gate (its attempt was made while ready)");
+  assert.ok(core.includes("if (deps.now() - next.at < PRINT_DIRECT_HOLD_MS) return next.job;"), "but only well inside its lease (the fresh review, I-1)");
+  assert.ok(core.includes("again = answers.get(key)?.more !== false;"), "the ack's more decides the next lease");
+  // The 2F1 review gate (N-1, deliberate change): only a change of what can print now is a nudge. Phase 3 Session 3E
+  // deliberately changed: a network printer of the Windows app too.
+  assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, canPrint, poolReady, lanReady]);"), "a printer state change is a nudge, never a lease queued behind a print");
+  assert.ok(core.includes("if (opened) nudge();"), "so is the gate opening or the bridge freeing up");
+});
+```
+
+In `apps/cafe/lib/print-agent-paths.test.ts`, find:
+
+```ts
+// over are kept for its top-bar dot.
+test("PIN (3B): the wake says lanFailover on bridge v2, tokenSlips and the printers' health; the ack and the pulse say tokens; the agent knows its network printers", () => {
+  const wake = src("apps/cafe/hooks/use-print-agent-wake.ts");
+  assert.ok(wake.includes("lanFailover: caps.native && nativeV2Bridge() !== null,"), "only the POS app on bridge v2 takes a network printer over (the Windows app from 1.12.0, Session 3E)");
+  assert.ok(wake.includes("tokenSlips: true,"), "the wake says this page prints token slips");
+  assert.ok(wake.includes("...(health.length > 0 ? { printers: health } : {}),"), "the health of the printers it prints here rides the beat");
+  assert.ok(wake.includes("setTakenOverPrinters(data.takenOver ?? []);"), "the printers it took over, kept for its dot");
+```
+
+Replace it with:
+
+```ts
+// over are kept for its top-bar dot.
+test("PIN (3B): the wake says lanFailover on bridge v2, tokenSlips and the printers' health; the ack and the pulse say tokens; the agent knows its network printers", () => {
+  const wake = src("apps/cafe/hooks/use-print-agent-wake.ts");
+  // Phase 3 Session 3E deliberately changed: the Windows app 1.12.0 too (it writes network printers itself, raw TCP).
+  assert.ok(wake.includes("lanFailover: (caps.native && nativeV2Bridge() !== null) || desktopLan,"), "the POS app on bridge v2 and the Windows app 1.12.0 take a network printer over");
+  assert.ok(wake.includes("const desktopLan = desktop && desktopLanApi() !== null;") && wake.includes("lan: caps.native || desktopLan,"), "the Windows app 1.12.0 says it writes network printers");
+  assert.ok(wake.includes("tokenSlips: true,"), "the wake says this page prints token slips");
+  assert.ok(wake.includes("...(health.length > 0 ? { printers: health } : {}),"), "the health of the printers it prints here rides the beat");
+  assert.ok(wake.includes("setTakenOverPrinters(data.takenOver ?? []);"), "the printers it took over, kept for its dot");
+```
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+  type DesktopPrinters,
+} from "@/lib/print-agent-printers";
+import type { PrintAgentResult } from "@/lib/print-agent-types";
+import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
+import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+```
+
+Replace it with:
+
+```ts
+  type DesktopPrinters,
+} from "@/lib/print-agent-printers";
+import type { PrintAgentResult } from "@/lib/print-agent-types";
+import { DESKTOP_LAN_CHECK_MS } from "@/lib/printer/desktop-lan";
+import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
+import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+```
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+// (printHtmlOn, desktop 1.11.0); OLD: one that prints only on its chosen printer.
+const WIN_NAMED: DesktopPrinters = { selected: "EPSON TM-T82", names: ["EPSON TM-T82", "Kitchen TVS"], named: true };
+const WIN_OLD: DesktopPrinters = { ...WIN_NAMED, named: false };
+
+test("printerIsLocal: a printer is printed here only when it IS this device's printer", () => {
+  const lan = printer("lan", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "dev-a" });
+```
+
+Replace it with:
+
+```ts
+// (printHtmlOn, desktop 1.11.0); OLD: one that prints only on its chosen printer.
+const WIN_NAMED: DesktopPrinters = { selected: "EPSON TM-T82", names: ["EPSON TM-T82", "Kitchen TVS"], named: true };
+const WIN_OLD: DesktopPrinters = { ...WIN_NAMED, named: false };
+// Phase 3 Session 3E (spec §9.6): the Windows app 1.12.0 writes network printers itself (raw TCP).
+const WIN_LAN: DesktopPrinters = { ...WIN_NAMED, lan: true };
+
+test("printerIsLocal: a printer is printed here only when it IS this device's printer", () => {
+  const lan = printer("lan", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "dev-a" });
+```
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+
+test("PIN (2F1): the page follows the app's printers: the agent's lines, the dot, the drain, the wake's heartbeat, the network printers it writes", () => {
+  const hook = src("apps/cafe/hooks/use-agent-printers.ts");
+  assert.match(hook, /return useMemo\(\(\) => agentPrintersOf\(printers, deviceId, local, desktop, pool\), \[printers, deviceId, local, desktop, pool\]\);/);
+  // Session 3B (deliberate change): with the printers the wake says it took over.
+  assert.match(hook, /return useMemo\(\(\) => dotPrintersOf\(printers, deviceId, local, desktop, pool, takenOver\), \[printers, deviceId, local, desktop, pool, takenOver\]\);/);
+  assert.match(hook, /for \(const lan of lanPrintersToAdd\(printers, deviceId, pool\)\) \{/, "a network printer it writes is added to the app");
+```
+
+Replace it with:
+
+```ts
+
+test("PIN (2F1): the page follows the app's printers: the agent's lines, the dot, the drain, the wake's heartbeat, the network printers it writes", () => {
+  const hook = src("apps/cafe/hooks/use-agent-printers.ts");
+  // Phase 3 Session 3E deliberately changed: the hook keeps the agent's printers to watch the Windows app's network ones.
+  assert.match(hook, /const agent = useMemo\(\(\) => agentPrintersOf\(printers, deviceId, local, desktop, pool\), \[printers, deviceId, local, desktop, pool\]\);/);
+  // Session 3B (deliberate change): with the printers the wake says it took over.
+  assert.match(hook, /return useMemo\(\(\) => dotPrintersOf\(printers, deviceId, local, desktop, pool, takenOver\), \[printers, deviceId, local, desktop, pool, takenOver\]\);/);
+  assert.match(hook, /for \(const lan of lanPrintersToAdd\(printers, deviceId, pool\)\) \{/, "a network printer it writes is added to the app");
+```
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  // The 2F1 review gate (N-1, deliberate change): a change of which of the app's printers can print now is a nudge.
+  assert.ok(agent.includes("const poolReady = connectedPoolKey(useNativePool());"), "which of the app's printers are connected");
+  assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, canPrint, poolReady]);"), "a change of the app's printers that can print now is a nudge");
+  assert.ok(src("apps/cafe/components/layout/PrintHostProvider.tsx").includes("nativePool().init();"), "read once per page, beside the device printer");
+  assert.ok(src("apps/cafe/hooks/use-print-agent-wake.ts").includes("...(caps.native ? { nativeProtocol: nativeV2Bridge() !== null ? NATIVE_BRIDGE_V2 : 1 } : {}),"), "the wake says which app prints several printers");
+  // Session 3B (deliberate change): then a printer problem the app says, when every printer answers.
+```
+
+Replace it with:
+
+```ts
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  // The 2F1 review gate (N-1, deliberate change): a change of which of the app's printers can print now is a nudge.
+  assert.ok(agent.includes("const poolReady = connectedPoolKey(useNativePool());"), "which of the app's printers are connected");
+  // Phase 3 Session 3E deliberately changed: and of the Windows app's network printers (lanReady).
+  assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, canPrint, poolReady, lanReady]);"), "a change of the app's printers that can print now is a nudge");
+  assert.ok(src("apps/cafe/components/layout/PrintHostProvider.tsx").includes("nativePool().init();"), "read once per page, beside the device printer");
+  assert.ok(src("apps/cafe/hooks/use-print-agent-wake.ts").includes("...(caps.native ? { nativeProtocol: nativeV2Bridge() !== null ? NATIVE_BRIDGE_V2 : 1 } : {}),"), "the wake says which app prints several printers");
+  // Session 3B (deliberate change): then a printer problem the app says, when every printer answers.
+```
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+  assert.deepEqual(lanPrintersToAdd([bt, { ...theirs, primaryDeviceId: "dev-b" }, printer("btA", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "FF:EE" })], "dev-a", empty), [], "an app with no printer and none of its own to add: never seeded with another device's printer");
+});
+
+test("PIN (3B, Session 3A's I-1): a page names in its lease only a printer it can print to now; the one it may take over too", () => {
+  const statusOf = (id: string) => POOL.printers.find((p) => p.id === id)?.status ?? "none";
+  const targets = { theirs: { nativeId: "tcp:10.0.2.2:9100", paper: "80mm" as const }, down: { nativeId: "tcp:10.0.2.2:9101", paper: "80mm" as const } };
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual(lanPrintersToAdd([bt, { ...theirs, primaryDeviceId: "dev-b" }, printer("btA", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "FF:EE" })], "dev-a", empty), [], "an app with no printer and none of its own to add: never seeded with another device's printer");
+});
+
+test("3E: on the Windows app 1.12.0 every network printer it writes is this PC's, printed over raw TCP by its address; on 1.11.0 none, as before", () => {
+  const kitchen = printer("kitchen", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "pc", paper: 58 });
+  const bar = printer("bar", { kind: "device", deviceId: "pc", transport: "windows", address: "Kitchen TVS" });
+  assert.equal(printerIsLocal(kitchen, null, WIN_LAN), true, "1.12.0 writes it itself");
+  assert.equal(printerIsLocal(kitchen, null, WIN_NAMED), false, "1.11.0 cannot");
+  const agent = agentPrintersOf([kitchen, bar], "pc", null, WIN_LAN);
+  assert.deepEqual(agent.localIds, ["bar", "kitchen"], "the Windows printer and the network printer");
+  assert.deepEqual(agent.lanIds, ["kitchen"], "a refusal before any byte is unreachable for the network one");
+  assert.deepEqual(agent.targets.kitchen, { lan: { host: "192.168.1.60", port: 9100 }, paper: "58mm" }, "by its address, drawn for its own paper");
+  assert.deepEqual(agent.targets.bar, { printerName: "Kitchen TVS", paper: "80mm" }, "the Windows printer as before");
+  const old = agentPrintersOf([kitchen, bar], "pc", null, WIN_NAMED);
+  assert.deepEqual([old.localIds, old.lanIds, old.targets.kitchen], [["bar"], [], undefined], "1.11.0 prints only the Windows printer, as in Phase 2");
+});
+
+test("3E: the Windows app 1.12.0 may take over every network printer another device writes, once it writes a printer itself; each is named in a lease only while the app reaches it", () => {
+  const own = printer("own", { kind: "device", deviceId: "pc", transport: "windows", address: "EPSON TM-T82" });
+  const theirs = printer("theirs", { kind: "lan", host: "192.168.1.61", port: 9100 }, { primaryDeviceId: "tab" });
+  const away = printer("away", { kind: "lan", host: "192.168.1.62", port: 9100 }, { primaryDeviceId: "tab" });
+  assert.deepEqual(takeoverPrintersOf([own, theirs, away], "pc", null, true).map((p) => p.id), ["away", "theirs"], "1.12.0, a writer by the setup");
+  assert.deepEqual(takeoverPrintersOf([own, theirs, away], "pc", null), [], "1.11.0 takes none over");
+  assert.deepEqual(takeoverPrintersOf([theirs, away], "pc", null, true), [], "a PC that writes nothing takes nothing over (E-1, P3-2)");
+  const agent = agentPrintersOf([own, theirs, away], "pc", null, WIN_LAN);
+  assert.deepEqual([agent.takeoverIds, agent.takeoverMissingIds], [["away", "theirs"], []], "every one: the app can try any address");
+  assert.deepEqual(agent.targets.theirs, { lan: { host: "192.168.1.61", port: 9100 }, paper: "80mm" });
+  const status: Record<string, "connected" | "disconnected" | "connecting"> = { "tcp:192.168.1.61:9100": "connected", "tcp:192.168.1.62:9100": "connecting" };
+  const ready = readyPrinterIdsOf(agent.localIds, agent.targets, true, (id) => status[id] ?? "none", (id) => id === "tcp:192.168.1.61:9100" && false);
+  assert.deepEqual(ready, ["own", "theirs"], "the one the app reaches now; not one still being checked");
+  assert.deepEqual(readyPrinterIdsOf(agent.localIds, agent.targets, true, (id) => status[id] ?? "none", (id) => id === "tcp:192.168.1.61:9100"), ["own"], "nor one that says it cannot print");
+});
+
+test("PIN (3E): the Windows app's network printers are checked while this device prints, their links nudge the agent and release a hold, and the registry reads them", () => {
+  const hook = src("apps/cafe/hooks/use-agent-printers.ts");
+  assert.ok(hook.includes("desktopLan().watch(JSON.parse(lanTargets) as DesktopLanTarget[]);"), "the printers it prints, its own and the ones it may take over");
+  assert.ok(hook.includes("const timer = window.setInterval(() => void desktopLan().check(), DESKTOP_LAN_CHECK_MS);"), "and every minute, while it prints");
+  assert.ok(hook.includes("named: desktopPrintsOnNamed(), lan: desktopLanApi() !== null"), "1.12.0 says it writes network printers");
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.ok(agent.includes("const lanReady = connectedLanKey(useDesktopLan());") && agent.includes("}, [agent, canPrint, poolReady, lanReady]);"), "a network printer that answers again nudges the agent");
+  assert.ok(agent.includes("printerState: () => (isDesktopShell() ? desktopPrintersState(desktopPrinterSnapshot()) : printersState()),"), "and releases a refusal's hold");
+  const registry = src("apps/cafe/lib/printer/printer-registry.ts");
+  assert.ok(registry.includes('return nativePool().printerOf(nativeId)?.status ?? desktopLan().printerOf(nativeId)?.status ?? "none";'), "its state by the same id");
+  assert.equal(DESKTOP_LAN_CHECK_MS, 60_000, "the POS app's cadence");
+});
+
+test("PIN (3B, Session 3A's I-1): a page names in its lease only a printer it can print to now; the one it may take over too", () => {
+  const statusOf = (id: string) => POOL.printers.find((p) => p.id === id)?.status ?? "none";
+  const targets = { theirs: { nativeId: "tcp:10.0.2.2:9100", paper: "80mm" as const }, down: { nativeId: "tcp:10.0.2.2:9101", paper: "80mm" as const } };
+```
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+  assert.ok(hook.includes("const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf, printerCannotPrintOf);"), "ready: the app's own state per printer");
+  assert.ok(hook.includes("readyPrinters: readyNow,"), "the agent's ready list is that");
+  const lib = src("apps/cafe/lib/print-agent-printers.ts");
+  assert.ok(lib.includes('return nativeId === undefined ? canPrint : statusOf(nativeId) === "connected" && !cannotPrint(nativeId);'), "an app printer is ready only while the app says connected");
+  // Session 3C: a printer the app says cannot print is never named in a lease: its slips wait, with no request.
+  assert.deepEqual(readyPrinterIdsOf(["theirs"], targets, true, statusOf, (nativeId) => nativeId === "tcp:10.0.2.2:9100"), [], "out of paper: not ready");
+});
+```
+
+Replace it with:
+
+```ts
+  assert.ok(hook.includes("const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf, printerCannotPrintOf);"), "ready: the app's own state per printer");
+  assert.ok(hook.includes("readyPrinters: readyNow,"), "the agent's ready list is that");
+  const lib = src("apps/cafe/lib/print-agent-printers.ts");
+  // Phase 3 Session 3E deliberately changed: a network printer of the Windows app by its own link, by the same rule.
+  assert.ok(lib.includes('return key === undefined ? canPrint : statusOf(key) === "connected" && !cannotPrint(key);'), "an app printer is ready only while the app says connected");
+  // Session 3C: a printer the app says cannot print is never named in a lease: its slips wait, with no request.
+  assert.deepEqual(readyPrinterIdsOf(["theirs"], targets, true, statusOf, (nativeId) => nativeId === "tcp:10.0.2.2:9100"), [], "out of paper: not ready");
+});
+```
+
+In `apps/cafe/lib/print-windows-printers.test.ts`, find:
+
+```ts
+  const both = hook + src("hooks/use-print-agent-wake.ts");
+  assert.equal((both.match(/jobsForMeLeasable\([^)]*, agent\.openPrinters\(\)\)/g) ?? []).length, 2, "the pulse and the wake kick only for open printers");
+  // Session 2F1 (deliberate change): elsewhere any change of this device's printers (printersState) releases one.
+  assert.match(hook, /printerState: \(\) => \(isDesktopShell\(\) \? desktopPrinterSnapshot\(\) : printersState\(\)\),/, "a Windows printer list read again releases a hold");
+});
+
+test("PIN (2E): a Windows printer that failed is looked up again, so one renamed or removed in Windows stops being this PC's", () => {
+```
+
+Replace it with:
+
+```ts
+  const both = hook + src("hooks/use-print-agent-wake.ts");
+  assert.equal((both.match(/jobsForMeLeasable\([^)]*, agent\.openPrinters\(\)\)/g) ?? []).length, 2, "the pulse and the wake kick only for open printers");
+  // Session 2F1 (deliberate change): elsewhere any change of this device's printers (printersState) releases one.
+  // Phase 3 Session 3E deliberately changed: and a network printer's link on the Windows app 1.12.0 (desktopPrintersState).
+  assert.match(hook, /printerState: \(\) => \(isDesktopShell\(\) \? desktopPrintersState\(desktopPrinterSnapshot\(\)\) : printersState\(\)\),/, "a Windows printer list read again releases a hold");
+});
+
+test("PIN (2E): a Windows printer that failed is looked up again, so one renamed or removed in Windows stops being this PC's", () => {
+```
+
+In `apps/cafe/lib/print-windows-printers.test.ts`, find:
+
+```ts
+test("PIN (2E): the agent's printers follow the Windows app's printer list, read again with every printers read", () => {
+  const hook = src("hooks/use-agent-printers.ts");
+  assert.match(hook, /if \(enabled && isDesktopShell\(\)\) void refreshDesktopPrinterChosen\(\);/, "a printer added in Windows is seen with the next printers read");
+  assert.match(hook, /lane === "desktop" \? \{ selected: snapshot\.selected, names: snapshot\.names, named: desktopPrintsOnNamed\(\) \} : null/);
+});
+```
+
+Replace it with:
+
+```ts
+test("PIN (2E): the agent's printers follow the Windows app's printer list, read again with every printers read", () => {
+  const hook = src("hooks/use-agent-printers.ts");
+  assert.match(hook, /if \(enabled && isDesktopShell\(\)\) void refreshDesktopPrinterChosen\(\);/, "a printer added in Windows is seen with the next printers read");
+  // Phase 3 Session 3E deliberately changed: `lan`, the app writes network printers itself (1.12.0).
+  assert.match(hook, /lane === "desktop" \? \{ selected: snapshot\.selected, names: snapshot\.names, named: desktopPrintsOnNamed\(\), lan: desktopLanApi\(\) !== null \} : null/);
+});
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-agent-printers.test.ts lib/print-agent-paths.test.ts lib/print-windows-printers.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 54`; `# pass 45`; `# fail 9`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/hooks/use-agent-printers.ts`, find:
+
+```ts
+import { desktopPrintsOnNamed } from "@/lib/desktop-shell-printer";
+import { agentPrintersOf, dotPrintersOf, lanPrintersToAdd, lanPrintersToRemove, ownPrinterInSetup, type AgentPrinters, type DesktopPrinters } from "@/lib/print-agent-printers";
+import { onPrintersWritingChange, onTakenOverChange, printersBeingWritten, takenOverPrinterIds } from "@/lib/print-agent-seams";
+import { refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import { nativePool, type NativePoolSnapshot } from "@/lib/printer/native-pool";
+import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
+```
+
+Replace it with:
+
+```ts
+import { desktopPrintsOnNamed } from "@/lib/desktop-shell-printer";
+import { agentPrintersOf, dotPrintersOf, lanPrintersToAdd, lanPrintersToRemove, ownPrinterInSetup, type AgentPrinters, type DesktopPrinters } from "@/lib/print-agent-printers";
+import { onPrintersWritingChange, onTakenOverChange, printersBeingWritten, takenOverPrinterIds } from "@/lib/print-agent-seams";
+import { DESKTOP_LAN_CHECK_MS, desktopLan, desktopLanApi, type DesktopLanTarget } from "@/lib/printer/desktop-lan";
+import { refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import { nativePool, type NativePoolSnapshot } from "@/lib/printer/native-pool";
+import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
+```
+
+In `apps/cafe/hooks/use-agent-printers.ts`, find:
+
+```ts
+export function useDesktopPrinters(): DesktopPrinters | null {
+  const snapshot = useDesktopPrinterSnapshot();
+  const lane = usePrintLane();
+  return useMemo(() => (lane === "desktop" ? { selected: snapshot.selected, names: snapshot.names, named: desktopPrintsOnNamed() } : null), [lane, snapshot]);
+}
+
+/** Session 2F1 (spec §9.2): the POS app's printers on bridge v2; null on any other device, and on an app on v1. */
+```
+
+Replace it with:
+
+```ts
+export function useDesktopPrinters(): DesktopPrinters | null {
+  const snapshot = useDesktopPrinterSnapshot();
+  const lane = usePrintLane();
+  // Phase 3 Session 3E: `lan`, the app writes network printers itself (1.12.0).
+  return useMemo(() => (lane === "desktop" ? { selected: snapshot.selected, names: snapshot.names, named: desktopPrintsOnNamed(), lan: desktopLanApi() !== null } : null), [lane, snapshot]);
+}
+
+/** Session 2F1 (spec §9.2): the POS app's printers on bridge v2; null on any other device, and on an app on v1. */
+```
+
+In `apps/cafe/hooks/use-agent-printers.ts`, find:
+
+```ts
+    for (const id of remove) void nativePool().remove(id).catch(() => undefined);
+    if (JSON.stringify(record) !== JSON.stringify(readLanAdded())) writeLanAdded(record);
+  }, [enabled, loaded, printers, deviceId, pool, writing]);
+  return useMemo(() => agentPrintersOf(printers, deviceId, local, desktop, pool), [printers, deviceId, local, desktop, pool]);
+}
+```
+
+Replace it with:
+
+```ts
+    for (const id of remove) void nativePool().remove(id).catch(() => undefined);
+    if (JSON.stringify(record) !== JSON.stringify(readLanAdded())) writeLanAdded(record);
+  }, [enabled, loaded, printers, deviceId, pool, writing]);
+  const agent = useMemo(() => agentPrintersOf(printers, deviceId, local, desktop, pool), [printers, deviceId, local, desktop, pool]);
+  // Phase 3 Session 3E (spec §9.6): on the Windows app 1.12.0 the network printers it prints (its own and the ones it may
+  // take over) are checked by the app at once and every DESKTOP_LAN_CHECK_MS (a connect and DLE EOT from the app: no
+  // request), so a printer is named in a lease only while the app reaches it.
+  const desktopLanOn = enabled && desktop?.lan === true;
+  const lanTargets = JSON.stringify(Object.values(agent.targets).flatMap((target) => (target.lan === undefined ? [] : [target.lan])));
+  useEffect(() => {
+    if (!desktopLanOn) return;
+    desktopLan().watch(JSON.parse(lanTargets) as DesktopLanTarget[]);
+  }, [desktopLanOn, lanTargets]);
+  useEffect(() => {
+    if (!desktopLanOn) return;
+    const timer = window.setInterval(() => void desktopLan().check(), DESKTOP_LAN_CHECK_MS);
+    return () => window.clearInterval(timer);
+  }, [desktopLanOn]);
+  return agent;
+}
+```
+
+In `apps/cafe/hooks/use-device-printer.ts`, find:
+
+```ts
+  type DesktopChosen,
+  type DesktopPrinterSnapshot,
+} from "@/lib/printer/desktop-printer-state";
+import { NONE_SNAPSHOT, devicePrinter, type PrinterSnapshot } from "@/lib/printer/device-printer";
+import { NATIVE_READY_EVENT } from "@/lib/printer/native-bridge";
+import { EMPTY_POOL, nativePool, type NativePoolSnapshot } from "@/lib/printer/native-pool";
+```
+
+Replace it with:
+
+```ts
+  type DesktopChosen,
+  type DesktopPrinterSnapshot,
+} from "@/lib/printer/desktop-printer-state";
+import { EMPTY_DESKTOP_LAN, desktopLan, type DesktopLanSnapshot } from "@/lib/printer/desktop-lan";
+import { NONE_SNAPSHOT, devicePrinter, type PrinterSnapshot } from "@/lib/printer/device-printer";
+import { NATIVE_READY_EVENT } from "@/lib/printer/native-bridge";
+import { EMPTY_POOL, nativePool, type NativePoolSnapshot } from "@/lib/printer/native-pool";
+```
+
+In `apps/cafe/hooks/use-device-printer.ts`, find:
+
+```ts
+  return useSyncExternalStore(subscribePool, () => nativePool().getSnapshot(), () => EMPTY_POOL);
+}
+
+function subscribeAny(onChange: () => void): () => void {
+  const offLane = subscribeLane(onChange);
+  const offPool = subscribePool(onChange);
+```
+
+Replace it with:
+
+```ts
+  return useSyncExternalStore(subscribePool, () => nativePool().getSnapshot(), () => EMPTY_POOL);
+}
+
+function subscribeDesktopLan(onChange: () => void): () => void {
+  return desktopLan().subscribe(onChange);
+}
+
+/** Phase 3 Session 3E (spec §9.6): the network printers the Windows app 1.12.0 writes for this page (none elsewhere). */
+export function useDesktopLan(): DesktopLanSnapshot {
+  return useSyncExternalStore(subscribeDesktopLan, () => desktopLan().getSnapshot(), () => EMPTY_DESKTOP_LAN);
+}
+
+function subscribeAny(onChange: () => void): () => void {
+  const offLane = subscribeLane(onChange);
+  const offPool = subscribePool(onChange);
+```
+
+In `apps/cafe/hooks/use-print-agent-wake.ts`, find:
+
+```ts
+import { olderWakeBody, printAgentSkew } from "@/lib/print-agent-skew";
+import { nativeBridge } from "@/lib/printer/native-bridge";
+import { NATIVE_BRIDGE_V2, nativeV2Bridge } from "@/lib/printer/native-bridge-v2";
+import { bumpPrintWakeBudget, mergePrintWakeBudget, readPrintWakeBudget, writePrintWakeBudget, type PrintWakeBudget } from "@/lib/print-wake-budget";
+import { currentLane, defaultDeviceLabel, printCapabilities } from "@/lib/printer/print-lane";
+import { isRealtimeHealthy } from "@/lib/realtime-client";
+```
+
+Replace it with:
+
+```ts
+import { olderWakeBody, printAgentSkew } from "@/lib/print-agent-skew";
+import { nativeBridge } from "@/lib/printer/native-bridge";
+import { NATIVE_BRIDGE_V2, nativeV2Bridge } from "@/lib/printer/native-bridge-v2";
+import { desktopLanApi } from "@/lib/printer/desktop-lan";
+import { bumpPrintWakeBudget, mergePrintWakeBudget, readPrintWakeBudget, writePrintWakeBudget, type PrintWakeBudget } from "@/lib/print-wake-budget";
+import { currentLane, defaultDeviceLabel, printCapabilities } from "@/lib/printer/print-lane";
+import { isRealtimeHealthy } from "@/lib/realtime-client";
+```
+
+In `apps/cafe/hooks/use-print-agent-wake.ts`, find:
+
+```ts
+function wakeBody(deviceId: string) {
+  const caps = printCapabilities();
+  const desktop = isDesktopShell();
+  const health = printerHealthReports();
+  return {
+    deviceId,
+```
+
+Replace it with:
+
+```ts
+function wakeBody(deviceId: string) {
+  const caps = printCapabilities();
+  const desktop = isDesktopShell();
+  // Phase 3 Session 3E (spec §9.6): the Windows app 1.12.0 writes network printers itself (raw TCP).
+  const desktopLan = desktop && desktopLanApi() !== null;
+  const health = printerHealthReports();
+  return {
+    deviceId,
+```
+
+In `apps/cafe/hooks/use-print-agent-wake.ts`, find:
+
+```ts
+    shell: caps.native ? "android" : desktop ? "windows" : "browser",
+    ...(caps.native ? { nativeProtocol: nativeV2Bridge() !== null ? NATIVE_BRIDGE_V2 : 1 } : {}),
+    capabilities: {
+      lan: caps.native,
+      bluetooth: caps.native || caps.bluetooth,
+      usb: caps.native,
+      windowsPrinters: desktop,
+      webSerial: caps.serial,
+      webBluetooth: caps.bluetooth,
+      // Session 3B (spec §9.3): it can write any network printer the setup names: the POS app on bridge v2 (the Windows app
+      // from 1.12.0, Session 3E). A page that cannot never takes a printer over.
+      lanFailover: caps.native && nativeV2Bridge() !== null,
+    },
+    // Session 3B (the token fix's M-2): this page prints token slips, so the wake's count includes them.
+    tokenSlips: true,
+```
+
+Replace it with:
+
+```ts
+    shell: caps.native ? "android" : desktop ? "windows" : "browser",
+    ...(caps.native ? { nativeProtocol: nativeV2Bridge() !== null ? NATIVE_BRIDGE_V2 : 1 } : {}),
+    capabilities: {
+      lan: caps.native || desktopLan,
+      bluetooth: caps.native || caps.bluetooth,
+      usb: caps.native,
+      windowsPrinters: desktop,
+      webSerial: caps.serial,
+      webBluetooth: caps.bluetooth,
+      // Session 3B (spec §9.3): it can write any network printer the setup names: the POS app on bridge v2, and the Windows
+      // app from 1.12.0 (Session 3E). A page that cannot never takes a printer over.
+      lanFailover: (caps.native && nativeV2Bridge() !== null) || desktopLan,
+    },
+    // Session 3B (the token fix's M-2): this page prints token slips, so the wake's count includes them.
+    tokenSlips: true,
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+import type { LeasedPrintJob, PrintAckData, PrintJobsForMe, PrintLeaseData } from "@pos/shared/print-agent-wire";
+import { PRINTERS_KEYS } from "@/hooks/use-agent-printers";
+import type { PosPulseData } from "@pos/shared/self-order-alert";
+import { useCanPrintNow, useNativePool } from "@/hooks/use-device-printer";
+import { usePrintAgentWake } from "@/hooks/use-print-agent-wake";
+import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
+import { apiSend } from "@/lib/api-client";
+```
+
+Replace it with:
+
+```ts
+import type { LeasedPrintJob, PrintAckData, PrintJobsForMe, PrintLeaseData } from "@pos/shared/print-agent-wire";
+import { PRINTERS_KEYS } from "@/hooks/use-agent-printers";
+import type { PosPulseData } from "@pos/shared/self-order-alert";
+import { useCanPrintNow, useDesktopLan, useNativePool } from "@/hooks/use-device-printer";
+import { usePrintAgentWake } from "@/hooks/use-print-agent-wake";
+import { POS_PULSE_KEYS } from "@/hooks/use-pos-pulse";
+import { apiSend } from "@/lib/api-client";
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+import { PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print-host-slips";
+import { PrintWriteError } from "@/lib/print-write-outcome";
+import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
+import { desktopPrinterSnapshot, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import { devicePrinter } from "@/lib/printer/device-printer";
+import { connectedPoolKey, nativePool, poolDefaultCannotPrint } from "@/lib/printer/native-pool";
+```
+
+Replace it with:
+
+```ts
+import { PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print-host-slips";
+import { PrintWriteError } from "@/lib/print-write-outcome";
+import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
+import { connectedLanKey, desktopPrintersState } from "@/lib/printer/desktop-lan";
+import { desktopPrinterSnapshot, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import { devicePrinter } from "@/lib/printer/device-printer";
+import { connectedPoolKey, nativePool, poolDefaultCannotPrint } from "@/lib/printer/native-pool";
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+  const canPrint = useCanPrintNow();
+  // The 2F1 review gate (N-1): which of the POS app's printers can print now (bridge v2).
+  const poolReady = connectedPoolKey(useNativePool());
+  const queueRef = useRef(queueSlip);
+  useEffect(() => {
+    queueRef.current = queueSlip;
+```
+
+Replace it with:
+
+```ts
+  const canPrint = useCanPrintNow();
+  // The 2F1 review gate (N-1): which of the POS app's printers can print now (bridge v2).
+  const poolReady = connectedPoolKey(useNativePool());
+  // Phase 3 Session 3E: which of the Windows app's network printers can print now (1.12.0).
+  const lanReady = connectedLanKey(useDesktopLan());
+  const queueRef = useRef(queueSlip);
+  useEffect(() => {
+    queueRef.current = queueSlip;
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+      printerReady: () => (readyRef.current.length === 0 ? canPrintNow() && !poolDefaultCannotPrint(nativePool().getSnapshot()) : readyNow().length > 0),
+      // Session 2E: the Windows app's printer list read again (a printer added or removed) releases a refusal's hold;
+      // Session 2F1: so does any change of this device's printers (its own, or another of the app's).
+      printerState: () => (isDesktopShell() ? desktopPrinterSnapshot() : printersState()),
+      readyPrinters: readyNow,
+      // The 2F1 review gate (M-1, with the 2E gate's M-9): a printer job's refusal holds its own printer's line, whether
+      // or not this device still prints it (one that left the app's list between the request and the print), never the
+```
+
+Replace it with:
+
+```ts
+      printerReady: () => (readyRef.current.length === 0 ? canPrintNow() && !poolDefaultCannotPrint(nativePool().getSnapshot()) : readyNow().length > 0),
+      // Session 2E: the Windows app's printer list read again (a printer added or removed) releases a refusal's hold;
+      // Session 2F1: so does any change of this device's printers (its own, or another of the app's).
+      // Session 3E: on the Windows app a network printer's link too.
+      printerState: () => (isDesktopShell() ? desktopPrintersState(desktopPrinterSnapshot()) : printersState()),
+      readyPrinters: readyNow,
+      // The 2F1 review gate (M-1, with the 2E gate's M-9): a printer job's refusal holds its own printer's line, whether
+      // or not this device still prints it (one that left the app's list between the request and the print), never the
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+  // disconnected, every 30 s) lease nothing while another printer prints.
+  useEffect(() => {
+    agent?.nudge();
+  }, [agent, canPrint, poolReady]);
+
+  // Session 2C: the printers it prints on changed (a setup save, its printer reconnected as another): look again.
+  useEffect(() => {
+```
+
+Replace it with:
+
+```ts
+  // disconnected, every 30 s) lease nothing while another printer prints.
+  useEffect(() => {
+    agent?.nudge();
+  }, [agent, canPrint, poolReady, lanReady]);
+
+  // Session 2C: the printers it prints on changed (a setup save, its printer reconnected as another): look again.
+  useEffect(() => {
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+import type { PrintAgentResult } from "@/lib/print-agent-types";
+import type { SlipPrintTarget } from "@/lib/print-host-slips";
+import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
+import type { PrinterStatus } from "@/lib/printer/web-printer-types";
+```
+
+Replace it with:
+
+```ts
+import type { PrintAgentResult } from "@/lib/print-agent-types";
+import type { SlipPrintTarget } from "@/lib/print-host-slips";
+import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+import { desktopLanId } from "@/lib/printer/desktop-lan";
+import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
+import type { PrinterStatus } from "@/lib/printer/web-printer-types";
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+  selected: string | null;
+  names: readonly string[] | null;
+  named: boolean;
+}
+
+/** Session 2F1 (spec §9.2): the POS app's printers on bridge v2 (nativePool()): each one's id and state. null on any
+```
+
+Replace it with:
+
+```ts
+  selected: string | null;
+  names: readonly string[] | null;
+  named: boolean;
+  /** Phase 3 Session 3E (spec §9.6): the app writes network printers itself over raw TCP (1.12.0: printRaw, lanStatus). */
+  lan?: boolean;
+}
+
+/** Session 2F1 (spec §9.2): the POS app's printers on bridge v2 (nativePool()): each one's id and state. null on any
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+  if (pool !== null) return nativeIdOf(printer, pool) !== null;
+  const connection = printer.connection;
+  if (connection.kind === "lan") {
+    // Ignoring case (the 2D gate's note): the server lower-cases the host, and so does the app; a hand-typed one may not.
+    return local?.kind === "native" && local.transport === "tcp" && local.printerId.toLowerCase() === `tcp:${connection.host}:${connection.port}`.toLowerCase();
+  }
+```
+
+Replace it with:
+
+```ts
+  if (pool !== null) return nativeIdOf(printer, pool) !== null;
+  const connection = printer.connection;
+  if (connection.kind === "lan") {
+    // Phase 3 Session 3E (spec §9.6): the Windows app 1.12.0 writes any network printer itself; its link (desktopLan, the
+    // app's check) decides when it prints one.
+    if (desktop?.lan === true) return true;
+    // Ignoring case (the 2D gate's note): the server lower-cases the host, and so does the app; a hand-typed one may not.
+    return local?.kind === "native" && local.transport === "tcp" && local.printerId.toLowerCase() === `tcp:${connection.host}:${connection.port}`.toLowerCase();
+  }
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+ *  request; the app probes a down one every 30 s), so its link is known before any takeover, it is named in a lease only
+ *  while the app reaches it, and a takeover prints at once. The server grants its line only while this device writes it
+ *  now (printerActiveWriter); it never makes this device a writer by the setup. */
+export function takeoverPrintersOf(printers: readonly PrinterConfig[], deviceId: string, pool: NativePoolView | null): PrinterConfig[] {
+  // The gate's emulator pre-run (E-1): only a device that writes a printer by the setup (P3-2: it polls the wake, so it
+  // can be online for one); a device that writes nothing never adds another device's printers to its app.
+  if (pool === null || printersWrittenBy(printers, deviceId).length === 0) return [];
+  return routablePrinters(printers).filter((printer) => printer.connection.kind === "lan" && printerWriterDeviceId(printer) !== deviceId);
+}
+```
+
+Replace it with:
+
+```ts
+ *  request; the app probes a down one every 30 s), so its link is known before any takeover, it is named in a lease only
+ *  while the app reaches it, and a takeover prints at once. The server grants its line only while this device writes it
+ *  now (printerActiveWriter); it never makes this device a writer by the setup. */
+export function takeoverPrintersOf(printers: readonly PrinterConfig[], deviceId: string, pool: NativePoolView | null, desktopLan = false): PrinterConfig[] {
+  // The gate's emulator pre-run (E-1): only a device that writes a printer by the setup (P3-2: it polls the wake, so it
+  // can be online for one); a device that writes nothing never adds another device's printers to its app. Phase 3
+  // Session 3E (spec §9.6): the Windows app 1.12.0 (`desktopLan`) takes them over too, by the same rule.
+  if ((pool === null && !desktopLan) || printersWrittenBy(printers, deviceId).length === 0) return [];
+  return routablePrinters(printers).filter((printer) => printer.connection.kind === "lan" && printerWriterDeviceId(printer) !== deviceId);
+}
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+    if (nativeId !== null) targets[printer.id] = { nativeId, paper: `${printer.paper}mm` };
+    else if (desktop?.named === true && printer.connection.kind === "device" && printer.connection.transport === "windows") {
+      targets[printer.id] = { printerName: printer.connection.address, paper: `${printer.paper}mm` };
+    }
+  }
+  return targets;
+```
+
+Replace it with:
+
+```ts
+    if (nativeId !== null) targets[printer.id] = { nativeId, paper: `${printer.paper}mm` };
+    else if (desktop?.named === true && printer.connection.kind === "device" && printer.connection.transport === "windows") {
+      targets[printer.id] = { printerName: printer.connection.address, paper: `${printer.paper}mm` };
+    } else if (desktop?.lan === true && printer.connection.kind === "lan") {
+      // Phase 3 Session 3E (spec §9.6): a network printer of the Windows app 1.12.0, by its address, drawn for its paper.
+      targets[printer.id] = { lan: { host: printer.connection.host, port: printer.connection.port }, paper: `${printer.paper}mm` };
+    }
+  }
+  return targets;
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+
+export function agentPrintersOf(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, desktop: DesktopPrinters | null, pool: NativePoolView | null = null): AgentPrinters {
+  const mine = printersWrittenBy(printers, deviceId);
+  // Session 3B: a network printer it may take over prints here once the app has it.
+  const candidates = takeoverPrintersOf(printers, deviceId, pool);
+  const takeover = candidates.filter((printer) => nativeIdOf(printer, pool) !== null);
+  const here = [...mine.filter((printer) => printerIsLocal(printer, local, desktop, pool)), ...takeover];
+  return {
+    printersMode: printersModeOn(printers),
+```
+
+Replace it with:
+
+```ts
+
+export function agentPrintersOf(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, desktop: DesktopPrinters | null, pool: NativePoolView | null = null): AgentPrinters {
+  const mine = printersWrittenBy(printers, deviceId);
+  // Session 3B: a network printer it may take over prints here once the app has it. Session 3E: the Windows app 1.12.0
+  // writes any of them (its link decides when).
+  const desktopLan = desktop?.lan === true;
+  const candidates = takeoverPrintersOf(printers, deviceId, pool, desktopLan);
+  const takeover = candidates.filter((printer) => desktopLan || nativeIdOf(printer, pool) !== null);
+  const here = [...mine.filter((printer) => printerIsLocal(printer, local, desktop, pool)), ...takeover];
+  return {
+    printersMode: printersModeOn(printers),
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+    localIds: here.map((printer) => printer.id),
+    lanIds: here.filter((printer) => printer.connection.kind === "lan").map((printer) => printer.id),
+    takeoverIds: takeover.map((printer) => printer.id),
+    takeoverMissingIds: candidates.filter((printer) => nativeIdOf(printer, pool) === null).map((printer) => printer.id),
+    targets: targetsOf(here, desktop, pool),
+  };
+}
+```
+
+Replace it with:
+
+```ts
+    localIds: here.map((printer) => printer.id),
+    lanIds: here.filter((printer) => printer.connection.kind === "lan").map((printer) => printer.id),
+    takeoverIds: takeover.map((printer) => printer.id),
+    takeoverMissingIds: candidates.filter((printer) => !takeover.includes(printer)).map((printer) => printer.id),
+    targets: targetsOf(here, desktop, pool),
+  };
+}
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+  cannotPrint: (nativeId: string) => boolean = () => false,
+): string[] {
+  return localIds.filter((id) => {
+    const nativeId = targets[id]?.nativeId;
+    return nativeId === undefined ? canPrint : statusOf(nativeId) === "connected" && !cannotPrint(nativeId);
+  });
+}
+```
+
+Replace it with:
+
+```ts
+  cannotPrint: (nativeId: string) => boolean = () => false,
+): string[] {
+  return localIds.filter((id) => {
+    const target = targets[id];
+    // Phase 3 Session 3E: a network printer of the Windows app by its own link too (desktopLan, by the same id).
+    const key = target?.nativeId ?? (target?.lan === undefined ? undefined : desktopLanId(target.lan));
+    return key === undefined ? canPrint : statusOf(key) === "connected" && !cannotPrint(key);
+  });
+}
+```
+
+In `apps/cafe/lib/printer/printer-registry.ts`, find:
+
+```ts
+import { devicePrinter } from "@/lib/printer/device-printer";
+import { nativePool, poolPrinterCannotPrint } from "@/lib/printer/native-pool";
+import type { PrinterStatus } from "@/lib/printer/web-printer-types";
+```
+
+Replace it with:
+
+```ts
+import { desktopLan, desktopLanCannotPrint } from "@/lib/printer/desktop-lan";
+import { devicePrinter } from "@/lib/printer/device-printer";
+import { nativePool, poolPrinterCannotPrint } from "@/lib/printer/native-pool";
+import type { PrinterStatus } from "@/lib/printer/web-printer-types";
+```
+
+In `apps/cafe/lib/printer/printer-registry.ts`, find:
+
+```ts
+  return lastState;
+}
+
+/** That printer's state as the app reports it: "none" when the app has no printer with that id. */
+export function printerStatusOf(nativeId: string): PrinterStatus {
+  return nativePool().printerOf(nativeId)?.status ?? "none";
+}
+
+/** Session 3C (spec §10): the app says that printer cannot print now (out of paper, cover open, an error). */
+export function printerCannotPrintOf(nativeId: string): boolean {
+  const printer = nativePool().printerOf(nativeId);
+  return printer !== null && poolPrinterCannotPrint(printer);
+}
+```
+
+Replace it with:
+
+```ts
+  return lastState;
+}
+
+/** That printer's state as the app reports it: "none" when the app has no printer with that id. Phase 3 Session 3E: a
+ *  network printer of the Windows app 1.12.0 by the same id ("tcp:<host>:<port>"), as its check or last slip said. */
+export function printerStatusOf(nativeId: string): PrinterStatus {
+  return nativePool().printerOf(nativeId)?.status ?? desktopLan().printerOf(nativeId)?.status ?? "none";
+}
+
+/** Session 3C (spec §10): the app says that printer cannot print now (out of paper, cover open, an error). */
+export function printerCannotPrintOf(nativeId: string): boolean {
+  const printer = nativePool().printerOf(nativeId);
+  if (printer !== null) return poolPrinterCannotPrint(printer);
+  const lan = desktopLan().printerOf(nativeId);
+  return lan !== null && desktopLanCannotPrint(lan);
+}
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-agent-printers.test.ts lib/print-agent-paths.test.ts lib/print-windows-printers.test.ts lib/printer/desktop-lan.test.ts lib/print-wake.test.ts lib/print-agent.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 143`; `# pass 143`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint lib/print-agent-printers.ts lib/printer/printer-registry.ts hooks/use-device-printer.ts hooks/use-agent-printers.ts hooks/use-print-agent.ts hooks/use-print-agent-wake.ts lib/print-agent-printers.test.ts lib/print-agent-paths.test.ts lib/print-windows-printers.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/hooks/use-agent-printers.ts apps/cafe/hooks/use-device-printer.ts apps/cafe/hooks/use-print-agent-wake.ts apps/cafe/hooks/use-print-agent.ts apps/cafe/lib/print-agent-paths.test.ts apps/cafe/lib/print-agent-printers.test.ts apps/cafe/lib/print-agent-printers.ts apps/cafe/lib/print-windows-printers.test.ts apps/cafe/lib/printer/printer-registry.ts
+git commit -m "feat(print): the Windows app 1.12.0 prints every network printer it writes and may take one over: the printer is this PC's by its address (raw TCP), named in a lease only while the app's check or last slip says it answers, its link nudges the agent and releases a hold, the app checks each one at once and every minute while this device prints, and the wake says lan and lanFailover (Phase 3 Session 3E, E4)"
+```
+
+---
+
+### Task E5: the Windows app 1.12.0 says how its printers are: each network printer's link and words ride the beat, a Windows printer is connected while Windows reports it and one it no longer reports reads not connected, and the dot reads a network printer that does not answer
+
+**Files:**
+- Modify: `apps/cafe/lib/print-agent-health.ts` (`PrinterHealthInput.lan`, `presence`; a network printer of the Windows app by its check; a present Windows printer is connected; a forgotten one's clock goes), `lib/print-agent-printers.ts` (`AgentPrinters.windowsMissingIds`; `dotPrintersOf(…, lan)`), `lib/printer/printer-dot.ts` (the desktop row reads a down network printer; no new line: the file's 300-line budget)
+- Modify: `apps/cafe/hooks/use-print-agent.ts` (the clock's input and its third store; the missing list), `hooks/use-agent-printers.ts` (the minute's presence re-read; the dot's `lan`)
+- Tests: `apps/cafe/lib/print-agent-health.test.ts` (1 new), `lib/print-agent-printers.test.ts` (1 new; four expectations and two pins deliberately changed), `lib/printer/printer-dot.test.ts` (1 new), `lib/print-agent-paths.test.ts` (the clock's pin deliberately changed)
+
+**Interfaces produced:** `PrinterHealthInput.lan?: readonly DesktopLanPrinter[] | null`, `PrinterHealthInput.presence?: boolean`; `AgentPrinters.windowsMissingIds: string[]`; `dotPrintersOf(…, takenOver, lan = null)`.
+
+**Health on the beat** (spec §10, P3-6): a network printer of the Windows app 1.12.0 reports its settled link (the 20 s settle, as for the POS app's printers: a check that fails once never starts a skip) with the paper, cover and error the app's DLE EOT said; a printer the app no longer checks is forgotten (a fresh 20 s if it comes back).
+
+**Windows printer presence** (spec §9.6: "checked every 60 s, not only at startup"): every minute while this device prints, the page reads the app's Windows printers again (`refreshDesktopPrinterChosen`, a local call); a Windows printer this PC prints is `connected` while Windows reports it, and one this PC writes by the setup that Windows no longer reports (`windowsMissingIds`) reads `disconnected` once missing 20 s (the same clock as a takeover printer the POS app lacks), so every device's waiting slip says "‹Printer› is not connected.". The spooler says nothing of paper or cover (§9.6). 1.11.0 reports nothing, as before.
+
+**The dot**: on the Windows app a network printer it writes that does not answer turns it red as on the POS app (`printer-off`, `checking` while being checked), and its paper, cover or error in its words; one that answers is green even with no Windows printer chosen (the gate's golden-copy review, m-1: a PC whose only printer is a network printer); Windows printers only, or nothing known yet, keep the Windows rows as before.
+
+**RED**: the health, agent printers' and dot's new tests, and the changed pins.
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/print-agent-health.test.ts`, find:
+
+```ts
+import { PRINTER_DOWN_SETTLE_MS } from "@pos/shared/print-failover";
+import { printerHealthClock, printerHealthReportsOf, settledLinkOf, type SettledLink } from "@/lib/print-agent-health";
+import type { PoolPrinter } from "@/lib/printer/native-pool";
+
+// Phase 3 Session 3B (spec §10, P3-6): the health this page reports on its wake, for the printers it prints here. The
+// server keeps a report only from the device that writes the printer now, and only when it changed. Session 3C (the 3B
+```
+
+Replace it with:
+
+```ts
+import { PRINTER_DOWN_SETTLE_MS } from "@pos/shared/print-failover";
+import { printerHealthClock, printerHealthReportsOf, settledLinkOf, type SettledLink } from "@/lib/print-agent-health";
+import type { PoolPrinter } from "@/lib/printer/native-pool";
+import type { DesktopLanPrinter } from "@/lib/printer/desktop-lan";
+
+// Phase 3 Session 3B (spec §10, P3-6): the health this page reports on its wake, for the printers it prints here. The
+// server keeps a report only from the device that writes the printer now, and only when it changed. Session 3C (the 3B
+```
+
+In `apps/cafe/lib/print-agent-health.test.ts`, find:
+
+```ts
+  assert.deepEqual(printerHealthReportsOf({ localIds: ["p-win"], targets: { "p-win": { printerName: "EPSON", paper: "80mm" } }, pool: null, device: "connected", windows: true, missing: [], nowMs: T0 }, memory), [], "the Windows app reports nothing until 1.12.0 (Session 3E)");
+});
+
+test("3C (m-1): a network printer this device may take over that its app does not list reads down once it stays missing 20 s", () => {
+  const memory = new Map<string, SettledLink>();
+  const input = { localIds: [], targets: {}, pool: [], device: "none" as const, windows: false, missing: ["p-theirs"] };
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual(printerHealthReportsOf({ localIds: ["p-win"], targets: { "p-win": { printerName: "EPSON", paper: "80mm" } }, pool: null, device: "connected", windows: true, missing: [], nowMs: T0 }, memory), [], "the Windows app reports nothing until 1.12.0 (Session 3E)");
+});
+
+test("3E: the Windows app 1.12.0: a network printer by the app's check (its link and words); a Windows printer connected while Windows reports it; one it no longer reports reads down after 20 s", () => {
+  const memory = new Map<string, SettledLink>();
+  const kitchen: DesktopLanPrinter = { id: "tcp:192.168.1.60:9100", host: "192.168.1.60", port: 9100, status: "connected", paper: "low", cover: "closed" };
+  const targets = {
+    "p-kitchen": { lan: { host: "192.168.1.60", port: 9100 }, paper: "80mm" as const },
+    "p-bar": { lan: { host: "192.168.1.61", port: 9100 }, paper: "80mm" as const },
+    "p-win": { printerName: "EPSON TM-T82", paper: "80mm" as const },
+  };
+  const bar: DesktopLanPrinter = { id: "tcp:192.168.1.61:9100", host: "192.168.1.61", port: 9100, status: "connecting" };
+  const input = { localIds: ["p-kitchen", "p-bar", "p-win"], targets, pool: null, device: "none" as const, windows: true, lan: [kitchen, bar], presence: true, missing: ["p-gone"] };
+  assert.deepEqual(
+    printerHealthReportsOf({ ...input, nowMs: T0 }, memory),
+    [
+      { printerId: "p-kitchen", link: "connected", paper: "low", cover: "closed" },
+      { printerId: "p-win", link: "connected" },
+    ],
+    "the kitchen by the app's check; the bar still being checked says nothing; the Windows printer is there",
+  );
+  assert.deepEqual(
+    printerHealthReportsOf({ ...input, lan: [kitchen, { ...bar, status: "disconnected" }], nowMs: T0 + 1_000 }, memory).map((r) => [r.printerId, r.link]),
+    [["p-kitchen", "connected"], ["p-win", "connected"]],
+    "the bar just went down: nothing yet",
+  );
+  assert.deepEqual(
+    printerHealthReportsOf({ ...input, lan: [kitchen, { ...bar, status: "disconnected" }], nowMs: T0 + 1_000 + PRINTER_DOWN_SETTLE_MS }, memory).map((r) => [r.printerId, r.link]),
+    [["p-kitchen", "connected"], ["p-bar", "disconnected"], ["p-win", "connected"], ["p-gone", "disconnected"]],
+    "down 20 s: the bar, and the Windows printer Windows no longer reports (missing)",
+  );
+  assert.deepEqual(printerHealthReportsOf({ ...input, presence: false, lan: null, missing: [], nowMs: T0 + 60_000 }, memory), [], "1.11.0: the Windows app reports nothing, as before");
+  printerHealthReportsOf({ ...input, lan: [kitchen], missing: [], nowMs: T0 + 70_000 }, memory);
+  assert.equal(memory.has("tcp:192.168.1.61:9100"), false, "a network printer the app no longer checks is forgotten (a fresh 20 s if it comes back)");
+});
+
+test("3C (m-1): a network printer this device may take over that its app does not list reads down once it stays missing 20 s", () => {
+  const memory = new Map<string, SettledLink>();
+  const input = { localIds: [], targets: {}, pool: [], device: "none" as const, windows: false, missing: ["p-theirs"] };
+```
+
+In `apps/cafe/lib/print-agent-paths.test.ts`, find:
+
+```ts
+test("PIN (3C review): the beat's health clock runs on every change of the POS app's printers and this device's printer, and stops with the agent", () => {
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.ok(agent.includes("const clock = printerHealthClock("), "the health source is a clock, not a read at the wake only");
+  assert.ok(agent.includes("[(listener) => nativePool().subscribe(listener), (listener) => devicePrinter().subscribe(listener)],"), "it runs on every status change of the app's printers and of this device's printer");
+  assert.ok(agent.includes("const offSource = setPrinterHealthSource(clock.reports);"), "the wake's beat reads the clock's reports");
+  assert.ok(agent.includes("clock.stop();"), "released with the agent");
+});
+```
+
+Replace it with:
+
+```ts
+test("PIN (3C review): the beat's health clock runs on every change of the POS app's printers and this device's printer, and stops with the agent", () => {
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.ok(agent.includes("const clock = printerHealthClock("), "the health source is a clock, not a read at the wake only");
+  // Phase 3 Session 3E deliberately changed: and of the Windows app's network printers (desktopLan).
+  assert.ok(agent.includes("[(listener) => nativePool().subscribe(listener), (listener) => devicePrinter().subscribe(listener), (listener) => desktopLan().subscribe(listener)],"), "it runs on every status change of the app's printers and of this device's printer");
+  assert.ok(agent.includes("const offSource = setPrinterHealthSource(clock.reports);"), "the wake's beat reads the clock's reports");
+  assert.ok(agent.includes("clock.stop();"), "released with the agent");
+});
+```
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+  const kitchen = printer("kitchen", { kind: "lan", host: "192.168.1.61", port: 9100 }, { primaryDeviceId: "dev-k" });
+  const bar = printer("bar", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "AA:BB" });
+  const off = printer("off", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "dev-a", enabled: false });
+  assert.deepEqual(agentPrintersOf([counter, kitchen, bar, off], "dev-a", NATIVE_TCP, null), { printersMode: true, isWriter: true, localIds: ["counter"], lanIds: ["counter"], takeoverIds: [], takeoverMissingIds: [], targets: {} }, "it writes the counter and the bar; only the counter is its printer (a network printer: Session 3B's lanIds)");
+  assert.deepEqual(agentPrintersOf([counter, kitchen], "dev-p", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], takeoverMissingIds: [], targets: {} }, "an ordering phone writes nothing");
+  assert.deepEqual(agentPrintersOf([], "dev-a", NATIVE_TCP, null), { printersMode: false, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], takeoverMissingIds: [], targets: {} }, "simple mode");
+  assert.deepEqual(agentPrintersOf([counter], "", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], takeoverMissingIds: [], targets: {} }, "no device identity");
+});
+
+// Phase 2 Session 2E (spec §9.2): one Windows PC prints several printers, each by its own Windows name. An older app
+```
+
+Replace it with:
+
+```ts
+  const kitchen = printer("kitchen", { kind: "lan", host: "192.168.1.61", port: 9100 }, { primaryDeviceId: "dev-k" });
+  const bar = printer("bar", { kind: "device", deviceId: "dev-a", transport: "bt-classic", address: "AA:BB" });
+  const off = printer("off", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "dev-a", enabled: false });
+  assert.deepEqual(agentPrintersOf([counter, kitchen, bar, off], "dev-a", NATIVE_TCP, null), { printersMode: true, isWriter: true, localIds: ["counter"], lanIds: ["counter"], takeoverIds: [], takeoverMissingIds: [], windowsMissingIds: [], targets: {} }, "it writes the counter and the bar; only the counter is its printer (a network printer: Session 3B's lanIds)");
+  assert.deepEqual(agentPrintersOf([counter, kitchen], "dev-p", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], takeoverMissingIds: [], windowsMissingIds: [], targets: {} }, "an ordering phone writes nothing");
+  assert.deepEqual(agentPrintersOf([], "dev-a", NATIVE_TCP, null), { printersMode: false, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], takeoverMissingIds: [], windowsMissingIds: [], targets: {} }, "simple mode");
+  assert.deepEqual(agentPrintersOf([counter], "", NATIVE_TCP, null), { printersMode: true, isWriter: false, localIds: [], lanIds: [], takeoverIds: [], takeoverMissingIds: [], windowsMissingIds: [], targets: {} }, "no device identity");
+});
+
+// Phase 2 Session 2E (spec §9.2): one Windows PC prints several printers, each by its own Windows name. An older app
+```
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+  // Phase 3 Session 3E deliberately changed: the hook keeps the agent's printers to watch the Windows app's network ones.
+  assert.match(hook, /const agent = useMemo\(\(\) => agentPrintersOf\(printers, deviceId, local, desktop, pool\), \[printers, deviceId, local, desktop, pool\]\);/);
+  // Session 3B (deliberate change): with the printers the wake says it took over.
+  assert.match(hook, /return useMemo\(\(\) => dotPrintersOf\(printers, deviceId, local, desktop, pool, takenOver\), \[printers, deviceId, local, desktop, pool, takenOver\]\);/);
+  assert.match(hook, /for \(const lan of lanPrintersToAdd\(printers, deviceId, pool\)\) \{/, "a network printer it writes is added to the app");
+  // The 2F2 review gate (M-4, deliberate change): asked again once the app has listed it and lost it, not once per page.
+  assert.match(hook, /void nativePool\(\)\.add\(\{ tcp: lan \}\)\.catch\(\(\) => undefined\);/, "a local call");
+```
+
+Replace it with:
+
+```ts
+  // Phase 3 Session 3E deliberately changed: the hook keeps the agent's printers to watch the Windows app's network ones.
+  assert.match(hook, /const agent = useMemo\(\(\) => agentPrintersOf\(printers, deviceId, local, desktop, pool\), \[printers, deviceId, local, desktop, pool\]\);/);
+  // Session 3B (deliberate change): with the printers the wake says it took over.
+  // Phase 3 Session 3E deliberately changed: the dot reads the Windows app's network printers too (`lan`).
+  assert.match(hook, /return useMemo\(\(\) => dotPrintersOf\(printers, deviceId, local, desktop, pool, takenOver, lan\), \[printers, deviceId, local, desktop, pool, takenOver, lan\]\);/);
+  assert.match(hook, /for \(const lan of lanPrintersToAdd\(printers, deviceId, pool\)\) \{/, "a network printer it writes is added to the app");
+  // The 2F2 review gate (M-4, deliberate change): asked again once the app has listed it and lost it, not once per page.
+  assert.match(hook, /void nativePool\(\)\.add\(\{ tcp: lan \}\)\.catch\(\(\) => undefined\);/, "a local call");
+```
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+  assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, canPrint, poolReady, lanReady]);"), "a change of the app's printers that can print now is a nudge");
+  assert.ok(src("apps/cafe/components/layout/PrintHostProvider.tsx").includes("nativePool().init();"), "read once per page, beside the device printer");
+  assert.ok(src("apps/cafe/hooks/use-print-agent-wake.ts").includes("...(caps.native ? { nativeProtocol: nativeV2Bridge() !== null ? NATIVE_BRIDGE_V2 : 1 } : {}),"), "the wake says which app prints several printers");
+  // Session 3B (deliberate change): then a printer problem the app says, when every printer answers.
+  assert.ok(src("apps/cafe/lib/printer/printer-dot.ts").includes("const row = noHostRow(lane, printers.worst ?? local, desktopChosen);"), "the dot's worst printer");
+});
+
+test("PIN (2C final review, I-2): the pulse and the wake kick the agent only on jobs it can lease", () => {
+```
+
+Replace it with:
+
+```ts
+  assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, canPrint, poolReady, lanReady]);"), "a change of the app's printers that can print now is a nudge");
+  assert.ok(src("apps/cafe/components/layout/PrintHostProvider.tsx").includes("nativePool().init();"), "read once per page, beside the device printer");
+  assert.ok(src("apps/cafe/hooks/use-print-agent-wake.ts").includes("...(caps.native ? { nativeProtocol: nativeV2Bridge() !== null ? NATIVE_BRIDGE_V2 : 1 } : {}),"), "the wake says which app prints several printers");
+  // Session 3B (deliberate change): then a printer problem the app says, when every printer answers. Session 3E
+  // (deliberate change): on the Windows app a network printer that does not answer reads as on the POS app.
+  assert.ok(src("apps/cafe/lib/printer/printer-dot.ts").includes(': noHostRow(lane, printers.worst ?? local, desktopChosen);'), "the dot's worst printer");
+  assert.ok(src("apps/cafe/lib/printer/printer-dot.ts").includes('const row = lane === "desktop" && printers.worst !== undefined ? (localRaster(printers.worst) ?? dot("ok"))'), "the Windows app's network printers");
+});
+
+test("PIN (2C final review, I-2): the pulse and the wake kick the agent only on jobs it can lease", () => {
+```
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+  assert.deepEqual(readyPrinterIdsOf(agent.localIds, agent.targets, true, (id) => status[id] ?? "none", (id) => id === "tcp:192.168.1.61:9100"), ["own"], "nor one that says it cannot print");
+});
+
+test("PIN (3E): the Windows app's network printers are checked while this device prints, their links nudge the agent and release a hold, and the registry reads them", () => {
+  const hook = src("apps/cafe/hooks/use-agent-printers.ts");
+  assert.ok(hook.includes("desktopLan().watch(JSON.parse(lanTargets) as DesktopLanTarget[]);"), "the printers it prints, its own and the ones it may take over");
+  assert.ok(hook.includes("const timer = window.setInterval(() => void desktopLan().check(), DESKTOP_LAN_CHECK_MS);"), "and every minute, while it prints");
+  assert.ok(hook.includes("named: desktopPrintsOnNamed(), lan: desktopLanApi() !== null"), "1.12.0 says it writes network printers");
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.ok(agent.includes("const lanReady = connectedLanKey(useDesktopLan());") && agent.includes("}, [agent, canPrint, poolReady, lanReady]);"), "a network printer that answers again nudges the agent");
+  assert.ok(agent.includes("printerState: () => (isDesktopShell() ? desktopPrintersState(desktopPrinterSnapshot()) : printersState()),"), "and releases a refusal's hold");
+  const registry = src("apps/cafe/lib/printer/printer-registry.ts");
+  assert.ok(registry.includes('return nativePool().printerOf(nativeId)?.status ?? desktopLan().printerOf(nativeId)?.status ?? "none";'), "its state by the same id");
+  assert.equal(DESKTOP_LAN_CHECK_MS, 60_000, "the POS app's cadence");
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual(readyPrinterIdsOf(agent.localIds, agent.targets, true, (id) => status[id] ?? "none", (id) => id === "tcp:192.168.1.61:9100"), ["own"], "nor one that says it cannot print");
+});
+
+test("3E: the Windows app 1.12.0 names the Windows printers it writes that Windows no longer reports; the dot reads its network printers' links and words", () => {
+  const own = printer("own", { kind: "device", deviceId: "pc", transport: "windows", address: "EPSON TM-T82" });
+  const gone = printer("gone", { kind: "device", deviceId: "pc", transport: "windows", address: "Old TVS" });
+  const kitchen = printer("kitchen", { kind: "lan", host: "192.168.1.60", port: 9100 }, { primaryDeviceId: "pc", name: "Kitchen" });
+  assert.deepEqual(agentPrintersOf([own, gone, kitchen], "pc", null, WIN_LAN).windowsMissingIds, ["gone"], "Windows does not report it now");
+  assert.deepEqual(agentPrintersOf([own, gone, kitchen], "pc", null, WIN_NAMED).windowsMissingIds, [], "1.11.0: nothing, as before");
+  assert.deepEqual(agentPrintersOf([own, gone], "pc", null, { ...WIN_LAN, names: null }).windowsMissingIds, [], "not read yet: nothing");
+  const down = [{ id: "tcp:192.168.1.60:9100", host: "192.168.1.60", port: 9100, status: "disconnected" as const }];
+  assert.equal(dotPrintersOf([own, kitchen], "pc", null, WIN_LAN, null, [], down).worst, "disconnected", "the kitchen does not answer");
+  const empty = [{ id: "tcp:192.168.1.60:9100", host: "192.168.1.60", port: 9100, status: "connected" as const, paper: "out" as const }];
+  assert.deepEqual(dotPrintersOf([own, kitchen], "pc", null, WIN_LAN, null, [], empty).problem, { name: "Kitchen", problem: "paper-out" }, "out of paper, by its name");
+  assert.equal(dotPrintersOf([own, kitchen], "pc", null, WIN_LAN).worst, undefined, "no check yet: nothing known");
+});
+
+test("PIN (3E): the Windows app's network printers are checked while this device prints, their links nudge the agent and release a hold, and the registry reads them", () => {
+  const hook = src("apps/cafe/hooks/use-agent-printers.ts");
+  assert.ok(hook.includes("desktopLan().watch(JSON.parse(lanTargets) as DesktopLanTarget[]);"), "the printers it prints, its own and the ones it may take over");
+  assert.ok(hook.includes("const timer = window.setInterval(() => {\n      void desktopLan().check();\n      void refreshDesktopPrinterChosen();\n    }, DESKTOP_LAN_CHECK_MS);"), "and every minute while it prints, with the Windows printers' presence");
+  assert.ok(hook.includes("return useMemo(() => dotPrintersOf(printers, deviceId, local, desktop, pool, takenOver, lan), [printers, deviceId, local, desktop, pool, takenOver, lan]);"), "the dot reads them");
+  assert.ok(hook.includes("named: desktopPrintsOnNamed(), lan: desktopLanApi() !== null"), "1.12.0 says it writes network printers");
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.ok(agent.includes("const lanReady = connectedLanKey(useDesktopLan());") && agent.includes("}, [agent, canPrint, poolReady, lanReady]);"), "a network printer that answers again nudges the agent");
+  assert.ok(agent.includes("printerState: () => (isDesktopShell() ? desktopPrintersState(desktopPrinterSnapshot()) : printersState()),"), "and releases a refusal's hold");
+  assert.ok(agent.includes("const missingKey = [...printers.takeoverMissingIds, ...printers.windowsMissingIds].join(\",\");"), "a Windows printer gone from Windows reads down in the beat");
+  assert.ok(agent.includes("presence: isDesktopShell() && desktopLanApi() !== null,") && agent.includes("(listener) => desktopLan().subscribe(listener)]"), "the beat's clock follows the network printers' checks");
+  const registry = src("apps/cafe/lib/printer/printer-registry.ts");
+  assert.ok(registry.includes('return nativePool().printerOf(nativeId)?.status ?? desktopLan().printerOf(nativeId)?.status ?? "none";'), "its state by the same id");
+  assert.equal(DESKTOP_LAN_CHECK_MS, 60_000, "the POS app's cadence");
+```
+
+In `apps/cafe/lib/printer/printer-dot.test.ts`, find:
+
+```ts
+  assert.deepEqual(printerDotOf({ ...base, printers }), { show: true, ok: true, reason: "ok" }, "nothing known: green as before");
+});
+
+// Phase 3 Session 3C (the 3B golden-copy review's m-7): in simple mode the device that prints on its POS app's own printer
+// turns its dot red with that printer's words too; a device whose slips print at another device keeps that device's row.
+test("3C (m-7): simple mode: this device's own printer out of paper, its cover open or in error is red with its words", () => {
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual(printerDotOf({ ...base, printers }), { show: true, ok: true, reason: "ok" }, "nothing known: green as before");
+});
+
+// Phase 3 Session 3E (spec §9.6): on the Windows app 1.12.0 a network printer it writes that does not answer turns the dot
+// red as it would on the POS app; with every one connected, or none known yet, the Windows rows stay as before.
+test("3E: on the Windows app a network printer it writes that does not answer is red; otherwise as before", () => {
+  const desktop = { remote: "none" as const, isHostDevice: false, lane: "desktop" as const, local: "none" as const, deviceOffline: false, desktopChosen: "chosen" as const };
+  const mode = { printersMode: true, isWriter: true, allLocal: true };
+  assert.deepEqual(printerDotOf({ ...desktop, printers: { ...mode, worst: "disconnected" } }), { show: true, ok: false, reason: "printer-off" }, "the kitchen does not answer");
+  assert.deepEqual(printerDotOf({ ...desktop, printers: { ...mode, worst: "connecting" } }), { show: true, ok: false, reason: "checking" }, "being checked");
+  assert.deepEqual(printerDotOf({ ...desktop, printers: { ...mode, worst: "connected" } }), { show: true, ok: true, reason: "ok" }, "it answers");
+  assert.deepEqual(printerDotOf({ ...desktop, desktopChosen: "none", printers: { ...mode, worst: "connected" } }), { show: true, ok: true, reason: "ok" }, "a PC whose only printer is a network printer: no Windows printer needs choosing (the gold's review, m-1)");
+  assert.deepEqual(printerDotOf({ ...desktop, printers: mode }), { show: true, ok: true, reason: "ok" }, "Windows printers only: as before");
+  assert.deepEqual(printerDotOf({ ...desktop, desktopChosen: "none", printers: mode }), { show: true, ok: false, reason: "no-printer" }, "no printer chosen: as before");
+});
+
+// Phase 3 Session 3C (the 3B golden-copy review's m-7): in simple mode the device that prints on its POS app's own printer
+// turns its dot red with that printer's words too; a device whose slips print at another device keeps that device's row.
+test("3C (m-7): simple mode: this device's own printer out of paper, its cover open or in error is red with its words", () => {
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-agent-health.test.ts lib/print-agent-printers.test.ts lib/printer/printer-dot.test.ts lib/print-agent-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 72`; `# pass 65`; `# fail 7`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/hooks/use-agent-printers.ts`, find:
+
+```ts
+
+import { PRINT_SETUP_STALE_MS } from "@pos/shared/print-budget";
+import type { PrinterConfig } from "@pos/shared/print-printers";
+import { useDesktopPrinterSnapshot, useDevicePrinter, useNativePool, usePrintLane } from "@/hooks/use-device-printer";
+import { apiGet } from "@/lib/api-client";
+import { isDesktopShell } from "@/lib/desktop-shell";
+import { desktopPrintsOnNamed } from "@/lib/desktop-shell-printer";
+```
+
+Replace it with:
+
+```ts
+
+import { PRINT_SETUP_STALE_MS } from "@pos/shared/print-budget";
+import type { PrinterConfig } from "@pos/shared/print-printers";
+import { useDesktopLan, useDesktopPrinterSnapshot, useDevicePrinter, useNativePool, usePrintLane } from "@/hooks/use-device-printer";
+import { apiGet } from "@/lib/api-client";
+import { isDesktopShell } from "@/lib/desktop-shell";
+import { desktopPrintsOnNamed } from "@/lib/desktop-shell-printer";
+```
+
+In `apps/cafe/hooks/use-agent-printers.ts`, find:
+
+```ts
+  const desktop = useDesktopPrinters();
+  const pool = usePoolView();
+  const takenOver = useSyncExternalStore(onTakenOverChange, takenOverPrinterIds, () => NO_IDS);
+  return useMemo(() => dotPrintersOf(printers, deviceId, local, desktop, pool, takenOver), [printers, deviceId, local, desktop, pool, takenOver]);
+}
+
+// The network printers this page asked the app to add that the app does not list yet: one ask per printer (one the app
+```
+
+Replace it with:
+
+```ts
+  const desktop = useDesktopPrinters();
+  const pool = usePoolView();
+  const takenOver = useSyncExternalStore(onTakenOverChange, takenOverPrinterIds, () => NO_IDS);
+  // Session 3E: the Windows app's network printers (1.12.0).
+  const lanSnapshot = useDesktopLan();
+  const lan = lanSnapshot.active ? lanSnapshot.printers : null;
+  return useMemo(() => dotPrintersOf(printers, deviceId, local, desktop, pool, takenOver, lan), [printers, deviceId, local, desktop, pool, takenOver, lan]);
+}
+
+// The network printers this page asked the app to add that the app does not list yet: one ask per printer (one the app
+```
+
+In `apps/cafe/hooks/use-agent-printers.ts`, find:
+
+```ts
+  const agent = useMemo(() => agentPrintersOf(printers, deviceId, local, desktop, pool), [printers, deviceId, local, desktop, pool]);
+  // Phase 3 Session 3E (spec §9.6): on the Windows app 1.12.0 the network printers it prints (its own and the ones it may
+  // take over) are checked by the app at once and every DESKTOP_LAN_CHECK_MS (a connect and DLE EOT from the app: no
+  // request), so a printer is named in a lease only while the app reaches it.
+  const desktopLanOn = enabled && desktop?.lan === true;
+  const lanTargets = JSON.stringify(Object.values(agent.targets).flatMap((target) => (target.lan === undefined ? [] : [target.lan])));
+  useEffect(() => {
+```
+
+Replace it with:
+
+```ts
+  const agent = useMemo(() => agentPrintersOf(printers, deviceId, local, desktop, pool), [printers, deviceId, local, desktop, pool]);
+  // Phase 3 Session 3E (spec §9.6): on the Windows app 1.12.0 the network printers it prints (its own and the ones it may
+  // take over) are checked by the app at once and every DESKTOP_LAN_CHECK_MS (a connect and DLE EOT from the app: no
+  // request), so a printer is named in a lease only while the app reaches it; and every DESKTOP_LAN_CHECK_MS the app's
+  // Windows printers are read again (presence: one Windows no longer reports reads down in the beat).
+  const desktopLanOn = enabled && desktop?.lan === true;
+  const lanTargets = JSON.stringify(Object.values(agent.targets).flatMap((target) => (target.lan === undefined ? [] : [target.lan])));
+  useEffect(() => {
+```
+
+In `apps/cafe/hooks/use-agent-printers.ts`, find:
+
+```ts
+  }, [desktopLanOn, lanTargets]);
+  useEffect(() => {
+    if (!desktopLanOn) return;
+    const timer = window.setInterval(() => void desktopLan().check(), DESKTOP_LAN_CHECK_MS);
+    return () => window.clearInterval(timer);
+  }, [desktopLanOn]);
+  return agent;
+```
+
+Replace it with:
+
+```ts
+  }, [desktopLanOn, lanTargets]);
+  useEffect(() => {
+    if (!desktopLanOn) return;
+    const timer = window.setInterval(() => {
+      void desktopLan().check();
+      void refreshDesktopPrinterChosen();
+    }, DESKTOP_LAN_CHECK_MS);
+    return () => window.clearInterval(timer);
+  }, [desktopLanOn]);
+  return agent;
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+import { PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print-host-slips";
+import { PrintWriteError } from "@/lib/print-write-outcome";
+import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
+import { connectedLanKey, desktopPrintersState } from "@/lib/printer/desktop-lan";
+import { desktopPrinterSnapshot, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import { devicePrinter } from "@/lib/printer/device-printer";
+import { connectedPoolKey, nativePool, poolDefaultCannotPrint } from "@/lib/printer/native-pool";
+```
+
+Replace it with:
+
+```ts
+import { PRINT_HOST_PRINT_FAILED_MESSAGE, type HostPrintSlip } from "@/lib/print-host-slips";
+import { PrintWriteError } from "@/lib/print-write-outcome";
+import { PRINT_DEVICE_LINE } from "@/lib/print-agent-holds";
+import { connectedLanKey, desktopLan, desktopLanApi, desktopPrintersState } from "@/lib/printer/desktop-lan";
+import { desktopPrinterSnapshot, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
+import { devicePrinter } from "@/lib/printer/device-printer";
+import { connectedPoolKey, nativePool, poolDefaultCannotPrint } from "@/lib/printer/native-pool";
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+    lanRef.current = lanKey === "" ? [] : lanKey.split(",");
+  }, [lanKey]);
+  // Session 3C (the 3B review's m-1): the network printers it may take over that its app does not list (its beat says so).
+  const missingRef = useRef<readonly string[]>(printers.takeoverMissingIds);
+  const missingKey = printers.takeoverMissingIds.join(",");
+  // The 3C review gate (its review's m-2): the beat's health clock (below) samples a new list at once, so its 20 s start now.
+  const clockRef = useRef<{ reports: () => unknown } | null>(null);
+  useEffect(() => {
+```
+
+Replace it with:
+
+```ts
+    lanRef.current = lanKey === "" ? [] : lanKey.split(",");
+  }, [lanKey]);
+  // Session 3C (the 3B review's m-1): the network printers it may take over that its app does not list (its beat says so).
+  // Session 3E (spec §9.6): and the Windows printers it writes that Windows no longer reports (1.12.0's presence check).
+  const missingKey = [...printers.takeoverMissingIds, ...printers.windowsMissingIds].join(",");
+  const missingRef = useRef<readonly string[]>(missingKey === "" ? [] : missingKey.split(","));
+  // The 3C review gate (its review's m-2): the beat's health clock (below) samples a new list at once, so its 20 s start now.
+  const clockRef = useRef<{ reports: () => unknown } | null>(null);
+  useEffect(() => {
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+          windows: isDesktopShell(),
+          missing: missingRef.current,
+          nowMs: Date.now(),
+        };
+      },
+      [(listener) => nativePool().subscribe(listener), (listener) => devicePrinter().subscribe(listener)],
+    );
+    const offSource = setPrinterHealthSource(clock.reports);
+    clockRef.current = clock;
+```
+
+Replace it with:
+
+```ts
+          windows: isDesktopShell(),
+          missing: missingRef.current,
+          nowMs: Date.now(),
+          // Session 3E: the Windows app's network printers and its presence check (1.12.0).
+          lan: desktopLan().getSnapshot().active ? desktopLan().getSnapshot().printers : null,
+          presence: isDesktopShell() && desktopLanApi() !== null,
+        };
+      },
+      [(listener) => nativePool().subscribe(listener), (listener) => devicePrinter().subscribe(listener), (listener) => desktopLan().subscribe(listener)],
+    );
+    const offSource = setPrinterHealthSource(clock.reports);
+    clockRef.current = clock;
+```
+
+In `apps/cafe/lib/print-agent-health.ts`, find:
+
+```ts
+import { PRINTER_DOWN_SETTLE_MS, type PrinterHealthReport, type PrinterLinkState } from "@pos/shared/print-failover";
+import type { SlipPrintTarget } from "@/lib/print-host-slips";
+import type { PoolPrinter } from "@/lib/printer/native-pool";
+import type { PrinterStatus } from "@/lib/printer/web-printer-types";
+```
+
+Replace it with:
+
+```ts
+import { PRINTER_DOWN_SETTLE_MS, type PrinterHealthReport, type PrinterLinkState } from "@pos/shared/print-failover";
+import type { SlipPrintTarget } from "@/lib/print-host-slips";
+import { desktopLanId, type DesktopLanPrinter } from "@/lib/printer/desktop-lan";
+import type { PoolPrinter } from "@/lib/printer/native-pool";
+import type { PrinterStatus } from "@/lib/printer/web-printer-types";
+```
+
+In `apps/cafe/lib/print-agent-health.ts`, find:
+
+```ts
+  windows: boolean;
+  missing: readonly string[];
+  nowMs: number;
+}
+
+export function printerHealthReportsOf(input: PrinterHealthInput, memory: Map<string, SettledLink>): PrinterHealthReport[] {
+```
+
+Replace it with:
+
+```ts
+  windows: boolean;
+  missing: readonly string[];
+  nowMs: number;
+  /** Phase 3 Session 3E (spec §9.6, §10): the network printers the Windows app 1.12.0 writes (desktopLan), by its checks. */
+  lan?: readonly DesktopLanPrinter[] | null;
+  /** Phase 3 Session 3E: the Windows app checks every minute that each Windows printer is still reported (1.12.0). */
+  presence?: boolean;
+}
+
+export function printerHealthReportsOf(input: PrinterHealthInput, memory: Map<string, SettledLink>): PrinterHealthReport[] {
+```
+
+In `apps/cafe/lib/print-agent-health.ts`, find:
+
+```ts
+        ...(entry.cover !== undefined ? { cover: entry.cover } : {}),
+        ...(entry.error === true ? { error: true as const } : {}),
+      });
+    } else if (target === undefined && !input.windows) {
+      const link = settledLinkOf(memory, `device:${printerId}`, input.device, input.nowMs);
+      if (link !== null) out.push({ printerId, link });
+```
+
+Replace it with:
+
+```ts
+        ...(entry.cover !== undefined ? { cover: entry.cover } : {}),
+        ...(entry.error === true ? { error: true as const } : {}),
+      });
+    } else if (target?.lan !== undefined) {
+      // Phase 3 Session 3E: a network printer of the Windows app 1.12.0 by the app's check or last slip, with what it says.
+      const id = desktopLanId(target.lan);
+      const entry = input.lan?.find((printer) => printer.id === id);
+      const link = entry === undefined ? null : settledLinkOf(memory, entry.id, entry.status, input.nowMs);
+      if (entry === undefined || link === null) continue;
+      out.push({
+        printerId,
+        link,
+        ...(entry.paper !== undefined ? { paper: entry.paper } : {}),
+        ...(entry.cover !== undefined ? { cover: entry.cover } : {}),
+        ...(entry.error === true ? { error: true as const } : {}),
+      });
+    } else if (target?.printerName !== undefined) {
+      // Phase 3 Session 3E: a Windows printer this PC prints is connected while Windows reports it (one it no longer
+      // reports leaves this list and reads down by `missing`, below). The spooler says nothing of its paper.
+      if (input.presence === true) out.push({ printerId, link: "connected" });
+    } else if (target === undefined && !input.windows) {
+      const link = settledLinkOf(memory, `device:${printerId}`, input.device, input.nowMs);
+      if (link !== null) out.push({ printerId, link });
+```
+
+In `apps/cafe/lib/print-agent-health.ts`, find:
+
+```ts
+  // a fresh 20 s, never its old clock.
+  const pool = input.pool;
+  if (pool !== null) for (const key of [...memory.keys()]) if (!key.startsWith("missing:") && !key.startsWith("device:") && !pool.some((entry) => entry.id === key)) memory.delete(key);
+  for (const printerId of input.missing) {
+    if (settledLinkOf(memory, `missing:${printerId}`, "disconnected", input.nowMs) === "disconnected") out.push({ printerId, link: "disconnected" });
+  }
+```
+
+Replace it with:
+
+```ts
+  // a fresh 20 s, never its old clock.
+  const pool = input.pool;
+  if (pool !== null) for (const key of [...memory.keys()]) if (!key.startsWith("missing:") && !key.startsWith("device:") && !pool.some((entry) => entry.id === key)) memory.delete(key);
+  // Phase 3 Session 3E: likewise a network printer the Windows app no longer checks.
+  const lan = input.lan;
+  if (lan != null) for (const key of [...memory.keys()]) if (key.startsWith("tcp:") && !lan.some((entry) => entry.id === key)) memory.delete(key);
+  for (const printerId of input.missing) {
+    if (settledLinkOf(memory, `missing:${printerId}`, "disconnected", input.nowMs) === "disconnected") out.push({ printerId, link: "disconnected" });
+  }
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+import type { PrintAgentResult } from "@/lib/print-agent-types";
+import type { SlipPrintTarget } from "@/lib/print-host-slips";
+import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+import { desktopLanId } from "@/lib/printer/desktop-lan";
+import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
+import type { PrinterStatus } from "@/lib/printer/web-printer-types";
+```
+
+Replace it with:
+
+```ts
+import type { PrintAgentResult } from "@/lib/print-agent-types";
+import type { SlipPrintTarget } from "@/lib/print-host-slips";
+import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+import { desktopLanId, type DesktopLanPrinter } from "@/lib/printer/desktop-lan";
+import type { DevicePrinter } from "@/lib/printer/device-printer-store";
+import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
+import type { PrinterStatus } from "@/lib/printer/web-printer-types";
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+  /** Session 3C (the 3B review's m-1): the network printers it may take over that its app does not list (yet): its beat
+   *  says it cannot print them (lib/print-agent-health.ts), so the server never picks it for one of them. */
+  takeoverMissingIds: string[];
+  /** Session 2E: each of them that prints on a named Windows printer, by id: its name and its paper. Session 2F1: each
+   *  that is one of the POS app's printers on bridge v2: the app's id and its paper. */
+  targets: Record<string, SlipPrintTarget>;
+```
+
+Replace it with:
+
+```ts
+  /** Session 3C (the 3B review's m-1): the network printers it may take over that its app does not list (yet): its beat
+   *  says it cannot print them (lib/print-agent-health.ts), so the server never picks it for one of them. */
+  takeoverMissingIds: string[];
+  /** Phase 3 Session 3E (spec §9.6): the Windows printers it writes that Windows does not report now (the app's presence
+   *  check every minute, 1.12.0): its beat says they are not connected, so every device sees why their slips wait. */
+  windowsMissingIds: string[];
+  /** Session 2E: each of them that prints on a named Windows printer, by id: its name and its paper. Session 2F1: each
+   *  that is one of the POS app's printers on bridge v2: the app's id and its paper. */
+  targets: Record<string, SlipPrintTarget>;
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+  const candidates = takeoverPrintersOf(printers, deviceId, pool, desktopLan);
+  const takeover = candidates.filter((printer) => desktopLan || nativeIdOf(printer, pool) !== null);
+  const here = [...mine.filter((printer) => printerIsLocal(printer, local, desktop, pool)), ...takeover];
+  return {
+    printersMode: printersModeOn(printers),
+    isWriter: mine.length > 0,
+```
+
+Replace it with:
+
+```ts
+  const candidates = takeoverPrintersOf(printers, deviceId, pool, desktopLan);
+  const takeover = candidates.filter((printer) => desktopLan || nativeIdOf(printer, pool) !== null);
+  const here = [...mine.filter((printer) => printerIsLocal(printer, local, desktop, pool)), ...takeover];
+  const names = desktopLan && desktop?.named === true ? desktop.names : null;
+  return {
+    printersMode: printersModeOn(printers),
+    isWriter: mine.length > 0,
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+    lanIds: here.filter((printer) => printer.connection.kind === "lan").map((printer) => printer.id),
+    takeoverIds: takeover.map((printer) => printer.id),
+    takeoverMissingIds: candidates.filter((printer) => !takeover.includes(printer)).map((printer) => printer.id),
+    targets: targetsOf(here, desktop, pool),
+  };
+}
+```
+
+Replace it with:
+
+```ts
+    lanIds: here.filter((printer) => printer.connection.kind === "lan").map((printer) => printer.id),
+    takeoverIds: takeover.map((printer) => printer.id),
+    takeoverMissingIds: candidates.filter((printer) => !takeover.includes(printer)).map((printer) => printer.id),
+    windowsMissingIds: names === null ? [] : mine.filter((printer) => printer.connection.kind === "device" && printer.connection.transport === "windows" && !names.includes(printer.connection.address)).map((printer) => printer.id),
+    targets: targetsOf(here, desktop, pool),
+  };
+}
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+  desktop: DesktopPrinters | null,
+  pool: NativePoolView | null = null,
+  takenOver: readonly string[] = [],
+): PrinterDotPrinters {
+  const agent = agentPrintersOf(printers, deviceId, local, desktop, pool);
+  const counted = Object.entries(agent.targets).filter(([id]) => !agent.takeoverIds.includes(id) || takenOver.includes(id));
+  const states = counted.flatMap(([, target]) => pool?.printers.filter((entry) => entry.id === target.nativeId).map((entry) => entry.status) ?? []);
+  const worst = states.reduce<PrinterStatus | undefined>((acc, status) => (acc === undefined || STATUS_WORSE.indexOf(status) > STATUS_WORSE.indexOf(acc) ? status : acc), undefined);
+  // Session 3B (spec §10): the worst paper, cover or error the app says of a printer it counts, by that printer's name.
+  const problems = counted.flatMap(([id, target]) => {
+    const entry = pool?.printers.find((candidate) => candidate.id === target.nativeId);
+    const problem = entry === undefined ? null : printerHealthProblem({ link: "connected", paper: entry.paper, cover: entry.cover, error: entry.error });
+    const name = printers.find((printer) => printer.id === id)?.name;
+    return problem !== null && DOT_PROBLEMS.includes(problem) && name !== undefined ? [{ name, problem }] : [];
+```
+
+Replace it with:
+
+```ts
+  desktop: DesktopPrinters | null,
+  pool: NativePoolView | null = null,
+  takenOver: readonly string[] = [],
+  lan: readonly DesktopLanPrinter[] | null = null,
+): PrinterDotPrinters {
+  const agent = agentPrintersOf(printers, deviceId, local, desktop, pool);
+  const counted = Object.entries(agent.targets).filter(([id]) => !agent.takeoverIds.includes(id) || takenOver.includes(id));
+  // Phase 3 Session 3E: a network printer of the Windows app by its own link and words, like one of the POS app's.
+  const entryOf = (target: SlipPrintTarget) => {
+    if (target.nativeId !== undefined) return pool?.printers.find((entry) => entry.id === target.nativeId);
+    if (target.lan === undefined) return undefined;
+    const id = desktopLanId(target.lan);
+    return lan?.find((entry) => entry.id === id);
+  };
+  const states = counted.flatMap(([, target]) => {
+    const entry = entryOf(target);
+    return entry === undefined ? [] : [entry.status];
+  });
+  const worst = states.reduce<PrinterStatus | undefined>((acc, status) => (acc === undefined || STATUS_WORSE.indexOf(status) > STATUS_WORSE.indexOf(acc) ? status : acc), undefined);
+  // Session 3B (spec §10): the worst paper, cover or error the app says of a printer it counts, by that printer's name.
+  const problems = counted.flatMap(([id, target]) => {
+    const entry = entryOf(target);
+    const problem = entry === undefined ? null : printerHealthProblem({ link: "connected", paper: entry.paper, cover: entry.cover, error: entry.error });
+    const name = printers.find((printer) => printer.id === id)?.name;
+    return problem !== null && DOT_PROBLEMS.includes(problem) && name !== undefined ? [{ name, problem }] : [];
+```
+
+In `apps/cafe/lib/printer/printer-dot.ts`, find:
+
+```ts
+  return printers?.problem === undefined || !row.show || !row.ok ? row : { show: true, ok: false, reason: "printer-problem", problem: printerProblemText(printers.problem.name, printers.problem.problem) };
+}
+
+// Session 2D (spec §10): the worst state among the printers this device writes; with none, its slips print at the
+// cafe's printers (the waiting count and the alarm speak for those). A former host's record plays no part.
+function printersRow(printers: PrinterDotPrinters, lane: DotLane, local: PrinterStatus, desktopChosen: DesktopChosen): PrinterDot {
+  if (!printers.isWriter) return dot("printers-elsewhere");
+  if (!printers.allLocal) return dot("printer-not-here");
+  const row = noHostRow(lane, printers.worst ?? local, desktopChosen);
+  return withProblem(row, printers);
+}
+```
+
+Replace it with:
+
+```ts
+  return printers?.problem === undefined || !row.show || !row.ok ? row : { show: true, ok: false, reason: "printer-problem", problem: printerProblemText(printers.problem.name, printers.problem.problem) };
+}
+
+// Session 2D (spec §10): the worst state among the printers this device writes (Session 3E: on the Windows app too); with
+// none, its slips print at the cafe's printers (the waiting count and the alarm speak for those). A former host plays no part.
+function printersRow(printers: PrinterDotPrinters, lane: DotLane, local: PrinterStatus, desktopChosen: DesktopChosen): PrinterDot {
+  if (!printers.isWriter) return dot("printers-elsewhere");
+  if (!printers.allLocal) return dot("printer-not-here");
+  const row = lane === "desktop" && printers.worst !== undefined ? (localRaster(printers.worst) ?? dot("ok")) : noHostRow(lane, printers.worst ?? local, desktopChosen);
+  return withProblem(row, printers);
+}
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-agent-health.test.ts lib/print-agent-printers.test.ts lib/printer/printer-dot.test.ts lib/print-agent-paths.test.ts lib/printer-dot-ui-paths.test.ts lib/printer/desktop-lan.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 100`; `# pass 100`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint lib/print-agent-health.ts lib/print-agent-printers.ts lib/printer/printer-dot.ts hooks/use-print-agent.ts hooks/use-agent-printers.ts lib/print-agent-health.test.ts lib/print-agent-printers.test.ts lib/printer/printer-dot.test.ts lib/print-agent-paths.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/hooks/use-agent-printers.ts apps/cafe/hooks/use-print-agent.ts apps/cafe/lib/print-agent-health.test.ts apps/cafe/lib/print-agent-health.ts apps/cafe/lib/print-agent-paths.test.ts apps/cafe/lib/print-agent-printers.test.ts apps/cafe/lib/print-agent-printers.ts apps/cafe/lib/printer/printer-dot.test.ts apps/cafe/lib/printer/printer-dot.ts
+git commit -m "feat(print): the Windows app 1.12.0 says how its printers are: each network printer's link, paper, cover and errors from the app's checks ride the beat, a Windows printer is connected while Windows reports it and one it no longer reports (checked every minute) reads not connected, and the dot reads a network printer that does not answer as on the POS app (Phase 3 Session 3E, E5)"
+```
+
+---
+
+### Task E6: Printer setup offers a Windows app 1.12.0 as a network printer's printing device, its words say so, and TEST-CHECKLIST gains the Windows app's network printer checks
+
+**Files:**
+- Modify: `packages/shared/src/print-agent-wire.ts` (`PrintDeviceSummary.lan`), `packages/shared/src/print-printers.ts` (a network printer goes beside a PC's Windows printers), `apps/cafe/lib/print-device.ts` (the devices read says `lan`), `apps/cafe/lib/print-setup-form.ts` (`lanPrintingDevicesOf`), `apps/cafe/components/print/setup/PrinterFormDialog.tsx` (the choices and the note), `apps/mobile/TEST-CHECKLIST.md` ("Network printers on the Windows app (Phase 3)")
+- Tests: `packages/shared/src/print-printers.test.ts` (the 2E case deliberately changed), `apps/cafe/lib/print-setup-form.test.ts` (1 new), `lib/print-lifecycle-paths.test.ts` (a pin), `lib/print-setup-ui-paths.test.ts` (the form's device line, deliberately changed), `scripts/print-host-live/setup-2d.ts` (leg at: 2 more checks), `scripts/print-host-live/setup-2e.ts` (leg au: a network printer beside a PC's Windows printer, deliberately changed; 1 more check)
+
+**Interfaces produced:** `PrintDeviceSummary.lan?: true`; `lanPrintingDevicesOf(devices, here: { deviceId, lan }, saved): string[]` (`lib/print-setup-form.ts`).
+
+**The printing device of a network printer** (spec §11): this device when it writes network printers (the POS app, or the Windows app 1.12.0), every other POS app device, and every Windows app whose wake said `lan` (1.12.0); a saved device stays offered whatever it is now. The devices read carries `lan` from the wake's stored capabilities (no new field on the model: `capabilities.lan` is stored since Phase 1). The note: "The POS app on an Android phone or tablet, or the Windows app 1.12 or later on a PC, prints to a network printer."
+
+**One PC, several kinds of printer** (found by the gate's exit pre-run): the server allowed a device several printers only of one kind (a PC's Windows printers, or the POS app's), so a network printer whose printing device is a PC that already prints a Windows printer was refused ("That device already prints…"). A network printer now goes beside a PC's Windows printers (`differentPrintersOfOneDevice`); the same printer twice, or a second printer for a browser tab, is refused as before.
+
+**TEST-CHECKLIST** gains the Windows app's network printer checks (the owner's one real-printer run after Phase 3).
+
+**RED**: the form helper's test cannot import it; the pins fail. Legs (at) and (au) run with the live legs in E7.
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/print-lifecycle-paths.test.ts`, find:
+
+```ts
+  // The devices read says which device can take a network printer over (the setup page's words); Session 3C (G-1): only
+  // while its own wake is fresh.
+  assert.ok(src(DEVICE).includes("...(lanFailoverNow(row, nowMs) ? { lanFailover: true as const } : {}),"), "the devices read carries lanFailover");
+});
+
+// Session 3C (G-1, the 3A review gate's exit pre-run): a lease refreshes lastSeenAt, but only the wake says lanFailover. A
+```
+
+Replace it with:
+
+```ts
+  // The devices read says which device can take a network printer over (the setup page's words); Session 3C (G-1): only
+  // while its own wake is fresh.
+  assert.ok(src(DEVICE).includes("...(lanFailoverNow(row, nowMs) ? { lanFailover: true as const } : {}),"), "the devices read carries lanFailover");
+  // Phase 3 Session 3E (spec §9.6): and whether a device writes network printers (the Windows app 1.12.0), for the form.
+  assert.ok(src(DEVICE).includes("...(row.capabilities?.lan === true ? { lan: true as const } : {}),"), "the devices read carries lan");
+  const form = src("apps/cafe/components/print/setup/PrinterFormDialog.tsx");
+  assert.ok(form.includes("const choices = lanPrintingDevicesOf(devices, { deviceId, lan: caps.native || desktopLanApi() !== null }, draft.primaryDeviceId);"), "the form offers them as a network printer's printing device");
+  assert.ok(form.includes("or the Windows app 1.12 or later on a PC, prints to a network printer."), "and says which devices can");
+});
+
+// Session 3C (G-1, the 3A review gate's exit pre-run): a lease refreshes lastSeenAt, but only the wake says lanFailover. A
+```
+
+In `apps/cafe/lib/print-setup-form.test.ts`, find:
+
+```ts
+  appPrinterConnectionOf,
+  onePrinterAppMessage,
+  onePrinterDevicesOf,
+  PRINTER_PORT_INVALID,
+  SETUP_PRINTER_NAME,
+  draftWithLocal,
+```
+
+Replace it with:
+
+```ts
+  appPrinterConnectionOf,
+  onePrinterAppMessage,
+  onePrinterDevicesOf,
+  lanPrintingDevicesOf,
+  PRINTER_PORT_INVALID,
+  SETUP_PRINTER_NAME,
+  draftWithLocal,
+```
+
+In `apps/cafe/lib/print-setup-form.test.ts`, find:
+
+```ts
+  assert.equal(onePrinterAppMessage("Counter"), "That device's POS app prints one printer (or has not checked in since it was updated), and it already prints Counter. Update the POS app on it to print several printers there.");
+  assert.ok(printerBodyOf({ ...bar, primaryDeviceId: "tab-v2" }, [{ ...counter, primaryDeviceId: "tab-v2" }]).ok, "a tablet on v2 prints both");
+  assert.ok(printerBodyOf({ ...bar, enabled: false }, [counter], undefined, undefined, ["tab-v1"]).ok, "saved switched off: never leased");
+});
+
+const DEVICES: PrintDeviceSummary[] = [
+```
+
+Replace it with:
+
+```ts
+  assert.equal(onePrinterAppMessage("Counter"), "That device's POS app prints one printer (or has not checked in since it was updated), and it already prints Counter. Update the POS app on it to print several printers there.");
+  assert.ok(printerBodyOf({ ...bar, primaryDeviceId: "tab-v2" }, [{ ...counter, primaryDeviceId: "tab-v2" }]).ok, "a tablet on v2 prints both");
+  assert.ok(printerBodyOf({ ...bar, enabled: false }, [counter], undefined, undefined, ["tab-v1"]).ok, "saved switched off: never leased");
+});
+
+test("3E: a network printer may be printed by this device when it writes network printers, every POS app, and a Windows app 1.12.0; its saved device stays offered", () => {
+  const devices: PrintDeviceSummary[] = [
+    { deviceId: "tab", label: "POS app", shell: "android", online: true, lastSeenAt: "2026-10-09T10:00:00.000Z", lan: true },
+    { deviceId: "pc-new", label: "Counter PC", shell: "windows", online: true, lastSeenAt: "2026-10-09T10:00:00.000Z", lan: true },
+    { deviceId: "pc-old", label: "Counter PC", shell: "windows", online: true, lastSeenAt: "2026-10-09T10:00:00.000Z" },
+    { deviceId: "tab-old", label: "POS app", shell: "android", online: false, lastSeenAt: "2026-10-09T09:00:00.000Z" },
+    { deviceId: "web", label: "Counter PC", shell: "browser", online: true, lastSeenAt: "2026-10-09T10:00:00.000Z" },
+  ];
+  assert.deepEqual(lanPrintingDevicesOf(devices, { deviceId: "pc-new", lan: true }, ""), ["pc-new", "tab", "tab-old"], "a Windows app 1.12.0 offers itself, and every POS app");
+  assert.deepEqual(lanPrintingDevicesOf(devices, { deviceId: "web", lan: false }, ""), ["tab", "pc-new", "tab-old"], "from a browser: the POS apps and the Windows app 1.12.0, never the old one or a browser");
+  assert.deepEqual(lanPrintingDevicesOf(devices, { deviceId: "web", lan: false }, "pc-old"), ["tab", "pc-new", "tab-old", "pc-old"], "a saved device stays offered");
+  assert.deepEqual(lanPrintingDevicesOf(devices, { deviceId: "", lan: true }, ""), ["tab", "pc-new", "tab-old"], "no device identity yet: not itself");
+});
+
+const DEVICES: PrintDeviceSummary[] = [
+```
+
+In `apps/cafe/lib/print-setup-ui-paths.test.ts`, find:
+
+```ts
+  // Session 2F1: a tablet whose POS app prints one printer (bridge v1) is refused a second, in words.
+  assert.match(form, /const result = printerBodyOf\(draft, printers, printer\?\.id, windowsHere \? PRINTER_WINDOWS_REQUIRED : undefined, onePrinter\);/, "the body and its rules from the pure lib");
+  assert.match(form, /const onePrinter = onePrinterDevicesOf\(devices, \{ deviceId, native: caps\.native, v2: pool\.active \}\);/);
+  assert.match(form, /devices\.filter\(\(device\) => device\.shell === "android" && device\.deviceId !== deviceId\)/, "only Android app devices print to a LAN printer for now");
+  assert.match(form, /\[\.\.\.\(caps\.native && deviceId !== "" \? \[deviceId\] : \[\]\), \.\.\.android\]/, "this device when it is the Android app");
+  assert.match(form, /onClick=\{\(\) => setDraft\(\(current\) => draftWithLocal\(current, here\)\)\}/, "Use this device's printer copies its saved printer");
+  assert.match(form, /onChange=\{\(kotAll\) => set\(\{ kotAll, \.\.\.\(kotAll \? \{ kotStations: \[\] \} : \{\}\) \}\)\}/, "Full KOT copy clears the station boxes");
+  assert.match(form, /disabled=\{draft\.kotAll\}/, "and keeps them off while it is on");
+```
+
+Replace it with:
+
+```ts
+  // Session 2F1: a tablet whose POS app prints one printer (bridge v1) is refused a second, in words.
+  assert.match(form, /const result = printerBodyOf\(draft, printers, printer\?\.id, windowsHere \? PRINTER_WINDOWS_REQUIRED : undefined, onePrinter\);/, "the body and its rules from the pure lib");
+  assert.match(form, /const onePrinter = onePrinterDevicesOf\(devices, \{ deviceId, native: caps\.native, v2: pool\.active \}\);/);
+  // Phase 3 Session 3E deliberately changed: the POS app's devices and the Windows app 1.12.0 (lib/print-setup-form.ts
+  // lanPrintingDevicesOf, unit-tested), this device when it writes network printers.
+  assert.match(form, /const choices = lanPrintingDevicesOf\(devices, \{ deviceId, lan: caps\.native \|\| desktopLanApi\(\) !== null \}, draft\.primaryDeviceId\);/, "the POS app's devices and the Windows app 1.12.0 print to a LAN printer");
+  assert.match(form, /onClick=\{\(\) => setDraft\(\(current\) => draftWithLocal\(current, here\)\)\}/, "Use this device's printer copies its saved printer");
+  assert.match(form, /onChange=\{\(kotAll\) => set\(\{ kotAll, \.\.\.\(kotAll \? \{ kotStations: \[\] \} : \{\}\) \}\)\}/, "Full KOT copy clears the station boxes");
+  assert.match(form, /disabled=\{draft\.kotAll\}/, "and keeps them off while it is on");
+```
+
+In `apps/cafe/scripts/print-host-live/setup-2d.ts`, find:
+
+```ts
+  check("(at) newest first", list.map((d) => d.deviceId).join() === [COUNTER, KITCHEN].join());
+  check("(at) online within 90 s, offline after", list[0]?.online === true && list[1]?.online === false && list[1]?.shell === "android" && list[1]?.label === "POS app");
+  check("(at) last seen as an ISO time", list[1]?.lastSeenAt === new Date(nowMs - 10 * 60_000).toISOString());
+  await PrintDevice.deleteMany({});
+}
+```
+
+Replace it with:
+
+```ts
+  check("(at) newest first", list.map((d) => d.deviceId).join() === [COUNTER, KITCHEN].join());
+  check("(at) online within 90 s, offline after", list[0]?.online === true && list[1]?.online === false && list[1]?.shell === "android" && list[1]?.label === "POS app");
+  check("(at) last seen as an ISO time", list[1]?.lastSeenAt === new Date(nowMs - 10 * 60_000).toISOString());
+  // Phase 3 Session 3E (spec §9.6): a device that writes network printers says so; a Windows app before 1.12.0 does not.
+  check("(at) a POS app writes network printers", list[0]?.lan === true);
+  await beatPrintDevice({ deviceId: "live-2d-old-pc", label: "Counter PC", shell: "windows", capabilities: { ...caps, lan: false, bluetooth: false, usb: false, windowsPrinters: true } }, nowMs - 1_000);
+  check("(at) a Windows app 1.11.0 does not", (await listPrintDevices(nowMs)).find((d) => d.deviceId === "live-2d-old-pc")?.lan === undefined);
+  await PrintDevice.deleteMany({});
+}
+```
+
+In `apps/cafe/scripts/print-host-live/setup-2e.ts`, find:
+
+```ts
+  check("(au) two Windows printers of one PC are both saved", counter.ok && kitchen.ok && kitchen.data.paper === 58);
+  const twice = await createPrinter(windows("Again", "epson tm-t82"));
+  check("(au) the same Windows printer twice (any case) is refused (409), saying so", !twice.ok && twice.status === 409 && twice.error === "Counter already prints on that Windows printer. Choose another Windows printer.");
+  const lan = await createPrinter({ ...windows("Network", ""), connection: { kind: "lan", host: "10.0.0.9", port: 9100 }, primaryDeviceId: PC });
+  check("(au) a network printer for that PC: one printer, as before (409, the 2D words)", !lan.ok && lan.status === 409 && lan.error.startsWith("That device already prints "));
+  const spare = await createPrinter(windows("Spare", "EPSON TM-T82", { enabled: false }));
+  const spareId = spare.ok ? spare.data.id : "";
+  const onAgain = await replacePrinter(spareId, windows("Spare", "EPSON TM-T82"));
+```
+
+Replace it with:
+
+```ts
+  check("(au) two Windows printers of one PC are both saved", counter.ok && kitchen.ok && kitchen.data.paper === 58);
+  const twice = await createPrinter(windows("Again", "epson tm-t82"));
+  check("(au) the same Windows printer twice (any case) is refused (409), saying so", !twice.ok && twice.status === 409 && twice.error === "Counter already prints on that Windows printer. Choose another Windows printer.");
+  // Phase 3 Session 3E (deliberately changed): the Windows app 1.12.0 writes a network printer beside its Windows printers.
+  const lan = await createPrinter({ ...windows("Network", ""), connection: { kind: "lan", host: "10.0.0.9", port: 9100 }, primaryDeviceId: PC });
+  check("(au) a network printer for that PC is saved beside its Windows printers (3E)", lan.ok);
+  const lanTwice = await createPrinter({ ...windows("Network again", ""), connection: { kind: "lan", host: "10.0.0.9", port: 9100 }, primaryDeviceId: PC });
+  check("(au) the same network printer twice for that PC is refused (409), saying so", !lanTwice.ok && lanTwice.status === 409 && lanTwice.error === "Network already prints on that printer. Choose another printer.");
+  const spare = await createPrinter(windows("Spare", "EPSON TM-T82", { enabled: false }));
+  const spareId = spare.ok ? spare.data.id : "";
+  const onAgain = await replacePrinter(spareId, windows("Spare", "EPSON TM-T82"));
+```
+
+In `packages/shared/src/print-printers.test.ts`, find:
+
+```ts
+  const same = { connection: windows("epson tm-t82"), enabled: true, slips };
+  assert.equal(printerWriterClash([counter], same)?.id, "counter", "the same Windows printer twice, in another case");
+  const lan = { connection: { kind: "lan" as const, host: "10.0.0.9", port: 9100 }, primaryDeviceId: "dev-pc", enabled: true, slips };
+  assert.equal(printerWriterClash([counter], lan)?.id, "counter", "a network printer for that PC: one printer, as before");
+  const phone = printer("phone", { connection: { kind: "device", deviceId: "dev-phone", transport: "bt-classic", address: "AA:BB" }, slips });
+  const usb = { connection: { kind: "device" as const, deviceId: "dev-phone", transport: "usb" as const, address: "04b8:0e15" }, enabled: true, slips };
+  assert.equal(printerWriterClash([phone], usb), null, "Session 2F1 (deliberate change): a POS app device prints several printers (bridge v2)");
+  assert.equal(printerClashMessage(counter, same), "Printer counter already prints on that Windows printer. Choose another Windows printer.");
+  assert.equal(printerClashMessage(counter, lan), printerWriterTakenMessage("Printer counter"), "any other clash: the 2D words");
+});
+
+// Phase 2 Session 2F1 (spec §9.2): the POS app on bridge v2 prints each of its printers, so a phone or tablet may write
+```
+
+Replace it with:
+
+```ts
+  const same = { connection: windows("epson tm-t82"), enabled: true, slips };
+  assert.equal(printerWriterClash([counter], same)?.id, "counter", "the same Windows printer twice, in another case");
+  const lan = { connection: { kind: "lan" as const, host: "10.0.0.9", port: 9100 }, primaryDeviceId: "dev-pc", enabled: true, slips };
+  // Phase 3 Session 3E (deliberately changed): the Windows app 1.12.0 writes a network printer beside its Windows printers.
+  assert.equal(printerWriterClash([counter], lan), null, "a network printer for that PC, beside its Windows printer");
+  const kitchenLan = printer("kitchen-lan", { connection: lan.connection, primaryDeviceId: "dev-pc", slips });
+  assert.equal(printerWriterClash([counter, kitchenLan], lan)?.id, "kitchen-lan", "the same network printer twice on that PC");
+  const serial = printer("serial", { connection: { kind: "device", deviceId: "dev-pc", transport: "web-serial", address: "" }, slips });
+  assert.equal(printerWriterClash([serial], lan)?.id, "serial", "a browser's one printer stays one printer");
+  const phone = printer("phone", { connection: { kind: "device", deviceId: "dev-phone", transport: "bt-classic", address: "AA:BB" }, slips });
+  const usb = { connection: { kind: "device" as const, deviceId: "dev-phone", transport: "usb" as const, address: "04b8:0e15" }, enabled: true, slips };
+  assert.equal(printerWriterClash([phone], usb), null, "Session 2F1 (deliberate change): a POS app device prints several printers (bridge v2)");
+  assert.equal(printerClashMessage(counter, same), "Printer counter already prints on that Windows printer. Choose another Windows printer.");
+  assert.equal(printerClashMessage(serial, lan), printerWriterTakenMessage("Printer serial"), "any other clash: the 2D words");
+});
+
+// Phase 2 Session 2F1 (spec §9.2): the POS app on bridge v2 prints each of its printers, so a phone or tablet may write
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-setup-form.test.ts lib/print-lifecycle-paths.test.ts lib/print-setup-ui-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 54`; `# pass 51`; `# fail 3`
+
+Run: `cd /d/kd/lucifer/packages/shared && node --import tsx --test src/print-printers.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 17`; `# pass 16`; `# fail 1`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/components/print/setup/PrinterFormDialog.tsx`, find:
+
+```tsx
+import { desktopPrintsOnNamed } from "@/lib/desktop-shell-printer";
+import { printConfigOf } from "@/lib/print";
+import { nativeIdOf } from "@/lib/print-agent-printers";
+import { PRINTER_WINDOWS_REQUIRED, appPrinterConnectionOf, draftWithLocal, localPrinterConnectionOf, onePrinterDevicesOf, printerBodyOf, printerDraftOf, printerPaperOf, windowsPrinterConnectionOf, type PrinterDraft } from "@/lib/print-setup-form";
+import { deviceConnectionText, deviceName } from "@/lib/print-setup-text";
+
+interface PrinterFormDialogProps {
+  /** null: Add printer. */
+```
+
+Replace it with:
+
+```tsx
+import { desktopPrintsOnNamed } from "@/lib/desktop-shell-printer";
+import { printConfigOf } from "@/lib/print";
+import { nativeIdOf } from "@/lib/print-agent-printers";
+import { PRINTER_WINDOWS_REQUIRED, appPrinterConnectionOf, draftWithLocal, lanPrintingDevicesOf, localPrinterConnectionOf, onePrinterDevicesOf, printerBodyOf, printerDraftOf, printerPaperOf, windowsPrinterConnectionOf, type PrinterDraft } from "@/lib/print-setup-form";
+import { deviceConnectionText, deviceName } from "@/lib/print-setup-text";
+import { desktopLanApi } from "@/lib/printer/desktop-lan";
+
+interface PrinterFormDialogProps {
+  /** null: Add printer. */
+```
+
+In `apps/cafe/components/print/setup/PrinterFormDialog.tsx`, find:
+
+```tsx
+
+const LAN_TIP = "Give the printer a fixed address (a static IP, or a DHCP reservation on the router) so it never moves.";
+const LAN_DEVICE_NOTE =
+  "For now only the POS app on an Android phone or tablet prints to a network printer. A tablet not listed here: open Printer setup on it and add the printer there.";
+const FULL_COPY_NOTE = "A full copy already holds every station's items.";
+const NOTICES_NOTE = "Void, moved and cancel slips for the stations it prints.";
+const COPIES = ["1", "2", "3"];
+```
+
+Replace it with:
+
+```tsx
+
+const LAN_TIP = "Give the printer a fixed address (a static IP, or a DHCP reservation on the router) so it never moves.";
+const LAN_DEVICE_NOTE =
+  "The POS app on an Android phone or tablet, or the Windows app 1.12 or later on a PC, prints to a network printer. A device not listed here (a PC that prints nothing yet, say): open Printer setup on it and add the printer there.";
+const FULL_COPY_NOTE = "A full copy already holds every station's items.";
+const NOTICES_NOTE = "Void, moved and cancel slips for the stations it prints.";
+const COPIES = ["1", "2", "3"];
+```
+
+In `apps/cafe/components/print/setup/PrinterFormDialog.tsx`, find:
+
+```tsx
+  const appHere = pool.active && draft.kind === "device" && (draft.device === null || draft.device.deviceId === deviceId);
+  const appChoice = draft.device === null ? "" : (nativeIdOf({ connection: draft.device }, pool) ?? "");
+  const onePrinter = onePrinterDevicesOf(devices, { deviceId, native: caps.native, v2: pool.active });
+  const android = devices.filter((device) => device.shell === "android" && device.deviceId !== deviceId).map((device) => device.deviceId);
+  const choices = [...(caps.native && deviceId !== "" ? [deviceId] : []), ...android];
+  if (draft.primaryDeviceId !== "" && !choices.includes(draft.primaryDeviceId)) choices.push(draft.primaryDeviceId);
+  const shownDevice = draft.device === null ? null : `${deviceConnectionText(draft.device, devices, deviceId)} (${draft.device.address})`;
+
+  const submit = async () => {
+```
+
+Replace it with:
+
+```tsx
+  const appHere = pool.active && draft.kind === "device" && (draft.device === null || draft.device.deviceId === deviceId);
+  const appChoice = draft.device === null ? "" : (nativeIdOf({ connection: draft.device }, pool) ?? "");
+  const onePrinter = onePrinterDevicesOf(devices, { deviceId, native: caps.native, v2: pool.active });
+  // Phase 3 Session 3E (spec §9.6): a Windows app 1.12.0 prints network printers too, this PC or another.
+  const choices = lanPrintingDevicesOf(devices, { deviceId, lan: caps.native || desktopLanApi() !== null }, draft.primaryDeviceId);
+  const shownDevice = draft.device === null ? null : `${deviceConnectionText(draft.device, devices, deviceId)} (${draft.device.address})`;
+
+  const submit = async () => {
+```
+
+In `apps/cafe/lib/print-device.ts`, find:
+
+```ts
+ *  lead), for the Printer setup page and a network printer's printing device. One bounded read; no write. */
+export async function listPrintDevices(nowMs: number): Promise<PrintDeviceSummary[]> {
+  const rows = await PrintDevice.find()
+    .select("deviceId label shell lastSeenAt nativeProtocol capabilities.lanFailover beatAt")
+    .sort({ lastSeenAt: -1 })
+    .limit(PRINT_DEVICES_LIST_MAX)
+    .lean<Array<{ deviceId: string; label: string; shell: PrintDeviceShell; lastSeenAt: Date; nativeProtocol?: number; capabilities?: { lanFailover?: boolean }; beatAt?: Date }>>();
+  return rows.map((row) => ({
+    deviceId: row.deviceId,
+    label: row.label,
+```
+
+Replace it with:
+
+```ts
+ *  lead), for the Printer setup page and a network printer's printing device. One bounded read; no write. */
+export async function listPrintDevices(nowMs: number): Promise<PrintDeviceSummary[]> {
+  const rows = await PrintDevice.find()
+    .select("deviceId label shell lastSeenAt nativeProtocol capabilities.lan capabilities.lanFailover beatAt")
+    .sort({ lastSeenAt: -1 })
+    .limit(PRINT_DEVICES_LIST_MAX)
+    .lean<Array<{ deviceId: string; label: string; shell: PrintDeviceShell; lastSeenAt: Date; nativeProtocol?: number; capabilities?: { lan?: boolean; lanFailover?: boolean }; beatAt?: Date }>>();
+  return rows.map((row) => ({
+    deviceId: row.deviceId,
+    label: row.label,
+```
+
+In `apps/cafe/lib/print-device.ts`, find:
+
+```ts
+    // Session 3B (spec §9.3): it can take a network printer over, for the setup page's words; Session 3C (G-1): only while
+    // its own wake is fresh, as the server decides.
+    ...(lanFailoverNow(row, nowMs) ? { lanFailover: true as const } : {}),
+  }));
+}
+```
+
+Replace it with:
+
+```ts
+    // Session 3B (spec §9.3): it can take a network printer over, for the setup page's words; Session 3C (G-1): only while
+    // its own wake is fresh, as the server decides.
+    ...(lanFailoverNow(row, nowMs) ? { lanFailover: true as const } : {}),
+    // Phase 3 Session 3E (spec §9.6): it can write a network printer (the Windows app from 1.12.0), for the printer form.
+    ...(row.capabilities?.lan === true ? { lan: true as const } : {}),
+  }));
+}
+```
+
+In `apps/cafe/lib/print-setup-form.ts`, find:
+
+```ts
+export function onePrinterDevicesOf(devices: readonly PrintDeviceSummary[], here: { deviceId: string; native: boolean; v2: boolean }): string[] {
+  const others = devices.filter((device) => device.shell === "android" && device.deviceId !== here.deviceId && device.nativeProtocol !== 2).map((device) => device.deviceId);
+  return here.native && !here.v2 && here.deviceId !== "" ? [here.deviceId, ...others] : others;
+}
+
+/** A new printer: nothing chosen but Notices, on for any printer that ends up taking KOTs (the 2B gate's M-7: a
+```
+
+Replace it with:
+
+```ts
+export function onePrinterDevicesOf(devices: readonly PrintDeviceSummary[], here: { deviceId: string; native: boolean; v2: boolean }): string[] {
+  const others = devices.filter((device) => device.shell === "android" && device.deviceId !== here.deviceId && device.nativeProtocol !== 2).map((device) => device.deviceId);
+  return here.native && !here.v2 && here.deviceId !== "" ? [here.deviceId, ...others] : others;
+}
+
+/** Phase 3 Session 3E (spec §9.6): the devices a network printer may be printed by: this device when it writes network
+ *  printers (the POS app, or the Windows app 1.12.0), every other POS app device, and every Windows app whose wake said
+ *  it writes them (1.12.0); the printer's saved device stays offered whatever it is now. */
+export function lanPrintingDevicesOf(devices: readonly PrintDeviceSummary[], here: { deviceId: string; lan: boolean }, saved: string): string[] {
+  const others = devices.filter((device) => device.deviceId !== here.deviceId && (device.shell === "android" || (device.shell === "windows" && device.lan === true))).map((device) => device.deviceId);
+  const choices = [...(here.lan && here.deviceId !== "" ? [here.deviceId] : []), ...others];
+  return saved !== "" && !choices.includes(saved) ? [...choices, saved] : choices;
+}
+
+/** A new printer: nothing chosen but Notices, on for any printer that ends up taking KOTs (the 2B gate's M-7: a
+```
+
+In `apps/mobile/TEST-CHECKLIST.md`, find:
+
+```markdown
+- [ ] An unplugged printer: Windows keeps its slips in its own print queue and prints them when it is back; the POS
+      cannot see that queue (spec §9.6), so check the paper.
+
+## Result
+
+Date: ________  Device and Android version: ________________________
+```
+
+Replace it with:
+
+```markdown
+- [ ] An unplugged printer: Windows keeps its slips in its own print queue and prints them when it is back; the POS
+      cannot see that queue (spec §9.6), so check the paper.
+
+## Network printers on the Windows app (Phase 3, added 2026-10-09)
+
+Needs the Windows app 1.12.0 (`POS-Software-Setup-1.12.0.exe`, installed over 1.11.0) on the counter PC, a network
+(LAN) thermal printer on port 9100 with a fixed address, and the POS with Phase 3. The app writes the network
+printer itself, straight from the PC (no Windows driver): the slip is the same as the POS app's.
+
+- [ ] Printer setup on the PC: **Add printer** → **Network (LAN)** → the printer's address and 9100 → **Printing
+      device**: this PC → tick **Kitchen KOTs** → save. **Send to Kitchen**: one KOT on the network printer, as wide
+      as its roll. The 1.11.0 app on another PC is not offered as a printing device for it.
+- [ ] Switch the network printer off: the next kitchen slip waits; within about a minute the PC's printer dot says
+      the printer is not answering, and within about three minutes every device's panel row says "Kitchen is not
+      connected.". Switch it on: the slip prints within about half a minute, once.
+- [ ] Open its cover, then take its paper out: "Kitchen has its cover open." / "Kitchen is out of paper." on every
+      device while a slip waits; close it / put paper back: the slip prints within about 10 seconds, once.
+- [ ] Cut its power in the middle of a long bill: the bill asks the cashier (or the KOT prints again labelled
+      **REPRINT**), never a silent "printed".
+- [ ] Two printing devices for one network printer: the PC prints it, a tablet (POS app) also writes a printer. Quit
+      the Windows app (tray → Quit): every slip made 90 s or more later prints from the tablet; one already waiting
+      prints within a minute more. Open the app again: the PC prints it again.
+- [ ] Leave the PC and a tablet both listing the network printer for 10 minutes with no orders: no "not connected"
+      words appear (a printer that takes one connection at a time is asked again a second later).
+- [ ] A Windows printer the PC prints (Phase 2's checks): remove it in Windows (Settings → Printers): within about three
+      minutes a slip for it waits with "‹printer› is not connected." on every device. Add it back with the same name:
+      the slip prints once, within about a minute.
+
+## Result
+
+Date: ________  Device and Android version: ________________________
+```
+
+In `packages/shared/src/print-agent-wire.ts`, find:
+
+```ts
+  nativeProtocol?: number;
+  /** Session 3B (spec §9.3): its wake said it can take a network printer over (PrintDeviceCapabilities.lanFailover). */
+  lanFailover?: true;
+}
+/** The devices list's one page: far above any cafe's devices (rows unseen for 7 days are pruned). */
+export const PRINT_DEVICES_LIST_MAX = 50;
+```
+
+Replace it with:
+
+```ts
+  nativeProtocol?: number;
+  /** Session 3B (spec §9.3): its wake said it can take a network printer over (PrintDeviceCapabilities.lanFailover). */
+  lanFailover?: true;
+  /** Phase 3 Session 3E (spec §9.6): its wake said it can write a network printer (PrintDeviceCapabilities.lan): every POS
+   *  app, and the Windows app from 1.12.0. The printer form offers such a device as a network printer's printing device. */
+  lan?: true;
+}
+/** The devices list's one page: far above any cafe's devices (rows unseen for 7 days are pruned). */
+export const PRINT_DEVICES_LIST_MAX = 50;
+```
+
+In `packages/shared/src/print-printers.ts`, find:
+
+```ts
+}
+
+/** Two printers one device may write side by side: of one kind (Windows printers of a PC, or the POS app's printers),
+ *  and not the same printer. */
+function differentPrintersOfOneDevice(a: PrinterConnection, b: PrinterConnection): boolean {
+  const left = devicePrinterKey(a);
+  const right = devicePrinterKey(b);
+  return left !== null && right !== null && left.family === right.family && left.key !== right.key;
+}
+
+export function printerWriterTakenMessage(name: string): string {
+```
+
+Replace it with:
+
+```ts
+}
+
+/** Two printers one device may write side by side: of one kind (Windows printers of a PC, or the POS app's printers),
+ *  and not the same printer. Phase 3 Session 3E (spec §9.6): a network printer goes beside a PC's Windows printers too
+ *  (the Windows app 1.12.0 writes both; the printer form offers a PC for a network printer only from 1.12.0). */
+function differentPrintersOfOneDevice(a: PrinterConnection, b: PrinterConnection): boolean {
+  const left = devicePrinterKey(a);
+  const right = devicePrinterKey(b);
+  if (left === null || right === null || left.key === right.key) return false;
+  return left.family === right.family || a.kind === "lan" || b.kind === "lan";
+}
+
+export function printerWriterTakenMessage(name: string): string {
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-setup-form.test.ts lib/print-lifecycle-paths.test.ts lib/print-setup-ui-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 54`; `# pass 54`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/packages/shared && node --import tsx --test src/print-printers.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 17`; `# pass 17`; `# fail 0`
+
+Run: `cd /d/kd/lucifer/packages/shared && npx tsc --noEmit && echo SHARED_TSC_OK`
+Expected: `SHARED_TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint lib/print-device.ts lib/print-setup-form.ts components/print/setup/PrinterFormDialog.tsx scripts/print-host-live/setup-2d.ts lib/print-setup-form.test.ts lib/print-lifecycle-paths.test.ts lib/print-setup-ui-paths.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/components/print/setup/PrinterFormDialog.tsx apps/cafe/lib/print-device.ts apps/cafe/lib/print-lifecycle-paths.test.ts apps/cafe/lib/print-setup-form.test.ts apps/cafe/lib/print-setup-form.ts apps/cafe/lib/print-setup-ui-paths.test.ts apps/cafe/scripts/print-host-live/setup-2d.ts apps/cafe/scripts/print-host-live/setup-2e.ts apps/mobile/TEST-CHECKLIST.md packages/shared/src/print-agent-wire.ts packages/shared/src/print-printers.test.ts packages/shared/src/print-printers.ts
+git commit -m "feat(print): Printer setup offers a Windows app 1.12.0 as a network printer's printing device (this PC or another; the devices read says which devices write network printers), its words say so, and TEST-CHECKLIST gains the Windows app's network printer checks (Phase 3 Session 3E, E6)"
+```
+
+---
+
+### Task E7: full verification, the APKs and the installer, the exit, the fresh review, Results
+
+**Files:** this plan (a new "Session 3E Results" section at its end), nothing else. Every tool below goes in this session's scratchpad, never in the repo.
+
+- [ ] **Step 1: every suite, once each, in the background, one after another** (run `df -h /d /c` first)
+
+Run, from `/d/kd/lucifer` (the totals the pre-validation saw on the golden tree):
+
+| Run | Expected |
+|---|---|
+| `cd packages/shared && npm test && npx tsc --noEmit` | `# tests 821`, `# pass 821`, `# fail 0`; tsc 0 |
+| `cd apps/cafe && npm test` | `# tests 5044`, `# pass 5043`, `# fail 0`, `# skipped 1` (go-live-dl) |
+| `npx tsc --noEmit` and `npm run lint` in each of `apps/cafe`, `apps/hub`, `apps/mobile`; `npm run typecheck` and `npm run lint` in `apps/desktop` | 0, and 0 errors (the 2 old warnings, `lib/masters-blob.test.ts:331`) |
+| `cd apps/mobile && npm test && npm run test:app` | **141/141**; Jest **5/5** (a Jest test can time out at 5 s under load: run it again alone before calling it a failure) |
+| `cd apps/desktop && npm test` | **205/205** |
+| `npm run test:print-tools` | 11/11 |
+| `cd apps/cafe && MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_print_host_3e npm run verify:print:live` | **`447 passed, 0 failed`** (leg at: +2; leg au: +1, one deliberately changed) |
+
+- [ ] **Step 2: JUnit, and the APKs (a full release compile)**
+
+Run (D: needs ~1.5 GB free; `GRADLE_USER_HOME` always on D:):
+- `cd apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun` → BUILD SUCCESSFUL; **64 tests, 0 failures** (BatteryTargetsTest 3, DleEotTest 7, HostLifeTest 4, PageWatchTest 6, PoolListTest 6, PoolStatusTest 3, PrinterManagerTest 22, PrinterPoolTest 3, TcpTransportTest 10).
+- Write a marker file in the scratchpad, then the emulator's APK: `GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat aR -PreactNativeArchitectures=x86_64 --info` (copy `app/build/outputs/apk/release/app-release.apk` into the scratchpad as `pos-emulator-x86_64-3e.apk` and hash it). D0's guard compiles the release Kotlin in full: its log has **no** line `Using Kotlin/JVM incremental compilation`, `find app/build/tmp/kotlin-classes/release -name '*.class' ! -newer <marker> | wc -l` is **0**, and `javap -c -p app/build/tmp/kotlin-classes/release/com/possoftware/pos/printer/TransportFactory.class` calls `TcpTransport."<init>":(Ljava/lang/String;IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V`. Never put another task with "release" in its name on this command line.
+- The client pair (recorded, **not released**): `GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a`; copy both into the scratchpad and hash them. The gate's build copy (a scratchpad clone, so its hashes differ from the repo's) gave x86_64 `397612a8…`, arm64 `9e4525b7…`, armv7 `c6c436f6…`.
+- Run `adb logcat -b crash -d` right after every install in Step 6.
+
+- [ ] **Step 3: the Next production build on the repo (D:)**
+
+Run: `df -h /d` (a build needs ~1.5 GB free), then `cd apps/cafe && npm run build`.
+Expected: exit 0, 132 routes (3E adds none; count the lines between "Route (app)" and "First Load JS shared" with awk).
+
+- [ ] **Step 4: the Windows installer 1.12.0, and what changed outside the web**
+
+Run: `cd apps/desktop && npm run dist` (Electron 44.2.0 and the NSIS tools are cached on this PC: no download; the koffi Windows binary is unpacked from the asar). Expected: `dist/POS-Software-Setup-1.12.0.exe` (about 112 MB; the gate's build: 112,216,794 B, `b73e6143…`; the repo's build will hash differently); copy it into the scratchpad and hash it, **not released** (the client release folder is unchanged). `dist/` and `out/` are build output (git ignores them); leave them.
+
+Then: `git diff --stat 978459c..HEAD -- workers` → empty (no Worker change). `-- apps/desktop` → E1 and E2's files; `-- apps/mobile` → E0's files and TEST-CHECKLIST (the APKs change: E0).
+
+- [ ] **Step 5: the exit, headless (spec §14's Phase 3 row for the Windows app; the 3E spec's exit)**
+
+**The harness** (check `netstat -ano | grep LISTEN` for 3110, 3200 and 9100 first, and never stop another session's server):
+- **The database:** a fresh `pos_scratch_e2e_3es` (the gate used `pos_scratch_e2e_3e`): copy Session 3B's env file (`C:\Users\KARTIK~1.DES\AppData\Local\Temp\claude\d--kd-lucifer\a0581b85-1d76-4fd6-b09f-6f32a4b9db56\scratchpad\e2e.env`) into this session's scratchpad as `e2e.env` (for `type-secret.py`) and as `e2e3e.env` with only `MONGODB_URI` changed to `mongodb://127.0.0.1:27017/pos_scratch_e2e_3es` (a Python script that never prints a value: the gate's `mkenv3e.py` is the 3C session's `mkenv3c.py` with `3c` read as `3e`). Seed it from `apps/cafe`: `node --env-file=<scratchpad>/e2e3e.env --import tsx scripts/seed-admin.ts`, then `seed-tables.ts`, then `seed-menu.ts`. Copy `ui.py`, `type-secret.py`, `p3a-proxy.mjs` and `p3b-proxy.mjs` from the 3D session's scratchpad (`1babf0bd…`). Run `ui.py` as `python -X utf8 -I ui.py …`.
+- **The servers** (each a background command with `timeout: 7200000`): this branch's Step 3 build, `cd /d/kd/lucifer/apps/cafe && node --env-file=<scratchpad>/e2e3e.env ../../node_modules/next/dist/bin/next start -p 3110`; `node <scratchpad>/p3a-proxy.mjs --listen 3200 --target 3110 --log <scratchpad>/proxy3e.jsonl`.
+- **The tool**, saved with the Write tool exactly as shown (or extracted byte for byte from this fenced block by a script): `pw-3e.mjs`. It runs from `apps/cafe` as `MSYS_NO_PATHCONV=1 node --import tsx --env-file=<scratchpad>/e2e3e.env <scratchpad>/pw-3e.mjs <scenario> [arg]`, where `<scratchpad>` is the Windows form (`pwd -W`). Its fake Windows apps write network printers through the **real** `apps/desktop/src/raw-tcp.ts` (imported through tsx from `PW_REPO`, default `D:/kd/lucifer`): only Electron's IPC is faked. Each scenario starts the fake printer 9100 it needs (a `keep.txt` goes into its `--out` folder at once: the %TEMP% cleaner deletes empty folders). A notice (toast) can cover the printer button: the tool opens the panel through its Show button.
+
+`<scratchpad>/pw-3e.mjs`:
+
+```js
+// The 3D review gate's pre-run of Session 3E's exit (scratchpad only; never in the repo; grown from pw-2e.mjs and
+// pw-3b.mjs). Two or three fake Windows apps (PC1, PC2: 1.12.0; PC3: 1.11.0), each a headless desktop Chrome with its own
+// persistent profile (its own device id) and a fake window.posDesktop injected before any page script, plus a plain
+// Chrome tab (C) that orders. The fake app's network printers are written by the REAL main-process module
+// (apps/desktop/src/raw-tcp.ts of PW_REPO, imported through tsx): printRaw and lanStatus go over real TCP to the fake
+// ESC/POS printers (127.0.0.1:9100 the kitchen), so their jobs.log is the paper; only Electron's IPC is faked. Its Windows
+// printers (printHtml, printHtmlOn) are logged to pw-3e-windows.jsonl. Per PC a control file (pw-3e-control-<pc>.json)
+// holds the Windows printers it reports (`names`) and the network addresses it cannot reach (`blocked`), read at every
+// call. Signs in as the e2e admin with a session minted from the env file's AUTH_SECRET (never printed); never prints a
+// secret, a token or a payload. Run from apps/cafe (PW_REPO's, for tsx and mongoose):
+//   MSYS_NO_PATHCONV=1 node --import tsx --env-file=<scratchpad>/e2e3e.env <scratchpad>/pw-3e.mjs <scenario> [arg]
+// PW_BASE (default http://localhost:3200, the counting proxy) is where the pages and the API calls go.
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(path.join(process.cwd(), "package.json"));
+const mongoose = require("mongoose");
+const { encode } = require("next-auth/jwt");
+const pwRequire = createRequire("C:/Users/Kartik.desai/AppData/Local/npm-cache/_npx/9833c18b2d85bc59/node_modules/playwright-core/package.json");
+const { chromium } = pwRequire("playwright-core");
+
+const BASE = process.env.PW_BASE ?? "http://localhost:3200";
+const REPO = process.env.PW_REPO ?? "D:/kd/lucifer";
+const rawTcp = await import(pathToFileURL(path.join(REPO, "apps", "desktop", "src", "raw-tcp.ts")).href);
+const COOKIE = "authjs.session-token";
+const DEVICES = path.join(HERE, "pw-3e-devices.json");
+const WINDOWS_LOG = path.join(HERE, "pw-3e-windows.jsonl");
+const t0 = Date.now();
+const ts = () => `${((Date.now() - t0) / 1000).toFixed(1)}s`;
+const say = (...parts) => console.log(`[${ts()}]`, ...parts);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const uri = process.env.MONGODB_URI ?? "";
+if (!/\/pos_scratch_e2e_3e[a-z0-9_]*$/.test(uri)) throw new Error("refusing: not pos_scratch_e2e_3e");
+await mongoose.connect(uri);
+const db = mongoose.connection.db;
+const staff = await db.collection("staffs").findOne({ username: "e2eadmin" }, { projection: { name: 1, role: 1 } });
+if (staff === null) throw new Error("e2eadmin not found");
+const token = await encode({ token: { name: staff.name, id: String(staff._id), role: staff.role, lastValidated: Date.now() }, secret: process.env.AUTH_SECRET, salt: COOKIE });
+const api = async (method, url, body) => {
+  const res = await fetch(`${BASE}${url}`, { method, headers: { "content-type": "application/json", cookie: `${COOKIE}=${token}` }, body: body === undefined ? undefined : JSON.stringify(body) });
+  return { status: res.status, json: await res.json().catch(() => ({})) };
+};
+const jobs = () => db.collection("printjobs").find({}).sort({ createdAt: 1, _id: 1 }).toArray();
+const device = (id) => db.collection("printdevices").findOne({ deviceId: id });
+const printerByName = (name) => db.collection("printers").findOne({ name });
+const short = (id) => (id ?? "").slice(-4);
+const clock = (d) => (d instanceof Date ? d.toISOString().slice(11, 19) : "?");
+const describe = (j) => ({ kind: j.kind, status: j.status, target: short(j.targetDeviceId), labels: j.labels ?? [], log: (j.log ?? []).map((l) => `${l.event}${l.deviceId ? `@${short(l.deviceId)}` : ""}@${clock(l.at)}${l.detail ? `(${l.detail.slice(0, 60)})` : ""}`) });
+const jobAfter = async (sinceMs, printerName) => {
+  const printer = await printerByName(printerName);
+  return (await jobs()).filter((j) => j.createdAt.getTime() >= sinceMs - 2000 && String(j.printerId) === String(printer?._id ?? ""));
+};
+
+// ── the fake printers, as child processes ──
+const printers = new Map();
+const outOf = (port) => path.join(HERE, `fake3e-${port}`);
+function startPrinter(port, flags = []) {
+  stopPrinter(port);
+  const out = outOf(port);
+  mkdirSync(out, { recursive: true });
+  writeFileSync(path.join(out, "keep.txt"), "keep");
+  const child = spawn(process.execPath, [path.join(REPO, "scripts", "fake-escpos-printer.mjs"), "--port", String(port), "--out", out, ...flags], { stdio: "ignore" });
+  printers.set(port, child);
+  say(`fake printer ${port} ${flags.join(" ") || "(normal)"}`);
+}
+function stopPrinter(port) {
+  const child = printers.get(port);
+  if (child !== undefined) child.kill();
+  printers.delete(port);
+}
+const records = (port) => {
+  const file = path.join(outOf(port), "jobs.log");
+  if (!existsSync(file)) return [];
+  return readFileSync(file, "utf8").split("\n").filter((l) => l.trim() !== "").map((l) => JSON.parse(l));
+};
+const slips = (port) => records(port).filter((r) => r.bytes > 0 && r.statusOnly !== true);
+
+// ── a fake Windows app (node side): its Windows printers, and its network printers through the real raw-tcp.ts ──
+const NAMES = ["EPSON TM-T82", "Kitchen TVS", "Microsoft Print to PDF"];
+const controlFile = (pc) => path.join(HERE, `pw-3e-control-${pc}.json`);
+const control = (pc) => (existsSync(controlFile(pc)) ? JSON.parse(readFileSync(controlFile(pc), "utf8")) : { names: NAMES, blocked: [] });
+const setControl = (pc, patch) => writeFileSync(controlFile(pc), JSON.stringify({ ...control(pc), ...patch }));
+const slipWords = (html) => html.slice(html.indexOf("<body")).replace(/<style[\s\S]*?<\/style>/g, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim().slice(0, 100);
+
+async function pcCall(pc, method, args) {
+  const c = control(pc);
+  switch (method) {
+    case "listPrinters":
+      return { selected: c.names[0] ?? null, printers: c.names.map((name) => ({ name, displayName: name })), printMode: "direct" };
+    case "printHtml":
+    case "printHtmlOn": {
+      const printer = method === "printHtml" ? c.names[0] : args[1];
+      const refused = !c.names.includes(printer);
+      appendFileSync(WINDOWS_LOG, `${JSON.stringify({ at: new Date().toISOString().slice(11, 19), pc, method, printer, refused, words: slipWords(args[0]) })}\n`);
+      say(`${pc} ${method} on ${printer}${refused ? " REFUSED" : ""}`);
+      return refused ? { __error: "That printer is not on this PC. Open Printer setup in the POS and choose a printer this PC has." } : null;
+    }
+    case "printRaw": {
+      const [target, bytes] = args;
+      const key = `${target.host}:${target.port}`;
+      if (c.blocked.includes(key)) {
+        say(`${pc} printRaw to ${key}: blocked (no connect)`);
+        return { ok: false, sent: "no", failure: "not-connected", message: "The printer did not answer.", health: null };
+      }
+      try {
+        const { health } = await rawTcp.printRawTcp(target, Uint8Array.from(bytes));
+        say(`${pc} printRaw to ${key}: ${bytes.length} B sent, health ${JSON.stringify(health)}`);
+        return { ok: true, health };
+      } catch (error) {
+        say(`${pc} printRaw to ${key}: ${error.sent} (${error.failure}) ${error.message}`);
+        return { ok: false, sent: error.sent ?? "maybe", failure: error.failure ?? "write-failed", message: error.message, health: error.health ?? null };
+      }
+    }
+    case "lanStatus": {
+      const out = [];
+      for (const target of args[0]) {
+        const key = `${target.host}:${target.port}`;
+        if (c.blocked.includes(key)) out.push({ host: target.host, port: target.port, link: "disconnected", health: null });
+        else {
+          const got = await rawTcp.probeRawTcp(target);
+          out.push({ host: target.host, port: target.port, link: got?.link ?? null, health: got?.health ?? null });
+        }
+      }
+      say(`${pc} lanStatus: ${out.map((s) => `${s.host}:${s.port}=${s.link}${s.health?.paper ? `/${s.health.paper}` : ""}`).join(" ")}`);
+      return out;
+    }
+    default:
+      return null;
+  }
+}
+
+const browsers = [];
+async function context(profile) {
+  const ctx = await chromium.launchPersistentContext(path.join(HERE, `pw-3e-${profile}`), {
+    executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    headless: true,
+    viewport: { width: 1280, height: 1000 },
+  });
+  await ctx.addCookies([{ name: COOKIE, value: token, domain: "localhost", path: "/", httpOnly: true, sameSite: "Lax" }]);
+  browsers.push(ctx);
+  return ctx;
+}
+
+async function openPc(pc, version = "1.12.0", url = "/pos") {
+  const ctx = await context(pc.toLowerCase());
+  await ctx.exposeBinding("__pc", (_source, method, args) => pcCall(pc, method, args));
+  await ctx.addInitScript((v) => {
+    const call = async (method, args) => {
+      const result = await window.__pc(method, args);
+      if (result !== null && typeof result === "object" && typeof result.__error === "string") throw new Error(`Error invoking remote method 'pos-desktop:${method}': Error: ${result.__error}`);
+      return result;
+    };
+    const bridge = {
+      version: v,
+      printHtml: (html) => call("printHtml", [html]),
+      printHtmlOn: (html, name) => call("printHtmlOn", [html, name]),
+      listPrinters: () => call("listPrinters", []),
+      savePrinter: async (name) => ({ selected: name }),
+      savePrintMode: async (mode) => ({ printMode: mode }),
+    };
+    if (v !== "1.11.0") {
+      bridge.printRaw = (printer, data) => call("printRaw", [printer, Array.from(data)]);
+      bridge.lanStatus = (list) => call("lanStatus", [list]);
+    }
+    window.posDesktop = bridge;
+  }, version);
+  const page = ctx.pages()[0] ?? (await ctx.newPage());
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(String(e.message).slice(0, 160)));
+  await page.goto(`${BASE}${url}`, { waitUntil: "networkidle" });
+  const deviceId = await page.evaluate(() => window.localStorage.getItem("pos.device-id.v1"));
+  say(`${pc} (fake Windows app ${version}) open as device …${short(deviceId)}`);
+  return { name: pc, page, ctx, deviceId, errors };
+}
+
+async function openPlain(name, profile) {
+  const ctx = await context(profile);
+  const page = ctx.pages()[0] ?? (await ctx.newPage());
+  await page.goto(`${BASE}/pos`, { waitUntil: "networkidle" });
+  const deviceId = await page.evaluate(() => window.localStorage.getItem("pos.device-id.v1"));
+  say(`${name} (a plain browser tab) open as device …${short(deviceId)}`);
+  return { name, page, ctx, deviceId, errors: [] };
+}
+
+async function close(who) {
+  await who.ctx.close().catch(() => undefined);
+  say(`${who.name} closed (its page stopped)`);
+}
+
+async function order(who, items) {
+  const page = who.page;
+  if (!page.url().endsWith("/pos")) await page.goto(`${BASE}/pos`, { waitUntil: "networkidle" });
+  for (const item of items) {
+    await page.getByRole("button", { name: new RegExp(`^${item}`) }).first().click();
+    await page.waitForTimeout(500);
+    const add = page.getByRole("dialog").getByRole("button", { name: /^Add \d/ });
+    if ((await add.count()) > 0) await add.first().click();
+    await page.waitForTimeout(300);
+  }
+  await page.getByRole("button", { name: "Send to Kitchen" }).click();
+  const at = Date.now();
+  say(`${who.name} sent ${items.join(" + ")} to the kitchen`);
+  await page.waitForTimeout(1500);
+  await page.keyboard.press("Escape").catch(() => undefined);
+  return at;
+}
+
+async function until(label, check, timeoutMs, everyMs = 1000) {
+  const start = Date.now();
+  for (;;) {
+    const got = await check();
+    if (got) {
+      say(`${label}: yes after ${((Date.now() - start) / 1000).toFixed(1)} s`);
+      return got;
+    }
+    if (Date.now() - start > timeoutMs) {
+      say(`${label}: NO within ${timeoutMs / 1000} s`);
+      return null;
+    }
+    await sleep(everyMs);
+  }
+}
+
+// The waiting-slips panel's words on a device (the printer button, then the dialog).
+async function panelText(who) {
+  // The alarm's notice (a toast) may cover the button: read it, then click through it.
+  const toasts = (await who.page.locator("[data-sonner-toast]").allInnerTexts()).map((t) => t.replace(/\s+/g, " "));
+  if (toasts.length > 0) say(`${who.name}'s notices: ${JSON.stringify(toasts)}`);
+  const show = who.page.locator("[data-sonner-toast] button", { hasText: "Show" });
+  if ((await show.count()) > 0) await show.first().click();
+  else await who.page.locator("[aria-label*='open printer setup']").first().click();
+  await who.page.waitForTimeout(1500);
+  const text = (await who.page.locator("[role=dialog]").first().innerText()).replace(/\s+/g, " ").slice(0, 900);
+  await who.page.keyboard.press("Escape").catch(() => undefined);
+  return text;
+}
+
+// ── the setup, through the admin API ──
+async function stations() {
+  return (await api("GET", "/api/stations")).json.data ?? [];
+}
+async function ensureStation(name) {
+  if (!(await stations()).some((s) => s.name === name)) await api("POST", "/api/stations", { name });
+  return (await stations()).find((s) => s.name === name);
+}
+async function routeCategory(category, stationName) {
+  const row = await db.collection("categories").findOne({ name: category });
+  const station = await ensureStation(stationName);
+  return (await api("PUT", `/api/categories/${String(row._id)}`, { name: row.name, stationId: station.id })).status;
+}
+const NO_SLIPS = { bill: false, kotStations: [], kotAll: false, notices: false, eod: false };
+async function savePrinter(body) {
+  const existing = ((await api("GET", "/api/printers")).json.data ?? []).find((p) => p.name === body.name);
+  const res = existing === undefined ? await api("POST", "/api/printers", body) : await api("PUT", `/api/printers/${existing.id}`, body);
+  say(`printer ${body.name}: ${res.status}${res.json.error ? ` ${res.json.error}` : ""}`);
+}
+async function clearPrinters() {
+  for (const p of (await api("GET", "/api/printers")).json.data ?? []) say(`printer ${p.name} deleted: ${(await api("DELETE", `/api/printers/${p.id}`)).status}`);
+}
+const devicesFile = () => (existsSync(DEVICES) ? JSON.parse(readFileSync(DEVICES, "utf8")) : {});
+const showDevices = async (ids) => {
+  for (const [name, id] of Object.entries(ids)) {
+    const row = await device(id);
+    say(`device ${name} …${short(id)}: shell=${row?.shell ?? "-"} lan=${row?.capabilities?.lan ?? "-"} lanFailover=${row?.capabilities?.lanFailover ?? "absent"} beat ${row?.beatAt ? `${Math.round((Date.now() - row.beatAt.getTime()) / 1000)} s ago` : "never"}`);
+  }
+};
+const showPrinters = async () => {
+  for (const p of await db.collection("printers").find({}).toArray()) {
+    say(`printer ${p.name}: unreachable=[${(p.unreachable ?? []).map((u) => short(u.deviceId)).join(",")}] health=${p.health ? `${p.health.link}${p.health.paper ? `/${p.health.paper}` : ""}${p.health.cover ? `/${p.health.cover}` : ""}@${short(p.health.deviceId)}` : "-"}`);
+  }
+};
+
+async function setup(ids) {
+  // Printers mode: the kitchen's network printer written by PC1 (raw TCP), the bar's Windows printer on PC1, and a
+  // Windows printer on PC2 (so PC2 is a writer by the setup: it polls the wake and may take the kitchen over).
+  const kitchen = (await stations()).find((s) => s.isDefault);
+  const bar = await ensureStation("Bar");
+  say(`category Beverages -> Bar: ${await routeCategory("Beverages", "Bar")}`);
+  await savePrinter({ name: "Kitchen", connection: { kind: "lan", host: "127.0.0.1", port: 9100 }, primaryDeviceId: ids.PC1, paper: 80, slips: { ...NO_SLIPS, kotStations: [kitchen.id], notices: true }, copies: { kot: 1, bill: 1 }, enabled: true });
+  await savePrinter({ name: "Front", connection: { kind: "device", deviceId: ids.PC1, transport: "windows", address: "EPSON TM-T82" }, paper: 80, slips: { ...NO_SLIPS, bill: true, kotStations: [bar.id] }, copies: { kot: 1, bill: 1 }, enabled: true });
+  await savePrinter({ name: "Back", connection: { kind: "device", deviceId: ids.PC2, transport: "windows", address: "Kitchen TVS" }, paper: 80, slips: { ...NO_SLIPS, eod: true }, copies: { kot: 1, bill: 1 }, enabled: true });
+}
+
+const [scenario, arg] = process.argv.slice(2);
+try {
+  if (scenario === "init") {
+    // Mint each profile's device id, then set the printers up for them; every PC reports every Windows printer.
+    await clearPrinters();
+    for (const pc of ["PC1", "PC2", "PC3"]) setControl(pc, { names: NAMES, blocked: [] });
+    const pc1 = await openPc("PC1", "1.12.0", "/printers");
+    const pc2 = await openPc("PC2", "1.12.0", "/printers");
+    const pc3 = await openPc("PC3", "1.11.0", "/printers");
+    const c = await openPlain("C", "c");
+    const ids = { PC1: pc1.deviceId, PC2: pc2.deviceId, PC3: pc3.deviceId, C: c.deviceId };
+    writeFileSync(DEVICES, JSON.stringify(ids));
+    await setup(ids);
+  } else if (scenario === "print") {
+    // Exit item 1: the Windows app 1.12.0 prints the kitchen's network printer itself (raw TCP), and its health rides
+    // the beat; a bar slip still prints on its Windows printer.
+    const ids = devicesFile();
+    startPrinter(9100);
+    const pc1 = await openPc("PC1");
+    const pc2 = await openPc("PC2");
+    const c = await openPlain("C", "c");
+    await sleep(15_000);
+    await showDevices(ids);
+    const before = slips(9100).length;
+    const at = await order(c, ["Margherita Pizza", "Masala Chai"]);
+    const done = await until("the kitchen slip printed by PC1 over raw TCP", async () => (await jobAfter(at, "Kitchen")).find((j) => j.status === "printed" && j.targetDeviceId === ids.PC1), 60_000);
+    say(`  ${JSON.stringify(done === null ? (await jobAfter(at, "Kitchen")).map(describe) : describe(done))}`);
+    say(`paper on 9100: ${slips(9100).length - before} new slip(s) ${JSON.stringify(slips(9100).slice(before).map((r) => r.bytes))} B`);
+    const bar = await until("the bar slip printed by PC1 on its Windows printer", async () => (await jobAfter(at, "Front")).find((j) => j.status === "printed"), 60_000);
+    say(`  ${JSON.stringify(bar === null ? null : describe(bar))}`);
+    await until("the kitchen printer's health from PC1", async () => (await printerByName("Kitchen"))?.health?.link === "connected", 90_000, 3000);
+    await showPrinters();
+    say(`page errors: PC1 ${JSON.stringify(pc1.errors.slice(0, 3))} PC2 ${JSON.stringify(pc2.errors.slice(0, 3))}`);
+  } else if (scenario === "paper") {
+    // Exit item 2: the network printer out of paper: its health says so, the slip is never leased, every device's panel
+    // row says "Kitchen is out of paper."; paper back: printed once.
+    const ids = devicesFile();
+    startPrinter(9100, ["--paper-out"]);
+    const pc1 = await openPc("PC1");
+    const pc2 = await openPc("PC2");
+    const c = await openPlain("C", "c");
+    await until("the kitchen printer's health: out of paper (PC1's check)", async () => (await printerByName("Kitchen"))?.health?.paper === "out", 120_000, 3000);
+    const at = await order(c, ["Margherita Pizza"]);
+    await sleep(25_000);
+    const made = await jobAfter(at, "Kitchen");
+    say(`  after 25 s: ${JSON.stringify(made.map(describe))}`);
+    say(`C's panel: ${await panelText(c)}`);
+    startPrinter(9100);
+    const before = slips(9100).length;
+    const done = await until("paper back: the slip printed", async () => (await jobAfter(at, "Kitchen")).find((j) => j.status === "printed"), 150_000, 2000);
+    say(`  ${JSON.stringify(done === null ? null : describe(done))}; new slips on 9100: ${slips(9100).length - before}`);
+    await showPrinters();
+    void pc1;
+    void pc2;
+  } else if (scenario === "takeover") {
+    // Exit item 3 (P3-4): PC1, the kitchen printer's primary, stops; PC2 (1.12.0, lanFailover) prints the slips.
+    const ids = devicesFile();
+    startPrinter(9100);
+    const pc1 = await openPc("PC1");
+    const pc2 = await openPc("PC2");
+    const c = await openPlain("C", "c");
+    await sleep(20_000);
+    await showDevices(ids);
+    await close(pc1);
+    const stopped = Date.now();
+    const waiting = await order(c, ["Margherita Pizza"]);
+    const first = await until("the slip made right after PC1 stopped, printed by PC2", async () => (await jobAfter(waiting, "Kitchen")).find((j) => j.status === "printed" && j.targetDeviceId === ids.PC2), 240_000, 2000);
+    say(`  printed ${((Date.now() - stopped) / 1000).toFixed(0)} s after PC1 stopped: ${JSON.stringify(first === null ? null : describe(first))}`);
+    const after = await order(c, ["Margherita Pizza"]);
+    const next = await until("the next slip printed by PC2", async () => (await jobAfter(after, "Kitchen")).find((j) => j.status === "printed" && j.targetDeviceId === ids.PC2), 60_000);
+    say(`  ${JSON.stringify(next === null ? null : describe(next))}; paper on 9100: ${slips(9100).length} slips`);
+    await showPrinters();
+    void pc2;
+  } else if (scenario === "unreachable") {
+    // Exit item 4: PC1 cannot reach the kitchen printer (its connect fails): its check says so, the server skips it,
+    // and PC2 prints the slip.
+    const ids = devicesFile();
+    startPrinter(9100);
+    setControl("PC1", { blocked: ["127.0.0.1:9100"] });
+    const pc1 = await openPc("PC1");
+    const pc2 = await openPc("PC2");
+    const c = await openPlain("C", "c");
+    await until("PC1 skipped for the kitchen printer", async () => ((await printerByName("Kitchen"))?.unreachable ?? []).some((u) => u.deviceId === ids.PC1), 150_000, 3000);
+    await showPrinters();
+    const at = await order(c, ["Margherita Pizza"]);
+    const done = await until("the kitchen slip printed by PC2", async () => (await jobAfter(at, "Kitchen")).find((j) => j.status === "printed" && j.targetDeviceId === ids.PC2), 90_000);
+    say(`  ${JSON.stringify(done === null ? (await jobAfter(at, "Kitchen")).map(describe) : describe(done))}`);
+    setControl("PC1", { blocked: [] });
+    void pc1;
+    void pc2;
+  } else if (scenario === "presence") {
+    // Exit item 5: Windows no longer reports PC1's bar printer: within a minute (the presence check) and 20 s more it
+    // reads not connected, and a bar slip that waits says "Front is not connected." on every device.
+    const ids = devicesFile();
+    startPrinter(9100);
+    const pc1 = await openPc("PC1");
+    const c = await openPlain("C", "c");
+    await sleep(10_000);
+    setControl("PC1", { names: NAMES.filter((n) => n !== "EPSON TM-T82") });
+    say("PC1's Windows no longer reports EPSON TM-T82");
+    await until("the bar printer's health: disconnected from PC1", async () => (await printerByName("Front"))?.health?.link === "disconnected", 150_000, 3000);
+    const at = await order(c, ["Masala Chai"]);
+    await sleep(25_000);
+    say(`  the bar slip: ${JSON.stringify((await jobAfter(at, "Front")).map(describe))}`);
+    say(`C's panel: ${await panelText(c)}`);
+    setControl("PC1", { names: NAMES });
+    const done = await until("back in Windows: the bar slip printed", async () => (await jobAfter(at, "Front")).find((j) => j.status === "printed"), 150_000, 3000);
+    say(`  ${JSON.stringify(done === null ? null : describe(done))}`);
+    await showPrinters();
+    void pc1;
+    void ids;
+  } else if (scenario === "old") {
+    // Exit item 6: the Windows app 1.11.0 on the 3E page prints its Windows printer as before, says it writes no network
+    // printer (lan false, no lanFailover), and is never offered as a network printer's printing device.
+    const ids = devicesFile();
+    startPrinter(9100);
+    await savePrinter({ name: "Front", connection: { kind: "device", deviceId: ids.PC3, transport: "windows", address: "EPSON TM-T82" }, paper: 80, slips: { ...NO_SLIPS, bill: true, kotStations: [(await ensureStation("Bar")).id] }, copies: { kot: 1, bill: 1 }, enabled: true });
+    const pc3 = await openPc("PC3", "1.11.0");
+    const c = await openPlain("C", "c");
+    await sleep(20_000);
+    await showDevices({ PC3: ids.PC3 });
+    const at = await order(c, ["Masala Chai"]);
+    const done = await until("the bar slip printed by PC3 (1.11.0) on its Windows printer", async () => (await jobAfter(at, "Front")).find((j) => j.status === "printed" && j.targetDeviceId === ids.PC3), 90_000);
+    say(`  ${JSON.stringify(done === null ? null : describe(done))}`);
+    const list = (await api("GET", "/api/print-devices")).json.data ?? [];
+    say(`devices list: ${list.map((d) => `…${short(d.deviceId)} ${d.shell} lan=${d.lan ?? "-"} lanFailover=${d.lanFailover ?? "-"}`).join("; ")}`);
+    await savePrinter({ name: "Front", connection: { kind: "device", deviceId: ids.PC1, transport: "windows", address: "EPSON TM-T82" }, paper: 80, slips: { ...NO_SLIPS, bill: true, kotStations: [(await ensureStation("Bar")).id] }, copies: { kot: 1, bill: 1 }, enabled: true });
+    say(`page errors: PC3 ${JSON.stringify(pc3.errors.slice(0, 3))}`);
+  } else if (scenario === "printers") {
+    // Only the fake printers (normal), for [arg] s: they keep printing while the emulator app restarts or reboots.
+    startPrinter(9100);
+    say(`HOLD: fake printer 9100 up (${Number(arg ?? "600")} s)`);
+    await sleep(Number(arg ?? "600") * 1000);
+  } else if (scenario === "emu-setup") {
+    // E0 on the emulator: printers mode, the kitchen's network printer (10.0.2.2:9100) written by the emulator app.
+    if (!/^[0-9a-f-]{8,}$/.test(arg ?? "")) throw new Error("emu-setup <the emulator app's device id>");
+    await clearPrinters();
+    const kitchen = (await stations()).find((s) => s.isDefault);
+    await savePrinter({ name: "Kitchen", connection: { kind: "lan", host: "10.0.2.2", port: 9100 }, primaryDeviceId: arg, paper: 80, slips: { ...NO_SLIPS, bill: true, kotStations: [kitchen.id], notices: true, eod: true }, copies: { kot: 1, bill: 1 }, enabled: true });
+    writeFileSync(DEVICES, JSON.stringify({ ...devicesFile(), EMU: arg }));
+  } else if (scenario === "emu-order") {
+    // A plain tab orders a kitchen slip; it must print on the emulator within [arg] s (the printers run in `printers`).
+    const { EMU } = devicesFile();
+    const c = await openPlain("C", "c");
+    const at = await order(c, ["Margherita Pizza"]);
+    const done = await until("the kitchen slip printed by the emulator", async () => (await jobAfter(at, "Kitchen")).find((j) => j.status === "printed" && j.targetDeviceId === EMU), Number(arg ?? "120") * 1000, 2000);
+    say(`  ${JSON.stringify(done === null ? (await jobAfter(at, "Kitchen")).map(describe) : describe(done))}`);
+  } else if (scenario === "clear") {
+    await clearPrinters();
+  } else {
+    throw new Error("scenario: init | print | paper | takeover | unreachable | presence | old | printers [s] | emu-setup <id> | emu-order [s] | clear");
+  }
+} finally {
+  for (const ctx of browsers) await ctx.close().catch(() => undefined);
+  for (const port of [...printers.keys()]) stopPrinter(port);
+  await mongoose.disconnect();
+}
+```
+
+| # | Step | Expected (the gate's runs) |
+|---|---|---|
+| W0 | `pw-3e.mjs init` | PC1 and PC2 (fake 1.12.0), PC3 (fake 1.11.0) and the plain tab C get their device ids; Beverages → Bar; printers **Kitchen** (network `127.0.0.1:9100`, printed by PC1), **Front** (PC1's Windows printer "EPSON TM-T82": Bar KOTs) and **Back** (PC2's Windows printer: End of day) all `201` (a network printer beside a PC's Windows printer: E6) |
+| W1 | `pw-3e.mjs print` | the wake rows: PC1 and PC2 `shell=windows lan=true lanFailover=true`; C orders a pizza and a chai: the kitchen KOT **printed by PC1 over raw TCP at once** (`created`, `leased`, `printed` within a second; 44,382 B sent, the fake's log 44,394 B with the 12 DLE EOT bytes), the bar KOT through `printHtmlOn` on EPSON TM-T82; the Kitchen printer's health `connected/ok/closed` from PC1; Front `connected` (present) |
+| W2 | `pw-3e.mjs paper` | the fake printer `--paper-out`: health `paper out` from PC1's first check (at once); C's slip **never leased** (`queued`, only `created` after 25 s); C's panel row "Kitchen is out of paper."; paper back: printed **within about 10 s** (the 10 s re-check while it cannot print), once |
+| W3 | `pw-3e.mjs takeover` | PC1 closed; the slip C made right after: `retargeted` to PC2 and **printed by PC2 ≤ 150 s after the stop** (P3-4: the gate saw 131 s); the next slip printed by PC2 at once; the Kitchen health now from PC2 |
+| W4 | `pw-3e.mjs unreachable` | PC1 cannot reach 127.0.0.1:9100 (its control file): its check says `disconnected`, its beat skips it after the 20 s settle (the gate: 30 s), and C's slip **printed by PC2** (the gate: 7 s) |
+| W5 | `pw-3e.mjs presence` | PC1's Windows stops reporting EPSON TM-T82: the Front printer's health `disconnected` from PC1 within the minute's re-read and the 20 s settle (the gate: 81 s); C's bar slip waits with "Front is not connected." in C's panel; back in Windows: printed once within the next minute |
+| W6 | `pw-3e.mjs old` | PC3 (1.11.0) prints its Windows printer as in Phase 2 (`printHtmlOn`; the bar KOT printed by PC3); its wake row `lan=false`, and the devices list gives it no `lan`, so no form offers it for a network printer |
+
+Then `pw-3e.mjs clear`.
+
+- [ ] **Step 6: the exit on the emulator (E0)**
+
+**The emulator** (`df -h /c /d` first; boot `Pixel_7_API_33` yourself with a 2 h background timeout: `-memory 4096 -no-audio -no-snapshot-save`, 2048 when C: has under ~5 GB free, recorded): `adb shell pm path com.possoftware.pos` and hash the APK on the device. As left by this gate: the **release APK** (`29115bdf…`), on its start screen with no address, notifications not allowed, `font_scale` unset. **Check which POS the app shows before any tap that writes: never the demo.** Start `node <scratchpad>/p3b-proxy.mjs --listen 3201 --target 3110 --log <scratchpad>/proxy3e-emu.jsonl` and `pw-3e.mjs printers 6000` in the background; `adb reverse tcp:3100 tcp:3201`.
+
+| # | Step | Expected (the gate's runs) |
+|---|---|---|
+| XE0 | `adb install -r` the new x86_64 APK (Step 2; hashed) over the release APK; open it; on its start screen type `http://localhost:3100`, Open POS (a session from another database answers 401: sidebar → Account Staff → Sign out, then sign in as `e2eadmin` with `type-secret.py` into a field checked to be a password field); the printer panel → Network printer `10.0.2.2`, 9100 → Use; Done | crash 0; signed in; "Network printer 10.0.2.2 is connected." |
+| XE1 | the emulator's device id is the `device` of its pulses in `proxy3e-emu.jsonl`; `pw-3e.mjs emu-setup <that id>`; Refresh; `adb shell pm grant com.possoftware.pos android.permission.POST_NOTIFICATIONS` (recorded), HOME and open once; HOME; `pw-3e.mjs emu-order 120` | `PrintHostService` `isForeground=true`, `stopIfKilled=false`; "Printing is on — Network printer 10.0.2.2"; the slip printed with the app hidden (the gate: 4 s) |
+| XE2 (m-2) | the app in front; `adb shell settings put system font_scale 1.15`; poll `dumpsys notification --noredact` for 20 s; then `font_scale 1.0` and poll 20 s; then `adb shell settings delete system font_scale` (as found) | logcat `finishDrawing of relaunch` twice (the screen recreated, the page reloaded), the same `PrintHostService` record throughout, and **no "POS printing is off"** in any poll (before E0 it was posted for the seconds the page took to reload) |
+| XE3 (m-1) | the printer panel → More options → **Change POS address**; poll `dumpsys` for 45 s; then `adb reboot` (after `adb shell sync`), `adb reverse tcp:3100 tcp:3201` again, poll 70 s | the service gone at once and **no notice** in 45 s (before E0 "Printing stopped — tap to open the app" sounded within 30 s); after the reboot **no "POS printing is off"** (the wish was cleared) |
+| XE4 (N-2) | on the start screen type `http://localhost:3100`, Open POS: "Printing is on" again; HOME, `adb shell sync`, `adb reboot`, reverse again: "POS printing is off. Tap to start." (the gate: 20 s after `sys.boot_completed`); `pw-3e.mjs clear`; open the app **from the launcher** (`monkey`), not the notice | the page knows this device prints nothing now: the notice **goes** (the gate: ≈6 s), no service |
+| XE5 | `adb logcat -b crash -d \| grep -c possoftware` | 0 after every install |
+
+Put back:
+- the setup cleared (`pw-3e.mjs clear`; the scratch database is left);
+- the app's printer removed (the panel's Remove → "Yes, remove": "No printer set up");
+- the app's address cleared (More options → Change POS address → Clear POS address: its start screen, no address);
+- the **release APK** reinstalled (`adb install -r -d` of `C:\Users\KARTIK~1.DES\AppData\Local\Temp\claude\d--kd-lucifer\980d3189-10f0-4165-bdad-ae814b95278b\scratchpad\apk-release\pos-emulator-x86_64-release.apk`; `29115bdf…` on the device), as found;
+- notifications as found: `adb shell pm revoke com.possoftware.pos android.permission.POST_NOTIFICATIONS`; `font_scale` unset (`adb shell settings get system font_scale` → `null`);
+- `adb reverse --remove-all`, then `adb reverse tcp:3100 tcp:3100`;
+- `adb shell sync`, then `adb emu kill`;
+- your servers, the proxies and `pw-3e.mjs printers` (and its fake printer) stopped by PID after checking each command line.
+
+- [ ] **Step 7: the fresh review**
+
+Dispatch a fresh reviewer subagent on **Claude Fable 5.1** (`model: fable`). It is read-only, with scratch tests only in this session's scratchpad (never in the repo). It reviews `978459c..HEAD` against this plan (P3-1 to P3-10 as the gates changed them, the 3D review gate's rulings, Session 3E and its Review Focus, passed verbatim) and spec §9.3, §9.6, §10, §13, §14, §17. If Fable is rate-limited (HTTP 429), wait for its reset and say so; never switch models silently. It may run in the background during Steps 2 to 6 if it is told to keep off Gradle, adb, builds, servers and the harness's ports and databases. Fix every Critical and Important finding by TDD (RED seen first) in its own commit. List the minors in Results for the 3E review gate.
+
+- [ ] **Step 8: Results, commit, push**
+
+Fill "Session 3E Results" below: the commits; each task's RED and GREEN against the Expected lines; every suite's numbers; JUnit; the APK hashes and the full-compile proof; the installer's hash; the build; the exit tables (W and XE); the review and its fixes; deviations and rulings; what is open for the 3E review gate (and the real-printer items for 3G's TEST-CHECKLIST).
+
+Commit, then push with the token only: `GIT_TERMINAL_PROMPT=0 git push origin feat/printing-phase-3`. Do not merge, do not deploy, do not release the APKs or the installer.
+
+## Session 3E Results (filled in by the implementer)
+
+(to be filled in)

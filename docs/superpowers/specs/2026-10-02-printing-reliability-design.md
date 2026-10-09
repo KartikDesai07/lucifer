@@ -655,6 +655,10 @@ The Phase 2 plan ([2026-10-03-phase-2-routing.md](../plans/2026-10-03-phase-2-ro
 - **LAN printers:** raw TCP to port 9100 from Electron's main process, connecting per job. After the write, send `DLE EOT 1/2/4` and read the status (paper, cover, error).
 - **Windows printers:** stay on the spooler. Its "complete" only means the bytes were sent, and the readback says so.
 - **Printer presence:** checked every 60 s, not only at startup.
+- *As ruled at the 3D review gate (built in Session 3E, the Windows app 1.12.0):*
+  - The page draws a network printer's slip as ESC/POS (the same bytes as the POS app's) and the app's main process writes it over raw TCP (`printRaw`): one connection per job to a private address, then DLE EOT 1 to 4 on that connection before the slip reads printed (G5, as the POS app does it); a connect that fails sends nothing ("no": the page acks it unreachable), anything after a byte is "maybe"; a connect refused at once is asked again a second later; a job has 60 s. Both calls are vetted like every print channel (the main window, the saved origin, a private address, a sane size) and answer plain results.
+  - The app checks each network printer the PC prints (`lanStatus`: a connect and DLE EOT) at once, every minute while the PC prints, every 10 s while one says it cannot print and every 30 s while one does not answer. On 1.12.0 a network printer is the PC's (it prints any it writes), a PC that writes a printer may take one over (P3-2), and its wake says `lan` and `lanFailover`; the printer form offers it as a network printer's printing device, beside its Windows printers.
+  - Presence is the page's: every minute while the PC prints it reads the app's Windows printers again; a Windows printer it writes that Windows no longer reports reads not connected on every device (after the 20 s settle). The health of its printers rides the beat (§10). The Windows app 1.11.0 is unchanged on a 3E page.
 
 ### 9.7 Chrome tab
 
@@ -690,6 +694,7 @@ The plan `docs/superpowers/plans/2026-10-06-phase-3-hardening.md` holds each dec
   - after a rollback of the web to a server from before Phase 3, a page's ack and wake are sent once more without the Phase 3 fields (that server refuses them with 400, which the ack store would read as answered), and GO-LIVE-CHECKLIST says to reload every screen after a rollback;
   - the POS app's printer layer: DLE EOT after each job and while idle, BUSY while a printer cannot print, G5 (§10).
 - **The 3C review gate (2026-10-08) and Session 3D** (the plan's "3C review gate: rulings"): the Android service (§9.5); a refused connect is asked again a second later (a printer that takes one connection at a time); a job queued behind one whose printer said it cannot print is refused before any byte; FEED is not an error (§10); a release APK compiles the app's Kotlin in full.
+- **The 3D review gate (2026-10-09) and Session 3E** (the plan's "3D review gate: rulings"): the Windows app 1.12.0 writes network printers itself and may take one over (§9.6); Change POS address stops the device printing for the POS it leaves, a screen recreated for a configuration change keeps the print service, and the page's own stop takes down an old "POS printing is off" notice (§9.5).
 
 ## 10. Health, status and alerts
 
