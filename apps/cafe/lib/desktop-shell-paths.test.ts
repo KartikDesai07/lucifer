@@ -289,9 +289,10 @@ test("desktop-shell.ts: PosDesktopBridge declares savePrintMode? as OPTIONAL (qu
     "listPrinters?'s resolved object must carry an OPTIONAL printMode? field",
   );
 
+  // Phase 3 Session 3E deliberately changed: the network printer's two members (DesktopLanBridge) come from there too.
   assert.match(
     src,
-    /import type \{ DesktopPrintMode \} from "@\/lib\/desktop-shell-printer";/,
+    /import type \{ DesktopLanBridge, DesktopPrintMode \} from "@\/lib\/desktop-shell-printer";/,
     "desktop-shell.ts must import the DesktopPrintMode type from lib/desktop-shell-printer.ts (the 150-line budget left no room to declare it here)",
   );
 });

@@ -57,6 +57,15 @@ export function desktopPrintsOnNamed(): boolean {
   return typeof desktopShell()?.printHtmlOn === "function";
 }
 
+/** Phase 3 Session 3E (spec §9.6): the Windows app 1.12.0 writes a network printer itself, over raw TCP from its main
+ *  process: the slip's ESC/POS bytes to the printer's address (`printRaw`, the same bytes as the POS app's), and the idle
+ *  check of the network printers this PC prints (`lanStatus`). Optional and feature-detected like the picker: an older
+ *  app has neither, and prints no network printer. Both answer plain results the page checks (lib/printer/desktop-lan.ts). */
+export interface DesktopLanBridge {
+  printRaw?(printer: { host: string; port: number }, data: Uint8Array): Promise<unknown>;
+  lanStatus?(printers: { host: string; port: number }[]): Promise<unknown>;
+}
+
 /** Phase 2 Session 2E: where a printer job prints on the Windows app: its Windows printer, drawn for its paper. */
 export interface DesktopPrintTarget {
   printerName: string;

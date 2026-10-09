@@ -1391,8 +1391,11 @@ test("PIN §1 (printing Phase 2): the existing-cafe release step keeps the go-li
     assert.ok(next > at, `the Phase 2 release step names "${landmark}" after the step before it`);
     at = next;
   }
+  // Phase 3 Session 3E deliberately changed: the Windows app is 1.12.0 now, and this step stays the Phase 2 release's
+  // (its installer, 1.11.0); the Phase 3 release step (Session 3G) names 1.12.0.
   const desktop = JSON.parse(readFileSync(path.join(REPO_ROOT, "apps/desktop/package.json"), "utf8")) as { version: string };
-  assert.ok(step.includes(`POS-Software-Setup-${desktop.version}.exe`), "the step names this release's desktop installer");
+  assert.equal(desktop.version, "1.12.0", "the Windows app of Phase 3");
+  assert.ok(step.includes("POS-Software-Setup-1.11.0.exe"), "the step names the Phase 2 release's desktop installer");
   assert.ok(step.includes("apps/mobile/TEST-CHECKLIST.md"), "the step sends the deployer to the real-printer checks");
 });
 
