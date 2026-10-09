@@ -47,3 +47,21 @@ test("each job belongs to one slip (its key without the printer line), and every
   assert.deepEqual(missingSlips(made, jobs), ["bill:o2"], "the second order's bill has no job: the soak says so");
   assert.deepEqual(missingSlips(made, [...jobs, { jobKey: "bill:o2:p-c:0" }]), [], "every slip has its jobs");
 });
+
+// Phase 3 Session 3G: --failover, two soak writers (the soak's --device and a second one that writes its own printer, so it
+// may take a network printer over: the 3A gate's E-1), the orders from a third device, and the soak's writer stopped
+// after --stop-after orders (half of them unless said).
+test("--failover needs the soak's printers, a printer of the second writer's own and a stop inside the run; its orders come from a third device", () => {
+  const base = [...OUT, "--printer", "Kitchen printer=127.0.0.1:9100", "--orders", "20"];
+  const second = ["--failover", "soak-b", "--failover-printer", "Bar printer=127.0.0.1:9101"];
+  assert.deepEqual(parseSoakArgs([...base, ...second, "--stop-after", "8"], exists).failover, { device: "soak-b", printers: [{ name: "Bar printer", host: "127.0.0.1", port: 9101 }], stopAfter: 8 });
+  assert.equal(parseSoakArgs([...base, ...second], exists).failover?.stopAfter, 10, "half the orders unless said");
+  assert.equal(parseSoakArgs(base, exists).failover, null, "not asked");
+  assert.throws(() => parseSoakArgs([...base, "--failover", "soak-b"], exists), /--failover-printer/, "the second writer writes a printer of its own (E-1)");
+  assert.throws(() => parseSoakArgs([...OUT, ...second], exists), /--failover/, "the soak writes the printers that fail over");
+  assert.throws(() => parseSoakArgs([...base, ...second, "--direct"], exists), /--direct/, "the orders come from a device that prints nothing");
+  assert.throws(() => parseSoakArgs([...base, ...second, "--stop-after", "20"], exists), /--stop-after/, "a stop inside the run");
+  assert.throws(() => parseSoakArgs([...base, "--failover", "soak-device", "--failover-printer", "Bar printer=127.0.0.1:9101"], exists), /--failover/, "two different devices");
+  assert.throws(() => parseSoakArgs([...base, "--failover-printer", "Bar printer=127.0.0.1:9101"], exists), /--failover-printer/, "a second writer's printer needs --failover");
+  assert.throws(() => parseSoakArgs([...base, ...second, "--failover-printer", "Bar printer"], exists), /--failover-printer/, "a malformed address");
+});

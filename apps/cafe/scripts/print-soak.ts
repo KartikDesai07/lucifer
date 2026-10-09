@@ -15,7 +15,7 @@
  *   node --env-file=<env> --import tsx scripts/print-soak.ts --out <folder>[,<folder>]
  *        [--orders 200] [--base http://localhost:3100] [--every-ms 1500] [--drain-s 300]
  *        [--agent 127.0.0.1:9100 | --printer "<name>=127.0.0.1:9100" ...] [--direct] [--device soak-device]
- *        [--tokens page|lease]
+ *        [--tokens page|lease] [--failover <device> --failover-printer "<name>=127.0.0.1:9101" ... [--stop-after N]]
  *
  * --agent HOST:PORT   simple mode, no host: the soak is its own device's print agent. It leases, writes each job to
  *                     the fake printer over TCP and asks DLE EOT 1 at the end, so a connection the printer cut
@@ -27,6 +27,11 @@
  * --tokens page|lease with --agent or --printer, when the cafe prints a token per order (print-customization S7): the
  *                     soak's page says so on its lease and its ack (page: Phase 3), or on its lease only (lease: a page
  *                     from S7 to before Phase 3, whose acks cost the server a read of its device's last word).
+ * --failover DEVICE   with --printer (Session 3G): two soak writers that poll the wake as a printers-mode writer's page
+ *                     does, the soak's --device (its --printer printers) and DEVICE (its --failover-printer printers, so it
+ *                     may take a network printer over: lanFailover); the orders come from a third device that prints
+ *                     nothing; the soak's writer stops after --stop-after orders (half of them unless said), and every
+ *                     slip on its network printers is checked by P3-4's measure (scripts/print-soak-writer.ts).
  * neither             another device prints: the host (simple mode) or the printers' writer (the emulator app);
  *                     the soak only orders, then waits.
  * --out               every fake printer's --out folder, comma separated (the check reads each jobs.log).
@@ -50,6 +55,7 @@ import { printerWriterDeviceId, routablePrinters, type PrinterConfig } from "@po
 import { printRepeatLabel } from "@pos/shared/print-lifecycle";
 import { leaseLines, printLeased, soakHeaders, soakNextLeaseAt, soakTimerDue, type SoakAddress, type SoakAgent, type SoakCall, type SoakJson } from "./print-soak-agent";
 import { missingSlips, parseSoakArgs, type SoakArgs } from "./print-soak-rules";
+import { failoverProblems, soakWriterTick, type SoakWriter } from "./print-soak-writer";
 
 const COOKIE = "authjs.session-token";
 
@@ -114,17 +120,51 @@ async function main(): Promise<void> {
       if (args.agent === null && host === null) throw new Error("without --agent a host must print: designate the app first");
       if (args.agent !== null) lines.set("", args.agent);
     }
-    const agent: SoakAgent = { lines, device: args.device, direct: args.direct, ...(args.tokens !== null ? { tokens: args.tokens } : {}), timerAt: null };
+    const tokens = args.tokens !== null ? { tokens: args.tokens } : {};
+    // Session 3G (--failover): the soak's printers are written by its writer (--device), a page that polls the wake; a
+    // second writer writes its own printers and may take any other network printer over; the orders come from a third
+    // device that prints nothing, so every slip is leased by its writer (Session 2G's P4).
+    const writers: SoakWriter[] = [];
+    if (args.failover !== null) {
+      const second = args.failover;
+      const own = new Map<string, SoakAddress>();
+      for (const wanted of second.printers) {
+        const printer = routable.find((p) => p.name === wanted.name);
+        if (printer === undefined || printerWriterDeviceId(printer) !== second.device) throw new Error(`--failover-printer ${wanted.name}: no routable printer of that name printed by ${second.device}`);
+        own.set(printer.id, { host: wanted.host, port: wanted.port });
+      }
+      const networkBut = (mine: ReadonlyMap<string, SoakAddress>) => new Map(routable.flatMap((p): Array<[string, SoakAddress]> => (p.connection.kind === "lan" && !mine.has(p.id) ? [[p.id, { host: p.connection.host, port: p.connection.port }]] : [])));
+      if (networkBut(new Map()).size === 0 || [...lines.keys()].every((id) => !networkBut(own).has(id))) throw new Error("--failover: the soak writes no network printer the second writer may take over");
+      writers.push({ device: args.device, own: new Map(lines), candidates: networkBut(lines), ...tokens, stopped: false, lastJobAt: null, takenOver: [] });
+      writers.push({ device: second.device, own, candidates: networkBut(own), ...tokens, stopped: false, lastJobAt: null, takenOver: [] });
+      lines.clear();
+    }
+    const agent: SoakAgent = { lines, device: writers.length > 0 ? `${args.device}-orders` : args.device, direct: args.direct, ...tokens, timerAt: null };
     // Session 3G: with tokens on (print-customization S7) every order makes a token slip, which is never printed at once
     // (it waits for a lease that says tokenSlips): a soak that prints must say how its page says so.
     const settings = await db.collection("settings").findOne({}, { projection: { tokenEnabled: 1 } });
     const tokensOn = settings?.tokenEnabled === true;
-    if (tokensOn && lines.size > 0 && args.tokens === null) throw new Error("tokens are on: say how the soak's page prints them (--tokens page or --tokens lease)");
+    if (tokensOn && (lines.size > 0 || writers.length > 0) && args.tokens === null) throw new Error("tokens are on: say how the soak's page prints them (--tokens page or --tokens lease)");
     const staff = await db.collection("staffs").findOne({ role: "admin", isActive: { $ne: false } }, { projection: { name: 1, role: 1 } });
     if (staff === null) throw new Error("no admin to act as");
     const token = await encode({ token: { name: staff.name, id: String(staff._id), role: staff.role, lastValidated: Date.now() }, secret, salt: COOKIE });
     const cookie = `${COOKIE}=${token}`;
     const soakCall: SoakCall = (method, url, body) => call(args, cookie, method, url, body);
+    // The writers' pages (--failover): each polls the wake at its cadence until the soak has drained; a stopped one is closed.
+    let writing = true;
+    let stopAt: number | null = null;
+    const loops = writers.map(async (w) => {
+      while (writing && !w.stopped) {
+        let wait: number;
+        try {
+          wait = await soakWriterTick(w, soakCall, Date.now);
+        } catch {
+          wait = 15_000;
+        }
+        const until = Date.now() + wait;
+        while (writing && !w.stopped && Date.now() < until) await sleep(Math.min(250, until - Date.now()));
+      }
+    });
     // Plain items only: a sized item or one on discount needs the POS's own price rules.
     const products = await db
       .collection("products")
@@ -181,6 +221,16 @@ async function main(): Promise<void> {
         counts.bills += 1;
         made.push(`bill:${orderId}`);
       }
+      const primary = writers[0];
+      if (primary !== undefined && stopAt === null && counts.orders === args.failover?.stopAfter) {
+        // --failover: the soak's writer stops here, as a tablet that is switched off: no wake, no lease, no ack. The stop's
+        // time is taken once the request it had in flight is done (the gold review's #3: a lease in flight stamped after
+        // the stop read as "printed by the stopped writer").
+        primary.stopped = true;
+        await loops[0];
+        stopAt = Date.now();
+        console.log(`  the soak's writer (${primary.device}) stopped after ${counts.orders} orders`);
+      }
       if (await printLeased(agent, soakCall, settled)) await leaseLines(agent, soakCall);
       if ((i + 1) % 20 === 0) console.log(`  ${i + 1}/${args.orders} orders`);
       await sleep(args.everyMs);
@@ -202,6 +252,8 @@ async function main(): Promise<void> {
       await sleep(Math.max(0, Math.min(soakNextLeaseAt(agent, Date.now()), deadline) - Date.now()));
       await leaseLines(agent, soakCall);
     }
+    writing = false;
+    await Promise.all(loops);
 
     const jobs = await PrintJob.find(mine).select("kind status labels uncertainAttempts copies jobKey").lean();
     const byStatus: Record<string, number> = {};
@@ -223,7 +275,7 @@ async function main(): Promise<void> {
     const dropped = records.filter((r) => r.dropped);
     const printed = jobs.filter((job) => job.status === "printed");
     const copiesOf = (job: { copies?: number }) => job.copies ?? 1;
-    if (lines.size > 0) {
+    if (lines.size > 0 || writers.length > 0) {
       const tally = new Map<string, { complete: number; dropped: number }>();
       for (const r of records) {
         if (r.file === null) continue;
@@ -249,10 +301,21 @@ async function main(): Promise<void> {
       if (complete.length !== want || dropped.length > 0) problems.push(`the printers have ${complete.length} full and ${dropped.length} cut copies for ${printed.length} printed jobs (${want} copies)`);
     }
 
+    // --failover: P3-4's measure over the slips on the stopped writer's network printers.
+    let failover: ReturnType<typeof failoverProblems>["report"] | null = null;
+    const [first, second] = writers;
+    if (first !== undefined && second !== undefined && stopAt !== null) {
+      const network = new Set([...first.own.keys()].filter((id) => routable.find((p) => p.id === id)?.connection.kind === "lan"));
+      const theirs = await PrintJob.find({ ...mine, printerId: { $in: [...network] } }).select("printerId createdAt status log").lean();
+      const checked = failoverProblems({ stopAt, primary: first.device, second: second.device, printerIds: network, jobs: theirs });
+      problems.push(...checked.problems);
+      failover = checked.report;
+    }
+
     console.log(
       JSON.stringify(
         {
-          mode: `${printersMode ? "printers mode" : "simple mode"}, ${lines.size > 0 ? "soak agent prints" : printersMode ? "the printers' writer prints" : "app host prints"}${args.direct ? ", direct" : ""}${tokensOn ? `, a token per order${args.tokens !== null ? ` (says it: ${args.tokens})` : ""}` : ""}`,
+          mode: `${printersMode ? "printers mode" : "simple mode"}, ${writers.length > 0 ? `two soak writers, the first stopped after ${args.failover?.stopAfter ?? 0} orders (failover)` : lines.size > 0 ? "soak agent prints" : printersMode ? "the printers' writer prints" : "app host prints"}${args.direct ? ", direct" : ""}${tokensOn ? `, a token per order${args.tokens !== null ? ` (says it: ${args.tokens})` : ""}` : ""}`,
           ...counts,
           tokens: tokensOn ? counts.orders : 0,
           slips: made.length,
@@ -261,6 +324,7 @@ async function main(): Promise<void> {
           labelled: jobs.filter((job) => (job.labels ?? []).length > 0).length,
           printer: { complete: complete.length, dropped: dropped.length },
           requests: Object.fromEntries([...requests].sort()),
+          ...(failover !== null ? { failover } : {}),
           minutes: Math.round((Date.now() - startedAt.getTime()) / 6_000) / 10,
           pass: problems.length === 0,
           problems: problems.slice(0, 20),

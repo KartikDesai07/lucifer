@@ -33,6 +33,8 @@ export interface SoakAgent {
   tokens?: "page" | "lease";
   /** The page's one local timer: the soonest nextAttemptAt or retryAt the server gave it (ms), spent when it leases. */
   timerAt?: number | null;
+  /** --failover: the writer's page is closed now: it leases nothing more (the slip it holds is acked). */
+  closed?: () => boolean;
 }
 
 function noteTimer(agent: SoakAgent, iso: unknown): void {
@@ -132,6 +134,7 @@ export async function leaseLines(agent: SoakAgent, call: SoakCall): Promise<void
   if (agent.lines.size === 0) return;
   const printerIds = [...agent.lines.keys()].filter((line) => line !== "");
   for (;;) {
+    if (agent.closed?.() === true) return;
     const lease = await call("POST", "/api/print-jobs/lease", { deviceId: agent.device, tabId: SOAK_TAB, ...(printerIds.length > 0 ? { printerIds } : {}), ...(agent.tokens !== undefined ? { tokenSlips: true } : {}) });
     const jobs = (lease.json.data?.jobs as LeasedPrintJob[] | undefined) ?? [];
     if (jobs.length === 0) {

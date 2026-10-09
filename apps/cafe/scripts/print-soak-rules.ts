@@ -19,6 +19,15 @@ export interface SoakArgs {
   /** How the soak's page says it prints token slips: "page" on its lease and its ack (Phase 3), "lease" on its lease only
    *  (print-customization S7 to before Phase 3), null never (before S7). */
   tokens: "page" | "lease" | null;
+  /** --failover: a second soak writer (its device and its own printers) that may take the soak's network printers over;
+   *  the soak's writer (--device) stops after `stopAfter` orders. null: not asked. */
+  failover: { device: string; printers: Array<{ name: string } & SoakAddress>; stopAfter: number } | null;
+}
+
+function namedPrinterOf(value: string, option: string): { name: string } & SoakAddress {
+  const at = value.lastIndexOf("=");
+  if (at < 1) throw new Error(`${option} ${value}: give it as "NAME=HOST:PORT"`);
+  return { name: value.slice(0, at), ...soakAddressOf(value.slice(at + 1), option) };
 }
 
 const HOST = /^[A-Za-z0-9._-]+$/;
@@ -33,7 +42,10 @@ export function soakAddressOf(value: string, option: string): SoakAddress {
 }
 
 export function parseSoakArgs(argv: readonly string[], exists: (folder: string) => boolean): SoakArgs {
-  const args: SoakArgs = { orders: 200, base: "http://localhost:3100", everyMs: 1_500, drainS: 300, agent: null, printers: [], direct: false, outs: [], device: "soak-device", tokens: null };
+  const args: SoakArgs = { orders: 200, base: "http://localhost:3100", everyMs: 1_500, drainS: 300, agent: null, printers: [], direct: false, outs: [], device: "soak-device", tokens: null, failover: null };
+  let second: string | null = null;
+  const secondPrinters: Array<{ name: string } & SoakAddress> = [];
+  let stopAfter: number | null = null;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--direct") {
       args.direct = true;
@@ -49,12 +61,10 @@ export function parseSoakArgs(argv: readonly string[], exists: (folder: string) 
       case "--out": args.outs = value.split(",").filter((out) => out !== ""); break;
       case "--device": args.device = value; break;
       case "--agent": args.agent = soakAddressOf(value, "--agent"); break;
-      case "--printer": {
-        const at = value.lastIndexOf("=");
-        if (at < 1) throw new Error(`--printer ${value}: give it as "NAME=HOST:PORT"`);
-        args.printers.push({ name: value.slice(0, at), ...soakAddressOf(value.slice(at + 1), "--printer") });
-        break;
-      }
+      case "--printer": args.printers.push(namedPrinterOf(value, "--printer")); break;
+      case "--failover": second = value; break;
+      case "--failover-printer": secondPrinters.push(namedPrinterOf(value, "--failover-printer")); break;
+      case "--stop-after": stopAfter = Number(value); break;
       case "--tokens":
         if (value !== "page" && value !== "lease") throw new Error(`--tokens ${value}: page (its lease and ack say it) or lease (its lease only)`);
         args.tokens = value;
@@ -68,6 +78,18 @@ export function parseSoakArgs(argv: readonly string[], exists: (folder: string) 
   if (args.agent !== null && args.printers.length > 0) throw new Error("--agent (simple mode) or --printer (printers mode), not both");
   if (args.direct && args.agent === null && args.printers.length === 0) throw new Error("--direct needs --agent or --printer");
   if (args.tokens !== null && args.agent === null && args.printers.length === 0) throw new Error("--tokens needs --agent or --printer (an ordering-only soak prints no token)");
+  if (second === null) {
+    if (secondPrinters.length > 0) throw new Error("--failover-printer needs --failover (the second writer's device)");
+    if (stopAfter !== null) throw new Error("--stop-after needs --failover");
+    return args;
+  }
+  if (args.printers.length === 0) throw new Error("--failover needs --printer: the soak writes the printers that fail over");
+  if (secondPrinters.length === 0) throw new Error("--failover needs --failover-printer: the second writer writes a printer of its own (the 3A gate's E-1)");
+  if (args.direct) throw new Error("--failover: the orders come from a device that prints nothing (no --direct)");
+  if (second === args.device || second === "") throw new Error("--failover: the second writer is a device other than --device");
+  const stop = stopAfter ?? Math.floor(args.orders / 2);
+  if (!Number.isInteger(stop) || stop < 1 || stop >= args.orders) throw new Error("--stop-after: the soak's writer stops after an order inside the run");
+  args.failover = { device: second, printers: secondPrinters, stopAfter: stop };
   return args;
 }
 
