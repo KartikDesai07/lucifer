@@ -23,6 +23,9 @@ export interface SoakWriter {
   lastJobAt: number | null;
   /** The wake's last answer: the network printers it writes now that the setup names another device for. */
   takenOver: string[];
+  /** The final Phase 3 gate (the 3G review's m-1): the setup's network printers (its page acks a refusal there before any
+   *  byte "unreachable"). */
+  network?: ReadonlySet<string>;
 }
 
 /** The heartbeat a POS app page on bridge v2 sends (Session 3B's wake): it may take network printers over, and says how
@@ -52,7 +55,7 @@ export async function soakWriterTick(w: SoakWriter, call: SoakCall, now: () => n
   const jobs = data.jobsForMe as PrintJobsForMe | undefined;
   if (!w.stopped && (jobs?.count ?? 0) > 0) {
     w.lastJobAt = now();
-    const agent: SoakAgent = { lines: new Map([...w.own, ...w.candidates]), device: w.device, direct: false, ...(w.tokens !== undefined ? { tokens: w.tokens } : {}), timerAt: null, closed: () => w.stopped };
+    const agent: SoakAgent = { lines: new Map([...w.own, ...w.candidates]), device: w.device, direct: false, ...(w.tokens !== undefined ? { tokens: w.tokens } : {}), timerAt: null, closed: () => w.stopped, ...(w.network !== undefined ? { network: w.network } : {}) };
     await leaseLines(agent, call);
   }
   const interval = printAgentWakeIntervalMs({ socketHealthy: false, msSinceLastJob: w.lastJobAt === null ? null : now() - w.lastJobAt, capSpent: false });

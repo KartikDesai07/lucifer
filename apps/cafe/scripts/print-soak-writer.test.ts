@@ -101,6 +101,21 @@ test("a wake that counts no job asks nothing more and comes back at the slow cad
   }
 });
 
+// The final Phase 3 gate (the 3G review's m-1): the writer's page acks a refusal before any byte on a network printer
+// "unreachable" (spec §9.3, P3-3), so the server skips it for that printer as it skips a Phase 3 page.
+test("a writer that cannot reach a network printer it was given acks unreachable", async () => {
+  const w: SoakWriter = { ...writer(1, 1), network: new Set(["p-kitchen"]) };
+  const acks: Array<Record<string, unknown>> = [];
+  const call: SoakCall = async (_method, url, body) => {
+    if (url.endsWith("/wake")) return { status: 200, json: { data: { jobsForMe: { count: 1, oldestCreatedAt: null }, agents: 2, agentDailyCap: 7_000, serverNow: new Date().toISOString(), takenOver: ["p-kitchen"] } } };
+    if (url.endsWith("/lease")) return { status: 200, json: { data: { jobs: acks.length === 0 ? [leased("k1", "p-kitchen")] : [], retryAt: null } } };
+    acks.push(body as Record<string, unknown>);
+    return { status: 200, json: { data: { applied: true, more: false } } };
+  };
+  await soakWriterTick(w, call, () => 1_000_000);
+  assert.deepEqual(acks.map((ack) => `${String(ack.outcome)}:${String(ack.sent)}:${String(ack.reason ?? "-")}`), ["failed:no:unreachable"], "the kitchen's network printer refused before any byte");
+});
+
 test("failover is checked by P3-4's measure: a slip made 90 s or more after the primary stopped printed by the second device; one waiting at the stop within 150 s", () => {
   const stopAt = Date.parse("2026-10-09T12:00:00Z");
   const at = (s: number) => new Date(stopAt + s * 1_000);

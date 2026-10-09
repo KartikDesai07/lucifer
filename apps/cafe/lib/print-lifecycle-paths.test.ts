@@ -498,3 +498,12 @@ test("PIN (the Phase 1 final gate, M8): the soak drives only a local POS on a lo
   // Session 2G (the 2F2 review gate): the first print or lease after an order is the soak agent's (scripts/print-soak-agent.ts).
   assert.ok(soak.indexOf("refusing: the POS at --base writes") < soak.indexOf("if (await printLeased(agent, soakCall, created)) await leaseLines(agent, soakCall);"), "checked before anything else is driven");
 });
+
+test("PIN (the final Phase 3 gate, the 3G review's m-1): the soak tells its agent and both writers which printers are network printers, as a Phase 3 page knows them (a page from before Phase 3, --tokens lease, names none)", () => {
+  const soak = src("apps/cafe/scripts/print-soak.ts");
+  assert.ok(soak.includes('const network: ReadonlySet<string> = new Set(args.tokens === "lease" ? [] : routable.filter((p) => p.connection.kind === "lan").map((p) => p.id));'), "the setup's network printers, none for an older page");
+  assert.equal(count(soak, "candidates: networkBut(lines), ...tokens, network,"), 1, "the soak's writer knows them");
+  assert.equal(count(soak, "candidates: networkBut(own), ...tokens, network,"), 1, "... and the second writer");
+  assert.ok(soak.includes("direct: args.direct, ...tokens, timerAt: null, network };"), "... and the soak's own agent");
+  assert.ok(src("apps/cafe/scripts/print-soak-writer.ts").includes("...(w.network !== undefined ? { network: w.network } : {})"), "a writer's agent takes them");
+});

@@ -11,7 +11,7 @@
  * it prints token slips as the page it stands for does (`tokens`).
  */
 import net from "node:net";
-import type { LeasedPrintJob, PrintJobRef } from "@pos/shared/print-agent-wire";
+import { PRINT_ACK_UNREACHABLE, type LeasedPrintJob, type PrintJobRef } from "@pos/shared/print-agent-wire";
 
 export const SOAK_TAB = "soak-tab";
 const SLIP_BYTES = 4_096;
@@ -35,6 +35,10 @@ export interface SoakAgent {
   timerAt?: number | null;
   /** --failover: the writer's page is closed now: it leases nothing more (the slip it holds is acked). */
   closed?: () => boolean;
+  /** The final Phase 3 gate (the 3G review's m-1): the lines that are network printers in the setup. A refusal there
+   *  before any byte is acked "unreachable", as a Phase 3 page acks it (spec §9.3, P3-3), so the server skips this
+   *  writer for that printer as it skips a page. */
+  network?: ReadonlySet<string>;
 }
 
 function noteTimer(agent: SoakAgent, iso: unknown): void {
@@ -103,10 +107,12 @@ export async function printAndAck(agent: SoakAgent, call: SoakCall, job: LeasedP
     if (written !== "printed") result = copy === 0 ? written : "maybe";
   }
   const said = agent.tokens === "page" ? { tokenSlips: true } : {};
+  // The final Phase 3 gate (m-1): a network printer this soak writes refused before any byte: "unreachable" (P3-3).
+  const unreachable = result === "no" && address !== undefined && job.printerId !== undefined && agent.network?.has(job.printerId) === true;
   const body =
     result === "printed"
       ? { deviceId: agent.device, epoch: job.epoch, outcome: "printed", ...said }
-      : { deviceId: agent.device, epoch: job.epoch, outcome: "failed", sent: result, error: result === "no" ? "The printer is not connected." : "The printer cut the connection mid-slip.", ...said };
+      : { deviceId: agent.device, epoch: job.epoch, outcome: "failed", sent: result, error: result === "no" ? "The printer is not connected." : "The printer cut the connection mid-slip.", ...(unreachable ? { reason: PRINT_ACK_UNREACHABLE } : {}), ...said };
   const ack = await call("POST", `/api/print-jobs/${job.id}/ack`, body);
   if (result !== "printed" && typeof ack.json.data?.nextAttemptAt === "string") {
     // Back in line with its backoff: the page's one timer, not a lease now.

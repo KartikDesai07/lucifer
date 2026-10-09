@@ -147,3 +147,35 @@ test("the soak's lease and ack say tokenSlips as its page would: page on both, l
     await printer.close();
   }
 });
+
+// The final Phase 3 gate (the 3G review's m-1): a refusal before any byte on a network printer's line is acked
+// "unreachable", as a Phase 3 page acks it (spec §9.3, P3-3), so a soak writer is skipped for that printer as a page is.
+test("a refusal before any byte on a network printer's line says unreachable; a cut, another line or another printer never does", async () => {
+  const cutter = net.createServer((socket) => socket.on("data", () => socket.destroy()));
+  await new Promise<void>((resolve) => cutter.listen(0, "127.0.0.1", resolve));
+  const address = cutter.address();
+  if (address === null || typeof address === "string") throw new Error("no port");
+  try {
+    const bodies: Array<Record<string, unknown>> = [];
+    const call: SoakCall = async (_method, _url, body) => {
+      bodies.push(body as Record<string, unknown>);
+      return { status: 200, json: { data: { applied: true, nextAttemptAt: new Date(Date.now() + 2_000).toISOString() } } };
+    };
+    const refuses = { host: "127.0.0.1", port: 1 };
+    const agent: SoakAgent = {
+      lines: new Map([["p-lan", refuses], ["p-cut", { host: "127.0.0.1", port: address.port }], ["p-usb", refuses], ["", refuses]]),
+      device: "soak-device",
+      direct: true,
+      network: new Set(["p-lan", "p-cut"]),
+    };
+    const held = (id: string, printerId?: string) => ({ id, status: "leased", targetDeviceId: "soak-device", leased: leased(id, printerId) });
+    await printLeased(agent, call, { json: { data: { printJobs: [held("n1", "p-lan"), held("c1", "p-cut"), held("u1", "p-usb"), held("s1"), held("o1", "p-elsewhere")] } } });
+    assert.deepEqual(
+      bodies.map((body) => `${String(body.sent)}:${String(body.reason ?? "-")}`),
+      ["no:unreachable", "maybe:-", "no:-", "no:-", "no:-"],
+      "only the network printer's refusal before any byte says unreachable (not a cut, a device printer, the simple-mode line or a printer the soak does not write)",
+    );
+  } finally {
+    await new Promise<void>((resolve) => cutter.close(() => resolve()));
+  }
+});

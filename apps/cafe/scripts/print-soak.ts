@@ -121,6 +121,9 @@ async function main(): Promise<void> {
       if (args.agent !== null) lines.set("", args.agent);
     }
     const tokens = args.tokens !== null ? { tokens: args.tokens } : {};
+    // The final Phase 3 gate (the 3G review's m-1): the setup's network printers, where the soak's page acks a refusal before
+    // any byte "unreachable", as a Phase 3 page does; --tokens lease stands for a page from before Phase 3, which never says it.
+    const network: ReadonlySet<string> = new Set(args.tokens === "lease" ? [] : routable.filter((p) => p.connection.kind === "lan").map((p) => p.id));
     // Session 3G (--failover): the soak's printers are written by its writer (--device), a page that polls the wake; a
     // second writer writes its own printers and may take any other network printer over; the orders come from a third
     // device that prints nothing, so every slip is leased by its writer (Session 2G's P4).
@@ -135,11 +138,11 @@ async function main(): Promise<void> {
       }
       const networkBut = (mine: ReadonlyMap<string, SoakAddress>) => new Map(routable.flatMap((p): Array<[string, SoakAddress]> => (p.connection.kind === "lan" && !mine.has(p.id) ? [[p.id, { host: p.connection.host, port: p.connection.port }]] : [])));
       if (networkBut(new Map()).size === 0 || [...lines.keys()].every((id) => !networkBut(own).has(id))) throw new Error("--failover: the soak writes no network printer the second writer may take over");
-      writers.push({ device: args.device, own: new Map(lines), candidates: networkBut(lines), ...tokens, stopped: false, lastJobAt: null, takenOver: [] });
-      writers.push({ device: second.device, own, candidates: networkBut(own), ...tokens, stopped: false, lastJobAt: null, takenOver: [] });
+      writers.push({ device: args.device, own: new Map(lines), candidates: networkBut(lines), ...tokens, network, stopped: false, lastJobAt: null, takenOver: [] });
+      writers.push({ device: second.device, own, candidates: networkBut(own), ...tokens, network, stopped: false, lastJobAt: null, takenOver: [] });
       lines.clear();
     }
-    const agent: SoakAgent = { lines, device: writers.length > 0 ? `${args.device}-orders` : args.device, direct: args.direct, ...tokens, timerAt: null };
+    const agent: SoakAgent = { lines, device: writers.length > 0 ? `${args.device}-orders` : args.device, direct: args.direct, ...tokens, timerAt: null, network };
     // Session 3G: with tokens on (print-customization S7) every order makes a token slip, which is never printed at once
     // (it waits for a lease that says tokenSlips): a soak that prints must say how its page says so.
     const settings = await db.collection("settings").findOne({}, { projection: { tokenEnabled: 1 } });
