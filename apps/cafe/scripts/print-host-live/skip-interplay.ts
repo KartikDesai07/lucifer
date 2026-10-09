@@ -25,7 +25,10 @@ import { COUNTER, KITCHEN, failoverOutlet, kotOf } from "./failover";
 const CAPS = { lan: true, bluetooth: true, usb: true, windowsPrinters: false, webSerial: false, webBluetooth: false, lanFailover: true };
 const WRITES = new Set(["updateOne", "updateMany", "findOneAndUpdate", "replaceOne", "bulkWrite", "insertOne", "insertMany", "deleteOne", "deleteMany"]);
 
-/** The writes `step` sends to the printers collection (each one an Atlas operation). */
+/** The writes `step` sends to the printers collection (each one an Atlas operation). The final Phase 3 gate (the 3G
+ *  review's m-6): mongoose's debug hook is process-wide: while it is set, every query this process sends is counted, so
+ *  never run legs in parallel in one process (verify-print-host-live.ts awaits each leg in turn; leg host.ts's counter
+ *  is the same kind). */
 async function printerWrites<T>(step: () => Promise<T>): Promise<{ value: T; writes: number }> {
   let writes = 0;
   mongoose.set("debug", (collection: string, method: string) => {

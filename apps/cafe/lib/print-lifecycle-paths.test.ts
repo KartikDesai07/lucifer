@@ -521,3 +521,12 @@ test("PIN (the final Phase 3 gate, the 3G review's m-3): in printers mode the so
     "the soak's job checks",
   );
 });
+
+test("PIN (the final Phase 3 gate, the 3G review's m-6): leg bf says its write counter is mongoose's process-wide debug hook, so the legs run one after another", () => {
+  const LEG = "apps/cafe/scripts/print-host-live/skip-interplay.ts";
+  const comments = readFileSync(path.join(REPO_ROOT, LEG), "utf8").replace(/\s*(\/\/|\*)\s*/g, " ").replace(/\s+/g, " ");
+  assert.ok(comments.includes("mongoose's debug hook is process-wide"), "the comment says the hook is the whole process's");
+  assert.ok(comments.includes("never run legs in parallel in one process"), "... and what that forbids");
+  assert.ok(src(LEG).includes('mongoose.set("debug", (collection: string, method: string) => {'), "landmark: the hook it describes");
+  assert.match(src("apps/cafe/scripts/verify-print-host-live.ts"), /await legBF\(/, "landmark: the runner awaits the leg");
+});
