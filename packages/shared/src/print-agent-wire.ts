@@ -113,6 +113,9 @@ export interface PrintDeviceSummary {
   nativeProtocol?: number;
   /** Session 3B (spec §9.3): its wake said it can take a network printer over (PrintDeviceCapabilities.lanFailover). */
   lanFailover?: true;
+  /** Phase 3 Session 3E (spec §9.6): its wake said it can write a network printer (PrintDeviceCapabilities.lan): every POS
+   *  app, and the Windows app from 1.12.0. The printer form offers such a device as a network printer's printing device. */
+  lan?: true;
 }
 /** The devices list's one page: far above any cafe's devices (rows unseen for 7 days are pruned). */
 export const PRINT_DEVICES_LIST_MAX = 50;

@@ -23,8 +23,9 @@ import { useSettings } from "@/hooks/use-settings";
 import { desktopPrintsOnNamed } from "@/lib/desktop-shell-printer";
 import { printConfigOf } from "@/lib/print";
 import { nativeIdOf } from "@/lib/print-agent-printers";
-import { PRINTER_WINDOWS_REQUIRED, appPrinterConnectionOf, draftWithLocal, localPrinterConnectionOf, onePrinterDevicesOf, printerBodyOf, printerDraftOf, printerPaperOf, windowsPrinterConnectionOf, type PrinterDraft } from "@/lib/print-setup-form";
+import { PRINTER_WINDOWS_REQUIRED, appPrinterConnectionOf, draftWithLocal, lanPrintingDevicesOf, localPrinterConnectionOf, onePrinterDevicesOf, printerBodyOf, printerDraftOf, printerPaperOf, windowsPrinterConnectionOf, type PrinterDraft } from "@/lib/print-setup-form";
 import { deviceConnectionText, deviceName } from "@/lib/print-setup-text";
+import { desktopLanApi } from "@/lib/printer/desktop-lan";
 
 interface PrinterFormDialogProps {
   /** null: Add printer. */
@@ -38,7 +39,7 @@ interface PrinterFormDialogProps {
 
 const LAN_TIP = "Give the printer a fixed address (a static IP, or a DHCP reservation on the router) so it never moves.";
 const LAN_DEVICE_NOTE =
-  "For now only the POS app on an Android phone or tablet prints to a network printer. A tablet not listed here: open Printer setup on it and add the printer there.";
+  "The POS app on an Android phone or tablet, or the Windows app 1.12 or later on a PC, prints to a network printer. A device not listed here (a PC that prints nothing yet, say): open Printer setup on it and add the printer there.";
 const FULL_COPY_NOTE = "A full copy already holds every station's items.";
 const NOTICES_NOTE = "Void, moved and cancel slips for the stations it prints.";
 const COPIES = ["1", "2", "3"];
@@ -68,9 +69,8 @@ export function PrinterFormDialog({ printer, printers, stations, devices, device
   const appHere = pool.active && draft.kind === "device" && (draft.device === null || draft.device.deviceId === deviceId);
   const appChoice = draft.device === null ? "" : (nativeIdOf({ connection: draft.device }, pool) ?? "");
   const onePrinter = onePrinterDevicesOf(devices, { deviceId, native: caps.native, v2: pool.active });
-  const android = devices.filter((device) => device.shell === "android" && device.deviceId !== deviceId).map((device) => device.deviceId);
-  const choices = [...(caps.native && deviceId !== "" ? [deviceId] : []), ...android];
-  if (draft.primaryDeviceId !== "" && !choices.includes(draft.primaryDeviceId)) choices.push(draft.primaryDeviceId);
+  // Phase 3 Session 3E (spec §9.6): a Windows app 1.12.0 prints network printers too, this PC or another.
+  const choices = lanPrintingDevicesOf(devices, { deviceId, lan: caps.native || desktopLanApi() !== null }, draft.primaryDeviceId);
   const shownDevice = draft.device === null ? null : `${deviceConnectionText(draft.device, devices, deviceId)} (${draft.device.address})`;
 
   const submit = async () => {

@@ -78,8 +78,9 @@ test("PIN (2D, spec §11): the printer form: a network printer's printing device
   // Session 2F1: a tablet whose POS app prints one printer (bridge v1) is refused a second, in words.
   assert.match(form, /const result = printerBodyOf\(draft, printers, printer\?\.id, windowsHere \? PRINTER_WINDOWS_REQUIRED : undefined, onePrinter\);/, "the body and its rules from the pure lib");
   assert.match(form, /const onePrinter = onePrinterDevicesOf\(devices, \{ deviceId, native: caps\.native, v2: pool\.active \}\);/);
-  assert.match(form, /devices\.filter\(\(device\) => device\.shell === "android" && device\.deviceId !== deviceId\)/, "only Android app devices print to a LAN printer for now");
-  assert.match(form, /\[\.\.\.\(caps\.native && deviceId !== "" \? \[deviceId\] : \[\]\), \.\.\.android\]/, "this device when it is the Android app");
+  // Phase 3 Session 3E deliberately changed: the POS app's devices and the Windows app 1.12.0 (lib/print-setup-form.ts
+  // lanPrintingDevicesOf, unit-tested), this device when it writes network printers.
+  assert.match(form, /const choices = lanPrintingDevicesOf\(devices, \{ deviceId, lan: caps\.native \|\| desktopLanApi\(\) !== null \}, draft\.primaryDeviceId\);/, "the POS app's devices and the Windows app 1.12.0 print to a LAN printer");
   assert.match(form, /onClick=\{\(\) => setDraft\(\(current\) => draftWithLocal\(current, here\)\)\}/, "Use this device's printer copies its saved printer");
   assert.match(form, /onChange=\{\(kotAll\) => set\(\{ kotAll, \.\.\.\(kotAll \? \{ kotStations: \[\] \} : \{\}\) \}\)\}/, "Full KOT copy clears the station boxes");
   assert.match(form, /disabled=\{draft\.kotAll\}/, "and keeps them off while it is on");

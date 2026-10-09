@@ -129,6 +129,15 @@ export function onePrinterDevicesOf(devices: readonly PrintDeviceSummary[], here
   return here.native && !here.v2 && here.deviceId !== "" ? [here.deviceId, ...others] : others;
 }
 
+/** Phase 3 Session 3E (spec §9.6): the devices a network printer may be printed by: this device when it writes network
+ *  printers (the POS app, or the Windows app 1.12.0), every other POS app device, and every Windows app whose wake said
+ *  it writes them (1.12.0); the printer's saved device stays offered whatever it is now. */
+export function lanPrintingDevicesOf(devices: readonly PrintDeviceSummary[], here: { deviceId: string; lan: boolean }, saved: string): string[] {
+  const others = devices.filter((device) => device.deviceId !== here.deviceId && (device.shell === "android" || (device.shell === "windows" && device.lan === true))).map((device) => device.deviceId);
+  const choices = [...(here.lan && here.deviceId !== "" ? [here.deviceId] : []), ...others];
+  return saved !== "" && !choices.includes(saved) ? [...choices, saved] : choices;
+}
+
 /** A new printer: nothing chosen but Notices, on for any printer that ends up taking KOTs (the 2B gate's M-7: a
  *  void, moved or cancel notice reaches a printer only where Notices is on). A saved one: as saved, less any
  *  station that no longer exists (the 2A gate's M4: such an id could never be saved again). An empty list is a list

@@ -44,8 +44,11 @@ export async function legAU(): Promise<void> {
   check("(au) two Windows printers of one PC are both saved", counter.ok && kitchen.ok && kitchen.data.paper === 58);
   const twice = await createPrinter(windows("Again", "epson tm-t82"));
   check("(au) the same Windows printer twice (any case) is refused (409), saying so", !twice.ok && twice.status === 409 && twice.error === "Counter already prints on that Windows printer. Choose another Windows printer.");
+  // Phase 3 Session 3E (deliberately changed): the Windows app 1.12.0 writes a network printer beside its Windows printers.
   const lan = await createPrinter({ ...windows("Network", ""), connection: { kind: "lan", host: "10.0.0.9", port: 9100 }, primaryDeviceId: PC });
-  check("(au) a network printer for that PC: one printer, as before (409, the 2D words)", !lan.ok && lan.status === 409 && lan.error.startsWith("That device already prints "));
+  check("(au) a network printer for that PC is saved beside its Windows printers (3E)", lan.ok);
+  const lanTwice = await createPrinter({ ...windows("Network again", ""), connection: { kind: "lan", host: "10.0.0.9", port: 9100 }, primaryDeviceId: PC });
+  check("(au) the same network printer twice for that PC is refused (409), saying so", !lanTwice.ok && lanTwice.status === 409 && lanTwice.error === "Network already prints on that printer. Choose another printer.");
   const spare = await createPrinter(windows("Spare", "EPSON TM-T82", { enabled: false }));
   const spareId = spare.ok ? spare.data.id : "";
   const onAgain = await replacePrinter(spareId, windows("Spare", "EPSON TM-T82"));

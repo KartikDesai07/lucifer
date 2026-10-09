@@ -98,10 +98,10 @@ export async function readOnlinePrintDevices(nowMs: number): Promise<PrinterFail
  *  lead), for the Printer setup page and a network printer's printing device. One bounded read; no write. */
 export async function listPrintDevices(nowMs: number): Promise<PrintDeviceSummary[]> {
   const rows = await PrintDevice.find()
-    .select("deviceId label shell lastSeenAt nativeProtocol capabilities.lanFailover beatAt")
+    .select("deviceId label shell lastSeenAt nativeProtocol capabilities.lan capabilities.lanFailover beatAt")
     .sort({ lastSeenAt: -1 })
     .limit(PRINT_DEVICES_LIST_MAX)
-    .lean<Array<{ deviceId: string; label: string; shell: PrintDeviceShell; lastSeenAt: Date; nativeProtocol?: number; capabilities?: { lanFailover?: boolean }; beatAt?: Date }>>();
+    .lean<Array<{ deviceId: string; label: string; shell: PrintDeviceShell; lastSeenAt: Date; nativeProtocol?: number; capabilities?: { lan?: boolean; lanFailover?: boolean }; beatAt?: Date }>>();
   return rows.map((row) => ({
     deviceId: row.deviceId,
     label: row.label,
@@ -113,6 +113,8 @@ export async function listPrintDevices(nowMs: number): Promise<PrintDeviceSummar
     // Session 3B (spec §9.3): it can take a network printer over, for the setup page's words; Session 3C (G-1): only while
     // its own wake is fresh, as the server decides.
     ...(lanFailoverNow(row, nowMs) ? { lanFailover: true as const } : {}),
+    // Phase 3 Session 3E (spec §9.6): it can write a network printer (the Windows app from 1.12.0), for the printer form.
+    ...(row.capabilities?.lan === true ? { lan: true as const } : {}),
   }));
 }
 

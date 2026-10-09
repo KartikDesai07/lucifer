@@ -17,6 +17,7 @@ import {
   appPrinterConnectionOf,
   onePrinterAppMessage,
   onePrinterDevicesOf,
+  lanPrintingDevicesOf,
   PRINTER_PORT_INVALID,
   SETUP_PRINTER_NAME,
   draftWithLocal,
@@ -170,6 +171,20 @@ test("2F1: one of the app's printers as a connection, at the form's paper; a POS
   assert.equal(onePrinterAppMessage("Counter"), "That device's POS app prints one printer (or has not checked in since it was updated), and it already prints Counter. Update the POS app on it to print several printers there.");
   assert.ok(printerBodyOf({ ...bar, primaryDeviceId: "tab-v2" }, [{ ...counter, primaryDeviceId: "tab-v2" }]).ok, "a tablet on v2 prints both");
   assert.ok(printerBodyOf({ ...bar, enabled: false }, [counter], undefined, undefined, ["tab-v1"]).ok, "saved switched off: never leased");
+});
+
+test("3E: a network printer may be printed by this device when it writes network printers, every POS app, and a Windows app 1.12.0; its saved device stays offered", () => {
+  const devices: PrintDeviceSummary[] = [
+    { deviceId: "tab", label: "POS app", shell: "android", online: true, lastSeenAt: "2026-10-09T10:00:00.000Z", lan: true },
+    { deviceId: "pc-new", label: "Counter PC", shell: "windows", online: true, lastSeenAt: "2026-10-09T10:00:00.000Z", lan: true },
+    { deviceId: "pc-old", label: "Counter PC", shell: "windows", online: true, lastSeenAt: "2026-10-09T10:00:00.000Z" },
+    { deviceId: "tab-old", label: "POS app", shell: "android", online: false, lastSeenAt: "2026-10-09T09:00:00.000Z" },
+    { deviceId: "web", label: "Counter PC", shell: "browser", online: true, lastSeenAt: "2026-10-09T10:00:00.000Z" },
+  ];
+  assert.deepEqual(lanPrintingDevicesOf(devices, { deviceId: "pc-new", lan: true }, ""), ["pc-new", "tab", "tab-old"], "a Windows app 1.12.0 offers itself, and every POS app");
+  assert.deepEqual(lanPrintingDevicesOf(devices, { deviceId: "web", lan: false }, ""), ["tab", "pc-new", "tab-old"], "from a browser: the POS apps and the Windows app 1.12.0, never the old one or a browser");
+  assert.deepEqual(lanPrintingDevicesOf(devices, { deviceId: "web", lan: false }, "pc-old"), ["tab", "pc-new", "tab-old", "pc-old"], "a saved device stays offered");
+  assert.deepEqual(lanPrintingDevicesOf(devices, { deviceId: "", lan: true }, ""), ["tab", "pc-new", "tab-old"], "no device identity yet: not itself");
 });
 
 const DEVICES: PrintDeviceSummary[] = [

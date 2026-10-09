@@ -330,6 +330,31 @@ POS with Phase 2. An older Windows app prints one printer, the one chosen for th
 - [ ] An unplugged printer: Windows keeps its slips in its own print queue and prints them when it is back; the POS
       cannot see that queue (spec §9.6), so check the paper.
 
+## Network printers on the Windows app (Phase 3, added 2026-10-09)
+
+Needs the Windows app 1.12.0 (`POS-Software-Setup-1.12.0.exe`, installed over 1.11.0) on the counter PC, a network
+(LAN) thermal printer on port 9100 with a fixed address, and the POS with Phase 3. The app writes the network
+printer itself, straight from the PC (no Windows driver): the slip is the same as the POS app's.
+
+- [ ] Printer setup on the PC: **Add printer** → **Network (LAN)** → the printer's address and 9100 → **Printing
+      device**: this PC → tick **Kitchen KOTs** → save. **Send to Kitchen**: one KOT on the network printer, as wide
+      as its roll. The 1.11.0 app on another PC is not offered as a printing device for it.
+- [ ] Switch the network printer off: the next kitchen slip waits; within about a minute the PC's printer dot says
+      the printer is not answering, and within about three minutes every device's panel row says "Kitchen is not
+      connected.". Switch it on: the slip prints within about half a minute, once.
+- [ ] Open its cover, then take its paper out: "Kitchen has its cover open." / "Kitchen is out of paper." on every
+      device while a slip waits; close it / put paper back: the slip prints within about 10 seconds, once.
+- [ ] Cut its power in the middle of a long bill: the bill asks the cashier (or the KOT prints again labelled
+      **REPRINT**), never a silent "printed".
+- [ ] Two printing devices for one network printer: the PC prints it, a tablet (POS app) also writes a printer. Quit
+      the Windows app (tray → Quit): every slip made 90 s or more later prints from the tablet; one already waiting
+      prints within a minute more. Open the app again: the PC prints it again.
+- [ ] Leave the PC and a tablet both listing the network printer for 10 minutes with no orders: no "not connected"
+      words appear (a printer that takes one connection at a time is asked again a second later).
+- [ ] A Windows printer the PC prints (Phase 2's checks): remove it in Windows (Settings → Printers): within about three
+      minutes a slip for it waits with "‹printer› is not connected." on every device. Add it back with the same name:
+      the slip prints once, within about a minute.
+
 ## Result
 
 Date: ________  Device and Android version: ________________________

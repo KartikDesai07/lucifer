@@ -197,11 +197,13 @@ function devicePrinterKey(connection: PrinterConnection): { family: "windows" | 
 }
 
 /** Two printers one device may write side by side: of one kind (Windows printers of a PC, or the POS app's printers),
- *  and not the same printer. */
+ *  and not the same printer. Phase 3 Session 3E (spec §9.6): a network printer goes beside a PC's Windows printers too
+ *  (the Windows app 1.12.0 writes both; the printer form offers a PC for a network printer only from 1.12.0). */
 function differentPrintersOfOneDevice(a: PrinterConnection, b: PrinterConnection): boolean {
   const left = devicePrinterKey(a);
   const right = devicePrinterKey(b);
-  return left !== null && right !== null && left.family === right.family && left.key !== right.key;
+  if (left === null || right === null || left.key === right.key) return false;
+  return left.family === right.family || a.kind === "lan" || b.kind === "lan";
 }
 
 export function printerWriterTakenMessage(name: string): string {

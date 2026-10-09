@@ -314,6 +314,11 @@ test("PIN (3B): a beat's settled link starts its device's skip for a network pri
   // The devices read says which device can take a network printer over (the setup page's words); Session 3C (G-1): only
   // while its own wake is fresh.
   assert.ok(src(DEVICE).includes("...(lanFailoverNow(row, nowMs) ? { lanFailover: true as const } : {}),"), "the devices read carries lanFailover");
+  // Phase 3 Session 3E (spec §9.6): and whether a device writes network printers (the Windows app 1.12.0), for the form.
+  assert.ok(src(DEVICE).includes("...(row.capabilities?.lan === true ? { lan: true as const } : {}),"), "the devices read carries lan");
+  const form = src("apps/cafe/components/print/setup/PrinterFormDialog.tsx");
+  assert.ok(form.includes("const choices = lanPrintingDevicesOf(devices, { deviceId, lan: caps.native || desktopLanApi() !== null }, draft.primaryDeviceId);"), "the form offers them as a network printer's printing device");
+  assert.ok(form.includes("or the Windows app 1.12 or later on a PC, prints to a network printer."), "and says which devices can");
 });
 
 // Session 3C (G-1, the 3A review gate's exit pre-run): a lease refreshes lastSeenAt, but only the wake says lanFailover. A
