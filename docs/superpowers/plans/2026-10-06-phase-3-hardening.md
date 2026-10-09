@@ -30233,4 +30233,150 @@ Commit, then push with the token only: `GIT_TERMINAL_PROMPT=0 git push origin fe
 
 ## Session 3E Results (filled in by the implementer)
 
-(to be filled in)
+Executed on 2026-10-09 in one Claude session with superpowers:executing-plans, task by task, E0 → E7. The ledger is `.superpowers/sdd/2026-10-06-phase-3-hardening/progress.md` (section "Session 3E").
+
+### Commits (`fd0146a..HEAD`)
+
+| Commit | Task |
+|---|---|
+| `7da61b1` | E0: the 3D review gate's app fixes: Change POS address first says this device prints nothing (`setHostActive(false, '')` before `clearOrigin()`: m-1); `onHostDestroy` keeps the service while the activity `isChangingConfigurations` (m-2); `PageWatch.answered()` clears the dead count and an answer refreshes the notification at once (m-3); the page's own stop cancels an old "POS printing is off" notice (N-2); the watchdog's remount in a Jest test of the POS screen (m-4); pin 25 |
+| `776c444` | E1: `apps/desktop/src/raw-tcp.ts`: raw TCP from the main process (one connection per job to a private address, the page's ESC/POS bytes, DLE EOT before "printed" (G5), "no" only before a socket exists and "maybe" after any byte, a refused connect asked again a second later, a 60 s job, the idle check) and `raw-tcp.test.ts` (11) in the desktop test chain |
+| `96440b3` | E2: the app's two calls (`print-raw.ts`: `printRaw`, `lanStatus`, vetted like every print channel; `shared.ts`, `preload.ts`, `main.ts`), version **1.12.0**; the page's `DesktopLanBridge` |
+| `2a74a4e` | E3: `apps/cafe/lib/printer/desktop-lan.ts` (`desktopLan()`: each network printer's link, paper, cover and error; the checks' cadence; a check never overwrites a newer slip's answer; a 75 s wait), the lanes write a `lan` target through `printRaw`, `hostPrintFailureMessage` keeps a lane sentence |
+| `0a889f1` | E4: on 1.12.0 a network printer is the PC's, a PC that writes a printer by the setup may take one over (E-1), named in a lease only while the app reaches it; the agent nudged by the link, a hold released by its change; the minute's check; the wake says `lan` and `lanFailover` |
+| `2c0396d` | E5: health on the beat (a network printer's settled link, paper, cover, error; a Windows printer `connected` while Windows reports it, `disconnected` once missing 20 s: `windowsMissingIds`, the minute's presence re-read); the dot reads a network printer (m-1 of the golden review) |
+| `26b2812` | E6: Printer setup offers a Windows app 1.12.0 as a network printer's printing device (`lanPrintingDevicesOf`, `PrintDeviceSummary.lan`), a network printer beside a PC's Windows printers (`differentPrintersOfOneDevice`; leg au deliberately changed), TEST-CHECKLIST "Network printers on the Windows app (Phase 3)" |
+| (this commit) | Results |
+
+### Start
+
+- `GIT_TERMINAL_PROMPT=0 git fetch origin` (the repo-local token store) worked: `feat/printing-phase-3` = `origin/feat/printing-phase-3` = `fd0146a`, working tree clean; `origin/main` still `7f8ed31` (nothing to merge or note).
+- Disk at the start: D: 12 GB free, C: 15 GB free (C: fell to 1.45 GB later in the session: Step 6).
+- Real printers: none on hand. The owner's ruling (2026-10-08) stands: the real-printer checks run once, after all of Phase 3, before the merge decision; this session did not ask, and carries every real-printer item to 3G (below).
+- The 3D review gate's applier (`apply_blocks_clone.py`), `mkenv3e.py`, `link-modules.ps1`, `w-all.sh`, `ui.py`, `type-secret.py`, `p3a-proxy.mjs` and `p3b-proxy.mjs` were copied into this session's scratchpad (the last four are byte-identical to the 3D session's copies the plan names). A dry run of the whole Session 3E range (plan lines 24465–30233) against `fd0146a`: **125 ops OK** (no drift).
+
+### How the code was applied
+
+Every block went verbatim into the real repo through the applier, one step range at a time (each task's Step 1, then its Step 3), so each RED was seen before its code went in: E0 6 + 5 ops, E1 2 + 1, E2 8 + 10, E3 9 + 10, E4 10 + 23, E5 8 + 17, E6 7 + 9 (**125**). After E6, **every file outside `docs/` is blob-identical to the gate's golden copy `g3e-v4`** (tree `746edd8`, in the gate's scratchpad clone `g3e`): the `git ls-tree -r` listings of both, without `docs/`, are equal (1,964 entries). `978459c..26b2812` outside `docs/`: 56 files, **+2,000 / −92** (`apps/cafe` 35 files +930 / −79; `apps/desktop` 8 files +859 / −4; `apps/mobile` 10 files +197 / −5; `packages/shared` 3 files +14 / −4). Every commit has the plan's message, verbatim, plus the repo's co-author line, through `git commit -F` (ruling 1).
+
+### Per-task RED → GREEN (every Expected line compared; all matched)
+
+| Task | RED | GREEN |
+|---|---|---|
+| E0 | mobile: tests 141, pass 139, **fail 2**; Jest `1 failed, 4 passed, 5 total`; JUnit `> Task :app:testDebugUnitTest FAILED`, `BUILD FAILED`: BatteryTargets 3, DleEot 7, HostLife 4, PageWatch 6 (**1 failure**), PoolList 6, PoolStatus 3, PrinterManager 22, PrinterPool 3, TcpTransport 10 | mobile **141/141**; Jest **5/5**; JUnit `BUILD SUCCESSFUL`, the same suites with 0 failures (**64**); `MOBILE_TSC_OK`; `MOBILE_LINT_OK` |
+| E1 | `raw-tcp.test.ts`: tests 1, pass 0, **fail 1** (`Cannot find module './raw-tcp'`) | `raw-tcp.test.ts` **11/11**; desktop **203/203**; `DESKTOP_TSC_OK`; `DESKTOP_LINT_OK` |
+| E2 | `desktop-paths.test.ts`: tests 1, pass 0, **fail 1** (ENOENT `src/print-raw.ts`); cafe two files: tests 110, pass 108, **fail 2** | desktop **205/205**; `DESKTOP_TSC_OK`; `DESKTOP_LINT_OK`; cafe three files **139/139** + `TSC_OK`; `LINT_OK` |
+| E3 | cafe five files: tests 31, pass 24, **fail 7** | cafe seven files **98/98** + `TSC_OK`; `LINT_OK` |
+| E4 | cafe three files: tests 54, pass 45, **fail 9** | cafe six files **143/143** + `TSC_OK`; `LINT_OK` |
+| E5 | cafe four files: tests 72, pass 65, **fail 7** | cafe six files **100/100** + `TSC_OK`; `LINT_OK` |
+| E6 | cafe three files: tests 54, pass 51, **fail 3**; shared `print-printers.test.ts`: tests 17, pass 16, **fail 1** | cafe **54/54** + `TSC_OK`; shared **17/17**; `SHARED_TSC_OK`; `LINT_OK` |
+
+Line counts at the end: `apps/desktop/src/raw-tcp.ts` 448 (new), `print-raw.ts` 71 (new), `main.ts` 308; `apps/cafe/lib/printer/desktop-lan.ts` 292 (new), `hooks/use-print-agent.ts` 328, `hooks/use-agent-printers.ts` 179, `lib/print-agent-printers.ts` 357, `lib/print-agent-health.ts` 122, `lib/printer/printer-dot.ts` 300 (its budget), `lib/desktop-shell.ts` 150 (its budget).
+
+### Task E7 Step 1: every suite (at `26b2812`; once each, in the background, one after another)
+
+| Suite | Result |
+|---|---|
+| shared `npm test`; `tsc` | **821/821**; 0 |
+| cafe `npm test` | **5044 tests, 5043 pass, 0 fail, 1 skipped** (go-live-dl) |
+| cafe `tsc`; `npm run lint` | 0; 0 errors and the 2 old warnings (`lib/masters-blob.test.ts:331`) |
+| hub `tsc`; lint | 0; 0 |
+| mobile `tsc`; lint; `npm test`; `test:app` | 0; 0 errors, **1 warning** (`no-void`, `__tests__/App.test.tsx:65:40`, from E0's test block: ruling 2); **141/141**; Jest **5/5** |
+| desktop `npm test`; `typecheck`; lint | **205/205**; 0; 0 |
+| `npm run test:print-tools` | **11/11** |
+| live legs (local mongod, `pos_scratch_print_host_3e`) | **`447 passed, 0 failed`** (leg at +2, leg au +1) |
+
+Every row equals the plan's Expected.
+
+### Step 2: JUnit, and the APKs (a full release compile)
+
+- `:app:testDebugUnitTest --rerun`: `BUILD SUCCESSFUL`, **64 tests, 0 failures** (BatteryTargetsTest 3, DleEotTest 7, HostLifeTest 4, PageWatchTest 6, PoolListTest 6, PoolStatusTest 3, PrinterManagerTest 22, PrinterPoolTest 3, TcpTransportTest 10).
+- A marker file in the scratchpad, then `aR -PreactNativeArchitectures=x86_64 --info` (nothing else on that line): `BUILD SUCCESSFUL` (1 m 22 s). **The full release compile, proved:** the log has **0** lines `Using Kotlin/JVM incremental compilation`; **0 of 100** release classes are older than the marker; `javap -c -p …/release/…/TransportFactory.class` calls `TcpTransport."<init>":(Ljava/lang/String;IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V`.
+- Then the client pair, `assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a`: `BUILD SUCCESSFUL` (46 s). Each APK copied into the scratchpad (`apk-3e/`) and hashed, **not released**:
+
+| APK | SHA-256 |
+|---|---|
+| x86_64 (the emulator) | `a487093cbdfa731b43969a256c304865df1e4142dd6399d96146711cc1777d49` |
+| arm64-v8a | `f0e006ed401a16ef60a3e9d539a9598c449adecad772077cd070ddea8016574f` |
+| armeabi-v7a | `f5e2c14aaaad5d9d1eeec94ff2ce8c3999d64dda2d9a96f92f02a2cb39fc673f` |
+
+  They differ from the gate's build-copy hashes (`397612a8…`, `9e4525b7…`, `c6c436f6…`), as the plan says a repo build will.
+
+### Step 3: the Next production build (the repo, D:)
+
+`npm run build` (D: 12 GB free): exit 0, **132 routes**.
+
+### Step 4: the Windows installer 1.12.0, and what changed outside the web
+
+- `npm run dist` in `apps/desktop` (`--publish never`; Electron 44.2.0 from the cache: the log has no "downloading" line, as the gate's): exit 0, **`POS-Software-Setup-1.12.0.exe`, 112,216,876 B, SHA-256 `4d86178c0d67eed3098913fc67ebbebf2bfa7dc64899fa3208b2a06f853fbacc`**, copied into the scratchpad (`installer-3e/`), **not released** (the gate's golden build: 112,216,794 B, `b73e6143…`; the repo's build hashes differently, as the plan says). `dist/` and `out/` left as build output (git-ignored; `git status` clean).
+- `git diff --stat 978459c..HEAD -- workers`: **empty**. `-- apps/desktop`: E1 and E2's 8 files. `-- apps/mobile`: E0's 9 files and TEST-CHECKLIST.
+
+### Step 5: the exit, headless (W0–W6: passed)
+
+**The harness**, as the plan's Step 5 says: a fresh database **`pos_scratch_e2e_3es`** (Session 3B's env file copied by `mkenv3e.py` with only `MONGODB_URI` changed, no value printed; seeded with `scripts/seed-admin.ts`, `seed-tables.ts`, `seed-menu.ts`); this branch's Step 3 build on `next start -p 3110`; `p3a-proxy.mjs` on 3200 (`proxy3e.jsonl`); `pw-3e.mjs` extracted from E7's fenced block by a script (byte-identical to the gate's copy), run from the repo's `apps/cafe` with `PW_REPO` the repo (its real `apps/desktop/src/raw-tcp.ts`), all seven scenarios one after another (`w-all.sh`). Ports 3110, 3200 and 9100 were free; no other session's server was touched.
+
+| # | Result |
+|---|---|
+| W0 | PC1 `…b022` and PC2 `…9977` (fake 1.12.0), PC3 `…0d1b` (fake 1.11.0), the plain tab C `…7f29`; Beverages → Bar `200`; printers **Kitchen** (network `127.0.0.1:9100`, PC1), **Front** (PC1's "EPSON TM-T82") and **Back** (PC2's Windows printer) all **`201`** (the network printer beside PC1's Windows printer: E6). **PASS** |
+| W1 | the wake rows: PC1 and PC2 **`shell=windows lan=true lanFailover=true`**; C ordered a pizza and a chai: the kitchen KOT **printed by PC1 over raw TCP** (44,382 B sent, `{"paper":"ok","cover":"closed"}`; the fake's log 44,394 B with the 12 DLE EOT bytes), the bar KOT through `printHtmlOn` on EPSON TM-T82; the Kitchen printer's health **`connected/ok/closed`** from PC1; Front `connected`. The lease came 10 s after the order (ruling 3). **PASS** |
+| W2 | `--paper-out`: health **out of paper** from PC1's check; C's slip **never leased**; C's notice and panel row **"Kitchen is out of paper."**; paper back: **printed 4.0 s later**, once. **PASS** |
+| W3 | PC1 closed; the slip C made right after: `retargeted` to PC2 and **printed by PC2 129 s after the stop** (P3-4's bound: 150 s; the gate's runs 129 s and 83 s); the next slip printed by PC2 **1.0 s** after the order; the Kitchen health now from PC2. **PASS** |
+| W4 | PC1 cannot reach `127.0.0.1:9100` (its control file): **skipped 27.1 s** later (`unreachable=[b022]`, health `disconnected@b022`; the gate: 30 s); C's slip **printed by PC2** at once. **PASS** |
+| W5 | PC1's Windows stops reporting EPSON TM-T82: Front's health **`disconnected` from PC1 after 81.3 s** (the gate: 81 s); C's bar slip waits with **"Front is not connected."** in C's panel; back in Windows: **printed once**, 60.2 s later. **PASS** |
+| W6 | PC3 (1.11.0): its wake row **`lan=false lanFailover=false`**; the bar slip **printed by PC3 through `printHtmlOn`** (7.1 s); the devices list gives PC3 no `lan` (`…0d1b windows lan=-`), so no form offers it for a network printer. **PASS** |
+
+Then `pw-3e.mjs clear` (three printers deleted, `200`). No page error in any scenario. The fake printer's slip count grew by exactly one per slip (no double).
+
+### Step 6: the exit on the emulator (XE0–XE5: passed)
+
+**The emulator** (ruling 4): C: had fallen from 15 GB to **1.45 GB** during Steps 1–5 (not this session's files: its scratchpad is 211 MB; the owner's Docker Desktop disk `docker_data.vhdx` is 80.6 GiB and was being written), under qemu's ~2 GB floor. The AVD's quickboot snapshot `snapshots/default_boot/ram.img` (4,295,032,832 B, written 2026-10-09 13:52, all zeros) was **NTFS-compressed in place** (`compact /c`: stored in 0 bytes; transparent; `compact /u` undoes it; nothing deleted), as the 3D session did to the older one: C: 5.4 GB. It then booted at **`-memory 2048 -no-audio -no-snapshot`** (that snapshot neither loaded nor saved; C: only just over the 5 GB line) in about a minute; crash buffer 0. **As found:** the release APK (`29115bdf…` hashed on the device), its start screen with no address (the placeholder; not the demo), notifications not allowed (`granted=false`, `USER_SET`), `font_scale` `null`. `p3b-proxy.mjs` on 3201 (`proxy3e-emu.jsonl`), `pw-3e.mjs printers 6000`, `adb reverse tcp:3100 tcp:3201`.
+
+| # | Result |
+|---|---|
+| XE0 | `adb install -r` of the 3E x86_64 APK (`a487093c…`, hashed on the device) over the release APK: crash 0; its start screen → `http://localhost:3100` → Open POS: "Failed to load products" (a session from another database) → Account Staff → Sign out → signed in as `e2eadmin` (`type-secret.py`, the focused field checked to be a password field) → the Dashboard of "POS Software"; the panel "No printer set up" → Network printer `10.0.2.2`, 9100 → Use: **"Network printer 10.0.2.2 is connected."**; Done; crash 0. **PASS** |
+| XE1 | the emulator's device `80cfb12d…d5f2` (its pulses' `device=`); `emu-setup` → Kitchen `201`; Refresh: `PrintHostService` **`isForeground=true`** (`foregroundId=4101`), **`stopIfKilled=false`**; no notification question (asked before on this app data) → `pm grant … POST_NOTIFICATIONS` (recorded), HOME and open once → **"Printing is on — Network printer 10.0.2.2"**; HOME; `emu-order 120`: created, leased and **printed by the emulator 4.0 s after the order with the launcher on top**, 44,250 B on 9100. **PASS** |
+| XE2 (m-2) | the app in front; `font_scale 1.15`, then `1.0`: logcat **`finishDrawing of relaunch` twice** (the screen recreated), **the same `ServiceRecord{75ce91 … PrintHostService}`** before and after each, and **"POS printing is off" in 0 of 20 + 0 of 20 polls**; "Printing is on" still posted; `font_scale` deleted (`null`, as found). **PASS** |
+| XE3 (m-1) | the panel → More options → **Change POS address**: the service **gone at once** (1 → 0 records), **no printing notice in 45 polls**, the start screen; `adb shell sync`, `adb reboot`, `adb reverse tcp:3100 tcp:3201` again: **no "POS printing is off" within 70 s** of `sys.boot_completed`, no service. **PASS** |
+| XE4 (N-2) | the start screen → `http://localhost:3100` → Open POS: "Printing is on — Network printer 10.0.2.2" again (`isForeground=true`); HOME, sync, reboot, reverse again: **"POS printing is off. Tap to start." 28 s after `sys.boot_completed`** (the gate: 20 s); `pw-3e.mjs clear`; the app opened **from the launcher** (`monkey`): **the notice gone 5 s later** (the gate: ≈6 s), no service. **PASS** |
+| XE5 | `adb logcat -b crash -d \| grep -c possoftware`: **0** after the 3E APK's install (checked twice), at the end, and after the release APK's return (the reboots clear the buffer). **PASS** |
+
+**Put back:** the setup cleared (`pw-3e.mjs clear`; the scratch database `pos_scratch_e2e_3es` is left, its env file in this session's scratchpad); the app's printer removed (Remove → "Yes, remove" → "No printer set up"); More options → Change POS address → Clear POS address (the placeholder); the **release APK** reinstalled (`adb install -r -d`; `29115bdf…` on the device; its start screen "Connect to your workspace", no address; crash 0); notifications revoked (`granted=false`); `font_scale` `null`; `adb reverse --remove-all`, then `adb reverse tcp:3100 tcp:3100`; HOME; `adb shell sync`; `adb emu kill`; every server and harness process this session started stopped by PID after checking its command line (ports 3110, 3200, 3201 and 9100 free). The AVD's `ram.img` stays NTFS-compressed (ruling 4).
+
+### Step 7: the fresh review (Claude Fable 5.1)
+
+**How it ran.** A fresh reviewer on **Claude Fable 5.1** (no HTTP 429), read-only, its scratch only in this session's scratchpad (`review3e/`), reviewed `978459c..26b2812` (the code; `56172a7` and `fd0146a` in that range are the gate's docs) against the plan head (P3-1 to P3-10 as the gates changed them), the 3E spec, the 3D review gate's rulings and the golden-copy review, Session 3E and its Review Focus (passed verbatim), and spec §9.3, §9.5, §9.6, §9.8, §10, §13, §14, §17, with the POS app's `TcpTransport.kt`, `PrinterStatus.kt` and `TcpAddress.kt` as the parity models. It ran in the background during Steps 1–5, told to keep off Gradle, adb, the emulator, builds, servers and the harness's ports and databases. Its own runs: desktop **205/205**, tsc and eslint 0; shared **821/821**; the 14 touched cafe test files **290/290**, cafe tsc 0; mobile **141/141**, Jest **5/5**, tsc 0; print tools **11/11**; the live legs on its own database (`pos_scratch_print_host_3esrev`) **447/0**; probes of HEAD's `raw-tcp.ts` against loopback fakes on ports of its own (a check during a running job answers `null` with one connection; a printer that never answered DLE EOT and closes after the slip: printed, no health; one that answered and then closes before answering: "maybe" / `write-failed`; `::FFFF:192.168.1.5` local, `::FFFF:8.8.8.8` not; no uncaught exception or unhandled rejection).
+
+**Verdict: "Ready to merge: Yes".** **0 Critical, 0 Important**, five minors. Its sound list: G5 parity with `TcpTransport.kt` wait for wait (`healthOfAnswers` = `DleEot.healthOf` bit for bit); "no" raised only before a socket exists (a wrong "no" unreachable; the page says "unreachable" only for the exact not-connected sentence); the IPC surface = `print.ts`'s gate plus the address and size bounds before any socket (resolved once, connected by IP: no rebinding window; IPv4-mapped IPv6 unwrapped); no crash path in the main process (the socket's `error` listener from creation, every timer cleared, the handlers catch everything); one job or check per printer at a time and a check never overwriting a newer slip's answer; deploy skew (1.11.0 on the 3E page is Phase 2 exactly; a rollback server ignores `capabilities.lan`); the server's skip and health paths consume the PC's reports correctly (≤ 144 health writes a printer a day); E0 correct on React Native 0.87.1 bridgeless; `differentPrintersOfOneDevice` the narrowest rule; no new request kind.
+
+| # | Finding (the reviewer's) | Re-graded / what was done |
+|---|---|---|
+| m-1 | `PrintHostService.kt:107–112`: a probe answer that lands after `onDestroy` can re-post "Printing is on" as an orphan ongoing notification (`refreshNotification()` runs outside the service's handler); a millisecond window (the alert showing, a remounted page answering and at once saying it prints nothing). | **Minor (kept)** → the 3E gate (a `destroyed` flag checked in the callback). |
+| m-2 | `print-agent-printers.ts:174`: an empty Windows printer list (a spooler restart) makes every Windows printer missing, so "‹printer› is not connected." shows on every device for up to ~80 s with two health writes; `main.ts` reads an empty list as "cannot tell". Phase 2 already stops leasing then: only the words and the writes are new. | **Minor (kept)** → the 3E gate (an empty list is unknown for `windowsMissingIds`). |
+| m-3 | `raw-tcp.ts:177–187`: a saved host *name*'s DNS lookup is outside the 5 s connect budget and the 60 s job deadline (a slow resolver could pass the page's 75 s: a needless REPRINT). Parity with `TcpAddress.resolveAll`; the form asks for an IP. | **Minor (kept)** → the 3E gate. |
+| m-4 | `desktop-lan.ts:160–169`: `check()` schedules no follow-up when `lanStatus` rejects or answers oddly (a down printer then waits 60 s, not 30 s); practically unreachable. | **Minor (kept)** → the 3E gate. |
+| m-5 | `desktop-lan.ts:163`: a 17th watched network printer is never checked (stays `connecting`, never leased). Unrealistic for a cafe. | **Minor (kept)** → the 3E gate (a code note or a setup-page word). |
+
+**Its "declined to judge" lines, ruled** (ledger): the 60 s job deadline against very long slips, the idle check's ~1 s hold (the golden review's m-6), loopback as a private address, the saved-origin page's private-network surface, a tray notice per failed network slip, Windows presence saying nothing of paper, `dns.lookup`'s `verbatim` on Electron 44's Node, the page's `written` map never pruned, the GO-LIVE wording (3G), RN 0.87.1's `onHostDestroy` ordering read from the gate's verification: all stand as the 3D gate ruled them or as designed (spec §9.6, §10, §13; parity with the POS app). The write-backpressure path (a printer that stops reading mid-slip) could not be driven on this PC's loopback and was verified by reading: it goes on the real-printer list (below).
+
+No fix pass (no Critical or Important finding). JUnit, the APKs, the installer and the build were not rebuilt.
+
+### Deviations and rulings
+
+1. **Commit messages through `git commit -F`.** Each task's message was copied verbatim from its plan line by a scratchpad script (`mkmsg.py`), plus the co-author line, and committed with `git commit -F` (one way for all seven, so no shell quoting can touch a message; none of them holds a double quote). Cost if wrong: none.
+2. **Mobile lint shows 1 warning** (0 errors): `no-void` at `apps/mobile/__tests__/App.test.tsx:65:40`, from E0's verbatim test block (the gold `g3e-v4`'s own suites show the same warning; the 3D gate's mobile lint had none). Kept as written (`MOBILE_LINT_OK` held); listed for the gate. Cost if wrong: one lint warning in a test file.
+3. **W1's lease came 10 s after the order** where the gate's runs saw it at once: locally there is no realtime Worker, so PC1 heard of the slip at its next 15 s wake (the proxy log: PC1's wake at 10:46:28.3, its pulse at 33.2, the order at 33.4, the next wake and the lease at 43.3); the gate's order happened to land just before a wake. What W1 proves (raw TCP by PC1 with DLE EOT, the bar on its Windows printer, health from PC1) holds. Cost if wrong: none for a real cafe (the Worker tells the writer at once), as 3D's ruling 3.
+4. **The emulator and C:** C: fell from 15 GB to 1.45 GB during the session (not this session's files; the owner's Docker Desktop disk was being written), under qemu's ~2 GB floor; the AVD's quickboot snapshot `ram.img` (4 GB, written today, all zeros) was NTFS-compressed in place (reversible: `compact /u`; nothing deleted) → C: 5.4 GB; the exit booted with `-no-snapshot` at `-memory 2048` (recorded; C: only just over the 5 GB line, and the userdata image grows during a run: C: 3.4 GB at the end). Cost if wrong: a later quickboot load reads a compressed file.
+5. **XE1's notice:** no notification question showed (asked before on this app data), so `POST_NOTIFICATIONS` was granted with `pm grant` as the plan says, then HOME and open once (the page re-asks on a visibility change) before `dumpsys` was read, as 3D's ruling 4. Cost if wrong: none.
+6. **The fresh review ran during Steps 1–5**, not after them: it is read-only on code no later step changes, and it was kept off Gradle, adb, the emulator, builds, servers and the harness. Cost if wrong: its test runs slowed the suites a little.
+
+### Open for the 3E review gate
+
+- The review's minors m-1 to m-5 above (m-1 and m-2 are one-line guards; m-3 to m-5 notes).
+- The mobile lint warning (ruling 2).
+- C: on this PC: 3.4 GB free at the end, after C: lost ~13 GB during the session (not this session's files; the owner's Docker Desktop disk was being written); the AVD's two quickboot `ram.img` files compressed so far stay compressed. The next session with an emulator step needs ~2 GB free on C: (the owner may compact Docker's disk or free space there).
+- The APKs (`apk-3e/`) and the installer (`installer-3e/`) in this session's scratchpad are recorded, **not released**; the client release folder is unchanged.
+- Left in this session's scratchpad: `e2e3e.env` (database `pos_scratch_e2e_3es`, left), `pw-3e.mjs`, `pw3e.sh`, `w-all.sh`, `xe-address.sh`, `junit-apks.sh`, `suites.sh`, `suites-e7/`, `apk-3e/`, `installer-3e/`, `build-3e.log`, `dist-3e.log`, `w-e7/`, the proxies' logs, `xe-*.log`, `shots/`, `review3e/`. The live legs and the reviewer's runs dropped their own databases.
+
+### The real-printer items for 3G's TEST-CHECKLIST (the owner's one run after Phase 3)
+
+Carried, unchanged: the 3C review gate's list and 3D's (5 minutes idle on the real LAN printer; two devices listing it for 10 minutes; FEED while idle; a Pay Now pair on a Bluetooth printer that does not answer DLE EOT; paper out mid-slip; a module that resets its socket after each job and never answers status; "POS printing is off. Tap to start." after a reboot on each printing tablet; the notification question; the battery checklist's steps on each Xiaomi, OPPO, vivo or Samsung printing device; the 30-minute screen-off test on each printing device; the app closed at closing time; an Android 14 or later printing device with the screen off) and the 3D review gate's 3E items, now TEST-CHECKLIST's "Network printers on the Windows app (Phase 3)" (E6: a KOT on the network printer; off, paper out, cover open; a cut mid-bill; two printing devices; a PC and a tablet listing one printer for 10 minutes; a Windows printer removed in Windows). Added by this session: **open the network printer's cover in the middle of a long slip from the Windows app and close it after more than a minute**: the first slip finished plus one slip labelled REPRINT, never a silent single or a silent double (the raw-TCP write-backpressure path and the 60 s job deadline: no fake on this PC can stall a write); and **change the font size (or the language) on a printing tablet**: no "POS printing is off" notice, the slip prints (E0's m-2 on a real device).
