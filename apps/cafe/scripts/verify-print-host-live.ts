@@ -53,6 +53,7 @@ import { legBB } from "./print-host-live/backup";
 import { legBC } from "./print-host-live/health";
 import { legBD } from "./print-host-live/takeover";
 import { legBE } from "./print-host-live/candidates";
+import { legBF } from "./print-host-live/skip-interplay";
 
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
@@ -150,6 +151,8 @@ async function main(): Promise<void> {
     await legBD(Date.now());
     // Phase 3 Session 3C leg (G-1 and the 3B review's m-2: who may take a printer over).
     await legBE(Date.now());
+    // Phase 3 Session 3G leg (the 3B gate review's m-8: a skip's ack, beat and lease together, each step's printer writes).
+    await legBF(Date.now());
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
