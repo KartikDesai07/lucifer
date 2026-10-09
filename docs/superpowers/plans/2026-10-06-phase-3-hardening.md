@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Printing keeps working when a device or a printer fails: another device takes a network printer over, a device printer's slips move to its backup, every device shows paper out, cover open and a device that went offline, the Android app restarts its printing service by itself and says so after a reboot, the Windows app prints network printers itself, and the owner can get Telegram alerts. No new paid service, no Cron, and no new recurring request.
+**Goal:** Printing keeps working when a device or a printer fails: another device takes a network printer over, a device printer's slips move to its backup, every device shows paper out, cover open and a device that went offline, the Android app restarts its printing service by itself and says so after a reboot, the Windows app prints network printers itself, and the owner can get Telegram alerts (*dropped by the owner on 2026-10-09: Session 3F is not built*). No new paid service, no Cron, and no new recurring request.
 
 **Architecture:** The server decides who writes each printer *now* from the heartbeat that already rides the writers' wake poll (`PrintDevice.lastSeenAt`, 90 s). A network printer's primary keeps it while online. Otherwise the first online device that can write network printers (`capabilities.lanFailover`) takes it, by device id. A writer that cannot reach the printer is skipped for 5 minutes. A printer whose device is offline sends its untried slips to its backup printer, labelled BACKUP PRINTER, on the existing sweep. Printer health (link, paper, cover, error) rides the same wake and is written only when it changes. Every device sees a printer's problem beside the slips that wait for it, through the existing 20 s pulse's waiting-slips feed. The apps add DLE EOT status, a sticky foreground service, a boot notice and (Windows) raw TCP. Everything is session by session, as in Phase 2: **3A** is the dormant server core (exact code, below); **3B–3G** are specs, each made exact at the review gate before it.
 
@@ -128,10 +128,10 @@ Phase 3 is split like Phase 2: one session each, then a review gate in its own s
 | **3C** | The POS app's printer layer: DLE EOT after each job and idle, G5, bridge v2 `paper`/`cover`/`error`, m-3, the PrinterPool publish-chain JVM test | apps/mobile (APK changes), fake printer flags | JUnit; emulator: paper out reported; a mid-slip cut is "maybe" (REPRINT) |
 | **3D** | The POS app's service: `connectedDevice` foreground service, `START_STICKY`, WebView remount on page death, the boot notification, the battery checklist | apps/mobile (APK) | emulator: a killed service restarts; after a reboot the notification shows; a dead page remounts |
 | **3E** | The Windows app 1.12.0: raw TCP for network printers from the main process (with DLE EOT), printer presence every 60 s, `lanFailover` | apps/desktop (installer) | desktop tests with a fake TCP printer; headless Chrome with a fake `posDesktop` 1.12.0 |
-| **3F** | Telegram alerts (§10), optional per cafe, on the sweep | cafe server + a setting | live leg against a fake Telegram endpoint; at most one alert per printer per 10 minutes |
+| **3F** | ~~Telegram alerts (§10), optional per cafe, on the sweep~~ **Dropped by the owner (2026-10-09): not built** | — | — |
 | **3G** | The Phase 3 exit: the soak's m-5/m-6, the four exit items on the emulator and a second device, the measured free-tier check of both modes with tokens on, TEST-CHECKLIST and GO-LIVE-CHECKLIST Phase 3 sections | tools, docs | spec §14's Phase 3 row, end to end; measurement `pass: true` |
 
-Order: 3A → 3B → 3C → 3D → 3E → 3F → 3G. 3B comes before 3C (the page reads the app's new status fields when present, and the bridge v2 contract gains them in 3B's header), as 2F1 came before 2F2. 3D and 3E are independent of each other and may swap at a gate.
+Order: 3A → 3B → 3C → 3D → 3E → 3F → 3G (*3F dropped by the owner on 2026-10-09: 3G follows 3E*). 3B comes before 3C (the page reads the app's new status fields when present, and the bridge v2 contract gains them in 3B's header), as 2F1 came before 2F2. 3D and 3E are independent of each other and may swap at a gate.
 
 ### Session 3B (spec; made exact at the 3A review gate, below): the page
 
@@ -227,6 +227,8 @@ Order: 3A → 3B → 3C → 3D → 3E → 3F → 3G. 3B comes before 3C (the pag
 
 ### Session 3F (spec; made exact at the 3E review gate): Telegram alerts
 
+*Dropped by the owner on 2026-10-09 ("telegram feature hame chhaiye hi nahi"): nothing Telegram-related is built, planned or tested in Phase 3, and the existing Telegram integration (`models/TelegramChat.ts`) stays exactly as it is; Session 3G follows 3E (the 3E review gate).*
+
 **Scope** (`apps/cafe` server + a setting; uses `models/TelegramChat.ts` and the existing Telegram integration, `npm run verify:telegram:live`):
 - **The alerts** (spec §10), all optional per cafe:
   - a slip waited more than 60 s because its printer is offline (problem `device-offline` or `offline`);
@@ -238,7 +240,7 @@ Order: 3A → 3B → 3C → 3D → 3E → 3F → 3G. 3B comes before 3C (the pag
 
 **Exit (3F):** a live leg against a local fake Telegram endpoint (each alert once, the 10-minute bound, nothing with the switch off); the budget pin (bounded fetches, no request); a fresh review.
 
-### Session 3G (spec; made exact at the 3F review gate): the Phase 3 exit
+### Session 3G (spec; made exact at the 3E review gate, 3F being dropped): the Phase 3 exit
 
 **Scope:**
 - **The soak's tool fixes** (Session 2G's m-5 and m-6, accepted at the final Phase 2 gate):
@@ -253,11 +255,12 @@ Order: 3A → 3B → 3C → 3D → 3E → 3F → 3G. 3B comes before 3C (the pag
   3. A killed service restarts.
   4. The boot notification appears.
 - **The measured free-tier check of both modes with tokens on** (the owner's ruling): the counting proxy, process CPU and opcounters, exactly as in Session 2G (P1–P4 with a token per order, plus a failover run). Each must stay within §17.3 item 5's limits. If one fails, the token ruling's fallback (option C: the slips one request puts on one printer line ride one lease or one direct answer) becomes a task before release.
-- **Docs.** TEST-CHECKLIST's Phase 3 real-printer checks (paper out, cover open, two tablets failing over, a backup printer, the reboot notice, the battery steps on a Xiaomi/Oppo/Vivo/Samsung). GO-LIVE-CHECKLIST's "Existing cafes: the printing Phase 3 release" (the web, every screen reloaded, the new APK, Windows 1.12.0; no Worker change unless 3F adds one).
+- **Docs.** TEST-CHECKLIST's Phase 3 real-printer checks (paper out, cover open, two tablets failing over, a backup printer, the reboot notice, the battery steps on a Xiaomi/Oppo/Vivo/Samsung). GO-LIVE-CHECKLIST's "Existing cafes: the printing Phase 3 release" (the web, every screen reloaded, the new APK, Windows 1.12.0; no Worker change: the owner dropped 3F).
 - **Review and Results.** A fresh Fable review and Results.
 
 - **From the 3A review gate:** the measurement includes a page that does not say `tokenSlips` (one from before 3B) or says none was present (R-3, m-6: such a page costs one small read per ack, pulse and wake); the soak gains the beat/lease/ack interplay of a skip as checks (3B's review, m-8: its `probe-flap.ts` timeline, with each step's Printer writes counted).
 - **From the 3D review gate:** GO-LIVE's order for the Phase 3 release is the web first, then the APK on each printing device, then open the app once (its review's m-5, replacing the 3C gate's m-8 "APK first"); the watchdog's remount after a renderer-gone remount that needs > 30 s (its review's N-1: count it as the page life's remount), with the second golden review's m-5 and m-6; the measurement includes a Windows app 1.12.0 that writes a network printer (its checks are local; its health writes are P3-6's); TEST-CHECKLIST's real-printer run includes 3E's section ("Network printers on the Windows app").
+- **Made exact at the 3E review gate** (below, "Session 3G", Tasks G0–G6), with its rulings ("3E review gate: rulings"): G0 the gate's app fixes (N-1: a renderer-gone remount is the page life's; 3E's m-1: no notification after the print service stopped; the mobile lint warning); G1 the gate's page fixes (3E's m-2: an empty Windows printer list says nothing; m-4, m-5: every network printer checked, sixteen to a call, a follow-up after every check; the 3D gate's second golden review's m-6 and m-5: the hidden wake's rule tested by behaviour, three comments); G2 the soak's tool fixes and `--tokens`; G3 its `--failover` mode; G4 the 3B gate review's m-8 as a live leg (bf); G5 GO-LIVE-CHECKLIST's Phase 3 release step and TEST-CHECKLIST's Phase 3 checks; G6 the verification, the APKs (no installer: `apps/desktop` unchanged), the exit with the emulator app and the fake Windows app PC2 writing one printer, the measured check with a token per order, the fresh review and Results.
 
 **Exit (3G):** spec §14's Phase 3 row met; the measurement `pass: true` in both modes with tokens on; the owner's real-printer checklist and the merge decision stay the owner's.
 
@@ -281,6 +284,10 @@ Order: 3A → 3B → 3C → 3D → 3E → 3F → 3G. 3B comes before 3C (the pag
 | 3D's review: m-1, m-2, m-3, m-4, N-2 | the 3D review gate | **3E (E0)** |
 | 3D's review: m-5 (GO-LIVE: web first, then the APK, then open once), N-1 (a second remount after a slow renderer-gone remount) | the 3D review gate | 3G |
 | 3E's Windows real-printer items (TEST-CHECKLIST "Network printers on the Windows app") and an Android 14+ device | the 3D review gate | 3G and the owner's real-printer run |
+| 3E's review: m-1, m-2, m-4, m-5; the mobile lint warning; the 3D gate's N-1 | the 3E review gate | **3G (G0, G1)** |
+| 3E's review: m-3 (a hostname's DNS lookup on the Windows app), n-1 (one invalid `lanStatus` entry) | the 3E review gate | not taken ("3E review gate: rulings") |
+| 3E's two new real-printer items (cover open mid long slip on the Windows app; a font-size change on a printing tablet) | the 3E review gate | **3G (G5: TEST-CHECKLIST)** and the owner's real-printer run |
+| Session 3F (Telegram alerts) | the owner, 2026-10-09 | **dropped: not built** |
 | m-2: two network printers on one host share a name in the notification | 2F2 | Phase 4 |
 | The not-routed toast's wording | the final Phase 2 gate, (b) m-5 | Phase 4 |
 
@@ -30380,3 +30387,4453 @@ No fix pass (no Critical or Important finding). JUnit, the APKs, the installer a
 ### The real-printer items for 3G's TEST-CHECKLIST (the owner's one run after Phase 3)
 
 Carried, unchanged: the 3C review gate's list and 3D's (5 minutes idle on the real LAN printer; two devices listing it for 10 minutes; FEED while idle; a Pay Now pair on a Bluetooth printer that does not answer DLE EOT; paper out mid-slip; a module that resets its socket after each job and never answers status; "POS printing is off. Tap to start." after a reboot on each printing tablet; the notification question; the battery checklist's steps on each Xiaomi, OPPO, vivo or Samsung printing device; the 30-minute screen-off test on each printing device; the app closed at closing time; an Android 14 or later printing device with the screen off) and the 3D review gate's 3E items, now TEST-CHECKLIST's "Network printers on the Windows app (Phase 3)" (E6: a KOT on the network printer; off, paper out, cover open; a cut mid-bill; two printing devices; a PC and a tablet listing one printer for 10 minutes; a Windows printer removed in Windows). Added by this session: **open the network printer's cover in the middle of a long slip from the Windows app and close it after more than a minute**: the first slip finished plus one slip labelled REPRINT, never a silent single or a silent double (the raw-TCP write-backpressure path and the 60 s job deadline: no fake on this PC can stall a write); and **change the font size (or the language) on a printing tablet**: no "POS printing is off" notice, the slip prints (E0's m-2 on a real device).
+
+## Session 3E review (gate)
+
+Run on 2026-10-09 in its own session (the 3E review gate), on `feat/printing-phase-3` at `95fee6d`.
+
+**Start.**
+- `GIT_TERMINAL_PROMPT=0 git fetch origin` (the repo-local token store) worked: `feat/printing-phase-3` = `origin/feat/printing-phase-3` = `95fee6d`, working tree clean; `origin/main` still `7f8ed31` (nothing to merge or note).
+- Disk: D: 12 GB free, C: 16 GB free at the start (10–15 GB during the gate: its clones, builds and the emulator; the owner's Docker Desktop disk did not grow this time).
+- Real printers: none on hand. The owner's ruling (2026-10-08) stands: the real-printer checks run once, after 3G and the final Phase 3 gate, before the merge decision; this gate did not ask, and carried every real-printer item into 3G's TEST-CHECKLIST (G5).
+- **The owner's ruling (2026-10-09): no Telegram feature.** Session 3F (Telegram alerts) is dropped: nothing Telegram-related is built, planned, proposed or tested in Phase 3, and the Telegram code already in the repo (`models/TelegramChat.ts`, the existing integration) stays exactly as it is. This gate records the drop as docs lines only (the plan's sessions table and 3F spec, spec §10 and §14) and writes Session 3G next, which follows 3E directly.
+
+**The commits, read one by one** (`fd0146a..95fee6d`: E0 `7da61b1`, E1 `776c444`, E2 `96440b3`, E3 `2a74a4e`, E4 `0a889f1`, E5 `2c0396d`, E6 `26b2812`, Results `95fee6d`).
+- **Same code as the gold.** `git ls-tree -r` of `26b2812` against the 3D review gate's gold `g3e-v4` (tree `746edd8`) differs only in the plan and the spec (both changed by `56172a7` and `fd0146a`): every file outside `docs/` is blob-identical (1,975 entries).
+- Each task does what the 3D gate's rulings say: E0 `setHostActive(false, '')` before `clearOrigin()`, `isChangingConfigurations` in `onHostDestroy`, `PageWatch.answered()` clearing the dead count and refreshing the notification, `PrintingOffNotice.cancel` with the page's stop, the Jest test of the watchdog's remount; E1 `raw-tcp.ts` (G5 parity with `TcpTransport.kt`, "no" only before a socket exists, the refused retry, the 60 s job, the idle check, the `error` listener from creation); E2 the IPC (`print-raw.ts`: the main window, the saved origin, the address and size before any socket) and 1.12.0; E3 `desktopLan()` (each printer's slips counted so a check never overwrites a newer answer; the 75 s wait); E4 a network printer is the PC's, takeover by E-1, named in a lease only while the app reaches it; E5 health and Windows presence on the beat; E6 the setup and `differentPrintersOfOneDevice`.
+- **No secret** in the range (a search of `git log -p fd0146a..95fee6d` for token, URI-with-password, key and secret patterns: none).
+- **No Worker change:** `git diff --stat 978459c..HEAD -- workers` is empty.
+
+**Every suite at `95fee6d`** (once each, in the background, one after another; the gate's scratchpad `suites-95f/`):
+
+| Suite | Result |
+|---|---|
+| shared `npm test`; `tsc` | **821/821**; 0 |
+| cafe `npm test` | **5044 tests, 5043 pass, 0 fail, 1 skipped** (go-live-dl) |
+| cafe, hub, mobile, desktop `tsc` / typecheck and lint | 0, and 0 errors (cafe's 2 old warnings, `lib/masters-blob.test.ts:331`; mobile's 1 `no-void` warning, `__tests__/App.test.tsx:65:40`, from E0) |
+| mobile `npm test`; `test:app` | **141/141**; Jest **5/5** |
+| desktop `npm test` | **205/205** |
+| `npm run test:print-tools` | **11/11** |
+| live legs (`pos_scratch_print_host_3egate`) | **`447 passed, 0 failed`** |
+| JUnit (`:app:testDebugUnitTest --rerun`) | BUILD SUCCESSFUL, **64** (BatteryTargets 3, DleEot 7, HostLife 4, PageWatch 6, PoolList 6, PoolStatus 3, PrinterManager 22, PrinterPool 3, TcpTransport 10) |
+| the Next build (the repo, D:, 12 GB free) | exit 0, **132 routes** |
+| `npm run dist` (apps/desktop; Electron cached, no download) | exit 0, `POS-Software-Setup-1.12.0.exe` **112,216,795 B**, SHA-256 `11f43da8b4845d9c782b82f8f353b2344da0e8265f9c0732f7fba6d5595d285e` (in the gate's scratchpad, **not released**; Session 3E's own build: 112,216,876 B, `4d86178c…`: electron-builder's output differs per build) |
+
+Every row equals Session 3E's Results.
+
+**The 3E builds.**
+- In the repo, `javap -c -p app/build/tmp/kotlin-classes/release/…/TransportFactory.class` (2026-10-09 16:10, E7's full release compile) calls `TcpTransport."<init>":(Ljava/lang/String;IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V`.
+- **The headless exit again** (`pw-3e.mjs`, byte-identical to E7's block, from the repo's `apps/cafe`; a fresh `pos_scratch_e2e_3egate`; the repo's build on 3110, the proxy on 3200), all seven scenarios: **W0** three printers `201` (the network printer beside PC1's Windows printer); **W1** PC1 and PC2 `shell=windows lan=true lanFailover=true`, the kitchen KOT printed by PC1 over raw TCP at once (44,382 B, `paper ok, cover closed`), the bar KOT through `printHtmlOn`, Kitchen health `connected/ok/closed` from PC1; **W2** paper out from PC1's check (15 s), C's notice and panel "Kitchen is out of paper.", printed 4.0 s after paper was back; **W3** PC1 closed: the slip made right after printed by PC2 **85 s** after the stop (P3-4's bound 150 s; Session 3E saw 129 s), the next one at once; **W4** PC1 skipped 30.1 s after its block, the slip printed by PC2 (7.1 s); **W5** "Front is not connected." after 81.2 s, printed once 60.2 s after Windows reported it again; **W6** the 1.11.0 PC `lan=false lanFailover=false`, its bar slip through `printHtmlOn` (7.1 s), no `lan` in the devices list. **All PASS.**
+- **The emulator again** with 3E's recorded x86_64 APK (`a487093c…`, hashed in Session 3E's scratchpad and on the device): Pixel_7_API_33 at `-memory 4096 -no-snapshot` (C: 15 GB). As found: the release APK `29115bdf…` on its start screen with no address (not the demo), notifications not allowed, `font_scale` unset, crash 0. **XE0** the 3E APK over it, crash 0; signed in (a session from another database: Sign out first); "Network printer 10.0.2.2 is connected."; **XE1** the setup, `PrintHostService` `isForeground=true`, `stopIfKilled=false`; "Printing is on — Network printer 10.0.2.2"; printed **2.0 s** after the order with the launcher on top; **XE2** `font_scale` 1.15 then 1.0: the same `ServiceRecord`, "POS printing is off" in 0 of 20 + 0 of 20 polls, `finishDrawing of relaunch` twice; **XE3** Change POS address: the service gone at once, 0 notices in 45 s, none within 70 s of a reboot; **XE4** "Printing is on" again, reboot: "POS printing is off. Tap to start." **20 s** after `sys.boot_completed`, the setup cleared, opened from the launcher: the notice gone **4 s** later, no service; **XE5** crash 0. **All PASS.** Put back (the setup cleared, the app's printer removed, the address cleared, the release APK `29115bdf…` reinstalled, notifications revoked, `font_scale` unset, `adb reverse tcp:3100 tcp:3100`, `adb shell sync`, `adb emu kill`; the gate's servers stopped by PID).
+
+**The fresh review (Claude Fable 5.1; no HTTP 429).** Read-only, its scratch only in the gate's scratchpad (`review3eg/`). It read `fd0146a..95fee6d` with the touched files in full and `TcpTransport.kt`, `PrinterStatus.kt` and `TcpAddress.kt` as the parity models. Its own runs: desktop 205/205, tsc and eslint 0; shared 821/821; mobile 141/141 and Jest 5/5 (eslint: the one `no-void` warning); the 14 touched cafe test files with `print-agent.test.ts` and the bridge v2 parity test 350/350, tsc 0, eslint 0; the live legs on its own database (`pos_scratch_print_host_3egrev`) **447/0**; eight probes of `raw-tcp.ts` against loopback fakes on ports of its own (an answering printer that closes after the slip: "maybe"; garbage before the status byte skipped; `::1` and `fd12::1` refused by the target check, CGNAT not private; a job and a probe on one printer serialised; mixed printers with no cross-talk; the freed line printing after a deadline): **0** uncaught exceptions or unhandled rejections.
+
+**Verdict: "Ready to merge: Yes"** (0 Critical, 0 Important, 6 minors). Each is ruled in "3E review gate: rulings" below.
+
+| # | Finding | Ruling |
+|---|---|---|
+| m-1 | `PrintHostService.kt:107–112`: with the alert up, a remounted page answering and the service stopped in the same moment, `refreshNotification()` (run from the WebView's callback, which `removeCallbacksAndMessages` cannot cancel) re-posts an orphan ongoing "Printing is on". | **Fixed (3G's G0):** a `destroyed` flag set first in `onDestroy`; `refreshNotification` posts nothing after it. |
+| m-2 | `print-agent-printers.ts:174`: a spooler restart's empty printer list reads every Windows printer missing: "‹printer› is not connected." on every device for ~60–80 s, two health writes a printer (leasing already stops: Phase 2). | **Fixed (G1):** an empty list is unknown. |
+| m-3 | `raw-tcp.ts:177–187`: a printer saved by a DNS name: the lookup runs before the 5 s connect and the 60 s job budgets; a slow lookup can pass the page's 75 s: a needless REPRINT. | **Not taken** (see the rulings). |
+| m-4 | `desktop-lan.ts:160–169`: `check()` returned on a rejected or odd `lanStatus` before the follow-up (a down printer waited 60 s, not 30 s). | **Fixed (G1).** |
+| m-5 | `desktop-lan.ts:163`: a 17th watched network printer was never checked (never connected, never leased). | **Fixed (G1):** sixteen to a call, every printer. |
+| n-1 | `print-raw.ts:63`: one invalid entry rejects the whole `lanStatus` list (no printer on that PC checked). Not reachable today. | **Not taken** (see the rulings). |
+
+It re-graded the five known minors and the lint warning exactly as Session 3E did (m-2 reachable, the rest practically unreachable or unrealistic; the warning cosmetic). Its sound list: "no" never after bytes (the page maps only the app's `sent: "no"` to "unreachable"); G5 parity with `TcpTransport.kt` wait for wait; crash safety in the main process; the IPC surface; takeover by E-1 with readiness `connected && !cannotPrint`; deploy skew (1.11.0 on the 3E page is Phase 2 exactly; a rollback server ignores `lan`/`lanFailover`); paper out and Windows presence; E0 on React Native's bridgeless lifecycle; E6's narrow rule; no new request kind (health ≤ 144 writes a printer a day); the timing (the page's 75 s against the app's worst ~72 s). Declined to judge: the write-backpressure leg (Windows loopback never blocks a write: the real-printer list's "cover open mid-slip"), the Electron `Uint8Array` transfer (the 3D gate probed it), the builds and the exit (not re-run by it), real printers' DLE EOT behaviours.
+
+**Recommended next:** Session 3G as exact code, below, pre-validated at this gate, with the gate's fixes as its first two tasks (G0, G1).
+
+## 3E review gate: rulings
+
+Each says what it costs if wrong.
+
+| Item | Ruling | Where |
+|---|---|---|
+| **The owner: no Telegram feature (2026-10-09)** | **Session 3F is dropped.** Nothing Telegram-related is built, planned, proposed or tested in Phase 3; `models/TelegramChat.ts` and the existing Telegram integration stay exactly as they are. Recorded as docs lines only: the sessions table and the 3F spec (this plan), spec §10 (its Telegram alerts are not built) and §14 (the Phase 3 row has none). 3G follows 3E, and its "no Worker change unless 3F adds one" reads "no Worker change". *Cost if wrong:* none (a later owner decision can bring it back as its own work). | plan, spec |
+| m-1 (orphan "Printing is on") | **Fixed in 3G's first task (G0)**, with N-1: both are Kotlin, and the APKs are rebuilt anyway. 3G measures the final code, so app fixes land before its measurement (the 3D gate's reasoning). *Cost if wrong:* one more APK build in 3G (planned anyway). | G0 |
+| m-2 (an empty Windows list) | **Fixed (G1):** an empty list is "nothing known" for `windowsMissingIds`, as the app's own main process reads it; a real "every Windows printer removed" still shows at the next non-empty read. *Cost if wrong:* a Windows printer removed while every other one is removed too reads connected until Windows lists anything again (its slips are not leased meanwhile: Phase 2). | G1 |
+| m-3 (a hostname's DNS lookup) | **Not taken.** The page waits 75 s, about 10 s more than the app's worst case without a lookup (a check ahead, the 5 s connect, the 60 s job); a lookup slower than that gives one labelled REPRINT, never a silent double; the form's hint asks for an IP address, and TEST-CHECKLIST's Phase 3 checks say "type its IP address, not a name". Not changing `apps/desktop` keeps `POS-Software-Setup-1.12.0.exe` (Session 3E's) the release build. *Cost if wrong:* a REPRINT per slip on a PC whose resolver stalls over 10 s for a printer saved by name. | real printers (words) |
+| m-4, m-5 (the checks) | **Fixed (G1)**, one change: every watched printer is asked, sixteen to a call (the app's limit), and the follow-up runs after every check. *Cost if wrong:* none (more calls only past 16 printers). | G1 |
+| n-1 (one invalid entry rejects a whole `lanStatus` list) | **Not taken:** unreachable (the server's `isValidPrinterHost` is stricter than the app's `HOST_PATTERN`, and the page sends only saved printers); `apps/desktop` stays unchanged. *Cost if wrong:* a future looser host rule would stop a PC's checks; its pin is the server's validator. | — |
+| The mobile lint warning (3E's ruling 2) | **Fixed (G0):** a block body in the test; mobile lint is clean again. *Cost if wrong:* none. | G0 |
+| 3E's rulings 1–6 | **Accepted as ruled:** `git commit -F` for the messages; mobile lint (now fixed); W1's lease at the next wake (no Worker locally); the AVD's NTFS-compressed snapshot and `-no-snapshot`; XE1's `pm grant`; the review during Steps 1–5. | — |
+| The two new real-printer items (3E's Results) | **Carried into TEST-CHECKLIST's Phase 3 checks (G5)**: the Windows app's cover open mid long slip for over a minute (one labelled REPRINT), and a font-size or language change on a printing tablet (no notice). | G5 |
+| The C: disk | C: had 16 GB free at this gate's start and stayed over 9 GB (Docker Desktop did not grow it this time); the emulator booted at `-memory 4096 -no-snapshot`. **3G checks `df -h /c` right before each emulator step**, boots with `-no-snapshot`, and below about 2 GB stops and tells the owner (qemu exits 21), never deleting anything. *Cost if wrong:* an emulator step waits for the owner. | G6 |
+| **N-1** (the 3D gate's) | **Built (G0)** as the 3D gate ruled: every remount of a dead page tells the print service (`HostPage.remounted`, set by the service, called by the module's `mountWhileHidden`), and `PageWatch.remounted()` makes it the page life's remount. *Cost if wrong:* one tap after a page that needs over 30 s to load while hidden. | G0 |
+| The 3D gate's second golden review: m-5, m-6 | **Built (G1):** the three comments; `printAgentWakeMayPoll` and a behavioural test of the hidden wake's cadence (the 3D pin deliberately changed to the call). | G1 |
+| The soak's tool fixes (2G's m-5, m-6; the final Phase 2 gate's (a) items 5, 6) | **Built (G2)**, and `--tokens page/lease` for the owner's token measurement. The (a) item 5 check reads the slips the soak made against its orders' jobs (keys), not a count of named jobs. *Cost if wrong:* a measurement that overstates leases or misses a missing slip. | G2 |
+| `--failover` | **Built (G3)** as two soak writers that poll the wake as a printers-mode page does (the orders from a third device), the soak's writer stopped mid-run; a stopped writer finishes the slip it holds and leases nothing more (found by the gate's pre-run: it leased on after the stop). *Cost if wrong:* a failover run's cost read from a stand-in, not a page (the exit's failover uses the real page: PC2). | G3 |
+| m-8 (the 3B gate review's: the interplay of a skip's signals) | **A live leg (bf), not soak checks:** the soak cannot move the server's clock past a skip's 5 minutes, a leg drives the same handlers in either order at chosen times, and counts every write to the printers collection per step (mongoose's debug hook). The gate's mutation check (the "already skipped" guard removed) read 18 passed, 2 failed. *Cost if wrong:* none for a cafe. | G4 |
+| GO-LIVE and TEST-CHECKLIST (the 3C and 3D gates' items) | **Built (G5):** the release order (the web first, every screen reloaded, then the POS app on each printing device and opened once: the 3D gate's m-5 replacing the 3C gate's m-8), notifications, the battery steps, the Windows app 1.12.0, the app closed at closing time (I-3), the rollback line, no Worker change, nothing about Telegram; and every carried real-printer item. The hashes are checked against the release's `SHA256SUMS.txt` (the final Phase 3 gate's build). | G5 |
+| **The exit's second device** | The fake Windows app PC2 (1.12.0: real page code, the real raw TCP module), writing the SAME printer as the emulator app: `127.0.0.1:9100`, which the emulator reaches through `adb reverse tcp:9100 tcp:9100` (loopback is a private address for the POS app). Its page loads only after `exit-setup` names it a writer: with no Worker locally a page never re-reads the setup by itself (the gate's first failover pre-run failed so). *Cost if wrong:* an exit that does not test one printer written by two devices. | G6 |
+| **The measurement with tokens on** | Session 2G's method (the counting proxy, process CPU, opcounters) with a token per order: the busy day is 1,500 slips (spec §17.2's 1,200 and 300 tokens: `report-3g.mjs --busy-slips 1500`); P1–P4, the older page (`--tokens lease`, R-3/m-6), the failover run, a Windows app 1.12.0 writer, and a night's idle of a hidden printing device (I-3). The night's pass is the busy day's printing plus the night's (the wake), within §17.3 item 5; the page's own polls at night are reported beside it, never hidden (in the gate's pre-run: about a fifth of a day's free allowance a night, which is why GO-LIVE closes the app at closing time). If a projection fails: tune nothing, record it; option C becomes a task before release (the owner's ruling), decided at the final Phase 3 gate. *Cost if wrong:* a measurement that says less than the cafe pays. | G6 |
+| The installer | **Not rebuilt in 3G** (`apps/desktop` unchanged): `POS-Software-Setup-1.12.0.exe` from Session 3E (or this gate's repo build) is the release candidate; the final Phase 3 gate builds the release set. | G6 |
+| The real-printer items | **All in TEST-CHECKLIST (G5)** for the owner's one run after the final Phase 3 gate: the 3C gate's list, 3D's, 3E's Windows section (Session 3E's E6) and its two new items, an Android 14+ device. | G5 |
+
+### The fresh review of Session 3G's golden copy (Claude Fable 5.1)
+
+A fresh reviewer on **Claude Fable 5.1** (read-only; scratch files in the gate's scratchpad only; no HTTP 429) reviewed the golden copy `g3g-v3` (`95fee6d..f2e2430`, G0–G5, with the gate's scratch harness and measurement tools and the pre-run's outputs) against this plan's head, the 3G spec, the carried items, the 3D gate's rulings and spec §9.3–§9.8, §10, §13, §14, §17. Its own runs on the gold: shared 821/821; mobile 143/143 and Jest 5/5; desktop 205/205, typecheck and lint 0; the eight touched cafe test files 221/221, cafe tsc 0, eslint on the 19 touched cafe files 0; print tools 11/11; the live legs on its own database (`pos_scratch_print_host_3grev`) **467/0**. It read every touched file in full, the harness (`pw-3g.mjs` and its builder, `pw3g.sh`, `m-run-3g.sh`, `m-report.sh`, `xg-reboot.sh`, `report-3g.mjs` beside Session 2G's `report.mjs`, the sampler, `mkenv3g.py`) and the pre-run's run, projection and soak files; it checked the JVM test tick by tick by hand (Gradle off limits).
+
+**Verdict: "ship after fixes"**: the code (G0–G4) ships as written; one Important finding on the measurement's method and seven minors. Each ruling says what it costs if wrong.
+
+| # | Finding | Ruling |
+|---|---|---|
+| 1 (Important) | The pre-run paired the night's idle with P4's day only (13 % / 10.4 %). With every measured day the night leaves far less room: P2 14.1 % / 14.5 %, the failover day 14.4 % / 13.9 %, the Windows day 14.1 % / **14.6 %** (0.4 points of CPU under 15 %), and a simple-mode host and a Windows PC in the tray are hidden printing devices too. | **Fixed (G6's words):** the night runs against every day's projection, the smallest margin is named in Results, and a failing day-with-the-night (its day passing) is recorded and ruled at the final Phase 3 gate (option C does not touch the night; the closing-time rule does). The pre-run's figures are in the section's pre-validation. *Cost if wrong:* the owner reads a margin that does not exist. |
+| 2 | TEST-CHECKLIST's "B prints the kitchen's slips within about half a minute": on a real cafe the socket is healthy (the wake every 60 s), so a printer tablet A cannot reach moves in about one to two minutes (the beat's settled link and the next wake); the gate's 27 s came from the local 15 s wake. | **Fixed (G5):** "within about two minutes" (and "about six minutes" back). *Cost if wrong:* a real-printer check read as a failure. |
+| 3 | `--failover`: the stop's time was taken while the stopped writer could still have a lease in flight, stamped after it: about one run in a hundred reads "printed by soak-a" (the pre-run saw it). | **Fixed (G3):** the soak awaits the stopped writer's loop (its request in flight) before it takes the stop's time; the pre-run's failover run passed again on `g3g-v4`. *Cost if wrong:* a spurious failure and a rerun in G6. |
+| 4 | m-2 makes a PC whose only Windows printer is removed say nothing (leasing stops as in Phase 2); Windows usually lists its own virtual printers, so an empty list is a spooler restart. | **Accepted, with a word (G5):** the check "a Windows printer removed in Windows" keeps another printer listed (Microsoft Print to PDF). *Cost if wrong:* no words on a one-printer PC whose printer is gone (its slips still wait, visibly). |
+| 5 | GO-LIVE's closing-time step names only the POS app; the Windows app in the tray polls all night the same way. | **Fixed (G5):** one sentence: quit it from the tray at closing time too, or leave it running knowingly (as since Phase 1). *Cost if wrong:* a surprise share of the allowance per PC left on. |
+| 6 | The soak writer's beat names its own printers and those it writes now, not every candidate a page holds ahead of time; no write differs, so the measurement stands. | **A comment (G3).** *Cost if wrong:* none measurable. |
+| 7 | The harness's Chrome profile folders could vanish to the %TEMP% cleaner (a new device id, PC2 no longer the setup's writer). | **Fixed in the harness** (`pw-3g.mjs`: a `keep.txt` in each profile folder from the start). *Cost if wrong:* a confusing exit failure. |
+| 8 | `const down =[` (a formatting nit in G1's test). | **Fixed (G1).** |
+
+Its view of the gate's rulings: m-3 and n-1 not taken (agrees: an IP is asked for, a slow name gives a labelled REPRINT, n-1 is unreachable); m-8 as a live leg (agrees: the soak cannot move the server's clock; the leg drives the wake route's order and counts calls, so "writes nothing" is literal; the 18/2 mutation matches its two "writes nothing while skipped" checks); `--failover` as P3-4's cost (agrees, with #3 and #6). Its sound list: G0 (`HostPage.remounted` volatile, posted to the service's handler, set and cleared like `statusObserver`; every remount path counted, the watchdog's twice and idempotently; `destroyed` read on the main thread; the JVM test's arithmetic); G1 (`before` once across batches, a refused batch falls to the follow-up, rows by id; the five wake cases at both cadences; the comments true now); G2 (every malformed address refused; `slipOfJobKey` matches the server's keys; the one timer; `--tokens lease` = one read more an ack, as measured); G3 (a bridge-v2 page's beat, the page's cadence, `closed`, P3-4's bounds and the in-flight rule, E-1 in the parser); G5 (the words match the code; the order and no Telegram pinned; no Worker change); the budget (no new request kind; the night's figures reproduce from the run); the harness (PC2 after `exit-setup`, one printer address, both reverses after a reboot, the proxy counted every soak request). Declined to judge: JUnit and the emulator items (off limits), the gate's mutation (needs an edit), real-printer timing, the local CPU standing in for Vercel's and the Atlas peak's linear scaling (as every phase).
+
+**The last golden copy (`g3g-v4`, every fix folded into its task):** every suite again (shared 821; cafe 5056 / 5055 / 0 / 1; tsc 0 and lint 0 errors for cafe (the 2 old warnings), hub, mobile (clean) and desktop; mobile 143 + Jest 5; desktop 205; print tools 11; live 467/0), and the failover run again on the soak's v4 (`pass: true`: 140 jobs, the slowest that waited through the stop 89.6 s, every slip made 90 s or more after it printed by the second writer; 12.2 % / 12.1 %, with the night 14.4 % / 14.0 %). `g3g-v4` changes no app or page code (only the soak, a test's spacing and the docs), so JUnit 65, the APKs and the Next build carry over from `g3g-v3`. The section below was generated from it and validated verbatim on a fresh clone, task by task with every RED and GREEN: **IDENTICAL** (tree `c781841`).
+
+---
+## Session 3G (exact code, written and pre-validated at the 3E review gate)
+
+**Pre-validation (the 3E review gate, 2026-10-09).**
+- **Verbatim apply.** Every block of Tasks G0–G5 (**68 operations**) went verbatim, task by task, onto a fresh clone of `feat/printing-phase-3` at `95fee6d`. Every find matched exactly once (and the whole range dry-ran on the repo: 68 ops OK).
+- **RED, then GREEN.** Each task's RED was seen before its code went in (G0's JUnit RED is a compile failure of the new JVM test; G2's and G3's a test file that cannot import its new module; G4 pins behaviour that exists: no RED, and a mutation check failed it), and each GREEN gave the Expected lines below.
+- **Same tree.** The clone's tree came out IDENTICAL to the golden copy's (branch `g3g-v4`, tree `c781841`).
+- **Every suite on the golden copy:**
+  - shared 821/821; cafe **5056 / 5055 pass / 0 fail / 1 skipped**;
+  - tsc 0 and lint 0 errors for cafe (the 2 old warnings), hub, mobile (**no warning**: G0) and desktop;
+  - mobile **143** + Jest **5**; desktop **205** (unchanged); print tools 11; live legs **467/0** (leg bf: 20);
+  - JUnit **65/65** (`:app:testDebugUnitTest --rerun`, `GRADLE_USER_HOME=D:\gradle-home`: BatteryTargetsTest 3, DleEotTest 7, HostLifeTest 4, PageWatchTest **7**, PoolListTest 6, PoolStatusTest 3, PrinterManagerTest 22, PrinterPoolTest 3, TcpTransportTest 10);
+  - the Next build: 132 routes, in a separate build copy with webpack's persistent cache off (a config line in that copy only);
+  - the APKs from that build copy (mapped to `X:`): x86_64 `8af43760…`, arm64 `aca6df9c…`, armv7 `44811dc8…` (the repo's builds will hash differently), the app's release Kotlin compiled in full (0 of 100 release classes older than the marker; `javap` shows the `TcpTransport` constructor G6 names; the log's 2 incremental lines were two libraries compiled for the first time in that fresh copy);
+  - no installer: `apps/desktop` is unchanged.
+- **The exit, pre-run** (G6's harness, `pw-3g.mjs` as G6 shows it, over the golden copy's build and APK, which `g3g-v4` leaves unchanged: its fold-ins touch only the soak, one test and the docs; the emulator at `-memory 4096 -no-snapshot`, C: 10–15 GB; the gold x86_64 APK): XG0 the app over the release APK, signed in, its own printer `127.0.0.1:9100` through `adb reverse`: connected; XG1 the setup (the kitchen's network printer written by the app, PC2's Windows printer), the service foreground, a slip printed with the app hidden 3.0 s after the order; **XG2** paper out: the health from the app's check, the slip never leased, **C's notice and C's and D's panels "Kitchen is out of paper."**, the app's own panel too, printed once 4.1 s after paper was back; **XG3** the app force-stopped: the slip made 3.7 s after the stop printed **by PC2 106.6 s after the stop** (P3-4's bound: 150 s), the one made 95.9 s after it printed by PC2 at its next wake (12.2 s); **XG4** `am crash`: the notice 1 s later, no foreground-service timeout, the tap opened the app, printed 2.1 s after the order; **XG5** `adb reboot`: the notice 18 s after boot, the tap, printed 1.0 s after the order; XG6 crash 0. **All PASS.** Put back as G6 says. (The first failover pre-run failed: PC2's page had loaded before the setup named it a writer and, with no Worker locally, never polled the wake: G6 opens PC2 after `exit-setup`. The first paper pre-run read the panels at 25 s, before the first pulse after the slip's 20 s: G6 reads them at 45 s.)
+- **The measurement, short runs** (10 orders, 3-minute idles, a token per order; G6 runs them in full): P1 8.0 % of the invocations / 6.4 % of the Active CPU; P2 11.9 % / 12.5 %; P3 7.6 % / 7.0 %; P3 with an older page (`--tokens lease`) 7.6 % / 7.7 % (one Mongo operation more a job); P4 10.8 % / 8.5 %; the failover run 12.2 % / 12.1 % (Atlas at the busy rush 8.66 operations a second); the Windows app 1.12.0 writing network printers 11.9 % / 12.6 %; a night's idle of a hidden writer with the screen off: its printing 720 requests a night (2,880 with the socket down), its page's own polls 5,040 (all routes 23.8 % of a day's invocations and 21.7 % of a day's CPU: why GO-LIVE closes the app at closing time), each day's printing plus the night's: P1 10.1 % / 8.3 %, P2 14.1 % / 14.5 %, P3 9.7 % / 9.0 %, P3 older page 9.7 % / 9.6 %, P4 13.0 % / 10.4 %, failover 14.4 % / 14.0 %, the Windows day 14.1 % / **14.6 %** (the smallest margin: 0.4 points of CPU; the gold review's #1). **Every projection `pass: true`.** (The failover run first read a few "problems": the soak's stopped writer finished its burst after the stop; G3's `closed`, the in-flight rule and the stop's time taken after the writer's request in flight fixed the tool.)
+- **Fresh review on Claude Fable 5.1:** "ship after fixes" (0 Critical, 1 Important: the night against every day; 7 minors); the Important and five minors folded in (`g3g-v4`), one harness fix, one accepted with a word. Details and rulings: "The fresh review of Session 3G's golden copy" in the 3E review gate's section.
+
+A failure while executing therefore points to drift since then, or to a typo while copying. Compare with the plan first.
+
+**What 3G delivers.** Session 3G is the Phase 3 exit (spec §14's Phase 3 row), with the 3E review gate's fixes first, because the measurement measures the final code (the 3D gate's reasoning):
+- the gate's app fixes: a remount after the page's renderer died is the page life's remount, so the watchdog never unmounts a slow-loading page (the 3D gate's N-1); a probe answer that lands after the print service stopped posts no notification (3E's m-1); the mobile lint warning (Task G0);
+- the gate's page fixes: an empty Windows printer list says nothing (3E's m-2); every network printer of a Windows app 1.12.0 is checked, sixteen to a call, and asked again after a check the app refused (m-4, m-5); the hidden wake's rule as one function, tested by behaviour (the 3D gate's second golden review, m-6), and three comments (its m-5) (G1);
+- the print soak's tool fixes (Session 2G's m-5 and m-6, the final Phase 2 gate's (a) items 5 and 6) and `--tokens` (G2), its `--failover` mode (G3), and the 3B gate review's m-8 as a live leg (bf) (G4);
+- GO-LIVE-CHECKLIST's "Existing cafes: the printing Phase 3 release" and TEST-CHECKLIST's "Phase 3 checks (failover, health, the service)" (G5);
+- then every suite, JUnit, the APKs (a full release compile), the build, the measured free-tier check of both modes with a token per order (and an older page, a failover, a Windows app 1.12.0 writing a network printer, a night's idle), the exit on the emulator with a second device, the fresh review and Results (G6).
+
+**What changes outside the web.** The APKs change (G0: three Kotlin files; G6 rebuilds them with the proven full release compile). The Windows installer does not (`git diff --stat 95fee6d..HEAD -- apps/desktop` stays empty: `POS-Software-Setup-1.12.0.exe` stays Session 3E's). The Worker does not (`-- workers` stays empty). **No new request kind:** the fixes are page logic, app logic and tools; the soak and the live leg are test tools.
+
+**Old and new together.** Every APK (release, Phase 2, 3C, 3D, 3E) and the Windows apps 1.11.0 and 1.12.0 keep working against the 3G page and server, as against 3E's: G1 changes only how a 1.12.0 page reads its own app's answers, and G0 only the app. A page from before 3G on the 3G APK behaves as on the 3E APK (the remount hook is the app's own).
+
+**Decisions this section implements:** P3-1 to P3-10 (above), as changed by the 3A to 3D review gates' rulings and the 3E review gate's ("3E review gate: rulings", above), and the 3G spec above (its "no Worker change unless 3F adds one" now reads "no Worker change": the owner dropped 3F).
+
+**Not in 3G:** Telegram (Session 3F, dropped by the owner on 2026-10-09: nothing Telegram-related is built, planned or tested), the owner's one real-printer run and the merge decision (after the final Phase 3 gate), Phase 4 (text-mode KOTs, discovery, setup polish).
+
+### Review Focus (Session 3G)
+
+The inputs most likely to bite that the unit tests alone would not exercise; each has a test, a pin or an exit item.
+1. **The page life's remount.** A renderer-gone remount that loads slowly while the app is hidden must not be unmounted by the watchdog's second remount, and a page that keeps dying is still remounted at most once every 10 minutes. → `PageWatchTest`, pin 26, exit XG4 and XG5 (the app's page after a crash and a reboot).
+2. **The stand-in must be the page.** The measurement is only as honest as the soak: one timer, `tokenSlips` on the lease and the ack as a page says them, every slip checked against its orders' jobs, and a stopped writer that leases nothing more. → the soak's tests, the runs' `pass` lines.
+3. **One printer, two devices.** The exit's failover is real only if the emulator app and the second device write the SAME printer (`127.0.0.1:9100` through `adb reverse`) and the second device's page loaded after the setup named it a writer (no Worker locally). → exit XG3.
+4. **The busy day with tokens.** Every projection within §17.3 item 5 (20 % of the invocations, 15 % of the Active CPU, Atlas under 10 operations a second at the rush), with the older page, the failover and the Windows writer; and a night's idle shown for what it costs. → Step 8's projections and the night.
+5. **The release words.** The web first, then the POS app on each printing device and opened once; the app closed at closing time; no Worker change; nothing about Telegram. → the runbook pin, TEST-CHECKLIST.
+
+### File map (Session 3G)
+
+| File | Change | Task |
+|---|---|---|
+| `apps/mobile/…/printer/PageWatch.kt`, `PrintHostService.kt`, `PosPrinterModule.kt`; `PageWatchTest.kt`, `src/mobile-paths.test.ts` (pin 26), `__tests__/App.test.tsx` | the gate's app fixes | G0 |
+| `apps/cafe/lib/print-agent-printers.ts`, `lib/printer/desktop-lan.ts`, `lib/print-agent-wake.ts`, `hooks/use-print-agent-wake.ts`, `hooks/use-print-agent.ts`, `packages/shared/src/print-job.ts`; tests and the 3D pin | the gate's page fixes | G1 |
+| `apps/cafe/scripts/print-soak-rules.ts` (create), `print-soak.ts`, `print-soak-agent.ts`; tests; `package.json` (the test chain) | the soak's tool fixes, `--tokens` | G2 |
+| `apps/cafe/scripts/print-soak-writer.ts` (create), `print-soak-rules.ts`, `print-soak.ts`, `print-soak-agent.ts`; tests; `package.json` | the soak's `--failover` | G3 |
+| `apps/cafe/scripts/print-host-live/skip-interplay.ts` (create), `scripts/verify-print-host-live.ts` | live leg (bf) | G4 |
+| `docs/GO-LIVE-CHECKLIST.md`, `apps/mobile/TEST-CHECKLIST.md`, `apps/cafe/lib/go-live-runbook.test.ts` | the Phase 3 release step, the Phase 3 checks | G5 |
+| this plan | Session 3G Results | G6 |
+
+Each task is one commit, in this order: G0 → G5. Then G6 (verification, JUnit and the APKs, the build, the measured check, the exit, the fresh review, Results). **JUnit** runs from the repo (`cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun`); G0's RED there is a compile failure of the new JVM test.
+
+---
+
+### Task G0: the 3E review gate's app fixes: a remount after the page's renderer died is the page life's remount; no notification after the print service stopped; the mobile lint warning
+
+**Files:**
+- Modify: `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PageWatch.kt` (`PageWatch.remounted()`, `HostPage.remounted`), `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt` (`destroyed`; the hook set and cleared), `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PosPrinterModule.kt` (`mountWhileHidden` calls the hook)
+- Tests: `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PageWatchTest.kt` (1 new), `apps/mobile/src/mobile-paths.test.ts` (pin 26 and its mutation test), `apps/mobile/__tests__/App.test.tsx` (the `no-void` warning: a block body)
+
+**Interfaces produced:** `PageWatch.remounted()`; `HostPage.remounted: (() -> Unit)?` (set by `PrintHostService.onCreate`, cleared by `onDestroy`).
+
+**N-1** (the 3D review gate's ruling): a page whose renderer died is remounted by the POS screen (`remountAfterDeath`, which asks the module's `mountWhileHidden`). The watchdog did not know: if the new page took more than 30 s to load while the app was hidden, its two dead ticks made the watchdog remount AGAIN, unmounting the loading page, and the hidden-mount gap (10 minutes) then left the new WebView unmounted until the app was opened: one tap. Now every remount of a dead page (the renderer gone, or the watchdog's own word) tells the print service, and `PageWatch.remounted()` counts it as the page life's remount: the watchdog waits for the new page to answer once, and remounts again at most once every 10 minutes. The watchdog's own remount sets the same two fields itself; the hook's later post sets them again (idempotent).
+
+**3E's m-1:** a probe answer can land after `onDestroy` (the WebView's callback is not the handler's, so `removeCallbacksAndMessages` cannot cancel it); with the alert showing, `refreshNotification()` re-posted an ongoing "Printing is on" with no service behind it. `destroyed` (set first in `onDestroy`) makes it post nothing.
+
+**The mobile lint warning** (3E's ruling 2): `no-void` in `__tests__/App.test.tsx` (E0's test): a block body instead.
+
+**RED**: pin 26 fails (2 tests: the pin and its mutation test); the new JVM test does not compile (`Unresolved reference 'remounted'`). JUnit runs from the repo (`cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun`). The APKs change (G6 rebuilds them with the proven full release compile).
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/mobile/__tests__/App.test.tsx`, find:
+
+```tsx
+    const calls: string[] = [];
+    const stub: Stub = {
+      getSavedOrigin: jest.fn().mockResolvedValue('https://cafe.example.com'),
+      clearOrigin: jest.fn(async () => void calls.push('clearOrigin')),
+      setHostActive: jest.fn(async (active: boolean, label: string) => {
+        calls.push(`setHostActive(${active}, ${JSON.stringify(label)})`);
+        return { active: false };
+```
+
+Replace it with:
+
+```tsx
+    const calls: string[] = [];
+    const stub: Stub = {
+      getSavedOrigin: jest.fn().mockResolvedValue('https://cafe.example.com'),
+      clearOrigin: jest.fn(async () => {
+        calls.push('clearOrigin');
+      }),
+      setHostActive: jest.fn(async (active: boolean, label: string) => {
+        calls.push(`setHostActive(${active}, ${JSON.stringify(label)})`);
+        return { active: false };
+```
+
+In `apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PageWatchTest.kt`, find:
+
+```kotlin
+  }
+
+  @Test
+  fun aNewRunStartsClean() {
+    val w = watch()
+    w.tick(false)
+```
+
+Replace it with:
+
+```kotlin
+  }
+
+  @Test
+  fun aRemountAfterTheRendererWentIsThePageLifesRemount() {
+    // The 3D review gate (N-1): a page remounted because its renderer died, and slow to load while the app is hidden, was
+    // remounted again by the watchdog (which unmounted the loading page: one tap). That remount is this page life's.
+    val w = watch()
+    assertFalse("the page answers: alive", alive(w))
+    w.remounted()
+    assertEquals("the new page loads slowly: never remounted again before it answers", 0, dead(w, 20))
+    assertTrue("the alert says so", w.alerting(false))
+    assertFalse("it answers: alive", alive(w))
+    assertFalse("the alert goes", w.alerting(false))
+    assertEquals("it dies within 10 minutes of the renderer's remount: none yet", 0, dead(w, 10))
+    assertEquals("10 minutes after it: once more", 1, dead(w, 30))
+  }
+
+  @Test
+  fun aNewRunStartsClean() {
+    val w = watch()
+    w.tick(false)
+```
+
+In `apps/mobile/src/mobile-paths.test.ts`, find:
+
+```ts
+  everyMutationCaught(run('host'), base.host, [['      PrintingOffNotice.cancel(ctx.applicationContext)\n', '']]);
+});
+
+test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
+  const strings = readFileSync(join(MAIN, 'res', 'values', 'strings.xml'), 'utf8');
+  assert.ok(
+```
+
+Replace it with:
+
+```ts
+  everyMutationCaught(run('host'), base.host, [['      PrintingOffNotice.cancel(ctx.applicationContext)\n', '']]);
+});
+
+// ── pin 26: the 3E review gate's app fixes (2026-10-09) ─────────────────────
+// A remount after the page's renderer died is the page life's remount: the watchdog never remounts the loading page
+// again (the 3D gate's N-1); a probe answer that lands after the service stopped posts no notification (3E's m-1).
+interface LifeRemountSources {
+  watch: string;
+  service: string;
+  module: string;
+}
+function lifeRemountProblems(s: LifeRemountSources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!strip(text).includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(s.watch, 'fun remounted() {\n    lived = false\n    sinceRemount = 0\n  }', 'a renderer-gone remount leaves the watchdog free to remount the loading page');
+  need(s.watch, '@Volatile var remounted: (() -> Unit)? = null', 'the module cannot tell the watchdog of a remount');
+  need(s.module, 'HostPage.remounted?.invoke()\n    BackgroundMount.start(reactContext)', 'a page remounted after a death is not counted as its life\'s remount');
+  need(s.service, 'HostPage.remounted = { handler.post { watch.remounted() } }', 'the print host does not hear of a remount');
+  need(s.service, 'destroyed = true\n    handler.removeCallbacksAndMessages(null)', 'a stopped service does not know it stopped');
+  need(s.service, 'if (destroyed || !canNotify()) return', 'a late probe answer can post a notification after the service stopped');
+  return out;
+}
+const lifeRemountSources = (): LifeRemountSources => ({
+  watch: kt('PageWatch.kt'),
+  service: kt('PrintHostService.kt'),
+  module: kt('PosPrinterModule.kt'),
+});
+
+test("pin 26: the 3E review gate's app fixes (a renderer-gone remount is the page life's; no notification after the service stopped)", () => {
+  assert.deepEqual(lifeRemountProblems(lifeRemountSources()), []);
+});
+
+test('pin 26 mutation: every remount and stop needle can fail', () => {
+  const base = lifeRemountSources();
+  const run = (key: keyof LifeRemountSources) => (text: string) => lifeRemountProblems({ ...base, [key]: text });
+  everyMutationCaught(run('watch'), base.watch, [['    lived = false\n    sinceRemount = 0\n  }', '    sinceRemount = 0\n  }']]);
+  everyMutationCaught(run('module'), base.module, [['    HostPage.remounted?.invoke()\n', '']]);
+  everyMutationCaught(run('service'), base.service, [
+    ['handler.post { watch.remounted() }', 'handler.post { }'],
+    ['    destroyed = true\n', ''],
+    ['if (destroyed || !canNotify()) return', 'if (!canNotify()) return'],
+  ]);
+});
+
+test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {
+  const strings = readFileSync(join(MAIN, 'res', 'values', 'strings.xml'), 'utf8');
+  assert.ok(
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 143`; `# pass 141`; `# fail 2`
+
+Run: `cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun --console=plain 2>&1 | grep -E "^BUILD|compileDebugUnitTestKotlin FAILED|testDebugUnitTest FAILED" | sed -E 's/ in [0-9hms ]+$//'`
+Expected: `> Task :app:compileDebugUnitTestKotlin FAILED`; `BUILD FAILED`
+
+- [ ] **Step 3: The code**
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PageWatch.kt`, find:
+
+```kotlin
+  fun answered() {
+    answered = true
+    dead = 0
+  }
+
+  /** One tick: scores the previous probe (when one went out); the service then sends the next. True: remount now. */
+```
+
+Replace it with:
+
+```kotlin
+  fun answered() {
+    answered = true
+    dead = 0
+  }
+
+  /** The 3D review gate (N-1): the page was remounted from elsewhere (its renderer died). That is this page life's
+   *  remount: the watchdog waits for the new page to answer once (a slow load is never unmounted by a second remount),
+   *  and remounts again at most once every [remountGapTicks] ticks. */
+  fun remounted() {
+    lived = false
+    sinceRemount = 0
+  }
+
+  /** One tick: scores the previous probe (when one went out); the service then sends the next. True: remount now. */
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PageWatch.kt`, find:
+
+```kotlin
+  const val DEAD_EVENT = "PosPageDead"
+
+  @Volatile var remount: (() -> Unit)? = null
+}
+```
+
+Replace it with:
+
+```kotlin
+  const val DEAD_EVENT = "PosPageDead"
+
+  @Volatile var remount: (() -> Unit)? = null
+
+  /** The 3D review gate (N-1): set by the print host while it runs; the module calls it on every remount of a dead page
+   *  (its renderer gone, or the watchdog's word), so that remount counts as the page life's ([PageWatch.remounted]). */
+  @Volatile var remounted: (() -> Unit)? = null
+}
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PosPrinterModule.kt`, find:
+
+```kotlin
+   *  React Native mount it now ([BackgroundMount]), so the new page loads and prints without anyone opening the app. */
+  @ReactMethod
+  fun mountWhileHidden(promise: Promise) {
+    BackgroundMount.start(reactContext)
+    promise.resolve(null)
+  }
+```
+
+Replace it with:
+
+```kotlin
+   *  React Native mount it now ([BackgroundMount]), so the new page loads and prints without anyone opening the app. */
+  @ReactMethod
+  fun mountWhileHidden(promise: Promise) {
+    // The 3D review gate (N-1): this remount is the page life's; the watchdog never remounts the loading page again.
+    HostPage.remounted?.invoke()
+    BackgroundMount.start(reactContext)
+    promise.resolve(null)
+  }
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt`, find:
+
+```kotlin
+  private var shownKey = ""
+  // Session 3D: it ran in the foreground for the page (so its stop may need the "printing is off" notice).
+  private var running = false
+
+  // Page liveness (main thread only): each tick scores the previous tick's probe, then sends one.
+  private var probeSeq = 0
+```
+
+Replace it with:
+
+```kotlin
+  private var shownKey = ""
+  // Session 3D: it ran in the foreground for the page (so its stop may need the "printing is off" notice).
+  private var running = false
+  // The 3E review gate (m-1): onDestroy ran. A probe answer that lands later (the WebView's callback, not the handler's)
+  // then posts nothing: it would leave an orphan "Printing is on" with no service behind it.
+  private var destroyed = false
+
+  // Page liveness (main thread only): each tick scores the previous tick's probe, then sends one.
+  private var probeSeq = 0
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt`, find:
+
+```kotlin
+    super.onCreate()
+    ensureChannel()
+    PrinterPool.statusObserver = { handler.post { refreshNotification() } }
+  }
+
+  override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+```
+
+Replace it with:
+
+```kotlin
+    super.onCreate()
+    ensureChannel()
+    PrinterPool.statusObserver = { handler.post { refreshNotification() } }
+    // The 3D review gate (N-1): a remount after the page's renderer died is the page life's remount ([PageWatch]).
+    HostPage.remounted = { handler.post { watch.remounted() } }
+  }
+
+  override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt`, find:
+
+```kotlin
+  }
+
+  override fun onDestroy() {
+    handler.removeCallbacksAndMessages(null)
+    PrinterPool.statusObserver = null
+    try {
+      wakeLock?.let { if (it.isHeld) it.release() }
+    } catch (e: RuntimeException) {
+```
+
+Replace it with:
+
+```kotlin
+  }
+
+  override fun onDestroy() {
+    destroyed = true
+    handler.removeCallbacksAndMessages(null)
+    PrinterPool.statusObserver = null
+    HostPage.remounted = null
+    try {
+      wakeLock?.let { if (it.isHeld) it.release() }
+    } catch (e: RuntimeException) {
+```
+
+In `apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt`, find:
+
+```kotlin
+
+  /** Re-posts the notification only when its words changed. */
+  private fun refreshNotification() {
+    if (!canNotify()) return
+    val key = if (alerting()) ALERT_KEY else title() + "|" + text()
+    if (key == shownKey) return
+    try {
+```
+
+Replace it with:
+
+```kotlin
+
+  /** Re-posts the notification only when its words changed. */
+  private fun refreshNotification() {
+    if (destroyed || !canNotify()) return
+    val key = if (alerting()) ALERT_KEY else title() + "|" + text()
+    if (key == shownKey) return
+    try {
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm test 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 143`; `# pass 143`; `# fail 0`
+
+Run: `cd /d/kd/lucifer/apps/mobile && npm run test:app 2>&1 | grep -E "^Tests:"`
+Expected: `Tests:       5 passed, 5 total`
+
+Run: `cd /d/kd/lucifer/apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun --console=plain 2>&1 | grep -E "^BUILD|compileDebugUnitTestKotlin FAILED|testDebugUnitTest FAILED" | sed -E 's/ in [0-9hms ]+$//'`
+Expected: `BUILD SUCCESSFUL`
+
+Run: `cat /d/kd/lucifer/apps/mobile/android/app/build/test-results/testDebugUnitTest/*.xml | grep -oE 'testsuite name="[^"]+" tests="[0-9]+" skipped="[0-9]+" failures="[0-9]+" errors="[0-9]+"'`
+Expected: `testsuite name="com.possoftware.pos.printer.BatteryTargetsTest" tests="3" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.DleEotTest" tests="7" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.HostLifeTest" tests="4" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PageWatchTest" tests="7" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PoolListTest" tests="6" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PoolStatusTest" tests="3" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PrinterManagerTest" tests="22" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.PrinterPoolTest" tests="3" skipped="0" failures="0" errors="0"`; `testsuite name="com.possoftware.pos.printer.TcpTransportTest" tests="10" skipped="0" failures="0" errors="0"`
+
+Run: `cd /d/kd/lucifer/apps/mobile && npx tsc --noEmit && echo MOBILE_TSC_OK && (npm run lint 2>&1 | grep -E 'problems? \(' || echo MOBILE_LINT_CLEAN)`
+Expected: `MOBILE_TSC_OK`; `MOBILE_LINT_CLEAN`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/mobile/__tests__/App.test.tsx apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PageWatch.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PosPrinterModule.kt apps/mobile/android/app/src/main/java/com/possoftware/pos/printer/PrintHostService.kt apps/mobile/android/app/src/test/java/com/possoftware/pos/printer/PageWatchTest.kt apps/mobile/src/mobile-paths.test.ts
+git commit -m "fix(app): the 3E review gate's app fixes: a remount after the page's renderer died is the page life's remount, so the watchdog never unmounts a slow-loading page with a second remount (the 3D gate's N-1); a probe answer that lands after the print service stopped posts no notification (3E's m-1); and the mobile lint warning in App.test.tsx (Phase 3 Session 3G, G0)"
+```
+
+---
+
+### Task G1: the 3E review gate's page fixes: an empty Windows printer list says nothing; every network printer is checked, sixteen to a call, and asked again after a check the app refused; the hidden wake's rule tested by behaviour; three comments
+
+**Files:**
+- Modify: `apps/cafe/lib/print-agent-printers.ts` (an empty Windows list is unknown for `windowsMissingIds`), `apps/cafe/lib/printer/desktop-lan.ts` (`check()` in batches of `DESKTOP_LAN_MAX_PRINTERS`, a follow-up after every check), `apps/cafe/lib/print-agent-wake.ts` (`printAgentWakeMayPoll`; the comments), `apps/cafe/hooks/use-print-agent-wake.ts` (uses it), `apps/cafe/hooks/use-print-agent.ts` and `packages/shared/src/print-job.ts` (comments)
+- Tests: `apps/cafe/lib/print-agent-printers.test.ts` (1 case), `apps/cafe/lib/printer/desktop-lan.test.ts` (1 new), `apps/cafe/lib/print-agent.test.ts` (1 new: the hidden wake's cadence by behaviour), `apps/cafe/lib/print-agent-paths.test.ts` (the 3D pin, deliberately changed: the hook asks `printAgentWakeMayPoll`)
+
+**Interfaces produced:** `printAgentWakeMayPoll(where: { desktopShell: boolean; posApp: boolean; visible: boolean }): boolean` (`lib/print-agent-wake.ts`).
+
+**3E's m-2:** a spooler restart can make the Windows app answer an empty printer list; every Windows printer then read "missing", so after the 20 s settle the beat said `disconnected` and every device showed "‹printer› is not connected." for up to ~80 s, with two health writes a printer (leasing already stopped, as in Phase 2). An empty list is now "nothing known" (the app's own main process reads it the same way).
+
+**3E's m-4 and m-5:** `check()` asked only the first 16 network printers (the app's `LAN_STATUS_MAX_PRINTERS`), so a 17th was never checked, never connected and never leased; and a refused or odd answer returned before the follow-up, so a printer that did not answer waited the minute's check, not 30 s. Now every watched printer is asked, sixteen to a call, and the follow-up runs after every check.
+
+**The 3D gate's second golden review, m-6:** the hidden wake (a page in the POS app polls the wake while hidden: Session 3D's I-3) was pinned by source text only. Its rule is now `printAgentWakeMayPoll` (a browser tab on screen; the Windows app, always; the POS app, also hidden), and a behavioural test drives the wake with each case (at once, every 15 s idle, every 3 s for two minutes after a job; a hidden browser tab never). The 3D pin is deliberately changed to the call.
+
+**m-5:** three comments that still said only the host polls, or that a hidden tab never polls (`lib/print-agent-wake.ts`, `hooks/use-print-agent.ts`, `packages/shared/src/print-job.ts`).
+
+**RED**: four tests fail (the m-2 case, the m-4/m-5 test, the m-6 test: `printAgentWakeMayPoll` is not a function yet, and the changed pin).
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/print-agent-paths.test.ts`, find:
+
+```ts
+// prints with the screen off), and the app's 15 s hidden tick never leases (it was 4 empty leases a minute per device).
+test("PIN (3D): in the POS app a hidden page polls the wake; the app's hidden tick does not kick the agent", () => {
+  const wake = src("apps/cafe/hooks/use-print-agent-wake.ts");
+  assert.ok(wake.includes('mayPoll: () => isDesktopShell() || nativeBridge() !== null || document.visibilityState === "visible",'), "the POS app's hidden page keeps its heartbeat; a hidden browser tab does not poll");
+  assert.ok(!src("apps/cafe/hooks/use-print-agent.ts").includes('nativeOn("app.wake"'), "the hidden tick is no reason to lease");
+});
+```
+
+Replace it with:
+
+```ts
+// prints with the screen off), and the app's 15 s hidden tick never leases (it was 4 empty leases a minute per device).
+test("PIN (3D): in the POS app a hidden page polls the wake; the app's hidden tick does not kick the agent", () => {
+  const wake = src("apps/cafe/hooks/use-print-agent-wake.ts");
+  // Phase 3 Session 3G deliberately changed (the second golden review's m-6): the rule is printAgentWakeMayPoll, tested by
+  // behaviour in lib/print-agent.test.ts; the hook gives it the same three facts.
+  assert.ok(wake.includes('mayPoll: () => printAgentWakeMayPoll({ desktopShell: isDesktopShell(), posApp: nativeBridge() !== null, visible: document.visibilityState === "visible" }),'), "the POS app's hidden page keeps its heartbeat; a hidden browser tab does not poll");
+  assert.ok(!src("apps/cafe/hooks/use-print-agent.ts").includes('nativeOn("app.wake"'), "the hidden tick is no reason to lease");
+});
+```
+
+In `apps/cafe/lib/print-agent-printers.test.ts`, find:
+
+```ts
+  assert.deepEqual(agentPrintersOf([own, gone, kitchen], "pc", null, WIN_LAN).windowsMissingIds, ["gone"], "Windows does not report it now");
+  assert.deepEqual(agentPrintersOf([own, gone, kitchen], "pc", null, WIN_NAMED).windowsMissingIds, [], "1.11.0: nothing, as before");
+  assert.deepEqual(agentPrintersOf([own, gone], "pc", null, { ...WIN_LAN, names: null }).windowsMissingIds, [], "not read yet: nothing");
+  const down = [{ id: "tcp:192.168.1.60:9100", host: "192.168.1.60", port: 9100, status: "disconnected" as const }];
+  assert.equal(dotPrintersOf([own, kitchen], "pc", null, WIN_LAN, null, [], down).worst, "disconnected", "the kitchen does not answer");
+  const empty = [{ id: "tcp:192.168.1.60:9100", host: "192.168.1.60", port: 9100, status: "connected" as const, paper: "out" as const }];
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual(agentPrintersOf([own, gone, kitchen], "pc", null, WIN_LAN).windowsMissingIds, ["gone"], "Windows does not report it now");
+  assert.deepEqual(agentPrintersOf([own, gone, kitchen], "pc", null, WIN_NAMED).windowsMissingIds, [], "1.11.0: nothing, as before");
+  assert.deepEqual(agentPrintersOf([own, gone], "pc", null, { ...WIN_LAN, names: null }).windowsMissingIds, [], "not read yet: nothing");
+  // The 3E review gate (m-2): an empty list is Windows saying nothing (its spooler restarting), not every printer gone.
+  assert.deepEqual(agentPrintersOf([own, gone], "pc", null, { ...WIN_LAN, names: [] }).windowsMissingIds, [], "an empty list: nothing known");
+  const down = [{ id: "tcp:192.168.1.60:9100", host: "192.168.1.60", port: 9100, status: "disconnected" as const }];
+  assert.equal(dotPrintersOf([own, kitchen], "pc", null, WIN_LAN, null, [], down).worst, "disconnected", "the kitchen does not answer");
+  const empty = [{ id: "tcp:192.168.1.60:9100", host: "192.168.1.60", port: 9100, status: "connected" as const, paper: "out" as const }];
+```
+
+In `apps/cafe/lib/print-agent.test.ts`, find:
+
+```ts
+import { PRINT_ACK_PENDING_MAX_MS, PRINT_ACK_RETRY_MS } from "@pos/shared/print-lifecycle";
+import { PRINT_WAKE_FAST_MS, PRINT_WAKE_SLOW_MS, PRINT_WAKE_SOCKET_MS } from "@pos/shared/print-job";
+import { PRINT_AGENT_REFUSED_RECHECK_MS, type LeasedPrintJob, type PrintAckData, type PrintLeaseData } from "@pos/shared/print-agent-wire";
+import { createPrintAgentWake } from "@/lib/print-agent-wake";
+import { leasedJobsOf, printAgentEnqueueHeaders, printAgentHeaders, printJobRefOf } from "@/lib/print-agent-calls";
+import { createHostSlipOutcomes } from "@/lib/print-host-outcomes";
+import {
+```
+
+Replace it with:
+
+```ts
+import { PRINT_ACK_PENDING_MAX_MS, PRINT_ACK_RETRY_MS } from "@pos/shared/print-lifecycle";
+import { PRINT_WAKE_FAST_MS, PRINT_WAKE_SLOW_MS, PRINT_WAKE_SOCKET_MS } from "@pos/shared/print-job";
+import { PRINT_AGENT_REFUSED_RECHECK_MS, type LeasedPrintJob, type PrintAckData, type PrintLeaseData } from "@pos/shared/print-agent-wire";
+import { createPrintAgentWake, printAgentWakeMayPoll } from "@/lib/print-agent-wake";
+import { leasedJobsOf, printAgentEnqueueHeaders, printAgentHeaders, printJobRefOf } from "@/lib/print-agent-calls";
+import { createHostSlipOutcomes } from "@/lib/print-host-outcomes";
+import {
+```
+
+In `apps/cafe/lib/print-agent.test.ts`, find:
+
+```ts
+  await advance(w, 10 * PRINT_WAKE_SLOW_MS);
+  assert.equal(wakes, 3, "a hidden tab never polls");
+  wake.stop();
+});
+
+// Session 2C's final review (I-2): a writer whose counted jobs sit on a printer it does not print on (a second
+```
+
+Replace it with:
+
+```ts
+  await advance(w, 10 * PRINT_WAKE_SLOW_MS);
+  assert.equal(wakes, 3, "a hidden tab never polls");
+  wake.stop();
+});
+
+// The 3C review gate's second golden review (m-6; Session 3D's I-3 fix was pinned by its text only): a hidden page in the
+// POS app keeps its wake, the heartbeat of a device that prints with the screen off, at a visible writer's cadence; the
+// Windows app polls in the tray; a hidden browser tab never polls.
+test("3G: a hidden page in the POS app, and the Windows app, poll the wake at a visible writer's cadence; a hidden browser tab never does", async () => {
+  const run = async (where: { desktopShell: boolean; posApp: boolean; visible: boolean }) => {
+    const { w } = world();
+    let wakes = 0;
+    let waiting = 0;
+    const wake = createPrintAgentWake({
+      wake: async () => {
+        wakes += 1;
+        return { jobsForMe: { count: waiting, oldestCreatedAt: null }, agents: 1, agentDailyCap: 14_400, serverNow: new Date(w.now).toISOString() };
+      },
+      socketHealthy: () => false,
+      mayPoll: () => printAgentWakeMayPoll(where),
+      spendOne: () => true,
+      onJobs: () => undefined,
+      now: () => w.now,
+      setTimer: (fn, ms) => {
+        const id = w.nextId++;
+        w.timers.push({ at: w.now + ms, fn, id });
+        return id;
+      },
+      clearTimer: (handle) => void (w.timers = w.timers.filter((t) => t.id !== handle)),
+    });
+    wake.start();
+    await settle();
+    const first = wakes;
+    await advance(w, PRINT_WAKE_SLOW_MS);
+    const idle = wakes - first;
+    waiting = 1;
+    await advance(w, PRINT_WAKE_SLOW_MS);
+    waiting = 0;
+    const before = wakes;
+    await advance(w, 10 * PRINT_WAKE_FAST_MS);
+    const busy = wakes - before;
+    wake.stop();
+    return { first, idle, busy };
+  };
+  assert.deepEqual(await run({ desktopShell: false, posApp: true, visible: false }), { first: 1, idle: 1, busy: 10 }, "the POS app hidden: at once, every 15 s idle, every 3 s after a job");
+  assert.deepEqual(await run({ desktopShell: false, posApp: true, visible: true }), { first: 1, idle: 1, busy: 10 }, "the same as on screen");
+  assert.deepEqual(await run({ desktopShell: true, posApp: false, visible: false }), { first: 1, idle: 1, busy: 10 }, "the Windows app in the tray");
+  assert.deepEqual(await run({ desktopShell: false, posApp: false, visible: false }), { first: 0, idle: 0, busy: 0 }, "a hidden browser tab never polls");
+  assert.deepEqual(await run({ desktopShell: false, posApp: false, visible: true }), { first: 1, idle: 1, busy: 10 }, "a browser tab on screen");
+});
+
+// Session 2C's final review (I-2): a writer whose counted jobs sit on a printer it does not print on (a second
+```
+
+In `apps/cafe/lib/printer/desktop-lan.test.ts`, find:
+
+```ts
+
+import {
+  DESKTOP_LAN_DOWN_CHECK_MS,
+  DESKTOP_LAN_PRINT_TIMEOUT_MS,
+  DESKTOP_LAN_PROBLEM_CHECK_MS,
+  DESKTOP_LAN_RECHECK_MS,
+```
+
+Replace it with:
+
+```ts
+
+import {
+  DESKTOP_LAN_DOWN_CHECK_MS,
+  DESKTOP_LAN_MAX_PRINTERS,
+  DESKTOP_LAN_PRINT_TIMEOUT_MS,
+  DESKTOP_LAN_PROBLEM_CHECK_MS,
+  DESKTOP_LAN_RECHECK_MS,
+```
+
+In `apps/cafe/lib/printer/desktop-lan.test.ts`, find:
+
+```ts
+  assert.equal(lan.printerOf("tcp:192.168.1.60:9100")?.status, "disconnected", "the check began before the slip's answer: never a stale connected");
+});
+
+test("3E: the agent's key counts only connected printers that can print, and the hold's state changes with either list", () => {
+  assert.equal(
+    connectedLanKey({
+```
+
+Replace it with:
+
+```ts
+  assert.equal(lan.printerOf("tcp:192.168.1.60:9100")?.status, "disconnected", "the check began before the slip's answer: never a stale connected");
+});
+
+test("the 3E review gate (m-4, m-5): every watched printer is checked, at most sixteen to a call; one not answered yet is asked again in 30 s even when the app refused the check", async () => {
+  const app = fakeApp();
+  const timers = fakeTimers();
+  const lan = createDesktopLan({ api: () => app.api, ...timers });
+  const many = Array.from({ length: 17 }, (_, i): DesktopLanTarget => ({ host: `192.168.1.${100 + i}`, port: 9100 }));
+  app.api.lanStatus = async (printers) => {
+    app.checks.push(printers);
+    return printers.map((printer) => ({ host: printer.host, port: printer.port, link: "connected", health: null }));
+  };
+  lan.watch(many);
+  await flush();
+  assert.deepEqual(app.checks.map((asked) => asked.length), [DESKTOP_LAN_MAX_PRINTERS, 1], "two calls: the app takes sixteen at a time");
+  assert.equal(lan.printerOf("tcp:192.168.1.116:9100")?.status, "connected", "the seventeenth is checked too");
+  app.api.lanStatus = async () => {
+    throw new Error("refused");
+  };
+  lan.watch([KITCHEN]);
+  await flush();
+  assert.equal(lan.printerOf("tcp:192.168.1.60:9100")?.status, "connecting", "the app refused: nothing known yet");
+  assert.equal(timers.pending.filter((t) => t.live && t.ms === DESKTOP_LAN_DOWN_CHECK_MS).length, 1, "asked again in 30 s, not only at the minute's check");
+});
+
+test("3E: the agent's key counts only connected printers that can print, and the hold's state changes with either list", () => {
+  assert.equal(
+    connectedLanKey({
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-agent.test.ts lib/print-agent-paths.test.ts lib/print-agent-printers.test.ts lib/printer/desktop-lan.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 112`; `# pass 108`; `# fail 4`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/hooks/use-print-agent-wake.ts`, find:
+
+```ts
+import { isDesktopShell } from "@/lib/desktop-shell";
+import type { PrintAgent } from "@/lib/print-agent";
+import { jobsForMeLeasable, type AgentPrinters } from "@/lib/print-agent-printers";
+import { createPrintAgentWake } from "@/lib/print-agent-wake";
+import { printerHealthReports, setTakenOverPrinters } from "@/lib/print-agent-seams";
+import { olderWakeBody, printAgentSkew } from "@/lib/print-agent-skew";
+import { nativeBridge } from "@/lib/printer/native-bridge";
+```
+
+Replace it with:
+
+```ts
+import { isDesktopShell } from "@/lib/desktop-shell";
+import type { PrintAgent } from "@/lib/print-agent";
+import { jobsForMeLeasable, type AgentPrinters } from "@/lib/print-agent-printers";
+import { createPrintAgentWake, printAgentWakeMayPoll } from "@/lib/print-agent-wake";
+import { printerHealthReports, setTakenOverPrinters } from "@/lib/print-agent-seams";
+import { olderWakeBody, printAgentSkew } from "@/lib/print-agent-skew";
+import { nativeBridge } from "@/lib/printer/native-bridge";
+```
+
+In `apps/cafe/hooks/use-print-agent-wake.ts`, find:
+
+```ts
+      // Phase 3 Session 3D (the gold's review, I-3): in the POS app a hidden page polls too: it is the device's
+      // heartbeat and health beat while it prints with the screen off (the app's service runs it), at the cadence a
+      // visible writer has; a hidden browser tab still never polls.
+      mayPoll: () => isDesktopShell() || nativeBridge() !== null || document.visibilityState === "visible",
+      spendOne: () => {
+        const dayKey = cafeDateString();
+        const { record, allowed } = bumpPrintWakeBudget(mergePrintWakeBudget(readPrintWakeBudget(), memory, dayKey), dayKey, capRef.current);
+```
+
+Replace it with:
+
+```ts
+      // Phase 3 Session 3D (the gold's review, I-3): in the POS app a hidden page polls too: it is the device's
+      // heartbeat and health beat while it prints with the screen off (the app's service runs it), at the cadence a
+      // visible writer has; a hidden browser tab still never polls.
+      mayPoll: () => printAgentWakeMayPoll({ desktopShell: isDesktopShell(), posApp: nativeBridge() !== null, visible: document.visibilityState === "visible" }),
+      spendOne: () => {
+        const dayKey = cafeDateString();
+        const { record, allowed } = bumpPrintWakeBudget(mergePrintWakeBudget(readPrintWakeBudget(), memory, dayKey), dayKey, capRef.current);
+```
+
+In `apps/cafe/hooks/use-print-agent.ts`, find:
+
+```ts
+//   · a "print-status" frame aimed at this device (R7), or — the host only — the "print-job" nudge;
+//   · the existing 20 s pulse: every agent names itself there (?device=) and leases when its own line is
+//     not empty (the host too, since the Phase 1 final gate: a spent wake share must not stop it);
+//   · the host only: the wake POST at the spec §9.1 cadence (R6; hooks/use-print-agent-wake.ts since the 2E gate);
+//   · its printer coming back, the bridge freeing up, the app returning to the screen;
+//   · its one local timer (retryAt / nextAttemptAt from the server).
+// No ordering device gains a recurring request: only the host polls, and only the wake it always had.
+
+const LEASE_URL = "/api/print-jobs/lease";
+```
+
+Replace it with:
+
+```ts
+//   · a "print-status" frame aimed at this device (R7), or — the host only — the "print-job" nudge;
+//   · the existing 20 s pulse: every agent names itself there (?device=) and leases when its own line is
+//     not empty (the host too, since the Phase 1 final gate: a spent wake share must not stop it);
+//   · a device that prints for others (the host; in printers mode each printer's writer): the wake POST at the spec §9.1
+//     cadence (R6, printAgentPollsWake; hooks/use-print-agent-wake.ts since the 2E gate);
+//   · its printer coming back, the bridge freeing up, the app returning to the screen;
+//   · its one local timer (retryAt / nextAttemptAt from the server).
+// No ordering device gains a recurring request: only a device that prints for others polls, and only the wake.
+
+const LEASE_URL = "/api/print-jobs/lease";
+```
+
+In `apps/cafe/lib/print-agent-printers.ts`, find:
+
+```ts
+  const candidates = takeoverPrintersOf(printers, deviceId, pool, desktopLan);
+  const takeover = candidates.filter((printer) => desktopLan || nativeIdOf(printer, pool) !== null);
+  const here = [...mine.filter((printer) => printerIsLocal(printer, local, desktop, pool)), ...takeover];
+  const names = desktopLan && desktop?.named === true ? desktop.names : null;
+  return {
+    printersMode: printersModeOn(printers),
+    isWriter: mine.length > 0,
+```
+
+Replace it with:
+
+```ts
+  const candidates = takeoverPrintersOf(printers, deviceId, pool, desktopLan);
+  const takeover = candidates.filter((printer) => desktopLan || nativeIdOf(printer, pool) !== null);
+  const here = [...mine.filter((printer) => printerIsLocal(printer, local, desktop, pool)), ...takeover];
+  // The 3E review gate (m-2): an empty list is Windows saying nothing (its spooler restarting), not every printer gone.
+  const names = desktopLan && desktop?.named === true && desktop.names !== null && desktop.names.length > 0 ? desktop.names : null;
+  return {
+    printersMode: printersModeOn(printers),
+    isWriter: mine.length > 0,
+```
+
+In `apps/cafe/lib/print-agent-wake.ts`, find:
+
+```ts
+import { PRINT_WAKE_SLOW_MS } from "@pos/shared/print-job";
+import { printAgentWakeIntervalMs, type PrintWakeBeatData } from "@pos/shared/print-agent-wire";
+
+// Printing redesign, Phase 1 Session 1C: the HOST agent's wake poll (spec §9.1, §10). Only the host
+// polls (R6, printAgentPollsWake); every other agent hears about its jobs from its own order answers,
+// targeted print-status frames and the existing pulse. No React; unit-tested in lib/print-agent.test.ts.
+
+export interface PrintAgentWakeDeps {
+  wake(): Promise<PrintWakeBeatData>;
+  socketHealthy(): boolean;
+  /** A visible tab, or the desktop shell (always on): a hidden browser tab never polls. */
+  mayPoll(): boolean;
+  /** Spends one hit of today's cap; false once it is spent (spec §9.1, decision 6). */
+  spendOne(): boolean;
+```
+
+Replace it with:
+
+```ts
+import { PRINT_WAKE_SLOW_MS } from "@pos/shared/print-job";
+import { printAgentWakeIntervalMs, type PrintWakeBeatData } from "@pos/shared/print-agent-wire";
+
+// Printing redesign, Phase 1 Session 1C: the agent's wake poll (spec §9.1, §10). Only a device that prints for others
+// polls (printAgentPollsWake: the host in simple mode, R6; in printers mode each printer's writer, Session 2C); every other
+// agent hears about its jobs from its own order answers, targeted print-status frames and the existing pulse. No React;
+// unit-tested in lib/print-agent.test.ts.
+
+export interface PrintAgentWakeDeps {
+  wake(): Promise<PrintWakeBeatData>;
+  socketHealthy(): boolean;
+  /** printAgentWakeMayPoll: a visible tab, the Windows app (always on) or the POS app (Session 3D: also hidden). */
+  mayPoll(): boolean;
+  /** Spends one hit of today's cap; false once it is spent (spec §9.1, decision 6). */
+  spendOne(): boolean;
+```
+
+In `apps/cafe/lib/print-agent-wake.ts`, find:
+
+```ts
+  clearTimer(handle: unknown): void;
+}
+
+/** The host agent's wake poll (spec §9.1; only the host polls, R6): the heartbeat, plus "jobs for me".
+ *  Its cadence is printAgentWakeIntervalMs, so the budget test bounds it. */
+export function createPrintAgentWake(deps: PrintAgentWakeDeps): { start(): void; stop(): void; sawJob(): void } {
+  let timer: unknown = null;
+```
+
+Replace it with:
+
+```ts
+  clearTimer(handle: unknown): void;
+}
+
+/** Where the wake may poll (spec §9.1): a browser tab on screen; the Windows app, always (it keeps its page running in the
+ *  tray); the POS app, also while hidden (Phase 3 Session 3D: there the page is the heartbeat of a device that prints with
+ *  the screen off, run by the app's service, at the cadence it has on screen). A hidden browser tab never polls. */
+export function printAgentWakeMayPoll(where: { desktopShell: boolean; posApp: boolean; visible: boolean }): boolean {
+  return where.desktopShell || where.posApp || where.visible;
+}
+
+/** The agent's wake poll (spec §9.1; the devices printAgentPollsWake names): the heartbeat, plus "jobs for me".
+ *  Its cadence is printAgentWakeIntervalMs, so the budget test bounds it. */
+export function createPrintAgentWake(deps: PrintAgentWakeDeps): { start(): void; stop(): void; sawJob(): void } {
+  let timer: unknown = null;
+```
+
+In `apps/cafe/lib/printer/desktop-lan.ts`, find:
+
+```ts
+/** The Windows app answers a slip within its own 60 s job deadline after the connect (5 s) and a check ahead of it (the
+ *  gold's review, m-2: never give up before the app does); past this the page gives up waiting. */
+export const DESKTOP_LAN_PRINT_TIMEOUT_MS = 75_000;
+/** One check asks at most this many printers (the app's LAN_STATUS_MAX_PRINTERS). */
+export const DESKTOP_LAN_MAX_PRINTERS = 16;
+
+export interface DesktopLanTarget {
+```
+
+Replace it with:
+
+```ts
+/** The Windows app answers a slip within its own 60 s job deadline after the connect (5 s) and a check ahead of it (the
+ *  gold's review, m-2: never give up before the app does); past this the page gives up waiting. */
+export const DESKTOP_LAN_PRINT_TIMEOUT_MS = 75_000;
+/** One call to the app asks at most this many printers (the app's LAN_STATUS_MAX_PRINTERS); a check of more makes more
+ *  calls (the 3E review gate, m-5). */
+export const DESKTOP_LAN_MAX_PRINTERS = 16;
+
+export interface DesktopLanTarget {
+```
+
+In `apps/cafe/lib/printer/desktop-lan.ts`, find:
+
+```ts
+    const api = deps.api();
+    if (api === null || snapshot.printers.length === 0) return;
+    const before = new Map(written);
+    let answer: unknown;
+    try {
+      answer = await api.lanStatus(snapshot.printers.slice(0, DESKTOP_LAN_MAX_PRINTERS).map((entry) => ({ host: entry.host, port: entry.port })));
+    } catch {
+      return;
+    }
+    if (!Array.isArray(answer)) return;
+    let printers = snapshot.printers;
+    for (const row of answer) {
+      if (typeof row !== "object" || row === null) continue;
+      const { host, port, link, health } = row as Record<string, unknown>;
+      if (typeof host !== "string" || typeof port !== "number" || (link !== "connected" && link !== "disconnected")) continue;
+```
+
+Replace it with:
+
+```ts
+    const api = deps.api();
+    if (api === null || snapshot.printers.length === 0) return;
+    const before = new Map(written);
+    // The 3E review gate (m-5): every watched printer, at most DESKTOP_LAN_MAX_PRINTERS to a call (the app's limit).
+    const targets = snapshot.printers.map((entry) => ({ host: entry.host, port: entry.port }));
+    const rows: unknown[] = [];
+    for (let at = 0; at < targets.length; at += DESKTOP_LAN_MAX_PRINTERS) {
+      let answer: unknown;
+      try {
+        answer = await api.lanStatus(targets.slice(at, at + DESKTOP_LAN_MAX_PRINTERS));
+      } catch {
+        answer = null;
+      }
+      // A refused or odd answer says nothing of those printers (m-4: the follow-up below still runs).
+      if (Array.isArray(answer)) rows.push(...answer);
+    }
+    let printers = snapshot.printers;
+    for (const row of rows) {
+      if (typeof row !== "object" || row === null) continue;
+      const { host, port, link, health } = row as Record<string, unknown>;
+      if (typeof host !== "string" || typeof port !== "number" || (link !== "connected" && link !== "disconnected")) continue;
+```
+
+In `packages/shared/src/print-job.ts`, find:
+
+```ts
+// lock-holding draining host — and answers with a pending flag plus the newest
+// drain-eligible job's id (a change signal, never a payload). FAST while the
+// host has seen a feed change within the active window, SLOW otherwise;
+// hidden tabs don't fetch at all (refetchIntervalInBackground:false).
+export const PRINT_WAKE_FAST_MS = 3000;
+export const PRINT_WAKE_SLOW_MS = 15000;
+// Socket slice 2 — the cadence a host uses while the realtime room is VERIFIED
+```
+
+Replace it with:
+
+```ts
+// lock-holding draining host — and answers with a pending flag plus the newest
+// drain-eligible job's id (a change signal, never a payload). FAST while the
+// host has seen a feed change within the active window, SLOW otherwise;
+// a hidden browser tab doesn't fetch at all (Phase 3 Session 3D: the POS app's
+// hidden page and the Windows app in the tray do: printAgentWakeMayPoll).
+export const PRINT_WAKE_FAST_MS = 3000;
+export const PRINT_WAKE_SLOW_MS = 15000;
+// Socket slice 2 — the cadence a host uses while the realtime room is VERIFIED
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/print-agent.test.ts lib/print-agent-paths.test.ts lib/print-agent-printers.test.ts lib/printer/desktop-lan.test.ts lib/print-wake.test.ts lib/printer/print-gating-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 150`; `# pass 150`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint lib/print-agent-wake.ts hooks/use-print-agent-wake.ts hooks/use-print-agent.ts lib/print-agent-printers.ts lib/printer/desktop-lan.ts lib/print-agent.test.ts lib/print-agent-paths.test.ts lib/print-agent-printers.test.ts lib/printer/desktop-lan.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+Run: `cd /d/kd/lucifer/packages/shared && npx tsc --noEmit && echo SHARED_TSC_OK`
+Expected: `SHARED_TSC_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/hooks/use-print-agent-wake.ts apps/cafe/hooks/use-print-agent.ts apps/cafe/lib/print-agent-paths.test.ts apps/cafe/lib/print-agent-printers.test.ts apps/cafe/lib/print-agent-printers.ts apps/cafe/lib/print-agent-wake.ts apps/cafe/lib/print-agent.test.ts apps/cafe/lib/printer/desktop-lan.test.ts apps/cafe/lib/printer/desktop-lan.ts packages/shared/src/print-job.ts
+git commit -m "fix(print): the 3E review gate's page fixes: an empty Windows printer list says nothing (a spooler restarting), not every Windows printer gone (m-2); the Windows app's network printers are all checked, sixteen to a call, and asked again after a check the app refused (m-4, m-5); the hidden wake's rule is one function, tested by behaviour (the 3D gate's m-6), and three comments that said only the host polls (m-5) (Phase 3 Session 3G, G1)"
+```
+
+---
+
+### Task G2: the print soak's tool fixes: a malformed address refused at the start; the page's one timer; every slip checked against its orders' jobs; --tokens
+
+**Files:**
+- Create: `apps/cafe/scripts/print-soak-rules.ts` (`parseSoakArgs`, `soakAddressOf`, `slipOfJobKey`, `missingSlips`)
+- Modify: `apps/cafe/scripts/print-soak.ts` (the rules; `--tokens`; the timer between orders; the drain at the page's cadence; the slip check), `apps/cafe/scripts/print-soak-agent.ts` (`SOAK_PULSE_MS`, `tokens`, `timerAt`, `soakTimerDue`, `soakNextLeaseAt`; `leaseLines` returns nothing)
+- Tests: `apps/cafe/scripts/print-soak-rules.test.ts` (create; 3), `apps/cafe/scripts/print-soak-agent.test.ts` (2 new; the two-lines case deliberately changed: `leaseLines` sets the timer instead of returning `retryAt`), `apps/cafe/package.json` (the test chain gains `scripts/print-soak-rules.test.ts`)
+
+**Interfaces produced:** `parseSoakArgs(argv, exists): SoakArgs`; `soakAddressOf(value, option)`; `slipOfJobKey(jobKey)`; `missingSlips(made, jobs)`; `SoakAgent.tokens?`, `SoakAgent.timerAt?`; `soakTimerDue(agent, now)`; `soakNextLeaseAt(agent, now)`; `SOAK_PULSE_MS`.
+
+**Session 2G's m-5:** a malformed `--printer`/`--agent` value (no port, no `=`, a bad port) is refused before the first order.
+
+**Session 2G's m-6 and the final Phase 2 gate's (a) item 6:** the soak keeps the page's one local timer (a job's backoff from its ack's `nextAttemptAt`, a lease's `retryAt`): between orders it leases when the timer is due, and the drain waits for the timer, else for the page's next pulse (20 s), instead of leasing every 1–5 s through a backoff. A drain whose slips another device prints only watches (a database read every 2 s, no request).
+
+**(a) item 5:** every slip the soak made (`kot:<order>:<round>`, `token:<order>`, `bill:<order>`) must have its jobs, read from the database by the soak's orders, whatever the answers named (a printers-mode slip is one job per printer line); simple mode still makes one job per slip.
+
+**Tokens on** (the owner's ruling, option A): `--tokens page` (its lease and its ack say `tokenSlips`: a Phase 3 page) or `--tokens lease` (its lease only: a page from print-customization S7 to before Phase 3, whose acks cost the server a read of its device's last word, R-3 / m-6). With tokens on, a soak that prints must say one of them (a token is never printed at once: it waits for a lease that says `tokenSlips`).
+
+The Phase 1 final gate's pin (M8) keeps its lines verbatim in `print-soak.ts`.
+
+**RED**: the rules' test file cannot import its module; the agent's two new tests fail.
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/package.json`, find:
+
+```json
+    "lib/printer/native-pool.test.ts",
+    "lib/printer/desktop-lan.test.ts",
+    "lib/printer/native-bridge-v2-parity.test.ts",
+    "scripts/print-soak-agent.test.ts"
+  ],
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+```
+
+Replace it with:
+
+```json
+    "lib/printer/native-pool.test.ts",
+    "lib/printer/desktop-lan.test.ts",
+    "lib/printer/native-bridge-v2-parity.test.ts",
+    "scripts/print-soak-agent.test.ts",
+    "scripts/print-soak-rules.test.ts"
+  ],
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+```
+
+In `apps/cafe/scripts/print-soak-agent.test.ts`, find:
+
+```ts
+import assert from "node:assert/strict";
+import net from "node:net";
+
+import type { LeasedPrintJob } from "@pos/shared/print-agent-wire";
+import { leaseLines, printLeased, soakHeaders, type SoakAgent, type SoakCall, type SoakJson } from "./print-soak-agent";
+
+// Phase 2 Session 2G (the 2F2 review gate): the print soak's agent prints a job an answer carried leased to it before
+// any lease, writes each printer's jobs to that printer, and leases again only when an ack says `more`, so the soak
+// measures Phase 2's requests (decisions 9 and 15), not Phase 1's trailing empty lease.
+```
+
+Replace it with:
+
+```ts
+import assert from "node:assert/strict";
+import net from "node:net";
+
+import type { LeasedPrintJob } from "@pos/shared/print-agent-wire";
+import { SOAK_PULSE_MS, leaseLines, printLeased, soakHeaders, soakNextLeaseAt, soakTimerDue, type SoakAgent, type SoakCall, type SoakJson } from "./print-soak-agent";
+
+// Phase 2 Session 2G (the 2F2 review gate): the print soak's agent prints a job an answer carried leased to it before
+// any lease, writes each printer's jobs to that printer, and leases again only when an ack says `more`, so the soak
+// measures Phase 2's requests (decisions 9 and 15), not Phase 1's trailing empty lease.
+```
+
+In `apps/cafe/scripts/print-soak-agent.test.ts`, find:
+
+```ts
+  const bar = await fakePrinter();
+  try {
+    const agent: SoakAgent = { lines: new Map([["p-kitchen", { host: "127.0.0.1", port: kitchen.port }], ["p-bar", { host: "127.0.0.1", port: bar.port }]]), device: "soak-device", direct: false };
+    const server = fakeServer([false, false], [[leased("k1", "p-kitchen"), leased("b1", "p-bar")]]);
+    assert.equal(await leaseLines(agent, server.call), null, "no retryAt: the lines are empty");
+    assert.deepEqual(server.seen, ["POST /api/print-jobs/lease", "POST /api/print-jobs/k1/ack printed", "POST /api/print-jobs/b1/ack printed"], "one lease, two acks, no trailing lease");
+    assert.deepEqual([kitchen.jobs, bar.jobs], [["JOB k1 1 kot"], ["JOB b1 1 kot"]], "each job on its own printer");
+  } finally {
+    await kitchen.close();
+    await bar.close();
+  }
+});
+```
+
+Replace it with:
+
+```ts
+  const bar = await fakePrinter();
+  try {
+    const agent: SoakAgent = { lines: new Map([["p-kitchen", { host: "127.0.0.1", port: kitchen.port }], ["p-bar", { host: "127.0.0.1", port: bar.port }]]), device: "soak-device", direct: false };
+    const server = fakeServer([false, false], [[leased("k1", "p-kitchen"), leased("b1", "p-bar")]]);
+    await leaseLines(agent, server.call);
+    assert.equal(agent.timerAt ?? null, null, "no retryAt: the lines are empty, no timer");
+    assert.deepEqual(server.seen, ["POST /api/print-jobs/lease", "POST /api/print-jobs/k1/ack printed", "POST /api/print-jobs/b1/ack printed"], "one lease, two acks, no trailing lease");
+    assert.deepEqual([kitchen.jobs, bar.jobs], [["JOB k1 1 kot"], ["JOB b1 1 kot"]], "each job on its own printer");
+  } finally {
+    await kitchen.close();
+    await bar.close();
+  }
+});
+
+// Phase 3 Session 3G (Session 2G's m-6, the final Phase 2 gate's (a) item 6): the soak keeps the page's one local timer.
+// A job back in line after a refusal or a cut, and a lease answered "not due yet", set it; the soak leases again only when
+// it is due (or at its next pulse), never every few seconds during a backoff.
+test("a refused job's backoff and a lease's retryAt are the soak's one timer; the drain waits for it, else for its pulse", async () => {
+  const agent: SoakAgent = { lines: new Map([["p-bar", { host: "127.0.0.1", port: 1 }]]), device: "soak-device", direct: true };
+  const at = Date.now() + 30_000;
+  const call: SoakCall = async (_method, url) => {
+    if (url.endsWith("/ack")) return { status: 200, json: { data: { applied: true, nextAttemptAt: new Date(at).toISOString() } } };
+    return { status: 200, json: { data: { jobs: [], retryAt: new Date(at - 10_000).toISOString() } } };
+  };
+  const res = { json: { data: { printJobs: [{ id: "x1", status: "leased", targetDeviceId: "soak-device", leased: leased("x1", "p-bar") }] } } };
+  assert.equal(await printLeased(agent, call, res), false, "back in line with a backoff: no lease now");
+  assert.equal(agent.timerAt, at, "the ack's nextAttemptAt is the timer");
+  assert.equal(soakTimerDue(agent, at - 1), false, "not before it");
+  assert.equal(soakTimerDue(agent, at), true, "due at it");
+  await leaseLines(agent, call);
+  assert.equal(agent.timerAt, at - 10_000, "a lease's retryAt that comes sooner moves it");
+  const now = Date.now();
+  assert.equal(soakNextLeaseAt(agent, now), at - 10_000, "the drain waits for the timer");
+  assert.equal(agent.timerAt, null, "and spends it");
+  assert.equal(soakNextLeaseAt(agent, now), now + SOAK_PULSE_MS, "no timer: the next pulse");
+});
+
+// Phase 3 Session 3G (the owner's token ruling, option A: the measurement runs with a token per order): the soak's page
+// says it prints token slips as a page does (print-customization S7: on its lease; Phase 3: on its ack too).
+test("the soak's lease and ack say tokenSlips as its page would: page on both, lease on its lease only, none on neither", async () => {
+  const printer = await fakePrinter();
+  try {
+    for (const tokens of ["page", "lease", undefined] as const) {
+      const bodies: Array<{ url: string; body: Record<string, unknown> }> = [];
+      const call: SoakCall = async (_method, url, body) => {
+        bodies.push({ url, body: body as Record<string, unknown> });
+        return url.endsWith("/ack") ? { status: 200, json: { data: { applied: true, more: false } } } : { status: 200, json: { data: { jobs: bodies.length === 1 ? [leased("t1", "p-counter")] : [], retryAt: null } } };
+      };
+      const agent: SoakAgent = { lines: new Map([["p-counter", { host: "127.0.0.1", port: printer.port }]]), device: "soak-device", direct: false, ...(tokens === undefined ? {} : { tokens }) };
+      await leaseLines(agent, call);
+      const lease = bodies.find((b) => b.url.endsWith("/lease"))?.body;
+      const ack = bodies.find((b) => b.url.endsWith("/ack"))?.body;
+      assert.equal(lease?.tokenSlips, tokens === undefined ? undefined : true, `the lease (${tokens ?? "none"})`);
+      assert.equal(ack?.tokenSlips, tokens === "page" ? true : undefined, `the ack (${tokens ?? "none"})`);
+    }
+  } finally {
+    await printer.close();
+  }
+});
+```
+
+Create `apps/cafe/scripts/print-soak-rules.test.ts`:
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+import { missingSlips, parseSoakArgs, slipOfJobKey } from "./print-soak-rules";
+
+// Phase 3 Session 3G (Session 2G's m-5, the final Phase 2 gate's (a) item 5): the soak refuses a malformed address before
+// its first order, and in printers mode checks every slip it made against the jobs the database holds for its orders, not
+// only the jobs its answers named.
+
+const OUT = ["--out", "C:/fake-9100"];
+const exists = () => true;
+
+test("a malformed --agent or --printer value is refused at the start, before any order", () => {
+  for (const bad of ["127.0.0.1", ":9100", "127.0.0.1:", "127.0.0.1:0", "127.0.0.1:65536", "127.0.0.1:91x0", "a b:9100"]) {
+    assert.throws(() => parseSoakArgs([...OUT, "--agent", bad], exists), /--agent/, `--agent ${bad}`);
+  }
+  for (const bad of ["Kitchen", "=127.0.0.1:9100", "Kitchen=127.0.0.1", "Kitchen=:9100"]) {
+    assert.throws(() => parseSoakArgs([...OUT, "--printer", bad], exists), /--printer/, `--printer ${bad}`);
+  }
+  assert.deepEqual(parseSoakArgs([...OUT, "--agent", "127.0.0.1:9103"], exists).agent, { host: "127.0.0.1", port: 9103 }, "a good --agent");
+  assert.deepEqual(parseSoakArgs([...OUT, "--printer", "Bar printer=127.0.0.1:9101", "--printer", "A=B=127.0.0.1:9104"], exists).printers, [
+    { name: "Bar printer", host: "127.0.0.1", port: 9101 },
+    { name: "A=B", host: "127.0.0.1", port: 9104 },
+  ], "a name may hold '=' (the last one splits)");
+  assert.throws(() => parseSoakArgs(["--out", "C:/nowhere"], () => false), /--out/, "a fake printer's folder that does not exist");
+  assert.throws(() => parseSoakArgs([...OUT, "--orders", "0"], exists), /--orders/);
+  assert.throws(() => parseSoakArgs([...OUT, "--base", "https://cafe.example.com"], exists), /--base/, "a local POS only");
+  assert.throws(() => parseSoakArgs([...OUT, "--direct"], exists), /--direct/, "--direct needs a line to print");
+});
+
+test("--tokens says how the soak's page says it prints token slips: page (its lease and ack), lease (its lease only)", () => {
+  assert.equal(parseSoakArgs(OUT, exists).tokens, null, "not said: a page from before print-customization S7");
+  assert.equal(parseSoakArgs([...OUT, "--agent", "127.0.0.1:9103", "--tokens", "page"], exists).tokens, "page");
+  assert.equal(parseSoakArgs([...OUT, "--agent", "127.0.0.1:9103", "--tokens", "lease"], exists).tokens, "lease");
+  assert.throws(() => parseSoakArgs([...OUT, "--agent", "127.0.0.1:9103", "--tokens", "yes"], exists), /--tokens/);
+  assert.throws(() => parseSoakArgs([...OUT, "--tokens", "page"], exists), /--tokens/, "an ordering-only soak prints no token");
+});
+
+test("each job belongs to one slip (its key without the printer line), and every slip the soak made must have a job", () => {
+  assert.equal(slipOfJobKey("kot:6620aa:2:p-bar:0"), "kot:6620aa:2", "a printers-mode KOT job on the bar's line");
+  assert.equal(slipOfJobKey("kot:6620aa:1"), "kot:6620aa:1", "simple mode");
+  assert.equal(slipOfJobKey("bill:6620aa:p-counter:0"), "bill:6620aa");
+  assert.equal(slipOfJobKey("token:6620aa"), "token:6620aa");
+  assert.equal(slipOfJobKey(undefined), null, "a job with no key (a reprint) is no slip of the soak's");
+  const made = ["kot:o1:1", "token:o1", "kot:o1:2", "bill:o1", "kot:o2:1", "bill:o2"];
+  const jobs = [{ jobKey: "kot:o1:1:p-k:0" }, { jobKey: "kot:o1:1:p-b:0" }, { jobKey: "token:o1:p-c:0" }, { jobKey: "kot:o1:2:p-k:0" }, { jobKey: "bill:o1:p-c:0" }, { jobKey: "kot:o2:1:p-k:0" }];
+  assert.deepEqual(missingSlips(made, jobs), ["bill:o2"], "the second order's bill has no job: the soak says so");
+  assert.deepEqual(missingSlips(made, [...jobs, { jobKey: "bill:o2:p-c:0" }]), [], "every slip has its jobs");
+});
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test scripts/print-soak-rules.test.ts scripts/print-soak-agent.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 7`; `# pass 4`; `# fail 3`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/scripts/print-soak-agent.ts`, find:
+
+```ts
+ * Like the page's agent it prints a job an answer carried already leased to it before any lease (decision 15), and
+ * leases again only when an ack says `more`, or says nothing, as an older server would (decision 9). A local test
+ * tool: console-free, every request through `call`.
+ */
+import net from "node:net";
+import type { LeasedPrintJob, PrintJobRef } from "@pos/shared/print-agent-wire";
+
+export const SOAK_TAB = "soak-tab";
+const SLIP_BYTES = 4_096;
+
+export type SoakJson = { data?: Record<string, unknown>; error?: string };
+export type SoakCall = (method: string, url: string, body: unknown) => Promise<{ status: number; json: SoakJson }>;
+```
+
+Replace it with:
+
+```ts
+ * Like the page's agent it prints a job an answer carried already leased to it before any lease (decision 15), and
+ * leases again only when an ack says `more`, or says nothing, as an older server would (decision 9). A local test
+ * tool: console-free, every request through `call`.
+ *
+ * Phase 3 Session 3G (Session 2G's m-6, the final Phase 2 gate's (a) item 6): it keeps the page's one local timer (a
+ * job's backoff, a lease's "not due yet") and leases again only when it is due, or at the page's next pulse; and it says
+ * it prints token slips as the page it stands for does (`tokens`).
+ */
+import net from "node:net";
+import type { LeasedPrintJob, PrintJobRef } from "@pos/shared/print-agent-wire";
+
+export const SOAK_TAB = "soak-tab";
+const SLIP_BYTES = 4_096;
+/** The page's pulse (the POS lists' 20 s poll): a page whose line waits with no timer of its own leases at its pulse. */
+export const SOAK_PULSE_MS = 20_000;
+
+export type SoakJson = { data?: Record<string, unknown>; error?: string };
+export type SoakCall = (method: string, url: string, body: unknown) => Promise<{ status: number; json: SoakJson }>;
+```
+
+In `apps/cafe/scripts/print-soak-agent.ts`, find:
+
+```ts
+  device: string;
+  /** --direct: the soak names its tab (and its printers) on every request that makes slips. */
+  direct: boolean;
+}
+
+/** One write of a job's slip: its id first, then DLE EOT 1. The answer comes only after every byte before it was
+```
+
+Replace it with:
+
+```ts
+  device: string;
+  /** --direct: the soak names its tab (and its printers) on every request that makes slips. */
+  direct: boolean;
+  /** --tokens: "page" says tokenSlips on its lease and its ack (a Phase 3 page), "lease" on its lease only (a page from
+   *  print-customization S7 to before Phase 3: the server reads its device's last word on each ack); absent: never. */
+  tokens?: "page" | "lease";
+  /** The page's one local timer: the soonest nextAttemptAt or retryAt the server gave it (ms), spent when it leases. */
+  timerAt?: number | null;
+}
+
+function noteTimer(agent: SoakAgent, iso: unknown): void {
+  const at = typeof iso === "string" ? Date.parse(iso) : Number.NaN;
+  if (Number.isFinite(at)) agent.timerAt = agent.timerAt === null || agent.timerAt === undefined ? at : Math.min(agent.timerAt, at);
+}
+
+/** The page's timer is due: the soak leases now (between its orders, as the page's timer fires between taps). */
+export function soakTimerDue(agent: SoakAgent, now: number): boolean {
+  return agent.timerAt !== null && agent.timerAt !== undefined && agent.timerAt <= now;
+}
+
+/** When the soak, waiting for its line to empty, leases next: its timer when it has one (then spent), else its next pulse. */
+export function soakNextLeaseAt(agent: SoakAgent, now: number): number {
+  const at = agent.timerAt ?? now + SOAK_PULSE_MS;
+  agent.timerAt = null;
+  return at;
+}
+
+/** One write of a job's slip: its id first, then DLE EOT 1. The answer comes only after every byte before it was
+```
+
+In `apps/cafe/scripts/print-soak-agent.ts`, find:
+
+```ts
+    const written = await writeSlip(address, job);
+    if (written !== "printed") result = copy === 0 ? written : "maybe";
+  }
+  const body =
+    result === "printed"
+      ? { deviceId: agent.device, epoch: job.epoch, outcome: "printed" }
+      : { deviceId: agent.device, epoch: job.epoch, outcome: "failed", sent: result, error: result === "no" ? "The printer is not connected." : "The printer cut the connection mid-slip." };
+  const ack = await call("POST", `/api/print-jobs/${job.id}/ack`, body);
+  if (result !== "printed" && typeof ack.json.data?.nextAttemptAt === "string") return false;
+  return ack.json.data?.more !== false;
+}
+```
+
+Replace it with:
+
+```ts
+    const written = await writeSlip(address, job);
+    if (written !== "printed") result = copy === 0 ? written : "maybe";
+  }
+  const said = agent.tokens === "page" ? { tokenSlips: true } : {};
+  const body =
+    result === "printed"
+      ? { deviceId: agent.device, epoch: job.epoch, outcome: "printed", ...said }
+      : { deviceId: agent.device, epoch: job.epoch, outcome: "failed", sent: result, error: result === "no" ? "The printer is not connected." : "The printer cut the connection mid-slip.", ...said };
+  const ack = await call("POST", `/api/print-jobs/${job.id}/ack`, body);
+  if (result !== "printed" && typeof ack.json.data?.nextAttemptAt === "string") {
+    // Back in line with its backoff: the page's one timer, not a lease now.
+    noteTimer(agent, ack.json.data.nextAttemptAt);
+    return false;
+  }
+  return ack.json.data?.more !== false;
+}
+```
+
+In `apps/cafe/scripts/print-soak-agent.ts`, find:
+
+```ts
+}
+
+/** Leases this soak's lines (each printer it writes, one job per line) and prints what it gets, until an ack says the
+ *  lines are empty. Returns when the server says to look again (retryAt), or null. */
+export async function leaseLines(agent: SoakAgent, call: SoakCall): Promise<number | null> {
+  if (agent.lines.size === 0) return null;
+  const printerIds = [...agent.lines.keys()].filter((line) => line !== "");
+  for (;;) {
+    const lease = await call("POST", "/api/print-jobs/lease", { deviceId: agent.device, tabId: SOAK_TAB, ...(printerIds.length > 0 ? { printerIds } : {}) });
+    const jobs = (lease.json.data?.jobs as LeasedPrintJob[] | undefined) ?? [];
+    if (jobs.length === 0) {
+      const retryAt = lease.json.data?.retryAt;
+      return typeof retryAt === "string" ? Date.parse(retryAt) : null;
+    }
+    let more = false;
+    for (const job of jobs) more = (await printAndAck(agent, call, job)) || more;
+    if (!more) return null;
+  }
+}
+```
+
+Replace it with:
+
+```ts
+}
+
+/** Leases this soak's lines (each printer it writes, one job per line) and prints what it gets, until an ack says the
+ *  lines are empty. A lease answered "not due yet" (retryAt) sets the page's one timer. */
+export async function leaseLines(agent: SoakAgent, call: SoakCall): Promise<void> {
+  if (agent.lines.size === 0) return;
+  const printerIds = [...agent.lines.keys()].filter((line) => line !== "");
+  for (;;) {
+    const lease = await call("POST", "/api/print-jobs/lease", { deviceId: agent.device, tabId: SOAK_TAB, ...(printerIds.length > 0 ? { printerIds } : {}), ...(agent.tokens !== undefined ? { tokenSlips: true } : {}) });
+    const jobs = (lease.json.data?.jobs as LeasedPrintJob[] | undefined) ?? [];
+    if (jobs.length === 0) {
+      noteTimer(agent, lease.json.data?.retryAt);
+      return;
+    }
+    let more = false;
+    for (const job of jobs) more = (await printAndAck(agent, call, job)) || more;
+    if (!more) return;
+  }
+}
+```
+
+Create `apps/cafe/scripts/print-soak-rules.ts`:
+
+```ts
+/**
+ * Phase 3 Session 3G (Session 2G's m-5 and m-6, the final Phase 2 gate's (a) items 5 and 6): the print soak's rules that
+ * need no server, split out of scripts/print-soak.ts so node:test can drive them: its options (a malformed address is
+ * refused before the first order) and the slip check (every slip the soak made must have a job, whatever its answers
+ * named). A local test tool.
+ */
+import type { SoakAddress } from "./print-soak-agent";
+
+export interface SoakArgs {
+  orders: number;
+  base: string;
+  everyMs: number;
+  drainS: number;
+  agent: SoakAddress | null;
+  printers: Array<{ name: string } & SoakAddress>;
+  direct: boolean;
+  outs: string[];
+  device: string;
+  /** How the soak's page says it prints token slips: "page" on its lease and its ack (Phase 3), "lease" on its lease only
+   *  (print-customization S7 to before Phase 3), null never (before S7). */
+  tokens: "page" | "lease" | null;
+}
+
+const HOST = /^[A-Za-z0-9._-]+$/;
+
+/** "host:port" with a host and a port 1 to 65535; anything else stops the soak before its first order. */
+export function soakAddressOf(value: string, option: string): SoakAddress {
+  const at = value.lastIndexOf(":");
+  const host = at < 0 ? "" : value.slice(0, at);
+  const port = at < 0 ? Number.NaN : Number(value.slice(at + 1));
+  if (!HOST.test(host) || !/^\d+$/.test(value.slice(at + 1)) || port < 1 || port > 65_535) throw new Error(`${option} ${value}: give the fake printer as HOST:PORT`);
+  return { host, port };
+}
+
+export function parseSoakArgs(argv: readonly string[], exists: (folder: string) => boolean): SoakArgs {
+  const args: SoakArgs = { orders: 200, base: "http://localhost:3100", everyMs: 1_500, drainS: 300, agent: null, printers: [], direct: false, outs: [], device: "soak-device", tokens: null };
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--direct") {
+      args.direct = true;
+      continue;
+    }
+    const option = argv[i] ?? "";
+    const value = argv[++i] ?? "";
+    switch (option) {
+      case "--orders": args.orders = Number(value); break;
+      case "--base": args.base = value; break;
+      case "--every-ms": args.everyMs = Number(value); break;
+      case "--drain-s": args.drainS = Number(value); break;
+      case "--out": args.outs = value.split(",").filter((out) => out !== ""); break;
+      case "--device": args.device = value; break;
+      case "--agent": args.agent = soakAddressOf(value, "--agent"); break;
+      case "--printer": {
+        const at = value.lastIndexOf("=");
+        if (at < 1) throw new Error(`--printer ${value}: give it as "NAME=HOST:PORT"`);
+        args.printers.push({ name: value.slice(0, at), ...soakAddressOf(value.slice(at + 1), "--printer") });
+        break;
+      }
+      case "--tokens":
+        if (value !== "page" && value !== "lease") throw new Error(`--tokens ${value}: page (its lease and ack say it) or lease (its lease only)`);
+        args.tokens = value;
+        break;
+      default: throw new Error(`unknown option ${option}`);
+    }
+  }
+  if (!Number.isInteger(args.orders) || args.orders < 1) throw new Error("--orders needs a whole number");
+  if (!/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(args.base)) throw new Error("refusing: --base must be a local POS");
+  if (args.outs.length === 0 || args.outs.some((out) => !exists(out))) throw new Error("--out must be the fake printers' --out folders");
+  if (args.agent !== null && args.printers.length > 0) throw new Error("--agent (simple mode) or --printer (printers mode), not both");
+  if (args.direct && args.agent === null && args.printers.length === 0) throw new Error("--direct needs --agent or --printer");
+  if (args.tokens !== null && args.agent === null && args.printers.length === 0) throw new Error("--tokens needs --agent or --printer (an ordering-only soak prints no token)");
+  return args;
+}
+
+/** The slip a job prints: its key without the printer line and part (spec §6.5: `kot:<order>:<round>`, `bill:<order>`,
+ *  `token:<order>`). null for a job with no key (a reprint), which is no slip the soak made. */
+export function slipOfJobKey(jobKey: string | undefined): string | null {
+  if (jobKey === undefined) return null;
+  const parts = jobKey.split(":");
+  return parts[0] === "kot" ? parts.slice(0, 3).join(":") : parts.slice(0, 2).join(":");
+}
+
+/** The slips the soak made that no job prints: whatever the answers named, the database is asked (a slip whose answer
+ *  was lost, or a routing that made no job, shows here). */
+export function missingSlips(made: readonly string[], jobs: ReadonlyArray<{ jobKey?: string }>): string[] {
+  const printed = new Set(jobs.map((job) => slipOfJobKey(job.jobKey)));
+  return made.filter((slip) => !printed.has(slip));
+}
+```
+
+In `apps/cafe/scripts/print-soak.ts`, find:
+
+```ts
+ *   node --env-file=<env> --import tsx scripts/print-soak.ts --out <folder>[,<folder>]
+ *        [--orders 200] [--base http://localhost:3100] [--every-ms 1500] [--drain-s 300]
+ *        [--agent 127.0.0.1:9100 | --printer "<name>=127.0.0.1:9100" ...] [--direct] [--device soak-device]
+ *
+ * --agent HOST:PORT   simple mode, no host: the soak is its own device's print agent. It leases, writes each job to
+ *                     the fake printer over TCP and asks DLE EOT 1 at the end, so a connection the printer cut
+```
+
+Replace it with:
+
+```ts
+ *   node --env-file=<env> --import tsx scripts/print-soak.ts --out <folder>[,<folder>]
+ *        [--orders 200] [--base http://localhost:3100] [--every-ms 1500] [--drain-s 300]
+ *        [--agent 127.0.0.1:9100 | --printer "<name>=127.0.0.1:9100" ...] [--direct] [--device soak-device]
+ *        [--tokens page|lease]
+ *
+ * --agent HOST:PORT   simple mode, no host: the soak is its own device's print agent. It leases, writes each job to
+ *                     the fake printer over TCP and asks DLE EOT 1 at the end, so a connection the printer cut
+```
+
+In `apps/cafe/scripts/print-soak.ts`, find:
+
+```ts
+ * --printer NAME=H:P  printers mode (repeatable): the soak writes that printer (its printing device must be
+ *                     --device) on the fake printer at H:P.
+ * --direct            with --agent or --printer: the lease header (and the printers it writes) on every request.
+ * neither             another device prints: the host (simple mode) or the printers' writer (the emulator app);
+ *                     the soak only orders, then waits.
+ * --out               every fake printer's --out folder, comma separated (the check reads each jobs.log).
+ *
+ * It mints a staff session from the env file's AUTH_SECRET (never printed) and prints counts only: no
+ * secret, no payload. (console output is intentional — this is an ops CLI script, not app code.)
+ */
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+```
+
+Replace it with:
+
+```ts
+ * --printer NAME=H:P  printers mode (repeatable): the soak writes that printer (its printing device must be
+ *                     --device) on the fake printer at H:P.
+ * --direct            with --agent or --printer: the lease header (and the printers it writes) on every request.
+ * --tokens page|lease with --agent or --printer, when the cafe prints a token per order (print-customization S7): the
+ *                     soak's page says so on its lease and its ack (page: Phase 3), or on its lease only (lease: a page
+ *                     from S7 to before Phase 3, whose acks cost the server a read of its device's last word).
+ * neither             another device prints: the host (simple mode) or the printers' writer (the emulator app);
+ *                     the soak only orders, then waits.
+ * --out               every fake printer's --out folder, comma separated (the check reads each jobs.log).
+ *
+ * It mints a staff session from the env file's AUTH_SECRET (never printed) and prints counts only: no
+ * secret, no payload. (console output is intentional — this is an ops CLI script, not app code.)
+ *
+ * Phase 3 Session 3G (Session 2G's m-5 and m-6, the final Phase 2 gate's (a) items 5 and 6): a malformed address stops it
+ * before its first order (scripts/print-soak-rules.ts); its agent keeps the page's one timer, so a backoff is waited out,
+ * not leased through; and every slip it made is checked against the jobs its orders hold, not only the ones its answers
+ * named.
+ */
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+```
+
+In `apps/cafe/scripts/print-soak.ts`, find:
+
+```ts
+import { PrintJob } from "@/models/PrintJob";
+import { printerWriterDeviceId, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
+import { printRepeatLabel } from "@pos/shared/print-lifecycle";
+import { leaseLines, printLeased, soakHeaders, type SoakAddress, type SoakAgent, type SoakCall, type SoakJson } from "./print-soak-agent";
+
+const COOKIE = "authjs.session-token";
+
+interface Args {
+  orders: number;
+  base: string;
+  everyMs: number;
+  drainS: number;
+  agent: SoakAddress | null;
+  printers: Array<{ name: string } & SoakAddress>;
+  direct: boolean;
+  outs: string[];
+  device: string;
+}
+
+function addressOf(value: string): SoakAddress {
+  const [host, port] = value.split(":");
+  return { host: host ?? "", port: Number(port) };
+}
+
+function parseArgs(argv: string[]): Args {
+  const args: Args = { orders: 200, base: "http://localhost:3100", everyMs: 1_500, drainS: 300, agent: null, printers: [], direct: false, outs: [], device: "soak-device" };
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--direct") {
+      args.direct = true;
+      continue;
+    }
+    const value = argv[++i] ?? "";
+    switch (argv[i - 1]) {
+      case "--orders": args.orders = Number(value); break;
+      case "--base": args.base = value; break;
+      case "--every-ms": args.everyMs = Number(value); break;
+      case "--drain-s": args.drainS = Number(value); break;
+      case "--out": args.outs = value.split(",").filter((out) => out !== ""); break;
+      case "--device": args.device = value; break;
+      case "--agent": args.agent = addressOf(value); break;
+      case "--printer": {
+        const at = value.lastIndexOf("=");
+        args.printers.push({ name: value.slice(0, at), ...addressOf(value.slice(at + 1)) });
+        break;
+      }
+      default: throw new Error(`unknown option ${argv[i - 1]}`);
+    }
+  }
+  if (!Number.isInteger(args.orders) || args.orders < 1) throw new Error("--orders needs a whole number");
+  if (!/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(args.base)) throw new Error("refusing: --base must be a local POS");
+  if (args.outs.length === 0 || args.outs.some((out) => !existsSync(out))) throw new Error("--out must be the fake printers' --out folders");
+  if (args.agent !== null && args.printers.length > 0) throw new Error("--agent (simple mode) or --printer (printers mode), not both");
+  if (args.direct && args.agent === null && args.printers.length === 0) throw new Error("--direct needs --agent or --printer");
+  return args;
+}
+
+const requests = new Map<string, number>();
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function call(args: Args, cookie: string, method: string, url: string, body: unknown, headers: Record<string, string> = {}): Promise<{ status: number; json: SoakJson }> {
+  const route = `${method} ${url.replace(/[0-9a-f]{24}/g, ":id")}`;
+  requests.set(route, (requests.get(route) ?? 0) + 1);
+  const res = await fetch(`${args.base}${url}`, { method, headers: { "content-type": "application/json", cookie, ...headers }, body: JSON.stringify(body), redirect: "manual" });
+```
+
+Replace it with:
+
+```ts
+import { PrintJob } from "@/models/PrintJob";
+import { printerWriterDeviceId, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
+import { printRepeatLabel } from "@pos/shared/print-lifecycle";
+import { leaseLines, printLeased, soakHeaders, soakNextLeaseAt, soakTimerDue, type SoakAddress, type SoakAgent, type SoakCall, type SoakJson } from "./print-soak-agent";
+import { missingSlips, parseSoakArgs, type SoakArgs } from "./print-soak-rules";
+
+const COOKIE = "authjs.session-token";
+
+const requests = new Map<string, number>();
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function call(args: SoakArgs, cookie: string, method: string, url: string, body: unknown, headers: Record<string, string> = {}): Promise<{ status: number; json: SoakJson }> {
+  const route = `${method} ${url.replace(/[0-9a-f]{24}/g, ":id")}`;
+  requests.set(route, (requests.get(route) ?? 0) + 1);
+  const res = await fetch(`${args.base}${url}`, { method, headers: { "content-type": "application/json", cookie, ...headers }, body: JSON.stringify(body), redirect: "manual" });
+```
+
+In `apps/cafe/scripts/print-soak.ts`, find:
+
+```ts
+}
+
+async function main(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2));
+  const uri = process.env.MONGODB_URI ?? "";
+  // A local scratch database only, and (below) the first order must land in it: the POS at --base might use
+  // another database (the Phase 1 final gate, M8).
+```
+
+Replace it with:
+
+```ts
+}
+
+async function main(): Promise<void> {
+  const args = parseSoakArgs(process.argv.slice(2), existsSync);
+  const uri = process.env.MONGODB_URI ?? "";
+  // A local scratch database only, and (below) the first order must land in it: the POS at --base might use
+  // another database (the Phase 1 final gate, M8).
+```
+
+In `apps/cafe/scripts/print-soak.ts`, find:
+
+```ts
+      if (args.agent === null && host === null) throw new Error("without --agent a host must print: designate the app first");
+      if (args.agent !== null) lines.set("", args.agent);
+    }
+    const agent: SoakAgent = { lines, device: args.device, direct: args.direct };
+    const staff = await db.collection("staffs").findOne({ role: "admin", isActive: { $ne: false } }, { projection: { name: 1, role: 1 } });
+    if (staff === null) throw new Error("no admin to act as");
+    const token = await encode({ token: { name: staff.name, id: String(staff._id), role: staff.role, lastValidated: Date.now() }, secret, salt: COOKIE });
+```
+
+Replace it with:
+
+```ts
+      if (args.agent === null && host === null) throw new Error("without --agent a host must print: designate the app first");
+      if (args.agent !== null) lines.set("", args.agent);
+    }
+    const agent: SoakAgent = { lines, device: args.device, direct: args.direct, ...(args.tokens !== null ? { tokens: args.tokens } : {}), timerAt: null };
+    // Session 3G: with tokens on (print-customization S7) every order makes a token slip, which is never printed at once
+    // (it waits for a lease that says tokenSlips): a soak that prints must say how its page says so.
+    const settings = await db.collection("settings").findOne({}, { projection: { tokenEnabled: 1 } });
+    const tokensOn = settings?.tokenEnabled === true;
+    if (tokensOn && lines.size > 0 && args.tokens === null) throw new Error("tokens are on: say how the soak's page prints them (--tokens page or --tokens lease)");
+    const staff = await db.collection("staffs").findOne({ role: "admin", isActive: { $ne: false } }, { projection: { name: 1, role: 1 } });
+    if (staff === null) throw new Error("no admin to act as");
+    const token = await encode({ token: { name: staff.name, id: String(staff._id), role: staff.role, lastValidated: Date.now() }, secret, salt: COOKIE });
+```
+
+In `apps/cafe/scripts/print-soak.ts`, find:
+
+```ts
+    };
+    const startedAt = new Date(Date.now() - 1_000);
+    const named = new Set<string>();
+    const refuse: string[] = [];
+    const counts = { orders: 0, rounds: 0, bills: 0 };
+    const note = (res: { status: number; json: SoakJson }, what: string) => {
+```
+
+Replace it with:
+
+```ts
+    };
+    const startedAt = new Date(Date.now() - 1_000);
+    const named = new Set<string>();
+    // Session 3G ((a) item 5): every slip the soak made, by its key, and the orders it made them for.
+    const made: string[] = [];
+    const orderIds: string[] = [];
+    const refuse: string[] = [];
+    const counts = { orders: 0, rounds: 0, bills: 0 };
+    const note = (res: { status: number; json: SoakJson }, what: string) => {
+```
+
+In `apps/cafe/scripts/print-soak.ts`, find:
+
+```ts
+    };
+
+    for (let i = 0; i < args.orders; i++) {
+      const item = line(i);
+      const created = await call(args, cookie, "POST", "/api/orders", { customerName: "Soak", items: [item], subtotal: item.price, discount: 0, total: item.price, payment: "Unpaid", status: "Pending", receiver: "Soak", idemKey: randomUUID() }, soakHeaders(agent, false));
+      note(created, `order ${i + 1}`);
+```
+
+Replace it with:
+
+```ts
+    };
+
+    for (let i = 0; i < args.orders; i++) {
+      // The page's one timer fires between taps: a slip back in line is leased when its backoff is up, not before.
+      if (soakTimerDue(agent, Date.now())) {
+        agent.timerAt = null;
+        await leaseLines(agent, soakCall);
+      }
+      const item = line(i);
+      const created = await call(args, cookie, "POST", "/api/orders", { customerName: "Soak", items: [item], subtotal: item.price, discount: 0, total: item.price, payment: "Unpaid", status: "Pending", receiver: "Soak", idemKey: randomUUID() }, soakHeaders(agent, false));
+      note(created, `order ${i + 1}`);
+```
+
+In `apps/cafe/scripts/print-soak.ts`, find:
+
+```ts
+        throw new Error("refusing: the POS at --base writes to another database than MONGODB_URI");
+      }
+      counts.orders += 1;
+      if (await printLeased(agent, soakCall, created)) await leaseLines(agent, soakCall);
+      if (i % 2 === 1) {
+        const round = await call(args, cookie, "POST", `/api/orders/${orderId}/items`, { items: [line(i + 1)], idemKey: randomUUID() }, soakHeaders(agent, false));
+        note(round, `round ${i + 1}`);
+        if (round.status < 300) counts.rounds += 1;
+        if (await printLeased(agent, soakCall, round)) await leaseLines(agent, soakCall);
+      }
+      const settled = await call(args, cookie, "POST", `/api/orders/${orderId}/settle`, { payment: "Cash" }, soakHeaders(agent, true));
+      note(settled, `bill ${i + 1}`);
+      if (settled.status < 300) counts.bills += 1;
+      if (await printLeased(agent, soakCall, settled)) await leaseLines(agent, soakCall);
+      if ((i + 1) % 20 === 0) console.log(`  ${i + 1}/${args.orders} orders`);
+      await sleep(args.everyMs);
+    }
+
+    // Drain: wait until no slip of this soak is still queued or leased (a REPRINT waits for its backoff). Session 2G: a
+    // lease only while one is open, so the measured run holds no request the page would not make.
+    const deadline = Date.now() + args.drainS * 1_000;
+    const mine = { originDeviceId: args.device, createdAt: { $gte: startedAt } };
+    for (;;) {
+      const open = await PrintJob.countDocuments({ ...mine, status: { $in: ["queued", "leased"] } });
+      if (open === 0 || Date.now() > deadline) break;
+      const next = await leaseLines(agent, soakCall);
+      await sleep(Math.min(5_000, Math.max(1_000, (next ?? Date.now() + 2_000) - Date.now())));
+    }
+
+    const jobs = await PrintJob.find(mine).select("kind status labels uncertainAttempts copies").lean();
+    const byStatus: Record<string, number> = {};
+    for (const job of jobs) byStatus[job.status] = (byStatus[job.status] ?? 0) + 1;
+    const problems: string[] = [...refuse];
+    const ids = new Set(jobs.map((job) => String(job._id)));
+    const missing = [...named].filter((id) => !ids.has(id));
+    if (missing.length > 0) problems.push(`${missing.length} slip(s) an answer named are missing`);
+    // Simple mode: one job per slip. Printers mode: a slip is one job per printer line, each named in its answer.
+    const expected = printersMode ? named.size : counts.orders + counts.rounds + counts.bills;
+    if (jobs.length !== expected) problems.push(`${jobs.length} jobs for ${expected} expected (${printersMode ? "the jobs the answers named" : "orders + rounds + bills"})`);
+    const silent = jobs.filter((job) => job.status === "queued" || job.status === "leased" || job.status === "dismissed");
+    if (silent.length > 0) problems.push(`${silent.length} slip(s) neither printed nor visibly waiting`);
+```
+
+Replace it with:
+
+```ts
+        throw new Error("refusing: the POS at --base writes to another database than MONGODB_URI");
+      }
+      counts.orders += 1;
+      orderIds.push(orderId);
+      made.push(`kot:${orderId}:1`, ...(tokensOn ? [`token:${orderId}`] : []));
+      if (await printLeased(agent, soakCall, created)) await leaseLines(agent, soakCall);
+      if (i % 2 === 1) {
+        const round = await call(args, cookie, "POST", `/api/orders/${orderId}/items`, { items: [line(i + 1)], idemKey: randomUUID() }, soakHeaders(agent, false));
+        note(round, `round ${i + 1}`);
+        if (round.status < 300) {
+          counts.rounds += 1;
+          made.push(`kot:${orderId}:2`);
+        }
+        if (await printLeased(agent, soakCall, round)) await leaseLines(agent, soakCall);
+      }
+      const settled = await call(args, cookie, "POST", `/api/orders/${orderId}/settle`, { payment: "Cash" }, soakHeaders(agent, true));
+      note(settled, `bill ${i + 1}`);
+      if (settled.status < 300) {
+        counts.bills += 1;
+        made.push(`bill:${orderId}`);
+      }
+      if (await printLeased(agent, soakCall, settled)) await leaseLines(agent, soakCall);
+      if ((i + 1) % 20 === 0) console.log(`  ${i + 1}/${args.orders} orders`);
+      await sleep(args.everyMs);
+    }
+
+    // Drain: wait until no slip of this soak is still queued or leased (a REPRINT waits for its backoff). Session 2G: a
+    // lease only while one is open, so the measured run holds no request the page would not make. Session 3G (m-6): at
+    // the page's cadence: its one timer (a backoff, a "not due yet"), else its next pulse; another device's slips are
+    // only watched (a database read, no request).
+    const deadline = Date.now() + args.drainS * 1_000;
+    const mine = { orderId: { $in: orderIds } };
+    for (;;) {
+      const open = await PrintJob.countDocuments({ ...mine, status: { $in: ["queued", "leased"] } });
+      if (open === 0 || Date.now() > deadline) break;
+      if (lines.size === 0) {
+        await sleep(2_000);
+        continue;
+      }
+      await sleep(Math.max(0, Math.min(soakNextLeaseAt(agent, Date.now()), deadline) - Date.now()));
+      await leaseLines(agent, soakCall);
+    }
+
+    const jobs = await PrintJob.find(mine).select("kind status labels uncertainAttempts copies jobKey").lean();
+    const byStatus: Record<string, number> = {};
+    for (const job of jobs) byStatus[job.status] = (byStatus[job.status] ?? 0) + 1;
+    const problems: string[] = [...refuse];
+    const ids = new Set(jobs.map((job) => String(job._id)));
+    const missing = [...named].filter((id) => !ids.has(id));
+    if (missing.length > 0) problems.push(`${missing.length} slip(s) an answer named are missing`);
+    // Session 3G ((a) item 5): every slip the soak made has its jobs, read from its orders (a printers-mode slip is a job
+    // per printer line), whatever the answers named; simple mode makes one job per slip.
+    const unmade = missingSlips(made, jobs);
+    if (unmade.length > 0) problems.push(`${unmade.length} slip(s) the soak made have no job (${unmade.slice(0, 3).join(", ")})`);
+    if (!printersMode && jobs.length !== made.length) problems.push(`${jobs.length} jobs for ${made.length} slips (simple mode: one job per slip)`);
+    const silent = jobs.filter((job) => job.status === "queued" || job.status === "leased" || job.status === "dismissed");
+    if (silent.length > 0) problems.push(`${silent.length} slip(s) neither printed nor visibly waiting`);
+```
+
+In `apps/cafe/scripts/print-soak.ts`, find:
+
+```ts
+    console.log(
+      JSON.stringify(
+        {
+          mode: `${printersMode ? "printers mode" : "simple mode"}, ${lines.size > 0 ? "soak agent prints" : printersMode ? "the printers' writer prints" : "app host prints"}${args.direct ? ", direct" : ""}`,
+          ...counts,
+          slips: counts.orders + counts.rounds + counts.bills,
+          jobs: jobs.length,
+          byStatus,
+          labelled: jobs.filter((job) => (job.labels ?? []).length > 0).length,
+```
+
+Replace it with:
+
+```ts
+    console.log(
+      JSON.stringify(
+        {
+          mode: `${printersMode ? "printers mode" : "simple mode"}, ${lines.size > 0 ? "soak agent prints" : printersMode ? "the printers' writer prints" : "app host prints"}${args.direct ? ", direct" : ""}${tokensOn ? `, a token per order${args.tokens !== null ? ` (says it: ${args.tokens})` : ""}` : ""}`,
+          ...counts,
+          tokens: tokensOn ? counts.orders : 0,
+          slips: made.length,
+          jobs: jobs.length,
+          byStatus,
+          labelled: jobs.filter((job) => (job.labels ?? []).length > 0).length,
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test scripts/print-soak-rules.test.ts scripts/print-soak-agent.test.ts lib/print-lifecycle-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 36`; `# pass 36`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint scripts/print-soak.ts scripts/print-soak-agent.ts scripts/print-soak-rules.ts scripts/print-soak-rules.test.ts scripts/print-soak-agent.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/package.json apps/cafe/scripts/print-soak-agent.test.ts apps/cafe/scripts/print-soak-agent.ts apps/cafe/scripts/print-soak-rules.test.ts apps/cafe/scripts/print-soak-rules.ts apps/cafe/scripts/print-soak.ts
+git commit -m "test(print): the print soak's tool fixes: a malformed --agent or --printer value is refused before the first order (2G's m-5); its agent keeps the page's one timer, so a backoff is waited out, not leased through (2G's m-6, the final Phase 2 gate's (a) item 6); every slip it made is checked against the jobs its orders hold, not only the ones its answers named ((a) item 5); and --tokens says how its page prints a token per order (Phase 3 Session 3G, G2)"
+```
+
+---
+
+### Task G3: the print soak's --failover mode: two soak writers that poll the wake as a page does, the orders from a third device, the soak's writer stopped mid-run, P3-4's measure
+
+**Files:**
+- Create: `apps/cafe/scripts/print-soak-writer.ts` (`SoakWriter`, `soakWakeBody`, `soakWriterTick`, `failoverProblems`)
+- Modify: `apps/cafe/scripts/print-soak-rules.ts` (`--failover`, `--failover-printer`, `--stop-after`), `apps/cafe/scripts/print-soak.ts` (the writers' loops, the stop, the failover check and report), `apps/cafe/scripts/print-soak-agent.ts` (`closed`: a stopped writer leases nothing more)
+- Tests: `apps/cafe/scripts/print-soak-writer.test.ts` (create; 3), `apps/cafe/scripts/print-soak-rules.test.ts` (1 new), `apps/cafe/package.json` (the test chain gains `scripts/print-soak-writer.test.ts`)
+
+**Interfaces produced:** `soakWakeBody(w)`; `soakWriterTick(w, call, now): Promise<number>` (ms to the next wake); `failoverProblems({ stopAt, primary, second, printerIds, jobs }): { problems, report }`; `SoakArgs.failover`; `SoakAgent.closed?`.
+
+**The 3G spec's `--failover` mode:** the soak's printers (`--printer`) are written by the soak's writer (`--device`) and a second writer (`--failover <device>`, its own `--failover-printer` printers: it writes a printer by the setup, so it may take one over: the 3A gate's E-1). Both poll the wake as a printers-mode writer's page does (Session 3B's beat: `lanFailover`, the printers' health, `tokenSlips` with `--tokens page`), at the page's cadence with no realtime socket (3 s for two minutes after a job, else 15 s), and when the wake counts a job for it a writer leases its own printers and every network printer it may take over (the server grants only the lines it writes now). The orders come from a third device (`<device>-orders`) that prints nothing, so every slip is leased by its writer (Session 2G's P4). After `--stop-after` orders (half the run unless said) the soak's writer stops: no wake, no lease, no ack; the slip it holds at that moment is acked, and it leases nothing more (`closed`).
+
+**The check (P3-4's measure)** over the jobs on the stopped writer's network printers: every slip made 90 s or more after the stop printed by the second writer; every slip made before that and not printed before the stop printed by the second writer within 150 s of the stop; a slip the stopped writer had leased before the stop and finished is its own. The report: how many waited through the stop and the slowest, how many were made 90 s or more after it, the second writer's first print after the stop, and its prints.
+
+**Found by the gate's pre-run:** a writer stopped in the middle of a burst finished its slip and then leased again (its ack said `more`), printing after the stop: `closed` ends its lease loop. **The gold review's #3:** the stop's time is taken once the stopped writer's request in flight is done (`await` its loop), so a lease it made just before the stop is never stamped after it; its #6: the soak writer's beat leaves out the candidates a page names ahead of time (their reports write nothing while it does not write them), said in a comment.
+
+**RED**: the writer's test file cannot import its module; the rules' new test fails.
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/package.json`, find:
+
+```json
+    "lib/printer/desktop-lan.test.ts",
+    "lib/printer/native-bridge-v2-parity.test.ts",
+    "scripts/print-soak-agent.test.ts",
+    "scripts/print-soak-rules.test.ts"
+  ],
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+```
+
+Replace it with:
+
+```json
+    "lib/printer/desktop-lan.test.ts",
+    "lib/printer/native-bridge-v2-parity.test.ts",
+    "scripts/print-soak-agent.test.ts",
+    "scripts/print-soak-rules.test.ts",
+    "scripts/print-soak-writer.test.ts"
+  ],
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+```
+
+In `apps/cafe/scripts/print-soak-rules.test.ts`, find:
+
+```ts
+  assert.deepEqual(missingSlips(made, [...jobs, { jobKey: "bill:o2:p-c:0" }]), [], "every slip has its jobs");
+});
+```
+
+Replace it with:
+
+```ts
+  assert.deepEqual(missingSlips(made, [...jobs, { jobKey: "bill:o2:p-c:0" }]), [], "every slip has its jobs");
+});
+
+// Phase 3 Session 3G: --failover, two soak writers (the soak's --device and a second one that writes its own printer, so it
+// may take a network printer over: the 3A gate's E-1), the orders from a third device, and the soak's writer stopped
+// after --stop-after orders (half of them unless said).
+test("--failover needs the soak's printers, a printer of the second writer's own and a stop inside the run; its orders come from a third device", () => {
+  const base = [...OUT, "--printer", "Kitchen printer=127.0.0.1:9100", "--orders", "20"];
+  const second = ["--failover", "soak-b", "--failover-printer", "Bar printer=127.0.0.1:9101"];
+  assert.deepEqual(parseSoakArgs([...base, ...second, "--stop-after", "8"], exists).failover, { device: "soak-b", printers: [{ name: "Bar printer", host: "127.0.0.1", port: 9101 }], stopAfter: 8 });
+  assert.equal(parseSoakArgs([...base, ...second], exists).failover?.stopAfter, 10, "half the orders unless said");
+  assert.equal(parseSoakArgs(base, exists).failover, null, "not asked");
+  assert.throws(() => parseSoakArgs([...base, "--failover", "soak-b"], exists), /--failover-printer/, "the second writer writes a printer of its own (E-1)");
+  assert.throws(() => parseSoakArgs([...OUT, ...second], exists), /--failover/, "the soak writes the printers that fail over");
+  assert.throws(() => parseSoakArgs([...base, ...second, "--direct"], exists), /--direct/, "the orders come from a device that prints nothing");
+  assert.throws(() => parseSoakArgs([...base, ...second, "--stop-after", "20"], exists), /--stop-after/, "a stop inside the run");
+  assert.throws(() => parseSoakArgs([...base, "--failover", "soak-device", "--failover-printer", "Bar printer=127.0.0.1:9101"], exists), /--failover/, "two different devices");
+  assert.throws(() => parseSoakArgs([...base, "--failover-printer", "Bar printer=127.0.0.1:9101"], exists), /--failover-printer/, "a second writer's printer needs --failover");
+  assert.throws(() => parseSoakArgs([...base, ...second, "--failover-printer", "Bar printer"], exists), /--failover-printer/, "a malformed address");
+});
+```
+
+Create `apps/cafe/scripts/print-soak-writer.test.ts`:
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import net from "node:net";
+
+import { PRINT_WAKE_FAST_MS, PRINT_WAKE_SLOW_MS } from "@pos/shared/print-job";
+import type { LeasedPrintJob } from "@pos/shared/print-agent-wire";
+import type { SoakCall, SoakJson } from "./print-soak-agent";
+import { failoverProblems, soakWakeBody, soakWriterTick, type SoakWriter } from "./print-soak-writer";
+
+// Phase 3 Session 3G (the Phase 3 plan's 3G spec: "a --failover mode, a second soak agent that says lanFailover"): two
+// soak writers that behave as the POS app's page in printers mode does (spec §9.1, §9.3): each polls the wake at the
+// page's cadence with its heartbeat (lanFailover, its printers' health), and when the wake counts a job for it leases its
+// own printers and every network printer it may take over (the server grants only the ones it writes now).
+
+async function fakePrinter(): Promise<{ port: number; jobs: string[]; close: () => Promise<void> }> {
+  const jobs: string[] = [];
+  const server = net.createServer((socket) => {
+    let bytes = Buffer.alloc(0);
+    socket.on("data", (chunk: Buffer) => {
+      bytes = Buffer.concat([bytes, chunk]);
+      if (bytes.subarray(-3).equals(Buffer.from([0x10, 0x04, 0x01]))) {
+        jobs.push(bytes.toString("utf8").split("\n")[0] ?? "");
+        socket.end(Buffer.from([0x12]));
+      }
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("no port");
+  return { port: address.port, jobs, close: () => new Promise((resolve) => server.close(() => resolve())) };
+}
+
+function leased(id: string, printerId: string): LeasedPrintJob {
+  return { id, epoch: 1, kind: "kot", label: "KOT", createdAt: new Date(0).toISOString(), payload: {} as LeasedPrintJob["payload"], labels: [], copyIndex: 0, attempt: 1, printerId };
+}
+
+function writer(own: number, candidate: number): SoakWriter {
+  return { device: "soak-b", own: new Map([["p-bar", { host: "127.0.0.1", port: own }]]), candidates: new Map([["p-kitchen", { host: "127.0.0.1", port: candidate }]]), tokens: "page", stopped: false, lastJobAt: null, takenOver: [] };
+}
+
+test("the writer's heartbeat says it may take network printers over, that it prints tokens, and how the printers it writes now are", () => {
+  const w = { ...writer(9101, 9100), takenOver: ["p-kitchen"] };
+  assert.deepEqual(soakWakeBody(w), {
+    deviceId: "soak-b",
+    label: "Soak soak-b",
+    shell: "android",
+    capabilities: { lan: true, bluetooth: false, usb: false, windowsPrinters: false, webSerial: false, webBluetooth: false, lanFailover: true },
+    appVersion: "soak",
+    nativeProtocol: 2,
+    tokenSlips: true,
+    printers: [{ printerId: "p-bar", link: "connected" }, { printerId: "p-kitchen", link: "connected" }],
+  });
+  assert.equal(soakWakeBody({ ...w, tokens: "lease" }).tokenSlips, undefined, "a page from before Phase 3 says nothing on its wake");
+});
+
+test("a wake that counts no job asks nothing more and comes back at the slow cadence; one that counts a job leases every line it may print, prints, and comes back fast", async () => {
+  const bar = await fakePrinter();
+  const kitchen = await fakePrinter();
+  try {
+    const w = writer(bar.port, kitchen.port);
+    const seen: string[] = [];
+    let count = 0;
+    const leases: LeasedPrintJob[][] = [[leased("k1", "p-kitchen")]];
+    const call: SoakCall = async (method, url, body) => {
+      seen.push(`${method} ${url}${url.endsWith("/lease") ? ` ${JSON.stringify((body as { printerIds?: string[] }).printerIds)}` : ""}`);
+      let json: SoakJson;
+      if (url.endsWith("/wake")) json = { data: { jobsForMe: { count, oldestCreatedAt: null }, agents: 2, agentDailyCap: 7_000, serverNow: new Date().toISOString(), takenOver: count > 0 ? ["p-kitchen"] : [] } };
+      else if (url.endsWith("/lease")) json = { data: { jobs: leases.shift() ?? [], retryAt: null } };
+      else json = { data: { applied: true, more: false } };
+      return { status: 200, json };
+    };
+    let now = 1_000_000;
+    assert.equal(await soakWriterTick(w, call, () => now), PRINT_WAKE_SLOW_MS, "nothing for it: 15 s");
+    assert.deepEqual(seen, ["POST /api/print-jobs/wake"], "a wake only");
+    count = 1;
+    now += PRINT_WAKE_SLOW_MS;
+    assert.equal(await soakWriterTick(w, call, () => now), PRINT_WAKE_FAST_MS, "a job: 3 s for the next two minutes");
+    assert.deepEqual(seen.slice(1), ["POST /api/print-jobs/wake", 'POST /api/print-jobs/lease ["p-bar","p-kitchen"]', "POST /api/print-jobs/k1/ack"], "its own printer and the one it may take over, then the ack");
+    assert.deepEqual(kitchen.jobs, ["JOB k1 1 kot"], "the taken-over slip on the kitchen's printer");
+    assert.deepEqual(w.takenOver, ["p-kitchen"], "the wake's answer: what it writes now");
+    w.stopped = true;
+    const before = seen.length;
+    await soakWriterTick(w, call, () => now);
+    assert.equal(seen.length, before, "a stopped writer sends nothing (its page is closed)");
+    // The gate's pre-run: a writer stopped in the middle of a burst finished its lease's slip, then leased again (its ack
+    // said more): it stops at the slip it holds.
+    const busy = writer(bar.port, kitchen.port);
+    const burst: string[] = [];
+    const more: SoakCall = async (_method, url) => {
+      burst.push(url);
+      if (url.endsWith("/wake")) return { status: 200, json: { data: { jobsForMe: { count: 2, oldestCreatedAt: null }, agents: 2, agentDailyCap: 7_000, serverNow: new Date().toISOString() } } };
+      if (url.endsWith("/lease")) return { status: 200, json: { data: { jobs: burst.length < 6 ? [leased(`m${burst.length}`, "p-bar")] : [], retryAt: null } } };
+      busy.stopped = true;
+      return { status: 200, json: { data: { applied: true, more: true } } };
+    };
+    await soakWriterTick(busy, more, () => now);
+    assert.deepEqual(burst.map((url) => url.replace(/\/m\d+\//, "/:id/")), ["/api/print-jobs/wake", "/api/print-jobs/lease", "/api/print-jobs/:id/ack"], "stopped while it printed: its ack goes, no lease after it");
+  } finally {
+    await bar.close();
+    await kitchen.close();
+  }
+});
+
+test("failover is checked by P3-4's measure: a slip made 90 s or more after the primary stopped printed by the second device; one waiting at the stop within 150 s", () => {
+  const stopAt = Date.parse("2026-10-09T12:00:00Z");
+  const at = (s: number) => new Date(stopAt + s * 1_000);
+  const job = (made: number, printed: number | null, by: string, printerId = "p-kitchen") => ({
+    printerId,
+    createdAt: at(made),
+    status: printed === null ? "queued" : "printed",
+    log: printed === null ? [{ event: "created", at: at(made) }] : [{ event: "created", at: at(made) }, { event: "printed", at: at(printed), deviceId: by }],
+  });
+  const good = [job(-30, -29, "soak-a"), job(-5, 120, "soak-b"), job(40, 130, "soak-b"), job(95, 96, "soak-b"), job(100, 101, "soak-b", "p-bar")];
+  const ok = failoverProblems({ stopAt, primary: "soak-a", second: "soak-b", printerIds: new Set(["p-kitchen"]), jobs: good });
+  assert.deepEqual(ok.problems, [], "all within P3-4's bounds");
+  assert.deepEqual(ok.report, { waitingAtStop: 2, slowestWaitingS: 130, madeAfter90s: 1, firstBySecondS: 96, printedBySecond: 3 });
+  const bad = failoverProblems({ stopAt, primary: "soak-a", second: "soak-b", printerIds: new Set(["p-kitchen"]), jobs: [job(-5, 170, "soak-b"), job(100, 101, "soak-a"), job(120, null, "")] });
+  assert.equal(bad.problems.length, 3, bad.problems.join("; "));
+  // The gate's pre-run: the soak's writer was mid-request at the stop and finished the slip it had leased just before.
+  const inFlight = { ...job(-2, 1, "soak-a"), log: [{ event: "created", at: at(-2) }, { event: "leased", at: at(-1), deviceId: "soak-a" }, { event: "printed", at: at(1), deviceId: "soak-a" }] };
+  assert.deepEqual(failoverProblems({ stopAt, primary: "soak-a", second: "soak-b", printerIds: new Set(["p-kitchen"]), jobs: [inFlight] }).problems, [], "the stopped writer's last request is its own");
+  const after = { ...job(-2, 3, "soak-a"), log: [{ event: "created", at: at(-2) }, { event: "leased", at: at(2), deviceId: "soak-a" }, { event: "printed", at: at(3), deviceId: "soak-a" }] };
+  assert.equal(failoverProblems({ stopAt, primary: "soak-a", second: "soak-b", printerIds: new Set(["p-kitchen"]), jobs: [after] }).problems.length, 1, "a lease after the stop is not");
+});
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test scripts/print-soak-rules.test.ts scripts/print-soak-writer.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 5`; `# pass 3`; `# fail 2`
+
+- [ ] **Step 3: The code**
+
+In `apps/cafe/scripts/print-soak-agent.ts`, find:
+
+```ts
+  tokens?: "page" | "lease";
+  /** The page's one local timer: the soonest nextAttemptAt or retryAt the server gave it (ms), spent when it leases. */
+  timerAt?: number | null;
+}
+
+function noteTimer(agent: SoakAgent, iso: unknown): void {
+```
+
+Replace it with:
+
+```ts
+  tokens?: "page" | "lease";
+  /** The page's one local timer: the soonest nextAttemptAt or retryAt the server gave it (ms), spent when it leases. */
+  timerAt?: number | null;
+  /** --failover: the writer's page is closed now: it leases nothing more (the slip it holds is acked). */
+  closed?: () => boolean;
+}
+
+function noteTimer(agent: SoakAgent, iso: unknown): void {
+```
+
+In `apps/cafe/scripts/print-soak-agent.ts`, find:
+
+```ts
+  if (agent.lines.size === 0) return;
+  const printerIds = [...agent.lines.keys()].filter((line) => line !== "");
+  for (;;) {
+    const lease = await call("POST", "/api/print-jobs/lease", { deviceId: agent.device, tabId: SOAK_TAB, ...(printerIds.length > 0 ? { printerIds } : {}), ...(agent.tokens !== undefined ? { tokenSlips: true } : {}) });
+    const jobs = (lease.json.data?.jobs as LeasedPrintJob[] | undefined) ?? [];
+    if (jobs.length === 0) {
+```
+
+Replace it with:
+
+```ts
+  if (agent.lines.size === 0) return;
+  const printerIds = [...agent.lines.keys()].filter((line) => line !== "");
+  for (;;) {
+    if (agent.closed?.() === true) return;
+    const lease = await call("POST", "/api/print-jobs/lease", { deviceId: agent.device, tabId: SOAK_TAB, ...(printerIds.length > 0 ? { printerIds } : {}), ...(agent.tokens !== undefined ? { tokenSlips: true } : {}) });
+    const jobs = (lease.json.data?.jobs as LeasedPrintJob[] | undefined) ?? [];
+    if (jobs.length === 0) {
+```
+
+In `apps/cafe/scripts/print-soak-rules.ts`, find:
+
+```ts
+  /** How the soak's page says it prints token slips: "page" on its lease and its ack (Phase 3), "lease" on its lease only
+   *  (print-customization S7 to before Phase 3), null never (before S7). */
+  tokens: "page" | "lease" | null;
+}
+
+const HOST = /^[A-Za-z0-9._-]+$/;
+```
+
+Replace it with:
+
+```ts
+  /** How the soak's page says it prints token slips: "page" on its lease and its ack (Phase 3), "lease" on its lease only
+   *  (print-customization S7 to before Phase 3), null never (before S7). */
+  tokens: "page" | "lease" | null;
+  /** --failover: a second soak writer (its device and its own printers) that may take the soak's network printers over;
+   *  the soak's writer (--device) stops after `stopAfter` orders. null: not asked. */
+  failover: { device: string; printers: Array<{ name: string } & SoakAddress>; stopAfter: number } | null;
+}
+
+function namedPrinterOf(value: string, option: string): { name: string } & SoakAddress {
+  const at = value.lastIndexOf("=");
+  if (at < 1) throw new Error(`${option} ${value}: give it as "NAME=HOST:PORT"`);
+  return { name: value.slice(0, at), ...soakAddressOf(value.slice(at + 1), option) };
+}
+
+const HOST = /^[A-Za-z0-9._-]+$/;
+```
+
+In `apps/cafe/scripts/print-soak-rules.ts`, find:
+
+```ts
+}
+
+export function parseSoakArgs(argv: readonly string[], exists: (folder: string) => boolean): SoakArgs {
+  const args: SoakArgs = { orders: 200, base: "http://localhost:3100", everyMs: 1_500, drainS: 300, agent: null, printers: [], direct: false, outs: [], device: "soak-device", tokens: null };
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--direct") {
+      args.direct = true;
+```
+
+Replace it with:
+
+```ts
+}
+
+export function parseSoakArgs(argv: readonly string[], exists: (folder: string) => boolean): SoakArgs {
+  const args: SoakArgs = { orders: 200, base: "http://localhost:3100", everyMs: 1_500, drainS: 300, agent: null, printers: [], direct: false, outs: [], device: "soak-device", tokens: null, failover: null };
+  let second: string | null = null;
+  const secondPrinters: Array<{ name: string } & SoakAddress> = [];
+  let stopAfter: number | null = null;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--direct") {
+      args.direct = true;
+```
+
+In `apps/cafe/scripts/print-soak-rules.ts`, find:
+
+```ts
+      case "--out": args.outs = value.split(",").filter((out) => out !== ""); break;
+      case "--device": args.device = value; break;
+      case "--agent": args.agent = soakAddressOf(value, "--agent"); break;
+      case "--printer": {
+        const at = value.lastIndexOf("=");
+        if (at < 1) throw new Error(`--printer ${value}: give it as "NAME=HOST:PORT"`);
+        args.printers.push({ name: value.slice(0, at), ...soakAddressOf(value.slice(at + 1), "--printer") });
+        break;
+      }
+      case "--tokens":
+        if (value !== "page" && value !== "lease") throw new Error(`--tokens ${value}: page (its lease and ack say it) or lease (its lease only)`);
+        args.tokens = value;
+```
+
+Replace it with:
+
+```ts
+      case "--out": args.outs = value.split(",").filter((out) => out !== ""); break;
+      case "--device": args.device = value; break;
+      case "--agent": args.agent = soakAddressOf(value, "--agent"); break;
+      case "--printer": args.printers.push(namedPrinterOf(value, "--printer")); break;
+      case "--failover": second = value; break;
+      case "--failover-printer": secondPrinters.push(namedPrinterOf(value, "--failover-printer")); break;
+      case "--stop-after": stopAfter = Number(value); break;
+      case "--tokens":
+        if (value !== "page" && value !== "lease") throw new Error(`--tokens ${value}: page (its lease and ack say it) or lease (its lease only)`);
+        args.tokens = value;
+```
+
+In `apps/cafe/scripts/print-soak-rules.ts`, find:
+
+```ts
+  if (args.agent !== null && args.printers.length > 0) throw new Error("--agent (simple mode) or --printer (printers mode), not both");
+  if (args.direct && args.agent === null && args.printers.length === 0) throw new Error("--direct needs --agent or --printer");
+  if (args.tokens !== null && args.agent === null && args.printers.length === 0) throw new Error("--tokens needs --agent or --printer (an ordering-only soak prints no token)");
+  return args;
+}
+```
+
+Replace it with:
+
+```ts
+  if (args.agent !== null && args.printers.length > 0) throw new Error("--agent (simple mode) or --printer (printers mode), not both");
+  if (args.direct && args.agent === null && args.printers.length === 0) throw new Error("--direct needs --agent or --printer");
+  if (args.tokens !== null && args.agent === null && args.printers.length === 0) throw new Error("--tokens needs --agent or --printer (an ordering-only soak prints no token)");
+  if (second === null) {
+    if (secondPrinters.length > 0) throw new Error("--failover-printer needs --failover (the second writer's device)");
+    if (stopAfter !== null) throw new Error("--stop-after needs --failover");
+    return args;
+  }
+  if (args.printers.length === 0) throw new Error("--failover needs --printer: the soak writes the printers that fail over");
+  if (secondPrinters.length === 0) throw new Error("--failover needs --failover-printer: the second writer writes a printer of its own (the 3A gate's E-1)");
+  if (args.direct) throw new Error("--failover: the orders come from a device that prints nothing (no --direct)");
+  if (second === args.device || second === "") throw new Error("--failover: the second writer is a device other than --device");
+  const stop = stopAfter ?? Math.floor(args.orders / 2);
+  if (!Number.isInteger(stop) || stop < 1 || stop >= args.orders) throw new Error("--stop-after: the soak's writer stops after an order inside the run");
+  args.failover = { device: second, printers: secondPrinters, stopAfter: stop };
+  return args;
+}
+```
+
+Create `apps/cafe/scripts/print-soak-writer.ts`:
+
+```ts
+/**
+ * Phase 3 Session 3G (the Phase 3 plan's 3G spec: the soak's --failover mode): a soak writer that behaves as a printers-mode
+ * writer's page does (spec §9.1, §9.3): it polls the wake at the page's cadence with its heartbeat (it may take network
+ * printers over: `lanFailover`; it prints tokens as its page says; how the printers it writes now are), and when the wake
+ * counts a job for it, it leases its own printers and every network printer it may take over (a page names each one its
+ * app reaches; the server grants only the lines it writes now), prints on the fake printers and acks (the soak agent's
+ * printAndAck). A stopped writer sends nothing: its page is closed. Locally there is no realtime Worker, so, like the
+ * pages the harness measures, it hears of a slip at its next wake. A local test tool: console-free.
+ */
+import { printAgentWakeIntervalMs, type PrintJobsForMe } from "@pos/shared/print-agent-wire";
+import { PRINT_WAKE_SLOW_MS } from "@pos/shared/print-job";
+import { leaseLines, type SoakAddress, type SoakAgent, type SoakCall } from "./print-soak-agent";
+
+export interface SoakWriter {
+  device: string;
+  /** The printers the setup names it the writer of: id -> the fake printer's address. */
+  own: Map<string, SoakAddress>;
+  /** Every other network printer of the setup (id -> its address in the setup): it may take one over. */
+  candidates: Map<string, SoakAddress>;
+  tokens?: "page" | "lease";
+  /** Its page is closed: no wake, no lease, no ack. */
+  stopped: boolean;
+  lastJobAt: number | null;
+  /** The wake's last answer: the network printers it writes now that the setup names another device for. */
+  takenOver: string[];
+}
+
+/** The heartbeat a POS app page on bridge v2 sends (Session 3B's wake): it may take network printers over, and says how
+ *  each printer it writes now is (the soak's fake printers always answer). A page also names the takeover candidates its
+ *  app holds ahead of time; their reports write nothing while it does not write them (health only from the writer now, a
+ *  skip only on "disconnected"), so the soak leaves them out. */
+export function soakWakeBody(w: SoakWriter): Record<string, unknown> {
+  return {
+    deviceId: w.device,
+    label: `Soak ${w.device}`,
+    shell: "android",
+    capabilities: { lan: true, bluetooth: false, usb: false, windowsPrinters: false, webSerial: false, webBluetooth: false, lanFailover: true },
+    appVersion: "soak",
+    nativeProtocol: 2,
+    ...(w.tokens === "page" ? { tokenSlips: true } : {}),
+    printers: [...w.own.keys(), ...w.takenOver.filter((id) => !w.own.has(id))].map((printerId) => ({ printerId, link: "connected" })),
+  };
+}
+
+/** One wake, and the lease and prints a job for it calls for. Returns how long until the next wake (the page's cadence,
+ *  with no realtime socket: 3 s for two minutes after a job, else 15 s). */
+export async function soakWriterTick(w: SoakWriter, call: SoakCall, now: () => number): Promise<number> {
+  if (w.stopped) return PRINT_WAKE_SLOW_MS;
+  const wake = await call("POST", "/api/print-jobs/wake", soakWakeBody(w));
+  const data = wake.json.data ?? {};
+  w.takenOver = Array.isArray(data.takenOver) ? data.takenOver.filter((id): id is string => typeof id === "string") : [];
+  const jobs = data.jobsForMe as PrintJobsForMe | undefined;
+  if (!w.stopped && (jobs?.count ?? 0) > 0) {
+    w.lastJobAt = now();
+    const agent: SoakAgent = { lines: new Map([...w.own, ...w.candidates]), device: w.device, direct: false, ...(w.tokens !== undefined ? { tokens: w.tokens } : {}), timerAt: null, closed: () => w.stopped };
+    await leaseLines(agent, call);
+  }
+  const interval = printAgentWakeIntervalMs({ socketHealthy: false, msSinceLastJob: w.lastJobAt === null ? null : now() - w.lastJobAt, capSpent: false });
+  return interval === false ? PRINT_WAKE_SLOW_MS : interval;
+}
+
+/** P3-4: the primary is seen offline at most 90 s after it stops; a slip that waited for it moves at the next sweep. */
+export const SOAK_FAILOVER_SEEN_OFFLINE_MS = 90_000;
+export const SOAK_FAILOVER_WAITING_MS = 150_000;
+
+interface FailoverJob {
+  printerId?: string;
+  createdAt: Date;
+  status: string;
+  log?: ReadonlyArray<{ event: string; at: Date; deviceId?: string }>;
+}
+
+/** The failover checks, by P3-4's measure, over the jobs on the printers the stopped writer wrote: every slip made 90 s or
+ *  more after the stop printed by the second device; every slip made before that and not printed before the stop
+ *  ("waited through the stop") printed by the second device within 150 s of the stop. A slip the stopped writer had
+ *  leased before the stop and finished then is its own (the soak's writer completes the request it was in; a closed
+ *  page's slip would expire into one labelled REPRINT instead, P3-4). */
+export function failoverProblems(input: { stopAt: number; primary: string; second: string; printerIds: ReadonlySet<string>; jobs: readonly FailoverJob[] }): {
+  problems: string[];
+  report: { waitingAtStop: number; slowestWaitingS: number; madeAfter90s: number; firstBySecondS: number | null; printedBySecond: number };
+} {
+  const problems: string[] = [];
+  const seconds = (ms: number) => Math.round(ms / 100) / 10;
+  let waitingAtStop = 0;
+  let slowest = 0;
+  let madeAfter = 0;
+  let first: number | null = null;
+  let bySecond = 0;
+  for (const job of input.jobs) {
+    if (job.printerId === undefined || !input.printerIds.has(job.printerId)) continue;
+    const made = job.createdAt.getTime() - input.stopAt;
+    const printed = [...(job.log ?? [])].reverse().find((entry) => entry.event === "printed");
+    const at = printed === undefined ? null : printed.at.getTime() - input.stopAt;
+    if (printed?.deviceId === input.second && at !== null) {
+      bySecond += 1;
+      first = first === null ? at : Math.min(first, at);
+    }
+    if (at !== null && at < 0) continue;
+    const leasedBefore = (job.log ?? []).some((entry) => entry.event === "leased" && entry.deviceId === input.primary && entry.at.getTime() < input.stopAt);
+    if (printed?.deviceId === input.primary && leasedBefore) continue;
+    const name = `the slip made ${seconds(made)} s after the stop`;
+    if (made >= SOAK_FAILOVER_SEEN_OFFLINE_MS) {
+      madeAfter += 1;
+      if (job.status !== "printed" || printed === undefined) problems.push(`${name}: not printed (${job.status})`);
+      else if (printed.deviceId !== input.second) problems.push(`${name}: printed by ${printed.deviceId ?? "?"}, not the second device`);
+      continue;
+    }
+    waitingAtStop += 1;
+    if (job.status !== "printed" || printed === undefined || at === null) problems.push(`${name}: waited through the stop, not printed (${job.status})`);
+    else if (printed.deviceId !== input.second) problems.push(`${name}: waited through the stop, printed by ${printed.deviceId ?? "?"}`);
+    else if (at > SOAK_FAILOVER_WAITING_MS) problems.push(`${name}: waited through the stop, printed ${seconds(at)} s after it (more than 150 s)`);
+    else slowest = Math.max(slowest, at);
+  }
+  return { problems, report: { waitingAtStop, slowestWaitingS: seconds(slowest), madeAfter90s: madeAfter, firstBySecondS: first === null ? null : seconds(first), printedBySecond: bySecond } };
+}
+```
+
+In `apps/cafe/scripts/print-soak.ts`, find:
+
+```ts
+ *   node --env-file=<env> --import tsx scripts/print-soak.ts --out <folder>[,<folder>]
+ *        [--orders 200] [--base http://localhost:3100] [--every-ms 1500] [--drain-s 300]
+ *        [--agent 127.0.0.1:9100 | --printer "<name>=127.0.0.1:9100" ...] [--direct] [--device soak-device]
+ *        [--tokens page|lease]
+ *
+ * --agent HOST:PORT   simple mode, no host: the soak is its own device's print agent. It leases, writes each job to
+ *                     the fake printer over TCP and asks DLE EOT 1 at the end, so a connection the printer cut
+```
+
+Replace it with:
+
+```ts
+ *   node --env-file=<env> --import tsx scripts/print-soak.ts --out <folder>[,<folder>]
+ *        [--orders 200] [--base http://localhost:3100] [--every-ms 1500] [--drain-s 300]
+ *        [--agent 127.0.0.1:9100 | --printer "<name>=127.0.0.1:9100" ...] [--direct] [--device soak-device]
+ *        [--tokens page|lease] [--failover <device> --failover-printer "<name>=127.0.0.1:9101" ... [--stop-after N]]
+ *
+ * --agent HOST:PORT   simple mode, no host: the soak is its own device's print agent. It leases, writes each job to
+ *                     the fake printer over TCP and asks DLE EOT 1 at the end, so a connection the printer cut
+```
+
+In `apps/cafe/scripts/print-soak.ts`, find:
+
+```ts
+ * --tokens page|lease with --agent or --printer, when the cafe prints a token per order (print-customization S7): the
+ *                     soak's page says so on its lease and its ack (page: Phase 3), or on its lease only (lease: a page
+ *                     from S7 to before Phase 3, whose acks cost the server a read of its device's last word).
+ * neither             another device prints: the host (simple mode) or the printers' writer (the emulator app);
+ *                     the soak only orders, then waits.
+ * --out               every fake printer's --out folder, comma separated (the check reads each jobs.log).
+```
+
+Replace it with:
+
+```ts
+ * --tokens page|lease with --agent or --printer, when the cafe prints a token per order (print-customization S7): the
+ *                     soak's page says so on its lease and its ack (page: Phase 3), or on its lease only (lease: a page
+ *                     from S7 to before Phase 3, whose acks cost the server a read of its device's last word).
+ * --failover DEVICE   with --printer (Session 3G): two soak writers that poll the wake as a printers-mode writer's page
+ *                     does, the soak's --device (its --printer printers) and DEVICE (its --failover-printer printers, so it
+ *                     may take a network printer over: lanFailover); the orders come from a third device that prints
+ *                     nothing; the soak's writer stops after --stop-after orders (half of them unless said), and every
+ *                     slip on its network printers is checked by P3-4's measure (scripts/print-soak-writer.ts).
+ * neither             another device prints: the host (simple mode) or the printers' writer (the emulator app);
+ *                     the soak only orders, then waits.
+ * --out               every fake printer's --out folder, comma separated (the check reads each jobs.log).
+```
+
+In `apps/cafe/scripts/print-soak.ts`, find:
+
+```ts
+import { printRepeatLabel } from "@pos/shared/print-lifecycle";
+import { leaseLines, printLeased, soakHeaders, soakNextLeaseAt, soakTimerDue, type SoakAddress, type SoakAgent, type SoakCall, type SoakJson } from "./print-soak-agent";
+import { missingSlips, parseSoakArgs, type SoakArgs } from "./print-soak-rules";
+
+const COOKIE = "authjs.session-token";
+```
+
+Replace it with:
+
+```ts
+import { printRepeatLabel } from "@pos/shared/print-lifecycle";
+import { leaseLines, printLeased, soakHeaders, soakNextLeaseAt, soakTimerDue, type SoakAddress, type SoakAgent, type SoakCall, type SoakJson } from "./print-soak-agent";
+import { missingSlips, parseSoakArgs, type SoakArgs } from "./print-soak-rules";
+import { failoverProblems, soakWriterTick, type SoakWriter } from "./print-soak-writer";
+
+const COOKIE = "authjs.session-token";
+```
+
+In `apps/cafe/scripts/print-soak.ts`, find:
+
+```ts
+      if (args.agent === null && host === null) throw new Error("without --agent a host must print: designate the app first");
+      if (args.agent !== null) lines.set("", args.agent);
+    }
+    const agent: SoakAgent = { lines, device: args.device, direct: args.direct, ...(args.tokens !== null ? { tokens: args.tokens } : {}), timerAt: null };
+    // Session 3G: with tokens on (print-customization S7) every order makes a token slip, which is never printed at once
+    // (it waits for a lease that says tokenSlips): a soak that prints must say how its page says so.
+    const settings = await db.collection("settings").findOne({}, { projection: { tokenEnabled: 1 } });
+    const tokensOn = settings?.tokenEnabled === true;
+    if (tokensOn && lines.size > 0 && args.tokens === null) throw new Error("tokens are on: say how the soak's page prints them (--tokens page or --tokens lease)");
+    const staff = await db.collection("staffs").findOne({ role: "admin", isActive: { $ne: false } }, { projection: { name: 1, role: 1 } });
+    if (staff === null) throw new Error("no admin to act as");
+    const token = await encode({ token: { name: staff.name, id: String(staff._id), role: staff.role, lastValidated: Date.now() }, secret, salt: COOKIE });
+    const cookie = `${COOKIE}=${token}`;
+    const soakCall: SoakCall = (method, url, body) => call(args, cookie, method, url, body);
+    // Plain items only: a sized item or one on discount needs the POS's own price rules.
+    const products = await db
+      .collection("products")
+```
+
+Replace it with:
+
+```ts
+      if (args.agent === null && host === null) throw new Error("without --agent a host must print: designate the app first");
+      if (args.agent !== null) lines.set("", args.agent);
+    }
+    const tokens = args.tokens !== null ? { tokens: args.tokens } : {};
+    // Session 3G (--failover): the soak's printers are written by its writer (--device), a page that polls the wake; a
+    // second writer writes its own printers and may take any other network printer over; the orders come from a third
+    // device that prints nothing, so every slip is leased by its writer (Session 2G's P4).
+    const writers: SoakWriter[] = [];
+    if (args.failover !== null) {
+      const second = args.failover;
+      const own = new Map<string, SoakAddress>();
+      for (const wanted of second.printers) {
+        const printer = routable.find((p) => p.name === wanted.name);
+        if (printer === undefined || printerWriterDeviceId(printer) !== second.device) throw new Error(`--failover-printer ${wanted.name}: no routable printer of that name printed by ${second.device}`);
+        own.set(printer.id, { host: wanted.host, port: wanted.port });
+      }
+      const networkBut = (mine: ReadonlyMap<string, SoakAddress>) => new Map(routable.flatMap((p): Array<[string, SoakAddress]> => (p.connection.kind === "lan" && !mine.has(p.id) ? [[p.id, { host: p.connection.host, port: p.connection.port }]] : [])));
+      if (networkBut(new Map()).size === 0 || [...lines.keys()].every((id) => !networkBut(own).has(id))) throw new Error("--failover: the soak writes no network printer the second writer may take over");
+      writers.push({ device: args.device, own: new Map(lines), candidates: networkBut(lines), ...tokens, stopped: false, lastJobAt: null, takenOver: [] });
+      writers.push({ device: second.device, own, candidates: networkBut(own), ...tokens, stopped: false, lastJobAt: null, takenOver: [] });
+      lines.clear();
+    }
+    const agent: SoakAgent = { lines, device: writers.length > 0 ? `${args.device}-orders` : args.device, direct: args.direct, ...tokens, timerAt: null };
+    // Session 3G: with tokens on (print-customization S7) every order makes a token slip, which is never printed at once
+    // (it waits for a lease that says tokenSlips): a soak that prints must say how its page says so.
+    const settings = await db.collection("settings").findOne({}, { projection: { tokenEnabled: 1 } });
+    const tokensOn = settings?.tokenEnabled === true;
+    if (tokensOn && (lines.size > 0 || writers.length > 0) && args.tokens === null) throw new Error("tokens are on: say how the soak's page prints them (--tokens page or --tokens lease)");
+    const staff = await db.collection("staffs").findOne({ role: "admin", isActive: { $ne: false } }, { projection: { name: 1, role: 1 } });
+    if (staff === null) throw new Error("no admin to act as");
+    const token = await encode({ token: { name: staff.name, id: String(staff._id), role: staff.role, lastValidated: Date.now() }, secret, salt: COOKIE });
+    const cookie = `${COOKIE}=${token}`;
+    const soakCall: SoakCall = (method, url, body) => call(args, cookie, method, url, body);
+    // The writers' pages (--failover): each polls the wake at its cadence until the soak has drained; a stopped one is closed.
+    let writing = true;
+    let stopAt: number | null = null;
+    const loops = writers.map(async (w) => {
+      while (writing && !w.stopped) {
+        let wait: number;
+        try {
+          wait = await soakWriterTick(w, soakCall, Date.now);
+        } catch {
+          wait = 15_000;
+        }
+        const until = Date.now() + wait;
+        while (writing && !w.stopped && Date.now() < until) await sleep(Math.min(250, until - Date.now()));
+      }
+    });
+    // Plain items only: a sized item or one on discount needs the POS's own price rules.
+    const products = await db
+      .collection("products")
+```
+
+In `apps/cafe/scripts/print-soak.ts`, find:
+
+```ts
+        counts.bills += 1;
+        made.push(`bill:${orderId}`);
+      }
+      if (await printLeased(agent, soakCall, settled)) await leaseLines(agent, soakCall);
+      if ((i + 1) % 20 === 0) console.log(`  ${i + 1}/${args.orders} orders`);
+      await sleep(args.everyMs);
+```
+
+Replace it with:
+
+```ts
+        counts.bills += 1;
+        made.push(`bill:${orderId}`);
+      }
+      const primary = writers[0];
+      if (primary !== undefined && stopAt === null && counts.orders === args.failover?.stopAfter) {
+        // --failover: the soak's writer stops here, as a tablet that is switched off: no wake, no lease, no ack. The stop's
+        // time is taken once the request it had in flight is done (the gold review's #3: a lease in flight stamped after
+        // the stop read as "printed by the stopped writer").
+        primary.stopped = true;
+        await loops[0];
+        stopAt = Date.now();
+        console.log(`  the soak's writer (${primary.device}) stopped after ${counts.orders} orders`);
+      }
+      if (await printLeased(agent, soakCall, settled)) await leaseLines(agent, soakCall);
+      if ((i + 1) % 20 === 0) console.log(`  ${i + 1}/${args.orders} orders`);
+      await sleep(args.everyMs);
+```
+
+In `apps/cafe/scripts/print-soak.ts`, find:
+
+```ts
+      await sleep(Math.max(0, Math.min(soakNextLeaseAt(agent, Date.now()), deadline) - Date.now()));
+      await leaseLines(agent, soakCall);
+    }
+
+    const jobs = await PrintJob.find(mine).select("kind status labels uncertainAttempts copies jobKey").lean();
+    const byStatus: Record<string, number> = {};
+```
+
+Replace it with:
+
+```ts
+      await sleep(Math.max(0, Math.min(soakNextLeaseAt(agent, Date.now()), deadline) - Date.now()));
+      await leaseLines(agent, soakCall);
+    }
+    writing = false;
+    await Promise.all(loops);
+
+    const jobs = await PrintJob.find(mine).select("kind status labels uncertainAttempts copies jobKey").lean();
+    const byStatus: Record<string, number> = {};
+```
+
+In `apps/cafe/scripts/print-soak.ts`, find:
+
+```ts
+    const dropped = records.filter((r) => r.dropped);
+    const printed = jobs.filter((job) => job.status === "printed");
+    const copiesOf = (job: { copies?: number }) => job.copies ?? 1;
+    if (lines.size > 0) {
+      const tally = new Map<string, { complete: number; dropped: number }>();
+      for (const r of records) {
+        if (r.file === null) continue;
+```
+
+Replace it with:
+
+```ts
+    const dropped = records.filter((r) => r.dropped);
+    const printed = jobs.filter((job) => job.status === "printed");
+    const copiesOf = (job: { copies?: number }) => job.copies ?? 1;
+    if (lines.size > 0 || writers.length > 0) {
+      const tally = new Map<string, { complete: number; dropped: number }>();
+      for (const r of records) {
+        if (r.file === null) continue;
+```
+
+In `apps/cafe/scripts/print-soak.ts`, find:
+
+```ts
+      if (complete.length !== want || dropped.length > 0) problems.push(`the printers have ${complete.length} full and ${dropped.length} cut copies for ${printed.length} printed jobs (${want} copies)`);
+    }
+
+    console.log(
+      JSON.stringify(
+        {
+          mode: `${printersMode ? "printers mode" : "simple mode"}, ${lines.size > 0 ? "soak agent prints" : printersMode ? "the printers' writer prints" : "app host prints"}${args.direct ? ", direct" : ""}${tokensOn ? `, a token per order${args.tokens !== null ? ` (says it: ${args.tokens})` : ""}` : ""}`,
+          ...counts,
+          tokens: tokensOn ? counts.orders : 0,
+          slips: made.length,
+```
+
+Replace it with:
+
+```ts
+      if (complete.length !== want || dropped.length > 0) problems.push(`the printers have ${complete.length} full and ${dropped.length} cut copies for ${printed.length} printed jobs (${want} copies)`);
+    }
+
+    // --failover: P3-4's measure over the slips on the stopped writer's network printers.
+    let failover: ReturnType<typeof failoverProblems>["report"] | null = null;
+    const [first, second] = writers;
+    if (first !== undefined && second !== undefined && stopAt !== null) {
+      const network = new Set([...first.own.keys()].filter((id) => routable.find((p) => p.id === id)?.connection.kind === "lan"));
+      const theirs = await PrintJob.find({ ...mine, printerId: { $in: [...network] } }).select("printerId createdAt status log").lean();
+      const checked = failoverProblems({ stopAt, primary: first.device, second: second.device, printerIds: network, jobs: theirs });
+      problems.push(...checked.problems);
+      failover = checked.report;
+    }
+
+    console.log(
+      JSON.stringify(
+        {
+          mode: `${printersMode ? "printers mode" : "simple mode"}, ${writers.length > 0 ? `two soak writers, the first stopped after ${args.failover?.stopAfter ?? 0} orders (failover)` : lines.size > 0 ? "soak agent prints" : printersMode ? "the printers' writer prints" : "app host prints"}${args.direct ? ", direct" : ""}${tokensOn ? `, a token per order${args.tokens !== null ? ` (says it: ${args.tokens})` : ""}` : ""}`,
+          ...counts,
+          tokens: tokensOn ? counts.orders : 0,
+          slips: made.length,
+```
+
+In `apps/cafe/scripts/print-soak.ts`, find:
+
+```ts
+          labelled: jobs.filter((job) => (job.labels ?? []).length > 0).length,
+          printer: { complete: complete.length, dropped: dropped.length },
+          requests: Object.fromEntries([...requests].sort()),
+          minutes: Math.round((Date.now() - startedAt.getTime()) / 6_000) / 10,
+          pass: problems.length === 0,
+          problems: problems.slice(0, 20),
+```
+
+Replace it with:
+
+```ts
+          labelled: jobs.filter((job) => (job.labels ?? []).length > 0).length,
+          printer: { complete: complete.length, dropped: dropped.length },
+          requests: Object.fromEntries([...requests].sort()),
+          ...(failover !== null ? { failover } : {}),
+          minutes: Math.round((Date.now() - startedAt.getTime()) / 6_000) / 10,
+          pass: problems.length === 0,
+          problems: problems.slice(0, 20),
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test scripts/print-soak-rules.test.ts scripts/print-soak-writer.test.ts scripts/print-soak-agent.test.ts lib/print-lifecycle-paths.test.ts 2>&1 | grep -E "^# (tests|pass|fail)" && npx tsc --noEmit && echo TSC_OK`
+Expected: `# tests 40`; `# pass 40`; `# fail 0`; `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint scripts/print-soak.ts scripts/print-soak-agent.ts scripts/print-soak-rules.ts scripts/print-soak-writer.ts scripts/print-soak-rules.test.ts scripts/print-soak-writer.test.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/package.json apps/cafe/scripts/print-soak-agent.ts apps/cafe/scripts/print-soak-rules.test.ts apps/cafe/scripts/print-soak-rules.ts apps/cafe/scripts/print-soak-writer.test.ts apps/cafe/scripts/print-soak-writer.ts apps/cafe/scripts/print-soak.ts
+git commit -m "test(print): the print soak's --failover mode: two soak writers poll the wake as a printers-mode writer's page does (lanFailover, health, tokens), a third device orders, the soak's writer stops after --stop-after orders, and every slip on its network printers is checked by P3-4's measure (Phase 3 Session 3G, G3)"
+```
+
+---
+
+### Task G4: live leg (bf): a skip's three signals together, with every step's writes to the printers counted
+
+**Files:**
+- Create: `apps/cafe/scripts/print-host-live/skip-interplay.ts` (`legBF`)
+- Modify: `apps/cafe/scripts/verify-print-host-live.ts` (runs leg bf after leg be)
+
+**Interfaces produced:** `legBF(nowMs)`.
+
+**The 3B gate review's m-8** (carried to 3G as "the soak gains the beat/lease/ack interplay of a skip as checks"): each signal had its own leg (ba: the ack and the lease; bd, be: the beat), never their interplay. **Ruled at the 3E review gate: a live leg, not soak checks**: a skip's first 5 minutes cannot pass under a soak (the server's clock is real), while a leg drives the very handlers (the wake's write path: the heartbeat, the health, the skips; the lease; the ack) at chosen times, in either order, and counts every write to the printers collection (mongoose's debug hook) per step.
+
+The timeline: an "unreachable" ack starts a skip (one write), the skipped writer's down and back beats and its lease inside the 5 minutes write nothing, its back beat past them ends the skip (one write; its health's 5-minute refresh is the beat after); a settled down beat starts one (one health write and one skip write), the same beat again and a late ack write nothing, a lease naming the printer past the 5 minutes ends it (one write) and takes the line's oldest slip; a candidate's down beat skips it ahead of time (one write), its back beat past the 5 minutes ends it (one write).
+
+**No RED**: it pins behaviour that exists (no code changes). The gate showed it can fail: with `skipUnreachableFromBeat`'s "already skipped" guard removed, the leg reads 18 passed, 2 failed.
+
+- [ ] **Step 1: The change**
+
+Create `apps/cafe/scripts/print-host-live/skip-interplay.ts`:
+
+```ts
+/**
+ * Phase 3 Session 3G live leg (bf) — the three signals of a skip together (spec §9.3; the 3B gate review's m-8: each path
+ * had its own leg, never their interplay) against a REAL MongoDB, with every step's writes to the printers collection
+ * counted (mongoose's debug hook): an "unreachable" ack starts a skip, a beat's settled `disconnected` starts one, a beat's
+ * `connected` or a lease naming the printer ends one once its first 5 minutes are up, and inside those 5 minutes neither
+ * ends it. A signal that changes nothing writes nothing: no step costs a write it does not need. The beat is the wake's
+ * own write path (the heartbeat, the printers' health, the skips: app/api/print-jobs/wake). Run by
+ * scripts/verify-print-host-live.ts after leg be.
+ *
+ * (console output is intentional — this is an ops CLI script, not app code.)
+ */
+import mongoose from "mongoose";
+import { PRINTER_UNREACHABLE_SKIP_MS, type PrinterHealthReport } from "@pos/shared/print-failover";
+import { PrintDevice } from "@/models/PrintDevice";
+import { Printer } from "@/models/Printer";
+import { beatPrintDevice, readOnlinePrintDevices } from "@/lib/print-device";
+import { skipUnreachableFromBeat } from "@/lib/print-failover";
+import { recordPrinterHealth } from "@/lib/print-health";
+import { ackPrintJob, leasePrintJobs } from "@/lib/print-lease";
+import { listPrinters } from "@/lib/print-printers";
+import { check } from "./harness";
+import { STAFF, rowOf } from "./lifecycle";
+import { COUNTER, KITCHEN, failoverOutlet, kotOf } from "./failover";
+
+const CAPS = { lan: true, bluetooth: true, usb: true, windowsPrinters: false, webSerial: false, webBluetooth: false, lanFailover: true };
+const WRITES = new Set(["updateOne", "updateMany", "findOneAndUpdate", "replaceOne", "bulkWrite", "insertOne", "insertMany", "deleteOne", "deleteMany"]);
+
+/** The writes `step` sends to the printers collection (each one an Atlas operation). */
+async function printerWrites<T>(step: () => Promise<T>): Promise<{ value: T; writes: number }> {
+  let writes = 0;
+  mongoose.set("debug", (collection: string, method: string) => {
+    if (collection === "printers" && WRITES.has(method)) writes += 1;
+  });
+  try {
+    return { value: await step(), writes };
+  } finally {
+    mongoose.set("debug", false);
+  }
+}
+
+/** The wake's write path for one beat (the heartbeat, then the printers' health, then the skips it starts or ends): the
+ *  printer writes of its health and of its skips, as "health+skips". */
+async function beat(deviceId: string, reports: PrinterHealthReport[], nowMs: number): Promise<string> {
+  await beatPrintDevice({ deviceId, label: deviceId, shell: "android", capabilities: CAPS }, nowMs);
+  const [online, printers] = await Promise.all([readOnlinePrintDevices(nowMs), listPrinters()]);
+  const failover = { online, nowMs };
+  const health = await printerWrites(() => recordPrinterHealth({ deviceId, reports, printers, failover, nowMs }));
+  const skips = await printerWrites(() => skipUnreachableFromBeat({ deviceId, lanFailover: true, reports, printers, failover, nowMs }));
+  return `${health.writes}+${skips.writes}`;
+}
+
+const lease = (deviceId: string, printerIds: string[], nowMs: number) => printerWrites(() => leasePrintJobs({ deviceId, tabId: `${deviceId}-tab`, tokenSlips: true, printerIds, dismissedBy: STAFF, nowMs }));
+const skipsOf = async (printerId: string) => ((await listPrinters()).find((printer) => printer.id === printerId)?.unreachable ?? []).map((skip) => skip.deviceId).sort().join();
+
+export async function legBF(nowMs: number): Promise<void> {
+  console.log("\n(bf) a skip's three signals together (§9.3; the 3B gate review's m-8): ack, beat and lease start and end it in either order, each change one write, nothing else written");
+  const o = await failoverOutlet();
+  const at = (s: number) => nowMs + s * 1_000;
+  const both = async (s: number) => {
+    await Promise.all([PrintDevice.deleteOne({ deviceId: KITCHEN }), PrintDevice.deleteOne({ deviceId: COUNTER })]);
+    await Promise.all([beatPrintDevice({ deviceId: KITCHEN, label: KITCHEN, shell: "android", capabilities: CAPS }, at(s)), beatPrintDevice({ deviceId: COUNTER, label: COUNTER, shell: "android", capabilities: CAPS }, at(s))]);
+  };
+  const up: PrinterHealthReport[] = [{ printerId: o.kitchen, link: "connected" }];
+  const down: PrinterHealthReport[] = [{ printerId: o.kitchen, link: "disconnected" }];
+  await both(0);
+  check("(bf) the kitchen tablet's first beat (its printer connected) writes the printer's health once, no skip", (await beat(KITCHEN, up, at(0))) === "1+0");
+  check("(bf) ... and its next beat, nothing changed, writes nothing", (await beat(KITCHEN, up, at(30))) === "0+0");
+
+  // The ack starts the skip; the beat ends it.
+  const first = await kotOf(o, at(31));
+  const mine = await lease(KITCHEN, [o.kitchen], at(32));
+  const job = mine.value.jobs[0];
+  check("(bf) the tablet leases its printer's slip (no skip to end: no printer write)", job?.id === first.kitchen?.id && mine.writes === 0);
+  const refused = await printerWrites(() => ackPrintJob({ id: job?.id ?? "", deviceId: KITCHEN, epoch: job?.epoch ?? 0, outcome: "failed", sent: "no", reason: "unreachable", nowMs: at(33) }));
+  check("(bf) its 'unreachable' ack starts its skip: one write; the slip moves to the counter", refused.writes === 1 && (await skipsOf(o.kitchen)) === KITCHEN && (await rowOf(first.kitchen?.id ?? ""))?.targetDeviceId === COUNTER);
+  await both(60);
+  check("(bf) its beat saying the printer is down, while skipped, writes nothing (no second skip; the health is not its to report now)", (await beat(KITCHEN, down, at(60))) === "0+0" && (await skipsOf(o.kitchen)) === KITCHEN);
+  await both(120);
+  check("(bf) its beat saying the printer is back, inside the skip's 5 minutes, writes nothing; the skip holds", (await beat(KITCHEN, up, at(120))) === "0+0" && (await skipsOf(o.kitchen)) === KITCHEN);
+  const early = await lease(KITCHEN, [o.kitchen], at(180));
+  check("(bf) its lease naming the printer inside the 5 minutes gets nothing and writes nothing", early.value.jobs.length === 0 && early.writes === 0 && (await skipsOf(o.kitchen)) === KITCHEN);
+  const counter = await lease(COUNTER, [o.kitchen], at(181));
+  const taken = counter.value.jobs[0];
+  if (taken !== undefined) await ackPrintJob({ id: taken.id, deviceId: COUNTER, epoch: taken.epoch, outcome: "printed", tokenSlips: true, nowMs: at(182) });
+  check("(bf) the counter prints the slip; its lease writes no printer", taken?.id === first.kitchen?.id && counter.writes === 0);
+  const past = 33 + PRINTER_UNREACHABLE_SKIP_MS / 1_000 + 1;
+  await both(past);
+  check("(bf) past the 5 minutes, the tablet's beat saying the printer is back ends its skip: one write (its health is not the writer's yet)", (await beat(KITCHEN, up, at(past))) === "0+1" && (await skipsOf(o.kitchen)) === "");
+  const backHome = await kotOf(o, at(past));
+  check("(bf) ... the printer is the tablet's again: a new kitchen slip is its own", backHome.kitchen?.targetDeviceId === KITCHEN);
+  check("(bf) ... its next beat ends nothing; as the writer again it owes its health's 5-minute refresh (last written at 0 s): one write", (await beat(KITCHEN, up, at(past + 15))) === "1+0");
+  check("(bf) ... and the beat after that writes nothing", (await beat(KITCHEN, up, at(past + 30))) === "0+0");
+
+  // The beat starts the skip; the lease ends it.
+  const t = past + 60;
+  await both(t);
+  check("(bf) the tablet's beat says the printer is down (settled): its skip starts, one write for the health and one for the skip", (await beat(KITCHEN, down, at(t))) === "1+1" && (await skipsOf(o.kitchen)) === KITCHEN);
+  const waiting = await kotOf(o, at(t + 1));
+  check("(bf) ... a new kitchen slip goes to the counter", waiting.kitchen?.targetDeviceId === COUNTER);
+  check("(bf) the same beat again writes nothing", (await beat(KITCHEN, down, at(t + 15))) === "0+0");
+  const late = await printerWrites(() => ackPrintJob({ id: waiting.kitchen?.id ?? "", deviceId: KITCHEN, epoch: 1, outcome: "failed", sent: "no", reason: "unreachable", nowMs: at(t + 20) }));
+  check("(bf) a late 'unreachable' ack from the tablet, which no longer holds the slip, changes nothing and writes no printer", late.writes === 0 && (await skipsOf(o.kitchen)) === KITCHEN);
+  const after = t + PRINTER_UNREACHABLE_SKIP_MS / 1_000 + 1;
+  await both(after);
+  const home = await lease(KITCHEN, [o.kitchen], at(after));
+  check("(bf) past the 5 minutes, the tablet's lease naming the printer (its app reaches it) ends its skip: one write, and it takes its line's oldest slip", home.writes === 1 && (await skipsOf(o.kitchen)) === "" && home.value.jobs[0]?.id === backHome.kitchen?.id);
+
+  // A candidate's beat starts its skip ahead of time; its own beat ends it.
+  const c = after + 60;
+  await both(c);
+  check("(bf) the counter (it may take the printer over) says it cannot reach it: skipped ahead of time, one write", (await beat(COUNTER, down, at(c))) === "0+1" && (await skipsOf(o.kitchen)) === COUNTER);
+  check("(bf) ... its next beat, still down, writes nothing", (await beat(COUNTER, down, at(c + 15))) === "0+0");
+  const end = c + PRINTER_UNREACHABLE_SKIP_MS / 1_000 + 1;
+  await both(end);
+  check("(bf) past the 5 minutes its beat saying it reaches the printer ends the skip: one write", (await beat(COUNTER, up, at(end))) === "0+1" && (await skipsOf(o.kitchen)) === "");
+  await Promise.all([Printer.deleteMany({}), PrintDevice.deleteMany({})]);
+}
+```
+
+In `apps/cafe/scripts/verify-print-host-live.ts`, find:
+
+```ts
+import { legBC } from "./print-host-live/health";
+import { legBD } from "./print-host-live/takeover";
+import { legBE } from "./print-host-live/candidates";
+
+async function main(): Promise<void> {
+  const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
+```
+
+Replace it with:
+
+```ts
+import { legBC } from "./print-host-live/health";
+import { legBD } from "./print-host-live/takeover";
+import { legBE } from "./print-host-live/candidates";
+import { legBF } from "./print-host-live/skip-interplay";
+
+async function main(): Promise<void> {
+  const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
+```
+
+In `apps/cafe/scripts/verify-print-host-live.ts`, find:
+
+```ts
+    await legBD(Date.now());
+    // Phase 3 Session 3C leg (G-1 and the 3B review's m-2: who may take a printer over).
+    await legBE(Date.now());
+  } finally {
+    await mongoose.connection.dropDatabase();
+    await mongoose.disconnect();
+```
+
+Replace it with:
+
+```ts
+    await legBD(Date.now());
+    // Phase 3 Session 3C leg (G-1 and the 3B review's m-2: who may take a printer over).
+    await legBE(Date.now());
+    // Phase 3 Session 3G leg (the 3B gate review's m-8: a skip's ack, beat and lease together, each step's printer writes).
+    await legBF(Date.now());
+  } finally {
+    await mongoose.connection.dropDatabase();
+    await mongoose.disconnect();
+```
+
+- [ ] **Step 2: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_print_host_3g npm run verify:print:live 2>&1 | grep -E "^\(bf\)|passed, .* failed"`
+Expected: `(bf) a skip's three signals together (§9.3; the 3B gate review's m-8): ack, beat and lease start and end it in either order, each change one write, nothing else written`; `467 passed, 0 failed`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx tsc --noEmit && echo TSC_OK`
+Expected: `TSC_OK`
+
+Run: `cd /d/kd/lucifer/apps/cafe && npx eslint scripts/print-host-live/skip-interplay.ts scripts/verify-print-host-live.ts && echo LINT_OK`
+Expected: `LINT_OK`
+
+- [ ] **Step 3: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/scripts/print-host-live/skip-interplay.ts apps/cafe/scripts/verify-print-host-live.ts
+git commit -m "test(print): live leg (bf): a skip's three signals together, the ack, the beat and the lease starting and ending it in either order, with every step's writes to the printers counted (the 3B gate review's m-8; Phase 3 Session 3G, G4)"
+```
+
+---
+
+### Task G5: the Phase 3 release step in GO-LIVE-CHECKLIST and TEST-CHECKLIST's Phase 3 checks on real printers, pinned
+
+**Files:**
+- Modify: `docs/GO-LIVE-CHECKLIST.md` ("Existing cafes: the printing Phase 3 release", after the Phase 3 web-part section), `apps/mobile/TEST-CHECKLIST.md` ("Phase 3 checks (failover, health, the service)", before Result)
+- Tests: `apps/cafe/lib/go-live-runbook.test.ts` (1 new pin)
+
+**Interfaces produced:** None.
+
+**GO-LIVE** (the 3D gate's m-5, replacing the 3C gate's m-8 "APK first"; the 3C gate's I-3 and m-9; the 3B gate's rollback line; the owner's 2026-10-09 ruling: no Telegram): the web first, every open screen reloaded, then the POS app on each printing device and opened once there (an older page never runs hidden on the new app's keep-running tick), notifications allowed, the battery settings, the Windows app 1.12.0, the app closed on printing devices at closing time (its notice is expected; a device left open all night costs a large share of the free allowance: the 3G measurement), the rollback line, no Worker change, and the real-printer checks before going live. The hashes are checked against the release's `SHA256SUMS.txt` (the final Phase 3 gate's build).
+
+**TEST-CHECKLIST**: every carried real-printer item (the 3C and 3D gates' lists, 3E's two new items, an Android 14+ device), grouped: failover and the backup printer, paper/cover/errors, the POS app's service, the Windows app; with "Network printers on the Windows app (Phase 3)" (Session 3E) beside it, whose "Windows printer removed" check now keeps another printer listed (G1: an empty list says nothing). The gold review's #2 and #5: a printer tablet A cannot reach moves to B within about two minutes on a real cafe (the healthy socket's 60 s wake), and a counter PC whose Windows app stays in the tray polls all night like a POS app left open.
+
+**RED**: the new pin fails (no such section yet).
+
+- [ ] **Step 1: The failing tests first**
+
+In `apps/cafe/lib/go-live-runbook.test.ts`, find:
+
+```ts
+  assert.ok(step.includes("If you roll the web back") && step.includes("reload every POS screen again"), "a rollback reloads every screen");
+});
+```
+
+Replace it with:
+
+```ts
+  assert.ok(step.includes("If you roll the web back") && step.includes("reload every POS screen again"), "a rollback reloads every screen");
+});
+
+// ── Printing Phase 3 Session 3G: the Phase 3 release step ───────────────────────────────────────────────────────
+// The 3D review gate (its review's m-5): the web first, then the POS app on each printing device, then the app opened
+// once (an older page never runs hidden on the new app's keep-running tick); the 3C gate (I-3): close the app on
+// printing devices at closing time; no Worker change; the owner's ruling (2026-10-09): no Telegram step.
+test("PIN §1 (printing Phase 3, Session 3G): the Phase 3 release step keeps its order (the web, every screen, the POS app on each printing device, open it once, the Windows app 1.12.0), closes the app at closing time, changes no Worker and sends the deployer to the Phase 3 checks", () => {
+  const step = norm(sectionSlice("### Existing cafes: the printing Phase 3 release"));
+  let at = -1;
+  for (const landmark of ["**The web first.**", "**Reload every POS screen**", "**Then the POS app on each printing device**", "**Then open the app once**", "POS-Software-Setup-1.12.0.exe", "**At closing time, close the POS app**"]) {
+    const next = step.indexOf(landmark);
+    assert.ok(next > at, `the Phase 3 release step names "${landmark}" after the step before it`);
+    at = next;
+  }
+  assert.ok(step.includes("No Worker change"), "this release changes no Worker");
+  assert.ok(step.includes("SHA256SUMS.txt"), "each app's hash is checked before it is sent");
+  assert.ok(step.includes("If you roll the web back"), "a rollback reloads every screen again");
+  assert.ok(!/telegram/i.test(step), "the Phase 3 release adds no Telegram step (the owner's ruling, 2026-10-09)");
+  const checklist = readFileSync(path.join(REPO_ROOT, "apps/mobile/TEST-CHECKLIST.md"), "utf8");
+  assert.ok(step.includes("Phase 3 checks (failover, health, the service)"), "the step sends the deployer to the Phase 3 real-printer checks");
+  assert.ok(checklist.includes("## Phase 3 checks (failover, health, the service)"), "... which TEST-CHECKLIST holds");
+});
+```
+
+- [ ] **Step 2: Run them (RED)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/go-live-runbook.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 96`; `# pass 95`; `# fail 1`
+
+- [ ] **Step 3: The code**
+
+In `apps/mobile/TEST-CHECKLIST.md`, find:
+
+```markdown
+      prints within a minute more. Open the app again: the PC prints it again.
+- [ ] Leave the PC and a tablet both listing the network printer for 10 minutes with no orders: no "not connected"
+      words appear (a printer that takes one connection at a time is asked again a second later).
+- [ ] A Windows printer the PC prints (Phase 2's checks): remove it in Windows (Settings → Printers): within about three
+      minutes a slip for it waits with "‹printer› is not connected." on every device. Add it back with the same name:
+      the slip prints once, within about a minute.
+
+## Result
+```
+
+Replace it with:
+
+```markdown
+      prints within a minute more. Open the app again: the PC prints it again.
+- [ ] Leave the PC and a tablet both listing the network printer for 10 minutes with no orders: no "not connected"
+      words appear (a printer that takes one connection at a time is asked again a second later).
+- [ ] A Windows printer the PC prints (Phase 2's checks): remove it in Windows (Settings → Printers; another printer,
+      such as Microsoft Print to PDF, still listed): within about three minutes a slip for it waits with "‹printer› is
+      not connected." on every device. Add it back with the same name:
+      the slip prints once, within about a minute.
+
+## Phase 3 checks (failover, health, the service) (added 2026-10-09)
+
+Needs the Phase 3 POS app on every printing phone or tablet (opened once after installing it), the POS with Phase
+3, at least one network (LAN) printer with a fixed address (type its IP address, not a name), and printers set up
+in **Admin → Printer setup**. "Every device" below means a phone or tablet that only takes orders, another printing
+device and a browser tab: each one's printer panel (and the alarm's notice on a waiting slip).
+
+Failover and the backup printer:
+- [ ] Two tablets that each print a printer of the setup; the kitchen's network printer is printed by tablet A.
+      Switch tablet A off: every slip made 90 seconds or more later prints from tablet B; one already waiting prints
+      within a minute more. Switch A on and open the app: A prints the kitchen's slips again.
+- [ ] Tablet A cannot reach the kitchen printer (take it off the Wi-Fi, or unplug the printer's network cable and
+      plug it into another network): B prints the kitchen's slips within about two minutes. Put it back: within
+      about six minutes A prints them again.
+- [ ] A backup printer: **Edit** the bar printer → **4. Backup printer** → the kitchen printer. Switch off the bar's
+      phone: its waiting slips print at the kitchen, each marked **BACKUP PRINTER**; none prints twice.
+- [ ] Leave both tablets listing the kitchen printer for 10 minutes with no orders: no "not connected" words and no
+      printer moves to the other tablet.
+- [ ] Leave the real network printer idle for 5 minutes: the printer dot stays steady (no "not connected" flashes).
+
+Paper, cover and errors:
+- [ ] Take the kitchen printer's paper out: "Kitchen is out of paper." on every device while a slip waits; the slip
+      is not tried. Put paper back: it prints within about 10 seconds, once.
+- [ ] Open its cover: "Kitchen has its cover open." the same way; close it: the slip prints once.
+- [ ] Paper runs out in the middle of a slip: one copy labelled **REPRINT** after paper is back (a bill asks the
+      cashier), never a silent single or a silent double.
+- [ ] Press **FEED** while the printer is idle: no error words appear.
+- [ ] A Bluetooth printer that does not answer status: Pay Now prints the KOT and the bill, the bill within about a
+      second of the KOT.
+- [ ] A printer module that resets its connection after each slip and never answers status: 20 slips, count any
+      **REPRINT** copies (expected none).
+
+The POS app's service (each printing phone or tablet):
+- [ ] The first time it prints, the app asks to allow notifications: **Allow**. The notification says "Printing is
+      on" and "This device keeps printing with the screen off."
+- [ ] Screen off for 30 minutes, then order from another device: the slip prints within seconds.
+- [ ] An Android 14 or later printing device: "Printing is on" shows, and with the screen off a slip prints within
+      seconds.
+- [ ] Restart the device: "POS printing is off. Tap to start." shows within a minute of start-up; tap it: the POS
+      opens and a slip prints.
+- [ ] At closing time swipe the app away: "POS printing is off. Tap to start." shows (expected); tap it next morning:
+      it prints.
+- [ ] Change the font size (or the language) in Android's settings while the POS is open: no "POS printing is off"
+      notice; the next slip prints.
+- [ ] Xiaomi, OPPO, vivo or Samsung: the printer panel → **More options** → **Battery settings for printing**; do each
+      step once; then the 30-minute screen-off check again.
+
+The Windows app 1.12.0 (with "Network printers on the Windows app (Phase 3)" above):
+- [ ] Open the network printer's cover in the middle of a long slip from the PC and close it after more than a
+      minute: the first slip finishes and one more prints labelled **REPRINT**; never a silent single, never a silent
+      double.
+
+## Result
+```
+
+In `docs/GO-LIVE-CHECKLIST.md`, find:
+
+```markdown
+      printing against the older release (it sends its answers once more the
+      way that release takes them), but only a reloaded page works exactly as
+      that release did.
+
+---
+```
+
+Replace it with:
+
+```markdown
+      printing against the older release (it sends its answers once more the
+      way that release takes them), but only a reloaded page works exactly as
+      that release did.
+
+### Existing cafes: the printing Phase 3 release
+
+Printing Phase 3 keeps a cafe printing when a device or a printer fails: another device takes a network printer
+over while its own device is offline or cannot reach it, a printer's waiting slips can move to its backup printer,
+every device says why a slip waits ("Kitchen is out of paper."), the POS app keeps printing with the screen off
+and says "POS printing is off. Tap to start." when its printing stopped (a restart, a reboot, an update), and the
+Windows app prints network printers itself. No data migration. **No Worker change:** the Realtime Worker stays the
+Phase 2 one.
+
+The order matters: the web first, then every open POS screen reloaded, then the POS app on each printing device
+and the app opened once there, then the Windows app.
+
+- [ ] **The web first.** Re-run the go-live run for the cafe (not `npm run deploy` alone). `GET /api/health`
+      answers 200.
+- [ ] **Reload every POS screen** that was open before the deploy: Refresh in the POS app, reload each browser
+      tab, quit and reopen the Windows app ("printing failover and the backup printer" above says what an older
+      page does until then).
+- [ ] **Then the POS app on each printing device** (a phone or tablet that prints for the cafe: the one that prints
+      all slips, or one that prints a printer in **Admin → Printer setup**): the Phase 3 POS app, installed over
+      the old one (no uninstall: it keeps its printers). 64-bit (arm64-v8a) for most phones, the 32-bit
+      (armeabi-v7a) one for old phones. Check its SHA-256 against the release's `SHA256SUMS.txt` before you send
+      it.
+- [ ] **Then open the app once** on that device. The install itself shows "POS printing is off. Tap to start.":
+      tap it (or open the app). The new app keeps its page running while it is hidden, so the page must be this
+      release's: installed before the web was updated and not opened since, it would keep an older page running
+      in the background, and that page asks the server every 15 seconds.
+- [ ] **Allow notifications** when the app asks (Android 13 and later), so "POS printing is off. Tap to start." can
+      show after a restart or a reboot.
+- [ ] **Battery settings** on a Xiaomi, OPPO, vivo or Samsung printing device: the printer panel → **More
+      options** → **Battery settings for printing**; do each step it lists once.
+- [ ] **Windows counter PC:** `POS-Software-Setup-1.12.0.exe`, installed over the old one; check its SHA-256
+      against `SHA256SUMS.txt`. Needed for a network printer printed by the PC (the PC writes it itself) and for a
+      PC that takes a network printer over; the Windows app 1.11.0 keeps printing its Windows printers as before.
+- [ ] **At closing time, close the POS app** on each printing device (swipe it away from the recent apps). Its
+      notice "POS printing is off. Tap to start." then shows: that is expected; tap it when you open. A printing
+      device left open all night keeps asking the server as it does on screen, a large share of the cafe's free
+      daily allowance every night. A counter PC whose Windows app stays in the tray polls all night the same way (as
+      it has since Phase 1): quit it from the tray at closing time too, or leave it running knowingly.
+- [ ] **If you roll the web back** to a release from before printing Phase 3, reload every POS screen again
+      afterwards (as above).
+- [ ] **Before telling the client it is live:** run `apps/mobile/TEST-CHECKLIST.md` → "Phase 3 checks (failover,
+      health, the service)" on the cafe's real printers, with the earlier checks and "Network printers on the
+      Windows app (Phase 3)" on a counter PC with the 1.12.0 app.
+
+---
+```
+
+- [ ] **Step 4: Run (GREEN)**
+
+Run: `cd /d/kd/lucifer/apps/cafe && node --import tsx --test lib/go-live-runbook.test.ts 2>&1 | grep -E "^# (tests|pass|fail)"`
+Expected: `# tests 96`; `# pass 96`; `# fail 0`
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/kd/lucifer
+git add apps/cafe/lib/go-live-runbook.test.ts apps/mobile/TEST-CHECKLIST.md docs/GO-LIVE-CHECKLIST.md
+git commit -m "docs(print): the Phase 3 release step in GO-LIVE-CHECKLIST (the web first, every screen reloaded, then the POS app on each printing device and opened once, the Windows app 1.12.0, the app closed at closing time, no Worker change) and TEST-CHECKLIST's Phase 3 checks on real printers (failover, the backup printer, paper and cover, the service, the battery steps, the Windows app), pinned (Phase 3 Session 3G, G5)"
+```
+
+---
+
+### Task G6: full verification, the APKs, the exit, the measured free-tier check, the fresh review, Results
+
+**Files:** this plan (a new "Session 3G Results" section at its end), nothing else. Every tool below goes in this session's scratchpad, never in the repo. `<sp>` below is this session's scratchpad in Windows form with forward slashes (`pwd -W`); `/x/` style paths need a `subst` of your own (the gate used `X:`).
+
+- [ ] **Step 1: every suite, once each, in the background, one after another** (run `df -h /d /c` first)
+
+Run, from `/d/kd/lucifer` (the totals the pre-validation saw on the golden tree):
+
+| Run | Expected |
+|---|---|
+| `cd packages/shared && npm test && npx tsc --noEmit` | `# tests 821`, `# pass 821`, `# fail 0`; tsc 0 |
+| `cd apps/cafe && npm test` | `# tests 5056`, `# pass 5055`, `# fail 0`, `# skipped 1` (go-live-dl) |
+| `npx tsc --noEmit` and `npm run lint` in each of `apps/cafe`, `apps/hub`, `apps/mobile`; `npm run typecheck` and `npm run lint` in `apps/desktop` | 0, and 0 errors (cafe's 2 old warnings, `lib/masters-blob.test.ts:331`; mobile now **none**: G0) |
+| `cd apps/mobile && npm test && npm run test:app` | **143/143**; Jest **5/5** (a Jest test can time out at 5 s under load: run it again alone before calling it a failure) |
+| `cd apps/desktop && npm test` | **205/205** (unchanged since 3E) |
+| `npm run test:print-tools` | 11/11 |
+| `cd apps/cafe && MONGODB_URI=mongodb://127.0.0.1:27017/pos_scratch_print_host_3g npm run verify:print:live` | **`467 passed, 0 failed`** (leg bf: 20) |
+
+- [ ] **Step 2: JUnit, and the APKs (a full release compile)**
+
+Run (D: needs ~1.5 GB free; `GRADLE_USER_HOME` always on D:):
+- `cd apps/mobile/android && GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat :app:testDebugUnitTest --rerun` → BUILD SUCCESSFUL; **65 tests, 0 failures** (BatteryTargetsTest 3, DleEotTest 7, HostLifeTest 4, PageWatchTest **7**, PoolListTest 6, PoolStatusTest 3, PrinterManagerTest 22, PrinterPoolTest 3, TcpTransportTest 10).
+- Write a marker file in the scratchpad, then the emulator's APK: `GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat aR -PreactNativeArchitectures=x86_64 --info` (copy `app/build/outputs/apk/release/app-release.apk` into the scratchpad as `pos-emulator-x86_64-3g.apk` and hash it). D0's guard compiles the app's release Kotlin in full: `find app/build/tmp/kotlin-classes/release -name '*.class' ! -newer <marker> | wc -l` is **0** (of 100), and `javap -c -p app/build/tmp/kotlin-classes/release/com/possoftware/pos/printer/TransportFactory.class` calls `TcpTransport."<init>":(Ljava/lang/String;IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V`. The log's `Using Kotlin/JVM incremental compilation` lines: **0** on the repo (its libraries are compiled already; the gate's fresh build copy showed 2, both a library compiled for the first time: react-native-safe-area-context and react-native-webview, none the app's). Never put another task with "release" in its name on this command line.
+- The client pair (recorded, **not released**): `GRADLE_USER_HOME='D:\gradle-home' ./gradlew.bat assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a`; copy both into the scratchpad and hash them. The gate's build copy (a scratchpad clone, so its hashes differ from the repo's) gave x86_64 `8af43760…`, arm64 `aca6df9c…`, armv7 `44811dc8…`.
+- Run `adb logcat -b crash -d` right after every install in Steps 7 and 8.
+
+- [ ] **Step 3: the Next production build on the repo (D:)**
+
+Run: `df -h /d` (a build needs ~1.5 GB free), then `cd apps/cafe && npm run build`. Expected: exit 0, **132 routes** (3G adds none; count the lines between "Route (app)" and "First Load JS shared" with awk).
+
+- [ ] **Step 4: what changed outside the web**
+
+`git diff --stat 95fee6d..HEAD -- workers apps/desktop` → **empty**: no Worker change, and the Windows installer is not rebuilt (`POS-Software-Setup-1.12.0.exe` stays Session 3E's; the 3E review gate's own repo build was 112,216,795 B, `11f43da8…`; electron-builder output differs per build). `-- apps/mobile` → G0's files and TEST-CHECKLIST (the APKs change: G0).
+
+- [ ] **Step 5: the harness** (check `netstat -ano | grep LISTEN` for 3110, 3200, 3201, 9100, 9101, 9103 and 9104 first, and never stop another session's server)
+
+- **The database:** a fresh `pos_scratch_e2e_3g` (the gate's pre-run used `pos_scratch_e2e_3gpre`). Save `mkenv3g.py` below into the scratchpad and run `python -X utf8 -I <sp>/mkenv3g.py pos_scratch_e2e_3g e2e3g.env` (it copies Session 3B's env file as `e2e.env`, for `type-secret.py`, and writes `e2e3g.env` with only `MONGODB_URI` changed; it never prints a value). Seed it from `apps/cafe`: `node --env-file=<sp>/e2e3g.env --import tsx scripts/seed-admin.ts`, then `seed-tables.ts`, then `seed-menu.ts`. Copy `ui.py`, `type-secret.py`, `p3a-proxy.mjs`, `p3b-proxy.mjs`, `link-modules.ps1` and `apply_blocks_clone.py` from the 3E review gate's scratchpad (`C:\Users\KARTIK~1.DES\AppData\Local\Temp\claude\d--kd-lucifer\d0d5b2eb-fc1a-4595-abc5-025c57e5d120\scratchpad`). Run `ui.py` as `python -X utf8 -I ui.py …`.
+- **The servers** (each a background command with `timeout: 7200000`): this branch's Step 3 build, `cd /d/kd/lucifer/apps/cafe && node --env-file=<sp>/e2e3g.env ../../node_modules/next/dist/bin/next start -p 3110`; `node <sp>/p3a-proxy.mjs --listen 3200 --target 3110 --log <sp>/proxy3g.jsonl` (the measurement reads this log); `node <sp>/p3b-proxy.mjs --listen 3201 --target 3110 --log <sp>/proxy3g-emu.jsonl` (the exit: it logs the pulse's `device=`).
+- **Tokens on** (the owner's ruling, option A: every run below has a token per order): `bash <sp>/pw3g.sh tokens on` → `tokens on: 200` (the settings API clears the server's settings cache).
+- **The %TEMP% cleaner** deletes junctions, empty folders and files with old dates under `%TEMP%` (the gate saw a scratch clone's `.git` lose its old packs' indexes): put nothing you need for long in a fresh `--out` folder without a `keep.txt` (the tools below do it), and never copy files with their old timestamps into the scratchpad.
+- **The tools**, each saved with the Write tool exactly as shown (or extracted byte for byte from these fenced blocks by a script):
+
+`<sp>/mkenv3g.py`:
+
+```python
+# Copies Session 3B's e2e.env into this scratchpad as e2e.env (for type-secret.py), and writes <out> with only
+# MONGODB_URI changed to a fresh database named on the command line. Never prints a value.
+import io, os, sys
+here = os.path.dirname(os.path.abspath(__file__))
+src_path = r"C:\Users\Kartik.desai\AppData\Local\Temp\claude\d--kd-lucifer\a0581b85-1d76-4fd6-b09f-6f32a4b9db56\scratchpad\e2e.env"
+db = sys.argv[1]
+out = sys.argv[2]
+assert db.startswith("pos_scratch_e2e_3g")
+src = io.open(src_path, encoding="utf-8").read()
+io.open(os.path.join(here, "e2e.env"), "w", encoding="utf-8", newline="\n").write(src if src.endswith("\n") else src + "\n")
+lines = []
+seen = False
+for line in src.splitlines():
+    if line.startswith("MONGODB_URI="):
+        line = "MONGODB_URI=mongodb://127.0.0.1:27017/" + db
+        seen = True
+    lines.append(line)
+assert seen
+io.open(os.path.join(here, out), "w", encoding="utf-8", newline="\n").write("\n".join(lines) + "\n")
+keys = [l.split("=", 1)[0] for l in lines if "=" in l]
+print(out + " written for " + db + "; keys:", ", ".join(keys))
+```
+
+`<sp>/pw3g.sh` (runs `pw-3g.mjs` from the repo's `apps/cafe`, `PW_REPO` the repo: its real `apps/desktop/src/raw-tcp.ts` and `scripts/fake-escpos-printer.mjs`):
+
+```bash
+#!/bin/bash
+# Runs one pw-3g.mjs scenario from the repo's apps/cafe (for mongoose, next-auth and tsx), PW_REPO = the repo (its
+# apps/desktop/src/raw-tcp.ts and scripts/fake-escpos-printer.mjs).   usage: pw3g.sh <scenario> [arg]
+SP="$(cd "$(dirname "$0")" && pwd -W)"
+cd /d/kd/lucifer/apps/cafe || exit 2
+PW_REPO="${PW_REPO:-D:/kd/lucifer}" MSYS_NO_PATHCONV=1 node --import tsx --env-file="$SP/e2e3g.env" "$SP/pw-3g.mjs" "$@"
+```
+
+`<sp>/pw-3g.mjs` (the exit and the Windows writers: two or three fake Windows apps through the real raw TCP module, plain tabs, the fake printers as children; Session 3E's `pw-3e.mjs` renamed to 3G with 3G's scenarios: `tokens`, `exit-setup`, `second`, `printer-flags`, `exit-order`, `exit-paper`, `exit-failover`, `panel`, `writers-setup`, `writers`):
+
+```js
+// The 3E review gate's harness for Session 3G's exit and measurement (scratchpad only; never in the repo; grown from
+// pw-3e.mjs, the 3D review gate's pre-run of Session 3E's exit, itself grown from pw-2e.mjs and pw-3b.mjs). Two or three fake Windows apps (PC1, PC2: 1.12.0; PC3: 1.11.0), each a headless desktop Chrome with its own
+// persistent profile (its own device id) and a fake window.posDesktop injected before any page script, plus a plain
+// Chrome tab (C) that orders. The fake app's network printers are written by the REAL main-process module
+// (apps/desktop/src/raw-tcp.ts of PW_REPO, imported through tsx): printRaw and lanStatus go over real TCP to the fake
+// ESC/POS printers (127.0.0.1:9100 the kitchen), so their jobs.log is the paper; only Electron's IPC is faked. Its Windows
+// printers (printHtml, printHtmlOn) are logged to pw-3g-windows.jsonl. Per PC a control file (pw-3g-control-<pc>.json)
+// holds the Windows printers it reports (`names`) and the network addresses it cannot reach (`blocked`), read at every
+// call. Signs in as the e2e admin with a session minted from the env file's AUTH_SECRET (never printed); never prints a
+// secret, a token or a payload. Run from apps/cafe (PW_REPO's, for tsx and mongoose):
+//   MSYS_NO_PATHCONV=1 node --import tsx --env-file=<scratchpad>/e2e3g.env <scratchpad>/pw-3g.mjs <scenario> [arg]
+// PW_BASE (default http://localhost:3200, the counting proxy) is where the pages and the API calls go.
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(path.join(process.cwd(), "package.json"));
+const mongoose = require("mongoose");
+const { encode } = require("next-auth/jwt");
+const pwRequire = createRequire("C:/Users/Kartik.desai/AppData/Local/npm-cache/_npx/9833c18b2d85bc59/node_modules/playwright-core/package.json");
+const { chromium } = pwRequire("playwright-core");
+
+const BASE = process.env.PW_BASE ?? "http://localhost:3200";
+const REPO = process.env.PW_REPO ?? "D:/kd/lucifer";
+const rawTcp = await import(pathToFileURL(path.join(REPO, "apps", "desktop", "src", "raw-tcp.ts")).href);
+const COOKIE = "authjs.session-token";
+const DEVICES = path.join(HERE, "pw-3g-devices.json");
+const WINDOWS_LOG = path.join(HERE, "pw-3g-windows.jsonl");
+const t0 = Date.now();
+const ts = () => `${((Date.now() - t0) / 1000).toFixed(1)}s`;
+const say = (...parts) => console.log(`[${ts()}]`, ...parts);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const uri = process.env.MONGODB_URI ?? "";
+if (!/\/pos_scratch_e2e_3g[a-z0-9_]*$/.test(uri)) throw new Error("refusing: not pos_scratch_e2e_3g");
+await mongoose.connect(uri);
+const db = mongoose.connection.db;
+const staff = await db.collection("staffs").findOne({ username: "e2eadmin" }, { projection: { name: 1, role: 1 } });
+if (staff === null) throw new Error("e2eadmin not found");
+const token = await encode({ token: { name: staff.name, id: String(staff._id), role: staff.role, lastValidated: Date.now() }, secret: process.env.AUTH_SECRET, salt: COOKIE });
+const api = async (method, url, body) => {
+  const res = await fetch(`${BASE}${url}`, { method, headers: { "content-type": "application/json", cookie: `${COOKIE}=${token}` }, body: body === undefined ? undefined : JSON.stringify(body) });
+  return { status: res.status, json: await res.json().catch(() => ({})) };
+};
+const jobs = () => db.collection("printjobs").find({}).sort({ createdAt: 1, _id: 1 }).toArray();
+const device = (id) => db.collection("printdevices").findOne({ deviceId: id });
+const printerByName = (name) => db.collection("printers").findOne({ name });
+const short = (id) => (id ?? "").slice(-4);
+const clock = (d) => (d instanceof Date ? d.toISOString().slice(11, 19) : "?");
+const describe = (j) => ({ kind: j.kind, status: j.status, target: short(j.targetDeviceId), labels: j.labels ?? [], log: (j.log ?? []).map((l) => `${l.event}${l.deviceId ? `@${short(l.deviceId)}` : ""}@${clock(l.at)}${l.detail ? `(${l.detail.slice(0, 60)})` : ""}`) });
+const jobAfter = async (sinceMs, printerName) => {
+  const printer = await printerByName(printerName);
+  return (await jobs()).filter((j) => j.createdAt.getTime() >= sinceMs - 2000 && String(j.printerId) === String(printer?._id ?? ""));
+};
+
+// ── the fake printers, as child processes ──
+const printers = new Map();
+const outOf = (port) => path.join(HERE, `fake3g-${port}`);
+function startPrinter(port, flags = []) {
+  stopPrinter(port);
+  const out = outOf(port);
+  mkdirSync(out, { recursive: true });
+  writeFileSync(path.join(out, "keep.txt"), "keep");
+  const child = spawn(process.execPath, [path.join(REPO, "scripts", "fake-escpos-printer.mjs"), "--port", String(port), "--out", out, ...flags], { stdio: "ignore" });
+  printers.set(port, child);
+  say(`fake printer ${port} ${flags.join(" ") || "(normal)"}`);
+}
+function stopPrinter(port) {
+  const child = printers.get(port);
+  if (child !== undefined) child.kill();
+  printers.delete(port);
+}
+const records = (port) => {
+  const file = path.join(outOf(port), "jobs.log");
+  if (!existsSync(file)) return [];
+  return readFileSync(file, "utf8").split("\n").filter((l) => l.trim() !== "").map((l) => JSON.parse(l));
+};
+const slips = (port) => records(port).filter((r) => r.bytes > 0 && r.statusOnly !== true);
+
+// ── a fake Windows app (node side): its Windows printers, and its network printers through the real raw-tcp.ts ──
+const NAMES = ["EPSON TM-T82", "Kitchen TVS", "Microsoft Print to PDF"];
+const controlFile = (pc) => path.join(HERE, `pw-3g-control-${pc}.json`);
+const control = (pc) => (existsSync(controlFile(pc)) ? JSON.parse(readFileSync(controlFile(pc), "utf8")) : { names: NAMES, blocked: [] });
+const setControl = (pc, patch) => writeFileSync(controlFile(pc), JSON.stringify({ ...control(pc), ...patch }));
+const slipWords = (html) => html.slice(html.indexOf("<body")).replace(/<style[\s\S]*?<\/style>/g, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim().slice(0, 100);
+
+async function pcCall(pc, method, args) {
+  const c = control(pc);
+  switch (method) {
+    case "listPrinters":
+      return { selected: c.names[0] ?? null, printers: c.names.map((name) => ({ name, displayName: name })), printMode: "direct" };
+    case "printHtml":
+    case "printHtmlOn": {
+      const printer = method === "printHtml" ? c.names[0] : args[1];
+      const refused = !c.names.includes(printer);
+      appendFileSync(WINDOWS_LOG, `${JSON.stringify({ at: new Date().toISOString().slice(11, 19), pc, method, printer, refused, words: slipWords(args[0]) })}\n`);
+      say(`${pc} ${method} on ${printer}${refused ? " REFUSED" : ""}`);
+      return refused ? { __error: "That printer is not on this PC. Open Printer setup in the POS and choose a printer this PC has." } : null;
+    }
+    case "printRaw": {
+      const [target, bytes] = args;
+      const key = `${target.host}:${target.port}`;
+      if (c.blocked.includes(key)) {
+        say(`${pc} printRaw to ${key}: blocked (no connect)`);
+        return { ok: false, sent: "no", failure: "not-connected", message: "The printer did not answer.", health: null };
+      }
+      try {
+        const { health } = await rawTcp.printRawTcp(target, Uint8Array.from(bytes));
+        say(`${pc} printRaw to ${key}: ${bytes.length} B sent, health ${JSON.stringify(health)}`);
+        return { ok: true, health };
+      } catch (error) {
+        say(`${pc} printRaw to ${key}: ${error.sent} (${error.failure}) ${error.message}`);
+        return { ok: false, sent: error.sent ?? "maybe", failure: error.failure ?? "write-failed", message: error.message, health: error.health ?? null };
+      }
+    }
+    case "lanStatus": {
+      const out = [];
+      for (const target of args[0]) {
+        const key = `${target.host}:${target.port}`;
+        if (c.blocked.includes(key)) out.push({ host: target.host, port: target.port, link: "disconnected", health: null });
+        else {
+          const got = await rawTcp.probeRawTcp(target);
+          out.push({ host: target.host, port: target.port, link: got?.link ?? null, health: got?.health ?? null });
+        }
+      }
+      say(`${pc} lanStatus: ${out.map((s) => `${s.host}:${s.port}=${s.link}${s.health?.paper ? `/${s.health.paper}` : ""}`).join(" ")}`);
+      return out;
+    }
+    default:
+      return null;
+  }
+}
+
+const browsers = [];
+async function context(profile) {
+  const dir = path.join(HERE, `pw-3g-${profile}`);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, "keep.txt"), "keep");
+  const ctx = await chromium.launchPersistentContext(dir, {
+    executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    headless: true,
+    viewport: { width: 1280, height: 1000 },
+  });
+  await ctx.addCookies([{ name: COOKIE, value: token, domain: "localhost", path: "/", httpOnly: true, sameSite: "Lax" }]);
+  browsers.push(ctx);
+  return ctx;
+}
+
+async function openPc(pc, version = "1.12.0", url = "/pos") {
+  const ctx = await context(pc.toLowerCase());
+  await ctx.exposeBinding("__pc", (_source, method, args) => pcCall(pc, method, args));
+  await ctx.addInitScript((v) => {
+    const call = async (method, args) => {
+      const result = await window.__pc(method, args);
+      if (result !== null && typeof result === "object" && typeof result.__error === "string") throw new Error(`Error invoking remote method 'pos-desktop:${method}': Error: ${result.__error}`);
+      return result;
+    };
+    const bridge = {
+      version: v,
+      printHtml: (html) => call("printHtml", [html]),
+      printHtmlOn: (html, name) => call("printHtmlOn", [html, name]),
+      listPrinters: () => call("listPrinters", []),
+      savePrinter: async (name) => ({ selected: name }),
+      savePrintMode: async (mode) => ({ printMode: mode }),
+    };
+    if (v !== "1.11.0") {
+      bridge.printRaw = (printer, data) => call("printRaw", [printer, Array.from(data)]);
+      bridge.lanStatus = (list) => call("lanStatus", [list]);
+    }
+    window.posDesktop = bridge;
+  }, version);
+  const page = ctx.pages()[0] ?? (await ctx.newPage());
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(String(e.message).slice(0, 160)));
+  await page.goto(`${BASE}${url}`, { waitUntil: "networkidle" });
+  const deviceId = await page.evaluate(() => window.localStorage.getItem("pos.device-id.v1"));
+  say(`${pc} (fake Windows app ${version}) open as device …${short(deviceId)}`);
+  return { name: pc, page, ctx, deviceId, errors };
+}
+
+async function openPlain(name, profile) {
+  const ctx = await context(profile);
+  const page = ctx.pages()[0] ?? (await ctx.newPage());
+  await page.goto(`${BASE}/pos`, { waitUntil: "networkidle" });
+  const deviceId = await page.evaluate(() => window.localStorage.getItem("pos.device-id.v1"));
+  say(`${name} (a plain browser tab) open as device …${short(deviceId)}`);
+  return { name, page, ctx, deviceId, errors: [] };
+}
+
+async function close(who) {
+  await who.ctx.close().catch(() => undefined);
+  say(`${who.name} closed (its page stopped)`);
+}
+
+async function order(who, items) {
+  const page = who.page;
+  if (!page.url().endsWith("/pos")) await page.goto(`${BASE}/pos`, { waitUntil: "networkidle" });
+  for (const item of items) {
+    await page.getByRole("button", { name: new RegExp(`^${item}`) }).first().click();
+    await page.waitForTimeout(500);
+    const add = page.getByRole("dialog").getByRole("button", { name: /^Add \d/ });
+    if ((await add.count()) > 0) await add.first().click();
+    await page.waitForTimeout(300);
+  }
+  await page.getByRole("button", { name: "Send to Kitchen" }).click();
+  const at = Date.now();
+  say(`${who.name} sent ${items.join(" + ")} to the kitchen`);
+  await page.waitForTimeout(1500);
+  await page.keyboard.press("Escape").catch(() => undefined);
+  return at;
+}
+
+async function until(label, check, timeoutMs, everyMs = 1000) {
+  const start = Date.now();
+  for (;;) {
+    const got = await check();
+    if (got) {
+      say(`${label}: yes after ${((Date.now() - start) / 1000).toFixed(1)} s`);
+      return got;
+    }
+    if (Date.now() - start > timeoutMs) {
+      say(`${label}: NO within ${timeoutMs / 1000} s`);
+      return null;
+    }
+    await sleep(everyMs);
+  }
+}
+
+// The waiting-slips panel's words on a device (the printer button, then the dialog).
+async function panelText(who) {
+  // The alarm's notice (a toast) may cover the button: read it, then click through it.
+  const toasts = (await who.page.locator("[data-sonner-toast]").allInnerTexts()).map((t) => t.replace(/\s+/g, " "));
+  if (toasts.length > 0) say(`${who.name}'s notices: ${JSON.stringify(toasts)}`);
+  const show = who.page.locator("[data-sonner-toast] button", { hasText: "Show" });
+  if ((await show.count()) > 0) await show.first().click();
+  else await who.page.locator("[aria-label*='open printer setup']").first().click();
+  await who.page.waitForTimeout(1500);
+  const text = (await who.page.locator("[role=dialog]").first().innerText()).replace(/\s+/g, " ").slice(0, 2500);
+  await who.page.keyboard.press("Escape").catch(() => undefined);
+  return text;
+}
+
+// ── the setup, through the admin API ──
+async function stations() {
+  return (await api("GET", "/api/stations")).json.data ?? [];
+}
+async function ensureStation(name) {
+  if (!(await stations()).some((s) => s.name === name)) await api("POST", "/api/stations", { name });
+  return (await stations()).find((s) => s.name === name);
+}
+async function routeCategory(category, stationName) {
+  const row = await db.collection("categories").findOne({ name: category });
+  const station = await ensureStation(stationName);
+  return (await api("PUT", `/api/categories/${String(row._id)}`, { name: row.name, stationId: station.id })).status;
+}
+const NO_SLIPS = { bill: false, kotStations: [], kotAll: false, notices: false, eod: false };
+async function savePrinter(body) {
+  const existing = ((await api("GET", "/api/printers")).json.data ?? []).find((p) => p.name === body.name);
+  const res = existing === undefined ? await api("POST", "/api/printers", body) : await api("PUT", `/api/printers/${existing.id}`, body);
+  say(`printer ${body.name}: ${res.status}${res.json.error ? ` ${res.json.error}` : ""}`);
+}
+async function clearPrinters() {
+  for (const p of (await api("GET", "/api/printers")).json.data ?? []) say(`printer ${p.name} deleted: ${(await api("DELETE", `/api/printers/${p.id}`)).status}`);
+}
+const devicesFile = () => (existsSync(DEVICES) ? JSON.parse(readFileSync(DEVICES, "utf8")) : {});
+const showDevices = async (ids) => {
+  for (const [name, id] of Object.entries(ids)) {
+    const row = await device(id);
+    say(`device ${name} …${short(id)}: shell=${row?.shell ?? "-"} lan=${row?.capabilities?.lan ?? "-"} lanFailover=${row?.capabilities?.lanFailover ?? "absent"} beat ${row?.beatAt ? `${Math.round((Date.now() - row.beatAt.getTime()) / 1000)} s ago` : "never"}`);
+  }
+};
+const showPrinters = async () => {
+  for (const p of await db.collection("printers").find({}).toArray()) {
+    say(`printer ${p.name}: unreachable=[${(p.unreachable ?? []).map((u) => short(u.deviceId)).join(",")}] health=${p.health ? `${p.health.link}${p.health.paper ? `/${p.health.paper}` : ""}${p.health.cover ? `/${p.health.cover}` : ""}@${short(p.health.deviceId)}` : "-"}`);
+  }
+};
+
+async function setup(ids) {
+  // Printers mode: the kitchen's network printer written by PC1 (raw TCP), the bar's Windows printer on PC1, and a
+  // Windows printer on PC2 (so PC2 is a writer by the setup: it polls the wake and may take the kitchen over).
+  const kitchen = (await stations()).find((s) => s.isDefault);
+  const bar = await ensureStation("Bar");
+  say(`category Beverages -> Bar: ${await routeCategory("Beverages", "Bar")}`);
+  await savePrinter({ name: "Kitchen", connection: { kind: "lan", host: "127.0.0.1", port: 9100 }, primaryDeviceId: ids.PC1, paper: 80, slips: { ...NO_SLIPS, kotStations: [kitchen.id], notices: true }, copies: { kot: 1, bill: 1 }, enabled: true });
+  await savePrinter({ name: "Front", connection: { kind: "device", deviceId: ids.PC1, transport: "windows", address: "EPSON TM-T82" }, paper: 80, slips: { ...NO_SLIPS, bill: true, kotStations: [bar.id] }, copies: { kot: 1, bill: 1 }, enabled: true });
+  await savePrinter({ name: "Back", connection: { kind: "device", deviceId: ids.PC2, transport: "windows", address: "Kitchen TVS" }, paper: 80, slips: { ...NO_SLIPS, eod: true }, copies: { kot: 1, bill: 1 }, enabled: true });
+}
+
+// ── Session 3G: the exit's second device and the fake printer it shares with the emulator app ──
+// The emulator app reaches the PC's 127.0.0.1:9100 through `adb reverse tcp:9100 tcp:9100` (loopback is a private address
+// for both apps), so the kitchen's network printer has ONE address for the emulator app and the fake Windows app PC2.
+const PRINTER_FLAGS = path.join(HERE, "pw-3g-printer.json");
+const printerFlags = () => (existsSync(PRINTER_FLAGS) ? JSON.parse(readFileSync(PRINTER_FLAGS, "utf8")) : []);
+const whoPrinted = (j) => short([...(j.log ?? [])].reverse().find((l) => l.event === "printed")?.deviceId);
+const printedAt = (j) => [...(j.log ?? [])].reverse().find((l) => l.event === "printed")?.at?.getTime() ?? null;
+
+async function exitSetup(emu, ids) {
+  // Printers mode: the kitchen's network printer (127.0.0.1:9100) written by the emulator app: Kitchen KOTs, bills (and
+  // so the tokens), notices, End of day; the bar's KOTs on PC2's Windows printer, so PC2 writes a printer by the setup
+  // (the 3A gate's E-1) and may take the kitchen's over (a Windows app 1.12.0 says lanFailover).
+  await clearPrinters();
+  const kitchen = (await stations()).find((s) => s.isDefault);
+  const bar = await ensureStation("Bar");
+  say(`category Beverages -> Bar: ${await routeCategory("Beverages", "Bar")}`);
+  await savePrinter({ name: "Kitchen", connection: { kind: "lan", host: "127.0.0.1", port: 9100 }, primaryDeviceId: emu, paper: 80, slips: { ...NO_SLIPS, bill: true, kotStations: [kitchen.id], notices: true, eod: true }, copies: { kot: 1, bill: 1 }, enabled: true });
+  await savePrinter({ name: "Back", connection: { kind: "device", deviceId: ids.PC2, transport: "windows", address: "Kitchen TVS" }, paper: 80, slips: { ...NO_SLIPS, kotStations: [bar.id] }, copies: { kot: 1, bill: 1 }, enabled: true });
+}
+
+async function writersSetup(ids) {
+  // The measurement's Windows writer: every printer a network printer the Windows app 1.12.0 writes over raw TCP (so the
+  // fake printers' paper is every slip): the kitchen's (KOTs, bills and tokens, notices) and the bar's on PC1; PC2 writes
+  // a Windows printer (End of day only) and may take either over.
+  await clearPrinters();
+  const kitchen = (await stations()).find((s) => s.isDefault);
+  const bar = await ensureStation("Bar");
+  say(`category Beverages -> Bar: ${await routeCategory("Beverages", "Bar")}`);
+  await savePrinter({ name: "Kitchen", connection: { kind: "lan", host: "127.0.0.1", port: 9100 }, primaryDeviceId: ids.PC1, paper: 80, slips: { ...NO_SLIPS, bill: true, kotStations: [kitchen.id], notices: true }, copies: { kot: 1, bill: 1 }, enabled: true });
+  await savePrinter({ name: "Bar", connection: { kind: "lan", host: "127.0.0.1", port: 9101 }, primaryDeviceId: ids.PC1, paper: 80, slips: { ...NO_SLIPS, kotStations: [bar.id] }, copies: { kot: 1, bill: 1 }, enabled: true });
+  await savePrinter({ name: "Back", connection: { kind: "device", deviceId: ids.PC2, transport: "windows", address: "Kitchen TVS" }, paper: 80, slips: { ...NO_SLIPS, eod: true }, copies: { kot: 1, bill: 1 }, enabled: true });
+}
+
+async function orderAndWait(c, label, items, printerName, timeoutMs) {
+  const at = await order(c, items);
+  const done = await until(label, async () => (await jobAfter(at, printerName)).find((j) => j.status === "printed"), timeoutMs, 1000);
+  say(`  printed by …${done === null ? "-" : whoPrinted(done)} ${done === null ? "" : `${((printedAt(done) - at) / 1000).toFixed(1)} s after the order`}: ${JSON.stringify(done === null ? (await jobAfter(at, printerName)).map(describe) : describe(done))}`);
+  return { at, done };
+}
+
+const [scenario, arg] = process.argv.slice(2);
+try {
+  if (scenario === "init") {
+    // Mint each profile's device id, then set the printers up for them; every PC reports every Windows printer.
+    await clearPrinters();
+    for (const pc of ["PC1", "PC2", "PC3"]) setControl(pc, { names: NAMES, blocked: [] });
+    const pc1 = await openPc("PC1", "1.12.0", "/printers");
+    const pc2 = await openPc("PC2", "1.12.0", "/printers");
+    const pc3 = await openPc("PC3", "1.11.0", "/printers");
+    const c = await openPlain("C", "c");
+    const ids = { PC1: pc1.deviceId, PC2: pc2.deviceId, PC3: pc3.deviceId, C: c.deviceId };
+    writeFileSync(DEVICES, JSON.stringify(ids));
+    await setup(ids);
+  } else if (scenario === "print") {
+    // Exit item 1: the Windows app 1.12.0 prints the kitchen's network printer itself (raw TCP), and its health rides
+    // the beat; a bar slip still prints on its Windows printer.
+    const ids = devicesFile();
+    startPrinter(9100);
+    const pc1 = await openPc("PC1");
+    const pc2 = await openPc("PC2");
+    const c = await openPlain("C", "c");
+    await sleep(15_000);
+    await showDevices(ids);
+    const before = slips(9100).length;
+    const at = await order(c, ["Margherita Pizza", "Masala Chai"]);
+    const done = await until("the kitchen slip printed by PC1 over raw TCP", async () => (await jobAfter(at, "Kitchen")).find((j) => j.status === "printed" && j.targetDeviceId === ids.PC1), 60_000);
+    say(`  ${JSON.stringify(done === null ? (await jobAfter(at, "Kitchen")).map(describe) : describe(done))}`);
+    say(`paper on 9100: ${slips(9100).length - before} new slip(s) ${JSON.stringify(slips(9100).slice(before).map((r) => r.bytes))} B`);
+    const bar = await until("the bar slip printed by PC1 on its Windows printer", async () => (await jobAfter(at, "Front")).find((j) => j.status === "printed"), 60_000);
+    say(`  ${JSON.stringify(bar === null ? null : describe(bar))}`);
+    await until("the kitchen printer's health from PC1", async () => (await printerByName("Kitchen"))?.health?.link === "connected", 90_000, 3000);
+    await showPrinters();
+    say(`page errors: PC1 ${JSON.stringify(pc1.errors.slice(0, 3))} PC2 ${JSON.stringify(pc2.errors.slice(0, 3))}`);
+  } else if (scenario === "paper") {
+    // Exit item 2: the network printer out of paper: its health says so, the slip is never leased, every device's panel
+    // row says "Kitchen is out of paper."; paper back: printed once.
+    const ids = devicesFile();
+    startPrinter(9100, ["--paper-out"]);
+    const pc1 = await openPc("PC1");
+    const pc2 = await openPc("PC2");
+    const c = await openPlain("C", "c");
+    await until("the kitchen printer's health: out of paper (PC1's check)", async () => (await printerByName("Kitchen"))?.health?.paper === "out", 120_000, 3000);
+    const at = await order(c, ["Margherita Pizza"]);
+    await sleep(25_000);
+    const made = await jobAfter(at, "Kitchen");
+    say(`  after 25 s: ${JSON.stringify(made.map(describe))}`);
+    say(`C's panel: ${await panelText(c)}`);
+    startPrinter(9100);
+    const before = slips(9100).length;
+    const done = await until("paper back: the slip printed", async () => (await jobAfter(at, "Kitchen")).find((j) => j.status === "printed"), 150_000, 2000);
+    say(`  ${JSON.stringify(done === null ? null : describe(done))}; new slips on 9100: ${slips(9100).length - before}`);
+    await showPrinters();
+    void pc1;
+    void pc2;
+  } else if (scenario === "takeover") {
+    // Exit item 3 (P3-4): PC1, the kitchen printer's primary, stops; PC2 (1.12.0, lanFailover) prints the slips.
+    const ids = devicesFile();
+    startPrinter(9100);
+    const pc1 = await openPc("PC1");
+    const pc2 = await openPc("PC2");
+    const c = await openPlain("C", "c");
+    await sleep(20_000);
+    await showDevices(ids);
+    await close(pc1);
+    const stopped = Date.now();
+    const waiting = await order(c, ["Margherita Pizza"]);
+    const first = await until("the slip made right after PC1 stopped, printed by PC2", async () => (await jobAfter(waiting, "Kitchen")).find((j) => j.status === "printed" && j.targetDeviceId === ids.PC2), 240_000, 2000);
+    say(`  printed ${((Date.now() - stopped) / 1000).toFixed(0)} s after PC1 stopped: ${JSON.stringify(first === null ? null : describe(first))}`);
+    const after = await order(c, ["Margherita Pizza"]);
+    const next = await until("the next slip printed by PC2", async () => (await jobAfter(after, "Kitchen")).find((j) => j.status === "printed" && j.targetDeviceId === ids.PC2), 60_000);
+    say(`  ${JSON.stringify(next === null ? null : describe(next))}; paper on 9100: ${slips(9100).length} slips`);
+    await showPrinters();
+    void pc2;
+  } else if (scenario === "unreachable") {
+    // Exit item 4: PC1 cannot reach the kitchen printer (its connect fails): its check says so, the server skips it,
+    // and PC2 prints the slip.
+    const ids = devicesFile();
+    startPrinter(9100);
+    setControl("PC1", { blocked: ["127.0.0.1:9100"] });
+    const pc1 = await openPc("PC1");
+    const pc2 = await openPc("PC2");
+    const c = await openPlain("C", "c");
+    await until("PC1 skipped for the kitchen printer", async () => ((await printerByName("Kitchen"))?.unreachable ?? []).some((u) => u.deviceId === ids.PC1), 150_000, 3000);
+    await showPrinters();
+    const at = await order(c, ["Margherita Pizza"]);
+    const done = await until("the kitchen slip printed by PC2", async () => (await jobAfter(at, "Kitchen")).find((j) => j.status === "printed" && j.targetDeviceId === ids.PC2), 90_000);
+    say(`  ${JSON.stringify(done === null ? (await jobAfter(at, "Kitchen")).map(describe) : describe(done))}`);
+    setControl("PC1", { blocked: [] });
+    void pc1;
+    void pc2;
+  } else if (scenario === "presence") {
+    // Exit item 5: Windows no longer reports PC1's bar printer: within a minute (the presence check) and 20 s more it
+    // reads not connected, and a bar slip that waits says "Front is not connected." on every device.
+    const ids = devicesFile();
+    startPrinter(9100);
+    const pc1 = await openPc("PC1");
+    const c = await openPlain("C", "c");
+    await sleep(10_000);
+    setControl("PC1", { names: NAMES.filter((n) => n !== "EPSON TM-T82") });
+    say("PC1's Windows no longer reports EPSON TM-T82");
+    await until("the bar printer's health: disconnected from PC1", async () => (await printerByName("Front"))?.health?.link === "disconnected", 150_000, 3000);
+    const at = await order(c, ["Masala Chai"]);
+    await sleep(25_000);
+    say(`  the bar slip: ${JSON.stringify((await jobAfter(at, "Front")).map(describe))}`);
+    say(`C's panel: ${await panelText(c)}`);
+    setControl("PC1", { names: NAMES });
+    const done = await until("back in Windows: the bar slip printed", async () => (await jobAfter(at, "Front")).find((j) => j.status === "printed"), 150_000, 3000);
+    say(`  ${JSON.stringify(done === null ? null : describe(done))}`);
+    await showPrinters();
+    void pc1;
+    void ids;
+  } else if (scenario === "old") {
+    // Exit item 6: the Windows app 1.11.0 on the 3E page prints its Windows printer as before, says it writes no network
+    // printer (lan false, no lanFailover), and is never offered as a network printer's printing device.
+    const ids = devicesFile();
+    startPrinter(9100);
+    await savePrinter({ name: "Front", connection: { kind: "device", deviceId: ids.PC3, transport: "windows", address: "EPSON TM-T82" }, paper: 80, slips: { ...NO_SLIPS, bill: true, kotStations: [(await ensureStation("Bar")).id] }, copies: { kot: 1, bill: 1 }, enabled: true });
+    const pc3 = await openPc("PC3", "1.11.0");
+    const c = await openPlain("C", "c");
+    await sleep(20_000);
+    await showDevices({ PC3: ids.PC3 });
+    const at = await order(c, ["Masala Chai"]);
+    const done = await until("the bar slip printed by PC3 (1.11.0) on its Windows printer", async () => (await jobAfter(at, "Front")).find((j) => j.status === "printed" && j.targetDeviceId === ids.PC3), 90_000);
+    say(`  ${JSON.stringify(done === null ? null : describe(done))}`);
+    const list = (await api("GET", "/api/print-devices")).json.data ?? [];
+    say(`devices list: ${list.map((d) => `…${short(d.deviceId)} ${d.shell} lan=${d.lan ?? "-"} lanFailover=${d.lanFailover ?? "-"}`).join("; ")}`);
+    await savePrinter({ name: "Front", connection: { kind: "device", deviceId: ids.PC1, transport: "windows", address: "EPSON TM-T82" }, paper: 80, slips: { ...NO_SLIPS, bill: true, kotStations: [(await ensureStation("Bar")).id] }, copies: { kot: 1, bill: 1 }, enabled: true });
+    say(`page errors: PC3 ${JSON.stringify(pc3.errors.slice(0, 3))}`);
+  } else if (scenario === "printers") {
+    // Only the fake printers (normal), for [arg] s: they keep printing while the emulator app restarts or reboots.
+    startPrinter(9100);
+    say(`HOLD: fake printer 9100 up (${Number(arg ?? "600")} s)`);
+    await sleep(Number(arg ?? "600") * 1000);
+  } else if (scenario === "emu-setup") {
+    // E0 on the emulator: printers mode, the kitchen's network printer (10.0.2.2:9100) written by the emulator app.
+    if (!/^[0-9a-f-]{8,}$/.test(arg ?? "")) throw new Error("emu-setup <the emulator app's device id>");
+    await clearPrinters();
+    const kitchen = (await stations()).find((s) => s.isDefault);
+    await savePrinter({ name: "Kitchen", connection: { kind: "lan", host: "10.0.2.2", port: 9100 }, primaryDeviceId: arg, paper: 80, slips: { ...NO_SLIPS, bill: true, kotStations: [kitchen.id], notices: true, eod: true }, copies: { kot: 1, bill: 1 }, enabled: true });
+    writeFileSync(DEVICES, JSON.stringify({ ...devicesFile(), EMU: arg }));
+  } else if (scenario === "emu-order") {
+    // A plain tab orders a kitchen slip; it must print on the emulator within [arg] s (the printers run in `printers`).
+    const { EMU } = devicesFile();
+    const c = await openPlain("C", "c");
+    const at = await order(c, ["Margherita Pizza"]);
+    const done = await until("the kitchen slip printed by the emulator", async () => (await jobAfter(at, "Kitchen")).find((j) => j.status === "printed" && j.targetDeviceId === EMU), Number(arg ?? "120") * 1000, 2000);
+    say(`  ${JSON.stringify(done === null ? (await jobAfter(at, "Kitchen")).map(describe) : describe(done))}`);
+  } else if (scenario === "tokens") {
+    // Session 3G: a token per order (print-customization S7), as the Tokens page saves it (the settings cache is cleared).
+    if (arg !== "on" && arg !== "off") throw new Error("tokens on|off");
+    say(`tokens ${arg}: ${(await api("PUT", "/api/settings", { tokenEnabled: arg === "on" })).status}`);
+  } else if (scenario === "exit-setup") {
+    // Session 3G's exit: the emulator app writes the kitchen's network printer; PC2 is the second device (run `init` first).
+    if (!/^[0-9a-f-]{8,}$/.test(arg ?? "")) throw new Error("exit-setup <the emulator app's device id>");
+    const ids = devicesFile();
+    await exitSetup(arg, ids);
+    writeFileSync(DEVICES, JSON.stringify({ ...ids, EMU: arg }));
+  } else if (scenario === "second") {
+    // Session 3G's exit: the fake printer 9100 (its flags from pw-3g-printer.json, read every 2 s: `printer-flags`) and
+    // the second device PC2 (a fake Windows app 1.12.0: lanFailover), held [arg] s while the emulator app is tested.
+    const hold = Number(arg ?? "1800") * 1000;
+    let flags = printerFlags();
+    startPrinter(9100, flags);
+    const pc2 = await openPc("PC2");
+    say(`HOLD: PC2 and the fake printer 9100 up (${hold / 1000} s)`);
+    const end = Date.now() + hold;
+    while (Date.now() < end) {
+      await sleep(2000);
+      const now = printerFlags();
+      if (JSON.stringify(now) !== JSON.stringify(flags)) {
+        flags = now;
+        startPrinter(9100, flags);
+      }
+    }
+    say(`page errors: PC2 ${JSON.stringify(pc2.errors.slice(0, 3))}`);
+  } else if (scenario === "printer-flags") {
+    // The flags the `second` run's fake printer 9100 restarts with ("normal": none), e.g. --paper-out.
+    const flags = process.argv.slice(3).filter((f) => f !== "normal");
+    writeFileSync(PRINTER_FLAGS, JSON.stringify(flags));
+    say(`fake printer 9100 flags: ${flags.join(" ") || "(normal)"} (the second run restarts it within 2 s)`);
+  } else if (scenario === "exit-order") {
+    // A plain tab orders a kitchen slip and waits [arg] s for it to print: who printed it, and how soon.
+    const c = await openPlain("C", "c");
+    await orderAndWait(c, "the kitchen slip printed", ["Margherita Pizza"], "Kitchen", Number(arg ?? "120") * 1000);
+  } else if (scenario === "exit-paper") {
+    // Exit item 2 (spec §14): the emulator app's printer out of paper: its health says so (the app's DLE EOT), the slip
+    // waits unleased, and every other device's panel says "Kitchen is out of paper."; paper back: printed once.
+    const { EMU } = devicesFile();
+    writeFileSync(PRINTER_FLAGS, JSON.stringify(["--paper-out"]));
+    say("fake printer 9100 flags: --paper-out");
+    await until("the kitchen printer's health: out of paper (the emulator app's check)", async () => (await printerByName("Kitchen"))?.health?.paper === "out", 150_000, 3000);
+    const c = await openPlain("C", "c");
+    const d = await openPlain("D", "d");
+    const at = await order(c, ["Margherita Pizza"]);
+    // A waiting slip shows on every device at the first pulse (20 s) after it is 20 s old: read the panels at 45 s.
+    await sleep(45_000);
+    say(`  after 45 s: ${JSON.stringify((await jobAfter(at, "Kitchen")).map(describe))}`);
+    for (const who of [c, d]) {
+      const text = await panelText(who);
+      say(`${who.name}'s panel says "Kitchen is out of paper.": ${text.includes("Kitchen is out of paper.") ? "yes" : "NO"} (${text.slice(0, 300)})`);
+    }
+    say("READ the emulator app's panel now (it writes the printer)");
+    await sleep(20_000);
+    const before = slips(9100).length;
+    writeFileSync(PRINTER_FLAGS, JSON.stringify([]));
+    say("fake printer 9100 flags: (normal)");
+    const done = await until("paper back: the slip printed", async () => (await jobAfter(at, "Kitchen")).find((j) => j.status === "printed"), 150_000, 2000);
+    say(`  by …${done === null ? "-" : whoPrinted(done)}: ${JSON.stringify(done === null ? null : describe(done))}; new slips on 9100: ${slips(9100).length - before}`);
+    await showPrinters();
+    void EMU;
+  } else if (scenario === "exit-failover") {
+    // Exit item 1 (spec §14, P3-4's measure): the emulator app stopped at [arg] (ms since 1970): a slip made right after
+    // it waits, then prints on PC2 within 150 s of the stop; a slip made 95 s after the stop prints on PC2 at once.
+    const stop = Number(arg);
+    if (!Number.isFinite(stop) || Math.abs(Date.now() - stop) > 60_000) throw new Error("exit-failover <the stop's time, ms>");
+    const ids = devicesFile();
+    const c = await openPlain("C", "c");
+    const waiting = await order(c, ["Margherita Pizza"]);
+    say(`the waiting slip made ${((waiting - stop) / 1000).toFixed(1)} s after the stop`);
+    await sleep(Math.max(0, stop + 95_000 - Date.now()));
+    const late = await order(c, ["Margherita Pizza"]);
+    say(`the next slip made ${((late - stop) / 1000).toFixed(1)} s after the stop`);
+    const first = await until("the waiting slip printed by PC2", async () => (await jobAfter(waiting, "Kitchen")).find((j) => j.status === "printed" && j.createdAt.getTime() < late - 2000), 200_000, 2000);
+    say(`  by …${first === null ? "-" : whoPrinted(first)} ${first === null ? "" : `${((printedAt(first) - stop) / 1000).toFixed(1)} s after the stop`}: ${JSON.stringify(first === null ? null : describe(first))}`);
+    const second = await until("the slip made 95 s after the stop printed by PC2", async () => (await jobAfter(late, "Kitchen")).find((j) => j.status === "printed"), 60_000, 1000);
+    say(`  by …${second === null ? "-" : whoPrinted(second)} ${second === null ? "" : `${((printedAt(second) - late) / 1000).toFixed(1)} s after its order`}: ${JSON.stringify(second === null ? null : describe(second))}`);
+    say(`PC2 is …${short(ids.PC2)}; the emulator app …${short(ids.EMU)}`);
+    await showPrinters();
+  } else if (scenario === "panel") {
+    // A plain tab's waiting-slips panel, all of it (a check of the words every device shows).
+    const c = await openPlain("C", "c");
+    say(`C's panel: ${await panelText(c)}`);
+  } else if (scenario === "writers-setup") {
+    await writersSetup(devicesFile());
+  } else if (scenario === "writers") {
+    // The measurement's Windows writer (Session 3G): the fake printers 9100 and 9101, PC1 and PC2 (fake 1.12.0) held [arg]
+    // s while the soak orders through the counting proxy (PC1 prints over the real raw TCP).
+    startPrinter(9100);
+    startPrinter(9101);
+    const pc1 = await openPc("PC1");
+    const pc2 = await openPc("PC2");
+    say(`HOLD: PC1, PC2 and the fake printers up (${Number(arg ?? "600")} s)`);
+    await sleep(Number(arg ?? "600") * 1000);
+    say(`page errors: PC1 ${JSON.stringify(pc1.errors.slice(0, 3))} PC2 ${JSON.stringify(pc2.errors.slice(0, 3))}`);
+  } else if (scenario === "clear") {
+    await clearPrinters();
+  } else {
+    throw new Error("scenario: init | print | paper | takeover | unreachable | presence | old | printers [s] | emu-setup <id> | emu-order [s] | tokens on|off | exit-setup <id> | second [s] | printer-flags <flags|normal> | exit-order [s] | exit-paper | exit-failover <ms> | writers-setup | writers [s] | clear");
+  }
+} finally {
+  for (const ctx of browsers) await ctx.close().catch(() => undefined);
+  for (const port of [...printers.keys()]) stopPrinter(port);
+  await mongoose.disconnect();
+}
+```
+
+`<sp>/xg-reboot.sh` (reboots the emulator and puts both reverses back):
+
+```bash
+#!/bin/bash
+# Reboot the emulator, re-add the reverse, then poll for "POS printing is off" for [1] seconds (default 60).
+adb shell input keyevent 3
+adb shell sync
+echo "reboot at $(date +%T)"
+adb reboot
+sleep 10
+adb wait-for-device
+for i in $(seq 1 90); do
+  b=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+  [ "$b" = "1" ] && break
+  sleep 2
+done
+echo "boot_completed at $(date +%T)"
+adb reverse tcp:3100 tcp:3201 >/dev/null; adb reverse tcp:9100 tcp:9100 >/dev/null
+seen=""
+for i in $(seq 1 $(( ${1:-60} / 2 ))); do
+  if adb shell dumpsys notification --noredact 2>/dev/null | grep -q "POS printing is off"; then seen="notice at $(date +%T)"; break; fi
+  sleep 2
+done
+echo "${seen:-no POS printing is off notice within ${1:-60} s}"
+adb shell dumpsys notification --noredact | grep -E "android.title=" | grep -i print
+```
+
+- [ ] **Step 6: the measured free-tier check, the soak's own runs** (spec §17.3 item 5 with the owner's token ruling; Session 2G's Task G3 is the model: the counting proxy, the POS server's process CPU, Mongo's opcounters; the emulator off or its app force-stopped, `adb reverse --remove-all`, and nothing else on the local mongod during a run: `netstat -ano | grep :27017 | grep ESTABLISHED` shows only the POS server's connections)
+
+**The tools** (the 3E review gate's copies of Session 2G's, with the busy day's tokens):
+
+`<sp>/e3/mongo-sampler.mjs`:
+
+```js
+// Session 1E E3 (spec §17.3 item 5): samples the local mongod's db.serverStatus().opcounters every 10 s
+// for --seconds, one JSON line per sample. Run from apps/cafe (it borrows the repo's mongoose); scratchpad only.
+//   node <scratchpad>/e3/mongo-sampler.mjs --seconds 1800 --log <file.jsonl>
+import path from "node:path";
+import { appendFileSync } from "node:fs";
+import { createRequire } from "node:module";
+
+const require = createRequire(path.join(process.cwd(), "package.json"));
+const mongoose = require("mongoose");
+const arg = (name, fallback) => {
+  const i = process.argv.indexOf(name);
+  return i >= 0 && process.argv[i + 1] !== undefined ? process.argv[i + 1] : fallback;
+};
+const seconds = Number(arg("--seconds", "600"));
+const log = arg("--log", "");
+if (log === "") throw new Error("--log <file.jsonl> is required");
+
+await mongoose.connect("mongodb://127.0.0.1:27017/admin");
+try {
+  const end = Date.now() + seconds * 1000;
+  for (;;) {
+    const status = await mongoose.connection.db.admin().serverStatus();
+    const { insert, query, update, delete: del, getmore, command } = status.opcounters;
+    appendFileSync(log, `${JSON.stringify({ t: Date.now(), insert, query, update, delete: del, getmore, command })}\n`);
+    if (Date.now() >= end) break;
+    await new Promise((resolve) => setTimeout(resolve, 10_000));
+  }
+} finally {
+  await mongoose.disconnect();
+}
+```
+
+`<sp>/e3/report-3g.mjs` (Session 2G's `report.mjs` with `--busy-slips` (1,500: spec §17.2's 1,200 slips and a token for each of the 300 orders) and a `night` mode):
+
+```js
+// Session 1E E3 (spec §17.3 item 5), as Session 2G ran it; the 3E review gate's copy for Session 3G (tokens on): the busy
+// day has a token per order (--busy-slips 1500: spec §17.2's 1,200 slips and 300 tokens), and `night` projects a
+// printing device left open for the night (12 h of an idle run). Turns one measured run into numbers, and two runs into
+// the busy-day projection. Scratchpad only; no dependencies. The local CPU per request stands in for Vercel's Active CPU.
+//   node report.mjs run --label <name> --proxy <p.jsonl> --samples <s.jsonl> --from <ms> --to <ms>
+//                       --cpu-before <ms> --cpu-after <ms> [--slips N] [--orders N] > <run.json>
+//   node report.mjs project --soak <soak-run.json> --idle <idle-run.json> [--busy-slips 1500]
+//   node report.mjs night --idle <idle-run.json> [--day <project.json>]
+import { readFileSync } from "node:fs";
+
+const arg = (name, fallback) => {
+  const i = process.argv.indexOf(name);
+  return i >= 0 && process.argv[i + 1] !== undefined ? process.argv[i + 1] : fallback;
+};
+const jsonl = (file) => readFileSync(file, "utf8").split("\n").filter((l) => l.trim() !== "").map((l) => JSON.parse(l));
+const STATIC = /^\/_next\/static\/|\.(png|ico|svg|css|js|map|woff2?|webmanifest|txt|jpg|jpeg|webp)$/;
+const round = (n, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
+
+// The busy day of spec §17.2 and the free allowances of §17.1 (per cafe, per day).
+const BUSY = { slips: Number(arg("--busy-slips", "1200")), openMinutes: 720, rushOrdersPerHour: 4 * (300 / 12) };
+const FREE = { invocationsPerDay: 1_000_000 / 30, activeCpuSecondsPerDay: (4 * 3600) / 30 };
+
+if (process.argv[2] === "run") {
+  const from = Number(arg("--from")), to = Number(arg("--to"));
+  const rows = jsonl(arg("--proxy")).filter((r) => r.t >= from && r.t <= to && !STATIC.test(r.r));
+  const byRoute = {};
+  for (const r of rows) byRoute[`${r.m} ${r.r}`] = (byRoute[`${r.m} ${r.r}`] ?? 0) + 1;
+  const print = rows.filter((r) => r.r.startsWith("/api/print-jobs")).length;
+  const pulse = rows.filter((r) => r.r === "/api/order-requests/pulse").length;
+  const samples = jsonl(arg("--samples")).filter((s) => s.t >= from - 10_000 && s.t <= to + 10_000);
+  const sum = (s) => s.insert + s.query + s.update + s.delete + s.getmore;
+  let peak = 0;
+  for (let i = 1; i < samples.length; i++) peak = Math.max(peak, (sum(samples[i]) - sum(samples[i - 1])) / ((samples[i].t - samples[i - 1].t) / 1000));
+  const first = samples[0], last = samples[samples.length - 1];
+  const ops = first && last ? sum(last) - sum(first) : 0;
+  const cpuMs = Number(arg("--cpu-after")) - Number(arg("--cpu-before"));
+  const minutes = (to - from) / 60_000;
+  const slips = Number(arg("--slips", "0")), orders = Number(arg("--orders", "0"));
+  console.log(JSON.stringify({
+    label: arg("--label", "run"), minutes: round(minutes, 1), invocations: rows.length, print, pulse, other: rows.length - print - pulse,
+    perMinute: { all: round(rows.length / minutes), print: round(print / minutes), pulse: round(pulse / minutes) },
+    perSlip: slips > 0 ? { all: round(rows.length / slips), print: round(print / slips), mongoOps: round(ops / slips) } : null,
+    perOrder: orders > 0 ? { all: round(rows.length / orders), print: round(print / orders) } : null,
+    cpuMs, cpuMsPerInvocation: round(cpuMs / Math.max(1, rows.length)),
+    mongo: { ops, commands: first && last ? last.command - first.command : 0, peakOpsPerSecond: round(peak) },
+    slips, orders, ordersPerHour: orders > 0 ? round(orders / (minutes / 60)) : 0,
+    byRoute,
+  }, null, 1));
+} else if (process.argv[2] === "project") {
+  const soak = JSON.parse(readFileSync(arg("--soak"), "utf8"));
+  const idle = JSON.parse(readFileSync(arg("--idle"), "utf8"));
+  // Printing's requests: the soak's per slip, times the busy day's slips, plus the idle run's printing
+  // requests per minute (the host's wake) over the open hours. The pulse is not counted: every tab polls
+  // it with or without printing; its added feed read and sweep are inside its measured CPU.
+  // The local POS has no realtime Worker, so the host's wake polls at the socket-down cadence (3 s, then
+  // 15 s): the measured idle rate is the WORST case of §17.2. A normal day (socket healthy) polls every 60 s.
+  const idlePrintPerMin = { worst: idle.perMinute.print, normal: Math.min(idle.perMinute.print, 1) };
+  const perDay = (perMin) => soak.perSlip.print * BUSY.slips + perMin * BUSY.openMinutes;
+  const printPerDay = perDay(idlePrintPerMin.normal);
+  const cpuPerDay = (soak.cpuMsPerInvocation * soak.perSlip.print * BUSY.slips + idle.cpuMsPerInvocation * idlePrintPerMin.normal * BUSY.openMinutes) / 1000;
+  const rushScale = soak.ordersPerHour > 0 ? BUSY.rushOrdersPerHour / soak.ordersPerHour : 1;
+  const peakAtRush = soak.mongo.peakOpsPerSecond * Math.min(1, rushScale);
+  const result = {
+    printingInvocationsPerDay: Math.round(printPerDay),
+    printingInvocationsPerDayWorst: Math.round(perDay(idlePrintPerMin.worst)),
+    invocationsShare: round((100 * printPerDay) / FREE.invocationsPerDay, 1),
+    printingCpuSecondsPerDay: round(cpuPerDay, 1),
+    activeCpuShare: round((100 * cpuPerDay) / FREE.activeCpuSecondsPerDay, 1),
+    mongoOpsPerSlip: soak.perSlip.mongoOps,
+    atlasPeakOpsPerSecond: { measured: soak.mongo.peakOpsPerSecond, atBusyRush: round(peakAtRush) },
+  };
+  // Spec §17.3 item 5 (normal day) and §17.2's worst-case bound (17,040 invocations a day).
+  result.pass = result.invocationsShare <= 20 && result.activeCpuShare <= 15 && result.atlasPeakOpsPerSecond.atBusyRush < 10 && result.printingInvocationsPerDayWorst <= 17_040;
+  console.log(JSON.stringify(result, null, 1));
+} else if (process.argv[2] === "night") {
+  // A printing device left open for the night (the 3C review gate's I-3): the idle run's rates over 12 closed hours. Its
+  // printing (the wake) at the measured (socket down: worst) rate and at the healthy socket's 1 a minute; its pulse and
+  // POS lists are the page's own polls (a device on screen pays them too), reported beside it, never hidden.
+  const idle = JSON.parse(readFileSync(arg("--idle"), "utf8"));
+  const minutes = 720;
+  const per = (n) => (n / idle.minutes) * minutes;
+  const wakeWorst = per(idle.print);
+  const wakeNormal = Math.min(idle.perMinute.print, 1) * minutes;
+  const all = per(idle.invocations);
+  const otherNormal = per(idle.invocations - idle.print);
+  const cpu = (n) => round((n * idle.cpuMsPerInvocation) / 1000, 1);
+  const result = {
+    nightMinutes: minutes,
+    printing: { normal: Math.round(wakeNormal), worst: Math.round(wakeWorst), cpuSecondsNormal: cpu(wakeNormal), cpuSecondsWorst: cpu(wakeWorst) },
+    pageOwn: { requests: Math.round(otherNormal), cpuSeconds: cpu(otherNormal) },
+    allWorst: { requests: Math.round(all), invocationsShare: round((100 * all) / FREE.invocationsPerDay, 1), cpuSeconds: cpu(all), activeCpuShare: round((100 * all * idle.cpuMsPerInvocation) / 1000 / FREE.activeCpuSecondsPerDay, 1) },
+  };
+  if (arg("--day", "") !== "") {
+    // The busy day's printing plus the night's printing (the wake), against §17.3 item 5 (20 % / 15 %).
+    const day = JSON.parse(readFileSync(arg("--day"), "utf8"));
+    const invocations = day.printingInvocationsPerDay + wakeNormal;
+    const cpuSeconds = day.printingCpuSecondsPerDay + cpu(wakeNormal);
+    result.dayAndNight = { printingInvocations: Math.round(invocations), invocationsShare: round((100 * invocations) / FREE.invocationsPerDay, 1), printingCpuSeconds: round(cpuSeconds, 1), activeCpuShare: round((100 * cpuSeconds) / FREE.activeCpuSecondsPerDay, 1) };
+    result.pass = result.dayAndNight.invocationsShare <= 20 && result.dayAndNight.activeCpuShare <= 15;
+  }
+  console.log(JSON.stringify(result, null, 1));
+} else {
+  throw new Error("mode: run | project | night");
+}
+```
+
+`<sp>/m-run-3g.sh` (one measured run: the sampler first, `T0` and the POS server's CPU, the run, `T1` and the CPU again):
+
+```bash
+#!/usr/bin/env bash
+# Session 3G's measured run (the 3E review gate's copy of Session 2G's m-run.sh; scratchpad only).
+#   m-run-3g.sh <label> soak <print-soak.ts args...>   the soak, run from $SOAK_ROOT/apps/cafe (default the repo) with e2e3g.env
+#   m-run-3g.sh <label> idle <seconds>                 an idle window
+# Starts the opcounter sampler first, notes T0 and the POS server's CPU, runs, notes T1 and the CPU again, then stops
+# the sampler and appends the numbers to e3/runs.txt. Prints counts only, never a secret.
+SP="$(cd "$(dirname "$0")" && pwd)"
+SPW="$(cd "$(dirname "$0")" && pwd -W)"
+LABEL=$1; KIND=$2; shift 2
+ROOT="${SOAK_ROOT:-/d/kd/lucifer}"
+POS_PID=$(netstat -ano | grep LISTEN | grep "0.0.0.0:3110 " | awk '{print $5}' | head -1)
+[ -n "$POS_PID" ] || { echo "no POS on 3110"; exit 1; }
+cpu() { powershell -NoProfile -Command "(Get-Process -Id $POS_PID).TotalProcessorTime.TotalMilliseconds" | tr -d '\r'; }
+cd "$ROOT/apps/cafe" || exit 1
+node "$SPW/e3/mongo-sampler.mjs" --seconds 4000 --log "$SPW/e3/samples-$LABEL.jsonl" &
+SAMPLER=$!
+sleep 12
+T0=$(node -e "console.log(Date.now())"); C0=$(cpu)
+if [ "$KIND" = "idle" ]; then
+  sleep "$1"
+else
+  node --env-file="$SPW/e2e3g.env" --import tsx scripts/print-soak.ts "$@" > "$SP/e3/soak-$LABEL.log" 2>&1
+  echo "soak rc=$?" >> "$SP/e3/soak-$LABEL.log"
+fi
+T1=$(node -e "console.log(Date.now())"); C1=$(cpu)
+sleep 15
+kill "$SAMPLER" 2>/dev/null
+echo "$LABEL T0=$T0 T1=$T1 C0=$C0 C1=$C1 pid=$POS_PID" >> "$SP/e3/runs.txt"
+echo "$LABEL done T0=$T0 T1=$T1 C0=$C0 C1=$C1"
+```
+
+`<sp>/m-report.sh` (a run's JSON from `e3/runs.txt`):
+
+```bash
+#!/bin/bash
+# The run JSON of one measured run from e3/runs.txt.   usage: m-report.sh <label> <slips (the soak's jobs; 0 idle)> <orders>
+SP="$(cd "$(dirname "$0")" && pwd)"
+cd "$SP/e3" || exit 1
+L=$(grep "^$1 " runs.txt | tail -1)
+v() { echo "$L" | sed -E "s/.*$1=([0-9.]+).*/\1/"; }
+node report-3g.mjs run --label "$1" --proxy "$(cd "$SP" && pwd -W)/proxy3g.jsonl" --samples "$(cd "$SP" && pwd -W)/e3/samples-$1.jsonl" --from "$(v T0)" --to "$(v T1)" --cpu-before "$(v C0)" --cpu-after "$(v C1)" --slips "$2" --orders "$3" > "run-$1.json"
+node -e "const r=require('./run-$1.json'); console.log(JSON.stringify({label:r.label,minutes:r.minutes,invocations:r.invocations,print:r.print,perSlipPrint:r.perSlip?.print,cpuMsPerInv:r.cpuMsPerInvocation,mongoOpsPerSlip:r.perSlip?.mongoOps,peak:r.mongo.peakOpsPerSecond,byRoute:r.byRoute}))"
+```
+
+`<sp>/p2g-tool.ts` and `<sp>/p2d-tool.ts` (Session 2G's setup tools; run from `apps/cafe` as `P2C_BASE=http://localhost:3110 node --env-file=<sp>/e2e3g.env --import tsx <sp>/p2g-tool.ts <mode> …`):
+
+```ts
+// Session 2G exit check (scratchpad only; never in the repo; grown from the 2F2 gate's g-tool.ts). It drives the local
+// POS as the e2e admin (a session minted from the env file's AUTH_SECRET, never printed) and prints statuses, names and
+// opaque device ids only: never a secret, a token or an order's payload. Run from apps/cafe:
+//   P2C_BASE=http://localhost:3110 node --env-file=<scratchpad>/e2e.env --import tsx <scratchpad>/p2g-tool.ts <mode> [args]
+// modes: writer <printerName>         the printer's printing device id (an opaque id, not a secret)
+//        printer <name> <writerDeviceId> <host> <port> <paper> <slips>
+//                                      a network printer printed by <writerDeviceId>, made or saved again by name;
+//                                      <slips> is a comma list of bill, all (Full KOT copy), notices, eod and
+//                                      station:<Station name> (that station's KOTs); bill copies 1, KOT copies 1
+//        delete <printerName>          deletes that printer
+//        station <name>                adds a kitchen station
+//        category <categoryName> <stationName|none>
+//                                      puts a category on a station (none: back to the default station)
+import { createRequire } from "node:module";
+import path from "node:path";
+
+const require = createRequire(path.join(process.cwd(), "package.json"));
+const mongoose = require("mongoose") as typeof import("mongoose");
+const { encode } = require("next-auth/jwt") as typeof import("next-auth/jwt");
+const BASE = process.env.P2C_BASE ?? "http://localhost:3110";
+const COOKIE = "authjs.session-token";
+
+async function main(): Promise<void> {
+  const [mode, ...args] = process.argv.slice(2);
+  const uri = process.env.MONGODB_URI ?? "";
+  if (!/^mongodb:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/pos_scratch_[a-z0-9_]+$/.test(uri)) throw new Error("refusing: not a local pos_scratch_* database");
+  await mongoose.connect(uri);
+  try {
+    const db = mongoose.connection.db;
+    if (!db) throw new Error("no db");
+    if (mode === "writer") {
+      const p = await db.collection("printers").findOne({ name: args[0] ?? "" });
+      console.log(p === null ? "none" : String(p.primaryDeviceId ?? p.connection?.deviceId ?? ""));
+      return;
+    }
+    const secret = process.env.AUTH_SECRET ?? "";
+    if (secret.length < 32) throw new Error("AUTH_SECRET missing from the env file");
+    const staff = await db.collection("staffs").findOne({ username: "e2eadmin" }, { projection: { name: 1, role: 1 } });
+    if (staff === null) throw new Error("e2eadmin not found");
+    const cookie = `${COOKIE}=${await encode({ token: { name: staff.name, id: String(staff._id), role: staff.role, lastValidated: Date.now() }, secret, salt: COOKIE })}`;
+    const call = async (method: string, url: string, body?: unknown) => {
+      const res = await fetch(`${BASE}${url}`, { method, headers: { "content-type": "application/json", cookie }, body: body === undefined ? undefined : JSON.stringify(body) });
+      return { status: res.status, json: (await res.json().catch(() => ({}))) as { data?: unknown; error?: string } };
+    };
+    const stations = async () => (await call("GET", "/api/stations")).json.data as Array<{ id: string; name: string; isDefault: boolean }>;
+    const printers = async () => ((await call("GET", "/api/printers")).json.data ?? []) as Array<{ id: string; name: string }>;
+    if (mode === "printer") {
+      const [name, writer, host, port, paper, slipList] = args;
+      if (name === undefined || writer === undefined || host === undefined || port === undefined || paper === undefined || slipList === undefined) throw new Error("printer <name> <writerDeviceId> <host> <port> <paper> <slips>");
+      const known = await stations();
+      const parts = slipList.split(",");
+      const kotStations = parts.filter((s) => s.startsWith("station:")).map((s) => {
+        const station = known.find((k) => k.name === s.slice("station:".length));
+        if (station === undefined) throw new Error(`no station ${s}`);
+        return station.id;
+      });
+      const body = { name, connection: { kind: "lan", host, port: Number(port) }, primaryDeviceId: writer, paper: Number(paper), slips: { bill: parts.includes("bill"), kotStations, kotAll: parts.includes("all"), notices: parts.includes("notices"), eod: parts.includes("eod") }, copies: { kot: 1, bill: 1 }, enabled: true };
+      const existing = (await printers()).find((p) => p.name === name);
+      const res = existing === undefined ? await call("POST", "/api/printers", body) : await call("PUT", `/api/printers/${existing.id}`, body);
+      console.log(JSON.stringify({ printer: name, status: res.status, error: res.json.error ?? null }));
+      return;
+    }
+    if (mode === "delete") {
+      const existing = (await printers()).find((p) => p.name === (args[0] ?? ""));
+      if (existing === undefined) throw new Error(`no printer named ${args[0] ?? ""}`);
+      console.log(JSON.stringify({ deleted: args[0], status: (await call("DELETE", `/api/printers/${existing.id}`)).status }));
+      return;
+    }
+    if (mode === "station") {
+      const made = await call("POST", "/api/stations", { name: args[0] ?? "" });
+      console.log(JSON.stringify({ station: made.status, error: made.json.error ?? null }));
+      return;
+    }
+    if (mode === "category") {
+      const [categoryName, stationName] = args;
+      const category = await db.collection("categories").findOne({ name: categoryName ?? "" });
+      if (category === null || stationName === undefined) throw new Error("category <categoryName> <stationName|none>");
+      const station = stationName === "none" ? null : (await stations()).find((s) => s.name === stationName);
+      if (station === undefined) throw new Error(`no station ${stationName}`);
+      const res = await call("PUT", `/api/categories/${String(category._id)}`, { name: category.name, stationId: station === null ? null : station.id });
+      console.log(JSON.stringify({ category: categoryName, station: stationName, status: res.status }));
+      return;
+    }
+    throw new Error("mode: writer | printer | delete | station | category");
+  } finally {
+    await mongoose.disconnect();
+  }
+}
+
+main().catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : "failed");
+  process.exitCode = 1;
+});
+```
+
+```ts
+// Session 2D exit check (scratchpad only; never in the repo; grown from Session 2C's p2c-tool.ts). It drives the
+// local POS as the e2e admin (a session minted from the env file's AUTH_SECRET, never printed) and prints statuses,
+// counts, ids, names and job states only: never a secret, a token or an order's payload. Run from apps/cafe:
+//   node --env-file=<scratchpad>/e2e.env --import tsx <scratchpad>/p2d-tool.ts <mode> [args]
+// modes: devices                 the print host and the device rows (opaque ids, not secrets)
+//        beat <deviceId> <label>  a device row for a scripted writer (shell android), as the wake makes one, so the
+//                                 setup page offers it as a network printer's printing device
+//        setup1 <deviceId> <host> <port>
+//                                 what Set up printers makes on a device whose printer is a network printer: Printer 1
+//                                 (Bill, Full KOT copy, Notices, End of day), written by <deviceId>
+//        agent <deviceId> <printerName> <port>
+//                                 a scripted writer: every 2 s it leases that printer's line, writes a text slip
+//                                 (label, station line, items; a test slip's lines) to the fake printer on <port>,
+//                                 and acks it. Runs until stopped; restart it after its printer is re-saved.
+//        state                    stations, printers (connection, writer, slips), categories and items with a station
+//        payloads [n]             the newest KOT and test jobs: label, station line, item names or test lines, status
+//        jobs                     the newest jobs: kind, status, printer, target, labels, epoch, the log
+//        reset2d                  back to as found: no printer, only the default station, no station on any category
+//                                 or item, no scripted device row
+//        (Session 2C's setup, assign and teardown modes are kept as they were.)
+import { createRequire } from "node:module";
+import net from "node:net";
+import path from "node:path";
+
+const require = createRequire(path.join(process.cwd(), "package.json"));
+const mongoose = require("mongoose") as typeof import("mongoose");
+const { encode } = require("next-auth/jwt") as typeof import("next-auth/jwt");
+
+const BASE = process.env.P2C_BASE ?? "http://localhost:3110";
+const COOKIE = "authjs.session-token";
+type Db = NonNullable<typeof mongoose.connection.db>;
+type Json = { data?: unknown; error?: string };
+
+async function cookieFor(db: Db): Promise<string> {
+  const secret = process.env.AUTH_SECRET ?? "";
+  if (secret.length < 32) throw new Error("AUTH_SECRET missing from the env file");
+  const staff = await db.collection("staffs").findOne({ username: "e2eadmin" }, { projection: { name: 1, role: 1 } });
+  if (staff === null) throw new Error("e2eadmin not found");
+  const token = await encode({ token: { name: staff.name, id: String(staff._id), role: staff.role, lastValidated: Date.now() }, secret, salt: COOKIE });
+  return `${COOKIE}=${token}`;
+}
+
+async function call(cookie: string, method: string, url: string, body?: unknown): Promise<{ status: number; json: Json }> {
+  const res = await fetch(`${BASE}${url}`, { method, headers: { "content-type": "application/json", cookie }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), redirect: "manual" });
+  const text = await res.text();
+  try {
+    return { status: res.status, json: JSON.parse(text) as Json };
+  } catch {
+    return { status: res.status, json: { error: `non-JSON answer (${text.length} chars)` } };
+  }
+}
+
+type Printer = { id: string; name: string };
+type LeasedJob = { id: string; epoch: number; label: string; copies?: number; payload: { kind: string; printerName?: string; lines?: string[]; station?: { name: string; mode: string }; snapshot?: { items?: Array<{ name: string; qty: number }> } } };
+
+function slipText(job: LeasedJob): string {
+  if (job.payload.kind === "test") return [`[${job.label}]`, "TEST PRINT", job.payload.printerName ?? "", ...(job.payload.lines ?? []), "", ""].join("\n");
+  const station = job.payload.station;
+  const header = station === undefined ? "" : station.mode === "no-printer" ? `${station.name.toUpperCase()} (NO PRINTER SET)` : station.name.toUpperCase();
+  const items = (job.payload.snapshot?.items ?? []).map((item) => `${item.qty} x ${item.name}`);
+  return [`[${job.label}]`, header, ...items, "", ""].join("\n");
+}
+
+function writeTo(port: number, text: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const socket = net.connect(port, "127.0.0.1", () => {
+      const bytes = Buffer.from(text, "utf8");
+      socket.end(bytes, () => resolve(bytes.length));
+    });
+    socket.on("error", reject);
+  });
+}
+
+async function agent(cookie: string, deviceId: string, printerName: string, port: number): Promise<void> {
+  const list = await call(cookie, "GET", "/api/printers");
+  const printer = ((list.json.data ?? []) as Printer[]).find((p) => p.name === printerName);
+  if (printer === undefined) throw new Error(`no printer named ${printerName}`);
+  console.log(`agent ${deviceId} writes ${printerName} (${printer.id.slice(-6)}) to 127.0.0.1:${port}`);
+  for (;;) {
+    const lease = await call(cookie, "POST", "/api/print-jobs/lease", { deviceId, tabId: `${deviceId}-tab`, printerIds: [printer.id] });
+    const jobs = ((lease.json.data as { jobs?: LeasedJob[] } | undefined)?.jobs ?? []);
+    for (const job of jobs) {
+      let bytes = 0;
+      for (let copy = 0; copy < (job.copies ?? 1); copy++) bytes += await writeTo(port, slipText(job));
+      const ack = await call(cookie, "POST", `/api/print-jobs/${job.id}/ack`, { deviceId, epoch: job.epoch, outcome: "printed" });
+      const station = job.payload.station === undefined ? "-" : job.payload.station.mode === "all" ? "ALL STATIONS" : job.payload.station.name.toUpperCase();
+      console.log(JSON.stringify({ at: new Date().toISOString().slice(11, 19), job: job.id.slice(-6), label: job.label, station, bytes, ack: ack.status, more: (ack.json.data as { more?: boolean } | undefined)?.more }));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+}
+
+async function main(): Promise<void> {
+  const [mode, ...args] = process.argv.slice(2);
+  const uri = process.env.MONGODB_URI ?? "";
+  if (!/\/pos_scratch_e2e_[a-z0-9_]+$/.test(uri)) throw new Error("refusing: not a pos_scratch_e2e_* database");
+  await mongoose.connect(uri);
+  const db = mongoose.connection.db;
+  if (!db) throw new Error("no db");
+  const out = (v: unknown) => console.log(JSON.stringify(v, null, 1));
+  try {
+    if (mode === "devices") {
+      const host = await db.collection("printhosts").findOne({}, { projection: { deviceId: 1 } });
+      const devices = await db.collection("printdevices").find({}).project({ deviceId: 1, lastSeenAt: 1 }).toArray();
+      return out({ host: host?.deviceId ?? null, devices: devices.map((d) => [String(d.deviceId), d.lastSeenAt]) });
+    }
+    if (mode === "jobs") {
+      const printers = new Map((await db.collection("printers").find({}).project({ name: 1 }).toArray()).map((p) => [String(p._id), String(p.name)]));
+      const rows = await db.collection("printjobs").find({}, { projection: { payload: 0 } }).sort({ createdAt: -1, _id: -1 }).limit(10).toArray();
+      return out(
+        rows.map((j) => ({
+          id: String(j._id).slice(-6),
+          kind: j.kind,
+          label: j.label,
+          status: j.status,
+          printer: typeof j.printerId === "string" ? (printers.get(j.printerId) ?? j.printerId) : null,
+          copies: j.copies ?? 1,
+          target: typeof j.targetDeviceId === "string" ? j.targetDeviceId.slice(0, 12) : null,
+          labels: j.labels ?? [],
+          epoch: j.epoch,
+          log: (j.log ?? []).map((e: { event: string; detail?: string; at: Date }) => `${new Date(e.at).toISOString().slice(11, 19)} ${e.event}${e.detail ? `(${e.detail})` : ""}`),
+        })),
+      );
+    }
+    const cookie = await cookieFor(db);
+    if (mode === "setup") {
+      const app = args[0] ?? "";
+      if (app === "") throw new Error("setup <appDeviceId>");
+      const stations = (await call(cookie, "GET", "/api/stations")).json.data as Array<{ id: string; name: string; isDefault: boolean }>;
+      const kitchen = stations.find((s) => s.isDefault);
+      const barMade = stations.find((s) => s.name === "Bar") ?? ((await call(cookie, "POST", "/api/stations", { name: "Bar" })).json.data as { id: string });
+      const beverages = await db.collection("categories").findOne({ name: "Beverages" });
+      if (beverages === null || kitchen === undefined) throw new Error("no Beverages category or no default station");
+      const cat = await call(cookie, "PUT", `/api/categories/${String(beverages._id)}`, { name: beverages.name, stationId: barMade.id });
+      const slips = { bill: false, kotStations: [] as string[], kotAll: false, notices: false, eod: false };
+      const made = [
+        await call(cookie, "POST", "/api/printers", { name: "Counter", connection: { kind: "lan", host: "10.0.2.2", port: 9100 }, primaryDeviceId: app, paper: 80, slips: { bill: true, kotStations: [], kotAll: true, notices: true, eod: true }, copies: { kot: 1, bill: 2 }, enabled: true }),
+        await call(cookie, "POST", "/api/printers", { name: "Kitchen", connection: { kind: "lan", host: "127.0.0.1", port: 9101 }, primaryDeviceId: "e2e-kitchen-agent", paper: 80, slips: { ...slips, kotStations: [kitchen.id], notices: true }, copies: { kot: 1, bill: 1 }, enabled: true }),
+        await call(cookie, "POST", "/api/printers", { name: "Bar", connection: { kind: "lan", host: "127.0.0.1", port: 9102 }, primaryDeviceId: "e2e-bar-agent", paper: 80, slips: { ...slips, kotStations: [barMade.id], notices: true }, copies: { kot: 1, bill: 1 }, enabled: true }),
+      ];
+      return out({ category: cat.status, printers: made.map((r) => [r.status, (r.json.data as { name?: string } | undefined)?.name ?? r.json.error]) });
+    }
+    if (mode === "teardown") {
+      const list = ((await call(cookie, "GET", "/api/printers")).json.data ?? []) as Printer[];
+      const removed = [];
+      for (const p of list) removed.push((await call(cookie, "DELETE", `/api/printers/${p.id}`)).status);
+      const beverages = await db.collection("categories").findOne({ name: "Beverages" });
+      const cat = beverages === null ? null : (await call(cookie, "PUT", `/api/categories/${String(beverages._id)}`, { name: beverages.name, stationId: null })).status;
+      return out({ removed, category: cat, left: ((await call(cookie, "GET", "/api/printers")).json.data as unknown[]).length });
+    }
+    if (mode === "assign") {
+      const [name, deviceId, hostName, port] = args;
+      if (name === undefined || deviceId === undefined || hostName === undefined || port === undefined) throw new Error("assign <printerName> <deviceId> <host> <port>");
+      const list = ((await call(cookie, "GET", "/api/printers")).json.data ?? []) as Array<Printer & { paper: number; slips: unknown; copies: unknown; enabled: boolean }>;
+      const p = list.find((x) => x.name === name);
+      if (p === undefined) throw new Error(`no printer named ${name}`);
+      const res = await call(cookie, "PUT", `/api/printers/${p.id}`, { name: p.name, connection: { kind: "lan", host: hostName, port: Number(port) }, primaryDeviceId: deviceId, paper: p.paper, slips: p.slips, copies: p.copies, enabled: p.enabled });
+      return out({ status: res.status, writer: deviceId.slice(0, 8) });
+    }
+    if (mode === "setup1") {
+      // What Set up printers makes on a device whose printer is a network printer (setUpPrintersBody): Printer 1
+      // with Bill, Full KOT copy, Notices and End of day, written by that device.
+      const [deviceId, hostName, port] = args;
+      if (deviceId === undefined || hostName === undefined || port === undefined) throw new Error("setup1 <deviceId> <host> <port>");
+      const res = await call(cookie, "POST", "/api/printers", { name: "Printer 1", connection: { kind: "lan", host: hostName, port: Number(port) }, primaryDeviceId: deviceId, paper: 80, slips: { bill: true, kotStations: [], kotAll: true, notices: true, eod: true }, copies: { kot: 1, bill: 1 }, enabled: true });
+      return out({ status: res.status, error: res.json.error ?? null });
+    }
+    if (mode === "payloads") {
+      // The newest KOT jobs' payload shape: station line and copies (never the order's contents).
+      const rows = await db.collection("printjobs").find({ kind: { $in: ["kot", "test"] } }).sort({ createdAt: -1 }).limit(Number(args[0] ?? 4)).toArray();
+      return out(rows.map((j) => { const p = JSON.parse(String(j.payload)); return { id: String(j._id).slice(-6), kind: j.kind, label: j.label, station: p.station ?? null, items: (p.snapshot?.items ?? []).filter((i: { kotRound: number }) => p.round === null || i.kotRound === p.round).map((i: { name: string }) => i.name), testLines: p.lines ?? null, status: j.status }; }));
+    }
+    if (mode === "beat") {
+      // A device row for a scripted writer, as the wake makes one (shell android), so the setup page lists it.
+      const [deviceId, label] = args;
+      if (deviceId === undefined || label === undefined) throw new Error("beat <deviceId> <label>");
+      const caps = { lan: true, bluetooth: true, usb: true, windowsPrinters: false, webSerial: false, webBluetooth: false };
+      const res = await call(cookie, "POST", "/api/print-jobs/wake", { deviceId, label, shell: "android", capabilities: caps });
+      return out({ status: res.status });
+    }
+    if (mode === "state") {
+      const stations = await db.collection("stations").find({}).project({ name: 1, isDefault: 1 }).toArray();
+      const sName = new Map(stations.map((st) => [String(st._id), String(st.name)]));
+      const printers = await db.collection("printers").find({}).toArray();
+      const cats = await db.collection("categories").find({}).project({ name: 1, stationId: 1 }).toArray();
+      const items = await db.collection("products").find({ stationId: { $exists: true } }).project({ name: 1, stationId: 1 }).toArray();
+      return out({
+        stations: stations.map((st) => `${st.name}${st.isDefault ? " (default)" : ""}`),
+        printers: printers.map((p) => ({ name: p.name, on: p.enabled, conn: p.connection.kind === "lan" ? `${p.connection.host}:${p.connection.port}` : `${p.connection.transport}:${p.connection.address}`, writer: String(p.primaryDeviceId ?? p.connection.deviceId ?? "").slice(0, 10), slips: { ...p.slips, kotStations: (p.slips.kotStations ?? []).map((id: unknown) => sName.get(String(id)) ?? `gone:${String(id).slice(-4)}`) }, copies: p.copies })),
+        categories: cats.filter((c) => c.stationId !== undefined).map((c) => `${c.name} -> ${sName.get(String(c.stationId)) ?? "gone"}`),
+        items: items.map((i) => `${i.name} -> ${sName.get(String(i.stationId)) ?? "gone"}`),
+      });
+    }
+    if (mode === "reset2d") {
+      // Back to as found: no printer, only the default station, no station on any category or item.
+      const pr = await db.collection("printers").deleteMany({});
+      const st = await db.collection("stations").deleteMany({ isDefault: { $ne: true } });
+      const ca = await db.collection("categories").updateMany({ stationId: { $exists: true } }, { $unset: { stationId: "" } });
+      const it = await db.collection("products").updateMany({ stationId: { $exists: true } }, { $unset: { stationId: "" } });
+      const dv = await db.collection("printdevices").deleteMany({ deviceId: { $regex: "^e2e-" } });
+      return out({ printers: pr.deletedCount, stations: st.deletedCount, categories: ca.modifiedCount, items: it.modifiedCount, scriptedDevices: dv.deletedCount });
+    }
+    if (mode === "agent") {
+      const [deviceId, name, port] = args;
+      if (deviceId === undefined || name === undefined || port === undefined) throw new Error("agent <deviceId> <printerName> <port>");
+      return await agent(cookie, deviceId, name, Number(port));
+    }
+    throw new Error("unknown mode (see the header)");
+  } finally {
+    await mongoose.disconnect();
+  }
+}
+
+main().catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : "failed");
+  process.exitCode = 1;
+});
+```
+
+**The fake printers** for these runs, each its own background command with a long `--out` and a `keep.txt` made first: `mkdir -p <sp>/fake3g-m91NN && echo keep > <sp>/fake3g-m91NN/keep.txt; node D:/kd/lucifer/scripts/fake-escpos-printer.mjs --port 91NN --out <sp>/fake3g-m91NN` for 9100, 9101, 9103 and 9104 (`<out NN>` below). Each soak runs from the repo's `apps/cafe` (`m-run-3g.sh` does it), through the proxy (`--base http://localhost:3200`); `m-report.sh <label> <the soak's "jobs"> <its "orders">` after each (idle: `0 0`).
+
+| Run | Set-up | Command | Expected (the gate's short runs: 10 orders, 3-minute idles) |
+|---|---|---|---|
+| T4 | printers mode, the soak writes three printers with direct print: `p2g-tool.ts station Bar`, `category Beverages Bar`, `printer 'Printer 1' soak-device 127.0.0.1 9100 80 bill,all,notices,eod`, `printer 'Bar printer' soak-device 127.0.0.1 9101 58 station:Bar,notices`, `printer 'Kitchen printer' soak-device 127.0.0.1 9104 80 station:Kitchen,bill,notices` | `m-run-3g.sh T4 soak --orders 100 --every-ms 1500 --drain-s 300 --base http://localhost:3200 --printer "Printer 1=127.0.0.1:9100" --printer "Bar printer=127.0.0.1:9101" --printer "Kitchen printer=127.0.0.1:9104" --direct --tokens page --out <out 00>,<out 01>,<out 04>` | `"printers mode, soak agent prints, direct, a token per order (says it: page)"`, every job printed, `pass: true`; the soak's print requests: an ack a job and a lease a token (the gate: 50 jobs, 50 acks, 10 leases; 1.2 print requests a job; 13 ms a request; 10.3 Mongo ops a job) |
+| T4L | as T4 | the same with `--tokens lease` (a page from print-customization S7 to before Phase 3: R-3, m-6) | as T4; Mongo ops a job one more (the ack's read of the device's last word; the gate: 11.3) |
+| T1 | simple mode, no host: `p2g-tool.ts delete` each printer | `m-run-3g.sh T1 soak --orders 100 --every-ms 1500 --drain-s 300 --base http://localhost:3200 --agent 127.0.0.1:9103 --direct --tokens page --out <out 03>` | `"simple mode, soak agent prints, direct, a token per order (says it: page)"`, `pass: true` (the gate: 35 jobs, 35 acks, 10 leases) |
+| TF | printers mode: `station Bar` (if gone), `category Beverages Bar`, `printer 'Kitchen printer' soak-a 127.0.0.1 9104 80 station:Kitchen,bill,notices`, `printer 'Bar printer' soak-b 127.0.0.1 9101 58 station:Bar,notices` | `m-run-3g.sh TF soak --orders 100 --every-ms 3000 --drain-s 300 --base http://localhost:3200 --printer "Kitchen printer=127.0.0.1:9104" --device soak-a --failover soak-b --failover-printer "Bar printer=127.0.0.1:9101" --stop-after 20 --tokens page --out <out 04>,<out 01>` | `"printers mode, two soak writers, the first stopped after 20 orders (failover), …"`, every job printed, `pass: true`; its `failover` report: `slowestWaitingS` ≤ 150, every slip made 90 s or more after the stop printed by `soak-b` (the gate, 40 orders stopped after 6: 140 jobs; 15 made after 90 s; slowest waiting 89.7 s; the second writer's first print 75.7 s after the stop) |
+| TW, TWI | the Windows app 1.12.0 writes: `pw3g.sh init`, `pw3g.sh writers-setup`, then `pw3g.sh writers 2400` in the background (fake 1.12.0 PCs PC1 and PC2 and their own fake printers 9100 and 9101: stop the Step 6 fake printers on 9100 and 9101 by PID first); wait for its `HOLD` line | `m-run-3g.sh TW soak --orders 100 --every-ms 1500 --drain-s 300 --base http://localhost:3200 --out <sp>/fake3g-9100,<sp>/fake3g-9101`, then `m-run-3g.sh TWI idle 600` with the writers still up; then stop the `writers` run by PID (and any Chrome it left: match `pw-3g` in the command line) | TW: `"printers mode, the printers' writer prints, a token per order"`, every job printed, `pass: true` (the gate: 35 jobs; 2.17 print requests a job); TWI: the two PCs' wakes, no lease |
+
+- [ ] **Step 7: the exit on the emulator and a second device** (spec §14's Phase 3 row, end to end)
+
+**The emulator** (`df -h /c /d` right before; below about 2 GB free on C: the emulator's qemu exits with code 21: stop and tell the owner, never delete anything; boot `Pixel_7_API_33` yourself with a 2 h background timeout: `-memory 4096 -no-audio -no-snapshot`, `-memory 2048` when C: has under ~5 GB free, recorded). `adb shell pm path com.possoftware.pos` and hash the APK on the device. As left by this gate: the **release APK** (`29115bdf…`), on its start screen with no address, notifications not allowed, `font_scale` unset. **Check which POS the app shows before any tap that writes: never the demo.** `adb reverse tcp:3100 tcp:3201` and **`adb reverse tcp:9100 tcp:9100`**: the kitchen's network printer has ONE address, `127.0.0.1:9100`, for the emulator app (through the reverse; loopback is a private address for the POS app) and for the fake Windows app PC2 (the second device).
+
+**The second device must open its page after the setup names it a writer:** with no realtime Worker locally a page re-reads the printers only on a load (the gate's first failover try failed: PC2 had loaded before the setup and never polled the wake). So the order below is `init`, the app's device id, `exit-setup`, and only then `second`.
+
+| # | Step | Expected (the gate's pre-run) |
+|---|---|---|
+| XG0 | every other fake printer on 9100 stopped (by PID); `pw3g.sh init` (the PCs' and the tab's device ids); `pw3g.sh printers 900` in the background (a fake printer on 9100 for now); `adb install -r` the Step 2 x86_64 APK (hashed) over the release APK; open it; on its start screen type `http://localhost:3100`, Open POS (a session from another database answers 401: sidebar → Account Staff → Sign out, then sign in as `e2eadmin` with `type-secret.py` into a field checked to be a password field); `pw3g.sh clear` (simple mode), Refresh; the printer panel → Network printer `127.0.0.1`, 9100 → Use; Done | crash 0; "Network printer 127.0.0.1 is connected."; the app's device id is the `device` of its pulses in `proxy3g-emu.jsonl` (the gate: `80cfb12d…d5f2`) |
+| XG1 (the setup) | `pw3g.sh exit-setup <that id>`; stop the `printers` run by PID (and its fake printer); `pw3g.sh second 5400` in the background, and wait for its `HOLD` line; the app: Refresh; `adb shell pm grant com.possoftware.pos android.permission.POST_NOTIFICATIONS` (recorded), HOME and open once; HOME; `pw3g.sh exit-order 120` | `PrintHostService` `isForeground=true`, `stopIfKilled=false`; "Printing is on — Network printer 127.0.0.1"; the slip printed by the emulator with the app hidden (the gate: 3.0 s) |
+| XG2 (exit item 2: paper out on every device) | `pw3g.sh exit-paper` in the background; when it prints `READ`, open the app, the printer button, dump the panel (and a `screencap`), ESC, HOME | the health "out of paper" from the app's check (the gate: 33–57 s, its 60 s idle check); the slip never leased (queued after 45 s); C's notice and **C's and D's panels "Kitchen is out of paper."**, the app's own panel row too and its dot "Printer needs attention"; paper back: printed once by the app (the gate: 4.1 s) |
+| XG3 (exit item 1: failover, P3-4) | HOME, 20 s, then in one command: `adb shell am force-stop com.possoftware.pos; STOP=$(node -e "console.log(Date.now())"); bash <sp>/pw3g.sh exit-failover $STOP` | the slip made right after the stop printed **by PC2 within 150 s of the stop** (the gate: made at 3.7 s, printed by PC2 at 106.6 s); the slip made 95 s after the stop printed by PC2 (the gate: 12.2 s after its order: PC2 hears of it at its next wake, no Worker locally); the Kitchen health then from PC2 |
+| XG4 (exit item 3: a killed service restarts) | open the app (monkey): "Printing is on"; HOME; `am crash <the app's pid>` (`ps -A -o PID,NAME`); poll `dumpsys notification`; `cmd statusbar expand-notifications`, tap the notice; HOME; `pw3g.sh exit-order 120` | **"POS printing is off. Tap to start."** within seconds (the gate: 1 s); the crash buffer only the induced crash, **0** `ForegroundServiceDidNotStartInTimeException`; the tap opens MainActivity, "Printing is on"; printed by the app with it hidden (the gate: 2.1 s) |
+| XG5 (exit item 4: the boot notification) | `bash <sp>/xg-reboot.sh 70` (sync, reboot, both reverses back); tap the notice; HOME; `pw3g.sh exit-order 120` | the notice after `sys.boot_completed` (the gate: 18 s); the tap opens the app; printed (the gate: 1.0 s) |
+| XG6 | `adb logcat -b crash -d \| grep -c possoftware` | 0 after every install |
+
+Then stop the `second` run by PID (and its fake printer, and any Chrome left with `pw-3g` in its command line).
+
+- [ ] **Step 8: the measured free-tier check with the emulator app** (the app's traffic through the counting proxy: `adb reverse tcp:3100 tcp:3200`, then `am force-stop` and relaunch: kept-alive connections bypass the proxy otherwise, Session 1E)
+
+| Run | Set-up | Command | Expected (the gate's short runs) |
+|---|---|---|---|
+| T5 | printers mode, the app writes three printers: `p2g-tool.ts delete Kitchen`, `delete Back`, `station Bar`, `category Beverages Bar`, `printer 'Printer 1' <app id> 10.0.2.2 9100 80 bill,all,notices,eod`, `printer 'Bar printer' <app id> 10.0.2.2 9101 58 station:Bar,notices`, `printer 'Kitchen printer' <app id> 10.0.2.2 9104 80 station:Kitchen,bill,notices`; fake printers on 9100, 9101 and 9104 started again with Step 6's commands into new folders (`<sp>/fake3g-n91NN`, `<new NN>` below); the app relaunched, on `/pos`, its panel listing the three under Other printers, Connected | `m-run-3g.sh T5 soak --orders 100 --every-ms 1500 --drain-s 300 --base http://localhost:3200 --out <new 00>,<new 01>,<new 04>` | `"printers mode, the printers' writer prints, a token per order"`, every job printed, `pass: true` (the gate: 50 jobs; 1.92 print requests a job) |
+| T6 | the app on `/pos`, on screen | `m-run-3g.sh T6 idle 600` | the writer's wake at its cadence; pulse, POS lists; no lease |
+| TN (a night's idle, the 3C gate's I-3) | HOME, then `adb shell input keyevent 223` (`dumpsys power`: `mWakefulness=Asleep`) | `m-run-3g.sh TN idle 1800` | the hidden writer keeps its wake, pulse and POS lists (the page runs as on screen: Session 3D); no lease |
+| T2 | simple mode, the app as the print host: `p2d-tool.ts reset2d`; wake the screen; the app: Refresh; the panel → **Print all slips on this device** ("This device prints all slips."); ESC; force-stop and relaunch | `m-run-3g.sh T2 soak --orders 100 --every-ms 1500 --drain-s 300 --base http://localhost:3200 --out <new 00>` (the app's own printer `127.0.0.1:9100` reaches the PC's 9100 through `adb reverse tcp:9100 tcp:9100`) | `"simple mode, app host prints, a token per order"`, `pass: true` (the gate: 35 jobs; 2.17 print requests a job) |
+| T3 | the app on `/pos` as the host | `m-run-3g.sh T3 idle 600`; then the panel → **Stop printing here** → Yes, remove | the host's wake and beat; no lease |
+
+**The projections** (`node <sp>/e3/report-3g.mjs project --soak <sp>/e3/run-<soak>.json --idle <sp>/e3/run-<idle>.json --busy-slips 1500 > <sp>/e3/proj-<name>.json`): **P1** T1 + T3, **P2** T2 + T3, **P3** T4 + T6, **P3 old page** T4L + T6, **P4** T5 + T6, **failover** TF + T6, **Windows** TW + TWI. Then the night with **every** day (the gold review's #1: a simple-mode host and a Windows PC in the tray are hidden printing devices too): `node <sp>/e3/report-3g.mjs night --idle <sp>/e3/run-TN.json --day <sp>/e3/proj-<name>.json` for each of the seven, and the smallest margin named in Results.
+
+**Pass:** every projection says `"pass": true` (printing ≤ 20 % of the invocations and ≤ 15 % of the Active CPU on the busy day with a token per order, the worst case within §17.2's 17,040, Atlas under 10 operations a second at the busy rush; record the raw peak too), and the night's `pass` (that busy day's printing plus the night's) is `true` with every day. The gate's short runs: P1 8.0 % / 6.4 %, P2 11.9 % / 12.5 %, P3 7.6 % / 7.0 %, P3 old page 7.6 % / 7.7 %, P4 10.8 % / 8.5 %, failover 12.2 % / 12.1 % (Atlas at the rush 8.66), Windows 11.9 % / 12.6 %; the night: printing 720 a night (2,880 at worst), the page's own polls 5,040 (all routes 23.8 % of a day's invocations, 21.7 % of a day's CPU: why GO-LIVE closes the apps at closing time); each day with the night: P1 10.1 % / 8.3 %, P2 14.1 % / 14.5 %, P3 9.7 % / 9.0 %, P3 old page 9.7 % / 9.6 %, P4 13.0 % / 10.4 %, failover 14.4 % / 14.0 %, **Windows 14.1 % / 14.6 %: the smallest margin, 0.4 points of CPU**. **How to read it** (say so in Results): the local server's CPU per request stands in for Vercel's Active CPU; with no realtime Worker locally the wakes poll at the socket-down cadence, so the idle runs are §17.2's worst case and the normal-day projection uses the socket-healthy 60 s cadence; the soak's own rate is far above the busy rush, so `report-3g.mjs` scales the raw Mongo peak to it. **If a projection fails:** tune nothing in this session; record the numbers and stop: the owner's token ruling makes option C (the slips one request puts on one printer line ride one lease or one direct answer) a task before release, decided at the final Phase 3 gate. **If only a day-with-the-night figure fails** (its day passing): record it the same way; option C does not touch the night (a device left open: the closing-time rule), so the final Phase 3 gate rules it.
+
+- [ ] **Step 9: put back**
+
+- the setup as found: `p2d-tool.ts reset2d`; `pw3g.sh tokens off`; the scratch database is left;
+- the app's printers removed (Refresh first: the page removes the setup printers it added; then this device's printer → Remove → "Yes, remove": "No printer set up");
+- the app's address cleared (More options → Change POS address → Clear POS address: its start screen, no address);
+- the **release APK** reinstalled (`adb install -r -d` of `C:\Users\KARTIK~1.DES\AppData\Local\Temp\claude\d--kd-lucifer\980d3189-10f0-4165-bdad-ae814b95278b\scratchpad\apk-release\pos-emulator-x86_64-release.apk`; `29115bdf…` on the device), as found;
+- notifications as found: `adb shell pm revoke com.possoftware.pos android.permission.POST_NOTIFICATIONS`; `font_scale` unset;
+- `adb reverse --remove-all`, then `adb reverse tcp:3100 tcp:3100`;
+- `adb shell sync`, then `adb emu kill`;
+- your servers, the proxies, the fake printers and every `pw-3g.mjs` run stopped by PID after checking each command line (TaskStop leaves a script's children running).
+
+- [ ] **Step 10: the fresh review**
+
+Dispatch a fresh reviewer subagent on **Claude Fable 5.1** (`model: fable`). It is read-only, with scratch tests only in this session's scratchpad (never in the repo). It reviews `95fee6d..HEAD` (the 3E review gate's docs commit, then G0–G5) against this plan (P3-1 to P3-10 as the gates changed them, the 3E review gate's rulings, Session 3G and its Review Focus, passed verbatim) and spec §9.3, §9.5, §9.6, §10, §13, §14, §17, with the exit's and the measurement's numbers. If Fable is rate-limited (HTTP 429), wait for its reset and say so; never switch models silently. It may run in the background during Steps 1–4 and 6 if it is told to keep off Gradle, adb, builds, servers and the harness's ports and databases (and off the local mongod during a measured run: its opcounters are server-wide). Fix every Critical and Important finding by TDD (RED seen first) in its own commit; an app or page fix after the measurement voids it: measure again what it touches. List the minors in Results for the final Phase 3 gate.
+
+- [ ] **Step 11: Results, commit, push**
+
+Fill "Session 3G Results" below: the commits; each task's RED and GREEN against the Expected lines; every suite's numbers; JUnit; the APK hashes and the full-compile proof; the build; the exit table (XG0–XG6); the measurement (each run's requests by route, CPU ms a request, Mongo ops a job, the raw and the rush peak, every projection and the night); the review and its fixes; deviations and rulings; what is open for the final Phase 3 gate (the owner's one real-printer run: TEST-CHECKLIST "Phase 3 checks (failover, health, the service)" and "Network printers on the Windows app (Phase 3)").
+
+Commit, then push with the token only: `GIT_TERMINAL_PROMPT=0 git push origin feat/printing-phase-3`. Do not merge, do not deploy, do not release the APKs or the installer.
+
+## Session 3G Results (filled in by the implementer)
