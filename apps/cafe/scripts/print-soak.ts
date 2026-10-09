@@ -54,7 +54,7 @@ import { PrintJob } from "@/models/PrintJob";
 import { printerWriterDeviceId, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
 import { printRepeatLabel } from "@pos/shared/print-lifecycle";
 import { leaseLines, printLeased, soakHeaders, soakNextLeaseAt, soakTimerDue, type SoakAddress, type SoakAgent, type SoakCall, type SoakJson } from "./print-soak-agent";
-import { missingSlips, parseSoakArgs, type SoakArgs } from "./print-soak-rules";
+import { missingSlips, parseSoakArgs, unnamedJobs, type SoakArgs } from "./print-soak-rules";
 import { failoverProblems, soakWriterTick, type SoakWriter } from "./print-soak-writer";
 
 const COOKIE = "authjs.session-token";
@@ -269,6 +269,10 @@ async function main(): Promise<void> {
     // per printer line), whatever the answers named; simple mode makes one job per slip.
     const unmade = missingSlips(made, jobs);
     if (unmade.length > 0) problems.push(`${unmade.length} slip(s) the soak made have no job (${unmade.slice(0, 3).join(", ")})`);
+    // The final Phase 3 gate (the 3G review's m-3): in printers mode every job is one an answer named, so one no answer
+    // named is a repair or a duplicate (the count printers mode had before Session 3G).
+    const unnamed = printersMode ? unnamedJobs(jobs, named) : [];
+    if (unnamed.length > 0) problems.push(`${unnamed.length} job(s) no answer named (a repair or a duplicate: ${unnamed.slice(0, 3).join(", ")})`);
     if (!printersMode && jobs.length !== made.length) problems.push(`${jobs.length} jobs for ${made.length} slips (simple mode: one job per slip)`);
     const silent = jobs.filter((job) => job.status === "queued" || job.status === "leased" || job.status === "dismissed");
     if (silent.length > 0) problems.push(`${silent.length} slip(s) neither printed nor visibly waiting`);

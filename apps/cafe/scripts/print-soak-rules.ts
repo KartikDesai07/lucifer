@@ -107,3 +107,10 @@ export function missingSlips(made: readonly string[], jobs: ReadonlyArray<{ jobK
   const printed = new Set(jobs.map((job) => slipOfJobKey(job.jobKey)));
   return made.filter((slip) => !printed.has(slip));
 }
+
+/** The final Phase 3 gate (the 3G review's m-3): the jobs of the soak's orders that no answer named. In printers mode a
+ *  slip is a job per printer line, each named in the answer that made it, so such a job is a sweep's repair or a
+ *  duplicate (simple mode counts one job per slip instead). */
+export function unnamedJobs(jobs: ReadonlyArray<{ _id: unknown }>, named: ReadonlySet<string>): string[] {
+  return jobs.map((job) => String(job._id)).filter((id) => !named.has(id));
+}

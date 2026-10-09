@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { missingSlips, parseSoakArgs, slipOfJobKey } from "./print-soak-rules";
+import { missingSlips, parseSoakArgs, slipOfJobKey, unnamedJobs } from "./print-soak-rules";
 
 // Phase 3 Session 3G (Session 2G's m-5, the final Phase 2 gate's (a) item 5): the soak refuses a malformed address before
 // its first order, and in printers mode checks every slip it made against the jobs the database holds for its orders, not
@@ -46,6 +46,15 @@ test("each job belongs to one slip (its key without the printer line), and every
   const jobs = [{ jobKey: "kot:o1:1:p-k:0" }, { jobKey: "kot:o1:1:p-b:0" }, { jobKey: "token:o1:p-c:0" }, { jobKey: "kot:o1:2:p-k:0" }, { jobKey: "bill:o1:p-c:0" }, { jobKey: "kot:o2:1:p-k:0" }];
   assert.deepEqual(missingSlips(made, jobs), ["bill:o2"], "the second order's bill has no job: the soak says so");
   assert.deepEqual(missingSlips(made, [...jobs, { jobKey: "bill:o2:p-c:0" }]), [], "every slip has its jobs");
+});
+
+// The final Phase 3 gate (the 3G review's m-3): in printers mode a slip is a job per printer line, each named in the answer
+// that made it; a job of the soak's orders that no answer named (a sweep's repair, a duplicate) is counted, as before 3G.
+test("a job of the soak's orders that no answer named is counted (a repair or a duplicate)", () => {
+  const jobs = [{ _id: "j1" }, { _id: "j2" }, { _id: "j3" }];
+  assert.deepEqual(unnamedJobs(jobs, new Set(["j1", "j2", "j3"])), [], "every job named by the answer that made it");
+  assert.deepEqual(unnamedJobs(jobs, new Set(["j1", "j3", "j9"])), ["j2"], "j2 no answer named (j9's absence is the missing count's)");
+  assert.deepEqual(unnamedJobs([], new Set(["j1"])), [], "no jobs, nothing unnamed");
 });
 
 // Phase 3 Session 3G: --failover, two soak writers (the soak's --device and a second one that writes its own printer, so it

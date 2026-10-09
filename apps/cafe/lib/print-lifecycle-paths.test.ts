@@ -507,3 +507,17 @@ test("PIN (the final Phase 3 gate, the 3G review's m-1): the soak tells its agen
   assert.ok(soak.includes("direct: args.direct, ...tokens, timerAt: null, network };"), "... and the soak's own agent");
   assert.ok(src("apps/cafe/scripts/print-soak-writer.ts").includes("...(w.network !== undefined ? { network: w.network } : {})"), "a writer's agent takes them");
 });
+
+test("PIN (the final Phase 3 gate, the 3G review's m-3): in printers mode the soak counts a job of its orders that no answer named (a repair or a duplicate), beside the slips with no job", () => {
+  const soak = src("apps/cafe/scripts/print-soak.ts");
+  inOrder(
+    soak,
+    [
+      "const unmade = missingSlips(made, jobs);",
+      "const unnamed = printersMode ? unnamedJobs(jobs, named) : [];",
+      "if (unnamed.length > 0) problems.push(`${unnamed.length} job(s) no answer named (a repair or a duplicate: ${unnamed.slice(0, 3).join(\", \")})`);",
+      "if (!printersMode && jobs.length !== made.length)",
+    ],
+    "the soak's job checks",
+  );
+});
