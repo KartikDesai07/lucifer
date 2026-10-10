@@ -1,3 +1,5 @@
+import { PRINTER_HEALTH_REFRESH_MS, PRINTER_UNREACHABLE_SKIP_MS } from "./print-failover";
+
 // Printing redesign, spec §17.2: the busy day the printing budget is sized for. print-budget.test.ts
 // recomputes the "Vercel invocations" totals from these and from the agents' real cadence function
 // (print-agent-wire.ts), and fails when printing could outgrow a cafe's free Vercel Hobby allowance.
@@ -58,6 +60,45 @@ export const PRINT_REQUESTS_PER_TOKEN_SLIP = PRINT_REQUESTS_PER_SLIP;
 export function printTokenRequestsPerDay(): number {
   return Math.round(PRINT_BUDGET_BUSY_DAY.orders * PRINT_REQUESTS_PER_TOKEN_SLIP * (1 + PRINT_BUDGET_BUSY_DAY.retryShare));
 }
+
+/** The owner's ruling (2026-10-06, the Phase 3 planning session, option A: accept and measure). A cafe in printers mode
+ *  with a token per order may go over the 6,000 / 18,000 ceilings by its tokens, up to these: the two days that do
+ *  (the 2C counter day and the heavy setup, with every printer-list read) are pinned exactly in print-budget.test.ts.
+ *  A cafe without tokens is still held to the 6,000 / 18,000 ceilings. The pins count every slip at its own lease and
+ *  ack (Session 2G measured 1.63 requests a job in printers mode), so the measured day is the gate: Phase 3's exit
+ *  measures a token cafe in both modes against spec §17.3 item 5 (at most 20 % of the invocations and 15 % of the
+ *  Active CPU on the busy day). */
+export const PRINT_BUDGET_TOKEN_NORMAL_MAX_PER_DAY = 6_700;
+export const PRINT_BUDGET_TOKEN_WORST_MAX_PER_DAY = 18_500;
+/** Phase 3 (spec §9.3, §17): failover adds no request; who is online rides the wake's heartbeat. A writer that could not
+ *  reach a network printer is passed over for it for at least PRINTER_UNREACHABLE_SKIP_MS while another device can take
+ *  it (then until its own lease names the printer again: Session 3A's final review, I-1), so such a printer costs that
+ *  writer at most one lease and one ack per 5 minutes (a device that knows its printer is down never leases for it at
+ *  all: Phase 1's rule). That is the cost at the skip's floor; on a flaky link (the app's probe answers, its print's
+ *  connect does not) the ceiling stays Phase 1's refusal recheck, 2 requests per 30 s (the 3A review gate, m-3). */
+export function printUnreachableRequestsPerWriterPerDay(): number {
+  return Math.round((PRINT_BUDGET_BUSY_DAY.openHours * 60 * 60 * 1000) / PRINTER_UNREACHABLE_SKIP_MS) * PRINT_REQUESTS_PER_SLIP;
+}
+
+/** Phase 3 (spec §9.3, §9.4; the 3A review gate, m-2): a slip moved to the device that took its printer over, or to
+ *  its backup printer, costs at most one more Worker request: its line's head announced to the new writer
+ *  (announcePrinterHead, at most once per move). */
+export const PRINT_REALTIME_PER_MOVED_SLIP = 1;
+
+/** The head announcements one writer's 5-minute skips cause over the busy day: at most one per skip. */
+export function printUnreachableAnnouncesPerWriterPerDay(): number {
+  return Math.round((PRINT_BUDGET_BUSY_DAY.openHours * 60 * 60 * 1000) / PRINTER_UNREACHABLE_SKIP_MS);
+}
+
+/** Phase 3 (spec §10, §17): printer health rides the wake (no request). A printer's health is written when it changes,
+ *  and a steady one again every PRINTER_HEALTH_REFRESH_MS: at most this many refresh writes a printer over the busy
+ *  day's 12 h (Mongo writes, not requests). */
+export function printHealthRefreshWritesPerPrinterPerDay(): number {
+  return Math.round((PRINT_BUDGET_BUSY_DAY.openHours * 60 * 60 * 1000) / PRINTER_HEALTH_REFRESH_MS);
+}
+
+/** Vercel Hobby's monthly function invocations (spec §17.1), as a day's share over 30 days: 33,333. */
+export const VERCEL_HOBBY_INVOCATIONS_PER_DAY = Math.floor(1_000_000 / 30);
 
 /** The busy day (spec §17.2's 300 orders) of a cafe whose one device takes and prints every order, at its
  *  worst: every bill rides with its KOT (Pay Now), so each bill costs a lease and an ack; every other KOT

@@ -43,8 +43,9 @@ function check(problems: string[], ok: boolean, message: string): void {
   if (!ok) problems.push(message);
 }
 
-// Phase 2 Session 2F1 (deliberate change): a printer job of one of the POS app's printers names it (raster).
-const DELEGATE = "if (!shell) return laneSlipPrintOptions(options, raster);";
+// Phase 2 Session 2F1 (deliberate change): a printer job of one of the POS app's printers names it (raster). Phase 3
+// Session 3E (deliberate change): so does a network printer the Windows app writes over raw TCP, even inside the app.
+const DELEGATE = "if (!shell || raster?.lan !== undefined) return laneSlipPrintOptions(options, raster);";
 // The final release check (2026-10-03, deliberate change): the routine beat also says whether this host is
 // silent by construction (beatSilentMode), so an app host never reads "a dialog for every slip".
 const BEAT_CALL = "beat({ deviceId, printer: beatPrinterReport(), silentMode: beatSilentMode() });";
@@ -81,7 +82,8 @@ const CASES: PinCase[] = [
       const p: string[] = [];
       check(p, !/from\s+["']@\/lib\/desktop-shell["']/.test(s), "must not import the desktop-shell seam (import cycle)");
       check(p, !/from\s+["']@\/lib\/printer\/print-lane["']/.test(s), "must not import print-lane (it imports the seam)");
-      check(p, s.includes("if (!rasterCapable()) return options;"), "no capability -> the SAME options reference");
+      // Phase 3 Session 3E (deliberate change): a network printer of the Windows app is drawn whatever the runtime's APIs.
+      check(p, s.includes("if (raster?.lan === undefined && !rasterCapable()) return options;"), "no capability -> the SAME options reference");
       const wrap = between(s, "export function laneSlipPrintOptions", "\n}\n");
       check(p, wrap.includes("lanePrint(iframe, options.documentTitle)"), "print() delegates to lanePrint at call time");
       check(p, !/devicePrinter|nativeBridge|getSnapshot/.test(wrap), "the lane is NOT decided when the options are wrapped");
@@ -111,7 +113,7 @@ const CASES: PinCase[] = [
       { name: "settle wait unconditional again", apply: sub("if (!blocked) await laneSleep", "await laneSleep") },
       { name: "an await sneaks in before print()", apply: sub("  let blocked = false;", "  await laneSleep(0);\n  let blocked = false;") },
       { name: "print() no longer timed", apply: sub("blocked = performance.now() - startedAt >= SYSTEM_PRINT_SETTLE_MS;", "blocked = false;") },
-      { name: "lane decided at wrap time", apply: sub("  if (!rasterCapable()) return options;\n", "  if (!rasterCapable()) return options;\n  const decided = devicePrinter().getSnapshot();\n") },
+      { name: "lane decided at wrap time", apply: sub("  if (raster?.lan === undefined && !rasterCapable()) return options;\n", "  if (raster?.lan === undefined && !rasterCapable()) return options;\n  const decided = devicePrinter().getSnapshot();\n") },
       { name: "settle wait 500 -> 50", apply: sub("SYSTEM_PRINT_SETTLE_MS = 500", "SYSTEM_PRINT_SETTLE_MS = 50") },
       { name: "deadline 12 s -> 18 s", apply: sub("LANE_RASTER_DEADLINE_MS = 12_000", "LANE_RASTER_DEADLINE_MS = 18_000") },
       { name: "write before the blank check", apply: sub("  if (bitmap.rows === 0) throw new Error(DESKTOP_PRINT_EMPTY_MESSAGE);", "  await devicePrinter().write(escposJob(bitmap));\n  if (bitmap.rows === 0) throw new Error(DESKTOP_PRINT_EMPTY_MESSAGE);") },
@@ -131,7 +133,9 @@ const CASES: PinCase[] = [
       check(p, count(s, "usePrintHostDrainLock(") === 1 && !s.includes("usePrintHostDrainLock(enabled)"), "no ungated lock call");
       check(p, s.includes("usePrintHostWakeLock(enabled);") && s.includes("usePrintHostBeat({ enabled, deviceId, onDemoted });"), "wake lock and routine beat keep `enabled`");
       check(p, s.includes("usePrintHostPrinterBeat({ enabled, deviceId, onDemoted });"), "printer beat is wired with `enabled`");
-      check(p, s.includes("useNativeHostBackground(enabled);"), "native host background is wired with `enabled`");
+      // Phase 3 Session 3D (spec §9.5) deliberately changed: the host, and in printers mode a device that writes a printer.
+      check(p, s.includes("const printsForCafe = enabled || (surfacesMounted && printers.printersMode && printers.isWriter);"), "native host background: the host and every printers-mode writer");
+      check(p, s.includes("const decided = surfacesMounted && deviceId !== \"\" && routing !== \"unknown\" && printersRead.loaded;\n  useNativeHostBackground(printsForCafe, decided);"), "and it tells the app no only once it knows");
       check(p, s.includes('import { useCanPrintOnAny } from "@/hooks/use-device-printer";'), "imports useCanPrintOnAny");
       return p;
     },
@@ -139,7 +143,10 @@ const CASES: PinCase[] = [
       { name: "lock ungated", apply: sub(LOCK_CALL, "const holdsLock = usePrintHostDrainLock(enabled);") },
       { name: "canPrint read after the lock", apply: sub(`const canPrint = useCanPrintOnAny();\n  ${LOCK_CALL}`, `${LOCK_CALL}\n  const canPrint = useCanPrintOnAny();`) },
       { name: "printer beat armed by drains", apply: sub("usePrintHostPrinterBeat({ enabled,", "usePrintHostPrinterBeat({ enabled: drains,") },
-      { name: "native background removed", apply: sub("  useNativeHostBackground(enabled);\n", "") },
+      { name: "native background removed", apply: sub("  useNativeHostBackground(printsForCafe, decided);\n", "") },
+      { name: "the no told before the role is known", apply: sub(' && routing !== "unknown" && printersRead.loaded;', ";") },
+      { name: "native background for the host only", apply: sub("const printsForCafe = enabled || (surfacesMounted && printers.printersMode && printers.isWriter);", "const printsForCafe = enabled;") },
+      { name: "native background for every agent", apply: sub("printers.printersMode && printers.isWriter", "printers.printersMode") },
       { name: "routine beat gated by canPrint", apply: sub("usePrintHostBeat({ enabled, deviceId, onDemoted });", "usePrintHostBeat({ enabled: enabled && canPrint, deviceId, onDemoted });") },
     ],
   },
@@ -234,9 +241,12 @@ const CASES: PinCase[] = [
       // s63 W-Z: a wake right after a poll would only stack a second fetch -- refresh only when the pulse is older than one poll.
       check(p, ordered(s, ['nativeOn("app.wake", () => {', "qc.getQueryState(POS_PULSE_KEYS.all)?.dataUpdatedAt ?? 0;", "if (Date.now() - updatedAt <= REFETCH_INTERVALS.POS_PULSE) return;", "void qc.invalidateQueries({ queryKey: POS_PULSE_KEYS.all });"]), "app.wake invalidates the pulse once, and only when it is older than one poll interval");
       check(p, s.includes('import { REFETCH_INTERVALS } from "@/lib/query";'), "imports REFETCH_INTERVALS");
-      check(p, ordered(s, ["const announce = (): void => {", "announce();", "return () => {", "offWake();", "tell(false);"]), "cleanup unhooks then sends active:false");
+      // Phase 3 Session 3D deliberately changed: the cleanup's own tell(false) (a second one tells a page that knows it prints nothing).
+      check(p, ordered(s, ["const announce = (): void => {", "announce();", "return () => {", "offWake();\n      tell(false);"]), "cleanup unhooks then sends active:false");
       check(p, s.includes("if (!enabled || !hasBridge) return;") && s.includes("usePrintCapabilities().native"), "only while enabled with the app bridge present");
       check(p, s.includes("nativeRequest(\"host.background\", params).catch(() => undefined);"), "a failed request is swallowed");
+      // Phase 3 Session 3D: a page that knows this device prints nothing says so once (the app keeps a wish across restarts).
+      check(p, s.includes("if (!hasBridge || enabled || !decided) return;\n    tell(false);"), "a page that knows this device prints nothing tells the app once");
       check(p, !/setInterval|refetchInterval/.test(s), "no new poll (ruling 5)");
       return p;
     },

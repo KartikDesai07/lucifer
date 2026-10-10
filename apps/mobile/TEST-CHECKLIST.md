@@ -330,6 +330,84 @@ POS with Phase 2. An older Windows app prints one printer, the one chosen for th
 - [ ] An unplugged printer: Windows keeps its slips in its own print queue and prints them when it is back; the POS
       cannot see that queue (spec §9.6), so check the paper.
 
+## Network printers on the Windows app (Phase 3, added 2026-10-09)
+
+Needs the Windows app 1.12.0 (`POS-Software-Setup-1.12.0.exe`, installed over 1.11.0) on the counter PC, a network
+(LAN) thermal printer on port 9100 with a fixed address, and the POS with Phase 3. The app writes the network
+printer itself, straight from the PC (no Windows driver): the slip is the same as the POS app's.
+
+- [ ] Printer setup on the PC: **Add printer** → **Network (LAN)** → the printer's address and 9100 → **Printing
+      device**: this PC → tick **Kitchen KOTs** → save. **Send to Kitchen**: one KOT on the network printer, as wide
+      as its roll. The 1.11.0 app on another PC is not offered as a printing device for it.
+- [ ] Switch the network printer off: the next kitchen slip waits; within about a minute the PC's printer dot says
+      the printer is not answering, and within about three minutes every device's panel row says "Kitchen is not
+      connected.". Switch it on: the slip prints within about half a minute, once.
+- [ ] Open its cover, then take its paper out: "Kitchen has its cover open." / "Kitchen is out of paper." on every
+      device while a slip waits; close it / put paper back: the slip prints within about 10 seconds, once.
+- [ ] Cut its power in the middle of a long bill: the bill asks the cashier (or the KOT prints again labelled
+      **REPRINT**), never a silent "printed".
+- [ ] Two printing devices for one network printer: the PC prints it, a tablet (POS app) also writes a printer. Quit
+      the Windows app (tray → Quit): every slip made 90 s or more later prints from the tablet; one already waiting
+      prints within a minute more. Open the app again: the PC prints it again.
+- [ ] Leave the PC and a tablet both listing the network printer for 10 minutes with no orders: no "not connected"
+      words appear (a printer that takes one connection at a time is asked again a second later).
+- [ ] A Windows printer the PC prints (Phase 2's checks): remove it in Windows (Settings → Printers; another printer,
+      such as Microsoft Print to PDF, still listed): within about three minutes a slip for it waits with "‹printer› is
+      not connected." on every device. Add it back with the same name:
+      the slip prints once, within about a minute.
+
+## Phase 3 checks (failover, health, the service) (added 2026-10-09)
+
+Needs the Phase 3 POS app on every printing phone or tablet (opened once after installing it), the POS with Phase
+3, at least one network (LAN) printer with a fixed address (type its IP address, not a name), and printers set up
+in **Admin → Printer setup**. "Every device" below means a phone or tablet that only takes orders, another printing
+device and a browser tab: each one's printer panel (and the alarm's notice on a waiting slip).
+
+Failover and the backup printer:
+- [ ] Two tablets that each print a printer of the setup; the kitchen's network printer is printed by tablet A.
+      Switch tablet A off: every slip made 90 seconds or more later prints from tablet B; one already waiting prints
+      within a minute more. Switch A on and open the app: A prints the kitchen's slips again.
+- [ ] Tablet A cannot reach the kitchen printer (take it off the Wi-Fi, or unplug the printer's network cable and
+      plug it into another network): B prints the kitchen's slips within about two minutes. Put it back: within
+      about six minutes A prints them again.
+- [ ] A backup printer: **Edit** the bar printer → **4. Backup printer** → the kitchen printer. Switch off the bar's
+      phone: its waiting slips print at the kitchen, each marked **BACKUP PRINTER**; none prints twice.
+- [ ] Leave both tablets listing the kitchen printer for 10 minutes with no orders: no "not connected" words and no
+      printer moves to the other tablet.
+- [ ] Leave the real network printer idle for 5 minutes: the printer dot stays steady (no "not connected" flashes).
+
+Paper, cover and errors:
+- [ ] Take the kitchen printer's paper out: "Kitchen is out of paper." on every device while a slip waits; the slip
+      is not tried. Put paper back: it prints within about 10 seconds, once.
+- [ ] Open its cover: "Kitchen has its cover open." the same way; close it: the slip prints once.
+- [ ] Paper runs out in the middle of a slip: one copy labelled **REPRINT** after paper is back (a bill asks the
+      cashier), never a silent single or a silent double.
+- [ ] Press **FEED** while the printer is idle: no error words appear.
+- [ ] A Bluetooth printer that does not answer status: Pay Now prints the KOT and the bill, the bill within about a
+      second of the KOT.
+- [ ] A printer module that resets its connection after each slip and never answers status: 20 slips, count any
+      **REPRINT** copies (expected none).
+
+The POS app's service (each printing phone or tablet):
+- [ ] The first time it prints, the app asks to allow notifications: **Allow**. The notification says "Printing is
+      on" and "This device keeps printing with the screen off."
+- [ ] Screen off for 30 minutes, then order from another device: the slip prints within seconds.
+- [ ] An Android 14 or later printing device: "Printing is on" shows, and with the screen off a slip prints within
+      seconds.
+- [ ] Restart the device: "POS printing is off. Tap to start." shows within a minute of start-up; tap it: the POS
+      opens and a slip prints.
+- [ ] At closing time swipe the app away: "POS printing is off. Tap to start." shows (expected); tap it next morning:
+      it prints.
+- [ ] Change the font size (or the language) in Android's settings while the POS is open: no "POS printing is off"
+      notice; the next slip prints.
+- [ ] Xiaomi, OPPO, vivo or Samsung: the printer panel → **More options** → **Battery settings for printing**; do each
+      step once; then the 30-minute screen-off check again.
+
+The Windows app 1.12.0 (with "Network printers on the Windows app (Phase 3)" above):
+- [ ] Open the network printer's cover in the middle of a long slip from the PC and close it after more than a
+      minute: the first slip finishes and one more prints labelled **REPRINT**; never a silent single, never a silent
+      double.
+
 ## Result
 
 Date: ________  Device and Android version: ________________________

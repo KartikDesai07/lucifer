@@ -8,7 +8,8 @@ import { PRINT_KOT_ALARM_MS } from "@pos/shared/print-lifecycle";
 import { PRINT_ATTENTION_LIMIT, PRINT_ATTENTION_WINDOW_MS } from "@pos/shared/print-agent-wire";
 import { PRINT_JOB_ACTED_GRACE_MS, PRINT_JOB_QUEUED_RETENTION_MS } from "@pos/shared/print-job";
 import { stripComments } from "@/lib/source-pin-utils";
-import { printAttentionFilter, printAttentionRowOf } from "@/lib/print-attention";
+import { printAttentionFilter, printAttentionProblemsOf, printAttentionRowOf } from "@/lib/print-attention";
+import type { PrinterConfig } from "@pos/shared/print-printers";
 
 // Printing Phase 1 Session 1D (spec §10): the waiting-slips feed on the existing 20 s pulse (one bounded
 // read), the pulse sweep (D2), and staff Retry / Print again aimed at the printing device (D7). DB
@@ -30,6 +31,29 @@ test("printAttentionFilter: bills to check and failed slips from the last 3 h, a
   // prune, so the panel shows it until then.
   assert.equal(PRINT_ATTENTION_WINDOW_MS, PRINT_JOB_QUEUED_RETENTION_MS + PRINT_JOB_ACTED_GRACE_MS, "the queued retention (§7.8, 3 h) plus the acted grace (15 min): the panel shows every waiting slip the prune keeps");
   assert.equal(PRINT_ATTENTION_LIMIT, 20, "a bounded read on the hottest poll");
+});
+
+// Phase 3 Session 3A (spec §9.4, §10): a row on a printer says why that printer cannot print now, so every device
+// shows "The device that prints Bar is offline." or "Bar is out of paper." beside the slip.
+test("printAttentionProblemsOf: a row on a printer with a problem says it; a row with none, or on no printer, or on a gone one, is as it was", () => {
+  const bar: PrinterConfig = {
+    id: "b".repeat(24),
+    name: "Bar",
+    connection: { kind: "device", deviceId: "bar-phone", transport: "bt-classic", address: "AA:BB" },
+    order: 0,
+    paper: 80,
+    slips: { bill: false, kotStations: ["s"], kotAll: false, notices: false, eod: false },
+    copies: { kot: 1, bill: 1 },
+    enabled: true,
+  };
+  const row = (printerId?: string) => ({ id: "j", kind: "kot" as const, label: "KOT", status: "queued" as const, labels: [], createdAt: at(T0).toISOString(), ...(printerId !== undefined ? { printerId } : {}) });
+  const rows = [row(bar.id), row(), row("c".repeat(24)), { ...row(bar.id), status: "failed" as const }];
+  const offline = printAttentionProblemsOf(rows, [bar], { online: [], nowMs: T0 });
+  assert.deepEqual(offline.map((r) => r.problem ?? "-"), ["device-offline", "-", "-", "-"], "only a slip still waiting on a known printer (the planning review, M-4: not a failed one)");
+  const out = printAttentionProblemsOf(rows, [{ ...bar, health: { link: "connected", paper: "out", deviceId: "bar-phone", at: at(T0).toISOString() } }], { online: [{ deviceId: "bar-phone", lanFailover: true }], nowMs: T0 });
+  assert.equal(out[0]?.problem, "paper-out");
+  const fine = printAttentionProblemsOf(rows, [bar], { online: [{ deviceId: "bar-phone", lanFailover: true }], nowMs: T0 });
+  assert.ok(fine.every((r) => !("problem" in r)), "nothing known: no field");
 });
 
 test("PIN (owner, after Session 1D: I-1 option A): the feed reads the NEWEST rows on the same index and shows them oldest first", () => {
@@ -81,7 +105,7 @@ test("printAttentionRowOf: a panel row says what, when, why, who asked and where
 test("PIN: the pulse reads the waiting-slips feed for every tab, fail-soft; printJobsForMe stays the named agent's", () => {
   const s = src("apps/cafe/app/api/order-requests/pulse/route.ts");
   assert.match(s, /readPrintAttention\(nowMs\)\.catch\(\(\) => null\)/, "every device shows the panel and its count");
-  assert.match(s, /device === null \? Promise\.resolve\(null\) : readJobsForDevice\(device, nowMs\)\.catch\(\(\) => null\)/, "1C's printJobsForMe is kept");
+  assert.match(s, /device === null \? Promise\.resolve\(null\) : readPulseJobsForDevice\(device, saysTokens, nowMs\)\.catch\(\(\) => null\)/, "1C's printJobsForMe is kept (Phase 3: token-fenced)");
   assert.ok(s.includes("...(printJobsForMe === null ? {} : { printJobsForMe }),"), "printJobsForMe is omitted on a failed read");
   assert.ok(
     s.includes("...(attention === null ? {} : { printAttention: attention.rows, printAttentionTruncated: attention.truncated }),"),

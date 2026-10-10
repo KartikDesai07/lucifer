@@ -1,5 +1,6 @@
 import { PRINT_HOST_KEY } from "@pos/shared/print-job";
-import { PRINTER_GONE_MESSAGE, PRINT_JOB_NO_PRINTER, printerWriterDeviceId, routablePrinters } from "@pos/shared/print-printers";
+import { printerActiveWriter } from "@pos/shared/print-failover";
+import { PRINTER_GONE_MESSAGE, PRINT_JOB_NO_PRINTER, routablePrinters } from "@pos/shared/print-printers";
 import {
   PRINT_JOB_LOG_MAX,
   PRINT_MAX_PAPER_ATTEMPTS,
@@ -11,6 +12,7 @@ import {
 import { PrintHost } from "@/models/PrintHost";
 import { PrintJob } from "@/models/PrintJob";
 import { publishCafeEvent } from "@/lib/realtime-publish";
+import { moveToBackupPrinters, readPrinterFailover, retargetPrinterJobs } from "./print-failover";
 import { PRINT_LIFECYCLE_SELECT, applyPrintJobPlan, type PrintLifecycleRow } from "./print-lease";
 import { listPrinters } from "./print-printers";
 import { prunePrintJobsThrottled } from "./print-queue";
@@ -96,7 +98,9 @@ export async function returnPrintJobsToOrigins(nowMs: number): Promise<number> {
  *  review, I-1: "It printed" and Clear still work; Print again is refused while the printer is gone). A leased job
  *  is left to its lease. One read when no queued or needs-confirm printer job waits (every simple-mode cafe, and
  *  every outlet whose waiting rows are only failed ones); otherwise the printers, one write per printer and one for
- *  the gone ones. */
+ *  the gone ones. Phase 3 (§9.3): "its writer" is the device that writes it now (a network printer's primary, or the
+ *  device that took it over: one read of who is online), and a writer that changed is told of its line's head. Spec
+ *  §9.4 first: a printer whose device is offline sends its waiting slips to its backup printer (moveToBackupPrinters). */
 export async function routePrinterJobs(nowMs: number): Promise<{ retargeted: number; failed: number }> {
   const waiting = await PrintJob.findOne({ printerId: { $exists: true, $ne: PRINT_JOB_NO_PRINTER }, status: { $in: ["queued", "needs-confirm"] } })
     .select("_id")
@@ -104,14 +108,10 @@ export async function routePrinterJobs(nowMs: number): Promise<{ retargeted: num
   if (waiting === null) return { retargeted: 0, failed: 0 };
   const at = new Date(nowMs);
   const printers = routablePrinters(await listPrinters());
-  let retargeted = 0;
+  const failover = await readPrinterFailover(printers, nowMs, true);
+  let retargeted = failover === null ? 0 : await moveToBackupPrinters(printers, failover, nowMs);
   for (const printer of printers) {
-    const writer = printerWriterDeviceId(printer) ?? "";
-    const moved = await PrintJob.updateMany(
-      { printerId: printer.id, status: { $in: WAITING }, targetDeviceId: { $ne: writer } },
-      { $set: { targetDeviceId: writer }, $push: { log: { $each: [{ at, event: "retargeted", deviceId: writer }], $slice: -PRINT_JOB_LOG_MAX } } },
-    );
-    retargeted += moved.modifiedCount ?? 0;
+    retargeted += await retargetPrinterJobs(printer.id, printerActiveWriter(printer, failover) ?? "", nowMs);
   }
   const gone = await PrintJob.updateMany(
     { printerId: { $exists: true, $nin: [...printers.map((printer) => printer.id), PRINT_JOB_NO_PRINTER] }, status: "queued" },

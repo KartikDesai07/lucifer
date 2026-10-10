@@ -36,9 +36,12 @@ class PosPrinterModule(private val reactContext: ReactApplicationContext) :
     PrinterPool.init(reactContext)
     reactContext.addLifecycleEventListener(this)
     reactContext.addActivityEventListener(bluetoothEnabler.activityListener)
+    // Session 3D (spec §9.5): the print host's watchdog asks the POS screen to remount a page that stopped answering.
+    HostPage.remount = { reactContext.emitDeviceEvent(HostPage.DEAD_EVENT, null) }
   }
 
   override fun invalidate() {
+    HostPage.remount = null
     reactContext.removeLifecycleEventListener(this)
     reactContext.removeActivityEventListener(bluetoothEnabler.activityListener)
     WebViewDelivery.detach()
@@ -56,6 +59,9 @@ class PosPrinterModule(private val reactContext: ReactApplicationContext) :
 
   override fun onHostDestroy() {
     PrinterPool.appVisible = false
+    // The 3D review gate (m-2): a screen recreated for a configuration change (font size, language, display size) is not
+    // a stop: the service keeps running (no "POS printing is off" for a moment) and the new screen's page asks again.
+    if (reactContext.currentActivity?.isChangingConfigurations == true) return
     host.stopHost()
   }
 
@@ -307,5 +313,40 @@ class PosPrinterModule(private val reactContext: ReactApplicationContext) :
   fun deliverScript(script: String, promise: Promise) {
     WebViewDelivery.deliverScript(script)
     promise.resolve(null)
+  }
+
+  /** Session 3D (spec §9.5): the POS screen is remounting its WebView after its page died; while the app is hidden, let
+   *  React Native mount it now ([BackgroundMount]), so the new page loads and prints without anyone opening the app. */
+  @ReactMethod
+  fun mountWhileHidden(promise: Promise) {
+    // The 3D review gate (N-1): this remount is the page life's; the watchdog never remounts the loading page again.
+    HostPage.remounted?.invoke()
+    BackgroundMount.start(reactContext)
+    promise.resolve(null)
+  }
+
+  // ---- the battery checklist (Session 3D, spec §9.5): local only, no request ----
+
+  @ReactMethod
+  fun batteryInfo(promise: Promise) {
+    guarded(promise, BridgeCodes.UNSUPPORTED) {
+      promise.resolve(
+          Arguments.createMap().apply {
+            putString("brand", BatterySettings.brand())
+            putBoolean("unrestricted", BatterySettings.unrestricted(reactContext))
+          }
+      )
+    }
+  }
+
+  @ReactMethod
+  fun openBatterySettings(kind: String, promise: Promise) {
+    UiThreadUtil.runOnUiThread(
+        Runnable {
+          val activity = reactContext.currentActivity
+          val opened = activity != null && BatterySettings.open(activity, kind)
+          promise.resolve(Arguments.createMap().apply { putBoolean("opened", opened) })
+        }
+    )
   }
 }

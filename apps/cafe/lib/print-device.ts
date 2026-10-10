@@ -1,11 +1,13 @@
 import { isDuplicateKeyError } from "@pos/shared/api";
 import { PRINT_DEVICES_LIST_MAX, type PrintDeviceCapabilities, type PrintDeviceShell, type PrintDeviceSummary } from "@pos/shared/print-agent-wire";
 import { PRINT_DEVICE_HEARTBEAT_WRITE_MS, PRINT_DEVICE_ONLINE_MS, PRINT_DEVICE_PRUNE_MS } from "@pos/shared/print-lifecycle";
+import type { PrinterFailover } from "@pos/shared/print-failover";
 import { PrintDevice } from "@/models/PrintDevice";
 
 // Printing redesign, Phase 1 (spec §6.4, §10): the device heartbeat. It rides the agent's existing
-// wake poll, and lease calls refresh it too, so it adds no request. Atlas M0 budget: at most ONE
-// write per device per 30 s, however often the agent polls. Never calls connectDB(). No console.*.
+// wake poll, and lease calls refresh it too, so it adds no request. Atlas M0 budget: at most one
+// write per device per 30 s by each path (its wake's, by beatAt's own clock since Session 3C, and its
+// leases'), however often the agent polls. Never calls connectDB(). No console.*.
 
 export interface PrintDeviceBeat {
   deviceId: string;
@@ -16,22 +18,26 @@ export interface PrintDeviceBeat {
   nativeProtocol?: number;
 }
 
-/** The wake's heartbeat: creates the row on first sight, refreshes it at most every 30 s. */
+/** The wake's heartbeat: creates the row on first sight, refreshes it at most every 30 s. Session 3C (G-1): it also stamps
+ *  `beatAt`, the wake's own clock (a lease's touch refreshes lastSeenAt only), and is due whenever either clock is 30 s
+ *  old, so a writer whose leases keep touching its row can never starve the write that says it may take a printer over. */
 export async function beatPrintDevice(beat: PrintDeviceBeat, nowMs: number): Promise<void> {
   // The upsert's "one row per device" rests on the unique deviceId index, and connectDB()'s autoIndex
   // build is not awaited. Without this, a cold-start wake could insert a second row before the index
   // exists; the build then fails for good and countOnlineAgents over-counts, shrinking every agent's
   // wake share. .init() is memoized per process (house rule: due-payment.ts, crud-route.ts).
   await PrintDevice.init();
+  const due = new Date(nowMs - PRINT_DEVICE_HEARTBEAT_WRITE_MS);
   try {
     await PrintDevice.updateOne(
-      { deviceId: beat.deviceId, lastSeenAt: { $lt: new Date(nowMs - PRINT_DEVICE_HEARTBEAT_WRITE_MS) } },
+      { deviceId: beat.deviceId, $or: [{ lastSeenAt: { $lt: new Date(nowMs - PRINT_DEVICE_HEARTBEAT_WRITE_MS) } }, { beatAt: { $not: { $gte: due } } }] },
       {
         $set: {
           label: beat.label,
           shell: beat.shell,
           capabilities: beat.capabilities,
           lastSeenAt: new Date(nowMs),
+          beatAt: new Date(nowMs),
           ...(beat.appVersion !== undefined ? { appVersion: beat.appVersion } : {}),
           ...(beat.nativeProtocol !== undefined ? { nativeProtocol: beat.nativeProtocol } : {}),
         },
@@ -45,12 +51,22 @@ export async function beatPrintDevice(beat: PrintDeviceBeat, nowMs: number): Pro
 }
 
 /** A lease counts as a heartbeat (spec §7.3) for a device the wake already knows. It never creates
- *  a row: label, shell and capabilities come only from the wake. */
-export async function touchPrintDevice(deviceId: string, nowMs: number): Promise<void> {
+ *  a row: label, shell and capabilities come only from the wake. Phase 3 (the token fix's M-2): it also keeps what the
+ *  lease said about token slips, in the same write, made only when that changed (or the heartbeat is due). */
+export async function touchPrintDevice(deviceId: string, nowMs: number, tokenSlips?: boolean): Promise<void> {
+  const due = { lastSeenAt: { $lt: new Date(nowMs - PRINT_DEVICE_HEARTBEAT_WRITE_MS) } };
   await PrintDevice.updateOne(
-    { deviceId, lastSeenAt: { $lt: new Date(nowMs - PRINT_DEVICE_HEARTBEAT_WRITE_MS) } },
-    { $set: { lastSeenAt: new Date(nowMs) } },
+    tokenSlips === undefined ? { deviceId, ...due } : { deviceId, $or: [due, { tokenSlips: { $ne: tokenSlips } }] },
+    { $set: { lastSeenAt: new Date(nowMs), ...(tokenSlips === undefined ? {} : { tokenSlips }) } },
   );
+}
+
+/** Phase 3 (the token fix's M-2): whether this device's page can print a "token" job, for a pulse, a wake or an ack that
+ *  did not say (a page from before Phase 3). false only when its last lease said it cannot (a page from before
+ *  print-customization S7); with no row, or no such lease yet, true: the count as before. One read by the unique deviceId. */
+export async function printDeviceDrawsTokens(deviceId: string): Promise<boolean> {
+  const row = await PrintDevice.findOne({ deviceId }).select("tokenSlips").lean<{ tokenSlips?: boolean } | null>();
+  return row?.tokenSlips !== false;
 }
 
 /** Devices seen in the last 90 s. Never 0: it divides the cafe's one daily wake cap (spec §9.1). */
@@ -59,14 +75,33 @@ export async function countOnlineAgents(nowMs: number): Promise<number> {
   return Math.max(1, online);
 }
 
+/** Session 3C (G-1, the 3A review gate's exit pre-run): a device may take a network printer over only while its own wake
+ *  is fresh (it said lanFailover within the online window). A lease refreshes lastSeenAt but never beatAt, so a former
+ *  writer whose leases keep it online, but whose page no longer polls the wake (its printers moved), is never picked for a
+ *  takeover its page would not print. */
+function lanFailoverNow(row: { capabilities?: { lanFailover?: boolean }; beatAt?: Date }, nowMs: number): boolean {
+  return row.capabilities?.lanFailover === true && row.beatAt !== undefined && row.beatAt.getTime() >= nowMs - PRINT_DEVICE_ONLINE_MS;
+}
+
+/** Phase 3 (spec §9.3): the devices seen in the last 90 s, and whether each may write any network printer the setup names
+ *  (its wake said `lanFailover`, and that wake is fresh: lanFailoverNow). One bounded read of a collection of a few rows
+ *  (the wake's heartbeat keeps it). */
+export async function readOnlinePrintDevices(nowMs: number): Promise<PrinterFailover["online"]> {
+  const rows = await PrintDevice.find({ lastSeenAt: { $gte: new Date(nowMs - PRINT_DEVICE_ONLINE_MS) } })
+    .select("deviceId capabilities.lanFailover beatAt")
+    .limit(PRINT_DEVICES_LIST_MAX)
+    .lean<Array<{ deviceId: string; capabilities?: { lanFailover?: boolean }; beatAt?: Date }>>();
+  return rows.map((row) => ({ deviceId: row.deviceId, lanFailover: lanFailoverNow(row, nowMs) }));
+}
+
 /** Session 2D (spec §11 Devices): the devices that print or lease, the most recently seen first (so the online ones
  *  lead), for the Printer setup page and a network printer's printing device. One bounded read; no write. */
 export async function listPrintDevices(nowMs: number): Promise<PrintDeviceSummary[]> {
   const rows = await PrintDevice.find()
-    .select("deviceId label shell lastSeenAt nativeProtocol")
+    .select("deviceId label shell lastSeenAt nativeProtocol capabilities.lan capabilities.lanFailover beatAt")
     .sort({ lastSeenAt: -1 })
     .limit(PRINT_DEVICES_LIST_MAX)
-    .lean<Array<{ deviceId: string; label: string; shell: PrintDeviceShell; lastSeenAt: Date; nativeProtocol?: number }>>();
+    .lean<Array<{ deviceId: string; label: string; shell: PrintDeviceShell; lastSeenAt: Date; nativeProtocol?: number; capabilities?: { lan?: boolean; lanFailover?: boolean }; beatAt?: Date }>>();
   return rows.map((row) => ({
     deviceId: row.deviceId,
     label: row.label,
@@ -75,6 +110,11 @@ export async function listPrintDevices(nowMs: number): Promise<PrintDeviceSummar
     lastSeenAt: row.lastSeenAt.toISOString(),
     // Session 2F1 (spec §9.2): the POS app's bridge version (2: it prints several printers), for the printer form.
     ...(row.nativeProtocol !== undefined ? { nativeProtocol: row.nativeProtocol } : {}),
+    // Session 3B (spec §9.3): it can take a network printer over, for the setup page's words; Session 3C (G-1): only while
+    // its own wake is fresh, as the server decides.
+    ...(lanFailoverNow(row, nowMs) ? { lanFailover: true as const } : {}),
+    // Phase 3 Session 3E (spec §9.6): it can write a network printer (the Windows app from 1.12.0), for the printer form.
+    ...(row.capabilities?.lan === true ? { lan: true as const } : {}),
   }));
 }
 

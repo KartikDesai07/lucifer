@@ -99,6 +99,7 @@ function setup(
       return options.deliver ? options.deliver(script) : undefined;
     },
     onChangeUrl: () => log.push('changeUrl'),
+    onBattery: () => log.push('battery'),
   });
   const replies = (): Reply[] =>
     deliveries.map(s =>
@@ -352,8 +353,9 @@ test('each method calls the port once with the right arguments and replies with 
   }
   assert.equal(
     new Set(cases.map(c => c[0])).size,
-    NATIVE_METHODS.length - 1,
-    'all methods but app.changeUrl covered',
+    // Phase 3 Session 3D deliberately changed: app.battery, like app.changeUrl, calls no port.
+    NATIVE_METHODS.length - 2,
+    'all methods but app.changeUrl and app.battery covered',
   );
 });
 
@@ -487,6 +489,7 @@ test('methods without params refuse extra data', async () => {
     'printer.forget',
     'bluetooth.enable',
     'app.changeUrl',
+    'app.battery',
   ]) {
     await bad(method, { x: 1 });
     await bad(method, [1]);
@@ -604,6 +607,14 @@ test('app.changeUrl waits for an async delivery and still runs if delivery fails
   });
   await broken.router.handle(msg('app.changeUrl'), FRAME);
   assert.deepEqual(broken.log, ['deliver', 'changeUrl']);
+});
+
+test('app.battery (Session 3D): reply first, then onBattery; never onChangeUrl', async () => {
+  const s = setup();
+  await s.router.handle(msg('app.battery'), FRAME);
+  assert.deepEqual(s.log, ['deliver', 'battery']);
+  assert.deepEqual(s.calls, []);
+  assert.deepEqual(s.replies(), [{ v: 1, id: 'q1', ok: true, result: null }]);
 });
 
 test('other methods never trigger onChangeUrl; a throwing deliver never throws out of handle', async () => {

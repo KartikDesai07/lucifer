@@ -25,11 +25,14 @@ import org.json.JSONObject
 /**
  * Foreground service (type connectedDevice) that keeps the process, the printer link and the page
  * alive while the screen is off. Started only from the foreground; the tick wakes the page.
+ *
+ * Phase 3 Session 3D (spec §9.5): sticky. When Android restarts it after its process died, the page died too, so it says
+ * "POS printing is off. Tap to start." and stops; so does a stop the page did not ask for ([HostLife]).
  */
 class PrintHostService : Service() {
 
   companion object {
-    const val ACTION_START = "com.possoftware.pos.printer.action.START_HOST"
+    const val ACTION_START = HostLife.ACTION_START
     const val EXTRA_LABEL = "label"
     const val CHANNEL_ID = "print_host"
     const val ALERT_CHANNEL_ID = "print_host_alert"
@@ -39,6 +42,9 @@ class PrintHostService : Service() {
 
     /** Consecutive ticks with an unanswered or wrong page probe before the alert replaces the notification. */
     const val PAGE_DEAD_TICKS = 2
+
+    /** Session 3D (spec §9.5): at most one remount of a dead page every 10 minutes (40 ticks of 15 s). */
+    const val PAGE_REMOUNT_GAP_TICKS = 40
     private const val WAKE_LOCK_TAG = "PosSoftware:PrintHost"
     private const val NO_FOREGROUND_TYPE = 0
     private const val ALERT_KEY = "page-dead"
@@ -71,18 +77,22 @@ class PrintHostService : Service() {
   private var wakeLock: PowerManager.WakeLock? = null
   private var label = ""
   private var shownKey = ""
+  // Session 3D: it ran in the foreground for the page (so its stop may need the "printing is off" notice).
+  private var running = false
+  // The 3E review gate (m-1): onDestroy ran. A probe answer that lands later (the WebView's callback, not the handler's)
+  // then posts nothing: it would leave an orphan "Printing is on" with no service behind it.
+  private var destroyed = false
 
   // Page liveness (main thread only): each tick scores the previous tick's probe, then sends one.
   private var probeSeq = 0
-  private var probeIssued = false
-  private var probeAnswered = false
-  private var deadTicks = 0
+  private val watch = PageWatch(PAGE_DEAD_TICKS, PAGE_REMOUNT_GAP_TICKS)
 
   private val tick =
       object : Runnable {
         override fun run() {
           renewWakeLock()
           if (!PrinterPool.appVisible) {
+            WebViewDelivery.keepPageRunning()
             WebViewDelivery.deliverEvent(BridgeCodes.EVENT_APP_WAKE, JSONObject())
           }
           probePage()
@@ -92,16 +102,21 @@ class PrintHostService : Service() {
       }
 
   private fun probePage() {
-    if (probeIssued) deadTicks = if (probeAnswered) 0 else deadTicks + 1
-    probeAnswered = false
-    probeIssued = true
+    // Session 3D (spec §9.5): a page that stopped answering while nobody looks at the app is remounted ([PageWatch]).
+    if (watch.tick(PrinterPool.appVisible)) HostPage.remount?.invoke()
     val id = ++probeSeq
     // A late answer to an older probe must not vouch for this one.
-    WebViewDelivery.probePage { alive -> if (alive && id == probeSeq) probeAnswered = true }
+    // The 3D review gate (m-3): an answer puts "Printing is on" back at once (a page that healed after a remount).
+    WebViewDelivery.probePage { alive ->
+      if (alive && id == probeSeq) {
+        watch.answered()
+        refreshNotification()
+      }
+    }
   }
 
   /** The page has stopped answering and nobody is looking at the app, so only a notification can say so. */
-  private fun alerting(): Boolean = deadTicks >= PAGE_DEAD_TICKS && !PrinterPool.appVisible
+  private fun alerting(): Boolean = watch.alerting(PrinterPool.appVisible)
 
   override fun onBind(intent: Intent?): IBinder? = null
 
@@ -109,9 +124,23 @@ class PrintHostService : Service() {
     super.onCreate()
     ensureChannel()
     PrinterPool.statusObserver = { handler.post { refreshNotification() } }
+    // The 3D review gate (N-1): a remount after the page's renderer died is the page life's remount ([PageWatch]).
+    HostPage.remounted = { handler.post { watch.remounted() } }
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    when (HostLife.onStart(intent?.action, Prefs.printing(this))) {
+      HostLife.Start.NOTICE_THEN_STOP -> {
+        PrintingOffNotice.post(this)
+        stopSelf(startId)
+        return START_NOT_STICKY
+      }
+      HostLife.Start.STOP -> {
+        stopSelf(startId)
+        return START_NOT_STICKY
+      }
+      HostLife.Start.RUN -> Unit
+    }
     label = intent?.getStringExtra(EXTRA_LABEL).orEmpty()
     try {
       ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), foregroundType())
@@ -127,23 +156,28 @@ class PrintHostService : Service() {
       stopSelf(startId)
       return START_NOT_STICKY
     }
-    probeIssued = false
-    deadTicks = 0
+    running = true
+    PrintingOffNotice.cancel(this)
+    watch.start()
     renewWakeLock()
     handler.removeCallbacks(tick)
     handler.postDelayed(tick, APP_WAKE_TICK_MS)
-    return START_NOT_STICKY
+    return START_STICKY
   }
 
   override fun onDestroy() {
+    destroyed = true
     handler.removeCallbacksAndMessages(null)
     PrinterPool.statusObserver = null
+    HostPage.remounted = null
     try {
       wakeLock?.let { if (it.isHeld) it.release() }
     } catch (e: RuntimeException) {
       // Already released.
     }
     wakeLock = null
+    // Session 3D: stopped while the page still wants this device to print (its task swiped away, its screen destroyed).
+    if (running && HostLife.noticeOnStop(Prefs.printing(this))) PrintingOffNotice.post(this)
     super.onDestroy()
   }
 
@@ -185,6 +219,7 @@ class PrintHostService : Service() {
    *  it always did. */
   private fun title(): String =
       when (val worst = HostTitle.of(PrinterPool.poolStatus())) {
+        is HostTitle.PaperOut -> getString(R.string.print_host_title_paper_out, worst.name)
         HostTitle.NotConnected -> getString(R.string.print_host_title_no_printer)
         is HostTitle.Printer -> getString(R.string.print_host_title_printer, worst.name)
         is HostTitle.AllConnected -> getString(R.string.print_host_title_printers, worst.count)
@@ -242,7 +277,7 @@ class PrintHostService : Service() {
 
   /** Re-posts the notification only when its words changed. */
   private fun refreshNotification() {
-    if (!canNotify()) return
+    if (destroyed || !canNotify()) return
     val key = if (alerting()) ALERT_KEY else title() + "|" + text()
     if (key == shownKey) return
     try {

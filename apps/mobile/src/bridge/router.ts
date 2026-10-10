@@ -73,6 +73,8 @@ export type RouterDeps = {
   // Hands a finished script to the native side (evaluateJavascript).
   deliver: (script: string) => void | Promise<unknown>;
   onChangeUrl: () => void;
+  // Phase 3 Session 3D: app.battery, after its reply: the shell shows its battery checklist.
+  onBattery: () => void;
 };
 
 export type Router = { handle(raw: unknown, frameUrl: unknown): Promise<void> };
@@ -139,7 +141,7 @@ async function callPort(
       return { active };
     }
     default:
-      return null; // app.changeUrl: the router itself acts after the reply
+      return null; // app.changeUrl, app.battery: the router itself acts after the reply
   }
 }
 
@@ -272,6 +274,9 @@ export function createRouter(deps: RouterDeps): Router {
     await send(reply);
     if (method === 'app.changeUrl' && reply.ok) {
       deps.onChangeUrl();
+    }
+    if (method === 'app.battery' && reply.ok) {
+      deps.onBattery();
     }
   }
 

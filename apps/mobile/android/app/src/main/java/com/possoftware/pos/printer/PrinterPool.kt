@@ -14,6 +14,9 @@ import java.util.concurrent.TimeUnit
  * [poolLock] guards the list; it is held to read the list and each listed printer's state, or to change the list,
  * never while a manager works or while publishing. Lock order: [publishLock], then [poolLock], then a manager's own
  * lock (no manager takes the pool's lock).
+ *
+ * Session 3C (the 2F2 gate's publish-chain test): where a change is saved ([saver]) and where a status event goes
+ * ([publisher]) are seams, the app's own by default, so a JVM test (src/test) proves change, halt, save, then publish.
  */
 object PrinterPool {
   private val poolLock = Any()
@@ -31,6 +34,20 @@ object PrinterPool {
 
   /** The foreground service watches status changes here (one observer at a time). */
   @Volatile var statusObserver: (() -> Unit)? = null
+
+  /** Session 3C: saves the list and its default (the app's: [Prefs], once [init] ran). */
+  @Volatile
+  internal var saver: (List<PrinterInfo>, String?) -> Unit = { printers, defaultId ->
+    app?.let { Prefs.savePrinters(it, printers, defaultId) }
+  }
+
+  /** Session 3C: delivers what changed: the v1 event (the default printer) and the v2 event (every printer), each only
+   *  when it changed (null otherwise). The app's: the page's printer.status events. */
+  @Volatile
+  internal var publisher: (StatusSnapshot?, PoolSnapshot?) -> Unit = { one, all ->
+    if (one != null) WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.toJson(one))
+    if (all != null) WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.poolJson(all), BridgeCodes.BRIDGE_V2)
+  }
 
   private val env =
       object : PrinterEnv {
@@ -95,10 +112,11 @@ object PrinterPool {
         ?: StatusSnapshot(BridgeCodes.STATE_NONE, null, bluetooth)
   }
 
-  /** The v2 printer.status: every printer in the app's order, and the default (read under [poolLock], as [status]). */
+  /** The v2 printer.status: every printer in the app's order, and the default (read under [poolLock], as [status]).
+   *  Session 3C (spec §10): each with what it last said of itself while connected (DLE EOT). */
   fun poolStatus(): PoolSnapshot {
     val bluetooth = bluetooth()
-    return synchronized(poolLock) { PoolSnapshot(list.all().map { PoolEntry(it.state(), it.info) }, list.defaultId, bluetooth) }
+    return synchronized(poolLock) { PoolSnapshot(list.all().map { PoolEntry(it.state(), it.info, it.health()) }, list.defaultId, bluetooth) }
   }
 
   fun manager(id: String): PrinterManager? = synchronized(poolLock) { list.find(id) }
@@ -114,11 +132,27 @@ object PrinterPool {
     return manager
   }
 
-  /** v1 select: [info] becomes the default printer in the default's place, as v1 always replaced its one printer. */
-  fun replaceDefault(info: PrinterInfo): PrinterManager {
-    val manager = newManager(info)
-    change { it.putDefault(manager) }
-    return manager
+  /** A printer a select names, and whether its manager is new (only a new one is connected by the caller). */
+  data class Selected(val manager: PrinterManager, val fresh: Boolean)
+
+  /** v1 select: [info] becomes the default printer in the default's place, as v1 always replaced its one printer.
+   *  Session 3C (the 2G review's m-3): a printer already listed only becomes the default: its manager, its link and its
+   *  loop stay, so Change printer to a printer the page has just added connects it once, never twice. */
+  fun replaceDefault(info: PrinterInfo): Selected {
+    var selected: Selected? = null
+    change { pool ->
+      val listed = pool.find(info.id)
+      if (listed != null) {
+        pool.makeDefault(info.id)
+        selected = Selected(listed, false)
+        emptyList()
+      } else {
+        val manager = newManager(info)
+        selected = Selected(manager, true)
+        pool.putDefault(manager)
+      }
+    }
+    return selected ?: throw IllegalStateException("no selection")
   }
 
   /** v2 forget: [id] leaves the list (the default leaving promotes the first remaining printer). */
@@ -136,9 +170,8 @@ object PrinterPool {
   }
 
   private fun save() {
-    val ctx = app ?: return
     val (printers, defaultId) = synchronized(poolLock) { Pair(list.all().map { it.info }, list.defaultId) }
-    Prefs.savePrinters(ctx, printers, defaultId)
+    saver(printers, defaultId)
   }
 
   fun lookup(id: String): PrinterInfo? = known[id]
@@ -158,8 +191,7 @@ object PrinterPool {
       val one = status()
       val all = poolStatus()
       val changes = dedupe.next(one, all)
-      if (changes.v1) WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.toJson(one))
-      if (changes.v2) WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.poolJson(all), BridgeCodes.BRIDGE_V2)
+      if (changes.v1 || changes.v2) publisher(if (changes.v1) one else null, if (changes.v2) all else null)
       if (changes.v1 || changes.v2) statusObserver?.invoke()
     }
   }

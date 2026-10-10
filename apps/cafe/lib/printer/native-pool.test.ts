@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { flush, makeClock } from "@/lib/printer/device-printer-fakes";
 import { NATIVE_REQUEST_TIMEOUT_MS, nativeError } from "@/lib/printer/native-bridge";
 import { NATIVE_BRIDGE_V2, nativeV2Bridge, nativeV2Client, nativeV2Request, type NativePoolStatus, type NativeV2Client } from "@/lib/printer/native-bridge-v2";
-import { EMPTY_POOL, connectedPoolKey, createNativePool, poolSnapshotOf } from "@/lib/printer/native-pool";
+import { EMPTY_POOL, connectedPoolKey, createNativePool, poolDefaultCannotPrint, poolSnapshotOf } from "@/lib/printer/native-pool";
 import { readFileSync } from "node:fs";
 import { PRINTER_CONNECT_FAILED_MESSAGE } from "@/lib/printer/device-printer-link";
 import { PRINTER_NOT_CONNECTED_MESSAGE, PRINTER_WRITE_FAILED_MESSAGE } from "@/lib/printer/web-printer-types";
@@ -276,6 +276,47 @@ test("2F1: the bridge speaks v2 only when the app says so; a v2 request carries 
     assert.deepEqual(await nativeV2Request("printer.status"), { printers: [], defaultId: null, bluetooth: "on" });
     assert.deepEqual(calls[0], ["printer.status", undefined, NATIVE_BRIDGE_V2], "the version rides as the last argument");
     await assert.rejects(nativeV2Request("printer.forget", { printerId: KITCHEN.id }), (error: { code?: string }) => error.code === "BAD_REQUEST", "an answer that is not the list");
+  } finally {
+    g.window = before;
+  }
+});
+
+test("3C: a printer the app says cannot print is not in the ready key, so paper put back nudges the agent", () => {
+  const ready = poolSnapshotOf({ printers: [{ state: "connected", printer: KITCHEN }, { state: "connected", printer: BAR }], defaultId: KITCHEN.id, bluetooth: "on" });
+  const empty = poolSnapshotOf({ printers: [{ state: "connected", printer: KITCHEN, paper: "out" }, { state: "connected", printer: BAR, cover: "closed", paper: "low" }], defaultId: KITCHEN.id, bluetooth: "on" } as NativePoolStatus);
+  assert.equal(connectedPoolKey(ready), `${KITCHEN.id},${BAR.id}`);
+  assert.equal(connectedPoolKey(empty), BAR.id, "out of paper: not ready; low paper still prints");
+});
+
+test("3C review gate (m-4): the app's default printer that says it cannot print makes a device with no printer of its own not ready", () => {
+  const out = poolSnapshotOf({ printers: [{ state: "connected", printer: KITCHEN, paper: "out" }, { state: "connected", printer: BAR }], defaultId: KITCHEN.id, bluetooth: "on" } as NativePoolStatus);
+  assert.equal(poolDefaultCannotPrint(out), true, "simple mode prints on the default: out of paper, so not ready");
+  assert.equal(poolDefaultCannotPrint({ ...out, defaultId: BAR.id }), false, "another printer out of paper says nothing of the default");
+  assert.equal(poolDefaultCannotPrint(EMPTY_POOL), false, "no app list (bridge v1, the Windows app, a browser): as before");
+});
+
+test("3B: the app's v2 list may say each printer's paper, cover and error (Session 3C's app); the page keeps them, and a change of them is a change", () => {
+  const plain = poolSnapshotOf({ printers: [{ state: "connected", printer: KITCHEN }], defaultId: KITCHEN.id, bluetooth: "on" });
+  assert.equal(plain.printers[0]?.paper, undefined, "an app that says nothing (2F2's): nothing");
+  const out = poolSnapshotOf({ printers: [{ state: "connected", printer: KITCHEN, paper: "out", cover: "open", error: true }], defaultId: KITCHEN.id, bluetooth: "on" } as NativePoolStatus);
+  assert.deepEqual([out.printers[0]?.paper, out.printers[0]?.cover, out.printers[0]?.error], ["out", "open", true]);
+});
+
+test("3C (the 3B review's m-4): a paper, cover or error value this page does not know says nothing, and the rest of the app's list still reads", async () => {
+  const g = globalThis as unknown as { window?: unknown };
+  const before = g.window;
+  try {
+    const later = { printers: [{ state: "connected", printer: KITCHEN, paper: "near-end", cover: "ajar", error: "yes" }, { state: "connected", printer: BAR, paper: "out" }], defaultId: KITCHEN.id, bluetooth: "on" };
+    g.window = { PosNative: { version: 1, versions: [1, 2], platform: "android", request: async () => later, on: () => () => undefined } };
+    const read = await nativeV2Request("printer.status");
+    assert.deepEqual(
+      read.printers.map((entry) => [entry.printer.id, entry.paper, entry.cover, entry.error]),
+      [
+        [KITCHEN.id, undefined, undefined, undefined],
+        [BAR.id, "out", undefined, undefined],
+      ],
+      "a later app's unknown value is dropped; the list and every value this page knows are kept",
+    );
   } finally {
     g.window = before;
   }

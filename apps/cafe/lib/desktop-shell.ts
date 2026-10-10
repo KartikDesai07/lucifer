@@ -2,7 +2,7 @@ import type { UseReactToPrintOptions } from "react-to-print";
 import { toast } from "sonner";
 
 import { DESKTOP_PRINT_EMPTY_MESSAGE, printDocumentHasText, serializePrintDocument } from "@/lib/desktop-shell-document";
-import type { DesktopPrintMode } from "@/lib/desktop-shell-printer";
+import type { DesktopLanBridge, DesktopPrintMode } from "@/lib/desktop-shell-printer";
 import { laneSlipPrintOptions, type RasterPrintTarget } from "@/lib/printer/lane-print";
 
 // The document half (serialization, stylesheet inlining, the blank-slip fence)
@@ -20,7 +20,7 @@ export { serializePrintDocument, DESKTOP_PRINT_EMPTY_MESSAGE };
 // shell's runtime: the bridge's mere presence on `window` is the only signal
 // it trusts (device-agnostic-is-the-product-bar).
 
-export interface PosDesktopBridge {
+export interface PosDesktopBridge extends DesktopLanBridge {
   readonly version: string;
   printHtml(html: string): Promise<void>;
   // Phase 2 Session 2E: the slip on its own Windows printer (slipPrintOptions' printerName). Feature-detect: an older shell lacks it.
@@ -134,12 +134,12 @@ async function printThroughShell(shell: PosDesktopBridge, html: string, printerN
   }
 }
 
-// Wraps a useReactToPrint options object so it prints through the desktop
-// shell when one is present; without one it defers to the printer lanes
-// (lib/printer/lane-print.ts), which return the SAME reference on a plain browser.
+// Wraps a useReactToPrint options object so it prints through the desktop shell when one is present; without one, or for
+// a network printer the shell writes over raw TCP (Phase 3 Session 3E: drawn here, lib/printer/desktop-lan.ts), it defers
+// to the printer lanes (lib/printer/lane-print.ts), which return the SAME reference on a plain browser.
 export function slipPrintOptions<T extends UseReactToPrintOptions>(options: T, printerName?: string, raster?: RasterPrintTarget): T {
   const shell = desktopShell();
-  if (!shell) return laneSlipPrintOptions(options, raster);
+  if (!shell || raster?.lan !== undefined) return laneSlipPrintOptions(options, raster);
   return {
     ...options,
     print: async (iframe: HTMLIFrameElement) => {

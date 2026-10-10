@@ -20,7 +20,7 @@ import { useDeletePrinter, useSavePrinter, useTestPrinter } from "@/hooks/use-pr
 import { agentPrintersOf, readyPrinterIdsOf } from "@/lib/print-agent-printers";
 import { printerStatusOf } from "@/lib/printer/printer-registry";
 import { printerBodyOf, printerDraftOf } from "@/lib/print-setup-form";
-import { connectionText, printerRowState, setupGaps, slipsText, testPrintBlock, testPrintSentText } from "@/lib/print-setup-text";
+import { connectionText, printerFailoverLines, printerRowState, setupGaps, slipsText, testPrintBlock, testPrintSentText } from "@/lib/print-setup-text";
 import { cn } from "@/lib/utils";
 
 interface PrintersSetupSectionProps {
@@ -127,6 +127,12 @@ export function PrintersSetupSection({ printers, stations, devices, devicesFaile
                 <p className="text-brand-muted">
                   Paper {printer.paper} mm · KOT copies {printer.copies.kot} · Bill copies {printer.copies.bill}
                 </p>
+                {/* Session 3B (spec §9.3, §9.4, §10): its backup, who prints it now, its problem, no takeover. */}
+                {printerFailoverLines(printer, printers, devices, deviceId, Date.now(), devicesFailed).map((line) => (
+                  <p key={line} className="text-brand-muted">
+                    {line}
+                  </p>
+                ))}
                 {switchingOff === printer.id ? (
                   <InlineConfirm
                     question={`Switch ${printer.name} off? Slips still waiting for it will show under Couldn't print.`}

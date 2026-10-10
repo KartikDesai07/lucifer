@@ -137,6 +137,7 @@ export async function enqueueRoutedPrintJob(input: {
   const routing = await readPrintRouting({
     productIds: printPayloadProductIds(input.payload),
     ...(input.billPrinterId !== undefined ? { billPrinterId: input.billPrinterId } : {}),
+    nowMs: input.nowMs,
   });
   if (routing === null) return null;
   const baseKey = printJobKeyOf(input.payload) ?? (input.idempotencyKey !== undefined ? `reprint:${input.idempotencyKey}` : undefined);

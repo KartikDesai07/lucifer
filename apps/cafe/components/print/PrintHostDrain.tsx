@@ -4,7 +4,7 @@ import { useCallback, useMemo, type MutableRefObject } from "react";
 
 import { PRINT_HOST_MAX_AGE_MS } from "@pos/shared/print-job";
 import { usePrintHostRouting } from "@/components/layout/PosPulseProvider";
-import { useAgentPrinters } from "@/hooks/use-agent-printers";
+import { useAgentPrinters, usePrintersRead } from "@/hooks/use-agent-printers";
 import { useCanPrintOnAny } from "@/hooks/use-device-printer";
 import { useHostRouting } from "@/hooks/use-host-routing";
 import { useNativeHostBackground } from "@/hooks/use-native-host";
@@ -62,7 +62,13 @@ export function PrintHostDrain({ enabled, surfacesMounted, deviceId, tabId, busy
   usePrintHostWakeLock(enabled);
   usePrintHostBeat({ enabled, deviceId, onDemoted });
   usePrintHostPrinterBeat({ enabled, deviceId, onDemoted });
-  useNativeHostBackground(enabled);
+  // Phase 3 Session 3D (spec §9.5): the POS app keeps printing with the screen off (its sticky service) on every device
+  // that prints for the cafe: the host, and in printers mode a device that writes a printer. No request of its own.
+  const printsForCafe = enabled || (surfacesMounted && printers.printersMode && printers.isWriter);
+  // Known once the pulse said who prints and the printers read answered (the same read: no request of its own).
+  const printersRead = usePrintersRead(surfacesMounted && deviceId !== "");
+  const decided = surfacesMounted && deviceId !== "" && routing !== "unknown" && printersRead.loaded;
+  useNativeHostBackground(printsForCafe, decided);
 
   // The host's self-order lane hands a claimed KOT to the agent (ruling R4, job-aware lane): the claim
   // made it a print job, or, when the answer names none, the routed enqueue makes it one under the

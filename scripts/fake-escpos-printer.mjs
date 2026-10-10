@@ -4,17 +4,21 @@
 //
 //   node scripts/fake-escpos-printer.mjs [--port 9100] [--host 127.0.0.1] [--out <dir>]
 //                                        [--drop-after <bytes>] [--drop-every <n>] [--delay <ms>]
-//                                        [--paper-out] [--cover-open] [--refuse]
+//                                        [--paper-out] [--cover-open] [--paper-low] [--silent] [--refuse]
 //
 // The Android emulator reaches it at 10.0.2.2:<port>, the Windows app at 127.0.0.1:<port>. A phone on
 // the shop Wi-Fi needs --host 0.0.0.0. Every connection is one job: its bytes go to
 // <out>/<time>-<n>.bin and one JSON line to <out>/jobs.log. DLE EOT n (0x10 0x04 n) is answered at
-// once, as a real printer answers its real-time status command.
+// once, as a real printer answers its real-time status command. Phase 3 Session 3C: a connection that carried only
+// DLE EOT requests (the POS app's idle status check, once a minute per network printer) is logged with
+// "statusOnly": true; it is not a slip.
 //
 //   --drop-after N  cut the connection after N bytes of a job (a slip cut off mid-way: "maybe sent")
 //   --drop-every N  with --drop-after, cut only every N-th connection (the soak's drops; default 1: every one)
 //   --delay MS      read nothing for MS after a connection opens (a slow or busy printer)
 //   --paper-out     DLE EOT reports "paper end"      --cover-open  DLE EOT reports "cover open"
+//   --paper-low     DLE EOT reports "paper near end" (still online)
+//   --silent        answers no DLE EOT at all (a printer without real-time status)
 //   --refuse        reset every connection as it opens (the printer accepts nothing)
 // To test "cannot connect" (nothing listening at all), stop this script.
 
@@ -37,6 +41,8 @@ export function parseArgs(argv) {
     delay: 0,
     paperOut: false,
     coverOpen: false,
+    paperLow: false,
+    silent: false,
     refuse: false,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -60,6 +66,8 @@ export function parseArgs(argv) {
       case "--delay": opts.delay = whole(); break;
       case "--paper-out": opts.paperOut = true; break;
       case "--cover-open": opts.coverOpen = true; break;
+      case "--paper-low": opts.paperLow = true; break;
+      case "--silent": opts.silent = true; break;
       case "--refuse": opts.refuse = true; break;
       default: throw new Error(`unknown option ${flag}`);
     }
@@ -74,7 +82,7 @@ export function statusByte(n, state) {
     case 1: return BASE | (state.paperOut || state.coverOpen ? 0x08 : 0); // bit 3: offline
     case 2: return BASE | (state.coverOpen ? 0x04 : 0) | (state.paperOut ? 0x20 : 0); // bit 2: cover open; bit 5: paper end
     case 3: return BASE; // no error
-    case 4: return BASE | (state.paperOut ? 0x60 : 0); // bits 5–6: roll paper end
+    case 4: return BASE | (state.paperOut ? 0x60 : 0) | (state.paperLow ? 0x0c : 0); // bits 5–6: roll paper end; bits 2–3: near end
     default: return null;
   }
 }
@@ -113,6 +121,7 @@ export function startFakePrinter(opts, onJob = () => {}) {
     const finish = () => {
       if (finished) return;
       finished = true;
+      record.statusOnly = record.bytes > 0 && record.bytes === record.statusRequests * 3;
       const name = `${at.toISOString().replace(/[:.]/g, "-")}-${n}.bin`;
       const file = record.refused ? null : path.join(opts.out, name);
       if (file !== null) writeFileSync(file, Buffer.concat(chunks));
@@ -147,7 +156,7 @@ export function startFakePrinter(opts, onJob = () => {}) {
       carry = scan.carry;
       for (const request of scan.requests) {
         record.statusRequests += 1;
-        const reply = statusByte(request, opts);
+        const reply = opts.silent ? null : statusByte(request, opts);
         if (reply !== null && !socket.destroyed) socket.write(Buffer.from([reply]));
       }
       if (record.dropped) socket.destroy();

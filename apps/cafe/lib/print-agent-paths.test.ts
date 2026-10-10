@@ -103,8 +103,12 @@ test("PIN: the agent leases on events aimed at it, names itself on the pulse (th
   assert.ok(src("apps/cafe/hooks/use-pos-pulse.ts").includes("apiGet<PosPulseData>(`${POS_PULSE_ENDPOINT}${pulsePrintDeviceQuery()}`)"), "the pulse carries it: no new request");
   // Session 2F1 (deliberate change): or one of the printers it prints here that can print now (a POS app printer on
   // bridge v2 by its own state; any other only while canPrintNow, as before).
-  assert.ok(agent.includes("printerReady: () => canPrintNow() || readyNow().length > 0,"), "the agent's gate is the device's own can-print verdict");
-  assert.ok(agent.includes("const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf);"), "and its printers' own states");
+  // Session 3C (the 3B gate's review of the golden copy, m-2) deliberately changed: a device that prints printers is ready
+  // only by their own states.
+  // The 3C review gate (m-4) deliberately changed: in simple mode the app's default printer by its own state too.
+  assert.ok(agent.includes("printerReady: () => (readyRef.current.length === 0 ? canPrintNow() && !poolDefaultCannotPrint(nativePool().getSnapshot()) : readyNow().length > 0),"), "the agent's gate is the device's own can-print verdict");
+  // Session 3C (spec §10) deliberately changed: and not one the app says cannot print.
+  assert.ok(agent.includes("const readyNow = (): string[] => readyPrinterIdsOf(readyRef.current, targetsRef.current, canPrintNow(), printerStatusOf, printerCannotPrintOf);"), "and its printers' own states");
   assert.ok(agent.includes("PRINT_AGENT_SLIP_DEADLINE_MS"), "its wait on one slip is bounded");
 });
 
@@ -126,8 +130,9 @@ test("PIN (2B): the draining tab offers itself for direct print, every answer th
   assert.ok(core.includes("if (held.length > 0 && enabled && !busy) return void cycle(true);"), "a held job prints before any lease, past the printer gate (its attempt was made while ready)");
   assert.ok(core.includes("if (deps.now() - next.at < PRINT_DIRECT_HOLD_MS) return next.job;"), "but only well inside its lease (the fresh review, I-1)");
   assert.ok(core.includes("again = answers.get(key)?.more !== false;"), "the ack's more decides the next lease");
-  // The 2F1 review gate (N-1, deliberate change): only a change of what can print now is a nudge.
-  assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, canPrint, poolReady]);"), "a printer state change is a nudge, never a lease queued behind a print");
+  // The 2F1 review gate (N-1, deliberate change): only a change of what can print now is a nudge. Phase 3 Session 3E
+  // deliberately changed: a network printer of the Windows app too.
+  assert.ok(agent.includes("useEffect(() => {\n    agent?.nudge();\n  }, [agent, canPrint, poolReady, lanReady]);"), "a printer state change is a nudge, never a lease queued behind a print");
   assert.ok(core.includes("if (opened) nudge();"), "so is the gate opening or the bridge freeing up");
 });
 
@@ -156,4 +161,70 @@ test("PIN (spec §7.7): both receipts print the banner first, and every surface 
   const banner = src("apps/cafe/components/pos/PrintBanner.tsx");
   assert.ok(banner.includes("if (!text) return null;"), "no banner on a first print");
   assert.ok(banner.includes('printColorAdjust: "exact"'), "a browser print keeps the black");
+});
+
+// Session 3B (spec §9.3, §10; the token fix's M-2): the page's half of Phase 3's wire. Its wake says it can take a
+// network printer over (bridge v2), that it prints token slips, and the health of the printers it prints here; its acks
+// and its pulse say tokens; a network printer it cannot reach is acked "unreachable"; the printers the wake says it took
+// over are kept for its top-bar dot.
+test("PIN (3B): the wake says lanFailover on bridge v2, tokenSlips and the printers' health; the ack and the pulse say tokens; the agent knows its network printers", () => {
+  const wake = src("apps/cafe/hooks/use-print-agent-wake.ts");
+  // Phase 3 Session 3E deliberately changed: the Windows app 1.12.0 too (it writes network printers itself, raw TCP).
+  assert.ok(wake.includes("lanFailover: (caps.native && nativeV2Bridge() !== null) || desktopLan,"), "the POS app on bridge v2 and the Windows app 1.12.0 take a network printer over");
+  assert.ok(wake.includes("const desktopLan = desktop && desktopLanApi() !== null;") && wake.includes("lan: caps.native || desktopLan,"), "the Windows app 1.12.0 says it writes network printers");
+  assert.ok(wake.includes("tokenSlips: true,"), "the wake says this page prints token slips");
+  assert.ok(wake.includes("...(health.length > 0 ? { printers: health } : {}),"), "the health of the printers it prints here rides the beat");
+  assert.ok(wake.includes("setTakenOverPrinters(data.takenOver ?? []);"), "the printers it took over, kept for its dot");
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  // Session 3C (the 3B review gate's I-1) deliberately changed: through the older-server fallback (pinned below).
+  assert.ok(agent.includes('printAgentSkew.send({ ...body, tokenSlips: true }, olderAckBody, (sent) => apiSend<PrintAckData>(`/api/print-jobs/${encodeURIComponent(id)}/ack`, "POST", sent)),'), "every ack says tokens");
+  assert.ok(agent.includes("networkPrinter: (job) => job.printerId !== undefined && lanRef.current.includes(job.printerId),"), "a network printer it prints here");
+  // Session 3C's review (I-1) deliberately changed: through the health clock (pinned below), from the agent's own lists.
+  assert.ok(agent.includes("setPrinterHealthSource(clock.reports)") && agent.includes("localIds: readyRef.current,"), "the beat reads its printers' health from the agent's own lists");
+  assert.ok(src("apps/cafe/lib/print-agent-seams.ts").includes("`?device=${encodeURIComponent(pulseDevice)}&${PRINT_PULSE_TOKENS_PARAM}=${PRINT_HEADER_ON}`"), "the pulse says tokens");
+  assert.ok(src("apps/cafe/lib/print-agent.ts").includes("const body = failedAckBody(deps.deviceId, job.epoch, outcome, deps.networkPrinter?.(job) === true);"), "the agent's refusal says unreachable for a network printer");
+});
+
+// Session 3C (the 3B review gate's I-1; the 3B review's m-1 and m-3): after a rollback of the web, a server from before
+// Phase 3 refuses the ack's and the wake's new fields; the page sends them once more without them, and from then on the
+// older body. The beat reads a printer down only once it stayed so 20 s, and names down a printer it may take over that
+// its app does not list.
+test("PIN (3C): the ack and the wake go through the older-server fallback; the beat's health reads the clock and the takeover printers the app lacks", () => {
+  const wake = src("apps/cafe/hooks/use-print-agent-wake.ts");
+  assert.ok(wake.includes("const data = await printAgentSkew.send(wakeBody(deviceId), olderWakeBody, (body) => apiSend<PrintWakeBeatData>(WAKE_URL, \"POST\", body));"), "the wake falls back once to the older body");
+  const skew = src("apps/cafe/lib/print-agent-skew.ts");
+  assert.ok(skew.includes("export const printAgentSkew = createOlderServerFallback();"), "one fallback for the page: the ack and the wake learn it together");
+  assert.ok(skew.includes('if (!(error instanceof ApiError) || error.status !== 400 || error.message !== OLDER_SERVER_REFUSAL) throw error;'), "only a refused body is sent again");
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.ok(agent.includes("missing: missingRef.current,"), "the takeover printers the app lacks ride the beat as down");
+  assert.ok(agent.includes("nowMs: Date.now(),"), "the beat's health reads the clock (a printer reads down only once it stayed so)");
+});
+
+// Session 3C's review (I-1): the 20 s clock starts when the app's printer status changes, not at the next wake (once a
+// minute on a healthy socket), so a printer down 20 s is reported down at the very next wake.
+test("PIN (3C review): the beat's health clock runs on every change of the POS app's printers and this device's printer, and stops with the agent", () => {
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.ok(agent.includes("const clock = printerHealthClock("), "the health source is a clock, not a read at the wake only");
+  // Phase 3 Session 3E deliberately changed: and of the Windows app's network printers (desktopLan).
+  assert.ok(agent.includes("[(listener) => nativePool().subscribe(listener), (listener) => devicePrinter().subscribe(listener), (listener) => desktopLan().subscribe(listener)],"), "it runs on every status change of the app's printers and of this device's printer");
+  assert.ok(agent.includes("const offSource = setPrinterHealthSource(clock.reports);"), "the wake's beat reads the clock's reports");
+  assert.ok(agent.includes("clock.stop();"), "released with the agent");
+});
+
+// Phase 3 Session 3D (the gold's review, I-3): a hidden page in the POS app polls the wake (the heartbeat of a device that
+// prints with the screen off), and the app's 15 s hidden tick never leases (it was 4 empty leases a minute per device).
+test("PIN (3D): in the POS app a hidden page polls the wake; the app's hidden tick does not kick the agent", () => {
+  const wake = src("apps/cafe/hooks/use-print-agent-wake.ts");
+  // Phase 3 Session 3G deliberately changed (the second golden review's m-6): the rule is printAgentWakeMayPoll, tested by
+  // behaviour in lib/print-agent.test.ts; the hook gives it the same three facts.
+  assert.ok(wake.includes('mayPoll: () => printAgentWakeMayPoll({ desktopShell: isDesktopShell(), posApp: nativeBridge() !== null, visible: document.visibilityState === "visible" }),'), "the POS app's hidden page keeps its heartbeat; a hidden browser tab does not poll");
+  assert.ok(!src("apps/cafe/hooks/use-print-agent.ts").includes('nativeOn("app.wake"'), "the hidden tick is no reason to lease");
+});
+
+// The 3C review gate (its review's m-2): the takeover printers the app lacks change with the setup or a refused select,
+// not with a status event, so the clock samples the new list the moment the hook sees it.
+test("PIN (3C gate): a new list of takeover printers the app lacks starts the beat's 20 s clock at once", () => {
+  const agent = src("apps/cafe/hooks/use-print-agent.ts");
+  assert.ok(agent.includes("missingRef.current = missingKey === \"\" ? [] : missingKey.split(\",\");\n    clockRef.current?.reports();"), "the list is sampled when it changes");
+  assert.ok(agent.includes("clockRef.current = clock;") && agent.includes("clockRef.current = null;"), "the hook holds the agent's clock, and lets it go with the agent");
 });

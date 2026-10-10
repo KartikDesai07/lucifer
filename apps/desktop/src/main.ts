@@ -16,6 +16,7 @@ import { createLogger } from "./log";
 import { schedulePrinterCheck } from "./printer-check";
 import { installPermissionHandlers } from "./permissions";
 import { registerPrintHandler } from "./print";
+import { registerRawPrintHandler } from "./print-raw";
 import { createMainWindow } from "./shell-window";
 import { openUrlWindow, registerUrlHandlers } from "./url-window";
 import { buildAppMenu, createTray, showAboutDialog } from "./menu";
@@ -119,6 +120,15 @@ if (!app.requestSingleInstanceLock()) {
           log.error(`store write failed: ${error instanceof Error ? error.name : "unknown"}`);
         }
       },
+      log,
+      onJobFailed: notifyPrintFailure,
+    });
+
+    // Phase 3 Session 3E (spec §9.6): network printers over raw TCP from this process, vetted the same way.
+    registerRawPrintHandler({
+      getMainWebContentsId: () =>
+        mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.id : null,
+      getOrigin: () => store.serverOrigin,
       log,
       onJobFailed: notifyPrintFailure,
     });

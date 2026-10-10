@@ -121,6 +121,8 @@ export interface SlipPrintTarget {
   paper: PaperWidth;
   printerName?: string;
   nativeId?: string;
+  /** Phase 3 Session 3E (spec §9.6): a network printer the Windows app 1.12.0 writes over raw TCP. */
+  lan?: { host: string; port: number };
 }
 
 export type HostPrintSlip = (HostKotSlip | HostReceiptSlip | HostTokenSlip | HostEodSlip | HostTestSlip) & { target?: SlipPrintTarget };

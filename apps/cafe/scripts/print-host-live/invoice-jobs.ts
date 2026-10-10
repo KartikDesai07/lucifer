@@ -1,5 +1,5 @@
 /**
- * Print customization S10 live leg (az) - the GST invoice serial on a bill job, against a REAL MongoDB. It
+ * Print customization S10 live leg (bg) - the GST invoice serial on a bill job, against a REAL MongoDB. It
  * replicates POST /api/print-jobs' exact body validation and payload chain (the route needs a signed-in session,
  * which this script does not stand up - precedent: legs m and n): parse the body with the same schema, then
  * billPayloadWithFirstPrint(...).then(billPayloadWithInvoice), then enqueuePrintJob. The route-source pin
@@ -57,30 +57,30 @@ async function throughRoute(body: unknown, nowMs: number): Promise<{ outcome: st
   return { outcome: res.outcome, pair: snapshot, hasKeys: ["invoiceNumber" in snapshot, "invoiceFy" in snapshot] };
 }
 
-export async function legAZ(nowMs: number): Promise<void> {
-  console.log("\n(az) the GST invoice serial on a bill job: injected from the stored order, a forged value replaced, a cancelled bill keeps it");
+export async function legBG(nowMs: number): Promise<void> {
+  console.log("\n(bg) the GST invoice serial on a bill job: injected from the stored order, a forged value replaced, a cancelled bill keeps it");
   await freshHost(nowMs);
 
   const held = await orderOf({ ...GST_FIELDS, invoiceNumber: 23, invoiceFy: STORED_FY });
   const bare = await throughRoute(clientBody(held, null), nowMs);
-  check("(az) an old tab's bill payload WITHOUT the invoice keys is stored with the order's serial (23 / 2026)", bare.outcome === "queued" && bare.pair?.invoiceNumber === 23 && bare.pair?.invoiceFy === STORED_FY);
+  check("(bg) an old tab's bill payload WITHOUT the invoice keys is stored with the order's serial (23 / 2026)", bare.outcome === "queued" && bare.pair?.invoiceNumber === 23 && bare.pair?.invoiceFy === STORED_FY);
 
   const forgedOrder = await orderOf({ ...GST_FIELDS, invoiceNumber: 24, invoiceFy: STORED_FY });
   const forgedBody = clientBody(forgedOrder, { invoiceNumber: FORGED_NUMBER, invoiceFy: FORGED_FY });
   const sent = (forgedBody as { payload: { snapshot: Pair } }).payload.snapshot;
-  check("(az) landmark: the forged body really carries the forged pair into the route", sent.invoiceNumber === FORGED_NUMBER && sent.invoiceFy === FORGED_FY);
+  check("(bg) landmark: the forged body really carries the forged pair into the route", sent.invoiceNumber === FORGED_NUMBER && sent.invoiceFy === FORGED_FY);
   const forged = await throughRoute(forgedBody, nowMs);
-  check("(az) a FORGED pair is replaced by the stored one (24 / 2026), never stored as sent", forged.pair?.invoiceNumber === 24 && forged.pair?.invoiceFy === STORED_FY);
+  check("(bg) a FORGED pair is replaced by the stored one (24 / 2026), never stored as sent", forged.pair?.invoiceNumber === 24 && forged.pair?.invoiceFy === STORED_FY);
 
   const cancelled = await orderOf({ ...GST_FIELDS, status: "Cancelled", cancelReason: "customer left", invoiceNumber: 25, invoiceFy: STORED_FY });
   const kept = await throughRoute(clientBody(cancelled, null), nowMs);
   const cancelledRow = await Order.findById(cancelled._id).lean();
-  check("(az) a bill cancelled AFTER payment keeps its serial on the slip (25 / 2026)", cancelledRow?.status === "Cancelled" && kept.pair?.invoiceNumber === 25 && kept.pair?.invoiceFy === STORED_FY);
+  check("(bg) a bill cancelled AFTER payment keeps its serial on the slip (25 / 2026)", cancelledRow?.status === "Cancelled" && kept.pair?.invoiceNumber === 25 && kept.pair?.invoiceFy === STORED_FY);
 
   const plain = await orderOf({});
   const unnumbered = await throughRoute(clientBody(plain, { invoiceNumber: FORGED_NUMBER, invoiceFy: FORGED_FY }), nowMs);
-  check("(az) an order holding NO serial drops a forged pair: neither key is stored", unnumbered.outcome === "queued" && unnumbered.hasKeys[0] === false && unnumbered.hasKeys[1] === false);
+  check("(bg) an order holding NO serial drops a forged pair: neither key is stored", unnumbered.outcome === "queued" && unnumbered.hasKeys[0] === false && unnumbered.hasKeys[1] === false);
 
   const jobs = await PrintJob.countDocuments({ kind: "bill" });
-  check("(az) landmark: all four bill jobs were really queued", jobs === 4);
+  check("(bg) landmark: all four bill jobs were really queued", jobs === 4);
 }

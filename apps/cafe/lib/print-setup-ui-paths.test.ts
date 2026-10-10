@@ -14,7 +14,7 @@ const raw = (rel: string): string => readFileSync(path.join(CAFE, rel), "utf8").
 const src = (rel: string): string => stripComments(raw(rel));
 const lines = (text: string): number => text.replace(/\n$/, "").split("\n").length;
 const SETUP = "components/print/setup/";
-const FILES = ["PrintSetupSections.tsx", "PrintersSetupSection.tsx", "PrinterFormDialog.tsx", "SetUpPrintersCard.tsx", "StationsSetupSection.tsx", "DevicesSetupSection.tsx"].map((f) => `${SETUP}${f}`);
+const FILES = ["PrintSetupSections.tsx", "PrintersSetupSection.tsx", "PrinterFormDialog.tsx", "SetUpPrintersCard.tsx", "StationsSetupSection.tsx", "DevicesSetupSection.tsx", "BackupPrinterSelect.tsx"].map((f) => `${SETUP}${f}`);
 
 test("PIN (2D): the admin Printer setup page shows the outlet's sections after this device's panel", () => {
   const page = src("app/(dashboard)/printers/page.tsx");
@@ -78,8 +78,9 @@ test("PIN (2D, spec §11): the printer form: a network printer's printing device
   // Session 2F1: a tablet whose POS app prints one printer (bridge v1) is refused a second, in words.
   assert.match(form, /const result = printerBodyOf\(draft, printers, printer\?\.id, windowsHere \? PRINTER_WINDOWS_REQUIRED : undefined, onePrinter\);/, "the body and its rules from the pure lib");
   assert.match(form, /const onePrinter = onePrinterDevicesOf\(devices, \{ deviceId, native: caps\.native, v2: pool\.active \}\);/);
-  assert.match(form, /devices\.filter\(\(device\) => device\.shell === "android" && device\.deviceId !== deviceId\)/, "only Android app devices print to a LAN printer for now");
-  assert.match(form, /\[\.\.\.\(caps\.native && deviceId !== "" \? \[deviceId\] : \[\]\), \.\.\.android\]/, "this device when it is the Android app");
+  // Phase 3 Session 3E deliberately changed: the POS app's devices and the Windows app 1.12.0 (lib/print-setup-form.ts
+  // lanPrintingDevicesOf, unit-tested), this device when it writes network printers.
+  assert.match(form, /const choices = lanPrintingDevicesOf\(devices, \{ deviceId, lan: caps\.native \|\| desktopLanApi\(\) !== null \}, draft\.primaryDeviceId\);/, "the POS app's devices and the Windows app 1.12.0 print to a LAN printer");
   assert.match(form, /onClick=\{\(\) => setDraft\(\(current\) => draftWithLocal\(current, here\)\)\}/, "Use this device's printer copies its saved printer");
   assert.match(form, /onChange=\{\(kotAll\) => set\(\{ kotAll, \.\.\.\(kotAll \? \{ kotStations: \[\] \} : \{\}\) \}\)\}/, "Full KOT copy clears the station boxes");
   assert.match(form, /disabled=\{draft\.kotAll\}/, "and keeps them off while it is on");
@@ -176,10 +177,25 @@ test("PIN (2D): the setup screens are client components, stay small, never log, 
   for (const rel of FILES) {
     const text = raw(rel);
     assert.ok(text.startsWith('"use client";'), `${rel} is a client component`);
-    // Session 2F1 (deliberate change): the printer form also lists the POS app's printers (bridge v2).
-    const budget = rel.endsWith("PrinterFormDialog.tsx") ? 240 : 220;
+    // Session 2F1 (deliberate change): the printer form also lists the POS app's printers (bridge v2). Session 3B: 250
+    // (was 240), its backup printer.
+    const budget = rel.endsWith("PrinterFormDialog.tsx") ? 250 : 220;
     assert.ok(lines(text) <= budget, `${rel} stays <= ${budget} lines, got ${lines(text)}`);
     assert.ok(!/console\./.test(text), `${rel} never logs`);
     assert.ok(!/\.mutate\(/.test(src(rel)), `${rel} awaits mutateAsync (a per-call callback fires only for the latest call)`);
   }
+});
+
+// Phase 3 Session 3B (spec §9.3, §9.4, §11): the setup page's failover words and the backup printer in the form.
+test("PIN (3B): each printer row shows its failover lines, each device whether it can take a printer over, and the form saves a backup printer", () => {
+  const section = src(`${SETUP}PrintersSetupSection.tsx`);
+  // Session 3C (the 3B gate review's m-B) deliberately changed: a failed devices read says no takeover words.
+  assert.ok(section.includes("printerFailoverLines(printer, printers, devices, deviceId, Date.now(), devicesFailed).map((line) => ("), "the row's backup, who prints it now, its problem, no takeover");
+  const devices = src(`${SETUP}DevicesSetupSection.tsx`);
+  assert.ok(devices.includes("{device.lanFailover === true && <p className=\"text-brand-muted\">{DEVICE_TAKES_OVER_TEXT}</p>}"), "a device that can take a network printer over says so");
+  const form = src(`${SETUP}PrinterFormDialog.tsx`);
+  assert.ok(form.includes("<BackupPrinterSelect printerId={printer?.id ?? null} value={draft.backupPrinterId} printers={printers} onChange={(backupPrinterId) => set({ backupPrinterId })} />"), "the backup printer, chosen in the form");
+  const select = src(`${SETUP}BackupPrinterSelect.tsx`);
+  assert.ok(select.includes("const choices = backupChoicesOf(printers, printerId, value);"), "the choices from the pure lib");
+  assert.ok(select.includes("value={choices.some((choice) => choice.id === value) ? value : NONE}"), "a saved backup it cannot find shows as none");
 });

@@ -1,7 +1,9 @@
 import { SELF_ORDER_RECEIVER } from "@pos/shared/public";
-import type { PrintJobRef } from "@pos/shared/print-agent-wire";
+import { PRINT_HEADER_ON, PRINT_PULSE_TOKENS_PARAM, type PrintJobRef, type PrintJobsForMe } from "@pos/shared/print-agent-wire";
 import { claimKotPrint } from "@/lib/pos-pulse";
+import { printDeviceDrawsTokens } from "@/lib/print-device";
 import { PRINT_HOST_DEVICE_ID_MAX_CHARS } from "@/lib/print-host";
+import { readJobsForDevice } from "@/lib/print-lease";
 import { createOrderPrintJobs, openingSlipsOf, wireOrderOf, type PrintIntent } from "@/lib/print-order-jobs";
 import type { Order } from "@/types";
 
@@ -44,4 +46,15 @@ export async function claimKotPrintForAgent(id: string, intent: PrintIntent, now
 export function printPulseDeviceOf(url: string): string | null {
   const raw = new URL(url).searchParams.get("device")?.trim() ?? "";
   return raw !== "" && raw.length <= PRINT_HOST_DEVICE_ID_MAX_CHARS ? raw : null;
+}
+
+/** Phase 3 (the token fix's M-2): the pulse's `?tokens=1`, said by a page that prints token slips. */
+export function printPulseTokensOf(url: string): boolean {
+  return new URL(url).searchParams.get(PRINT_PULSE_TOKENS_PARAM) === PRINT_HEADER_ON;
+}
+
+/** The pulse's jobs-for-me (spec §9.1): a token job counts only for a page that can print it; a page that does not say
+ *  (one from before Phase 3) is answered from what its device's last lease said (one more read, for that page only). */
+export async function readPulseJobsForDevice(deviceId: string, saysTokens: boolean, nowMs: number): Promise<PrintJobsForMe> {
+  return readJobsForDevice(deviceId, nowMs, saysTokens || (await printDeviceDrawsTokens(deviceId)));
 }

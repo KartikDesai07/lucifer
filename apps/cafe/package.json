@@ -201,6 +201,9 @@
     "lib/print-agent.test.ts",
     "lib/print-agent-paths.test.ts",
     "lib/print-attention.test.ts",
+    "lib/print-health.test.ts",
+    "lib/print-agent-health.test.ts",
+    "lib/print-agent-skew.test.ts",
     "lib/print-waiting.test.ts",
     "lib/print-routing.test.ts",
     "lib/pos-install.test.ts",
@@ -418,6 +421,7 @@
     "lib/print-setup-fields.test.ts",
     "lib/print-windows-printers.test.ts",
     "lib/printer/native-pool.test.ts",
+    "lib/printer/desktop-lan.test.ts",
     "lib/printer/native-bridge-v2-parity.test.ts",
     "scripts/print-soak-agent.test.ts",
     "lib/gst-invoice.test.ts",
@@ -432,7 +436,9 @@
     "lib/reward-progress.test.ts",
     "lib/reward-progress-paths.test.ts",
     "lib/order-create-followups.test.ts",
-    "lib/expense-ui-paths.test.ts"
+    "lib/expense-ui-paths.test.ts",
+    "scripts/print-soak-rules.test.ts",
+    "scripts/print-soak-writer.test.ts"
   ],
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

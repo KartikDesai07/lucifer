@@ -17,6 +17,8 @@ export interface IPrintDevice extends Document {
   lastSeenAt: Date;
   appVersion?: string;
   nativeProtocol?: number; // the Android bridge version; 1 = one printer only
+  tokenSlips?: boolean; // Phase 3 (the token fix's M-2): what its last lease said: its page prints "token" jobs
+  beatAt?: Date; // Phase 3 Session 3C (G-1): its own wake's last heartbeat write (a lease never writes it)
   createdAt: Date;
   updatedAt: Date;
 }
@@ -29,6 +31,8 @@ const capabilitiesSchema = new Schema<PrintDeviceCapabilities>(
     windowsPrinters: { type: Boolean, required: true },
     webSerial: { type: Boolean, required: true },
     webBluetooth: { type: Boolean, required: true },
+    // Phase 3 (spec §9.3): it may write any network printer the setup names; absent from a page before Phase 3.
+    lanFailover: { type: Boolean },
   },
   { _id: false },
 );
@@ -45,6 +49,11 @@ export const printDeviceSchema = new Schema<IPrintDevice>(
     // Omit-empty: absent until a shell reports it.
     appVersion: { type: String },
     nativeProtocol: { type: Number },
+    // Phase 3 (the token fix's M-2): written by the lease's touch, and only when it changes.
+    tokenSlips: { type: Boolean },
+    // Phase 3 Session 3C (G-1): only the wake writes it, so a device whose leases keep it online but whose page no longer
+    // polls the wake never counts as one that can take a network printer over (lib/print-device.ts lanFailoverNow).
+    beatAt: { type: Date },
   },
   { timestamps: true },
 );

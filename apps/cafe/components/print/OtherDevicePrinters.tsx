@@ -12,7 +12,7 @@ import { usePrintHostContext } from "@/components/layout/PrintHostProvider";
 import { usePrintersRead } from "@/hooks/use-agent-printers";
 import { useNativePool } from "@/hooks/use-device-printer";
 import type { PaperWidth } from "@/lib/constants";
-import { PRINTER_IN_SETUP_MESSAGE, agentPrintersOf } from "@/lib/print-agent-printers";
+import { PRINTER_IN_SETUP_MESSAGE, PRINTER_TAKEOVER_MESSAGE, agentPrintersOf } from "@/lib/print-agent-printers";
 import { PRINTER_CONNECT_FAILED_MESSAGE, type ConnectOutcome } from "@/lib/printer/device-printer";
 import { nativePool, type PoolPrinter } from "@/lib/printer/native-pool";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,7 @@ const RECONNECTED = "Printer connected.";
 const NOT_YET = "The printer is added, but not connected yet. Check it is on, then tap Reconnect.";
 const REMOVE_FAILED = "Could not remove the printer. Try again.";
 const IN_SETUP = PRINTER_IN_SETUP_MESSAGE;
+const TAKEOVER = PRINTER_TAKEOVER_MESSAGE;
 const STATUS_WORDS: Record<PoolPrinter["status"], string> = { connected: "Connected", connecting: "Connecting…", disconnected: "Not connected" };
 
 // Printing redesign, Phase 2 Session 2F1 (spec §9.2, §11): on the POS app with bridge v2 one phone or tablet drives
@@ -42,7 +43,11 @@ export function OtherDevicePrinters({ paper, locked }: { paper: PaperWidth; lock
   const others = pool.printers.filter((entry) => entry.id !== pool.defaultId);
   // A printer the setup names this device for is added back by itself (a network printer), so it is not removed here
   // (the 2E gate's review, I-3): the words say where to change it.
-  const inSetup = new Set(Object.values(agentPrintersOf(printers, deviceId, null, null, pool).targets).flatMap((target) => (target.nativeId === undefined ? [] : [target.nativeId])));
+  // Session 3B: a network printer this device may take over is added back by itself too; its words say why it stays.
+  const agent = agentPrintersOf(printers, deviceId, null, null, pool);
+  const appIds = (ids: readonly string[]) => new Set(ids.flatMap((id) => agent.targets[id]?.nativeId ?? []));
+  const inSetup = appIds(agent.localIds.filter((id) => !agent.takeoverIds.includes(id)));
+  const takeover = appIds(agent.takeoverIds);
   // Remove only once the setup is known, as the device section (the final Phase 2 gate, m-1: before, every printer looks unnamed).
   const known = deviceId === "" || answered;
   const disabled = locked || busy;
@@ -98,6 +103,8 @@ export function OtherDevicePrinters({ paper, locked }: { paper: PaperWidth; lock
               </Button>
               {inSetup.has(entry.id) ? (
                 <p className="text-xs text-brand-muted">{IN_SETUP}</p>
+              ) : takeover.has(entry.id) ? (
+                <p className="text-xs text-brand-muted">{TAKEOVER}</p>
               ) : known ? (
                 <Button className={PRINTER_ACTION_CLASS} variant="outline" disabled={disabled} onClick={() => setRemoving(entry.id)}>
                   Remove

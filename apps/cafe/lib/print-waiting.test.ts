@@ -305,6 +305,39 @@ test("PIN: the alarm rides the pulse already polled (no request), and only the p
 });
 
 // Session 2C (printers mode): the panel names a waiting slip's printer from this device's printer list.
+// Phase 3 Session 3B (spec §9.4, §10, P3-7): a slip waiting for its printer says that printer's problem on every device,
+// in the printer's own words (printerProblemText), in the panel and on the alarm's notice; the notice is re-worded
+// quietly when the problem changes.
+test("3B: a waiting slip says its printer's problem in the printer's words; a stale slip still asks for a tap first", () => {
+  const printers = [{ id: "p-bar", name: "Bar printer" }];
+  const out = row({ printerId: "p-bar", problem: "paper-out" });
+  const [section] = printWaitingGroups([out], T0, printers);
+  assert.equal(section?.rows[0]?.reason, "Bar printer is out of paper.");
+  assert.equal(printWaitingReason(row({ printerId: "p-gone", problem: "device-offline" }), T0), "Not printed yet.", "a printer this device does not know by name: the words as before");
+  assert.equal(printWaitingReason(row({ printerId: "p-bar", problem: "paper-out", createdAt: ago(31 * 60_000) }), T0, "Bar printer"), "Waiting over 30 minutes: print it now, or clear it.", "a stale slip needs a tap whatever its printer does");
+  assert.equal(printWaitingReason(row({ printerId: "p-bar", problem: "offline", lastError: PRINTER_NOT_CONNECTED_MESSAGE }), T0, "Bar printer"), "Bar printer is not connected.", "the printer's words before the last refusal's");
+  assert.equal(printAlarmMessage(out, "Bar printer"), "KOT round 1 · T-4 has not printed yet. Bar printer is out of paper.");
+  assert.equal(printAlarmMessage(row({ printerId: "p-bar" }), "Bar printer"), "KOT round 1 · T-4 has not printed yet.", "nothing known: as before");
+});
+
+test("3B: a shown notice is re-worded, with no second ring, when its printer's problem changes", () => {
+  const kot = row({ id: "k", originDeviceId: "dev-a", printerId: "p-bar" });
+  let step = printAlarmStep(new Map(), feedOf([kot]), "dev-a", T0, false);
+  assert.equal(step.ring, true);
+  step = printAlarmStep(step.memory, feedOf([{ ...kot, problem: "paper-out" }]), "dev-a", T0 + 20_000, false);
+  assert.equal(step.ring, false, "no second ring");
+  assert.deepEqual(step.show.map((r) => r.problem), ["paper-out"], "the notice is re-worded (same id)");
+  step = printAlarmStep(step.memory, feedOf([{ ...kot, problem: "paper-out" }]), "dev-a", T0 + 40_000, false);
+  assert.deepEqual(step.show, [], "the same problem again: nothing");
+});
+
+test("PIN (3B): the panel and the alarm name the slip's printer for its problem; no request of their own", () => {
+  const card = src("apps/cafe/components/print/WaitingSlipsCard.tsx");
+  assert.ok(card.includes("const groups = printWaitingGroups(rows ?? [], Date.now(), printers);"), "the panel's reasons name the printer");
+  const alarm = src("apps/cafe/hooks/use-print-slip-alarm.ts");
+  assert.ok(alarm.includes("printAlarmMessage(row, printerNameOf(qc.getQueryData<PrinterConfig[]>(PRINTERS_KEYS.all) ?? [], row.printerId))"), "the notice names it from the printers already read");
+});
+
 test("2C: a waiting slip's printer by name; none for simple mode, a printer no longer listed, or no printer at all", () => {
   const printers = [{ id: "p-bar", name: "Bar printer" }];
   assert.equal(printerNameOf(printers, "p-bar"), "Bar printer");

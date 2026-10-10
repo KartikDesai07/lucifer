@@ -11,6 +11,7 @@ import {
   PRINTER_SCAN_MS,
   type NativeErrorCode,
   type NativeEvent,
+  type NativeFeature,
   type NativeMethod,
   type PosNativeApi,
 } from "@/lib/printer/native-bridge-protocol";
@@ -71,6 +72,8 @@ const RESULT_SCHEMAS = {
   "host.background": z.object({ active: z.boolean() }),
   // Fire-and-forget: the app may answer with anything (or navigate away).
   "app.changeUrl": z.unknown(),
+  // Phase 3 Session 3D: the app shows its battery checklist after the answer.
+  "app.battery": z.unknown(),
 } as const satisfies Record<NativeMethod, z.ZodTypeAny>;
 
 const EVENT_SCHEMAS = {
@@ -93,6 +96,7 @@ const TIMEOUT_BY_METHOD: Record<NativeMethod, number> = {
   "bluetooth.enable": NATIVE_PROMPT_TIMEOUT_MS,
   "host.background": NATIVE_REQUEST_TIMEOUT_MS,
   "app.changeUrl": NATIVE_REQUEST_TIMEOUT_MS,
+  "app.battery": NATIVE_REQUEST_TIMEOUT_MS,
 };
 
 function timeoutOf(method: NativeMethod, params: unknown): number {
@@ -119,6 +123,12 @@ export function nativeBridge(): PosNativeApi | null {
   if (!bridge || bridge.version !== NATIVE_BRIDGE_VERSION) return null;
   if (typeof bridge.request !== "function" || typeof bridge.on !== "function") return null;
   return bridge;
+}
+
+/** Phase 3 Session 3D: the POS app says it can do [feature] (window.PosNative.features); an older app says nothing. */
+export function nativeHasFeature(feature: NativeFeature): boolean {
+  const features = nativeBridge()?.features;
+  return Array.isArray(features) && features.includes(feature);
 }
 
 export async function nativeRequest<M extends NativeMethod>(method: M, params?: unknown): Promise<NativeResult<M>> {

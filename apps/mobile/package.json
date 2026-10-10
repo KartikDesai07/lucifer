@@ -8,7 +8,7 @@
     "lint": "eslint .",
     "start": "react-native start",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test src/url.test.ts src/bridge/protocol.test.ts src/bridge/injected.test.ts src/bridge/router.test.ts src/screens/auto-retry.test.ts src/mobile-paths.test.ts",
+    "test": "node --import tsx --test src/url.test.ts src/bridge/protocol.test.ts src/bridge/injected.test.ts src/bridge/router.test.ts src/screens/auto-retry.test.ts src/battery-steps.test.ts src/mobile-paths.test.ts",
     "test:app": "jest"
   },
   "dependencies": {

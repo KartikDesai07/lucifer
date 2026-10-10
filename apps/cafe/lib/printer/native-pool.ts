@@ -1,3 +1,4 @@
+import type { PrinterCoverState, PrinterPaperState } from "@pos/shared/print-failover";
 import { onWindowEvent } from "@/lib/printer/capabilities";
 import { PRINTER_CONNECT_FAILED_MESSAGE } from "@/lib/printer/device-printer-link";
 import { createWriteQueue } from "@/lib/printer/device-printer-write";
@@ -30,6 +31,10 @@ export interface PoolPrinter {
   printer: NativeDevicePrinter;
   status: "connecting" | "connected" | "disconnected";
   message: string | null;
+  /** Session 3B (spec §10): what the app says of its paper, cover and error (DLE EOT, Session 3C); absent until then. */
+  paper?: PrinterPaperState;
+  cover?: PrinterCoverState;
+  error?: true;
 }
 
 export interface NativePoolSnapshot {
@@ -67,13 +72,27 @@ export interface NativePool {
 }
 
 function poolKey(snapshot: NativePoolSnapshot): string {
-  return JSON.stringify([snapshot.active, snapshot.defaultId, snapshot.printers.map((p) => [p.id, p.printer.name, p.printer.transport, p.status, p.message])]);
+  return JSON.stringify([snapshot.active, snapshot.defaultId, snapshot.printers.map((p) => [p.id, p.printer.name, p.printer.transport, p.status, p.message, p.paper, p.cover, p.error])]);
 }
 
 /** The 2F1 review gate (N-1): what the print agent can print on now, the app's connected printers in its order. A down
  *  printer's own reconnect probes (connecting <-> disconnected) leave it unchanged, so they never nudge the agent. */
 export function connectedPoolKey(snapshot: NativePoolSnapshot): string {
-  return snapshot.printers.filter((entry) => entry.status === "connected").map((entry) => entry.id).join(",");
+  // Session 3C (spec §10): one the app says cannot print is not ready either, so paper put back nudges the agent.
+  return snapshot.printers.filter((entry) => entry.status === "connected" && !poolPrinterCannotPrint(entry)).map((entry) => entry.id).join(",");
+}
+
+/** Session 3C (spec §10): the POS app says this printer cannot print now (out of paper, its cover open, an error: DLE EOT);
+ *  its slips wait, with no lease, until it says it can. */
+export function poolPrinterCannotPrint(entry: Pick<PoolPrinter, "paper" | "cover" | "error">): boolean {
+  return entry.paper === "out" || entry.cover === "open" || entry.error === true;
+}
+
+/** The 3C review gate (m-4): the app's default printer (this device's own, the one simple mode prints on) says it cannot
+ *  print, so a device whose slips have no printer of their own is not ready either (no lease while it says so). */
+export function poolDefaultCannotPrint(snapshot: NativePoolSnapshot): boolean {
+  const entry = snapshot.defaultId === null ? undefined : snapshot.printers.find((printer) => printer.id === snapshot.defaultId);
+  return entry !== undefined && poolPrinterCannotPrint(entry);
 }
 
 /** The app's list as the page's snapshot; a printer's state "none" (never sent for a listed printer) reads as down. */
@@ -83,7 +102,15 @@ export function poolSnapshotOf(status: NativePoolStatus): NativePoolSnapshot {
     const view = nativeStatusToSnapshot({ state: entry.state, printer: entry.printer, bluetooth: status.bluetooth }, null);
     if (view.printer === null || view.printer.kind !== "native" || printers.some((p) => p.id === entry.printer.id)) continue;
     const state = view.status === "connecting" || view.status === "connected" ? view.status : "disconnected";
-    printers.push({ id: entry.printer.id, printer: view.printer, status: state, message: view.message });
+    printers.push({
+      id: entry.printer.id,
+      printer: view.printer,
+      status: state,
+      message: view.message,
+      ...(entry.paper !== undefined ? { paper: entry.paper } : {}),
+      ...(entry.cover !== undefined ? { cover: entry.cover } : {}),
+      ...(entry.error === true ? { error: true as const } : {}),
+    });
   }
   const defaultId = status.defaultId !== null && printers.some((p) => p.id === status.defaultId) ? status.defaultId : null;
   return { active: true, printers, defaultId };

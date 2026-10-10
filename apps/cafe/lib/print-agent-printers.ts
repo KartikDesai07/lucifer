@@ -1,8 +1,10 @@
 import { PRINT_JOBS_FOR_ME_LIMIT, type LeasedPrintJob, type PrintJobsForMe } from "@pos/shared/print-agent-wire";
+import { PRINTER_PROBLEMS, printerHealthProblem, type PrinterCoverState, type PrinterPaperState, type PrinterProblem } from "@pos/shared/print-failover";
 import { printerWriterDeviceId, printersModeOn, routablePrinters, type PrinterConfig } from "@pos/shared/print-printers";
 import type { PrintAgentResult } from "@/lib/print-agent-types";
 import type { SlipPrintTarget } from "@/lib/print-host-slips";
 import { PrintWriteError, printWriteOutcomeOf } from "@/lib/print-write-outcome";
+import { desktopLanId, type DesktopLanPrinter } from "@/lib/printer/desktop-lan";
 import type { DevicePrinter } from "@/lib/printer/device-printer-store";
 import type { PrinterDotPrinters } from "@/lib/printer/printer-dot";
 import type { PrinterStatus } from "@/lib/printer/web-printer-types";
@@ -18,6 +20,8 @@ export const PRINTER_NOT_LOCAL_MESSAGE = "This printer is not connected to this 
 /** The 2E gate's review (I-3), and the 2F2 review gate (M-4) for this device's own printer: what the printer panel
  *  shows instead of Remove for a printer the setup prints through this device. */
 export const PRINTER_IN_SETUP_MESSAGE = "Printer setup prints slips here: to remove it, change or delete that printer in Printer setup first.";
+/** Session 3B (spec §9.3): what Other printers shows instead of Remove for a network printer this device may take over. */
+export const PRINTER_TAKEOVER_MESSAGE = "This device prints it while the device that prints it is offline or cannot reach it. To remove it, change or delete that printer in Printer setup.";
 
 /** Session 2E (spec §9.2): the Windows app's printers. `named`: the app prints a slip on a printer the page names
  *  (desktopPrintsOnNamed); `names`: every printer Windows reports on this PC (null until read); `selected`: the one
@@ -26,12 +30,16 @@ export interface DesktopPrinters {
   selected: string | null;
   names: readonly string[] | null;
   named: boolean;
+  /** Phase 3 Session 3E (spec §9.6): the app writes network printers itself over raw TCP (1.12.0: printRaw, lanStatus). */
+  lan?: boolean;
 }
 
 /** Session 2F1 (spec §9.2): the POS app's printers on bridge v2 (nativePool()): each one's id and state. null on any
  *  other device, and on an app that speaks only v1 (the release APK), which prints its one printer as before. */
 export interface NativePoolView {
-  printers: readonly { id: string; status: PrinterStatus }[];
+  printers: readonly { id: string; status: PrinterStatus; paper?: PrinterPaperState; cover?: PrinterCoverState; error?: true; printer?: { name: string } }[];
+  /** Session 3C (the 3B golden-copy review's m-7): the app's default printer, the one simple mode prints on. */
+  defaultId?: string | null;
 }
 
 /** Session 2F1: the app's id a printer of the setup is, among the app's printers on bridge v2, or null. A LAN printer is
@@ -58,6 +66,9 @@ export function printerIsLocal(printer: PrinterConfig, local: DevicePrinter | nu
   if (pool !== null) return nativeIdOf(printer, pool) !== null;
   const connection = printer.connection;
   if (connection.kind === "lan") {
+    // Phase 3 Session 3E (spec §9.6): the Windows app 1.12.0 writes any network printer itself; its link (desktopLan, the
+    // app's check) decides when it prints one.
+    if (desktop?.lan === true) return true;
     // Ignoring case (the 2D gate's note): the server lower-cases the host, and so does the app; a hand-typed one may not.
     return local?.kind === "native" && local.transport === "tcp" && local.printerId.toLowerCase() === `tcp:${connection.host}:${connection.port}`.toLowerCase();
   }
@@ -95,6 +106,16 @@ export interface AgentPrinters {
   isWriter: boolean;
   /** The routable printers this device writes that ARE its local printers: the lines it leases and prints. */
   localIds: string[];
+  /** Session 3B (spec §9.3): those of them that are network printers (a refusal before any byte is "unreachable"). */
+  lanIds: string[];
+  /** Session 3B (spec §9.3): those of them it may take over (another device writes them by the setup; on bridge v2). */
+  takeoverIds: string[];
+  /** Session 3C (the 3B review's m-1): the network printers it may take over that its app does not list (yet): its beat
+   *  says it cannot print them (lib/print-agent-health.ts), so the server never picks it for one of them. */
+  takeoverMissingIds: string[];
+  /** Phase 3 Session 3E (spec §9.6): the Windows printers it writes that Windows does not report now (the app's presence
+   *  check every minute, 1.12.0): its beat says they are not connected, so every device sees why their slips wait. */
+  windowsMissingIds: string[];
   /** Session 2E: each of them that prints on a named Windows printer, by id: its name and its paper. Session 2F1: each
    *  that is one of the POS app's printers on bridge v2: the app's id and its paper. */
   targets: Record<string, SlipPrintTarget>;
@@ -102,6 +123,19 @@ export interface AgentPrinters {
 
 function printersWrittenBy(printers: readonly PrinterConfig[], deviceId: string): PrinterConfig[] {
   return deviceId === "" ? [] : routablePrinters(printers).filter((printer) => printerWriterDeviceId(printer) === deviceId);
+}
+
+/** Session 3B (spec §9.3): the network printers a POS app on bridge v2 (it says lanFailover) may take over: every
+ *  routable one the setup names another device for. The page adds each to the app ahead of time (a local call, no
+ *  request; the app probes a down one every 30 s), so its link is known before any takeover, it is named in a lease only
+ *  while the app reaches it, and a takeover prints at once. The server grants its line only while this device writes it
+ *  now (printerActiveWriter); it never makes this device a writer by the setup. */
+export function takeoverPrintersOf(printers: readonly PrinterConfig[], deviceId: string, pool: NativePoolView | null, desktopLan = false): PrinterConfig[] {
+  // The gate's emulator pre-run (E-1): only a device that writes a printer by the setup (P3-2: it polls the wake, so it
+  // can be online for one); a device that writes nothing never adds another device's printers to its app. Phase 3
+  // Session 3E (spec §9.6): the Windows app 1.12.0 (`desktopLan`) takes them over too, by the same rule.
+  if ((pool === null && !desktopLan) || printersWrittenBy(printers, deviceId).length === 0) return [];
+  return routablePrinters(printers).filter((printer) => printer.connection.kind === "lan" && printerWriterDeviceId(printer) !== deviceId);
 }
 
 /** Session 2E: a Windows printer this PC prints by name (only on an app that can), drawn for its own paper. Session
@@ -113,6 +147,9 @@ function targetsOf(printers: readonly PrinterConfig[], desktop: DesktopPrinters 
     if (nativeId !== null) targets[printer.id] = { nativeId, paper: `${printer.paper}mm` };
     else if (desktop?.named === true && printer.connection.kind === "device" && printer.connection.transport === "windows") {
       targets[printer.id] = { printerName: printer.connection.address, paper: `${printer.paper}mm` };
+    } else if (desktop?.lan === true && printer.connection.kind === "lan") {
+      // Phase 3 Session 3E (spec §9.6): a network printer of the Windows app 1.12.0, by its address, drawn for its paper.
+      targets[printer.id] = { lan: { host: printer.connection.host, port: printer.connection.port }, paper: `${printer.paper}mm` };
     }
   }
   return targets;
@@ -120,53 +157,113 @@ function targetsOf(printers: readonly PrinterConfig[], desktop: DesktopPrinters 
 
 export function agentPrintersOf(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, desktop: DesktopPrinters | null, pool: NativePoolView | null = null): AgentPrinters {
   const mine = printersWrittenBy(printers, deviceId);
-  const here = mine.filter((printer) => printerIsLocal(printer, local, desktop, pool));
+  // Session 3B: a network printer it may take over prints here once the app has it. Session 3E: the Windows app 1.12.0
+  // writes any of them (its link decides when).
+  const desktopLan = desktop?.lan === true;
+  const candidates = takeoverPrintersOf(printers, deviceId, pool, desktopLan);
+  const takeover = candidates.filter((printer) => desktopLan || nativeIdOf(printer, pool) !== null);
+  const here = [...mine.filter((printer) => printerIsLocal(printer, local, desktop, pool)), ...takeover];
+  // The 3E review gate (m-2): an empty list is Windows saying nothing (its spooler restarting), not every printer gone.
+  const names = desktopLan && desktop?.named === true && desktop.names !== null && desktop.names.length > 0 ? desktop.names : null;
   return {
     printersMode: printersModeOn(printers),
     isWriter: mine.length > 0,
     localIds: here.map((printer) => printer.id),
+    lanIds: here.filter((printer) => printer.connection.kind === "lan").map((printer) => printer.id),
+    takeoverIds: takeover.map((printer) => printer.id),
+    takeoverMissingIds: candidates.filter((printer) => !takeover.includes(printer)).map((printer) => printer.id),
+    windowsMissingIds: names === null ? [] : mine.filter((printer) => printer.connection.kind === "device" && printer.connection.transport === "windows" && !names.includes(printer.connection.address)).map((printer) => printer.id),
     targets: targetsOf(here, desktop, pool),
   };
 }
 
 /** Session 2F1 (spec §9.2): of the printers this device prints here, those that can print right now: one of the POS
  *  app's printers (bridge v2) by its own state; any other (a Windows printer, the one printer of every other device)
- *  when this device's own printer can print (canPrintNow), as before. */
+ *  when this device's own printer can print (canPrintNow), as before. Session 3C (spec §10): not one the app says cannot
+ *  print (`cannotPrint`: out of paper, cover open, an error), so its slips wait with no lease or ack until it can. */
 export function readyPrinterIdsOf(
   localIds: readonly string[],
   targets: Record<string, SlipPrintTarget>,
   canPrint: boolean,
   statusOf: (nativeId: string) => PrinterStatus,
+  cannotPrint: (nativeId: string) => boolean = () => false,
 ): string[] {
   return localIds.filter((id) => {
-    const nativeId = targets[id]?.nativeId;
-    return nativeId === undefined ? canPrint : statusOf(nativeId) === "connected";
+    const target = targets[id];
+    // Phase 3 Session 3E: a network printer of the Windows app by its own link too (desktopLan, by the same id).
+    const key = target?.nativeId ?? (target?.lan === undefined ? undefined : desktopLanId(target.lan));
+    return key === undefined ? canPrint : statusOf(key) === "connected" && !cannotPrint(key);
   });
 }
 
 const STATUS_WORSE: readonly PrinterStatus[] = ["connected", "connecting", "needs-tap", "elsewhere", "disconnected", "none"];
+/** Session 3B (spec §10): what turns the dot red although every printer answers. Low paper still prints. */
+const DOT_PROBLEMS: readonly PrinterProblem[] = ["paper-out", "cover-open", "error"];
 
 /** Session 2D (spec §10): what the top-bar dot needs: printers mode, whether this device writes a printer, and
  *  whether it prints every printer it writes (a printer it writes that is not its own never prints here). Session
- *  2F1: on bridge v2, the worst state among the app's printers it prints. */
-export function dotPrintersOf(printers: readonly PrinterConfig[], deviceId: string, local: DevicePrinter | null, desktop: DesktopPrinters | null, pool: NativePoolView | null = null): PrinterDotPrinters {
+ *  2F1: on bridge v2, the worst state among the app's printers it prints. Session 3B: a printer it may take over counts
+ *  only while the wake says it writes it now (`takenOver`). */
+export function dotPrintersOf(
+  printers: readonly PrinterConfig[],
+  deviceId: string,
+  local: DevicePrinter | null,
+  desktop: DesktopPrinters | null,
+  pool: NativePoolView | null = null,
+  takenOver: readonly string[] = [],
+  lan: readonly DesktopLanPrinter[] | null = null,
+): PrinterDotPrinters {
   const agent = agentPrintersOf(printers, deviceId, local, desktop, pool);
-  const states = Object.values(agent.targets).flatMap((target) => pool?.printers.filter((entry) => entry.id === target.nativeId).map((entry) => entry.status) ?? []);
+  const counted = Object.entries(agent.targets).filter(([id]) => !agent.takeoverIds.includes(id) || takenOver.includes(id));
+  // Phase 3 Session 3E: a network printer of the Windows app by its own link and words, like one of the POS app's.
+  const entryOf = (target: SlipPrintTarget) => {
+    if (target.nativeId !== undefined) return pool?.printers.find((entry) => entry.id === target.nativeId);
+    if (target.lan === undefined) return undefined;
+    const id = desktopLanId(target.lan);
+    return lan?.find((entry) => entry.id === id);
+  };
+  const states = counted.flatMap(([, target]) => {
+    const entry = entryOf(target);
+    return entry === undefined ? [] : [entry.status];
+  });
   const worst = states.reduce<PrinterStatus | undefined>((acc, status) => (acc === undefined || STATUS_WORSE.indexOf(status) > STATUS_WORSE.indexOf(acc) ? status : acc), undefined);
+  // Session 3B (spec §10): the worst paper, cover or error the app says of a printer it counts, by that printer's name.
+  const problems = counted.flatMap(([id, target]) => {
+    const entry = entryOf(target);
+    const problem = entry === undefined ? null : printerHealthProblem({ link: "connected", paper: entry.paper, cover: entry.cover, error: entry.error });
+    const name = printers.find((printer) => printer.id === id)?.name;
+    return problem !== null && DOT_PROBLEMS.includes(problem) && name !== undefined ? [{ name, problem }] : [];
+  });
+  // Session 3C (the 3B golden-copy review's m-7): in simple mode this device prints on its POS app's own printer (the
+  // app's default), so that printer's paper, cover or error turns the dot red too, by the app's name for it.
+  const own = agent.printersMode ? undefined : pool?.printers.find((entry) => entry.id === pool.defaultId);
+  const ownProblem = own === undefined ? null : printerHealthProblem({ link: "connected", paper: own.paper, cover: own.cover, error: own.error });
+  if (own !== undefined && ownProblem !== null && DOT_PROBLEMS.includes(ownProblem)) problems.push({ name: own.printer?.name ?? "The printer", problem: ownProblem });
+  const problem = problems.sort((a, b) => PRINTER_PROBLEMS.indexOf(a.problem) - PRINTER_PROBLEMS.indexOf(b.problem))[0];
   return {
     printersMode: agent.printersMode,
     isWriter: agent.isWriter,
-    allLocal: agent.localIds.length === printersWrittenBy(printers, deviceId).length,
+    allLocal: agent.localIds.filter((id) => !agent.takeoverIds.includes(id)).length === printersWrittenBy(printers, deviceId).length,
     ...(worst !== undefined ? { worst } : {}),
+    ...(problem !== undefined ? { problem } : {}),
   };
 }
 
 /** Session 2F1 (spec §9.2): the network printers this device writes that the POS app (bridge v2) does not have yet: it
- *  adds each (a local call to the app, no request), so naming a tablet a network printer's printing device is enough. */
+ *  adds each (a local call to the app, no request), so naming a tablet a network printer's printing device is enough.
+ *  Session 3B: then every network printer it may take over, ahead of time (takeoverPrintersOf). */
 export function lanPrintersToAdd(printers: readonly PrinterConfig[], deviceId: string, pool: NativePoolView | null): Array<{ host: string; port: number }> {
   if (pool === null) return [];
   const out: Array<{ host: string; port: number }> = [];
   for (const printer of printersWrittenBy(printers, deviceId)) {
+    const connection = printer.connection;
+    if (connection.kind === "lan" && nativeIdOf(printer, pool) === null) out.push({ host: connection.host.toLowerCase(), port: connection.port });
+  }
+  // The gate's emulator pre-run (E-1): never into an app with no printer (the first printer of an empty app becomes its
+  // default, this device's own printer: never another device's). Session 3C (the 3B gate review's m-A): its own goes in
+  // alone, and the ones it may take over follow once the app lists it, so a refused select of its own lets none in first.
+  if (pool.printers.length === 0) return out;
+  for (const printer of takeoverPrintersOf(printers, deviceId, pool)) {
     const connection = printer.connection;
     if (connection.kind === "lan" && nativeIdOf(printer, pool) === null) out.push({ host: connection.host.toLowerCase(), port: connection.port });
   }
@@ -179,15 +276,28 @@ export function lanPrintersToAdd(printers: readonly PrinterConfig[], deviceId: s
  *  30 s and its notification never names a printer nothing prints on. Never one staff added (it was not recorded), and
  *  never the app's default (this device's own printer prints the slips no printer of the setup takes). `record`: what
  *  stays recorded, the ids the setup still names (added, or being added), the app's default, and one asked to go that
- *  the app still lists (the final Phase 2 gate, m-4: a removal that failed or timed out is asked again next time). */
-export function lanPrintersToRemove(printers: readonly PrinterConfig[], deviceId: string, pool: NativePoolView | null, defaultId: string | null, added: readonly string[]): { remove: string[]; record: string[] } {
+ *  the app still lists (the final Phase 2 gate, m-4: a removal that failed or timed out is asked again next time).
+ *  Session 3B: a network printer it may take over is still named (it stays), and one a job is being written to now
+ *  (`writing`, the app's ids) waits until that print is done (the final Phase 2 gate, (a) item 4). */
+export function lanPrintersToRemove(
+  printers: readonly PrinterConfig[],
+  deviceId: string,
+  pool: NativePoolView | null,
+  defaultId: string | null,
+  added: readonly string[],
+  writing: readonly string[] = [],
+): { remove: string[]; record: string[] } {
   if (pool === null) return { remove: [], record: [...added] };
-  const wanted = new Set(printersWrittenBy(printers, deviceId).flatMap((printer) => (printer.connection.kind === "lan" ? [`tcp:${printer.connection.host}:${printer.connection.port}`.toLowerCase()] : [])));
+  const named = [...printersWrittenBy(printers, deviceId), ...takeoverPrintersOf(printers, deviceId, pool)];
+  const wanted = new Set(named.flatMap((printer) => (printer.connection.kind === "lan" ? [`tcp:${printer.connection.host}:${printer.connection.port}`.toLowerCase()] : [])));
   const recorded = new Set(added.map((id) => id.toLowerCase()));
   const listed = new Set(pool.printers.map((entry) => entry.id.toLowerCase()));
+  const busy = new Set(writing.map((id) => id.toLowerCase()));
   const own = defaultId?.toLowerCase() ?? null;
   return {
-    remove: pool.printers.filter((entry) => entry.id.toLowerCase() !== own && recorded.has(entry.id.toLowerCase()) && !wanted.has(entry.id.toLowerCase())).map((entry) => entry.id),
+    remove: pool.printers
+      .filter((entry) => entry.id.toLowerCase() !== own && recorded.has(entry.id.toLowerCase()) && !wanted.has(entry.id.toLowerCase()) && !busy.has(entry.id.toLowerCase()))
+      .map((entry) => entry.id),
     record: added.filter((id) => wanted.has(id.toLowerCase()) || id.toLowerCase() === own || listed.has(id.toLowerCase())),
   };
 }

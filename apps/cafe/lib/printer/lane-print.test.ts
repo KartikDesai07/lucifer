@@ -4,6 +4,7 @@ import type { UseReactToPrintOptions } from "react-to-print";
 
 import { DESKTOP_PRINT_EMPTY_MESSAGE, slipPrintOptions } from "@/lib/desktop-shell";
 import { rasterCapable } from "@/lib/printer/capabilities";
+import { setDesktopLanInstance } from "@/lib/printer/desktop-lan";
 import { setDevicePrinterInstance, type DevicePrinterRuntime } from "@/lib/printer/device-printer";
 import type { DevicePrinter } from "@/lib/printer/device-printer-store";
 import { CUT_PARTIAL_WITH_FEED, ESC_INIT, GS_RASTER_HEADER, RASTER_MAX_ROWS, escposJob, rasterizeRgba } from "@/lib/printer/escpos";
@@ -270,6 +271,44 @@ test("a desktop shell beats the printer lanes: print goes through the shell, not
   assert.ok((sent[0] as string).includes(SHELL_MARKER));
   assert.deepEqual(asked, []);
   assert.equal(state.writes.length, 0);
+});
+
+test("3E: on the Windows app 1.12.0 a network printer's slip is drawn here and sent through the app's raw TCP, never as a page; its refusal keeps the lane's sentence", async (t) => {
+  const pages: string[] = [];
+  const raw: Array<{ printer: unknown; head: number[] }> = [];
+  let answer: unknown = { ok: true, health: null };
+  installWindow(t, {
+    posDesktop: {
+      version: "1.12.0",
+      printHtml: async (html: string) => void pages.push(html),
+      printRaw: async (printer: unknown, data: Uint8Array) => {
+        raw.push({ printer, head: [...data.slice(0, 2)] });
+        return answer;
+      },
+      lanStatus: async () => [],
+    },
+  });
+  withNavigator(t, {});
+  installRuntime(t, null);
+  setDesktopLanInstance(null);
+  t.after(() => setDesktopLanInstance(null));
+  const asked = installFakeSlip(t, { pixels: slipPixels(576, 2, [0]), width: 576, height: 2 });
+
+  await slipPrintOptions<UseReactToPrintOptions>({}, undefined, { lan: { host: "192.168.1.60", port: 9100 }, paper: "80mm" }).print!(loggedIframe([]));
+  assert.deepEqual(asked, [576], "drawn here, at the printer's 80 mm");
+  assert.deepEqual(raw, [{ printer: { host: "192.168.1.60", port: 9100 }, head: [...ESC_INIT] }], "the ESC/POS job, to the printer's address");
+  assert.deepEqual(pages, [], "never the page's HTML");
+
+  answer = { ok: false, sent: "no", failure: "not-connected", message: "The printer did not answer.", health: null };
+  await assert.rejects(
+    () => slipPrintOptions<UseReactToPrintOptions>({}, undefined, { lan: { host: "192.168.1.60", port: 9100 }, paper: "80mm" }).print!(loggedIframe([])),
+    { message: PRINTER_NOT_CONNECTED_MESSAGE },
+  );
+  assert.equal(laneFailureMessage(new Error(PRINTER_NOT_CONNECTED_MESSAGE)), PRINTER_NOT_CONNECTED_MESSAGE, "the lane's own sentence: nothing sent");
+
+  const iframe = { contentDocument: { title: "", documentElement: { outerHTML: `<html><head></head><body>${SHELL_MARKER}</body></html>` } } } as unknown as HTMLIFrameElement;
+  await slipPrintOptions<UseReactToPrintOptions>({ documentTitle: "Slip" }).print!(iframe);
+  assert.equal(pages.length, 1, "a slip with no network printer still prints through the app as a page, as before");
 });
 
 test("the default onPrintError toasts the lane sentence (or the generic one) and then calls onAfterPrint", (t) => {

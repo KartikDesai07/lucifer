@@ -7,7 +7,7 @@ import { printerWriterDeviceId, routablePrinters, type PrinterConfig } from "@po
 import { PrinterSection } from "@/components/print/PrinterSection";
 import { PRINTER_DOT_BAD_CLASS, PRINTER_DOT_OK_CLASS } from "@/components/print/printer-classes";
 import { CAFE_TIMEZONE } from "@/lib/constants";
-import { deviceName } from "@/lib/print-setup-text";
+import { DEVICE_TAKES_OVER_TEXT, deviceName } from "@/lib/print-setup-text";
 import { cn } from "@/lib/utils";
 
 interface DevicesSetupSectionProps {
@@ -53,6 +53,7 @@ export function DevicesSetupSection({ devices, failed, printers, deviceId }: Dev
               </span>
             </div>
             <p className="text-brand-muted">{SHELL_WORDS[device.shell]}</p>
+            {device.lanFailover === true && <p className="text-brand-muted">{DEVICE_TAKES_OVER_TEXT}</p>}
             <p className="text-brand-muted">{writes.length > 0 ? `Prints ${writes.join(", ")}` : "Prints no printer"}</p>
           </div>
         );

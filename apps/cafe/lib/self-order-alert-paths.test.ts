@@ -224,7 +224,11 @@ test("PIN: the exact set of apps/cafe production files that write PrintJob (.cre
   // from under its writer; the host-cleared one keeps the claimedAt guard).
   // Session 1B adds print-order-jobs.ts: server-side creation, one PrintJob.create per slip under
   // today's unique jobKey, so it races the legacy enqueue and the claim exactly as a second enqueue would.
+  // Phase 3 Session 3A adds print-failover.ts (spec §9.3, §9.4): updateManys that move WAITING printer jobs to the device
+  // that writes their printer now, or (status "queued" and no uncertain attempt only) to the backup printer. Neither
+  // touches a leased job or claimedAt (printers-mode jobs are never claimed), so no writer loses a job mid-print.
   const EXPECTED_PRINT_JOB_WRITERS = [
+    "apps/cafe/lib/print-failover.ts",
     "apps/cafe/lib/print-job-insert.ts",
     "apps/cafe/lib/print-lease.ts",
     "apps/cafe/lib/print-queue-claim.ts",

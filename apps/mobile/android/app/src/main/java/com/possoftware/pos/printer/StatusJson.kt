@@ -44,10 +44,18 @@ object StatusJson {
     return map
   }
 
-  /** Bridge v2's list: { printers: [{ state, printer }], defaultId, bluetooth }, every key always there. */
+  /** Bridge v2's list: { printers: [{ state, printer }], defaultId, bluetooth }, every key always there. Session 3C (spec
+   *  §10): a listed printer also carries `paper`, `cover` and `error` (true) when it said them (DLE EOT); absent says
+   *  nothing. */
   fun poolJson(s: PoolSnapshot): JSONObject {
     val printers = JSONArray()
-    for (entry in s.printers) printers.put(JSONObject().put("state", entry.state).put("printer", printerJson(entry.printer)))
+    for (entry in s.printers) {
+      val item = JSONObject().put("state", entry.state).put("printer", printerJson(entry.printer))
+      entry.health?.paper?.let { item.put("paper", it) }
+      entry.health?.cover?.let { item.put("cover", it) }
+      if (entry.health?.error == true) item.put("error", true)
+      printers.put(item)
+    }
     val json = JSONObject()
     json.put("printers", printers)
     json.put("defaultId", s.defaultId ?: JSONObject.NULL)
@@ -61,6 +69,9 @@ object StatusJson {
       val item = Arguments.createMap()
       item.putString("state", entry.state)
       item.putMap("printer", printerMap(entry.printer))
+      entry.health?.paper?.let { item.putString("paper", it) }
+      entry.health?.cover?.let { item.putString("cover", it) }
+      if (entry.health?.error == true) item.putBoolean("error", true)
       printers.pushMap(item)
     }
     val map = Arguments.createMap()

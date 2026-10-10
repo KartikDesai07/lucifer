@@ -63,7 +63,8 @@ test("PIN (2E): each slip carries its printer's target from the agent to the Win
   const bridge = src("hooks/use-print-host-bridge.ts");
   assert.match(bridge, /const target = current\?\.kind === "slip" \? current\.slip\.target : undefined;/);
   // Session 2F1 (deliberate change): one of the POS app's printers too (raster: the app's id and the printer's paper).
-  assert.match(bridge, /const raster = target\?\.nativeId === undefined \? undefined : \{ nativeId: target\.nativeId, paper: target\.paper \};/);
+  // Phase 3 Session 3E deliberately changed: a network printer of the Windows app 1.12.0 is drawn here too (raster).
+  assert.match(bridge, /const raster = target\?\.nativeId !== undefined \? \{ nativeId: target\.nativeId, paper: target\.paper \} : target\?\.lan !== undefined \? \{ lan: target\.lan, paper: target\.paper \} : undefined;/);
   assert.equal((bridge.match(/, target\?\.printerName, raster\)\);/g) ?? []).length, 3, "every surface prints on the slip's printer");
   assert.match(bridge, /pageStyle: receiptPageStyle\(target\?\.paper \?\? printCfg\.kot\.paperWidth\),/, "its paper on the page");
   assert.match(bridge, /pageStyle: receiptPageStyle\(target\?\.paper \?\? printCfg\.bill\.paperWidth\),/);
@@ -85,7 +86,8 @@ test("PIN (2E): the agent leases, offers for direct print and is kicked only for
   const both = hook + src("hooks/use-print-agent-wake.ts");
   assert.equal((both.match(/jobsForMeLeasable\([^)]*, agent\.openPrinters\(\)\)/g) ?? []).length, 2, "the pulse and the wake kick only for open printers");
   // Session 2F1 (deliberate change): elsewhere any change of this device's printers (printersState) releases one.
-  assert.match(hook, /printerState: \(\) => \(isDesktopShell\(\) \? desktopPrinterSnapshot\(\) : printersState\(\)\),/, "a Windows printer list read again releases a hold");
+  // Phase 3 Session 3E deliberately changed: and a network printer's link on the Windows app 1.12.0 (desktopPrintersState).
+  assert.match(hook, /printerState: \(\) => \(isDesktopShell\(\) \? desktopPrintersState\(desktopPrinterSnapshot\(\)\) : printersState\(\)\),/, "a Windows printer list read again releases a hold");
 });
 
 test("PIN (2E): a Windows printer that failed is looked up again, so one renamed or removed in Windows stops being this PC's", () => {
@@ -103,5 +105,6 @@ test("PIN (2E): every job of a slip leased to this tab is handed to the agent, f
 test("PIN (2E): the agent's printers follow the Windows app's printer list, read again with every printers read", () => {
   const hook = src("hooks/use-agent-printers.ts");
   assert.match(hook, /if \(enabled && isDesktopShell\(\)\) void refreshDesktopPrinterChosen\(\);/, "a printer added in Windows is seen with the next printers read");
-  assert.match(hook, /lane === "desktop" \? \{ selected: snapshot\.selected, names: snapshot\.names, named: desktopPrintsOnNamed\(\) \} : null/);
+  // Phase 3 Session 3E deliberately changed: `lan`, the app writes network printers itself (1.12.0).
+  assert.match(hook, /lane === "desktop" \? \{ selected: snapshot\.selected, names: snapshot\.names, named: desktopPrintsOnNamed\(\), lan: desktopLanApi\(\) !== null \} : null/);
 });

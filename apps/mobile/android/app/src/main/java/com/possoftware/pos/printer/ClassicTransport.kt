@@ -6,11 +6,13 @@ import android.content.Context
 import java.io.IOException
 import java.io.OutputStream
 import java.util.UUID
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** Bluetooth Classic RFCOMM (SPP) link: secure first, insecure retry, paced chunked writes. */
+/** Bluetooth Classic RFCOMM (SPP) link: secure first, insecure retry, paced chunked writes. Session 3C (spec §10): the
+ *  printer's DLE EOT answers arrive on the link's input stream. */
 class ClassicTransport(
     private val ctx: Context,
     private val address: String,
@@ -25,11 +27,16 @@ class ClassicTransport(
     const val CHUNK_BYTES = 512
     const val CHUNK_PAUSE_MS = 10L
     const val RX_BUFFER_BYTES = 64
+    /** Session 3C: one DLE EOT answer; at most this many bytes the printer sent are kept for the next status. */
+    const val STATUS_REPLY_MS = 1_000L
+    const val STATUS_FOLLOW_UP_MS = 300L
+    const val RX_KEPT_BYTES = 256
   }
 
   private val closing = AtomicBoolean(false)
   @Volatile private var socket: BluetoothSocket? = null
   @Volatile private var out: OutputStream? = null
+  private val received = LinkedBlockingQueue<Int>(RX_KEPT_BYTES)
 
   override fun open() {
     if (closing.get()) throw TransportException(BridgeCodes.NOT_CONNECTED, "Closed")
@@ -95,14 +102,17 @@ class ClassicTransport(
     return s
   }
 
-  /** Discards inbound bytes; an end-of-stream or error without close() means the printer dropped. */
+  /** Keeps the bytes the printer sends (its DLE EOT answers; the oldest are dropped once RX_KEPT_BYTES wait); an
+   *  end-of-stream or error without close() means the printer dropped. */
   private fun startReader(s: BluetoothSocket) {
     val input = s.inputStream
     startDaemon("pos-printer-rx") {
       val buffer = ByteArray(RX_BUFFER_BYTES)
       try {
-        while (input.read(buffer) >= 0) {
-          // Printer status bytes are not used.
+        while (true) {
+          val count = input.read(buffer)
+          if (count < 0) break
+          for (i in 0 until count) received.offer(buffer[i].toInt() and 0xFF)
         }
       } catch (e: IOException) {
         // Falls through to the lost-link report below.
@@ -126,6 +136,41 @@ class ClassicTransport(
       throw e
     } catch (e: IOException) {
       throw TransportException(BridgeCodes.WRITE_FAILED, "Write failed")
+    }
+  }
+
+  /** Session 3C (spec §10): DLE EOT 1 to 4, each answer read from the link; null when it does not answer DLE EOT 1. */
+  override fun status(): PrinterHealth? {
+    val stream = out ?: throw TransportException(BridgeCodes.NOT_CONNECTED, "Not connected")
+    received.clear()
+    val answers = HashMap<Int, Int>()
+    for (n in DleEot.QUERIES) {
+      try {
+        stream.write(DleEot.request(n))
+        stream.flush()
+      } catch (e: IOException) {
+        throw TransportException(BridgeCodes.NOT_CONNECTED, "Write failed")
+      }
+      val answer = awaitAnswer(if (n == 1) STATUS_REPLY_MS else STATUS_FOLLOW_UP_MS)
+      if (answer == null && n == 1) return null
+      if (answer != null) answers[n] = answer
+    }
+    return DleEot.healthOf(answers)
+  }
+
+  private fun awaitAnswer(waitMs: Long): Int? {
+    val endNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(waitMs)
+    while (true) {
+      val left = endNanos - System.nanoTime()
+      if (left <= 0) return null
+      val b =
+          try {
+            received.poll(left, TimeUnit.NANOSECONDS)
+          } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            return null
+          } ?: return null
+      if (DleEot.isAnswer(b)) return b
     }
   }
 

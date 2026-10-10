@@ -11,6 +11,7 @@ import {
   type PrinterConfig,
   type StationConfig,
 } from "@pos/shared/print-printers";
+import { printerActiveWriter, type PrinterFailover } from "@pos/shared/print-failover";
 import type { KotPrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 import { printJobLabel, type PrintJobRequest } from "@/lib/print-routing";
 
@@ -40,6 +41,9 @@ export interface PrintRouting {
   itemStations: ReadonlyMap<string, string>;
   /** The asking device's own bill printer (Session 2D); unknown, disabled or with no writer means none. */
   billPrinterId?: string;
+  /** Phase 3 (§9.3): who is online, read when a network printer is set up, so each job goes to the device that writes
+   *  its printer now (absent: the setup's writers, as in Phase 2). */
+  failover?: PrinterFailover;
 }
 
 export interface RoutedPrintJob {
@@ -155,8 +159,20 @@ function chosenBillPrinter(routing: PrintRouting): PrinterConfig | null {
 }
 
 /** The jobs one slip becomes in printers mode (spec §8). Empty only for a KOT with no lines, and for a
- *  notice no printer reached takes notices for (staff switched notices off there). */
+ *  notice no printer reached takes notices for (staff switched notices off there). Phase 3 (§9.3): each job is aimed at
+ *  the device that writes its printer now (a network printer taken over while its primary is offline). */
 export function routePrintRequest(request: PrintJobRequest, routing: PrintRouting): RoutedPrintJob[] {
+  const jobs = routeSlip(request, routing);
+  const failover = routing.failover;
+  if (failover === undefined) return jobs;
+  return jobs.map((routed) => {
+    const printer = routed.printerId === null ? null : routablePrinterOf(routing.printers, routed.printerId);
+    return printer === null ? routed : { ...routed, writerDeviceId: printerActiveWriter(printer, failover) };
+  });
+}
+
+/** The jobs one slip becomes (spec §8), each aimed at its printer's setup writer. */
+function routeSlip(request: PrintJobRequest, routing: PrintRouting): RoutedPrintJob[] {
   const setup = setupOf(routing);
   const payload = request.payload;
   switch (payload.kind) {

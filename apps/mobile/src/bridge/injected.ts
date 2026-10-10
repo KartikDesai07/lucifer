@@ -14,6 +14,7 @@ import {
   BRIDGE_MESSAGE_MAX_CHARS,
   NATIVE_BRIDGE_VERSION,
   NATIVE_DELIVER_FN,
+  NATIVE_FEATURES,
   NATIVE_GLOBAL,
   type DeliverMessage,
   type NativePlatform,
@@ -71,6 +72,7 @@ export function buildInjectedScript({
     'var PLATFORM = ' + safeJsonForScript(platform) + ';',
     'var VERSION = ' + NATIVE_BRIDGE_VERSION + ';',
     'var VERSIONS = ' + safeJsonForScript(BRIDGE_VERSIONS) + ';',
+    'var FEATURES = ' + safeJsonForScript(NATIVE_FEATURES) + ';',
     'var MAX_CHARS = ' + BRIDGE_MESSAGE_MAX_CHARS + ';',
     'var MSG_TOO_LARGE = ' +
       safeJsonForScript(NATIVE_ERROR_MESSAGES.TOO_LARGE) +
@@ -160,7 +162,7 @@ export function buildInjectedScript({
     '  var error = message.error || {};',
     "  waiter.reject(fail(String(error.message || MSG_UNSUPPORTED), String(error.code || 'UNSUPPORTED')));",
     '}',
-    'var api = Object.freeze({ version: VERSION, versions: Object.freeze(VERSIONS.slice()), platform: PLATFORM, request: request, on: on });',
+    'var api = Object.freeze({ version: VERSION, versions: Object.freeze(VERSIONS.slice()), features: Object.freeze(FEATURES.slice()), platform: PLATFORM, request: request, on: on });',
     'Object.defineProperty(window, DELIVER, { value: deliver, writable: false, configurable: false });',
     'Object.defineProperty(window, NAME, { value: api, writable: false, configurable: false });',
     "try { window.dispatchEvent(new Event('" +
