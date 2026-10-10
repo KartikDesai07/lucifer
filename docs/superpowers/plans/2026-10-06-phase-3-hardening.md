@@ -35167,3 +35167,11 @@ Any real-printer failure is fixed first, on its own hotfix branch from `main`, b
 - **The owner's one real-printer run** (Part 7), then the go-live in GO-LIVE's order (the owner deploys from his PC). Any real-printer failure → a hotfix branch from `main` first.
 - Context for Phase 4 (not a blocker): a busy day with three printing devices sits near 15 % of the free Active CPU (P4 15.3 %, failover 17.2 % raw); a lighter printers-mode wake or option C would be the place to look if a cafe runs three.
 - Left on this PC: the scratch database `pos_scratch_e2e_3gfinal`; the emulator as found (the release APK `29115bdf…` on its start screen with no address, notifications not allowed, `font_scale` unset, `adb reverse tcp:3100 tcp:3100`).
+
+### Final Phase 3 gate: the merge (recorded on the branch after it)
+
+- `GIT_TERMINAL_PROMPT=0 git fetch origin`: `origin/main` still `7f8ed31` (nothing to merge into the branch first). The gate's section above was committed as `6eb24d9` and the branch pushed with the token (`da0b0b3..6eb24d9`).
+- `git checkout main`, then `git merge --no-ff feat/printing-phase-3`: the merge commit **`14e1fb6`**, its tree `56b6965` equal to the branch's at `6eb24d9`.
+- Re-verified on `main` at `14e1fb6`, once each, one after another: shared 821/821, tsc 0; cafe **5064 / 5063 / 0 / 1**; cafe tsc 0, lint 0 errors (the 2 old warnings); hub tsc/lint 0; mobile tsc 0, lint clean, 143/143, Jest 5/5; desktop 205/205, typecheck 0, lint 0; print tools 11/11; live legs on a fresh `pos_scratch_print_host_3gmain` **467 passed, 0 failed**; JUnit `--rerun` BUILD SUCCESSFUL, **65 tests, 0 failures**; the Next build exit 0, **132 routes**.
+- Fetched again right before the push (`origin/main` still `7f8ed31`, a fast-forward), then `GIT_TERMINAL_PROMPT=0 git push origin main` with the token: **`7f8ed31..14e1fb6`**. This addendum is on the branch only (`main` changed by the merge alone).
+- **Not deployed.** No APK or installer released or sent; the Windows app not installed on this PC. Next: the owner's real-printer run (Part 7), then the go-live per cafe in GO-LIVE's order.
