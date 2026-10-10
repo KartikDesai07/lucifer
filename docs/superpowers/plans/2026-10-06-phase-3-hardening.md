@@ -35022,3 +35022,148 @@ No fix pass on repo code (no Critical or Important finding in it). JUnit, the AP
 - The APKs (`apk-3g/`) in this session's scratchpad are recorded, **not released**; the installer stays Session 3E's 1.12.0 (not released); the final Phase 3 gate builds the release set and its `SHA256SUMS.txt`.
 - C: on this PC: 8.4 GB free at the end (7.9 GB at the lowest, during the emulator run); the AVD's quickboot `ram.img` (4 GB, written 2026-10-09 19:01) was not touched by this session's `-no-snapshot` boot.
 - Left in this session's scratchpad: `e2e.env`, `e2e3g.env` (database `pos_scratch_e2e_3g`, left), the extracted tools, `report-3g-w.mjs` and `make-report-w.py`, `proj-3g.sh`, `e3/` (runs, samples, soaks, projections, nights), `suites-3g/`, `apk-3g/`, `build-3g.log`, the proxies' logs, `xg*.log`, `pw-*.log`, `shots/`, `review3g/` (the report), `review-brief-3g.md`. The live legs dropped their own database (`pos_scratch_print_host_3g`).
+
+## Final Phase 3 gate (2026-10-10)
+
+Run in its own Claude session under the owner's conditional merge OK of 2026-10-10 ("ye phase proper ready for live ho to main me merge karo": merge `feat/printing-phase-3` into `main` only if every part passes). The ledger is `.superpowers/sdd/2026-10-06-phase-3-hardening/progress.md`, section "Final Phase 3 gate". Telegram: nothing (the owner's ruling, 2026-10-09). Real printers: none on hand (the owner's note of 2026-10-08): not asked; Part 7 below is the owner's run.
+
+### Step 0
+
+- `GIT_TERMINAL_PROMPT=0 git fetch origin` through the repo-local token store: `feat/printing-phase-3` = `origin/feat/printing-phase-3` = `da0b0b3`, the tree clean; `origin/main` still `7f8ed31`.
+- Disk: D: 11 GB, C: 8.4 GB at the start (C: 7.8 GB at the lowest); the emulator booted at `-memory 4096 -no-snapshot`.
+
+### Part 1: Session 3G verified
+
+- Every 3G commit read (`f448c94` G0, `af7b95e` G1, `6e583c2` G2, `e7b9a9b` G3, `a5cf61b` G4, `fea5871` G5, `da0b0b3` Results). Outside the plan and the spec, the tree at `da0b0b3` is blob-identical to the gold `g3g-v4` (tree `c781841`, the 3E gate's scratch clone `g3g`, `git fsck` clean): 1,980 entries each, only those two docs differ. No secret in `31d19f3..da0b0b3`. `git diff --stat 95fee6d..HEAD -- workers apps/desktop`: empty.
+- Every suite at `da0b0b3`, once each, in the background, one after another: shared 821/821, tsc 0; cafe **5056 / 5055 / 0 / 1** (go-live-dl); cafe tsc 0, lint 0 errors (the 2 old warnings); hub tsc/lint 0; mobile tsc 0, lint clean, 143/143, Jest 5/5; desktop 205/205, typecheck 0, lint 0; print tools 11/11; live legs on a fresh `pos_scratch_print_host_3gfinal` **467 passed, 0 failed** (leg bf 20); JUnit `--rerun` (`GRADLE_USER_HOME=D:\gradle-home`) BUILD SUCCESSFUL, **65 tests, 0 failures** (fresh XML timestamps); the Next build (the repo, D:) exit 0, **132 routes**. Every figure equals 3G's Results.
+- **The emulator spot re-check with 3G's x86_64 APK** (`c45e1d8d…` on the device; the app checked to show the local POS, never the demo; `adb reverse tcp:3100 tcp:3201` and `tcp:9100 tcp:9100`, the kitchen printer ONE address `127.0.0.1:9100` for the app and the fake Windows app PC2, opened only after `exit-setup`), as G6 Step 7 writes it:
+  - XG1 (the setup): `PrintHostService` `isForeground=true`, `stopIfKilled=false`; "Printing is on — Network printer 127.0.0.1"; with the launcher on top a kitchen slip printed by the app 9.8 s after the order (its next wake: no Worker locally). **PASS.**
+  - XG2 (exit item 2, paper out on every device): the health "out of paper" from the app's own check after 60.2 s; the KOT and its token queued, never leased, after 45 s; C's notice "… Kitchen has not printed yet. Kitchen is out of paper."; **C's and D's panels "Kitchen is out of paper."**; the app's own panel "Waiting for the printer (2)", both rows "Kitchen is out of paper.", and "Printer needs attention"; paper back: the KOT and the token printed **once each** by the app, 12.1 s later (it checks a printer that cannot print every 10 s). **PASS.**
+  - XG3 (exit item 1, P3-4), with the 3G review's m-4 fixed in this gate's scratch copy of `pw-3g.mjs` (both waits now take only a print by PC2): `am force-stop` and `exit-failover` in one command: the slip made 3.6 s after the stop printed **by PC2 97.5 s after the stop** (≤ 150 s; 3G 99.9 s); the slip made 96.0 s after the stop printed by PC2 3.2 s after its order; the Kitchen health then from PC2. **PASS.**
+  - `adb logcat -b crash -d`: 0 lines for the app after every install and through XG1–XG3.
+
+### Part 2: the measurement, settled
+
+**Method.** Session 2G's and 3G's (the counting proxy, the POS server's process CPU, Mongo's opcounters), on a **fresh database** `pos_scratch_e2e_3gfinal`, this branch's build on a freshly started `next start -p 3110`, tokens on, only the POS server (and the harness's own idle Mongo connection) on the local mongod before every run, nothing else measured or tested during a run (`mq.sh`: the mongod clients by PID, typeperf's machine load beside each run). **The idle runs came first, before any soak.** Session 3G's soak runs (`run-T1/T2/T4/T4L/T5/TF/TW.json`, the same server code) were reused unchanged. Projections by the plan's tool (`report-3g.mjs`) and by `report-3g-w.mjs --writers N` (the 3G review's I-1: each day's measured writers: failover and Windows 2, every other day 1); spec §17.2's three writers as context; the night (TNq) against every day.
+
+| Run | What | Requests (10 min unless said) | CPU ms a request (raw) | With B0's background taken out |
+|---|---|---|---|---|
+| TWIq | the two fake Windows 1.12.0 writers, FIRST | 220 (wake 80, pulse 60, lists 40 + 40) | 15.98 (3G's TWI 19.03) | 9.94 |
+| T6q | the emulator app on `/pos` writing T5's three printers, 0 jobs | 110 (wake 40, pulse 30, lists 20 + 20) | 17.05 (3G's T6 19.74) | 4.97 |
+| TNq | the app hidden, 30 min (see the note) | 338 (wake 120, pulse 90, lists 60 + 60, one page load: 8) | 23.71 (3G's TN 19.86) | 11.93 |
+| T3q | the app as the simple-mode host | 140 (wake 40, beat 30, pulse 30, lists 20 + 20) | 19.42 (3G's T3 13.60) | 9.93 |
+| T6r | context: T6q again with ~100 retained jobs (after a 20-order soak, T5r: 100 jobs printed, `pass: true`) | 110 | **26.70** | 14.63 |
+| B0 | the same warm server, the app force-stopped, **zero requests** | 0 | 1,328 ms of CPU in 600 s | – |
+
+No idle run leased. TNq note (the review's m-C): it started hidden with the screen off (`mWakefulness=Asleep`), but a host-side wake key turned the screen on at 04:37:22 (5 minutes in; the app stayed hidden behind the launcher), and one page load came at 04:45:47 (as in 3G's TN); it is not a screen-off night, and it feeds only the night rows.
+
+**Where the idle CPU goes** (Part 2's rule, once T6r read the two-writer days over the line): the raw idle windows read 13.6–26.7 ms a request in like-for-like conditions, with no order between retained jobs and cost (T6 with 500 retained jobs read lower than T6r with 100). A CPU profile of the warm server over a 600 s idle window like T6r (the inspector opened in the running process and closed afterwards; `prof/P6r.cpuprofile`) found the main JavaScript thread busy **1,319.8 ms for 112 requests** (11.8 ms a request with every timer and GC included): node's timers and async hooks 39 %, the program 15 %, the MongoDB driver and BSON 12 % (its own pool maintenance among it), Next 12 %, GC 9 %, the app's code 8 %, Mongoose 6 %; no hot spot in the request path (not the wake, the sweep, the repair or the pulse's feeds). **B0 then measured the request-independent background directly: 1,328 ms of CPU in 600 s with no request at all** (a long-lived local process: the driver's heartbeats and pool maintenance, timers, V8's GC and JIT threads). The method charges that background to an idle window's ~110–340 requests, adding ~4–12 ms to each: that is the whole spread. It is not in the request path and no code fix applies; option C would not touch it (it is the idle wake term).
+
+**The projections** (the busy day with a token per order, 1,500 slips; invocations / Active CPU, % of the free allowance; limits 20 / 15; Atlas at the busy rush < 10 ops/s; the worst case ≤ 17,040):
+
+| Day | Measured writers, quiet idle (raw) | … with the night (TNq) | Measured writers, background taken out (the worst printers-mode idle, T6r-b0) | … with the night | Three writers (context), quiet / taken out | Atlas raw / at the rush | Worst case |
+|---|---|---|---|---|---|---|---|
+| P1 (T1 + T3q) | 8.0 / 6.9 ✓ | 10.1 / 10.4 ✓ | 8.0 / 5.5 ✓ (T3q-b0) | 10.1 / 7.2 ✓ | – | 22.5 / 1.0 | 4,815 |
+| P2 (T2 + T3q) | 12.1 / 10.6 ✓ | 14.3 / 14.1 ✓ | 12.1 / 9.2 ✓ (T3q-b0) | 14.3 / 11.0 ✓ | – | 23.4 / 1.48 | 6,195 |
+| P3 (T4 + T6q) | 7.6 / 7.5 ✓ | 9.7 / 11.1 ✓ | 7.6 / 7.2 ✓ | 9.7 / 9.0 ✓ | 11.9 / 12.6 ✓; 11.9 / 11.6 ✓ | 35.2 / 1.61 | 4,680 |
+| P3 old page (T4L + T6q) | 7.6 / 6.4 ✓ | 9.7 / 10.0 ✓ | 7.6 / 6.1 ✓ | 9.7 / 7.9 ✓ | 11.9 / 11.5 ✓; 11.9 / 10.5 ✓ | 39.8 / 1.80 | 4,680 |
+| P4 (T5 + T6q) | 10.8 / 10.2 ✓ | 12.9 / 13.8 ✓ | 10.8 / 9.9 ✓ | 12.9 / 11.6 ✓ | 15.1 / **15.3** ✗; 15.1 / 14.2 ✓ | 33.6 / 3.01 | 5,745 |
+| Failover (TF + T6q), 2 writers | 14.4 / **14.6** ✓ | 16.5 / **18.2** ✗ | 14.4 / 13.9 ✓ | 16.5 / **15.7** ✗ | 16.5 / **17.2** ✗; 16.5 / **16.1** ✗ | 87.2 / **7.44** | 6,225 |
+| Windows 1.12.0 (TW + TWIq), 2 writers | 14.0 / **14.3** ✓ | 16.2 / **17.9** ✗ | 14.0 / 12.5 ✓ (TWIq-b0) | 16.2 / 14.3 ✓ | 16.2 / **16.7** ✗; 16.2 / 14.0 ✓ | 33.8 / 2.49 | 8,985 (3G's 10,641) |
+
+The night (TNq, one printing device open for 12 closed hours): its printing 720 requests (2,880 at worst), 17.1 s CPU (68.3 s at worst); the page's own polls 5,232 requests, 124 s; all routes at worst 24.3 % of a day's invocations and 40.1 % of a day's CPU (why GO-LIVE closes the apps at closing time). The fresh review's own script reproduced every projection and night cell to the decimal.
+
+**The verdict: PASS** (the owner's rule):
+- **Every day, with its measured writers, is within spec §17.3 item 5** on the prescribed quiet-database reading (the tightest: the failover day 14.4 % / 14.6 % and the Windows day 14.0 % / 14.3 %), and with the local background taken out (the failover day 13.9 %, Windows 12.5 %). Every rush is under 10 operations a second (the failover day's 7.44 the tightest); every worst case is within 17,040 (8,985 here; 3G's 10,641).
+- **What it rests on** (the review's m-A): the two-writer days cross 15 % of the Active CPU when an idle run reads about 18.3 ms a request; the raw idle readings straddle that (TWIq 15.98 and T6q 17.05 pass; 3G's T6 19.74, TWI 19.03 and this gate's T6r 26.70 fail), so the raw method alone does not settle a margin this thin. The pass rests on the quiet-database reading the owner's prompt set, on B0 (the background is request-independent and charged to few requests) and on the profile (11.8 ms a request on the main thread with every timer included). Every bias left in the method is pessimistic for printing (the soak runs keep their own background). Use `report-3g-w.mjs --writers N` for any later re-measure (the plan's G6 block keeps the one-writer tool as history).
+- **The lines that fail only with the night** (the failover and Windows days with two writers, a printing device left open overnight; the failover day on the adjusted reading too) are covered by GO-LIVE's closing-time rule ("At closing time, close the POS app on each printing device … quit it from the tray"): ruled in words, no code.
+- **What would flip it** (the review's m-B): three polling printer devices (spec §17.2's own busy-day assumption): P4 15.3 % and the failover day 17.2 % on the raw reading, the failover day 16.1 % even with the background taken out. The owner's rule counts each day's measured writers (one or two), so this is context, as Session 3G recorded it; a cafe with three printing devices on a busy day sits near the line (Part 7 asks the owner to note the client's real count).
+- Nothing tuned: no code, no cadence, no pin and no limit changed; option C not needed. *Cost if wrong:* a two-writer busy day takes ~15 % of the free Active CPU instead of ~14 %: the cafe's free allowance would run out a little sooner in a very busy month, not an outage.
+
+### Part 3: the 3G review's minors
+
+Each fixed by TDD (RED seen first; the other minors' test edits stashed so each commit's own tsc was checked), in its own commit:
+
+| Minor | Commit | RED → GREEN |
+|---|---|---|
+| m-1 the soak's refusal before any byte on a network printer says `reason: "unreachable"`, as a Phase 3 page's (`failedAckBody`); `--tokens lease` (a page from before Phase 3) never says it | `48a09f0` | agent + writer 11 / 9 / 2 (`no:-` for `no:unreachable`), the wiring pin 28 / 27 / 1 → 39 / 39; tsc 0; eslint 0 |
+| m-2 the soak's one timer takes the server's time as the page clamps it (2–30 s, `printAgentTimerDelayMs`) | `0f557df` | 8 / 7 / 1 (a timer 120 s ahead) → 12 / 12; tsc 0; eslint 0 |
+| m-3 printers mode counts a job of the soak's orders that no answer named (a repair or a duplicate) again (`unnamedJobs`) | `d1a2e59` | 34 / 32 / 2 → 46 / 46; tsc 0; eslint 0 |
+| m-5 GO-LIVE's "Then open the app once": only an update over a POS app from printing Phase 3 on may show "POS printing is off. Tap to start."; the Phase 2 app it replaces shows nothing (the notice needs `Prefs.printing`, new in 3D: absent at `623f12c`), so the deployer opens the app from its icon | `5a521cd` | `go-live-runbook.test.ts` 97 / 96 / 1 → 97 / 97 |
+| m-6 leg bf's comment: mongoose's debug hook is process-wide, so legs never run in parallel in one process | `17c0382` | `print-lifecycle-paths.test.ts` 30 / 29 / 1 → 30 / 30 |
+
+- **m-4** (harness text): fixed in this gate's scratch copy of `pw-3g.mjs` (both `exit-failover` waits take only a print by PC2); XG3 above ran with it. (The review's m-D, "not taken", was written before it saw that copy.)
+- The review's m-E (ruled, no change): `--tokens` also picks the page generation for the unreachable ack (no network printers named only with `--tokens lease`), as the comment in `print-soak.ts` says; a test tool, acceptable.
+- No app or page code changed: five `scripts/` files (+41 / −11 outside tests and docs) and GO-LIVE; the measurement is not voided. The new tool was validated live: **T5r** (printers mode, 20 orders, the app prints: 100 jobs printed, `pass: true`, `problems: []` with m-3's new count) and **TFv** (`--failover`, 40 orders stopped after 6: 140 jobs printed, `pass: true`; the slowest waiting slip 95.7 s, ≤ 150; 15 made after 90 s, every one by `soak-b`).
+- Every suite after the minors (the branch at `17c0382`): shared 821/821, tsc 0; cafe **5064 / 5063 / 0 / 1** (3G's 5056 plus the gate's 8 tests); cafe tsc 0, lint 0 errors (the 2 old warnings); hub tsc/lint 0; mobile tsc 0, lint clean, 143/143, Jest 5/5; desktop 205/205, typecheck 0, lint 0; print tools 11/11; live legs on a fresh `pos_scratch_print_host_3gfinb` **467 passed, 0 failed** (JUnit and the Next build: no app or mobile change; both re-run on `main` in Part 6).
+
+### Part 4: the fresh review (Claude Fable 5.1)
+
+A fresh reviewer on **Claude Fable 5.1** (no HTTP 429), read-only, scratch only in this gate's scratchpad, kept off Gradle, adb, the emulator, builds, servers, the harness's ports and the local mongod, reviewed `da0b0b3..17c0382` and the gate's decisions (the measurement, its method and verdict, the minors' fixes against the page, the GO-LIVE words against the app). **Verdict: "Ready to merge: Yes"; 0 Critical, 0 Important;** five minors, all for this section (m-A the basis of the pass and the 18.3 ms threshold; m-B three writers would flip it; m-C TNq was not a screen-off night; m-D m-4; m-E `--tokens` picks the page generation): each recorded above. Its own runs: the five touched cafe test files 144/144, tsc 0, eslint on the ten touched files 0 errors, an independent recomputation of every projection and night cell (all matched). Its report is in the gate's scratchpad (`review-gate/report.md`).
+
+### Part 5: the release set (built and recorded locally, sent to nobody)
+
+- APKs from the repo at `17c0382` (`git diff da0b0b3..HEAD -- apps/mobile apps/desktop packages workers` empty): `:app:compileReleaseKotlin --rerun` on its own line (BUILD SUCCESSFUL; 0 `Using Kotlin/JVM incremental compilation` lines; **0 of 100** release classes older than the marker), then `aR -PreactNativeArchitectures=x86_64` with nothing else on its line (0 incremental lines, 0 / 100 older; `javap` on `TransportFactory.class` calls `TcpTransport."<init>":(Ljava/lang/String;IIIILkotlin/jvm/internal/DefaultConstructorMarker;)V`), then `assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a`. **All three byte-identical to Session 3G's.** The x86_64 one installed on the emulator (`install -r`, opened on `/pos`): `adb logcat -b crash -d` 0.
+- The Windows installer 1.12.0: `npm run build` in `apps/desktop`, then `electron-builder --win nsis --publish never` (exactly `npm run dist`) with its output in the gate's scratchpad (the repo's `apps/desktop/dist` keeps the 3E gate's build untouched), `ELECTRON_RUN_AS_NODE` unset: product "POS Software by sandbee", ProductVersion/FileVersion **1.12.0**, 112,216,876 B (electron-builder's hash differs per build).
+- **`D:\kd\pos-apk-release\Sandbee-POS-phase3\`** (new; `Sandbee-POS-phase2-2026-10-06\` untouched; `Sandbee-POS-final\` no longer exists on this PC), checked with `sha256sum -c`:
+
+| File | SHA-256 | Bytes |
+|---|---|---|
+| `Sandbee POS.apk` (arm64-v8a, most phones) | `8a1458c6ff5fe32ff397a90dab05e5665f73111aa089f9d2369774e2c2b8adf1` | 7,320,758 |
+| `Sandbee POS (old 32-bit phones).apk` (armeabi-v7a) | `37d1ea38f9da9b6e90e158cd0b335e658aa5de97a0a7acce3eaa57dd43f4ff0b` | 6,728,592 |
+| `Sandbee POS (emulator x86_64).apk` (testing only) | `c45e1d8d45132bf231a54250a18e2824252d9d57f8fd8bb96e4ae12ed19d1928` | 7,452,481 |
+| `POS-Software-Setup-1.12.0.exe` (the Windows app) | `060d8d84bb6ca2872eb05edd52d58466f812a3e0a8f1d27d6cf7e5602ec14446` | 112,216,876 |
+
+  `SHA256SUMS.txt` in that folder holds these four lines; GO-LIVE's Phase 3 step checks each file against it before it is sent. Nothing was released, sent, installed on this PC or deployed.
+
+### Part 6: the merge
+
+Every part above passed and no Critical or Important finding is open, so under the owner's conditional OK `feat/printing-phase-3` is merged into `main` with `--no-ff` right after this section's commit, re-verified on `main` (every suite, JUnit and the Next build) and pushed with the token (`main` and the branch). The merge commit and the re-verification are recorded in "Final Phase 3 gate: the merge" below (on the branch) and in memory. Merging is not a deploy: nothing is deployed, and no APK or installer goes to a client.
+
+### Part 7: the owner's one real-printer run, then go-live
+
+**First, after this merge and before any go-live deploy: the real-printer run** (as in Phase 2: merged, then real printers, then go-live), with the release set above (the Phase 3 POS app on every printing phone or tablet, opened once after installing it; the Windows app 1.12.0 on the counter PC). Note how many devices print for the cafe (the measurement's verdict holds for one or two printing devices; three sit near the free-tier line). From `apps/mobile/TEST-CHECKLIST.md`:
+
+"Network printers on the Windows app (Phase 3)" (the counter PC with 1.12.0, a LAN printer on 9100 with a fixed address):
+1. Printer setup on the PC: Add printer → Network (LAN) → address, 9100 → Printing device: this PC → Kitchen KOTs → save; Send to Kitchen: one KOT, as wide as the roll; the 1.11.0 app on another PC is not offered as its printing device.
+2. Switch the printer off: the next slip waits; within ~1 minute the PC's dot says it is not answering; within ~3 minutes every device's panel says "Kitchen is not connected."; on again: it prints within ~30 s, once.
+3. Cover open, then paper out: "Kitchen has its cover open." / "Kitchen is out of paper." on every device while a slip waits; closed / paper back: prints within ~10 s, once.
+4. Cut its power in the middle of a long bill: the bill asks the cashier (or the KOT prints again labelled REPRINT), never a silent "printed".
+5. Two printing devices for one network printer (the PC and a tablet that writes a printer): quit the Windows app (tray → Quit): every slip made 90 s or more later prints from the tablet, a waiting one within a minute more; reopen: the PC prints it again.
+6. The PC and a tablet both list the network printer for 10 minutes with no orders: no "not connected" words.
+7. A Windows printer the PC prints: remove it in Windows (another printer still listed): within ~3 minutes a slip waits with "‹printer› is not connected." on every device; add it back with the same name: prints once within ~1 minute.
+
+"Phase 3 checks (failover, health, the service)" (the Phase 3 app on every printing device, a LAN printer with a fixed IP, printers in Admin → Printer setup; "every device" = an ordering phone or tablet, another printing device and a browser tab):
+- Failover and the backup printer: (1) tablet A prints the kitchen's network printer, B prints another: switch A off: slips made 90 s or more later print from B, a waiting one within a minute more; A on and opened: A prints again. (2) A cannot reach the printer (off the Wi-Fi, or the printer's cable on another network): B prints the kitchen's slips within ~2 minutes; back: within ~6 minutes A prints them again. (3) A backup printer (Edit the bar printer → 4. Backup printer → the kitchen printer); switch off the bar's phone: its waiting slips print at the kitchen marked BACKUP PRINTER, none twice. (4) Both tablets list the kitchen printer 10 minutes with no orders: no "not connected", no printer moves. (5) The network printer idle 5 minutes: the dot stays steady.
+- Paper, cover and errors: (6) paper out: "Kitchen is out of paper." on every device while a slip waits, the slip not tried; paper back: prints within ~10 s, once. (7) cover open: the same; closed: prints once. (8) paper runs out mid-slip: one copy labelled REPRINT after paper is back (a bill asks the cashier), never a silent single or double. (9) FEED while idle: no error words. (10) a Bluetooth printer that does not answer status: Pay Now prints the KOT and the bill, the bill within ~1 s of the KOT. (11) a module that resets its connection after each slip and never answers status: 20 slips, count REPRINT copies (expected none).
+- The POS app's service: (12) the first print asks for notifications: Allow; "Printing is on" / "This device keeps printing with the screen off." (13) screen off 30 minutes, then order from another device: prints within seconds. (14) an Android 14 or later printing device: "Printing is on", and with the screen off a slip prints within seconds. (15) restart the device: "POS printing is off. Tap to start." within a minute of start-up; tap it: the POS opens, a slip prints. (16) at closing time swipe the app away: the notice shows (expected); tap it next morning: it prints. (17) change the font size or language while the POS is open: no "POS printing is off"; the next slip prints. (18) Xiaomi, OPPO, vivo or Samsung: printer panel → More options → Battery settings for printing, each step once, then the 30-minute screen-off check again.
+- The Windows app 1.12.0: (19) open the network printer's cover mid long slip from the PC, close it after more than a minute: the first slip finishes and one more prints labelled REPRINT; never a silent single or double.
+
+Any real-printer failure is fixed first, on its own hotfix branch from `main`, before go-live.
+
+**Then the go-live, per existing cafe, in GO-LIVE-CHECKLIST's "Existing cafes: the printing Phase 3 release" order:**
+1. **The web first:** re-run the go-live run for the cafe (not `npm run deploy` alone); `GET /api/health` answers 200. No Worker change (the Realtime Worker stays Phase 2's).
+2. **Reload every POS screen** open before the deploy: Refresh in the POS app, reload each browser tab, quit and reopen the Windows app.
+3. **Then the POS app on each printing device**, installed over the old one (no uninstall): `Sandbee POS.apk` (64-bit, most phones) or `Sandbee POS (old 32-bit phones).apk`; check its SHA-256 against `D:\kd\pos-apk-release\Sandbee-POS-phase3\SHA256SUMS.txt` before sending it.
+4. **Then open the app once** on that device (from its icon: the Phase 2 app it replaces shows no notice).
+5. **Allow notifications** when the app asks (Android 13 and later).
+6. **Battery settings** on a Xiaomi, OPPO, vivo or Samsung printing device (printer panel → More options → Battery settings for printing).
+7. **Windows counter PC:** `POS-Software-Setup-1.12.0.exe` over the old one, its SHA-256 checked against the same `SHA256SUMS.txt`.
+8. **At closing time, close the POS app** on each printing device (and quit the Windows app from the tray): the notice "POS printing is off. Tap to start." is expected; tap it when you open.
+9. If the web is ever rolled back to before Phase 3, reload every POS screen again.
+10. Before telling the client it is live: the real-printer checks above on the cafe's own printers.
+
+### Deviations and rulings
+
+1. **The idle runs' method is noisy at this margin** (13.6–26.7 ms a request raw). Ruled: the prescribed quiet-database reading decides, supported by B0 and the profile; both readings are reported. *Cost if wrong:* see the verdict.
+2. **T6r, T5r, B0 and the profile were added beyond the prompt's four idle runs**, after the quiet runs, to test the thin margin and find where the idle CPU goes (Part 2's rule). The inspector was opened in the running server (127.0.0.1 only) and closed afterwards; the profiled window's process total is not used (the profiler's own sampling). *Cost if wrong:* none (context runs).
+3. **TNq's screen came back on** (a host-side wake key at 04:37:22): not re-run; it feeds only the night rows, ruled by the closing-time rule. *Cost if wrong:* the with-the-night columns read high; none decides a day.
+4. **The installer was built into the gate's scratchpad** (`-c.directories.output`), not `apps/desktop/dist`, so the 3E gate's build there was not overwritten. *Cost if wrong:* none (the same command as `npm run dist`).
+5. **The fresh review ran during the exit, the validation soaks and the release builds**, told to stay off all of them and the local mongod (it ran no database). *Cost if wrong:* none.
+6. **The measured soak runs are Session 3G's**, reused unchanged (no server, page or app code changed since `fea5871`; the gate's script changes act only on refusals, backoffs and the post-run check, none of which those runs met). *Cost if wrong:* none (the review agrees).
+
+### What is left
+
+- **The owner's one real-printer run** (Part 7), then the go-live in GO-LIVE's order (the owner deploys from his PC). Any real-printer failure → a hotfix branch from `main` first.
+- Context for Phase 4 (not a blocker): a busy day with three printing devices sits near 15 % of the free Active CPU (P4 15.3 %, failover 17.2 % raw); a lighter printers-mode wake or option C would be the place to look if a cafe runs three.
+- Left on this PC: the scratch database `pos_scratch_e2e_3gfinal`; the emulator as found (the release APK `29115bdf…` on its start screen with no address, notifications not allowed, `font_scale` unset, `adb reverse tcp:3100 tcp:3100`).
