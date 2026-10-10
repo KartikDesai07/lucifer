@@ -437,6 +437,7 @@
     "lib/reward-progress-paths.test.ts",
     "lib/order-create-followups.test.ts",
     "lib/expense-ui-paths.test.ts",
+    "lib/header-quick-tabs.test.ts",
     "scripts/print-soak-rules.test.ts",
     "scripts/print-soak-writer.test.ts"
   ],

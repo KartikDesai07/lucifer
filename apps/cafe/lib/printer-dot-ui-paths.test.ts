@@ -52,13 +52,17 @@ function ascending(src: string, needles: string[]): void {
 
 const PINS: PinCase[] = [
   {
-    name: "Header order: SidebarTrigger, Separator, h1, then the ml-auto wrapper holding PrinterStatusButton",
+    name: "Header order: SidebarTrigger, Separator, h1, the quick tabs, then the ml-auto wrapper holding PrinterStatusButton",
     file: HEADER,
     check: (src) => {
-      ascending(src, ["<SidebarTrigger", "<Separator", "<h1", 'className="ml-auto flex items-center"', "<PrinterStatusButton"]);
-      assert.match(src, /<h1 className="min-w-0 truncate /, "the cafe name truncates instead of pushing the button off");
-      // s63 smoke: a 60-char name at 768 px still pushed the button off-screen (the h1's min-content widened the page)
-      assert.match(src, /<h1 className="[^"]*\bflex-1\b[^"]*\[contain:inline-size\][^"]*"/, "the name is contained and fills the row");
+      ascending(src, ["<SidebarTrigger", "<Separator", "<h1", "<HeaderQuickTabs", 'className="ml-auto flex items-center"', "<PrinterStatusButton"]);
+      // 2026-10-11 (owner): the row now carries the New Order + Tables tabs; the cafe name stays the screen-reader h1.
+      assert.match(src, /<h1 className="sr-only">\{name\}<\/h1>/, "the cafe name stays the page's h1, visually hidden");
+      // s63 smoke: a 60-char name at 768 px pushed the button off-screen (its min-content widened the page) — the
+      // same guard now sits on the tabs' nav: contained, filling the row, each label truncating.
+      const tabs = read("components/layout/HeaderQuickTabs.tsx");
+      assert.match(tabs, /<nav aria-label="Quick links" className="[^"]*\bmin-w-0\b[^"]*\bflex-1\b[^"]*\[contain:inline-size\][^"]*"/, "the tabs are contained and fill the row");
+      assert.match(tabs, /<span className="truncate">\{tab\.title\}<\/span>/, "a tab's label truncates instead of pushing the button off");
       assert.match(src, /import \{ PrinterStatusButton \} from "@\/components\/print\/PrinterStatusButton";/);
     },
     mutate: (src) => src.replace("<SidebarTrigger />", "").replace("</header>", "<SidebarTrigger /></header>"),
