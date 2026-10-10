@@ -18,12 +18,14 @@ import { toast } from "sonner";
 import { desktopPrinterApi, desktopPrinterSavesToFile, type DesktopPrinter, type DesktopPrintMode } from "@/lib/desktop-shell-printer";
 import { publishDesktopPrinterSelection, refreshDesktopPrinterChosen } from "@/lib/printer/desktop-printer-state";
 import { DesktopPrintMethod } from "@/components/print/DesktopPrintMethod";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const LOAD_FAILED_MESSAGE = "Could not read the printer list from the desktop app.";
 const SAVE_FAILED_MESSAGE = "Could not save the printer — pick it again.";
 const SAVED_MESSAGE = "Printer saved — slips will print on it from now on.";
 const CLEARED_MESSAGE = "Printer cleared — slips will not print until you pick one.";
 const NOT_CHOSEN_VALUE = "";
+const NOT_CHOSEN_LABEL = "Not chosen — slips will not print";
 // The file-writing devices: one list in the page since Phase 2 Session 2E (lib/desktop-shell-printer.ts).
 const savesToFile = desktopPrinterSavesToFile;
 
@@ -80,6 +82,10 @@ export function DesktopPrinterPicker() {
     }
   };
 
+  // A saved printer Windows no longer lists (removed or renamed) reads "Not chosen" with the hint below — the
+  // native select showed its first option the same way; a Radix Select would show an empty box.
+  const shownPrinter = selected !== null && (printers ?? []).some((p) => p.name === selected) ? selected : NOT_CHOSEN_VALUE;
+
   return (
     <div className="space-y-2 border-t pt-3">
       <p className="font-medium">Printer for this PC</p>
@@ -92,24 +98,25 @@ export function DesktopPrinterPicker() {
         </p>
       ) : (
         <>
-          <select
-            className="h-11 w-full max-w-sm rounded-md border bg-background px-2 text-base"
-            aria-label="Printer"
-            value={selected ?? NOT_CHOSEN_VALUE}
-            disabled={saving}
-            onChange={(e) => void choose(e.target.value)}
-          >
-            <option value={NOT_CHOSEN_VALUE}>Not chosen — slips will not print</option>
-            {printers.map((p) => {
-              const virtual = savesToFile(p.name);
-              return (
-                <option key={p.name} value={p.name} disabled={virtual}>
-                  {(p.displayName || p.name) + (virtual ? " — saves a file, cannot be used" : "")}
-                </option>
-              );
-            })}
-          </select>
-          {selected === null && (
+          <Select value={shownPrinter} disabled={saving} onValueChange={(v) => void choose(v)}>
+            <SelectTrigger aria-label="Printer" className="h-11 w-full max-w-sm text-base">
+              <SelectValue placeholder={NOT_CHOSEN_LABEL} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NOT_CHOSEN_VALUE} className="pointer-coarse:min-h-11">
+                {NOT_CHOSEN_LABEL}
+              </SelectItem>
+              {printers.map((p) => {
+                const virtual = savesToFile(p.name);
+                return (
+                  <SelectItem key={p.name} value={p.name} disabled={virtual} className="pointer-coarse:min-h-11">
+                    {(p.displayName || p.name) + (virtual ? " — saves a file, cannot be used" : "")}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+          {shownPrinter === NOT_CHOSEN_VALUE && (
             <p className="text-xs text-amber-600">
               No printer is chosen, so slips will not print on this PC. Pick the thermal printer
               above.

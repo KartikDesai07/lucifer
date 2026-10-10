@@ -312,6 +312,7 @@
     "lib/realtime-paths.test.ts",
     "lib/pos-category-groups.test.ts",
     "lib/date-input.test.ts",
+    "lib/time-input.test.ts",
     "lib/modifier-picker.test.ts",
     "lib/removed-modifiers-paths.test.ts",
     "lib/dashboard/range.test.ts",
@@ -438,6 +439,7 @@
     "lib/order-create-followups.test.ts",
     "lib/expense-ui-paths.test.ts",
     "lib/header-quick-tabs.test.ts",
+    "lib/no-native-pickers-paths.test.ts",
     "scripts/print-soak-rules.test.ts",
     "scripts/print-soak-writer.test.ts"
   ],

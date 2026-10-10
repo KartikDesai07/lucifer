@@ -141,14 +141,16 @@ test("PIN: the colour swatches and the colour picker are 44px, and a swatch is n
   assert.match(group, /aria-pressed=\{accentValue === hex\}/, "a swatch still says if it is picked");
   assert.match(group, /aria-label=\{`Suggested colour \$\{index \+ 1\}`\}/, "named by its number");
   assert.ok(!/aria-label=\{`[^`]*\$\{hex\}/.test(group), "no hex in the accessible name");
-  assert.match(input, /type="color"[\s\S]*?className="h-11 w-11 /, "the picker is 44px");
+  assert.match(input, /<PopoverTrigger asChild>\s*<button[\s\S]*?className="h-11 w-11 /, "the picker's trigger is 44px");
+  assert.match(input, /grid grid-cols-4 gap-2/, "the popup's swatches sit in a 4-column grid");
+  assert.match(input, /relative flex h-11 w-full /, "each swatch inside the popup is a 44px target");
 });
 
 test("PIN: the picker has a visible label and the reset button is an outline button that is 44px on a phone", () => {
   const input = code(ACCENT_INPUT);
   const group = code(ACCENT_GROUP);
   assert.match(input, /const inputId = useId\(\)/);
-  assert.match(input, /id=\{inputId\}/, "the input has an id");
+  assert.match(input, /id=\{inputId\}/, "the picker's trigger has an id");
   assert.match(input, /<label htmlFor=\{inputId\}[^>]*>\s*Pick your own colour\s*<\/label>/, "a visible label for it");
   assert.ok(!/aria-label=/.test(input), "named by the visible label, not an aria-label");
   assert.match(group, /variant="outline"/);

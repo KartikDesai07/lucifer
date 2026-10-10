@@ -291,8 +291,21 @@ const hygieneMutations = [
 const slipPin = pinNeedles(['TEST_SLIP_HEADING = "Test slip"', 'TEST_SLIP_BODY = "If you can read this, this printer works."', "APP_NAME"]);
 const pickerPin: Pin = (raw) => {
   const p: string[] = [];
-  check(p, /<select\s+className="h-11 [^"]*text-base"/.test(raw), "the printer select is 44px with text-base (PR2)");
-  check(p, /<select[^>]*aria-label="Printer"/.test(raw), "W-W: the select has a name a screen reader can read");
+  check(p, /<SelectTrigger[^>]*className="h-11 [^"]*text-base"/.test(raw), "the printer select is 44px with text-base (PR2)");
+  check(p, /<SelectTrigger[^>]*aria-label="Printer"/.test(raw), "W-W: the select has a name a screen reader can read");
+  check(p, /<SelectItem[^>]*className="pointer-coarse:min-h-11"/.test(raw), "the printer items are 44px on touch");
+  check(p, !/<select\b/.test(raw), "never the browser's own select popup");
+  // s89g review: a file-writing device ("Microsoft Print to PDF") stays unpickable, the box locks while a save runs,
+  // and a saved printer Windows no longer lists reads "Not chosen" (as the native select did), never a blank box.
+  check(p, /<SelectItem[^>]*\bdisabled=\{virtual\}/.test(raw), "a device that saves a file cannot be picked");
+  check(p, /<Select value=\{[^}]*\} disabled=\{saving\}/.test(raw), "the picker locks while a save runs");
+  check(
+    p,
+    raw.includes("const shownPrinter = selected !== null && (printers ?? []).some((p) => p.name === selected) ? selected : NOT_CHOSEN_VALUE;") &&
+      raw.includes("<Select value={shownPrinter} disabled={saving}") &&
+      raw.includes("{shownPrinter === NOT_CHOSEN_VALUE && ("),
+    "an unlisted saved printer shows Not chosen, with the no-printer hint",
+  );
   check(p, raw.includes("void refreshDesktopPrinterChosen();"), "W-L: a saved choice is re-read into the shared state");
   // R2-W6: the store follows savePrinter's own answer; the re-read is only a follow-up (it may fail).
   const choose = raw.slice(raw.indexOf("const choose = async"), raw.indexOf("return (", raw.indexOf("const choose = async")));

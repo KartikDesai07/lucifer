@@ -340,7 +340,7 @@ test("desktop-shell-printer.ts: desktopPrinterApi() binds savePrintMode ONLY via
 
 const DESKTOP_PRINT_METHOD = "apps/cafe/components/print/DesktopPrintMethod.tsx";
 
-test("PIN: DesktopPrinterPicker.tsx renders <DesktopPrintMethod behind printers.length > 0 && typeof api.savePrintMode === \"function\" && printMode !== undefined — paired with the positive landmark that the printer <select> renders unconditionally on printers.length > 0 alone (the mode block is STRICTLY narrower)", () => {
+test("PIN: DesktopPrinterPicker.tsx renders <DesktopPrintMethod behind printers.length > 0 && typeof api.savePrintMode === \"function\" && printMode !== undefined — paired with the positive landmark that the printer Select renders unconditionally on printers.length > 0 alone (the mode block is STRICTLY narrower)", () => {
   const pickerSrc = readSrc(DESKTOP_PRINTER_PICKER);
 
   // Positive landmark: the existing printer select's own (looser) gate.

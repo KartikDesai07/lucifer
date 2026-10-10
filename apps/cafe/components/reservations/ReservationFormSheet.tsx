@@ -23,6 +23,7 @@ import {
 import { FormSheet } from "@/components/shared/FormSheet";
 import { FormField } from "@/components/shared/FormField";
 import { DatePicker } from "@/components/shared/DatePicker";
+import { TimePicker } from "@/components/shared/TimePicker";
 import { BRAND_CONTROL_CLASS } from "@/components/brand/brand-classes";
 import type { Reservation } from "@/types";
 
@@ -187,12 +188,19 @@ export function ReservationFormSheet({
           />
         </FormField>
         <FormField label="Time" htmlFor="res-time" error={errors.time?.message}>
-          <Input
-            id="res-time"
-            className={BRAND_CONTROL_CLASS}
-            type="time"
-            aria-invalid={!!errors.time}
-            {...register("time")}
+          <Controller
+            control={control}
+            name="time"
+            render={({ field }) => (
+              <TimePicker
+                id="res-time"
+                className={BRAND_CONTROL_CLASS}
+                value={field.value}
+                onChange={field.onChange}
+                invalid={!!errors.time}
+                ref={field.ref}
+              />
+            )}
           />
         </FormField>
       </div>

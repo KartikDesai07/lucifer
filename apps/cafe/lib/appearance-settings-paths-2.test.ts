@@ -32,7 +32,7 @@ test("PIN: the colour status <p> is always mounted (not behind a !feedback.ok co
   assert.ok(!/!feedback\.ok\s*&&\s*\(?\s*<p\b/.test(src), "no conditional mount around the paragraph");
   assert.match(status[0], /feedback\.ok \? "sr-only" : "order-last w-full"/, "empty = sr-only ALONE (w-full would beat its 1px width and overflow the page); a full-width line only when shown");
   assert.match(status[0], /feedback\.ok \? null : accentProblemText\(feedback\.reason\)/, "empty when fine, plain text when not");
-  assert.match(src, /<input[^>]*\baria-describedby=\{statusId\}/, "the picker is described by the status");
+  assert.match(src, /<PopoverTrigger asChild>\s*<button[^>]*\baria-describedby=\{statusId\}/, "the picker's trigger is described by the status");
   assert.match(src, /const statusId = useId\(\)/, "one id per instance");
 });
 

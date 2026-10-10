@@ -7,6 +7,8 @@ import path from "node:path";
 import { PRESET_IDS } from "@pos/shared/appearance";
 import { APPEARANCE_PRESETS } from "@pos/shared/appearance-presets";
 import { checkAccent } from "@pos/shared/appearance-contrast";
+import { stripComments } from "@/lib/source-pin-utils";
+import { ACCENT_SWATCHES, normalizeAccentHex } from "@/components/settings/accent-swatches";
 
 // CR2.4 post-review fix (accent-contrast-error-shown-when-override-unset) —
 // AppearanceAccentInput's checkAccent feedback must be suppressed ONLY in the
@@ -51,4 +53,50 @@ test("A genuinely failing COMMITTED value (value !== \"\") is never mistaken for
   const guardMatch = src.match(/const untouchedDefault = (value === "" && live === presetAccent);/);
   assert.ok(guardMatch, "untouchedDefault guard must be present");
   assert.match(guardMatch![1], /^value === ""/, "value===\"\" must be the guard's leading conjunct");
+});
+
+// ── s89g: the picker is our own popover, not the browser's colour popup ─────
+
+test("PIN: a colour reaches the form through onCommit exactly once per pick - one commit site in pick(), no onCommit in a change/keystroke handler", () => {
+  const code = stripComments(src);
+  assert.match(code, /const pick = \(hex: string\) => \{\s*setLive\(hex\);\s*onCommit\(hex\);\s*setOpen\(false\);\s*\};/, "landmark: pick() is the one commit");
+  assert.equal((code.match(/onCommit\(/g) ?? []).length, 1, "onCommit is called from exactly one place");
+  assert.match(code, /onClick=\{\(\) => pick\(hex\)\}/, "a swatch tap is one pick");
+  assert.match(code, /pick\(hex\);\s*\};/, "a valid hex applied is one pick");
+  const onChange = code.match(/onChange=\{\(e\) => \{[\s\S]*?\}\}/);
+  assert.ok(onChange, "landmark: the hex field's onChange is present");
+  assert.ok(!/onCommit|pick\(/.test(onChange[0]), "typing only edits the local draft - never a commit per keystroke");
+});
+
+test("PIN: the browser's own colour input is gone, and a bad hex is refused (error shown, nothing committed)", () => {
+  const code = stripComments(src);
+  assert.match(code, /<Popover open=\{open\} onOpenChange=\{handleOpenChange\}>/, "landmark: the popover is here");
+  assert.ok(!/type=\{?"color"\}?/.test(code), "no native colour input");
+  assert.ok(!/addEventListener/.test(code), "no hand-wired change listener any more");
+  assert.match(code, /const hex = normalizeAccentHex\(draft\);\s*if \(hex === null\) \{\s*setHexInvalid\(true\);\s*return;\s*\}/, "an invalid hex sets the error and returns before pick()");
+  assert.match(code, /Use this colour/, "the apply button says what it does");
+  assert.match(code, /role="alert"/, "the hex error is announced");
+});
+
+test("normalizeAccentHex accepts #RRGGBB in any case, with or without #, and returns the lowercase stored form", () => {
+  assert.equal(normalizeAccentHex("#2563EB"), "#2563eb");
+  assert.equal(normalizeAccentHex("2563eb"), "#2563eb");
+  assert.equal(normalizeAccentHex("  #AbCdEf  "), "#abcdef");
+  for (const bad of ["", "#", "#fff", "#12345", "#1234567", "#gggggg", "blue", "##123456", "#12 456"]) {
+    assert.equal(normalizeAccentHex(bad), null, `${JSON.stringify(bad)} must be refused`);
+  }
+});
+
+test("ACCENT_SWATCHES: 16 unique lowercase colours, each named, and EVERY one passes checkAccent on EVERY preset (a swatch must never open with a red error)", () => {
+  assert.equal(ACCENT_SWATCHES.length, 16, "landmark: the curated list is not empty or filtered down");
+  assert.equal(new Set(ACCENT_SWATCHES.map((s) => s.hex)).size, 16, "no duplicate colour");
+  assert.equal(new Set(ACCENT_SWATCHES.map((s) => s.name)).size, 16, "no duplicate name");
+  for (const { name, hex } of ACCENT_SWATCHES) {
+    assert.ok(name.length > 0, "named");
+    assert.match(hex, /^#[0-9a-f]{6}$/, `${name}: lowercase #rrggbb`);
+    for (const presetId of PRESET_IDS) {
+      const result = checkAccent(hex, presetId);
+      assert.equal(result.ok, true, `${name} ${hex} on ${presetId}: ${result.ok ? "" : result.failing}`);
+    }
+  }
 });
