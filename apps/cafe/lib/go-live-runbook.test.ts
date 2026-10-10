@@ -79,6 +79,8 @@ import { PRINT_WAKE_PRINTERS_DAILY_CAP } from "@pos/shared/print-agent-wire";
 import { PRINT_SETUP_REFRESH_MIN_MS, PRINT_SETUP_STALE_MS } from "@pos/shared/print-budget";
 import { PRINTERS_MAX, PRINTER_COPIES_MAX, PRINTER_COPIES_MIN, STATIONS_MAX } from "@pos/shared/print-printers";
 import { SESSION_MAX_AGE_SECONDS, SESSION_REVALIDATE_MS } from "@pos/shared/constants";
+import { DEVICE_TAKES_OVER_TEXT, PRINTER_NO_TAKEOVER_TEXT } from "@/lib/print-setup-text";
+import { BACKUP_PRINTER_NOTE } from "@/lib/print-setup-form";
 import { TOKENS_RELOAD_HINT } from "@/lib/token-settings-notes";
 
 // Doc<->source parity for docs/GO-LIVE-CHECKLIST.md §A "Pinned facts" — an
@@ -1389,8 +1391,11 @@ test("PIN §1 (printing Phase 2): the existing-cafe release step keeps the go-li
     assert.ok(next > at, `the Phase 2 release step names "${landmark}" after the step before it`);
     at = next;
   }
+  // Phase 3 Session 3E deliberately changed: the Windows app is 1.12.0 now, and this step stays the Phase 2 release's
+  // (its installer, 1.11.0); the Phase 3 release step (Session 3G) names 1.12.0.
   const desktop = JSON.parse(readFileSync(path.join(REPO_ROOT, "apps/desktop/package.json"), "utf8")) as { version: string };
-  assert.ok(step.includes(`POS-Software-Setup-${desktop.version}.exe`), "the step names this release's desktop installer");
+  assert.equal(desktop.version, "1.12.0", "the Windows app of Phase 3");
+  assert.ok(step.includes("POS-Software-Setup-1.11.0.exe"), "the step names the Phase 2 release's desktop installer");
   assert.ok(step.includes("apps/mobile/TEST-CHECKLIST.md"), "the step sends the deployer to the real-printer checks");
 });
 
@@ -1422,4 +1427,48 @@ test("PIN §1 (the token fix): turning token slips on comes after every POS scre
   assert.ok(step.includes("Admin → Printer setup") && step.includes("tick **Bill**"), "printers mode: a printer must take bills, and where to tick it");
   assert.ok(step.includes("No printer is set up for bills."), "the reason staff see when none does");
   assert.ok(step.includes("change it outside service hours"), "the restart time note");
+});
+
+// ── Printing Phase 3 Session 3B: the page's failover, the backup printer ─────────
+test("PIN §1 (printing Phase 3, Session 3B): failover and the backup printer: reload every screen, a second device that can take a printer over, the setup's words verbatim", () => {
+  const step = norm(sectionSlice("### Existing cafes: printing failover and the backup printer (printing Phase 3)"));
+  assert.ok(step.includes("Reload every POS screen"), "every screen reloaded after the deploy");
+  assert.ok(step.includes(norm(DEVICE_TAKES_OVER_TEXT)) && step.includes(norm(PRINTER_NO_TAKEOVER_TEXT)), "the Devices and Printers words, verbatim");
+  assert.ok(step.includes(norm(BACKUP_PRINTER_NOTE)), "the form's backup note, verbatim");
+  assert.ok(step.includes("Phase 2 POS app") && step.includes("1.12.0"), "which apps can take a network printer over");
+  // Session 3C (the 3B review gate's I-1): a rollback of the web is a reload of every screen too.
+  assert.ok(step.includes("If you roll the web back") && step.includes("reload every POS screen again"), "a rollback reloads every screen");
+});
+
+// ── Printing Phase 3 Session 3G: the Phase 3 release step ───────────────────────────────────────────────────────
+// The 3D review gate (its review's m-5): the web first, then the POS app on each printing device, then the app opened
+// once (an older page never runs hidden on the new app's keep-running tick); the 3C gate (I-3): close the app on
+// printing devices at closing time; no Worker change; the owner's ruling (2026-10-09): no Telegram step.
+test("PIN §1 (printing Phase 3, Session 3G): the Phase 3 release step keeps its order (the web, every screen, the POS app on each printing device, open it once, the Windows app 1.12.0), closes the app at closing time, changes no Worker and sends the deployer to the Phase 3 checks", () => {
+  const step = norm(sectionSlice("### Existing cafes: the printing Phase 3 release"));
+  let at = -1;
+  for (const landmark of ["**The web first.**", "**Reload every POS screen**", "**Then the POS app on each printing device**", "**Then open the app once**", "POS-Software-Setup-1.12.0.exe", "**At closing time, close the POS app**"]) {
+    const next = step.indexOf(landmark);
+    assert.ok(next > at, `the Phase 3 release step names "${landmark}" after the step before it`);
+    at = next;
+  }
+  assert.ok(step.includes("No Worker change"), "this release changes no Worker");
+  assert.ok(step.includes("SHA256SUMS.txt"), "each app's hash is checked before it is sent");
+  assert.ok(step.includes("If you roll the web back"), "a rollback reloads every screen again");
+  assert.ok(!/telegram/i.test(step), "the Phase 3 release adds no Telegram step (the owner's ruling, 2026-10-09)");
+  const checklist = readFileSync(path.join(REPO_ROOT, "apps/mobile/TEST-CHECKLIST.md"), "utf8");
+  assert.ok(step.includes("Phase 3 checks (failover, health, the service)"), "the step sends the deployer to the Phase 3 real-printer checks");
+  assert.ok(checklist.includes("## Phase 3 checks (failover, health, the service)"), "... which TEST-CHECKLIST holds");
+});
+
+// The final Phase 3 gate (the 3G review's m-5): only a POS app from printing Phase 3 on keeps the page's wish to print, so
+// only an update over such an app shows "POS printing is off. Tap to start."; over the Phase 2 app this release replaces
+// nothing shows. The step must not promise the notice: the deployer opens the app once either way.
+test("PIN §1 (printing Phase 3, the final gate's m-5): opening the app once does not wait for a notice the Phase 2 app it replaces never shows", () => {
+  const step = norm(sectionSlice("### Existing cafes: the printing Phase 3 release"));
+  const open = step.slice(step.indexOf("**Then open the app once**"), step.indexOf("**Allow notifications**"));
+  assert.ok(open.length > 0, "landmark: the step that opens the app once, before the notifications step");
+  assert.ok(!open.includes("The install itself shows"), "no promise that every install shows the notice");
+  assert.ok(open.includes("the Phase 2 app it replaces shows nothing"), "over the Phase 2 app nothing shows");
+  assert.ok(open.includes("open the app from its icon"), "... so the deployer opens the app either way");
 });

@@ -28,6 +28,7 @@ const LISTS: Record<string, string[]> = {
     'bluetooth.enable',
     'host.background',
     'app.changeUrl',
+    'app.battery',
   ],
   NATIVE_EVENTS: ['printer.status', 'app.wake'],
   NATIVE_TRANSPORTS: ['bt-classic', 'ble', 'tcp', 'usb'],
@@ -47,6 +48,7 @@ const LISTS: Record<string, string[]> = {
   ],
   NATIVE_PERMISSION_KINDS: ['bluetooth', 'notifications'],
   NATIVE_PLATFORMS: ['android', 'ios'],
+  NATIVE_FEATURES: ['battery'],
 };
 
 const SCALARS: Record<string, string | number> = {
@@ -84,7 +86,8 @@ test('every list equals the section 9 oracle, order included', () => {
 });
 
 test('lists are non-empty, unique, and declared exactly once', () => {
-  assert.equal(Object.keys(LISTS).length, 8);
+  // Phase 3 Session 3D deliberately changed: + NATIVE_FEATURES.
+  assert.equal(Object.keys(LISTS).length, 9);
   for (const name of Object.keys(LISTS)) {
     const values = parseList(name);
     assert.ok(values.length > 0, name + ' is empty');

@@ -110,5 +110,9 @@ export async function legAT(nowMs: number): Promise<void> {
   check("(at) newest first", list.map((d) => d.deviceId).join() === [COUNTER, KITCHEN].join());
   check("(at) online within 90 s, offline after", list[0]?.online === true && list[1]?.online === false && list[1]?.shell === "android" && list[1]?.label === "POS app");
   check("(at) last seen as an ISO time", list[1]?.lastSeenAt === new Date(nowMs - 10 * 60_000).toISOString());
+  // Phase 3 Session 3E (spec §9.6): a device that writes network printers says so; a Windows app before 1.12.0 does not.
+  check("(at) a POS app writes network printers", list[0]?.lan === true);
+  await beatPrintDevice({ deviceId: "live-2d-old-pc", label: "Counter PC", shell: "windows", capabilities: { ...caps, lan: false, bluetooth: false, usb: false, windowsPrinters: true } }, nowMs - 1_000);
+  check("(at) a Windows app 1.11.0 does not", (await listPrintDevices(nowMs)).find((d) => d.deviceId === "live-2d-old-pc")?.lan === undefined);
   await PrintDevice.deleteMany({});
 }

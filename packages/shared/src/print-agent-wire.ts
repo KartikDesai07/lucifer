@@ -11,6 +11,7 @@ import {
   type PrintJobKind,
   type PrintJobStatus,
 } from "./print-job";
+import type { PrinterProblem } from "./print-failover";
 import type { PrintJobLabel, PrintJobRefusal } from "./print-lifecycle";
 import { printerWriterDevices, printersModeOn, type PrinterConfig } from "./print-printers";
 import type { PrintJobPayload } from "./schemas/print-job.schema";
@@ -41,6 +42,12 @@ export const PRINT_READY_HEADER = "x-pos-print-ready";
 /** Session 2C (plan decision 7): this device's own bill printer (an id), chosen on the device (Session 2D). An
  *  unknown, switched-off or unusable one means the default bill printer; it never refuses the order write. */
 export const PRINT_BILL_PRINTER_HEADER = "x-pos-bill-printer";
+/** Phase 3 (the token fix's review, M-2): a page that can print a "token" job says so on the pulse (`?tokens=1`), and as
+ *  `tokenSlips: true` on the wake and the ack, as its lease already does. The jobs-for-me count and the ack's `more`
+ *  then skip token jobs only for a page that cannot print them (one from before print-customization S7, whose lease
+ *  steps over them), so it no longer pays an empty lease per ack and per pulse while a token waits. A request that does
+ *  not say (any page from before Phase 3) is answered by what the device's last lease said (PrintDevice.tokenSlips). */
+export const PRINT_PULSE_TOKENS_PARAM = "tokens";
 
 /** One job the server created for a request (spec §7.4 `printJobs`): the asking device leases the ones
  *  aimed at it straight away and follows each one's readback by id. */
@@ -79,6 +86,9 @@ export interface PrintAttentionRow {
   approved?: true;
   /** Session 2C (printers mode): the job's printer, so the panel can name it. */
   printerId?: string;
+  /** Phase 3 (spec §9.4, §10): why that printer cannot print now (its device is offline, it is out of paper, ...), so
+   *  every device's panel says it beside the slip; absent when none is known. */
+  problem?: PrinterProblem;
 }
 
 /** The feed is one bounded read on the hottest poll, within the queued retention (§7.8): the NEWEST rows
@@ -101,6 +111,11 @@ export interface PrintDeviceSummary {
   /** Session 2F1 (spec §9.2): the POS app's bridge version from its wake (2: it prints several printers); absent for
    *  any other device, and for an app whose page has not said yet. */
   nativeProtocol?: number;
+  /** Session 3B (spec §9.3): its wake said it can take a network printer over (PrintDeviceCapabilities.lanFailover). */
+  lanFailover?: true;
+  /** Phase 3 Session 3E (spec §9.6): its wake said it can write a network printer (PrintDeviceCapabilities.lan): every POS
+   *  app, and the Windows app from 1.12.0. The printer form offers such a device as a network printer's printing device. */
+  lan?: true;
 }
 /** The devices list's one page: far above any cafe's devices (rows unseen for 7 days are pruned). */
 export const PRINT_DEVICES_LIST_MAX = 50;
@@ -112,6 +127,10 @@ export interface PrintDeviceCapabilities {
   windowsPrinters: boolean;
   webSerial: boolean;
   webBluetooth: boolean;
+  /** Phase 3 (spec §9.3): this page can write any network printer the setup names, not only its own (the POS app on
+   *  bridge v2; the Windows app from 1.12.0), so it may take one over while its primary is offline. A page from before
+   *  Phase 3 never says it, and is never chosen. */
+  lanFailover?: boolean;
 }
 
 /** Without a healthy socket an agent polls fast only this long after it last saw a job (spec §9.1). */
@@ -221,6 +240,10 @@ export interface PrintLeaseData {
  *  never guessed onto another printer (staff print the slip again from its order). */
 export type PrintJobActionRefusal = PrintJobRefusal | "not-found" | "raced" | "printer-gone";
 
+/** Phase 3 (spec §9.3): the ack's `reason` when a writer could not reach a network printer before any byte (a failed
+ *  connect): the server skips that writer for that printer for 5 minutes, so another writer gets the next lease. */
+export const PRINT_ACK_UNREACHABLE = "unreachable";
+
 export interface PrintAckData {
   applied: boolean;
   status: PrintJobStatus | null;
@@ -266,4 +289,7 @@ export interface PrintWakeBeatData {
    *  writer told false has a stale printer list (its printer removed or moved while the print-setup frame was
    *  missed): it reads the list again and stops polling. Absent from an older server. */
   writesPrinters?: boolean;
+  /** Session 3B (spec §9.3): the network printers this device writes now that the setup names another device for (taken
+   *  over while their primary is offline or cannot reach them); absent when none, and from an older server. */
+  takenOver?: string[];
 }

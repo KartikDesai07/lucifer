@@ -1,9 +1,11 @@
 import type { PrintActionData } from "@pos/shared/print-agent-wire";
 import { lifecycleOf, planConfirm, planRetry, type PrintJobDecision, type PrintJobLifecycle, type PrintJobPlan } from "@pos/shared/print-lifecycle";
-import { printerWriterDeviceId, routablePrinterOf } from "@pos/shared/print-printers";
+import { printerActiveWriter } from "@pos/shared/print-failover";
+import { routablePrinterOf } from "@pos/shared/print-printers";
 import { PrintJob } from "@/models/PrintJob";
 import { publishCafeEvent, publishPrintStatus } from "@/lib/realtime-publish";
 import { PRINT_LIFECYCLE_SELECT, applyPrintJobPlan, type PrintLifecycleRow } from "./print-lease";
+import { readPrinterFailover } from "./print-failover";
 import { listPrinters } from "./print-printers";
 
 // Printing redesign, Phase 1 (spec §7.2, §7.3): the staff decisions. "Print again?" on a bill that
@@ -13,7 +15,7 @@ import { listPrinters } from "./print-printers";
 
 const ACTION_MAX_STEPS = 2;
 
-async function act(id: string, decide: (job: PrintJobLifecycle) => PrintJobPlan): Promise<PrintActionData> {
+async function act(id: string, nowMs: number, decide: (job: PrintJobLifecycle) => PrintJobPlan): Promise<PrintActionData> {
   for (let step = 0; step < ACTION_MAX_STEPS; step++) {
     const row = await PrintJob.findById(id)
       .select(`${PRINT_LIFECYCLE_SELECT} targetDeviceId printerId`)
@@ -24,13 +26,15 @@ async function act(id: string, decide: (job: PrintJobLifecycle) => PrintJobPlan)
     if (!plan.ok) return { applied: false, status: job.status, reason: plan.reason };
     // Session 2C (the 2B gate's ruling R2): back in line only on a printer that still takes slips; a gone one
     // (deleted, switched off, no writer, or none at all) is never guessed onto another printer. A printer that still
-    // takes slips gets the job on its current writer's line, in the same write (the 2C gate's review, I-3).
+    // takes slips gets the job on its current writer's line, in the same write (the 2C gate's review, I-3). Phase 3
+    // (§9.3): its writer now, a network printer's primary or the device that took it over.
     let patch = plan.patch;
     let target = row.targetDeviceId;
     if (plan.patch.status === "queued" && row.printerId !== undefined) {
-      const printer = routablePrinterOf(await listPrinters(), row.printerId);
+      const printers = await listPrinters();
+      const printer = routablePrinterOf(printers, row.printerId);
       if (printer === null) return { applied: false, status: job.status, reason: "printer-gone" };
-      target = printerWriterDeviceId(printer) ?? target;
+      target = printerActiveWriter(printer, await readPrinterFailover([printer], nowMs)) ?? target;
       patch = { ...plan.patch, set: { ...plan.patch.set, ...(target !== undefined ? { targetDeviceId: target } : {}) } };
     }
     if (await applyPrintJobPlan(row._id, job, patch)) {
@@ -47,9 +51,9 @@ async function act(id: string, decide: (job: PrintJobLifecycle) => PrintJobPlan)
 }
 
 export function confirmPrintJob(input: { id: string; decision: PrintJobDecision; staff: string; nowMs: number }): Promise<PrintActionData> {
-  return act(input.id, (job) => planConfirm(job, input.decision, input.staff, input.nowMs));
+  return act(input.id, input.nowMs, (job) => planConfirm(job, input.decision, input.staff, input.nowMs));
 }
 
 export function retryPrintJob(input: { id: string; nowMs: number }): Promise<PrintActionData> {
-  return act(input.id, (job) => planRetry(job, input.nowMs));
+  return act(input.id, input.nowMs, (job) => planRetry(job, input.nowMs));
 }

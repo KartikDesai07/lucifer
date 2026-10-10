@@ -64,6 +64,10 @@ export const printerBodySchema = z
     name: z.string().trim().min(1, "Name the printer").max(PRINTER_NAME_MAX_CHARS, `Keep it to ${PRINTER_NAME_MAX_CHARS} characters or fewer`),
     connection: z.discriminatedUnion("kind", [lanConnection, deviceConnection]),
     primaryDeviceId: z.string().trim().min(1).max(PRINTER_DEVICE_ID_MAX_CHARS).optional(),
+    /** Phase 3 (spec §9.4): the printer that takes this one's waiting slips while its device is offline. It must exist,
+     *  and never be the printer itself. `null` clears it; absent keeps it on a save (the planning review, I-1: a page from
+     *  before Session 3B saves the whole printer without this field, and must never drop a backup it cannot see). */
+    backupPrinterId: objectIdString.nullable().optional(),
     /** Display order; absent on create puts it last, absent on save keeps it. */
     order: z.number().int().min(0).max(10_000).optional(),
     paper: z.union([z.literal(58), z.literal(80)]),

@@ -32,6 +32,12 @@ export const PRINT_MODE_SAVE_CHANNEL = "pos-desktop:print-mode-save";
 // A cafe with stations sets up one printer per Windows printer (Printer setup in the POS), each with its own slips;
 // the chosen printer above stays this PC's own printer for everything that names none.
 export const PRINT_ON_CHANNEL = "pos-desktop:print-html-on";
+// Phase 3 Session 3E (spec §9.6): a network printer written from the main process over raw TCP (raw-tcp.ts): the page's
+// ESC/POS bytes to the printer's private address; and the idle check of the network printers the page prints (whether
+// each answers, and its paper, cover and errors). One check asks at most this many printers.
+export const PRINT_RAW_CHANNEL = "pos-desktop:print-raw";
+export const LAN_STATUS_CHANNEL = "pos-desktop:lan-status";
+export const LAN_STATUS_MAX_PRINTERS = 16;
 export const PRINT_MODES = ["direct", "driver"] as const;
 export type PrintMode = (typeof PRINT_MODES)[number];
 export const DEFAULT_PRINT_MODE: PrintMode = "direct";

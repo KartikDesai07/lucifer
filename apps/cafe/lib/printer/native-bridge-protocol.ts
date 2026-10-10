@@ -15,6 +15,7 @@ export const NATIVE_METHODS = [
   "bluetooth.enable",
   "host.background",
   "app.changeUrl",
+  "app.battery",
 ] as const;
 export type NativeMethod = (typeof NATIVE_METHODS)[number];
 
@@ -50,6 +51,11 @@ export type NativePermissionKind = (typeof NATIVE_PERMISSION_KINDS)[number];
 export const NATIVE_PLATFORMS = ["android", "ios"] as const;
 export type NativePlatform = (typeof NATIVE_PLATFORMS)[number];
 
+// Phase 3 Session 3D: what the POS app can do beyond the method list (window.PosNative.features); a control is shown
+// only when the app says it (an older app says nothing).
+export const NATIVE_FEATURES = ["battery"] as const;
+export type NativeFeature = (typeof NATIVE_FEATURES)[number];
+
 export const NATIVE_BRIDGE_VERSION = 1;
 // How long the app scans for nearby printers when asked to (printer.list scan).
 export const PRINTER_SCAN_MS = 8_000;
@@ -81,6 +87,8 @@ export interface NativePrinterStatus {
 export interface PosNativeApi {
   readonly version: number;
   readonly platform: NativePlatform;
+  /** Phase 3 Session 3D: absent on an app from before it. */
+  readonly features?: readonly string[];
   request(method: NativeMethod, params?: unknown): Promise<unknown>;
   on(event: NativeEvent, fn: (data: unknown) => void): () => void;
 }

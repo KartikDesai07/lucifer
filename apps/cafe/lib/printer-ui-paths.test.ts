@@ -276,8 +276,9 @@ const HYGIENE: [string, number, boolean][] = [
   [F.connect, 110, true], [F.section, 50, false], [F.type, 60, false],
   // Session 1D: the waiting-slips panel follows the same rules (44px controls, no jargon).
   [F.waiting, 120, true],
-  // Session 2F1 (the 2F1 review gate, M-6): the POS app's other printers on bridge v2.
-  [F.others, 120, true],
+  // Session 2F1 (the 2F1 review gate, M-6): the POS app's other printers on bridge v2. Session 3B: 130 (was 120), a
+  // network printer this device may take over says why it stays.
+  [F.others, 130, true],
 ];
 const hygieneMutations = [
   append("a console call", "// " + "console" + ".log(1)"),
@@ -390,9 +391,12 @@ const CASES: PinCase[] = [
     mut("another tab reads not connected", 'elsewhere: "In another tab"', 'elsewhere: "Not connected"'),
     mut("the sub-line dropped", "{printerTypeLabel(printer)} · ", ""),
   ] },
-  { file: F.advanced, pin: pinNeedles(['nativeRequest("app.changeUrl")', "More options", "Change POS address", "<Collapsible", "usePrintCapabilities()"]), mutations: [
+  // Phase 3 Session 3D: the POS app's battery checklist, only on an app that says it has one.
+  { file: F.advanced, pin: pinNeedles(['nativeRequest("app.changeUrl")', "More options", "Change POS address", "<Collapsible", "usePrintCapabilities()", 'const battery = native && nativeHasFeature("battery");', 'nativeRequest("app.battery")', "Battery settings for printing"]), mutations: [
     mut("change-address renamed", 'nativeRequest("app.changeUrl")', 'nativeRequest("app.changeAddress")'),
     mut("label changed", "More options", "Advanced"),
+    mut("battery shown on every app", 'native && nativeHasFeature("battery")', "native"),
+    mut("battery asks nothing", 'nativeRequest("app.battery")', "Promise.resolve()"),
   ] },
   { file: F.paper, pin: pinNeedles(["aria-pressed", "grid-cols-2", "PAPER_WIDTHS.map"]), mutations: [mut("grid dropped", "grid-cols-2", "flex")] },
   { file: F.card, pin: cardPin, mutations: [

@@ -86,9 +86,10 @@ export function isDesktopShellRefusal(message: string): boolean {
 /** The sentence a failed slip carries to its caller (the agent) and the toast. In the Windows app, the shell's own
  *  curated sentence, unwrapped from the IPC layer's "Error invoking remote method …: Error: …": wrapped, every
  *  Windows failure read as an unknown "may have printed" (the Phase 1 final gate, I-3). Elsewhere a lane's own
- *  sentence, else the bridge's generic one (unchanged). */
+ *  sentence, else the bridge's generic one (unchanged). Phase 3 Session 3E: a network printer on the Windows app fails
+ *  with the lane's own sentence (lib/printer/desktop-lan.ts), kept as it is, so "not connected" stays "nothing sent". */
 export function hostPrintFailureMessage(error: unknown, desktop: boolean = isDesktopShell()): string {
-  if (desktop) return shellErrorMessage(error);
+  if (desktop) return laneFailureMessage(error) ?? shellErrorMessage(error);
   return laneFailureMessage(error) ?? PRINT_HOST_PRINT_FAILED_MESSAGE;
 }
 export const PRINT_SLIP_REFUSALS_MAX = 2;

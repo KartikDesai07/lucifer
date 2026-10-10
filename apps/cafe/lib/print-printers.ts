@@ -1,5 +1,6 @@
 import type { Types } from "mongoose";
 import { isDuplicateKeyError } from "@pos/shared/api";
+import { printerBackupRefusal } from "@pos/shared/print-failover";
 import { PRINTERS_MAX, printerClashMessage, printerWriterClash, type PrinterConfig, type PrinterConnection } from "@pos/shared/print-printers";
 import { Printer, type IPrinter, type IPrinterConnection } from "@/models/Printer";
 import { Station } from "@/models/Station";
@@ -23,7 +24,7 @@ async function nameTaken(name: string, exceptId?: string): Promise<boolean> {
   return (await Printer.findOne({ name, ...(exceptId !== undefined ? { _id: { $ne: exceptId } } : {}) }).collation(NAME_IGNORING_CASE).select("_id").lean()) !== null;
 }
 
-type PrinterRow = Pick<IPrinter, "name" | "connection" | "primaryDeviceId" | "order" | "paper" | "slips" | "copies" | "enabled"> & {
+type PrinterRow = Pick<IPrinter, "name" | "connection" | "primaryDeviceId" | "order" | "paper" | "slips" | "copies" | "enabled" | "backupPrinterId" | "unreachable" | "health"> & {
   _id: Types.ObjectId;
 };
 
@@ -52,10 +53,28 @@ export function printerWireOf(row: PrinterRow): PrinterConfig {
     },
     copies: { kot: row.copies.kot, bill: row.copies.bill },
     enabled: row.enabled,
+    ...(row.backupPrinterId !== undefined ? { backupPrinterId: row.backupPrinterId } : {}),
+    // Phase 3 (spec §9.3): the writers skipped for this network printer, as the server keeps them.
+    ...(row.unreachable !== undefined && row.unreachable.length > 0
+      ? { unreachable: row.unreachable.map((skip) => ({ deviceId: skip.deviceId, until: skip.until.toISOString() })) }
+      : {}),
+    // Phase 3 (spec §10): what its writer last reported (every device reads it with the printers).
+    ...(row.health !== undefined && row.health !== null
+      ? {
+          health: {
+            link: row.health.link,
+            ...(row.health.paper !== undefined ? { paper: row.health.paper } : {}),
+            ...(row.health.cover !== undefined ? { cover: row.health.cover } : {}),
+            ...(row.health.error === true ? { error: true as const } : {}),
+            deviceId: row.health.deviceId,
+            at: row.health.at.toISOString(),
+          },
+        }
+      : {}),
   };
 }
 
-const PRINTER_SELECT = "name connection primaryDeviceId order paper slips copies enabled";
+const PRINTER_SELECT = "name connection primaryDeviceId order paper slips copies enabled backupPrinterId unreachable health";
 
 /** Every printer in display order (disabled ones too: the setup screen lists them). */
 export async function listPrinters(): Promise<PrinterConfig[]> {
@@ -70,12 +89,17 @@ async function stationsExist(ids: readonly string[]): Promise<boolean> {
 }
 
 export async function createPrinter(body: PrinterBody): Promise<PrintSetupResult<PrinterConfig>> {
-  const { order, ...stored } = body;
+  const { order, backupPrinterId, ...rest } = body;
+  const stored = { ...rest, ...(typeof backupPrinterId === "string" ? { backupPrinterId } : {}) };
   if (!(await stationsExist(stored.slips.kotStations))) return { ok: false, status: 400, error: PRINTER_UNKNOWN_STATION_MESSAGE };
   const existing = await listPrinters();
   if (existing.length >= PRINTERS_MAX) return { ok: false, status: 400, error: PRINTERS_FULL_MESSAGE };
   const last = existing.length === 0 ? -1 : Math.max(...existing.map((row) => row.order));
   if (await nameTaken(stored.name)) return { ok: false, status: 409, error: PRINTER_EXISTS_MESSAGE };
+  // Phase 3 (spec §9.4): a backup is another printer that exists now (a stale form never saves a dead id), and one
+  // routing sends slips to (the 3A review gate, m-1).
+  const backupRefused = stored.backupPrinterId === undefined ? null : printerBackupRefusal(existing, { backupPrinterId: stored.backupPrinterId });
+  if (backupRefused !== null) return { ok: false, status: 400, error: backupRefused };
   // Session 2D (the 2C review gate, F-3): one routable printer per printing device; Session 2E: a Windows PC may
   // print several Windows printers, each a different one.
   const clash = printerWriterClash(existing, stored);
@@ -95,17 +119,24 @@ export async function createPrinter(body: PrinterBody): Promise<PrintSetupResult
 
 /** Saves a printer whole (the setup form's one unit). The connection is replaced, never merged (a LAN
  *  printer moved to a device keeps no host); an absent order keeps its place; an absent primaryDeviceId is
- *  removed (a device printer never has one). */
+ *  removed (a device printer never has one). Phase 3: an absent backup keeps its backup, `null` clears it. */
 export async function replacePrinter(id: string, body: PrinterBody): Promise<PrintSetupResult<PrinterConfig>> {
-  const { order, ...stored } = body;
+  const { order, backupPrinterId, ...stored } = body;
   const printer = await Printer.findById(id);
   if (printer === null) return { ok: false, status: 404, error: PRINTER_NOT_FOUND };
   if (!(await stationsExist(stored.slips.kotStations))) return { ok: false, status: 400, error: PRINTER_UNKNOWN_STATION_MESSAGE };
   if (await nameTaken(stored.name, id)) return { ok: false, status: 409, error: PRINTER_EXISTS_MESSAGE };
-  const clash = printerWriterClash(await listPrinters(), stored, id);
+  const printers = await listPrinters();
+  // Phase 3 (spec §9.4): never itself, one that exists now, and one routing sends slips to unless it is the one already
+  // saved (the 3A review gate, m-1).
+  const backupRefused = typeof backupPrinterId === "string" ? printerBackupRefusal(printers, { id, backupPrinterId, saved: printer.backupPrinterId }) : null;
+  if (backupRefused !== null) return { ok: false, status: 400, error: backupRefused };
+  const clash = printerWriterClash(printers, stored, id);
   if (clash !== null) return { ok: false, status: 409, error: printerClashMessage(clash, stored) };
   printer.set("connection", stored.connection);
   printer.set("primaryDeviceId", stored.primaryDeviceId);
+  // The planning review (I-1): a save that does not mention the backup keeps it; `null` clears it.
+  if (backupPrinterId !== undefined) printer.set("backupPrinterId", backupPrinterId ?? undefined);
   printer.set({ name: stored.name, paper: stored.paper, slips: stored.slips, copies: stored.copies, enabled: stored.enabled });
   if (order !== undefined) printer.order = order;
   try {
@@ -121,6 +152,8 @@ export async function replacePrinter(id: string, body: PrinterBody): Promise<Pri
 export async function deletePrinter(id: string): Promise<PrintSetupResult<{ deleted: true }>> {
   const res = await Printer.deleteOne({ _id: id });
   if (res.deletedCount !== 1) return { ok: false, status: 404, error: PRINTER_NOT_FOUND };
+  // Phase 3 (spec §9.4): a deleted printer is nobody's backup any more (one write; none when no printer named it).
+  await Printer.updateMany({ backupPrinterId: id }, { $unset: { backupPrinterId: 1 } });
   publishCafeEvent("print-setup");
   return { ok: true, data: { deleted: true } };
 }

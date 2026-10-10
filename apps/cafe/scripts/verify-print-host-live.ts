@@ -47,6 +47,13 @@ import { Printer } from "@/models/Printer";
 import { Category } from "@/models/Category";
 import { Product } from "@/models/Product";
 import { legAY } from "./print-host-live/token-jobs";
+import { legAZ } from "./print-host-live/token-fence";
+import { legBA } from "./print-host-live/failover";
+import { legBB } from "./print-host-live/backup";
+import { legBC } from "./print-host-live/health";
+import { legBD } from "./print-host-live/takeover";
+import { legBE } from "./print-host-live/candidates";
+import { legBF } from "./print-host-live/skip-interplay";
 
 async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI ?? DEFAULT_URI;
@@ -136,6 +143,16 @@ async function main(): Promise<void> {
     await legAX(Date.now());
     // Print customization S7 leg (the customer's token slip: jobs, keys, lease order, eligibility, skew fence).
     await legAY(Date.now());
+    // Phase 3 Session 3A legs (the token fix's M-2 fence; failover, the backup printer, printer health).
+    await legAZ(Date.now());
+    await legBA(Date.now());
+    await legBB(Date.now());
+    await legBC(Date.now());
+    await legBD(Date.now());
+    // Phase 3 Session 3C leg (G-1 and the 3B review's m-2: who may take a printer over).
+    await legBE(Date.now());
+    // Phase 3 Session 3G leg (the 3B gate review's m-8: a skip's ack, beat and lease together, each step's printer writes).
+    await legBF(Date.now());
   } finally {
     await mongoose.connection.dropDatabase();
     await mongoose.disconnect();

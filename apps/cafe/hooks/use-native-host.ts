@@ -24,7 +24,11 @@ function tell(active: boolean): void {
   nativeRequest("host.background", params).catch(() => undefined);
 }
 
-export function useNativeHostBackground(enabled: boolean): void {
+// Phase 3 Session 3D (spec §9.5): the POS app keeps this device's wish to print across restarts, so a page that KNOWS
+// this device prints nothing for the cafe (`decided`: its role and the printers are known) says so once: a wish an
+// earlier page left (the device stopped printing while its page reloaded) is dropped, with no notice and no service.
+// Turning it off is a local call and always safe, even while hidden; a page that does not know yet says nothing.
+export function useNativeHostBackground(enabled: boolean, decided: boolean): void {
   const qc = useQueryClient();
   // Reactive: an old WebView can get its bridge after the first scripts ran.
   const hasBridge = usePrintCapabilities().native;
@@ -47,4 +51,9 @@ export function useNativeHostBackground(enabled: boolean): void {
       tell(false);
     };
   }, [enabled, hasBridge, qc]);
+
+  useEffect(() => {
+    if (!hasBridge || enabled || !decided) return;
+    tell(false);
+  }, [enabled, hasBridge, decided]);
 }

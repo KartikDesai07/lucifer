@@ -163,6 +163,7 @@ export async function createOrderPrintJobs(input: {
     const routing = await readPrintRouting({
       productIds: requests.flatMap((request) => printPayloadProductIds(request.payload)),
       ...(input.billPrinterId !== undefined ? { billPrinterId: input.billPrinterId } : {}),
+      nowMs: input.nowMs,
     });
     if (routing !== null) {
       const { jobs } = await createRoutedPrintJobs({

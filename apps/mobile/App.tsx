@@ -68,7 +68,11 @@ function App() {
 
   const changeUrl = useCallback(() => {
     const initial = boot.kind === 'pos' ? boot.origin : '';
-    PosPrinter.clearOrigin()
+    // Phase 3 (the 3D review gate, m-1): this device stops printing for the POS it leaves (its page goes with it and can
+    // never say so): no service, no "POS printing is off" after a reboot; a new address's page asks again if it prints.
+    PosPrinter.setHostActive(false, '')
+      .catch(noop)
+      .then(() => PosPrinter.clearOrigin())
       .catch(noop)
       .then(() => setBoot({ kind: 'url', initial }));
   }, [boot]);

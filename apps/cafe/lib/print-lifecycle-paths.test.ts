@@ -99,7 +99,11 @@ test("PIN (2C): the sweep moves a waiting printer job only with its printer, and
       'status: { $in: ["queued", "needs-confirm"] } })',
       "if (waiting === null) return { retargeted: 0, failed: 0 };",
       "const printers = routablePrinters(await listPrinters());",
-      "{ printerId: printer.id, status: { $in: WAITING }, targetDeviceId: { $ne: writer } }",
+      // Phase 3 (§9.3) deliberately changed the move: the writer now (failover), through print-failover.ts's one write.
+      "const failover = await readPrinterFailover(printers, nowMs, true);",
+      // Phase 3 (§9.4): first the slips of a printer whose device is offline go to its backup.
+      "let retargeted = failover === null ? 0 : await moveToBackupPrinters(printers, failover, nowMs);",
+      'retargeted += await retargetPrinterJobs(printer.id, printerActiveWriter(printer, failover) ?? "", nowMs);',
       "{ printerId: { $exists: true, $nin: [...printers.map((printer) => printer.id), PRINT_JOB_NO_PRINTER] }, status: \"queued\" }",
       "$set: { status: \"failed\", lastError: PRINTER_GONE_MESSAGE }",
     ],
@@ -117,9 +121,11 @@ test("PIN (2C ruling R2): Retry or Print again on a job whose printer is gone is
     s,
     [
       'if (plan.patch.status === "queued" && row.printerId !== undefined) {',
-      "const printer = routablePrinterOf(await listPrinters(), row.printerId);",
+      "const printers = await listPrinters();",
+      "const printer = routablePrinterOf(printers, row.printerId);",
       'if (printer === null) return { applied: false, status: job.status, reason: "printer-gone" };',
-      "target = printerWriterDeviceId(printer) ?? target;",
+      // Phase 3 (§9.3) deliberately changed it: the printer's writer now (a network printer taken over).
+      "target = printerActiveWriter(printer, await readPrinterFailover([printer], nowMs)) ?? target;",
       "patch = { ...plan.patch, set: { ...plan.patch.set, ...(target !== undefined ? { targetDeviceId: target } : {}) } };",
       "if (await applyPrintJobPlan(row._id, job, patch)) {",
     ],
@@ -140,6 +146,16 @@ test("ackBodySchema: a printed ack carries no failure fields; a failed one must 
   assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "printed", extra: 1 }), false, "strict");
   assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "failed", sent: "maybe", error: "x".repeat(201) }), false);
   assert.equal(ok({ deviceId: "", epoch: 1, outcome: "printed" }), false);
+  // Phase 3 (the token fix's M-2): a page that prints token slips says so; only true is a word.
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "printed", tokenSlips: true }), true);
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "failed", sent: "no", tokenSlips: true }), true);
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "printed", tokenSlips: false }), false, "absent, never false");
+  // Phase 3 (§9.3): "unreachable" is only a refusal before any byte (a failed connect).
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "failed", sent: "no", reason: "unreachable" }), true);
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "failed", sent: "maybe", reason: "unreachable" }), false, "a byte may have gone: not unreachable");
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "failed", sent: "no", permanent: true, reason: "unreachable" }), false, "a permanent failure is not about reaching it");
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "printed", reason: "unreachable" }), false);
+  assert.equal(ok({ deviceId: "d", epoch: 1, outcome: "failed", sent: "no", reason: "offline" }), false, "the one reason only");
 });
 
 test("lease, confirm and wake bodies: required fields, enums and strictness", () => {
@@ -160,6 +176,15 @@ test("lease, confirm and wake bodies: required fields, enums and strictness", ()
   assert.equal(wakeBeatBodySchema.safeParse({ ...beat, appVersion: "1.2.0", nativeProtocol: 1 }).success, true);
   assert.equal(wakeBeatBodySchema.safeParse({ ...beat, shell: "ios" }).success, false);
   assert.equal(wakeBeatBodySchema.safeParse({ ...beat, capabilities: { ...beat.capabilities, fax: true } }).success, false, "strict capabilities");
+  assert.equal(wakeBeatBodySchema.safeParse({ ...beat, tokenSlips: true }).success, true, "Phase 3 (M-2): a page that prints token slips");
+  assert.equal(wakeBeatBodySchema.safeParse({ ...beat, tokenSlips: false }).success, false, "absent, never false");
+  assert.equal(wakeBeatBodySchema.safeParse({ ...beat, capabilities: { ...beat.capabilities, lanFailover: true } }).success, true, "Phase 3 (§9.3): it may take a network printer over");
+  // Phase 3 (§10): the health of the printers it writes rides the heartbeat.
+  const health = { printerId: "a".repeat(24), link: "connected", paper: "out", cover: "open", error: true };
+  assert.equal(wakeBeatBodySchema.safeParse({ ...beat, printers: [health] }).success, true);
+  assert.equal(wakeBeatBodySchema.safeParse({ ...beat, printers: [{ ...health, paper: "empty" }] }).success, false, "known paper states only");
+  assert.equal(wakeBeatBodySchema.safeParse({ ...beat, printers: [{ ...health, error: false }] }).success, false, "an error is said, never denied");
+  assert.equal(wakeBeatBodySchema.safeParse({ ...beat, printers: Array.from({ length: 13 }, () => health) }).success, false, "never more than a cafe can have");
 });
 
 const ROUTES = {
@@ -187,7 +212,7 @@ test("PIN: every Phase 1 print route authenticates, is force-dynamic and no-stor
 
 test("PIN: each route calls its one lib, and a staff decision is stamped with the SESSION name, never a body field", () => {
   assert.match(src(ROUTES.lease), /leasePrintJobs\(\{/);
-  assert.match(src(ROUTES.lease), /touchPrintDevice\(parsed\.data\.deviceId, nowMs\)/);
+  assert.match(src(ROUTES.lease), /touchPrintDevice\(parsed\.data\.deviceId, nowMs, parsed\.data\.tokenSlips === true\)/);
   assert.match(src(ROUTES.ack), /ackPrintJob\(\{ id, \.\.\.parsed\.data, nowMs: Date\.now\(\) \}\)/);
   assert.match(src(ROUTES.confirm), /staff: authed\.session\.user\.name \?\? UNNAMED_STAFF/);
   assert.match(src(ROUTES.retry), /retryPrintJob\(\{ id, nowMs: Date\.now\(\) \}\)/);
@@ -238,14 +263,78 @@ test("PIN: POST /api/print-jobs/wake beats, reads the device's line and the agen
       "validateBody(req, wakeBeatBodySchema)",
       "await connectDB();",
       "await beatPrintDevice(parsed.data, nowMs);",
-      "readJobsForDevice(parsed.data.deviceId, nowMs)",
-      "countOnlineAgents(nowMs)",
+      "const tokens = parsed.data.tokenSlips === true || (await printDeviceDrawsTokens(parsed.data.deviceId));",
+      "readJobsForDevice(parsed.data.deviceId, nowMs, tokens)",
+      // Phase 3 (§9.3, §10) deliberately changed the count: who is online, read once, counts the agents and says who
+      // writes each printer now for the health this device reports (kept only on a change).
+      "readOnlinePrintDevices(nowMs)",
+      "await recordPrinterHealth({ deviceId: parsed.data.deviceId, reports: parsed.data.printers, printers, failover: { online, nowMs }, nowMs }).catch(() => 0);",
+      // Session 3B (the 3A review gate, M-8 d) deliberately added: a beat that says this device cannot reach a network
+      // printer it writes now skips it, as an "unreachable" ack does; and the answer says which printers it took over.
+      // Session 3C (the 3B review's m-2) deliberately added: the beat says whether this device may take a printer over,
+      // so a candidate that cannot reach one is skipped ahead of time.
+      "await skipUnreachableFromBeat({ deviceId: parsed.data.deviceId, lanFailover: parsed.data.capabilities.lanFailover === true, reports: parsed.data.printers, printers, failover: { online, nowMs }, nowMs }).catch(() => 0);",
+      "const agents = Math.max(1, online.length);",
       "after(() => sweepPrintJobsThrottled(nowMs))",
+      "const takenOver = printersTakenOverBy(printers, parsed.data.deviceId, { online, nowMs });",
+      "...(takenOver.length > 0 ? { takenOver } : {}),",
       "return noStore(success(data));",
     ],
     "wake POST",
   );
   assert.ok(!/PrintJob\.|PrintDevice\./.test(s), "the route writes only through the libs");
+});
+
+// Session 3B (the 3A review gate, M-8 d): the beat's link is the signal for a printer a device cannot reach without a
+// print; only the writer now, only a network printer, and once per skip.
+test("PIN (3B): a beat's settled link starts its device's skip for a network printer it writes now and cannot reach, once, and ends it once it reaches it again", () => {
+  const s = src("apps/cafe/lib/print-failover.ts");
+  const start = s.indexOf("export async function skipUnreachableFromBeat(");
+  assert.ok(start >= 0, "declared in lib/print-failover.ts");
+  inOrder(
+    s.slice(start),
+    [
+      "const printer = routablePrinterOf(input.printers, report.printerId);",
+      'if (printer === null || printer.connection.kind !== "lan") continue;',
+      'if (report.link === "connected") {',
+      "if (!printerSkipEndsFor(printer, input.deviceId, input.nowMs)) continue;",
+      "await endPrinterSkipOf(printer, input.deviceId, input.nowMs);",
+      'if (report.link !== "disconnected") continue;',
+      // Session 3C (the 3B review's m-2) deliberately changed: a device that may take the printer over is skipped ahead
+      // of time too; otherwise only the printer's writer now.
+      "const candidate = input.lanFailover === true && printerWriterDeviceId(printer) !== input.deviceId;",
+      "if (!candidate && printerActiveWriter(printer, input.failover) !== input.deviceId) continue;",
+      "if (printerSkippedWriters(printer, input.nowMs).includes(input.deviceId)) continue;",
+      "await recordPrinterUnreachable({ printerId: printer.id, deviceId: input.deviceId, nowMs: input.nowMs, candidate });",
+    ],
+    "skipUnreachableFromBeat",
+  );
+  // The 3A review gate (m-D): a network printer every writer is skipped for moves its slips to its backup.
+  assert.ok(s.includes("if (backup === null || printerWriterCanPrint(printer, failover) || !printerWriterCanPrint(backup, failover)) continue;"), "the backup move asks who can print, not only who is online");
+  // The devices read says which device can take a network printer over (the setup page's words); Session 3C (G-1): only
+  // while its own wake is fresh.
+  assert.ok(src(DEVICE).includes("...(lanFailoverNow(row, nowMs) ? { lanFailover: true as const } : {}),"), "the devices read carries lanFailover");
+  // Phase 3 Session 3E (spec §9.6): and whether a device writes network printers (the Windows app 1.12.0), for the form.
+  assert.ok(src(DEVICE).includes("...(row.capabilities?.lan === true ? { lan: true as const } : {}),"), "the devices read carries lan");
+  const form = src("apps/cafe/components/print/setup/PrinterFormDialog.tsx");
+  assert.ok(form.includes("const choices = lanPrintingDevicesOf(devices, { deviceId, lan: caps.native || desktopLanApi() !== null }, draft.primaryDeviceId);"), "the form offers them as a network printer's printing device");
+  assert.ok(form.includes("or the Windows app 1.12 or later on a PC, prints to a network printer."), "and says which devices can");
+});
+
+// Session 3C (G-1, the 3A review gate's exit pre-run): a lease refreshes lastSeenAt, but only the wake says lanFailover. A
+// device counts as able to take a printer over only while its own wake is fresh (PrintDevice.beatAt, written in the wake's
+// heartbeat write), and that write is due whenever beatAt is 30 s old, even right after a lease touched the device.
+test("PIN (3C, G-1): only a device whose own wake is fresh may take a printer over; the wake's write is never starved by a lease's touch", () => {
+  const s = src(DEVICE);
+  const beat = s.slice(s.indexOf("export async function beatPrintDevice("), s.indexOf("export async function touchPrintDevice("));
+  assert.ok(beat.includes("{ deviceId: beat.deviceId, $or: [{ lastSeenAt: { $lt: new Date(nowMs - PRINT_DEVICE_HEARTBEAT_WRITE_MS) } }, { beatAt: { $not: { $gte: due } } }] },"), "the wake's write is due on either clock");
+  assert.ok(beat.includes("beatAt: new Date(nowMs),"), "the wake's write stamps beatAt");
+  const touch = s.slice(s.indexOf("export async function touchPrintDevice("), s.indexOf("export async function printDeviceDrawsTokens("));
+  assert.ok(touch.includes("lastSeenAt: new Date(nowMs)") && !touch.includes("beatAt"), "a lease's touch refreshes lastSeenAt, never beatAt");
+  assert.ok(s.includes('.select("deviceId capabilities.lanFailover beatAt")'), "who is online reads beatAt");
+  assert.ok(s.includes("lanFailover: lanFailoverNow(row, nowMs)"), "who is online counts lanFailover only from a fresh wake");
+  assert.ok(s.includes("return row.capabilities?.lanFailover === true && row.beatAt !== undefined && row.beatAt.getTime() >= nowMs - PRINT_DEVICE_ONLINE_MS;"), "fresh = within the online window");
+  assert.ok(src("apps/cafe/models/PrintDevice.ts").includes("beatAt: { type: Date },"), "the model keeps beatAt");
 });
 
 // Session 1A final-review fixes (plan "Session 1A Results", findings I1 and I4).
@@ -270,7 +359,7 @@ test("PIN: the heartbeat awaits the PrintDevice unique-index build before its fi
 // ── Session 1B: the 1A review's lease rulings and the print-status publishes ───────────────────────
 
 test("PIN: the lease route's heartbeat is best-effort (M1), and a lease call that cleared four bad heads says when to look again (M2)", () => {
-  assert.match(src("apps/cafe/app/api/print-jobs/lease/route.ts"), /touchPrintDevice\(parsed\.data\.deviceId, nowMs\)\.catch\(\(\) => undefined\),/);
+  assert.match(src("apps/cafe/app/api/print-jobs/lease/route.ts"), /touchPrintDevice\(parsed\.data\.deviceId, nowMs, parsed\.data\.tokenSlips === true\)\.catch\(\(\) => undefined\),/);
   // Session 2C: per line now (leaseLineHead), so a line that cleared four bad heads gives no job and a retry time.
   assert.match(src(LEASE), /return \{ job: null, retryAt: new Date\(input\.nowMs \+ PRINT_BACKOFF_MS\[0\]\)\.toISOString\(\) \};/);
 });
@@ -299,15 +388,77 @@ test("PIN (2B): an ack that takes a job off the line answers `more` from one rea
     ack,
     [
       "if (await applyPrintJobPlan(row._id, job, plan.patch)) {",
-      'if (plan.patch.status === "queued") return { applied: true, status: plan.patch.status, nextAttemptAt };',
-      "const more = await (row.printerId !== undefined ? printerLineHasMore(row.printerId, input.nowMs) : printLineHasMore(input.deviceId, input.nowMs)).catch(",
+      'if (plan.patch.status === "queued") {',
+      "if (input.reason === PRINT_ACK_UNREACHABLE && input.sent === \"no\" && row.printerId !== undefined) {",
+      "await recordPrinterUnreachable({ printerId: row.printerId, deviceId: input.deviceId, nowMs: input.nowMs }).catch(() => null);",
+      "return { applied: true, status: plan.patch.status, nextAttemptAt };",
+      "const tokens = input.tokenSlips === true || (await printDeviceDrawsTokens(input.deviceId).catch(() => true));",
+      "const more = await (row.printerId !== undefined ? printerLineHasMore(row.printerId, input.nowMs, tokens) : printLineHasMore(input.deviceId, input.nowMs, tokens)).catch(",
       "() => undefined,",
       "...(more !== undefined ? { more } : {})",
     ],
     "the ack",
   );
-  assert.match(s, /return \(await PrintJob\.findOne\(\{ \.\.\.printJobLineFilter\(deviceId, nowMs\), status: "queued" \}\)\.select\("_id"\)\.lean\(\)\) !== null;/, "one read on the line index");
-  assert.match(s, /return \(await PrintJob\.findOne\(\{ \.\.\.printerLineFilter\(printerId, nowMs\), status: "queued" \}\)\.select\("_id"\)\.lean\(\)\) !== null;/, "Session 2C: a printer job asks its own printer's line");
+  // Phase 3 (the token fix's M-2) deliberately added the lease's kind fence to both reads.
+  assert.match(s, /return \(await PrintJob\.findOne\(\{ \.\.\.printJobLineFilter\(deviceId, nowMs\), \.\.\.leaseKindFence\(tokens\), status: "queued" \}\)\.select\("_id"\)\.lean\(\)\) !== null;/, "one read on the line index");
+  assert.match(s, /return \(await PrintJob\.findOne\(\{ \.\.\.printerLineFilter\(printerId, nowMs\), \.\.\.leaseKindFence\(tokens\), status: "queued" \}\)\.select\("_id"\)\.lean\(\)\) !== null;/, "Session 2C: a printer job asks its own printer's line");
+});
+
+// Phase 3 Session 3A (spec §10): a printer's health is kept only from the device that writes it now, and written only
+// when it says something new (or a steady one is due its 5-minute refresh): no request of its own, few writes.
+test("PIN (Phase 3, §10): health is kept only from the printer's writer now, and only on a change or a due refresh", () => {
+  const s = src("apps/cafe/lib/print-health.ts");
+  inOrder(
+    s,
+    [
+      "const printer = routablePrinterOf(input.printers, report.printerId);",
+      "if (printer === null || printerActiveWriter(printer, input.failover) !== input.deviceId) return [];",
+      "if (!printerHealthNeedsWrite(printer.health, input.deviceId, report, input.nowMs)) return [];",
+      "return [Printer.updateOne(printerHealthChangedFilter(printer.id, input.deviceId, report, input.nowMs), { $set: { health } })];",
+      "const results = await Promise.all(writes);",
+    ],
+    "the health write",
+  );
+  assert.match(s, /\{ "health\.at": \{ \$lt: new Date\(nowMs - PRINTER_HEALTH_REFRESH_MS\) \} \},/, "a steady state is refreshed every 5 minutes, never more often");
+  assert.ok(!s.includes("connectDB(") && !s.includes("console."), "never connects, never logs");
+});
+
+// Phase 3 Session 3A (spec §9.4): only a slip that never reached paper moves to the backup printer, labelled; a slip that
+// may have printed, a bill waiting for the cashier and a slip being printed stay with their own printer.
+test("PIN (Phase 3, §9.4): the backup move takes only queued slips with no uncertain attempt, puts BACKUP PRINTER first, logs it, and tells the backup's writer", () => {
+  const s = src("apps/cafe/lib/print-failover.ts");
+  const move = s.slice(s.indexOf("export async function moveToBackupPrinters("));
+  inOrder(
+    move,
+    [
+      "const backup = printerBackupOf(printers, printer);",
+      // The 3A review gate (m-D) deliberately changed the test: who can print it (online, and not skipped for it).
+      "if (backup === null || printerWriterCanPrint(printer, failover) || !printerWriterCanPrint(backup, failover)) continue;",
+      '{ printerId: printer.id, status: "queued", uncertainAttempts: { $in: [0, null] } }',
+      "printerId: backup.id,",
+      "labels: { $concatArrays: [[BACKUP_LABEL], { $filter:",
+      'event: "retargeted"',
+      "if (count > 0) await announcePrinterHead(backup.id, writer);",
+    ],
+    "the backup move",
+  );
+  assert.ok(!move.includes('"needs-confirm"') && !move.includes('"leased"'), "a bill waiting for the cashier and a slip being printed never move");
+  assert.match(src("apps/cafe/lib/print-printers.ts"), /await Printer\.updateMany\(\{ backupPrinterId: id \}, \{ \$unset: \{ backupPrinterId: 1 \} \}\);/, "a deleted printer is nobody's backup");
+});
+
+// Phase 3 (the token fix's review, M-2): a page from before print-customization S7 cannot print a token job and its lease
+// steps over one, so neither the ack's `more` nor the jobs-for-me count of the pulse and the wake may count one for it,
+// or it pays an empty lease per ack and per pulse until the token goes stale. A page says so itself (Phase 3's page);
+// one that does not say is answered from its device's last lease, kept on the device row by the lease's own touch.
+test("PIN (Phase 3, M-2): the ack, the pulse and the wake count a token job only for a page that prints them, by its word or its device's last lease", () => {
+  const device = src(DEVICE);
+  assert.match(device, /tokenSlips === undefined \? \{ deviceId, \.\.\.due \} : \{ deviceId, \$or: \[due, \{ tokenSlips: \{ \$ne: tokenSlips \} \}\] \}/, "the touch writes the word only when it changed, in the one write it already makes");
+  assert.match(device, /return row\?\.tokenSlips !== false;/, "unknown counts tokens, as before");
+  const lease = src(LEASE);
+  assert.match(lease, /\.\.\.lineJobs\(nowMs\),\s*\.\.\.leaseKindFence\(tokens\),/, "jobs-for-me: the lease's own kind fence");
+  const server = src("apps/cafe/lib/print-agent-server.ts");
+  assert.match(server, /return readJobsForDevice\(deviceId, nowMs, saysTokens \|\| \(await printDeviceDrawsTokens\(deviceId\)\)\);/, "the pulse reads the device row only when the page did not say");
+  assert.match(src("apps/cafe/app/api/order-requests/pulse/route.ts"), /device === null \? Promise\.resolve\(null\) : readPulseJobsForDevice\(device, saysTokens, nowMs\)\.catch\(\(\) => null\)/);
 });
 
 // Session 2C (spec §7.6, §9.3; plan decision 1): a device leases its simple line and the line of each printer it
@@ -322,8 +473,16 @@ test("PIN (2C): a lease takes the head of the device's line and of each printer 
     lease,
     [
       "[{ line: { ...printJobLineFilter(input.deviceId, input.nowMs), ...kindFence }, fence: { targetDeviceId: input.deviceId } }];",
-      "for (const printer of routablePrinters(await listPrinters())) {",
-      "if (input.printerIds.includes(printer.id) && printerWriterDeviceId(printer) === input.deviceId) {",
+      // Phase 3 (§9.3) deliberately changed the writer check: the device that writes it now, with one read of who is
+      // online only when this device names a network printer it is not the primary of, or one a writer could not reach.
+      "const printers = routablePrinters(await listPrinters());",
+      // Session 3A's final review (I-1): a lease that names a network printer its device was skipped for ends that skip
+      // (once its first 5 minutes are up): a page never names a printer it cannot reach.
+      "const asked = await Promise.all(printers.filter((printer) => named.includes(printer.id)).map((printer) => endPrinterSkipOf(printer, input.deviceId, input.nowMs)));",
+      'printer.connection.kind === "lan" && (printer.primaryDeviceId !== input.deviceId || printerSkippedWriters(printer, input.nowMs).length > 0),',
+      "? await readPrinterFailover(printers, input.nowMs)",
+      ": null;",
+      "if (printerActiveWriter(printer, failover) === input.deviceId) {",
       "lines.push({ line: { ...printerLineFilter(printer.id, input.nowMs), ...kindFence }, fence: { printerId: printer.id }, claim: { targetDeviceId: input.deviceId } });",
       "const result = await leaseLineHead(line, fence, input, claim);",
     ],
@@ -338,4 +497,36 @@ test("PIN (the Phase 1 final gate, M8): the soak drives only a local POS on a lo
   assert.ok(soak.includes('throw new Error("refusing: the POS at --base writes to another database than MONGODB_URI");'), "the first order must be in the soak's own database");
   // Session 2G (the 2F2 review gate): the first print or lease after an order is the soak agent's (scripts/print-soak-agent.ts).
   assert.ok(soak.indexOf("refusing: the POS at --base writes") < soak.indexOf("if (await printLeased(agent, soakCall, created)) await leaseLines(agent, soakCall);"), "checked before anything else is driven");
+});
+
+test("PIN (the final Phase 3 gate, the 3G review's m-1): the soak tells its agent and both writers which printers are network printers, as a Phase 3 page knows them (a page from before Phase 3, --tokens lease, names none)", () => {
+  const soak = src("apps/cafe/scripts/print-soak.ts");
+  assert.ok(soak.includes('const network: ReadonlySet<string> = new Set(args.tokens === "lease" ? [] : routable.filter((p) => p.connection.kind === "lan").map((p) => p.id));'), "the setup's network printers, none for an older page");
+  assert.equal(count(soak, "candidates: networkBut(lines), ...tokens, network,"), 1, "the soak's writer knows them");
+  assert.equal(count(soak, "candidates: networkBut(own), ...tokens, network,"), 1, "... and the second writer");
+  assert.ok(soak.includes("direct: args.direct, ...tokens, timerAt: null, network };"), "... and the soak's own agent");
+  assert.ok(src("apps/cafe/scripts/print-soak-writer.ts").includes("...(w.network !== undefined ? { network: w.network } : {})"), "a writer's agent takes them");
+});
+
+test("PIN (the final Phase 3 gate, the 3G review's m-3): in printers mode the soak counts a job of its orders that no answer named (a repair or a duplicate), beside the slips with no job", () => {
+  const soak = src("apps/cafe/scripts/print-soak.ts");
+  inOrder(
+    soak,
+    [
+      "const unmade = missingSlips(made, jobs);",
+      "const unnamed = printersMode ? unnamedJobs(jobs, named) : [];",
+      "if (unnamed.length > 0) problems.push(`${unnamed.length} job(s) no answer named (a repair or a duplicate: ${unnamed.slice(0, 3).join(\", \")})`);",
+      "if (!printersMode && jobs.length !== made.length)",
+    ],
+    "the soak's job checks",
+  );
+});
+
+test("PIN (the final Phase 3 gate, the 3G review's m-6): leg bf says its write counter is mongoose's process-wide debug hook, so the legs run one after another", () => {
+  const LEG = "apps/cafe/scripts/print-host-live/skip-interplay.ts";
+  const comments = readFileSync(path.join(REPO_ROOT, LEG), "utf8").replace(/\s*(\/\/|\*)\s*/g, " ").replace(/\s+/g, " ");
+  assert.ok(comments.includes("mongoose's debug hook is process-wide"), "the comment says the hook is the whole process's");
+  assert.ok(comments.includes("never run legs in parallel in one process"), "... and what that forbids");
+  assert.ok(src(LEG).includes('mongoose.set("debug", (collection: string, method: string) => {'), "landmark: the hook it describes");
+  assert.match(src("apps/cafe/scripts/verify-print-host-live.ts"), /await legBF\(/, "landmark: the runner awaits the leg");
 });

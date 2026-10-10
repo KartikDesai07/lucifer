@@ -5,7 +5,7 @@ import { ApiError } from "@/lib/api-client";
 import { PRINT_ACK_PENDING_MAX_MS, PRINT_ACK_RETRY_MS } from "@pos/shared/print-lifecycle";
 import { PRINT_WAKE_FAST_MS, PRINT_WAKE_SLOW_MS, PRINT_WAKE_SOCKET_MS } from "@pos/shared/print-job";
 import { PRINT_AGENT_REFUSED_RECHECK_MS, type LeasedPrintJob, type PrintAckData, type PrintLeaseData } from "@pos/shared/print-agent-wire";
-import { createPrintAgentWake } from "@/lib/print-agent-wake";
+import { createPrintAgentWake, printAgentWakeMayPoll } from "@/lib/print-agent-wake";
 import { leasedJobsOf, printAgentEnqueueHeaders, printAgentHeaders, printJobRefOf } from "@/lib/print-agent-calls";
 import { createHostSlipOutcomes } from "@/lib/print-host-outcomes";
 import {
@@ -335,6 +335,52 @@ test("the host's wake polls at the spec §9.1 cadence, never while hidden or pas
   await advance(w, 10 * PRINT_WAKE_SLOW_MS);
   assert.equal(wakes, 3, "a hidden tab never polls");
   wake.stop();
+});
+
+// The 3C review gate's second golden review (m-6; Session 3D's I-3 fix was pinned by its text only): a hidden page in the
+// POS app keeps its wake, the heartbeat of a device that prints with the screen off, at a visible writer's cadence; the
+// Windows app polls in the tray; a hidden browser tab never polls.
+test("3G: a hidden page in the POS app, and the Windows app, poll the wake at a visible writer's cadence; a hidden browser tab never does", async () => {
+  const run = async (where: { desktopShell: boolean; posApp: boolean; visible: boolean }) => {
+    const { w } = world();
+    let wakes = 0;
+    let waiting = 0;
+    const wake = createPrintAgentWake({
+      wake: async () => {
+        wakes += 1;
+        return { jobsForMe: { count: waiting, oldestCreatedAt: null }, agents: 1, agentDailyCap: 14_400, serverNow: new Date(w.now).toISOString() };
+      },
+      socketHealthy: () => false,
+      mayPoll: () => printAgentWakeMayPoll(where),
+      spendOne: () => true,
+      onJobs: () => undefined,
+      now: () => w.now,
+      setTimer: (fn, ms) => {
+        const id = w.nextId++;
+        w.timers.push({ at: w.now + ms, fn, id });
+        return id;
+      },
+      clearTimer: (handle) => void (w.timers = w.timers.filter((t) => t.id !== handle)),
+    });
+    wake.start();
+    await settle();
+    const first = wakes;
+    await advance(w, PRINT_WAKE_SLOW_MS);
+    const idle = wakes - first;
+    waiting = 1;
+    await advance(w, PRINT_WAKE_SLOW_MS);
+    waiting = 0;
+    const before = wakes;
+    await advance(w, 10 * PRINT_WAKE_FAST_MS);
+    const busy = wakes - before;
+    wake.stop();
+    return { first, idle, busy };
+  };
+  assert.deepEqual(await run({ desktopShell: false, posApp: true, visible: false }), { first: 1, idle: 1, busy: 10 }, "the POS app hidden: at once, every 15 s idle, every 3 s after a job");
+  assert.deepEqual(await run({ desktopShell: false, posApp: true, visible: true }), { first: 1, idle: 1, busy: 10 }, "the same as on screen");
+  assert.deepEqual(await run({ desktopShell: true, posApp: false, visible: false }), { first: 1, idle: 1, busy: 10 }, "the Windows app in the tray");
+  assert.deepEqual(await run({ desktopShell: false, posApp: false, visible: false }), { first: 0, idle: 0, busy: 0 }, "a hidden browser tab never polls");
+  assert.deepEqual(await run({ desktopShell: false, posApp: false, visible: true }), { first: 1, idle: 1, busy: 10 }, "a browser tab on screen");
 });
 
 // Session 2C's final review (I-2): a writer whose counted jobs sit on a printer it does not print on (a second
@@ -1181,7 +1227,7 @@ test("2C: a lease that answers several lines' jobs prints them one by one, and a
   second.stop();
 });
 
-test("2C: the ready printers ride the direct-print header; the pulse names the device only; a slip routed to several printers is followed by its leased ref", () => {
+test("2C: the ready printers ride the direct-print header; the pulse names the device (3B: and says tokens); a slip routed to several printers is followed by its leased ref", () => {
   const a = "a".repeat(24);
   const b = "b".repeat(24);
   assert.deepEqual(printAgentHeaders("dev-a", false, "tab-1", [a, b]), { "x-pos-print-agent": "1", "x-pos-device-id": "dev-a", "x-pos-print-lease": "tab-1", "x-pos-print-ready": `${a},${b}` });
@@ -1190,7 +1236,8 @@ test("2C: the ready printers ride the direct-print header; the pulse names the d
   setPulsePrintDevice("dev-a");
   const off = setReadyPrintersSource(() => [a]);
   assert.equal(printAgentHeaders("dev-a", false, "tab-1")["x-pos-print-ready"], a, "the default reads the ready seam");
-  assert.equal(pulsePrintDeviceQuery(), "?device=dev-a", "the pulse counts every job aimed at the device (the 2C gate's review, I-2): it names only the device");
+  // Session 3B (the token fence's half, deliberate change): the pulse also says this page prints token slips.
+  assert.equal(pulsePrintDeviceQuery(), "?device=dev-a&tokens=1", "the pulse counts every job aimed at the device (the 2C gate's review, I-2): it names the device, and says it prints tokens");
   off();
   setPulsePrintDevice(null);
   assert.equal(pulsePrintDeviceQuery(), "");
@@ -1336,4 +1383,41 @@ test("2F1 gate (M-1): a job whose printer this tab no longer prints is refused o
   await settle();
   assert.deepEqual(asked.slice(1), [["p-kitchen"]], "a kitchen slip's kick leases the kitchen line");
   agent.stop();
+});
+
+// Session 3B (spec §9.3, P3-3): a network printer this device could not reach before any byte (not connected) is acked
+// "unreachable", so the server skips this device for it and another device takes it over. Anything else is acked as
+// before: a device printer, a refusal that may have printed, the printer busy, a slip that cannot print.
+test("3B: a network printer refused before any byte acks 'unreachable'; a device printer, a busy printer or a 'maybe' never does", async () => {
+  const { w, deps } = printersWorld(["p-kitchen", "p-bar"], (j) => j.printerId ?? PRINT_DEVICE_LINE);
+  const agent = createPrintAgent({ ...deps, networkPrinter: (j: LeasedPrintJob) => j.printerId === "p-kitchen" });
+  agent.setGate({ enabled: true, busy: false });
+  await settle();
+  const queued = { applied: true, status: "queued" as const, nextAttemptAt: new Date(T0 + 2_000).toISOString() };
+  w.results.push(
+    { ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) },
+    { ok: false, error: new Error(PRINTER_NOT_CONNECTED_MESSAGE) },
+    { ok: false, error: new Error(PRINTER_WRITE_FAILED_MESSAGE) },
+  );
+  w.ackAnswers.push(queued, queued, queued);
+  agent.take({ ...job("k1"), printerId: "p-kitchen" });
+  await settle();
+  agent.take({ ...job("b1"), printerId: "p-bar" });
+  await settle();
+  agent.take({ ...job("k2"), printerId: "p-kitchen" });
+  await settle();
+  assert.deepEqual(
+    w.acks.map((a) => [a.id, a.body.sent, a.body.reason ?? null]),
+    [
+      ["k1", "no", "unreachable"],
+      ["b1", "no", null],
+      ["k2", "maybe", null],
+    ],
+    "only the network printer's 'not connected' says unreachable",
+  );
+  agent.stop();
+  assert.equal(failedAckBody("d", 1, { sent: "no", permanent: false, message: PRINTER_NOT_CONNECTED_MESSAGE }, true).reason, "unreachable");
+  assert.equal(failedAckBody("d", 1, { sent: "no", permanent: true, message: PRINTER_NOT_CONNECTED_MESSAGE }, true).reason, undefined, "a permanent refusal is never 'unreachable'");
+  assert.equal(failedAckBody("d", 1, { sent: "maybe", permanent: false, message: PRINTER_NOT_CONNECTED_MESSAGE }, true).reason, undefined, "nor anything that may be on paper");
+  assert.equal(failedAckBody("d", 1, { sent: "no", permanent: false, message: PRINTER_NOT_LOCAL_MESSAGE }, true).reason, undefined, "nor a printer that is not this device's");
 });

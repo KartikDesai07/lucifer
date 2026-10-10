@@ -1,5 +1,6 @@
 package com.possoftware.pos.printer
 
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.View
@@ -51,6 +52,9 @@ object WebViewDelivery {
           null
         }
     val found = findWebView(root) ?: return null
+    // Phase 3 Session 3D (the gold's review, I-2): the page's renderer keeps the app's importance while hidden (the app
+    // runs a foreground service while it prints), so Android does not kill it before the app itself.
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) found.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
     webView = WeakReference(found)
     removeScript(found)
     if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return false
@@ -61,6 +65,16 @@ object WebViewDelivery {
     } catch (e: RuntimeException) {
       false
     }
+  }
+
+  /**
+   * Phase 3 Session 3D (the 3C review gate's emulator run): the WebView freezes the page of a window that stays hidden
+   * (within about a minute: no timer, no request, no slip until the app is opened again). While the app is hidden the
+   * print host's tick tells the page's WebView its window is visible, so the page keeps running as it does on screen,
+   * as the Windows app's page does in the tray; nothing is drawn, and Android hides it again whenever the activity stops.
+   */
+  fun keepPageRunning() {
+    main.post(Runnable { webView?.get()?.dispatchWindowVisibilityChanged(View.VISIBLE) })
   }
 
   fun detach() {

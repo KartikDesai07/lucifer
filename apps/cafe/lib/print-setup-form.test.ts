@@ -17,6 +17,7 @@ import {
   appPrinterConnectionOf,
   onePrinterAppMessage,
   onePrinterDevicesOf,
+  lanPrintingDevicesOf,
   PRINTER_PORT_INVALID,
   SETUP_PRINTER_NAME,
   draftWithLocal,
@@ -26,6 +27,8 @@ import {
   setUpPrintersBody,
 } from "@/lib/print-setup-form";
 import { connectionText, deviceName, printerRowState, printersLeftEmptyBy, setupGaps, slipsText, testPrintBlock, testPrintSentText } from "@/lib/print-setup-text";
+import { DEVICE_TAKES_OVER_TEXT, PRINTER_NO_TAKEOVER_TEXT, printerFailoverLines } from "@/lib/print-setup-text";
+import { backupChoicesOf } from "@/lib/print-setup-form";
 import type { DevicePrinter } from "@/lib/printer/device-printer-store";
 
 // Printing redesign, Phase 2 Session 2D (spec §11): the Printer setup page's pure half: the form, "Set up printers"
@@ -81,11 +84,16 @@ test("2D: Set up printers makes Printer 1 from this device's printer with every 
     assert.equal(body.name, SETUP_PRINTER_NAME);
     assert.deepEqual(body.slips, { bill: true, kotStations: [], kotAll: true, notices: true, eod: true }, "nothing changes on paper (decision 5)");
     assert.deepEqual(body.copies, { kot: 1, bill: 1 });
-    const config: PrinterConfig = { id: "p1", order: 0, ...body };
+    // Phase 3 (the planning review, I-1): a body may say `backupPrinterId: null` (clear it); a config never holds null.
+    const config: PrinterConfig = { id: "p1", order: 0, ...body, backupPrinterId: body.backupPrinterId ?? undefined };
     assert.equal(printerIsLocal(config, local ?? null, null), true, `the agent recognises it as this device's printer (${local?.kind})`);
   }
   const windows = localPrinterConnectionOf({ local: null, deviceId: "dev-a", desktop: { printerName: "EPSON" }, defaultPaper: 58 });
-  assert.ok(windows !== null && printerIsLocal({ id: "w", order: 0, ...setUpPrintersBody(windows) }, null, { selected: "EPSON", names: ["EPSON"], named: false }), "the Windows app's printer");
+  const windowsBody = windows === null ? null : setUpPrintersBody(windows);
+  assert.ok(
+    windowsBody !== null && printerIsLocal({ id: "w", order: 0, ...windowsBody, backupPrinterId: windowsBody.backupPrinterId ?? undefined }, null, { selected: "EPSON", names: ["EPSON"], named: false }),
+    "the Windows app's printer",
+  );
 });
 
 test("2D: a new printer's form starts with Notices on (the 2B gate's M-7); an edit drops a station that is gone (the 2A gate's M4)", () => {
@@ -163,6 +171,20 @@ test("2F1: one of the app's printers as a connection, at the form's paper; a POS
   assert.equal(onePrinterAppMessage("Counter"), "That device's POS app prints one printer (or has not checked in since it was updated), and it already prints Counter. Update the POS app on it to print several printers there.");
   assert.ok(printerBodyOf({ ...bar, primaryDeviceId: "tab-v2" }, [{ ...counter, primaryDeviceId: "tab-v2" }]).ok, "a tablet on v2 prints both");
   assert.ok(printerBodyOf({ ...bar, enabled: false }, [counter], undefined, undefined, ["tab-v1"]).ok, "saved switched off: never leased");
+});
+
+test("3E: a network printer may be printed by this device when it writes network printers, every POS app, and a Windows app 1.12.0; its saved device stays offered", () => {
+  const devices: PrintDeviceSummary[] = [
+    { deviceId: "tab", label: "POS app", shell: "android", online: true, lastSeenAt: "2026-10-09T10:00:00.000Z", lan: true },
+    { deviceId: "pc-new", label: "Counter PC", shell: "windows", online: true, lastSeenAt: "2026-10-09T10:00:00.000Z", lan: true },
+    { deviceId: "pc-old", label: "Counter PC", shell: "windows", online: true, lastSeenAt: "2026-10-09T10:00:00.000Z" },
+    { deviceId: "tab-old", label: "POS app", shell: "android", online: false, lastSeenAt: "2026-10-09T09:00:00.000Z" },
+    { deviceId: "web", label: "Counter PC", shell: "browser", online: true, lastSeenAt: "2026-10-09T10:00:00.000Z" },
+  ];
+  assert.deepEqual(lanPrintingDevicesOf(devices, { deviceId: "pc-new", lan: true }, ""), ["pc-new", "tab", "tab-old"], "a Windows app 1.12.0 offers itself, and every POS app");
+  assert.deepEqual(lanPrintingDevicesOf(devices, { deviceId: "web", lan: false }, ""), ["tab", "pc-new", "tab-old"], "from a browser: the POS apps and the Windows app 1.12.0, never the old one or a browser");
+  assert.deepEqual(lanPrintingDevicesOf(devices, { deviceId: "web", lan: false }, "pc-old"), ["tab", "pc-new", "tab-old", "pc-old"], "a saved device stays offered");
+  assert.deepEqual(lanPrintingDevicesOf(devices, { deviceId: "", lan: true }, ""), ["tab", "pc-new", "tab-old"], "no device identity yet: not itself");
 });
 
 const DEVICES: PrintDeviceSummary[] = [
@@ -273,4 +295,50 @@ test("PIN (2D): the setup page's reads are on that page only (never polled); eve
   assert.equal((hooks.match(/onSuccess: \(\) => qc\.invalidateQueries\(\{ queryKey: PRINTERS_KEYS\.all \}\)/g) ?? []).length, 2, "a printer save or delete refreshes the printers this device (and its agent) reads");
   assert.match(hooks, /headers: printAgentHeaders\(readDeviceId\(\)\)/, "a test print names this device and tab");
   assert.match(hooks, /if \(ref\.leased !== undefined\) deliverLeasedJob\(ref\.leased\);/, "a test slip leased to this tab prints here at once");
+});
+
+// Phase 3 Session 3B (spec §9.4, §11): the backup printer in the printer form. "None", or another printer routing sends
+// slips to; a saved backup that stopped taking slips stays offered, marked "(not in use)", so a save keeps it; a saved
+// id the form cannot find (deleted in the instant before a save) shows as none and is sent as null, never an error.
+const B_SLIPS = { bill: true, kotStations: [], kotAll: false, notices: false, eod: false };
+function cfg(id: string, over: Partial<PrinterConfig> = {}): PrinterConfig {
+  return { id, name: id.toUpperCase(), connection: { kind: "lan", host: `10.0.0.${id.length}`, port: 9100 }, primaryDeviceId: `dev-${id}`, order: 0, paper: 80, slips: B_SLIPS, copies: { kot: 1, bill: 1 }, enabled: true, ...over };
+}
+
+test("3B: the form's backup printer: none, or another printer that takes slips; a saved one that stopped is '(not in use)'; one it cannot find is none, sent as null", () => {
+  const printers = [cfg("bar"), cfg("counter"), cfg("off", { enabled: false }), cfg("idle", { slips: { ...B_SLIPS, bill: false } })];
+  assert.deepEqual(backupChoicesOf(printers, "bar", ""), [{ id: "counter", label: "COUNTER" }], "never itself, never a printer that takes no slips");
+  assert.deepEqual(backupChoicesOf(printers, null, ""), [{ id: "bar", label: "BAR" }, { id: "counter", label: "COUNTER" }], "a new printer may pick any");
+  assert.deepEqual(backupChoicesOf(printers, "bar", "off"), [{ id: "counter", label: "COUNTER" }, { id: "off", label: "OFF (not in use)" }], "the saved one, switched off since, stays offered so a save keeps it");
+  const saved = printerDraftOf({ ...cfg("bar"), backupPrinterId: "counter" }, []);
+  assert.equal(saved.backupPrinterId, "counter");
+  assert.equal(printerDraftOf(null, []).backupPrinterId, "", "a new printer: none");
+  const body = (draft: typeof saved, list: PrinterConfig[] = printers) => {
+    const result = printerBodyOf(draft, list, "bar");
+    return result.ok ? result.body.backupPrinterId : "refused";
+  };
+  assert.equal(body(saved), "counter");
+  assert.equal(body({ ...saved, backupPrinterId: "" }), null, "none is sent as null (absent would keep a saved backup: A3)");
+  assert.equal(body({ ...saved, backupPrinterId: "gone" }), null, "one the form cannot find: none, never an error");
+});
+
+test("3B: a printer row says its backup, who prints it now, its problem in its words, and that no device can take it over", () => {
+  const NOW = Date.parse("2026-10-07T12:00:00.000Z");
+  const devices: PrintDeviceSummary[] = [
+    { deviceId: "dev-kitchen", label: "Kitchen tablet", shell: "android", online: false, lastSeenAt: new Date(NOW - 300_000).toISOString(), nativeProtocol: 2, lanFailover: true },
+    { deviceId: "dev-counter", label: "Counter tablet", shell: "android", online: true, lastSeenAt: new Date(NOW).toISOString(), nativeProtocol: 2, lanFailover: true },
+  ];
+  const counter = cfg("counter", { primaryDeviceId: "dev-counter", health: { link: "connected", paper: "out", deviceId: "dev-counter", at: new Date(NOW - 60_000).toISOString() } });
+  const kitchen = cfg("kitchen", { primaryDeviceId: "dev-kitchen", backupPrinterId: "counter" });
+  const printers = [kitchen, counter];
+  assert.deepEqual(printerFailoverLines(kitchen, printers, devices, "me", NOW), ["Backup: COUNTER", "Printed now by Counter tablet …nter"], "the kitchen tablet offline: the counter took its network printer over");
+  assert.deepEqual(printerFailoverLines(counter, printers, devices, "me", NOW), ["COUNTER is out of paper.", PRINTER_NO_TAKEOVER_TEXT], "its writer's fresh report; the kitchen tablet, offline, cannot take it over now");
+  assert.deepEqual(printerFailoverLines(kitchen, [kitchen, { ...counter, enabled: false }], devices, "me", NOW)[0], "Backup: COUNTER (not in use)", "a backup that stopped taking slips");
+  const off = { ...kitchen, enabled: false };
+  assert.deepEqual(printerFailoverLines(off, [off, counter], devices, "me", NOW), ["Backup: COUNTER"], "a printer switched off says only its backup");
+  assert.equal(DEVICE_TAKES_OVER_TEXT, "Can take over network printers");
+  // Session 3C (the 3B gate review's m-B): with the devices read failed, nothing is known of who prints it now or who could
+  // take it over, so the row says only its backup (never "No other device online can take it over").
+  assert.deepEqual(printerFailoverLines(counter, printers, [], "me", NOW, true), [], "the devices read failed: no takeover words");
+  assert.deepEqual(printerFailoverLines(kitchen, printers, [], "me", NOW, true), ["Backup: COUNTER"], "… only the backup, which the printers read says");
 });

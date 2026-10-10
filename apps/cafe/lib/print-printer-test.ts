@@ -1,7 +1,7 @@
 import type { PrintJobRef } from "@pos/shared/print-agent-wire";
+import { printerActiveWriter } from "@pos/shared/print-failover";
 import {
   PRINT_TEST_LINE_MAX_CHARS,
-  printerWriterDeviceId,
   routablePrinterOf,
   type PrinterConfig,
   type PrinterDeviceTransport,
@@ -9,6 +9,7 @@ import {
 } from "@pos/shared/print-printers";
 import type { TestPrintJobPayload } from "@pos/shared/schemas/print-job.schema";
 import { announcesQueuedJob, printerLineIsFree } from "@/lib/print-direct";
+import { readPrinterFailover } from "@/lib/print-failover";
 import { insertPrintJob } from "@/lib/print-job-insert";
 import { PRINTER_NOT_FOUND, listPrinters } from "@/lib/print-printers";
 import { listStations, type PrintSetupResult } from "@/lib/print-stations";
@@ -80,7 +81,8 @@ export async function createPrinterTestJob(input: {
   const printer = printers.find((p) => p.id === input.printerId);
   if (printer === undefined) return { ok: false, status: 404, error: PRINTER_NOT_FOUND };
   const routable = routablePrinterOf(printers, printer.id);
-  const writer = routable === null ? null : printerWriterDeviceId(routable);
+  // Phase 3 (§9.3): the device that writes it now (a network printer taken over while its primary is offline).
+  const writer = routable === null ? null : printerActiveWriter(routable, await readPrinterFailover([routable], input.nowMs));
   if (writer === null) return { ok: false, status: 409, error: PRINTER_TEST_NOT_ROUTABLE_MESSAGE };
   const payload = printerTestPayload(printer, await listStations(), input.queuedBy, input.nowMs);
   const asksHere = input.leaseTabId !== undefined && writer === input.originDeviceId && (input.readyPrinterIds ?? []).includes(printer.id);

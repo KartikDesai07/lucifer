@@ -225,12 +225,17 @@ test("2E: a Windows PC may write several Windows printers, each a different one 
   const same = { connection: windows("epson tm-t82"), enabled: true, slips };
   assert.equal(printerWriterClash([counter], same)?.id, "counter", "the same Windows printer twice, in another case");
   const lan = { connection: { kind: "lan" as const, host: "10.0.0.9", port: 9100 }, primaryDeviceId: "dev-pc", enabled: true, slips };
-  assert.equal(printerWriterClash([counter], lan)?.id, "counter", "a network printer for that PC: one printer, as before");
+  // Phase 3 Session 3E (deliberately changed): the Windows app 1.12.0 writes a network printer beside its Windows printers.
+  assert.equal(printerWriterClash([counter], lan), null, "a network printer for that PC, beside its Windows printer");
+  const kitchenLan = printer("kitchen-lan", { connection: lan.connection, primaryDeviceId: "dev-pc", slips });
+  assert.equal(printerWriterClash([counter, kitchenLan], lan)?.id, "kitchen-lan", "the same network printer twice on that PC");
+  const serial = printer("serial", { connection: { kind: "device", deviceId: "dev-pc", transport: "web-serial", address: "" }, slips });
+  assert.equal(printerWriterClash([serial], lan)?.id, "serial", "a browser's one printer stays one printer");
   const phone = printer("phone", { connection: { kind: "device", deviceId: "dev-phone", transport: "bt-classic", address: "AA:BB" }, slips });
   const usb = { connection: { kind: "device" as const, deviceId: "dev-phone", transport: "usb" as const, address: "04b8:0e15" }, enabled: true, slips };
   assert.equal(printerWriterClash([phone], usb), null, "Session 2F1 (deliberate change): a POS app device prints several printers (bridge v2)");
   assert.equal(printerClashMessage(counter, same), "Printer counter already prints on that Windows printer. Choose another Windows printer.");
-  assert.equal(printerClashMessage(counter, lan), printerWriterTakenMessage("Printer counter"), "any other clash: the 2D words");
+  assert.equal(printerClashMessage(serial, lan), printerWriterTakenMessage("Printer serial"), "any other clash: the 2D words");
 });
 
 // Phase 2 Session 2F1 (spec §9.2): the POS app on bridge v2 prints each of its printers, so a phone or tablet may write

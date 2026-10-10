@@ -42,4 +42,19 @@ class PoolStatusTest {
     assertEquals("one of several down, connecting counted as down", HostTitle.OneDown(bar.name), HostTitle.of(all(kitchen.id, kitchen to c, bar to k)))
     assertEquals("several down", HostTitle.SomeDown(2), HostTitle.of(all(kitchen.id, kitchen to d, bar to c, third to d)))
   }
+
+  // Phase 3 Session 3C (spec §10): a printer's paper, cover or error changes the v2 event only, and out of paper is the
+  // notification's worst state.
+  @Test
+  fun aPrintersStatusChangesTheV2EventOnlyAndOutOfPaperIsTheWorstTitle() {
+    val c = BridgeCodes.STATE_CONNECTED
+    val out = PrinterHealth(DleEot.PAPER_OUT, DleEot.COVER_CLOSED, error = false, offline = true)
+    val dedupe = StatusDedupe()
+    dedupe.next(one(c, kitchen), all(kitchen.id, kitchen to c))
+    val empty = PoolSnapshot(listOf(PoolEntry(c, kitchen, out)), kitchen.id, BridgeCodes.BT_ON)
+    assertEquals("paper out: v2 only", StatusDedupe.Changes(v1 = false, v2 = true), dedupe.next(one(c, kitchen), empty))
+    assertEquals("the only printer, out of paper", HostTitle.PaperOut(kitchen.name), HostTitle.of(empty))
+    val two = PoolSnapshot(listOf(PoolEntry(BridgeCodes.STATE_DISCONNECTED, bar), PoolEntry(c, kitchen, out)), kitchen.id, BridgeCodes.BT_ON)
+    assertEquals("worse than a printer down", HostTitle.PaperOut(kitchen.name), HostTitle.of(two))
+  }
 }

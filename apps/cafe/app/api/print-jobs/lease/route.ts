@@ -36,7 +36,8 @@ export async function POST(req: Request) {
       }),
       // Best-effort (1A review M1): the lease CAS may already have committed, and a 500 now would
       // strand the job for 90 s and then reprint it. A missed touch only ages lastSeenAt.
-      touchPrintDevice(parsed.data.deviceId, nowMs).catch(() => undefined),
+      // Phase 3 (the token fix's M-2): the device row keeps what this lease said about token slips.
+      touchPrintDevice(parsed.data.deviceId, nowMs, parsed.data.tokenSlips === true).catch(() => undefined),
     ]);
     return noStore(success(result));
   } catch (error) {

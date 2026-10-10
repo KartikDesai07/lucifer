@@ -1,4 +1,5 @@
-import type { LeasedPrintJob } from "@pos/shared/print-agent-wire";
+import { PRINT_HEADER_ON, PRINT_PULSE_TOKENS_PARAM, type LeasedPrintJob } from "@pos/shared/print-agent-wire";
+import type { PrinterHealthReport } from "@pos/shared/print-failover";
 
 // Printing redesign: the in-page print agent's module seams (client-only, never throw). The call sites and the
 // pulse reach this page's one agent through them, with no React context: an order answer that named a job (a
@@ -28,8 +29,75 @@ export function setPulsePrintDevice(deviceId: string | null): void {
   pulseDevice = deviceId;
 }
 
+/** Session 3B (the token fix's M-2): the agent also says it prints token slips (&tokens=1), so the pulse counts them. */
 export function pulsePrintDeviceQuery(): string {
-  return pulseDevice === null ? "" : `?device=${encodeURIComponent(pulseDevice)}`;
+  return pulseDevice === null ? "" : `?device=${encodeURIComponent(pulseDevice)}&${PRINT_PULSE_TOKENS_PARAM}=${PRINT_HEADER_ON}`;
+}
+
+let healthSource: (() => PrinterHealthReport[]) | null = null;
+
+/** Session 3B (spec §10): the agent registers how it reads the health of the printers it prints here, for the wake's
+ *  beat. The returned function unregisters it, unless another agent registered since. */
+export function setPrinterHealthSource(source: () => PrinterHealthReport[]): () => void {
+  healthSource = source;
+  return () => {
+    if (healthSource === source) healthSource = null;
+  };
+}
+
+/** The health the wake's beat carries; [] with no agent. */
+export function printerHealthReports(): PrinterHealthReport[] {
+  try {
+    return healthSource?.() ?? [];
+  } catch {
+    return [];
+  }
+}
+
+let takenOver: readonly string[] = [];
+const takenOverListeners = new Set<() => void>();
+
+/** Session 3B (spec §9.3): the network printers the wake says this device writes now for another device (taken over while
+ *  their primary is offline or cannot reach them), so its top-bar dot counts them while it writes them. */
+export function setTakenOverPrinters(ids: readonly string[]): void {
+  if (ids.join(",") === takenOver.join(",")) return;
+  takenOver = [...ids];
+  for (const listener of [...takenOverListeners]) listener();
+}
+
+export function takenOverPrinterIds(): readonly string[] {
+  return takenOver;
+}
+
+export function onTakenOverChange(listener: () => void): () => void {
+  takenOverListeners.add(listener);
+  return () => void takenOverListeners.delete(listener);
+}
+
+const writing = new Map<string, number>();
+const writingListeners = new Set<() => void>();
+let writingKey = "";
+
+/** Session 3B (the final Phase 2 gate, (a) item 4): a job is being written to this POS app printer (its app id) now, or
+ *  no longer, so the page's removal of a network printer it added waits until that print is done. */
+export function markPrinterWriting(nativeId: string, on: boolean): void {
+  const count = (writing.get(nativeId) ?? 0) + (on ? 1 : -1);
+  if (count > 0) writing.set(nativeId, count);
+  else writing.delete(nativeId);
+  const key = [...writing.keys()].sort().join(",");
+  if (key === writingKey) return;
+  writingKey = key;
+  for (const listener of [...writingListeners]) listener();
+}
+
+/** The app printers being written to now, as one key ("" for none). */
+export function printersBeingWritten(): string {
+  return writingKey;
+}
+
+export function onPrintersWritingChange(listener: () => void): () => void {
+  writingListeners.add(listener);
+  return () => void writingListeners.delete(listener);
 }
 
 let readySource: (() => readonly string[]) | null = null;

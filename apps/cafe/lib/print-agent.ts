@@ -187,7 +187,8 @@ export function createPrintAgent(deps: PrintAgentDeps): PrintAgent {
         // Nothing reached the printer: it is off or unreachable. No automatic attempt on it until it changes.
         holds.hold(lineOf(job));
       }
-      const body = failedAckBody(deps.deviceId, job.epoch, outcome);
+      // Session 3B (spec §9.3): a network printer this device could not reach says so, so another device takes it over.
+      const body = failedAckBody(deps.deviceId, job.epoch, outcome, deps.networkPrinter?.(job) === true);
       const answer = await deps.ack(job.id, body).catch((error: unknown) => {
         // No answer: kept and re-sent like a printed ack, so the lease never expires into a counted "maybe" (M4).
         if (!ackAnswered(error)) acks.keep({ id: job.id, epoch: job.epoch, at: deps.now(), fail: body });

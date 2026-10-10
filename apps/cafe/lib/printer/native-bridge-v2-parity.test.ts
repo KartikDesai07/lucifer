@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { stripComments } from "../source-pin-utils";
+import { PRINTER_COVER_STATES, PRINTER_PAPER_STATES } from "@pos/shared/print-failover";
 
 // Phase 2 Session 2F2 (spec §9.2): the bridge v2 parity pin, as the v1 bridge (native-bridge-protocol-parity.test.ts)
 // and the Windows app (desktop-shell-paths.test.ts) have one. The page's half (native-bridge-v2.ts, native-pool.ts)
@@ -27,6 +28,7 @@ interface Sources {
   publish: string;
   json: string;
   codes: string;
+  status: string;
 }
 const sources = (): Sources => ({
   web: readSrc("apps/cafe/lib/printer/native-bridge-v2.ts"),
@@ -39,6 +41,7 @@ const sources = (): Sources => ({
   publish: readSrc(KT + "PrinterPool.kt"),
   json: readSrc(KT + "StatusJson.kt"),
   codes: readSrc(KT + "BridgeCodes.kt"),
+  status: readSrc(KT + "PrinterStatus.kt"),
 });
 
 const METHOD_ORACLE = ["printer.status", "printer.select", "printer.reconnect", "printer.forget", "printer.print"];
@@ -97,6 +100,19 @@ function parityProblems(s: Sources): string[] {
     need(s.json, `json.put("${key}",`, `the app does not send the list's ${key}`);
   }
   need(s.json, 'JSONObject().put("state", entry.state).put("printer", printerJson(entry.printer))', "a listed printer is not { state, printer }");
+  // Session 3C (spec §10; the 3B review's m-4): a listed printer's paper, cover and error, the same values on both sides,
+  // and the page reads an unknown one as nothing.
+  for (const key of ["paper", "cover", "error"]) {
+    need(s.web, `${key}: z.`, `the page does not read a printer's ${key}`);
+    need(s.json, `item.put("${key}",`, `the app does not send a printer's ${key}`);
+  }
+  need(s.web, "paper: z.enum(PRINTER_PAPER_STATES).optional().catch(undefined),", "an unknown paper value refuses the whole list");
+  need(s.web, "cover: z.enum(PRINTER_COVER_STATES).optional().catch(undefined),", "an unknown cover value refuses the whole list");
+  const appValues = (prefix: string) => [...s.status.matchAll(/const val (\w+) = "([^"]*)"/g)].filter((m) => m[1].startsWith(prefix)).map((m) => m[2]);
+  if (JSON.stringify(appValues("PAPER_")) !== JSON.stringify([...PRINTER_PAPER_STATES])) out.push(`the app's paper values are ${JSON.stringify(appValues("PAPER_"))}`);
+  if (JSON.stringify(appValues("COVER_")) !== JSON.stringify([...PRINTER_COVER_STATES])) out.push(`the app's cover values are ${JSON.stringify(appValues("COVER_"))}`);
+  if (JSON.stringify(listOf(s.appProtocol, "PAPER_STATES")) !== JSON.stringify([...PRINTER_PAPER_STATES])) out.push("the app's TypeScript paper values differ");
+  if (JSON.stringify(listOf(s.appProtocol, "COVER_STATES")) !== JSON.stringify([...PRINTER_COVER_STATES])) out.push("the app's TypeScript cover values differ");
   return out;
 }
 
@@ -123,6 +139,11 @@ const MUTATIONS: Mutation[] = [
   ["publish", "StatusJson.poolJson(all), BridgeCodes.BRIDGE_V2)", "StatusJson.poolJson(all))"],
   ["json", 'json.put("defaultId",', 'json.put("default",'],
   ["web", "defaultId: z.", "defaultPrinter: z."],
+  ["json", 'item.put("paper",', 'item.put("paperState",'],
+  ["status", 'const val PAPER_OUT = "out"', 'const val PAPER_OUT = "empty"'],
+  ["status", 'const val COVER_OPEN = "open"', 'const val COVER_OPEN = "opened"'],
+  ["appProtocol", "['ok', 'low', 'out'] as const", "['ok', 'low', 'empty'] as const"],
+  ["web", "paper: z.enum(PRINTER_PAPER_STATES).optional().catch(undefined),", "paper: z.enum(PRINTER_PAPER_STATES).optional(),"],
 ];
 
 test("2F2: the app's bridge v2 and the page's agree: the methods, the version, each method's envelope, the reply's version and the list's keys", () => {

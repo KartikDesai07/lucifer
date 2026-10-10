@@ -14,6 +14,7 @@ export const NATIVE_METHODS = [
   'bluetooth.enable',
   'host.background',
   'app.changeUrl',
+  'app.battery',
 ] as const;
 export type NativeMethod = (typeof NATIVE_METHODS)[number];
 
@@ -58,6 +59,11 @@ export type NativePermissionKind = (typeof NATIVE_PERMISSION_KINDS)[number];
 
 export const NATIVE_PLATFORMS = ['android', 'ios'] as const;
 export type NativePlatform = (typeof NATIVE_PLATFORMS)[number];
+
+// Phase 3 Session 3D: what this app can do beyond the method list (window.PosNative.features); a page shows a control
+// only when the app says it (an older app says nothing).
+export const NATIVE_FEATURES = ['battery'] as const;
+export type NativeFeature = (typeof NATIVE_FEATURES)[number];
 
 export const NATIVE_BRIDGE_VERSION = 1;
 export const PRINTER_SCAN_MS = 8_000;

@@ -12,6 +12,8 @@ const PRINTERS_CHANNEL = "pos-desktop:printers";
 const PRINTER_SAVE_CHANNEL = "pos-desktop:printer-save";
 const PRINT_MODE_SAVE_CHANNEL = "pos-desktop:print-mode-save";
 const PRINT_ON_CHANNEL = "pos-desktop:print-html-on";
+const PRINT_RAW_CHANNEL = "pos-desktop:print-raw";
+const LAN_STATUS_CHANNEL = "pos-desktop:lan-status";
 const VERSION_ARG_PREFIX = "--pos-desktop-version=";
 
 const versionArg = process.argv.find((arg: string) => arg.startsWith(VERSION_ARG_PREFIX));
@@ -30,6 +32,12 @@ contextBridge.exposeInMainWorld("posDesktop", {
   // process validates the value — this only forwards it.
   savePrintMode: (mode: string): Promise<unknown> =>
     electron.ipcRenderer.invoke(PRINT_MODE_SAVE_CHANNEL, mode),
+  // Phase 3 Session 3E (spec §9.6): a network printer's slip as ESC/POS bytes and the idle check of the network printers
+  // the page prints. The main process vets the addresses and the size and answers with a plain result.
+  printRaw: (printer: unknown, data: unknown): Promise<unknown> =>
+    electron.ipcRenderer.invoke(PRINT_RAW_CHANNEL, printer, data),
+  lanStatus: (printers: unknown): Promise<unknown> =>
+    electron.ipcRenderer.invoke(LAN_STATUS_CHANNEL, printers),
 });
 
 // Forces module scope so this file's top-level names never collide with

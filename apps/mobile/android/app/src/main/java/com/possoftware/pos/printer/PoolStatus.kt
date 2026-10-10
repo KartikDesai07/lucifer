@@ -22,8 +22,12 @@ class StatusDedupe {
   data class Changes(val v1: Boolean, val v2: Boolean)
 }
 
-/** What the print-host notification's title says: the worst state across the app's printers (pure, unit-tested). */
+/** What the print-host notification's title says: the worst state across the app's printers (pure, unit-tested).
+ *  Session 3C (spec §10): a connected printer that says it is out of paper is the worst of all. */
 sealed class HostTitle {
+  /** A connected printer says it is out of paper (DLE EOT). */
+  data class PaperOut(val name: String) : HostTitle()
+
   /** No printer, or the only printer is not connected: the words of an app with one printer. */
   object NotConnected : HostTitle()
 
@@ -42,7 +46,9 @@ sealed class HostTitle {
   companion object {
     fun of(pool: PoolSnapshot): HostTitle {
       val down = pool.printers.filter { it.state != BridgeCodes.STATE_CONNECTED }
+      val empty = pool.printers.firstOrNull { it.state == BridgeCodes.STATE_CONNECTED && it.health?.paper == DleEot.PAPER_OUT }
       return when {
+        empty != null -> PaperOut(empty.printer.name)
         pool.printers.isEmpty() -> NotConnected
         pool.printers.size == 1 -> if (down.isEmpty()) Printer(pool.printers[0].printer.name) else NotConnected
         down.isEmpty() -> AllConnected(pool.printers.size)

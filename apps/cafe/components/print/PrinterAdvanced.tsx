@@ -9,10 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { BRAND_PANEL_CLASS } from "@/components/brand/brand-classes";
 import { usePrintCapabilities } from "@/hooks/use-device-printer";
-import { nativeRequest } from "@/lib/printer/native-bridge";
+import { nativeHasFeature, nativeRequest } from "@/lib/printer/native-bridge";
 import { cn } from "@/lib/utils";
 
 const CHANGE_ADDRESS_FAILED_MESSAGE = "Could not open the address screen. Try again.";
+const BATTERY_FAILED_MESSAGE = "Could not open the battery steps. Try again.";
+const BATTERY_HELP = "Some phones stop the POS app when the screen is off. These steps keep slips printing.";
 const CLEAR_HELP = "If the printing device is down, remove it from any device, even a phone. Waiting slips are cancelled and every device prints its own slips again.";
 
 interface PrinterAdvancedProps {
@@ -21,7 +23,8 @@ interface PrinterAdvancedProps {
 }
 
 // Rarely needed controls, folded away: removing the printing device from a
-// device that is not it, and (inside the POS app) changing the POS address.
+// device that is not it, and (inside the POS app) changing the POS address. Phase 3 Session 3D (spec §9.5): and the
+// POS app's battery checklist, on an app that says it has one.
 export function PrinterAdvanced({ clearControl }: PrinterAdvancedProps) {
   const { native } = usePrintCapabilities();
   if (clearControl === null && !native) return null;
@@ -29,6 +32,10 @@ export function PrinterAdvanced({ clearControl }: PrinterAdvancedProps) {
   // Fire and forget: the app may leave this page at once, so there is no result to wait for.
   const changeAddress = () => {
     nativeRequest("app.changeUrl").catch(() => toast.error(CHANGE_ADDRESS_FAILED_MESSAGE));
+  };
+  const battery = native && nativeHasFeature("battery");
+  const openBattery = () => {
+    nativeRequest("app.battery").catch(() => toast.error(BATTERY_FAILED_MESSAGE));
   };
 
   return (
@@ -55,6 +62,14 @@ export function PrinterAdvanced({ clearControl }: PrinterAdvancedProps) {
           <Button variant="outline" className={PRINTER_ACTION_CLASS} onClick={changeAddress}>
             Change POS address
           </Button>
+        )}
+        {battery && (
+          <div className="space-y-2">
+            <Button variant="outline" className={PRINTER_ACTION_CLASS} onClick={openBattery}>
+              Battery settings for printing
+            </Button>
+            <p className="text-xs text-brand-muted">{BATTERY_HELP}</p>
+          </div>
         )}
       </CollapsibleContent>
     </Collapsible>

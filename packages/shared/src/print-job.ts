@@ -317,7 +317,8 @@ export function printOrderSnapshot(order: Order): PrintOrderSnapshot {
 // lock-holding draining host — and answers with a pending flag plus the newest
 // drain-eligible job's id (a change signal, never a payload). FAST while the
 // host has seen a feed change within the active window, SLOW otherwise;
-// hidden tabs don't fetch at all (refetchIntervalInBackground:false).
+// a hidden browser tab doesn't fetch at all (Phase 3 Session 3D: the POS app's
+// hidden page and the Windows app in the tray do: printAgentWakeMayPoll).
 export const PRINT_WAKE_FAST_MS = 3000;
 export const PRINT_WAKE_SLOW_MS = 15000;
 // Socket slice 2 — the cadence a host uses while the realtime room is VERIFIED

@@ -17,7 +17,8 @@ import androidx.core.content.IntentCompat
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-/** USB printer-class link: bulk OUT transfers. The permission prompt only ever shows while visible. */
+/** USB printer-class link: bulk OUT transfers. The permission prompt only ever shows while visible. Session 3C (spec
+ *  §10): DLE EOT is answered on the interface's bulk IN endpoint, when it has one. */
 class UsbTransport(
     private val ctx: Context,
     private val vendorId: Int,
@@ -31,6 +32,10 @@ class UsbTransport(
     const val PERMISSION_TIMEOUT_MS = 60_000L
     const val TRANSFER_TIMEOUT_MS = 5_000
     const val CHUNK_BYTES = 4_096
+    /** Session 3C: one DLE EOT answer on bulk IN. */
+    const val STATUS_REPLY_MS = 1_000
+    const val STATUS_FOLLOW_UP_MS = 300
+    const val STATUS_READ_BYTES = 64
 
     /** The printer-class interface and its bulk OUT endpoint, or null when the device has none. */
     fun findBulkOut(device: UsbDevice): Pair<UsbInterface, UsbEndpoint>? {
@@ -47,11 +52,21 @@ class UsbTransport(
       }
       return null
     }
+
+    /** Session 3C (spec §10): the interface's bulk IN endpoint (the printer's answers), or null when it has none. */
+    fun findBulkIn(intf: UsbInterface): UsbEndpoint? {
+      for (j in 0 until intf.endpointCount) {
+        val ep = intf.getEndpoint(j)
+        if (ep.type == UsbConstants.USB_ENDPOINT_XFER_BULK && ep.direction == UsbConstants.USB_DIR_IN) return ep
+      }
+      return null
+    }
   }
 
   @Volatile private var connection: UsbDeviceConnection? = null
   @Volatile private var claimed: UsbInterface? = null
   @Volatile private var endpoint: UsbEndpoint? = null
+  @Volatile private var endpointIn: UsbEndpoint? = null
   private val lifecycleLock = Any()
   @Volatile private var closed = false
   @Volatile private var permissionAnswer: CountDownLatch? = null
@@ -97,6 +112,7 @@ class UsbTransport(
       }
       claimed = intf
       endpoint = ep
+      endpointIn = findBulkIn(intf)
       connection = conn
     }
   }
@@ -162,6 +178,27 @@ class UsbTransport(
     }
   }
 
+  /** Session 3C (spec §10): DLE EOT 1 to 4 on bulk OUT, each answer on bulk IN; null when it has no IN endpoint or does
+   *  not answer DLE EOT 1. */
+  override fun status(): PrinterHealth? {
+    val conn = connection ?: throw TransportException(BridgeCodes.NOT_CONNECTED, "Not connected")
+    val out = endpoint ?: throw TransportException(BridgeCodes.NOT_CONNECTED, "Not connected")
+    val input = endpointIn ?: return null
+    val answers = HashMap<Int, Int>()
+    val buffer = ByteArray(STATUS_READ_BYTES)
+    for (n in DleEot.QUERIES) {
+      val request = DleEot.request(n)
+      if (conn.bulkTransfer(out, request, request.size, TRANSFER_TIMEOUT_MS) != request.size) {
+        throw TransportException(BridgeCodes.NOT_CONNECTED, "USB write failed")
+      }
+      val read = conn.bulkTransfer(input, buffer, buffer.size, if (n == 1) STATUS_REPLY_MS else STATUS_FOLLOW_UP_MS)
+      val answer = (0 until maxOf(read, 0)).map { buffer[it].toInt() and 0xFF }.firstOrNull { DleEot.isAnswer(it) }
+      if (answer == null && n == 1) return null
+      if (answer != null) answers[n] = answer
+    }
+    return DleEot.healthOf(answers)
+  }
+
   override fun close() {
     val (conn, intf) = synchronized(lifecycleLock) {
       closed = true
@@ -170,6 +207,7 @@ class UsbTransport(
       connection = null
       claimed = null
       endpoint = null
+      endpointIn = null
       owned
     }
     if (conn == null) return

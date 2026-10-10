@@ -59,6 +59,11 @@ const NATIVE_METHOD_ORACLE = [
   'moveTaskToBack',
   'attachWebView',
   'deliverScript',
+  // Phase 3 Session 3D (deliberate change): a WebView remounted after its page died mounts while the app is hidden.
+  'mountWhileHidden',
+  // Phase 3 Session 3D (deliberate change): the battery checklist.
+  'batteryInfo',
+  'openBatterySettings',
 ];
 
 type Files = Record<string, string>;
@@ -200,6 +205,8 @@ test('pin 0: every pinned source file exists', () => {
       'PrinterEnv.kt',
       'PoolList.kt',
       'PoolStatus.kt',
+      // Phase 3 Session 3C: DLE EOT.
+      'PrinterStatus.kt',
     ].map(name => join(KT_DIR, name)),
   ];
   for (const path of paths) {
@@ -444,7 +451,8 @@ function moduleNameProblems(ktModule: string, jsWrapper: string): string[] {
 test('pin 4: JS wrapper and Kotlin @ReactMethod list equal the oracle', () => {
   const module = kt('PosPrinterModule.kt');
   const js = read(join(SRC, 'native', 'PosPrinter.ts'));
-  assert.equal(NATIVE_METHOD_ORACLE.length, 24, '18 v1 methods and 6 of bridge v2');
+  // Phase 3 Session 3D deliberately changed: + mountWhileHidden, batteryInfo, openBatterySettings.
+  assert.equal(NATIVE_METHOD_ORACLE.length, 27, '18 v1 methods, 6 of bridge v2, the hidden mount and the battery checklist');
   assert.ok(strip(module).includes('@ReactMethod'), 'landmark');
   assert.deepEqual(methodProblems(module, js), []);
   assert.deepEqual(moduleNameProblems(module, js), []);
@@ -597,14 +605,38 @@ function manifestProblems(xml: string): string[] {
   if (!meta?.includes('android:resource="@xml/usb_printer_filter"')) {
     out.push('USB meta-data does not point at @xml/usb_printer_filter');
   }
-  if (/<receiver\b/.test(x)) {
-    out.push('a <receiver> element exists');
+  // Session 3D (spec §9.5) deliberately changed: one receiver, the reboot and update notice ("POS printing is off. Tap to
+  // start."), which hears only those two system broadcasts and never starts the app.
+  const receivers = [
+    ...x.matchAll(/<receiver\b[\s\S]*?<\/receiver>|<receiver\b[^>]*\/>/g),
+  ].map(m => m[0]);
+  if (
+    receivers.length !== 1 ||
+    !receivers[0].includes('android:name=".printer.PrintingOffReceiver"')
+  ) {
+    out.push('the one <receiver> is not PrintingOffReceiver');
+  } else {
+    for (const need of [
+      'android:exported="true"',
+      '<action android:name="android.intent.action.BOOT_COMPLETED" />',
+      '<action android:name="android.intent.action.MY_PACKAGE_REPLACED" />',
+    ]) {
+      if (!receivers[0].includes(need)) {
+        out.push('PrintingOffReceiver lacks ' + need);
+      }
+    }
+    if ((receivers[0].match(/<action\b/g) ?? []).length !== 2) {
+      out.push('PrintingOffReceiver hears more than a reboot and an update');
+    }
+  }
+  if (!perms.has('RECEIVE_BOOT_COMPLETED')) {
+    out.push('RECEIVE_BOOT_COMPLETED missing');
   }
   return out;
 }
 const manifest = () => read(join(MAIN, 'AndroidManifest.xml'));
 
-test('pin 6: AndroidManifest permissions, service, USB and no receiver', () => {
+test('pin 6: AndroidManifest permissions, service, USB and one receiver (Session 3D)', () => {
   assert.deepEqual(manifestProblems(manifest()), []);
   const raw = manifest();
   assert.ok(
@@ -662,6 +694,21 @@ test('pin 6 mutation: every manifest needle can fail', () => {
       '</application>',
       '<receiver android:name=".BootReceiver" android:exported="false" /></application>',
     ],
+    // Session 3D: the one receiver, its two actions, and the boot permission.
+    [
+      'android:name=".printer.PrintingOffReceiver"',
+      'android:name=".printer.OtherReceiver"',
+    ],
+    [
+      'android:name=".printer.PrintingOffReceiver"\n        android:exported="true"',
+      'android:name=".printer.PrintingOffReceiver"\n        android:exported="false"',
+    ],
+    ['<action android:name="android.intent.action.BOOT_COMPLETED" />', ''],
+    [
+      '<action android:name="android.intent.action.MY_PACKAGE_REPLACED" />',
+      '<action android:name="android.intent.action.MY_PACKAGE_REPLACED" />\n            <action android:name="android.intent.action.TIME_SET" />',
+    ],
+    [perm('RECEIVE_BOOT_COMPLETED'), perm('RECEIVE_BOOT_COMPLETEDX')],
   ];
   everyMutationCaught(manifestProblems, manifest(), table);
   const hidden = mutated(
@@ -985,18 +1032,24 @@ function deliveryProblems(s: DeliverySources): string[] {
   if (!d.includes('ESCAPED_CODES.contains(ch.code)')) {
     out.push('escapeForScript does not use ESCAPED_CODES');
   }
-  // Session 2F2 (deliberate change): the printer pool publishes, for both bridge versions.
-  const publish =
-    /fun publish\(\)[\s\S]*?\n {2}\}\n/.exec(strip(s.pool))?.[0] ?? '';
+  // Session 2F2 (deliberate change): the printer pool publishes, for both bridge versions. Session 3C (deliberate
+  // change: the publish-chain test's seam): publish() hands what changed to the pool's publisher, whose default delivers.
+  const poolText = strip(s.pool);
+  const publish = /fun publish\(\)[\s\S]*?\n {2}\}\n/.exec(poolText)?.[0] ?? '';
+  const publisherAt = poolText.indexOf('internal var publisher:');
+  const publisher = publisherAt < 0 ? '' : poolText.slice(publisherAt, poolText.indexOf('\n  }\n', publisherAt));
+  if (!publish.includes('publisher(if (changes.v1) one else null, if (changes.v2) all else null)')) {
+    out.push('PrinterPool.publish() does not publish through its publisher');
+  }
   if (
-    !publish.includes(
+    !publisher.includes(
       'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.toJson(one))',
     )
   ) {
     out.push('PrinterPool.publish() does not deliver the v1 printer.status natively');
   }
   if (
-    !publish.includes(
+    !publisher.includes(
       'WebViewDelivery.deliverEvent(BridgeCodes.EVENT_PRINTER_STATUS, StatusJson.poolJson(all), BridgeCodes.BRIDGE_V2)',
     )
   ) {
@@ -1012,8 +1065,9 @@ function deliveryProblems(s: DeliverySources): string[] {
     }
   }
   const svc = strip(s.service);
+  // Session 3D (deliberate change): the hidden tick first keeps the page running (pin 23), then wakes it.
   const wake =
-    /if\s*\(\s*!PrinterPool\.appVisible\s*\)\s*\{\s*WebViewDelivery\.deliverEvent\(BridgeCodes\.EVENT_APP_WAKE,/;
+    /if\s*\(\s*!PrinterPool\.appVisible\s*\)\s*\{\s*(?:WebViewDelivery\.keepPageRunning\(\)\s*)?WebViewDelivery\.deliverEvent\(BridgeCodes\.EVENT_APP_WAKE,/;
   if (!wake.test(svc)) {
     out.push('app.wake is not gated on !PrinterPool.appVisible');
   }
@@ -1389,9 +1443,10 @@ function serviceProblems(s: KtSources): string[] {
   if (!afterForeground.test(svc)) {
     out.push('onStartCommand does not check stopWanted after startForeground');
   }
-  // both stop branches stop only their own start command (a newer restart survives)
-  if (count(svc, 'stopSelf(startId)') !== 2) {
-    out.push('both stop branches must call stopSelf(startId)');
+  // both stop branches stop only their own start command (a newer restart survives). Session 3D deliberately changed:
+  // so do the two branches of a restart after the process died (the notice, a silent stop).
+  if (count(svc, 'stopSelf(startId)') !== 4) {
+    out.push('every stop branch must call stopSelf(startId)');
   }
   if (svc.includes('stopSelf()')) {
     out.push('a bare stopSelf() drops a newer start command');
@@ -1413,7 +1468,8 @@ function managerProblems(s: KtSources): string[] {
   const underLock = [
     'synchronized(publishLock) {',
     'val changes = dedupe.next(one, all)',
-    'WebViewDelivery.deliverEvent(',
+    // Session 3C (deliberate change): the publisher seam delivers (its default: WebViewDelivery, pin 11).
+    'publisher(if (changes.v1) one else null, if (changes.v2) all else null)',
     'statusObserver?.invoke()',
   ];
   if (!inOrder(publish, underLock)) {
@@ -1593,13 +1649,14 @@ function watchdogProblems(s: KtSources): string[] {
   const out: string[] = [];
   // Session 2F2 (deliberate change): every printer's print runs in its own PrinterManager.
   const run = tail(strip(s.manager), 'private fun runPrint(');
+  // Session 3C (deliberate change: the 2F2 gold review's M-5): the job and its watchdog race for one claim.
   const verdict =
-    /t\.write\(bytes\)\s*if \(watchdogFired\(watchdog, timedOut\)\) \{\s*onLinkLost\(t\)\s*Reply\.fail\(BridgeCodes\.TIMEOUT\)\s*\} else \{\s*Reply\.Ok\(bytes\.size\)/;
+    /t\.write\(bytes\)\s*if \(!claim\.compareAndSet\(false, true\)\) \{\s*onLinkLost\(t\)\s*Reply\.fail\(BridgeCodes\.TIMEOUT\)\s*\} else \{\s*Reply\.Ok\(bytes\.size\)/;
   if (!verdict.test(run)) {
     out.push('a write that returns after the watchdog still counts as printed');
   }
-  if (!strip(s.manager).includes('!watchdog.cancel() || timedOut.get()')) {
-    out.push('watchdogFired ignores a watchdog that is already running');
+  if (!strip(s.manager).includes('Runnable { if (claim.compareAndSet(false, true)) closeQuietly(t) }')) {
+    out.push('the watchdog closes the link without winning the claim');
   }
   if (count(run, 'Reply.Ok(bytes.size)') !== 1) {
     out.push('the print job has more than one success path');
@@ -1750,9 +1807,10 @@ test('pin 14 mutation: every needle can fail', () => {
       'stopSelf(startId)\n      return START_NOT_STICKY\n    }\n    foregroundReached',
       'stopSelf()\n      return START_NOT_STICKY\n    }\n    foregroundReached',
     ],
+    // Session 3D deliberately changed: the stopWanted branch is followed by the run's own start (running, the notice).
     [
-      'stopSelf(startId)\n      return START_NOT_STICKY\n    }\n    probeIssued',
-      'stopSelf()\n      return START_NOT_STICKY\n    }\n    probeIssued',
+      'stopSelf(startId)\n      return START_NOT_STICKY\n    }\n    running = true',
+      'stopSelf()\n      return START_NOT_STICKY\n    }\n    running = true',
     ],
     ['R.string.print_host_alert_title', 'R.string.print_host_title_printer'],
   ]);
@@ -1861,8 +1919,8 @@ test('pin 14 mutation: every needle can fail', () => {
     ['val dns: ExecutorService =', 'val dnsX: ExecutorService ='],
   ]);
   everyMutationCaught(run(watchdogProblems, 'manager'), base.manager, [
-    ['if (watchdogFired(watchdog, timedOut)) {', 'if (false) {'],
-    ['!watchdog.cancel() || timedOut.get()', 'timedOut.get()'],
+    ['if (!claim.compareAndSet(false, true)) {\n        // The job', 'if (false) {\n        // The job'],
+    ['Runnable { if (claim.compareAndSet(false, true)) closeQuietly(t) }', 'Runnable { closeQuietly(t) }'],
     [
       '        onLinkLost(t)\n        Reply.fail(BridgeCodes.TIMEOUT)\n      } else {',
       '        Reply.fail(BridgeCodes.TIMEOUT)\n      } else {',
@@ -2033,7 +2091,8 @@ function usbPermissionProblems(s: KtSources): string[] {
   const types = strip(s.types);
   const usb = strip(s.usb);
   const manager = strip(s.manager);
-  if (!types.includes('class TransportException(val code: String, message: String, val needsForeground: Boolean = false)')) {
+  // Session 3C (deliberate change): a further flag (linkKept, G5) follows it.
+  if (!types.includes('class TransportException(val code: String, message: String, val needsForeground: Boolean = false, val linkKept: Boolean = false)')) {
     out.push('TransportException must say when a refusal only needs the foreground');
   }
   if (!usb.includes('throw TransportException(BridgeCodes.UNAUTHORIZED, "USB permission needed", needsForeground = true)')) {
@@ -2185,6 +2244,11 @@ function poolProblems(s: PoolSources): string[] {
   need(prefs, 'PoolList.restore(listed, p.getString(KEY_PRINTER_DEFAULT, null), savedPrinter(ctx))', 'the saved list does not migrate the v1 printer');
   need(prefs, '.putString(KEY_PRINTER_ID, default.id)', 'the v1 keys do not name the default printer');
   need(strip(s.service), 'HostTitle.of(PrinterPool.poolStatus())', 'the notification does not say the worst state across printers');
+  // Session 3C (the 2G review's m-3): a v1 select of a printer already listed only moves the default, and waits for the
+  // attempt in flight instead of connecting it again.
+  need(pool, 'pool.makeDefault(info.id)\n        selected = Selected(listed, false)', 'a v1 select of a listed printer makes a new manager');
+  need(strip(s.api), 'if (selected.fresh || manager.state() == BridgeCodes.STATE_DISCONNECTED) {', 'a v1 select of a listed printer connects it again');
+  need(strip(s.api), 'manager.afterIo { cb(Reply.Ok(answer())) }', 'a v1 select of a listed printer does not wait for its attempt in flight');
   need(strip(s.gradle), 'testImplementation "junit:junit:4.13.2"', 'JUnit 4 is not a test dependency');
   return out;
 }
@@ -2202,7 +2266,7 @@ const JVM_TESTS = join(ROOT, 'android', 'app', 'src', 'test', 'java', 'com', 'po
 
 test('pin 19: one PrinterManager and io thread per printer, BUSY per printer, the list in Prefs, JUnit on the JVM', () => {
   assert.deepEqual(poolProblems(poolSources()), []);
-  for (const name of ['PrinterManagerTest.kt', 'PoolListTest.kt', 'PoolStatusTest.kt', 'PrinterFakes.kt']) {
+  for (const name of ['PrinterManagerTest.kt', 'PoolListTest.kt', 'PoolStatusTest.kt', 'PrinterFakes.kt', 'DleEotTest.kt', 'TcpTransportTest.kt', 'PrinterPoolTest.kt']) {
     assert.ok(existsSync(join(JVM_TESTS, name)), 'JVM test file missing: ' + name);
   }
 });
@@ -2218,7 +2282,12 @@ test('pin 19 mutation: every pool needle can fail', () => {
     ['import java.util.concurrent.ExecutorService', 'import android.os.Handler\nimport java.util.concurrent.ExecutorService'],
   ]);
   everyMutationCaught(run('env'), base.env, [['package com.possoftware.pos.printer', 'package com.possoftware.pos.printer\n\nimport android.content.Context']]);
-  everyMutationCaught(run('api'), base.api, [['import android.content.Context', 'import android.content.Context\nimport java.util.concurrent.atomic.AtomicBoolean']]);
+  everyMutationCaught(run('api'), base.api, [
+    ['import android.content.Context', 'import android.content.Context\nimport java.util.concurrent.atomic.AtomicBoolean'],
+    ['manager.afterIo { cb(Reply.Ok(answer())) }', 'manager.connectAsync(manager.begin()) { cb(Reply.Ok(answer())) }'],
+    ['selected.fresh || manager', 'true || manager'],
+  ]);
+  everyMutationCaught(run('pool'), base.pool, [['pool.makeDefault(info.id)\n', 'pool.putDefault(newManager(info))\n']]);
   everyMutationCaught(run('pool'), base.pool, [
     ['PrinterManager(info, env, PrinterThreads.newIo())', 'PrinterManager(info, env, shared)'],
     ['val changes = dedupe.next(one, all)', 'val changes = StatusDedupe.Changes(true, true)'],
@@ -2233,6 +2302,482 @@ test('pin 19 mutation: every pool needle can fail', () => {
   ]);
   everyMutationCaught(run('service'), base.service, [['HostTitle.of(PrinterPool.poolStatus())', 'HostTitle.of(PoolSnapshot(emptyList(), null, "on"))']]);
   everyMutationCaught(run('gradle'), base.gradle, [['testImplementation "junit:junit:4.13.2"', '// no tests']]);
+});
+
+// --------------------------------------------------------------- pin 20
+// Phase 3 Session 3C (spec §10, G5): each printer says its paper, cover and error (DLE EOT) after a job and while idle,
+// and a printer that says it cannot print refuses a job BUSY before any byte; a network printer's job reads printed only
+// once the printer answered on that job's own connection (or never answers DLE EOT at all), and its idle check is a
+// connect; the notification says out of paper.
+interface StatusSources {
+  manager: string;
+  tcp: string;
+  classic: string;
+  usb: string;
+  ble: string;
+  pool: string;
+  service: string;
+  strings: string;
+}
+function statusProblems(s: StatusSources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!strip(text).includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(s.manager, 'const val STATUS_PROBE_MS = 60_000L', 'the idle status check is not every minute');
+  need(s.manager, 'const val STATUS_PROBE_PROBLEM_MS = 10_000L', 'a printer that cannot print is not checked every 10 s');
+  need(s.manager, 'if (synchronized(lock) { health?.cannotPrint() == true }) {\n      printing.set(false)\n      cb(Reply.fail(BridgeCodes.BUSY))', 'a printer that cannot print is not refused BUSY before any byte');
+  // The 3C review gate (m-1) deliberately changed: the status after a job is read even when the next job claimed the printer.
+  need(s.manager, 'synchronized(lock) { if (transport === t) generation else null }?.let { probe(it, force = true) }', 'a job is not followed by its status');
+  need(s.manager, 'if (timedOut || !e.linkKept) onLinkLost(t)', 'a printer that took the job in but cannot print loses its link');
+  need(s.manager, 'Runnable { if (printing.get()) scheduleProbe(gen) else onIo { probe(gen) } }', 'the idle check runs while a job waits');
+  need(s.tcp, 'afterJob(s, data.size)\n      s.shutdownOutput()', 'a network job does not ask DLE EOT on its own connection before it half-closes');
+  need(s.tcp, 'if (first < 0) {\n      if (answers) throw TransportException(BridgeCodes.WRITE_FAILED,', 'a slip cut off mid-way, or not answered, on a printer that answers reads printed');
+  need(s.tcp, 'val wait = if (silent.contains(key)) replyMs else', 'a printer known to be silent pays the long wait on every slip');
+  need(s.tcp, 'if (health?.cannotPrint() == true) throw TransportException(BridgeCodes.WRITE_FAILED, "The printer cannot print now", linkKept = true)', 'a printer that cannot print reads printed');
+  for (const [name, text] of [['ClassicTransport.kt', s.classic], ['UsbTransport.kt', s.usb], ['TcpTransport.kt', s.tcp]] as const) {
+    need(text, 'override fun status(): PrinterHealth? {', name + ' does not say its printer\'s status');
+  }
+  if (strip(s.ble).includes('override fun status()')) {
+    out.push('BLE says more than its link');
+  }
+  need(s.pool, 'PoolEntry(it.state(), it.info, it.health())', 'the v2 list does not carry what each printer said');
+  need(s.service, 'is HostTitle.PaperOut -> getString(R.string.print_host_title_paper_out, worst.name)', 'the notification does not say out of paper');
+  need(s.strings, '<string name="print_host_title_paper_out">', 'strings.xml lacks the out-of-paper title');
+  return out;
+}
+const statusSources = (): StatusSources => ({
+  manager: kt('PrinterManager.kt'),
+  tcp: kt('TcpTransport.kt'),
+  classic: kt('ClassicTransport.kt'),
+  usb: kt('UsbTransport.kt'),
+  ble: kt('BleTransport.kt'),
+  pool: kt('PrinterPool.kt'),
+  service: kt('PrintHostService.kt'),
+  strings: read(join(MAIN, 'res', 'values', 'strings.xml')),
+});
+
+test('pin 20: DLE EOT after each job and while idle, BUSY while a printer cannot print, G5 on a network job, the out-of-paper title', () => {
+  assert.deepEqual(statusProblems(statusSources()), []);
+});
+
+test('pin 20 mutation: every status needle can fail', () => {
+  const base = statusSources();
+  const run = (key: keyof StatusSources) => (text: string) => statusProblems({ ...base, [key]: text });
+  everyMutationCaught(run('manager'), base.manager, [
+    ['const val STATUS_PROBE_MS = 60_000L', 'const val STATUS_PROBE_MS = 5_000L'],
+    ['if (synchronized(lock) { health?.cannotPrint() == true }) {', 'if (false) {'],
+    ['?.let { probe(it, force = true) }', '?.let { it }'],
+    ['if (timedOut || !e.linkKept) onLinkLost(t)', 'onLinkLost(t)'],
+    ['if (printing.get()) scheduleProbe(gen) else onIo { probe(gen) }', 'onIo { probe(gen) }'],
+  ]);
+  everyMutationCaught(run('tcp'), base.tcp, [
+    ['afterJob(s, data.size)\n', ''],
+    ['if (answers) throw', 'if (false) throw'],
+    ['val wait = if (silent.contains(key)) replyMs else', 'val wait = if (false) replyMs else'],
+    ['"The printer cannot print now", linkKept = true)', '"The printer cannot print now")'],
+  ]);
+  everyMutationCaught(run('ble'), base.ble, [['  override fun close() {', '  override fun status(): PrinterHealth? = null\n\n  override fun close() {']]);
+  everyMutationCaught(run('pool'), base.pool, [['PoolEntry(it.state(), it.info, it.health())', 'PoolEntry(it.state(), it.info)']]);
+  everyMutationCaught(run('service'), base.service, [['R.string.print_host_title_paper_out', 'R.string.print_host_title_no_printer']]);
+});
+
+// ── pin 21: the 3C review gate's app fixes ─────────────────────────────────
+// A refused connect is asked again once a second later (its review's I-1); the connect's status check is its own io
+// task, queued before anyone hears "connected", and a job queued behind one whose printer said it cannot print is
+// refused BUSY (m-1, m-6, its review's m-5); FEED is not an error (m-2); a v1 select of a connected printer answers at
+// once (its review's m-3); a release build compiles the app's Kotlin in full (the 3C build note).
+interface GateFixSources {
+  manager: string;
+  tcp: string;
+  status: string;
+  api: string;
+  gradle: string;
+}
+function gateFixProblems(s: GateFixSources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!strip(text).includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(s.tcp, '} catch (e: ConnectException) {\n      closeSocket(s)\n      throw TransportException(BridgeCodes.NOT_CONNECTED, REFUSED)', 'a refused connect is not told apart');
+  need(s.tcp, 'Thread.sleep(CONNECT_REFUSED_RETRY_MS.toLong())', 'a refused connect is not asked again');
+  need(s.tcp, 'const val CONNECT_REFUSED_RETRY_MS = 1_000', 'the second ask is not a second later');
+  need(s.manager, 'onIo { probe(gen, force = true) }\n        env.changed()', 'the connect\'s status check waits in the select\'s answer, or runs after a job');
+  need(s.manager, 'cb(Reply.fail(BridgeCodes.BUSY))\n            return@onIo', 'a job queued behind a printer that cannot print is written');
+  need(s.manager, 'if (!force && printing.get()) {', 'a forced status check is skipped');
+  need(s.status, '!paperOut && !coverOpen && !feeding', 'paper fed by the FEED button reads as an error');
+  need(s.api, '} else if (manager.state() == BridgeCodes.STATE_CONNECTING) {\n      manager.afterIo', 'a connected printer\'s select waits behind a slip');
+  need(s.gradle, 'tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {\n    if (name.toLowerCase().contains("release")) {\n        doFirst { incremental = false }', 'a release build compiles Kotlin incrementally');
+  return out;
+}
+const gateFixSources = (): GateFixSources => ({
+  manager: kt('PrinterManager.kt'),
+  tcp: kt('TcpTransport.kt'),
+  status: kt('PrinterStatus.kt'),
+  api: kt('PrinterApi.kt'),
+  gradle: read(GRADLE_APP),
+});
+
+test('pin 21: the 3C review gate\'s app fixes (a refused connect asked again, the connect check first, BUSY behind a printer that cannot print, FEED, a full release compile)', () => {
+  assert.deepEqual(gateFixProblems(gateFixSources()), []);
+});
+
+test('pin 21 mutation: every gate-fix needle can fail', () => {
+  const base = gateFixSources();
+  const run = (key: keyof GateFixSources) => (text: string) => gateFixProblems({ ...base, [key]: text });
+  everyMutationCaught(run('tcp'), base.tcp, [
+    ['throw TransportException(BridgeCodes.NOT_CONNECTED, REFUSED)', 'throw TransportException(BridgeCodes.NOT_CONNECTED, "Could not connect")'],
+    ['Thread.sleep(CONNECT_REFUSED_RETRY_MS.toLong())', 'Unit'],
+    ['const val CONNECT_REFUSED_RETRY_MS = 1_000', 'const val CONNECT_REFUSED_RETRY_MS = 0'],
+  ]);
+  everyMutationCaught(run('manager'), base.manager, [
+    ['onIo { probe(gen, force = true) }\n        env.changed()', 'env.changed()\n        probe(gen)'],
+    ['            return@onIo\n', ''],
+    ['if (!force && printing.get()) {', 'if (printing.get()) {'],
+  ]);
+  everyMutationCaught(run('status'), base.status, [['!paperOut && !coverOpen && !feeding', '!paperOut && !coverOpen']]);
+  everyMutationCaught(run('api'), base.api, [['} else if (manager.state() == BridgeCodes.STATE_CONNECTING) {\n', '} else if (true) {\n']]);
+  everyMutationCaught(run('gradle'), base.gradle, [
+    ['incremental = false', 'incremental = true'],
+    ['doFirst { incremental = false }', 'incremental = false'],
+  ]);
+});
+
+// ── pin 22: Session 3D, the printing state (spec §9.5) ─────────────────────
+// The page's wish is kept (Prefs), the service is sticky, and a restart after its process died, a stop the page did not
+// ask for, a reboot or an update says "POS printing is off. Tap to start." (never starting the app); the page's own "no"
+// clears the wish first; the notification permission is asked once.
+interface PrintingSources {
+  service: string;
+  host: string;
+  prefs: string;
+  receiver: string;
+  notice: string;
+  strings: string;
+}
+function printingProblems(s: PrintingSources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!strip(text).includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(s.service, 'when (HostLife.onStart(intent?.action, Prefs.printing(this))) {\n      HostLife.Start.NOTICE_THEN_STOP -> {\n        PrintingOffNotice.post(this)\n        stopSelf(startId)', 'a restart after the process died does not say printing is off');
+  need(s.service, 'return START_STICKY', 'the service is not sticky');
+  need(s.service, 'if (running && HostLife.noticeOnStop(Prefs.printing(this))) PrintingOffNotice.post(this)', 'a stop the page did not ask for says nothing');
+  need(s.service, 'PrintingOffNotice.cancel(this)', 'printing on again leaves the notice up');
+  need(s.host, 'Prefs.setPrinting(ctx.applicationContext, false)\n      stopHost()', 'the page\'s own stop does not clear the wish before the stop');
+  need(s.host, 'PrintHostService.start(ctx.applicationContext, label)\n      Prefs.setPrinting(ctx.applicationContext, true)', 'printing on is not kept');
+  need(s.host, 'if (!askNotificationsOnce()) promptBatteryOnce()', 'the notification permission is not asked');
+  need(s.prefs, 'prefs(ctx).edit().putBoolean(KEY_PRINTING, on).commit()', 'the wish is not written at once');
+  need(s.receiver, 'if (HostLife.noticeOnBroadcast(intent.action, Prefs.printing(context))) PrintingOffNotice.post(context)', 'a reboot or an update says nothing');
+  need(s.notice, 'getLaunchIntentForPackage(app.packageName)', 'a tap does not open the app');
+  if (/startActivity|startForegroundService|startService/.test(strip(s.receiver) + strip(s.notice))) {
+    out.push('the notice starts something by itself');
+  }
+  need(s.strings, '<string name="printing_off_title">POS printing is off. Tap to start.</string>', 'the notice\'s words changed');
+  // Session 3D (D2): the host and a printers-mode writer both run the service; its words fit both.
+  need(s.strings, '<string name="print_host_text">%1$s keeps printing with the screen off.</string>', 'the notification still says this device prints all slips');
+  return out;
+}
+const printingSources = (): PrintingSources => ({
+  service: kt('PrintHostService.kt'),
+  host: kt('HostController.kt'),
+  prefs: kt('Prefs.kt'),
+  receiver: kt('PrintingOffReceiver.kt'),
+  notice: kt('PrintingOffNotice.kt'),
+  strings: read(join(MAIN, 'res', 'values', 'strings.xml')),
+});
+
+test('pin 22: Session 3D, the printing state: sticky, "POS printing is off. Tap to start." after a restart, an unasked stop, a reboot or an update', () => {
+  assert.deepEqual(printingProblems(printingSources()), []);
+});
+
+test('pin 22 mutation: every printing-state needle can fail', () => {
+  const base = printingSources();
+  const run = (key: keyof PrintingSources) => (text: string) => printingProblems({ ...base, [key]: text });
+  everyMutationCaught(run('service'), base.service, [
+    ['        PrintingOffNotice.post(this)\n        stopSelf(startId)', '        stopSelf(startId)'],
+    ['return START_STICKY', 'return START_NOT_STICKY'],
+    ['if (running && HostLife.noticeOnStop(Prefs.printing(this))) PrintingOffNotice.post(this)', 'Unit'],
+    ['PrintingOffNotice.cancel(this)', 'Unit'],
+  ]);
+  everyMutationCaught(run('host'), base.host, [
+    ['Prefs.setPrinting(ctx.applicationContext, false)\n      stopHost()', 'stopHost()'],
+    ['      Prefs.setPrinting(ctx.applicationContext, true)\n', ''],
+    ['if (!askNotificationsOnce()) promptBatteryOnce()', 'promptBatteryOnce()'],
+  ]);
+  everyMutationCaught(run('prefs'), base.prefs, [['putBoolean(KEY_PRINTING, on).commit()', 'putBoolean(KEY_PRINTING, on).apply()']]);
+  everyMutationCaught(run('receiver'), base.receiver, [
+    ['if (HostLife.noticeOnBroadcast(intent.action, Prefs.printing(context))) PrintingOffNotice.post(context)', 'context.startActivity(intent)'],
+  ]);
+  everyMutationCaught(run('notice'), base.notice, [['getLaunchIntentForPackage(app.packageName)', 'getLaunchIntentForPackage("x")']]);
+  everyMutationCaught(run('strings'), base.strings, [
+    ['POS printing is off. Tap to start.', 'Printing stopped.'],
+    ['%1$s keeps printing with the screen off.', '%1$s prints all slips.'],
+  ]);
+});
+
+// ── pin 23: Session 3D, a page that died is remounted, even while the app is hidden (spec §9.5) ──
+// Its renderer gone, or the print host's watchdog's word (once per page life, at most once per 10 minutes): the POS
+// screen remounts the WebView, and the native side lets React Native mount it while the app is hidden (bounded), so the
+// new page loads and prints with nobody at the screen. And a hidden page keeps running: the WebView froze it within a
+// minute (the 3C review gate's emulator run), so the print host's tick tells its WebView the window is visible.
+interface RemountSources {
+  delivery: string;
+  screen: string;
+  wrapper: string;
+  module: string;
+  mount: string;
+  service: string;
+  watch: string;
+}
+function remountProblems(s: RemountSources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!strip(text).includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(s.screen, 'PosPrinter.mountWhileHidden().catch(noop);\n    remount();', 'a page death does not mount the new WebView while the app is hidden');
+  need(s.screen, 'onRenderGone={remountAfterDeath}', 'a dead renderer does not remount through remountAfterDeath');
+  need(s.screen, 'DeviceEventEmitter.addListener(\n      PAGE_DEAD_EVENT,\n      onRenderGone,\n    );', 'the watchdog\'s word does not remount');
+  need(s.wrapper, "export const PAGE_DEAD_EVENT = 'PosPageDead';", 'the shell\'s event name changed');
+  need(s.watch, 'const val DEAD_EVENT = "PosPageDead"', 'the app\'s event name changed');
+  need(s.module, 'HostPage.remount = { reactContext.emitDeviceEvent(HostPage.DEAD_EVENT, null) }', 'the watchdog cannot reach the POS screen');
+  need(s.module, 'HostPage.remount = null', 'the watchdog keeps a dead React context');
+  need(s.module, 'BackgroundMount.start(reactContext)', 'mountWhileHidden does nothing');
+  need(s.mount, 'fabric.onHostResume()', 'Fabric never mounts while the app is hidden');
+  need(s.mount, 'if (!PrinterPool.appVisible) fabric.onHostPause()', 'Fabric is paused under a visible app, or never paused again');
+  need(s.mount, 'const val WINDOW_MS = 30_000L', 'the hidden mount is not bounded');
+  need(s.mount, 'WebViewDelivery.detach()', 'the dead page\'s WebView is still driven');
+  // The gold's review (I-2): at most one hidden mount per 10 minutes; the renderer keeps the app's importance.
+  need(s.mount, 'if (!gap.allow(SystemClock.elapsedRealtime())) return@Runnable', 'a renderer killed again and again reloads in a loop');
+  need(s.mount, 'const val GAP_MS = 600_000L', 'the hidden mounts are not 10 minutes apart');
+  need(s.delivery, 'found.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)', 'a hidden page\'s renderer is killed first');
+  need(s.delivery, 'webView?.get()?.dispatchWindowVisibilityChanged(View.VISIBLE)', 'the WebView freezes a hidden page');
+  need(s.service, 'if (!PrinterPool.appVisible) {\n            WebViewDelivery.keepPageRunning()\n            WebViewDelivery.deliverEvent(BridgeCodes.EVENT_APP_WAKE, JSONObject())', 'the print host\'s tick does not keep the hidden page running');
+  need(s.service, 'if (watch.tick(PrinterPool.appVisible)) HostPage.remount?.invoke()', 'the watchdog only alerts');
+  need(s.service, 'const val PAGE_REMOUNT_GAP_TICKS = 40', 'the watchdog may remount more than once every 10 minutes');
+  need(s.watch, 'val remount = alerting(visible) && lived && sinceRemount >= remountGapTicks', 'the watchdog remounts a page that never came back');
+  return out;
+}
+const remountSources = (): RemountSources => ({
+  delivery: kt('WebViewDelivery.kt'),
+  screen: posScreen(),
+  wrapper: read(join(SRC, 'native', 'PosPrinter.ts')),
+  module: kt('PosPrinterModule.kt'),
+  mount: kt('BackgroundMount.kt'),
+  service: kt('PrintHostService.kt'),
+  watch: kt('PageWatch.kt'),
+});
+
+test('pin 23: Session 3D, a dead page is remounted, and mounts while the app is hidden (bounded); a hidden page keeps running', () => {
+  assert.deepEqual(remountProblems(remountSources()), []);
+});
+
+test('pin 23 mutation: every remount needle can fail', () => {
+  const base = remountSources();
+  const run = (key: keyof RemountSources) => (text: string) => remountProblems({ ...base, [key]: text });
+  everyMutationCaught(run('screen'), base.screen, [
+    ['    PosPrinter.mountWhileHidden().catch(noop);\n', ''],
+    ['onRenderGone={remountAfterDeath}', 'onRenderGone={remount}'],
+    ['      PAGE_DEAD_EVENT,\n', "      'other',\n"],
+  ]);
+  everyMutationCaught(run('wrapper'), base.wrapper, [["'PosPageDead'", "'PageDead'"]]);
+  everyMutationCaught(run('module'), base.module, [
+    ['HostPage.remount = { reactContext.emitDeviceEvent(HostPage.DEAD_EVENT, null) }', 'Unit'],
+    ['HostPage.remount = null', 'Unit'],
+    ['BackgroundMount.start(reactContext)', 'Unit'],
+  ]);
+  everyMutationCaught(run('mount'), base.mount, [
+    ['fabric.onHostResume()', 'Unit'],
+    ['if (!PrinterPool.appVisible) fabric.onHostPause()', 'fabric.onHostPause()'],
+    ['const val WINDOW_MS = 30_000L', 'const val WINDOW_MS = 3_600_000L'],
+    ['WebViewDelivery.detach()', 'Unit'],
+    ['if (!gap.allow(SystemClock.elapsedRealtime())) return@Runnable', 'Unit'],
+    ['const val GAP_MS = 600_000L', 'const val GAP_MS = 0L'],
+  ]);
+  everyMutationCaught(run('delivery'), base.delivery, [
+    ['RENDERER_PRIORITY_IMPORTANT, false', 'RENDERER_PRIORITY_WAIVED, true'],
+    ['dispatchWindowVisibilityChanged(View.VISIBLE)', 'dispatchWindowVisibilityChanged(View.GONE)'],
+  ]);
+  everyMutationCaught(run('service'), base.service, [
+    ['if (watch.tick(PrinterPool.appVisible)) HostPage.remount?.invoke()', 'watch.tick(PrinterPool.appVisible)'],
+    ['const val PAGE_REMOUNT_GAP_TICKS = 40', 'const val PAGE_REMOUNT_GAP_TICKS = 1'],
+    ['            WebViewDelivery.keepPageRunning()\n', ''],
+  ]);
+  everyMutationCaught(run('watch'), base.watch, [
+    ['alerting(visible) && lived && sinceRemount', 'alerting(visible) && sinceRemount'],
+    ['const val DEAD_EVENT = "PosPageDead"', 'const val DEAD_EVENT = "PageDead"'],
+  ]);
+});
+
+// ── pin 24: Session 3D, the battery checklist (spec §9.5) ──────────────────
+// The page's More options asks (app.battery, only on an app whose window.PosNative says "battery"); the shell shows its
+// checklist over the POS, this phone's brand first, with links into the phone's settings where Android allows them,
+// each falling back to the app's own settings screen. Local only.
+interface BatterySources {
+  injected: string;
+  screen: string;
+  checklist: string;
+  module: string;
+  settings: string;
+  manifest: string;
+}
+function batteryProblems(s: BatterySources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!strip(text).includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(s.injected, "features: Object.freeze(FEATURES.slice())", 'window.PosNative does not say its features');
+  need(s.screen, '{battery && <BatteryScreen onDone={closeBattery} />}', 'the checklist never shows');
+  need(s.screen, 'onBattery={openBattery}', 'the page\'s ask does not open the checklist');
+  need(s.checklist, 'batterySectionsFor(brand).map(section => (', 'the checklist does not list the steps, this phone\'s first');
+  need(s.checklist, "BackHandler.addEventListener(\n      'hardwareBackPress',\n      () => {\n        onDone();\n        return true;", 'Back does not close the checklist');
+  need(s.module, 'putString("brand", BatterySettings.brand())', 'the shell is not told this phone\'s brand');
+  need(s.module, 'BatterySettings.open(activity, kind)', 'a link opens nothing');
+  need(s.settings, '} + Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg"))', 'a link has no fallback to the app\'s settings');
+  need(s.settings, 'Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$pkg"))', 'the battery link does not ask Android\'s own question');
+  need(s.manifest, '<package android:name="com.miui.securitycenter" />', 'the autostart screens are not named (Android 11+)');
+  if (/fetch\(|XMLHttpRequest|https?:\/\//.test(strip(s.screen) + strip(s.checklist))) {
+    out.push('the checklist makes a request');
+  }
+  return out;
+}
+const batterySources = (): BatterySources => ({
+  injected: read(join(SRC, 'bridge', 'injected.ts')),
+  screen: posScreen(),
+  checklist: read(join(SRC, 'screens', 'BatteryScreen.tsx')),
+  module: kt('PosPrinterModule.kt'),
+  settings: kt('BatterySettings.kt'),
+  manifest: manifest(),
+});
+
+test('pin 24: Session 3D, the battery checklist: asked by the page, this phone first, links with a fallback, local only', () => {
+  assert.deepEqual(batteryProblems(batterySources()), []);
+});
+
+test('pin 24 mutation: every battery needle can fail', () => {
+  const base = batterySources();
+  const run = (key: keyof BatterySources) => (text: string) => batteryProblems({ ...base, [key]: text });
+  everyMutationCaught(run('injected'), base.injected, [['features: Object.freeze(FEATURES.slice()), ', '']]);
+  everyMutationCaught(run('screen'), base.screen, [
+    ['{battery && <BatteryScreen onDone={closeBattery} />}', '{null}'],
+    ['onBattery={openBattery}', 'onBattery={noop}'],
+  ]);
+  everyMutationCaught(run('checklist'), base.checklist, [
+    ['batterySectionsFor(brand).map(section => (', 'BATTERY_SECTIONS.map(section => ('],
+    ['        onDone();\n        return true;', '        return true;'],
+    ['    PosPrinter.openBatterySettings(kind).catch(noop);', "    fetch('https://x').catch(noop);"],
+  ]);
+  everyMutationCaught(run('module'), base.module, [
+    ['putString("brand", BatterySettings.brand())', 'putString("brand", "other")'],
+    ['BatterySettings.open(activity, kind)', 'false'],
+  ]);
+  everyMutationCaught(run('settings'), base.settings, [
+    ['} + Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg"))', '}'],
+    ['Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$pkg"))', 'Intent()'],
+  ]);
+  everyMutationCaught(run('manifest'), base.manifest, [['<package android:name="com.miui.securitycenter" />', '']]);
+});
+
+// ── pin 25: the 3D review gate's app fixes (2026-10-09) ─────────────────────
+// Change POS address stops this device printing for the POS it leaves (m-1); a screen recreated for a configuration
+// change keeps the service (m-2); a page that answers again ends the alert at once (m-3); the page's own "no" also takes
+// down a "POS printing is off" notice a reboot left (N-2).
+interface AppFixSources {
+  app: string;
+  module: string;
+  watch: string;
+  service: string;
+  host: string;
+}
+function appFixProblems(s: AppFixSources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!strip(text).includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(s.app, "PosPrinter.setHostActive(false, '')\n      .catch(noop)\n      .then(() => PosPrinter.clearOrigin())", 'Change POS address leaves this device printing for the POS it left');
+  need(s.module, 'if (reactContext.currentActivity?.isChangingConfigurations == true) return\n    host.stopHost()', 'a configuration change stops printing for a moment');
+  need(s.watch, 'answered = true\n    dead = 0', 'a page that answers again keeps the alert one tick more');
+  need(s.service, 'watch.answered()\n        refreshNotification()', 'the notification waits for the next tick');
+  need(s.host, 'stopHost()\n      PrintingOffNotice.cancel(ctx.applicationContext)', 'the page\'s own stop leaves an old notice up');
+  return out;
+}
+const appFixSources = (): AppFixSources => ({
+  app: read(join(ROOT, 'App.tsx')),
+  module: kt('PosPrinterModule.kt'),
+  watch: kt('PageWatch.kt'),
+  service: kt('PrintHostService.kt'),
+  host: kt('HostController.kt'),
+});
+
+test("pin 25: the 3D review gate's app fixes (Change POS address, a configuration change, the alert after a healed page, an old notice)", () => {
+  assert.deepEqual(appFixProblems(appFixSources()), []);
+});
+
+test('pin 25 mutation: every gate-fix needle can fail', () => {
+  const base = appFixSources();
+  const run = (key: keyof AppFixSources) => (text: string) => appFixProblems({ ...base, [key]: text });
+  everyMutationCaught(run('app'), base.app, [["PosPrinter.setHostActive(false, '')", "PosPrinter.setHostActive(true, '')"]]);
+  everyMutationCaught(run('module'), base.module, [['isChangingConfigurations == true) return', 'isChangingConfigurations == false) return']]);
+  everyMutationCaught(run('watch'), base.watch, [['    dead = 0\n  }', '  }']]);
+  everyMutationCaught(run('service'), base.service, [['        refreshNotification()\n      }', '      }']]);
+  everyMutationCaught(run('host'), base.host, [['      PrintingOffNotice.cancel(ctx.applicationContext)\n', '']]);
+});
+
+// ── pin 26: the 3E review gate's app fixes (2026-10-09) ─────────────────────
+// A remount after the page's renderer died is the page life's remount: the watchdog never remounts the loading page
+// again (the 3D gate's N-1); a probe answer that lands after the service stopped posts no notification (3E's m-1).
+interface LifeRemountSources {
+  watch: string;
+  service: string;
+  module: string;
+}
+function lifeRemountProblems(s: LifeRemountSources): string[] {
+  const out: string[] = [];
+  const need = (text: string, needle: string, why: string) => {
+    if (!strip(text).includes(needle)) {
+      out.push(why);
+    }
+  };
+  need(s.watch, 'fun remounted() {\n    lived = false\n    sinceRemount = 0\n  }', 'a renderer-gone remount leaves the watchdog free to remount the loading page');
+  need(s.watch, '@Volatile var remounted: (() -> Unit)? = null', 'the module cannot tell the watchdog of a remount');
+  need(s.module, 'HostPage.remounted?.invoke()\n    BackgroundMount.start(reactContext)', 'a page remounted after a death is not counted as its life\'s remount');
+  need(s.service, 'HostPage.remounted = { handler.post { watch.remounted() } }', 'the print host does not hear of a remount');
+  need(s.service, 'destroyed = true\n    handler.removeCallbacksAndMessages(null)', 'a stopped service does not know it stopped');
+  need(s.service, 'if (destroyed || !canNotify()) return', 'a late probe answer can post a notification after the service stopped');
+  return out;
+}
+const lifeRemountSources = (): LifeRemountSources => ({
+  watch: kt('PageWatch.kt'),
+  service: kt('PrintHostService.kt'),
+  module: kt('PosPrinterModule.kt'),
+});
+
+test("pin 26: the 3E review gate's app fixes (a renderer-gone remount is the page life's; no notification after the service stopped)", () => {
+  assert.deepEqual(lifeRemountProblems(lifeRemountSources()), []);
+});
+
+test('pin 26 mutation: every remount and stop needle can fail', () => {
+  const base = lifeRemountSources();
+  const run = (key: keyof LifeRemountSources) => (text: string) => lifeRemountProblems({ ...base, [key]: text });
+  everyMutationCaught(run('watch'), base.watch, [['    lived = false\n    sinceRemount = 0\n  }', '    sinceRemount = 0\n  }']]);
+  everyMutationCaught(run('module'), base.module, [['    HostPage.remounted?.invoke()\n', '']]);
+  everyMutationCaught(run('service'), base.service, [
+    ['handler.post { watch.remounted() }', 'handler.post { }'],
+    ['    destroyed = true\n', ''],
+    ['if (destroyed || !canNotify()) return', 'if (!canNotify()) return'],
+  ]);
 });
 
 test('the app is called "Sandbee POS" on the phone (owner, 2026-10-03)', () => {

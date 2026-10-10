@@ -6,10 +6,13 @@
     <string name="print_host_title_printers">Printing is on — %1$d printers</string>
     <string name="print_host_title_printer_down">Printing is on — %1$s not connected</string>
     <string name="print_host_title_printers_down">Printing is on — %1$d printers not connected</string>
+    <string name="print_host_title_paper_out">Printing is on — %1$s is out of paper</string>
     <string name="print_host_alert_channel_name">Printing alerts</string>
     <string name="print_host_alert_title">Printing stopped — tap to open the app</string>
     <string name="print_host_alert_text">Slips will not print until the app is open again.</string>
-    <string name="print_host_text">%1$s prints all slips.</string>
+    <string name="printing_off_title">POS printing is off. Tap to start.</string>
+    <string name="printing_off_text">Slips will not print until the POS app is open.</string>
+    <string name="print_host_text">%1$s keeps printing with the screen off.</string>
     <string name="print_host_default_label">This device</string>
     <string name="printer_name_bluetooth">Bluetooth device %1$s</string>
     <string name="printer_name_usb">USB printer</string>

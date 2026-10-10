@@ -37,8 +37,9 @@ test("parseArgs: safe defaults (loopback, a temp folder) and every flag", () => 
   assert.equal(d.port, 9100);
   assert.equal(d.host, "127.0.0.1", "never listens on the LAN unless asked");
   assert.ok(d.out.startsWith(os.tmpdir()), "jobs never land in the repo by default");
-  const f = parseArgs(["--port", "9101", "--drop-after", "100", "--drop-every", "3", "--delay", "50", "--paper-out", "--cover-open", "--refuse"]);
-  assert.deepEqual([f.port, f.dropAfter, f.dropEvery, f.delay, f.paperOut, f.coverOpen, f.refuse], [9101, 100, 3, 50, true, true, true]);
+  const f = parseArgs(["--port", "9101", "--drop-after", "100", "--drop-every", "3", "--delay", "50", "--paper-out", "--cover-open", "--refuse", "--paper-low", "--silent"]);
+  assert.deepEqual([f.port, f.dropAfter, f.dropEvery, f.delay, f.paperOut, f.coverOpen, f.refuse, f.paperLow, f.silent], [9101, 100, 3, 50, true, true, true, true, true]);
+  assert.deepEqual([d.paperLow, d.silent], [false, false], "a printer that answers, with paper, by default");
   assert.equal(d.dropEvery, 1, "--drop-after alone cuts every job, as before");
   assert.throws(() => parseArgs(["--bogus"]), /unknown option/);
   assert.throws(() => parseArgs(["--drop-after", "-1"]), /whole number/);
@@ -51,6 +52,9 @@ test("statusByte: a healthy printer answers 0x12; paper-out and cover-open set t
   assert.equal(statusByte(2, { paperOut: false, coverOpen: true }), 0x16, "n=2: cover open");
   assert.equal(statusByte(1, { paperOut: true, coverOpen: false }), 0x1a, "n=1: offline");
   assert.equal(statusByte(9, ok), null);
+  // Session 3C (spec §13): low paper sets the near-end bits of n=4 and the printer stays online.
+  assert.equal(statusByte(4, { paperOut: false, coverOpen: false, paperLow: true }), 0x1e, "n=4: roll paper near end");
+  assert.equal(statusByte(1, { paperOut: false, coverOpen: false, paperLow: true }), 0x12, "n=1: still online");
 });
 
 test("statusRequests: finds DLE EOT n, including one split across two chunks", () => {
@@ -103,6 +107,35 @@ test("--paper-out: DLE EOT 4 is answered at once with 'paper end'", async () => 
     const { received } = await send(port, Buffer.from([DLE, EOT, 4]));
     assert.deepEqual([...received], [0x72]);
     assert.equal((await job).statusRequests, 1);
+  });
+});
+
+test("3C: --silent answers no DLE EOT (a printer without real-time status), and the job is still saved", async () => {
+  await withPrinter(["--silent"], async ({ port, nextJob }) => {
+    const job = nextJob();
+    const { received } = await send(port, Buffer.from([0x41, DLE, EOT, 1, DLE, EOT, 4]));
+    assert.equal(received.length, 0, "no answer at all");
+    const record = await job;
+    assert.equal(record.bytes, 7);
+    assert.equal(record.statusRequests, 2, "it saw both requests");
+  });
+});
+
+test("3C: a connection that carried only DLE EOT requests (an app's idle status check) is logged statusOnly; a slip is not", async () => {
+  await withPrinter([], async ({ port, nextJob }) => {
+    const check = nextJob();
+    await send(port, Buffer.from([DLE, EOT, 1, DLE, EOT, 2, DLE, EOT, 3, DLE, EOT, 4]));
+    assert.equal((await check).statusOnly, true);
+    const slip = nextJob();
+    await send(port, Buffer.concat([Buffer.alloc(500, 0x55), Buffer.from([DLE, EOT, 1])]));
+    assert.equal((await slip).statusOnly, false, "a slip followed by its status question is a slip");
+  });
+});
+
+test("3C: --paper-low answers DLE EOT 4 with 'near end' and DLE EOT 1 with online", async () => {
+  await withPrinter(["--paper-low"], async ({ port }) => {
+    const { received } = await send(port, Buffer.from([DLE, EOT, 1, DLE, EOT, 4]));
+    assert.deepEqual([...received], [0x12, 0x1e]);
   });
 });
 

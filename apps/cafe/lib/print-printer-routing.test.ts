@@ -257,6 +257,18 @@ test("moved and cancel notices: the notice printers of every station that got a 
   assert.deepEqual(cancel.map((j) => [j.printerId, j.copies]), [["counter", 1], ["bar", 1]]);
 });
 
+// Phase 3 Session 3A (spec §9.3): with who-is-online read, each job goes to the device that writes its printer now.
+test("Phase 3 failover: a network printer whose primary is offline routes to the online device that may take it over; device printers never move", () => {
+  const lanKitchen = printer("kitchen", { kotStations: [KITCHEN.id], notices: true }, { order: 1, connection: { kind: "lan", host: "10.0.0.5", port: 9100 }, primaryDeviceId: "kitchen-tablet" });
+  const routing: PrintRouting = { printers: [COUNTER_P, lanKitchen, BAR_P], stations: STATIONS, itemStations: ITEM_STATIONS };
+  const writers = (r: PrintRouting) => routePrintRequest(kotPrintJob(order(), 1), r).map((job) => `${job.printerId}@${job.writerDeviceId}`).sort().join();
+  assert.equal(writers(routing), "bar@bar-device,counter@counter-device,kitchen@kitchen-tablet", "no failover read: the setup's writers, as in Phase 2");
+  const away = { online: [{ deviceId: "counter-device", lanFailover: true }, { deviceId: "bar-device", lanFailover: false }], nowMs: Date.parse("2026-10-07T12:00:00Z") };
+  assert.equal(writers({ ...routing, failover: away }), "bar@bar-device,counter@counter-device,kitchen@counter-device", "the kitchen tablet offline: the counter writes the kitchen's network printer; the bar's own printer stays the bar phone's");
+  const back = { ...away, online: [...away.online, { deviceId: "kitchen-tablet", lanFailover: true }] };
+  assert.equal(writers({ ...routing, failover: back }), "bar@bar-device,counter@counter-device,kitchen@kitchen-tablet", "the primary back online: its own again");
+});
+
 test("job keys: the slip's key, then the printer and the part; no key stays no key", () => {
   const request = kotPrintJob(order(), 1);
   const base = printJobKeyOf(request.payload);

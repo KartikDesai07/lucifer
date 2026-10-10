@@ -12,6 +12,8 @@ export interface PrintAgentAckBody {
   sent?: "no" | "maybe";
   permanent?: true;
   error?: string;
+  /** Session 3B (spec §9.3): a network printer this device could not reach before any byte (PRINT_ACK_UNREACHABLE). */
+  reason?: "unreachable";
 }
 
 export interface PendingPrintAck {
@@ -38,6 +40,9 @@ export interface PrintAgentDeps {
   /** Session 2E: the line a job's refusal holds: its printer, by id (the 2F1 review gate, M-1), else this device's own
    *  printer (""). */
   lineOf?(job: LeasedPrintJob): string;
+  /** Session 3B (spec §9.3): the job's printer is a network printer this device prints (its refusal before any byte
+   *  is acked "unreachable", so another device takes the printer over). Absent: none is. */
+  networkPrinter?(job: LeasedPrintJob): boolean;
   readPending(): PendingPrintAck[];
   writePending(entries: PendingPrintAck[]): void;
   now(): number;

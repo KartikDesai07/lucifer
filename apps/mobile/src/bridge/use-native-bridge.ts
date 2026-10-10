@@ -18,15 +18,23 @@ export type NativeBridge = {
   failed: boolean;
 };
 
-type Args = { origin: string; onChangeUrl: () => void };
+type Args = { origin: string; onChangeUrl: () => void; onBattery: () => void };
 
-export function useNativeBridge({ origin, onChangeUrl }: Args): NativeBridge {
+export function useNativeBridge({
+  origin,
+  onChangeUrl,
+  onBattery,
+}: Args): NativeBridge {
   const [token, setToken] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const changeUrlRef = useRef(onChangeUrl);
   useEffect(() => {
     changeUrlRef.current = onChangeUrl;
   }, [onChangeUrl]);
+  const batteryRef = useRef(onBattery);
+  useEffect(() => {
+    batteryRef.current = onBattery;
+  }, [onBattery]);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,6 +93,7 @@ export function useNativeBridge({ origin, onChangeUrl }: Args): NativeBridge {
       origin,
       deliver: reply => PosPrinter.deliverScript(reply),
       onChangeUrl: () => changeUrlRef.current(),
+      onBattery: () => batteryRef.current(),
     });
   }, [token, origin, gate]);
 

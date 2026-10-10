@@ -1,9 +1,8 @@
 import { after } from "next/server";
 import { connectDB } from "@/lib/db";
 import { readPosPulse } from "@/lib/pos-pulse";
-import { printPulseDeviceOf } from "@/lib/print-agent-server";
+import { printPulseDeviceOf, printPulseTokensOf, readPulseJobsForDevice } from "@/lib/print-agent-server";
 import { readPrintAttention } from "@/lib/print-attention";
-import { readJobsForDevice } from "@/lib/print-lease";
 import { sweepPrintJobsThrottled } from "@/lib/print-sweep";
 import { success, requireAuth, serverError } from "@/lib/api-helpers";
 import { noStore } from "@/lib/order-request-tray";
@@ -46,13 +45,15 @@ export async function GET(req: Request) {
   const authed = await requireAuth();
   if ("error" in authed) return authed.error;
   const device = printPulseDeviceOf(req.url);
+  // Phase 3 (the token fix's M-2): a token job counts for this tab only if it prints token slips.
+  const saysTokens = printPulseTokensOf(req.url);
 
   try {
     await connectDB();
     const nowMs = Date.now();
     const [data, printJobsForMe, attention] = await Promise.all([
       readPosPulse(),
-      device === null ? Promise.resolve(null) : readJobsForDevice(device, nowMs).catch(() => null),
+      device === null ? Promise.resolve(null) : readPulseJobsForDevice(device, saysTokens, nowMs).catch(() => null),
       readPrintAttention(nowMs).catch(() => null),
     ]);
     try {

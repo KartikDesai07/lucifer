@@ -38,12 +38,14 @@ const world = {
   cachedState: undefined as { dataUpdatedAt: number } | undefined,
   wake: null as null | (() => void),
   handler: null as null | ((requestId: string) => void),
+  native: [] as [string, unknown][],
 };
 function resetWorld(): void {
   Object.assign(world, { report: "unknown", canPrint: true, routing: "no-host", pulse: undefined, invalidations: 0, cached: undefined, cachedState: undefined, wake: null, handler: null });
   world.prefs = { autoPrintSelfOrders: true, printHost: false, printHostSeen: false };
   world.recorded.length = 0;
   world.declared.length = 0;
+  world.native.length = 0;
   world.printerListeners.clear();
   world.desktopListeners.clear();
   resetStubs();
@@ -83,7 +85,7 @@ stubModule("@/lib/printer/capabilities", { onWindowEvent: () => () => undefined 
 stubModule("@/lib/printer/native-bridge", {
   NATIVE_READY_EVENT: "posnative:ready",
   nativeOn: (_event: string, fn: () => void) => ((world.wake = fn), () => undefined),
-  nativeRequest: async () => ({}),
+  nativeRequest: async (method: string, params: unknown) => (world.native.push([method, params]), {}),
 });
 stubModule("@/hooks/use-device-printer", { usePrintCapabilities: () => ({ native: true }), useCanPrintNow: () => world.canPrint });
 stubModule("@/lib/pos-device-prefs", { readDevicePrefs: () => world.prefs });
@@ -189,7 +191,7 @@ test("W-O: no refresh when the cache is empty/degraded, or when the beat says th
 test("W-Z: app.wake refreshes the pulse only when it is OLDER than one poll interval", (t: TestContext) => {
   resetWorld();
   t.mock.method(Date, "now", () => NOW);
-  const hook = mountHook(() => useNativeHostBackground(true));
+  const hook = mountHook(() => useNativeHostBackground(true, true));
   assert.ok(world.wake, "positive landmark: the wake listener is registered");
   const wake = (ageMs: number | null): number => {
     world.cachedState = ageMs === null ? undefined : { dataUpdatedAt: NOW - ageMs };
@@ -202,6 +204,20 @@ test("W-Z: app.wake refreshes the pulse only when it is OLDER than one poll inte
   assert.equal(wake(REFETCH_INTERVALS.POS_PULSE + 1), 1);
   assert.equal(wake(null), 1, "no pulse data yet: refresh");
   hook.unmount();
+});
+
+test("Session 3D: a page that knows this device prints nothing tells the POS app so once; one that does not know yet says nothing", () => {
+  resetWorld();
+  const unknown = mountHook(() => useNativeHostBackground(false, false));
+  assert.deepEqual(world.native, [], "its role or the printers are not known yet: nothing (a page reloading in the background keeps the app's wish)");
+  unknown.unmount();
+  const known = mountHook(() => useNativeHostBackground(false, true));
+  assert.deepEqual(world.native, [["host.background", { active: false }]], "it prints nothing for the cafe: the app drops a wish an earlier page left");
+  known.unmount();
+  world.native.length = 0;
+  const printing = mountHook(() => useNativeHostBackground(true, true));
+  assert.deepEqual(world.native, [["host.background", { active: true, label: "This device" }]], "a device that prints asks for the service as before");
+  printing.unmount();
 });
 
 // ---- W-D ------------------------------------------------------------------------------------------

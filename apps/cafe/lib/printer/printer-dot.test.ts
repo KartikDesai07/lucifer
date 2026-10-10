@@ -233,7 +233,7 @@ test("R2-W7: over every input combination the button tone and name follow the or
 
 const REASONS: PrinterDotReason[] = [
   "ok", "device-offline", "checking", "no-printer", "printer-off", "printer-needs-tap",
-  "printer-elsewhere", "host-offline", "host-printer-off", "host-print-window",
+  "printer-elsewhere", "host-offline", "host-printer-off", "host-print-window", "printer-problem",
 ];
 
 function dotFor(reason: PrinterDotReason): PrinterDot {
@@ -416,4 +416,45 @@ test("2D: printers mode copy — plain words for the two new states", () => {
   });
   assert.equal(printerButtonName({ show: true, ok: true, reason: "printers-elsewhere" }), PRINTER_BUTTON_NAME_OK);
   assert.equal(printerDotTone({ show: true, ok: false, reason: "printer-not-here" }), "red");
+});
+
+// Phase 3 Session 3B (spec §10): a printer this device prints (writes by the setup, or took over) that its POS app says is
+// out of paper, has its cover open or reports an error turns the dot red, in that printer's words. Low paper still
+// prints, so it never does; a link that is down says so first (its Reconnect fix).
+test("3B: a printer of this device out of paper, its cover open or in error is red with its words; low paper is not; a down link first", () => {
+  const base = { remote: "none" as const, isHostDevice: false, lane: "raster" as const, local: "connected" as const, deviceOffline: false, desktopChosen: "unknown" as const };
+  const printers = { printersMode: true, isWriter: true, allLocal: true, worst: "connected" as const };
+  const out = printerDotOf({ ...base, printers: { ...printers, problem: { name: "Kitchen", problem: "paper-out" } } });
+  assert.deepEqual(out, { show: true, ok: false, reason: "printer-problem", problem: "Kitchen is out of paper." });
+  const hi = { hostLabel: null, printerName: null, isHostDevice: false, canPrintHere: true, localStatus: "connected" as const, desktopNoPrinter: false };
+  assert.deepEqual(printerHeadlineOf(out, hi), { headline: "Printer needs attention", detail: "Kitchen is out of paper.", fix: null });
+  assert.equal(printerButtonName(out), "Printer needs attention — open printer setup");
+  assert.equal(printerDotTone(out), "red");
+  const down = printerDotOf({ ...base, printers: { ...printers, worst: "disconnected", problem: { name: "Kitchen", problem: "cover-open" } } });
+  assert.equal(down.show && down.reason, "printer-off", "a printer that does not answer: reconnect it first");
+  assert.deepEqual(printerDotOf({ ...base, printers }), { show: true, ok: true, reason: "ok" }, "nothing known: green as before");
+});
+
+// Phase 3 Session 3E (spec §9.6): on the Windows app 1.12.0 a network printer it writes that does not answer turns the dot
+// red as it would on the POS app; with every one connected, or none known yet, the Windows rows stay as before.
+test("3E: on the Windows app a network printer it writes that does not answer is red; otherwise as before", () => {
+  const desktop = { remote: "none" as const, isHostDevice: false, lane: "desktop" as const, local: "none" as const, deviceOffline: false, desktopChosen: "chosen" as const };
+  const mode = { printersMode: true, isWriter: true, allLocal: true };
+  assert.deepEqual(printerDotOf({ ...desktop, printers: { ...mode, worst: "disconnected" } }), { show: true, ok: false, reason: "printer-off" }, "the kitchen does not answer");
+  assert.deepEqual(printerDotOf({ ...desktop, printers: { ...mode, worst: "connecting" } }), { show: true, ok: false, reason: "checking" }, "being checked");
+  assert.deepEqual(printerDotOf({ ...desktop, printers: { ...mode, worst: "connected" } }), { show: true, ok: true, reason: "ok" }, "it answers");
+  assert.deepEqual(printerDotOf({ ...desktop, desktopChosen: "none", printers: { ...mode, worst: "connected" } }), { show: true, ok: true, reason: "ok" }, "a PC whose only printer is a network printer: no Windows printer needs choosing (the gold's review, m-1)");
+  assert.deepEqual(printerDotOf({ ...desktop, printers: mode }), { show: true, ok: true, reason: "ok" }, "Windows printers only: as before");
+  assert.deepEqual(printerDotOf({ ...desktop, desktopChosen: "none", printers: mode }), { show: true, ok: false, reason: "no-printer" }, "no printer chosen: as before");
+});
+
+// Phase 3 Session 3C (the 3B golden-copy review's m-7): in simple mode the device that prints on its POS app's own printer
+// turns its dot red with that printer's words too; a device whose slips print at another device keeps that device's row.
+test("3C (m-7): simple mode: this device's own printer out of paper, its cover open or in error is red with its words", () => {
+  const base = { lane: "raster" as const, local: "connected" as const, deviceOffline: false, desktopChosen: "unknown" as const };
+  const printers = { printersMode: false, isWriter: false, allLocal: true, problem: { name: "RPP02N", problem: "cover-open" as const } };
+  assert.deepEqual(printerDotOf({ ...base, remote: "none", isHostDevice: false, printers }), { show: true, ok: false, reason: "printer-problem", problem: "RPP02N has its cover open." }, "no print host: this device prints its own slips");
+  assert.deepEqual(printerDotOf({ ...base, remote: "ok", isHostDevice: true, printers }), { show: true, ok: false, reason: "printer-problem", problem: "RPP02N has its cover open." }, "the print host itself");
+  assert.deepEqual(printerDotOf({ ...base, remote: "ok", isHostDevice: false, printers }), { show: true, ok: true, reason: "ok" }, "another device prints all slips: its row, as before");
+  assert.deepEqual(printerDotOf({ ...base, remote: "none", isHostDevice: false, local: "disconnected", printers }), { show: true, ok: false, reason: "printer-off" }, "a printer that does not answer: reconnect it first");
 });

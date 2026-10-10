@@ -56,7 +56,16 @@ import {
   printHeavyCounterDayRequests,
   printSetupReadsWorstPerDay,
   printTokenRequestsPerDay,
+  PRINT_BUDGET_TOKEN_NORMAL_MAX_PER_DAY,
+  PRINT_BUDGET_TOKEN_WORST_MAX_PER_DAY,
+  VERCEL_HOBBY_INVOCATIONS_PER_DAY,
+  printUnreachableRequestsPerWriterPerDay,
+  printHealthRefreshWritesPerPrinterPerDay,
+  PRINT_REALTIME_PER_MOVED_SLIP,
+  printUnreachableAnnouncesPerWriterPerDay,
 } from "./print-budget";
+import { PRINTER_HEALTH_REFRESH_MS, PRINTER_UNREACHABLE_SKIP_MS } from "./print-failover";
+import { PRINTERS_MAX } from "./print-printers";
 
 // Spec §17.3 item 4: recompute §17.2's two "Vercel invocations" totals from the exported constants
 // and the agents' REAL cadence function. A cadence or cap change that could outgrow a cafe's free
@@ -387,7 +396,7 @@ test("2C: a stale printer list is read again at most once a minute, and at most 
 // printers mode, a counter that writes the bill printer but no full copy takes every order, so the token was the
 // request's first job on the counter's line (made leased: 1 request) and is now leased by the counter's page (2).
 // Its review (Fable 5.1, I-1) also recounted the printers-mode days a token cafe adds to, which S7 never priced: the
-// two OPEN pins below hold those figures for the owner to rule; the token fix does not change them.
+// two pins below hold those figures (OPEN until the owner accepted them, 2026-10-06); the token fix does not change them.
 const fastestWake = (): number => cadence({ socketHealthy: false, msSinceLastJob: 0, capSpent: false });
 const healthyWakePerWriter = (): number => Math.round(OPEN_MS / cadence({ socketHealthy: true, msSinceLastJob: null, capSpent: false }));
 
@@ -412,23 +421,72 @@ test("token fix: a token always costs a lease and an ack; the day it moves (a co
   assert.ok(realtime <= REALTIME_FREE_REQUESTS_PER_DAY * 0.05, `${realtime}/day`);
 });
 
-test("OPEN for the owner (pre-existing since S7; the token fix does not move it): the 2C heavy counter day with a token per order is 6,000, and 6,192 with the printer-list reads, over the normal ceiling", () => {
+// The owner's ruling on the two days below (2026-10-06, the Phase 3 planning session, option A): accepted, and measured
+// in Phase 3's exit. Each figure stays pinned exactly; it is over the ceiling a cafe without tokens is held to, and
+// inside a token cafe's own (PRINT_BUDGET_TOKEN_*_MAX_PER_DAY). A change that moves either day fails here first.
+test("ACCEPTED by the owner (2026-10-06, option A; pre-existing since S7): the 2C heavy counter day with a token per order is 6,000, and 6,192 with the printer-list reads: over the normal ceiling, inside a token cafe's", () => {
   // The counter writes the full copy too: each round's full copy heads its line, so the token always waited behind it.
   const day = printHeavyCounterDayRequests() + printTokenRequestsPerDay() + PRINT_BUDGET_STATIONS_DAY.writers * healthyWakePerWriter();
   assert.equal(day, 6_000, "the 2C pin's 5,340 plus the tokens, before and after the fix alike");
   const withReads = day + printSetupReadsWorstPerDay();
   assert.equal(withReads, 6_192, "with every printer-list read");
-  assert.ok(withReads > PRINT_BUDGET_NORMAL_MAX_PER_DAY, `OPEN: ${withReads}/day is over the ${PRINT_BUDGET_NORMAL_MAX_PER_DAY} normal ceiling; the owner rules it (no pin was loosened)`);
+  assert.ok(withReads > PRINT_BUDGET_NORMAL_MAX_PER_DAY, `${withReads}/day is over the ${PRINT_BUDGET_NORMAL_MAX_PER_DAY} normal ceiling a cafe without tokens is held to`);
+  assert.ok(withReads <= PRINT_BUDGET_TOKEN_NORMAL_MAX_PER_DAY, `${withReads}/day within a token cafe's ${PRINT_BUDGET_TOKEN_NORMAL_MAX_PER_DAY}`);
 });
 
-test("OPEN for the owner (pre-existing since S7; the token fix does not move it): the heavy setup with a token per order, taken on devices that print nothing, is 6,450 a day (6,642 with reads) and 18,288 at worst (18,480 with reads), over both ceilings", () => {
+test("ACCEPTED by the owner (2026-10-06, option A; pre-existing since S7): the heavy setup with a token per order, taken on devices that print nothing, is 6,450 a day (6,642 with reads) and 18,288 at worst (18,480 with reads): over both ceilings, inside a token cafe's", () => {
   const slips = printRequestsForSlips(printStationSlipsPerDay({ fullCopy: true })) + printTokenRequestsPerDay();
   const normal = slips + PRINT_BUDGET_STATIONS_DAY.writers * healthyWakePerWriter();
   assert.equal(normal, 6_450, "the 2A heavy day's 5,790 plus the tokens");
   assert.equal(normal + printSetupReadsWorstPerDay(), 6_642, "with every printer-list read");
-  assert.ok(normal > PRINT_BUDGET_NORMAL_MAX_PER_DAY, `OPEN: ${normal}/day is over the ${PRINT_BUDGET_NORMAL_MAX_PER_DAY} normal ceiling`);
+  assert.ok(normal > PRINT_BUDGET_NORMAL_MAX_PER_DAY, `${normal}/day is over the ${PRINT_BUDGET_NORMAL_MAX_PER_DAY} normal ceiling a cafe without tokens is held to`);
+  assert.ok(normal + printSetupReadsWorstPerDay() <= PRINT_BUDGET_TOKEN_NORMAL_MAX_PER_DAY, `${normal + printSetupReadsWorstPerDay()}/day within a token cafe's ${PRINT_BUDGET_TOKEN_NORMAL_MAX_PER_DAY}`);
   const worst = slips + 3 * Math.min(OPEN_MS / fastestWake(), printWakeWriterCap(3));
   assert.equal(worst, 18_288, "the 2A heavy worst case's 17,628 plus the tokens");
   assert.equal(worst + printSetupReadsWorstPerDay(), 18_480, "with every printer-list read");
-  assert.ok(worst > PRINT_BUDGET_WORST_MAX_PER_DAY, `OPEN: ${worst}/day is over the ${PRINT_BUDGET_WORST_MAX_PER_DAY} worst-case ceiling`);
+  assert.ok(worst > PRINT_BUDGET_WORST_MAX_PER_DAY, `${worst}/day is over the ${PRINT_BUDGET_WORST_MAX_PER_DAY} worst-case ceiling a cafe without tokens is held to`);
+  assert.ok(worst + printSetupReadsWorstPerDay() <= PRINT_BUDGET_TOKEN_WORST_MAX_PER_DAY, `${worst + printSetupReadsWorstPerDay()}/day within a token cafe's ${PRINT_BUDGET_TOKEN_WORST_MAX_PER_DAY}`);
+});
+
+// Phase 3 Session 3A (spec §9.3): failover adds no request. The skip is ten refusal rechecks long, so a writer that
+// cannot reach a network printer another device can print costs at most a lease and an ack per 5 minutes. The 3A review
+// gate (m-3) deliberately re-worded this pin: 288 is the cost at the skip's floor; on a flaky link (the app's probe
+// answers, its print's connect does not) the ceiling stays Phase 1's refusal recheck, 2 requests per 30 s, not new.
+test("Phase 3 failover: a writer that could not reach a network printer costs at most 288 requests a day at the skip's 5-minute floor (ten 30 s rechecks); Phase 1's 2 requests per 30 s stays the ceiling", () => {
+  assert.equal(PRINTER_UNREACHABLE_SKIP_MS, 5 * 60 * 1000);
+  assert.ok(PRINTER_UNREACHABLE_SKIP_MS >= 10 * PRINT_AGENT_REFUSED_RECHECK_MS, "never shorter than ten of Phase 1's refusal rechecks");
+  assert.equal(printUnreachableRequestsPerWriterPerDay(), 288, "144 skips over the busy day's 12 h, a lease and an ack each");
+  assert.ok(printUnreachableRequestsPerWriterPerDay() <= 2 * Math.ceil(OPEN_MS / PRINT_AGENT_REFUSED_RECHECK_MS) / 10, "a tenth of a refusing printer's cost");
+});
+
+// Phase 3 Session 3A (spec §10): printer health rides the wake, so it adds no request; its Mongo writes are bounded.
+test("Phase 3 health: no request of its own; at most 144 refresh writes a printer a day, 1,728 for a cafe's twelve printers (0.04 a second)", () => {
+  assert.equal(PRINTER_HEALTH_REFRESH_MS, 5 * 60 * 1000);
+  assert.equal(printHealthRefreshWritesPerPrinterPerDay(), 144);
+  const cafe = printHealthRefreshWritesPerPrinterPerDay() * PRINTERS_MAX;
+  assert.equal(cafe, 1_728);
+  assert.ok(cafe / (OPEN_MS / 1000) < 0.05, "far under Atlas M0's 100 operations a second");
+});
+
+// The 3A review gate (m-2): the head announcements failover adds (announcePrinterHead: a printer's waiting slips moved
+// to the device that took it over, or to its backup printer) were inside P3-3's 5 % ruling but not pinned. A moved slip
+// costs at most one more Worker request; at the heavy token day's figure with EVERY printer slip and token moved once,
+// plus a head announced per 5-minute skip for each of the three writers, realtime printing stays under 5 %.
+test("Phase 3 realtime: a slip moved by failover or to its backup costs at most one more Worker request; the heavy token day with every slip moved once and every writer skipped all day stays under 5 %", () => {
+  assert.equal(PRINT_REALTIME_PER_MOVED_SLIP, 1, "its line's head announced to its new writer");
+  assert.equal(printUnreachableAnnouncesPerWriterPerDay(), 144, "one head announced per 5-minute skip over the busy day's 12 h");
+  const slips = printStationSlipsPerDay({ fullCopy: true }) + PRINT_BUDGET_BUSY_DAY.orders;
+  const heavy = slips * PRINT_REALTIME_PER_PRINTER_SLIP + PRINT_REALTIME_BASE_PER_DAY;
+  assert.equal(heavy, 2_285, "the S7 heavy token day (one Worker request a slip or token)");
+  const perDay = heavy + slips * PRINT_REALTIME_PER_MOVED_SLIP + PRINT_BUDGET_STATIONS_DAY.writers * printUnreachableAnnouncesPerWriterPerDay();
+  assert.equal(perDay, 4_667, "plus every slip moved once and each writer skipped all day");
+  assert.ok(perDay <= REALTIME_FREE_REQUESTS_PER_DAY * 0.05, `${perDay}/day`);
+});
+
+test("the owner's token ruling: a token cafe's ceilings sit just above the accepted days, the normal one inside 20 % of the free daily invocations as a figure, and a cafe without tokens keeps 6,000 / 18,000", () => {
+  assert.equal(VERCEL_HOBBY_INVOCATIONS_PER_DAY, 33_333, "1,000,000 a month over 30 days");
+  assert.ok(6_642 <= VERCEL_HOBBY_INVOCATIONS_PER_DAY * 0.2, "the heavy token day with every read is at most 20 % of the free daily invocations (19.9 %)");
+  assert.ok(PRINT_BUDGET_TOKEN_NORMAL_MAX_PER_DAY - 6_642 < 100 && PRINT_BUDGET_TOKEN_WORST_MAX_PER_DAY - 18_480 < 100, "the token ceilings leave under 100 a day of room: any growth needs a new ruling");
+  assert.equal(PRINT_BUDGET_NORMAL_MAX_PER_DAY, 6_000, "never loosened for a cafe without tokens");
+  assert.equal(PRINT_BUDGET_WORST_MAX_PER_DAY, 18_000, "never loosened for a cafe without tokens");
 });

@@ -411,7 +411,8 @@ test("PIN (Session 1C, 2C): the agent polls the wake by printAgentPollsWake, thr
   assert.ok(!stripComments(readSrc("apps/cafe/hooks/use-print-agent.ts")).includes("apiGet"), "the agent never polls the read-only GET");
   const agent = stripComments(readSrc("apps/cafe/hooks/use-print-agent-wake.ts"));
   assert.ok(agent.includes("if (agent === null || !enabled || !pollsWake) return;"), "the wake poll is armed by printAgentPollsWake (simple mode: the host only, R6)");
-  assert.ok(agent.includes('apiSend<PrintWakeBeatData>(WAKE_URL, "POST", wakeBody(deviceId))'), "the agent's wake is the POST heartbeat");
+  // Session 3C (the 3B review gate's I-1) deliberately changed: through the older-server fallback (print-agent-paths.test.ts).
+  assert.ok(agent.includes('printAgentSkew.send(wakeBody(deviceId), olderWakeBody, (body) => apiSend<PrintWakeBeatData>(WAKE_URL, "POST", body))'), "the agent's wake is the POST heartbeat");
   assert.ok(agent.includes("bumpPrintWakeBudget("), "under the device's one daily cap");
   assert.ok(!agent.includes("apiGet"), "the agent never polls the read-only GET");
 });

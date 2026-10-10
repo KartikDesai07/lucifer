@@ -8,6 +8,8 @@
 // client-safe: no Node, DB or zod imports.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { PrinterHealth, PrinterUnreachable } from "./print-failover";
+
 /** A station's name prints on every KOT it gets (§8, D7), so it stays short. */
 export const STATION_NAME_MAX_CHARS = 32;
 export const STATIONS_MAX = 20;
@@ -105,10 +107,17 @@ export interface PrinterConfig {
   slips: PrinterSlips;
   copies: PrinterCopies;
   enabled: boolean;
+  /** Phase 3 (§9.4): the printer that takes this one's waiting slips while its device is offline (BACKUP PRINTER). */
+  backupPrinterId?: string;
+  /** Phase 3 (§9.3), kept by the server: the writers that could not reach this network printer lately (print-failover.ts). */
+  unreachable?: PrinterUnreachable[];
+  /** Phase 3 (§10), kept by the server: the health its writer last reported on the wake. */
+  health?: PrinterHealth;
 }
 
 /** The one device that writes to this printer (§9.3): a device printer's own device, or a LAN printer's
- *  primary. null: a LAN printer nobody writes to yet, so nothing is routed to it. */
+ *  primary. null: a LAN printer nobody writes to yet, so nothing is routed to it. Phase 3: the setup's writer; who
+ *  writes it NOW (a network printer taken over while its primary is offline) is print-failover.ts's printerActiveWriter. */
 export function printerWriterDeviceId(printer: Pick<PrinterConfig, "connection" | "primaryDeviceId">): string | null {
   if (printer.connection.kind === "device") return printer.connection.deviceId;
   return printer.primaryDeviceId ?? null;
@@ -188,11 +197,13 @@ function devicePrinterKey(connection: PrinterConnection): { family: "windows" | 
 }
 
 /** Two printers one device may write side by side: of one kind (Windows printers of a PC, or the POS app's printers),
- *  and not the same printer. */
+ *  and not the same printer. Phase 3 Session 3E (spec §9.6): a network printer goes beside a PC's Windows printers too
+ *  (the Windows app 1.12.0 writes both; the printer form offers a PC for a network printer only from 1.12.0). */
 function differentPrintersOfOneDevice(a: PrinterConnection, b: PrinterConnection): boolean {
   const left = devicePrinterKey(a);
   const right = devicePrinterKey(b);
-  return left !== null && right !== null && left.family === right.family && left.key !== right.key;
+  if (left === null || right === null || left.key === right.key) return false;
+  return left.family === right.family || a.kind === "lan" || b.kind === "lan";
 }
 
 export function printerWriterTakenMessage(name: string): string {

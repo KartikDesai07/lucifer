@@ -41,6 +41,8 @@ export interface PrinterDraft {
   copiesKot: number;
   copiesBill: number;
   enabled: boolean;
+  /** Session 3B (spec §9.4): the backup printer's id, "" for none. */
+  backupPrinterId: string;
 }
 
 /** This device's own printer as a printer's connection (spec §11 "This device"), or null when it has none the agent
@@ -127,6 +129,15 @@ export function onePrinterDevicesOf(devices: readonly PrintDeviceSummary[], here
   return here.native && !here.v2 && here.deviceId !== "" ? [here.deviceId, ...others] : others;
 }
 
+/** Phase 3 Session 3E (spec §9.6): the devices a network printer may be printed by: this device when it writes network
+ *  printers (the POS app, or the Windows app 1.12.0), every other POS app device, and every Windows app whose wake said
+ *  it writes them (1.12.0); the printer's saved device stays offered whatever it is now. */
+export function lanPrintingDevicesOf(devices: readonly PrintDeviceSummary[], here: { deviceId: string; lan: boolean }, saved: string): string[] {
+  const others = devices.filter((device) => device.deviceId !== here.deviceId && (device.shell === "android" || (device.shell === "windows" && device.lan === true))).map((device) => device.deviceId);
+  const choices = [...(here.lan && here.deviceId !== "" ? [here.deviceId] : []), ...others];
+  return saved !== "" && !choices.includes(saved) ? [...choices, saved] : choices;
+}
+
 /** A new printer: nothing chosen but Notices, on for any printer that ends up taking KOTs (the 2B gate's M-7: a
  *  void, moved or cancel notice reaches a printer only where Notices is on). A saved one: as saved, less any
  *  station that no longer exists (the 2A gate's M4: such an id could never be saved again). An empty list is a list
@@ -149,6 +160,7 @@ export function printerDraftOf(printer: PrinterConfig | null, stations: readonly
       copiesKot: 1,
       copiesBill: 1,
       enabled: true,
+      backupPrinterId: "",
     };
   }
   const known = new Set(stations.map((station) => station.id));
@@ -169,6 +181,7 @@ export function printerDraftOf(printer: PrinterConfig | null, stations: readonly
     copiesKot: printer.copies.kot,
     copiesBill: printer.copies.bill,
     enabled: printer.enabled,
+    backupPrinterId: printer.backupPrinterId ?? "",
   };
 }
 
@@ -228,6 +241,9 @@ export function printerBodyOf(
     slips: { bill: draft.bill, kotStations: draft.kotAll ? [] : [...draft.kotStations], kotAll: draft.kotAll, notices: draft.notices, eod: draft.eod },
     copies: { kot: copiesOf(draft.copiesKot), bill: copiesOf(draft.copiesBill) },
     enabled: draft.enabled,
+    // Session 3B (spec §9.4): null for none (an absent field keeps a saved backup, A3), and for one the form cannot find
+    // among the printers (deleted in the instant before this save): never an error.
+    backupPrinterId: draft.backupPrinterId !== "" && draft.backupPrinterId !== editingId && printers.some((printer) => printer.id === draft.backupPrinterId) ? draft.backupPrinterId : null,
   };
   const clash = printerWriterClash(printers, { connection, primaryDeviceId, enabled: draft.enabled, slips: body.slips }, editingId);
   if (clash !== null) return { ok: false, error: printerClashMessage(clash, { connection }) };
@@ -237,6 +253,19 @@ export function printerBodyOf(
     if (other !== undefined) return { ok: false, error: onePrinterAppMessage(other.name) };
   }
   return { ok: true, body };
+}
+
+/** Session 3B (spec §9.4, §11): the form's words under the backup printer. */
+export const BACKUP_PRINTER_NOTE = "Its waiting slips print there, marked BACKUP PRINTER, while its own device is offline or no device can reach it.";
+
+/** Session 3B (spec §9.4): the backup printers the form offers: every other printer routing sends slips to, and the one
+ *  already saved (`saved`) when it has stopped taking slips since, marked "(not in use)", so a save keeps it. */
+export function backupChoicesOf(printers: readonly PrinterConfig[], printerId: string | null, saved: string): Array<{ id: string; label: string }> {
+  const choices = routablePrinters(printers)
+    .filter((printer) => printer.id !== printerId)
+    .map((printer) => ({ id: printer.id, label: printer.name }));
+  const kept = saved === "" || choices.some((choice) => choice.id === saved) ? undefined : printers.find((printer) => printer.id === saved && printer.id !== printerId);
+  return kept === undefined ? choices : [...choices, { id: kept.id, label: `${kept.name} (not in use)` }];
 }
 
 /** Spec §6.6 "Set up printers": this device's printer becomes Printer 1 with Bill, Full KOT copy, Notices and End

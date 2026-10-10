@@ -107,6 +107,13 @@ test("the Phase 1 final gate (I-3): the Windows app's refusals reach the agent u
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 
+test("3E: a network printer on the Windows app fails with the lane's own sentence: not connected is nothing sent, a write that failed may be on paper", () => {
+  assert.equal(hostPrintFailureMessage(new Error(PRINTER_NOT_CONNECTED_MESSAGE), true), PRINTER_NOT_CONNECTED_MESSAGE, "kept as it is in the Windows app");
+  assert.equal(outcome(hostPrintFailureMessage(new Error(PRINTER_NOT_CONNECTED_MESSAGE), true)), "no", "nothing sent: acked unreachable for a network printer");
+  assert.equal(outcome(hostPrintFailureMessage(new Error(PRINTER_WRITE_FAILED_MESSAGE), true)), "maybe", "part of it may be on paper: REPRINT");
+  assert.equal(hostPrintFailureMessage(new Error("Error invoking remote method 'pos-desktop:print-html': Error: This print request was refused."), true), "This print request was refused.", "a page slip's shell sentence still unwrapped");
+});
+
 test("PIN (I-3): the Windows app's sentences here are the shell's own, word for word", () => {
   const shell = ["print-messages.ts", "raw-spool.ts"].map((file) => readFileSync(path.join(REPO_ROOT, "apps/desktop/src", file), "utf8")).join("\n");
   for (const sentence of [...DESKTOP_SHELL_REFUSALS, DESKTOP_SHELL_NOT_READY_MESSAGE, ...DESKTOP_SHELL_NEVER_PRINTS]) {
