@@ -33,6 +33,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# Marketing
+marketing
+
 # env files — keep secrets out of git, but commit the example (any workspace)
 .env
 .env.*

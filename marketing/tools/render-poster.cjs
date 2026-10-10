@@ -1,5 +1,5 @@
 // Renders a poster HTML file to a PNG with the Electron binary from apps/desktop.
-// usage: electron render-poster.cjs <html> <png> [width=1080] [height=1350] [scale=2] [seekMs]
+// usage: electron render-poster.cjs <html[?query]> <png> [width=1080] [height=1350] [scale=2] [seekMs]
 // seekMs: for timeline pages (demo-video.html) call window.__seek(ms) before capturing.
 // Local only: the page is loaded from disk and captured offscreen; nothing is uploaded.
 const { app, BrowserWindow } = require("electron");
@@ -24,7 +24,11 @@ const EXIT_RENDER = 3;
 // script's own path instead of a fixed slice offset; the html must be a .html file.
 const positional = process.argv.filter((arg) => !arg.startsWith("--"));
 const scriptIndex = positional.findIndex((arg) => path.resolve(arg) === __filename);
-const [htmlArg, pngArg, widthArg, heightArg, scaleArg, seekArg] = positional.slice(scriptIndex + 1);
+const [htmlRaw, pngArg, widthArg, heightArg, scaleArg, seekArg] = positional.slice(scriptIndex + 1);
+// <file.html?size=story> passes the query string to the page (location.search); a bare path behaves as before.
+const queryAt = htmlRaw ? htmlRaw.indexOf("?") : -1;
+const htmlArg = queryAt === -1 ? htmlRaw : htmlRaw.slice(0, queryAt);
+const pageQuery = queryAt === -1 ? {} : Object.fromEntries(new URLSearchParams(htmlRaw.slice(queryAt + 1)));
 if (!htmlArg || !pngArg || path.extname(htmlArg).toLowerCase() !== ".html" || path.extname(pngArg).toLowerCase() !== ".png") {
   process.stderr.write("usage: electron render-poster.cjs <file.html> <file.png> [width] [height] [scale]\n");
   app.exit(EXIT_USAGE);
@@ -64,7 +68,8 @@ async function render() {
   });
   win.webContents.setFrameRate(60);
   win.setContentSize(targetWidth, targetHeight);
-  await win.loadFile(htmlPath, seekMs === null ? undefined : { query: { driven: "1" } });
+  const query = seekMs === null ? pageQuery : { ...pageQuery, driven: "1" };
+  await win.loadFile(htmlPath, Object.keys(query).length === 0 ? undefined : { query });
   win.webContents.setZoomFactor(scale);
   const readiness = await win.webContents.executeJavaScript(WAIT_READY_SCRIPT, true);
   const fontsStatus = await win.webContents.executeJavaScript(WAIT_FONTS_SCRIPT, true);
